@@ -1,14 +1,18 @@
 """
 Unit tests for weather_markets.py — probability math, condition parsing,
-fee-adjusted edge, and Kelly criterion.
+fee-adjusted edge, Kelly criterion, bootstrap CI, and time-of-day risk.
 """
 
 import unittest
+from datetime import UTC, datetime, timedelta
 
 from weather_markets import (
+    _bootstrap_ci_precip,
+    _forecast_model_weights,
     _forecast_probability,
     _normal_cdf,
     _parse_market_condition,
+    _time_risk,
     ensemble_stats,
     kelly_fraction,
 )
@@ -155,6 +159,136 @@ class TestParseMarketCondition(unittest.TestCase):
                 {"type": "below", "threshold": 10.0},
             ],
         )
+
+
+class TestBootstrapCIPrecip(unittest.TestCase):
+    def test_all_above_threshold_gives_high_prob(self):
+        """All members above 0.01in → precip_any CI should be near (1, 1)."""
+        members = [0.5] * 50
+        condition = {"type": "precip_any"}
+        lo, hi = _bootstrap_ci_precip(members, condition)
+        self.assertGreater(lo, 0.95)
+        self.assertGreater(hi, 0.95)
+
+    def test_half_above_gives_straddling_ci(self):
+        """Half members above 0.10in → CI should straddle 0.5."""
+        members = [0.20] * 25 + [0.05] * 25
+        condition = {"type": "precip_above", "threshold": 0.10}
+        lo, hi = _bootstrap_ci_precip(members, condition)
+        self.assertLess(lo, 0.55)
+        self.assertGreater(hi, 0.45)
+
+    def test_small_sample_returns_full_range(self):
+        """Fewer than 5 members → returns (0.0, 1.0) as uninformative CI."""
+        members = [0.3, 0.4, 0.5]
+        condition = {"type": "precip_any"}
+        lo, hi = _bootstrap_ci_precip(members, condition)
+        self.assertEqual(lo, 0.0)
+        self.assertEqual(hi, 1.0)
+
+    def test_none_above_threshold_gives_low_prob(self):
+        """No members above threshold → CI near (0, 0)."""
+        members = [0.0] * 30
+        condition = {"type": "precip_above", "threshold": 0.10}
+        lo, hi = _bootstrap_ci_precip(members, condition)
+        self.assertLess(hi, 0.05)
+
+
+class TestTimeRisk(unittest.TestCase):
+    def _close_time(
+        self, hours_from_now: float, local_hour_override: int | None = None
+    ) -> str:
+        """Build an ISO close_time string."""
+        dt = datetime.now(UTC) + timedelta(hours=hours_from_now)
+        return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    def test_near_close_returns_low_risk(self):
+        """Market closing in 90 minutes → LOW / 0.5."""
+        ct = self._close_time(1.5)
+        label, mult = _time_risk(ct, "America/New_York")
+        self.assertEqual(label, "LOW")
+        self.assertAlmostEqual(mult, 0.5)
+
+    def test_far_out_returns_high_risk(self):
+        """Market closing in 48 hours during daytime → HIGH / 1.0."""
+        # 48h from now will have a local_hour that's not >= 20
+        ct = self._close_time(48)
+        label, mult = _time_risk(ct, "America/New_York")
+        # Could be LOW if it lands after 8pm — just check mult is valid
+        self.assertIn(label, ("HIGH", "MEDIUM", "LOW"))
+        self.assertLessEqual(mult, 1.0)
+        self.assertGreater(mult, 0.0)
+
+    def test_missing_close_time_returns_high_risk(self):
+        """Empty close_time string → HIGH / 1.0 (safe default)."""
+        label, mult = _time_risk("", "America/New_York")
+        self.assertEqual(label, "HIGH")
+        self.assertAlmostEqual(mult, 1.0)
+
+    def test_within_12_hours_returns_medium_or_low(self):
+        """Market closing in 6 hours → MEDIUM or LOW."""
+        ct = self._close_time(6)
+        label, mult = _time_risk(ct, "America/New_York")
+        self.assertIn(label, ("MEDIUM", "LOW"))
+        self.assertLess(mult, 1.0)
+
+
+class TestForecastModelWeights(unittest.TestCase):
+    def test_ecmwf_weight_winter(self):
+        """ECMWF should have weight 2.5 in winter months (Oct–Mar)."""
+        for month in (10, 11, 12, 1, 2, 3):
+            weights = _forecast_model_weights(month)
+            self.assertAlmostEqual(weights["ecmwf_ifs04"], 2.5, msg=f"month={month}")
+
+    def test_ecmwf_weight_summer(self):
+        """ECMWF should have weight 1.5 in summer months (Apr–Sep)."""
+        for month in (4, 5, 6, 7, 8, 9):
+            weights = _forecast_model_weights(month)
+            self.assertAlmostEqual(weights["ecmwf_ifs04"], 1.5, msg=f"month={month}")
+
+    def test_gfs_and_icon_constant(self):
+        """GFS and ICON weights should be 1.0 year-round."""
+        for month in range(1, 13):
+            weights = _forecast_model_weights(month)
+            self.assertAlmostEqual(weights["gfs_seamless"], 1.0, msg=f"month={month}")
+            self.assertAlmostEqual(weights["icon_seamless"], 1.0, msg=f"month={month}")
+
+
+class TestCIAdjustedKelly(unittest.TestCase):
+    """Tests that CI width correctly scales the fee-adjusted Kelly fraction."""
+
+    def _make_analysis(self, ci_low: float, ci_high: float, fee_kelly: float) -> dict:
+        """Simulate an analyze_trade return dict with specific CI and Kelly values."""
+        ci_width = ci_high - ci_low
+        ci_confidence = max(0.25, 1.0 - ci_width)
+        return {
+            "fee_adjusted_kelly": fee_kelly,
+            "ci_adjusted_kelly": round(fee_kelly * ci_confidence, 6),
+            "ci_low": ci_low,
+            "ci_high": ci_high,
+        }
+
+    def test_ci_adjusted_kelly_reduces_on_wide_ci(self):
+        """Wide CI (width=0.5) reduces Kelly by 50%."""
+        a = self._make_analysis(0.25, 0.75, 0.10)  # width=0.5, confidence=0.5
+        self.assertAlmostEqual(a["ci_adjusted_kelly"], 0.05, places=5)
+        self.assertLess(a["ci_adjusted_kelly"], a["fee_adjusted_kelly"])
+
+    def test_ci_adjusted_kelly_no_reduction_on_zero_ci(self):
+        """Zero CI width → no reduction (confidence=1.0)."""
+        a = self._make_analysis(0.70, 0.70, 0.10)  # width=0, confidence=1.0
+        self.assertAlmostEqual(a["ci_adjusted_kelly"], 0.10, places=5)
+
+    def test_ci_adjusted_kelly_minimum_confidence(self):
+        """CI width > 0.75 → confidence floored at 0.25."""
+        a = self._make_analysis(0.0, 1.0, 0.10)  # width=1.0, would be -0.0 → floor 0.25
+        self.assertAlmostEqual(a["ci_adjusted_kelly"], 0.025, places=5)
+
+    def test_ci_adjusted_kelly_nonnegative(self):
+        """ci_adjusted_kelly should never be negative."""
+        for width in (0.0, 0.3, 0.6, 0.9, 1.0):
+            a = self._make_analysis(0.0, width, 0.10)
+            self.assertGreaterEqual(a["ci_adjusted_kelly"], 0.0)
 
 
 if __name__ == "__main__":

@@ -34,7 +34,9 @@ from kalshi_client import KalshiClient
 from notify import alert_strong_signal
 from tracker import (
     brier_score,
+    export_predictions_csv,
     get_calibration_by_city,
+    get_calibration_by_type,
     get_calibration_trend,
     get_history,
     log_prediction,
@@ -159,6 +161,20 @@ def auto_settle(client: KalshiClient) -> None:
 
     t = threading.Thread(target=_run, daemon=True)
     t.start()
+
+
+def cmd_settle(client: KalshiClient) -> None:
+    """
+    Sync settled market outcomes from Kalshi and record them in the tracker.
+    Intended for scheduled nightly execution (via schtasks) as well as manual use.
+    """
+    count = sync_outcomes(client)
+    if count > 0:
+        print(
+            green(f"  [Settle] Recorded {count} new outcome(s). Brier score updated.")
+        )
+    else:
+        print(dim("  [Settle] No new outcomes to record."))
 
 
 # ── Client ────────────────────────────────────────────────────────────────────
@@ -317,18 +333,25 @@ def cmd_market(client: KalshiClient, ticker: str, verbose: bool = False):
         method = analysis.get("method", "?").upper()
         hour = enriched.get("_hour")
         cond = analysis["condition"]
-        cond_str = (
-            f">{cond['threshold']:.1f}°F"
-            if cond["type"] == "above"
-            else f"<{cond['threshold']:.1f}°F"
-            if cond["type"] == "below"
-            else f"{cond['lower']:.1f}–{cond['upper']:.1f}°F"
-        )
+        ct = cond["type"]
+        if ct == "above":
+            cond_str = f">{cond['threshold']:.1f}°F"
+        elif ct == "below":
+            cond_str = f"<{cond['threshold']:.1f}°F"
+        elif ct == "between":
+            cond_str = f"{cond['lower']:.1f}–{cond['upper']:.1f}°F"
+        elif ct == "precip_above":
+            cond_str = f">{cond.get('threshold', 0):.2f} in"
+        else:
+            cond_str = "any precip"
+        is_precip = ct in ("precip_any", "precip_above")
         time_lbl = f"at {hour:02d}:00 local" if hour is not None else "daily high/low"
 
         print(f"\n  {bold('─── Verbose breakdown ───')}")
         print(f"  Method:   {method}, {n} ensemble members")
-        print(f"  Question: temp {cond_str}  ({time_lbl})")
+        print(
+            f"  Question: {'precip' if is_precip else 'temp'} {cond_str}  ({time_lbl})"
+        )
         if es:
             print(
                 f"  Spread:   {es['min']:.1f}–{es['max']:.1f}°F  "
@@ -396,7 +419,11 @@ def cmd_market(client: KalshiClient, ticker: str, verbose: bool = False):
 # ── Analyze ───────────────────────────────────────────────────────────────────
 
 
-def _analyze_once(client: KalshiClient, previous_tickers: set | None = None):
+def _analyze_once(
+    client: KalshiClient,
+    previous_tickers: set | None = None,
+    _liquid_opps_out: list | None = None,
+):
     """Run one analysis pass. Returns set of opportunity tickers found."""
     markets = get_weather_markets(client)
     liquid_opps: list = []
@@ -428,13 +455,17 @@ def _analyze_once(client: KalshiClient, previous_tickers: set | None = None):
         rows = []
         for m, a in sorted(opps, key=lambda x: abs(x[1]["edge"]), reverse=True):
             cond = a["condition"]
-            cond_str = (
-                f">{cond['threshold']:.0f}°"
-                if cond["type"] == "above"
-                else f"<{cond['threshold']:.0f}°"
-                if cond["type"] == "below"
-                else f"{cond['lower']:.0f}–{cond['upper']:.0f}°"
-            )
+            ct = cond["type"]
+            if ct == "above":
+                cond_str = f">{cond['threshold']:.0f}°"
+            elif ct == "below":
+                cond_str = f"<{cond['threshold']:.0f}°"
+            elif ct == "between":
+                cond_str = f"{cond['lower']:.0f}–{cond['upper']:.0f}°"
+            elif ct == "precip_above":
+                cond_str = f'>{cond.get("threshold", 0):.2f}"'
+            else:
+                cond_str = "any precip"
             es = a.get("ensemble_stats") or {}
             spread = f"{es.get('min', 0):.0f}–{es.get('max', 0):.0f}°" if es else "—"
             hour = m.get("_hour")
@@ -454,12 +485,15 @@ def _analyze_once(client: KalshiClient, previous_tickers: set | None = None):
                     m.get("_date").isoformat() if m.get("_date") else "",
                     f"{hour:02d}:00" if hour is not None else "daily",
                     cond_str,
-                    f"{a['forecast_temp']:.1f}°F",
+                    f"{a['forecast_temp']:.2f} in"
+                    if ct in ("precip_any", "precip_above")
+                    else f"{a['forecast_temp']:.1f}°F",
                     spread,
                     prob_color(a["forecast_prob"]),
                     f"{a['market_prob'] * 100:.0f}%",
                     edge_color(a["edge"]),
                     edge_color(net_edge),
+                    a.get("time_risk", "—"),
                     signal_color(f"BUY {a['recommended_side'].upper()}"),
                     cyan(url),
                 ]
@@ -479,6 +513,7 @@ def _analyze_once(client: KalshiClient, previous_tickers: set | None = None):
         "Mkt P",
         "Edge",
         "Net Edge",
+        "Risk",
         "Action",
         "Link",
     ]
@@ -518,6 +553,9 @@ def _analyze_once(client: KalshiClient, previous_tickers: set | None = None):
             )
 
     found = {m.get("ticker") for m, _ in all_opps}
+    # Expose liquid_opps to callers (e.g., auto-trade watch mode)
+    if _liquid_opps_out is not None:
+        _liquid_opps_out.extend(liquid_opps)
     return found
 
 
@@ -533,8 +571,83 @@ def cmd_analyze(client: KalshiClient):
 # ── Watch mode ────────────────────────────────────────────────────────────────
 
 
-def cmd_watch(client: KalshiClient):
-    print(bold("Watch mode — refreshing every 5 minutes. Press Ctrl+C to stop.\n"))
+def _auto_place_trades(opps: list, client: KalshiClient) -> None:
+    """
+    Auto-place paper trades for STRONG BUY + LOW risk signals not already held.
+    Called from watch --auto mode. Respects drawdown guard and portfolio Kelly.
+    """
+    from paper import (
+        get_open_trades,
+        is_paused_drawdown,
+        kelly_quantity,
+        place_paper_order,
+        portfolio_kelly_fraction,
+    )
+
+    if is_paused_drawdown():
+        print(yellow("  [Auto] Drawdown guard active — no auto-trades placed."))
+        return
+
+    open_tickers = {t["ticker"] for t in get_open_trades()}
+    placed = 0
+    for m, a in opps:
+        ticker = m.get("ticker", "")
+        if ticker in open_tickers:
+            continue
+        if "STRONG" not in a.get("net_signal", ""):
+            continue
+        if a.get("time_risk") == "HIGH":
+            continue
+        rec_side = a.get("recommended_side", "yes")
+        city = m.get("_city")
+        target_date_obj = m.get("_date")
+        target_date_str = target_date_obj.isoformat() if target_date_obj else None
+        ci_kelly = a.get("ci_adjusted_kelly", a.get("fee_adjusted_kelly", 0.0))
+        adj_kelly = portfolio_kelly_fraction(
+            ci_kelly, city, target_date_str, side=rec_side
+        )
+        if adj_kelly < 0.005:
+            continue
+        # Use market implied prob as entry price when no live quote
+        prices = a.get("market_prob", 0.50)
+        entry_price = float(prices) if isinstance(prices, int | float) else 0.50
+        qty = kelly_quantity(adj_kelly, entry_price)
+        if qty < 1:
+            continue
+        try:
+            trade = place_paper_order(
+                ticker,
+                rec_side,
+                qty,
+                entry_price,
+                entry_prob=a.get("forecast_prob"),
+                net_edge=a.get("net_edge"),
+                city=city,
+                target_date=target_date_str,
+            )
+            print(
+                green(
+                    f"  [Auto] #{trade['id']} {qty}×{ticker} {rec_side.upper()}"
+                    f" @ ${entry_price:.3f}  Kelly={adj_kelly * 100:.1f}%"
+                )
+            )
+            open_tickers.add(ticker)
+            placed += 1
+        except ValueError as e:
+            print(yellow(f"  [Auto] Skipped {ticker}: {e}"))
+    if placed == 0:
+        print(dim("  [Auto] No qualifying signals this scan."))
+
+
+def cmd_watch(client: KalshiClient, auto_trade: bool = False):
+    mode = "AUTO-TRADE" if auto_trade else "Watch"
+    print(bold(f"{mode} mode — refreshing every 5 minutes. Press Ctrl+C to stop.\n"))
+    if auto_trade:
+        print(
+            yellow(
+                "  Auto-trade: STRONG BUY + LOW risk signals → paper orders placed automatically.\n"
+            )
+        )
     previous: set = set()
     try:
         while True:
@@ -542,7 +655,10 @@ def cmd_watch(client: KalshiClient):
             now = time.strftime("%H:%M:%S")
             print(bold(f"Kalshi Weather Markets — {now}"))
             print(dim("(* = new since last scan   Ctrl+C to exit)\n"))
-            previous = _analyze_once(client, previous)
+            liquid_opps: list = []
+            previous = _analyze_once(client, previous, _liquid_opps_out=liquid_opps)
+            if auto_trade and liquid_opps:
+                _auto_place_trades(liquid_opps, client)
             print(
                 dim(
                     f"\nNext refresh in {REFRESH_SECS // 60} min — {time.strftime('%H:%M:%S', time.localtime(time.time() + REFRESH_SECS))}"
@@ -728,8 +844,179 @@ def cmd_history(client: KalshiClient):
                     tablefmt="simple",
                 )
             )
+        # ── Per-type calibration ─────────────────────────────────────────────
+        type_cal = get_calibration_by_type()
+        if type_cal:
+            print(bold("\n  Calibration by market type:"))
+            type_rows = []
+            for ctype, stats in sorted(type_cal.items()):
+                bias_str = (
+                    red(f"+{stats['bias']:.3f}")
+                    if stats["bias"] > 0.03
+                    else green(f"{stats['bias']:+.3f}")
+                    if stats["bias"] < -0.03
+                    else dim(f"{stats['bias']:+.3f}")
+                )
+                type_rows.append([ctype, f"{stats['brier']:.4f}", bias_str, stats["n"]])
+            print(
+                tabulate(
+                    type_rows,
+                    headers=["Type", "Brier", "Bias", "N"],
+                    tablefmt="simple",
+                )
+            )
     else:
         print(dim("\n  Brier score will appear once markets settle."))
+
+
+# ── Dashboard ────────────────────────────────────────────────────────────────
+
+
+def cmd_dashboard(client: KalshiClient) -> None:  # noqa: ARG001
+    """Single-screen portfolio health view: balance, positions, calibration."""
+    from paper import (
+        get_all_trades,
+        get_balance,
+        get_max_drawdown_pct,
+        get_open_trades,
+        get_peak_balance,
+        get_performance,
+    )
+
+    _header("Portfolio Dashboard")
+
+    # ── Account health ────────────────────────────────────────────────────────
+    bal = get_balance()
+    peak = get_peak_balance()
+    dd = get_max_drawdown_pct()
+    dd_str = (
+        red(f"{dd:.1%}")
+        if dd > 0.15
+        else yellow(f"{dd:.1%}")
+        if dd > 0.05
+        else green(f"{dd:.1%}")
+    )
+    print(
+        f"  Balance: {bold(f'${bal:.2f}')}  |  Peak: ${peak:.2f}  |  Drawdown from peak: {dd_str}"
+    )
+
+    perf = get_performance()
+    if perf["settled"]:
+        wr = perf.get("win_rate")
+        pnl = perf.get("total_pnl", 0.0)
+        roi = perf.get("roi")
+        wr_str = f"{wr:.1%}" if wr is not None else "—"
+        pnl_str = green(f"+${pnl:.2f}") if pnl >= 0 else red(f"-${abs(pnl):.2f}")
+        roi_str = f"{roi:+.1%}" if roi is not None else "—"
+        print(
+            f"  Settled: {perf['settled']}  |  Win rate: {wr_str}  |  P&L: {pnl_str}  |  ROI: {roi_str}"
+        )
+
+    # ── Calibration ──────────────────────────────────────────────────────────
+    bs = brier_score()
+    if bs is not None:
+        grade = (
+            green("Excellent")
+            if bs < 0.10
+            else green("Good")
+            if bs < 0.18
+            else yellow("Fair")
+            if bs < 0.25
+            else red("Poor")
+        )
+        print(f"  Brier score: {bold(f'{bs:.4f}')}  {grade}")
+
+    # ── Open positions ────────────────────────────────────────────────────────
+    open_trades = get_open_trades()
+    _header("Open Positions", width=50)
+    if open_trades:
+        pos_rows = []
+        exposure_by_city: dict[str, float] = {}
+        for t in open_trades:
+            pos_rows.append(
+                [
+                    t["id"],
+                    t["ticker"][:30],
+                    bold(t["side"].upper()),
+                    t["quantity"],
+                    f"${t['entry_price']:.3f}",
+                    f"${t['cost']:.2f}",
+                    t.get("city", "—"),
+                    t.get("target_date", "—"),
+                ]
+            )
+            city_key = f"{t.get('city', '?')}/{t.get('target_date', '?')}"
+            exposure_by_city[city_key] = exposure_by_city.get(city_key, 0.0) + t["cost"]
+        print(
+            tabulate(
+                pos_rows,
+                headers=["#", "Ticker", "Side", "Qty", "Price", "Cost", "City", "Date"],
+                tablefmt="simple",
+            )
+        )
+        print(bold("\n  Exposure by city/date:"))
+        for k, amt in sorted(exposure_by_city.items(), key=lambda x: -x[1]):
+            pct = amt / bal * 100 if bal > 0 else 0
+            bar = "█" * min(20, int(pct / 2))
+            print(f"    {k:<30} ${amt:.2f}  ({pct:.1f}%)  {cyan(bar)}")
+    else:
+        print(dim("  No open positions."))
+
+    # ── All trades summary ────────────────────────────────────────────────────
+    all_t = get_all_trades()
+    _header("Recent Settled Trades", width=50)
+    settled = [t for t in all_t if t["settled"]][-5:]
+    if settled:
+        s_rows = []
+        for t in settled:
+            pnl = t.get("pnl", 0.0) or 0.0
+            pnl_s = green(f"+${pnl:.2f}") if pnl >= 0 else red(f"-${abs(pnl):.2f}")
+            s_rows.append(
+                [
+                    t["id"],
+                    t["ticker"][:28],
+                    t["side"].upper(),
+                    t["outcome"].upper() if t["outcome"] else "—",
+                    pnl_s,
+                ]
+            )
+        print(
+            tabulate(
+                s_rows,
+                headers=["#", "Ticker", "Side", "Result", "P&L"],
+                tablefmt="simple",
+            )
+        )
+    else:
+        print(dim("  No settled trades yet."))
+
+    print()
+
+
+# ── CSV Export ────────────────────────────────────────────────────────────────
+
+
+def cmd_export() -> None:
+    """Export prediction history and paper trades to CSV in data/exports/."""
+    from paper import export_trades_csv
+
+    out_dir = Path(__file__).parent / "data" / "exports"
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    pred_path = str(out_dir / "predictions.csv")
+    paper_path = str(out_dir / "paper_trades.csv")
+
+    n1 = export_predictions_csv(pred_path)
+    n2 = export_trades_csv(paper_path)
+
+    if n1:
+        print(green(f"  Exported {n1} predictions → {pred_path}"))
+    else:
+        print(dim("  No predictions to export yet."))
+    if n2:
+        print(green(f"  Exported {n2} paper trades → {paper_path}"))
+    else:
+        print(dim("  No paper trades to export yet."))
 
 
 # ── Portfolio ─────────────────────────────────────────────────────────────────
@@ -964,6 +1251,8 @@ def cmd_menu(client: KalshiClient):
         ("Positions     open positions + exit signals", lambda: cmd_positions(client)),
         ("Paper         paper trading results", lambda: cmd_paper(["results"], client)),
         ("Backtest      score model on history", lambda: cmd_backtest(client, [])),
+        ("Dashboard     portfolio overview", lambda: cmd_dashboard(client)),
+        ("Export        save predictions + trades to CSV", lambda: cmd_export()),
         ("Schedule      hourly auto-scan", lambda: cmd_schedule()),
         ("Setup         setup wizard", lambda: cmd_setup()),
         ("Quit", None),
@@ -1136,7 +1425,11 @@ def cmd_paper(args: list, client: KalshiClient | None = None):
         get_balance,
         get_open_trades,
         get_performance,
+        is_paused_drawdown,
+        kelly_bet_dollars,
+        kelly_quantity,
         place_paper_order,
+        portfolio_kelly_fraction,
         reset_paper_account,
         settle_paper_trade,
     )
@@ -1162,8 +1455,25 @@ def cmd_paper(args: list, client: KalshiClient | None = None):
             print(red("price must be a decimal; qty (optional) must be an integer"))
             return
 
+        # Drawdown guard: block auto-sizing when balance < 50% of starting bankroll
+        if is_paused_drawdown() and qty is None:
+            from paper import MAX_DRAWDOWN_FRACTION, STARTING_BALANCE
+
+            floor = STARTING_BALANCE * MAX_DRAWDOWN_FRACTION
+            print(
+                red(
+                    f"\n  [Drawdown] Auto-sizing paused — balance is below "
+                    f"${floor:.0f} (50% of ${STARTING_BALANCE:.0f} starting bankroll)."
+                )
+            )
+            print(
+                dim("  Specify qty manually: paper buy <ticker> <side> <price> <qty>")
+            )
+            return
+
         # Get current analysis for Kelly sizing and context
         entry_prob, net_edge, fee_kelly = None, None, 0.0
+        enriched: dict | None = None
         if client:
             try:
                 market = client.get_market(ticker)
@@ -1172,19 +1482,35 @@ def cmd_paper(args: list, client: KalshiClient | None = None):
                 if analysis:
                     entry_prob = analysis["forecast_prob"]
                     net_edge = analysis.get("net_edge")
-                    fee_kelly = analysis.get("fee_adjusted_kelly", 0.0)
+                    # ci_adjusted_kelly already factors in forecast confidence width
+                    fee_kelly = analysis.get(
+                        "ci_adjusted_kelly", analysis.get("fee_adjusted_kelly", 0.0)
+                    )
             except Exception:
                 pass
 
-        from paper import kelly_bet_dollars, kelly_quantity
+        # Extract city/date for portfolio Kelly check
+        city = enriched.get("_city") if enriched else None
+        target_date_obj = enriched.get("_date") if enriched else None
+        target_date_str = target_date_obj.isoformat() if target_date_obj else None
 
         # Auto-size if qty not provided
         if qty is None:
             if fee_kelly and fee_kelly > 0.005:
-                qty = kelly_quantity(fee_kelly, price)
-                bet_amt = kelly_bet_dollars(fee_kelly)
+                adj_kelly = portfolio_kelly_fraction(
+                    fee_kelly, city, target_date_str, side=side
+                )
+                if adj_kelly < fee_kelly:
+                    print(
+                        yellow(
+                            f"  [Portfolio] Kelly reduced {fee_kelly * 100:.1f}% → "
+                            f"{adj_kelly * 100:.1f}% (existing {city}/{target_date_str} exposure)"
+                        )
+                    )
+                qty = kelly_quantity(adj_kelly, price)
+                bet_amt = kelly_bet_dollars(adj_kelly)
                 print(
-                    f"\n  {bold('Kelly auto-size:')} {fee_kelly * 100:.1f}% of balance "
+                    f"\n  {bold('Kelly auto-size:')} {adj_kelly * 100:.1f}% of balance "
                     f"= {green(f'${bet_amt:.2f}')} → {bold(str(qty))} contracts"
                 )
             else:
@@ -1212,7 +1538,16 @@ def cmd_paper(args: list, client: KalshiClient | None = None):
             print(dim("  Cancelled."))
             return
         try:
-            trade = place_paper_order(ticker, side, qty, price, entry_prob, net_edge)
+            trade = place_paper_order(
+                ticker,
+                side,
+                qty,
+                price,
+                entry_prob,
+                net_edge,
+                city=city,
+                target_date=target_date_str,
+            )
             print(
                 green(
                     f"  Paper trade #{trade['id']} placed. "
@@ -1355,6 +1690,32 @@ def cmd_schedule():
         print(red(f"Failed: {result.stderr.strip() or result.stdout.strip()}"))
         print(dim("Try running this terminal as Administrator."))
 
+    # ── Daily settle task ────────────────────────────────────────────────────
+    settle_task = "KalshiWeatherSettle"
+    settle_cmd = f'"{py_exe}" "{script_path}" settle'
+    settle_create = (
+        f'schtasks /Create /F /SC DAILY /ST 21:00 /TN "{settle_task}" '
+        f'/TR "{settle_cmd}" /RL HIGHEST'
+    )
+
+    print(bold(f"\nRegistering daily settle task: {settle_task}"))
+    print(dim(f"Command: {settle_cmd}"))
+    print(
+        dim(
+            "  Runs at 21:00 local machine time — adjust if not in your target timezone."
+        )
+    )
+    confirm2 = input("  Register now? (Y/n): ").strip().lower()
+    if confirm2 != "n":
+        result2 = subprocess.run(
+            settle_create, shell=True, capture_output=True, text=True
+        )
+        if result2.returncode == 0:
+            print(green(f"\nTask '{settle_task}' registered — runs daily at 9pm."))
+            print(dim("To remove: schtasks /Delete /TN KalshiWeatherSettle /F"))
+        else:
+            print(red(f"Failed: {result2.stderr.strip() or result2.stdout.strip()}"))
+
 
 # ── Router ────────────────────────────────────────────────────────────────────
 
@@ -1393,7 +1754,7 @@ def main():
     elif cmd == "analyze":
         cmd_analyze(client)
     elif cmd == "watch":
-        cmd_watch(client)
+        cmd_watch(client, auto_trade="--auto" in args)
     elif cmd == "market":
         if len(args) < 2:
             print("Usage: py main.py market <ticker> [--verbose]")
@@ -1425,10 +1786,16 @@ def main():
             cmd_cancel(client, args[1])
     elif cmd == "schedule":
         cmd_schedule()
+    elif cmd == "settle":
+        cmd_settle(client)
     elif cmd == "paper":
         cmd_paper(args[1:], client)
     elif cmd == "backtest":
         cmd_backtest(client, args[1:])
+    elif cmd == "dashboard":
+        cmd_dashboard(client)
+    elif cmd == "export":
+        cmd_export()
     else:
         print(red(f"Unknown command: {cmd}"))
         print(dim("Run  py main.py  for the interactive menu."))

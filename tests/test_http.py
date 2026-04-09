@@ -99,9 +99,9 @@ class TestGetWeatherForecastMocked(unittest.TestCase):
         self.assertIsNotNone(result)
         assert result is not None
         self.assertEqual(result["models_used"], 2)
-        # Models 2 & 3 respond: ecmwf (weight=2, high=68) + icon (weight=1, high=70)
-        # Weighted avg = (68*2 + 70*1) / 3 = 68.667
-        self.assertAlmostEqual(result["high_f"], 68.667, places=2)
+        # Models 2 & 3 respond: ecmwf (weight=1.5 in Apr, high=68) + icon (weight=1, high=70)
+        # Weighted avg = (68*1.5 + 70*1) / 2.5 = 68.8
+        self.assertAlmostEqual(result["high_f"], 68.8, places=2)
 
     @resp.activate
     def test_all_models_fail_returns_none(self):

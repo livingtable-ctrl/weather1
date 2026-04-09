@@ -183,5 +183,335 @@ class TestIsStale(unittest.TestCase):
         self.assertFalse(is_stale(market))
 
 
+class TestMaxDrawdown(unittest.TestCase):
+    def setUp(self):
+        self._tmpdir = tempfile.mkdtemp()
+        self._patch = patch("paper.DATA_PATH", Path(self._tmpdir) / "paper_trades.json")
+        self._patch.start()
+
+    def tearDown(self):
+        self._patch.stop()
+        shutil.rmtree(self._tmpdir, ignore_errors=True)
+
+    def test_not_paused_at_start(self):
+        import paper
+
+        self.assertFalse(paper.is_paused_drawdown())
+
+    def test_paused_below_threshold(self):
+        """Balance below 50% of $1000 → drawdown active."""
+        import paper
+
+        # Drain balance to $400 by placing a losing trade
+        paper.place_paper_order("TK", "yes", 600, 1.00)  # cost=$600 → balance=$400
+        self.assertTrue(paper.is_paused_drawdown())
+
+    def test_kelly_returns_zero_in_drawdown(self):
+        """kelly_bet_dollars should return 0.0 when in drawdown."""
+        import paper
+
+        paper.place_paper_order("TK", "yes", 600, 1.00)  # balance → $400
+        self.assertEqual(paper.kelly_bet_dollars(0.10), 0.0)
+
+    def test_kelly_normal_above_threshold(self):
+        """kelly_bet_dollars works normally when balance >= $500."""
+        import paper
+
+        # Balance is $1000 (starting), which is above threshold
+        result = paper.kelly_bet_dollars(0.10)
+        self.assertAlmostEqual(result, 100.0)
+
+    def test_boundary_exactly_500_not_paused(self):
+        """Balance exactly at $500 (= 50% of $1000) is NOT paused (strict less-than)."""
+        import paper
+
+        paper.place_paper_order("TK", "yes", 500, 1.00)  # cost=$500 → balance=$500
+        self.assertFalse(paper.is_paused_drawdown())
+
+
+class TestPortfolioKelly(unittest.TestCase):
+    def setUp(self):
+        self._tmpdir = tempfile.mkdtemp()
+        self._patch = patch("paper.DATA_PATH", Path(self._tmpdir) / "paper_trades.json")
+        self._patch.start()
+
+    def tearDown(self):
+        self._patch.stop()
+        shutil.rmtree(self._tmpdir, ignore_errors=True)
+
+    def test_exposure_zero_with_no_trades(self):
+        import paper
+
+        self.assertAlmostEqual(paper.get_city_date_exposure("NYC", "2026-04-09"), 0.0)
+
+    def test_exposure_with_matching_trade(self):
+        """Open trade for NYC/2026-04-09 should show up in exposure."""
+        import paper
+
+        paper.place_paper_order(
+            "TK1", "yes", 50, 0.50, city="NYC", target_date="2026-04-09"
+        )
+        # cost = 50 * 0.50 = $25; exposure = 25 / 1000 = 0.025
+        exposure = paper.get_city_date_exposure("NYC", "2026-04-09")
+        self.assertAlmostEqual(exposure, 0.025)
+
+    def test_exposure_ignores_other_city(self):
+        """Trade for Chicago should not count toward NYC exposure."""
+        import paper
+
+        paper.place_paper_order(
+            "TK1", "yes", 50, 0.50, city="CHI", target_date="2026-04-09"
+        )
+        exposure = paper.get_city_date_exposure("NYC", "2026-04-09")
+        self.assertAlmostEqual(exposure, 0.0)
+
+    def test_exposure_ignores_settled_trade(self):
+        """Settled trades should not count toward exposure."""
+        import paper
+
+        trade = paper.place_paper_order(
+            "TK1", "yes", 50, 0.50, city="NYC", target_date="2026-04-09"
+        )
+        paper.settle_paper_trade(trade["id"], outcome_yes=True)
+        exposure = paper.get_city_date_exposure("NYC", "2026-04-09")
+        self.assertAlmostEqual(exposure, 0.0)
+
+    def test_portfolio_kelly_no_exposure(self):
+        """Zero existing exposure → base fraction returned unchanged."""
+        import paper
+
+        result = paper.portfolio_kelly_fraction(0.10, "NYC", "2026-04-09")
+        self.assertAlmostEqual(result, 0.10)
+
+    def test_portfolio_kelly_at_cap(self):
+        """Existing exposure >= MAX → returns 0.0."""
+        import paper
+
+        # Place $150 trade → exposure = 0.15 = MAX_CITY_DATE_EXPOSURE
+        paper.place_paper_order(
+            "TK1", "yes", 300, 0.50, city="NYC", target_date="2026-04-09"
+        )
+        result = paper.portfolio_kelly_fraction(0.10, "NYC", "2026-04-09")
+        self.assertEqual(result, 0.0)
+
+    def test_portfolio_kelly_partial_exposure(self):
+        """Half of max exposure → Kelly scaled to ~50% of base."""
+        import paper
+
+        # Place $75 trade → exposure = 0.075 = half of MAX (0.15)
+        paper.place_paper_order(
+            "TK1", "yes", 150, 0.50, city="NYC", target_date="2026-04-09"
+        )
+        result = paper.portfolio_kelly_fraction(0.10, "NYC", "2026-04-09")
+        self.assertAlmostEqual(result, 0.05, places=4)
+
+    def test_portfolio_kelly_no_city_passthrough(self):
+        """None city → base fraction returned unchanged (no lookup possible)."""
+        import paper
+
+        result = paper.portfolio_kelly_fraction(0.10, None, None)
+        self.assertAlmostEqual(result, 0.10)
+
+    def test_place_paper_order_stores_city_date(self):
+        """Trade record should include city and target_date fields."""
+        import paper
+
+        trade = paper.place_paper_order(
+            "TK1", "yes", 10, 0.50, city="NYC", target_date="2026-04-09"
+        )
+        self.assertEqual(trade["city"], "NYC")
+        self.assertEqual(trade["target_date"], "2026-04-09")
+
+
+class TestHighWaterMark(unittest.TestCase):
+    def setUp(self):
+        self._tmpdir = tempfile.mkdtemp()
+        self._patch = patch("paper.DATA_PATH", Path(self._tmpdir) / "paper_trades.json")
+        self._patch.start()
+
+    def tearDown(self):
+        self._patch.stop()
+        shutil.rmtree(self._tmpdir, ignore_errors=True)
+
+    def test_peak_tracks_winning_trade(self):
+        import paper
+
+        trade = paper.place_paper_order(
+            "TK", "yes", 100, 0.50
+        )  # cost=$50, balance=$950
+        paper.settle_paper_trade(
+            trade["id"], outcome_yes=True
+        )  # payout=93, balance=$1043
+        self.assertGreater(paper.get_peak_balance(), 1000.0)
+
+    def test_peak_does_not_decrease_on_loss(self):
+        import paper
+
+        trade = paper.place_paper_order("TK", "yes", 100, 0.50)
+        paper.settle_paper_trade(trade["id"], outcome_yes=False)  # balance drops
+        self.assertAlmostEqual(paper.get_peak_balance(), 1000.0)
+
+    def test_max_drawdown_pct_correct(self):
+        import paper
+
+        # Drain $600 → balance=$400, peak=$1000, drawdown=60%
+        paper.place_paper_order("TK", "yes", 600, 1.00)
+        dd = paper.get_max_drawdown_pct()
+        self.assertAlmostEqual(dd, 0.60, places=4)
+
+    def test_paused_from_peak_not_start(self):
+        """Win to $1500+, then lose >50% of peak → should be paused."""
+        import paper
+
+        # Win big: 1000 contracts at $0.50 → payout = 1000 * 0.93 = $930
+        t1 = paper.place_paper_order(
+            "TK1", "yes", 1000, 0.50
+        )  # cost=$500, balance=$500
+        paper.settle_paper_trade(t1["id"], outcome_yes=True)  # +$930 → balance=$1430
+        peak = paper.get_peak_balance()
+        self.assertGreater(peak, 1000.0)
+
+        # Now lose enough to go below 50% of peak
+        half_peak = peak * 0.5
+        current = paper.get_balance()
+        loss_amount = current - half_peak + 10  # put balance below 50% of peak
+        if loss_amount > 0:
+            t2 = paper.place_paper_order("TK2", "yes", int(loss_amount), 1.00)
+            paper.settle_paper_trade(t2["id"], outcome_yes=False)
+            self.assertTrue(paper.is_paused_drawdown())
+
+    def test_drawdown_zero_at_start(self):
+        import paper
+
+        self.assertAlmostEqual(paper.get_max_drawdown_pct(), 0.0)
+
+    def test_performance_includes_peak_and_drawdown(self):
+        import paper
+
+        perf = paper.get_performance()
+        self.assertIn("peak_balance", perf)
+        self.assertIn("max_drawdown_pct", perf)
+
+
+class TestDirectionalExposure(unittest.TestCase):
+    def setUp(self):
+        self._tmpdir = tempfile.mkdtemp()
+        self._patch = patch("paper.DATA_PATH", Path(self._tmpdir) / "paper_trades.json")
+        self._patch.start()
+
+    def tearDown(self):
+        self._patch.stop()
+        shutil.rmtree(self._tmpdir, ignore_errors=True)
+
+    def test_directional_exposure_same_side(self):
+        """Two YES bets on same city/date sum correctly."""
+        import paper
+
+        paper.place_paper_order(
+            "TK1", "yes", 50, 0.50, city="NYC", target_date="2026-04-09"
+        )
+        paper.place_paper_order(
+            "TK2", "yes", 50, 0.50, city="NYC", target_date="2026-04-09"
+        )
+        # Each costs $25 → total YES = $50 → 0.05
+        exp = paper.get_directional_exposure("NYC", "2026-04-09", "yes")
+        self.assertAlmostEqual(exp, 0.05, places=4)
+
+    def test_directional_exposure_other_side(self):
+        """NO bets don't count toward YES directional exposure."""
+        import paper
+
+        paper.place_paper_order(
+            "TK1", "yes", 50, 0.50, city="NYC", target_date="2026-04-09"
+        )
+        paper.place_paper_order(
+            "TK2", "no", 50, 0.50, city="NYC", target_date="2026-04-09"
+        )
+        yes_exp = paper.get_directional_exposure("NYC", "2026-04-09", "yes")
+        no_exp = paper.get_directional_exposure("NYC", "2026-04-09", "no")
+        self.assertAlmostEqual(yes_exp, 0.025, places=4)
+        self.assertAlmostEqual(no_exp, 0.025, places=4)
+
+    def test_portfolio_kelly_with_directional_penalty(self):
+        """Concentrated same-side bets trigger 50% further reduction."""
+        import paper
+
+        # Place $150 YES (15% of $1000) — above MAX_DIRECTIONAL_EXPOSURE (10%)
+        paper.place_paper_order(
+            "TK1", "yes", 300, 0.50, city="NYC", target_date="2026-04-09"
+        )
+        # 0.15 directional YES → penalty kicks in
+        result = paper.portfolio_kelly_fraction(0.10, "NYC", "2026-04-09", side="yes")
+        # Either 0 (hit city cap) or reduced with penalty
+        # City exposure = 0.15 = MAX → returns 0
+        self.assertEqual(result, 0.0)
+
+    def test_directional_penalty_applies_before_city_cap(self):
+        """When city exposure < max but directional > threshold, penalty applies."""
+        import paper
+
+        # $75 YES → city_exposure=0.075 (under cap), directional_YES=0.075 (under penalty threshold)
+        paper.place_paper_order(
+            "TK1", "yes", 150, 0.50, city="NYC", target_date="2026-04-09"
+        )
+        # Add more YES to push directional over 0.10
+        paper.place_paper_order(
+            "TK2", "yes", 50, 0.50, city="NYC", target_date="2026-04-09"
+        )
+        # directional YES = $100 / 1000 = 0.10 exactly (not strictly >), so no penalty yet
+        result_no_penalty = paper.portfolio_kelly_fraction(
+            0.10, "NYC", "2026-04-09", side="yes"
+        )
+        # Add one more to exceed threshold
+        paper.place_paper_order(
+            "TK3", "yes", 20, 0.50, city="NYC", target_date="2026-04-09"
+        )
+        result_with_penalty = paper.portfolio_kelly_fraction(
+            0.10, "NYC", "2026-04-09", side="yes"
+        )
+        # With more directional exposure, result should be smaller (or 0 if at cap)
+        self.assertLessEqual(result_with_penalty, result_no_penalty)
+
+
+class TestExportTrades(unittest.TestCase):
+    def setUp(self):
+        self._tmpdir = tempfile.mkdtemp()
+        self._patch = patch("paper.DATA_PATH", Path(self._tmpdir) / "paper_trades.json")
+        self._patch.start()
+
+    def tearDown(self):
+        self._patch.stop()
+        shutil.rmtree(self._tmpdir, ignore_errors=True)
+
+    def test_export_trades_csv(self):
+        import csv
+
+        import paper
+
+        paper.place_paper_order(
+            "TK1", "yes", 10, 0.50, city="NYC", target_date="2026-04-09"
+        )
+        paper.place_paper_order(
+            "TK2", "no", 5, 0.60, city="CHI", target_date="2026-04-10"
+        )
+
+        out_path = str(Path(self._tmpdir) / "trades.csv")
+        n = paper.export_trades_csv(out_path)
+        self.assertEqual(n, 2)
+
+        with open(out_path, newline="", encoding="utf-8") as f:
+            rows = list(csv.DictReader(f))
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(rows[0]["ticker"], "TK1")
+        self.assertEqual(rows[1]["ticker"], "TK2")
+
+    def test_export_trades_csv_empty(self):
+        import paper
+
+        out_path = str(Path(self._tmpdir) / "trades.csv")
+        n = paper.export_trades_csv(out_path)
+        self.assertEqual(n, 0)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

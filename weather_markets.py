@@ -59,6 +59,17 @@ _ENSEMBLE_CACHE: dict = {}
 # ── Multi-model regular forecast ─────────────────────────────────────────────
 
 
+def _forecast_model_weights(month: int) -> dict[str, float]:
+    """
+    Seasonal model weights for the daily forecast blend.
+    ECMWF is the most accurate global model in winter (Oct–Mar) for mid-latitudes.
+    GFS is competitive in summer for the US. ICON adds value year-round.
+    """
+    is_winter = month in (10, 11, 12, 1, 2, 3)
+    ecmwf_w = 2.5 if is_winter else 1.5
+    return {"gfs_seamless": 1.0, "ecmwf_ifs04": ecmwf_w, "icon_seamless": 1.0}
+
+
 def get_weather_forecast(city: str, target_date: date) -> dict | None:
     """
     Fetch daily high/low/precip from three forecast models (GFS, ECMWF, ICON)
@@ -69,8 +80,8 @@ def get_weather_forecast(city: str, target_date: date) -> dict | None:
         return None
     lat, lon, tz = coords
 
-    # ECMWF is weighted 2x — consistently more accurate, especially 5+ days out
-    model_weights = {"gfs_seamless": 1.0, "ecmwf_ifs04": 2.0, "icon_seamless": 1.0}
+    # Seasonal model weights — ECMWF more accurate in winter, GFS competitive in summer
+    model_weights = _forecast_model_weights(target_date.month)
     highs: list[tuple[float, float]] = []  # (value, weight)
     lows: list[tuple[float, float]] = []
     precips: list[tuple[float, float]] = []
@@ -491,6 +502,38 @@ def _forecast_uncertainty(target_date: date) -> float:
         return 7.5
 
 
+def _time_risk(close_time_str: str, tz: str) -> tuple[str, float]:
+    """
+    Determine time-of-day risk level and forecast sigma multiplier.
+
+    Returns (risk_label, sigma_multiplier):
+      "LOW" / 0.5  — within 2 hours of close (near-real-time data available)
+      "LOW" / 0.7  — market closes after 8pm local (weather station already read)
+      "MEDIUM" / 0.85 — closes within 12 hours
+      "HIGH" / 1.0 — far-out market, no timing advantage
+
+    sigma_multiplier < 1.0 means reduce forecast uncertainty (we know more).
+    """
+    if not close_time_str:
+        return ("HIGH", 1.0)
+    try:
+        from zoneinfo import ZoneInfo
+
+        close_dt = datetime.fromisoformat(close_time_str.replace("Z", "+00:00"))
+        hours_to_close = (close_dt - datetime.now(UTC)).total_seconds() / 3600
+        local_hour = close_dt.astimezone(ZoneInfo(tz)).hour
+        if hours_to_close <= 2:
+            return ("LOW", 0.5)
+        elif local_hour >= 20:
+            return ("LOW", 0.7)
+        elif hours_to_close <= 12:
+            return ("MEDIUM", 0.85)
+        else:
+            return ("HIGH", 1.0)
+    except Exception:
+        return ("HIGH", 1.0)
+
+
 def _parse_market_condition(market: dict) -> dict | None:
     """
     Parse what outcome a market is asking about from its ticker and title.
@@ -648,6 +691,24 @@ def _bootstrap_ci(
     return (p05, p95)
 
 
+def _bootstrap_ci_precip(
+    members: list[float], condition: dict, n: int = 500
+) -> tuple[float, float]:
+    """Bootstrap 90% CI for a precipitation ensemble probability."""
+    if len(members) < 5:
+        return (0.0, 1.0)
+
+    def prob_from(sample: list[float]) -> float:
+        if condition["type"] == "precip_any":
+            return sum(1 for p in sample if p > 0.01) / len(sample)
+        thresh = condition.get("threshold", 0.0)
+        return sum(1 for p in sample if p > thresh) / len(sample)
+
+    k = len(members)
+    boot = sorted(prob_from(random.choices(members, k=k)) for _ in range(n))
+    return (boot[int(n * 0.05)], boot[int(n * 0.95)])
+
+
 def kelly_fraction(our_prob: float, price: float, fee_rate: float = 0.0) -> float:
     """
     Half-Kelly criterion for a binary prediction market.
@@ -667,9 +728,16 @@ def kelly_fraction(our_prob: float, price: float, fee_rate: float = 0.0) -> floa
 def _fetch_ensemble_precip(
     lat: float, lon: float, tz: str, target_date: date
 ) -> list[float]:
-    """Fetch ensemble precipitation members (inches) for a city/date."""
+    """
+    Fetch ensemble precipitation members (inches) for a city/date.
+    ECMWF is fetched separately and appended twice (2× weight) to match the
+    temperature ensemble weighting in _model_weights().
+    """
     results = []
-    for model in ENSEMBLE_MODELS:
+    target_str = target_date.isoformat()
+    prefix = "precipitation_sum_member"
+
+    def _fetch_model(model: str) -> list[float]:
         try:
             params = {
                 "latitude": lat,
@@ -684,16 +752,25 @@ def _fetch_ensemble_precip(
             resp.raise_for_status()
             daily = resp.json().get("daily", {})
             times = daily.get("time", [])
-            target_str = target_date.isoformat()
             if target_str not in times:
-                continue
+                return []
             idx = times.index(target_str)
-            prefix = "precipitation_sum_member"
-            for k, vals in daily.items():
-                if k.startswith(prefix) and vals[idx] is not None:
-                    results.append(vals[idx])
+            return [
+                vals[idx]
+                for k, vals in daily.items()
+                if k.startswith(prefix) and vals[idx] is not None
+            ]
         except Exception:
-            continue
+            return []
+
+    for model in ENSEMBLE_MODELS:
+        results.extend(_fetch_model(model))
+
+    # ECMWF weighted 3× in winter, 2× in summer (seasonal accuracy advantage)
+    ecmwf_members = _fetch_model("ecmwf_ifs04")
+    ecmwf_mult = 3 if target_date.month in (10, 11, 12, 1, 2, 3) else 2
+    results.extend(ecmwf_members * ecmwf_mult)
+
     return results
 
 
@@ -729,12 +806,41 @@ def _analyze_precip_trade(
         else:
             ens_prob = 1.0 - _normal_cdf(condition["threshold"], forecast_precip, sigma)
 
-    # Weight: rely more on ensemble close-in; default 70/30 ensemble/clim
-    w_ens = min(0.85, 0.50 + (7 - days_out) * 0.05) if days_out <= 7 else 0.50
-    w_clim = 1.0 - w_ens
-    blended_prob = (
-        ens_prob * w_ens + 0.30 * w_clim
-    )  # 30% historical rain freq as rough prior
+    # ── Same-day live precipitation observation override ─────────────────────
+    obs_precip_val: float | None = None
+    if days_out == 0:
+        try:
+            from nws import get_live_precip_obs
+
+            obs_precip_raw = get_live_precip_obs(enriched.get("_city", ""), coords)
+            if obs_precip_raw is not None:
+                obs_precip_val = obs_precip_raw
+        except Exception:
+            pass
+
+    # ── Dynamic blend weights (mirrors temperature path) ─────────────────────
+    w_ens, w_clim, _ = _blend_weights(days_out, has_nws=False, has_clim=True)
+    clim_prior = 0.30  # rough historical rain frequency as fallback prior
+    blended_prob = ens_prob * w_ens + clim_prior * w_clim
+
+    # Same-day override: observation is near-certain (precip already fell or didn't)
+    if obs_precip_val is not None:
+        if condition["type"] == "precip_any":
+            obs_p = 1.0 if obs_precip_val > 0.01 else 0.0
+        else:
+            obs_p = 1.0 if obs_precip_val > condition.get("threshold", 0.0) else 0.0
+        blended_prob = 0.90 * obs_p + 0.10 * blended_prob
+
+    # ── Bias correction from tracker (same as temperature path) ──────────────
+    bias = 0.0
+    try:
+        from tracker import get_bias
+
+        city = enriched.get("_city")
+        bias = get_bias(city, target_date.month)
+        blended_prob = blended_prob - bias
+    except Exception:
+        pass
 
     blended_prob = max(0.01, min(0.99, blended_prob))
 
@@ -754,6 +860,11 @@ def _analyze_precip_trade(
     kelly = kelly_fraction(p_win, entry_price)
     fee_kel = kelly_fraction(p_win, entry_price, fee_rate=KALSHI_FEE_RATE)
 
+    # ── Bootstrap CI on precip ensemble ──────────────────────────────────────
+    ci_low, ci_high = blended_prob, blended_prob
+    if len(precip_members) >= 5:
+        ci_low, ci_high = _bootstrap_ci_precip(precip_members, condition)
+
     return {
         "forecast_prob": blended_prob,
         "market_prob": market_prob,
@@ -763,24 +874,26 @@ def _analyze_precip_trade(
         "net_signal": _edge_label(net_edge),
         "recommended_side": rec_side,
         "condition": condition,
-        "forecast_temp": forecast_precip,
+        "forecast_temp": forecast_precip,  # precipitation in inches (reuses key for table display)
         "ensemble_prob": ens_prob,
         "nws_prob": None,
         "clim_prob": None,
         "clim_adj_prob": None,
-        "obs_prob": None,
-        "live_obs": None,
+        "obs_prob": obs_precip_val,
+        "live_obs": obs_precip_val,
         "index_adj": 0.0,
-        "bias_correction": 0.0,
+        "bias_correction": bias,
         "blend_sources": {"ensemble": w_ens, "climatology": w_clim},
         "method": "precip_ensemble" if precip_members else "precip_normal",
         "ensemble_stats": None,
         "n_members": len(precip_members),
-        "ci_low": blended_prob,
-        "ci_high": blended_prob,
-        "ci_width": 0.0,
+        "ci_low": ci_low,
+        "ci_high": ci_high,
+        "ci_width": round(ci_high - ci_low, 4),
         "kelly": kelly,
         "fee_adjusted_kelly": fee_kel,
+        "ci_adjusted_kelly": round(fee_kel * max(0.25, 1.0 - (ci_high - ci_low)), 6),
+        "time_risk": "HIGH",
     }
 
 
@@ -812,9 +925,18 @@ def analyze_trade(enriched: dict) -> dict | None:
     if not coords:
         return None
 
+    # ── Time-of-day risk assessment ──────────────────────────────────────────
+    _tz = coords[2] if len(coords) > 2 else "UTC"
+    time_risk_label, sigma_mult = _time_risk(enriched.get("close_time", ""), _tz)
+
     # ── Precipitation market fast-path ───────────────────────────────────────
     if condition["type"] in ("precip_above", "precip_any"):
-        return _analyze_precip_trade(enriched, forecast, condition, target_date, coords)
+        result = _analyze_precip_trade(
+            enriched, forecast, condition, target_date, coords
+        )
+        if result is not None:
+            result["time_risk"] = time_risk_label
+        return result
 
     series = (enriched.get("series_ticker") or enriched.get("ticker", "")).upper()
     var = "min" if "LOW" in series else "max"
@@ -842,7 +964,7 @@ def analyze_trade(enriched: dict) -> dict | None:
             lo, hi = condition["lower"], condition["upper"]
             ens_prob = sum(1 for t in temps if lo <= t <= hi) / len(temps)
     else:
-        sigma = _forecast_uncertainty(target_date)
+        sigma = _forecast_uncertainty(target_date) * sigma_mult
         ens_prob = _forecast_probability(condition, forecast_temp, sigma)
 
     # ── 2. NWS forecast probability ──────────────────────────────────────────
@@ -987,4 +1109,8 @@ def analyze_trade(enriched: dict) -> dict | None:
         "ci_width": ci_high - ci_low,
         "kelly": kelly,
         "fee_adjusted_kelly": fee_adjusted_kelly,
+        "ci_adjusted_kelly": round(
+            fee_adjusted_kelly * max(0.25, 1.0 - (ci_high - ci_low)), 6
+        ),
+        "time_risk": time_risk_label,
     }
