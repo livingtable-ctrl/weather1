@@ -8,7 +8,7 @@ Stored in data/paper_trades.json. Tracks:
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 
 DATA_PATH = Path(__file__).parent / "data" / "paper_trades.json"
@@ -86,7 +86,7 @@ def place_paper_order(
         "entry_prob": entry_prob,
         "net_edge": net_edge,
         "cost": cost,
-        "entered_at": datetime.utcnow().isoformat(),
+        "entered_at": datetime.now(UTC).isoformat(),
         "settled": False,
         "outcome": None,
         "pnl": None,
