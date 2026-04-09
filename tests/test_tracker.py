@@ -105,6 +105,89 @@ class TestTracker(unittest.TestCase):
         tracker.get_history()
         # Outcome is stored independently; just verify it doesn't raise
 
+    def test_sync_outcomes_records_finalized(self):
+        """sync_outcomes should record YES outcome for a finalized market."""
+        from unittest.mock import MagicMock
+
+        tracker.log_prediction(
+            "TKSYNC",
+            "NYC",
+            date(2026, 4, 9),
+            self._fake_analysis(0.70),
+        )
+
+        mock_client = MagicMock()
+        mock_client.get_market.return_value = {
+            "status": "finalized",
+            "result": "yes",
+        }
+
+        count = tracker.sync_outcomes(mock_client)
+        self.assertEqual(count, 1)
+
+        history = tracker.get_history()
+        self.assertEqual(history[0]["settled_yes"], 1)
+
+    def test_sync_outcomes_skips_open_markets(self):
+        """sync_outcomes should not record outcomes for markets still open."""
+        from unittest.mock import MagicMock
+
+        tracker.log_prediction(
+            "TKOPEN",
+            "NYC",
+            date(2026, 4, 9),
+            self._fake_analysis(0.70),
+        )
+
+        mock_client = MagicMock()
+        mock_client.get_market.return_value = {"status": "open", "result": ""}
+
+        count = tracker.sync_outcomes(mock_client)
+        self.assertEqual(count, 0)
+
+    def test_sync_outcomes_skips_already_settled(self):
+        """sync_outcomes should not double-count already-settled markets."""
+        from unittest.mock import MagicMock
+
+        tracker.log_prediction(
+            "TKALREADY",
+            "NYC",
+            date(2026, 4, 9),
+            self._fake_analysis(0.70),
+        )
+        tracker.log_outcome("TKALREADY", True)  # already settled
+
+        mock_client = MagicMock()
+        count = tracker.sync_outcomes(mock_client)
+        self.assertEqual(count, 0)
+        mock_client.get_market.assert_not_called()
+
+    def test_calibration_trend_empty(self):
+        """get_calibration_trend returns empty list with no settled data."""
+        trend = tracker.get_calibration_trend()
+        self.assertEqual(trend, [])
+
+    def test_calibration_by_city_empty(self):
+        """get_calibration_by_city returns empty dict with no data."""
+        result = tracker.get_calibration_by_city()
+        self.assertEqual(result, {})
+
+    def test_calibration_by_city_with_data(self):
+        """get_calibration_by_city returns correct Brier + bias per city."""
+        ticker = "TKCAL"
+        tracker.log_prediction(
+            ticker, "NYC", date(2026, 4, 9), self._fake_analysis(0.80)
+        )
+        tracker.log_outcome(ticker, True)  # settled YES, our_prob=0.80
+
+        result = tracker.get_calibration_by_city()
+        self.assertIn("NYC", result)
+        # Brier = (0.80 - 1)^2 = 0.04
+        self.assertAlmostEqual(result["NYC"]["brier"], 0.04, places=4)
+        # Bias = 0.80 - 1 = -0.20 (we under-predicted)
+        self.assertAlmostEqual(result["NYC"]["bias"], -0.20, places=4)
+        self.assertEqual(result["NYC"]["n"], 1)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

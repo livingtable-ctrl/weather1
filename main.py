@@ -138,6 +138,29 @@ def cleanup_data_dir() -> None:
                 pass
 
 
+def auto_settle(client: KalshiClient) -> None:
+    """
+    Silently sync settled market outcomes in a background thread.
+    Runs on every startup so calibration data stays fresh automatically.
+    Prints a summary only if new outcomes were found.
+    """
+    import threading
+
+    def _run():
+        try:
+            count = sync_outcomes(client)
+            if count > 0:
+                print(
+                    green(f"\n  [Auto-settle] Recorded {count} new outcome(s). ")
+                    + dim("Brier score updated.\n")
+                )
+        except Exception:
+            pass  # never crash startup due to settle failure
+
+    t = threading.Thread(target=_run, daemon=True)
+    t.start()
+
+
 # ── Client ────────────────────────────────────────────────────────────────────
 
 
@@ -1352,12 +1375,14 @@ def main():
     # No arguments → interactive menu
     if not args:
         client = build_client()
+        auto_settle(client)
         cmd_menu(client)
         return
 
     cmd = args[0].lower()
     verbose = "--verbose" in args or "-v" in args
     client = build_client()
+    auto_settle(client)
 
     if cmd == "menu":
         cmd_menu(client)
