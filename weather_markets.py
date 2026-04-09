@@ -59,6 +59,17 @@ _ENSEMBLE_CACHE: dict = {}
 # ── Multi-model regular forecast ─────────────────────────────────────────────
 
 
+def _forecast_model_weights(month: int) -> dict[str, float]:
+    """
+    Seasonal model weights for the daily forecast blend.
+    ECMWF is the most accurate global model in winter (Oct–Mar) for mid-latitudes.
+    GFS is competitive in summer for the US. ICON adds value year-round.
+    """
+    is_winter = month in (10, 11, 12, 1, 2, 3)
+    ecmwf_w = 2.5 if is_winter else 1.5
+    return {"gfs_seamless": 1.0, "ecmwf_ifs04": ecmwf_w, "icon_seamless": 1.0}
+
+
 def get_weather_forecast(city: str, target_date: date) -> dict | None:
     """
     Fetch daily high/low/precip from three forecast models (GFS, ECMWF, ICON)
@@ -69,8 +80,8 @@ def get_weather_forecast(city: str, target_date: date) -> dict | None:
         return None
     lat, lon, tz = coords
 
-    # ECMWF is weighted 2x — consistently more accurate, especially 5+ days out
-    model_weights = {"gfs_seamless": 1.0, "ecmwf_ifs04": 2.0, "icon_seamless": 1.0}
+    # Seasonal model weights — ECMWF more accurate in winter, GFS competitive in summer
+    model_weights = _forecast_model_weights(target_date.month)
     highs: list[tuple[float, float]] = []  # (value, weight)
     lows: list[tuple[float, float]] = []
     precips: list[tuple[float, float]] = []
@@ -755,9 +766,10 @@ def _fetch_ensemble_precip(
     for model in ENSEMBLE_MODELS:
         results.extend(_fetch_model(model))
 
-    # ECMWF weighted 2× (matches temperature path _model_weights)
+    # ECMWF weighted 3× in winter, 2× in summer (seasonal accuracy advantage)
     ecmwf_members = _fetch_model("ecmwf_ifs04")
-    results.extend(ecmwf_members * 2)
+    ecmwf_mult = 3 if target_date.month in (10, 11, 12, 1, 2, 3) else 2
+    results.extend(ecmwf_members * ecmwf_mult)
 
     return results
 
@@ -794,10 +806,30 @@ def _analyze_precip_trade(
         else:
             ens_prob = 1.0 - _normal_cdf(condition["threshold"], forecast_precip, sigma)
 
+    # ── Same-day live precipitation observation override ─────────────────────
+    obs_precip_val: float | None = None
+    if days_out == 0:
+        try:
+            from nws import get_live_precip_obs
+
+            obs_precip_raw = get_live_precip_obs(enriched.get("_city", ""), coords)
+            if obs_precip_raw is not None:
+                obs_precip_val = obs_precip_raw
+        except Exception:
+            pass
+
     # ── Dynamic blend weights (mirrors temperature path) ─────────────────────
     w_ens, w_clim, _ = _blend_weights(days_out, has_nws=False, has_clim=True)
     clim_prior = 0.30  # rough historical rain frequency as fallback prior
     blended_prob = ens_prob * w_ens + clim_prior * w_clim
+
+    # Same-day override: observation is near-certain (precip already fell or didn't)
+    if obs_precip_val is not None:
+        if condition["type"] == "precip_any":
+            obs_p = 1.0 if obs_precip_val > 0.01 else 0.0
+        else:
+            obs_p = 1.0 if obs_precip_val > condition.get("threshold", 0.0) else 0.0
+        blended_prob = 0.90 * obs_p + 0.10 * blended_prob
 
     # ── Bias correction from tracker (same as temperature path) ──────────────
     bias = 0.0
@@ -842,13 +874,13 @@ def _analyze_precip_trade(
         "net_signal": _edge_label(net_edge),
         "recommended_side": rec_side,
         "condition": condition,
-        "forecast_temp": forecast_precip,
+        "forecast_temp": forecast_precip,  # precipitation in inches (reuses key for table display)
         "ensemble_prob": ens_prob,
         "nws_prob": None,
         "clim_prob": None,
         "clim_adj_prob": None,
-        "obs_prob": None,
-        "live_obs": None,
+        "obs_prob": obs_precip_val,
+        "live_obs": obs_precip_val,
         "index_adj": 0.0,
         "bias_correction": bias,
         "blend_sources": {"ensemble": w_ens, "climatology": w_clim},
@@ -860,6 +892,7 @@ def _analyze_precip_trade(
         "ci_width": round(ci_high - ci_low, 4),
         "kelly": kelly,
         "fee_adjusted_kelly": fee_kel,
+        "ci_adjusted_kelly": round(fee_kel * max(0.25, 1.0 - (ci_high - ci_low)), 6),
         "time_risk": "HIGH",
     }
 
@@ -1076,5 +1109,8 @@ def analyze_trade(enriched: dict) -> dict | None:
         "ci_width": ci_high - ci_low,
         "kelly": kelly,
         "fee_adjusted_kelly": fee_adjusted_kelly,
+        "ci_adjusted_kelly": round(
+            fee_adjusted_kelly * max(0.25, 1.0 - (ci_high - ci_low)), 6
+        ),
         "time_risk": time_risk_label,
     }

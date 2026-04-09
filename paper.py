@@ -7,6 +7,7 @@ Stored in data/paper_trades.json. Tracks:
 
 from __future__ import annotations
 
+import csv
 import json
 from datetime import UTC, datetime
 from pathlib import Path
@@ -15,15 +16,18 @@ DATA_PATH = Path(__file__).parent / "data" / "paper_trades.json"
 DATA_PATH.parent.mkdir(exist_ok=True)
 
 STARTING_BALANCE = 1000.0  # default paper bankroll in dollars
-MAX_DRAWDOWN_FRACTION = 0.50  # halt auto-sizing if balance < 50% of starting bankroll
+MAX_DRAWDOWN_FRACTION = 0.50  # halt auto-sizing if 50% drawdown from peak
 MAX_CITY_DATE_EXPOSURE = 0.15  # max fraction of starting balance on one city/date combo
+MAX_DIRECTIONAL_EXPOSURE = (
+    0.10  # max fraction of starting balance on one city/date/side
+)
 
 
 def _load() -> dict:
     if DATA_PATH.exists():
         with open(DATA_PATH) as f:
             return json.load(f)
-    return {"balance": STARTING_BALANCE, "trades": []}
+    return {"balance": STARTING_BALANCE, "peak_balance": STARTING_BALANCE, "trades": []}
 
 
 def _save(data: dict) -> None:
@@ -35,12 +39,25 @@ def get_balance() -> float:
     return _load()["balance"]
 
 
+def get_peak_balance() -> float:
+    """Return the highest balance ever reached (high-water mark)."""
+    return _load().get("peak_balance", STARTING_BALANCE)
+
+
+def get_max_drawdown_pct() -> float:
+    """Current drawdown from peak as a fraction (0.0 = no drawdown, 1.0 = total loss)."""
+    peak = get_peak_balance()
+    if peak <= 0:
+        return 0.0
+    return max(0.0, (peak - get_balance()) / peak)
+
+
 def is_paused_drawdown() -> bool:
     """
-    Return True if balance has fallen below MAX_DRAWDOWN_FRACTION of starting bankroll.
-    Auto-sizing is halted; manual quantity entry still works.
+    Return True if balance has fallen more than MAX_DRAWDOWN_FRACTION from the
+    peak balance (high-water mark). Auto-sizing is halted; manual qty still works.
     """
-    return get_balance() < STARTING_BALANCE * MAX_DRAWDOWN_FRACTION
+    return get_balance() < get_peak_balance() * (1 - MAX_DRAWDOWN_FRACTION)
 
 
 def kelly_bet_dollars(kelly_fraction: float) -> float:
@@ -48,7 +65,7 @@ def kelly_bet_dollars(kelly_fraction: float) -> float:
     Return the dollar amount to bet based on Kelly fraction × current balance.
     This compounds automatically — as your balance grows, bet sizes grow too.
     Floors at $0 and caps at 25% of balance as a safety limit.
-    Returns 0.0 if the account is in drawdown (balance < 50% of starting bankroll).
+    Returns 0.0 if the account is in drawdown (>50% loss from peak).
     """
     if is_paused_drawdown():
         return 0.0
@@ -134,6 +151,10 @@ def settle_paper_trade(trade_id: int, outcome_yes: bool) -> dict:
             t["outcome"] = "yes" if outcome_yes else "no"
             t["pnl"] = round(pnl, 4)
             data["balance"] += payout
+            # Update high-water mark after any balance change
+            data["peak_balance"] = max(
+                data.get("peak_balance", STARTING_BALANCE), data["balance"]
+            )
             _save(data)
             return t
     raise ValueError(f"Trade {trade_id} not found or already settled.")
@@ -157,24 +178,54 @@ def get_city_date_exposure(city: str, target_date_str: str) -> float:
     return committed / STARTING_BALANCE
 
 
+def get_directional_exposure(city: str, target_date_str: str, side: str) -> float:
+    """
+    Return the fraction of STARTING_BALANCE in open trades for this
+    city + date + direction (YES or NO). Used to penalise concentrated positions.
+    """
+    committed = sum(
+        t["cost"]
+        for t in get_open_trades()
+        if t.get("city") == city
+        and t.get("target_date") == target_date_str
+        and t.get("side") == side
+    )
+    return committed / STARTING_BALANCE
+
+
 def portfolio_kelly_fraction(
     base_fraction: float,
     city: str | None,
     target_date_str: str | None,
+    side: str | None = None,
 ) -> float:
     """
     Scale down base_fraction based on existing open exposure to this city/date.
-    If existing exposure >= MAX_CITY_DATE_EXPOSURE, returns 0.0 (skip bet).
-    Otherwise scales linearly: remaining_room / max * base_fraction.
+    Also applies a 50% directional penalty if >MAX_DIRECTIONAL_EXPOSURE is already
+    on the same side (concentrated correlated bets).
+
+    If existing city/date exposure >= MAX_CITY_DATE_EXPOSURE, returns 0.0.
     """
     if not city or not target_date_str:
         return base_fraction
+
     existing = get_city_date_exposure(city, target_date_str)
     if existing >= MAX_CITY_DATE_EXPOSURE:
         return 0.0
+
     room = MAX_CITY_DATE_EXPOSURE - existing
     scale = room / MAX_CITY_DATE_EXPOSURE
-    return round(base_fraction * scale, 6)
+    result = base_fraction * scale
+
+    # Directional concentration penalty
+    if (
+        side
+        and get_directional_exposure(city, target_date_str, side)
+        > MAX_DIRECTIONAL_EXPOSURE
+    ):
+        result *= 0.50
+
+    return round(result, 6)
 
 
 def get_all_trades() -> list[dict]:
@@ -185,7 +236,14 @@ def get_performance() -> dict:
     """Summary stats across all settled trades."""
     trades = [t for t in _load()["trades"] if t["settled"]]
     if not trades:
-        return {"settled": 0, "win_rate": None, "total_pnl": 0.0, "roi": None}
+        return {
+            "settled": 0,
+            "win_rate": None,
+            "total_pnl": 0.0,
+            "roi": None,
+            "peak_balance": get_peak_balance(),
+            "max_drawdown_pct": get_max_drawdown_pct(),
+        }
 
     wins = sum(1 for t in trades if t["pnl"] and t["pnl"] > 0)
     total = sum(t["pnl"] for t in trades if t["pnl"] is not None)
@@ -198,9 +256,23 @@ def get_performance() -> dict:
         "total_pnl": round(total, 2),
         "roi": round(total / capital, 4) if capital else None,
         "balance": round(get_balance(), 2),
+        "peak_balance": round(get_peak_balance(), 2),
+        "max_drawdown_pct": round(get_max_drawdown_pct(), 4),
     }
+
+
+def export_trades_csv(path: str) -> int:
+    """Export all paper trades to CSV. Returns number of rows written."""
+    trades = get_all_trades()
+    if not trades:
+        return 0
+    with open(path, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=list(trades[0].keys()))
+        writer.writeheader()
+        writer.writerows(trades)
+    return len(trades)
 
 
 def reset_paper_account() -> None:
     """Wipe all paper trades and reset balance."""
-    _save({"balance": STARTING_BALANCE, "trades": []})
+    _save({"balance": STARTING_BALANCE, "peak_balance": STARTING_BALANCE, "trades": []})

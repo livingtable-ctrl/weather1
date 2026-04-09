@@ -176,6 +176,33 @@ def get_live_observation(city: str, coords: tuple) -> dict | None:
         return None
 
 
+def get_live_precip_obs(city: str, coords: tuple) -> float | None:
+    """
+    Fetch the latest observed precipitation (inches) from NWS for same-day markets.
+    Uses precipitationLastHour, falling back to precipitationLast6Hours / 6.
+    Returns None if unavailable or the station doesn't report precip.
+    """
+    lat, lon, _ = coords
+    station_id = _get_obs_station(lat, lon)
+    if not station_id:
+        return None
+    try:
+        data = _get(f"{NWS_BASE}/stations/{station_id}/observations/latest")
+        props = data.get("properties", {})
+        # Try 1-hour precip first
+        p1h = (props.get("precipitationLastHour") or {}).get("value")
+        if p1h is not None:
+            # NWS reports in mm; convert to inches
+            return round(float(p1h) / 25.4, 4)
+        # Fallback to 6-hour average
+        p6h = (props.get("precipitationLast6Hours") or {}).get("value")
+        if p6h is not None:
+            return round(float(p6h) / 6 / 25.4, 4)
+    except Exception:
+        pass
+    return None
+
+
 def obs_prob(obs: dict, condition: dict) -> float:
     """
     Convert a live observation to a probability.

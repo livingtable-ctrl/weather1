@@ -8,6 +8,7 @@ from datetime import UTC, datetime, timedelta
 
 from weather_markets import (
     _bootstrap_ci_precip,
+    _forecast_model_weights,
     _forecast_probability,
     _normal_cdf,
     _parse_market_condition,
@@ -230,6 +231,64 @@ class TestTimeRisk(unittest.TestCase):
         label, mult = _time_risk(ct, "America/New_York")
         self.assertIn(label, ("MEDIUM", "LOW"))
         self.assertLess(mult, 1.0)
+
+
+class TestForecastModelWeights(unittest.TestCase):
+    def test_ecmwf_weight_winter(self):
+        """ECMWF should have weight 2.5 in winter months (Oct–Mar)."""
+        for month in (10, 11, 12, 1, 2, 3):
+            weights = _forecast_model_weights(month)
+            self.assertAlmostEqual(weights["ecmwf_ifs04"], 2.5, msg=f"month={month}")
+
+    def test_ecmwf_weight_summer(self):
+        """ECMWF should have weight 1.5 in summer months (Apr–Sep)."""
+        for month in (4, 5, 6, 7, 8, 9):
+            weights = _forecast_model_weights(month)
+            self.assertAlmostEqual(weights["ecmwf_ifs04"], 1.5, msg=f"month={month}")
+
+    def test_gfs_and_icon_constant(self):
+        """GFS and ICON weights should be 1.0 year-round."""
+        for month in range(1, 13):
+            weights = _forecast_model_weights(month)
+            self.assertAlmostEqual(weights["gfs_seamless"], 1.0, msg=f"month={month}")
+            self.assertAlmostEqual(weights["icon_seamless"], 1.0, msg=f"month={month}")
+
+
+class TestCIAdjustedKelly(unittest.TestCase):
+    """Tests that CI width correctly scales the fee-adjusted Kelly fraction."""
+
+    def _make_analysis(self, ci_low: float, ci_high: float, fee_kelly: float) -> dict:
+        """Simulate an analyze_trade return dict with specific CI and Kelly values."""
+        ci_width = ci_high - ci_low
+        ci_confidence = max(0.25, 1.0 - ci_width)
+        return {
+            "fee_adjusted_kelly": fee_kelly,
+            "ci_adjusted_kelly": round(fee_kelly * ci_confidence, 6),
+            "ci_low": ci_low,
+            "ci_high": ci_high,
+        }
+
+    def test_ci_adjusted_kelly_reduces_on_wide_ci(self):
+        """Wide CI (width=0.5) reduces Kelly by 50%."""
+        a = self._make_analysis(0.25, 0.75, 0.10)  # width=0.5, confidence=0.5
+        self.assertAlmostEqual(a["ci_adjusted_kelly"], 0.05, places=5)
+        self.assertLess(a["ci_adjusted_kelly"], a["fee_adjusted_kelly"])
+
+    def test_ci_adjusted_kelly_no_reduction_on_zero_ci(self):
+        """Zero CI width → no reduction (confidence=1.0)."""
+        a = self._make_analysis(0.70, 0.70, 0.10)  # width=0, confidence=1.0
+        self.assertAlmostEqual(a["ci_adjusted_kelly"], 0.10, places=5)
+
+    def test_ci_adjusted_kelly_minimum_confidence(self):
+        """CI width > 0.75 → confidence floored at 0.25."""
+        a = self._make_analysis(0.0, 1.0, 0.10)  # width=1.0, would be -0.0 → floor 0.25
+        self.assertAlmostEqual(a["ci_adjusted_kelly"], 0.025, places=5)
+
+    def test_ci_adjusted_kelly_nonnegative(self):
+        """ci_adjusted_kelly should never be negative."""
+        for width in (0.0, 0.3, 0.6, 0.9, 1.0):
+            a = self._make_analysis(0.0, width, 0.10)
+            self.assertGreaterEqual(a["ci_adjusted_kelly"], 0.0)
 
 
 if __name__ == "__main__":

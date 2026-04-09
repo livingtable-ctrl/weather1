@@ -188,6 +188,74 @@ class TestTracker(unittest.TestCase):
         self.assertAlmostEqual(result["NYC"]["bias"], -0.20, places=4)
         self.assertEqual(result["NYC"]["n"], 1)
 
+    def test_calibration_by_type_empty(self):
+        """get_calibration_by_type returns empty dict with no data."""
+        result = tracker.get_calibration_by_type()
+        self.assertEqual(result, {})
+
+    def test_calibration_by_type_with_data(self):
+        """get_calibration_by_type returns correct Brier + bias per condition type."""
+        # Log one 'above' prediction
+        ticker_a = "TKTYPE-A"
+        tracker.log_prediction(
+            ticker_a, "NYC", date(2026, 4, 9), self._fake_analysis(0.80)
+        )
+        tracker.log_outcome(ticker_a, True)  # our_prob=0.80, settled YES
+
+        # Log one 'below' prediction using a different analysis
+        ticker_b = "TKTYPE-B"
+        analysis_b = {
+            "condition": {"type": "below", "threshold": 50.0},
+            "forecast_prob": 0.60,
+            "market_prob": 0.50,
+            "edge": 0.10,
+            "method": "ensemble",
+            "n_members": 50,
+        }
+        tracker.log_prediction(ticker_b, "CHI", date(2026, 4, 9), analysis_b)
+        tracker.log_outcome(ticker_b, False)  # our_prob=0.60, settled NO (0)
+
+        result = tracker.get_calibration_by_type()
+        self.assertIn("above", result)
+        self.assertIn("below", result)
+        # above: (0.80 - 1)^2 = 0.04
+        self.assertAlmostEqual(result["above"]["brier"], 0.04, places=4)
+        # below: (0.60 - 0)^2 = 0.36
+        self.assertAlmostEqual(result["below"]["brier"], 0.36, places=4)
+        self.assertEqual(result["above"]["n"], 1)
+        self.assertEqual(result["below"]["n"], 1)
+
+    def test_export_predictions_csv(self):
+        import csv
+        import tempfile
+
+        ticker = "TKEXPORT-CSV"
+        tracker.log_prediction(
+            ticker, "NYC", date(2026, 4, 9), self._fake_analysis(0.75)
+        )
+        tracker.log_outcome(ticker, True)
+
+        tmp = tempfile.mktemp(suffix=".csv")
+        n = tracker.export_predictions_csv(tmp)
+        self.assertEqual(n, 1)
+
+        with open(tmp, newline="", encoding="utf-8") as f:
+            rows = list(csv.DictReader(f))
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["ticker"], ticker)
+        self.assertAlmostEqual(float(rows[0]["our_prob"]), 0.75)
+
+        import os
+
+        os.unlink(tmp)
+
+    def test_export_predictions_csv_empty(self):
+        import tempfile
+
+        tmp = tempfile.mktemp(suffix=".csv")
+        n = tracker.export_predictions_csv(tmp)
+        self.assertEqual(n, 0)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

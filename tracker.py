@@ -300,6 +300,53 @@ def get_calibration_by_city() -> dict[str, dict]:
     return result
 
 
+def get_calibration_by_type() -> dict[str, dict]:
+    """
+    Per condition-type Brier score, bias, and sample count.
+    Returns {condition_type: {brier, bias, n}} for types with settled predictions.
+    Condition types include: above, below, between, precip_any, precip_above.
+    """
+    init_db()
+    with _conn() as con:
+        rows = con.execute("""
+            SELECT p.condition_type, p.our_prob, o.settled_yes
+            FROM predictions p
+            JOIN outcomes o ON p.ticker = o.ticker
+            WHERE p.our_prob IS NOT NULL AND p.condition_type IS NOT NULL
+        """).fetchall()
+
+    by_type: dict[str, list] = {}
+    for r in rows:
+        by_type.setdefault(r["condition_type"], []).append(
+            (r["our_prob"], r["settled_yes"])
+        )
+
+    result = {}
+    for ctype, pairs in by_type.items():
+        errors = [(p - y) ** 2 for p, y in pairs]
+        biases = [p - y for p, y in pairs]
+        result[ctype] = {
+            "brier": sum(errors) / len(errors),
+            "bias": sum(biases) / len(biases),
+            "n": len(pairs),
+        }
+    return result
+
+
+def export_predictions_csv(path: str) -> int:
+    """Export prediction history with outcomes to CSV. Returns row count."""
+    import csv
+
+    rows = get_history(limit=10_000)
+    if not rows:
+        return 0
+    with open(path, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
+        writer.writeheader()
+        writer.writerows([dict(r) for r in rows])
+    return len(rows)
+
+
 def sync_outcomes(client) -> int:
     """
     Check settled markets in the DB against Kalshi and record outcomes.
