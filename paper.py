@@ -33,6 +33,29 @@ def get_balance() -> float:
     return _load()["balance"]
 
 
+def kelly_bet_dollars(kelly_fraction: float) -> float:
+    """
+    Return the dollar amount to bet based on Kelly fraction × current balance.
+    This compounds automatically — as your balance grows, bet sizes grow too.
+    Floors at $0 and caps at 25% of balance as a safety limit.
+    """
+    balance = get_balance()
+    fraction = max(0.0, min(kelly_fraction, 0.25))  # hard cap at 25%
+    return round(balance * fraction, 2)
+
+
+def kelly_quantity(kelly_fraction: float, price: float) -> int:
+    """
+    Convert a Kelly dollar amount to a quantity (contracts) at a given price.
+    Returns at least 1 if there is any positive edge and balance allows.
+    """
+    if price <= 0:
+        return 0
+    dollars = kelly_bet_dollars(kelly_fraction)
+    qty = int(dollars / price)
+    return max(qty, 1) if dollars > 0 else 0
+
+
 def place_paper_order(
     ticker: str,
     side: str,  # "yes" or "no"

@@ -53,6 +53,19 @@ from weather_markets import (
 load_dotenv()
 
 REFRESH_SECS = 300  # watch mode interval
+KALSHI_ENV = os.getenv("KALSHI_ENV", "demo")
+MARKET_BASE_URL = (
+    "https://kalshi.com" if KALSHI_ENV == "prod" else "https://demo.kalshi.co"
+)
+
+
+def _header(title: str, width: int = 50) -> None:
+    """Print a styled section header."""
+    bar = "─" * width
+    print(f"\n{bold(f'┌{bar}┐')}")
+    padded = title.center(width)
+    print(bold(f"│{padded}│"))
+    print(f"{bold(f'└{bar}┘')}\n")
 
 
 # ── Startup checks ────────────────────────────────────────────────────────────
@@ -140,10 +153,10 @@ def build_client() -> KalshiClient:
 
 
 def cmd_markets(client: KalshiClient):
-    print(bold("Fetching open weather markets...\n"))
+    _header("Open Weather Markets")
     markets = get_weather_markets(client)
     if not markets:
-        print(yellow("No weather markets found."))
+        print(yellow("  No weather markets found."))
         return
 
     rows = []
@@ -153,13 +166,15 @@ def cmd_markets(client: KalshiClient):
         analysis = analyze_trade(enriched)
         edge = analysis["edge"] if analysis else 0
         sig = analysis["signal"].strip() if analysis else "—"
+        ticker = m.get("ticker", "")
         rows.append(
             [
-                m.get("ticker", ""),
-                (m.get("title") or "")[:50],
+                ticker,
+                (m.get("title") or "")[:45],
                 prob_color(prices["implied_prob"]),
                 signal_color(f"{sig} ({edge:+.0%})") if analysis else dim("—"),
                 m.get("volume", 0),
+                cyan(f"{MARKET_BASE_URL}/markets/{ticker}"),
             ]
         )
 
@@ -170,13 +185,16 @@ def cmd_markets(client: KalshiClient):
                 bold("Ticker"),
                 bold("Title"),
                 bold("Mkt P"),
-                bold("Signal (edge)"),
-                bold("Volume"),
+                bold("Signal"),
+                bold("Vol"),
+                bold("Link"),
             ],
             tablefmt="rounded_outline",
         )
     )
-    print(dim("\nRun: py main.py analyze   — to see only the strongest opportunities."))
+    print(
+        dim("\n  Tip: py main.py analyze   — shows only the strongest opportunities.")
+    )
 
 
 # ── Single market ─────────────────────────────────────────────────────────────
@@ -196,7 +214,9 @@ def cmd_market(client: KalshiClient, ticker: str, verbose: bool = False):
     liquid = is_liquid(market)
 
     # ── Compact summary (always shown) ───────────────────────────────────────
-    print(f"  {bold(market.get('title', ''))}")
+    market_url = f"{MARKET_BASE_URL}/markets/{ticker}"
+    _header(market.get("title", ticker)[:50])
+    print(f"  {cyan(market_url)}")
     print(f"  Closes:   {market.get('close_time', 'N/A')[:19].replace('T', ' ')}")
     print(f"  Liquid:   {liquidity_color(liquid)}")
 
@@ -227,8 +247,13 @@ def cmd_market(client: KalshiClient, ticker: str, verbose: bool = False):
             f"  Edge:     {edge_color(edge)}  {dim('gross')}  →  {edge_color(net_edge)}  {dim('after ~7% fee')}"
         )
         if fee_kelly > 0.005:
+            from paper import kelly_bet_dollars, kelly_quantity
+
+            bet_dollars = kelly_bet_dollars(fee_kelly)
+            bet_qty = kelly_quantity(fee_kelly, prices["implied_prob"])
             print(
-                f"  Kelly:    {bold(f'{fee_kelly * 100:.1f}% of bankroll')}  {dim('(fee-adjusted)')}"
+                f"  Kelly:    {bold(f'{fee_kelly * 100:.1f}% of bankroll')}  "
+                f"{green(f'→ ${bet_dollars:.2f}  (~{bet_qty} contracts)')}  {dim('fee-adjusted, compounds')}"
             )
         elif kelly > 0.005:
             print(
@@ -393,11 +418,15 @@ def _analyze_once(client: KalshiClient, previous_tickers: set | None = None):
             is_new = (
                 previous_tickers is not None and m.get("ticker") not in previous_tickers
             )
-            ticker_str = f"* {m.get('ticker', '')}" if is_new else m.get("ticker", "")
+            ticker = m.get("ticker", "")
+            ticker_str = f"* {ticker}" if is_new else ticker
             net_edge = a.get("net_edge", a["edge"])
+            title = (m.get("title") or ticker)[:40]
+            url = f"{MARKET_BASE_URL}/markets/{ticker}"
             rows.append(
                 [
                     green(ticker_str) if is_new else ticker_str,
+                    title,
                     m.get("_city", ""),
                     m.get("_date").isoformat() if m.get("_date") else "",
                     f"{hour:02d}:00" if hour is not None else "daily",
@@ -409,12 +438,14 @@ def _analyze_once(client: KalshiClient, previous_tickers: set | None = None):
                     edge_color(a["edge"]),
                     edge_color(net_edge),
                     signal_color(f"BUY {a['recommended_side'].upper()}"),
+                    cyan(url),
                 ]
             )
         return rows
 
     hdrs = [
         "Ticker",
+        "Market",
         "City",
         "Date",
         "Time",
@@ -426,6 +457,7 @@ def _analyze_once(client: KalshiClient, previous_tickers: set | None = None):
         "Edge",
         "Net Edge",
         "Action",
+        "Link",
     ]
 
     if liquid_opps:
@@ -467,13 +499,12 @@ def _analyze_once(client: KalshiClient, previous_tickers: set | None = None):
 
 
 def cmd_analyze(client: KalshiClient):
-    print(bold("Scanning weather markets for trade opportunities..."))
-    print(
-        dim("(Ensemble forecasts cached after first run — subsequent scans are fast)\n")
-    )
+    _header("Trade Opportunity Scanner")
+    print(dim("  Scanning weather markets... (cached after first run)\n"))
     _analyze_once(client)
-    print(dim("\nFcst=3-model avg  Spread=ensemble range  Our P=blended probability"))
-    print(dim("To see full detail:  py main.py market <ticker> --verbose"))
+    print(dim("\n  Fcst=weighted-model avg  Spread=ensemble range  Our P=blended prob"))
+    print(dim("  Full detail:  py main.py market <ticker> --verbose"))
+    print(dim("  Trade link opens directly in browser"))
 
 
 # ── Watch mode ────────────────────────────────────────────────────────────────
@@ -897,31 +928,41 @@ def cmd_setup():
 
 
 def cmd_menu(client: KalshiClient):
+    from paper import get_balance as paper_balance
+
     options = [
-        ("Analyze — find best trades", lambda: cmd_analyze(client)),
-        ("Watch  — live auto-refresh", lambda: cmd_watch(client)),
-        ("Market — look up a specific ticker", None),
-        ("Consistency — find free arbitrage", lambda: cmd_consistency(client)),
-        ("Forecast — 7-day weather forecast", None),
-        ("History — past predictions + score", lambda: cmd_history(client)),
-        ("Balance", lambda: cmd_balance(client)),
-        ("Positions", lambda: cmd_positions(client)),
-        ("Paper trading results", lambda: cmd_paper(["results"], client)),
-        ("Backtest — score model on history", lambda: cmd_backtest(client, [])),
-        ("Schedule — hourly auto-scan", lambda: cmd_schedule()),
-        ("Setup wizard", lambda: cmd_setup()),
+        ("Analyze       find best trades now", lambda: cmd_analyze(client)),
+        ("Watch         live auto-refresh dashboard", lambda: cmd_watch(client)),
+        ("Market        look up a specific ticker", None),
+        ("Consistency   find free arbitrage", lambda: cmd_consistency(client)),
+        ("Forecast      7-day weather forecast", None),
+        ("History       past predictions + Brier score", lambda: cmd_history(client)),
+        ("Balance       Kalshi account balance", lambda: cmd_balance(client)),
+        ("Positions     open positions + exit signals", lambda: cmd_positions(client)),
+        ("Paper         paper trading results", lambda: cmd_paper(["results"], client)),
+        ("Backtest      score model on history", lambda: cmd_backtest(client, [])),
+        ("Schedule      hourly auto-scan", lambda: cmd_schedule()),
+        ("Setup         setup wizard", lambda: cmd_setup()),
         ("Quit", None),
     ]
 
     while True:
-        print(bold("\n╔═══════════════════════════════════════╗"))
-        print(bold("║   Kalshi Weather Prediction Markets   ║"))
-        print(bold("╚═══════════════════════════════════════╝\n"))
-        for i, (label, _) in enumerate(options, 1):
-            print(f"  {cyan(str(i))}  {label}")
+        try:
+            bal = f"  Paper: {green(f'${paper_balance():.2f}')}"
+        except Exception:
+            bal = ""
+        env_label = dim(f"  [{KALSHI_ENV.upper()}]")
 
-        choice = input(bold("\nChoose (1–13): ")).strip()
-        if not choice.isdigit() or not (1 <= int(choice) <= len(options)):  # noqa: E501
+        print(bold("\n  ╔══════════════════════════════════════════╗"))
+        print(bold(f"  ║   Kalshi Weather Prediction Markets  {env_label}  ║"))
+        print(bold(f"  ║{bal:<44}║"))
+        print(bold("  ╚══════════════════════════════════════════╝\n"))
+        for i, (label, _) in enumerate(options, 1):
+            num = cyan(f"  {i:>2}")
+            print(f"{num}  {label}")
+
+        choice = input(bold(f"\n  Choose (1–{len(options)}): ")).strip()
+        if not choice.isdigit() or not (1 <= int(choice) <= len(options)):
             print(red("  Invalid choice."))
             continue
 
@@ -1080,22 +1121,26 @@ def cmd_paper(args: list, client: KalshiClient | None = None):
     sub = args[0].lower() if args else "results"
 
     if sub == "buy":
-        if len(args) < 5:
-            print("Usage: py main.py paper buy <ticker> <yes/no> <qty> <price>")
+        # qty is optional — omit to auto-size via Kelly compounding
+        if len(args) < 4:
+            print("Usage: py main.py paper buy <ticker> <yes/no> <price> [qty]")
+            print("       Omit qty to auto-size using Kelly × current balance")
             return
-        ticker, side, qty_s, price_s = args[1], args[2].lower(), args[3], args[4]
+        ticker = args[1]
+        side = args[2].lower()
         if side not in ("yes", "no"):
             print(red("side must be 'yes' or 'no'"))
             return
         try:
-            qty = int(qty_s)
-            price = float(price_s)
+            price = float(args[3])
+            qty_s = args[4] if len(args) > 4 else None
+            qty = int(qty_s) if qty_s is not None else None
         except ValueError:
-            print(red("qty must be integer, price must be a decimal"))
+            print(red("price must be a decimal; qty (optional) must be an integer"))
             return
 
-        # Try to get current analysis for context
-        entry_prob, net_edge = None, None
+        # Get current analysis for Kelly sizing and context
+        entry_prob, net_edge, fee_kelly = None, None, 0.0
         if client:
             try:
                 market = client.get_market(ticker)
@@ -1104,13 +1149,36 @@ def cmd_paper(args: list, client: KalshiClient | None = None):
                 if analysis:
                     entry_prob = analysis["forecast_prob"]
                     net_edge = analysis.get("net_edge")
+                    fee_kelly = analysis.get("fee_adjusted_kelly", 0.0)
             except Exception:
                 pass
 
+        from paper import kelly_bet_dollars, kelly_quantity
+
+        # Auto-size if qty not provided
+        if qty is None:
+            if fee_kelly and fee_kelly > 0.005:
+                qty = kelly_quantity(fee_kelly, price)
+                bet_amt = kelly_bet_dollars(fee_kelly)
+                print(
+                    f"\n  {bold('Kelly auto-size:')} {fee_kelly * 100:.1f}% of balance "
+                    f"= {green(f'${bet_amt:.2f}')} → {bold(str(qty))} contracts"
+                )
+            else:
+                print(
+                    yellow(
+                        "  No Kelly fraction available — please specify qty manually."
+                    )
+                )
+                print("  Usage: py main.py paper buy <ticker> <yes/no> <price> <qty>")
+                return
+
         balance = get_balance()
         cost = qty * price
-        print(f"\n  Paper BUY  {qty} × {ticker}  {bold(side.upper())}  @ ${price:.4f}")
-        print(f"  Cost: ${cost:.2f}  |  Paper balance: ${balance:.2f}")
+        print(
+            f"\n  Paper BUY  {bold(str(qty))} × {ticker}  {bold(side.upper())}  @ ${price:.4f}"
+        )
+        print(f"  Cost: {bold(f'${cost:.2f}')}  |  Paper balance: ${balance:.2f}")
         if entry_prob is not None:
             print(
                 f"  Model P: {entry_prob * 100:.1f}%"
