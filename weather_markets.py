@@ -9,7 +9,7 @@ import math
 import random
 import re
 import statistics
-from datetime import date
+from datetime import UTC, date, datetime
 
 from climate_indices import temperature_adjustment
 from climatology import climatological_prob
@@ -69,10 +69,13 @@ def get_weather_forecast(city: str, target_date: date) -> dict | None:
         return None
     lat, lon, tz = coords
 
-    models = ["gfs_seamless", "ecmwf_ifs04", "icon_seamless"]
-    highs, lows, precips = [], [], []
+    # ECMWF is weighted 2x — consistently more accurate, especially 5+ days out
+    model_weights = {"gfs_seamless": 1.0, "ecmwf_ifs04": 2.0, "icon_seamless": 1.0}
+    highs: list[tuple[float, float]] = []  # (value, weight)
+    lows: list[tuple[float, float]] = []
+    precips: list[tuple[float, float]] = []
 
-    for model in models:
+    for model, weight in model_weights.items():
         try:
             params = {
                 "latitude": lat,
@@ -97,25 +100,30 @@ def get_weather_forecast(city: str, target_date: date) -> dict | None:
             lo = daily.get("temperature_2m_min", [None])[idx]
             p = daily.get("precipitation_sum", [None])[idx]
             if h is not None:
-                highs.append(h)
+                highs.append((h, weight))
             if lo is not None:
-                lows.append(lo)
+                lows.append((lo, weight))
             if p is not None:
-                precips.append(p)
+                precips.append((p, weight))
         except Exception:
             continue
 
     if not highs:
         return None
 
+    def _wavg(pairs: list[tuple[float, float]]) -> float:
+        total_w = sum(w for _, w in pairs)
+        return sum(v * w for v, w in pairs) / total_w
+
+    high_vals = [v for v, _ in highs]
     return {
         "date": target_date.isoformat(),
         "city": city,
-        "high_f": sum(highs) / len(highs),
-        "low_f": sum(lows) / len(lows) if lows else None,
-        "precip_in": sum(precips) / len(precips) if precips else 0.0,
+        "high_f": _wavg(highs),
+        "low_f": _wavg(lows) if lows else None,
+        "precip_in": _wavg(precips) if precips else 0.0,
         "models_used": len(highs),
-        "high_range": (min(highs), max(highs)),
+        "high_range": (min(high_vals), max(high_vals)),
     }
 
 
@@ -308,6 +316,26 @@ WEATHER_KEYWORDS = [
 ]
 
 
+def is_stale(market: dict) -> bool:
+    """
+    Returns True if a market has no volume AND closes within 60 minutes.
+    Stale markets have meaningless edge calculations — skip them.
+    """
+    volume = market.get("volume") or 0
+    open_interest = market.get("open_interest") or 0
+    if volume > 0 or open_interest > 0:
+        return False
+    close_time_str = market.get("close_time", "")
+    if not close_time_str:
+        return False
+    try:
+        close_time = datetime.fromisoformat(close_time_str.replace("Z", "+00:00"))
+        minutes_left = (close_time - datetime.now(UTC)).total_seconds() / 60
+        return minutes_left < 60
+    except (ValueError, TypeError):
+        return False
+
+
 def is_weather_market(market: dict) -> bool:
     title = (market.get("title") or "").lower()
     subtitle = (market.get("subtitle") or "").lower()
@@ -329,7 +357,7 @@ def get_weather_markets(client: KalshiClient, limit: int = 200) -> list[dict]:
     try:
         markets = client.get_markets(status="open", limit=limit)
         for m in markets:
-            if m.get("ticker") not in seen and is_weather_market(m):
+            if m.get("ticker") not in seen and is_weather_market(m) and not is_stale(m):
                 results.append(m)
                 seen.add(m["ticker"])
     except Exception as e:
