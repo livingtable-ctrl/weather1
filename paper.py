@@ -15,6 +15,8 @@ DATA_PATH = Path(__file__).parent / "data" / "paper_trades.json"
 DATA_PATH.parent.mkdir(exist_ok=True)
 
 STARTING_BALANCE = 1000.0  # default paper bankroll in dollars
+MAX_DRAWDOWN_FRACTION = 0.50  # halt auto-sizing if balance < 50% of starting bankroll
+MAX_CITY_DATE_EXPOSURE = 0.15  # max fraction of starting balance on one city/date combo
 
 
 def _load() -> dict:
@@ -33,12 +35,23 @@ def get_balance() -> float:
     return _load()["balance"]
 
 
+def is_paused_drawdown() -> bool:
+    """
+    Return True if balance has fallen below MAX_DRAWDOWN_FRACTION of starting bankroll.
+    Auto-sizing is halted; manual quantity entry still works.
+    """
+    return get_balance() < STARTING_BALANCE * MAX_DRAWDOWN_FRACTION
+
+
 def kelly_bet_dollars(kelly_fraction: float) -> float:
     """
     Return the dollar amount to bet based on Kelly fraction × current balance.
     This compounds automatically — as your balance grows, bet sizes grow too.
     Floors at $0 and caps at 25% of balance as a safety limit.
+    Returns 0.0 if the account is in drawdown (balance < 50% of starting bankroll).
     """
+    if is_paused_drawdown():
+        return 0.0
     balance = get_balance()
     fraction = max(0.0, min(kelly_fraction, 0.25))  # hard cap at 25%
     return round(balance * fraction, 2)
@@ -63,6 +76,8 @@ def place_paper_order(
     entry_price: float,
     entry_prob: float | None = None,
     net_edge: float | None = None,
+    city: str | None = None,
+    target_date: str | None = None,  # ISO format "2026-04-09"
 ) -> dict:
     """
     Place a paper trade. Deducts quantity * entry_price from balance.
@@ -86,6 +101,8 @@ def place_paper_order(
         "entry_prob": entry_prob,
         "net_edge": net_edge,
         "cost": cost,
+        "city": city,
+        "target_date": target_date,
         "entered_at": datetime.now(UTC).isoformat(),
         "settled": False,
         "outcome": None,
@@ -124,6 +141,40 @@ def settle_paper_trade(trade_id: int, outcome_yes: bool) -> dict:
 
 def get_open_trades() -> list[dict]:
     return [t for t in _load()["trades"] if not t["settled"]]
+
+
+def get_city_date_exposure(city: str, target_date_str: str) -> float:
+    """
+    Return the fraction of STARTING_BALANCE committed to open trades for
+    this city + target date. Uses STARTING_BALANCE as denominator so the
+    check stays stable as balance fluctuates.
+    """
+    committed = sum(
+        t["cost"]
+        for t in get_open_trades()
+        if t.get("city") == city and t.get("target_date") == target_date_str
+    )
+    return committed / STARTING_BALANCE
+
+
+def portfolio_kelly_fraction(
+    base_fraction: float,
+    city: str | None,
+    target_date_str: str | None,
+) -> float:
+    """
+    Scale down base_fraction based on existing open exposure to this city/date.
+    If existing exposure >= MAX_CITY_DATE_EXPOSURE, returns 0.0 (skip bet).
+    Otherwise scales linearly: remaining_room / max * base_fraction.
+    """
+    if not city or not target_date_str:
+        return base_fraction
+    existing = get_city_date_exposure(city, target_date_str)
+    if existing >= MAX_CITY_DATE_EXPOSURE:
+        return 0.0
+    room = MAX_CITY_DATE_EXPOSURE - existing
+    scale = room / MAX_CITY_DATE_EXPOSURE
+    return round(base_fraction * scale, 6)
 
 
 def get_all_trades() -> list[dict]:

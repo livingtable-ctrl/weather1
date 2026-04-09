@@ -161,6 +161,20 @@ def auto_settle(client: KalshiClient) -> None:
     t.start()
 
 
+def cmd_settle(client: KalshiClient) -> None:
+    """
+    Sync settled market outcomes from Kalshi and record them in the tracker.
+    Intended for scheduled nightly execution (via schtasks) as well as manual use.
+    """
+    count = sync_outcomes(client)
+    if count > 0:
+        print(
+            green(f"  [Settle] Recorded {count} new outcome(s). Brier score updated.")
+        )
+    else:
+        print(dim("  [Settle] No new outcomes to record."))
+
+
 # ── Client ────────────────────────────────────────────────────────────────────
 
 
@@ -460,6 +474,7 @@ def _analyze_once(client: KalshiClient, previous_tickers: set | None = None):
                     f"{a['market_prob'] * 100:.0f}%",
                     edge_color(a["edge"]),
                     edge_color(net_edge),
+                    a.get("time_risk", "—"),
                     signal_color(f"BUY {a['recommended_side'].upper()}"),
                     cyan(url),
                 ]
@@ -479,6 +494,7 @@ def _analyze_once(client: KalshiClient, previous_tickers: set | None = None):
         "Mkt P",
         "Edge",
         "Net Edge",
+        "Risk",
         "Action",
         "Link",
     ]
@@ -1136,7 +1152,11 @@ def cmd_paper(args: list, client: KalshiClient | None = None):
         get_balance,
         get_open_trades,
         get_performance,
+        is_paused_drawdown,
+        kelly_bet_dollars,
+        kelly_quantity,
         place_paper_order,
+        portfolio_kelly_fraction,
         reset_paper_account,
         settle_paper_trade,
     )
@@ -1162,8 +1182,25 @@ def cmd_paper(args: list, client: KalshiClient | None = None):
             print(red("price must be a decimal; qty (optional) must be an integer"))
             return
 
+        # Drawdown guard: block auto-sizing when balance < 50% of starting bankroll
+        if is_paused_drawdown() and qty is None:
+            from paper import MAX_DRAWDOWN_FRACTION, STARTING_BALANCE
+
+            floor = STARTING_BALANCE * MAX_DRAWDOWN_FRACTION
+            print(
+                red(
+                    f"\n  [Drawdown] Auto-sizing paused — balance is below "
+                    f"${floor:.0f} (50% of ${STARTING_BALANCE:.0f} starting bankroll)."
+                )
+            )
+            print(
+                dim("  Specify qty manually: paper buy <ticker> <side> <price> <qty>")
+            )
+            return
+
         # Get current analysis for Kelly sizing and context
         entry_prob, net_edge, fee_kelly = None, None, 0.0
+        enriched: dict | None = None
         if client:
             try:
                 market = client.get_market(ticker)
@@ -1176,15 +1213,26 @@ def cmd_paper(args: list, client: KalshiClient | None = None):
             except Exception:
                 pass
 
-        from paper import kelly_bet_dollars, kelly_quantity
+        # Extract city/date for portfolio Kelly check
+        city = enriched.get("_city") if enriched else None
+        target_date_obj = enriched.get("_date") if enriched else None
+        target_date_str = target_date_obj.isoformat() if target_date_obj else None
 
         # Auto-size if qty not provided
         if qty is None:
             if fee_kelly and fee_kelly > 0.005:
-                qty = kelly_quantity(fee_kelly, price)
-                bet_amt = kelly_bet_dollars(fee_kelly)
+                adj_kelly = portfolio_kelly_fraction(fee_kelly, city, target_date_str)
+                if adj_kelly < fee_kelly:
+                    print(
+                        yellow(
+                            f"  [Portfolio] Kelly reduced {fee_kelly * 100:.1f}% → "
+                            f"{adj_kelly * 100:.1f}% (existing {city}/{target_date_str} exposure)"
+                        )
+                    )
+                qty = kelly_quantity(adj_kelly, price)
+                bet_amt = kelly_bet_dollars(adj_kelly)
                 print(
-                    f"\n  {bold('Kelly auto-size:')} {fee_kelly * 100:.1f}% of balance "
+                    f"\n  {bold('Kelly auto-size:')} {adj_kelly * 100:.1f}% of balance "
                     f"= {green(f'${bet_amt:.2f}')} → {bold(str(qty))} contracts"
                 )
             else:
@@ -1212,7 +1260,16 @@ def cmd_paper(args: list, client: KalshiClient | None = None):
             print(dim("  Cancelled."))
             return
         try:
-            trade = place_paper_order(ticker, side, qty, price, entry_prob, net_edge)
+            trade = place_paper_order(
+                ticker,
+                side,
+                qty,
+                price,
+                entry_prob,
+                net_edge,
+                city=city,
+                target_date=target_date_str,
+            )
             print(
                 green(
                     f"  Paper trade #{trade['id']} placed. "
@@ -1355,6 +1412,32 @@ def cmd_schedule():
         print(red(f"Failed: {result.stderr.strip() or result.stdout.strip()}"))
         print(dim("Try running this terminal as Administrator."))
 
+    # ── Daily settle task ────────────────────────────────────────────────────
+    settle_task = "KalshiWeatherSettle"
+    settle_cmd = f'"{py_exe}" "{script_path}" settle'
+    settle_create = (
+        f'schtasks /Create /F /SC DAILY /ST 21:00 /TN "{settle_task}" '
+        f'/TR "{settle_cmd}" /RL HIGHEST'
+    )
+
+    print(bold(f"\nRegistering daily settle task: {settle_task}"))
+    print(dim(f"Command: {settle_cmd}"))
+    print(
+        dim(
+            "  Runs at 21:00 local machine time — adjust if not in your target timezone."
+        )
+    )
+    confirm2 = input("  Register now? (Y/n): ").strip().lower()
+    if confirm2 != "n":
+        result2 = subprocess.run(
+            settle_create, shell=True, capture_output=True, text=True
+        )
+        if result2.returncode == 0:
+            print(green(f"\nTask '{settle_task}' registered — runs daily at 9pm."))
+            print(dim("To remove: schtasks /Delete /TN KalshiWeatherSettle /F"))
+        else:
+            print(red(f"Failed: {result2.stderr.strip() or result2.stdout.strip()}"))
+
 
 # ── Router ────────────────────────────────────────────────────────────────────
 
@@ -1425,6 +1508,8 @@ def main():
             cmd_cancel(client, args[1])
     elif cmd == "schedule":
         cmd_schedule()
+    elif cmd == "settle":
+        cmd_settle(client)
     elif cmd == "paper":
         cmd_paper(args[1:], client)
     elif cmd == "backtest":

@@ -183,5 +183,145 @@ class TestIsStale(unittest.TestCase):
         self.assertFalse(is_stale(market))
 
 
+class TestMaxDrawdown(unittest.TestCase):
+    def setUp(self):
+        self._tmpdir = tempfile.mkdtemp()
+        self._patch = patch("paper.DATA_PATH", Path(self._tmpdir) / "paper_trades.json")
+        self._patch.start()
+
+    def tearDown(self):
+        self._patch.stop()
+        shutil.rmtree(self._tmpdir, ignore_errors=True)
+
+    def test_not_paused_at_start(self):
+        import paper
+
+        self.assertFalse(paper.is_paused_drawdown())
+
+    def test_paused_below_threshold(self):
+        """Balance below 50% of $1000 → drawdown active."""
+        import paper
+
+        # Drain balance to $400 by placing a losing trade
+        paper.place_paper_order("TK", "yes", 600, 1.00)  # cost=$600 → balance=$400
+        self.assertTrue(paper.is_paused_drawdown())
+
+    def test_kelly_returns_zero_in_drawdown(self):
+        """kelly_bet_dollars should return 0.0 when in drawdown."""
+        import paper
+
+        paper.place_paper_order("TK", "yes", 600, 1.00)  # balance → $400
+        self.assertEqual(paper.kelly_bet_dollars(0.10), 0.0)
+
+    def test_kelly_normal_above_threshold(self):
+        """kelly_bet_dollars works normally when balance >= $500."""
+        import paper
+
+        # Balance is $1000 (starting), which is above threshold
+        result = paper.kelly_bet_dollars(0.10)
+        self.assertAlmostEqual(result, 100.0)
+
+    def test_boundary_exactly_500_not_paused(self):
+        """Balance exactly at $500 (= 50% of $1000) is NOT paused (strict less-than)."""
+        import paper
+
+        paper.place_paper_order("TK", "yes", 500, 1.00)  # cost=$500 → balance=$500
+        self.assertFalse(paper.is_paused_drawdown())
+
+
+class TestPortfolioKelly(unittest.TestCase):
+    def setUp(self):
+        self._tmpdir = tempfile.mkdtemp()
+        self._patch = patch("paper.DATA_PATH", Path(self._tmpdir) / "paper_trades.json")
+        self._patch.start()
+
+    def tearDown(self):
+        self._patch.stop()
+        shutil.rmtree(self._tmpdir, ignore_errors=True)
+
+    def test_exposure_zero_with_no_trades(self):
+        import paper
+
+        self.assertAlmostEqual(paper.get_city_date_exposure("NYC", "2026-04-09"), 0.0)
+
+    def test_exposure_with_matching_trade(self):
+        """Open trade for NYC/2026-04-09 should show up in exposure."""
+        import paper
+
+        paper.place_paper_order(
+            "TK1", "yes", 50, 0.50, city="NYC", target_date="2026-04-09"
+        )
+        # cost = 50 * 0.50 = $25; exposure = 25 / 1000 = 0.025
+        exposure = paper.get_city_date_exposure("NYC", "2026-04-09")
+        self.assertAlmostEqual(exposure, 0.025)
+
+    def test_exposure_ignores_other_city(self):
+        """Trade for Chicago should not count toward NYC exposure."""
+        import paper
+
+        paper.place_paper_order(
+            "TK1", "yes", 50, 0.50, city="CHI", target_date="2026-04-09"
+        )
+        exposure = paper.get_city_date_exposure("NYC", "2026-04-09")
+        self.assertAlmostEqual(exposure, 0.0)
+
+    def test_exposure_ignores_settled_trade(self):
+        """Settled trades should not count toward exposure."""
+        import paper
+
+        trade = paper.place_paper_order(
+            "TK1", "yes", 50, 0.50, city="NYC", target_date="2026-04-09"
+        )
+        paper.settle_paper_trade(trade["id"], outcome_yes=True)
+        exposure = paper.get_city_date_exposure("NYC", "2026-04-09")
+        self.assertAlmostEqual(exposure, 0.0)
+
+    def test_portfolio_kelly_no_exposure(self):
+        """Zero existing exposure → base fraction returned unchanged."""
+        import paper
+
+        result = paper.portfolio_kelly_fraction(0.10, "NYC", "2026-04-09")
+        self.assertAlmostEqual(result, 0.10)
+
+    def test_portfolio_kelly_at_cap(self):
+        """Existing exposure >= MAX → returns 0.0."""
+        import paper
+
+        # Place $150 trade → exposure = 0.15 = MAX_CITY_DATE_EXPOSURE
+        paper.place_paper_order(
+            "TK1", "yes", 300, 0.50, city="NYC", target_date="2026-04-09"
+        )
+        result = paper.portfolio_kelly_fraction(0.10, "NYC", "2026-04-09")
+        self.assertEqual(result, 0.0)
+
+    def test_portfolio_kelly_partial_exposure(self):
+        """Half of max exposure → Kelly scaled to ~50% of base."""
+        import paper
+
+        # Place $75 trade → exposure = 0.075 = half of MAX (0.15)
+        paper.place_paper_order(
+            "TK1", "yes", 150, 0.50, city="NYC", target_date="2026-04-09"
+        )
+        result = paper.portfolio_kelly_fraction(0.10, "NYC", "2026-04-09")
+        self.assertAlmostEqual(result, 0.05, places=4)
+
+    def test_portfolio_kelly_no_city_passthrough(self):
+        """None city → base fraction returned unchanged (no lookup possible)."""
+        import paper
+
+        result = paper.portfolio_kelly_fraction(0.10, None, None)
+        self.assertAlmostEqual(result, 0.10)
+
+    def test_place_paper_order_stores_city_date(self):
+        """Trade record should include city and target_date fields."""
+        import paper
+
+        trade = paper.place_paper_order(
+            "TK1", "yes", 10, 0.50, city="NYC", target_date="2026-04-09"
+        )
+        self.assertEqual(trade["city"], "NYC")
+        self.assertEqual(trade["target_date"], "2026-04-09")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
