@@ -1,0 +1,204 @@
+"""
+Kalshi API client with RSA-PSS authentication.
+"""
+
+import base64
+import time
+from pathlib import Path
+
+import requests
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import padding
+
+_RETRY_STATUSES = {429, 500, 502, 503, 504}
+_MAX_RETRIES = 3
+
+
+def _request_with_retry(method: str, url: str, **kwargs) -> requests.Response:
+    """
+    Call requests.request with exponential backoff on transient errors.
+    Retries on connection errors and HTTP 429/5xx up to _MAX_RETRIES times.
+    """
+    delay = 1.0
+    for attempt in range(_MAX_RETRIES):
+        try:
+            resp = requests.request(method, url, **kwargs)
+            if resp.status_code not in _RETRY_STATUSES:
+                return resp
+            # Retryable HTTP status
+        except (requests.ConnectionError, requests.Timeout):
+            resp = None
+
+        if attempt < _MAX_RETRIES - 1:
+            time.sleep(delay)
+            delay *= 2
+        else:
+            if resp is not None:
+                return resp
+            raise requests.ConnectionError(
+                f"Failed after {_MAX_RETRIES} attempts: {url}"
+            )
+    return resp  # type: ignore[return-value]  # unreachable; loop always returns or raises
+
+
+PROD_BASE = "https://trading-api.kalshi.com/trade-api/v2"
+DEMO_BASE = "https://demo-api.kalshi.co/trade-api/v2"
+
+
+class KalshiClient:
+    def __init__(
+        self,
+        key_id: str | None = None,
+        private_key_path: str | None = None,
+        env: str = "demo",
+    ):
+        self.base_url = DEMO_BASE if env == "demo" else PROD_BASE
+        self.key_id = key_id
+        self._private_key = None
+
+        if private_key_path and Path(private_key_path).exists():
+            with open(private_key_path, "rb") as f:
+                self._private_key = serialization.load_pem_private_key(
+                    f.read(), password=None
+                )
+
+    def _sign_headers(self, method: str, path: str) -> dict:
+        """Build signed auth headers for authenticated endpoints."""
+        if not self._private_key or not self.key_id:
+            raise ValueError(
+                "API key and private key required for authenticated requests"
+            )
+
+        timestamp_ms = str(int(time.time() * 1000))
+        message = f"{timestamp_ms}{method.upper()}{path}".encode()
+        signature = self._private_key.sign(  # type: ignore[call-arg,union-attr,arg-type]
+            message,
+            padding.PSS(
+                mgf=padding.MGF1(hashes.SHA256()),
+                salt_length=padding.PSS.DIGEST_LENGTH,
+            ),
+            hashes.SHA256(),
+        )
+        return {
+            "KALSHI-ACCESS-KEY": self.key_id,
+            "KALSHI-ACCESS-TIMESTAMP": timestamp_ms,
+            "KALSHI-ACCESS-SIGNATURE": base64.b64encode(signature).decode("utf-8"),
+            "Content-Type": "application/json",
+        }
+
+    def _get(self, path: str, params: dict = None, auth: bool = False) -> dict:
+        url = self.base_url + path
+        headers = self._sign_headers("GET", path) if auth else {}
+        resp = _request_with_retry(
+            "GET", url, headers=headers, params=params, timeout=10
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+    def _post(self, path: str, body: dict) -> dict:
+        url = self.base_url + path
+        headers = self._sign_headers("POST", path)
+        resp = _request_with_retry("POST", url, headers=headers, json=body, timeout=10)
+        resp.raise_for_status()
+        return resp.json()
+
+    def _delete(self, path: str) -> dict:
+        url = self.base_url + path
+        headers = self._sign_headers("DELETE", path)
+        resp = _request_with_retry("DELETE", url, headers=headers, timeout=10)
+        resp.raise_for_status()
+        return resp.json()
+
+    @staticmethod
+    def _validate(data: dict, expected_key: str, endpoint: str) -> None:
+        """Warn (don't crash) if the API response shape has changed."""
+        if not isinstance(data, dict) or expected_key not in data:
+            import warnings
+
+            actual = (
+                list(data.keys()) if isinstance(data, dict) else type(data).__name__
+            )
+            warnings.warn(
+                f"[Kalshi API] '{endpoint}' response missing '{expected_key}'. "
+                f"Actual keys: {actual}. The API may have changed.",
+                stacklevel=3,
+            )
+
+    # ── Public endpoints (no auth needed) ────────────────────────────────────
+
+    def get_markets(self, **params) -> list[dict]:
+        data = self._get("/markets", params=params or None)
+        self._validate(data, "markets", "/markets")
+        return data.get("markets", [])
+
+    def get_market(self, ticker: str) -> dict:
+        data = self._get(f"/markets/{ticker}")
+        self._validate(data, "market", f"/markets/{ticker}")
+        return data.get("market", {})
+
+    def get_orderbook(self, ticker: str) -> dict:
+        data = self._get(f"/markets/{ticker}/orderbook")
+        if "orderbook_fp" not in data and "orderbook" not in data:
+            self._validate(data, "orderbook", f"/markets/{ticker}/orderbook")
+        return data.get("orderbook_fp", data.get("orderbook", {}))
+
+    def get_events(self, **params) -> list[dict]:
+        data = self._get("/events", params=params or None)
+        self._validate(data, "events", "/events")
+        return data.get("events", [])
+
+    def get_series_list(self, **params) -> list[dict]:
+        data = self._get("/series", params=params or None)
+        self._validate(data, "series", "/series")
+        return data.get("series", [])
+
+    # ── Authenticated endpoints ───────────────────────────────────────────────
+
+    def get_balance(self) -> dict:
+        return self._get("/portfolio/balance", auth=True)
+
+    def get_positions(self) -> list[dict]:
+        data = self._get("/portfolio/positions", auth=True)
+        self._validate(data, "market_positions", "/portfolio/positions")
+        return data.get("market_positions", [])
+
+    def get_open_orders(self) -> list[dict]:
+        data = self._get("/portfolio/orders", params={"status": "resting"}, auth=True)
+        self._validate(data, "orders", "/portfolio/orders")
+        return data.get("orders", [])
+
+    def place_order(
+        self,
+        ticker: str,
+        side: str,
+        action: str,
+        count: float,
+        price: float,
+        time_in_force: str = "good_till_canceled",
+    ) -> dict:
+        """
+        Place a limit order.
+
+        Args:
+            ticker:  Market ticker, e.g. "KXHIGHNY-26APR09-T72"
+            side:    "yes" or "no"
+            action:  "buy" or "sell"
+            count:   Number of contracts
+            price:   Price in dollars, e.g. 0.65 means $0.65 per contract
+            time_in_force: "good_till_canceled", "fill_or_kill", "immediate_or_cancel"
+        """
+        body = {
+            "ticker": ticker,
+            "side": side,
+            "action": action,
+            "count_fp": f"{count:.2f}",
+            "time_in_force": time_in_force,
+        }
+        if side == "yes":
+            body["yes_price_dollars"] = f"{price:.4f}"
+        else:
+            body["no_price_dollars"] = f"{price:.4f}"
+        return self._post("/portfolio/orders", body)
+
+    def cancel_order(self, order_id: str) -> dict:
+        return self._delete(f"/portfolio/orders/{order_id}")
