@@ -32,7 +32,14 @@ from colors import (
 from consistency import find_violations
 from kalshi_client import KalshiClient
 from notify import alert_strong_signal
-from tracker import brier_score, get_history, log_prediction, sync_outcomes
+from tracker import (
+    brier_score,
+    get_calibration_by_city,
+    get_calibration_trend,
+    get_history,
+    log_prediction,
+    sync_outcomes,
+)
 from weather_markets import (
     CITY_COORDS,
     analyze_trade,
@@ -46,6 +53,76 @@ from weather_markets import (
 load_dotenv()
 
 REFRESH_SECS = 300  # watch mode interval
+
+
+# ── Startup checks ────────────────────────────────────────────────────────────
+
+
+def validate_env() -> bool:
+    """
+    Check that required .env variables are set before doing anything.
+    Prints a helpful setup message and returns False if not.
+    """
+    key_id = os.getenv("KALSHI_KEY_ID")
+    key_path = os.getenv("KALSHI_PRIVATE_KEY_PATH")
+
+    missing = []
+    if not key_id:
+        missing.append("KALSHI_KEY_ID")
+    if not key_path:
+        missing.append("KALSHI_PRIVATE_KEY_PATH")
+
+    if missing:
+        print(red("\n  Missing environment variables: " + ", ".join(missing)))
+        print(
+            dim("  Copy .env.example to .env and fill in your Kalshi API credentials.")
+        )
+        print(dim("  Get your keys at: kalshi.com → Account → API Keys\n"))
+        return False
+
+    if key_path and not Path(key_path).exists():
+        print(red(f"\n  Private key file not found: {key_path}"))
+        print(dim("  Check KALSHI_PRIVATE_KEY_PATH in your .env file.\n"))
+        return False
+
+    return True
+
+
+def validate_api_key(client: KalshiClient) -> bool:
+    """
+    Make a lightweight authenticated request to confirm credentials work.
+    Returns True if valid, prints an error and returns False if not.
+    """
+    try:
+        client.get_balance()
+        print(green("  ✓ API credentials valid\n"))
+        return True
+    except Exception as e:
+        msg = str(e)
+        if "401" in msg or "403" in msg or "Unauthorized" in msg:
+            print(red("  ✗ API credentials rejected by Kalshi."))
+            print(
+                dim("  Check your KALSHI_KEY_ID and KALSHI_PRIVATE_KEY_PATH in .env\n")
+            )
+        else:
+            print(yellow(f"  ⚠ Could not verify credentials: {e}"))
+            print(dim("  Continuing anyway — may fail on authenticated endpoints.\n"))
+        return False
+
+
+def cleanup_data_dir() -> None:
+    """Delete cached data files from previous dates to prevent unbounded growth."""
+    data_dir = Path(__file__).parent / "data"
+    if not data_dir.exists():
+        return
+    today = date.today().isoformat()
+    for f in data_dir.glob("*.json"):
+        # Files are named like "ensemble_NYC_2025-04-08.json"
+        if today not in f.name:
+            try:
+                f.unlink()
+            except OSError:
+                pass
 
 
 # ── Client ────────────────────────────────────────────────────────────────────
@@ -563,6 +640,40 @@ def cmd_history(client: KalshiClient):
             f"\n  Brier score: {bold(f'{bs:.4f}')}  {grade}  "
             f"{dim('(0.00=perfect, 0.25=random)')}"
         )
+
+        # ── Weekly calibration trend ─────────────────────────────────────────
+        trend = get_calibration_trend(weeks=8)
+        if len(trend) >= 2:
+            print(bold("\n  Weekly Brier trend (lower = improving):"))
+            for t in trend:
+                bar_len = int(t["brier"] * 40)
+                bar = "█" * bar_len
+                color = (
+                    green if t["brier"] < 0.18 else yellow if t["brier"] < 0.25 else red
+                )
+                print(f"    {t['week']}  {color(bar)}  {t['brier']:.4f}  (n={t['n']})")
+
+        # ── Per-city calibration ─────────────────────────────────────────────
+        city_cal = get_calibration_by_city()
+        if city_cal:
+            print(bold("\n  Calibration by city:"))
+            city_rows = []
+            for city, stats in sorted(city_cal.items()):
+                bias_str = (
+                    red(f"+{stats['bias']:.3f} (over)")
+                    if stats["bias"] > 0.03
+                    else green(f"{stats['bias']:+.3f} (under)")
+                    if stats["bias"] < -0.03
+                    else dim(f"{stats['bias']:+.3f}")
+                )
+                city_rows.append([city, f"{stats['brier']:.4f}", bias_str, stats["n"]])
+            print(
+                tabulate(
+                    city_rows,
+                    headers=["City", "Brier", "Bias", "N"],
+                    tablefmt="simple",
+                )
+            )
     else:
         print(dim("\n  Brier score will appear once markets settle."))
 
@@ -571,6 +682,8 @@ def cmd_history(client: KalshiClient):
 
 
 def cmd_balance(client: KalshiClient):
+    if not validate_api_key(client):
+        return
     data = client.get_balance()
     balance = data.get("balance", data)
     val = float(balance) / 100 if isinstance(balance, int) else float(balance)
@@ -1157,6 +1270,16 @@ def cmd_schedule():
 
 def main():
     args = sys.argv[1:]
+
+    # Skip env check for setup command so new users can run it without creds
+    if args and args[0].lower() == "setup":
+        cmd_setup()
+        return
+
+    if not validate_env():
+        sys.exit(1)
+
+    cleanup_data_dir()
 
     # No arguments → interactive menu
     if not args:

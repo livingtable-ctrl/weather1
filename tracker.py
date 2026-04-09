@@ -233,6 +233,73 @@ def get_history(limit: int = 50) -> list[dict]:
     return [dict(r) for r in rows]
 
 
+def get_calibration_trend(weeks: int = 8) -> list[dict]:
+    """
+    Brier score grouped by ISO week for the last N weeks.
+    Returns [{week, brier, n}, ...] oldest first.
+    Only includes weeks with at least one settled prediction.
+    """
+    init_db()
+    with _conn() as con:
+        rows = con.execute("""
+            SELECT
+                strftime('%Y-W%W', p.predicted_at) AS week,
+                p.our_prob,
+                o.settled_yes
+            FROM predictions p
+            JOIN outcomes o ON p.ticker = o.ticker
+            WHERE p.our_prob IS NOT NULL
+            ORDER BY week ASC
+        """).fetchall()
+
+    by_week: dict[str, list[float]] = {}
+    for r in rows:
+        by_week.setdefault(r["week"], []).append(
+            (r["our_prob"] - r["settled_yes"]) ** 2
+        )
+
+    result = []
+    for week, errors in sorted(by_week.items())[-weeks:]:
+        result.append(
+            {
+                "week": week,
+                "brier": sum(errors) / len(errors),
+                "n": len(errors),
+            }
+        )
+    return result
+
+
+def get_calibration_by_city() -> dict[str, dict]:
+    """
+    Per-city Brier score and sample count.
+    Returns {city: {brier, n, bias}} for cities with settled predictions.
+    """
+    init_db()
+    with _conn() as con:
+        rows = con.execute("""
+            SELECT p.city, p.our_prob, o.settled_yes
+            FROM predictions p
+            JOIN outcomes o ON p.ticker = o.ticker
+            WHERE p.our_prob IS NOT NULL AND p.city IS NOT NULL
+        """).fetchall()
+
+    by_city: dict[str, list] = {}
+    for r in rows:
+        by_city.setdefault(r["city"], []).append((r["our_prob"], r["settled_yes"]))
+
+    result = {}
+    for city, pairs in by_city.items():
+        errors = [(p - y) ** 2 for p, y in pairs]
+        biases = [p - y for p, y in pairs]
+        result[city] = {
+            "brier": sum(errors) / len(errors),
+            "bias": sum(biases) / len(biases),
+            "n": len(pairs),
+        }
+    return result
+
+
 def sync_outcomes(client) -> int:
     """
     Check settled markets in the DB against Kalshi and record outcomes.
