@@ -440,22 +440,30 @@ def _feels_like(
     return temp_f
 
 
-_MAE_WEIGHTS_CACHE: dict[str, dict[str, float]] = {}  # city -> weights, session cache
+_MAE_WEIGHTS_CACHE: dict[
+    tuple[str, int], dict[str, float]
+] = {}  # (city, days_back) -> weights, session cache
 
 
-def _weights_from_mae(city: str, min_n: int = 20) -> dict[str, float] | None:
+def _weights_from_mae(
+    city: str, min_n: int = 20, days_back: int = 60
+) -> dict[str, float] | None:
     """
     #25/#118: Derive per-model blend weights from inverse-MAE scores in tracker.
+    Uses a rolling days_back window (default 60 days) to capture recent model drift.
     Returns None if insufficient data (< min_n observations per model).
-    Lower MAE → higher weight.  Normalised so weights sum to the number of models.
+    Lower MAE → higher weight. Normalised so weights sum to the number of models.
     City-specific data is preferred; falls back to global MAE if city data is thin.
     """
-    if city in _MAE_WEIGHTS_CACHE:
-        return _MAE_WEIGHTS_CACHE[city]
+    cache_key = (city, days_back)
+    if cache_key in _MAE_WEIGHTS_CACHE:
+        return _MAE_WEIGHTS_CACHE[cache_key]
     try:
         from tracker import get_member_accuracy
 
-        acc = get_member_accuracy()  # {model: {mae, n, city_breakdown}}
+        acc = get_member_accuracy(
+            days_back=days_back
+        )  # {model: {mae, n, city_breakdown}}
     except Exception:
         return None
 
@@ -481,7 +489,7 @@ def _weights_from_mae(city: str, min_n: int = 20) -> dict[str, float] | None:
     total = sum(weights.values())
     n_models = len(weights)
     normalised = {m: v / total * n_models for m, v in weights.items()}
-    _MAE_WEIGHTS_CACHE[city] = normalised
+    _MAE_WEIGHTS_CACHE[cache_key] = normalised
     return normalised
 
 
@@ -534,7 +542,9 @@ def update_learned_weights_from_tracker(min_n: int = 20) -> dict:
     try:
         from tracker import get_member_accuracy
 
-        acc = get_member_accuracy()
+        acc = get_member_accuracy(
+            days_back=60
+        )  # use same 60-day window as _weights_from_mae
     except Exception:
         return {}
 
@@ -1188,6 +1198,18 @@ def _blend_weights(
 
 _ENS_STD_REF = 4.0  # °F — typical tight ensemble spread
 
+# Per-condition-type confidence multiplier applied on top of horizon discount (#14/#39).
+# Precipitation forecasts have higher irreducible uncertainty; snow requires two
+# thresholds (precip AND temperature), making it the hardest to forecast.
+_CONDITION_CONFIDENCE: dict[str, float] = {
+    "above": 1.00,
+    "below": 1.00,
+    "between": 1.00,
+    "precip_any": 0.90,
+    "precip_above": 0.85,
+    "precip_snow": 0.80,
+}
+
 
 def _confidence_scaled_blend_weights(
     days_out: int,
@@ -1446,26 +1468,29 @@ def _bootstrap_ci_precip(
     return (boot[min(int(n * 0.05), n - 1)], boot[min(int(n * 0.95), n - 1)])
 
 
-def edge_confidence(days_out: int) -> float:
-    """Horizon discount factor for edge signal (#63).
+def edge_confidence(days_out: int, condition_type: str | None = None) -> float:
+    """Horizon + condition discount factor for edge signal (#63/#14).
 
-    Far-out markets are noisier; this multiplier reduces effective edge used
-    for go/no-go decisions without touching Kelly size (which has its own
-    time_kelly_scale). Floor of 0.60 so strong far-out edges still pass MIN_EDGE.
+    Combines the existing piecewise horizon discount with a per-condition
+    multiplier from _CONDITION_CONFIDENCE. Precipitation and snow markets are
+    inherently harder to forecast, so their effective edge is discounted further.
 
-    Piecewise linear:
-      days_out 0–2  : 1.00  (full confidence)
+    Piecewise linear horizon:
+      days_out 0–2  : 1.00
       days_out 3–7  : linear 1.00 → 0.80
       days_out 8–14 : linear 0.80 → 0.60
-      days_out > 14 : 0.60  (floor)
+      days_out > 14 : 0.60 (floor)
     """
     if days_out <= 2:
-        return 1.0
-    if days_out <= 7:
-        return 1.0 - (days_out - 2) / 5.0 * 0.20
-    if days_out <= 14:
-        return 0.80 - (days_out - 7) / 7.0 * 0.20
-    return 0.60
+        horizon = 1.0
+    elif days_out <= 7:
+        horizon = 1.0 - (days_out - 2) / 5.0 * 0.20
+    elif days_out <= 14:
+        horizon = 0.80 - (days_out - 7) / 7.0 * 0.20
+    else:
+        horizon = 0.60
+    cond = _CONDITION_CONFIDENCE.get(condition_type or "", 1.0)
+    return round(horizon * cond, 4)
 
 
 def kelly_fraction(our_prob: float, price: float, fee_rate: float = 0.0) -> float:
@@ -1633,7 +1658,7 @@ def _analyze_precip_trade(
         from tracker import get_bias
 
         city = enriched.get("_city")
-        bias = get_bias(city, target_date.month)
+        bias = get_bias(city, target_date.month, condition_type=condition["type"])
         blended_prob = blended_prob - bias
     except Exception as _exc:
         # #109: log with ticker so failures are traceable
@@ -1679,7 +1704,12 @@ def _analyze_precip_trade(
     )
     if precip_consensus:
         ci_adj_kelly = round(ci_adj_kelly * 1.25, 6)
+    condition_type_scale = _CONDITION_CONFIDENCE.get(condition["type"], 1.0)
+    ci_adj_kelly = round(ci_adj_kelly * condition_type_scale, 6)
     ci_adj_kelly = min(ci_adj_kelly, 0.25)
+
+    _edge_conf = edge_confidence(days_out, condition_type=condition["type"])
+    adjusted_edge = net_edge * _edge_conf
 
     return {
         "forecast_prob": blended_prob,
@@ -1687,7 +1717,9 @@ def _analyze_precip_trade(
         "edge": edge,
         "signal": _edge_label(edge),
         "net_edge": net_edge,
-        "net_signal": _edge_label(net_edge),
+        "adjusted_edge": round(adjusted_edge, 6),
+        "edge_confidence_factor": _edge_conf,
+        "net_signal": _edge_label(adjusted_edge),
         "recommended_side": rec_side,
         "condition": condition,
         "forecast_temp": forecast_precip,  # precipitation in inches (reuses key for table display)
@@ -1788,9 +1820,15 @@ def _analyze_snow_trade(
         ci_low, ci_high = _bootstrap_ci_precip(precip_members, condition)
 
     # #39: Bayesian Kelly
-    ci_adj_kelly = min(
-        bayesian_kelly(ci_low, ci_high, entry_price, fee_rate=KALSHI_FEE_RATE), 0.25
+    ci_adj_kelly = bayesian_kelly(
+        ci_low, ci_high, entry_price, fee_rate=KALSHI_FEE_RATE
     )
+    condition_type_scale = _CONDITION_CONFIDENCE.get(condition["type"], 1.0)
+    ci_adj_kelly = round(ci_adj_kelly * condition_type_scale, 6)
+    ci_adj_kelly = min(ci_adj_kelly, 0.25)
+
+    _edge_conf = edge_confidence(days_out, condition_type=condition["type"])
+    adjusted_edge = net_edge * _edge_conf
 
     return {
         "forecast_prob": blended_prob,
@@ -1798,7 +1836,9 @@ def _analyze_snow_trade(
         "edge": edge,
         "signal": _edge_label(edge),
         "net_edge": net_edge,
-        "net_signal": _edge_label(net_edge),
+        "adjusted_edge": round(adjusted_edge, 6),
+        "edge_confidence_factor": _edge_conf,
+        "net_signal": _edge_label(adjusted_edge),
         "recommended_side": rec_side,
         "condition": condition,
         "forecast_temp": forecast.get("high_f") or forecast.get("temp_high") or 0.0,
@@ -2038,7 +2078,7 @@ def analyze_trade(enriched: dict) -> dict | None:
     try:
         from tracker import get_bias
 
-        bias = get_bias(city, target_date.month)
+        bias = get_bias(city, target_date.month, condition_type=condition["type"])
         blended_prob = max(0.01, min(0.99, blended_prob - bias))
     except Exception as _exc:
         # #109: log with ticker/city so failures are traceable
@@ -2151,7 +2191,7 @@ def analyze_trade(enriched: dict) -> dict | None:
         net_ev = p_win * payout * (1 - KALSHI_FEE_RATE) - blended_prob * entry_price
 
     net_edge = net_ev / entry_price if entry_price > 0 else 0.0
-    _edge_conf = edge_confidence(days_out)
+    _edge_conf = edge_confidence(days_out, condition_type=condition["type"])
     adjusted_edge = net_edge * _edge_conf
     net_signal = _edge_label(adjusted_edge)
     fee_adjusted_kelly = kelly_fraction(
@@ -2171,13 +2211,15 @@ def analyze_trade(enriched: dict) -> dict | None:
     # #39: Bayesian Kelly — integrate over uniform posterior on [ci_low, ci_high]
     # Then apply the same quality/anomaly/spread/time modifiers as before.
     bk = bayesian_kelly(ci_low, ci_high, entry_price, fee_rate=KALSHI_FEE_RATE)
+    condition_type_scale = _CONDITION_CONFIDENCE.get(condition["type"], 1.0)
     ci_adjusted_kelly = round(
         bk
         * quality_scale
         * anomaly_scale
         * spread_scale
         * time_kelly_scale
-        * _confidence_boost,
+        * _confidence_boost
+        * condition_type_scale,  # #39: scale down Kelly for harder-to-forecast conditions
         6,
     )
     ci_adjusted_kelly = min(ci_adjusted_kelly, 0.25)

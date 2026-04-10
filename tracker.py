@@ -963,18 +963,26 @@ def log_member_score(
         )
 
 
-def get_member_accuracy() -> dict:
+def get_member_accuracy(days_back: int = 60) -> dict:
     """
-    Return per-model accuracy stats.
+    Return per-model accuracy stats filtered to recent predictions.
+
+    days_back=60 captures ~one season transition while giving each model
+    enough observations (daily scoring ≈ 60 data points per city per model).
     Returns {model: {mae: float, n: int, city_breakdown: {city: mae}}}
     """
     init_db()
     with _conn() as con:
-        rows = con.execute("""
+        rows = con.execute(
+            """
             SELECT model, city, predicted_temp, actual_temp
             FROM ensemble_member_scores
-            WHERE predicted_temp IS NOT NULL AND actual_temp IS NOT NULL
-        """).fetchall()
+            WHERE predicted_temp IS NOT NULL
+              AND actual_temp IS NOT NULL
+              AND logged_at >= datetime('now', ? || ' days')
+            """,
+            (f"-{days_back}",),
+        ).fetchall()
 
     if not rows:
         return {}
@@ -989,7 +997,6 @@ def get_member_accuracy() -> dict:
     for model, entries in by_model.items():
         errors = [abs(p - a) for _, p, a in entries]
         mae = sum(errors) / len(errors)
-        # Per-city breakdown
         city_errs: dict[str, list[float]] = {}
         for city, p, a in entries:
             city_errs.setdefault(city, []).append(abs(p - a))
