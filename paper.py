@@ -1374,3 +1374,97 @@ def check_position_limits(
         "existing_cost": round(existing_cost, 4),
         "limit": max_cost_per_market,
     }
+
+
+# ── Slippage / fill simulation ────────────────────────────────────────────────
+
+
+def estimate_slippage(
+    quantity: float,
+    market_prob: float,
+    depth_scale: float = 50.0,
+) -> float:
+    """
+    #50: Estimate price slippage for a given order quantity.
+
+    Returns 0.0 for orders at or below depth_scale contracts.
+    For larger orders, slippage grows linearly with excess size:
+      slippage = (quantity - depth_scale) / depth_scale * 0.01
+    Capped at 0.05 (5 cents per contract).
+
+    market_prob is accepted for future extension (e.g. spread-based scaling)
+    but is unused in the current linear model.
+    """
+    if quantity <= depth_scale:
+        return 0.0
+    excess = quantity - depth_scale
+    slippage = (excess / depth_scale) * 0.01
+    return min(slippage, 0.05)
+
+
+def simulate_fill(
+    quantity: int,
+    market_prob: float,
+    volume: int = 500,
+    side: str = "yes",
+) -> tuple[float, float]:
+    """
+    #73 #74: Simulate a partial fill in a thin market.
+
+    If quantity <= 20% of volume: full fill (no slippage).
+    Else: partial fill at a random 50–90% of quantity.
+
+    Returns (filled_quantity, avg_fill_price) where avg_fill_price includes
+    slippage from estimate_slippage applied to the filled quantity.
+    """
+    import random
+
+    base_price = market_prob  # entry price = market_prob for YES side
+
+    fill_threshold = volume * 0.20
+    if quantity <= fill_threshold:
+        filled = float(quantity)
+    else:
+        fill_frac = random.uniform(0.50, 0.90)
+        filled = round(quantity * fill_frac, 2)
+
+    slippage = estimate_slippage(filled, market_prob)
+    avg_fill_price = base_price + (slippage if side == "yes" else -slippage)
+    avg_fill_price = max(0.01, min(0.99, avg_fill_price))
+
+    return (filled, round(avg_fill_price, 6))
+
+
+def calc_trade_pnl(trade: dict) -> float:
+    """
+    #15: Calculate realised P&L from a trade dict using the actual fill price.
+
+    Prefers trade["actual_fill_price"] over trade["entry_price"] so that
+    slippage is reflected in the P&L calculation.
+
+    YES side:
+      win  → (1.0 - fill_price) * quantity
+      loss → -fill_price * quantity
+
+    NO side:
+      win  → (1.0 - fill_price) * quantity
+      loss → -fill_price * quantity
+
+    (Both sides use the same formula because fill_price is always the cost
+    paid per contract regardless of direction.)
+    """
+    fill_price = trade.get("actual_fill_price") or trade.get("entry_price", 0.0)
+    quantity = trade.get("quantity", 1)
+    side = trade.get("side", "yes")
+    outcome = trade.get("outcome", "yes")  # "yes" = YES won
+
+    # Determine whether the bet was a winner
+    if side == "yes":
+        won = outcome == "yes"
+    else:
+        won = outcome == "no"
+
+    if won:
+        return (1.0 - fill_price) * quantity
+    else:
+        return -fill_price * quantity
