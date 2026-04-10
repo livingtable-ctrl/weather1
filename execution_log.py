@@ -60,6 +60,8 @@ def init_log() -> None:
         "ALTER TABLE orders ADD COLUMN fill_quantity INTEGER",
         "ALTER TABLE orders ADD COLUMN error_code TEXT",
         "ALTER TABLE orders ADD COLUMN error_type TEXT",
+        "ALTER TABLE orders ADD COLUMN forecast_cycle TEXT",
+        "ALTER TABLE orders ADD COLUMN live INTEGER DEFAULT 0",
     ]
     with _conn() as con:
         for stmt in migrations:
@@ -82,6 +84,8 @@ def log_order(
     fill_quantity: int | None = None,
     error_code: str | None = None,
     error_type: str | None = None,
+    forecast_cycle: str | None = None,
+    live: bool = False,
 ) -> int:
     """
     Record a live order attempt. Returns the new row ID.
@@ -93,8 +97,8 @@ def log_order(
             """
             INSERT INTO orders
               (ticker, side, quantity, price, order_type, status, response, error,
-               placed_at, fill_quantity, error_code, error_type)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+               placed_at, fill_quantity, error_code, error_type, forecast_cycle, live)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 ticker,
@@ -109,6 +113,8 @@ def log_order(
                 fill_quantity,
                 error_code,
                 error_type,
+                forecast_cycle,
+                int(live),
             ),
         )
         return cur.lastrowid or 0
@@ -160,6 +166,21 @@ def was_recently_ordered(ticker: str, side: str, within_minutes: int = 10) -> bo
             LIMIT 1
             """,
             (ticker, side, f"-{within_minutes} minutes"),
+        ).fetchone()
+    return row is not None
+
+
+def was_ordered_this_cycle(ticker: str, side: str, cycle: str) -> bool:
+    """Return True if an order for ticker+side was placed on this forecast cycle."""
+    init_log()
+    with _conn() as con:
+        row = con.execute(
+            """
+            SELECT 1 FROM orders
+            WHERE ticker = ? AND side = ? AND forecast_cycle = ? AND status != 'failed'
+            LIMIT 1
+            """,
+            (ticker, side, cycle),
         ).fetchone()
     return row is not None
 
