@@ -1150,3 +1150,113 @@ class TestCalibrationTrendUsesMarketDate(unittest.TestCase):
             self.assertIn("week", trend[0])
             self.assertIn("brier", trend[0])
             self.assertIn("n", trend[0])
+
+
+# ── Task 4: analyze_all_markets + get_analysis_bias (#55) ────────────────────
+
+
+class TestAnalyzeAllMarketsAndBias(unittest.TestCase):
+    """Tests for analyze_all_markets() and get_analysis_bias() (#55)."""
+
+    def setUp(self):
+        import tempfile
+
+        self._tmpdir = tempfile.mkdtemp()
+        self._orig = tracker.DB_PATH
+        tracker.DB_PATH = Path(self._tmpdir) / "test_analyze55.db"
+        tracker._db_initialized = False
+        tracker.init_db()
+
+    def tearDown(self):
+        tracker.DB_PATH = self._orig
+        tracker._db_initialized = False
+        import shutil
+
+        shutil.rmtree(self._tmpdir, ignore_errors=True)
+
+    def _make_enriched(self, ticker, city, our_prob, market_prob, edge, target_date):
+        return {
+            "ticker": ticker,
+            "city": city,
+            "target_date": target_date,
+            "analysis": {
+                "forecast_prob": our_prob,
+                "market_prob": market_prob,
+                "edge": edge,
+                "condition": {"type": "above", "threshold": 70.0},
+                "method": "ensemble",
+                "n_members": 20,
+            },
+        }
+
+    def test_analyze_all_markets_logs_all_items(self):
+        from datetime import date
+
+        enriched = [
+            self._make_enriched("TK-AM-1", "NYC", 0.70, 0.50, 0.20, date(2026, 4, 9)),
+            self._make_enriched("TK-AM-2", "CHI", 0.60, 0.55, 0.05, date(2026, 4, 9)),
+            self._make_enriched("TK-AM-3", "LAX", 0.45, 0.50, -0.05, date(2026, 4, 9)),
+        ]
+        tracker.analyze_all_markets(enriched)
+
+        import sqlite3
+
+        with sqlite3.connect(str(tracker.DB_PATH)) as con:
+            rows = con.execute("SELECT ticker FROM analysis_attempts").fetchall()
+        tickers = {r[0] for r in rows}
+        self.assertIn("TK-AM-1", tickers)
+        self.assertIn("TK-AM-2", tickers)
+        self.assertIn("TK-AM-3", tickers)
+
+    def test_analyze_all_markets_stores_correct_probs(self):
+        from datetime import date
+
+        enriched = [
+            self._make_enriched(
+                "TK-PROB-1", "NYC", 0.72, 0.48, 0.24, date(2026, 4, 10)
+            ),
+        ]
+        tracker.analyze_all_markets(enriched)
+
+        import sqlite3
+
+        with sqlite3.connect(str(tracker.DB_PATH)) as con:
+            row = con.execute(
+                "SELECT forecast_prob, market_prob FROM analysis_attempts WHERE ticker=?",
+                ("TK-PROB-1",),
+            ).fetchone()
+        self.assertIsNotNone(row)
+        self.assertAlmostEqual(row[0], 0.72)
+        self.assertAlmostEqual(row[1], 0.48)
+
+    def test_get_analysis_bias_returns_none_with_no_outcomes(self):
+        from datetime import date
+
+        enriched = [
+            self._make_enriched("TK-BIAS-X", "NYC", 0.80, 0.50, 0.30, date(2026, 4, 9)),
+        ]
+        tracker.analyze_all_markets(enriched)
+        result = tracker.get_analysis_bias()
+        self.assertIsNone(result)
+
+    def test_get_analysis_bias_computes_mean_bias(self):
+        from datetime import date
+
+        enriched = [
+            self._make_enriched("TK-BIAS-1", "NYC", 0.80, 0.50, 0.30, date(2026, 4, 1)),
+            self._make_enriched("TK-BIAS-2", "CHI", 0.60, 0.50, 0.10, date(2026, 4, 2)),
+        ]
+        tracker.analyze_all_markets(enriched)
+        tracker.log_outcome("TK-BIAS-1", True)
+        tracker.log_outcome("TK-BIAS-2", False)
+        result = tracker.get_analysis_bias()
+        self.assertIsNotNone(result)
+        self.assertAlmostEqual(result, 0.20, places=4)
+
+    def test_analyze_all_markets_empty_list_is_noop(self):
+        tracker.analyze_all_markets([])
+        import sqlite3
+
+        with sqlite3.connect(str(tracker.DB_PATH)) as con:
+            count = con.execute("SELECT COUNT(*) FROM analysis_attempts").fetchone()[0]
+        self.assertEqual(count, 0)
