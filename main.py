@@ -672,36 +672,42 @@ def _resolve_price(client: KalshiClient, ticker: str, side: str) -> float | None
 
 
 def _prompt_price() -> float | None:
-    """Ask the user to type a price; returns None if invalid or empty."""
-    raw = input(dim("  No live quote — enter price (0–1): ")).strip()
-    if not raw:
-        print(dim("  Cancelled."))
-        return None
-    try:
-        p = float(raw)
-        if not 0 < p < 1:
-            print(red("  Price must be between 0 and 1."))
+    """Prompt for a price; loops on empty/invalid input, 'q' to cancel."""
+    while True:
+        raw = input(dim("  No live quote — enter price 0–1 (q to cancel): ")).strip()
+        if raw.lower() == "q":
             return None
-        return p
-    except ValueError:
-        print(red("  Invalid price."))
-        return None
+        if not raw:
+            continue
+        try:
+            p = float(raw)
+            if 0 < p < 1:
+                return p
+            print(red("  Price must be strictly between 0 and 1."))
+        except ValueError:
+            print(red("  Enter a decimal like 0.45"))
 
 
 def _quick_paper_buy(client: KalshiClient) -> None:
     """Prompt to paper-buy a ticker directly after seeing analyze output."""
     try:
-        ticker = (
-            input(dim("\n  Quick paper buy — enter ticker (or Enter to skip): "))
-            .strip()
-            .upper()
-        )
-        if not ticker:
-            return
-        side = input(dim(f"  Side for {ticker} (yes/no): ")).strip().lower()
-        if side not in ("yes", "no"):
-            print(dim("  Cancelled."))
-            return
+        while True:
+            raw = input(dim("\n  Quick paper buy — ticker (q to skip): ")).strip()
+            if raw.lower() == "q":
+                return
+            if raw:
+                ticker = raw.upper()
+                break
+        while True:
+            side = (
+                input(dim(f"  Side for {ticker} (yes/no, q to cancel): "))
+                .strip()
+                .lower()
+            )
+            if side == "q":
+                return
+            if side in ("yes", "no"):
+                break
         price = _resolve_price(client, ticker, side)
         if price is None:
             price = _prompt_price()
@@ -1488,14 +1494,25 @@ def _cmd_settle_open(client: KalshiClient | None = None) -> None:  # noqa: ARG00
         )
     )
     try:
-        raw = input(dim("\n  Trade # to settle (or Enter to cancel): ")).strip()
-        if not raw:
-            return
-        trade_id = int(raw)
-        outcome_raw = input(dim("  Outcome (yes/no): ")).strip().lower()
-        if outcome_raw not in ("yes", "no"):
-            print(red("  Must be 'yes' or 'no'."))
-            return
+        while True:
+            raw = input(dim("\n  Trade # to settle (q to cancel): ")).strip()
+            if raw.lower() == "q":
+                return
+            if not raw:
+                continue
+            try:
+                trade_id = int(raw)
+                break
+            except ValueError:
+                print(red("  Enter a trade number."))
+        while True:
+            outcome_raw = (
+                input(dim("  Outcome (yes/no, q to cancel): ")).strip().lower()
+            )
+            if outcome_raw == "q":
+                return
+            if outcome_raw in ("yes", "no"):
+                break
         t = settle_paper_trade(trade_id, outcome_raw == "yes")
         pnl = t.get("pnl", 0.0) or 0.0
         pnl_s = green(f"+${pnl:.2f}") if pnl >= 0 else red(f"-${abs(pnl):.2f}")
@@ -1505,8 +1522,8 @@ def _cmd_settle_open(client: KalshiClient | None = None) -> None:  # noqa: ARG00
                 f"P&L: {pnl_s}  Balance: ${get_balance():.2f}"
             )
         )
-    except (ValueError, KeyboardInterrupt, EOFError):
-        print(dim("  Cancelled."))
+    except (KeyboardInterrupt, EOFError):
+        print()
 
 
 def _menu_watch(client: KalshiClient) -> None:
@@ -1637,13 +1654,24 @@ def cmd_menu(client: KalshiClient):
             print(dim("Goodbye."))
             break
         elif name == "Market":
-            ticker = input("  Ticker: ").strip().upper()
-            verbose = input("  Verbose detail? (y/N): ").strip().lower() == "y"
-            if ticker:
-                cmd_market(client, ticker, verbose=verbose)
+            while True:
+                raw = input("  Ticker (q to cancel): ").strip()
+                if raw.lower() == "q":
+                    break
+                if raw:
+                    verbose = input("  Verbose detail? (y/N): ").strip().lower() == "y"
+                    cmd_market(client, raw.upper(), verbose=verbose)
+                    break
         elif name == "Forecast":
-            city = input(f"  City ({'/'.join(CITY_COORDS.keys())}): ").strip()
-            cmd_forecast(city)
+            while True:
+                city = input(
+                    f"  City ({'/'.join(CITY_COORDS.keys())}, q to cancel): "
+                ).strip()
+                if city.lower() == "q":
+                    break
+                if city:
+                    cmd_forecast(city)
+                    break
         elif name == "Paper":
             print(bold("\n  Paper trading:\n"))
             print(
@@ -1659,27 +1687,38 @@ def cmd_menu(client: KalshiClient):
             if sub == "1":
                 cmd_paper(["results"], client)
             elif sub == "2":
-                ticker = input(dim("  Ticker: ")).strip().upper()
-                if ticker:
-                    side = input(dim("  Side (yes/no): ")).strip().lower()
-                    if side in ("yes", "no"):
-                        price = _resolve_price(client, ticker, side)
-                        if price is None:
-                            price = _prompt_price()
-                        if price is not None:
-                            raw_qty = input(
-                                dim("  Qty (Enter for Kelly auto-size): ")
-                            ).strip()
-                            qty_arg = (
-                                [raw_qty]
-                                if raw_qty.isdigit() and int(raw_qty) > 0
-                                else []
-                            )
-                            cmd_paper(
-                                ["buy", ticker, side, f"{price:.3f}"] + qty_arg, client
-                            )
-                    else:
-                        print(dim("  Cancelled."))
+                while True:
+                    raw = input(dim("  Ticker (q to cancel): ")).strip()
+                    if raw.lower() == "q":
+                        break
+                    if not raw:
+                        continue
+                    ticker = raw.upper()
+                    while True:
+                        side = (
+                            input(dim("  Side (yes/no, q to cancel): ")).strip().lower()
+                        )
+                        if side == "q":
+                            ticker = ""
+                            break
+                        if side in ("yes", "no"):
+                            break
+                    if not ticker:
+                        break
+                    price = _resolve_price(client, ticker, side)
+                    if price is None:
+                        price = _prompt_price()
+                    if price is not None:
+                        raw_qty = input(
+                            dim("  Qty (Enter for Kelly auto-size): ")
+                        ).strip()
+                        qty_arg = (
+                            [raw_qty] if raw_qty.isdigit() and int(raw_qty) > 0 else []
+                        )
+                        cmd_paper(
+                            ["buy", ticker, side, f"{price:.3f}"] + qty_arg, client
+                        )
+                    break
             elif sub == "3":
                 _cmd_settle_open(client)
         elif fn is not None:
