@@ -440,22 +440,30 @@ def _feels_like(
     return temp_f
 
 
-_MAE_WEIGHTS_CACHE: dict[str, dict[str, float]] = {}  # city -> weights, session cache
+_MAE_WEIGHTS_CACHE: dict[
+    tuple, dict[str, float]
+] = {}  # (city, days_back) -> weights, session cache
 
 
-def _weights_from_mae(city: str, min_n: int = 20) -> dict[str, float] | None:
+def _weights_from_mae(
+    city: str, min_n: int = 20, days_back: int = 60
+) -> dict[str, float] | None:
     """
     #25/#118: Derive per-model blend weights from inverse-MAE scores in tracker.
+    Uses a rolling days_back window (default 60 days) to capture recent model drift.
     Returns None if insufficient data (< min_n observations per model).
-    Lower MAE → higher weight.  Normalised so weights sum to the number of models.
+    Lower MAE → higher weight. Normalised so weights sum to the number of models.
     City-specific data is preferred; falls back to global MAE if city data is thin.
     """
-    if city in _MAE_WEIGHTS_CACHE:
-        return _MAE_WEIGHTS_CACHE[city]
+    cache_key = (city, days_back)
+    if cache_key in _MAE_WEIGHTS_CACHE:
+        return _MAE_WEIGHTS_CACHE[cache_key]
     try:
         from tracker import get_member_accuracy
 
-        acc = get_member_accuracy()  # {model: {mae, n, city_breakdown}}
+        acc = get_member_accuracy(
+            days_back=days_back
+        )  # {model: {mae, n, city_breakdown}}
     except Exception:
         return None
 
@@ -481,7 +489,7 @@ def _weights_from_mae(city: str, min_n: int = 20) -> dict[str, float] | None:
     total = sum(weights.values())
     n_models = len(weights)
     normalised = {m: v / total * n_models for m, v in weights.items()}
-    _MAE_WEIGHTS_CACHE[city] = normalised
+    _MAE_WEIGHTS_CACHE[cache_key] = normalised
     return normalised
 
 
