@@ -103,3 +103,19 @@ class TestSuggestedBetsEndpoint:
         assert data["bets"] == []
         assert "balance" in data
         assert "generated_at" in data
+
+    @patch("paper.get_balance", return_value=100.0)
+    @patch("weather_markets.get_weather_markets", side_effect=RuntimeError("API down"))
+    def test_market_fetch_failure_returns_500(self, mock_markets, mock_balance):
+        """Returns 500 with error key when get_weather_markets raises."""
+        from web_app import _build_app
+
+        app = _build_app(object())
+        app.config["TESTING"] = True
+        with app.test_client() as client:
+            resp = client.get("/api/suggested_bets")
+
+        assert resp.status_code == 500
+        data = resp.get_json()
+        assert "error" in data
+        assert data["bets"] == []
