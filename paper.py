@@ -666,6 +666,60 @@ def covariance_kelly_scale(
     return round(scale, 4)
 
 
+def portfolio_kelly(positions: list[dict]) -> list[float]:
+    """
+    #51: Compute correlation-adjusted Kelly fractions for a list of positions.
+
+    Each position dict must have keys: city, side, our_prob, market_prob, quantity.
+    Returns a list of floats (same length as positions) with each Kelly fraction in [0.0, 0.25].
+    """
+    if not positions:
+        return []
+
+    from weather_markets import kelly_fraction
+
+    n = len(positions)
+
+    raw_kelly: list[float] = []
+    sigmas: list[float] = []
+    for pos in positions:
+        our_p = float(pos.get("our_prob", 0.5))
+        mkt_p = float(pos.get("market_prob", 0.5))
+        side = pos.get("side", "yes")
+        win_p = our_p if side == "yes" else 1.0 - our_p
+        win_p = max(0.01, min(0.99, win_p))
+        rk = kelly_fraction(win_p, mkt_p)
+        raw_kelly.append(max(0.0, min(0.25, rk)))
+        sigmas.append((win_p * (1 - win_p)) ** 0.5)
+
+    scaled: list[float] = []
+    for i in range(n):
+        city_i = positions[i].get("city") or ""
+        qty_i = max(1, int(positions[i].get("quantity", 1)))
+        total_corr_weight = 0.0
+
+        for j in range(n):
+            if i == j:
+                continue
+            city_j = positions[j].get("city") or ""
+            qty_j = max(1, int(positions[j].get("quantity", 1)))
+            pair = frozenset({city_i, city_j})
+            corr = _CITY_PAIR_CORR.get(pair, 0.0)
+            if corr > 0 and sigmas[i] > 0 and sigmas[j] > 0:
+                w_j = qty_j / max(qty_i, 1)
+                total_corr_weight += corr * sigmas[j] * w_j
+
+        if total_corr_weight > 0 and sigmas[i] > 0:
+            marginal_ratio = 1.0 + 2.0 * total_corr_weight / sigmas[i]
+            scale = max(0.3, 1.0 - (marginal_ratio - 1.0) * 0.35)
+        else:
+            scale = 1.0
+
+        scaled.append(round(raw_kelly[i] * scale, 6))
+
+    return scaled
+
+
 def slippage_kelly_scale(market: dict, quantity: int) -> float:
     """
     Return a 0.5–1.0 multiplier to reduce Kelly sizing based on market liquidity.

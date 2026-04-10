@@ -508,3 +508,130 @@ class TestSlippageAdjustedPrice:
             assert trade["actual_fill_price"] != trade["entry_price"]
         finally:
             shutil.rmtree(tmpdir, ignore_errors=True)
+
+
+class TestPortfolioKelly:
+    """#51: portfolio_kelly returns correlation-adjusted Kelly fractions."""
+
+    def test_single_position_returns_list_of_one(self):
+        """Single uncorrelated position returns its own Kelly fraction unchanged."""
+        from paper import portfolio_kelly
+
+        positions = [
+            {
+                "city": "NYC",
+                "side": "yes",
+                "our_prob": 0.65,
+                "market_prob": 0.50,
+                "quantity": 10,
+            }
+        ]
+        result = portfolio_kelly(positions)
+        assert len(result) == 1
+        assert 0.0 <= result[0] <= 0.25
+
+    def test_correlated_positions_reduce_fractions(self):
+        """Highly correlated city pair should produce lower fractions than independent."""
+        from paper import portfolio_kelly
+
+        correlated = [
+            {
+                "city": "NYC",
+                "side": "yes",
+                "our_prob": 0.65,
+                "market_prob": 0.50,
+                "quantity": 10,
+            },
+            {
+                "city": "Boston",
+                "side": "yes",
+                "our_prob": 0.65,
+                "market_prob": 0.50,
+                "quantity": 10,
+            },
+        ]
+        independent = [
+            {
+                "city": "NYC",
+                "side": "yes",
+                "our_prob": 0.65,
+                "market_prob": 0.50,
+                "quantity": 10,
+            },
+            {
+                "city": "Dallas",
+                "side": "yes",
+                "our_prob": 0.65,
+                "market_prob": 0.50,
+                "quantity": 10,
+            },
+        ]
+        corr_fracs = portfolio_kelly(correlated)
+        indep_fracs = portfolio_kelly(independent)
+        assert sum(corr_fracs) <= sum(indep_fracs)
+
+    def test_all_fractions_non_negative(self):
+        """All returned fractions must be >= 0."""
+        from paper import portfolio_kelly
+
+        positions = [
+            {
+                "city": "NYC",
+                "side": "yes",
+                "our_prob": 0.70,
+                "market_prob": 0.50,
+                "quantity": 5,
+            },
+            {
+                "city": "Boston",
+                "side": "no",
+                "our_prob": 0.60,
+                "market_prob": 0.45,
+                "quantity": 3,
+            },
+            {
+                "city": "Chicago",
+                "side": "yes",
+                "our_prob": 0.55,
+                "market_prob": 0.50,
+                "quantity": 8,
+            },
+        ]
+        result = portfolio_kelly(positions)
+        assert all(f >= 0.0 for f in result)
+
+    def test_returns_same_length_as_input(self):
+        """Output list length must match input list length."""
+        from paper import portfolio_kelly
+
+        positions = [
+            {
+                "city": "LA",
+                "side": "yes",
+                "our_prob": 0.60,
+                "market_prob": 0.50,
+                "quantity": 2,
+            },
+            {
+                "city": "Phoenix",
+                "side": "yes",
+                "our_prob": 0.65,
+                "market_prob": 0.55,
+                "quantity": 4,
+            },
+            {
+                "city": "Miami",
+                "side": "no",
+                "our_prob": 0.58,
+                "market_prob": 0.52,
+                "quantity": 6,
+            },
+        ]
+        result = portfolio_kelly(positions)
+        assert len(result) == len(positions)
+
+    def test_empty_positions_returns_empty_list(self):
+        """Empty input returns empty output."""
+        from paper import portfolio_kelly
+
+        assert portfolio_kelly([]) == []
