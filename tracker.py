@@ -1553,16 +1553,23 @@ def get_unselected_bias(city: str, condition_type: str | None = None) -> float:
     init_db()
     try:
         with _conn() as con:
-            rows = con.execute(
-                """SELECT forecast_prob, outcome FROM analysis_attempts
-                   WHERE city=? AND was_traded=0 AND outcome IS NOT NULL""",
-                (city,),
-            ).fetchall()
+            if condition_type:
+                rows = con.execute(
+                    """SELECT forecast_prob, outcome FROM analysis_attempts
+                       WHERE city=? AND condition=? AND was_traded=0 AND outcome IS NOT NULL""",
+                    (city, condition_type),
+                ).fetchall()
+            else:
+                rows = con.execute(
+                    """SELECT forecast_prob, outcome FROM analysis_attempts
+                       WHERE city=? AND was_traded=0 AND outcome IS NOT NULL""",
+                    (city,),
+                ).fetchall()
     except Exception as exc:
         _log.warning("get_unselected_bias failed for %s: %s", city, exc)
         return 0.0
 
     if not rows:
         return 0.0
-    errors = [r[0] - r[1] for r in rows]
-    return sum(errors) / len(errors)
+    errors = [fp - o for fp, o in rows]
+    return round(sum(errors) / len(errors), 4)

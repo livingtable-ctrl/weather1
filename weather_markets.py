@@ -1636,7 +1636,9 @@ def _analyze_snow_trade(
         ens_prob = clim_prior
 
     # ── Blend ensemble with climatological prior ──────────────────────────────
-    w_ens, w_clim, _ = _blend_weights(days_out, has_nws=False, has_clim=True)
+    w_ens, w_clim, _ = _confidence_scaled_blend_weights(
+        days_out, has_nws=False, has_clim=True, ens_std=None
+    )
     blended_prob = ens_prob * w_ens + clim_prior * w_clim
     blended_prob = max(0.01, min(0.99, blended_prob))
 
