@@ -255,3 +255,21 @@ def test_execution_log_write_raises_on_failure(tmp_path, monkeypatch):
     )
     with pytest.raises((RuntimeError, OSError)):
         execution_log.append_entry({"action": "test"}, tmp_path / "exec_log.json")
+
+
+# ── HTTPAdapter Retry parameters (#67) ────────────────────────────────────────
+
+
+def test_session_retry_parameters():
+    """Verify HTTPAdapter Retry has exactly total=3, backoff_factor=1, correct status_forcelist."""
+    from kalshi_client import _build_session
+
+    session = _build_session()
+    adapter = session.get_adapter("https://")
+    retry = adapter.max_retries
+    assert retry.total == 3
+    assert retry.backoff_factor == 1.0
+    assert 429 in retry.status_forcelist
+    assert 500 in retry.status_forcelist
+    assert 502 in retry.status_forcelist
+    assert 503 in retry.status_forcelist
