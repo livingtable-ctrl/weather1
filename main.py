@@ -41,8 +41,11 @@ from tracker import (
     get_calibration_by_city,
     get_calibration_by_type,
     get_calibration_trend,
+    get_confusion_matrix,
+    get_edge_decay_curve,
     get_history,
     get_market_calibration,
+    get_roc_auc,
     get_source_reliability,
     init_db,
     log_prediction,
@@ -51,12 +54,14 @@ from tracker import (
 from utils import MIN_EDGE, STRONG_EDGE
 from weather_markets import (
     CITY_COORDS,
+    _feels_like,
     analyze_trade,
     enrich_with_forecast,
     get_weather_forecast,
     get_weather_markets,
     is_liquid,
     parse_market_price,
+    save_learned_weights,
 )
 
 load_dotenv()
@@ -492,6 +497,23 @@ def cmd_market(client: KalshiClient, ticker: str, verbose: bool = False):
         high_str = bold(f"{forecast['high_f']:.1f}°F")
         range_str = dim(f"({hi_lo[0]:.0f}–{hi_lo[1]:.0f}° across {models} models)")
         _kv("Forecast:", f"{high_str} high  {range_str}")
+        # Feels-like temperature (wind chill / heat index)
+        try:
+            fl = _feels_like(forecast["high_f"])
+            if abs(fl - forecast["high_f"]) >= 3.0:
+                _kv("Feels like:", f"{fl:.1f}°F")
+        except Exception:
+            pass
+
+    # Whale detection
+    volume = market.get("volume", 0) or 0
+    open_interest = market.get("open_interest", 0) or 0
+    if volume > 5000 or open_interest > 2000:
+        print(
+            yellow(
+                f"  ⚠  WHALE ALERT — volume: {volume:,}  open interest: {open_interest:,}"
+            )
+        )
 
     if analysis:
         edge = analysis["edge"]
@@ -1134,6 +1156,21 @@ def _quick_paper_buy(client: KalshiClient) -> None:
                 return
 
             if qty and qty > 0:
+                # Check position limits before placing
+                try:
+                    from paper import check_position_limits as _cpl
+
+                    _limit_check = _cpl(ticker, qty, price)
+                    if not _limit_check.get("allowed", True):
+                        print(
+                            red(
+                                f"  Position limit check failed: {_limit_check.get('reason', 'limit exceeded')}"
+                            )
+                        )
+                        return
+                except Exception:
+                    pass
+
                 from paper import get_balance as _gb_qpb
                 from paper import place_paper_order
 
@@ -1608,6 +1645,7 @@ def cmd_watch(client: KalshiClient, auto_trade: bool = False, min_edge: float = 
             )
         )
     previous: set = _load_watch_state()
+    _price_history: dict[str, float] = {}
     try:
         while True:
             os.system("cls" if sys.platform == "win32" else "clear")
@@ -1615,6 +1653,25 @@ def cmd_watch(client: KalshiClient, auto_trade: bool = False, min_edge: float = 
             print(bold(f"Kalshi Weather Markets — {now}"))
             print(dim("─" * 52))
             print(dim("* = new since last scan   Ctrl+C to exit\n"))
+            # Price drift detection — check all liquid markets
+            try:
+                _drift_markets = get_weather_markets(client)
+                for _dm in _drift_markets:
+                    _dt = _dm.get("ticker", "")
+                    _dp = parse_market_price(_dm).get("yes_ask", 0.0) or 0.0
+                    if _dt in _price_history and _dp > 0:
+                        _delta = _dp - _price_history[_dt]
+                        if abs(_delta) >= 0.03:
+                            _dir = "▲" if _delta > 0 else "▼"
+                            print(
+                                yellow(
+                                    f"  [Price drift] {_dt}  YES ask {_dir} {abs(_delta):.2f}  ({_price_history[_dt]:.2f} → {_dp:.2f})"
+                                )
+                            )
+                    if _dp > 0:
+                        _price_history[_dt] = _dp
+            except Exception:
+                pass
             liquid_opps: list = []
             previous = _analyze_once(
                 client,
@@ -2013,6 +2070,74 @@ def cmd_history(client: KalshiClient):
                 tablefmt="rounded_outline",
             )
         )
+
+    # ── Model Analytics ───────────────────────────────────────────────────────
+    try:
+        print(bold("\n  ── Model Analytics ──"))
+        # Confusion matrix
+        cm = get_confusion_matrix()
+        if cm:
+            tp = cm.get("tp", 0)
+            fp = cm.get("fp", 0)
+            tn = cm.get("tn", 0)
+            fn = cm.get("fn", 0)
+            precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
+            recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
+            f1 = (
+                2 * precision * recall / (precision + recall)
+                if (precision + recall) > 0
+                else 0.0
+            )
+            cm_rows = [
+                ["Actual YES", tp, fp],
+                ["Actual NO", fn, tn],
+            ]
+            print(
+                tabulate(
+                    cm_rows,
+                    headers=["", "Pred YES", "Pred NO"],
+                    tablefmt="rounded_outline",
+                )
+            )
+            print(
+                f"  Precision: {precision:.2%}  |  Recall: {recall:.2%}  |  F1: {f1:.2%}"
+            )
+        # ROC-AUC
+        roc = get_roc_auc()
+        if roc and roc.get("auc") is not None:
+            auc = roc["auc"]
+            auc_color = green if auc >= 0.7 else yellow if auc >= 0.6 else red
+            print(f"  ROC-AUC: {auc_color(f'{auc:.3f}')}")
+        # Edge decay curve
+        decay = get_edge_decay_curve()
+        if decay:
+            print(bold("\n  Edge decay by days-to-expiry:"))
+            decay_rows = []
+            for bucket in decay:
+                avg_edge = bucket.get("avg_edge", 0.0)
+                edge_s = (
+                    green(f"{avg_edge:+.1%}")
+                    if avg_edge > 0
+                    else red(f"{avg_edge:+.1%}")
+                    if avg_edge < 0
+                    else dim(f"{avg_edge:+.1%}")
+                )
+                decay_rows.append(
+                    [
+                        bucket.get("days_label", "?"),
+                        edge_s,
+                        bucket.get("n", 0),
+                    ]
+                )
+            print(
+                tabulate(
+                    decay_rows,
+                    headers=["Days out", "Avg edge", "N"],
+                    tablefmt="rounded_outline",
+                )
+            )
+    except Exception:
+        pass
 
 
 # ── Dashboard ────────────────────────────────────────────────────────────────
@@ -2971,6 +3096,104 @@ def _cmd_alerts() -> None:
                 print()
 
 
+# ── Walk-forward test ─────────────────────────────────────────────────────────
+
+
+def cmd_walkforward(client: KalshiClient) -> None:
+    """Run a walk-forward validation and display stability metrics."""
+    from backtest import run_walk_forward
+
+    _header("Walk-Forward Validation")
+    print(dim("  Running walk-forward test (this may take a moment)...\n"))
+    try:
+        result = run_walk_forward(client)
+    except Exception as e:
+        print(red(f"  Walk-forward test failed: {e}"))
+        return
+
+    avg_brier = result.get("avg_brier")
+    avg_win_rate = result.get("avg_win_rate")
+    stability_score = result.get("stability_score")
+    trend = result.get("trend", "")
+
+    brier_s = (
+        green(f"{avg_brier:.4f}")
+        if avg_brier is not None and avg_brier < 0.18
+        else yellow(f"{avg_brier:.4f}")
+        if avg_brier is not None and avg_brier < 0.25
+        else red(f"{avg_brier:.4f}")
+        if avg_brier is not None
+        else dim("—")
+    )
+    wr_s = (
+        green(f"{avg_win_rate:.1%}")
+        if avg_win_rate is not None and avg_win_rate > 0.55
+        else f"{avg_win_rate:.1%}"
+        if avg_win_rate is not None
+        else dim("—")
+    )
+    stab_s = (
+        green(f"{stability_score:.3f}")
+        if stability_score is not None and stability_score > 0.7
+        else yellow(f"{stability_score:.3f}")
+        if stability_score is not None and stability_score > 0.5
+        else red(f"{stability_score:.3f}")
+        if stability_score is not None
+        else dim("—")
+    )
+    trend_s = (
+        (
+            green(trend)
+            if "improv" in trend.lower()
+            else red(trend)
+            if "degrad" in trend.lower()
+            else dim(trend)
+        )
+        if trend
+        else dim("—")
+    )
+
+    wf_rows = [
+        ["Avg Brier", brier_s],
+        ["Avg Win Rate", wr_s],
+        ["Stability Score", stab_s],
+        ["Trend", trend_s],
+    ]
+    print(tabulate(wf_rows, headers=["Metric", "Value"], tablefmt="rounded_outline"))
+
+    # Offer to save learned weights if city_win_rates is populated
+    city_win_rates = result.get("city_win_rates", {})
+    if city_win_rates:
+        print(
+            f"\n  Walk-forward learned win rates for {len(city_win_rates)} city/type(s)."
+        )
+        try:
+            save_choice = (
+                input(dim("  Save as learned weights? (y/N): ")).strip().lower()
+            )
+            if save_choice == "y":
+                save_learned_weights(city_win_rates)
+                print(green("  Learned weights saved."))
+        except (KeyboardInterrupt, EOFError):
+            print()
+
+
+# ── Weekly PDF report ─────────────────────────────────────────────────────────
+
+
+def cmd_report() -> None:
+    """Generate a weekly PDF/text report and print the output path."""
+    from pdf_report import generate_weekly_report
+
+    _header("Weekly Report")
+    print(dim("  Generating weekly report...\n"))
+    try:
+        out_path = generate_weekly_report()
+        print(green(f"  Report saved → {out_path}"))
+    except Exception as e:
+        print(red(f"  Failed to generate report: {e}"))
+
+
 # ── Interactive menu ──────────────────────────────────────────────────────────
 
 
@@ -3092,6 +3315,8 @@ def cmd_menu(client: KalshiClient):
         ("W", "Watch   ", "live auto-refresh dashboard"),
         ("P", "Paper   ", "trades, alerts, results, settle"),
         ("K", "Backtest", "score model on history"),
+        ("V", "Validate", "walk-forward model validation"),
+        ("X", "Report  ", "generate weekly PDF/HTML report"),
         ("R", "Brief   ", "daily morning summary"),
         ("B", "Browse  ", "explore markets by city"),
         ("S", "Settings", "view & edit thresholds"),
@@ -3276,6 +3501,22 @@ def cmd_menu(client: KalshiClient):
                         qty_arg = (
                             [raw_qty] if raw_qty.isdigit() and int(raw_qty) > 0 else []
                         )
+                        # Check position limits before submenu buy
+                        if raw_qty.isdigit() and int(raw_qty) > 0:
+                            try:
+                                from paper import check_position_limits as _cpl_sub
+
+                                _limit_sub = _cpl_sub(ticker, int(raw_qty), price)
+                                if not _limit_sub.get("allowed", True):
+                                    print(
+                                        red(
+                                            f"  Position limit check failed: {_limit_sub.get('reason', 'limit exceeded')}"
+                                        )
+                                    )
+                                    break
+                            except Exception:
+                                pass
+
                         # Large bet confirmation for the submenu buy path
                         if raw_qty.isdigit() and int(raw_qty) > 0:
                             from paper import get_balance as _gb_sub
@@ -3355,6 +3596,12 @@ def cmd_menu(client: KalshiClient):
         elif name_stripped == "Backtest":
             cmd_backtest(client, [])
 
+        elif name_stripped == "Validate":
+            cmd_walkforward(client)
+
+        elif name_stripped == "Report":
+            cmd_report()
+
         elif name_stripped == "Brief":
             cmd_brief(client)
 
@@ -3401,7 +3648,10 @@ def cmd_backtest(client: KalshiClient, args: list):
     print(dim("Fetching finalized markets and archive weather data..."))
 
     def _bt_progress(i: int, n: int) -> None:
-        print(f"\r  Scoring [{i}/{n}]...", end="", flush=True)
+        pct = i / n if n > 0 else 0
+        filled = int(pct * 20)
+        bar = "█" * filled + "░" * (20 - filled)
+        print(f"\r  [{bar}] {pct:.0%}  ({i}/{n})", end="", flush=True)
 
     summary = run_backtest(
         client,
@@ -3921,6 +4171,89 @@ def cmd_paper(args: list, client: KalshiClient | None = None):
                     "\n  No trades yet.  Try: py main.py paper buy <ticker> yes 10 0.45"
                 )
             )
+
+        # ── Factor exposure, expiry clustering, unrealized P&L ───────────────
+        if open_ and client:
+            try:
+                from paper import (
+                    get_expiry_date_clustering,
+                    get_factor_exposure,
+                    get_unrealized_pnl_paper,
+                )
+
+                factor_exp = get_factor_exposure()
+                if factor_exp:
+                    print(bold("\n  Factor exposure:"))
+                    fe_rows = []
+                    for factor, val in sorted(factor_exp.items()):
+                        val_s = (
+                            green(f"${val:.2f}")
+                            if val >= 0
+                            else red(f"-${abs(val):.2f}")
+                        )
+                        fe_rows.append([factor, val_s])
+                    print(
+                        tabulate(
+                            fe_rows,
+                            headers=["Factor", "Exposure"],
+                            tablefmt="rounded_outline",
+                        )
+                    )
+
+                clustering = get_expiry_date_clustering()
+                if clustering:
+                    print(bold("\n  Expiry date clustering:"))
+                    cl_rows = []
+                    for item in clustering:
+                        cl_rows.append(
+                            [
+                                item.get("date", "?"),
+                                item.get("count", 0),
+                                f"${item.get('total_cost', 0):.2f}",
+                            ]
+                        )
+                    print(
+                        tabulate(
+                            cl_rows,
+                            headers=["Expiry date", "Positions", "At risk"],
+                            tablefmt="rounded_outline",
+                        )
+                    )
+
+                upnl = get_unrealized_pnl_paper(client)
+                total_upnl = upnl.get("total_unrealized_pnl", 0.0)
+                upnl_s = (
+                    green(f"+${total_upnl:.2f}")
+                    if total_upnl >= 0
+                    else red(f"-${abs(total_upnl):.2f}")
+                )
+                print(f"\n  Unrealized P&L (mark-to-market): {bold(upnl_s)}")
+                by_trade = upnl.get("by_trade", [])
+                if by_trade:
+                    upnl_rows = []
+                    for entry in by_trade:
+                        pnl_v = entry.get("unrealized_pnl", 0.0)
+                        pnl_s = (
+                            green(f"+${pnl_v:.2f}")
+                            if pnl_v >= 0
+                            else red(f"-${abs(pnl_v):.2f}")
+                        )
+                        upnl_rows.append(
+                            [
+                                entry.get("trade_id", "?"),
+                                entry.get("ticker", "?"),
+                                pnl_s,
+                            ]
+                        )
+                    print(
+                        tabulate(
+                            upnl_rows,
+                            headers=["#", "Ticker", "Unrealized P&L"],
+                            tablefmt="rounded_outline",
+                        )
+                    )
+            except Exception:
+                pass
 
         # ── Graduation check ─────────────────────────────────────────────────
         from paper import graduation_check as _grad_check
