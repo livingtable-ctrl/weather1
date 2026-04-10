@@ -385,9 +385,10 @@ def auto_backup() -> None:
                 # #104: Verify backup integrity after writing
                 if dst.suffix == ".json":
                     try:
-                        from paper import verify_backup
+                        from paper import cloud_backup, verify_backup
 
                         verify_backup(dst)
+                        cloud_backup(dst)  # #105: optional S3 upload
                     except Exception:
                         pass
             except Exception:
