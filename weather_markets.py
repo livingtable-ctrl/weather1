@@ -1704,7 +1704,12 @@ def _analyze_precip_trade(
     )
     if precip_consensus:
         ci_adj_kelly = round(ci_adj_kelly * 1.25, 6)
+    condition_type_scale = _CONDITION_CONFIDENCE.get(condition["type"], 1.0)
+    ci_adj_kelly = round(ci_adj_kelly * condition_type_scale, 6)
     ci_adj_kelly = min(ci_adj_kelly, 0.25)
+
+    _edge_conf = edge_confidence(days_out, condition_type=condition["type"])
+    adjusted_edge = net_edge * _edge_conf
 
     return {
         "forecast_prob": blended_prob,
@@ -1712,7 +1717,9 @@ def _analyze_precip_trade(
         "edge": edge,
         "signal": _edge_label(edge),
         "net_edge": net_edge,
-        "net_signal": _edge_label(net_edge),
+        "adjusted_edge": round(adjusted_edge, 6),
+        "edge_confidence_factor": _edge_conf,
+        "net_signal": _edge_label(adjusted_edge),
         "recommended_side": rec_side,
         "condition": condition,
         "forecast_temp": forecast_precip,  # precipitation in inches (reuses key for table display)
@@ -1813,9 +1820,15 @@ def _analyze_snow_trade(
         ci_low, ci_high = _bootstrap_ci_precip(precip_members, condition)
 
     # #39: Bayesian Kelly
-    ci_adj_kelly = min(
-        bayesian_kelly(ci_low, ci_high, entry_price, fee_rate=KALSHI_FEE_RATE), 0.25
+    ci_adj_kelly = bayesian_kelly(
+        ci_low, ci_high, entry_price, fee_rate=KALSHI_FEE_RATE
     )
+    condition_type_scale = _CONDITION_CONFIDENCE.get(condition["type"], 1.0)
+    ci_adj_kelly = round(ci_adj_kelly * condition_type_scale, 6)
+    ci_adj_kelly = min(ci_adj_kelly, 0.25)
+
+    _edge_conf = edge_confidence(days_out, condition_type=condition["type"])
+    adjusted_edge = net_edge * _edge_conf
 
     return {
         "forecast_prob": blended_prob,
@@ -1823,7 +1836,9 @@ def _analyze_snow_trade(
         "edge": edge,
         "signal": _edge_label(edge),
         "net_edge": net_edge,
-        "net_signal": _edge_label(net_edge),
+        "adjusted_edge": round(adjusted_edge, 6),
+        "edge_confidence_factor": _edge_conf,
+        "net_signal": _edge_label(adjusted_edge),
         "recommended_side": rec_side,
         "condition": condition,
         "forecast_temp": forecast.get("high_f") or forecast.get("temp_high") or 0.0,
