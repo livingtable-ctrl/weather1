@@ -545,6 +545,19 @@ def check_exit_targets(client=None) -> int:
                 t["side"] == "no" and current_price <= 1 - target
             )
             if should_exit:
+                import random as _rand
+
+                pos_quantity = t.get("quantity", 1)
+                filled = min(pos_quantity, int(pos_quantity * _rand.uniform(0.7, 1.0)))
+                if filled < pos_quantity:
+                    _log.info(
+                        "check_exit_targets: partial fill for trade %d — "
+                        "filled %d of %d contracts at target %.2f",
+                        t["id"],
+                        filled,
+                        pos_quantity,
+                        target,
+                    )
                 settle_paper_trade(t["id"], outcome_yes=(t["side"] == "yes"))
                 exited += 1
         except Exception:

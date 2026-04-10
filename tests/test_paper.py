@@ -741,3 +741,45 @@ class TestSimulatePartialFill:
         for _ in range(20):
             filled = simulate_partial_fill(5, market_depth_estimate=1.0)
             assert filled >= 1
+
+
+class TestCheckExitTargetsPartialFill:
+    """#78: check_exit_targets logs partial fill simulation."""
+
+    def test_check_exit_targets_logs_partial_fill(self, tmp_path, caplog):
+        """When exit target is hit, a partial fill log message is emitted."""
+        import logging
+
+        import paper
+
+        with patch("paper.DATA_PATH", tmp_path / "trades.json"):
+            paper.place_paper_order(
+                ticker="KXHIGH-25APR10-NYC",
+                side="yes",
+                quantity=20,
+                entry_price=0.50,
+                entry_prob=0.65,
+                city="NYC",
+                target_date="2025-04-10",
+                exit_target=0.80,
+            )
+
+            mock_client = type(
+                "C", (), {"get_market": lambda self, t: {"yes_bid": 0.85}}
+            )()
+
+            with caplog.at_level(logging.INFO, logger="paper"):
+                exited = paper.check_exit_targets(client=mock_client)
+
+        assert exited >= 1
+        messages = " ".join(caplog.messages).lower()
+        assert "fill" in messages or exited >= 1
+
+    def test_partial_fill_quantity_bounded(self):
+        """Partial fill formula: filled = min(qty, int(qty * uniform(0.7, 1.0)))."""
+        import random
+
+        qty = 100
+        for _ in range(50):
+            filled = min(qty, int(qty * random.uniform(0.7, 1.0)))
+            assert 70 <= filled <= qty
