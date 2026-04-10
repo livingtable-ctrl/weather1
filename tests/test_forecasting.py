@@ -1,5 +1,7 @@
 from unittest.mock import patch
 
+import pytest
+
 
 class TestDynamicModelWeights:
     def test_returns_none_when_insufficient_samples(self):
@@ -124,3 +126,93 @@ class TestPersistenceProb:
         assert result is not None
         blend = result.get("blend_sources", {})
         assert "persistence" in blend or result["forecast_prob"] is not None
+
+
+class TestEnsoPhase:
+    def test_el_nino_returns_correct_label(self):
+        from weather_markets import _get_enso_phase
+
+        with patch("climate_indices.get_enso_index", return_value=0.7):
+            assert _get_enso_phase() == "el_nino"
+
+    def test_la_nina_returns_correct_label(self):
+        from weather_markets import _get_enso_phase
+
+        with patch("climate_indices.get_enso_index", return_value=-0.6):
+            assert _get_enso_phase() == "la_nina"
+
+    def test_neutral_returns_correct_label(self):
+        from weather_markets import _get_enso_phase
+
+        with patch("climate_indices.get_enso_index", return_value=0.2):
+            assert _get_enso_phase() == "neutral"
+
+    def test_none_oni_returns_neutral(self):
+        from weather_markets import _get_enso_phase
+
+        with patch("climate_indices.get_enso_index", return_value=None):
+            assert _get_enso_phase() == "neutral"
+
+    def test_el_nino_boosts_ecmwf_in_winter(self):
+        """_forecast_model_weights gives ECMWF +0.5 extra during El Niño winter."""
+        from weather_markets import _forecast_model_weights
+
+        with (
+            patch("weather_markets._dynamic_model_weights", return_value=None),
+            patch("weather_markets.load_learned_weights", return_value={}),
+            patch("weather_markets._get_enso_phase", return_value="el_nino"),
+        ):
+            w = _forecast_model_weights(month=1, city=None)
+        assert w["ecmwf_ifs04"] == pytest.approx(3.0)  # 2.5 base + 0.5 el_nino
+
+    def test_neutral_winter_ecmwf_weight(self):
+        from weather_markets import _forecast_model_weights
+
+        with (
+            patch("weather_markets._dynamic_model_weights", return_value=None),
+            patch("weather_markets.load_learned_weights", return_value={}),
+            patch("weather_markets._get_enso_phase", return_value="neutral"),
+        ):
+            w = _forecast_model_weights(month=1, city=None)
+        assert w["ecmwf_ifs04"] == pytest.approx(2.5)
+
+
+class TestFeelsLike:
+    def test_wind_chill_only(self):
+        """Standard cold+wind, no humidity penalty."""
+        from weather_markets import _feels_like
+
+        result = _feels_like(30.0, wind_mph=15.0, humidity_pct=50.0)
+        # NWS wind chill formula: should be well below 30°F
+        assert result < 30.0
+
+    def test_moist_cold_wind_chill_humidity_penalty(self):
+        """temp<=50, wind>=3, humidity>=70 → wind chill + humidity penalty."""
+        from weather_markets import _feels_like
+
+        base = _feels_like(40.0, wind_mph=10.0, humidity_pct=50.0)
+        moist = _feels_like(40.0, wind_mph=10.0, humidity_pct=80.0)
+        # Moist should feel colder (lower value)
+        assert moist < base
+
+    def test_moist_cold_no_wind_intermediate(self):
+        """temp<=50, no strong wind, humidity>=70 → humidity penalty only."""
+        from weather_markets import _feels_like
+
+        base = _feels_like(45.0, wind_mph=1.0, humidity_pct=50.0)
+        moist = _feels_like(45.0, wind_mph=1.0, humidity_pct=80.0)
+        assert moist < base
+
+    def test_heat_index_regime(self):
+        """temp>=80, humidity>=40 → heat index above raw temp."""
+        from weather_markets import _feels_like
+
+        result = _feels_like(95.0, wind_mph=5.0, humidity_pct=70.0)
+        assert result > 95.0
+
+    def test_comfortable_no_adjustment(self):
+        """Comfortable conditions return raw temp."""
+        from weather_markets import _feels_like
+
+        result = _feels_like(68.0, wind_mph=5.0, humidity_pct=50.0)
+        assert result == pytest.approx(68.0)
