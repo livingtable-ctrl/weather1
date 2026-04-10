@@ -662,6 +662,34 @@ def ensemble_stats(temps: list[float]) -> dict:
     }
 
 
+def censoring_correction(
+    probs: list[float],
+    condition: dict,
+    censor_pct: float = 0.01,
+) -> float:
+    """
+    Correct ensemble probability for member censoring at 0 or 1 (#23).
+
+    When > censor_pct fraction of ensemble members are exactly 0.0 or 1.0,
+    blends the raw mean toward 0.5 using blend = censored_fraction * 0.5.
+    Returns 0.5 for empty input.
+    """
+    if not probs:
+        return 0.5
+
+    n = len(probs)
+    raw_mean = sum(probs) / n
+    censored = sum(1 for p in probs if p == 0.0 or p == 1.0)
+    censored_fraction = censored / n
+
+    if censored_fraction <= censor_pct:
+        return raw_mean
+
+    blend = censored_fraction * 0.5
+    corrected = raw_mean * (1.0 - blend) + 0.5 * blend
+    return max(0.0, min(1.0, corrected))
+
+
 # ── Market parsing ────────────────────────────────────────────────────────────
 
 
