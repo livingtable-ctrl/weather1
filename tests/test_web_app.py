@@ -307,11 +307,19 @@ def test_forecast_route_returns_200_with_title(client):
 
 def test_api_forecast_quality_returns_correct_shape(client):
     """/api/forecast_quality returns city_heatmap and source_reliability keys."""
-    with patch(
-        "tracker.get_calibration_by_city",
-        return_value={
-            "NYC": {"n": 10, "brier": 0.22, "bias": 0.01},
-        },
+    with (
+        patch(
+            "tracker.get_calibration_by_city",
+            return_value={
+                "NYC": {"n": 10, "brier": 0.22, "bias": 0.01},
+            },
+        ),
+        patch(
+            "tracker.get_ensemble_member_accuracy",
+            return_value={
+                "NYC": {"GFS": {"mae": 2.1, "n": 5}, "NAM": {"mae": 1.8, "n": 5}},
+            },
+        ),
     ):
         r = client.get("/api/forecast_quality")
         assert r.status_code == 200
@@ -319,3 +327,4 @@ def test_api_forecast_quality_returns_correct_shape(client):
         assert "city_heatmap" in d
         assert "source_reliability" in d
         assert "NYC" in d["city_heatmap"]
+        assert "NYC" in d["source_reliability"]
