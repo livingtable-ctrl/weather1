@@ -1,5 +1,6 @@
 """Tests for calibration.py — seasonal and per-city blend weight calibration."""
 
+import json
 import shutil
 import sqlite3
 import tempfile
@@ -148,3 +149,55 @@ class TestCalibrateCityWeights:
         _seed_db(self._db, rows)
         result = calibrate_city_weights(self._db)
         assert "NYC" not in result
+
+
+class TestLoadWeights:
+    """load_seasonal_weights and load_city_weights must handle missing/valid/corrupt files."""
+
+    def setup_method(self):
+        self._tmpdir = tempfile.mkdtemp()
+
+    def teardown_method(self):
+        shutil.rmtree(self._tmpdir, ignore_errors=True)
+
+    def test_load_seasonal_missing_file_returns_empty(self):
+        from calibration import load_seasonal_weights
+
+        result = load_seasonal_weights(Path(self._tmpdir) / "nonexistent.json")
+        assert result == {}
+
+    def test_load_seasonal_valid_json_returns_dict(self):
+        from calibration import load_seasonal_weights
+
+        p = Path(self._tmpdir) / "seasonal.json"
+        p.write_text(
+            json.dumps({"winter": {"ensemble": 0.55, "climatology": 0.25, "nws": 0.20}})
+        )
+        result = load_seasonal_weights(p)
+        assert result == {
+            "winter": {"ensemble": 0.55, "climatology": 0.25, "nws": 0.20}
+        }
+
+    def test_load_seasonal_corrupt_json_returns_empty(self):
+        from calibration import load_seasonal_weights
+
+        p = Path(self._tmpdir) / "corrupt.json"
+        p.write_text("not valid json {{")
+        result = load_seasonal_weights(p)
+        assert result == {}
+
+    def test_load_city_missing_file_returns_empty(self):
+        from calibration import load_city_weights
+
+        result = load_city_weights(Path(self._tmpdir) / "nonexistent.json")
+        assert result == {}
+
+    def test_load_city_valid_json_returns_dict(self):
+        from calibration import load_city_weights
+
+        p = Path(self._tmpdir) / "city.json"
+        p.write_text(
+            json.dumps({"NYC": {"ensemble": 0.60, "climatology": 0.15, "nws": 0.25}})
+        )
+        result = load_city_weights(p)
+        assert result == {"NYC": {"ensemble": 0.60, "climatology": 0.15, "nws": 0.25}}

@@ -16,7 +16,7 @@ _log = logging.getLogger(__name__)
 
 _SEASONAL_MIN = 50  # minimum settled predictions with source probs per season
 _CITY_MIN = 30  # minimum settled predictions with source probs per city
-_WEIGHT_STEP = 0.05  # grid resolution; 0.05 → 66 unique (w_e, w_c, w_n) triples
+_WEIGHT_STEP = 0.05  # grid resolution; 0.05 → 231 unique (w_e, w_c, w_n) triples
 
 _MONTH_TO_SEASON: dict[int, str] = {
     12: "winter",
@@ -44,6 +44,9 @@ _WEIGHT_TRIPLES = [
 def _brier(
     rows: list[tuple[float, float, float, int]], we: float, wc: float, wn: float
 ) -> float:
+    """Compute Brier score for a weight combo against a list of (ens, clim, nws, settled)."""
+    if not rows:
+        return float("inf")
     total = 0.0
     for ens, clim, nws, settled in rows:
         p = we * ens + wc * clim + wn * nws
@@ -52,6 +55,12 @@ def _brier(
 
 
 def _best_weights(rows: list[tuple[float, float, float, int]]) -> dict[str, float]:
+    """Grid-search weight triples; return the one minimizing Brier score."""
+    if not _WEIGHT_TRIPLES:
+        _log.warning(
+            "_best_weights: _WEIGHT_TRIPLES is empty — returning equal weights"
+        )
+        return {"ensemble": 1 / 3, "climatology": 1 / 3, "nws": 1 / 3}
     best_score = float("inf")
     best = (1 / 3, 1 / 3, 1 / 3)
     for we, wc, wn in _WEIGHT_TRIPLES:
