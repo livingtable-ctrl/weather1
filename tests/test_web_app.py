@@ -328,3 +328,119 @@ def test_api_forecast_quality_returns_correct_shape(client):
         assert "source_reliability" in d
         assert "NYC" in d["city_heatmap"]
         assert "NYC" in d["source_reliability"]
+
+
+# ── #81 balance-history range parameter ──────────────────────────────────────
+
+
+def test_balance_history_range_3mo_longer_than_default(tmp_path, monkeypatch):
+    """?range=3mo returns a different (longer) slice than the default 50-point cap."""
+    import json
+    from datetime import UTC, datetime, timedelta
+
+    import paper
+    import web_app
+
+    # Synthesise 100 history points spanning 120 days
+    now = datetime.now(UTC)
+    fake_history = [
+        {"ts": (now - timedelta(days=120 - i)).isoformat(), "balance": 1000.0 + i}
+        for i in range(100)
+    ]
+    monkeypatch.setattr(paper, "get_balance_history", lambda: fake_history)
+    monkeypatch.setattr(web_app, "_now_utc", lambda: now)
+
+    app = web_app._build_app(client=None)
+    client = app.test_client()
+
+    default_resp = client.get("/api/balance_history")
+    range_resp = client.get("/api/balance_history?range=3mo")
+
+    default_data = json.loads(default_resp.data)
+    range_data = json.loads(range_resp.data)
+
+    # default is capped at 50; 3mo should include more points (≥ 75 of the 100)
+    assert default_resp.status_code == 200
+    assert range_resp.status_code == 200
+    assert len(default_data["values"]) == 50
+    assert len(range_data["values"]) > 50
+
+
+# ── #84 model attribution endpoint ───────────────────────────────────────────
+
+
+def test_model_attribution_endpoint_returns_city_keys(monkeypatch):
+    """GET /api/model-attribution returns JSON with at least one city key,
+    each city mapping to a dict of source weights."""
+    import json
+
+    import web_app
+
+    fake_attribution = {
+        "Chicago": {"ensemble": 0.6, "nws": 0.25, "climatology": 0.15},
+        "Dallas": {"ensemble": 0.5, "nws": 0.35, "climatology": 0.15},
+    }
+
+    import tracker
+
+    monkeypatch.setattr(
+        tracker, "get_model_attribution_by_city", lambda: fake_attribution
+    )
+
+    app = web_app._build_app(client=None)
+    client = app.test_client()
+
+    resp = client.get("/api/model-attribution")
+    assert resp.status_code == 200
+    data = json.loads(resp.data)
+    assert isinstance(data, dict)
+    assert len(data) >= 1
+    first_city = next(iter(data.values()))
+    assert isinstance(first_city, dict)
+    assert "ensemble" in first_city
+
+
+# ── #85 per-market SSE stream ─────────────────────────────────────────────────
+
+
+def test_stream_markets_content_type(monkeypatch):
+    """GET /api/stream/markets returns Content-Type: text/event-stream."""
+    import time
+
+    import web_app
+
+    # Patch sleep so the generator yields once then stops
+    monkeypatch.setattr(time, "sleep", lambda _: (_ for _ in ()).throw(StopIteration()))
+
+    app = web_app._build_app(client=None)
+    client = app.test_client()
+
+    resp = client.get("/api/stream/markets")
+    assert "text/event-stream" in resp.content_type
+
+
+# ── #65 price-improvement endpoint ───────────────────────────────────────────
+
+
+def test_price_improvement_endpoint_returns_valid_json(monkeypatch):
+    """GET /api/price-improvement returns JSON with avg_improvement_cents and total_trades."""
+    import json
+
+    import tracker
+    import web_app
+
+    monkeypatch.setattr(
+        tracker,
+        "get_price_improvement_stats",
+        lambda: {"mean": 0.02, "median": 0.015, "count": 12, "positive_pct": 0.75},
+    )
+
+    app = web_app._build_app(client=None)
+    client = app.test_client()
+
+    resp = client.get("/api/price-improvement")
+    assert resp.status_code == 200
+    data = json.loads(resp.data)
+    assert "avg_improvement_cents" in data
+    assert "total_trades" in data
+    assert isinstance(data["total_trades"], int)

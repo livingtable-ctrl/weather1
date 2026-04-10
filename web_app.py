@@ -179,6 +179,29 @@ def _build_app(client):
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )
 
+    @app.route("/api/stream/markets")
+    def stream_markets():
+        """#85 — SSE endpoint that yields open-market snapshots every 10 s."""
+        import time
+
+        def generate():
+            while True:
+                try:
+                    payload = {
+                        "markets": _get_live_market_snapshot(),
+                        "ts": datetime.now(UTC).isoformat(),
+                    }
+                    yield f"data: {json.dumps(payload)}\n\n"
+                except Exception:
+                    yield "data: {}\n\n"
+                time.sleep(10)
+
+        return Response(
+            stream_with_context(generate()),
+            mimetype="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
+
     @app.route("/api/balance_history")
     def balance_history():
         from datetime import timedelta
@@ -268,6 +291,17 @@ def _build_app(client):
         except Exception as e:
             result = {"error": str(e)}
         return jsonify(result)
+
+    @app.route("/api/model-attribution")
+    def model_attribution():
+        """#84 — per-city average model blend weights."""
+        try:
+            from tracker import get_model_attribution_by_city
+
+            data = get_model_attribution_by_city()
+            return jsonify(data)
+        except Exception as exc:  # noqa: BLE001
+            return jsonify({"error": str(exc)}), 500
 
     @app.route("/api/graduation")
     def api_graduation():
@@ -704,6 +738,33 @@ setInterval(() => {{
                 "correlated_events": check_correlated_event_exposure(),
             }
         )
+
+    @app.route("/api/price-improvement")
+    def price_improvement():
+        """#65 — aggregate price improvement stats."""
+        try:
+            from tracker import get_price_improvement_stats
+
+            stats = get_price_improvement_stats()
+            if stats is None:
+                return jsonify(
+                    {
+                        "avg_improvement_cents": None,
+                        "total_trades": 0,
+                        "note": "insufficient data (< 5 trades)",
+                    }
+                )
+            avg_cents = round(stats["mean"] * 100, 4)
+            return jsonify(
+                {
+                    "avg_improvement_cents": avg_cents,
+                    "total_trades": stats["count"],
+                    "median_improvement_cents": round(stats["median"] * 100, 4),
+                    "positive_pct": stats["positive_pct"],
+                }
+            )
+        except Exception as exc:  # noqa: BLE001
+            return jsonify({"error": str(exc)}), 500
 
     @app.route("/api/status")
     def api_status():

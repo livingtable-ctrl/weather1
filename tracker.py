@@ -1714,3 +1714,44 @@ def get_analysis_bias() -> float | None:
 
     bias_values = [r["forecast_prob"] - r["settled_yes"] for r in rows]
     return round(sum(bias_values) / len(bias_values), 6)
+
+
+# ── #84 per-city model attribution ────────────────────────────────────────────
+
+
+def get_model_attribution_by_city() -> dict[str, dict[str, float]]:
+    """Return average blend-source weights per city from settled predictions."""
+    import json as _json2
+    from collections import defaultdict
+
+    init_db()
+    with _conn() as con:
+        rows = con.execute(
+            """SELECT city, blend_sources
+               FROM predictions
+               WHERE blend_sources IS NOT NULL AND city IS NOT NULL"""
+        ).fetchall()
+
+    if not rows:
+        return {}
+
+    city_totals: dict[str, dict[str, float]] = defaultdict(lambda: defaultdict(float))
+    city_counts: dict[str, int] = defaultdict(int)
+
+    for row in rows:
+        city = row["city"]
+        try:
+            sources = _json2.loads(row["blend_sources"])
+        except (ValueError, TypeError):
+            continue
+        if not isinstance(sources, dict):
+            continue
+        for k, v in sources.items():
+            city_totals[city][k] += float(v)
+        city_counts[city] += 1
+
+    result: dict[str, dict[str, float]] = {}
+    for city, totals in city_totals.items():
+        n = city_counts[city]
+        result[city] = {k: round(v / n, 4) for k, v in totals.items()}
+    return result
