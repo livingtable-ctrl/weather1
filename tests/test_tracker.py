@@ -259,5 +259,124 @@ class TestTracker(unittest.TestCase):
         self.assertEqual(n, 0)
 
 
+# ── #111: Focused pytest-style tests for brier_score and get_bias ─────────────
+
+
+class TestBrierScore(unittest.TestCase):
+    """Focused tests for tracker.brier_score() (#111)."""
+
+    def setUp(self):
+        import tempfile
+
+        self._tmpdir = tempfile.mkdtemp()
+        self._orig = tracker.DB_PATH
+        tracker.DB_PATH = Path(self._tmpdir) / "test_brier.db"
+        tracker._db_initialized = False
+        tracker.init_db()
+
+    def tearDown(self):
+        tracker.DB_PATH = self._orig
+        tracker._db_initialized = False
+        import shutil
+
+        shutil.rmtree(self._tmpdir, ignore_errors=True)
+
+    def _insert_prediction_and_outcome(self, ticker, our_prob, settled_yes):
+        """Helper: log a prediction and its outcome."""
+        analysis = {
+            "condition": {"type": "above", "threshold": 70.0},
+            "forecast_prob": our_prob,
+            "market_prob": 0.50,
+            "edge": our_prob - 0.50,
+            "method": "ensemble",
+            "n_members": 20,
+        }
+        tracker.log_prediction(ticker, "NYC", date(2026, 4, 1), analysis)
+        tracker.log_outcome(ticker, settled_yes)
+
+    def test_perfect_prediction_brier_zero(self):
+        """forecast_prob=1.0, outcome=YES → Brier score = 0."""
+        self._insert_prediction_and_outcome("TKPERF-YES", 1.0, True)
+        bs = tracker.brier_score()
+        self.assertIsNotNone(bs)
+        assert bs is not None
+        self.assertAlmostEqual(bs, 0.0, places=6)
+
+    def test_worst_prediction_brier_one(self):
+        """forecast_prob=0.0, outcome=YES → Brier score = 1."""
+        self._insert_prediction_and_outcome("TKWORST-YES", 0.0, True)
+        bs = tracker.brier_score()
+        self.assertIsNotNone(bs)
+        assert bs is not None
+        self.assertAlmostEqual(bs, 1.0, places=6)
+
+    def test_no_data_returns_none(self):
+        """brier_score() returns None when there are no settled predictions."""
+        result = tracker.brier_score()
+        self.assertIsNone(result)
+
+    def test_midpoint_prediction(self):
+        """forecast_prob=0.5, outcome=NO → Brier = (0.5-0)^2 = 0.25."""
+        self._insert_prediction_and_outcome("TKMID-NO", 0.5, False)
+        bs = tracker.brier_score()
+        self.assertIsNotNone(bs)
+        assert bs is not None
+        self.assertAlmostEqual(bs, 0.25, places=6)
+
+
+class TestGetBias(unittest.TestCase):
+    """Focused tests for tracker.get_bias() (#111)."""
+
+    def setUp(self):
+        import tempfile
+
+        self._tmpdir = tempfile.mkdtemp()
+        self._orig = tracker.DB_PATH
+        tracker.DB_PATH = Path(self._tmpdir) / "test_bias.db"
+        tracker._db_initialized = False
+        tracker.init_db()
+
+    def tearDown(self):
+        tracker.DB_PATH = self._orig
+        tracker._db_initialized = False
+        import shutil
+
+        shutil.rmtree(self._tmpdir, ignore_errors=True)
+
+    def test_returns_zero_when_no_data(self):
+        """get_bias() returns 0.0 (not None) when there is no data."""
+        result = tracker.get_bias("NYC", 4)
+        # With no data, fewer than min_samples=5 → returns 0.0
+        self.assertEqual(result, 0.0)
+
+    def test_returns_zero_below_min_samples(self):
+        """get_bias() returns 0.0 with fewer samples than min_samples threshold."""
+        analysis = {
+            "condition": {"type": "above", "threshold": 70.0},
+            "forecast_prob": 0.80,
+            "market_prob": 0.50,
+            "edge": 0.30,
+            "method": "ensemble",
+            "n_members": 20,
+        }
+        # Insert 3 predictions (below default min_samples=5)
+        for i in range(3):
+            ticker = f"TKBIAS-{i}"
+            tracker.log_prediction(ticker, "NYC", date(2026, 4, i + 1), analysis)
+            tracker.log_outcome(ticker, True)
+        result = tracker.get_bias("NYC", 4, min_samples=5)
+        self.assertEqual(result, 0.0)
+
+    def test_returns_float_type(self):
+        """get_bias() always returns a float (0.0 for insufficient data)."""
+        result = tracker.get_bias("NYC", 4)
+        self.assertIsInstance(result, float)
+
+    def test_returns_float_or_zero_with_no_data_for_none_city(self):
+        """get_bias(None, None) returns float."""
+        result = tracker.get_bias(None, None)
+        self.assertIsInstance(result, float)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
