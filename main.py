@@ -1645,13 +1645,13 @@ def _auto_place_trades(opps: list, client: KalshiClient) -> None:
     if is_paused_drawdown():
         print(yellow("  [Auto] Drawdown guard active — no auto-trades placed."))
         return
-    if is_daily_loss_halted():
+    if is_daily_loss_halted(client):
         from paper import get_daily_pnl
 
-        daily_pnl = get_daily_pnl()
+        daily_pnl = get_daily_pnl(client)
         print(
             yellow(
-                f"  [Auto] Daily loss limit reached (${daily_pnl:.2f}) — no auto-trades."
+                f"  [Auto] Daily loss limit reached (${daily_pnl:.2f} incl. MTM) — no auto-trades."
             )
         )
         return

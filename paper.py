@@ -688,19 +688,33 @@ def is_streak_paused() -> bool:
     return streak_pnl < -(STARTING_BALANCE * 0.02)
 
 
-def get_daily_pnl() -> float:
-    """Sum of P&L from trades settled today (UTC)."""
+def get_daily_pnl(client=None) -> float:
+    """
+    Sum of P&L from trades settled today (UTC).
+    #46: If a live client is provided, also includes unrealized MTM of open
+    positions so the daily loss limit accounts for positions that are underwater.
+    """
     today_str = datetime.now(UTC).strftime("%Y-%m-%d")
-    return sum(
+    settled_pnl = sum(
         t.get("pnl", 0.0) or 0.0
         for t in _load()["trades"]
         if t.get("settled") and t.get("entered_at", "")[:10] == today_str
     )
+    if client is None:
+        return settled_pnl
+    # Add unrealized MTM for open positions
+    try:
+        mtm = get_unrealized_pnl_paper(client)
+        return settled_pnl + mtm.get("total_unrealized", 0.0)
+    except Exception:
+        return settled_pnl
 
 
-def is_daily_loss_halted() -> bool:
-    """Return True if today's P&L is worse than -MAX_DAILY_LOSS_PCT * STARTING_BALANCE."""
-    return get_daily_pnl() < -(MAX_DAILY_LOSS_PCT * STARTING_BALANCE)
+def is_daily_loss_halted(client=None) -> bool:
+    """Return True if today's P&L is worse than -MAX_DAILY_LOSS_PCT * STARTING_BALANCE.
+    Pass a live client to include unrealized MTM in the check (#46).
+    """
+    return get_daily_pnl(client) < -(MAX_DAILY_LOSS_PCT * STARTING_BALANCE)
 
 
 def check_aged_positions() -> list[dict]:
