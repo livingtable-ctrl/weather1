@@ -4,6 +4,7 @@
 import io
 import json
 import logging
+import math
 import os
 import sys
 import time
@@ -19,6 +20,7 @@ elif sys.platform == "win32":
 from dotenv import load_dotenv
 from tabulate import tabulate
 
+import execution_log
 from colors import (
     bold,
     cyan,
@@ -1057,7 +1059,7 @@ def _analyze_once(
 
 
 _LIVE_CONFIG_PATH = Path(__file__).parent / "data" / "live_config.json"
-_SESSION_LOSS: float = 0.0
+_SESSION_LOSS: float = 0.0  # updated by _auto_place_trades() after each live order
 _LIVE_CONFIG_DEFAULT: dict = {
     "max_trade_dollars": 50,
     "daily_loss_limit": 200,
@@ -1098,9 +1100,7 @@ def _midpoint_price(market: dict, side: str) -> float:
 
 def _count_open_live_orders() -> int:
     """Count live orders with status 'pending' — enforces max_open_positions limit."""
-    import execution_log as _elog
-
-    orders = _elog.get_recent_orders(limit=500)
+    orders = execution_log.get_recent_orders(limit=500)
     return sum(1 for o in orders if o.get("live") and o.get("status") == "pending")
 
 
@@ -1116,8 +1116,6 @@ def _place_live_order(
 
     Returns (placed, dollar_cost). Caller must add cost to _SESSION_LOSS.
     """
-    import execution_log as _elog
-
     # 1. Daily loss check
     if _SESSION_LOSS >= config["daily_loss_limit"]:
         print(
@@ -1138,14 +1136,14 @@ def _place_live_order(
     if price <= 0:
         return False, 0.0
     kelly_qty = int(analysis.get("kelly_quantity", 1))
-    max_qty = int(config["max_trade_dollars"] / price)
+    max_qty = math.floor(config["max_trade_dollars"] / price)
     quantity = min(kelly_qty, max_qty)
     if quantity <= 0:
         return False, 0.0
     dollar_cost = round(quantity * price, 2)
 
     # 4. Cycle deduplication check
-    if _elog.was_ordered_this_cycle(ticker, side, cycle):
+    if execution_log.was_ordered_this_cycle(ticker, side, cycle):
         return False, 0.0
 
     # 5. Place order
@@ -1158,7 +1156,7 @@ def _place_live_order(
             price=int(price * 100),
             time_in_force="good_till_canceled",
         )
-        _elog.log_order(
+        execution_log.log_order(
             ticker=ticker,
             side=side,
             quantity=quantity,
@@ -1171,7 +1169,7 @@ def _place_live_order(
         )
         return True, dollar_cost
     except Exception as exc:
-        _elog.log_order(
+        execution_log.log_order(
             ticker=ticker,
             side=side,
             quantity=quantity,
