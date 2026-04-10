@@ -72,3 +72,37 @@ def test_build_stream_data_has_markets_key():
         data = _build_stream_data()
         assert "markets" in data
         assert isinstance(data["markets"], list)
+
+
+def test_balance_history_range_1mo(client):
+    """?range=1mo returns only points from the last 30 days."""
+    from datetime import UTC, datetime, timedelta
+
+    now = datetime(2025, 9, 1, tzinfo=UTC)
+    history = [
+        {"ts": (now - timedelta(days=d)).isoformat(), "balance": 1000, "event": "T"}
+        for d in range(60)  # 60 days of data
+    ]
+    with patch("paper.get_balance_history", return_value=history):
+        with patch("web_app._now_utc", return_value=now):
+            r = client.get("/api/balance_history?range=1mo")
+            data = r.get_json()
+            # With 60 days of data and a 30-day window, we should get at most 31 labels
+            assert len(data["labels"]) <= 31
+
+
+def test_balance_history_range_3mo(client):
+    """?range=3mo returns only points from the last 90 days."""
+    from datetime import UTC, datetime, timedelta
+
+    now = datetime(2025, 9, 1, tzinfo=UTC)
+    history = [
+        {"ts": (now - timedelta(days=d)).isoformat(), "balance": 1000, "event": "T"}
+        for d in range(200)
+    ]
+    with patch("paper.get_balance_history", return_value=history):
+        with patch("web_app._now_utc", return_value=now):
+            r = client.get("/api/balance_history?range=3mo")
+            data = r.get_json()
+            # With 200 days of data and a 90-day window, we should get at most 91 labels
+            assert len(data["labels"]) <= 91

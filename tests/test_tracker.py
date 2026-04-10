@@ -848,5 +848,64 @@ def test_get_component_attribution_works(tmp_path):
     tracker._db_initialized = False
 
 
+def test_get_component_attribution_returns_per_source_brier(tmp_path):
+    """get_component_attribution returns Brier score by dominant source."""
+    from datetime import date
+
+    import tracker
+
+    orig = tracker.DB_PATH
+    tracker.DB_PATH = tmp_path / "attr_brier_test.db"
+    tracker._db_initialized = False
+    tracker.init_db()
+
+    try:
+        # Two predictions: one ensemble-dominant (settled yes, prob 0.9 → good)
+        # one climatology-dominant (settled no, prob 0.8 → bad)
+        tracker.log_prediction(
+            ticker="ENS1",
+            city="NYC",
+            market_date=date(2025, 6, 1),
+            analysis={
+                "condition": {"type": "above", "threshold": 70.0},
+                "forecast_prob": 0.90,
+                "market_prob": 0.5,
+                "edge": 0.40,
+                "method": "blend",
+                "n_members": 82,
+            },
+            blend_sources={"ensemble": 0.7, "climatology": 0.2, "nws": 0.1},
+        )
+        tracker.log_outcome("ENS1", True)
+
+        tracker.log_prediction(
+            ticker="CLIM1",
+            city="NYC",
+            market_date=date(2025, 6, 2),
+            analysis={
+                "condition": {"type": "above", "threshold": 70.0},
+                "forecast_prob": 0.80,
+                "market_prob": 0.5,
+                "edge": 0.30,
+                "method": "blend",
+                "n_members": 82,
+            },
+            blend_sources={"ensemble": 0.2, "climatology": 0.7, "nws": 0.1},
+        )
+        tracker.log_outcome("CLIM1", False)
+
+        result = tracker.get_component_attribution()
+        assert "ensemble" in result
+        assert "climatology" in result
+        # ensemble-dominant trade: prob=0.9, outcome=1 → Brier=(0.9-1)²=0.01 (good)
+        # climatology-dominant trade: prob=0.8, outcome=0 → Brier=(0.8-0)²=0.64 (bad)
+        assert result["ensemble"]["brier"] < result["climatology"]["brier"]
+        assert result["ensemble"]["n"] == 1
+        assert result["climatology"]["n"] == 1
+    finally:
+        tracker.DB_PATH = orig
+        tracker._db_initialized = False
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
