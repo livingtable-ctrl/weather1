@@ -1648,7 +1648,7 @@ def _analyze_precip_trade(
         from tracker import get_bias
 
         city = enriched.get("_city")
-        bias = get_bias(city, target_date.month)
+        bias = get_bias(city, target_date.month, condition_type=condition["type"])
         blended_prob = blended_prob - bias
     except Exception as _exc:
         # #109: log with ticker so failures are traceable
@@ -2053,7 +2053,7 @@ def analyze_trade(enriched: dict) -> dict | None:
     try:
         from tracker import get_bias
 
-        bias = get_bias(city, target_date.month)
+        bias = get_bias(city, target_date.month, condition_type=condition["type"])
         blended_prob = max(0.01, min(0.99, blended_prob - bias))
     except Exception as _exc:
         # #109: log with ticker/city so failures are traceable
@@ -2166,7 +2166,7 @@ def analyze_trade(enriched: dict) -> dict | None:
         net_ev = p_win * payout * (1 - KALSHI_FEE_RATE) - blended_prob * entry_price
 
     net_edge = net_ev / entry_price if entry_price > 0 else 0.0
-    _edge_conf = edge_confidence(days_out)
+    _edge_conf = edge_confidence(days_out, condition_type=condition["type"])
     adjusted_edge = net_edge * _edge_conf
     net_signal = _edge_label(adjusted_edge)
     fee_adjusted_kelly = kelly_fraction(
@@ -2186,13 +2186,15 @@ def analyze_trade(enriched: dict) -> dict | None:
     # #39: Bayesian Kelly — integrate over uniform posterior on [ci_low, ci_high]
     # Then apply the same quality/anomaly/spread/time modifiers as before.
     bk = bayesian_kelly(ci_low, ci_high, entry_price, fee_rate=KALSHI_FEE_RATE)
+    condition_type_scale = _CONDITION_CONFIDENCE.get(condition["type"], 1.0)
     ci_adjusted_kelly = round(
         bk
         * quality_scale
         * anomaly_scale
         * spread_scale
         * time_kelly_scale
-        * _confidence_boost,
+        * _confidence_boost
+        * condition_type_scale,  # #39: scale down Kelly for harder-to-forecast conditions
         6,
     )
     ci_adjusted_kelly = min(ci_adjusted_kelly, 0.25)

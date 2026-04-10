@@ -72,3 +72,46 @@ class TestEdgeConfidenceConditionType:
         without = edge_confidence(5)
         with_unknown = edge_confidence(5, condition_type="unknown_type")
         assert without == pytest.approx(with_unknown)
+
+
+class TestAnalyzeTradeConditionType:
+    def setup_method(self):
+        self._tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+        tracker.DB_PATH = Path(self._tmp.name)
+        tracker._db_initialized = False
+
+    def teardown_method(self):
+        import gc
+
+        gc.collect()
+        tracker._db_initialized = False
+        self._tmp.close()
+        try:
+            Path(self._tmp.name).unlink(missing_ok=True)
+        except PermissionError:
+            pass
+
+    def test_bias_correction_condition_type_param_accepted(self):
+        """get_bias accepts condition_type kwarg — confirms the interface exists for wiring."""
+        from tracker import get_bias
+
+        # Should not raise TypeError. Returns 0.0 when no history exists.
+        result_global = get_bias("NYC", 5)
+        result_cond = get_bias("NYC", 5, condition_type="above")
+        assert isinstance(result_global, float)
+        assert isinstance(result_cond, float)
+
+    def test_condition_type_scale_in_kelly(self):
+        """_CONDITION_CONFIDENCE values correctly rank: precip_snow < precip_any < above."""
+        from weather_markets import _CONDITION_CONFIDENCE
+
+        assert _CONDITION_CONFIDENCE["above"] == pytest.approx(1.00)
+        assert _CONDITION_CONFIDENCE["precip_any"] == pytest.approx(0.90)
+        assert _CONDITION_CONFIDENCE["precip_above"] == pytest.approx(0.85)
+        assert _CONDITION_CONFIDENCE["precip_snow"] == pytest.approx(0.80)
+        base = 0.15
+        assert base * _CONDITION_CONFIDENCE["precip_snow"] == pytest.approx(base * 0.80)
+        assert (
+            base * _CONDITION_CONFIDENCE["precip_snow"]
+            < base * _CONDITION_CONFIDENCE["above"]
+        )
