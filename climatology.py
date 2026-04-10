@@ -163,6 +163,43 @@ def _climatological_prob_inner(
     return None
 
 
+def persistence_prob(
+    condition_type: str,
+    threshold_lo: float,
+    threshold_hi: float | None,
+    current_value: float,
+    std_dev: float = 5.0,
+) -> float | None:
+    """
+    #26: Persistence baseline — models tomorrow's temperature as
+    N(current_value, std_dev) and returns P(value meets condition).
+
+    condition_type: 'above', 'below', 'between'
+    threshold_lo: lower (or sole) threshold
+    threshold_hi: upper threshold (only used for 'between')
+    current_value: today's observed temperature (°F)
+    std_dev: assumed day-to-day persistence error (default 5°F)
+
+    Returns probability in [0, 1], or None if inputs are invalid.
+    """
+    if std_dev <= 0:
+        return None
+
+    from utils import normal_cdf as _normal_cdf
+
+    if condition_type == "above":
+        return 1.0 - _normal_cdf(threshold_lo, current_value, std_dev)
+    elif condition_type == "below":
+        return _normal_cdf(threshold_lo, current_value, std_dev)
+    elif condition_type == "between":
+        if threshold_hi is None:
+            return None
+        p_hi = _normal_cdf(threshold_hi, current_value, std_dev)
+        p_lo = _normal_cdf(threshold_lo, current_value, std_dev)
+        return max(0.0, p_hi - p_lo)
+    return None
+
+
 def preload_all(city_coords: dict) -> None:
     """Fetch and cache historical data for all cities. Refreshes stale caches."""
     for city, coords in city_coords.items():
