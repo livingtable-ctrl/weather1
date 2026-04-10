@@ -1170,6 +1170,70 @@ def bayesian_kelly(
     return round(total / (n_steps + 1), 6)
 
 
+def bayesian_kelly_fraction(
+    our_prob: float,
+    market_prob: float,
+    n_predictions: int = 20,
+    confidence: float = 0.90,
+) -> float:
+    """
+    #39: Bayesian Kelly with Beta posterior uncertainty shrinkage.
+
+    Builds a Beta(alpha, beta) posterior from n_predictions pseudo-observations
+    centred on our_prob, then uses the Wilson lower bound at `confidence` as a
+    conservative probability estimate before calling kelly_fraction.
+
+    Alpha = our_prob * n_predictions + 1
+    Beta  = (1 - our_prob) * n_predictions + 1
+
+    The Wilson lower bound at `confidence` is the (1-confidence)/2 quantile of
+    the Beta distribution, approximated via a normal approximation on the logit
+    scale (suitable for probabilities not near 0 or 1).
+
+    Returns kelly_fraction(conservative_p, market_prob), capped at 0.25.
+    Never returns a negative value.
+    """
+    import math
+
+    our_prob = max(0.01, min(0.99, our_prob))
+    market_prob = max(0.01, min(0.99, market_prob))
+
+    alpha = our_prob * n_predictions + 1.0
+    beta = (1.0 - our_prob) * n_predictions + 1.0
+    n_total = alpha + beta
+
+    # Beta mean and variance
+    mu = alpha / n_total
+    var = (alpha * beta) / (n_total**2 * (n_total + 1))
+    sigma = math.sqrt(var)
+
+    # Normal approximation: lower bound at (1 - confidence) / 2 tail
+    z = _normal_quantile((1.0 - confidence) / 2.0)  # negative value for lower tail
+    conservative_p = mu + z * sigma  # z is negative, so this shrinks toward 0
+
+    conservative_p = max(0.01, min(0.99, conservative_p))
+    result = kelly_fraction(conservative_p, market_prob)
+    return min(max(0.0, result), 0.25)
+
+
+def _normal_quantile(p: float) -> float:
+    """Approximate inverse CDF of the standard normal (rational approximation)."""
+    import math
+
+    if p <= 0.0:
+        return float("-inf")
+    if p >= 1.0:
+        return float("inf")
+    # Rational approximation (Abramowitz & Stegun 26.2.17)
+    c = [2.515517, 0.802853, 0.010328]
+    d = [1.432788, 0.189269, 0.001308]
+    t = math.sqrt(-2.0 * math.log(p if p < 0.5 else 1.0 - p))
+    num = c[0] + c[1] * t + c[2] * t**2
+    den = 1.0 + d[0] * t + d[1] * t**2 + d[2] * t**3
+    x = t - num / den
+    return -x if p < 0.5 else x
+
+
 def _bootstrap_ci(
     temps: list[float], condition: dict, n: int = 500
 ) -> tuple[float, float]:
@@ -1241,6 +1305,29 @@ def kelly_fraction(our_prob: float, price: float, fee_rate: float = 0.0) -> floa
     full_kelly = (b * our_prob - q) / b
     half_kelly = max(0.0, full_kelly / 2)  # half-Kelly for safety
     return min(half_kelly, 0.25)  # #115: hard cap at 25% of bankroll
+
+
+def time_decay_edge(
+    raw_edge: float,
+    close_time: datetime,
+    reference_hours: float = 48.0,
+) -> float:
+    """
+    #63: Scale edge linearly to zero as the market approaches close.
+
+    At reference_hours or more before close: full edge returned.
+    At close_time or past: 0.0 returned.
+
+    hours_left = (close_time - now).total_seconds() / 3600
+    decay      = min(1.0, hours_left / reference_hours)   clamped at [0, 1]
+    returns    raw_edge * decay
+    """
+    now = datetime.now(UTC)
+    hours_left = (close_time - now).total_seconds() / 3600
+    if hours_left <= 0.0:
+        return 0.0
+    decay = min(1.0, hours_left / reference_hours)
+    return raw_edge * decay
 
 
 def _fetch_ensemble_precip(

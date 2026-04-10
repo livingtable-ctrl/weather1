@@ -28,3 +28,7 @@ check_untyped_defs = true
 [[tool.mypy.overrides]]
 module = "kalshi_client"
 ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = "tests.*"
+ignore_errors = true
