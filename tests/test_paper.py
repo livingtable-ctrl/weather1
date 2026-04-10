@@ -513,5 +513,147 @@ class TestExportTrades(unittest.TestCase):
         self.assertEqual(n, 0)
 
 
+class TestDrawdownScaling(unittest.TestCase):
+    """Tests for the gradual drawdown recovery sizing feature."""
+
+    def setUp(self):
+        self._tmpdir = tempfile.mkdtemp()
+        self._patch = patch("paper.DATA_PATH", Path(self._tmpdir) / "paper_trades.json")
+        self._patch.start()
+
+    def tearDown(self):
+        self._patch.stop()
+        shutil.rmtree(self._tmpdir, ignore_errors=True)
+
+    def test_full_scaling_at_peak(self):
+        """At full balance, scaling factor is 1.0."""
+        import paper
+
+        self.assertEqual(paper.drawdown_scaling_factor(), 1.0)
+
+    def test_zero_scaling_below_50_pct(self):
+        """Below 50% of peak → scale = 0.0 (fully paused)."""
+        import paper
+
+        paper.place_paper_order("TK", "yes", 600, 1.00)  # balance → $400 (40% of $1000)
+        self.assertEqual(paper.drawdown_scaling_factor(), 0.0)
+
+    def test_quarter_scaling_between_50_and_60_pct(self):
+        """Balance 50–60% of peak → scale = 0.25."""
+        import paper
+
+        paper.place_paper_order("TK", "yes", 450, 1.00)  # balance → $550 (55% of $1000)
+        self.assertEqual(paper.drawdown_scaling_factor(), 0.25)
+
+    def test_half_scaling_between_60_and_75_pct(self):
+        """Balance 60–75% of peak → scale = 0.50."""
+        import paper
+
+        paper.place_paper_order("TK", "yes", 350, 1.00)  # balance → $650 (65% of $1000)
+        self.assertEqual(paper.drawdown_scaling_factor(), 0.50)
+
+    def test_three_quarter_scaling_between_75_and_90_pct(self):
+        """Balance 75–90% of peak → scale = 0.75."""
+        import paper
+
+        paper.place_paper_order("TK", "yes", 200, 1.00)  # balance → $800 (80% of $1000)
+        self.assertEqual(paper.drawdown_scaling_factor(), 0.75)
+
+    def test_kelly_scaled_at_partial_recovery(self):
+        """Kelly dollars are scaled by recovery factor, not all-or-nothing."""
+        import paper
+
+        paper.place_paper_order("TK", "yes", 350, 1.00)  # balance → $650, scale=0.50
+        dollars = paper.kelly_bet_dollars(0.10)
+        # 0.10 * 0.50 * $650 = $32.50
+        self.assertAlmostEqual(dollars, 32.50)
+
+    def test_kelly_zero_below_50_pct(self):
+        """Kelly still returns 0.0 when fully in drawdown (scale=0.0)."""
+        import paper
+
+        paper.place_paper_order("TK", "yes", 600, 1.00)  # balance → $400
+        self.assertEqual(paper.kelly_bet_dollars(0.10), 0.0)
+
+
+class TestAutoSettlePaperTrades(unittest.TestCase):
+    """Tests for auto-settling paper trades when tracker outcomes are recorded."""
+
+    def setUp(self):
+        import tempfile
+
+        import tracker
+
+        self._paper_dir = tempfile.mkdtemp()
+        self._tracker_dir = tempfile.mkdtemp()
+        self._paper_patch = patch(
+            "paper.DATA_PATH", Path(self._paper_dir) / "paper_trades.json"
+        )
+        self._tracker_patch = patch(
+            "tracker.DB_PATH", Path(self._tracker_dir) / "predictions.db"
+        )
+        self._paper_patch.start()
+        self._tracker_patch.start()
+        # Reset the init flag so init_db() re-creates tables in the new temp DB
+        tracker._db_initialized = False
+
+    def tearDown(self):
+        import tracker
+
+        self._paper_patch.stop()
+        self._tracker_patch.stop()
+        tracker._db_initialized = False
+        shutil.rmtree(self._paper_dir, ignore_errors=True)
+        shutil.rmtree(self._tracker_dir, ignore_errors=True)
+
+    def test_auto_settle_settles_matching_trade(self):
+        """auto_settle_paper_trades() closes paper trades with recorded outcomes."""
+        import paper
+        import tracker
+
+        paper.place_paper_order("TKAUTO", "yes", 10, 0.50)
+        tracker.log_outcome("TKAUTO", True)  # YES settled
+
+        settled = paper.auto_settle_paper_trades()
+        self.assertEqual(settled, 1)
+        open_trades = paper.get_open_trades()
+        self.assertEqual(len(open_trades), 0)
+
+    def test_auto_settle_skips_no_outcome(self):
+        """auto_settle_paper_trades() leaves trades open when no outcome recorded."""
+        import paper
+
+        paper.place_paper_order("TKPENDING", "yes", 10, 0.50)
+        settled = paper.auto_settle_paper_trades()
+        self.assertEqual(settled, 0)
+        self.assertEqual(len(paper.get_open_trades()), 1)
+
+    def test_get_outcome_for_ticker_returns_none_when_missing(self):
+        import tracker
+
+        result = tracker.get_outcome_for_ticker("NOTEXIST")
+        self.assertIsNone(result)
+
+    def test_get_outcome_for_ticker_returns_correct_value(self):
+        import tracker
+
+        tracker.log_prediction(
+            "TKOUT",
+            "NYC",
+            __import__("datetime").date(2026, 4, 9),
+            {
+                "our_prob": 0.70,
+                "market_prob": 0.60,
+                "edge": 0.10,
+                "condition": {"type": "above", "threshold": 70},
+                "signal": "BUY YES",
+                "forecast_prob": 0.70,
+                "forecast_temp": 72.0,
+            },
+        )
+        tracker.log_outcome("TKOUT", False)
+        self.assertIs(tracker.get_outcome_for_ticker("TKOUT"), False)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

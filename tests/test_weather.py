@@ -6,11 +6,11 @@ fee-adjusted edge, Kelly criterion, bootstrap CI, and time-of-day risk.
 import unittest
 from datetime import UTC, datetime, timedelta
 
+from utils import normal_cdf as _normal_cdf
 from weather_markets import (
     _bootstrap_ci_precip,
     _forecast_model_weights,
     _forecast_probability,
-    _normal_cdf,
     _parse_market_condition,
     _time_risk,
     ensemble_stats,

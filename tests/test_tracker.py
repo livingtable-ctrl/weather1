@@ -26,9 +26,11 @@ class TestTracker(unittest.TestCase):
         self._tmpdir = tempfile.mkdtemp()
         self._orig = tracker.DB_PATH
         tracker.DB_PATH = Path(self._tmpdir) / "test_predictions.db"
+        tracker._db_initialized = False
 
     def tearDown(self):
         tracker.DB_PATH = self._orig
+        tracker._db_initialized = False
         import shutil
 
         shutil.rmtree(self._tmpdir, ignore_errors=True)
