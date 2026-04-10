@@ -5,6 +5,7 @@ Compares market-implied probabilities with Open-Meteo forecast data.
 
 from __future__ import annotations
 
+import logging
 import random
 import re
 import statistics
@@ -18,6 +19,8 @@ from climatology import climatological_prob
 from kalshi_client import KalshiClient, _request_with_retry
 from nws import get_live_observation, nws_prob, obs_prob
 from utils import KALSHI_FEE_RATE, normal_cdf
+
+_log = logging.getLogger(__name__)
 
 # ── Open-Meteo (free, no API key) ────────────────────────────────────────────
 
@@ -1066,8 +1069,11 @@ def _analyze_precip_trade(
         city = enriched.get("_city")
         bias = get_bias(city, target_date.month)
         blended_prob = blended_prob - bias
-    except Exception:
-        pass
+    except Exception as _exc:
+        # #109: log with ticker so failures are traceable
+        _log.debug(
+            "Bias correction skipped for %s: %s", enriched.get("ticker", "?"), _exc
+        )
 
     blended_prob = max(0.01, min(0.99, blended_prob))
 
@@ -1383,8 +1389,14 @@ def analyze_trade(enriched: dict) -> dict | None:
 
         bias = get_bias(city, target_date.month)
         blended_prob = max(0.01, min(0.99, blended_prob - bias))
-    except Exception:
-        pass
+    except Exception as _exc:
+        # #109: log with ticker/city so failures are traceable
+        _log.debug(
+            "Bias correction skipped for %s (%s): %s",
+            enriched.get("ticker", "?"),
+            city,
+            _exc,
+        )
 
     # ── Consensus signal: all available sources agree on direction ───────────
     sources_with_data = [p for p in [ens_prob, _nws_prob, clim_prob] if p is not None]

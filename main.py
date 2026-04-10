@@ -759,8 +759,17 @@ def _analyze_once(
     for i, m in enumerate(markets, 1):
         if total > 5:
             print(f"\r  Scanning [{i}/{total}]...", end="", flush=True)
-        enriched = enrich_with_forecast(m)
-        analysis = analyze_trade(enriched)
+        try:
+            enriched = enrich_with_forecast(m)
+            analysis = analyze_trade(enriched)
+        except Exception as exc:
+            # #109: include ticker in error so failures are debuggable
+            import logging as _logging
+
+            _logging.getLogger(__name__).warning(
+                "Market analysis failed for %s: %s", m.get("ticker", "?"), exc
+            )
+            continue
         if not analysis or abs(analysis["edge"]) < min_edge:
             continue
         # #64: tag analysis as a hedge if it reduces existing open exposure

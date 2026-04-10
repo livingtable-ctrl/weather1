@@ -75,6 +75,16 @@ def simulate_portfolio(
             win_prob = entry_prob if entry_prob is not None else 0.5
 
         win_prob = max(0.0, min(1.0, win_prob))
+        # #48: clamp to [0.1, 0.9] — extreme values likely stale or bad data
+        clamped = max(0.1, min(0.9, win_prob))
+        if clamped != win_prob:
+            import warnings
+
+            warnings.warn(
+                f"Monte Carlo: win_prob {win_prob:.3f} for {ticker} clamped to {clamped:.3f}",
+                stacklevel=2,
+            )
+            win_prob = clamped
 
         # If we win: payout per contract = 1 - fee on winnings
         winnings_per = 1.0 - entry_price

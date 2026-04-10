@@ -3,12 +3,15 @@ Kalshi API client with RSA-PSS authentication.
 """
 
 import base64
+import logging
 import time
 from pathlib import Path
 
 import requests
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding
+
+_log = logging.getLogger(__name__)
 
 _RETRY_STATUSES = {429, 500, 502, 503, 504}
 _MAX_RETRIES = 3
@@ -29,7 +32,12 @@ def _request_with_retry(method: str, url: str, **kwargs) -> requests.Response:
     resp = None
     for attempt in range(_MAX_RETRIES):
         try:
+            _t0 = time.perf_counter()
             resp = requests.request(method, url, **kwargs)
+            _elapsed = time.perf_counter() - _t0
+            # #108: warn on slow API responses so latency issues are visible
+            if _elapsed > 5:
+                _log.warning("Kalshi API slow: %.1fs for %s %s", _elapsed, method, url)
             if resp.status_code not in _RETRY_STATUSES:
                 return resp
             # #6: honour Retry-After if the server sent one

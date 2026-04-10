@@ -7,6 +7,7 @@ Provides:
 
 from __future__ import annotations
 
+import logging
 import os
 import time
 from datetime import date, datetime
@@ -14,6 +15,8 @@ from datetime import date, datetime
 import requests
 
 from utils import normal_cdf
+
+_log = logging.getLogger(__name__)
 
 NWS_BASE = "https://api.weather.gov"
 # #68: load User-Agent from env so it can be updated without a code change
@@ -36,9 +39,14 @@ _obs_cache: dict = {}  # city -> (timestamp, observation_dict)
 
 
 def _get(url: str, params: dict | None = None) -> dict:
+    _t0 = time.perf_counter()
     resp = _session.get(
         url, params=params, timeout=15
     )  # #125: session reuses connections
+    _elapsed = time.perf_counter() - _t0
+    # #108: warn on slow NWS responses
+    if _elapsed > 5:
+        _log.warning("NWS API slow: %.1fs for %s", _elapsed, url)
     resp.raise_for_status()
     return resp.json()
 
