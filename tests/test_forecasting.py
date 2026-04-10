@@ -132,25 +132,25 @@ class TestEnsoPhase:
     def test_el_nino_returns_correct_label(self):
         from weather_markets import _get_enso_phase
 
-        with patch("climate_indices.get_enso_index", return_value=0.7):
+        with patch("weather_markets.get_enso_index", return_value=0.7):
             assert _get_enso_phase() == "el_nino"
 
     def test_la_nina_returns_correct_label(self):
         from weather_markets import _get_enso_phase
 
-        with patch("climate_indices.get_enso_index", return_value=-0.6):
+        with patch("weather_markets.get_enso_index", return_value=-0.6):
             assert _get_enso_phase() == "la_nina"
 
     def test_neutral_returns_correct_label(self):
         from weather_markets import _get_enso_phase
 
-        with patch("climate_indices.get_enso_index", return_value=0.2):
+        with patch("weather_markets.get_enso_index", return_value=0.2):
             assert _get_enso_phase() == "neutral"
 
     def test_none_oni_returns_neutral(self):
         from weather_markets import _get_enso_phase
 
-        with patch("climate_indices.get_enso_index", return_value=None):
+        with patch("weather_markets.get_enso_index", return_value=None):
             assert _get_enso_phase() == "neutral"
 
     def test_el_nino_boosts_ecmwf_in_winter(self):
