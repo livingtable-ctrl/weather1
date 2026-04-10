@@ -3317,6 +3317,19 @@ def cmd_walkforward(client: KalshiClient) -> None:
             )
             if save_choice == "y":
                 save_learned_weights(city_win_rates)
+                # #25/#118: also update weights from tracker MAE data
+                try:
+                    from weather_markets import update_learned_weights_from_tracker
+
+                    tracker_weights = update_learned_weights_from_tracker()
+                    if tracker_weights:
+                        print(
+                            green(
+                                f"  MAE-derived weights updated for {len(tracker_weights)} cities."
+                            )
+                        )
+                except Exception:
+                    pass
                 print(green("  Learned weights saved."))
         except (KeyboardInterrupt, EOFError):
             print()

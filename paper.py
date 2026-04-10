@@ -49,6 +49,21 @@ _CORRELATED_CITY_GROUPS = [
     {"Dallas", "Atlanta"},
 ]
 MAX_CORRELATED_EXPOSURE = 0.20  # max combined fraction across a correlated group
+
+# #51: Pairwise city temperature correlations for portfolio Kelly covariance matrix.
+# Values are approximate correlations of daily high-temperature anomalies.
+# Symmetric; self-correlation = 1.0 (not listed).
+_CITY_PAIR_CORR: dict[frozenset, float] = {
+    frozenset({"NYC", "Boston"}): 0.85,
+    frozenset({"NYC", "Philadelphia"}): 0.80,
+    frozenset({"Chicago", "Denver"}): 0.45,
+    frozenset({"Chicago", "Minneapolis"}): 0.60,
+    frozenset({"LA", "Phoenix"}): 0.55,
+    frozenset({"LA", "San Francisco"}): 0.50,
+    frozenset({"Dallas", "Atlanta"}): 0.55,
+    frozenset({"Dallas", "Houston"}): 0.70,
+    frozenset({"Miami", "Atlanta"}): 0.50,
+}
 MAX_SINGLE_TICKER_EXPOSURE = float(
     os.getenv("MAX_SINGLE_TICKER_EXPOSURE", "0.10")
 )  # #47
@@ -478,7 +493,71 @@ def portfolio_kelly_fraction(
     if ticker:
         result *= position_age_kelly_scale(ticker)
 
+    # #51: covariance-based Kelly reduction — shrinks bet when correlated positions open
+    if side:
+        base_prob = (
+            base_fraction  # use base_fraction as proxy when entry_prob unavailable
+        )
+        result *= covariance_kelly_scale(city, base_prob, side)
+
     return round(result, 6)
+
+
+def covariance_kelly_scale(
+    new_city: str,
+    new_prob: float,
+    new_side: str,
+) -> float:
+    """
+    #51: Portfolio Kelly covariance adjustment.
+
+    Computes the marginal increase in portfolio variance from adding a new bet,
+    using the pairwise city correlation matrix.  Returns a scale in [0.3, 1.0]:
+      1.0 — no correlated open positions (full Kelly)
+      0.3 — maximum correlation with existing book (30% of Kelly)
+
+    For a binary outcome with win-probability p, the outcome variance is p*(1-p).
+    The portfolio variance contribution of a new bet on city A is:
+      sigma_A^2 + 2 * sum_i( corr(A,i) * sigma_A * sigma_i * w_i )
+    where w_i is the fraction-of-balance in open position i.
+
+    We normalise this by sigma_A^2 so it's independent of bet size, then map
+    the ratio linearly to [1.0, 0.3].
+    """
+    open_trades = get_open_trades()
+    if not open_trades:
+        return 1.0
+
+    p_new = new_prob if new_side == "yes" else 1.0 - new_prob
+    p_new = max(0.01, min(0.99, p_new))
+    sigma_new = (p_new * (1 - p_new)) ** 0.5
+
+    # Compute weighted sum of correlations with open positions
+    weighted_corr_sum = 0.0
+    total_weight = 0.0
+    for t in open_trades:
+        t_city = t.get("city") or ""
+        if not t_city or t_city == new_city:
+            continue
+        pair = frozenset({new_city, t_city})
+        corr = _CITY_PAIR_CORR.get(pair, 0.0)
+        if corr == 0.0:
+            continue
+        p_i = t.get("entry_prob") or 0.5
+        p_i = max(0.01, min(0.99, float(p_i)))
+        sigma_i = (p_i * (1 - p_i)) ** 0.5
+        w_i = t.get("cost", 0.0) / max(STARTING_BALANCE, 1.0)
+        weighted_corr_sum += corr * sigma_i * w_i
+        total_weight += w_i
+
+    if weighted_corr_sum <= 0 or sigma_new <= 0:
+        return 1.0
+
+    # Marginal variance ratio: how much does this bet inflate portfolio variance?
+    marginal_ratio = 1.0 + 2.0 * weighted_corr_sum / sigma_new
+    # Map ratio linearly: ratio=1 → scale=1.0, ratio=3 → scale=0.3
+    scale = max(0.3, 1.0 - (marginal_ratio - 1.0) * 0.35)
+    return round(scale, 4)
 
 
 def slippage_kelly_scale(market: dict, quantity: int) -> float:

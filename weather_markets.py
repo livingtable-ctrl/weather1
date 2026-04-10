@@ -331,46 +331,117 @@ def _feels_like(
     return temp_f
 
 
+_MAE_WEIGHTS_CACHE: dict[str, dict[str, float]] = {}  # city -> weights, session cache
+
+
+def _weights_from_mae(city: str, min_n: int = 20) -> dict[str, float] | None:
+    """
+    #25/#118: Derive per-model blend weights from inverse-MAE scores in tracker.
+    Returns None if insufficient data (< min_n observations per model).
+    Lower MAE → higher weight.  Normalised so weights sum to the number of models.
+    City-specific data is preferred; falls back to global MAE if city data is thin.
+    """
+    if city in _MAE_WEIGHTS_CACHE:
+        return _MAE_WEIGHTS_CACHE[city]
+    try:
+        from tracker import get_member_accuracy
+
+        acc = get_member_accuracy()  # {model: {mae, n, city_breakdown}}
+    except Exception:
+        return None
+
+    if not acc:
+        return None
+
+    weights: dict[str, float] = {}
+    for model, stats in acc.items():
+        city_bd = stats.get("city_breakdown", {})
+        # Prefer city-level MAE if we have enough data there
+        city_mae = city_bd.get(city)
+        city_n = sum(1 for _ in city_bd) if city_bd else 0
+        mae = city_mae if (city_mae is not None and city_n >= min_n) else stats["mae"]
+        n = stats["n"]
+        if n < min_n or mae <= 0:
+            return None  # too little data — don't trust yet
+        weights[model] = 1.0 / mae
+
+    if not weights:
+        return None
+
+    # Normalise so weights sum to len(weights) (keeps same scale as seasonal priors)
+    total = sum(weights.values())
+    n_models = len(weights)
+    normalised = {m: v / total * n_models for m, v in weights.items()}
+    _MAE_WEIGHTS_CACHE[city] = normalised
+    return normalised
+
+
+def update_learned_weights_from_tracker(min_n: int = 20) -> dict:
+    """
+    #118: Compute per-city inverse-MAE weights from tracker data and persist to
+    data/learned_weights.json.  Call this after each backtest walk-forward run.
+    Returns the weights dict that was saved.
+    """
+    try:
+        from tracker import get_member_accuracy
+
+        acc = get_member_accuracy()
+    except Exception:
+        return {}
+
+    if not acc:
+        return {}
+
+    # Collect all cities that appear in any model's city_breakdown
+    all_cities: set[str] = set()
+    for stats in acc.values():
+        all_cities.update(stats.get("city_breakdown", {}).keys())
+
+    city_weights: dict[str, dict[str, float]] = {}
+    for city in all_cities:
+        w = _weights_from_mae(city, min_n=min_n)
+        if w:
+            city_weights[city] = w
+
+    if city_weights:
+        save_learned_weights(city_weights)
+    return city_weights
+
+
 def _model_weights(city: str, month: int | None = None) -> dict[str, float]:
     """
     Return per-model weights for the ensemble blend.
-    Combines historical Brier performance with seasonal accuracy priors:
-      Winter (Oct–Mar): ECMWF outperforms GFS over the US; add it at 2× weight.
-      Summer (Apr–Sep): ECMWF advantage shrinks; add at 1.5× weight.
-    Defaults to equal weighting if no Brier data available.
+    Priority order:
+      1. Per-city inverse-MAE weights derived from tracker data (#25/#118)
+      2. Manually learned weights from data/learned_weights.json (from backtest)
+      3. Seasonal ECMWF/GFS priors (original behaviour)
     """
-    # Use learned per-city weights if available (from run_walk_forward)
+    # 1. Dynamic: derive from recent tracker MAE data
+    mae_weights = _weights_from_mae(city)
+    if mae_weights:
+        # Blend MAE-derived weights with seasonal prior at 70/30 so we don't
+        # completely abandon meteorological priors with limited data
+        is_winter = (month or 0) in (10, 11, 12, 1, 2, 3)
+        ecmwf_prior = 2.0 if is_winter else 1.5
+        prior = {"icon_seamless": 1.0, "gfs_seamless": 1.0, "ecmwf_ifs04": ecmwf_prior}
+        blended: dict[str, float] = {}
+        for m in set(mae_weights) | set(prior):
+            blended[m] = 0.7 * mae_weights.get(m, 1.0) + 0.3 * prior.get(m, 1.0)
+        return blended
+
+    # 2. Pre-saved learned weights from last backtest run
     lw = load_learned_weights()
     if city in lw:
         return dict(lw[city])
 
-    # Seasonal ECMWF weight: better in winter for mid-latitude US cities
+    # 3. Seasonal ECMWF weight: better in winter for mid-latitude US cities
     if month is not None:
         is_winter = month in (10, 11, 12, 1, 2, 3)
         ecmwf_w = 2.0 if is_winter else 1.5
     else:
         ecmwf_w = 1.5  # conservative default
 
-    base: dict[str, float] = {
-        "icon_seamless": 1.0,
-        "gfs_seamless": 1.0,
-        "ecmwf_ifs04": ecmwf_w,
-    }
-
-    try:
-        from tracker import brier_score_by_method
-
-        scores = brier_score_by_method()
-        overall = scores.get("ensemble")
-        if overall is not None:
-            if overall < 0.18:
-                base["icon_seamless"] = 1.5  # good accuracy — trust ICON more
-            elif overall >= 0.22:
-                base["icon_seamless"] = 0.8  # poor accuracy — reduce ICON weight
-    except Exception:
-        pass
-
-    return base
+    return {"icon_seamless": 1.0, "gfs_seamless": 1.0, "ecmwf_ifs04": ecmwf_w}
 
 
 def get_ensemble_temps(
@@ -875,6 +946,38 @@ def _blend_weights(
     return w_ens / total, w_clim / total, w_nws / total
 
 
+def bayesian_kelly(
+    ci_low: float,
+    ci_high: float,
+    price: float,
+    fee_rate: float = KALSHI_FEE_RATE,
+    n_steps: int = 50,
+) -> float:
+    """
+    #39: Bayesian Kelly — integrate kelly_fraction over a uniform posterior on
+    [ci_low, ci_high] rather than using the point-estimate probability.
+
+    A uniform posterior is the maximum-entropy choice given only CI bounds.
+    Averaging Kelly over the distribution gives a more conservative sizing that
+    accounts for genuine uncertainty in the probability estimate.
+
+    Returns 0.0 when the CI is trivially wide (full [0, 1] range).
+    """
+    ci_low = max(0.01, ci_low)
+    ci_high = min(0.99, ci_high)
+    if ci_high <= ci_low:
+        return kelly_fraction(ci_low, price, fee_rate)
+    if ci_high - ci_low >= 0.99:
+        return 0.0  # no information — don't bet
+
+    step = (ci_high - ci_low) / n_steps
+    total = 0.0
+    for i in range(n_steps + 1):
+        p = ci_low + i * step
+        total += kelly_fraction(p, price, fee_rate)
+    return round(total / (n_steps + 1), 6)
+
+
 def _bootstrap_ci(
     temps: list[float], condition: dict, n: int = 500
 ) -> tuple[float, float]:
@@ -1107,9 +1210,13 @@ def _analyze_precip_trade(
         else False
     )
 
-    ci_adj_kelly = round(fee_kel * max(0.25, 1.0 - (ci_high - ci_low)), 6)
+    # #39: Bayesian Kelly — integrate over uniform posterior on CI range
+    ci_adj_kelly = bayesian_kelly(
+        ci_low, ci_high, entry_price, fee_rate=KALSHI_FEE_RATE
+    )
     if precip_consensus:
         ci_adj_kelly = round(ci_adj_kelly * 1.25, 6)
+    ci_adj_kelly = min(ci_adj_kelly, 0.25)
 
     return {
         "forecast_prob": blended_prob,
@@ -1199,7 +1306,10 @@ def _analyze_snow_trade(
     if len(precip_members) >= 5:
         ci_low, ci_high = _bootstrap_ci_precip(precip_members, condition)
 
-    ci_adj_kelly = round(fee_kel * max(0.25, 1.0 - (ci_high - ci_low)), 6)
+    # #39: Bayesian Kelly
+    ci_adj_kelly = min(
+        bayesian_kelly(ci_low, ci_high, entry_price, fee_rate=KALSHI_FEE_RATE), 0.25
+    )
 
     return {
         "forecast_prob": blended_prob,
@@ -1510,15 +1620,16 @@ def analyze_trade(enriched: dict) -> dict | None:
     # Scale Kelly down for low data quality and anomalous forecasts
     quality_scale = 0.5 + 0.5 * data_quality  # 0.5 at quality=0, 1.0 at quality=1
     anomaly_scale = 0.70 if anomalous else 1.0
-    ci_scale = max(0.25, 1.0 - (ci_high - ci_low))
 
     # Time-value Kelly: reduce bet size for far-out markets (more uncertainty).
     # Scale: 1.0 at 0-1 days → 0.5 at ≥14 days. Intermediate values are linear.
     time_kelly_scale = max(0.50, 1.0 - (days_out / 14.0) * 0.50)
 
+    # #39: Bayesian Kelly — integrate over uniform posterior on [ci_low, ci_high]
+    # Then apply the same quality/anomaly/spread/time modifiers as before.
+    bk = bayesian_kelly(ci_low, ci_high, entry_price, fee_rate=KALSHI_FEE_RATE)
     ci_adjusted_kelly = round(
-        fee_adjusted_kelly
-        * ci_scale
+        bk
         * quality_scale
         * anomaly_scale
         * spread_scale
@@ -1526,10 +1637,12 @@ def analyze_trade(enriched: dict) -> dict | None:
         * _confidence_boost,
         6,
     )
+    ci_adjusted_kelly = min(ci_adjusted_kelly, 0.25)
 
     # Consensus bonus: all sources agree → size up 25%
     if consensus:
         ci_adjusted_kelly = round(ci_adjusted_kelly * 1.25, 6)
+    ci_adjusted_kelly = min(ci_adjusted_kelly, 0.25)
 
     return {
         # Core
