@@ -352,11 +352,20 @@ def _build_app(client):
             if a.get("net_edge", a.get("edge", 0)) > 0
         ][:10]
 
+        from paper import get_balance as _get_balance
+
+        _balance = _get_balance()
+
         for m, a in opps:
             net_edge = a.get("net_edge", a["edge"])
             edge_cls = "pos" if net_edge > 0 else "neg"
             edge_str = f"+{net_edge:.0%}" if net_edge > 0 else f"{net_edge:.0%}"
             ticker = m.get("ticker", "")
+            kelly = a.get(
+                "ci_adjusted_kelly", a.get("fee_adjusted_kelly", a.get("kelly", 0))
+            )
+            bet_amount = kelly * _balance
+            bet_cell = f"${bet_amount:.2f}" if bet_amount >= 0.05 else "—"
             side_badge = (
                 '<span class="badge badge-green">YES</span>'
                 if a["recommended_side"] == "yes"
@@ -371,14 +380,53 @@ def _build_app(client):
               <td>{a["market_prob"]:.0%}</td>
               <td class="{edge_cls}">{edge_str}</td>
               <td>{a.get("time_risk", "—")}</td>
+              <td>{bet_cell}</td>
               <td>{side_badge}</td>
             </tr>"""
+
+        top_bets_card = """<div id="top-bets-card" style="background:#161b22;border:1px solid #21262d;border-radius:8px;padding:16px;margin-bottom:20px">
+  <h2 style="margin:0 0 12px 0;font-size:1.1em">Today&rsquo;s Top Bets</h2>
+  <div id="top-bets-body" style="font-size:0.9em;color:#8b949e">Loading&hellip;</div>
+</div>
+<script>
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+fetch('/api/suggested_bets?n=3')
+  .then(r => r.json())
+  .then(data => {
+    const el = document.getElementById('top-bets-body');
+    if (!data.bets || data.bets.length === 0) {
+      el.textContent = 'No strong bets today.';
+      return;
+    }
+    const rows = data.bets.map((b, i) => {
+      const badge = b.recommended_side === 'YES'
+        ? '<span class="badge badge-green">YES</span>'
+        : '<span class="badge badge-red">NO</span>';
+      return '<div style="display:flex;gap:16px;align-items:center;padding:6px 0;border-bottom:1px solid #21262d">'
+        + '<span style="font-weight:bold;color:#8b949e;min-width:24px">#' + (i+1) + '</span>'
+        + '<span style="flex:1;font-family:monospace">' + esc(b.ticker) + '</span>'
+        + '<span style="flex:2;color:#c9d1d9">' + esc(b.title) + '</span>'
+        + badge
+        + '<span class="pos">+' + b.edge_pct + '%</span>'
+        + '<span style="font-weight:bold;color:#4ade80">Bet $' + b.suggested_dollars.toFixed(2) + '</span>'
+        + '</div>';
+    }).join('');
+    el.innerHTML = rows + '<p style="margin-top:8px;font-size:0.82em;color:#8b949e">Balance: $'
+      + data.balance.toFixed(2) + ' &mdash; Min edge: ' + (data.min_edge*100).toFixed(0) + '%</p>';
+  })
+  .catch(() => {
+    document.getElementById('top-bets-body').textContent = 'Could not load suggestions.';
+  });
+</script>"""
 
         html = f"""<!DOCTYPE html>
 <html><head><title>Analyze — Kalshi</title>{VIEWPORT}{DARK_STYLE}</head>
 <body>
 <h1>Kalshi Weather — Opportunities</h1>
 {NAV}
+{top_bets_card}
 <p class="refreshing" id="analyze-status">
   {
             len(opps)
@@ -409,7 +457,7 @@ setInterval(() => {{
             else f'''
 <table style="margin-top:16px">
   <tr><th>Ticker</th><th>Question</th><th>City</th><th>We Think</th><th>Mkt Says</th>
-      <th>Edge</th><th>Risk</th><th>Buy</th></tr>
+      <th>Edge</th><th>Risk</th><th>Bet</th><th>Buy</th></tr>
   {rows_html}
 </table>'''
         }
@@ -418,6 +466,77 @@ setInterval(() => {{
         } UTC &mdash; <a href="/analyze">Refresh</a></p>
 </body></html>"""
         return render_template_string(html)
+
+    @app.route("/api/suggested_bets")
+    def api_suggested_bets():
+        """Return top-N trade opportunities ranked by expected value (edge × kelly $)."""
+
+        from flask import request as freq
+
+        from paper import get_balance
+        from utils import MIN_EDGE
+        from weather_markets import (
+            analyze_trade,
+            enrich_with_forecast,
+            get_weather_markets,
+        )
+
+        n = int(freq.args.get("n", 3))
+
+        try:
+            markets = get_weather_markets(client)
+        except Exception as e:
+            return jsonify({"error": str(e), "bets": []}), 500
+
+        balance = get_balance()
+        candidates = []
+
+        for m in markets:
+            try:
+                enriched = enrich_with_forecast(m)
+                analysis = analyze_trade(enriched)
+                if not analysis:
+                    continue
+                net_edge = abs(analysis.get("net_edge", analysis.get("edge", 0)))
+                if net_edge < MIN_EDGE:
+                    continue
+                kelly = analysis.get(
+                    "ci_adjusted_kelly",
+                    analysis.get("fee_adjusted_kelly", analysis.get("kelly", 0)),
+                )
+                kelly_dollars = round(kelly * balance, 2)
+                ev_score = net_edge * kelly_dollars
+                candidates.append(
+                    {
+                        "ticker": m.get("ticker", ""),
+                        "title": (m.get("title") or m.get("ticker", ""))[:60],
+                        "city": m.get("_city", "—"),
+                        "recommended_side": analysis.get(
+                            "recommended_side", "—"
+                        ).upper(),
+                        "edge_pct": round(net_edge * 100, 1),
+                        "kelly_fraction": round(kelly, 4),
+                        "suggested_dollars": kelly_dollars,
+                        "signal": analysis.get("signal", "—"),
+                        "ev_score": round(ev_score, 4),
+                    }
+                )
+            except Exception:
+                continue
+
+        candidates.sort(key=lambda x: x["ev_score"], reverse=True)
+        top = candidates[:n]
+        for bet in top:
+            del bet["ev_score"]
+
+        return jsonify(
+            {
+                "bets": top,
+                "balance": round(balance, 2),
+                "min_edge": MIN_EDGE,
+                "generated_at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S"),
+            }
+        )
 
     @app.route("/analytics")
     def analytics_page():
