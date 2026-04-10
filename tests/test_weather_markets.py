@@ -10,8 +10,10 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from utils import normal_cdf
 from weather_markets import (
+    _bootstrap_ci,
     _feels_like,
     _forecast_model_weights,
+    ensemble_stats,
     is_liquid,
     kelly_fraction,
     parse_market_price,
@@ -303,3 +305,100 @@ class TestKellyCap:
         assert result == pytest.approx(0.33, abs=1e-6), (
             f"Expected Kelly cap 0.33, got {result}"
         )
+
+
+# ── TestEnsembleStats ─────────────────────────────────────────────────────────
+
+
+class TestEnsembleStats:
+    def test_empty_list_returns_empty_dict(self):
+        """ensemble_stats([]) must return {} not raise."""
+        result = ensemble_stats([])
+        assert result == {}
+
+    def test_single_element_std_is_zero(self):
+        """Single-element ensemble: std=0, min=max=mean=the value."""
+        result = ensemble_stats([75.0])
+        assert result["n"] == 1
+        assert result["mean"] == pytest.approx(75.0)
+        assert result["std"] == pytest.approx(0.0)
+        assert result["min"] == pytest.approx(75.0)
+        assert result["max"] == pytest.approx(75.0)
+        assert result["p10"] == pytest.approx(75.0)
+        assert result["p90"] == pytest.approx(75.0)
+
+    def test_returns_all_required_keys(self):
+        """Result must contain n, mean, std, min, max, p10, p90."""
+        result = ensemble_stats([60.0, 65.0, 70.0, 75.0, 80.0])
+        for key in ("n", "mean", "std", "min", "max", "p10", "p90"):
+            assert key in result, f"Missing key: {key}"
+
+    def test_mean_std_correct(self):
+        """Verify mean and std match statistics module on known data."""
+        import statistics
+
+        temps = [68.0, 70.0, 72.0, 74.0, 76.0]
+        result = ensemble_stats(temps)
+        assert result["mean"] == pytest.approx(statistics.mean(temps))
+        # ensemble_stats uses sample std (statistics.stdev, denominator n-1)
+        assert result["std"] == pytest.approx(statistics.stdev(temps), rel=1e-6)
+
+    def test_min_max_correct(self):
+        """min and max match the actual extremes."""
+        temps = [55.0, 70.0, 80.0, 63.0, 71.0]
+        result = ensemble_stats(temps)
+        assert result["min"] == pytest.approx(55.0)
+        assert result["max"] == pytest.approx(80.0)
+
+    def test_p10_less_than_p90(self):
+        """p10 <= mean <= p90 for a non-degenerate ensemble."""
+        temps = list(range(60, 80))  # [60, 61, ..., 79], 20 values
+        result = ensemble_stats(temps)
+        assert result["p10"] <= result["mean"]
+        assert result["mean"] <= result["p90"]
+        assert result["p10"] < result["p90"]
+
+
+# ── TestBootstrapCI ───────────────────────────────────────────────────────────
+
+
+class TestBootstrapCI:
+    """Tests for _bootstrap_ci — bootstrap 90% CI on ensemble probability."""
+
+    def test_too_few_members_returns_wide_ci(self):
+        """N < 5 → maximally uncertain (0.0, 1.0)."""
+        temps = [70.0, 71.0, 72.0]  # only 3 members
+        condition = {"type": "above", "threshold": 68.0}
+        lo, hi = _bootstrap_ci(temps, condition)
+        assert lo == pytest.approx(0.0)
+        assert hi == pytest.approx(1.0)
+
+    def test_small_n_under_30_returns_wide_ci(self):
+        """N < 30 but >= 5 → also returns (0.0, 1.0) per #114."""
+        temps = list(range(60, 75))  # 15 members
+        condition = {"type": "above", "threshold": 68.0}
+        lo, hi = _bootstrap_ci(temps, condition)
+        assert lo == pytest.approx(0.0)
+        assert hi == pytest.approx(1.0)
+
+    def test_above_condition_clear_outcome(self):
+        """N >= 30, all temps above threshold → CI near (1.0, 1.0)."""
+        temps = [80.0] * 40  # 40 members all above 70
+        condition = {"type": "above", "threshold": 70.0}
+        lo, hi = _bootstrap_ci(temps, condition, n=200)
+        assert lo >= 0.9, f"Expected lo near 1.0, got {lo}"
+        assert hi == pytest.approx(1.0, abs=1e-9)
+
+    def test_below_condition_returns_valid_tuple(self):
+        """'below' condition: returns (lo, hi) with 0 <= lo <= hi <= 1."""
+        temps = list(range(50, 90))  # 40 members spanning 50–89°F
+        condition = {"type": "below", "threshold": 70.0}
+        lo, hi = _bootstrap_ci(temps, condition, n=200)
+        assert 0.0 <= lo <= hi <= 1.0
+
+    def test_between_condition_returns_valid_tuple(self):
+        """'between' condition: returns (lo, hi) with 0 <= lo <= hi <= 1."""
+        temps = list(range(60, 100))  # 40 members spanning 60–99°F
+        condition = {"type": "between", "lower": 70.0, "upper": 80.0}
+        lo, hi = _bootstrap_ci(temps, condition, n=200)
+        assert 0.0 <= lo <= hi <= 1.0

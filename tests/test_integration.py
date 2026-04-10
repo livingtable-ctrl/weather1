@@ -210,3 +210,135 @@ class TestAnalyzePipeline:
 
         with pytest.raises(ValueError, match="must be a dict"):
             analyze_trade("not a dict")  # type: ignore[arg-type]
+
+
+class TestAnalyzePipelineExtra:
+    """Additional integration tests for below + precip conditions (#112)."""
+
+    @patch("weather_markets.get_live_observation", return_value=None)
+    @patch("weather_markets.nws_prob", return_value=0.45)
+    @patch("weather_markets.climatological_prob", return_value=0.40)
+    @patch("weather_markets.temperature_adjustment", return_value=0.0)
+    @patch(
+        "weather_markets.get_ensemble_temps",
+        return_value=[
+            50.0,
+            51.0,
+            52.0,
+            53.0,
+            54.0,
+            55.0,
+            56.0,
+            57.0,
+            58.0,
+            59.0,
+            60.0,
+            61.0,
+        ],
+    )
+    def test_analyze_trade_below_condition(
+        self, mock_ens, mock_temp_adj, mock_clim, mock_nws, mock_obs
+    ):
+        """analyze_trade handles a LOW market (below condition) correctly."""
+        from weather_markets import analyze_trade
+
+        enriched = _make_enriched(
+            ticker="KXLOWNY-26APR15-T55",
+            city="NYC",
+            target_date=date(2026, 4, 15),
+            forecast={
+                "high_f": 68.0,
+                "low_f": 52.0,
+                "precip_in": 0.0,
+                "date": "2026-04-15",
+            },
+        )
+        enriched["series_ticker"] = "KXLOWNY"
+        enriched["title"] = "NYC Low Temp below 55°F on Apr 15"
+
+        result = analyze_trade(enriched)
+
+        assert result is not None, "below condition should return a result"
+        assert "forecast_prob" in result
+        assert 0.0 <= result["forecast_prob"] <= 1.0
+        assert result["condition"]["type"] == "below"
+
+    @patch("weather_markets.get_live_observation", return_value=None)
+    @patch(
+        "weather_markets._analyze_precip_trade",
+        return_value={
+            "forecast_prob": 0.30,
+            "market_prob": 0.35,
+            "edge": -0.05,
+            "signal": "PASS",
+            "recommended_side": "NO",
+            "condition": {"type": "precip_any"},
+            "method": "ensemble",
+            "data_quality": 0.7,
+        },
+    )
+    def test_analyze_trade_precip_any_condition(self, mock_precip, mock_obs):
+        """analyze_trade routes precip_any markets through _analyze_precip_trade."""
+        from weather_markets import analyze_trade
+
+        enriched = _make_enriched(
+            ticker="KXRAIN-26APR15",
+            city="NYC",
+            target_date=date(2026, 4, 15),
+            forecast={
+                "high_f": 68.0,
+                "low_f": 55.0,
+                "precip_in": 0.02,
+                "date": "2026-04-15",
+            },
+        )
+        enriched["series_ticker"] = "KXRAIN"
+        enriched["title"] = "Will there be any measurable rain in NYC on Apr 15?"
+
+        result = analyze_trade(enriched)
+
+        assert result is not None
+        assert result["condition"]["type"] == "precip_any"
+        assert "forecast_prob" in result
+
+    @patch("weather_markets.get_live_observation", return_value=None)
+    @patch("weather_markets.nws_prob", return_value=0.70)
+    @patch("weather_markets.climatological_prob", return_value=0.65)
+    @patch("weather_markets.temperature_adjustment", return_value=0.0)
+    @patch(
+        "weather_markets.get_ensemble_temps",
+        return_value=[
+            70.0,
+            71.0,
+            72.0,
+            73.0,
+            68.0,
+            69.0,
+            71.5,
+            70.5,
+            72.5,
+            67.0,
+            70.0,
+            71.0,
+        ],
+    )
+    def test_analyze_trade_signal_is_valid(
+        self, mock_ens, mock_temp_adj, mock_clim, mock_nws, mock_obs
+    ):
+        """signal field must be a non-empty string with a recognised prefix (BUY, SELL, PASS, NEUTRAL, STRONG BUY, or WEAK)."""
+        from weather_markets import analyze_trade
+
+        enriched = _make_enriched()
+        result = analyze_trade(enriched)
+
+        assert result is not None
+        assert "signal" in result
+        signal = result["signal"]
+        assert isinstance(signal, str) and len(signal) > 0, (
+            f"signal must be a non-empty string, got {signal!r}"
+        )
+        signal_upper = signal.upper().strip()
+        valid_prefixes = ("BUY", "SELL", "PASS", "NEUTRAL", "STRONG BUY", "WEAK")
+        assert any(signal_upper.startswith(p) for p in valid_prefixes), (
+            f"Unexpected signal: {signal!r}"
+        )
