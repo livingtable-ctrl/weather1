@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import warnings
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -229,10 +230,11 @@ def add_live_loss(amount: float) -> float:
             ).fetchone()
         return row["total"] if row else amount
     except Exception as exc:
-        import warnings
-
         warnings.warn(f"add_live_loss DB write failed: {exc}")
-        return get_today_live_loss()
+        try:
+            return get_today_live_loss()
+        except Exception:
+            return 0.0
 
 
 def get_recent_orders(limit: int = 50) -> list[dict]:

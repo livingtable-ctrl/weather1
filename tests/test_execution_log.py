@@ -126,3 +126,9 @@ class TestDailyLiveLoss:
                 (yesterday, 999.0, datetime.now(UTC).isoformat()),
             )
         assert execution_log.get_today_live_loss() == pytest.approx(0.0)
+
+    def test_daily_live_loss_add_returns_new_total(self):
+        result1 = execution_log.add_live_loss(10.0)
+        assert result1 == pytest.approx(10.0)
+        result2 = execution_log.add_live_loss(5.0)
+        assert result2 == pytest.approx(15.0)
