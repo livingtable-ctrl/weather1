@@ -1068,19 +1068,38 @@ def _edge_label(edge: float) -> str:
 def _blend_weights(
     days_out: int, has_nws: bool, has_clim: bool
 ) -> tuple[float, float, float]:
-    """Return (w_ensemble, w_climatology, w_nws) based on days out."""
-    if days_out <= 1:
-        w_ens, w_clim, w_nws = 0.80, 0.05, 0.15
-    elif days_out <= 3:
-        w_ens, w_clim, w_nws = 0.70, 0.10, 0.20
-    elif days_out <= 5:
-        w_ens, w_clim, w_nws = 0.55, 0.20, 0.25
+    """Return (w_ensemble, w_climatology, w_nws) based on days out.
+
+    NWS is always blended (not fallback): 0.35 at <=3 days, 0.25 at 4-7, 0.10 at >7.
+    """
+    if days_out <= 3:
+        w_nws = 0.35
     elif days_out <= 7:
-        w_ens, w_clim, w_nws = 0.40, 0.35, 0.25
-    elif days_out <= 10:
-        w_ens, w_clim, w_nws = 0.20, 0.55, 0.25
+        w_nws = 0.25
     else:
-        w_ens, w_clim, w_nws = 0.10, 0.65, 0.25
+        w_nws = 0.10
+
+    # Remaining weight split between ensemble and climatology
+    # Ensemble gets proportionally more weight at short horizons
+    w_rem = 1.0 - w_nws
+    if days_out <= 1:
+        w_ens = w_rem * 0.94
+        w_clim = w_rem * 0.06
+    elif days_out <= 3:
+        w_ens = w_rem * 0.87
+        w_clim = w_rem * 0.13
+    elif days_out <= 5:
+        w_ens = w_rem * 0.69
+        w_clim = w_rem * 0.31
+    elif days_out <= 7:
+        w_ens = w_rem * 0.53
+        w_clim = w_rem * 0.47
+    elif days_out <= 10:
+        w_ens = w_rem * 0.26
+        w_clim = w_rem * 0.74
+    else:
+        w_ens = w_rem * 0.13
+        w_clim = w_rem * 0.87
 
     if not has_nws:
         w_ens += w_nws * 0.6
@@ -1831,6 +1850,25 @@ def analyze_trade(enriched: dict) -> dict | None:
         except Exception:
             pass
 
+    # ── 5b. Persistence baseline (days_out <= 2 only) ────────────────────────
+    persistence_p: float | None = None
+    if days_out <= 2:
+        try:
+            from climatology import persistence_prob as _persistence_prob
+            from nws import get_live_observation as _get_live_obs
+
+            _live = _get_live_obs(city, coords) if days_out <= 1 else None
+            _live_temp = _live.get("temp_f") if _live else None
+            _current_temp: float = (
+                float(_live_temp) if _live_temp is not None else forecast_temp
+            )
+            _cond_type = condition["type"]
+            _tlo = condition.get("threshold", condition.get("lower", forecast_temp))
+            _thi = condition.get("upper")
+            persistence_p = _persistence_prob(_cond_type, _tlo, _thi, _current_temp)
+        except Exception:
+            pass
+
     # ── 6. Weighted blend ────────────────────────────────────────────────────
     if obs_override is not None:
         # Same-day with live obs — trust almost entirely
@@ -1843,12 +1881,29 @@ def analyze_trade(enriched: dict) -> dict | None:
             clim_prob is not None,
             ens_std=ens_stats.get("std") if ens_stats else None,
         )
+        # #26: persistence baseline at 15% for days_out <= 2
+        if persistence_p is not None and days_out <= 2:
+            w_persist = 0.15
+            scale = 1.0 - w_persist
+            w_ens = w_ens * scale
+            w_clim = w_clim * scale
+            w_nws = w_nws * scale
+        else:
+            w_persist = 0.0
+            persistence_p = None
+
         blended_prob = (
             w_ens * (ens_prob or 0.5)
             + w_clim * (clim_prob or 0.5)
             + w_nws * (_nws_prob or 0.5)
+            + w_persist * (persistence_p or 0.5)
         )
-        blend_sources = {"ensemble": w_ens, "climatology": w_clim, "nws": w_nws}
+        blend_sources = {
+            "ensemble": w_ens,
+            "climatology": w_clim,
+            "nws": w_nws,
+            **({"persistence": w_persist} if w_persist > 0 else {}),
+        }
 
     # ── 7. Bias correction from tracker ─────────────────────────────────────
     bias = 0.0
