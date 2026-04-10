@@ -101,6 +101,39 @@ def _send_discord(title: str, message: str, color: int = 0x3FB950) -> bool:
         return False
 
 
+def _send_email(title: str, message: str) -> bool:
+    """
+    Send an email notification via SMTP (STARTTLS).
+    Reads SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_TO from environment.
+    Returns True on success, False if credentials missing or on any error.
+    Never raises.
+    """
+    host = os.getenv("SMTP_HOST")
+    user = os.getenv("SMTP_USER")
+    password = os.getenv("SMTP_PASS")
+    to_addr = os.getenv("SMTP_TO")
+    if not host or not user or not password or not to_addr:
+        return False
+    try:
+        import smtplib
+        from email.mime.text import MIMEText
+
+        port = int(os.getenv("SMTP_PORT", "587"))
+        msg = MIMEText(message)
+        msg["Subject"] = title
+        msg["From"] = user
+        msg["To"] = to_addr
+        with smtplib.SMTP(host, port, timeout=10) as server:
+            server.ehlo()
+            server.starttls()
+            server.ehlo()
+            server.login(user, password)
+            server.sendmail(user, [to_addr], msg.as_string())
+        return True
+    except Exception:
+        return False
+
+
 def alert_strong_signal(
     ticker: str, city: str, side: str, net_edge: float, kelly: float
 ) -> None:
@@ -138,3 +171,6 @@ def alert_strong_signal(
     # Discord webhook — green for BUY YES, red for BUY NO
     discord_color = 0xF85149 if side.lower() == "no" else 0x3FB950
     _send_discord(title, msg, color=discord_color)
+
+    # Email
+    _send_email(title, msg)

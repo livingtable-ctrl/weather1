@@ -5,13 +5,23 @@ Simulates N random outcome scenarios given current open positions.
 
 from __future__ import annotations
 
+import math
 import random
+
+# Default pairwise correlation coefficients for cities with shared weather patterns.
+_DEFAULT_CORRELATIONS: dict[tuple[str, str], float] = {
+    ("NYC", "Boston"): 0.7,
+    ("Chicago", "Denver"): 0.5,
+    ("LA", "Phoenix"): 0.6,
+    ("Dallas", "Atlanta"): 0.5,
+}
 
 
 def simulate_portfolio(
     open_trades: list[dict],
     n_simulations: int = 1000,
     analysis_map: dict | None = None,  # ticker -> analyze_trade result
+    correlation_matrix: dict | None = None,
 ) -> dict:
     """
     For each simulation: randomly resolve each open trade as win/loss
@@ -45,7 +55,7 @@ def simulate_portfolio(
 
     from utils import KALSHI_FEE_RATE
 
-    # Build per-trade win probability
+    # Build per-trade parameters including city for correlation lookup
     trade_params: list[dict] = []
     for t in open_trades:
         ticker = t.get("ticker", "")
@@ -53,6 +63,7 @@ def simulate_portfolio(
         entry_price = t.get("entry_price", 0.5)
         cost = t.get("cost", 0.0)
         qty = t.get("quantity", 1)
+        city = t.get("city") or ""
 
         # Win probability: prefer analysis_map, fall back to entry_prob, then 0.5
         if analysis_map and ticker in analysis_map:
@@ -76,20 +87,61 @@ def simulate_portfolio(
                 "win_prob": win_prob,
                 "win_pnl": win_pnl,
                 "loss_pnl": loss_pnl,
+                "city": city,
             }
         )
+
+    # Build city-to-trade-indices mapping for correlated draws
+    city_to_indices: dict[str, list[int]] = {}
+    for i, tp in enumerate(trade_params):
+        c = tp["city"]
+        if c:
+            city_to_indices.setdefault(c, []).append(i)
 
     ruin_threshold = current_balance * 0.20  # losing >20% of current balance
 
     sim_pnls: list[float] = []
     rng = random.Random()
+    gauss = rng.gauss
+
     for _ in range(n_simulations):
+        # Generate per-city shared weather shocks for correlated draws
+        # Each city gets a common factor Z ~ N(0,1); individual trades
+        # add idiosyncratic noise scaled by sqrt(1 - r) where r = correlation.
+        city_shocks: dict[str, float] = {c: gauss(0, 1) for c in city_to_indices}
+
         total_pnl = 0.0
-        for tp in trade_params:
-            if rng.random() < tp["win_prob"]:
-                total_pnl += tp["win_pnl"]
+        for i, tp in enumerate(trade_params):
+            city = tp["city"]
+            if city and city in city_shocks:
+                # Find highest pairwise correlation with any other city
+                max_r = 0.0
+                for other_city in city_to_indices:
+                    if other_city == city:
+                        continue
+                    pair = (min(city, other_city), max(city, other_city))
+                    for (a, b), r in _DEFAULT_CORRELATIONS.items():
+                        if (min(a, b), max(a, b)) == pair:
+                            max_r = max(max_r, r)
+
+                if max_r > 0:
+                    # Correlated draw: blend shared city shock with idiosyncratic noise
+                    indep = gauss(0, 1)
+                    z = (
+                        math.sqrt(max_r) * city_shocks[city]
+                        + math.sqrt(1 - max_r) * indep
+                    )
+                    # Convert N(0,1) shock to a win/loss decision via probit transform
+                    from statistics import NormalDist
+
+                    threshold = NormalDist().inv_cdf(tp["win_prob"])
+                    won = z > threshold
+                else:
+                    won = rng.random() < tp["win_prob"]
             else:
-                total_pnl += tp["loss_pnl"]
+                won = rng.random() < tp["win_prob"]
+
+            total_pnl += tp["win_pnl"] if won else tp["loss_pnl"]
         sim_pnls.append(total_pnl)
 
     sim_pnls.sort()
@@ -100,6 +152,8 @@ def simulate_portfolio(
     prob_positive = sum(1 for p in sim_pnls if p > 0) / n
     prob_ruin = sum(1 for p in sim_pnls if p < -ruin_threshold) / n
 
+    correlation_applied = any(tp["city"] for tp in trade_params)
+
     return {
         "median_pnl": round(median_pnl, 2),
         "p10_pnl": round(p10_pnl, 2),
@@ -108,4 +162,5 @@ def simulate_portfolio(
         "prob_ruin": round(prob_ruin, 4),
         "current_balance": round(current_balance, 2),
         "n_simulations": n_simulations,
+        "correlation_applied": correlation_applied,
     }

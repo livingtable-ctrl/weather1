@@ -640,3 +640,214 @@ def get_outcome_for_ticker(ticker: str) -> bool | None:
     if row is None:
         return None
     return bool(row["settled_yes"])
+
+
+# ── Model performance analytics ───────────────────────────────────────────────
+
+
+def get_confusion_matrix(threshold: float = 0.5) -> dict:
+    """
+    TP/FP/TN/FN classification of model predictions.
+    Positive = model predicted YES (our_prob >= threshold).
+    Returns {tp, fp, tn, fn, precision, recall, f1, accuracy, n}.
+    """
+    init_db()
+    with _conn() as con:
+        rows = con.execute("""
+            SELECT p.our_prob, o.settled_yes
+            FROM predictions p
+            JOIN outcomes o ON p.ticker = o.ticker
+            WHERE p.our_prob IS NOT NULL
+        """).fetchall()
+
+    if not rows:
+        return {
+            "tp": 0,
+            "fp": 0,
+            "tn": 0,
+            "fn": 0,
+            "precision": None,
+            "recall": None,
+            "f1": None,
+            "accuracy": None,
+            "n": 0,
+        }
+
+    tp = fp = tn = fn = 0
+    for r in rows:
+        predicted_yes = r["our_prob"] >= threshold
+        actual_yes = bool(r["settled_yes"])
+        if predicted_yes and actual_yes:
+            tp += 1
+        elif predicted_yes and not actual_yes:
+            fp += 1
+        elif not predicted_yes and actual_yes:
+            fn += 1
+        else:
+            tn += 1
+
+    n = tp + fp + tn + fn
+    precision = tp / (tp + fp) if (tp + fp) > 0 else None
+    recall = tp / (tp + fn) if (tp + fn) > 0 else None
+    f1 = 2 * precision * recall / (precision + recall) if precision and recall else None
+    accuracy = (tp + tn) / n if n > 0 else None
+
+    return {
+        "tp": tp,
+        "fp": fp,
+        "tn": tn,
+        "fn": fn,
+        "precision": round(precision, 4) if precision is not None else None,
+        "recall": round(recall, 4) if recall is not None else None,
+        "f1": round(f1, 4) if f1 is not None else None,
+        "accuracy": round(accuracy, 4) if accuracy is not None else None,
+        "n": n,
+    }
+
+
+def get_roc_auc() -> dict:
+    """
+    ROC curve and AUC score for the model.
+    Returns {auc, n, points: [{fpr, tpr}]} with ~11 representative points.
+    """
+    init_db()
+    with _conn() as con:
+        rows = con.execute("""
+            SELECT p.our_prob, o.settled_yes
+            FROM predictions p
+            JOIN outcomes o ON p.ticker = o.ticker
+            WHERE p.our_prob IS NOT NULL
+        """).fetchall()
+
+    if len(rows) < 10:
+        return {"auc": None, "n": len(rows), "points": []}
+
+    # Sort by descending probability (most confident YES first)
+    sorted_rows = sorted(rows, key=lambda r: r["our_prob"], reverse=True)
+    total_pos = sum(1 for r in sorted_rows if r["settled_yes"])
+    total_neg = len(sorted_rows) - total_pos
+
+    if total_pos == 0 or total_neg == 0:
+        return {"auc": None, "n": len(rows), "points": []}
+
+    # Walk threshold from high to low, accumulate TPR/FPR
+    tp = fp = 0
+    roc_full: list[tuple[float, float]] = [(0.0, 0.0)]
+    for r in sorted_rows:
+        if r["settled_yes"]:
+            tp += 1
+        else:
+            fp += 1
+        roc_full.append((fp / total_neg, tp / total_pos))
+    roc_full.append((1.0, 1.0))
+
+    # AUC via trapezoidal rule
+    auc = sum(
+        (roc_full[i + 1][0] - roc_full[i][0])
+        * (roc_full[i + 1][1] + roc_full[i][1])
+        / 2
+        for i in range(len(roc_full) - 1)
+    )
+
+    # Downsample to ~11 points (FPR bins 0.0, 0.1, ..., 1.0)
+    bins: dict[float, float] = {}
+    for fpr, tpr in roc_full:
+        bucket = round(round(fpr * 10) / 10, 1)
+        bins[bucket] = max(bins.get(bucket, 0.0), tpr)
+    points = [{"fpr": k, "tpr": round(v, 4)} for k, v in sorted(bins.items())]
+
+    return {"auc": round(auc, 4), "n": len(rows), "points": points}
+
+
+def get_edge_decay_curve() -> list[dict]:
+    """
+    Average edge and Brier score grouped by forecast horizon (days_out).
+    Shows whether our edge shrinks as markets approach settlement.
+    Returns [{bucket, avg_edge, avg_brier, n}] sorted near→far.
+    Only includes buckets with >= 3 samples.
+    """
+    init_db()
+    with _conn() as con:
+        rows = con.execute("""
+            SELECT p.our_prob, p.market_prob, p.days_out, o.settled_yes
+            FROM predictions p
+            JOIN outcomes o ON p.ticker = o.ticker
+            WHERE p.our_prob IS NOT NULL AND p.market_prob IS NOT NULL
+              AND p.days_out IS NOT NULL
+        """).fetchall()
+
+    buckets: dict[str, list] = {"0-2": [], "3-5": [], "6-10": [], "11+": []}
+    order = ["0-2", "3-5", "6-10", "11+"]
+
+    for r in rows:
+        d = r["days_out"]
+        edge = abs(r["our_prob"] - r["market_prob"])
+        brier = (r["our_prob"] - r["settled_yes"]) ** 2
+        if d <= 2:
+            buckets["0-2"].append((edge, brier))
+        elif d <= 5:
+            buckets["3-5"].append((edge, brier))
+        elif d <= 10:
+            buckets["6-10"].append((edge, brier))
+        else:
+            buckets["11+"].append((edge, brier))
+
+    result = []
+    for key in order:
+        entries = buckets[key]
+        if len(entries) < 3:
+            continue
+        avg_edge = sum(e for e, _ in entries) / len(entries)
+        avg_brier = sum(b for _, b in entries) / len(entries)
+        result.append(
+            {
+                "bucket": key,
+                "avg_edge": round(avg_edge, 4),
+                "avg_brier": round(avg_brier, 4),
+                "n": len(entries),
+            }
+        )
+    return result
+
+
+def get_model_calibration_buckets() -> dict:
+    """
+    How well-calibrated is OUR MODEL (not market prices)?
+    Groups settled predictions by our_prob into 10% buckets.
+    Systematic deviation = over/under confidence we can correct for.
+    Returns {"buckets": [{range, our_prob_avg, actual_rate, deviation, n}]}.
+    """
+    init_db()
+    with _conn() as con:
+        rows = con.execute("""
+            SELECT p.our_prob, o.settled_yes
+            FROM predictions p
+            JOIN outcomes o ON p.ticker = o.ticker
+            WHERE p.our_prob IS NOT NULL
+        """).fetchall()
+
+    if not rows:
+        return {"buckets": []}
+
+    buckets: list[list] = [[] for _ in range(10)]
+    for r in rows:
+        idx = min(9, int(r["our_prob"] * 10))
+        buckets[idx].append((r["our_prob"], r["settled_yes"]))
+
+    result_buckets = []
+    for i, entries in enumerate(buckets):
+        if len(entries) < 3:
+            continue
+        lo, hi = i * 10, i * 10 + 10
+        avg_prob = sum(p for p, _ in entries) / len(entries)
+        actual_rate = sum(y for _, y in entries) / len(entries)
+        result_buckets.append(
+            {
+                "range": f"{lo}-{hi}%",
+                "our_prob_avg": round(avg_prob, 4),
+                "actual_rate": round(actual_rate, 4),
+                "deviation": round(actual_rate - avg_prob, 4),
+                "n": len(entries),
+            }
+        )
+    return {"buckets": result_buckets}

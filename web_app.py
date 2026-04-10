@@ -5,6 +5,7 @@ Opens a browser tab showing the analyze table, open positions, and P&L chart.
 
 from __future__ import annotations
 
+import json
 import threading
 from datetime import UTC, datetime
 
@@ -15,7 +16,13 @@ _client = None  # module-level Kalshi client reference
 def _build_app(client):
     """Build and return the Flask app."""
     try:
-        from flask import Flask, jsonify, render_template_string
+        from flask import (
+            Flask,
+            Response,
+            jsonify,
+            render_template_string,
+            stream_with_context,
+        )
     except ImportError:
         return None
 
@@ -38,7 +45,7 @@ def _build_app(client):
       .badge-green { background: #1a3a1f; color: #3fb950; }
       .badge-red { background: #3a1a1a; color: #f85149; }
       .badge-yellow { background: #3a3a1a; color: #e3b341; }
-      .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 20px; }
+      .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 20px; }
       .stat-card { background: #161b22; border: 1px solid #21262d; border-radius: 8px; padding: 14px; }
       .stat-label { color: #8b949e; font-size: 0.78em; text-transform: uppercase; letter-spacing: 0.05em; }
       .stat-value { font-size: 1.5em; font-weight: bold; margin-top: 4px; }
@@ -49,16 +56,124 @@ def _build_app(client):
       nav a:hover, nav a.active { color: #58a6ff; }
       .warning { background: #3a3a1a; border: 1px solid #e3b341; border-radius: 6px; padding: 10px 14px; margin-bottom: 16px; color: #e3b341; }
       .refreshing { color: #8b949e; font-size: 0.8em; }
+      .live-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #3fb950; margin-right: 5px; animation: blink 1.5s infinite; }
+      @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
+      /* Responsive */
+      @media (max-width: 768px) {
+        body { padding: 12px; }
+        table { font-size: 0.78em; }
+        th, td { padding: 5px 6px; }
+        .stats { grid-template-columns: repeat(2, 1fr); }
+        h1 { font-size: 1.2em; }
+        nav a { margin-right: 10px; font-size: 0.9em; }
+      }
+      @media (max-width: 480px) {
+        .stats { grid-template-columns: 1fr 1fr; }
+        table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+      }
     </style>
     """
+
+    VIEWPORT = '<meta name="viewport" content="width=device-width, initial-scale=1.0">'
 
     NAV = """
     <nav>
       <a href="/">Dashboard</a>
       <a href="/analyze">Analyze</a>
+      <a href="/analytics">Analytics</a>
       <a href="/api/status">API Status</a>
     </nav>
     """
+
+    @app.route("/health")
+    def health():
+        return jsonify({"status": "ok", "timestamp": datetime.now(UTC).isoformat()})
+
+    @app.route("/api/stream")
+    def stream():
+        """Server-Sent Events endpoint — pushes portfolio status every 30s."""
+        import time
+
+        def generate():
+            while True:
+                try:
+                    from paper import get_balance, get_open_trades
+                    from tracker import brier_score
+
+                    data = {
+                        "balance": round(get_balance(), 2),
+                        "open_count": len(get_open_trades()),
+                        "brier": brier_score(),
+                        "ts": datetime.now(UTC).isoformat(),
+                    }
+                    yield f"data: {json.dumps(data)}\n\n"
+                except Exception:
+                    yield "data: {}\n\n"
+                time.sleep(30)
+
+        return Response(
+            stream_with_context(generate()),
+            content_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
+
+    @app.route("/api/balance_history")
+    def balance_history():
+        from paper import get_balance_history
+
+        history = get_balance_history()
+        points = history[-50:]
+        return jsonify(
+            {
+                "labels": [p["ts"][:16] or "Start" for p in points],
+                "values": [p["balance"] for p in points],
+            }
+        )
+
+    @app.route("/api/analytics")
+    def api_analytics():
+        try:
+            from tracker import (
+                brier_score,
+                get_brier_by_days_out,
+                get_calibration_by_city,
+            )
+
+            result: dict = {
+                "brier": brier_score(),
+                "brier_by_days": get_brier_by_days_out(),
+                "city_calibration": get_calibration_by_city(),
+            }
+            for fn_name in (
+                "get_confusion_matrix",
+                "get_roc_auc",
+                "get_edge_decay_curve",
+                "get_model_calibration_buckets",
+            ):
+                try:
+                    import tracker as _t
+
+                    fn = getattr(_t, fn_name, None)
+                    if fn:
+                        result[fn_name.replace("get_", "")] = fn()
+                except Exception:
+                    pass
+            for fn_name in (
+                "get_rolling_sharpe",
+                "get_attribution",
+                "get_factor_exposure",
+            ):
+                try:
+                    import paper as _p
+
+                    fn = getattr(_p, fn_name, None)
+                    if fn:
+                        result[fn_name.replace("get_", "")] = fn()
+                except Exception:
+                    pass
+        except Exception as e:
+            result = {"error": str(e)}
+        return jsonify(result)
 
     @app.route("/")
     def index():
@@ -121,23 +236,84 @@ def _build_app(client):
               <td class="{p_cls}">{p_str}</td>
             </tr>"""
 
+        sse_js = """
+<script>
+const es = new EventSource('/api/stream');
+es.onmessage = (e) => {
+  try {
+    const d = JSON.parse(e.data);
+    if (d.balance !== undefined) {
+      const el = document.getElementById('stat-balance');
+      if (el) el.textContent = '$' + d.balance.toFixed(2);
+    }
+    if (d.open_count !== undefined) {
+      const el = document.getElementById('stat-open');
+      if (el) el.textContent = d.open_count;
+    }
+    if (d.brier !== null && d.brier !== undefined) {
+      const el = document.getElementById('stat-brier');
+      if (el) el.textContent = d.brier.toFixed(4);
+    }
+    const upd = document.getElementById('stat-updated');
+    if (upd) upd.textContent = 'Live \u2014 ' + new Date().toLocaleTimeString();
+  } catch(err) {}
+};
+</script>"""
+
+        chart_js = """
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+fetch('/api/balance_history').then(r=>r.json()).then(data => {
+  const ctx = document.getElementById('balanceChart');
+  if (!ctx) return;
+  new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: data.labels,
+      datasets: [{
+        label: 'Balance ($)',
+        data: data.values,
+        borderColor: '#58a6ff',
+        backgroundColor: 'rgba(88,166,255,0.08)',
+        fill: true,
+        tension: 0.3,
+        pointRadius: 0,
+        borderWidth: 2,
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { display: false },
+        y: {
+          ticks: { color: '#8b949e', callback: v => '$'+v },
+          grid: { color: '#21262d' }
+        }
+      }
+    }
+  });
+}).catch(()=>{});
+</script>"""
+
         html = f"""<!DOCTYPE html>
-<html><head><title>Kalshi Dashboard</title>{DARK_STYLE}</head>
+<html><head><title>Kalshi Dashboard</title>{VIEWPORT}{DARK_STYLE}</head>
 <body>
 <h1>Kalshi Weather — Dashboard</h1>
 {NAV}
 <div class="stats">
   <div class="stat-card"><div class="stat-label">Paper Balance</div>
-    <div class="stat-value pos">${balance:.2f}</div></div>
+    <div class="stat-value pos" id="stat-balance">${balance:.2f}</div></div>
   <div class="stat-card"><div class="stat-label">Open Trades</div>
-    <div class="stat-value">{len(open_trades)}</div></div>
+    <div class="stat-value" id="stat-open">{len(open_trades)}</div></div>
   <div class="stat-card"><div class="stat-label">Total P&amp;L</div>
     <div class="stat-value {pnl_cls}">{pnl_str}</div></div>
   <div class="stat-card"><div class="stat-label">Win Rate</div>
     <div class="stat-value">{wr_str}</div></div>
   <div class="stat-card"><div class="stat-label">Brier Score</div>
-    <div class="stat-value">{bs_str}</div></div>
+    <div class="stat-value" id="stat-brier">{bs_str}</div></div>
 </div>
+<p class="refreshing"><span class="live-dot"></span><span id="stat-updated">Connecting…</span></p>
 
 <h2>Open Positions ({len(open_trades)})</h2>
 {
@@ -161,9 +337,16 @@ def _build_app(client):
 </table>'''
         }
 
+<h2>Balance History</h2>
+<div style="max-width:800px; margin-bottom:30px">
+  <canvas id="balanceChart" height="100"></canvas>
+</div>
+
 <p class="refreshing">Generated at {
             datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S")
         } UTC</p>
+{sse_js}
+{chart_js}
 </body></html>"""
         return render_template_string(html)
 
@@ -179,7 +362,7 @@ def _build_app(client):
             markets = get_weather_markets(client)
         except Exception as e:
             return render_template_string(
-                f"<!DOCTYPE html><html><head>{DARK_STYLE}</head><body>"
+                f"<!DOCTYPE html><html><head>{VIEWPORT}{DARK_STYLE}</head><body>"
                 f"<h1>Analyze</h1>{NAV}"
                 f"<p class='neg'>Could not fetch markets: {e}</p></body></html>"
             )
@@ -224,9 +407,8 @@ def _build_app(client):
               <td>{side_badge}</td>
             </tr>"""
 
-        refresh_meta = '<meta http-equiv="refresh" content="60">'
         html = f"""<!DOCTYPE html>
-<html><head><title>Analyze — Kalshi</title>{DARK_STYLE}{refresh_meta}</head>
+<html><head><title>Analyze — Kalshi</title>{VIEWPORT}{DARK_STYLE}</head>
 <body>
 <h1>Kalshi Weather — Opportunities</h1>
 {NAV}
@@ -234,7 +416,7 @@ def _build_app(client):
             len(opps)
         } opportunities found</p>
 {
-            "<p class='neu' style='margin-top:16px'>No opportunities above 8% edge threshold right now.</p>"
+            "<p class='neu' style='margin-top:16px'>No opportunities above threshold right now.</p>"
             if not opps
             else f'''
 <table style="margin-top:16px">
@@ -245,7 +427,194 @@ def _build_app(client):
         }
 <p class="refreshing" style="margin-top:12px">Generated at {
             datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S")
-        } UTC</p>
+        } UTC &mdash; <a href="/analyze">Refresh</a></p>
+</body></html>"""
+        return render_template_string(html)
+
+    @app.route("/analytics")
+    def analytics_page():
+        """Analytics page — model calibration, confusion matrix, edge decay."""
+        try:
+            from tracker import (
+                brier_score,
+                get_brier_by_days_out,
+                get_calibration_by_city,
+            )
+
+            bs = brier_score()
+            brier_by_days = get_brier_by_days_out()
+            city_cal = get_calibration_by_city()
+
+            # Optional analytics
+            confusion = None
+            roc = None
+            edge_decay = None
+            model_cal = None
+            sharpe = None
+            attribution = None
+            factor = None
+
+            try:
+                from tracker import get_confusion_matrix
+
+                confusion = get_confusion_matrix()
+            except Exception:
+                pass
+            try:
+                from tracker import get_edge_decay_curve
+
+                edge_decay = get_edge_decay_curve()
+            except Exception:
+                pass
+            try:
+                from tracker import get_model_calibration_buckets
+
+                model_cal = get_model_calibration_buckets()
+            except Exception:
+                pass
+            try:
+                from tracker import get_roc_auc
+
+                roc = get_roc_auc()
+            except Exception:
+                pass
+            try:
+                from paper import (
+                    get_attribution,
+                    get_factor_exposure,
+                    get_rolling_sharpe,
+                )
+
+                sharpe = get_rolling_sharpe()
+                attribution = get_attribution()
+                factor = get_factor_exposure()
+            except Exception:
+                pass
+
+        except Exception as e:
+            return render_template_string(
+                f"<!DOCTYPE html><html><head>{VIEWPORT}{DARK_STYLE}</head><body>"
+                f"<h1>Analytics</h1>{NAV}"
+                f"<p class='neg'>Error loading analytics: {e}</p></body></html>"
+            )
+
+        # Build sections
+        sections = ""
+
+        # Summary row
+        bs_str = f"{bs:.4f}" if bs is not None else "—"
+        sharpe_str = f"{sharpe:.2f}" if sharpe is not None else "—"
+        auc_str = f"{roc['auc']:.3f}" if roc and roc.get("auc") is not None else "—"
+        sections += f"""
+<div class="stats">
+  <div class="stat-card"><div class="stat-label">Brier Score</div><div class="stat-value">{bs_str}</div></div>
+  <div class="stat-card"><div class="stat-label">Sharpe (30d)</div><div class="stat-value">{sharpe_str}</div></div>
+  <div class="stat-card"><div class="stat-label">ROC AUC</div><div class="stat-value">{auc_str}</div></div>
+</div>"""
+
+        # Attribution
+        if attribution and attribution.get("n", 0) > 0:
+            e_str = (
+                f"+${attribution['pnl_from_edge']:.2f}"
+                if attribution["pnl_from_edge"] >= 0
+                else f"-${abs(attribution['pnl_from_edge']):.2f}"
+            )
+            l_str = (
+                f"+${attribution['pnl_from_luck']:.2f}"
+                if attribution["pnl_from_luck"] >= 0
+                else f"-${abs(attribution['pnl_from_luck']):.2f}"
+            )
+            sections += f"""
+<h2>P&amp;L Attribution ({attribution["n"]} trades)</h2>
+<table><tr><th>Source</th><th>P&amp;L</th></tr>
+<tr><td>From Edge (model EV)</td><td class="{"pos" if attribution["pnl_from_edge"] >= 0 else "neg"}">{e_str}</td></tr>
+<tr><td>From Luck (residual)</td><td class="{"pos" if attribution["pnl_from_luck"] >= 0 else "neg"}">{l_str}</td></tr>
+</table>"""
+
+        # Factor exposure
+        if factor:
+            sections += f"""
+<h2>Factor Exposure</h2>
+<table><tr><th>Direction</th><th>Count</th><th>Cost</th><th>Cities</th></tr>
+<tr><td><span class="badge badge-green">YES</span></td><td>{factor["yes_count"]}</td><td>${factor["yes_cost"]:.2f}</td><td>{", ".join(factor["cities_long_yes"]) or "—"}</td></tr>
+<tr><td><span class="badge badge-red">NO</span></td><td>{factor["no_count"]}</td><td>${factor["no_cost"]:.2f}</td><td>{", ".join(factor["cities_long_no"]) or "—"}</td></tr>
+<tr><td colspan="4">Net bias: <strong>{factor["net_bias"]}</strong></td></tr>
+</table>"""
+
+        # Confusion matrix
+        if confusion and confusion.get("n", 0) > 0:
+            c = confusion
+            sections += f"""
+<h2>Confusion Matrix (threshold=50%)</h2>
+<table>
+<tr><th></th><th>Predicted YES</th><th>Predicted NO</th></tr>
+<tr><td><strong>Actual YES</strong></td><td class="pos">{c["tp"]} TP</td><td class="neg">{c["fn"]} FN</td></tr>
+<tr><td><strong>Actual NO</strong></td><td class="neg">{c["fp"]} FP</td><td class="pos">{c["tn"]} TN</td></tr>
+</table>
+<p class="neu" style="margin-top:8px">
+  Precision: {f"{c['precision']:.1%}" if c["precision"] is not None else "—"} &nbsp;
+  Recall: {f"{c['recall']:.1%}" if c["recall"] is not None else "—"} &nbsp;
+  F1: {f"{c['f1']:.3f}" if c["f1"] is not None else "—"} &nbsp;
+  Accuracy: {f"{c['accuracy']:.1%}" if c["accuracy"] is not None else "—"}
+</p>"""
+
+        # Edge decay
+        if edge_decay:
+            rows_ed = "".join(
+                f"<tr><td>{r['bucket']}d</td><td>{r['avg_edge']:.1%}</td>"
+                f"<td>{r['avg_brier']:.4f}</td><td>{r['n']}</td></tr>"
+                for r in edge_decay
+            )
+            sections += f"""
+<h2>Edge Decay by Forecast Horizon</h2>
+<table><tr><th>Horizon</th><th>Avg Edge</th><th>Brier</th><th>N</th></tr>
+{rows_ed}</table>"""
+
+        # Brier by days out
+        if brier_by_days:
+            rows_bd = "".join(
+                f"<tr><td>{k}</td><td>{v:.4f}</td></tr>"
+                for k, v in brier_by_days.items()
+            )
+            sections += f"""
+<h2>Brier Score by Horizon</h2>
+<table><tr><th>Horizon</th><th>Brier</th></tr>{rows_bd}</table>"""
+
+        # City calibration
+        if city_cal:
+            rows_cc = "".join(
+                f"<tr><td>{city}</td><td>{d['brier']:.4f}</td>"
+                f'<td class="{"neg" if d["bias"] > 0 else "pos"}">{d["bias"]:+.3f}</td>'
+                f"<td>{d['n']}</td></tr>"
+                for city, d in sorted(city_cal.items(), key=lambda x: x[1]["brier"])
+            )
+            sections += f"""
+<h2>City-Level Calibration</h2>
+<table><tr><th>City</th><th>Brier</th><th>Bias</th><th>N</th></tr>
+{rows_cc}</table>
+<p class="neu" style="font-size:0.82em">Bias: positive = over-predicts YES; negative = under-predicts.</p>"""
+
+        # Model calibration buckets
+        if model_cal and model_cal.get("buckets"):
+            rows_mc = "".join(
+                f"<tr><td>{b['range']}</td><td>{b['our_prob_avg']:.1%}</td>"
+                f"<td>{b['actual_rate']:.1%}</td>"
+                f'<td class="{"neg" if b["deviation"] > 0.05 else "pos" if b["deviation"] < -0.05 else "neu"}">{b["deviation"]:+.1%}</td>'
+                f"<td>{b['n']}</td></tr>"
+                for b in model_cal["buckets"]
+            )
+            sections += f"""
+<h2>Model Calibration (Our Probabilities vs Outcomes)</h2>
+<table><tr><th>Prob Range</th><th>Predicted</th><th>Actual</th><th>Deviation</th><th>N</th></tr>
+{rows_mc}</table>"""
+
+        html = f"""<!DOCTYPE html>
+<html><head><title>Analytics — Kalshi</title>{VIEWPORT}{DARK_STYLE}</head>
+<body>
+<h1>Kalshi Weather — Analytics</h1>
+{NAV}
+{sections if sections else "<p class='neu'>No data yet — run backtest or make predictions first.</p>"}
+<p class="refreshing" style="margin-top:20px">Generated at {datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S")} UTC</p>
 </body></html>"""
         return render_template_string(html)
 

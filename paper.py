@@ -941,3 +941,246 @@ def auto_settle_paper_trades(client=None) -> int:
             except Exception:
                 pass
     return settled
+
+
+# ── Portfolio analytics ───────────────────────────────────────────────────────
+
+
+def get_rolling_sharpe(window_days: int = 30) -> float | None:
+    """
+    Annualised Sharpe ratio over the last window_days calendar days.
+    Uses daily P&L from settled trades (trades with no activity on a day = 0).
+    Returns None if fewer than 5 days of data.
+    """
+    import math
+    import statistics
+    from datetime import UTC, datetime, timedelta
+
+    cutoff = (datetime.now(UTC) - timedelta(days=window_days)).strftime("%Y-%m-%d")
+    settled = [
+        t
+        for t in _load()["trades"]
+        if t.get("settled") and (t.get("entered_at", "") or "")[:10] >= cutoff
+    ]
+    if not settled:
+        return None
+
+    # Build daily P&L map
+    daily: dict[str, float] = {}
+    for t in settled:
+        day = (t.get("entered_at", "") or "")[:10]
+        if day:
+            daily[day] = daily.get(day, 0.0) + (t.get("pnl") or 0.0)
+
+    if len(daily) < 5:
+        return None
+
+    values = list(daily.values())
+    mean = statistics.mean(values)
+    stdev = statistics.stdev(values)
+    if stdev == 0:
+        return None
+    return round(mean / stdev * math.sqrt(252), 4)
+
+
+def get_attribution() -> dict:
+    """
+    Decompose P&L into model-edge contribution vs luck (residual).
+    Expected P&L = probability * winnings - cost (what an EV-maximiser earns on average).
+    Luck = actual P&L - expected P&L.
+    """
+    settled = [
+        t for t in _load()["trades"] if t.get("settled") and t.get("pnl") is not None
+    ]
+    pnl_from_edge = 0.0
+    pnl_from_luck = 0.0
+
+    for t in settled:
+        ep = t.get("entry_prob") or 0.5
+        entry_price = t.get("entry_price", 0.5) or 0.5
+        qty = t.get("quantity", 1) or 1
+        cost = t.get("cost", 0.0) or 0.0
+        winnings_per = 1.0 - entry_price
+        # Expected P&L if we could repeat this bet infinitely at our model's probability
+        expected = ep * (qty * (1.0 - winnings_per * KALSHI_FEE_RATE)) - cost
+        actual = t["pnl"]
+        pnl_from_edge += expected
+        pnl_from_luck += actual - expected
+
+    total = pnl_from_edge + pnl_from_luck
+    return {
+        "pnl_from_edge": round(pnl_from_edge, 4),
+        "pnl_from_luck": round(pnl_from_luck, 4),
+        "total_pnl": round(total, 4),
+        "n": len(settled),
+    }
+
+
+def get_factor_exposure() -> dict:
+    """
+    Directional bias across open positions.
+    Returns YES/NO counts, costs, and which cities are on each side.
+    """
+    open_trades = get_open_trades()
+    yes_count = no_count = 0
+    yes_cost = no_cost = 0.0
+    cities_yes: list[str] = []
+    cities_no: list[str] = []
+
+    for t in open_trades:
+        side = t.get("side", "yes")
+        cost = t.get("cost", 0.0) or 0.0
+        city = t.get("city") or ""
+        if side == "yes":
+            yes_count += 1
+            yes_cost += cost
+            if city and city not in cities_yes:
+                cities_yes.append(city)
+        else:
+            no_count += 1
+            no_cost += cost
+            if city and city not in cities_no:
+                cities_no.append(city)
+
+    total_cost = yes_cost + no_cost
+    if total_cost > 0:
+        yes_frac = yes_cost / total_cost
+        if yes_frac > 0.6:
+            net_bias = "YES-heavy"
+        elif yes_frac < 0.4:
+            net_bias = "NO-heavy"
+        else:
+            net_bias = "Balanced"
+    else:
+        net_bias = "Balanced"
+
+    return {
+        "yes_count": yes_count,
+        "no_count": no_count,
+        "yes_cost": round(yes_cost, 4),
+        "no_cost": round(no_cost, 4),
+        "net_bias": net_bias,
+        "cities_long_yes": sorted(cities_yes),
+        "cities_long_no": sorted(cities_no),
+    }
+
+
+def get_expiry_date_clustering() -> list[dict]:
+    """
+    Identify dates with 2+ open positions settling — concentration risk.
+    Returns [{date, count, total_cost, tickers}] sorted ascending.
+    """
+    open_trades = get_open_trades()
+    by_date: dict[str, list] = {}
+    for t in open_trades:
+        d = t.get("target_date") or ""
+        if d:
+            by_date.setdefault(d, []).append(t)
+
+    result = []
+    for date_str, trades in sorted(by_date.items()):
+        if len(trades) < 2:
+            continue
+        result.append(
+            {
+                "date": date_str,
+                "count": len(trades),
+                "total_cost": round(sum(t.get("cost", 0.0) or 0.0 for t in trades), 4),
+                "tickers": [t.get("ticker", "") for t in trades],
+            }
+        )
+    return result
+
+
+def get_unrealized_pnl_paper(client) -> dict:
+    """
+    Mark-to-market unrealized P&L for open paper positions.
+    Fetches current YES bid from Kalshi to estimate position value.
+    Returns {total_unrealized, by_trade: [{id, ticker, mark_pnl, current_price}], n}.
+    """
+    open_trades = get_open_trades()
+    if not open_trades or client is None:
+        return {"total_unrealized": 0.0, "by_trade": [], "n": 0}
+
+    by_trade = []
+    total = 0.0
+
+    for t in open_trades:
+        try:
+            market = client.get_market(t["ticker"])
+            yes_bid = market.get("yes_bid") or 0
+            if isinstance(yes_bid, int | float) and yes_bid > 1:
+                yes_bid = yes_bid / 100.0
+            current = float(yes_bid) if yes_bid else None
+            if current is None or current <= 0:
+                continue
+
+            entry = t.get("entry_price", 0.5) or 0.5
+            qty = t.get("quantity", 1) or 1
+            side = t.get("side", "yes")
+
+            if side == "yes":
+                mark_pnl = (current - entry) * qty
+            else:
+                mark_pnl = ((1.0 - current) - entry) * qty
+
+            total += mark_pnl
+            by_trade.append(
+                {
+                    "id": t.get("id"),
+                    "ticker": t.get("ticker", ""),
+                    "mark_pnl": round(mark_pnl, 4),
+                    "current_price": round(current, 4),
+                }
+            )
+        except Exception:
+            continue
+
+    return {
+        "total_unrealized": round(total, 4),
+        "by_trade": by_trade,
+        "n": len(by_trade),
+    }
+
+
+def check_position_limits(
+    ticker: str,
+    qty: int,
+    price: float = 0.5,
+    max_cost_per_market: float = 250.0,
+) -> dict:
+    """
+    Check whether adding qty contracts at price would breach position limits.
+    Checks per-market cost cap and global portfolio cap.
+    Returns {ok, reason, existing_cost, limit}.
+    """
+    existing_cost = sum(
+        t.get("cost", 0.0) or 0.0
+        for t in get_open_trades()
+        if t.get("ticker") == ticker
+    )
+    new_cost = qty * price
+    projected = existing_cost + new_cost
+
+    if projected > max_cost_per_market:
+        return {
+            "ok": False,
+            "reason": f"Would exceed per-market cap (${max_cost_per_market:.0f}): ${projected:.2f}",
+            "existing_cost": round(existing_cost, 4),
+            "limit": max_cost_per_market,
+        }
+
+    if get_total_exposure() + new_cost / STARTING_BALANCE >= MAX_TOTAL_OPEN_EXPOSURE:
+        return {
+            "ok": False,
+            "reason": "Would exceed global portfolio exposure cap (50%)",
+            "existing_cost": round(existing_cost, 4),
+            "limit": max_cost_per_market,
+        }
+
+    return {
+        "ok": True,
+        "reason": None,
+        "existing_cost": round(existing_cost, 4),
+        "limit": max_cost_per_market,
+    }

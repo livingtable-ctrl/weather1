@@ -418,3 +418,146 @@ def run_backtest(
         "bench_market_pnl": round(bench_market_pnl, 4),
         "bench_random_pnl": round(bench_random_pnl, 4),
     }
+
+
+# ── Walk-forward optimization ─────────────────────────────────────────────────
+
+
+def run_walk_forward(
+    client,
+    days_total: int = 180,
+    window_size: int = 60,
+    step_size: int = 30,
+    city_filter: str | None = None,
+) -> dict:
+    """
+    Walk-forward validation: slide a fixed-size window across the history,
+    scoring the model in each window independently.
+
+    Detects whether performance is improving, stable, or degrading over time.
+    Also computes per-city win rates to populate learned_weights.
+
+    Returns {
+      windows: [{start_date, end_date, brier, win_rate, pnl, n}],
+      avg_brier, avg_win_rate, stability_score, trend,
+      city_win_rates: {city: win_rate},
+    }
+    """
+    import statistics
+
+    if client is None:
+        return {
+            "windows": [],
+            "avg_brier": None,
+            "avg_win_rate": None,
+            "stability_score": None,
+            "trend": "unknown",
+            "city_win_rates": {},
+        }
+
+    windows = []
+    for offset in range(0, days_total - window_size + 1, step_size):
+        start_days = days_total - offset
+        end_days = start_days - window_size
+        if end_days < 0:
+            end_days = 0
+
+        try:
+            result = run_backtest(
+                client,
+                city_filter=city_filter,
+                days_back=start_days,
+                verbose=False,
+                holdout_fraction=0.0,
+            )
+            # Filter to rows within the window
+            from datetime import date, timedelta
+
+            window_start = date.today() - timedelta(days=start_days)
+            window_end = date.today() - timedelta(days=end_days)
+            rows = [
+                r
+                for r in result.get("rows", [])
+                if window_start <= date.fromisoformat(r["date"]) <= window_end
+            ]
+            if not rows:
+                continue
+            brier_w = sum(r["brier_sq"] for r in rows) / len(rows)
+            wins_w = sum(1 for r in rows if r["won"])
+            windows.append(
+                {
+                    "start_date": window_start.isoformat(),
+                    "end_date": window_end.isoformat(),
+                    "brier": round(brier_w, 4),
+                    "win_rate": round(wins_w / len(rows), 3),
+                    "pnl": round(sum(r["pnl"] for r in rows), 4),
+                    "n": len(rows),
+                }
+            )
+        except Exception:
+            continue
+
+    if not windows:
+        return {
+            "windows": [],
+            "avg_brier": None,
+            "avg_win_rate": None,
+            "stability_score": None,
+            "trend": "unknown",
+            "city_win_rates": {},
+        }
+
+    avg_brier = sum(w["brier"] for w in windows) / len(windows)
+    avg_win_rate = sum(w["win_rate"] for w in windows) / len(windows)
+
+    # Stability: lower std of win rates = more stable
+    if len(windows) >= 2:
+        wr_std = statistics.stdev(w["win_rate"] for w in windows)
+        stability_score = round(max(0.0, 1.0 - wr_std / max(avg_win_rate, 0.01)), 4)
+    else:
+        stability_score = None
+
+    # Trend: compare first-half vs second-half brier scores
+    mid = len(windows) // 2
+    if mid > 0:
+        first_half_brier = sum(w["brier"] for w in windows[:mid]) / mid
+        second_half_brier = sum(w["brier"] for w in windows[mid:]) / max(
+            len(windows) - mid, 1
+        )
+        if second_half_brier < first_half_brier - 0.02:
+            trend = "improving"
+        elif second_half_brier > first_half_brier + 0.02:
+            trend = "declining"
+        else:
+            trend = "stable"
+    else:
+        trend = "stable"
+
+    # City win rates for learned weights
+    try:
+        all_result = run_backtest(
+            client,
+            city_filter=city_filter,
+            days_back=days_total,
+            verbose=False,
+            holdout_fraction=0.0,
+        )
+        city_rows: dict[str, list] = {}
+        for r in all_result.get("rows", []):
+            city_rows.setdefault(r.get("city", ""), []).append(r["won"])
+        city_win_rates = {
+            city: round(sum(ws) / len(ws), 3)
+            for city, ws in city_rows.items()
+            if city and len(ws) >= 5
+        }
+    except Exception:
+        city_win_rates = {}
+
+    return {
+        "windows": windows,
+        "avg_brier": round(avg_brier, 4),
+        "avg_win_rate": round(avg_win_rate, 3),
+        "stability_score": stability_score,
+        "trend": trend,
+        "city_win_rates": city_win_rates,
+    }

@@ -11,6 +11,7 @@ import statistics
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, date, datetime
+from pathlib import Path
 
 from climate_indices import temperature_adjustment
 from climatology import climatological_prob
@@ -229,6 +230,84 @@ def _fetch_model_ensemble(
         ]
 
 
+_LEARNED_WEIGHTS: dict = {}  # cached after first load
+
+
+def load_learned_weights() -> dict:
+    """
+    Load per-city model weights previously saved by save_learned_weights().
+    Format: {city: {model: weight, ...}, ...}
+    Returns empty dict if file missing or malformed. Cached for the session.
+    """
+    global _LEARNED_WEIGHTS
+    if _LEARNED_WEIGHTS:
+        return _LEARNED_WEIGHTS
+    path = Path(__file__).parent / "data" / "learned_weights.json"
+    if not path.exists():
+        return {}
+    try:
+        import json as _json
+
+        _LEARNED_WEIGHTS = _json.loads(path.read_text())
+        return _LEARNED_WEIGHTS
+    except Exception:
+        return {}
+
+
+def save_learned_weights(weights: dict) -> None:
+    """
+    Persist per-city model weights to data/learned_weights.json atomically.
+    Called after a backtest to update city-specific model preferences.
+    """
+    import json as _json
+    import os as _os
+    import tempfile as _tmp
+
+    path = Path(__file__).parent / "data" / "learned_weights.json"
+    path.parent.mkdir(exist_ok=True)
+    fd, tmp = _tmp.mkstemp(dir=path.parent, prefix=".lw_", suffix=".json")
+    try:
+        with _os.fdopen(fd, "w") as f:
+            _json.dump(weights, f, indent=2)
+        _os.replace(tmp, path)
+    except Exception:
+        try:
+            _os.unlink(tmp)
+        except OSError:
+            pass
+    global _LEARNED_WEIGHTS
+    _LEARNED_WEIGHTS = weights
+
+
+def _feels_like(
+    temp_f: float, wind_mph: float = 10.0, humidity_pct: float = 50.0
+) -> float:
+    """
+    Compute apparent (feels-like) temperature from actual temp, wind, and humidity.
+    Uses wind chill formula for cold temps, heat index for hot/humid conditions.
+    """
+    if temp_f <= 50.0 and wind_mph >= 3.0:
+        # NWS Wind Chill formula (valid for T<=50°F, W>=3 mph)
+        w016 = wind_mph**0.16
+        return 35.74 + 0.6215 * temp_f - 35.75 * w016 + 0.4275 * temp_f * w016
+    elif temp_f >= 80.0 and humidity_pct >= 40.0:
+        # Rothfusz Heat Index formula
+        T, H = temp_f, humidity_pct
+        hi = (
+            -42.379
+            + 2.04901523 * T
+            + 10.14333127 * H
+            - 0.22475541 * T * H
+            - 0.00683783 * T * T
+            - 0.05481717 * H * H
+            + 0.00122874 * T * T * H
+            + 0.00085282 * T * H * H
+            - 0.00000199 * T * T * H * H
+        )
+        return hi
+    return temp_f
+
+
 def _model_weights(city: str, month: int | None = None) -> dict[str, float]:
     """
     Return per-model weights for the ensemble blend.
@@ -237,6 +316,11 @@ def _model_weights(city: str, month: int | None = None) -> dict[str, float]:
       Summer (Apr–Sep): ECMWF advantage shrinks; add at 1.5× weight.
     Defaults to equal weighting if no Brier data available.
     """
+    # Use learned per-city weights if available (from run_walk_forward)
+    lw = load_learned_weights()
+    if city in lw:
+        return dict(lw[city])
+
     # Seasonal ECMWF weight: better in winter for mid-latitude US cities
     if month is not None:
         is_winter = month in (10, 11, 12, 1, 2, 3)
@@ -622,6 +706,34 @@ def _parse_market_condition(market: dict) -> dict | None:
     )
     is_precip = is_precip_series or is_precip_title
 
+    # ── Snow/ice markets ──────────────────────────────────────────────────────
+    SNOW_SERIES = {"KXSNOW", "KXICE"}
+    is_snow_series = any(s in ticker_up or s in series_up for s in SNOW_SERIES)
+    is_snow_title = (
+        ("snow" in title or "ice" in title or "sleet" in title)
+        and "temperature" not in title
+        and "high" not in title
+        and "low" not in title
+    )
+    # Check ticker directly for SNOW/ICE keywords
+    is_snow_ticker = "SNOW" in ticker_up or "ICE" in ticker_up
+    if is_snow_series or is_snow_ticker or (is_snow_title and not is_precip_series):
+        # Parse threshold from title: "more than 2 inches of snow"
+        snow_match = re.search(r"(\d+(?:\.\d+)?)\s*(?:inch|in\b)", title)
+        if snow_match:
+            threshold = float(snow_match.group(1))
+            return {"type": "precip_snow", "threshold": threshold, "unit": "inches"}
+        # Explicit threshold in ticker: -P2.0
+        snow_ticker_match = re.search(r"-P(\d+(?:\.\d+)?)(?:-|$)", ticker)
+        if snow_ticker_match:
+            return {
+                "type": "precip_snow",
+                "threshold": float(snow_ticker_match.group(1)),
+                "unit": "inches",
+            }
+        # Binary any-snow
+        return {"type": "precip_snow", "threshold": 0.0, "unit": "inches"}
+
     if is_precip:
         # Explicit threshold: e.g. KXRAIN-26APR10-P0.25 → precip > 0.25 in
         precip_match = re.search(r"-P(\d+(?:\.\d+)?)(?:-|$)", ticker)
@@ -979,6 +1091,95 @@ def _analyze_precip_trade(
     }
 
 
+def _analyze_snow_trade(
+    enriched: dict, forecast: dict, condition: dict, target_date: date, coords: tuple
+) -> dict | None:
+    """
+    Probability analysis for snow/ice markets.
+    Uses ensemble precipitation probability as a proxy for snow probability.
+    Falls back to a climatological base rate: 20% in winter (Dec-Feb), 5% otherwise.
+    """
+    lat, lon, tz = coords
+    days_out = max(0, (target_date - date.today()).days)
+
+    # ── Ensemble precipitation as proxy ──────────────────────────────────────
+    precip_members = _fetch_ensemble_precip(lat, lon, tz, target_date)
+    ens_prob: float | None = None
+    threshold = condition.get("threshold", 0.0)
+    if len(precip_members) >= 10:
+        if threshold <= 0.0:
+            ens_prob = sum(1 for p in precip_members if p > 0.01) / len(precip_members)
+        else:
+            ens_prob = sum(1 for p in precip_members if p > threshold) / len(
+                precip_members
+            )
+
+    # ── Climatological base rate fallback ────────────────────────────────────
+    is_winter_month = target_date.month in (12, 1, 2)
+    clim_prior = 0.20 if is_winter_month else 0.05
+
+    if ens_prob is None:
+        ens_prob = clim_prior
+
+    # ── Blend ensemble with climatological prior ──────────────────────────────
+    w_ens, w_clim, _ = _blend_weights(days_out, has_nws=False, has_clim=True)
+    blended_prob = ens_prob * w_ens + clim_prior * w_clim
+    blended_prob = max(0.01, min(0.99, blended_prob))
+
+    prices = parse_market_price(enriched)
+    market_prob = prices["implied_prob"]
+    rec_side = "yes" if blended_prob > market_prob else "no"
+    entry_price = prices["yes_ask"] if rec_side == "yes" else prices["no_bid"]
+    if entry_price == 0:
+        entry_price = 1 - market_prob if rec_side == "no" else market_prob
+
+    payout = 1 - entry_price
+    p_win = blended_prob if rec_side == "yes" else 1 - blended_prob
+    net_ev = p_win * payout * (1 - KALSHI_FEE_RATE) - (1 - p_win) * entry_price
+    net_edge = net_ev / entry_price if entry_price > 0 else 0.0
+    edge = blended_prob - market_prob
+    kelly = kelly_fraction(p_win, entry_price)
+    fee_kel = kelly_fraction(p_win, entry_price, fee_rate=KALSHI_FEE_RATE)
+
+    ci_low, ci_high = blended_prob, blended_prob
+    if len(precip_members) >= 5:
+        ci_low, ci_high = _bootstrap_ci_precip(precip_members, condition)
+
+    ci_adj_kelly = round(fee_kel * max(0.25, 1.0 - (ci_high - ci_low)), 6)
+
+    return {
+        "forecast_prob": blended_prob,
+        "market_prob": market_prob,
+        "edge": edge,
+        "signal": _edge_label(edge),
+        "net_edge": net_edge,
+        "net_signal": _edge_label(net_edge),
+        "recommended_side": rec_side,
+        "condition": condition,
+        "forecast_temp": forecast.get("precip_in", 0.0),
+        "ensemble_prob": ens_prob,
+        "nws_prob": None,
+        "clim_prob": clim_prior,
+        "clim_adj_prob": None,
+        "obs_prob": None,
+        "live_obs": None,
+        "index_adj": 0.0,
+        "bias_correction": 0.0,
+        "blend_sources": {"ensemble": w_ens, "climatology": w_clim},
+        "method": "snow_ensemble" if len(precip_members) >= 10 else "snow_clim",
+        "ensemble_stats": None,
+        "n_members": len(precip_members),
+        "ci_low": ci_low,
+        "ci_high": ci_high,
+        "ci_width": round(ci_high - ci_low, 4),
+        "kelly": kelly,
+        "fee_adjusted_kelly": fee_kel,
+        "ci_adjusted_kelly": ci_adj_kelly,
+        "time_risk": "HIGH",
+        "consensus": False,
+    }
+
+
 def analyze_trade(enriched: dict) -> dict | None:
     """
     Full multi-source trade analysis pipeline:
@@ -1016,6 +1217,13 @@ def analyze_trade(enriched: dict) -> dict | None:
         result = _analyze_precip_trade(
             enriched, forecast, condition, target_date, coords
         )
+        if result is not None:
+            result["time_risk"] = time_risk_label
+        return result
+
+    # ── Snow/ice market fast-path ─────────────────────────────────────────────
+    if condition["type"] == "precip_snow":
+        result = _analyze_snow_trade(enriched, forecast, condition, target_date, coords)
         if result is not None:
             result["time_risk"] = time_risk_label
         return result
@@ -1284,6 +1492,11 @@ def analyze_trade(enriched: dict) -> dict | None:
         # Regime detection
         "regime": _regime_info.get("regime", "normal"),
         "regime_description": _regime_info.get("description", ""),
+        # Feels-like temperature (informational)
+        "feels_like": round(
+            _feels_like(ens_stats.get("mean", 65.0)) if ens_stats else 65.0,
+            1,
+        ),
     }
 
 
