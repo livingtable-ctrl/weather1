@@ -1,0 +1,16 @@
+{
+  "NYC": {
+    "high": 74.2,
+    "low": 58.1,
+    "precip_prob": 0.12,
+    "precip_inches": 0.0,
+    "ensemble_spread": 3.1
+  },
+  "Chicago": {
+    "high": 56.8,
+    "low": 41.3,
+    "precip_prob": 0.35,
+    "precip_inches": 0.08,
+    "ensemble_spread": 4.2
+  }
+}

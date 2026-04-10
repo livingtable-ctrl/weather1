@@ -1,8 +1,13 @@
 """Shared pytest fixtures for the Kalshi weather markets test suite."""
 
+import json
 from datetime import date
+from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import pytest
+
+FIXTURES = Path(__file__).parent / "fixtures"
 
 
 @pytest.fixture
@@ -39,3 +44,28 @@ def sample_forecast():
 @pytest.fixture
 def target_date():
     return date(2025, 4, 9)
+
+
+@pytest.fixture
+def sample_markets():
+    """Load sample markets from fixture JSON file."""
+    return json.loads((FIXTURES / "sample_markets.json").read_text())
+
+
+@pytest.fixture
+def mock_kalshi_client(sample_markets):
+    """Mock Kalshi API client with sample market data."""
+    client = MagicMock()
+    client.get_markets.return_value = sample_markets
+    client.get_market.side_effect = lambda ticker: next(
+        (m for m in sample_markets if m["ticker"] == ticker), {}
+    )
+    return client
+
+
+@pytest.fixture
+def mock_forecast(sample_forecast):
+    """Patch get_weather_forecast to return fixture data."""
+    with patch("weather_markets.get_weather_forecast") as mock:
+        mock.side_effect = lambda city, date: sample_forecast.get(city)
+        yield mock
