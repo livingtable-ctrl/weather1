@@ -45,3 +45,30 @@ class TestGetMemberAccuracyDaysBack:
         # Only the recent score (MAE=1.0) should be included, not the old one (MAE=10.0)
         assert result["model_a"]["mae"] == pytest.approx(1.0)
         assert result["model_a"]["n"] == 1
+
+
+class TestEdgeConfidenceConditionType:
+    def test_precip_snow_lower_than_temp(self):
+        """Same horizon, snow produces lower confidence than temperature."""
+        from weather_markets import edge_confidence
+
+        snow = edge_confidence(5, condition_type="precip_snow")
+        temp = edge_confidence(5, condition_type="above")
+        assert snow < temp
+
+    def test_condition_compounds_horizon(self):
+        """days_out=10, precip_snow: horizon≈0.7143, × 0.80 ≈ 0.5714."""
+        from weather_markets import edge_confidence
+
+        result = edge_confidence(10, condition_type="precip_snow")
+        # horizon = 0.80 - (10-7)/7.0 * 0.20 = 0.80 - 0.08571 ≈ 0.7143
+        # × 0.80 ≈ 0.5714
+        assert result == pytest.approx(0.5714, abs=0.001)
+
+    def test_unknown_condition_defaults_to_one(self):
+        """Unknown condition_type uses multiplier 1.0 — no change from no condition."""
+        from weather_markets import edge_confidence
+
+        without = edge_confidence(5)
+        with_unknown = edge_confidence(5, condition_type="unknown_type")
+        assert without == pytest.approx(with_unknown)

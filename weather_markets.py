@@ -1188,6 +1188,18 @@ def _blend_weights(
 
 _ENS_STD_REF = 4.0  # °F — typical tight ensemble spread
 
+# Per-condition-type confidence multiplier applied on top of horizon discount (#14/#39).
+# Precipitation forecasts have higher irreducible uncertainty; snow requires two
+# thresholds (precip AND temperature), making it the hardest to forecast.
+_CONDITION_CONFIDENCE: dict[str, float] = {
+    "above": 1.00,
+    "below": 1.00,
+    "between": 1.00,
+    "precip_any": 0.90,
+    "precip_above": 0.85,
+    "precip_snow": 0.80,
+}
+
 
 def _confidence_scaled_blend_weights(
     days_out: int,
@@ -1446,26 +1458,29 @@ def _bootstrap_ci_precip(
     return (boot[min(int(n * 0.05), n - 1)], boot[min(int(n * 0.95), n - 1)])
 
 
-def edge_confidence(days_out: int) -> float:
-    """Horizon discount factor for edge signal (#63).
+def edge_confidence(days_out: int, condition_type: str | None = None) -> float:
+    """Horizon + condition discount factor for edge signal (#63/#14).
 
-    Far-out markets are noisier; this multiplier reduces effective edge used
-    for go/no-go decisions without touching Kelly size (which has its own
-    time_kelly_scale). Floor of 0.60 so strong far-out edges still pass MIN_EDGE.
+    Combines the existing piecewise horizon discount with a per-condition
+    multiplier from _CONDITION_CONFIDENCE. Precipitation and snow markets are
+    inherently harder to forecast, so their effective edge is discounted further.
 
-    Piecewise linear:
-      days_out 0–2  : 1.00  (full confidence)
+    Piecewise linear horizon:
+      days_out 0–2  : 1.00
       days_out 3–7  : linear 1.00 → 0.80
       days_out 8–14 : linear 0.80 → 0.60
-      days_out > 14 : 0.60  (floor)
+      days_out > 14 : 0.60 (floor)
     """
     if days_out <= 2:
-        return 1.0
-    if days_out <= 7:
-        return 1.0 - (days_out - 2) / 5.0 * 0.20
-    if days_out <= 14:
-        return 0.80 - (days_out - 7) / 7.0 * 0.20
-    return 0.60
+        horizon = 1.0
+    elif days_out <= 7:
+        horizon = 1.0 - (days_out - 2) / 5.0 * 0.20
+    elif days_out <= 14:
+        horizon = 0.80 - (days_out - 7) / 7.0 * 0.20
+    else:
+        horizon = 0.60
+    cond = _CONDITION_CONFIDENCE.get(condition_type or "", 1.0)
+    return round(horizon * cond, 4)
 
 
 def kelly_fraction(our_prob: float, price: float, fee_rate: float = 0.0) -> float:
