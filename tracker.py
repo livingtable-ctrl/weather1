@@ -21,7 +21,7 @@ DB_PATH.parent.mkdir(exist_ok=True)
 
 _db_initialized = False
 
-_SCHEMA_VERSION = 5  # increment when _MIGRATIONS list grows
+_SCHEMA_VERSION = 6  # increment when _MIGRATIONS list grows
 
 _MIGRATIONS = [
     # v1 → v2: add condition_type column (if not already added)
@@ -48,6 +48,8 @@ _MIGRATIONS = [
         side          TEXT    NOT NULL,
         logged_at     TEXT    NOT NULL
     )""",
+    # v5 → v6: add blend_sources column to predictions (#84)
+    "ALTER TABLE predictions ADD COLUMN blend_sources TEXT",
 ]
 
 
@@ -252,11 +254,15 @@ def log_prediction(
     market_date: date | None,
     analysis: dict,
     forecast_cycle: str | None = None,
+    blend_sources: dict | None = None,
 ) -> None:
     """Save a prediction to the database.
     Stores both the raw (pre-bias-correction) probability and the adjusted one (#53).
     #37: Optionally stores the NWP forecast cycle (00z/06z/12z/18z).
+    #84: Optionally stores blend_sources dict (model weights) as JSON.
     """
+    import json as _json
+
     init_db()
     cond = analysis.get("condition", {})
     lo = cond.get("threshold", cond.get("lower"))
@@ -266,6 +272,9 @@ def log_prediction(
     bias = analysis.get("bias_correction", 0.0) or 0.0
     forecast_prob = analysis.get("forecast_prob")
     raw_prob = round(forecast_prob + bias, 6) if forecast_prob is not None else None
+    blend_sources_json = (
+        _json.dumps(blend_sources) if blend_sources is not None else None
+    )
 
     with _conn() as con:
         # Don't duplicate — update if already logged today
@@ -278,7 +287,7 @@ def log_prediction(
                 """
                 UPDATE predictions SET
                     our_prob=?, raw_prob=?, market_prob=?, edge=?, method=?, n_members=?,
-                    days_out=?, forecast_cycle=?
+                    days_out=?, forecast_cycle=?, blend_sources=?
                 WHERE id=?
             """,
                 (
@@ -290,6 +299,7 @@ def log_prediction(
                     analysis.get("n_members"),
                     days_out,
                     forecast_cycle,
+                    blend_sources_json,
                     existing["id"],
                 ),
             )
@@ -299,8 +309,9 @@ def log_prediction(
                 INSERT INTO predictions
                   (ticker, city, market_date, condition_type,
                    threshold_lo, threshold_hi, our_prob, raw_prob, market_prob,
-                   edge, method, n_members, predicted_at, days_out, forecast_cycle)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'),?,?)
+                   edge, method, n_members, predicted_at, days_out, forecast_cycle,
+                   blend_sources)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'),?,?,?)
             """,
                 (
                     ticker,
@@ -317,6 +328,7 @@ def log_prediction(
                     analysis.get("n_members"),
                     days_out,
                     forecast_cycle,
+                    blend_sources_json,
                 ),
             )
 
@@ -468,6 +480,44 @@ def brier_score_by_method(min_samples: int = 20) -> dict[str, float]:
         m: sum(errs) / len(errs)
         for m, errs in by_method.items()
         if len(errs) >= min_samples
+    }
+
+
+def get_component_attribution() -> dict[str, dict]:
+    """#84: Brier score broken down by dominant blend source.
+
+    For each settled prediction that has blend_sources recorded, identify the
+    dominant model (highest weight) and compute per-source Brier scores.
+    Returns {source: {"n": int, "brier": float}}.
+    """
+    import json as _json
+
+    init_db()
+    with _conn() as con:
+        rows = con.execute("""
+            SELECT p.our_prob, p.blend_sources, o.settled_yes
+            FROM predictions p
+            JOIN outcomes o ON p.ticker = o.ticker
+            WHERE p.our_prob IS NOT NULL
+              AND p.blend_sources IS NOT NULL
+              AND o.settled_yes IS NOT NULL
+        """).fetchall()
+
+    by_source: dict[str, list[float]] = {}
+    for r in rows:
+        try:
+            sources: dict = _json.loads(r["blend_sources"])
+            if not sources:
+                continue
+            dominant = max(sources, key=lambda k: sources[k])
+            err = (r["our_prob"] - r["settled_yes"]) ** 2
+            by_source.setdefault(dominant, []).append(err)
+        except Exception:
+            continue
+
+    return {
+        src: {"n": len(errs), "brier": sum(errs) / len(errs)}
+        for src, errs in by_source.items()
     }
 
 

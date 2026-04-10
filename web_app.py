@@ -226,12 +226,14 @@ def _build_app(client):
                 brier_score,
                 get_brier_by_days_out,
                 get_calibration_by_city,
+                get_component_attribution,
             )
 
             result: dict = {
                 "brier": brier_score(),
                 "brier_by_days": get_brier_by_days_out(),
                 "city_calibration": get_calibration_by_city(),
+                "component_attribution": get_component_attribution(),
             }
             for fn_name in (
                 "get_confusion_matrix",
