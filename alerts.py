@@ -11,6 +11,8 @@ import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
 
+import safe_io
+
 _DATA_PATH = Path(__file__).parent / "data" / "alerts.json"
 _DATA_PATH.parent.mkdir(exist_ok=True)
 
@@ -186,3 +188,9 @@ def mark_triggered(alert_id: int) -> None:
             a["triggered_at"] = datetime.now(UTC).isoformat()
             _save(data)
             return
+
+
+def save_alerts(alerts_list: list[dict], path: Path | None = None) -> None:
+    """Write alerts list to path using safe_io for resilient disk writes (#8)."""
+    target = Path(path) if path is not None else _DATA_PATH
+    safe_io.atomic_write_json({"alerts": alerts_list}, target)

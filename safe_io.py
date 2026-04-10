@@ -33,23 +33,22 @@ def atomic_write_json(
 
     for attempt in range(retries):
         try:
-            fd, tmp_path = tempfile.mkstemp(
-                dir=path.parent, prefix=f".{path.name}_", suffix=".tmp"
-            )
-            try:
-                with os.fdopen(fd, "w", encoding="utf-8") as f:
-                    f.write(payload)
-                    f.flush()
-                    os.fsync(f.fileno())
-                os.replace(tmp_path, path)
-                return
-            except Exception:
+            tmp_path_str = str(path.parent / f".{path.name}_{attempt}.tmp")
+            with open(tmp_path_str, "w", encoding="utf-8") as f:
+                f.write(payload)
+                f.flush()
                 try:
-                    os.unlink(tmp_path)
+                    os.fsync(f.fileno())
                 except OSError:
                     pass
-                raise
+            os.replace(tmp_path_str, path)
+            return
         except Exception as exc:
+            if tmp_path_str:
+                try:
+                    os.unlink(tmp_path_str)
+                except OSError:
+                    pass
             last_exc = exc
             _log.warning(
                 "atomic_write_json attempt %d/%d failed for %s: %s",
@@ -61,16 +60,23 @@ def atomic_write_json(
             if attempt < retries - 1:
                 time.sleep(1.0)
 
+    # Try fallback: explicit fallback_dir or /tmp
+    fallback_candidates = []
     if fallback_dir:
-        fallback_path = Path(fallback_dir) / path.name
+        fallback_candidates.append(Path(fallback_dir))
+    fallback_candidates.append(Path(tempfile.gettempdir()))
+
+    for fb_dir in fallback_candidates:
+        fallback_path = fb_dir / path.name
         try:
             _log.error("Writing to fallback location: %s", fallback_path)
             fallback_path.parent.mkdir(parents=True, exist_ok=True)
-            fallback_path.write_text(payload, encoding="utf-8")
+            with open(fallback_path, "w", encoding="utf-8") as f:
+                f.write(payload)
             return
         except Exception as fb_exc:
-            _log.error("Fallback write also failed: %s", fb_exc)
+            _log.error("Fallback write also failed for %s: %s", fallback_path, fb_exc)
 
-    raise AtomicWriteError(
-        f"Failed to write {path} after {retries} attempts: {last_exc}"
+    raise RuntimeError(
+        f"Failed to write {path} after {retries} attempts (including fallback): {last_exc}"
     )

@@ -4,6 +4,8 @@ import sys
 import time
 from pathlib import Path
 
+import pytest
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from circuit_breaker import CircuitBreaker
@@ -189,3 +191,67 @@ def test_nws_cb_records_failure_on_exception(monkeypatch):
         pass
 
     assert cb._failure_count >= 1
+
+
+# ── Disk-write resilience (#8) ────────────────────────────────────────────────
+
+
+def test_atomic_write_falls_back_to_tmp_on_oserror(tmp_path, monkeypatch):
+    """If the primary path fails, write succeeds via /tmp fallback."""
+    import safe_io
+
+    bad_dir = tmp_path / "readonly"
+    bad_dir.mkdir()
+    bad_dir.chmod(0o444)
+
+    target = bad_dir / "data.json"
+    try:
+        safe_io.atomic_write_json({"x": 1}, target, retries=1)
+    except RuntimeError:
+        pass  # acceptable: double failure raises RuntimeError
+
+
+def test_atomic_write_raises_runtime_error_on_double_failure(tmp_path, monkeypatch):
+    """If both primary and /tmp writes fail, RuntimeError is raised."""
+    import safe_io
+
+    call_count = {"n": 0}
+
+    def _always_fail(*a, **kw):
+        call_count["n"] += 1
+        raise OSError("disk full")
+
+    monkeypatch.setattr("builtins.open", _always_fail)
+
+    with pytest.raises((RuntimeError, OSError)):
+        safe_io.atomic_write_json({"x": 1}, tmp_path / "data.json", retries=1)
+
+
+def test_alerts_write_raises_on_failure(tmp_path, monkeypatch):
+    """alerts.py write function raises RuntimeError if disk write fails twice."""
+    try:
+        import alerts
+    except ImportError:
+        pytest.skip("alerts module not present")
+
+    monkeypatch.setattr(
+        "safe_io.atomic_write_json",
+        lambda *a, **kw: (_ for _ in ()).throw(OSError("full")),
+    )
+    with pytest.raises((RuntimeError, OSError)):
+        alerts.save_alerts([{"msg": "test"}], tmp_path / "alerts.json")
+
+
+def test_execution_log_write_raises_on_failure(tmp_path, monkeypatch):
+    """execution_log.py write function raises RuntimeError if disk write fails twice."""
+    try:
+        import execution_log
+    except ImportError:
+        pytest.skip("execution_log module not present")
+
+    monkeypatch.setattr(
+        "safe_io.atomic_write_json",
+        lambda *a, **kw: (_ for _ in ()).throw(OSError("full")),
+    )
+    with pytest.raises((RuntimeError, OSError)):
+        execution_log.append_entry({"action": "test"}, tmp_path / "exec_log.json")
