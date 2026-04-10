@@ -1126,11 +1126,19 @@ def _count_open_live_orders() -> int:
     return sum(1 for o in orders if o.get("live") and o.get("status") == "pending")
 
 
-def _poll_pending_orders(client) -> None:
+def _poll_pending_orders(client, config: dict | None = None) -> None:
     """Check fill status of all pending live orders and update execution_log.
 
+    Also auto-cancels stale GTC orders and records settlement outcomes for
+    filled orders whose markets have finalized.
     Called each iteration of cmd_watch to close the GTC order lifecycle.
     """
+    from utils import KALSHI_FEE_RATE as _fee
+
+    gtc_cancel_hours = (config or {}).get("gtc_cancel_hours", 24)
+    now_utc = datetime.now(UTC)
+
+    # ── Pending orders: GTC age check + fill status ───────────────────────────
     pending = [
         o
         for o in execution_log.get_recent_orders(limit=200)
@@ -1146,6 +1154,22 @@ def _poll_pending_orders(client) -> None:
             order_id = response.get("order_id") if response else None
             if not order_id:
                 continue
+
+            # GTC age check — cancel orders older than gtc_cancel_hours
+            try:
+                placed_at = datetime.fromisoformat(
+                    order["placed_at"].replace("Z", "+00:00")
+                )
+                age_hours = (now_utc - placed_at).total_seconds() / 3600
+                if age_hours >= gtc_cancel_hours:
+                    client.cancel_order(order_id)
+                    execution_log.log_order_result(
+                        row_id=order["id"], status="cancelled"
+                    )
+                    continue
+            except Exception as exc:
+                print(f"[LIVE] GTC cancel failed for order {order.get('id')}: {exc}")
+
             result = client.get_order(order_id)
             api_status = result.get("status", "")
             if api_status in ("filled", "canceled", "expired"):
@@ -1156,6 +1180,45 @@ def _poll_pending_orders(client) -> None:
                 )
         except Exception as exc:
             print(f"[LIVE] poll order {order.get('id')} failed: {exc}")
+
+    # ── Filled+unsettled orders: settlement check ─────────────────────────────
+    for order in execution_log.get_filled_unsettled_live_orders():
+        try:
+            market = client.get_market(order["ticker"])
+            status = market.get("status", "")
+            result = market.get("result", "")
+            if status != "finalized" or not result:
+                continue
+            # 1-hour buffer — Kalshi may revise outcomes shortly after finalization
+            close_time_str = market.get("close_time") or market.get(
+                "expiration_time", ""
+            )
+            if close_time_str:
+                try:
+                    close_dt = datetime.fromisoformat(
+                        close_time_str.replace("Z", "+00:00")
+                    )
+                    if (now_utc - close_dt).total_seconds() / 3600 < 1.0:
+                        continue
+                except (ValueError, TypeError):
+                    pass
+            outcome_yes = result == "yes"
+            side = order["side"]
+            price = order["price"]  # always YES-side decimal (0.0–1.0)
+            qty = order.get("fill_quantity") or order["quantity"]
+            if outcome_yes and side == "yes":
+                pnl = qty * (1 - price) * (1 - _fee)
+            elif not outcome_yes and side == "yes":
+                pnl = -qty * price
+            elif outcome_yes and side == "no":
+                pnl = qty * price * (1 - _fee)
+            else:  # not outcome_yes, side == "no"
+                pnl = -qty * (1 - price)
+            pnl = round(pnl, 4)
+            execution_log.record_live_settlement(order["id"], outcome_yes, pnl)
+            execution_log.add_live_loss(-pnl)  # negative pnl = loss adds to counter
+        except Exception as exc:
+            print(f"[LIVE] settlement check failed for order {order.get('id')}: {exc}")
 
 
 def _place_live_order(
@@ -2023,7 +2086,7 @@ def cmd_watch(
                     liquid_opps, client=client, live=live, live_config=live_cfg
                 )
             if live:
-                _poll_pending_orders(client)
+                _poll_pending_orders(client, config=live_cfg)
             # Check price alerts
             try:
                 from alerts import check_alerts, mark_triggered

@@ -98,6 +98,7 @@ class TestPlaceLiveOrder:
             "max_trade_dollars": 50,
             "daily_loss_limit": 200,
             "max_open_positions": 10,
+            "gtc_cancel_hours": 24,
         }
         analysis = {
             "kelly_quantity": 10,
@@ -227,3 +228,121 @@ class TestPollPendingOrders:
         execution_log._initialized = False
         tmp.close()
         Path(tmp.name).unlink(missing_ok=True)
+
+
+class TestPollPendingOrdersExtended:
+    def setup_method(self):
+        import tempfile
+        from pathlib import Path
+
+        import execution_log
+
+        self._tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+        execution_log.DB_PATH = Path(self._tmp.name)
+        execution_log._initialized = False
+
+    def teardown_method(self):
+        import gc
+
+        import execution_log
+
+        execution_log._initialized = False
+        self._tmp.close()
+        gc.collect()
+        from pathlib import Path
+
+        Path(self._tmp.name).unlink(missing_ok=True)
+
+    def test_gtc_cancel_fires_for_old_pending_order(self):
+        """Orders older than gtc_cancel_hours are cancelled via the API."""
+        from datetime import UTC, datetime, timedelta
+        from unittest.mock import MagicMock
+
+        import execution_log
+        import main
+
+        row_id = execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=2,
+            price=0.55,
+            status="pending",
+            live=True,
+            response={"order_id": "ord_abc"},
+        )
+        # Backdate placed_at to 2 hours ago
+        old_time = (datetime.now(UTC) - timedelta(hours=2)).isoformat()
+        with execution_log._conn() as con:
+            con.execute(
+                "UPDATE orders SET placed_at = ? WHERE id = ?", (old_time, row_id)
+            )
+
+        mock_client = MagicMock()
+        mock_client.cancel_order.return_value = {}
+
+        config = {"gtc_cancel_hours": 1}
+        main._poll_pending_orders(mock_client, config=config)
+
+        mock_client.cancel_order.assert_called_once_with("ord_abc")
+        orders = execution_log.get_recent_orders(limit=10)
+        assert orders[0]["status"] == "cancelled"
+
+    def test_gtc_cancel_skips_fresh_orders(self):
+        """Orders younger than gtc_cancel_hours are not cancelled."""
+        from unittest.mock import MagicMock
+
+        import execution_log
+        import main
+
+        execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=2,
+            price=0.55,
+            status="pending",
+            live=True,
+            response={"order_id": "ord_fresh"},
+        )
+
+        mock_client = MagicMock()
+        mock_client.get_order.return_value = {"status": "resting"}
+
+        config = {"gtc_cancel_hours": 999}
+        main._poll_pending_orders(mock_client, config=config)
+
+        mock_client.cancel_order.assert_not_called()
+
+    def test_settlement_recorded_for_finalized_market(self):
+        """When a filled order's market is finalized, P&L is computed and recorded."""
+        from datetime import UTC, datetime, timedelta
+        from unittest.mock import MagicMock
+
+        import execution_log
+        import main
+
+        execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=2,
+            price=0.55,
+            status="filled",
+            live=True,
+            fill_quantity=2,
+        )
+
+        close_time = (datetime.now(UTC) - timedelta(hours=2)).isoformat()
+        mock_client = MagicMock()
+        mock_client.get_market.return_value = {
+            "status": "finalized",
+            "result": "yes",
+            "close_time": close_time,
+        }
+
+        main._poll_pending_orders(mock_client, config={})
+
+        orders = execution_log.get_recent_orders(limit=10)
+        order = orders[0]
+        assert order["outcome_yes"] == 1
+        assert order["settled_at"] is not None
+        # pnl = 2 * (1 - 0.55) * (1 - 0.07) = 2 * 0.45 * 0.93 = 0.837
+        assert order["pnl"] == pytest.approx(0.837, rel=1e-3)
