@@ -1540,10 +1540,18 @@ def settle_analysis_attempt(ticker: str, target_date, outcome: int) -> None:
     )
     try:
         with _conn() as con:
-            con.execute(
+            cursor = con.execute(
                 "UPDATE analysis_attempts SET outcome=? WHERE ticker=? AND target_date=?",
                 (outcome, ticker, target_str),
             )
+            if cursor.rowcount == 0:
+                import logging as _logging
+
+                _logging.getLogger(__name__).warning(
+                    "settle_analysis_attempt: no row for ticker=%s target_date=%s",
+                    ticker,
+                    target_str,
+                )
     except Exception as exc:
         _log.warning("settle_analysis_attempt failed for %s: %s", ticker, exc)
 

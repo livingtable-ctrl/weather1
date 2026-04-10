@@ -31,7 +31,7 @@ def _validate_crc(data: dict) -> None:
     if stored is None:
         return
     payload = {k: v for k, v in data.items() if k != "_crc32"}
-    body = json.dumps(payload, indent=2).encode()
+    body = json.dumps(payload, indent=2, default=str).encode()
     expected = format(_zlib.crc32(body) & 0xFFFFFFFF, "08x")
     if stored != expected:
         raise CorruptionError(
@@ -133,7 +133,7 @@ def _save(data: dict) -> None:
     """Write atomically with retry via safe_io (#8). Embeds CRC32 checksum (#102)."""
     # #102: Embed CRC32 checksum for corruption detection
     payload = {k: v for k, v in data.items() if k != "_crc32"}
-    body = json.dumps(payload, indent=2).encode()
+    body = json.dumps(payload, indent=2, default=str).encode()
     checksum = format(_zlib.crc32(body) & 0xFFFFFFFF, "08x")
     payload["_crc32"] = checksum
     try:

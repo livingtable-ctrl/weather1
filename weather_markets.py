@@ -1675,7 +1675,7 @@ def _analyze_snow_trade(
         "net_signal": _edge_label(net_edge),
         "recommended_side": rec_side,
         "condition": condition,
-        "forecast_temp": forecast.get("precip_in", 0.0),
+        "forecast_temp": forecast.get("high_f") or forecast.get("temp_high") or 0.0,
         "ensemble_prob": ens_prob,
         "nws_prob": None,
         "clim_prob": clim_prior,
