@@ -1193,15 +1193,14 @@ def _poll_pending_orders(client, config: dict | None = None) -> None:
             close_time_str = market.get("close_time") or market.get(
                 "expiration_time", ""
             )
-            if close_time_str:
-                try:
-                    close_dt = datetime.fromisoformat(
-                        close_time_str.replace("Z", "+00:00")
-                    )
-                    if (now_utc - close_dt).total_seconds() / 3600 < 1.0:
-                        continue
-                except (ValueError, TypeError):
-                    pass
+            if not close_time_str:
+                continue  # no close_time — skip until Kalshi provides one
+            try:
+                close_dt = datetime.fromisoformat(close_time_str.replace("Z", "+00:00"))
+                if (now_utc - close_dt).total_seconds() / 3600 < 1.0:
+                    continue
+            except (ValueError, TypeError):
+                continue  # unparseable close_time — skip defensively
             outcome_yes = result == "yes"
             side = order["side"]
             price = order["price"]  # always YES-side decimal (0.0–1.0)
@@ -2080,8 +2079,8 @@ def cmd_watch(
                 show_summary=True,
             )
             _save_watch_state(previous)
+            live_cfg = _load_live_config() if live else None
             if auto_trade and liquid_opps:
-                live_cfg = _load_live_config() if live else None
                 _auto_place_trades(
                     liquid_opps, client=client, live=live, live_config=live_cfg
                 )
