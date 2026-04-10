@@ -570,3 +570,55 @@ class TestAdjustedEdgeInAnalyzeTrade:
         assert result["edge_confidence_factor"] == pytest.approx(
             wm.edge_confidence(10), abs=1e-6
         )
+
+
+# ── TestBlendWeightCalibrationPriority ───────────────────────────────────────
+
+
+class TestBlendWeightCalibrationPriority:
+    """_blend_weights() must use city weights > seasonal weights > hardcoded."""
+
+    def test_city_weights_override_hardcoded(self, monkeypatch):
+        """If city weights loaded, _blend_weights returns them regardless of days_out."""
+        import weather_markets as wm
+
+        city_weights = {"NYC": {"ensemble": 0.50, "climatology": 0.10, "nws": 0.40}}
+        monkeypatch.setattr(wm, "_CITY_WEIGHTS", city_weights)
+        monkeypatch.setattr(wm, "_SEASONAL_WEIGHTS", {})
+
+        w_ens, w_clim, w_nws = wm._blend_weights(
+            days_out=5, has_nws=True, has_clim=True, city="NYC", season="spring"
+        )
+        assert w_ens == pytest.approx(0.50, abs=1e-6)
+        assert w_nws == pytest.approx(0.40, abs=1e-6)
+
+    def test_seasonal_weights_used_when_no_city_weights(self, monkeypatch):
+        """If no city weights but seasonal weights loaded, use seasonal."""
+        import weather_markets as wm
+
+        monkeypatch.setattr(wm, "_CITY_WEIGHTS", {})
+        monkeypatch.setattr(
+            wm,
+            "_SEASONAL_WEIGHTS",
+            {"spring": {"ensemble": 0.45, "climatology": 0.20, "nws": 0.35}},
+        )
+
+        w_ens, w_clim, w_nws = wm._blend_weights(
+            days_out=5, has_nws=True, has_clim=True, city="NYC", season="spring"
+        )
+        assert w_ens == pytest.approx(0.45, abs=1e-6)
+        assert w_nws == pytest.approx(0.35, abs=1e-6)
+
+    def test_fallback_to_hardcoded_when_no_calibration(self, monkeypatch):
+        """With empty dicts, result should match original hardcoded schedule."""
+        import weather_markets as wm
+
+        monkeypatch.setattr(wm, "_CITY_WEIGHTS", {})
+        monkeypatch.setattr(wm, "_SEASONAL_WEIGHTS", {})
+
+        # days_out=5, hardcoded: w_nws=0.25, remainder split ensemble/clim
+        w_ens, w_clim, w_nws = wm._blend_weights(
+            days_out=5, has_nws=True, has_clim=True, city="NYC", season="spring"
+        )
+        assert abs(w_ens + w_clim + w_nws - 1.0) < 1e-6
+        assert w_nws == pytest.approx(0.25, abs=1e-6)

@@ -14,6 +14,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, date, datetime
 from pathlib import Path
 
+from calibration import load_city_weights as _load_city_weights
+from calibration import load_seasonal_weights as _load_seasonal_weights
 from climate_indices import get_enso_index, temperature_adjustment
 from climatology import climatological_prob
 from kalshi_client import KalshiClient, _request_with_retry
@@ -75,6 +77,10 @@ _FORECAST_CACHE_TTL = 90 * 60  # 90 minutes
 # #66: Market listing cache to avoid hammering the API on every analyze call
 _MARKETS_CACHE: tuple[list, float] | None = None
 _MARKETS_CACHE_TTL = 60  # 60 seconds
+
+# ── Calibration data (loaded once at import; empty dicts = use hardcoded weights) ──
+_CITY_WEIGHTS: dict[str, dict[str, float]] = _load_city_weights()
+_SEASONAL_WEIGHTS: dict[str, dict[str, float]] = _load_seasonal_weights()
 
 
 def _current_forecast_cycle() -> str:
@@ -1094,12 +1100,49 @@ def _edge_label(edge: float) -> str:
 
 
 def _blend_weights(
-    days_out: int, has_nws: bool, has_clim: bool
+    days_out: int,
+    has_nws: bool,
+    has_clim: bool,
+    city: str | None = None,
+    season: str | None = None,
 ) -> tuple[float, float, float]:
-    """Return (w_ensemble, w_climatology, w_nws) based on days out.
+    """Return (w_ensemble, w_climatology, w_nws).
 
-    NWS is always blended (not fallback): 0.35 at <=3 days, 0.25 at 4-7, 0.10 at >7.
+    Priority: city-specific calibration > seasonal calibration > hardcoded schedule.
     """
+    # 1. City-specific calibration weights
+    if city and city in _CITY_WEIGHTS:
+        cal = _CITY_WEIGHTS[city]
+        w_ens = cal["ensemble"]
+        w_clim = cal["climatology"]
+        w_nws = cal["nws"]
+        if not has_nws:
+            w_ens += w_nws * 0.6
+            w_clim += w_nws * 0.4
+            w_nws = 0.0
+        if not has_clim:
+            w_ens += w_clim
+            w_clim = 0.0
+        total = w_ens + w_clim + w_nws
+        return w_ens / total, w_clim / total, w_nws / total
+
+    # 2. Seasonal calibration weights
+    if season and season in _SEASONAL_WEIGHTS:
+        cal = _SEASONAL_WEIGHTS[season]
+        w_ens = cal["ensemble"]
+        w_clim = cal["climatology"]
+        w_nws = cal["nws"]
+        if not has_nws:
+            w_ens += w_nws * 0.6
+            w_clim += w_nws * 0.4
+            w_nws = 0.0
+        if not has_clim:
+            w_ens += w_clim
+            w_clim = 0.0
+        total = w_ens + w_clim + w_nws
+        return w_ens / total, w_clim / total, w_nws / total
+
+    # 3. Hardcoded schedule (original logic)
     if days_out <= 3:
         w_nws = 0.35
     elif days_out <= 7:
@@ -1107,8 +1150,6 @@ def _blend_weights(
     else:
         w_nws = 0.10
 
-    # Remaining weight split between ensemble and climatology
-    # Ensemble gets proportionally more weight at short horizons
     w_rem = 1.0 - w_nws
     if days_out <= 1:
         w_ens = w_rem * 0.94
@@ -1145,10 +1186,17 @@ _ENS_STD_REF = 4.0  # °F — typical tight ensemble spread
 
 
 def _confidence_scaled_blend_weights(
-    days_out: int, has_nws: bool, has_clim: bool, ens_std: float | None = None
+    days_out: int,
+    has_nws: bool,
+    has_clim: bool,
+    ens_std: float | None = None,
+    city: str | None = None,
+    season: str | None = None,
 ) -> tuple[float, float, float]:
     """#31: _blend_weights scaled by inverse ensemble variance."""
-    w_ens, w_clim, w_nws = _blend_weights(days_out, has_nws, has_clim)
+    w_ens, w_clim, w_nws = _blend_weights(
+        days_out, has_nws, has_clim, city=city, season=season
+    )
     if ens_std is None or ens_std <= 0:
         return w_ens, w_clim, w_nws
     scale = max(0.5, min(1.5, _ENS_STD_REF / ens_std))
@@ -1926,11 +1974,32 @@ def analyze_trade(enriched: dict) -> dict | None:
         blended_prob = obs_override * 0.95 + (ens_prob or 0.5) * 0.05
         blend_sources = {"obs": 0.95, "ensemble": 0.05}
     else:
+        _month = (
+            target_date.month
+            if target_date
+            else __import__("datetime").datetime.now().month
+        )
+        _season = {
+            12: "winter",
+            1: "winter",
+            2: "winter",
+            3: "spring",
+            4: "spring",
+            5: "spring",
+            6: "summer",
+            7: "summer",
+            8: "summer",
+            9: "fall",
+            10: "fall",
+            11: "fall",
+        }.get(_month, "spring")
         w_ens, w_clim, w_nws = _confidence_scaled_blend_weights(
             days_out,
             _nws_prob is not None,
             clim_prob is not None,
             ens_std=ens_stats.get("std") if ens_stats else None,
+            city=city,
+            season=_season,
         )
         # #26: persistence baseline at 15% for days_out <= 2
         if persistence_p is not None and days_out <= 2:
