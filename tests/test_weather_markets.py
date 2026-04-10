@@ -622,3 +622,5 @@ class TestBlendWeightCalibrationPriority:
         )
         assert abs(w_ens + w_clim + w_nws - 1.0) < 1e-6
         assert w_nws == pytest.approx(0.25, abs=1e-6)
+        assert w_ens == pytest.approx(0.5175, abs=1e-6)
+        assert w_clim == pytest.approx(0.2325, abs=1e-6)

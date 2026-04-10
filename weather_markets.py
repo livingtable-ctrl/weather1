@@ -1124,7 +1124,9 @@ def _blend_weights(
             w_ens += w_clim
             w_clim = 0.0
         total = w_ens + w_clim + w_nws
-        return w_ens / total, w_clim / total, w_nws / total
+        if total > 0.0:
+            return w_ens / total, w_clim / total, w_nws / total
+        # Degenerate calibration data; fall through to seasonal/hardcoded
 
     # 2. Seasonal calibration weights
     if season and season in _SEASONAL_WEIGHTS:
@@ -1140,7 +1142,9 @@ def _blend_weights(
             w_ens += w_clim
             w_clim = 0.0
         total = w_ens + w_clim + w_nws
-        return w_ens / total, w_clim / total, w_nws / total
+        if total > 0.0:
+            return w_ens / total, w_clim / total, w_nws / total
+        # Degenerate calibration data; fall through to hardcoded schedule
 
     # 3. Hardcoded schedule (original logic)
     if days_out <= 3:
@@ -1609,7 +1613,9 @@ def _analyze_precip_trade(
             pass
 
     # ── Dynamic blend weights (mirrors temperature path) ─────────────────────
-    w_ens, w_clim, _ = _blend_weights(days_out, has_nws=False, has_clim=True)
+    w_ens, w_clim, _ = _blend_weights(
+        days_out, has_nws=False, has_clim=True
+    )  # calibration not yet wired for precip/snow path
     clim_prior = 0.30  # rough historical rain frequency as fallback prior
     blended_prob = ens_prob * w_ens + clim_prior * w_clim
 
@@ -1754,8 +1760,10 @@ def _analyze_snow_trade(
         ens_prob = clim_prior
 
     # ── Blend ensemble with climatological prior ──────────────────────────────
-    w_ens, w_clim, _ = _confidence_scaled_blend_weights(
-        days_out, has_nws=False, has_clim=True, ens_std=None
+    w_ens, w_clim, _ = (
+        _confidence_scaled_blend_weights(  # calibration not yet wired for precip/snow path
+            days_out, has_nws=False, has_clim=True, ens_std=None
+        )
     )
     blended_prob = ens_prob * w_ens + clim_prior * w_clim
     blended_prob = max(0.01, min(0.99, blended_prob))
