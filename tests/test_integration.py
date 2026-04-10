@@ -325,7 +325,7 @@ class TestAnalyzePipelineExtra:
     def test_analyze_trade_signal_is_valid(
         self, mock_ens, mock_temp_adj, mock_clim, mock_nws, mock_obs
     ):
-        """signal field must be one of BUY / SELL / PASS."""
+        """signal field must be a non-empty string with a recognised prefix (BUY, SELL, PASS, NEUTRAL, STRONG BUY, or WEAK)."""
         from weather_markets import analyze_trade
 
         enriched = _make_enriched()
