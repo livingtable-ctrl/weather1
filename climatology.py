@@ -18,7 +18,10 @@ DATA_DIR.mkdir(exist_ok=True)
 
 ARCHIVE_BASE = "https://archive-api.open-meteo.com/v1/archive"
 HISTORY_YEARS = 30
-WINDOW_DAYS = 21  # ±21 calendar days across all years
+WINDOW_DAYS = 21  # default ±21 calendar days across all years
+# Shoulder months: tighten window to avoid smearing seasonal transitions
+SHOULDER_MONTHS = {3, 4, 5, 9, 10}  # Mar/Apr/May/Sep/Oct
+SHOULDER_WINDOW_DAYS = 14
 CACHE_MAX_AGE = 365 * 24 * 3600  # refresh cache if older than 1 year
 
 
@@ -94,6 +97,11 @@ def climatological_prob(
     if not data:
         return None
 
+    # Use a tighter window during shoulder months to avoid smearing transitions
+    window = (
+        SHOULDER_WINDOW_DAYS if target_date.month in SHOULDER_MONTHS else WINDOW_DAYS
+    )
+
     target_doy = target_date.timetuple().tm_yday
     temps = []
 
@@ -107,7 +115,7 @@ def climatological_prob(
         d_doy = d.timetuple().tm_yday
         diff = abs(target_doy - d_doy)
         diff = min(diff, 365 - diff)  # handle year-boundary wrap
-        if diff <= WINDOW_DAYS:
+        if diff <= window:
             temps.append(low if condition.get("var") == "min" else high)
 
     if len(temps) < 30:  # need enough data points to be meaningful

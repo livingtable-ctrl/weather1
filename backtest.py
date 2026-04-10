@@ -101,13 +101,22 @@ def fetch_archive_temps(
 
 
 def run_backtest(
-    client, city_filter: str | None = None, days_back: int = 30, verbose: bool = False
+    client,
+    city_filter: str | None = None,
+    days_back: int = 30,
+    verbose: bool = False,
+    holdout_days: int = 5,
+    on_progress=None,
 ) -> dict:
     """
     Fetch finalized weather markets from Kalshi, then simulate our
     model's prediction for each and score against the actual outcome.
 
-    Returns summary dict: {brier, win_rate, total_pnl, n_markets, rows}
+    holdout_days: if > 0, the most recent N days are held out as a validation
+    set. Returns separate train/validation Brier scores to detect overfitting.
+
+    Returns summary dict: {brier, win_rate, total_pnl, n_markets, rows,
+                           val_brier, val_n, val_win_rate}
     """
     from weather_markets import (
         CITY_COORDS,
@@ -118,10 +127,15 @@ def run_backtest(
     )
 
     cutoff = date.today() - timedelta(days=days_back)
+    holdout_cutoff = (
+        date.today() - timedelta(days=holdout_days) if holdout_days > 0 else None
+    )
     markets = client.get_markets(status="finalized", limit=200)
 
     results = []
-    for m in markets:
+    for _prog_i, m in enumerate(markets, 1):
+        if on_progress:
+            on_progress(_prog_i, len(markets))
         ticker = m.get("ticker", "")
         result = m.get("result", "")
         if result not in ("yes", "no"):
@@ -185,6 +199,7 @@ def run_backtest(
         else:
             pnl = -stake
 
+        is_holdout = holdout_cutoff is not None and tdate >= holdout_cutoff
         results.append(
             {
                 "ticker": ticker,
@@ -197,6 +212,7 @@ def run_backtest(
                 "rec_side": rec_side,
                 "won": won,
                 "pnl": round(pnl, 4),
+                "holdout": is_holdout,
             }
         )
 
@@ -207,16 +223,33 @@ def run_backtest(
             "win_rate": None,
             "total_pnl": 0.0,
             "rows": [],
+            "val_brier": None,
+            "val_n": 0,
+            "val_win_rate": None,
         }
 
-    brier_avg = sum(r["brier_sq"] for r in results) / len(results)
-    wins = sum(1 for r in results if r["won"])
+    train = [r for r in results if not r["holdout"]]
+    val = [r for r in results if r["holdout"]]
+
+    def _summarise(rows: list[dict]) -> tuple:
+        if not rows:
+            return None, 0, None
+        b = sum(r["brier_sq"] for r in rows) / len(rows)
+        w = sum(1 for r in rows if r["won"])
+        return round(b, 4), len(rows), round(w / len(rows), 3)
+
+    train_brier, train_n, train_wr = _summarise(train or results)
+    val_brier, val_n, val_wr = _summarise(val)
+
     total_pnl = sum(r["pnl"] for r in results)
 
     return {
         "n_markets": len(results),
-        "brier": round(brier_avg, 4),
-        "win_rate": round(wins / len(results), 3),
+        "brier": train_brier,
+        "win_rate": train_wr,
         "total_pnl": round(total_pnl, 4),
         "rows": results,
+        "val_brier": val_brier,
+        "val_n": val_n,
+        "val_win_rate": val_wr,
     }

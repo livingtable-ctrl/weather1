@@ -22,16 +22,26 @@ DATA_PATH.parent.mkdir(exist_ok=True)
 STARTING_BALANCE = 1000.0  # default paper bankroll in dollars
 MAX_DRAWDOWN_FRACTION = 0.50  # halt auto-sizing if balance < 50% of peak
 
-# Gradual recovery thresholds (fraction of peak balance)
+# Gradual recovery thresholds (fraction of peak balance).
+# Conservative tiers: resume slowly after a loss streak to avoid blowup.
 _DRAWDOWN_TIER_1 = 1 - MAX_DRAWDOWN_FRACTION  # 0.50 — fully paused below this
-_DRAWDOWN_TIER_2 = 0.60  # 25% sizing
-_DRAWDOWN_TIER_3 = 0.75  # 50% sizing
-_DRAWDOWN_TIER_4 = 0.90  # 75% sizing
+_DRAWDOWN_TIER_2 = 0.60  # 10% sizing (was 25%)
+_DRAWDOWN_TIER_3 = 0.75  # 30% sizing (was 50%)
+_DRAWDOWN_TIER_4 = 0.90  # 70% sizing (was 75%)
 
 MAX_CITY_DATE_EXPOSURE = 0.15  # max fraction of starting balance on one city/date combo
 MAX_DIRECTIONAL_EXPOSURE = (
     0.10  # max fraction of starting balance on one city/date/side
 )
+
+# Cities that tend to move together due to shared weather patterns.
+_CORRELATED_CITY_GROUPS = [
+    {"NYC", "Boston"},
+    {"Chicago", "Denver"},
+    {"LA", "Phoenix"},
+    {"Dallas", "Atlanta"},
+]
+MAX_CORRELATED_EXPOSURE = 0.20  # max combined fraction across a correlated group
 
 
 def _load() -> dict:
@@ -100,11 +110,11 @@ def drawdown_scaling_factor() -> float:
     if recovery < _DRAWDOWN_TIER_1:
         return 0.0
     elif recovery < _DRAWDOWN_TIER_2:
-        return 0.25
+        return 0.10
     elif recovery < _DRAWDOWN_TIER_3:
-        return 0.50
+        return 0.30
     elif recovery < _DRAWDOWN_TIER_4:
-        return 0.75
+        return 0.70
     else:
         return 1.0
 
@@ -149,9 +159,13 @@ def place_paper_order(
     net_edge: float | None = None,
     city: str | None = None,
     target_date: str | None = None,  # ISO format "2026-04-09"
+    exit_target: float
+    | None = None,  # take-profit price (0–1); exit if market reaches this
 ) -> dict:
     """
     Place a paper trade. Deducts quantity * entry_price from balance.
+    exit_target: optional take-profit price — if set, check_exit_targets() will
+    settle this trade early when the market price reaches the target.
     Returns the trade record.
     """
     data = _load()
@@ -178,6 +192,7 @@ def place_paper_order(
         "settled": False,
         "outcome": None,
         "pnl": None,
+        "exit_target": exit_target,
     }
 
     data["balance"] -= cost
@@ -247,6 +262,60 @@ def get_directional_exposure(city: str, target_date_str: str, side: str) -> floa
     return committed / STARTING_BALANCE
 
 
+def get_correlated_exposure(city: str, target_date_str: str) -> float:
+    """
+    Return the total fraction of STARTING_BALANCE committed to open trades
+    in cities correlated with the given city on the same date.
+    Correlated cities share weather patterns (e.g. NYC+Boston, LA+Phoenix).
+    """
+    group = next(
+        (g for g in _CORRELATED_CITY_GROUPS if city in g),
+        None,
+    )
+    if not group:
+        return 0.0
+    return (
+        sum(
+            t["cost"]
+            for t in get_open_trades()
+            if t.get("city") in group and t.get("target_date") == target_date_str
+        )
+        / STARTING_BALANCE
+    )
+
+
+def check_exit_targets(client=None) -> int:
+    """
+    Scan open paper trades with exit_target set. If the current market price
+    has reached or exceeded the target, settle the trade as a win.
+    Requires a Kalshi client to fetch current prices; skips if not provided.
+    Returns number of trades exited.
+    """
+    if client is None:
+        return 0
+    open_trades = [t for t in get_open_trades() if t.get("exit_target") is not None]
+    exited = 0
+    for t in open_trades:
+        try:
+            market = client.get_market(t["ticker"])
+            yes_bid = market.get("yes_bid") or 0
+            if isinstance(yes_bid, int) and yes_bid > 1:
+                yes_bid = yes_bid / 100.0
+            current_price = float(yes_bid)
+            target = t["exit_target"]
+            # Exit YES trade if current YES bid >= exit target
+            # Exit NO trade if current YES bid <= (1 - exit_target)
+            should_exit = (t["side"] == "yes" and current_price >= target) or (
+                t["side"] == "no" and current_price <= 1 - target
+            )
+            if should_exit:
+                settle_paper_trade(t["id"], outcome_yes=(t["side"] == "yes"))
+                exited += 1
+        except Exception:
+            continue
+    return exited
+
+
 def portfolio_kelly_fraction(
     base_fraction: float,
     city: str | None,
@@ -255,8 +324,9 @@ def portfolio_kelly_fraction(
 ) -> float:
     """
     Scale down base_fraction based on existing open exposure to this city/date.
-    Also applies a 50% directional penalty if >MAX_DIRECTIONAL_EXPOSURE is already
-    on the same side (concentrated correlated bets).
+    Also applies:
+    - 50% directional penalty if >MAX_DIRECTIONAL_EXPOSURE on same side
+    - 40% correlated-city penalty if combined group exposure > MAX_CORRELATED_EXPOSURE
 
     If existing city/date exposure >= MAX_CITY_DATE_EXPOSURE, returns 0.0.
     """
@@ -279,7 +349,32 @@ def portfolio_kelly_fraction(
     ):
         result *= 0.50
 
+    # Correlated-city concentration penalty
+    if get_correlated_exposure(city, target_date_str) > MAX_CORRELATED_EXPOSURE:
+        result *= 0.60
+
     return round(result, 6)
+
+
+def slippage_kelly_scale(market: dict, quantity: int) -> float:
+    """
+    Return a 0.5–1.0 multiplier to reduce Kelly sizing based on market liquidity.
+    Thin markets (low volume/open interest) can't absorb large orders without
+    moving the price, making paper trade results overly optimistic.
+      volume/OI > 500  → 1.00 (liquid)
+      200–500          → 0.85
+      50–200           → 0.70
+      < 50             → 0.50 (illiquid)
+    """
+    volume = (market.get("volume") or 0) + (market.get("open_interest") or 0)
+    if volume > 500:
+        return 1.00
+    elif volume > 200:
+        return 0.85
+    elif volume > 50:
+        return 0.70
+    else:
+        return 0.50
 
 
 def get_all_trades() -> list[dict]:
