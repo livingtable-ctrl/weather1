@@ -1056,6 +1056,20 @@ def _analyze_once(
     return found
 
 
+def _midpoint_price(market: dict, side: str) -> float:
+    """Return midpoint of current bid/ask for the given side, rounded to 2dp.
+
+    Kalshi bid/ask are integer cents (0-100). Returns a decimal probability (0.0-1.0).
+    """
+    if side == "yes":
+        bid = market.get("yes_bid", 0) / 100
+        ask = market.get("yes_ask", 100) / 100
+    else:  # "no"
+        bid = (100 - market.get("yes_ask", 100)) / 100
+        ask = (100 - market.get("yes_bid", 0)) / 100
+    return round((bid + ask) / 2, 2)
+
+
 def _resolve_price(client: KalshiClient, ticker: str, side: str) -> float | None:
     """
     Fetch the best available price for a ticker+side.
