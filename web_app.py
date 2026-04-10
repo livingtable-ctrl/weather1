@@ -611,6 +611,39 @@ setInterval(() => {{
             data = {"error": str(e)}
         return jsonify(data)
 
+    @app.route("/signals")
+    def signals_page():
+        return render_template("signals.html")
+
+    @app.route("/api/signals")
+    def api_signals():
+        import pathlib
+
+        cron_log = pathlib.Path("data/cron.log")
+        entries = []
+        if cron_log.exists():
+            try:
+                with open(cron_log, encoding="utf-8") as f:
+                    lines = f.readlines()
+                for line in lines[-200:]:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        entries.append(json.loads(line))
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+
+        alerts = [
+            e
+            for e in entries
+            if e.get("signal") == "ALERT" or e.get("level") in ("WARNING", "ERROR")
+        ]
+
+        return jsonify({"log": entries, "alerts": alerts[-50:]})
+
     return app
 
 

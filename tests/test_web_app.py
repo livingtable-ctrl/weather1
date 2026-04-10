@@ -253,3 +253,46 @@ def test_api_trades_returns_correct_shape(client):
         assert len(d["open"]) == 1
         assert len(d["closed"]) == 1
         assert d["closed"][0]["ticker"] == "T2"
+
+
+def test_signals_route_returns_200_with_title(client):
+    """Signals page returns 200 and contains 'Signals'."""
+    r = client.get("/signals")
+    assert r.status_code == 200
+    assert b"Signals" in r.data
+
+
+def test_api_signals_returns_correct_shape(client):
+    """/api/signals returns log and alerts keys."""
+    import json
+    from unittest.mock import mock_open
+
+    fake_lines = "\n".join(
+        [
+            json.dumps(
+                {
+                    "ts": "2025-01-01T00:00:00",
+                    "ticker": "X",
+                    "signal": "BUY",
+                    "net_edge": 0.05,
+                }
+            ),
+            json.dumps(
+                {
+                    "ts": "2025-01-02T00:00:00",
+                    "signal": "ALERT",
+                    "level": "WARNING",
+                    "message": "loss streak",
+                }
+            ),
+        ]
+    )
+    with patch("builtins.open", mock_open(read_data=fake_lines)):
+        with patch("pathlib.Path.exists", return_value=True):
+            r = client.get("/api/signals")
+            assert r.status_code == 200
+            d = r.get_json()
+            assert "log" in d
+            assert "alerts" in d
+            assert isinstance(d["log"], list)
+            assert isinstance(d["alerts"], list)
