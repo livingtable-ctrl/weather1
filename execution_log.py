@@ -172,3 +172,13 @@ def get_recent_orders(limit: int = 50) -> list[dict]:
             "SELECT * FROM orders ORDER BY placed_at DESC LIMIT ?", (limit,)
         ).fetchall()
     return [dict(r) for r in rows]
+
+
+def append_entry(entry: dict, path: Path | None = None) -> None:
+    """Write a single entry dict as a JSON file using safe_io for resilient disk writes (#8)."""
+    import safe_io
+
+    target = (
+        Path(path) if path is not None else DB_PATH.parent / "execution_entries.json"
+    )
+    safe_io.atomic_write_json(entry, target)

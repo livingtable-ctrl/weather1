@@ -411,6 +411,26 @@ def auto_backup() -> None:
         pass
 
 
+_log = logging.getLogger(__name__)
+
+
+def verify_db_backup(path) -> int:
+    """Re-open a backed-up predictions.db, count rows in predictions table. Logs result (#104)."""
+    import sqlite3
+
+    path = Path(path)
+    try:
+        con = sqlite3.connect(str(path))
+        row = con.execute("SELECT COUNT(*) FROM predictions").fetchone()
+        n = row[0] if row else 0
+        con.close()
+        _log.info("backup verified: %s, %d rows", path, n)
+        return n
+    except Exception as exc:
+        _log.warning("backup verification failed for %s: %s", path, exc)
+        return 0
+
+
 def cmd_settle(client: KalshiClient) -> None:
     """
     Sync settled market outcomes from Kalshi and record them in the tracker.

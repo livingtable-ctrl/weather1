@@ -21,7 +21,7 @@ DB_PATH.parent.mkdir(exist_ok=True)
 
 _db_initialized = False
 
-_SCHEMA_VERSION = 7  # increment when _MIGRATIONS list grows
+_SCHEMA_VERSION = 8  # increment when _MIGRATIONS list grows
 
 _MIGRATIONS = [
     # v1 → v2: add condition_type column (if not already added)
@@ -64,14 +64,18 @@ _MIGRATIONS = [
         outcome INTEGER,
         PRIMARY KEY (ticker, target_date)
     )""",
+    # v7 → v8: add error column to api_requests (#69)
+    "ALTER TABLE api_requests ADD COLUMN error TEXT",
 ]
 
 
 def _run_migrations(con: sqlite3.Connection) -> None:
     """Apply any pending schema migrations and update schema_version (#99)."""
+    # Keep schema_version table for backward compatibility
     con.execute("CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL)")
-    row = con.execute("SELECT version FROM schema_version").fetchone()
-    current = row[0] if row else 0
+
+    # Use PRAGMA user_version as the authoritative migration cursor (#99)
+    current = con.execute("PRAGMA user_version").fetchone()[0]
 
     for i, sql in enumerate(_MIGRATIONS):
         version = i + 1
@@ -87,6 +91,11 @@ def _run_migrations(con: sqlite3.Connection) -> None:
             else:
                 raise
 
+    # Update PRAGMA user_version to reflect applied migrations
+    con.execute(f"PRAGMA user_version={_SCHEMA_VERSION}")
+
+    # Keep schema_version table in sync for backward compatibility
+    row = con.execute("SELECT version FROM schema_version").fetchone()
     if row is None:
         con.execute("INSERT INTO schema_version VALUES (?)", (_SCHEMA_VERSION,))
     else:
@@ -204,7 +213,11 @@ def init_db() -> None:
 
 
 def log_api_request(
-    method: str, endpoint: str, status_code: int | None, latency_ms: float
+    method: str,
+    endpoint: str,
+    status_code: int | None,
+    latency_ms: float,
+    error: str | None = None,
 ) -> None:
     """Log an API call for audit trail and latency monitoring (#69)."""
     from datetime import UTC
@@ -213,13 +226,14 @@ def log_api_request(
     try:
         with _conn() as con:
             con.execute(
-                "INSERT INTO api_requests (method, endpoint, status_code, latency_ms, logged_at) VALUES (?,?,?,?,?)",
+                "INSERT INTO api_requests (method, endpoint, status_code, latency_ms, logged_at, error) VALUES (?,?,?,?,?,?)",
                 (
                     method,
                     endpoint,
                     status_code,
                     latency_ms,
                     datetime.now(UTC).isoformat(),
+                    error,
                 ),
             )
     except Exception as exc:
