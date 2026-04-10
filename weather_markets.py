@@ -1094,6 +1094,31 @@ def _blend_weights(
     return w_ens / total, w_clim / total, w_nws / total
 
 
+_ENS_STD_REF = 4.0  # °F — typical tight ensemble spread
+
+
+def _confidence_scaled_blend_weights(
+    days_out: int, has_nws: bool, has_clim: bool, ens_std: float | None = None
+) -> tuple[float, float, float]:
+    """#31: _blend_weights scaled by inverse ensemble variance."""
+    w_ens, w_clim, w_nws = _blend_weights(days_out, has_nws, has_clim)
+    if ens_std is None or ens_std <= 0:
+        return w_ens, w_clim, w_nws
+    scale = max(0.5, min(1.5, _ENS_STD_REF / ens_std))
+    # Clamp w_ens_scaled so it cannot exceed the available weight budget (w_ens stays ≤ 1.0)
+    w_ens_scaled = min(w_ens * scale, 1.0)
+    delta = w_ens - w_ens_scaled
+    total_others = w_clim + w_nws
+    if total_others > 0:
+        w_clim_new = w_clim + delta * (w_clim / total_others)
+        w_nws_new = w_nws + delta * (w_nws / total_others)
+    else:
+        w_clim_new = w_clim
+        w_nws_new = w_nws
+    total = w_ens_scaled + w_clim_new + w_nws_new
+    return w_ens_scaled / total, w_clim_new / total, w_nws_new / total
+
+
 def _blend_probabilities(
     ensemble_prob: float | None,
     nws_prob: float | None,
@@ -1761,8 +1786,11 @@ def analyze_trade(enriched: dict) -> dict | None:
         blended_prob = obs_override * 0.95 + (ens_prob or 0.5) * 0.05
         blend_sources = {"obs": 0.95, "ensemble": 0.05}
     else:
-        w_ens, w_clim, w_nws = _blend_weights(
-            days_out, _nws_prob is not None, clim_prob is not None
+        w_ens, w_clim, w_nws = _confidence_scaled_blend_weights(
+            days_out,
+            _nws_prob is not None,
+            clim_prob is not None,
+            ens_std=ens_stats.get("std") if ens_stats else None,
         )
         blended_prob = (
             w_ens * (ens_prob or 0.5)

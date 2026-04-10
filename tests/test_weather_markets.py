@@ -209,3 +209,81 @@ class TestNormalCdf:
         """Degenerate sigma=0: returns 1.0 when x >= mu, 0.0 otherwise."""
         assert normal_cdf(5.0, 5.0, 0.0) == pytest.approx(1.0)
         assert normal_cdf(4.9, 5.0, 0.0) == pytest.approx(0.0)
+
+
+# ── Task 4: Inverse-variance ensemble confidence weighting (#31) ──────────────
+
+
+def test_ensemble_confidence_scale_high_std_reduces_ens_weight():
+    from weather_markets import _confidence_scaled_blend_weights
+
+    w_ens_tight, w_clim_tight, w_nws_tight = _confidence_scaled_blend_weights(
+        days_out=3, has_nws=True, has_clim=True, ens_std=2.0
+    )
+    w_ens_wide, w_clim_wide, w_nws_wide = _confidence_scaled_blend_weights(
+        days_out=3, has_nws=True, has_clim=True, ens_std=12.0
+    )
+    assert w_ens_wide < w_ens_tight
+    assert abs(w_ens_wide + w_clim_wide + w_nws_wide - 1.0) < 1e-6
+
+
+def test_ensemble_confidence_scale_no_std_unchanged():
+    import pytest
+
+    from weather_markets import _blend_weights, _confidence_scaled_blend_weights
+
+    w1 = _blend_weights(5, has_nws=True, has_clim=True)
+    w2 = _confidence_scaled_blend_weights(5, has_nws=True, has_clim=True, ens_std=None)
+    assert w1 == pytest.approx(w2, abs=1e-6)
+
+
+def test_ensemble_confidence_scale_clamped():
+    from weather_markets import _blend_weights, _confidence_scaled_blend_weights
+
+    base_ens, _, _ = _blend_weights(3, has_nws=True, has_clim=True)
+    scaled_ens, _, _ = _confidence_scaled_blend_weights(
+        3, has_nws=True, has_clim=True, ens_std=0.01
+    )
+    assert scaled_ens <= 1.0
+
+
+# ── Task 5: Wet-bulb snow-to-liquid ratio (#34) ───────────────────────────────
+
+
+def test_wet_bulb_temp_approximation():
+    from weather_markets import wet_bulb_temp
+
+    wb = wet_bulb_temp(temp_f=32.0, rh_pct=100.0)
+    assert 30.0 <= wb <= 34.0
+    wb2 = wet_bulb_temp(temp_f=50.0, rh_pct=50.0)
+    assert wb2 < 50.0
+    assert wb2 > 30.0
+
+
+def test_snow_to_liquid_ratio_dry_cold():
+    from weather_markets import snow_liquid_ratio
+
+    assert snow_liquid_ratio(wet_bulb_f=25.0) == 20
+
+
+def test_snow_to_liquid_ratio_borderline():
+    from weather_markets import snow_liquid_ratio
+
+    assert snow_liquid_ratio(wet_bulb_f=31.0) == 10
+
+
+def test_snow_to_liquid_ratio_above_freezing():
+    from weather_markets import snow_liquid_ratio
+
+    assert snow_liquid_ratio(wet_bulb_f=33.0) == 0
+
+
+def test_snow_prob_uses_slr_not_1_to_10():
+    import pytest
+
+    from weather_markets import liquid_equiv_of_snow_threshold
+
+    liq_20 = liquid_equiv_of_snow_threshold(snow_inches=1.0, slr=20)
+    liq_10 = liquid_equiv_of_snow_threshold(snow_inches=1.0, slr=10)
+    assert liq_20 == pytest.approx(0.05)
+    assert liq_10 == pytest.approx(0.10)
