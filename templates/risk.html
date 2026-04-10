@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Risk{% endblock %}
+{% block page_title %}Risk{% endblock %}
+
+{% block content %}
+<div class="stats" style="margin-bottom:24px">
+  <div class="stat-card">
+    <div class="stat-label">Total Exposure</div>
+    <div class="stat-value" id="risk-total-exp">—</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Aged Positions</div>
+    <div class="stat-value" id="risk-aged">—</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Correlated Events</div>
+    <div class="stat-value" id="risk-corr">—</div>
+  </div>
+</div>
+
+<div style="display:grid;grid-template-columns:2fr 1fr;gap:20px;margin-bottom:24px">
+  <div class="chart-wrap">
+    <h2>Exposure by City</h2>
+    <div id="city-exposure-chart" style="height:260px"></div>
+  </div>
+  <div class="chart-wrap">
+    <h2>Directional Bias</h2>
+    <div id="directional-chart" style="height:260px"></div>
+  </div>
+</div>
+
+<div class="chart-wrap section">
+  <h2>Expiry Clustering (dates with 2+ positions settling)</h2>
+  <div id="expiry-chart" style="height:200px"></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='risk.js') }}"></script>
+{% endblock %}

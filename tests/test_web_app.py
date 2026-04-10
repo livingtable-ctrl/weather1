@@ -159,3 +159,41 @@ def test_api_brier_history_returns_list(client):
         assert isinstance(d, list)
         assert d[0]["week"] == "2025-W40"
         assert d[0]["brier"] == 0.21
+
+
+def test_risk_route_returns_200_with_title(client):
+    """Risk page returns 200 and contains 'Risk'."""
+    r = client.get("/risk")
+    assert r.status_code == 200
+    assert b"Risk" in r.data
+
+
+def test_api_risk_returns_correct_shape(client):
+    """/api/risk returns city_exposure, directional, expiry_clustering, total_exposure."""
+    with (
+        patch(
+            "paper.get_open_trades",
+            return_value=[
+                {
+                    "city": "NYC",
+                    "side": "yes",
+                    "cost": 10.0,
+                    "target_date": "2025-12-01",
+                    "ticker": "X",
+                },
+            ],
+        ),
+        patch("paper.get_total_exposure", return_value=0.1),
+        patch("paper.check_aged_positions", return_value=[]),
+        patch("paper.check_correlated_event_exposure", return_value=[]),
+        patch("paper.get_expiry_date_clustering", return_value=[]),
+    ):
+        r = client.get("/api/risk")
+        assert r.status_code == 200
+        d = r.get_json()
+        assert "city_exposure" in d
+        assert "directional" in d
+        assert "expiry_clustering" in d
+        assert "total_exposure" in d
+        assert d["directional"]["yes"] == 10.0
+        assert d["directional"]["no"] == 0.0

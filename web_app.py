@@ -513,6 +513,55 @@ setInterval(() => {{
             headers={"Content-Disposition": 'attachment; filename="predictions.csv"'},
         )
 
+    @app.route("/risk")
+    def risk_page():
+        return render_template("risk.html")
+
+    @app.route("/api/risk")
+    def api_risk():
+        try:
+            from paper import (
+                check_aged_positions,
+                check_correlated_event_exposure,
+                get_expiry_date_clustering,
+                get_open_trades,
+                get_total_exposure,
+            )
+        except ImportError as e:
+            return jsonify({"error": str(e)}), 500
+
+        trades = get_open_trades()
+
+        # Aggregate city exposure and directional bias from open trades
+        city_exp: dict[str, float] = {}
+        yes_exp = 0.0
+        no_exp = 0.0
+        for t in trades:
+            city = t.get("city") or "Unknown"
+            cost = float(t.get("cost") or 0.0)
+            city_exp[city] = city_exp.get(city, 0.0) + cost
+            if t.get("side") == "yes":
+                yes_exp += cost
+            else:
+                no_exp += cost
+
+        city_exposure = sorted(
+            [{"city": c, "exposure": round(v, 4)} for c, v in city_exp.items()],
+            key=lambda x: float(x["exposure"]),  # type: ignore[arg-type]
+            reverse=True,
+        )
+
+        return jsonify(
+            {
+                "city_exposure": city_exposure,
+                "directional": {"yes": round(yes_exp, 4), "no": round(no_exp, 4)},
+                "expiry_clustering": get_expiry_date_clustering(),
+                "total_exposure": round(get_total_exposure(), 4),
+                "aged_positions": check_aged_positions(),
+                "correlated_events": check_correlated_event_exposure(),
+            }
+        )
+
     @app.route("/api/status")
     def api_status():
         try:
