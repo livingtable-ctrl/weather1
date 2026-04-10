@@ -21,7 +21,7 @@ DB_PATH.parent.mkdir(exist_ok=True)
 
 _db_initialized = False
 
-_SCHEMA_VERSION = 4  # increment when _MIGRATIONS list grows
+_SCHEMA_VERSION = 5  # increment when _MIGRATIONS list grows
 
 _MIGRATIONS = [
     # v1 → v2: add condition_type column (if not already added)
@@ -37,6 +37,17 @@ _MIGRATIONS = [
     )""",
     # v3 → v4: add forecast_cycle column (#37)
     "ALTER TABLE predictions ADD COLUMN forecast_cycle TEXT",
+    # v4 → v5: price improvement tracking table (#65)
+    """CREATE TABLE IF NOT EXISTS price_improvement (
+        id            INTEGER PRIMARY KEY AUTOINCREMENT,
+        ticker        TEXT    NOT NULL,
+        desired_price REAL    NOT NULL,
+        actual_price  REAL    NOT NULL,
+        improvement   REAL    NOT NULL,
+        quantity      INTEGER NOT NULL,
+        side          TEXT    NOT NULL,
+        logged_at     TEXT    NOT NULL
+    )""",
 ]
 
 
@@ -1291,6 +1302,79 @@ def _inv_normal_cdf(p: float) -> float:
     numerator = c0 + c1 * t + c2 * t * t
     denominator = 1.0 + d1 * t + d2 * t * t + d3 * t * t * t
     return sign * (t - numerator / denominator)
+
+
+# ── Price improvement tracking (#65) ─────────────────────────────────────────
+
+
+def log_price_improvement(
+    ticker: str,
+    desired: float,
+    actual: float,
+    quantity: int,
+    side: str,
+) -> None:
+    """
+    #65: Record the difference between the desired price and the actual fill price.
+
+    improvement = desired - actual  (positive means we got a better price than expected)
+    """
+    from datetime import UTC, datetime
+
+    init_db()
+    improvement = desired - actual
+    try:
+        with _conn() as con:
+            con.execute(
+                """
+                INSERT INTO price_improvement
+                  (ticker, desired_price, actual_price, improvement, quantity, side, logged_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    ticker,
+                    desired,
+                    actual,
+                    improvement,
+                    quantity,
+                    side,
+                    datetime.now(UTC).isoformat(),
+                ),
+            )
+    except Exception as exc:
+        _log.warning("Failed to log price improvement: %s", exc)
+
+
+def get_price_improvement_stats() -> dict | None:
+    """
+    #65: Return aggregate price improvement statistics.
+
+    Returns None if fewer than 5 entries are recorded (insufficient data).
+    Otherwise returns:
+      {mean: float, median: float, count: int, positive_pct: float}
+    where positive_pct is the fraction of fills that beat the desired price.
+    """
+    import statistics
+
+    init_db()
+    with _conn() as con:
+        rows = con.execute("SELECT improvement FROM price_improvement").fetchall()
+
+    if len(rows) < 5:
+        return None
+
+    improvements = [r["improvement"] for r in rows]
+    count = len(improvements)
+    mean_val = statistics.mean(improvements)
+    median_val = statistics.median(improvements)
+    positive_pct = sum(1 for v in improvements if v > 0) / count
+
+    return {
+        "mean": round(mean_val, 6),
+        "median": round(median_val, 6),
+        "count": count,
+        "positive_pct": round(positive_pct, 4),
+    }
 
 
 def get_model_calibration_buckets() -> dict:
