@@ -232,9 +232,10 @@ class KalshiClient:
     def get_order(self, order_id: str) -> dict:
         """Fetch a single order by ID from the Kalshi portfolio API.
 
-        Returns order dict with 'status' key: resting/filled/canceled/expired.
+        Returns the inner order dict with 'status' key: resting/filled/canceled/expired.
         """
-        return self._get(f"/portfolio/orders/{order_id}", auth=True)
+        data = self._get(f"/portfolio/orders/{order_id}", auth=True)
+        return data.get("order", data)
 
     def cancel_order(self, order_id: str) -> dict:
         return self._delete(f"/portfolio/orders/{order_id}")

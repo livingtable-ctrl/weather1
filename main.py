@@ -1138,10 +1138,8 @@ def _poll_pending_orders(client) -> None:
     ]
     for order in pending:
         try:
-            import json as _json
-
             response = (
-                _json.loads(order["response"])
+                json.loads(order["response"])
                 if isinstance(order["response"], str)
                 else order["response"]
             )
@@ -1151,10 +1149,9 @@ def _poll_pending_orders(client) -> None:
             result = client.get_order(order_id)
             api_status = result.get("status", "")
             if api_status in ("filled", "canceled", "expired"):
-                new_status = "filled" if api_status == "filled" else api_status
                 execution_log.log_order_result(
                     row_id=order["id"],
-                    status=new_status,
+                    status=api_status,
                     fill_quantity=result.get("fill_quantity"),
                 )
         except Exception as exc:

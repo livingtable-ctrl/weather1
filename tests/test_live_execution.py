@@ -175,7 +175,11 @@ class TestPollPendingOrders:
 
         # Mock client that returns filled status
         mock_client = MagicMock()
-        mock_client.get_order.return_value = {"status": "filled", "fill_quantity": 2}
+        mock_client.get_order.return_value = {
+            "order_id": "ord_abc123",
+            "status": "filled",
+            "fill_quantity": 2,
+        }
 
         main._poll_pending_orders(mock_client)
 
