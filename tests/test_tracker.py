@@ -1583,3 +1583,64 @@ class TestCalibrationByCityConditionTypeGrpB(unittest.TestCase):
         result = tracker.get_calibration_by_city(condition_type="above")
         self.assertEqual(result.get("NYC", {}).get("n", 0), 1)
         self.assertEqual(result.get("LAX", {}).get("n", 0), 1)
+
+
+# ── TestPerSourceProbColumns (#118/#122 prerequisite) ────────────────────────
+
+
+class TestPerSourceProbColumns(unittest.TestCase):
+    """Schema v9 must add ensemble_prob, nws_prob, clim_prob to predictions."""
+
+    def setUp(self):
+        self._tmpdir = tempfile.mkdtemp()
+        self._orig = tracker.DB_PATH
+        tracker.DB_PATH = Path(self._tmpdir) / "test_v9.db"
+        tracker._db_initialized = False
+
+    def tearDown(self):
+        tracker.DB_PATH = self._orig
+        tracker._db_initialized = False
+        shutil.rmtree(self._tmpdir, ignore_errors=True)
+
+    def test_columns_exist_after_init(self):
+        """After init_db(), predictions table must have ensemble_prob, nws_prob, clim_prob."""
+        import sqlite3
+
+        tracker.init_db()
+        with sqlite3.connect(str(tracker.DB_PATH)) as con:
+            cols = {row[1] for row in con.execute("PRAGMA table_info(predictions)")}
+        self.assertIn("ensemble_prob", cols)
+        self.assertIn("nws_prob", cols)
+        self.assertIn("clim_prob", cols)
+
+    def test_log_prediction_stores_source_probs(self):
+        """log_prediction with source probs stores them retrievable from DB."""
+        import sqlite3
+        from datetime import date as _date
+
+        tracker.init_db()
+        tracker.log_prediction(
+            "SRCPROB-TEST",
+            "NYC",
+            _date(2026, 5, 1),
+            {
+                "forecast_prob": 0.65,
+                "market_prob": 0.50,
+                "edge": 0.15,
+                "method": "ensemble",
+                "n_members": 50,
+                "condition": {"type": "above", "threshold": 70.0},
+            },
+            ensemble_prob=0.68,
+            nws_prob=0.60,
+            clim_prob=0.55,
+        )
+        with sqlite3.connect(str(tracker.DB_PATH)) as con:
+            row = con.execute(
+                "SELECT ensemble_prob, nws_prob, clim_prob FROM predictions WHERE ticker=?",
+                ("SRCPROB-TEST",),
+            ).fetchone()
+        self.assertIsNotNone(row)
+        self.assertAlmostEqual(row[0], 0.68, places=4)
+        self.assertAlmostEqual(row[1], 0.60, places=4)
+        self.assertAlmostEqual(row[2], 0.55, places=4)

@@ -21,7 +21,7 @@ DB_PATH.parent.mkdir(exist_ok=True)
 
 _db_initialized = False
 
-_SCHEMA_VERSION = 8  # increment when _MIGRATIONS list grows
+_SCHEMA_VERSION = 9  # increment when _MIGRATIONS list grows
 
 _MIGRATIONS = [
     # v1 → v2: add condition_type column (if not already added)
@@ -66,6 +66,10 @@ _MIGRATIONS = [
     )""",
     # v7 → v8: add error column to api_requests (#69)
     "ALTER TABLE api_requests ADD COLUMN error TEXT",
+    # v8 → v9: per-source probabilities for blend weight calibration (#118/#122)
+    "ALTER TABLE predictions ADD COLUMN ensemble_prob REAL",
+    "ALTER TABLE predictions ADD COLUMN nws_prob REAL",
+    "ALTER TABLE predictions ADD COLUMN clim_prob REAL",
 ]
 
 
@@ -283,6 +287,9 @@ def log_prediction(
     analysis: dict,
     forecast_cycle: str | None = None,
     blend_sources: dict | None = None,
+    ensemble_prob: float | None = None,
+    nws_prob: float | None = None,
+    clim_prob: float | None = None,
 ) -> None:
     """Save a prediction to the database.
     Stores both the raw (pre-bias-correction) probability and the adjusted one (#53).
@@ -315,7 +322,8 @@ def log_prediction(
                 """
                 UPDATE predictions SET
                     our_prob=?, raw_prob=?, market_prob=?, edge=?, method=?, n_members=?,
-                    days_out=?, forecast_cycle=?, blend_sources=?
+                    days_out=?, forecast_cycle=?, blend_sources=?,
+                    ensemble_prob=?, nws_prob=?, clim_prob=?
                 WHERE id=?
             """,
                 (
@@ -328,6 +336,9 @@ def log_prediction(
                     days_out,
                     forecast_cycle,
                     blend_sources_json,
+                    ensemble_prob,
+                    nws_prob,
+                    clim_prob,
                     existing["id"],
                 ),
             )
@@ -338,8 +349,8 @@ def log_prediction(
                   (ticker, city, market_date, condition_type,
                    threshold_lo, threshold_hi, our_prob, raw_prob, market_prob,
                    edge, method, n_members, predicted_at, days_out, forecast_cycle,
-                   blend_sources)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'),?,?,?)
+                   blend_sources, ensemble_prob, nws_prob, clim_prob)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'),?,?,?,?,?,?)
             """,
                 (
                     ticker,
@@ -357,6 +368,9 @@ def log_prediction(
                     days_out,
                     forecast_cycle,
                     blend_sources_json,
+                    ensemble_prob,
+                    nws_prob,
+                    clim_prob,
                 ),
             )
 
