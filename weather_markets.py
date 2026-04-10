@@ -1068,19 +1068,38 @@ def _edge_label(edge: float) -> str:
 def _blend_weights(
     days_out: int, has_nws: bool, has_clim: bool
 ) -> tuple[float, float, float]:
-    """Return (w_ensemble, w_climatology, w_nws) based on days out."""
-    if days_out <= 1:
-        w_ens, w_clim, w_nws = 0.80, 0.05, 0.15
-    elif days_out <= 3:
-        w_ens, w_clim, w_nws = 0.70, 0.10, 0.20
-    elif days_out <= 5:
-        w_ens, w_clim, w_nws = 0.55, 0.20, 0.25
+    """Return (w_ensemble, w_climatology, w_nws) based on days out.
+
+    NWS is always blended (not fallback): 0.35 at <=3 days, 0.25 at 4-7, 0.10 at >7.
+    """
+    if days_out <= 3:
+        w_nws = 0.35
     elif days_out <= 7:
-        w_ens, w_clim, w_nws = 0.40, 0.35, 0.25
-    elif days_out <= 10:
-        w_ens, w_clim, w_nws = 0.20, 0.55, 0.25
+        w_nws = 0.25
     else:
-        w_ens, w_clim, w_nws = 0.10, 0.65, 0.25
+        w_nws = 0.10
+
+    # Remaining weight split between ensemble and climatology
+    # Ensemble gets proportionally more weight at short horizons
+    w_rem = 1.0 - w_nws
+    if days_out <= 1:
+        w_ens = w_rem * 0.94
+        w_clim = w_rem * 0.06
+    elif days_out <= 3:
+        w_ens = w_rem * 0.87
+        w_clim = w_rem * 0.13
+    elif days_out <= 5:
+        w_ens = w_rem * 0.69
+        w_clim = w_rem * 0.31
+    elif days_out <= 7:
+        w_ens = w_rem * 0.53
+        w_clim = w_rem * 0.47
+    elif days_out <= 10:
+        w_ens = w_rem * 0.26
+        w_clim = w_rem * 0.74
+    else:
+        w_ens = w_rem * 0.13
+        w_clim = w_rem * 0.87
 
     if not has_nws:
         w_ens += w_nws * 0.6

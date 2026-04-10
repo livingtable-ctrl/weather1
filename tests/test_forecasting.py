@@ -259,3 +259,46 @@ class TestConfidenceScaledBlendWeights:
         assert _confidence_scaled_blend_weights(5, True, True, None) == _blend_weights(
             5, True, True
         )
+
+
+class TestBlendWeights:
+    def test_nws_weight_short_horizon(self):
+        """days_out <= 3: NWS weight must be 0.35."""
+        from weather_markets import _blend_weights
+
+        _, _, w_nws = _blend_weights(days_out=1, has_nws=True, has_clim=True)
+        assert w_nws == pytest.approx(0.35)
+
+        _, _, w_nws3 = _blend_weights(days_out=3, has_nws=True, has_clim=True)
+        assert w_nws3 == pytest.approx(0.35)
+
+    def test_nws_weight_medium_horizon(self):
+        """days_out 4-7: NWS weight must be 0.25."""
+        from weather_markets import _blend_weights
+
+        _, _, w_nws = _blend_weights(days_out=5, has_nws=True, has_clim=True)
+        assert w_nws == pytest.approx(0.25)
+
+    def test_nws_weight_long_horizon(self):
+        """days_out > 7: NWS weight must be 0.10."""
+        from weather_markets import _blend_weights
+
+        _, _, w_nws = _blend_weights(days_out=10, has_nws=True, has_clim=True)
+        assert w_nws == pytest.approx(0.10)
+
+    def test_weights_sum_to_one(self):
+        from weather_markets import _blend_weights
+
+        for d in [0, 1, 3, 4, 5, 7, 8, 14]:
+            w = _blend_weights(d, True, True)
+            assert abs(sum(w) - 1.0) < 1e-9
+
+    def test_nws_weight_redistributed_when_unavailable(self):
+        """When NWS unavailable, its weight redistributed to ens+clim."""
+        from weather_markets import _blend_weights
+
+        w_ens_with, w_clim_with, _ = _blend_weights(1, True, True)
+        w_ens_no, w_clim_no, w_nws_no = _blend_weights(1, False, True)
+        assert w_nws_no == 0.0
+        assert w_ens_no > w_ens_with
+        assert abs(w_ens_no + w_clim_no - 1.0) < 1e-9
