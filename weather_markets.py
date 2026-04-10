@@ -441,7 +441,7 @@ def _feels_like(
 
 
 _MAE_WEIGHTS_CACHE: dict[
-    tuple, dict[str, float]
+    tuple[str, int], dict[str, float]
 ] = {}  # (city, days_back) -> weights, session cache
 
 
@@ -542,7 +542,9 @@ def update_learned_weights_from_tracker(min_n: int = 20) -> dict:
     try:
         from tracker import get_member_accuracy
 
-        acc = get_member_accuracy()
+        acc = get_member_accuracy(
+            days_back=60
+        )  # use same 60-day window as _weights_from_mae
     except Exception:
         return {}
 
