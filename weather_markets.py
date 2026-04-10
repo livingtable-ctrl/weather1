@@ -1394,6 +1394,28 @@ def _bootstrap_ci_precip(
     return (boot[min(int(n * 0.05), n - 1)], boot[min(int(n * 0.95), n - 1)])
 
 
+def edge_confidence(days_out: int) -> float:
+    """Horizon discount factor for edge signal (#63).
+
+    Far-out markets are noisier; this multiplier reduces effective edge used
+    for go/no-go decisions without touching Kelly size (which has its own
+    time_kelly_scale). Floor of 0.60 so strong far-out edges still pass MIN_EDGE.
+
+    Piecewise linear:
+      days_out 0–2  : 1.00  (full confidence)
+      days_out 3–7  : linear 1.00 → 0.80
+      days_out 8–14 : linear 0.80 → 0.60
+      days_out > 14 : 0.60  (floor)
+    """
+    if days_out <= 2:
+        return 1.0
+    if days_out <= 7:
+        return 1.0 - (days_out - 2) / 5.0 * 0.20
+    if days_out <= 14:
+        return 0.80 - (days_out - 7) / 7.0 * 0.20
+    return 0.60
+
+
 def kelly_fraction(our_prob: float, price: float, fee_rate: float = 0.0) -> float:
     """
     Half-Kelly criterion for a binary prediction market.

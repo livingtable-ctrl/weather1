@@ -481,3 +481,46 @@ class TestCensoringCorrection:
         expected = raw_mean * (1 - blend) + 0.5 * blend  # 0.402
         result = censoring_correction(probs, condition, censor_pct=0.01)
         assert abs(result - expected) < 1e-9
+
+
+# ── TestEdgeConfidence ────────────────────────────────────────────────────────
+
+
+class TestEdgeConfidence:
+    """Tests for edge_confidence(days_out) horizon discount factor."""
+
+    def test_day_0_returns_one(self):
+        from weather_markets import edge_confidence
+
+        assert edge_confidence(0) == pytest.approx(1.0)
+
+    def test_day_2_returns_one(self):
+        from weather_markets import edge_confidence
+
+        assert edge_confidence(2) == pytest.approx(1.0)
+
+    def test_day_14_returns_0_60(self):
+        from weather_markets import edge_confidence
+
+        assert edge_confidence(14) == pytest.approx(0.60, abs=1e-6)
+
+    def test_floor_at_day_20(self):
+        from weather_markets import edge_confidence
+
+        assert edge_confidence(20) == pytest.approx(0.60, abs=1e-6)
+        assert edge_confidence(100) == pytest.approx(0.60, abs=1e-6)
+
+    def test_day_7_in_linear_segment(self):
+        """days_out=7 is at the boundary of segment 2; should be 0.80."""
+        from weather_markets import edge_confidence
+
+        assert edge_confidence(7) == pytest.approx(0.80, abs=1e-4)
+
+    def test_monotonically_decreasing(self):
+        from weather_markets import edge_confidence
+
+        values = [edge_confidence(d) for d in range(0, 20)]
+        for i in range(len(values) - 1):
+            assert values[i] >= values[i + 1], (
+                f"Not monotone at day {i}: {values[i]} > {values[i + 1]}"
+            )
