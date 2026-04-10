@@ -13,6 +13,37 @@ _app = None  # module-level Flask app
 _client = None  # module-level Kalshi client reference
 
 
+def _now_utc():
+    """Mockable UTC timestamp for tests."""
+    from datetime import UTC, datetime
+
+    return datetime.now(UTC)
+
+
+def _get_live_market_snapshot(max_markets: int = 5) -> list[dict]:
+    """Return cached top market snapshot for SSE. Populated by analyze route."""
+    try:
+        return list(getattr(_get_live_market_snapshot, "_cache", []))[:max_markets]
+    except Exception:
+        return []
+
+
+def _build_stream_data() -> dict:
+    """Build SSE payload. Extracted for testability."""
+    from datetime import UTC, datetime
+
+    from paper import get_balance, get_open_trades
+    from tracker import brier_score
+
+    return {
+        "balance": round(get_balance(), 2),
+        "open_count": len(get_open_trades()),
+        "brier": brier_score(),
+        "markets": _get_live_market_snapshot(),
+        "ts": datetime.now(UTC).isoformat(),
+    }
+
+
 def _build_app(client):
     """Build and return the Flask app."""
     try:
@@ -126,25 +157,17 @@ def _build_app(client):
 
     @app.route("/api/stream")
     def stream():
-        """Server-Sent Events endpoint — pushes portfolio status every 30s."""
+        """Server-Sent Events endpoint — pushes portfolio status every 10s."""
         import time
 
         def generate():
             while True:
                 try:
-                    from paper import get_balance, get_open_trades
-                    from tracker import brier_score
-
-                    data = {
-                        "balance": round(get_balance(), 2),
-                        "open_count": len(get_open_trades()),
-                        "brier": brier_score(),
-                        "ts": datetime.now(UTC).isoformat(),
-                    }
+                    data = _build_stream_data()
                     yield f"data: {json.dumps(data)}\n\n"
                 except Exception:
                     yield "data: {}\n\n"
-                time.sleep(30)
+                time.sleep(10)
 
         return Response(
             stream_with_context(generate()),
@@ -154,10 +177,41 @@ def _build_app(client):
 
     @app.route("/api/balance_history")
     def balance_history():
+        from datetime import timedelta
+
+        from flask import request
+
         from paper import get_balance_history
 
         history = get_balance_history()
-        points = history[-50:]
+        range_param = request.args.get("range", "")
+        _RANGE_DAYS = {"1mo": 30, "3mo": 90, "1yr": 365}
+
+        if range_param == "all":
+            points = history
+        elif range_param in _RANGE_DAYS:
+            cutoff = _now_utc() - timedelta(days=_RANGE_DAYS[range_param])
+            filtered = []
+            for p in history:
+                ts = p.get("ts", "")
+                if not ts:  # "Start" sentinel — always include
+                    filtered.append(p)
+                    continue
+                try:
+                    from datetime import UTC, datetime
+
+                    dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+                    if dt.tzinfo is None:
+                        dt = dt.replace(tzinfo=UTC)
+                    if dt >= cutoff:
+                        filtered.append(p)
+                except (ValueError, TypeError):
+                    filtered.append(p)
+            points = filtered
+        else:
+            # default (empty or invalid range): last 50 points
+            points = history[-50:]
+
         return jsonify(
             {
                 "labels": [p["ts"][:16] or "Start" for p in points],
@@ -314,37 +368,47 @@ es.onmessage = (e) => {
         chart_js = """
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script>
-fetch('/api/balance_history').then(r=>r.json()).then(data => {
-  const ctx = document.getElementById('balanceChart');
-  if (!ctx) return;
-  new Chart(ctx, {
-    type: 'line',
-    data: {
-      labels: data.labels,
-      datasets: [{
-        label: 'Balance ($)',
-        data: data.values,
-        borderColor: '#58a6ff',
-        backgroundColor: 'rgba(88,166,255,0.08)',
-        fill: true,
-        tension: 0.3,
-        pointRadius: 0,
-        borderWidth: 2,
-      }]
-    },
-    options: {
-      responsive: true,
-      plugins: { legend: { display: false } },
-      scales: {
-        x: { display: false },
-        y: {
-          ticks: { color: '#8b949e', callback: v => '$'+v },
-          grid: { color: '#21262d' }
+var _balanceChart = null;
+function loadBalanceChart(range) {
+  var url = '/api/balance_history' + (range ? '?range=' + range : '');
+  fetch(url).then(r=>r.json()).then(data => {
+    const ctx = document.getElementById('balanceChart');
+    if (!ctx) return;
+    if (_balanceChart) { _balanceChart.destroy(); _balanceChart = null; }
+    _balanceChart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: data.labels,
+        datasets: [{
+          label: 'Balance ($)',
+          data: data.values,
+          borderColor: '#58a6ff',
+          backgroundColor: 'rgba(88,166,255,0.08)',
+          fill: true,
+          tension: 0.3,
+          pointRadius: 0,
+          borderWidth: 2,
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { display: false },
+          y: {
+            ticks: { color: '#8b949e', callback: v => '$'+v },
+            grid: { color: '#21262d' }
+          }
         }
       }
-    }
-  });
-}).catch(()=>{});
+    });
+    // Highlight active button
+    document.querySelectorAll('.range-btn').forEach(b => {
+      b.style.opacity = b.dataset.range === (range||'') ? '1' : '0.5';
+    });
+  }).catch(()=>{});
+}
+loadBalanceChart('');
 </script>"""
 
         html = f"""<!DOCTYPE html>
@@ -389,6 +453,13 @@ fetch('/api/balance_history').then(r=>r.json()).then(data => {
         }
 
 <h2>Balance History</h2>
+<div style="max-width:800px; margin-bottom:8px">
+  <button class="range-btn" data-range="" onclick="loadBalanceChart('')" style="background:#21262d;border:1px solid #30363d;color:#8b949e;border-radius:4px;padding:3px 10px;cursor:pointer;margin-right:4px;font-size:0.8em">Default</button>
+  <button class="range-btn" data-range="1mo" onclick="loadBalanceChart('1mo')" style="background:#21262d;border:1px solid #30363d;color:#8b949e;border-radius:4px;padding:3px 10px;cursor:pointer;margin-right:4px;font-size:0.8em">1mo</button>
+  <button class="range-btn" data-range="3mo" onclick="loadBalanceChart('3mo')" style="background:#21262d;border:1px solid #30363d;color:#8b949e;border-radius:4px;padding:3px 10px;cursor:pointer;margin-right:4px;font-size:0.8em">3mo</button>
+  <button class="range-btn" data-range="1yr" onclick="loadBalanceChart('1yr')" style="background:#21262d;border:1px solid #30363d;color:#8b949e;border-radius:4px;padding:3px 10px;cursor:pointer;margin-right:4px;font-size:0.8em">1yr</button>
+  <button class="range-btn" data-range="all" onclick="loadBalanceChart('all')" style="background:#21262d;border:1px solid #30363d;color:#8b949e;border-radius:4px;padding:3px 10px;cursor:pointer;font-size:0.8em">All</button>
+</div>
 <div style="max-width:800px; margin-bottom:30px">
   <canvas id="balanceChart" height="100"></canvas>
 </div>

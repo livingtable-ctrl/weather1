@@ -1,0 +1,74 @@
+"""Tests for web_app.py dashboard API endpoints."""
+
+from unittest.mock import patch
+
+import pytest
+
+
+@pytest.fixture
+def client():
+    from web_app import _build_app
+
+    app = _build_app(object())  # dummy client
+    app.config["TESTING"] = True
+    with app.test_client() as c:
+        yield c
+
+
+def test_balance_history_default_50(client):
+    """Default returns at most 50 points."""
+    history = [
+        {"ts": f"2024-01-{d:02d}T00:00:00", "balance": 900 + d, "event": "T"}
+        for d in range(1, 92)
+    ]
+    with patch("paper.get_balance_history", return_value=history):
+        r = client.get("/api/balance_history")
+        data = r.get_json()
+        assert len(data["labels"]) <= 50
+
+
+def test_balance_history_range_all(client):
+    """?range=all returns all points."""
+    history = [
+        {"ts": f"2024-01-{d:02d}T00:00:00", "balance": 900 + d, "event": "T"}
+        for d in range(1, 92)
+    ]
+    with patch("paper.get_balance_history", return_value=history):
+        r = client.get("/api/balance_history?range=all")
+        data = r.get_json()
+        assert len(data["labels"]) == 91
+
+
+def test_balance_history_invalid_range_default(client):
+    """Invalid range falls back to default 50 points."""
+    history = [
+        {"ts": f"2024-01-{d:02d}T00:00:00", "balance": 900 + d, "event": "T"}
+        for d in range(1, 92)
+    ]
+    with patch("paper.get_balance_history", return_value=history):
+        r = client.get("/api/balance_history?range=bogus")
+        assert r.status_code == 200
+        data = r.get_json()
+        assert len(data["labels"]) <= 50
+
+
+def test_get_live_market_snapshot_returns_list():
+    """_get_live_market_snapshot returns list even with no data."""
+    from web_app import _get_live_market_snapshot
+
+    result = _get_live_market_snapshot()
+    assert isinstance(result, list)
+
+
+def test_build_stream_data_has_markets_key():
+    """_build_stream_data includes markets key."""
+    from web_app import _build_stream_data
+
+    with (
+        patch("paper.get_balance", return_value=1000.0),
+        patch("paper.get_open_trades", return_value=[]),
+        patch("tracker.brier_score", return_value=0.20),
+    ):
+        data = _build_stream_data()
+        assert "markets" in data
+        assert isinstance(data["markets"], list)
