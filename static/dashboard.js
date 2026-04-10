@@ -163,7 +163,24 @@
     }).catch(function (err) { console.error('balance history fetch failed:', err); });
   }
 
+  // Fetch and render Live P&L card
+  function loadLivePnl() {
+    fetch('/api/live-pnl').then(function (r) { return r.json(); }).then(function (d) {
+      var card = document.getElementById('live-pnl-card');
+      var el = document.getElementById('stat-live-pnl');
+      var openEl = document.getElementById('stat-live-open');
+      if (!card || !el) return;
+      if (d.settled_count === 0 && d.open_count === 0) return;
+      card.style.display = '';
+      var pnl = d.today_pnl || 0;
+      el.textContent = (pnl >= 0 ? '+' : '') + '$' + pnl.toFixed(2);
+      el.className = 'stat-value ' + (pnl > 0 ? 'pos' : pnl < 0 ? 'neg' : '');
+      if (openEl) openEl.textContent = d.open_count > 0 ? d.open_count + ' open' : '';
+    }).catch(function (err) { console.error('live-pnl fetch failed:', err); });
+  }
+
   // Init
   loadGraduation();
   loadBalanceChart('');
+  loadLivePnl();
 }());

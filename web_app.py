@@ -303,6 +303,15 @@ def _build_app(client):
         except Exception as exc:  # noqa: BLE001
             return jsonify({"error": str(exc)}), 500
 
+    @app.route("/api/live-pnl")
+    def api_live_pnl():
+        try:
+            from execution_log import get_live_pnl_summary
+
+            return jsonify(get_live_pnl_summary())
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+
     @app.route("/api/graduation")
     def api_graduation():
         try:

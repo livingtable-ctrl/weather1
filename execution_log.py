@@ -343,6 +343,49 @@ def export_live_tax_csv(path: str, tax_year: int | None = None) -> int:
     return len(rows)
 
 
+def get_live_pnl_summary() -> dict:
+    """Return live order P&L summary for the dashboard.
+
+    Returns:
+        today_pnl:     sum of pnl for live orders settled today (UTC)
+        total_pnl:     sum of all settled live order pnl
+        open_count:    count of live orders with status='pending'
+        settled_count: count of live orders with settled_at IS NOT NULL
+    """
+    init_log()
+    today = datetime.now(UTC).strftime("%Y-%m-%d")
+    with _conn() as con:
+        today_row = con.execute(
+            """
+            SELECT COALESCE(SUM(pnl), 0.0) AS today_pnl
+            FROM orders
+            WHERE live = 1 AND settled_at LIKE ?
+            """,
+            (f"{today}%",),
+        ).fetchone()
+        totals_row = con.execute(
+            """
+            SELECT COALESCE(SUM(pnl), 0.0) AS total_pnl,
+                   COUNT(*) AS settled_count
+            FROM orders
+            WHERE live = 1 AND settled_at IS NOT NULL AND pnl IS NOT NULL
+            """,
+        ).fetchone()
+        open_row = con.execute(
+            """
+            SELECT COUNT(*) AS open_count
+            FROM orders
+            WHERE live = 1 AND status = 'pending'
+            """,
+        ).fetchone()
+    return {
+        "today_pnl": round(today_row["today_pnl"] or 0.0, 4),
+        "total_pnl": round(totals_row["total_pnl"] or 0.0, 4),
+        "open_count": open_row["open_count"] or 0,
+        "settled_count": totals_row["settled_count"] or 0,
+    }
+
+
 def get_recent_orders(limit: int = 50) -> list[dict]:
     """Return the most recent N order log entries."""
     init_log()

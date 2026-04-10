@@ -231,3 +231,49 @@ class TestLiveSettlement:
         assert len(rows) == 1
         assert rows[0]["ticker"] == "KXHIGH-25MAY15-T75"
         assert rows[0]["outcome"] == "no"
+
+    def test_get_live_pnl_summary_correct(self):
+        from datetime import UTC, datetime
+
+        today = datetime.now(UTC).strftime("%Y-%m-%d")
+        # Settled today: +$0.50
+        id1 = execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=1,
+            price=0.55,
+            status="filled",
+            live=True,
+        )
+        # Settled yesterday: -$0.30 (should not appear in today_pnl)
+        id2 = execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T80",
+            side="yes",
+            quantity=1,
+            price=0.60,
+            status="filled",
+            live=True,
+        )
+        # One pending
+        execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T85",
+            side="yes",
+            quantity=1,
+            price=0.45,
+            status="pending",
+            live=True,
+        )
+        with execution_log._conn() as con:
+            con.execute(
+                "UPDATE orders SET settled_at = ?, outcome_yes = 1, pnl = 0.50 WHERE id = ?",
+                (f"{today}T10:00:00+00:00", id1),
+            )
+            con.execute(
+                "UPDATE orders SET settled_at = ?, outcome_yes = 0, pnl = -0.30 WHERE id = ?",
+                ("2024-01-01T10:00:00+00:00", id2),
+            )
+        summary = execution_log.get_live_pnl_summary()
+        assert summary["today_pnl"] == pytest.approx(0.50)
+        assert summary["total_pnl"] == pytest.approx(0.20)  # 0.50 - 0.30
+        assert summary["open_count"] == 1
+        assert summary["settled_count"] == 2
