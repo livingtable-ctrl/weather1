@@ -273,3 +273,43 @@ def test_session_retry_parameters():
     assert 500 in retry.status_forcelist
     assert 502 in retry.status_forcelist
     assert 503 in retry.status_forcelist
+
+
+# ── API request logging error column (#69) ────────────────────────────────────
+
+
+def test_log_api_request_stores_error(tmp_path):
+    """log_api_request stores a non-None error string when provided."""
+    import tracker
+
+    orig_path = tracker.DB_PATH
+    tracker.DB_PATH = tmp_path / "test_err.db"
+    tracker._db_initialized = False
+    tracker.init_db()
+
+    tracker.log_api_request("GET", "/markets", 500, 999.9, error="Connection refused")
+
+    with tracker._conn() as con:
+        row = con.execute(
+            "SELECT error FROM api_requests WHERE endpoint='/markets'"
+        ).fetchone()
+    assert row is not None
+    assert row["error"] == "Connection refused"
+
+    tracker.DB_PATH = orig_path
+    tracker._db_initialized = False
+
+
+def test_log_api_request_accepts_no_error(tmp_path):
+    """log_api_request works without error arg (backward-compatible)."""
+    import tracker
+
+    orig_path = tracker.DB_PATH
+    tracker.DB_PATH = tmp_path / "test_noerr.db"
+    tracker._db_initialized = False
+    tracker.init_db()
+
+    tracker.log_api_request("GET", "/events", 200, 42.0)
+
+    tracker.DB_PATH = orig_path
+    tracker._db_initialized = False

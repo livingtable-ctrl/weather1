@@ -21,7 +21,7 @@ DB_PATH.parent.mkdir(exist_ok=True)
 
 _db_initialized = False
 
-_SCHEMA_VERSION = 7  # increment when _MIGRATIONS list grows
+_SCHEMA_VERSION = 8  # increment when _MIGRATIONS list grows
 
 _MIGRATIONS = [
     # v1 → v2: add condition_type column (if not already added)
@@ -64,6 +64,8 @@ _MIGRATIONS = [
         outcome INTEGER,
         PRIMARY KEY (ticker, target_date)
     )""",
+    # v7 → v8: add error column to api_requests (#69)
+    "ALTER TABLE api_requests ADD COLUMN error TEXT",
 ]
 
 
@@ -204,7 +206,11 @@ def init_db() -> None:
 
 
 def log_api_request(
-    method: str, endpoint: str, status_code: int | None, latency_ms: float
+    method: str,
+    endpoint: str,
+    status_code: int | None,
+    latency_ms: float,
+    error: str | None = None,
 ) -> None:
     """Log an API call for audit trail and latency monitoring (#69)."""
     from datetime import UTC
@@ -213,13 +219,14 @@ def log_api_request(
     try:
         with _conn() as con:
             con.execute(
-                "INSERT INTO api_requests (method, endpoint, status_code, latency_ms, logged_at) VALUES (?,?,?,?,?)",
+                "INSERT INTO api_requests (method, endpoint, status_code, latency_ms, logged_at, error) VALUES (?,?,?,?,?,?)",
                 (
                     method,
                     endpoint,
                     status_code,
                     latency_ms,
                     datetime.now(UTC).isoformat(),
+                    error,
                 ),
             )
     except Exception as exc:
