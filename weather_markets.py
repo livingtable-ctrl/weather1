@@ -5,6 +5,7 @@ Compares market-implied probabilities with Open-Meteo forecast data.
 
 from __future__ import annotations
 
+import math
 import random
 import re
 import statistics
@@ -279,14 +280,22 @@ def get_ensemble_temps(
     lat, lon, tz = coords
 
     weights = _model_weights(city)
+
+    # Decay model weights based on how old this cache entry is.
+    # Older forecasts are less reliable — halve differentiation every 6 hours.
+    cache_age_hours = (
+        time.monotonic() - (cached[1] if cached else time.monotonic())
+    ) / 3600
+    decay = math.exp(-cache_age_hours / 6.0)  # 1.0 at fresh, ~0.5 at 6h, ~0.25 at 12h
+
     all_temps: list[float] = []
     for model in ENSEMBLE_MODELS:
         try:
             temps = _fetch_model_ensemble(lat, lon, tz, target_date, model, hour, var)
-            w = weights.get(model, 1.0)
+            base_w = weights.get(model, 1.0)
+            # Decay towards equal weighting (1.0) as cache ages
+            w = 1.0 + (base_w - 1.0) * decay
             # Replicate members proportionally to apply weight.
-            # Multiply by 2 before rounding so fractional weights (e.g. 1.5) are
-            # preserved as distinct integers (3 vs 2) rather than collapsing to 1.
             repeats = max(1, round(w * 2))
             all_temps.extend(temps * repeats)
         except Exception:
@@ -294,6 +303,19 @@ def get_ensemble_temps(
 
     _ENSEMBLE_CACHE[cache_key] = (all_temps, time.monotonic())
     return all_temps
+
+
+def is_forecast_anomalous(ens_stats: dict, threshold_multiplier: float = 1.5) -> bool:
+    """
+    Return True if the ensemble spread (p90-p10) is unusually wide — a sign the
+    forecast models disagree strongly and uncertainty is high.
+    Typical spread is ~8-12°F; anything beyond 1.5× that is flagged.
+    """
+    if not ens_stats:
+        return False
+    spread = ens_stats.get("p90", 0) - ens_stats.get("p10", 0)
+    # Typical p10-p90 spread for US cities: ~8°F within 7 days
+    return spread > 8.0 * threshold_multiplier
 
 
 def ensemble_stats(temps: list[float]) -> dict:
@@ -579,27 +601,32 @@ def _parse_market_condition(market: dict) -> dict | None:
     ticker_up = ticker.upper()
 
     # ── Precipitation markets ─────────────────────────────────────────────────
-    is_precip = (
-        "RAIN" in ticker_up
-        or "PRECIP" in ticker_up
-        or "SNOW" in ticker_up
-        or "rain" in title
-        or "precip" in title
-        or "snow" in title
+    # Whitelist known precipitation series to avoid false positives from
+    # title-matching unrelated markets that contain words like "rain".
+    PRECIP_SERIES = {"KXRAIN", "KXSNOW", "KXPRECIP"}
+    series_up = (market.get("series_ticker") or "").upper()
+    is_precip_series = any(s in ticker_up or s in series_up for s in PRECIP_SERIES)
+    is_precip_title = (
+        ("rain" in title or "precip" in title or "snow" in title)
+        and "temperature" not in title
+        and "high" not in title
+        and "low" not in title
     )
+    is_precip = is_precip_series or is_precip_title
+
     if is_precip:
-        # Look for threshold like -P0.10 or just a yes/no any-precip market
-        precip_match = re.search(r"-P(\d+(?:\.\d+)?)$", ticker)
+        # Explicit threshold: e.g. KXRAIN-26APR10-P0.25 → precip > 0.25 in
+        precip_match = re.search(r"-P(\d+(?:\.\d+)?)(?:-|$)", ticker)
         if precip_match:
             return {"type": "precip_above", "threshold": float(precip_match.group(1))}
-        # Check title for threshold
+        # Threshold in title: "more than 0.50 inches"
         amt_match = re.search(r"(\d+(?:\.\d+)?)\s*(?:inch|in\b)", title)
         if amt_match:
             threshold = float(amt_match.group(1))
             if "more than" in title or "exceed" in title or ">" in title:
                 return {"type": "precip_above", "threshold": threshold}
-        # Binary any-precip market
-        if "measurable" in title or "any" in title or "rain" in title:
+        # Binary any-precip (only if series is a known precip series)
+        if is_precip_series or "measurable" in title or "any" in title:
             return {"type": "precip_any"}
         return None
 
@@ -744,11 +771,15 @@ def kelly_fraction(our_prob: float, price: float, fee_rate: float = 0.0) -> floa
     price    = cost per contract in dollars (e.g. 0.30 means you pay $0.30, win $0.70)
     fee_rate = fraction of winnings charged as fee (e.g. 0.07 for Kalshi's 7% fee)
     Returns recommended fraction of bankroll to bet (0–1).
+
+    Kelly formula: f* = (b*p - q) / b  where b = net odds (win per $1 risked)
+    For Kalshi: you pay `price`, win `(1-price)*(1-fee_rate)` net of fee.
+    Net odds b = (1-price)*(1-fee_rate) / price
     """
     if our_prob <= 0 or our_prob >= 1 or price <= 0 or price >= 1:
         return 0.0
-    net_win = (1 - price) * (1 - fee_rate)  # after-fee payout per dollar at risk
-    b = net_win / price  # net odds: win $b for every $1 risked
+    winnings = (1 - price) * (1 - fee_rate)  # net winnings per contract after fee
+    b = winnings / price  # net odds: win $b for every $1 staked
     q = 1 - our_prob
     full_kelly = (b * our_prob - q) / b
     return max(0.0, full_kelly / 2)  # half-Kelly for safety
@@ -1072,7 +1103,22 @@ def analyze_trade(enriched: dict) -> dict | None:
     if temps:
         ci_low, ci_high = _bootstrap_ci(temps, condition)
 
-    # ── 9. Kelly fraction ────────────────────────────────────────────────────
+    # ── 9. Data quality score ────────────────────────────────────────────────
+    # 1.0 = all sources available; reduced by 0.25 per missing source.
+    # Used to scale down Kelly sizing when we're flying partially blind.
+    sources_available = sum(
+        [
+            ens_prob is not None,
+            _nws_prob is not None,
+            clim_prob is not None,
+        ]
+    )
+    data_quality = round(sources_available / 3, 4)
+
+    # Flag anomalously wide ensemble spread (models disagree strongly)
+    anomalous = is_forecast_anomalous(ens_stats or {})
+
+    # ── 10. Kelly fraction ───────────────────────────────────────────────────
     prices = parse_market_price(enriched)
     market_prob = prices["implied_prob"]
     rec_side = "yes" if blended_prob > market_prob else "no"
@@ -1086,11 +1132,7 @@ def analyze_trade(enriched: dict) -> dict | None:
     edge = blended_prob - market_prob
     signal = _edge_label(edge)
 
-    # ── 10. Fee-adjusted edge ────────────────────────────────────────────────
-    # Kalshi charges ~7% of winnings. On a YES contract bought at price p,
-    # you win (1 - p) per dollar at risk. Fee = 7% of that win.
-    # Net EV = our_prob * (1 - entry_price) * (1 - FEE_RATE) - (1 - our_prob) * entry_price
-    # Net edge = net EV / entry_price  (as fraction of stake)
+    # ── 11. Fee-adjusted edge ────────────────────────────────────────────────
     if rec_side == "yes":
         payout = 1 - entry_price
         net_ev = (
@@ -1099,7 +1141,7 @@ def analyze_trade(enriched: dict) -> dict | None:
         )
     else:
         payout = 1 - entry_price
-        p_win = 1 - blended_prob  # prob NO wins
+        p_win = 1 - blended_prob
         net_ev = p_win * payout * (1 - KALSHI_FEE_RATE) - blended_prob * entry_price
 
     net_edge = net_ev / entry_price if entry_price > 0 else 0.0
@@ -1108,6 +1150,14 @@ def analyze_trade(enriched: dict) -> dict | None:
         blended_prob if rec_side == "yes" else 1 - blended_prob,
         entry_price,
         fee_rate=KALSHI_FEE_RATE,
+    )
+
+    # Scale Kelly down for low data quality and anomalous forecasts
+    quality_scale = 0.5 + 0.5 * data_quality  # 0.5 at quality=0, 1.0 at quality=1
+    anomaly_scale = 0.70 if anomalous else 1.0
+    ci_scale = max(0.25, 1.0 - (ci_high - ci_low))
+    ci_adjusted_kelly = round(
+        fee_adjusted_kelly * ci_scale * quality_scale * anomaly_scale, 6
     )
 
     return {
@@ -1141,8 +1191,9 @@ def analyze_trade(enriched: dict) -> dict | None:
         "ci_width": ci_high - ci_low,
         "kelly": kelly,
         "fee_adjusted_kelly": fee_adjusted_kelly,
-        "ci_adjusted_kelly": round(
-            fee_adjusted_kelly * max(0.25, 1.0 - (ci_high - ci_low)), 6
-        ),
+        "ci_adjusted_kelly": ci_adjusted_kelly,
         "time_risk": time_risk_label,
+        # Data quality
+        "data_quality": data_quality,
+        "forecast_anomalous": anomalous,
     }

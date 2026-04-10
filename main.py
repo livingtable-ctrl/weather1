@@ -158,18 +158,26 @@ def validate_api_key(client: KalshiClient) -> bool:
 
 
 def cleanup_data_dir() -> None:
-    """Delete cached data files from previous dates to prevent unbounded growth."""
+    """
+    Delete stale cached data files to prevent unbounded growth.
+    Skips climate_*.json (1-year TTL managed by climatology.py).
+    Only deletes files older than 2 days to avoid removing files still
+    useful for markets that cross midnight.
+    """
+    import time as _time
+
     data_dir = Path(__file__).parent / "data"
     if not data_dir.exists():
         return
-    today = date.today().isoformat()
+    cutoff = _time.time() - 2 * 24 * 3600  # 2 days ago
     for f in data_dir.glob("*.json"):
-        # Files are named like "ensemble_NYC_2025-04-08.json"
-        if today not in f.name:
-            try:
+        if f.name.startswith("climate_") or f.name.startswith("."):
+            continue
+        try:
+            if f.stat().st_mtime < cutoff:
                 f.unlink()
-            except OSError:
-                pass
+        except OSError:
+            pass
 
 
 def auto_settle(client: KalshiClient) -> None:
@@ -361,6 +369,20 @@ def cmd_market(client: KalshiClient, ticker: str, verbose: bool = False):
             print(
                 yellow(
                     f"  [Wide CI ({analysis['ci_width']:.0%}) — high uncertainty, size down]"
+                )
+            )
+        if analysis.get("forecast_anomalous"):
+            print(
+                yellow(
+                    "  [Anomalous forecast — models disagree strongly, Kelly reduced 30%]"
+                )
+            )
+        dq = analysis.get("data_quality", 1.0)
+        if dq < 1.0:
+            sources_missing = int((1.0 - dq) * 3)
+            print(
+                yellow(
+                    f"  [Partial data — {sources_missing} source(s) unavailable, Kelly scaled down]"
                 )
             )
         if abs(edge) < 0.05:
@@ -1246,6 +1268,19 @@ def cmd_order(client: KalshiClient, action: str, args: list):
         print(red("count and price must be numbers"))
         return
 
+    from execution_log import log_order, log_order_result, was_recently_ordered
+
+    if was_recently_ordered(ticker, side):
+        print(
+            yellow(
+                f"  [Warning] A {side.upper()} order for {ticker} was placed in the last 10 minutes."
+            )
+        )
+        confirm2 = input(yellow("  Place another anyway? (y/N): ")).strip().lower()
+        if confirm2 != "y":
+            print(dim("  Cancelled to avoid duplicate."))
+            return
+
     print(
         f"\n  {bold(action.upper())}  {count} × {ticker}  {bold(side.upper())}  @ ${price:.4f}"
     )
@@ -1253,10 +1288,20 @@ def cmd_order(client: KalshiClient, action: str, args: list):
     if confirm != "y":
         print(dim("  Cancelled."))
         return
-    result = client.place_order(ticker, side, action, count, price)
-    order = result.get("order", result)
-    print(green(f"  Order placed: {order.get('order_id', '')}"))
-    print(f"  Status: {order.get('status')}  Filled: {order.get('fill_count_fp', 0)}")
+
+    row_id = log_order(ticker, side, int(count), price, order_type=action)
+    try:
+        result = client.place_order(ticker, side, action, count, price)
+        order = result.get("order", result)
+        log_order_result(row_id, status=order.get("status", "sent"), response=order)
+        print(green(f"  Order placed: {order.get('order_id', '')}"))
+        print(
+            f"  Status: {order.get('status')}  Filled: {order.get('fill_count_fp', 0)}"
+        )
+    except Exception as e:
+        log_order_result(row_id, status="failed", error=str(e))
+        print(red(f"  Order failed: {e}"))
+        raise
 
 
 def cmd_cancel(client: KalshiClient, order_id: str):
@@ -1501,25 +1546,49 @@ def cmd_backtest(client: KalshiClient, args: list):
     brier = summary["brier"]
     win_rate = summary["win_rate"]
     pnl = summary["total_pnl"]
+    val_brier = summary.get("val_brier")
+    val_n = summary.get("val_n", 0)
+    val_wr = summary.get("val_win_rate")
 
     print(bold(f"\n── Backtest Results ({n} markets) ──\n"))
-    brier_str = (
-        (
-            green(f"{brier:.4f}")
-            if brier and brier < 0.20
-            else yellow(f"{brier:.4f}")
-            if brier and brier < 0.25
-            else red(f"{brier:.4f}")
-        )
-        if brier
-        else "—"
-    )
+
+    def _brier_str(b: float | None) -> str:
+        if b is None:
+            return "—"
+        if b < 0.20:
+            return green(f"{b:.4f}")
+        elif b < 0.25:
+            return yellow(f"{b:.4f}")
+        return red(f"{b:.4f}")
+
     wr_str = (
-        green(f"{win_rate:.0%}") if win_rate and win_rate > 0.55 else f"{win_rate:.0%}"
+        green(f"{win_rate:.0%}")
+        if win_rate and win_rate > 0.55
+        else f"{win_rate:.0%}"
+        if win_rate
+        else "—"
     )
     pnl_str = green(f"+{pnl:.2%}") if pnl > 0 else red(f"{pnl:.2%}")
 
-    print(f"  Brier score:  {brier_str}   (0.25=random, 0.0=perfect)")
+    train_n = n - val_n
+    print(
+        f"  Brier score:  {_brier_str(brier)}   (train, {train_n} markets — 0.25=random, 0.0=perfect)"
+    )
+    if val_n > 0:
+        overfit_warn = ""
+        if brier and val_brier and val_brier > brier + 0.03:
+            overfit_warn = f"  {yellow('⚠ possible overfit')}"
+        val_wr_str = (
+            green(f"{val_wr:.0%}")
+            if val_wr and val_wr > 0.55
+            else f"{val_wr:.0%}"
+            if val_wr
+            else "—"
+        )
+        print(
+            f"  Val Brier:    {_brier_str(val_brier)}   (holdout, {val_n} markets){overfit_warn}"
+        )
+        print(f"  Val win rate: {val_wr_str}")
     print(f"  Win rate:     {wr_str}   (picking better side vs market)")
     print(f"  Sim P&L:      {pnl_str}   (half-Kelly sizing, 5% cap, 7% fees)")
 
