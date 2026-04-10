@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}Kalshi Bot{% endblock %} — Kalshi Bot</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <script src="https://cdn.plot.ly/plotly-2.32.0.min.js" charset="utf-8"></script>
+  <script>
+    // Apply saved theme before paint to avoid flash
+    (function () {
+      var t = localStorage.getItem('theme');
+      if (t) document.documentElement.setAttribute('data-theme', t);
+    })();
+  </script>
+</head>
+<body>
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-logo">&#9729; Kalshi Bot</div>
+    <nav class="sidebar-nav">
+      <a href="/">&#128202; Dashboard</a>
+      <a href="/analytics">&#128200; Analytics</a>
+      <a href="/risk">&#9888;&#65039; Risk</a>
+      <a href="/trades">&#127974; Trades</a>
+      <a href="/signals">&#128301; Signals</a>
+      <a href="/forecast">&#127780;&#65039; Forecast</a>
+    </nav>
+    <div class="sidebar-footer">
+      <a href="/analyze">&#9881;&#65039; Analyze (live)</a>
+    </div>
+  </aside>
+
+  <div class="main">
+    <header class="topbar">
+      <span class="topbar-title" id="topbar-title">{% block page_title %}{% endblock %}</span>
+      <div class="topbar-right">
+        <div class="live-indicator">
+          <span class="live-dot" id="global-live-dot"></span>
+          <span id="global-live-ts">—</span>
+        </div>
+        <button id="theme-toggle" onclick="toggleTheme()">&#9680; Theme</button>
+      </div>
+    </header>
+
+    <div class="content">
+      {% block content %}{% endblock %}
+    </div>
+  </div>
+
+  <script>
+    // Mark active nav link by matching pathname
+    (function () {
+      var path = window.location.pathname;
+      document.querySelectorAll('.sidebar-nav a').forEach(function (a) {
+        if (a.pathname === path) a.classList.add('active');
+      });
+    })();
+
+    // Theme toggle — no page reload, instant via data-theme attribute
+    function toggleTheme() {
+      var cur = document.documentElement.getAttribute('data-theme');
+      var next = cur === 'light' ? null : 'light';
+      if (next) {
+        document.documentElement.setAttribute('data-theme', next);
+        localStorage.setItem('theme', next);
+      } else {
+        document.documentElement.removeAttribute('data-theme');
+        localStorage.removeItem('theme');
+      }
+    }
+
+    // Mobile: clicking the page title toggles the sidebar
+    document.getElementById('topbar-title').style.cursor = 'pointer';
+    document.getElementById('topbar-title').addEventListener('click', function () {
+      document.getElementById('sidebar').classList.toggle('open');
+    });
+  </script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

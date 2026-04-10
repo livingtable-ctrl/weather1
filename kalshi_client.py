@@ -3,42 +3,71 @@ Kalshi API client with RSA-PSS authentication.
 """
 
 import base64
+import logging
 import time
 from pathlib import Path
 
 import requests
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
+
+_log = logging.getLogger(__name__)
 
 _RETRY_STATUSES = {429, 500, 502, 503, 504}
 _MAX_RETRIES = 3
+# #7: centralized timeout — apply consistently across all API calls
+DEFAULT_TIMEOUT = 15  # seconds
+
+
+def _build_session() -> requests.Session:
+    """Build a requests Session with automatic retry on transient errors."""
+    session = requests.Session()
+    retry = Retry(
+        total=3,
+        backoff_factor=1.0,
+        status_forcelist={429, 500, 502, 503},
+        allowed_methods={"GET", "POST", "DELETE"},
+        respect_retry_after_header=True,
+        raise_on_status=False,
+    )
+    adapter = HTTPAdapter(max_retries=retry)
+    session.mount("https://", adapter)
+    session.mount("http://", adapter)
+    return session
+
+
+_SESSION = _build_session()
 
 
 def _request_with_retry(method: str, url: str, **kwargs) -> requests.Response:
     """
-    Call requests.request with exponential backoff on transient errors.
-    Retries on connection errors and HTTP 429/5xx up to _MAX_RETRIES times.
+    Call _SESSION.request with automatic retry via HTTPAdapter (#67).
+    Falls back to latency logging for slow responses (#108).
     """
-    delay = 1.0
-    for attempt in range(_MAX_RETRIES):
-        try:
-            resp = requests.request(method, url, **kwargs)
-            if resp.status_code not in _RETRY_STATUSES:
-                return resp
-            # Retryable HTTP status
-        except (requests.ConnectionError, requests.Timeout):
-            resp = None
+    # Apply default timeout if caller didn't specify one
+    kwargs.setdefault("timeout", DEFAULT_TIMEOUT)
 
-        if attempt < _MAX_RETRIES - 1:
-            time.sleep(delay)
-            delay *= 2
-        else:
-            if resp is not None:
-                return resp
-            raise requests.ConnectionError(
-                f"Failed after {_MAX_RETRIES} attempts: {url}"
-            )
-    return resp  # type: ignore[return-value]  # unreachable; loop always returns or raises
+    _t0 = time.perf_counter()
+    resp = _SESSION.request(method, url, **kwargs)
+    _elapsed = time.perf_counter() - _t0
+    # #108: warn on slow API responses so latency issues are visible
+    if _elapsed > 5:
+        _log.warning("Kalshi API slow: %.1fs for %s %s", _elapsed, method, url)
+    # #69: log every API call for audit trail and latency monitoring
+    try:
+        from urllib.parse import urlparse
+
+        from tracker import log_api_request
+
+        endpoint = urlparse(url).path
+        elapsed_ms = _elapsed * 1000
+        error_str = f"HTTP {resp.status_code}" if resp.status_code >= 400 else None
+        log_api_request(method, endpoint, resp.status_code, elapsed_ms, error=error_str)
+    except Exception:
+        pass
+    return resp
 
 
 PROD_BASE = "https://trading-api.kalshi.com/trade-api/v2"
@@ -200,5 +229,39 @@ class KalshiClient:
             body["no_price_dollars"] = f"{price:.4f}"
         return self._post("/portfolio/orders", body)
 
+    def get_order(self, order_id: str) -> dict:
+        """Fetch a single order by ID from the Kalshi portfolio API.
+
+        Returns the inner order dict with 'status' key: resting/filled/canceled/expired.
+        """
+        data = self._get(f"/portfolio/orders/{order_id}", auth=True)
+        return data.get("order", data)
+
     def cancel_order(self, order_id: str) -> dict:
         return self._delete(f"/portfolio/orders/{order_id}")
+
+    def place_maker_order(
+        self,
+        ticker: str,
+        side: str,
+        price: float,
+        quantity: float,
+    ) -> dict:
+        """
+        Place a passive limit (maker) order at the specified price.
+        Uses good_till_canceled so the order rests in the book.
+
+        Args:
+            ticker:   Market ticker
+            side:     "yes" or "no"
+            price:    Limit price in dollars (e.g. 0.45)
+            quantity: Number of contracts
+        """
+        return self.place_order(
+            ticker=ticker,
+            side=side,
+            action="buy",
+            count=quantity,
+            price=price,
+            time_in_force="good_till_canceled",
+        )

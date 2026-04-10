@@ -5,51 +5,62 @@ Compares market-implied probabilities with Open-Meteo forecast data.
 
 from __future__ import annotations
 
-import math
+import logging
 import random
 import re
 import statistics
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, date, datetime
+from pathlib import Path
 
-from climate_indices import temperature_adjustment
+from calibration import load_city_weights as _load_city_weights
+from calibration import load_seasonal_weights as _load_seasonal_weights
+from climate_indices import get_enso_index, temperature_adjustment
 from climatology import climatological_prob
 from kalshi_client import KalshiClient, _request_with_retry
 from nws import get_live_observation, nws_prob, obs_prob
 from utils import KALSHI_FEE_RATE, normal_cdf
 
+_log = logging.getLogger(__name__)
+
 # ── Open-Meteo (free, no API key) ────────────────────────────────────────────
 
-CITY_COORDS = {
-    # Exact settlement station coordinates (not city centre)
-    "NYC": (40.7789, -73.9692, "America/New_York"),  # Central Park (WBAN 94728)
-    "Chicago": (41.9803, -87.9090, "America/Chicago"),  # O'Hare Intl (WBAN 94846)
-    "LA": (34.0190, -118.2910, "America/Los_Angeles"),  # USC Downtown (COOP 045114)
-    "Miami": (25.8175, -80.3164, "America/New_York"),  # Miami Intl Airport (WBAN 12839)
-    "Boston": (42.3606, -71.0106, "America/New_York"),  # Logan Airport (WBAN 14739)
-    "Dallas": (32.8998, -97.0403, "America/Chicago"),  # DFW Airport (WBAN 03927)
-    "Phoenix": (
-        33.4373,
-        -112.0078,
-        "America/Phoenix",
-    ),  # Phoenix Sky Harbor (WBAN 23183)
-    "Seattle": (
-        47.4502,
-        -122.3088,
-        "America/Los_Angeles",
-    ),  # Sea-Tac Airport (WBAN 24233)
-    "Denver": (
-        39.8561,
-        -104.6737,
-        "America/Denver",
-    ),  # Denver Intl Airport (WBAN 03017)
-    "Atlanta": (
-        33.6407,
-        -84.4277,
-        "America/New_York",
-    ),  # Atlanta Hartsfield (WBAN 13874)
-}
+
+def _load_city_coords() -> dict:
+    """
+    #119: Load city coordinates from data/cities.json so new cities can be added
+    without modifying code. Falls back to hardcoded defaults if file is missing.
+    """
+    import json
+
+    cities_path = Path(__file__).parent / "data" / "cities.json"
+    if cities_path.exists():
+        try:
+            raw = json.loads(cities_path.read_text())
+            return {
+                city: tuple(coords)
+                for city, coords in raw.items()
+                if not city.startswith("_")  # skip _comment keys
+            }
+        except Exception:
+            pass
+    # Hardcoded fallback (exact settlement station coordinates)
+    return {
+        "NYC": (40.7789, -73.9692, "America/New_York"),
+        "Chicago": (41.9803, -87.9090, "America/Chicago"),
+        "LA": (34.0190, -118.2910, "America/Los_Angeles"),
+        "Miami": (25.8175, -80.3164, "America/New_York"),
+        "Boston": (42.3606, -71.0106, "America/New_York"),
+        "Dallas": (32.8998, -97.0403, "America/Chicago"),
+        "Phoenix": (33.4373, -112.0078, "America/Phoenix"),
+        "Seattle": (47.4502, -122.3088, "America/Los_Angeles"),
+        "Denver": (39.8561, -104.6737, "America/Denver"),
+        "Atlanta": (33.6407, -84.4277, "America/New_York"),
+    }
+
+
+CITY_COORDS = _load_city_coords()
 
 FORECAST_BASE = "https://api.open-meteo.com/v1/forecast"
 ENSEMBLE_BASE = "https://ensemble-api.open-meteo.com/v1/ensemble"
@@ -63,18 +74,119 @@ _ENSEMBLE_CACHE_TTL = 90 * 60  # 90 minutes
 _FORECAST_CACHE: dict = {}
 _FORECAST_CACHE_TTL = 90 * 60  # 90 minutes
 
+# #66: Market listing cache to avoid hammering the API on every analyze call
+_MARKETS_CACHE: tuple[list, float] | None = None
+_MARKETS_CACHE_TTL = 60  # 60 seconds
+
+# ── Calibration data (loaded once at import; empty dicts = use hardcoded weights) ──
+_CITY_WEIGHTS: dict[str, dict[str, float]] = _load_city_weights()
+_SEASONAL_WEIGHTS: dict[str, dict[str, float]] = _load_seasonal_weights()
+
+
+def _current_forecast_cycle() -> str:
+    """
+    #37: Return the current NWP forecast cycle label based on UTC hour.
+    Cycles: 00z (00-05 UTC), 06z (06-11 UTC), 12z (12-17 UTC), 18z (18-23 UTC).
+    """
+    hour = datetime.now(UTC).hour
+    if hour < 6:
+        return "00z"
+    elif hour < 12:
+        return "06z"
+    elif hour < 18:
+        return "12z"
+    else:
+        return "18z"
+
+
+def _ttl_until_next_cycle(now: datetime | None = None) -> int:
+    """
+    #126: Return seconds until the next NWP model cycle data becomes available.
+
+    NWP model runs are initialized at 00/06/12/18 UTC, but data becomes
+    available roughly 2 hours after initialization:
+      00z run → available ~02 UTC
+      06z run → available ~08 UTC
+      12z run → available ~14 UTC
+      18z run → available ~20 UTC
+
+    Returns at least 1800 seconds (30 min) to avoid thrashing.
+    """
+    if now is None:
+        now = datetime.now(UTC)
+
+    # Availability hours in UTC (after which the cycle data is usable)
+    cycle_hours = [2, 8, 14, 20]
+
+    current_hour = now.hour + now.minute / 60.0
+
+    # Find next cycle availability time today
+    for ch in cycle_hours:
+        if current_hour < ch:
+            seconds_to_next = (ch - current_hour) * 3600
+            return max(1800, int(seconds_to_next))
+
+    # All cycles for today have passed — next is 02 UTC tomorrow
+    seconds_to_midnight = (24.0 - current_hour) * 3600
+    seconds_to_02_tomorrow = seconds_to_midnight + 2 * 3600
+    return max(1800, int(seconds_to_02_tomorrow))
+
 
 # ── Multi-model regular forecast ─────────────────────────────────────────────
 
 
-def _forecast_model_weights(month: int) -> dict[str, float]:
+def _get_enso_phase() -> str:
+    """
+    #28: Return the current ENSO phase: 'el_nino', 'la_nina', or 'neutral'.
+    Uses ONI threshold of ±0.5 (standard NOAA definition).
+    """
+    try:
+        oni = get_enso_index()
+        if oni is None:
+            return "neutral"
+        if oni >= 0.5:
+            return "el_nino"
+        elif oni <= -0.5:
+            return "la_nina"
+        return "neutral"
+    except Exception:
+        return "neutral"
+
+
+def _forecast_model_weights(month: int, city: str | None = None) -> dict[str, float]:
     """
     Seasonal model weights for the daily forecast blend.
     ECMWF is the most accurate global model in winter (Oct–Mar) for mid-latitudes.
     GFS is competitive in summer for the US. ICON adds value year-round.
+
+    Priority order (#122, #28):
+      1. Dynamic from tracker MAE (city + season specific)
+      2. Per-city learned weights from data/learned_weights.json
+      3. Static seasonal weights + ENSO adjustment (original behaviour)
     """
+    # 1. Dynamic from tracker MAE
+    if city is not None:
+        dyn = _dynamic_model_weights(city=city, month=month)
+        if dyn:
+            return dyn
+
+    # 2. Per-city learned weights from last backtest
+    if city is not None:
+        lw = load_learned_weights()
+        if city in lw:
+            return dict(lw[city])
+
+    # 3. Static seasonal + ENSO fallback
     is_winter = month in (10, 11, 12, 1, 2, 3)
     ecmwf_w = 2.5 if is_winter else 1.5
+
+    if is_winter:
+        enso_phase = _get_enso_phase()
+        if enso_phase == "el_nino":
+            ecmwf_w += 0.5  # El Niño winters: ECMWF skill advantage grows
+        elif enso_phase == "la_nina":
+            ecmwf_w += 0.3  # La Niña winters: moderate ECMWF boost
+
     return {"gfs_seamless": 1.0, "ecmwf_ifs04": ecmwf_w, "icon_seamless": 1.0}
 
 
@@ -96,7 +208,7 @@ def get_weather_forecast(city: str, target_date: date) -> dict | None:
     lat, lon, tz = coords
 
     # Seasonal model weights — ECMWF more accurate in winter, GFS competitive in summer
-    model_weights = _forecast_model_weights(target_date.month)
+    model_weights = _forecast_model_weights(target_date.month, city=city)
     highs: list[tuple[float, float]] = []  # (value, weight)
     lows: list[tuple[float, float]] = []
     precips: list[tuple[float, float]] = []
@@ -127,7 +239,7 @@ def get_weather_forecast(city: str, target_date: date) -> dict | None:
         p = daily.get("precipitation_sum", [None])[idx]
         return (h, lo, p, weight)
 
-    with ThreadPoolExecutor(max_workers=3) as pool:
+    with ThreadPoolExecutor(max_workers=len(model_weights)) as pool:  # #124: dynamic
         futures = {
             pool.submit(_fetch_one, model, weight): model
             for model, weight in model_weights.items()
@@ -199,7 +311,12 @@ def _fetch_model_ensemble(
         resp = _request_with_retry("GET", ENSEMBLE_BASE, params=params, timeout=20)
         resp.raise_for_status()
         data = resp.json()
-        hourly = data.get("hourly", {})
+        # #71: validate expected response structure
+        if not isinstance(data, dict):
+            return []
+        hourly = data.get("hourly")
+        if not isinstance(hourly, dict):
+            return []
         times = hourly.get("time", [])
         target_dt = f"{target_date.isoformat()}T{hour:02d}:00"
         if target_dt not in times:
@@ -216,7 +333,12 @@ def _fetch_model_ensemble(
         resp = _request_with_retry("GET", ENSEMBLE_BASE, params=params, timeout=20)
         resp.raise_for_status()
         data = resp.json()
-        daily = data.get("daily", {})
+        # #71: validate expected response structure
+        if not isinstance(data, dict):
+            return []
+        daily = data.get("daily")
+        if not isinstance(daily, dict):
+            return []
         times = daily.get("time", [])
         target_str = target_date.isoformat()
         if target_str not in times:
@@ -230,30 +352,245 @@ def _fetch_model_ensemble(
         ]
 
 
-def _model_weights(city: str) -> dict[str, float]:
+_LEARNED_WEIGHTS: dict = {}  # cached after first load
+
+
+def load_learned_weights() -> dict:
     """
-    Return per-model weights based on historical Brier scores from the tracker.
-    Defaults to equal weighting (1.0 each) if insufficient data.
-    Higher weight = duplicate members to increase influence.
+    Load per-city model weights previously saved by save_learned_weights().
+    Format: {city: {model: weight, ...}, ...}
+    Returns empty dict if file missing or malformed. Cached for the session.
+    """
+    global _LEARNED_WEIGHTS
+    if _LEARNED_WEIGHTS:
+        return _LEARNED_WEIGHTS
+    path = Path(__file__).parent / "data" / "learned_weights.json"
+    if not path.exists():
+        return {}
+    try:
+        import json as _json
+
+        _LEARNED_WEIGHTS = _json.loads(path.read_text())
+        return _LEARNED_WEIGHTS
+    except Exception:
+        return {}
+
+
+def save_learned_weights(weights: dict) -> None:
+    """
+    Persist per-city model weights to data/learned_weights.json atomically.
+    Called after a backtest to update city-specific model preferences.
+    """
+    import json as _json
+    import os as _os
+    import tempfile as _tmp
+
+    path = Path(__file__).parent / "data" / "learned_weights.json"
+    path.parent.mkdir(exist_ok=True)
+    fd, tmp = _tmp.mkstemp(dir=path.parent, prefix=".lw_", suffix=".json")
+    try:
+        with _os.fdopen(fd, "w") as f:
+            _json.dump(weights, f, indent=2)
+        _os.replace(tmp, path)
+    except Exception:
+        try:
+            _os.unlink(tmp)
+        except OSError:
+            pass
+    global _LEARNED_WEIGHTS
+    _LEARNED_WEIGHTS = weights
+
+
+def _feels_like(
+    temp_f: float, wind_mph: float = 10.0, humidity_pct: float = 50.0
+) -> float:
+    """
+    Compute apparent (feels-like) temperature from actual temp, wind, and humidity.
+    Uses wind chill formula for cold temps, heat index for hot/humid conditions.
+    """
+    if temp_f <= 50.0 and wind_mph >= 3.0:
+        # NWS Wind Chill formula (valid for T<=50°F, W>=3 mph)
+        w016 = wind_mph**0.16
+        wc = 35.74 + 0.6215 * temp_f - 35.75 * w016 + 0.4275 * temp_f * w016
+        # #29: Moist-cold regime — high humidity makes cold feel colder
+        # 1.5°F penalty per 10% humidity above 70%, applied on top of wind chill
+        if humidity_pct >= 70.0:
+            humidity_penalty = (humidity_pct - 70.0) / 10.0 * 1.5
+            wc -= humidity_penalty
+        return wc
+    elif temp_f >= 80.0 and humidity_pct >= 40.0:
+        # Rothfusz Heat Index formula
+        T, H = temp_f, humidity_pct
+        hi = (
+            -42.379
+            + 2.04901523 * T
+            + 10.14333127 * H
+            - 0.22475541 * T * H
+            - 0.00683783 * T * T
+            - 0.05481717 * H * H
+            + 0.00122874 * T * T * H
+            + 0.00085282 * T * H * H
+            - 0.00000199 * T * T * H * H
+        )
+        return hi
+    # #29: Moist-cold intermediate regime (no strong wind, temp<=50, humidity>=70)
+    if temp_f <= 50.0 and humidity_pct >= 70.0:
+        humidity_penalty = (humidity_pct - 70.0) / 10.0 * 1.5
+        return temp_f - humidity_penalty
+    return temp_f
+
+
+_MAE_WEIGHTS_CACHE: dict[str, dict[str, float]] = {}  # city -> weights, session cache
+
+
+def _weights_from_mae(city: str, min_n: int = 20) -> dict[str, float] | None:
+    """
+    #25/#118: Derive per-model blend weights from inverse-MAE scores in tracker.
+    Returns None if insufficient data (< min_n observations per model).
+    Lower MAE → higher weight.  Normalised so weights sum to the number of models.
+    City-specific data is preferred; falls back to global MAE if city data is thin.
+    """
+    if city in _MAE_WEIGHTS_CACHE:
+        return _MAE_WEIGHTS_CACHE[city]
+    try:
+        from tracker import get_member_accuracy
+
+        acc = get_member_accuracy()  # {model: {mae, n, city_breakdown}}
+    except Exception:
+        return None
+
+    if not acc:
+        return None
+
+    weights: dict[str, float] = {}
+    for model, stats in acc.items():
+        city_bd = stats.get("city_breakdown", {})
+        # Prefer city-level MAE if we have enough data there
+        city_mae = city_bd.get(city)
+        city_n = sum(1 for _ in city_bd) if city_bd else 0
+        mae = city_mae if (city_mae is not None and city_n >= min_n) else stats["mae"]
+        n = stats["n"]
+        if n < min_n or mae <= 0:
+            return None  # too little data — don't trust yet
+        weights[model] = 1.0 / mae
+
+    if not weights:
+        return None
+
+    # Normalise so weights sum to len(weights) (keeps same scale as seasonal priors)
+    total = sum(weights.values())
+    n_models = len(weights)
+    normalised = {m: v / total * n_models for m, v in weights.items()}
+    _MAE_WEIGHTS_CACHE[city] = normalised
+    return normalised
+
+
+def _dynamic_model_weights(
+    city: str | None = None, month: int | None = None, min_samples: int = 5
+) -> dict | None:
+    """
+    #25: Derive per-model blend weights from tracker MAE data via
+    get_ensemble_member_accuracy(). Returns inverse-MAE weights normalised so
+    weights sum to the number of models. Returns None if < min_samples per model.
+    Lower MAE → higher weight.
     """
     try:
-        from tracker import brier_score_by_method
+        from tracker import get_ensemble_member_accuracy
 
-        scores = brier_score_by_method()
-        # We track blended scores, so use per-city overall accuracy as a proxy.
-        # If ensemble Brier < 0.18 (good), up-weight ICON (more members, better
-        # resolution); if > 0.22 (poor), reduce to equal weighting.
-        overall = scores.get("ensemble")
-        if overall is None:
-            return {"icon_seamless": 1.0, "gfs_seamless": 1.0}
-        if overall < 0.18:
-            return {"icon_seamless": 1.5, "gfs_seamless": 1.0}
-        elif overall < 0.22:
-            return {"icon_seamless": 1.0, "gfs_seamless": 1.0}
-        else:
-            return {"icon_seamless": 0.8, "gfs_seamless": 1.0}
+        season = None
+        if month is not None:
+            season = "winter" if month in (10, 11, 12, 1, 2, 3) else "summer"
+
+        acc = get_ensemble_member_accuracy(city=city, season=season)
     except Exception:
-        return {"icon_seamless": 1.0, "gfs_seamless": 1.0}
+        return None
+
+    if not acc:
+        return None
+
+    weights: dict[str, float] = {}
+    for model, stats in acc.items():
+        count = stats.get("count", 0)
+        mae = stats.get("mae", 0.0)
+        if count < min_samples or mae <= 0:
+            return None  # insufficient data for at least one model — don't use
+        weights[model] = 1.0 / mae
+
+    if not weights:
+        return None
+
+    # Normalise so weights sum to len(weights)
+    total = sum(weights.values())
+    n_models = len(weights)
+    return {m: v / total * n_models for m, v in weights.items()}
+
+
+def update_learned_weights_from_tracker(min_n: int = 20) -> dict:
+    """
+    #118: Compute per-city inverse-MAE weights from tracker data and persist to
+    data/learned_weights.json.  Call this after each backtest walk-forward run.
+    Returns the weights dict that was saved.
+    """
+    try:
+        from tracker import get_member_accuracy
+
+        acc = get_member_accuracy()
+    except Exception:
+        return {}
+
+    if not acc:
+        return {}
+
+    # Collect all cities that appear in any model's city_breakdown
+    all_cities: set[str] = set()
+    for stats in acc.values():
+        all_cities.update(stats.get("city_breakdown", {}).keys())
+
+    city_weights: dict[str, dict[str, float]] = {}
+    for city in all_cities:
+        w = _weights_from_mae(city, min_n=min_n)
+        if w:
+            city_weights[city] = w
+
+    if city_weights:
+        save_learned_weights(city_weights)
+    return city_weights
+
+
+def _model_weights(city: str, month: int | None = None) -> dict[str, float]:
+    """
+    Return per-model weights for the ensemble blend.
+    Priority order:
+      1. Per-city inverse-MAE weights derived from tracker data (#25/#118)
+      2. Manually learned weights from data/learned_weights.json (from backtest)
+      3. Seasonal ECMWF/GFS priors (original behaviour)
+    """
+    # 1. Dynamic: derive from recent tracker MAE data
+    mae_weights = _weights_from_mae(city)
+    if mae_weights:
+        # Blend MAE-derived weights with seasonal prior at 70/30 so we don't
+        # completely abandon meteorological priors with limited data
+        is_winter = (month or 0) in (10, 11, 12, 1, 2, 3)
+        ecmwf_prior = 2.0 if is_winter else 1.5
+        prior = {"icon_seamless": 1.0, "gfs_seamless": 1.0, "ecmwf_ifs04": ecmwf_prior}
+        blended: dict[str, float] = {}
+        for m in set(mae_weights) | set(prior):
+            blended[m] = 0.7 * mae_weights.get(m, 1.0) + 0.3 * prior.get(m, 1.0)
+        return blended
+
+    # 2. Pre-saved learned weights from last backtest run
+    lw = load_learned_weights()
+    if city in lw:
+        return dict(lw[city])
+
+    # 3. Seasonal ECMWF weight: better in winter for mid-latitude US cities
+    if month is not None:
+        is_winter = month in (10, 11, 12, 1, 2, 3)
+        ecmwf_w = 2.0 if is_winter else 1.5
+    else:
+        ecmwf_w = 1.5  # conservative default
+
+    return {"icon_seamless": 1.0, "gfs_seamless": 1.0, "ecmwf_ifs04": ecmwf_w}
 
 
 def get_ensemble_temps(
@@ -279,17 +616,15 @@ def get_ensemble_temps(
         return []
     lat, lon, tz = coords
 
-    weights = _model_weights(city)
+    weights = _model_weights(city, month=target_date.month)
 
-    # Decay model weights based on how old this cache entry is.
-    # Older forecasts are less reliable — halve differentiation every 6 hours.
-    cache_age_hours = (
-        time.monotonic() - (cached[1] if cached else time.monotonic())
-    ) / 3600
-    decay = math.exp(-cache_age_hours / 6.0)  # 1.0 at fresh, ~0.5 at 6h, ~0.25 at 12h
+    # We only reach here when building fresh data (stale cache was discarded above,
+    # or no cache existed). Always use full model weights for a fresh fetch.
+    decay = 1.0
 
     all_temps: list[float] = []
-    for model in ENSEMBLE_MODELS:
+    ensemble_models_with_ecmwf = [*ENSEMBLE_MODELS, "ecmwf_ifs04"]
+    for model in ensemble_models_with_ecmwf:
         try:
             temps = _fetch_model_ensemble(lat, lon, tz, target_date, model, hour, var)
             base_w = weights.get(model, 1.0)
@@ -331,6 +666,34 @@ def ensemble_stats(temps: list[float]) -> dict:
         "p10": sorted(temps)[min(int(len(temps) * 0.10), len(temps) - 1)],
         "p90": sorted(temps)[min(int(len(temps) * 0.90), len(temps) - 1)],
     }
+
+
+def censoring_correction(
+    probs: list[float],
+    condition: dict,
+    censor_pct: float = 0.01,
+) -> float:
+    """
+    Correct ensemble probability for member censoring at 0 or 1 (#23).
+
+    When > censor_pct fraction of ensemble members are exactly 0.0 or 1.0,
+    blends the raw mean toward 0.5 using blend = censored_fraction * 0.5.
+    Returns 0.5 for empty input.
+    """
+    if not probs:
+        return 0.5
+
+    n = len(probs)
+    raw_mean = sum(probs) / n
+    censored = sum(1 for p in probs if p == 0.0 or p == 1.0)
+    censored_fraction = censored / n
+
+    if censored_fraction <= censor_pct:
+        return raw_mean
+
+    blend = censored_fraction * 0.5
+    corrected = raw_mean * (1.0 - blend) + 0.5 * blend
+    return max(0.0, min(1.0, corrected))
 
 
 # ── Market parsing ────────────────────────────────────────────────────────────
@@ -412,11 +775,21 @@ def is_weather_market(market: dict) -> bool:
     return any(kw in text for kw in WEATHER_KEYWORDS)
 
 
-def get_weather_markets(client: KalshiClient, limit: int = 200) -> list[dict]:
+def get_weather_markets(
+    client: KalshiClient, limit: int = 200, force: bool = False
+) -> list[dict]:
     """
     Fetch open markets and filter to weather-related ones.
-    Also tries the series endpoint with weather tags.
+    #66: Results cached for 60 seconds to avoid hammering the API.
+    Pass force=True to bypass cache.
     """
+    global _MARKETS_CACHE
+    now = time.monotonic()
+    if not force and _MARKETS_CACHE is not None:
+        cached_markets, cached_ts = _MARKETS_CACHE
+        if now - cached_ts < _MARKETS_CACHE_TTL:
+            return cached_markets
+
     results = []
     seen = set()
 
@@ -430,7 +803,7 @@ def get_weather_markets(client: KalshiClient, limit: int = 200) -> list[dict]:
     except Exception as e:
         print(f"[warn] Could not fetch markets: {e}")
 
-    # Strategy 2: known weather series tickers
+    # Strategy 2: known weather series tickers — fetch in parallel (#127)
     known_series = [
         "KXHIGHNY",
         "KXHIGHCHI",
@@ -441,16 +814,22 @@ def get_weather_markets(client: KalshiClient, limit: int = 200) -> list[dict]:
         "KXLOWCHI",
         "KXRAIN",
     ]
-    for series in known_series:
+
+    def _fetch_series(series: str) -> list[dict]:
         try:
-            markets = client.get_markets(series_ticker=series, status="open", limit=50)
-            for m in markets:
+            return client.get_markets(series_ticker=series, status="open", limit=50)
+        except Exception:
+            return []
+
+    with ThreadPoolExecutor(max_workers=10) as pool:
+        futures = {pool.submit(_fetch_series, s): s for s in known_series}
+        for fut in as_completed(futures):
+            for m in fut.result():
                 if m.get("ticker") not in seen:
                     results.append(m)
                     seen.add(m["ticker"])
-        except Exception:
-            pass
 
+    _MARKETS_CACHE = (results, now)
     return results
 
 
@@ -614,6 +993,34 @@ def _parse_market_condition(market: dict) -> dict | None:
     )
     is_precip = is_precip_series or is_precip_title
 
+    # ── Snow/ice markets ──────────────────────────────────────────────────────
+    SNOW_SERIES = {"KXSNOW", "KXICE"}
+    is_snow_series = any(s in ticker_up or s in series_up for s in SNOW_SERIES)
+    is_snow_title = (
+        ("snow" in title or "ice" in title or "sleet" in title)
+        and "temperature" not in title
+        and "high" not in title
+        and "low" not in title
+    )
+    # Check ticker directly for SNOW/ICE keywords
+    is_snow_ticker = "SNOW" in ticker_up or "ICE" in ticker_up
+    if is_snow_series or is_snow_ticker or (is_snow_title and not is_precip_series):
+        # Parse threshold from title: "more than 2 inches of snow"
+        snow_match = re.search(r"(\d+(?:\.\d+)?)\s*(?:inch|in\b)", title)
+        if snow_match:
+            threshold = float(snow_match.group(1))
+            return {"type": "precip_snow", "threshold": threshold, "unit": "inches"}
+        # Explicit threshold in ticker: -P2.0
+        snow_ticker_match = re.search(r"-P(\d+(?:\.\d+)?)(?:-|$)", ticker)
+        if snow_ticker_match:
+            return {
+                "type": "precip_snow",
+                "threshold": float(snow_ticker_match.group(1)),
+                "unit": "inches",
+            }
+        # Binary any-snow
+        return {"type": "precip_snow", "threshold": 0.0, "unit": "inches"}
+
     if is_precip:
         # Explicit threshold: e.g. KXRAIN-26APR10-P0.25 → precip > 0.25 in
         precip_match = re.search(r"-P(\d+(?:\.\d+)?)(?:-|$)", ticker)
@@ -693,21 +1100,79 @@ def _edge_label(edge: float) -> str:
 
 
 def _blend_weights(
-    days_out: int, has_nws: bool, has_clim: bool
+    days_out: int,
+    has_nws: bool,
+    has_clim: bool,
+    city: str | None = None,
+    season: str | None = None,
 ) -> tuple[float, float, float]:
-    """Return (w_ensemble, w_climatology, w_nws) based on days out."""
-    if days_out <= 1:
-        w_ens, w_clim, w_nws = 0.80, 0.05, 0.15
-    elif days_out <= 3:
-        w_ens, w_clim, w_nws = 0.70, 0.10, 0.20
-    elif days_out <= 5:
-        w_ens, w_clim, w_nws = 0.55, 0.20, 0.25
+    """Return (w_ensemble, w_climatology, w_nws).
+
+    Priority: city-specific calibration > seasonal calibration > hardcoded schedule.
+    """
+    # 1. City-specific calibration weights
+    if city and city in _CITY_WEIGHTS:
+        cal = _CITY_WEIGHTS[city]
+        w_ens = cal["ensemble"]
+        w_clim = cal["climatology"]
+        w_nws = cal["nws"]
+        if not has_nws:
+            w_ens += w_nws * 0.6
+            w_clim += w_nws * 0.4
+            w_nws = 0.0
+        if not has_clim:
+            w_ens += w_clim
+            w_clim = 0.0
+        total = w_ens + w_clim + w_nws
+        if total > 0.0:
+            return w_ens / total, w_clim / total, w_nws / total
+        # Degenerate calibration data; fall through to seasonal/hardcoded
+
+    # 2. Seasonal calibration weights
+    if season and season in _SEASONAL_WEIGHTS:
+        cal = _SEASONAL_WEIGHTS[season]
+        w_ens = cal["ensemble"]
+        w_clim = cal["climatology"]
+        w_nws = cal["nws"]
+        if not has_nws:
+            w_ens += w_nws * 0.6
+            w_clim += w_nws * 0.4
+            w_nws = 0.0
+        if not has_clim:
+            w_ens += w_clim
+            w_clim = 0.0
+        total = w_ens + w_clim + w_nws
+        if total > 0.0:
+            return w_ens / total, w_clim / total, w_nws / total
+        # Degenerate calibration data; fall through to hardcoded schedule
+
+    # 3. Hardcoded schedule (original logic)
+    if days_out <= 3:
+        w_nws = 0.35
     elif days_out <= 7:
-        w_ens, w_clim, w_nws = 0.40, 0.35, 0.25
-    elif days_out <= 10:
-        w_ens, w_clim, w_nws = 0.20, 0.55, 0.25
+        w_nws = 0.25
     else:
-        w_ens, w_clim, w_nws = 0.10, 0.65, 0.25
+        w_nws = 0.10
+
+    w_rem = 1.0 - w_nws
+    if days_out <= 1:
+        w_ens = w_rem * 0.94
+        w_clim = w_rem * 0.06
+    elif days_out <= 3:
+        w_ens = w_rem * 0.87
+        w_clim = w_rem * 0.13
+    elif days_out <= 5:
+        w_ens = w_rem * 0.69
+        w_clim = w_rem * 0.31
+    elif days_out <= 7:
+        w_ens = w_rem * 0.53
+        w_clim = w_rem * 0.47
+    elif days_out <= 10:
+        w_ens = w_rem * 0.26
+        w_clim = w_rem * 0.74
+    else:
+        w_ens = w_rem * 0.13
+        w_clim = w_rem * 0.87
 
     if not has_nws:
         w_ens += w_nws * 0.6
@@ -721,15 +1186,231 @@ def _blend_weights(
     return w_ens / total, w_clim / total, w_nws / total
 
 
+_ENS_STD_REF = 4.0  # °F — typical tight ensemble spread
+
+
+def _confidence_scaled_blend_weights(
+    days_out: int,
+    has_nws: bool,
+    has_clim: bool,
+    ens_std: float | None = None,
+    city: str | None = None,
+    season: str | None = None,
+) -> tuple[float, float, float]:
+    """#31: _blend_weights scaled by inverse ensemble variance."""
+    w_ens, w_clim, w_nws = _blend_weights(
+        days_out, has_nws, has_clim, city=city, season=season
+    )
+    if ens_std is None or ens_std <= 0:
+        return w_ens, w_clim, w_nws
+    scale = max(0.5, min(1.5, _ENS_STD_REF / ens_std))
+    # Clamp w_ens_scaled so it cannot exceed the available weight budget (w_ens stays ≤ 1.0)
+    w_ens_scaled = min(w_ens * scale, 1.0)
+    delta = w_ens - w_ens_scaled
+    total_others = w_clim + w_nws
+    if total_others > 0:
+        w_clim_new = w_clim + delta * (w_clim / total_others)
+        w_nws_new = w_nws + delta * (w_nws / total_others)
+    else:
+        w_clim_new = w_clim
+        w_nws_new = w_nws
+    total = w_ens_scaled + w_clim_new + w_nws_new
+    return w_ens_scaled / total, w_clim_new / total, w_nws_new / total
+
+
+def wet_bulb_temp(temp_f: float, rh_pct: float) -> float:
+    """#34: Stull (2011) wet-bulb temperature approximation."""
+    import math as _math
+
+    T = (temp_f - 32) * 5 / 9
+    RH = rh_pct
+    Tw_c = (
+        T * _math.atan(0.151977 * (RH + 8.313659) ** 0.5)
+        + _math.atan(T + RH)
+        - _math.atan(RH - 1.676331)
+        + 0.00391838 * RH**1.5 * _math.atan(0.023101 * RH)
+        - 4.686035
+    )
+    return Tw_c * 9 / 5 + 32
+
+
+def snow_liquid_ratio(wet_bulb_f: float) -> int:
+    """#34: Empirical SLR from wet-bulb temp (NOAA operational)."""
+    if wet_bulb_f > 32.0:
+        return 0
+    elif wet_bulb_f > 30.0:
+        return 10
+    elif wet_bulb_f > 28.0:
+        return 15
+    else:
+        return 20
+
+
+def liquid_equiv_of_snow_threshold(snow_inches: float, slr: int) -> float:
+    """#34: Convert snow threshold (inches) to liquid water equivalent."""
+    if slr <= 0:
+        return float("inf")
+    return snow_inches / slr
+
+
+def _blend_probabilities(
+    ensemble_prob: float | None,
+    nws_prob: float | None,
+    clim_prob: float | None,
+    days_out: int = 3,
+) -> float | None:
+    """
+    #33: Blend ensemble, NWS, and climatological probabilities with NWS always included.
+
+    NWS weights:
+      days_out 0–3: 0.35
+      days_out 4–7: 0.25
+      days_out 7+:  0.10
+
+    Handles None inputs by renormalizing weights among available sources.
+    Returns None only if all inputs are None.
+    """
+    if days_out <= 3:
+        w_nws_base = 0.35
+    elif days_out <= 7:
+        w_nws_base = 0.25
+    else:
+        w_nws_base = 0.10
+
+    # Remaining weight split evenly between ensemble and clim
+    w_rem = 1.0 - w_nws_base
+    w_ens_base = w_rem * 0.65  # ensemble gets ~2/3 of remaining
+    w_clim_base = w_rem * 0.35  # climatology gets ~1/3 of remaining
+
+    sources = []
+    if ensemble_prob is not None:
+        sources.append((ensemble_prob, w_ens_base))
+    if nws_prob is not None:
+        sources.append((nws_prob, w_nws_base))
+    if clim_prob is not None:
+        sources.append((clim_prob, w_clim_base))
+
+    if not sources:
+        return None
+
+    total_w = sum(w for _, w in sources)
+    return sum(p * w for p, w in sources) / total_w
+
+
+def bayesian_kelly(
+    ci_low: float,
+    ci_high: float,
+    price: float,
+    fee_rate: float = KALSHI_FEE_RATE,
+    n_steps: int = 50,
+) -> float:
+    """
+    #39: Bayesian Kelly — integrate kelly_fraction over a uniform posterior on
+    [ci_low, ci_high] rather than using the point-estimate probability.
+
+    A uniform posterior is the maximum-entropy choice given only CI bounds.
+    Averaging Kelly over the distribution gives a more conservative sizing that
+    accounts for genuine uncertainty in the probability estimate.
+
+    Returns 0.0 when the CI is trivially wide (full [0, 1] range).
+    """
+    ci_low = max(0.01, ci_low)
+    ci_high = min(0.99, ci_high)
+    if ci_high <= ci_low:
+        return kelly_fraction(ci_low, price, fee_rate)
+    if ci_high - ci_low >= 0.99:
+        return 0.0  # no information — don't bet
+
+    step = (ci_high - ci_low) / n_steps
+    total = 0.0
+    for i in range(n_steps + 1):
+        p = ci_low + i * step
+        total += kelly_fraction(p, price, fee_rate)
+    return round(total / (n_steps + 1), 6)
+
+
+def bayesian_kelly_fraction(
+    our_prob: float,
+    market_prob: float,
+    n_predictions: int = 20,
+    confidence: float = 0.90,
+    fee_rate: float = KALSHI_FEE_RATE,
+) -> float:
+    """
+    #39: Bayesian Kelly with Beta posterior uncertainty shrinkage.
+
+    Builds a Beta(alpha, beta) posterior from n_predictions pseudo-observations
+    centred on our_prob, then uses the Wilson lower bound at `confidence` as a
+    conservative probability estimate before calling kelly_fraction.
+
+    Alpha = our_prob * n_predictions + 1
+    Beta  = (1 - our_prob) * n_predictions + 1
+
+    The Wilson lower bound at `confidence` is the (1-confidence)/2 quantile of
+    the Beta distribution, approximated via a normal approximation on the logit
+    scale (suitable for probabilities not near 0 or 1).
+
+    Returns kelly_fraction(conservative_p, market_prob), capped at 0.25.
+    Never returns a negative value.
+    """
+    import math
+
+    our_prob = max(0.01, min(0.99, our_prob))
+    market_prob = max(0.01, min(0.99, market_prob))
+
+    alpha = our_prob * n_predictions + 1.0
+    beta = (1.0 - our_prob) * n_predictions + 1.0
+    n_total = alpha + beta
+
+    # Beta mean and variance
+    mu = alpha / n_total
+    var = (alpha * beta) / (n_total**2 * (n_total + 1))
+    sigma = math.sqrt(var)
+
+    # Normal approximation: lower bound at (1 - confidence) / 2 tail
+    z = _normal_quantile((1.0 - confidence) / 2.0)  # negative value for lower tail
+    conservative_p = mu + z * sigma  # z is negative, so this shrinks toward 0
+
+    conservative_p = max(0.01, min(0.99, conservative_p))
+    result = kelly_fraction(conservative_p, market_prob, fee_rate=fee_rate)
+    return min(max(0.0, result), 0.25)
+
+
+def _normal_quantile(p: float) -> float:
+    """Approximate inverse CDF of the standard normal (rational approximation)."""
+    import math
+
+    if p <= 0.0:
+        return float("-inf")
+    if p >= 1.0:
+        return float("inf")
+    # Rational approximation (Abramowitz & Stegun 26.2.17)
+    c = [2.515517, 0.802853, 0.010328]
+    d = [1.432788, 0.189269, 0.001308]
+    t = math.sqrt(-2.0 * math.log(p if p < 0.5 else 1.0 - p))
+    num = c[0] + c[1] * t + c[2] * t**2
+    den = 1.0 + d[0] * t + d[1] * t**2 + d[2] * t**3
+    x = t - num / den
+    return -x if p < 0.5 else x
+
+
 def _bootstrap_ci(
     temps: list[float], condition: dict, n: int = 500
 ) -> tuple[float, float]:
     """
     Bootstrap 90% confidence interval on the ensemble probability estimate.
-    Resamples ensemble members with replacement n times.
+    #114: Returns (0.0, 1.0) wide CI if N < 30 (too few for reliable estimate).
+    #128: Caps bootstrap reps at 1000 and subsamples large ensembles.
     """
     if len(temps) < 5:
         return (0.0, 1.0)
+    if len(temps) < 30:
+        # Too few members for a reliable CI; return maximally uncertain
+        return (0.0, 1.0)
+
+    # Cap reps and subsample huge ensembles to avoid slowness
+    n = min(n, 1000)
+    sample_temps = temps if len(temps) <= 10_000 else random.sample(temps, 10_000)
 
     def prob_from(sample):
         if condition["type"] == "above":
@@ -740,8 +1421,8 @@ def _bootstrap_ci(
             lo, hi = condition["lower"], condition["upper"]
             return sum(1 for t in sample if lo <= t <= hi) / len(sample)
 
-    k = len(temps)
-    boot = sorted(prob_from(random.choices(temps, k=k)) for _ in range(n))
+    k = len(sample_temps)
+    boot = sorted(prob_from(random.choices(sample_temps, k=k)) for _ in range(n))
     p05 = boot[min(int(n * 0.05), n - 1)]
     p95 = boot[min(int(n * 0.95), n - 1)]
     return (p05, p95)
@@ -765,6 +1446,28 @@ def _bootstrap_ci_precip(
     return (boot[min(int(n * 0.05), n - 1)], boot[min(int(n * 0.95), n - 1)])
 
 
+def edge_confidence(days_out: int) -> float:
+    """Horizon discount factor for edge signal (#63).
+
+    Far-out markets are noisier; this multiplier reduces effective edge used
+    for go/no-go decisions without touching Kelly size (which has its own
+    time_kelly_scale). Floor of 0.60 so strong far-out edges still pass MIN_EDGE.
+
+    Piecewise linear:
+      days_out 0–2  : 1.00  (full confidence)
+      days_out 3–7  : linear 1.00 → 0.80
+      days_out 8–14 : linear 0.80 → 0.60
+      days_out > 14 : 0.60  (floor)
+    """
+    if days_out <= 2:
+        return 1.0
+    if days_out <= 7:
+        return 1.0 - (days_out - 2) / 5.0 * 0.20
+    if days_out <= 14:
+        return 0.80 - (days_out - 7) / 7.0 * 0.20
+    return 0.60
+
+
 def kelly_fraction(our_prob: float, price: float, fee_rate: float = 0.0) -> float:
     """
     Half-Kelly criterion for a binary prediction market.
@@ -782,7 +1485,31 @@ def kelly_fraction(our_prob: float, price: float, fee_rate: float = 0.0) -> floa
     b = winnings / price  # net odds: win $b for every $1 staked
     q = 1 - our_prob
     full_kelly = (b * our_prob - q) / b
-    return max(0.0, full_kelly / 2)  # half-Kelly for safety
+    half_kelly = max(0.0, full_kelly / 2)  # half-Kelly for safety
+    return min(half_kelly, 0.33)  # hard cap at 33% of bankroll
+
+
+def time_decay_edge(
+    raw_edge: float,
+    close_time: datetime,
+    reference_hours: float = 48.0,
+) -> float:
+    """
+    #63: Scale edge linearly to zero as the market approaches close.
+
+    At reference_hours or more before close: full edge returned.
+    At close_time or past: 0.0 returned.
+
+    hours_left = (close_time - now).total_seconds() / 3600
+    decay      = min(1.0, hours_left / reference_hours)   clamped at [0, 1]
+    returns    raw_edge * decay
+    """
+    now = datetime.now(UTC)
+    hours_left = (close_time - now).total_seconds() / 3600
+    if hours_left <= 0.0:
+        return 0.0
+    decay = min(1.0, hours_left / reference_hours)
+    return raw_edge * decay
 
 
 def _fetch_ensemble_precip(
@@ -796,8 +1523,10 @@ def _fetch_ensemble_precip(
     results = []
     target_str = target_date.isoformat()
     prefix = "precipitation_sum_member"
+    date_in_range = False  # #35: track whether any model covered this date
 
     def _fetch_model(model: str) -> list[float]:
+        nonlocal date_in_range
         try:
             params = {
                 "latitude": lat,
@@ -814,6 +1543,7 @@ def _fetch_ensemble_precip(
             times = daily.get("time", [])
             if target_str not in times:
                 return []
+            date_in_range = True  # at least one model has this date
             idx = times.index(target_str)
             return [
                 vals[idx]
@@ -831,6 +1561,9 @@ def _fetch_ensemble_precip(
     ecmwf_mult = 3 if target_date.month in (10, 11, 12, 1, 2, 3) else 2
     results.extend(ecmwf_members * ecmwf_mult)
 
+    # #70: return None instead of [] when no members fetched (caller can distinguish)
+    if not results and not date_in_range:
+        return None  # type: ignore[return-value]  # date outside forecast range
     return results
 
 
@@ -845,7 +1578,8 @@ def _analyze_precip_trade(
     days_out = max(0, (target_date - date.today()).days)
 
     # ── Ensemble precipitation probability ───────────────────────────────────
-    precip_members = _fetch_ensemble_precip(lat, lon, tz, target_date)
+    _raw_members = _fetch_ensemble_precip(lat, lon, tz, target_date)
+    precip_members: list[float] = _raw_members if _raw_members is not None else []
     ens_prob: float | None = None
     if len(precip_members) >= 10:
         if condition["type"] == "precip_any":
@@ -879,7 +1613,9 @@ def _analyze_precip_trade(
             pass
 
     # ── Dynamic blend weights (mirrors temperature path) ─────────────────────
-    w_ens, w_clim, _ = _blend_weights(days_out, has_nws=False, has_clim=True)
+    w_ens, w_clim, _ = _blend_weights(
+        days_out, has_nws=False, has_clim=True
+    )  # calibration not yet wired for precip/snow path
     clim_prior = 0.30  # rough historical rain frequency as fallback prior
     blended_prob = ens_prob * w_ens + clim_prior * w_clim
 
@@ -899,8 +1635,11 @@ def _analyze_precip_trade(
         city = enriched.get("_city")
         bias = get_bias(city, target_date.month)
         blended_prob = blended_prob - bias
-    except Exception:
-        pass
+    except Exception as _exc:
+        # #109: log with ticker so failures are traceable
+        _log.debug(
+            "Bias correction skipped for %s: %s", enriched.get("ticker", "?"), _exc
+        )
 
     blended_prob = max(0.01, min(0.99, blended_prob))
 
@@ -923,6 +1662,24 @@ def _analyze_precip_trade(
     ci_low, ci_high = blended_prob, blended_prob
     if len(precip_members) >= 5:
         ci_low, ci_high = _bootstrap_ci_precip(precip_members, condition)
+
+    # ── Consensus signal for precip: ensemble and clim_prior agree with blend ──
+    precip_consensus = (
+        (
+            (ens_prob > 0.5 and clim_prior > 0.5 and blended_prob > 0.5)
+            or (ens_prob < 0.5 and clim_prior < 0.5 and blended_prob < 0.5)
+        )
+        if ens_prob is not None
+        else False
+    )
+
+    # #39: Bayesian Kelly — integrate over uniform posterior on CI range
+    ci_adj_kelly = bayesian_kelly(
+        ci_low, ci_high, entry_price, fee_rate=KALSHI_FEE_RATE
+    )
+    if precip_consensus:
+        ci_adj_kelly = round(ci_adj_kelly * 1.25, 6)
+    ci_adj_kelly = min(ci_adj_kelly, 0.25)
 
     return {
         "forecast_prob": blended_prob,
@@ -951,8 +1708,120 @@ def _analyze_precip_trade(
         "ci_width": round(ci_high - ci_low, 4),
         "kelly": kelly,
         "fee_adjusted_kelly": fee_kel,
-        "ci_adjusted_kelly": round(fee_kel * max(0.25, 1.0 - (ci_high - ci_low)), 6),
+        "ci_adjusted_kelly": ci_adj_kelly,
         "time_risk": "HIGH",
+        "consensus": precip_consensus,
+    }
+
+
+def _analyze_snow_trade(
+    enriched: dict, forecast: dict, condition: dict, target_date: date, coords: tuple
+) -> dict | None:
+    """
+    Probability analysis for snow/ice markets.
+    Uses ensemble precipitation probability as a proxy for snow probability.
+    Falls back to a climatological base rate: 20% in winter (Dec-Feb), 5% otherwise.
+    """
+    lat, lon, tz = coords
+    days_out = max(0, (target_date - date.today()).days)
+
+    # ── Ensemble precipitation as proxy ──────────────────────────────────────
+    _raw_snow = _fetch_ensemble_precip(lat, lon, tz, target_date)
+    precip_members: list[float] = _raw_snow if _raw_snow is not None else []
+    ens_prob: float | None = None
+    threshold = condition.get("threshold", 0.0)
+
+    # #34: Wet-bulb SLR — convert snow threshold to liquid equivalent for comparison
+    _forecast_temp = forecast.get("high_f") or forecast.get("low_f") or 32.0
+    _forecast_rh = forecast.get("humidity_pct") or 80.0
+    try:
+        _wb = wet_bulb_temp(float(_forecast_temp), float(_forecast_rh))
+        _slr = snow_liquid_ratio(_wb)
+    except Exception:
+        _slr = 10  # fallback: 1:10 ratio
+
+    if len(precip_members) >= 10:
+        if threshold <= 0.0:
+            ens_prob = sum(1 for p in precip_members if p > 0.01) / len(precip_members)
+        else:
+            if _slr == 0:
+                ens_prob = 0.01  # essentially no snow above freezing
+            else:
+                liquid_thresh = liquid_equiv_of_snow_threshold(threshold, _slr)
+                ens_prob = sum(1 for p in precip_members if p > liquid_thresh) / len(
+                    precip_members
+                )
+
+    # ── Climatological base rate fallback ────────────────────────────────────
+    is_winter_month = target_date.month in (12, 1, 2)
+    clim_prior = 0.20 if is_winter_month else 0.05
+
+    if ens_prob is None:
+        ens_prob = clim_prior
+
+    # ── Blend ensemble with climatological prior ──────────────────────────────
+    w_ens, w_clim, _ = (
+        _confidence_scaled_blend_weights(  # calibration not yet wired for precip/snow path
+            days_out, has_nws=False, has_clim=True, ens_std=None
+        )
+    )
+    blended_prob = ens_prob * w_ens + clim_prior * w_clim
+    blended_prob = max(0.01, min(0.99, blended_prob))
+
+    prices = parse_market_price(enriched)
+    market_prob = prices["implied_prob"]
+    rec_side = "yes" if blended_prob > market_prob else "no"
+    entry_price = prices["yes_ask"] if rec_side == "yes" else prices["no_bid"]
+    if entry_price == 0:
+        entry_price = 1 - market_prob if rec_side == "no" else market_prob
+
+    payout = 1 - entry_price
+    p_win = blended_prob if rec_side == "yes" else 1 - blended_prob
+    net_ev = p_win * payout * (1 - KALSHI_FEE_RATE) - (1 - p_win) * entry_price
+    net_edge = net_ev / entry_price if entry_price > 0 else 0.0
+    edge = blended_prob - market_prob
+    kelly = kelly_fraction(p_win, entry_price)
+    fee_kel = kelly_fraction(p_win, entry_price, fee_rate=KALSHI_FEE_RATE)
+
+    ci_low, ci_high = blended_prob, blended_prob
+    if len(precip_members) >= 5:
+        ci_low, ci_high = _bootstrap_ci_precip(precip_members, condition)
+
+    # #39: Bayesian Kelly
+    ci_adj_kelly = min(
+        bayesian_kelly(ci_low, ci_high, entry_price, fee_rate=KALSHI_FEE_RATE), 0.25
+    )
+
+    return {
+        "forecast_prob": blended_prob,
+        "market_prob": market_prob,
+        "edge": edge,
+        "signal": _edge_label(edge),
+        "net_edge": net_edge,
+        "net_signal": _edge_label(net_edge),
+        "recommended_side": rec_side,
+        "condition": condition,
+        "forecast_temp": forecast.get("high_f") or forecast.get("temp_high") or 0.0,
+        "ensemble_prob": ens_prob,
+        "nws_prob": None,
+        "clim_prob": clim_prior,
+        "clim_adj_prob": None,
+        "obs_prob": None,
+        "live_obs": None,
+        "index_adj": 0.0,
+        "bias_correction": 0.0,
+        "blend_sources": {"ensemble": w_ens, "climatology": w_clim},
+        "method": "snow_ensemble" if len(precip_members) >= 10 else "snow_clim",
+        "ensemble_stats": None,
+        "n_members": len(precip_members),
+        "ci_low": ci_low,
+        "ci_high": ci_high,
+        "ci_width": round(ci_high - ci_low, 4),
+        "kelly": kelly,
+        "fee_adjusted_kelly": fee_kel,
+        "ci_adjusted_kelly": ci_adj_kelly,
+        "time_risk": "HIGH",
+        "consensus": False,
     }
 
 
@@ -969,12 +1838,21 @@ def analyze_trade(enriched: dict) -> dict | None:
       8. Bootstrap confidence interval
       9. Kelly fraction
     """
+    # #116: explicit precondition check with helpful error context
+    if not isinstance(enriched, dict):
+        raise ValueError(
+            f"analyze_trade: enriched must be a dict, got {type(enriched)}"
+        )
     forecast = enriched.get("_forecast")
     target_date = enriched.get("_date")
     city = enriched.get("_city")
     hour = enriched.get("_hour")
-    if not forecast or not target_date or not city:
-        return None
+    if not forecast:
+        return None  # no forecast data available for this market
+    if not target_date:
+        return None  # could not parse target date from ticker
+    if not city:
+        return None  # unrecognized city in ticker
 
     condition = _parse_market_condition(enriched)
     if not condition:
@@ -993,6 +1871,13 @@ def analyze_trade(enriched: dict) -> dict | None:
         result = _analyze_precip_trade(
             enriched, forecast, condition, target_date, coords
         )
+        if result is not None:
+            result["time_risk"] = time_risk_label
+        return result
+
+    # ── Snow/ice market fast-path ─────────────────────────────────────────────
+    if condition["type"] == "precip_snow":
+        result = _analyze_snow_trade(enriched, forecast, condition, target_date, coords)
         if result is not None:
             result["time_risk"] = time_risk_label
         return result
@@ -1072,21 +1957,81 @@ def analyze_trade(enriched: dict) -> dict | None:
         except Exception:
             pass
 
+    # ── 5b. Persistence baseline (days_out <= 2 only) ────────────────────────
+    persistence_p: float | None = None
+    if days_out <= 2:
+        try:
+            from climatology import persistence_prob as _persistence_prob
+            from nws import get_live_observation as _get_live_obs
+
+            _live = _get_live_obs(city, coords) if days_out <= 1 else None
+            _live_temp = _live.get("temp_f") if _live else None
+            _current_temp: float = (
+                float(_live_temp) if _live_temp is not None else forecast_temp
+            )
+            _cond_type = condition["type"]
+            _tlo = condition.get("threshold", condition.get("lower", forecast_temp))
+            _thi = condition.get("upper")
+            persistence_p = _persistence_prob(_cond_type, _tlo, _thi, _current_temp)
+        except Exception:
+            pass
+
     # ── 6. Weighted blend ────────────────────────────────────────────────────
     if obs_override is not None:
         # Same-day with live obs — trust almost entirely
         blended_prob = obs_override * 0.95 + (ens_prob or 0.5) * 0.05
         blend_sources = {"obs": 0.95, "ensemble": 0.05}
     else:
-        w_ens, w_clim, w_nws = _blend_weights(
-            days_out, _nws_prob is not None, clim_prob is not None
+        _month = (
+            target_date.month
+            if target_date
+            else __import__("datetime").datetime.now().month
         )
+        _season = {
+            12: "winter",
+            1: "winter",
+            2: "winter",
+            3: "spring",
+            4: "spring",
+            5: "spring",
+            6: "summer",
+            7: "summer",
+            8: "summer",
+            9: "fall",
+            10: "fall",
+            11: "fall",
+        }.get(_month, "spring")
+        w_ens, w_clim, w_nws = _confidence_scaled_blend_weights(
+            days_out,
+            _nws_prob is not None,
+            clim_prob is not None,
+            ens_std=ens_stats.get("std") if ens_stats else None,
+            city=city,
+            season=_season,
+        )
+        # #26: persistence baseline at 15% for days_out <= 2
+        if persistence_p is not None and days_out <= 2:
+            w_persist = 0.15
+            scale = 1.0 - w_persist
+            w_ens = w_ens * scale
+            w_clim = w_clim * scale
+            w_nws = w_nws * scale
+        else:
+            w_persist = 0.0
+            persistence_p = None
+
         blended_prob = (
             w_ens * (ens_prob or 0.5)
             + w_clim * (clim_prob or 0.5)
             + w_nws * (_nws_prob or 0.5)
+            + w_persist * (persistence_p or 0.5)
         )
-        blend_sources = {"ensemble": w_ens, "climatology": w_clim, "nws": w_nws}
+        blend_sources = {
+            "ensemble": w_ens,
+            "climatology": w_clim,
+            "nws": w_nws,
+            **({"persistence": w_persist} if w_persist > 0 else {}),
+        }
 
     # ── 7. Bias correction from tracker ─────────────────────────────────────
     bias = 0.0
@@ -1095,8 +2040,21 @@ def analyze_trade(enriched: dict) -> dict | None:
 
         bias = get_bias(city, target_date.month)
         blended_prob = max(0.01, min(0.99, blended_prob - bias))
-    except Exception:
-        pass
+    except Exception as _exc:
+        # #109: log with ticker/city so failures are traceable
+        _log.debug(
+            "Bias correction skipped for %s (%s): %s",
+            enriched.get("ticker", "?"),
+            city,
+            _exc,
+        )
+
+    # ── Consensus signal: all available sources agree on direction ───────────
+    sources_with_data = [p for p in [ens_prob, _nws_prob, clim_prob] if p is not None]
+    consensus = len(sources_with_data) >= 2 and (
+        all(p > 0.5 for p in sources_with_data)
+        or all(p < 0.5 for p in sources_with_data)
+    )
 
     # ── 8. Confidence interval (bootstrap on ensemble members) ───────────────
     ci_low, ci_high = (blended_prob, blended_prob)
@@ -1118,6 +2076,27 @@ def analyze_trade(enriched: dict) -> dict | None:
     # Flag anomalously wide ensemble spread (models disagree strongly)
     anomalous = is_forecast_anomalous(ens_stats or {})
 
+    # Regime detection
+    _regime_info: dict = {}
+    _confidence_boost = 1.0
+    try:
+        from regime import detect_regime as _detect_regime
+
+        _regime_info = _detect_regime(city, ens_stats or {}, days_out)
+        _confidence_boost = _regime_info.get("confidence_boost", 1.0)
+    except Exception:
+        pass
+
+    # Log source availability for per-city reliability tracking
+    try:
+        from tracker import log_source_attempt as _log_src
+
+        _log_src(city, "ensemble", ens_prob is not None)
+        _log_src(city, "nws", _nws_prob is not None)
+        _log_src(city, "climatology", clim_prob is not None)
+    except Exception:
+        pass
+
     # ── 10. Kelly fraction ───────────────────────────────────────────────────
     prices = parse_market_price(enriched)
     market_prob = prices["implied_prob"]
@@ -1129,8 +2108,35 @@ def analyze_trade(enriched: dict) -> dict | None:
         blended_prob if rec_side == "yes" else 1 - blended_prob, entry_price
     )
 
+    # ── 10a. Bid-ask spread cost ─────────────────────────────────────────────
+    # Wide spreads mean real slippage beyond the Kalshi fee.
+    # Use the actual spread as a fraction of mid; default 5% for illiquid markets.
+    yes_ask_p, yes_bid_p = prices["yes_ask"], prices["yes_bid"]
+    if yes_ask_p > 0 and yes_bid_p > 0 and yes_ask_p > yes_bid_p:
+        spread_abs = yes_ask_p - yes_bid_p
+        mid_p = (yes_ask_p + yes_bid_p) / 2
+        spread_cost = spread_abs / mid_p if mid_p > 0 else 0.05
+    else:
+        spread_cost = 0.05  # conservative default for markets with no live quote
+    # A 5% spread → 10% reduction; 25% spread → 50% reduction; floor at 0.50
+    spread_scale = max(0.50, 1.0 - spread_cost * 2)
+
     edge = blended_prob - market_prob
     signal = _edge_label(edge)
+
+    # #61: entry-side edge uses actual ask/bid rather than mid-price
+    if rec_side == "yes":
+        entry_side_market_prob = (
+            prices["yes_ask"] if prices["yes_ask"] > 0 else market_prob
+        )
+    else:
+        entry_side_market_prob = (
+            (1 - prices["no_bid"]) if prices["no_bid"] > 0 else market_prob
+        )
+    entry_side_edge = blended_prob - entry_side_market_prob
+
+    # #62: explicit illiquid flag (spread > 5%)
+    illiquid = spread_cost > 0.05
 
     # ── 11. Fee-adjusted edge ────────────────────────────────────────────────
     if rec_side == "yes":
@@ -1145,7 +2151,9 @@ def analyze_trade(enriched: dict) -> dict | None:
         net_ev = p_win * payout * (1 - KALSHI_FEE_RATE) - blended_prob * entry_price
 
     net_edge = net_ev / entry_price if entry_price > 0 else 0.0
-    net_signal = _edge_label(net_edge)
+    _edge_conf = edge_confidence(days_out)
+    adjusted_edge = net_edge * _edge_conf
+    net_signal = _edge_label(adjusted_edge)
     fee_adjusted_kelly = kelly_fraction(
         blended_prob if rec_side == "yes" else 1 - blended_prob,
         entry_price,
@@ -1155,10 +2163,29 @@ def analyze_trade(enriched: dict) -> dict | None:
     # Scale Kelly down for low data quality and anomalous forecasts
     quality_scale = 0.5 + 0.5 * data_quality  # 0.5 at quality=0, 1.0 at quality=1
     anomaly_scale = 0.70 if anomalous else 1.0
-    ci_scale = max(0.25, 1.0 - (ci_high - ci_low))
+
+    # Time-value Kelly: reduce bet size for far-out markets (more uncertainty).
+    # Scale: 1.0 at 0-1 days → 0.5 at ≥14 days. Intermediate values are linear.
+    time_kelly_scale = max(0.50, 1.0 - (days_out / 14.0) * 0.50)
+
+    # #39: Bayesian Kelly — integrate over uniform posterior on [ci_low, ci_high]
+    # Then apply the same quality/anomaly/spread/time modifiers as before.
+    bk = bayesian_kelly(ci_low, ci_high, entry_price, fee_rate=KALSHI_FEE_RATE)
     ci_adjusted_kelly = round(
-        fee_adjusted_kelly * ci_scale * quality_scale * anomaly_scale, 6
+        bk
+        * quality_scale
+        * anomaly_scale
+        * spread_scale
+        * time_kelly_scale
+        * _confidence_boost,
+        6,
     )
+    ci_adjusted_kelly = min(ci_adjusted_kelly, 0.25)
+
+    # Consensus bonus: all sources agree → size up 25%
+    if consensus:
+        ci_adjusted_kelly = round(ci_adjusted_kelly * 1.25, 6)
+    ci_adjusted_kelly = min(ci_adjusted_kelly, 0.25)
 
     return {
         # Core
@@ -1167,6 +2194,8 @@ def analyze_trade(enriched: dict) -> dict | None:
         "edge": edge,
         "signal": signal,
         "net_edge": net_edge,
+        "adjusted_edge": round(adjusted_edge, 6),
+        "edge_confidence_factor": _edge_conf,
         "net_signal": net_signal,
         "recommended_side": rec_side,
         "condition": condition,
@@ -1196,4 +2225,69 @@ def analyze_trade(enriched: dict) -> dict | None:
         # Data quality
         "data_quality": data_quality,
         "forecast_anomalous": anomalous,
+        "spread_cost": round(spread_cost, 4),
+        "spread_scale": round(spread_scale, 4),
+        "illiquid": illiquid,  # #62: True if spread > 5%
+        "entry_side_edge": round(entry_side_edge, 4),  # #61: edge vs actual ask/bid
+        "time_kelly_scale": round(time_kelly_scale, 4),
+        # Consensus signal
+        "consensus": consensus,
+        # Regime detection
+        "regime": _regime_info.get("regime", "normal"),
+        "regime_description": _regime_info.get("description", ""),
+        # Feels-like temperature (informational)
+        "feels_like": round(
+            _feels_like(ens_stats.get("mean", 65.0)) if ens_stats else 65.0,
+            1,
+        ),
     }
+
+
+def detect_hedge_opportunity(analysis: dict, open_trades: list[dict]) -> bool:
+    """
+    Return True if the new trade would partially hedge an existing open position
+    (i.e., the opposite side of the same city+date is already open).
+    A hedge reduces net directional risk, so it can be sized slightly larger.
+    """
+    city = analysis.get("city") or analysis.get("_city")
+    if not city:
+        return False
+    rec_side = analysis.get("recommended_side", "yes")
+    opposite = "no" if rec_side == "yes" else "yes"
+    return any(
+        t.get("city") == city and t.get("side") == opposite
+        for t in open_trades
+        if not t.get("settled")
+    )
+
+
+def analyze_markets_parallel(
+    markets: list[dict],
+    max_workers: int = 10,
+) -> list[dict | None]:
+    """
+    Run analyze_trade on each market concurrently (#127).
+    Returns list of result dicts (one per market, None on per-market error).
+    """
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    results: list[dict | None] = [None] * len(markets)
+
+    def _worker(idx: int, market: dict) -> tuple[int, dict | None]:
+        enriched = enrich_with_forecast(market)
+        return idx, analyze_trade(enriched)
+
+    with ThreadPoolExecutor(max_workers=max_workers) as pool:
+        futures = {pool.submit(_worker, i, m): i for i, m in enumerate(markets)}
+        for fut in as_completed(futures):
+            idx = futures[fut]
+            try:
+                _, analysis = fut.result()
+                results[idx] = analysis
+            except Exception as exc:
+                _log.warning(
+                    "analyze_markets_parallel: market index %d failed: %s", idx, exc
+                )
+                results[idx] = None
+
+    return results

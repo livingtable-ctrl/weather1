@@ -1,0 +1,24 @@
+[
+  {
+    "ticker": "KXHIGHNY-26APR09-T72",
+    "title": "NYC High Temp > 72°F on Apr 9",
+    "yes_bid": 0.62,
+    "yes_ask": 0.65,
+    "last_price": 0.63,
+    "volume": 1200,
+    "open_interest": 3400,
+    "close_time": "2026-04-09T23:59:00Z",
+    "status": "open"
+  },
+  {
+    "ticker": "KXHIGHCHI-26APR09-T58",
+    "title": "Chicago High Temp > 58°F on Apr 9",
+    "yes_bid": 0.45,
+    "yes_ask": 0.48,
+    "last_price": 0.46,
+    "volume": 800,
+    "open_interest": 2100,
+    "close_time": "2026-04-09T23:59:00Z",
+    "status": "open"
+  }
+]

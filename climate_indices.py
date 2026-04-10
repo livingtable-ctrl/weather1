@@ -138,6 +138,21 @@ def get_indices(
     return result
 
 
+def get_enso_index(
+    target_month: int | None = None, target_year: int | None = None
+) -> float | None:
+    """
+    #28: Return the current ONI (ENSO) index value, or None if unavailable.
+    Positive values indicate El Niño, negative indicate La Niña.
+    """
+    try:
+        indices = get_indices(target_month, target_year)
+        val = indices.get("enso")
+        return val if val is not None else None
+    except Exception:
+        return None
+
+
 def temperature_adjustment(city: str, target_date: date) -> float:
     """
     Estimate temperature adjustment (°F) to apply to the climatological baseline

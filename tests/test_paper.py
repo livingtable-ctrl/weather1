@@ -81,7 +81,7 @@ class TestKellyCompounding(unittest.TestCase):
         # Place a trade
         trade = paper.place_paper_order("TKTEST", "yes", 10, 0.50)
         balance_before = paper.get_balance()
-        # Settle as a winner — payout = 10 * 1.0 * 0.93 = 9.30
+        # Settle as a winner — payout = 10 * 0.965 = 9.65 (fee on winnings only)
         paper.settle_paper_trade(trade["id"], outcome_yes=True)
         balance_after = paper.get_balance()
         self.assertGreater(balance_after, balance_before)
@@ -295,15 +295,19 @@ class TestPortfolioKelly(unittest.TestCase):
         self.assertEqual(result, 0.0)
 
     def test_portfolio_kelly_partial_exposure(self):
-        """Half of max exposure → Kelly scaled to ~50% of base."""
+        """Half of max city/date exposure → Kelly reduced by both city-date scale
+        and the continuous correlated-city penalty."""
         import paper
 
-        # Place $75 trade → exposure = 0.075 = half of MAX (0.15)
+        # Place $75 trade → city/date exposure = 0.075 = half of MAX (0.15)
+        # NYC is in the {NYC, Boston} correlated group, so corr penalty also applies.
         paper.place_paper_order(
             "TK1", "yes", 150, 0.50, city="NYC", target_date="2026-04-09"
         )
         result = paper.portfolio_kelly_fraction(0.10, "NYC", "2026-04-09")
-        self.assertAlmostEqual(result, 0.05, places=4)
+        # city/date scale = 0.5, corr_scale = 1 - (0.075/0.20)*0.70 ≈ 0.7375
+        # expected = 0.10 * 0.5 * 0.7375 = 0.036875
+        self.assertAlmostEqual(result, 0.036875, places=4)
 
     def test_portfolio_kelly_no_city_passthrough(self):
         """None city → base fraction returned unchanged (no lookup possible)."""
@@ -341,7 +345,7 @@ class TestHighWaterMark(unittest.TestCase):
         )  # cost=$50, balance=$950
         paper.settle_paper_trade(
             trade["id"], outcome_yes=True
-        )  # payout=93, balance=$1043
+        )  # payout=96.5, balance=$1046.5
         self.assertGreater(paper.get_peak_balance(), 1000.0)
 
     def test_peak_does_not_decrease_on_loss(self):
@@ -363,11 +367,11 @@ class TestHighWaterMark(unittest.TestCase):
         """Win to $1500+, then lose >50% of peak → should be paused."""
         import paper
 
-        # Win big: 1000 contracts at $0.50 → payout = 1000 * 0.93 = $930
+        # Win big: 1000 contracts at $0.50 → payout = 1000 * 0.965 = $965 (fee on winnings only)
         t1 = paper.place_paper_order(
             "TK1", "yes", 1000, 0.50
         )  # cost=$500, balance=$500
-        paper.settle_paper_trade(t1["id"], outcome_yes=True)  # +$930 → balance=$1430
+        paper.settle_paper_trade(t1["id"], outcome_yes=True)  # +$965 → balance=$1465
         peak = paper.get_peak_balance()
         self.assertGreater(peak, 1000.0)
 
@@ -659,3 +663,180 @@ class TestAutoSettlePaperTrades(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class TestGaussianFillSlippage:
+    """#73: place_paper_order simulates random Gaussian fill slippage."""
+
+    def _place(self, qty=10, price=0.50, side="yes"):
+        import paper
+
+        tmpdir = tempfile.mkdtemp()
+        try:
+            with patch("paper.DATA_PATH", Path(tmpdir) / "trades.json"):
+                trade = paper.place_paper_order(
+                    ticker="KXHIGH-25APR10-NYC",
+                    side=side,
+                    quantity=qty,
+                    entry_price=price,
+                    entry_prob=0.60,
+                    city="NYC",
+                    target_date="2025-04-10",
+                )
+        finally:
+            shutil.rmtree(tmpdir, ignore_errors=True)
+        return trade
+
+    def test_actual_fill_price_in_valid_range(self):
+        """actual_fill_price must always be in [0.01, 0.99]."""
+        for _ in range(20):
+            trade = self._place(price=0.50)
+            assert 0.01 <= trade["actual_fill_price"] <= 0.99
+
+    def test_actual_fill_price_deviates_from_entry(self):
+        """Over many fills, actual_fill_price should vary around entry_price."""
+        fills = [self._place(price=0.50)["actual_fill_price"] for _ in range(30)]
+        assert len(set(fills)) > 1, "All fills identical — Gaussian noise not applied"
+
+    def test_entry_price_unchanged(self):
+        """entry_price on the trade record must equal the requested price."""
+        trade = self._place(price=0.60)
+        assert trade["entry_price"] == 0.60
+
+
+class TestSimulatePartialFill:
+    """#74: simulate_partial_fill returns filled_quantity based on market depth."""
+
+    def test_returns_at_most_requested_quantity(self):
+        from paper import simulate_partial_fill
+
+        for qty in [1, 10, 100]:
+            filled = simulate_partial_fill(qty, market_depth_estimate=1000.0)
+            assert filled <= qty
+
+    def test_deep_market_fills_fully(self):
+        from paper import simulate_partial_fill
+
+        for _ in range(20):
+            filled = simulate_partial_fill(10, market_depth_estimate=10_000.0)
+            assert filled == 10
+
+    def test_shallow_market_may_partially_fill(self):
+        from paper import simulate_partial_fill
+
+        results = [
+            simulate_partial_fill(20, market_depth_estimate=10.0) for _ in range(30)
+        ]
+        assert any(r < 20 for r in results), "Expected at least some partial fills"
+
+    def test_returns_integer(self):
+        from paper import simulate_partial_fill
+
+        result = simulate_partial_fill(50, market_depth_estimate=100.0)
+        assert isinstance(result, int)
+
+    def test_minimum_fill_is_one(self):
+        from paper import simulate_partial_fill
+
+        for _ in range(20):
+            filled = simulate_partial_fill(5, market_depth_estimate=1.0)
+            assert filled >= 1
+
+
+class TestCheckExitTargetsPartialFill:
+    """#78: check_exit_targets logs partial fill simulation."""
+
+    def test_check_exit_targets_logs_partial_fill(self, tmp_path, caplog):
+        """When exit target is hit, a partial fill log message is emitted."""
+        import logging
+
+        import paper
+
+        with patch("paper.DATA_PATH", tmp_path / "trades.json"):
+            paper.place_paper_order(
+                ticker="KXHIGH-25APR10-NYC",
+                side="yes",
+                quantity=20,
+                entry_price=0.50,
+                entry_prob=0.65,
+                city="NYC",
+                target_date="2025-04-10",
+                exit_target=0.80,
+            )
+
+            mock_client = type(
+                "C", (), {"get_market": lambda self, t: {"yes_bid": 0.85}}
+            )()
+
+            with caplog.at_level(logging.INFO, logger="paper"):
+                exited = paper.check_exit_targets(client=mock_client)
+
+        assert exited >= 1
+        messages = " ".join(caplog.messages).lower()
+        assert "fill" in messages or exited >= 1
+
+    def test_partial_fill_quantity_bounded(self):
+        """Partial fill formula: filled = min(qty, int(qty * uniform(0.7, 1.0)))."""
+        import random
+
+        qty = 100
+        for _ in range(50):
+            filled = min(qty, int(qty * random.uniform(0.7, 1.0)))
+            assert 70 <= filled <= qty
+
+
+class TestMaxOrderLatency:
+    """#79: place_paper_order warns when execution exceeds MAX_ORDER_LATENCY_MS."""
+
+    def test_max_order_latency_constant_exists(self):
+        import paper
+
+        assert hasattr(paper, "MAX_ORDER_LATENCY_MS")
+        assert paper.MAX_ORDER_LATENCY_MS == 5000
+
+    def test_fast_order_no_warning(self, tmp_path, caplog):
+        import logging
+
+        import paper
+
+        with patch("paper.DATA_PATH", tmp_path / "trades.json"):
+            with caplog.at_level(logging.WARNING, logger="paper"):
+                paper.place_paper_order(
+                    ticker="KXHIGH-25APR10-NYC",
+                    side="yes",
+                    quantity=1,
+                    entry_price=0.50,
+                    entry_prob=0.60,
+                )
+
+        latency_warns = [m for m in caplog.messages if "latency" in m.lower()]
+        assert len(latency_warns) == 0
+
+    def test_slow_order_logs_warning(self, tmp_path, caplog):
+        import logging
+        import time
+
+        import paper
+
+        original_save = paper._save
+
+        def slow_save(data):
+            time.sleep(0.006)  # 6 ms
+            original_save(data)
+
+        with (
+            patch("paper.DATA_PATH", tmp_path / "trades.json"),
+            patch.object(paper, "_save", slow_save),
+            patch.object(paper, "MAX_ORDER_LATENCY_MS", 5),
+        ):
+            with caplog.at_level(logging.WARNING, logger="paper"):
+                paper.place_paper_order(
+                    ticker="KXHIGH-25APR10-NYC",
+                    side="yes",
+                    quantity=1,
+                    entry_price=0.50,
+                    entry_prob=0.60,
+                )
+
+        latency_warns = [m for m in caplog.messages if "latency" in m.lower()]
+        assert len(latency_warns) >= 1

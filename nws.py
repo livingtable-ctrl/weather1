@@ -7,16 +7,29 @@ Provides:
 
 from __future__ import annotations
 
+import logging
+import os
 import time
 from datetime import date, datetime
 
 import requests
 
+from circuit_breaker import CircuitBreaker
 from utils import normal_cdf
 
+_log = logging.getLogger(__name__)
+
+_nws_cb = CircuitBreaker("nws", failure_threshold=5, recovery_timeout=300)
+
 NWS_BASE = "https://api.weather.gov"
-UA_HEADER = {"User-Agent": "kalshi-weather-predictor/1.0 (contact@example.com)"}
+# #68: load User-Agent from env so it can be updated without a code change
+_nws_ua = os.getenv("NWS_USER_AGENT", "kalshi-weather-predictor/1.0 (user@localhost)")
+UA_HEADER = {"User-Agent": _nws_ua}
 OBS_TTL = 600  # seconds — re-fetch observation if older than this
+
+# #125: shared session for connection pooling
+_session = requests.Session()
+_session.headers.update(UA_HEADER)
 
 # In-memory caches
 _gridpoint_cache: dict = {}
@@ -29,7 +42,14 @@ _obs_cache: dict = {}  # city -> (timestamp, observation_dict)
 
 
 def _get(url: str, params: dict | None = None) -> dict:
-    resp = requests.get(url, headers=UA_HEADER, params=params, timeout=15)
+    _t0 = time.perf_counter()
+    resp = _session.get(
+        url, params=params, timeout=15
+    )  # #125: session reuses connections
+    _elapsed = time.perf_counter() - _t0
+    # #108: warn on slow NWS responses
+    if _elapsed > 5:
+        _log.warning("NWS API slow: %.1fs for %s", _elapsed, url)
     resp.raise_for_status()
     return resp.json()
 
@@ -113,6 +133,9 @@ def nws_prob(
     Convert NWS forecast temperature to a probability using a narrow normal
     distribution (NWS forecasts are calibrated, so use tighter σ than raw models).
     """
+    if _nws_cb.is_open():
+        _log.warning("NWS circuit open — skipping forecast prob for %s", city)
+        return None
     forecast = get_nws_daily_forecast(city, coords)
     date_str = target_date.isoformat()
     day = forecast.get(date_str, {})
@@ -154,18 +177,22 @@ def get_live_observation(city: str, coords: tuple) -> dict | None:
     Returns dict with temp_f, timestamp, description.
     Cached for OBS_TTL seconds to avoid hammering the API.
     """
-    now = time.time()
-    if city in _obs_cache:
-        cached_at, obs = _obs_cache[city]
-        if now - cached_at < OBS_TTL:
-            return obs
-
-    lat, lon, _ = coords
-    station_id = _get_obs_station(lat, lon)
-    if not station_id:
+    if _nws_cb.is_open():
+        _log.warning("NWS circuit open — skipping observation for %s", city)
         return None
 
     try:
+        now = time.time()
+        if city in _obs_cache:
+            cached_at, obs = _obs_cache[city]
+            if now - cached_at < OBS_TTL:
+                return obs
+
+        lat, lon = coords[0], coords[1]
+        station_id = _get_obs_station(lat, lon)
+        if not station_id:
+            return None
+
         data = _get(f"{NWS_BASE}/stations/{station_id}/observations/latest")
         props = data.get("properties", {})
         temp_c = (props.get("temperature") or {}).get("value")
@@ -177,8 +204,11 @@ def get_live_observation(city: str, coords: tuple) -> dict | None:
             "description": props.get("textDescription", ""),
         }
         _obs_cache[city] = (now, obs)
+        _nws_cb.record_success()
         return obs
-    except Exception:
+    except Exception as exc:
+        _nws_cb.record_failure()
+        _log.warning("NWS observation failed for %s: %s", city, exc)
         return None
 
 

@@ -7,13 +7,22 @@ Used as a baseline probability before forecast skill is considered.
 from __future__ import annotations
 
 import json
+import logging
 import time
 from datetime import date
 from pathlib import Path
 
 import requests
 
+from circuit_breaker import CircuitBreaker as _CircuitBreaker
+
+_log = logging.getLogger(__name__)
+_clim_cb = _CircuitBreaker("climatology", failure_threshold=5, recovery_timeout=300)
+
 DATA_DIR = Path(__file__).parent / "data"
+
+# #125: shared session for connection pooling
+_session = requests.Session()
 DATA_DIR.mkdir(exist_ok=True)
 
 ARCHIVE_BASE = "https://archive-api.open-meteo.com/v1/archive"
@@ -61,7 +70,7 @@ def fetch_historical(city: str, coords: tuple, force: bool = False) -> dict | No
         "timezone": tz,
     }
     try:
-        resp = requests.get(ARCHIVE_BASE, params=params, timeout=60)
+        resp = _session.get(ARCHIVE_BASE, params=params, timeout=60)  # #125
         resp.raise_for_status()
         daily = resp.json().get("daily", {})
         data = {
@@ -73,8 +82,15 @@ def fetch_historical(city: str, coords: tuple, force: bool = False) -> dict | No
             json.dump(data, f)
         return data
     except Exception:
-        # If download fails, return stale cache if available
+        # #4: If download fails, return stale cache but warn if it's very old
         if cache.exists():
+            cache_age_days = (time.time() - cache.stat().st_mtime) / 86400
+            if cache_age_days > 365:
+                print(
+                    f"[warn] Climate cache for {city} is {cache_age_days:.0f} days old "
+                    f"(API unavailable); forecast accuracy may be reduced.",
+                    flush=True,
+                )
             with open(cache) as f:
                 return json.load(f)
         return None
@@ -93,6 +109,22 @@ def climatological_prob(
       lower, upper: float  (for between)
       var: "max" | "min"  (which temperature to use)
     """
+    if _clim_cb.is_open():
+        _log.warning("Climatology circuit open — skipping for %s", city)
+        return None
+    try:
+        result = _climatological_prob_inner(city, coords, target_date, condition)
+        _clim_cb.record_success()
+        return result
+    except Exception as exc:
+        _clim_cb.record_failure()
+        _log.warning("Climatology prob failed for %s: %s", city, exc)
+        return None
+
+
+def _climatological_prob_inner(
+    city: str, coords: tuple, target_date: date, condition: dict
+) -> float | None:
     data = fetch_historical(city, coords)
     if not data:
         return None
@@ -128,6 +160,43 @@ def climatological_prob(
     elif condition["type"] == "between":
         lo, hi = condition["lower"], condition["upper"]
         return sum(1 for t in temps if lo <= t <= hi) / len(temps)
+    return None
+
+
+def persistence_prob(
+    condition_type: str,
+    threshold_lo: float,
+    threshold_hi: float | None,
+    current_value: float,
+    std_dev: float = 5.0,
+) -> float | None:
+    """
+    #26: Persistence baseline — models tomorrow's temperature as
+    N(current_value, std_dev) and returns P(value meets condition).
+
+    condition_type: 'above', 'below', 'between'
+    threshold_lo: lower (or sole) threshold
+    threshold_hi: upper threshold (only used for 'between')
+    current_value: today's observed temperature (°F)
+    std_dev: assumed day-to-day persistence error (default 5°F)
+
+    Returns probability in [0, 1], or None if inputs are invalid.
+    """
+    if std_dev <= 0:
+        return None
+
+    from utils import normal_cdf as _normal_cdf
+
+    if condition_type == "above":
+        return 1.0 - _normal_cdf(threshold_lo, current_value, std_dev)
+    elif condition_type == "below":
+        return _normal_cdf(threshold_lo, current_value, std_dev)
+    elif condition_type == "between":
+        if threshold_hi is None:
+            return None
+        p_hi = _normal_cdf(threshold_hi, current_value, std_dev)
+        p_lo = _normal_cdf(threshold_lo, current_value, std_dev)
+        return max(0.0, p_hi - p_lo)
     return None
 
 
