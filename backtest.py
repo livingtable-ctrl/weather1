@@ -14,14 +14,19 @@ For each finalized weather market:
 
 from __future__ import annotations
 
+import json
 from datetime import date, timedelta
 from pathlib import Path
 
 import requests
 
+from utils import KALSHI_FEE_RATE
+
 ARCHIVE_ENS_BASE = "https://archive-api.open-meteo.com/v1/archive"
 DATA_DIR = Path(__file__).parent / "data"
 DATA_DIR.mkdir(exist_ok=True)
+ARCHIVE_CACHE_DIR = DATA_DIR / "archive_cache"
+ARCHIVE_CACHE_DIR.mkdir(exist_ok=True)
 
 
 # ── Archive ensemble fetch ────────────────────────────────────────────────────
@@ -33,10 +38,19 @@ def fetch_archive_temps(
     """
     Fetch historical daily high/low temperatures from Open-Meteo archive.
     Returns a list of values (simulated 'ensemble' from historical spread).
-    The archive has deterministic single values, so we synthesise ensemble
-    spread using ±σ based on the multi-model standard deviation from a
-    ±3-day window of nearby historical dates.
+    Results are cached to disk so repeat backtest runs don't re-fetch.
     """
+    import random
+    import statistics
+
+    cache_key = f"{round(lat, 4)}_{round(lon, 4)}_{target_date.isoformat()}_{var}"
+    cache_file = ARCHIVE_CACHE_DIR / f"{cache_key}.json"
+    if cache_file.exists():
+        try:
+            return json.loads(cache_file.read_text())
+        except Exception:
+            pass
+
     # Fetch ±5 days around the target to estimate local variability
     start = (target_date - timedelta(days=5)).isoformat()
     end = (target_date + timedelta(days=5)).isoformat()
@@ -59,7 +73,6 @@ def fetch_archive_temps(
         vals = daily.get(daily_var, [])
         target_str = target_date.isoformat()
 
-        # Get the exact day value
         exact = None
         nearby = []
         for t, v in zip(times, vals):
@@ -72,19 +85,14 @@ def fetch_archive_temps(
         if exact is None:
             return []
 
-        # Estimate spread from ±5-day window std dev
-        if len(nearby) >= 4:
-            import statistics
-
-            sigma = statistics.stdev(nearby)
-        else:
-            sigma = 3.0
-
-        # Synthesise pseudo-ensemble by sampling ±σ
-        import random
-
+        sigma = statistics.stdev(nearby) if len(nearby) >= 4 else 3.0
         random.seed(42)
-        return [exact + random.gauss(0, sigma) for _ in range(50)]
+        result = [exact + random.gauss(0, sigma) for _ in range(50)]
+        try:
+            cache_file.write_text(json.dumps(result))
+        except Exception:
+            pass
+        return result
     except Exception:
         return []
 
@@ -171,7 +179,11 @@ def run_backtest(
         )
         stake = min(kelly, 0.05)  # cap at 5% per trade for backtest
         won = (rec_side == "yes" and actual == 1) or (rec_side == "no" and actual == 0)
-        pnl = stake * (1 - entry_price) * 0.93 - stake * (1 - (1 if won else 0))
+        # P&L: win case = net gain after 7% fee on winnings; lose case = lose the stake
+        if won:
+            pnl = stake * (1 - entry_price) / entry_price * (1 - KALSHI_FEE_RATE)
+        else:
+            pnl = -stake
 
         results.append(
             {
