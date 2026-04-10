@@ -8,6 +8,7 @@ Stored in data/paper_trades.json. Tracks:
 from __future__ import annotations
 
 import csv
+import hashlib
 import json
 import logging
 import os
@@ -36,6 +37,29 @@ def _validate_crc(data: dict) -> None:
     if stored != expected:
         raise CorruptionError(
             f"CRC32 mismatch: stored={stored!r}, expected={expected!r}"
+        )
+
+
+def _compute_checksum(payload: dict) -> str:
+    """Compute SHA-256 checksum (first 8 hex chars) of payload excluding '_checksum' key."""
+    body = json.dumps(
+        {k: v for k, v in payload.items() if k != "_checksum"},
+        indent=2,
+        sort_keys=True,
+        default=str,
+    ).encode()
+    return hashlib.sha256(body).hexdigest()[:8]
+
+
+def _validate_checksum(data: dict) -> None:
+    """Validate SHA-256 checksum in data dict. Raises ValueError on mismatch."""
+    stored = data.get("_checksum")
+    if stored is None:
+        return
+    expected = _compute_checksum(data)
+    if stored != expected:
+        raise ValueError(
+            f"paper trades checksum mismatch: stored={stored!r}, expected={expected!r}"
         )
 
 
@@ -100,7 +124,8 @@ def _load() -> dict:
     if DATA_PATH.exists():
         with open(DATA_PATH) as f:
             data = json.load(f)
-        _validate_crc(data)
+        _validate_crc(data)  # backward compatibility: validate CRC32 if present
+        _validate_checksum(data)  # #102: validate SHA-256 checksum if present
         # #100: auto-migrate older schema versions
         if "_version" not in data:
             data["_version"] = 1
@@ -130,15 +155,13 @@ def cleanup_temp_files() -> int:
 
 
 def _save(data: dict) -> None:
-    """Write atomically with retry via safe_io (#8). Embeds CRC32 checksum (#102)."""
-    # #102: Embed CRC32 checksum for corruption detection
-    payload = {k: v for k, v in data.items() if k != "_crc32"}
-    body = json.dumps(payload, indent=2, default=str).encode()
-    checksum = format(_zlib.crc32(body) & 0xFFFFFFFF, "08x")
-    payload["_crc32"] = checksum
+    """Write atomically with retry via safe_io (#8). Embeds SHA-256 checksum (#102)."""
+    # #102: Embed SHA-256 checksum for corruption detection (replaces CRC32)
+    payload = {k: v for k, v in data.items() if k not in ("_crc32", "_checksum")}
+    payload["_checksum"] = _compute_checksum(payload)
     try:
         atomic_write_json(payload, DATA_PATH, retries=3)
-    except AtomicWriteError as e:
+    except (AtomicWriteError, RuntimeError) as e:
         _log.error("CRITICAL: Could not save paper trades: %s", e)
         raise
 

@@ -1,4 +1,5 @@
 import json
+import json as _json
 import os
 import sys
 import time
@@ -357,3 +358,41 @@ def test_pragma_migrations_incremental(tmp_path):
 
     tracker.DB_PATH = orig_path
     tracker._db_initialized = False
+
+
+# ── SHA-256 checksum corruption detection (#102) ──────────────────────────────
+
+
+def test_paper_save_embeds_sha256_checksum(tmp_path, monkeypatch):
+    """Saved paper trades JSON contains a '_checksum' key with 8-char hex SHA-256."""
+    import paper
+
+    monkeypatch.setattr(paper, "DATA_PATH", tmp_path / "paper_trades.json")
+    paper._save({"balance": 1000.0, "trades": []})
+
+    raw = _json.loads((tmp_path / "paper_trades.json").read_text())
+    assert "_checksum" in raw
+    assert len(raw["_checksum"]) == 8
+    int(raw["_checksum"], 16)  # verify valid hex
+
+
+def test_paper_load_raises_on_checksum_mismatch(tmp_path, monkeypatch):
+    """Loading paper trades with a corrupted checksum raises ValueError."""
+    import paper
+
+    data = {"balance": 500.0, "trades": [], "_checksum": "deadbeef"}
+    (tmp_path / "paper_trades.json").write_text(_json.dumps(data))
+    monkeypatch.setattr(paper, "DATA_PATH", tmp_path / "paper_trades.json")
+
+    with pytest.raises(ValueError, match="checksum mismatch"):
+        paper._load()
+
+
+def test_paper_load_passes_valid_checksum(tmp_path, monkeypatch):
+    """Loading paper trades with a correct checksum does not raise."""
+    import paper
+
+    monkeypatch.setattr(paper, "DATA_PATH", tmp_path / "paper_trades.json")
+    paper._save({"balance": 750.0, "trades": []})
+    result = paper._load()
+    assert result["balance"] == 750.0
