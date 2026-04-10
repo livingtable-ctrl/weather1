@@ -1780,7 +1780,9 @@ def cmd_cron(client: KalshiClient) -> None:
 
 
 def cmd_analyze(
-    client: KalshiClient, min_edge: float | None = None, live: bool = False
+    client: KalshiClient,
+    min_edge: float | None = None,
+    live: bool = False,  # --live reserved; analyze is display-only
 ):
     if min_edge is None:
         min_edge = MIN_EDGE
@@ -1828,6 +1830,7 @@ def _auto_place_trades(
     or a list of flat opportunity dicts (new live path / tests).
     Pass live=True with a live_config dict to route orders to the real Kalshi API.
     """
+    global _SESSION_LOSS  # noqa: PLW0603
     from paper import (
         get_open_trades,
         is_daily_loss_halted,
@@ -1903,7 +1906,6 @@ def _auto_place_trades(
                 cycle=cycle,
             )
             if opp_placed:
-                global _SESSION_LOSS  # noqa: PLW0603
                 _SESSION_LOSS += cost
                 open_tickers.add(ticker)
                 placed += 1

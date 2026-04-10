@@ -108,25 +108,40 @@ class TestPlaceLiveOrder:
 
 class TestAutoPlaceTradesCycleCheck:
     def test_cycle_dedup_skips_already_ordered(self, monkeypatch):
-        """If was_ordered_this_cycle returns True, no paper order is placed."""
+        """If was_ordered_this_cycle returns True, no paper or live order is placed."""
         from unittest.mock import patch
 
         import main
 
+        # Construct opp with the real field names _auto_place_trades checks:
+        # net_signal must contain "STRONG", time_risk must not be "HIGH",
+        # ci_adjusted_kelly must be large enough to produce qty >= 1,
+        # market_prob used as entry_price.
         opp = {
             "ticker": "KXHIGH-25MAY15-T75",
-            "side": "yes",
-            "edge": 0.15,
-            "signal": "STRONG",
-            "kelly_quantity": 2,
-            "market": {"yes_bid": 50, "yes_ask": 60},
-            "analysis": {},
+            "net_signal": "STRONG_BUY",
+            "time_risk": "LOW",
+            "recommended_side": "yes",
+            "ci_adjusted_kelly": 0.50,
+            "market_prob": 0.55,
+            "_city": "Houston",
+            "_date": None,
         }
 
+        mock_open_trades = []
+
         with (
+            patch("paper.get_open_trades", return_value=mock_open_trades),
+            patch("paper.is_paused_drawdown", return_value=False),
+            patch("paper.is_daily_loss_halted", return_value=False),
+            patch("paper.is_streak_paused", return_value=False),
+            patch("paper.kelly_quantity", return_value=2),
+            patch("paper.portfolio_kelly_fraction", return_value=0.10),
             patch("execution_log.was_ordered_this_cycle", return_value=True),
             patch("main.place_paper_order") as mock_paper,
+            patch("main._place_live_order") as mock_live,
         ):
             main._auto_place_trades([opp], client=None, live=False, live_config=None)
 
         mock_paper.assert_not_called()
+        mock_live.assert_not_called()
