@@ -12,6 +12,7 @@ from utils import normal_cdf
 from weather_markets import (
     _feels_like,
     _forecast_model_weights,
+    ensemble_stats,
     is_liquid,
     parse_market_price,
 )
@@ -295,15 +296,11 @@ def test_snow_prob_uses_slr_not_1_to_10():
 class TestEnsembleStats:
     def test_empty_list_returns_empty_dict(self):
         """ensemble_stats([]) must return {} not raise."""
-        from weather_markets import ensemble_stats
-
         result = ensemble_stats([])
         assert result == {}
 
     def test_single_element_std_is_zero(self):
         """Single-element ensemble: std=0, min=max=mean=the value."""
-        from weather_markets import ensemble_stats
-
         result = ensemble_stats([75.0])
         assert result["n"] == 1
         assert result["mean"] == pytest.approx(75.0)
@@ -315,8 +312,6 @@ class TestEnsembleStats:
 
     def test_returns_all_required_keys(self):
         """Result must contain n, mean, std, min, max, p10, p90."""
-        from weather_markets import ensemble_stats
-
         result = ensemble_stats([60.0, 65.0, 70.0, 75.0, 80.0])
         for key in ("n", "mean", "std", "min", "max", "p10", "p90"):
             assert key in result, f"Missing key: {key}"
@@ -325,17 +320,14 @@ class TestEnsembleStats:
         """Verify mean and std match statistics module on known data."""
         import statistics
 
-        from weather_markets import ensemble_stats
-
         temps = [68.0, 70.0, 72.0, 74.0, 76.0]
         result = ensemble_stats(temps)
         assert result["mean"] == pytest.approx(statistics.mean(temps))
+        # ensemble_stats uses sample std (statistics.stdev, denominator n-1)
         assert result["std"] == pytest.approx(statistics.stdev(temps), rel=1e-6)
 
     def test_min_max_correct(self):
         """min and max match the actual extremes."""
-        from weather_markets import ensemble_stats
-
         temps = [55.0, 70.0, 80.0, 63.0, 71.0]
         result = ensemble_stats(temps)
         assert result["min"] == pytest.approx(55.0)
@@ -343,8 +335,6 @@ class TestEnsembleStats:
 
     def test_p10_less_than_p90(self):
         """p10 <= mean <= p90 for a non-degenerate ensemble."""
-        from weather_markets import ensemble_stats
-
         temps = list(range(60, 80))  # [60, 61, ..., 79], 20 values
         result = ensemble_stats(temps)
         assert result["p10"] <= result["mean"]
