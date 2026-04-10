@@ -106,6 +106,7 @@ def run_backtest(
     days_back: int = 30,
     verbose: bool = False,
     holdout_days: int = 5,
+    on_progress=None,
 ) -> dict:
     """
     Fetch finalized weather markets from Kalshi, then simulate our
@@ -132,7 +133,9 @@ def run_backtest(
     markets = client.get_markets(status="finalized", limit=200)
 
     results = []
-    for m in markets:
+    for _prog_i, m in enumerate(markets, 1):
+        if on_progress:
+            on_progress(_prog_i, len(markets))
         ticker = m.get("ticker", "")
         result = m.get("result", "")
         if result not in ("yes", "no"):
