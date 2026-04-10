@@ -1627,6 +1627,20 @@ def simulate_fill(
     return (filled, round(avg_fill_price, 6))
 
 
+def simulate_partial_fill(quantity: int, market_depth_estimate: float) -> int:
+    """
+    #74: Simulate a partial order fill based on available market depth.
+
+    filled_quantity = min(quantity, int(market_depth_estimate * random.uniform(0.5, 1.0)))
+    Minimum fill is 1 contract.
+    """
+    import random
+
+    available = int(market_depth_estimate * random.uniform(0.5, 1.0))
+    filled = min(quantity, available)
+    return max(1, filled)
+
+
 def calc_trade_pnl(trade: dict) -> float:
     """
     #15: Calculate realised P&L from a trade dict using the actual fill price.

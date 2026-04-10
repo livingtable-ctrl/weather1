@@ -702,3 +702,42 @@ class TestGaussianFillSlippage:
         """entry_price on the trade record must equal the requested price."""
         trade = self._place(price=0.60)
         assert trade["entry_price"] == 0.60
+
+
+class TestSimulatePartialFill:
+    """#74: simulate_partial_fill returns filled_quantity based on market depth."""
+
+    def test_returns_at_most_requested_quantity(self):
+        from paper import simulate_partial_fill
+
+        for qty in [1, 10, 100]:
+            filled = simulate_partial_fill(qty, market_depth_estimate=1000.0)
+            assert filled <= qty
+
+    def test_deep_market_fills_fully(self):
+        from paper import simulate_partial_fill
+
+        for _ in range(20):
+            filled = simulate_partial_fill(10, market_depth_estimate=10_000.0)
+            assert filled == 10
+
+    def test_shallow_market_may_partially_fill(self):
+        from paper import simulate_partial_fill
+
+        results = [
+            simulate_partial_fill(20, market_depth_estimate=10.0) for _ in range(30)
+        ]
+        assert any(r < 20 for r in results), "Expected at least some partial fills"
+
+    def test_returns_integer(self):
+        from paper import simulate_partial_fill
+
+        result = simulate_partial_fill(50, market_depth_estimate=100.0)
+        assert isinstance(result, int)
+
+    def test_minimum_fill_is_one(self):
+        from paper import simulate_partial_fill
+
+        for _ in range(20):
+            filled = simulate_partial_fill(5, market_depth_estimate=1.0)
+            assert filled >= 1
