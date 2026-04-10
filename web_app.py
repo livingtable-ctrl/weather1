@@ -419,6 +419,77 @@ setInterval(() => {{
 </body></html>"""
         return render_template_string(html)
 
+    @app.route("/api/suggested_bets")
+    def api_suggested_bets():
+        """Return top-N trade opportunities ranked by expected value (edge × kelly $)."""
+
+        from flask import request as freq
+
+        from paper import get_balance
+        from utils import MIN_EDGE
+        from weather_markets import (
+            analyze_trade,
+            enrich_with_forecast,
+            get_weather_markets,
+        )
+
+        n = int(freq.args.get("n", 3))
+
+        try:
+            markets = get_weather_markets(client)
+        except Exception as e:
+            return jsonify({"error": str(e), "bets": []}), 500
+
+        balance = get_balance()
+        candidates = []
+
+        for m in markets:
+            try:
+                enriched = enrich_with_forecast(m)
+                analysis = analyze_trade(enriched)
+                if not analysis:
+                    continue
+                net_edge = abs(analysis.get("net_edge", analysis.get("edge", 0)))
+                if net_edge < MIN_EDGE:
+                    continue
+                kelly = analysis.get(
+                    "ci_adjusted_kelly",
+                    analysis.get("fee_adjusted_kelly", analysis.get("kelly", 0)),
+                )
+                kelly_dollars = round(kelly * balance, 2)
+                ev_score = net_edge * kelly_dollars
+                candidates.append(
+                    {
+                        "ticker": m.get("ticker", ""),
+                        "title": (m.get("title") or m.get("ticker", ""))[:60],
+                        "city": m.get("_city", "—"),
+                        "recommended_side": analysis.get(
+                            "recommended_side", "—"
+                        ).upper(),
+                        "edge_pct": round(net_edge * 100, 1),
+                        "kelly_fraction": round(kelly, 4),
+                        "suggested_dollars": kelly_dollars,
+                        "signal": analysis.get("signal", "—"),
+                        "ev_score": round(ev_score, 4),
+                    }
+                )
+            except Exception:
+                continue
+
+        candidates.sort(key=lambda x: x["ev_score"], reverse=True)
+        top = candidates[:n]
+        for bet in top:
+            del bet["ev_score"]
+
+        return jsonify(
+            {
+                "bets": top,
+                "balance": round(balance, 2),
+                "min_edge": MIN_EDGE,
+                "generated_at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S"),
+            }
+        )
+
     @app.route("/analytics")
     def analytics_page():
         """Analytics page — model calibration, confusion matrix, edge decay."""
