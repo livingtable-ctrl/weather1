@@ -382,6 +382,14 @@ def auto_backup() -> None:
         if not dst.exists():  # only once per day
             try:
                 shutil.copy2(src, dst)
+                # #104: Verify backup integrity after writing
+                if dst.suffix == ".json":
+                    try:
+                        from paper import verify_backup
+
+                        verify_backup(dst)
+                    except Exception:
+                        pass
             except Exception:
                 pass
     # #103: Prune — keep only the 30 most recent backups per file stem
