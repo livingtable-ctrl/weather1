@@ -524,3 +524,49 @@ class TestEdgeConfidence:
             assert values[i] >= values[i + 1], (
                 f"Not monotone at day {i}: {values[i]} > {values[i + 1]}"
             )
+
+
+# ── TestAdjustedEdgeInAnalyzeTrade ────────────────────────────────────────────
+
+
+class TestAdjustedEdgeInAnalyzeTrade:
+    """analyze_trade() must return both raw net_edge and adjusted_edge (#63)."""
+
+    def test_analyze_trade_returns_adjusted_edge_key(self, monkeypatch):
+        """Result dict must contain adjusted_edge and edge_confidence_factor."""
+        from datetime import date, timedelta
+
+        import weather_markets as wm
+
+        target = date.today() + timedelta(days=10)
+        ticker = f"KXHIGHNYC-{target.strftime('%y%b%d').upper()}-T70"
+
+        enriched = {
+            "_city": "NYC",
+            "_date": target,
+            "_hour": 14,
+            "_forecast": {
+                "temps": [72.0] * 50,
+                "source": "ensemble",
+                "high_f": 72.0,
+                "low_f": 62.0,
+            },
+            "yes_bid": 0.35,
+            "yes_ask": 0.37,
+            "ticker": ticker,
+            "title": "NYC High above 70",
+            "close_time": "",
+        }
+
+        monkeypatch.setattr(wm, "nws_prob", lambda *a, **kw: None)
+        monkeypatch.setattr(wm, "climatological_prob", lambda *a, **kw: 0.50)
+        monkeypatch.setattr(wm, "temperature_adjustment", lambda *a, **kw: 0.0)
+
+        result = wm.analyze_trade(enriched)
+        if result is None:
+            pytest.skip("analyze_trade returned None for this enriched dict")
+        assert "adjusted_edge" in result, "Missing adjusted_edge key"
+        assert "edge_confidence_factor" in result, "Missing edge_confidence_factor key"
+        assert result["edge_confidence_factor"] == pytest.approx(
+            wm.edge_confidence(10), abs=1e-6
+        )

@@ -2074,7 +2074,9 @@ def analyze_trade(enriched: dict) -> dict | None:
         net_ev = p_win * payout * (1 - KALSHI_FEE_RATE) - blended_prob * entry_price
 
     net_edge = net_ev / entry_price if entry_price > 0 else 0.0
-    net_signal = _edge_label(net_edge)
+    _edge_conf = edge_confidence(days_out)
+    adjusted_edge = net_edge * _edge_conf
+    net_signal = _edge_label(adjusted_edge)
     fee_adjusted_kelly = kelly_fraction(
         blended_prob if rec_side == "yes" else 1 - blended_prob,
         entry_price,
@@ -2115,6 +2117,8 @@ def analyze_trade(enriched: dict) -> dict | None:
         "edge": edge,
         "signal": signal,
         "net_edge": net_edge,
+        "adjusted_edge": round(adjusted_edge, 6),
+        "edge_confidence_factor": _edge_conf,
         "net_signal": net_signal,
         "recommended_side": rec_side,
         "condition": condition,
