@@ -1067,6 +1067,28 @@ _LIVE_CONFIG_DEFAULT: dict = {
 }
 
 
+def _current_forecast_cycle() -> str:
+    """Return a string identifier for the current NWS forecast cycle.
+
+    NWS model runs are at 00z and 12z (midnight and noon UTC).
+    Returns a string like '2025-05-15_12z' so orders within the same
+    forecast cycle are deduplicated.
+    """
+    from datetime import UTC, datetime
+
+    now = datetime.now(UTC)
+    hour = now.hour
+    cycle_hour = 12 if hour >= 12 else 0
+    return f"{now.strftime('%Y-%m-%d')}_{cycle_hour:02d}z"
+
+
+def place_paper_order(ticker, side, qty, entry_price, **kwargs):
+    """Module-level shim so tests can patch main.place_paper_order."""
+    from paper import place_paper_order as _ppo
+
+    return _ppo(ticker, side, qty, entry_price, **kwargs)
+
+
 def _load_live_config() -> dict:
     """Load live trading hard stops from data/live_config.json.
 
@@ -1757,7 +1779,9 @@ def cmd_cron(client: KalshiClient) -> None:
     _sys.exit(0)
 
 
-def cmd_analyze(client: KalshiClient, min_edge: float | None = None):
+def cmd_analyze(
+    client: KalshiClient, min_edge: float | None = None, live: bool = False
+):
     if min_edge is None:
         min_edge = MIN_EDGE
     _header("Trade Opportunity Scanner")
@@ -1790,10 +1814,19 @@ def cmd_analyze(client: KalshiClient, min_edge: float | None = None):
 # ── Watch mode ────────────────────────────────────────────────────────────────
 
 
-def _auto_place_trades(opps: list, client: KalshiClient) -> None:
+def _auto_place_trades(
+    opps: list,
+    client=None,
+    live: bool = False,
+    live_config: dict | None = None,
+) -> None:
     """
-    Auto-place paper trades for STRONG BUY + LOW risk signals not already held.
+    Auto-place paper or live trades for STRONG BUY + LOW risk signals not already held.
     Called from watch --auto mode. Respects drawdown guard and portfolio Kelly.
+
+    opps may be a list of (market_dict, analysis_dict) tuples (legacy watch mode)
+    or a list of flat opportunity dicts (new live path / tests).
+    Pass live=True with a live_config dict to route orders to the real Kalshi API.
     """
     from paper import (
         get_open_trades,
@@ -1801,7 +1834,6 @@ def _auto_place_trades(opps: list, client: KalshiClient) -> None:
         is_paused_drawdown,
         is_streak_paused,
         kelly_quantity,
-        place_paper_order,
         portfolio_kelly_fraction,
     )
 
@@ -1825,7 +1857,13 @@ def _auto_place_trades(opps: list, client: KalshiClient) -> None:
 
     open_tickers = {t["ticker"] for t in get_open_trades()}
     placed = 0
-    for m, a in opps:
+    for item in opps:
+        # Support both (market, analysis) tuple format and flat opp dict format
+        if isinstance(item, tuple):
+            m, a = item
+        else:
+            m, a = item, item
+
         ticker = m.get("ticker", "")
         if ticker in open_tickers:
             continue
@@ -1833,7 +1871,7 @@ def _auto_place_trades(opps: list, client: KalshiClient) -> None:
             continue
         if a.get("time_risk") == "HIGH":
             continue
-        rec_side = a.get("recommended_side", "yes")
+        rec_side = a.get("recommended_side", a.get("side", "yes"))
         city = m.get("_city")
         target_date_obj = m.get("_date")
         target_date_str = target_date_obj.isoformat() if target_date_obj else None
@@ -1849,32 +1887,58 @@ def _auto_place_trades(opps: list, client: KalshiClient) -> None:
         qty = kelly_quantity(adj_kelly, entry_price)
         if qty < 1:
             continue
-        try:
-            trade = place_paper_order(
-                ticker,
-                rec_side,
-                qty,
-                entry_price,
-                entry_prob=a.get("forecast_prob"),
-                net_edge=a.get("net_edge"),
-                city=city,
-                target_date=target_date_str,
+
+        # Cycle-aware deduplication — skip if already ordered on this forecast cycle
+        cycle = _current_forecast_cycle()
+        if execution_log.was_ordered_this_cycle(ticker, rec_side, cycle):
+            continue
+
+        if live and live_config:
+            opp_placed, cost = _place_live_order(
+                ticker=ticker,
+                side=rec_side,
+                analysis=a,
+                config=live_config,
+                client=client,
+                cycle=cycle,
             )
-            print(
-                green(
-                    f"  [Auto] #{trade['id']} {qty}×{ticker} {rec_side.upper()}"
-                    f" @ ${entry_price:.3f}  Kelly={adj_kelly * 100:.1f}%"
+            if opp_placed:
+                global _SESSION_LOSS  # noqa: PLW0603
+                _SESSION_LOSS += cost
+                open_tickers.add(ticker)
+                placed += 1
+        else:
+            try:
+                trade = place_paper_order(
+                    ticker,
+                    rec_side,
+                    qty,
+                    entry_price,
+                    entry_prob=a.get("forecast_prob"),
+                    net_edge=a.get("net_edge"),
+                    city=city,
+                    target_date=target_date_str,
                 )
-            )
-            open_tickers.add(ticker)
-            placed += 1
-        except ValueError as e:
-            print(yellow(f"  [Auto] Skipped {ticker}: {e}"))
+                print(
+                    green(
+                        f"  [Auto] #{trade['id']} {qty}×{ticker} {rec_side.upper()}"
+                        f" @ ${entry_price:.3f}  Kelly={adj_kelly * 100:.1f}%"
+                    )
+                )
+                open_tickers.add(ticker)
+                placed += 1
+            except ValueError as e:
+                print(yellow(f"  [Auto] Skipped {ticker}: {e}"))
     if placed == 0:
         print(dim("  [Auto] No qualifying signals this scan."))
 
 
-def cmd_watch(client: KalshiClient, auto_trade: bool = False, min_edge: float = 0.10):
+def cmd_watch(
+    client: KalshiClient,
+    auto_trade: bool = False,
+    min_edge: float = 0.10,
+    live: bool = False,
+):
     mode = "AUTO-TRADE" if auto_trade else "Watch"
     print(bold(f"{mode} mode — refreshing every 5 minutes. Press Ctrl+C to stop.\n"))
     if auto_trade:
@@ -1921,7 +1985,10 @@ def cmd_watch(client: KalshiClient, auto_trade: bool = False, min_edge: float = 
             )
             _save_watch_state(previous)
             if auto_trade and liquid_opps:
-                _auto_place_trades(liquid_opps, client)
+                live_cfg = _load_live_config() if live else None
+                _auto_place_trades(
+                    liquid_opps, client=client, live=live, live_config=live_cfg
+                )
             # Check price alerts
             try:
                 from alerts import check_alerts, mark_triggered
@@ -5206,7 +5273,7 @@ def main():
                 print(
                     red("  --edge expects a number, e.g.: py main.py analyze --edge 5")
                 )
-        cmd_analyze(client, min_edge=min_edge)
+        cmd_analyze(client, min_edge=min_edge, live="--live" in args)
     elif cmd == "watch":
         min_edge = 0.10
         if "--edge" in args:
@@ -5214,7 +5281,12 @@ def main():
                 min_edge = float(args[args.index("--edge") + 1]) / 100
             except (IndexError, ValueError):
                 pass
-        cmd_watch(client, auto_trade="--auto" in args, min_edge=min_edge)
+        cmd_watch(
+            client,
+            auto_trade="--auto" in args,
+            min_edge=min_edge,
+            live="--live" in args,
+        )
     elif cmd == "market":
         if len(args) < 2:
             print("Usage: py main.py market <ticker> [--verbose]")

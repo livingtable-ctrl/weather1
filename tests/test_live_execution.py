@@ -104,3 +104,29 @@ class TestPlaceLiveOrder:
         assert mock_client.place_order.called
         # quantity should be min(10, floor(50/0.55)) = 10
         assert cost > 0.0
+
+
+class TestAutoPlaceTradesCycleCheck:
+    def test_cycle_dedup_skips_already_ordered(self, monkeypatch):
+        """If was_ordered_this_cycle returns True, no paper order is placed."""
+        from unittest.mock import patch
+
+        import main
+
+        opp = {
+            "ticker": "KXHIGH-25MAY15-T75",
+            "side": "yes",
+            "edge": 0.15,
+            "signal": "STRONG",
+            "kelly_quantity": 2,
+            "market": {"yes_bid": 50, "yes_ask": 60},
+            "analysis": {},
+        }
+
+        with (
+            patch("execution_log.was_ordered_this_cycle", return_value=True),
+            patch("main.place_paper_order") as mock_paper,
+        ):
+            main._auto_place_trades([opp], client=None, live=False, live_config=None)
+
+        mock_paper.assert_not_called()
