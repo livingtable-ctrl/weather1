@@ -8,6 +8,7 @@ from datetime import date
 
 import responses as resp
 
+import weather_markets
 from weather_markets import FORECAST_BASE, get_weather_forecast
 
 
@@ -24,6 +25,11 @@ def _open_meteo_payload(target: str, high: float, low: float, precip: float) -> 
 
 
 class TestGetWeatherForecastMocked(unittest.TestCase):
+    def setUp(self):
+        # Clear module-level caches so mocked responses are always used
+        weather_markets._FORECAST_CACHE.clear()
+        weather_markets._ENSEMBLE_CACHE.clear()
+
     @resp.activate
     def test_returns_forecast_when_all_models_respond(self):
         """All three models respond — forecast should average their values."""

@@ -5,16 +5,18 @@ Compares market-implied probabilities with Open-Meteo forecast data.
 
 from __future__ import annotations
 
-import math
 import random
 import re
 import statistics
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, date, datetime
 
 from climate_indices import temperature_adjustment
 from climatology import climatological_prob
 from kalshi_client import KalshiClient, _request_with_retry
 from nws import get_live_observation, nws_prob, obs_prob
+from utils import KALSHI_FEE_RATE, normal_cdf
 
 # ── Open-Meteo (free, no API key) ────────────────────────────────────────────
 
@@ -52,8 +54,13 @@ FORECAST_BASE = "https://api.open-meteo.com/v1/forecast"
 ENSEMBLE_BASE = "https://ensemble-api.open-meteo.com/v1/ensemble"
 ENSEMBLE_MODELS = ["icon_seamless", "gfs_seamless"]
 
-# In-memory cache: (city, date_iso, hour_or_None, var) -> list[float]
+# Ensemble cache: key -> (list[float], timestamp)
 _ENSEMBLE_CACHE: dict = {}
+_ENSEMBLE_CACHE_TTL = 90 * 60  # 90 minutes
+
+# Forecast cache: (city, date_iso) -> (dict, timestamp)
+_FORECAST_CACHE: dict = {}
+_FORECAST_CACHE_TTL = 90 * 60  # 90 minutes
 
 
 # ── Multi-model regular forecast ─────────────────────────────────────────────
@@ -73,8 +80,15 @@ def _forecast_model_weights(month: int) -> dict[str, float]:
 def get_weather_forecast(city: str, target_date: date) -> dict | None:
     """
     Fetch daily high/low/precip from three forecast models (GFS, ECMWF, ICON)
-    and return the averaged values.
+    and return the averaged values. Results are cached for 90 minutes.
     """
+    cache_key = (city, target_date.isoformat())
+    cached = _FORECAST_CACHE.get(cache_key)
+    if cached is not None:
+        data, ts = cached
+        if time.monotonic() - ts < _FORECAST_CACHE_TTL:
+            return data
+
     coords = CITY_COORDS.get(city)
     if not coords:
         return None
@@ -86,38 +100,51 @@ def get_weather_forecast(city: str, target_date: date) -> dict | None:
     lows: list[tuple[float, float]] = []
     precips: list[tuple[float, float]] = []
 
-    for model, weight in model_weights.items():
-        try:
-            params = {
-                "latitude": lat,
-                "longitude": lon,
-                "daily": "temperature_2m_max,temperature_2m_min,precipitation_sum",
-                "temperature_unit": "fahrenheit",
-                "precipitation_unit": "inch",
-                "timezone": tz,
-                "forecast_days": 16,
-                "models": model,
-            }
-            resp = _request_with_retry("GET", FORECAST_BASE, params=params, timeout=10)
-            resp.raise_for_status()
-            data = resp.json()
-            daily = data.get("daily", {})
-            dates = daily.get("time", [])
-            target_str = target_date.isoformat()
-            if target_str not in dates:
+    def _fetch_one(model: str, weight: float) -> tuple | None:
+        """Fetch one model's forecast; returns (high, low, precip, weight) or None."""
+        params = {
+            "latitude": lat,
+            "longitude": lon,
+            "daily": "temperature_2m_max,temperature_2m_min,precipitation_sum",
+            "temperature_unit": "fahrenheit",
+            "precipitation_unit": "inch",
+            "timezone": tz,
+            "forecast_days": 16,
+            "models": model,
+        }
+        resp = _request_with_retry("GET", FORECAST_BASE, params=params, timeout=10)
+        resp.raise_for_status()
+        data = resp.json()
+        daily = data.get("daily", {})
+        dates = daily.get("time", [])
+        target_str = target_date.isoformat()
+        if target_str not in dates:
+            return None
+        idx = dates.index(target_str)
+        h = daily.get("temperature_2m_max", [None])[idx]
+        lo = daily.get("temperature_2m_min", [None])[idx]
+        p = daily.get("precipitation_sum", [None])[idx]
+        return (h, lo, p, weight)
+
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        futures = {
+            pool.submit(_fetch_one, model, weight): model
+            for model, weight in model_weights.items()
+        }
+        for fut in as_completed(futures):
+            try:
+                model_data = fut.result()
+                if model_data is None:
+                    continue
+                h, lo, p, weight = model_data
+                if h is not None:
+                    highs.append((h, weight))
+                if lo is not None:
+                    lows.append((lo, weight))
+                if p is not None:
+                    precips.append((p, weight))
+            except Exception:
                 continue
-            idx = dates.index(target_str)
-            h = daily.get("temperature_2m_max", [None])[idx]
-            lo = daily.get("temperature_2m_min", [None])[idx]
-            p = daily.get("precipitation_sum", [None])[idx]
-            if h is not None:
-                highs.append((h, weight))
-            if lo is not None:
-                lows.append((lo, weight))
-            if p is not None:
-                precips.append((p, weight))
-        except Exception:
-            continue
 
     if not highs:
         return None
@@ -127,7 +154,7 @@ def get_weather_forecast(city: str, target_date: date) -> dict | None:
         return sum(v * w for v, w in pairs) / total_w
 
     high_vals = [v for v, _ in highs]
-    return {
+    result = {
         "date": target_date.isoformat(),
         "city": city,
         "high_f": _wavg(highs),
@@ -136,6 +163,8 @@ def get_weather_forecast(city: str, target_date: date) -> dict | None:
         "models_used": len(highs),
         "high_range": (min(high_vals), max(high_vals)),
     }
+    _FORECAST_CACHE[cache_key] = (result, time.monotonic())
+    return result
 
 
 # ── Ensemble forecast ────────────────────────────────────────────────────────
@@ -238,8 +267,11 @@ def get_ensemble_temps(
     hour: local hour (0-23) for hourly markets like KXTEMPNYCH.
     """
     cache_key = (city, target_date.isoformat(), hour, var)
-    if cache_key in _ENSEMBLE_CACHE:
-        return _ENSEMBLE_CACHE[cache_key]
+    cached = _ENSEMBLE_CACHE.get(cache_key)
+    if cached is not None:
+        data, ts = cached
+        if time.monotonic() - ts < _ENSEMBLE_CACHE_TTL:
+            return data
 
     coords = CITY_COORDS.get(city)
     if not coords:
@@ -252,13 +284,15 @@ def get_ensemble_temps(
         try:
             temps = _fetch_model_ensemble(lat, lon, tz, target_date, model, hour, var)
             w = weights.get(model, 1.0)
-            # Replicate members proportionally to apply weight
-            repeats = max(1, round(w))
+            # Replicate members proportionally to apply weight.
+            # Multiply by 2 before rounding so fractional weights (e.g. 1.5) are
+            # preserved as distinct integers (3 vs 2) rather than collapsing to 1.
+            repeats = max(1, round(w * 2))
             all_temps.extend(temps * repeats)
         except Exception:
             pass
 
-    _ENSEMBLE_CACHE[cache_key] = all_temps
+    _ENSEMBLE_CACHE[cache_key] = (all_temps, time.monotonic())
     return all_temps
 
 
@@ -272,8 +306,8 @@ def ensemble_stats(temps: list[float]) -> dict:
         "std": statistics.stdev(temps) if len(temps) > 1 else 0.0,
         "min": min(temps),
         "max": max(temps),
-        "p10": sorted(temps)[int(len(temps) * 0.10)],
-        "p90": sorted(temps)[int(len(temps) * 0.90)],
+        "p10": sorted(temps)[min(int(len(temps) * 0.10), len(temps) - 1)],
+        "p90": sorted(temps)[min(int(len(temps) * 0.90), len(temps) - 1)],
     }
 
 
@@ -310,7 +344,7 @@ def parse_market_price(market: dict) -> dict:
 
 # ── Weather series detection ──────────────────────────────────────────────────
 
-WEATHER_KEYWORDS = [
+WEATHER_KEYWORDS = {
     "temp",
     "high",
     "low",
@@ -324,7 +358,7 @@ WEATHER_KEYWORDS = [
     "heat",
     "cold",
     "weather",
-]
+}
 
 
 def is_stale(market: dict) -> bool:
@@ -479,11 +513,6 @@ def enrich_with_forecast(market: dict) -> dict:
 # ── Trade analysis ────────────────────────────────────────────────────────────
 
 
-def _normal_cdf(x: float, mu: float, sigma: float) -> float:
-    """Probability that a normal(mu, sigma) random variable is <= x."""
-    return 0.5 * math.erfc((mu - x) / (sigma * math.sqrt(2)))
-
-
 def _forecast_uncertainty(target_date: date) -> float:
     """
     Estimated standard deviation of forecast error in °F.
@@ -599,12 +628,12 @@ def _parse_market_condition(market: dict) -> dict | None:
 def _forecast_probability(condition: dict, forecast_temp: float, sigma: float) -> float:
     """Estimate probability of the market condition given a forecast temperature."""
     if condition["type"] == "above":
-        return 1.0 - _normal_cdf(condition["threshold"], forecast_temp, sigma)
+        return 1.0 - normal_cdf(condition["threshold"], forecast_temp, sigma)
     elif condition["type"] == "below":
-        return _normal_cdf(condition["threshold"], forecast_temp, sigma)
+        return normal_cdf(condition["threshold"], forecast_temp, sigma)
     elif condition["type"] == "between":
-        p_upper = _normal_cdf(condition["upper"], forecast_temp, sigma)
-        p_lower = _normal_cdf(condition["lower"], forecast_temp, sigma)
+        p_upper = normal_cdf(condition["upper"], forecast_temp, sigma)
+        p_lower = normal_cdf(condition["lower"], forecast_temp, sigma)
         return p_upper - p_lower
     return 0.0
 
@@ -686,8 +715,8 @@ def _bootstrap_ci(
 
     k = len(temps)
     boot = sorted(prob_from(random.choices(temps, k=k)) for _ in range(n))
-    p05 = boot[int(n * 0.05)]
-    p95 = boot[int(n * 0.95)]
+    p05 = boot[min(int(n * 0.05), n - 1)]
+    p95 = boot[min(int(n * 0.95), n - 1)]
     return (p05, p95)
 
 
@@ -706,7 +735,7 @@ def _bootstrap_ci_precip(
 
     k = len(members)
     boot = sorted(prob_from(random.choices(members, k=k)) for _ in range(n))
-    return (boot[int(n * 0.05)], boot[int(n * 0.95)])
+    return (boot[min(int(n * 0.05), n - 1)], boot[min(int(n * 0.95), n - 1)])
 
 
 def kelly_fraction(our_prob: float, price: float, fee_rate: float = 0.0) -> float:
@@ -802,9 +831,9 @@ def _analyze_precip_trade(
         # Normal distribution around forecast precip
         sigma = max(0.2, forecast_precip * 0.5)
         if condition["type"] == "precip_any":
-            ens_prob = 1.0 - _normal_cdf(0.01, forecast_precip, sigma)
+            ens_prob = 1.0 - normal_cdf(0.01, forecast_precip, sigma)
         else:
-            ens_prob = 1.0 - _normal_cdf(condition["threshold"], forecast_precip, sigma)
+            ens_prob = 1.0 - normal_cdf(condition["threshold"], forecast_precip, sigma)
 
     # ── Same-day live precipitation observation override ─────────────────────
     obs_precip_val: float | None = None
@@ -851,7 +880,6 @@ def _analyze_precip_trade(
     if entry_price == 0:
         entry_price = 1 - market_prob if rec_side == "no" else market_prob
 
-    KALSHI_FEE_RATE = 0.07
     payout = 1 - entry_price
     p_win = blended_prob if rec_side == "yes" else 1 - blended_prob
     net_ev = p_win * payout * (1 - KALSHI_FEE_RATE) - (1 - p_win) * entry_price
@@ -950,6 +978,11 @@ def analyze_trade(enriched: dict) -> dict | None:
 
     # ── 1. Ensemble probability ──────────────────────────────────────────────
     temps = get_ensemble_temps(city, target_date, hour=hour, var=var)
+
+    # For hourly markets, use ensemble mean of the hourly temps as forecast_temp
+    # (daily high is misleading for e.g. "temp at 9am" markets)
+    if hour is not None and len(temps) >= 5:
+        forecast_temp = statistics.mean(temps)
     ens_stats = ensemble_stats(temps) if len(temps) >= 10 else None
     method = "normal_dist"
     ens_prob: float | None = None
@@ -1058,7 +1091,6 @@ def analyze_trade(enriched: dict) -> dict | None:
     # you win (1 - p) per dollar at risk. Fee = 7% of that win.
     # Net EV = our_prob * (1 - entry_price) * (1 - FEE_RATE) - (1 - our_prob) * entry_price
     # Net edge = net EV / entry_price  (as fraction of stake)
-    KALSHI_FEE_RATE = 0.07
     if rec_side == "yes":
         payout = 1 - entry_price
         net_ev = (

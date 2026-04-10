@@ -7,11 +7,12 @@ Provides:
 
 from __future__ import annotations
 
-import math
 import time
 from datetime import date, datetime
 
 import requests
+
+from utils import normal_cdf
 
 NWS_BASE = "https://api.weather.gov"
 UA_HEADER = {"User-Agent": "kalshi-weather-predictor/1.0 (contact@example.com)"}
@@ -125,15 +126,12 @@ def nws_prob(
     days_out = (target_date - date.today()).days
     sigma = 2.0 if days_out <= 2 else 3.0 if days_out <= 5 else 4.0
 
-    def ncdf(x, mu, s):
-        return 0.5 * math.erfc((mu - x) / (s * math.sqrt(2)))
-
     if condition["type"] == "above":
-        return 1.0 - ncdf(condition["threshold"], temp, sigma)
+        return 1.0 - normal_cdf(condition["threshold"], temp, sigma)
     elif condition["type"] == "below":
-        return ncdf(condition["threshold"], temp, sigma)
+        return normal_cdf(condition["threshold"], temp, sigma)
     elif condition["type"] == "between":
-        return ncdf(condition["upper"], temp, sigma) - ncdf(
+        return normal_cdf(condition["upper"], temp, sigma) - normal_cdf(
             condition["lower"], temp, sigma
         )
     return None
@@ -211,15 +209,12 @@ def obs_prob(obs: dict, condition: dict) -> float:
     temp = obs["temp_f"]
     sigma = 1.0  # near-certain once observed
 
-    def ncdf(x, mu, s):
-        return 0.5 * math.erfc((mu - x) / (s * math.sqrt(2)))
-
     if condition["type"] == "above":
-        return 1.0 - ncdf(condition["threshold"], temp, sigma)
+        return 1.0 - normal_cdf(condition["threshold"], temp, sigma)
     elif condition["type"] == "below":
-        return ncdf(condition["threshold"], temp, sigma)
+        return normal_cdf(condition["threshold"], temp, sigma)
     elif condition["type"] == "between":
-        return ncdf(condition["upper"], temp, sigma) - ncdf(
+        return normal_cdf(condition["upper"], temp, sigma) - normal_cdf(
             condition["lower"], temp, sigma
         )
     return 0.0

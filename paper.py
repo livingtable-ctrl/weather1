@@ -9,14 +9,25 @@ from __future__ import annotations
 
 import csv
 import json
+import os
+import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
+
+from utils import KALSHI_FEE_RATE
 
 DATA_PATH = Path(__file__).parent / "data" / "paper_trades.json"
 DATA_PATH.parent.mkdir(exist_ok=True)
 
 STARTING_BALANCE = 1000.0  # default paper bankroll in dollars
-MAX_DRAWDOWN_FRACTION = 0.50  # halt auto-sizing if 50% drawdown from peak
+MAX_DRAWDOWN_FRACTION = 0.50  # halt auto-sizing if balance < 50% of peak
+
+# Gradual recovery thresholds (fraction of peak balance)
+_DRAWDOWN_TIER_1 = 1 - MAX_DRAWDOWN_FRACTION  # 0.50 — fully paused below this
+_DRAWDOWN_TIER_2 = 0.60  # 25% sizing
+_DRAWDOWN_TIER_3 = 0.75  # 50% sizing
+_DRAWDOWN_TIER_4 = 0.90  # 75% sizing
+
 MAX_CITY_DATE_EXPOSURE = 0.15  # max fraction of starting balance on one city/date combo
 MAX_DIRECTIONAL_EXPOSURE = (
     0.10  # max fraction of starting balance on one city/date/side
@@ -31,8 +42,19 @@ def _load() -> dict:
 
 
 def _save(data: dict) -> None:
-    with open(DATA_PATH, "w") as f:
-        json.dump(data, f, indent=2)
+    """Write atomically: write to a temp file then rename, so a crash never corrupts the ledger."""
+    dir_ = DATA_PATH.parent
+    fd, tmp = tempfile.mkstemp(dir=dir_, prefix=".paper_trades_", suffix=".json")
+    try:
+        with os.fdopen(fd, "w") as f:
+            json.dump(data, f, indent=2)
+        os.replace(tmp, DATA_PATH)
+    except Exception:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
 
 
 def get_balance() -> float:
@@ -60,30 +82,62 @@ def is_paused_drawdown() -> bool:
     return get_balance() < get_peak_balance() * (1 - MAX_DRAWDOWN_FRACTION)
 
 
+def drawdown_scaling_factor() -> float:
+    """
+    Return a 0.0–1.0 multiplier for Kelly sizing based on recovery from peak.
+    Gradual steps prevent over-betting during a drawdown while still allowing
+    some activity as the balance recovers:
+      <50% of peak  → 0.00  (fully paused)
+      50–60%        → 0.25
+      60–75%        → 0.50
+      75–90%        → 0.75
+      ≥90%          → 1.00  (normal)
+    """
+    peak = get_peak_balance()
+    if peak <= 0:
+        return 1.0
+    recovery = get_balance() / peak
+    if recovery < _DRAWDOWN_TIER_1:
+        return 0.0
+    elif recovery < _DRAWDOWN_TIER_2:
+        return 0.25
+    elif recovery < _DRAWDOWN_TIER_3:
+        return 0.50
+    elif recovery < _DRAWDOWN_TIER_4:
+        return 0.75
+    else:
+        return 1.0
+
+
 def kelly_bet_dollars(kelly_fraction: float) -> float:
     """
     Return the dollar amount to bet based on Kelly fraction × current balance.
-    This compounds automatically — as your balance grows, bet sizes grow too.
-    Floors at $0 and caps at 25% of balance as a safety limit.
-    Returns 0.0 if the account is in drawdown (>50% loss from peak).
+    Scales down gradually as drawdown deepens rather than cutting off entirely
+    at the 50% threshold. Fully pauses below 50% of peak.
+    Hard cap at 25% of balance as a safety limit.
     """
-    if is_paused_drawdown():
+    scale = drawdown_scaling_factor()
+    if scale == 0.0:
         return 0.0
     balance = get_balance()
-    fraction = max(0.0, min(kelly_fraction, 0.25))  # hard cap at 25%
+    fraction = max(0.0, min(kelly_fraction * scale, 0.25))
     return round(balance * fraction, 2)
 
 
-def kelly_quantity(kelly_fraction: float, price: float) -> int:
+def kelly_quantity(
+    kelly_fraction: float, price: float, min_dollars: float = 1.0
+) -> int:
     """
     Convert a Kelly dollar amount to a quantity (contracts) at a given price.
-    Returns at least 1 if there is any positive edge and balance allows.
+    Returns 0 if the Kelly allocation would be too small to buy even one contract
+    without over-betting (requires at least min_dollars allocated).
     """
     if price <= 0:
         return 0
     dollars = kelly_bet_dollars(kelly_fraction)
-    qty = int(dollars / price)
-    return max(qty, 1) if dollars > 0 else 0
+    if dollars < min_dollars:
+        return 0
+    return int(dollars / price)
 
 
 def place_paper_order(
@@ -144,7 +198,7 @@ def settle_paper_trade(trade_id: int, outcome_yes: bool) -> dict:
             side = t["side"]
             cost = t["cost"]
             won = (side == "yes" and outcome_yes) or (side == "no" and not outcome_yes)
-            payout = qty * 1.0 * (1 - 0.07) if won else 0.0  # 7% Kalshi fee on winnings
+            payout = qty * 1.0 * (1 - KALSHI_FEE_RATE) if won else 0.0
             pnl = payout - cost
 
             t["settled"] = True
@@ -276,3 +330,35 @@ def export_trades_csv(path: str) -> int:
 def reset_paper_account() -> None:
     """Wipe all paper trades and reset balance."""
     _save({"balance": STARTING_BALANCE, "peak_balance": STARTING_BALANCE, "trades": []})
+
+
+def auto_settle_paper_trades(client=None) -> int:
+    """
+    Settle any open paper trades whose tickers have recorded outcomes.
+    First checks the tracker DB, then falls back to the Kalshi API directly
+    for trades that were never logged to the tracker (e.g. manual paper buys).
+    Returns the number of trades settled.
+    """
+    from tracker import get_outcome_for_ticker
+
+    open_trades = get_open_trades()
+    settled = 0
+    for t in open_trades:
+        outcome = get_outcome_for_ticker(t["ticker"])
+
+        # Fallback: query Kalshi API directly if not in tracker
+        if outcome is None and client is not None:
+            try:
+                market = client.get_market(t["ticker"])
+                if market.get("status") == "finalized":
+                    outcome = market.get("result") == "yes"
+            except Exception:
+                pass
+
+        if outcome is not None:
+            try:
+                settle_paper_trade(t["id"], outcome)
+                settled += 1
+            except Exception:
+                pass
+    return settled

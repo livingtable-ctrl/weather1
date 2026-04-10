@@ -15,6 +15,8 @@ from pathlib import Path
 DB_PATH = Path(__file__).parent / "data" / "predictions.db"
 DB_PATH.parent.mkdir(exist_ok=True)
 
+_db_initialized = False
+
 
 def _conn() -> sqlite3.Connection:
     con = sqlite3.connect(DB_PATH)
@@ -23,6 +25,9 @@ def _conn() -> sqlite3.Connection:
 
 
 def init_db() -> None:
+    global _db_initialized
+    if _db_initialized:
+        return
     with _conn() as con:
         con.executescript("""
         CREATE TABLE IF NOT EXISTS predictions (
@@ -50,6 +55,7 @@ def init_db() -> None:
         CREATE INDEX IF NOT EXISTS idx_pred_ticker ON predictions(ticker);
         CREATE INDEX IF NOT EXISTS idx_pred_city   ON predictions(city, market_date);
         """)
+    _db_initialized = True
 
 
 # ── Logging ───────────────────────────────────────────────────────────────────
@@ -373,3 +379,18 @@ def sync_outcomes(client) -> int:
         except Exception:
             continue
     return count
+
+
+def get_outcome_for_ticker(ticker: str) -> bool | None:
+    """
+    Return the recorded outcome for a ticker (True=YES, False=NO),
+    or None if no outcome has been recorded yet.
+    """
+    init_db()
+    with _conn() as con:
+        row = con.execute(
+            "SELECT settled_yes FROM outcomes WHERE ticker = ?", (ticker,)
+        ).fetchone()
+    if row is None:
+        return None
+    return bool(row["settled_yes"])
