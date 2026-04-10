@@ -313,3 +313,47 @@ def test_log_api_request_accepts_no_error(tmp_path):
 
     tracker.DB_PATH = orig_path
     tracker._db_initialized = False
+
+
+# ── PRAGMA user_version migration tracking (#99) ──────────────────────────────
+
+
+def test_pragma_user_version_set_after_init(tmp_path):
+    """After init_db(), PRAGMA user_version equals _SCHEMA_VERSION."""
+    import tracker
+
+    orig_path = tracker.DB_PATH
+    tracker.DB_PATH = tmp_path / "pragma_test.db"
+    tracker._db_initialized = False
+    tracker.init_db()
+
+    with tracker._conn() as con:
+        version = con.execute("PRAGMA user_version").fetchone()[0]
+    assert version == tracker._SCHEMA_VERSION
+
+    tracker.DB_PATH = orig_path
+    tracker._db_initialized = False
+
+
+def test_pragma_migrations_incremental(tmp_path):
+    """Migrations applied incrementally when user_version starts at 0."""
+    import sqlite3
+
+    import tracker
+
+    orig_path = tracker.DB_PATH
+    tracker.DB_PATH = tmp_path / "incr_test.db"
+    tracker._db_initialized = False
+
+    con = sqlite3.connect(str(tracker.DB_PATH))
+    con.execute("PRAGMA user_version=0")
+    con.close()
+
+    tracker.init_db()
+
+    with tracker._conn() as con:
+        version = con.execute("PRAGMA user_version").fetchone()[0]
+    assert version == tracker._SCHEMA_VERSION
+
+    tracker.DB_PATH = orig_path
+    tracker._db_initialized = False

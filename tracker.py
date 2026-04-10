@@ -71,9 +71,11 @@ _MIGRATIONS = [
 
 def _run_migrations(con: sqlite3.Connection) -> None:
     """Apply any pending schema migrations and update schema_version (#99)."""
+    # Keep schema_version table for backward compatibility
     con.execute("CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL)")
-    row = con.execute("SELECT version FROM schema_version").fetchone()
-    current = row[0] if row else 0
+
+    # Use PRAGMA user_version as the authoritative migration cursor (#99)
+    current = con.execute("PRAGMA user_version").fetchone()[0]
 
     for i, sql in enumerate(_MIGRATIONS):
         version = i + 1
@@ -89,6 +91,11 @@ def _run_migrations(con: sqlite3.Connection) -> None:
             else:
                 raise
 
+    # Update PRAGMA user_version to reflect applied migrations
+    con.execute(f"PRAGMA user_version={_SCHEMA_VERSION}")
+
+    # Keep schema_version table in sync for backward compatibility
+    row = con.execute("SELECT version FROM schema_version").fetchone()
     if row is None:
         con.execute("INSERT INTO schema_version VALUES (?)", (_SCHEMA_VERSION,))
     else:
