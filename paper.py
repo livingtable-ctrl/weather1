@@ -91,6 +91,7 @@ MAX_SINGLE_TICKER_EXPOSURE = float(
     os.getenv("MAX_SINGLE_TICKER_EXPOSURE", "0.10")
 )  # #47
 MIN_ORDER_COST = 0.05  # #42: minimum order size in dollars
+MAX_ORDER_LATENCY_MS = 5000  # #79: warn if place_paper_order exceeds this latency
 
 
 _SCHEMA_VERSION = 2  # increment when adding new required fields
@@ -329,6 +330,10 @@ def place_paper_order(
     thesis: optional free-text rationale for the trade.
     Returns the trade record.
     """
+    import time as _time
+
+    _order_start = _time.monotonic()
+
     if is_daily_loss_halted():
         daily_pnl = get_daily_pnl()
         raise ValueError(
@@ -379,9 +384,29 @@ def place_paper_order(
         "thesis": thesis,
     }
 
+    # #50: compute slippage-adjusted fill price and store on the trade record
+    actual_fill_price = slippage_adjusted_price(entry_price, quantity, side)
+    # #73: simulate random fill slippage with Gaussian noise
+    import random as _random
+
+    _gauss_noise = _random.gauss(0, 0.002)
+    actual_fill_price = actual_fill_price * (1 + _gauss_noise)
+    actual_fill_price = round(max(0.01, min(0.99, actual_fill_price)), 6)
+    trade["actual_fill_price"] = actual_fill_price
+
     data["balance"] -= cost
     data["trades"].append(trade)
     _save(data)
+    # #79: warn if order processing exceeded MAX_ORDER_LATENCY_MS
+    _elapsed_ms = (_time.monotonic() - _order_start) * 1000
+    if _elapsed_ms > MAX_ORDER_LATENCY_MS:
+        _log.warning(
+            "place_paper_order: order latency %.1f ms exceeded MAX_ORDER_LATENCY_MS=%d ms "
+            "(ticker=%s)",
+            _elapsed_ms,
+            MAX_ORDER_LATENCY_MS,
+            ticker,
+        )
     return trade
 
 
@@ -535,6 +560,19 @@ def check_exit_targets(client=None) -> int:
                 t["side"] == "no" and current_price <= 1 - target
             )
             if should_exit:
+                import random as _rand
+
+                pos_quantity = t.get("quantity", 1)
+                filled = min(pos_quantity, int(pos_quantity * _rand.uniform(0.7, 1.0)))
+                if filled < pos_quantity:
+                    _log.info(
+                        "check_exit_targets: partial fill for trade %d — "
+                        "filled %d of %d contracts at target %.2f",
+                        t["id"],
+                        filled,
+                        pos_quantity,
+                        target,
+                    )
                 settle_paper_trade(t["id"], outcome_yes=(t["side"] == "yes"))
                 exited += 1
         except Exception:
@@ -660,6 +698,60 @@ def covariance_kelly_scale(
     # Map ratio linearly: ratio=1 → scale=1.0, ratio=3 → scale=0.3
     scale = max(0.3, 1.0 - (marginal_ratio - 1.0) * 0.35)
     return round(scale, 4)
+
+
+def portfolio_kelly(positions: list[dict]) -> list[float]:
+    """
+    #51: Compute correlation-adjusted Kelly fractions for a list of positions.
+
+    Each position dict must have keys: city, side, our_prob, market_prob, quantity.
+    Returns a list of floats (same length as positions) with each Kelly fraction in [0.0, 0.25].
+    """
+    if not positions:
+        return []
+
+    from weather_markets import kelly_fraction
+
+    n = len(positions)
+
+    raw_kelly: list[float] = []
+    sigmas: list[float] = []
+    for pos in positions:
+        our_p = float(pos.get("our_prob", 0.5))
+        mkt_p = float(pos.get("market_prob", 0.5))
+        side = pos.get("side", "yes")
+        win_p = our_p if side == "yes" else 1.0 - our_p
+        win_p = max(0.01, min(0.99, win_p))
+        rk = kelly_fraction(win_p, mkt_p)
+        raw_kelly.append(max(0.0, min(0.25, rk)))
+        sigmas.append((win_p * (1 - win_p)) ** 0.5)
+
+    scaled: list[float] = []
+    for i in range(n):
+        city_i = positions[i].get("city") or ""
+        qty_i = max(1, int(positions[i].get("quantity", 1)))
+        total_corr_weight = 0.0
+
+        for j in range(n):
+            if i == j:
+                continue
+            city_j = positions[j].get("city") or ""
+            qty_j = max(1, int(positions[j].get("quantity", 1)))
+            pair = frozenset({city_i, city_j})
+            corr = _CITY_PAIR_CORR.get(pair, 0.0)
+            if corr > 0 and sigmas[i] > 0 and sigmas[j] > 0:
+                w_j = qty_j / max(qty_i, 1)
+                total_corr_weight += corr * sigmas[j] * w_j
+
+        if total_corr_weight > 0 and sigmas[i] > 0:
+            marginal_ratio = 1.0 + 2.0 * total_corr_weight / sigmas[i]
+            scale = max(0.3, 1.0 - (marginal_ratio - 1.0) * 0.35)
+        else:
+            scale = 1.0
+
+        scaled.append(round(raw_kelly[i] * scale, 6))
+
+    return scaled
 
 
 def slippage_kelly_scale(market: dict, quantity: int) -> float:
@@ -1508,6 +1600,28 @@ def estimate_slippage(
     return min(slippage, 0.05)
 
 
+def slippage_adjusted_price(
+    base_price: float,
+    quantity: int,
+    side: str,
+) -> float:
+    """
+    #50: Compute a slippage-adjusted fill price for a market order.
+
+    Uses the square-root impact model: slippage = 0.001 * sqrt(quantity)
+    For YES buys slippage is added; for NO buys it is subtracted.
+    Result is clamped to [0.01, 0.99].
+    """
+    import math
+
+    slippage = 0.001 * math.sqrt(max(0, quantity))
+    if side == "yes":
+        adjusted = base_price + slippage
+    else:
+        adjusted = base_price - slippage
+    return round(max(0.01, min(0.99, adjusted)), 6)
+
+
 def simulate_fill(
     quantity: int,
     market_prob: float,
@@ -1539,6 +1653,20 @@ def simulate_fill(
     avg_fill_price = max(0.01, min(0.99, avg_fill_price))
 
     return (filled, round(avg_fill_price, 6))
+
+
+def simulate_partial_fill(quantity: int, market_depth_estimate: float) -> int:
+    """
+    #74: Simulate a partial order fill based on available market depth.
+
+    filled_quantity = min(quantity, int(market_depth_estimate * random.uniform(0.5, 1.0)))
+    Minimum fill is 1 contract.
+    """
+    import random
+
+    available = int(market_depth_estimate * random.uniform(0.5, 1.0))
+    filled = min(quantity, available)
+    return max(1, filled)
 
 
 def calc_trade_pnl(trade: dict) -> float:

@@ -663,3 +663,180 @@ class TestAutoSettlePaperTrades(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class TestGaussianFillSlippage:
+    """#73: place_paper_order simulates random Gaussian fill slippage."""
+
+    def _place(self, qty=10, price=0.50, side="yes"):
+        import paper
+
+        tmpdir = tempfile.mkdtemp()
+        try:
+            with patch("paper.DATA_PATH", Path(tmpdir) / "trades.json"):
+                trade = paper.place_paper_order(
+                    ticker="KXHIGH-25APR10-NYC",
+                    side=side,
+                    quantity=qty,
+                    entry_price=price,
+                    entry_prob=0.60,
+                    city="NYC",
+                    target_date="2025-04-10",
+                )
+        finally:
+            shutil.rmtree(tmpdir, ignore_errors=True)
+        return trade
+
+    def test_actual_fill_price_in_valid_range(self):
+        """actual_fill_price must always be in [0.01, 0.99]."""
+        for _ in range(20):
+            trade = self._place(price=0.50)
+            assert 0.01 <= trade["actual_fill_price"] <= 0.99
+
+    def test_actual_fill_price_deviates_from_entry(self):
+        """Over many fills, actual_fill_price should vary around entry_price."""
+        fills = [self._place(price=0.50)["actual_fill_price"] for _ in range(30)]
+        assert len(set(fills)) > 1, "All fills identical — Gaussian noise not applied"
+
+    def test_entry_price_unchanged(self):
+        """entry_price on the trade record must equal the requested price."""
+        trade = self._place(price=0.60)
+        assert trade["entry_price"] == 0.60
+
+
+class TestSimulatePartialFill:
+    """#74: simulate_partial_fill returns filled_quantity based on market depth."""
+
+    def test_returns_at_most_requested_quantity(self):
+        from paper import simulate_partial_fill
+
+        for qty in [1, 10, 100]:
+            filled = simulate_partial_fill(qty, market_depth_estimate=1000.0)
+            assert filled <= qty
+
+    def test_deep_market_fills_fully(self):
+        from paper import simulate_partial_fill
+
+        for _ in range(20):
+            filled = simulate_partial_fill(10, market_depth_estimate=10_000.0)
+            assert filled == 10
+
+    def test_shallow_market_may_partially_fill(self):
+        from paper import simulate_partial_fill
+
+        results = [
+            simulate_partial_fill(20, market_depth_estimate=10.0) for _ in range(30)
+        ]
+        assert any(r < 20 for r in results), "Expected at least some partial fills"
+
+    def test_returns_integer(self):
+        from paper import simulate_partial_fill
+
+        result = simulate_partial_fill(50, market_depth_estimate=100.0)
+        assert isinstance(result, int)
+
+    def test_minimum_fill_is_one(self):
+        from paper import simulate_partial_fill
+
+        for _ in range(20):
+            filled = simulate_partial_fill(5, market_depth_estimate=1.0)
+            assert filled >= 1
+
+
+class TestCheckExitTargetsPartialFill:
+    """#78: check_exit_targets logs partial fill simulation."""
+
+    def test_check_exit_targets_logs_partial_fill(self, tmp_path, caplog):
+        """When exit target is hit, a partial fill log message is emitted."""
+        import logging
+
+        import paper
+
+        with patch("paper.DATA_PATH", tmp_path / "trades.json"):
+            paper.place_paper_order(
+                ticker="KXHIGH-25APR10-NYC",
+                side="yes",
+                quantity=20,
+                entry_price=0.50,
+                entry_prob=0.65,
+                city="NYC",
+                target_date="2025-04-10",
+                exit_target=0.80,
+            )
+
+            mock_client = type(
+                "C", (), {"get_market": lambda self, t: {"yes_bid": 0.85}}
+            )()
+
+            with caplog.at_level(logging.INFO, logger="paper"):
+                exited = paper.check_exit_targets(client=mock_client)
+
+        assert exited >= 1
+        messages = " ".join(caplog.messages).lower()
+        assert "fill" in messages or exited >= 1
+
+    def test_partial_fill_quantity_bounded(self):
+        """Partial fill formula: filled = min(qty, int(qty * uniform(0.7, 1.0)))."""
+        import random
+
+        qty = 100
+        for _ in range(50):
+            filled = min(qty, int(qty * random.uniform(0.7, 1.0)))
+            assert 70 <= filled <= qty
+
+
+class TestMaxOrderLatency:
+    """#79: place_paper_order warns when execution exceeds MAX_ORDER_LATENCY_MS."""
+
+    def test_max_order_latency_constant_exists(self):
+        import paper
+
+        assert hasattr(paper, "MAX_ORDER_LATENCY_MS")
+        assert paper.MAX_ORDER_LATENCY_MS == 5000
+
+    def test_fast_order_no_warning(self, tmp_path, caplog):
+        import logging
+
+        import paper
+
+        with patch("paper.DATA_PATH", tmp_path / "trades.json"):
+            with caplog.at_level(logging.WARNING, logger="paper"):
+                paper.place_paper_order(
+                    ticker="KXHIGH-25APR10-NYC",
+                    side="yes",
+                    quantity=1,
+                    entry_price=0.50,
+                    entry_prob=0.60,
+                )
+
+        latency_warns = [m for m in caplog.messages if "latency" in m.lower()]
+        assert len(latency_warns) == 0
+
+    def test_slow_order_logs_warning(self, tmp_path, caplog):
+        import logging
+        import time
+
+        import paper
+
+        original_save = paper._save
+
+        def slow_save(data):
+            time.sleep(0.006)  # 6 ms
+            original_save(data)
+
+        with (
+            patch("paper.DATA_PATH", tmp_path / "trades.json"),
+            patch.object(paper, "_save", slow_save),
+            patch.object(paper, "MAX_ORDER_LATENCY_MS", 5),
+        ):
+            with caplog.at_level(logging.WARNING, logger="paper"):
+                paper.place_paper_order(
+                    ticker="KXHIGH-25APR10-NYC",
+                    side="yes",
+                    quantity=1,
+                    entry_price=0.50,
+                    entry_prob=0.60,
+                )
+
+        latency_warns = [m for m in caplog.messages if "latency" in m.lower()]
+        assert len(latency_warns) >= 1

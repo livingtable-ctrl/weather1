@@ -338,3 +338,300 @@ class TestCalcTradePnl:
         pnl = calc_trade_pnl(trade)
         expected = (1.0 - 0.40) * 10  # = 6.00
         assert pnl == pytest.approx(expected)
+
+
+class TestBayesianKellyFractionBeta:
+    """#39: bayesian_kelly_fraction must accept fee_rate and use Beta posterior."""
+
+    def test_accepts_fee_rate_kwarg(self):
+        """fee_rate kwarg must be accepted without error."""
+        from weather_markets import bayesian_kelly_fraction
+
+        result = bayesian_kelly_fraction(0.65, 0.50, n_predictions=20, fee_rate=0.07)
+        assert result >= 0.0
+
+    def test_higher_fee_reduces_fraction(self):
+        """Higher fee_rate should produce equal or smaller Kelly fraction."""
+        from weather_markets import bayesian_kelly_fraction
+
+        f_low = bayesian_kelly_fraction(0.65, 0.50, n_predictions=20, fee_rate=0.01)
+        f_high = bayesian_kelly_fraction(0.65, 0.50, n_predictions=20, fee_rate=0.20)
+        assert f_low >= f_high
+
+    def test_beta_posterior_is_conservative(self):
+        """Beta-posterior Kelly must be <= point-estimate Kelly at same edge."""
+        from weather_markets import bayesian_kelly_fraction, kelly_fraction
+
+        our_prob = 0.70
+        market_prob = 0.50
+        bk = bayesian_kelly_fraction(
+            our_prob, market_prob, n_predictions=20, fee_rate=0.07
+        )
+        pk = kelly_fraction(our_prob, market_prob, fee_rate=0.07)
+        assert bk <= pk
+
+    def test_zero_for_no_edge(self):
+        """When our_prob == market_prob, Kelly should be 0."""
+        from weather_markets import bayesian_kelly_fraction
+
+        result = bayesian_kelly_fraction(0.50, 0.50, n_predictions=20, fee_rate=0.07)
+        assert result == 0.0
+
+    def test_capped_at_0_25(self):
+        """Result must never exceed 0.25."""
+        from weather_markets import bayesian_kelly_fraction
+
+        result = bayesian_kelly_fraction(0.99, 0.01, n_predictions=20, fee_rate=0.07)
+        assert result <= 0.25
+
+
+class TestCorrelationPersistence:
+    """#49: load_correlations_from_backtest / save_correlations round-trip."""
+
+    def test_save_and_reload(self, tmp_path):
+        """save_correlations writes JSON; load_correlations_from_backtest reads it back."""
+        from unittest.mock import patch
+
+        import monte_carlo
+
+        corr_file = tmp_path / "correlations.json"
+        pairs = {"NYC|Boston": 0.91, "Chicago|Denver": 0.43}
+
+        with patch.object(monte_carlo, "_CORR_PATH", corr_file):
+            monte_carlo.save_correlations(pairs)
+            assert corr_file.exists()
+            result = monte_carlo.load_correlations_from_backtest()
+
+        assert result[frozenset({"NYC", "Boston"})] == pytest.approx(0.91)
+        assert result[frozenset({"Chicago", "Denver"})] == pytest.approx(0.43)
+
+    def test_fallback_to_hardcoded_when_file_missing(self, tmp_path):
+        """When correlations.json is absent, returns _HARDCODED_CORR."""
+        from unittest.mock import patch
+
+        import monte_carlo
+
+        missing = tmp_path / "correlations.json"
+
+        with patch.object(monte_carlo, "_CORR_PATH", missing):
+            result = monte_carlo.load_correlations_from_backtest()
+
+        # NYC|Boston hardcoded at 0.85
+        assert result[frozenset({"NYC", "Boston"})] == pytest.approx(0.85)
+
+    def test_save_correlations_valid_json(self, tmp_path):
+        """save_correlations produces valid JSON with pipe-separated keys."""
+        import json
+        from unittest.mock import patch
+
+        import monte_carlo
+
+        corr_file = tmp_path / "correlations.json"
+        with patch.object(monte_carlo, "_CORR_PATH", corr_file):
+            monte_carlo.save_correlations({"LA|Phoenix": 0.60})
+
+        raw = json.loads(corr_file.read_text())
+        assert "LA|Phoenix" in raw
+        assert raw["LA|Phoenix"] == pytest.approx(0.60)
+
+    def test_unknown_pair_returns_zero_after_load(self, tmp_path):
+        """After loading, unknown city pairs return 0.0."""
+        from unittest.mock import patch
+
+        import monte_carlo
+
+        corr_file = tmp_path / "correlations.json"
+        with patch.object(monte_carlo, "_CORR_PATH", corr_file):
+            monte_carlo.save_correlations({"NYC|Boston": 0.88})
+            result = monte_carlo.load_correlations_from_backtest()
+
+        assert result.get(frozenset({"NYC", "Honolulu"}), 0.0) == 0.0
+
+
+class TestSlippageAdjustedPrice:
+    """#50: slippage_adjusted_price uses 0.001 * sqrt(quantity) model."""
+
+    def test_buy_yes_increases_price(self):
+        """Buying YES adds slippage to base price."""
+        from paper import slippage_adjusted_price
+
+        result = slippage_adjusted_price(0.50, 100, "yes")
+        expected_slip = 0.001 * (100**0.5)  # 0.01
+        assert result == pytest.approx(0.50 + expected_slip, rel=1e-5)
+
+    def test_buy_no_decreases_price(self):
+        """Buying NO subtracts slippage (worse fill for the buyer)."""
+        from paper import slippage_adjusted_price
+
+        result = slippage_adjusted_price(0.40, 100, "no")
+        expected_slip = 0.001 * (100**0.5)
+        assert result == pytest.approx(0.40 - expected_slip, rel=1e-5)
+
+    def test_zero_slippage_at_quantity_zero(self):
+        """quantity=1 produces 0.001 slippage."""
+        from paper import slippage_adjusted_price
+
+        result = slippage_adjusted_price(0.50, 1, "yes")
+        assert result == pytest.approx(0.501, rel=1e-5)
+
+    def test_clamped_to_0_01_0_99(self):
+        """Output must always be in [0.01, 0.99]."""
+        from paper import slippage_adjusted_price
+
+        high = slippage_adjusted_price(0.99, 1_000_000, "yes")
+        low = slippage_adjusted_price(0.01, 1_000_000, "no")
+        assert high <= 0.99
+        assert low >= 0.01
+
+    def test_place_paper_order_stores_actual_fill_price(self, tmp_path):
+        """place_paper_order records actual_fill_price != entry_price for large orders."""
+        import shutil
+        import tempfile
+        from pathlib import Path
+        from unittest.mock import patch
+
+        import paper
+
+        tmpdir = tempfile.mkdtemp()
+        try:
+            with patch("paper.DATA_PATH", Path(tmpdir) / "paper_trades.json"):
+                trade = paper.place_paper_order(
+                    ticker="KXHIGH-25APR10-NYC",
+                    side="yes",
+                    quantity=100,
+                    entry_price=0.50,
+                    entry_prob=0.65,
+                    city="NYC",
+                    target_date="2025-04-10",
+                )
+            assert "actual_fill_price" in trade
+            assert trade["actual_fill_price"] != trade["entry_price"]
+        finally:
+            shutil.rmtree(tmpdir, ignore_errors=True)
+
+
+class TestPortfolioKelly:
+    """#51: portfolio_kelly returns correlation-adjusted Kelly fractions."""
+
+    def test_single_position_returns_list_of_one(self):
+        """Single uncorrelated position returns its own Kelly fraction unchanged."""
+        from paper import portfolio_kelly
+
+        positions = [
+            {
+                "city": "NYC",
+                "side": "yes",
+                "our_prob": 0.65,
+                "market_prob": 0.50,
+                "quantity": 10,
+            }
+        ]
+        result = portfolio_kelly(positions)
+        assert len(result) == 1
+        assert 0.0 <= result[0] <= 0.25
+
+    def test_correlated_positions_reduce_fractions(self):
+        """Highly correlated city pair should produce lower fractions than independent."""
+        from paper import portfolio_kelly
+
+        correlated = [
+            {
+                "city": "NYC",
+                "side": "yes",
+                "our_prob": 0.65,
+                "market_prob": 0.50,
+                "quantity": 10,
+            },
+            {
+                "city": "Boston",
+                "side": "yes",
+                "our_prob": 0.65,
+                "market_prob": 0.50,
+                "quantity": 10,
+            },
+        ]
+        independent = [
+            {
+                "city": "NYC",
+                "side": "yes",
+                "our_prob": 0.65,
+                "market_prob": 0.50,
+                "quantity": 10,
+            },
+            {
+                "city": "Dallas",
+                "side": "yes",
+                "our_prob": 0.65,
+                "market_prob": 0.50,
+                "quantity": 10,
+            },
+        ]
+        corr_fracs = portfolio_kelly(correlated)
+        indep_fracs = portfolio_kelly(independent)
+        assert sum(corr_fracs) <= sum(indep_fracs)
+
+    def test_all_fractions_non_negative(self):
+        """All returned fractions must be >= 0."""
+        from paper import portfolio_kelly
+
+        positions = [
+            {
+                "city": "NYC",
+                "side": "yes",
+                "our_prob": 0.70,
+                "market_prob": 0.50,
+                "quantity": 5,
+            },
+            {
+                "city": "Boston",
+                "side": "no",
+                "our_prob": 0.60,
+                "market_prob": 0.45,
+                "quantity": 3,
+            },
+            {
+                "city": "Chicago",
+                "side": "yes",
+                "our_prob": 0.55,
+                "market_prob": 0.50,
+                "quantity": 8,
+            },
+        ]
+        result = portfolio_kelly(positions)
+        assert all(f >= 0.0 for f in result)
+
+    def test_returns_same_length_as_input(self):
+        """Output list length must match input list length."""
+        from paper import portfolio_kelly
+
+        positions = [
+            {
+                "city": "LA",
+                "side": "yes",
+                "our_prob": 0.60,
+                "market_prob": 0.50,
+                "quantity": 2,
+            },
+            {
+                "city": "Phoenix",
+                "side": "yes",
+                "our_prob": 0.65,
+                "market_prob": 0.55,
+                "quantity": 4,
+            },
+            {
+                "city": "Miami",
+                "side": "no",
+                "our_prob": 0.58,
+                "market_prob": 0.52,
+                "quantity": 6,
+            },
+        ]
+        result = portfolio_kelly(positions)
+        assert len(result) == len(positions)
+
+    def test_empty_positions_returns_empty_list(self):
+        """Empty input returns empty output."""
+        from paper import portfolio_kelly
+
+        assert portfolio_kelly([]) == []
