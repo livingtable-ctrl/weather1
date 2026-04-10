@@ -279,6 +279,40 @@ def auto_backtest(client: KalshiClient) -> None:
     t.start()
 
 
+def auto_backup() -> None:
+    """
+    Copy predictions.db and paper_trades.json to data/backups/ on startup.
+    Keeps the last 7 daily backups (one per calendar day).
+    Runs silently — never blocks startup.
+    """
+    import shutil
+
+    backup_dir = Path(__file__).parent / "data" / "backups"
+    backup_dir.mkdir(exist_ok=True)
+    today = date.today().isoformat()
+    files = [
+        Path(__file__).parent / "data" / "predictions.db",
+        Path(__file__).parent / "data" / "paper_trades.json",
+    ]
+    for src in files:
+        if not src.exists():
+            continue
+        dst = backup_dir / f"{src.stem}_{today}{src.suffix}"
+        if not dst.exists():  # only once per day
+            try:
+                shutil.copy2(src, dst)
+            except Exception:
+                pass
+    # Prune: keep only the 7 most recent backups per file stem
+    for stem in ("predictions", "paper_trades"):
+        backups = sorted(backup_dir.glob(f"{stem}_*"))
+        for old in backups[:-7]:
+            try:
+                old.unlink()
+            except Exception:
+                pass
+
+
 def cmd_settle(client: KalshiClient) -> None:
     """
     Sync settled market outcomes from Kalshi and record them in the tracker.
@@ -350,7 +384,17 @@ def cmd_markets(client: KalshiClient):
 
 def cmd_market(client: KalshiClient, ticker: str, verbose: bool = False):
     print(bold(f"\nFetching: {ticker}\n"))
-    market = client.get_market(ticker)
+    try:
+        market = client.get_market(ticker)
+    except Exception as _e:
+        short_msg = str(_e)[:120]
+        print(
+            red(
+                "  Could not reach Kalshi API. Check your internet connection and try again."
+            )
+        )
+        print(dim(f"  (Error: {short_msg})"))
+        return
     if not market:
         print(red(f"Market '{ticker}' not found."))
         return
@@ -1347,6 +1391,24 @@ def cmd_watch(client: KalshiClient, auto_trade: bool = False, min_edge: float = 
             _save_watch_state(previous)
             if auto_trade and liquid_opps:
                 _auto_place_trades(liquid_opps, client)
+            # Check price alerts
+            try:
+                from alerts import check_alerts, mark_triggered
+
+                triggered = check_alerts(client)
+                for item in triggered:
+                    a = item["alert"]
+                    cp = item["current_price"]
+                    print(
+                        yellow(
+                            f"  [Price alert] {a['ticker']} YES hit {cp:.2f}"
+                            f" (target: {a['target_price']:.2f} {a['direction']})"
+                        )
+                    )
+                    mark_triggered(a["id"])
+            except Exception:
+                pass
+
             # Check open paper positions for exit signals
             try:
                 from paper import check_expiring_trades, check_model_exits
@@ -2139,6 +2201,414 @@ def cmd_setup():
     print()
 
 
+# ── Help screen ───────────────────────────────────────────────────────────────
+
+
+def cmd_help() -> None:
+    """Print compact quick-reference guide."""
+    _header("Quick Reference", width=58)
+    lines = [
+        ("A", "Analyze ", "Best opportunities right now, sorted by edge"),
+        ("W", "Watch   ", "Auto-refreshes every 5 min, alerts on new signals"),
+        ("P", "Paper   ", "Simulate trades, track P&L, set price alerts"),
+        ("K", "Backtest", "How well has the model done on past markets?"),
+        ("R", "Brief   ", "Morning summary: balance, top picks, warnings"),
+        ("B", "Browse  ", "See all open markets for a city"),
+        ("S", "Settings", "Change edge thresholds, loss limits, fees"),
+        ("?", "Help    ", "This screen"),
+    ]
+    for key, name, desc in lines:
+        print(f"  {bold(key)}  {cyan(name)}  {dim(desc)}")
+
+    print(bold("\n  In analyze table:"))
+    print(
+        f"    {green('★★★')} = strong edge (>25%)   {yellow('★★')} = good (>15%)"
+        f"   {dim('★')} = weak (>10%)"
+    )
+    print("    Edge = how much better our model is vs market price")
+    print("    Risk = LOW (market closes soon, data reliable) / HIGH (far out)")
+
+    print(bold("\n  Tips for beginners:"))
+    print(
+        f"    {dim('-')} Only bet {green('★★★')} signals until you have 20+ settled trades"
+    )
+    print(f"    {dim('-')} Never bet more than 5% of your balance on one trade")
+    print(f"    {dim('-')} Run K Backtest monthly to check the model is still working")
+
+
+# ── Browse markets ────────────────────────────────────────────────────────────
+
+_BROWSE_CITIES = [
+    "NYC",
+    "Chicago",
+    "LA",
+    "Boston",
+    "Miami",
+    "Dallas",
+    "Phoenix",
+    "Seattle",
+    "Denver",
+    "Atlanta",
+]
+
+
+def cmd_browse(client: KalshiClient) -> None:
+    """Browse open markets by city."""
+    _header("Browse Markets by City")
+
+    # City picker
+    for i, city in enumerate(_BROWSE_CITIES, 1):
+        print(f"  {cyan(str(i)):<5} {city}")
+    print()
+    raw = input(dim("  Pick a city (1–10, or Enter for all): ")).strip()
+
+    city_filter: str | None = None
+    if raw.isdigit() and 1 <= int(raw) <= len(_BROWSE_CITIES):
+        city_filter = _BROWSE_CITIES[int(raw) - 1]
+
+    # Fetch markets
+    try:
+        all_markets = get_weather_markets(client)
+    except Exception as _e:
+        short_msg = str(_e)[:120]
+        print(
+            red(
+                "  Could not reach Kalshi API. Check your internet connection and try again."
+            )
+        )
+        print(dim(f"  (Error: {short_msg})"))
+        return
+
+    if city_filter:
+        # Match city name case-insensitively against the _city field
+        cf_lower = city_filter.lower()
+        markets = [
+            m
+            for m in all_markets
+            if (m.get("_city") or "").lower() == cf_lower
+            or cf_lower in (m.get("title") or "").lower()
+        ]
+        if not markets:
+            # Fall back to substring match on ticker
+            markets = [
+                m for m in all_markets if cf_lower in (m.get("ticker") or "").lower()
+            ]
+    else:
+        markets = all_markets
+
+    if not markets:
+        city_label = city_filter or "all cities"
+        print(yellow(f"  No open weather markets found for {city_label}."))
+        return
+
+    # Build display table
+    rows = []
+    ticker_list = []
+    for i, m in enumerate(markets, 1):
+        from weather_markets import parse_market_price as _pmp
+
+        prices = _pmp(m)
+        yes_bid = prices.get("yes_bid") or 0
+        yes_ask = prices.get("yes_ask") or 0
+        if yes_bid > 0:
+            bid_s = f"${yes_bid:.2f}"
+        else:
+            bid_s = dim("—")
+        if yes_ask > 0:
+            ask_s = f"${yes_ask:.2f}"
+        else:
+            ask_s = dim("—")
+        closes = _format_expiry(m.get("close_time", ""))
+        title = (m.get("title") or m.get("ticker", ""))[:42]
+        ticker = m.get("ticker", "")
+        ticker_list.append(ticker)
+        rows.append([cyan(str(i)), ticker, title, bid_s, ask_s, closes])
+
+    print(
+        tabulate(
+            rows,
+            headers=["#", "Ticker", "Title", "YES bid", "YES ask", "Closes In"],
+            tablefmt="rounded_outline",
+        )
+    )
+
+    city_label = city_filter or "all cities"
+    print(dim(f"\n  {len(markets)} markets — {city_label}"))
+
+    # Action prompt
+    while True:
+        raw2 = input(
+            dim("  # for details  F forecast  C arbitrage  Enter back: ")
+        ).strip()
+        if not raw2:
+            return
+        if raw2.upper() == "F":
+            if city_filter:
+                cmd_forecast(city_filter)
+            else:
+                city_in = input(
+                    dim(f"  City ({'/'.join(CITY_COORDS.keys())}): ")
+                ).strip()
+                if city_in:
+                    cmd_forecast(city_in)
+        elif raw2.upper() == "C":
+            cmd_consistency(client)
+        elif raw2.isdigit() and 1 <= int(raw2) <= len(ticker_list):
+            ticker = ticker_list[int(raw2) - 1]
+            verbose = input(dim("  Verbose detail? (y/N): ")).strip().lower() == "y"
+            cmd_market(client, ticker, verbose=verbose)
+        else:
+            print(red("  Invalid choice."))
+
+
+# ── Settings screen ───────────────────────────────────────────────────────────
+
+
+def cmd_settings(client: KalshiClient | None = None) -> None:  # noqa: ARG001
+    """View and edit configurable settings."""
+    import importlib
+
+    import utils as _utils_mod
+
+    # Reload to get latest values
+    importlib.reload(_utils_mod)
+
+    env_path = Path(__file__).parent / ".env"
+    if not env_path.exists():
+        # also check cwd
+        env_path_cwd = Path(".env")
+        if env_path_cwd.exists():
+            env_path = env_path_cwd
+
+    def _read_env() -> dict[str, str]:
+        lines: dict[str, str] = {}
+        if env_path.exists():
+            for line in env_path.read_text().splitlines():
+                if "=" in line and not line.strip().startswith("#"):
+                    k, _, v = line.partition("=")
+                    lines[k.strip()] = v.strip()
+        return lines
+
+    def _write_env(key: str, value: str) -> None:
+        existing = {}
+        existing_lines: list[str] = []
+        if env_path.exists():
+            for line in env_path.read_text().splitlines():
+                existing_lines.append(line)
+                if "=" in line and not line.strip().startswith("#"):
+                    k, _, _ = line.partition("=")
+                    existing[k.strip()] = len(existing_lines) - 1
+
+        if key in existing:
+            existing_lines[existing[key]] = f"{key}={value}"
+        else:
+            existing_lines.append(f"{key}={value}")
+
+        env_path.write_text("\n".join(existing_lines) + "\n")
+
+    while True:
+        importlib.reload(_utils_mod)
+        env_vals = _read_env()
+        _header("Settings")
+
+        setting_keys = [
+            ("MIN_EDGE", "minimum edge to show in analyze", "0-1"),
+            ("STRONG_EDGE", "threshold for STRONG BUY signal", "0-1"),
+            ("MAX_DAILY_LOSS_PCT", "halt trading if down this % today", "0-1"),
+            ("MAX_POSITION_AGE_DAYS", "warn on positions older than N days", "int"),
+            ("KALSHI_FEE_RATE", "fee on winnings", "0-1"),
+            ("KALSHI_ENV", "demo or prod", "demo/prod"),
+        ]
+
+        for i, (key, desc, _fmt) in enumerate(setting_keys, 1):
+            cur = env_vals.get(key) or str(getattr(_utils_mod, key, "—"))
+            print(f"  {cyan(str(i)):<5} {bold(key):<26} {green(cur):<12} {dim(desc)}")
+
+        print()
+        print(f"  {cyan('H')}    History        — past predictions + Brier score")
+        print(f"  {cyan('E')}    Export data    — save predictions + trades to CSV")
+        print(f"  {cyan('W')}    Web dashboard  — local web dashboard (localhost:5000)")
+        print(f"  {cyan('X')}    Simulate       — replay historical markets (sandbox)")
+        print(f"  {cyan('Y')}    Weekly summary — generate weekly recap")
+        print(f"  {cyan('Z')}    Schedule       — start hourly auto-scan")
+        print()
+
+        raw = input(dim("  Number to edit, or letter, or Enter to go back: ")).strip()
+        if not raw:
+            return
+
+        # Letter shortcuts
+        if raw.upper() == "H":
+            _c = client if client else build_client()
+            cmd_history(_c)
+            input(dim("\n  Press Enter to return to settings..."))
+            continue
+        if raw.upper() == "E":
+            cmd_export()
+            input(dim("\n  Press Enter to return to settings..."))
+            continue
+        if raw.upper() == "W":
+            _c2 = client if client else build_client()
+            cmd_web(_c2)
+            continue
+        if raw.upper() == "X":
+            _c3 = client if client else build_client()
+            cmd_simulate(_c3)
+            input(dim("\n  Press Enter to return to settings..."))
+            continue
+        if raw.upper() == "Y":
+            cmd_weekly_summary()
+            input(dim("\n  Press Enter to return to settings..."))
+            continue
+        if raw.upper() == "Z":
+            cmd_schedule()
+            input(dim("\n  Press Enter to return to settings..."))
+            continue
+
+        if not raw.isdigit() or not (1 <= int(raw) <= len(setting_keys)):
+            print(red("  Invalid choice."))
+            continue
+
+        idx = int(raw) - 1
+        key, desc, fmt = setting_keys[idx]
+        cur = env_vals.get(key) or str(getattr(_utils_mod, key, ""))
+        new_val = input(dim(f"  {key} [{cur}] ({fmt}): ")).strip()
+        if not new_val:
+            continue
+
+        # Validate
+        valid = True
+        if fmt == "0-1":
+            try:
+                fv = float(new_val)
+                if not 0 <= fv <= 1:
+                    valid = False
+            except ValueError:
+                valid = False
+        elif fmt == "int":
+            try:
+                int(new_val)
+            except ValueError:
+                valid = False
+        elif fmt == "demo/prod":
+            if new_val not in ("demo", "prod"):
+                valid = False
+
+        if not valid:
+            print(red(f"  Invalid value for {key} (expected {fmt})."))
+            continue
+
+        # Try python-dotenv first
+        try:
+            from dotenv import set_key as _set_key
+
+            _set_key(str(env_path), key, new_val)
+        except Exception:
+            _write_env(key, new_val)
+
+        # Reload env + modules
+        load_dotenv(override=True)
+        try:
+            importlib.reload(_utils_mod)
+            import paper as _paper_mod
+
+            importlib.reload(_paper_mod)
+        except Exception:
+            pass
+
+        print(green(f"  Updated {key} → {new_val}"))
+
+
+# ── Alerts manager ────────────────────────────────────────────────────────────
+
+
+def _cmd_alerts() -> None:
+    """Price alert manager — used in the Paper submenu."""
+    from alerts import add_alert, get_alerts, remove_alert
+
+    while True:
+        _header("Price Alerts")
+        active = get_alerts()
+        if active:
+            print("  Active alerts:")
+            for a in active:
+                created = (a.get("created_at") or "")[:10]
+                direction_sym = "<" if a["direction"] == "below" else ">"
+                print(
+                    f"  #{a['id']}  {bold(a['ticker']):<35} YES {direction_sym}"
+                    f" {a['target_price']:.2f}  {dim(f'(set {created})')}"
+                )
+        else:
+            print(dim("  No active alerts."))
+
+        print()
+        print(f"  {cyan('1')}  Add alert")
+        print(f"  {cyan('2')}  Remove alert")
+        print(dim("  Enter  Back"))
+        print()
+
+        sub = input(dim("  Choose (1/2 or Enter): ")).strip()
+        if not sub:
+            return
+
+        if sub == "1":
+            # Add alert flow
+            try:
+                ticker_in = input(dim("  Ticker: ")).strip().upper()
+                if not ticker_in:
+                    continue
+                dir_in = (
+                    input(dim("  Direction (below/above, default below): "))
+                    .strip()
+                    .lower()
+                    or "below"
+                )
+                if dir_in not in ("below", "above"):
+                    print(red("  Direction must be 'below' or 'above'."))
+                    continue
+                price_raw = input(dim("  Target YES price (0-1): ")).strip()
+                if not price_raw:
+                    continue
+                try:
+                    target = float(price_raw)
+                    if not 0 < target < 1:
+                        print(red("  Price must be between 0 and 1."))
+                        continue
+                except ValueError:
+                    print(red("  Enter a decimal like 0.35"))
+                    continue
+                a = add_alert(ticker_in, target, dir_in)
+                direction_sym = "<" if dir_in == "below" else ">"
+                print(
+                    green(
+                        f"  Alert set: {a['ticker']} YES {direction_sym} {target:.2f}"
+                    )
+                )
+            except (KeyboardInterrupt, EOFError):
+                print()
+
+        elif sub == "2":
+            if not active:
+                print(dim("  No active alerts to remove."))
+                continue
+            try:
+                id_raw = input(dim("  Alert # to remove (q to cancel): ")).strip()
+                if id_raw.lower() == "q":
+                    continue
+                try:
+                    aid = int(id_raw)
+                except ValueError:
+                    print(red("  Enter an alert number."))
+                    continue
+                removed = remove_alert(aid)
+                if removed:
+                    print(green(f"  Alert #{aid} removed."))
+                else:
+                    print(red(f"  Alert #{aid} not found."))
+            except (KeyboardInterrupt, EOFError):
+                print()
+
+
 # ── Interactive menu ──────────────────────────────────────────────────────────
 
 
@@ -2253,49 +2723,25 @@ def _menu_watch(client: KalshiClient) -> None:
 def cmd_menu(client: KalshiClient):
     from paper import get_balance as paper_balance
 
-    # (shortcut_key, name, description, fn)  — description="" for Quit
-    # fn=None means special handling below
-    options = [
-        ("A", "Analyze", "find best trades now", lambda: cmd_analyze(client)),
-        ("R", "Brief", "daily briefing summary", lambda: cmd_brief(client)),
-        ("W", "Watch", "live auto-refresh dashboard", lambda: _menu_watch(client)),
-        ("M", "Market", "look up a specific ticker", None),
-        ("C", "Consistency", "find free arbitrage", lambda: cmd_consistency(client)),
-        ("F", "Forecast", "7-day weather forecast", None),
-        ("H", "History", "past predictions + Brier score", lambda: cmd_history(client)),
-        ("B", "Balance", "Kalshi account balance", lambda: cmd_balance(client)),
-        (
-            "O",
-            "Positions",
-            "open positions + exit signals",
-            lambda: cmd_positions(client),
-        ),
-        ("P", "Paper", "buy / settle / view paper trades", None),
-        ("L", "Settle", "settle an open paper trade", lambda: _cmd_settle_open(client)),
-        ("K", "Backtest", "score model on history", lambda: cmd_backtest(client, [])),
-        ("D", "Dashboard", "portfolio overview", lambda: cmd_dashboard(client)),
-        ("E", "Export", "save predictions + trades to CSV", lambda: cmd_export()),
-        (
-            "N",
-            "Simulate",
-            "Monte Carlo portfolio simulation",
-            lambda: cmd_montecarlo(client),
-        ),
-        ("V", "Web", "local web dashboard", lambda: cmd_web(client)),
-        ("X", "Sandbox", "replay historical markets", lambda: cmd_simulate(client)),
-        ("Y", "Weekly", "weekly performance summary", lambda: cmd_weekly_summary()),
-        ("S", "Schedule", "hourly auto-scan", lambda: cmd_schedule()),
-        ("U", "Setup", "setup wizard", lambda: cmd_setup()),
-        ("Q", "Quit", "", None),
+    # Top-level options: (shortcut_key, label, description)
+    top_options = [
+        ("A", "Analyze ", "find best trades right now"),
+        ("W", "Watch   ", "live auto-refresh dashboard"),
+        ("P", "Paper   ", "trades, alerts, results, settle"),
+        ("K", "Backtest", "score model on history"),
+        ("R", "Brief   ", "daily morning summary"),
+        ("B", "Browse  ", "explore markets by city"),
+        ("S", "Settings", "view & edit thresholds"),
+        ("?", "Help    ", "show command guide"),
+        ("Q", "Quit    ", ""),
     ]
-    name_w = max(len(name) for _, name, _, _ in options)
-    key_map = {key.lower(): str(i) for i, (key, _, _, _) in enumerate(options, 1)}
+    key_map = {opt[0].lower(): str(i) for i, opt in enumerate(top_options, 1)}
 
     while True:
         env_text = f"[{KALSHI_ENV.upper()}]"
         title_visible = f"   Kalshi Weather Prediction Markets   {env_text}"
 
-        # Build status line: balance + open trades + Brier
+        # Build status line
         try:
             raw_bal = paper_balance()
             status_visible = f"  Paper: ${raw_bal:.2f}"
@@ -2377,65 +2823,62 @@ def cmd_menu(client: KalshiClient):
         print(f"  {bold('│')}{status_line}{bold('│')}")
         print(bold(f"  └{bar}┘\n"))
 
-        for i, (key, name, desc, _) in enumerate(options, 1):
+        for i, (key, name, desc) in enumerate(top_options, 1):
             num = cyan(f"  {i:>2}")
             key_str = dim(f"[{key}]")
-            spacing = " " * (name_w - len(name))
             if desc:
-                print(f"{num} {key_str} {bold(name)}{spacing}  {dim('·')}  {desc}")
+                print(f"{num} {key_str} {bold(name)}  {dim('·')}  {desc}")
             else:
-                print(f"{num} {key_str} {name}")
+                print(f"{num} {key_str} {name.strip()}")
 
-        choice = input(bold(f"\n  Choose (1–{len(options)} or letter): ")).strip()
+        choice = input(bold(f"\n  Choose (1–{len(top_options)} or letter): ")).strip()
         if not choice.isdigit():
             choice = key_map.get(choice.lower(), choice)
-        if not choice.isdigit() or not (1 <= int(choice) <= len(options)):
+        if not choice.isdigit() or not (1 <= int(choice) <= len(top_options)):
             print(red("  Invalid choice."))
             continue
 
         idx = int(choice) - 1
-        _key, name, desc, fn = options[idx]
+        key, _name, _desc = top_options[idx]
+        name_stripped = _name.strip()
 
-        if name == "Quit":
+        if name_stripped == "Quit":
             print(dim("Goodbye."))
             break
-        elif name == "Market":
-            while True:
-                raw = input("  Ticker (q to cancel): ").strip()
-                if raw.lower() == "q":
-                    break
-                if raw:
-                    verbose = input("  Verbose detail? (y/N): ").strip().lower() == "y"
-                    cmd_market(client, raw.upper(), verbose=verbose)
-                    break
-        elif name == "Forecast":
-            while True:
-                city = input(
-                    f"  City ({'/'.join(CITY_COORDS.keys())}, q to cancel): "
-                ).strip()
-                if city.lower() == "q":
-                    break
-                if city:
-                    cmd_forecast(city)
-                    break
-        elif name == "Paper":
-            print(bold("\n  Paper trading:\n"))
+
+        elif name_stripped == "Analyze":
+            cmd_analyze(client)
+
+        elif name_stripped == "Watch":
+            _menu_watch(client)
+
+        elif name_stripped == "Paper":
+            # ── Paper submenu ─────────────────────────────────────────────────
+            print(bold("\n  ── Paper Trading ──\n"))
             print(
-                f"  {cyan('1')}  {bold('Results')}  {dim('·')}  performance summary & open positions"
+                f"  {cyan('1')}  {bold('Results    ')}  {dim('·')}  balance, open positions, P&L"
             )
             print(
-                f"  {cyan('2')}  {bold('Buy')}      {dim('·')}  open a new paper position"
+                f"  {cyan('2')}  {bold('Buy        ')}  {dim('·')}  place a paper trade"
             )
             print(
-                f"  {cyan('3')}  {bold('Settle')}   {dim('·')}  close an open trade manually"
+                f"  {cyan('3')}  {bold('Settle     ')}  {dim('·')}  settle an open trade"
             )
             print(
-                f"  {cyan('4')}  {bold('Review')}   {dim('·')}  check open trades for exit signals"
+                f"  {cyan('4')}  {bold('Exit signals')} {dim('·')}  check if model has flipped"
             )
             print(
-                f"  {cyan('5')}  {bold('MonteCarlo')} {dim('·')} portfolio simulation"
+                f"  {cyan('5')}  {bold('Monte Carlo')}  {dim('·')}  simulate outcomes"
             )
-            sub = input(dim("  Choose (1–5): ")).strip()
+            print(
+                f"  {cyan('6')}  {bold('Alerts     ')}  {dim('·')}  price alert manager"
+            )
+            print(
+                f"  {cyan('7')}  {bold('Graduation ')}  {dim('·')}  am I ready to go live?"
+            )
+            print(dim("  Enter/Q  Back"))
+            sub = input(dim("\n  Choose (1–7): ")).strip()
+
             if sub == "1":
                 cmd_paper(["results"], client)
             elif sub == "2":
@@ -2496,8 +2939,45 @@ def cmd_menu(client: KalshiClient):
                         )
             elif sub == "5":
                 cmd_montecarlo(client)
-        elif fn is not None:
-            fn()
+            elif sub == "6":
+                _cmd_alerts()
+            elif sub == "7":
+                from paper import graduation_check
+
+                grad = graduation_check()
+                if grad:
+                    print(
+                        bold(
+                            f"\n  {green('GRADUATION CHECK PASSED')} — Ready for live trading!"
+                        )
+                    )
+                    print(
+                        green(
+                            f"  {grad['settled']} trades  |  Win rate: {grad['win_rate']:.0%}"
+                            f"  |  P&L: +${grad['total_pnl']:.2f}"
+                        )
+                    )
+                else:
+                    print(
+                        yellow(
+                            "  Not yet — need 20+ settled trades with >55% win rate and positive P&L."
+                        )
+                    )
+
+        elif name_stripped == "Backtest":
+            cmd_backtest(client, [])
+
+        elif name_stripped == "Brief":
+            cmd_brief(client)
+
+        elif name_stripped == "Browse":
+            cmd_browse(client)
+
+        elif name_stripped == "Settings":
+            cmd_settings(client)
+
+        elif name_stripped == "Help":
+            cmd_help()
 
         input(dim("\n  Press Enter to return to menu..."))
 
@@ -3181,6 +3661,7 @@ def cmd_simulate(client: KalshiClient) -> None:
         parse_market_price,
     )
 
+    markets = [m for m in markets if is_weather_market(m)]
     weather = [
         m for m in markets if is_weather_market(m) and m.get("result") in ("yes", "no")
     ][:20]
@@ -3536,6 +4017,7 @@ def main():
     # No arguments → interactive menu
     if not args:
         client = build_client()
+        auto_backup()
         auto_settle(client)
         auto_backtest(client)
         cmd_menu(client)
@@ -3544,6 +4026,7 @@ def main():
     cmd = args[0].lower()
     verbose = "--verbose" in args or "-v" in args
     client = build_client()
+    auto_backup()
     auto_settle(client)
     auto_backtest(client)
 
