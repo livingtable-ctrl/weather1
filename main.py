@@ -1068,15 +1068,17 @@ def _load_live_config() -> dict:
     """Load live trading hard stops from data/live_config.json.
 
     Creates the file with safe defaults if it does not exist.
-    Exits with a clear message if --live is passed but the file cannot be written.
+    Returns the config dict.
     """
-    if not _LIVE_CONFIG_PATH.exists():
+    try:
+        with open(_LIVE_CONFIG_PATH, encoding="utf-8") as f:
+            return json.load(f)
+    except FileNotFoundError:
         _LIVE_CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
         _LIVE_CONFIG_PATH.write_text(
             json.dumps(_LIVE_CONFIG_DEFAULT, indent=2), encoding="utf-8"
         )
-    with open(_LIVE_CONFIG_PATH, encoding="utf-8") as f:
-        return json.load(f)
+        return dict(_LIVE_CONFIG_DEFAULT)
 
 
 def _midpoint_price(market: dict, side: str) -> float:
