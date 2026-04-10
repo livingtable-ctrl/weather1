@@ -1364,7 +1364,7 @@ def kelly_fraction(our_prob: float, price: float, fee_rate: float = 0.0) -> floa
     q = 1 - our_prob
     full_kelly = (b * our_prob - q) / b
     half_kelly = max(0.0, full_kelly / 2)  # half-Kelly for safety
-    return min(half_kelly, 0.25)  # #115: hard cap at 25% of bankroll
+    return min(half_kelly, 0.33)  # hard cap at 33% of bankroll
 
 
 def time_decay_edge(

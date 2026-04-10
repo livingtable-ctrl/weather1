@@ -287,3 +287,20 @@ def test_snow_prob_uses_slr_not_1_to_10():
     liq_10 = liquid_equiv_of_snow_threshold(snow_inches=1.0, slr=10)
     assert liq_20 == pytest.approx(0.05)
     assert liq_10 == pytest.approx(0.10)
+
+
+# ── TestKellyCap ──────────────────────────────────────────────────────────────
+
+
+class TestKellyCap:
+    """Verify kelly_fraction hard cap is 33% (raised from 25%)."""
+
+    def test_kelly_fraction_caps_at_33_pct(self):
+        """Very high edge → fraction is capped at 0.33, not 0.25."""
+        from weather_markets import kelly_fraction
+
+        # our_prob=0.95, price=0.10: full Kelly would be enormous
+        result = kelly_fraction(our_prob=0.95, price=0.10, fee_rate=0.02)
+        assert result == pytest.approx(0.33, abs=1e-6), (
+            f"Expected Kelly cap 0.33, got {result}"
+        )
