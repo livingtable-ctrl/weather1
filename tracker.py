@@ -21,6 +21,48 @@ DB_PATH.parent.mkdir(exist_ok=True)
 
 _db_initialized = False
 
+_SCHEMA_VERSION = 3  # increment when _MIGRATIONS list grows
+
+_MIGRATIONS = [
+    # v1 → v2: add condition_type column (if not already added)
+    "ALTER TABLE predictions ADD COLUMN condition_type TEXT",
+    # v2 → v3: ensure api_requests table exists
+    """CREATE TABLE IF NOT EXISTS api_requests (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        method      TEXT NOT NULL,
+        endpoint    TEXT NOT NULL,
+        status_code INTEGER,
+        latency_ms  REAL,
+        logged_at   TEXT NOT NULL
+    )""",
+]
+
+
+def _run_migrations(con: sqlite3.Connection) -> None:
+    """Apply any pending schema migrations and update schema_version (#99)."""
+    con.execute("CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL)")
+    row = con.execute("SELECT version FROM schema_version").fetchone()
+    current = row[0] if row else 0
+
+    for i, sql in enumerate(_MIGRATIONS):
+        version = i + 1
+        if version <= current:
+            continue
+        try:
+            con.execute(sql)
+            _log.info("Applied migration v%d", version)
+        except Exception as e:
+            err_str = str(e).lower()
+            if "duplicate column" in err_str or "already exists" in err_str:
+                _log.debug("Migration v%d already applied: %s", version, e)
+            else:
+                raise
+
+    if row is None:
+        con.execute("INSERT INTO schema_version VALUES (?)", (_SCHEMA_VERSION,))
+    else:
+        con.execute("UPDATE schema_version SET version=?", (_SCHEMA_VERSION,))
+
 
 def _conn() -> sqlite3.Connection:
     con = sqlite3.connect(DB_PATH)
@@ -112,18 +154,19 @@ def init_db() -> None:
         );
         CREATE INDEX IF NOT EXISTS idx_api_endpoint ON api_requests(endpoint, logged_at);
         """)
-    # Migrations: add columns that may not exist in older DBs
-    migrations = [
-        "ALTER TABLE predictions ADD COLUMN days_out INTEGER",
-        # #53: store raw (pre-bias-correction) prob alongside adjusted prob
-        "ALTER TABLE predictions ADD COLUMN raw_prob REAL",
-    ]
+    # #99: versioned migrations replacing ad-hoc ALTER TABLE try/except blocks
+    # Also handles legacy columns (days_out, raw_prob) via the CREATE TABLE schema above
     with _conn() as con:
-        for stmt in migrations:
+        # Legacy ad-hoc migrations — keep for existing DBs without schema_version
+        for stmt in [
+            "ALTER TABLE predictions ADD COLUMN days_out INTEGER",
+            "ALTER TABLE predictions ADD COLUMN raw_prob REAL",
+        ]:
             try:
                 con.execute(stmt)
             except sqlite3.OperationalError:
                 pass  # Column already exists
+        _run_migrations(con)
 
     _db_initialized = True
 
