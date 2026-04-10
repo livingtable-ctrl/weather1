@@ -7,6 +7,7 @@ Provides:
 
 from __future__ import annotations
 
+import os
 import time
 from datetime import date, datetime
 
@@ -15,8 +16,14 @@ import requests
 from utils import normal_cdf
 
 NWS_BASE = "https://api.weather.gov"
-UA_HEADER = {"User-Agent": "kalshi-weather-predictor/1.0 (contact@example.com)"}
+# #68: load User-Agent from env so it can be updated without a code change
+_nws_ua = os.getenv("NWS_USER_AGENT", "kalshi-weather-predictor/1.0 (user@localhost)")
+UA_HEADER = {"User-Agent": _nws_ua}
 OBS_TTL = 600  # seconds — re-fetch observation if older than this
+
+# #125: shared session for connection pooling
+_session = requests.Session()
+_session.headers.update(UA_HEADER)
 
 # In-memory caches
 _gridpoint_cache: dict = {}
@@ -29,7 +36,9 @@ _obs_cache: dict = {}  # city -> (timestamp, observation_dict)
 
 
 def _get(url: str, params: dict | None = None) -> dict:
-    resp = requests.get(url, headers=UA_HEADER, params=params, timeout=15)
+    resp = _session.get(
+        url, params=params, timeout=15
+    )  # #125: session reuses connections
     resp.raise_for_status()
     return resp.json()
 

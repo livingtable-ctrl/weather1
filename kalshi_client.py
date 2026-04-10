@@ -12,33 +12,47 @@ from cryptography.hazmat.primitives.asymmetric import padding
 
 _RETRY_STATUSES = {429, 500, 502, 503, 504}
 _MAX_RETRIES = 3
+# #7: centralized timeout — apply consistently across all API calls
+DEFAULT_TIMEOUT = 15  # seconds
 
 
 def _request_with_retry(method: str, url: str, **kwargs) -> requests.Response:
     """
     Call requests.request with exponential backoff on transient errors.
     Retries on connection errors and HTTP 429/5xx up to _MAX_RETRIES times.
+    #6: Respects Retry-After header from 429 responses.
     """
+    # Apply default timeout if caller didn't specify one
+    kwargs.setdefault("timeout", DEFAULT_TIMEOUT)
+
     delay = 1.0
+    resp = None
     for attempt in range(_MAX_RETRIES):
         try:
             resp = requests.request(method, url, **kwargs)
             if resp.status_code not in _RETRY_STATUSES:
                 return resp
-            # Retryable HTTP status
+            # #6: honour Retry-After if the server sent one
+            if resp.status_code == 429:
+                retry_after = resp.headers.get("Retry-After")
+                if retry_after:
+                    try:
+                        delay = max(delay, float(retry_after))
+                    except ValueError:
+                        pass
         except (requests.ConnectionError, requests.Timeout):
             resp = None
 
         if attempt < _MAX_RETRIES - 1:
             time.sleep(delay)
-            delay *= 2
+            delay = min(delay * 2, 60)  # cap backoff at 60s
         else:
             if resp is not None:
                 return resp
             raise requests.ConnectionError(
                 f"Failed after {_MAX_RETRIES} attempts: {url}"
             )
-    return resp  # type: ignore[return-value]  # unreachable; loop always returns or raises
+    return resp  # type: ignore[return-value]
 
 
 PROD_BASE = "https://trading-api.kalshi.com/trade-api/v2"

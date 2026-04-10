@@ -14,13 +14,14 @@ import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
 
-from utils import KALSHI_FEE_RATE
+from utils import FIXED_BET_DOLLARS, FIXED_BET_PCT, KALSHI_FEE_RATE, STRATEGY
 
 DATA_PATH = Path(__file__).parent / "data" / "paper_trades.json"
 DATA_PATH.parent.mkdir(exist_ok=True)
 
 STARTING_BALANCE = 1000.0  # default paper bankroll in dollars
-MAX_DRAWDOWN_FRACTION = 0.50  # halt auto-sizing if balance < 50% of peak
+# #121: drawdown halt configurable via env (default 50%)
+MAX_DRAWDOWN_FRACTION = float(os.getenv("DRAWDOWN_HALT_PCT", "0.50"))
 
 MAX_DAILY_LOSS_PCT = float(os.getenv("MAX_DAILY_LOSS_PCT", "0.03"))  # default 3%
 MAX_POSITION_AGE_DAYS = int(os.getenv("MAX_POSITION_AGE_DAYS", "7"))
@@ -48,13 +49,45 @@ _CORRELATED_CITY_GROUPS = [
     {"Dallas", "Atlanta"},
 ]
 MAX_CORRELATED_EXPOSURE = 0.20  # max combined fraction across a correlated group
+MAX_SINGLE_TICKER_EXPOSURE = float(
+    os.getenv("MAX_SINGLE_TICKER_EXPOSURE", "0.10")
+)  # #47
+MIN_ORDER_COST = 0.05  # #42: minimum order size in dollars
+
+
+_SCHEMA_VERSION = 2  # increment when adding new required fields
 
 
 def _load() -> dict:
     if DATA_PATH.exists():
         with open(DATA_PATH) as f:
-            return json.load(f)
-    return {"balance": STARTING_BALANCE, "peak_balance": STARTING_BALANCE, "trades": []}
+            data = json.load(f)
+        # #100: auto-migrate older schema versions
+        if "_version" not in data:
+            data["_version"] = 1
+        return data
+    return {
+        "_version": _SCHEMA_VERSION,
+        "balance": STARTING_BALANCE,
+        "peak_balance": STARTING_BALANCE,
+        "trades": [],
+    }
+
+
+def cleanup_temp_files() -> int:
+    """
+    #101: Remove stray .paper_trades_* temp files left by interrupted atomic writes.
+    Call on startup to prevent accumulation.
+    Returns number of files removed.
+    """
+    count = 0
+    for f in DATA_PATH.parent.glob(".paper_trades_*.json"):
+        try:
+            f.unlink()
+            count += 1
+        except OSError:
+            pass
+    return count
 
 
 def _save(data: dict) -> None:
@@ -101,13 +134,9 @@ def is_paused_drawdown() -> bool:
 def drawdown_scaling_factor() -> float:
     """
     Return a 0.0–1.0 multiplier for Kelly sizing based on recovery from peak.
-    Gradual steps prevent over-betting during a drawdown while still allowing
-    some activity as the balance recovers:
+    #41: Uses linear interpolation to eliminate discontinuities between tiers:
       <50% of peak  → 0.00  (fully paused)
-      50–60%        → 0.25
-      60–75%        → 0.50
-      75–90%        → 0.75
-      ≥90%          → 1.00  (normal)
+      50–100%       → linear scale 0.0 → 1.0
     """
     peak = get_peak_balance()
     if peak <= 0:
@@ -115,30 +144,33 @@ def drawdown_scaling_factor() -> float:
     recovery = get_balance() / peak
     if recovery < _DRAWDOWN_TIER_1:
         return 0.0
-    elif recovery < _DRAWDOWN_TIER_2:
-        return 0.10
-    elif recovery < _DRAWDOWN_TIER_3:
-        return 0.30
-    elif recovery < _DRAWDOWN_TIER_4:
-        return 0.70
-    else:
-        return 1.0
+    # Linear ramp from 0.0 at 50% recovery → 1.0 at 100% recovery
+    return min(1.0, (recovery - _DRAWDOWN_TIER_1) / (1.0 - _DRAWDOWN_TIER_1))
 
 
 def kelly_bet_dollars(kelly_fraction: float) -> float:
     """
-    Return the dollar amount to bet based on Kelly fraction × current balance.
-    Scales down gradually as drawdown deepens rather than cutting off entirely
-    at the 50% threshold. Fully pauses below 50% of peak.
-    Hard cap at 25% of balance as a safety limit.
-    If on a 3+ consecutive loss streak, multiplies result by 0.50.
+    Return the dollar amount to bet.
+    #120: Respects STRATEGY env var:
+      kelly:         half-Kelly × balance (default)
+      fixed_pct:     FIXED_BET_PCT × balance regardless of Kelly
+      fixed_dollars: FIXED_BET_DOLLARS flat per trade
+    Applies drawdown scaling and streak pause regardless of strategy.
     """
     scale = drawdown_scaling_factor()
     if scale == 0.0:
         return 0.0
     balance = get_balance()
-    fraction = max(0.0, min(kelly_fraction * scale, 0.25))
-    dollars = round(balance * fraction, 2)
+
+    if STRATEGY == "fixed_pct":
+        dollars = round(balance * min(FIXED_BET_PCT, 0.25), 2)
+    elif STRATEGY == "fixed_dollars":
+        dollars = min(FIXED_BET_DOLLARS, balance)
+    else:
+        # Default: half-Kelly, hard cap at 25% of balance
+        fraction = max(0.0, min(kelly_fraction * scale, 0.25))
+        dollars = round(balance * fraction, 2)
+
     if is_streak_paused():
         dollars = round(dollars * 0.50, 2)
     return dollars
@@ -188,6 +220,22 @@ def place_paper_order(
 
     data = _load()
     cost = quantity * entry_price
+
+    # #42: enforce minimum order size
+    if cost < MIN_ORDER_COST:
+        raise ValueError(
+            f"Order too small (${cost:.2f}). Minimum order is ${MIN_ORDER_COST:.2f}."
+        )
+
+    # #47: enforce single-ticker exposure cap
+    if (
+        get_ticker_exposure(ticker) + cost / STARTING_BALANCE
+        > MAX_SINGLE_TICKER_EXPOSURE
+    ):
+        raise ValueError(
+            f"Single-ticker exposure cap reached for {ticker} "
+            f"(max {MAX_SINGLE_TICKER_EXPOSURE:.0%} of starting balance)."
+        )
 
     if data["balance"] < cost:
         raise ValueError(
@@ -295,6 +343,34 @@ def get_total_exposure() -> float:
     return committed / STARTING_BALANCE
 
 
+def get_ticker_exposure(ticker: str) -> float:
+    """Return fraction of STARTING_BALANCE committed to open trades for this ticker (#47)."""
+    committed = sum(t["cost"] for t in get_open_trades() if t.get("ticker") == ticker)
+    return committed / STARTING_BALANCE
+
+
+def position_age_kelly_scale(ticker: str) -> float:
+    """
+    #44: Scale down Kelly if we already hold an aging position in this ticker.
+    Returns 1.0 if no existing position; scales toward 0.0 at MAX_POSITION_AGE_DAYS.
+    """
+    existing = [t for t in get_open_trades() if t.get("ticker") == ticker]
+    if not existing:
+        return 1.0
+    now = datetime.now(UTC)
+    max_age = 0
+    for t in existing:
+        try:
+            entered = datetime.fromisoformat(t["entered_at"].replace("Z", "+00:00"))
+            age = (now - entered).days
+            max_age = max(max_age, age)
+        except (ValueError, TypeError):
+            pass
+    if MAX_POSITION_AGE_DAYS <= 0:
+        return 1.0
+    return max(0.0, 1.0 - max_age / MAX_POSITION_AGE_DAYS)
+
+
 def get_correlated_exposure(city: str, target_date_str: str) -> float:
     """
     Return the total fraction of STARTING_BALANCE committed to open trades
@@ -354,6 +430,7 @@ def portfolio_kelly_fraction(
     city: str | None,
     target_date_str: str | None,
     side: str | None = None,
+    ticker: str | None = None,
 ) -> float:
     """
     Scale down base_fraction based on existing open exposure to this city/date.
@@ -396,6 +473,10 @@ def portfolio_kelly_fraction(
         ratio = min(corr_exp / MAX_CORRELATED_EXPOSURE, 1.0)
         corr_scale = 1.0 - ratio * 0.70  # 1.0 at 0%, 0.3 at 100% of cap
         result *= corr_scale
+
+    # #44: scale down Kelly based on age of existing position in this ticker
+    if ticker:
+        result *= position_age_kelly_scale(ticker)
 
     return round(result, 6)
 
@@ -591,9 +672,20 @@ def get_current_streak() -> tuple[str, int]:
 
 
 def is_streak_paused() -> bool:
-    """Return True if on a 3+ consecutive loss streak — reduce sizing."""
+    """
+    #45: Return True if on a 3+ consecutive loss streak AND total streak losses
+    exceed 2% of starting balance. Prevents pausing on trivial $0.01 losses.
+    """
     kind, n = get_current_streak()
-    return kind == "loss" and n >= 3
+    if kind != "loss" or n < 3:
+        return False
+    # Check PnL magnitude of the streak, not just count
+    settled = [
+        t for t in _load()["trades"] if t.get("settled") and t.get("pnl") is not None
+    ]
+    settled.sort(key=lambda t: t.get("entered_at", ""))
+    streak_pnl = sum(t["pnl"] for t in settled[-n:] if t.get("pnl") is not None)
+    return streak_pnl < -(STARTING_BALANCE * 0.02)
 
 
 def get_daily_pnl() -> float:
@@ -632,10 +724,12 @@ def check_aged_positions() -> list[dict]:
     return aged
 
 
-def graduation_check(min_trades: int = 10, min_win_rate: float = 0.60) -> dict | None:
+def graduation_check(min_trades: int = 30, min_win_rate: float = 0.55) -> dict | None:
     """
     Check if paper trading performance warrants going live.
     Returns a summary dict if criteria met, None otherwise.
+    #52: Requires 30+ trades (not 10) and 0.55+ win rate (not 0.60) — 10 trades is
+    too few to distinguish skill from luck; 0.55 accounts for ~7% Kalshi fee drag.
     Criteria: >= min_trades settled, win_rate >= min_win_rate, total_pnl > 0.
     Returns: {"settled": N, "win_rate": X, "total_pnl": Y, "roi": Z}
     """

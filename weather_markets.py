@@ -21,35 +21,41 @@ from utils import KALSHI_FEE_RATE, normal_cdf
 
 # ── Open-Meteo (free, no API key) ────────────────────────────────────────────
 
-CITY_COORDS = {
-    # Exact settlement station coordinates (not city centre)
-    "NYC": (40.7789, -73.9692, "America/New_York"),  # Central Park (WBAN 94728)
-    "Chicago": (41.9803, -87.9090, "America/Chicago"),  # O'Hare Intl (WBAN 94846)
-    "LA": (34.0190, -118.2910, "America/Los_Angeles"),  # USC Downtown (COOP 045114)
-    "Miami": (25.8175, -80.3164, "America/New_York"),  # Miami Intl Airport (WBAN 12839)
-    "Boston": (42.3606, -71.0106, "America/New_York"),  # Logan Airport (WBAN 14739)
-    "Dallas": (32.8998, -97.0403, "America/Chicago"),  # DFW Airport (WBAN 03927)
-    "Phoenix": (
-        33.4373,
-        -112.0078,
-        "America/Phoenix",
-    ),  # Phoenix Sky Harbor (WBAN 23183)
-    "Seattle": (
-        47.4502,
-        -122.3088,
-        "America/Los_Angeles",
-    ),  # Sea-Tac Airport (WBAN 24233)
-    "Denver": (
-        39.8561,
-        -104.6737,
-        "America/Denver",
-    ),  # Denver Intl Airport (WBAN 03017)
-    "Atlanta": (
-        33.6407,
-        -84.4277,
-        "America/New_York",
-    ),  # Atlanta Hartsfield (WBAN 13874)
-}
+
+def _load_city_coords() -> dict:
+    """
+    #119: Load city coordinates from data/cities.json so new cities can be added
+    without modifying code. Falls back to hardcoded defaults if file is missing.
+    """
+    import json
+
+    cities_path = Path(__file__).parent / "data" / "cities.json"
+    if cities_path.exists():
+        try:
+            raw = json.loads(cities_path.read_text())
+            return {
+                city: tuple(coords)
+                for city, coords in raw.items()
+                if not city.startswith("_")  # skip _comment keys
+            }
+        except Exception:
+            pass
+    # Hardcoded fallback (exact settlement station coordinates)
+    return {
+        "NYC": (40.7789, -73.9692, "America/New_York"),
+        "Chicago": (41.9803, -87.9090, "America/Chicago"),
+        "LA": (34.0190, -118.2910, "America/Los_Angeles"),
+        "Miami": (25.8175, -80.3164, "America/New_York"),
+        "Boston": (42.3606, -71.0106, "America/New_York"),
+        "Dallas": (32.8998, -97.0403, "America/Chicago"),
+        "Phoenix": (33.4373, -112.0078, "America/Phoenix"),
+        "Seattle": (47.4502, -122.3088, "America/Los_Angeles"),
+        "Denver": (39.8561, -104.6737, "America/Denver"),
+        "Atlanta": (33.6407, -84.4277, "America/New_York"),
+    }
+
+
+CITY_COORDS = _load_city_coords()
 
 FORECAST_BASE = "https://api.open-meteo.com/v1/forecast"
 ENSEMBLE_BASE = "https://ensemble-api.open-meteo.com/v1/ensemble"
@@ -62,6 +68,10 @@ _ENSEMBLE_CACHE_TTL = 90 * 60  # 90 minutes
 # Forecast cache: (city, date_iso) -> (dict, timestamp)
 _FORECAST_CACHE: dict = {}
 _FORECAST_CACHE_TTL = 90 * 60  # 90 minutes
+
+# #66: Market listing cache to avoid hammering the API on every analyze call
+_MARKETS_CACHE: tuple[list, float] | None = None
+_MARKETS_CACHE_TTL = 60  # 60 seconds
 
 
 # ── Multi-model regular forecast ─────────────────────────────────────────────
@@ -127,7 +137,7 @@ def get_weather_forecast(city: str, target_date: date) -> dict | None:
         p = daily.get("precipitation_sum", [None])[idx]
         return (h, lo, p, weight)
 
-    with ThreadPoolExecutor(max_workers=3) as pool:
+    with ThreadPoolExecutor(max_workers=len(model_weights)) as pool:  # #124: dynamic
         futures = {
             pool.submit(_fetch_one, model, weight): model
             for model, weight in model_weights.items()
@@ -199,7 +209,12 @@ def _fetch_model_ensemble(
         resp = _request_with_retry("GET", ENSEMBLE_BASE, params=params, timeout=20)
         resp.raise_for_status()
         data = resp.json()
-        hourly = data.get("hourly", {})
+        # #71: validate expected response structure
+        if not isinstance(data, dict):
+            return []
+        hourly = data.get("hourly")
+        if not isinstance(hourly, dict):
+            return []
         times = hourly.get("time", [])
         target_dt = f"{target_date.isoformat()}T{hour:02d}:00"
         if target_dt not in times:
@@ -216,7 +231,12 @@ def _fetch_model_ensemble(
         resp = _request_with_retry("GET", ENSEMBLE_BASE, params=params, timeout=20)
         resp.raise_for_status()
         data = resp.json()
-        daily = data.get("daily", {})
+        # #71: validate expected response structure
+        if not isinstance(data, dict):
+            return []
+        daily = data.get("daily")
+        if not isinstance(daily, dict):
+            return []
         times = daily.get("time", [])
         target_str = target_date.isoformat()
         if target_str not in times:
@@ -504,11 +524,21 @@ def is_weather_market(market: dict) -> bool:
     return any(kw in text for kw in WEATHER_KEYWORDS)
 
 
-def get_weather_markets(client: KalshiClient, limit: int = 200) -> list[dict]:
+def get_weather_markets(
+    client: KalshiClient, limit: int = 200, force: bool = False
+) -> list[dict]:
     """
     Fetch open markets and filter to weather-related ones.
-    Also tries the series endpoint with weather tags.
+    #66: Results cached for 60 seconds to avoid hammering the API.
+    Pass force=True to bypass cache.
     """
+    global _MARKETS_CACHE
+    now = time.monotonic()
+    if not force and _MARKETS_CACHE is not None:
+        cached_markets, cached_ts = _MARKETS_CACHE
+        if now - cached_ts < _MARKETS_CACHE_TTL:
+            return cached_markets
+
     results = []
     seen = set()
 
@@ -543,6 +573,7 @@ def get_weather_markets(client: KalshiClient, limit: int = 200) -> list[dict]:
         except Exception:
             pass
 
+    _MARKETS_CACHE = (results, now)
     return results
 
 
@@ -846,10 +877,18 @@ def _bootstrap_ci(
 ) -> tuple[float, float]:
     """
     Bootstrap 90% confidence interval on the ensemble probability estimate.
-    Resamples ensemble members with replacement n times.
+    #114: Returns (0.0, 1.0) wide CI if N < 30 (too few for reliable estimate).
+    #128: Caps bootstrap reps at 1000 and subsamples large ensembles.
     """
     if len(temps) < 5:
         return (0.0, 1.0)
+    if len(temps) < 30:
+        # Too few members for a reliable CI; return maximally uncertain
+        return (0.0, 1.0)
+
+    # Cap reps and subsample huge ensembles to avoid slowness
+    n = min(n, 1000)
+    sample_temps = temps if len(temps) <= 10_000 else random.sample(temps, 10_000)
 
     def prob_from(sample):
         if condition["type"] == "above":
@@ -860,8 +899,8 @@ def _bootstrap_ci(
             lo, hi = condition["lower"], condition["upper"]
             return sum(1 for t in sample if lo <= t <= hi) / len(sample)
 
-    k = len(temps)
-    boot = sorted(prob_from(random.choices(temps, k=k)) for _ in range(n))
+    k = len(sample_temps)
+    boot = sorted(prob_from(random.choices(sample_temps, k=k)) for _ in range(n))
     p05 = boot[min(int(n * 0.05), n - 1)]
     p95 = boot[min(int(n * 0.95), n - 1)]
     return (p05, p95)
@@ -902,7 +941,8 @@ def kelly_fraction(our_prob: float, price: float, fee_rate: float = 0.0) -> floa
     b = winnings / price  # net odds: win $b for every $1 staked
     q = 1 - our_prob
     full_kelly = (b * our_prob - q) / b
-    return max(0.0, full_kelly / 2)  # half-Kelly for safety
+    half_kelly = max(0.0, full_kelly / 2)  # half-Kelly for safety
+    return min(half_kelly, 0.25)  # #115: hard cap at 25% of bankroll
 
 
 def _fetch_ensemble_precip(
@@ -916,8 +956,10 @@ def _fetch_ensemble_precip(
     results = []
     target_str = target_date.isoformat()
     prefix = "precipitation_sum_member"
+    date_in_range = False  # #35: track whether any model covered this date
 
     def _fetch_model(model: str) -> list[float]:
+        nonlocal date_in_range
         try:
             params = {
                 "latitude": lat,
@@ -934,6 +976,7 @@ def _fetch_ensemble_precip(
             times = daily.get("time", [])
             if target_str not in times:
                 return []
+            date_in_range = True  # at least one model has this date
             idx = times.index(target_str)
             return [
                 vals[idx]
@@ -951,6 +994,9 @@ def _fetch_ensemble_precip(
     ecmwf_mult = 3 if target_date.month in (10, 11, 12, 1, 2, 3) else 2
     results.extend(ecmwf_members * ecmwf_mult)
 
+    # #70: return None instead of [] when no members fetched (caller can distinguish)
+    if not results and not date_in_range:
+        return None  # type: ignore[return-value]  # date outside forecast range
     return results
 
 
@@ -965,7 +1011,8 @@ def _analyze_precip_trade(
     days_out = max(0, (target_date - date.today()).days)
 
     # ── Ensemble precipitation probability ───────────────────────────────────
-    precip_members = _fetch_ensemble_precip(lat, lon, tz, target_date)
+    _raw_members = _fetch_ensemble_precip(lat, lon, tz, target_date)
+    precip_members: list[float] = _raw_members if _raw_members is not None else []
     ens_prob: float | None = None
     if len(precip_members) >= 10:
         if condition["type"] == "precip_any":
@@ -1103,7 +1150,8 @@ def _analyze_snow_trade(
     days_out = max(0, (target_date - date.today()).days)
 
     # ── Ensemble precipitation as proxy ──────────────────────────────────────
-    precip_members = _fetch_ensemble_precip(lat, lon, tz, target_date)
+    _raw_snow = _fetch_ensemble_precip(lat, lon, tz, target_date)
+    precip_members: list[float] = _raw_snow if _raw_snow is not None else []
     ens_prob: float | None = None
     threshold = condition.get("threshold", 0.0)
     if len(precip_members) >= 10:
@@ -1193,12 +1241,21 @@ def analyze_trade(enriched: dict) -> dict | None:
       8. Bootstrap confidence interval
       9. Kelly fraction
     """
+    # #116: explicit precondition check with helpful error context
+    if not isinstance(enriched, dict):
+        raise ValueError(
+            f"analyze_trade: enriched must be a dict, got {type(enriched)}"
+        )
     forecast = enriched.get("_forecast")
     target_date = enriched.get("_date")
     city = enriched.get("_city")
     hour = enriched.get("_hour")
-    if not forecast or not target_date or not city:
-        return None
+    if not forecast:
+        return None  # no forecast data available for this market
+    if not target_date:
+        return None  # could not parse target date from ticker
+    if not city:
+        return None  # unrecognized city in ticker
 
     condition = _parse_market_condition(enriched)
     if not condition:
@@ -1404,6 +1461,20 @@ def analyze_trade(enriched: dict) -> dict | None:
     edge = blended_prob - market_prob
     signal = _edge_label(edge)
 
+    # #61: entry-side edge uses actual ask/bid rather than mid-price
+    if rec_side == "yes":
+        entry_side_market_prob = (
+            prices["yes_ask"] if prices["yes_ask"] > 0 else market_prob
+        )
+    else:
+        entry_side_market_prob = (
+            (1 - prices["no_bid"]) if prices["no_bid"] > 0 else market_prob
+        )
+    entry_side_edge = blended_prob - entry_side_market_prob
+
+    # #62: explicit illiquid flag (spread > 5%)
+    illiquid = spread_cost > 0.05
+
     # ── 11. Fee-adjusted edge ────────────────────────────────────────────────
     if rec_side == "yes":
         payout = 1 - entry_price
@@ -1486,6 +1557,8 @@ def analyze_trade(enriched: dict) -> dict | None:
         "forecast_anomalous": anomalous,
         "spread_cost": round(spread_cost, 4),
         "spread_scale": round(spread_scale, 4),
+        "illiquid": illiquid,  # #62: True if spread > 5%
+        "entry_side_edge": round(entry_side_edge, 4),  # #61: edge vs actual ask/bid
         "time_kelly_scale": round(time_kelly_scale, 4),
         # Consensus signal
         "consensus": consensus,

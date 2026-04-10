@@ -14,6 +14,9 @@ from pathlib import Path
 import requests
 
 DATA_DIR = Path(__file__).parent / "data"
+
+# #125: shared session for connection pooling
+_session = requests.Session()
 DATA_DIR.mkdir(exist_ok=True)
 
 ARCHIVE_BASE = "https://archive-api.open-meteo.com/v1/archive"
@@ -61,7 +64,7 @@ def fetch_historical(city: str, coords: tuple, force: bool = False) -> dict | No
         "timezone": tz,
     }
     try:
-        resp = requests.get(ARCHIVE_BASE, params=params, timeout=60)
+        resp = _session.get(ARCHIVE_BASE, params=params, timeout=60)  # #125
         resp.raise_for_status()
         daily = resp.json().get("daily", {})
         data = {
@@ -73,8 +76,15 @@ def fetch_historical(city: str, coords: tuple, force: bool = False) -> dict | No
             json.dump(data, f)
         return data
     except Exception:
-        # If download fails, return stale cache if available
+        # #4: If download fails, return stale cache but warn if it's very old
         if cache.exists():
+            cache_age_days = (time.time() - cache.stat().st_mtime) / 86400
+            if cache_age_days > 365:
+                print(
+                    f"[warn] Climate cache for {city} is {cache_age_days:.0f} days old "
+                    f"(API unavailable); forecast accuracy may be reduced.",
+                    flush=True,
+                )
             with open(cache) as f:
                 return json.load(f)
         return None

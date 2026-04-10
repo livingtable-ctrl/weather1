@@ -57,7 +57,9 @@ def _build_app(client):
       .warning { background: #3a3a1a; border: 1px solid #e3b341; border-radius: 6px; padding: 10px 14px; margin-bottom: 16px; color: #e3b341; }
       .refreshing { color: #8b949e; font-size: 0.8em; }
       .live-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #3fb950; margin-right: 5px; animation: blink 1.5s infinite; }
+      .live-dot.stale { background: #e3b341; }
       @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
+      #last-updated { color: #8b949e; font-size: 0.78em; margin-left: 6px; }
       /* Responsive */
       @media (max-width: 768px) {
         body { padding: 12px; }
@@ -68,10 +70,36 @@ def _build_app(client):
         nav a { margin-right: 10px; font-size: 0.9em; }
       }
       @media (max-width: 480px) {
-        .stats { grid-template-columns: 1fr 1fr; }
+        /* #88: single-column on very small screens */
+        .stats { grid-template-columns: 1fr; }
         table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+        nav a { display: inline-block; margin: 2px 6px; }
       }
+      /* #87: light mode support */
+      @media (prefers-color-scheme: light) {
+        body { background: #ffffff; color: #1a1a1a; }
+        h1 { color: #0969da; }
+        h2 { color: #57606a; border-bottom-color: #d0d7de; }
+        th { background: #f6f8fa; color: #57606a; border-bottom-color: #d0d7de; }
+        td { border-bottom-color: #eaeef2; }
+        tr:hover { background: #f6f8fa; }
+        .stat-card { background: #f6f8fa; border-color: #d0d7de; }
+        .stat-label { color: #57606a; }
+        nav a { color: #57606a; }
+        .refreshing { color: #57606a; }
+      }
+      /* Light mode toggle button */
+      #theme-toggle { position: fixed; top: 14px; right: 16px; background: #21262d;
+        border: 1px solid #30363d; color: #8b949e; border-radius: 6px;
+        padding: 4px 10px; cursor: pointer; font-size: 0.8em; }
     </style>
+    <script>
+    // #87: persist user theme preference
+    (function() {
+      const saved = localStorage.getItem('theme');
+      if (saved) document.documentElement.setAttribute('data-theme', saved);
+    })();
+    </script>
     """
 
     VIEWPORT = '<meta name="viewport" content="width=device-width, initial-scale=1.0">'
@@ -81,8 +109,15 @@ def _build_app(client):
       <a href="/">Dashboard</a>
       <a href="/analyze">Analyze</a>
       <a href="/analytics">Analytics</a>
-      <a href="/api/status">API Status</a>
+      <a href="/history">History</a>
+      <a href="/api/export" download>Export CSV</a>
     </nav>
+    <button id="theme-toggle" onclick="(function(){
+      const cur = localStorage.getItem('theme');
+      const next = cur === 'light' ? 'dark' : 'light';
+      localStorage.setItem('theme', next);
+      location.reload();
+    })()">&#9680; Theme</button>
     """
 
     @app.route("/health")
@@ -238,9 +273,25 @@ def _build_app(client):
 
         sse_js = """
 <script>
+// #86: track SSE connection health and show "last updated X seconds ago"
+let _lastSseTs = null;
+const _dot = document.querySelector('.live-dot');
+setInterval(() => {
+  if (_lastSseTs === null) return;
+  const secs = Math.round((Date.now() - _lastSseTs) / 1000);
+  const el = document.getElementById('last-updated');
+  if (el) {
+    el.textContent = secs < 5 ? 'just now' : secs + 's ago';
+  }
+  if (_dot) {
+    _dot.classList.toggle('stale', secs > 30);
+  }
+}, 1000);
+
 const es = new EventSource('/api/stream');
 es.onmessage = (e) => {
   try {
+    _lastSseTs = Date.now();
     const d = JSON.parse(e.data);
     if (d.balance !== undefined) {
       const el = document.getElementById('stat-balance');
@@ -313,7 +364,7 @@ fetch('/api/balance_history').then(r=>r.json()).then(data => {
   <div class="stat-card"><div class="stat-label">Brier Score</div>
     <div class="stat-value" id="stat-brier">{bs_str}</div></div>
 </div>
-<p class="refreshing"><span class="live-dot"></span><span id="stat-updated">Connecting…</span></p>
+<p class="refreshing"><span class="live-dot"></span><span id="stat-updated">Connecting…</span><span id="last-updated"></span></p>
 
 <h2>Open Positions ({len(open_trades)})</h2>
 {
@@ -412,9 +463,30 @@ fetch('/api/balance_history').then(r=>r.json()).then(data => {
 <body>
 <h1>Kalshi Weather — Opportunities</h1>
 {NAV}
-<p class="refreshing">Auto-refreshes every 60s &mdash; {
+<p class="refreshing" id="analyze-status">
+  {
             len(opps)
-        } opportunities found</p>
+        } opportunities found &mdash; refreshing in <span id="analyze-countdown">60</span>s
+</p>
+<script>
+// #90: auto-refresh analyze table every 60 seconds
+let _analyzeCountdown = 60;
+const _cdEl = document.getElementById('analyze-countdown');
+setInterval(() => {{
+  _analyzeCountdown--;
+  if (_cdEl) _cdEl.textContent = _analyzeCountdown;
+  if (_analyzeCountdown <= 0) {{
+    fetch('/analyze?fragment=1').then(r => r.text()).then(html => {{
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(html, 'text/html');
+      const newTable = doc.querySelector('table');
+      const oldTable = document.querySelector('table');
+      if (newTable && oldTable) oldTable.replaceWith(newTable);
+      _analyzeCountdown = 60;
+    }}).catch(() => {{ _analyzeCountdown = 60; }});
+  }}
+}}, 1000);
+</script>
 {
             "<p class='neu' style='margin-top:16px'>No opportunities above threshold right now.</p>"
             if not opps
@@ -453,6 +525,7 @@ fetch('/api/balance_history').then(r=>r.json()).then(data => {
             sharpe = None
             attribution = None
             factor = None
+            season_cal = None  # #59
 
             try:
                 from tracker import get_confusion_matrix
@@ -488,6 +561,13 @@ fetch('/api/balance_history').then(r=>r.json()).then(data => {
                 sharpe = get_rolling_sharpe()
                 attribution = get_attribution()
                 factor = get_factor_exposure()
+            except Exception:
+                pass
+            # #59: seasonal calibration breakdown
+            try:
+                from tracker import get_calibration_by_season
+
+                season_cal = get_calibration_by_season()
             except Exception:
                 pass
 
@@ -594,6 +674,21 @@ fetch('/api/balance_history').then(r=>r.json()).then(data => {
 {rows_cc}</table>
 <p class="neu" style="font-size:0.82em">Bias: positive = over-predicts YES; negative = under-predicts.</p>"""
 
+        # #59: Seasonal calibration
+        if season_cal:
+            season_order = ["Spring", "Summer", "Fall", "Winter"]
+            rows_sc = "".join(
+                f"<tr><td>{s}</td><td>{season_cal[s]['brier']:.4f}</td>"
+                f'<td class="{"neg" if season_cal[s]["bias"] > 0 else "pos"}">'
+                f"{season_cal[s]['bias']:+.3f}</td><td>{season_cal[s]['n']}</td></tr>"
+                for s in season_order
+                if s in season_cal
+            )
+            sections += f"""
+<h2>Seasonal Calibration</h2>
+<table><tr><th>Season</th><th>Brier</th><th>Bias</th><th>N</th></tr>
+{rows_sc}</table>"""
+
         # Model calibration buckets
         if model_cal and model_cal.get("buckets"):
             rows_mc = "".join(
@@ -617,6 +712,95 @@ fetch('/api/balance_history').then(r=>r.json()).then(data => {
 <p class="refreshing" style="margin-top:20px">Generated at {datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S")} UTC</p>
 </body></html>"""
         return render_template_string(html)
+
+    @app.route("/history")
+    def history_page():
+        """#89: Paginated settled trade history."""
+        try:
+            from flask import request as freq
+
+            page = max(1, int(freq.args.get("page", 1)))
+        except Exception:
+            page = 1
+
+        try:
+            from paper import get_all_trades
+
+            all_settled = [t for t in get_all_trades() if t.get("settled")]
+            all_settled.sort(key=lambda t: t.get("entered_at", ""), reverse=True)
+        except Exception:
+            all_settled = []
+
+        per_page = 25
+        total = len(all_settled)
+        total_pages = max(1, (total + per_page - 1) // per_page)
+        page = min(page, total_pages)
+        start = (page - 1) * per_page
+        page_trades = all_settled[start : start + per_page]
+
+        rows_html = ""
+        for t in page_trades:
+            p = t.get("pnl", 0.0) or 0.0
+            p_cls = "pos" if p >= 0 else "neg"
+            p_str = f"+${p:.2f}" if p >= 0 else f"-${abs(p):.2f}"
+            rows_html += f"""<tr>
+              <td>{t["id"]}</td>
+              <td>{t["ticker"][:28]}</td>
+              <td>{"YES" if t["side"] == "yes" else "NO"}</td>
+              <td>{t["quantity"]}</td>
+              <td>${t["entry_price"]:.3f}</td>
+              <td>${t["cost"]:.2f}</td>
+              <td class="{p_cls}">{p_str}</td>
+              <td class="neu">{t.get("entered_at", "")[:10]}</td>
+            </tr>"""
+
+        prev_link = (
+            f'<a href="/history?page={page - 1}">&laquo; Prev</a>' if page > 1 else ""
+        )
+        next_link = (
+            f'<a href="/history?page={page + 1}">Next &raquo;</a>'
+            if page < total_pages
+            else ""
+        )
+
+        html = f"""<!DOCTYPE html>
+<html><head><title>Trade History</title>{VIEWPORT}{DARK_STYLE}</head>
+<body>{NAV}
+<h1>Settled Trade History</h1>
+<p class="refreshing">{total} trades &mdash; Page {page} of {total_pages}</p>
+<table>
+  <tr><th>#</th><th>Ticker</th><th>Side</th><th>Qty</th><th>Entry</th><th>Cost</th><th>P&amp;L</th><th>Date</th></tr>
+  {rows_html}
+</table>
+<p style="margin-top:12px">{prev_link} &nbsp; {next_link}</p>
+</body></html>"""
+        return render_template_string(html)
+
+    @app.route("/api/export")
+    def api_export():
+        """#83: Download CSV of prediction history with outcomes."""
+        import io
+
+        buf = io.StringIO()
+        try:
+            from tracker import get_history
+
+            rows = get_history(limit=10_000)
+            if not rows:
+                return Response("No data", status=204)
+            import csv as _csv
+
+            writer = _csv.DictWriter(buf, fieldnames=list(rows[0].keys()))
+            writer.writeheader()
+            writer.writerows(rows)
+        except Exception as exc:
+            return Response(f"Error: {exc}", status=500)
+
+        return Response(
+            buf.getvalue(),
+            mimetype="text/csv",
+            headers={"Content-Disposition": 'attachment; filename="predictions.csv"'},
+        )
 
     @app.route("/api/status")
     def api_status():

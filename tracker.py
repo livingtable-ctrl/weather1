@@ -22,6 +22,10 @@ _db_initialized = False
 def _conn() -> sqlite3.Connection:
     con = sqlite3.connect(DB_PATH)
     con.row_factory = sqlite3.Row
+    # #98: WAL mode for better concurrency + performance
+    con.execute("PRAGMA journal_mode=WAL")
+    con.execute("PRAGMA synchronous=NORMAL")
+    con.execute("PRAGMA cache_size=10000")
     return con
 
 
@@ -66,8 +70,11 @@ def init_db() -> None:
             settled_at    TEXT
         );
 
-        CREATE INDEX IF NOT EXISTS idx_pred_ticker ON predictions(ticker);
-        CREATE INDEX IF NOT EXISTS idx_pred_city   ON predictions(city, market_date);
+        CREATE INDEX IF NOT EXISTS idx_pred_ticker    ON predictions(ticker);
+        CREATE INDEX IF NOT EXISTS idx_pred_city      ON predictions(city, market_date);
+        CREATE INDEX IF NOT EXISTS idx_pred_condition ON predictions(condition_type);
+        CREATE INDEX IF NOT EXISTS idx_pred_method    ON predictions(method);
+        CREATE INDEX IF NOT EXISTS idx_out_settled_at ON outcomes(settled_at);
 
         CREATE TABLE IF NOT EXISTS source_reliability (
             city        TEXT NOT NULL,
@@ -77,13 +84,32 @@ def init_db() -> None:
             PRIMARY KEY (city, source, logged_date)
         );
         CREATE INDEX IF NOT EXISTS idx_src_city ON source_reliability(city, source);
+
+        -- #110: audit trail for manual trades placed via the CLI
+        CREATE TABLE IF NOT EXISTS audit_log (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            action     TEXT    NOT NULL,   -- e.g. "manual_buy"
+            ticker     TEXT,
+            side       TEXT,
+            price      REAL,
+            qty        INTEGER,
+            thesis     TEXT,
+            logged_at  TEXT    NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_audit_ticker ON audit_log(ticker);
         """)
-    # Migration: add days_out column if it doesn't exist yet (SQLite doesn't support IF NOT EXISTS)
+    # Migrations: add columns that may not exist in older DBs
+    migrations = [
+        "ALTER TABLE predictions ADD COLUMN days_out INTEGER",
+        # #53: store raw (pre-bias-correction) prob alongside adjusted prob
+        "ALTER TABLE predictions ADD COLUMN raw_prob REAL",
+    ]
     with _conn() as con:
-        try:
-            con.execute("ALTER TABLE predictions ADD COLUMN days_out INTEGER")
-        except sqlite3.OperationalError:
-            pass  # Column already exists
+        for stmt in migrations:
+            try:
+                con.execute(stmt)
+            except sqlite3.OperationalError:
+                pass  # Column already exists
 
     _db_initialized = True
 
@@ -91,15 +117,57 @@ def init_db() -> None:
 # ── Logging ───────────────────────────────────────────────────────────────────
 
 
+def log_audit(
+    action: str,
+    ticker: str | None = None,
+    side: str | None = None,
+    price: float | None = None,
+    qty: int | None = None,
+    thesis: str | None = None,
+) -> None:
+    """
+    #110: Write a row to the audit_log table for any manual user action
+    (e.g. manual paper buys placed via _quick_paper_buy).
+    Never raises — audit failures must not interrupt the trading flow.
+    """
+    from datetime import UTC, datetime
+
+    init_db()
+    try:
+        with _conn() as con:
+            con.execute(
+                """INSERT INTO audit_log
+                   (action, ticker, side, price, qty, thesis, logged_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    action,
+                    ticker,
+                    side,
+                    price,
+                    qty,
+                    thesis,
+                    datetime.now(UTC).isoformat(),
+                ),
+            )
+    except Exception:
+        pass
+
+
 def log_prediction(
     ticker: str, city: str | None, market_date: date | None, analysis: dict
 ) -> None:
-    """Save a prediction to the database."""
+    """Save a prediction to the database.
+    Stores both the raw (pre-bias-correction) probability and the adjusted one (#53).
+    """
     init_db()
     cond = analysis.get("condition", {})
     lo = cond.get("threshold", cond.get("lower"))
     hi = cond.get("threshold", cond.get("upper"))
     days_out = (market_date - date.today()).days if market_date is not None else None
+    # #53: raw_prob is pre-bias-correction; forecast_prob is the adjusted value
+    bias = analysis.get("bias_correction", 0.0) or 0.0
+    forecast_prob = analysis.get("forecast_prob")
+    raw_prob = round(forecast_prob + bias, 6) if forecast_prob is not None else None
 
     with _conn() as con:
         # Don't duplicate — update if already logged today
@@ -111,11 +179,12 @@ def log_prediction(
             con.execute(
                 """
                 UPDATE predictions SET
-                    our_prob=?, market_prob=?, edge=?, method=?, n_members=?, days_out=?
+                    our_prob=?, raw_prob=?, market_prob=?, edge=?, method=?, n_members=?, days_out=?
                 WHERE id=?
             """,
                 (
-                    analysis.get("forecast_prob"),
+                    forecast_prob,
+                    raw_prob,
                     analysis.get("market_prob"),
                     analysis.get("edge"),
                     analysis.get("method"),
@@ -129,9 +198,9 @@ def log_prediction(
                 """
                 INSERT INTO predictions
                   (ticker, city, market_date, condition_type,
-                   threshold_lo, threshold_hi, our_prob, market_prob,
+                   threshold_lo, threshold_hi, our_prob, raw_prob, market_prob,
                    edge, method, n_members, predicted_at, days_out)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,datetime('now'),?)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'),?)
             """,
                 (
                     ticker,
@@ -140,7 +209,8 @@ def log_prediction(
                     cond.get("type"),
                     lo,
                     hi,
-                    analysis.get("forecast_prob"),
+                    forecast_prob,
+                    raw_prob,
                     analysis.get("market_prob"),
                     analysis.get("edge"),
                     analysis.get("method"),
@@ -150,17 +220,26 @@ def log_prediction(
             )
 
 
-def log_outcome(ticker: str, settled_yes: bool) -> None:
-    """Record whether a market settled YES or NO."""
+def log_outcome(ticker: str, settled_yes: bool) -> bool:
+    """Record whether a market settled YES or NO.
+    Returns True if newly recorded, False if outcome already existed (#17).
+    Refuses to overwrite an existing finalized outcome to prevent data corruption.
+    """
     init_db()
     with _conn() as con:
+        existing = con.execute(
+            "SELECT 1 FROM outcomes WHERE ticker = ?", (ticker,)
+        ).fetchone()
+        if existing:
+            return False  # already settled; refuse duplicate
         con.execute(
             """
-            INSERT OR REPLACE INTO outcomes (ticker, settled_yes, settled_at)
+            INSERT INTO outcomes (ticker, settled_yes, settled_at)
             VALUES (?, ?, datetime('now'))
         """,
             (ticker, 1 if settled_yes else 0),
         )
+    return True
 
 
 # ── Bias correction ───────────────────────────────────────────────────────────
@@ -197,6 +276,7 @@ def get_bias(city: str | None, month: int | None, min_samples: int = 5) -> float
     now = datetime.utcnow()
     weighted_bias = 0.0
     total_weight = 0.0
+    min_age_days = float("inf")
     for r in rows:
         try:
             predicted_at = datetime.fromisoformat(
@@ -207,9 +287,14 @@ def get_bias(city: str | None, month: int | None, min_samples: int = 5) -> float
             age_days = max(0.0, (now - predicted_at).total_seconds() / 86400)
         except (ValueError, TypeError, AttributeError):
             age_days = 0.0
+        min_age_days = min(min_age_days, age_days)
         weight = math.exp(-age_days / 30.0)
         weighted_bias += (r["our_prob"] - r["settled_yes"]) * weight
         total_weight += weight
+
+    # #9: if most recent sample is >14 days old, bias estimate is stale — don't apply
+    if min_age_days > 14:
+        return 0.0
 
     if total_weight == 0:
         return 0.0
@@ -389,6 +474,50 @@ def get_calibration_by_city() -> dict[str, dict]:
     return result
 
 
+def get_calibration_by_season() -> dict[str, dict]:
+    """
+    Brier score and bias broken down by meteorological season (#59).
+    Returns {season: {brier, bias, n}} for seasons with settled predictions.
+    Seasons: Spring (Mar-May), Summer (Jun-Aug), Fall (Sep-Nov), Winter (Dec-Feb).
+    """
+    init_db()
+    with _conn() as con:
+        rows = con.execute("""
+            SELECT p.our_prob, o.settled_yes,
+                   CAST(strftime('%m', p.market_date) AS INTEGER) AS month
+            FROM predictions p
+            JOIN outcomes o ON p.ticker = o.ticker
+            WHERE p.our_prob IS NOT NULL AND p.market_date IS NOT NULL
+        """).fetchall()
+
+    def _season(month: int) -> str:
+        if month in (3, 4, 5):
+            return "Spring"
+        elif month in (6, 7, 8):
+            return "Summer"
+        elif month in (9, 10, 11):
+            return "Fall"
+        else:
+            return "Winter"
+
+    by_season: dict[str, list] = {}
+    for r in rows:
+        if r["month"]:
+            s = _season(r["month"])
+            by_season.setdefault(s, []).append((r["our_prob"], r["settled_yes"]))
+
+    result = {}
+    for season, pairs in by_season.items():
+        errors = [(p - y) ** 2 for p, y in pairs]
+        biases = [p - y for p, y in pairs]
+        result[season] = {
+            "brier": round(sum(errors) / len(errors), 4),
+            "bias": round(sum(biases) / len(biases), 4),
+            "n": len(pairs),
+        }
+    return result
+
+
 def get_calibration_by_type() -> dict[str, dict]:
     """
     Per condition-type Brier score, bias, and sample count.
@@ -503,6 +632,7 @@ def sync_outcomes(client) -> int:
         """).fetchall()
 
     count = 0
+    now_utc = datetime.utcnow()
     for row in pending:
         ticker = row["ticker"]
         try:
@@ -510,9 +640,23 @@ def sync_outcomes(client) -> int:
             status = market.get("status", "")
             result = market.get("result", "")
             if status == "finalized":
+                # #16/#80: only accept outcome if finalized for >1 hour (Kalshi may revise)
+                close_time_str = market.get("close_time") or market.get(
+                    "expiration_time", ""
+                )
+                if close_time_str:
+                    try:
+                        close_dt = datetime.fromisoformat(
+                            close_time_str.replace("Z", "+00:00")
+                        ).replace(tzinfo=None)
+                        hours_since = (now_utc - close_dt).total_seconds() / 3600
+                        if hours_since < 1.0:
+                            continue  # too soon; wait for finalization to stabilize
+                    except (ValueError, TypeError):
+                        pass
                 settled_yes = result == "yes"
-                log_outcome(ticker, settled_yes)
-                count += 1
+                if log_outcome(ticker, settled_yes):
+                    count += 1
         except Exception:
             continue
     return count
@@ -729,6 +873,16 @@ def get_roc_auc() -> dict:
 
     if total_pos == 0 or total_neg == 0:
         return {"auc": None, "n": len(rows), "points": []}
+
+    # #19: if all predictions are identical, AUC is 0.5 (no discrimination ability)
+    all_probs = [r["our_prob"] for r in sorted_rows]
+    if len(set(all_probs)) == 1:
+        return {
+            "auc": 0.5,
+            "n": len(rows),
+            "points": [],
+            "note": "no variance in predictions",
+        }
 
     # Walk threshold from high to low, accumulate TPR/FPR
     tp = fp = 0

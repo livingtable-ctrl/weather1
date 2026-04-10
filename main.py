@@ -56,6 +56,7 @@ from weather_markets import (
     CITY_COORDS,
     _feels_like,
     analyze_trade,
+    detect_hedge_opportunity,
     enrich_with_forecast,
     get_weather_forecast,
     get_weather_markets,
@@ -361,7 +362,8 @@ def auto_backtest(client: KalshiClient) -> None:
 def auto_backup() -> None:
     """
     Copy predictions.db and paper_trades.json to data/backups/ on startup.
-    Keeps the last 7 daily backups (one per calendar day).
+    #103: Keeps the last 30 daily backups (was 7) for better point-in-time recovery.
+    #101: Also cleans up stray temp files left by interrupted atomic writes.
     Runs silently — never blocks startup.
     """
     import shutil
@@ -382,14 +384,22 @@ def auto_backup() -> None:
                 shutil.copy2(src, dst)
             except Exception:
                 pass
-    # Prune: keep only the 7 most recent backups per file stem
+    # #103: Prune — keep only the 30 most recent backups per file stem
     for stem in ("predictions", "paper_trades"):
         backups = sorted(backup_dir.glob(f"{stem}_*"))
-        for old in backups[:-7]:
+        for old in backups[:-30]:
             try:
                 old.unlink()
             except Exception:
                 pass
+
+    # #101: Clean up stray atomic-write temp files
+    try:
+        from paper import cleanup_temp_files
+
+        cleanup_temp_files()
+    except Exception:
+        pass
 
 
 def cmd_settle(client: KalshiClient) -> None:
@@ -738,6 +748,14 @@ def _analyze_once(
     no_quote_opps: list = []
     total = len(markets)
 
+    # #64: load open trades once so we can flag hedge opportunities below
+    try:
+        from paper import get_open_trades as _got
+
+        _open_trades = _got()
+    except Exception:
+        _open_trades = []
+
     for i, m in enumerate(markets, 1):
         if total > 5:
             print(f"\r  Scanning [{i}/{total}]...", end="", flush=True)
@@ -745,6 +763,8 @@ def _analyze_once(
         analysis = analyze_trade(enriched)
         if not analysis or abs(analysis["edge"]) < min_edge:
             continue
+        # #64: tag analysis as a hedge if it reduces existing open exposure
+        analysis["_is_hedge"] = detect_hedge_opportunity(analysis, _open_trades)
         liquid = is_liquid(m)
         (liquid_opps if liquid else no_quote_opps).append((enriched, analysis))
         # Fire desktop alert for new strong liquid opportunities
@@ -799,7 +819,10 @@ def _analyze_once(
                 if net_edge > 0
                 else red(f"{net_edge * 100:.0f}%")
             )
+            # #64: show hedge tag when this trade reduces open directional exposure
             buy_side = bold(a["recommended_side"].upper())
+            if a.get("_is_hedge"):
+                buy_side = buy_side + cyan(" [HEDGE]")
             rows.append(
                 [
                     _rating(net_edge, risk),
@@ -1193,6 +1216,20 @@ def _quick_paper_buy(client: KalshiClient) -> None:
                         return
                 trade = place_paper_order(ticker, side, qty, price, thesis=thesis)
                 print(green(f"  Paper trade #{trade['id']} placed."))
+                # #110: audit trail — record every manual paper buy
+                try:
+                    from tracker import log_audit
+
+                    log_audit(
+                        "manual_buy",
+                        ticker=ticker,
+                        side=side,
+                        price=price,
+                        qty=qty,
+                        thesis=thesis,
+                    )
+                except Exception:
+                    pass
             else:
                 cmd_paper(["buy", ticker, side, f"{price:.3f}"] + qty_arg, client)
         except ValueError as e:

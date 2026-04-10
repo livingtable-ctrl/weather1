@@ -40,7 +40,12 @@ def _save(data: dict) -> None:
         raise
 
 
-def add_alert(ticker: str, target_price: float, direction: str = "below") -> dict:
+def add_alert(
+    ticker: str,
+    target_price: float,
+    direction: str = "below",
+    cooldown_minutes: int = 60,
+) -> dict:
     """
     Add a price alert.
 
@@ -48,6 +53,7 @@ def add_alert(ticker: str, target_price: float, direction: str = "below") -> dic
         ticker: Market ticker (e.g. "KXHIGHNY-26APR09-T72")
         target_price: YES price threshold (0-1)
         direction: "below" (alert when price drops to target) or "above"
+        cooldown_minutes: #91 minutes to wait before re-arming after trigger (0 = never re-arm)
 
     Returns the new alert dict.
     """
@@ -64,6 +70,8 @@ def add_alert(ticker: str, target_price: float, direction: str = "below") -> dic
         "direction": direction,
         "created_at": datetime.now(UTC).isoformat(),
         "triggered": False,
+        "triggered_at": None,
+        "cooldown_minutes": cooldown_minutes,
     }
     data["alerts"].append(alert)
     data["next_id"] += 1
@@ -83,8 +91,39 @@ def remove_alert(alert_id: int) -> bool:
 
 
 def get_alerts() -> list[dict]:
-    """Return all active (not yet triggered) alerts."""
-    return [a for a in _load()["alerts"] if not a["triggered"]]
+    """
+    Return all active alerts. #91: An alert with a cooldown is re-armed after the
+    cooldown period elapses, so it can fire again.
+    """
+    now = datetime.now(UTC)
+    data = _load()
+    changed = False
+    active = []
+    for a in data["alerts"]:
+        if not a.get("triggered"):
+            active.append(a)
+            continue
+        # Check if cooldown has elapsed and we should re-arm
+        cooldown = a.get("cooldown_minutes", 0)
+        triggered_at_str = a.get("triggered_at")
+        if cooldown > 0 and triggered_at_str:
+            try:
+                triggered_at = datetime.fromisoformat(
+                    triggered_at_str.replace("Z", "+00:00")
+                )
+                if triggered_at.tzinfo is None:
+                    triggered_at = triggered_at.replace(tzinfo=UTC)
+                elapsed = (now - triggered_at).total_seconds() / 60
+                if elapsed >= cooldown:
+                    a["triggered"] = False
+                    a["triggered_at"] = None
+                    changed = True
+                    active.append(a)
+            except (ValueError, TypeError):
+                pass
+    if changed:
+        _save(data)
+    return active
 
 
 def check_alerts(client) -> list[dict]:
@@ -139,10 +178,11 @@ def check_alerts(client) -> list[dict]:
 
 
 def mark_triggered(alert_id: int) -> None:
-    """Mark an alert as triggered so it won't fire again."""
+    """Mark an alert as triggered. #91: Records triggered_at timestamp for cooldown tracking."""
     data = _load()
     for a in data["alerts"]:
         if a["id"] == alert_id:
             a["triggered"] = True
+            a["triggered_at"] = datetime.now(UTC).isoformat()
             _save(data)
             return

@@ -99,7 +99,8 @@ def fetch_archive_temps(
             return []
 
         sigma = statistics.stdev(nearby) if len(nearby) >= 4 else 3.0
-        random.seed(42)
+        # #22: seed from target_str hash for varied (but deterministic) ensembles
+        random.seed(hash(target_str) & 0xFFFFFFFF)
         result = [exact + random.gauss(0, sigma) for _ in range(50)]
         try:
             cache_file.write_text(json.dumps(result))
@@ -115,19 +116,29 @@ def fetch_archive_temps(
 
 def fetch_archive_precip(
     lat: float, lon: float, tz: str, target_date: date
-) -> float | None:
+) -> tuple[float | None, str]:
     """
     Fetch historical daily precipitation (inches) from Open-Meteo archive.
-    Returns the observed precip value, or None if unavailable.
-    Results are cached.
+    #72: Returns (value, reason) where reason is one of:
+      "value"          — data fetched/cached successfully
+      "unsupported_date" — date outside archive range (too recent or too old)
+      "api_error"      — network or HTTP error
+      "no_data"        — API returned null/empty for this date
     """
     cache_key = f"{round(lat, 4)}_{round(lon, 4)}_{target_date.isoformat()}_precip"
     cache_file = ARCHIVE_CACHE_DIR / f"{cache_key}.json"
     if cache_file.exists():
         try:
-            return json.loads(cache_file.read_text())
+            return (json.loads(cache_file.read_text()), "value")
         except Exception:
             pass
+
+    # Dates within last 5 days are typically not in the archive yet
+    from datetime import date as _date
+
+    days_old = (_date.today() - target_date).days
+    if days_old < 5:
+        return (None, "unsupported_date")
 
     params = {
         "latitude": lat,
@@ -150,21 +161,21 @@ def fetch_archive_precip(
             resp.raise_for_status()
             break
         else:
-            return None
+            return (None, "api_error")
         if resp is None:
-            return None
+            return (None, "api_error")
         daily = resp.json().get("daily", {})
         vals = daily.get("precipitation_sum", [])
         if not vals or vals[0] is None:
-            return None
+            return (None, "no_data")
         result = float(vals[0])
         try:
             cache_file.write_text(json.dumps(result))
         except Exception:
             pass
-        return result
+        return (result, "value")
     except Exception:
-        return None
+        return (None, "api_error")
 
 
 # ── Backtest runner ───────────────────────────────────────────────────────────
@@ -238,7 +249,7 @@ def run_backtest(
 
         # ── Precipitation markets ─────────────────────────────────────────────
         if condition["type"] in ("precip_above", "precip_any"):
-            obs = fetch_archive_precip(lat, lon, tz, tdate)
+            obs, _reason = fetch_archive_precip(lat, lon, tz, tdate)
             if obs is None:
                 continue
             if condition["type"] == "precip_any":
@@ -444,6 +455,15 @@ def run_walk_forward(
     }
     """
     import statistics
+
+    # #20: validate that window parameters don't create gaps or excessive overlap
+    if step_size > window_size:
+        import warnings
+
+        warnings.warn(
+            f"walk_forward: step_size ({step_size}) > window_size ({window_size}); "
+            "some history will be skipped (gap between windows)."
+        )
 
     if client is None:
         return {
