@@ -658,7 +658,13 @@ def cmd_market(client: KalshiClient, ticker: str, verbose: bool = False):
         # Log to tracker
         try:
             log_prediction(
-                ticker, enriched.get("_city"), enriched.get("_date"), analysis
+                ticker,
+                enriched.get("_city"),
+                enriched.get("_date"),
+                analysis,
+                ensemble_prob=analysis.get("ensemble_prob"),
+                nws_prob=analysis.get("nws_prob"),
+                clim_prob=analysis.get("clim_prob"),
             )
         except Exception:
             pass

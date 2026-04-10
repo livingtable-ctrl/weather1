@@ -1644,3 +1644,50 @@ class TestPerSourceProbColumns(unittest.TestCase):
         self.assertAlmostEqual(row[0], 0.68, places=4)
         self.assertAlmostEqual(row[1], 0.60, places=4)
         self.assertAlmostEqual(row[2], 0.55, places=4)
+
+
+# ── TestSourceProbsPassthrough ────────────────────────────────────────────────
+
+
+class TestSourceProbsPassthrough(unittest.TestCase):
+    """log_prediction called without source probs must store NULLs (backward compat)."""
+
+    def setUp(self):
+        self._tmpdir = tempfile.mkdtemp()
+        self._orig = tracker.DB_PATH
+        tracker.DB_PATH = Path(self._tmpdir) / "test_passthrough.db"
+        tracker._db_initialized = False
+
+    def tearDown(self):
+        tracker.DB_PATH = self._orig
+        tracker._db_initialized = False
+        shutil.rmtree(self._tmpdir, ignore_errors=True)
+
+    def test_missing_source_probs_stored_as_null(self):
+        """Calling log_prediction without source probs stores NULL (old callers safe)."""
+        import sqlite3
+        from datetime import date as _date
+
+        tracker.init_db()
+        tracker.log_prediction(
+            "NULL-SRCPROB",
+            "NYC",
+            _date(2026, 5, 2),
+            {
+                "forecast_prob": 0.60,
+                "market_prob": 0.50,
+                "edge": 0.10,
+                "method": "ensemble",
+                "n_members": 30,
+                "condition": {"type": "above", "threshold": 70.0},
+            },
+        )
+        with sqlite3.connect(str(tracker.DB_PATH)) as con:
+            row = con.execute(
+                "SELECT ensemble_prob, nws_prob, clim_prob FROM predictions WHERE ticker=?",
+                ("NULL-SRCPROB",),
+            ).fetchone()
+        self.assertIsNotNone(row)
+        self.assertIsNone(row[0])
+        self.assertIsNone(row[1])
+        self.assertIsNone(row[2])
