@@ -94,7 +94,7 @@ def simulate_portfolio(
 
     sim_pnls.sort()
     n = len(sim_pnls)
-    median_pnl = sim_pnls[n // 2]
+    median_pnl = (sim_pnls[(n - 1) // 2] + sim_pnls[n // 2]) / 2
     p10_pnl = sim_pnls[max(0, int(n * 0.10))]
     p90_pnl = sim_pnls[min(n - 1, int(n * 0.90))]
     prob_positive = sum(1 for p in sim_pnls if p > 0) / n

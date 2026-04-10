@@ -186,11 +186,16 @@ def _build_app(client):
 
         rows_html = ""
         opps = []
+        from utils import MIN_EDGE
+
         for m in markets:
             try:
                 enriched = enrich_with_forecast(m)
                 analysis = analyze_trade(enriched)
-                if analysis and abs(analysis.get("net_edge", analysis["edge"])) >= 0.08:
+                if (
+                    analysis
+                    and abs(analysis.get("net_edge", analysis["edge"])) >= MIN_EDGE
+                ):
                     opps.append((enriched, analysis))
             except Exception:
                 continue

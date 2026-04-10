@@ -42,10 +42,20 @@ def detect_regime(city: str, ensemble_stats: dict, days_out: int) -> dict:
     mean = ensemble_stats.get("mean", 60.0)
     std = ensemble_stats.get("std", 5.0)
 
+    # Scale confidence boost by forecast horizon — regimes are less reliable far out.
+    # Full boost within 3 days; linearly reduces to no boost (1.0) beyond 10 days.
+    horizon_scale = (
+        max(0.0, min(1.0, 1.0 - (days_out - 3) / 7.0)) if days_out > 3 else 1.0
+    )
+
+    def _boost(base: float) -> float:
+        """Scale boost towards 1.0 based on how far out the market is."""
+        return 1.0 + (base - 1.0) * horizon_scale
+
     if mean > 95.0 and std < 5.0:
         return {
             "regime": "heat_dome",
-            "confidence_boost": 1.20,
+            "confidence_boost": round(_boost(1.20), 4),
             "description": (
                 f"Heat dome detected for {city} ({mean:.1f}°F mean, "
                 f"σ={std:.1f}°F) — high confidence pattern."
@@ -54,7 +64,7 @@ def detect_regime(city: str, ensemble_stats: dict, days_out: int) -> dict:
     elif mean < 25.0 and std < 5.0:
         return {
             "regime": "cold_snap",
-            "confidence_boost": 1.20,
+            "confidence_boost": round(_boost(1.20), 4),
             "description": (
                 f"Cold snap detected for {city} ({mean:.1f}°F mean, "
                 f"σ={std:.1f}°F) — high confidence pattern."
@@ -63,7 +73,7 @@ def detect_regime(city: str, ensemble_stats: dict, days_out: int) -> dict:
     elif std < 3.0:
         return {
             "regime": "blocking_high",
-            "confidence_boost": 1.15,
+            "confidence_boost": round(_boost(1.15), 4),
             "description": (
                 f"Blocking high detected for {city} (σ={std:.1f}°F) — "
                 f"very persistent pattern, elevated confidence."
@@ -72,7 +82,7 @@ def detect_regime(city: str, ensemble_stats: dict, days_out: int) -> dict:
     elif std > 12.0:
         return {
             "regime": "volatile",
-            "confidence_boost": 0.80,
+            "confidence_boost": round(_boost(0.80), 4),
             "description": (
                 f"Volatile atmosphere for {city} (σ={std:.1f}°F) — "
                 f"wide model spread, reduced confidence."
