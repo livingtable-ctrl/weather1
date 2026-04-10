@@ -644,6 +644,37 @@ setInterval(() => {{
 
         return jsonify({"log": entries, "alerts": alerts[-50:]})
 
+    @app.route("/forecast")
+    def forecast_page():
+        return render_template("forecast.html")
+
+    @app.route("/api/forecast_quality")
+    def api_forecast_quality():
+        city_cal = {}
+        try:
+            from tracker import get_calibration_by_city
+
+            city_cal = get_calibration_by_city() or {}
+        except Exception:
+            pass
+
+        ensemble_accuracy = {}
+        try:
+            from tracker import get_ensemble_member_accuracy
+
+            acc = get_ensemble_member_accuracy()
+            if acc:
+                ensemble_accuracy = acc
+        except Exception:
+            pass
+
+        return jsonify(
+            {
+                "city_heatmap": city_cal,
+                "source_reliability": ensemble_accuracy,
+            }
+        )
+
     return app
 
 

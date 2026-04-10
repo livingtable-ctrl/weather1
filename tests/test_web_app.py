@@ -296,3 +296,26 @@ def test_api_signals_returns_correct_shape(client):
             assert "alerts" in d
             assert isinstance(d["log"], list)
             assert isinstance(d["alerts"], list)
+
+
+def test_forecast_route_returns_200_with_title(client):
+    """Forecast page returns 200 and contains 'Forecast'."""
+    r = client.get("/forecast")
+    assert r.status_code == 200
+    assert b"Forecast" in r.data
+
+
+def test_api_forecast_quality_returns_correct_shape(client):
+    """/api/forecast_quality returns city_heatmap and source_reliability keys."""
+    with patch(
+        "tracker.get_calibration_by_city",
+        return_value={
+            "NYC": {"n": 10, "brier": 0.22, "bias": 0.01},
+        },
+    ):
+        r = client.get("/api/forecast_quality")
+        assert r.status_code == 200
+        d = r.get_json()
+        assert "city_heatmap" in d
+        assert "source_reliability" in d
+        assert "NYC" in d["city_heatmap"]
