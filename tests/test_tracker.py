@@ -382,6 +382,19 @@ class TestGetBias(unittest.TestCase):
         self.assertIsInstance(result, float)
 
 
+def test_get_brier_over_time_returns_list():
+    """get_brier_over_time returns a list of {week, brier} dicts or empty list."""
+    from tracker import get_brier_over_time
+
+    result = get_brier_over_time(weeks=12)
+    assert isinstance(result, list)
+    for item in result:
+        assert "week" in item
+        assert "brier" in item
+        assert isinstance(item["brier"], float)
+        assert 0.0 <= item["brier"] <= 1.0
+
+
 # ── Phase 3 tests ─────────────────────────────────────────────────────────────
 
 

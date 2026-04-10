@@ -559,6 +559,41 @@ def brier_score(city: str | None = None) -> float | None:
     return sum((r["our_prob"] - r["settled_yes"]) ** 2 for r in rows) / len(rows)
 
 
+def get_brier_over_time(weeks: int = 12) -> list[dict]:
+    """Return mean Brier score per ISO week for the last `weeks` weeks.
+
+    Joins settled predictions with outcomes, groups by strftime('%Y-W%W', predicted_at),
+    computes mean (our_prob - settled_yes)^2 per week.
+
+    Returns [{"week": "2025-W40", "brier": 0.21}, ...] sorted ascending.
+    Returns an empty list if no settled predictions exist in the window.
+    """
+    import datetime
+
+    init_db()
+    cutoff = (
+        datetime.datetime.now(datetime.UTC) - datetime.timedelta(weeks=weeks)
+    ).isoformat()
+    with _conn() as con:
+        rows = con.execute(
+            """
+            SELECT
+                strftime('%Y-W%W', p.predicted_at) AS week,
+                AVG(
+                    (p.our_prob - o.settled_yes) * (p.our_prob - o.settled_yes)
+                ) AS brier
+            FROM predictions p
+            JOIN outcomes o ON o.ticker = p.ticker
+            WHERE p.predicted_at >= ?
+              AND p.our_prob IS NOT NULL
+            GROUP BY week
+            ORDER BY week
+            """,
+            (cutoff,),
+        ).fetchall()
+    return [{"week": row["week"], "brier": round(row["brier"], 4)} for row in rows]
+
+
 def brier_skill_score(city: str | None = None) -> float | None:
     """
     Brier Skill Score (BSS) vs market baseline (#11).
