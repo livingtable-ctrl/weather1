@@ -328,3 +328,39 @@ def test_api_forecast_quality_returns_correct_shape(client):
         assert "source_reliability" in d
         assert "NYC" in d["city_heatmap"]
         assert "NYC" in d["source_reliability"]
+
+
+# ── #81 balance-history range parameter ──────────────────────────────────────
+
+
+def test_balance_history_range_3mo_longer_than_default(tmp_path, monkeypatch):
+    """?range=3mo returns a different (longer) slice than the default 50-point cap."""
+    import json
+    from datetime import UTC, datetime, timedelta
+
+    import paper
+    import web_app
+
+    # Synthesise 100 history points spanning 120 days
+    now = datetime.now(UTC)
+    fake_history = [
+        {"ts": (now - timedelta(days=120 - i)).isoformat(), "balance": 1000.0 + i}
+        for i in range(100)
+    ]
+    monkeypatch.setattr(paper, "get_balance_history", lambda: fake_history)
+    monkeypatch.setattr(web_app, "_now_utc", lambda: now)
+
+    app = web_app._build_app(client=None)
+    client = app.test_client()
+
+    default_resp = client.get("/api/balance_history")
+    range_resp = client.get("/api/balance_history?range=3mo")
+
+    default_data = json.loads(default_resp.data)
+    range_data = json.loads(range_resp.data)
+
+    # default is capped at 50; 3mo should include more points (≥ 75 of the 100)
+    assert default_resp.status_code == 200
+    assert range_resp.status_code == 200
+    assert len(default_data["values"]) == 50
+    assert len(range_data["values"]) > 50
