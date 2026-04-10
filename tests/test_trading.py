@@ -338,3 +338,48 @@ class TestCalcTradePnl:
         pnl = calc_trade_pnl(trade)
         expected = (1.0 - 0.40) * 10  # = 6.00
         assert pnl == pytest.approx(expected)
+
+
+class TestBayesianKellyFractionBeta:
+    """#39: bayesian_kelly_fraction must accept fee_rate and use Beta posterior."""
+
+    def test_accepts_fee_rate_kwarg(self):
+        """fee_rate kwarg must be accepted without error."""
+        from weather_markets import bayesian_kelly_fraction
+
+        result = bayesian_kelly_fraction(0.65, 0.50, n_predictions=20, fee_rate=0.07)
+        assert result >= 0.0
+
+    def test_higher_fee_reduces_fraction(self):
+        """Higher fee_rate should produce equal or smaller Kelly fraction."""
+        from weather_markets import bayesian_kelly_fraction
+
+        f_low = bayesian_kelly_fraction(0.65, 0.50, n_predictions=20, fee_rate=0.01)
+        f_high = bayesian_kelly_fraction(0.65, 0.50, n_predictions=20, fee_rate=0.20)
+        assert f_low >= f_high
+
+    def test_beta_posterior_is_conservative(self):
+        """Beta-posterior Kelly must be <= point-estimate Kelly at same edge."""
+        from weather_markets import bayesian_kelly_fraction, kelly_fraction
+
+        our_prob = 0.70
+        market_prob = 0.50
+        bk = bayesian_kelly_fraction(
+            our_prob, market_prob, n_predictions=20, fee_rate=0.07
+        )
+        pk = kelly_fraction(our_prob, market_prob, fee_rate=0.07)
+        assert bk <= pk
+
+    def test_zero_for_no_edge(self):
+        """When our_prob == market_prob, Kelly should be 0."""
+        from weather_markets import bayesian_kelly_fraction
+
+        result = bayesian_kelly_fraction(0.50, 0.50, n_predictions=20, fee_rate=0.07)
+        assert result == 0.0
+
+    def test_capped_at_0_25(self):
+        """Result must never exceed 0.25."""
+        from weather_markets import bayesian_kelly_fraction
+
+        result = bayesian_kelly_fraction(0.99, 0.01, n_predictions=20, fee_rate=0.07)
+        assert result <= 0.25

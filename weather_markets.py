@@ -1235,6 +1235,7 @@ def bayesian_kelly_fraction(
     market_prob: float,
     n_predictions: int = 20,
     confidence: float = 0.90,
+    fee_rate: float = KALSHI_FEE_RATE,
 ) -> float:
     """
     #39: Bayesian Kelly with Beta posterior uncertainty shrinkage.
@@ -1272,7 +1273,7 @@ def bayesian_kelly_fraction(
     conservative_p = mu + z * sigma  # z is negative, so this shrinks toward 0
 
     conservative_p = max(0.01, min(0.99, conservative_p))
-    result = kelly_fraction(conservative_p, market_prob)
+    result = kelly_fraction(conservative_p, market_prob, fee_rate=fee_rate)
     return min(max(0.0, result), 0.25)
 
 
