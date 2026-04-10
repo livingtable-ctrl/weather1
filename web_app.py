@@ -269,6 +269,34 @@ def _build_app(client):
             result = {"error": str(e)}
         return jsonify(result)
 
+    @app.route("/api/graduation")
+    def api_graduation():
+        try:
+            from paper import fear_greed_index, get_performance, graduation_check
+        except ImportError as e:
+            return jsonify({"error": str(e)}), 500
+        perf = get_performance()
+        gc = graduation_check()
+        fg_score, fg_label = fear_greed_index()
+        return jsonify(
+            {
+                "trades_done": perf.get("settled", 0),
+                "win_rate": perf.get("win_rate"),
+                "ready": gc is not None,
+                "fear_greed_score": fg_score,
+                "fear_greed_label": fg_label,
+            }
+        )
+
+    @app.route("/api/brier_history")
+    def api_brier_history():
+        try:
+            from tracker import get_brier_over_time
+
+            return jsonify(get_brier_over_time(weeks=12))
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+
     @app.route("/")
     def index():
         return render_template("dashboard.html")

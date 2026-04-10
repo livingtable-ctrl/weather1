@@ -120,3 +120,42 @@ def test_analytics_route_returns_200_with_title(client):
     r = client.get("/analytics")
     assert r.status_code == 200
     assert b"Analytics" in r.data
+
+
+def test_api_graduation_returns_correct_shape(client):
+    """/api/graduation returns trades_done, win_rate, ready, fear_greed_score, fear_greed_label."""
+    with (
+        patch(
+            "paper.get_performance",
+            return_value={
+                "settled": 10,
+                "win_rate": 0.5,
+                "total_pnl": -20.0,
+                "roi": -0.02,
+            },
+        ),
+        patch("paper.graduation_check", return_value=None),
+        patch("paper.fear_greed_index", return_value=(55, "Neutral")),
+    ):
+        r = client.get("/api/graduation")
+        assert r.status_code == 200
+        d = r.get_json()
+        assert d["trades_done"] == 10
+        assert d["win_rate"] == 0.5
+        assert d["ready"] is False
+        assert d["fear_greed_score"] == 55
+        assert d["fear_greed_label"] == "Neutral"
+
+
+def test_api_brier_history_returns_list(client):
+    """/api/brier_history returns a JSON list of {week, brier} dicts."""
+    with patch(
+        "tracker.get_brier_over_time",
+        return_value=[{"week": "2025-W40", "brier": 0.21}],
+    ):
+        r = client.get("/api/brier_history")
+        assert r.status_code == 200
+        d = r.get_json()
+        assert isinstance(d, list)
+        assert d[0]["week"] == "2025-W40"
+        assert d[0]["brier"] == 0.21
