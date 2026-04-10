@@ -42,7 +42,7 @@ def init_log() -> None:
             quantity       INTEGER NOT NULL,
             price          REAL    NOT NULL,
             order_type     TEXT,              -- "market" or "limit"
-            status         TEXT,              -- "sent", "filled", "failed", "cancelled"
+            status         TEXT,              -- "sent", "pending", "filled", "failed", "cancelled"
             response       TEXT,              -- JSON-encoded API response
             error          TEXT,              -- error message if failed
             placed_at      TEXT    NOT NULL,
