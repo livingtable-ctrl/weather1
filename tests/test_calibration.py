@@ -201,3 +201,30 @@ class TestLoadWeights:
         )
         result = load_city_weights(p)
         assert result == {"NYC": {"ensemble": 0.60, "climatology": 0.15, "nws": 0.25}}
+
+
+class TestCalibrateCLI:
+    """cmd_calibrate writes JSON files when enough data exists."""
+
+    def setup_method(self):
+        self._tmpdir = tempfile.mkdtemp()
+        self._db = Path(self._tmpdir) / "test.db"
+        self._out_dir = Path(self._tmpdir) / "data"
+        self._out_dir.mkdir()
+
+    def teardown_method(self):
+        shutil.rmtree(self._tmpdir, ignore_errors=True)
+
+    def test_calibrate_writes_seasonal_json(self):
+        """With enough data, calibrate writes data/seasonal_weights.json."""
+        import calibration
+
+        rows = _make_winter_rows(60)
+        _seed_db(self._db, rows)
+        seasonal = calibration.calibrate_seasonal_weights(self._db)
+        out = self._out_dir / "seasonal_weights.json"
+        out.write_text(json.dumps(seasonal))
+        loaded = json.loads(out.read_text())
+        assert "winter" in loaded
+        w = loaded["winter"]
+        assert abs(w["ensemble"] + w["climatology"] + w["nws"] - 1.0) < 1e-6

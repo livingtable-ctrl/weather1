@@ -3386,6 +3386,65 @@ def cmd_report() -> None:
         print(red(f"  Failed to generate report: {e}"))
 
 
+# ── Blend-weight calibration ──────────────────────────────────────────────────
+
+
+def cmd_calibrate() -> None:
+    """Recompute seasonal and per-city blend weights from settled predictions."""
+    import json
+    from pathlib import Path
+
+    from calibration import calibrate_city_weights, calibrate_seasonal_weights
+    from tracker import DB_PATH
+
+    data_dir = Path(__file__).parent / "data"
+    data_dir.mkdir(exist_ok=True)
+
+    print("Running blend-weight calibration from settled predictions…")
+    print(f"  Database: {DB_PATH}")
+
+    try:
+        seasonal = calibrate_seasonal_weights(DB_PATH)
+        city = calibrate_city_weights(DB_PATH)
+    except Exception as exc:  # noqa: BLE001
+        print(f"\nCalibration skipped — could not read DB: {exc}")
+        print(
+            "(The predictions table may be missing ensemble_prob/nws_prob/clim_prob columns.)"
+        )
+        print("Run the app normally to populate predictions, then re-run calibrate.")
+        return
+
+    seasonal_path = data_dir / "seasonal_weights.json"
+    city_path = data_dir / "city_weights.json"
+
+    seasonal_path.write_text(json.dumps(seasonal, indent=2))
+    city_path.write_text(json.dumps(city, indent=2))
+
+    if seasonal:
+        print(f"\nSeasonal weights ({len(seasonal)} seasons calibrated):")
+        for season, w in sorted(seasonal.items()):
+            print(
+                f"  {season:8s}: ensemble={w['ensemble']:.2f}  clim={w['climatology']:.2f}  nws={w['nws']:.2f}"
+            )
+    else:
+        print(
+            "\nSeasonal weights: insufficient data for all seasons — using hardcoded defaults."
+        )
+
+    if city:
+        print(f"\nCity weights ({len(city)} cities calibrated):")
+        for c, w in sorted(city.items()):
+            print(
+                f"  {c:12s}: ensemble={w['ensemble']:.2f}  clim={w['climatology']:.2f}  nws={w['nws']:.2f}"
+            )
+    else:
+        print("\nCity weights: insufficient data for any city — using defaults.")
+
+    print(f"\nWritten to: {seasonal_path}")
+    print(f"           {city_path}")
+    print("Restart the app (or re-import weather_markets) to pick up new weights.")
+
+
 # ── Interactive menu ──────────────────────────────────────────────────────────
 
 
@@ -4942,6 +5001,11 @@ def main():
         cmd_setup()
         return
 
+    # calibrate only needs the local DB — no API credentials required
+    if args and args[0].lower() == "calibrate":
+        cmd_calibrate()
+        return
+
     if not validate_env():
         if not Path(".env").exists():
             print(
@@ -5072,6 +5136,8 @@ def main():
         cmd_walkforward(client)
     elif cmd == "report":
         cmd_report()
+    elif cmd == "calibrate":
+        cmd_calibrate()
     else:
         print(red(f"Unknown command: {cmd}"))
         print(dim("Run  py main.py  for the interactive menu."))
