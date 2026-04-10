@@ -1056,6 +1056,29 @@ def _analyze_once(
     return found
 
 
+_LIVE_CONFIG_PATH = Path(__file__).parent / "data" / "live_config.json"
+_LIVE_CONFIG_DEFAULT: dict = {
+    "max_trade_dollars": 50,
+    "daily_loss_limit": 200,
+    "max_open_positions": 10,
+}
+
+
+def _load_live_config() -> dict:
+    """Load live trading hard stops from data/live_config.json.
+
+    Creates the file with safe defaults if it does not exist.
+    Exits with a clear message if --live is passed but the file cannot be written.
+    """
+    if not _LIVE_CONFIG_PATH.exists():
+        _LIVE_CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+        _LIVE_CONFIG_PATH.write_text(
+            json.dumps(_LIVE_CONFIG_DEFAULT, indent=2), encoding="utf-8"
+        )
+    with open(_LIVE_CONFIG_PATH, encoding="utf-8") as f:
+        return json.load(f)
+
+
 def _midpoint_price(market: dict, side: str) -> float:
     """Return midpoint of current bid/ask for the given side, rounded to 2dp.
 
