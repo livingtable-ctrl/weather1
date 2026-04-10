@@ -104,6 +104,9 @@ class TestPlaceLiveOrder:
         assert mock_client.place_order.called
         # quantity should be min(10, floor(50/0.55)) = 10
         assert cost > 0.0
+        # Verify price passed to API is decimal dollars (not cents)
+        call_args = mock_client.place_order.call_args
+        assert call_args.kwargs["price"] == pytest.approx(0.55)
 
 
 class TestAutoPlaceTradesCycleCheck:

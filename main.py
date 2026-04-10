@@ -1207,7 +1207,7 @@ def _place_live_order(
             side=side,
             action="buy",
             count=quantity,
-            price=int(price * 100),
+            price=price,
             time_in_force="good_till_canceled",
         )
         execution_log.log_order(
