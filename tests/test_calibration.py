@@ -204,27 +204,36 @@ class TestLoadWeights:
 
 
 class TestCalibrateCLI:
-    """cmd_calibrate writes JSON files when enough data exists."""
+    """cmd_calibrate writes JSON files to data/ when enough data exists."""
 
     def setup_method(self):
         self._tmpdir = tempfile.mkdtemp()
         self._db = Path(self._tmpdir) / "test.db"
-        self._out_dir = Path(self._tmpdir) / "data"
-        self._out_dir.mkdir()
+        self._data_dir = Path(self._tmpdir) / "data"
+        self._data_dir.mkdir()
 
     def teardown_method(self):
         shutil.rmtree(self._tmpdir, ignore_errors=True)
 
-    def test_calibrate_writes_seasonal_json(self):
-        """With enough data, calibrate writes data/seasonal_weights.json."""
-        import calibration
+    def test_calibrate_writes_seasonal_json(self, monkeypatch):
+        """cmd_calibrate() writes data/seasonal_weights.json with calibrated weights."""
+        import main
+        import tracker
 
         rows = _make_winter_rows(60)
         _seed_db(self._db, rows)
-        seasonal = calibration.calibrate_seasonal_weights(self._db)
-        out = self._out_dir / "seasonal_weights.json"
-        out.write_text(json.dumps(seasonal))
-        loaded = json.loads(out.read_text())
+
+        # Redirect DB_PATH to the test DB
+        monkeypatch.setattr(tracker, "DB_PATH", self._db)
+
+        # Redirect the output data directory
+        monkeypatch.setattr(main, "_CALIBRATE_DATA_DIR", self._data_dir)
+
+        main.cmd_calibrate()
+
+        seasonal_path = self._data_dir / "seasonal_weights.json"
+        assert seasonal_path.exists(), "seasonal_weights.json was not written"
+        loaded = json.loads(seasonal_path.read_text())
         assert "winter" in loaded
         w = loaded["winter"]
         assert abs(w["ensemble"] + w["climatology"] + w["nws"] - 1.0) < 1e-6

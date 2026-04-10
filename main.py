@@ -3389,15 +3389,21 @@ def cmd_report() -> None:
 # ── Blend-weight calibration ──────────────────────────────────────────────────
 
 
+_CALIBRATE_DATA_DIR: "Path | None" = None  # overridable in tests
+
+
 def cmd_calibrate() -> None:
     """Recompute seasonal and per-city blend weights from settled predictions."""
     import json
-    from pathlib import Path
 
     from calibration import calibrate_city_weights, calibrate_seasonal_weights
     from tracker import DB_PATH
 
-    data_dir = Path(__file__).parent / "data"
+    data_dir = (
+        _CALIBRATE_DATA_DIR
+        if _CALIBRATE_DATA_DIR is not None
+        else Path(__file__).parent / "data"
+    )
     data_dir.mkdir(exist_ok=True)
 
     print("Running blend-weight calibration from settled predictions…")
@@ -5136,8 +5142,6 @@ def main():
         cmd_walkforward(client)
     elif cmd == "report":
         cmd_report()
-    elif cmd == "calibrate":
-        cmd_calibrate()
     else:
         print(red(f"Unknown command: {cmd}"))
         print(dim("Run  py main.py  for the interactive menu."))
