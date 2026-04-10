@@ -113,3 +113,10 @@ def test_dashboard_route_returns_200_with_title(client):
     r = client.get("/")
     assert r.status_code == 200
     assert b"Dashboard" in r.data
+
+
+def test_analytics_route_returns_200_with_title(client):
+    """Analytics page returns 200 and contains 'Analytics'."""
+    r = client.get("/analytics")
+    assert r.status_code == 200
+    assert b"Analytics" in r.data
