@@ -620,6 +620,33 @@ setInterval(() => {{
             }
         )
 
+    @app.route("/api/price-improvement")
+    def price_improvement():
+        """#65 — aggregate price improvement stats."""
+        try:
+            from tracker import get_price_improvement_stats
+
+            stats = get_price_improvement_stats()
+            if stats is None:
+                return jsonify(
+                    {
+                        "avg_improvement_cents": None,
+                        "total_trades": 0,
+                        "note": "insufficient data (< 5 trades)",
+                    }
+                )
+            avg_cents = round(stats["mean"] * 100, 4)
+            return jsonify(
+                {
+                    "avg_improvement_cents": avg_cents,
+                    "total_trades": stats["count"],
+                    "median_improvement_cents": round(stats["median"] * 100, 4),
+                    "positive_pct": stats["positive_pct"],
+                }
+            )
+        except Exception as exc:  # noqa: BLE001
+            return jsonify({"error": str(exc)}), 500
+
     @app.route("/api/status")
     def api_status():
         try:

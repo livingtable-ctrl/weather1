@@ -417,3 +417,30 @@ def test_stream_markets_content_type(monkeypatch):
 
     resp = client.get("/api/stream/markets")
     assert "text/event-stream" in resp.content_type
+
+
+# ── #65 price-improvement endpoint ───────────────────────────────────────────
+
+
+def test_price_improvement_endpoint_returns_valid_json(monkeypatch):
+    """GET /api/price-improvement returns JSON with avg_improvement_cents and total_trades."""
+    import json
+
+    import tracker
+    import web_app
+
+    monkeypatch.setattr(
+        tracker,
+        "get_price_improvement_stats",
+        lambda: {"mean": 0.02, "median": 0.015, "count": 12, "positive_pct": 0.75},
+    )
+
+    app = web_app._build_app(client=None)
+    client = app.test_client()
+
+    resp = client.get("/api/price-improvement")
+    assert resp.status_code == 200
+    data = json.loads(resp.data)
+    assert "avg_improvement_cents" in data
+    assert "total_trades" in data
+    assert isinstance(data["total_trades"], int)

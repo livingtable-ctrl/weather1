@@ -382,6 +382,19 @@ def place_paper_order(
     data["balance"] -= cost
     data["trades"].append(trade)
     _save(data)
+    # #65: record price improvement for tracking
+    try:
+        from tracker import log_price_improvement as _log_pi
+
+        _log_pi(
+            ticker,
+            desired=entry_price,
+            actual=entry_price,
+            quantity=quantity,
+            side=side,
+        )
+    except Exception:
+        pass  # never block a trade on logging failure
     return trade
 
 
