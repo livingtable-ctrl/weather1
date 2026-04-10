@@ -1119,6 +1119,41 @@ def _confidence_scaled_blend_weights(
     return w_ens_scaled / total, w_clim_new / total, w_nws_new / total
 
 
+def wet_bulb_temp(temp_f: float, rh_pct: float) -> float:
+    """#34: Stull (2011) wet-bulb temperature approximation."""
+    import math as _math
+
+    T = (temp_f - 32) * 5 / 9
+    RH = rh_pct
+    Tw_c = (
+        T * _math.atan(0.151977 * (RH + 8.313659) ** 0.5)
+        + _math.atan(T + RH)
+        - _math.atan(RH - 1.676331)
+        + 0.00391838 * RH**1.5 * _math.atan(0.023101 * RH)
+        - 4.686035
+    )
+    return Tw_c * 9 / 5 + 32
+
+
+def snow_liquid_ratio(wet_bulb_f: float) -> int:
+    """#34: Empirical SLR from wet-bulb temp (NOAA operational)."""
+    if wet_bulb_f > 32.0:
+        return 0
+    elif wet_bulb_f > 30.0:
+        return 10
+    elif wet_bulb_f > 28.0:
+        return 15
+    else:
+        return 20
+
+
+def liquid_equiv_of_snow_threshold(snow_inches: float, slr: int) -> float:
+    """#34: Convert snow threshold (inches) to liquid water equivalent."""
+    if slr <= 0:
+        return float("inf")
+    return snow_inches / slr
+
+
 def _blend_probabilities(
     ensemble_prob: float | None,
     nws_prob: float | None,
@@ -1571,13 +1606,27 @@ def _analyze_snow_trade(
     precip_members: list[float] = _raw_snow if _raw_snow is not None else []
     ens_prob: float | None = None
     threshold = condition.get("threshold", 0.0)
+
+    # #34: Wet-bulb SLR — convert snow threshold to liquid equivalent for comparison
+    _forecast_temp = forecast.get("high_f") or forecast.get("low_f") or 32.0
+    _forecast_rh = forecast.get("humidity_pct") or 80.0
+    try:
+        _wb = wet_bulb_temp(float(_forecast_temp), float(_forecast_rh))
+        _slr = snow_liquid_ratio(_wb)
+    except Exception:
+        _slr = 10  # fallback: 1:10 ratio
+
     if len(precip_members) >= 10:
         if threshold <= 0.0:
             ens_prob = sum(1 for p in precip_members if p > 0.01) / len(precip_members)
         else:
-            ens_prob = sum(1 for p in precip_members if p > threshold) / len(
-                precip_members
-            )
+            if _slr == 0:
+                ens_prob = 0.01  # essentially no snow above freezing
+            else:
+                liquid_thresh = liquid_equiv_of_snow_threshold(threshold, _slr)
+                ens_prob = sum(1 for p in precip_members if p > liquid_thresh) / len(
+                    precip_members
+                )
 
     # ── Climatological base rate fallback ────────────────────────────────────
     is_winter_month = target_date.month in (12, 1, 2)
