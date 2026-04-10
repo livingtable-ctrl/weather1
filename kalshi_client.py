@@ -229,6 +229,13 @@ class KalshiClient:
             body["no_price_dollars"] = f"{price:.4f}"
         return self._post("/portfolio/orders", body)
 
+    def get_order(self, order_id: str) -> dict:
+        """Fetch a single order by ID from the Kalshi portfolio API.
+
+        Returns order dict with 'status' key: resting/filled/canceled/expired.
+        """
+        return self._get(f"/portfolio/orders/{order_id}", auth=True)
+
     def cancel_order(self, order_id: str) -> dict:
         return self._delete(f"/portfolio/orders/{order_id}")
 

@@ -145,3 +145,47 @@ class TestAutoPlaceTradesCycleCheck:
 
         mock_paper.assert_not_called()
         mock_live.assert_not_called()
+
+
+class TestPollPendingOrders:
+    def test_filled_order_updates_status(self, monkeypatch):
+        """_poll_pending_orders updates a pending live order to 'filled' when API returns filled."""
+        import tempfile
+        from pathlib import Path
+        from unittest.mock import MagicMock
+
+        import execution_log
+        import main
+
+        # Use a fresh temp DB
+        tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+        monkeypatch.setattr(execution_log, "DB_PATH", Path(tmp.name))
+        monkeypatch.setattr(execution_log, "_initialized", False)
+
+        # Log a pending live order
+        execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=2,
+            price=0.55,
+            status="pending",
+            live=True,
+            response={"order_id": "ord_abc123"},
+        )
+
+        # Mock client that returns filled status
+        mock_client = MagicMock()
+        mock_client.get_order.return_value = {"status": "filled", "fill_quantity": 2}
+
+        main._poll_pending_orders(mock_client)
+
+        # Verify the order was updated
+        orders = execution_log.get_recent_orders(limit=10)
+        assert orders[0]["status"] == "filled"
+
+        import gc
+
+        gc.collect()
+        execution_log._initialized = False
+        tmp.close()
+        Path(tmp.name).unlink(missing_ok=True)

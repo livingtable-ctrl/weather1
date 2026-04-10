@@ -1126,6 +1126,41 @@ def _count_open_live_orders() -> int:
     return sum(1 for o in orders if o.get("live") and o.get("status") == "pending")
 
 
+def _poll_pending_orders(client) -> None:
+    """Check fill status of all pending live orders and update execution_log.
+
+    Called each iteration of cmd_watch to close the GTC order lifecycle.
+    """
+    pending = [
+        o
+        for o in execution_log.get_recent_orders(limit=200)
+        if o.get("live") and o.get("status") == "pending" and o.get("response")
+    ]
+    for order in pending:
+        try:
+            import json as _json
+
+            response = (
+                _json.loads(order["response"])
+                if isinstance(order["response"], str)
+                else order["response"]
+            )
+            order_id = response.get("order_id") if response else None
+            if not order_id:
+                continue
+            result = client.get_order(order_id)
+            api_status = result.get("status", "")
+            if api_status in ("filled", "canceled", "expired"):
+                new_status = "filled" if api_status == "filled" else api_status
+                execution_log.log_order_result(
+                    row_id=order["id"],
+                    status=new_status,
+                    fill_quantity=result.get("fill_quantity"),
+                )
+        except Exception as exc:
+            print(f"[LIVE] poll order {order.get('id')} failed: {exc}")
+
+
 def _place_live_order(
     ticker: str,
     side: str,
@@ -1991,6 +2026,8 @@ def cmd_watch(
                 _auto_place_trades(
                     liquid_opps, client=client, live=live, live_config=live_cfg
                 )
+            if live:
+                _poll_pending_orders(client)
             # Check price alerts
             try:
                 from alerts import check_alerts, mark_triggered
