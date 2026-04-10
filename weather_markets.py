@@ -14,7 +14,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, date, datetime
 from pathlib import Path
 
-from climate_indices import temperature_adjustment
+from climate_indices import get_enso_index, temperature_adjustment
 from climatology import climatological_prob
 from kalshi_client import KalshiClient, _request_with_retry
 from nws import get_live_observation, nws_prob, obs_prob
@@ -77,17 +77,110 @@ _MARKETS_CACHE: tuple[list, float] | None = None
 _MARKETS_CACHE_TTL = 60  # 60 seconds
 
 
+def _current_forecast_cycle() -> str:
+    """
+    #37: Return the current NWP forecast cycle label based on UTC hour.
+    Cycles: 00z (00-05 UTC), 06z (06-11 UTC), 12z (12-17 UTC), 18z (18-23 UTC).
+    """
+    hour = datetime.now(UTC).hour
+    if hour < 6:
+        return "00z"
+    elif hour < 12:
+        return "06z"
+    elif hour < 18:
+        return "12z"
+    else:
+        return "18z"
+
+
+def _ttl_until_next_cycle(now: datetime | None = None) -> int:
+    """
+    #126: Return seconds until the next NWP model cycle data becomes available.
+
+    NWP model runs are initialized at 00/06/12/18 UTC, but data becomes
+    available roughly 2 hours after initialization:
+      00z run → available ~02 UTC
+      06z run → available ~08 UTC
+      12z run → available ~14 UTC
+      18z run → available ~20 UTC
+
+    Returns at least 1800 seconds (30 min) to avoid thrashing.
+    """
+    if now is None:
+        now = datetime.now(UTC)
+
+    # Availability hours in UTC (after which the cycle data is usable)
+    cycle_hours = [2, 8, 14, 20]
+
+    current_hour = now.hour + now.minute / 60.0
+
+    # Find next cycle availability time today
+    for ch in cycle_hours:
+        if current_hour < ch:
+            seconds_to_next = (ch - current_hour) * 3600
+            return max(1800, int(seconds_to_next))
+
+    # All cycles for today have passed — next is 02 UTC tomorrow
+    seconds_to_midnight = (24.0 - current_hour) * 3600
+    seconds_to_02_tomorrow = seconds_to_midnight + 2 * 3600
+    return max(1800, int(seconds_to_02_tomorrow))
+
+
 # ── Multi-model regular forecast ─────────────────────────────────────────────
 
 
-def _forecast_model_weights(month: int) -> dict[str, float]:
+def _get_enso_phase() -> str:
+    """
+    #28: Return the current ENSO phase: 'el_nino', 'la_nina', or 'neutral'.
+    Uses ONI threshold of ±0.5 (standard NOAA definition).
+    """
+    try:
+        oni = get_enso_index()
+        if oni is None:
+            return "neutral"
+        if oni >= 0.5:
+            return "el_nino"
+        elif oni <= -0.5:
+            return "la_nina"
+        return "neutral"
+    except Exception:
+        return "neutral"
+
+
+def _forecast_model_weights(month: int, city: str | None = None) -> dict[str, float]:
     """
     Seasonal model weights for the daily forecast blend.
     ECMWF is the most accurate global model in winter (Oct–Mar) for mid-latitudes.
     GFS is competitive in summer for the US. ICON adds value year-round.
+
+    Priority order (#122, #28):
+      1. Dynamic from tracker MAE (city + season specific)
+      2. Per-city learned weights from data/learned_weights.json
+      3. Static seasonal weights + ENSO adjustment (original behaviour)
     """
+    # 1. Dynamic from tracker MAE
+    if city is not None:
+        dyn = _dynamic_model_weights(city=city, month=month)
+        if dyn:
+            return dyn
+
+    # 2. Per-city learned weights from last backtest
+    if city is not None:
+        lw = load_learned_weights()
+        if city in lw:
+            return dict(lw[city])
+
+    # 3. Static seasonal + ENSO fallback
     is_winter = month in (10, 11, 12, 1, 2, 3)
     ecmwf_w = 2.5 if is_winter else 1.5
+
+    if is_winter:
+        enso_phase = _get_enso_phase()
+        if enso_phase == "el_nino":
+            ecmwf_w += 0.5  # El Niño winters: ECMWF skill advantage grows
+        elif enso_phase == "la_nina":
+            ecmwf_w += 0.3  # La Niña winters: moderate ECMWF boost
+
     return {"gfs_seamless": 1.0, "ecmwf_ifs04": ecmwf_w, "icon_seamless": 1.0}
 
 
@@ -109,7 +202,7 @@ def get_weather_forecast(city: str, target_date: date) -> dict | None:
     lat, lon, tz = coords
 
     # Seasonal model weights — ECMWF more accurate in winter, GFS competitive in summer
-    model_weights = _forecast_model_weights(target_date.month)
+    model_weights = _forecast_model_weights(target_date.month, city=city)
     highs: list[tuple[float, float]] = []  # (value, weight)
     lows: list[tuple[float, float]] = []
     precips: list[tuple[float, float]] = []
@@ -312,7 +405,13 @@ def _feels_like(
     if temp_f <= 50.0 and wind_mph >= 3.0:
         # NWS Wind Chill formula (valid for T<=50°F, W>=3 mph)
         w016 = wind_mph**0.16
-        return 35.74 + 0.6215 * temp_f - 35.75 * w016 + 0.4275 * temp_f * w016
+        wc = 35.74 + 0.6215 * temp_f - 35.75 * w016 + 0.4275 * temp_f * w016
+        # #29: Moist-cold regime — high humidity makes cold feel colder
+        # 1.5°F penalty per 10% humidity above 70%, applied on top of wind chill
+        if humidity_pct >= 70.0:
+            humidity_penalty = (humidity_pct - 70.0) / 10.0 * 1.5
+            wc -= humidity_penalty
+        return wc
     elif temp_f >= 80.0 and humidity_pct >= 40.0:
         # Rothfusz Heat Index formula
         T, H = temp_f, humidity_pct
@@ -328,6 +427,10 @@ def _feels_like(
             - 0.00000199 * T * T * H * H
         )
         return hi
+    # #29: Moist-cold intermediate regime (no strong wind, temp<=50, humidity>=70)
+    if temp_f <= 50.0 and humidity_pct >= 70.0:
+        humidity_penalty = (humidity_pct - 70.0) / 10.0 * 1.5
+        return temp_f - humidity_penalty
     return temp_f
 
 
@@ -374,6 +477,46 @@ def _weights_from_mae(city: str, min_n: int = 20) -> dict[str, float] | None:
     normalised = {m: v / total * n_models for m, v in weights.items()}
     _MAE_WEIGHTS_CACHE[city] = normalised
     return normalised
+
+
+def _dynamic_model_weights(
+    city: str | None = None, month: int | None = None, min_samples: int = 5
+) -> dict | None:
+    """
+    #25: Derive per-model blend weights from tracker MAE data via
+    get_ensemble_member_accuracy(). Returns inverse-MAE weights normalised so
+    weights sum to the number of models. Returns None if < min_samples per model.
+    Lower MAE → higher weight.
+    """
+    try:
+        from tracker import get_ensemble_member_accuracy
+
+        season = None
+        if month is not None:
+            season = "winter" if month in (10, 11, 12, 1, 2, 3) else "summer"
+
+        acc = get_ensemble_member_accuracy(city=city, season=season)
+    except Exception:
+        return None
+
+    if not acc:
+        return None
+
+    weights: dict[str, float] = {}
+    for model, stats in acc.items():
+        count = stats.get("count", 0)
+        mae = stats.get("mae", 0.0)
+        if count < min_samples or mae <= 0:
+            return None  # insufficient data for at least one model — don't use
+        weights[model] = 1.0 / mae
+
+    if not weights:
+        return None
+
+    # Normalise so weights sum to len(weights)
+    total = sum(weights.values())
+    n_models = len(weights)
+    return {m: v / total * n_models for m, v in weights.items()}
 
 
 def update_learned_weights_from_tracker(min_n: int = 20) -> dict:
@@ -949,6 +1092,50 @@ def _blend_weights(
 
     total = w_ens + w_clim + w_nws
     return w_ens / total, w_clim / total, w_nws / total
+
+
+def _blend_probabilities(
+    ensemble_prob: float | None,
+    nws_prob: float | None,
+    clim_prob: float | None,
+    days_out: int = 3,
+) -> float | None:
+    """
+    #33: Blend ensemble, NWS, and climatological probabilities with NWS always included.
+
+    NWS weights:
+      days_out 0–3: 0.35
+      days_out 4–7: 0.25
+      days_out 7+:  0.10
+
+    Handles None inputs by renormalizing weights among available sources.
+    Returns None only if all inputs are None.
+    """
+    if days_out <= 3:
+        w_nws_base = 0.35
+    elif days_out <= 7:
+        w_nws_base = 0.25
+    else:
+        w_nws_base = 0.10
+
+    # Remaining weight split evenly between ensemble and clim
+    w_rem = 1.0 - w_nws_base
+    w_ens_base = w_rem * 0.65  # ensemble gets ~2/3 of remaining
+    w_clim_base = w_rem * 0.35  # climatology gets ~1/3 of remaining
+
+    sources = []
+    if ensemble_prob is not None:
+        sources.append((ensemble_prob, w_ens_base))
+    if nws_prob is not None:
+        sources.append((nws_prob, w_nws_base))
+    if clim_prob is not None:
+        sources.append((clim_prob, w_clim_base))
+
+    if not sources:
+        return None
+
+    total_w = sum(w for _, w in sources)
+    return sum(p * w for p, w in sources) / total_w
 
 
 def bayesian_kelly(
