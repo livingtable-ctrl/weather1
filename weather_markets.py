@@ -1831,6 +1831,25 @@ def analyze_trade(enriched: dict) -> dict | None:
         except Exception:
             pass
 
+    # ── 5b. Persistence baseline (days_out <= 2 only) ────────────────────────
+    persistence_p: float | None = None
+    if days_out <= 2:
+        try:
+            from climatology import persistence_prob as _persistence_prob
+            from nws import get_live_observation as _get_live_obs
+
+            _live = _get_live_obs(city, coords) if days_out <= 1 else None
+            _live_temp = _live.get("temp_f") if _live else None
+            _current_temp: float = (
+                float(_live_temp) if _live_temp is not None else forecast_temp
+            )
+            _cond_type = condition["type"]
+            _tlo = condition.get("threshold", condition.get("lower", forecast_temp))
+            _thi = condition.get("upper")
+            persistence_p = _persistence_prob(_cond_type, _tlo, _thi, _current_temp)
+        except Exception:
+            pass
+
     # ── 6. Weighted blend ────────────────────────────────────────────────────
     if obs_override is not None:
         # Same-day with live obs — trust almost entirely
@@ -1843,12 +1862,29 @@ def analyze_trade(enriched: dict) -> dict | None:
             clim_prob is not None,
             ens_std=ens_stats.get("std") if ens_stats else None,
         )
+        # #26: persistence baseline at 15% for days_out <= 2
+        if persistence_p is not None and days_out <= 2:
+            w_persist = 0.15
+            scale = 1.0 - w_persist
+            w_ens = w_ens * scale
+            w_clim = w_clim * scale
+            w_nws = w_nws * scale
+        else:
+            w_persist = 0.0
+            persistence_p = None
+
         blended_prob = (
             w_ens * (ens_prob or 0.5)
             + w_clim * (clim_prob or 0.5)
             + w_nws * (_nws_prob or 0.5)
+            + w_persist * (persistence_p or 0.5)
         )
-        blend_sources = {"ensemble": w_ens, "climatology": w_clim, "nws": w_nws}
+        blend_sources = {
+            "ensemble": w_ens,
+            "climatology": w_clim,
+            "nws": w_nws,
+            **({"persistence": w_persist} if w_persist > 0 else {}),
+        }
 
     # ── 7. Bias correction from tracker ─────────────────────────────────────
     bias = 0.0
