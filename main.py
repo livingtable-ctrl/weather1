@@ -320,7 +320,7 @@ def cmd_market(client: KalshiClient, ticker: str, verbose: bool = False):
     market_url = f"{MARKET_BASE_URL}/markets/{ticker}"
     _header(market.get("title", ticker)[:50])
     print(f"  {cyan(market_url)}")
-    _kv("Closes:", market.get("close_time", "N/A")[:19].replace("T", " "))
+    _kv("Closes:", (market.get("close_time") or "N/A")[:19].replace("T", " "))
     _kv("Liquid:", liquidity_color(liquid))
 
     if forecast:

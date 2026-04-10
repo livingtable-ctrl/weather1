@@ -5,7 +5,6 @@ Compares market-implied probabilities with Open-Meteo forecast data.
 
 from __future__ import annotations
 
-import math
 import random
 import re
 import statistics
@@ -292,12 +291,9 @@ def get_ensemble_temps(
 
     weights = _model_weights(city, month=target_date.month)
 
-    # Decay model weights based on how old this cache entry is.
-    # Older forecasts are less reliable — halve differentiation every 6 hours.
-    cache_age_hours = (
-        time.monotonic() - (cached[1] if cached else time.monotonic())
-    ) / 3600
-    decay = math.exp(-cache_age_hours / 6.0)  # 1.0 at fresh, ~0.5 at 6h, ~0.25 at 12h
+    # We only reach here when building fresh data (stale cache was discarded above,
+    # or no cache existed). Always use full model weights for a fresh fetch.
+    decay = 1.0
 
     all_temps: list[float] = []
     ensemble_models_with_ecmwf = [*ENSEMBLE_MODELS, "ecmwf_ifs04"]
