@@ -567,6 +567,14 @@ class TestGetBiasConditionType(_Phase3Base):
         self.assertIsInstance(bias_all, float)
         self.assertIsInstance(bias_high, float)
 
+    def test_grpb_bias_unknown_condition_type_returns_zero(self):
+        """Filtering by a condition_type with no matching rows returns 0.0."""
+        self._add_typed(6, "NYC", 0.70, True, "HIGH")
+        result = tracker.get_bias(
+            "NYC", None, min_samples=1, condition_type="precip_any"
+        )
+        self.assertEqual(result, 0.0)
+
 
 # ── Task 2: brier_skill_score() ───────────────────────────────────────────────
 
