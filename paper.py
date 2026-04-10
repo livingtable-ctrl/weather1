@@ -11,6 +11,7 @@ import csv
 import json
 import logging
 import os
+import zlib as _zlib
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -18,6 +19,25 @@ from safe_io import AtomicWriteError, atomic_write_json
 from utils import FIXED_BET_DOLLARS, FIXED_BET_PCT, KALSHI_FEE_RATE, STRATEGY
 
 _log = logging.getLogger(__name__)
+
+
+class CorruptionError(ValueError):
+    """Raised when a file's CRC32 checksum does not match its content."""
+
+
+def _validate_crc(data: dict) -> None:
+    """Validate CRC32 checksum embedded in data dict. No-op if field absent."""
+    stored = data.get("_crc32")
+    if stored is None:
+        return
+    payload = {k: v for k, v in data.items() if k != "_crc32"}
+    body = json.dumps(payload, indent=2).encode()
+    expected = format(_zlib.crc32(body) & 0xFFFFFFFF, "08x")
+    if stored != expected:
+        raise CorruptionError(
+            f"CRC32 mismatch: stored={stored!r}, expected={expected!r}"
+        )
+
 
 DATA_PATH = Path(__file__).parent / "data" / "paper_trades.json"
 DATA_PATH.parent.mkdir(exist_ok=True)
@@ -80,6 +100,7 @@ def _load() -> dict:
     if DATA_PATH.exists():
         with open(DATA_PATH) as f:
             data = json.load(f)
+        _validate_crc(data)
         # #100: auto-migrate older schema versions
         if "_version" not in data:
             data["_version"] = 1
@@ -109,12 +130,97 @@ def cleanup_temp_files() -> int:
 
 
 def _save(data: dict) -> None:
-    """Write atomically with retry via safe_io (#8)."""
+    """Write atomically with retry via safe_io (#8). Embeds CRC32 checksum (#102)."""
+    # #102: Embed CRC32 checksum for corruption detection
+    payload = {k: v for k, v in data.items() if k != "_crc32"}
+    body = json.dumps(payload, indent=2).encode()
+    checksum = format(_zlib.crc32(body) & 0xFFFFFFFF, "08x")
+    payload["_crc32"] = checksum
     try:
-        atomic_write_json(data, DATA_PATH, retries=3)
+        atomic_write_json(payload, DATA_PATH, retries=3)
     except AtomicWriteError as e:
         _log.error("CRITICAL: Could not save paper trades: %s", e)
         raise
+
+
+def verify_backup(path) -> bool:
+    """#104: Verify a backup file's CRC32 checksum. Returns True on success."""
+    path = Path(path)
+    try:
+        data = json.loads(path.read_bytes())
+    except (json.JSONDecodeError, OSError) as e:
+        _log.error("verify_backup: could not read %s: %s", path, e)
+        return False
+    try:
+        _validate_crc(data)
+    except CorruptionError as e:
+        _log.error("verify_backup: CRC32 mismatch in %s: %s", path, e)
+        return False
+    checksum = data.get("_crc32", "no-crc32")
+    _log.info("verify_backup: CRC32 OK for %s (crc32=%s)", path.name, checksum)
+    return True
+
+
+def cloud_backup(local_path) -> bool | None:
+    """#105: Upload backup to S3 if KALSHI_S3_BUCKET is set. Returns None if skipped."""
+    bucket = os.environ.get("KALSHI_S3_BUCKET")
+    if not bucket:
+        return None
+
+    local_path = Path(local_path)
+    prefix = os.environ.get("KALSHI_S3_PREFIX", "")
+    key = f"{prefix}{local_path.name}"
+
+    upload_path = local_path
+    tmp_enc = None
+
+    encrypt_key = os.environ.get("KALSHI_BACKUP_ENCRYPT_KEY")
+    if encrypt_key:
+        try:
+            import os as _os
+            import tempfile as _tempfile
+
+            from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+
+            raw_key = encrypt_key.encode()[:32].ljust(32, b"\x00")
+            nonce = _os.urandom(12)
+            aesgcm = AESGCM(raw_key)
+            plaintext = local_path.read_bytes()
+            ciphertext = aesgcm.encrypt(nonce, plaintext, None)
+            fd, tmp_enc_path = _tempfile.mkstemp(suffix=".enc")
+            try:
+                with _os.fdopen(fd, "wb") as f:
+                    f.write(nonce + ciphertext)
+                upload_path = Path(tmp_enc_path)
+                key = key + ".enc"
+            except Exception:
+                try:
+                    _os.unlink(tmp_enc_path)
+                except OSError:
+                    pass
+                raise
+            tmp_enc = tmp_enc_path
+        except Exception as e:
+            _log.warning("cloud_backup: encryption failed, uploading plaintext: %s", e)
+
+    try:
+        import boto3
+
+        s3 = boto3.client("s3")
+        s3.upload_file(str(upload_path), bucket, key)
+        _log.info(
+            "cloud_backup: uploaded %s to s3://%s/%s", local_path.name, bucket, key
+        )
+        return True
+    except Exception as e:
+        _log.warning("cloud_backup: S3 upload failed for %s: %s", local_path.name, e)
+        return False
+    finally:
+        if tmp_enc:
+            try:
+                Path(tmp_enc).unlink()
+            except OSError:
+                pass
 
 
 def get_balance() -> float:
