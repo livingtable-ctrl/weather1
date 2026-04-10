@@ -396,3 +396,64 @@ def test_paper_load_passes_valid_checksum(tmp_path, monkeypatch):
     paper._save({"balance": 750.0, "trades": []})
     result = paper._load()
     assert result["balance"] == 750.0
+
+
+# ── Backup verification (#104) ────────────────────────────────────────────────
+
+
+def test_verify_db_backup_counts_rows(tmp_path):
+    """verify_db_backup returns row count > 0 for a valid predictions.db copy."""
+    import sqlite3
+
+    import main
+
+    db = tmp_path / "predictions_2026-04-10.db"
+    con = sqlite3.connect(str(db))
+    con.execute(
+        "CREATE TABLE predictions (id INTEGER PRIMARY KEY, city TEXT, target_date TEXT)"
+    )
+    con.execute(
+        "INSERT INTO predictions (city, target_date) VALUES ('NYC', '2026-04-10')"
+    )
+    con.commit()
+    con.close()
+
+    count = main.verify_db_backup(db)
+    assert count == 1
+
+
+def test_verify_db_backup_raises_on_empty(tmp_path):
+    """verify_db_backup returns 0 when predictions table is empty."""
+    import sqlite3
+
+    import main
+
+    db = tmp_path / "predictions_empty.db"
+    con = sqlite3.connect(str(db))
+    con.execute("CREATE TABLE predictions (id INTEGER PRIMARY KEY, city TEXT)")
+    con.commit()
+    con.close()
+
+    result = main.verify_db_backup(db)
+    assert result == 0
+
+
+def test_auto_backup_logs_verification(tmp_path, caplog):
+    """verify_db_backup logs 'backup verified' with path and row count."""
+    import logging
+    import sqlite3
+
+    import main
+
+    db = tmp_path / "predictions_test.db"
+    con = sqlite3.connect(str(db))
+    con.execute("CREATE TABLE predictions (id INTEGER PRIMARY KEY)")
+    con.execute("INSERT INTO predictions VALUES (1)")
+    con.commit()
+    con.close()
+
+    with caplog.at_level(logging.INFO):
+        count = main.verify_db_backup(db)
+
+    assert count >= 1
+    assert any("backup verified" in r.message.lower() for r in caplog.records)
