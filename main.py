@@ -535,70 +535,106 @@ def _analyze_once(
     if total > 5:
         print(f"\r  Scanned {total} markets.          ")  # clear progress line
 
+    def _rating(net_edge: float, risk: str) -> str:
+        """★★★ = strong edge + low risk, ★★ = good edge, ★ = fair edge."""
+        ae = abs(net_edge)
+        if ae >= 0.20 and risk != "HIGH":
+            return green("★★★")
+        elif ae >= 0.12:
+            return yellow("★★ ")
+        else:
+            return dim("★  ")
+
     def make_rows(opps):
         rows = []
         urls = []
-        for m, a in sorted(opps, key=lambda x: abs(x[1]["edge"]), reverse=True):
+        # Sort best opportunity (highest net edge) first
+        for m, a in sorted(
+            opps, key=lambda x: abs(x[1].get("net_edge", x[1]["edge"])), reverse=True
+        ):
             is_new = (
                 previous_tickers is not None and m.get("ticker") not in previous_tickers
             )
             ticker = m.get("ticker", "")
-            ticker_str = f"* {ticker}" if is_new else ticker
             net_edge = a.get("net_edge", a["edge"])
-            title = (m.get("title") or ticker)[:40]
+            risk = a.get("time_risk", "—")
+            title = (m.get("title") or ticker)[:38]
             url = f"{MARKET_BASE_URL}/markets/{ticker}"
             urls.append((ticker, url))
+            ticker_str = green(f"* {ticker}") if is_new else ticker
+            our_pct = f"{a['forecast_prob'] * 100:.0f}%"
+            mkt_pct = f"{a['market_prob'] * 100:.0f}%"
+            edge_pct = (
+                green(f"+{net_edge * 100:.0f}%")
+                if net_edge > 0
+                else red(f"{net_edge * 100:.0f}%")
+            )
+            buy_side = bold(a["recommended_side"].upper())
             rows.append(
                 [
-                    green(ticker_str) if is_new else ticker_str,
+                    _rating(net_edge, risk),
+                    ticker_str,
                     title,
                     m.get("_city", ""),
                     m.get("_date").isoformat() if m.get("_date") else "",
-                    prob_color(a["forecast_prob"]),
-                    f"{a['market_prob'] * 100:.0f}%",
-                    edge_color(net_edge),
-                    a.get("time_risk", "—"),
+                    prob_color(a["forecast_prob"]) + f" {our_pct}",
+                    f"{mkt_pct}",
+                    edge_pct,
+                    risk,
                     _format_expiry(m.get("close_time", "")),
-                    signal_color(f"BUY {a['recommended_side'].upper()}"),
+                    buy_side,
                 ]
             )
         return rows, urls
 
     hdrs = [
-        "Ticker",
-        "Market",
+        "Rating",
+        "ID",
+        "Bet Question",
         "City",
         "Date",
-        "Our P",
-        "Mkt P",
-        "Net Edge",
+        "We Think",
+        "Mkt Says",
+        "Your Edge",
         "Risk",
-        "Expires",
-        "Action",
+        "Closes In",
+        "Buy",
     ]
 
     if liquid_opps:
         rows, urls = make_rows(liquid_opps)
-        print(bold(f"\n── TRADEABLE NOW ({len(liquid_opps)} markets) ──\n"))
+        print(
+            bold(f"\n── Best Opportunities — Ready to Trade ({len(liquid_opps)}) ──\n")
+        )
         print(tabulate(rows, headers=hdrs, tablefmt="rounded_outline"))
         if urls:
-            print(dim("\n  Links:"))
+            print(dim("\n  Market links:"))
             for ticker, url in urls:
                 print(f"    {ticker:<32} {cyan(url)}")
     else:
-        print(dim("No liquid opportunities (markets with live quotes)."))
+        print(dim("  No tradeable opportunities right now (none with live quotes)."))
 
     if no_quote_opps:
         rows, urls = make_rows(no_quote_opps)
-        print(bold(f"\n── NO QUOTES YET ({len(no_quote_opps)} markets) ──\n"))
+        print(
+            bold(
+                f"\n── More Opportunities — No Price Set Yet ({len(no_quote_opps)}) ──\n"
+            )
+        )
         print(tabulate(rows, headers=hdrs, tablefmt="rounded_outline"))
+        print(
+            dim(
+                "  These markets have no buyers/sellers yet."
+                " You can still place a limit order to set your own price."
+            )
+        )
         if urls:
-            print(dim("\n  Links:"))
+            print(dim("\n  Market links:"))
             for ticker, url in urls:
                 print(f"    {ticker:<32} {cyan(url)}")
 
     if not liquid_opps and not no_quote_opps:
-        print(yellow(f"No opportunities right now (need >{min_edge:.0%} edge)."))
+        print(yellow(f"  No opportunities right now (need >{min_edge:.0%} edge)."))
 
     # ── Portfolio correlation warning ────────────────────────────────────────
     all_opps = liquid_opps + no_quote_opps
@@ -727,10 +763,24 @@ def cmd_analyze(client: KalshiClient, min_edge: float = 0.10):
     else:
         print(dim("  Scanning weather markets... (cached after first run)\n"))
     _analyze_once(client, min_edge=min_edge)
-    print(bold("\n  Legend"))
-    print(dim("  Our P     blended probability  (ensemble + NWS + climatology)"))
-    print(dim("  Net Edge  after ~7% Kalshi fee"))
-    print(dim("  Tip       py main.py market <TICKER> --verbose  for full detail"))
+    print(bold("\n  How to read this table:"))
+    print(dim("  Rating     ★★★ = strong edge, low risk  ★★ = good  ★ = fair"))
+    print(dim("  We Think   what our weather models predict the probability is"))
+    print(
+        dim(
+            "  Mkt Says   what you'd pay to buy YES (e.g. 42% = pay $0.42 to win $1.00)"
+        )
+    )
+    print(
+        dim(
+            "  Your Edge  how much better our odds are vs the market, after Kalshi's ~7% fee"
+        )
+    )
+    print(
+        dim("  Risk       LOW = confident data  HIGH = market closes soon or thin data")
+    )
+    print(dim("  Buy        YES = bet it happens  NO = bet it doesn't happen"))
+    print(dim("  ID         enter this when asked for a ticker to place a paper trade"))
     _quick_paper_buy(client)
 
 
