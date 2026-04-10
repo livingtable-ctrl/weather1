@@ -13,6 +13,7 @@ from weather_markets import (
     _feels_like,
     _forecast_model_weights,
     is_liquid,
+    kelly_fraction,
     parse_market_price,
 )
 
@@ -297,8 +298,6 @@ class TestKellyCap:
 
     def test_kelly_fraction_caps_at_33_pct(self):
         """Very high edge → fraction is capped at 0.33, not 0.25."""
-        from weather_markets import kelly_fraction
-
         # our_prob=0.95, price=0.10: full Kelly would be enormous
         result = kelly_fraction(our_prob=0.95, price=0.10, fee_rate=0.02)
         assert result == pytest.approx(0.33, abs=1e-6), (
