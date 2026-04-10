@@ -21,7 +21,7 @@ DB_PATH.parent.mkdir(exist_ok=True)
 
 _db_initialized = False
 
-_SCHEMA_VERSION = 3  # increment when _MIGRATIONS list grows
+_SCHEMA_VERSION = 4  # increment when _MIGRATIONS list grows
 
 _MIGRATIONS = [
     # v1 → v2: add condition_type column (if not already added)
@@ -35,6 +35,8 @@ _MIGRATIONS = [
         latency_ms  REAL,
         logged_at   TEXT NOT NULL
     )""",
+    # v3 → v4: add forecast_cycle column (#37)
+    "ALTER TABLE predictions ADD COLUMN forecast_cycle TEXT",
 ]
 
 
@@ -234,10 +236,15 @@ def log_audit(
 
 
 def log_prediction(
-    ticker: str, city: str | None, market_date: date | None, analysis: dict
+    ticker: str,
+    city: str | None,
+    market_date: date | None,
+    analysis: dict,
+    forecast_cycle: str | None = None,
 ) -> None:
     """Save a prediction to the database.
     Stores both the raw (pre-bias-correction) probability and the adjusted one (#53).
+    #37: Optionally stores the NWP forecast cycle (00z/06z/12z/18z).
     """
     init_db()
     cond = analysis.get("condition", {})
@@ -259,7 +266,8 @@ def log_prediction(
             con.execute(
                 """
                 UPDATE predictions SET
-                    our_prob=?, raw_prob=?, market_prob=?, edge=?, method=?, n_members=?, days_out=?
+                    our_prob=?, raw_prob=?, market_prob=?, edge=?, method=?, n_members=?,
+                    days_out=?, forecast_cycle=?
                 WHERE id=?
             """,
                 (
@@ -270,6 +278,7 @@ def log_prediction(
                     analysis.get("method"),
                     analysis.get("n_members"),
                     days_out,
+                    forecast_cycle,
                     existing["id"],
                 ),
             )
@@ -279,8 +288,8 @@ def log_prediction(
                 INSERT INTO predictions
                   (ticker, city, market_date, condition_type,
                    threshold_lo, threshold_hi, our_prob, raw_prob, market_prob,
-                   edge, method, n_members, predicted_at, days_out)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'),?)
+                   edge, method, n_members, predicted_at, days_out, forecast_cycle)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'),?,?)
             """,
                 (
                     ticker,
@@ -296,6 +305,7 @@ def log_prediction(
                     analysis.get("method"),
                     analysis.get("n_members"),
                     days_out,
+                    forecast_cycle,
                 ),
             )
 
