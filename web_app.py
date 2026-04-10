@@ -12,6 +12,9 @@ from datetime import UTC, datetime
 _app = None  # module-level Flask app
 _client = None  # module-level Kalshi client reference
 
+_RANGE_DAYS = {"1mo": 30, "3mo": 90, "1yr": 365}
+_DEFAULT_HISTORY_POINTS = 50
+
 
 def _now_utc():
     """Mockable UTC timestamp for tests."""
@@ -185,7 +188,6 @@ def _build_app(client):
 
         history = get_balance_history()
         range_param = request.args.get("range", "")
-        _RANGE_DAYS = {"1mo": 30, "3mo": 90, "1yr": 365}
 
         if range_param == "all":
             points = history
@@ -209,12 +211,12 @@ def _build_app(client):
                     filtered.append(p)
             points = filtered
         else:
-            # default (empty or invalid range): last 50 points
-            points = history[-50:]
+            # default (empty or invalid range): last N points
+            points = history[-_DEFAULT_HISTORY_POINTS:]
 
         return jsonify(
             {
-                "labels": [p["ts"][:16] or "Start" for p in points],
+                "labels": [(p.get("ts") or "")[:16] or "Start" for p in points],
                 "values": [p["balance"] for p in points],
             }
         )
@@ -508,6 +510,22 @@ loadBalanceChart('');
                 continue
 
         opps.sort(key=lambda x: abs(x[1].get("net_edge", x[1]["edge"])), reverse=True)
+
+        # NOTE: This is read by _get_live_market_snapshot() for SSE. Under multi-process WSGI,
+        # each process has its own cache — only the most recently analyzed process updates live data.
+        _get_live_market_snapshot._cache = [  # type: ignore[attr-defined]
+            {
+                "ticker": m.get("ticker", ""),
+                "yes_ask": m.get("yes_ask", 0),
+                "edge": a.get("net_edge", a.get("edge", 0)),
+            }
+            for m, a in sorted(
+                opps,
+                key=lambda x: x[1].get("net_edge", x[1].get("edge", 0)),
+                reverse=True,
+            )
+            if a.get("net_edge", a.get("edge", 0)) > 0
+        ][:10]
 
         for m, a in opps:
             net_edge = a.get("net_edge", a["edge"])
