@@ -216,3 +216,46 @@ class TestFeelsLike:
 
         result = _feels_like(68.0, wind_mph=5.0, humidity_pct=50.0)
         assert result == pytest.approx(68.0)
+
+
+class TestConfidenceScaledBlendWeights:
+    def test_high_ens_std_reduces_ensemble_weight(self):
+        """ens_std > 8°F (high uncertainty) must reduce w_ens vs baseline."""
+        from weather_markets import _confidence_scaled_blend_weights
+
+        w_ens_base, _, _ = _confidence_scaled_blend_weights(
+            days_out=3, has_nws=True, has_clim=True, ens_std=None
+        )
+        w_ens_high, _, _ = _confidence_scaled_blend_weights(
+            days_out=3, has_nws=True, has_clim=True, ens_std=10.0
+        )
+        assert w_ens_high < w_ens_base
+
+    def test_low_ens_std_increases_ensemble_weight(self):
+        """ens_std = 2°F (tight spread) must increase w_ens vs baseline."""
+        from weather_markets import _confidence_scaled_blend_weights
+
+        w_ens_base, _, _ = _confidence_scaled_blend_weights(
+            days_out=3, has_nws=True, has_clim=True, ens_std=None
+        )
+        w_ens_low, _, _ = _confidence_scaled_blend_weights(
+            days_out=3, has_nws=True, has_clim=True, ens_std=2.0
+        )
+        assert w_ens_low > w_ens_base
+
+    def test_weights_sum_to_one(self):
+        from weather_markets import _confidence_scaled_blend_weights
+
+        for ens_std in [None, 2.0, 4.0, 8.0, 12.0]:
+            w = _confidence_scaled_blend_weights(3, True, True, ens_std)
+            assert abs(sum(w) - 1.0) < 1e-9, (
+                f"weights don't sum to 1 for ens_std={ens_std}"
+            )
+
+    def test_none_ens_std_returns_base_weights(self):
+        """ens_std=None → identical result to _blend_weights."""
+        from weather_markets import _blend_weights, _confidence_scaled_blend_weights
+
+        assert _confidence_scaled_blend_weights(5, True, True, None) == _blend_weights(
+            5, True, True
+        )
