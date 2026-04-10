@@ -3,6 +3,8 @@
 import tempfile
 from pathlib import Path
 
+import pytest
+
 import execution_log
 
 
@@ -89,3 +91,38 @@ class TestExecutionLogMigration:
             ).fetchone()
         assert row["forecast_cycle"] == "00z"
         assert row["live"] == 1
+
+
+class TestDailyLiveLoss:
+    def setup_method(self):
+        import tempfile
+
+        self._tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+        execution_log.DB_PATH = Path(self._tmp.name)
+        execution_log._initialized = False
+
+    def teardown_method(self):
+        import gc
+
+        execution_log._initialized = False
+        self._tmp.close()
+        gc.collect()
+        Path(self._tmp.name).unlink(missing_ok=True)
+
+    def test_daily_live_loss_accumulates(self):
+        execution_log.add_live_loss(10.0)
+        execution_log.add_live_loss(5.0)
+        assert execution_log.get_today_live_loss() == pytest.approx(15.0)
+
+    def test_daily_live_loss_returns_zero_for_new_day(self):
+        """Seeding yesterday's row should not affect today's total."""
+        from datetime import UTC, datetime, timedelta
+
+        execution_log.init_log()
+        yesterday = (datetime.now(UTC) - timedelta(days=1)).strftime("%Y-%m-%d")
+        with execution_log._conn() as con:
+            con.execute(
+                "INSERT INTO daily_live_loss (date, total, updated_at) VALUES (?, ?, ?)",
+                (yesterday, 999.0, datetime.now(UTC).isoformat()),
+            )
+        assert execution_log.get_today_live_loss() == pytest.approx(0.0)

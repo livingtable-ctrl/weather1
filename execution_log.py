@@ -54,6 +54,12 @@ def init_log() -> None:
         CREATE INDEX IF NOT EXISTS idx_orders_ticker    ON orders(ticker, placed_at);
         CREATE INDEX IF NOT EXISTS idx_orders_status    ON orders(status);
         CREATE INDEX IF NOT EXISTS idx_orders_placed_at ON orders(placed_at);
+
+        CREATE TABLE IF NOT EXISTS daily_live_loss (
+            date       TEXT PRIMARY KEY,
+            total      REAL NOT NULL DEFAULT 0.0,
+            updated_at TEXT NOT NULL
+        );
         """)
     # Migration: add structured error columns for older DBs
     migrations = [
@@ -183,6 +189,50 @@ def was_ordered_this_cycle(ticker: str, side: str, cycle: str) -> bool:
             (ticker, side, cycle),
         ).fetchone()
     return row is not None
+
+
+def get_today_live_loss() -> float:
+    """Return today's accumulated live loss in dollars (UTC date). Returns 0.0 if no row."""
+    init_log()
+    today = datetime.now(UTC).strftime("%Y-%m-%d")
+    with _conn() as con:
+        row = con.execute(
+            "SELECT total FROM daily_live_loss WHERE date = ?", (today,)
+        ).fetchone()
+    return row["total"] if row else 0.0
+
+
+def add_live_loss(amount: float) -> float:
+    """Add amount to today's live loss total and return the new total.
+
+    amount > 0 means a cost (order placed, loss settled).
+    amount < 0 means a gain (winning settlement).
+    Uses INSERT ... ON CONFLICT so concurrent calls are safe.
+    """
+    init_log()
+    today = datetime.now(UTC).strftime("%Y-%m-%d")
+    now_iso = datetime.now(UTC).isoformat()
+    try:
+        with _conn() as con:
+            con.execute(
+                """
+                INSERT INTO daily_live_loss (date, total, updated_at)
+                VALUES (?, ?, ?)
+                ON CONFLICT(date) DO UPDATE SET
+                    total = total + excluded.total,
+                    updated_at = excluded.updated_at
+                """,
+                (today, amount, now_iso),
+            )
+            row = con.execute(
+                "SELECT total FROM daily_live_loss WHERE date = ?", (today,)
+            ).fetchone()
+        return row["total"] if row else amount
+    except Exception as exc:
+        import warnings
+
+        warnings.warn(f"add_live_loss DB write failed: {exc}")
+        return get_today_live_loss()
 
 
 def get_recent_orders(limit: int = 50) -> list[dict]:
