@@ -384,11 +384,14 @@ def _build_app(client):
               <td>{side_badge}</td>
             </tr>"""
 
-        top_bets_card = """<div id="top-bets-card" style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:16px;margin-bottom:20px">
+        top_bets_card = """<div id="top-bets-card" style="background:#161b22;border:1px solid #21262d;border-radius:8px;padding:16px;margin-bottom:20px">
   <h2 style="margin:0 0 12px 0;font-size:1.1em">Today&rsquo;s Top Bets</h2>
-  <div id="top-bets-body" style="font-size:0.9em;color:var(--text-muted)">Loading&hellip;</div>
+  <div id="top-bets-body" style="font-size:0.9em;color:#8b949e">Loading&hellip;</div>
 </div>
 <script>
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
 fetch('/api/suggested_bets?n=3')
   .then(r => r.json())
   .then(data => {
@@ -401,16 +404,16 @@ fetch('/api/suggested_bets?n=3')
       const badge = b.recommended_side === 'YES'
         ? '<span class="badge badge-green">YES</span>'
         : '<span class="badge badge-red">NO</span>';
-      return '<div style="display:flex;gap:16px;align-items:center;padding:6px 0;border-bottom:1px solid var(--border)">'
-        + '<span style="font-weight:bold;color:var(--text-muted);min-width:24px">#' + (i+1) + '</span>'
-        + '<span style="flex:1;font-family:monospace">' + b.ticker + '</span>'
-        + '<span style="flex:2;color:var(--text)">' + b.title + '</span>'
+      return '<div style="display:flex;gap:16px;align-items:center;padding:6px 0;border-bottom:1px solid #21262d">'
+        + '<span style="font-weight:bold;color:#8b949e;min-width:24px">#' + (i+1) + '</span>'
+        + '<span style="flex:1;font-family:monospace">' + esc(b.ticker) + '</span>'
+        + '<span style="flex:2;color:#c9d1d9">' + esc(b.title) + '</span>'
         + badge
         + '<span class="pos">+' + b.edge_pct + '%</span>'
         + '<span style="font-weight:bold;color:#4ade80">Bet $' + b.suggested_dollars.toFixed(2) + '</span>'
         + '</div>';
     }).join('');
-    el.innerHTML = rows + '<p style="margin-top:8px;font-size:0.82em;color:var(--text-muted)">Balance: $'
+    el.innerHTML = rows + '<p style="margin-top:8px;font-size:0.82em;color:#8b949e">Balance: $'
       + data.balance.toFixed(2) + ' &mdash; Min edge: ' + (data.min_edge*100).toFixed(0) + '%</p>';
   })
   .catch(() => {
