@@ -2786,19 +2786,35 @@ def cmd_export() -> None:
     else:
         print(dim("  No paper trades to export yet."))
 
-    # Tax export
+    # Tax export — paper trades
     tax_year = datetime.now(UTC).year
     tax_path = str(out_dir / f"paper_tax_{tax_year}.csv")
     n3 = export_tax_csv(tax_path, tax_year=tax_year)
     if n3:
         print(
-            green(f"  Exported {n3} settled trades (tax year {tax_year}) → {tax_path}")
+            green(
+                f"  Exported {n3} settled paper trades (tax year {tax_year}) → {tax_path}"
+            )
         )
         print(
             dim("  Note: This file is for informational purposes only, not tax advice.")
         )
     else:
-        print(dim(f"  No settled trades for tax year {tax_year} to export."))
+        print(dim(f"  No settled paper trades for tax year {tax_year} to export."))
+
+    # Tax export — live orders
+    from execution_log import export_live_tax_csv
+
+    live_tax_path = str(out_dir / f"live_tax_{tax_year}.csv")
+    n4 = export_live_tax_csv(live_tax_path, tax_year=tax_year)
+    if n4:
+        print(
+            green(
+                f"  Exported {n4} settled live orders (tax year {tax_year}) → {live_tax_path}"
+            )
+        )
+    else:
+        print(dim(f"  No settled live orders for tax year {tax_year} to export."))
 
 
 # ── Portfolio ─────────────────────────────────────────────────────────────────

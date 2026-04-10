@@ -192,3 +192,42 @@ class TestLiveSettlement:
         ids = [o["id"] for o in unsettled]
         assert id1 in ids
         assert id2 not in ids
+
+    def test_export_live_tax_csv_filters_by_year(self, tmp_path):
+        import csv
+
+        # Seed two orders settled in different years
+        id1 = execution_log.log_order(
+            ticker="KXHIGH-24JAN15-T75",
+            side="yes",
+            quantity=1,
+            price=0.55,
+            status="filled",
+            live=True,
+        )
+        id2 = execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=2,
+            price=0.60,
+            status="filled",
+            live=True,
+        )
+        # Manually set settled_at to different years
+        with execution_log._conn() as con:
+            con.execute(
+                "UPDATE orders SET settled_at = ?, outcome_yes = 1, pnl = 0.42 WHERE id = ?",
+                ("2024-01-15T12:00:00+00:00", id1),
+            )
+            con.execute(
+                "UPDATE orders SET settled_at = ?, outcome_yes = 0, pnl = -0.60 WHERE id = ?",
+                ("2025-05-15T12:00:00+00:00", id2),
+            )
+        out_path = str(tmp_path / "live_tax_2025.csv")
+        count = execution_log.export_live_tax_csv(out_path, tax_year=2025)
+        assert count == 1
+        with open(out_path, newline="") as f:
+            rows = list(csv.DictReader(f))
+        assert len(rows) == 1
+        assert rows[0]["ticker"] == "KXHIGH-25MAY15-T75"
+        assert rows[0]["outcome"] == "no"

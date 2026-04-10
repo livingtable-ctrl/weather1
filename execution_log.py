@@ -277,6 +277,72 @@ def record_live_settlement(order_id: int, outcome_yes: bool, pnl: float) -> None
         )
 
 
+def export_live_tax_csv(path: str, tax_year: int | None = None) -> int:
+    """Export settled live orders to CSV for tax reporting.
+
+    Filters to live=1, settled_at IS NOT NULL, pnl IS NOT NULL.
+    If tax_year is provided, filters to rows where settled_at starts with that year.
+
+    CSV columns: date, ticker, side, quantity, entry_price, outcome, pnl, settled_at
+    Returns count of rows written.
+    """
+    import csv
+
+    init_log()
+    with _conn() as con:
+        if tax_year is not None:
+            rows = con.execute(
+                """
+                SELECT placed_at, ticker, side, quantity, price,
+                       outcome_yes, pnl, settled_at
+                FROM orders
+                WHERE live = 1 AND settled_at IS NOT NULL AND pnl IS NOT NULL
+                  AND settled_at LIKE ?
+                ORDER BY settled_at
+                """,
+                (f"{tax_year}%",),
+            ).fetchall()
+        else:
+            rows = con.execute(
+                """
+                SELECT placed_at, ticker, side, quantity, price,
+                       outcome_yes, pnl, settled_at
+                FROM orders
+                WHERE live = 1 AND settled_at IS NOT NULL AND pnl IS NOT NULL
+                ORDER BY settled_at
+                """,
+            ).fetchall()
+
+    with open(path, "w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        writer.writerow(
+            [
+                "date",
+                "ticker",
+                "side",
+                "quantity",
+                "entry_price",
+                "outcome",
+                "pnl",
+                "settled_at",
+            ]
+        )
+        for row in rows:
+            writer.writerow(
+                [
+                    row["placed_at"][:10],
+                    row["ticker"],
+                    row["side"],
+                    row["quantity"],
+                    row["price"],
+                    "yes" if row["outcome_yes"] else "no",
+                    row["pnl"],
+                    row["settled_at"],
+                ]
+            )
+    return len(rows)
+
+
 def get_recent_orders(limit: int = 50) -> list[dict]:
     """Return the most recent N order log entries."""
     init_log()
