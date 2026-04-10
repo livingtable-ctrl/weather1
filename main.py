@@ -651,6 +651,43 @@ def _analyze_once(
     return found
 
 
+def _resolve_price(client: KalshiClient, ticker: str, side: str) -> float | None:
+    """
+    Fetch the best available price for a ticker+side.
+    Returns None if no live quote exists — caller should prompt the user.
+    """
+    try:
+        market = client.get_market(ticker)
+        prices = parse_market_price(market)
+        p = prices["yes_ask"] if side == "yes" else prices["no_bid"]
+        if p and p > 0:
+            return p
+        # Fall back to mid-price when no ask/bid is present
+        mid = prices["implied_prob"]
+        if mid and mid > 0:
+            return mid if side == "yes" else 1 - mid
+    except Exception:
+        pass
+    return None
+
+
+def _prompt_price() -> float | None:
+    """Ask the user to type a price; returns None if invalid or empty."""
+    raw = input(dim("  No live quote — enter price (0–1): ")).strip()
+    if not raw:
+        print(dim("  Cancelled."))
+        return None
+    try:
+        p = float(raw)
+        if not 0 < p < 1:
+            print(red("  Price must be between 0 and 1."))
+            return None
+        return p
+    except ValueError:
+        print(red("  Invalid price."))
+        return None
+
+
 def _quick_paper_buy(client: KalshiClient) -> None:
     """Prompt to paper-buy a ticker directly after seeing analyze output."""
     try:
@@ -665,24 +702,14 @@ def _quick_paper_buy(client: KalshiClient) -> None:
         if side not in ("yes", "no"):
             print(dim("  Cancelled."))
             return
-        try:
-            market = client.get_market(ticker)
-            prices = parse_market_price(market)
-            price = prices["yes_ask"] if side == "yes" else prices["no_bid"]
-            if not price or price <= 0:
-                price = (
-                    prices["implied_prob"]
-                    if side == "yes"
-                    else 1 - prices["implied_prob"]
-                )
-        except Exception:
-            raw = input(dim("  Price (0–1): ")).strip()
-            try:
-                price = float(raw)
-            except ValueError:
-                print(red("  Invalid price."))
-                return
-        cmd_paper(["buy", ticker, side, f"{price:.3f}"], client)
+        price = _resolve_price(client, ticker, side)
+        if price is None:
+            price = _prompt_price()
+        if price is None:
+            return
+        raw_qty = input(dim("  Qty (Enter for Kelly auto-size): ")).strip()
+        qty_arg = [raw_qty] if raw_qty.isdigit() and int(raw_qty) > 0 else []
+        cmd_paper(["buy", ticker, side, f"{price:.3f}"] + qty_arg, client)
     except (KeyboardInterrupt, EOFError):
         print()
 
@@ -1636,21 +1663,21 @@ def cmd_menu(client: KalshiClient):
                 if ticker:
                     side = input(dim("  Side (yes/no): ")).strip().lower()
                     if side in ("yes", "no"):
-                        try:
-                            market = client.get_market(ticker)
-                            prices = parse_market_price(market)
-                            price = (
-                                prices["yes_ask"] if side == "yes" else prices["no_bid"]
+                        price = _resolve_price(client, ticker, side)
+                        if price is None:
+                            price = _prompt_price()
+                        if price is not None:
+                            raw_qty = input(
+                                dim("  Qty (Enter for Kelly auto-size): ")
+                            ).strip()
+                            qty_arg = (
+                                [raw_qty]
+                                if raw_qty.isdigit() and int(raw_qty) > 0
+                                else []
                             )
-                            if not price or price <= 0:
-                                price = (
-                                    prices["implied_prob"]
-                                    if side == "yes"
-                                    else 1 - prices["implied_prob"]
-                                )
-                            cmd_paper(["buy", ticker, side, f"{price:.3f}"], client)
-                        except Exception as exc:
-                            print(red(f"  Could not fetch market: {exc}"))
+                            cmd_paper(
+                                ["buy", ticker, side, f"{price:.3f}"] + qty_arg, client
+                            )
                     else:
                         print(dim("  Cancelled."))
             elif sub == "3":
