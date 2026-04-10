@@ -663,3 +663,42 @@ class TestAutoSettlePaperTrades(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class TestGaussianFillSlippage:
+    """#73: place_paper_order simulates random Gaussian fill slippage."""
+
+    def _place(self, qty=10, price=0.50, side="yes"):
+        import paper
+
+        tmpdir = tempfile.mkdtemp()
+        try:
+            with patch("paper.DATA_PATH", Path(tmpdir) / "trades.json"):
+                trade = paper.place_paper_order(
+                    ticker="KXHIGH-25APR10-NYC",
+                    side=side,
+                    quantity=qty,
+                    entry_price=price,
+                    entry_prob=0.60,
+                    city="NYC",
+                    target_date="2025-04-10",
+                )
+        finally:
+            shutil.rmtree(tmpdir, ignore_errors=True)
+        return trade
+
+    def test_actual_fill_price_in_valid_range(self):
+        """actual_fill_price must always be in [0.01, 0.99]."""
+        for _ in range(20):
+            trade = self._place(price=0.50)
+            assert 0.01 <= trade["actual_fill_price"] <= 0.99
+
+    def test_actual_fill_price_deviates_from_entry(self):
+        """Over many fills, actual_fill_price should vary around entry_price."""
+        fills = [self._place(price=0.50)["actual_fill_price"] for _ in range(30)]
+        assert len(set(fills)) > 1, "All fills identical — Gaussian noise not applied"
+
+    def test_entry_price_unchanged(self):
+        """entry_price on the trade record must equal the requested price."""
+        trade = self._place(price=0.60)
+        assert trade["entry_price"] == 0.60

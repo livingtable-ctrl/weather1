@@ -381,6 +381,12 @@ def place_paper_order(
 
     # #50: compute slippage-adjusted fill price and store on the trade record
     actual_fill_price = slippage_adjusted_price(entry_price, quantity, side)
+    # #73: simulate random fill slippage with Gaussian noise
+    import random as _random
+
+    _gauss_noise = _random.gauss(0, 0.002)
+    actual_fill_price = actual_fill_price * (1 + _gauss_noise)
+    actual_fill_price = round(max(0.01, min(0.99, actual_fill_price)), 6)
     trade["actual_fill_price"] = actual_fill_price
 
     data["balance"] -= cost
