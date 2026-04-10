@@ -269,6 +269,17 @@ def _build_app(client):
             result = {"error": str(e)}
         return jsonify(result)
 
+    @app.route("/api/model-attribution")
+    def model_attribution():
+        """#84 — per-city average model blend weights."""
+        try:
+            from tracker import get_model_attribution_by_city
+
+            data = get_model_attribution_by_city()
+            return jsonify(data)
+        except Exception as exc:  # noqa: BLE001
+            return jsonify({"error": str(exc)}), 500
+
     @app.route("/api/graduation")
     def api_graduation():
         try:

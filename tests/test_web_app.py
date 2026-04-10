@@ -364,3 +364,37 @@ def test_balance_history_range_3mo_longer_than_default(tmp_path, monkeypatch):
     assert range_resp.status_code == 200
     assert len(default_data["values"]) == 50
     assert len(range_data["values"]) > 50
+
+
+# ── #84 model attribution endpoint ───────────────────────────────────────────
+
+
+def test_model_attribution_endpoint_returns_city_keys(monkeypatch):
+    """GET /api/model-attribution returns JSON with at least one city key,
+    each city mapping to a dict of source weights."""
+    import json
+
+    import web_app
+
+    fake_attribution = {
+        "Chicago": {"ensemble": 0.6, "nws": 0.25, "climatology": 0.15},
+        "Dallas": {"ensemble": 0.5, "nws": 0.35, "climatology": 0.15},
+    }
+
+    import tracker
+
+    monkeypatch.setattr(
+        tracker, "get_model_attribution_by_city", lambda: fake_attribution
+    )
+
+    app = web_app._build_app(client=None)
+    client = app.test_client()
+
+    resp = client.get("/api/model-attribution")
+    assert resp.status_code == 200
+    data = json.loads(resp.data)
+    assert isinstance(data, dict)
+    assert len(data) >= 1
+    first_city = next(iter(data.values()))
+    assert isinstance(first_city, dict)
+    assert "ensemble" in first_city
