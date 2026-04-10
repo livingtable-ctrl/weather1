@@ -15,7 +15,7 @@ import os
 KALSHI_FEE_RATE = float(os.getenv("KALSHI_FEE_RATE", "0.07"))
 
 # Edge thresholds — override via .env
-MIN_EDGE = float(os.getenv("MIN_EDGE", "0.10"))  # minimum edge to show in analyze
+MIN_EDGE = float(os.getenv("MIN_EDGE", "0.07"))  # minimum edge to show in analyze
 STRONG_EDGE = float(
     os.getenv("STRONG_EDGE", "0.25")
 )  # threshold for "STRONG BUY" label
