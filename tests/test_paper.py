@@ -783,3 +783,60 @@ class TestCheckExitTargetsPartialFill:
         for _ in range(50):
             filled = min(qty, int(qty * random.uniform(0.7, 1.0)))
             assert 70 <= filled <= qty
+
+
+class TestMaxOrderLatency:
+    """#79: place_paper_order warns when execution exceeds MAX_ORDER_LATENCY_MS."""
+
+    def test_max_order_latency_constant_exists(self):
+        import paper
+
+        assert hasattr(paper, "MAX_ORDER_LATENCY_MS")
+        assert paper.MAX_ORDER_LATENCY_MS == 5000
+
+    def test_fast_order_no_warning(self, tmp_path, caplog):
+        import logging
+
+        import paper
+
+        with patch("paper.DATA_PATH", tmp_path / "trades.json"):
+            with caplog.at_level(logging.WARNING, logger="paper"):
+                paper.place_paper_order(
+                    ticker="KXHIGH-25APR10-NYC",
+                    side="yes",
+                    quantity=1,
+                    entry_price=0.50,
+                    entry_prob=0.60,
+                )
+
+        latency_warns = [m for m in caplog.messages if "latency" in m.lower()]
+        assert len(latency_warns) == 0
+
+    def test_slow_order_logs_warning(self, tmp_path, caplog):
+        import logging
+        import time
+
+        import paper
+
+        original_save = paper._save
+
+        def slow_save(data):
+            time.sleep(0.006)  # 6 ms
+            original_save(data)
+
+        with (
+            patch("paper.DATA_PATH", tmp_path / "trades.json"),
+            patch.object(paper, "_save", slow_save),
+            patch.object(paper, "MAX_ORDER_LATENCY_MS", 5),
+        ):
+            with caplog.at_level(logging.WARNING, logger="paper"):
+                paper.place_paper_order(
+                    ticker="KXHIGH-25APR10-NYC",
+                    side="yes",
+                    quantity=1,
+                    entry_price=0.50,
+                    entry_prob=0.60,
+                )
+
+        latency_warns = [m for m in caplog.messages if "latency" in m.lower()]
+        assert len(latency_warns) >= 1

@@ -91,6 +91,7 @@ MAX_SINGLE_TICKER_EXPOSURE = float(
     os.getenv("MAX_SINGLE_TICKER_EXPOSURE", "0.10")
 )  # #47
 MIN_ORDER_COST = 0.05  # #42: minimum order size in dollars
+MAX_ORDER_LATENCY_MS = 5000  # #79: warn if place_paper_order exceeds this latency
 
 
 _SCHEMA_VERSION = 2  # increment when adding new required fields
@@ -329,6 +330,10 @@ def place_paper_order(
     thesis: optional free-text rationale for the trade.
     Returns the trade record.
     """
+    import time as _time
+
+    _order_start = _time.monotonic()
+
     if is_daily_loss_halted():
         daily_pnl = get_daily_pnl()
         raise ValueError(
@@ -392,6 +397,16 @@ def place_paper_order(
     data["balance"] -= cost
     data["trades"].append(trade)
     _save(data)
+    # #79: warn if order processing exceeded MAX_ORDER_LATENCY_MS
+    _elapsed_ms = (_time.monotonic() - _order_start) * 1000
+    if _elapsed_ms > MAX_ORDER_LATENCY_MS:
+        _log.warning(
+            "place_paper_order: order latency %.1f ms exceeded MAX_ORDER_LATENCY_MS=%d ms "
+            "(ticker=%s)",
+            _elapsed_ms,
+            MAX_ORDER_LATENCY_MS,
+            ticker,
+        )
     return trade
 
 
