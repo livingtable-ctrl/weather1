@@ -16,6 +16,73 @@ _DEFAULT_CORRELATIONS: dict[tuple[str, str], float] = {
     ("Dallas", "Atlanta"): 0.5,
 }
 
+# #49: Hardcoded city-pair correlations used as fallback when
+# data/learned_correlations.json is absent or unreadable.
+_HARDCODED_CORR: dict[frozenset, float] = {
+    frozenset({"NYC", "Boston"}): 0.85,
+    frozenset({"NYC", "Philadelphia"}): 0.80,
+    frozenset({"Chicago", "Denver"}): 0.45,
+    frozenset({"Chicago", "Minneapolis"}): 0.60,
+    frozenset({"LA", "Phoenix"}): 0.55,
+    frozenset({"LA", "San Francisco"}): 0.50,
+    frozenset({"Dallas", "Atlanta"}): 0.55,
+    frozenset({"Dallas", "Houston"}): 0.70,
+    frozenset({"Miami", "Atlanta"}): 0.50,
+}
+
+# Cache for dynamic correlations so we don't re-read the file on every call
+_dynamic_corr_cache: dict[frozenset, float] | None = None
+_dynamic_corr_loaded: bool = False
+
+
+def _load_dynamic_correlations() -> dict[frozenset, float] | None:
+    """
+    #49: Read data/learned_correlations.json and return a frozenset-keyed dict.
+
+    Expected format: {"NYC|Boston": 0.87, "Chicago|Denver": 0.42, ...}
+    Returns None if the file is absent, empty, or malformed.
+    """
+    import json
+    from pathlib import Path
+
+    path = Path(__file__).parent / "data" / "learned_correlations.json"
+    if not path.exists():
+        return None
+    try:
+        raw = json.loads(path.read_text())
+        if not isinstance(raw, dict) or not raw:
+            return None
+        result: dict[frozenset, float] = {}
+        for key, val in raw.items():
+            parts = key.split("|")
+            if len(parts) == 2 and isinstance(val, int | float):
+                result[frozenset(parts)] = float(val)
+        return result if result else None
+    except Exception:
+        return None
+
+
+def get_city_correlation(city_a: str, city_b: str) -> float:
+    """
+    #49: Return the pairwise correlation for two cities.
+
+    Tries dynamic correlations from data/learned_correlations.json first,
+    falls back to _HARDCODED_CORR, then 0.0 if neither has the pair.
+    """
+    global _dynamic_corr_cache, _dynamic_corr_loaded
+
+    if not _dynamic_corr_loaded:
+        _dynamic_corr_cache = _load_dynamic_correlations()
+        _dynamic_corr_loaded = True
+
+    pair = frozenset({city_a, city_b})
+
+    if _dynamic_corr_cache is not None:
+        if pair in _dynamic_corr_cache:
+            return _dynamic_corr_cache[pair]
+
+    return _HARDCODED_CORR.get(pair, 0.0)
+
 
 def simulate_portfolio(
     open_trades: list[dict],
