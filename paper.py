@@ -359,7 +359,9 @@ def portfolio_kelly_fraction(
     Scale down base_fraction based on existing open exposure to this city/date.
     Also applies:
     - 50% directional penalty if >MAX_DIRECTIONAL_EXPOSURE on same side
-    - 40% correlated-city penalty if combined group exposure > MAX_CORRELATED_EXPOSURE
+    - Continuous correlated-city penalty: Kelly scales linearly from 1.0→0.3
+      as group exposure grows from 0→MAX_CORRELATED_EXPOSURE (instead of a
+      hard binary cliff). At the cap, sizing is 30% of base.
 
     If existing city/date exposure >= MAX_CITY_DATE_EXPOSURE, returns 0.0.
     """
@@ -386,9 +388,14 @@ def portfolio_kelly_fraction(
     ):
         result *= 0.50
 
-    # Correlated-city concentration penalty
-    if get_correlated_exposure(city, target_date_str) > MAX_CORRELATED_EXPOSURE:
-        result *= 0.60
+    # Continuous correlated-city penalty:
+    # As group exposure rises from 0 → MAX_CORRELATED_EXPOSURE, Kelly falls
+    # linearly from 1.0 → 0.3. Beyond the cap it stays at 0.3.
+    corr_exp = get_correlated_exposure(city, target_date_str)
+    if corr_exp > 0 and MAX_CORRELATED_EXPOSURE > 0:
+        ratio = min(corr_exp / MAX_CORRELATED_EXPOSURE, 1.0)
+        corr_scale = 1.0 - ratio * 0.70  # 1.0 at 0%, 0.3 at 100% of cap
+        result *= corr_scale
 
     return round(result, 6)
 

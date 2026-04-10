@@ -295,15 +295,19 @@ class TestPortfolioKelly(unittest.TestCase):
         self.assertEqual(result, 0.0)
 
     def test_portfolio_kelly_partial_exposure(self):
-        """Half of max exposure → Kelly scaled to ~50% of base."""
+        """Half of max city/date exposure → Kelly reduced by both city-date scale
+        and the continuous correlated-city penalty."""
         import paper
 
-        # Place $75 trade → exposure = 0.075 = half of MAX (0.15)
+        # Place $75 trade → city/date exposure = 0.075 = half of MAX (0.15)
+        # NYC is in the {NYC, Boston} correlated group, so corr penalty also applies.
         paper.place_paper_order(
             "TK1", "yes", 150, 0.50, city="NYC", target_date="2026-04-09"
         )
         result = paper.portfolio_kelly_fraction(0.10, "NYC", "2026-04-09")
-        self.assertAlmostEqual(result, 0.05, places=4)
+        # city/date scale = 0.5, corr_scale = 1 - (0.075/0.20)*0.70 ≈ 0.7375
+        # expected = 0.10 * 0.5 * 0.7375 = 0.036875
+        self.assertAlmostEqual(result, 0.036875, places=4)
 
     def test_portfolio_kelly_no_city_passthrough(self):
         """None city → base fraction returned unchanged (no lookup possible)."""

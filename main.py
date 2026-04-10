@@ -1321,7 +1321,7 @@ def cmd_today(client: KalshiClient) -> None:
     print(dim("  Run P → 2 to place this trade now."))
 
 
-def cmd_brief(client: KalshiClient) -> None:
+def cmd_brief(client: KalshiClient, send_email: bool = False) -> None:
     """Daily briefing — fast single-screen summary."""
     from paper import (
         check_aged_positions,
@@ -1471,6 +1471,36 @@ def cmd_brief(client: KalshiClient) -> None:
             "\n  Run 'A' to analyze, 'P' for paper trades, 'T' for today's recommendation"
         )
     )
+
+    # Email briefing if requested
+    if send_email:
+        try:
+            from notify import _send_email
+            from paper import get_balance, get_performance
+
+            bal = get_balance()
+            perf = get_performance()
+            pnl = perf.get("total_pnl", 0.0)
+            wr = perf.get("win_rate")
+            bs = brier_score()
+            lines = [
+                f"Balance: ${bal:.2f}",
+                f"P&L: {'+' if pnl >= 0 else ''}${pnl:.2f}",
+                f"Win rate: {wr:.0%}" if wr else "Win rate: —",
+                f"Brier: {bs:.4f}" if bs else "Brier: —",
+            ]
+            sent = _send_email(
+                f"Kalshi Morning Briefing — {datetime.now(UTC).strftime('%Y-%m-%d')}",
+                "\n".join(lines),
+            )
+            if sent:
+                print(green("  Morning briefing emailed."))
+            else:
+                print(
+                    dim("  Email not sent (SMTP not configured — set SMTP_* env vars).")
+                )
+        except Exception as e:
+            print(dim(f"  Email failed: {e}"))
 
 
 def cmd_cron(client: KalshiClient) -> None:
@@ -2193,6 +2223,23 @@ def cmd_dashboard(client: KalshiClient) -> None:  # noqa: ARG001
             f"  Settled: {perf['settled']}  |  Win rate: {wr_str}  |  P&L: {pnl_str}  |  ROI: {roi_str}"
         )
 
+    # ── Rolling Sharpe ───────────────────────────────────────────────────────
+    try:
+        from paper import get_rolling_sharpe
+
+        sharpe = get_rolling_sharpe(window_days=30)
+        if sharpe is not None:
+            sharpe_s = (
+                green(f"{sharpe:.2f}")
+                if sharpe > 1.0
+                else yellow(f"{sharpe:.2f}")
+                if sharpe > 0
+                else red(f"{sharpe:.2f}")
+            )
+            print(f"  Sharpe (30d): {sharpe_s}  {dim('(annualised, >1.0 = strong)')}")
+    except Exception:
+        pass
+
     # ── Calibration ──────────────────────────────────────────────────────────
     bs = brier_score()
     if bs is not None:
@@ -2240,6 +2287,21 @@ def cmd_dashboard(client: KalshiClient) -> None:  # noqa: ARG001
             pct = amt / bal * 100 if bal > 0 else 0
             bar = "█" * min(20, int(pct / 2))
             print(f"    {k:<30} ${amt:.2f}  ({pct:.1f}%)  {cyan(bar)}")
+        # Unrealized P&L (mark-to-market)
+        try:
+            from paper import get_unrealized_pnl_paper
+
+            unreal = get_unrealized_pnl_paper(None)  # None = use cached prices
+            total_unreal = unreal.get("total_unrealized", 0.0)
+            if unreal.get("n", 0) > 0:
+                unreal_s = (
+                    green(f"+${total_unreal:.2f}")
+                    if total_unreal >= 0
+                    else red(f"-${abs(total_unreal):.2f}")
+                )
+                print(f"\n  Unrealized P&L (mark-to-market): {unreal_s}")
+        except Exception:
+            pass
     else:
         print(dim("  No open positions."))
 
@@ -2287,6 +2349,42 @@ def cmd_dashboard(client: KalshiClient) -> None:  # noqa: ARG001
     else:
         print(dim("  No settled trades yet."))
 
+    print()
+
+
+# ── Trade journal ─────────────────────────────────────────────────────────────
+
+
+def cmd_journal() -> None:
+    """Print all paper trades that have a thesis note."""
+    from paper import get_all_trades
+
+    all_trades = get_all_trades()
+    with_thesis = [t for t in all_trades if t.get("thesis")]
+    if not with_thesis:
+        print(dim("  No journal entries yet. Add a thesis when placing a trade."))
+        return
+
+    _header(f"Trade Journal  ({len(with_thesis)} entries)")
+    for t in with_thesis:
+        pnl = t.get("pnl")
+        settled = t.get("settled", False)
+        if settled and pnl is not None:
+            outcome_s = (
+                green(f"  WIN  +${pnl:.2f}")
+                if pnl >= 0
+                else red(f"  LOSS -${abs(pnl):.2f}")
+            )
+        elif settled:
+            outcome_s = dim("  settled")
+        else:
+            outcome_s = yellow("  open")
+        date_s = (t.get("entered_at") or "")[:10]
+        print(
+            f"\n  #{t['id']}  {bold(t['ticker'])}  {t['side'].upper()}"
+            f"  @${t.get('entry_price', 0):.3f}  {dim(date_s)}{outcome_s}"
+        )
+        print(f"  {dim('▸')} {t['thesis']}")
     print()
 
 
@@ -3467,8 +3565,11 @@ def cmd_menu(client: KalshiClient):
             print(
                 f"  {cyan('7')}  {bold('Graduation ')}  {dim('·')}  am I ready to go live?"
             )
+            print(
+                f"  {cyan('8')}  {bold('Journal    ')}  {dim('·')}  view trade thesis notes"
+            )
             print(dim("  Enter/Q  Back"))
-            sub = input(dim("\n  Choose (1–7): ")).strip()
+            sub = input(dim("\n  Choose (1–8): ")).strip()
 
             if sub == "1":
                 cmd_paper(["results"], client)
@@ -3592,6 +3693,8 @@ def cmd_menu(client: KalshiClient):
                             "  Not yet — need 20+ settled trades with >55% win rate and positive P&L."
                         )
                     )
+            elif sub == "8":
+                cmd_journal()
 
         elif name_stripped == "Backtest":
             cmd_backtest(client, [])
@@ -4682,6 +4785,31 @@ def cmd_schedule():
         print(red(f"Failed: {result.stderr.strip() or result.stdout.strip()}"))
         print(dim("Try running this terminal as Administrator."))
 
+    # ── Daily morning email ──────────────────────────────────────────────────
+    email_task = "KalshiWeatherEmail"
+    email_cmd = f'"{py_exe}" "{script_path}" brief --email'
+    email_create = (
+        f'schtasks /Create /F /SC DAILY /ST 07:00 /TN "{email_task}" '
+        f'/TR "{email_cmd}" /RL HIGHEST'
+    )
+
+    print(bold(f"\nRegistering daily email task: {email_task}"))
+    print(dim("  Sends a morning briefing email at 07:00 (requires SMTP_* env vars)."))
+    confirm_email = input("  Register now? (Y/n): ").strip().lower()
+    if confirm_email != "n":
+        result_email = subprocess.run(
+            email_create, shell=True, capture_output=True, text=True
+        )
+        if result_email.returncode == 0:
+            print(green(f"\nTask '{email_task}' registered — emails at 7am daily."))
+            print(dim("To remove: schtasks /Delete /TN KalshiWeatherEmail /F"))
+        else:
+            print(
+                red(
+                    f"Failed: {result_email.stderr.strip() or result_email.stdout.strip()}"
+                )
+            )
+
     # ── Daily settle task ────────────────────────────────────────────────────
     settle_task = "KalshiWeatherSettle"
     settle_cmd = f'"{py_exe}" "{script_path}" settle'
@@ -4770,7 +4898,7 @@ def main():
     elif cmd in ("today", "t"):
         cmd_today(client)
     elif cmd == "brief":
-        cmd_brief(client)
+        cmd_brief(client, send_email="--email" in args)
     elif cmd == "cron":
         cmd_cron(client)
     elif cmd == "setup":
@@ -4844,6 +4972,12 @@ def main():
         cmd_simulate(client)
     elif cmd in ("weekly", "y"):
         cmd_weekly_summary()
+    elif cmd == "journal":
+        cmd_journal()
+    elif cmd in ("walkforward", "wf"):
+        cmd_walkforward(client)
+    elif cmd == "report":
+        cmd_report()
     else:
         print(red(f"Unknown command: {cmd}"))
         print(dim("Run  py main.py  for the interactive menu."))
