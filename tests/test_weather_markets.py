@@ -10,6 +10,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from utils import normal_cdf
 from weather_markets import (
+    _bootstrap_ci,
     _feels_like,
     _forecast_model_weights,
     ensemble_stats,
@@ -340,3 +341,48 @@ class TestEnsembleStats:
         assert result["p10"] <= result["mean"]
         assert result["mean"] <= result["p90"]
         assert result["p10"] < result["p90"]
+
+
+# ── TestBootstrapCI ───────────────────────────────────────────────────────────
+
+
+class TestBootstrapCI:
+    """Tests for _bootstrap_ci — bootstrap 90% CI on ensemble probability."""
+
+    def test_too_few_members_returns_wide_ci(self):
+        """N < 5 → maximally uncertain (0.0, 1.0)."""
+        temps = [70.0, 71.0, 72.0]  # only 3 members
+        condition = {"type": "above", "threshold": 68.0}
+        lo, hi = _bootstrap_ci(temps, condition)
+        assert lo == pytest.approx(0.0)
+        assert hi == pytest.approx(1.0)
+
+    def test_small_n_under_30_returns_wide_ci(self):
+        """N < 30 but >= 5 → also returns (0.0, 1.0) per #114."""
+        temps = list(range(60, 75))  # 15 members
+        condition = {"type": "above", "threshold": 68.0}
+        lo, hi = _bootstrap_ci(temps, condition)
+        assert lo == pytest.approx(0.0)
+        assert hi == pytest.approx(1.0)
+
+    def test_above_condition_clear_outcome(self):
+        """N >= 30, all temps above threshold → CI near (1.0, 1.0)."""
+        temps = [80.0] * 40  # 40 members all above 70
+        condition = {"type": "above", "threshold": 70.0}
+        lo, hi = _bootstrap_ci(temps, condition, n=200)
+        assert lo >= 0.9, f"Expected lo near 1.0, got {lo}"
+        assert hi == pytest.approx(1.0, abs=1e-9)
+
+    def test_below_condition_returns_valid_tuple(self):
+        """'below' condition: returns (lo, hi) with 0 <= lo <= hi <= 1."""
+        temps = list(range(50, 90))  # 40 members spanning 50–89°F
+        condition = {"type": "below", "threshold": 70.0}
+        lo, hi = _bootstrap_ci(temps, condition, n=200)
+        assert 0.0 <= lo <= hi <= 1.0
+
+    def test_between_condition_returns_valid_tuple(self):
+        """'between' condition: returns (lo, hi) with 0 <= lo <= hi <= 1."""
+        temps = list(range(60, 100))  # 40 members spanning 60–99°F
+        condition = {"type": "between", "lower": 70.0, "upper": 80.0}
+        lo, hi = _bootstrap_ci(temps, condition, n=200)
+        assert 0.0 <= lo <= hi <= 1.0
