@@ -103,17 +103,16 @@ def fetch_archive_temps(
 def run_backtest(
     client,
     city_filter: str | None = None,
-    days_back: int = 30,
+    days_back: int = 90,
     verbose: bool = False,
-    holdout_days: int = 5,
+    holdout_fraction: float = 0.20,
     on_progress=None,
 ) -> dict:
     """
     Fetch finalized weather markets from Kalshi, then simulate our
     model's prediction for each and score against the actual outcome.
 
-    holdout_days: if > 0, the most recent N days are held out as a validation
-    set. Returns separate train/validation Brier scores to detect overfitting.
+    holdout_fraction: fraction of the window held out as validation (default 20%).
 
     Returns summary dict: {brier, win_rate, total_pnl, n_markets, rows,
                            val_brier, val_n, val_win_rate}
@@ -127,8 +126,13 @@ def run_backtest(
     )
 
     cutoff = date.today() - timedelta(days=days_back)
+    holdout_days_count = (
+        max(1, int(days_back * holdout_fraction)) if holdout_fraction > 0 else 0
+    )
     holdout_cutoff = (
-        date.today() - timedelta(days=holdout_days) if holdout_days > 0 else None
+        date.today() - timedelta(days=holdout_days_count)
+        if holdout_days_count > 0
+        else None
     )
     markets = client.get_markets(status="finalized", limit=200)
 

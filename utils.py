@@ -6,10 +6,13 @@ from __future__ import annotations
 
 import logging
 import math
+import os
 
 # ── Kalshi platform constant ──────────────────────────────────────────────────
 
-KALSHI_FEE_RATE = 0.07  # 7% of winnings charged by Kalshi
+# Fee Kalshi charges on winning trades. 7% is the default taker rate.
+# Maker (limit) orders pay 0%. Override via KALSHI_FEE_RATE in .env.
+KALSHI_FEE_RATE = float(os.getenv("KALSHI_FEE_RATE", "0.07"))
 
 # ── Shared math ───────────────────────────────────────────────────────────────
 

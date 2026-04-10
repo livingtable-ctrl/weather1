@@ -54,6 +54,15 @@ def init_db() -> None:
 
         CREATE INDEX IF NOT EXISTS idx_pred_ticker ON predictions(ticker);
         CREATE INDEX IF NOT EXISTS idx_pred_city   ON predictions(city, market_date);
+
+        CREATE TABLE IF NOT EXISTS source_reliability (
+            city        TEXT NOT NULL,
+            source      TEXT NOT NULL,
+            logged_date TEXT NOT NULL,
+            success     INTEGER NOT NULL,
+            PRIMARY KEY (city, source, logged_date)
+        );
+        CREATE INDEX IF NOT EXISTS idx_src_city ON source_reliability(city, source);
         """)
     _db_initialized = True
 
@@ -351,6 +360,60 @@ def export_predictions_csv(path: str) -> int:
         writer.writeheader()
         writer.writerows([dict(r) for r in rows])
     return len(rows)
+
+
+def log_source_attempt(city: str, source: str, success: bool) -> None:
+    """
+    Record whether a forecast source returned usable data for a city today.
+    Uses INSERT OR REPLACE so only the last status per city/source/day is kept.
+    """
+    init_db()
+    with _conn() as con:
+        con.execute(
+            """
+            INSERT OR REPLACE INTO source_reliability
+              (city, source, logged_date, success)
+            VALUES (?, ?, date('now'), ?)
+            """,
+            (city, source, 1 if success else 0),
+        )
+
+
+def get_source_reliability(city: str | None = None, days: int = 30) -> dict:
+    """
+    Return per-city, per-source reliability over the last N days.
+    Returns {city: {source: {successes, failures, rate, total}}}.
+    """
+    init_db()
+    with _conn() as con:
+        query = """
+            SELECT city, source, success, COUNT(*) AS cnt
+            FROM source_reliability
+            WHERE logged_date >= date('now', ?)
+        """
+        params: list = [f"-{days} days"]
+        if city:
+            query += " AND city = ?"
+            params.append(city)
+        query += " GROUP BY city, source, success"
+        rows = con.execute(query, params).fetchall()
+
+    result: dict = {}
+    for r in rows:
+        c, s = r["city"], r["source"]
+        result.setdefault(c, {}).setdefault(s, {"successes": 0, "failures": 0})
+        if r["success"]:
+            result[c][s]["successes"] += r["cnt"]
+        else:
+            result[c][s]["failures"] += r["cnt"]
+
+    for c in result:
+        for s in result[c]:
+            total = result[c][s]["successes"] + result[c][s]["failures"]
+            result[c][s]["total"] = total
+            result[c][s]["rate"] = result[c][s]["successes"] / total if total else 0.0
+
+    return result
 
 
 def sync_outcomes(client) -> int:

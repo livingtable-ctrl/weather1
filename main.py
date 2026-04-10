@@ -363,6 +363,25 @@ def cmd_market(client: KalshiClient, ticker: str, verbose: bool = False):
         print(f"\n  {signal_color(analysis['signal'].strip())}")
         _kv("Action:", f"BUY {bold(side)} on {ticker}")
 
+        # Show assumed fee rate
+        from utils import KALSHI_FEE_RATE as _fee
+
+        print(
+            dim(
+                f"  [Fee: {_fee * 100:.0f}% of profit assumed (taker rate). Set KALSHI_FEE_RATE in .env to override]"
+            )
+        )
+
+        # Show spread cost if notable
+        spread_cost = analysis.get("spread_cost", 0.0)
+        spread_scale = analysis.get("spread_scale", 1.0)
+        if spread_cost >= 0.05 and spread_scale < 1.0:
+            print(
+                yellow(
+                    f"  [Spread cost: {spread_cost:.1%} of mid — Kelly reduced {(1 - spread_scale):.0%}]"
+                )
+            )
+
         if not liquid:
             print(dim("  [No quotes yet — place a limit order to set your price]"))
         if analysis.get("ci_width", 0) > 0.30:
@@ -882,6 +901,27 @@ def cmd_watch(client: KalshiClient, auto_trade: bool = False, min_edge: float = 
             )
             if auto_trade and liquid_opps:
                 _auto_place_trades(liquid_opps, client)
+            # Check open paper positions for exit signals
+            try:
+                from paper import check_model_exits
+
+                exit_recs = check_model_exits(client)
+                for rec in exit_recs:
+                    t = rec["trade"]
+                    reason = (
+                        "MODEL FLIPPED"
+                        if rec["reason"] == "model_flipped"
+                        else "EDGE GONE"
+                    )
+                    print(
+                        yellow(
+                            f"  [Exit signal] #{t['id']} {t['ticker']} "
+                            f"{t['side'].upper()} — {reason} "
+                            f"(edge now {rec['current_edge']:+.1%})"
+                        )
+                    )
+            except Exception:
+                pass
             opp_count = len(previous)
             opp_word = "opportunity" if opp_count == 1 else "opportunities"
             print(
@@ -1103,6 +1143,35 @@ def cmd_history(client: KalshiClient):
             )
     else:
         print(dim("\n  Brier score will appear once markets settle."))
+
+    # ── Source reliability ────────────────────────────────────────────────────
+    from tracker import get_source_reliability
+
+    rel = get_source_reliability()
+    if rel:
+        print(bold("\n  Forecast source reliability (last 30 days):"))
+        rel_rows = []
+        for city_name in sorted(rel.keys()):
+            for src in ["ensemble", "nws", "climatology"]:
+                stats = rel[city_name].get(src)
+                if stats and stats["total"] >= 3:
+                    rate = stats["rate"]
+                    rate_str = (
+                        green(f"{rate:.0%}")
+                        if rate >= 0.80
+                        else yellow(f"{rate:.0%}")
+                        if rate >= 0.50
+                        else red(f"{rate:.0%}")
+                    )
+                    rel_rows.append([city_name, src, rate_str, stats["total"]])
+        if rel_rows:
+            print(
+                tabulate(
+                    rel_rows,
+                    headers=["City", "Source", "Success Rate", "Days"],
+                    tablefmt="rounded_outline",
+                )
+            )
 
 
 # ── Dashboard ────────────────────────────────────────────────────────────────
@@ -1733,7 +1802,10 @@ def cmd_menu(client: KalshiClient):
             print(
                 f"  {cyan('3')}  {bold('Settle')}   {dim('·')}  close an open trade manually"
             )
-            sub = input(dim("  Choose (1–3): ")).strip()
+            print(
+                f"  {cyan('4')}  {bold('Review')}   {dim('·')}  check open trades for exit signals"
+            )
+            sub = input(dim("  Choose (1–4): ")).strip()
             if sub == "1":
                 cmd_paper(["results"], client)
             elif sub == "2":
@@ -1771,6 +1843,27 @@ def cmd_menu(client: KalshiClient):
                     break
             elif sub == "3":
                 _cmd_settle_open(client)
+            elif sub == "4":
+                from paper import check_model_exits
+
+                recs = check_model_exits(client)
+                if not recs:
+                    print(green("  All open positions look fine — no exit signals."))
+                else:
+                    print(bold(f"\n  {len(recs)} exit signal(s):\n"))
+                    for rec in recs:
+                        t = rec["trade"]
+                        reason = (
+                            "Model flipped direction"
+                            if rec["reason"] == "model_flipped"
+                            else "Edge evaporated (<3%)"
+                        )
+                        print(
+                            yellow(
+                                f"  #{t['id']}  {t['ticker']}  {t['side'].upper()}"
+                                f"  —  {reason}  (edge now {rec['current_edge']:+.1%})"
+                            )
+                        )
         elif fn is not None:
             fn()
 
@@ -1788,7 +1881,7 @@ def cmd_backtest(client: KalshiClient, args: list):
     from backtest import run_backtest
 
     city_filter = None
-    days_back = 30
+    days_back = 90
     for i, a in enumerate(args):
         if a == "--days" and i + 1 < len(args):
             try:
@@ -1811,10 +1904,20 @@ def cmd_backtest(client: KalshiClient, args: list):
         print(f"\r  Scoring [{i}/{n}]...", end="", flush=True)
 
     summary = run_backtest(
-        client, city_filter=city_filter, days_back=days_back, on_progress=_bt_progress
+        client,
+        city_filter=city_filter,
+        days_back=days_back,
+        on_progress=_bt_progress,
     )
     n_scored = summary["n_markets"]
     print(f"\r  Scored {n_scored} weather market(s).              ")
+    if n_scored < 30:
+        print(
+            yellow(
+                f"  ⚠  Only {n_scored} markets found — scores may not be reliable."
+                f" Try a longer window: py main.py backtest --days 180"
+            )
+        )
 
     n = summary["n_markets"]
     if n == 0:

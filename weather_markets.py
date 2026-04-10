@@ -1118,6 +1118,16 @@ def analyze_trade(enriched: dict) -> dict | None:
     # Flag anomalously wide ensemble spread (models disagree strongly)
     anomalous = is_forecast_anomalous(ens_stats or {})
 
+    # Log source availability for per-city reliability tracking
+    try:
+        from tracker import log_source_attempt as _log_src
+
+        _log_src(city, "ensemble", ens_prob is not None)
+        _log_src(city, "nws", _nws_prob is not None)
+        _log_src(city, "climatology", clim_prob is not None)
+    except Exception:
+        pass
+
     # ── 10. Kelly fraction ───────────────────────────────────────────────────
     prices = parse_market_price(enriched)
     market_prob = prices["implied_prob"]
@@ -1128,6 +1138,19 @@ def analyze_trade(enriched: dict) -> dict | None:
     kelly = kelly_fraction(
         blended_prob if rec_side == "yes" else 1 - blended_prob, entry_price
     )
+
+    # ── 10a. Bid-ask spread cost ─────────────────────────────────────────────
+    # Wide spreads mean real slippage beyond the Kalshi fee.
+    # Use the actual spread as a fraction of mid; default 5% for illiquid markets.
+    yes_ask_p, yes_bid_p = prices["yes_ask"], prices["yes_bid"]
+    if yes_ask_p > 0 and yes_bid_p > 0 and yes_ask_p > yes_bid_p:
+        spread_abs = yes_ask_p - yes_bid_p
+        mid_p = (yes_ask_p + yes_bid_p) / 2
+        spread_cost = spread_abs / mid_p if mid_p > 0 else 0.05
+    else:
+        spread_cost = 0.05  # conservative default for markets with no live quote
+    # A 5% spread → 10% reduction; 25% spread → 50% reduction; floor at 0.50
+    spread_scale = max(0.50, 1.0 - spread_cost * 2)
 
     edge = blended_prob - market_prob
     signal = _edge_label(edge)
@@ -1157,7 +1180,7 @@ def analyze_trade(enriched: dict) -> dict | None:
     anomaly_scale = 0.70 if anomalous else 1.0
     ci_scale = max(0.25, 1.0 - (ci_high - ci_low))
     ci_adjusted_kelly = round(
-        fee_adjusted_kelly * ci_scale * quality_scale * anomaly_scale, 6
+        fee_adjusted_kelly * ci_scale * quality_scale * anomaly_scale * spread_scale, 6
     )
 
     return {
@@ -1196,4 +1219,6 @@ def analyze_trade(enriched: dict) -> dict | None:
         # Data quality
         "data_quality": data_quality,
         "forecast_anomalous": anomalous,
+        "spread_cost": round(spread_cost, 4),
+        "spread_scale": round(spread_scale, 4),
     }

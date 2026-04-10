@@ -427,6 +427,62 @@ def reset_paper_account() -> None:
     _save({"balance": STARTING_BALANCE, "peak_balance": STARTING_BALANCE, "trades": []})
 
 
+def check_model_exits(client=None) -> list[dict]:
+    """
+    For each open paper trade, re-analyze the market and check whether the
+    model has reversed or the edge has evaporated.
+
+    Returns a list of exit recommendations:
+      [{"trade": {...}, "reason": "model_flipped"|"edge_gone",
+        "current_edge": float, "held_side": str}, ...]
+    """
+    if client is None:
+        return []
+    open_trades = get_open_trades()
+    if not open_trades:
+        return []
+
+    from weather_markets import analyze_trade, enrich_with_forecast
+
+    recommendations = []
+    for t in open_trades:
+        try:
+            market = client.get_market(t["ticker"])
+            enriched = enrich_with_forecast(market)
+            analysis = analyze_trade(enriched)
+            if not analysis:
+                continue
+            held_side = t["side"]
+            net_edge = analysis.get("net_edge", analysis["edge"])
+            # Model flipped: we're long YES but model now strongly favors NO, or vice versa
+            flipped = (held_side == "yes" and net_edge < -0.05) or (
+                held_side == "no" and net_edge > 0.05
+            )
+            # Edge gone: less than 3% after fees — no longer worth holding
+            edge_gone = abs(net_edge) < 0.03
+            if flipped:
+                recommendations.append(
+                    {
+                        "trade": t,
+                        "reason": "model_flipped",
+                        "current_edge": round(net_edge, 4),
+                        "held_side": held_side,
+                    }
+                )
+            elif edge_gone:
+                recommendations.append(
+                    {
+                        "trade": t,
+                        "reason": "edge_gone",
+                        "current_edge": round(net_edge, 4),
+                        "held_side": held_side,
+                    }
+                )
+        except Exception:
+            continue
+    return recommendations
+
+
 def auto_settle_paper_trades(client=None) -> int:
     """
     Settle any open paper trades whose tickers have recorded outcomes.
