@@ -31,16 +31,28 @@ class TestLoadLiveConfig:
 
 
 class TestPlaceLiveOrder:
-    def test_daily_loss_limit_blocks_order(self, monkeypatch):
+    def test_daily_loss_limit_blocks_after_db_loss(self, monkeypatch):
+        """Daily loss limit blocks order when DB-backed loss is at or above limit."""
+        import gc
+        import tempfile
+        from pathlib import Path
+
+        import execution_log
         import main
+
+        tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+        monkeypatch.setattr(execution_log, "DB_PATH", Path(tmp.name))
+        monkeypatch.setattr(execution_log, "_initialized", False)
+
+        # Seed today's loss at the limit
+        execution_log.add_live_loss(100.0)
 
         config = {
             "max_trade_dollars": 50,
             "daily_loss_limit": 100,
             "max_open_positions": 10,
+            "gtc_cancel_hours": 24,
         }
-        # session loss already at limit
-        monkeypatch.setattr(main, "_SESSION_LOSS", 100.0)
         placed, cost = main._place_live_order(
             ticker="KXHIGH-25MAY15-T75",
             side="yes",
@@ -56,13 +68,24 @@ class TestPlaceLiveOrder:
         assert placed is False
         assert cost == 0.0
 
+        execution_log._initialized = False
+        gc.collect()
+        tmp.close()
+        Path(tmp.name).unlink(missing_ok=True)
+
     def test_max_trade_dollars_caps_size(self, monkeypatch):
         """Kelly wants 10 contracts at $0.55 = $5.50/contract → $55 total, capped to $50."""
+        import tempfile
+        from pathlib import Path
         from unittest.mock import MagicMock, patch
 
+        import execution_log
         import main
 
-        monkeypatch.setattr(main, "_SESSION_LOSS", 0.0)
+        # Set up a clean DB for this test
+        tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+        monkeypatch.setattr(execution_log, "DB_PATH", Path(tmp.name))
+        monkeypatch.setattr(execution_log, "_initialized", False)
         monkeypatch.setattr(main, "_LIVE_CONFIG_PATH", main._LIVE_CONFIG_PATH)  # no-op
 
         mock_client = MagicMock()
@@ -107,6 +130,14 @@ class TestPlaceLiveOrder:
         # Verify price passed to API is decimal dollars (not cents)
         call_args = mock_client.place_order.call_args
         assert call_args.kwargs["price"] == pytest.approx(0.55)
+
+        # Clean up
+        import gc
+
+        execution_log._initialized = False
+        gc.collect()
+        tmp.close()
+        Path(tmp.name).unlink(missing_ok=True)
 
 
 class TestAutoPlaceTradesCycleCheck:

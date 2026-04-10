@@ -1059,11 +1059,11 @@ def _analyze_once(
 
 
 _LIVE_CONFIG_PATH = Path(__file__).parent / "data" / "live_config.json"
-_SESSION_LOSS: float = 0.0  # updated by _auto_place_trades() after each live order
 _LIVE_CONFIG_DEFAULT: dict = {
     "max_trade_dollars": 50,
     "daily_loss_limit": 200,
     "max_open_positions": 10,
+    "gtc_cancel_hours": 24,
 }
 
 
@@ -1168,10 +1168,10 @@ def _place_live_order(
 ) -> tuple[bool, float]:
     """Place a live Kalshi order with hard-stop guards.
 
-    Returns (placed, dollar_cost). Caller must add cost to _SESSION_LOSS.
+    Returns (placed, dollar_cost). Caller must add cost to the DB via add_live_loss().
     """
     # 1. Daily loss check
-    if _SESSION_LOSS >= config["daily_loss_limit"]:
+    if execution_log.get_today_live_loss() >= config["daily_loss_limit"]:
         print(
             f"[LIVE] Daily loss limit ${config['daily_loss_limit']} reached — skipping {ticker}"
         )
@@ -1862,7 +1862,6 @@ def _auto_place_trades(
     or a list of flat opportunity dicts (new live path / tests).
     Pass live=True with a live_config dict to route orders to the real Kalshi API.
     """
-    global _SESSION_LOSS  # noqa: PLW0603
     from paper import (
         get_open_trades,
         is_daily_loss_halted,
@@ -1938,7 +1937,7 @@ def _auto_place_trades(
                 cycle=cycle,
             )
             if opp_placed:
-                _SESSION_LOSS += cost
+                execution_log.add_live_loss(cost)
                 open_tickers.add(ticker)
                 placed += 1
         else:
