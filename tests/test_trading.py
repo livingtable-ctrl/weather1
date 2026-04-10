@@ -446,3 +446,65 @@ class TestCorrelationPersistence:
             result = monte_carlo.load_correlations_from_backtest()
 
         assert result.get(frozenset({"NYC", "Honolulu"}), 0.0) == 0.0
+
+
+class TestSlippageAdjustedPrice:
+    """#50: slippage_adjusted_price uses 0.001 * sqrt(quantity) model."""
+
+    def test_buy_yes_increases_price(self):
+        """Buying YES adds slippage to base price."""
+        from paper import slippage_adjusted_price
+
+        result = slippage_adjusted_price(0.50, 100, "yes")
+        expected_slip = 0.001 * (100**0.5)  # 0.01
+        assert result == pytest.approx(0.50 + expected_slip, rel=1e-5)
+
+    def test_buy_no_decreases_price(self):
+        """Buying NO subtracts slippage (worse fill for the buyer)."""
+        from paper import slippage_adjusted_price
+
+        result = slippage_adjusted_price(0.40, 100, "no")
+        expected_slip = 0.001 * (100**0.5)
+        assert result == pytest.approx(0.40 - expected_slip, rel=1e-5)
+
+    def test_zero_slippage_at_quantity_zero(self):
+        """quantity=1 produces 0.001 slippage."""
+        from paper import slippage_adjusted_price
+
+        result = slippage_adjusted_price(0.50, 1, "yes")
+        assert result == pytest.approx(0.501, rel=1e-5)
+
+    def test_clamped_to_0_01_0_99(self):
+        """Output must always be in [0.01, 0.99]."""
+        from paper import slippage_adjusted_price
+
+        high = slippage_adjusted_price(0.99, 1_000_000, "yes")
+        low = slippage_adjusted_price(0.01, 1_000_000, "no")
+        assert high <= 0.99
+        assert low >= 0.01
+
+    def test_place_paper_order_stores_actual_fill_price(self, tmp_path):
+        """place_paper_order records actual_fill_price != entry_price for large orders."""
+        import shutil
+        import tempfile
+        from pathlib import Path
+        from unittest.mock import patch
+
+        import paper
+
+        tmpdir = tempfile.mkdtemp()
+        try:
+            with patch("paper.DATA_PATH", Path(tmpdir) / "paper_trades.json"):
+                trade = paper.place_paper_order(
+                    ticker="KXHIGH-25APR10-NYC",
+                    side="yes",
+                    quantity=100,
+                    entry_price=0.50,
+                    entry_prob=0.65,
+                    city="NYC",
+                    target_date="2025-04-10",
+                )
+            assert "actual_fill_price" in trade
+            assert trade["actual_fill_price"] != trade["entry_price"]
+        finally:
+            shutil.rmtree(tmpdir, ignore_errors=True)

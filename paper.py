@@ -379,6 +379,10 @@ def place_paper_order(
         "thesis": thesis,
     }
 
+    # #50: compute slippage-adjusted fill price and store on the trade record
+    actual_fill_price = slippage_adjusted_price(entry_price, quantity, side)
+    trade["actual_fill_price"] = actual_fill_price
+
     data["balance"] -= cost
     data["trades"].append(trade)
     _save(data)
@@ -1506,6 +1510,28 @@ def estimate_slippage(
     excess = quantity - depth_scale
     slippage = (excess / depth_scale) * 0.01
     return min(slippage, 0.05)
+
+
+def slippage_adjusted_price(
+    base_price: float,
+    quantity: int,
+    side: str,
+) -> float:
+    """
+    #50: Compute a slippage-adjusted fill price for a market order.
+
+    Uses the square-root impact model: slippage = 0.001 * sqrt(quantity)
+    For YES buys slippage is added; for NO buys it is subtracted.
+    Result is clamped to [0.01, 0.99].
+    """
+    import math
+
+    slippage = 0.001 * math.sqrt(max(0, quantity))
+    if side == "yes":
+        adjusted = base_price + slippage
+    else:
+        adjusted = base_price - slippage
+    return round(max(0.01, min(0.99, adjusted)), 6)
 
 
 def simulate_fill(
