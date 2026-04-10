@@ -21,7 +21,7 @@ DB_PATH.parent.mkdir(exist_ok=True)
 
 _db_initialized = False
 
-_SCHEMA_VERSION = 6  # increment when _MIGRATIONS list grows
+_SCHEMA_VERSION = 7  # increment when _MIGRATIONS list grows
 
 _MIGRATIONS = [
     # v1 → v2: add condition_type column (if not already added)
@@ -50,6 +50,20 @@ _MIGRATIONS = [
     )""",
     # v5 → v6: add blend_sources column to predictions (#84)
     "ALTER TABLE predictions ADD COLUMN blend_sources TEXT",
+    # v6 → v7: unselected bias tracking (#55)
+    """CREATE TABLE IF NOT EXISTS analysis_attempts (
+        ticker TEXT NOT NULL,
+        city TEXT,
+        condition TEXT,
+        target_date TEXT,
+        analyzed_at TEXT,
+        forecast_prob REAL,
+        market_prob REAL,
+        days_out INTEGER,
+        was_traded INTEGER DEFAULT 0,
+        outcome INTEGER,
+        PRIMARY KEY (ticker, target_date)
+    )""",
 ]
 
 
@@ -1468,3 +1482,87 @@ def get_model_calibration_buckets() -> dict:
             }
         )
     return {"buckets": result_buckets}
+
+
+# ── Unselected bias tracking (#55) ────────────────────────────────────────────
+
+
+def log_analysis_attempt(
+    ticker: str,
+    city: str | None,
+    condition: str | None,
+    target_date,
+    forecast_prob: float,
+    market_prob: float,
+    days_out: int,
+    was_traded: bool = False,
+) -> None:
+    """#55: Log every analyzed market (traded or not) for bias detection."""
+    init_db()
+    from datetime import UTC
+
+    analyzed_at = datetime.now(UTC).isoformat()
+    target_str = (
+        target_date.isoformat()
+        if hasattr(target_date, "isoformat")
+        else str(target_date)
+    )
+    try:
+        with _conn() as con:
+            con.execute(
+                """INSERT OR REPLACE INTO analysis_attempts
+                   (ticker, city, condition, target_date, analyzed_at,
+                    forecast_prob, market_prob, days_out, was_traded)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    ticker,
+                    city,
+                    condition,
+                    target_str,
+                    analyzed_at,
+                    forecast_prob,
+                    market_prob,
+                    days_out,
+                    1 if was_traded else 0,
+                ),
+            )
+    except Exception as exc:
+        _log.warning("log_analysis_attempt failed for %s: %s", ticker, exc)
+
+
+def settle_analysis_attempt(ticker: str, target_date, outcome: int) -> None:
+    """#55: Record the outcome for a previously logged analysis attempt."""
+    init_db()
+    target_str = (
+        target_date.isoformat()
+        if hasattr(target_date, "isoformat")
+        else str(target_date)
+    )
+    try:
+        with _conn() as con:
+            con.execute(
+                "UPDATE analysis_attempts SET outcome=? WHERE ticker=? AND target_date=?",
+                (outcome, ticker, target_str),
+            )
+    except Exception as exc:
+        _log.warning("settle_analysis_attempt failed for %s: %s", ticker, exc)
+
+
+def get_unselected_bias(city: str, condition_type: str | None = None) -> float:
+    """#55: Mean (forecast_prob - outcome) for untraded markets in this city."""
+    init_db()
+    try:
+        with _conn() as con:
+            rows = con.execute(
+                """SELECT forecast_prob, outcome FROM analysis_attempts
+                   WHERE city=? AND was_traded=0 AND outcome IS NOT NULL""",
+                (city,),
+            ).fetchall()
+    except Exception as exc:
+        _log.warning("get_unselected_bias failed for %s: %s", city, exc)
+        return 0.0
+
+    if not rows:
+        return 0.0
+    errors = [r[0] - r[1] for r in rows]
+    return sum(errors) / len(errors)

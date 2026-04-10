@@ -4,10 +4,14 @@ Uses an in-memory database so tests don't touch production data.
 """
 
 # Patch the DB path to an in-memory database before importing tracker
+import shutil
 import sqlite3
+import tempfile
 import unittest
 from datetime import date
 from pathlib import Path
+
+import pytest
 
 import tracker
 
@@ -909,3 +913,82 @@ def test_get_component_attribution_returns_per_source_brier(tmp_path):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+# ── Task 6: Unselected bias tracking (#55) ────────────────────────────────────
+# pytest-style tests with tmp_db fixture
+
+
+@pytest.fixture
+def tmp_db(monkeypatch):
+    """Redirect tracker DB to a temp file for pytest-style tests."""
+    tmpdir = tempfile.mkdtemp()
+    orig = tracker.DB_PATH
+    tracker.DB_PATH = Path(tmpdir) / "test_bias.db"
+    tracker._db_initialized = False
+    yield tracker
+    tracker.DB_PATH = orig
+    tracker._db_initialized = False
+    shutil.rmtree(tmpdir, ignore_errors=True)
+
+
+def test_log_analysis_attempt_stores_all_markets(tmp_db):
+    from tracker import _conn, log_analysis_attempt
+
+    log_analysis_attempt(
+        ticker="KXWEATHER-LOWEDGE",
+        city="NYC",
+        condition="HIGH_ABOVE_70",
+        target_date=date(2025, 7, 1),
+        forecast_prob=0.52,
+        market_prob=0.50,
+        days_out=3,
+        was_traded=False,
+    )
+    with _conn() as con:
+        row = con.execute(
+            "SELECT forecast_prob, market_prob, was_traded "
+            "FROM analysis_attempts WHERE ticker='KXWEATHER-LOWEDGE'"
+        ).fetchone()
+    assert row is not None
+    assert row[0] == pytest.approx(0.52)
+    assert row[2] == 0
+
+
+def test_get_unselected_bias_excludes_traded_markets(tmp_db):
+    from tracker import (
+        get_unselected_bias,
+        log_analysis_attempt,
+        settle_analysis_attempt,
+    )
+
+    log_analysis_attempt(
+        ticker="TRADED",
+        city="NYC",
+        condition="HIGH_ABOVE_70",
+        target_date=date(2025, 7, 1),
+        forecast_prob=0.80,
+        market_prob=0.50,
+        days_out=2,
+        was_traded=True,
+    )
+    settle_analysis_attempt("TRADED", date(2025, 7, 1), outcome=1)
+    log_analysis_attempt(
+        ticker="NOT-TRADED",
+        city="NYC",
+        condition="HIGH_ABOVE_70",
+        target_date=date(2025, 7, 2),
+        forecast_prob=0.60,
+        market_prob=0.50,
+        days_out=2,
+        was_traded=False,
+    )
+    settle_analysis_attempt("NOT-TRADED", date(2025, 7, 2), outcome=0)
+    bias = get_unselected_bias("NYC")
+    assert bias == pytest.approx(0.6, abs=0.01)
+
+
+def test_get_unselected_bias_returns_zero_when_no_data(tmp_db):
+    from tracker import get_unselected_bias
+
+    assert get_unselected_bias("NOWHERE") == 0.0
