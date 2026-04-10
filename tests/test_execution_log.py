@@ -132,3 +132,63 @@ class TestDailyLiveLoss:
         assert result1 == pytest.approx(10.0)
         result2 = execution_log.add_live_loss(5.0)
         assert result2 == pytest.approx(15.0)
+
+
+class TestLiveSettlement:
+    def setup_method(self):
+        import tempfile
+
+        self._tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+        execution_log.DB_PATH = Path(self._tmp.name)
+        execution_log._initialized = False
+
+    def teardown_method(self):
+        import gc
+
+        execution_log._initialized = False
+        self._tmp.close()
+        gc.collect()
+        Path(self._tmp.name).unlink(missing_ok=True)
+
+    def test_record_live_settlement_writes_outcome(self):
+        row_id = execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=2,
+            price=0.55,
+            status="filled",
+            live=True,
+        )
+        execution_log.record_live_settlement(row_id, outcome_yes=True, pnl=0.837)
+        with execution_log._conn() as con:
+            row = con.execute(
+                "SELECT settled_at, outcome_yes, pnl FROM orders WHERE id = ?",
+                (row_id,),
+            ).fetchone()
+        assert row["outcome_yes"] == 1
+        assert row["pnl"] == pytest.approx(0.837)
+        assert row["settled_at"] is not None
+
+    def test_get_filled_unsettled_excludes_settled_orders(self):
+        id1 = execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=1,
+            price=0.55,
+            status="filled",
+            live=True,
+        )
+        id2 = execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T80",
+            side="yes",
+            quantity=1,
+            price=0.60,
+            status="filled",
+            live=True,
+        )
+        # Settle id2 only
+        execution_log.record_live_settlement(id2, outcome_yes=False, pnl=-0.60)
+        unsettled = execution_log.get_filled_unsettled_live_orders()
+        ids = [o["id"] for o in unsettled]
+        assert id1 in ids
+        assert id2 not in ids

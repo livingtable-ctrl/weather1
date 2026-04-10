@@ -49,7 +49,12 @@ def init_log() -> None:
             -- #75: structured columns for querying failures without JSON parsing
             fill_quantity  INTEGER,           -- contracts actually filled
             error_code     TEXT,              -- HTTP status or error type
-            error_type     TEXT               -- exception class name
+            error_type     TEXT,              -- exception class name
+            forecast_cycle TEXT,              -- forecast cycle for cycle-aware dedup
+            live           INTEGER DEFAULT 0, -- 1 if this is a live order
+            settled_at     TEXT,              -- ISO timestamp when settlement outcome was recorded
+            outcome_yes    INTEGER,           -- 1 if YES side won, 0 if NO side won
+            pnl            REAL               -- net P&L after Kalshi fee in dollars
         );
 
         CREATE INDEX IF NOT EXISTS idx_orders_ticker    ON orders(ticker, placed_at);
@@ -69,6 +74,9 @@ def init_log() -> None:
         "ALTER TABLE orders ADD COLUMN error_type TEXT",
         "ALTER TABLE orders ADD COLUMN forecast_cycle TEXT",
         "ALTER TABLE orders ADD COLUMN live INTEGER DEFAULT 0",
+        "ALTER TABLE orders ADD COLUMN settled_at TEXT",
+        "ALTER TABLE orders ADD COLUMN outcome_yes INTEGER",
+        "ALTER TABLE orders ADD COLUMN pnl REAL",
     ]
     with _conn() as con:
         for stmt in migrations:
@@ -235,6 +243,38 @@ def add_live_loss(amount: float) -> float:
             return get_today_live_loss()
         except Exception:
             return 0.0
+
+
+def get_filled_unsettled_live_orders() -> list[dict]:
+    """Return live filled orders that have not yet had their settlement outcome recorded."""
+    init_log()
+    with _conn() as con:
+        rows = con.execute(
+            """
+            SELECT * FROM orders
+            WHERE live = 1 AND status = 'filled' AND settled_at IS NULL
+            ORDER BY placed_at
+            """,
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def record_live_settlement(order_id: int, outcome_yes: bool, pnl: float) -> None:
+    """Write settlement outcome to an order row.
+
+    outcome_yes=True means the YES side won (the market resolved 'yes').
+    pnl is net P&L after Kalshi fee, in dollars.
+    """
+    init_log()
+    with _conn() as con:
+        con.execute(
+            """
+            UPDATE orders
+            SET settled_at = ?, outcome_yes = ?, pnl = ?
+            WHERE id = ?
+            """,
+            (datetime.now(UTC).isoformat(), int(outcome_yes), pnl, order_id),
+        )
 
 
 def get_recent_orders(limit: int = 50) -> list[dict]:
