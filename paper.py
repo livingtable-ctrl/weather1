@@ -9,12 +9,15 @@ from __future__ import annotations
 
 import csv
 import json
+import logging
 import os
-import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
 
+from safe_io import AtomicWriteError, atomic_write_json
 from utils import FIXED_BET_DOLLARS, FIXED_BET_PCT, KALSHI_FEE_RATE, STRATEGY
+
+_log = logging.getLogger(__name__)
 
 DATA_PATH = Path(__file__).parent / "data" / "paper_trades.json"
 DATA_PATH.parent.mkdir(exist_ok=True)
@@ -106,18 +109,11 @@ def cleanup_temp_files() -> int:
 
 
 def _save(data: dict) -> None:
-    """Write atomically: write to a temp file then rename, so a crash never corrupts the ledger."""
-    dir_ = DATA_PATH.parent
-    fd, tmp = tempfile.mkstemp(dir=dir_, prefix=".paper_trades_", suffix=".json")
+    """Write atomically with retry via safe_io (#8)."""
     try:
-        with os.fdopen(fd, "w") as f:
-            json.dump(data, f, indent=2)
-        os.replace(tmp, DATA_PATH)
-    except Exception:
-        try:
-            os.unlink(tmp)
-        except OSError:
-            pass
+        atomic_write_json(data, DATA_PATH, retries=3)
+    except AtomicWriteError as e:
+        _log.error("CRITICAL: Could not save paper trades: %s", e)
         raise
 
 

@@ -14,9 +14,12 @@ from datetime import date, datetime
 
 import requests
 
+from circuit_breaker import CircuitBreaker
 from utils import normal_cdf
 
 _log = logging.getLogger(__name__)
+
+_nws_cb = CircuitBreaker("nws", failure_threshold=5, recovery_timeout=300)
 
 NWS_BASE = "https://api.weather.gov"
 # #68: load User-Agent from env so it can be updated without a code change
@@ -130,6 +133,9 @@ def nws_prob(
     Convert NWS forecast temperature to a probability using a narrow normal
     distribution (NWS forecasts are calibrated, so use tighter σ than raw models).
     """
+    if _nws_cb.is_open():
+        _log.warning("NWS circuit open — skipping forecast prob for %s", city)
+        return None
     forecast = get_nws_daily_forecast(city, coords)
     date_str = target_date.isoformat()
     day = forecast.get(date_str, {})
@@ -171,6 +177,10 @@ def get_live_observation(city: str, coords: tuple) -> dict | None:
     Returns dict with temp_f, timestamp, description.
     Cached for OBS_TTL seconds to avoid hammering the API.
     """
+    if _nws_cb.is_open():
+        _log.warning("NWS circuit open — skipping observation for %s", city)
+        return None
+
     now = time.time()
     if city in _obs_cache:
         cached_at, obs = _obs_cache[city]
@@ -194,8 +204,11 @@ def get_live_observation(city: str, coords: tuple) -> dict | None:
             "description": props.get("textDescription", ""),
         }
         _obs_cache[city] = (now, obs)
+        _nws_cb.record_success()
         return obs
-    except Exception:
+    except Exception as exc:
+        _nws_cb.record_failure()
+        _log.warning("NWS observation failed for %s: %s", city, exc)
         return None
 
 

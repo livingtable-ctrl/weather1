@@ -7,11 +7,17 @@ Used as a baseline probability before forecast skill is considered.
 from __future__ import annotations
 
 import json
+import logging
 import time
 from datetime import date
 from pathlib import Path
 
 import requests
+
+from circuit_breaker import CircuitBreaker as _CircuitBreaker
+
+_log = logging.getLogger(__name__)
+_clim_cb = _CircuitBreaker("climatology", failure_threshold=5, recovery_timeout=300)
 
 DATA_DIR = Path(__file__).parent / "data"
 
@@ -103,6 +109,22 @@ def climatological_prob(
       lower, upper: float  (for between)
       var: "max" | "min"  (which temperature to use)
     """
+    if _clim_cb.is_open():
+        _log.warning("Climatology circuit open — skipping for %s", city)
+        return None
+    try:
+        result = _climatological_prob_inner(city, coords, target_date, condition)
+        _clim_cb.record_success()
+        return result
+    except Exception as exc:
+        _clim_cb.record_failure()
+        _log.warning("Climatology prob failed for %s: %s", city, exc)
+        return None
+
+
+def _climatological_prob_inner(
+    city: str, coords: tuple, target_date: date, condition: dict
+) -> float | None:
     data = fetch_historical(city, coords)
     if not data:
         return None
