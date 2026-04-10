@@ -30,15 +30,8 @@ def sample_market():
 
 @pytest.fixture
 def sample_forecast():
-    """Typical forecast dict as returned by get_weather_forecast."""
-    return {
-        "high_f": 62.0,
-        "low_f": 48.0,
-        "precip_in": 0.0,
-        "high_range": (59.0, 65.0),
-        "low_range": (46.0, 50.0),
-        "models_used": 3,
-    }
+    """Load sample forecast from fixture JSON file."""
+    return json.loads((FIXTURES / "sample_forecast.json").read_text())
 
 
 @pytest.fixture
