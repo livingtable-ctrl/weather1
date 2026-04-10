@@ -530,7 +530,7 @@ class TestGetBiasConditionType(_Phase3Base):
                 market_date=market_date,
             )
 
-    def test_bias_differs_by_condition_type(self):
+    def test_grpb_bias_condition_type_filters_rows(self):
         """Filtering by HIGH vs PRECIP gives different bias values."""
         # HIGH: over-estimating (our_prob=0.9, settled NO) — positive bias
         self._add_typed(6, "NYC", 0.90, False, "HIGH")
