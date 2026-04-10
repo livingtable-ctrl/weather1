@@ -513,6 +513,30 @@ setInterval(() => {{
             headers={"Content-Disposition": 'attachment; filename="predictions.csv"'},
         )
 
+    @app.route("/trades")
+    def trades_page():
+        return render_template("trades.html")
+
+    @app.route("/api/trades")
+    def api_trades():
+        try:
+            from paper import get_all_trades, get_open_trades
+        except ImportError as e:
+            return jsonify({"error": str(e)}), 500
+
+        open_trades = get_open_trades()
+
+        # Enrich open trades with current implied prob from SSE snapshot
+        snapshot = {m["ticker"]: m for m in _get_live_market_snapshot()}
+        for t in open_trades:
+            snap = snapshot.get(t.get("ticker", ""), {})
+            t["current_yes_ask"] = snap.get("yes_ask")
+
+        all_trades = get_all_trades()
+        closed = [t for t in all_trades if t.get("settled")]
+
+        return jsonify({"open": open_trades, "closed": closed})
+
     @app.route("/risk")
     def risk_page():
         return render_template("risk.html")

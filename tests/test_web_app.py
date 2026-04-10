@@ -197,3 +197,59 @@ def test_api_risk_returns_correct_shape(client):
         assert "total_exposure" in d
         assert d["directional"]["yes"] == 10.0
         assert d["directional"]["no"] == 0.0
+
+
+def test_trades_route_returns_200_with_title(client):
+    """Trades page returns 200 and contains 'Trades'."""
+    r = client.get("/trades")
+    assert r.status_code == 200
+    assert b"Trades" in r.data
+
+
+def test_api_trades_returns_correct_shape(client):
+    """/api/trades returns open and closed keys as lists."""
+    with (
+        patch(
+            "paper.get_open_trades",
+            return_value=[
+                {
+                    "id": 1,
+                    "ticker": "T1",
+                    "city": "NYC",
+                    "side": "yes",
+                    "entry_price": 0.6,
+                    "cost": 10.0,
+                    "target_date": "2025-12-01",
+                }
+            ],
+        ),
+        patch(
+            "paper.get_all_trades",
+            return_value=[
+                {
+                    "id": 1,
+                    "ticker": "T1",
+                    "settled": False,
+                    "city": "NYC",
+                    "side": "yes",
+                },
+                {
+                    "id": 2,
+                    "ticker": "T2",
+                    "settled": True,
+                    "pnl": 5.0,
+                    "city": "LA",
+                    "side": "no",
+                    "outcome": "no",
+                },
+            ],
+        ),
+    ):
+        r = client.get("/api/trades")
+        assert r.status_code == 200
+        d = r.get_json()
+        assert "open" in d
+        assert "closed" in d
+        assert len(d["open"]) == 1
+        assert len(d["closed"]) == 1
+        assert d["closed"][0]["ticker"] == "T2"
