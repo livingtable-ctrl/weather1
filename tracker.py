@@ -325,12 +325,18 @@ def log_outcome(ticker: str, settled_yes: bool) -> bool:
 # ── Bias correction ───────────────────────────────────────────────────────────
 
 
-def get_bias(city: str | None, month: int | None, min_samples: int = 5) -> float:
+def get_bias(
+    city: str | None,
+    month: int | None,
+    min_samples: int = 5,
+    condition_type: str | None = None,
+) -> float:
     """
     Compute systematic bias for a city/month: weighted mean(our_prob - actual_outcome).
     Weights each sample by exp(-age_days / 30) so recent predictions count more.
     Positive bias means we consistently over-estimate; negative = under-estimate.
     Returns 0.0 if insufficient data (raw count < min_samples).
+    Optionally filter by condition_type (#10).
     """
     init_db()
     with _conn() as con:
@@ -347,6 +353,9 @@ def get_bias(city: str | None, month: int | None, min_samples: int = 5) -> float
         if month:
             query += " AND strftime('%m', p.market_date) = ?"
             params.append(f"{month:02d}")
+        if condition_type is not None:
+            query += " AND p.condition_type = ?"
+            params.append(condition_type)
 
         rows = con.execute(query, params).fetchall()
 
@@ -465,6 +474,39 @@ def brier_score(city: str | None = None) -> float | None:
     return sum((r["our_prob"] - r["settled_yes"]) ** 2 for r in rows) / len(rows)
 
 
+def brier_skill_score(city: str | None = None) -> float | None:
+    """
+    Brier Skill Score (BSS) vs market baseline (#11).
+    BSS = 1 - (BS_model / BS_reference) where reference uses market_prob as prediction.
+    Returns None if < 10 samples with both our_prob and market_prob.
+    BSS > 0 means our model beats the market; BSS = 0 means equal to market.
+    """
+    init_db()
+    with _conn() as con:
+        query = """
+            SELECT p.our_prob, p.market_prob, o.settled_yes
+            FROM predictions p
+            JOIN outcomes o ON p.ticker = o.ticker
+            WHERE p.our_prob IS NOT NULL AND p.market_prob IS NOT NULL
+        """
+        params: list = []
+        if city:
+            query += " AND p.city = ?"
+            params.append(city)
+        rows = con.execute(query, params).fetchall()
+
+    if len(rows) < 10:
+        return None
+
+    bs_model = sum((r["our_prob"] - r["settled_yes"]) ** 2 for r in rows) / len(rows)
+    bs_ref = sum((r["market_prob"] - r["settled_yes"]) ** 2 for r in rows) / len(rows)
+
+    if bs_ref == 0:
+        return None  # avoid division by zero
+
+    return round(1.0 - bs_model / bs_ref, 6)
+
+
 def get_history(limit: int = 50) -> list[dict]:
     """Return recent predictions with outcomes where available."""
     init_db()
@@ -524,19 +566,29 @@ def get_calibration_trend(weeks: int = 8) -> list[dict]:
     return result
 
 
-def get_calibration_by_city() -> dict[str, dict]:
+def get_calibration_by_city(
+    condition_type: str | None = None,
+) -> dict[str, dict]:
     """
-    Per-city Brier score and sample count.
+    Per-city Brier score and sample count (#54, #56).
     Returns {city: {brier, n, bias}} for cities with settled predictions.
+    Optionally filter by condition_type.
+    Monthly bias grouping uses market_date (not predicted_at) to avoid timezone skew.
     """
     init_db()
     with _conn() as con:
-        rows = con.execute("""
-            SELECT p.city, p.our_prob, o.settled_yes
+        query = """
+            SELECT p.city, p.our_prob, o.settled_yes,
+                   CAST(strftime('%m', p.market_date) AS INTEGER) AS month
             FROM predictions p
             JOIN outcomes o ON p.ticker = o.ticker
             WHERE p.our_prob IS NOT NULL AND p.city IS NOT NULL
-        """).fetchall()
+        """
+        params: list = []
+        if condition_type is not None:
+            query += " AND p.condition_type = ?"
+            params.append(condition_type)
+        rows = con.execute(query, params).fetchall()
 
     by_city: dict[str, list] = {}
     for r in rows:
@@ -801,13 +853,54 @@ def get_member_accuracy() -> dict:
     return result
 
 
-def get_market_calibration() -> dict:
+def get_ensemble_member_accuracy(
+    city: str | None = None,
+    season: str | None = None,
+) -> dict | None:
+    """
+    Per-model MAE from ensemble_member_scores, stratified by city and season (#18).
+    season: 'winter' = Oct-Mar (months 10-12, 1-3); 'summer' = Apr-Sep (months 4-9).
+    Returns {model: {mae, count}} or None if table is empty after filtering.
+    """
+    init_db()
+    with _conn() as con:
+        query = """
+            SELECT model, city, predicted_temp, actual_temp, target_date
+            FROM ensemble_member_scores
+            WHERE predicted_temp IS NOT NULL AND actual_temp IS NOT NULL
+        """
+        params: list = []
+        if city:
+            query += " AND city = ?"
+            params.append(city)
+        if season:
+            if season.lower() == "winter":
+                query += " AND (CAST(strftime('%m', target_date) AS INTEGER) IN (10,11,12,1,2,3))"
+            elif season.lower() == "summer":
+                query += " AND (CAST(strftime('%m', target_date) AS INTEGER) IN (4,5,6,7,8,9))"
+        rows = con.execute(query, params).fetchall()
+
+    if not rows:
+        return None
+
+    by_model: dict[str, list[float]] = {}
+    for r in rows:
+        err = abs(r["predicted_temp"] - r["actual_temp"])
+        by_model.setdefault(r["model"], []).append(err)
+
+    return {
+        model: {"mae": round(sum(errs) / len(errs), 4), "count": len(errs)}
+        for model, errs in by_model.items()
+    }
+
+
+def get_market_calibration(n_buckets: int = 10) -> dict:
     """
     How well-calibrated are the MARKET PRICES (not our model)?
-    Groups settled predictions by market_prob bucket (0-10%, 10-20%, etc.)
-    and computes actual outcome rate per bucket.
-    Returns {"buckets": [{"range": "0-10%", "market_prob_avg": X, "actual_rate": Y, "n": N}]}
-    A well-calibrated market has actual_rate ≈ market_prob_avg.
+    Groups settled predictions into quantile-based buckets (equal frequency, not equal
+    width) and computes actual outcome rate per bucket (#13).
+    Returns a list of dicts with bucket_min, bucket_max, mean_prob, freq_yes, count.
+    A well-calibrated market has freq_yes ≈ mean_prob.
     Systematic deviations = exploitable edges.
     """
     init_db()
@@ -817,36 +910,42 @@ def get_market_calibration() -> dict:
             FROM predictions p
             JOIN outcomes o ON p.ticker = o.ticker
             WHERE p.market_prob IS NOT NULL
+            ORDER BY p.market_prob ASC
         """).fetchall()
 
     if not rows:
         return {"buckets": []}
 
-    # 10 buckets: 0-10%, 10-20%, ..., 90-100%
-    buckets: list[list] = [[] for _ in range(10)]
-    for r in rows:
-        mp = r["market_prob"]
-        bucket_idx = min(9, int(mp * 10))
-        buckets[bucket_idx].append((mp, r["settled_yes"]))
+    # Quantile-based (equal frequency) bucketing
+    data = [(r["market_prob"], r["settled_yes"]) for r in rows]
+    n = len(data)
+    bucket_size = max(1, n // n_buckets)
 
     result_buckets = []
-    for i, entries in enumerate(buckets):
-        if not entries:
-            continue
-        lo = i * 10
-        hi = lo + 10
-        avg_mp = sum(e[0] for e in entries) / len(entries)
-        actual_rate = sum(e[1] for e in entries) / len(entries)
-        diff = actual_rate - avg_mp
+    i = 0
+    while i < n:
+        chunk = data[i : i + bucket_size]
+        # Merge last tiny remainder into previous bucket if it would be too small
+        if i + bucket_size < n and (n - (i + bucket_size)) < bucket_size // 2:
+            chunk = data[i:]
+        probs = [p for p, _ in chunk]
+        outcomes = [y for _, y in chunk]
+        bucket_min = round(min(probs), 4)
+        bucket_max = round(max(probs), 4)
+        mean_prob = round(sum(probs) / len(probs), 4)
+        freq_yes = round(sum(outcomes) / len(outcomes), 4)
         result_buckets.append(
             {
-                "range": f"{lo}-{hi}%",
-                "market_prob_avg": round(avg_mp, 4),
-                "actual_rate": round(actual_rate, 4),
-                "diff": round(diff, 4),
-                "n": len(entries),
+                "bucket_min": bucket_min,
+                "bucket_max": bucket_max,
+                "mean_prob": mean_prob,
+                "freq_yes": freq_yes,
+                "count": len(chunk),
             }
         )
+        if i + bucket_size >= n or (n - (i + bucket_size)) < bucket_size // 2:
+            break
+        i += bucket_size
 
     return {"buckets": result_buckets}
 
@@ -894,6 +993,7 @@ def get_confusion_matrix(threshold: float = 0.5) -> dict:
             "recall": None,
             "f1": None,
             "accuracy": None,
+            "threshold": threshold,
             "n": 0,
         }
 
@@ -925,8 +1025,57 @@ def get_confusion_matrix(threshold: float = 0.5) -> dict:
         "recall": round(recall, 4) if recall is not None else None,
         "f1": round(f1, 4) if f1 is not None else None,
         "accuracy": round(accuracy, 4) if accuracy is not None else None,
+        "threshold": threshold,
         "n": n,
     }
+
+
+def get_optimal_threshold() -> dict | None:
+    """
+    Sweep thresholds 0.05..0.95 (step 0.05) and find the one maximizing F1 (#60).
+    Returns {"threshold_f1": float, "best_f1": float} or None if < 10 samples.
+    """
+    init_db()
+    with _conn() as con:
+        rows = con.execute("""
+            SELECT p.our_prob, o.settled_yes
+            FROM predictions p
+            JOIN outcomes o ON p.ticker = o.ticker
+            WHERE p.our_prob IS NOT NULL
+        """).fetchall()
+
+    if len(rows) < 10:
+        return None
+
+    best_f1 = -1.0
+    best_threshold = 0.5
+
+    thresholds = [round(0.05 * i, 2) for i in range(1, 20)]  # 0.05 to 0.95
+    for thresh in thresholds:
+        tp = fp = tn = fn = 0
+        for r in rows:
+            predicted_yes = r["our_prob"] >= thresh
+            actual_yes = bool(r["settled_yes"])
+            if predicted_yes and actual_yes:
+                tp += 1
+            elif predicted_yes and not actual_yes:
+                fp += 1
+            elif not predicted_yes and actual_yes:
+                fn += 1
+            else:
+                tn += 1
+        precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
+        recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
+        f1 = (
+            2 * precision * recall / (precision + recall)
+            if (precision + recall) > 0
+            else 0.0
+        )
+        if f1 > best_f1:
+            best_f1 = f1
+            best_threshold = thresh
+
+    return {"threshold_f1": best_threshold, "best_f1": round(best_f1, 4)}
 
 
 def get_roc_auc() -> dict:
@@ -993,22 +1142,28 @@ def get_roc_auc() -> dict:
     return {"auc": round(auc, 4), "n": len(rows), "points": points}
 
 
-def get_edge_decay_curve() -> list[dict]:
+def get_edge_decay_curve(condition_type: str | None = None) -> list[dict]:
     """
-    Average edge and Brier score grouped by forecast horizon (days_out).
+    Average edge and Brier score grouped by forecast horizon (days_out) (#14).
     Shows whether our edge shrinks as markets approach settlement.
     Returns [{bucket, avg_edge, avg_brier, n}] sorted near→far.
     Only includes buckets with >= 3 samples.
+    Optionally filter by condition_type.
     """
     init_db()
     with _conn() as con:
-        rows = con.execute("""
+        query = """
             SELECT p.our_prob, p.market_prob, p.days_out, o.settled_yes
             FROM predictions p
             JOIN outcomes o ON p.ticker = o.ticker
             WHERE p.our_prob IS NOT NULL AND p.market_prob IS NOT NULL
               AND p.days_out IS NOT NULL
-        """).fetchall()
+        """
+        params: list = []
+        if condition_type is not None:
+            query += " AND p.condition_type = ?"
+            params.append(condition_type)
+        rows = con.execute(query, params).fetchall()
 
     buckets: dict[str, list] = {"0-2": [], "3-5": [], "6-10": [], "11+": []}
     order = ["0-2", "3-5", "6-10", "11+"]
@@ -1042,6 +1197,90 @@ def get_edge_decay_curve() -> list[dict]:
             }
         )
     return result
+
+
+# ── Standalone statistical helpers ───────────────────────────────────────────
+
+
+def bayesian_confidence_interval(
+    successes: int,
+    trials: int,
+    confidence: float = 0.90,
+) -> tuple[float, float]:
+    """
+    Bayesian credible interval for a proportion using Beta(1+s, 1+f) posterior (#57).
+    Uses the Wilson score approximation for the interval bounds.
+
+    Parameters
+    ----------
+    successes : int  — number of successes (e.g. YES outcomes)
+    trials    : int  — total number of trials
+    confidence: float — credible level, e.g. 0.90 for 90% CI
+
+    Returns
+    -------
+    (lower, upper) tuple of floats in [0, 1]
+
+    The interval shrinks (narrows) as trials increases, reflecting more certainty.
+    """
+    import math
+
+    if trials < 0 or successes < 0:
+        raise ValueError("successes and trials must be non-negative")
+    if successes > trials:
+        raise ValueError("successes cannot exceed trials")
+
+    # Beta(1+s, 1+f) posterior — add 1 Laplace smoothing prior
+    alpha = 1 + successes
+    beta_param = 1 + (trials - successes)
+    n_posterior = alpha + beta_param  # = trials + 2
+
+    # Posterior mean
+    p_hat = alpha / n_posterior
+
+    # Wilson-score-style approximation using posterior parameters
+    # z = inverse normal CDF for the tail area
+    alpha_tail = (1.0 - confidence) / 2.0
+    # Rational approximation of inverse normal (Beasley-Springer-Moro)
+    z = _inv_normal_cdf(1.0 - alpha_tail)
+
+    denominator = 1.0 + z * z / n_posterior
+    centre = (p_hat + z * z / (2.0 * n_posterior)) / denominator
+    margin = (
+        z
+        * math.sqrt(
+            p_hat * (1 - p_hat) / n_posterior
+            + z * z / (4.0 * n_posterior * n_posterior)
+        )
+        / denominator
+    )
+
+    lower = max(0.0, centre - margin)
+    upper = min(1.0, centre + margin)
+    return (round(lower, 6), round(upper, 6))
+
+
+def _inv_normal_cdf(p: float) -> float:
+    """Rational approximation of the inverse normal CDF (Abramowitz & Stegun 26.2.17)."""
+    import math
+
+    if p <= 0.0:
+        return float("-inf")
+    if p >= 1.0:
+        return float("inf")
+
+    if p < 0.5:
+        sign = -1.0
+        p = 1.0 - p
+    else:
+        sign = 1.0
+
+    t = math.sqrt(-2.0 * math.log(1.0 - p))
+    c0, c1, c2 = 2.515517, 0.802853, 0.010328
+    d1, d2, d3 = 1.432788, 0.189269, 0.001308
+    numerator = c0 + c1 * t + c2 * t * t
+    denominator = 1.0 + d1 * t + d2 * t * t + d3 * t * t * t
+    return sign * (t - numerator / denominator)
 
 
 def get_model_calibration_buckets() -> dict:
