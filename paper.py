@@ -22,6 +22,9 @@ DATA_PATH.parent.mkdir(exist_ok=True)
 STARTING_BALANCE = 1000.0  # default paper bankroll in dollars
 MAX_DRAWDOWN_FRACTION = 0.50  # halt auto-sizing if balance < 50% of peak
 
+MAX_DAILY_LOSS_PCT = float(os.getenv("MAX_DAILY_LOSS_PCT", "0.03"))  # default 3%
+MAX_POSITION_AGE_DAYS = int(os.getenv("MAX_POSITION_AGE_DAYS", "7"))
+
 # Gradual recovery thresholds (fraction of peak balance).
 # Conservative tiers: resume slowly after a loss streak to avoid blowup.
 _DRAWDOWN_TIER_1 = 1 - MAX_DRAWDOWN_FRACTION  # 0.50 — fully paused below this
@@ -128,13 +131,17 @@ def kelly_bet_dollars(kelly_fraction: float) -> float:
     Scales down gradually as drawdown deepens rather than cutting off entirely
     at the 50% threshold. Fully pauses below 50% of peak.
     Hard cap at 25% of balance as a safety limit.
+    If on a 3+ consecutive loss streak, multiplies result by 0.50.
     """
     scale = drawdown_scaling_factor()
     if scale == 0.0:
         return 0.0
     balance = get_balance()
     fraction = max(0.0, min(kelly_fraction * scale, 0.25))
-    return round(balance * fraction, 2)
+    dollars = round(balance * fraction, 2)
+    if is_streak_paused():
+        dollars = round(dollars * 0.50, 2)
+    return dollars
 
 
 def kelly_quantity(
@@ -164,13 +171,21 @@ def place_paper_order(
     target_date: str | None = None,  # ISO format "2026-04-09"
     exit_target: float
     | None = None,  # take-profit price (0–1); exit if market reaches this
+    thesis: str | None = None,
 ) -> dict:
     """
     Place a paper trade. Deducts quantity * entry_price from balance.
     exit_target: optional take-profit price — if set, check_exit_targets() will
     settle this trade early when the market price reaches the target.
+    thesis: optional free-text rationale for the trade.
     Returns the trade record.
     """
+    if is_daily_loss_halted():
+        daily_pnl = get_daily_pnl()
+        raise ValueError(
+            f"Daily loss limit reached — trading halted for today. (${daily_pnl:.2f} lost)"
+        )
+
     data = _load()
     cost = quantity * entry_price
 
@@ -196,6 +211,7 @@ def place_paper_order(
         "outcome": None,
         "pnl": None,
         "exit_target": exit_target,
+        "thesis": thesis,
     }
 
     data["balance"] -= cost
@@ -535,6 +551,105 @@ def check_expiring_trades(warn_hours: int = 24) -> list[dict]:
             continue
     expiring.sort(key=lambda x: x["hours_left"])  # type: ignore[arg-type, return-value]
     return expiring
+
+
+def get_current_streak() -> tuple[str, int]:
+    """
+    Returns ("win", N) or ("loss", N) or ("none", 0) based on the last N consecutive
+    settled trades all going the same direction.
+    """
+    settled = [
+        t for t in _load()["trades"] if t["settled"] and t.get("pnl") is not None
+    ]
+    if not settled:
+        return ("none", 0)
+    # Sort by entered_at as a proxy for settled time
+    settled.sort(key=lambda t: t.get("entered_at", ""))
+    # Walk backwards to find streak direction
+    last_pnl = settled[-1]["pnl"]
+    if last_pnl is None:
+        return ("none", 0)
+    direction = "win" if last_pnl > 0 else "loss"
+    streak = 1
+    for t in reversed(settled[:-1]):
+        pnl = t.get("pnl")
+        if pnl is None:
+            break
+        trade_dir = "win" if pnl > 0 else "loss"
+        if trade_dir == direction:
+            streak += 1
+        else:
+            break
+    return (direction, streak)
+
+
+def is_streak_paused() -> bool:
+    """Return True if on a 3+ consecutive loss streak — reduce sizing."""
+    kind, n = get_current_streak()
+    return kind == "loss" and n >= 3
+
+
+def get_daily_pnl() -> float:
+    """Sum of P&L from trades settled today (UTC)."""
+    today_str = datetime.now(UTC).strftime("%Y-%m-%d")
+    return sum(
+        t.get("pnl", 0.0) or 0.0
+        for t in _load()["trades"]
+        if t.get("settled") and t.get("entered_at", "")[:10] == today_str
+    )
+
+
+def is_daily_loss_halted() -> bool:
+    """Return True if today's P&L is worse than -MAX_DAILY_LOSS_PCT * STARTING_BALANCE."""
+    return get_daily_pnl() < -(MAX_DAILY_LOSS_PCT * STARTING_BALANCE)
+
+
+def check_aged_positions() -> list[dict]:
+    """
+    Return open trades entered more than MAX_POSITION_AGE_DAYS days ago.
+    Each entry: {"trade": {...}, "age_days": int}
+    """
+    now = datetime.now(UTC)
+    aged = []
+    for t in get_open_trades():
+        entered_str = t.get("entered_at", "")
+        if not entered_str:
+            continue
+        try:
+            entered = datetime.fromisoformat(entered_str.replace("Z", "+00:00"))
+            age_days = (now - entered).days
+            if age_days > MAX_POSITION_AGE_DAYS:
+                aged.append({"trade": t, "age_days": age_days})
+        except (ValueError, TypeError):
+            continue
+    return aged
+
+
+def graduation_check(min_trades: int = 10, min_win_rate: float = 0.60) -> dict | None:
+    """
+    Check if paper trading performance warrants going live.
+    Returns a summary dict if criteria met, None otherwise.
+    Criteria: >= min_trades settled, win_rate >= min_win_rate, total_pnl > 0.
+    Returns: {"settled": N, "win_rate": X, "total_pnl": Y, "roi": Z}
+    """
+    perf = get_performance()
+    settled = perf.get("settled", 0)
+    win_rate = perf.get("win_rate")
+    total_pnl = perf.get("total_pnl", 0.0)
+    roi = perf.get("roi")
+    if (
+        settled >= min_trades
+        and win_rate is not None
+        and win_rate >= min_win_rate
+        and total_pnl > 0
+    ):
+        return {
+            "settled": settled,
+            "win_rate": win_rate,
+            "total_pnl": total_pnl,
+            "roi": roi,
+        }
+    return None
 
 
 def auto_settle_paper_trades(client=None) -> int:

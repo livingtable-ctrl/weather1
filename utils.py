@@ -14,6 +14,14 @@ import os
 # Maker (limit) orders pay 0%. Override via KALSHI_FEE_RATE in .env.
 KALSHI_FEE_RATE = float(os.getenv("KALSHI_FEE_RATE", "0.07"))
 
+# Edge thresholds — override via .env
+MIN_EDGE = float(os.getenv("MIN_EDGE", "0.10"))  # minimum edge to show in analyze
+STRONG_EDGE = float(
+    os.getenv("STRONG_EDGE", "0.25")
+)  # threshold for "STRONG BUY" label
+MAX_DAILY_LOSS_PCT = float(os.getenv("MAX_DAILY_LOSS_PCT", "0.03"))
+MAX_POSITION_AGE_DAYS = int(os.getenv("MAX_POSITION_AGE_DAYS", "7"))
+
 # ── Shared math ───────────────────────────────────────────────────────────────
 
 

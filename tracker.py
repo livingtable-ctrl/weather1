@@ -8,8 +8,9 @@ After markets settle, records outcomes so we can:
 
 from __future__ import annotations
 
+import math
 import sqlite3
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
 DB_PATH = Path(__file__).parent / "data" / "predictions.db"
@@ -43,7 +44,8 @@ def init_db() -> None:
             edge          REAL,
             method        TEXT,
             n_members     INTEGER,
-            predicted_at  TEXT    NOT NULL
+            predicted_at  TEXT    NOT NULL,
+            days_out      INTEGER
         );
 
         CREATE TABLE IF NOT EXISTS outcomes (
@@ -64,6 +66,13 @@ def init_db() -> None:
         );
         CREATE INDEX IF NOT EXISTS idx_src_city ON source_reliability(city, source);
         """)
+    # Migration: add days_out column if it doesn't exist yet (SQLite doesn't support IF NOT EXISTS)
+    with _conn() as con:
+        try:
+            con.execute("ALTER TABLE predictions ADD COLUMN days_out INTEGER")
+        except sqlite3.OperationalError:
+            pass  # Column already exists
+
     _db_initialized = True
 
 
@@ -78,6 +87,7 @@ def log_prediction(
     cond = analysis.get("condition", {})
     lo = cond.get("threshold", cond.get("lower"))
     hi = cond.get("threshold", cond.get("upper"))
+    days_out = (market_date - date.today()).days if market_date is not None else None
 
     with _conn() as con:
         # Don't duplicate — update if already logged today
@@ -89,7 +99,7 @@ def log_prediction(
             con.execute(
                 """
                 UPDATE predictions SET
-                    our_prob=?, market_prob=?, edge=?, method=?, n_members=?
+                    our_prob=?, market_prob=?, edge=?, method=?, n_members=?, days_out=?
                 WHERE id=?
             """,
                 (
@@ -98,6 +108,7 @@ def log_prediction(
                     analysis.get("edge"),
                     analysis.get("method"),
                     analysis.get("n_members"),
+                    days_out,
                     existing["id"],
                 ),
             )
@@ -107,8 +118,8 @@ def log_prediction(
                 INSERT INTO predictions
                   (ticker, city, market_date, condition_type,
                    threshold_lo, threshold_hi, our_prob, market_prob,
-                   edge, method, n_members, predicted_at)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,datetime('now'))
+                   edge, method, n_members, predicted_at, days_out)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,datetime('now'),?)
             """,
                 (
                     ticker,
@@ -122,6 +133,7 @@ def log_prediction(
                     analysis.get("edge"),
                     analysis.get("method"),
                     analysis.get("n_members"),
+                    days_out,
                 ),
             )
 
@@ -144,14 +156,15 @@ def log_outcome(ticker: str, settled_yes: bool) -> None:
 
 def get_bias(city: str | None, month: int | None, min_samples: int = 5) -> float:
     """
-    Compute systematic bias for a city/month: mean(our_prob - actual_outcome).
+    Compute systematic bias for a city/month: weighted mean(our_prob - actual_outcome).
+    Weights each sample by exp(-age_days / 30) so recent predictions count more.
     Positive bias means we consistently over-estimate; negative = under-estimate.
-    Returns 0.0 if insufficient data.
+    Returns 0.0 if insufficient data (raw count < min_samples).
     """
     init_db()
     with _conn() as con:
         query = """
-            SELECT p.our_prob, o.settled_yes
+            SELECT p.our_prob, o.settled_yes, p.predicted_at
             FROM predictions p
             JOIN outcomes o ON p.ticker = o.ticker
             WHERE p.our_prob IS NOT NULL
@@ -169,8 +182,57 @@ def get_bias(city: str | None, month: int | None, min_samples: int = 5) -> float
     if len(rows) < min_samples:
         return 0.0
 
-    bias = sum(r["our_prob"] - r["settled_yes"] for r in rows) / len(rows)
-    return bias
+    now = datetime.utcnow()
+    weighted_bias = 0.0
+    total_weight = 0.0
+    for r in rows:
+        try:
+            predicted_at = datetime.fromisoformat(
+                r["predicted_at"].replace("Z", "+00:00")
+            )
+            if predicted_at.tzinfo is not None:
+                predicted_at = predicted_at.replace(tzinfo=None)
+            age_days = max(0.0, (now - predicted_at).total_seconds() / 86400)
+        except (ValueError, TypeError, AttributeError):
+            age_days = 0.0
+        weight = math.exp(-age_days / 30.0)
+        weighted_bias += (r["our_prob"] - r["settled_yes"]) * weight
+        total_weight += weight
+
+    if total_weight == 0:
+        return 0.0
+    return weighted_bias / total_weight
+
+
+def get_brier_by_days_out() -> dict[str, float]:
+    """
+    Brier score segmented by forecast horizon.
+    Returns {"0-2d": brier, "3-5d": brier, "6-10d": brier, "11+d": brier}
+    Only buckets with >= 5 settled predictions are included.
+    """
+    init_db()
+    with _conn() as con:
+        rows = con.execute("""
+            SELECT p.our_prob, o.settled_yes, p.days_out
+            FROM predictions p
+            JOIN outcomes o ON p.ticker = o.ticker
+            WHERE p.our_prob IS NOT NULL AND p.days_out IS NOT NULL
+        """).fetchall()
+
+    buckets: dict[str, list[float]] = {"0-2d": [], "3-5d": [], "6-10d": [], "11+d": []}
+    for r in rows:
+        d = r["days_out"]
+        err = (r["our_prob"] - r["settled_yes"]) ** 2
+        if d <= 2:
+            buckets["0-2d"].append(err)
+        elif d <= 5:
+            buckets["3-5d"].append(err)
+        elif d <= 10:
+            buckets["6-10d"].append(err)
+        else:
+            buckets["11+d"].append(err)
+
+    return {k: sum(v) / len(v) for k, v in buckets.items() if len(v) >= 5}
 
 
 # ── History + Brier scoring ───────────────────────────────────────────────────

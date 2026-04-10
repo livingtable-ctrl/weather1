@@ -932,6 +932,20 @@ def _analyze_precip_trade(
     if len(precip_members) >= 5:
         ci_low, ci_high = _bootstrap_ci_precip(precip_members, condition)
 
+    # ── Consensus signal for precip: ensemble and clim_prior agree with blend ──
+    precip_consensus = (
+        (
+            (ens_prob > 0.5 and clim_prior > 0.5 and blended_prob > 0.5)
+            or (ens_prob < 0.5 and clim_prior < 0.5 and blended_prob < 0.5)
+        )
+        if ens_prob is not None
+        else False
+    )
+
+    ci_adj_kelly = round(fee_kel * max(0.25, 1.0 - (ci_high - ci_low)), 6)
+    if precip_consensus:
+        ci_adj_kelly = round(ci_adj_kelly * 1.25, 6)
+
     return {
         "forecast_prob": blended_prob,
         "market_prob": market_prob,
@@ -959,8 +973,9 @@ def _analyze_precip_trade(
         "ci_width": round(ci_high - ci_low, 4),
         "kelly": kelly,
         "fee_adjusted_kelly": fee_kel,
-        "ci_adjusted_kelly": round(fee_kel * max(0.25, 1.0 - (ci_high - ci_low)), 6),
+        "ci_adjusted_kelly": ci_adj_kelly,
         "time_risk": "HIGH",
+        "consensus": precip_consensus,
     }
 
 
@@ -1106,6 +1121,13 @@ def analyze_trade(enriched: dict) -> dict | None:
     except Exception:
         pass
 
+    # ── Consensus signal: all available sources agree on direction ───────────
+    sources_with_data = [p for p in [ens_prob, _nws_prob, clim_prob] if p is not None]
+    consensus = len(sources_with_data) >= 2 and (
+        all(p > 0.5 for p in sources_with_data)
+        or all(p < 0.5 for p in sources_with_data)
+    )
+
     # ── 8. Confidence interval (bootstrap on ensemble members) ───────────────
     ci_low, ci_high = (blended_prob, blended_prob)
     if temps:
@@ -1202,6 +1224,10 @@ def analyze_trade(enriched: dict) -> dict | None:
         6,
     )
 
+    # Consensus bonus: all sources agree → size up 25%
+    if consensus:
+        ci_adjusted_kelly = round(ci_adjusted_kelly * 1.25, 6)
+
     return {
         # Core
         "forecast_prob": blended_prob,
@@ -1241,4 +1267,24 @@ def analyze_trade(enriched: dict) -> dict | None:
         "spread_cost": round(spread_cost, 4),
         "spread_scale": round(spread_scale, 4),
         "time_kelly_scale": round(time_kelly_scale, 4),
+        # Consensus signal
+        "consensus": consensus,
     }
+
+
+def detect_hedge_opportunity(analysis: dict, open_trades: list[dict]) -> bool:
+    """
+    Return True if the new trade would partially hedge an existing open position
+    (i.e., the opposite side of the same city+date is already open).
+    A hedge reduces net directional risk, so it can be sized slightly larger.
+    """
+    city = analysis.get("city") or analysis.get("_city")
+    if not city:
+        return False
+    rec_side = analysis.get("recommended_side", "yes")
+    opposite = "no" if rec_side == "yes" else "yes"
+    return any(
+        t.get("city") == city and t.get("side") == opposite
+        for t in open_trades
+        if not t.get("settled")
+    )
