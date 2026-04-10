@@ -651,20 +651,21 @@ def get_history(limit: int = 50) -> list[dict]:
 
 def get_calibration_trend(weeks: int = 8) -> list[dict]:
     """
-    Brier score grouped by ISO week for the last N weeks.
-    Returns [{week, brier, n}, ...] oldest first.
-    Only includes weeks with at least one settled prediction.
+    Brier score grouped by ISO week of the MARKET DATE for the last N weeks.
+    Groups by market_date (not predicted_at) so the trend reflects when the
+    weather event occurred, not when the analysis was run (#54).
     """
     init_db()
     with _conn() as con:
         rows = con.execute("""
             SELECT
-                strftime('%Y-W%W', p.predicted_at) AS week,
+                strftime('%Y-W%W', p.market_date) AS week,
                 p.our_prob,
                 o.settled_yes
             FROM predictions p
             JOIN outcomes o ON p.ticker = o.ticker
             WHERE p.our_prob IS NOT NULL
+              AND p.market_date IS NOT NULL
             ORDER BY week ASC
         """).fetchall()
 

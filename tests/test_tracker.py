@@ -1053,3 +1053,100 @@ def test_get_unselected_bias_returns_zero_when_no_data(tmp_db):
     from tracker import get_unselected_bias
 
     assert get_unselected_bias("NOWHERE") == 0.0
+
+
+# ── Task 3: get_calibration_trend uses market_date not predicted_at (#54) ─────
+
+
+class TestCalibrationTrendUsesMarketDate(unittest.TestCase):
+    """Verify get_calibration_trend groups by market_date, not predicted_at (#54)."""
+
+    def setUp(self):
+        import tempfile
+
+        self._tmpdir = tempfile.mkdtemp()
+        self._orig = tracker.DB_PATH
+        tracker.DB_PATH = Path(self._tmpdir) / "test_trend54.db"
+        tracker._db_initialized = False
+        tracker.init_db()
+
+    def tearDown(self):
+        tracker.DB_PATH = self._orig
+        tracker._db_initialized = False
+        import shutil
+
+        shutil.rmtree(self._tmpdir, ignore_errors=True)
+
+    def _insert_raw(
+        self, ticker, our_prob, settled_yes, market_date_str, predicted_at_str
+    ):
+        import sqlite3
+
+        with sqlite3.connect(str(tracker.DB_PATH)) as con:
+            con.execute(
+                """INSERT INTO predictions
+                   (ticker, city, market_date, condition_type,
+                    threshold_lo, threshold_hi, our_prob, market_prob,
+                    edge, method, n_members, predicted_at, days_out)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (
+                    ticker,
+                    "NYC",
+                    market_date_str,
+                    "above",
+                    70.0,
+                    70.0,
+                    our_prob,
+                    0.5,
+                    our_prob - 0.5,
+                    "ensemble",
+                    20,
+                    predicted_at_str,
+                    3,
+                ),
+            )
+            con.execute(
+                "INSERT OR REPLACE INTO outcomes (ticker, settled_yes, settled_at) VALUES (?,?,?)",
+                (ticker, 1 if settled_yes else 0, predicted_at_str),
+            )
+
+    def test_trend_bucket_uses_market_date_week(self):
+        """Two predictions made in same analysis week but different market-date weeks must be in separate buckets."""
+        self._insert_raw(
+            "TKTREND-A",
+            0.8,
+            True,
+            "2026-04-07",
+            "2026-04-06T12:00:00",
+        )
+        self._insert_raw(
+            "TKTREND-B",
+            0.6,
+            False,
+            "2026-04-14",
+            "2026-04-06T13:00:00",
+        )
+
+        trend = tracker.get_calibration_trend(weeks=8)
+        weeks_in_result = [row["week"] for row in trend]
+        self.assertEqual(
+            len(set(weeks_in_result)),
+            2,
+            f"Expected 2 distinct market-date week buckets, got: {weeks_in_result}",
+        )
+
+    def test_trend_returns_list_of_dicts_with_week_brier_n(self):
+        """Each trend entry must have week, brier, and n keys."""
+        self._insert_raw(
+            "TKTREND-C",
+            0.7,
+            True,
+            "2026-04-09",
+            "2026-04-08T10:00:00",
+        )
+        trend = tracker.get_calibration_trend(weeks=8)
+        self.assertIsInstance(trend, list)
+        if trend:
+            self.assertIn("week", trend[0])
+            self.assertIn("brier", trend[0])
+            self.assertIn("n", trend[0])
