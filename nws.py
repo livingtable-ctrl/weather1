@@ -181,18 +181,18 @@ def get_live_observation(city: str, coords: tuple) -> dict | None:
         _log.warning("NWS circuit open — skipping observation for %s", city)
         return None
 
-    now = time.time()
-    if city in _obs_cache:
-        cached_at, obs = _obs_cache[city]
-        if now - cached_at < OBS_TTL:
-            return obs
-
-    lat, lon, _ = coords
-    station_id = _get_obs_station(lat, lon)
-    if not station_id:
-        return None
-
     try:
+        now = time.time()
+        if city in _obs_cache:
+            cached_at, obs = _obs_cache[city]
+            if now - cached_at < OBS_TTL:
+                return obs
+
+        lat, lon = coords[0], coords[1]
+        station_id = _get_obs_station(lat, lon)
+        if not station_id:
+            return None
+
         data = _get(f"{NWS_BASE}/stations/{station_id}/observations/latest")
         props = data.get("properties", {})
         temp_c = (props.get("temperature") or {}).get("value")

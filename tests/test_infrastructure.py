@@ -135,3 +135,57 @@ def test_migrations_are_idempotent(tmp_path):
 
     tracker.DB_PATH = orig_path
     tracker._db_initialized = False
+
+
+# ── Circuit Breaker integration (#3) ──────────────────────────────────────────
+
+
+def test_nws_cb_skips_when_open(monkeypatch):
+    """get_live_observation returns None immediately when its CB is open."""
+    import nws
+    from circuit_breaker import CircuitBreaker
+
+    cb = CircuitBreaker("nws_test", failure_threshold=1, recovery_timeout=60)
+    cb.record_failure()
+    monkeypatch.setattr(nws, "_nws_cb", cb)
+
+    result = nws.get_live_observation("TestCity", (40.0, -75.0))
+    assert result is None
+
+
+def test_climatology_cb_skips_when_open(monkeypatch):
+    """climatological_prob returns None immediately when its CB is open."""
+    from datetime import date
+
+    import climatology
+    from circuit_breaker import CircuitBreaker
+
+    cb = CircuitBreaker("clim_test", failure_threshold=1, recovery_timeout=60)
+    cb.record_failure()
+    monkeypatch.setattr(climatology, "_clim_cb", cb)
+
+    result = climatology.climatological_prob(
+        "TestCity", (40.0, -75.0), date.today(), {"type": "high_temp", "threshold": 90}
+    )
+    assert result is None
+
+
+def test_nws_cb_records_failure_on_exception(monkeypatch):
+    """A network error inside get_live_observation increments the CB failure count."""
+    import nws
+    from circuit_breaker import CircuitBreaker
+
+    cb = CircuitBreaker("nws_fail_test", failure_threshold=5, recovery_timeout=60)
+    monkeypatch.setattr(nws, "_nws_cb", cb)
+
+    def _boom(*a, **kw):
+        raise OSError("network down")
+
+    monkeypatch.setattr(nws, "_get_obs_station", _boom, raising=False)
+
+    try:
+        nws.get_live_observation("TestCity", (40.0, -75.0))
+    except Exception:
+        pass
+
+    assert cb._failure_count >= 1
