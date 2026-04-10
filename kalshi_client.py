@@ -55,6 +55,17 @@ def _request_with_retry(method: str, url: str, **kwargs) -> requests.Response:
     # #108: warn on slow API responses so latency issues are visible
     if _elapsed > 5:
         _log.warning("Kalshi API slow: %.1fs for %s %s", _elapsed, method, url)
+    # #69: log every API call for audit trail and latency monitoring
+    try:
+        from urllib.parse import urlparse
+
+        from tracker import log_api_request
+
+        endpoint = urlparse(url).path
+        elapsed_ms = _elapsed * 1000
+        log_api_request(method, endpoint, resp.status_code, elapsed_ms)
+    except Exception:
+        pass
     return resp
 
 

@@ -8,10 +8,13 @@ After markets settle, records outcomes so we can:
 
 from __future__ import annotations
 
+import logging
 import math
 import sqlite3
 from datetime import date, datetime
 from pathlib import Path
+
+_log = logging.getLogger(__name__)
 
 DB_PATH = Path(__file__).parent / "data" / "predictions.db"
 DB_PATH.parent.mkdir(exist_ok=True)
@@ -97,6 +100,17 @@ def init_db() -> None:
             logged_at  TEXT    NOT NULL
         );
         CREATE INDEX IF NOT EXISTS idx_audit_ticker ON audit_log(ticker);
+
+        -- #69: audit trail for every outbound API call (latency + status monitoring)
+        CREATE TABLE IF NOT EXISTS api_requests (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            method      TEXT NOT NULL,
+            endpoint    TEXT NOT NULL,
+            status_code INTEGER,
+            latency_ms  REAL,
+            logged_at   TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_api_endpoint ON api_requests(endpoint, logged_at);
         """)
     # Migrations: add columns that may not exist in older DBs
     migrations = [
@@ -115,6 +129,29 @@ def init_db() -> None:
 
 
 # ── Logging ───────────────────────────────────────────────────────────────────
+
+
+def log_api_request(
+    method: str, endpoint: str, status_code: int | None, latency_ms: float
+) -> None:
+    """Log an API call for audit trail and latency monitoring (#69)."""
+    from datetime import UTC
+
+    init_db()
+    try:
+        with _conn() as con:
+            con.execute(
+                "INSERT INTO api_requests (method, endpoint, status_code, latency_ms, logged_at) VALUES (?,?,?,?,?)",
+                (
+                    method,
+                    endpoint,
+                    status_code,
+                    latency_ms,
+                    datetime.now(UTC).isoformat(),
+                ),
+            )
+    except Exception as exc:
+        _log.warning("Failed to log API request: %s", exc)
 
 
 def log_audit(

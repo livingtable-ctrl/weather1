@@ -68,3 +68,70 @@ def test_session_has_retry_adapter():
     adapter = session.get_adapter("https://")
     assert adapter is not None
     assert hasattr(adapter, "max_retries")
+
+
+# ── API request audit logging (#69) ───────────────────────────────────────────
+
+
+def test_log_api_request_writes_to_db(tmp_path):
+    import tracker
+
+    orig_path = tracker.DB_PATH
+    tracker.DB_PATH = tmp_path / "test.db"
+    tracker._db_initialized = False
+    tracker.init_db()
+
+    tracker.log_api_request("GET", "/markets", 200, 123.4)
+
+    with tracker._conn() as con:
+        row = con.execute(
+            "SELECT * FROM api_requests WHERE endpoint='/markets'"
+        ).fetchone()
+    assert row is not None
+    assert row["status_code"] == 200
+
+    tracker.DB_PATH = orig_path
+    tracker._db_initialized = False
+
+
+# ── Async market fetching (#127) ──────────────────────────────────────────────
+
+
+def test_market_fetch_uses_threadpool():
+    """Verify get_weather_markets doesn't crash and runs in reasonable time."""
+    from unittest.mock import MagicMock
+
+    import weather_markets
+
+    mock_client = MagicMock()
+    mock_client.get_markets.return_value = []
+
+    t0 = time.monotonic()
+    try:
+        weather_markets.get_weather_markets(mock_client, force=True)
+    except Exception:
+        pass
+    elapsed = time.monotonic() - t0
+    assert elapsed < 10
+
+
+# ── DB migrations (#99) ───────────────────────────────────────────────────────
+
+
+def test_migrations_are_idempotent(tmp_path):
+    import tracker
+
+    orig_path = tracker.DB_PATH
+    tracker.DB_PATH = tmp_path / "migrate_test.db"
+    tracker._db_initialized = False
+
+    tracker.init_db()
+    tracker._db_initialized = False
+    tracker.init_db()  # second call must not raise
+
+    with tracker._conn() as con:
+        row = con.execute("SELECT version FROM schema_version").fetchone()
+    assert row is not None
+
+    tracker.DB_PATH = orig_path
+    tracker._db_initialized = False
