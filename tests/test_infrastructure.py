@@ -457,3 +457,71 @@ def test_auto_backup_logs_verification(tmp_path, caplog):
 
     assert count >= 1
     assert any("backup verified" in r.message.lower() for r in caplog.records)
+
+
+# ── Parallel market analysis (#127) ───────────────────────────────────────────
+
+
+def test_analyze_markets_parallel_returns_results():
+    """analyze_markets_parallel returns one result dict per market."""
+    from unittest.mock import patch
+
+    import weather_markets
+
+    markets = [
+        {"ticker": f"KXHIGHNY-26APR{i:02d}-T72", "title": f"Market {i}"}
+        for i in range(5)
+    ]
+    fake_analysis = {"edge": 0.1, "signal": "BUY", "forecast_prob": 0.7}
+
+    with patch.object(weather_markets, "enrich_with_forecast", return_value={}):
+        with patch.object(weather_markets, "analyze_trade", return_value=fake_analysis):
+            results = weather_markets.analyze_markets_parallel(markets)
+
+    assert len(results) == 5
+    for r in results:
+        assert r is not None
+
+
+def test_analyze_markets_parallel_handles_per_market_exception():
+    """analyze_markets_parallel continues if one market raises an exception."""
+    from unittest.mock import patch
+
+    import weather_markets
+
+    markets = [{"ticker": f"KXHIGH-{i}", "title": f"M{i}"} for i in range(4)]
+    call_count = {"n": 0}
+
+    def _flaky_analyze(enriched):
+        call_count["n"] += 1
+        if call_count["n"] == 2:
+            raise ValueError("transient error for market 2")
+        return {"edge": 0.05, "signal": "HOLD"}
+
+    with patch.object(weather_markets, "enrich_with_forecast", return_value={}):
+        with patch.object(weather_markets, "analyze_trade", side_effect=_flaky_analyze):
+            results = weather_markets.analyze_markets_parallel(markets)
+
+    assert len(results) == 4
+
+
+def test_analyze_markets_parallel_is_faster_than_sequential():
+    """ThreadPool reduces wall-clock time when each analysis has I/O latency."""
+    import time
+    from unittest.mock import patch
+
+    import weather_markets
+
+    markets = [{"ticker": f"MKT-{i}"} for i in range(6)]
+
+    def _slow_analyze(enriched):
+        time.sleep(0.05)
+        return {"edge": 0.0, "signal": "HOLD"}
+
+    with patch.object(weather_markets, "enrich_with_forecast", return_value={}):
+        with patch.object(weather_markets, "analyze_trade", side_effect=_slow_analyze):
+            t0 = time.monotonic()
+            weather_markets.analyze_markets_parallel(markets)
+            elapsed = time.monotonic() - t0
+
+    assert elapsed < 0.25, f"parallel analysis too slow: {elapsed:.2f}s"

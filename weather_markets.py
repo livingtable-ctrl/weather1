@@ -2072,3 +2072,35 @@ def detect_hedge_opportunity(analysis: dict, open_trades: list[dict]) -> bool:
         for t in open_trades
         if not t.get("settled")
     )
+
+
+def analyze_markets_parallel(
+    markets: list[dict],
+    max_workers: int = 10,
+) -> list[dict | None]:
+    """
+    Run analyze_trade on each market concurrently (#127).
+    Returns list of result dicts (one per market, None on per-market error).
+    """
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    results: list[dict | None] = [None] * len(markets)
+
+    def _worker(idx: int, market: dict) -> tuple[int, dict | None]:
+        enriched = enrich_with_forecast(market)
+        return idx, analyze_trade(enriched)
+
+    with ThreadPoolExecutor(max_workers=max_workers) as pool:
+        futures = {pool.submit(_worker, i, m): i for i, m in enumerate(markets)}
+        for fut in as_completed(futures):
+            idx = futures[fut]
+            try:
+                _, analysis = fut.result()
+                results[idx] = analysis
+            except Exception as exc:
+                _log.warning(
+                    "analyze_markets_parallel: market index %d failed: %s", idx, exc
+                )
+                results[idx] = None
+
+    return results
