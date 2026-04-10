@@ -1260,3 +1260,38 @@ class TestAnalyzeAllMarketsAndBias(unittest.TestCase):
         with sqlite3.connect(str(tracker.DB_PATH)) as con:
             count = con.execute("SELECT COUNT(*) FROM analysis_attempts").fetchone()[0]
         self.assertEqual(count, 0)
+
+
+# ── Task 6: get_optimal_threshold guard = 20 (#60) ────────────────────────────
+
+
+class TestOptimalThresholdGuard20(_Phase3Base):
+    """Verify get_optimal_threshold returns None below 20 data points (#60)."""
+
+    def test_returns_none_with_19_samples(self):
+        """19 samples (< 20) must return None."""
+        for i in range(19):
+            self._add(f"TKOPT20-{i}", "NYC", 0.7, 0.5, True)
+        result = tracker.get_optimal_threshold()
+        self.assertIsNone(result, "Expected None with 19 samples (< 20 threshold)")
+
+    def test_returns_dict_with_exactly_20_samples(self):
+        """Exactly 20 samples must return a result dict."""
+        for i in range(10):
+            self._add(f"TKOPT20-YES-{i}", "NYC", 0.8, 0.5, True)
+        for i in range(10):
+            self._add(f"TKOPT20-NO-{i}", "NYC", 0.2, 0.5, False)
+        result = tracker.get_optimal_threshold()
+        self.assertIsNotNone(result, "Expected dict with exactly 20 samples")
+        assert result is not None
+        self.assertIn("threshold_f1", result)
+        self.assertIn("best_f1", result)
+
+    def test_returns_none_with_10_samples(self):
+        """10 samples (old guard) must now return None (guard raised to 20)."""
+        for i in range(10):
+            self._add(f"TKOPT20-10-{i}", "NYC", 0.7, 0.5, True)
+        result = tracker.get_optimal_threshold()
+        self.assertIsNone(
+            result, "Expected None with 10 samples after guard raised to 20"
+        )

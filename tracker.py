@@ -1154,7 +1154,7 @@ def get_confusion_matrix(threshold: float = 0.5) -> dict:
 def get_optimal_threshold() -> dict | None:
     """
     Sweep thresholds 0.05..0.95 (step 0.05) and find the one maximizing F1 (#60).
-    Returns {"threshold_f1": float, "best_f1": float} or None if < 10 samples.
+    Returns {"threshold_f1": float, "best_f1": float} or None if < 20 samples.
     """
     init_db()
     with _conn() as con:
@@ -1165,7 +1165,7 @@ def get_optimal_threshold() -> dict | None:
             WHERE p.our_prob IS NOT NULL
         """).fetchall()
 
-    if len(rows) < 10:
+    if len(rows) < 20:
         return None
 
     best_f1 = -1.0
