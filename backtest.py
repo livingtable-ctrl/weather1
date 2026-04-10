@@ -67,8 +67,20 @@ def fetch_archive_temps(
         "timezone": tz,
     }
     try:
-        resp = requests.get(ARCHIVE_ENS_BASE, params=params, timeout=30)  # type: ignore[arg-type]
-        resp.raise_for_status()
+        import time as _time_bt
+
+        resp = None
+        for _attempt in range(3):
+            resp = requests.get(ARCHIVE_ENS_BASE, params=params, timeout=30)  # type: ignore[arg-type]
+            if resp.status_code == 429:
+                _time_bt.sleep(2**_attempt)
+                continue
+            resp.raise_for_status()
+            break
+        else:
+            return []
+        if resp is None:
+            return []
         daily = resp.json().get("daily", {})
         times = daily.get("time", [])
         vals = daily.get(daily_var, [])
@@ -127,8 +139,20 @@ def fetch_archive_precip(
         "timezone": tz,
     }
     try:
-        resp = requests.get(ARCHIVE_ENS_BASE, params=params, timeout=30)  # type: ignore[arg-type]
-        resp.raise_for_status()
+        import time as _time_bt2
+
+        resp = None
+        for _attempt in range(3):
+            resp = requests.get(ARCHIVE_ENS_BASE, params=params, timeout=30)  # type: ignore[arg-type]
+            if resp.status_code == 429:
+                _time_bt2.sleep(2**_attempt)
+                continue
+            resp.raise_for_status()
+            break
+        else:
+            return None
+        if resp is None:
+            return None
         daily = resp.json().get("daily", {})
         vals = daily.get("precipitation_sum", [])
         if not vals or vals[0] is None:
@@ -342,6 +366,11 @@ def run_backtest(
                 "bench_random_pnl": round(bench_rand, 4),
             }
         )
+
+        # Small polite delay between markets to avoid hammering the API
+        import time as _time_loop
+
+        _time_loop.sleep(0.05)
 
     if not results:
         return {

@@ -72,6 +72,35 @@ def _send_ntfy(topic: str, title: str, message: str) -> bool:
         return False
 
 
+def _send_discord(title: str, message: str, color: int = 0x3FB950) -> bool:
+    """
+    Send a notification via Discord webhook.
+    Requires DISCORD_WEBHOOK_URL in environment.
+    Returns True if sent successfully.
+    """
+    import os
+
+    import requests  # type: ignore[import-untyped]
+
+    webhook_url = os.getenv("DISCORD_WEBHOOK_URL", "")
+    if not webhook_url:
+        return False
+    try:
+        payload = {
+            "embeds": [
+                {
+                    "title": title,
+                    "description": message,
+                    "color": color,
+                }
+            ]
+        }
+        resp = requests.post(webhook_url, json=payload, timeout=10)
+        return resp.status_code in (200, 204)
+    except Exception:
+        return False
+
+
 def alert_strong_signal(
     ticker: str, city: str, side: str, net_edge: float, kelly: float
 ) -> None:
@@ -105,3 +134,7 @@ def alert_strong_signal(
     ntfy_topic = os.getenv("NTFY_TOPIC", "")
     if ntfy_topic:
         _send_ntfy(ntfy_topic, title, msg)
+
+    # Discord webhook — green for BUY YES, red for BUY NO
+    discord_color = 0xF85149 if side.lower() == "no" else 0x3FB950
+    _send_discord(title, msg, color=discord_color)

@@ -830,6 +830,87 @@ def export_tax_csv(path: str, tax_year: int | None = None) -> int:
     return len(settled)
 
 
+def get_balance_history() -> list[dict]:
+    """
+    Return a time-ordered list of balance snapshots derived from the trade ledger.
+    Each entry: {"ts": ISO string, "balance": float, "event": str}
+    Starts at STARTING_BALANCE, applies each trade entry/exit in order.
+    """
+    all_trades = _load()["trades"]
+    # Sort by entered_at ascending
+    sorted_trades = sorted(all_trades, key=lambda t: t.get("entered_at", ""))
+    balance = STARTING_BALANCE
+    history = [{"ts": "", "balance": balance, "event": "Start"}]
+    for t in sorted_trades:
+        entered_at = t.get("entered_at", "")
+        cost = t.get("cost", 0.0) or 0.0
+        ticker = t.get("ticker", "")
+        # Entry: deduct cost
+        balance -= cost
+        history.append(
+            {
+                "ts": entered_at,
+                "balance": round(balance, 4),
+                "event": f"Bought {ticker}",
+            }
+        )
+        # Settlement: add payout if settled
+        if t.get("settled") and t.get("pnl") is not None:
+            pnl = t["pnl"]
+            payout = cost + pnl
+            balance += payout
+            # Sort after entry by appending "z" suffix for stable ordering
+            history.append(
+                {
+                    "ts": entered_at + "z",
+                    "balance": round(balance, 4),
+                    "event": f"Settled {ticker} {t.get('outcome', '')}",
+                }
+            )
+    return history
+
+
+def undo_last_trade(max_minutes: int = 5) -> dict | None:
+    """
+    Reverse the most recently placed (unsettled) paper trade if it was placed
+    within max_minutes ago. Refunds the cost to balance.
+    Returns the removed trade dict, or None if nothing to undo.
+    """
+    data = _load()
+    unsettled = [t for t in data["trades"] if not t["settled"]]
+    if not unsettled:
+        return None
+    # Sort by entered_at descending to get the most recent
+    unsettled.sort(key=lambda t: t.get("entered_at", ""), reverse=True)
+    last = unsettled[0]
+    entered_str = last.get("entered_at", "")
+    if not entered_str:
+        return None
+    try:
+        entered_dt = datetime.fromisoformat(entered_str.replace("Z", "+00:00"))
+    except (ValueError, TypeError):
+        return None
+    elapsed_minutes = (datetime.now(UTC) - entered_dt).total_seconds() / 60
+    if elapsed_minutes > max_minutes:
+        return None
+    # Refund cost and remove from trades
+    cost = last.get("cost", 0.0) or 0.0
+    data["balance"] += cost
+    data["trades"] = [t for t in data["trades"] if t["id"] != last["id"]]
+    # Recalculate peak_balance from remaining trades
+    peak = STARTING_BALANCE
+    running = STARTING_BALANCE
+    for t in sorted(data["trades"], key=lambda t: t.get("entered_at", "")):
+        running -= t.get("cost", 0.0) or 0.0
+        if t.get("settled") and t.get("pnl") is not None:
+            payout = (t.get("cost", 0.0) or 0.0) + t["pnl"]
+            running += payout
+            peak = max(peak, running)
+    data["peak_balance"] = max(peak, data["balance"])
+    _save(data)
+    return last
+
+
 def auto_settle_paper_trades(client=None) -> int:
     """
     Settle any open paper trades whose tickers have recorded outcomes.

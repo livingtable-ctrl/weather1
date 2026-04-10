@@ -65,6 +65,80 @@ REFRESH_SECS = 300  # watch mode interval
 _WATCH_STATE_PATH = Path(__file__).parent / "data" / ".watch_state.json"
 
 
+def _brier_sparkline() -> str:
+    """
+    Return a sparkline string showing weekly Brier trend, e.g. "▅▄▃▂▂▁"
+    Uses Unicode block chars ▁▂▃▄▅▆▇█ (lower = better Brier score, i.e. lower bar = better).
+    Returns empty string if insufficient data.
+    """
+    try:
+        trend = get_calibration_trend(weeks=8)
+        if len(trend) < 2:
+            return ""
+        blocks = "▁▂▃▄▅▆▇█"
+        scores = [t["brier"] for t in trend]
+        min_s = 0.0
+        max_s = 0.25  # random = 0.25
+        span = max_s - min_s
+        result = ""
+        for s in scores:
+            # Map brier 0.0=▁ (good) to 0.25=█ (bad)
+            normalized = max(0.0, min(1.0, (s - min_s) / span))
+            idx = int(normalized * (len(blocks) - 1))
+            result += blocks[idx]
+        return result
+    except Exception:
+        return ""
+
+
+def _ascii_chart(
+    values: list[float], width: int = 50, height: int = 8, label: str = ""
+) -> str:
+    """
+    Render a simple ASCII line chart. Returns a multi-line string.
+    Uses block characters █ for filled areas.
+    Shows min/max labels on Y axis.
+    If all values are the same (flat line), shows a flat line without crashing.
+    """
+    if not values:
+        return ""
+    min_v = min(values)
+    max_v = max(values)
+    span = max_v - min_v
+    if span == 0:
+        span = 1.0  # avoid division by zero
+
+    # Downsample or upsample to fit width columns
+    n = len(values)
+    cols: list[float] = []
+    for col in range(width):
+        idx = int(col / width * n)
+        idx = min(idx, n - 1)
+        cols.append(values[idx])
+
+    # Build the grid row by row (top = high value)
+    lines: list[str] = []
+    for row in range(height, 0, -1):
+        threshold = min_v + (row / height) * span
+        row_str = ""
+        for val in cols:
+            row_str += "█" if val >= threshold else " "
+        # Y axis label on leftmost row and bottom row
+        if row == height:
+            label_str = f"${max_v:.0f} "
+        elif row == 1:
+            label_str = f"${min_v:.0f} "
+        else:
+            label_str = "       " if max_v >= 1000 else "      "
+        lines.append(label_str + "│" + row_str)
+
+    bottom = "       └" + "─" * width
+    lines.append(bottom)
+    if label:
+        lines.append(f"  {label}")
+    return "\n".join(lines)
+
+
 def _load_watch_state() -> set:
     """Load the set of previously-seen tickers from disk (survives restarts)."""
     try:
@@ -1060,8 +1134,26 @@ def _quick_paper_buy(client: KalshiClient) -> None:
                 return
 
             if qty and qty > 0:
+                from paper import get_balance as _gb_qpb
                 from paper import place_paper_order
 
+                _cost_qpb = qty * price
+                _balance_qpb = _gb_qpb()
+                if _cost_qpb > _balance_qpb * 0.03:
+                    _pct_qpb = _cost_qpb / _balance_qpb * 100
+                    _confirm_large = (
+                        input(
+                            yellow(
+                                f"  Heads up: this bet is ${_cost_qpb:.2f} ({_pct_qpb:.1f}% of your ${_balance_qpb:.2f} balance). "
+                                f"Continue? (y/N): "
+                            )
+                        )
+                        .strip()
+                        .lower()
+                    )
+                    if _confirm_large != "y":
+                        print(dim("  Cancelled."))
+                        return
                 trade = place_paper_order(ticker, side, qty, price, thesis=thesis)
                 print(green(f"  Paper trade #{trade['id']} placed."))
             else:
@@ -1070,6 +1162,126 @@ def _quick_paper_buy(client: KalshiClient) -> None:
             print(red(f"  Error: {e}"))
     except (KeyboardInterrupt, EOFError):
         print()
+
+
+def cmd_today(client: KalshiClient) -> None:
+    """Show a plain-English 'what should I do today?' recommendation."""
+    from paper import get_balance, kelly_bet_dollars
+    from utils import KALSHI_FEE_RATE as _fee
+
+    print(bold("\n  ── Today's Recommendation ──\n"))
+    print(dim("  Scanning markets for the best opportunity...\n"))
+
+    try:
+        markets = get_weather_markets(client)
+    except Exception as e:
+        print(red(f"  Could not load markets: {e}"))
+        return
+
+    best_m = None
+    best_a = None
+    best_abs_edge = 0.0
+
+    for m in markets:
+        enriched = enrich_with_forecast(m)
+        analysis = analyze_trade(enriched)
+        if not analysis:
+            continue
+        net_edge = analysis.get("net_edge", analysis["edge"])
+        if abs(net_edge) < MIN_EDGE:
+            continue
+        if not is_liquid(m):
+            continue
+        if analysis.get("time_risk") == "HIGH":
+            continue
+        if abs(net_edge) > best_abs_edge:
+            best_abs_edge = abs(net_edge)
+            best_m = enriched
+            best_a = analysis
+
+    if best_m is None or best_a is None:
+        print(yellow("  No strong opportunities today. Consider waiting."))
+        return
+
+    ticker = best_m.get("ticker", "")
+    title = best_m.get("title") or ticker
+    net_edge = best_a.get("net_edge", best_a["edge"])
+    forecast_prob = best_a["forecast_prob"]
+    market_prob = best_a["market_prob"]
+    side = best_a["recommended_side"]
+    time_risk = best_a.get("time_risk", "—")
+    consensus = best_a.get("consensus", "")
+    regime_desc = best_a.get("regime_description", "")
+    n_members = best_a.get("n_members", 0)
+    ci_kelly = best_a.get("ci_adjusted_kelly", best_a.get("fee_adjusted_kelly", 0.0))
+    entry_price = market_prob if side == "yes" else 1 - market_prob
+
+    balance = get_balance()
+    bet_dollars = kelly_bet_dollars(ci_kelly)
+    win_per_dollar = (1 - entry_price) * (1 - _fee)
+    if entry_price > 0 and bet_dollars > 0:
+        if_correct = round(bet_dollars / entry_price * win_per_dollar, 2)
+    else:
+        if_correct = 0.0
+
+    # Build "Why" explanation
+    why_parts = []
+    if n_members > 0:
+        why_parts.append(f"Our ensemble of {n_members} weather models")
+    if regime_desc:
+        why_parts.append(regime_desc)
+    if consensus:
+        why_parts.append(consensus)
+    if not why_parts:
+        why_parts.append("Our weather forecast models")
+    why = ". ".join(why_parts)
+
+    # Confidence label
+    if abs(net_edge) >= 0.25 and time_risk == "LOW":
+        confidence = green("HIGH (all sources agree — consensus signal)")
+    elif abs(net_edge) >= 0.15:
+        confidence = yellow("MEDIUM")
+    else:
+        confidence = dim("MODERATE")
+
+    risk_label = (
+        green("LOW")
+        if time_risk == "LOW"
+        else (yellow("MEDIUM") if time_risk != "HIGH" else red("HIGH"))
+    )
+
+    print(f"  Market:  {bold(ticker)}")
+    print(f"  Question: {title}")
+    print()
+    print(f"  Our model:   {bold(f'{forecast_prob:.0%}')} chance of YES")
+    print(f"  Market says: {bold(f'{market_prob:.0%}')} chance of YES")
+    edge_str = green(f"+{net_edge:.0%}") if net_edge > 0 else red(f"{net_edge:.0%}")
+    print(f"  Your edge:   {edge_str} (after fees)")
+    print()
+    print(
+        f"  Recommendation: BUY {bold(side.upper())} at {bold(f'{entry_price:.0%}')} per contract"
+    )
+    print()
+    print(f"  Why: {why}")
+    print()
+    if bet_dollars > 0:
+        pct_bal = bet_dollars / balance * 100 if balance > 0 else 0
+        print(
+            f"  Suggested bet: {green(f'${bet_dollars:.2f}')} (Kelly sizing, {pct_bal:.1f}% of your ${balance:.0f} balance)"
+        )
+        print(f"  If correct: win {green(f'${if_correct:.2f}')} after fees")
+        print(f"  If wrong:   lose {red(f'${bet_dollars:.2f}')}")
+    else:
+        print(
+            dim(
+                "  Suggested bet: Kelly sizing unavailable — drawdown guard may be active"
+            )
+        )
+    print()
+    print(f"  Risk level:  {risk_label}")
+    print(f"  Confidence:  {confidence}")
+    print()
+    print(dim("  Run P → 2 to place this trade now."))
 
 
 def cmd_brief(client: KalshiClient) -> None:
@@ -1107,6 +1319,17 @@ def cmd_brief(client: KalshiClient) -> None:
     print(
         f"  Balance: {bold(f'${bal:.2f}')}  |  Today P&L: {pnl_s}  |  Streak: {streak_s}"
     )
+
+    # ASCII balance history chart
+    try:
+        from paper import get_balance_history as _gbh_brief
+
+        history = _gbh_brief()
+        if len(history) >= 3:
+            balances = [h["balance"] for h in history]
+            print(_ascii_chart(balances, width=52, height=6, label="Balance"))
+    except Exception:
+        pass
 
     # Open positions + expiring
     open_trades = get_open_trades()
@@ -1198,7 +1421,19 @@ def cmd_brief(client: KalshiClient) -> None:
     except Exception:
         pass
 
-    print(dim("\n  Run 'A' to analyze, 'P' for paper trades"))
+    # Brier sparkline
+    try:
+        sparkline = _brier_sparkline()
+        if sparkline:
+            print(f"\n  Brier trend (recent weeks): {dim(sparkline)}")
+    except Exception:
+        pass
+
+    print(
+        dim(
+            "\n  Run 'A' to analyze, 'P' for paper trades, 'T' for today's recommendation"
+        )
+    )
 
 
 def cmd_cron(client: KalshiClient) -> None:
@@ -1409,6 +1644,20 @@ def cmd_watch(client: KalshiClient, auto_trade: bool = False, min_edge: float = 
             except Exception:
                 pass
 
+            # Check take-profit exit targets
+            try:
+                from paper import check_exit_targets
+
+                n_exited = check_exit_targets(client)
+                if n_exited:
+                    print(
+                        green(
+                            f"  [Auto-exit] {n_exited} position(s) reached take-profit target and were settled."
+                        )
+                    )
+            except Exception:
+                pass
+
             # Check open paper positions for exit signals
             try:
                 from paper import check_expiring_trades, check_model_exits
@@ -1600,9 +1849,11 @@ def cmd_history(client: KalshiClient):
             if bs < 0.25
             else red("Poor")
         )
+        sparkline = _brier_sparkline()
+        sparkline_str = f"  {dim(sparkline)}" if sparkline else ""
         print(
             f"\n  Brier score: {bold(f'{bs:.4f}')}  {grade}  "
-            f"{dim('(0.00=perfect, 0.25=random)')}"
+            f"{dim('(0.00=perfect, 0.25=random)')}{sparkline_str}"
         )
 
         # ── Weekly calibration trend ─────────────────────────────────────────
@@ -2102,6 +2353,116 @@ def cmd_sync(client: KalshiClient):
     print(green(f"Done — recorded {count} new outcome(s)."))
 
 
+# ── Onboarding wizard ─────────────────────────────────────────────────────────
+
+_ONBOARDED_MARKER = Path(__file__).parent / "data" / ".onboarded"
+
+
+def _needs_onboarding() -> bool:
+    """Return True if this looks like a first run (no .env or no trades ever placed)."""
+    if _ONBOARDED_MARKER.exists():
+        return False
+    env_path = Path(__file__).parent / ".env"
+    if not env_path.exists():
+        return True
+    from paper import get_all_trades
+
+    return len(get_all_trades()) == 0
+
+
+def cmd_onboard() -> None:
+    """5-step interactive onboarding guide for first-time users."""
+    print(bold("\n  ══════════════════════════════════════════"))
+    print(bold("   Welcome to Kalshi Weather Trader!"))
+    print(bold("  ══════════════════════════════════════════"))
+    print()
+    print("  This tool helps you find and bet on weather")
+    print("  prediction markets on Kalshi.com.")
+    print()
+    print("  Let's get you set up in 5 steps.")
+    print(dim("  Press Enter to continue at each step."))
+
+    try:
+        # Step 1
+        print(bold("\n  ── Step 1: What is this? ─────────────────"))
+        print("  Kalshi lets you bet YES or NO on questions")
+        print('  like "Will NYC hit 72°F on April 12?"')
+        print()
+        print("  If you bet YES at 52¢ and you're right,")
+        print("  you win 48¢ per contract (minus a 7% fee).")
+        print("  If wrong, you lose your 52¢.")
+        print()
+        print("  This tool uses weather forecast models to")
+        print("  find markets where the price seems wrong.")
+        input(dim("  [Press Enter]"))
+
+        # Step 2
+        print(bold("\n  ── Step 2: API Keys ──────────────────────"))
+        print("  To fetch market data, you need a free")
+        print("  Kalshi API key.")
+        print()
+        print("  1. Go to kalshi.com → Account → API Keys")
+        print("  2. Create a new key, download the .pem file")
+        print("  3. Copy .env.example to .env")
+        print("  4. Fill in KALSHI_KEY_ID and path to .pem")
+        print()
+        input(dim("  Have you done this? (y/skip): "))
+
+        # Step 3
+        print(bold("\n  ── Step 3: Reading the Analyze table ─────"))
+        print("  Press A from the main menu to see markets.")
+        print()
+        print("  The table shows:")
+        print(f"  {green('★★★')} = Strong opportunity (>25% edge)")
+        print(f"  {yellow('★★')}  = Good opportunity (>15% edge)")
+        print(f"  {dim('★')}   = Weak opportunity (>10% edge)")
+        print()
+        print('  "Edge" = how much better our model thinks')
+        print("  the odds are vs. what the market charges.")
+        input(dim("  [Press Enter]"))
+
+        # Step 4
+        print(bold("\n  ── Step 4: Your first paper trade ────────"))
+        print("  Paper trading uses fake money ($1,000 to")
+        print("  start) so you can practice risk-free.")
+        print()
+        print("  To place your first trade:")
+        print("  1. Press A to Analyze")
+        print("  2. Find a ★★★ signal")
+        print("  3. Press P → 2 → Buy")
+        print("  4. Follow the prompts")
+        print()
+        print(dim("  Tip: Start with small bets (1-2 contracts)"))
+        print(dim("  until you understand how it works."))
+        input(dim("  [Press Enter]"))
+
+        # Step 5
+        print(bold("\n  ── Step 5: Tracking your performance ─────"))
+        print("  After 10+ trades, press K (Backtest) to")
+        print("  see how accurate the model has been.")
+        print()
+        print("  Press R (Brief) each morning for a quick")
+        print("  summary of your positions and opportunities.")
+        print()
+        print("  Press ? anytime for the help guide.")
+        input(dim("  [Press Enter]"))
+
+        print(bold("\n  ══════════════════════════════════════════"))
+        print(bold("   You're all set! Press Enter for the menu."))
+        print(bold("  ══════════════════════════════════════════"))
+        input()
+
+    except (KeyboardInterrupt, EOFError):
+        print()
+
+    # Write marker so onboarding only runs once
+    try:
+        _ONBOARDED_MARKER.parent.mkdir(exist_ok=True)
+        _ONBOARDED_MARKER.write_text("onboarded")
+    except Exception:
+        pass
+
+
 # ── Setup wizard ──────────────────────────────────────────────────────────────
 
 
@@ -2209,6 +2570,7 @@ def cmd_help() -> None:
     _header("Quick Reference", width=58)
     lines = [
         ("A", "Analyze ", "Best opportunities right now, sorted by edge"),
+        ("T", "Today   ", "What should I do today? Plain-English recommendation"),
         ("W", "Watch   ", "Auto-refreshes every 5 min, alerts on new signals"),
         ("P", "Paper   ", "Simulate trades, track P&L, set price alerts"),
         ("K", "Backtest", "How well has the model done on past markets?"),
@@ -2726,6 +3088,7 @@ def cmd_menu(client: KalshiClient):
     # Top-level options: (shortcut_key, label, description)
     top_options = [
         ("A", "Analyze ", "find best trades right now"),
+        ("T", "Today   ", "what should I do today?"),
         ("W", "Watch   ", "live auto-refresh dashboard"),
         ("P", "Paper   ", "trades, alerts, results, settle"),
         ("K", "Backtest", "score model on history"),
@@ -2849,6 +3212,9 @@ def cmd_menu(client: KalshiClient):
         elif name_stripped == "Analyze":
             cmd_analyze(client)
 
+        elif name_stripped == "Today":
+            cmd_today(client)
+
         elif name_stripped == "Watch":
             _menu_watch(client)
 
@@ -2910,6 +3276,28 @@ def cmd_menu(client: KalshiClient):
                         qty_arg = (
                             [raw_qty] if raw_qty.isdigit() and int(raw_qty) > 0 else []
                         )
+                        # Large bet confirmation for the submenu buy path
+                        if raw_qty.isdigit() and int(raw_qty) > 0:
+                            from paper import get_balance as _gb_sub
+
+                            _qty_sub = int(raw_qty)
+                            _cost_sub = _qty_sub * price
+                            _bal_sub = _gb_sub()
+                            if _cost_sub > _bal_sub * 0.03:
+                                _pct_sub = _cost_sub / _bal_sub * 100
+                                _confirm_sub = (
+                                    input(
+                                        yellow(
+                                            f"  Heads up: this bet is ${_cost_sub:.2f} ({_pct_sub:.1f}% of your ${_bal_sub:.2f} balance). "
+                                            f"Continue? (y/N): "
+                                        )
+                                    )
+                                    .strip()
+                                    .lower()
+                                )
+                                if _confirm_sub != "y":
+                                    print(dim("  Cancelled."))
+                                    break
                         cmd_paper(
                             ["buy", ticker, side, f"{price:.3f}"] + qty_arg, client
                         )
@@ -3467,6 +3855,17 @@ def cmd_paper(args: list, client: KalshiClient | None = None):
 
         _header("Paper Trading Results")
         _kv("Balance:", bold(f"${perf['balance']:.2f}"))
+
+        # ASCII balance history chart
+        try:
+            from paper import get_balance_history as _gbh
+
+            history = _gbh()
+            if len(history) >= 3:
+                balances = [h["balance"] for h in history]
+                print(_ascii_chart(balances, width=52, height=6, label="Balance"))
+        except Exception:
+            pass
         if perf["settled"]:
             wr = (
                 f"{perf['win_rate'] * 100:.0f}%"
@@ -4020,6 +4419,9 @@ def main():
         auto_backup()
         auto_settle(client)
         auto_backtest(client)
+        # Show onboarding wizard on first run
+        if _needs_onboarding():
+            cmd_onboard()
         cmd_menu(client)
         return
 
@@ -4032,6 +4434,8 @@ def main():
 
     if cmd == "menu":
         cmd_menu(client)
+    elif cmd in ("today", "t"):
+        cmd_today(client)
     elif cmd == "brief":
         cmd_brief(client)
     elif cmd == "cron":
