@@ -122,9 +122,17 @@ def nws_prob(
     if temp is None:
         return None
 
-    # NWS is calibrated — use tighter sigma than raw ensemble
+    # NWS is calibrated — use tighter sigma than raw ensemble.
+    # Same-day: NWS high/low is near-certain (1°F); tighten significantly.
     days_out = (target_date - date.today()).days
-    sigma = 2.0 if days_out <= 2 else 3.0 if days_out <= 5 else 4.0
+    if days_out <= 0:
+        sigma = 1.0
+    elif days_out <= 2:
+        sigma = 2.0
+    elif days_out <= 5:
+        sigma = 3.0
+    else:
+        sigma = 4.0
 
     if condition["type"] == "above":
         return 1.0 - normal_cdf(condition["threshold"], temp, sigma)

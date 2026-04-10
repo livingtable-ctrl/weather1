@@ -538,35 +538,37 @@ class TestDrawdownScaling(unittest.TestCase):
         paper.place_paper_order("TK", "yes", 600, 1.00)  # balance → $400 (40% of $1000)
         self.assertEqual(paper.drawdown_scaling_factor(), 0.0)
 
-    def test_quarter_scaling_between_50_and_60_pct(self):
-        """Balance 50–60% of peak → scale = 0.25."""
+    def test_tier2_scaling_between_50_and_60_pct(self):
+        """Balance 50–60% of peak → scale = 0.10 (conservative recovery)."""
         import paper
 
         paper.place_paper_order("TK", "yes", 450, 1.00)  # balance → $550 (55% of $1000)
-        self.assertEqual(paper.drawdown_scaling_factor(), 0.25)
+        self.assertEqual(paper.drawdown_scaling_factor(), 0.10)
 
-    def test_half_scaling_between_60_and_75_pct(self):
-        """Balance 60–75% of peak → scale = 0.50."""
+    def test_tier3_scaling_between_60_and_75_pct(self):
+        """Balance 60–75% of peak → scale = 0.30."""
         import paper
 
         paper.place_paper_order("TK", "yes", 350, 1.00)  # balance → $650 (65% of $1000)
-        self.assertEqual(paper.drawdown_scaling_factor(), 0.50)
+        self.assertEqual(paper.drawdown_scaling_factor(), 0.30)
 
-    def test_three_quarter_scaling_between_75_and_90_pct(self):
-        """Balance 75–90% of peak → scale = 0.75."""
+    def test_tier4_scaling_between_75_and_90_pct(self):
+        """Balance 75–90% of peak → scale = 0.70."""
         import paper
 
         paper.place_paper_order("TK", "yes", 200, 1.00)  # balance → $800 (80% of $1000)
-        self.assertEqual(paper.drawdown_scaling_factor(), 0.75)
+        self.assertEqual(paper.drawdown_scaling_factor(), 0.70)
 
     def test_kelly_scaled_at_partial_recovery(self):
         """Kelly dollars are scaled by recovery factor, not all-or-nothing."""
         import paper
 
-        paper.place_paper_order("TK", "yes", 350, 1.00)  # balance → $650, scale=0.50
+        paper.place_paper_order(
+            "TK", "yes", 350, 1.00
+        )  # balance → $650 (65% of peak), scale=0.30
         dollars = paper.kelly_bet_dollars(0.10)
-        # 0.10 * 0.50 * $650 = $32.50
-        self.assertAlmostEqual(dollars, 32.50)
+        # 0.10 * 0.30 * $650 = $19.50
+        self.assertAlmostEqual(dollars, 19.50)
 
     def test_kelly_zero_below_50_pct(self):
         """Kelly still returns 0.0 when fully in drawdown (scale=0.0)."""
