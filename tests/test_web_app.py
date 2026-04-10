@@ -398,3 +398,22 @@ def test_model_attribution_endpoint_returns_city_keys(monkeypatch):
     first_city = next(iter(data.values()))
     assert isinstance(first_city, dict)
     assert "ensemble" in first_city
+
+
+# ── #85 per-market SSE stream ─────────────────────────────────────────────────
+
+
+def test_stream_markets_content_type(monkeypatch):
+    """GET /api/stream/markets returns Content-Type: text/event-stream."""
+    import time
+
+    import web_app
+
+    # Patch sleep so the generator yields once then stops
+    monkeypatch.setattr(time, "sleep", lambda _: (_ for _ in ()).throw(StopIteration()))
+
+    app = web_app._build_app(client=None)
+    client = app.test_client()
+
+    resp = client.get("/api/stream/markets")
+    assert "text/event-stream" in resp.content_type

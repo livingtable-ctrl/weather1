@@ -179,6 +179,29 @@ def _build_app(client):
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )
 
+    @app.route("/api/stream/markets")
+    def stream_markets():
+        """#85 — SSE endpoint that yields open-market snapshots every 10 s."""
+        import time
+
+        def generate():
+            while True:
+                try:
+                    payload = {
+                        "markets": _get_live_market_snapshot(),
+                        "ts": datetime.now(UTC).isoformat(),
+                    }
+                    yield f"data: {json.dumps(payload)}\n\n"
+                except Exception:
+                    yield "data: {}\n\n"
+                time.sleep(10)
+
+        return Response(
+            stream_with_context(generate()),
+            mimetype="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
+
     @app.route("/api/balance_history")
     def balance_history():
         from datetime import timedelta
