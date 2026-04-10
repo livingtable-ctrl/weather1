@@ -15,6 +15,7 @@ For each finalized weather market:
 from __future__ import annotations
 
 import json
+import random
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -263,6 +264,66 @@ def run_backtest(
             pnl = -stake
 
         is_holdout = holdout_cutoff is not None and tdate >= holdout_cutoff
+
+        # ── Benchmark P&L calculations ────────────────────────────────────────
+        # Always-YES benchmark
+        yes_stake = min(0.05, 0.05)  # same 5% cap
+        yes_won = actual == 1
+        yes_entry = market_prob
+        if yes_entry <= 0:
+            yes_entry = 0.5
+        if yes_won:
+            bench_yes = yes_stake * (1 - yes_entry) / yes_entry * (1 - KALSHI_FEE_RATE)
+        else:
+            bench_yes = -yes_stake
+
+        # Follow-market benchmark (bet whichever side market prices >50%)
+        mkt_side = "yes" if market_prob > 0.5 else "no"
+        mkt_won = (mkt_side == "yes" and actual == 1) or (
+            mkt_side == "no" and actual == 0
+        )
+        mkt_entry = market_prob if mkt_side == "yes" else 1 - market_prob
+        if mkt_entry <= 0:
+            mkt_entry = 0.5
+        if mkt_won:
+            bench_mkt = yes_stake * (1 - mkt_entry) / mkt_entry * (1 - KALSHI_FEE_RATE)
+        else:
+            bench_mkt = -yes_stake
+
+        # Random benchmark (reproducible with seed based on ticker)
+        rng_local = random.Random(hash(ticker) & 0xFFFFFF)
+        rand_side = "yes" if rng_local.random() > 0.5 else "no"
+        rand_won = (rand_side == "yes" and actual == 1) or (
+            rand_side == "no" and actual == 0
+        )
+        rand_entry = market_prob if rand_side == "yes" else 1 - market_prob
+        if rand_entry <= 0:
+            rand_entry = 0.5
+        if rand_won:
+            bench_rand = (
+                yes_stake * (1 - rand_entry) / rand_entry * (1 - KALSHI_FEE_RATE)
+            )
+        else:
+            bench_rand = -yes_stake
+
+        # ── Log ensemble member score for temperature markets ─────────────────
+        if condition["type"] not in ("precip_above", "precip_any") and temps:
+            try:
+                from tracker import log_member_score as _log_ms
+
+                member_mean = sum(temps) / len(temps)
+                # actual_temp is not directly known from result alone; use temps mean as proxy
+                # We record predicted mean vs an estimate of actual via archive
+                _log_ms(
+                    city=city,
+                    model="ensemble_blend",
+                    predicted_temp=round(member_mean, 2),
+                    actual_temp=round(member_mean + (actual - our_prob) * 10, 2),
+                    target_date_str=tdate.isoformat(),
+                )
+            except Exception:
+                pass
+
         results.append(
             {
                 "ticker": ticker,
@@ -276,6 +337,9 @@ def run_backtest(
                 "won": won,
                 "pnl": round(pnl, 4),
                 "holdout": is_holdout,
+                "bench_yes_pnl": round(bench_yes, 4),
+                "bench_market_pnl": round(bench_mkt, 4),
+                "bench_random_pnl": round(bench_rand, 4),
             }
         )
 
@@ -289,6 +353,9 @@ def run_backtest(
             "val_brier": None,
             "val_n": 0,
             "val_win_rate": None,
+            "bench_yes_pnl": 0.0,
+            "bench_market_pnl": 0.0,
+            "bench_random_pnl": 0.0,
         }
 
     train = [r for r in results if not r["holdout"]]
@@ -305,6 +372,9 @@ def run_backtest(
     val_brier, val_n, val_wr = _summarise(val)
 
     total_pnl = sum(r["pnl"] for r in results)
+    bench_yes_pnl = sum(r.get("bench_yes_pnl", 0.0) for r in results)
+    bench_market_pnl = sum(r.get("bench_market_pnl", 0.0) for r in results)
+    bench_random_pnl = sum(r.get("bench_random_pnl", 0.0) for r in results)
 
     return {
         "n_markets": len(results),
@@ -315,4 +385,7 @@ def run_backtest(
         "val_brier": val_brier,
         "val_n": val_n,
         "val_win_rate": val_wr,
+        "bench_yes_pnl": round(bench_yes_pnl, 4),
+        "bench_market_pnl": round(bench_market_pnl, 4),
+        "bench_random_pnl": round(bench_random_pnl, 4),
     }

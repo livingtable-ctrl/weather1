@@ -31,6 +31,18 @@ def init_db() -> None:
         return
     with _conn() as con:
         con.executescript("""
+        CREATE TABLE IF NOT EXISTS ensemble_member_scores (
+            id             INTEGER PRIMARY KEY AUTOINCREMENT,
+            city           TEXT NOT NULL,
+            model          TEXT NOT NULL,
+            predicted_temp REAL,
+            actual_temp    REAL,
+            target_date    TEXT,
+            logged_at      TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_ems_city_model
+            ON ensemble_member_scores(city, model);
+
         CREATE TABLE IF NOT EXISTS predictions (
             id            INTEGER PRIMARY KEY AUTOINCREMENT,
             ticker        TEXT    NOT NULL,
@@ -504,6 +516,115 @@ def sync_outcomes(client) -> int:
         except Exception:
             continue
     return count
+
+
+def log_member_score(
+    city: str,
+    model: str,
+    predicted_temp: float,
+    actual_temp: float,
+    target_date_str: str,
+) -> None:
+    """Log an ensemble member's temperature prediction vs actuals for accuracy tracking."""
+    init_db()
+    with _conn() as con:
+        con.execute(
+            """
+            INSERT INTO ensemble_member_scores
+              (city, model, predicted_temp, actual_temp, target_date, logged_at)
+            VALUES (?, ?, ?, ?, ?, datetime('now'))
+            """,
+            (city, model, predicted_temp, actual_temp, target_date_str),
+        )
+
+
+def get_member_accuracy() -> dict:
+    """
+    Return per-model accuracy stats.
+    Returns {model: {mae: float, n: int, city_breakdown: {city: mae}}}
+    """
+    init_db()
+    with _conn() as con:
+        rows = con.execute("""
+            SELECT model, city, predicted_temp, actual_temp
+            FROM ensemble_member_scores
+            WHERE predicted_temp IS NOT NULL AND actual_temp IS NOT NULL
+        """).fetchall()
+
+    if not rows:
+        return {}
+
+    by_model: dict[str, list[tuple[str, float, float]]] = {}
+    for r in rows:
+        by_model.setdefault(r["model"], []).append(
+            (r["city"], r["predicted_temp"], r["actual_temp"])
+        )
+
+    result: dict = {}
+    for model, entries in by_model.items():
+        errors = [abs(p - a) for _, p, a in entries]
+        mae = sum(errors) / len(errors)
+        # Per-city breakdown
+        city_errs: dict[str, list[float]] = {}
+        for city, p, a in entries:
+            city_errs.setdefault(city, []).append(abs(p - a))
+        city_mae = {c: sum(v) / len(v) for c, v in city_errs.items()}
+        result[model] = {
+            "mae": round(mae, 4),
+            "n": len(entries),
+            "city_breakdown": {c: round(v, 4) for c, v in city_mae.items()},
+        }
+    return result
+
+
+def get_market_calibration() -> dict:
+    """
+    How well-calibrated are the MARKET PRICES (not our model)?
+    Groups settled predictions by market_prob bucket (0-10%, 10-20%, etc.)
+    and computes actual outcome rate per bucket.
+    Returns {"buckets": [{"range": "0-10%", "market_prob_avg": X, "actual_rate": Y, "n": N}]}
+    A well-calibrated market has actual_rate ≈ market_prob_avg.
+    Systematic deviations = exploitable edges.
+    """
+    init_db()
+    with _conn() as con:
+        rows = con.execute("""
+            SELECT p.market_prob, o.settled_yes
+            FROM predictions p
+            JOIN outcomes o ON p.ticker = o.ticker
+            WHERE p.market_prob IS NOT NULL
+        """).fetchall()
+
+    if not rows:
+        return {"buckets": []}
+
+    # 10 buckets: 0-10%, 10-20%, ..., 90-100%
+    buckets: list[list] = [[] for _ in range(10)]
+    for r in rows:
+        mp = r["market_prob"]
+        bucket_idx = min(9, int(mp * 10))
+        buckets[bucket_idx].append((mp, r["settled_yes"]))
+
+    result_buckets = []
+    for i, entries in enumerate(buckets):
+        if not entries:
+            continue
+        lo = i * 10
+        hi = lo + 10
+        avg_mp = sum(e[0] for e in entries) / len(entries)
+        actual_rate = sum(e[1] for e in entries) / len(entries)
+        diff = actual_rate - avg_mp
+        result_buckets.append(
+            {
+                "range": f"{lo}-{hi}%",
+                "market_prob_avg": round(avg_mp, 4),
+                "actual_rate": round(actual_rate, 4),
+                "diff": round(diff, 4),
+                "n": len(entries),
+            }
+        )
+
+    return {"buckets": result_buckets}
 
 
 def get_outcome_for_ticker(ticker: str) -> bool | None:

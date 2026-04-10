@@ -652,6 +652,184 @@ def graduation_check(min_trades: int = 10, min_win_rate: float = 0.60) -> dict |
     return None
 
 
+def fear_greed_index() -> tuple[int, str]:
+    """
+    Composite 0-100 score. Higher = more confident/greedy.
+    Components:
+      - Current drawdown (0-30 pts): 30 at no drawdown, 0 at max drawdown
+      - Win streak (0-20 pts): 20 for 3+ win streak, 0 for 3+ loss streak
+      - Recent win rate (0-30 pts): last 10 settled trades win rate * 30
+      - Available balance vs starting (0-20 pts): balance/starting * 20, capped at 20
+    Returns (score, label) where label is one of:
+      "Fearful"   (<40)
+      "Cautious"  (40-55)
+      "Neutral"   (55-65)
+      "Confident" (65-80)
+      "Greedy"    (>80)
+    """
+    # Component 1: drawdown (0–30)
+    dd = get_max_drawdown_pct()
+    dd_pts = max(0.0, 30.0 * (1.0 - dd))
+
+    # Component 2: win streak (0–20)
+    kind, n = get_current_streak()
+    if kind == "win":
+        streak_pts = min(20.0, n / 3 * 20.0)
+    elif kind == "loss":
+        streak_pts = max(0.0, 20.0 - n / 3 * 20.0)
+    else:
+        streak_pts = 10.0  # neutral
+
+    # Component 3: recent win rate (0–30) — last 10 settled trades
+    data = _load()
+    settled = [
+        t for t in data["trades"] if t.get("settled") and t.get("pnl") is not None
+    ]
+    recent = settled[-10:] if len(settled) >= 10 else settled
+    if recent:
+        win_rate = sum(1 for t in recent if (t.get("pnl") or 0) > 0) / len(recent)
+    else:
+        win_rate = 0.5
+    wr_pts = win_rate * 30.0
+
+    # Component 4: balance vs starting (0–20)
+    balance = get_balance()
+    bal_pts = min(20.0, (balance / STARTING_BALANCE) * 20.0)
+
+    score = int(round(dd_pts + streak_pts + wr_pts + bal_pts))
+    score = max(0, min(100, score))
+
+    if score < 40:
+        label = "Fearful"
+    elif score < 55:
+        label = "Cautious"
+    elif score < 65:
+        label = "Neutral"
+    elif score <= 80:
+        label = "Confident"
+    else:
+        label = "Greedy"
+
+    return (score, label)
+
+
+def check_correlated_event_exposure() -> list[dict]:
+    """
+    Detect when you have 2+ open positions tied to the same city within
+    a 3-day window (same weather event, correlated outcomes).
+    Returns list of {"city": str, "dates": list, "trades": list, "total_cost": float}
+    """
+    from datetime import date
+
+    open_trades = get_open_trades()
+    # Only consider trades with city and target_date
+    dated_trades = [t for t in open_trades if t.get("city") and t.get("target_date")]
+
+    # Group by city
+    by_city: dict[str, list[dict]] = {}
+    for t in dated_trades:
+        by_city.setdefault(t["city"], []).append(t)
+
+    results = []
+    for city, trades in by_city.items():
+        if len(trades) < 2:
+            continue
+        # Sort by date
+        try:
+            trades_sorted = sorted(
+                trades,
+                key=lambda t: date.fromisoformat(t["target_date"]),
+            )
+        except (ValueError, TypeError):
+            continue
+
+        # Find clusters within 3-day windows
+        used_indices: set[int] = set()
+        for i, anchor in enumerate(trades_sorted):
+            if i in used_indices:
+                continue
+            try:
+                anchor_date = date.fromisoformat(anchor["target_date"])
+            except (ValueError, TypeError):
+                continue
+            cluster = [anchor]
+            cluster_indices = {i}
+            for j, other in enumerate(trades_sorted):
+                if j == i or j in used_indices:
+                    continue
+                try:
+                    other_date = date.fromisoformat(other["target_date"])
+                except (ValueError, TypeError):
+                    continue
+                if abs((other_date - anchor_date).days) <= 3:
+                    cluster.append(other)
+                    cluster_indices.add(j)
+
+            if len(cluster) >= 2:
+                used_indices |= cluster_indices
+                dates = sorted({t["target_date"] for t in cluster})
+                total_cost = sum(t.get("cost", 0.0) for t in cluster)
+                results.append(
+                    {
+                        "city": city,
+                        "dates": dates,
+                        "trades": cluster,
+                        "total_cost": round(total_cost, 2),
+                    }
+                )
+
+    return results
+
+
+def export_tax_csv(path: str, tax_year: int | None = None) -> int:
+    """
+    Export settled trades in Schedule D / capital gains format.
+    Columns: Description, Date Acquired, Date Sold, Proceeds, Cost Basis, Gain/Loss
+    If tax_year is specified, only include trades settled in that year.
+    Returns row count.
+    Note: this is for informational purposes only, not tax advice.
+    """
+    import csv
+
+    all_trades = get_all_trades()
+    settled = [t for t in all_trades if t.get("settled")]
+
+    if tax_year is not None:
+        filtered = []
+        for t in settled:
+            # Use entered_at as a proxy for date sold (we don't track settled_at separately)
+            date_str = (t.get("entered_at") or "")[:4]
+            if date_str == str(tax_year):
+                filtered.append(t)
+        settled = filtered
+
+    if not settled:
+        return 0
+
+    with open(path, "w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        writer.writerow(
+            [
+                "Description",
+                "Date Acquired",
+                "Date Sold",
+                "Proceeds",
+                "Cost Basis",
+                "Gain/Loss",
+            ]
+        )
+        for t in settled:
+            desc = f"Kalshi {t.get('ticker', '')} {t.get('side', '').upper()}"
+            date_acq = (t.get("entered_at") or "")[:10]
+            date_sold = date_acq  # same day for paper trades (simplified)
+            pnl = t.get("pnl") or 0.0
+            cost = t.get("cost") or 0.0
+            proceeds = round(cost + pnl, 4)
+            writer.writerow([desc, date_acq, date_sold, proceeds, cost, pnl])
+
+    return len(settled)
+
+
 def auto_settle_paper_trades(client=None) -> int:
     """
     Settle any open paper trades whose tickers have recorded outcomes.

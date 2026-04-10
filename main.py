@@ -42,6 +42,7 @@ from tracker import (
     get_calibration_by_type,
     get_calibration_trend,
     get_history,
+    get_market_calibration,
     get_source_reliability,
     init_db,
     log_prediction,
@@ -232,6 +233,47 @@ def auto_settle(client: KalshiClient) -> None:
                 print(msg + "\n")
         except Exception:
             pass  # never crash startup due to settle failure
+
+    t = threading.Thread(target=_run, daemon=True)
+    t.start()
+
+
+def auto_backtest(client: KalshiClient) -> None:
+    """
+    Run a quick 7-day backtest silently in a background thread on startup.
+    If recent Brier score has degraded by >0.05 vs. all-time Brier, print a warning.
+    Stores result in data/.last_backtest.json for the brief/dashboard to read.
+    """
+    import threading
+
+    def _run():
+        try:
+            from backtest import run_backtest
+
+            summary = run_backtest(client, days_back=7, verbose=False)
+            result_path = Path(__file__).parent / "data" / ".last_backtest.json"
+            try:
+                result_path.parent.mkdir(exist_ok=True)
+                result_path.write_text(json.dumps(summary, default=str))
+            except Exception:
+                pass
+
+            # Compare recent (7-day) Brier vs all-time
+            recent_brier = summary.get("brier")
+            all_time_brier = brier_score()
+            if (
+                recent_brier is not None
+                and all_time_brier is not None
+                and recent_brier > all_time_brier + 0.05
+            ):
+                print(
+                    yellow(
+                        f"\n  [Auto-backtest] WARNING: recent Brier {recent_brier:.4f} "
+                        f"vs all-time {all_time_brier:.4f} — model may have degraded.\n"
+                    )
+                )
+        except Exception:
+            pass
 
     t = threading.Thread(target=_run, daemon=True)
     t.start()
@@ -635,6 +677,54 @@ def _analyze_once(
             )
         return rows, urls
 
+    def _plain_english(analysis: dict, market: dict) -> str:
+        """
+        Generate a one-sentence plain-English explanation of the trade opportunity.
+        Example: "Model thinks 68% chance NYC hits 72°F. Market only prices it at 52%.
+        A $10 bet would win $8.40 after fees if correct."
+        """
+        city = market.get("_city") or market.get("city", "")
+        tdate = market.get("_date")
+        date_str = tdate.isoformat() if tdate else "target date"
+        forecast_prob = analysis.get("forecast_prob", 0.5)
+        market_prob = analysis.get("market_prob", 0.5)
+        gap = abs(forecast_prob - market_prob)
+        side = analysis.get("recommended_side", "yes")
+        entry_price = (
+            analysis.get("market_prob", 0.5)
+            if side == "yes"
+            else 1 - analysis.get("market_prob", 0.5)
+        )
+        # Compute what a $10 bet returns
+        stake = 10.0
+        from utils import KALSHI_FEE_RATE as _fee
+
+        winnings = (1 - entry_price) * (1 - _fee)
+        win_amount = round(stake / entry_price * winnings, 2)
+
+        cond = analysis.get("condition", {})
+        cond_type = cond.get("type", "")
+        if cond_type == "above":
+            cond_desc = f"above {cond['threshold']:.0f}°F"
+        elif cond_type == "below":
+            cond_desc = f"below {cond['threshold']:.0f}°F"
+        elif cond_type == "between":
+            cond_desc = f"between {cond['lower']:.0f}–{cond['upper']:.0f}°F"
+        elif cond_type == "precip_any":
+            cond_desc = "any precipitation"
+        elif cond_type == "precip_above":
+            cond_desc = f"over {cond.get('threshold', 0):.2f} inches of rain"
+        else:
+            cond_desc = "the condition"
+
+        return (
+            f"Model thinks there's a {forecast_prob:.0%} chance {city} hits {cond_desc} "
+            f"on {date_str}.\n"
+            f"  The market only prices it at {market_prob:.0%} — a {gap:.0%} gap. "
+            f"A $10 bet wins ${win_amount:.2f}\n"
+            f"  after fees if you're right (and loses $10 if wrong)."
+        )
+
     hdrs = [
         "Rating",
         "ID",
@@ -655,6 +745,12 @@ def _analyze_once(
             bold(f"\n── Best Opportunities — Ready to Trade ({len(liquid_opps)}) ──\n")
         )
         print(tabulate(rows, headers=hdrs, tablefmt="rounded_outline"))
+        # Top pick plain-English explanation
+        best_m, best_a = max(
+            liquid_opps, key=lambda x: abs(x[1].get("net_edge", x[1]["edge"]))
+        )
+        explanation = _plain_english(best_a, best_m)
+        print(f"\n  {bold('Top pick:')} {explanation}")
         if urls:
             print(dim("\n  Market links:"))
             for ticker, url in urls:
@@ -815,6 +911,41 @@ def _quick_paper_buy(client: KalshiClient) -> None:
             price = _prompt_price()
         if price is None:
             return
+        # Order type prompt: market taker vs limit maker
+        print(
+            dim(
+                "  Order type: (1) Market taker [7% fee]  "
+                "(2) Limit maker [0% fee, may not fill]"
+            )
+        )
+        order_type_raw = input(dim("  Choose (1/2, default 1): ")).strip()
+        use_maker = order_type_raw == "2"
+        maker_price: float | None = None
+        if use_maker:
+            # Suggest mid as limit price
+            try:
+                mkt = client.get_market(ticker)
+                prices_mk = parse_market_price(mkt)
+                suggested = prices_mk["mid"]
+                if suggested <= 0:
+                    suggested = price
+            except Exception:
+                suggested = price
+            maker_raw = input(
+                dim(f"  Limit price (Enter for mid {suggested:.3f}): ")
+            ).strip()
+            if maker_raw:
+                try:
+                    maker_price = float(maker_raw)
+                    if not 0 < maker_price < 1:
+                        print(red("  Invalid price — using market order."))
+                        use_maker = False
+                except ValueError:
+                    print(red("  Invalid price — using market order."))
+                    use_maker = False
+            else:
+                maker_price = suggested
+
         raw_qty = input(dim("  Qty (Enter for Kelly auto-size): ")).strip()
         qty_arg = [raw_qty] if raw_qty.isdigit() and int(raw_qty) > 0 else []
         thesis_raw = input(dim("  Why? (optional thesis, Enter to skip): ")).strip()
@@ -863,6 +994,27 @@ def _quick_paper_buy(client: KalshiClient) -> None:
                     qty = kelly_quantity(adj_kelly, price)
                 except Exception:
                     qty = 0
+
+            # Maker order (real order, not paper) — only if qty is specified
+            if use_maker and maker_price is not None and qty and qty > 0:
+                try:
+                    result = client.place_maker_order(ticker, side, maker_price, qty)
+                    order = result.get("order", result)
+                    print(
+                        green(
+                            f"  Maker limit order placed: {order.get('order_id', '')}  "
+                            f"@ ${maker_price:.3f}  ({qty} contracts)"
+                        )
+                    )
+                    print(
+                        dim(
+                            "  Order rests in book — will fill only if market moves to your price."
+                        )
+                    )
+                except Exception as e:
+                    print(red(f"  Maker order failed: {e}"))
+                return
+
             if qty and qty > 0:
                 from paper import place_paper_order
 
@@ -983,6 +1135,24 @@ def cmd_brief(client: KalshiClient) -> None:
         for entry in aged:
             t = entry["trade"]
             print(yellow(f"  #{t['id']} {t['ticker']} — {entry['age_days']} days old"))
+
+    # Correlated event exposure warning
+    try:
+        from paper import check_correlated_event_exposure
+
+        corr_warnings = check_correlated_event_exposure()
+        if corr_warnings:
+            print(bold(f"\n  ── Correlation Warnings ({len(corr_warnings)}) ──"))
+            for w in corr_warnings:
+                n = len(w["trades"])
+                print(
+                    yellow(
+                        f"  [Warning] {n} {w['city']} positions within 3 days "
+                        f"(${w['total_cost']:.2f} at risk) — these are correlated bets"
+                    )
+                )
+    except Exception:
+        pass
 
     print(dim("\n  Run 'A' to analyze, 'P' for paper trades"))
 
@@ -1430,6 +1600,44 @@ def cmd_history(client: KalshiClient):
     else:
         print(dim("\n  Brier score will appear once markets settle."))
 
+    # ── Market Calibration ────────────────────────────────────────────────────
+    try:
+        calib = get_market_calibration()
+        buckets = calib.get("buckets", [])
+        if buckets:
+            print(bold("\n  ── Market Calibration ──"))
+            print(
+                dim(
+                    "  (Are market prices well-calibrated? diff > ±5% = potential edge)"
+                )
+            )
+            cal_rows = []
+            for b in buckets:
+                diff = b["diff"]
+                diff_str = (
+                    red(f"{diff:+.0%}  *** edge ***")
+                    if abs(diff) > 0.05
+                    else dim(f"{diff:+.0%}")
+                )
+                cal_rows.append(
+                    [
+                        b["range"],
+                        f"{b['market_prob_avg']:.0%}",
+                        f"{b['actual_rate']:.0%}",
+                        diff_str,
+                        b["n"],
+                    ]
+                )
+            print(
+                tabulate(
+                    cal_rows,
+                    headers=["Mkt says", "Actually", "Diff", "Note", "Count"],
+                    tablefmt="rounded_outline",
+                )
+            )
+    except Exception:
+        pass
+
     # ── Source reliability ────────────────────────────────────────────────────
     rel = get_source_reliability()
     if rel:
@@ -1649,7 +1857,7 @@ def cmd_dashboard(client: KalshiClient) -> None:  # noqa: ARG001
 
 def cmd_export() -> None:
     """Export prediction history and paper trades to CSV in data/exports/."""
-    from paper import export_trades_csv
+    from paper import export_tax_csv, export_trades_csv
 
     out_dir = Path(__file__).parent / "data" / "exports"
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -1668,6 +1876,20 @@ def cmd_export() -> None:
         print(green(f"  Exported {n2} paper trades → {paper_path}"))
     else:
         print(dim("  No paper trades to export yet."))
+
+    # Tax export
+    tax_year = datetime.now(UTC).year
+    tax_path = str(out_dir / f"paper_tax_{tax_year}.csv")
+    n3 = export_tax_csv(tax_path, tax_year=tax_year)
+    if n3:
+        print(
+            green(f"  Exported {n3} settled trades (tax year {tax_year}) → {tax_path}")
+        )
+        print(
+            dim("  Note: This file is for informational purposes only, not tax advice.")
+        )
+    else:
+        print(dim(f"  No settled trades for tax year {tax_year} to export."))
 
 
 # ── Portfolio ─────────────────────────────────────────────────────────────────
@@ -2053,6 +2275,15 @@ def cmd_menu(client: KalshiClient):
         ("K", "Backtest", "score model on history", lambda: cmd_backtest(client, [])),
         ("D", "Dashboard", "portfolio overview", lambda: cmd_dashboard(client)),
         ("E", "Export", "save predictions + trades to CSV", lambda: cmd_export()),
+        (
+            "N",
+            "Simulate",
+            "Monte Carlo portfolio simulation",
+            lambda: cmd_montecarlo(client),
+        ),
+        ("V", "Web", "local web dashboard", lambda: cmd_web(client)),
+        ("X", "Sandbox", "replay historical markets", lambda: cmd_simulate(client)),
+        ("Y", "Weekly", "weekly performance summary", lambda: cmd_weekly_summary()),
         ("S", "Schedule", "hourly auto-scan", lambda: cmd_schedule()),
         ("U", "Setup", "setup wizard", lambda: cmd_setup()),
         ("Q", "Quit", "", None),
@@ -2107,6 +2338,28 @@ def cmd_menu(client: KalshiClient):
                 status_colored += (
                     f"  {dim('·')}  Brier: {grade_color(f'{bs:.3f} {grade}')}"
                 )
+        except Exception:
+            pass
+
+        try:
+            from paper import fear_greed_index
+
+            fg_score, fg_label = fear_greed_index()
+            fg_color = (
+                red
+                if fg_label == "Fearful"
+                else yellow
+                if fg_label == "Cautious"
+                else (lambda s: s)
+                if fg_label == "Neutral"
+                else green
+                if fg_label == "Confident"
+                else bold
+            )
+            status_visible += f"  ·  Mood: {fg_label} ({fg_score})"
+            status_colored += (
+                f"  {dim('·')}  Mood: {fg_color(f'{fg_label} ({fg_score})')}"
+            )
         except Exception:
             pass
 
@@ -2179,7 +2432,10 @@ def cmd_menu(client: KalshiClient):
             print(
                 f"  {cyan('4')}  {bold('Review')}   {dim('·')}  check open trades for exit signals"
             )
-            sub = input(dim("  Choose (1–4): ")).strip()
+            print(
+                f"  {cyan('5')}  {bold('MonteCarlo')} {dim('·')} portfolio simulation"
+            )
+            sub = input(dim("  Choose (1–5): ")).strip()
             if sub == "1":
                 cmd_paper(["results"], client)
             elif sub == "2":
@@ -2238,6 +2494,8 @@ def cmd_menu(client: KalshiClient):
                                 f"  —  {reason}  (edge now {rec['current_edge']:+.1%})"
                             )
                         )
+            elif sub == "5":
+                cmd_montecarlo(client)
         elif fn is not None:
             fn()
 
@@ -2391,6 +2649,86 @@ def cmd_backtest(client: KalshiClient, args: list):
         tabulate(
             b_rows,
             headers=["Ticker", "City", "Date", "Our P", "Mkt P", "Actual", "Call"],
+            tablefmt="rounded_outline",
+        )
+    )
+
+    # ── Benchmark Comparison ─────────────────────────────────────────────────
+    bench_yes = summary.get("bench_yes_pnl", 0.0)
+    bench_mkt = summary.get("bench_market_pnl", 0.0)
+    bench_rand = summary.get("bench_random_pnl", 0.0)
+
+    def _wr_from_rows(rows_list: list[dict], side_key: str) -> str:
+        if not rows_list:
+            return "—"
+        wins = sum(1 for r in rows_list if r.get(side_key + "_won", False))
+        return f"{wins / len(rows_list):.0%}"
+
+    # Compute benchmark win rates
+    def _bench_wr(rows_list: list[dict], bench: str) -> str:
+        if not rows_list:
+            return "—"
+        if bench == "yes":
+            wins = sum(1 for r in rows_list if r.get("actual") == 1)
+        elif bench == "market":
+            wins = sum(
+                1
+                for r in rows_list
+                if (r.get("market_prob", 0.5) > 0.5 and r.get("actual") == 1)
+                or (r.get("market_prob", 0.5) <= 0.5 and r.get("actual") == 0)
+            )
+        else:
+            import random as _rand
+
+            rng = _rand.Random(42)
+            wins = sum(
+                1
+                for r in rows_list
+                if (rng.random() > 0.5 and r.get("actual") == 1)
+                or (rng.random() <= 0.5 and r.get("actual") == 0)
+            )
+        return f"{wins / len(rows_list):.0%}"
+
+    our_wr_str = f"{win_rate:.0%}" if win_rate else "—"
+    bench_rows_table = [
+        [
+            "Our model",
+            (green(f"+${pnl:.2f}") if pnl >= 0 else red(f"-${abs(pnl):.2f}")),
+            our_wr_str,
+        ],
+        [
+            "Always YES",
+            (
+                green(f"+${bench_yes:.2f}")
+                if bench_yes >= 0
+                else red(f"-${abs(bench_yes):.2f}")
+            ),
+            _bench_wr(rows, "yes"),
+        ],
+        [
+            "Follow market",
+            (
+                green(f"+${bench_mkt:.2f}")
+                if bench_mkt >= 0
+                else red(f"-${abs(bench_mkt):.2f}")
+            ),
+            _bench_wr(rows, "market"),
+        ],
+        [
+            "Random",
+            (
+                green(f"+${bench_rand:.2f}")
+                if bench_rand >= 0
+                else red(f"-${abs(bench_rand):.2f}")
+            ),
+            _bench_wr(rows, "random"),
+        ],
+    ]
+    print(bold("\n  ── Benchmark Comparison ──"))
+    print(
+        tabulate(
+            bench_rows_table,
+            headers=["Strategy", "P&L", "Win%"],
             tablefmt="rounded_outline",
         )
     )
@@ -2721,6 +3059,371 @@ def cmd_paper(args: list, client: KalshiClient | None = None):
             )
 
 
+# ── Monte Carlo simulation ────────────────────────────────────────────────────
+
+
+def cmd_montecarlo(client: KalshiClient) -> None:  # noqa: ARG001
+    """Run 1000 Monte Carlo simulations on the current open paper positions."""
+    from monte_carlo import simulate_portfolio
+    from paper import get_open_trades
+
+    open_trades = get_open_trades()
+    if not open_trades:
+        print(dim("  No open paper trades to simulate."))
+        return
+
+    _header("Monte Carlo Portfolio Simulation")
+    print(
+        dim(f"  Simulating 1000 outcomes for {len(open_trades)} open position(s)...\n")
+    )
+
+    result = simulate_portfolio(open_trades, n_simulations=1000)
+
+    med = result["median_pnl"]
+    p10 = result["p10_pnl"]
+    p90 = result["p90_pnl"]
+    pp = result["prob_positive"]
+    pr = result["prob_ruin"]
+    bal = result["current_balance"]
+
+    med_s = green(f"+${med:.2f}") if med >= 0 else red(f"-${abs(med):.2f}")
+    p10_s = red(f"-${abs(p10):.2f}") if p10 < 0 else green(f"+${p10:.2f}")
+    p90_s = green(f"+${p90:.2f}") if p90 >= 0 else red(f"-${abs(p90):.2f}")
+
+    print(f"  Balance:    ${bal:.2f}")
+    print(
+        f"  Best case:  {p90_s}  |  Median: {med_s}  |  Worst case: {p10_s}  |  Ruin risk: {pr:.0%}"
+    )
+    print(f"  Prob of profit: {pp:.0%}")
+
+    # ASCII histogram of outcomes — re-run inline for raw distribution
+    import random as _random
+
+    from utils import KALSHI_FEE_RATE as _fee_r
+
+    trade_params2 = []
+    for t in open_trades:
+        ep = t.get("entry_price", 0.5)
+        cost = t.get("cost", 0.0)
+        qty = t.get("quantity", 1)
+        wp = t.get("entry_prob") or 0.5
+        wp = max(0.0, min(1.0, wp))
+        if t.get("side") == "no":
+            wp = 1 - wp
+        win_pnl = qty * (1.0 - (1.0 - ep) * _fee_r) - cost
+        loss_pnl = -cost
+        trade_params2.append({"win_prob": wp, "win_pnl": win_pnl, "loss_pnl": loss_pnl})
+
+    rng2 = _random.Random(0)
+    sim_pnls2 = []
+    for _ in range(200):
+        total = sum(
+            tp["win_pnl"] if rng2.random() < tp["win_prob"] else tp["loss_pnl"]
+            for tp in trade_params2
+        )
+        sim_pnls2.append(total)
+    sim_pnls2.sort()
+
+    min_pnl = sim_pnls2[0]
+    max_pnl = sim_pnls2[-1]
+    span = max_pnl - min_pnl if max_pnl != min_pnl else 1.0
+    n_bins = 10
+    bins = [0] * n_bins
+    for pnl in sim_pnls2:
+        idx = min(n_bins - 1, int((pnl - min_pnl) / span * n_bins))
+        bins[idx] += 1
+
+    print(bold("\n  Outcome distribution (200 simulations):"))
+    max_bin = max(bins) if bins else 1
+    for i, count in enumerate(bins):
+        lo = min_pnl + (i / n_bins) * span
+        hi = min_pnl + ((i + 1) / n_bins) * span
+        bar_len = int(count / max_bin * 30)
+        bar = "█" * bar_len
+        label = f"${lo:+.1f}–${hi:+.1f}"
+        color = green if lo >= 0 else red
+        print(f"  {label:>16}  {color(bar)}  {count}")
+    print()
+
+
+# ── Web dashboard ─────────────────────────────────────────────────────────────
+
+
+def cmd_web(client: KalshiClient) -> None:
+    """Start local web dashboard on http://localhost:5000"""
+    try:
+        import flask  # noqa: F401
+    except ImportError:
+        print("Install Flask first: pip install flask")
+        return
+    from web_app import start_web
+
+    start_web(client, port=5000, open_browser=True)
+
+
+# ── Simulation sandbox ────────────────────────────────────────────────────────
+
+
+def cmd_simulate(client: KalshiClient) -> None:
+    """Interactive replay of historical markets — test your instincts."""
+    _header("Simulation Sandbox")
+    print(dim("  Loading last 20 finalized weather markets...\n"))
+
+    try:
+        markets = client.get_markets(status="finalized", limit=50)
+    except Exception as e:
+        print(red(f"  Could not load markets: {e}"))
+        return
+
+    from weather_markets import (
+        enrich_with_forecast,
+        is_weather_market,
+        parse_market_price,
+    )
+
+    weather = [
+        m for m in markets if is_weather_market(m) and m.get("result") in ("yes", "no")
+    ][:20]
+    if not weather:
+        print(yellow("  No finalized weather markets found."))
+        return
+
+    user_pnl = 0.0
+    model_pnl = 0.0
+    user_wins = 0
+    model_wins = 0
+    total = 0
+
+    from utils import KALSHI_FEE_RATE as _fee
+
+    print(
+        dim(
+            "  For each market, decide YES / NO / Skip. The outcome will be revealed.\n"
+        )
+    )
+    try:
+        for m in weather:
+            ticker = m.get("ticker", "")
+            title = (m.get("title") or ticker)[:60]
+            result = m.get("result", "")
+            prices = parse_market_price(m)
+            yes_price = prices["mid"] if prices["mid"] > 0 else 0.5
+            close_date = (m.get("close_time") or "")[:10]
+
+            print(f"\n  {bold(ticker)}")
+            print(f"  {title}")
+            print(f"  Closes: {close_date}   YES price: {yes_price:.2%}")
+            print(dim("  (y=YES  n=NO  s=skip)"))
+
+            while True:
+                choice = input("  Your bet: ").strip().lower()
+                if choice in ("y", "n", "s"):
+                    break
+
+            if choice == "s":
+                print(dim(f"  Skipped. Outcome was: {result.upper()}"))
+                continue
+
+            # Get amount
+            while True:
+                amt_raw = input("  Amount $: ").strip()
+                try:
+                    amt = float(amt_raw)
+                    if amt > 0:
+                        break
+                except ValueError:
+                    pass
+                print(red("  Enter a positive dollar amount."))
+
+            total += 1
+            actual_yes = result == "yes"
+            user_side = "yes" if choice == "y" else "no"
+            user_entry = yes_price if user_side == "yes" else 1 - yes_price
+            if user_entry <= 0:
+                user_entry = 0.5
+            user_won = (user_side == "yes" and actual_yes) or (
+                user_side == "no" and not actual_yes
+            )
+            if user_won:
+                winnings = (1 - user_entry) * (1 - _fee)
+                pnl = amt / user_entry * winnings
+                user_pnl += pnl
+                user_wins += 1
+                print(green(f"  CORRECT! Outcome: {result.upper()}  P&L: +${pnl:.2f}"))
+            else:
+                user_pnl -= amt
+                print(red(f"  WRONG.  Outcome: {result.upper()}  P&L: -${amt:.2f}"))
+
+            # Show what model would have done
+            try:
+                enriched = enrich_with_forecast(m)
+                from weather_markets import analyze_trade
+
+                analysis = analyze_trade(enriched)
+                if analysis:
+                    model_side = analysis["recommended_side"]
+                    model_prob = analysis["forecast_prob"]
+                    model_entry = yes_price if model_side == "yes" else 1 - yes_price
+                    if model_entry <= 0:
+                        model_entry = 0.5
+                    model_won = (model_side == "yes" and actual_yes) or (
+                        model_side == "no" and not actual_yes
+                    )
+                    model_stake = 10.0
+                    if model_won:
+                        mw = (1 - model_entry) * (1 - _fee)
+                        mpnl = model_stake / model_entry * mw
+                        model_pnl += mpnl
+                        model_wins += 1
+                        print(
+                            dim(
+                                f"  Model: BUY {model_side.upper()} ({model_prob:.0%})  → RIGHT (+${mpnl:.2f})"
+                            )
+                        )
+                    else:
+                        model_pnl -= model_stake
+                        print(
+                            dim(
+                                f"  Model: BUY {model_side.upper()} ({model_prob:.0%})  → WRONG (-${model_stake:.2f})"
+                            )
+                        )
+            except Exception:
+                pass
+
+    except (KeyboardInterrupt, EOFError):
+        print()
+
+    # Final score
+    if total == 0:
+        print(dim("\n  No markets played."))
+        return
+
+    print(bold(f"\n  ── Final Score ({total} markets) ──"))
+    pnl_s = (
+        green(f"+${user_pnl:.2f}") if user_pnl >= 0 else red(f"-${abs(user_pnl):.2f}")
+    )
+    mpnl_s = (
+        green(f"+${model_pnl:.2f}")
+        if model_pnl >= 0
+        else red(f"-${abs(model_pnl):.2f}")
+    )
+    print(f"  You:   {pnl_s}  Win rate: {user_wins / total:.0%}")
+    print(f"  Model: {mpnl_s}  Win rate: {model_wins / total:.0%}  (on $10/trade)")
+
+
+# ── Weekly summary ────────────────────────────────────────────────────────────
+
+
+def cmd_weekly_summary() -> None:
+    """
+    Generate a plain-text weekly recap saved to data/weekly_summary_{date}.txt.
+    Covers: trades made this week, settled this week, P&L, Brier score trend,
+    best/worst trades, which model sources were most accurate.
+    Also prints to terminal.
+    """
+    from datetime import timedelta
+
+    from paper import get_all_trades, get_balance
+    from tracker import brier_score, get_calibration_trend, get_source_reliability
+
+    now = datetime.now(UTC)
+    week_start = now - timedelta(days=7)
+    week_start_str = week_start.strftime("%Y-%m-%d")
+
+    all_trades = get_all_trades()
+    entered_this_week = [
+        t for t in all_trades if (t.get("entered_at") or "") >= week_start_str
+    ]
+    settled_this_week = [
+        t
+        for t in all_trades
+        if t.get("settled") and (t.get("entered_at") or "") >= week_start_str
+    ]
+
+    week_pnl = sum(t.get("pnl") or 0.0 for t in settled_this_week)
+    week_wins = sum(1 for t in settled_this_week if (t.get("pnl") or 0) > 0)
+
+    bs = brier_score()
+    trend = get_calibration_trend(weeks=4)
+    rel = get_source_reliability()
+    balance = get_balance()
+
+    # Best and worst settled trades this week
+    best = (
+        max(settled_this_week, key=lambda t: t.get("pnl") or 0.0)
+        if settled_this_week
+        else None
+    )
+    worst = (
+        min(settled_this_week, key=lambda t: t.get("pnl") or 0.0)
+        if settled_this_week
+        else None
+    )
+
+    lines = [
+        f"Weekly Summary — {now.strftime('%Y-%m-%d')} (last 7 days)",
+        "=" * 55,
+        "",
+        f"Paper balance:  ${balance:.2f}",
+        f"Trades entered: {len(entered_this_week)}",
+        f"Trades settled: {len(settled_this_week)}",
+        f"Week P&L:       {'+' if week_pnl >= 0 else ''}${week_pnl:.2f}",
+        f"Week win rate:  {week_wins / len(settled_this_week):.0%}"
+        if settled_this_week
+        else "Week win rate:  —",
+        f"All-time Brier: {bs:.4f}" if bs else "All-time Brier: —",
+        "",
+    ]
+
+    if trend:
+        lines.append("Brier trend (recent weeks):")
+        for t in trend[-4:]:
+            lines.append(f"  {t['week']}  {t['brier']:.4f}  (n={t['n']})")
+        lines.append("")
+
+    if best:
+        lines.append(
+            f"Best trade:  #{best['id']} {best['ticker']} P&L +${best.get('pnl', 0):.2f}"
+        )
+    if worst:
+        lines.append(
+            f"Worst trade: #{worst['id']} {worst['ticker']} P&L ${worst.get('pnl', 0):.2f}"
+        )
+    if best or worst:
+        lines.append("")
+
+    if rel:
+        lines.append("Source reliability (last 30 days):")
+        for city_name in sorted(rel.keys()):
+            for src in ["ensemble", "nws", "climatology"]:
+                stats = rel[city_name].get(src)
+                if stats and stats["total"] >= 3:
+                    lines.append(
+                        f"  {city_name:<10} {src:<12} {stats['rate']:.0%} ({stats['total']} days)"
+                    )
+        lines.append("")
+
+    lines.append("Note: This is an informational summary. Not financial advice.")
+
+    summary_text = "\n".join(lines)
+
+    # Save to file
+    out_dir = Path(__file__).parent / "data"
+    out_dir.mkdir(exist_ok=True)
+    fname = f"weekly_summary_{now.strftime('%Y-%m-%d')}.txt"
+    out_path = out_dir / fname
+    try:
+        out_path.write_text(summary_text, encoding="utf-8")
+        print(green(f"  Saved → {out_path}"))
+    except Exception as e:
+        print(yellow(f"  Could not save file: {e}"))
+
+    # Print to terminal
+    print()
+    for line in lines:
+        print(f"  {line}")
+
+
 # ── Scheduled auto-scan ──────────────────────────────────────────────────────
 
 
@@ -2834,6 +3537,7 @@ def main():
     if not args:
         client = build_client()
         auto_settle(client)
+        auto_backtest(client)
         cmd_menu(client)
         return
 
@@ -2841,6 +3545,7 @@ def main():
     verbose = "--verbose" in args or "-v" in args
     client = build_client()
     auto_settle(client)
+    auto_backtest(client)
 
     if cmd == "menu":
         cmd_menu(client)
@@ -2911,6 +3616,14 @@ def main():
         cmd_dashboard(client)
     elif cmd == "export":
         cmd_export()
+    elif cmd in ("montecarlo", "simulate-portfolio", "n"):
+        cmd_montecarlo(client)
+    elif cmd == "web":
+        cmd_web(client)
+    elif cmd in ("simulate", "sandbox", "x"):
+        cmd_simulate(client)
+    elif cmd in ("weekly", "y"):
+        cmd_weekly_summary()
     else:
         print(red(f"Unknown command: {cmd}"))
         print(dim("Run  py main.py  for the interactive menu."))

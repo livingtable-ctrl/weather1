@@ -1148,6 +1148,17 @@ def analyze_trade(enriched: dict) -> dict | None:
     # Flag anomalously wide ensemble spread (models disagree strongly)
     anomalous = is_forecast_anomalous(ens_stats or {})
 
+    # Regime detection
+    _regime_info: dict = {}
+    _confidence_boost = 1.0
+    try:
+        from regime import detect_regime as _detect_regime
+
+        _regime_info = _detect_regime(city, ens_stats or {}, days_out)
+        _confidence_boost = _regime_info.get("confidence_boost", 1.0)
+    except Exception:
+        pass
+
     # Log source availability for per-city reliability tracking
     try:
         from tracker import log_source_attempt as _log_src
@@ -1220,7 +1231,8 @@ def analyze_trade(enriched: dict) -> dict | None:
         * quality_scale
         * anomaly_scale
         * spread_scale
-        * time_kelly_scale,
+        * time_kelly_scale
+        * _confidence_boost,
         6,
     )
 
@@ -1269,6 +1281,9 @@ def analyze_trade(enriched: dict) -> dict | None:
         "time_kelly_scale": round(time_kelly_scale, 4),
         # Consensus signal
         "consensus": consensus,
+        # Regime detection
+        "regime": _regime_info.get("regime", "normal"),
+        "regime_description": _regime_info.get("description", ""),
     }
 
 

@@ -202,3 +202,29 @@ class KalshiClient:
 
     def cancel_order(self, order_id: str) -> dict:
         return self._delete(f"/portfolio/orders/{order_id}")
+
+    def place_maker_order(
+        self,
+        ticker: str,
+        side: str,
+        price: float,
+        quantity: float,
+    ) -> dict:
+        """
+        Place a passive limit (maker) order at the specified price.
+        Uses good_till_canceled so the order rests in the book.
+
+        Args:
+            ticker:   Market ticker
+            side:     "yes" or "no"
+            price:    Limit price in dollars (e.g. 0.45)
+            quantity: Number of contracts
+        """
+        return self.place_order(
+            ticker=ticker,
+            side=side,
+            action="buy",
+            count=quantity,
+            price=price,
+            time_in_force="good_till_canceled",
+        )
