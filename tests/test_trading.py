@@ -383,3 +383,66 @@ class TestBayesianKellyFractionBeta:
 
         result = bayesian_kelly_fraction(0.99, 0.01, n_predictions=20, fee_rate=0.07)
         assert result <= 0.25
+
+
+class TestCorrelationPersistence:
+    """#49: load_correlations_from_backtest / save_correlations round-trip."""
+
+    def test_save_and_reload(self, tmp_path):
+        """save_correlations writes JSON; load_correlations_from_backtest reads it back."""
+        from unittest.mock import patch
+
+        import monte_carlo
+
+        corr_file = tmp_path / "correlations.json"
+        pairs = {"NYC|Boston": 0.91, "Chicago|Denver": 0.43}
+
+        with patch.object(monte_carlo, "_CORR_PATH", corr_file):
+            monte_carlo.save_correlations(pairs)
+            assert corr_file.exists()
+            result = monte_carlo.load_correlations_from_backtest()
+
+        assert result[frozenset({"NYC", "Boston"})] == pytest.approx(0.91)
+        assert result[frozenset({"Chicago", "Denver"})] == pytest.approx(0.43)
+
+    def test_fallback_to_hardcoded_when_file_missing(self, tmp_path):
+        """When correlations.json is absent, returns _HARDCODED_CORR."""
+        from unittest.mock import patch
+
+        import monte_carlo
+
+        missing = tmp_path / "correlations.json"
+
+        with patch.object(monte_carlo, "_CORR_PATH", missing):
+            result = monte_carlo.load_correlations_from_backtest()
+
+        # NYC|Boston hardcoded at 0.85
+        assert result[frozenset({"NYC", "Boston"})] == pytest.approx(0.85)
+
+    def test_save_correlations_valid_json(self, tmp_path):
+        """save_correlations produces valid JSON with pipe-separated keys."""
+        import json
+        from unittest.mock import patch
+
+        import monte_carlo
+
+        corr_file = tmp_path / "correlations.json"
+        with patch.object(monte_carlo, "_CORR_PATH", corr_file):
+            monte_carlo.save_correlations({"LA|Phoenix": 0.60})
+
+        raw = json.loads(corr_file.read_text())
+        assert "LA|Phoenix" in raw
+        assert raw["LA|Phoenix"] == pytest.approx(0.60)
+
+    def test_unknown_pair_returns_zero_after_load(self, tmp_path):
+        """After loading, unknown city pairs return 0.0."""
+        from unittest.mock import patch
+
+        import monte_carlo
+
+        corr_file = tmp_path / "correlations.json"
+        with patch.object(monte_carlo, "_CORR_PATH", corr_file):
+            monte_carlo.save_correlations({"NYC|Boston": 0.88})
+            result = monte_carlo.load_correlations_from_backtest()
+
+        assert result.get(frozenset({"NYC", "Honolulu"}), 0.0) == 0.0

@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import math
 import random
+from pathlib import Path
 
 # Default pairwise correlation coefficients for cities with shared weather patterns.
 _DEFAULT_CORRELATIONS: dict[tuple[str, str], float] = {
@@ -33,6 +34,45 @@ _HARDCODED_CORR: dict[frozenset, float] = {
 # Cache for dynamic correlations so we don't re-read the file on every call
 _dynamic_corr_cache: dict[frozenset, float] | None = None
 _dynamic_corr_loaded: bool = False
+
+# #49: Path for backtest-derived correlation file (distinct from learned_correlations.json)
+_CORR_PATH: Path = Path(__file__).parent / "data" / "correlations.json"
+
+
+def load_correlations_from_backtest() -> dict:
+    """
+    #49: Load city-pair correlations from data/correlations.json.
+
+    Returns a frozenset-keyed dict mapping city pairs to float correlations.
+    Falls back to _HARDCODED_CORR if the file is absent, empty, or malformed.
+    """
+    import json
+
+    try:
+        if _CORR_PATH.exists():
+            raw = json.loads(_CORR_PATH.read_text())
+            if isinstance(raw, dict) and raw:
+                result: dict = {}
+                for key, val in raw.items():
+                    parts = key.split("|")
+                    if len(parts) == 2 and isinstance(val, int | float):
+                        result[frozenset(parts)] = float(val)
+                if result:
+                    return result
+    except Exception:
+        pass
+    return dict(_HARDCODED_CORR)
+
+
+def save_correlations(city_pairs_dict: dict) -> None:
+    """
+    #49: Persist city-pair correlations to data/correlations.json.
+    """
+    import json
+
+    _CORR_PATH.parent.mkdir(parents=True, exist_ok=True)
+    payload = {k: float(v) for k, v in city_pairs_dict.items()}
+    _CORR_PATH.write_text(json.dumps(payload, indent=2))
 
 
 def _load_dynamic_correlations() -> dict[frozenset, float] | None:
