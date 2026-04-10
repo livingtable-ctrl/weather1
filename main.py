@@ -1057,6 +1057,7 @@ def _analyze_once(
 
 
 _LIVE_CONFIG_PATH = Path(__file__).parent / "data" / "live_config.json"
+_SESSION_LOSS: float = 0.0
 _LIVE_CONFIG_DEFAULT: dict = {
     "max_trade_dollars": 50,
     "daily_loss_limit": 200,
@@ -1093,6 +1094,96 @@ def _midpoint_price(market: dict, side: str) -> float:
         bid = (100 - market.get("yes_ask", 100)) / 100
         ask = (100 - market.get("yes_bid", 0)) / 100
     return round((bid + ask) / 2, 2)
+
+
+def _count_open_live_orders() -> int:
+    """Count live orders with status 'pending' — enforces max_open_positions limit."""
+    import execution_log as _elog
+
+    orders = _elog.get_recent_orders(limit=500)
+    return sum(1 for o in orders if o.get("live") and o.get("status") == "pending")
+
+
+def _place_live_order(
+    ticker: str,
+    side: str,
+    analysis: dict,
+    config: dict,
+    client,
+    cycle: str,
+) -> tuple[bool, float]:
+    """Place a live Kalshi order with hard-stop guards.
+
+    Returns (placed, dollar_cost). Caller must add cost to _SESSION_LOSS.
+    """
+    import execution_log as _elog
+
+    # 1. Daily loss check
+    if _SESSION_LOSS >= config["daily_loss_limit"]:
+        print(
+            f"[LIVE] Daily loss limit ${config['daily_loss_limit']} reached — skipping {ticker}"
+        )
+        return False, 0.0
+
+    # 2. Open position check
+    if _count_open_live_orders() >= config["max_open_positions"]:
+        print(
+            f"[LIVE] Max open positions {config['max_open_positions']} reached — skipping {ticker}"
+        )
+        return False, 0.0
+
+    # 3. Size computation — Kelly quantity, capped by max_trade_dollars
+    market = analysis.get("market", {})
+    price = _midpoint_price(market, side)
+    if price <= 0:
+        return False, 0.0
+    kelly_qty = int(analysis.get("kelly_quantity", 1))
+    max_qty = int(config["max_trade_dollars"] / price)
+    quantity = min(kelly_qty, max_qty)
+    if quantity <= 0:
+        return False, 0.0
+    dollar_cost = round(quantity * price, 2)
+
+    # 4. Cycle deduplication check
+    if _elog.was_ordered_this_cycle(ticker, side, cycle):
+        return False, 0.0
+
+    # 5. Place order
+    try:
+        response = client.place_order(
+            ticker=ticker,
+            side=side,
+            action="buy",
+            count=quantity,
+            price=int(price * 100),
+            time_in_force="good_till_canceled",
+        )
+        _elog.log_order(
+            ticker=ticker,
+            side=side,
+            quantity=quantity,
+            price=price,
+            order_type="limit",
+            status="pending",
+            response=response,
+            forecast_cycle=cycle,
+            live=True,
+        )
+        return True, dollar_cost
+    except Exception as exc:
+        _elog.log_order(
+            ticker=ticker,
+            side=side,
+            quantity=quantity,
+            price=price,
+            order_type="limit",
+            status="failed",
+            error=str(exc),
+            forecast_cycle=cycle,
+            live=True,
+        )
+        print(f"[LIVE] Order failed for {ticker}: {exc}")
+        return False, 0.0
 
 
 def _resolve_price(client: KalshiClient, ticker: str, side: str) -> float | None:
