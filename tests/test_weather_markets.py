@@ -402,3 +402,82 @@ class TestBootstrapCI:
         condition = {"type": "between", "lower": 70.0, "upper": 80.0}
         lo, hi = _bootstrap_ci(temps, condition, n=200)
         assert 0.0 <= lo <= hi <= 1.0
+
+
+# ── TestCensoringCorrection (#23) ─────────────────────────────────────────────
+
+
+class TestCensoringCorrection:
+    """Tests for censoring_correction() in weather_markets (#23)."""
+
+    def test_no_censoring_returns_mean_unchanged(self):
+        """Probs spread across (0, 1) with no censoring → corrected == raw mean."""
+        from weather_markets import censoring_correction
+
+        probs = [0.1, 0.3, 0.5, 0.7, 0.9]
+        condition = {"type": "above", "threshold": 70.0}
+        result = censoring_correction(probs, condition)
+        raw_mean = sum(probs) / len(probs)
+        assert abs(result - raw_mean) < 1e-9
+
+    def test_censoring_at_zero_shrinks_toward_half(self):
+        """Many zeros (>5% censored at 0) → result > raw mean (pulled toward 0.5)."""
+        from weather_markets import censoring_correction
+
+        probs = [0.0] * 80 + [0.8] * 20
+        condition = {"type": "above", "threshold": 70.0}
+        raw_mean = sum(probs) / len(probs)
+        result = censoring_correction(probs, condition)
+        assert result > raw_mean
+
+    def test_censoring_at_one_shrinks_toward_half(self):
+        """Many ones (>5% censored at 1) → result < raw mean (pulled toward 0.5)."""
+        from weather_markets import censoring_correction
+
+        probs = [1.0] * 80 + [0.2] * 20
+        condition = {"type": "above", "threshold": 70.0}
+        raw_mean = sum(probs) / len(probs)
+        result = censoring_correction(probs, condition)
+        assert result < raw_mean
+
+    def test_exactly_at_threshold_applies_correction(self):
+        """5% zeros > 1% censor_pct threshold → correction applies (result != raw mean)."""
+        from weather_markets import censoring_correction
+
+        probs = [0.0] * 5 + [0.6] * 95
+        condition = {"type": "above", "threshold": 70.0}
+        raw_mean = sum(probs) / len(
+            probs
+        )  # 0.57, zeros pull toward 0.5 → result < raw_mean
+        result = censoring_correction(probs, condition, censor_pct=0.01)
+        assert result != raw_mean  # correction was applied
+        assert result < raw_mean  # zeros pull mean of 0.57 down toward 0.5
+
+    def test_result_clamped_between_zero_and_one(self):
+        """Corrected probability must always be in [0, 1]."""
+        from weather_markets import censoring_correction
+
+        probs = [0.0] * 99 + [0.01]
+        condition = {"type": "above", "threshold": 70.0}
+        result = censoring_correction(probs, condition)
+        assert 0.0 <= result <= 1.0
+
+    def test_empty_list_returns_half(self):
+        """Empty prob list returns 0.5 (maximally uncertain)."""
+        from weather_markets import censoring_correction
+
+        result = censoring_correction([], {"type": "above", "threshold": 70.0})
+        assert result == 0.5
+
+    def test_correction_formula_values(self):
+        """Verify the Tobit-style formula numerically."""
+        from weather_markets import censoring_correction
+
+        probs = [0.0] * 60 + [0.9] * 40
+        condition = {"type": "above", "threshold": 70.0}
+        raw_mean = sum(probs) / len(probs)  # 0.36
+        censored_fraction = 60 / 100  # 0.60
+        blend = censored_fraction * 0.5  # 0.30
+        expected = raw_mean * (1 - blend) + 0.5 * blend  # 0.402
+        result = censoring_correction(probs, condition, censor_pct=0.01)
+        assert abs(result - expected) < 1e-9

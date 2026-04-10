@@ -651,20 +651,21 @@ def get_history(limit: int = 50) -> list[dict]:
 
 def get_calibration_trend(weeks: int = 8) -> list[dict]:
     """
-    Brier score grouped by ISO week for the last N weeks.
-    Returns [{week, brier, n}, ...] oldest first.
-    Only includes weeks with at least one settled prediction.
+    Brier score grouped by ISO week of the MARKET DATE for the last N weeks.
+    Groups by market_date (not predicted_at) so the trend reflects when the
+    weather event occurred, not when the analysis was run (#54).
     """
     init_db()
     with _conn() as con:
         rows = con.execute("""
             SELECT
-                strftime('%Y-W%W', p.predicted_at) AS week,
+                strftime('%Y-W%W', p.market_date) AS week,
                 p.our_prob,
                 o.settled_yes
             FROM predictions p
             JOIN outcomes o ON p.ticker = o.ticker
             WHERE p.our_prob IS NOT NULL
+              AND p.market_date IS NOT NULL
             ORDER BY week ASC
         """).fetchall()
 
@@ -1153,7 +1154,7 @@ def get_confusion_matrix(threshold: float = 0.5) -> dict:
 def get_optimal_threshold() -> dict | None:
     """
     Sweep thresholds 0.05..0.95 (step 0.05) and find the one maximizing F1 (#60).
-    Returns {"threshold_f1": float, "best_f1": float} or None if < 10 samples.
+    Returns {"threshold_f1": float, "best_f1": float} or None if < 20 samples.
     """
     init_db()
     with _conn() as con:
@@ -1164,7 +1165,7 @@ def get_optimal_threshold() -> dict | None:
             WHERE p.our_prob IS NOT NULL
         """).fetchall()
 
-    if len(rows) < 10:
+    if len(rows) < 20:
         return None
 
     best_f1 = -1.0
@@ -1616,3 +1617,86 @@ def get_unselected_bias(city: str, condition_type: str | None = None) -> float:
         return 0.0
     errors = [fp - o for fp, o in rows]
     return round(sum(errors) / len(errors), 4)
+
+
+def analyze_all_markets(enriched_list: list[dict]) -> None:
+    """
+    Log every analyzed market (traded or not) to analysis_attempts (#55).
+    """
+    init_db()
+    from datetime import UTC
+    from datetime import date as _date
+
+    analyzed_at = datetime.now(UTC).isoformat()
+
+    for item in enriched_list:
+        try:
+            ticker = item["ticker"]
+            city = item.get("city")
+            target_date = item.get("target_date")
+            analysis = item.get("analysis", {})
+            forecast_prob = analysis.get("forecast_prob")
+            market_prob = analysis.get("market_prob")
+            condition = analysis.get("condition", {})
+            condition_str = condition.get("type") if condition else None
+            days_out = (
+                (target_date - _date.today()).days
+                if target_date is not None and hasattr(target_date, "today")
+                else None
+            )
+            if target_date is None:
+                target_str = None
+            elif hasattr(target_date, "isoformat"):
+                target_str = target_date.isoformat()  # type: ignore[union-attr]
+            else:
+                target_str = str(target_date)
+            try:
+                with _conn() as con:
+                    con.execute(
+                        """INSERT OR REPLACE INTO analysis_attempts
+                           (ticker, city, condition, target_date, analyzed_at,
+                            forecast_prob, market_prob, days_out, was_traded)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)""",
+                        (
+                            ticker,
+                            city,
+                            condition_str,
+                            target_str,
+                            analyzed_at,
+                            forecast_prob,
+                            market_prob,
+                            days_out,
+                        ),
+                    )
+            except Exception as exc:
+                _log.warning("analyze_all_markets: failed to log %s: %s", ticker, exc)
+        except (KeyError, TypeError) as exc:
+            _log.warning("analyze_all_markets: skipping malformed item: %s", exc)
+
+
+def get_analysis_bias() -> float | None:
+    """
+    Mean(forecast_prob - settled_yes) across ALL analyzed markets (#55).
+    Returns None if no analysis_attempts rows have a settled outcome.
+    """
+    init_db()
+    try:
+        with _conn() as con:
+            rows = con.execute(
+                """
+                SELECT a.forecast_prob, o.settled_yes
+                FROM analysis_attempts a
+                JOIN outcomes o ON a.ticker = o.ticker
+                WHERE a.forecast_prob IS NOT NULL
+                  AND o.settled_yes IS NOT NULL
+                """
+            ).fetchall()
+    except Exception as exc:
+        _log.warning("get_analysis_bias failed: %s", exc)
+        return None
+
+    if not rows:
+        return None
+
+    bias_values = [r["forecast_prob"] - r["settled_yes"] for r in rows]
+    return round(sum(bias_values) / len(bias_values), 6)
