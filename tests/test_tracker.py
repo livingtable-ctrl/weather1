@@ -382,17 +382,65 @@ class TestGetBias(unittest.TestCase):
         self.assertIsInstance(result, float)
 
 
-def test_get_brier_over_time_returns_list():
-    """get_brier_over_time returns a list of {week, brier} dicts or empty list."""
-    from tracker import get_brier_over_time
+class TestGetBrierOverTime(unittest.TestCase):
+    """Tests for tracker.get_brier_over_time()."""
 
-    result = get_brier_over_time(weeks=12)
-    assert isinstance(result, list)
-    for item in result:
-        assert "week" in item
-        assert "brier" in item
-        assert isinstance(item["brier"], float)
-        assert 0.0 <= item["brier"] <= 1.0
+    def setUp(self):
+        import tempfile
+
+        self._tmpdir = tempfile.mkdtemp()
+        self._orig = tracker.DB_PATH
+        tracker.DB_PATH = Path(self._tmpdir) / "test_brier_over_time.db"
+        tracker._db_initialized = False
+        tracker.init_db()
+
+    def tearDown(self):
+        tracker.DB_PATH = self._orig
+        tracker._db_initialized = False
+        import shutil
+
+        shutil.rmtree(self._tmpdir, ignore_errors=True)
+
+    def _insert(self, ticker, our_prob, settled_yes):
+        from datetime import date
+
+        analysis = {
+            "condition": {"type": "above", "threshold": 70.0},
+            "forecast_prob": our_prob,
+            "market_prob": 0.50,
+            "edge": our_prob - 0.50,
+            "method": "ensemble",
+            "n_members": 20,
+        }
+        tracker.log_prediction(ticker, "NYC", date(2026, 4, 1), analysis)
+        tracker.log_outcome(ticker, settled_yes)
+
+    def test_empty_db_returns_empty_list(self):
+        """No data → empty list."""
+        result = tracker.get_brier_over_time(weeks=12)
+        self.assertIsInstance(result, list)
+        self.assertEqual(result, [])
+
+    def test_returns_correct_brier_for_seeded_data(self):
+        """Seeded prediction: prob=0.5, outcome=NO → brier=(0.5-0)^2=0.25."""
+        self._insert("TK-BOT-1", 0.5, False)
+        result = tracker.get_brier_over_time(weeks=12)
+        self.assertIsInstance(result, list)
+        self.assertEqual(len(result), 1)
+        item = result[0]
+        self.assertIn("week", item)
+        self.assertIn("brier", item)
+        self.assertIsInstance(item["brier"], float)
+        self.assertAlmostEqual(item["brier"], 0.25, places=4)
+
+    def test_brier_values_in_valid_range(self):
+        """Brier values must be in [0.0, 1.0]."""
+        self._insert("TK-BOT-2", 0.8, True)  # (0.8-1)^2 = 0.04
+        self._insert("TK-BOT-3", 0.3, False)  # (0.3-0)^2 = 0.09
+        result = tracker.get_brier_over_time(weeks=12)
+        for item in result:
+            self.assertGreaterEqual(item["brier"], 0.0)
+            self.assertLessEqual(item["brier"], 1.0)
 
 
 # ── Phase 3 tests ─────────────────────────────────────────────────────────────
