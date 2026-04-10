@@ -10,6 +10,8 @@ from pathlib import Path
 import requests
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 _log = logging.getLogger(__name__)
 
@@ -19,48 +21,41 @@ _MAX_RETRIES = 3
 DEFAULT_TIMEOUT = 15  # seconds
 
 
+def _build_session() -> requests.Session:
+    """Build a requests Session with automatic retry on transient errors."""
+    session = requests.Session()
+    retry = Retry(
+        total=3,
+        backoff_factor=1.0,
+        status_forcelist={429, 500, 502, 503, 504},
+        allowed_methods={"GET", "POST", "DELETE"},
+        respect_retry_after_header=True,
+        raise_on_status=False,
+    )
+    adapter = HTTPAdapter(max_retries=retry)
+    session.mount("https://", adapter)
+    session.mount("http://", adapter)
+    return session
+
+
+_SESSION = _build_session()
+
+
 def _request_with_retry(method: str, url: str, **kwargs) -> requests.Response:
     """
-    Call requests.request with exponential backoff on transient errors.
-    Retries on connection errors and HTTP 429/5xx up to _MAX_RETRIES times.
-    #6: Respects Retry-After header from 429 responses.
+    Call _SESSION.request with automatic retry via HTTPAdapter (#67).
+    Falls back to latency logging for slow responses (#108).
     """
     # Apply default timeout if caller didn't specify one
     kwargs.setdefault("timeout", DEFAULT_TIMEOUT)
 
-    delay = 1.0
-    resp = None
-    for attempt in range(_MAX_RETRIES):
-        try:
-            _t0 = time.perf_counter()
-            resp = requests.request(method, url, **kwargs)
-            _elapsed = time.perf_counter() - _t0
-            # #108: warn on slow API responses so latency issues are visible
-            if _elapsed > 5:
-                _log.warning("Kalshi API slow: %.1fs for %s %s", _elapsed, method, url)
-            if resp.status_code not in _RETRY_STATUSES:
-                return resp
-            # #6: honour Retry-After if the server sent one
-            if resp.status_code == 429:
-                retry_after = resp.headers.get("Retry-After")
-                if retry_after:
-                    try:
-                        delay = max(delay, float(retry_after))
-                    except ValueError:
-                        pass
-        except (requests.ConnectionError, requests.Timeout):
-            resp = None
-
-        if attempt < _MAX_RETRIES - 1:
-            time.sleep(delay)
-            delay = min(delay * 2, 60)  # cap backoff at 60s
-        else:
-            if resp is not None:
-                return resp
-            raise requests.ConnectionError(
-                f"Failed after {_MAX_RETRIES} attempts: {url}"
-            )
-    return resp  # type: ignore[return-value]
+    _t0 = time.perf_counter()
+    resp = _SESSION.request(method, url, **kwargs)
+    _elapsed = time.perf_counter() - _t0
+    # #108: warn on slow API responses so latency issues are visible
+    if _elapsed > 5:
+        _log.warning("Kalshi API slow: %.1fs for %s %s", _elapsed, method, url)
+    return resp
 
 
 PROD_BASE = "https://trading-api.kalshi.com/trade-api/v2"
