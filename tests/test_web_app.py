@@ -106,3 +106,10 @@ def test_balance_history_range_3mo(client):
             data = r.get_json()
             # With 200 days of data and a 90-day window, we should get at most 91 labels
             assert len(data["labels"]) <= 91
+
+
+def test_dashboard_route_returns_200_with_title(client):
+    """Dashboard page returns 200 and contains 'Dashboard'."""
+    r = client.get("/")
+    assert r.status_code == 200
+    assert b"Dashboard" in r.data
