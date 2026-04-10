@@ -16,6 +16,10 @@
   }, 1000);
 
   var es = new EventSource('/api/stream');
+  es.onerror = function () {
+    if (dashUpdated) dashUpdated.textContent = 'Offline';
+    if (dashDot) dashDot.classList.add('stale');
+  };
   es.onmessage = function (e) {
     try {
       _lastSseTs = Date.now();
@@ -35,7 +39,7 @@
         if (el) el.textContent = d.brier.toFixed(4);
       }
       if (d.markets) renderMarketsStrip(d.markets);
-    } catch (err) {}
+    } catch (err) { console.error('SSE parse error:', err); }
   };
 
   function renderMarketsStrip(markets) {
@@ -45,15 +49,20 @@
       el.innerHTML = '<p class="neu">No opportunities right now.</p>';
       return;
     }
-    var html = '<table><tr><th>Ticker</th><th>Yes Ask</th><th>Edge</th></tr>';
+    var table = document.createElement('table');
+    var thead = table.createTHead();
+    thead.innerHTML = '<tr><th>Ticker</th><th>Yes Ask</th><th>Edge</th></tr>';
+    var tbody = table.createTBody();
     markets.forEach(function (m) {
       var edgeCls = m.edge >= 0 ? 'pos' : 'neg';
       var edgeStr = (m.edge >= 0 ? '+' : '') + (m.edge * 100).toFixed(1) + '%';
-      html += '<tr><td>' + m.ticker + '</td><td>' + (m.yes_ask || '—') + '</td>'
-        + '<td class="' + edgeCls + '">' + edgeStr + '</td></tr>';
+      var row = tbody.insertRow();
+      var td1 = row.insertCell(); td1.textContent = m.ticker;
+      var td2 = row.insertCell(); td2.textContent = m.yes_ask || '—';
+      var td3 = row.insertCell(); td3.textContent = edgeStr; td3.className = edgeCls;
     });
-    html += '</table>';
-    el.innerHTML = html;
+    el.innerHTML = '';
+    el.appendChild(table);
   }
 
   // --- Graduation bars + Fear/Greed gauge ---
@@ -95,7 +104,7 @@
 
       // Fear/Greed gauge
       renderFearGreed(d.fear_greed_score || 0, d.fear_greed_label || '');
-    }).catch(function () {});
+    }).catch(function (err) { console.error('graduation fetch failed:', err); });
   }
 
   function renderFearGreed(score, label) {
@@ -151,7 +160,7 @@
       document.querySelectorAll('.range-btn').forEach(function (b) {
         b.style.opacity = b.dataset.range === range ? '1' : '0.5';
       });
-    }).catch(function () {});
+    }).catch(function (err) { console.error('balance history fetch failed:', err); });
   }
 
   // Init
