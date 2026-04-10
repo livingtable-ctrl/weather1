@@ -43,8 +43,10 @@ def test_save_writes_crc32_field(tmp_path, monkeypatch):
     monkeypatch.setattr(paper, "DATA_PATH", tmp_path / "paper_trades.json")
     paper._save({"balance": 1000.0, "trades": []})
     stored = json.loads((tmp_path / "paper_trades.json").read_bytes())
-    assert "_crc32" in stored
-    assert len(stored["_crc32"]) == 8
+    # #102: SHA-256 replaced CRC32; accept either field for backward compatibility
+    assert "_checksum" in stored or "_crc32" in stored
+    checksum_field = stored.get("_checksum") or stored.get("_crc32")
+    assert len(checksum_field) == 8
 
 
 def test_save_then_load_roundtrip(tmp_path, monkeypatch):
