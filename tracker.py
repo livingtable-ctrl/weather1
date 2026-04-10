@@ -142,7 +142,7 @@ def log_outcome(ticker: str, settled_yes: bool) -> None:
 # ── Bias correction ───────────────────────────────────────────────────────────
 
 
-def get_bias(city: str | None, month: int | None, min_samples: int = 20) -> float:
+def get_bias(city: str | None, month: int | None, min_samples: int = 5) -> float:
     """
     Compute systematic bias for a city/month: mean(our_prob - actual_outcome).
     Positive bias means we consistently over-estimate; negative = under-estimate.

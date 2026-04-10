@@ -81,7 +81,7 @@ class TestKellyCompounding(unittest.TestCase):
         # Place a trade
         trade = paper.place_paper_order("TKTEST", "yes", 10, 0.50)
         balance_before = paper.get_balance()
-        # Settle as a winner — payout = 10 * 1.0 * 0.93 = 9.30
+        # Settle as a winner — payout = 10 * 0.965 = 9.65 (fee on winnings only)
         paper.settle_paper_trade(trade["id"], outcome_yes=True)
         balance_after = paper.get_balance()
         self.assertGreater(balance_after, balance_before)
@@ -341,7 +341,7 @@ class TestHighWaterMark(unittest.TestCase):
         )  # cost=$50, balance=$950
         paper.settle_paper_trade(
             trade["id"], outcome_yes=True
-        )  # payout=93, balance=$1043
+        )  # payout=96.5, balance=$1046.5
         self.assertGreater(paper.get_peak_balance(), 1000.0)
 
     def test_peak_does_not_decrease_on_loss(self):
@@ -363,11 +363,11 @@ class TestHighWaterMark(unittest.TestCase):
         """Win to $1500+, then lose >50% of peak → should be paused."""
         import paper
 
-        # Win big: 1000 contracts at $0.50 → payout = 1000 * 0.93 = $930
+        # Win big: 1000 contracts at $0.50 → payout = 1000 * 0.965 = $965 (fee on winnings only)
         t1 = paper.place_paper_order(
             "TK1", "yes", 1000, 0.50
         )  # cost=$500, balance=$500
-        paper.settle_paper_trade(t1["id"], outcome_yes=True)  # +$930 → balance=$1430
+        paper.settle_paper_trade(t1["id"], outcome_yes=True)  # +$965 → balance=$1465
         peak = paper.get_peak_balance()
         self.assertGreater(peak, 1000.0)
 

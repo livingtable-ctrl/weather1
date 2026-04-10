@@ -29,6 +29,9 @@ _DRAWDOWN_TIER_2 = 0.60  # 10% sizing (was 25%)
 _DRAWDOWN_TIER_3 = 0.75  # 30% sizing (was 50%)
 _DRAWDOWN_TIER_4 = 0.90  # 70% sizing (was 75%)
 
+MAX_TOTAL_OPEN_EXPOSURE = (
+    0.50  # max fraction of starting balance in open positions total
+)
 MAX_CITY_DATE_EXPOSURE = 0.15  # max fraction of starting balance on one city/date combo
 MAX_DIRECTIONAL_EXPOSURE = (
     0.10  # max fraction of starting balance on one city/date/side
@@ -213,7 +216,12 @@ def settle_paper_trade(trade_id: int, outcome_yes: bool) -> dict:
             side = t["side"]
             cost = t["cost"]
             won = (side == "yes" and outcome_yes) or (side == "no" and not outcome_yes)
-            payout = qty * 1.0 * (1 - KALSHI_FEE_RATE) if won else 0.0
+            # Fee is charged on winnings (profit) only, not the full $1 payout.
+            # net_payout_per_contract = 1.0 - winnings * fee_rate
+            entry_price = t["entry_price"]
+            winnings_per_contract = 1.0 - entry_price
+            net_payout_per_contract = 1.0 - winnings_per_contract * KALSHI_FEE_RATE
+            payout = qty * net_payout_per_contract if won else 0.0
             pnl = payout - cost
 
             t["settled"] = True
@@ -259,6 +267,15 @@ def get_directional_exposure(city: str, target_date_str: str, side: str) -> floa
         and t.get("target_date") == target_date_str
         and t.get("side") == side
     )
+    return committed / STARTING_BALANCE
+
+
+def get_total_exposure() -> float:
+    """
+    Return the total fraction of STARTING_BALANCE committed across all open trades.
+    Used to enforce the global portfolio cap (MAX_TOTAL_OPEN_EXPOSURE).
+    """
+    committed = sum(t["cost"] for t in get_open_trades())
     return committed / STARTING_BALANCE
 
 
@@ -330,6 +347,10 @@ def portfolio_kelly_fraction(
 
     If existing city/date exposure >= MAX_CITY_DATE_EXPOSURE, returns 0.0.
     """
+    # Global cap: halt new positions if total open exposure >= 50% of starting balance
+    if get_total_exposure() >= MAX_TOTAL_OPEN_EXPOSURE:
+        return 0.0
+
     if not city or not target_date_str:
         return base_fraction
 
@@ -481,6 +502,39 @@ def check_model_exits(client=None) -> list[dict]:
         except Exception:
             continue
     return recommendations
+
+
+def check_expiring_trades(warn_hours: int = 24) -> list[dict]:
+    """
+    Return open paper trades whose markets close within warn_hours.
+    Each entry: {"trade": {...}, "hours_left": float, "urgent": bool}
+    urgent=True if < 4 hours remaining.
+    Trades without a close_time field are skipped.
+    """
+    from datetime import UTC, datetime
+
+    open_trades = get_open_trades()
+    expiring = []
+    now = datetime.now(UTC)
+    for t in open_trades:
+        close_time_str = t.get("close_time") or t.get("expires_at")
+        if not close_time_str:
+            continue
+        try:
+            close_dt = datetime.fromisoformat(close_time_str.replace("Z", "+00:00"))
+            hours_left = (close_dt - now).total_seconds() / 3600
+            if 0 < hours_left <= warn_hours:
+                expiring.append(
+                    {
+                        "trade": t,
+                        "hours_left": round(hours_left, 1),
+                        "urgent": hours_left < 4,
+                    }
+                )
+        except (ValueError, TypeError):
+            continue
+    expiring.sort(key=lambda x: x["hours_left"])  # type: ignore[arg-type, return-value]
+    return expiring
 
 
 def auto_settle_paper_trades(client=None) -> int:

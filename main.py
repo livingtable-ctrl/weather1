@@ -2,6 +2,7 @@
 """Kalshi Weather Prediction Markets — run with no arguments for interactive menu."""
 
 import io
+import json
 import logging
 import os
 import sys
@@ -57,6 +58,29 @@ from weather_markets import (
 load_dotenv()
 
 REFRESH_SECS = 300  # watch mode interval
+_WATCH_STATE_PATH = Path(__file__).parent / "data" / ".watch_state.json"
+
+
+def _load_watch_state() -> set:
+    """Load the set of previously-seen tickers from disk (survives restarts)."""
+    try:
+        if _WATCH_STATE_PATH.exists():
+            data = json.loads(_WATCH_STATE_PATH.read_text())
+            return set(data.get("tickers", []))
+    except Exception:
+        pass
+    return set()
+
+
+def _save_watch_state(tickers: set) -> None:
+    """Persist the set of seen tickers so the next run knows what's new."""
+    try:
+        _WATCH_STATE_PATH.parent.mkdir(exist_ok=True)
+        _WATCH_STATE_PATH.write_text(json.dumps({"tickers": list(tickers)}))
+    except Exception:
+        pass
+
+
 KALSHI_ENV = os.getenv("KALSHI_ENV", "demo")
 MARKET_BASE_URL = (
     "https://kalshi.com" if KALSHI_ENV == "prod" else "https://demo.kalshi.co"
@@ -883,7 +907,7 @@ def cmd_watch(client: KalshiClient, auto_trade: bool = False, min_edge: float = 
                 "  Auto-trade: STRONG BUY + LOW risk signals → paper orders placed automatically.\n"
             )
         )
-    previous: set = set()
+    previous: set = _load_watch_state()
     try:
         while True:
             os.system("cls" if sys.platform == "win32" else "clear")
@@ -899,11 +923,12 @@ def cmd_watch(client: KalshiClient, auto_trade: bool = False, min_edge: float = 
                 min_edge=min_edge,
                 show_summary=True,
             )
+            _save_watch_state(previous)
             if auto_trade and liquid_opps:
                 _auto_place_trades(liquid_opps, client)
             # Check open paper positions for exit signals
             try:
-                from paper import check_model_exits
+                from paper import check_expiring_trades, check_model_exits
 
                 exit_recs = check_model_exits(client)
                 for rec in exit_recs:
@@ -919,6 +944,16 @@ def cmd_watch(client: KalshiClient, auto_trade: bool = False, min_edge: float = 
                             f"{t['side'].upper()} — {reason} "
                             f"(edge now {rec['current_edge']:+.1%})"
                         )
+                    )
+                for exp in check_expiring_trades():
+                    t = exp["trade"]
+                    hrs = exp["hours_left"]
+                    label = (
+                        red(f"{hrs}h left") if exp["urgent"] else yellow(f"{hrs}h left")
+                    )
+                    print(
+                        f"  [Expiring] #{t['id']} {t['ticker']} "
+                        f"{t['side'].upper()} — {label}"
                     )
             except Exception:
                 pass
@@ -1276,6 +1311,22 @@ def cmd_dashboard(client: KalshiClient) -> None:  # noqa: ARG001
             print(f"    {k:<30} ${amt:.2f}  ({pct:.1f}%)  {cyan(bar)}")
     else:
         print(dim("  No open positions."))
+
+    # ── Expiry warnings ───────────────────────────────────────────────────────
+    try:
+        from paper import check_expiring_trades
+
+        expiring = check_expiring_trades()
+        if expiring:
+            print(bold("\n  ── Expiring Soon ──\n"))
+            for exp in expiring:
+                t = exp["trade"]
+                hrs = exp["hours_left"]
+                label = red(f"{hrs}h left") if exp["urgent"] else yellow(f"{hrs}h left")
+                print(f"  #{t['id']} {t['ticker']} {t['side'].upper()} — {label}")
+            print()
+    except Exception:
+        pass
 
     # ── All trades summary ────────────────────────────────────────────────────
     all_t = get_all_trades()

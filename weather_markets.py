@@ -230,30 +230,41 @@ def _fetch_model_ensemble(
         ]
 
 
-def _model_weights(city: str) -> dict[str, float]:
+def _model_weights(city: str, month: int | None = None) -> dict[str, float]:
     """
-    Return per-model weights based on historical Brier scores from the tracker.
-    Defaults to equal weighting (1.0 each) if insufficient data.
-    Higher weight = duplicate members to increase influence.
+    Return per-model weights for the ensemble blend.
+    Combines historical Brier performance with seasonal accuracy priors:
+      Winter (Oct–Mar): ECMWF outperforms GFS over the US; add it at 2× weight.
+      Summer (Apr–Sep): ECMWF advantage shrinks; add at 1.5× weight.
+    Defaults to equal weighting if no Brier data available.
     """
+    # Seasonal ECMWF weight: better in winter for mid-latitude US cities
+    if month is not None:
+        is_winter = month in (10, 11, 12, 1, 2, 3)
+        ecmwf_w = 2.0 if is_winter else 1.5
+    else:
+        ecmwf_w = 1.5  # conservative default
+
+    base: dict[str, float] = {
+        "icon_seamless": 1.0,
+        "gfs_seamless": 1.0,
+        "ecmwf_ifs04": ecmwf_w,
+    }
+
     try:
         from tracker import brier_score_by_method
 
         scores = brier_score_by_method()
-        # We track blended scores, so use per-city overall accuracy as a proxy.
-        # If ensemble Brier < 0.18 (good), up-weight ICON (more members, better
-        # resolution); if > 0.22 (poor), reduce to equal weighting.
         overall = scores.get("ensemble")
-        if overall is None:
-            return {"icon_seamless": 1.0, "gfs_seamless": 1.0}
-        if overall < 0.18:
-            return {"icon_seamless": 1.5, "gfs_seamless": 1.0}
-        elif overall < 0.22:
-            return {"icon_seamless": 1.0, "gfs_seamless": 1.0}
-        else:
-            return {"icon_seamless": 0.8, "gfs_seamless": 1.0}
+        if overall is not None:
+            if overall < 0.18:
+                base["icon_seamless"] = 1.5  # good accuracy — trust ICON more
+            elif overall >= 0.22:
+                base["icon_seamless"] = 0.8  # poor accuracy — reduce ICON weight
     except Exception:
-        return {"icon_seamless": 1.0, "gfs_seamless": 1.0}
+        pass
+
+    return base
 
 
 def get_ensemble_temps(
@@ -279,7 +290,7 @@ def get_ensemble_temps(
         return []
     lat, lon, tz = coords
 
-    weights = _model_weights(city)
+    weights = _model_weights(city, month=target_date.month)
 
     # Decay model weights based on how old this cache entry is.
     # Older forecasts are less reliable — halve differentiation every 6 hours.
@@ -289,7 +300,8 @@ def get_ensemble_temps(
     decay = math.exp(-cache_age_hours / 6.0)  # 1.0 at fresh, ~0.5 at 6h, ~0.25 at 12h
 
     all_temps: list[float] = []
-    for model in ENSEMBLE_MODELS:
+    ensemble_models_with_ecmwf = [*ENSEMBLE_MODELS, "ecmwf_ifs04"]
+    for model in ensemble_models_with_ecmwf:
         try:
             temps = _fetch_model_ensemble(lat, lon, tz, target_date, model, hour, var)
             base_w = weights.get(model, 1.0)
@@ -1179,8 +1191,19 @@ def analyze_trade(enriched: dict) -> dict | None:
     quality_scale = 0.5 + 0.5 * data_quality  # 0.5 at quality=0, 1.0 at quality=1
     anomaly_scale = 0.70 if anomalous else 1.0
     ci_scale = max(0.25, 1.0 - (ci_high - ci_low))
+
+    # Time-value Kelly: reduce bet size for far-out markets (more uncertainty).
+    # Scale: 1.0 at 0-1 days → 0.5 at ≥14 days. Intermediate values are linear.
+    time_kelly_scale = max(0.50, 1.0 - (days_out / 14.0) * 0.50)
+
     ci_adjusted_kelly = round(
-        fee_adjusted_kelly * ci_scale * quality_scale * anomaly_scale * spread_scale, 6
+        fee_adjusted_kelly
+        * ci_scale
+        * quality_scale
+        * anomaly_scale
+        * spread_scale
+        * time_kelly_scale,
+        6,
     )
 
     return {
@@ -1221,4 +1244,5 @@ def analyze_trade(enriched: dict) -> dict | None:
         "forecast_anomalous": anomalous,
         "spread_cost": round(spread_cost, 4),
         "spread_scale": round(spread_scale, 4),
+        "time_kelly_scale": round(time_kelly_scale, 4),
     }

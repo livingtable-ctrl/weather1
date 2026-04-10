@@ -97,6 +97,51 @@ def fetch_archive_temps(
         return []
 
 
+# ── Archive precipitation fetch ──────────────────────────────────────────────
+
+
+def fetch_archive_precip(
+    lat: float, lon: float, tz: str, target_date: date
+) -> float | None:
+    """
+    Fetch historical daily precipitation (inches) from Open-Meteo archive.
+    Returns the observed precip value, or None if unavailable.
+    Results are cached.
+    """
+    cache_key = f"{round(lat, 4)}_{round(lon, 4)}_{target_date.isoformat()}_precip"
+    cache_file = ARCHIVE_CACHE_DIR / f"{cache_key}.json"
+    if cache_file.exists():
+        try:
+            return json.loads(cache_file.read_text())
+        except Exception:
+            pass
+
+    params = {
+        "latitude": lat,
+        "longitude": lon,
+        "start_date": target_date.isoformat(),
+        "end_date": target_date.isoformat(),
+        "daily": "precipitation_sum",
+        "precipitation_unit": "inch",
+        "timezone": tz,
+    }
+    try:
+        resp = requests.get(ARCHIVE_ENS_BASE, params=params, timeout=30)  # type: ignore[arg-type]
+        resp.raise_for_status()
+        daily = resp.json().get("daily", {})
+        vals = daily.get("precipitation_sum", [])
+        if not vals or vals[0] is None:
+            return None
+        result = float(vals[0])
+        try:
+            cache_file.write_text(json.dumps(result))
+        except Exception:
+            pass
+        return result
+    except Exception:
+        return None
+
+
 # ── Backtest runner ───────────────────────────────────────────────────────────
 
 
@@ -163,24 +208,38 @@ def run_backtest(
         lat, lon, tz = coords
 
         condition = _parse_market_condition(enriched)
-        if not condition or condition["type"] in ("precip_above", "precip_any"):
+        if not condition:
             continue
 
-        var = "min" if "LOW" in ticker.upper() else "max"
-        condition["var"] = var
-
-        # Fetch archive temps as simulated ensemble
-        temps = fetch_archive_temps(lat, lon, tz, tdate, var=var)
-        if len(temps) < 10:
-            continue
-
-        if condition["type"] == "above":
-            our_prob = sum(1 for t in temps if t > condition["threshold"]) / len(temps)
-        elif condition["type"] == "below":
-            our_prob = sum(1 for t in temps if t < condition["threshold"]) / len(temps)
+        # ── Precipitation markets ─────────────────────────────────────────────
+        if condition["type"] in ("precip_above", "precip_any"):
+            obs = fetch_archive_precip(lat, lon, tz, tdate)
+            if obs is None:
+                continue
+            if condition["type"] == "precip_any":
+                our_prob = 1.0 if obs > 0.01 else 0.0
+            else:
+                our_prob = 1.0 if obs > condition["threshold"] else 0.0
         else:
-            lo, hi = condition["lower"], condition["upper"]
-            our_prob = sum(1 for t in temps if lo <= t <= hi) / len(temps)
+            # ── Temperature markets ───────────────────────────────────────────
+            var = "min" if "LOW" in ticker.upper() else "max"
+            condition["var"] = var
+
+            temps = fetch_archive_temps(lat, lon, tz, tdate, var=var)
+            if len(temps) < 10:
+                continue
+
+            if condition["type"] == "above":
+                our_prob = sum(1 for t in temps if t > condition["threshold"]) / len(
+                    temps
+                )
+            elif condition["type"] == "below":
+                our_prob = sum(1 for t in temps if t < condition["threshold"]) / len(
+                    temps
+                )
+            else:
+                lo, hi = condition["lower"], condition["upper"]
+                our_prob = sum(1 for t in temps if lo <= t <= hi) / len(temps)
 
         prices = parse_market_price(m)
         market_prob = prices["implied_prob"]
