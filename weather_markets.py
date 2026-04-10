@@ -626,7 +626,7 @@ def get_weather_markets(
     except Exception as e:
         print(f"[warn] Could not fetch markets: {e}")
 
-    # Strategy 2: known weather series tickers
+    # Strategy 2: known weather series tickers — fetch in parallel (#127)
     known_series = [
         "KXHIGHNY",
         "KXHIGHCHI",
@@ -637,15 +637,20 @@ def get_weather_markets(
         "KXLOWCHI",
         "KXRAIN",
     ]
-    for series in known_series:
+
+    def _fetch_series(series: str) -> list[dict]:
         try:
-            markets = client.get_markets(series_ticker=series, status="open", limit=50)
-            for m in markets:
+            return client.get_markets(series_ticker=series, status="open", limit=50)
+        except Exception:
+            return []
+
+    with ThreadPoolExecutor(max_workers=10) as pool:
+        futures = {pool.submit(_fetch_series, s): s for s in known_series}
+        for fut in as_completed(futures):
+            for m in fut.result():
                 if m.get("ticker") not in seen:
                     results.append(m)
                     seen.add(m["ticker"])
-        except Exception:
-            pass
 
     _MARKETS_CACHE = (results, now)
     return results
