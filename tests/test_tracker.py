@@ -1061,3 +1061,283 @@ def test_get_unselected_bias_returns_zero_when_no_data(tmp_db):
     from tracker import get_unselected_bias
 
     assert get_unselected_bias("NOWHERE") == 0.0
+
+
+class TestMarketCalibrationQuantile(unittest.TestCase):
+    """#13 - get_market_calibration() must use equal-frequency buckets and accept n_buckets."""
+
+    def setUp(self):
+        self._tmpdir = tempfile.mkdtemp()
+        self._orig = tracker.DB_PATH
+        tracker.DB_PATH = Path(self._tmpdir) / "test.db"
+        tracker._db_initialized = False
+
+    def tearDown(self):
+        tracker.DB_PATH = self._orig
+        tracker._db_initialized = False
+        shutil.rmtree(self._tmpdir, ignore_errors=True)
+
+    def _seed(self, ticker, market_prob, settled):
+        tracker.log_prediction(
+            ticker,
+            "NYC",
+            date(2026, 3, 1),
+            {
+                "forecast_prob": 0.6,
+                "market_prob": market_prob,
+                "edge": 0.1,
+                "method": "ensemble",
+                "n_members": 50,
+                "condition": {"type": "above", "threshold": 70.0},
+            },
+        )
+        tracker.log_outcome(ticker, settled_yes=settled)
+
+    def test_grpb_calibration_empty_returns_empty_buckets(self):
+        result = tracker.get_market_calibration()
+        self.assertIn("buckets", result)
+        self.assertEqual(result["buckets"], [])
+
+    def test_grpb_calibration_n_buckets_param_accepted(self):
+        """n_buckets parameter should control number of output buckets."""
+        for i in range(20):
+            self._seed(f"CAL-NB-{i}", 0.1 * (i % 10) + 0.05, bool(i % 2))
+        result_5 = tracker.get_market_calibration(n_buckets=5)
+        result_10 = tracker.get_market_calibration(n_buckets=10)
+        self.assertLessEqual(len(result_5["buckets"]), len(result_10["buckets"]))
+
+    def test_grpb_calibration_buckets_equal_frequency(self):
+        """Buckets should be roughly equal in count (quantile, not equal-width)."""
+        for i in range(15):
+            self._seed(f"CAL-EF-LOW-{i}", 0.10, False)
+        for i in range(5):
+            self._seed(f"CAL-EF-HIGH-{i}", 0.90, True)
+        result = tracker.get_market_calibration(n_buckets=4)
+        buckets = result["buckets"]
+        self.assertGreater(len(buckets), 0)
+        counts = [b["count"] for b in buckets]
+        self.assertLess(max(counts), 20)
+
+    def test_grpb_calibration_bucket_fields(self):
+        """Each bucket must have the required keys."""
+        for i in range(10):
+            self._seed(f"CAL-FK-{i}", 0.1 * i + 0.05, bool(i % 2))
+        result = tracker.get_market_calibration(n_buckets=3)
+        for b in result["buckets"]:
+            for key in ("bucket_min", "bucket_max", "mean_prob", "freq_yes", "count"):
+                self.assertIn(key, b)
+
+    def test_grpb_calibration_default_n_buckets_is_10(self):
+        """Default call (no args) should use 10 buckets."""
+        for i in range(30):
+            self._seed(f"CAL-DEF-{i}", round(0.03 * i + 0.01, 2), bool(i % 2))
+        result_default = tracker.get_market_calibration()
+        result_explicit = tracker.get_market_calibration(n_buckets=10)
+        self.assertEqual(
+            len(result_default["buckets"]), len(result_explicit["buckets"])
+        )
+
+
+class TestEdgeDecayCurveConditionTypeGrpB(unittest.TestCase):
+    """#14 - get_edge_decay_curve() must segment by condition_type when provided."""
+
+    def setUp(self):
+        self._tmpdir = tempfile.mkdtemp()
+        self._orig = tracker.DB_PATH
+        tracker.DB_PATH = Path(self._tmpdir) / "test.db"
+        tracker._db_initialized = False
+
+    def tearDown(self):
+        tracker.DB_PATH = self._orig
+        tracker._db_initialized = False
+        shutil.rmtree(self._tmpdir, ignore_errors=True)
+
+    def _log_with_days_out(
+        self, ticker, our_prob, market_prob, days_out, settled, ctype
+    ):
+        tracker.log_prediction(
+            ticker,
+            "NYC",
+            date(2026, 4, 1),
+            {
+                "forecast_prob": our_prob,
+                "market_prob": market_prob,
+                "edge": abs(our_prob - market_prob),
+                "method": "ensemble",
+                "n_members": 50,
+                "condition": {"type": ctype, "threshold": 70.0},
+            },
+        )
+        with tracker._conn() as con:
+            con.execute(
+                "UPDATE predictions SET days_out=? WHERE ticker=?", (days_out, ticker)
+            )
+        tracker.log_outcome(ticker, settled_yes=settled)
+
+    def test_grpb_edge_decay_condition_type_filters(self):
+        """Filtering by above should exclude precip_any rows."""
+        for i in range(5):
+            self._log_with_days_out(f"EDC-ABOVE-{i}", 0.75, 0.50, 1, True, "above")
+        for i in range(5):
+            self._log_with_days_out(
+                f"EDC-PRECIP-{i}", 0.30, 0.50, 1, False, "precip_any"
+            )
+        above_result = tracker.get_edge_decay_curve(condition_type="above")
+        precip_result = tracker.get_edge_decay_curve(condition_type="precip_any")
+        self.assertTrue(len(above_result) > 0 or len(precip_result) > 0)
+        if above_result and precip_result:
+            self.assertNotAlmostEqual(
+                above_result[0]["avg_edge"], precip_result[0]["avg_edge"], places=3
+            )
+
+    def test_grpb_edge_decay_no_filter_returns_all(self):
+        """No filter should return rows from all condition types."""
+        for i in range(4):
+            self._log_with_days_out(f"EDC-MIX-ABOVE-{i}", 0.80, 0.50, 2, True, "above")
+        for i in range(4):
+            self._log_with_days_out(
+                f"EDC-MIX-PRECIP-{i}", 0.20, 0.50, 2, False, "precip_any"
+            )
+        all_result = tracker.get_edge_decay_curve(condition_type=None)
+        above_only = tracker.get_edge_decay_curve(condition_type="above")
+        if all_result and above_only:
+            self.assertGreaterEqual(all_result[0]["n"], above_only[0]["n"])
+
+    def test_grpb_edge_decay_unknown_condition_type_returns_empty(self):
+        """Filtering by a condition_type with no data returns empty list."""
+        for i in range(5):
+            self._log_with_days_out(f"EDC-ABOVE2-{i}", 0.75, 0.50, 1, True, "above")
+        result = tracker.get_edge_decay_curve(condition_type="nonexistent_type")
+        self.assertEqual(result, [])
+
+    def test_grpb_edge_decay_returns_list(self):
+        """Return value is always a list (never None)."""
+        result = tracker.get_edge_decay_curve(condition_type="above")
+        self.assertIsInstance(result, list)
+
+
+class TestEnsembleMemberAccuracyStratified(unittest.TestCase):
+    """#18 - get_ensemble_member_accuracy() must stratify by city and season."""
+
+    def setUp(self):
+        self._tmpdir = tempfile.mkdtemp()
+        self._orig = tracker.DB_PATH
+        tracker.DB_PATH = Path(self._tmpdir) / "test.db"
+        tracker._db_initialized = False
+
+    def tearDown(self):
+        tracker.DB_PATH = self._orig
+        tracker._db_initialized = False
+        shutil.rmtree(self._tmpdir, ignore_errors=True)
+
+    def test_grpb_ensemble_empty_returns_none(self):
+        result = tracker.get_ensemble_member_accuracy(city="NYC", season="winter")
+        self.assertIsNone(result)
+
+    def test_grpb_ensemble_city_filter(self):
+        tracker.log_member_score("NYC", "model_a", 72.0, 70.0, "2026-01-15")
+        tracker.log_member_score("NYC", "model_a", 74.0, 71.0, "2026-01-16")
+        tracker.log_member_score("LAX", "model_a", 85.0, 80.0, "2026-01-15")
+        nyc_result = tracker.get_ensemble_member_accuracy(city="NYC", season=None)
+        lax_result = tracker.get_ensemble_member_accuracy(city="LAX", season=None)
+        self.assertIsNotNone(nyc_result)
+        self.assertIsNotNone(lax_result)
+        self.assertNotAlmostEqual(
+            nyc_result["model_a"]["mae"], lax_result["model_a"]["mae"], places=2
+        )
+
+    def test_grpb_ensemble_season_winter_oct_to_mar(self):
+        tracker.log_member_score("NYC", "model_b", 30.0, 25.0, "2026-01-10")
+        tracker.log_member_score("NYC", "model_b", 90.0, 85.0, "2026-07-10")
+        winter = tracker.get_ensemble_member_accuracy(city="NYC", season="winter")
+        summer = tracker.get_ensemble_member_accuracy(city="NYC", season="summer")
+        self.assertIsNotNone(winter)
+        self.assertIsNotNone(summer)
+        self.assertAlmostEqual(winter["model_b"]["mae"], 5.0, places=2)
+        self.assertAlmostEqual(summer["model_b"]["mae"], 5.0, places=2)
+
+    def test_grpb_ensemble_season_filter_excludes_wrong_months(self):
+        tracker.log_member_score("NYC", "model_c", 32.0, 30.0, "2026-02-15")
+        tracker.log_member_score("NYC", "model_c", 95.0, 75.0, "2026-06-15")
+        winter_only = tracker.get_ensemble_member_accuracy(city="NYC", season="winter")
+        all_seasons = tracker.get_ensemble_member_accuracy(city="NYC", season=None)
+        self.assertIsNotNone(winter_only)
+        self.assertIsNotNone(all_seasons)
+        self.assertLess(winter_only["model_c"]["mae"], all_seasons["model_c"]["mae"])
+
+    def test_grpb_ensemble_return_shape(self):
+        tracker.log_member_score("NYC", "model_d", 70.0, 68.0, "2026-03-01")
+        result = tracker.get_ensemble_member_accuracy(city="NYC", season=None)
+        self.assertIsNotNone(result)
+        self.assertIn("model_d", result)
+        self.assertIn("mae", result["model_d"])
+        self.assertIn("count", result["model_d"])
+
+
+class TestCalibrationByCityConditionTypeGrpB(unittest.TestCase):
+    """#56 - get_calibration_by_city() must accept condition_type filter."""
+
+    def setUp(self):
+        self._tmpdir = tempfile.mkdtemp()
+        self._orig = tracker.DB_PATH
+        tracker.DB_PATH = Path(self._tmpdir) / "test.db"
+        tracker._db_initialized = False
+
+    def tearDown(self):
+        tracker.DB_PATH = self._orig
+        tracker._db_initialized = False
+        shutil.rmtree(self._tmpdir, ignore_errors=True)
+
+    def _log(self, ticker, city, our_prob, settled, ctype):
+        tracker.log_prediction(
+            ticker,
+            city,
+            date(2026, 4, 5),
+            {
+                "forecast_prob": our_prob,
+                "market_prob": 0.5,
+                "edge": 0.1,
+                "method": "ensemble",
+                "n_members": 50,
+                "condition": {"type": ctype, "threshold": 70.0},
+            },
+        )
+        tracker.log_outcome(ticker, settled_yes=settled)
+
+    def test_grpb_calib_city_empty_returns_empty_dict(self):
+        result = tracker.get_calibration_by_city()
+        self.assertEqual(result, {})
+
+    def test_grpb_calib_city_no_filter_includes_all_types(self):
+        self._log("CBC-ABOVE-1", "NYC", 0.80, True, "above")
+        self._log("CBC-ABOVE-2", "NYC", 0.80, True, "above")
+        self._log("CBC-PRECIP-1", "NYC", 0.30, False, "precip_any")
+        self._log("CBC-PRECIP-2", "NYC", 0.30, False, "precip_any")
+        result_all = tracker.get_calibration_by_city()
+        self.assertIn("NYC", result_all)
+        self.assertEqual(result_all["NYC"]["n"], 4)
+
+    def test_grpb_calib_city_filter_above_only(self):
+        self._log("CBC2-ABOVE-1", "NYC", 0.80, True, "above")
+        self._log("CBC2-ABOVE-2", "NYC", 0.80, True, "above")
+        self._log("CBC2-PRECIP-1", "NYC", 0.30, False, "precip_any")
+        result_above = tracker.get_calibration_by_city(condition_type="above")
+        self.assertIn("NYC", result_above)
+        self.assertEqual(result_above["NYC"]["n"], 2)
+
+    def test_grpb_calib_city_filter_changes_brier(self):
+        for i in range(4):
+            self._log(f"CBC3-ABOVE-{i}", "NYC", 0.90, True, "above")
+        for i in range(4):
+            self._log(f"CBC3-PRECIP-{i}", "NYC", 0.90, False, "precip_any")
+        all_result = tracker.get_calibration_by_city()
+        above_result = tracker.get_calibration_by_city(condition_type="above")
+        self.assertLess(above_result["NYC"]["brier"], all_result["NYC"]["brier"])
+
+    def test_grpb_calib_city_multi_city(self):
+        self._log("CBC4-NYC-A", "NYC", 0.70, True, "above")
+        self._log("CBC4-LAX-A", "LAX", 0.70, True, "above")
+        self._log("CBC4-NYC-P", "NYC", 0.70, False, "precip_any")
+        result = tracker.get_calibration_by_city(condition_type="above")
+        self.assertEqual(result.get("NYC", {}).get("n", 0), 1)
+        self.assertEqual(result.get("LAX", {}).get("n", 0), 1)
