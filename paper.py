@@ -538,6 +538,18 @@ def settle_paper_trade(trade_id: int, outcome_yes: bool) -> dict:
             # Score per-model forecast means against outcome for dynamic weighting
             _score_ensemble_members(t, outcome_yes)
 
+            # #55: record outcome on analysis_attempt so bias stats are queryable
+            try:
+                from tracker import settle_analysis_attempt as _settle_attempt
+
+                _settle_attempt(
+                    ticker=t.get("ticker", ""),
+                    target_date=t.get("target_date"),
+                    outcome=1 if outcome_yes else 0,
+                )
+            except Exception:
+                pass
+
             return t
     raise ValueError(f"Trade {trade_id} not found or already settled.")
 

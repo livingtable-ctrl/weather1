@@ -1913,6 +1913,10 @@ def _analyze_precip_trade(
         "consensus": precip_consensus,
         "model_consensus": True,
         "near_threshold": False,
+        "days_out": days_out,
+        "target_date": target_date.isoformat()
+        if hasattr(target_date, "isoformat")
+        else str(target_date),
     }
 
 
@@ -2034,6 +2038,10 @@ def _analyze_snow_trade(
         "consensus": False,
         "model_consensus": True,
         "near_threshold": False,
+        "days_out": days_out,
+        "target_date": target_date.isoformat()
+        if hasattr(target_date, "isoformat")
+        else str(target_date),
     }
 
 
@@ -2501,6 +2509,10 @@ def analyze_trade(enriched: dict) -> dict | None:
         "consensus": consensus,
         "model_consensus": model_consensus,
         "near_threshold": near_threshold,
+        "days_out": days_out,
+        "target_date": target_date.isoformat()
+        if hasattr(target_date, "isoformat")
+        else str(target_date),
         # Per-model forecast means for ensemble scoring
         "icon_forecast_mean": icon_forecast_mean,
         "gfs_forecast_mean": gfs_forecast_mean,
