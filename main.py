@@ -667,6 +667,7 @@ def cmd_market(client: KalshiClient, ticker: str, verbose: bool = False):
                 ensemble_prob=analysis.get("ensemble_prob"),
                 nws_prob=analysis.get("nws_prob"),
                 clim_prob=analysis.get("clim_prob"),
+                forecast_cycle=_current_forecast_cycle(),
             )
         except Exception:
             pass

@@ -199,7 +199,7 @@ def get_weather_forecast(city: str, target_date: date) -> dict | None:
     cached = _FORECAST_CACHE.get(cache_key)
     if cached is not None:
         data, ts = cached
-        if time.monotonic() - ts < _FORECAST_CACHE_TTL:
+        if time.monotonic() - ts < _ttl_until_next_cycle():
             return data
 
     coords = CITY_COORDS.get(city)
@@ -567,6 +567,16 @@ def update_learned_weights_from_tracker(min_n: int = 20) -> dict:
     return city_weights
 
 
+def learn_seasonal_weights(city: str, min_n: int = 20) -> dict[str, float]:
+    """
+    #118: Compute and persist per-city model weights from tracker MAE data.
+    Returns the weights for `city` (or {} if insufficient data).
+    Saves results to data/learned_weights.json for use by _forecast_model_weights.
+    """
+    all_weights = update_learned_weights_from_tracker(min_n=min_n)
+    return dict(all_weights.get(city, {}))
+
+
 def _model_weights(city: str, month: int | None = None) -> dict[str, float]:
     """
     Return per-model weights for the ensemble blend.
@@ -618,7 +628,7 @@ def get_ensemble_temps(
     cached = _ENSEMBLE_CACHE.get(cache_key)
     if cached is not None:
         data, ts = cached
-        if time.monotonic() - ts < _ENSEMBLE_CACHE_TTL:
+        if time.monotonic() - ts < _ttl_until_next_cycle():
             return data
 
     coords = CITY_COORDS.get(city)
@@ -1257,12 +1267,14 @@ def wet_bulb_temp(temp_f: float, rh_pct: float) -> float:
 
 
 def snow_liquid_ratio(wet_bulb_f: float) -> int:
-    """#34: Empirical SLR from wet-bulb temp (NOAA operational)."""
+    """#34: Empirical SLR from wet-bulb temp (NOAA operational).
+    >32°F → 0 (rain), 28-32°F → 10, 20-28°F → 15, <=20°F → 20.
+    """
     if wet_bulb_f > 32.0:
         return 0
-    elif wet_bulb_f > 30.0:
-        return 10
     elif wet_bulb_f > 28.0:
+        return 10
+    elif wet_bulb_f > 20.0:
         return 15
     else:
         return 20
@@ -2162,6 +2174,16 @@ def analyze_trade(enriched: dict) -> dict | None:
     spread_scale = max(0.50, 1.0 - spread_cost * 2)
 
     edge = blended_prob - market_prob
+
+    # #63: Time-decay edge — scale linearly to zero as market approaches close
+    _close_str = enriched.get("close_time", "")
+    if _close_str:
+        try:
+            _close_dt = datetime.fromisoformat(_close_str.replace("Z", "+00:00"))
+            edge = time_decay_edge(edge, _close_dt, reference_hours=48.0)
+        except (ValueError, TypeError):
+            pass
+
     signal = _edge_label(edge)
 
     # #61: entry-side edge uses actual ask/bid rather than mid-price

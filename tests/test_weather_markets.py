@@ -266,7 +266,10 @@ def test_wet_bulb_temp_approximation():
 def test_snow_to_liquid_ratio_dry_cold():
     from weather_markets import snow_liquid_ratio
 
-    assert snow_liquid_ratio(wet_bulb_f=25.0) == 20
+    # 25°F is in the 20-28°F range → SLR 15 (updated per NOAA #34 spec)
+    assert snow_liquid_ratio(wet_bulb_f=25.0) == 15
+    # Very cold (<= 20°F) → SLR 20
+    assert snow_liquid_ratio(wet_bulb_f=10.0) == 20
 
 
 def test_snow_to_liquid_ratio_borderline():
