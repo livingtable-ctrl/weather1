@@ -4,6 +4,36 @@
 
 {% block content %}
 <div class="section">
+  <div id="signal-summary" style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:4px">
+    <div class="stat-card"><div class="stat-value" id="sum-scanned">—</div><div class="stat-label">Markets Scanned</div></div>
+    <div class="stat-card"><div class="stat-value" id="sum-edge">—</div><div class="stat-label">With Edge</div></div>
+    <div class="stat-card"><div class="stat-value pos" id="sum-strong">—</div><div class="stat-label">Strong Signals</div></div>
+    <div class="stat-card"><div class="stat-value pos" id="sum-lowrisk">—</div><div class="stat-label">Low Risk</div></div>
+    <div class="stat-card" style="margin-left:auto"><div class="stat-value neu" id="sum-ts" style="font-size:0.75em;padding-top:6px">—</div><div class="stat-label">Last Scan</div></div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>Live Signals <span style="font-size:0.8em;color:var(--text-muted)">(top 50 by edge, refreshes on load)</span></h2>
+  <div style="display:flex;gap:12px;margin-bottom:12px;flex-wrap:wrap">
+    <select id="ls-filter-city" style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:4px 8px;border-radius:4px;font-size:0.85em">
+      <option value="">All Cities</option>
+    </select>
+    <select id="ls-filter-risk" style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:4px 8px;border-radius:4px;font-size:0.85em">
+      <option value="">All Risk Levels</option>
+      <option value="LOW">Low Risk Only</option>
+      <option value="MEDIUM">Medium Risk</option>
+      <option value="HIGH">High Risk</option>
+    </select>
+    <select id="ls-filter-strength" style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:4px 8px;border-radius:4px;font-size:0.85em">
+      <option value="">All Strengths</option>
+      <option value="STRONG">Strong Only</option>
+    </select>
+  </div>
+  <div id="live-signals-table"><p class="neu">Loading…</p></div>
+</div>
+
+<div class="section">
   <h2>Alert Feed <span style="font-size:0.8em;color:var(--text-muted)">(last 50 system alerts)</span></h2>
   <div id="alert-feed"><p class="neu">Loading…</p></div>
 </div>

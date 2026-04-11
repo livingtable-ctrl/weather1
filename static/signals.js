@@ -3,14 +3,144 @@
   'use strict';
 
   var _log = [];
+  var _liveSignals = [];
+
+  // ── Live signals ────────────────────────────────────────────────────────────
+
+  function loadLiveSignals() {
+    fetch('/api/live_signals')
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        _liveSignals = d.signals || [];
+        renderSummary(d.summary || {}, d.generated_at || '');
+        populateCityFilter(_liveSignals);
+        renderLiveSignals(_liveSignals);
+      })
+      .catch(function (err) { console.error('live_signals fetch failed:', err); });
+  }
+
+  function renderSummary(s, ts) {
+    setText('sum-scanned', s.scanned || '—');
+    setText('sum-edge', s.with_edge || '—');
+    setText('sum-strong', s.strong || '—');
+    setText('sum-lowrisk', s.low_risk || '—');
+    setText('sum-ts', ts ? ts.slice(11, 19) + ' UTC' : '—');
+  }
+
+  function setText(id, val) {
+    var el = document.getElementById(id);
+    if (el) el.textContent = val;
+  }
+
+  function populateCityFilter(signals) {
+    var cities = Array.from(new Set(signals.map(function (s) { return s.city; }).filter(Boolean))).sort();
+    var sel = document.getElementById('ls-filter-city');
+    if (!sel) return;
+    cities.forEach(function (c) {
+      var o = document.createElement('option'); o.value = c; o.textContent = c;
+      sel.appendChild(o);
+    });
+    sel.addEventListener('change', applyLiveFilters);
+    document.getElementById('ls-filter-risk').addEventListener('change', applyLiveFilters);
+    document.getElementById('ls-filter-strength').addEventListener('change', applyLiveFilters);
+  }
+
+  function applyLiveFilters() {
+    var city = (document.getElementById('ls-filter-city') || {}).value || '';
+    var risk = (document.getElementById('ls-filter-risk') || {}).value || '';
+    var strength = (document.getElementById('ls-filter-strength') || {}).value || '';
+    var filtered = _liveSignals.filter(function (s) {
+      return (!city || s.city === city)
+        && (!risk || s.time_risk === risk)
+        && (!strength || s.signal.indexOf(strength) !== -1);
+    });
+    renderLiveSignals(filtered);
+  }
+
+  function renderLiveSignals(signals) {
+    var el = document.getElementById('live-signals-table');
+    if (!el) return;
+    if (!signals.length) {
+      el.innerHTML = '<p class="neu">No signals match filter.</p>';
+      return;
+    }
+
+    var table = document.createElement('table');
+    var thead = table.createTHead();
+    thead.innerHTML = '<tr>'
+      + '<th>Rating</th>'
+      + '<th>City</th>'
+      + '<th>Ticker</th>'
+      + '<th>Side</th>'
+      + '<th>Edge</th>'
+      + '<th>We Think</th>'
+      + '<th>Mkt Says</th>'
+      + '<th>Risk</th>'
+      + '<th>Kelly $</th>'
+      + '</tr>';
+
+    var tbody = table.createTBody();
+    signals.forEach(function (s) {
+      var row = tbody.insertRow();
+      if (s.already_held) row.style.opacity = '0.5';
+
+      // Rating stars
+      var tdStars = row.insertCell();
+      tdStars.textContent = s.stars || '—';
+      tdStars.style.color = s.stars === '★★★' ? 'var(--pos)' : s.stars === '★★' ? 'var(--warn)' : 'var(--text-muted)';
+      tdStars.style.letterSpacing = '2px';
+
+      row.insertCell().textContent = s.city;
+
+      var tdTicker = row.insertCell();
+      tdTicker.textContent = s.ticker;
+      tdTicker.style.fontSize = '0.8em';
+      tdTicker.style.color = 'var(--text-muted)';
+
+      // Side badge
+      var tdSide = row.insertCell();
+      var badge = document.createElement('span');
+      badge.textContent = s.side;
+      badge.className = s.side === 'YES' ? 'pos' : 'neg';
+      badge.style.fontWeight = 'bold';
+      tdSide.appendChild(badge);
+
+      // Edge
+      var tdEdge = row.insertCell();
+      tdEdge.textContent = (s.edge_pct > 0 ? '+' : '') + s.edge_pct.toFixed(1) + '%';
+      tdEdge.className = s.edge_pct > 0 ? 'pos' : 'neg';
+      tdEdge.style.fontWeight = 'bold';
+
+      row.insertCell().textContent = s.forecast_prob.toFixed(0) + '%';
+      row.insertCell().textContent = s.market_prob.toFixed(0) + '%';
+
+      // Time risk
+      var tdRisk = row.insertCell();
+      tdRisk.textContent = s.time_risk;
+      tdRisk.className = s.time_risk === 'LOW' ? 'pos' : s.time_risk === 'MEDIUM' ? 'warn' : 'neg';
+
+      // Kelly $
+      var tdKelly = row.insertCell();
+      tdKelly.textContent = s.kelly_dollars > 0 ? '$' + s.kelly_dollars.toFixed(2) : '—';
+      tdKelly.style.color = 'var(--text-muted)';
+    });
+
+    el.innerHTML = '';
+    el.appendChild(table);
+  }
+
+  // ── Cron log & alerts ───────────────────────────────────────────────────────
 
   function loadSignals() {
-    fetch('/api/signals').then(function (r) { return r.json(); }).then(function (d) {
-      renderAlerts(d.alerts || []);
-      _log = d.log || [];
-      populateFilters(_log);
-      renderLog(_log);
-    }).catch(function (err) { console.error('signals fetch failed:', err); });
+    fetch('/api/signals')
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        renderAlerts(d.alerts || []);
+        _log = d.log || [];
+        populateFilters(_log);
+        renderLog(_log);
+      })
+      .catch(function (err) { console.error('signals fetch failed:', err); });
   }
 
   function renderAlerts(alerts) {
@@ -25,21 +155,17 @@
       var lvl = a.level || a.signal || '—';
       var lvlCls = lvl === 'ERROR' ? 'neg' : lvl === 'WARNING' ? 'warn' : 'neu';
       var row = tbody.insertRow();
-      var td1 = row.insertCell(); td1.textContent = (a.ts || '—').slice(0, 19);
+      row.insertCell().textContent = (a.ts || '—').slice(0, 19);
       var td2 = row.insertCell(); td2.className = lvlCls; td2.textContent = lvl;
-      var td3 = row.insertCell(); td3.textContent = a.message || a.signal || '';
+      row.insertCell().textContent = a.message || a.signal || '';
     });
     el.innerHTML = '';
     el.appendChild(table);
   }
 
   function populateFilters(log) {
-    var signals = Array.from(new Set(
-      log.map(function (e) { return e.signal || ''; }).filter(Boolean)
-    )).sort();
-    var cities = Array.from(new Set(
-      log.map(function (e) { return e.city || ''; }).filter(Boolean)
-    )).sort();
+    var signals = Array.from(new Set(log.map(function (e) { return e.signal || ''; }).filter(Boolean))).sort();
+    var cities = Array.from(new Set(log.map(function (e) { return e.city || ''; }).filter(Boolean))).sort();
 
     var sigSel = document.getElementById('filter-signal');
     if (sigSel) {
@@ -74,24 +200,24 @@
     if (!entries.length) { el.innerHTML = '<p class="neu">No entries match filter.</p>'; return; }
     var table = document.createElement('table');
     var thead = table.createTHead();
-    thead.innerHTML = '<tr><th>Time</th><th>Ticker</th><th>City</th>'
-      + '<th>Signal</th><th>Net Edge</th><th>Outcome</th></tr>';
+    thead.innerHTML = '<tr><th>Time</th><th>Ticker</th><th>City</th><th>Signal</th><th>Net Edge</th><th>Outcome</th></tr>';
     var tbody = table.createTBody();
     entries.slice().reverse().forEach(function (e) {
       var edge = e.net_edge;
       var edgeCls = edge > 0 ? 'pos' : edge < 0 ? 'neg' : 'neu';
       var row = tbody.insertRow();
-      var td1 = row.insertCell(); td1.textContent = (e.ts || '—').slice(0, 19);
-      var td2 = row.insertCell(); td2.textContent = e.ticker || '—';
-      var td3 = row.insertCell(); td3.textContent = e.city || '—';
-      var td4 = row.insertCell(); td4.textContent = e.signal || '—';
+      row.insertCell().textContent = (e.ts || '—').slice(0, 19);
+      row.insertCell().textContent = e.ticker || '—';
+      row.insertCell().textContent = e.city || '—';
+      row.insertCell().textContent = e.signal || '—';
       var td5 = row.insertCell(); td5.className = edgeCls;
       td5.textContent = edge !== undefined ? (edge * 100).toFixed(1) + '%' : '—';
-      var td6 = row.insertCell(); td6.textContent = e.outcome !== undefined ? String(e.outcome) : '—';
+      row.insertCell().textContent = e.outcome !== undefined ? String(e.outcome) : '—';
     });
     el.innerHTML = '';
     el.appendChild(table);
   }
 
+  loadLiveSignals();
   loadSignals();
 }());

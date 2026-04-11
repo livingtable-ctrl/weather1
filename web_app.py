@@ -581,6 +581,46 @@ setInterval(() => {{
             }
         )
 
+    @app.route("/api/live_signals")
+    def api_live_signals():
+        """Serve the signals cache written by the last cron run."""
+        import pathlib
+
+        from paper import get_open_trades
+
+        cache_path = pathlib.Path("data/signals_cache.json")
+        if not cache_path.exists():
+            return jsonify(
+                {
+                    "signals": [],
+                    "summary": {
+                        "scanned": 0,
+                        "with_edge": 0,
+                        "strong": 0,
+                        "low_risk": 0,
+                    },
+                    "generated_at": None,
+                    "stale": True,
+                    "message": "No scan data yet — run the cron job or wait for the next scheduled scan.",
+                }
+            )
+
+        try:
+            with open(cache_path, encoding="utf-8") as f:
+                data = json.load(f)
+        except Exception as e:
+            return jsonify({"error": str(e), "signals": []}), 500
+
+        # Annotate already-held tickers
+        try:
+            open_tickers = {t["ticker"] for t in get_open_trades()}
+            for s in data.get("signals", []):
+                s["already_held"] = s.get("ticker", "") in open_tickers
+        except Exception:
+            pass
+
+        return jsonify(data)
+
     @app.route("/analytics")
     def analytics_page():
         """Analytics page — model calibration, confusion matrix, edge decay."""

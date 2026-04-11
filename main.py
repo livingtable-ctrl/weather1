@@ -1839,8 +1839,11 @@ def cmd_cron(client: KalshiClient, min_edge: float = MIN_EDGE) -> None:
     log_path.parent.mkdir(exist_ok=True)
 
     strong_opps: list = []
+    signals_cache: list = []
+    scanned = 0
     try:
         markets = get_weather_markets(client)
+        scanned = len(markets)
         for m in markets:
             enriched = enrich_with_forecast(m)
             analysis = analyze_trade(enriched)
@@ -1850,6 +1853,14 @@ def cmd_cron(client: KalshiClient, min_edge: float = MIN_EDGE) -> None:
             if abs(net_edge) < min_edge:
                 continue
             signal = analysis.get("net_signal", analysis.get("signal", "")).strip()
+            time_risk = analysis.get("time_risk", "—")
+            stars = (
+                "★★★"
+                if "STRONG" in signal and time_risk == "LOW"
+                else "★★"
+                if "STRONG" in signal
+                else "★"
+            )
             entry = {
                 "ts": datetime.now(UTC).isoformat(),
                 "ticker": m.get("ticker", ""),
@@ -1859,10 +1870,46 @@ def cmd_cron(client: KalshiClient, min_edge: float = MIN_EDGE) -> None:
             }
             with open(log_path, "a", encoding="utf-8") as f:
                 f.write(json.dumps(entry) + "\n")
+            signals_cache.append(
+                {
+                    "ticker": m.get("ticker", ""),
+                    "city": enriched.get("_city", "—"),
+                    "side": analysis.get("recommended_side", "—").upper(),
+                    "signal": signal,
+                    "stars": stars,
+                    "edge_pct": round(net_edge * 100, 1),
+                    "forecast_prob": round(analysis.get("forecast_prob", 0) * 100, 1),
+                    "market_prob": round(analysis.get("market_prob", 0) * 100, 1),
+                    "time_risk": time_risk,
+                    "kelly_dollars": 0.0,  # balance unknown at cron time; filled by web
+                    "already_held": False,
+                }
+            )
             if abs(net_edge) >= STRONG_EDGE:
                 strong_opps.append((enriched, analysis))
     except Exception:
         pass  # never crash the scheduler
+
+    # Write rich signals cache for the web dashboard
+    try:
+        cache_path = Path(__file__).parent / "data" / "signals_cache.json"
+        strong = [s for s in signals_cache if "STRONG" in s["signal"]]
+        low_risk = [s for s in strong if s["time_risk"] == "LOW"]
+        signals_cache.sort(key=lambda x: abs(x["edge_pct"]), reverse=True)
+        cache_payload = {
+            "signals": signals_cache[:50],
+            "summary": {
+                "scanned": scanned,
+                "with_edge": len(signals_cache),
+                "strong": len(strong),
+                "low_risk": len(low_risk),
+            },
+            "generated_at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S"),
+        }
+        with open(cache_path, "w", encoding="utf-8") as f:
+            json.dump(cache_payload, f)
+    except Exception:
+        pass
 
     if strong_opps:
         print(
