@@ -1576,6 +1576,89 @@ def edge_confidence(days_out: int, condition_type: str | None = None) -> float:
     return round(horizon * cond, 4)
 
 
+def _get_consensus_probs(
+    city: str,
+    target_date,
+    condition: dict,
+    hour: int | None = None,
+    var: str = "max",
+) -> tuple[float | None, float | None]:
+    """Fetch per-model ensemble probabilities for ICON and GFS separately.
+
+    Returns (icon_prob, gfs_prob). Either may be None if that model returned
+    fewer than 5 members. Used for model_consensus check in analyze_trade().
+    Only supports temperature conditions (above/below/range).
+    """
+
+    def _model_prob(model_name: str) -> float | None:
+        try:
+            coords = CITY_COORDS.get(city)
+            if not coords:
+                return None
+            lat, lon = coords[0], coords[1]
+            tz = coords[2] if len(coords) > 2 else "UTC"
+            var_field = f"temperature_2m_{'max' if var == 'max' else 'min'}"
+            cache_key = (model_name, city, target_date.isoformat(), var, hour)
+            cached = _ENSEMBLE_CACHE.get(cache_key)
+            if cached:
+                temps, ts = cached
+                if time.time() - ts < _ENSEMBLE_CACHE_TTL:
+                    pass  # use cached
+                else:
+                    temps = None
+            else:
+                temps = None
+
+            if temps is None:
+                params = {
+                    "latitude": lat,
+                    "longitude": lon,
+                    "timezone": tz,
+                    "daily": [var_field],
+                    "temperature_unit": "fahrenheit",
+                    "models": model_name,
+                    "start_date": target_date.isoformat(),
+                    "end_date": target_date.isoformat(),
+                    "forecast_days": 7,
+                }
+                resp = _request_with_retry(
+                    "GET", ENSEMBLE_BASE, params=params, timeout=20
+                )
+                if not resp:
+                    return None
+                resp.raise_for_status()
+                data = resp.json()
+                daily = data.get("daily", {})
+                members = [
+                    float(v[0])
+                    for k, v in daily.items()
+                    if k.startswith(var_field) and v and v[0] is not None
+                ]
+                temps = members
+                _ENSEMBLE_CACHE[cache_key] = (temps, time.time())
+
+            if len(temps) < 5:
+                return None
+
+            thresh = condition.get("threshold")
+            ctype = condition.get("type", "")
+            if ctype == "above" and thresh is not None:
+                return sum(1 for t in temps if t > thresh) / len(temps)
+            elif ctype == "below" and thresh is not None:
+                return sum(1 for t in temps if t < thresh) / len(temps)
+            elif ctype == "range":
+                lo = condition.get("lower", 0)
+                hi = condition.get("upper", 999)
+                return sum(1 for t in temps if lo <= t <= hi) / len(temps)
+            return None
+        except Exception:
+            return None
+
+    icon_prob = _model_prob("icon_seamless")
+    gfs_prob = _model_prob("gfs_seamless")
+    return icon_prob, gfs_prob
+
+
 def kelly_fraction(our_prob: float, price: float, fee_rate: float = 0.0) -> float:
     """
     Half-Kelly criterion for a binary prediction market.
@@ -1826,6 +1909,8 @@ def _analyze_precip_trade(
         "ci_adjusted_kelly": ci_adj_kelly,
         "time_risk": "HIGH",
         "consensus": precip_consensus,
+        "model_consensus": True,
+        "near_threshold": False,
     }
 
 
@@ -1945,6 +2030,8 @@ def _analyze_snow_trade(
         "ci_adjusted_kelly": ci_adj_kelly,
         "time_risk": "HIGH",
         "consensus": False,
+        "model_consensus": True,
+        "near_threshold": False,
     }
 
 
@@ -2056,6 +2143,25 @@ def analyze_trade(enriched: dict) -> dict | None:
     else:
         sigma = _forecast_uncertainty(target_date) * sigma_mult
         ens_prob = _forecast_probability(condition, forecast_temp, sigma)
+
+    # ── Model consensus check ────────────────────────────────────────────────
+    model_consensus = True
+    if ens_prob is not None and len(temps) >= 10:
+        try:
+            icon_p, gfs_p = _get_consensus_probs(
+                city, target_date, condition, hour=hour, var=var
+            )
+            if icon_p is not None and gfs_p is not None:
+                if abs(icon_p - gfs_p) > 0.08:
+                    model_consensus = False
+        except Exception:
+            pass  # default to True (tradeable)
+
+    # ── Near-threshold detection ─────────────────────────────────────────────
+    threshold_val = condition.get("threshold")
+    near_threshold = (
+        threshold_val is not None and abs(forecast_temp - threshold_val) <= 3.0
+    )
 
     # ── 2. NWS forecast probability ──────────────────────────────────────────
     _nws_prob: float | None = None
@@ -2385,6 +2491,8 @@ def analyze_trade(enriched: dict) -> dict | None:
         "time_kelly_scale": round(time_kelly_scale, 4),
         # Consensus signal
         "consensus": consensus,
+        "model_consensus": model_consensus,
+        "near_threshold": near_threshold,
         # Regime detection
         "regime": _regime_info.get("regime", "normal"),
         "regime_description": _regime_info.get("description", ""),

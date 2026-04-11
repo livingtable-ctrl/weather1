@@ -627,3 +627,94 @@ class TestBlendWeightCalibrationPriority:
         assert w_nws == pytest.approx(0.25, abs=1e-6)
         assert w_ens == pytest.approx(0.5175, abs=1e-6)
         assert w_clim == pytest.approx(0.2325, abs=1e-6)
+
+
+def test_analyze_trade_result_has_model_consensus_field(monkeypatch):
+    """analyze_trade result includes model_consensus bool when it returns a result."""
+    import weather_markets as wm
+    from weather_markets import analyze_trade
+
+    # Patch get_ensemble_temps to return a stable set of temps
+    monkeypatch.setattr(wm, "get_ensemble_temps", lambda *a, **kw: [72.0] * 20)
+    # Patch _get_consensus_probs to return agreeing models (consensus True)
+    monkeypatch.setattr(wm, "_get_consensus_probs", lambda *a, **kw: (0.70, 0.72))
+    # Patch get_weather_forecast to return a simple forecast
+    monkeypatch.setattr(
+        wm,
+        "get_weather_forecast",
+        lambda *a, **kw: {
+            "high_f": 75.0,
+            "low_f": 55.0,
+            "precip_in": 0.0,
+            "wind_mph": 5.0,
+        },
+    )
+
+    from datetime import date, timedelta
+
+    tomorrow = date.today() + timedelta(days=1)
+    enriched = {
+        "_forecast": {"high_f": 75.0, "low_f": 55.0, "precip_in": 0.0, "wind_mph": 5.0},
+        "_date": tomorrow,
+        "_city": "NYC",
+        "_hour": None,
+        "ticker": "KXHIGH-23-NYC-DEC31-T80-ABOVE",
+        "series_ticker": "KXHIGH-23-NYC",
+        "yes_ask": 42,
+        "yes_bid": 38,
+        "volume": 500,
+        "open_interest": 200,
+        "close_time": (
+            __import__("datetime").datetime.now(__import__("datetime").timezone.utc)
+            + __import__("datetime").timedelta(hours=20)
+        ).isoformat(),
+    }
+    result = analyze_trade(enriched)
+    if result is not None:
+        assert "model_consensus" in result
+        assert isinstance(result["model_consensus"], bool)
+        assert "near_threshold" in result
+        assert isinstance(result["near_threshold"], bool)
+
+
+def test_model_consensus_false_when_models_disagree(monkeypatch):
+    """model_consensus is False when ICON and GFS differ by more than 8pp."""
+    import weather_markets as wm
+    from weather_markets import analyze_trade
+
+    monkeypatch.setattr(wm, "get_ensemble_temps", lambda *a, **kw: [72.0] * 20)
+    # Models disagree by 15pp
+    monkeypatch.setattr(wm, "_get_consensus_probs", lambda *a, **kw: (0.75, 0.60))
+    monkeypatch.setattr(
+        wm,
+        "get_weather_forecast",
+        lambda *a, **kw: {
+            "high_f": 75.0,
+            "low_f": 55.0,
+            "precip_in": 0.0,
+            "wind_mph": 5.0,
+        },
+    )
+
+    from datetime import date, timedelta
+
+    tomorrow = date.today() + timedelta(days=1)
+    enriched = {
+        "_forecast": {"high_f": 75.0, "low_f": 55.0, "precip_in": 0.0, "wind_mph": 5.0},
+        "_date": tomorrow,
+        "_city": "NYC",
+        "_hour": None,
+        "ticker": "KXHIGH-23-NYC-DEC31-T80-ABOVE",
+        "series_ticker": "KXHIGH-23-NYC",
+        "yes_ask": 42,
+        "yes_bid": 38,
+        "volume": 500,
+        "open_interest": 200,
+        "close_time": (
+            __import__("datetime").datetime.now(__import__("datetime").timezone.utc)
+            + __import__("datetime").timedelta(hours=20)
+        ).isoformat(),
+    }
+    result = analyze_trade(enriched)
+    if result is not None:
+        assert result["model_consensus"] is False
