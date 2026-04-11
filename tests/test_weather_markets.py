@@ -658,7 +658,8 @@ def test_analyze_trade_result_has_model_consensus_field(monkeypatch):
         "_date": tomorrow,
         "_city": "NYC",
         "_hour": None,
-        "ticker": "KXHIGH-23-NYC-DEC31-T80-ABOVE",
+        "ticker": "KXHIGHNY-26APR09-T80",
+        "title": "Will NYC high temperature be above 80°F?",
         "series_ticker": "KXHIGH-23-NYC",
         "yes_ask": 42,
         "yes_bid": 38,
@@ -670,11 +671,11 @@ def test_analyze_trade_result_has_model_consensus_field(monkeypatch):
         ).isoformat(),
     }
     result = analyze_trade(enriched)
-    if result is not None:
-        assert "model_consensus" in result
-        assert isinstance(result["model_consensus"], bool)
-        assert "near_threshold" in result
-        assert isinstance(result["near_threshold"], bool)
+    assert result is not None, "analyze_trade returned None — fix the enriched dict"
+    assert "model_consensus" in result
+    assert isinstance(result["model_consensus"], bool)
+    assert "near_threshold" in result
+    assert isinstance(result["near_threshold"], bool)
 
 
 def test_model_consensus_false_when_models_disagree(monkeypatch):
@@ -704,7 +705,8 @@ def test_model_consensus_false_when_models_disagree(monkeypatch):
         "_date": tomorrow,
         "_city": "NYC",
         "_hour": None,
-        "ticker": "KXHIGH-23-NYC-DEC31-T80-ABOVE",
+        "ticker": "KXHIGHNY-26APR09-T80",
+        "title": "Will NYC high temperature be above 80°F?",
         "series_ticker": "KXHIGH-23-NYC",
         "yes_ask": 42,
         "yes_bid": 38,
@@ -716,5 +718,5 @@ def test_model_consensus_false_when_models_disagree(monkeypatch):
         ).isoformat(),
     }
     result = analyze_trade(enriched)
-    if result is not None:
-        assert result["model_consensus"] is False
+    assert result is not None, "analyze_trade returned None — fix the enriched dict"
+    assert result["model_consensus"] is False
