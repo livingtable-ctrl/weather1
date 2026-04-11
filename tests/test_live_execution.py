@@ -31,18 +31,31 @@ class TestLoadLiveConfig:
 
 
 class TestPlaceLiveOrder:
-    def test_daily_loss_limit_blocks_after_db_loss(self, monkeypatch):
-        """Daily loss limit blocks order when DB-backed loss is at or above limit."""
-        import gc
+    def setup_method(self):
         import tempfile
         from pathlib import Path
 
         import execution_log
-        import main
 
-        tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
-        monkeypatch.setattr(execution_log, "DB_PATH", Path(tmp.name))
-        monkeypatch.setattr(execution_log, "_initialized", False)
+        self._tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+        execution_log.DB_PATH = Path(self._tmp.name)
+        execution_log._initialized = False
+
+    def teardown_method(self):
+        import gc
+        from pathlib import Path
+
+        import execution_log
+
+        execution_log._initialized = False
+        self._tmp.close()
+        gc.collect()
+        Path(self._tmp.name).unlink(missing_ok=True)
+
+    def test_daily_loss_limit_blocks_after_db_loss(self):
+        """Daily loss limit blocks order when DB-backed loss is at or above limit."""
+        import execution_log
+        import main
 
         # Seed today's loss at the limit
         execution_log.add_live_loss(100.0)
@@ -68,25 +81,11 @@ class TestPlaceLiveOrder:
         assert placed is False
         assert cost == 0.0
 
-        execution_log._initialized = False
-        gc.collect()
-        tmp.close()
-        Path(tmp.name).unlink(missing_ok=True)
-
-    def test_max_trade_dollars_caps_size(self, monkeypatch):
+    def test_max_trade_dollars_caps_size(self):
         """Kelly wants 10 contracts at $0.55 = $5.50/contract → $55 total, capped to $50."""
-        import tempfile
-        from pathlib import Path
         from unittest.mock import MagicMock, patch
 
-        import execution_log
         import main
-
-        # Set up a clean DB for this test
-        tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
-        monkeypatch.setattr(execution_log, "DB_PATH", Path(tmp.name))
-        monkeypatch.setattr(execution_log, "_initialized", False)
-        monkeypatch.setattr(main, "_LIVE_CONFIG_PATH", main._LIVE_CONFIG_PATH)  # no-op
 
         mock_client = MagicMock()
         mock_client.place_order.return_value = {
@@ -122,23 +121,11 @@ class TestPlaceLiveOrder:
             )
 
         assert placed is True
-        # price = midpoint(50, 60) = 0.55, max contracts = floor(50 / 0.55) = 90 — but Kelly says 10
-        # At $0.55/contract × 10 = $5.50 total, well under $50 cap → 10 contracts placed
-        # Actually: $0.55 × 10 = $5.50 < $50, so Kelly quantity is used as-is
+        # price = midpoint(50, 60) = 0.55; Kelly qty 10 × $0.55 = $5.50 < $50 cap → 10 contracts
         assert mock_client.place_order.called
-        # quantity should be min(10, floor(50/0.55)) = 10
         assert cost > 0.0
-        # Verify price passed to API is decimal dollars (not cents)
         call_args = mock_client.place_order.call_args
         assert call_args.kwargs["price"] == pytest.approx(0.55)
-
-        # Clean up
-        import gc
-
-        execution_log._initialized = False
-        gc.collect()
-        tmp.close()
-        Path(tmp.name).unlink(missing_ok=True)
 
 
 class TestAutoPlaceTradesCycleCheck:
@@ -313,7 +300,7 @@ class TestPollPendingOrdersExtended:
         mock_client.cancel_order.assert_not_called()
 
     def test_settlement_recorded_for_finalized_market(self):
-        """When a filled order's market is finalized, P&L is computed and recorded."""
+        """When a filled YES order's market is finalized (YES wins), P&L is computed and recorded."""
         from datetime import UTC, datetime, timedelta
         from unittest.mock import MagicMock
 
@@ -346,3 +333,75 @@ class TestPollPendingOrdersExtended:
         assert order["settled_at"] is not None
         # pnl = 2 * (1 - 0.55) * (1 - 0.07) = 2 * 0.45 * 0.93 = 0.837
         assert order["pnl"] == pytest.approx(0.837, rel=1e-3)
+
+    def test_no_side_settlement_yes_wins(self):
+        """NO bet loses when YES wins: pnl = -qty * (1 - price)."""
+        from datetime import UTC, datetime, timedelta
+        from unittest.mock import MagicMock
+
+        import execution_log
+        import main
+
+        # Bought NO at YES-price 0.40 (paid 0.60 per contract)
+        execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="no",
+            quantity=3,
+            price=0.40,
+            status="filled",
+            live=True,
+            fill_quantity=3,
+        )
+
+        close_time = (datetime.now(UTC) - timedelta(hours=2)).isoformat()
+        mock_client = MagicMock()
+        mock_client.get_market.return_value = {
+            "status": "finalized",
+            "result": "yes",  # YES wins → NO loses
+            "close_time": close_time,
+        }
+
+        main._poll_pending_orders(mock_client, config={})
+
+        orders = execution_log.get_recent_orders(limit=10)
+        order = orders[0]
+        assert order["outcome_yes"] == 1
+        assert order["settled_at"] is not None
+        # pnl = -3 * (1 - 0.40) = -3 * 0.60 = -1.80
+        assert order["pnl"] == pytest.approx(-1.80, rel=1e-3)
+
+    def test_no_side_settlement_no_wins(self):
+        """NO bet wins when NO wins: pnl = qty * price * (1 - fee)."""
+        from datetime import UTC, datetime, timedelta
+        from unittest.mock import MagicMock
+
+        import execution_log
+        import main
+
+        # Bought NO at YES-price 0.40 (paid 0.60 per contract)
+        execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="no",
+            quantity=3,
+            price=0.40,
+            status="filled",
+            live=True,
+            fill_quantity=3,
+        )
+
+        close_time = (datetime.now(UTC) - timedelta(hours=2)).isoformat()
+        mock_client = MagicMock()
+        mock_client.get_market.return_value = {
+            "status": "finalized",
+            "result": "no",  # NO wins → NO bet pays out
+            "close_time": close_time,
+        }
+
+        main._poll_pending_orders(mock_client, config={})
+
+        orders = execution_log.get_recent_orders(limit=10)
+        order = orders[0]
+        assert order["outcome_yes"] == 0
+        assert order["settled_at"] is not None
+        # pnl = 3 * 0.40 * (1 - 0.07) = 3 * 0.40 * 0.93 = 1.116
+        assert order["pnl"] == pytest.approx(1.116, rel=1e-3)

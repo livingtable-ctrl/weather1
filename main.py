@@ -1210,9 +1210,11 @@ def _poll_pending_orders(client, config: dict | None = None) -> None:
             elif not outcome_yes and side == "yes":
                 pnl = -qty * price
             elif outcome_yes and side == "no":
-                pnl = qty * price * (1 - _fee)
-            else:  # not outcome_yes, side == "no"
-                pnl = -qty * (1 - price)
+                pnl = -qty * (
+                    1 - price
+                )  # YES wins, NO loses: lost (1-price) per contract
+            else:  # not outcome_yes, side == "no" — NO wins
+                pnl = qty * price * (1 - _fee)  # won price per contract minus fee
             pnl = round(pnl, 4)
             execution_log.record_live_settlement(order["id"], outcome_yes, pnl)
             execution_log.add_live_loss(-pnl)  # negative pnl = loss adds to counter
