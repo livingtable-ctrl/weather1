@@ -251,7 +251,7 @@ def run_backtest(
         if holdout_days_count > 0
         else None
     )
-    markets = client.get_markets(status="finalized", limit=200)
+    markets = client.get_markets(status="settled", limit=200)
 
     results = []
     for _prog_i, m in enumerate(markets, 1):
