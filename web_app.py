@@ -6,8 +6,11 @@ Opens a browser tab showing the analyze table, open positions, and P&L chart.
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
 import threading
 from datetime import UTC, datetime
+from pathlib import Path
 
 _app = None  # module-level Flask app
 _client = None  # module-level Kalshi client reference
@@ -580,6 +583,26 @@ setInterval(() => {{
                 "generated_at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S"),
             }
         )
+
+    @app.route("/api/run_cron", methods=["POST"])
+    def api_run_cron():
+        """Trigger a cron scan in the background and return immediately."""
+        try:
+            subprocess.Popen(
+                [
+                    sys.executable,
+                    str(Path(__file__).parent / "main.py"),
+                    "cron",
+                    "--edge",
+                    "5",
+                ],
+                cwd=str(Path(__file__).parent),
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            return jsonify({"status": "started"})
+        except Exception as e:
+            return jsonify({"status": "error", "message": str(e)}), 500
 
     @app.route("/api/live_signals")
     def api_live_signals():

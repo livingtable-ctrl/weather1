@@ -11,7 +11,9 @@
     fetch('/api/live_signals')
       .then(function (r) { return r.json(); })
       .then(function (d) {
-        _liveSignals = d.signals || [];
+        _liveSignals = (d.signals || []).sort(function (a, b) {
+          return Math.min(Math.abs(b.edge_pct), 500) - Math.min(Math.abs(a.edge_pct), 500);
+        });
         renderSummary(d.summary || {}, d.generated_at || '');
         populateCityFilter(_liveSignals);
         renderLiveSignals(_liveSignals);
@@ -23,8 +25,26 @@
     setText('sum-scanned', s.scanned || '—');
     setText('sum-edge', s.with_edge || '—');
     setText('sum-strong', s.strong || '—');
-    setText('sum-lowrisk', s.low_risk || '—');
-    setText('sum-ts', ts ? ts.slice(11, 19) + ' UTC' : '—');
+    setText('sum-lowrisk', s.low_risk !== undefined ? s.low_risk : '—');
+    var tsEl = document.getElementById('sum-ts');
+    if (tsEl && ts) {
+      var scanTime = new Date(ts + 'Z');
+      var ageMs = Date.now() - scanTime.getTime();
+      var ageMin = Math.round(ageMs / 60000);
+      var timeStr = ts.slice(11, 19) + ' UTC';
+      tsEl.textContent = timeStr;
+      if (ageMs > 2 * 3600 * 1000) {
+        tsEl.style.color = 'var(--neg)';
+        tsEl.title = 'Stale — ' + ageMin + ' min ago. Run a scan to refresh.';
+      } else if (ageMs > 3600 * 1000) {
+        tsEl.style.color = 'var(--warn)';
+        tsEl.title = ageMin + ' min ago';
+      } else {
+        tsEl.title = ageMin + ' min ago';
+      }
+    } else if (tsEl) {
+      tsEl.textContent = '—';
+    }
   }
 
   function setText(id, val) {
@@ -53,6 +73,10 @@
       return (!city || s.city === city)
         && (!risk || s.time_risk === risk)
         && (!strength || s.signal.indexOf(strength) !== -1);
+    });
+    // Re-sort by capped edge so inflated low-price markets don't dominate
+    filtered.sort(function (a, b) {
+      return Math.min(Math.abs(b.edge_pct), 500) - Math.min(Math.abs(a.edge_pct), 500);
     });
     renderLiveSignals(filtered);
   }
@@ -105,11 +129,15 @@
       badge.style.fontWeight = 'bold';
       tdSide.appendChild(badge);
 
-      // Edge
+      // Edge — cap display at ±500% to avoid misleading huge numbers from penny markets
       var tdEdge = row.insertCell();
-      tdEdge.textContent = (s.edge_pct > 0 ? '+' : '') + s.edge_pct.toFixed(1) + '%';
+      var displayEdge = Math.abs(s.edge_pct) > 500
+        ? (s.edge_pct > 0 ? '>+500%' : '>-500%')
+        : (s.edge_pct > 0 ? '+' : '') + s.edge_pct.toFixed(1) + '%';
+      tdEdge.textContent = displayEdge;
       tdEdge.className = s.edge_pct > 0 ? 'pos' : 'neg';
       tdEdge.style.fontWeight = 'bold';
+      if (Math.abs(s.edge_pct) > 500) tdEdge.title = 'Raw: ' + s.edge_pct.toFixed(0) + '%';
 
       row.insertCell().textContent = s.forecast_prob.toFixed(0) + '%';
       row.insertCell().textContent = s.market_prob.toFixed(0) + '%';
@@ -217,6 +245,25 @@
     el.innerHTML = '';
     el.appendChild(table);
   }
+
+  // Expose runScan globally for the button onclick
+  window.runScan = function () {
+    var btn = document.getElementById('run-scan-btn');
+    if (btn) { btn.textContent = '⏳ Scanning…'; btn.disabled = true; }
+    fetch('/api/run_cron', { method: 'POST' })
+      .then(function (r) { return r.json(); })
+      .then(function () {
+        if (btn) btn.textContent = '⏳ Running (≈30s)…';
+        // Poll for fresh cache after ~35 seconds
+        setTimeout(function () {
+          loadLiveSignals();
+          if (btn) { btn.textContent = '▶ Run Scan Now'; btn.disabled = false; }
+        }, 35000);
+      })
+      .catch(function () {
+        if (btn) { btn.textContent = '▶ Run Scan Now'; btn.disabled = false; }
+      });
+  };
 
   loadLiveSignals();
   loadSignals();

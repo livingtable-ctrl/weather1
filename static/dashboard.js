@@ -179,8 +179,40 @@
     }).catch(function (err) { console.error('live-pnl fetch failed:', err); });
   }
 
+  // --- Open positions widget ---
+  function loadOpenPositions() {
+    fetch('/api/trades').then(function (r) { return r.json(); }).then(function (d) {
+      var open = d.open || [];
+      var el = document.getElementById('open-positions-widget');
+      if (!el) return;
+      if (!open.length) {
+        el.innerHTML = '<p class="neu">No open positions.</p>';
+        return;
+      }
+      var table = document.createElement('table');
+      var thead = table.createTHead();
+      thead.innerHTML = '<tr><th>Ticker</th><th>City</th><th>Side</th><th>Cost</th><th>Expiry</th></tr>';
+      var tbody = table.createTBody();
+      open.forEach(function (t) {
+        var row = tbody.insertRow();
+        row.insertCell().textContent = t.ticker || '—';
+        row.insertCell().textContent = t.city || '—';
+        var tdSide = row.insertCell();
+        var badge = document.createElement('span');
+        badge.className = t.side === 'yes' ? 'badge badge-green' : 'badge badge-red';
+        badge.textContent = (t.side || '').toUpperCase();
+        tdSide.appendChild(badge);
+        row.insertCell().textContent = '$' + (t.cost || 0).toFixed(2);
+        row.insertCell().textContent = t.target_date || '—';
+      });
+      el.innerHTML = '';
+      el.appendChild(table);
+    }).catch(function (err) { console.error('open positions fetch failed:', err); });
+  }
+
   // Init
   loadGraduation();
   loadBalanceChart('');
   loadLivePnl();
+  loadOpenPositions();
 }());

@@ -8,11 +8,38 @@
 
   function loadTrades() {
     fetch('/api/trades').then(function (r) { return r.json(); }).then(function (d) {
+      renderSummary(d.open || [], d.closed || []);
       renderOpen(d.open || []);
       _closed = d.closed || [];
       populateCityFilter(_closed);
       renderClosed();
     }).catch(function (err) { console.error('trades fetch failed:', err); });
+  }
+
+  function renderSummary(open, closed) {
+    var settled = closed.filter(function (t) { return t.pnl !== null && t.pnl !== undefined; });
+    var totalPnl = settled.reduce(function (s, t) { return s + (t.pnl || 0); }, 0);
+    var wins = settled.filter(function (t) { return (t.pnl || 0) > 0; }).length;
+    var winRate = settled.length ? (wins / settled.length * 100) : null;
+    var openCost = open.reduce(function (s, t) { return s + (t.cost || 0); }, 0);
+    var toGrad = Math.max(0, 30 - settled.length);
+
+    var pnlEl = document.getElementById('ps-total-pnl');
+    if (pnlEl) {
+      pnlEl.textContent = (totalPnl >= 0 ? '+$' : '-$') + Math.abs(totalPnl).toFixed(2);
+      pnlEl.className = 'stat-value ' + (totalPnl >= 0 ? 'pos' : 'neg');
+    }
+    var wrEl = document.getElementById('ps-winrate');
+    if (wrEl) wrEl.textContent = winRate !== null ? winRate.toFixed(1) + '%' : '—';
+    var tEl = document.getElementById('ps-trades');
+    if (tEl) tEl.textContent = settled.length;
+    var ocEl = document.getElementById('ps-open-cost');
+    if (ocEl) ocEl.textContent = '$' + openCost.toFixed(2);
+    var gEl = document.getElementById('ps-grad');
+    if (gEl) {
+      gEl.textContent = toGrad > 0 ? toGrad + ' trades' : '✓ Ready';
+      gEl.className = 'stat-value ' + (toGrad === 0 ? 'pos' : '');
+    }
   }
 
   function renderOpen(trades) {
