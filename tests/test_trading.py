@@ -635,3 +635,79 @@ class TestPortfolioKelly:
         from paper import portfolio_kelly
 
         assert portfolio_kelly([]) == []
+
+
+# ── Task 5: tiered auto-trade ─────────────────────────────────────────────────
+
+
+def test_auto_place_trades_med_tier_uses_20_cap(monkeypatch):
+    """_auto_place_trades with cap=20.0 should call kelly_quantity with cap=20.0."""
+    import main
+
+    captured_caps = []
+
+    def fake_kelly_quantity(kf, price, min_dollars=1.0, cap=None, method=None):
+        captured_caps.append(cap)
+        # Return 10 contracts so the trade goes through
+        return 10
+
+    def fake_portfolio_kelly_fraction(ci_kelly, city, target_date, side=None):
+        return 0.05  # non-trivial fraction so we don't skip
+
+    def fake_get_open_trades():
+        return []  # no existing positions
+
+    def fake_is_paused_drawdown():
+        return False
+
+    def fake_is_daily_loss_halted(client=None):
+        return False
+
+    def fake_is_streak_paused():
+        return False
+
+    def fake_place_paper_order(*args, **kwargs):
+        return {"id": 1}
+
+    def fake_was_ordered_this_cycle(ticker, side, cycle):
+        return False
+
+    monkeypatch.setattr("main.place_paper_order", fake_place_paper_order)
+    monkeypatch.setattr(
+        "main.execution_log.was_ordered_this_cycle", fake_was_ordered_this_cycle
+    )
+
+    import paper
+
+    monkeypatch.setattr(paper, "kelly_quantity", fake_kelly_quantity)
+    monkeypatch.setattr(
+        paper, "portfolio_kelly_fraction", fake_portfolio_kelly_fraction
+    )
+    monkeypatch.setattr(paper, "get_open_trades", fake_get_open_trades)
+    monkeypatch.setattr(paper, "is_paused_drawdown", fake_is_paused_drawdown)
+    monkeypatch.setattr(paper, "is_daily_loss_halted", fake_is_daily_loss_halted)
+    monkeypatch.setattr(paper, "is_streak_paused", fake_is_streak_paused)
+
+    opps = [
+        (
+            {"ticker": "KXHIGH-26APR15-NYC", "_city": "NYC", "_date": None},
+            {
+                "net_signal": "STRONG BUY",
+                "time_risk": "LOW",
+                "recommended_side": "yes",
+                "ci_adjusted_kelly": 0.10,
+                "market_prob": 0.40,
+                "forecast_prob": 0.60,
+                "net_edge": 0.18,
+                "method": "ensemble",
+                "model_consensus": True,
+                "near_threshold": False,
+            },
+        )
+    ]
+
+    placed = main._auto_place_trades(opps, client=None, cap=20.0)
+
+    assert placed == 1
+    assert len(captured_caps) == 1, f"kelly_quantity called {len(captured_caps)} times"
+    assert captured_caps[0] == 20.0, f"Expected cap=20.0, got cap={captured_caps[0]}"

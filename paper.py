@@ -396,6 +396,7 @@ def place_paper_order(
     exit_target: float
     | None = None,  # take-profit price (0–1); exit if market reaches this
     thesis: str | None = None,
+    method: str | None = None,  # analysis method ('ensemble', 'normal_dist', etc.)
 ) -> dict:
     """
     Place a paper trade. Deducts quantity * entry_price from balance.

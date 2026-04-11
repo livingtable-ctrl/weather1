@@ -53,7 +53,7 @@ from tracker import (
     log_prediction,
     sync_outcomes,
 )
-from utils import MIN_EDGE, STRONG_EDGE
+from utils import MED_EDGE, MIN_EDGE, STRONG_EDGE
 from weather_markets import (
     CITY_COORDS,
     _feels_like,
@@ -1838,7 +1838,8 @@ def cmd_cron(client: KalshiClient, min_edge: float = MIN_EDGE) -> None:
     log_path = Path(__file__).parent / "data" / "cron.log"
     log_path.parent.mkdir(exist_ok=True)
 
-    strong_opps: list = []
+    med_opps: list = []  # edge 15–24%, LOW or MEDIUM risk
+    strong_opps: list = []  # edge 25%+, any time risk
     signals_cache: list = []
     scanned = 0
     try:
@@ -1883,10 +1884,13 @@ def cmd_cron(client: KalshiClient, min_edge: float = MIN_EDGE) -> None:
                     "time_risk": time_risk,
                     "kelly_dollars": 0.0,  # balance unknown at cron time; filled by web
                     "already_held": False,
+                    "near_threshold": analysis.get("near_threshold", False),
                 }
             )
             if abs(net_edge) >= STRONG_EDGE:
                 strong_opps.append((enriched, analysis))
+            elif abs(net_edge) >= MED_EDGE and time_risk in ("LOW", "MEDIUM"):
+                med_opps.append((enriched, analysis))
     except Exception:
         pass  # never crash the scheduler
 
@@ -1911,15 +1915,26 @@ def cmd_cron(client: KalshiClient, min_edge: float = MIN_EDGE) -> None:
     except Exception:
         pass
 
+    placed_count = 0
     if strong_opps:
+        from paper import _dynamic_kelly_cap
+
+        strong_cap = _dynamic_kelly_cap()
         print(
             bold(
-                f"\n  !! {len(strong_opps)} STRONG SIGNAL(S) — placing paper trades !!"
+                f"\n  !! {len(strong_opps)} STRONG SIGNAL(S) — placing paper trades (cap=${strong_cap:.0f}) !!"
             )
         )
-        placed_count = _auto_place_trades(strong_opps, client=client) or 0
-    else:
-        placed_count = 0
+        placed_count += (
+            _auto_place_trades(strong_opps, client=client, cap=strong_cap) or 0
+        )
+    if med_opps:
+        print(
+            bold(
+                f"\n  !! {len(med_opps)} MED SIGNAL(S) — placing paper trades (cap=$20) !!"
+            )
+        )
+        placed_count += _auto_place_trades(med_opps, client=client, cap=20.0) or 0
 
     # Auto-settle any pending trades whose markets have resolved
     settled_count = 0
@@ -1934,7 +1949,7 @@ def cmd_cron(client: KalshiClient, min_edge: float = MIN_EDGE) -> None:
     try:
         import subprocess as _sp
 
-        signals = len(strong_opps)
+        signals = len(strong_opps) + len(med_opps)
         parts = []
         if signals > 0:
             parts.append(
@@ -2020,14 +2035,16 @@ def _auto_place_trades(
     client=None,
     live: bool = False,
     live_config: dict | None = None,
+    cap: float | None = None,  # per-trade dollar cap (None = dynamic Brier cap)
 ) -> int:
     """
-    Auto-place paper or live trades for STRONG BUY + LOW risk signals not already held.
-    Called from watch --auto mode. Respects drawdown guard and portfolio Kelly.
+    Auto-place paper or live trades for signals not already held.
+    Called from cmd_cron (tiered) and watch --auto mode. Respects drawdown guard and portfolio Kelly.
 
     opps may be a list of (market_dict, analysis_dict) tuples (legacy watch mode)
     or a list of flat opportunity dicts (new live path / tests).
     Pass live=True with a live_config dict to route orders to the real Kalshi API.
+    cap: per-trade dollar cap; if None, uses dynamic Brier cap.
     """
     from paper import (
         get_open_trades,
@@ -2068,10 +2085,6 @@ def _auto_place_trades(
         ticker = m.get("ticker", "")
         if ticker in open_tickers:
             continue
-        if "STRONG" not in a.get("net_signal", ""):
-            continue
-        if a.get("time_risk") == "HIGH":
-            continue
         rec_side = a.get("recommended_side", a.get("side", "yes"))
         city = m.get("_city")
         target_date_obj = m.get("_date")
@@ -2085,7 +2098,10 @@ def _auto_place_trades(
         # Use market implied prob as entry price when no live quote
         prices = a.get("market_prob", 0.50)
         entry_price = float(prices) if isinstance(prices, int | float) else 0.50
-        qty = kelly_quantity(adj_kelly, entry_price)
+        method = a.get("method")
+        consensus_mult = 0.5 if not a.get("model_consensus", True) else 1.0
+        adj_kelly_final = adj_kelly * consensus_mult
+        qty = kelly_quantity(adj_kelly_final, entry_price, cap=cap, method=method)
         if qty < 1:
             continue
 
@@ -2118,6 +2134,7 @@ def _auto_place_trades(
                     net_edge=a.get("net_edge"),
                     city=city,
                     target_date=target_date_str,
+                    method=a.get("method"),
                 )
                 print(
                     green(
