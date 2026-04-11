@@ -1945,6 +1945,17 @@ def cmd_cron(client: KalshiClient, min_edge: float = MIN_EDGE) -> None:
         if settled_count > 0:
             parts.append(f"{settled_count} settled")
         msg = ", ".join(parts) if parts else "No signals today"
+
+        # Graduation alert — fires once when all criteria are first met
+        _grad_flag = Path(__file__).parent / "data" / "graduated.flag"
+        try:
+            from paper import graduation_check as _grad_check
+
+            if _grad_check() is not None and not _grad_flag.exists():
+                _grad_flag.touch()
+                msg = "READY TO GO LIVE — 30 trades, +$50 P&L, Brier ≤ 0.20 met!"
+        except Exception:
+            pass
         _sp.run(
             [
                 "powershell",

@@ -24,6 +24,15 @@ from utils import KALSHI_FEE_RATE, normal_cdf
 
 _log = logging.getLogger(__name__)
 
+# ── Trading filters ───────────────────────────────────────────────────────────
+# Only analyse markets expiring within this many days. Forecasts beyond 2 days
+# carry materially higher uncertainty; the horizon discount in edge_confidence()
+# helps but a hard gate keeps the signal set clean.
+MAX_DAYS_OUT: int = 2
+# Minimum combined volume + open_interest required to trade a market.
+# Below this the market is effectively illiquid — fills are unreliable.
+MIN_LIQUIDITY: int = 100
+
 # ── Open-Meteo (free, no API key) ────────────────────────────────────────────
 
 
@@ -1016,7 +1025,8 @@ def _time_risk(close_time_str: str, tz: str) -> tuple[str, float]:
     Returns (risk_label, sigma_multiplier):
       "LOW" / 0.5  — within 2 hours of close (near-real-time data available)
       "LOW" / 0.7  — market closes after 8pm local (weather station already read)
-      "MEDIUM" / 0.85 — closes within 12 hours
+      "LOW" / 0.8  — same-day market (closes today local time)
+      "MEDIUM" / 0.85 — closes within 24 hours (tomorrow's market)
       "HIGH" / 1.0 — far-out market, no timing advantage
 
     sigma_multiplier < 1.0 means reduce forecast uncertainty (we know more).
@@ -1028,12 +1038,16 @@ def _time_risk(close_time_str: str, tz: str) -> tuple[str, float]:
 
         close_dt = datetime.fromisoformat(close_time_str.replace("Z", "+00:00"))
         hours_to_close = (close_dt - datetime.now(UTC)).total_seconds() / 3600
-        local_hour = close_dt.astimezone(ZoneInfo(tz)).hour
+        local_close = close_dt.astimezone(ZoneInfo(tz))
+        local_hour = local_close.hour
+        closes_today = local_close.date() == datetime.now(ZoneInfo(tz)).date()
         if hours_to_close <= 2:
             return ("LOW", 0.5)
         elif local_hour >= 20:
             return ("LOW", 0.7)
-        elif hours_to_close <= 12:
+        elif closes_today:
+            return ("LOW", 0.8)
+        elif hours_to_close <= 24:
             return ("MEDIUM", 0.85)
         else:
             return ("HIGH", 1.0)
@@ -1970,6 +1984,24 @@ def analyze_trade(enriched: dict) -> dict | None:
     coords = CITY_COORDS.get(city)
     if not coords:
         return None
+
+    # ── Days-out gate: only trade markets expiring within MAX_DAYS_OUT days ──
+    _days_out_check = max(0, (target_date - date.today()).days)
+    if _days_out_check > MAX_DAYS_OUT:
+        return None
+
+    # ── Liquidity gate: skip markets with no real open interest ──────────────
+    _vol = (enriched.get("volume") or 0) + (enriched.get("open_interest") or 0)
+    if _vol < MIN_LIQUIDITY:
+        return None
+
+    # ── Spread gate: skip illiquid markets with wide bid-ask spreads ─────────
+    _yes_ask = enriched.get("yes_ask", 0) or 0
+    _yes_bid = enriched.get("yes_bid", 0) or 0
+    if _yes_ask > 0 and _yes_bid > 0:
+        _mid = (_yes_ask + _yes_bid) / 2
+        if _mid > 0 and (_yes_ask - _yes_bid) / _mid > 0.30:
+            return None  # spread > 30% of mid — not tradeable
 
     # ── Time-of-day risk assessment ──────────────────────────────────────────
     _tz = coords[2] if len(coords) > 2 else "UTC"

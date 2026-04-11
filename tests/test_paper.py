@@ -36,15 +36,16 @@ class TestKellyCompounding(unittest.TestCase):
     def test_kelly_bet_dollars_scales_with_balance(self):
         import paper
 
+        # 10% of $1000 = $100 pre-cap, but per-trade cap is $50
         dollars = paper.kelly_bet_dollars(0.10)
-        self.assertAlmostEqual(dollars, 100.0)  # 10% of $1000
+        self.assertAlmostEqual(dollars, 50.0)
 
-    def test_kelly_bet_dollars_caps_at_25_percent(self):
+    def test_kelly_bet_dollars_caps_at_50_dollars(self):
         import paper
 
-        # Even if Kelly says 50%, we cap at 25%
+        # Even if Kelly says 50% of $1000, per-trade cap is $50
         dollars = paper.kelly_bet_dollars(0.50)
-        self.assertAlmostEqual(dollars, 250.0)
+        self.assertAlmostEqual(dollars, 50.0)
 
     def test_kelly_bet_dollars_floors_at_zero(self):
         import paper
@@ -55,9 +56,9 @@ class TestKellyCompounding(unittest.TestCase):
     def test_kelly_quantity_basic(self):
         import paper
 
-        # $100 bet at $0.50/contract = 200 contracts
+        # 10% of $1000 = $100 pre-cap, capped at $50; $50 / $0.50 = 100 contracts
         qty = paper.kelly_quantity(0.10, 0.50)
-        self.assertEqual(qty, 200)
+        self.assertEqual(qty, 100)
 
     def test_kelly_quantity_zero_price_returns_zero(self):
         import paper
@@ -85,9 +86,10 @@ class TestKellyCompounding(unittest.TestCase):
         paper.settle_paper_trade(trade["id"], outcome_yes=True)
         balance_after = paper.get_balance()
         self.assertGreater(balance_after, balance_before)
-        # Next Kelly bet should be larger
+        # Next Kelly bet should be positive (capped at $50 per-trade limit)
         dollars_after = paper.kelly_bet_dollars(0.10)
-        self.assertGreater(dollars_after, 100.0 - 0.50)  # slightly less than 1000 * 10%
+        self.assertGreater(dollars_after, 0)
+        self.assertLessEqual(dollars_after, 50.0)
 
     def test_balance_decreases_after_loss(self):
         import paper
@@ -217,12 +219,12 @@ class TestMaxDrawdown(unittest.TestCase):
         self.assertEqual(paper.kelly_bet_dollars(0.10), 0.0)
 
     def test_kelly_normal_above_threshold(self):
-        """kelly_bet_dollars works normally when balance >= $500."""
+        """kelly_bet_dollars works normally when balance >= $500 (capped at $50)."""
         import paper
 
-        # Balance is $1000 (starting), which is above threshold
+        # Balance is $1000, 10% = $100 pre-cap, capped at $50 per-trade limit
         result = paper.kelly_bet_dollars(0.10)
-        self.assertAlmostEqual(result, 100.0)
+        self.assertAlmostEqual(result, 50.0)
 
     def test_boundary_exactly_500_not_paused(self):
         """Balance exactly at $500 (= 50% of $1000) is NOT paused (strict less-than)."""

@@ -314,6 +314,10 @@ def kelly_bet_dollars(kelly_fraction: float) -> float:
 
     if is_streak_paused():
         dollars = round(dollars * 0.50, 2)
+
+    # Hard per-trade cap: no single bet exceeds $50 regardless of Kelly.
+    # Prevents penny-market Kelly inflation from over-concentrating one position.
+    dollars = min(dollars, 50.0)
     return dollars
 
 
