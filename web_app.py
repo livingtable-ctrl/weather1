@@ -322,6 +322,8 @@ def _build_app(client):
             from paper import fear_greed_index, get_performance, graduation_check
         except ImportError as e:
             return jsonify({"error": str(e)}), 500
+        from tracker import brier_score as _brier_score
+
         perf = get_performance()
         gc = graduation_check()
         fg_score, fg_label = fear_greed_index()
@@ -329,6 +331,8 @@ def _build_app(client):
             {
                 "trades_done": perf.get("settled", 0),
                 "win_rate": perf.get("win_rate"),
+                "total_pnl": perf.get("total_pnl", 0.0),
+                "brier": _brier_score(),
                 "ready": gc is not None,
                 "fear_greed_score": fg_score,
                 "fear_greed_label": fg_label,

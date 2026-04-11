@@ -1047,31 +1047,44 @@ def check_aged_positions() -> list[dict]:
     return aged
 
 
-def graduation_check(min_trades: int = 30, min_win_rate: float = 0.55) -> dict | None:
+def graduation_check(
+    min_trades: int = 30,
+    min_pnl: float = 50.0,
+    max_brier: float = 0.20,
+) -> dict | None:
     """
     Check if paper trading performance warrants going live.
-    Returns a summary dict if criteria met, None otherwise.
-    #52: Requires 30+ trades (not 10) and 0.55+ win rate (not 0.60) — 10 trades is
-    too few to distinguish skill from luck; 0.55 accounts for ~7% Kalshi fee drag.
-    Criteria: >= min_trades settled, win_rate >= min_win_rate, total_pnl > 0.
-    Returns: {"settled": N, "win_rate": X, "total_pnl": Y, "roi": Z}
+    Returns a summary dict if all three criteria are met, None otherwise.
+
+    Criteria:
+      - >= min_trades settled trades (statistical validity)
+      - total_pnl >= min_pnl (genuinely profitable, not just lucky win rate)
+      - brier_score <= max_brier (model is calibrated — random guessing = 0.25)
+
+    Win rate is no longer a gate: it ignores position sizing and payout asymmetry.
+    A bot buying NO at $0.03 can have a 97% win rate yet still lose money on the
+    rare $0.03→$1.00 adverse move. P&L + calibration is the real signal.
     """
+    from tracker import brier_score as _brier_score
+
     perf = get_performance()
     settled = perf.get("settled", 0)
     win_rate = perf.get("win_rate")
     total_pnl = perf.get("total_pnl", 0.0)
     roi = perf.get("roi")
+    brier = _brier_score()
     if (
         settled >= min_trades
-        and win_rate is not None
-        and win_rate >= min_win_rate
-        and total_pnl > 0
+        and total_pnl >= min_pnl
+        and brier is not None
+        and brier <= max_brier
     ):
         return {
             "settled": settled,
             "win_rate": win_rate,
             "total_pnl": total_pnl,
             "roi": roi,
+            "brier": brier,
         }
     return None
 

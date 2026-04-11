@@ -22,7 +22,9 @@
     var wins = settled.filter(function (t) { return (t.pnl || 0) > 0; }).length;
     var winRate = settled.length ? (wins / settled.length * 100) : null;
     var openCost = open.reduce(function (s, t) { return s + (t.cost || 0); }, 0);
-    var toGrad = Math.max(0, 30 - settled.length);
+    var tradesLeft = Math.max(0, 30 - settled.length);
+    var pnlLeft = Math.max(0, 50 - totalPnl);
+    var gradReady = tradesLeft === 0 && pnlLeft === 0; // brier checked server-side
 
     var pnlEl = document.getElementById('ps-total-pnl');
     if (pnlEl) {
@@ -37,8 +39,16 @@
     if (ocEl) ocEl.textContent = '$' + openCost.toFixed(2);
     var gEl = document.getElementById('ps-grad');
     if (gEl) {
-      gEl.textContent = toGrad > 0 ? toGrad + ' trades' : '✓ Ready';
-      gEl.className = 'stat-value ' + (toGrad === 0 ? 'pos' : '');
+      if (gradReady) {
+        gEl.textContent = '✓ Ready';
+        gEl.className = 'stat-value pos';
+      } else {
+        var parts = [];
+        if (tradesLeft > 0) parts.push(tradesLeft + ' trades');
+        if (pnlLeft > 0) parts.push('+$' + pnlLeft.toFixed(0) + ' P&L');
+        gEl.textContent = parts.join(', ');
+        gEl.className = 'stat-value';
+      }
     }
   }
 

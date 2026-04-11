@@ -85,14 +85,26 @@
         tradesBar.classList.toggle('complete', done >= 30);
       }
 
-      // Win rate progress bar
-      var winRate = d.win_rate || 0;
-      var wrLabel = document.getElementById('grad-wr-label');
-      var wrBar = document.getElementById('grad-wr-bar');
-      if (wrLabel) wrLabel.textContent = (winRate * 100).toFixed(1) + '%/55%';
-      if (wrBar) {
-        wrBar.style.width = Math.min(100, (winRate / 0.55) * 100) + '%';
-        wrBar.classList.toggle('complete', winRate >= 0.55);
+      // P&L progress bar (target: $50)
+      var pnl = d.total_pnl || 0;
+      var pnlLabel = document.getElementById('grad-pnl-label');
+      var pnlBar = document.getElementById('grad-pnl-bar');
+      if (pnlLabel) pnlLabel.textContent = (pnl >= 0 ? '+$' : '-$') + Math.abs(pnl).toFixed(2) + '/$50';
+      if (pnlBar) {
+        pnlBar.style.width = Math.min(100, Math.max(0, (pnl / 50) * 100)) + '%';
+        pnlBar.classList.toggle('complete', pnl >= 50);
+      }
+
+      // Brier score progress bar (target: ≤0.20; lower is better so invert)
+      var brier = d.brier;
+      var brierLabel = document.getElementById('grad-brier-label');
+      var brierBar = document.getElementById('grad-brier-bar');
+      if (brierLabel) brierLabel.textContent = brier !== null && brier !== undefined ? brier.toFixed(4) + '/<0.20' : '—/<0.20';
+      if (brierBar) {
+        // bar fills as brier improves: 0.25 (random) = 0%, 0.0 (perfect) = 100%
+        var brierPct = brier !== null && brier !== undefined ? Math.min(100, Math.max(0, (1 - brier / 0.25) * 100)) : 0;
+        brierBar.style.width = brierPct + '%';
+        brierBar.classList.toggle('complete', brier !== null && brier !== undefined && brier <= 0.20);
       }
 
       // Status message
