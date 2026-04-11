@@ -11,7 +11,7 @@ from __future__ import annotations
 import logging
 import math
 import sqlite3
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 
 _log = logging.getLogger(__name__)
@@ -437,7 +437,7 @@ def get_bias(
     if len(rows) < min_samples:
         return 0.0
 
-    now = datetime.utcnow()
+    now = datetime.now(UTC)
     weighted_bias = 0.0
     total_weight = 0.0
     min_age_days = float("inf")
@@ -913,7 +913,7 @@ def sync_outcomes(client) -> int:
         """).fetchall()
 
     count = 0
-    now_utc = datetime.utcnow()
+    now_utc = datetime.now(UTC)
     for row in pending:
         ticker = row["ticker"]
         try:
