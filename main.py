@@ -1863,6 +1863,30 @@ def cmd_cron(client: KalshiClient, min_edge: float = MIN_EDGE) -> None:
                 if not analysis:
                     continue
                 net_edge = analysis.get("net_edge", analysis["edge"])
+                # #55: log every analyzed market so unselected-market bias is detectable
+                try:
+                    import datetime as _dt
+
+                    from tracker import log_analysis_attempt as _log_attempt
+
+                    _td = analysis.get("target_date") or enriched.get("_target_date")
+                    if isinstance(_td, str):
+                        try:
+                            _td = _dt.date.fromisoformat(_td)
+                        except ValueError:
+                            _td = None
+                    _log_attempt(
+                        ticker=m.get("ticker", ""),
+                        city=enriched.get("_city"),
+                        condition=str(analysis.get("condition", "")),
+                        target_date=_td,
+                        forecast_prob=analysis.get("forecast_prob", 0.0),
+                        market_prob=analysis.get("market_prob", 0.0),
+                        days_out=int(analysis.get("days_out", 0)),
+                        was_traded=False,
+                    )
+                except Exception:
+                    pass
                 if abs(net_edge) < min_edge:
                     continue
                 signal = analysis.get("net_signal", analysis.get("signal", "")).strip()
@@ -2260,6 +2284,30 @@ def _auto_place_trades(
                 open_tickers.add(ticker)
                 placed += 1
                 daily_spent += trade.get("cost", 0.0)
+                # #55: update analysis attempt to mark this market as traded
+                try:
+                    import datetime as _dt2
+
+                    from tracker import log_analysis_attempt as _log_attempt2
+
+                    _td2 = trade.get("target_date")
+                    if isinstance(_td2, str):
+                        try:
+                            _td2 = _dt2.date.fromisoformat(_td2)
+                        except ValueError:
+                            _td2 = None
+                    _log_attempt2(
+                        ticker=ticker,
+                        city=city,
+                        condition=str(a.get("condition", "")),
+                        target_date=_td2,
+                        forecast_prob=a.get("forecast_prob", 0.0),
+                        market_prob=a.get("market_prob", 0.0),
+                        days_out=int(a.get("days_out", 0)),
+                        was_traded=True,
+                    )
+                except Exception:
+                    pass
             except ValueError as e:
                 print(yellow(f"  [Auto] Skipped {ticker}: {e}"))
     if placed == 0:

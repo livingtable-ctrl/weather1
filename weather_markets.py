@@ -2450,6 +2450,10 @@ def analyze_trade(enriched: dict) -> dict | None:
         ci_adjusted_kelly = round(ci_adjusted_kelly * 1.25, 6)
     ci_adjusted_kelly = min(ci_adjusted_kelly, 0.25)
 
+    # Near-threshold penalty: forecast is within ±3°F of threshold → high flip risk
+    if near_threshold:
+        ci_adjusted_kelly = round(ci_adjusted_kelly * 0.75, 6)
+
     return {
         # Core
         "forecast_prob": blended_prob,
