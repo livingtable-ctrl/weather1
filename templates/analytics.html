@@ -4,15 +4,19 @@
 {% block page_title %}Analytics{% endblock %}
 
 {% block content %}
-<div class="stats" style="margin-bottom:24px">
+<div class="stats" style="margin-bottom:8px">
   <div class="stat-card">
     <div class="stat-label">Brier Score</div>
     <div class="stat-value" id="an-brier">—</div>
+    <div style="font-size:0.75em;color:var(--text-muted);margin-top:4px">lower = better · 0.25 = random · 0.0 = perfect</div>
   </div>
 </div>
+<p style="font-size:0.82em;color:var(--text-muted);margin:0 0 20px 4px">
+  The <strong style="color:var(--text)">Brier Score</strong> measures forecast accuracy: for each settled prediction we square the error between our probability and the actual outcome (0 or 1), then average them. A score of <strong style="color:var(--pos)">0.0</strong> means every prediction was perfectly confident and correct. A score of <strong style="color:var(--warn)">0.25</strong> is what you'd get from always guessing 50/50 — the baseline to beat.
+</p>
 
 <div class="chart-wrap section">
-  <h2>Brier Score Over Time (last 12 weeks)</h2>
+  <h2>Brier Score Over Time <span style="font-size:0.7em;font-weight:400;color:var(--text-muted)">(last 12 weeks — lower is better)</span></h2>
   <div id="brier-history-chart" style="height:200px"></div>
 </div>
 
@@ -39,6 +43,9 @@
 
 <div class="section">
   <h2>Calibration by City</h2>
+  <p style="font-size:0.82em;color:var(--text-muted);margin:0 0 12px 0">
+    Only cities with at least one <em>settled</em> prediction appear here. As more trades resolve across Dallas, Chicago, Miami, etc. they will be added automatically.
+  </p>
   <div id="city-cal-table"></div>
 </div>
 {% endblock %}

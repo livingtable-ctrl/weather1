@@ -65,6 +65,7 @@ def _build_app(client):
         return None
 
     app = Flask(__name__)
+    app.config["TEMPLATES_AUTO_RELOAD"] = True
 
     DARK_STYLE = """
     <style>
