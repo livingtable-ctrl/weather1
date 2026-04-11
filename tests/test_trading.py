@@ -687,6 +687,7 @@ def test_auto_place_trades_med_tier_uses_20_cap(monkeypatch):
     monkeypatch.setattr(paper, "is_paused_drawdown", fake_is_paused_drawdown)
     monkeypatch.setattr(paper, "is_daily_loss_halted", fake_is_daily_loss_halted)
     monkeypatch.setattr(paper, "is_streak_paused", fake_is_streak_paused)
+    monkeypatch.setattr(main, "_daily_paper_spend", lambda: 0.0)
 
     opps = [
         (

@@ -39,7 +39,7 @@ class TestKellyCompounding(unittest.TestCase):
         import paper
 
         # 10% of $1000 = $100 pre-cap, but per-trade cap is $50
-        dollars = paper.kelly_bet_dollars(0.10)
+        dollars = paper.kelly_bet_dollars(0.10, cap=50.0)
         self.assertAlmostEqual(dollars, 50.0)
 
     def test_kelly_bet_dollars_caps_at_50_dollars(self):
@@ -59,7 +59,7 @@ class TestKellyCompounding(unittest.TestCase):
         import paper
 
         # 10% of $1000 = $100 pre-cap, capped at $50; $50 / $0.50 = 100 contracts
-        qty = paper.kelly_quantity(0.10, 0.50)
+        qty = paper.kelly_quantity(0.10, 0.50, cap=50.0)
         self.assertEqual(qty, 100)
 
     def test_kelly_quantity_zero_price_returns_zero(self):
@@ -89,7 +89,7 @@ class TestKellyCompounding(unittest.TestCase):
         balance_after = paper.get_balance()
         self.assertGreater(balance_after, balance_before)
         # Next Kelly bet should be positive (capped at $50 per-trade limit)
-        dollars_after = paper.kelly_bet_dollars(0.10)
+        dollars_after = paper.kelly_bet_dollars(0.10, cap=50.0)
         self.assertGreater(dollars_after, 0)
         self.assertLessEqual(dollars_after, 50.0)
 
@@ -225,7 +225,7 @@ class TestMaxDrawdown(unittest.TestCase):
         import paper
 
         # Balance is $1000, 10% = $100 pre-cap, capped at $50 per-trade limit
-        result = paper.kelly_bet_dollars(0.10)
+        result = paper.kelly_bet_dollars(0.10, cap=50.0)
         self.assertAlmostEqual(result, 50.0)
 
     def test_boundary_exactly_500_not_paused(self):
