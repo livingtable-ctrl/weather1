@@ -2247,6 +2247,9 @@ def _auto_place_trades(
                     city=city,
                     target_date=target_date_str,
                     method=a.get("method"),
+                    icon_forecast_mean=a.get("icon_forecast_mean"),
+                    gfs_forecast_mean=a.get("gfs_forecast_mean"),
+                    condition_threshold=a.get("condition", {}).get("threshold"),
                 )
                 print(
                     green(

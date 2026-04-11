@@ -685,7 +685,9 @@ def test_model_consensus_false_when_models_disagree(monkeypatch):
 
     monkeypatch.setattr(wm, "get_ensemble_temps", lambda *a, **kw: [72.0] * 20)
     # Models disagree by 15pp
-    monkeypatch.setattr(wm, "_get_consensus_probs", lambda *a, **kw: (0.75, 0.60))
+    monkeypatch.setattr(
+        wm, "_get_consensus_probs", lambda *a, **kw: (0.75, 0.60, 74.0, 68.0)
+    )
     monkeypatch.setattr(
         wm,
         "get_weather_forecast",

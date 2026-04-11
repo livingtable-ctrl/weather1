@@ -1582,7 +1582,7 @@ def _get_consensus_probs(
     condition: dict,
     hour: int | None = None,
     var: str = "max",
-) -> tuple[float | None, float | None]:
+) -> tuple[float | None, float | None, float | None, float | None]:
     """Fetch per-model ensemble probabilities for ICON and GFS separately.
 
     Returns (icon_prob, gfs_prob). Either may be None if that model returned
@@ -1590,11 +1590,12 @@ def _get_consensus_probs(
     Only supports temperature conditions (above/below/range).
     """
 
-    def _model_prob(model_name: str) -> float | None:
+    def _model_prob_and_mean(model_name: str) -> tuple[float | None, float | None]:
+        """Return (prob, mean_temp) for model_name. Either may be None."""
         try:
             coords = CITY_COORDS.get(city)
             if not coords:
-                return None
+                return None, None
             lat, lon = coords[0], coords[1]
             tz = coords[2] if len(coords) > 2 else "UTC"
             var_field = f"temperature_2m_{'max' if var == 'max' else 'min'}"
@@ -1625,7 +1626,7 @@ def _get_consensus_probs(
                     "GET", ENSEMBLE_BASE, params=params, timeout=20
                 )
                 if not resp:
-                    return None
+                    return None, None
                 resp.raise_for_status()
                 data = resp.json()
                 daily = data.get("daily", {})
@@ -1638,25 +1639,26 @@ def _get_consensus_probs(
                 _ENSEMBLE_CACHE[cache_key] = (temps, time.time())
 
             if len(temps) < 5:
-                return None
+                return None, None
 
+            mean_temp = round(sum(temps) / len(temps), 2)
             thresh = condition.get("threshold")
             ctype = condition.get("type", "")
             if ctype == "above" and thresh is not None:
-                return sum(1 for t in temps if t > thresh) / len(temps)
+                return sum(1 for t in temps if t > thresh) / len(temps), mean_temp
             elif ctype == "below" and thresh is not None:
-                return sum(1 for t in temps if t < thresh) / len(temps)
+                return sum(1 for t in temps if t < thresh) / len(temps), mean_temp
             elif ctype == "range":
                 lo = condition.get("lower", 0)
                 hi = condition.get("upper", 999)
-                return sum(1 for t in temps if lo <= t <= hi) / len(temps)
-            return None
+                return sum(1 for t in temps if lo <= t <= hi) / len(temps), mean_temp
+            return None, mean_temp
         except Exception:
-            return None
+            return None, None
 
-    icon_prob = _model_prob("icon_seamless")
-    gfs_prob = _model_prob("gfs_seamless")
-    return icon_prob, gfs_prob
+    icon_prob, icon_mean = _model_prob_and_mean("icon_seamless")
+    gfs_prob, gfs_mean = _model_prob_and_mean("gfs_seamless")
+    return icon_prob, gfs_prob, icon_mean, gfs_mean
 
 
 def kelly_fraction(our_prob: float, price: float, fee_rate: float = 0.0) -> float:
@@ -2146,9 +2148,11 @@ def analyze_trade(enriched: dict) -> dict | None:
 
     # ── Model consensus check ────────────────────────────────────────────────
     model_consensus = True
+    icon_forecast_mean: float | None = None
+    gfs_forecast_mean: float | None = None
     if ens_prob is not None and len(temps) >= 10:
         try:
-            icon_p, gfs_p = _get_consensus_probs(
+            icon_p, gfs_p, icon_forecast_mean, gfs_forecast_mean = _get_consensus_probs(
                 city, target_date, condition, hour=hour, var=var
             )
             if icon_p is not None and gfs_p is not None:
@@ -2493,6 +2497,9 @@ def analyze_trade(enriched: dict) -> dict | None:
         "consensus": consensus,
         "model_consensus": model_consensus,
         "near_threshold": near_threshold,
+        # Per-model forecast means for ensemble scoring
+        "icon_forecast_mean": icon_forecast_mean,
+        "gfs_forecast_mean": gfs_forecast_mean,
         # Regime detection
         "regime": _regime_info.get("regime", "normal"),
         "regime_description": _regime_info.get("description", ""),

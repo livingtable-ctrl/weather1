@@ -397,6 +397,9 @@ def place_paper_order(
     | None = None,  # take-profit price (0–1); exit if market reaches this
     thesis: str | None = None,
     method: str | None = None,  # analysis method ('ensemble', 'normal_dist', etc.)
+    icon_forecast_mean: float | None = None,  # per-model means for ensemble scoring
+    gfs_forecast_mean: float | None = None,
+    condition_threshold: float | None = None,  # market threshold (e.g. 70°F)
 ) -> dict:
     """
     Place a paper trade. Deducts quantity * entry_price from balance.
@@ -458,6 +461,9 @@ def place_paper_order(
         "pnl": None,
         "exit_target": exit_target,
         "thesis": thesis,
+        "icon_forecast_mean": icon_forecast_mean,
+        "gfs_forecast_mean": gfs_forecast_mean,
+        "condition_threshold": condition_threshold,
     }
 
     # #50: compute slippage-adjusted fill price and store on the trade record
@@ -528,8 +534,35 @@ def settle_paper_trade(trade_id: int, outcome_yes: bool) -> dict:
                 data.get("peak_balance", STARTING_BALANCE), data["balance"]
             )
             _save(data)
+
+            # Score per-model forecast means against outcome for dynamic weighting
+            _score_ensemble_members(t, outcome_yes)
+
             return t
     raise ValueError(f"Trade {trade_id} not found or already settled.")
+
+
+def _score_ensemble_members(trade: dict, outcome_yes: bool) -> None:
+    """Log per-model forecast accuracy after settlement for _dynamic_model_weights()."""
+    city = trade.get("city")
+    target_date = trade.get("target_date")
+    threshold = trade.get("condition_threshold")
+    if not city or not target_date or threshold is None:
+        return
+    # Proxy actual temp: threshold ± 3°F based on settled outcome
+    actual_temp = threshold + 3.0 if outcome_yes else threshold - 3.0
+    model_means = {
+        "icon_seamless": trade.get("icon_forecast_mean"),
+        "gfs_seamless": trade.get("gfs_forecast_mean"),
+    }
+    try:
+        from tracker import log_member_score as _log_ms
+
+        for model, predicted_temp in model_means.items():
+            if predicted_temp is not None:
+                _log_ms(city, model, predicted_temp, actual_temp, target_date)
+    except Exception:
+        pass
 
 
 def close_paper_early(trade_id: int, exit_price: float) -> dict:
