@@ -20,15 +20,15 @@ from climate_indices import get_enso_index, temperature_adjustment
 from climatology import climatological_prob
 from kalshi_client import KalshiClient, _request_with_retry
 from nws import get_live_observation, nws_prob, obs_prob
-from utils import KALSHI_FEE_RATE, normal_cdf
+from utils import KALSHI_FEE_RATE, MAX_DAYS_OUT, normal_cdf
 
 _log = logging.getLogger(__name__)
 
 # ── Trading filters ───────────────────────────────────────────────────────────
-# Only analyse markets expiring within this many days. Forecasts beyond 2 days
-# carry materially higher uncertainty; the horizon discount in edge_confidence()
-# helps but a hard gate keeps the signal set clean.
-MAX_DAYS_OUT: int = 2
+# Only analyse markets expiring within this many days. Days 3-4 carry higher
+# uncertainty but the horizon discount in edge_confidence() and Kelly sizing
+# handle that automatically. Override via MAX_DAYS_OUT env var.
+
 # Minimum combined volume + open_interest required to trade a market.
 # Below this the market is effectively illiquid — fills are unreliable.
 MIN_LIQUIDITY: int = 100

@@ -113,6 +113,8 @@ class TestPersistenceProb:
             "no_bid": 0.45,
             "close_time": "",
             "series_ticker": "KXHIGHNY",
+            "volume": 500,
+            "open_interest": 200,
         }
 
         with (
@@ -480,6 +482,8 @@ class TestTimeDecayEdge:
             "no_bid": 0.60,
             "close_time": close_dt.isoformat(),
             "series_ticker": "KXHIGHNY",
+            "volume": 500,
+            "open_interest": 200,
         }
 
         with (
