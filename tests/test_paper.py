@@ -860,3 +860,10 @@ class TestMaxOrderLatency:
 
         latency_warns = [m for m in caplog.messages if "latency" in m.lower()]
         assert len(latency_warns) >= 1
+
+
+def test_med_edge_and_max_daily_spend_constants_exist():
+    from utils import MAX_DAILY_SPEND, MED_EDGE
+
+    assert 0 < MED_EDGE < 0.25
+    assert MAX_DAILY_SPEND > 0
