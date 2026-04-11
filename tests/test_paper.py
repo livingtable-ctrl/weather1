@@ -188,8 +188,11 @@ class TestMaxDrawdown(unittest.TestCase):
         self._tmpdir = tempfile.mkdtemp()
         self._patch = patch("paper.DATA_PATH", Path(self._tmpdir) / "paper_trades.json")
         self._patch.start()
+        self._patch_exp = patch("paper.MAX_SINGLE_TICKER_EXPOSURE", 1.0)
+        self._patch_exp.start()
 
     def tearDown(self):
+        self._patch_exp.stop()
         self._patch.stop()
         shutil.rmtree(self._tmpdir, ignore_errors=True)
 
@@ -234,8 +237,11 @@ class TestPortfolioKelly(unittest.TestCase):
         self._tmpdir = tempfile.mkdtemp()
         self._patch = patch("paper.DATA_PATH", Path(self._tmpdir) / "paper_trades.json")
         self._patch.start()
+        self._patch_exp = patch("paper.MAX_SINGLE_TICKER_EXPOSURE", 1.0)
+        self._patch_exp.start()
 
     def tearDown(self):
+        self._patch_exp.stop()
         self._patch.stop()
         shutil.rmtree(self._tmpdir, ignore_errors=True)
 
@@ -332,8 +338,11 @@ class TestHighWaterMark(unittest.TestCase):
         self._tmpdir = tempfile.mkdtemp()
         self._patch = patch("paper.DATA_PATH", Path(self._tmpdir) / "paper_trades.json")
         self._patch.start()
+        self._patch_exp = patch("paper.MAX_SINGLE_TICKER_EXPOSURE", 1.0)
+        self._patch_exp.start()
 
     def tearDown(self):
+        self._patch_exp.stop()
         self._patch.stop()
         shutil.rmtree(self._tmpdir, ignore_errors=True)
 
@@ -402,8 +411,11 @@ class TestDirectionalExposure(unittest.TestCase):
         self._tmpdir = tempfile.mkdtemp()
         self._patch = patch("paper.DATA_PATH", Path(self._tmpdir) / "paper_trades.json")
         self._patch.start()
+        self._patch_exp = patch("paper.MAX_SINGLE_TICKER_EXPOSURE", 1.0)
+        self._patch_exp.start()
 
     def tearDown(self):
+        self._patch_exp.stop()
         self._patch.stop()
         shutil.rmtree(self._tmpdir, ignore_errors=True)
 
@@ -524,8 +536,11 @@ class TestDrawdownScaling(unittest.TestCase):
         self._tmpdir = tempfile.mkdtemp()
         self._patch = patch("paper.DATA_PATH", Path(self._tmpdir) / "paper_trades.json")
         self._patch.start()
+        self._patch_exp = patch("paper.MAX_SINGLE_TICKER_EXPOSURE", 1.0)
+        self._patch_exp.start()
 
     def tearDown(self):
+        self._patch_exp.stop()
         self._patch.stop()
         shutil.rmtree(self._tmpdir, ignore_errors=True)
 
@@ -543,25 +558,28 @@ class TestDrawdownScaling(unittest.TestCase):
         self.assertEqual(paper.drawdown_scaling_factor(), 0.0)
 
     def test_tier2_scaling_between_50_and_60_pct(self):
-        """Balance 50–60% of peak → scale = 0.10 (conservative recovery)."""
+        """Balance at 55% of peak → linear scale ≈ 0.10."""
         import paper
 
         paper.place_paper_order("TK", "yes", 450, 1.00)  # balance → $550 (55% of $1000)
-        self.assertEqual(paper.drawdown_scaling_factor(), 0.10)
+        # linear: (0.55 - 0.50) / (1.00 - 0.50) = 0.10
+        self.assertAlmostEqual(paper.drawdown_scaling_factor(), 0.10, places=4)
 
     def test_tier3_scaling_between_60_and_75_pct(self):
-        """Balance 60–75% of peak → scale = 0.30."""
+        """Balance at 65% of peak → linear scale ≈ 0.30."""
         import paper
 
         paper.place_paper_order("TK", "yes", 350, 1.00)  # balance → $650 (65% of $1000)
-        self.assertEqual(paper.drawdown_scaling_factor(), 0.30)
+        # linear: (0.65 - 0.50) / (1.00 - 0.50) = 0.30
+        self.assertAlmostEqual(paper.drawdown_scaling_factor(), 0.30, places=4)
 
     def test_tier4_scaling_between_75_and_90_pct(self):
-        """Balance 75–90% of peak → scale = 0.70."""
+        """Balance at 80% of peak → linear scale ≈ 0.60."""
         import paper
 
         paper.place_paper_order("TK", "yes", 200, 1.00)  # balance → $800 (80% of $1000)
-        self.assertEqual(paper.drawdown_scaling_factor(), 0.70)
+        # linear: (0.80 - 0.50) / (1.00 - 0.50) = 0.60
+        self.assertAlmostEqual(paper.drawdown_scaling_factor(), 0.60, places=4)
 
     def test_kelly_scaled_at_partial_recovery(self):
         """Kelly dollars are scaled by recovery factor, not all-or-nothing."""
