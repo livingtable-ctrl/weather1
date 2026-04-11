@@ -721,9 +721,10 @@ def censoring_correction(
 
 def parse_market_price(market: dict) -> dict:
     """Extract yes/no bid prices and implied probability from a market."""
-    yes_bid = market.get("yes_bid") or 0
-    yes_ask = market.get("yes_ask") or 0
-    no_bid = market.get("no_bid") or 0
+    # API returns either yes_bid/yes_ask (legacy) or yes_bid_dollars/yes_ask_dollars (current)
+    yes_bid = market.get("yes_bid") or market.get("yes_bid_dollars") or 0
+    yes_ask = market.get("yes_ask") or market.get("yes_ask_dollars") or 0
+    no_bid = market.get("no_bid") or market.get("no_bid_dollars") or 0
 
     # Prices may be cents (int) or dollar strings depending on API version
     def to_float(v) -> float:
@@ -830,9 +831,39 @@ def get_weather_markets(
         "KXHIGHLA",
         "KXHIGHBOS",
         "KXHIGHMIA",
+        "KXHIGHTDAL",
+        "KXHIGHTPHX",
+        "KXHIGHTSEA",
+        "KXHIGHDEN",
+        "KXHIGHTATL",
+        "KXHIGHAUS",
+        "KXHIGHTDC",
+        "KXHIGHTPHIL",
+        "KXHIGHTOKC",
+        "KXHIGHTSFO",
+        "KXHIGHTMIN",
+        "KXHIGHHOUM",
+        "KXHIGHTSATX",
         "KXLOWNY",
         "KXLOWCHI",
+        "KXLOWLA",
+        "KXLOWBOS",
+        "KXLOWMIA",
+        "KXLOWTDAL",
+        "KXLOWTPHX",
+        "KXLOWTSEA",
+        "KXLOWDEN",
+        "KXLOWTATL",
+        "KXLOWAUS",
+        "KXLOWTDC",
+        "KXLOWTPHIL",
+        "KXLOWTOKC",
+        "KXLOWTSFO",
+        "KXLOWTMIN",
+        "KXLOWHOUM",
+        "KXLOWTSATX",
         "KXRAIN",
+        "KXSNOW",
     ]
 
     def _fetch_series(series: str) -> list[dict]:
@@ -890,6 +921,32 @@ def enrich_with_forecast(market: dict) -> dict:
         city = "Boston"
     elif "MIA" in ticker_up or "miami" in title:
         city = "Miami"
+    elif "TDAL" in ticker_up or "dallas" in title:
+        city = "Dallas"
+    elif "TPHX" in ticker_up or "phoenix" in title:
+        city = "Phoenix"
+    elif "TSEA" in ticker_up or "seattle" in title:
+        city = "Seattle"
+    elif "DEN" in ticker_up or "denver" in title:
+        city = "Denver"
+    elif "TATL" in ticker_up or "atlanta" in title:
+        city = "Atlanta"
+    elif "AUS" in ticker_up or "austin" in title:
+        city = "Austin"
+    elif "TDC" in ticker_up or "washington" in title:
+        city = "Washington"
+    elif "TPHIL" in ticker_up or "philadelphia" in title:
+        city = "Philadelphia"
+    elif "TOKC" in ticker_up or "oklahoma" in title:
+        city = "OklahomaCity"
+    elif "TSFO" in ticker_up or "san francisco" in title:
+        city = "SanFrancisco"
+    elif "TMIN" in ticker_up or "minneapolis" in title:
+        city = "Minneapolis"
+    elif "HOUM" in ticker_up or "houston" in title:
+        city = "Houston"
+    elif "TSATX" in ticker_up or "san antonio" in title:
+        city = "SanAntonio"
 
     # Detect date + optional hour
     # Hourly tickers: KXTEMPNYCH-26APR0908-T45.99  → date=26APR09, hour=08

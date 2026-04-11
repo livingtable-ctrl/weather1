@@ -1831,14 +1831,14 @@ def cmd_brief(client: KalshiClient, send_email: bool = False) -> None:
             print(dim(f"  Email failed: {e}"))
 
 
-def cmd_cron(client: KalshiClient) -> None:
-    """Silent background scan — writes to data/cron.log, alerts on strong signals."""
+def cmd_cron(client: KalshiClient, min_edge: float = MIN_EDGE) -> None:
+    """Silent background scan — writes to data/cron.log, auto-places strong paper trades."""
     import sys as _sys
 
     log_path = Path(__file__).parent / "data" / "cron.log"
     log_path.parent.mkdir(exist_ok=True)
 
-    strong_found = []
+    strong_opps: list = []
     try:
         markets = get_weather_markets(client)
         for m in markets:
@@ -1847,7 +1847,7 @@ def cmd_cron(client: KalshiClient) -> None:
             if not analysis:
                 continue
             net_edge = analysis.get("net_edge", analysis["edge"])
-            if abs(net_edge) < MIN_EDGE:
+            if abs(net_edge) < min_edge:
                 continue
             signal = analysis.get("net_signal", analysis.get("signal", "")).strip()
             entry = {
@@ -1860,18 +1860,25 @@ def cmd_cron(client: KalshiClient) -> None:
             with open(log_path, "a", encoding="utf-8") as f:
                 f.write(json.dumps(entry) + "\n")
             if abs(net_edge) >= STRONG_EDGE:
-                strong_found.append(entry)
+                strong_opps.append((enriched, analysis))
     except Exception:
         pass  # never crash the scheduler
 
-    if strong_found:
-        print(bold("\n  !! STRONG SIGNAL ALERT !!"))
-        for entry in strong_found:
-            print(
-                green(
-                    f"  {entry['ticker']:<30} {entry['signal']:<20} edge={entry['net_edge']:+.0%}  city={entry['city']}"
-                )
+    if strong_opps:
+        print(
+            bold(
+                f"\n  !! {len(strong_opps)} STRONG SIGNAL(S) — placing paper trades !!"
             )
+        )
+        _auto_place_trades(strong_opps, client=client)
+
+    # Auto-settle any pending trades whose markets have resolved
+    try:
+        count = sync_outcomes(client)
+        if count > 0:
+            print(green(f"  [Settle] Recorded {count} new outcome(s)."))
+    except Exception:
+        pass
 
     _sys.exit(0)
 
@@ -5375,7 +5382,13 @@ def main():
     elif cmd == "brief":
         cmd_brief(client, send_email="--email" in args)
     elif cmd == "cron":
-        cmd_cron(client)
+        _cron_edge = MIN_EDGE
+        if "--edge" in args:
+            try:
+                _cron_edge = float(args[args.index("--edge") + 1]) / 100
+            except (IndexError, ValueError):
+                pass
+        cmd_cron(client, min_edge=_cron_edge)
     elif cmd == "setup":
         cmd_setup()
     elif cmd == "markets":
