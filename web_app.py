@@ -837,6 +837,33 @@ setInterval(() => {{
     def forecast_page():
         return render_template("forecast.html")
 
+    @app.route("/api/today_forecasts")
+    def api_today_forecasts():
+        from datetime import date, timedelta
+
+        from weather_markets import CITY_COORDS, get_weather_forecast
+
+        today = date.today()
+        tomorrow = today + timedelta(days=1)
+        results: dict[str, dict] = {"today": {}, "tomorrow": {}}
+        for city in sorted(CITY_COORDS):
+            for label, dt in (("today", today), ("tomorrow", tomorrow)):
+                try:
+                    f = get_weather_forecast(city, dt)
+                    if f:
+                        results[label][city] = {
+                            "high_f": round(f["high_f"], 1),
+                            "low_f": round(f["low_f"], 1) if f.get("low_f") else None,
+                            "precip_in": round(f.get("precip_in", 0), 2),
+                            "models_used": f.get("models_used", 1),
+                            "high_range": list(
+                                f.get("high_range", [f["high_f"], f["high_f"]])
+                            ),
+                        }
+                except Exception:
+                    pass
+        return jsonify(results)
+
     @app.route("/api/forecast_quality")
     def api_forecast_quality():
         city_cal = {}

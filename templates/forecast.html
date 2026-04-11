@@ -1,15 +1,25 @@
 {% extends "base.html" %}
 {% block title %}Forecast{% endblock %}
-{% block page_title %}Forecast Quality{% endblock %}
+{% block page_title %}Forecast{% endblock %}
 
 {% block content %}
+<div class="section">
+  <h2>Today's Forecasts <span id="today-date" style="font-size:0.8em;color:var(--text-muted)"></span></h2>
+  <div id="today-table"><p class="neu">Loading…</p></div>
+</div>
+
+<div class="section">
+  <h2>Tomorrow's Forecasts <span id="tomorrow-date" style="font-size:0.8em;color:var(--text-muted)"></span></h2>
+  <div id="tomorrow-table"><p class="neu">Loading…</p></div>
+</div>
+
 <div class="chart-wrap section">
-  <h2>City Brier Score Heat Map <span style="font-size:0.8em;color:var(--text-muted)">(green = well-calibrated, red = poor)</span></h2>
+  <h2>City Brier Score <span style="font-size:0.8em;color:var(--text-muted)">(green = well-calibrated, red = poor — builds up over time)</span></h2>
   <div id="city-heatmap" style="height:300px"></div>
 </div>
 
 <div class="section">
-  <h2>Source Reliability Scorecard</h2>
+  <h2>Model Accuracy Scorecard</h2>
   <div id="source-reliability-table"><p class="neu">Loading…</p></div>
 </div>
 
