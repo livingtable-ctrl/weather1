@@ -451,6 +451,7 @@ def place_paper_order(
         "city": city,
         "target_date": target_date,
         "entered_at": datetime.now(UTC).isoformat(),
+        "entry_hour": datetime.now(UTC).hour,
         "settled": False,
         "outcome": None,
         "pnl": None,
@@ -522,6 +523,35 @@ def settle_paper_trade(trade_id: int, outcome_yes: bool) -> dict:
             t["pnl"] = round(pnl, 4)
             data["balance"] += payout
             # Update high-water mark after any balance change
+            data["peak_balance"] = max(
+                data.get("peak_balance", STARTING_BALANCE), data["balance"]
+            )
+            _save(data)
+            return t
+    raise ValueError(f"Trade {trade_id} not found or already settled.")
+
+
+def close_paper_early(trade_id: int, exit_price: float) -> dict:
+    """
+    Close an open paper trade at current market price instead of waiting for settlement.
+    Used when a model-cycle update shifts our probability against the position.
+
+    P&L = (exit_price - entry_price) * quantity
+    (entry_price is always the price paid per contract for our side.)
+    Updates balance with proceeds (exit_price * quantity).
+    """
+    data = _load()
+    for t in data["trades"]:
+        if t["id"] == trade_id and not t["settled"]:
+            qty = t["quantity"]
+            proceeds = round(exit_price * qty, 4)
+            cost = t["cost"]  # entry_price * qty, already stored
+            pnl = round(proceeds - cost, 4)
+            t["settled"] = True
+            t["outcome"] = "early_exit"
+            t["exit_price"] = round(exit_price, 4)
+            t["pnl"] = pnl
+            data["balance"] += proceeds
             data["peak_balance"] = max(
                 data.get("peak_balance", STARTING_BALANCE), data["balance"]
             )

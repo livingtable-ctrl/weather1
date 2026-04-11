@@ -9,6 +9,8 @@ from datetime import UTC
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
 
 class TestKellyCompounding(unittest.TestCase):
     def setUp(self):
@@ -904,3 +906,57 @@ def test_kelly_bet_dollars_method_scaling_reduces_kelly(mock_balance_1000, monke
     scaled = paper.kelly_bet_dollars(0.5, method="normal_dist")
     assert scaled < base
     assert abs(scaled - base * 0.75) < 0.02
+
+
+# ── Task 3: entry_hour and close_paper_early ──────────────────────────────────
+
+
+def test_place_paper_order_records_entry_hour(tmp_path, monkeypatch):
+    """place_paper_order should record the UTC hour of entry."""
+    import importlib
+
+    import paper as paper_mod
+
+    monkeypatch.setattr(paper_mod, "DATA_PATH", tmp_path / "paper_trades.json")
+    importlib.reload(paper_mod)
+    monkeypatch.setattr(paper_mod, "DATA_PATH", tmp_path / "paper_trades.json")
+
+    paper_mod.place_paper_order("TEST-TICKER", "yes", 1, 0.40)
+    trades = paper_mod.get_open_trades()
+    assert len(trades) == 1
+    assert "entry_hour" in trades[0]
+    assert 0 <= trades[0]["entry_hour"] <= 23
+
+
+def test_close_paper_early_settles_at_exit_price(tmp_path, monkeypatch):
+    """close_paper_early should settle trade at exit price, not $0/$1."""
+    import importlib
+
+    import paper as paper_mod
+
+    monkeypatch.setattr(paper_mod, "DATA_PATH", tmp_path / "paper_trades.json")
+    importlib.reload(paper_mod)
+    monkeypatch.setattr(paper_mod, "DATA_PATH", tmp_path / "paper_trades.json")
+
+    paper_mod.place_paper_order("TEST-TICKER", "yes", 10, 0.40)  # paid $4.00 total
+    balance_after_entry = paper_mod.get_balance()
+    trade_id = paper_mod.get_open_trades()[0]["id"]
+    paper_mod.close_paper_early(trade_id, exit_price=0.55)  # selling at $5.50
+    assert not paper_mod.get_open_trades()  # no more open trades
+    assert paper_mod.get_balance() > balance_after_entry  # profit
+    t = [t for t in paper_mod._load()["trades"] if t["id"] == trade_id][0]
+    assert t["outcome"] == "early_exit"
+    assert abs(t["pnl"] - 1.50) < 0.01  # (0.55 - 0.40) * 10 = $1.50
+
+
+def test_close_paper_early_raises_on_unknown_id(tmp_path, monkeypatch):
+    import importlib
+
+    import paper as paper_mod
+
+    monkeypatch.setattr(paper_mod, "DATA_PATH", tmp_path / "paper_trades.json")
+    importlib.reload(paper_mod)
+    monkeypatch.setattr(paper_mod, "DATA_PATH", tmp_path / "paper_trades.json")
+
+    with pytest.raises(ValueError, match="not found"):
+        paper_mod.close_paper_early(9999, exit_price=0.50)
