@@ -5526,6 +5526,48 @@ def cmd_schedule():
             print(red(f"Failed: {result2.stderr.strip() or result2.stdout.strip()}"))
 
 
+def cmd_schedule_cycles() -> None:
+    """
+    Print Windows Task Scheduler commands to run the cron scan at NWP model
+    cycle availability times: 02:15, 08:15, 14:15, 20:15 UTC.
+
+    NWP models initialize at 00/06/12/18 UTC; data becomes available ~2h later.
+    Scanning immediately after availability captures maximum market inefficiency.
+
+    Run each printed command once in an elevated PowerShell to register the tasks.
+    """
+    python_exe = sys.executable
+    script_path = Path(__file__).resolve()
+
+    utc_times = [2, 8, 14, 20]
+    try:
+        local_tz = datetime.now().astimezone().tzinfo
+    except Exception:
+        local_tz = UTC
+
+    print(bold("\nNWP Cycle-Aligned Scan Schedule"))
+    print(dim("Run these commands once in an elevated PowerShell:\n"))
+
+    for utc_hour in utc_times:
+        utc_dt = datetime.now(UTC).replace(
+            hour=utc_hour, minute=15, second=0, microsecond=0
+        )
+        local_dt = utc_dt.astimezone(local_tz)
+        local_time_str = local_dt.strftime("%H:%M")
+        task_name = f"KalshiCron_{utc_hour:02d}UTC"
+        cmd = (
+            f'schtasks /Create /TN "{task_name}" /TR '
+            f'"{python_exe} {script_path} cron" '
+            f"/SC DAILY /ST {local_time_str} /F /RL HIGHEST"
+        )
+        print(f"# {utc_hour:02d}:15 UTC ({local_time_str} local)")
+        print(cmd)
+        print()
+
+    print(dim("To verify tasks were created:"))
+    print("schtasks /Query /FO LIST /V | findstr Kalshi")
+
+
 # ── Router ────────────────────────────────────────────────────────────────────
 
 
@@ -5540,6 +5582,11 @@ def main():
     # calibrate only needs the local DB — no API credentials required
     if args and args[0].lower() == "calibrate":
         cmd_calibrate()
+        return
+
+    # schedule-cycles only prints commands — no API credentials required
+    if args and args[0].lower() == "schedule-cycles":
+        cmd_schedule_cycles()
         return
 
     if not validate_env():
@@ -5659,6 +5706,8 @@ def main():
             cmd_cancel(client, args[1])
     elif cmd == "schedule":
         cmd_schedule()
+    elif cmd == "schedule-cycles":
+        cmd_schedule_cycles()
     elif cmd == "settle":
         cmd_settle(client)
     elif cmd == "paper":
