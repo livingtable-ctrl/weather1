@@ -289,7 +289,48 @@ def drawdown_scaling_factor() -> float:
     return min(1.0, (recovery - _DRAWDOWN_TIER_1) / (1.0 - _DRAWDOWN_TIER_1))
 
 
-def kelly_bet_dollars(kelly_fraction: float) -> float:
+def _dynamic_kelly_cap() -> float:
+    """Determine STRONG-tier per-trade cap from current Brier score."""
+    try:
+        from tracker import brier_score as _brier
+
+        score = _brier()
+        if score is None:
+            return 50.0
+        if score <= 0.05:
+            return 125.0
+        if score <= 0.10:
+            return 100.0
+        if score <= 0.15:
+            return 75.0
+        return 50.0
+    except Exception:
+        return 50.0
+
+
+def _method_kelly_multiplier(method: str | None) -> float:
+    """Scale Kelly by per-method Brier. Poor method (Brier > 0.20) → 0.75×."""
+    if not method:
+        return 1.0
+    try:
+        from tracker import brier_score_by_method as _by_method
+
+        scores = _by_method(min_samples=5)
+        if method not in scores:
+            return 1.0
+        brier = scores[method]
+        if brier > 0.20:
+            return 0.75
+        return 1.0
+    except Exception:
+        return 1.0
+
+
+def kelly_bet_dollars(
+    kelly_fraction: float,
+    cap: float | None = None,
+    method: str | None = None,
+) -> float:
     """
     Return the dollar amount to bet.
     #120: Respects STRATEGY env var:
@@ -297,6 +338,11 @@ def kelly_bet_dollars(kelly_fraction: float) -> float:
       fixed_pct:     FIXED_BET_PCT × balance regardless of Kelly
       fixed_dollars: FIXED_BET_DOLLARS flat per trade
     Applies drawdown scaling and streak pause regardless of strategy.
+
+    cap: explicit per-trade ceiling (e.g. 20.0 for MED tier).
+         If None, uses _dynamic_kelly_cap() based on current Brier score.
+    method: analysis method ('ensemble', 'normal_dist'); scales Kelly
+            down if that method's Brier performance is poor.
     """
     scale = drawdown_scaling_factor()
     if scale == 0.0:
@@ -308,30 +354,31 @@ def kelly_bet_dollars(kelly_fraction: float) -> float:
     elif STRATEGY == "fixed_dollars":
         dollars = min(FIXED_BET_DOLLARS, balance)
     else:
-        # Default: half-Kelly, hard cap at 25% of balance
         fraction = max(0.0, min(kelly_fraction * scale, 0.25))
         dollars = round(balance * fraction, 2)
 
     if is_streak_paused():
         dollars = round(dollars * 0.50, 2)
 
-    # Hard per-trade cap: no single bet exceeds $50 regardless of Kelly.
-    # Prevents penny-market Kelly inflation from over-concentrating one position.
-    dollars = min(dollars, 50.0)
+    # Apply per-method Brier scaling before cap
+    dollars = round(dollars * _method_kelly_multiplier(method), 2)
+
+    # Determine active cap: explicit (MED tier) or dynamic Brier-based (STRONG tier)
+    active_cap = cap if cap is not None else _dynamic_kelly_cap()
+    dollars = min(dollars, active_cap)
     return dollars
 
 
 def kelly_quantity(
-    kelly_fraction: float, price: float, min_dollars: float = 1.0
+    kelly_fraction: float,
+    price: float,
+    min_dollars: float = 1.0,
+    cap: float | None = None,
+    method: str | None = None,
 ) -> int:
-    """
-    Convert a Kelly dollar amount to a quantity (contracts) at a given price.
-    Returns 0 if the Kelly allocation would be too small to buy even one contract
-    without over-betting (requires at least min_dollars allocated).
-    """
     if price <= 0:
         return 0
-    dollars = kelly_bet_dollars(kelly_fraction)
+    dollars = kelly_bet_dollars(kelly_fraction, cap=cap, method=method)
     if dollars < min_dollars:
         return 0
     return int(dollars / price)

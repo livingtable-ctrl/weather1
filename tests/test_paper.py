@@ -44,7 +44,7 @@ class TestKellyCompounding(unittest.TestCase):
         import paper
 
         # Even if Kelly says 50% of $1000, per-trade cap is $50
-        dollars = paper.kelly_bet_dollars(0.50)
+        dollars = paper.kelly_bet_dollars(1.0, cap=50.0)
         self.assertAlmostEqual(dollars, 50.0)
 
     def test_kelly_bet_dollars_floors_at_zero(self):
@@ -867,3 +867,40 @@ def test_med_edge_and_max_daily_spend_constants_exist():
 
     assert 0 < MED_EDGE < 0.25
     assert MAX_DAILY_SPEND > 0
+
+
+# ── Task 2: kelly_bet_dollars cap/method params and dynamic Brier cap ─────────
+
+
+def test_kelly_bet_dollars_respects_explicit_cap(mock_balance_1000):
+    """Explicit cap overrides dynamic Brier cap."""
+    from paper import kelly_bet_dollars
+
+    result = kelly_bet_dollars(0.5, cap=20.0)
+    assert result <= 20.0
+
+
+def test_kelly_bet_dollars_dynamic_cap_higher_with_good_brier(
+    mock_balance_1000, monkeypatch
+):
+    """Dynamic cap raises above $50 when Brier score is excellent."""
+    import paper
+
+    monkeypatch.setattr(paper, "_dynamic_kelly_cap", lambda: 125.0)
+    result = paper.kelly_bet_dollars(0.5)
+    # kelly_fraction=0.5, balance=1000 → half-Kelly → 0.25 * 1000 = $250, capped at 125
+    assert result <= 125.0
+
+
+def test_kelly_bet_dollars_method_scaling_reduces_kelly(mock_balance_1000, monkeypatch):
+    """Poor-performing method (Brier > 0.20) reduces Kelly by 25%."""
+    import paper
+
+    # Use a high cap so the multiplier effect isn't masked by the per-trade ceiling.
+    # Multiplier: no method → 1.0 (unscaled), any method → 0.75 (poor Brier).
+    monkeypatch.setattr(paper, "_dynamic_kelly_cap", lambda: 500.0)
+    monkeypatch.setattr(paper, "_method_kelly_multiplier", lambda m: 0.75 if m else 1.0)
+    base = paper.kelly_bet_dollars(0.5)
+    scaled = paper.kelly_bet_dollars(0.5, method="normal_dist")
+    assert scaled < base
+    assert abs(scaled - base * 0.75) < 0.02

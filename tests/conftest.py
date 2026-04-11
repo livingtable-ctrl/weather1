@@ -62,3 +62,15 @@ def mock_forecast(sample_forecast):
     with patch("weather_markets.get_weather_forecast") as mock:
         mock.side_effect = lambda city, date: sample_forecast.get(city)
         yield mock
+
+
+@pytest.fixture
+def mock_balance_1000(tmp_path, monkeypatch):
+    """Patch paper to use a temp data file and start with $1000 balance."""
+    monkeypatch.setattr("paper.DATA_PATH", tmp_path / "paper_trades.json")
+    import importlib
+
+    import paper
+
+    importlib.reload(paper)
+    yield paper
