@@ -1843,54 +1843,68 @@ def cmd_cron(client: KalshiClient, min_edge: float = MIN_EDGE) -> None:
     signals_cache: list = []
     scanned = 0
     try:
+        from concurrent.futures import ThreadPoolExecutor
+        from concurrent.futures import as_completed as _as_completed
+
         markets = get_weather_markets(client)
         scanned = len(markets)
-        for m in markets:
+
+        def _enrich_and_analyze(m: dict) -> tuple[dict, dict, dict | None]:
             enriched = enrich_with_forecast(m)
-            analysis = analyze_trade(enriched)
-            if not analysis:
-                continue
-            net_edge = analysis.get("net_edge", analysis["edge"])
-            if abs(net_edge) < min_edge:
-                continue
-            signal = analysis.get("net_signal", analysis.get("signal", "")).strip()
-            time_risk = analysis.get("time_risk", "—")
-            stars = (
-                "★★★"
-                if "STRONG" in signal and time_risk == "LOW"
-                else "★★"
-                if "STRONG" in signal
-                else "★"
-            )
-            entry = {
-                "ts": datetime.now(UTC).isoformat(),
-                "ticker": m.get("ticker", ""),
-                "signal": signal,
-                "net_edge": round(net_edge, 4),
-                "city": enriched.get("_city", ""),
-            }
-            with open(log_path, "a", encoding="utf-8") as f:
-                f.write(json.dumps(entry) + "\n")
-            signals_cache.append(
-                {
+            return m, enriched, analyze_trade(enriched)
+
+        with ThreadPoolExecutor(max_workers=10) as _pool:
+            _futures = {_pool.submit(_enrich_and_analyze, m): m for m in markets}
+            for fut in _as_completed(_futures):
+                try:
+                    m, enriched, analysis = fut.result()
+                except Exception:
+                    continue
+                if not analysis:
+                    continue
+                net_edge = analysis.get("net_edge", analysis["edge"])
+                if abs(net_edge) < min_edge:
+                    continue
+                signal = analysis.get("net_signal", analysis.get("signal", "")).strip()
+                time_risk = analysis.get("time_risk", "—")
+                stars = (
+                    "★★★"
+                    if "STRONG" in signal and time_risk == "LOW"
+                    else "★★"
+                    if "STRONG" in signal
+                    else "★"
+                )
+                entry = {
+                    "ts": datetime.now(UTC).isoformat(),
                     "ticker": m.get("ticker", ""),
-                    "city": enriched.get("_city", "—"),
-                    "side": analysis.get("recommended_side", "—").upper(),
                     "signal": signal,
-                    "stars": stars,
-                    "edge_pct": round(net_edge * 100, 1),
-                    "forecast_prob": round(analysis.get("forecast_prob", 0) * 100, 1),
-                    "market_prob": round(analysis.get("market_prob", 0) * 100, 1),
-                    "time_risk": time_risk,
-                    "kelly_dollars": 0.0,  # balance unknown at cron time; filled by web
-                    "already_held": False,
-                    "near_threshold": analysis.get("near_threshold", False),
+                    "net_edge": round(net_edge, 4),
+                    "city": enriched.get("_city", ""),
                 }
-            )
-            if abs(net_edge) >= STRONG_EDGE:
-                strong_opps.append((enriched, analysis))
-            elif abs(net_edge) >= MED_EDGE and time_risk in ("LOW", "MEDIUM"):
-                med_opps.append((enriched, analysis))
+                with open(log_path, "a", encoding="utf-8") as f:
+                    f.write(json.dumps(entry) + "\n")
+                signals_cache.append(
+                    {
+                        "ticker": m.get("ticker", ""),
+                        "city": enriched.get("_city", "—"),
+                        "side": analysis.get("recommended_side", "—").upper(),
+                        "signal": signal,
+                        "stars": stars,
+                        "edge_pct": round(net_edge * 100, 1),
+                        "forecast_prob": round(
+                            analysis.get("forecast_prob", 0) * 100, 1
+                        ),
+                        "market_prob": round(analysis.get("market_prob", 0) * 100, 1),
+                        "time_risk": time_risk,
+                        "kelly_dollars": 0.0,  # balance unknown at cron time; filled by web
+                        "already_held": False,
+                        "near_threshold": analysis.get("near_threshold", False),
+                    }
+                )
+                if abs(net_edge) >= STRONG_EDGE:
+                    strong_opps.append((enriched, analysis))
+                elif abs(net_edge) >= MED_EDGE and time_risk in ("LOW", "MEDIUM"):
+                    med_opps.append((enriched, analysis))
     except Exception:
         pass  # never crash the scheduler
 
