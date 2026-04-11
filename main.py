@@ -1945,6 +1945,14 @@ def cmd_cron(client: KalshiClient, min_edge: float = MIN_EDGE) -> None:
     except Exception:
         pass
 
+    # Check open positions for early exit opportunities
+    try:
+        exits = _check_early_exits(client=client)
+        if exits > 0:
+            print(green(f"  [EarlyExit] Closed {exits} position(s) on model update."))
+    except Exception:
+        pass  # never crash the scheduler
+
     # Windows toast notification
     try:
         import subprocess as _sp
@@ -2041,6 +2049,65 @@ def _daily_paper_spend() -> float:
         for t in data["trades"]
         if t.get("entered_at", "")[:10] == today
     )
+
+
+def _check_early_exits(client=None) -> int:
+    """
+    Re-analyze all open paper positions. If the updated model probability has
+    shifted >15 percentage points against the entry direction, close the position
+    early at the current market mid-price.
+
+    Returns the number of positions closed.
+    """
+    import paper as _paper
+    from paper import get_open_trades
+
+    if client is None:
+        return 0  # cannot fetch live market prices without a client
+
+    open_trades = get_open_trades()
+    if not open_trades:
+        return 0
+
+    closed = 0
+    for trade in open_trades:
+        ticker = trade.get("ticker", "")
+        entry_prob = trade.get("entry_prob")
+        side = trade.get("side", "yes")
+        if entry_prob is None:
+            continue  # cannot assess shift without entry probability
+
+        try:
+            markets = get_weather_markets(client)
+            market = next((m for m in markets if m.get("ticker") == ticker), None)
+            if not market:
+                continue  # market may have closed already
+            enriched = enrich_with_forecast(market)
+            analysis = analyze_trade(enriched)
+            if not analysis:
+                continue
+            current_prob = analysis.get("forecast_prob", entry_prob)
+
+            # Shift direction check
+            if side == "yes":
+                shift = entry_prob - current_prob  # positive = prob fell against YES
+            else:
+                shift = current_prob - entry_prob  # positive = prob rose against NO
+
+            if shift > 0.15:
+                exit_price = _midpoint_price(market, side)
+                result = _paper.close_paper_early(trade["id"], exit_price)
+                _log.info(
+                    f"[EarlyExit] #{trade['id']} {ticker} {side.upper()} closed: "
+                    f"entry_prob={entry_prob:.2f} current={current_prob:.2f} "
+                    f"pnl=${result['pnl']:.2f}"
+                )
+                closed += 1
+        except Exception as exc:
+            _log.warning(f"[EarlyExit] Error checking {ticker}: {exc}")
+            continue
+
+    return closed
 
 
 def _auto_place_trades(

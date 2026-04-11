@@ -750,3 +750,49 @@ def test_auto_place_trades_stops_at_daily_spend_cap(monkeypatch):
     result = _auto_place_trades([(enriched, analysis)], cap=50.0)
     assert result == 0
     assert placed_count[0] == 0
+
+
+# ── Task 7: early exit loop ────────────────────────────────────────────────────
+
+
+def test_check_early_exits_closes_position_when_prob_flips(tmp_path, monkeypatch):
+    """If updated prob shifts >15pp against position, close_paper_early is called."""
+    import importlib
+
+    import main
+    import paper
+
+    # Isolate paper storage in a temp dir so other tests' trades don't bleed in
+    monkeypatch.setattr(paper, "DATA_PATH", tmp_path / "paper_trades.json")
+    importlib.reload(paper)
+    # Re-apply DATA_PATH after reload (reload re-executes module-level assignment)
+    monkeypatch.setattr(paper, "DATA_PATH", tmp_path / "paper_trades.json")
+
+    from paper import get_open_trades, place_paper_order
+
+    # Place an open YES trade at 70% prob
+    place_paper_order("TEST-TICKER", "yes", 5, 0.70, entry_prob=0.70)
+    trade_id = get_open_trades()[0]["id"]
+
+    closed = []
+
+    def fake_close(tid, exit_price):
+        closed.append((tid, exit_price))
+        return {"id": tid, "outcome": "early_exit", "pnl": -1.0}
+
+    fake_market = {"ticker": "TEST-TICKER", "yes_bid": 48, "yes_ask": 52}
+    fake_analysis = {"forecast_prob": 0.50, "market_prob": 0.65}
+
+    # Patch at the module where names are resolved inside _check_early_exits
+    monkeypatch.setattr(paper, "close_paper_early", fake_close)
+    monkeypatch.setattr(main, "analyze_trade", lambda e: fake_analysis)
+    monkeypatch.setattr(main, "enrich_with_forecast", lambda m: m)
+    monkeypatch.setattr(main, "get_weather_markets", lambda client: [fake_market])
+
+    from main import _check_early_exits
+
+    result = _check_early_exits(client="fake-client")
+
+    assert result == 1
+    assert len(closed) == 1
+    assert closed[0][0] == trade_id
