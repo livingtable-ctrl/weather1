@@ -1873,10 +1873,43 @@ def cmd_cron(client: KalshiClient, min_edge: float = MIN_EDGE) -> None:
         _auto_place_trades(strong_opps, client=client)
 
     # Auto-settle any pending trades whose markets have resolved
+    settled_count = 0
     try:
-        count = sync_outcomes(client)
-        if count > 0:
-            print(green(f"  [Settle] Recorded {count} new outcome(s)."))
+        settled_count = sync_outcomes(client)
+        if settled_count > 0:
+            print(green(f"  [Settle] Recorded {settled_count} new outcome(s)."))
+    except Exception:
+        pass
+
+    # Windows toast notification
+    try:
+        import subprocess as _sp
+
+        signals = len(strong_opps)
+        if settled_count > 0 and signals > 0:
+            msg = f"{signals} trade(s) placed, {settled_count} settled"
+        elif signals > 0:
+            msg = f"{signals} trade(s) placed"
+        elif settled_count > 0:
+            msg = f"{settled_count} trade(s) settled"
+        else:
+            msg = "No signals today"
+        _sp.run(
+            [
+                "powershell",
+                "-WindowStyle",
+                "Hidden",
+                "-Command",
+                f"[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType=WindowsRuntime] | Out-Null;"
+                f"$template = [Windows.UI.Notifications.ToastNotificationManager]::GetTemplateContent([Windows.UI.Notifications.ToastTemplateType]::ToastText02);"
+                f"$template.SelectSingleNode('//text[@id=1]').InnerText = 'Kalshi Bot';"
+                f"$template.SelectSingleNode('//text[@id=2]').InnerText = '{msg}';"
+                f"$notif = [Windows.UI.Notifications.ToastNotification]::new($template);"
+                f"[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier('Kalshi Bot').Show($notif);",
+            ],
+            timeout=10,
+            capture_output=True,
+        )
     except Exception:
         pass
 

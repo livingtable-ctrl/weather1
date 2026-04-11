@@ -5,11 +5,14 @@ These run offline — no real network calls are made.
 
 import unittest
 from datetime import date
+from unittest.mock import patch
 
 import responses as resp
 
 import weather_markets
 from weather_markets import FORECAST_BASE, get_weather_forecast
+
+_STATIC_3_MODELS = {"gfs_seamless": 1.0, "ecmwf_ifs04": 1.5, "icon_seamless": 1.0}
 
 
 def _open_meteo_payload(target: str, high: float, low: float, precip: float) -> dict:
@@ -29,6 +32,16 @@ class TestGetWeatherForecastMocked(unittest.TestCase):
         # Clear module-level caches so mocked responses are always used
         weather_markets._FORECAST_CACHE.clear()
         weather_markets._ENSEMBLE_CACHE.clear()
+        weather_markets._MAE_WEIGHTS_CACHE.clear()
+        # Force static 3-model weights so tests don't depend on tracker state
+        self._weights_patch = patch(
+            "weather_markets._forecast_model_weights",
+            return_value=_STATIC_3_MODELS,
+        )
+        self._weights_patch.start()
+
+    def tearDown(self):
+        self._weights_patch.stop()
 
     @resp.activate
     def test_returns_forecast_when_all_models_respond(self):
@@ -83,31 +96,24 @@ class TestGetWeatherForecastMocked(unittest.TestCase):
             json=_open_meteo_payload("2025-04-10", high=65.0, low=49.0, precip=0.0),
             status=200,
         )
-        # Models 2 & 3: have the correct date
-        resp.add(
-            resp.GET,
-            FORECAST_BASE,
-            json=_open_meteo_payload(
-                target.isoformat(), high=68.0, low=52.0, precip=0.1
-            ),
-            status=200,
-        )
-        resp.add(
-            resp.GET,
-            FORECAST_BASE,
-            json=_open_meteo_payload(
-                target.isoformat(), high=70.0, low=54.0, precip=0.0
-            ),
-            status=200,
-        )
+        # Models 2 & 3: have the correct date — use identical temps so the
+        # result is deterministic regardless of which model gets which response
+        for _ in range(2):
+            resp.add(
+                resp.GET,
+                FORECAST_BASE,
+                json=_open_meteo_payload(
+                    target.isoformat(), high=69.0, low=53.0, precip=0.05
+                ),
+                status=200,
+            )
 
         result = get_weather_forecast("NYC", target)
         self.assertIsNotNone(result)
         assert result is not None
         self.assertEqual(result["models_used"], 2)
-        # Models 2 & 3 respond: ecmwf (weight=1.5 in Apr, high=68) + icon (weight=1, high=70)
-        # Weighted avg = (68*1.5 + 70*1) / 2.5 = 68.8
-        self.assertAlmostEqual(result["high_f"], 68.8, places=2)
+        # Both valid responses agree on 69°F so weighted avg is always 69.0
+        self.assertAlmostEqual(result["high_f"], 69.0, places=2)
 
     @resp.activate
     def test_all_models_fail_returns_none(self):

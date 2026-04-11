@@ -839,7 +839,7 @@ class TestMaxOrderLatency:
         original_save = paper._save
 
         def slow_save(data):
-            time.sleep(0.006)  # 6 ms
+            time.sleep(0.020)  # 20 ms — well above 5 ms threshold, robust on Windows
             original_save(data)
 
         with (
