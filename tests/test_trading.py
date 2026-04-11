@@ -711,3 +711,42 @@ def test_auto_place_trades_med_tier_uses_20_cap(monkeypatch):
     assert placed == 1
     assert len(captured_caps) == 1, f"kelly_quantity called {len(captured_caps)} times"
     assert captured_caps[0] == 20.0, f"Expected cap=20.0, got cap={captured_caps[0]}"
+
+
+def test_auto_place_trades_stops_at_daily_spend_cap(monkeypatch):
+    """Should not place trades when MAX_DAILY_SPEND is already reached."""
+    import main
+    import paper
+    import utils
+
+    monkeypatch.setattr(
+        utils, "MAX_DAILY_SPEND", 0.01
+    )  # $0.01 cap — immediately exceeded
+    monkeypatch.setattr(main, "_daily_paper_spend", lambda: 50.0)  # already spent $50
+
+    placed_count = [0]
+
+    def fake_place(*a, **kw):
+        placed_count[0] += 1
+        return {"id": 1, "cost": 10.0}
+
+    monkeypatch.setattr(paper, "place_paper_order", fake_place)
+
+    # Build a minimal opp that would otherwise be placed
+    enriched = {"ticker": "TEST-TICKER", "_city": "NYC", "_date": None}
+    analysis = {
+        "net_signal": "BUY",
+        "time_risk": "LOW",
+        "recommended_side": "yes",
+        "market_prob": 0.40,
+        "forecast_prob": 0.65,
+        "net_edge": 0.28,
+        "ci_adjusted_kelly": 0.05,
+        "model_consensus": True,
+        "method": "ensemble",
+    }
+    from main import _auto_place_trades
+
+    result = _auto_place_trades([(enriched, analysis)], cap=50.0)
+    assert result == 0
+    assert placed_count[0] == 0

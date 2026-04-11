@@ -2030,6 +2030,19 @@ def cmd_analyze(
 # ── Watch mode ────────────────────────────────────────────────────────────────
 
 
+def _daily_paper_spend() -> float:
+    """Sum of paper trade costs placed today (UTC date). Used for daily spend cap."""
+    from paper import _load
+
+    today = datetime.now(UTC).date().isoformat()
+    data = _load()
+    return sum(
+        t.get("cost", 0.0)
+        for t in data["trades"]
+        if t.get("entered_at", "")[:10] == today
+    )
+
+
 def _auto_place_trades(
     opps: list,
     client=None,
@@ -2075,6 +2088,16 @@ def _auto_place_trades(
 
     open_tickers = {t["ticker"] for t in get_open_trades()}
     placed = 0
+    from utils import MAX_DAILY_SPEND
+
+    daily_spent = _daily_paper_spend()
+    if daily_spent >= MAX_DAILY_SPEND:
+        print(
+            yellow(
+                f"  [Auto] Daily spend cap reached (${daily_spent:.2f}/${MAX_DAILY_SPEND:.0f}) — no auto-trades."
+            )
+        )
+        return 0
     for item in opps:
         # Support both (market, analysis) tuple format and flat opp dict format
         if isinstance(item, tuple):
@@ -2124,6 +2147,14 @@ def _auto_place_trades(
                 open_tickers.add(ticker)
                 placed += 1
         else:
+            trade_cost = round(entry_price * qty, 2)
+            if daily_spent + trade_cost > MAX_DAILY_SPEND:
+                print(
+                    yellow(
+                        f"  [Auto] Skipping {ticker}: would exceed daily cap (${daily_spent:.2f}/${MAX_DAILY_SPEND:.0f})"
+                    )
+                )
+                continue
             try:
                 trade = place_paper_order(
                     ticker,
@@ -2144,6 +2175,7 @@ def _auto_place_trades(
                 )
                 open_tickers.add(ticker)
                 placed += 1
+                daily_spent += trade.get("cost", 0.0)
             except ValueError as e:
                 print(yellow(f"  [Auto] Skipped {ticker}: {e}"))
     if placed == 0:
