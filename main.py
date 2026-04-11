@@ -1870,7 +1870,9 @@ def cmd_cron(client: KalshiClient, min_edge: float = MIN_EDGE) -> None:
                 f"\n  !! {len(strong_opps)} STRONG SIGNAL(S) — placing paper trades !!"
             )
         )
-        _auto_place_trades(strong_opps, client=client)
+        placed_count = _auto_place_trades(strong_opps, client=client) or 0
+    else:
+        placed_count = 0
 
     # Auto-settle any pending trades whose markets have resolved
     settled_count = 0
@@ -1886,14 +1888,16 @@ def cmd_cron(client: KalshiClient, min_edge: float = MIN_EDGE) -> None:
         import subprocess as _sp
 
         signals = len(strong_opps)
-        if settled_count > 0 and signals > 0:
-            msg = f"{signals} trade(s) placed, {settled_count} settled"
-        elif signals > 0:
-            msg = f"{signals} trade(s) placed"
-        elif settled_count > 0:
-            msg = f"{settled_count} trade(s) settled"
-        else:
-            msg = "No signals today"
+        parts = []
+        if signals > 0:
+            parts.append(
+                f"{placed_count} placed"
+                if placed_count == signals
+                else f"{signals} signal(s), {placed_count} placed"
+            )
+        if settled_count > 0:
+            parts.append(f"{settled_count} settled")
+        msg = ", ".join(parts) if parts else "No signals today"
         _sp.run(
             [
                 "powershell",
@@ -1958,7 +1962,7 @@ def _auto_place_trades(
     client=None,
     live: bool = False,
     live_config: dict | None = None,
-) -> None:
+) -> int:
     """
     Auto-place paper or live trades for STRONG BUY + LOW risk signals not already held.
     Called from watch --auto mode. Respects drawdown guard and portfolio Kelly.
@@ -1978,7 +1982,7 @@ def _auto_place_trades(
 
     if is_paused_drawdown():
         print(yellow("  [Auto] Drawdown guard active — no auto-trades placed."))
-        return
+        return 0
     if is_daily_loss_halted(client):
         from paper import get_daily_pnl
 
@@ -1988,7 +1992,7 @@ def _auto_place_trades(
                 f"  [Auto] Daily loss limit reached (${daily_pnl:.2f} incl. MTM) — no auto-trades."
             )
         )
-        return
+        return 0
     if is_streak_paused():
         print(
             yellow("  [Auto] Loss streak detected — Kelly halved for all auto-trades.")
@@ -2069,6 +2073,7 @@ def _auto_place_trades(
                 print(yellow(f"  [Auto] Skipped {ticker}: {e}"))
     if placed == 0:
         print(dim("  [Auto] No qualifying signals this scan."))
+    return placed
 
 
 def cmd_watch(
