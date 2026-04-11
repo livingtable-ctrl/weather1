@@ -100,6 +100,7 @@
       + '<th>We Think</th>'
       + '<th>Mkt Says</th>'
       + '<th>Risk</th>'
+      + '<th>Flags</th>'
       + '<th>Kelly $</th>'
       + '</tr>';
 
@@ -146,6 +147,13 @@
       var tdRisk = row.insertCell();
       tdRisk.textContent = s.time_risk;
       tdRisk.className = s.time_risk === 'LOW' ? 'pos' : s.time_risk === 'MEDIUM' ? 'warn' : 'neg';
+
+      // Flags: near_threshold and hedge indicators
+      var tdFlags = row.insertCell();
+      var flags = [];
+      if (s.near_threshold) flags.push('<span title="Forecast within ±3°F of threshold — high flip risk, Kelly reduced 25%" style="color:var(--warn);cursor:default">⚠ threshold</span>');
+      if (s.is_hedge) flags.push('<span title="This trade hedges an existing open position" style="color:var(--text-muted);cursor:default">↔ hedge</span>');
+      tdFlags.innerHTML = flags.length ? flags.join(' ') : '<span style="color:var(--text-muted)">—</span>';
 
       // Kelly $
       var tdKelly = row.insertCell();

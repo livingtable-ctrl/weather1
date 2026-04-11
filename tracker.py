@@ -965,10 +965,7 @@ def log_member_score(
 
 def get_member_accuracy(days_back: int = 60) -> dict:
     """
-    Return per-model accuracy stats filtered to recent predictions.
-
-    days_back=60 captures ~one season transition while giving each model
-    enough observations (daily scoring ≈ 60 data points per city per model).
+    Per-model MAE filtered to recent predictions, used by learn_seasonal_weights().
     Returns {model: {mae: float, n: int, city_breakdown: {city: mae}}}
     """
     init_db()

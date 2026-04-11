@@ -959,6 +959,28 @@ setInterval(() => {{
             }
         )
 
+    @app.route("/api/ensemble-accuracy")
+    def api_ensemble_accuracy():
+        """ICON vs GFS per-model MAE from settled trades."""
+        try:
+            from tracker import get_ensemble_member_accuracy
+
+            acc = get_ensemble_member_accuracy()
+            return jsonify(acc or {})
+        except Exception as exc:
+            return jsonify({"error": str(exc)}), 500
+
+    @app.route("/api/source-reliability")
+    def api_source_reliability():
+        """Per-source forecast data success rate over last 30 days."""
+        try:
+            from tracker import get_source_reliability
+
+            data = get_source_reliability()
+            return jsonify(data or {})
+        except Exception as exc:
+            return jsonify({"error": str(exc)}), 500
+
     return app
 
 

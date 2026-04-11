@@ -132,6 +132,117 @@
     }).catch(function (err) { console.error('brier history fetch failed:', err); });
   }
 
+  function loadModelAccuracy() {
+    fetch('/api/ensemble-accuracy').then(function (r) { return r.json(); }).then(function (d) {
+      var el = document.getElementById('model-accuracy-table');
+      if (!el) return;
+      var models = Object.keys(d);
+      if (!models.length) { el.innerHTML = '<p class="neu">Accumulates after ~5 settled trades.</p>'; return; }
+      var table = document.createElement('table');
+      table.createTHead().innerHTML = '<tr><th>Model</th><th>MAE (°F)</th><th>N</th></tr>';
+      var tbody = table.createTBody();
+      models.sort(function (a, b) { return (d[a].mae || 99) - (d[b].mae || 99); }).forEach(function (m) {
+        var row = tbody.insertRow();
+        row.insertCell().textContent = m.replace('_seamless', '').toUpperCase();
+        var tdMae = row.insertCell();
+        tdMae.textContent = d[m].mae !== undefined ? d[m].mae.toFixed(2) : '—';
+        tdMae.className = d[m].mae < 3 ? 'pos' : d[m].mae < 5 ? 'warn' : 'neg';
+        row.insertCell().textContent = d[m].count || 0;
+      });
+      el.innerHTML = '';
+      el.appendChild(table);
+    }).catch(function () {});
+  }
+
+  function loadModelAttribution() {
+    fetch('/api/model-attribution').then(function (r) { return r.json(); }).then(function (d) {
+      var el = document.getElementById('model-attribution-table');
+      if (!el) return;
+      var cities = Object.keys(d);
+      if (!cities.length) { el.innerHTML = '<p class="neu">No data yet.</p>'; return; }
+      var allSources = Array.from(new Set(cities.flatMap(function (c) { return Object.keys(d[c]); }))).sort();
+      var table = document.createElement('table');
+      var hdr = '<tr><th>City</th>' + allSources.map(function (s) { return '<th>' + s + '</th>'; }).join('') + '</tr>';
+      table.createTHead().innerHTML = hdr;
+      var tbody = table.createTBody();
+      cities.sort().forEach(function (city) {
+        var row = tbody.insertRow();
+        row.insertCell().textContent = city;
+        allSources.forEach(function (s) {
+          var v = d[city][s];
+          var td = row.insertCell();
+          td.textContent = v !== undefined ? (v * 100).toFixed(0) + '%' : '—';
+          td.style.color = 'var(--text-muted)';
+        });
+      });
+      el.innerHTML = '';
+      el.appendChild(table);
+    }).catch(function () {});
+  }
+
+  function loadPriceImprovement() {
+    fetch('/api/price-improvement').then(function (r) { return r.json(); }).then(function (d) {
+      var el = document.getElementById('price-improvement-table');
+      if (!el) return;
+      if (!d.total_trades) { el.innerHTML = '<p class="neu">No data yet (needs 5+ trades).</p>'; return; }
+      var table = document.createElement('table');
+      table.createTHead().innerHTML = '<tr><th>Metric</th><th>Value</th></tr>';
+      var tbody = table.createTBody();
+      var rows = [
+        ['Avg Improvement', (d.avg_improvement_cents > 0 ? '+' : '') + d.avg_improvement_cents.toFixed(2) + '¢'],
+        ['Median Improvement', (d.median_improvement_cents > 0 ? '+' : '') + (d.median_improvement_cents || 0).toFixed(2) + '¢'],
+        ['% Positive Fills', (d.positive_pct || 0).toFixed(1) + '%'],
+        ['Trades', d.total_trades],
+      ];
+      rows.forEach(function (r) {
+        var row = tbody.insertRow();
+        row.insertCell().textContent = r[0];
+        var td = row.insertCell();
+        td.textContent = r[1];
+        if (r[0] === 'Avg Improvement') td.className = d.avg_improvement_cents >= 0 ? 'pos' : 'neg';
+      });
+      el.innerHTML = '';
+      el.appendChild(table);
+    }).catch(function () {});
+  }
+
+  function loadSourceReliability() {
+    fetch('/api/source-reliability').then(function (r) { return r.json(); }).then(function (d) {
+      var el = document.getElementById('source-reliability-table');
+      if (!el) return;
+      // d is {city: {source: {successes, failures, rate, total}}} — aggregate across cities
+      var agg = {};
+      Object.values(d).forEach(function (cityData) {
+        Object.keys(cityData).forEach(function (src) {
+          if (!agg[src]) agg[src] = { successes: 0, total: 0 };
+          agg[src].successes += cityData[src].successes || 0;
+          agg[src].total += cityData[src].total || 0;
+        });
+      });
+      var sources = Object.keys(agg);
+      if (!sources.length) { el.innerHTML = '<p class="neu">No data yet.</p>'; return; }
+      var table = document.createElement('table');
+      table.createTHead().innerHTML = '<tr><th>Source</th><th>Success Rate</th><th>Attempts</th></tr>';
+      var tbody = table.createTBody();
+      sources.sort().forEach(function (src) {
+        var s = agg[src];
+        var rate = s.total ? s.successes / s.total : 0;
+        var row = tbody.insertRow();
+        row.insertCell().textContent = src;
+        var tdRate = row.insertCell();
+        tdRate.textContent = (rate * 100).toFixed(1) + '%';
+        tdRate.className = rate >= 0.95 ? 'pos' : rate >= 0.8 ? 'warn' : 'neg';
+        row.insertCell().textContent = s.total;
+      });
+      el.innerHTML = '';
+      el.appendChild(table);
+    }).catch(function () {});
+  }
+
   loadAnalytics();
   loadBrierHistory();
+  loadModelAccuracy();
+  loadModelAttribution();
+  loadPriceImprovement();
+  loadSourceReliability();
 }());

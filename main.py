@@ -1923,6 +1923,7 @@ def cmd_cron(client: KalshiClient, min_edge: float = MIN_EDGE) -> None:
                         "kelly_dollars": 0.0,  # balance unknown at cron time; filled by web
                         "already_held": False,
                         "near_threshold": analysis.get("near_threshold", False),
+                        "is_hedge": analysis.get("_is_hedge", False),
                     }
                 )
                 if abs(net_edge) >= STRONG_EDGE:
