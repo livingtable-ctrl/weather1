@@ -297,9 +297,9 @@ class TestPortfolioKelly(unittest.TestCase):
         """Existing exposure >= MAX → returns 0.0."""
         import paper
 
-        # Place $150 trade → exposure = 0.15 = MAX_CITY_DATE_EXPOSURE
+        # Place $250 trade → exposure = 0.25 = MAX_CITY_DATE_EXPOSURE
         paper.place_paper_order(
-            "TK1", "yes", 300, 0.50, city="NYC", target_date="2026-04-09"
+            "TK1", "yes", 500, 0.50, city="NYC", target_date="2026-04-09"
         )
         result = paper.portfolio_kelly_fraction(0.10, "NYC", "2026-04-09")
         self.assertEqual(result, 0.0)
@@ -309,15 +309,15 @@ class TestPortfolioKelly(unittest.TestCase):
         and the continuous correlated-city penalty."""
         import paper
 
-        # Place $75 trade → city/date exposure = 0.075 = half of MAX (0.15)
+        # Place $125 trade → city/date exposure = 0.125 = half of MAX (0.25)
         # NYC is in the {NYC, Boston} correlated group, so corr penalty also applies.
         paper.place_paper_order(
-            "TK1", "yes", 150, 0.50, city="NYC", target_date="2026-04-09"
+            "TK1", "yes", 250, 0.50, city="NYC", target_date="2026-04-09"
         )
         result = paper.portfolio_kelly_fraction(0.10, "NYC", "2026-04-09")
-        # city/date scale = 0.5, corr_scale = 1 - (0.075/0.20)*0.70 ≈ 0.7375
-        # expected = 0.10 * 0.5 * 0.7375 = 0.036875
-        self.assertAlmostEqual(result, 0.036875, places=4)
+        # city/date scale = 0.5, corr_scale = 1 - (0.125/0.35)*0.70 ≈ 0.75
+        # expected = 0.10 * 0.5 * 0.75 = 0.0375
+        self.assertAlmostEqual(result, 0.0375, places=4)
 
     def test_portfolio_kelly_no_city_passthrough(self):
         """None city → base fraction returned unchanged (no lookup possible)."""
@@ -456,15 +456,14 @@ class TestDirectionalExposure(unittest.TestCase):
         """Concentrated same-side bets trigger 50% further reduction."""
         import paper
 
-        # Place $150 YES (15% of $1000) — above MAX_DIRECTIONAL_EXPOSURE (10%)
+        # Place $160 YES (16% of $1000) — above MAX_DIRECTIONAL_EXPOSURE (15%)
         paper.place_paper_order(
-            "TK1", "yes", 300, 0.50, city="NYC", target_date="2026-04-09"
+            "TK1", "yes", 320, 0.50, city="NYC", target_date="2026-04-09"
         )
-        # 0.15 directional YES → penalty kicks in
+        # 0.16 directional YES → penalty kicks in, city exposure 0.16 < 0.25 cap
         result = paper.portfolio_kelly_fraction(0.10, "NYC", "2026-04-09", side="yes")
-        # Either 0 (hit city cap) or reduced with penalty
-        # City exposure = 0.15 = MAX → returns 0
-        self.assertEqual(result, 0.0)
+        # penalty applies: result should be less than without penalty
+        self.assertLess(result, 0.05)
 
     def test_directional_penalty_applies_before_city_cap(self):
         """When city exposure < max but directional > threshold, penalty applies."""

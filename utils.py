@@ -20,13 +20,13 @@ STRONG_EDGE = float(
     os.getenv("STRONG_EDGE", "0.25")
 )  # threshold for "STRONG BUY" label
 MED_EDGE = float(
-    os.getenv("MED_EDGE", "0.15")
+    os.getenv("MED_EDGE", "0.10")
 )  # threshold for medium-confidence auto-trade tier
 MAX_DAILY_SPEND = float(
-    os.getenv("MAX_DAILY_SPEND", "100.0")
+    os.getenv("MAX_DAILY_SPEND", "300.0")
 )  # max total paper dollars auto-traded per day
 MAX_DAILY_LOSS_PCT = float(os.getenv("MAX_DAILY_LOSS_PCT", "0.03"))
-MAX_DAYS_OUT = int(os.getenv("MAX_DAYS_OUT", "4"))  # scan markets up to N days out
+MAX_DAYS_OUT = int(os.getenv("MAX_DAYS_OUT", "5"))  # scan markets up to N days out
 MAX_POSITION_AGE_DAYS = int(os.getenv("MAX_POSITION_AGE_DAYS", "7"))
 
 # #120: Betting strategy — kelly | fixed_pct | fixed_dollars

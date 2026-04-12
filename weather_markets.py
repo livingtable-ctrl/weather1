@@ -31,7 +31,7 @@ _log = logging.getLogger(__name__)
 
 # Minimum combined volume + open_interest required to trade a market.
 # Below this the market is effectively illiquid — fills are unreliable.
-MIN_LIQUIDITY: int = 100
+MIN_LIQUIDITY: int = 50
 
 # ── Open-Meteo (free, no API key) ────────────────────────────────────────────
 
@@ -2435,7 +2435,7 @@ def analyze_trade(enriched: dict) -> dict | None:
 
     # Time-value Kelly: reduce bet size for far-out markets (more uncertainty).
     # Scale: 1.0 at 0-1 days → 0.5 at ≥14 days. Intermediate values are linear.
-    time_kelly_scale = max(0.50, 1.0 - (days_out / 14.0) * 0.50)
+    time_kelly_scale = max(0.35, 1.0 - (days_out / 14.0) * 0.50)
 
     # #39: Bayesian Kelly — integrate over uniform posterior on [ci_low, ci_high]
     # Then apply the same quality/anomaly/spread/time modifiers as before.

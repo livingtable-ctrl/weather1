@@ -2222,7 +2222,7 @@ def _auto_place_trades(
         adj_kelly = portfolio_kelly_fraction(
             ci_kelly, city, target_date_str, side=rec_side
         )
-        if adj_kelly < 0.005:
+        if adj_kelly < 0.002:
             continue
         # Use market implied prob as entry price when no live quote
         prices = a.get("market_prob", 0.50)

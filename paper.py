@@ -83,9 +83,9 @@ _DRAWDOWN_TIER_4 = 0.90  # 70% sizing (was 75%)
 MAX_TOTAL_OPEN_EXPOSURE = (
     0.50  # max fraction of starting balance in open positions total
 )
-MAX_CITY_DATE_EXPOSURE = 0.15  # max fraction of starting balance on one city/date combo
+MAX_CITY_DATE_EXPOSURE = 0.25  # max fraction of starting balance on one city/date combo
 MAX_DIRECTIONAL_EXPOSURE = (
-    0.10  # max fraction of starting balance on one city/date/side
+    0.15  # max fraction of starting balance on one city/date/side
 )
 
 # Cities that tend to move together due to shared weather patterns.
@@ -95,7 +95,7 @@ _CORRELATED_CITY_GROUPS = [
     {"LA", "Phoenix"},
     {"Dallas", "Atlanta"},
 ]
-MAX_CORRELATED_EXPOSURE = 0.20  # max combined fraction across a correlated group
+MAX_CORRELATED_EXPOSURE = 0.35  # max combined fraction across a correlated group
 
 # #51: Pairwise city temperature correlations for portfolio Kelly covariance matrix.
 # Values are approximate correlations of daily high-temperature anomalies.
