@@ -14,12 +14,89 @@ _BACKUP_EXTENSIONS = {".json", ".db"}
 _SKIP_NAMES = {"signals_cache.json", "analyze_log.txt"}
 
 
+def _find_google_drive() -> Path | None:
+    """
+    Find the Google Drive sync folder on Windows.
+    Checks (in order):
+      1. GOOGLE_DRIVE_PATH env var
+      2. Windows registry (Google Drive for Desktop — reliable for any drive letter)
+      3. Common fallback paths (old Backup and Sync installs)
+    """
+    # 1. Explicit env var
+    env_path = os.environ.get("GOOGLE_DRIVE_PATH")
+    if env_path:
+        p = Path(env_path)
+        if p.exists():
+            return p
+        _log.warning("cloud_backup: GOOGLE_DRIVE_PATH %s does not exist", env_path)
+
+    # 2. Registry — Google Drive for Desktop stores its root path here
+    try:
+        import winreg
+
+        key = winreg.OpenKey(
+            winreg.HKEY_LOCAL_MACHINE,
+            r"SOFTWARE\Google\DriveFS",
+        )
+        root, _ = winreg.QueryValueEx(key, "PerAccountPreferences")
+        winreg.CloseKey(key)
+        # PerAccountPreferences points to a folder; "My Drive" lives one level up
+        p = Path(root).parent / "My Drive"
+        if p.exists():
+            return p
+    except Exception:
+        pass
+
+    # 3. Try the current user registry hive
+    try:
+        import winreg
+
+        key = winreg.OpenKey(
+            winreg.HKEY_CURRENT_USER,
+            r"Software\Google\DriveFS",
+        )
+        root, _ = winreg.QueryValueEx(key, "RootPath")
+        winreg.CloseKey(key)
+        p = Path(root) / "My Drive"
+        if p.exists():
+            return p
+        # Some versions store just the root without "My Drive" subdir
+        p2 = Path(root)
+        if p2.exists():
+            return p2
+    except Exception:
+        pass
+
+    # 4. Scan all drive letters for a Google Drive virtual mount
+    import string
+
+    for letter in string.ascii_uppercase:
+        for subdir in ("My Drive", "Google Drive"):
+            p = Path(f"{letter}:/{subdir}")
+            try:
+                if p.exists():
+                    return p
+            except OSError:
+                pass
+
+    # 5. Old Backup and Sync install locations
+    for candidate in [
+        Path.home() / "Google Drive",
+        Path.home() / "My Drive",
+        Path.home() / "GoogleDrive",
+    ]:
+        if candidate.exists():
+            return candidate
+
+    return None
+
+
 def _find_sync_folder() -> Path | None:
     """
     Return the best available cloud sync folder, in priority order:
-      1. CLOUD_BACKUP_PATH env var (user-specified)
-      2. OneDrive (built into Windows 11 — ONEDRIVE env var set by system)
-      3. Google Drive (common install paths)
+      1. CLOUD_BACKUP_PATH env var (fully custom path)
+      2. Google Drive
+      3. OneDrive (fallback)
     Returns None if nothing is found.
     """
     # 1. Explicit override
@@ -30,22 +107,17 @@ def _find_sync_folder() -> Path | None:
             return p
         _log.warning("cloud_backup: CLOUD_BACKUP_PATH %s does not exist", custom)
 
-    # 2. OneDrive — Windows sets %ONEDRIVE% automatically when signed in
+    # 2. Google Drive
+    gdrive = _find_google_drive()
+    if gdrive is not None:
+        return gdrive
+
+    # 3. OneDrive — Windows sets %ONEDRIVE% automatically when signed in
     onedrive = os.environ.get("ONEDRIVE")
     if onedrive:
         p = Path(onedrive)
         if p.exists():
             return p
-
-    # 3. Google Drive — typical default install locations
-    for candidate in [
-        Path.home() / "Google Drive",
-        Path.home() / "GoogleDrive",
-        Path("G:/My Drive"),
-        Path("G:/Google Drive"),
-    ]:
-        if candidate.exists():
-            return candidate
 
     return None
 

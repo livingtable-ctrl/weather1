@@ -173,9 +173,13 @@ python main.py restore
 
 This copies your data back from `OneDrive/KalshiBot/data/` (or Google Drive equivalent) into the local `data/` folder.
 
-**Custom backup location** — set this in `.env` to override the auto-detected folder:
+**Custom backup location** — if auto-detection doesn't find your sync folder, set one of these in `.env`:
 
 ```
+# Point directly to your Google Drive folder
+GOOGLE_DRIVE_PATH=G:\My Drive
+
+# Or any other folder (OneDrive, Dropbox, etc.)
 CLOUD_BACKUP_PATH=C:\path\to\your\sync\folder
 ```
 
