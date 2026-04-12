@@ -161,8 +161,27 @@ templates/           — Dashboard HTML
 
 ---
 
+## Moving to a new PC
+
+Your paper trading history (trades, Brier scores, PnL) lives in the `data/` folder which is gitignored. The bot automatically backs this up to OneDrive or Google Drive after every cron scan — no setup needed if you are already signed in to either service.
+
+To restore on a new PC after cloning:
+
+```
+python main.py restore
+```
+
+This copies your data back from `OneDrive/KalshiBot/data/` (or Google Drive equivalent) into the local `data/` folder.
+
+**Custom backup location** — set this in `.env` to override the auto-detected folder:
+
+```
+CLOUD_BACKUP_PATH=C:\path\to\your\sync\folder
+```
+
+---
+
 ## Notes
 
 - The `.env` file and `.pem` key are gitignored — never commit them
-- All paper trades are stored locally in `data/` — back this folder up if you want to preserve your history
 - The bot only trades Kalshi weather markets (temperature and precipitation). It ignores all other market types.

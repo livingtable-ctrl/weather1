@@ -2037,6 +2037,14 @@ def cmd_cron(client: KalshiClient, min_edge: float = MIN_EDGE) -> None:
     except Exception:
         pass
 
+    # Sync data/ to cloud (OneDrive / Google Drive / custom path) after every cron run
+    try:
+        from cloud_backup import backup_data as _backup
+
+        _backup()
+    except Exception:
+        pass  # never crash the scheduler over a backup failure
+
     _sys.exit(0)
 
 
@@ -5788,6 +5796,10 @@ def main():
         cmd_montecarlo(client)
     elif cmd == "web":
         cmd_web(client)
+    elif cmd == "restore":
+        from cloud_backup import restore_data as _restore
+
+        _restore()
     elif cmd in ("simulate", "sandbox", "x"):
         cmd_simulate(client)
     elif cmd in ("weekly", "y"):
