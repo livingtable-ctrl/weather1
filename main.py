@@ -1928,7 +1928,7 @@ def cmd_cron(client: KalshiClient, min_edge: float = MIN_EDGE) -> None:
                 )
                 if abs(net_edge) >= STRONG_EDGE:
                     strong_opps.append((enriched, analysis))
-                elif abs(net_edge) >= MED_EDGE and time_risk in ("LOW", "MEDIUM"):
+                elif abs(net_edge) >= MED_EDGE:
                     med_opps.append((enriched, analysis))
     except Exception:
         pass  # never crash the scheduler

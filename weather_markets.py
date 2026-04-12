@@ -2164,7 +2164,7 @@ def analyze_trade(enriched: dict) -> dict | None:
                 city, target_date, condition, hour=hour, var=var
             )
             if icon_p is not None and gfs_p is not None:
-                if abs(icon_p - gfs_p) > 0.08:
+                if abs(icon_p - gfs_p) > 0.12:
                     model_consensus = False
         except Exception:
             pass  # default to True (tradeable)
