@@ -34,12 +34,12 @@ def _find_google_drive() -> Path | None:
     try:
         import winreg
 
-        key = winreg.OpenKey(
-            winreg.HKEY_LOCAL_MACHINE,
+        key = winreg.OpenKey(  # type: ignore[attr-defined]
+            winreg.HKEY_LOCAL_MACHINE,  # type: ignore[attr-defined]
             r"SOFTWARE\Google\DriveFS",
         )
-        root, _ = winreg.QueryValueEx(key, "PerAccountPreferences")
-        winreg.CloseKey(key)
+        root, _ = winreg.QueryValueEx(key, "PerAccountPreferences")  # type: ignore[attr-defined]
+        winreg.CloseKey(key)  # type: ignore[attr-defined]
         # PerAccountPreferences points to a folder; "My Drive" lives one level up
         p = Path(root).parent / "My Drive"
         if p.exists():
@@ -51,12 +51,12 @@ def _find_google_drive() -> Path | None:
     try:
         import winreg
 
-        key = winreg.OpenKey(
-            winreg.HKEY_CURRENT_USER,
+        key = winreg.OpenKey(  # type: ignore[attr-defined]
+            winreg.HKEY_CURRENT_USER,  # type: ignore[attr-defined]
             r"Software\Google\DriveFS",
         )
-        root, _ = winreg.QueryValueEx(key, "RootPath")
-        winreg.CloseKey(key)
+        root, _ = winreg.QueryValueEx(key, "RootPath")  # type: ignore[attr-defined]
+        winreg.CloseKey(key)  # type: ignore[attr-defined]
         p = Path(root) / "My Drive"
         if p.exists():
             return p
