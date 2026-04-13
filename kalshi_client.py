@@ -70,7 +70,7 @@ def _request_with_retry(method: str, url: str, **kwargs) -> requests.Response:
     return resp
 
 
-PROD_BASE = "https://trading-api.kalshi.com/trade-api/v2"
+PROD_BASE = "https://api.elections.kalshi.com/trade-api/v2"
 DEMO_BASE = "https://demo-api.kalshi.co/trade-api/v2"
 
 
@@ -115,9 +115,15 @@ class KalshiClient:
             "Content-Type": "application/json",
         }
 
+    def _full_path(self, path: str) -> str:
+        """Return the full URL path (e.g. /trade-api/v2/markets) used in signing."""
+        from urllib.parse import urlparse
+
+        return urlparse(self.base_url).path + path
+
     def _get(self, path: str, params: dict = None, auth: bool = False) -> dict:
         url = self.base_url + path
-        headers = self._sign_headers("GET", path) if auth else {}
+        headers = self._sign_headers("GET", self._full_path(path)) if auth else {}
         resp = _request_with_retry(
             "GET", url, headers=headers, params=params, timeout=10
         )
@@ -126,14 +132,14 @@ class KalshiClient:
 
     def _post(self, path: str, body: dict) -> dict:
         url = self.base_url + path
-        headers = self._sign_headers("POST", path)
+        headers = self._sign_headers("POST", self._full_path(path))
         resp = _request_with_retry("POST", url, headers=headers, json=body, timeout=10)
         resp.raise_for_status()
         return resp.json()
 
     def _delete(self, path: str) -> dict:
         url = self.base_url + path
-        headers = self._sign_headers("DELETE", path)
+        headers = self._sign_headers("DELETE", self._full_path(path))
         resp = _request_with_retry("DELETE", url, headers=headers, timeout=10)
         resp.raise_for_status()
         return resp.json()
@@ -156,28 +162,28 @@ class KalshiClient:
     # ── Public endpoints (no auth needed) ────────────────────────────────────
 
     def get_markets(self, **params) -> list[dict]:
-        data = self._get("/markets", params=params or None)
+        data = self._get("/markets", params=params or None, auth=True)
         self._validate(data, "markets", "/markets")
         return data.get("markets", [])
 
     def get_market(self, ticker: str) -> dict:
-        data = self._get(f"/markets/{ticker}")
+        data = self._get(f"/markets/{ticker}", auth=True)
         self._validate(data, "market", f"/markets/{ticker}")
         return data.get("market", {})
 
     def get_orderbook(self, ticker: str) -> dict:
-        data = self._get(f"/markets/{ticker}/orderbook")
+        data = self._get(f"/markets/{ticker}/orderbook", auth=True)
         if "orderbook_fp" not in data and "orderbook" not in data:
             self._validate(data, "orderbook", f"/markets/{ticker}/orderbook")
         return data.get("orderbook_fp", data.get("orderbook", {}))
 
     def get_events(self, **params) -> list[dict]:
-        data = self._get("/events", params=params or None)
+        data = self._get("/events", params=params or None, auth=True)
         self._validate(data, "events", "/events")
         return data.get("events", [])
 
     def get_series_list(self, **params) -> list[dict]:
-        data = self._get("/series", params=params or None)
+        data = self._get("/series", params=params or None, auth=True)
         self._validate(data, "series", "/series")
         return data.get("series", [])
 
