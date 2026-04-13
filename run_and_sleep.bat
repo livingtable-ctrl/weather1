@@ -1,5 +1,8 @@
 @echo off
 
+:: Set working directory so relative paths in .env resolve correctly
+cd /d "C:\Users\thesa\claude kalshi"
+
 :: Google Drive auto-starts with Windows; no need to launch/kill it here.
 :: The Python backup code will sync to G:\My Drive if it's already mounted.
 
