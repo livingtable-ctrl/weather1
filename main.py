@@ -2177,6 +2177,40 @@ def _check_early_exits(client=None) -> int:
     return closed
 
 
+def _validate_trade_opportunity(opp: dict) -> tuple[bool, str]:
+    """
+    Pre-execution validation gate for auto-placed trades (P1.1+P1.2).
+    Returns (ok, reason). All checks must pass before a trade is placed.
+    """
+    import time as _t
+
+    # Edge check
+    edge = opp.get("net_edge", 0.0)
+    if edge <= 0:
+        return False, f"edge={edge:.4f} <= 0"
+
+    # Kelly check
+    kelly = opp.get("ci_adjusted_kelly", opp.get("fee_adjusted_kelly", 0.0))
+    if kelly < 0.002:
+        return False, f"kelly={kelly:.4f} too small"
+
+    # Ticker check
+    ticker = opp.get("ticker", "")
+    if not ticker:
+        return False, "missing ticker"
+
+    # Data freshness check — absent timestamp means caller doesn't track age, allow it
+    from weather_markets import FORECAST_MAX_AGE_SECS
+
+    fetched_at = opp.get("data_fetched_at")
+    if fetched_at is not None:
+        age = _t.time() - fetched_at
+        if age > FORECAST_MAX_AGE_SECS:
+            return False, f"stale data (age={age:.0f}s > {FORECAST_MAX_AGE_SECS}s)"
+
+    return True, "ok"
+
+
 def _auto_place_trades(
     opps: list,
     client=None,
@@ -2239,7 +2273,19 @@ def _auto_place_trades(
         else:
             m, a = item, item
 
-        ticker = m.get("ticker", "")
+        ticker = m.get("ticker", "") or a.get("ticker", "")
+
+        # P1.2: Pre-trade validation gate — log every rejection reason.
+        # Merge ticker from market dict so tuple-format callers aren't penalised.
+        _ok, _reject_reason = _validate_trade_opportunity({**a, "ticker": ticker})
+        if not _ok:
+            _log.debug(
+                "_auto_place_trades: skip %s — %s",
+                ticker or "(no ticker)",
+                _reject_reason,
+            )
+            continue
+
         if ticker in open_tickers:
             continue
         rec_side = a.get("recommended_side", a.get("side", "yes"))
