@@ -185,6 +185,21 @@ def was_recently_ordered(ticker: str, side: str, within_minutes: int = 10) -> bo
     return row is not None
 
 
+def was_traded_today(ticker: str, side: str) -> bool:
+    """
+    Return True if this ticker+side was ordered (any status) today (UTC).
+    Prevents trading the same market+side multiple times per calendar day (P1.5).
+    """
+    init_log()
+    today = datetime.now(UTC).date().isoformat()
+    with _conn() as con:
+        row = con.execute(
+            "SELECT 1 FROM orders WHERE ticker=? AND side=? AND placed_at LIKE ? LIMIT 1",
+            (ticker, side, f"{today}%"),
+        ).fetchone()
+    return row is not None
+
+
 def was_ordered_this_cycle(ticker: str, side: str, cycle: str) -> bool:
     """Return True if an order for ticker+side was placed on this forecast cycle."""
     init_log()

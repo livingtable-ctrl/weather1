@@ -2290,6 +2290,15 @@ def _auto_place_trades(
         if ticker in open_tickers:
             continue
         rec_side = a.get("recommended_side", a.get("side", "yes"))
+
+        # P1.5: Daily dedup — don't re-trade same market+side on the same calendar day
+        if execution_log.was_traded_today(ticker, rec_side):
+            _log.debug(
+                "_auto_place_trades: skip %s/%s — already traded today",
+                ticker,
+                rec_side,
+            )
+            continue
         city = m.get("_city")
         target_date_obj = m.get("_date")
         target_date_str = target_date_obj.isoformat() if target_date_obj else None
