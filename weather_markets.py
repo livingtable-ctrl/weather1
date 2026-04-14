@@ -6,6 +6,7 @@ Compares market-implied probabilities with Open-Meteo forecast data.
 from __future__ import annotations
 
 import logging
+import os
 import random
 import re
 import statistics
@@ -87,6 +88,13 @@ _ENSEMBLE_CACHE_TTL = 90 * 60  # 90 minutes
 # Forecast cache: (city, date_iso) -> (dict, timestamp)
 _FORECAST_CACHE: dict = {}
 _FORECAST_CACHE_TTL = 90 * 60  # 90 minutes
+
+# Maximum age of forecast data before analyze_trade rejects it.
+# Set higher than _FORECAST_CACHE_TTL so cache expiry happens first.
+# Override via FORECAST_MAX_AGE_SECS env var.
+FORECAST_MAX_AGE_SECS = int(
+    os.getenv("FORECAST_MAX_AGE_SECS", str(3 * 3600))
+)  # 3 hours
 
 # #66: Market listing cache to avoid hammering the API on every analyze call
 _MARKETS_CACHE: tuple[list, float] | None = None
@@ -993,12 +1001,15 @@ def enrich_with_forecast(market: dict) -> dict:
     if city and target_date:
         forecast = get_weather_forecast(city, target_date)
 
+    import time as _time_enrich
+
     return {
         **market,
         "_city": city,
         "_date": target_date,
         "_hour": hour,
         "_forecast": forecast,
+        "data_fetched_at": _time_enrich.time(),
     }
 
 
@@ -2078,6 +2089,21 @@ def analyze_trade(enriched: dict) -> dict | None:
         return None  # could not parse target date from ticker
     if not city:
         return None  # unrecognized city in ticker
+
+    # P0.3: Reject stale enriched data. Absence of timestamp → treat as fresh.
+    import time as _time_wm
+
+    _fetched_at = enriched.get("data_fetched_at")
+    if _fetched_at is not None:
+        data_age = _time_wm.time() - _fetched_at
+        if data_age > FORECAST_MAX_AGE_SECS:
+            _log.warning(
+                "analyze_trade: rejecting stale data for %s (age=%.0fs > limit=%ds)",
+                enriched.get("ticker", "?"),
+                data_age,
+                FORECAST_MAX_AGE_SECS,
+            )
+            return None
 
     condition = _parse_market_condition(enriched)
     if not condition:
