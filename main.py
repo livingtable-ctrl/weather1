@@ -53,7 +53,7 @@ from tracker import (
     log_prediction,
     sync_outcomes,
 )
-from utils import MED_EDGE, MIN_EDGE, STRONG_EDGE
+from utils import MED_EDGE, MIN_EDGE, PAPER_MIN_EDGE, STRONG_EDGE
 from weather_markets import (
     CITY_COORDS,
     _feels_like,
@@ -1903,7 +1903,8 @@ def cmd_cron(client: KalshiClient, min_edge: float = MIN_EDGE) -> None:
                     )
                 except Exception:
                     pass
-                if abs(net_edge) < min_edge:
+                # P1.3: Use PAPER_MIN_EDGE (5%) so more signals are captured for observation.
+                if abs(net_edge) < PAPER_MIN_EDGE:
                     continue
                 signal = analysis.get("net_signal", analysis.get("signal", "")).strip()
                 time_risk = analysis.get("time_risk", "—")

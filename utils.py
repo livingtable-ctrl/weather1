@@ -16,6 +16,9 @@ KALSHI_FEE_RATE = float(os.getenv("KALSHI_FEE_RATE", "0.07"))
 
 # Edge thresholds — override via .env
 MIN_EDGE = float(os.getenv("MIN_EDGE", "0.07"))  # minimum edge to show in analyze
+# Paper trading uses a lower threshold to capture more signals for observation.
+# Must be <= 5% per system requirements (P1.3). Override via PAPER_MIN_EDGE env var.
+PAPER_MIN_EDGE = float(os.getenv("PAPER_MIN_EDGE", "0.05"))
 STRONG_EDGE = float(
     os.getenv("STRONG_EDGE", "0.25")
 )  # threshold for "STRONG BUY" label
