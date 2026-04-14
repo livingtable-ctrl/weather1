@@ -33,6 +33,11 @@ _log = logging.getLogger(__name__)
 # Below this the market is effectively illiquid — fills are unreliable.
 MIN_LIQUIDITY: int = 50
 
+# Single source of truth for edge calculation logic version.
+# Increment whenever kelly_fraction, bayesian_kelly_fraction, edge_confidence,
+# or time_decay_edge logic changes, so outputs can be traced.
+EDGE_CALC_VERSION = "v1.0"
+
 # ── Open-Meteo (free, no API key) ────────────────────────────────────────────
 
 
@@ -2111,6 +2116,7 @@ def analyze_trade(enriched: dict) -> dict | None:
         )
         if result is not None:
             result["time_risk"] = time_risk_label
+            result["edge_calc_version"] = EDGE_CALC_VERSION
         return result
 
     # ── Snow/ice market fast-path ─────────────────────────────────────────────
@@ -2118,6 +2124,7 @@ def analyze_trade(enriched: dict) -> dict | None:
         result = _analyze_snow_trade(enriched, forecast, condition, target_date, coords)
         if result is not None:
             result["time_risk"] = time_risk_label
+            result["edge_calc_version"] = EDGE_CALC_VERSION
         return result
 
     series = (enriched.get("series_ticker") or enriched.get("ticker", "")).upper()
@@ -2534,6 +2541,8 @@ def analyze_trade(enriched: dict) -> dict | None:
             _feels_like(ens_stats.get("mean", 65.0)) if ens_stats else 65.0,
             1,
         ),
+        # Edge calculation version — increment when kelly/edge logic changes
+        "edge_calc_version": EDGE_CALC_VERSION,
     }
 
 
