@@ -1840,6 +1840,20 @@ def cmd_cron(client: KalshiClient, min_edge: float = MIN_EDGE) -> None:
     log_path = Path(__file__).parent / "data" / "cron.log"
     log_path.parent.mkdir(exist_ok=True)
 
+    # P0.5: Log state snapshot at the start of every cron run for consistency auditing.
+    try:
+        from paper import get_state_snapshot
+
+        snap = get_state_snapshot()
+        _log.info(
+            "cmd_cron: state snapshot balance=%.2f open_trades=%d peak=%.2f",
+            snap["balance"],
+            snap["open_trades_count"],
+            snap["peak_balance"],
+        )
+    except Exception as _e:
+        _log.warning("cmd_cron: could not capture state snapshot: %s", _e)
+
     med_opps: list = []  # edge 15–24%, LOW or MEDIUM risk
     strong_opps: list = []  # edge 25%+, any time risk
     signals_cache: list = []

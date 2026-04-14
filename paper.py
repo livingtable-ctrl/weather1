@@ -256,6 +256,21 @@ def get_peak_balance() -> float:
     return _load().get("peak_balance", STARTING_BALANCE)
 
 
+def get_state_snapshot() -> dict:
+    """
+    Return a point-in-time snapshot of the paper trading state.
+    Used for consistency checks and cron logging (P0.5).
+    """
+    import datetime
+
+    return {
+        "balance": get_balance(),
+        "open_trades_count": len(get_open_trades()),
+        "peak_balance": get_peak_balance(),
+        "snapshot_at": datetime.datetime.now(datetime.UTC).isoformat(),
+    }
+
+
 def get_max_drawdown_pct() -> float:
     """Current drawdown from peak as a fraction (0.0 = no drawdown, 1.0 = total loss)."""
     peak = get_peak_balance()
