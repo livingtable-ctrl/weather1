@@ -2321,10 +2321,19 @@ def _auto_place_trades(
                         days_out=int(a.get("days_out", 0)),
                         was_traded=True,
                     )
-                except Exception:
-                    pass
-            except ValueError as e:
-                print(yellow(f"  [Auto] Skipped {ticker}: {e}"))
+                except Exception as _e:
+                    logging.getLogger(__name__).warning(
+                        "_auto_place_trades: log_analysis_attempt failed for %s: %s",
+                        ticker,
+                        _e,
+                    )
+            except Exception as e:
+                logging.getLogger(__name__).warning(
+                    "_auto_place_trades: paper order FAILED ticker=%s side=%s: %s",
+                    ticker,
+                    rec_side,
+                    e,
+                )
     if placed == 0:
         print(dim("  [Auto] No qualifying signals this scan."))
     return placed
