@@ -65,8 +65,8 @@ def _request_with_retry(method: str, url: str, **kwargs) -> requests.Response:
         elapsed_ms = _elapsed * 1000
         error_str = f"HTTP {resp.status_code}" if resp.status_code >= 400 else None
         log_api_request(method, endpoint, resp.status_code, elapsed_ms, error=error_str)
-    except Exception:
-        pass
+    except Exception as _e:
+        _log.debug("_request_with_retry: log_api_request failed: %s", _e)
     return resp
 
 

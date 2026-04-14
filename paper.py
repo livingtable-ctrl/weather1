@@ -500,8 +500,11 @@ def place_paper_order(
             quantity=quantity,
             side=side,
         )
-    except Exception:
-        pass  # never block a trade on logging failure
+    except Exception as _e:
+        _log.warning(
+            "place_paper_order: log_price_improvement failed (trade still placed): %s",
+            _e,
+        )
     return trade
 
 

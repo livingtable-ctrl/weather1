@@ -2166,8 +2166,12 @@ def analyze_trade(enriched: dict) -> dict | None:
             if icon_p is not None and gfs_p is not None:
                 if abs(icon_p - gfs_p) > 0.12:
                     model_consensus = False
-        except Exception:
-            pass  # default to True (tradeable)
+        except Exception as _e:
+            _log.warning(
+                "analyze_trade: _get_consensus_probs failed for %s — defaulting to consensus=True: %s",
+                enriched.get("ticker", "?"),
+                _e,
+            )
 
     # ── Near-threshold detection ─────────────────────────────────────────────
     threshold_val = condition.get("threshold")
@@ -2179,8 +2183,10 @@ def analyze_trade(enriched: dict) -> dict | None:
     _nws_prob: float | None = None
     try:
         _nws_prob = nws_prob(city, coords, target_date, condition)
-    except Exception:
-        pass
+    except Exception as _e:
+        _log.warning(
+            "analyze_trade: nws_prob failed for %s: %s", enriched.get("ticker", "?"), _e
+        )
 
     # ── 3+4. Climatological probability + climate index adjustment ───────────
     clim_prob_raw: float | None = None
@@ -2188,8 +2194,12 @@ def analyze_trade(enriched: dict) -> dict | None:
     try:
         clim_prob_raw = climatological_prob(city, coords, target_date, condition)
         index_adj = temperature_adjustment(city, target_date)
-    except Exception:
-        pass
+    except Exception as _e:
+        _log.warning(
+            "analyze_trade: climatological_prob failed for %s: %s",
+            enriched.get("ticker", "?"),
+            _e,
+        )
 
     # Apply index adjustment by shifting the effective threshold
     clim_prob: float | None = None

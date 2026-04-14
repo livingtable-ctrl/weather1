@@ -1318,8 +1318,10 @@ def _resolve_price(client: KalshiClient, ticker: str, side: str) -> float | None
         mid = prices["implied_prob"]
         if mid and mid > 0:
             return mid if side == "yes" else 1 - mid
-    except Exception:
-        pass
+    except Exception as _e:
+        logging.getLogger(__name__).debug(
+            "_resolve_price: failed for %s/%s: %s", ticker, side, _e
+        )
     return None
 
 
@@ -1930,8 +1932,10 @@ def cmd_cron(client: KalshiClient, min_edge: float = MIN_EDGE) -> None:
                     strong_opps.append((enriched, analysis))
                 elif abs(net_edge) >= MED_EDGE:
                     med_opps.append((enriched, analysis))
-    except Exception:
-        pass  # never crash the scheduler
+    except Exception as _e:
+        logging.getLogger(__name__).error(
+            "cmd_cron: scan loop crashed: %s", _e, exc_info=True
+        )
 
     # Write rich signals cache for the web dashboard
     try:
@@ -1989,8 +1993,10 @@ def cmd_cron(client: KalshiClient, min_edge: float = MIN_EDGE) -> None:
         exits = _check_early_exits(client=client)
         if exits > 0:
             print(green(f"  [EarlyExit] Closed {exits} position(s) on model update."))
-    except Exception:
-        pass  # never crash the scheduler
+    except Exception as _e:
+        logging.getLogger(__name__).warning(
+            "cmd_cron: _check_early_exits failed: %s", _e
+        )
 
     # Windows toast notification
     try:
