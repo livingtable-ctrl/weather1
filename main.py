@@ -72,6 +72,111 @@ load_dotenv()
 REFRESH_SECS = 300  # watch mode interval
 _WATCH_STATE_PATH = Path(__file__).parent / "data" / ".watch_state.json"
 
+# P3.1 — graceful shutdown flag
+RUNNING_FLAG_PATH: Path = Path(__file__).parent / "data" / ".cron_running"
+
+# P3.4 — file-based cron lock (prevents concurrent cron instances)
+LOCK_PATH: Path = Path(__file__).parent / "data" / ".cron.lock"
+
+
+def _write_cron_running_flag() -> None:
+    """Write UTC ISO timestamp to RUNNING_FLAG_PATH; warn if a fresh flag already exists."""
+    import time as _time
+
+    try:
+        if RUNNING_FLAG_PATH.exists():
+            age = _time.time() - RUNNING_FLAG_PATH.stat().st_mtime
+            if age < 600:
+                _log.warning(
+                    "cmd_cron: previous cron run may not have completed cleanly "
+                    "(flag age=%.0fs < 600s)",
+                    age,
+                )
+        RUNNING_FLAG_PATH.parent.mkdir(exist_ok=True)
+        RUNNING_FLAG_PATH.write_text(
+            __import__("datetime")
+            .datetime.now(__import__("datetime").timezone.utc)
+            .isoformat()
+        )
+    except Exception as _e:
+        _log.warning("cmd_cron: could not write running flag: %s", _e)
+
+
+def _clear_cron_running_flag() -> None:
+    """Delete RUNNING_FLAG_PATH if it exists."""
+    try:
+        RUNNING_FLAG_PATH.unlink(missing_ok=True)
+    except Exception as _e:
+        _log.warning("cmd_cron: could not clear running flag: %s", _e)
+
+
+def _check_startup_orders() -> None:
+    """Warn if any orders were placed in the last 5 minutes (double-execution guard)."""
+    import time as _time
+
+    try:
+        recent = execution_log.get_recent_orders(limit=50)
+        cutoff = _time.time() - 300  # 5 minutes
+        for order in recent:
+            placed_at_str = order.get("placed_at", "")
+            if not placed_at_str:
+                continue
+            try:
+                from datetime import datetime as _dt
+
+                placed_ts = _dt.fromisoformat(placed_at_str).timestamp()
+            except ValueError:
+                continue
+            if placed_ts >= cutoff:
+                _log.warning(
+                    "cmd_cron: recent order detected at startup — "
+                    "possible double-execution (ticker=%s side=%s placed_at=%s)",
+                    order.get("ticker", "?"),
+                    order.get("side", "?"),
+                    placed_at_str,
+                )
+    except Exception as _e:
+        _log.warning("cmd_cron: _check_startup_orders failed: %s", _e)
+
+
+def _acquire_cron_lock() -> bool:
+    """
+    Try to acquire the cron file lock.
+
+    Returns True if the lock was acquired (caller may proceed).
+    Returns False if a fresh lock file exists (another instance is running).
+    A stale lock (>600 s) is overridden and True is returned.
+    """
+    import os as _os
+    import time as _time
+
+    try:
+        if LOCK_PATH.exists():
+            age = _time.time() - LOCK_PATH.stat().st_mtime
+            if age < 600:
+                _log.warning(
+                    "cmd_cron: lock file exists and is fresh (age=%.0fs) — "
+                    "another instance may be running; skipping this run",
+                    age,
+                )
+                return False
+            # Stale — fall through to overwrite
+            _log.warning("cmd_cron: overriding stale lock file (age=%.0fs)", age)
+        LOCK_PATH.parent.mkdir(exist_ok=True)
+        LOCK_PATH.write_text(str(_os.getpid()))
+        return True
+    except Exception as _e:
+        _log.warning("cmd_cron: could not acquire lock: %s — proceeding anyway", _e)
+        return True  # fail-open: don't block cron on unexpected I/O errors
+
+
+def _release_cron_lock() -> None:
+    """Delete the cron lock file."""
+    try:
+        LOCK_PATH.unlink(missing_ok=True)
+    except Exception as _e:
+        _log.warning("cmd_cron: could not release lock: %s", _e)
+
 
 def _brier_sparkline() -> str:
     """
@@ -1837,6 +1942,16 @@ def cmd_cron(client: KalshiClient, min_edge: float = MIN_EDGE) -> None:
     """Silent background scan — writes to data/cron.log, auto-places strong paper trades."""
     import sys as _sys
 
+    # P3.4 — acquire file lock; exit immediately if another instance is running
+    if not _acquire_cron_lock():
+        _log.warning("cmd_cron: could not acquire lock — skipping this run")
+        _sys.exit(1)
+
+    # P3.1 — graceful shutdown flag
+    _write_cron_running_flag()
+    # P3.2 — detect orders placed in the last 5 minutes at startup
+    _check_startup_orders()
+
     log_path = Path(__file__).parent / "data" / "cron.log"
     log_path.parent.mkdir(exist_ok=True)
 
@@ -2066,6 +2181,8 @@ def cmd_cron(client: KalshiClient, min_edge: float = MIN_EDGE) -> None:
     except Exception:
         pass  # never crash the scheduler over a backup failure
 
+    _clear_cron_running_flag()
+    _release_cron_lock()
     _sys.exit(0)
 
 
