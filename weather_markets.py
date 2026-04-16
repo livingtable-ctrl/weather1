@@ -2275,6 +2275,7 @@ def analyze_trade(enriched: dict) -> dict | None:
         return None
 
     # Apply per-city static bias correction before probability calculation
+    forecast_temp_raw = forecast_temp
     forecast_temp = apply_station_bias(city, forecast_temp)
 
     days_out = max(0, (target_date - date.today()).days)
@@ -2385,7 +2386,7 @@ def analyze_trade(enriched: dict) -> dict | None:
             _live = _get_live_obs(city, coords) if days_out <= 1 else None
             _live_temp = _live.get("temp_f") if _live else None
             _current_temp: float = (
-                float(_live_temp) if _live_temp is not None else forecast_temp
+                float(_live_temp) if _live_temp is not None else forecast_temp_raw
             )
             _cond_type = condition["type"]
             _tlo = condition.get("threshold", condition.get("lower", forecast_temp))
