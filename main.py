@@ -4860,6 +4860,60 @@ def cmd_walkforward(client: KalshiClient) -> None:
             print()
 
 
+# ── Walk-Forward Backtesting (paper trade history) ───────────────────────────
+
+
+def cmd_walk_forward() -> None:
+    """Run walk-forward backtest on historical paper trades."""
+    import json
+
+    from backtest import walk_forward_backtest
+    from paper import load_paper_trades
+
+    trades_raw = load_paper_trades()
+    trades = [
+        {
+            "market_date": t.get("date", t.get("placed_at", ""))[:10],
+            "our_prob": t.get("our_prob", t.get("forecast_prob")),
+            "settled_yes": t.get("outcome") == "yes",
+            "city": t.get("city", ""),
+            "method": t.get("method", ""),
+            "edge": t.get("edge", 0),
+        }
+        for t in trades_raw
+        if t.get("outcome") in ("yes", "no")
+        and t.get("our_prob")
+        or t.get("forecast_prob")
+    ]
+
+    if len(trades) < 50:
+        print(
+            f"Not enough settled trades for walk-forward (have {len(trades)}, need 50+)."
+        )
+        return
+
+    result = walk_forward_backtest(trades, train_months=3, test_months=1)
+
+    print(f"\nWalk-Forward Backtest ({result['n_folds']} folds)")
+    print(
+        f"Mean out-of-sample Brier: {result['mean_brier']} \u00b1 {result['std_brier']}"
+    )
+    print()
+    print(f"{'Test Period':<25} {'N Train':>8} {'N Test':>8} {'Brier':>8}")
+    print("-" * 55)
+    for fold in result["folds"]:
+        brier_str = f"{fold['brier']:.4f}" if fold["brier"] is not None else "\u2014"
+        print(
+            f"{fold['test_period']:<25} {fold['n_train']:>8} {fold['n_test']:>8} {brier_str:>8}"
+        )
+
+    from pathlib import Path
+
+    out_path = Path(__file__).parent / "data" / "walk_forward_results.json"
+    out_path.write_text(json.dumps(result, indent=2))
+    print(f"\nSaved to {out_path}")
+
+
 # ── Weekly PDF report ─────────────────────────────────────────────────────────
 
 
@@ -6826,6 +6880,8 @@ def main():
         cmd_journal()
     elif cmd in ("walkforward", "wf"):
         cmd_walkforward(client)
+    elif cmd in ("walk-forward", "wfbt"):
+        cmd_walk_forward()
     elif cmd == "report":
         cmd_report()
     elif cmd == "kill":

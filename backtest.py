@@ -656,3 +656,123 @@ def check_overfitting(in_sample_brier: float, out_of_sample_brier: float) -> dic
         "status": status,
         "recommendation": recommendation,
     }
+
+
+# ── Walk-Forward Backtesting ──────────────────────────────────────────────────
+
+
+def walk_forward_split(
+    trades: list[dict],
+    train_months: int = 6,
+    test_months: int = 1,
+) -> list[tuple[list[dict], list[dict]]]:
+    """
+    Split trades into walk-forward train/test folds.
+
+    Each fold trains on [start, train_end] and tests on [train_end+1, test_end].
+    The window rolls forward by test_months each iteration.
+
+    Args:
+        trades: List of trade dicts with 'market_date' (ISO date string), 'our_prob',
+                'settled_yes' keys
+        train_months: Number of months in each training window
+        test_months: Number of months in each test window
+
+    Returns:
+        List of (train_trades, test_trades) tuples. Empty if insufficient data.
+    """
+    if not trades:
+        return []
+
+    sorted_trades = sorted(trades, key=lambda t: t["market_date"])
+    months_seen = sorted(set(t["market_date"][:7] for t in sorted_trades))
+    total_months = len(months_seen)
+
+    if total_months < train_months + test_months:
+        return []
+
+    folds = []
+    test_start_idx = train_months
+    while test_start_idx + test_months <= total_months:
+        train_months_set = set(months_seen[:test_start_idx])
+        test_months_set = set(
+            months_seen[test_start_idx : test_start_idx + test_months]
+        )
+
+        train = [t for t in sorted_trades if t["market_date"][:7] in train_months_set]
+        test = [t for t in sorted_trades if t["market_date"][:7] in test_months_set]
+
+        if train and test:
+            folds.append((train, test))
+
+        test_start_idx += test_months
+
+    return folds
+
+
+def _brier_score_from_trades(trades: list[dict]) -> float | None:
+    """Compute Brier score from a list of trade dicts."""
+    valid = [
+        t
+        for t in trades
+        if t.get("our_prob") is not None and t.get("settled_yes") is not None
+    ]
+    if not valid:
+        return None
+    return sum(
+        (t["our_prob"] - (1 if t["settled_yes"] else 0)) ** 2 for t in valid
+    ) / len(valid)
+
+
+def walk_forward_backtest(
+    trades: list[dict],
+    train_months: int = 6,
+    test_months: int = 1,
+) -> dict:
+    """
+    Run a walk-forward backtest on historical trade data.
+
+    The only statistically valid backtesting approach for non-stationary
+    weather markets — avoids look-ahead bias and data leakage.
+
+    Args:
+        trades: Historical trade records (must have market_date, our_prob, settled_yes)
+        train_months: Training window size in months
+        test_months: Test window size in months
+
+    Returns:
+        dict with folds, mean_brier, std_brier, n_folds
+    """
+    import statistics
+
+    folds_data = walk_forward_split(trades, train_months, test_months)
+    fold_results = []
+
+    for train, test in folds_data:
+        test_brier = _brier_score_from_trades(test)
+        test_months_list = sorted(set(t["market_date"][:7] for t in test))
+        fold_results.append(
+            {
+                "test_period": f"{test_months_list[0]} \u2014 {test_months_list[-1]}",
+                "n_train": len(train),
+                "n_test": len(test),
+                "brier": round(test_brier, 4) if test_brier is not None else None,
+            }
+        )
+
+    valid_scores: list[float] = [
+        f["brier"]  # type: ignore[misc]
+        for f in fold_results
+        if f["brier"] is not None
+    ]
+    mean_brier = round(statistics.mean(valid_scores), 4) if valid_scores else None
+    std_brier = (
+        round(statistics.stdev(valid_scores), 4) if len(valid_scores) > 1 else 0.0
+    )
+
+    return {
+        "folds": fold_results,
+        "mean_brier": mean_brier,
+        "std_brier": std_brier,
+        "n_folds": len(fold_results),
+    }
