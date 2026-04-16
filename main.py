@@ -459,6 +459,25 @@ def auto_backtest(client: KalshiClient) -> None:
                         f"vs all-time {all_time_brier:.4f} — model may have degraded.\n"
                     )
                 )
+            # Overfitting guard: compare in-sample (train) vs out-of-sample (val) Brier
+            val_brier = summary.get("val_brier")
+            train_brier = summary.get("brier")
+            if train_brier is not None and val_brier is not None:
+                try:
+                    from backtest import check_overfitting
+
+                    ov = check_overfitting(train_brier, val_brier)
+                    if ov["status"] in ("overfit", "severe", "warning"):
+                        print(
+                            yellow(
+                                f"\n  [Auto-backtest] Overfitting check: {ov['status'].upper()} "
+                                f"(in={train_brier:.4f} out={val_brier:.4f} "
+                                f"degradation={ov['degradation']:+.4f})\n"
+                                f"  {ov['recommendation']}\n"
+                            )
+                        )
+                except Exception:
+                    pass
         except Exception as exc:
             _log.warning("auto_backtest background thread failed: %s", exc)
 
@@ -5890,6 +5909,143 @@ def cmd_schedule_cycles() -> None:
     print("schtasks /Query /FO LIST /V | findstr Kalshi")
 
 
+def cmd_replay(trade_id: str) -> None:
+    """
+    Replay a single trade decision from stored inputs.
+    Shows: inputs at time of trade, edge calculation, validation result, execution details.
+    Usage: py main.py replay <trade_id>
+    """
+    from paper import load_paper_trades
+
+    _log.info("cmd_replay: replaying trade %s", trade_id)
+
+    trades = load_paper_trades()
+    trade = next((t for t in trades if str(t.get("id")) == str(trade_id)), None)
+
+    if trade is None:
+        try:
+            from execution_log import get_order_by_id
+
+            trade = get_order_by_id(trade_id)
+        except Exception:
+            pass
+
+    if trade is None:
+        print(red(f"  Trade {trade_id!r} not found in paper trades or execution log."))
+        return
+
+    print(bold(f"\n  Trade Replay — ID {trade_id}"))
+    print("  " + "─" * 48)
+
+    for key, value in trade.items():
+        print(f"  {dim(key + ':')} {value}")
+
+    print(
+        "\n  " + dim("Note: Re-running live edge calculation is not possible without")
+    )
+    print("  " + dim("historical forecast data. Above shows stored decision inputs."))
+    print()
+
+
+def cmd_shadow_compare(client: KalshiClient) -> None:
+    """
+    Shadow mode: show what the bot would trade right now without executing.
+    Does NOT execute any trades. Pure read-only analysis.
+    """
+    print(bold("\n  Shadow Mode — Would-Trade Analysis"))
+    print("  " + dim("Shows what the bot would trade now vs last actual cron run"))
+    print("  " + "─" * 48)
+
+    markets = get_weather_markets(client)
+    signals = []
+    for m in markets:
+        try:
+            enriched = enrich_with_forecast(m)
+            analysis = analyze_trade(enriched)
+            if analysis:
+                signals.append(
+                    {
+                        "ticker": m.get("ticker", ""),
+                        "edge": analysis.get("net_edge", analysis.get("edge", 0)),
+                        "side": analysis.get("recommended_side", "yes"),
+                        "kelly_fraction": analysis.get(
+                            "ci_adjusted_kelly",
+                            analysis.get(
+                                "fee_adjusted_kelly", analysis.get("kelly", 0)
+                            ),
+                        ),
+                    }
+                )
+        except Exception:
+            continue
+
+    if not signals:
+        print(dim("  No signals found."))
+        return
+
+    would_trade = [
+        sig
+        for sig in signals
+        if sig.get("edge", 0) >= float(os.getenv("PAPER_MIN_EDGE", "0.05"))
+        and sig.get("kelly_fraction", 0) >= 0.002
+    ]
+
+    if not would_trade:
+        print(dim(f"  {len(signals)} signals scanned, none meet edge threshold."))
+        return
+
+    print(f"\n  {bold(str(len(would_trade)))} trade(s) would be placed:\n")
+    for sig in would_trade:
+        ticker = sig.get("ticker", "?")
+        edge = sig.get("edge", 0)
+        side = sig.get("side", "?")
+        kelly = sig.get("kelly_fraction", 0)
+        print(
+            f"    {green(ticker)}  {side.upper()}  edge={edge:.1%}  kelly={kelly:.3f}"
+        )
+
+    print()
+
+
+def cmd_ab_summary() -> None:
+    """Show A/B test results for all active tests."""
+    from ab_test import _AB_TEST_DIR, _load_test_state
+
+    _AB_TEST_DIR.mkdir(exist_ok=True)
+    tests = list(_AB_TEST_DIR.glob("*.json"))
+    if not tests:
+        print(
+            dim(
+                "  No A/B tests found. Tests are created programmatically via ABTest()."
+            )
+        )
+        return
+    print(bold("\n  A/B Test Results"))
+    print("  " + "─" * 48)
+    for path in tests:
+        state = _load_test_state(path.stem)
+        print(f"\n  {bold(path.stem)}")
+        for variant, stats in state.items():
+            trades = stats.get("trades", 0)
+            win_rate = stats.get("wins", 0) / max(trades, 1)
+            avg_edge = stats.get("total_edge", 0.0) / max(trades, 1)
+            disabled = " [DISABLED]" if stats.get("disabled") else ""
+            print(
+                f"    {variant}{dim(disabled)}: {trades} trades, "
+                f"{win_rate:.0%} win rate, {avg_edge:.3f} avg edge"
+            )
+    print()
+
+
+def cmd_sweep() -> None:
+    """Run a parameter sweep against historical paper trades."""
+    from param_sweep import run_sweep
+
+    print(bold("\n  Parameter Sweep"))
+    print("  " + dim("Testing threshold ranges against historical settled trades"))
+    run_sweep()
+
+
 # ── Router ────────────────────────────────────────────────────────────────────
 
 
@@ -6062,6 +6218,18 @@ def main():
         cmd_kill()
     elif cmd == "resume":
         cmd_resume()
+    elif cmd == "replay":
+        trade_id = sys.argv[2] if len(sys.argv) > 2 else ""
+        if not trade_id:
+            print("Usage: py main.py replay <trade_id>")
+        else:
+            cmd_replay(trade_id)
+    elif cmd == "shadow":
+        cmd_shadow_compare(client)
+    elif cmd == "ab-summary":
+        cmd_ab_summary()
+    elif cmd == "sweep":
+        cmd_sweep()
     else:
         print(red(f"Unknown command: {cmd}"))
         print(dim("Run  py main.py  for the interactive menu."))

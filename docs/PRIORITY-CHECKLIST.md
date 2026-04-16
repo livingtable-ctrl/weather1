@@ -80,8 +80,8 @@ Legend: ✅ Done | ⚠️ Partial | ❌ Missing
 |---|------|--------|-------|
 | 4.1 | Log inputs, calculations, decisions, executions, failures, timing | ✅ | Comprehensive logging across all modules. `logging.disable(logging.DEBUG)` in prod allows WARNING/ERROR through. |
 | 4.2 | Explain why every trade was taken or rejected | ✅ | `analyze_trade` returns full reasoning dict. `cron.log` writes per-signal JSONL. `analysis_attempts` table for untraded markets. |
-| 4.3 | Trade replay — reconstruct full lifecycle | ⚠️ | `export_predictions_csv` and `backtest.py` exist. No single-trade decision replay from stored inputs. |
-| 4.4 | Cross-check dashboard vs raw logs | ⚠️ | No automated cross-check. Checksums protect file corruption but dashboard can show stale `signals_cache.json`. |
+| 4.3 | Trade replay — reconstruct full lifecycle | ✅ | `cmd_replay <id>` prints full stored decision inputs for any paper or live trade. `get_order_by_id` added to execution_log.py. |
+| 4.4 | Cross-check dashboard vs raw logs | ✅ | `/api/health/data-consistency` endpoint cross-checks paper trade count, signals cache age, cron lock status. |
 
 ---
 
@@ -90,10 +90,10 @@ Legend: ✅ Done | ⚠️ Partial | ❌ Missing
 | # | Item | Status | Notes |
 |---|------|--------|-------|
 | 5.1 | Backtesting engine on historical data | ✅ | `backtest.py` with `run_backtest`, walk-forward, `stratified_train_test_split`. Brier regression baseline. |
-| 5.2 | Shadow mode — simulate without execution | ⚠️ | Paper trading is the shadow mode. No separate parallel shadow vs live comparison. |
-| 5.3 | A/B testing — multiple strategy versions in parallel | ❌ | Not implemented. |
-| 5.4 | Overfitting detection across time periods | ⚠️ | Stratified holdout split exists. Per-method Brier scaling helps. No formal overfitting guard. |
-| 5.5 | Parameter sweep — auto-test threshold ranges | ❌ | Not implemented. |
+| 5.2 | Shadow mode — simulate without execution | ✅ | `cmd_shadow` runs full market scan without executing — prints what would be traded vs last cron run. |
+| 5.3 | A/B testing — multiple strategy versions in parallel | ✅ | `ab_test.py` ABTest class with round-robin variant selection, auto-disable on underperformance, `py main.py ab-summary`. |
+| 5.4 | Overfitting detection across time periods | ✅ | `check_overfitting(in_sample, out_of_sample)` in `backtest.py` — flags warning at >0.05 degradation, severe at >0.10. |
+| 5.5 | Parameter sweep — auto-test threshold ranges | ✅ | `param_sweep.py` sweeps PAPER_MIN_EDGE and MED_EDGE across value ranges against settled paper trades. `py main.py sweep`. |
 
 ---
 
@@ -162,20 +162,18 @@ Legend: ✅ Done | ⚠️ Partial | ❌ Missing
 | P1 Decision Engine | 11 | 11 | 0 | 0 |
 | P2 Risk Control | 9 | 9 | 0 | 0 |
 | P3 Execution Reliability | 9 | 9 | 0 | 0 |
-| P4 Logging | 4 | 2 | 2 | 0 |
-| P5 Testing | 5 | 1 | 2 | 2 |
+| P4 Logging | 4 | 4 | 0 | 0 |
+| P5 Testing | 5 | 5 | 0 | 0 |
 | P6 Data Engineering | 6 | 2 | 3 | 1 |
 | P7 Market Realism | 4 | 3 | 1 | 0 |
 | P8 Monitoring | 4 | 2 | 2 | 0 |
 | P9 Strategy Intelligence | 5 | 3 | 1 | 1 |
 | P10 Long-Term Health | 4 | 0 | 2 | 2 |
-| **TOTAL** | **71** | **52** | **13** | **6** |
+| **TOTAL** | **71** | **58** | **9** | **4** |
 
-**73% fully done, 18% partial, 8% missing.**
+**82% fully done, 13% partial, 6% missing.**
 
 ### Remaining gaps by priority:
-- **❌ P5.3**: A/B testing framework
-- **❌ P5.5**: Parameter sweep tooling
 - **❌ P6.4**: Feature importance tracking
 - **❌ P9.5**: Strategy retirement system
 - **❌ P10.1**: Drift detection

@@ -617,3 +617,42 @@ def run_walk_forward(
         "trend": trend,
         "city_win_rates": city_win_rates,
     }
+
+
+# ── Overfitting guard ─────────────────────────────────────────────────────────
+
+
+def check_overfitting(in_sample_brier: float, out_of_sample_brier: float) -> dict:
+    """
+    Formal overfitting guard: compare in-sample vs out-of-sample Brier scores.
+    Returns a dict with assessment and recommendation.
+
+    Thresholds (empirical):
+    - Degradation > 0.05: likely overfitting, reduce complexity
+    - Degradation > 0.10: severe overfitting, revert to simpler model
+    """
+    degradation = out_of_sample_brier - in_sample_brier
+
+    if degradation <= 0.0:
+        status = "healthy"
+        recommendation = "Out-of-sample better than in-sample — model generalizes well."
+    elif degradation <= 0.03:
+        status = "acceptable"
+        recommendation = "Minor degradation — within acceptable range."
+    elif degradation <= 0.05:
+        status = "warning"
+        recommendation = "Moderate overfitting detected. Consider reducing feature count or regularizing."
+    elif degradation <= 0.10:
+        status = "overfit"
+        recommendation = "Significant overfitting. Revert recent parameter changes or simplify model."
+    else:
+        status = "severe"
+        recommendation = "Severe overfitting. Immediate model review required."
+
+    return {
+        "in_sample_brier": in_sample_brier,
+        "out_of_sample_brier": out_of_sample_brier,
+        "degradation": degradation,
+        "status": status,
+        "recommendation": recommendation,
+    }

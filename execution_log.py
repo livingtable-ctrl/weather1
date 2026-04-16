@@ -411,6 +411,26 @@ def get_recent_orders(limit: int = 50) -> list[dict]:
     return [dict(r) for r in rows]
 
 
+def get_order_by_id(order_id: str) -> dict | None:
+    """Fetch a single order record by order_id from execution_log.db."""
+    init_log()
+    conn = _conn()
+    try:
+        row = conn.execute(
+            "SELECT * FROM orders WHERE order_id = ? OR id = ?",
+            (order_id, order_id),
+        ).fetchone()
+        if row:
+            return dict(row)
+    except Exception as exc:
+        import logging as _logging
+
+        _logging.getLogger(__name__).debug("get_order_by_id: %s", exc)
+    finally:
+        conn.close()
+    return None
+
+
 def append_entry(entry: dict, path: Path | None = None) -> None:
     """Write a single entry dict as a JSON file using safe_io for resilient disk writes (#8)."""
     import safe_io

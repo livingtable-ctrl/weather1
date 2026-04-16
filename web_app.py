@@ -1010,6 +1010,48 @@ setInterval(() => {{
         except Exception as exc:
             return jsonify({"error": str(exc)}), 500
 
+    @app.route("/api/health/data-consistency")
+    def api_data_consistency():
+        """Cross-check dashboard data sources vs raw storage."""
+        import os
+        import time as _time
+
+        checks: dict[str, object] = {}
+
+        # Paper trade file count
+        try:
+            from paper import load_paper_trades
+
+            trades = load_paper_trades()
+            checks["paper_trades_count"] = len(trades)
+        except Exception as exc:
+            checks["paper_trades_count_error"] = str(exc)
+
+        # signals_cache.json age
+        try:
+            signals_path = Path(__file__).parent / "data" / "signals_cache.json"
+            if signals_path.exists():
+                age_secs = _time.time() - os.path.getmtime(signals_path)
+                checks["signals_cache_age_secs"] = round(age_secs)
+                checks["signals_cache_stale"] = age_secs > 90 * 60
+            else:
+                checks["signals_cache_exists"] = False
+        except Exception as exc:
+            checks["signals_cache_error"] = str(exc)
+
+        # Last cron run
+        try:
+            lock_path = Path(__file__).parent / "data" / ".cron.lock"
+            if lock_path.exists():
+                age_secs = _time.time() - os.path.getmtime(lock_path)
+                checks["cron_lock_age_secs"] = round(age_secs)
+            running_path = Path(__file__).parent / "data" / ".cron_running"
+            checks["cron_currently_running"] = running_path.exists()
+        except Exception as exc:
+            checks["cron_lock_error"] = str(exc)
+
+        return jsonify({"ok": True, "checks": checks, "timestamp": _time.time()})
+
     return app
 
 

@@ -960,6 +960,11 @@ def get_all_trades() -> list[dict]:
     return _load()["trades"]
 
 
+def load_paper_trades() -> list[dict]:
+    """Alias for get_all_trades — returns all paper trades (open and settled)."""
+    return get_all_trades()
+
+
 def get_performance() -> dict:
     """Summary stats across all settled trades."""
     trades = [t for t in _load()["trades"] if t["settled"]]
