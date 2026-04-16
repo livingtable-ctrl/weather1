@@ -730,14 +730,17 @@ def walk_forward_backtest(
     test_months: int = 1,
 ) -> dict:
     """
-    Run a walk-forward backtest on historical trade data.
+    Run a walk-forward (rolling out-of-sample) backtest on historical trade data.
 
-    The only statistically valid backtesting approach for non-stationary
-    weather markets — avoids look-ahead bias and data leakage.
+    Evaluates historically recorded probabilities against settled outcomes using
+    an expanding-window split (see walk_forward_split): each fold trains on all
+    data up to a cutoff and tests on the next test_months window.  No model
+    retraining occurs — the function measures how well the probabilities that
+    were recorded at trade time predict outcomes, fold by fold.
 
     Args:
         trades: Historical trade records (must have market_date, our_prob, settled_yes)
-        train_months: Training window size in months
+        train_months: Minimum training window size in months
         test_months: Test window size in months
 
     Returns:
@@ -767,7 +770,7 @@ def walk_forward_backtest(
     ]
     mean_brier = round(statistics.mean(valid_scores), 4) if valid_scores else None
     std_brier = (
-        round(statistics.stdev(valid_scores), 4) if len(valid_scores) > 1 else 0.0
+        round(statistics.stdev(valid_scores), 4) if len(valid_scores) > 1 else None
     )
 
     return {
