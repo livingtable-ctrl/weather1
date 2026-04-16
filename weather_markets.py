@@ -83,6 +83,36 @@ def _load_city_coords() -> dict:
 
 CITY_COORDS = _load_city_coords()
 
+# Per-city static bias corrections (°F) — subtract from model forecast before
+# computing probability. Positive = model runs warm; negative = model runs cold.
+# Sources: Weather Edge MCP field data, NWS station comparison reports.
+_STATION_BIAS: dict[str, float] = {
+    "NYC": 1.0,  # KNYC: NWS gridpoint overshoots Central Park by ~1°F (warm)
+    "MIA": 3.0,  # KMIA: GFS southern warm bias, confirmed via field research
+    "DEN": 2.0,  # KDEN: Mountain terrain uncertainty, conservative correction
+    "CHI": 0.5,  # KORD: Minor warm bias
+    "DAL": 0.5,  # KDFW: GFS southern warm bias (minor)
+    "LAX": 0.0,  # KLAX: No known systematic bias
+}
+
+
+def apply_station_bias(city: str, forecast_temp: float) -> float:
+    """
+    Apply per-city static bias correction to a model forecast temperature.
+    Subtracts the known warm bias so probability calculations are centered
+    on the station's actual expected temperature.
+
+    Args:
+        city: City code (e.g. "NYC", "MIA")
+        forecast_temp: Raw model forecast in °F
+
+    Returns:
+        Bias-corrected temperature in °F (unchanged if city unknown)
+    """
+    bias = _STATION_BIAS.get(city.upper(), 0.0)
+    return forecast_temp - bias
+
+
 FORECAST_BASE = "https://api.open-meteo.com/v1/forecast"
 ENSEMBLE_BASE = "https://ensemble-api.open-meteo.com/v1/ensemble"
 ENSEMBLE_MODELS = ["icon_seamless", "gfs_seamless"]
@@ -2243,6 +2273,9 @@ def analyze_trade(enriched: dict) -> dict | None:
     forecast_temp = forecast["low_f"] if var == "min" else forecast["high_f"]
     if forecast_temp is None:
         return None
+
+    # Apply per-city static bias correction before probability calculation
+    forecast_temp = apply_station_bias(city, forecast_temp)
 
     days_out = max(0, (target_date - date.today()).days)
 
