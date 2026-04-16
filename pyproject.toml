@@ -2,6 +2,23 @@
 pythonpath = ["."]
 testpaths = ["tests"]
 
+[tool.coverage.run]
+omit = [
+    "main.py",
+    "paper.py",
+    "backtest.py",
+    "param_sweep.py",
+    "feature_importance.py",
+    "pdf_report.py",
+    "tests/*",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "if __name__ == .__main__.",
+    "pragma: no cover",
+]
+
 [tool.ruff]
 target-version = "py312"
 
@@ -31,4 +48,8 @@ ignore_errors = true
 
 [[tool.mypy.overrides]]
 module = "tests.*"
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = "pdf_report"
 ignore_errors = true
