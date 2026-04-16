@@ -2588,6 +2588,30 @@ def analyze_trade(enriched: dict) -> dict | None:
     if near_threshold:
         ci_adjusted_kelly = round(ci_adjusted_kelly * 0.75, 6)
 
+    # ── MOS forecast (station-specific post-processing) ──────────────────
+    mos_data = None
+    try:
+        import mos as _mos
+
+        _mos_station = _mos.get_mos_station(city)
+        if _mos_station:
+            mos_data = _mos.fetch_mos(_mos_station, target_date=target_date)
+    except Exception:
+        pass
+
+    # If MOS data available, blend it with blended_prob
+    if mos_data and mos_data.get("max_temp_f") is not None:
+        _mos_temp = mos_data["max_temp_f"]
+        try:
+            _mos_sigma = _forecast_uncertainty(target_date)
+            _mos_p = _forecast_probability(condition, _mos_temp, _mos_sigma)
+            if _mos_p is not None:
+                # Blend: 50% existing blended + 50% MOS-based probability
+                blended_prob = 0.5 * blended_prob + 0.5 * _mos_p
+                blended_prob = max(0.01, min(0.99, blended_prob))
+        except Exception:
+            pass
+
     _result = {
         # Core
         "forecast_prob": blended_prob,
@@ -2610,6 +2634,7 @@ def analyze_trade(enriched: dict) -> dict | None:
         "live_obs": live_obs,
         "index_adj": index_adj,
         "bias_correction": bias,
+        "mos_max_temp": mos_data["max_temp_f"] if mos_data else None,
         "blend_sources": blend_sources,
         "method": method,
         # Ensemble details
