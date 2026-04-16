@@ -2476,6 +2476,7 @@ def analyze_trade(enriched: dict) -> dict | None:
         _metar_sta = _metar_station_for_city(city)
         if (
             _metar_sta
+            and target_date == date.today()
             and condition.get("type") in ("above", "below")
             and condition.get("threshold")
         ):
@@ -2897,6 +2898,30 @@ def analyze_trade(enriched: dict) -> dict | None:
     # A 5% spread → 10% reduction; 25% spread → 50% reduction; floor at 0.50
     spread_scale = max(0.50, 1.0 - spread_cost * 2)
 
+    # ── MOS forecast (station-specific post-processing) ──────────────────
+    mos_data = None
+    try:
+        import mos as _mos
+
+        _mos_station = _mos.get_mos_station(city)
+        if _mos_station:
+            mos_data = _mos.fetch_mos(_mos_station, target_date=target_date)
+    except Exception:
+        pass
+
+    # If MOS data available, blend it with blended_prob before edge computation
+    if mos_data and mos_data.get("max_temp_f") is not None:
+        _mos_temp = mos_data["max_temp_f"]
+        try:
+            _mos_sigma = _forecast_uncertainty(target_date)
+            _mos_p = _forecast_probability(condition, _mos_temp, _mos_sigma)
+            if _mos_p is not None:
+                # Blend: 50% existing blended + 50% MOS-based probability
+                blended_prob = 0.5 * blended_prob + 0.5 * _mos_p
+                blended_prob = max(0.01, min(0.99, blended_prob))
+        except Exception as _mos_exc:
+            _log.debug("MOS probability blend failed for %s: %s", city, _mos_exc)
+
     edge = blended_prob - market_prob
 
     # #63: Time-decay edge — scale linearly to zero as market approaches close
@@ -2978,30 +3003,6 @@ def analyze_trade(enriched: dict) -> dict | None:
     # Near-threshold penalty: forecast is within ±3°F of threshold → high flip risk
     if near_threshold:
         ci_adjusted_kelly = round(ci_adjusted_kelly * 0.75, 6)
-
-    # ── MOS forecast (station-specific post-processing) ──────────────────
-    mos_data = None
-    try:
-        import mos as _mos
-
-        _mos_station = _mos.get_mos_station(city)
-        if _mos_station:
-            mos_data = _mos.fetch_mos(_mos_station, target_date=target_date)
-    except Exception:
-        pass
-
-    # If MOS data available, blend it with blended_prob
-    if mos_data and mos_data.get("max_temp_f") is not None:
-        _mos_temp = mos_data["max_temp_f"]
-        try:
-            _mos_sigma = _forecast_uncertainty(target_date)
-            _mos_p = _forecast_probability(condition, _mos_temp, _mos_sigma)
-            if _mos_p is not None:
-                # Blend: 50% existing blended + 50% MOS-based probability
-                blended_prob = 0.5 * blended_prob + 0.5 * _mos_p
-                blended_prob = max(0.01, min(0.99, blended_prob))
-        except Exception as _mos_exc:
-            _log.debug("MOS probability blend failed for %s: %s", city, _mos_exc)
 
     _result = {
         # Core
