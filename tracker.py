@@ -1798,6 +1798,47 @@ def log_analysis_attempt(
         _log.warning("log_analysis_attempt failed for %s: %s", ticker, exc)
 
 
+def batch_log_analysis_attempts(attempts: list[dict]) -> None:
+    """#perf: Bulk-insert analysis attempts in a single transaction (much faster than
+    calling log_analysis_attempt per row when scanning 100+ markets)."""
+    if not attempts:
+        return
+    init_db()
+    from datetime import UTC as _UTC
+
+    analyzed_at = datetime.now(_UTC).isoformat()
+    rows = []
+    for a in attempts:
+        td = a.get("target_date")
+        target_str = (
+            td.isoformat() if td is not None and hasattr(td, "isoformat") else str(td)
+        )
+        rows.append(
+            (
+                a.get("ticker", ""),
+                a.get("city"),
+                a.get("condition"),
+                target_str,
+                analyzed_at,
+                float(a.get("forecast_prob", 0.0)),
+                float(a.get("market_prob", 0.0)),
+                int(a.get("days_out", 0)),
+                1 if a.get("was_traded") else 0,
+            )
+        )
+    try:
+        with _conn() as con:
+            con.executemany(
+                """INSERT OR REPLACE INTO analysis_attempts
+                   (ticker, city, condition, target_date, analyzed_at,
+                    forecast_prob, market_prob, days_out, was_traded)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                rows,
+            )
+    except Exception as exc:
+        _log.warning("batch_log_analysis_attempts failed: %s", exc)
+
+
 def settle_analysis_attempt(ticker: str, target_date, outcome: int) -> None:
     """#55: Record the outcome for a previously logged analysis attempt."""
     init_db()

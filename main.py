@@ -2156,7 +2156,8 @@ def cmd_cron(client: KalshiClient, min_edge: float = MIN_EDGE) -> None:
             enriched = enrich_with_forecast(m)
             return m, enriched, analyze_trade(enriched)
 
-        with ThreadPoolExecutor(max_workers=4) as _pool:
+        _analysis_batch: list[dict] = []  # #perf: collect for single bulk insert
+        with ThreadPoolExecutor(max_workers=20) as _pool:
             _futures = {_pool.submit(_enrich_and_analyze, m): m for m in markets}
             for fut in _as_completed(_futures):
                 try:
@@ -2166,11 +2167,9 @@ def cmd_cron(client: KalshiClient, min_edge: float = MIN_EDGE) -> None:
                 if not analysis:
                     continue
                 net_edge = analysis.get("net_edge", analysis["edge"])
-                # #55: log every analyzed market so unselected-market bias is detectable
+                # #55: collect analysis attempt for bulk DB insert after loop
                 try:
                     import datetime as _dt
-
-                    from tracker import log_analysis_attempt as _log_attempt
 
                     _td = analysis.get("target_date") or enriched.get("_target_date")
                     if isinstance(_td, str):
@@ -2178,15 +2177,17 @@ def cmd_cron(client: KalshiClient, min_edge: float = MIN_EDGE) -> None:
                             _td = _dt.date.fromisoformat(_td)
                         except ValueError:
                             _td = None
-                    _log_attempt(
-                        ticker=m.get("ticker", ""),
-                        city=enriched.get("_city"),
-                        condition=str(analysis.get("condition", "")),
-                        target_date=_td,
-                        forecast_prob=analysis.get("forecast_prob", 0.0),
-                        market_prob=analysis.get("market_prob", 0.0),
-                        days_out=int(analysis.get("days_out", 0)),
-                        was_traded=False,
+                    _analysis_batch.append(
+                        {
+                            "ticker": m.get("ticker", ""),
+                            "city": enriched.get("_city"),
+                            "condition": str(analysis.get("condition", "")),
+                            "target_date": _td,
+                            "forecast_prob": analysis.get("forecast_prob", 0.0),
+                            "market_prob": analysis.get("market_prob", 0.0),
+                            "days_out": int(analysis.get("days_out", 0)),
+                            "was_traded": False,
+                        }
                     )
                 except Exception:
                     pass
@@ -2238,6 +2239,14 @@ def cmd_cron(client: KalshiClient, min_edge: float = MIN_EDGE) -> None:
         logging.getLogger(__name__).error(
             "cmd_cron: scan loop crashed: %s", _e, exc_info=True
         )
+
+    # #perf: flush analysis attempts in one batch transaction (vs one INSERT per market)
+    try:
+        from tracker import batch_log_analysis_attempts as _batch_log
+
+        _batch_log(_analysis_batch)
+    except Exception:
+        pass
 
     # Write rich signals cache for the web dashboard
     try:
@@ -4483,7 +4492,7 @@ def cmd_browse(client: KalshiClient) -> None:
                 except Exception:
                     return m.get("ticker", ""), None
 
-            with ThreadPoolExecutor(max_workers=6) as pool:
+            with ThreadPoolExecutor(max_workers=20) as pool:
                 futures = {pool.submit(_do_analyze, m): m for m in markets}
                 for fut in _as_completed(futures):
                     ticker_key, result = fut.result()

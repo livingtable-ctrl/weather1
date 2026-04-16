@@ -7,10 +7,13 @@ Provides:
 
 from __future__ import annotations
 
+import json
 import logging
 import os
+import threading
 import time
 from datetime import date, datetime
+from pathlib import Path
 
 import requests
 
@@ -37,6 +40,52 @@ _gridpoint_cache: dict = {}
 _station_cache: dict = {}
 _forecast_cache: dict = {}
 _obs_cache: dict = {}  # city -> (timestamp, observation_dict)
+
+# Per-city lock prevents concurrent threads from fetching the same city observation
+# simultaneously (thread-race fix: 4 workers × 5 cities = 20 fetches → 5 fetches)
+_obs_locks: dict[str, threading.Lock] = {}
+_obs_locks_mu = threading.Lock()
+
+# Persistent station-ID cache: station→coord mappings never change, so we can
+# avoid the NWS /observationStations round-trip on subsequent process starts.
+_STATION_CACHE_PATH = (
+    Path(__file__).resolve().parent / "data" / ".nws_station_cache.json"
+)
+
+
+def _load_station_cache() -> None:
+    """Load persisted station cache from disk into _station_cache."""
+    try:
+        if _STATION_CACHE_PATH.exists():
+            raw = json.loads(_STATION_CACHE_PATH.read_text())
+            # Keys are stored as "lat,lon" strings; convert back to tuples
+            for k, v in raw.items():
+                parts = k.split(",")
+                _station_cache[(float(parts[0]), float(parts[1]))] = v
+    except Exception as exc:
+        _log.debug("nws: could not load station cache: %s", exc)
+
+
+def _save_station_cache() -> None:
+    """Persist station cache to disk (best-effort, never raises)."""
+    try:
+        _STATION_CACHE_PATH.parent.mkdir(exist_ok=True)
+        serializable = {f"{k[0]},{k[1]}": v for k, v in _station_cache.items()}
+        _STATION_CACHE_PATH.write_text(json.dumps(serializable))
+    except Exception as exc:
+        _log.debug("nws: could not save station cache: %s", exc)
+
+
+def _get_obs_lock(city: str) -> threading.Lock:
+    """Return (creating if needed) the per-city observation lock."""
+    with _obs_locks_mu:
+        if city not in _obs_locks:
+            _obs_locks[city] = threading.Lock()
+        return _obs_locks[city]
+
+
+# Load persisted station cache at module import time
+_load_station_cache()
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -71,12 +120,19 @@ def _get_obs_station(lat: float, lon: float) -> str | None:
     if key in _station_cache:
         return _station_cache[key]
     try:
-        data = _get(f"{NWS_BASE}/points/{lat},{lon}/observationStations")
+        # NWS API: get observationStations URL from /points response (direct sub-resource
+        # path was removed in a later API version)
+        points_data = _get(f"{NWS_BASE}/points/{lat},{lon}")
+        obs_url = points_data.get("properties", {}).get("observationStations")
+        if not obs_url:
+            return None
+        data = _get(obs_url)
         features = data.get("features", [])
         if not features:
             return None
         station_id = features[0]["properties"]["stationIdentifier"]
         _station_cache[key] = station_id
+        _save_station_cache()  # persist so subsequent process starts skip this fetch
         return station_id
     except Exception:
         return None
@@ -190,35 +246,46 @@ def get_live_observation(city: str, coords: tuple) -> dict | None:
         _log.warning("NWS circuit open — skipping observation for %s", city)
         return None
 
-    try:
-        now = time.time()
-        if city in _obs_cache:
-            cached_at, obs = _obs_cache[city]
-            if now - cached_at < OBS_TTL:
-                return obs
+    # Fast path: check cache before acquiring lock
+    now = time.time()
+    if city in _obs_cache:
+        cached_at, obs = _obs_cache[city]
+        if now - cached_at < OBS_TTL:
+            return obs
 
-        lat, lon = coords[0], coords[1]
-        station_id = _get_obs_station(lat, lon)
-        if not station_id:
-            return None
+    # Per-city lock: only one thread fetches NWS for a given city at a time.
+    # Other threads for the same city wait here, then return from cache.
+    with _get_obs_lock(city):
+        try:
+            # Double-check inside lock — another thread may have just populated cache
+            now = time.time()
+            if city in _obs_cache:
+                cached_at, obs = _obs_cache[city]
+                if now - cached_at < OBS_TTL:
+                    return obs
 
-        data = _get(f"{NWS_BASE}/stations/{station_id}/observations/latest")
-        props = data.get("properties", {})
-        temp_c = (props.get("temperature") or {}).get("value")
-        if temp_c is None:
+            lat, lon = coords[0], coords[1]
+            station_id = _get_obs_station(lat, lon)
+            if not station_id:
+                return None
+
+            data = _get(f"{NWS_BASE}/stations/{station_id}/observations/latest")
+            props = data.get("properties", {})
+            temp_c = (props.get("temperature") or {}).get("value")
+            if temp_c is None:
+                return None
+            obs = {
+                "temp_f": temp_c * 9 / 5 + 32,
+                "timestamp": props.get("timestamp", ""),
+                "description": props.get("textDescription", ""),
+            }
+            _obs_cache[city] = (time.time(), obs)
+            _nws_cb.record_success()
+            return obs
+        except Exception as exc:
+            _nws_cb.record_failure()
+            _log.warning("NWS observation failed for %s: %s", city, exc)
             return None
-        obs = {
-            "temp_f": temp_c * 9 / 5 + 32,
-            "timestamp": props.get("timestamp", ""),
-            "description": props.get("textDescription", ""),
-        }
-        _obs_cache[city] = (now, obs)
-        _nws_cb.record_success()
-        return obs
-    except Exception as exc:
-        _nws_cb.record_failure()
-        _log.warning("NWS observation failed for %s: %s", city, exc)
-        return None
 
 
 def get_live_precip_obs(city: str, coords: tuple) -> float | None:
