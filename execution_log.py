@@ -9,10 +9,13 @@ Usage:
 from __future__ import annotations
 
 import json
+import logging
 import sqlite3
 import warnings
 from datetime import UTC, datetime
 from pathlib import Path
+
+_log = logging.getLogger(__name__)
 
 DB_PATH = Path(__file__).parent / "data" / "execution_log.db"
 DB_PATH.parent.mkdir(exist_ok=True)
@@ -412,22 +415,18 @@ def get_recent_orders(limit: int = 50) -> list[dict]:
 
 
 def get_order_by_id(order_id: str) -> dict | None:
-    """Fetch a single order record by order_id from execution_log.db."""
+    """Fetch a single order record by id from execution_log.db."""
     init_log()
-    conn = _conn()
     try:
-        row = conn.execute(
-            "SELECT * FROM orders WHERE order_id = ? OR id = ?",
-            (order_id, order_id),
-        ).fetchone()
-        if row:
-            return dict(row)
+        with _conn() as con:
+            row = con.execute(
+                "SELECT * FROM orders WHERE id = ?",
+                (order_id,),
+            ).fetchone()
+            if row:
+                return dict(row)
     except Exception as exc:
-        import logging as _logging
-
-        _logging.getLogger(__name__).debug("get_order_by_id: %s", exc)
-    finally:
-        conn.close()
+        _log.debug("get_order_by_id: %s", exc)
     return None
 
 

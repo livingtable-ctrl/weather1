@@ -6009,11 +6009,10 @@ def cmd_shadow_compare(client: KalshiClient) -> None:
 
 def cmd_ab_summary() -> None:
     """Show A/B test results for all active tests."""
-    from ab_test import _AB_TEST_DIR, _load_test_state
+    from ab_test import list_all_summaries
 
-    _AB_TEST_DIR.mkdir(exist_ok=True)
-    tests = list(_AB_TEST_DIR.glob("*.json"))
-    if not tests:
+    summaries = list_all_summaries()
+    if not summaries:
         print(
             dim(
                 "  No A/B tests found. Tests are created programmatically via ABTest()."
@@ -6022,9 +6021,8 @@ def cmd_ab_summary() -> None:
         return
     print(bold("\n  A/B Test Results"))
     print("  " + "─" * 48)
-    for path in tests:
-        state = _load_test_state(path.stem)
-        print(f"\n  {bold(path.stem)}")
+    for test_name, state in summaries.items():
+        print(f"\n  {bold(test_name)}")
         for variant, stats in state.items():
             trades = stats.get("trades", 0)
             win_rate = stats.get("wins", 0) / max(trades, 1)

@@ -7,7 +7,6 @@ Usage:
 
 from __future__ import annotations
 
-import json
 import logging
 from pathlib import Path
 
@@ -116,9 +115,13 @@ def run_sweep(trades: list[dict] | None = None) -> dict:
 
     # Save results
     out_path = Path(__file__).parent / "data" / "param_sweep_results.json"
-    out_path.parent.mkdir(exist_ok=True)
-    out_path.write_text(json.dumps(all_results, indent=2))
-    _log.info("param_sweep: results saved to %s", out_path)
+    import safe_io
+
+    try:
+        safe_io.atomic_write_json(all_results, out_path)
+        _log.info("param_sweep: results saved to %s", out_path)
+    except Exception as exc:
+        _log.warning("param_sweep: could not save results: %s", exc)
 
     return all_results
 

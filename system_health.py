@@ -32,7 +32,9 @@ def check_system_health() -> HealthStatus:
     try:
         import psutil
 
-        cpu = psutil.cpu_percent(interval=0.5)
+        # Use interval=None (non-blocking) — compares CPU usage since last call.
+        # First call ever returns 0.0; all subsequent calls return a real reading.
+        cpu = psutil.cpu_percent(interval=None)
         mem = psutil.virtual_memory().percent
 
         if cpu >= CPU_WARN_PCT:

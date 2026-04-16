@@ -25,23 +25,31 @@ from typing import Any
 _log = logging.getLogger(__name__)
 
 _AB_TEST_DIR = Path(__file__).parent / "data" / "ab_tests"
+_AB_TEST_DIR.mkdir(parents=True, exist_ok=True)
+
+_DEFAULT_MAX_TRADES = 50  # matches ABTest.max_trades_per_variant default
 
 
 def _load_test_state(test_name: str) -> dict:
-    _AB_TEST_DIR.mkdir(exist_ok=True)
     path = _AB_TEST_DIR / f"{test_name}.json"
     if path.exists():
         try:
             return json.loads(path.read_text())
-        except Exception:
-            pass
+        except Exception as exc:
+            _log.warning(
+                "ab_test: corrupted state file %s, starting fresh: %s", path, exc
+            )
     return {}
 
 
 def _save_test_state(test_name: str, state: dict) -> None:
-    _AB_TEST_DIR.mkdir(exist_ok=True)
+    import safe_io
+
     path = _AB_TEST_DIR / f"{test_name}.json"
-    path.write_text(json.dumps(state, indent=2))
+    try:
+        safe_io.atomic_write_json(state, path)
+    except Exception as exc:
+        _log.warning("ab_test: failed to save state for %r: %s", test_name, exc)
 
 
 class ABTest:
@@ -65,6 +73,7 @@ class ABTest:
         self._state = _load_test_state(name)
 
         # Initialize state for new variants
+        changed = False
         for v in variants:
             if v not in self._state:
                 self._state[v] = {
@@ -74,7 +83,9 @@ class ABTest:
                     "disabled": False,
                     "created_at": time.time(),
                 }
-        _save_test_state(name, self._state)
+                changed = True
+        if changed:
+            _save_test_state(name, self._state)
 
     def pick_variant(self) -> tuple[str, Any]:
         """Pick an active variant (round-robin among non-disabled, non-exhausted variants)."""
@@ -141,10 +152,19 @@ class ABTest:
         return out
 
 
-def get_active_variant(test_name: str, param_name: str) -> tuple[str, Any]:
+def list_all_summaries() -> dict[str, dict]:
+    """Return summary stats for all tests found on disk."""
+    summaries = {}
+    for path in sorted(_AB_TEST_DIR.glob("*.json")):
+        summaries[path.stem] = _load_test_state(path.stem)
+    return summaries
+
+
+def get_active_variant(test_name: str) -> tuple[str, Any]:
     """
-    Convenience function: load a named test from disk and pick a variant.
-    Returns (variant_name, value). Falls back to env var if test not found.
+    Convenience: load a named test from disk and pick the active variant.
+    Returns (variant_name, None) — the value lives in the ABTest definition.
+    Falls back to ("control", None) if test not found or all variants exhausted.
     """
     try:
         state = _load_test_state(test_name)
@@ -152,11 +172,11 @@ def get_active_variant(test_name: str, param_name: str) -> tuple[str, Any]:
             active = [
                 v
                 for v, s in state.items()
-                if not s.get("disabled", False) and s.get("trades", 0) < 50
+                if not s.get("disabled", False)
+                and s.get("trades", 0) < _DEFAULT_MAX_TRADES
             ]
             if active:
                 chosen = min(active, key=lambda v: state[v]["trades"])
-                # The value is stored in the test definition, not state — return variant name only
                 return chosen, None
     except Exception as exc:
         _log.debug("get_active_variant: %s", exc)
