@@ -2609,8 +2609,8 @@ def analyze_trade(enriched: dict) -> dict | None:
                 # Blend: 50% existing blended + 50% MOS-based probability
                 blended_prob = 0.5 * blended_prob + 0.5 * _mos_p
                 blended_prob = max(0.01, min(0.99, blended_prob))
-        except Exception:
-            pass
+        except Exception as _mos_exc:
+            _log.debug("MOS probability blend failed for %s: %s", city, _mos_exc)
 
     _result = {
         # Core

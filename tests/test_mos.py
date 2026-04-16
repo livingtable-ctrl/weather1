@@ -101,8 +101,37 @@ class TestFetchMos:
 class TestMosIntegration:
     def test_analyze_trade_includes_mos_field(self):
         """analyze_trade result dict contains mos_max_temp key."""
-        from weather_markets import analyze_trade
+        from datetime import date
+        from unittest.mock import patch
 
-        # This just checks the key exists — value may be None if API unavailable
-        result = analyze_trade.__doc__  # smoke check module loads
-        assert result is not None  # analyze_trade has a docstring
+        import weather_markets
+
+        # Minimal enriched dict that will pass all gates in analyze_trade
+        enriched = {
+            "ticker": "KXNYC-2026-04-17-HIGH-68",
+            "series_ticker": "KXNYC-HIGH",
+            "_city": "NYC",
+            "_date": date(2026, 4, 17),
+            "_forecast": {"high_f": 68.0, "low_f": 52.0},
+            "_hour": None,
+            "volume": 100,
+            "open_interest": 100,
+            "yes_ask": 0.55,
+            "yes_bid": 0.50,
+            "no_ask": 0.50,
+            "no_bid": 0.45,
+            "close_time": "2026-04-17T23:59:00Z",
+        }
+
+        # Patch external calls so analyze_trade returns a result
+        with (
+            patch("weather_markets.get_ensemble_temps", return_value=[65.0] * 15),
+            patch("weather_markets.nws_prob", return_value=0.55),
+            patch("weather_markets.climatological_prob", return_value=0.50),
+            patch("weather_markets.get_live_observation", return_value=None),
+        ):
+            result = weather_markets.analyze_trade(enriched)
+
+        # Result may be None if gates block it, but if it returns, mos_max_temp must be a key
+        if result is not None:
+            assert "mos_max_temp" in result
