@@ -21,7 +21,7 @@ DB_PATH.parent.mkdir(exist_ok=True)
 
 _db_initialized = False
 
-_SCHEMA_VERSION = 9  # increment when _MIGRATIONS list grows
+_SCHEMA_VERSION = 10  # increment when _MIGRATIONS list grows
 
 _MIGRATIONS = [
     # v1 → v2: add condition_type column (if not already added)
@@ -70,6 +70,8 @@ _MIGRATIONS = [
     "ALTER TABLE predictions ADD COLUMN ensemble_prob REAL",
     "ALTER TABLE predictions ADD COLUMN nws_prob REAL",
     "ALTER TABLE predictions ADD COLUMN clim_prob REAL",
+    # v9 → v10: strategy version stamp on each prediction row (P9.1)
+    "ALTER TABLE predictions ADD COLUMN edge_calc_version TEXT",
 ]
 
 
@@ -290,11 +292,13 @@ def log_prediction(
     ensemble_prob: float | None = None,
     nws_prob: float | None = None,
     clim_prob: float | None = None,
+    edge_calc_version: str | None = None,
 ) -> None:
     """Save a prediction to the database.
     Stores both the raw (pre-bias-correction) probability and the adjusted one (#53).
     #37: Optionally stores the NWP forecast cycle (00z/06z/12z/18z).
     #84: Optionally stores blend_sources dict (model weights) as JSON.
+    P9.1: Optionally stores edge_calc_version for strategy version tracking.
     """
     import json as _json
 
@@ -323,7 +327,7 @@ def log_prediction(
                 UPDATE predictions SET
                     our_prob=?, raw_prob=?, market_prob=?, edge=?, method=?, n_members=?,
                     days_out=?, forecast_cycle=?, blend_sources=?,
-                    ensemble_prob=?, nws_prob=?, clim_prob=?
+                    ensemble_prob=?, nws_prob=?, clim_prob=?, edge_calc_version=?
                 WHERE id=?
             """,
                 (
@@ -339,6 +343,7 @@ def log_prediction(
                     ensemble_prob,
                     nws_prob,
                     clim_prob,
+                    edge_calc_version,
                     existing["id"],
                 ),
             )
@@ -349,8 +354,8 @@ def log_prediction(
                   (ticker, city, market_date, condition_type,
                    threshold_lo, threshold_hi, our_prob, raw_prob, market_prob,
                    edge, method, n_members, predicted_at, days_out, forecast_cycle,
-                   blend_sources, ensemble_prob, nws_prob, clim_prob)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'),?,?,?,?,?,?)
+                   blend_sources, ensemble_prob, nws_prob, clim_prob, edge_calc_version)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'),?,?,?,?,?,?,?)
             """,
                 (
                     ticker,
@@ -371,6 +376,7 @@ def log_prediction(
                     ensemble_prob,
                     nws_prob,
                     clim_prob,
+                    edge_calc_version,
                 ),
             )
 
@@ -1550,6 +1556,199 @@ def get_model_calibration_buckets() -> dict:
             }
         )
     return {"buckets": result_buckets}
+
+
+# ── P9.1: Strategy version performance comparison ─────────────────────────────
+
+_RETIRED_PATH = Path(__file__).parent / "data" / "retired_strategies.json"
+
+
+def get_brier_by_version(min_samples: int = 10) -> dict[str, dict]:
+    """P9.1: Brier score and sample count grouped by edge_calc_version.
+
+    Returns {version: {"brier": float, "n": int}} for versions with enough settled
+    predictions. Enables formal comparison across strategy releases.
+    """
+    init_db()
+    with _conn() as con:
+        rows = con.execute("""
+            SELECT p.edge_calc_version, p.our_prob, o.settled_yes
+            FROM predictions p
+            JOIN outcomes o ON p.ticker = o.ticker
+            WHERE p.our_prob IS NOT NULL
+              AND p.edge_calc_version IS NOT NULL
+        """).fetchall()
+
+    by_version: dict[str, list[float]] = {}
+    for r in rows:
+        by_version.setdefault(r["edge_calc_version"], []).append(
+            (r["our_prob"] - r["settled_yes"]) ** 2
+        )
+
+    return {
+        v: {"brier": round(sum(errs) / len(errs), 4), "n": len(errs)}
+        for v, errs in by_version.items()
+        if len(errs) >= min_samples
+    }
+
+
+# ── P9.5: Strategy retirement ─────────────────────────────────────────────────
+
+
+def get_retired_strategies() -> dict[str, dict]:
+    """P9.5: Load retired strategy methods from disk.
+
+    Returns {method: {"retired_at": str, "reason": str, "brier": float}}.
+    """
+    if not _RETIRED_PATH.exists():
+        return {}
+    try:
+        import json as _json
+
+        with open(_RETIRED_PATH) as f:
+            return _json.load(f)
+    except Exception:
+        return {}
+
+
+def _save_retired_strategies(retired: dict) -> None:
+    import json as _json
+    import os as _os
+    import tempfile as _tempfile
+
+    _RETIRED_PATH.parent.mkdir(exist_ok=True)
+    fd, tmp = _tempfile.mkstemp(
+        dir=_RETIRED_PATH.parent, prefix=".retired_", suffix=".json"
+    )
+    try:
+        with _os.fdopen(fd, "w") as f:
+            _json.dump(retired, f, indent=2)
+        _os.replace(tmp, _RETIRED_PATH)
+    except Exception:
+        try:
+            _os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
+def auto_retire_strategies(
+    min_samples: int = 20,
+    retire_threshold: float = 0.25,
+) -> list[str]:
+    """P9.5: Auto-retire forecasting methods whose Brier score exceeds retire_threshold.
+
+    Brier score > 0.25 means worse than random chance. Methods are persisted to
+    data/retired_strategies.json and can be unretired via unretire_strategy().
+
+    Args:
+        min_samples: minimum settled predictions required before a method is eligible.
+        retire_threshold: Brier score above which a method is considered failing.
+
+    Returns list of newly retired method names.
+    """
+    now_str = datetime.now(UTC).isoformat()
+    scores = brier_score_by_method(min_samples=min_samples)
+    retired = get_retired_strategies()
+    newly_retired: list[str] = []
+
+    for method, brier in scores.items():
+        if method not in retired and brier > retire_threshold:
+            retired[method] = {
+                "retired_at": now_str,
+                "reason": f"Brier {brier:.4f} > threshold {retire_threshold:.4f}",
+                "brier": brier,
+            }
+            newly_retired.append(method)
+            _log.warning(
+                "strategy_retirement: retired method=%s brier=%.4f threshold=%.4f",
+                method,
+                brier,
+                retire_threshold,
+            )
+
+    if newly_retired:
+        _save_retired_strategies(retired)
+
+    return newly_retired
+
+
+def unretire_strategy(method: str) -> bool:
+    """P9.5: Manually un-retire a strategy method. Returns True if it was retired."""
+    retired = get_retired_strategies()
+    if method in retired:
+        del retired[method]
+        _save_retired_strategies(retired)
+        _log.info("strategy_retirement: un-retired method=%s", method)
+        return True
+    return False
+
+
+# ── P10.1: Drift detection ────────────────────────────────────────────────────
+
+
+def detect_brier_drift(
+    min_weeks: int = 6,
+    degradation_threshold: float = 0.05,
+) -> dict:
+    """P10.1: Detect slow Brier score degradation over time.
+
+    Splits available weekly Brier scores into an early half and recent half.
+    Flags drift when recent_avg - early_avg > degradation_threshold.
+
+    Returns:
+        {
+            "drifting": bool,
+            "early_brier": float | None,
+            "recent_brier": float | None,
+            "delta": float | None,
+            "weeks_analyzed": int,
+            "message": str,
+        }
+    """
+    weekly = get_brier_over_time(weeks=24)
+    n = len(weekly)
+
+    if n < min_weeks:
+        return {
+            "drifting": False,
+            "early_brier": None,
+            "recent_brier": None,
+            "delta": None,
+            "weeks_analyzed": n,
+            "message": f"Insufficient data: {n} weeks (need {min_weeks})",
+        }
+
+    mid = n // 2
+    early = weekly[:mid]
+    recent = weekly[mid:]
+
+    early_avg = sum(w["brier"] for w in early) / len(early)
+    recent_avg = sum(w["brier"] for w in recent) / len(recent)
+    delta = recent_avg - early_avg
+    drifting = delta > degradation_threshold
+
+    if drifting:
+        _log.warning(
+            "drift_detection: Brier degraded early=%.4f recent=%.4f delta=+%.4f (threshold=%.4f)",
+            early_avg,
+            recent_avg,
+            delta,
+            degradation_threshold,
+        )
+
+    return {
+        "drifting": drifting,
+        "early_brier": round(early_avg, 4),
+        "recent_brier": round(recent_avg, 4),
+        "delta": round(delta, 4),
+        "weeks_analyzed": n,
+        "message": (
+            f"Drift detected: Brier degraded +{delta:.4f} (early={early_avg:.4f} → recent={recent_avg:.4f})"
+            if drifting
+            else f"No drift: delta={delta:+.4f} (early={early_avg:.4f}, recent={recent_avg:.4f})"
+        ),
+    }
 
 
 # ── Unselected bias tracking (#55) ────────────────────────────────────────────

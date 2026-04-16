@@ -135,11 +135,11 @@ Legend: ✅ Done | ⚠️ Partial | ❌ Missing
 
 | # | Item | Status | Notes |
 |---|------|--------|-------|
-| 9.1 | Strategy versioning — track performance across versions | ⚠️ | `EDGE_CALC_VERSION` stamps all outputs. Git history tracks changes. No formal versioned performance comparison. |
+| 9.1 | Strategy versioning — track performance across versions | ✅ | `edge_calc_version` column in predictions DB (migration v10). `get_brier_by_version()` compares Brier per version. `py main.py versions`. |
 | 9.2 | Edge decay tracking — disable weakening strategies | ✅ | `get_edge_decay_curve(condition_type)` in `tracker.py`. Per-method Brier scaling disables poor methods (0.75×). |
 | 9.3 | Regime detection — adapt to market conditions | ✅ | `regime.py` detects heat dome, cold snap, blocking high, volatile patterns. `_get_enso_phase()` in `weather_markets.py`. |
 | 9.4 | Adaptive learning loop — adjust thresholds from performance | ✅ | `_dynamic_model_weights` from MAE. `update_learned_weights_from_tracker`. `calibrate_seasonal_weights` grid search. |
-| 9.5 | Strategy retirement — auto-remove failing strategies | ❌ | Not implemented. |
+| 9.5 | Strategy retirement — auto-remove failing strategies | ✅ | `auto_retire_strategies()` in `tracker.py` retires methods with Brier > 0.25 over 20+ samples. Persisted to `data/retired_strategies.json`. `unretire_strategy()`. `cmd_retire_strategies()` + `py main.py retire --run`. Checked at cron startup. |
 
 ---
 
@@ -147,10 +147,10 @@ Legend: ✅ Done | ⚠️ Partial | ❌ Missing
 
 | # | Item | Status | Notes |
 |---|------|--------|-------|
-| 10.1 | Drift detection — slow performance degradation | ❌ | Brier degradation warning on startup is the closest proxy. No formal drift detection. |
-| 10.2 | Black swan mode — emergency shutdown under abnormal conditions | ❌ | Not implemented. Extreme drawdown halts sizing but does not change position-taking logic. |
-| 10.3 | Config integrity — single source, detect cross-module mismatches | ⚠️ | All config via `utils.py` env vars. `SCHEMA_VERSION = 9` in tracker. No cross-module config hash/checksum. |
-| 10.4 | Feature sprawl control — remove unused logic | ⚠️ | `main.py` is ~5900 lines. No formal dead-code detection or removal process. |
+| 10.1 | Drift detection — slow performance degradation | ✅ | `detect_brier_drift()` in `tracker.py` splits weekly Brier into early/recent halves; flags degradation > 0.05. Checked at cron startup (non-blocking warning). `py main.py drift`. |
+| 10.2 | Black swan mode — emergency shutdown under abnormal conditions | ✅ | `check_black_swan_conditions()` in `alerts.py` detects 10+ consecutive losses, 20%+ daily loss, Brier > 0.30. `activate_black_swan_halt()` auto-activates kill switch + writes `data/.black_swan_active`. `run_black_swan_check()` called at cron startup (blocking). `py main.py resume` clears state. |
+| 10.3 | Config integrity — single source, detect cross-module mismatches | ✅ | `get_config_fingerprint()` + `check_config_integrity()` in `utils.py`. SHA-256 hash of all env-config values persisted to `data/.config_hash`. Warns on change at cron startup. `py main.py config-check`. |
+| 10.4 | Feature sprawl control — remove unused logic | ✅ | `cmd_code_audit()` in `main.py` uses `ast` to list file sizes, function counts, and orphan `cmd_*` functions not wired into the dispatch router. `py main.py code-audit`. |
 
 ---
 
@@ -167,13 +167,8 @@ Legend: ✅ Done | ⚠️ Partial | ❌ Missing
 | P6 Data Engineering | 6 | 6 | 0 | 0 |
 | P7 Market Realism | 4 | 4 | 0 | 0 |
 | P8 Monitoring | 4 | 4 | 0 | 0 |
-| P9 Strategy Intelligence | 5 | 3 | 1 | 1 |
-| P10 Long-Term Health | 4 | 0 | 2 | 2 |
-| **TOTAL** | **71** | **65** | **3** | **3** |
+| P9 Strategy Intelligence | 5 | 5 | 0 | 0 |
+| P10 Long-Term Health | 4 | 4 | 0 | 0 |
+| **TOTAL** | **71** | **71** | **0** | **0** |
 
-**92% fully done, 4% partial, 4% missing.**
-
-### Remaining gaps by priority:
-- **❌ P9.5**: Strategy retirement system
-- **❌ P10.1**: Drift detection
-- **❌ P10.2**: Black swan emergency shutdown mode
+**100% fully done. Updated 2026-04-16.**

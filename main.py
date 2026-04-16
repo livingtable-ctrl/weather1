@@ -783,6 +783,8 @@ def cmd_market(client: KalshiClient, ticker: str, verbose: bool = False):
 
         # Log to tracker
         try:
+            from weather_markets import EDGE_CALC_VERSION as _ECV
+
             log_prediction(
                 ticker,
                 enriched.get("_city"),
@@ -792,6 +794,7 @@ def cmd_market(client: KalshiClient, ticker: str, verbose: bool = False):
                 nws_prob=analysis.get("nws_prob"),
                 clim_prob=analysis.get("clim_prob"),
                 forecast_cycle=_current_forecast_cycle(),
+                edge_calc_version=_ECV,
             )
         except Exception:
             pass
@@ -1998,6 +2001,55 @@ def cmd_cron(client: KalshiClient, min_edge: float = MIN_EDGE) -> None:
         _run_anomaly_check(log_results=True)
     except Exception as _e:
         _log.debug("cmd_cron: run_anomaly_check failed: %s", _e)
+
+    # P10.2 — black swan emergency shutdown check
+    try:
+        from alerts import run_black_swan_check as _run_black_swan_check
+
+        _bs_conditions = _run_black_swan_check()
+        if _bs_conditions:
+            _log.critical(
+                "cmd_cron: BLACK SWAN conditions triggered — halting. Conditions: %s",
+                _bs_conditions,
+            )
+            _release_cron_lock()
+            _clear_cron_running_flag()
+            return
+    except Exception as _e:
+        _log.debug("cmd_cron: run_black_swan_check failed: %s", _e)
+
+    # P10.1 — drift detection (log warning only, non-blocking)
+    try:
+        from tracker import detect_brier_drift as _detect_brier_drift
+
+        _drift = _detect_brier_drift()
+        if _drift["drifting"]:
+            _log.warning("cmd_cron: %s", _drift["message"])
+    except Exception as _e:
+        _log.debug("cmd_cron: detect_brier_drift failed: %s", _e)
+
+    # P9.5 — strategy retirement check (log-only, non-blocking)
+    try:
+        from tracker import auto_retire_strategies as _auto_retire
+
+        _newly_retired = _auto_retire()
+        if _newly_retired:
+            _log.warning("cmd_cron: auto-retired strategy methods: %s", _newly_retired)
+    except Exception as _e:
+        _log.debug("cmd_cron: auto_retire_strategies failed: %s", _e)
+
+    # P10.3 — config integrity check (log warning if changed)
+    try:
+        from utils import check_config_integrity as _check_config_integrity
+
+        _cfg = _check_config_integrity()
+        if _cfg["changed"]:
+            _log.warning(
+                "cmd_cron: config changed since last run — keys: %s",
+                _cfg["changed_keys"],
+            )
+    except Exception as _e:
+        _log.debug("cmd_cron: check_config_integrity failed: %s", _e)
 
     log_path = Path(__file__).parent / "data" / "cron.log"
     log_path.parent.mkdir(exist_ok=True)
@@ -3868,13 +3920,182 @@ def cmd_kill() -> None:
 
 
 def cmd_resume() -> None:
-    """Remove the kill switch — re-enables automated trading."""
+    """Remove the kill switch — re-enables automated trading. Also clears black swan state."""
     kill_path = Path(__file__).parent / "data" / ".kill_switch"
     if kill_path.exists():
         kill_path.unlink()
         print(green("  Kill switch removed. Trading re-enabled."))
     else:
         print(dim("  No kill switch active."))
+
+    # P10.2: also clear black swan state file if present
+    try:
+        from alerts import clear_black_swan_state as _clear_bs
+        from alerts import get_black_swan_status as _bs_status
+
+        bs = _bs_status()
+        if bs:
+            _clear_bs()
+            print(
+                yellow(
+                    f"  Black swan state cleared (was: {bs.get('reason', 'unknown')[:60]})"
+                )
+            )
+    except Exception:
+        pass
+
+
+def cmd_drift() -> None:
+    """P10.1: Show Brier score drift analysis — detects slow performance degradation."""
+    from tracker import detect_brier_drift
+
+    result = detect_brier_drift()
+    _header("Brier Drift Analysis", width=58)
+    print(f"  Weeks analyzed : {result['weeks_analyzed']}")
+    if result["early_brier"] is not None:
+        status = red("DRIFT DETECTED") if result["drifting"] else green("OK")
+        print(f"  Early Brier    : {result['early_brier']:.4f}")
+        print(f"  Recent Brier   : {result['recent_brier']:.4f}")
+        delta = result["delta"]
+        delta_str = f"{delta:+.4f}"
+        print(
+            f"  Delta          : {red(delta_str) if result['drifting'] else dim(delta_str)}"
+        )
+        print(f"  Status         : {status}")
+    print(f"\n  {result['message']}\n")
+
+
+def cmd_version_compare() -> None:
+    """P9.1: Compare Brier scores across strategy versions (edge_calc_version)."""
+    from tracker import get_brier_by_version
+
+    versions = get_brier_by_version()
+    _header("Strategy Version Performance", width=50)
+    if not versions:
+        print(dim("  No version-stamped predictions settled yet."))
+        print(dim("  Predictions will be stamped once trading resumes.\n"))
+        return
+    print(f"  {'Version':<12} {'Brier':>8} {'Samples':>9}")
+    print("  " + "─" * 32)
+    for v, info in sorted(versions.items()):
+        brier_str = f"{info['brier']:.4f}"
+        color_fn = (
+            green if info["brier"] < 0.20 else (yellow if info["brier"] < 0.25 else red)
+        )
+        print(f"  {v:<12} {color_fn(brier_str):>8} {info['n']:>9}")
+    print()
+
+
+def cmd_retire_strategies(run: bool = False) -> None:
+    """P9.5: Show retired strategy methods; with --run auto-retires failing ones."""
+    from tracker import auto_retire_strategies, get_retired_strategies
+
+    if run:
+        newly = auto_retire_strategies()
+        if newly:
+            print(
+                red(
+                    f"\n  Retired {len(newly)} strategy method(s): {', '.join(newly)}\n"
+                )
+            )
+        else:
+            print(
+                green("\n  No new strategies retired — all methods within threshold.\n")
+            )
+
+    retired = get_retired_strategies()
+    _header("Retired Strategies", width=58)
+    if not retired:
+        print(dim("  No strategies retired yet.\n"))
+        return
+    print(f"  {'Method':<30} {'Brier':>8} {'Retired At'}")
+    print("  " + "─" * 62)
+    for method, info in retired.items():
+        brier_str = f"{info.get('brier', 0):.4f}"
+        retired_at = info.get("retired_at", "")[:19]
+        print(f"  {method:<30} {red(brier_str):>8}  {dim(retired_at)}")
+    print()
+
+
+def cmd_config_check() -> None:
+    """P10.3: Show current config fingerprint and detect cross-run changes."""
+    from utils import check_config_integrity, get_config_fingerprint
+
+    result = check_config_integrity()
+    fp = get_config_fingerprint()
+
+    _header("Config Integrity", width=58)
+    status = red("CHANGED") if result["changed"] else green("UNCHANGED")
+    print(f"  Status         : {status}")
+    print(f"  Current hash   : {result['current_hash']}")
+    if result["previous_hash"]:
+        print(f"  Previous hash  : {result['previous_hash']}")
+    if result["changed_keys"]:
+        print(f"  Changed keys   : {', '.join(result['changed_keys'])}")
+    print()
+    print(f"  {'Parameter':<28} {'Value'}")
+    print("  " + "─" * 48)
+    for k, v in fp.items():
+        highlight = bold if k in result.get("changed_keys", []) else dim
+        print(f"  {k:<28} {highlight(str(v))}")
+    print()
+
+
+def cmd_code_audit() -> None:
+    """P10.4: Feature sprawl audit — list file sizes and orphan cmd_ functions."""
+    import ast
+
+    base = Path(__file__).parent
+    py_files = sorted(base.glob("*.py"))
+
+    _header("Code Audit", width=62)
+    print(f"  {'File':<35} {'Lines':>7} {'Functions':>10}")
+    print("  " + "─" * 56)
+
+    total_lines = 0
+    all_defined: dict[str, str] = {}  # name → file
+
+    for fp in py_files:
+        try:
+            src = fp.read_text(encoding="utf-8")
+            lines = src.count("\n")
+            total_lines += lines
+            try:
+                tree = ast.parse(src)
+                fns = [
+                    n.name
+                    for n in ast.walk(tree)
+                    if isinstance(n, ast.FunctionDef) and not n.name.startswith("_")
+                ]
+                for fn in fns:
+                    all_defined[fn] = fp.name
+                fn_count = len(fns)
+            except SyntaxError:
+                fn_count = 0
+            flag = (
+                red(" !!!") if lines > 3000 else (yellow(" !") if lines > 1000 else "")
+            )
+            print(f"  {fp.name:<35} {lines:>7}{flag}  {fn_count:>8}")
+        except Exception:
+            pass
+
+    print(f"\n  Total: {total_lines:,} lines across {len(py_files)} files")
+
+    # Find cmd_ functions defined but not referenced in the dispatch block
+    try:
+        main_src = (base / "main.py").read_text(encoding="utf-8")
+        dispatch_src = main_src[main_src.find("def main(") :]
+        defined_cmds = [n for n in all_defined if n.startswith("cmd_")]
+        orphans = [c for c in defined_cmds if c not in dispatch_src]
+        if orphans:
+            print(f"\n  {yellow('Orphan cmd_ functions (not in dispatch):')}")
+            for fn in sorted(orphans):
+                print(f"    {dim(fn)}  [{all_defined[fn]}]")
+        else:
+            print(f"\n  {green('All cmd_ functions are referenced in dispatch.')}")
+    except Exception:
+        pass
+    print()
 
 
 def cmd_features() -> None:
@@ -6391,6 +6612,17 @@ def main():
         cmd_ab_summary()
     elif cmd == "sweep":
         cmd_sweep()
+    elif cmd == "drift":
+        cmd_drift()
+    elif cmd in ("version-compare", "versions"):
+        cmd_version_compare()
+    elif cmd in ("retire", "retire-strategies"):
+        do_run = "--run" in sys.argv[2:]
+        cmd_retire_strategies(run=do_run)
+    elif cmd in ("config-check", "config"):
+        cmd_config_check()
+    elif cmd in ("code-audit", "audit"):
+        cmd_code_audit()
     else:
         print(red(f"Unknown command: {cmd}"))
         print(dim("Run  py main.py  for the interactive menu."))

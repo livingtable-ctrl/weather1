@@ -84,3 +84,95 @@ def _setup_logging() -> logging.Logger:
 
 
 logger = _setup_logging()
+
+
+# ── P10.3: Config integrity ───────────────────────────────────────────────────
+
+_CONFIG_HASH_PATH = (
+    __import__("pathlib").Path(__file__).parent / "data" / ".config_hash"
+)
+
+
+def get_config_fingerprint() -> dict:
+    """P10.3: Return a snapshot of all env-configurable parameters.
+
+    This is the single source of truth for what config is currently active.
+    Changes between runs can be detected by comparing fingerprints.
+    """
+    return {
+        "KALSHI_FEE_RATE": KALSHI_FEE_RATE,
+        "MIN_EDGE": MIN_EDGE,
+        "PAPER_MIN_EDGE": PAPER_MIN_EDGE,
+        "STRONG_EDGE": STRONG_EDGE,
+        "MED_EDGE": MED_EDGE,
+        "MAX_DAILY_SPEND": MAX_DAILY_SPEND,
+        "MAX_DAILY_LOSS_PCT": MAX_DAILY_LOSS_PCT,
+        "MAX_DAYS_OUT": MAX_DAYS_OUT,
+        "MAX_POSITION_AGE_DAYS": MAX_POSITION_AGE_DAYS,
+        "STRATEGY": STRATEGY,
+        "FIXED_BET_PCT": FIXED_BET_PCT,
+        "FIXED_BET_DOLLARS": FIXED_BET_DOLLARS,
+        "DRAWDOWN_HALT_PCT": DRAWDOWN_HALT_PCT,
+    }
+
+
+def _hash_fingerprint(fp: dict) -> str:
+    import hashlib
+    import json
+
+    canonical = json.dumps(fp, sort_keys=True)
+    return hashlib.sha256(canonical.encode()).hexdigest()[:16]
+
+
+def check_config_integrity() -> dict:
+    """P10.3: Compare current config against the last-seen fingerprint.
+
+    Writes the current hash to data/.config_hash on first run or if config changed.
+
+    Returns:
+        {
+            "changed": bool,
+            "current_hash": str,
+            "previous_hash": str | None,
+            "changed_keys": list[str],   # keys whose values changed
+        }
+    """
+    import json
+
+    fp = get_config_fingerprint()
+    current_hash = _hash_fingerprint(fp)
+    _CONFIG_HASH_PATH.parent.mkdir(exist_ok=True)
+
+    previous_hash: str | None = None
+    previous_fp: dict = {}
+    if _CONFIG_HASH_PATH.exists():
+        try:
+            stored = json.loads(_CONFIG_HASH_PATH.read_text())
+            previous_hash = stored.get("hash")
+            previous_fp = stored.get("fingerprint", {})
+        except Exception:
+            pass
+
+    changed = previous_hash is not None and current_hash != previous_hash
+    changed_keys = [k for k in fp if fp.get(k) != previous_fp.get(k)] if changed else []
+
+    if previous_hash is None or changed:
+        try:
+            _CONFIG_HASH_PATH.write_text(
+                json.dumps({"hash": current_hash, "fingerprint": fp}, indent=2)
+            )
+        except Exception:
+            pass
+
+    if changed:
+        logging.getLogger(__name__).warning(
+            "config_integrity: config changed since last run — changed keys: %s",
+            changed_keys,
+        )
+
+    return {
+        "changed": changed,
+        "current_hash": current_hash,
+        "previous_hash": previous_hash,
+        "changed_keys": changed_keys,
+    }

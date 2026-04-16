@@ -274,3 +274,171 @@ def run_anomaly_check(log_results: bool = True) -> list[str]:
     except Exception as exc:
         _log.debug("run_anomaly_check: %s", exc)
         return []
+
+
+# ── P10.2: Black swan emergency shutdown ──────────────────────────────────────
+
+_BLACK_SWAN_PATH = Path(__file__).parent / "data" / ".black_swan_active"
+_KILL_SWITCH_PATH = Path(__file__).parent / "data" / ".kill_switch"
+
+# Thresholds — configurable via env
+BLACK_SWAN_CONSEC_LOSSES = int(os.getenv("BLACK_SWAN_CONSEC_LOSSES", "10"))
+BLACK_SWAN_DAILY_LOSS_PCT = float(os.getenv("BLACK_SWAN_DAILY_LOSS_PCT", "0.20"))
+BLACK_SWAN_BRIER_THRESHOLD = float(os.getenv("BLACK_SWAN_BRIER_THRESHOLD", "0.30"))
+
+
+def check_black_swan_conditions(
+    trades: list[dict],
+    balance: float | None = None,
+    peak_balance: float | None = None,
+) -> list[str]:
+    """P10.2: Detect extreme abnormal conditions that warrant emergency shutdown.
+
+    Checks beyond the standard anomaly thresholds:
+    1. 10+ consecutive losses (vs 5+ for regular anomaly alert)
+    2. Single-day loss > 20% of peak balance
+    3. Brier score collapse > 0.30 (well below random chance = 0.25)
+
+    Returns list of triggered condition strings (empty if all clear).
+    """
+    triggered: list[str] = []
+    if not trades:
+        return triggered
+
+    # 1. Extreme consecutive losses
+    recent = sorted(
+        trades, key=lambda t: t.get("placed_at", t.get("ts", 0)), reverse=True
+    )
+    outcomes = [t.get("outcome") for t in recent if t.get("outcome") in ("yes", "no")]
+    consec = 0
+    for o in outcomes:
+        if o == "no":
+            consec += 1
+        else:
+            break
+    if consec >= BLACK_SWAN_CONSEC_LOSSES:
+        triggered.append(
+            f"BLACK SWAN — extreme consecutive losses: {consec} in a row "
+            f"(threshold: {BLACK_SWAN_CONSEC_LOSSES})"
+        )
+
+    # 2. Single-day loss > threshold of peak balance
+    if balance is not None and peak_balance is not None and peak_balance > 0:
+        today_str = datetime.now(UTC).date().isoformat()
+        # Try to find today's opening balance from trades
+        today_trades = [
+            t
+            for t in trades
+            if str(t.get("placed_at", t.get("ts", ""))).startswith(today_str)
+        ]
+        if today_trades:
+            # Today's P&L from settled trades
+            today_pnl = sum(
+                float(t.get("pnl", 0) or 0)
+                for t in today_trades
+                if t.get("outcome") in ("yes", "no")
+            )
+            daily_loss_pct = -today_pnl / peak_balance if today_pnl < 0 else 0.0
+            if daily_loss_pct >= BLACK_SWAN_DAILY_LOSS_PCT:
+                triggered.append(
+                    f"BLACK SWAN — extreme daily loss: {daily_loss_pct:.1%} of peak balance "
+                    f"(threshold: {BLACK_SWAN_DAILY_LOSS_PCT:.0%})"
+                )
+
+    # 3. Brier score collapse
+    try:
+        from tracker import brier_score as _brier_score
+
+        bs = _brier_score()
+        if bs is not None and bs > BLACK_SWAN_BRIER_THRESHOLD:
+            triggered.append(
+                f"BLACK SWAN — Brier score collapse: {bs:.4f} "
+                f"(threshold: {BLACK_SWAN_BRIER_THRESHOLD}, random baseline: 0.25)"
+            )
+    except Exception:
+        pass
+
+    return triggered
+
+
+def activate_black_swan_halt(reason: str) -> None:
+    """P10.2: Activate emergency shutdown. Writes reason file and touches kill switch."""
+    _BLACK_SWAN_PATH.parent.mkdir(exist_ok=True)
+    now_str = datetime.now(UTC).isoformat()
+
+    # Write reason file with details
+    import json as _json
+
+    data = {"activated_at": now_str, "reason": reason}
+    try:
+        with open(_BLACK_SWAN_PATH, "w") as f:
+            _json.dump(data, f, indent=2)
+    except Exception as exc:
+        _log.error("black_swan: could not write reason file: %s", exc)
+
+    # Activate kill switch
+    _KILL_SWITCH_PATH.parent.mkdir(exist_ok=True)
+    _KILL_SWITCH_PATH.touch()
+
+    _log.critical(
+        "BLACK SWAN HALT ACTIVATED: %s — kill switch engaged. "
+        "Run `py main.py resume` after investigation to re-enable.",
+        reason,
+    )
+
+
+def get_black_swan_status() -> dict | None:
+    """P10.2: Return active black swan state if any, else None."""
+    if not _BLACK_SWAN_PATH.exists():
+        return None
+    try:
+        import json as _json
+
+        with open(_BLACK_SWAN_PATH) as f:
+            return _json.load(f)
+    except Exception:
+        return {"activated_at": "unknown", "reason": "unknown"}
+
+
+def clear_black_swan_state() -> bool:
+    """P10.2: Remove black swan state file (called by cmd_resume). Returns True if cleared."""
+    if _BLACK_SWAN_PATH.exists():
+        _BLACK_SWAN_PATH.unlink()
+        _log.info("black_swan: state file cleared")
+        return True
+    return False
+
+
+def run_black_swan_check(
+    trades: list[dict] | None = None,
+    balance: float | None = None,
+    peak_balance: float | None = None,
+) -> list[str]:
+    """P10.2: Load state and run black swan detection. Auto-halts if triggered.
+
+    Called at the start of each cron cycle after anomaly detection.
+    Returns list of triggered condition strings.
+    """
+    try:
+        if trades is None:
+            from paper import load_paper_trades
+
+            trades = load_paper_trades()
+        if balance is None or peak_balance is None:
+            try:
+                from paper import get_state_snapshot
+
+                snap = get_state_snapshot()
+                balance = snap.get("balance", balance)
+                peak_balance = snap.get("peak_balance", peak_balance)
+            except Exception:
+                pass
+
+        conditions = check_black_swan_conditions(trades, balance, peak_balance)
+        if conditions:
+            reason = "; ".join(conditions)
+            activate_black_swan_halt(reason)
+        return conditions
+    except Exception as exc:
+        _log.debug("run_black_swan_check: %s", exc)
+        return []

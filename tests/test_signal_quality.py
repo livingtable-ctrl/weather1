@@ -13,13 +13,13 @@ class TestGetMemberAccuracyDaysBack:
     def setup_method(self):
         self._tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
         tracker.DB_PATH = Path(self._tmp.name)
-        tracker._initialized = False
+        tracker._db_initialized = False
 
     def teardown_method(self):
         import gc
 
         gc.collect()
-        tracker._initialized = False
+        tracker._db_initialized = False
         self._tmp.close()
         Path(self._tmp.name).unlink(missing_ok=True)
 
