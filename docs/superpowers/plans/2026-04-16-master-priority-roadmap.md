@@ -4,6 +4,20 @@
 
 **Goal:** Rank and phase all 20 research backlog items by expected ROI, implementation risk, and dependencies. Each phase has its own detailed plan file.
 
+## Progress Tracker
+
+| Phase | Status | Completed | Items Done |
+|-------|--------|-----------|------------|
+| A: Data Foundation | ✅ Done | 2026-04-16 | MOS, bias correction, METAR lock-in (3/3) |
+| B: Risk Engine | ✅ Done | 2026-04-16 | Drawdown tiers, flash crash CB, confidence thresholds (3/3) |
+| **C: New Data Sources** | **⬅ Next** | — | NBM, ECMWF AIFS, Gaussian method (0/3) |
+| D: Monitoring & Settlement | Pending | — | Settlement lag, Brier, reliability diagram (0/3) |
+| E: Walk-Forward Backtesting | Pending | — | Walk-forward engine (0/1) |
+| F: WebSocket | Pending | — | Real-time order book (0/1) |
+| G: Long-term | Pending | — | ML bias, arb, A/B, P&L, Telegram (0/5) |
+
+**7 of 20 items complete (35%). 13 remaining.**
+
 **Architecture:** Layered improvements — data quality first, then risk calibration, then monitoring, then advanced strategies.
 
 **Tech Stack:** Python 3.12, SQLite WAL, Open-Meteo, IEM MOS API, NOAA AVW METAR API, properscoring, ecmwf-opendata, Herbie
@@ -120,3 +134,5 @@ Phase G — depends on 6+ months of data from A-E
 ```
 
 **Recommended order:** A → B (parallel) → C → D → E → F → G
+
+**Current position:** ✅ A done → ✅ B done → **⬅ C next**
