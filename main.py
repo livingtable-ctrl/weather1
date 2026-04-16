@@ -2412,6 +2412,20 @@ def _validate_trade_opportunity(opp: dict) -> tuple[bool, str]:
         )
         return False, health.reason
 
+    # Flash crash check
+    try:
+        from circuit_breaker import flash_crash_cb
+
+        yes_bid = opp.get("yes_bid") or 0
+        yes_ask = opp.get("yes_ask") or 0
+        mid = (yes_bid + yes_ask) / 2 if yes_ask > 0 else yes_bid
+        if mid > 0:
+            flash_crash_cb.check(opp["ticker"], float(mid))
+        if flash_crash_cb.is_in_cooldown(opp["ticker"]):
+            return False, "flash crash cooldown"
+    except Exception:
+        pass
+
     # Edge check
     edge = opp.get("net_edge", 0.0)
     if edge <= 0:

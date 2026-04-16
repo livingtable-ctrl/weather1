@@ -70,3 +70,58 @@ class CircuitBreaker:
         with self._lock:
             self._failure_count = 0
             self._opened_at = None
+
+
+# ── Flash Crash Circuit Breaker ───────────────────────────────────────────────
+
+
+class FlashCrashCB:
+    """
+    Per-market flash crash detection.
+    Trips when price moves > threshold_pct within window_seconds.
+    Blocks that ticker for cooldown_seconds. Resets on restart (intentional).
+    """
+
+    def __init__(
+        self,
+        threshold_pct: float = 0.20,
+        window_seconds: int = 300,
+        cooldown_seconds: int = 600,
+    ) -> None:
+        self.threshold_pct = threshold_pct
+        self.window_seconds = window_seconds
+        self.cooldown_seconds = cooldown_seconds
+        self._history: dict[str, list[tuple[float, float]]] = {}
+        self._cooldowns: dict[str, float] = {}
+
+    def check(self, ticker: str, current_price: float) -> bool:
+        """Record price and return True if this observation triggered a crash."""
+        now = time.time()
+        window_start = now - self.window_seconds
+        history = self._history.setdefault(ticker, [])
+        # Prune old observations
+        self._history[ticker] = [(ts, p) for ts, p in history if ts >= window_start]
+        self._history[ticker].append((now, current_price))
+        if len(self._history[ticker]) < 2:
+            return False
+        oldest_price = self._history[ticker][0][1]
+        if oldest_price <= 0:
+            return False
+        if abs(current_price - oldest_price) / oldest_price >= self.threshold_pct:
+            self._cooldowns[ticker] = now + self.cooldown_seconds
+            _log.warning(
+                "FLASH CRASH CB: %s — %.1f%% move in %ds window. Cooldown %ds.",
+                ticker,
+                abs(current_price - oldest_price) / oldest_price * 100,
+                self.window_seconds,
+                self.cooldown_seconds,
+            )
+            return True
+        return False
+
+    def is_in_cooldown(self, ticker: str) -> bool:
+        return time.time() < self._cooldowns.get(ticker, 0)
+
+
+# Module-level singleton
+flash_crash_cb = FlashCrashCB()
