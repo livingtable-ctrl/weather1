@@ -77,3 +77,28 @@ def test_validate_no_fetched_at_accepted():
     del opp["data_fetched_at"]
     ok, reason = _validate_trade_opportunity(opp)
     assert ok, f"Opp without data_fetched_at should be accepted: {reason}"
+
+
+def test_validate_missing_ensemble_spread_uses_flat_threshold():
+    """Without ensemble_spread key, fall back to flat PAPER_MIN_EDGE threshold (0.05)."""
+    from main import _validate_trade_opportunity
+
+    # edge=0.04 is below flat threshold of 0.05, should be rejected
+    opp = _opp(edge=0.04)
+    # Ensure no ensemble_spread key at all
+    assert "ensemble_spread" not in opp
+    ok, reason = _validate_trade_opportunity(opp)
+    assert not ok
+    assert "edge" in reason.lower()
+
+
+def test_validate_low_spread_tier_rejects_edge_below_threshold():
+    """ensemble_spread=0.20 (LOW tier) requires edge >= 0.10; edge=0.08 should be rejected."""
+    from main import _validate_trade_opportunity
+
+    opp = _opp(edge=0.08)
+    opp["ensemble_spread"] = 0.20  # LOW tier, paper min=0.10
+    ok, reason = _validate_trade_opportunity(opp)
+    assert not ok
+    assert "edge" in reason.lower()
+    assert "spread" in reason.lower()  # reason should mention spread info

@@ -4,6 +4,20 @@
 
 **Goal:** Rank and phase all 20 research backlog items by expected ROI, implementation risk, and dependencies. Each phase has its own detailed plan file.
 
+## Progress Tracker
+
+| Phase | Status | Completed | Items Done |
+|-------|--------|-----------|------------|
+| A: Data Foundation | ✅ Done | 2026-04-16 | MOS, bias correction, METAR lock-in (3/3) |
+| B: Risk Engine | ✅ Done | 2026-04-16 | Drawdown tiers, flash crash CB, confidence thresholds (3/3) |
+| **C: New Data Sources** | **⬅ Next** | — | NBM, ECMWF AIFS, Gaussian method (0/3) |
+| D: Monitoring & Settlement | Pending | — | Settlement lag, Brier, reliability diagram (0/3) |
+| E: Walk-Forward Backtesting | Pending | — | Walk-forward engine (0/1) |
+| F: WebSocket | Pending | — | Real-time order book (0/1) |
+| G: Long-term | Pending | — | ML bias, arb, A/B, P&L, Telegram (0/5) |
+
+**7 of 20 items complete (35%). 13 remaining.**
+
 **Architecture:** Layered improvements — data quality first, then risk calibration, then monitoring, then advanced strategies.
 
 **Tech Stack:** Python 3.12, SQLite WAL, Open-Meteo, IEM MOS API, NOAA AVW METAR API, properscoring, ecmwf-opendata, Herbie
@@ -32,9 +46,9 @@
 | Rank | Item | Phase | Impact | Effort | Plan |
 |------|------|-------|--------|--------|------|
 | 1 | ~~Fix NYC settlement station (KNYC)~~ | ✅ Done | Critical | Trivial | — |
-| 2 | **NOAA MOS via IEM API** | 🔴 A | Very High | Low | [Phase A](2026-04-16-phase-a-data-foundation.md) |
-| 3 | **Per-city static bias correction** | 🔴 A | Very High | Low | [Phase A](2026-04-16-phase-a-data-foundation.md) |
-| 4 | **METAR same-day lock-in (85-90% win rate)** | 🔴 A | Very High | Low | [Phase A](2026-04-16-phase-a-data-foundation.md) |
+| 2 | ~~NOAA MOS via IEM API~~ | ✅ Done | Very High | Low | [Phase A](2026-04-16-phase-a-data-foundation.md) |
+| 3 | ~~Per-city static bias correction~~ | ✅ Done | Very High | Low | [Phase A](2026-04-16-phase-a-data-foundation.md) |
+| 4 | ~~METAR same-day lock-in (85-90% win rate)~~ | ✅ Done | Very High | Low | [Phase A](2026-04-16-phase-a-data-foundation.md) |
 
 **Why first:** These three items directly increase edge on every trade. MOS is station-specific (Kalshi settles on ASOS stations). Bias correction removes a systematic error that costs money every day. METAR lock-in is the single highest-win-rate strategy known for this market type. All three are free APIs.
 
@@ -44,9 +58,9 @@
 
 | Rank | Item | Phase | Impact | Effort | Plan |
 |------|------|-------|--------|--------|------|
-| 5 | **Confidence-tiered edge thresholds** | 🟠 B | High | Low | [Phase B](2026-04-16-phase-b-risk-engine.md) |
-| 6 | **Drawdown-tiered Kelly step reduction** | 🟠 B | High | Low | [Phase B](2026-04-16-phase-b-risk-engine.md) |
-| 7 | **Per-market flash crash circuit breaker** | 🟠 B | High | Low | [Phase B](2026-04-16-phase-b-risk-engine.md) |
+| 5 | ~~Confidence-tiered edge thresholds~~ | ✅ Done | High | Low | [Phase B](2026-04-16-phase-b-risk-engine.md) |
+| 6 | ~~Drawdown-tiered Kelly step reduction~~ | ✅ Done | High | Low | [Phase B](2026-04-16-phase-b-risk-engine.md) |
+| 7 | ~~Per-market flash crash circuit breaker~~ | ✅ Done | High | Low | [Phase B](2026-04-16-phase-b-risk-engine.md) |
 | 8 | **METAR settlement lag monitoring** | 🟢 D | High | Medium | [Phase D](2026-04-16-phase-d-monitoring-settlement.md) |
 
 **Why second:** Risk calibration items (5-7) can be done in a few hours and protect capital immediately. Settlement lag (8) is a secondary high-win-rate strategy, but requires a persistent monitoring loop outside the cron schedule.
@@ -96,8 +110,8 @@
 
 | Phase | Items | Priority | Plan File |
 |-------|-------|----------|-----------|
-| A: Data Foundation | MOS + bias correction + METAR lock-in | Immediate | [2026-04-16-phase-a-data-foundation.md](2026-04-16-phase-a-data-foundation.md) |
-| B: Risk Engine | Confidence tiers + drawdown Kelly + flash crash CB | Near-term | [2026-04-16-phase-b-risk-engine.md](2026-04-16-phase-b-risk-engine.md) |
+| ✅ A: Data Foundation | MOS + bias correction + METAR lock-in | **Done 2026-04-16** | [2026-04-16-phase-a-data-foundation.md](2026-04-16-phase-a-data-foundation.md) |
+| ✅ B: Risk Engine | Confidence tiers + drawdown Kelly + flash crash CB | **Done 2026-04-16** | [2026-04-16-phase-b-risk-engine.md](2026-04-16-phase-b-risk-engine.md) |
 | C: New Data Sources | NBM + ECMWF AIFS + Gaussian method | Near-term | [2026-04-16-phase-c-new-data-sources.md](2026-04-16-phase-c-new-data-sources.md) |
 | D: Monitoring & Settlement | Settlement lag + per-city Brier + reliability diagram | Medium-term | [2026-04-16-phase-d-monitoring-settlement.md](2026-04-16-phase-d-monitoring-settlement.md) |
 | E: Walk-Forward Backtesting | Walk-forward engine | Medium-term | [2026-04-16-phase-e-walk-forward-backtest.md](2026-04-16-phase-e-walk-forward-backtest.md) |
@@ -120,3 +134,5 @@ Phase G — depends on 6+ months of data from A-E
 ```
 
 **Recommended order:** A → B (parallel) → C → D → E → F → G
+
+**Current position:** ✅ A done → ✅ B done → **⬅ C next**

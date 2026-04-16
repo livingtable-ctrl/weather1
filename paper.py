@@ -289,19 +289,25 @@ def is_paused_drawdown() -> bool:
 
 def drawdown_scaling_factor() -> float:
     """
-    Return a 0.0–1.0 multiplier for Kelly sizing based on recovery from peak.
-    #41: Uses linear interpolation to eliminate discontinuities between tiers:
-      <50% of peak  → 0.00  (fully paused)
-      50–100%       → linear scale 0.0 → 1.0
+    Return a 0.0–1.0 Kelly multiplier based on drawdown from peak (high-water mark).
+
+    Step tiers:
+      ≤ 60% of peak  → 0.00  (paused — ≥ 40% drawdown)
+      60–80% of peak → 0.20  (survival mode — 20–40% drawdown)
+      80–90% of peak → 0.50  (reduced — 10–20% drawdown)
+      > 90% of peak  → 1.00  (normal — < 10% drawdown)
     """
     peak = get_peak_balance()
     if peak <= 0:
         return 1.0
     recovery = get_balance() / peak
-    if recovery < _DRAWDOWN_TIER_1:
+    if recovery <= 0.60:
         return 0.0
-    # Linear ramp from 0.0 at 50% recovery → 1.0 at 100% recovery
-    return min(1.0, (recovery - _DRAWDOWN_TIER_1) / (1.0 - _DRAWDOWN_TIER_1))
+    if recovery <= 0.80:
+        return 0.20
+    if recovery <= 0.90:
+        return 0.50
+    return 1.0
 
 
 def _dynamic_kelly_cap() -> float:

@@ -19,6 +19,33 @@ MIN_EDGE = float(os.getenv("MIN_EDGE", "0.07"))  # minimum edge to show in analy
 # Paper trading uses a lower threshold to capture more signals for observation.
 # Must be <= 5% per system requirements (P1.3). Override via PAPER_MIN_EDGE env var.
 PAPER_MIN_EDGE = float(os.getenv("PAPER_MIN_EDGE", "0.05"))
+
+# Confidence-tiered edge thresholds
+# HIGH: spread < 0.05 (models agree) → lower bar
+# MODERATE: 0.05 ≤ spread < 0.15 → standard bar
+# LOW: spread ≥ 0.15 (models disagree) → higher bar
+_EDGE_TIERS: dict[str, dict[str, float]] = {
+    "HIGH": {"paper": 0.05, "live": 0.08},
+    "MODERATE": {"paper": 0.07, "live": 0.10},
+    "LOW": {"paper": 0.10, "live": 0.15},
+}
+
+
+def classify_confidence_tier(spread: float) -> str:
+    """Classify ensemble spread into HIGH, MODERATE, or LOW confidence tier."""
+    if spread < 0.05:
+        return "HIGH"
+    if spread < 0.15:
+        return "MODERATE"
+    return "LOW"
+
+
+def get_min_edge_for_confidence(spread: float, is_live: bool = False) -> float:
+    """Return minimum edge required given ensemble spread and trading mode."""
+    tier = classify_confidence_tier(spread)
+    return _EDGE_TIERS[tier]["live" if is_live else "paper"]
+
+
 STRONG_EDGE = float(
     os.getenv("STRONG_EDGE", "0.25")
 )  # threshold for "STRONG BUY" label

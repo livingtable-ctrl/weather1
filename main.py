@@ -2456,7 +2456,7 @@ def _check_early_exits(client=None) -> int:
     return closed
 
 
-def _validate_trade_opportunity(opp: dict) -> tuple[bool, str]:
+def _validate_trade_opportunity(opp: dict, live: bool = False) -> tuple[bool, str]:
     """
     Pre-execution validation gate for auto-placed trades (P1.1+P1.2).
     Returns (ok, reason). All checks must pass before a trade is placed.
@@ -2474,6 +2474,20 @@ def _validate_trade_opportunity(opp: dict) -> tuple[bool, str]:
         )
         return False, health.reason
 
+    # Flash crash check
+    try:
+        from circuit_breaker import flash_crash_cb
+
+        yes_bid = opp.get("yes_bid") or 0
+        yes_ask = opp.get("yes_ask") or 0
+        mid = (yes_bid + yes_ask) / 2 if yes_ask > 0 else yes_bid
+        if mid > 0:
+            flash_crash_cb.check(opp["ticker"], float(mid))
+        if flash_crash_cb.is_in_cooldown(opp["ticker"]):
+            return False, "flash crash cooldown"
+    except Exception:
+        pass
+
     # Edge check — net_edge must be positive, raw edge must agree with side, and
     # raw edge must clear MIN_EDGE so near-zero-price contracts don't slip through
     from utils import MIN_EDGE as _MIN_EDGE
@@ -2490,6 +2504,23 @@ def _validate_trade_opportunity(opp: dict) -> tuple[bool, str]:
             return False, f"raw_edge={raw_edge:.4f} >= 0 for NO recommendation"
         if abs(raw_edge) < _MIN_EDGE:
             return False, f"raw_edge={raw_edge:.4f} below MIN_EDGE={_MIN_EDGE:.4f}"
+
+    # Confidence-tiered edge threshold (backward compatible)
+    _ens_spread = opp.get("ensemble_spread")
+    if _ens_spread is not None:
+        try:
+            from utils import get_min_edge_for_confidence
+
+            min_edge = get_min_edge_for_confidence(
+                float(_ens_spread), is_live=bool(live)
+            )
+        except Exception:
+            min_edge = PAPER_MIN_EDGE if not live else MIN_EDGE
+    else:
+        min_edge = PAPER_MIN_EDGE if not live else MIN_EDGE
+
+    if edge < min_edge:
+        return False, f"edge {edge:.1%} < {min_edge:.1%} (spread={_ens_spread})"
 
     # Kelly check
     kelly = opp.get("ci_adjusted_kelly", opp.get("fee_adjusted_kelly", 0.0))
@@ -2702,7 +2733,9 @@ def _auto_place_trades(
 
         # P1.2: Pre-trade validation gate — log every rejection reason.
         # Merge ticker from market dict so tuple-format callers aren't penalised.
-        _ok, _reject_reason = _validate_trade_opportunity({**a, "ticker": ticker})
+        _ok, _reject_reason = _validate_trade_opportunity(
+            {**a, "ticker": ticker}, live=live
+        )
         if not _ok:
             _log.debug(
                 "_auto_place_trades: skip %s — %s",
