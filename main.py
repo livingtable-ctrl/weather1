@@ -2260,6 +2260,25 @@ def cmd_cron(client: KalshiClient, min_edge: float = MIN_EDGE) -> None:
     except Exception:
         pass
 
+    # Log any active settlement lag signals from the settlement monitor
+    try:
+        from settlement_monitor import read_settlement_signals
+
+        _settlement_sigs = read_settlement_signals()
+        if _settlement_sigs:
+            _log.info("Settlement lag signals: %d active", len(_settlement_sigs))
+            for sig in _settlement_sigs:
+                _log.info(
+                    "  → %s %s (conf=%.0f%%, %.1f°F vs %.1f°F threshold)",
+                    sig["ticker"],
+                    sig["outcome"],
+                    sig.get("confidence", 0) * 100,
+                    sig.get("current_temp_f", 0),
+                    sig.get("threshold_f", 0),
+                )
+    except Exception as _e:
+        _log.debug("cmd_cron: read_settlement_signals failed: %s", _e)
+
     placed_count = 0
     if strong_opps:
         from paper import _dynamic_kelly_cap

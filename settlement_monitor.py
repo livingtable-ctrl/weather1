@@ -12,9 +12,11 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 _log = logging.getLogger(__name__)
 
@@ -125,10 +127,10 @@ def check_city_settlement(city: str, active_tickers: list[dict]) -> list[dict]:
 
     new_signals = []
     for market in active_tickers:
-        threshold_f = float(market.get("threshold", 0))
-        direction = market.get("direction", "above")
-        if not threshold_f:
+        if market.get("threshold") is None:
             continue
+        threshold_f = float(market["threshold"])
+        direction = market.get("direction", "above")
 
         lockout = check_metar_lockout(
             current_temp_f=obs["current_temp_f"],
@@ -175,10 +177,16 @@ def run_settlement_monitor(client, duration_minutes: int = 120) -> None:
     end_time = datetime.now(UTC) + timedelta(minutes=duration_minutes)
 
     all_signals: list[dict] = []
+    signalled_tickers: set[str] = set()
 
     while datetime.now(UTC) < end_time:
         for city in _MONITOR_CITIES:
             try:
+                city_tz = _MONITOR_CITIES[city]["tz"]
+                local_now = datetime.now(ZoneInfo(city_tz))
+                if not (_MONITOR_START_HOUR <= local_now.hour < _MONITOR_END_HOUR):
+                    continue
+
                 active_tickers: list[dict] = []
                 try:
                     markets = client.get_markets(series_ticker=f"KXHIGH{city}")
@@ -186,8 +194,6 @@ def run_settlement_monitor(client, duration_minutes: int = 120) -> None:
                         if m.get("status") == "open":
                             ticker = m.get("ticker", "")
                             subtitle = m.get("subtitle", "")
-                            import re
-
                             match = re.search(r"(\d+)", subtitle)
                             if match:
                                 threshold = float(match.group(1))
@@ -205,7 +211,10 @@ def run_settlement_monitor(client, duration_minutes: int = 120) -> None:
                     _log.debug("settlement_monitor: market fetch for %s: %s", city, exc)
 
                 new = check_city_settlement(city, active_tickers)
-                all_signals.extend(new)
+                for sig in new:
+                    if sig["ticker"] not in signalled_tickers:
+                        all_signals.append(sig)
+                        signalled_tickers.add(sig["ticker"])
             except Exception as exc:
                 _log.debug("settlement_monitor: %s error: %s", city, exc)
 
