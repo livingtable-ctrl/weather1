@@ -12,11 +12,12 @@ import logging
 import math
 import sqlite3
 from datetime import UTC, date, datetime
-from pathlib import Path
+
+from safe_io import project_root as _project_root
 
 _log = logging.getLogger(__name__)
 
-DB_PATH = Path(__file__).parent / "data" / "predictions.db"
+DB_PATH = _project_root() / "data" / "predictions.db"
 DB_PATH.parent.mkdir(exist_ok=True)
 
 _db_initialized = False
@@ -1560,7 +1561,7 @@ def get_model_calibration_buckets() -> dict:
 
 # ── P9.1: Strategy version performance comparison ─────────────────────────────
 
-_RETIRED_PATH = Path(__file__).parent / "data" / "retired_strategies.json"
+_RETIRED_PATH = _project_root() / "data" / "retired_strategies.json"
 
 
 def get_brier_by_version(min_samples: int = 10) -> dict[str, dict]:

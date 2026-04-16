@@ -17,6 +17,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from safe_io import AtomicWriteError, atomic_write_json
+from safe_io import project_root as _project_root
 from utils import FIXED_BET_DOLLARS, FIXED_BET_PCT, KALSHI_FEE_RATE, STRATEGY
 
 _log = logging.getLogger(__name__)
@@ -63,7 +64,7 @@ def _validate_checksum(data: dict) -> None:
         )
 
 
-DATA_PATH = Path(__file__).parent / "data" / "paper_trades.json"
+DATA_PATH = _project_root() / "data" / "paper_trades.json"
 DATA_PATH.parent.mkdir(exist_ok=True)
 
 STARTING_BALANCE = 1000.0  # default paper bankroll in dollars

@@ -18,6 +18,32 @@ class AtomicWriteError(Exception):
     pass
 
 
+def project_root() -> Path:
+    """
+    Return the main project root directory, resolving git worktrees correctly.
+
+    When running from a git worktree, Path(__file__).parent gives the worktree
+    directory — which has no data/ files (they're gitignored). This function
+    detects the worktree case and returns the main project root instead.
+    """
+    here = Path(__file__).resolve().parent
+    git_marker = here / ".git"
+    if git_marker.is_file():
+        # We're in a git worktree — .git is a file like:
+        # "gitdir: ../../.git/worktrees/phase-f-websocket"
+        try:
+            content = git_marker.read_text(encoding="utf-8").strip()
+            if content.startswith("gitdir:"):
+                git_dir = Path(content.split(":", 1)[1].strip())
+                if not git_dir.is_absolute():
+                    git_dir = (here / git_dir).resolve()
+                # git_dir is .git/worktrees/<name> → go up 3 levels to main project
+                return git_dir.parent.parent.parent
+        except Exception:
+            pass
+    return here
+
+
 def atomic_write_json(
     data: dict, path: Path, retries: int = 3, fallback_dir: Path | None = None
 ) -> None:

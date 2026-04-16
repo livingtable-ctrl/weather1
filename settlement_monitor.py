@@ -15,12 +15,13 @@ import logging
 import re
 import time
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
 from zoneinfo import ZoneInfo
+
+from safe_io import project_root as _project_root
 
 _log = logging.getLogger(__name__)
 
-_SIGNALS_PATH = Path(__file__).parent / "data" / "settlement_signals.json"
+_SIGNALS_PATH = _project_root() / "data" / "settlement_signals.json"
 _SIGNALS_PATH.parent.mkdir(exist_ok=True)
 
 # Cities and their METAR stations + timezones
