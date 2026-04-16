@@ -15,6 +15,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, date, datetime
 from pathlib import Path
 
+import requests
+
 from calibration import load_city_weights as _load_city_weights
 from calibration import load_seasonal_weights as _load_seasonal_weights
 from circuit_breaker import CircuitBreaker
@@ -139,7 +141,14 @@ def _metar_station_for_city(city: str) -> str | None:
 
 FORECAST_BASE = "https://api.open-meteo.com/v1/forecast"
 ENSEMBLE_BASE = "https://ensemble-api.open-meteo.com/v1/ensemble"
-ENSEMBLE_MODELS = ["icon_seamless", "gfs_seamless"]
+ENSEMBLE_MODELS = [
+    "icon_seamless",
+    "gfs_seamless",
+]  # existing (keep for backward compat)
+ENSEMBLE_MODELS_EXTENDED = [*ENSEMBLE_MODELS, "nbm"]  # Phase C: adds NBM
+
+# Dedicated session for NBM / Open-Meteo forecast calls (mockable in tests)
+_om_session: requests.Session = requests.Session()
 
 # Ensemble cache: key -> (list[float], timestamp)
 _ENSEMBLE_CACHE: dict = {}
@@ -372,6 +381,52 @@ def get_weather_forecast(city: str, target_date: date) -> dict | None:
     }
     _FORECAST_CACHE[cache_key] = (result, time.monotonic())
     return result
+
+
+# ── NBM (National Blend of Models) ──────────────────────────────────────────
+
+
+def fetch_temperature_nbm(city: str, target_date: date) -> float | None:
+    """
+    Fetch NBM (National Blend of Models) max daily temperature for a city.
+    Uses Open-Meteo with model="nbm" — NWS-calibrated blend of GFS/HRRR/ECMWF.
+
+    Returns max temperature for target_date in °F, or None on failure.
+    """
+    coords = CITY_COORDS.get(city.upper())
+    if not coords:
+        return None
+    lat, lon, _ = coords
+
+    try:
+        resp = _om_session.get(
+            FORECAST_BASE,
+            params={
+                "latitude": lat,
+                "longitude": lon,
+                "hourly": "temperature_2m",
+                "temperature_unit": "fahrenheit",
+                "models": "nbm",
+                "start_date": target_date.isoformat(),
+                "end_date": target_date.isoformat(),
+                "timezone": "auto",
+            },
+            timeout=15,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        temps = data.get("hourly", {}).get("temperature_2m", [])
+        valid = [t for t in temps if t is not None]
+        return float(max(valid)) if valid else None
+    except Exception as exc:
+        _log.debug("fetch_temperature_nbm(%s): %s", city, exc)
+        return None
+
+
+def _compute_ensemble_mean(temps: dict[str, float | None]) -> float | None:
+    """Compute mean of non-None values in a {model: temp} dict."""
+    values = [v for v in temps.values() if v is not None]
+    return sum(values) / len(values) if values else None
 
 
 # ── Ensemble forecast ────────────────────────────────────────────────────────
