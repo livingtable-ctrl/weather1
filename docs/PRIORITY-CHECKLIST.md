@@ -103,9 +103,9 @@ Legend: ✅ Done | ⚠️ Partial | ❌ Missing
 |---|------|--------|-------|
 | 6.1 | Backup data sources | ✅ | Circuit breakers now wired into Open-Meteo (`_ensemble_cb`), NWS (`_nws_cb`), Kalshi (`_kalshi_cb`). Multi-model ensemble tolerates single-model failures. |
 | 6.1 | Pause trading if data reliability drops | ✅ | Circuit breakers return `None` on open circuit; `analyze_trade` returns `None` on missing data, blocking trades. |
-| 6.2 | Reject malformed API responses | ⚠️ | Shape warnings on unexpected API responses. No strict schema validation. |
-| 6.3 | Data versioning / snapshots | ⚠️ | SQLite schema versioned (`PRAGMA user_version`, 9 migrations). No forecast snapshot storage. |
-| 6.4 | Feature importance tracking | ❌ | Not implemented. |
+| 6.2 | Reject malformed API responses | ✅ | `schema_validator.py` validates market, forecast, and NWS response dicts. Logs WARNING on missing/wrong-type fields. Wired into `weather_markets.py`, `nws.py`, `kalshi_client.py`. |
+| 6.3 | Data versioning / snapshots | ✅ | `save_forecast_snapshot()` in `weather_markets.py` saves raw forecast inputs to `data/forecast_snapshots/{ticker}_{date}.json` on each trade analysis. |
+| 6.4 | Feature importance tracking | ✅ | `feature_importance.py` records per-feature contributions and outcomes. `get_feature_summary()` shows win/loss averages per feature. `py main.py features`. |
 
 ---
 
@@ -116,7 +116,7 @@ Legend: ✅ Done | ⚠️ Partial | ❌ Missing
 | 7.1 | Slippage simulation | ✅ | `slippage_adjusted_price` + Gaussian fill noise in `paper.py`. |
 | 7.2 | Latency simulation | ✅ | `MAX_ORDER_LATENCY_MS` guard. API latency logged. `_midpoint_price` for live sizing. |
 | 7.3 | Liquidity constraints | ✅ | `MIN_LIQUIDITY` gate (50 volume+OI). Spread gate (>30% of mid rejected). |
-| 7.4 | Rank trades by edge, confidence, urgency | ⚠️ | `suggested_bets` sorts by EV. No formal priority queue across all signals in cron. |
+| 7.4 | Rank trades by edge, confidence, urgency | ✅ | `_rank_opportunities()` sorts signals by `edge × kelly × urgency_multiplier` before execution in each cron cycle. |
 
 ---
 
@@ -125,9 +125,9 @@ Legend: ✅ Done | ⚠️ Partial | ❌ Missing
 | # | Item | Status | Notes |
 |---|------|--------|-------|
 | 8.1 | Dashboard: ROI, win rate, drawdown, edge accuracy, trade frequency | ✅ | Flask dashboard with balance history, Brier score, open positions, analytics, signals, risk pages. |
-| 8.2 | Alerts: failures, abnormal behavior, drawdown spikes | ⚠️ | `alerts.py` for price alerts. Drawdown halt triggers. No automated failure/anomaly alerts. |
+| 8.2 | Alerts: failures, abnormal behavior, drawdown spikes | ✅ | `alerts.py` `check_anomalies()` detects win-rate collapse (<30%), edge decay (<2%), consecutive losses (5+). `run_anomaly_check()` called at cron start. |
 | 8.3 | Global kill switch — instant trading shutdown | ✅ | File-based hard kill switch at `data/.kill_switch`. `py main.py kill` / `py main.py resume` CLI commands. Checked at top of every cron cycle. |
-| 8.4 | Manual override controls — logged, reversible, time-limited | ⚠️ | `cmd_order` with confirmation prompt. No time-limited or reversible override framework. |
+| 8.4 | Manual override controls — logged, reversible, time-limited | ✅ | `cmd_override pause/unpause/status` with auto-expiring JSON state. `_check_manual_override()` checked at cron start. Fully reversible and time-limited. |
 
 ---
 
@@ -164,17 +164,16 @@ Legend: ✅ Done | ⚠️ Partial | ❌ Missing
 | P3 Execution Reliability | 9 | 9 | 0 | 0 |
 | P4 Logging | 4 | 4 | 0 | 0 |
 | P5 Testing | 5 | 5 | 0 | 0 |
-| P6 Data Engineering | 6 | 2 | 3 | 1 |
-| P7 Market Realism | 4 | 3 | 1 | 0 |
-| P8 Monitoring | 4 | 2 | 2 | 0 |
+| P6 Data Engineering | 6 | 6 | 0 | 0 |
+| P7 Market Realism | 4 | 4 | 0 | 0 |
+| P8 Monitoring | 4 | 4 | 0 | 0 |
 | P9 Strategy Intelligence | 5 | 3 | 1 | 1 |
 | P10 Long-Term Health | 4 | 0 | 2 | 2 |
-| **TOTAL** | **71** | **58** | **9** | **4** |
+| **TOTAL** | **71** | **65** | **3** | **3** |
 
-**82% fully done, 13% partial, 6% missing.**
+**92% fully done, 4% partial, 4% missing.**
 
 ### Remaining gaps by priority:
-- **❌ P6.4**: Feature importance tracking
 - **❌ P9.5**: Strategy retirement system
 - **❌ P10.1**: Drift detection
 - **❌ P10.2**: Black swan emergency shutdown mode

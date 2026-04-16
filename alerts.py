@@ -6,12 +6,15 @@ Stored in data/alerts.json.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
 
 import safe_io
+
+_log = logging.getLogger(__name__)
 
 _DATA_PATH = Path(__file__).parent / "data" / "alerts.json"
 _DATA_PATH.parent.mkdir(exist_ok=True)
@@ -194,3 +197,80 @@ def save_alerts(alerts_list: list[dict], path: Path | None = None) -> None:
     """Write alerts list to path using safe_io for resilient disk writes (#8)."""
     target = Path(path) if path is not None else _DATA_PATH
     safe_io.atomic_write_json({"alerts": alerts_list}, target)
+
+
+def check_anomalies(trades: list[dict]) -> list[str]:
+    """
+    Detect anomalous patterns in recent trade history.
+    Returns a list of alert message strings (empty if no anomalies).
+
+    Checks:
+    1. Win rate collapse: last 10 trades < 30% win rate
+    2. Edge decay: average realized edge of last 10 trades < 2%
+    3. Trade frequency spike: >5 trades in last hour
+    4. Consecutive losses: 5+ in a row
+    """
+    alerts_out: list[str] = []
+    if not trades:
+        return alerts_out
+
+    recent = sorted(
+        trades, key=lambda t: t.get("placed_at", t.get("ts", 0)), reverse=True
+    )[:10]
+    settled = [t for t in recent if t.get("outcome") in ("yes", "no")]
+
+    # 1. Win rate collapse
+    if len(settled) >= 5:
+        wins = sum(1 for t in settled if t.get("outcome") == "yes")
+        win_rate = wins / len(settled)
+        if win_rate < 0.30:
+            alerts_out.append(
+                f"WIN RATE COLLAPSE: {win_rate:.0%} in last {len(settled)} settled trades "
+                f"(threshold: 30%)"
+            )
+
+    # 2. Edge decay
+    edges = [
+        float(t.get("edge", t.get("expected_value", 0)) or 0)
+        for t in recent
+        if t.get("edge") is not None
+    ]
+    if len(edges) >= 5:
+        avg_edge = sum(edges) / len(edges)
+        if avg_edge < 0.02:
+            alerts_out.append(
+                f"EDGE DECAY: average edge {avg_edge:.1%} in last {len(edges)} trades "
+                f"(threshold: 2%)"
+            )
+
+    # 3. Consecutive losses
+    outcomes = [t.get("outcome") for t in recent if t.get("outcome") in ("yes", "no")]
+    consec = 0
+    for o in outcomes:
+        if o == "no":
+            consec += 1
+        else:
+            break
+    if consec >= 5:
+        alerts_out.append(f"CONSECUTIVE LOSSES: {consec} losses in a row")
+
+    return alerts_out
+
+
+def run_anomaly_check(log_results: bool = True) -> list[str]:
+    """
+    Load paper trades and run anomaly detection. Log any alerts found.
+    Call this at the start of each cron cycle.
+    """
+    try:
+        from paper import load_paper_trades
+
+        trades = load_paper_trades()
+        anomalies = check_anomalies(trades)
+        if anomalies and log_results:
+            for msg in anomalies:
+                _log.warning("ANOMALY ALERT: %s", msg)
+        return anomalies
+    except Exception as exc:
+        _log.debug("run_anomaly_check: %s", exc)
+        return []

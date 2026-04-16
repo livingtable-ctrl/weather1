@@ -22,6 +22,7 @@ from climate_indices import get_enso_index, temperature_adjustment
 from climatology import climatological_prob
 from kalshi_client import KalshiClient, _request_with_retry
 from nws import get_live_observation, nws_prob, obs_prob
+from schema_validator import validate_forecast
 from utils import KALSHI_FEE_RATE, MAX_DAYS_OUT, normal_cdf
 
 _log = logging.getLogger(__name__)
@@ -266,6 +267,7 @@ def get_weather_forecast(city: str, target_date: date) -> dict | None:
             _log.warning("open_meteo forecast fetch failed: %s", _exc)
             return None
         data = resp.json()
+        validate_forecast(data.get("daily", {}), source="open_meteo")
         daily = data.get("daily", {})
         dates = daily.get("time", [])
         target_str = target_date.isoformat()
@@ -455,6 +457,34 @@ def save_learned_weights(weights: dict) -> None:
             pass
     global _LEARNED_WEIGHTS
     _LEARNED_WEIGHTS = weights
+
+
+def save_forecast_snapshot(ticker: str, forecast_data: dict) -> None:
+    """
+    Save raw forecast data used for a trade decision to data/forecast_snapshots/.
+    Enables post-hoc analysis of why specific trades were taken.
+    Silently skips if saving fails.
+    """
+    try:
+        import json as _json
+        from datetime import date as _date
+
+        snap_dir = Path(__file__).parent / "data" / "forecast_snapshots"
+        snap_dir.mkdir(parents=True, exist_ok=True)
+        safe_ticker = ticker.replace("/", "-").replace(":", "-")
+        path = snap_dir / f"{safe_ticker}_{_date.today().isoformat()}.json"
+        # Don't overwrite existing snapshot for same ticker+day
+        if not path.exists():
+            snapshot = {
+                "ticker": ticker,
+                "snapshot_date": _date.today().isoformat(),
+                "forecast": forecast_data,
+            }
+            path.write_text(_json.dumps(snapshot, indent=2, default=str))
+    except Exception as exc:
+        import logging as _logging
+
+        _logging.getLogger(__name__).debug("save_forecast_snapshot: %s", exc)
 
 
 def _feels_like(
@@ -2558,7 +2588,7 @@ def analyze_trade(enriched: dict) -> dict | None:
     if near_threshold:
         ci_adjusted_kelly = round(ci_adjusted_kelly * 0.75, 6)
 
-    return {
+    _result = {
         # Core
         "forecast_prob": blended_prob,
         "market_prob": market_prob,
@@ -2623,6 +2653,8 @@ def analyze_trade(enriched: dict) -> dict | None:
         # Edge calculation version — increment when kelly/edge logic changes
         "edge_calc_version": EDGE_CALC_VERSION,
     }
+    save_forecast_snapshot(enriched.get("ticker", "unknown"), forecast)
+    return _result
 
 
 def detect_hedge_opportunity(analysis: dict, open_trades: list[dict]) -> bool:

@@ -14,6 +14,7 @@ from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
 from circuit_breaker import CircuitBreaker, CircuitOpenError
+from schema_validator import validate_market
 
 _log = logging.getLogger(__name__)
 
@@ -177,12 +178,17 @@ class KalshiClient:
     def get_markets(self, **params) -> list[dict]:
         data = self._get("/markets", params=params or None, auth=True)
         self._validate(data, "markets", "/markets")
-        return data.get("markets", [])
+        markets = data.get("markets", [])
+        for market in markets:
+            validate_market(market, source="kalshi")
+        return markets
 
     def get_market(self, ticker: str) -> dict:
         data = self._get(f"/markets/{ticker}", auth=True)
         self._validate(data, "market", f"/markets/{ticker}")
-        return data.get("market", {})
+        market = data.get("market", {})
+        validate_market(market, source="kalshi")
+        return market
 
     def get_orderbook(self, ticker: str) -> dict:
         data = self._get(f"/markets/{ticker}/orderbook", auth=True)

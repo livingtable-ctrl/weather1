@@ -15,6 +15,7 @@ from datetime import date, datetime
 import requests
 
 from circuit_breaker import CircuitBreaker
+from schema_validator import validate_nws_response
 from utils import normal_cdf
 
 _log = logging.getLogger(__name__)
@@ -110,6 +111,7 @@ def get_nws_daily_forecast(city: str, coords: tuple) -> dict[str, dict]:
         _log.warning("NWS daily forecast failed for %s: %s", city, exc)
         return {}
 
+    validate_nws_response(data)
     periods = data.get("properties", {}).get("periods", [])
     result: dict[str, dict] = {}
 

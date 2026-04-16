@@ -1980,10 +1980,24 @@ def cmd_cron(client: KalshiClient, min_edge: float = MIN_EDGE) -> None:
         _release_cron_lock()
         return
 
+    # P8.4 — manual override check (time-limited pause)
+    if _check_manual_override():
+        _log.warning("cmd_cron: manual override active — skipping this run")
+        _release_cron_lock()
+        return
+
     # P3.1 — graceful shutdown flag
     _write_cron_running_flag()
     # P3.2 — detect orders placed in the last 5 minutes at startup
     _check_startup_orders()
+
+    # P8.2 — anomaly detection at start of cron cycle
+    try:
+        from alerts import run_anomaly_check as _run_anomaly_check
+
+        _run_anomaly_check(log_results=True)
+    except Exception as _e:
+        _log.debug("cmd_cron: run_anomaly_check failed: %s", _e)
 
     log_path = Path(__file__).parent / "data" / "cron.log"
     log_path.parent.mkdir(exist_ok=True)
@@ -2373,6 +2387,111 @@ def _validate_trade_opportunity(opp: dict) -> tuple[bool, str]:
     return True, "ok"
 
 
+def _rank_opportunities(opportunities: list[dict]) -> list[dict]:
+    """
+    Rank trade opportunities by composite priority score before execution.
+    Score = edge * kelly_fraction * urgency_multiplier
+    Ensures highest-value, most-urgent trades execute first in each cron cycle.
+    """
+
+    def _score(opp: dict) -> float:
+        edge = float(
+            opp.get("edge", opp.get("net_edge", opp.get("expected_value", 0))) or 0
+        )
+        kelly = float(
+            opp.get("kelly_fraction", opp.get("ci_adjusted_kelly", opp.get("kelly", 0)))
+            or 0
+        )
+        # Urgency: trades closer to expiry get a small boost (max 1.5x)
+        days_out = float(opp.get("days_out", opp.get("days_to_expiry", 3)) or 3)
+        urgency = max(0.5, min(1.5, 2.0 / max(days_out, 0.5)))
+        return edge * kelly * urgency
+
+    return sorted(opportunities, key=_score, reverse=True)
+
+
+def _check_manual_override() -> bool:
+    """
+    Returns True if a valid (non-expired) manual override is active.
+    Auto-clears expired overrides.
+    """
+    import time as _time
+
+    override_path = Path(__file__).parent / "data" / ".manual_override.json"
+    if not override_path.exists():
+        return False
+    try:
+        state = json.loads(override_path.read_text())
+        expires = state.get("expires_at", 0)
+        if _time.time() > expires:
+            override_path.unlink(missing_ok=True)
+            _log.info("_check_manual_override: expired override cleared")
+            return False
+        remaining = (expires - _time.time()) / 60
+        _log.warning(
+            "Manual override active — trading paused (%.0f min remaining): %s",
+            remaining,
+            state.get("reason", "manual pause"),
+        )
+        return True
+    except Exception as exc:
+        _log.debug("_check_manual_override: %s", exc)
+        return False
+
+
+def cmd_override(action: str, duration_minutes: int = 60) -> None:
+    """
+    Create a time-limited manual override.
+    Overrides expire automatically after duration_minutes.
+
+    Actions:
+      pause <minutes>  — pause automated trading for N minutes
+      unpause          — remove pause override immediately
+      status           — show current override status
+    """
+    override_path = Path(__file__).parent / "data" / ".manual_override.json"
+
+    if action == "unpause" or action == "status":
+        if not override_path.exists():
+            print(dim("  No active manual override."))
+            return
+        try:
+            state = json.loads(override_path.read_text())
+            expires = state.get("expires_at", 0)
+            import time as _time
+
+            remaining = expires - _time.time()
+            if remaining <= 0 or action == "unpause":
+                override_path.unlink(missing_ok=True)
+                print(green("  Manual override cleared."))
+            else:
+                print(
+                    bold(f"\n  Active override: {state.get('reason', 'manual pause')}")
+                )
+                print(f"  Expires in: {remaining / 60:.0f} minutes")
+        except Exception as exc:
+            _log.warning("cmd_override: %s", exc)
+        return
+
+    if action == "pause":
+        import time as _time
+
+        state = {
+            "reason": "manual pause",
+            "created_at": _time.time(),
+            "expires_at": _time.time() + duration_minutes * 60,
+            "duration_minutes": duration_minutes,
+        }
+        override_path.parent.mkdir(exist_ok=True)
+        override_path.write_text(json.dumps(state, indent=2))
+        print(yellow(f"  Trading paused for {duration_minutes} minutes."))
+        print(dim("  Run `py main.py override unpause` to clear early."))
+        return
+
+    print(red(f"  Unknown override action: {action!r}"))
+    print(dim("  Usage: py main.py override pause [minutes]  |  unpause  |  status"))
+
+
 def _auto_place_trades(
     opps: list,
     client=None,
@@ -2428,6 +2547,24 @@ def _auto_place_trades(
             )
         )
         return 0
+
+    # P7.4 — rank opportunities by composite priority before execution
+    def _opp_sort_key(item: object) -> float:
+        a_ = item[1] if isinstance(item, tuple) else item
+        if not isinstance(a_, dict):
+            return 0.0
+        edge = float(
+            a_.get("edge", a_.get("net_edge", a_.get("expected_value", 0))) or 0
+        )
+        kelly = float(
+            a_.get("kelly_fraction", a_.get("ci_adjusted_kelly", a_.get("kelly", 0)))
+            or 0
+        )
+        days_out = float(a_.get("days_out", a_.get("days_to_expiry", 3)) or 3)
+        urgency = max(0.5, min(1.5, 2.0 / max(days_out, 0.5)))
+        return edge * kelly * urgency
+
+    opps = sorted(opps, key=_opp_sort_key, reverse=True)
     for item in opps:
         # Support both (market, analysis) tuple format and flat opp dict format
         if isinstance(item, tuple):
@@ -3738,6 +3875,26 @@ def cmd_resume() -> None:
         print(green("  Kill switch removed. Trading re-enabled."))
     else:
         print(dim("  No kill switch active."))
+
+
+def cmd_features() -> None:
+    """Show feature importance summary from historical trades."""
+    from feature_importance import get_feature_summary
+
+    summary = get_feature_summary()
+    if not summary:
+        print(dim("  No feature data yet. Features are recorded as trades are placed."))
+        return
+    print(bold("\n  Feature Importance Summary"))
+    print(f"  {'Feature':<30} {'Win Avg':>10} {'Loss Avg':>10} {'Trades':>8}")
+    print("  " + "─" * 62)
+    for feat, stats in summary.items():
+        win_avg = f"{stats['win_avg']:.4f}" if stats["win_avg"] is not None else "N/A"
+        loss_avg = (
+            f"{stats['loss_avg']:.4f}" if stats["loss_avg"] is not None else "N/A"
+        )
+        print(f"  {feat:<30} {win_avg:>10} {loss_avg:>10} {stats['total']:>8}")
+    print()
 
 
 def cmd_help() -> None:
@@ -6216,6 +6373,12 @@ def main():
         cmd_kill()
     elif cmd == "resume":
         cmd_resume()
+    elif cmd == "features":
+        cmd_features()
+    elif cmd == "override":
+        action = sys.argv[2] if len(sys.argv) > 2 else "status"
+        mins = int(sys.argv[3]) if len(sys.argv) > 3 else 60
+        cmd_override(action, mins)
     elif cmd == "replay":
         trade_id = sys.argv[2] if len(sys.argv) > 2 else ""
         if not trade_id:
