@@ -25,7 +25,7 @@ _log = logging.getLogger(__name__)
 
 _WS_URL = "wss://api.elections.kalshi.com/trade-api/ws/v2"
 _CACHE_PATH = Path(__file__).parent / "data" / "orderbook_cache.json"
-_CACHE_PATH.parent.mkdir(exist_ok=True)
+# Fix 6: mkdir moved out of import time — now called inside update_orderbook_cache
 
 # In-memory order book state (ticker → snapshot)
 _orderbook: dict[str, dict] = {}
@@ -53,6 +53,7 @@ def parse_message(msg: dict) -> dict | None:
     if msg_type == "orderbook_snapshot":
         yes_levels = inner.get("yes", [])  # [[price_str, qty], ...]
         no_levels = inner.get("no", [])
+        # Kalshi sends yes levels sorted best-bid-first per API spec
         best_yes_bid = float(yes_levels[0][0]) if yes_levels else None
         best_no_bid = float(no_levels[0][0]) if no_levels else None
         return {
@@ -102,15 +103,28 @@ def parse_message(msg: dict) -> dict | None:
 
 def update_orderbook_cache(ticker: str, data: dict) -> None:
     """Update in-memory and on-disk cache for a ticker."""
+    import safe_io
+
     with _cache_lock:
-        _orderbook[ticker] = data
+        if data.get("type") == "orderbook_delta":
+            # Merge delta into existing entry to preserve mid_price
+            existing = _orderbook.get(ticker, {})
+            existing["last_delta"] = data["delta"]
+            existing["ts"] = data["ts"]
+            _orderbook[ticker] = existing
+            merged = existing
+        else:
+            _orderbook[ticker] = data
+            merged = data
         try:
             cache = {}
             if _CACHE_PATH.exists():
-                cache = json.loads(_CACHE_PATH.read_text())
-            cache[ticker] = data
+                cache = json.loads(_CACHE_PATH.read_text(encoding="utf-8"))
+            cache[ticker] = merged
             cache["_updated_at"] = datetime.now(UTC).isoformat()
-            _CACHE_PATH.write_text(json.dumps(cache))
+            # Fix 6: mkdir called here, just before the write
+            _CACHE_PATH.parent.mkdir(exist_ok=True)
+            safe_io.atomic_write_json(cache, _CACHE_PATH)
         except Exception as exc:
             _log.debug("update_orderbook_cache: %s", exc)
 
@@ -118,13 +132,19 @@ def update_orderbook_cache(ticker: str, data: dict) -> None:
 def read_orderbook_cache() -> dict:
     """Read the current order book cache from disk."""
     try:
-        return json.loads(_CACHE_PATH.read_text())
+        return json.loads(_CACHE_PATH.read_text(encoding="utf-8"))
     except Exception:
         return {}
 
 
 def get_cached_mid_price(ticker: str) -> float | None:
     """Return the cached mid-price for a ticker, or None if not cached."""
+    # Try in-memory first (faster than disk read)
+    with _cache_lock:
+        entry = _orderbook.get(ticker)
+    if entry and entry.get("mid_price") is not None:
+        return entry["mid_price"]
+    # Fall back to disk cache
     cache = read_orderbook_cache()
     entry = cache.get(ticker)
     if not entry:
@@ -166,14 +186,12 @@ async def _ws_listener(api_key: str, private_key_pem: str, tickers: list[str]) -
 
     import base64
 
-    timestamp = str(int(time.time() * 1000))
-    message_to_sign = f"{timestamp}GET/trade-api/ws/v2".encode()
-
     try:
         from cryptography.hazmat.backends import default_backend
         from cryptography.hazmat.primitives import hashes, serialization
         from cryptography.hazmat.primitives.asymmetric import padding
 
+        # Load the key once (expensive) — signing repeats each reconnect
         private_key = serialization.load_pem_private_key(
             private_key_pem.encode()
             if isinstance(private_key_pem, str)
@@ -181,27 +199,36 @@ async def _ws_listener(api_key: str, private_key_pem: str, tickers: list[str]) -
             password=None,
             backend=default_backend(),
         )
-        signature = private_key.sign(
-            message_to_sign,
-            padding.PSS(
-                mgf=padding.MGF1(hashes.SHA256()),
-                salt_length=padding.PSS.DIGEST_LENGTH,
-            ),
-            hashes.SHA256(),
-        )
-        sig_b64 = base64.b64encode(signature).decode()
     except Exception as exc:
-        _log.error("kalshi_ws: auth signing failed: %s", exc)
+        _log.error("kalshi_ws: key loading failed: %s", exc)
         return
-
-    headers = {
-        "KALSHI-ACCESS-KEY": api_key,
-        "KALSHI-ACCESS-SIGNATURE": sig_b64,
-        "KALSHI-ACCESS-TIMESTAMP": timestamp,
-    }
 
     while True:
         try:
+            # Recompute auth on every connect attempt (timestamp must be fresh)
+            timestamp = str(int(time.time() * 1000))
+            message_to_sign = f"{timestamp}GET/trade-api/ws/v2".encode()
+            try:
+                signature = private_key.sign(
+                    message_to_sign,
+                    padding.PSS(
+                        mgf=padding.MGF1(hashes.SHA256()),
+                        salt_length=padding.PSS.DIGEST_LENGTH,
+                    ),
+                    hashes.SHA256(),
+                )
+                sig_b64 = base64.b64encode(signature).decode()
+            except Exception as exc:
+                _log.error("kalshi_ws: auth signing failed: %s", exc)
+                await asyncio.sleep(10)
+                continue
+
+            headers = {
+                "KALSHI-ACCESS-KEY": api_key,
+                "KALSHI-ACCESS-SIGNATURE": sig_b64,
+                "KALSHI-ACCESS-TIMESTAMP": timestamp,
+            }
+
             async with websockets.connect(_WS_URL, additional_headers=headers) as ws:
                 _log.info("kalshi_ws: connected to %s", _WS_URL)
 
@@ -247,7 +274,9 @@ class KalshiWebSocket:
         self._running = False
 
     def subscribe(self, tickers: list[str]) -> None:
-        """Add tickers to subscribe to."""
+        """Add tickers to subscribe to. Must be called before start()."""
+        if self._running:
+            raise RuntimeError("subscribe() must be called before start()")
         self._tickers = list(set(self._tickers + tickers))
 
     def start(self) -> None:
@@ -259,11 +288,13 @@ class KalshiWebSocket:
         self._thread.start()
         _log.info("kalshi_ws: background thread started")
 
-    def stop(self) -> None:
+    def stop(self, timeout: float = 5.0) -> None:
         """Stop the WebSocket listener."""
         self._running = False
-        if self._loop:
+        if self._loop and not self._loop.is_closed():
             self._loop.call_soon_threadsafe(self._loop.stop)
+        if self._thread:
+            self._thread.join(timeout=timeout)
         _log.info("kalshi_ws: stopped")
 
     def _run(self) -> None:
