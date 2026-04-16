@@ -145,7 +145,11 @@ ENSEMBLE_MODELS = [
     "icon_seamless",
     "gfs_seamless",
 ]  # existing (keep for backward compat)
-ENSEMBLE_MODELS_EXTENDED = [*ENSEMBLE_MODELS, "nbm"]  # Phase C: adds NBM
+ENSEMBLE_MODELS_EXTENDED = [
+    *ENSEMBLE_MODELS,
+    "nbm",
+    "ecmwf_aifs025",
+]  # Phase C: adds NBM + ECMWF AIFS
 
 # Dedicated session for NBM / Open-Meteo forecast calls (mockable in tests)
 _om_session: requests.Session = requests.Session()
@@ -434,6 +438,60 @@ def _compute_ensemble_mean(temps: dict[str, float | None]) -> float | None:
     """Compute mean of non-None values in a {model: temp} dict."""
     values = [v for v in temps.values() if v is not None]
     return sum(values) / len(values) if values else None
+
+
+def _compute_ensemble_spread(temps: dict[str, float | None]) -> float:
+    """Compute std dev of non-None values. Returns 0.0 if fewer than 2 valid."""
+    import statistics
+
+    values = [v for v in temps.values() if v is not None]
+    if len(values) < 2:
+        return 0.0
+    return statistics.stdev(values)
+
+
+def fetch_temperature_ecmwf(city: str, target_date) -> float | None:
+    """
+    Fetch ECMWF AIFS ensemble max daily temperature for a city.
+    Uses Open-Meteo with models="ecmwf_aifs025".
+    Outperforms GFS by ~20% for days 1–3 (operational since July 2025).
+
+    Returns max temperature for target_date in °F, or None on failure.
+    """
+    coords = CITY_COORDS.get(city)
+    if not coords:
+        return None
+    lat, lon, _ = coords
+
+    if _ensemble_cb.is_open():
+        return None
+
+    try:
+        resp = _request_with_retry(
+            "GET",
+            f"{FORECAST_BASE}",
+            params={
+                "latitude": lat,
+                "longitude": lon,
+                "hourly": "temperature_2m",
+                "temperature_unit": "fahrenheit",
+                "models": "ecmwf_aifs025",
+                "start_date": target_date.isoformat(),
+                "end_date": target_date.isoformat(),
+                "timezone": "auto",
+            },
+            timeout=15,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        temps = data.get("hourly", {}).get("temperature_2m", [])
+        valid = [t for t in temps if t is not None]
+        _ensemble_cb.record_success()
+        return float(max(valid)) if valid else None
+    except Exception as exc:
+        _ensemble_cb.record_failure()
+        _log.debug("fetch_temperature_ecmwf(%s): %s", city, exc)
+        return None
 
 
 # ── Ensemble forecast ────────────────────────────────────────────────────────
@@ -2444,6 +2502,22 @@ def analyze_trade(enriched: dict) -> dict | None:
             sigma = _forecast_uncertainty(target_date) * sigma_mult
             ens_prob = _forecast_probability(condition, forecast_temp, sigma)
 
+        # ── Phase C: extended ensemble members (NBM + ECMWF AIFS) ───────────────
+        model_temps: dict[str, float | None] = {}
+        try:
+            model_temps["nbm"] = fetch_temperature_nbm(city, target_date)
+            model_temps["ecmwf"] = fetch_temperature_ecmwf(city, target_date)
+        except Exception as _ext_exc:
+            _log.debug(
+                "Phase C extended ensemble fetch failed for %s: %s", city, _ext_exc
+            )
+
+        ensemble_spread_f = _compute_ensemble_spread(model_temps)
+
+        # Convert temperature spread to probability spread
+        # Rule of thumb: 1°F std dev ≈ 0.04 probability units at typical thresholds
+        ensemble_spread_prob = ensemble_spread_f * 0.04 if ensemble_spread_f else 0.0
+
         # ── Model consensus check ────────────────────────────────────────────────
         model_consensus = True
         icon_forecast_mean: float | None = None
@@ -2675,6 +2749,9 @@ def analyze_trade(enriched: dict) -> dict | None:
         ci_high = blended_prob
         data_quality = 1.0
         anomalous = False
+        model_temps = {}
+        ensemble_spread_f = 0.0
+        ensemble_spread_prob = 0.0
 
     # Regime detection
     _regime_info: dict = {}
@@ -2884,6 +2961,10 @@ def analyze_trade(enriched: dict) -> dict | None:
         # Per-model forecast means for ensemble scoring
         "icon_forecast_mean": icon_forecast_mean,
         "gfs_forecast_mean": gfs_forecast_mean,
+        # Phase C: extended ensemble spread
+        "ensemble_spread": ensemble_spread_prob,
+        "ensemble_spread_f": ensemble_spread_f,
+        "n_ensemble_members": sum(1 for v in model_temps.values() if v is not None),
         # Regime detection
         "regime": _regime_info.get("regime", "normal"),
         "regime_description": _regime_info.get("description", ""),
