@@ -393,13 +393,18 @@ def fetch_temperature_nbm(city: str, target_date: date) -> float | None:
 
     Returns max temperature for target_date in °F, or None on failure.
     """
-    coords = CITY_COORDS.get(city.upper())
+    coords = CITY_COORDS.get(city)
     if not coords:
         return None
     lat, lon, _ = coords
 
+    if _ensemble_cb.is_open():
+        _log.warning("[CircuitBreaker] open_meteo circuit open — skipping NBM fetch")
+        return None
+
     try:
-        resp = _om_session.get(
+        resp = _request_with_retry(
+            "GET",
             FORECAST_BASE,
             params={
                 "latitude": lat,
@@ -414,11 +419,13 @@ def fetch_temperature_nbm(city: str, target_date: date) -> float | None:
             timeout=15,
         )
         resp.raise_for_status()
+        _ensemble_cb.record_success()
         data = resp.json()
         temps = data.get("hourly", {}).get("temperature_2m", [])
         valid = [t for t in temps if t is not None]
         return float(max(valid)) if valid else None
     except Exception as exc:
+        _ensemble_cb.record_failure()
         _log.debug("fetch_temperature_nbm(%s): %s", city, exc)
         return None
 
