@@ -442,15 +442,13 @@ def _compute_ensemble_mean(temps: dict[str, float | None]) -> float | None:
 
 def _compute_ensemble_spread(temps: dict[str, float | None]) -> float:
     """Compute std dev of non-None values. Returns 0.0 if fewer than 2 valid."""
-    import statistics
-
     values = [v for v in temps.values() if v is not None]
     if len(values) < 2:
         return 0.0
     return statistics.stdev(values)
 
 
-def fetch_temperature_ecmwf(city: str, target_date) -> float | None:
+def fetch_temperature_ecmwf(city: str, target_date: date) -> float | None:
     """
     Fetch ECMWF AIFS ensemble max daily temperature for a city.
     Uses Open-Meteo with models="ecmwf_aifs025".
@@ -464,12 +462,13 @@ def fetch_temperature_ecmwf(city: str, target_date) -> float | None:
     lat, lon, _ = coords
 
     if _ensemble_cb.is_open():
+        _log.warning("[CircuitBreaker] open_meteo circuit open — skipping ECMWF fetch")
         return None
 
     try:
         resp = _request_with_retry(
             "GET",
-            f"{FORECAST_BASE}",
+            FORECAST_BASE,
             params={
                 "latitude": lat,
                 "longitude": lon,
@@ -483,10 +482,10 @@ def fetch_temperature_ecmwf(city: str, target_date) -> float | None:
             timeout=15,
         )
         resp.raise_for_status()
+        _ensemble_cb.record_success()
         data = resp.json()
         temps = data.get("hourly", {}).get("temperature_2m", [])
         valid = [t for t in temps if t is not None]
-        _ensemble_cb.record_success()
         return float(max(valid)) if valid else None
     except Exception as exc:
         _ensemble_cb.record_failure()

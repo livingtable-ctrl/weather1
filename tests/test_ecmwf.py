@@ -6,6 +6,8 @@ import sys
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 
@@ -27,7 +29,7 @@ class TestECMWFAIFS:
             mock_req.return_value.raise_for_status.return_value = None
             result = fetch_temperature_ecmwf("NYC", date(2026, 4, 17))
 
-        assert result is None or isinstance(result, float)
+        assert result == pytest.approx(21.0, abs=0.01)
 
     def test_fetch_temperature_ecmwf_none_on_failure(self):
         from datetime import date
@@ -62,3 +64,10 @@ class TestECMWFAIFS:
         spread = _compute_ensemble_spread(temps)
         assert isinstance(spread, float)
         assert spread >= 0
+
+    def test_spread_single_valid_member_returns_zero(self):
+        """_compute_ensemble_spread returns 0.0 when only one member is valid."""
+        from weather_markets import _compute_ensemble_spread
+
+        spread = _compute_ensemble_spread({"nbm": 70.0, "ecmwf": None})
+        assert spread == 0.0
