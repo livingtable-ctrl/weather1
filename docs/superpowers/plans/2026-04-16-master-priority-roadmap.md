@@ -31,7 +31,7 @@
 | ✅ | Done |
 | 🔴 | Phase A — Immediate (this sprint) |
 | 🟠 | Phase B — Near-term |
-| 🟡 | Phase C — New data sources |
+| ✅ | Phase C — New data sources |
 | 🟢 | Phase D — Monitoring & settlement |
 | 🔵 | Phase E — Backtesting |
 | 🟣 | Phase F — WebSocket |
@@ -71,9 +71,9 @@
 
 | Rank | Item | Phase | Impact | Effort | Plan |
 |------|------|-------|--------|--------|------|
-| 9 | **NBM (National Blend of Models)** | 🟡 C | High | Medium | [Phase C](2026-04-16-phase-c-new-data-sources.md) |
-| 10 | **ECMWF AIFS ensemble** | 🟡 C | High | Medium | [Phase C](2026-04-16-phase-c-new-data-sources.md) |
-| 11 | **Gaussian probability distribution method** | 🟡 C | Medium | Low | [Phase C](2026-04-16-phase-c-new-data-sources.md) |
+| 9 | ✅ **NBM (National Blend of Models)** | ✅ C | High | Medium | [Phase C](2026-04-16-phase-c-new-data-sources.md) |
+| 10 | ✅ **ECMWF AIFS ensemble** | ✅ C | High | Medium | [Phase C](2026-04-16-phase-c-new-data-sources.md) |
+| 11 | ✅ **Gaussian probability distribution method** | ✅ C | Medium | Low | [Phase C](2026-04-16-phase-c-new-data-sources.md) |
 | 12 | **Reliability diagram in dashboard** | 🟢 D | Medium | Low | [Phase D](2026-04-16-phase-d-monitoring-settlement.md) |
 | 13 | **Per-city per-season Brier segmentation** | 🟢 D | Medium | Medium | [Phase D](2026-04-16-phase-d-monitoring-settlement.md) |
 
@@ -112,7 +112,7 @@
 |-------|-------|----------|-----------|
 | ✅ A: Data Foundation | MOS + bias correction + METAR lock-in | **Done 2026-04-16** | [2026-04-16-phase-a-data-foundation.md](2026-04-16-phase-a-data-foundation.md) |
 | ✅ B: Risk Engine | Confidence tiers + drawdown Kelly + flash crash CB | **Done 2026-04-16** | [2026-04-16-phase-b-risk-engine.md](2026-04-16-phase-b-risk-engine.md) |
-| C: New Data Sources | NBM + ECMWF AIFS + Gaussian method | Near-term | [2026-04-16-phase-c-new-data-sources.md](2026-04-16-phase-c-new-data-sources.md) |
+| ✅ C: New Data Sources | NBM + ECMWF AIFS + Gaussian method | **Done 2026-04-16** | [2026-04-16-phase-c-new-data-sources.md](2026-04-16-phase-c-new-data-sources.md) |
 | D: Monitoring & Settlement | Settlement lag + per-city Brier + reliability diagram | Medium-term | [2026-04-16-phase-d-monitoring-settlement.md](2026-04-16-phase-d-monitoring-settlement.md) |
 | E: Walk-Forward Backtesting | Walk-forward engine | Medium-term | [2026-04-16-phase-e-walk-forward-backtest.md](2026-04-16-phase-e-walk-forward-backtest.md) |
 | F: WebSocket | Real-time order book | Medium-term | [2026-04-16-phase-f-websocket.md](2026-04-16-phase-f-websocket.md) |
