@@ -57,9 +57,8 @@ class TestGaussianProbability:
         """get_historical_sigma returns a positive float for known cities."""
         from weather_markets import get_historical_sigma
 
-        sigma = get_historical_sigma("NYC", month=4)  # April = spring
-        assert isinstance(sigma, float)
-        assert sigma > 0
+        sigma = get_historical_sigma("NYC", month=4)  # April = spring (season 2) = 6.0
+        assert sigma == pytest.approx(6.0)
 
     def test_get_historical_sigma_unknown_city_default(self):
         """Unknown city returns a reasonable default sigma (5.0°F)."""

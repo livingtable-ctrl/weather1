@@ -493,6 +493,8 @@ def gaussian_probability(
     Returns:
         Probability as a float in [0, 1]
     """
+    if direction not in ("above", "below"):
+        raise ValueError(f"gaussian_probability: unknown direction {direction!r}")
     # P(T < threshold) where T ~ Normal(forecast_mean, sigma)
     cdf = normal_cdf(threshold, forecast_mean, sigma)
 
@@ -2574,14 +2576,19 @@ def analyze_trade(enriched: dict) -> dict | None:
         # ── Phase C: Gaussian probability + blend with raw ensemble fraction ─────
         target_month = target_date.month
         sigma_gauss = get_historical_sigma(city, target_month)
-        p_win_gaussian = gaussian_probability(
-            forecast_mean=forecast_temp,
-            threshold=float(condition.get("threshold", 0)),
-            sigma=sigma_gauss,
-            direction=condition.get("type", "above"),
-        )
+        cond_type = condition.get("type", "above")
+        if cond_type in ("above", "below"):
+            p_win_gaussian = gaussian_probability(
+                forecast_mean=forecast_temp,
+                threshold=float(condition.get("threshold", 0)),
+                sigma=sigma_gauss,
+                direction=cond_type,
+            )
+        else:
+            p_win_gaussian = None
 
         # Blend Gaussian with ensemble fraction (fall back to ens_prob if temps available)
+        n_valid = len([t for t in model_temps.values() if t is not None])
         raw_fraction = sum(
             1
             for t in model_temps.values()
@@ -2591,15 +2598,22 @@ def analyze_trade(enriched: dict) -> dict | None:
                 if condition.get("type") == "above"
                 else t < condition.get("threshold", 0)
             )
-        ) / max(1, len([t for t in model_temps.values() if t is not None]))
+        ) / max(1, n_valid)
 
-        n_valid = len([t for t in model_temps.values() if t is not None])
-        if n_valid >= 1 and condition.get("type") in ("above", "below"):
+        if (
+            n_valid >= 1
+            and condition.get("type") in ("above", "below")
+            and p_win_gaussian is not None
+        ):
             # Only blend when we have raw model_temps and a simple direction condition
-            if n_valid >= 3:
-                ens_prob = 0.6 * p_win_gaussian + 0.4 * raw_fraction
-            else:
-                ens_prob = 0.8 * p_win_gaussian + 0.2 * raw_fraction
+            gaussian_blend = (
+                0.6 * p_win_gaussian + 0.4 * raw_fraction
+                if n_valid >= 3
+                else 0.8 * p_win_gaussian + 0.2 * raw_fraction
+            )
+            # Only use Gaussian blend when large ensemble didn't produce a result
+            if ens_prob is None:
+                ens_prob = gaussian_blend
 
         # ── Model consensus check ────────────────────────────────────────────────
         model_consensus = True
