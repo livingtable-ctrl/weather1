@@ -1775,7 +1775,65 @@ def cmd_today(client: KalshiClient) -> None:
     print(f"  Risk level:  {risk_label}")
     print(f"  Confidence:  {confidence}")
     print()
-    print(dim("  Run P → 2 to place this trade now."))
+
+    # ── Inline placement ─────────────────────────────────────────────────────
+    from paper import kelly_quantity, place_paper_order
+    from utils import MAX_DAILY_SPEND
+
+    qty = kelly_quantity(ci_kelly, entry_price) if entry_price > 0 else 0
+
+    try:
+        raw = (
+            input(
+                dim(
+                    f"  [P] Place {side.upper()} x{qty} ${bet_dollars:.2f}  [Enter] Back: "
+                )
+            )
+            .strip()
+            .upper()
+        )
+    except (KeyboardInterrupt, EOFError):
+        print()
+        return
+
+    if raw != "P":
+        return
+
+    if qty < 1 or bet_dollars <= 0:
+        print(yellow("  Kelly sizing produced 0 contracts — trade not placed."))
+        return
+
+    if _daily_paper_spend() + bet_dollars > MAX_DAILY_SPEND:
+        print(
+            yellow(
+                f"  Daily spend cap would be exceeded (${_daily_paper_spend():.2f}/${MAX_DAILY_SPEND:.0f}). Trade not placed."
+            )
+        )
+        return
+
+    try:
+        trade = place_paper_order(
+            ticker,
+            side,
+            qty,
+            entry_price,
+            entry_prob=forecast_prob,
+            net_edge=best_a.get("net_edge"),
+            city=best_m.get("_city"),
+            target_date=best_a.get("target_date"),
+            method=best_a.get("method"),
+        )
+        cost = round(entry_price * qty, 2)
+        print(
+            green(
+                f"\n  ✓ Placed: BUY {side.upper()} x{qty} @ {entry_price:.0%} — cost ${cost:.2f}"
+            )
+        )
+        print(
+            dim(f"  Trade ID: {trade.get('id', '?')}  |  Balance: ${get_balance():.2f}")
+        )
+    except Exception as e:
+        print(red(f"  Failed to place trade: {e}"))
 
 
 def cmd_brief(client: KalshiClient, send_email: bool = False) -> None:
@@ -2083,7 +2141,7 @@ def cmd_cron(client: KalshiClient, min_edge: float = MIN_EDGE) -> None:
             enriched = enrich_with_forecast(m)
             return m, enriched, analyze_trade(enriched)
 
-        with ThreadPoolExecutor(max_workers=10) as _pool:
+        with ThreadPoolExecutor(max_workers=4) as _pool:
             _futures = {_pool.submit(_enrich_and_analyze, m): m for m in markets}
             for fut in _as_completed(_futures):
                 try:
@@ -2227,9 +2285,13 @@ def cmd_cron(client: KalshiClient, min_edge: float = MIN_EDGE) -> None:
             "cmd_cron: _check_early_exits failed: %s", _e
         )
 
-    # Windows toast notification
+    # Windows toast notification (suppressed during test runs)
     try:
+        import os as _os
         import subprocess as _sp
+
+        if _os.environ.get("PYTEST_CURRENT_TEST"):
+            raise StopIteration  # skip toast in tests
 
         signals = len(strong_opps) + len(med_opps)
         parts = []
@@ -2412,10 +2474,22 @@ def _validate_trade_opportunity(opp: dict) -> tuple[bool, str]:
         )
         return False, health.reason
 
-    # Edge check
+    # Edge check — net_edge must be positive, raw edge must agree with side, and
+    # raw edge must clear MIN_EDGE so near-zero-price contracts don't slip through
+    from utils import MIN_EDGE as _MIN_EDGE
+
     edge = opp.get("net_edge", 0.0)
     if edge <= 0:
         return False, f"edge={edge:.4f} <= 0"
+    if "edge" in opp:
+        raw_edge = opp["edge"]
+        side = opp.get("recommended_side", "yes")
+        if side == "yes" and raw_edge <= 0:
+            return False, f"raw_edge={raw_edge:.4f} <= 0 for YES recommendation"
+        if side == "no" and raw_edge >= 0:
+            return False, f"raw_edge={raw_edge:.4f} >= 0 for NO recommendation"
+        if abs(raw_edge) < _MIN_EDGE:
+            return False, f"raw_edge={raw_edge:.4f} below MIN_EDGE={_MIN_EDGE:.4f}"
 
     # Kelly check
     kelly = opp.get("ci_adjusted_kelly", opp.get("fee_adjusted_kelly", 0.0))
@@ -2658,9 +2732,12 @@ def _auto_place_trades(
         )
         if adj_kelly < 0.002:
             continue
-        # Use market implied prob as entry price when no live quote
-        prices = a.get("market_prob", 0.50)
-        entry_price = float(prices) if isinstance(prices, int | float) else 0.50
+        # Use market implied prob as entry price — flip for NO side
+        # Skip if market_prob is near 0 or 1 (degenerate markets — no real two-sided market)
+        _mkt_prob = float(a.get("market_prob", 0.50) or 0.50)
+        if _mkt_prob < 0.02 or _mkt_prob > 0.98:
+            continue
+        entry_price = 1.0 - _mkt_prob if rec_side == "no" else _mkt_prob
         method = a.get("method")
         consensus_mult = 0.5 if not a.get("model_consensus", True) else 1.0
         adj_kelly_final = adj_kelly * consensus_mult
@@ -4216,48 +4293,151 @@ def cmd_browse(client: KalshiClient) -> None:
         print(yellow(f"  No open weather markets found for {city_label}."))
         return
 
-    # Build display table
-    rows = []
-    ticker_list = []
-    for i, m in enumerate(markets, 1):
+    def _market_price_row(i: int, m: dict, analysis: dict | None = None) -> list:
+        """Build a single browse table row, optionally with signal columns."""
         from weather_markets import parse_market_price as _pmp
 
         prices = _pmp(m)
         yes_bid = prices.get("yes_bid") or 0
         yes_ask = prices.get("yes_ask") or 0
-        if yes_bid > 0:
-            bid_s = f"${yes_bid:.2f}"
-        else:
-            bid_s = dim("—")
-        if yes_ask > 0:
-            ask_s = f"${yes_ask:.2f}"
-        else:
-            ask_s = dim("—")
+        mid = prices.get("mid") or 0
+
+        bid_s = f"${yes_bid:.2f}" if yes_bid > 0 else dim("—")
+        ask_s = f"${yes_ask:.2f}" if yes_ask > 0 else dim("—")
+        spread = yes_ask - yes_bid if yes_ask > 0 and yes_bid > 0 else None
+        spread_s = f"${round(spread, 2):.2f}" if spread is not None else dim("—")
+        mid_s = f"${mid:.2f}" if mid > 0 else dim("—")
+
+        raw_last = m.get("last_price_dollars") or m.get("last_price") or 0
+        try:
+            last_f = float(raw_last)
+            if last_f > 1:
+                last_f /= 100.0
+        except (TypeError, ValueError):
+            last_f = 0.0
+        last_s = f"${last_f:.2f}" if last_f > 0 else dim("—")
+
+        raw_vol = m.get("volume_fp") or m.get("volume") or m.get("volume_24h_fp") or 0
+        try:
+            vol_f = float(raw_vol)
+        except (TypeError, ValueError):
+            vol_f = 0.0
+        raw_oi = m.get("open_interest_fp") or m.get("open_interest") or 0
+        try:
+            oi_f = float(raw_oi)
+        except (TypeError, ValueError):
+            oi_f = 0.0
+        activity = vol_f + oi_f
+        vol_s = f"{activity:,.0f}" if activity > 0 else dim("—")
+
         closes = _format_expiry(m.get("close_time", ""))
-        title = (m.get("title") or m.get("ticker", ""))[:42]
+        title = (m.get("title") or m.get("ticker", ""))[:36]
         ticker = m.get("ticker", "")
-        ticker_list.append(ticker)
-        rows.append([cyan(str(i)), ticker, title, bid_s, ask_s, closes])
 
-    print(
-        tabulate(
-            rows,
-            headers=["#", "Ticker", "Title", "YES bid", "YES ask", "Closes In"],
-            tablefmt="rounded_outline",
-        )
-    )
+        row = [
+            cyan(str(i)),
+            ticker,
+            title,
+            bid_s,
+            ask_s,
+            spread_s,
+            mid_s,
+            last_s,
+            vol_s,
+            closes,
+        ]
 
+        if analysis is not None:
+            prob = analysis.get("forecast_prob")
+            edge = analysis.get("net_edge") or analysis.get("edge") or 0
+            side = analysis.get("recommended_side", "")
+            prob_s = f"{prob * 100:.0f}%" if prob is not None else dim("—")
+            if edge >= 0.10:
+                edge_s = green(f"+{edge * 100:.0f}%")
+                signal_s = green(f"BUY {side.upper()}" if side else "BUY")
+            elif edge >= 0.05:
+                edge_s = yellow(f"+{edge * 100:.0f}%")
+                signal_s = yellow("MAYBE")
+            elif edge <= -0.05:
+                edge_s = red(f"{edge * 100:.0f}%")
+                signal_s = red("SKIP")
+            else:
+                edge_s = dim(f"{edge * 100:.0f}%")
+                signal_s = dim("SKIP")
+            row += [prob_s, edge_s, signal_s]
+        return row
+
+    # Build display table
+    ticker_list = [m.get("ticker", "") for m in markets]
+    rows = [_market_price_row(i, m) for i, m in enumerate(markets, 1)]
+
+    base_headers = [
+        "#",
+        "Ticker",
+        "Title",
+        "Bid",
+        "Ask",
+        "Spread",
+        "Mid",
+        "Last",
+        "Vol+OI",
+        "Closes",
+    ]
+
+    def _print_table(rows: list, with_signals: bool = False) -> None:
+        headers = base_headers + (["Prob", "Edge", "Signal"] if with_signals else [])
+        print(tabulate(rows, headers=headers, tablefmt="rounded_outline"))
+
+    _print_table(rows)
     city_label = city_filter or "all cities"
     print(dim(f"\n  {len(markets)} markets — {city_label}"))
 
     # Action prompt
+    analysis_cache: dict[str, dict] = {}
+
     while True:
         raw2 = input(
-            dim("  # for details  F forecast  C arbitrage  Enter back: ")
+            dim(
+                "  # for details  A analyze signals  F forecast  C arbitrage  Enter back: "
+            )
         ).strip()
         if not raw2:
             return
-        if raw2.upper() == "F":
+        if raw2.upper() == "A":
+            from concurrent.futures import ThreadPoolExecutor
+            from concurrent.futures import as_completed as _as_completed
+
+            print(dim(f"  Scanning {len(markets)} markets…"))
+
+            def _do_analyze(m: dict) -> tuple[str, dict | None]:
+                try:
+                    enriched = enrich_with_forecast(m)
+                    return m.get("ticker", ""), analyze_trade(enriched)
+                except Exception:
+                    return m.get("ticker", ""), None
+
+            with ThreadPoolExecutor(max_workers=6) as pool:
+                futures = {pool.submit(_do_analyze, m): m for m in markets}
+                for fut in _as_completed(futures):
+                    ticker_key, result = fut.result()
+                    if result:
+                        analysis_cache[ticker_key] = result
+
+            signal_rows = [
+                _market_price_row(i, m, analysis_cache.get(m.get("ticker", "")))
+                for i, m in enumerate(markets, 1)
+            ]
+            _print_table(signal_rows, with_signals=True)
+            buys = sum(
+                1
+                for m in markets
+                if (analysis_cache.get(m.get("ticker", "")) or {}).get("net_edge", 0)
+                >= 0.10
+            )
+            print(
+                dim(f"\n  {len(markets)} markets — {buys} strong signals (edge ≥10%)")
+            )
+        elif raw2.upper() == "F":
             if city_filter:
                 cmd_forecast(city_filter)
             else:
@@ -4345,7 +4525,6 @@ def cmd_settings(client: KalshiClient | None = None) -> None:  # noqa: ARG001
         print(f"  {cyan('W')}    Web dashboard  — local web dashboard (localhost:5000)")
         print(f"  {cyan('X')}    Simulate       — replay historical markets (sandbox)")
         print(f"  {cyan('Y')}    Weekly summary — generate weekly recap")
-        print(f"  {cyan('Z')}    Schedule       — start hourly auto-scan")
         print()
 
         raw = input(dim("  Number to edit, or letter, or Enter to go back: ")).strip()
@@ -4375,11 +4554,6 @@ def cmd_settings(client: KalshiClient | None = None) -> None:  # noqa: ARG001
             cmd_weekly_summary()
             input(dim("\n  Press Enter to return to settings..."))
             continue
-        if raw.upper() == "Z":
-            cmd_schedule()
-            input(dim("\n  Press Enter to return to settings..."))
-            continue
-
         if not raw.isdigit() or not (1 <= int(raw) <= len(setting_keys)):
             print(red("  Invalid choice."))
             continue
@@ -4925,6 +5099,11 @@ def cmd_menu(client: KalshiClient):
             else:
                 print(f"{num} {key_str} {name.strip()}")
 
+        print(
+            dim(
+                "\n  Tip: press A to scan for trades · run 'py main.py settle' or 'py main.py backtest' when off a game to sync data."
+            )
+        )
         choice = input(bold(f"\n  Choose (1–{len(top_options)} or letter): ")).strip()
         if not choice.isdigit():
             choice = key_map.get(choice.lower(), choice)
@@ -6172,7 +6351,7 @@ def cmd_schedule():
 
     # Build the schtasks command
     create_cmd = (
-        f'schtasks /Create /F /SC HOURLY /MO 1 /TN "{task_name}" '
+        f'schtasks /Create /F /SC HOURLY /MO 3 /TN "{task_name}" '
         f'/TR "{task_cmd}" /RL HIGHEST'
     )
 
@@ -6187,7 +6366,7 @@ def cmd_schedule():
 
     result = subprocess.run(create_cmd, shell=True, capture_output=True, text=True)
     if result.returncode == 0:
-        print(green(f"\nTask '{task_name}' registered — runs every hour."))
+        print(green(f"\nTask '{task_name}' registered — runs every 3 hours."))
         print(dim("To remove: schtasks /Delete /TN KalshiWeatherScan /F"))
     else:
         print(red(f"Failed: {result.stderr.strip() or result.stdout.strip()}"))
@@ -6473,8 +6652,6 @@ def main():
     if not args:
         client = build_client()
         auto_backup()
-        auto_settle(client)
-        auto_backtest(client)
         # Show onboarding wizard on first run
         if _needs_onboarding():
             cmd_onboard()
@@ -6485,8 +6662,6 @@ def main():
     verbose = "--verbose" in args or "-v" in args
     client = build_client()
     auto_backup()
-    auto_settle(client)
-    auto_backtest(client)
 
     if cmd == "menu":
         cmd_menu(client)
@@ -6558,10 +6733,6 @@ def main():
             print("Usage: py main.py cancel <order_id>")
         else:
             cmd_cancel(client, args[1])
-    elif cmd == "schedule":
-        cmd_schedule()
-    elif cmd == "schedule-cycles":
-        cmd_schedule_cycles()
     elif cmd == "settle":
         cmd_settle(client)
     elif cmd == "paper":

@@ -958,7 +958,7 @@ def get_weather_markets(
         except Exception:
             return []
 
-    with ThreadPoolExecutor(max_workers=10) as pool:
+    with ThreadPoolExecutor(max_workers=4) as pool:
         futures = {pool.submit(_fetch_series, s): s for s in known_series}
         for fut in as_completed(futures):
             for m in fut.result():
@@ -2202,13 +2202,17 @@ def analyze_trade(enriched: dict) -> dict | None:
         return None
 
     # ── Liquidity gate: skip markets with no real open interest ──────────────
-    _vol = (enriched.get("volume") or 0) + (enriched.get("open_interest") or 0)
+    # Accept both legacy (volume/open_interest) and current API names (volume_fp/open_interest_fp)
+    _vol = float(enriched.get("volume_fp") or enriched.get("volume") or 0) + float(
+        enriched.get("open_interest_fp") or enriched.get("open_interest") or 0
+    )
     if _vol < MIN_LIQUIDITY:
         return None
 
     # ── Spread gate: skip illiquid markets with wide bid-ask spreads ─────────
-    _yes_ask = enriched.get("yes_ask", 0) or 0
-    _yes_bid = enriched.get("yes_bid", 0) or 0
+    _prices = parse_market_price(enriched)
+    _yes_ask = _prices.get("yes_ask", 0) or 0
+    _yes_bid = _prices.get("yes_bid", 0) or 0
     if _yes_ask > 0 and _yes_bid > 0:
         _mid = (_yes_ask + _yes_bid) / 2
         if _mid > 0 and (_yes_ask - _yes_bid) / _mid > 0.30:
@@ -2364,7 +2368,9 @@ def analyze_trade(enriched: dict) -> dict | None:
     # ── 6. Weighted blend ────────────────────────────────────────────────────
     if obs_override is not None:
         # Same-day with live obs — trust almost entirely
-        blended_prob = obs_override * 0.95 + (ens_prob or 0.5) * 0.05
+        blended_prob = (
+            obs_override * 0.95 + (ens_prob if ens_prob is not None else 0.5) * 0.05
+        )
         blend_sources = {"obs": 0.95, "ensemble": 0.05}
     else:
         _month = (
@@ -2406,10 +2412,10 @@ def analyze_trade(enriched: dict) -> dict | None:
             persistence_p = None
 
         blended_prob = (
-            w_ens * (ens_prob or 0.5)
-            + w_clim * (clim_prob or 0.5)
-            + w_nws * (_nws_prob or 0.5)
-            + w_persist * (persistence_p or 0.5)
+            w_ens * (ens_prob if ens_prob is not None else 0.5)
+            + w_clim * (clim_prob if clim_prob is not None else 0.5)
+            + w_nws * (_nws_prob if _nws_prob is not None else 0.5)
+            + w_persist * (persistence_p if persistence_p is not None else 0.5)
         )
         blend_sources = {
             "ensemble": w_ens,
@@ -2677,7 +2683,7 @@ def detect_hedge_opportunity(analysis: dict, open_trades: list[dict]) -> bool:
 
 def analyze_markets_parallel(
     markets: list[dict],
-    max_workers: int = 10,
+    max_workers: int = 4,
 ) -> list[dict | None]:
     """
     Run analyze_trade on each market concurrently (#127).

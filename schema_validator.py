@@ -16,32 +16,35 @@ def validate_market(data: dict, source: str = "kalshi") -> bool:
     Validate a Kalshi market dict has required fields.
     Returns True if valid, False if critical fields are missing/wrong type.
     Logs a WARNING for each violation found.
+
+    Accepts both legacy field names (yes_bid, yes_ask, volume) and the current
+    API names (yes_bid_dollars, yes_ask_dollars, volume_fp).
     """
-    required: dict[str, type | tuple[type, ...]] = {
-        "ticker": str,
-        "yes_bid": (int, float, type(None)),
-        "yes_ask": (int, float, type(None)),
-        "volume": (int, float, type(None)),
-    }
+    # Fields that may appear under either a legacy or current name
+    alias_fields: list[tuple[str, str, type | tuple]] = [
+        ("yes_bid", "yes_bid_dollars", (int, float, str, type(None))),
+        ("yes_ask", "yes_ask_dollars", (int, float, str, type(None))),
+        ("volume", "volume_fp", (int, float, str, type(None))),
+    ]
     ok = True
-    for field, expected_type in required.items():
-        val = data.get(field)
-        if field not in data:
+
+    if "ticker" not in data:
+        _log.warning(
+            "schema_validator[%s]: market missing required field 'ticker'", source
+        )
+        ok = False
+
+    for primary, alias, expected_type in alias_fields:
+        if primary in data or alias in data:
+            pass  # at least one name present — type check skipped (API mixes str/float)
+        else:
             _log.warning(
-                "schema_validator[%s]: market missing required field %r", source, field
-            )
-            ok = False
-        elif not isinstance(val, expected_type):
-            _log.warning(
-                "schema_validator[%s]: market field %r has type %s, expected %s",
+                "schema_validator[%s]: market missing required field %r",
                 source,
-                field,
-                type(val).__name__,
-                expected_type.__name__
-                if isinstance(expected_type, type)
-                else str(expected_type),
+                primary,
             )
             ok = False
+
     return ok
 
 

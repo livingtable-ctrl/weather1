@@ -311,16 +311,16 @@ def _dynamic_kelly_cap() -> float:
 
         score = _brier()
         if score is None:
-            return 50.0
+            return 200.0
         if score <= 0.05:
-            return 125.0
+            return 500.0
         if score <= 0.10:
-            return 100.0
+            return 400.0
         if score <= 0.15:
-            return 75.0
-        return 50.0
+            return 300.0
+        return 200.0
     except Exception:
-        return 50.0
+        return 200.0
 
 
 def _method_kelly_multiplier(method: str | None) -> float:
@@ -396,7 +396,7 @@ def kelly_quantity(
     dollars = kelly_bet_dollars(kelly_fraction, cap=cap, method=method)
     if dollars < min_dollars:
         return 0
-    return int(dollars / price)
+    return min(int(dollars / price), 500)
 
 
 def place_paper_order(
