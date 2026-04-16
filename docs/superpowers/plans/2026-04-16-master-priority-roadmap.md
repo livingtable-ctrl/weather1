@@ -44,9 +44,9 @@
 
 | Rank | Item | Phase | Impact | Effort | Plan |
 |------|------|-------|--------|--------|------|
-| 5 | **Confidence-tiered edge thresholds** | 🟠 B | High | Low | [Phase B](2026-04-16-phase-b-risk-engine.md) |
-| 6 | **Drawdown-tiered Kelly step reduction** | 🟠 B | High | Low | [Phase B](2026-04-16-phase-b-risk-engine.md) |
-| 7 | **Per-market flash crash circuit breaker** | 🟠 B | High | Low | [Phase B](2026-04-16-phase-b-risk-engine.md) |
+| 5 | ~~Confidence-tiered edge thresholds~~ | ✅ Done | High | Low | [Phase B](2026-04-16-phase-b-risk-engine.md) |
+| 6 | ~~Drawdown-tiered Kelly step reduction~~ | ✅ Done | High | Low | [Phase B](2026-04-16-phase-b-risk-engine.md) |
+| 7 | ~~Per-market flash crash circuit breaker~~ | ✅ Done | High | Low | [Phase B](2026-04-16-phase-b-risk-engine.md) |
 | 8 | **METAR settlement lag monitoring** | 🟢 D | High | Medium | [Phase D](2026-04-16-phase-d-monitoring-settlement.md) |
 
 **Why second:** Risk calibration items (5-7) can be done in a few hours and protect capital immediately. Settlement lag (8) is a secondary high-win-rate strategy, but requires a persistent monitoring loop outside the cron schedule.
@@ -97,7 +97,7 @@
 | Phase | Items | Priority | Plan File |
 |-------|-------|----------|-----------|
 | ✅ A: Data Foundation | MOS + bias correction + METAR lock-in | **Done 2026-04-16** | [2026-04-16-phase-a-data-foundation.md](2026-04-16-phase-a-data-foundation.md) |
-| B: Risk Engine | Confidence tiers + drawdown Kelly + flash crash CB | Near-term | [2026-04-16-phase-b-risk-engine.md](2026-04-16-phase-b-risk-engine.md) |
+| ✅ B: Risk Engine | Confidence tiers + drawdown Kelly + flash crash CB | **Done 2026-04-16** | [2026-04-16-phase-b-risk-engine.md](2026-04-16-phase-b-risk-engine.md) |
 | C: New Data Sources | NBM + ECMWF AIFS + Gaussian method | Near-term | [2026-04-16-phase-c-new-data-sources.md](2026-04-16-phase-c-new-data-sources.md) |
 | D: Monitoring & Settlement | Settlement lag + per-city Brier + reliability diagram | Medium-term | [2026-04-16-phase-d-monitoring-settlement.md](2026-04-16-phase-d-monitoring-settlement.md) |
 | E: Walk-Forward Backtesting | Walk-forward engine | Medium-term | [2026-04-16-phase-e-walk-forward-backtest.md](2026-04-16-phase-e-walk-forward-backtest.md) |

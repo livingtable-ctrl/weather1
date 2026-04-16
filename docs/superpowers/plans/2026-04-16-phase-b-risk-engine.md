@@ -1,6 +1,8 @@
 # Phase B: Risk Engine Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **Status: ✅ COMPLETE — 2026-04-16** — All 3 tasks implemented, reviewed, and committed on branch `claude/jolly-robinson`.
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Add three risk calibration improvements: step-function drawdown-tiered Kelly reduction, per-market flash crash circuit breaker, and confidence-tiered edge thresholds.
 
@@ -27,7 +29,7 @@
 | 60–80% | 20–40% | 0.20 (survival mode) |
 | < 60% | > 40% | 0.00 (paused) |
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `tests/test_drawdown_tiers.py`:
 
@@ -125,7 +127,7 @@ class TestDrawdownScalingFactor:
             assert paper.drawdown_scaling_factor() == pytest.approx(1.0)
 ```
 
-- [ ] **Step 2: Run tests to verify some fail**
+- [x] **Step 2: Run tests to verify some fail**
 
 ```
 cd "C:/Users/thesa/claude kalshi"
@@ -134,7 +136,7 @@ python -m pytest tests/test_drawdown_tiers.py -v
 
 Expected: the tier-specific tests (10%, 20%, 40%) fail with wrong values from current linear ramp
 
-- [ ] **Step 3: Update `drawdown_scaling_factor()` in `paper.py`**
+- [x] **Step 3: Update `drawdown_scaling_factor()` in `paper.py`**
 
 Find `drawdown_scaling_factor()` in `paper.py` (around line 290) and replace the body:
 
@@ -163,7 +165,7 @@ def drawdown_scaling_factor() -> float:
     return 1.0
 ```
 
-- [ ] **Step 4: Run tests to verify they all pass**
+- [x] **Step 4: Run tests to verify they all pass**
 
 ```
 python -m pytest tests/test_drawdown_tiers.py -v
@@ -171,7 +173,7 @@ python -m pytest tests/test_drawdown_tiers.py -v
 
 Expected: 9 tests PASSED
 
-- [ ] **Step 5: Run existing drawdown-related tests to verify no regression**
+- [x] **Step 5: Run existing drawdown-related tests to verify no regression**
 
 ```
 python -m pytest tests/test_risk_control.py tests/test_paper.py -v
@@ -179,7 +181,7 @@ python -m pytest tests/test_risk_control.py tests/test_paper.py -v
 
 Expected: all pass
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add paper.py tests/test_drawdown_tiers.py
@@ -199,7 +201,7 @@ git commit -m "feat(risk): replace linear drawdown ramp with step-function tiers
 
 This is separate from the existing data-source circuit breakers (which trip on API failures). This one trips on market price behavior.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `tests/test_flash_crash_cb.py`:
 
@@ -274,7 +276,7 @@ class TestFlashCrashCB:
         assert result is True
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 ```
 python -m pytest tests/test_flash_crash_cb.py -v
@@ -282,7 +284,7 @@ python -m pytest tests/test_flash_crash_cb.py -v
 
 Expected: `ImportError: cannot import name 'FlashCrashCB'`
 
-- [ ] **Step 3: Add `FlashCrashCB` to `circuit_breaker.py`**
+- [x] **Step 3: Add `FlashCrashCB` to `circuit_breaker.py`**
 
 Read `circuit_breaker.py` first. Then add at the bottom of the file:
 
@@ -373,7 +375,7 @@ class FlashCrashCB:
 flash_crash_cb = FlashCrashCB()
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 ```
 python -m pytest tests/test_flash_crash_cb.py -v
@@ -381,7 +383,7 @@ python -m pytest tests/test_flash_crash_cb.py -v
 
 Expected: 8 tests PASSED
 
-- [ ] **Step 5: Wire into `_validate_trade_opportunity` in `main.py`**
+- [x] **Step 5: Wire into `_validate_trade_opportunity` in `main.py`**
 
 In `main.py`, find `_validate_trade_opportunity` (search for `def _validate_trade_opportunity`). Add a flash crash check after the existing health check:
 
@@ -400,7 +402,7 @@ except Exception:
     pass
 ```
 
-- [ ] **Step 6: Run full test suite**
+- [x] **Step 6: Run full test suite**
 
 ```
 python -m pytest tests/test_flash_crash_cb.py tests/test_trade_validation.py -v
@@ -408,7 +410,7 @@ python -m pytest tests/test_flash_crash_cb.py tests/test_trade_validation.py -v
 
 Expected: all pass
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add circuit_breaker.py tests/test_flash_crash_cb.py main.py
@@ -434,7 +436,7 @@ git commit -m "feat(risk): add FlashCrashCB — per-market price-movement circui
 | MODERATE | spread 5–15% probability units | 7% (paper) / 10% (live) |
 | LOW | spread > 15% probability units | 10% (paper) / 15% (live) |
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `tests/test_confidence_tiers.py`:
 
@@ -496,7 +498,7 @@ class TestGetMinEdgeForConfidence:
         assert classify_confidence_tier(0.05) == "MODERATE"  # boundary → MODERATE
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 ```
 python -m pytest tests/test_confidence_tiers.py -v
@@ -504,7 +506,7 @@ python -m pytest tests/test_confidence_tiers.py -v
 
 Expected: `ImportError: cannot import name 'get_min_edge_for_confidence'`
 
-- [ ] **Step 3: Add functions to `utils.py`**
+- [x] **Step 3: Add functions to `utils.py`**
 
 Add to `utils.py` after the existing `MIN_EDGE`/`PAPER_MIN_EDGE` constants:
 
@@ -553,7 +555,7 @@ def get_min_edge_for_confidence(spread: float, is_live: bool = False) -> float:
     return _EDGE_TIERS[tier][mode]
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 ```
 python -m pytest tests/test_confidence_tiers.py -v
@@ -561,7 +563,7 @@ python -m pytest tests/test_confidence_tiers.py -v
 
 Expected: 7 tests PASSED
 
-- [ ] **Step 5: Wire into `_validate_trade_opportunity` in `main.py`**
+- [x] **Step 5: Wire into `_validate_trade_opportunity` in `main.py`**
 
 Find the edge threshold check in `_validate_trade_opportunity`. It currently reads something like:
 ```python
@@ -589,7 +591,7 @@ if edge < min_edge:
 
 Note: `opp.get("ensemble_spread")` will be None for older analysis results (backward compatible — falls back to existing flat threshold). When Phase C adds Gaussian/multi-model ensemble, it should populate `"ensemble_spread"` in the analysis result dict.
 
-- [ ] **Step 6: Run full test suite**
+- [x] **Step 6: Run full test suite**
 
 ```
 python -m pytest tests/test_confidence_tiers.py tests/test_trade_validation.py tests/test_edge_threshold.py -v
@@ -597,7 +599,7 @@ python -m pytest tests/test_confidence_tiers.py tests/test_trade_validation.py t
 
 Expected: all pass
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add utils.py tests/test_confidence_tiers.py main.py
@@ -608,7 +610,7 @@ git commit -m "feat(risk): add confidence-tiered edge thresholds; HIGH(5%)/MODER
 
 ## Final Integration Test
 
-- [ ] **Step 1: Run full test suite**
+- [x] **Step 1: Run full test suite**
 
 ```
 python -m pytest -x -q
@@ -616,7 +618,7 @@ python -m pytest -x -q
 
 Expected: all pass, no regressions
 
-- [ ] **Step 2: Commit & finish**
+- [x] **Step 2: Commit & finish**
 
 ```bash
 git commit -m "feat(phase-b): risk engine complete — drawdown tiers + flash crash CB + confidence-tiered thresholds"
