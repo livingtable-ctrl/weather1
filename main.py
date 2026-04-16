@@ -2394,7 +2394,7 @@ def _check_early_exits(client=None) -> int:
     return closed
 
 
-def _validate_trade_opportunity(opp: dict) -> tuple[bool, str]:
+def _validate_trade_opportunity(opp: dict, live: bool = False) -> tuple[bool, str]:
     """
     Pre-execution validation gate for auto-placed trades (P1.1+P1.2).
     Returns (ok, reason). All checks must pass before a trade is placed.
@@ -2430,6 +2430,23 @@ def _validate_trade_opportunity(opp: dict) -> tuple[bool, str]:
     edge = opp.get("net_edge", 0.0)
     if edge <= 0:
         return False, f"edge={edge:.4f} <= 0"
+
+    # Confidence-tiered edge threshold (backward compatible)
+    _ens_spread = opp.get("ensemble_spread")
+    if _ens_spread is not None:
+        try:
+            from utils import get_min_edge_for_confidence
+
+            min_edge = get_min_edge_for_confidence(
+                float(_ens_spread), is_live=bool(live)
+            )
+        except Exception:
+            min_edge = PAPER_MIN_EDGE if not live else MIN_EDGE
+    else:
+        min_edge = PAPER_MIN_EDGE if not live else MIN_EDGE
+
+    if edge < min_edge:
+        return False, f"edge {edge:.1%} < {min_edge:.1%} (spread={_ens_spread})"
 
     # Kelly check
     kelly = opp.get("ci_adjusted_kelly", opp.get("fee_adjusted_kelly", 0.0))
@@ -2642,7 +2659,9 @@ def _auto_place_trades(
 
         # P1.2: Pre-trade validation gate — log every rejection reason.
         # Merge ticker from market dict so tuple-format callers aren't penalised.
-        _ok, _reject_reason = _validate_trade_opportunity({**a, "ticker": ticker})
+        _ok, _reject_reason = _validate_trade_opportunity(
+            {**a, "ticker": ticker}, live=live
+        )
         if not _ok:
             _log.debug(
                 "_auto_place_trades: skip %s — %s",
