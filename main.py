@@ -571,6 +571,21 @@ def cmd_settle(client: KalshiClient) -> None:
         print(dim("  [Settle] No new outcomes to record."))
 
 
+def cmd_settlement_monitor(client: KalshiClient, args: list[str] | None = None) -> None:
+    """Run METAR settlement lag monitor (polls from 5-7 PM local time)."""
+    from settlement_monitor import run_settlement_monitor
+
+    duration = 120
+    if args:
+        try:
+            duration = int(args[0])
+        except ValueError:
+            pass
+
+    _log.info("Starting settlement monitor for %d minutes...", duration)
+    run_settlement_monitor(client, duration_minutes=duration)
+
+
 # ── Client ────────────────────────────────────────────────────────────────────
 
 
@@ -6827,6 +6842,8 @@ def main():
         cmd_config_check()
     elif cmd in ("code-audit", "audit"):
         cmd_code_audit()
+    elif cmd in ("settlement-monitor", "settle-monitor"):
+        cmd_settlement_monitor(client, args[1:])
     else:
         print(red(f"Unknown command: {cmd}"))
         print(dim("Run  py main.py  for the interactive menu."))
