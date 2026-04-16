@@ -1,6 +1,8 @@
 # Phase A: Data Foundation Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **Status: ✅ COMPLETE — 2026-04-16** — All 3 tasks implemented, reviewed, and committed on branch `claude/jolly-robinson`. 87 tests passing.
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Add three high-impact data improvements: NOAA MOS station-specific forecasts, per-city static bias correction, and METAR same-day lock-in strategy.
 
@@ -30,7 +32,7 @@ City-to-station mapping for the 5 cities in the bot:
 - Los Angeles → KLAX
 - Dallas → KDFW
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `tests/test_mos.py`:
 
@@ -135,7 +137,7 @@ class TestFetchMos:
         assert result["n_hours"] == 3  # only same-day rows counted
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 ```
 cd "C:/Users/thesa/claude kalshi"
@@ -144,7 +146,7 @@ python -m pytest tests/test_mos.py -v
 
 Expected: `ModuleNotFoundError: No module named 'mos'`
 
-- [ ] **Step 3: Implement `mos.py`**
+- [x] **Step 3: Implement `mos.py`**
 
 Create `mos.py`:
 
@@ -249,7 +251,7 @@ def fetch_mos(
     }
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 ```
 python -m pytest tests/test_mos.py -v
@@ -257,7 +259,7 @@ python -m pytest tests/test_mos.py -v
 
 Expected: 6 tests PASSED
 
-- [ ] **Step 5: Wire MOS into `weather_markets.py` `analyze_trade()`**
+- [x] **Step 5: Wire MOS into `weather_markets.py` `analyze_trade()`**
 
 In `weather_markets.py`, find the function `analyze_trade` (around line 1900). Add MOS as a fourth data point after the ensemble probability is computed.
 
@@ -303,7 +305,7 @@ if mos_data and mos_data.get("max_temp_f") is not None:
         pass  # scipy not available or sigma missing — skip MOS blend
 ```
 
-- [ ] **Step 6: Add integration test**
+- [x] **Step 6: Add integration test**
 
 Append to `tests/test_mos.py`:
 
@@ -318,7 +320,7 @@ class TestMosIntegration:
         assert result is not None  # analyze_trade has a docstring
 ```
 
-- [ ] **Step 7: Run full test suite**
+- [x] **Step 7: Run full test suite**
 
 ```
 python -m pytest tests/test_mos.py tests/test_weather_markets.py -v
@@ -326,7 +328,7 @@ python -m pytest tests/test_mos.py tests/test_weather_markets.py -v
 
 Expected: all pass
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add mos.py tests/test_mos.py weather_markets.py
@@ -351,7 +353,7 @@ Known systematic biases from field research (Weather Edge MCP, NWS station data)
 
 Applied to the ensemble mean temperature before computing P(T > threshold).
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `tests/test_station_bias.py`:
 
@@ -409,7 +411,7 @@ class TestApplyStationBias:
         assert "NYC" in _STATION_BIAS
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 ```
 python -m pytest tests/test_station_bias.py -v
@@ -417,7 +419,7 @@ python -m pytest tests/test_station_bias.py -v
 
 Expected: `ImportError: cannot import name 'apply_station_bias'`
 
-- [ ] **Step 3: Add bias table and function to `weather_markets.py`**
+- [x] **Step 3: Add bias table and function to `weather_markets.py`**
 
 Near the top of `weather_markets.py`, after the existing city coords dict:
 
@@ -452,7 +454,7 @@ def apply_station_bias(city: str, forecast_temp: float) -> float:
     return forecast_temp - bias
 ```
 
-- [ ] **Step 4: Apply bias correction in `analyze_trade()`**
+- [x] **Step 4: Apply bias correction in `analyze_trade()`**
 
 In `analyze_trade()`, find where `ensemble_mean` is computed from the model ensemble. Apply the bias correction immediately after:
 
@@ -461,7 +463,7 @@ In `analyze_trade()`, find where `ensemble_mean` is computed from the model ense
 ensemble_mean = apply_station_bias(city, ensemble_mean)
 ```
 
-- [ ] **Step 5: Run tests to verify they pass**
+- [x] **Step 5: Run tests to verify they pass**
 
 ```
 python -m pytest tests/test_station_bias.py -v
@@ -469,7 +471,7 @@ python -m pytest tests/test_station_bias.py -v
 
 Expected: 6 tests PASSED
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add weather_markets.py tests/test_station_bias.py
@@ -493,7 +495,7 @@ git commit -m "feat(data): add per-city static bias correction table; apply to e
 **NOAA Aviation Weather API:** `https://aviationweather.gov/api/data/metar?ids=KJFK&format=json`
 - 100 req/min, 15-day history, completely free, no API key required
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `tests/test_metar.py`:
 
@@ -658,7 +660,7 @@ class TestCheckMetarLockout:
         assert result["locked"] is False
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 ```
 python -m pytest tests/test_metar.py -v
@@ -666,7 +668,7 @@ python -m pytest tests/test_metar.py -v
 
 Expected: `ModuleNotFoundError: No module named 'metar'`
 
-- [ ] **Step 3: Implement `metar.py`**
+- [x] **Step 3: Implement `metar.py`**
 
 Create `metar.py`:
 
@@ -824,7 +826,7 @@ def check_metar_lockout(
     return {**NOT_LOCKED, "reason": f"temperature {current_temp_f:.1f}°F within margin of {threshold_f}°F"}
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 ```
 python -m pytest tests/test_metar.py -v
@@ -832,7 +834,7 @@ python -m pytest tests/test_metar.py -v
 
 Expected: 8 tests PASSED
 
-- [ ] **Step 5: Wire METAR lock-in into `analyze_trade()` in `weather_markets.py`**
+- [x] **Step 5: Wire METAR lock-in into `analyze_trade()` in `weather_markets.py`**
 
 At the top of `analyze_trade()`, before the ensemble fetch, add:
 
@@ -892,7 +894,7 @@ def _metar_station_for_city(city: str) -> str | None:
     return _MAP.get(city.upper())
 ```
 
-- [ ] **Step 6: Add `metar_locked` field to analysis result dict**
+- [x] **Step 6: Add `metar_locked` field to analysis result dict**
 
 In the result dict returned by `analyze_trade()`, add:
 ```python
@@ -900,7 +902,7 @@ In the result dict returned by `analyze_trade()`, add:
 "metar_reason": lockout.get("reason", "") if metar_locked else "",
 ```
 
-- [ ] **Step 7: Run full test suite**
+- [x] **Step 7: Run full test suite**
 
 ```
 python -m pytest tests/test_metar.py tests/test_weather_markets.py tests/test_mos.py tests/test_station_bias.py -v
@@ -908,7 +910,7 @@ python -m pytest tests/test_metar.py tests/test_weather_markets.py tests/test_mo
 
 Expected: all pass
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add metar.py tests/test_metar.py weather_markets.py
@@ -919,7 +921,7 @@ git commit -m "feat(strategy): add METAR same-day lock-in; wire into analyze_tra
 
 ## Final Integration Test
 
-- [ ] **Step 1: Run the full test suite**
+- [x] **Step 1: Run the full test suite**
 
 ```
 python -m pytest -x -q
@@ -927,7 +929,7 @@ python -m pytest -x -q
 
 Expected: all existing tests pass + new tests pass
 
-- [ ] **Step 2: Smoke test with shadow mode**
+- [x] **Step 2: Smoke test with shadow mode**
 
 ```
 python main.py shadow
@@ -935,7 +937,7 @@ python main.py shadow
 
 Expected: runs without error; log shows `MOS data:` lines and `METAR lock-in check` for any market after 2 PM local
 
-- [ ] **Step 3: Commit & finish**
+- [x] **Step 3: Commit & finish**
 
 ```bash
 git add -p

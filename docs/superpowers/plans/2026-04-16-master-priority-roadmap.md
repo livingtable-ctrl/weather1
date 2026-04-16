@@ -32,9 +32,9 @@
 | Rank | Item | Phase | Impact | Effort | Plan |
 |------|------|-------|--------|--------|------|
 | 1 | ~~Fix NYC settlement station (KNYC)~~ | ✅ Done | Critical | Trivial | — |
-| 2 | **NOAA MOS via IEM API** | 🔴 A | Very High | Low | [Phase A](2026-04-16-phase-a-data-foundation.md) |
-| 3 | **Per-city static bias correction** | 🔴 A | Very High | Low | [Phase A](2026-04-16-phase-a-data-foundation.md) |
-| 4 | **METAR same-day lock-in (85-90% win rate)** | 🔴 A | Very High | Low | [Phase A](2026-04-16-phase-a-data-foundation.md) |
+| 2 | ~~NOAA MOS via IEM API~~ | ✅ Done | Very High | Low | [Phase A](2026-04-16-phase-a-data-foundation.md) |
+| 3 | ~~Per-city static bias correction~~ | ✅ Done | Very High | Low | [Phase A](2026-04-16-phase-a-data-foundation.md) |
+| 4 | ~~METAR same-day lock-in (85-90% win rate)~~ | ✅ Done | Very High | Low | [Phase A](2026-04-16-phase-a-data-foundation.md) |
 
 **Why first:** These three items directly increase edge on every trade. MOS is station-specific (Kalshi settles on ASOS stations). Bias correction removes a systematic error that costs money every day. METAR lock-in is the single highest-win-rate strategy known for this market type. All three are free APIs.
 
@@ -96,7 +96,7 @@
 
 | Phase | Items | Priority | Plan File |
 |-------|-------|----------|-----------|
-| A: Data Foundation | MOS + bias correction + METAR lock-in | Immediate | [2026-04-16-phase-a-data-foundation.md](2026-04-16-phase-a-data-foundation.md) |
+| ✅ A: Data Foundation | MOS + bias correction + METAR lock-in | **Done 2026-04-16** | [2026-04-16-phase-a-data-foundation.md](2026-04-16-phase-a-data-foundation.md) |
 | B: Risk Engine | Confidence tiers + drawdown Kelly + flash crash CB | Near-term | [2026-04-16-phase-b-risk-engine.md](2026-04-16-phase-b-risk-engine.md) |
 | C: New Data Sources | NBM + ECMWF AIFS + Gaussian method | Near-term | [2026-04-16-phase-c-new-data-sources.md](2026-04-16-phase-c-new-data-sources.md) |
 | D: Monitoring & Settlement | Settlement lag + per-city Brier + reliability diagram | Medium-term | [2026-04-16-phase-d-monitoring-settlement.md](2026-04-16-phase-d-monitoring-settlement.md) |
