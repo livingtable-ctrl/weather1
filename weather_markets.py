@@ -113,6 +113,30 @@ def apply_station_bias(city: str, forecast_temp: float) -> float:
     return forecast_temp - bias
 
 
+# City → timezone and METAR station (same as Kalshi settlement stations)
+_CITY_TZ: dict[str, str] = {
+    "NYC": "America/New_York",
+    "MIA": "America/New_York",
+    "CHI": "America/Chicago",
+    "LAX": "America/Los_Angeles",
+    "DAL": "America/Chicago",
+    "DEN": "America/Denver",
+}
+
+
+def _metar_station_for_city(city: str) -> str | None:
+    """Return the METAR/ASOS station for a city (matches Kalshi settlement)."""
+    _MAP: dict[str, str] = {
+        "NYC": "KNYC",
+        "MIA": "KMIA",
+        "CHI": "KORD",
+        "LAX": "KLAX",
+        "DAL": "KDFW",
+        "DEN": "KDEN",
+    }
+    return _MAP.get(city.upper())
+
+
 FORECAST_BASE = "https://api.open-meteo.com/v1/forecast"
 ENSEMBLE_BASE = "https://ensemble-api.open-meteo.com/v1/ensemble"
 ENSEMBLE_MODELS = ["icon_seamless", "gfs_seamless"]
@@ -2266,234 +2290,329 @@ def analyze_trade(enriched: dict) -> dict | None:
             result["edge_calc_version"] = EDGE_CALC_VERSION
         return result
 
-    series = (enriched.get("series_ticker") or enriched.get("ticker", "")).upper()
-    var = "min" if "LOW" in series else "max"
-    condition["var"] = var
+    # ── METAR same-day lock-in check ─────────────────────────────────────────
+    # After 2 PM local time, if METAR confirms the outcome, skip slow ensemble.
+    metar_locked = False
+    metar_lockout: dict = {}
+    _metar_obs = None
+    try:
+        import metar as _metar
 
-    forecast_temp = forecast["low_f"] if var == "min" else forecast["high_f"]
-    if forecast_temp is None:
-        return None
+        _metar_sta = _metar_station_for_city(city)
+        if (
+            _metar_sta
+            and condition.get("type") in ("above", "below")
+            and condition.get("threshold")
+        ):
+            _metar_obs = _metar.fetch_metar(_metar_sta)
+            if _metar_obs:
+                _metar_lockout = _metar.check_metar_lockout(
+                    current_temp_f=_metar_obs["current_temp_f"],
+                    threshold_f=float(condition["threshold"]),
+                    direction=condition["type"],
+                    obs_time=_metar_obs["obs_time"],
+                    city_tz=_CITY_TZ.get(city, "America/New_York"),
+                )
+                if _metar_lockout["locked"]:
+                    metar_locked = True
+                    metar_lockout = _metar_lockout
+                    _metar_p = (
+                        _metar_lockout["confidence"]
+                        if _metar_lockout["outcome"] == "yes"
+                        else (1.0 - _metar_lockout["confidence"])
+                    )
+                    _log.info(
+                        "METAR lock-in %s: %s (conf=%.0f%%) — %s",
+                        enriched.get("ticker", "?"),
+                        _metar_lockout["outcome"],
+                        _metar_lockout["confidence"] * 100,
+                        _metar_lockout["reason"],
+                    )
+                    blended_prob = max(0.01, min(0.99, _metar_p))
+    except Exception as _metar_exc:
+        _log.debug(
+            "METAR lock-in check failed for %s: %s",
+            enriched.get("ticker", "?"),
+            _metar_exc,
+        )
+        metar_locked = False
+        metar_lockout = {}
 
-    # Apply per-city static bias correction before probability calculation
-    forecast_temp_raw = forecast_temp
-    forecast_temp = apply_station_bias(city, forecast_temp)
+    if not metar_locked:
+        series = (enriched.get("series_ticker") or enriched.get("ticker", "")).upper()
+        var = "min" if "LOW" in series else "max"
+        condition["var"] = var
 
-    days_out = max(0, (target_date - date.today()).days)
+        forecast_temp = forecast["low_f"] if var == "min" else forecast["high_f"]
+        if forecast_temp is None:
+            return None
 
-    # ── 1. Ensemble probability ──────────────────────────────────────────────
-    temps = get_ensemble_temps(city, target_date, hour=hour, var=var)
+        # Apply per-city static bias correction before probability calculation
+        forecast_temp_raw = forecast_temp
+        forecast_temp = apply_station_bias(city, forecast_temp)
 
-    # For hourly markets, use ensemble mean of the hourly temps as forecast_temp
-    # (daily high is misleading for e.g. "temp at 9am" markets)
-    if hour is not None and len(temps) >= 5:
-        forecast_temp = statistics.mean(temps)
-    ens_stats = ensemble_stats(temps) if len(temps) >= 10 else None
-    method = "normal_dist"
-    ens_prob: float | None = None
+        days_out = max(0, (target_date - date.today()).days)
 
-    if len(temps) >= 10:
-        method = "ensemble"
-        if condition["type"] == "above":
-            ens_prob = sum(1 for t in temps if t > condition["threshold"]) / len(temps)
-        elif condition["type"] == "below":
-            ens_prob = sum(1 for t in temps if t < condition["threshold"]) / len(temps)
+    if not metar_locked:
+        # ── 1. Ensemble probability ──────────────────────────────────────────────
+        temps = get_ensemble_temps(city, target_date, hour=hour, var=var)
+
+        # For hourly markets, use ensemble mean of the hourly temps as forecast_temp
+        # (daily high is misleading for e.g. "temp at 9am" markets)
+        if hour is not None and len(temps) >= 5:
+            forecast_temp = statistics.mean(temps)
+        ens_stats = ensemble_stats(temps) if len(temps) >= 10 else None
+        method = "normal_dist"
+        ens_prob: float | None = None
+
+        if len(temps) >= 10:
+            method = "ensemble"
+            if condition["type"] == "above":
+                ens_prob = sum(1 for t in temps if t > condition["threshold"]) / len(
+                    temps
+                )
+            elif condition["type"] == "below":
+                ens_prob = sum(1 for t in temps if t < condition["threshold"]) / len(
+                    temps
+                )
+            else:
+                lo, hi = condition["lower"], condition["upper"]
+                ens_prob = sum(1 for t in temps if lo <= t <= hi) / len(temps)
         else:
-            lo, hi = condition["lower"], condition["upper"]
-            ens_prob = sum(1 for t in temps if lo <= t <= hi) / len(temps)
-    else:
-        sigma = _forecast_uncertainty(target_date) * sigma_mult
-        ens_prob = _forecast_probability(condition, forecast_temp, sigma)
+            sigma = _forecast_uncertainty(target_date) * sigma_mult
+            ens_prob = _forecast_probability(condition, forecast_temp, sigma)
 
-    # ── Model consensus check ────────────────────────────────────────────────
-    model_consensus = True
-    icon_forecast_mean: float | None = None
-    gfs_forecast_mean: float | None = None
-    if ens_prob is not None and len(temps) >= 10:
+        # ── Model consensus check ────────────────────────────────────────────────
+        model_consensus = True
+        icon_forecast_mean: float | None = None
+        gfs_forecast_mean: float | None = None
+        if ens_prob is not None and len(temps) >= 10:
+            try:
+                icon_p, gfs_p, icon_forecast_mean, gfs_forecast_mean = (
+                    _get_consensus_probs(
+                        city, target_date, condition, hour=hour, var=var
+                    )
+                )
+                if icon_p is not None and gfs_p is not None:
+                    if abs(icon_p - gfs_p) > 0.12:
+                        model_consensus = False
+            except Exception as _e:
+                _log.warning(
+                    "analyze_trade: _get_consensus_probs failed for %s — defaulting to consensus=True: %s",
+                    enriched.get("ticker", "?"),
+                    _e,
+                )
+
+        # ── Near-threshold detection ─────────────────────────────────────────────
+        threshold_val = condition.get("threshold")
+        near_threshold = (
+            threshold_val is not None and abs(forecast_temp - threshold_val) <= 3.0
+        )
+
+        # ── 2. NWS forecast probability ──────────────────────────────────────────
+        _nws_prob: float | None = None
         try:
-            icon_p, gfs_p, icon_forecast_mean, gfs_forecast_mean = _get_consensus_probs(
-                city, target_date, condition, hour=hour, var=var
-            )
-            if icon_p is not None and gfs_p is not None:
-                if abs(icon_p - gfs_p) > 0.12:
-                    model_consensus = False
+            _nws_prob = nws_prob(city, coords, target_date, condition)
         except Exception as _e:
             _log.warning(
-                "analyze_trade: _get_consensus_probs failed for %s — defaulting to consensus=True: %s",
+                "analyze_trade: nws_prob failed for %s: %s",
                 enriched.get("ticker", "?"),
                 _e,
             )
 
-    # ── Near-threshold detection ─────────────────────────────────────────────
-    threshold_val = condition.get("threshold")
-    near_threshold = (
-        threshold_val is not None and abs(forecast_temp - threshold_val) <= 3.0
-    )
-
-    # ── 2. NWS forecast probability ──────────────────────────────────────────
-    _nws_prob: float | None = None
-    try:
-        _nws_prob = nws_prob(city, coords, target_date, condition)
-    except Exception as _e:
-        _log.warning(
-            "analyze_trade: nws_prob failed for %s: %s", enriched.get("ticker", "?"), _e
-        )
-
-    # ── 3+4. Climatological probability + climate index adjustment ───────────
-    clim_prob_raw: float | None = None
-    index_adj: float = 0.0
-    try:
-        clim_prob_raw = climatological_prob(city, coords, target_date, condition)
-        index_adj = temperature_adjustment(city, target_date)
-    except Exception as _e:
-        _log.warning(
-            "analyze_trade: climatological_prob failed for %s: %s",
-            enriched.get("ticker", "?"),
-            _e,
-        )
-
-    # Apply index adjustment by shifting the effective threshold
-    clim_prob: float | None = None
-    if clim_prob_raw is not None:
-        # Shift the condition threshold by the index adjustment and recompute
-        adj_condition = dict(condition)
-        if condition["type"] in ("above", "below"):
-            adj_condition["threshold"] = condition["threshold"] - index_adj
-        elif condition["type"] == "between":
-            adj_condition["lower"] = condition["lower"] - index_adj
-            adj_condition["upper"] = condition["upper"] - index_adj
-        clim_prob = climatological_prob(city, coords, target_date, adj_condition)
-        if clim_prob is None:
-            clim_prob = clim_prob_raw
-
-    # ── 5. Live observation override (same-day markets) ──────────────────────
-    live_obs: dict | None = None
-    obs_override: float | None = None
-    if days_out == 0:
+        # ── 3+4. Climatological probability + climate index adjustment ───────────
+        clim_prob_raw: float | None = None
+        index_adj: float = 0.0
         try:
-            live_obs = get_live_observation(city, coords)
-            if live_obs:
-                obs_override = obs_prob(live_obs, condition)
-        except Exception:
-            pass
-
-    # ── 5b. Persistence baseline (days_out <= 2 only) ────────────────────────
-    persistence_p: float | None = None
-    if days_out <= 2:
-        try:
-            from climatology import persistence_prob as _persistence_prob
-            from nws import get_live_observation as _get_live_obs
-
-            _live = _get_live_obs(city, coords) if days_out <= 1 else None
-            _live_temp = _live.get("temp_f") if _live else None
-            _current_temp: float = (
-                float(_live_temp) if _live_temp is not None else forecast_temp_raw
+            clim_prob_raw = climatological_prob(city, coords, target_date, condition)
+            index_adj = temperature_adjustment(city, target_date)
+        except Exception as _e:
+            _log.warning(
+                "analyze_trade: climatological_prob failed for %s: %s",
+                enriched.get("ticker", "?"),
+                _e,
             )
-            _cond_type = condition["type"]
-            _tlo = condition.get("threshold", condition.get("lower", forecast_temp))
-            _thi = condition.get("upper")
-            persistence_p = _persistence_prob(_cond_type, _tlo, _thi, _current_temp)
-        except Exception:
-            pass
 
-    # ── 6. Weighted blend ────────────────────────────────────────────────────
-    if obs_override is not None:
-        # Same-day with live obs — trust almost entirely
-        blended_prob = obs_override * 0.95 + (ens_prob or 0.5) * 0.05
-        blend_sources = {"obs": 0.95, "ensemble": 0.05}
-    else:
-        _month = (
-            target_date.month
-            if target_date
-            else __import__("datetime").datetime.now().month
-        )
-        _season = {
-            12: "winter",
-            1: "winter",
-            2: "winter",
-            3: "spring",
-            4: "spring",
-            5: "spring",
-            6: "summer",
-            7: "summer",
-            8: "summer",
-            9: "fall",
-            10: "fall",
-            11: "fall",
-        }.get(_month, "spring")
-        w_ens, w_clim, w_nws = _confidence_scaled_blend_weights(
-            days_out,
-            _nws_prob is not None,
-            clim_prob is not None,
-            ens_std=ens_stats.get("std") if ens_stats else None,
-            city=city,
-            season=_season,
-        )
-        # #26: persistence baseline at 15% for days_out <= 2
-        if persistence_p is not None and days_out <= 2:
-            w_persist = 0.15
-            scale = 1.0 - w_persist
-            w_ens = w_ens * scale
-            w_clim = w_clim * scale
-            w_nws = w_nws * scale
+        # Apply index adjustment by shifting the effective threshold
+        clim_prob: float | None = None
+        if clim_prob_raw is not None:
+            # Shift the condition threshold by the index adjustment and recompute
+            adj_condition = dict(condition)
+            if condition["type"] in ("above", "below"):
+                adj_condition["threshold"] = condition["threshold"] - index_adj
+            elif condition["type"] == "between":
+                adj_condition["lower"] = condition["lower"] - index_adj
+                adj_condition["upper"] = condition["upper"] - index_adj
+            clim_prob = climatological_prob(city, coords, target_date, adj_condition)
+            if clim_prob is None:
+                clim_prob = clim_prob_raw
+
+        # ── 5. Live observation override (same-day markets) ──────────────────────
+        live_obs: dict | None = None
+        obs_override: float | None = None
+        if days_out == 0:
+            try:
+                live_obs = get_live_observation(city, coords)
+                if live_obs:
+                    obs_override = obs_prob(live_obs, condition)
+            except Exception:
+                pass
+
+        # ── 5b. Persistence baseline (days_out <= 2 only) ────────────────────────
+        persistence_p: float | None = None
+        if days_out <= 2:
+            try:
+                from climatology import persistence_prob as _persistence_prob
+                from nws import get_live_observation as _get_live_obs
+
+                _live = _get_live_obs(city, coords) if days_out <= 1 else None
+                _live_temp = _live.get("temp_f") if _live else None
+                _current_temp: float = (
+                    float(_live_temp) if _live_temp is not None else forecast_temp_raw
+                )
+                _cond_type = condition["type"]
+                _tlo = condition.get("threshold", condition.get("lower", forecast_temp))
+                _thi = condition.get("upper")
+                persistence_p = _persistence_prob(_cond_type, _tlo, _thi, _current_temp)
+            except Exception:
+                pass
+
+        # ── 6. Weighted blend ────────────────────────────────────────────────────
+        if obs_override is not None:
+            # Same-day with live obs — trust almost entirely
+            blended_prob = obs_override * 0.95 + (ens_prob or 0.5) * 0.05
+            blend_sources = {"obs": 0.95, "ensemble": 0.05}
         else:
-            w_persist = 0.0
-            persistence_p = None
+            _month = (
+                target_date.month
+                if target_date
+                else __import__("datetime").datetime.now().month
+            )
+            _season = {
+                12: "winter",
+                1: "winter",
+                2: "winter",
+                3: "spring",
+                4: "spring",
+                5: "spring",
+                6: "summer",
+                7: "summer",
+                8: "summer",
+                9: "fall",
+                10: "fall",
+                11: "fall",
+            }.get(_month, "spring")
+            w_ens, w_clim, w_nws = _confidence_scaled_blend_weights(
+                days_out,
+                _nws_prob is not None,
+                clim_prob is not None,
+                ens_std=ens_stats.get("std") if ens_stats else None,
+                city=city,
+                season=_season,
+            )
+            # #26: persistence baseline at 15% for days_out <= 2
+            if persistence_p is not None and days_out <= 2:
+                w_persist = 0.15
+                scale = 1.0 - w_persist
+                w_ens = w_ens * scale
+                w_clim = w_clim * scale
+                w_nws = w_nws * scale
+            else:
+                w_persist = 0.0
+                persistence_p = None
 
-        blended_prob = (
-            w_ens * (ens_prob or 0.5)
-            + w_clim * (clim_prob or 0.5)
-            + w_nws * (_nws_prob or 0.5)
-            + w_persist * (persistence_p or 0.5)
-        )
-        blend_sources = {
-            "ensemble": w_ens,
-            "climatology": w_clim,
-            "nws": w_nws,
-            **({"persistence": w_persist} if w_persist > 0 else {}),
-        }
+            blended_prob = (
+                w_ens * (ens_prob or 0.5)
+                + w_clim * (clim_prob or 0.5)
+                + w_nws * (_nws_prob or 0.5)
+                + w_persist * (persistence_p or 0.5)
+            )
+            blend_sources = {
+                "ensemble": w_ens,
+                "climatology": w_clim,
+                "nws": w_nws,
+                **({"persistence": w_persist} if w_persist > 0 else {}),
+            }
 
-    # ── 7. Bias correction from tracker ─────────────────────────────────────
-    bias = 0.0
-    try:
-        from tracker import get_bias
+        # ── 7. Bias correction from tracker ─────────────────────────────────────
+        bias = 0.0
+        try:
+            from tracker import get_bias
 
-        bias = get_bias(city, target_date.month, condition_type=condition["type"])
-        blended_prob = max(0.01, min(0.99, blended_prob - bias))
-    except Exception as _exc:
-        # #109: log with ticker/city so failures are traceable
-        _log.debug(
-            "Bias correction skipped for %s (%s): %s",
-            enriched.get("ticker", "?"),
-            city,
-            _exc,
-        )
+            bias = get_bias(city, target_date.month, condition_type=condition["type"])
+            blended_prob = max(0.01, min(0.99, blended_prob - bias))
+        except Exception as _exc:
+            # #109: log with ticker/city so failures are traceable
+            _log.debug(
+                "Bias correction skipped for %s (%s): %s",
+                enriched.get("ticker", "?"),
+                city,
+                _exc,
+            )
 
-    # ── Consensus signal: all available sources agree on direction ───────────
-    sources_with_data = [p for p in [ens_prob, _nws_prob, clim_prob] if p is not None]
-    consensus = len(sources_with_data) >= 2 and (
-        all(p > 0.5 for p in sources_with_data)
-        or all(p < 0.5 for p in sources_with_data)
-    )
-
-    # ── 8. Confidence interval (bootstrap on ensemble members) ───────────────
-    ci_low, ci_high = (blended_prob, blended_prob)
-    if temps:
-        ci_low, ci_high = _bootstrap_ci(temps, condition)
-
-    # ── 9. Data quality score ────────────────────────────────────────────────
-    # 1.0 = all sources available; reduced by 0.25 per missing source.
-    # Used to scale down Kelly sizing when we're flying partially blind.
-    sources_available = sum(
-        [
-            ens_prob is not None,
-            _nws_prob is not None,
-            clim_prob is not None,
+        # ── Consensus signal: all available sources agree on direction ───────────
+        sources_with_data = [
+            p for p in [ens_prob, _nws_prob, clim_prob] if p is not None
         ]
-    )
-    data_quality = round(sources_available / 3, 4)
+        consensus = len(sources_with_data) >= 2 and (
+            all(p > 0.5 for p in sources_with_data)
+            or all(p < 0.5 for p in sources_with_data)
+        )
 
-    # Flag anomalously wide ensemble spread (models disagree strongly)
-    anomalous = is_forecast_anomalous(ens_stats or {})
+        # ── 8. Confidence interval (bootstrap on ensemble members) ───────────────
+        ci_low, ci_high = (blended_prob, blended_prob)
+        if temps:
+            ci_low, ci_high = _bootstrap_ci(temps, condition)
+
+        # ── 9. Data quality score ────────────────────────────────────────────────
+        # 1.0 = all sources available; reduced by 0.25 per missing source.
+        # Used to scale down Kelly sizing when we're flying partially blind.
+        sources_available = sum(
+            [
+                ens_prob is not None,
+                _nws_prob is not None,
+                clim_prob is not None,
+            ]
+        )
+        data_quality = round(sources_available / 3, 4)
+
+        # Flag anomalously wide ensemble spread (models disagree strongly)
+        anomalous = is_forecast_anomalous(ens_stats or {})
+
+    else:
+        # METAR locked: pre-assign all pipeline outputs so Kelly section can run
+        series = (enriched.get("series_ticker") or enriched.get("ticker", "")).upper()
+        var = "min" if "LOW" in series else "max"
+        condition["var"] = var
+        days_out = max(0, (target_date - date.today()).days)
+        _fallback_temp = forecast["low_f"] if var == "min" else forecast["high_f"]
+        forecast_temp = (
+            _metar_obs["current_temp_f"] if _metar_obs else (_fallback_temp or 0.0)
+        )
+        forecast_temp_raw = forecast_temp
+        temps = []
+        ens_prob = None
+        ens_stats = None
+        method = "metar_lockout"
+        _nws_prob = None
+        clim_prob = None
+        clim_prob_raw = None
+        obs_override = None
+        live_obs = None
+        persistence_p = None
+        blend_sources = {"metar_lockout": 1.0}
+        bias = 0.0
+        consensus = True
+        model_consensus = True
+        near_threshold = False
+        icon_forecast_mean = None
+        gfs_forecast_mean = None
+        index_adj = 0.0
+        _confidence_boost = 1.0
+        ci_low = blended_prob
+        ci_high = blended_prob
+        data_quality = 1.0
+        anomalous = False
 
     # Regime detection
     _regime_info: dict = {}
@@ -2669,6 +2788,8 @@ def analyze_trade(enriched: dict) -> dict | None:
         "index_adj": index_adj,
         "bias_correction": bias,
         "mos_max_temp": mos_data["max_temp_f"] if mos_data else None,
+        "metar_locked": metar_locked,
+        "metar_reason": metar_lockout.get("reason", "") if metar_locked else "",
         "blend_sources": blend_sources,
         "method": method,
         # Ensemble details
