@@ -2,6 +2,14 @@
 
 import datetime
 import time
+from unittest.mock import patch
+
+import pytest
+
+_HEALTHY = (
+    "system_health.check_system_health",
+    lambda: __import__("system_health").HealthStatus(True, ""),
+)
 
 
 def _opp(edge: float = 0.20, kelly: float = 0.10, ticker: str = "KXTEST") -> dict:
@@ -18,6 +26,19 @@ def _opp(edge: float = 0.20, kelly: float = 0.10, ticker: str = "KXTEST") -> dic
         "model_consensus": True,
         "data_fetched_at": time.time(),
     }
+
+
+@pytest.fixture(autouse=True)
+def healthy_system():
+    """Prevent CPU/memory checks from interfering with trade-logic assertions."""
+    import system_health
+
+    with patch.object(
+        system_health,
+        "check_system_health",
+        return_value=system_health.HealthStatus(True, ""),
+    ):
+        yield
 
 
 def test_validate_rejects_zero_edge():
