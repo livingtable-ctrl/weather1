@@ -49,8 +49,8 @@ class TestNBMFetch:
 
         from weather_markets import fetch_temperature_nbm
 
-        with patch("weather_markets._om_session") as mock_sess:
-            mock_sess.get.side_effect = requests.RequestException("timeout")
+        with patch("weather_markets._request_with_retry") as mock_req:
+            mock_req.side_effect = requests.RequestException("timeout")
             result = fetch_temperature_nbm("NYC", date(2026, 4, 17))
 
         assert result is None
