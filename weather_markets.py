@@ -448,6 +448,60 @@ def _compute_ensemble_spread(temps: dict[str, float | None]) -> float:
     return statistics.stdev(values)
 
 
+# Historical forecast RMSE per city/season (Phase C Gaussian probability)
+# Season: 1=Winter(DJF), 2=Spring(MAM), 3=Summer(JJA), 4=Fall(SON)
+_HISTORICAL_SIGMA: dict[str, dict[int, float]] = {
+    "NYC": {1: 5.5, 2: 6.0, 3: 5.0, 4: 5.8},
+    "MIA": {1: 3.5, 2: 4.0, 3: 3.0, 4: 3.5},
+    "CHI": {1: 7.0, 2: 6.5, 3: 5.5, 4: 6.5},
+    "LAX": {1: 4.0, 2: 4.5, 3: 4.0, 4: 4.5},
+    "DAL": {1: 5.0, 2: 5.5, 3: 4.5, 4: 5.5},
+}
+_DEFAULT_SIGMA = 5.0
+
+
+def _month_to_season(month: int) -> int:
+    """Convert month (1-12) to season index (1=Winter, 2=Spring, 3=Summer, 4=Fall)."""
+    return {12: 1, 1: 1, 2: 1, 3: 2, 4: 2, 5: 2, 6: 3, 7: 3, 8: 3, 9: 4, 10: 4, 11: 4}[
+        month
+    ]
+
+
+def get_historical_sigma(city: str, month: int) -> float:
+    """Return historical forecast RMSE (sigma) for a city in °F."""
+    season = _month_to_season(month)
+    return _HISTORICAL_SIGMA.get(city.upper(), {}).get(season, _DEFAULT_SIGMA)
+
+
+def gaussian_probability(
+    forecast_mean: float,
+    threshold: float,
+    sigma: float,
+    direction: str = "above",
+) -> float:
+    """
+    Compute P(T > threshold) or P(T < threshold) using a Gaussian distribution.
+
+    More principled than raw ensemble member counting for small ensembles.
+
+    Args:
+        forecast_mean: Bias-corrected ensemble mean temperature in °F
+        threshold: Kalshi market threshold in °F
+        sigma: Forecast uncertainty (RMSE) in °F
+        direction: "above" or "below"
+
+    Returns:
+        Probability as a float in [0, 1]
+    """
+    # P(T < threshold) where T ~ Normal(forecast_mean, sigma)
+    cdf = normal_cdf(threshold, forecast_mean, sigma)
+
+    if direction == "above":
+        return max(0.0, min(1.0, 1.0 - cdf))
+    else:
+        return max(0.0, min(1.0, cdf))
+
+
 def fetch_temperature_ecmwf(city: str, target_date: date) -> float | None:
     """
     Fetch ECMWF AIFS ensemble max daily temperature for a city.
@@ -2517,6 +2571,36 @@ def analyze_trade(enriched: dict) -> dict | None:
         # Rule of thumb: 1°F std dev ≈ 0.04 probability units at typical thresholds
         ensemble_spread_prob = ensemble_spread_f * 0.04 if ensemble_spread_f else 0.0
 
+        # ── Phase C: Gaussian probability + blend with raw ensemble fraction ─────
+        target_month = target_date.month
+        sigma_gauss = get_historical_sigma(city, target_month)
+        p_win_gaussian = gaussian_probability(
+            forecast_mean=forecast_temp,
+            threshold=float(condition.get("threshold", 0)),
+            sigma=sigma_gauss,
+            direction=condition.get("type", "above"),
+        )
+
+        # Blend Gaussian with ensemble fraction (fall back to ens_prob if temps available)
+        raw_fraction = sum(
+            1
+            for t in model_temps.values()
+            if t is not None
+            and (
+                t > condition.get("threshold", 0)
+                if condition.get("type") == "above"
+                else t < condition.get("threshold", 0)
+            )
+        ) / max(1, len([t for t in model_temps.values() if t is not None]))
+
+        n_valid = len([t for t in model_temps.values() if t is not None])
+        if n_valid >= 1 and condition.get("type") in ("above", "below"):
+            # Only blend when we have raw model_temps and a simple direction condition
+            if n_valid >= 3:
+                ens_prob = 0.6 * p_win_gaussian + 0.4 * raw_fraction
+            else:
+                ens_prob = 0.8 * p_win_gaussian + 0.2 * raw_fraction
+
         # ── Model consensus check ────────────────────────────────────────────────
         model_consensus = True
         icon_forecast_mean: float | None = None
@@ -2751,6 +2835,8 @@ def analyze_trade(enriched: dict) -> dict | None:
         model_temps = {}
         ensemble_spread_f = 0.0
         ensemble_spread_prob = 0.0
+        p_win_gaussian = None
+        sigma_gauss = None
 
     # Regime detection
     _regime_info: dict = {}
@@ -2960,10 +3046,12 @@ def analyze_trade(enriched: dict) -> dict | None:
         # Per-model forecast means for ensemble scoring
         "icon_forecast_mean": icon_forecast_mean,
         "gfs_forecast_mean": gfs_forecast_mean,
-        # Phase C: extended ensemble spread
+        # Phase C: extended ensemble spread + Gaussian probability
         "ensemble_spread": ensemble_spread_prob,
         "ensemble_spread_f": ensemble_spread_f,
         "n_ensemble_members": sum(1 for v in model_temps.values() if v is not None),
+        "p_win_gaussian": p_win_gaussian,
+        "forecast_sigma": sigma_gauss,
         # Regime detection
         "regime": _regime_info.get("regime", "normal"),
         "regime_description": _regime_info.get("description", ""),
