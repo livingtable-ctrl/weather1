@@ -13,7 +13,11 @@ from cryptography.hazmat.primitives.asymmetric import padding
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
+from circuit_breaker import CircuitBreaker, CircuitOpenError
+
 _log = logging.getLogger(__name__)
+
+_kalshi_cb = CircuitBreaker(name="kalshi_api", failure_threshold=5, recovery_timeout=60)
 
 _RETRY_STATUSES = {429, 500, 502, 503, 504}
 _MAX_RETRIES = 3
@@ -45,12 +49,21 @@ def _request_with_retry(method: str, url: str, **kwargs) -> requests.Response:
     """
     Call _SESSION.request with automatic retry via HTTPAdapter (#67).
     Falls back to latency logging for slow responses (#108).
+    Guarded by _kalshi_cb to avoid hammering a downed Kalshi API.
     """
     # Apply default timeout if caller didn't specify one
     kwargs.setdefault("timeout", DEFAULT_TIMEOUT)
 
+    if _kalshi_cb.is_open():
+        raise CircuitOpenError("kalshi_api")
+
     _t0 = time.perf_counter()
-    resp = _SESSION.request(method, url, **kwargs)
+    try:
+        resp = _SESSION.request(method, url, **kwargs)
+        _kalshi_cb.record_success()
+    except Exception as _exc:
+        _kalshi_cb.record_failure()
+        raise
     _elapsed = time.perf_counter() - _t0
     # #108: warn on slow API responses so latency issues are visible
     if _elapsed > 5:

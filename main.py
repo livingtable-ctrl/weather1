@@ -258,8 +258,8 @@ def _load_watch_state() -> set:
         if _WATCH_STATE_PATH.exists():
             data = json.loads(_WATCH_STATE_PATH.read_text())
             return set(data.get("tickers", []))
-    except Exception:
-        pass
+    except Exception as exc:
+        _log.debug("_load_watch_state: could not read %s: %s", _WATCH_STATE_PATH, exc)
     return set()
 
 
@@ -268,8 +268,8 @@ def _save_watch_state(tickers: set) -> None:
     try:
         _WATCH_STATE_PATH.parent.mkdir(exist_ok=True)
         _WATCH_STATE_PATH.write_text(json.dumps({"tickers": list(tickers)}))
-    except Exception:
-        pass
+    except Exception as exc:
+        _log.warning("_save_watch_state: failed to persist watch state: %s", exc)
 
 
 KALSHI_ENV = os.getenv("KALSHI_ENV", "demo")
@@ -418,8 +418,8 @@ def auto_settle(client: KalshiClient) -> None:
                         f"  {paper_settled} paper trade(s) settled automatically."
                     )
                 print(msg + "\n")
-        except Exception:
-            pass  # never crash startup due to settle failure
+        except Exception as exc:
+            _log.warning("auto_settle background thread failed: %s", exc)
 
     t = threading.Thread(target=_run, daemon=True)
     t.start()
@@ -459,8 +459,8 @@ def auto_backtest(client: KalshiClient) -> None:
                         f"vs all-time {all_time_brier:.4f} — model may have degraded.\n"
                     )
                 )
-        except Exception:
-            pass
+        except Exception as exc:
+            _log.warning("auto_backtest background thread failed: %s", exc)
 
     t = threading.Thread(target=_run, daemon=True)
     t.start()
@@ -1947,6 +1947,20 @@ def cmd_cron(client: KalshiClient, min_edge: float = MIN_EDGE) -> None:
         _log.warning("cmd_cron: could not acquire lock — skipping this run")
         _sys.exit(1)
 
+    # P8.3 — hard kill switch: touch data/.kill_switch to halt immediately
+    _KILL_SWITCH_PATH = Path(__file__).parent / "data" / ".kill_switch"
+    if _KILL_SWITCH_PATH.exists():
+        _log.critical(
+            "KILL SWITCH ACTIVATED — halting cron execution immediately. Remove data/.kill_switch to resume."
+        )
+        print(
+            red(
+                "\n  ⚠  KILL SWITCH ACTIVE — trading halted. Delete data/.kill_switch to resume.\n"
+            )
+        )
+        _release_cron_lock()
+        return
+
     # P3.1 — graceful shutdown flag
     _write_cron_running_flag()
     # P3.2 — detect orders placed in the last 5 minutes at startup
@@ -2301,6 +2315,17 @@ def _validate_trade_opportunity(opp: dict) -> tuple[bool, str]:
     Returns (ok, reason). All checks must pass before a trade is placed.
     """
     import time as _t
+
+    # P1.2 / P3.3 — system health gate
+    from system_health import check_system_health
+
+    health = check_system_health()
+    if not health.healthy:
+        _log.warning(
+            "_validate_trade_opportunity: system health gate blocked trade: %s",
+            health.reason,
+        )
+        return False, health.reason
 
     # Edge check
     edge = opp.get("net_edge", 0.0)
@@ -3673,6 +3698,27 @@ def cmd_setup():
 
 
 # ── Help screen ───────────────────────────────────────────────────────────────
+
+
+def cmd_kill() -> None:
+    """Activate the kill switch — stops all automated trading immediately."""
+    kill_path = Path(__file__).parent / "data" / ".kill_switch"
+    kill_path.parent.mkdir(exist_ok=True)
+    kill_path.touch()
+    print(
+        red("  Kill switch ACTIVATED. Automated trading will stop at next cron cycle.")
+    )
+    print(dim("  Run `py main.py resume` to re-enable trading."))
+
+
+def cmd_resume() -> None:
+    """Remove the kill switch — re-enables automated trading."""
+    kill_path = Path(__file__).parent / "data" / ".kill_switch"
+    if kill_path.exists():
+        kill_path.unlink()
+        print(green("  Kill switch removed. Trading re-enabled."))
+    else:
+        print(dim("  No kill switch active."))
 
 
 def cmd_help() -> None:
@@ -5886,7 +5932,7 @@ def main():
         )
         args = [a for a in args if a != "--debug"]
     else:
-        logging.disable(logging.CRITICAL)
+        logging.disable(logging.DEBUG)
 
     init_db()
     cleanup_data_dir()
@@ -6012,6 +6058,10 @@ def main():
         cmd_walkforward(client)
     elif cmd == "report":
         cmd_report()
+    elif cmd == "kill":
+        cmd_kill()
+    elif cmd == "resume":
+        cmd_resume()
     else:
         print(red(f"Unknown command: {cmd}"))
         print(dim("Run  py main.py  for the interactive menu."))

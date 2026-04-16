@@ -19,7 +19,7 @@ from utils import normal_cdf
 
 _log = logging.getLogger(__name__)
 
-_nws_cb = CircuitBreaker("nws", failure_threshold=5, recovery_timeout=300)
+_nws_cb = CircuitBreaker(name="nws", failure_threshold=3, recovery_timeout=180)
 
 NWS_BASE = "https://api.weather.gov"
 # #68: load User-Agent from env so it can be updated without a code change
@@ -96,11 +96,18 @@ def get_nws_daily_forecast(city: str, coords: tuple) -> dict[str, dict]:
     if city in _forecast_cache:
         return _forecast_cache[city]
 
+    if _nws_cb.is_open():
+        _log.warning("NWS circuit open — skipping daily forecast for %s", city)
+        return {}
+
     lat, lon, _ = coords
     try:
         grid_id, gx, gy = _get_gridpoint(lat, lon)
         data = _get(f"{NWS_BASE}/gridpoints/{grid_id}/{gx},{gy}/forecast")
-    except Exception:
+        _nws_cb.record_success()
+    except Exception as exc:
+        _nws_cb.record_failure()
+        _log.warning("NWS daily forecast failed for %s: %s", city, exc)
         return {}
 
     periods = data.get("properties", {}).get("periods", [])

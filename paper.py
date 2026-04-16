@@ -591,8 +591,8 @@ def _score_ensemble_members(trade: dict, outcome_yes: bool) -> None:
         for model, predicted_temp in model_means.items():
             if predicted_temp is not None:
                 _log_ms(city, model, predicted_temp, actual_temp, target_date)
-    except Exception:
-        pass
+    except Exception as exc:
+        _log.debug("_score_ensemble_members: skipped tracker update: %s", exc)
 
 
 def close_paper_early(trade_id: int, exit_price: float) -> dict:

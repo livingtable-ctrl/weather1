@@ -419,3 +419,15 @@ def append_entry(entry: dict, path: Path | None = None) -> None:
         Path(path) if path is not None else DB_PATH.parent / "execution_entries.json"
     )
     safe_io.atomic_write_json(entry, target)
+
+
+def get_recent_api_latency_ms(window_seconds: int = 300) -> float | None:
+    """
+    Return the average API response latency (in ms) over the last `window_seconds`.
+    Returns None if no latency data is available.
+
+    NOTE: The orders table does not currently have a latency_ms column.
+    This function always returns None until that column is added.
+    """
+    # latency_ms column does not exist in the orders table schema — return None.
+    return None

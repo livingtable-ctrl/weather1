@@ -17,6 +17,7 @@ from pathlib import Path
 
 from calibration import load_city_weights as _load_city_weights
 from calibration import load_seasonal_weights as _load_seasonal_weights
+from circuit_breaker import CircuitBreaker
 from climate_indices import get_enso_index, temperature_adjustment
 from climatology import climatological_prob
 from kalshi_client import KalshiClient, _request_with_retry
@@ -24,6 +25,10 @@ from nws import get_live_observation, nws_prob, obs_prob
 from utils import KALSHI_FEE_RATE, MAX_DAYS_OUT, normal_cdf
 
 _log = logging.getLogger(__name__)
+
+_ensemble_cb = CircuitBreaker(
+    name="open_meteo", failure_threshold=4, recovery_timeout=120
+)
 
 # ── Trading filters ───────────────────────────────────────────────────────────
 # Only analyse markets expiring within this many days. Days 3-4 carry higher
@@ -237,6 +242,11 @@ def get_weather_forecast(city: str, target_date: date) -> dict | None:
 
     def _fetch_one(model: str, weight: float) -> tuple | None:
         """Fetch one model's forecast; returns (high, low, precip, weight) or None."""
+        if _ensemble_cb.is_open():
+            _log.warning(
+                "[CircuitBreaker] open_meteo circuit open — skipping forecast fetch"
+            )
+            return None
         params = {
             "latitude": lat,
             "longitude": lon,
@@ -247,8 +257,14 @@ def get_weather_forecast(city: str, target_date: date) -> dict | None:
             "forecast_days": 16,
             "models": model,
         }
-        resp = _request_with_retry("GET", FORECAST_BASE, params=params, timeout=10)
-        resp.raise_for_status()
+        try:
+            resp = _request_with_retry("GET", FORECAST_BASE, params=params, timeout=10)
+            resp.raise_for_status()
+            _ensemble_cb.record_success()
+        except Exception as _exc:
+            _ensemble_cb.record_failure()
+            _log.warning("open_meteo forecast fetch failed: %s", _exc)
+            return None
         data = resp.json()
         daily = data.get("daily", {})
         dates = daily.get("time", [])
@@ -328,10 +344,22 @@ def _fetch_model_ensemble(
         "forecast_days": 16,
     }
 
+    if _ensemble_cb.is_open():
+        _log.warning(
+            "[CircuitBreaker] open_meteo circuit open — skipping ensemble fetch"
+        )
+        return []
+
     if hour is not None:
         params["hourly"] = "temperature_2m"
-        resp = _request_with_retry("GET", ENSEMBLE_BASE, params=params, timeout=20)
-        resp.raise_for_status()
+        try:
+            resp = _request_with_retry("GET", ENSEMBLE_BASE, params=params, timeout=20)
+            resp.raise_for_status()
+            _ensemble_cb.record_success()
+        except Exception as _exc:
+            _ensemble_cb.record_failure()
+            _log.warning("open_meteo ensemble fetch failed: %s", _exc)
+            return []
         data = resp.json()
         # #71: validate expected response structure
         if not isinstance(data, dict):
@@ -352,8 +380,14 @@ def _fetch_model_ensemble(
     else:
         daily_var = "temperature_2m_max" if var == "max" else "temperature_2m_min"
         params["daily"] = daily_var
-        resp = _request_with_retry("GET", ENSEMBLE_BASE, params=params, timeout=20)
-        resp.raise_for_status()
+        try:
+            resp = _request_with_retry("GET", ENSEMBLE_BASE, params=params, timeout=20)
+            resp.raise_for_status()
+            _ensemble_cb.record_success()
+        except Exception as _exc:
+            _ensemble_cb.record_failure()
+            _log.warning("open_meteo ensemble fetch failed: %s", _exc)
+            return []
         data = resp.json()
         # #71: validate expected response structure
         if not isinstance(data, dict):
@@ -1627,6 +1661,11 @@ def _get_consensus_probs(
                 temps = None
 
             if temps is None:
+                if _ensemble_cb.is_open():
+                    _log.warning(
+                        "[CircuitBreaker] open_meteo circuit open — skipping ensemble fetch"
+                    )
+                    return None, None
                 params = {
                     "latitude": lat,
                     "longitude": lon,
@@ -1638,12 +1677,18 @@ def _get_consensus_probs(
                     "end_date": target_date.isoformat(),
                     "forecast_days": 7,
                 }
-                resp = _request_with_retry(
-                    "GET", ENSEMBLE_BASE, params=params, timeout=20
-                )
-                if not resp:
+                try:
+                    resp = _request_with_retry(
+                        "GET", ENSEMBLE_BASE, params=params, timeout=20
+                    )
+                    if not resp:
+                        return None, None
+                    resp.raise_for_status()
+                    _ensemble_cb.record_success()
+                except Exception as _exc:
+                    _ensemble_cb.record_failure()
+                    _log.warning("open_meteo ensemble fetch failed: %s", _exc)
                     return None, None
-                resp.raise_for_status()
                 data = resp.json()
                 daily = data.get("daily", {})
                 members = [
@@ -1736,6 +1781,11 @@ def _fetch_ensemble_precip(
 
     def _fetch_model(model: str) -> list[float]:
         nonlocal date_in_range
+        if _ensemble_cb.is_open():
+            _log.warning(
+                "[CircuitBreaker] open_meteo circuit open — skipping ensemble fetch"
+            )
+            return []
         try:
             params = {
                 "latitude": lat,
@@ -1748,6 +1798,7 @@ def _fetch_ensemble_precip(
             }
             resp = _request_with_retry("GET", ENSEMBLE_BASE, params=params, timeout=20)
             resp.raise_for_status()
+            _ensemble_cb.record_success()
             daily = resp.json().get("daily", {})
             times = daily.get("time", [])
             if target_str not in times:
@@ -1759,7 +1810,9 @@ def _fetch_ensemble_precip(
                 for k, vals in daily.items()
                 if k.startswith(prefix) and vals[idx] is not None
             ]
-        except Exception:
+        except Exception as _exc:
+            _ensemble_cb.record_failure()
+            _log.warning("open_meteo ensemble fetch failed: %s", _exc)
             return []
 
     for model in ENSEMBLE_MODELS:

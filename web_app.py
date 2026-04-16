@@ -6,11 +6,16 @@ Opens a browser tab showing the analyze table, open positions, and P&L chart.
 from __future__ import annotations
 
 import json
+import logging
+import os
 import subprocess
 import sys
 import threading
+import time
 from datetime import UTC, datetime
 from pathlib import Path
+
+_log = logging.getLogger(__name__)
 
 _app = None  # module-level Flask app
 _client = None  # module-level Kalshi client reference
@@ -609,6 +614,8 @@ setInterval(() => {{
         except Exception as e:
             return jsonify({"status": "error", "message": str(e)}), 500
 
+    MAX_SIGNALS_CACHE_AGE_SECS = 90 * 60  # 90 minutes
+
     @app.route("/api/live_signals")
     def api_live_signals():
         """Serve the signals cache written by the last cron run."""
@@ -630,6 +637,28 @@ setInterval(() => {{
                     "generated_at": None,
                     "stale": True,
                     "message": "No scan data yet — run the cron job or wait for the next scheduled scan.",
+                }
+            )
+
+        # P3.5 — age validation: reject stale signals_cache.json (>90 min old)
+        signals_age = time.time() - os.path.getmtime(cache_path)
+        if signals_age > MAX_SIGNALS_CACHE_AGE_SECS:
+            _log.warning(
+                "signals_cache.json is %.0f minutes old — serving empty signals",
+                signals_age / 60,
+            )
+            return jsonify(
+                {
+                    "signals": [],
+                    "summary": {
+                        "scanned": 0,
+                        "with_edge": 0,
+                        "strong": 0,
+                        "low_risk": 0,
+                    },
+                    "generated_at": None,
+                    "stale": True,
+                    "message": f"Signals cache is stale ({signals_age / 60:.0f} min old) — waiting for next cron scan.",
                 }
             )
 
