@@ -69,7 +69,7 @@ def sweep_parameter(
         )
 
     results.sort(
-        key=lambda r: (r["win_rate"] or 0.0),  # type: ignore[arg-type,return-value]
+        key=lambda r: float(r["win_rate"]) if r["win_rate"] is not None else -1.0,  # type: ignore[arg-type]
         reverse=True,
     )
     return results

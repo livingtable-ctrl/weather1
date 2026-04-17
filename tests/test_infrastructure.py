@@ -213,7 +213,7 @@ def test_atomic_write_falls_back_to_tmp_on_oserror(tmp_path, monkeypatch):
 
 
 def test_atomic_write_raises_runtime_error_on_double_failure(tmp_path, monkeypatch):
-    """If both primary and /tmp writes fail, RuntimeError is raised."""
+    """If both primary and /tmp writes fail, AtomicWriteError is raised."""
     import safe_io
 
     call_count = {"n": 0}
@@ -224,7 +224,7 @@ def test_atomic_write_raises_runtime_error_on_double_failure(tmp_path, monkeypat
 
     monkeypatch.setattr("builtins.open", _always_fail)
 
-    with pytest.raises((RuntimeError, OSError)):
+    with pytest.raises((safe_io.AtomicWriteError, OSError)):
         safe_io.atomic_write_json({"x": 1}, tmp_path / "data.json", retries=1)
 
 

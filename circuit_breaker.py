@@ -35,6 +35,7 @@ class CircuitBreaker:
         self.recovery_timeout = recovery_timeout
         self._failure_count = 0
         self._opened_at: float | None = None
+        self._half_open = False
         self._lock = threading.Lock()
 
     def is_open(self) -> bool:
@@ -50,13 +51,24 @@ class CircuitBreaker:
                 )
                 self._opened_at = None
                 self._failure_count = 0
+                self._half_open = True
                 return False
             return True
 
     def record_failure(self) -> None:
         with self._lock:
             self._failure_count += 1
-            if self._failure_count >= self.failure_threshold:
+            should_open = self._failure_count >= self.failure_threshold
+            # Half-open probe failure: re-open immediately on first failure
+            if (
+                not should_open
+                and self._opened_at is None
+                and self._failure_count == 1
+                and self._half_open
+            ):
+                should_open = True
+            self._half_open = False
+            if should_open:
                 if self._opened_at is None:
                     self._opened_at = time.monotonic()
                     _log.warning(
@@ -70,6 +82,7 @@ class CircuitBreaker:
         with self._lock:
             self._failure_count = 0
             self._opened_at = None
+            self._half_open = False
 
 
 # ── Flash Crash Circuit Breaker ───────────────────────────────────────────────

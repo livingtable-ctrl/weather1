@@ -8,7 +8,7 @@ Reported win rate: 85-90%.
 from __future__ import annotations
 
 import logging
-from datetime import UTC, datetime
+from datetime import datetime
 
 import requests
 from requests.adapters import HTTPAdapter, Retry
@@ -68,7 +68,8 @@ def fetch_metar(station: str) -> dict | None:
     try:
         obs_time = datetime.fromisoformat(obs_time_str.replace("Z", "+00:00"))
     except Exception:
-        obs_time = datetime.now(UTC)
+        _log.warning("fetch_metar: missing/unparseable obsTime for %s", station)
+        return None
 
     return {
         "current_temp_f": temp_f,

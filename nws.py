@@ -227,9 +227,10 @@ def nws_prob(
     elif condition["type"] == "below":
         return normal_cdf(condition["threshold"], temp, sigma)
     elif condition["type"] == "between":
-        return normal_cdf(condition["upper"], temp, sigma) - normal_cdf(
+        result = normal_cdf(condition["upper"], temp, sigma) - normal_cdf(
             condition["lower"], temp, sigma
         )
+        return max(0.0, min(1.0, result))
     return None
 
 
@@ -328,7 +329,8 @@ def obs_prob(obs: dict, condition: dict) -> float:
     elif condition["type"] == "below":
         return normal_cdf(condition["threshold"], temp, sigma)
     elif condition["type"] == "between":
-        return normal_cdf(condition["upper"], temp, sigma) - normal_cdf(
+        result = normal_cdf(condition["upper"], temp, sigma) - normal_cdf(
             condition["lower"], temp, sigma
         )
+        return max(0.0, min(1.0, result))
     return 0.0

@@ -103,6 +103,6 @@ def atomic_write_json(
         except Exception as fb_exc:
             _log.error("Fallback write also failed for %s: %s", fallback_path, fb_exc)
 
-    raise RuntimeError(
+    raise AtomicWriteError(
         f"Failed to write {path} after {retries} attempts (including fallback): {last_exc}"
     )

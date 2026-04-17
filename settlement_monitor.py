@@ -185,7 +185,7 @@ def run_settlement_monitor(client, duration_minutes: int = 120) -> None:
             try:
                 city_tz = _MONITOR_CITIES[city]["tz"]
                 local_now = datetime.now(ZoneInfo(city_tz))
-                if not (_MONITOR_START_HOUR <= local_now.hour < _MONITOR_END_HOUR):
+                if not (_MONITOR_START_HOUR <= local_now.hour <= _MONITOR_END_HOUR):
                     continue
 
                 active_tickers: list[dict] = []

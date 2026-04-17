@@ -177,8 +177,8 @@ def check_config_integrity() -> dict:
             stored = json.loads(_CONFIG_HASH_PATH.read_text())
             previous_hash = stored.get("hash")
             previous_fp = stored.get("fingerprint", {})
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("check_config_integrity: could not read hash file: %s", exc)
 
     changed = previous_hash is not None and current_hash != previous_hash
     changed_keys = [k for k in fp if fp.get(k) != previous_fp.get(k)] if changed else []

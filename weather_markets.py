@@ -1099,8 +1099,8 @@ def ensemble_stats(temps: list[float]) -> dict:
         "std": statistics.stdev(temps) if len(temps) > 1 else 0.0,
         "min": min(temps),
         "max": max(temps),
-        "p10": sorted(temps)[min(int(len(temps) * 0.10), len(temps) - 1)],
-        "p90": sorted(temps)[min(int(len(temps) * 0.90), len(temps) - 1)],
+        "p10": sorted(temps)[max(0, int(len(temps) * 0.10) - 1)],
+        "p90": sorted(temps)[min(len(temps) - 1, int(len(temps) * 0.90) - 1)],
     }
 
 
@@ -2068,8 +2068,13 @@ def _get_consensus_probs(
             elif ctype == "below" and thresh is not None:
                 return sum(1 for t in temps if t < thresh) / len(temps), mean_temp
             elif ctype == "range":
-                lo = condition.get("lower", 0)
-                hi = condition.get("upper", 999)
+                lo = condition.get("lower")
+                hi = condition.get("upper")
+                if lo is None or hi is None:
+                    _log.warning(
+                        "range condition missing bounds for ticker; skipping model"
+                    )
+                    return None, None
                 return sum(1 for t in temps if lo <= t <= hi) / len(temps), mean_temp
             return None, mean_temp
         except Exception:

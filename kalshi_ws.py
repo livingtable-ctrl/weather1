@@ -254,6 +254,9 @@ async def _ws_listener(api_key: str, private_key_pem: str, tickers: list[str]) -
                         _log.debug("kalshi_ws: parse error: %s", exc)
 
         except Exception as exc:
+            if "401" in str(exc) or "403" in str(exc):
+                _log.error("kalshi_ws: auth error — not retrying: %s", exc)
+                return
             _log.warning("kalshi_ws: connection error: %s — reconnecting in 10s", exc)
             await asyncio.sleep(10)
 
