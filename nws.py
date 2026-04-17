@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import socket
 import threading
 import time
 from datetime import date, datetime
@@ -20,6 +21,10 @@ import requests
 from circuit_breaker import CircuitBreaker
 from schema_validator import validate_nws_response
 from utils import normal_cdf
+
+socket.setdefaulttimeout(
+    25
+)  # hard backstop — requests timeout unreliable on Windows SSL
 
 _log = logging.getLogger(__name__)
 
