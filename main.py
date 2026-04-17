@@ -2127,8 +2127,6 @@ def cmd_cron(client: KalshiClient, min_edge: float = MIN_EDGE) -> None:
     # Optional: start WebSocket for real-time price feeds
     _ws = None
     try:
-        import os
-
         from kalshi_ws import KalshiWebSocket
 
         api_key = os.getenv("KALSHI_API_KEY", "")
@@ -2543,8 +2541,8 @@ def _validate_trade_opportunity(opp: dict, live: bool = False) -> tuple[bool, st
         if cached_mid and cached_mid > 0:
             # Use cached price — it's more recent than REST poll
             opp["_ws_mid_price"] = cached_mid
-    except Exception:
-        pass
+    except Exception as _exc:
+        _log.debug("WS cache lookup skipped: %s", _exc)
 
     # Flash crash check
     try:
