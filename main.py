@@ -800,6 +800,7 @@ def cmd_market(client: KalshiClient, ticker: str, verbose: bool = False):
         try:
             from weather_markets import EDGE_CALC_VERSION as _ECV
 
+            # TODO(phase-g): pass signal_source from analysis dict when analyze command is updated
             log_prediction(
                 ticker,
                 enriched.get("_city"),
@@ -4141,8 +4142,6 @@ def cmd_version_compare() -> None:
 
 def cmd_pnl_attribution() -> None:
     """Show P&L attribution by signal source."""
-    from colorama import Fore, Style
-
     from tracker import get_pnl_by_signal_source
 
     data = get_pnl_by_signal_source(min_samples=5)
@@ -4154,11 +4153,9 @@ def cmd_pnl_attribution() -> None:
     print("-" * 46)
     for src, d in sorted(data.items(), key=lambda x: x[1]["brier"]):
         brier = d["brier"]
-        color = (
-            Fore.GREEN if brier < 0.15 else (Fore.YELLOW if brier < 0.22 else Fore.RED)
-        )
+        color_fn = green if brier < 0.20 else (yellow if brier < 0.25 else red)
         print(
-            f"{src:<20} {color}{brier:>8.4f}{Style.RESET_ALL} {d['win_rate']:>8.1%} {d['n']:>6}"
+            f"{src:<20} {color_fn(f'{brier:>8.4f}')} {d['win_rate']:>8.1%} {d['n']:>6}"
         )
 
 

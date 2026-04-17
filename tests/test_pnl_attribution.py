@@ -98,7 +98,9 @@ class TestPnLAttribution:
             tmp_tracker.log_outcome(ticker, i % 2 == 0)
 
         result = tmp_tracker.get_pnl_by_signal_source(min_samples=5)
-        if "mos" in result:
-            assert "brier" in result["mos"]
-            assert "n" in result["mos"]
-            assert "win_rate" in result["mos"]
+        assert "mos" in result, (
+            "Expected 'mos' in result with 12 samples and min_samples=5"
+        )
+        assert "brier" in result["mos"]
+        assert "n" in result["mos"]
+        assert "win_rate" in result["mos"]
