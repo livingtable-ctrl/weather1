@@ -10,13 +10,13 @@
 |-------|--------|-----------|------------|
 | A: Data Foundation | ✅ Done | 2026-04-16 | MOS, bias correction, METAR lock-in (3/3) |
 | B: Risk Engine | ✅ Done | 2026-04-16 | Drawdown tiers, flash crash CB, confidence thresholds (3/3) |
-| **C: New Data Sources** | **⬅ Next** | — | NBM, ECMWF AIFS, Gaussian method (0/3) |
-| D: Monitoring & Settlement | Pending | — | Settlement lag, Brier, reliability diagram (0/3) |
-| E: Walk-Forward Backtesting | Pending | — | Walk-forward engine (0/1) |
-| F: WebSocket | Pending | — | Real-time order book (0/1) |
-| G: Long-term | Pending | — | ML bias, arb, A/B, P&L, Telegram (0/5) |
+| C: New Data Sources | ✅ Done | 2026-04-16 | NBM, ECMWF AIFS, Gaussian method (3/3) |
+| D: Monitoring & Settlement | ✅ Done | 2026-04-16 | Settlement lag, per-city Brier, reliability diagram (3/3) |
+| E: Walk-Forward Backtesting | ✅ Done | 2026-04-16 | Walk-forward engine (1/1) |
+| F: WebSocket | ✅ Done | 2026-04-16 | Real-time order book (1/1) |
+| **G: Long-term** | **⬅ In Progress** | — | ML bias ✅, P&L attribution ✅, A/B framework ⏳, arb scanner ⏳ (2/4) |
 
-**7 of 20 items complete (35%). 13 remaining.**
+**17 of 19 items complete (89%). 2 remaining.**
 
 **Architecture:** Layered improvements — data quality first, then risk calibration, then monitoring, then advanced strategies.
 
@@ -86,7 +86,7 @@
 | Rank | Item | Phase | Impact | Effort | Plan |
 |------|------|-------|--------|--------|------|
 | 14 | **Walk-forward backtesting** | 🔵 E | Very High | High | [Phase E](2026-04-16-phase-e-walk-forward-backtest.md) |
-| 15 | **Kalshi WebSocket integration** | 🟣 F | High | High | [Phase F](2026-04-16-phase-f-websocket.md) |
+| 15 | ~~Kalshi WebSocket integration~~ | ✅ F | High | High | [Phase F](2026-04-16-phase-f-websocket.md) |
 
 **Why fourth:** Walk-forward is the only valid way to validate strategies on non-stationary markets — critical before scaling up. WebSocket enables real-time microstructure signals and settlement lag automation, but is infrastructure-heavy.
 
@@ -96,13 +96,11 @@
 
 | Rank | Item | Phase | Impact | Effort | Plan |
 |------|------|-------|--------|--------|------|
-| 16 | **ML-based bias correction (LightGBM)** | ⚪ G | Very High | Very High | [Phase G](2026-04-16-phase-g-long-term.md) |
+| 16 | ~~ML-based bias correction (LightGBM)~~ | ✅ G | Very High | Very High | [Phase G](2026-04-16-phase-g-long-term.md) |
 | 17 | **Cross-platform arbitrage (Kalshi ↔ Polymarket)** | ⚪ G | High | High | [Phase G](2026-04-16-phase-g-long-term.md) |
 | 18 | **A/B experiment framework** | ⚪ G | Medium | Medium | [Phase G](2026-04-16-phase-g-long-term.md) |
-| 19 | **Strategy P&L attribution** | ⚪ G | Medium | Medium | [Phase G](2026-04-16-phase-g-long-term.md) |
-| 20 | **Telegram alerting** | ⚪ G | Low | Low | [Phase G](2026-04-16-phase-g-long-term.md) |
-
-**Why last:** ML bias correction requires 6+ months of training data to be effective. Cross-platform arbitrage requires Polymarket API integration. A/B and P&L attribution are infrastructure for strategy research, not direct alpha. Telegram is convenience tooling.
+| 19 | ~~Strategy P&L attribution~~ | ✅ G | Medium | Medium | [Phase G](2026-04-16-phase-g-long-term.md) |
+**Why last:** ML bias correction requires 6+ months of training data to be effective. Cross-platform arbitrage requires Polymarket API integration. A/B and P&L attribution are infrastructure for strategy research, not direct alpha.
 
 ---
 
@@ -115,8 +113,8 @@
 | ✅ C: New Data Sources | NBM + ECMWF AIFS + Gaussian method | **Done 2026-04-16** | [2026-04-16-phase-c-new-data-sources.md](2026-04-16-phase-c-new-data-sources.md) |
 | D: Monitoring & Settlement | Settlement lag + per-city Brier + reliability diagram | Medium-term | [2026-04-16-phase-d-monitoring-settlement.md](2026-04-16-phase-d-monitoring-settlement.md) |
 | E: Walk-Forward Backtesting | Walk-forward engine | Medium-term | [2026-04-16-phase-e-walk-forward-backtest.md](2026-04-16-phase-e-walk-forward-backtest.md) |
-| F: WebSocket | Real-time order book | Medium-term | [2026-04-16-phase-f-websocket.md](2026-04-16-phase-f-websocket.md) |
-| G: Long-term | ML bias + arb + A/B + P&L + Telegram | Long-term | [2026-04-16-phase-g-long-term.md](2026-04-16-phase-g-long-term.md) |
+| ✅ F: WebSocket | Real-time order book | **Done 2026-04-16** | [2026-04-16-phase-f-websocket.md](2026-04-16-phase-f-websocket.md) |
+| G: Long-term | ~~ML bias~~ + arb + A/B + ~~P&L~~ | In Progress | [2026-04-16-phase-g-long-term.md](2026-04-16-phase-g-long-term.md) |
 
 ---
 
@@ -135,4 +133,4 @@ Phase G — depends on 6+ months of data from A-E
 
 **Recommended order:** A → B (parallel) → C → D → E → F → G
 
-**Current position:** ✅ A done → ✅ B done → **⬅ C next**
+**Current position:** ✅ A → ✅ B → ✅ C → ✅ D → ✅ E → ✅ F → **⬅ G in progress (2/4)**
