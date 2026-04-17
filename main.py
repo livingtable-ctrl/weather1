@@ -1263,6 +1263,8 @@ def _midpoint_price(market: dict, side: str) -> float:
     else:  # "no"
         bid = (100 - market.get("yes_ask", 100)) / 100
         ask = (100 - market.get("yes_bid", 0)) / 100
+    if bid > ask:
+        bid, ask = ask, bid  # guard against inverted spread from API
     return round((bid + ask) / 2, 2)
 
 

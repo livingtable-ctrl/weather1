@@ -228,6 +228,7 @@ def _save_forecast_disk_entry(cache_key: tuple, data: dict) -> None:
             import json as _json
 
             key_str = f"{cache_key[0]}|{cache_key[1]}"
+            now = time.time()
             with _FORECAST_DISK_LOCK:
                 if _FORECAST_DISK_CACHE_PATH.exists():
                     raw: dict = _json.loads(
@@ -235,7 +236,13 @@ def _save_forecast_disk_entry(cache_key: tuple, data: dict) -> None:
                     )
                 else:
                     raw = {}
-                raw[key_str] = {"data": data, "ts_posix": time.time()}
+                raw[key_str] = {"data": data, "ts_posix": now}
+                # Prune expired entries so the file doesn't grow indefinitely
+                raw = {
+                    k: v
+                    for k, v in raw.items()
+                    if now - v.get("ts_posix", 0) < _FORECAST_CACHE_TTL
+                }
                 _FORECAST_DISK_CACHE_PATH.write_text(
                     _json.dumps(raw, default=str), encoding="utf-8"
                 )
