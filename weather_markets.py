@@ -30,8 +30,15 @@ from utils import KALSHI_FEE_RATE, MAX_DAYS_OUT, normal_cdf
 
 _log = logging.getLogger(__name__)
 
+# Primary circuit breaker: 3-model daily forecast (FORECAST_BASE).
+# Higher threshold + longer recovery because these are cached and precious.
+_forecast_cb = CircuitBreaker(
+    name="open_meteo_forecast", failure_threshold=6, recovery_timeout=300
+)
+# Supplementary circuit breaker: ensemble spread, NBM, ECMWF high-res (ENSEMBLE_BASE).
+# Failures here degrade quality but don't block primary signals.
 _ensemble_cb = CircuitBreaker(
-    name="open_meteo", failure_threshold=4, recovery_timeout=120
+    name="open_meteo_ensemble", failure_threshold=4, recovery_timeout=120
 )
 
 # ── Trading filters ───────────────────────────────────────────────────────────
@@ -403,9 +410,9 @@ def get_weather_forecast(city: str, target_date: date) -> dict | None:
 
     def _fetch_one(model: str, weight: float) -> tuple | None:
         """Fetch one model's forecast; returns (high, low, precip, weight) or None."""
-        if _ensemble_cb.is_open():
+        if _forecast_cb.is_open():
             _log.warning(
-                "[CircuitBreaker] open_meteo circuit open — skipping forecast fetch"
+                "[CircuitBreaker] open_meteo_forecast circuit open — skipping forecast fetch"
             )
             return None
         params = {
@@ -421,9 +428,9 @@ def get_weather_forecast(city: str, target_date: date) -> dict | None:
         try:
             resp = _om_request("GET", FORECAST_BASE, params=params, timeout=10)
             resp.raise_for_status()
-            _ensemble_cb.record_success()
+            _forecast_cb.record_success()
         except Exception as _exc:
-            _ensemble_cb.record_failure()
+            _forecast_cb.record_failure()
             _log.warning("open_meteo forecast fetch failed: %s", _exc)
             return None
         data = resp.json()
