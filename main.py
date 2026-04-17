@@ -800,7 +800,6 @@ def cmd_market(client: KalshiClient, ticker: str, verbose: bool = False):
         try:
             from weather_markets import EDGE_CALC_VERSION as _ECV
 
-            # TODO(phase-g): pass signal_source from analysis dict when analyze command is updated
             log_prediction(
                 ticker,
                 enriched.get("_city"),
@@ -811,6 +810,7 @@ def cmd_market(client: KalshiClient, ticker: str, verbose: bool = False):
                 clim_prob=analysis.get("clim_prob"),
                 forecast_cycle=_current_forecast_cycle(),
                 edge_calc_version=_ECV,
+                signal_source=analysis.get("method"),
             )
         except Exception:
             pass
