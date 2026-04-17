@@ -188,6 +188,66 @@ def _om_request(method: str, url: str, **kwargs) -> requests.Response:
 _FORECAST_CACHE: dict = {}
 _FORECAST_CACHE_TTL = 90 * 60  # 90 minutes
 
+# Disk-backed forecast cache — survives process restarts so `analyze` is fast
+# on the 2nd+ run within the same 90-minute window.
+_FORECAST_DISK_CACHE_PATH = Path("data/forecast_cache.json")
+_FORECAST_DISK_LOCK = threading.Lock()
+
+
+def _load_forecast_disk_cache() -> None:
+    """Load non-expired entries from disk into the in-memory cache on startup."""
+    if not _FORECAST_DISK_CACHE_PATH.exists():
+        return
+    try:
+        import json as _json
+
+        with _FORECAST_DISK_LOCK:
+            raw = _json.loads(_FORECAST_DISK_CACHE_PATH.read_text(encoding="utf-8"))
+        now = time.time()
+        loaded = 0
+        for key_str, entry in raw.items():
+            age = now - entry.get("ts_posix", 0)
+            if age < _FORECAST_CACHE_TTL:
+                # Reconstruct in-memory key as tuple; stored ts converted to monotonic approx
+                city, date_iso = key_str.split("|", 1)
+                mem_key = (city, date_iso)
+                # Approximate monotonic timestamp from wall-clock age
+                _FORECAST_CACHE[mem_key] = (entry["data"], time.monotonic() - age)
+                loaded += 1
+        if loaded:
+            _log.debug("forecast disk cache: loaded %d entries", loaded)
+    except Exception as exc:
+        _log.debug("forecast disk cache load failed (non-fatal): %s", exc)
+
+
+def _save_forecast_disk_entry(cache_key: tuple, data: dict) -> None:
+    """Persist a single forecast cache entry to disk asynchronously."""
+
+    def _write() -> None:
+        try:
+            import json as _json
+
+            key_str = f"{cache_key[0]}|{cache_key[1]}"
+            with _FORECAST_DISK_LOCK:
+                if _FORECAST_DISK_CACHE_PATH.exists():
+                    raw: dict = _json.loads(
+                        _FORECAST_DISK_CACHE_PATH.read_text(encoding="utf-8")
+                    )
+                else:
+                    raw = {}
+                raw[key_str] = {"data": data, "ts_posix": time.time()}
+                _FORECAST_DISK_CACHE_PATH.write_text(
+                    _json.dumps(raw, default=str), encoding="utf-8"
+                )
+        except Exception as exc:
+            _log.debug("forecast disk cache write failed (non-fatal): %s", exc)
+
+    threading.Thread(target=_write, daemon=True).start()
+
+
+# Populate in-memory cache from disk on import
+_load_forecast_disk_cache()
+
 # Maximum age of forecast data before analyze_trade rejects it.
 # Set higher than _FORECAST_CACHE_TTL so cache expiry happens first.
 # Override via FORECAST_MAX_AGE_SECS env var.
@@ -410,6 +470,7 @@ def get_weather_forecast(city: str, target_date: date) -> dict | None:
         "high_range": (min(high_vals), max(high_vals)),
     }
     _FORECAST_CACHE[cache_key] = (result, time.monotonic())
+    _save_forecast_disk_entry(cache_key, result)
     return result
 
 
