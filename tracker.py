@@ -952,7 +952,8 @@ def sync_outcomes(client) -> int:
                 settled_yes = result == "yes"
                 if log_outcome(ticker, settled_yes):
                     count += 1
-        except Exception:
+        except Exception as exc:
+            _log.warning("sync_outcomes: failed to fetch/record %s: %s", ticker, exc)
             continue
     return count
 
@@ -1822,10 +1823,17 @@ def log_analysis_attempt(
     try:
         with _conn() as con:
             con.execute(
-                """INSERT OR REPLACE INTO analysis_attempts
+                """INSERT INTO analysis_attempts
                    (ticker, city, condition, target_date, analyzed_at,
                     forecast_prob, market_prob, days_out, was_traded)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                   ON CONFLICT(ticker, target_date) DO UPDATE SET
+                       analyzed_at    = excluded.analyzed_at,
+                       forecast_prob  = excluded.forecast_prob,
+                       market_prob    = excluded.market_prob,
+                       days_out       = excluded.days_out,
+                       was_traded     = MAX(analysis_attempts.was_traded,
+                                            excluded.was_traded)""",
                 (
                     ticker,
                     city,
@@ -1873,10 +1881,17 @@ def batch_log_analysis_attempts(attempts: list[dict]) -> None:
     try:
         with _conn() as con:
             con.executemany(
-                """INSERT OR REPLACE INTO analysis_attempts
+                """INSERT INTO analysis_attempts
                    (ticker, city, condition, target_date, analyzed_at,
                     forecast_prob, market_prob, days_out, was_traded)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                   ON CONFLICT(ticker, target_date) DO UPDATE SET
+                       analyzed_at    = excluded.analyzed_at,
+                       forecast_prob  = excluded.forecast_prob,
+                       market_prob    = excluded.market_prob,
+                       days_out       = excluded.days_out,
+                       was_traded     = MAX(analysis_attempts.was_traded,
+                                            excluded.was_traded)""",
                 rows,
             )
     except Exception as exc:
@@ -1970,10 +1985,15 @@ def analyze_all_markets(enriched_list: list[dict]) -> None:
             try:
                 with _conn() as con:
                     con.execute(
-                        """INSERT OR REPLACE INTO analysis_attempts
+                        """INSERT INTO analysis_attempts
                            (ticker, city, condition, target_date, analyzed_at,
                             forecast_prob, market_prob, days_out, was_traded)
-                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)""",
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)
+                           ON CONFLICT(ticker, target_date) DO UPDATE SET
+                               analyzed_at   = excluded.analyzed_at,
+                               forecast_prob = excluded.forecast_prob,
+                               market_prob   = excluded.market_prob,
+                               days_out      = excluded.days_out""",
                         (
                             ticker,
                             city,

@@ -68,11 +68,39 @@ DATA_PATH = _project_root() / "data" / "paper_trades.json"
 DATA_PATH.parent.mkdir(exist_ok=True)
 
 STARTING_BALANCE = 1000.0  # default paper bankroll in dollars
-# #121: drawdown halt configurable via env (default 50%)
-MAX_DRAWDOWN_FRACTION = float(os.getenv("DRAWDOWN_HALT_PCT", "0.50"))
 
-MAX_DAILY_LOSS_PCT = float(os.getenv("MAX_DAILY_LOSS_PCT", "0.03"))  # default 3%
-MAX_POSITION_AGE_DAYS = int(os.getenv("MAX_POSITION_AGE_DAYS", "7"))
+
+def _env_float(name: str, default: str) -> float:
+    raw = os.getenv(name, default)
+    try:
+        return float(raw)
+    except ValueError:
+        import logging as _logging
+
+        _logging.getLogger(__name__).warning(
+            "paper.py: invalid value for %s=%r, using default %s", name, raw, default
+        )
+        return float(default)
+
+
+def _env_int(name: str, default: str) -> int:
+    raw = os.getenv(name, default)
+    try:
+        return int(raw)
+    except ValueError:
+        import logging as _logging
+
+        _logging.getLogger(__name__).warning(
+            "paper.py: invalid value for %s=%r, using default %s", name, raw, default
+        )
+        return int(default)
+
+
+# #121: drawdown halt configurable via env (default 50%)
+MAX_DRAWDOWN_FRACTION = _env_float("DRAWDOWN_HALT_PCT", "0.50")
+
+MAX_DAILY_LOSS_PCT = _env_float("MAX_DAILY_LOSS_PCT", "0.03")  # default 3%
+MAX_POSITION_AGE_DAYS = _env_int("MAX_POSITION_AGE_DAYS", "7")
 
 # Gradual recovery thresholds (fraction of peak balance).
 # Conservative tiers: resume slowly after a loss streak to avoid blowup.
@@ -112,9 +140,7 @@ _CITY_PAIR_CORR: dict[frozenset, float] = {
     frozenset({"Dallas", "Houston"}): 0.70,
     frozenset({"Miami", "Atlanta"}): 0.50,
 }
-MAX_SINGLE_TICKER_EXPOSURE = float(
-    os.getenv("MAX_SINGLE_TICKER_EXPOSURE", "0.10")
-)  # #47
+MAX_SINGLE_TICKER_EXPOSURE = _env_float("MAX_SINGLE_TICKER_EXPOSURE", "0.10")  # #47
 MIN_ORDER_COST = 0.05  # #42: minimum order size in dollars
 MAX_ORDER_LATENCY_MS = 5000  # #79: warn if place_paper_order exceeds this latency
 
@@ -433,6 +459,13 @@ def place_paper_order(
     import time as _time
 
     _order_start = _time.monotonic()
+
+    if side not in ("yes", "no"):
+        raise ValueError(f"side must be 'yes' or 'no', got {side!r}")
+    if entry_prob is not None and not (0.0 <= entry_prob <= 1.0):
+        raise ValueError(f"entry_prob must be in [0, 1], got {entry_prob}")
+    if not (0.0 < entry_price <= 1.0):
+        raise ValueError(f"entry_price must be in (0, 1], got {entry_price}")
 
     if is_daily_loss_halted():
         daily_pnl = get_daily_pnl()
@@ -921,8 +954,9 @@ def covariance_kelly_scale(
         corr = _CITY_PAIR_CORR.get(pair, 0.0)
         if corr == 0.0:
             continue
-        p_i = t.get("entry_prob") or 0.5
-        p_i = max(0.01, min(0.99, float(p_i)))
+        _ep_raw = t.get("entry_prob")
+        p_i: float = float(_ep_raw) if _ep_raw is not None else 0.5
+        p_i = max(0.01, min(0.99, p_i))
         sigma_i = (p_i * (1 - p_i)) ** 0.5
         w_i = t.get("cost", 0.0) / max(STARTING_BALANCE, 1.0)
         weighted_corr_sum += corr * sigma_i * w_i
@@ -1640,8 +1674,8 @@ def get_attribution() -> dict:
     pnl_from_luck = 0.0
 
     for t in settled:
-        ep = t.get("entry_prob") or 0.5
-        entry_price = t.get("entry_price", 0.5) or 0.5
+        ep = t.get("entry_prob") if t.get("entry_prob") is not None else 0.5
+        entry_price = t.get("entry_price") if t.get("entry_price") is not None else 0.5
         qty = t.get("quantity", 1) or 1
         cost = t.get("cost", 0.0) or 0.0
         winnings_per = 1.0 - entry_price

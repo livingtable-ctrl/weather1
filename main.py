@@ -812,8 +812,10 @@ def cmd_market(client: KalshiClient, ticker: str, verbose: bool = False):
                 edge_calc_version=_ECV,
                 signal_source=analysis.get("method"),
             )
-        except Exception:
-            pass
+        except Exception as _exc:
+            logging.getLogger(__name__).warning(
+                "cmd_analyze: log_prediction failed for %s: %s", ticker, _exc
+            )
     else:
         print(
             dim(
@@ -2927,6 +2929,40 @@ def _auto_place_trades(
                         "_auto_place_trades: log_analysis_attempt failed for %s: %s",
                         ticker,
                         _e,
+                    )
+                # Wire into predictions table so pnl-attribution sees cron trades
+                try:
+                    import datetime as _dt3
+
+                    from tracker import log_prediction as _log_pred
+                    from weather_markets import EDGE_CALC_VERSION as _ECV2
+
+                    _pred_date_raw = trade.get("target_date")
+                    _pred_date: date | None = None
+                    if isinstance(_pred_date_raw, str):
+                        try:
+                            _pred_date = _dt3.date.fromisoformat(_pred_date_raw)
+                        except ValueError:
+                            pass
+                    elif hasattr(_pred_date_raw, "isoformat"):
+                        _pred_date = _pred_date_raw
+                    _log_pred(
+                        ticker,
+                        city,
+                        _pred_date,
+                        a,
+                        ensemble_prob=a.get("ensemble_prob"),
+                        nws_prob=a.get("nws_prob"),
+                        clim_prob=a.get("clim_prob"),
+                        forecast_cycle=_current_forecast_cycle(),
+                        edge_calc_version=_ECV2,
+                        signal_source=a.get("method"),
+                    )
+                except Exception as _e2:
+                    logging.getLogger(__name__).warning(
+                        "_auto_place_trades: log_prediction failed for %s: %s",
+                        ticker,
+                        _e2,
                     )
             except Exception as e:
                 logging.getLogger(__name__).warning(
