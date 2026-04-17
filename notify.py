@@ -10,9 +10,12 @@ and ntfy.sh (NTFY_TOPIC env var).
 from __future__ import annotations
 
 import json
+import logging
 import os
 import time
 from pathlib import Path
+
+_log = logging.getLogger(__name__)
 
 try:
     from plyer import notification as _notif
@@ -67,7 +70,8 @@ def _send_pushover(title: str, message: str) -> bool:
         )
         with urllib.request.urlopen(req, timeout=5) as resp:
             return resp.status == 200
-    except Exception:
+    except Exception as exc:
+        _log.debug("_send_pushover failed: %s", exc)
         return False
 
 
@@ -92,7 +96,8 @@ def _send_ntfy(topic: str, title: str, message: str) -> bool:
         )
         with urllib.request.urlopen(req, timeout=5) as resp:
             return resp.status == 200
-    except Exception:
+    except Exception as exc:
+        _log.debug("_send_ntfy failed: %s", exc)
         return False
 
 
@@ -121,8 +126,8 @@ def _send_discord(title: str, message: str, color: int = 0x3FB950) -> bool:
             resp = requests.post(url, json=payload, timeout=10)
             if resp.status_code in (200, 204):
                 any_ok = True
-        except Exception:
-            pass
+        except Exception as exc:
+            _log.debug("_send_discord webhook %s failed: %s", url, exc)
     return any_ok
 
 

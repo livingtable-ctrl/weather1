@@ -1401,7 +1401,7 @@ def _place_live_order(
     price = _midpoint_price(market, side)
     if price <= 0:
         return False, 0.0
-    kelly_qty = int(analysis.get("kelly_quantity", 1))
+    kelly_qty = max(1, min(int(analysis.get("kelly_quantity", 1)), 500))
     max_qty = math.floor(config["max_trade_dollars"] / price)
     quantity = min(kelly_qty, max_qty)
     if quantity <= 0:

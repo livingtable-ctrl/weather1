@@ -71,7 +71,10 @@ def save_correlations(city_pairs_dict: dict) -> None:
     import json
 
     _CORR_PATH.parent.mkdir(parents=True, exist_ok=True)
-    payload = {k: float(v) for k, v in city_pairs_dict.items()}
+    payload = {}
+    for k, v in city_pairs_dict.items():
+        key_str = "|".join(sorted(k)) if isinstance(k, frozenset) else str(k)
+        payload[key_str] = float(v)
     _CORR_PATH.write_text(json.dumps(payload, indent=2))
 
 
@@ -181,7 +184,6 @@ def simulate_portfolio(
             entry_prob = t.get("entry_prob")
             win_prob = entry_prob if entry_prob is not None else 0.5
 
-        win_prob = max(0.0, min(1.0, win_prob))
         # #48: clamp to [0.1, 0.9] — extreme values likely stale or bad data
         clamped = max(0.1, min(0.9, win_prob))
         if clamped != win_prob:
@@ -236,10 +238,7 @@ def simulate_portfolio(
                 for other_city in city_to_indices:
                     if other_city == city:
                         continue
-                    pair = (min(city, other_city), max(city, other_city))
-                    for (a, b), r in _DEFAULT_CORRELATIONS.items():
-                        if (min(a, b), max(a, b)) == pair:
-                            max_r = max(max_r, r)
+                    max_r = max(max_r, get_city_correlation(city, other_city))
 
                 if max_r > 0:
                     # Correlated draw: blend shared city shock with idiosyncratic noise
@@ -264,8 +263,8 @@ def simulate_portfolio(
     sim_pnls.sort()
     n = len(sim_pnls)
     median_pnl = (sim_pnls[(n - 1) // 2] + sim_pnls[n // 2]) / 2
-    p10_pnl = sim_pnls[max(0, int(n * 0.10))]
-    p90_pnl = sim_pnls[min(n - 1, int(n * 0.90))]
+    p10_pnl = sim_pnls[max(0, int(n * 0.10) - 1)]
+    p90_pnl = sim_pnls[min(n - 1, int(n * 0.90) - 1)]
     prob_positive = sum(1 for p in sim_pnls if p > 0) / n
     prob_ruin = sum(1 for p in sim_pnls if p < -ruin_threshold) / n
 

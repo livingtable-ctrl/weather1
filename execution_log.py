@@ -259,7 +259,10 @@ def add_live_loss(amount: float) -> float:
         warnings.warn(f"add_live_loss DB write failed: {exc}")
         try:
             return get_today_live_loss()
-        except Exception:
+        except Exception as exc:
+            _log.error(
+                "add_live_loss: DB completely unavailable, returning 0.0: %s", exc
+            )
             return 0.0
 
 

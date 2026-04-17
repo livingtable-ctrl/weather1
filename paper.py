@@ -551,7 +551,7 @@ def place_paper_order(
         _log_pi(
             ticker,
             desired=entry_price,
-            actual=entry_price,
+            actual=actual_fill_price,
             quantity=quantity,
             side=side,
         )
@@ -638,10 +638,15 @@ def settle_paper_trade(trade_id: int, outcome_yes: bool) -> dict:
                             name="edge_threshold",
                             variants={"control": 0.08, "higher": 0.10, "lower": 0.06},
                         )
-                        _ab_test.record_outcome(_variant, won, abs(pnl))
-                        _ticker_map_path.write_text(_json.dumps(_ticker_map))
-            except Exception:
-                pass
+                        _edge = t.get("net_edge") or pnl
+                        _ab_test.record_outcome(_variant, won, _edge)
+                        atomic_write_json(_ticker_map, _ticker_map_path)
+            except Exception as exc:
+                _log.warning(
+                    "settle_paper_trade: A/B recording failed for trade %d: %s",
+                    trade_id,
+                    exc,
+                )
 
             # Score per-model forecast means against outcome for dynamic weighting
             _score_ensemble_members(t, outcome_yes)
@@ -821,7 +826,7 @@ def check_exit_targets(client=None) -> int:
         try:
             market = client.get_market(t["ticker"])
             yes_bid = market.get("yes_bid") or 0
-            if isinstance(yes_bid, int) and yes_bid > 1:
+            if isinstance(yes_bid, int | float) and yes_bid > 1:
                 yes_bid = yes_bid / 100.0
             current_price = float(yes_bid)
             target = t["exit_target"]
@@ -831,22 +836,15 @@ def check_exit_targets(client=None) -> int:
                 t["side"] == "no" and current_price <= 1 - target
             )
             if should_exit:
-                import random as _rand
-
-                pos_quantity = t.get("quantity", 1)
-                filled = min(pos_quantity, int(pos_quantity * _rand.uniform(0.7, 1.0)))
-                if filled < pos_quantity:
-                    _log.info(
-                        "check_exit_targets: partial fill for trade %d — "
-                        "filled %d of %d contracts at target %.2f",
-                        t["id"],
-                        filled,
-                        pos_quantity,
-                        target,
-                    )
                 settle_paper_trade(t["id"], outcome_yes=(t["side"] == "yes"))
                 exited += 1
-        except Exception:
+        except Exception as exc:
+            _log.warning(
+                "check_exit_targets: error processing trade %d (%s): %s",
+                t["id"],
+                t.get("ticker", "?"),
+                exc,
+            )
             continue
     return exited
 

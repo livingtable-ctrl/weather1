@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import time
 from pathlib import Path
 
@@ -66,7 +67,9 @@ def update_outcome(ticker: str, outcome: bool) -> None:
             except Exception:
                 continue
         if updated:
-            _FEATURE_LOG_PATH.write_text("\n".join(lines) + "\n", encoding="utf-8")
+            tmp = _FEATURE_LOG_PATH.with_suffix(".tmp")
+            tmp.write_text("\n".join(lines) + "\n", encoding="utf-8")
+            os.replace(tmp, _FEATURE_LOG_PATH)
     except Exception as exc:
         _log.debug("update_outcome: %s", exc)
 

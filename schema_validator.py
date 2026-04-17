@@ -103,4 +103,5 @@ def validate_nws_response(data: dict) -> bool:
                 if isinstance(expected_type, type)
                 else str(expected_type),
             )
+            ok = False
     return ok

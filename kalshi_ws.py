@@ -208,6 +208,7 @@ async def _ws_listener(api_key: str, private_key_pem: str, tickers: list[str]) -
         _log.error("kalshi_ws: key loading failed: %s", exc)
         return
 
+    _sign_failures = 0
     while True:
         try:
             # Recompute auth on every connect attempt (timestamp must be fresh)
@@ -223,9 +224,20 @@ async def _ws_listener(api_key: str, private_key_pem: str, tickers: list[str]) -
                     hashes.SHA256(),
                 )
                 sig_b64 = base64.b64encode(signature).decode()
+                _sign_failures = 0
             except Exception as exc:
-                _log.error("kalshi_ws: auth signing failed: %s", exc)
-                await asyncio.sleep(10)
+                _sign_failures += 1
+                if _sign_failures >= 5:
+                    _log.error(
+                        "kalshi_ws: auth signing failed %d times — giving up",
+                        _sign_failures,
+                    )
+                    return
+                backoff = min(10 * (2**_sign_failures), 300)
+                _log.error(
+                    "kalshi_ws: auth signing failed: %s — retry in %ds", exc, backoff
+                )
+                await asyncio.sleep(backoff)
                 continue
 
             headers = {
@@ -254,6 +266,9 @@ async def _ws_listener(api_key: str, private_key_pem: str, tickers: list[str]) -
                         _log.debug("kalshi_ws: parse error: %s", exc)
 
         except Exception as exc:
+            if "401" in str(exc) or "403" in str(exc):
+                _log.error("kalshi_ws: auth error — not retrying: %s", exc)
+                return
             _log.warning("kalshi_ws: connection error: %s — reconnecting in 10s", exc)
             await asyncio.sleep(10)
 
@@ -277,6 +292,7 @@ class KalshiWebSocket:
         self._thread: threading.Thread | None = None
         self._loop: asyncio.AbstractEventLoop | None = None
         self._running = False
+        self._lock = threading.Lock()
 
     def subscribe(self, tickers: list[str]) -> None:
         """Add tickers to subscribe to. Must be called before start()."""
@@ -295,9 +311,11 @@ class KalshiWebSocket:
 
     def stop(self, timeout: float = 5.0) -> None:
         """Stop the WebSocket listener."""
-        self._running = False
-        if self._loop and not self._loop.is_closed():
-            self._loop.call_soon_threadsafe(self._loop.stop)
+        with self._lock:
+            self._running = False
+            loop = self._loop
+        if loop and not loop.is_closed():
+            loop.call_soon_threadsafe(loop.stop)
         if self._thread:
             self._thread.join(timeout=timeout)
         _log.info("kalshi_ws: stopped")

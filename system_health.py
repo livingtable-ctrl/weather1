@@ -57,7 +57,7 @@ def check_system_health() -> HealthStatus:
 
         _log.debug("system_health: CPU %.1f%% MEM %.1f%% — OK", cpu, mem)
     except ImportError:
-        _log.debug("system_health: psutil not installed — skipping CPU/memory check")
+        _log.warning("system_health: psutil not installed — skipping CPU/memory check")
 
     # --- API latency (read from execution_log if available) ---
     try:
@@ -77,6 +77,6 @@ def check_system_health() -> HealthStatus:
         if latency is not None:
             _log.debug("system_health: API latency %.0fms — OK", latency)
     except Exception as exc:
-        _log.debug("system_health: could not read API latency: %s", exc)
+        _log.warning("system_health: could not read API latency: %s", exc)
 
     return HealthStatus(True, "")

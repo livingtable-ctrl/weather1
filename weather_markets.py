@@ -218,8 +218,8 @@ def _load_forecast_disk_cache() -> None:
                 # Reconstruct in-memory key as tuple; stored ts converted to monotonic approx
                 city, date_iso = key_str.split("|", 1)
                 mem_key = (city, date_iso)
-                # Approximate monotonic timestamp from wall-clock age
-                _FORECAST_CACHE[mem_key] = (entry["data"], time.monotonic() - age)
+                # Treat loaded entries as fresh; TTL will expire them normally
+                _FORECAST_CACHE[mem_key] = (entry["data"], time.monotonic())
                 loaded += 1
         if loaded:
             _log.debug("forecast disk cache: loaded %d entries", loaded)
@@ -1099,8 +1099,8 @@ def ensemble_stats(temps: list[float]) -> dict:
         "std": statistics.stdev(temps) if len(temps) > 1 else 0.0,
         "min": min(temps),
         "max": max(temps),
-        "p10": sorted(temps)[min(int(len(temps) * 0.10), len(temps) - 1)],
-        "p90": sorted(temps)[min(int(len(temps) * 0.90), len(temps) - 1)],
+        "p10": sorted(temps)[max(0, int(len(temps) * 0.10) - 1)],
+        "p90": sorted(temps)[min(len(temps) - 1, int(len(temps) * 0.90) - 1)],
     }
 
 
@@ -2013,7 +2013,7 @@ def _get_consensus_probs(
             cached = _ENSEMBLE_CACHE.get(cache_key)
             if cached:
                 temps, ts = cached
-                if time.time() - ts < _ENSEMBLE_CACHE_TTL:
+                if time.monotonic() - ts < _ENSEMBLE_CACHE_TTL:
                     pass  # use cached
                 else:
                     temps = None
@@ -2055,7 +2055,7 @@ def _get_consensus_probs(
                     if k.startswith(var_field) and v and v[0] is not None
                 ]
                 temps = members
-                _ENSEMBLE_CACHE[cache_key] = (temps, time.time())
+                _ENSEMBLE_CACHE[cache_key] = (temps, time.monotonic())
 
             if len(temps) < 5:
                 return None, None
@@ -2068,8 +2068,13 @@ def _get_consensus_probs(
             elif ctype == "below" and thresh is not None:
                 return sum(1 for t in temps if t < thresh) / len(temps), mean_temp
             elif ctype == "range":
-                lo = condition.get("lower", 0)
-                hi = condition.get("upper", 999)
+                lo = condition.get("lower")
+                hi = condition.get("upper")
+                if lo is None or hi is None:
+                    _log.warning(
+                        "range condition missing bounds for ticker; skipping model"
+                    )
+                    return None, None
                 return sum(1 for t in temps if lo <= t <= hi) / len(temps), mean_temp
             return None, mean_temp
         except Exception:
