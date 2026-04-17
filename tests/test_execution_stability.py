@@ -300,6 +300,11 @@ class TestCronLock:
             "paper.get_state_snapshot",
             lambda: {"balance": 0.0, "open_trades_count": 0, "peak_balance": 0.0},
         )
+        # Isolate from real data/ files — kill switch and black swan checks
+        monkeypatch.setattr(main, "RUNNING_FLAG_PATH", tmp_path / ".cron_running")
+        monkeypatch.setattr(main, "KILL_SWITCH_PATH", tmp_path / ".kill_switch")
+        monkeypatch.setattr("alerts.run_black_swan_check", lambda: [])
+        monkeypatch.setattr("alerts.run_anomaly_check", lambda log_results=False: None)
 
         with pytest.raises(SystemExit):
             main.cmd_cron(MagicMock())

@@ -255,8 +255,12 @@ class TestDriftDetection:
 
 
 class TestBlackSwanMode:
-    def test_no_conditions_on_clean_trades(self):
+    def test_no_conditions_on_clean_trades(self, monkeypatch):
+        import tracker
         from alerts import check_black_swan_conditions
+
+        monkeypatch.setattr(tracker, "brier_score", lambda city=None: None)
+        monkeypatch.setattr(tracker, "get_history", lambda: [])
 
         trades = [{"outcome": "yes"} for _ in range(5)]
         result = check_black_swan_conditions(trades, balance=1000, peak_balance=1000)

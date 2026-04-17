@@ -78,6 +78,9 @@ RUNNING_FLAG_PATH: Path = Path(__file__).parent / "data" / ".cron_running"
 # P3.4 — file-based cron lock (prevents concurrent cron instances)
 LOCK_PATH: Path = Path(__file__).parent / "data" / ".cron.lock"
 
+# P8.3 — hard kill switch path (module-level so tests can monkeypatch it)
+KILL_SWITCH_PATH: Path = Path(__file__).parent / "data" / ".kill_switch"
+
 
 def _write_cron_running_flag() -> None:
     """Write UTC ISO timestamp to RUNNING_FLAG_PATH; warn if a fresh flag already exists."""
@@ -2207,8 +2210,7 @@ def cmd_cron(client: KalshiClient, min_edge: float = MIN_EDGE) -> None:
         return
 
     # P8.3 — hard kill switch: touch data/.kill_switch to halt immediately
-    _KILL_SWITCH_PATH = Path(__file__).parent / "data" / ".kill_switch"
-    if _KILL_SWITCH_PATH.exists():
+    if KILL_SWITCH_PATH.exists():
         _log.critical(
             "KILL SWITCH ACTIVATED — halting cron execution immediately. Remove data/.kill_switch to resume."
         )
