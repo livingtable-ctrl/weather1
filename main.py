@@ -2226,6 +2226,13 @@ def cmd_cron(client: KalshiClient, min_edge: float = MIN_EDGE) -> None:
         _release_cron_lock()
         return
 
+    print(
+        cyan(
+            f"  [cron] scan starting — {datetime.now(UTC).strftime('%Y-%m-%d %H:%M:%S')} UTC"
+        ),
+        flush=True,
+    )
+
     # P3.1 — graceful shutdown flag
     _write_cron_running_flag()
     # P3.2 — detect orders placed in the last 5 minutes at startup
@@ -2331,6 +2338,7 @@ def cmd_cron(client: KalshiClient, min_edge: float = MIN_EDGE) -> None:
 
         markets = get_weather_markets(client)
         scanned = len(markets)
+        print(dim(f"  [cron] scanning {scanned} market(s)…"), flush=True)
 
         def _enrich_and_analyze(m: dict) -> tuple[dict, dict, dict | None]:
             enriched = enrich_with_forecast(m)
@@ -2572,6 +2580,12 @@ def cmd_cron(client: KalshiClient, min_edge: float = MIN_EDGE) -> None:
     except Exception:
         pass
     _release_cron_lock()
+    print(
+        cyan(
+            f"  [cron] scan complete — {datetime.now(UTC).strftime('%Y-%m-%d %H:%M:%S')} UTC"
+        ),
+        flush=True,
+    )
     if not getattr(cmd_cron, "_called_from_loop", False):
         _sys.exit(0)
 
