@@ -2013,7 +2013,7 @@ def _get_consensus_probs(
             cached = _ENSEMBLE_CACHE.get(cache_key)
             if cached:
                 temps, ts = cached
-                if time.time() - ts < _ENSEMBLE_CACHE_TTL:
+                if time.monotonic() - ts < _ENSEMBLE_CACHE_TTL:
                     pass  # use cached
                 else:
                     temps = None
@@ -2055,7 +2055,7 @@ def _get_consensus_probs(
                     if k.startswith(var_field) and v and v[0] is not None
                 ]
                 temps = members
-                _ENSEMBLE_CACHE[cache_key] = (temps, time.time())
+                _ENSEMBLE_CACHE[cache_key] = (temps, time.monotonic())
 
             if len(temps) < 5:
                 return None, None

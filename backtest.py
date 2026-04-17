@@ -50,7 +50,7 @@ def fetch_archive_temps(
         try:
             return json.loads(cache_file.read_text())
         except Exception:
-            pass
+            cache_file.unlink(missing_ok=True)
 
     # Fetch ±5 days around the target to estimate local variability
     start = (target_date - timedelta(days=5)).isoformat()

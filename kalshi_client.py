@@ -32,7 +32,7 @@ def _build_session() -> requests.Session:
     retry = Retry(
         total=3,
         backoff_factor=1.0,
-        status_forcelist={429, 500, 502, 503},
+        status_forcelist=_RETRY_STATUSES,
         allowed_methods={"GET", "POST", "DELETE"},
         respect_retry_after_header=True,
         raise_on_status=False,
