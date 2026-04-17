@@ -33,12 +33,12 @@ _log = logging.getLogger(__name__)
 # Primary circuit breaker: 3-model daily forecast (FORECAST_BASE).
 # Higher threshold + longer recovery because these are cached and precious.
 _forecast_cb = CircuitBreaker(
-    name="open_meteo_forecast", failure_threshold=6, recovery_timeout=300
+    name="open_meteo_forecast", failure_threshold=6, recovery_timeout=6 * 3600
 )
 # Supplementary circuit breaker: ensemble spread, NBM, ECMWF high-res (ENSEMBLE_BASE).
 # Failures here degrade quality but don't block primary signals.
 _ensemble_cb = CircuitBreaker(
-    name="open_meteo_ensemble", failure_threshold=4, recovery_timeout=120
+    name="open_meteo_ensemble", failure_threshold=4, recovery_timeout=6 * 3600
 )
 
 # ── Trading filters ───────────────────────────────────────────────────────────
@@ -164,14 +164,12 @@ _om_session: requests.Session = requests.Session()
 
 # Ensemble cache: key -> (list[float], timestamp)
 _ENSEMBLE_CACHE: dict = {}
-_ENSEMBLE_CACHE_TTL = 90 * 60  # 90 minutes
+_ENSEMBLE_CACHE_TTL = 4 * 60 * 60  # 4 hours — matches loop interval
 
 # Rate limiter: enforce minimum gap between Open-Meteo requests to avoid 429 bursts.
 _OM_RATE_LOCK = threading.Lock()
 _OM_LAST_REQUEST_TS: float = 0.0
-_OM_MIN_INTERVAL: float = (
-    1.5  # seconds between requests (~0.67 req/s) — avoids Open-Meteo 429 bans
-)
+_OM_MIN_INTERVAL: float = 3.0  # seconds between requests (~0.33 req/s) — conservative to avoid university throttling
 
 
 def _om_rate_limit() -> None:
@@ -193,7 +191,74 @@ def _om_request(method: str, url: str, **kwargs) -> requests.Response:
 
 # Forecast cache: (city, date_iso) -> (dict, timestamp)
 _FORECAST_CACHE: dict = {}
-_FORECAST_CACHE_TTL = 90 * 60  # 90 minutes
+_FORECAST_CACHE_TTL = 4 * 60 * 60  # 4 hours — matches loop interval
+
+# Disk-backed forecast cache — survives process restarts so `analyze` is fast
+# on the 2nd+ run within the same 90-minute window.
+_FORECAST_DISK_CACHE_PATH = Path("data/forecast_cache.json")
+_FORECAST_DISK_LOCK = threading.Lock()
+
+
+def _load_forecast_disk_cache() -> None:
+    """Load non-expired entries from disk into the in-memory cache on startup."""
+    if not _FORECAST_DISK_CACHE_PATH.exists():
+        return
+    try:
+        import json as _json
+
+        with _FORECAST_DISK_LOCK:
+            raw = _json.loads(_FORECAST_DISK_CACHE_PATH.read_text(encoding="utf-8"))
+        now = time.time()
+        loaded = 0
+        for key_str, entry in raw.items():
+            age = now - entry.get("ts_posix", 0)
+            if age < _FORECAST_CACHE_TTL:
+                # Reconstruct in-memory key as tuple; stored ts converted to monotonic approx
+                city, date_iso = key_str.split("|", 1)
+                mem_key = (city, date_iso)
+                # Approximate monotonic timestamp from wall-clock age
+                _FORECAST_CACHE[mem_key] = (entry["data"], time.monotonic() - age)
+                loaded += 1
+        if loaded:
+            _log.debug("forecast disk cache: loaded %d entries", loaded)
+    except Exception as exc:
+        _log.debug("forecast disk cache load failed (non-fatal): %s", exc)
+
+
+def _save_forecast_disk_entry(cache_key: tuple, data: dict) -> None:
+    """Persist a single forecast cache entry to disk asynchronously."""
+
+    def _write() -> None:
+        try:
+            import json as _json
+
+            key_str = f"{cache_key[0]}|{cache_key[1]}"
+            now = time.time()
+            with _FORECAST_DISK_LOCK:
+                if _FORECAST_DISK_CACHE_PATH.exists():
+                    raw: dict = _json.loads(
+                        _FORECAST_DISK_CACHE_PATH.read_text(encoding="utf-8")
+                    )
+                else:
+                    raw = {}
+                raw[key_str] = {"data": data, "ts_posix": now}
+                # Prune expired entries so the file doesn't grow indefinitely
+                raw = {
+                    k: v
+                    for k, v in raw.items()
+                    if now - v.get("ts_posix", 0) < _FORECAST_CACHE_TTL
+                }
+                _FORECAST_DISK_CACHE_PATH.write_text(
+                    _json.dumps(raw, default=str), encoding="utf-8"
+                )
+        except Exception as exc:
+            _log.debug("forecast disk cache write failed (non-fatal): %s", exc)
+
+    threading.Thread(target=_write, daemon=True).start()
+
+
+# Populate in-memory cache from disk on import
+_load_forecast_disk_cache()
 
 # Disk-backed forecast cache — survives process restarts so `analyze` is fast
 # on the 2nd+ run within the same 90-minute window.
@@ -266,8 +331,8 @@ _load_forecast_disk_cache()
 # Set higher than _FORECAST_CACHE_TTL so cache expiry happens first.
 # Override via FORECAST_MAX_AGE_SECS env var.
 FORECAST_MAX_AGE_SECS = int(
-    os.getenv("FORECAST_MAX_AGE_SECS", str(3 * 3600))
-)  # 3 hours
+    os.getenv("FORECAST_MAX_AGE_SECS", str(5 * 3600))
+)  # 5 hours — slightly above 4h cache TTL so disk cache is always accepted
 
 # #66: Market listing cache to avoid hammering the API on every analyze call
 _MARKETS_CACHE: tuple[list, float] | None = None
