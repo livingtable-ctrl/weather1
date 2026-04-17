@@ -60,6 +60,8 @@ from weather_markets import (
     analyze_trade,
     detect_hedge_opportunity,
     enrich_with_forecast,
+    fetch_temperature_ecmwf,
+    fetch_temperature_nbm,
     get_weather_forecast,
     get_weather_markets,
     is_liquid,
@@ -2342,12 +2344,13 @@ def cmd_cron(client: KalshiClient, min_edge: float = MIN_EDGE) -> None:
         scanned = len(markets)
         print(dim(f"  [cron] scanning {scanned} market(s)…"), flush=True)
 
-        # Pre-warm forecast cache for all unique city/date pairs so the parallel
-        # scan below hits cache instead of making redundant network requests.
+        # Pre-warm forecast/model caches for all unique city/date pairs so the
+        # parallel scan hits cache instead of making redundant network requests.
         _city_dates: set[tuple[str, str]] = set()
         for _m in markets:
-            _city = _m.get("_city") or _m.get("city", "")
-            _td = _m.get("_target_date") or _m.get("target_date", "")
+            _enriched_preview = enrich_with_forecast(_m)
+            _city = _enriched_preview.get("_city") or ""
+            _td = _enriched_preview.get("_date")
             if _city and _td:
                 _city_dates.add((_city, str(_td)))
         if _city_dates:
@@ -2357,17 +2360,46 @@ def cmd_cron(client: KalshiClient, min_edge: float = MIN_EDGE) -> None:
                 ),
                 flush=True,
             )
+
+            def _warm_one(city_date: tuple[str, str]) -> None:
+                from weather_markets import _get_consensus_probs, get_ensemble_temps
+
+                _c, _d = city_date
+                _dt = __import__("datetime").date.fromisoformat(_d)
+                try:
+                    get_weather_forecast(_c, _dt)
+                except Exception:
+                    pass
+                try:
+                    fetch_temperature_nbm(_c, _dt)
+                except Exception:
+                    pass
+                try:
+                    fetch_temperature_ecmwf(_c, _dt)
+                except Exception:
+                    pass
+                for _v in ("max", "min"):
+                    try:
+                        get_ensemble_temps(_c, _dt, var=_v)
+                    except Exception:
+                        pass
+                # Warm inner ICON/GFS daily cache used by consensus check
+                try:
+                    _get_consensus_probs(
+                        _c, _dt, {"type": "above", "threshold": 68.0}, var="max"
+                    )
+                except Exception:
+                    pass
+
             with ThreadPoolExecutor(max_workers=min(len(_city_dates), 8)) as _warm_pool:
-                _warm_futures = {
-                    _warm_pool.submit(
-                        get_weather_forecast,
-                        _c,
-                        __import__("datetime").date.fromisoformat(_d),
-                    ): (_c, _d)
-                    for _c, _d in _city_dates
-                }
+                _warm_futures = [
+                    _warm_pool.submit(_warm_one, _cd) for _cd in _city_dates
+                ]
                 for _wf in _as_completed(_warm_futures):
-                    _wf.result()  # populate cache; ignore individual errors
+                    try:
+                        _wf.result()
+                    except Exception:
+                        pass
 
         def _enrich_and_analyze(m: dict) -> tuple[dict, dict, dict | None]:
             enriched = enrich_with_forecast(m)

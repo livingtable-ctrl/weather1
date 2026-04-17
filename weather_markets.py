@@ -531,6 +531,10 @@ def get_weather_forecast(city: str, target_date: date) -> dict | None:
 
 # ── NBM (National Blend of Models) ──────────────────────────────────────────
 
+_NBM_CACHE: dict[tuple, tuple[float | None, float]] = {}
+_ECMWF_CACHE: dict[tuple, tuple[float | None, float]] = {}
+_MODEL_CACHE_TTL = 4 * 60 * 60  # 4 hours
+
 
 def fetch_temperature_nbm(city: str, target_date: date) -> float | None:
     """
@@ -539,6 +543,13 @@ def fetch_temperature_nbm(city: str, target_date: date) -> float | None:
 
     Returns max temperature for target_date in °F, or None on failure.
     """
+    cache_key = (city, target_date.isoformat())
+    cached = _NBM_CACHE.get(cache_key)
+    if cached is not None:
+        val, ts = cached
+        if time.monotonic() - ts < _MODEL_CACHE_TTL:
+            return val
+
     coords = CITY_COORDS.get(city)
     if not coords:
         return None
@@ -569,10 +580,13 @@ def fetch_temperature_nbm(city: str, target_date: date) -> float | None:
         data = resp.json()
         temps = data.get("hourly", {}).get("temperature_2m", [])
         valid = [t for t in temps if t is not None]
-        return float(max(valid)) if valid else None
+        result = float(max(valid)) if valid else None
+        _NBM_CACHE[cache_key] = (result, time.monotonic())
+        return result
     except Exception as exc:
         _ensemble_cb.record_failure()
         _log.debug("fetch_temperature_nbm(%s): %s", city, exc)
+        _NBM_CACHE[cache_key] = (None, time.monotonic())
         return None
 
 
@@ -903,6 +917,13 @@ def fetch_temperature_ecmwf(city: str, target_date: date) -> float | None:
 
     Returns max temperature for target_date in °F, or None on failure.
     """
+    cache_key = (city, target_date.isoformat())
+    cached = _ECMWF_CACHE.get(cache_key)
+    if cached is not None:
+        val, ts = cached
+        if time.monotonic() - ts < _MODEL_CACHE_TTL:
+            return val
+
     coords = CITY_COORDS.get(city)
     if not coords:
         return None
@@ -933,10 +954,13 @@ def fetch_temperature_ecmwf(city: str, target_date: date) -> float | None:
         data = resp.json()
         temps = data.get("hourly", {}).get("temperature_2m", [])
         valid = [t for t in temps if t is not None]
-        return float(max(valid)) if valid else None
+        result = float(max(valid)) if valid else None
+        _ECMWF_CACHE[cache_key] = (result, time.monotonic())
+        return result
     except Exception as exc:
         _ensemble_cb.record_failure()
         _log.debug("fetch_temperature_ecmwf(%s): %s", city, exc)
+        _ECMWF_CACHE[cache_key] = (None, time.monotonic())
         return None
 
 
@@ -2286,6 +2310,10 @@ def edge_confidence(days_out: int, condition_type: str | None = None) -> float:
     return round(horizon * cond, 4)
 
 
+_CONSENSUS_CACHE: dict[tuple, tuple] = {}
+_CONSENSUS_CACHE_TTL = 4 * 60 * 60  # 4 hours
+
+
 def _get_consensus_probs(
     city: str,
     target_date,
@@ -2299,6 +2327,19 @@ def _get_consensus_probs(
     fewer than 5 members. Used for model_consensus check in analyze_trade().
     Only supports temperature conditions (above/below/range).
     """
+    _cons_key = (
+        city,
+        target_date.isoformat(),
+        condition.get("type"),
+        condition.get("threshold"),
+        var,
+        hour,
+    )
+    _cached = _CONSENSUS_CACHE.get(_cons_key)
+    if _cached is not None:
+        _result, _ts = _cached
+        if time.monotonic() - _ts < _CONSENSUS_CACHE_TTL:
+            return _result
 
     def _model_prob_and_mean(model_name: str) -> tuple[float | None, float | None]:
         """Return (prob, mean_temp) for model_name. Either may be None."""
@@ -2335,7 +2376,6 @@ def _get_consensus_probs(
                     "models": model_name,
                     "start_date": target_date.isoformat(),
                     "end_date": target_date.isoformat(),
-                    "forecast_days": 7,
                 }
                 try:
                     resp = _om_request("GET", ENSEMBLE_BASE, params=params, timeout=20)
@@ -2377,7 +2417,9 @@ def _get_consensus_probs(
 
     icon_prob, icon_mean = _model_prob_and_mean("icon_seamless")
     gfs_prob, gfs_mean = _model_prob_and_mean("gfs_seamless")
-    return icon_prob, gfs_prob, icon_mean, gfs_mean
+    _cons_result = (icon_prob, gfs_prob, icon_mean, gfs_mean)
+    _CONSENSUS_CACHE[_cons_key] = (_cons_result, time.monotonic())
+    return _cons_result
 
 
 def kelly_fraction(our_prob: float, price: float, fee_rate: float = 0.0) -> float:

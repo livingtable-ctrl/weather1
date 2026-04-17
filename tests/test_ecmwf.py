@@ -24,10 +24,11 @@ class TestECMWFAIFS:
                 "temperature_2m": [18.5, 21.0],
             }
         }
-        with patch("weather_markets._request_with_retry") as mock_req:
-            mock_req.return_value.json.return_value = mock_response
-            mock_req.return_value.raise_for_status.return_value = None
-            result = fetch_temperature_ecmwf("NYC", date(2026, 4, 17))
+        with patch("weather_markets._ECMWF_CACHE", {}):
+            with patch("weather_markets._request_with_retry") as mock_req:
+                mock_req.return_value.json.return_value = mock_response
+                mock_req.return_value.raise_for_status.return_value = None
+                result = fetch_temperature_ecmwf("NYC", date(2026, 4, 17))
 
         assert result == pytest.approx(21.0, abs=0.01)
 
@@ -38,12 +39,13 @@ class TestECMWFAIFS:
 
         import weather_markets
 
-        with patch("weather_markets._request_with_retry") as mock_req:
-            mock_req.side_effect = requests.RequestException("timeout")
-            assert (
-                weather_markets.fetch_temperature_ecmwf("NYC", date(2026, 4, 17))
-                is None
-            )
+        with patch("weather_markets._ECMWF_CACHE", {}):
+            with patch("weather_markets._request_with_retry") as mock_req:
+                mock_req.side_effect = requests.RequestException("timeout")
+                assert (
+                    weather_markets.fetch_temperature_ecmwf("NYC", date(2026, 4, 17))
+                    is None
+                )
 
     def test_ecmwf_in_extended_ensemble(self):
         """ENSEMBLE_MODELS_EXTENDED includes an ecmwf entry."""
