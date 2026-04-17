@@ -527,6 +527,35 @@ def place_paper_order(
             "place_paper_order: log_price_improvement failed (trade still placed): %s",
             _e,
         )
+    # A/B framework: record which edge_threshold variant was in play for this trade
+    try:
+        from ab_test import _AB_TEST_DIR
+
+        _ab_state_path = _AB_TEST_DIR / "edge_threshold.json"
+        if _ab_state_path.exists():
+            import ab_test as _ab
+
+            _ab_state = _ab._load_test_state("edge_threshold")
+            # store ticker→variant mapping for settlement lookup
+            _ab_ticker_map_path = _AB_TEST_DIR / "edge_threshold_ticker_map.json"
+            _ticker_map: dict = {}
+            if _ab_ticker_map_path.exists():
+                try:
+                    _ticker_map = json.loads(_ab_ticker_map_path.read_text())
+                except Exception:
+                    pass
+            # find which variant is currently active (fewest trades, not disabled)
+            active = [
+                v
+                for v, s in _ab_state.items()
+                if not s.get("disabled") and s.get("trades", 0) < 50
+            ]
+            if active:
+                variant = min(active, key=lambda v: _ab_state[v]["trades"])
+                _ticker_map[ticker] = variant
+                _ab_ticker_map_path.write_text(json.dumps(_ticker_map))
+    except Exception:
+        pass
     return trade
 
 
@@ -559,6 +588,27 @@ def settle_paper_trade(trade_id: int, outcome_yes: bool) -> dict:
                 data.get("peak_balance", STARTING_BALANCE), data["balance"]
             )
             _save(data)
+
+            # A/B framework: record settlement outcome for edge_threshold experiment
+            try:
+                import json as _json
+
+                from ab_test import _AB_TEST_DIR as _AB_DIR
+                from ab_test import ABTest as _ABTest
+
+                _ticker_map_path = _AB_DIR / "edge_threshold_ticker_map.json"
+                if _ticker_map_path.exists():
+                    _ticker_map = _json.loads(_ticker_map_path.read_text())
+                    _variant = _ticker_map.pop(t.get("ticker", ""), None)
+                    if _variant:
+                        _ab_test = _ABTest(
+                            name="edge_threshold",
+                            variants={"control": 0.08, "higher": 0.10, "lower": 0.06},
+                        )
+                        _ab_test.record_outcome(_variant, won, abs(pnl))
+                        _ticker_map_path.write_text(_json.dumps(_ticker_map))
+            except Exception:
+                pass
 
             # Score per-model forecast means against outcome for dynamic weighting
             _score_ensemble_members(t, outcome_yes)
