@@ -22,7 +22,7 @@ DB_PATH.parent.mkdir(exist_ok=True)
 
 _db_initialized = False
 
-_SCHEMA_VERSION = 12  # increment when _MIGRATIONS list grows
+_SCHEMA_VERSION = 13  # increment when _MIGRATIONS list grows
 
 _MIGRATIONS = [
     # v1 → v2: add condition_type column (if not already added)
@@ -78,6 +78,10 @@ _MIGRATIONS = [
     # v11 → v12: unique index on (ticker, predicted_date) prevents duplicate predictions
     # from TOCTOU race between SELECT and INSERT in log_prediction.
     "CREATE UNIQUE INDEX IF NOT EXISTS idx_pred_ticker_date ON predictions(ticker, date(predicted_at))",
+    # v12 → v13: recovery — ensemble_prob was at v8 in the list but DBs already at v8+
+    # when that migration was written had it silently skipped. Duplicate-column error
+    # is caught by _run_migrations and treated as "already applied".
+    "ALTER TABLE predictions ADD COLUMN ensemble_prob REAL",
 ]
 
 
