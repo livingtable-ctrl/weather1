@@ -2125,6 +2125,22 @@ def cmd_cron(client: KalshiClient, min_edge: float = MIN_EDGE) -> None:
     except Exception as _e:
         _log.debug("cmd_cron: check_config_integrity failed: %s", _e)
 
+    # Optional: start WebSocket for real-time price feeds
+    _ws = None
+    try:
+        from kalshi_ws import KalshiWebSocket
+
+        api_key = os.getenv("KALSHI_API_KEY", "")
+        key_pem = os.getenv("KALSHI_PRIVATE_KEY_PEM", "")
+        if api_key and key_pem:
+            _ws = KalshiWebSocket(api_key, key_pem)
+            # Subscribe to all active weather market tickers
+            # _ws.subscribe(active_tickers)  # add after market scan
+            _ws.start()
+            _log.info("WebSocket thread started")
+    except Exception as exc:
+        _log.debug("WebSocket not available: %s", exc)
+
     log_path = Path(__file__).parent / "data" / "cron.log"
     log_path.parent.mkdir(exist_ok=True)
 
@@ -2517,6 +2533,17 @@ def _validate_trade_opportunity(opp: dict, live: bool = False) -> tuple[bool, st
             health.reason,
         )
         return False, health.reason
+
+    # Try WebSocket cache for fresher price first
+    try:
+        from kalshi_ws import get_cached_mid_price
+
+        cached_mid = get_cached_mid_price(opp["ticker"])
+        if cached_mid and cached_mid > 0:
+            # Use cached price — it's more recent than REST poll
+            opp["_ws_mid_price"] = cached_mid
+    except Exception as _exc:
+        _log.debug("WS cache lookup skipped: %s", _exc)
 
     # Flash crash check
     try:
