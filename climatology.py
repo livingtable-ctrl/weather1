@@ -143,6 +143,7 @@ def _climatological_prob_inner(
         try:
             d = date.fromisoformat(date_str)
         except ValueError:
+            _log.debug("climatology: skipping malformed date %r", date_str)
             continue
         d_doy = d.timetuple().tm_yday
         diff = abs(target_doy - d_doy)
@@ -150,7 +151,7 @@ def _climatological_prob_inner(
         if diff <= window:
             temps.append(low if condition.get("var") == "min" else high)
 
-    if len(temps) < 30:  # need enough data points to be meaningful
+    if not temps or len(temps) < 30:  # need enough data points to be meaningful
         return None
 
     if condition["type"] == "above":

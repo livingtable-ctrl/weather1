@@ -209,7 +209,9 @@ def run_settlement_monitor(client, duration_minutes: int = 120) -> None:
                                     }
                                 )
                 except Exception as exc:
-                    _log.debug("settlement_monitor: market fetch for %s: %s", city, exc)
+                    _log.warning(
+                        "settlement_monitor: market fetch for %s failed: %s", city, exc
+                    )
 
                 new = check_city_settlement(city, active_tickers)
                 for sig in new:

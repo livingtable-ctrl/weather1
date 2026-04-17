@@ -250,7 +250,7 @@ def _build_app(client):
         return jsonify(
             {
                 "labels": [(p.get("ts") or "")[:16] or "Start" for p in points],
-                "values": [p["balance"] for p in points],
+                "values": [p.get("balance", 0.0) for p in points],
             }
         )
 
@@ -537,7 +537,10 @@ setInterval(() => {{
             get_weather_markets,
         )
 
-        n = int(freq.args.get("n", 3))
+        try:
+            n = max(1, min(int(freq.args.get("n", 3)), 100))
+        except (ValueError, TypeError):
+            n = 3
 
         try:
             markets = get_weather_markets(client)
@@ -567,8 +570,8 @@ setInterval(() => {{
                         "ticker": m.get("ticker", ""),
                         "title": (m.get("title") or m.get("ticker", ""))[:60],
                         "city": m.get("_city", "—"),
-                        "recommended_side": analysis.get(
-                            "recommended_side", "—"
+                        "recommended_side": (
+                            analysis.get("recommended_side") or "—"
                         ).upper(),
                         "edge_pct": round(net_edge * 100, 1),
                         "kelly_fraction": round(kelly, 4),

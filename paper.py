@@ -640,9 +640,13 @@ def settle_paper_trade(trade_id: int, outcome_yes: bool) -> dict:
                         )
                         _edge = t.get("net_edge") or pnl
                         _ab_test.record_outcome(_variant, won, _edge)
-                        _ticker_map_path.write_text(_json.dumps(_ticker_map))
-            except Exception:
-                pass
+                        atomic_write_json(_ticker_map, _ticker_map_path)
+            except Exception as exc:
+                _log.warning(
+                    "settle_paper_trade: A/B recording failed for trade %d: %s",
+                    trade_id,
+                    exc,
+                )
 
             # Score per-model forecast means against outcome for dynamic weighting
             _score_ensemble_members(t, outcome_yes)
@@ -822,7 +826,7 @@ def check_exit_targets(client=None) -> int:
         try:
             market = client.get_market(t["ticker"])
             yes_bid = market.get("yes_bid") or 0
-            if isinstance(yes_bid, int) and yes_bid > 1:
+            if isinstance(yes_bid, int | float) and yes_bid > 1:
                 yes_bid = yes_bid / 100.0
             current_price = float(yes_bid)
             target = t["exit_target"]
@@ -834,7 +838,13 @@ def check_exit_targets(client=None) -> int:
             if should_exit:
                 settle_paper_trade(t["id"], outcome_yes=(t["side"] == "yes"))
                 exited += 1
-        except Exception:
+        except Exception as exc:
+            _log.warning(
+                "check_exit_targets: error processing trade %d (%s): %s",
+                t["id"],
+                t.get("ticker", "?"),
+                exc,
+            )
             continue
     return exited
 
