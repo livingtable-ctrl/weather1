@@ -557,7 +557,8 @@ def fetch_temperature_nbm(city: str, target_date: date) -> float | None:
         return None
 
 
-PIRATE_WEATHER_BASE = "https://api.pirateweather.net/forecast"
+_PIRATE_FORECAST_BASE = "https://api.pirateweather.net/forecast"
+_PIRATE_TIMEMACHINE_BASE = "https://timemachine.pirateweather.net/forecast"
 
 # Separate circuit breaker for Pirate Weather so Open-Meteo failures don't bleed over.
 _pirate_cb = CircuitBreaker(
@@ -570,8 +571,9 @@ def fetch_temperature_pirate_weather(city: str, target_date: date) -> float | No
     Fetch daily high temperature from Pirate Weather (HRRR/GFS/GEFS blend).
     Used as fallback when Open-Meteo circuit breakers are open.
 
+    Future/today dates use the forecast endpoint; past dates use the time machine.
     Requires PIRATE_WEATHER_API_KEY in environment.
-    Returns max temperature for target_date in °F, or None on failure.
+    Returns temperatureMax for target_date in °F, or None on failure.
     """
     api_key = os.getenv("PIRATE_WEATHER_API_KEY", "")
     if not api_key:
@@ -586,27 +588,61 @@ def fetch_temperature_pirate_weather(city: str, target_date: date) -> float | No
         _log.warning("[CircuitBreaker] pirate_weather circuit open — skipping fetch")
         return None
 
-    try:
-        # Request forecast for midnight on target_date (Unix timestamp)
+    today = date.today()
+    is_historical = target_date < today
 
-        target_dt = datetime(
-            target_date.year, target_date.month, target_date.day, tzinfo=UTC
-        )
-        ts = int(target_dt.timestamp())
-        url = f"{PIRATE_WEATHER_BASE}/{api_key}/{lat},{lon},{ts}"
-        resp = _request_with_retry(
-            "GET",
-            url,
-            params={"exclude": "currently,minutely,hourly,alerts,flags", "units": "us"},
-            timeout=15,
-        )
+    try:
+        if is_historical:
+            # Time machine: embed timestamp in path, returns single-day daily block
+
+            ts = int(
+                datetime(
+                    target_date.year, target_date.month, target_date.day, 12, tzinfo=UTC
+                ).timestamp()
+            )
+            url = f"{_PIRATE_TIMEMACHINE_BASE}/{api_key}/{lat},{lon},{ts}"
+            params = {
+                "exclude": "currently,minutely,hourly,alerts,flags",
+                "units": "us",
+            }
+        else:
+            # Forecast endpoint — 7-day daily block, find matching day by timestamp
+            url = f"{_PIRATE_FORECAST_BASE}/{api_key}/{lat},{lon}"
+            params = {
+                "exclude": "currently,minutely,hourly,alerts,flags",
+                "units": "us",
+            }
+
+        resp = _request_with_retry("GET", url, params=params, timeout=15)
         resp.raise_for_status()
         _pirate_cb.record_success()
         data = resp.json()
-        daily = data.get("daily", {}).get("data", [])
-        if not daily:
+        daily_data = data.get("daily", {}).get("data", [])
+        if not daily_data:
             return None
-        high = daily[0].get("temperatureHigh")
+
+        if is_historical:
+            entry = daily_data[0]
+        else:
+            # Match by calendar date — each entry's `time` is midnight local Unix timestamp
+
+            target_ts_start = int(
+                datetime(
+                    target_date.year, target_date.month, target_date.day, tzinfo=UTC
+                ).timestamp()
+            )
+            target_ts_end = target_ts_start + 86400
+            entry = next(
+                (
+                    d
+                    for d in daily_data
+                    if target_ts_start <= d.get("time", 0) < target_ts_end
+                ),
+                daily_data[0],  # fallback to first day if date match fails
+            )
+
+        # temperatureMax is the absolute daily extreme; prefer over temperatureHigh (daytime only)
+        high = entry.get("temperatureMax") or entry.get("temperatureHigh")
         return float(high) if high is not None else None
     except Exception as exc:
         _pirate_cb.record_failure()
