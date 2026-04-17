@@ -23,7 +23,7 @@ from schema_validator import validate_nws_response
 from utils import normal_cdf
 
 socket.setdefaulttimeout(
-    25
+    10
 )  # hard backstop — requests timeout unreliable on Windows SSL
 
 _log = logging.getLogger(__name__)

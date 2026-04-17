@@ -30,7 +30,7 @@ from schema_validator import validate_forecast
 from utils import KALSHI_FEE_RATE, MAX_DAYS_OUT, normal_cdf
 
 socket.setdefaulttimeout(
-    25
+    10
 )  # hard backstop — requests timeout unreliable on Windows SSL
 
 _log = logging.getLogger(__name__)

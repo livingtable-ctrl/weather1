@@ -2340,12 +2340,39 @@ def cmd_cron(client: KalshiClient, min_edge: float = MIN_EDGE) -> None:
         scanned = len(markets)
         print(dim(f"  [cron] scanning {scanned} market(s)…"), flush=True)
 
+        # Pre-warm forecast cache for all unique city/date pairs so the parallel
+        # scan below hits cache instead of making redundant network requests.
+        _city_dates: set[tuple[str, str]] = set()
+        for _m in markets:
+            _city = _m.get("_city") or _m.get("city", "")
+            _td = _m.get("_target_date") or _m.get("target_date", "")
+            if _city and _td:
+                _city_dates.add((_city, str(_td)))
+        if _city_dates:
+            print(
+                dim(
+                    f"  [cron] pre-warming forecasts for {len(_city_dates)} city/date pair(s)…"
+                ),
+                flush=True,
+            )
+            with ThreadPoolExecutor(max_workers=min(len(_city_dates), 8)) as _warm_pool:
+                _warm_futures = {
+                    _warm_pool.submit(
+                        get_weather_forecast,
+                        _c,
+                        __import__("datetime").date.fromisoformat(_d),
+                    ): (_c, _d)
+                    for _c, _d in _city_dates
+                }
+                for _wf in _as_completed(_warm_futures):
+                    _wf.result()  # populate cache; ignore individual errors
+
         def _enrich_and_analyze(m: dict) -> tuple[dict, dict, dict | None]:
             enriched = enrich_with_forecast(m)
             return m, enriched, analyze_trade(enriched)
 
         _analysis_batch: list[dict] = []  # #perf: collect for single bulk insert
-        with ThreadPoolExecutor(max_workers=4) as _pool:
+        with ThreadPoolExecutor(max_workers=12) as _pool:
             _futures = {_pool.submit(_enrich_and_analyze, m): m for m in markets}
             for fut in _as_completed(_futures):
                 try:
