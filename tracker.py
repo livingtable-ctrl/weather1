@@ -22,7 +22,7 @@ DB_PATH.parent.mkdir(exist_ok=True)
 
 _db_initialized = False
 
-_SCHEMA_VERSION = 10  # increment when _MIGRATIONS list grows
+_SCHEMA_VERSION = 11  # increment when _MIGRATIONS list grows
 
 _MIGRATIONS = [
     # v1 → v2: add condition_type column (if not already added)
@@ -73,6 +73,8 @@ _MIGRATIONS = [
     "ALTER TABLE predictions ADD COLUMN clim_prob REAL",
     # v9 → v10: strategy version stamp on each prediction row (P9.1)
     "ALTER TABLE predictions ADD COLUMN edge_calc_version TEXT",
+    # v10 → v11: signal source tracking for P&L attribution (Phase G Task 2)
+    "ALTER TABLE predictions ADD COLUMN signal_source TEXT",
 ]
 
 
@@ -294,6 +296,7 @@ def log_prediction(
     nws_prob: float | None = None,
     clim_prob: float | None = None,
     edge_calc_version: str | None = None,
+    signal_source: str | None = None,
 ) -> None:
     """Save a prediction to the database.
     Stores both the raw (pre-bias-correction) probability and the adjusted one (#53).
@@ -328,7 +331,8 @@ def log_prediction(
                 UPDATE predictions SET
                     our_prob=?, raw_prob=?, market_prob=?, edge=?, method=?, n_members=?,
                     days_out=?, forecast_cycle=?, blend_sources=?,
-                    ensemble_prob=?, nws_prob=?, clim_prob=?, edge_calc_version=?
+                    ensemble_prob=?, nws_prob=?, clim_prob=?, edge_calc_version=?,
+                    signal_source=?
                 WHERE id=?
             """,
                 (
@@ -345,6 +349,7 @@ def log_prediction(
                     nws_prob,
                     clim_prob,
                     edge_calc_version,
+                    signal_source,
                     existing["id"],
                 ),
             )
@@ -355,8 +360,9 @@ def log_prediction(
                   (ticker, city, market_date, condition_type,
                    threshold_lo, threshold_hi, our_prob, raw_prob, market_prob,
                    edge, method, n_members, predicted_at, days_out, forecast_cycle,
-                   blend_sources, ensemble_prob, nws_prob, clim_prob, edge_calc_version)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'),?,?,?,?,?,?,?)
+                   blend_sources, ensemble_prob, nws_prob, clim_prob, edge_calc_version,
+                   signal_source)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'),?,?,?,?,?,?,?,?)
             """,
                 (
                     ticker,
@@ -378,6 +384,7 @@ def log_prediction(
                     nws_prob,
                     clim_prob,
                     edge_calc_version,
+                    signal_source,
                 ),
             )
 
@@ -1591,6 +1598,43 @@ def get_brier_by_version(min_samples: int = 10) -> dict[str, dict]:
         for v, errs in by_version.items()
         if len(errs) >= min_samples
     }
+
+
+def get_pnl_by_signal_source(min_samples: int = 10) -> dict[str, dict]:
+    """
+    Compute Brier score and win rate grouped by signal_source.
+    Reveals which signal drives the most profitable trades.
+    """
+    init_db()
+    with _conn() as con:
+        rows = con.execute(
+            """
+            SELECT
+                COALESCE(p.signal_source, 'unknown') AS source,
+                p.our_prob,
+                o.settled_yes
+            FROM predictions p
+            JOIN outcomes o ON p.ticker = o.ticker
+            WHERE p.our_prob IS NOT NULL
+            """
+        ).fetchall()
+
+    groups: dict[str, list[tuple[float, bool]]] = {}
+    for source, our_prob, settled_yes in rows:
+        groups.setdefault(source, []).append((float(our_prob), bool(settled_yes)))
+
+    result = {}
+    for source, samples in groups.items():
+        if len(samples) < min_samples:
+            continue
+        brier = sum((p - (1 if y else 0)) ** 2 for p, y in samples) / len(samples)
+        wins = sum(1 for p, y in samples if (y and p > 0.5) or (not y and p <= 0.5))
+        result[source] = {
+            "brier": round(brier, 4),
+            "n": len(samples),
+            "win_rate": round(wins / len(samples), 3),
+        }
+    return result
 
 
 # ── P9.5: Strategy retirement ─────────────────────────────────────────────────

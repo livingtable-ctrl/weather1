@@ -4139,6 +4139,29 @@ def cmd_version_compare() -> None:
     print()
 
 
+def cmd_pnl_attribution() -> None:
+    """Show P&L attribution by signal source."""
+    from colorama import Fore, Style
+
+    from tracker import get_pnl_by_signal_source
+
+    data = get_pnl_by_signal_source(min_samples=5)
+    if not data:
+        print("Not enough data per signal source (need 5+ settled per source).")
+        return
+
+    print(f"\n{'Signal Source':<20} {'Brier':>8} {'Win%':>8} {'N':>6}")
+    print("-" * 46)
+    for src, d in sorted(data.items(), key=lambda x: x[1]["brier"]):
+        brier = d["brier"]
+        color = (
+            Fore.GREEN if brier < 0.15 else (Fore.YELLOW if brier < 0.22 else Fore.RED)
+        )
+        print(
+            f"{src:<20} {color}{brier:>8.4f}{Style.RESET_ALL} {d['win_rate']:>8.1%} {d['n']:>6}"
+        )
+
+
 def cmd_retire_strategies(run: bool = False) -> None:
     """P9.5: Show retired strategy methods; with --run auto-retires failing ones."""
     from tracker import auto_retire_strategies, get_retired_strategies
@@ -6920,6 +6943,8 @@ def main():
         cmd_drift()
     elif cmd in ("version-compare", "versions"):
         cmd_version_compare()
+    elif cmd in ("pnl-attribution", "pnl"):
+        cmd_pnl_attribution()
     elif cmd in ("retire", "retire-strategies"):
         do_run = "--run" in sys.argv[2:]
         cmd_retire_strategies(run=do_run)
