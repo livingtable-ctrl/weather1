@@ -11,7 +11,9 @@ Usage:
     )
 
     # Get the active variant for this trade
-    variant_name, threshold = get_active_variant("edge_threshold_test", "PAPER_MIN_EDGE")
+    variant_name, _ = get_active_variant("edge_threshold_test")
+    # Look up the threshold from the test definition directly
+    threshold = test.variants[variant_name]
 """
 
 from __future__ import annotations

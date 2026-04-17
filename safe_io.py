@@ -56,6 +56,7 @@ def atomic_write_json(
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = json.dumps(data, indent=2, default=str)
     last_exc: Exception | None = None
+    tmp_path_str: str | None = None
 
     for attempt in range(retries):
         try:

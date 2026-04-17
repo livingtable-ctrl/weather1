@@ -86,7 +86,9 @@ def run_sweep(trades: list[dict] | None = None) -> dict:
 
             trades = load_paper_trades()
         except Exception as exc:
-            _log.warning("param_sweep: could not load paper trades: %s", exc)
+            _log.warning(
+                "param_sweep: could not load paper trades: %s", exc, exc_info=True
+            )
             trades = []
 
     if not trades:

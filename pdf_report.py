@@ -9,8 +9,11 @@ Usage:
 
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime
 from pathlib import Path
+
+_log = logging.getLogger(__name__)
 
 DATA_DIR = Path(__file__).parent / "data"
 DATA_DIR.mkdir(exist_ok=True)
@@ -261,7 +264,14 @@ def generate_weekly_report(output_path: str | None = None) -> str:
     default_path.parent.mkdir(exist_ok=True)
 
     if _HAS_FPDF:
-        _generate_pdf(data, default_path)
+        try:
+            _generate_pdf(data, default_path)
+        except Exception as exc:
+            _log.error(
+                "pdf_report: PDF generation failed, falling back to HTML: %s", exc
+            )
+            default_path = default_path.with_suffix(".html")
+            _generate_html(data, default_path)
     else:
         # If caller passed .pdf but fpdf2 not installed, switch to .html
         if default_path.suffix == ".pdf":

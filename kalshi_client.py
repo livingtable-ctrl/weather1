@@ -138,25 +138,38 @@ class KalshiClient:
     def _get(self, path: str, params: dict = None, auth: bool = False) -> dict:
         url = self.base_url + path
         headers = self._sign_headers("GET", self._full_path(path)) if auth else {}
-        resp = _request_with_retry(
-            "GET", url, headers=headers, params=params, timeout=10
-        )
+        resp = _request_with_retry("GET", url, headers=headers, params=params)
         resp.raise_for_status()
-        return resp.json()
+        try:
+            return resp.json()
+        except ValueError as exc:
+            raise RuntimeError(
+                f"Kalshi API returned non-JSON response ({resp.status_code}): {resp.text[:200]}"
+            ) from exc
 
     def _post(self, path: str, body: dict) -> dict:
         url = self.base_url + path
         headers = self._sign_headers("POST", self._full_path(path))
-        resp = _request_with_retry("POST", url, headers=headers, json=body, timeout=10)
+        resp = _request_with_retry("POST", url, headers=headers, json=body)
         resp.raise_for_status()
-        return resp.json()
+        try:
+            return resp.json()
+        except ValueError as exc:
+            raise RuntimeError(
+                f"Kalshi API returned non-JSON response ({resp.status_code}): {resp.text[:200]}"
+            ) from exc
 
     def _delete(self, path: str) -> dict:
         url = self.base_url + path
         headers = self._sign_headers("DELETE", self._full_path(path))
-        resp = _request_with_retry("DELETE", url, headers=headers, timeout=10)
+        resp = _request_with_retry("DELETE", url, headers=headers)
         resp.raise_for_status()
-        return resp.json()
+        try:
+            return resp.json()
+        except ValueError as exc:
+            raise RuntimeError(
+                f"Kalshi API returned non-JSON response ({resp.status_code}): {resp.text[:200]}"
+            ) from exc
 
     @staticmethod
     def _validate(data: dict, expected_key: str, endpoint: str) -> None:

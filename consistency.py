@@ -12,9 +12,12 @@ buy the underpriced contract and sell the overpriced one.
 from __future__ import annotations
 
 import re
+import time
 from dataclasses import dataclass
 
 from weather_markets import parse_market_price
+
+_STALENESS_THRESHOLD = 300  # seconds; skip markets older than this
 
 
 @dataclass
@@ -87,12 +90,19 @@ def _group_markets(markets: list[dict]) -> dict:
     return groups
 
 
-def find_violations(markets: list[dict]) -> list[Violation]:
+def find_violations(
+    markets: list[dict], *, staleness_threshold: float = _STALENESS_THRESHOLD
+) -> list[Violation]:
     """
     Scan a list of markets and return all monotonicity violations.
     Only checks markets that have real quotes (implied_prob > 0).
+    Markets with _fetched_at older than staleness_threshold seconds are skipped.
     """
-    groups = _group_markets(markets)
+    now = time.time()
+    fresh = [
+        m for m in markets if now - m.get("_fetched_at", now) <= staleness_threshold
+    ]
+    groups = _group_markets(fresh)
     violations: list[Violation] = []
 
     for (series, date_str), entries in groups.items():

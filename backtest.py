@@ -15,6 +15,7 @@ For each finalized weather market:
 from __future__ import annotations
 
 import json
+import logging
 import random
 from datetime import date, timedelta
 from pathlib import Path
@@ -22,6 +23,8 @@ from pathlib import Path
 import requests
 
 from utils import KALSHI_FEE_RATE
+
+_log = logging.getLogger(__name__)
 
 ARCHIVE_ENS_BASE = "https://archive-api.open-meteo.com/v1/archive"
 DATA_DIR = Path(__file__).parent / "data"
@@ -107,7 +110,8 @@ def fetch_archive_temps(
         except Exception:
             pass
         return result
-    except Exception:
+    except Exception as exc:
+        _log.warning("fetch_archive_temps: %s %s failed: %s", lat, lon, exc)
         return []
 
 

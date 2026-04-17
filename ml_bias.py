@@ -129,6 +129,8 @@ def apply_ml_prob_correction(
 
     try:
         correction = float(model.predict([[our_prob, month, days_out, 0.0]])[0])
+        if abs(correction) > 0.2:
+            _log.warning("ml_bias: large correction %.3f for %s", correction, city)
         return max(0.0, min(1.0, our_prob + correction))
     except Exception as exc:
         _log.debug("apply_ml_prob_correction(%s): %s", city, exc)

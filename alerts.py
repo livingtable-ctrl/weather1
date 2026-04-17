@@ -25,8 +25,10 @@ def _load() -> dict:
         try:
             with open(_DATA_PATH) as f:
                 return json.load(f)
-        except Exception:
-            pass
+        except Exception as exc:
+            _log.warning(
+                "alerts: failed to parse alerts.json (treating as empty): %s", exc
+            )
     return {"alerts": [], "next_id": 1}
 
 
@@ -40,8 +42,8 @@ def _save(data: dict) -> None:
     except Exception:
         try:
             os.unlink(tmp)
-        except OSError:
-            pass
+        except OSError as exc:
+            _log.debug("alerts._save: could not remove temp file: %s", exc)
         raise
 
 

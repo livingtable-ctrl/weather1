@@ -218,8 +218,8 @@ def _load_forecast_disk_cache() -> None:
                 # Reconstruct in-memory key as tuple; stored ts converted to monotonic approx
                 city, date_iso = key_str.split("|", 1)
                 mem_key = (city, date_iso)
-                # Approximate monotonic timestamp from wall-clock age
-                _FORECAST_CACHE[mem_key] = (entry["data"], time.monotonic() - age)
+                # Treat loaded entries as fresh; TTL will expire them normally
+                _FORECAST_CACHE[mem_key] = (entry["data"], time.monotonic())
                 loaded += 1
         if loaded:
             _log.debug("forecast disk cache: loaded %d entries", loaded)
