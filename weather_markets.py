@@ -9,6 +9,7 @@ import logging
 import os
 import random
 import re
+import socket
 import statistics
 import threading
 import time
@@ -27,6 +28,10 @@ from kalshi_client import KalshiClient, _request_with_retry
 from nws import get_live_observation, nws_prob, obs_prob
 from schema_validator import validate_forecast
 from utils import KALSHI_FEE_RATE, MAX_DAYS_OUT, normal_cdf
+
+socket.setdefaulttimeout(
+    25
+)  # hard backstop — requests timeout unreliable on Windows SSL
 
 _log = logging.getLogger(__name__)
 
