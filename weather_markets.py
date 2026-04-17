@@ -162,7 +162,9 @@ _ENSEMBLE_CACHE_TTL = 90 * 60  # 90 minutes
 # Rate limiter: enforce minimum gap between Open-Meteo requests to avoid 429 bursts.
 _OM_RATE_LOCK = threading.Lock()
 _OM_LAST_REQUEST_TS: float = 0.0
-_OM_MIN_INTERVAL: float = 0.4  # seconds between requests (~2.5 req/s max)
+_OM_MIN_INTERVAL: float = (
+    1.5  # seconds between requests (~0.67 req/s) — avoids Open-Meteo 429 bans
+)
 
 
 def _om_rate_limit() -> None:
