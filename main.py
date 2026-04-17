@@ -4186,6 +4186,18 @@ def cmd_pnl_attribution() -> None:
         )
 
 
+def cmd_train_bias() -> None:
+    """Train ML bias correction models from tracker DB data."""
+    from ml_bias import train_bias_model
+
+    print("Training ML bias models (requires 200+ settled trades per city)...")
+    models = train_bias_model(min_samples=200)
+    if not models:
+        print("Not enough data yet. Keep trading — retrain after 6 months.")
+    else:
+        print(f"Trained models for: {', '.join(sorted(models.keys()))}")
+
+
 def cmd_retire_strategies(run: bool = False) -> None:
     """P9.5: Show retired strategy methods; with --run auto-retires failing ones."""
     from tracker import auto_retire_strategies, get_retired_strategies
@@ -6969,6 +6981,8 @@ def main():
         cmd_version_compare()
     elif cmd in ("pnl-attribution", "pnl"):
         cmd_pnl_attribution()
+    elif cmd == "train-bias":
+        cmd_train_bias()
     elif cmd in ("retire", "retire-strategies"):
         do_run = "--run" in sys.argv[2:]
         cmd_retire_strategies(run=do_run)
