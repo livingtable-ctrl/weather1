@@ -562,11 +562,18 @@ def cmd_settle(client: KalshiClient) -> None:
     Sync settled market outcomes from Kalshi and record them in the tracker.
     Intended for scheduled nightly execution (via schtasks) as well as manual use.
     """
+    from paper import auto_settle_paper_trades
+
     count = sync_outcomes(client)
-    if count > 0:
-        print(
-            green(f"  [Settle] Recorded {count} new outcome(s). Brier score updated.")
-        )
+    paper = auto_settle_paper_trades(client)
+    total = count + paper
+    if total > 0:
+        parts = []
+        if count:
+            parts.append(f"{count} outcome(s) recorded")
+        if paper:
+            parts.append(f"{paper} paper trade(s) settled")
+        print(green(f"  [Settle] {', '.join(parts)}."))
     else:
         print(dim("  [Settle] No new outcomes to record."))
 
@@ -584,6 +591,156 @@ def cmd_settlement_monitor(client: KalshiClient, args: list[str] | None = None) 
 
     _log.info("Starting settlement monitor for %d minutes...", duration)
     run_settlement_monitor(client, duration_minutes=duration)
+
+
+def cmd_watch_settle(client: KalshiClient, args: list[str] | None = None) -> None:
+    """
+    Poll every N minutes until all same-day (and past) open trades are settled.
+    Usage: py main.py watch-settle [interval_minutes=5]
+    Exits automatically when nothing remains to settle.
+    """
+    import time as _time
+    from datetime import date
+
+    from paper import auto_settle_paper_trades, get_open_trades
+
+    interval = 5
+    if args:
+        try:
+            interval = max(1, int(args[0]))
+        except ValueError:
+            pass
+
+    today_str = date.today().isoformat()
+
+    def _pending() -> list:
+        return [
+            t for t in get_open_trades() if (t.get("target_date") or "") <= today_str
+        ]
+
+    print(
+        green(
+            f"[watch-settle] Watching for same-day settlements (every {interval}m). Ctrl-C to stop."
+        )
+    )
+
+    while True:
+        due = _pending()
+        if not due:
+            print(green("[watch-settle] All due trades settled. Done."))
+            break
+
+        tickers = ", ".join(t["ticker"] for t in due)
+        print(dim(f"[watch-settle] {len(due)} unsettled: {tickers}"))
+
+        sync_outcomes(client)
+        settled = auto_settle_paper_trades(client)
+        if settled:
+            print(green(f"[watch-settle] Settled {settled} trade(s)."))
+
+        remaining = _pending()
+        if not remaining:
+            print(green("[watch-settle] All due trades settled. Done."))
+            break
+
+        print(
+            dim(
+                f"[watch-settle] {len(remaining)} still pending — next check in {interval}m…"
+            )
+        )
+        try:
+            _time.sleep(interval * 60)
+        except KeyboardInterrupt:
+            print()
+            break
+
+
+def cmd_loop(client: KalshiClient, args: list[str] | None = None) -> None:
+    """
+    Self-scheduling run loop — run cron every N hours, auto-settle after 9 PM.
+    Usage: py main.py loop [interval_hours=4]
+    Leave this running in a terminal. Ctrl-C to stop.
+    """
+    import time as _time
+    from datetime import datetime, timedelta
+
+    from paper import auto_settle_paper_trades
+
+    interval_h = 4
+    if args:
+        try:
+            interval_h = max(1, int(args[0]))
+        except ValueError:
+            pass
+    interval_s = interval_h * 3600
+
+    _KILL_PATH = Path(__file__).parent / "data" / ".kill_switch"
+
+    def _now() -> datetime:
+        return datetime.now()
+
+    def _run_cycle(label: str) -> None:
+        print(bold(f"\n[loop] ── {label} ── {_now().strftime('%Y-%m-%d %H:%M')} ──"))
+        if _KILL_PATH.exists():
+            print(
+                red(
+                    "  Kill switch active — skipping cycle. Delete data/.kill_switch to resume."
+                )
+            )
+            return
+        try:
+            cmd_cron._called_from_loop = True  # type: ignore[attr-defined]
+            cmd_cron(client)
+        except Exception as exc:
+            print(red(f"  Cron error: {exc}"))
+        finally:
+            cmd_cron._called_from_loop = False  # type: ignore[attr-defined]
+
+        # Auto-settle if it's 9 PM or later
+        if _now().hour >= 21:
+            print(dim("  [loop] Post-9PM — running auto-settle…"))
+            try:
+                sync_outcomes(client)
+                n = auto_settle_paper_trades(client)
+                if n:
+                    print(green(f"  [loop] Settled {n} trade(s)."))
+                else:
+                    print(dim("  [loop] No new settlements."))
+            except Exception as exc:
+                print(red(f"  [loop] Settle error: {exc}"))
+
+    print(
+        bold(
+            f"\n[loop] Starting — cron every {interval_h}h, auto-settle after 9 PM. Ctrl-C to stop."
+        )
+    )
+
+    # Run immediately on startup
+    _run_cycle("startup run")
+    next_run = _now() + timedelta(seconds=interval_s)
+
+    try:
+        while True:
+            remaining = (next_run - _now()).total_seconds()
+            if remaining <= 0:
+                _run_cycle("scheduled run")
+                next_run = _now() + timedelta(seconds=interval_s)
+                remaining = interval_s
+
+            # Show countdown, update every 60s
+            h, m = divmod(int(remaining), 3600)
+            m //= 60
+            print(
+                dim(
+                    f"  [loop] Next run in {h}h {m}m  ({next_run.strftime('%H:%M')})  — Ctrl-C to stop"
+                ),
+                end="\r",
+                flush=True,
+            )
+            _time.sleep(min(60, remaining))
+
+    except KeyboardInterrupt:
+        print(f"\n{dim('[loop] Stopped.')}")
 
 
 # ── Client ────────────────────────────────────────────────────────────────────
@@ -2045,7 +2202,9 @@ def cmd_cron(client: KalshiClient, min_edge: float = MIN_EDGE) -> None:
     # P3.4 — acquire file lock; exit immediately if another instance is running
     if not _acquire_cron_lock():
         _log.warning("cmd_cron: could not acquire lock — skipping this run")
-        _sys.exit(1)
+        if not getattr(cmd_cron, "_called_from_loop", False):
+            _sys.exit(1)
+        return
 
     # P8.3 — hard kill switch: touch data/.kill_switch to halt immediately
     _KILL_SWITCH_PATH = Path(__file__).parent / "data" / ".kill_switch"
@@ -2178,7 +2337,7 @@ def cmd_cron(client: KalshiClient, min_edge: float = MIN_EDGE) -> None:
             return m, enriched, analyze_trade(enriched)
 
         _analysis_batch: list[dict] = []  # #perf: collect for single bulk insert
-        with ThreadPoolExecutor(max_workers=20) as _pool:
+        with ThreadPoolExecutor(max_workers=4) as _pool:
             _futures = {_pool.submit(_enrich_and_analyze, m): m for m in markets}
             for fut in _as_completed(_futures):
                 try:
@@ -2407,8 +2566,14 @@ def cmd_cron(client: KalshiClient, min_edge: float = MIN_EDGE) -> None:
         pass  # never crash the scheduler over a backup failure
 
     _clear_cron_running_flag()
+    try:
+        _last_run_path = Path(__file__).parent / "data" / ".cron_last_run"
+        _last_run_path.write_text(__import__("datetime").datetime.now().isoformat())
+    except Exception:
+        pass
     _release_cron_lock()
-    _sys.exit(0)
+    if not getattr(cmd_cron, "_called_from_loop", False):
+        _sys.exit(0)
 
 
 def cmd_analyze(
@@ -3910,9 +4075,12 @@ def cmd_cancel(client: KalshiClient, order_id: str):
 
 
 def cmd_sync(client: KalshiClient):
+    from paper import auto_settle_paper_trades
+
     print("Syncing settled markets...")
     count = sync_outcomes(client)
-    print(green(f"Done — recorded {count} new outcome(s)."))
+    paper = auto_settle_paper_trades(client)
+    print(green(f"Done — {count} outcome(s) recorded, {paper} paper trade(s) settled."))
 
 
 # ── Onboarding wizard ─────────────────────────────────────────────────────────
@@ -5220,6 +5388,7 @@ def cmd_menu(client: KalshiClient):
     top_options = [
         ("A", "Analyze ", "find best trades right now"),
         ("T", "Today   ", "what should I do today?"),
+        ("L", "Cron    ", "scan markets and place trades now"),
         ("W", "Watch   ", "live auto-refresh dashboard"),
         ("P", "Paper   ", "trades, alerts, results, settle"),
         ("K", "Backtest", "score model on history"),
@@ -5319,6 +5488,41 @@ def cmd_menu(client: KalshiClient):
         print(f"  {bold('│')}{status_line}{bold('│')}")
         print(bold(f"  └{bar}┘\n"))
 
+        # ── Reminder banners ──────────────────────────────────────────────────
+        try:
+            import time as _t
+            from datetime import date as _date
+
+            _last_run_path = Path(__file__).parent / "data" / ".cron_last_run"
+            if not _last_run_path.exists():
+                print(
+                    yellow(
+                        "  ⚠  Loop hasn't run yet — press L to start the auto-run loop.\n"
+                    )
+                )
+            else:
+                _hours_since = (_t.time() - _last_run_path.stat().st_mtime) / 3600
+                if _hours_since > 5:
+                    print(
+                        yellow(
+                            f"  ⚠  Cron last ran {_hours_since:.0f}h ago — press L to start the loop.\n"
+                        )
+                    )
+
+            # Unsettled due trades
+            from paper import get_open_trades as _got
+
+            _today = _date.today().isoformat()
+            _due = [t for t in _got() if (t.get("target_date") or "") <= _today]
+            if _due:
+                print(
+                    yellow(
+                        f"  ⚠  {len(_due)} trade(s) due today — go to P → 3 → 1 to settle.\n"
+                    )
+                )
+        except Exception:
+            pass
+
         for i, (key, name, desc) in enumerate(top_options, 1):
             num = cyan(f"  {i:>2}")
             key_str = dim(f"[{key}]")
@@ -5352,6 +5556,22 @@ def cmd_menu(client: KalshiClient):
 
         elif name_stripped == "Today":
             cmd_today(client)
+
+        elif name_stripped == "Loop":
+            print(bold("\n  ── Run Cron ──\n"))
+            print(dim("  Running a cron cycle now (uses cached data if fresh)…\n"))
+            try:
+                cmd_cron._called_from_loop = True  # type: ignore[attr-defined]
+                cmd_cron(client)
+            except Exception as exc:
+                print(red(f"  Cron error: {exc}"))
+            finally:
+                cmd_cron._called_from_loop = False  # type: ignore[attr-defined]
+            print(
+                dim(
+                    "\n  Tip: run  py main.py loop  in a separate terminal to auto-run every 4h."
+                )
+            )
 
         elif name_stripped == "Watch":
             _menu_watch(client)
@@ -5460,7 +5680,32 @@ def cmd_menu(client: KalshiClient):
                         )
                     break
             elif sub == "3":
-                _cmd_settle_open(client)
+                # ── Settle submenu ────────────────────────────────────────────
+                print(bold("\n  ── Settle Trades ──\n"))
+                print(
+                    f"  {cyan('1')}  {bold('Auto-settle ')}  {dim('·')}  check Kalshi now and settle all due trades"
+                )
+                print(
+                    f"  {cyan('2')}  {bold('Manual      ')}  {dim('·')}  pick a trade and enter outcome yourself"
+                )
+                print(dim("  Enter/Q  Back"))
+                settle_sub = input(dim("\n  Choose (1–2): ")).strip()
+                if settle_sub == "1":
+                    from paper import auto_settle_paper_trades
+
+                    print(dim("  Checking Kalshi for finalized markets…"))
+                    sync_outcomes(client)
+                    n = auto_settle_paper_trades(client)
+                    if n:
+                        print(green(f"  Settled {n} trade(s) automatically."))
+                    else:
+                        print(
+                            dim(
+                                "  No markets finalized yet — try again later or use Manual."
+                            )
+                        )
+                elif settle_sub == "2":
+                    _cmd_settle_open(client)
             elif sub == "4":
                 from paper import check_model_exits
 
@@ -6963,6 +7208,10 @@ def main():
             cmd_cancel(client, args[1])
     elif cmd == "settle":
         cmd_settle(client)
+    elif cmd in ("watch-settle", "watch_settle"):
+        cmd_watch_settle(client, args[1:])
+    elif cmd == "loop":
+        cmd_loop(client, args[1:])
     elif cmd == "paper":
         cmd_paper(args[1:], client)
     elif cmd == "backtest":

@@ -33,12 +33,12 @@ _log = logging.getLogger(__name__)
 # Primary circuit breaker: 3-model daily forecast (FORECAST_BASE).
 # Higher threshold + longer recovery because these are cached and precious.
 _forecast_cb = CircuitBreaker(
-    name="open_meteo_forecast", failure_threshold=6, recovery_timeout=300
+    name="open_meteo_forecast", failure_threshold=6, recovery_timeout=6 * 3600
 )
 # Supplementary circuit breaker: ensemble spread, NBM, ECMWF high-res (ENSEMBLE_BASE).
 # Failures here degrade quality but don't block primary signals.
 _ensemble_cb = CircuitBreaker(
-    name="open_meteo_ensemble", failure_threshold=4, recovery_timeout=120
+    name="open_meteo_ensemble", failure_threshold=4, recovery_timeout=6 * 3600
 )
 
 # ── Trading filters ───────────────────────────────────────────────────────────
@@ -164,14 +164,12 @@ _om_session: requests.Session = requests.Session()
 
 # Ensemble cache: key -> (list[float], timestamp)
 _ENSEMBLE_CACHE: dict = {}
-_ENSEMBLE_CACHE_TTL = 90 * 60  # 90 minutes
+_ENSEMBLE_CACHE_TTL = 4 * 60 * 60  # 4 hours — matches loop interval
 
 # Rate limiter: enforce minimum gap between Open-Meteo requests to avoid 429 bursts.
 _OM_RATE_LOCK = threading.Lock()
 _OM_LAST_REQUEST_TS: float = 0.0
-_OM_MIN_INTERVAL: float = (
-    1.5  # seconds between requests (~0.67 req/s) — avoids Open-Meteo 429 bans
-)
+_OM_MIN_INTERVAL: float = 3.0  # seconds between requests (~0.33 req/s) — conservative to avoid university throttling
 
 
 def _om_rate_limit() -> None:
@@ -193,7 +191,7 @@ def _om_request(method: str, url: str, **kwargs) -> requests.Response:
 
 # Forecast cache: (city, date_iso) -> (dict, timestamp)
 _FORECAST_CACHE: dict = {}
-_FORECAST_CACHE_TTL = 90 * 60  # 90 minutes
+_FORECAST_CACHE_TTL = 4 * 60 * 60  # 4 hours — matches loop interval
 
 # Disk-backed forecast cache — survives process restarts so `analyze` is fast
 # on the 2nd+ run within the same 90-minute window.
@@ -266,8 +264,8 @@ _load_forecast_disk_cache()
 # Set higher than _FORECAST_CACHE_TTL so cache expiry happens first.
 # Override via FORECAST_MAX_AGE_SECS env var.
 FORECAST_MAX_AGE_SECS = int(
-    os.getenv("FORECAST_MAX_AGE_SECS", str(3 * 3600))
-)  # 3 hours
+    os.getenv("FORECAST_MAX_AGE_SECS", str(5 * 3600))
+)  # 5 hours — slightly above 4h cache TTL so disk cache is always accepted
 
 # #66: Market listing cache to avoid hammering the API on every analyze call
 _MARKETS_CACHE: tuple[list, float] | None = None

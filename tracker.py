@@ -943,7 +943,18 @@ def sync_outcomes(client) -> int:
                 if log_outcome(ticker, settled_yes):
                     count += 1
         except Exception as exc:
-            _log.warning("sync_outcomes: failed to fetch/record %s: %s", ticker, exc)
+            # 404 means the market never existed or was deleted — silence it forever
+            if "404" in str(exc):
+                _log.debug(
+                    "sync_outcomes: %s not found on Kalshi — removing from pending",
+                    ticker,
+                )
+                with _conn() as con:
+                    con.execute("DELETE FROM predictions WHERE ticker = ?", (ticker,))
+            else:
+                _log.warning(
+                    "sync_outcomes: failed to fetch/record %s: %s", ticker, exc
+                )
             continue
     return count
 
