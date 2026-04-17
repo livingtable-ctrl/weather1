@@ -414,7 +414,7 @@ def get_weather_forecast(city: str, target_date: date) -> dict | None:
     def _fetch_one(model: str, weight: float) -> tuple | None:
         """Fetch one model's forecast; returns (high, low, precip, weight) or None."""
         if _forecast_cb.is_open():
-            _log.warning(
+            _log.debug(
                 "[CircuitBreaker] open_meteo_forecast circuit open — skipping forecast fetch"
             )
             return None
@@ -545,7 +545,7 @@ def fetch_temperature_nbm(city: str, target_date: date) -> float | None:
     lat, lon, _ = coords
 
     if _ensemble_cb.is_open():
-        _log.warning("[CircuitBreaker] open_meteo circuit open — skipping NBM fetch")
+        _log.debug("[CircuitBreaker] open_meteo circuit open — skipping NBM fetch")
         return None
 
     try:
@@ -606,7 +606,7 @@ def fetch_temperature_pirate_weather(city: str, target_date: date) -> dict | Non
     lat, lon, _ = coords
 
     if _pirate_cb.is_open():
-        _log.warning("[CircuitBreaker] pirate_weather circuit open — skipping fetch")
+        _log.debug("[CircuitBreaker] pirate_weather circuit open — skipping fetch")
         return None
 
     today = date.today()
@@ -909,7 +909,7 @@ def fetch_temperature_ecmwf(city: str, target_date: date) -> float | None:
     lat, lon, _ = coords
 
     if _ensemble_cb.is_open():
-        _log.warning("[CircuitBreaker] open_meteo circuit open — skipping ECMWF fetch")
+        _log.debug("[CircuitBreaker] open_meteo circuit open — skipping ECMWF fetch")
         return None
 
     try:
@@ -967,9 +967,7 @@ def _fetch_model_ensemble(
     }
 
     if _ensemble_cb.is_open():
-        _log.warning(
-            "[CircuitBreaker] open_meteo circuit open — skipping ensemble fetch"
-        )
+        _log.debug("[CircuitBreaker] open_meteo circuit open — skipping ensemble fetch")
         return []
 
     if hour is not None:
@@ -2324,7 +2322,7 @@ def _get_consensus_probs(
 
             if temps is None:
                 if _ensemble_cb.is_open():
-                    _log.warning(
+                    _log.debug(
                         "[CircuitBreaker] open_meteo circuit open — skipping ensemble fetch"
                     )
                     return None, None
@@ -2442,7 +2440,7 @@ def _fetch_ensemble_precip(
     def _fetch_model(model: str) -> list[float]:
         nonlocal date_in_range
         if _ensemble_cb.is_open():
-            _log.warning(
+            _log.debug(
                 "[CircuitBreaker] open_meteo circuit open — skipping ensemble fetch"
             )
             return []
