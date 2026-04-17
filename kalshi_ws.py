@@ -192,13 +192,18 @@ async def _ws_listener(api_key: str, private_key_pem: str, tickers: list[str]) -
         from cryptography.hazmat.primitives.asymmetric import padding
 
         # Load the key once (expensive) — signing repeats each reconnect
-        private_key = serialization.load_pem_private_key(
+        from cryptography.hazmat.primitives.asymmetric.rsa import RSAPrivateKey
+
+        _raw_key = serialization.load_pem_private_key(
             private_key_pem.encode()
             if isinstance(private_key_pem, str)
             else private_key_pem,
             password=None,
             backend=default_backend(),
         )
+        if not isinstance(_raw_key, RSAPrivateKey):
+            raise ValueError("kalshi_ws: private key must be RSA")
+        private_key: RSAPrivateKey = _raw_key
     except Exception as exc:
         _log.error("kalshi_ws: key loading failed: %s", exc)
         return
