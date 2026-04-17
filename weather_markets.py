@@ -30,8 +30,15 @@ from utils import KALSHI_FEE_RATE, MAX_DAYS_OUT, normal_cdf
 
 _log = logging.getLogger(__name__)
 
+# Primary circuit breaker: 3-model daily forecast (FORECAST_BASE).
+# Higher threshold + longer recovery because these are cached and precious.
+_forecast_cb = CircuitBreaker(
+    name="open_meteo_forecast", failure_threshold=6, recovery_timeout=300
+)
+# Supplementary circuit breaker: ensemble spread, NBM, ECMWF high-res (ENSEMBLE_BASE).
+# Failures here degrade quality but don't block primary signals.
 _ensemble_cb = CircuitBreaker(
-    name="open_meteo", failure_threshold=4, recovery_timeout=120
+    name="open_meteo_ensemble", failure_threshold=4, recovery_timeout=120
 )
 
 # ── Trading filters ───────────────────────────────────────────────────────────
@@ -188,6 +195,73 @@ def _om_request(method: str, url: str, **kwargs) -> requests.Response:
 _FORECAST_CACHE: dict = {}
 _FORECAST_CACHE_TTL = 90 * 60  # 90 minutes
 
+# Disk-backed forecast cache — survives process restarts so `analyze` is fast
+# on the 2nd+ run within the same 90-minute window.
+_FORECAST_DISK_CACHE_PATH = Path("data/forecast_cache.json")
+_FORECAST_DISK_LOCK = threading.Lock()
+
+
+def _load_forecast_disk_cache() -> None:
+    """Load non-expired entries from disk into the in-memory cache on startup."""
+    if not _FORECAST_DISK_CACHE_PATH.exists():
+        return
+    try:
+        import json as _json
+
+        with _FORECAST_DISK_LOCK:
+            raw = _json.loads(_FORECAST_DISK_CACHE_PATH.read_text(encoding="utf-8"))
+        now = time.time()
+        loaded = 0
+        for key_str, entry in raw.items():
+            age = now - entry.get("ts_posix", 0)
+            if age < _FORECAST_CACHE_TTL:
+                # Reconstruct in-memory key as tuple; stored ts converted to monotonic approx
+                city, date_iso = key_str.split("|", 1)
+                mem_key = (city, date_iso)
+                # Approximate monotonic timestamp from wall-clock age
+                _FORECAST_CACHE[mem_key] = (entry["data"], time.monotonic() - age)
+                loaded += 1
+        if loaded:
+            _log.debug("forecast disk cache: loaded %d entries", loaded)
+    except Exception as exc:
+        _log.debug("forecast disk cache load failed (non-fatal): %s", exc)
+
+
+def _save_forecast_disk_entry(cache_key: tuple, data: dict) -> None:
+    """Persist a single forecast cache entry to disk asynchronously."""
+
+    def _write() -> None:
+        try:
+            import json as _json
+
+            key_str = f"{cache_key[0]}|{cache_key[1]}"
+            now = time.time()
+            with _FORECAST_DISK_LOCK:
+                if _FORECAST_DISK_CACHE_PATH.exists():
+                    raw: dict = _json.loads(
+                        _FORECAST_DISK_CACHE_PATH.read_text(encoding="utf-8")
+                    )
+                else:
+                    raw = {}
+                raw[key_str] = {"data": data, "ts_posix": now}
+                # Prune expired entries so the file doesn't grow indefinitely
+                raw = {
+                    k: v
+                    for k, v in raw.items()
+                    if now - v.get("ts_posix", 0) < _FORECAST_CACHE_TTL
+                }
+                _FORECAST_DISK_CACHE_PATH.write_text(
+                    _json.dumps(raw, default=str), encoding="utf-8"
+                )
+        except Exception as exc:
+            _log.debug("forecast disk cache write failed (non-fatal): %s", exc)
+
+    threading.Thread(target=_write, daemon=True).start()
+
+
+# Populate in-memory cache from disk on import
+_load_forecast_disk_cache()
+
 # Maximum age of forecast data before analyze_trade rejects it.
 # Set higher than _FORECAST_CACHE_TTL so cache expiry happens first.
 # Override via FORECAST_MAX_AGE_SECS env var.
@@ -336,9 +410,9 @@ def get_weather_forecast(city: str, target_date: date) -> dict | None:
 
     def _fetch_one(model: str, weight: float) -> tuple | None:
         """Fetch one model's forecast; returns (high, low, precip, weight) or None."""
-        if _ensemble_cb.is_open():
+        if _forecast_cb.is_open():
             _log.warning(
-                "[CircuitBreaker] open_meteo circuit open — skipping forecast fetch"
+                "[CircuitBreaker] open_meteo_forecast circuit open — skipping forecast fetch"
             )
             return None
         params = {
@@ -354,9 +428,9 @@ def get_weather_forecast(city: str, target_date: date) -> dict | None:
         try:
             resp = _om_request("GET", FORECAST_BASE, params=params, timeout=10)
             resp.raise_for_status()
-            _ensemble_cb.record_success()
+            _forecast_cb.record_success()
         except Exception as _exc:
-            _ensemble_cb.record_failure()
+            _forecast_cb.record_failure()
             _log.warning("open_meteo forecast fetch failed: %s", _exc)
             return None
         data = resp.json()
@@ -410,6 +484,7 @@ def get_weather_forecast(city: str, target_date: date) -> dict | None:
         "high_range": (min(high_vals), max(high_vals)),
     }
     _FORECAST_CACHE[cache_key] = (result, time.monotonic())
+    _save_forecast_disk_entry(cache_key, result)
     return result
 
 

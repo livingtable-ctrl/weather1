@@ -22,7 +22,7 @@ DB_PATH.parent.mkdir(exist_ok=True)
 
 _db_initialized = False
 
-_SCHEMA_VERSION = 11  # increment when _MIGRATIONS list grows
+_SCHEMA_VERSION = 13  # increment when _MIGRATIONS list grows
 
 _MIGRATIONS = [
     # v1 → v2: add condition_type column (if not already added)
@@ -75,6 +75,13 @@ _MIGRATIONS = [
     "ALTER TABLE predictions ADD COLUMN edge_calc_version TEXT",
     # v10 → v11: signal source tracking for P&L attribution (Phase G Task 2)
     "ALTER TABLE predictions ADD COLUMN signal_source TEXT",
+    # v11 → v12: unique index on (ticker, predicted_date) prevents duplicate predictions
+    # from TOCTOU race between SELECT and INSERT in log_prediction.
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_pred_ticker_date ON predictions(ticker, date(predicted_at))",
+    # v12 → v13: recovery — ensemble_prob was at v8 in the list but DBs already at v8+
+    # when that migration was written had it silently skipped. Duplicate-column error
+    # is caught by _run_migrations and treated as "already applied".
+    "ALTER TABLE predictions ADD COLUMN ensemble_prob REAL",
 ]
 
 
@@ -320,73 +327,56 @@ def log_prediction(
     )
 
     with _conn() as con:
-        # Don't duplicate — update if already logged today
-        existing = con.execute(
-            "SELECT id FROM predictions WHERE ticker = ? AND date(predicted_at) = date('now')",
-            (ticker,),
-        ).fetchone()
-        if existing:
-            con.execute(
-                """
-                UPDATE predictions SET
-                    our_prob=?, raw_prob=?, market_prob=?, edge=?, method=?, n_members=?,
-                    days_out=?, forecast_cycle=?, blend_sources=?,
-                    ensemble_prob=?, nws_prob=?, clim_prob=?, edge_calc_version=?,
-                    signal_source=?
-                WHERE id=?
+        # Atomic upsert — unique index on (ticker, date(predicted_at)) prevents
+        # duplicate rows from concurrent calls (TOCTOU of old SELECT+INSERT pattern).
+        con.execute(
+            """
+            INSERT INTO predictions
+              (ticker, city, market_date, condition_type,
+               threshold_lo, threshold_hi, our_prob, raw_prob, market_prob,
+               edge, method, n_members, predicted_at, days_out, forecast_cycle,
+               blend_sources, ensemble_prob, nws_prob, clim_prob, edge_calc_version,
+               signal_source)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'),?,?,?,?,?,?,?,?)
+            ON CONFLICT(ticker, date(predicted_at)) DO UPDATE SET
+                our_prob         = excluded.our_prob,
+                raw_prob         = excluded.raw_prob,
+                market_prob      = excluded.market_prob,
+                edge             = excluded.edge,
+                method           = excluded.method,
+                n_members        = excluded.n_members,
+                days_out         = excluded.days_out,
+                forecast_cycle   = excluded.forecast_cycle,
+                blend_sources    = excluded.blend_sources,
+                ensemble_prob    = excluded.ensemble_prob,
+                nws_prob         = excluded.nws_prob,
+                clim_prob        = excluded.clim_prob,
+                edge_calc_version= excluded.edge_calc_version,
+                signal_source    = excluded.signal_source
             """,
-                (
-                    forecast_prob,
-                    raw_prob,
-                    analysis.get("market_prob"),
-                    analysis.get("edge"),
-                    analysis.get("method"),
-                    analysis.get("n_members"),
-                    days_out,
-                    forecast_cycle,
-                    blend_sources_json,
-                    ensemble_prob,
-                    nws_prob,
-                    clim_prob,
-                    edge_calc_version,
-                    signal_source,
-                    existing["id"],
-                ),
-            )
-        else:
-            con.execute(
-                """
-                INSERT INTO predictions
-                  (ticker, city, market_date, condition_type,
-                   threshold_lo, threshold_hi, our_prob, raw_prob, market_prob,
-                   edge, method, n_members, predicted_at, days_out, forecast_cycle,
-                   blend_sources, ensemble_prob, nws_prob, clim_prob, edge_calc_version,
-                   signal_source)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'),?,?,?,?,?,?,?,?)
-            """,
-                (
-                    ticker,
-                    city,
-                    market_date.isoformat() if market_date else None,
-                    cond.get("type"),
-                    lo,
-                    hi,
-                    forecast_prob,
-                    raw_prob,
-                    analysis.get("market_prob"),
-                    analysis.get("edge"),
-                    analysis.get("method"),
-                    analysis.get("n_members"),
-                    days_out,
-                    forecast_cycle,
-                    blend_sources_json,
-                    ensemble_prob,
-                    nws_prob,
-                    clim_prob,
-                    edge_calc_version,
-                    signal_source,
-                ),
-            )
+            (
+                ticker,
+                city,
+                market_date.isoformat() if market_date else None,
+                cond.get("type"),
+                lo,
+                hi,
+                forecast_prob,
+                raw_prob,
+                analysis.get("market_prob"),
+                analysis.get("edge"),
+                analysis.get("method"),
+                analysis.get("n_members"),
+                days_out,
+                forecast_cycle,
+                blend_sources_json,
+                ensemble_prob,
+                nws_prob,
+                clim_prob,
+                edge_calc_version,
+                signal_source,
+            ),
+        )
 
 
 def log_outcome(ticker: str, settled_yes: bool) -> bool:
@@ -952,7 +942,8 @@ def sync_outcomes(client) -> int:
                 settled_yes = result == "yes"
                 if log_outcome(ticker, settled_yes):
                     count += 1
-        except Exception:
+        except Exception as exc:
+            _log.warning("sync_outcomes: failed to fetch/record %s: %s", ticker, exc)
             continue
     return count
 
@@ -1822,10 +1813,17 @@ def log_analysis_attempt(
     try:
         with _conn() as con:
             con.execute(
-                """INSERT OR REPLACE INTO analysis_attempts
+                """INSERT INTO analysis_attempts
                    (ticker, city, condition, target_date, analyzed_at,
                     forecast_prob, market_prob, days_out, was_traded)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                   ON CONFLICT(ticker, target_date) DO UPDATE SET
+                       analyzed_at    = excluded.analyzed_at,
+                       forecast_prob  = excluded.forecast_prob,
+                       market_prob    = excluded.market_prob,
+                       days_out       = excluded.days_out,
+                       was_traded     = MAX(analysis_attempts.was_traded,
+                                            excluded.was_traded)""",
                 (
                     ticker,
                     city,
@@ -1873,10 +1871,17 @@ def batch_log_analysis_attempts(attempts: list[dict]) -> None:
     try:
         with _conn() as con:
             con.executemany(
-                """INSERT OR REPLACE INTO analysis_attempts
+                """INSERT INTO analysis_attempts
                    (ticker, city, condition, target_date, analyzed_at,
                     forecast_prob, market_prob, days_out, was_traded)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                   ON CONFLICT(ticker, target_date) DO UPDATE SET
+                       analyzed_at    = excluded.analyzed_at,
+                       forecast_prob  = excluded.forecast_prob,
+                       market_prob    = excluded.market_prob,
+                       days_out       = excluded.days_out,
+                       was_traded     = MAX(analysis_attempts.was_traded,
+                                            excluded.was_traded)""",
                 rows,
             )
     except Exception as exc:
@@ -1970,10 +1975,15 @@ def analyze_all_markets(enriched_list: list[dict]) -> None:
             try:
                 with _conn() as con:
                     con.execute(
-                        """INSERT OR REPLACE INTO analysis_attempts
+                        """INSERT INTO analysis_attempts
                            (ticker, city, condition, target_date, analyzed_at,
                             forecast_prob, market_prob, days_out, was_traded)
-                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)""",
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)
+                           ON CONFLICT(ticker, target_date) DO UPDATE SET
+                               analyzed_at   = excluded.analyzed_at,
+                               forecast_prob = excluded.forecast_prob,
+                               market_prob   = excluded.market_prob,
+                               days_out      = excluded.days_out""",
                         (
                             ticker,
                             city,
