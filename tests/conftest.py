@@ -7,6 +7,22 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+
+@pytest.fixture(autouse=True)
+def reset_open_meteo_circuit_breaker():
+    """Reset the open_meteo circuit breaker before every test.
+
+    The circuit breaker is a module-level singleton in weather_markets.py.
+    Tests that make real (or mocked) API calls can trip it, causing subsequent
+    tests in the same run to see the circuit as open and return None instead of
+    forecast data, producing false failures.
+    """
+    import weather_markets
+
+    weather_markets._ensemble_cb.record_success()  # clears _failure_count and _opened_at
+    yield
+
+
 FIXTURES = Path(__file__).parent / "fixtures"
 
 
