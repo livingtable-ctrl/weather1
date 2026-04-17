@@ -471,20 +471,39 @@ def get_weather_forecast(city: str, target_date: date) -> dict | None:
 
     if not highs:
         # Open-Meteo unavailable — try Pirate Weather (HRRR-based) as fallback
-        pw_high = fetch_temperature_pirate_weather(city, target_date)
-        if pw_high is not None:
+        pw_data = fetch_temperature_pirate_weather(city, target_date)
+        if pw_data is not None:
             _log.info(
                 "get_weather_forecast: using Pirate Weather fallback for %s", city
             )
+            pw_high = pw_data["high_f"]
             result = {
                 "date": target_date.isoformat(),
                 "city": city,
                 "high_f": pw_high,
-                "low_f": None,
-                "precip_in": 0.0,
+                "low_f": pw_data.get("low_f"),
+                "precip_in": pw_data.get("precip_in", 0.0),
                 "models_used": 1,
                 "high_range": (pw_high, pw_high),
                 "_source": "pirate_weather",
+                # Enriched Pirate Weather fields
+                "precip_prob": pw_data.get("precip_prob"),
+                "precip_type": pw_data.get("precip_type"),
+                "dew_point_f": pw_data.get("dew_point_f"),
+                "humidity": pw_data.get("humidity"),
+                "wind_gust": pw_data.get("wind_gust"),
+                "_wind_gust_time_unix": pw_data.get("_wind_gust_time_unix"),
+                "_temp_max_time_unix": pw_data.get("_temp_max_time_unix"),
+                "_hourly_window_high_f": pw_data.get("_hourly_window_high_f"),
+                "_active_alerts": pw_data.get("_active_alerts", []),
+                "_has_severe_alert": pw_data.get("_has_severe_alert", False),
+                "_source_freshness_hours": pw_data.get("_source_freshness_hours", {}),
+                "_stale_forecast": pw_data.get("_stale_forecast", False),
+                "_precip_intensity_error": pw_data.get("_precip_intensity_error"),
+                "_elevation_m": pw_data.get("_elevation_m"),
+                "_liquid_accum_in": pw_data.get("_liquid_accum_in"),
+                "_snow_accum_in": pw_data.get("_snow_accum_in"),
+                "_ice_accum_in": pw_data.get("_ice_accum_in"),
             }
             _FORECAST_CACHE[cache_key] = (result, time.monotonic())
             _save_forecast_disk_entry(cache_key, result)
@@ -566,14 +585,16 @@ _pirate_cb = CircuitBreaker(
 )
 
 
-def fetch_temperature_pirate_weather(city: str, target_date: date) -> float | None:
+def fetch_temperature_pirate_weather(city: str, target_date: date) -> dict | None:
     """
-    Fetch daily high temperature from Pirate Weather (HRRR/GFS/GEFS blend).
+    Fetch weather data from Pirate Weather (HRRR/GFS/GEFS blend).
     Used as fallback when Open-Meteo circuit breakers are open.
 
-    Future/today dates use the forecast endpoint; past dates use the time machine.
+    Future/today dates use the forecast endpoint (with extend=hourly and version=2);
+    past dates use the time machine (version=2 only — extend=hourly not supported).
     Requires PIRATE_WEATHER_API_KEY in environment.
-    Returns temperatureMax for target_date in °F, or None on failure.
+
+    Returns a dict with high_f and many enriched fields, or None on failure.
     """
     api_key = os.getenv("PIRATE_WEATHER_API_KEY", "")
     if not api_key:
@@ -594,7 +615,6 @@ def fetch_temperature_pirate_weather(city: str, target_date: date) -> float | No
     try:
         if is_historical:
             # Time machine: embed timestamp in path, returns single-day daily block
-
             ts = int(
                 datetime(
                     target_date.year, target_date.month, target_date.day, 12, tzinfo=UTC
@@ -602,15 +622,18 @@ def fetch_temperature_pirate_weather(city: str, target_date: date) -> float | No
             )
             url = f"{_PIRATE_TIMEMACHINE_BASE}/{api_key}/{lat},{lon},{ts}"
             params = {
-                "exclude": "currently,minutely,hourly,alerts,flags",
+                "exclude": "currently,minutely,alerts",
                 "units": "us",
+                "version": 2,
             }
         else:
             # Forecast endpoint — 7-day daily block, find matching day by timestamp
             url = f"{_PIRATE_FORECAST_BASE}/{api_key}/{lat},{lon}"
             params = {
-                "exclude": "currently,minutely,hourly,alerts,flags",
+                "exclude": "currently,minutely",
                 "units": "us",
+                "version": 2,
+                "extend": "hourly",
             }
 
         resp = _request_with_retry("GET", url, params=params, timeout=15)
@@ -625,7 +648,6 @@ def fetch_temperature_pirate_weather(city: str, target_date: date) -> float | No
             entry = daily_data[0]
         else:
             # Match by calendar date — each entry's `time` is midnight local Unix timestamp
-
             target_ts_start = int(
                 datetime(
                     target_date.year, target_date.month, target_date.day, tzinfo=UTC
@@ -643,7 +665,160 @@ def fetch_temperature_pirate_weather(city: str, target_date: date) -> float | No
 
         # temperatureMax is the absolute daily extreme; prefer over temperatureHigh (daytime only)
         high = entry.get("temperatureMax") or entry.get("temperatureHigh")
-        return float(high) if high is not None else None
+        if high is None:
+            return None
+        high_f = float(high)
+
+        # ── Item 5: temperatureMaxTime ────────────────────────────────────────
+        temp_max_time_unix = entry.get("temperatureMaxTime")
+
+        # ── Item 6: precipProbability, precipAccumulation, precipType ────────
+        precip_prob = entry.get("precipProbability")
+        precip_accum = entry.get("precipAccumulation")
+        precip_in = float(precip_accum) if precip_accum is not None else 0.0
+        precip_type = entry.get("precipType")
+
+        # ── Item 9: liquidAccumulation, snowAccumulation, iceAccumulation (v2) ─
+        liquid_accum = entry.get("liquidAccumulation")
+        snow_accum = entry.get("snowAccumulation")
+        ice_accum = entry.get("iceAccumulation")
+
+        # ── Item 10: dewPoint, humidity ───────────────────────────────────────
+        dew_point_f = entry.get("dewPoint")
+        humidity = entry.get("humidity")
+
+        # ── Item 11: windGust, windGustTime ───────────────────────────────────
+        wind_gust = entry.get("windGust")
+        wind_gust_time_unix = entry.get("windGustTime")
+
+        # ── Item 8: elevation (top-level field) ───────────────────────────────
+        elevation_m = data.get("elevation")
+
+        # ── Item 3: hourly settlement-window high (forecast only) ─────────────
+        hourly_window_high_f: float | None = None
+        if not is_historical:
+            hourly_data = data.get("hourly", {}).get("data", [])
+            if hourly_data:
+                # Build a date string for target_date to match against Unix timestamps
+                # Collect hours 6am–9pm local time for target_date by checking timestamps.
+                # Use UTC-based day boundaries and accept entries within a ±12h window
+                # around the target date since Pirate Weather uses local midnight timestamps.
+                target_ts_start_h = int(
+                    datetime(
+                        target_date.year, target_date.month, target_date.day, tzinfo=UTC
+                    ).timestamp()
+                )
+                target_ts_end_h = target_ts_start_h + 86400
+                window_temps = []
+                for h_entry in hourly_data:
+                    h_ts = h_entry.get("time", 0)
+                    # Filter to the target calendar day (UTC-anchored)
+                    if not (target_ts_start_h <= h_ts < target_ts_end_h):
+                        continue
+                    # Hour-of-day within the day: 6am (6h) to 9pm (21h)
+                    hour_of_day = (h_ts - target_ts_start_h) // 3600
+                    if 6 <= hour_of_day <= 21:
+                        t_val = h_entry.get("temperature")
+                        if t_val is not None:
+                            window_temps.append(float(t_val))
+                if window_temps:
+                    hourly_window_high_f = max(window_temps)
+
+        # ── Item 7: precipIntensityError — average over hourly data for target_date ─
+        precip_intensity_error: float | None = None
+        hourly_data_all = data.get("hourly", {}).get("data", [])
+        if hourly_data_all:
+            target_ts_start_pie = int(
+                datetime(
+                    target_date.year, target_date.month, target_date.day, tzinfo=UTC
+                ).timestamp()
+            )
+            target_ts_end_pie = target_ts_start_pie + 86400
+            pie_values = [
+                float(h.get("precipIntensityError"))
+                for h in hourly_data_all
+                if target_ts_start_pie <= h.get("time", 0) < target_ts_end_pie
+                and h.get("precipIntensityError") is not None
+            ]
+            if pie_values:
+                precip_intensity_error = sum(pie_values) / len(pie_values)
+
+        # ── Item 4: alerts — severity check ──────────────────────────────────
+        alerts_raw = data.get("alerts", [])
+        now_ts = int(datetime.now(UTC).timestamp())
+        active_alerts = [
+            {
+                "title": a.get("title", ""),
+                "severity": a.get("severity", ""),
+                "expires": a.get("expires"),
+            }
+            for a in (alerts_raw or [])
+            if a.get("expires") is None or a.get("expires", 0) > now_ts
+        ]
+        has_severe_alert = any(
+            a["severity"] in ("Severe", "Extreme") for a in active_alerts
+        )
+
+        # ── Item 2: flags.sourceTimes — model freshness weighting ─────────────
+        source_times_raw = data.get("flags", {}).get("sourceTimes", {})
+        source_freshness_hours: dict[str, float] = {}
+        stale_forecast = False
+        if source_times_raw and isinstance(source_times_raw, dict):
+            for model_key, time_str in source_times_raw.items():
+                try:
+                    # Format: "2025-06-07 16Z"
+                    st_dt = datetime.strptime(time_str, "%Y-%m-%d %HZ").replace(
+                        tzinfo=UTC
+                    )
+                    age_hours = (datetime.now(UTC) - st_dt).total_seconds() / 3600.0
+                    source_freshness_hours[model_key] = round(age_hours, 2)
+                except (ValueError, TypeError):
+                    pass
+            # Check HRRR staleness (covers hrrr_0-18 or similar keys)
+            hrrr_age = next(
+                (v for k, v in source_freshness_hours.items() if "hrrr" in k.lower()),
+                None,
+            )
+            if hrrr_age is not None and hrrr_age > 6.0:
+                stale_forecast = True
+
+        low = entry.get("temperatureMin") or entry.get("temperatureLow")
+
+        return {
+            # Core fields (must match what the caller expects)
+            "high_f": high_f,
+            "low_f": float(low) if low is not None else None,
+            "precip_in": precip_in,
+            # Item 6
+            "precip_prob": precip_prob,
+            "precip_type": precip_type,
+            # Item 10
+            "dew_point_f": float(dew_point_f) if dew_point_f is not None else None,
+            "humidity": float(humidity) if humidity is not None else None,
+            # Item 11
+            "wind_gust": float(wind_gust) if wind_gust is not None else None,
+            "_wind_gust_time_unix": wind_gust_time_unix,
+            # Item 5
+            "_temp_max_time_unix": temp_max_time_unix,
+            # Item 3
+            "_hourly_window_high_f": hourly_window_high_f,
+            # Item 4
+            "_active_alerts": active_alerts,
+            "_has_severe_alert": has_severe_alert,
+            # Item 2
+            "_source_freshness_hours": source_freshness_hours,
+            "_stale_forecast": stale_forecast,
+            # Item 7
+            "_precip_intensity_error": precip_intensity_error,
+            # Item 8
+            "_elevation_m": float(elevation_m) if elevation_m is not None else None,
+            # Item 9
+            "_liquid_accum_in": float(liquid_accum)
+            if liquid_accum is not None
+            else None,
+            "_snow_accum_in": float(snow_accum) if snow_accum is not None else None,
+            "_ice_accum_in": float(ice_accum) if ice_accum is not None else None,
+        }
     except Exception as exc:
         _pirate_cb.record_failure()
         _log.debug("fetch_temperature_pirate_weather(%s): %s", city, exc)
@@ -1510,6 +1685,17 @@ def enrich_with_forecast(market: dict) -> dict:
     if city and target_date:
         forecast = get_weather_forecast(city, target_date)
 
+    # Wire Pirate Weather uncertainty signals into _forecast_uncertain.
+    # If the forecast came from Pirate Weather and includes a severe alert or
+    # a stale model run (HRRR > 6h old), flag the enriched market so that
+    # downstream analyze_trade can apply caution (higher sigma / lower edge).
+    _forecast_uncertain = False
+    if forecast and forecast.get("_source") == "pirate_weather":
+        if forecast.get("_has_severe_alert"):
+            _forecast_uncertain = True
+        if forecast.get("_stale_forecast"):
+            _forecast_uncertain = True
+
     import time as _time_enrich
 
     return {
@@ -1518,6 +1704,7 @@ def enrich_with_forecast(market: dict) -> dict:
         "_date": target_date,
         "_hour": hour,
         "_forecast": forecast,
+        "_forecast_uncertain": _forecast_uncertain,
         "data_fetched_at": _time_enrich.time(),
     }
 
