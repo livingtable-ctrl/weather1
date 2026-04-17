@@ -2,16 +2,23 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Implement five long-term improvement features: ML-based bias correction, cross-platform arbitrage scanner, A/B experiment framework, strategy P&L attribution, and Telegram alerting.
+**Goal:** Implement four long-term improvement features: ML-based bias correction, cross-platform arbitrage scanner, A/B experiment framework, and strategy P&L attribution.
 
-**Architecture:** Each feature is independent. ML bias correction adds a trained LightGBM model alongside the static bias table from Phase A. Cross-platform arbitrage requires a Polymarket API client. A/B framework extends the existing paper trade infrastructure. P&L attribution adds columns to the tracker DB. Telegram uses python-telegram-bot or httpx for simple webhook delivery.
+**Status (2026-04-16):**
+- ✅ Task 1: ML bias correction — merged to master (PR #10)
+- ✅ Task 2: P&L attribution + signal_source column — merged to master (PR #11 + earlier commits)
+- ✅ signal_source wiring into analyze/cron path — merged to master (PR #11)
+- ⏳ A/B experiment framework — not yet planned in detail
+- ⏳ Cross-platform arbitrage scanner — stretch goal, needs Polymarket API client
+
+**Architecture:** Each feature is independent. ML bias correction adds a trained LightGBM model alongside the static bias table from Phase A. Cross-platform arbitrage requires a Polymarket API client. A/B framework extends the existing paper trade infrastructure. P&L attribution adds columns to the tracker DB.
 
 **Prerequisites:**
 - Phase A (bias correction foundation) before ML bias correction
 - Phase D (per-city Brier) before P&L attribution
 - 6+ months of settled trade data before ML bias correction is useful
 
-**Tech Stack:** Python 3.12, scikit-learn or lightgbm, python-telegram-bot, httpx, pytest
+**Tech Stack:** Python 3.12, scikit-learn or lightgbm, pytest
 
 ---
 
@@ -33,7 +40,7 @@ The model is trained on data from the tracker DB (`predictions` + `outcomes` tab
 
 **Prerequisite:** Need 6+ months of data (200+ settled predictions per city) for this to outperform the static bias table. Start collecting now; train in Phase G.
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 Create `tests/test_ml_bias.py`:
 
@@ -88,7 +95,7 @@ class TestMLBias:
         assert result == pytest.approx(68.0, abs=0.1)
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 ```
 cd "C:/Users/thesa/claude kalshi"
@@ -97,7 +104,7 @@ python -m pytest tests/test_ml_bias.py -v
 
 Expected: `ModuleNotFoundError: No module named 'ml_bias'`
 
-- [ ] **Step 3: Implement `ml_bias.py`**
+- [x] **Step 3: Implement `ml_bias.py`**
 
 Create `ml_bias.py`:
 
@@ -237,7 +244,7 @@ def apply_ml_bias(
         return forecast_temp
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 ```
 python -m pytest tests/test_ml_bias.py -v
@@ -245,7 +252,7 @@ python -m pytest tests/test_ml_bias.py -v
 
 Expected: 3 tests PASSED
 
-- [ ] **Step 5: Add `cmd_train_bias` to `main.py`**
+- [x] **Step 5: Add `cmd_train_bias` to `main.py`**
 
 ```python
 def cmd_train_bias() -> None:
@@ -262,7 +269,7 @@ def cmd_train_bias() -> None:
 
 Wire: `"train-bias": lambda _a: cmd_train_bias()`
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add ml_bias.py tests/test_ml_bias.py main.py
@@ -280,7 +287,7 @@ git commit -m "feat(phase-g): add ML bias correction with GradientBoosting per c
 
 **What it does:** When logging a trade, record which signal drove the decision (`ensemble`, `mos`, `metar_lockout`, `settlement_lag`, `gaussian`). Then query P&L broken down by signal source — reveals which signals are profitable.
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 Create `tests/test_pnl_attribution.py`:
 
@@ -366,7 +373,7 @@ class TestPnLAttribution:
             assert "win_rate" in result["mos"]
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 ```
 python -m pytest tests/test_pnl_attribution.py -v
@@ -374,7 +381,7 @@ python -m pytest tests/test_pnl_attribution.py -v
 
 Expected: `AttributeError: module 'tracker' has no attribute 'get_pnl_by_signal_source'`
 
-- [ ] **Step 3: Add `signal_source` column via DB migration in `tracker.py`**
+- [x] **Step 3: Add `signal_source` column via DB migration in `tracker.py`**
 
 Find `_SCHEMA_VERSION` in `tracker.py` (currently `10`). Bump to `11` and add migration:
 
@@ -447,7 +454,7 @@ def get_pnl_by_signal_source(min_samples: int = 10) -> dict[str, dict]:
     return result
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 ```
 python -m pytest tests/test_pnl_attribution.py -v
@@ -455,7 +462,7 @@ python -m pytest tests/test_pnl_attribution.py -v
 
 Expected: 3 tests PASSED
 
-- [ ] **Step 5: Add `cmd_pnl_attribution` to `main.py`**
+- [x] **Step 5: Add `cmd_pnl_attribution` to `main.py`**
 
 ```python
 def cmd_pnl_attribution() -> None:
@@ -478,255 +485,11 @@ def cmd_pnl_attribution() -> None:
 
 Wire: `"pnl-attribution": lambda _a: cmd_pnl_attribution()`
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add tracker.py tests/test_pnl_attribution.py main.py
 git commit -m "feat(phase-g): add signal_source to predictions DB (migration v11); P&L attribution by signal"
-```
-
----
-
-## Task 3: Telegram Alerting
-
-**Files:**
-- Create: `telegram_alerts.py`
-- Modify: `alerts.py` (call Telegram on anomaly/black swan)
-- Modify: `main.py` (add `cmd_test_telegram`)
-- Create: `tests/test_telegram_alerts.py`
-
-**Setup:** User creates a bot via BotFather, gets a bot token + chat ID, sets env vars:
-- `TELEGRAM_BOT_TOKEN=123456:ABC...`
-- `TELEGRAM_CHAT_ID=-1001234567890`
-
-- [ ] **Step 1: Write failing tests**
-
-Create `tests/test_telegram_alerts.py`:
-
-```python
-"""Tests for Telegram alerting."""
-from __future__ import annotations
-
-import sys
-from pathlib import Path
-from unittest.mock import patch
-
-import pytest
-
-sys.path.insert(0, str(Path(__file__).parent.parent))
-
-
-class TestTelegramAlerts:
-    def test_send_message_calls_api(self):
-        """send_telegram_message makes a POST to the Telegram API."""
-        import telegram_alerts
-        from unittest.mock import patch
-
-        with patch.object(telegram_alerts, "_post_message", return_value=True) as mock_post:
-            result = telegram_alerts.send_telegram_message("Test alert", "123:token", "456")
-        mock_post.assert_called_once()
-        assert result is True
-
-    def test_send_message_no_op_without_config(self):
-        """send_telegram_message returns False without token/chat_id."""
-        import telegram_alerts
-        result = telegram_alerts.send_telegram_message("Test", "", "")
-        assert result is False
-
-    def test_format_trade_notification(self):
-        """format_trade_notification returns a string with ticker and outcome."""
-        from telegram_alerts import format_trade_notification
-
-        msg = format_trade_notification(
-            ticker="KXHIGHNY-26APR17-T72",
-            outcome="yes",
-            edge=0.12,
-            amount_dollars=15.50,
-        )
-        assert "KXHIGHNY-26APR17-T72" in msg
-        assert "yes" in msg.lower() or "YES" in msg
-
-    def test_format_anomaly_alert(self):
-        """format_anomaly_alert includes the anomaly message."""
-        from telegram_alerts import format_anomaly_alert
-
-        msg = format_anomaly_alert("WIN RATE COLLAPSE: 20% in last 10 trades")
-        assert "WIN RATE COLLAPSE" in msg
-```
-
-- [ ] **Step 2: Run tests to verify they fail**
-
-```
-python -m pytest tests/test_telegram_alerts.py -v
-```
-
-Expected: `ModuleNotFoundError: No module named 'telegram_alerts'`
-
-- [ ] **Step 3: Implement `telegram_alerts.py`**
-
-Create `telegram_alerts.py`:
-
-```python
-"""
-Telegram alerting — send trade notifications and anomaly alerts to a Telegram chat.
-
-Setup:
-1. Create a bot via @BotFather on Telegram
-2. Get your chat ID by messaging @userinfobot
-3. Set env vars:
-   TELEGRAM_BOT_TOKEN=123456:ABCdef...
-   TELEGRAM_CHAT_ID=-1001234567890
-
-Usage:
-   from telegram_alerts import send_trade_alert, send_anomaly_alert
-"""
-from __future__ import annotations
-
-import logging
-import os
-
-import requests
-
-_log = logging.getLogger(__name__)
-_API_BASE = "https://api.telegram.org/bot{token}/sendMessage"
-
-
-def _post_message(token: str, chat_id: str, text: str) -> bool:
-    """Make the actual Telegram API call."""
-    url = _API_BASE.format(token=token)
-    try:
-        resp = requests.post(
-            url,
-            json={"chat_id": chat_id, "text": text, "parse_mode": "HTML"},
-            timeout=10,
-        )
-        resp.raise_for_status()
-        return True
-    except Exception as exc:
-        _log.debug("telegram: send failed: %s", exc)
-        return False
-
-
-def send_telegram_message(
-    text: str,
-    token: str | None = None,
-    chat_id: str | None = None,
-) -> bool:
-    """
-    Send a message to the configured Telegram chat.
-    Returns True on success, False if not configured or on error.
-    """
-    token = token or os.getenv("TELEGRAM_BOT_TOKEN", "")
-    chat_id = chat_id or os.getenv("TELEGRAM_CHAT_ID", "")
-    if not token or not chat_id:
-        return False
-    return _post_message(token, chat_id, text)
-
-
-def format_trade_notification(
-    ticker: str,
-    outcome: str,
-    edge: float,
-    amount_dollars: float,
-) -> str:
-    """Format a trade execution notification."""
-    direction = "YES" if outcome == "yes" else "NO"
-    return (
-        f"🎯 <b>Trade Placed</b>\n"
-        f"Ticker: <code>{ticker}</code>\n"
-        f"Bet: <b>{direction}</b> @ ${amount_dollars:.2f}\n"
-        f"Edge: {edge:.1%}"
-    )
-
-
-def format_anomaly_alert(anomaly_msg: str) -> str:
-    """Format an anomaly detection alert."""
-    return f"⚠️ <b>Anomaly Alert</b>\n{anomaly_msg}"
-
-
-def format_black_swan_alert(reason: str) -> str:
-    """Format a black swan emergency halt notification."""
-    return f"🚨 <b>BLACK SWAN HALT</b>\n{reason}\n\nTrading suspended. Run <code>py main.py resume</code> to re-enable."
-
-
-def send_trade_alert(ticker: str, outcome: str, edge: float, amount_dollars: float) -> None:
-    """Send a trade execution alert to Telegram (fire-and-forget)."""
-    msg = format_trade_notification(ticker, outcome, edge, amount_dollars)
-    if not send_telegram_message(msg):
-        _log.debug("telegram: trade alert not sent (not configured)")
-
-
-def send_anomaly_alert(anomaly_msg: str) -> None:
-    """Send an anomaly detection alert to Telegram."""
-    msg = format_anomaly_alert(anomaly_msg)
-    send_telegram_message(msg)
-
-
-def send_black_swan_alert(reason: str) -> None:
-    """Send a black swan halt notification to Telegram."""
-    msg = format_black_swan_alert(reason)
-    send_telegram_message(msg)
-```
-
-- [ ] **Step 4: Wire into `alerts.py`**
-
-In `activate_black_swan_halt()`, after logging:
-```python
-# Notify via Telegram if configured
-try:
-    from telegram_alerts import send_black_swan_alert
-    send_black_swan_alert(reason)
-except Exception:
-    pass
-```
-
-In `run_anomaly_check()`, after logging each anomaly:
-```python
-try:
-    from telegram_alerts import send_anomaly_alert
-    for msg in anomalies:
-        send_anomaly_alert(msg)
-except Exception:
-    pass
-```
-
-- [ ] **Step 5: Add `cmd_test_telegram` to `main.py`**
-
-```python
-def cmd_test_telegram() -> None:
-    """Send a test message to the configured Telegram chat."""
-    from telegram_alerts import send_telegram_message
-
-    ok = send_telegram_message("✅ Kalshi bot test message — alerting is working.")
-    if ok:
-        print("Telegram test message sent successfully.")
-    else:
-        print("Telegram not configured. Set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID env vars.")
-```
-
-Wire: `"test-telegram": lambda _a: cmd_test_telegram()`
-
-- [ ] **Step 6: Run tests to verify they pass**
-
-```
-python -m pytest tests/test_telegram_alerts.py -v
-```
-
-Expected: 4 tests PASSED
-
-- [ ] **Step 7: Run full test suite**
-
-```
-python -m pytest -x -q
-```
-
-Expected: all pass
-
-- [ ] **Step 8: Commit**
-
-```bash
-git add telegram_alerts.py tests/test_telegram_alerts.py ml_bias.py tests/test_ml_bias.py alerts.py main.py tracker.py tests/test_pnl_attribution.py
-git commit -m "feat(phase-g): long-term features — ML bias correction + P&L attribution + Telegram alerting"
 ```
 
 ---
