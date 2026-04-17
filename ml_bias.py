@@ -12,6 +12,7 @@ from pathlib import Path
 
 _log = logging.getLogger(__name__)
 _MODEL_PATH = Path(__file__).parent / "data" / "bias_models.pkl"
+_MODELS_CACHE: dict | None = None
 
 
 def _build_features(
@@ -21,11 +22,15 @@ def _build_features(
 
 
 def _load_models() -> dict:
+    global _MODELS_CACHE
+    if _MODELS_CACHE is not None:
+        return _MODELS_CACHE
     if not _MODEL_PATH.exists():
         return {}
     try:
         with open(_MODEL_PATH, "rb") as f:
-            return pickle.load(f)
+            _MODELS_CACHE = pickle.load(f)
+            return _MODELS_CACHE
     except Exception as exc:
         _log.debug("ml_bias: load failed: %s", exc)
         return {}
@@ -46,6 +51,8 @@ def train_bias_model(min_samples: int = 200) -> dict:
         return {}
 
     import tracker
+
+    tracker.init_db()
 
     city_data: dict[str, list] = {}
     try:
@@ -93,7 +100,7 @@ def train_bias_model(min_samples: int = 200) -> dict:
         try:
             model = GradientBoostingRegressor(n_estimators=100, max_depth=3)
             model.fit(X, y)
-            models[city] = model
+            models[city.upper()] = model
             _log.info("ml_bias: trained model for %s on %d samples", city, len(samples))
         except Exception as exc:
             _log.warning("ml_bias: training failed for %s: %s", city, exc)
@@ -102,6 +109,8 @@ def train_bias_model(min_samples: int = 200) -> dict:
         _MODEL_PATH.parent.mkdir(exist_ok=True)
         with open(_MODEL_PATH, "wb") as f:
             pickle.dump(models, f)
+        global _MODELS_CACHE
+        _MODELS_CACHE = models
         _log.info("ml_bias: saved %d city models to %s", len(models), _MODEL_PATH)
 
     return models
