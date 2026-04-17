@@ -10,6 +10,7 @@ import os
 import random
 import re
 import statistics
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, date, datetime
@@ -157,6 +158,29 @@ _om_session: requests.Session = requests.Session()
 # Ensemble cache: key -> (list[float], timestamp)
 _ENSEMBLE_CACHE: dict = {}
 _ENSEMBLE_CACHE_TTL = 90 * 60  # 90 minutes
+
+# Rate limiter: enforce minimum gap between Open-Meteo requests to avoid 429 bursts.
+_OM_RATE_LOCK = threading.Lock()
+_OM_LAST_REQUEST_TS: float = 0.0
+_OM_MIN_INTERVAL: float = 0.4  # seconds between requests (~2.5 req/s max)
+
+
+def _om_rate_limit() -> None:
+    """Block until the minimum inter-request interval has elapsed."""
+    global _OM_LAST_REQUEST_TS
+    with _OM_RATE_LOCK:
+        now = time.monotonic()
+        wait = _OM_MIN_INTERVAL - (now - _OM_LAST_REQUEST_TS)
+        if wait > 0:
+            time.sleep(wait)
+        _OM_LAST_REQUEST_TS = time.monotonic()
+
+
+def _om_request(method: str, url: str, **kwargs) -> requests.Response:
+    """Rate-limited wrapper for all Open-Meteo API calls."""
+    _om_rate_limit()
+    return _request_with_retry(method, url, **kwargs)
+
 
 # Forecast cache: (city, date_iso) -> (dict, timestamp)
 _FORECAST_CACHE: dict = {}
@@ -326,7 +350,7 @@ def get_weather_forecast(city: str, target_date: date) -> dict | None:
             "models": model,
         }
         try:
-            resp = _request_with_retry("GET", FORECAST_BASE, params=params, timeout=10)
+            resp = _om_request("GET", FORECAST_BASE, params=params, timeout=10)
             resp.raise_for_status()
             _ensemble_cb.record_success()
         except Exception as _exc:
@@ -407,7 +431,7 @@ def fetch_temperature_nbm(city: str, target_date: date) -> float | None:
         return None
 
     try:
-        resp = _request_with_retry(
+        resp = _om_request(
             "GET",
             FORECAST_BASE,
             params={
@@ -522,7 +546,7 @@ def fetch_temperature_ecmwf(city: str, target_date: date) -> float | None:
         return None
 
     try:
-        resp = _request_with_retry(
+        resp = _om_request(
             "GET",
             FORECAST_BASE,
             params={
@@ -584,7 +608,7 @@ def _fetch_model_ensemble(
     if hour is not None:
         params["hourly"] = "temperature_2m"
         try:
-            resp = _request_with_retry("GET", ENSEMBLE_BASE, params=params, timeout=20)
+            resp = _om_request("GET", ENSEMBLE_BASE, params=params, timeout=20)
             resp.raise_for_status()
             _ensemble_cb.record_success()
         except Exception as _exc:
@@ -612,7 +636,7 @@ def _fetch_model_ensemble(
         daily_var = "temperature_2m_max" if var == "max" else "temperature_2m_min"
         params["daily"] = daily_var
         try:
-            resp = _request_with_retry("GET", ENSEMBLE_BASE, params=params, timeout=20)
+            resp = _om_request("GET", ENSEMBLE_BASE, params=params, timeout=20)
             resp.raise_for_status()
             _ensemble_cb.record_success()
         except Exception as _exc:
@@ -1937,9 +1961,7 @@ def _get_consensus_probs(
                     "forecast_days": 7,
                 }
                 try:
-                    resp = _request_with_retry(
-                        "GET", ENSEMBLE_BASE, params=params, timeout=20
-                    )
+                    resp = _om_request("GET", ENSEMBLE_BASE, params=params, timeout=20)
                     if not resp:
                         return None, None
                     resp.raise_for_status()
@@ -2055,7 +2077,7 @@ def _fetch_ensemble_precip(
                 "timezone": tz,
                 "forecast_days": 16,
             }
-            resp = _request_with_retry("GET", ENSEMBLE_BASE, params=params, timeout=20)
+            resp = _om_request("GET", ENSEMBLE_BASE, params=params, timeout=20)
             resp.raise_for_status()
             _ensemble_cb.record_success()
             daily = resp.json().get("daily", {})

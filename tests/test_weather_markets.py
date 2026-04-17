@@ -722,3 +722,21 @@ def test_model_consensus_false_when_models_disagree(monkeypatch):
     result = analyze_trade(enriched)
     assert result is not None, "analyze_trade returned None — fix the enriched dict"
     assert result["model_consensus"] is False
+
+
+def test_om_rate_limit_enforces_interval(monkeypatch):
+    """_om_rate_limit ensures at least _OM_MIN_INTERVAL seconds between calls."""
+    import time
+
+    import weather_markets as wm
+
+    # Reset state
+    monkeypatch.setattr(wm, "_OM_LAST_REQUEST_TS", 0.0)
+    monkeypatch.setattr(wm, "_OM_MIN_INTERVAL", 0.1)
+
+    t0 = time.monotonic()
+    wm._om_rate_limit()
+    wm._om_rate_limit()
+    elapsed = time.monotonic() - t0
+
+    assert elapsed >= 0.08  # at least ~_OM_MIN_INTERVAL between two calls
