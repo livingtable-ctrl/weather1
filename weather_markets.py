@@ -562,7 +562,7 @@ def fetch_temperature_nbm(city: str, target_date: date) -> float | None:
                 "end_date": target_date.isoformat(),
                 "timezone": "auto",
             },
-            timeout=15,
+            timeout=8,
         )
         resp.raise_for_status()
         _ensemble_cb.record_success()
@@ -636,7 +636,7 @@ def fetch_temperature_pirate_weather(city: str, target_date: date) -> dict | Non
                 "extend": "hourly",
             }
 
-        resp = _request_with_retry("GET", url, params=params, timeout=15)
+        resp = _request_with_retry("GET", url, params=params, timeout=8)
         resp.raise_for_status()
         _pirate_cb.record_success()
         data = resp.json()
@@ -926,7 +926,7 @@ def fetch_temperature_ecmwf(city: str, target_date: date) -> float | None:
                 "end_date": target_date.isoformat(),
                 "timezone": "auto",
             },
-            timeout=15,
+            timeout=8,
         )
         resp.raise_for_status()
         _ensemble_cb.record_success()

@@ -99,7 +99,7 @@ _load_station_cache()
 def _get(url: str, params: dict | None = None) -> dict:
     _t0 = time.perf_counter()
     resp = _session.get(
-        url, params=params, timeout=15
+        url, params=params, timeout=8
     )  # #125: session reuses connections
     _elapsed = time.perf_counter() - _t0
     # #108: warn on slow NWS responses
