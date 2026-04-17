@@ -1,5 +1,5 @@
 """
-ML-based bias correction — GradientBoosting per-city temperature error correction.
+ML-based probability calibration — GradientBoosting per-city correction of our_prob toward true outcome frequency.
 Requires 200+ settled predictions per city to outperform static bias table.
 Train: python main.py train-bias
 """
@@ -13,12 +13,6 @@ from pathlib import Path
 _log = logging.getLogger(__name__)
 _MODEL_PATH = Path(__file__).parent / "data" / "bias_models.pkl"
 _MODELS_CACHE: dict | None = None
-
-
-def _build_features(
-    forecast_temp: float, month: int, days_out: int, spread_f: float = 0.0
-) -> list:
-    return [forecast_temp, month, days_out, spread_f]
 
 
 def _load_models() -> dict:
@@ -116,26 +110,26 @@ def train_bias_model(min_samples: int = 200) -> dict:
     return models
 
 
-def apply_ml_bias(
+def apply_ml_prob_correction(
     city: str,
-    forecast_temp: float,
+    our_prob: float,
     month: int,
     days_out: int,
-    spread_f: float = 0.0,
 ) -> float:
     """
-    Apply ML-based bias correction to a forecast temperature.
-    Falls back to forecast_temp unchanged if no model exists for the city.
+    Apply ML-based probability calibration correction.
+    The model predicts (actual - our_prob) residuals; we add that correction
+    and clamp to [0.0, 1.0].
+    Falls back to our_prob unchanged if no model exists for the city.
     """
     models = _load_models()
     model = models.get(city.upper())
     if model is None:
-        return forecast_temp
+        return our_prob
 
     try:
-        features = _build_features(forecast_temp, month, days_out, spread_f)
-        correction = float(model.predict([features])[0])
-        return forecast_temp - correction
+        correction = float(model.predict([[our_prob, month, days_out, 0.0]])[0])
+        return max(0.0, min(1.0, our_prob + correction))
     except Exception as exc:
-        _log.debug("apply_ml_bias(%s): %s", city, exc)
-        return forecast_temp
+        _log.debug("apply_ml_prob_correction(%s): %s", city, exc)
+        return our_prob
