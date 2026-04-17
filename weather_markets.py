@@ -470,6 +470,25 @@ def get_weather_forecast(city: str, target_date: date) -> dict | None:
                 continue
 
     if not highs:
+        # Open-Meteo unavailable — try Pirate Weather (HRRR-based) as fallback
+        pw_high = fetch_temperature_pirate_weather(city, target_date)
+        if pw_high is not None:
+            _log.info(
+                "get_weather_forecast: using Pirate Weather fallback for %s", city
+            )
+            result = {
+                "date": target_date.isoformat(),
+                "city": city,
+                "high_f": pw_high,
+                "low_f": None,
+                "precip_in": 0.0,
+                "models_used": 1,
+                "high_range": (pw_high, pw_high),
+                "_source": "pirate_weather",
+            }
+            _FORECAST_CACHE[cache_key] = (result, time.monotonic())
+            _save_forecast_disk_entry(cache_key, result)
+            return result
         return None
 
     def _wavg(pairs: list[tuple[float, float]]) -> float:
@@ -535,6 +554,63 @@ def fetch_temperature_nbm(city: str, target_date: date) -> float | None:
     except Exception as exc:
         _ensemble_cb.record_failure()
         _log.debug("fetch_temperature_nbm(%s): %s", city, exc)
+        return None
+
+
+PIRATE_WEATHER_BASE = "https://api.pirateweather.net/forecast"
+
+# Separate circuit breaker for Pirate Weather so Open-Meteo failures don't bleed over.
+_pirate_cb = CircuitBreaker(
+    name="pirate_weather", failure_threshold=3, recovery_timeout=3 * 3600
+)
+
+
+def fetch_temperature_pirate_weather(city: str, target_date: date) -> float | None:
+    """
+    Fetch daily high temperature from Pirate Weather (HRRR/GFS/GEFS blend).
+    Used as fallback when Open-Meteo circuit breakers are open.
+
+    Requires PIRATE_WEATHER_API_KEY in environment.
+    Returns max temperature for target_date in °F, or None on failure.
+    """
+    api_key = os.getenv("PIRATE_WEATHER_API_KEY", "")
+    if not api_key:
+        return None
+
+    coords = CITY_COORDS.get(city)
+    if not coords:
+        return None
+    lat, lon, _ = coords
+
+    if _pirate_cb.is_open():
+        _log.warning("[CircuitBreaker] pirate_weather circuit open — skipping fetch")
+        return None
+
+    try:
+        # Request forecast for midnight on target_date (Unix timestamp)
+
+        target_dt = datetime(
+            target_date.year, target_date.month, target_date.day, tzinfo=UTC
+        )
+        ts = int(target_dt.timestamp())
+        url = f"{PIRATE_WEATHER_BASE}/{api_key}/{lat},{lon},{ts}"
+        resp = _request_with_retry(
+            "GET",
+            url,
+            params={"exclude": "currently,minutely,hourly,alerts,flags", "units": "us"},
+            timeout=15,
+        )
+        resp.raise_for_status()
+        _pirate_cb.record_success()
+        data = resp.json()
+        daily = data.get("daily", {}).get("data", [])
+        if not daily:
+            return None
+        high = daily[0].get("temperatureHigh")
+        return float(high) if high is not None else None
+    except Exception as exc:
+        _pirate_cb.record_failure()
+        _log.debug("fetch_temperature_pirate_weather(%s): %s", city, exc)
         return None
 
 

@@ -285,6 +285,7 @@ _KILL_SWITCH_PATH = Path(__file__).parent / "data" / ".kill_switch"
 BLACK_SWAN_CONSEC_LOSSES = int(os.getenv("BLACK_SWAN_CONSEC_LOSSES", "10"))
 BLACK_SWAN_DAILY_LOSS_PCT = float(os.getenv("BLACK_SWAN_DAILY_LOSS_PCT", "0.20"))
 BLACK_SWAN_BRIER_THRESHOLD = float(os.getenv("BLACK_SWAN_BRIER_THRESHOLD", "0.30"))
+BLACK_SWAN_BRIER_MIN_SAMPLES = int(os.getenv("BLACK_SWAN_BRIER_MIN_SAMPLES", "10"))
 
 
 def check_black_swan_conditions(
@@ -348,12 +349,24 @@ def check_black_swan_conditions(
     # 3. Brier score collapse
     try:
         from tracker import brier_score as _brier_score
+        from tracker import get_history as _get_history
 
-        bs = _brier_score()
-        if bs is not None and bs > BLACK_SWAN_BRIER_THRESHOLD:
-            triggered.append(
-                f"BLACK SWAN — Brier score collapse: {bs:.4f} "
-                f"(threshold: {BLACK_SWAN_BRIER_THRESHOLD}, random baseline: 0.25)"
+        settled = [
+            p for p in _get_history() if p.get("outcome") not in (None, "", "pending")
+        ]
+        if len(settled) >= BLACK_SWAN_BRIER_MIN_SAMPLES:
+            bs = _brier_score()
+            if bs is not None and bs > BLACK_SWAN_BRIER_THRESHOLD:
+                triggered.append(
+                    f"BLACK SWAN — Brier score collapse: {bs:.4f} "
+                    f"(threshold: {BLACK_SWAN_BRIER_THRESHOLD}, random baseline: 0.25)"
+                )
+        else:
+            _log.debug(
+                "black_swan: skipping Brier check — only %d settled prediction(s) "
+                "(min required: %d)",
+                len(settled),
+                BLACK_SWAN_BRIER_MIN_SAMPLES,
             )
     except Exception:
         pass
