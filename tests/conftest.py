@@ -10,16 +10,21 @@ import pytest
 
 @pytest.fixture(autouse=True)
 def reset_open_meteo_circuit_breaker():
-    """Reset the open_meteo circuit breaker before every test.
+    """Reset all weather_markets circuit breakers before every test.
 
-    The circuit breaker is a module-level singleton in weather_markets.py.
-    Tests that make real (or mocked) API calls can trip it, causing subsequent
-    tests in the same run to see the circuit as open and return None instead of
-    forecast data, producing false failures.
+    There are four CBs (_forecast_cb, _ensemble_cb, _weatherapi_cb, _pirate_cb),
+    all module-level singletons. Any test that trips one leaves it open for
+    subsequent tests, causing false failures (get_weather_forecast returns None).
     """
     import weather_markets
 
-    weather_markets._ensemble_cb.record_success()  # clears _failure_count and _opened_at
+    for cb in (
+        weather_markets._forecast_cb,
+        weather_markets._ensemble_cb,
+        weather_markets._weatherapi_cb,
+        weather_markets._pirate_cb,
+    ):
+        cb.record_success()  # clears _failure_count and _opened_at
     yield
 
 
