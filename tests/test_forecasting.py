@@ -5,40 +5,29 @@ import pytest
 
 
 class TestDynamicModelWeights:
-    def test_returns_none_when_insufficient_samples(self):
-        """Returns None when any model has < 5 samples."""
+    def test_returns_none_when_no_tracker_rows(self):
+        """Returns None when get_model_weights returns empty dict (no rows)."""
         from weather_markets import _dynamic_model_weights
 
-        fake_acc = {
-            "icon_seamless": {"mae": 2.0, "count": 3},
-            "gfs_seamless": {"mae": 2.5, "count": 10},
-        }
-        with patch("tracker.get_ensemble_member_accuracy", return_value=fake_acc):
+        with patch("tracker.get_model_weights", return_value={}):
             result = _dynamic_model_weights(city="NYC", month=1)
         assert result is None
 
-    def test_returns_inverse_mae_weights(self):
-        """Returns normalized inverse-MAE weights when all models have >= 5 samples."""
+    def test_returns_softmax_weights_from_tracker(self):
+        """Returns get_model_weights result when non-empty."""
         from weather_markets import _dynamic_model_weights
 
-        fake_acc = {
-            "icon_seamless": {"mae": 2.0, "count": 10},
-            "gfs_seamless": {"mae": 4.0, "count": 10},
-        }
-        with patch("tracker.get_ensemble_member_accuracy", return_value=fake_acc):
+        fake_weights = {"icon_seamless": 0.55, "gfs_seamless": 0.45}
+        with patch("tracker.get_model_weights", return_value=fake_weights):
             result = _dynamic_model_weights(city="NYC", month=1)
-        assert result is not None
-        # icon has lower MAE → higher weight
+        assert result == fake_weights
         assert result["icon_seamless"] > result["gfs_seamless"]
-        # weights normalised so they sum to number of models
-        assert abs(sum(result.values()) - len(result)) < 1e-9
 
-    def test_returns_none_when_tracker_empty(self):
-        """Returns None when tracker returns None (no data)."""
+    def test_returns_none_when_city_is_none(self):
+        """Returns None immediately when city is None (no tracker call needed)."""
         from weather_markets import _dynamic_model_weights
 
-        with patch("tracker.get_ensemble_member_accuracy", return_value=None):
-            result = _dynamic_model_weights(city="NYC", month=6)
+        result = _dynamic_model_weights(city=None, month=6)
         assert result is None
 
     def test_used_as_first_priority_in_forecast_model_weights(self):
@@ -646,3 +635,30 @@ class TestDynamicCacheTTL:
 
         # If _ttl_until_next_cycle was used for TTL check, it should have been called
         mock_ttl.assert_called()
+
+
+class TestForecastModelWeightsTrackerIntegration:
+    def test_tracker_weights_used_when_available(self):
+        """When tracker has 10+ model rows, _forecast_model_weights returns tracker weights."""
+        from weather_markets import _forecast_model_weights
+
+        tracker_weights = {
+            "gfs_seamless": 0.25,
+            "ecmwf_ifs04": 0.55,
+            "icon_seamless": 0.20,
+        }
+        with patch("tracker.get_model_weights", return_value=tracker_weights):
+            result = _forecast_model_weights(month=1, city="NYC")
+        assert result == tracker_weights
+
+    def test_seasonal_fallback_when_no_tracker_rows(self):
+        """When tracker has no rows (empty dict), _forecast_model_weights falls back to seasonal."""
+        from weather_markets import _forecast_model_weights
+
+        with (
+            patch("tracker.get_model_weights", return_value={}),
+            patch("weather_markets.load_learned_weights", return_value={}),
+        ):
+            result = _forecast_model_weights(month=7, city="NYC")
+        # seasonal summer: ecmwf_w = 1.5
+        assert result.get("ecmwf_ifs04") == 1.5

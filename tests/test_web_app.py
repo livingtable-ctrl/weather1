@@ -444,3 +444,104 @@ def test_price_improvement_endpoint_returns_valid_json(monkeypatch):
     assert "avg_improvement_cents" in data
     assert "total_trades" in data
     assert isinstance(data["total_trades"], int)
+
+
+# ── Phase 3: kill-switch API endpoints ───────────────────────────────────────
+
+
+class TestKillSwitchAPI:
+    def test_halt_creates_kill_switch_file(self, tmp_path, monkeypatch):
+        """POST /api/halt writes the kill-switch file with reason and timestamp."""
+        import json as _json
+
+        import web_app
+
+        ks_path = tmp_path / ".kill_switch"
+        monkeypatch.setattr(web_app, "_KS_PATH", ks_path)
+
+        app = web_app._build_app(client=None)
+        app.config["TESTING"] = True
+
+        with app.test_client() as c:
+            resp = c.post(
+                "/api/halt",
+                json={"reason": "test halt"},
+                content_type="application/json",
+            )
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data["halted"] is True
+        assert data["reason"] == "test halt"
+        assert ks_path.exists()
+        payload = _json.loads(ks_path.read_text())
+        assert payload["reason"] == "test halt"
+        assert "halted_at" in payload
+
+    def test_resume_removes_kill_switch_file(self, tmp_path, monkeypatch):
+        """POST /api/resume removes the kill-switch file."""
+        import web_app
+
+        ks_path = tmp_path / ".kill_switch"
+        ks_path.write_text('{"reason":"test"}')
+        monkeypatch.setattr(web_app, "_KS_PATH", ks_path)
+
+        app = web_app._build_app(client=None)
+        app.config["TESTING"] = True
+
+        with app.test_client() as c:
+            resp = c.post("/api/resume")
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data["resumed"] is True
+        assert data["was_halted"] is True
+        assert not ks_path.exists()
+
+    def test_status_includes_kill_switch_active(self, tmp_path, monkeypatch):
+        """GET /api/status includes kill_switch_active field (False when no file)."""
+        import web_app
+
+        ks_path = tmp_path / ".kill_switch"
+        monkeypatch.setattr(web_app, "_KS_PATH", ks_path)
+
+        app = web_app._build_app(client=None)
+        app.config["TESTING"] = True
+
+        with app.test_client() as c:
+            with (
+                patch("paper.get_balance", return_value=1000.0),
+                patch("paper.get_open_trades", return_value=[]),
+                patch("tracker.brier_score", return_value=0.10),
+                patch("paper.fear_greed_index", return_value=(50, "Neutral")),
+            ):
+                resp = c.get("/api/status")
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert "kill_switch_active" in data
+        assert data["kill_switch_active"] is False
+
+
+def test_status_includes_brier_drift(tmp_path, monkeypatch):
+    """GET /api/status includes brier_drift key with drifting field."""
+    import web_app
+
+    ks_path = tmp_path / ".kill_switch"
+    monkeypatch.setattr(web_app, "_KS_PATH", ks_path)
+
+    app = web_app._build_app(client=None)
+    app.config["TESTING"] = True
+
+    fake_drift = {"drifting": True, "message": "drift detected", "delta": 0.08}
+
+    with app.test_client() as c:
+        with (
+            patch("paper.get_balance", return_value=1000.0),
+            patch("paper.get_open_trades", return_value=[]),
+            patch("tracker.brier_score", return_value=0.10),
+            patch("paper.fear_greed_index", return_value=(50, "Neutral")),
+            patch("tracker.detect_brier_drift", return_value=fake_drift),
+        ):
+            resp = c.get("/api/status")
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert "brier_drift" in data
+    assert data["brier_drift"]["drifting"] is True

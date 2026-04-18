@@ -53,7 +53,7 @@ from tracker import (
     log_prediction,
     sync_outcomes,
 )
-from utils import MED_EDGE, MIN_EDGE, PAPER_MIN_EDGE, STRONG_EDGE
+from utils import DRIFT_TIGHTEN_EDGE, MED_EDGE, MIN_EDGE, PAPER_MIN_EDGE, STRONG_EDGE
 from weather_markets import (
     CITY_COORDS,
     _feels_like,
@@ -2300,13 +2300,20 @@ def cmd_cron(client: KalshiClient, min_edge: float = MIN_EDGE) -> None:
     except Exception as _e:
         _log.debug("cmd_cron: run_black_swan_check failed: %s", _e)
 
-    # P10.1 — drift detection (log warning only, non-blocking)
+    # P10.1 — drift detection; tighten STRONG_EDGE for this run when drifting
+    _effective_strong_edge = STRONG_EDGE
+    _drift_result: dict = {"drifting": False}
     try:
         from tracker import detect_brier_drift as _detect_brier_drift
 
-        _drift = _detect_brier_drift()
-        if _drift["drifting"]:
-            _log.warning("cmd_cron: %s", _drift["message"])
+        _drift_result = _detect_brier_drift()
+        if _drift_result["drifting"]:
+            _effective_strong_edge = STRONG_EDGE + DRIFT_TIGHTEN_EDGE
+            _log.warning(
+                "cmd_cron: %s — tightening STRONG_EDGE to %.2f for this run",
+                _drift_result["message"],
+                _effective_strong_edge,
+            )
     except Exception as _e:
         _log.debug("cmd_cron: detect_brier_drift failed: %s", _e)
 
@@ -2518,7 +2525,7 @@ def cmd_cron(client: KalshiClient, min_edge: float = MIN_EDGE) -> None:
                         "is_hedge": analysis.get("_is_hedge", False),
                     }
                 )
-                if abs(net_edge) >= STRONG_EDGE:
+                if abs(net_edge) >= _effective_strong_edge:
                     strong_opps.append((enriched, analysis))
                 elif abs(net_edge) >= MED_EDGE:
                     med_opps.append((enriched, analysis))

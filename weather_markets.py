@@ -417,6 +417,9 @@ def get_weather_forecast(city: str, target_date: date) -> dict | None:
 
     # Seasonal model weights — ECMWF more accurate in winter, GFS competitive in summer
     model_weights = _forecast_model_weights(target_date.month, city=city)
+    _log.debug(
+        "[weights] %s: %s", city, {m: round(v, 3) for m, v in model_weights.items()}
+    )
     highs: list[tuple[float, float]] = []  # (value, weight)
     lows: list[tuple[float, float]] = []
     precips: list[tuple[float, float]] = []
@@ -1362,40 +1365,19 @@ def _dynamic_model_weights(
     city: str | None = None, month: int | None = None, min_samples: int = 5
 ) -> dict | None:
     """
-    #25: Derive per-model blend weights from tracker MAE data via
-    get_ensemble_member_accuracy(). Returns inverse-MAE weights normalised so
-    weights sum to the number of models. Returns None if < min_samples per model.
-    Lower MAE → higher weight.
+    Derive per-model blend weights from tracker softmax-MAE data via
+    get_model_weights(). Returns None when city is None or tracker has no rows.
+    Falls back to equal weights when any model has < 10 obs. Lower MAE → higher weight.
     """
+    if city is None:
+        return None
     try:
-        from tracker import get_ensemble_member_accuracy
+        from tracker import get_model_weights as _gmw
 
-        season = None
-        if month is not None:
-            season = "winter" if month in (10, 11, 12, 1, 2, 3) else "summer"
-
-        acc = get_ensemble_member_accuracy(city=city, season=season)
+        w = _gmw(city=city, window_days=30)
+        return w if w else None
     except Exception:
         return None
-
-    if not acc:
-        return None
-
-    weights: dict[str, float] = {}
-    for model, stats in acc.items():
-        count = stats.get("count", 0)
-        mae = stats.get("mae", 0.0)
-        if count < min_samples or mae <= 0:
-            return None  # insufficient data for at least one model — don't use
-        weights[model] = 1.0 / mae
-
-    if not weights:
-        return None
-
-    # Normalise so weights sum to len(weights)
-    total = sum(weights.values())
-    n_models = len(weights)
-    return {m: v / total * n_models for m, v in weights.items()}
 
 
 def update_learned_weights_from_tracker(min_n: int = 20) -> dict:

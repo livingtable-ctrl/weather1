@@ -49,6 +49,9 @@ def get_min_edge_for_confidence(spread: float, is_live: bool = False) -> float:
 STRONG_EDGE = float(
     os.getenv("STRONG_EDGE", "0.30")
 )  # threshold for "STRONG BUY" label
+DRIFT_TIGHTEN_EDGE = float(
+    os.getenv("DRIFT_TIGHTEN_EDGE", "0.05")
+)  # added to STRONG_EDGE when Brier drift is detected
 MED_EDGE = float(
     os.getenv("MED_EDGE", "0.15")
 )  # threshold for medium-confidence auto-trade tier
