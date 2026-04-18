@@ -1,5 +1,5 @@
 """
-METAR same-day lock-in strategy.
+METAR same-day lock-in strategy + station-level observation recording (Phase 4 stub).
 After ~2 PM local time, if the daily high has clearly already peaked above/below
 the Kalshi threshold, the outcome is near-certain.
 Reported win rate: 85-90%.
@@ -7,8 +7,11 @@ Reported win rate: 85-90%.
 
 from __future__ import annotations
 
+import json
 import logging
+import threading
 from datetime import UTC, datetime
+from pathlib import Path
 
 import requests
 from requests.adapters import HTTPAdapter, Retry
@@ -146,3 +149,123 @@ def check_metar_lockout(
         **NOT_LOCKED,
         "reason": f"temperature {current_temp_f:.1f}°F within margin of {threshold_f}°F",
     }
+
+
+# ── Phase 4: station-level observation recording ──────────────────────────────
+
+# Maps city name (matching CITY_COORDS keys) to primary ICAO observation station.
+MARKET_STATION_MAP: dict[str, str] = {
+    "NYC": "KNYC",
+    "Chicago": "KMDW",
+    "LA": "KLAX",
+    "Miami": "KMIA",
+    "Boston": "KBOS",
+    "Dallas": "KDFW",
+    "Phoenix": "KPHX",
+    "Seattle": "KSEA",
+    "Denver": "KDEN",
+    "Atlanta": "KATL",
+}
+
+_OBS_PATH = Path("data/metar_observations.json")
+_OBS_LOCK = threading.Lock()
+_MIN_OBS_FOR_MODEL = 200
+
+
+def _load_obs() -> list[dict]:
+    if not _OBS_PATH.exists():
+        return []
+    try:
+        with _OBS_LOCK:
+            return json.loads(_OBS_PATH.read_text(encoding="utf-8"))
+    except Exception as exc:
+        _log.debug("metar: could not load observations: %s", exc)
+        return []
+
+
+def _save_obs(records: list[dict]) -> None:
+    try:
+        _OBS_PATH.parent.mkdir(parents=True, exist_ok=True)
+        with _OBS_LOCK:
+            _OBS_PATH.write_text(json.dumps(records, indent=2), encoding="utf-8")
+    except Exception as exc:
+        _log.debug("metar: could not save observations: %s", exc)
+
+
+def record_observation(
+    city: str,
+    date_str: str,
+    high_f: float,
+    low_f: float | None = None,
+    *,
+    proxy: bool = False,
+) -> None:
+    """
+    Append one observation record for city/date.
+
+    proxy=True when temp is estimated from market outcome (threshold ± 3°F)
+    rather than fetched directly from METAR. Proxy records still count toward
+    the _MIN_OBS_FOR_MODEL threshold.
+    """
+    station_id = MARKET_STATION_MAP.get(city)
+    if not station_id:
+        return
+
+    records = _load_obs()
+    # Deduplicate: replace existing record for same station+date
+    records = [
+        r
+        for r in records
+        if not (r["station_id"] == station_id and r["date"] == date_str)
+    ]
+    records.append(
+        {
+            "station_id": station_id,
+            "city": city,
+            "date": date_str,
+            "high_f": round(high_f, 2),
+            "low_f": round(low_f, 2) if low_f is not None else None,
+            "proxy": proxy,
+        }
+    )
+    _save_obs(records)
+    _log.debug(
+        "metar: recorded %s %s high=%.1f%s",
+        station_id,
+        date_str,
+        high_f,
+        " (proxy)" if proxy else "",
+    )
+
+
+def get_obs_count(city: str) -> int:
+    """Return the number of stored observations for this city's station."""
+    station_id = MARKET_STATION_MAP.get(city)
+    if not station_id:
+        return 0
+    return sum(1 for r in _load_obs() if r["station_id"] == station_id)
+
+
+def get_station_bias(city: str, month: int) -> float | None:
+    """
+    Return mean bias (forecast − observed) in °F for this station/month.
+    Returns None until _MIN_OBS_FOR_MODEL observations are available — at that
+    point the per-station model activates automatically with no code change.
+    """
+    station_id = MARKET_STATION_MAP.get(city)
+    if not station_id:
+        return None
+
+    records = _load_obs()
+    station_records = [r for r in records if r["station_id"] == station_id]
+
+    if len(station_records) < _MIN_OBS_FOR_MODEL:
+        return None
+
+    month_records = [r for r in station_records if int(r["date"][5:7]) == month]
+    if len(month_records) < 20:
+        return None
+
+    # Placeholder: once forecast temps are stored alongside observations,
+    # compute mean(forecast_high - observed_high) here.
+    return 0.0

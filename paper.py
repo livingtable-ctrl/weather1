@@ -646,6 +646,19 @@ def settle_paper_trade(trade_id: int, outcome_yes: bool) -> dict:
             # Score per-model forecast means against outcome for dynamic weighting
             _score_ensemble_members(t, outcome_yes)
 
+            # Phase 4: record proxy METAR observation so station-level bias can accumulate
+            try:
+                from metar import record_observation as _record_obs
+
+                _city = t.get("city")
+                _date = t.get("target_date")
+                _thr = t.get("condition_threshold")
+                if _city and _date and _thr is not None:
+                    _proxy_high = _thr + 3.0 if outcome_yes else _thr - 3.0
+                    _record_obs(_city, _date, _proxy_high, proxy=True)
+            except Exception:
+                pass
+
             # #55: record outcome on analysis_attempt so bias stats are queryable
             try:
                 from tracker import settle_analysis_attempt as _settle_attempt
