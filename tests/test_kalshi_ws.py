@@ -180,8 +180,10 @@ class TestWsHealth:
         import kalshi_ws
         import utils
 
-        monkeypatch.setattr(kalshi_ws, "_ws_last_message_ts", time.monotonic() - 1000)
+        # Use a small offset so last_msg is always > 0 on any machine/CI runner,
+        # then set TTL to 1 s so 5 s of idle always exceeds it.
+        monkeypatch.setattr(kalshi_ws, "_ws_last_message_ts", time.monotonic() - 5)
         monkeypatch.setattr(kalshi_ws, "_ws_alive", True)
-        monkeypatch.setattr(utils, "WS_CACHE_TTL_SECS", 900.0)
+        monkeypatch.setattr(utils, "WS_CACHE_TTL_SECS", 1.0)
         h = kalshi_ws.get_ws_health()
         assert h["stale"] is True
