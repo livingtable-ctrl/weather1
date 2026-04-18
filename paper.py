@@ -1395,7 +1395,8 @@ def is_streak_paused() -> bool:
 
 def is_accuracy_halted() -> bool:
     """Return True if rolling win rate over last ACCURACY_WINDOW_TRADES is below
-    ACCURACY_MIN_WIN_RATE. Requires ACCURACY_MIN_SAMPLE settled trades before firing."""
+    ACCURACY_MIN_WIN_RATE. Requires ACCURACY_MIN_SAMPLE settled trades before firing.
+    Also checks SPRT model degradation signal."""
     from utils import ACCURACY_MIN_SAMPLE, ACCURACY_MIN_WIN_RATE, ACCURACY_WINDOW_TRADES
 
     try:
@@ -1403,10 +1404,10 @@ def is_accuracy_halted() -> bool:
 
         win_rate, count = get_rolling_win_rate(window=ACCURACY_WINDOW_TRADES)
         if count < ACCURACY_MIN_SAMPLE:
-            return False
-        if win_rate is None:
-            return False
-        if win_rate < ACCURACY_MIN_WIN_RATE:
+            pass  # skip rolling check — insufficient data
+        elif win_rate is None:
+            pass
+        elif win_rate < ACCURACY_MIN_WIN_RATE:
             _log.warning(
                 "Accuracy circuit breaker: win rate %.1f%% over last %d trades "
                 "is below %.0f%% threshold — halting new trades",
@@ -1415,9 +1416,25 @@ def is_accuracy_halted() -> bool:
                 ACCURACY_MIN_WIN_RATE * 100,
             )
             return True
-        return False
     except Exception:
-        return False
+        pass
+
+    # SPRT check — detect model degradation faster than Brier accumulation
+    try:
+        import tracker
+
+        sprt = tracker.sprt_model_health()
+        if sprt["status"] == "degraded":
+            _log.warning(
+                "SPRT model degradation detected: llr=%.4f n=%d — halting new trades",
+                sprt.get("llr", 0.0),
+                sprt.get("n", 0),
+            )
+            return True
+    except Exception:
+        pass  # never block on SPRT failure
+
+    return False
 
 
 def get_daily_pnl(client=None) -> float:

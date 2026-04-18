@@ -185,6 +185,48 @@ def _release_cron_lock() -> None:
         _log.warning("cmd_cron: could not release lock: %s", _e)
 
 
+def _check_graduation_gate() -> None:
+    """Prevent accidental live trading before enough settled predictions exist.
+
+    Reads ENABLE_MICRO_LIVE env var. If 'true', verifies tracker has at least
+    utils.MIN_BRIER_SAMPLES settled predictions before allowing live trading to proceed.
+
+    Raises:
+        RuntimeError: when ENABLE_MICRO_LIVE='true' and count < MIN_BRIER_SAMPLES.
+    """
+    if os.getenv("ENABLE_MICRO_LIVE", "false").lower() != "true":
+        return
+
+    import tracker
+    import utils as _utils
+
+    count = tracker.count_settled_predictions()
+    if count < _utils.MIN_BRIER_SAMPLES:
+        raise RuntimeError(
+            f"Graduation gate: {count} settled predictions < "
+            f"MIN_BRIER_SAMPLES={_utils.MIN_BRIER_SAMPLES}. "
+            f"Set ENABLE_MICRO_LIVE=false or accumulate more paper trades."
+        )
+
+
+def _check_spend_cap_vs_balance() -> None:
+    """Warn if MAX_DAILY_SPEND exceeds the current paper balance.
+
+    A spend cap that exceeds the available balance can never trigger and indicates
+    a config mistake.
+    """
+    import paper as _paper
+
+    _bal = _paper.get_balance()
+    _spend_cap = float(os.getenv("MAX_DAILY_SPEND", "0"))
+    if _spend_cap > 0 and _spend_cap > _bal:
+        logging.warning(
+            "[cron] MAX_DAILY_SPEND=%.2f exceeds current balance=%.2f — cap will never trigger",
+            _spend_cap,
+            _bal,
+        )
+
+
 def _brier_sparkline() -> str:
     """
     Return a sparkline string showing weekly Brier trend, e.g. "▅▄▃▂▂▁"
@@ -2238,6 +2280,17 @@ def cmd_cron(client: KalshiClient, min_edge: float = MIN_EDGE) -> None:
         _log.warning("[cron] accuracy circuit breaker active — skipping market scan")
         _release_cron_lock()
         return
+
+    # Graduation gate — prevent accidental live trading before sufficient predictions exist
+    try:
+        _check_graduation_gate()
+    except RuntimeError as _gate_err:
+        _log.error("%s", _gate_err)
+        _release_cron_lock()
+        return
+
+    # Spend cap validation — warn if MAX_DAILY_SPEND exceeds current balance
+    _check_spend_cap_vs_balance()
 
     print(
         cyan(
