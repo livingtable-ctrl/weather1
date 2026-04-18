@@ -33,6 +33,7 @@ from colors import (
     signal_color,
     yellow,
 )
+from config import load_and_validate as _load_config
 from consistency import find_violations
 from kalshi_client import KalshiClient
 from notify import alert_strong_signal
@@ -72,6 +73,8 @@ from weather_markets import (
 )
 
 load_dotenv()
+
+_bot_config = _load_config()
 
 REFRESH_SECS = 300  # watch mode interval
 _WATCH_STATE_PATH = Path(__file__).parent / "data" / ".watch_state.json"
