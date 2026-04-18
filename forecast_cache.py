@@ -3,16 +3,11 @@ Thread-safe in-memory forecast cache with TTL expiry.
 Replaces the module-level globals in weather_markets.py.
 """
 
-from __future__ import annotations
-
 import threading
 import time
-from typing import Generic, TypeVar
-
-T = TypeVar("T")
 
 
-class ForecastCache(Generic[T]):
+class ForecastCache[T]:
     """
     Thread-safe dict-based cache with per-entry TTL.
     Keys are arbitrary hashable objects; values are typed by the T parameter.
