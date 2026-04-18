@@ -42,23 +42,29 @@ def _validate_crc(data: dict) -> None:
 
 
 def _compute_checksum(payload: dict) -> str:
-    """Compute SHA-256 checksum (first 8 hex chars) of payload excluding '_checksum' key."""
+    """Compute SHA-256 checksum (first 16 hex chars) of payload excluding '_checksum' key."""
     body = json.dumps(
         {k: v for k, v in payload.items() if k != "_checksum"},
         indent=2,
         sort_keys=True,
         default=str,
     ).encode()
-    return hashlib.sha256(body).hexdigest()[:8]
+    return hashlib.sha256(body).hexdigest()[:16]
 
 
 def _validate_checksum(data: dict) -> None:
-    """Validate SHA-256 checksum in data dict. Raises ValueError on mismatch."""
+    """Validate SHA-256 checksum in data dict. Raises ValueError on mismatch.
+
+    Accepts legacy 8-char checksums (prefix of the full 16-char value) to allow
+    seamless migration from the old 8-char format without data corruption errors.
+    """
     stored = data.get("_checksum")
     if stored is None:
         return
     expected = _compute_checksum(data)
-    if stored != expected:
+    # Accept stored value if it equals the expected value OR is a valid prefix of it
+    # (handles migration from 8-char to 16-char checksums).
+    if not expected.startswith(stored):
         raise ValueError(
             f"paper trades checksum mismatch: stored={stored!r}, expected={expected!r}"
         )
@@ -345,10 +351,19 @@ def drawdown_scaling_factor() -> float:
 
 
 def _dynamic_kelly_cap() -> float:
-    """Determine STRONG-tier per-trade cap from current Brier score."""
+    """Determine STRONG-tier per-trade cap from current Brier score.
+
+    Returns a conservative $50 cap when fewer than MIN_BRIER_SAMPLES predictions
+    have settled — Brier is unreliable on small samples.
+    """
+    from utils import MIN_BRIER_SAMPLES
+
     try:
         from tracker import brier_score as _brier
+        from tracker import count_settled_predictions as _count
 
+        if _count() < MIN_BRIER_SAMPLES:
+            return 50.0  # conservative until we have real data
         score = _brier()
         if score is None:
             return 200.0
@@ -360,16 +375,24 @@ def _dynamic_kelly_cap() -> float:
             return 300.0
         return 200.0
     except Exception:
-        return 200.0
+        return 50.0
 
 
 def _method_kelly_multiplier(method: str | None) -> float:
-    """Scale Kelly by per-method Brier. Poor method (Brier > 0.20) → 0.75×."""
+    """Scale Kelly by per-method Brier. Poor method (Brier > 0.20) → 0.75×.
+
+    Returns 1.0 (neutral) when fewer than MIN_BRIER_SAMPLES predictions have settled.
+    """
     if not method:
         return 1.0
+    from utils import MIN_BRIER_SAMPLES
+
     try:
         from tracker import brier_score_by_method as _by_method
+        from tracker import count_settled_predictions as _count
 
+        if _count() < MIN_BRIER_SAMPLES:
+            return 1.0
         scores = _by_method(min_samples=5)
         if method not in scores:
             return 1.0

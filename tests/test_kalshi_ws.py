@@ -103,3 +103,59 @@ class TestBuildSubscribeMessage:
         assert "params" in msg
         assert "channels" in msg["params"]
         assert "orderbook_delta" in msg["params"]["channels"]
+
+
+class TestCacheStaleness:
+    def test_fresh_entry_returns_price(self, monkeypatch):
+        """An entry timestamped <15 min ago is returned normally."""
+        from datetime import UTC, datetime
+
+        import kalshi_ws
+
+        monkeypatch.setattr(
+            kalshi_ws,
+            "_orderbook",
+            {
+                "KXTEMP-25": {
+                    "mid_price": 0.65,
+                    "ts": datetime.now(UTC).isoformat(),
+                }
+            },
+        )
+        assert kalshi_ws.get_cached_mid_price("KXTEMP-25") == 0.65
+
+    def test_stale_entry_returns_none(self, monkeypatch):
+        """An entry timestamped >WS_CACHE_TTL_SECS ago returns None."""
+        from datetime import UTC, datetime, timedelta
+
+        import kalshi_ws
+
+        old_ts = (datetime.now(UTC) - timedelta(seconds=1000)).isoformat()
+        monkeypatch.setattr(
+            kalshi_ws,
+            "_orderbook",
+            {
+                "KXTEMP-25": {
+                    "mid_price": 0.65,
+                    "ts": old_ts,
+                }
+            },
+        )
+        monkeypatch.setenv("WS_CACHE_TTL_SECS", "900")
+        import importlib
+
+        import utils
+
+        importlib.reload(utils)
+        assert kalshi_ws.get_cached_mid_price("KXTEMP-25") is None
+
+    def test_missing_ts_returns_none(self, monkeypatch):
+        """An entry with no ts field is treated as stale."""
+        import kalshi_ws
+
+        monkeypatch.setattr(
+            kalshi_ws,
+            "_orderbook",
+            {"KXTEMP-25": {"mid_price": 0.65}},  # no "ts"
+        )
+        assert kalshi_ws.get_cached_mid_price("KXTEMP-25") is None

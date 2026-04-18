@@ -897,14 +897,51 @@ def test_kelly_bet_dollars_method_scaling_reduces_kelly(mock_balance_1000, monke
     """Poor-performing method (Brier > 0.20) reduces Kelly by 25%."""
     import paper
 
-    # Use a high cap so the multiplier effect isn't masked by the per-trade ceiling.
-    # Multiplier: no method → 1.0 (unscaled), any method → 0.75 (poor Brier).
+    # Patch DATA_PATH again after reload (fixture patching is overwritten by reload)
+    monkeypatch.setattr(paper, "DATA_PATH", mock_balance_1000.DATA_PATH)
+    monkeypatch.setattr(paper, "get_balance", lambda: 1000.0)
+    monkeypatch.setattr(paper, "drawdown_scaling_factor", lambda: 1.0)
+    monkeypatch.setattr(paper, "is_streak_paused", lambda: False)
     monkeypatch.setattr(paper, "_dynamic_kelly_cap", lambda: 500.0)
     monkeypatch.setattr(paper, "_method_kelly_multiplier", lambda m: 0.75 if m else 1.0)
-    base = paper.kelly_bet_dollars(0.5)
-    scaled = paper.kelly_bet_dollars(0.5, method="normal_dist")
+
+    base = paper.kelly_bet_dollars(0.5)  # method=None  → multiplier=1.0
+    scaled = paper.kelly_bet_dollars(0.5, method="normal_dist")  # multiplier=0.75
+
+    # With balance=1000, scale=1.0: fraction=0.25, dollars=250.0 (well under $500 cap)
     assert scaled < base
     assert abs(scaled - base * 0.75) < 0.02
+
+
+class TestDynamicKellyCapMinSamples:
+    def test_cap_returns_conservative_when_too_few_samples(self, monkeypatch):
+        """_dynamic_kelly_cap returns $50 (conservative) when < MIN_BRIER_SAMPLES settled."""
+        import paper
+        import tracker
+
+        monkeypatch.setattr(tracker, "brier_score", lambda: 0.006)
+        monkeypatch.setattr(tracker, "count_settled_predictions", lambda: 5)
+        assert paper._dynamic_kelly_cap() == 50.0
+
+    def test_cap_uses_brier_when_enough_samples(self, monkeypatch):
+        """_dynamic_kelly_cap uses Brier scaling when >= MIN_BRIER_SAMPLES settled."""
+        import paper
+        import tracker
+
+        monkeypatch.setattr(tracker, "brier_score", lambda: 0.04)
+        monkeypatch.setattr(tracker, "count_settled_predictions", lambda: 30)
+        assert paper._dynamic_kelly_cap() == 500.0
+
+    def test_method_multiplier_returns_neutral_when_too_few_samples(self, monkeypatch):
+        """_method_kelly_multiplier returns 1.0 when < MIN_BRIER_SAMPLES settled."""
+        import paper
+        import tracker
+
+        monkeypatch.setattr(
+            tracker, "brier_score_by_method", lambda min_samples: {"ensemble": 0.25}
+        )
+        monkeypatch.setattr(tracker, "count_settled_predictions", lambda: 5)
+        assert paper._method_kelly_multiplier("ensemble") == 1.0
 
 
 # ── Task 3: entry_hour and close_paper_early ──────────────────────────────────

@@ -138,18 +138,32 @@ def read_orderbook_cache() -> dict:
 
 
 def get_cached_mid_price(ticker: str) -> float | None:
-    """Return the cached mid-price for a ticker, or None if not cached."""
+    """Return the cached mid-price for a ticker, or None if not cached or stale."""
+    from utils import WS_CACHE_TTL_SECS
+
+    def _is_fresh(entry: dict) -> bool:
+        ts_str = entry.get("ts")
+        if not ts_str:
+            return False
+        try:
+            ts = datetime.fromisoformat(ts_str)
+            age = (datetime.now(UTC) - ts).total_seconds()
+            return age < WS_CACHE_TTL_SECS
+        except (ValueError, TypeError):
+            return False
+
     # Try in-memory first (faster than disk read)
     with _cache_lock:
         entry = _orderbook.get(ticker)
-    if entry and entry.get("mid_price") is not None:
+    if entry and _is_fresh(entry) and entry.get("mid_price") is not None:
         return entry["mid_price"]
+
     # Fall back to disk cache
     cache = read_orderbook_cache()
     entry = cache.get(ticker)
-    if not entry:
-        return None
-    return entry.get("mid_price")
+    if entry and _is_fresh(entry):
+        return entry.get("mid_price")
+    return None
 
 
 # ── WebSocket subscription ────────────────────────────────────────────────────

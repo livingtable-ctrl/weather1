@@ -93,8 +93,16 @@ MICRO_LIVE_MIN_DOLLARS: float = float(os.getenv("MICRO_LIVE_MIN_DOLLARS", "1.0")
 # for two consecutive ISO weeks.
 BRIER_ALERT_THRESHOLD: float = float(os.getenv("BRIER_ALERT_THRESHOLD", "0.22"))
 
+# Minimum settled predictions required before Brier score is used to scale bet size.
+# Below this count the Brier is statistically unreliable (small-sample luck).
+MIN_BRIER_SAMPLES: int = int(os.getenv("MIN_BRIER_SAMPLES", "30"))
+
 # #P10.4: Live slippage alert threshold in cents.
 SLIPPAGE_ALERT_CENTS: float = float(os.getenv("SLIPPAGE_ALERT_CENTS", "0.5"))
+
+# Orderbook cache TTL — entries older than this are treated as stale and ignored.
+# Default: 15 minutes. If the WS is silent for 15+ minutes the cache is worthless.
+WS_CACHE_TTL_SECS: float = float(os.getenv("WS_CACHE_TTL_SECS", "900"))
 
 # ── Shared math ───────────────────────────────────────────────────────────────
 
