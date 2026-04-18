@@ -718,6 +718,52 @@ def get_open_trades() -> list[dict]:
     return [t for t in _load()["trades"] if not t["settled"]]
 
 
+def check_stop_losses(
+    open_trades: list[dict], current_yes_prices: dict[str, float]
+) -> list[str]:
+    """
+    Return tickers whose unrealized loss has breached the stop-loss threshold.
+
+    Stop fires when: unrealized_loss > cost / STOP_LOSS_MULT
+    i.e. for default STOP_LOSS_MULT=2, exit when the position has lost >50% of cost.
+
+    current_yes_prices: {ticker: yes_ask (0–1 float)}
+    """
+    from utils import STOP_LOSS_MULT
+
+    if STOP_LOSS_MULT <= 0:
+        return []
+
+    exits: list[str] = []
+    for t in open_trades:
+        ticker = t.get("ticker", "")
+        entry_price = t.get("entry_price", 0.0)
+        qty = t.get("quantity", 0)
+        cost = t.get("cost") or entry_price * qty
+        side = t.get("side", "yes")
+
+        if not ticker or qty <= 0 or cost <= 0:
+            continue
+
+        current_yes = current_yes_prices.get(ticker)
+        if current_yes is None:
+            continue
+
+        # Current value per contract for our side
+        if side == "yes":
+            current_side_price = current_yes
+        else:
+            current_side_price = 1.0 - current_yes
+
+        unrealized_pnl = (current_side_price - entry_price) * qty
+        stop_threshold = -(cost / STOP_LOSS_MULT)
+
+        if unrealized_pnl < stop_threshold:
+            exits.append(ticker)
+
+    return exits
+
+
 def get_city_date_exposure(city: str, target_date_str: str) -> float:
     """
     Return the fraction of STARTING_BALANCE committed to open trades for

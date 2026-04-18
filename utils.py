@@ -75,6 +75,11 @@ DRAWDOWN_HALT_PCT = float(os.getenv("DRAWDOWN_HALT_PCT", "0.50"))  # halt below 
 # Set to 0 to disable. Override via MAX_VAR_DOLLARS env var.
 MAX_VAR_DOLLARS = float(os.getenv("MAX_VAR_DOLLARS", "200.0"))
 
+# #P7: Stop-loss multiplier. A position is closed early when its unrealized loss
+# exceeds cost / STOP_LOSS_MULT. Default 2.0 → exit when price halves (lost 50% of cost).
+# Set to 0 to disable stop-losses entirely.
+STOP_LOSS_MULT = float(os.getenv("STOP_LOSS_MULT", "2.0"))
+
 # ── Shared math ───────────────────────────────────────────────────────────────
 
 
@@ -146,6 +151,7 @@ def get_config_fingerprint() -> dict:
         "FIXED_BET_DOLLARS": FIXED_BET_DOLLARS,
         "DRAWDOWN_HALT_PCT": DRAWDOWN_HALT_PCT,
         "MAX_VAR_DOLLARS": MAX_VAR_DOLLARS,
+        "STOP_LOSS_MULT": STOP_LOSS_MULT,
     }
 
 

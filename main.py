@@ -2605,6 +2605,43 @@ def cmd_cron(client: KalshiClient, min_edge: float = MIN_EDGE) -> None:
     except Exception:
         pass
 
+    # Phase 7 — price-based stop-loss check before model-based early exits
+    try:
+        import paper as _paper_sl
+
+        _open_for_sl = _paper_sl.get_open_trades()
+        if _open_for_sl and client is not None:
+            _yes_prices: dict[str, float] = {}
+            for _t in _open_for_sl:
+                try:
+                    _mkt = client.get_market(_t["ticker"])
+                    _yes_prices[_t["ticker"]] = (_mkt.get("yes_ask", 0) or 0) / 100
+                except Exception:
+                    pass
+            _sl_tickers = _paper_sl.check_stop_losses(_open_for_sl, _yes_prices)
+            for _sl_ticker in _sl_tickers:
+                _sl_trade = next(
+                    (t for t in _open_for_sl if t["ticker"] == _sl_ticker), None
+                )
+                if _sl_trade:
+                    _sl_exit_price = _yes_prices.get(
+                        _sl_ticker, _sl_trade["entry_price"]
+                    )
+                    if _sl_trade.get("side") == "no":
+                        _sl_exit_price = 1.0 - _sl_exit_price
+                    _paper_sl.close_paper_early(_sl_trade["id"], _sl_exit_price)
+                    _log.warning(
+                        "[StopLoss] Closed %s — price moved against position",
+                        _sl_ticker,
+                    )
+                    print(
+                        red(
+                            f"  [StopLoss] Closed {_sl_ticker} — price breached stop threshold"
+                        )
+                    )
+    except Exception as _e:
+        _log.debug("cmd_cron: stop-loss check failed: %s", _e)
+
     # Check open positions for early exit opportunities
     try:
         exits = _check_early_exits(client=client)
