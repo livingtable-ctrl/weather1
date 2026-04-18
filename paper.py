@@ -42,14 +42,14 @@ def _validate_crc(data: dict) -> None:
 
 
 def _compute_checksum(payload: dict) -> str:
-    """Compute SHA-256 checksum (first 8 hex chars) of payload excluding '_checksum' key."""
+    """Compute SHA-256 checksum (first 16 hex chars) of payload excluding '_checksum' key."""
     body = json.dumps(
         {k: v for k, v in payload.items() if k != "_checksum"},
         indent=2,
         sort_keys=True,
         default=str,
     ).encode()
-    return hashlib.sha256(body).hexdigest()[:8]
+    return hashlib.sha256(body).hexdigest()[:16]
 
 
 def _validate_checksum(data: dict) -> None:
