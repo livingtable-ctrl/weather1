@@ -1,6 +1,6 @@
 # Research Findings: External Systems & Improvement Ideas
 
-**Last updated:** 2026-04-16  
+**Last updated:** 2026-04-16 (Phase F WebSocket complete)  
 **Purpose:** Compiled research from similar Kalshi trading bots, weather forecasting APIs, academic papers, and prediction market strategies. Use this as a reference for future development.
 
 ---
@@ -237,10 +237,12 @@ Flag markets within N hours of a contested preliminary reading (when METAR diver
 
 ## Part 6 — Execution Improvements
 
-### E1. Kalshi WebSocket API (Real-Time Order Book)
+### E1. Kalshi WebSocket API (Real-Time Order Book) ✅ IMPLEMENTED
 **Production URL:** `wss://api.elections.kalshi.com/trade-api/ws/v2`
 
-**⚠️ March 12, 2026 API Migration:** Prices now expressed as dollar strings with 4 decimal places (`"0.6500"`). Use `yes_dollars_fp` and `no_dollars_fp` fields — NOT legacy integer cents fields. Check that current code handles this correctly.
+**Status:** `kalshi_ws.py` ships `KalshiWebSocket`, `parse_message`, `update_orderbook_cache`, `get_cached_mid_price`. Wired into `cmd_cron()` (starts background thread if `KALSHI_API_KEY` + `KALSHI_PRIVATE_KEY_PEM` env vars set) and `_validate_trade_opportunity` (stores cached mid as `opp["_ws_mid_price"]`). **Next step:** call `_ws.subscribe(active_tickers)` after the market scan to populate the cache.
+
+**⚠️ March 12, 2026 API Migration:** Prices now expressed as dollar strings with 4 decimal places (`"0.6500"`). Use `yes_dollars_fp` and `no_dollars_fp` fields — NOT legacy integer cents fields. `kalshi_ws.py` handles this correctly.
 
 **Channels:** `orderbook_delta`, `ticker`, `trade`, `fill`
 **Flow:** First message = full `orderbook_snapshot`, subsequent = `orderbook_delta`
@@ -294,10 +296,7 @@ Track which portion of profit/loss came from each signal source:
 - MOS forecast
 - Market microstructure
 
-### M6. Telegram Alerting
-Real-time trade notifications, parameter adjustment, and emergency stops without needing the Flask dashboard open. Mobile-accessible monitoring. `yllvar/Kalshi-Quant-TeleBot` has a working implementation.
-
-### M7. A/B Parameter Experiments
+### M6. A/B Parameter Experiments
 Run edge threshold variants in parallel with capped exposure. Auto-disable underperforming variants after N trades. Fills P5.3 gap in the priority checklist.
 
 ---
@@ -334,7 +333,7 @@ Run edge threshold variants in parallel with capped exposure. Auto-disable under
 11. **Walk-forward backtesting** — fills P5 gap
 12. **Per-city per-season Brier segmentation** — fills P10.1 drift detection gap
 13. **Reliability diagram in dashboard** — calibration visualization
-14. **Kalshi WebSocket integration** — real-time order book for microstructure signals
+14. ~~**Kalshi WebSocket integration** — real-time order book for microstructure signals~~ ✅ **DONE** (Phase F: `kalshi_ws.py` + wired into cron at `8c0f113`/`a0e8d4b`; ticker subscribe pending)
 15. **Gaussian probability distribution method** — replace raw ensemble fraction counting
 
 ### Long-term
@@ -342,7 +341,6 @@ Run edge threshold variants in parallel with capped exposure. Auto-disable under
 17. **Cross-platform arbitrage scanner** — Kalshi ↔ Polymarket price gap monitoring
 18. **A/B experiment framework** — fills P5.3 gap
 19. **Strategy P&L attribution** — per-signal profit breakdown
-20. **Telegram alerting**
 
 ---
 
