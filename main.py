@@ -2363,6 +2363,15 @@ def cmd_cron(client: KalshiClient, min_edge: float = MIN_EDGE) -> None:
     except Exception as exc:
         _log.debug("WebSocket not available: %s", exc)
 
+    from kalshi_ws import get_ws_health as _get_ws_health
+
+    _ws_h = _get_ws_health()
+    if _ws_h["stale"]:
+        _log.warning(
+            "[cron] WebSocket cache is stale (idle %.0fs) — mid-prices may be unreliable",
+            _ws_h["idle_secs"],
+        )
+
     log_path = Path(__file__).parent / "data" / "cron.log"
     log_path.parent.mkdir(exist_ok=True)
 

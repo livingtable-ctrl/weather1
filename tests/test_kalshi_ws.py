@@ -159,3 +159,28 @@ class TestCacheStaleness:
             {"KXTEMP-25": {"mid_price": 0.65}},  # no "ts"
         )
         assert kalshi_ws.get_cached_mid_price("KXTEMP-25") is None
+
+
+class TestWsHealth:
+    def test_get_ws_health_initially_not_alive(self):
+        """Fresh import: ws not alive, no messages recorded."""
+        import importlib
+
+        import kalshi_ws
+
+        importlib.reload(kalshi_ws)
+        h = kalshi_ws.get_ws_health()
+        assert h["alive"] is False
+        assert h["idle_secs"] is None
+
+    def test_get_ws_health_stale_flag(self, monkeypatch):
+        """stale=True when idle > WS_CACHE_TTL_SECS."""
+        import time
+
+        import kalshi_ws
+
+        kalshi_ws._ws_last_message_ts = time.monotonic() - 1000
+        kalshi_ws._ws_alive = True
+        monkeypatch.setenv("WS_CACHE_TTL_SECS", "900")
+        h = kalshi_ws.get_ws_health()
+        assert h["stale"] is True
