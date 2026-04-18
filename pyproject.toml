@@ -7,7 +7,6 @@ markers = [
 
 [tool.coverage.run]
 omit = [
-    "paper.py",
     "backtest.py",
     "param_sweep.py",
     "feature_importance.py",
