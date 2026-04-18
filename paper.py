@@ -103,7 +103,7 @@ def _env_int(name: str, default: str) -> int:
 
 
 # #121: drawdown halt configurable via env (default 50%)
-MAX_DRAWDOWN_FRACTION = _env_float("DRAWDOWN_HALT_PCT", "0.50")
+MAX_DRAWDOWN_FRACTION = _env_float("DRAWDOWN_HALT_PCT", "0.20")
 
 MAX_DAILY_LOSS_PCT = _env_float("MAX_DAILY_LOSS_PCT", "0.03")  # default 3%
 MAX_POSITION_AGE_DAYS = _env_int("MAX_POSITION_AGE_DAYS", "7")

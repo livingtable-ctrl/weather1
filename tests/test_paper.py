@@ -228,11 +228,11 @@ class TestMaxDrawdown(unittest.TestCase):
         result = paper.kelly_bet_dollars(0.10, cap=50.0)
         self.assertAlmostEqual(result, 50.0)
 
-    def test_boundary_exactly_500_not_paused(self):
-        """Balance exactly at $500 (= 50% of $1000) is NOT paused (strict less-than)."""
+    def test_boundary_exactly_800_not_paused(self):
+        """Balance exactly at $800 (= 80% of $1000, 20% halt) is NOT paused (strict less-than)."""
         import paper
 
-        paper.place_paper_order("TK", "yes", 500, 1.00)  # cost=$500 → balance=$500
+        paper.place_paper_order("TK", "yes", 200, 1.00)  # cost=$200 → balance=$800
         self.assertFalse(paper.is_paused_drawdown())
 
 
@@ -553,35 +553,35 @@ class TestDrawdownScaling(unittest.TestCase):
 
         self.assertEqual(paper.drawdown_scaling_factor(), 1.0)
 
-    def test_zero_scaling_below_50_pct(self):
-        """Below 50% of peak → scale = 0.0 (fully paused)."""
+    def test_zero_scaling_below_20_pct(self):
+        """Below 20% of peak → scale = 0.0 (fully paused)."""
         import paper
 
-        paper.place_paper_order("TK", "yes", 600, 1.00)  # balance → $400 (40% of $1000)
+        paper.place_paper_order("TK", "yes", 250, 1.00)  # balance → $750 (75% of $1000)
         self.assertEqual(paper.drawdown_scaling_factor(), 0.0)
 
-    def test_tier2_scaling_between_50_and_55_pct(self):
-        """Balance at 52% of peak → step tier = 0.10 (TIER_1–TIER_2 with 50% halt)."""
+    def test_tier2_scaling_between_80_and_85_pct(self):
+        """Balance at 82% of peak → step tier = 0.10 (TIER_1–TIER_2 with 20% halt)."""
         import paper
 
-        paper.place_paper_order("TK", "yes", 480, 1.00)  # balance → $520 (52% of $1000)
-        # Tiers relative to 50% halt: TIER_1=0.50, TIER_2=0.55 → survival 0.10
+        paper.place_paper_order("TK", "yes", 180, 1.00)  # balance → $820 (82% of $1000)
+        # Tiers relative to 20% halt: TIER_1=0.80, TIER_2=0.85 → survival 0.10
         self.assertAlmostEqual(paper.drawdown_scaling_factor(), 0.10, places=4)
 
-    def test_tier3_scaling_between_55_and_60_pct(self):
-        """Balance at 57% of peak → step tier = 0.30 (TIER_2–TIER_3 with 50% halt)."""
+    def test_tier3_scaling_between_85_and_90_pct(self):
+        """Balance at 87% of peak → step tier = 0.30 (TIER_2–TIER_3 with 20% halt)."""
         import paper
 
-        paper.place_paper_order("TK", "yes", 430, 1.00)  # balance → $570 (57% of $1000)
-        # Tiers relative to 50% halt: TIER_2=0.55, TIER_3=0.60 → conservative 0.30
+        paper.place_paper_order("TK", "yes", 130, 1.00)  # balance → $870 (87% of $1000)
+        # Tiers relative to 20% halt: TIER_2=0.85, TIER_3=0.90 → conservative 0.30
         self.assertAlmostEqual(paper.drawdown_scaling_factor(), 0.30, places=4)
 
-    def test_tier4_scaling_between_60_and_65_pct(self):
-        """Balance at 62% of peak → step tier = 0.70 (TIER_3–TIER_4 with 50% halt)."""
+    def test_tier4_scaling_between_90_and_95_pct(self):
+        """Balance at 92% of peak → step tier = 0.70 (TIER_3–TIER_4 with 20% halt)."""
         import paper
 
-        paper.place_paper_order("TK", "yes", 380, 1.00)  # balance → $620 (62% of $1000)
-        # Tiers relative to 50% halt: TIER_3=0.60, TIER_4=0.65 → reduced 0.70
+        paper.place_paper_order("TK", "yes", 80, 1.00)  # balance → $920 (92% of $1000)
+        # Tiers relative to 20% halt: TIER_3=0.90, TIER_4=0.95 → reduced 0.70
         self.assertAlmostEqual(paper.drawdown_scaling_factor(), 0.70, places=4)
 
     def test_kelly_scaled_at_partial_recovery(self):
@@ -589,17 +589,17 @@ class TestDrawdownScaling(unittest.TestCase):
         import paper
 
         paper.place_paper_order(
-            "TK", "yes", 430, 1.00
-        )  # balance → $570 (57% of peak), scale=0.30 (TIER_2–TIER_3)
+            "TK", "yes", 130, 1.00
+        )  # balance → $870 (87% of peak), scale=0.30 (TIER_2–TIER_3)
         dollars = paper.kelly_bet_dollars(0.10)
-        # 0.10 * 0.30 * $570 = $17.10
-        self.assertAlmostEqual(dollars, 17.10)
+        # 0.10 * 0.30 * $870 = $26.10
+        self.assertAlmostEqual(dollars, 26.10)
 
-    def test_kelly_zero_below_50_pct(self):
+    def test_kelly_zero_below_20_pct(self):
         """Kelly still returns 0.0 when fully in drawdown (scale=0.0)."""
         import paper
 
-        paper.place_paper_order("TK", "yes", 600, 1.00)  # balance → $400
+        paper.place_paper_order("TK", "yes", 250, 1.00)  # balance → $750 (75%)
         self.assertEqual(paper.kelly_bet_dollars(0.10), 0.0)
 
 

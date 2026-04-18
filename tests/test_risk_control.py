@@ -14,6 +14,8 @@ import importlib
 import json
 import time
 
+import pytest
+
 # ── helpers ───────────────────────────────────────────────────────────────────
 
 
@@ -268,3 +270,15 @@ class TestPaperLiveSeparation:
             f"MARKET_BASE_URL contains 'demo' even though KALSHI_ENV=prod: "
             f"{_main.MARKET_BASE_URL!r}"
         )
+
+
+class TestDrawdownHaltDefault:
+    def test_drawdown_halt_default_is_20pct(self, monkeypatch):
+        """DRAWDOWN_HALT_PCT default must be 0.20, not 0.50."""
+        monkeypatch.delenv("DRAWDOWN_HALT_PCT", raising=False)
+        import importlib
+
+        import utils
+
+        importlib.reload(utils)
+        assert utils.DRAWDOWN_HALT_PCT == pytest.approx(0.20)

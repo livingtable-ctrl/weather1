@@ -71,7 +71,7 @@ FIXED_BET_PCT = float(os.getenv("FIXED_BET_PCT", "0.01"))  # 1% of balance
 FIXED_BET_DOLLARS = float(os.getenv("FIXED_BET_DOLLARS", "10.0"))  # $10 per trade
 
 # #121: Drawdown recovery tiers — configurable via env
-DRAWDOWN_HALT_PCT = float(os.getenv("DRAWDOWN_HALT_PCT", "0.50"))  # halt below this
+DRAWDOWN_HALT_PCT = float(os.getenv("DRAWDOWN_HALT_PCT", "0.20"))  # halt below this
 
 # #P6: Pre-trade VaR gate. New position is skipped if it would push portfolio 5th-percentile
 # loss beyond this amount. Default = 20% of STARTING_BALANCE ($200 on a $1000 start).
