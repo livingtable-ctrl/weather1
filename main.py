@@ -59,8 +59,12 @@ from weather_markets import (
     CITY_COORDS,
     _feels_like,
     analyze_trade,
+    check_ensemble_circuit_health,  # noqa: F401 — used via main.* in cron.py
     detect_hedge_opportunity,
     enrich_with_forecast,
+    fetch_temperature_ecmwf,  # noqa: F401 — used via main.* in cron.py
+    fetch_temperature_nbm,  # noqa: F401 — used via main.* in cron.py
+    fetch_temperature_weatherapi,  # noqa: F401 — used via main.* in cron.py
     get_weather_forecast,
     get_weather_markets,
     is_liquid,
@@ -85,6 +89,14 @@ LOCK_PATH: Path = Path(__file__).parent / "data" / ".cron.lock"
 KILL_SWITCH_PATH: Path = Path(__file__).parent / "data" / ".kill_switch"
 
 from cron import (  # noqa: E402  (after module-level constants)
+    _acquire_cron_lock,  # noqa: F401 — re-exported for tests that patch main.*
+    _check_graduation_gate,  # noqa: F401
+    _check_manual_override,  # noqa: F401
+    _check_spend_cap_vs_balance,  # noqa: F401
+    _check_startup_orders,  # noqa: F401
+    _clear_cron_running_flag,  # noqa: F401
+    _release_cron_lock,  # noqa: F401
+    _write_cron_running_flag,  # noqa: F401
     cmd_cron,
 )
 
