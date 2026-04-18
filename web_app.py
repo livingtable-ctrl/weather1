@@ -15,6 +15,8 @@ import time
 from datetime import UTC, datetime
 from pathlib import Path
 
+from markupsafe import escape as _html_escape
+
 _log = logging.getLogger(__name__)
 
 _app = None  # module-level Flask app
@@ -373,7 +375,7 @@ def _build_app(client):
             return render_template_string(
                 f"<!DOCTYPE html><html><head>{VIEWPORT}{DARK_STYLE}</head><body>"
                 f"<h1>Analyze</h1>{NAV}"
-                f"<p class='neg'>Could not fetch markets: {e}</p></body></html>"
+                f"<p class='neg'>Could not fetch markets: {_html_escape(str(e))}</p></body></html>"
             )
 
         rows_html = ""
