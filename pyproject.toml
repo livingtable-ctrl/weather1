@@ -2,7 +2,7 @@
 pythonpath = ["."]
 testpaths = ["tests"]
 markers = [
-    "integration: live API integration tests — require KALSHI_ENV=demo (run with '-m integration')",
+    "integration: integration tests — live API tests require KALSHI_ENV=demo; cron integration tests use only mocks and are CI-safe (run with '-m integration')",
 ]
 
 [tool.coverage.run]

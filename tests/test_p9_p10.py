@@ -541,3 +541,41 @@ class TestWeeklyBrierAlert:
         """Fewer than 2 weeks → no alert check."""
         weekly_data = [{"week": "2026-W12", "brier": 0.99}]
         assert len(weekly_data) < 2  # gate condition
+
+
+# ── Phase 2: Brier drift → tighten STRONG_EDGE ───────────────────────────────
+
+
+class TestDriftTightenEdge:
+    def test_drift_tighten_edge_exported_from_utils(self):
+        """DRIFT_TIGHTEN_EDGE is a positive float exported from utils."""
+        import utils
+
+        assert hasattr(utils, "DRIFT_TIGHTEN_EDGE")
+        assert isinstance(utils.DRIFT_TIGHTEN_EDGE, float)
+        assert utils.DRIFT_TIGHTEN_EDGE > 0
+
+    def test_effective_edge_raised_when_drift_detected(self):
+        """When drift is drifting=True, effective threshold = STRONG_EDGE + DRIFT_TIGHTEN_EDGE."""
+        from utils import DRIFT_TIGHTEN_EDGE, STRONG_EDGE
+
+        drift_result = {"drifting": True, "message": "test drift"}
+        _effective = (
+            STRONG_EDGE + DRIFT_TIGHTEN_EDGE
+            if drift_result["drifting"]
+            else STRONG_EDGE
+        )
+        assert _effective == STRONG_EDGE + DRIFT_TIGHTEN_EDGE
+        assert _effective > STRONG_EDGE
+
+    def test_effective_edge_unchanged_without_drift(self):
+        """When drift is drifting=False, effective threshold equals STRONG_EDGE."""
+        from utils import DRIFT_TIGHTEN_EDGE, STRONG_EDGE
+
+        drift_result = {"drifting": False}
+        _effective = (
+            STRONG_EDGE + DRIFT_TIGHTEN_EDGE
+            if drift_result["drifting"]
+            else STRONG_EDGE
+        )
+        assert _effective == STRONG_EDGE

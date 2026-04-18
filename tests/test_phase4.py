@@ -213,43 +213,35 @@ class TestBlendProbabilities:
 
 class TestDynamicModelWeights:
     def test_high_mae_model_gets_low_weight(self):
-        """GFS MAE=2.0, ECMWF MAE=0.5 → ECMWF weight > GFS weight."""
+        """get_model_weights result is passed through: higher-weight model wins."""
         from weather_markets import _dynamic_model_weights
 
-        mock_acc = {
-            "gfs_seamless": {"mae": 2.0, "count": 10},
-            "ecmwf_ifs04": {"mae": 0.5, "count": 10},
-            "icon_seamless": {"mae": 1.0, "count": 10},
+        # Simulate tracker returning softmax weights where ECMWF has highest weight
+        mock_weights = {
+            "gfs_seamless": 0.2,
+            "ecmwf_ifs04": 0.6,
+            "icon_seamless": 0.2,
         }
-
-        # Patch tracker.get_ensemble_member_accuracy which is imported inside _dynamic_model_weights
-        with patch("tracker.get_ensemble_member_accuracy", return_value=mock_acc):
+        with patch("tracker.get_model_weights", return_value=mock_weights):
             result = _dynamic_model_weights(city="NYC", month=1)
 
         assert result is not None
         assert result["ecmwf_ifs04"] > result["gfs_seamless"]
 
-    def test_insufficient_samples_returns_none(self):
-        """< min_samples per model → returns None."""
+    def test_empty_tracker_returns_none(self):
+        """Empty dict from get_model_weights (no rows) → returns None."""
         from weather_markets import _dynamic_model_weights
 
-        mock_acc = {
-            "gfs_seamless": {"mae": 2.0, "count": 2},
-            "ecmwf_ifs04": {"mae": 0.5, "count": 2},
-        }
-
-        with patch("tracker.get_ensemble_member_accuracy", return_value=mock_acc):
+        with patch("tracker.get_model_weights", return_value={}):
             result = _dynamic_model_weights(city="NYC", month=1)
 
         assert result is None
 
     def test_no_tracker_data_returns_none(self):
-        """No tracker data → returns None."""
+        """City is None → returns None without calling tracker."""
         from weather_markets import _dynamic_model_weights
 
-        with patch("tracker.get_ensemble_member_accuracy", return_value=None):
-            result = _dynamic_model_weights(city="NYC", month=1)
-
+        result = _dynamic_model_weights(city=None, month=1)
         assert result is None
 
 

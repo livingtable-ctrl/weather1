@@ -20,6 +20,8 @@ _log = logging.getLogger(__name__)
 _app = None  # module-level Flask app
 _client = None  # module-level Kalshi client reference
 
+_KS_PATH: Path = Path(__file__).parent / "data" / ".kill_switch"
+
 _RANGE_DAYS = {"1mo": 30, "3mo": 90, "1yr": 365}
 _DEFAULT_HISTORY_POINTS = 50
 
@@ -892,6 +894,13 @@ setInterval(() => {{
             except Exception:
                 mean_slippage = None
 
+            try:
+                from tracker import detect_brier_drift
+
+                _drift = detect_brier_drift()
+            except Exception:
+                _drift = {"drifting": False}
+
             data = {
                 "balance": round(get_balance(), 2),
                 "open_count": len(get_open_trades()),
@@ -899,11 +908,34 @@ setInterval(() => {{
                 "fear_greed_score": fg_score,
                 "fear_greed_label": fg_label,
                 "mean_slippage_cents": mean_slippage,
+                "kill_switch_active": _KS_PATH.exists(),
+                "brier_drift": _drift,
                 "timestamp": datetime.now(UTC).isoformat(),
             }
         except Exception as e:
             data = {"error": str(e)}
         return jsonify(data)
+
+    @app.route("/api/halt", methods=["POST"])
+    def api_halt():
+        """Write kill-switch file to stop cron from placing new trades."""
+        from flask import request as _req
+
+        body = _req.get_json(silent=True) or {}
+        reason = body.get("reason", "manual halt via API")
+        _KS_PATH.parent.mkdir(exist_ok=True)
+        _KS_PATH.write_text(
+            json.dumps({"reason": reason, "halted_at": datetime.now(UTC).isoformat()})
+        )
+        return jsonify({"halted": True, "reason": reason})
+
+    @app.route("/api/resume", methods=["POST"])
+    def api_resume():
+        """Remove kill-switch file to allow cron to resume."""
+        existed = _KS_PATH.exists()
+        if existed:
+            _KS_PATH.unlink()
+        return jsonify({"resumed": True, "was_halted": existed})
 
     @app.route("/signals")
     def signals_page():
