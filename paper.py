@@ -102,12 +102,15 @@ MAX_DRAWDOWN_FRACTION = _env_float("DRAWDOWN_HALT_PCT", "0.50")
 MAX_DAILY_LOSS_PCT = _env_float("MAX_DAILY_LOSS_PCT", "0.03")  # default 3%
 MAX_POSITION_AGE_DAYS = _env_int("MAX_POSITION_AGE_DAYS", "7")
 
-# Gradual recovery thresholds (fraction of peak balance).
-# Conservative tiers: resume slowly after a loss streak to avoid blowup.
-_DRAWDOWN_TIER_1 = 1 - MAX_DRAWDOWN_FRACTION  # 0.50 — fully paused below this
-_DRAWDOWN_TIER_2 = 0.60  # 10% sizing (was 25%)
-_DRAWDOWN_TIER_3 = 0.75  # 30% sizing (was 50%)
-_DRAWDOWN_TIER_4 = 0.90  # 70% sizing (was 75%)
+# Drawdown tier thresholds as fractions of peak balance.
+# All tiers are derived relative to MAX_DRAWDOWN_FRACTION so they remain
+# reachable regardless of what halt threshold is configured.
+_DRAWDOWN_TIER_1 = (
+    1.0 - MAX_DRAWDOWN_FRACTION
+)  # halt below this (e.g. 0.80 at 20% halt)
+_DRAWDOWN_TIER_2 = _DRAWDOWN_TIER_1 + 0.05  # 10% sizing  (e.g. 0.85)
+_DRAWDOWN_TIER_3 = _DRAWDOWN_TIER_1 + 0.10  # 30% sizing  (e.g. 0.90)
+_DRAWDOWN_TIER_4 = _DRAWDOWN_TIER_1 + 0.15  # 70% sizing  (e.g. 0.95)
 
 MAX_TOTAL_OPEN_EXPOSURE = (
     0.50  # max fraction of starting balance in open positions total
@@ -318,22 +321,26 @@ def drawdown_scaling_factor() -> float:
     """
     Return a 0.0–1.0 Kelly multiplier based on drawdown from peak (high-water mark).
 
-    Step tiers:
-      ≤ 60% of peak  → 0.00  (paused — ≥ 40% drawdown)
-      60–80% of peak → 0.20  (survival mode — 20–40% drawdown)
-      80–90% of peak → 0.50  (reduced — 10–20% drawdown)
-      > 90% of peak  → 1.00  (normal — < 10% drawdown)
+    All thresholds are relative to MAX_DRAWDOWN_FRACTION (DRAWDOWN_HALT_PCT env var).
+    With the default 20% halt:
+      < 5% drawdown  (> TIER_4 = 0.95) → 1.00  full sizing
+      5–10% drawdown (TIER_3–TIER_4)   → 0.70  reduced
+      10–15% drawdown (TIER_2–TIER_3)  → 0.30  conservative
+      15–20% drawdown (TIER_1–TIER_2)  → 0.10  survival
+      >= 20% drawdown (≤ TIER_1 = 0.80) → 0.00  halted
     """
     peak = get_peak_balance()
     if peak <= 0:
         return 1.0
     recovery = get_balance() / peak
-    if recovery <= 0.60:
+    if recovery <= _DRAWDOWN_TIER_1:
         return 0.0
-    if recovery <= 0.80:
-        return 0.20
-    if recovery <= 0.90:
-        return 0.50
+    if recovery <= _DRAWDOWN_TIER_2:
+        return 0.10
+    if recovery <= _DRAWDOWN_TIER_3:
+        return 0.30
+    if recovery <= _DRAWDOWN_TIER_4:
+        return 0.70
     return 1.0
 
 
