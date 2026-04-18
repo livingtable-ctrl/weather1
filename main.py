@@ -2246,6 +2246,14 @@ def cmd_cron(client: KalshiClient, min_edge: float = MIN_EDGE) -> None:
         flush=True,
     )
 
+    # Weekly DB retention sweep (runs on Monday only)
+    from datetime import date as _date
+
+    if _date.today().weekday() == 0:  # Monday
+        from tracker import purge_old_predictions as _purge
+
+        _purge(retention_days=730)
+
     # P3.1 — graceful shutdown flag
     _write_cron_running_flag()
     # P3.2 — detect orders placed in the last 5 minutes at startup

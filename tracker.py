@@ -238,6 +238,40 @@ def init_db() -> None:
     _db_initialized = True
 
 
+def purge_old_predictions(retention_days: int = 730) -> int:
+    """Delete settled predictions older than retention_days and their outcomes.
+
+    Unsettled (open) predictions are never deleted.
+    Returns the number of rows deleted from predictions.
+    """
+    cutoff = f"-{retention_days} days"
+    init_db()
+    with _conn() as con:
+        con.execute(
+            """
+            DELETE FROM outcomes
+            WHERE ticker IN (
+                SELECT p.ticker FROM predictions p
+                JOIN outcomes o ON p.ticker = o.ticker
+                WHERE o.settled_at < datetime('now', ?)
+            )
+            """,
+            (cutoff,),
+        )
+        result = con.execute(
+            """
+            DELETE FROM predictions
+            WHERE ticker NOT IN (SELECT ticker FROM outcomes)
+              AND predicted_at < datetime('now', ?)
+            """,
+            (cutoff,),
+        )
+    deleted = result.rowcount
+    if deleted > 0:
+        _log.info("purge_old_predictions: removed %d old prediction rows", deleted)
+    return deleted
+
+
 # ── Logging ───────────────────────────────────────────────────────────────────
 
 
