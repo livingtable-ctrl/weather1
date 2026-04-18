@@ -726,6 +726,82 @@ def count_settled_predictions() -> int:
     return row[0] if row else 0
 
 
+def _get_recent_win_loss(window: int) -> tuple[int, int]:
+    """Query the last `window` settled predictions and count wins.
+
+    A win is: (our_prob >= 0.5 AND outcome = 1) OR (our_prob < 0.5 AND outcome = 0).
+
+    Returns (wins, n) where n <= window.
+    """
+    init_db()
+    with _conn() as con:
+        rows = con.execute(
+            """
+            SELECT p.our_prob, o.settled_yes
+            FROM predictions p
+            JOIN outcomes o ON p.ticker = o.ticker
+            WHERE p.our_prob IS NOT NULL
+            ORDER BY o.settled_at DESC
+            LIMIT ?
+            """,
+            (window,),
+        ).fetchall()
+    n = len(rows)
+    wins = sum(
+        1
+        for r in rows
+        if (r["our_prob"] >= 0.5 and r["settled_yes"] == 1)
+        or (r["our_prob"] < 0.5 and r["settled_yes"] == 0)
+    )
+    return wins, n
+
+
+def sprt_model_health(
+    window: int = 50,
+    p0: float | None = None,
+    p1: float | None = None,
+    alpha: float | None = None,
+    beta: float | None = None,
+    min_trades: int | None = None,
+) -> dict:
+    """Run SPRT on the last `window` settled trades.
+
+    Sequential Probability Ratio Test to detect model degradation faster than
+    waiting for Brier score accumulation.
+
+    Returns:
+        dict with keys:
+            status: "ok" | "degraded" | "insufficient_data"
+            llr: float  — log-likelihood ratio
+            n: int      — number of trades evaluated
+    """
+    import math
+
+    import utils
+
+    p0 = p0 if p0 is not None else utils.SPRT_P0
+    p1 = p1 if p1 is not None else utils.SPRT_P1
+    alpha = alpha if alpha is not None else utils.SPRT_ALPHA
+    beta = beta if beta is not None else utils.SPRT_BETA
+    min_trades = min_trades if min_trades is not None else utils.SPRT_MIN_TRADES
+
+    upper = math.log((1 - beta) / alpha)  # reject H0 (degraded) boundary
+
+    wins, n = _get_recent_win_loss(window)
+
+    if n < min_trades:
+        return {"status": "insufficient_data", "llr": 0.0, "n": n}
+
+    llr = wins * math.log(p1 / p0) + (n - wins) * math.log((1 - p1) / (1 - p0))
+
+    if llr >= upper:
+        status = "degraded"
+    else:
+        status = "ok"  # lower boundary or continuation region — not enough evidence
+
+    return {"status": status, "llr": round(llr, 4), "n": n}
+
+
 def get_brier_by_tier(
     strong_threshold: float = 0.30,
     med_threshold: float = 0.15,
