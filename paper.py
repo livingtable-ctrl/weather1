@@ -53,12 +53,18 @@ def _compute_checksum(payload: dict) -> str:
 
 
 def _validate_checksum(data: dict) -> None:
-    """Validate SHA-256 checksum in data dict. Raises ValueError on mismatch."""
+    """Validate SHA-256 checksum in data dict. Raises ValueError on mismatch.
+
+    Accepts legacy 8-char checksums (prefix of the full 16-char value) to allow
+    seamless migration from the old 8-char format without data corruption errors.
+    """
     stored = data.get("_checksum")
     if stored is None:
         return
     expected = _compute_checksum(data)
-    if stored != expected:
+    # Accept stored value if it equals the expected value OR is a valid prefix of it
+    # (handles migration from 8-char to 16-char checksums).
+    if not expected.startswith(stored):
         raise ValueError(
             f"paper trades checksum mismatch: stored={stored!r}, expected={expected!r}"
         )
