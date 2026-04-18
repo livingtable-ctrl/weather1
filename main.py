@@ -3408,6 +3408,25 @@ def cmd_forecast(city: str):
         )
     )
 
+    # Show active model weights for this city
+    try:
+        from tracker import get_model_weights
+
+        weights = get_model_weights(city, window_days=30)
+        if weights:
+            weight_parts = "  ".join(
+                f"{m}: {w:.0%}" for m, w in sorted(weights.items(), key=lambda x: -x[1])
+            )
+            print(dim(f"\n  Active model weights (30-day MAE): {weight_parts}"))
+        else:
+            print(
+                dim(
+                    f"\n  Active model weights: equal (insufficient history for {city})"
+                )
+            )
+    except Exception:
+        pass
+
 
 # ── Consistency ───────────────────────────────────────────────────────────────
 

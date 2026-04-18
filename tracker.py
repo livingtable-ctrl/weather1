@@ -1109,6 +1109,58 @@ def get_ensemble_member_accuracy(
     }
 
 
+def get_model_weights(city: str, window_days: int = 30) -> dict[str, float]:
+    """
+    Softmax-normalised inverse-MAE weights for each ensemble model.
+
+    Uses ensemble_member_scores for `city` over the last `window_days`.
+    Softmax is applied over negative-MAE so lower error → higher weight.
+    Falls back to equal weights (each = 1/n) when fewer than 10 observations
+    exist for any model.
+
+    Returns a dict summing to 1.0, e.g. {'gfs': 0.42, 'ecmwf': 0.35, 'nbm': 0.23}.
+    """
+    import math
+
+    MIN_OBSERVATIONS = 10
+    init_db()
+    with _conn() as con:
+        rows = con.execute(
+            """
+            SELECT model, predicted_temp, actual_temp
+            FROM ensemble_member_scores
+            WHERE city = ?
+              AND predicted_temp IS NOT NULL
+              AND actual_temp IS NOT NULL
+              AND logged_at >= datetime('now', ? || ' days')
+            """,
+            (city, f"-{window_days}"),
+        ).fetchall()
+
+    if not rows:
+        return {}
+
+    by_model: dict[str, list[float]] = {}
+    for r in rows:
+        by_model.setdefault(r["model"], []).append(
+            abs(r["predicted_temp"] - r["actual_temp"])
+        )
+
+    # Require minimum observations per model; fall back to equal weights otherwise
+    if any(len(errs) < MIN_OBSERVATIONS for errs in by_model.values()):
+        n = len(by_model)
+        return {m: round(1.0 / n, 6) for m in by_model} if n else {}
+
+    mae_per_model = {m: sum(errs) / len(errs) for m, errs in by_model.items()}
+
+    # Softmax over negative MAE: lower error → higher weight
+    scores = {m: -mae for m, mae in mae_per_model.items()}
+    max_score = max(scores.values())
+    exps = {m: math.exp(s - max_score) for m, s in scores.items()}  # numerically stable
+    total = sum(exps.values())
+    return {m: round(v / total, 6) for m, v in exps.items()}
+
+
 def get_market_calibration(n_buckets: int = 10) -> dict:
     """
     How well-calibrated are the MARKET PRICES (not our model)?

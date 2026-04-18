@@ -328,3 +328,90 @@ class TestGetBrierByTier:
         expected = ((0.80 - 1) ** 2 + (0.90 - 1) ** 2) / 2
         assert result["strong"]["brier"] == pytest.approx(expected)
         assert result["strong"]["n"] == 2
+
+
+# ── Phase 3: Adaptive ensemble weights ───────────────────────────────────────
+
+
+class TestGetModelWeights:
+    def setup_method(self):
+        import tempfile
+        from pathlib import Path
+
+        self._tmp = tempfile.mkdtemp()
+        self._orig_path = tracker.DB_PATH
+        self._orig_init = tracker._db_initialized
+        tracker.DB_PATH = Path(self._tmp) / "test.db"
+        tracker._db_initialized = False
+        tracker.init_db()
+
+    def teardown_method(self):
+        import shutil
+
+        tracker.DB_PATH = self._orig_path
+        tracker._db_initialized = self._orig_init
+        shutil.rmtree(self._tmp, ignore_errors=True)
+
+    def _seed(self, city, model, predicted, actual, days_ago=5):
+        from datetime import UTC, datetime, timedelta
+
+        ts = (datetime.now(UTC) - timedelta(days=days_ago)).isoformat()
+        with tracker._conn() as con:
+            con.execute(
+                "INSERT INTO ensemble_member_scores "
+                "(city, model, predicted_temp, actual_temp, target_date, logged_at) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (city, model, predicted, actual, "2026-01-01", ts),
+            )
+
+    def test_empty_returns_empty_dict(self):
+        assert tracker.get_model_weights("NYC") == {}
+
+    def test_weights_sum_to_one(self):
+        for i in range(15):
+            self._seed("NYC", "gfs", 70.0 + i * 0.1, 71.0)
+            self._seed("NYC", "ecmwf", 70.5 + i * 0.1, 71.0)
+            self._seed("NYC", "nbm", 69.0 + i * 0.1, 71.0)
+
+        weights = tracker.get_model_weights("NYC", window_days=30)
+        assert weights
+        assert sum(weights.values()) == pytest.approx(1.0, abs=0.001)
+
+    def test_lower_mae_gets_higher_weight(self):
+        # gfs has smaller error than nbm → gfs weight > nbm weight
+        for i in range(15):
+            self._seed("NYC", "gfs", 71.0, 71.0)  # MAE = 0
+            self._seed("NYC", "nbm", 75.0, 71.0)  # MAE = 4
+
+        weights = tracker.get_model_weights("NYC", window_days=30)
+        assert weights
+        assert weights["gfs"] > weights["nbm"]
+
+    def test_insufficient_observations_returns_equal_weights(self):
+        # Only 5 obs per model — below MIN_OBSERVATIONS threshold of 10
+        for i in range(5):
+            self._seed("NYC", "gfs", 71.0, 71.0)
+            self._seed("NYC", "nbm", 72.0, 71.0)
+
+        weights = tracker.get_model_weights("NYC", window_days=30)
+        assert weights
+        # Equal weights: each = 0.5 for 2 models
+        assert weights["gfs"] == pytest.approx(0.5)
+        assert weights["nbm"] == pytest.approx(0.5)
+
+    def test_window_days_excludes_old_data(self):
+        # Seed old data (40 days ago) — should be excluded by window_days=30
+        for i in range(15):
+            self._seed("NYC", "gfs", 71.0, 71.0, days_ago=40)
+            self._seed("NYC", "nbm", 72.0, 71.0, days_ago=40)
+
+        weights = tracker.get_model_weights("NYC", window_days=30)
+        assert weights == {}
+
+    def test_city_isolation(self):
+        # Seeds only for Chicago — NYC query should return empty
+        for i in range(15):
+            self._seed("Chicago", "gfs", 71.0, 71.0)
+            self._seed("Chicago", "nbm", 72.0, 71.0)
+
+        assert tracker.get_model_weights("NYC", window_days=30) == {}
