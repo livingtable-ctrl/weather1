@@ -1144,3 +1144,74 @@ class TestMonteCarloCholesky:
         # P10–P90 spread should be substantial (correlated risk)
         spread = result["p90_pnl"] - result["p10_pnl"]
         assert spread > 5.0
+
+
+class TestCheckStopLosses:
+    def _trade(self, ticker, side, entry_price, qty):
+        cost = round(entry_price * qty, 4)
+        return {
+            "ticker": ticker,
+            "side": side,
+            "entry_price": entry_price,
+            "quantity": qty,
+            "cost": cost,
+            "settled": False,
+        }
+
+    def test_stop_triggers_when_yes_price_halves(self):
+        """YES trade: price halved → loss = 50% of cost → stop fires (MULT=2)."""
+        from paper import check_stop_losses
+
+        trade = self._trade("T1", "yes", 0.60, 10)
+        # current yes = 0.30 → loss = (0.30-0.60)*10 = -3.0; threshold = -cost/2 = -3.0
+        # At exactly threshold it fires (strictly less would not, so use 0.29)
+        prices = {"T1": 0.29}
+        assert check_stop_losses([trade], prices) == ["T1"]
+
+    def test_stop_not_triggered_within_range(self):
+        """YES trade: small adverse move → no stop."""
+        from paper import check_stop_losses
+
+        trade = self._trade("T1", "yes", 0.60, 10)
+        prices = {"T1": 0.50}  # lost $1 of $6 — well within threshold
+        assert check_stop_losses([trade], prices) == []
+
+    def test_stop_triggers_for_no_trade(self):
+        """NO trade: YES price rises sharply → NO value drops → stop fires."""
+        from paper import check_stop_losses
+
+        # NO trade: entry_price = 0.40 (paid 40¢ per contract)
+        trade = self._trade("T1", "no", 0.40, 10)
+        # current yes = 0.85 → current NO = 0.15; loss = (0.15-0.40)*10 = -2.5
+        # threshold = -cost/2 = -2.0  →  -2.5 < -2.0 → fires
+        prices = {"T1": 0.85}
+        assert check_stop_losses([trade], prices) == ["T1"]
+
+    def test_stop_not_triggered_when_multiplier_zero(self):
+        """STOP_LOSS_MULT=0 disables stop-losses entirely."""
+        from unittest.mock import patch
+
+        import utils
+        from paper import check_stop_losses
+
+        trade = self._trade("T1", "yes", 0.60, 10)
+        prices = {"T1": 0.01}  # extreme loss
+        with patch.object(utils, "STOP_LOSS_MULT", 0.0):
+            assert check_stop_losses([trade], prices) == []
+
+    def test_missing_ticker_skipped(self):
+        """Ticker not in current_yes_prices is skipped (no crash)."""
+        from paper import check_stop_losses
+
+        trade = self._trade("T1", "yes", 0.60, 10)
+        assert check_stop_losses([trade], {}) == []
+
+    def test_multiple_trades_only_breached_returned(self):
+        """Only tickers that breach the threshold are returned."""
+        from paper import check_stop_losses
+
+        t1 = self._trade("T1", "yes", 0.60, 10)  # will breach
+        t2 = self._trade("T2", "yes", 0.60, 10)  # will not breach
+        prices = {"T1": 0.20, "T2": 0.55}
+        result = check_stop_losses([t1, t2], prices)
+        assert result == ["T1"]

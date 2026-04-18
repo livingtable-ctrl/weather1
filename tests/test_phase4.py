@@ -12,6 +12,8 @@ from unittest.mock import patch
 
 import pytest
 
+import metar
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 
@@ -458,3 +460,110 @@ class TestCurrentForecastCycle:
         finally:
             _tracker.DB_PATH = orig_path
             _tracker._db_initialized = orig_initialized
+
+
+# ── Phase 4 (scoped): station mapping + observation recording ─────────────────
+
+
+class TestMarketStationMap:
+    def test_all_cities_have_station(self):
+        """Every city in CITY_COORDS has a station mapping."""
+        from weather_markets import CITY_COORDS
+
+        for city in CITY_COORDS:
+            assert city in metar.MARKET_STATION_MAP, (
+                f"{city} missing from MARKET_STATION_MAP"
+            )
+
+    def test_station_ids_are_icao_format(self):
+        """All station IDs are 4-character ICAO codes starting with K."""
+        for city, station in metar.MARKET_STATION_MAP.items():
+            assert len(station) == 4, f"{city}: station '{station}' not 4 chars"
+            assert station.startswith("K"), (
+                f"{city}: station '{station}' doesn't start with K"
+            )
+
+
+class TestRecordObservation:
+    def setup_method(self):
+        import tempfile
+        from unittest.mock import patch
+
+        self._tmpdir = tempfile.mkdtemp()
+        self._obs_path = Path(self._tmpdir) / "metar_observations.json"
+        self._patch = patch.object(metar, "_OBS_PATH", self._obs_path)
+        self._patch.start()
+
+    def teardown_method(self):
+        self._patch.stop()
+
+    def test_record_creates_file(self):
+        metar.record_observation("NYC", "2026-04-01", high_f=62.0)
+        assert self._obs_path.exists()
+
+    def test_record_stores_correct_fields(self):
+        import json
+
+        metar.record_observation(
+            "NYC", "2026-04-01", high_f=62.0, low_f=45.0, proxy=True
+        )
+        records = json.loads(self._obs_path.read_text())
+        assert len(records) == 1
+        r = records[0]
+        assert r["station_id"] == "KNYC"
+        assert r["city"] == "NYC"
+        assert r["date"] == "2026-04-01"
+        assert r["high_f"] == 62.0
+        assert r["low_f"] == 45.0
+        assert r["proxy"] is True
+
+    def test_record_deduplicates_same_date(self):
+        import json
+
+        metar.record_observation("NYC", "2026-04-01", high_f=60.0)
+        metar.record_observation("NYC", "2026-04-01", high_f=63.0)
+        records = json.loads(self._obs_path.read_text())
+        assert len(records) == 1
+        assert records[0]["high_f"] == 63.0
+
+    def test_unknown_city_silently_ignored(self):
+        metar.record_observation("UnknownCity", "2026-04-01", high_f=70.0)
+        assert not self._obs_path.exists()
+
+    def test_get_obs_count_zero_when_empty(self):
+        assert metar.get_obs_count("NYC") == 0
+
+    def test_get_obs_count_increments(self):
+        metar.record_observation("NYC", "2026-04-01", high_f=62.0)
+        metar.record_observation("NYC", "2026-04-02", high_f=64.0)
+        assert metar.get_obs_count("NYC") == 2
+
+    def test_get_obs_count_per_city(self):
+        metar.record_observation("NYC", "2026-04-01", high_f=62.0)
+        metar.record_observation("Dallas", "2026-04-01", high_f=78.0)
+        assert metar.get_obs_count("NYC") == 1
+        assert metar.get_obs_count("Dallas") == 1
+
+
+class TestGetStationBias:
+    def setup_method(self):
+        import tempfile
+        from unittest.mock import patch
+
+        self._tmpdir = tempfile.mkdtemp()
+        self._obs_path = Path(self._tmpdir) / "metar_observations.json"
+        self._patch = patch.object(metar, "_OBS_PATH", self._obs_path)
+        self._patch.start()
+
+    def teardown_method(self):
+        self._patch.stop()
+
+    def test_returns_none_below_threshold(self):
+        for i in range(50):
+            metar.record_observation(
+                "NYC", f"2026-04-{(i % 28) + 1:02d}", high_f=60.0 + i
+            )
+        assert metar.get_station_bias("NYC", 4) is None
+
+    def test_returns_none_for_unknown_city(self):
+        assert metar.get_station_bias("UnknownCity", 4) is None

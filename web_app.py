@@ -885,12 +885,20 @@ setInterval(() => {{
             except Exception:
                 fg_score, fg_label = None, None
 
+            try:
+                from tracker import get_mean_slippage
+
+                mean_slippage = get_mean_slippage(days=30)
+            except Exception:
+                mean_slippage = None
+
             data = {
                 "balance": round(get_balance(), 2),
                 "open_count": len(get_open_trades()),
                 "brier": brier_score(),
                 "fear_greed_score": fg_score,
                 "fear_greed_label": fg_label,
+                "mean_slippage_cents": mean_slippage,
                 "timestamp": datetime.now(UTC).isoformat(),
             }
         except Exception as e:

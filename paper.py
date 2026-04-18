@@ -646,6 +646,19 @@ def settle_paper_trade(trade_id: int, outcome_yes: bool) -> dict:
             # Score per-model forecast means against outcome for dynamic weighting
             _score_ensemble_members(t, outcome_yes)
 
+            # Phase 4: record proxy METAR observation so station-level bias can accumulate
+            try:
+                from metar import record_observation as _record_obs
+
+                _city = t.get("city")
+                _date = t.get("target_date")
+                _thr = t.get("condition_threshold")
+                if _city and _date and _thr is not None:
+                    _proxy_high = _thr + 3.0 if outcome_yes else _thr - 3.0
+                    _record_obs(_city, _date, _proxy_high, proxy=True)
+            except Exception:
+                pass
+
             # #55: record outcome on analysis_attempt so bias stats are queryable
             try:
                 from tracker import settle_analysis_attempt as _settle_attempt
@@ -716,6 +729,52 @@ def close_paper_early(trade_id: int, exit_price: float) -> dict:
 
 def get_open_trades() -> list[dict]:
     return [t for t in _load()["trades"] if not t["settled"]]
+
+
+def check_stop_losses(
+    open_trades: list[dict], current_yes_prices: dict[str, float]
+) -> list[str]:
+    """
+    Return tickers whose unrealized loss has breached the stop-loss threshold.
+
+    Stop fires when: unrealized_loss > cost / STOP_LOSS_MULT
+    i.e. for default STOP_LOSS_MULT=2, exit when the position has lost >50% of cost.
+
+    current_yes_prices: {ticker: yes_ask (0–1 float)}
+    """
+    from utils import STOP_LOSS_MULT
+
+    if STOP_LOSS_MULT <= 0:
+        return []
+
+    exits: list[str] = []
+    for t in open_trades:
+        ticker = t.get("ticker", "")
+        entry_price = t.get("entry_price", 0.0)
+        qty = t.get("quantity", 0)
+        cost = t.get("cost") or entry_price * qty
+        side = t.get("side", "yes")
+
+        if not ticker or qty <= 0 or cost <= 0:
+            continue
+
+        current_yes = current_yes_prices.get(ticker)
+        if current_yes is None:
+            continue
+
+        # Current value per contract for our side
+        if side == "yes":
+            current_side_price = current_yes
+        else:
+            current_side_price = 1.0 - current_yes
+
+        unrealized_pnl = (current_side_price - entry_price) * qty
+        stop_threshold = -(cost / STOP_LOSS_MULT)
+
+        if unrealized_pnl < stop_threshold:
+            exits.append(ticker)
+
+    return exits
 
 
 def get_city_date_exposure(city: str, target_date_str: str) -> float:
