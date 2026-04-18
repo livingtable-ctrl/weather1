@@ -2642,6 +2642,57 @@ def cmd_cron(client: KalshiClient, min_edge: float = MIN_EDGE) -> None:
     except Exception as _e:
         _log.debug("cmd_cron: stop-loss check failed: %s", _e)
 
+    # P10.3 — weekly Brier alert: notify if score > threshold two weeks running
+    try:
+        import os as _os_brier
+
+        if not _os_brier.environ.get("PYTEST_CURRENT_TEST"):
+            from tracker import get_brier_over_time as _get_brier_weeks
+            from utils import BRIER_ALERT_THRESHOLD as _BRIER_THRESH
+
+            _brier_weeks = _get_brier_weeks(weeks=3)
+            if len(_brier_weeks) >= 2:
+                _recent_two = [w["brier"] for w in _brier_weeks[-2:]]
+                if all(b > _BRIER_THRESH for b in _recent_two):
+                    _brier_msg = (
+                        f"Brier score has exceeded {_BRIER_THRESH} for two consecutive weeks "
+                        f"({_recent_two[0]:.4f}, {_recent_two[1]:.4f}). "
+                        "Review model quality before continuing live trades."
+                    )
+                    _log.warning("P10.3 Brier alert: %s", _brier_msg)
+                    print(red(f"  [BrierAlert] {_brier_msg}"))
+                    try:
+                        from notify import _send_discord as _brier_discord
+
+                        _brier_discord(
+                            "⚠️ Brier Score Alert",
+                            _brier_msg,
+                            color=0xE3B341,
+                        )
+                    except Exception:
+                        pass
+    except Exception as _e:
+        _log.debug("cmd_cron: brier alert check failed: %s", _e)
+
+    # P10.4 — slippage alert: warn if mean fill slippage exceeds threshold
+    try:
+        import os as _os_slip
+
+        if not _os_slip.environ.get("PYTEST_CURRENT_TEST"):
+            from tracker import get_mean_slippage as _get_slip
+            from utils import SLIPPAGE_ALERT_CENTS as _SLIP_THRESH
+
+            _mean_slip = _get_slip(days=30)
+            if _mean_slip is not None and abs(_mean_slip) > _SLIP_THRESH:
+                _slip_msg = (
+                    f"Mean live fill slippage over 30 days is {_mean_slip:+.2f}¢ "
+                    f"(threshold ±{_SLIP_THRESH}¢). Consider adjusting slippage model."
+                )
+                _log.warning("P10.4 slippage alert: %s", _slip_msg)
+                print(yellow(f"  [SlippageAlert] {_slip_msg}"))
+    except Exception as _e:
+        _log.debug("cmd_cron: slippage alert check failed: %s", _e)
+
     # Check open positions for early exit opportunities
     try:
         exits = _check_early_exits(client=client)
@@ -3379,6 +3430,62 @@ def _auto_place_trades(
                     rec_side,
                     e,
                 )
+
+            # P10.1 — micro live trade alongside paper (if ENABLE_MICRO_LIVE=true)
+            try:
+                from utils import (
+                    ENABLE_MICRO_LIVE,
+                    MICRO_LIVE_FRACTION,
+                    MICRO_LIVE_MIN_DOLLARS,
+                )
+
+                if (
+                    ENABLE_MICRO_LIVE
+                    and client is not None
+                    and not os.getenv("PYTEST_CURRENT_TEST")
+                ):
+                    _micro_price = entry_price
+                    _micro_qty = max(1, math.floor(qty * MICRO_LIVE_FRACTION))
+                    _micro_cost = _micro_price * _micro_qty
+                    if _micro_cost >= MICRO_LIVE_MIN_DOLLARS:
+                        try:
+                            _micro_resp = client.place_order(
+                                ticker=ticker,
+                                side=rec_side,
+                                action="buy",
+                                count=_micro_qty,
+                                price=_micro_price,
+                                time_in_force="good_till_canceled",
+                            )
+                            _micro_fill = (
+                                _micro_resp.get("order", {}).get("avg_price")
+                                or _micro_price
+                            )
+                            from tracker import log_live_fill as _log_fill
+
+                            _log_live_fill_fn = _log_fill
+                            _log_live_fill_fn(
+                                ticker=ticker,
+                                side=rec_side,
+                                paper_price=_micro_price,
+                                fill_price=_micro_fill,
+                                quantity=_micro_qty,
+                            )
+                            _log.info(
+                                "[MicroLive] %s %s×%s @ %.3f (fill %.3f)",
+                                ticker,
+                                _micro_qty,
+                                rec_side,
+                                _micro_price,
+                                _micro_fill,
+                            )
+                        except Exception as _ml_exc:
+                            _log.warning(
+                                "[MicroLive] order failed for %s: %s", ticker, _ml_exc
+                            )
+            except Exception:
+                pass
+
     if placed == 0:
         print(dim("  [Auto] No qualifying signals this scan."))
     return placed

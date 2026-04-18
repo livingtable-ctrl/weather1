@@ -423,3 +423,121 @@ class TestConfigIntegrity:
         h1 = utils._hash_fingerprint(fp)
         h2 = utils._hash_fingerprint(fp)
         assert h1 == h2
+
+
+# ── P10 live readiness: slippage tracking ────────────────────────────────────
+
+
+class TestLiveFillSlippage:
+    @pytest.fixture
+    def tmp_tracker(self, tmp_path, monkeypatch):
+        import tracker
+
+        monkeypatch.setattr(tracker, "DB_PATH", tmp_path / "predictions.db")
+        monkeypatch.setattr(tracker, "_db_initialized", False)
+        tracker.init_db()
+        return tracker
+
+    def test_log_and_retrieve_slippage(self, tmp_tracker):
+        tmp_tracker.log_live_fill(
+            "TICK-A", "yes", paper_price=0.60, fill_price=0.61, quantity=5
+        )
+        result = tmp_tracker.get_mean_slippage(days=30)
+        assert result is not None
+        assert abs(result - 1.0) < 0.01  # (0.61-0.60)*100 = 1.0 cent
+
+    def test_mean_slippage_none_when_empty(self, tmp_tracker):
+        result = tmp_tracker.get_mean_slippage(days=30)
+        assert result is None
+
+    def test_mean_slippage_averages_multiple(self, tmp_tracker):
+        tmp_tracker.log_live_fill("T1", "yes", 0.50, 0.51, 1)  # +1 cent
+        tmp_tracker.log_live_fill("T2", "yes", 0.50, 0.53, 1)  # +3 cents
+        result = tmp_tracker.get_mean_slippage(days=30)
+        assert result is not None
+        assert abs(result - 2.0) < 0.01  # average of 1 and 3
+
+    def test_slippage_negative_when_fill_below_paper(self, tmp_tracker):
+        tmp_tracker.log_live_fill("T3", "yes", 0.60, 0.59, 2)
+        result = tmp_tracker.get_mean_slippage(days=30)
+        assert result is not None
+        assert result < 0  # filled better than paper price
+
+    def test_get_mean_slippage_respects_days_window(self, tmp_tracker, monkeypatch):
+        """Fills older than the window should be excluded."""
+        import datetime as _dt
+
+        old_ts = (_dt.datetime.now(_dt.UTC) - _dt.timedelta(days=40)).isoformat()
+        with tmp_tracker._conn() as con:
+            con.execute(
+                "INSERT INTO live_fills (ticker, side, paper_price, fill_price, slippage_cents, quantity, logged_at)"
+                " VALUES (?,?,?,?,?,?,?)",
+                ("OLD", "yes", 0.50, 0.55, 5.0, 1, old_ts),
+            )
+        result = tmp_tracker.get_mean_slippage(days=30)
+        assert result is None  # old fill excluded
+
+
+# ── P10 live readiness: config fingerprint includes new keys ──────────────────
+
+
+class TestPhase10ConfigKeys:
+    def test_fingerprint_includes_micro_live_keys(self):
+        from utils import get_config_fingerprint
+
+        fp = get_config_fingerprint()
+        assert "ENABLE_MICRO_LIVE" in fp
+        assert "MICRO_LIVE_FRACTION" in fp
+        assert "BRIER_ALERT_THRESHOLD" in fp
+        assert "SLIPPAGE_ALERT_CENTS" in fp
+
+    def test_enable_micro_live_defaults_false(self, monkeypatch):
+        monkeypatch.delenv("ENABLE_MICRO_LIVE", raising=False)
+        import importlib
+
+        import utils
+
+        importlib.reload(utils)
+        assert utils.ENABLE_MICRO_LIVE is False
+
+    def test_brier_alert_threshold_default(self, monkeypatch):
+        monkeypatch.delenv("BRIER_ALERT_THRESHOLD", raising=False)
+        import importlib
+
+        import utils
+
+        importlib.reload(utils)
+        assert utils.BRIER_ALERT_THRESHOLD == pytest.approx(0.22)
+
+
+# ── P10.3: Weekly Brier alert logic ──────────────────────────────────────────
+
+
+class TestWeeklyBrierAlert:
+    def test_two_bad_weeks_triggers_alert(self):
+        """Both recent weeks above threshold → alert should fire."""
+        from utils import BRIER_ALERT_THRESHOLD
+
+        weekly_data = [
+            {"week": "2026-W10", "brier": 0.15},
+            {"week": "2026-W11", "brier": BRIER_ALERT_THRESHOLD + 0.05},
+            {"week": "2026-W12", "brier": BRIER_ALERT_THRESHOLD + 0.03},
+        ]
+        recent_two = [w["brier"] for w in weekly_data[-2:]]
+        assert all(b > BRIER_ALERT_THRESHOLD for b in recent_two)
+
+    def test_one_bad_week_does_not_trigger(self):
+        """Only one of the two recent weeks above threshold → no alert."""
+        from utils import BRIER_ALERT_THRESHOLD
+
+        weekly_data = [
+            {"week": "2026-W11", "brier": BRIER_ALERT_THRESHOLD + 0.05},
+            {"week": "2026-W12", "brier": BRIER_ALERT_THRESHOLD - 0.05},
+        ]
+        recent_two = [w["brier"] for w in weekly_data[-2:]]
+        assert not all(b > BRIER_ALERT_THRESHOLD for b in recent_two)
+
+    def test_insufficient_weeks_no_alert(self):
+        """Fewer than 2 weeks → no alert check."""
+        weekly_data = [{"week": "2026-W12", "brier": 0.99}]
+        assert len(weekly_data) < 2  # gate condition

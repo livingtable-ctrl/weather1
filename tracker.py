@@ -207,6 +207,19 @@ def init_db() -> None:
             logged_at   TEXT NOT NULL
         );
         CREATE INDEX IF NOT EXISTS idx_api_endpoint ON api_requests(endpoint, logged_at);
+
+        -- #P10.4: micro live fill tracking for slippage measurement
+        CREATE TABLE IF NOT EXISTS live_fills (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            ticker          TEXT    NOT NULL,
+            side            TEXT    NOT NULL,
+            paper_price     REAL    NOT NULL,   -- price used for paper trade
+            fill_price      REAL    NOT NULL,   -- actual live fill price
+            slippage_cents  REAL    NOT NULL,   -- (fill_price - paper_price) * 100
+            quantity        INTEGER NOT NULL,
+            logged_at       TEXT    NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_live_fills_ticker ON live_fills(ticker, logged_at);
         """)
     # #99: versioned migrations replacing ad-hoc ALTER TABLE try/except blocks
     # Also handles legacy columns (days_out, raw_prob) via the CREATE TABLE schema above
@@ -226,6 +239,55 @@ def init_db() -> None:
 
 
 # ── Logging ───────────────────────────────────────────────────────────────────
+
+
+def log_live_fill(
+    ticker: str,
+    side: str,
+    paper_price: float,
+    fill_price: float,
+    quantity: int,
+) -> None:
+    """Record a micro live fill for slippage tracking (#P10.4)."""
+    from datetime import UTC
+
+    init_db()
+    slippage_cents = round((fill_price - paper_price) * 100, 4)
+    try:
+        with _conn() as con:
+            con.execute(
+                "INSERT INTO live_fills (ticker, side, paper_price, fill_price, slippage_cents, quantity, logged_at) VALUES (?,?,?,?,?,?,?)",
+                (
+                    ticker,
+                    side,
+                    paper_price,
+                    fill_price,
+                    slippage_cents,
+                    quantity,
+                    datetime.now(UTC).isoformat(),
+                ),
+            )
+    except Exception as exc:
+        _log.debug("log_live_fill: %s", exc)
+
+
+def get_mean_slippage(days: int = 30) -> float | None:
+    """Return mean slippage in cents over the last `days` days, or None if no fills."""
+    import datetime as _dt
+
+    init_db()
+    cutoff = (_dt.datetime.now(_dt.UTC) - _dt.timedelta(days=days)).isoformat()
+    try:
+        with _conn() as con:
+            row = con.execute(
+                "SELECT AVG(slippage_cents) FROM live_fills WHERE logged_at >= ?",
+                (cutoff,),
+            ).fetchone()
+        val = row[0] if row else None
+        return round(val, 4) if val is not None else None
+    except Exception as exc:
+        _log.debug("get_mean_slippage: %s", exc)
+        return None
 
 
 def log_api_request(

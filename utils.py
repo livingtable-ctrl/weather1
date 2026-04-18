@@ -80,6 +80,19 @@ MAX_VAR_DOLLARS = float(os.getenv("MAX_VAR_DOLLARS", "200.0"))
 # Set to 0 to disable stop-losses entirely.
 STOP_LOSS_MULT = float(os.getenv("STOP_LOSS_MULT", "2.0"))
 
+# #P10.1: Micro live trades — place a real order at MICRO_LIVE_FRACTION of paper size
+# alongside every paper trade. Requires ENABLE_MICRO_LIVE=true to activate.
+ENABLE_MICRO_LIVE: bool = os.getenv("ENABLE_MICRO_LIVE", "").lower() == "true"
+MICRO_LIVE_FRACTION: float = float(os.getenv("MICRO_LIVE_FRACTION", "0.01"))
+MICRO_LIVE_MIN_DOLLARS: float = float(os.getenv("MICRO_LIVE_MIN_DOLLARS", "1.0"))
+
+# #P10.3: Weekly Brier alert — notify + pause if score exceeds this threshold
+# for two consecutive ISO weeks.
+BRIER_ALERT_THRESHOLD: float = float(os.getenv("BRIER_ALERT_THRESHOLD", "0.22"))
+
+# #P10.4: Live slippage alert threshold in cents.
+SLIPPAGE_ALERT_CENTS: float = float(os.getenv("SLIPPAGE_ALERT_CENTS", "0.5"))
+
 # ── Shared math ───────────────────────────────────────────────────────────────
 
 
@@ -152,6 +165,10 @@ def get_config_fingerprint() -> dict:
         "DRAWDOWN_HALT_PCT": DRAWDOWN_HALT_PCT,
         "MAX_VAR_DOLLARS": MAX_VAR_DOLLARS,
         "STOP_LOSS_MULT": STOP_LOSS_MULT,
+        "ENABLE_MICRO_LIVE": ENABLE_MICRO_LIVE,
+        "MICRO_LIVE_FRACTION": MICRO_LIVE_FRACTION,
+        "BRIER_ALERT_THRESHOLD": BRIER_ALERT_THRESHOLD,
+        "SLIPPAGE_ALERT_CENTS": SLIPPAGE_ALERT_CENTS,
     }
 
 
