@@ -2593,7 +2593,7 @@ def kelly_fraction(our_prob: float, price: float, fee_rate: float = 0.0) -> floa
 def time_decay_edge(
     raw_edge: float,
     close_time: datetime,
-    reference_hours: float = 48.0,
+    reference_hours: float = 8.0,
 ) -> float:
     """
     #63: Scale edge linearly to zero as the market approaches close.
@@ -2604,6 +2604,10 @@ def time_decay_edge(
     hours_left = (close_time - now).total_seconds() / 3600
     decay      = min(1.0, hours_left / reference_hours)   clamped at [0, 1]
     returns    raw_edge * decay
+
+    Changed from 48h to 8h (2026-04-18): METAR lock-in makes near-close signals
+    more reliable — a genuine 30% edge at 2h before close should not be collapsed
+    to ~1.3% (2/48). With 8h reference, 2h remaining retains 7.5% of the edge.
     """
     now = datetime.now(UTC)
     hours_left = (close_time - now).total_seconds() / 3600
@@ -3553,7 +3557,7 @@ def analyze_trade(enriched: dict) -> dict | None:
     if _close_str:
         try:
             _close_dt = datetime.fromisoformat(_close_str.replace("Z", "+00:00"))
-            edge = time_decay_edge(edge, _close_dt, reference_hours=48.0)
+            edge = time_decay_edge(edge, _close_dt, reference_hours=8.0)
         except (ValueError, TypeError):
             pass
 
