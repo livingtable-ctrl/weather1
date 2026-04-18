@@ -1,6 +1,9 @@
 [tool.pytest.ini_options]
 pythonpath = ["."]
 testpaths = ["tests"]
+markers = [
+    "integration: live API integration tests — require KALSHI_ENV=demo (run with '-m integration')",
+]
 
 [tool.coverage.run]
 omit = [

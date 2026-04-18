@@ -28,13 +28,21 @@ class CircuitOpenError(Exception):
 
 class CircuitBreaker:
     def __init__(
-        self, name: str, failure_threshold: int = 5, recovery_timeout: float = 300
+        self,
+        name: str,
+        failure_threshold: int = 5,
+        recovery_timeout: float = 300,
+        backoff_multiplier: float = 1.0,
     ):
         self.name = name
         self.failure_threshold = failure_threshold
         self.recovery_timeout = recovery_timeout
+        self.backoff_multiplier = backoff_multiplier
         self._failure_count = 0
+        self._trip_count = 0  # how many times the circuit has opened
         self._opened_at: float | None = None
+        self._wall_opened_at: float | None = None
+        self._current_timeout: float = recovery_timeout
         self._lock = threading.Lock()
 
     def is_open(self) -> bool:
@@ -42,13 +50,14 @@ class CircuitBreaker:
             if self._opened_at is None:
                 return False
             elapsed = time.monotonic() - self._opened_at
-            if elapsed >= self.recovery_timeout:
+            if elapsed >= self._current_timeout:
                 _log.info(
                     "Circuit '%s' half-open after %.0fs — allowing probe",
                     self.name,
                     elapsed,
                 )
                 self._opened_at = None
+                self._wall_opened_at = None
                 self._failure_count = 0
                 return False
             return True
@@ -58,18 +67,51 @@ class CircuitBreaker:
             self._failure_count += 1
             if self._failure_count >= self.failure_threshold:
                 if self._opened_at is None:
+                    self._trip_count += 1
+                    # Apply backoff: timeout doubles on each consecutive trip
+                    if self._trip_count > 1 and self.backoff_multiplier > 1.0:
+                        self._current_timeout = min(
+                            self.recovery_timeout
+                            * (self.backoff_multiplier ** (self._trip_count - 1)),
+                            86400.0,  # cap at 24 hours
+                        )
                     self._opened_at = time.monotonic()
+                    self._wall_opened_at = time.time()
                     _log.warning(
                         "Circuit '%s' OPEN after %d failures — will retry in %.0fs",
                         self.name,
                         self._failure_count,
-                        self.recovery_timeout,
+                        self._current_timeout,
                     )
 
     def record_success(self) -> None:
         with self._lock:
             self._failure_count = 0
             self._opened_at = None
+            self._wall_opened_at = None
+            # _trip_count and _current_timeout are intentionally preserved across
+            # successes so backoff accumulates over repeated open/close cycles.
+
+    @property
+    def failure_count(self) -> int:
+        with self._lock:
+            return self._failure_count
+
+    def seconds_open(self) -> float:
+        """Wall-clock seconds since the circuit opened; 0.0 if currently closed."""
+        with self._lock:
+            if self._wall_opened_at is None:
+                return 0.0
+            return time.time() - self._wall_opened_at
+
+    def seconds_until_retry(self) -> float:
+        """Seconds remaining before the circuit allows a probe; 0.0 if closed."""
+        with self._lock:
+            if self._opened_at is None:
+                return 0.0
+            elapsed = time.monotonic() - self._opened_at
+            remaining = self._current_timeout - elapsed
+            return max(0.0, remaining)
 
 
 # ── Flash Crash Circuit Breaker ───────────────────────────────────────────────

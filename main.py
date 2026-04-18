@@ -58,10 +58,12 @@ from weather_markets import (
     CITY_COORDS,
     _feels_like,
     analyze_trade,
+    check_ensemble_circuit_health,
     detect_hedge_opportunity,
     enrich_with_forecast,
     fetch_temperature_ecmwf,
     fetch_temperature_nbm,
+    fetch_temperature_weatherapi,
     get_weather_forecast,
     get_weather_markets,
     is_liquid,
@@ -2242,6 +2244,38 @@ def cmd_cron(client: KalshiClient, min_edge: float = MIN_EDGE) -> None:
     # P3.2 — detect orders placed in the last 5 minutes at startup
     _check_startup_orders()
 
+    # Phase 1 — surface prolonged Open-Meteo outages immediately
+    try:
+        check_ensemble_circuit_health()
+    except Exception as _e:
+        _log.debug("cmd_cron: check_ensemble_circuit_health failed: %s", _e)
+
+    # Phase 9 — snapshot circuit state so we can detect newly-opened circuits after scan
+    try:
+        from weather_markets import (
+            _ensemble_cb,
+            _forecast_cb,
+            _pirate_cb,
+            _weatherapi_cb,
+        )
+
+        _pre_scan_cb_states = {
+            "open_meteo_forecast": _forecast_cb.is_open(),
+            "open_meteo_ensemble": _ensemble_cb.is_open(),
+            "weatherapi": _weatherapi_cb.is_open(),
+            "pirate_weather": _pirate_cb.is_open(),
+        }
+        _scan_cbs = {
+            "open_meteo_forecast": _forecast_cb,
+            "open_meteo_ensemble": _ensemble_cb,
+            "weatherapi": _weatherapi_cb,
+            "pirate_weather": _pirate_cb,
+        }
+    except Exception as _e:
+        _log.debug("cmd_cron: circuit state snapshot failed: %s", _e)
+        _pre_scan_cb_states = {}
+        _scan_cbs = {}
+
     # P8.2 — anomaly detection at start of cron cycle
     try:
         from alerts import run_anomaly_check as _run_anomaly_check
@@ -2376,6 +2410,10 @@ def cmd_cron(client: KalshiClient, min_edge: float = MIN_EDGE) -> None:
                     pass
                 try:
                     fetch_temperature_ecmwf(_c, _dt)
+                except Exception:
+                    pass
+                try:
+                    fetch_temperature_weatherapi(_c, _dt)
                 except Exception:
                     pass
                 for _v in ("max", "min"):
@@ -2576,6 +2614,57 @@ def cmd_cron(client: KalshiClient, min_edge: float = MIN_EDGE) -> None:
         logging.getLogger(__name__).warning(
             "cmd_cron: _check_early_exits failed: %s", _e
         )
+
+    # Portfolio VaR summary after placement
+    try:
+        from monte_carlo import portfolio_var
+        from paper import get_open_trades as _get_open
+
+        _open = _get_open()
+        if _open:
+            _var = portfolio_var(_open, n_simulations=500)
+            _exp = None
+            try:
+                from monte_carlo import simulate_portfolio as _sim
+
+                _exp = _sim(_open, n_simulations=500)["median_pnl"]
+            except Exception:
+                pass
+            _var_s = red(f"-${abs(_var):.2f}") if _var < 0 else green(f"+${_var:.2f}")
+            _exp_s = (
+                (green(f"+${_exp:.2f}") if _exp >= 0 else red(f"-${abs(_exp):.2f}"))
+                if _exp is not None
+                else "n/a"
+            )
+            print(dim(f"  [cron] Portfolio VaR (5%): {_var_s}  |  Expected: {_exp_s}"))
+    except Exception:
+        pass
+
+    # Phase 9 — alert if any circuit transitioned closed→open during this scan
+    try:
+        import os as _os_cb
+
+        if (
+            not _os_cb.environ.get("PYTEST_CURRENT_TEST")
+            and _pre_scan_cb_states
+            and _scan_cbs
+        ):
+            from notify import _send_discord as _discord_cb
+
+            for _cb_name, _cb_obj in _scan_cbs.items():
+                if not _pre_scan_cb_states.get(_cb_name, True) and _cb_obj.is_open():
+                    _log.warning(
+                        "Circuit '%s' OPENED during cron scan — notifying", _cb_name
+                    )
+                    _discord_cb(
+                        f"⚡ Circuit Opened: {_cb_name}",
+                        f"The `{_cb_name}` data source tripped during cron scan.\n"
+                        f"Failures: {_cb_obj.failure_count}  |  "
+                        f"Retry in: {round(_cb_obj.seconds_until_retry())}s",
+                        color=0xF85149,
+                    )
+    except Exception as _e:
+        _log.debug("cmd_cron: circuit-open alert failed: %s", _e)
 
     # Windows toast notification (suppressed during test runs)
     try:
@@ -2981,6 +3070,7 @@ def _auto_place_trades(
     cap: per-trade dollar cap; if None, uses dynamic Brier cap.
     """
     from paper import (
+        corr_kelly_scale,
         get_open_trades,
         is_daily_loss_halted,
         is_paused_drawdown,
@@ -3007,7 +3097,8 @@ def _auto_place_trades(
             yellow("  [Auto] Loss streak detected — Kelly halved for all auto-trades.")
         )
 
-    open_tickers = {t["ticker"] for t in get_open_trades()}
+    _open_trades_list = get_open_trades()
+    open_tickers = {t["ticker"] for t in _open_trades_list}
     placed = 0
     from utils import MAX_DAILY_SPEND
 
@@ -3078,6 +3169,9 @@ def _auto_place_trades(
         adj_kelly = portfolio_kelly_fraction(
             ci_kelly, city, target_date_str, side=rec_side
         )
+        adj_kelly *= corr_kelly_scale(
+            {"city": city, "target_date": target_date_str}, _open_trades_list
+        )
         if adj_kelly < 0.002:
             continue
         # Use market implied prob as entry price — flip for NO side
@@ -3092,6 +3186,40 @@ def _auto_place_trades(
         qty = kelly_quantity(adj_kelly_final, entry_price, cap=cap, method=method)
         if qty < 1:
             continue
+
+        # Pre-trade VaR gate: skip if adding this position would push 5th-percentile
+        # portfolio loss beyond MAX_VAR_DOLLARS
+        from utils import MAX_VAR_DOLLARS
+
+        if MAX_VAR_DOLLARS > 0:
+            try:
+                from monte_carlo import portfolio_var
+
+                candidate = {
+                    "ticker": ticker,
+                    "side": rec_side,
+                    "entry_price": entry_price,
+                    "cost": round(entry_price * qty, 2),
+                    "quantity": qty,
+                    "city": city,
+                    "target_date": target_date_str,
+                    "entry_prob": a.get("forecast_prob"),
+                }
+                projected_var = portfolio_var(
+                    _open_trades_list + [candidate], n_simulations=500
+                )
+                if abs(projected_var) > MAX_VAR_DOLLARS:
+                    _log.warning(
+                        "_auto_place_trades: skip %s — projected VaR $%.2f exceeds limit $%.2f",
+                        ticker,
+                        abs(projected_var),
+                        MAX_VAR_DOLLARS,
+                    )
+                    continue
+            except Exception as _var_err:
+                _log.debug(
+                    "_auto_place_trades: VaR check failed for %s: %s", ticker, _var_err
+                )
 
         # Cycle-aware deduplication — skip if already ordered on this forecast cycle
         cycle = _current_forecast_cycle()
@@ -3142,6 +3270,7 @@ def _auto_place_trades(
                     )
                 )
                 open_tickers.add(ticker)
+                _open_trades_list.append(trade)
                 placed += 1
                 daily_spent += trade.get("cost", 0.0)
                 # #55: update analysis attempt to mark this market as traded
@@ -3389,6 +3518,25 @@ def cmd_forecast(city: str):
             tablefmt="rounded_outline",
         )
     )
+
+    # Show active model weights for this city
+    try:
+        from tracker import get_model_weights
+
+        weights = get_model_weights(city, window_days=30)
+        if weights:
+            weight_parts = "  ".join(
+                f"{m}: {w:.0%}" for m, w in sorted(weights.items(), key=lambda x: -x[1])
+            )
+            print(dim(f"\n  Active model weights (30-day MAE): {weight_parts}"))
+        else:
+            print(
+                dim(
+                    f"\n  Active model weights: equal (insufficient history for {city})"
+                )
+            )
+    except Exception:
+        pass
 
 
 # ── Consistency ───────────────────────────────────────────────────────────────

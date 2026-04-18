@@ -1010,6 +1010,37 @@ setInterval(() => {{
         except Exception as exc:
             return jsonify({"error": str(exc)}), 500
 
+    @app.route("/api/circuit-status")
+    def api_circuit_status():
+        """Live circuit breaker state for all weather data sources."""
+        try:
+            from weather_markets import (
+                _ensemble_cb,
+                _forecast_cb,
+                _pirate_cb,
+                _weatherapi_cb,
+            )
+
+            def _cb_dict(cb):
+                is_open = cb.is_open()
+                return {
+                    "state": "open" if is_open else "closed",
+                    "failures": cb.failure_count,
+                    "retry_in_s": round(cb.seconds_until_retry()) if is_open else 0,
+                    "open_for_s": round(cb.seconds_open()),
+                }
+
+            return jsonify(
+                {
+                    "open_meteo_forecast": _cb_dict(_forecast_cb),
+                    "open_meteo_ensemble": _cb_dict(_ensemble_cb),
+                    "weatherapi": _cb_dict(_weatherapi_cb),
+                    "pirate_weather": _cb_dict(_pirate_cb),
+                }
+            )
+        except Exception as exc:
+            return jsonify({"error": str(exc)}), 500
+
     @app.route("/api/health/data-consistency")
     def api_data_consistency():
         """Cross-check dashboard data sources vs raw storage."""
