@@ -5,6 +5,8 @@ Opens a browser tab showing the analyze table, open positions, and P&L chart.
 
 from __future__ import annotations
 
+import base64 as _base64
+import functools
 import json
 import logging
 import os
@@ -15,9 +17,38 @@ import time
 from datetime import UTC, datetime
 from pathlib import Path
 
+from flask import Response
+from flask import request as _flask_request
 from markupsafe import escape as _html_escape
 
 _log = logging.getLogger(__name__)
+
+
+def _require_auth(f):
+    @functools.wraps(f)
+    def decorated(*args, **kwargs):
+        import utils as _utils
+
+        pwd = _utils.DASHBOARD_PASSWORD
+        if not pwd:
+            return f(*args, **kwargs)
+        auth = _flask_request.headers.get("Authorization", "")
+        if auth.startswith("Basic "):
+            try:
+                decoded = _base64.b64decode(auth[6:]).decode("utf-8")
+                _, password = decoded.split(":", 1)
+                if password == pwd:
+                    return f(*args, **kwargs)
+            except Exception:
+                pass
+        return Response(
+            "Authentication required",
+            401,
+            {"WWW-Authenticate": 'Basic realm="Kalshi Dashboard"'},
+        )
+
+    return decorated
+
 
 _app = None  # module-level Flask app
 _client = None  # module-level Kalshi client reference
@@ -75,6 +106,28 @@ def _build_app(client):
 
     app = Flask(__name__)
     app.config["TEMPLATES_AUTO_RELOAD"] = True
+
+    @app.before_request
+    def _check_auth():
+        import utils as _utils
+
+        pwd = _utils.DASHBOARD_PASSWORD
+        if not pwd:
+            return None  # open access
+        auth = _flask_request.headers.get("Authorization", "")
+        if auth.startswith("Basic "):
+            try:
+                decoded = _base64.b64decode(auth[6:]).decode("utf-8")
+                _, password = decoded.split(":", 1)
+                if password == pwd:
+                    return None  # authenticated
+            except Exception:
+                pass
+        return Response(
+            "Authentication required",
+            401,
+            {"WWW-Authenticate": 'Basic realm="Kalshi Dashboard"'},
+        )
 
     DARK_STYLE = """
     <style>

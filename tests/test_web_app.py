@@ -122,6 +122,35 @@ def test_analytics_route_returns_200_with_title(client):
     assert b"Analytics" in r.data
 
 
+class TestDashboardAuth:
+    def test_no_auth_required_when_password_unset(self, client, monkeypatch):
+        """Dashboard is open when DASHBOARD_PASSWORD is empty."""
+        import utils
+
+        monkeypatch.setattr(utils, "DASHBOARD_PASSWORD", "")
+        resp = client.get("/")
+        assert resp.status_code != 401
+
+    def test_401_when_password_set_and_no_credentials(self, client, monkeypatch):
+        """Dashboard returns 401 when password is set and no Authorization header sent."""
+        import utils
+
+        monkeypatch.setattr(utils, "DASHBOARD_PASSWORD", "secret")
+        resp = client.get("/")
+        assert resp.status_code == 401
+
+    def test_200_with_correct_credentials(self, client, monkeypatch):
+        """Dashboard returns 200 with correct Basic Auth credentials."""
+        import base64
+
+        import utils
+
+        monkeypatch.setattr(utils, "DASHBOARD_PASSWORD", "secret")
+        creds = base64.b64encode(b"kalshi:secret").decode()
+        resp = client.get("/", headers={"Authorization": f"Basic {creds}"})
+        assert resp.status_code == 200
+
+
 def test_api_graduation_returns_correct_shape(client):
     """/api/graduation returns trades_done, win_rate, ready, fear_greed_score, fear_greed_label."""
     with (
