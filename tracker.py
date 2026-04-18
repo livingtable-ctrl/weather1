@@ -653,6 +653,35 @@ def brier_score(city: str | None = None) -> float | None:
     return sum((r["our_prob"] - r["settled_yes"]) ** 2 for r in rows) / len(rows)
 
 
+def get_rolling_win_rate(window: int = 20) -> tuple[float | None, int]:
+    """Win rate over the last `window` settled predictions.
+
+    Returns (win_rate, count). Returns (None, count) if count < window.
+    """
+    init_db()
+    with _conn() as con:
+        rows = con.execute(
+            """
+            SELECT o.settled_yes, p.side
+            FROM predictions p
+            JOIN outcomes o ON p.ticker = o.ticker
+            ORDER BY o.settled_at DESC
+            LIMIT ?
+            """,
+            (window,),
+        ).fetchall()
+    count = len(rows)
+    if count < window:
+        return None, count
+    wins = sum(
+        1
+        for r in rows
+        if (r["side"] == "yes" and r["settled_yes"] == 1)
+        or (r["side"] == "no" and r["settled_yes"] == 0)
+    )
+    return wins / count, count
+
+
 def count_settled_predictions() -> int:
     """Return the number of predictions with a known outcome."""
     init_db()

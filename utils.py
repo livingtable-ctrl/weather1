@@ -93,6 +93,11 @@ MICRO_LIVE_MIN_DOLLARS: float = float(os.getenv("MICRO_LIVE_MIN_DOLLARS", "1.0")
 # for two consecutive ISO weeks.
 BRIER_ALERT_THRESHOLD: float = float(os.getenv("BRIER_ALERT_THRESHOLD", "0.22"))
 
+# Rolling accuracy circuit breaker
+ACCURACY_WINDOW_TRADES: int = int(os.getenv("ACCURACY_WINDOW_TRADES", "20"))
+ACCURACY_MIN_WIN_RATE: float = float(os.getenv("ACCURACY_MIN_WIN_RATE", "0.40"))
+ACCURACY_MIN_SAMPLE: int = int(os.getenv("ACCURACY_MIN_SAMPLE", "20"))
+
 # Minimum settled predictions required before Brier score is used to scale bet size.
 # Below this count the Brier is statistically unreliable (small-sample luck).
 MIN_BRIER_SAMPLES: int = int(os.getenv("MIN_BRIER_SAMPLES", "30"))

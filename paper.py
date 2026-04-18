@@ -1393,6 +1393,33 @@ def is_streak_paused() -> bool:
     return streak_pnl < -(STARTING_BALANCE * 0.02)
 
 
+def is_accuracy_halted() -> bool:
+    """Return True if rolling win rate over last ACCURACY_WINDOW_TRADES is below
+    ACCURACY_MIN_WIN_RATE. Requires ACCURACY_MIN_SAMPLE settled trades before firing."""
+    from utils import ACCURACY_MIN_SAMPLE, ACCURACY_MIN_WIN_RATE, ACCURACY_WINDOW_TRADES
+
+    try:
+        from tracker import get_rolling_win_rate
+
+        win_rate, count = get_rolling_win_rate(window=ACCURACY_WINDOW_TRADES)
+        if count < ACCURACY_MIN_SAMPLE:
+            return False
+        if win_rate is None:
+            return False
+        if win_rate < ACCURACY_MIN_WIN_RATE:
+            _log.warning(
+                "Accuracy circuit breaker: win rate %.1f%% over last %d trades "
+                "is below %.0f%% threshold — halting new trades",
+                win_rate * 100,
+                count,
+                ACCURACY_MIN_WIN_RATE * 100,
+            )
+            return True
+        return False
+    except Exception:
+        return False
+
+
 def get_daily_pnl(client=None) -> float:
     """
     Sum of P&L from trades settled today (UTC).

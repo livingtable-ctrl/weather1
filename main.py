@@ -2232,6 +2232,13 @@ def cmd_cron(client: KalshiClient, min_edge: float = MIN_EDGE) -> None:
         _release_cron_lock()
         return
 
+    from paper import is_accuracy_halted as _is_accuracy_halted
+
+    if _is_accuracy_halted():
+        _log.warning("[cron] accuracy circuit breaker active — skipping market scan")
+        _release_cron_lock()
+        return
+
     print(
         cyan(
             f"  [cron] scan starting — {datetime.now(UTC).strftime('%Y-%m-%d %H:%M:%S')} UTC"
