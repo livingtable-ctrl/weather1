@@ -228,11 +228,11 @@ class TestMaxDrawdown(unittest.TestCase):
         result = paper.kelly_bet_dollars(0.10, cap=50.0)
         self.assertAlmostEqual(result, 50.0)
 
-    def test_boundary_exactly_500_not_paused(self):
-        """Balance exactly at $500 (= 50% of $1000) is NOT paused (strict less-than)."""
+    def test_boundary_exactly_800_not_paused(self):
+        """Balance exactly at $800 (= 80% of $1000, 20% halt) is NOT paused (strict less-than)."""
         import paper
 
-        paper.place_paper_order("TK", "yes", 500, 1.00)  # cost=$500 → balance=$500
+        paper.place_paper_order("TK", "yes", 200, 1.00)  # cost=$200 → balance=$800
         self.assertFalse(paper.is_paused_drawdown())
 
 
@@ -553,53 +553,53 @@ class TestDrawdownScaling(unittest.TestCase):
 
         self.assertEqual(paper.drawdown_scaling_factor(), 1.0)
 
-    def test_zero_scaling_below_50_pct(self):
-        """Below 50% of peak → scale = 0.0 (fully paused)."""
+    def test_zero_scaling_below_20_pct(self):
+        """Below 20% of peak → scale = 0.0 (fully paused)."""
         import paper
 
-        paper.place_paper_order("TK", "yes", 600, 1.00)  # balance → $400 (40% of $1000)
+        paper.place_paper_order("TK", "yes", 250, 1.00)  # balance → $750 (75% of $1000)
         self.assertEqual(paper.drawdown_scaling_factor(), 0.0)
 
-    def test_tier2_scaling_between_50_and_60_pct(self):
-        """Balance at 55% of peak → step tier = 0.0 (below 60% threshold)."""
+    def test_tier2_scaling_between_80_and_85_pct(self):
+        """Balance at 82% of peak → step tier = 0.10 (TIER_1–TIER_2 with 20% halt)."""
         import paper
 
-        paper.place_paper_order("TK", "yes", 450, 1.00)  # balance → $550 (55% of $1000)
-        # Step tiers: < 60% → 0.0 (paused)
-        self.assertAlmostEqual(paper.drawdown_scaling_factor(), 0.0, places=4)
+        paper.place_paper_order("TK", "yes", 180, 1.00)  # balance → $820 (82% of $1000)
+        # Tiers relative to 20% halt: TIER_1=0.80, TIER_2=0.85 → survival 0.10
+        self.assertAlmostEqual(paper.drawdown_scaling_factor(), 0.10, places=4)
 
-    def test_tier3_scaling_between_60_and_75_pct(self):
-        """Balance at 65% of peak → step tier = 0.20 (60–80% recovery)."""
+    def test_tier3_scaling_between_85_and_90_pct(self):
+        """Balance at 87% of peak → step tier = 0.30 (TIER_2–TIER_3 with 20% halt)."""
         import paper
 
-        paper.place_paper_order("TK", "yes", 350, 1.00)  # balance → $650 (65% of $1000)
-        # Step tiers: 60–80% recovery → 0.20 (survival mode)
-        self.assertAlmostEqual(paper.drawdown_scaling_factor(), 0.20, places=4)
+        paper.place_paper_order("TK", "yes", 130, 1.00)  # balance → $870 (87% of $1000)
+        # Tiers relative to 20% halt: TIER_2=0.85, TIER_3=0.90 → conservative 0.30
+        self.assertAlmostEqual(paper.drawdown_scaling_factor(), 0.30, places=4)
 
-    def test_tier4_scaling_between_75_and_90_pct(self):
-        """Balance at 80% of peak → step tier = 0.20 (at 80% recovery threshold)."""
+    def test_tier4_scaling_between_90_and_95_pct(self):
+        """Balance at 92% of peak → step tier = 0.70 (TIER_3–TIER_4 with 20% halt)."""
         import paper
 
-        paper.place_paper_order("TK", "yes", 200, 1.00)  # balance → $800 (80% of $1000)
-        # Step tiers: at 80% recovery → 0.20 (boundary case stays in 60–80% tier)
-        self.assertAlmostEqual(paper.drawdown_scaling_factor(), 0.20, places=4)
+        paper.place_paper_order("TK", "yes", 80, 1.00)  # balance → $920 (92% of $1000)
+        # Tiers relative to 20% halt: TIER_3=0.90, TIER_4=0.95 → reduced 0.70
+        self.assertAlmostEqual(paper.drawdown_scaling_factor(), 0.70, places=4)
 
     def test_kelly_scaled_at_partial_recovery(self):
         """Kelly dollars are scaled by recovery factor, not all-or-nothing."""
         import paper
 
         paper.place_paper_order(
-            "TK", "yes", 350, 1.00
-        )  # balance → $650 (65% of peak), scale=0.20 (step tier)
+            "TK", "yes", 130, 1.00
+        )  # balance → $870 (87% of peak), scale=0.30 (TIER_2–TIER_3)
         dollars = paper.kelly_bet_dollars(0.10)
-        # 0.10 * 0.20 * $650 = $13.00
-        self.assertAlmostEqual(dollars, 13.0)
+        # 0.10 * 0.30 * $870 = $26.10
+        self.assertAlmostEqual(dollars, 26.10)
 
-    def test_kelly_zero_below_50_pct(self):
+    def test_kelly_zero_below_20_pct(self):
         """Kelly still returns 0.0 when fully in drawdown (scale=0.0)."""
         import paper
 
-        paper.place_paper_order("TK", "yes", 600, 1.00)  # balance → $400
+        paper.place_paper_order("TK", "yes", 250, 1.00)  # balance → $750 (75%)
         self.assertEqual(paper.kelly_bet_dollars(0.10), 0.0)
 
 
@@ -897,14 +897,51 @@ def test_kelly_bet_dollars_method_scaling_reduces_kelly(mock_balance_1000, monke
     """Poor-performing method (Brier > 0.20) reduces Kelly by 25%."""
     import paper
 
-    # Use a high cap so the multiplier effect isn't masked by the per-trade ceiling.
-    # Multiplier: no method → 1.0 (unscaled), any method → 0.75 (poor Brier).
+    # Patch DATA_PATH again after reload (fixture patching is overwritten by reload)
+    monkeypatch.setattr(paper, "DATA_PATH", mock_balance_1000.DATA_PATH)
+    monkeypatch.setattr(paper, "get_balance", lambda: 1000.0)
+    monkeypatch.setattr(paper, "drawdown_scaling_factor", lambda: 1.0)
+    monkeypatch.setattr(paper, "is_streak_paused", lambda: False)
     monkeypatch.setattr(paper, "_dynamic_kelly_cap", lambda: 500.0)
     monkeypatch.setattr(paper, "_method_kelly_multiplier", lambda m: 0.75 if m else 1.0)
-    base = paper.kelly_bet_dollars(0.5)
-    scaled = paper.kelly_bet_dollars(0.5, method="normal_dist")
+
+    base = paper.kelly_bet_dollars(0.5)  # method=None  → multiplier=1.0
+    scaled = paper.kelly_bet_dollars(0.5, method="normal_dist")  # multiplier=0.75
+
+    # With balance=1000, scale=1.0: fraction=0.25, dollars=250.0 (well under $500 cap)
     assert scaled < base
     assert abs(scaled - base * 0.75) < 0.02
+
+
+class TestDynamicKellyCapMinSamples:
+    def test_cap_returns_conservative_when_too_few_samples(self, monkeypatch):
+        """_dynamic_kelly_cap returns $50 (conservative) when < MIN_BRIER_SAMPLES settled."""
+        import paper
+        import tracker
+
+        monkeypatch.setattr(tracker, "brier_score", lambda: 0.006)
+        monkeypatch.setattr(tracker, "count_settled_predictions", lambda: 5)
+        assert paper._dynamic_kelly_cap() == 50.0
+
+    def test_cap_uses_brier_when_enough_samples(self, monkeypatch):
+        """_dynamic_kelly_cap uses Brier scaling when >= MIN_BRIER_SAMPLES settled."""
+        import paper
+        import tracker
+
+        monkeypatch.setattr(tracker, "brier_score", lambda: 0.04)
+        monkeypatch.setattr(tracker, "count_settled_predictions", lambda: 30)
+        assert paper._dynamic_kelly_cap() == 500.0
+
+    def test_method_multiplier_returns_neutral_when_too_few_samples(self, monkeypatch):
+        """_method_kelly_multiplier returns 1.0 when < MIN_BRIER_SAMPLES settled."""
+        import paper
+        import tracker
+
+        monkeypatch.setattr(
+            tracker, "brier_score_by_method", lambda min_samples: {"ensemble": 0.25}
+        )
+        monkeypatch.setattr(tracker, "count_settled_predictions", lambda: 5)
+        assert paper._method_kelly_multiplier("ensemble") == 1.0
 
 
 # ── Task 3: entry_hour and close_paper_early ──────────────────────────────────

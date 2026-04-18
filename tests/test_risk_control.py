@@ -14,6 +14,8 @@ import importlib
 import json
 import time
 
+import pytest
+
 # ── helpers ───────────────────────────────────────────────────────────────────
 
 
@@ -268,3 +270,48 @@ class TestPaperLiveSeparation:
             f"MARKET_BASE_URL contains 'demo' even though KALSHI_ENV=prod: "
             f"{_main.MARKET_BASE_URL!r}"
         )
+
+
+class TestAccuracyCircuitBreaker:
+    def test_halted_when_win_rate_below_threshold(self, monkeypatch):
+        """is_accuracy_halted returns True when win rate is 30% over 20 trades."""
+        import paper
+
+        monkeypatch.setattr("tracker.get_rolling_win_rate", lambda window: (0.30, 20))
+        assert paper.is_accuracy_halted() is True
+
+    def test_not_halted_when_win_rate_acceptable(self, monkeypatch):
+        """is_accuracy_halted returns False when win rate is 55% over 20 trades."""
+        import paper
+
+        monkeypatch.setattr("tracker.get_rolling_win_rate", lambda window: (0.55, 20))
+        assert paper.is_accuracy_halted() is False
+
+    def test_not_halted_when_sample_too_small(self, monkeypatch):
+        """is_accuracy_halted returns False when fewer than ACCURACY_MIN_SAMPLE trades settled."""
+        import paper
+
+        monkeypatch.setattr("tracker.get_rolling_win_rate", lambda window: (0.20, 5))
+        assert paper.is_accuracy_halted() is False
+
+    def test_not_halted_when_tracker_raises(self, monkeypatch):
+        """is_accuracy_halted is safe — returns False on any tracker exception."""
+        import paper
+
+        def _raise(window):
+            raise RuntimeError("db gone")
+
+        monkeypatch.setattr("tracker.get_rolling_win_rate", _raise)
+        assert paper.is_accuracy_halted() is False
+
+
+class TestDrawdownHaltDefault:
+    def test_drawdown_halt_default_is_20pct(self, monkeypatch):
+        """DRAWDOWN_HALT_PCT default must be 0.20, not 0.50."""
+        monkeypatch.delenv("DRAWDOWN_HALT_PCT", raising=False)
+        import importlib
+
+        import utils
+
+        importlib.reload(utils)
+        assert utils.DRAWDOWN_HALT_PCT == pytest.approx(0.20)

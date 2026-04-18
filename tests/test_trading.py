@@ -203,13 +203,37 @@ class TestTimeDecayEdge:
         assert result == pytest.approx(raw_edge * 0.5, rel=0.02)
 
     def test_edge_decays_as_close_approaches(self):
-        """Edge at 12 hours remaining < edge at 36 hours remaining."""
+        """Edge at 6h remaining < edge at 3h remaining (within 8h reference window)."""
         from weather_markets import time_decay_edge
 
         raw_edge = 0.10
-        e_far = time_decay_edge(raw_edge, datetime.now(UTC) + timedelta(hours=36))
-        e_near = time_decay_edge(raw_edge, datetime.now(UTC) + timedelta(hours=12))
+        e_far = time_decay_edge(raw_edge, datetime.now(UTC) + timedelta(hours=6))
+        e_near = time_decay_edge(raw_edge, datetime.now(UTC) + timedelta(hours=3))
         assert e_far > e_near > 0.0
+
+    def test_full_edge_beyond_reference_hours(self):
+        """At 10h before close with 8h reference: full edge returned."""
+        from weather_markets import time_decay_edge
+
+        close = datetime.now(UTC) + timedelta(hours=10)
+        result = time_decay_edge(0.30, close, reference_hours=8.0)
+        assert result == pytest.approx(0.30)
+
+    def test_half_edge_at_half_reference_hours(self):
+        """At 4h before close with 8h reference: ~50% of edge returned."""
+        from weather_markets import time_decay_edge
+
+        close = datetime.now(UTC) + timedelta(hours=4)
+        result = time_decay_edge(0.30, close, reference_hours=8.0)
+        assert result == pytest.approx(0.15, abs=0.01)
+
+    def test_near_close_retains_meaningful_edge(self):
+        """At 2h before close with 8h reference: >5% edge retained (was 4% with 48h)."""
+        from weather_markets import time_decay_edge
+
+        close = datetime.now(UTC) + timedelta(hours=2)
+        result = time_decay_edge(0.30, close, reference_hours=8.0)
+        assert result > 0.05
 
 
 # ── Task 5: price improvement tracking (#65) ──────────────────────────────────

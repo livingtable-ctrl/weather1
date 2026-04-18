@@ -1,0 +1,10 @@
+[allowlist]
+  description = "Test fixture keys and known-safe patterns"
+  regexes = [
+    "fake-key",
+    "deadbeef",
+    "test.*private.*key",
+  ]
+  paths = [
+    "tests/",
+  ]

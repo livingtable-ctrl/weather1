@@ -85,6 +85,26 @@ def mock_forecast(sample_forecast):
         yield mock
 
 
+@pytest.fixture()
+def mock_market():
+    """Standard mock Kalshi market dict — must stay in sync with production field names."""
+    return {
+        "ticker": "KXTEMP-25-NYC-B70-T",
+        "volume_fp": 500,
+        "volume": 500,
+        "open_interest_fp": 1000,
+        "open_interest": 1000,
+        "yes_bid": "0.60",
+        "yes_ask": "0.65",
+        "close_time": "2026-04-20T20:00:00Z",
+        "_forecast": None,
+        "_date": None,
+        "_city": None,
+        "_hour": None,
+        "data_fetched_at": None,
+    }
+
+
 @pytest.fixture
 def mock_balance_1000(tmp_path, monkeypatch):
     """Patch paper to use a temp data file and start with $1000 balance."""

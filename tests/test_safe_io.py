@@ -46,7 +46,7 @@ def test_save_writes_crc32_field(tmp_path, monkeypatch):
     # #102: SHA-256 replaced CRC32; accept either field for backward compatibility
     assert "_checksum" in stored or "_crc32" in stored
     checksum_field = stored.get("_checksum") or stored.get("_crc32")
-    assert len(checksum_field) == 8
+    assert len(checksum_field) == 16
 
 
 def test_save_then_load_roundtrip(tmp_path, monkeypatch):

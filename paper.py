@@ -42,23 +42,29 @@ def _validate_crc(data: dict) -> None:
 
 
 def _compute_checksum(payload: dict) -> str:
-    """Compute SHA-256 checksum (first 8 hex chars) of payload excluding '_checksum' key."""
+    """Compute SHA-256 checksum (first 16 hex chars) of payload excluding '_checksum' key."""
     body = json.dumps(
         {k: v for k, v in payload.items() if k != "_checksum"},
         indent=2,
         sort_keys=True,
         default=str,
     ).encode()
-    return hashlib.sha256(body).hexdigest()[:8]
+    return hashlib.sha256(body).hexdigest()[:16]
 
 
 def _validate_checksum(data: dict) -> None:
-    """Validate SHA-256 checksum in data dict. Raises ValueError on mismatch."""
+    """Validate SHA-256 checksum in data dict. Raises ValueError on mismatch.
+
+    Accepts legacy 8-char checksums (prefix of the full 16-char value) to allow
+    seamless migration from the old 8-char format without data corruption errors.
+    """
     stored = data.get("_checksum")
     if stored is None:
         return
     expected = _compute_checksum(data)
-    if stored != expected:
+    # Accept stored value if it equals the expected value OR is a valid prefix of it
+    # (handles migration from 8-char to 16-char checksums).
+    if not expected.startswith(stored):
         raise ValueError(
             f"paper trades checksum mismatch: stored={stored!r}, expected={expected!r}"
         )
@@ -97,17 +103,20 @@ def _env_int(name: str, default: str) -> int:
 
 
 # #121: drawdown halt configurable via env (default 50%)
-MAX_DRAWDOWN_FRACTION = _env_float("DRAWDOWN_HALT_PCT", "0.50")
+MAX_DRAWDOWN_FRACTION = _env_float("DRAWDOWN_HALT_PCT", "0.20")
 
 MAX_DAILY_LOSS_PCT = _env_float("MAX_DAILY_LOSS_PCT", "0.03")  # default 3%
 MAX_POSITION_AGE_DAYS = _env_int("MAX_POSITION_AGE_DAYS", "7")
 
-# Gradual recovery thresholds (fraction of peak balance).
-# Conservative tiers: resume slowly after a loss streak to avoid blowup.
-_DRAWDOWN_TIER_1 = 1 - MAX_DRAWDOWN_FRACTION  # 0.50 — fully paused below this
-_DRAWDOWN_TIER_2 = 0.60  # 10% sizing (was 25%)
-_DRAWDOWN_TIER_3 = 0.75  # 30% sizing (was 50%)
-_DRAWDOWN_TIER_4 = 0.90  # 70% sizing (was 75%)
+# Drawdown tier thresholds as fractions of peak balance.
+# All tiers are derived relative to MAX_DRAWDOWN_FRACTION so they remain
+# reachable regardless of what halt threshold is configured.
+_DRAWDOWN_TIER_1 = (
+    1.0 - MAX_DRAWDOWN_FRACTION
+)  # halt below this (e.g. 0.80 at 20% halt)
+_DRAWDOWN_TIER_2 = _DRAWDOWN_TIER_1 + 0.05  # 10% sizing  (e.g. 0.85)
+_DRAWDOWN_TIER_3 = _DRAWDOWN_TIER_1 + 0.10  # 30% sizing  (e.g. 0.90)
+_DRAWDOWN_TIER_4 = _DRAWDOWN_TIER_1 + 0.15  # 70% sizing  (e.g. 0.95)
 
 MAX_TOTAL_OPEN_EXPOSURE = (
     0.50  # max fraction of starting balance in open positions total
@@ -318,30 +327,43 @@ def drawdown_scaling_factor() -> float:
     """
     Return a 0.0–1.0 Kelly multiplier based on drawdown from peak (high-water mark).
 
-    Step tiers:
-      ≤ 60% of peak  → 0.00  (paused — ≥ 40% drawdown)
-      60–80% of peak → 0.20  (survival mode — 20–40% drawdown)
-      80–90% of peak → 0.50  (reduced — 10–20% drawdown)
-      > 90% of peak  → 1.00  (normal — < 10% drawdown)
+    All thresholds are relative to MAX_DRAWDOWN_FRACTION (DRAWDOWN_HALT_PCT env var).
+    With the default 20% halt:
+      < 5% drawdown  (> TIER_4 = 0.95) → 1.00  full sizing
+      5–10% drawdown (TIER_3–TIER_4)   → 0.70  reduced
+      10–15% drawdown (TIER_2–TIER_3)  → 0.30  conservative
+      15–20% drawdown (TIER_1–TIER_2)  → 0.10  survival
+      >= 20% drawdown (≤ TIER_1 = 0.80) → 0.00  halted
     """
     peak = get_peak_balance()
     if peak <= 0:
         return 1.0
     recovery = get_balance() / peak
-    if recovery <= 0.60:
+    if recovery <= _DRAWDOWN_TIER_1:
         return 0.0
-    if recovery <= 0.80:
-        return 0.20
-    if recovery <= 0.90:
-        return 0.50
+    if recovery <= _DRAWDOWN_TIER_2:
+        return 0.10
+    if recovery <= _DRAWDOWN_TIER_3:
+        return 0.30
+    if recovery <= _DRAWDOWN_TIER_4:
+        return 0.70
     return 1.0
 
 
 def _dynamic_kelly_cap() -> float:
-    """Determine STRONG-tier per-trade cap from current Brier score."""
+    """Determine STRONG-tier per-trade cap from current Brier score.
+
+    Returns a conservative $50 cap when fewer than MIN_BRIER_SAMPLES predictions
+    have settled — Brier is unreliable on small samples.
+    """
+    from utils import MIN_BRIER_SAMPLES
+
     try:
         from tracker import brier_score as _brier
+        from tracker import count_settled_predictions as _count
 
+        if _count() < MIN_BRIER_SAMPLES:
+            return 50.0  # conservative until we have real data
         score = _brier()
         if score is None:
             return 200.0
@@ -353,16 +375,24 @@ def _dynamic_kelly_cap() -> float:
             return 300.0
         return 200.0
     except Exception:
-        return 200.0
+        return 50.0
 
 
 def _method_kelly_multiplier(method: str | None) -> float:
-    """Scale Kelly by per-method Brier. Poor method (Brier > 0.20) → 0.75×."""
+    """Scale Kelly by per-method Brier. Poor method (Brier > 0.20) → 0.75×.
+
+    Returns 1.0 (neutral) when fewer than MIN_BRIER_SAMPLES predictions have settled.
+    """
     if not method:
         return 1.0
+    from utils import MIN_BRIER_SAMPLES
+
     try:
         from tracker import brier_score_by_method as _by_method
+        from tracker import count_settled_predictions as _count
 
+        if _count() < MIN_BRIER_SAMPLES:
+            return 1.0
         scores = _by_method(min_samples=5)
         if method not in scores:
             return 1.0
@@ -1361,6 +1391,33 @@ def is_streak_paused() -> bool:
     settled.sort(key=lambda t: t.get("entered_at", ""))
     streak_pnl = sum(t["pnl"] for t in settled[-n:] if t.get("pnl") is not None)
     return streak_pnl < -(STARTING_BALANCE * 0.02)
+
+
+def is_accuracy_halted() -> bool:
+    """Return True if rolling win rate over last ACCURACY_WINDOW_TRADES is below
+    ACCURACY_MIN_WIN_RATE. Requires ACCURACY_MIN_SAMPLE settled trades before firing."""
+    from utils import ACCURACY_MIN_SAMPLE, ACCURACY_MIN_WIN_RATE, ACCURACY_WINDOW_TRADES
+
+    try:
+        from tracker import get_rolling_win_rate
+
+        win_rate, count = get_rolling_win_rate(window=ACCURACY_WINDOW_TRADES)
+        if count < ACCURACY_MIN_SAMPLE:
+            return False
+        if win_rate is None:
+            return False
+        if win_rate < ACCURACY_MIN_WIN_RATE:
+            _log.warning(
+                "Accuracy circuit breaker: win rate %.1f%% over last %d trades "
+                "is below %.0f%% threshold — halting new trades",
+                win_rate * 100,
+                count,
+                ACCURACY_MIN_WIN_RATE * 100,
+            )
+            return True
+        return False
+    except Exception:
+        return False
 
 
 def get_daily_pnl(client=None) -> float:

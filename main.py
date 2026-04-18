@@ -2232,12 +2232,27 @@ def cmd_cron(client: KalshiClient, min_edge: float = MIN_EDGE) -> None:
         _release_cron_lock()
         return
 
+    from paper import is_accuracy_halted as _is_accuracy_halted
+
+    if _is_accuracy_halted():
+        _log.warning("[cron] accuracy circuit breaker active — skipping market scan")
+        _release_cron_lock()
+        return
+
     print(
         cyan(
             f"  [cron] scan starting — {datetime.now(UTC).strftime('%Y-%m-%d %H:%M:%S')} UTC"
         ),
         flush=True,
     )
+
+    # Weekly DB retention sweep (runs on Monday only)
+    from datetime import date as _date
+
+    if _date.today().weekday() == 0:  # Monday
+        from tracker import purge_old_predictions as _purge
+
+        _purge(retention_days=730)
 
     # P3.1 — graceful shutdown flag
     _write_cron_running_flag()
@@ -2355,6 +2370,15 @@ def cmd_cron(client: KalshiClient, min_edge: float = MIN_EDGE) -> None:
             _log.info("WebSocket thread started")
     except Exception as exc:
         _log.debug("WebSocket not available: %s", exc)
+
+    from kalshi_ws import get_ws_health as _get_ws_health
+
+    _ws_h = _get_ws_health()
+    if _ws_h["stale"]:
+        _log.warning(
+            "[cron] WebSocket cache is stale (idle %.0fs) — mid-prices may be unreliable",
+            _ws_h["idle_secs"],
+        )
 
     log_path = Path(__file__).parent / "data" / "cron.log"
     log_path.parent.mkdir(exist_ok=True)

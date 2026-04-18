@@ -71,7 +71,7 @@ FIXED_BET_PCT = float(os.getenv("FIXED_BET_PCT", "0.01"))  # 1% of balance
 FIXED_BET_DOLLARS = float(os.getenv("FIXED_BET_DOLLARS", "10.0"))  # $10 per trade
 
 # #121: Drawdown recovery tiers — configurable via env
-DRAWDOWN_HALT_PCT = float(os.getenv("DRAWDOWN_HALT_PCT", "0.50"))  # halt below this
+DRAWDOWN_HALT_PCT = float(os.getenv("DRAWDOWN_HALT_PCT", "0.20"))  # halt below this
 
 # #P6: Pre-trade VaR gate. New position is skipped if it would push portfolio 5th-percentile
 # loss beyond this amount. Default = 20% of STARTING_BALANCE ($200 on a $1000 start).
@@ -93,8 +93,25 @@ MICRO_LIVE_MIN_DOLLARS: float = float(os.getenv("MICRO_LIVE_MIN_DOLLARS", "1.0")
 # for two consecutive ISO weeks.
 BRIER_ALERT_THRESHOLD: float = float(os.getenv("BRIER_ALERT_THRESHOLD", "0.22"))
 
+# Rolling accuracy circuit breaker
+ACCURACY_WINDOW_TRADES: int = int(os.getenv("ACCURACY_WINDOW_TRADES", "20"))
+ACCURACY_MIN_WIN_RATE: float = float(os.getenv("ACCURACY_MIN_WIN_RATE", "0.40"))
+ACCURACY_MIN_SAMPLE: int = int(os.getenv("ACCURACY_MIN_SAMPLE", "20"))
+
+# Minimum settled predictions required before Brier score is used to scale bet size.
+# Below this count the Brier is statistically unreliable (small-sample luck).
+MIN_BRIER_SAMPLES: int = int(os.getenv("MIN_BRIER_SAMPLES", "30"))
+
 # #P10.4: Live slippage alert threshold in cents.
 SLIPPAGE_ALERT_CENTS: float = float(os.getenv("SLIPPAGE_ALERT_CENTS", "0.5"))
+
+# Optional HTTP Basic Auth password for the web dashboard.
+# If empty (default), the dashboard is open. Set to protect the port.
+DASHBOARD_PASSWORD: str = os.getenv("DASHBOARD_PASSWORD", "")
+
+# Orderbook cache TTL — entries older than this are treated as stale and ignored.
+# Default: 15 minutes. If the WS is silent for 15+ minutes the cache is worthless.
+WS_CACHE_TTL_SECS: float = float(os.getenv("WS_CACHE_TTL_SECS", "900"))
 
 # ── Shared math ───────────────────────────────────────────────────────────────
 

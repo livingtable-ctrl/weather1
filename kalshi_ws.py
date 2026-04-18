@@ -31,6 +31,39 @@ _CACHE_PATH = Path(__file__).parent / "data" / "orderbook_cache.json"
 _orderbook: dict[str, dict] = {}
 _cache_lock = threading.Lock()
 
+_ws_alive: bool = False
+_ws_last_message_ts: float = 0.0
+_ws_state_lock = threading.Lock()
+
+
+def _set_ws_alive(alive: bool) -> None:
+    global _ws_alive
+    with _ws_state_lock:
+        _ws_alive = alive
+
+
+def _record_ws_message() -> None:
+    global _ws_last_message_ts
+    with _ws_state_lock:
+        _ws_last_message_ts = __import__("time").monotonic()
+
+
+def get_ws_health() -> dict:
+    """Return WS thread health info for monitoring."""
+    import time
+
+    from utils import WS_CACHE_TTL_SECS
+
+    with _ws_state_lock:
+        alive = _ws_alive
+        last_msg = _ws_last_message_ts
+    idle_secs = time.monotonic() - last_msg if last_msg > 0 else None
+    return {
+        "alive": alive,
+        "idle_secs": round(idle_secs, 1) if idle_secs is not None else None,
+        "stale": idle_secs is not None and idle_secs > WS_CACHE_TTL_SECS,
+    }
+
 
 # ── Message parsing ───────────────────────────────────────────────────────────
 
@@ -138,18 +171,32 @@ def read_orderbook_cache() -> dict:
 
 
 def get_cached_mid_price(ticker: str) -> float | None:
-    """Return the cached mid-price for a ticker, or None if not cached."""
+    """Return the cached mid-price for a ticker, or None if not cached or stale."""
+    from utils import WS_CACHE_TTL_SECS
+
+    def _is_fresh(entry: dict) -> bool:
+        ts_str = entry.get("ts")
+        if not ts_str:
+            return False
+        try:
+            ts = datetime.fromisoformat(ts_str)
+            age = (datetime.now(UTC) - ts).total_seconds()
+            return age < WS_CACHE_TTL_SECS
+        except (ValueError, TypeError):
+            return False
+
     # Try in-memory first (faster than disk read)
     with _cache_lock:
         entry = _orderbook.get(ticker)
-    if entry and entry.get("mid_price") is not None:
+    if entry and _is_fresh(entry) and entry.get("mid_price") is not None:
         return entry["mid_price"]
+
     # Fall back to disk cache
     cache = read_orderbook_cache()
     entry = cache.get(ticker)
-    if not entry:
-        return None
-    return entry.get("mid_price")
+    if entry and _is_fresh(entry):
+        return entry.get("mid_price")
+    return None
 
 
 # ── WebSocket subscription ────────────────────────────────────────────────────
@@ -208,54 +255,63 @@ async def _ws_listener(api_key: str, private_key_pem: str, tickers: list[str]) -
         _log.error("kalshi_ws: key loading failed: %s", exc)
         return
 
-    while True:
-        try:
-            # Recompute auth on every connect attempt (timestamp must be fresh)
-            timestamp = str(int(time.time() * 1000))
-            message_to_sign = f"{timestamp}GET/trade-api/ws/v2".encode()
+    try:
+        while True:
             try:
-                signature = private_key.sign(
-                    message_to_sign,
-                    padding.PSS(
-                        mgf=padding.MGF1(hashes.SHA256()),
-                        salt_length=padding.PSS.DIGEST_LENGTH,
-                    ),
-                    hashes.SHA256(),
-                )
-                sig_b64 = base64.b64encode(signature).decode()
+                # Recompute auth on every connect attempt (timestamp must be fresh)
+                timestamp = str(int(time.time() * 1000))
+                message_to_sign = f"{timestamp}GET/trade-api/ws/v2".encode()
+                try:
+                    signature = private_key.sign(
+                        message_to_sign,
+                        padding.PSS(
+                            mgf=padding.MGF1(hashes.SHA256()),
+                            salt_length=padding.PSS.DIGEST_LENGTH,
+                        ),
+                        hashes.SHA256(),
+                    )
+                    sig_b64 = base64.b64encode(signature).decode()
+                except Exception as exc:
+                    _log.error("kalshi_ws: auth signing failed: %s", exc)
+                    await asyncio.sleep(10)
+                    continue
+
+                headers = {
+                    "KALSHI-ACCESS-KEY": api_key,
+                    "KALSHI-ACCESS-SIGNATURE": sig_b64,
+                    "KALSHI-ACCESS-TIMESTAMP": timestamp,
+                }
+
+                async with websockets.connect(
+                    _WS_URL, additional_headers=headers
+                ) as ws:
+                    _log.info("kalshi_ws: connected to %s", _WS_URL)
+                    _set_ws_alive(True)
+
+                    sub_msg = build_subscribe_message(
+                        cmd_id=1,
+                        channels=["ticker", "orderbook_delta"],
+                        market_tickers=tickers,
+                    )
+                    await ws.send(json.dumps(sub_msg))
+
+                    async for raw in ws:
+                        try:
+                            msg = json.loads(raw)
+                            parsed = parse_message(msg)
+                            if parsed and parsed.get("ticker"):
+                                update_orderbook_cache(parsed["ticker"], parsed)
+                                _record_ws_message()
+                        except Exception as exc:
+                            _log.debug("kalshi_ws: parse error: %s", exc)
+
             except Exception as exc:
-                _log.error("kalshi_ws: auth signing failed: %s", exc)
-                await asyncio.sleep(10)
-                continue
-
-            headers = {
-                "KALSHI-ACCESS-KEY": api_key,
-                "KALSHI-ACCESS-SIGNATURE": sig_b64,
-                "KALSHI-ACCESS-TIMESTAMP": timestamp,
-            }
-
-            async with websockets.connect(_WS_URL, additional_headers=headers) as ws:
-                _log.info("kalshi_ws: connected to %s", _WS_URL)
-
-                sub_msg = build_subscribe_message(
-                    cmd_id=1,
-                    channels=["ticker", "orderbook_delta"],
-                    market_tickers=tickers,
+                _log.warning(
+                    "kalshi_ws: connection error: %s — reconnecting in 10s", exc
                 )
-                await ws.send(json.dumps(sub_msg))
-
-                async for raw in ws:
-                    try:
-                        msg = json.loads(raw)
-                        parsed = parse_message(msg)
-                        if parsed and parsed.get("ticker"):
-                            update_orderbook_cache(parsed["ticker"], parsed)
-                    except Exception as exc:
-                        _log.debug("kalshi_ws: parse error: %s", exc)
-
-        except Exception as exc:
-            _log.warning("kalshi_ws: connection error: %s — reconnecting in 10s", exc)
-            await asyncio.sleep(10)
+                await asyncio.sleep(10)
+    finally:
+        _set_ws_alive(False)
 
 
 class KalshiWebSocket:

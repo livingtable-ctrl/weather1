@@ -1691,3 +1691,59 @@ class TestSourceProbsPassthrough(unittest.TestCase):
         self.assertIsNone(row[0])
         self.assertIsNone(row[1])
         self.assertIsNone(row[2])
+
+
+class TestRetentionPolicy:
+    def test_purge_old_predictions_removes_settled(self, tmp_path, monkeypatch):
+        """purge_old_predictions removes settled predictions older than retention_days."""
+        from datetime import date, timedelta
+
+        db = tmp_path / "test.db"
+        monkeypatch.setattr(tracker, "DB_PATH", db)
+        tracker._db_initialized = False
+        tracker.init_db()
+
+        old_date = (date.today() - timedelta(days=800)).isoformat()
+        with tracker._conn() as con:
+            con.execute(
+                "INSERT INTO predictions (ticker, city, our_prob, market_prob, "
+                "predicted_at) VALUES (?, ?, ?, ?, ?)",
+                ("OLD-TICKER", "NYC", 0.7, 0.5, old_date + " 00:00:00"),
+            )
+            con.execute(
+                "INSERT INTO outcomes (ticker, settled_yes, settled_at) VALUES (?, ?, ?)",
+                ("OLD-TICKER", 1, old_date + " 12:00:00"),
+            )
+
+        tracker.purge_old_predictions(retention_days=365)
+
+        with tracker._conn() as con:
+            count = con.execute(
+                "SELECT COUNT(*) FROM predictions WHERE ticker = 'OLD-TICKER'"
+            ).fetchone()[0]
+        assert count == 0
+
+    def test_purge_old_predictions_keeps_recent(self, tmp_path, monkeypatch):
+        """purge_old_predictions keeps predictions within retention_days."""
+        from datetime import date
+
+        db = tmp_path / "test.db"
+        monkeypatch.setattr(tracker, "DB_PATH", db)
+        tracker._db_initialized = False
+        tracker.init_db()
+
+        recent_date = date.today().isoformat()
+        with tracker._conn() as con:
+            con.execute(
+                "INSERT INTO predictions (ticker, city, our_prob, market_prob, "
+                "predicted_at) VALUES (?, ?, ?, ?, ?)",
+                ("NEW-TICKER", "NYC", 0.7, 0.5, recent_date + " 00:00:00"),
+            )
+
+        tracker.purge_old_predictions(retention_days=365)
+
+        with tracker._conn() as con:
+            count = con.execute(
+                "SELECT COUNT(*) FROM predictions WHERE ticker = 'NEW-TICKER'"
+            ).fetchone()[0]
+        assert count == 1

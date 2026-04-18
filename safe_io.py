@@ -65,8 +65,12 @@ def atomic_write_json(
                 f.flush()
                 try:
                     os.fsync(f.fileno())
-                except OSError:
-                    pass
+                except OSError as _fsync_err:
+                    _log.debug(
+                        "fsync failed for %s (non-fatal on some filesystems): %s",
+                        tmp_path_str,
+                        _fsync_err,
+                    )
             os.replace(tmp_path_str, path)
             return
         except Exception as exc:

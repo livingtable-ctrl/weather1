@@ -364,7 +364,7 @@ def test_pragma_migrations_incremental(tmp_path):
 
 
 def test_paper_save_embeds_sha256_checksum(tmp_path, monkeypatch):
-    """Saved paper trades JSON contains a '_checksum' key with 8-char hex SHA-256."""
+    """Saved paper trades JSON contains a '_checksum' key with 16-char hex SHA-256."""
     import paper
 
     monkeypatch.setattr(paper, "DATA_PATH", tmp_path / "paper_trades.json")
@@ -372,7 +372,7 @@ def test_paper_save_embeds_sha256_checksum(tmp_path, monkeypatch):
 
     raw = _json.loads((tmp_path / "paper_trades.json").read_text())
     assert "_checksum" in raw
-    assert len(raw["_checksum"]) == 8
+    assert len(raw["_checksum"]) == 16
     int(raw["_checksum"], 16)  # verify valid hex
 
 

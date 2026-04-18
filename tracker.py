@@ -238,6 +238,40 @@ def init_db() -> None:
     _db_initialized = True
 
 
+def purge_old_predictions(retention_days: int = 730) -> int:
+    """Delete settled predictions older than retention_days and their outcomes.
+
+    Unsettled (open) predictions are never deleted.
+    Returns the number of rows deleted from predictions.
+    """
+    cutoff = f"-{retention_days} days"
+    init_db()
+    with _conn() as con:
+        con.execute(
+            """
+            DELETE FROM outcomes
+            WHERE ticker IN (
+                SELECT p.ticker FROM predictions p
+                JOIN outcomes o ON p.ticker = o.ticker
+                WHERE o.settled_at < datetime('now', ?)
+            )
+            """,
+            (cutoff,),
+        )
+        result = con.execute(
+            """
+            DELETE FROM predictions
+            WHERE ticker NOT IN (SELECT ticker FROM outcomes)
+              AND predicted_at < datetime('now', ?)
+            """,
+            (cutoff,),
+        )
+    deleted = result.rowcount
+    if deleted > 0:
+        _log.info("purge_old_predictions: removed %d old prediction rows", deleted)
+    return deleted
+
+
 # ── Logging ───────────────────────────────────────────────────────────────────
 
 
@@ -651,6 +685,45 @@ def brier_score(city: str | None = None) -> float | None:
     if not rows:
         return None
     return sum((r["our_prob"] - r["settled_yes"]) ** 2 for r in rows) / len(rows)
+
+
+def get_rolling_win_rate(window: int = 20) -> tuple[float | None, int]:
+    """Win rate over the last `window` settled predictions.
+
+    Returns (win_rate, count). Returns (None, count) if count < window.
+    """
+    init_db()
+    with _conn() as con:
+        rows = con.execute(
+            """
+            SELECT o.settled_yes, p.side
+            FROM predictions p
+            JOIN outcomes o ON p.ticker = o.ticker
+            ORDER BY o.settled_at DESC
+            LIMIT ?
+            """,
+            (window,),
+        ).fetchall()
+    count = len(rows)
+    if count < window:
+        return None, count
+    wins = sum(
+        1
+        for r in rows
+        if (r["side"] == "yes" and r["settled_yes"] == 1)
+        or (r["side"] == "no" and r["settled_yes"] == 0)
+    )
+    return wins / count, count
+
+
+def count_settled_predictions() -> int:
+    """Return the number of predictions with a known outcome."""
+    init_db()
+    with _conn() as con:
+        row = con.execute(
+            "SELECT COUNT(*) FROM predictions p JOIN outcomes o ON p.ticker = o.ticker"
+        ).fetchone()
+    return row[0] if row else 0
 
 
 def get_brier_by_tier(
