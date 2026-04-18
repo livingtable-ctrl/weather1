@@ -20,6 +20,28 @@ _log = logging.getLogger(__name__)
 
 _kalshi_cb = CircuitBreaker(name="kalshi_api", failure_threshold=5, recovery_timeout=60)
 
+
+def _check_key_permissions(key_path) -> None:
+    """Warn if the private key file is readable by group or others (Unix only)."""
+    import platform
+    import stat as _stat
+
+    if platform.system() == "Windows":
+        return
+    try:
+        mode = key_path.stat().st_mode
+        if mode & (_stat.S_IRGRP | _stat.S_IROTH):
+            _log.warning(
+                "Private key %s is readable by group/others (mode %o). "
+                "Run: chmod 600 %s",
+                key_path,
+                mode & 0o777,
+                key_path,
+            )
+    except OSError:
+        pass
+
+
 _RETRY_STATUSES = {429, 500, 502, 503, 504}
 _MAX_RETRIES = 3
 # #7: centralized timeout — apply consistently across all API calls
@@ -100,6 +122,7 @@ class KalshiClient:
         self._private_key = None
 
         if private_key_path and Path(private_key_path).exists():
+            _check_key_permissions(Path(private_key_path))
             with open(private_key_path, "rb") as f:
                 self._private_key = serialization.load_pem_private_key(
                     f.read(), password=None
