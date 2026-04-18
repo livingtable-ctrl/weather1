@@ -104,6 +104,15 @@ class CircuitBreaker:
                 return 0.0
             return time.time() - self._wall_opened_at
 
+    def seconds_until_retry(self) -> float:
+        """Seconds remaining before the circuit allows a probe; 0.0 if closed."""
+        with self._lock:
+            if self._opened_at is None:
+                return 0.0
+            elapsed = time.monotonic() - self._opened_at
+            remaining = self._current_timeout - elapsed
+            return max(0.0, remaining)
+
 
 # ── Flash Crash Circuit Breaker ───────────────────────────────────────────────
 

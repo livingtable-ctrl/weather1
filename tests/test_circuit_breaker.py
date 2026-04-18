@@ -49,6 +49,16 @@ class TestCircuitBreakerBasic:
         time.sleep(0.05)
         assert cb.seconds_open() >= 0.04
 
+    def test_seconds_until_retry_zero_when_closed(self):
+        cb = CircuitBreaker("test", failure_threshold=2, recovery_timeout=60)
+        assert cb.seconds_until_retry() == pytest.approx(0.0)
+
+    def test_seconds_until_retry_positive_when_open(self):
+        cb = CircuitBreaker("test", failure_threshold=1, recovery_timeout=60)
+        cb.record_failure()
+        retry = cb.seconds_until_retry()
+        assert 0.0 < retry <= 60.0
+
     def test_failure_count_property(self):
         cb = CircuitBreaker("test", failure_threshold=5, recovery_timeout=60)
         for i in range(3):

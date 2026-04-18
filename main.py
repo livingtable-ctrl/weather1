@@ -2250,6 +2250,32 @@ def cmd_cron(client: KalshiClient, min_edge: float = MIN_EDGE) -> None:
     except Exception as _e:
         _log.debug("cmd_cron: check_ensemble_circuit_health failed: %s", _e)
 
+    # Phase 9 — snapshot circuit state so we can detect newly-opened circuits after scan
+    try:
+        from weather_markets import (
+            _ensemble_cb,
+            _forecast_cb,
+            _pirate_cb,
+            _weatherapi_cb,
+        )
+
+        _pre_scan_cb_states = {
+            "open_meteo_forecast": _forecast_cb.is_open(),
+            "open_meteo_ensemble": _ensemble_cb.is_open(),
+            "weatherapi": _weatherapi_cb.is_open(),
+            "pirate_weather": _pirate_cb.is_open(),
+        }
+        _scan_cbs = {
+            "open_meteo_forecast": _forecast_cb,
+            "open_meteo_ensemble": _ensemble_cb,
+            "weatherapi": _weatherapi_cb,
+            "pirate_weather": _pirate_cb,
+        }
+    except Exception as _e:
+        _log.debug("cmd_cron: circuit state snapshot failed: %s", _e)
+        _pre_scan_cb_states = {}
+        _scan_cbs = {}
+
     # P8.2 — anomaly detection at start of cron cycle
     try:
         from alerts import run_anomaly_check as _run_anomaly_check
@@ -2613,6 +2639,32 @@ def cmd_cron(client: KalshiClient, min_edge: float = MIN_EDGE) -> None:
             print(dim(f"  [cron] Portfolio VaR (5%): {_var_s}  |  Expected: {_exp_s}"))
     except Exception:
         pass
+
+    # Phase 9 — alert if any circuit transitioned closed→open during this scan
+    try:
+        import os as _os_cb
+
+        if (
+            not _os_cb.environ.get("PYTEST_CURRENT_TEST")
+            and _pre_scan_cb_states
+            and _scan_cbs
+        ):
+            from notify import _send_discord as _discord_cb
+
+            for _cb_name, _cb_obj in _scan_cbs.items():
+                if not _pre_scan_cb_states.get(_cb_name, True) and _cb_obj.is_open():
+                    _log.warning(
+                        "Circuit '%s' OPENED during cron scan — notifying", _cb_name
+                    )
+                    _discord_cb(
+                        f"⚡ Circuit Opened: {_cb_name}",
+                        f"The `{_cb_name}` data source tripped during cron scan.\n"
+                        f"Failures: {_cb_obj.failure_count}  |  "
+                        f"Retry in: {round(_cb_obj.seconds_until_retry())}s",
+                        color=0xF85149,
+                    )
+    except Exception as _e:
+        _log.debug("cmd_cron: circuit-open alert failed: %s", _e)
 
     # Windows toast notification (suppressed during test runs)
     try:

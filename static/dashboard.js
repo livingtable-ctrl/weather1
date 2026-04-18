@@ -222,9 +222,47 @@
     }).catch(function (err) { console.error('open positions fetch failed:', err); });
   }
 
+  // --- Circuit breaker status card ---
+  var _CB_LABELS = {
+    'open_meteo_forecast': 'Open-Meteo Forecast',
+    'open_meteo_ensemble': 'Open-Meteo Ensemble',
+    'weatherapi': 'WeatherAPI',
+    'pirate_weather': 'Pirate Weather'
+  };
+
+  function loadCircuitStatus() {
+    fetch('/api/circuit-status').then(function (r) { return r.json(); }).then(function (d) {
+      var grid = document.getElementById('circuit-status-grid');
+      if (!grid) return;
+      if (d.error) {
+        grid.innerHTML = '<p class="neg" style="grid-column:1/-1">' + d.error + '</p>';
+        return;
+      }
+      grid.innerHTML = '';
+      Object.keys(d).forEach(function (key) {
+        var cb = d[key];
+        var isOpen = cb.state === 'open';
+        var card = document.createElement('div');
+        card.style.cssText = 'border:1px solid ' + (isOpen ? 'var(--neg)' : 'var(--border)') + ';border-radius:6px;padding:10px 14px;background:var(--surface)';
+        var dot = '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:' + (isOpen ? 'var(--neg)' : 'var(--pos)') + ';margin-right:6px"></span>';
+        var label = _CB_LABELS[key] || key;
+        var stateLabel = isOpen ? 'OPEN' : 'Closed';
+        var detail = isOpen
+          ? (cb.retry_in_s > 0 ? 'retry in ' + cb.retry_in_s + 's' : 'probing…')
+          : (cb.failures > 0 ? cb.failures + ' recent failure(s)' : 'OK');
+        card.innerHTML = '<div style="font-size:0.88em;font-weight:600;margin-bottom:4px">' + dot + label + '</div>'
+          + '<div style="font-size:0.82em;color:' + (isOpen ? 'var(--neg)' : 'var(--pos)') + '">' + stateLabel + '</div>'
+          + '<div style="font-size:0.78em;color:var(--text-muted);margin-top:2px">' + detail + '</div>';
+        grid.appendChild(card);
+      });
+    }).catch(function (err) { console.error('circuit-status fetch failed:', err); });
+  }
+
   // Init
   loadGraduation();
   loadBalanceChart('');
   loadLivePnl();
   loadOpenPositions();
+  loadCircuitStatus();
+  setInterval(loadCircuitStatus, 60000);
 }());
