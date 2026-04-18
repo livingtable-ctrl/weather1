@@ -653,6 +653,16 @@ def brier_score(city: str | None = None) -> float | None:
     return sum((r["our_prob"] - r["settled_yes"]) ** 2 for r in rows) / len(rows)
 
 
+def count_settled_predictions() -> int:
+    """Return the number of predictions with a known outcome."""
+    init_db()
+    with _conn() as con:
+        row = con.execute(
+            "SELECT COUNT(*) FROM predictions p JOIN outcomes o ON p.ticker = o.ticker"
+        ).fetchone()
+    return row[0] if row else 0
+
+
 def get_brier_by_tier(
     strong_threshold: float = 0.30,
     med_threshold: float = 0.15,
