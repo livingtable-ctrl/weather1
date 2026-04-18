@@ -2589,6 +2589,31 @@ def cmd_cron(client: KalshiClient, min_edge: float = MIN_EDGE) -> None:
             "cmd_cron: _check_early_exits failed: %s", _e
         )
 
+    # Portfolio VaR summary after placement
+    try:
+        from monte_carlo import portfolio_var
+        from paper import get_open_trades as _get_open
+
+        _open = _get_open()
+        if _open:
+            _var = portfolio_var(_open, n_simulations=500)
+            _exp = None
+            try:
+                from monte_carlo import simulate_portfolio as _sim
+
+                _exp = _sim(_open, n_simulations=500)["median_pnl"]
+            except Exception:
+                pass
+            _var_s = red(f"-${abs(_var):.2f}") if _var < 0 else green(f"+${_var:.2f}")
+            _exp_s = (
+                (green(f"+${_exp:.2f}") if _exp >= 0 else red(f"-${abs(_exp):.2f}"))
+                if _exp is not None
+                else "n/a"
+            )
+            print(dim(f"  [cron] Portfolio VaR (5%): {_var_s}  |  Expected: {_exp_s}"))
+    except Exception:
+        pass
+
     # Windows toast notification (suppressed during test runs)
     try:
         import os as _os
@@ -3109,6 +3134,40 @@ def _auto_place_trades(
         qty = kelly_quantity(adj_kelly_final, entry_price, cap=cap, method=method)
         if qty < 1:
             continue
+
+        # Pre-trade VaR gate: skip if adding this position would push 5th-percentile
+        # portfolio loss beyond MAX_VAR_DOLLARS
+        from utils import MAX_VAR_DOLLARS
+
+        if MAX_VAR_DOLLARS > 0:
+            try:
+                from monte_carlo import portfolio_var
+
+                candidate = {
+                    "ticker": ticker,
+                    "side": rec_side,
+                    "entry_price": entry_price,
+                    "cost": round(entry_price * qty, 2),
+                    "quantity": qty,
+                    "city": city,
+                    "target_date": target_date_str,
+                    "entry_prob": a.get("forecast_prob"),
+                }
+                projected_var = portfolio_var(
+                    _open_trades_list + [candidate], n_simulations=500
+                )
+                if abs(projected_var) > MAX_VAR_DOLLARS:
+                    _log.warning(
+                        "_auto_place_trades: skip %s — projected VaR $%.2f exceeds limit $%.2f",
+                        ticker,
+                        abs(projected_var),
+                        MAX_VAR_DOLLARS,
+                    )
+                    continue
+            except Exception as _var_err:
+                _log.debug(
+                    "_auto_place_trades: VaR check failed for %s: %s", ticker, _var_err
+                )
 
         # Cycle-aware deduplication — skip if already ordered on this forecast cycle
         cycle = _current_forecast_cycle()

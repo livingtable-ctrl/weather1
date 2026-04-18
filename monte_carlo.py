@@ -175,6 +175,7 @@ def simulate_portfolio(
     if not open_trades:
         return {
             "median_pnl": 0.0,
+            "p5_pnl": 0.0,
             "p10_pnl": 0.0,
             "p90_pnl": 0.0,
             "prob_positive": 0.5,
@@ -265,7 +266,7 @@ def simulate_portfolio(
                 for i in range(n_trades)
             ]
             total_pnl = sum(
-                tp["win_pnl"] if z[i] > thresholds[i] else tp["loss_pnl"]
+                tp["win_pnl"] if z[i] <= thresholds[i] else tp["loss_pnl"]
                 for i, tp in enumerate(trade_params)
             )
         else:
@@ -281,6 +282,7 @@ def simulate_portfolio(
     median_pnl = (sim_pnls[(n - 1) // 2] + sim_pnls[n // 2]) / 2
     p10_pnl = sim_pnls[max(0, int(n * 0.10))]
     p90_pnl = sim_pnls[min(n - 1, int(n * 0.90))]
+    p5_pnl = sim_pnls[max(0, int(n * 0.05))]
     prob_positive = sum(1 for p in sim_pnls if p > 0) / n
     prob_ruin = sum(1 for p in sim_pnls if p < -ruin_threshold) / n
 
@@ -288,6 +290,7 @@ def simulate_portfolio(
 
     return {
         "median_pnl": round(median_pnl, 2),
+        "p5_pnl": round(p5_pnl, 2),
         "p10_pnl": round(p10_pnl, 2),
         "p90_pnl": round(p90_pnl, 2),
         "prob_positive": round(prob_positive, 4),
@@ -296,3 +299,23 @@ def simulate_portfolio(
         "n_simulations": n_simulations,
         "correlation_applied": correlation_applied,
     }
+
+
+def portfolio_var(
+    open_trades: list[dict],
+    confidence: float = 0.05,
+    n_simulations: int = 1000,
+) -> float:
+    """
+    Return the dollar loss at the given confidence level (VaR).
+
+    confidence=0.05 → 5th-percentile outcome (95% VaR).
+    A negative return means a loss; e.g. -42.10 means there's a 5% chance
+    of losing more than $42.10.
+    """
+    result = simulate_portfolio(open_trades, n_simulations=n_simulations)
+    return (
+        result["p5_pnl"]
+        if confidence == 0.05
+        else result[f"p{int(confidence * 100)}_pnl"]
+    )

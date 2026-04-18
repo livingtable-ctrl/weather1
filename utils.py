@@ -70,6 +70,11 @@ FIXED_BET_DOLLARS = float(os.getenv("FIXED_BET_DOLLARS", "10.0"))  # $10 per tra
 # #121: Drawdown recovery tiers — configurable via env
 DRAWDOWN_HALT_PCT = float(os.getenv("DRAWDOWN_HALT_PCT", "0.50"))  # halt below this
 
+# #P6: Pre-trade VaR gate. New position is skipped if it would push portfolio 5th-percentile
+# loss beyond this amount. Default = 20% of STARTING_BALANCE ($200 on a $1000 start).
+# Set to 0 to disable. Override via MAX_VAR_DOLLARS env var.
+MAX_VAR_DOLLARS = float(os.getenv("MAX_VAR_DOLLARS", "200.0"))
+
 # ── Shared math ───────────────────────────────────────────────────────────────
 
 
@@ -140,6 +145,7 @@ def get_config_fingerprint() -> dict:
         "FIXED_BET_PCT": FIXED_BET_PCT,
         "FIXED_BET_DOLLARS": FIXED_BET_DOLLARS,
         "DRAWDOWN_HALT_PCT": DRAWDOWN_HALT_PCT,
+        "MAX_VAR_DOLLARS": MAX_VAR_DOLLARS,
     }
 
 

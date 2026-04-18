@@ -415,3 +415,67 @@ class TestGetModelWeights:
             self._seed("Chicago", "nbm", 72.0, 71.0)
 
         assert tracker.get_model_weights("NYC", window_days=30) == {}
+
+
+# ── Phase 6: Monte Carlo → position sizing ────────────────────────────────────
+
+
+class TestPortfolioVar:
+    def _trade(self, ticker, win_prob=0.6, entry_price=0.50, qty=10, city="NYC"):
+        return {
+            "ticker": ticker,
+            "side": "yes",
+            "entry_price": entry_price,
+            "cost": round(entry_price * qty, 2),
+            "quantity": qty,
+            "city": city,
+            "target_date": "2026-05-01",
+            "entry_prob": win_prob,
+        }
+
+    def test_returns_float(self):
+        from monte_carlo import portfolio_var
+
+        result = portfolio_var([self._trade("T1")], n_simulations=200)
+        assert isinstance(result, float)
+
+    def test_empty_portfolio_returns_zero(self):
+        from monte_carlo import portfolio_var
+
+        assert portfolio_var([], n_simulations=200) == 0.0
+
+    def test_var_is_negative_for_loss_scenario(self):
+        from monte_carlo import portfolio_var
+
+        # With win_prob=0.5 on many small bets, 5th percentile should be a loss
+        trades = [self._trade(f"T{i}", win_prob=0.5) for i in range(5)]
+        var = portfolio_var(trades, n_simulations=500)
+        assert var < 0
+
+    def test_var_improves_with_higher_win_prob(self):
+        from monte_carlo import portfolio_var
+
+        # Use distinct cities so trades are (nearly) independent — avoids
+        # all-lose-simultaneously correlated collapse masking win_prob differences
+        low_trades = [
+            self._trade(f"L{i}", win_prob=0.25, city=f"CityL{i}") for i in range(8)
+        ]
+        high_trades = [
+            self._trade(f"H{i}", win_prob=0.90, city=f"CityH{i}") for i in range(8)
+        ]
+        low_var = portfolio_var(low_trades, n_simulations=2000)
+        high_var = portfolio_var(high_trades, n_simulations=2000)
+        assert high_var > low_var
+
+    def test_max_var_dollars_in_utils(self):
+        from utils import MAX_VAR_DOLLARS
+
+        assert MAX_VAR_DOLLARS > 0
+        assert isinstance(MAX_VAR_DOLLARS, float)
+
+    def test_simulate_portfolio_includes_p5_pnl(self):
+        from monte_carlo import simulate_portfolio
+
+        result = simulate_portfolio([self._trade("T1")], n_simulations=200)
+        assert "p5_pnl" in result
+        assert result["p5_pnl"] <= result["p10_pnl"]
