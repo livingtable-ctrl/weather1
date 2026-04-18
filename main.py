@@ -2993,6 +2993,7 @@ def _auto_place_trades(
     cap: per-trade dollar cap; if None, uses dynamic Brier cap.
     """
     from paper import (
+        corr_kelly_scale,
         get_open_trades,
         is_daily_loss_halted,
         is_paused_drawdown,
@@ -3019,7 +3020,8 @@ def _auto_place_trades(
             yellow("  [Auto] Loss streak detected — Kelly halved for all auto-trades.")
         )
 
-    open_tickers = {t["ticker"] for t in get_open_trades()}
+    _open_trades_list = get_open_trades()
+    open_tickers = {t["ticker"] for t in _open_trades_list}
     placed = 0
     from utils import MAX_DAILY_SPEND
 
@@ -3090,6 +3092,9 @@ def _auto_place_trades(
         adj_kelly = portfolio_kelly_fraction(
             ci_kelly, city, target_date_str, side=rec_side
         )
+        adj_kelly *= corr_kelly_scale(
+            {"city": city, "target_date": target_date_str}, _open_trades_list
+        )
         if adj_kelly < 0.002:
             continue
         # Use market implied prob as entry price — flip for NO side
@@ -3154,6 +3159,7 @@ def _auto_place_trades(
                     )
                 )
                 open_tickers.add(ticker)
+                _open_trades_list.append(trade)
                 placed += 1
                 daily_spent += trade.get("cost", 0.0)
                 # #55: update analysis attempt to mark this market as traded

@@ -1026,6 +1026,72 @@ def portfolio_kelly(positions: list[dict]) -> list[float]:
     return scaled
 
 
+def position_correlation_matrix(open_trades: list[dict]) -> list[list[float]]:
+    """
+    Build NxN correlation matrix for a list of trades.
+
+    Correlation rules:
+      Same city + same date       → 0.85
+      Same city + adjacent dates  → 0.50
+      Same city + other dates     → 0.30
+      Different cities            → _CITY_PAIR_CORR lookup (default 0.10)
+      Self                        → 1.0
+    """
+    from datetime import date as _date
+
+    n = len(open_trades)
+    mat: list[list[float]] = [
+        [1.0 if i == j else 0.0 for j in range(n)] for i in range(n)
+    ]
+
+    for i in range(n):
+        for j in range(i + 1, n):
+            ci = open_trades[i].get("city") or ""
+            cj = open_trades[j].get("city") or ""
+            di = open_trades[i].get("target_date") or ""
+            dj = open_trades[j].get("target_date") or ""
+
+            if ci and cj and ci == cj:
+                if di and dj and di == dj:
+                    rho = 0.85
+                else:
+                    try:
+                        days_apart = abs(
+                            (_date.fromisoformat(di) - _date.fromisoformat(dj)).days
+                        )
+                        rho = 0.50 if days_apart <= 1 else 0.30
+                    except (ValueError, TypeError):
+                        rho = 0.30
+            else:
+                pair = frozenset({ci, cj})
+                rho = _CITY_PAIR_CORR.get(pair, 0.10) if ci and cj else 0.0
+
+            mat[i][j] = rho
+            mat[j][i] = rho
+
+    return mat
+
+
+def corr_kelly_scale(trade: dict, open_trades: list[dict]) -> float:
+    """
+    Scale Kelly fraction down based on max pairwise correlation with existing positions.
+    Returns a multiplier in [0.25, 1.0].
+    High correlation → smaller bet to avoid over-concentrating correlated risk.
+    """
+    if not open_trades:
+        return 1.0
+
+    all_trades = open_trades + [trade]
+    mat = position_correlation_matrix(all_trades)
+    n = len(mat)
+    if n < 2:
+        return 1.0
+
+    last_row_excl_self = mat[-1][:-1]
+    max_corr = max(abs(r) for r in last_row_excl_self) if last_row_excl_self else 0.0
+    return max(0.25, 1.0 - max_corr)
+
+
 def slippage_kelly_scale(market: dict, quantity: int) -> float:
     """
     Return a 0.5–1.0 multiplier to reduce Kelly sizing based on market liquidity.

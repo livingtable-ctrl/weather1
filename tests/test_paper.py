@@ -959,3 +959,188 @@ def test_close_paper_early_raises_on_unknown_id(tmp_path, monkeypatch):
 
     with pytest.raises(ValueError, match="not found"):
         paper_mod.close_paper_early(9999, exit_price=0.50)
+
+
+# ── Phase 5: Correlation-aware Kelly ─────────────────────────────────────────
+
+
+class TestPositionCorrelationMatrix:
+    def test_same_city_same_date_is_0_85(self):
+        from paper import position_correlation_matrix
+
+        trades = [
+            {"city": "NYC", "target_date": "2026-05-01"},
+            {"city": "NYC", "target_date": "2026-05-01"},
+        ]
+        mat = position_correlation_matrix(trades)
+        assert mat[0][1] == pytest.approx(0.85)
+        assert mat[1][0] == pytest.approx(0.85)
+
+    def test_same_city_adjacent_date_is_0_50(self):
+        from paper import position_correlation_matrix
+
+        trades = [
+            {"city": "NYC", "target_date": "2026-05-01"},
+            {"city": "NYC", "target_date": "2026-05-02"},
+        ]
+        mat = position_correlation_matrix(trades)
+        assert mat[0][1] == pytest.approx(0.50)
+
+    def test_same_city_distant_dates_is_0_30(self):
+        from paper import position_correlation_matrix
+
+        trades = [
+            {"city": "NYC", "target_date": "2026-05-01"},
+            {"city": "NYC", "target_date": "2026-05-10"},
+        ]
+        mat = position_correlation_matrix(trades)
+        assert mat[0][1] == pytest.approx(0.30)
+
+    def test_known_city_pair_uses_lookup(self):
+        from paper import position_correlation_matrix
+
+        trades = [
+            {"city": "NYC", "target_date": "2026-05-01"},
+            {"city": "Boston", "target_date": "2026-05-01"},
+        ]
+        mat = position_correlation_matrix(trades)
+        assert mat[0][1] == pytest.approx(0.85)  # NYC–Boston from _CITY_PAIR_CORR
+
+    def test_unknown_city_pair_defaults_to_0_10(self):
+        from paper import position_correlation_matrix
+
+        trades = [
+            {"city": "NYC", "target_date": "2026-05-01"},
+            {"city": "Seattle", "target_date": "2026-05-01"},
+        ]
+        mat = position_correlation_matrix(trades)
+        assert mat[0][1] == pytest.approx(0.10)
+
+    def test_diagonal_is_one(self):
+        from paper import position_correlation_matrix
+
+        trades = [
+            {"city": "NYC", "target_date": "2026-05-01"},
+            {"city": "Chicago", "target_date": "2026-05-01"},
+            {"city": "LA", "target_date": "2026-05-01"},
+        ]
+        mat = position_correlation_matrix(trades)
+        for i in range(3):
+            assert mat[i][i] == pytest.approx(1.0)
+
+    def test_matrix_is_symmetric(self):
+        from paper import position_correlation_matrix
+
+        trades = [
+            {"city": "NYC", "target_date": "2026-05-01"},
+            {"city": "Boston", "target_date": "2026-05-01"},
+            {"city": "Chicago", "target_date": "2026-05-01"},
+        ]
+        mat = position_correlation_matrix(trades)
+        for i in range(3):
+            for j in range(3):
+                assert mat[i][j] == pytest.approx(mat[j][i])
+
+    def test_empty_returns_empty(self):
+        from paper import position_correlation_matrix
+
+        mat = position_correlation_matrix([])
+        assert mat == []
+
+
+class TestCorrKellyScale:
+    def test_no_open_trades_returns_one(self):
+        from paper import corr_kelly_scale
+
+        assert corr_kelly_scale(
+            {"city": "NYC", "target_date": "2026-05-01"}, []
+        ) == pytest.approx(1.0)
+
+    def test_same_city_same_date_reduces_to_0_25(self):
+        from paper import corr_kelly_scale
+
+        open_trades = [{"city": "NYC", "target_date": "2026-05-01"}]
+        trade = {"city": "NYC", "target_date": "2026-05-01"}
+        # max_corr = 0.85 → scale = max(0.25, 1.0 - 0.85) = 0.25
+        assert corr_kelly_scale(trade, open_trades) == pytest.approx(0.25)
+
+    def test_uncorrelated_cities_returns_0_90(self):
+        from paper import corr_kelly_scale
+
+        open_trades = [{"city": "NYC", "target_date": "2026-05-01"}]
+        trade = {"city": "Seattle", "target_date": "2026-05-01"}
+        # max_corr = 0.10 → scale = 1.0 - 0.10 = 0.90
+        assert corr_kelly_scale(trade, open_trades) == pytest.approx(0.90)
+
+    def test_minimum_is_0_25(self):
+        from paper import corr_kelly_scale
+
+        # Even with 1.0 correlation, floor is 0.25
+        open_trades = [{"city": "NYC", "target_date": "2026-05-01"}] * 5
+        trade = {"city": "NYC", "target_date": "2026-05-01"}
+        result = corr_kelly_scale(trade, open_trades)
+        assert result >= 0.25
+
+
+class TestMonteCarloCholesky:
+    def test_cholesky_identity(self):
+        from monte_carlo import _cholesky
+
+        mat = [[1.0, 0.0], [0.0, 1.0]]
+        L = _cholesky(mat)
+        assert L is not None
+        assert L[0][0] == pytest.approx(1.0)
+        assert L[1][1] == pytest.approx(1.0)
+
+    def test_cholesky_correlated(self):
+        from monte_carlo import _cholesky
+
+        rho = 0.5
+        mat = [[1.0, rho], [rho, 1.0]]
+        L = _cholesky(mat)
+        assert L is not None
+        # Verify L @ L.T == mat
+        assert L[0][0] ** 2 == pytest.approx(1.0)
+        assert L[1][0] ** 2 + L[1][1] ** 2 == pytest.approx(1.0)
+        assert L[1][0] * L[0][0] == pytest.approx(rho)
+
+    def test_cholesky_not_positive_definite_returns_none(self):
+        from monte_carlo import _cholesky
+
+        mat = [[1.0, 1.1], [1.1, 1.0]]  # not positive definite
+        assert _cholesky(mat) is None
+
+    def test_simulate_portfolio_correlated_widens_distribution(self):
+        """Correlated positions (same city/date) should widen P&L distribution vs independent."""
+        from monte_carlo import simulate_portfolio
+
+        # Two perfectly correlated positions: same city, same date
+        trades = [
+            {
+                "ticker": "T1",
+                "side": "yes",
+                "entry_price": 0.5,
+                "cost": 5.0,
+                "quantity": 10,
+                "city": "NYC",
+                "target_date": "2026-05-01",
+                "entry_prob": 0.5,
+            },
+            {
+                "ticker": "T2",
+                "side": "yes",
+                "entry_price": 0.5,
+                "cost": 5.0,
+                "quantity": 10,
+                "city": "NYC",
+                "target_date": "2026-05-01",
+                "entry_prob": 0.5,
+            },
+        ]
+        result = simulate_portfolio(trades, n_simulations=2000)
+        # P10 < median < P90 — distribution is non-trivial
+        assert result["p10_pnl"] < result["median_pnl"]
+        assert result["median_pnl"] < result["p90_pnl"]
+        # P10–P90 spread should be substantial (correlated risk)
+        spread = result["p90_pnl"] - result["p10_pnl"]
+        assert spread > 5.0

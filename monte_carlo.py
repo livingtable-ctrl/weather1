@@ -9,6 +9,29 @@ import math
 import random
 from pathlib import Path
 
+
+def _cholesky(mat: list[list[float]]) -> list[list[float]] | None:
+    """
+    Pure-Python lower-triangular Cholesky decomposition.
+    Returns L such that L @ L.T == mat, or None if mat is not positive definite.
+    """
+    n = len(mat)
+    L = [[0.0] * n for _ in range(n)]
+    for i in range(n):
+        for j in range(i + 1):
+            s = sum(L[i][k] * L[j][k] for k in range(j))
+            if i == j:
+                v = mat[i][i] - s
+                if v <= 1e-12:
+                    return None
+                L[i][j] = math.sqrt(v)
+            else:
+                if L[j][j] == 0.0:
+                    return None
+                L[i][j] = (mat[i][j] - s) / L[j][j]
+    return L
+
+
 # Default pairwise correlation coefficients for cities with shared weather patterns.
 _DEFAULT_CORRELATIONS: dict[tuple[str, str], float] = {
     ("NYC", "Boston"): 0.7,
@@ -182,8 +205,8 @@ def simulate_portfolio(
             win_prob = entry_prob if entry_prob is not None else 0.5
 
         win_prob = max(0.0, min(1.0, win_prob))
-        # #48: clamp to [0.1, 0.9] — extreme values likely stale or bad data
-        clamped = max(0.1, min(0.9, win_prob))
+        # #48: clamp to [0.05, 0.9] — extreme values likely stale or bad data
+        clamped = max(0.05, min(0.9, win_prob))
         if clamped != win_prob:
             import warnings
 
@@ -208,57 +231,49 @@ def simulate_portfolio(
             }
         )
 
-    # Build city-to-trade-indices mapping for correlated draws
-    city_to_indices: dict[str, list[int]] = {}
-    for i, tp in enumerate(trade_params):
-        c = tp["city"]
-        if c:
-            city_to_indices.setdefault(c, []).append(i)
-
     ruin_threshold = current_balance * 0.20  # losing >20% of current balance
 
-    sim_pnls: list[float] = []
+    # Build correlation matrix and Cholesky factor for correlated draws.
+    # position_correlation_matrix uses same-city/date and city-pair rules from paper.py.
+    from paper import position_correlation_matrix
+
+    corr_mat = position_correlation_matrix(open_trades)
+    chol = _cholesky(
+        corr_mat
+    )  # None if matrix is not positive definite (fallback to independent)
+
+    from statistics import NormalDist as _NormalDist
+
+    _norm = _NormalDist()
     rng = random.Random()
     gauss = rng.gauss
+    n_trades = len(trade_params)
+
+    # Precompute probit thresholds — inv_cdf of each trade's win probability
+    thresholds = [
+        _norm.inv_cdf(max(0.0001, min(0.9999, tp["win_prob"]))) for tp in trade_params
+    ]
+
+    sim_pnls: list[float] = []
 
     for _ in range(n_simulations):
-        # Generate per-city shared weather shocks for correlated draws
-        # Each city gets a common factor Z ~ N(0,1); individual trades
-        # add idiosyncratic noise scaled by sqrt(1 - r) where r = correlation.
-        city_shocks: dict[str, float] = {c: gauss(0, 1) for c in city_to_indices}
-
-        total_pnl = 0.0
-        for i, tp in enumerate(trade_params):
-            city = tp["city"]
-            if city and city in city_shocks:
-                # Find highest pairwise correlation with any other city
-                max_r = 0.0
-                for other_city in city_to_indices:
-                    if other_city == city:
-                        continue
-                    pair = (min(city, other_city), max(city, other_city))
-                    for (a, b), r in _DEFAULT_CORRELATIONS.items():
-                        if (min(a, b), max(a, b)) == pair:
-                            max_r = max(max_r, r)
-
-                if max_r > 0:
-                    # Correlated draw: blend shared city shock with idiosyncratic noise
-                    indep = gauss(0, 1)
-                    z = (
-                        math.sqrt(max_r) * city_shocks[city]
-                        + math.sqrt(1 - max_r) * indep
-                    )
-                    # Convert N(0,1) shock to a win/loss decision via probit transform
-                    from statistics import NormalDist
-
-                    threshold = NormalDist().inv_cdf(tp["win_prob"])
-                    won = z > threshold
-                else:
-                    won = rng.random() < tp["win_prob"]
-            else:
-                won = rng.random() < tp["win_prob"]
-
-            total_pnl += tp["win_pnl"] if won else tp["loss_pnl"]
+        if chol is not None:
+            # Draw correlated standard normals via Cholesky: z = L @ epsilon
+            epsilon = [gauss(0, 1) for _ in range(n_trades)]
+            z = [
+                sum(chol[i][k] * epsilon[k] for k in range(i + 1))
+                for i in range(n_trades)
+            ]
+            total_pnl = sum(
+                tp["win_pnl"] if z[i] > thresholds[i] else tp["loss_pnl"]
+                for i, tp in enumerate(trade_params)
+            )
+        else:
+            # Fallback: independent draws
+            total_pnl = sum(
+                tp["win_pnl"] if rng.random() < tp["win_prob"] else tp["loss_pnl"]
+                for tp in trade_params
+            )
         sim_pnls.append(total_pnl)
 
     sim_pnls.sort()
