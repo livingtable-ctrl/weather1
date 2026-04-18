@@ -178,9 +178,10 @@ class TestWsHealth:
         import time
 
         import kalshi_ws
+        import utils
 
-        kalshi_ws._ws_last_message_ts = time.monotonic() - 1000
-        kalshi_ws._ws_alive = True
-        monkeypatch.setenv("WS_CACHE_TTL_SECS", "900")
+        monkeypatch.setattr(kalshi_ws, "_ws_last_message_ts", time.monotonic() - 1000)
+        monkeypatch.setattr(kalshi_ws, "_ws_alive", True)
+        monkeypatch.setattr(utils, "WS_CACHE_TTL_SECS", 900.0)
         h = kalshi_ws.get_ws_health()
         assert h["stale"] is True
