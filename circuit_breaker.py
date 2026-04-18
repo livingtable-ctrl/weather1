@@ -35,6 +35,7 @@ class CircuitBreaker:
         self.recovery_timeout = recovery_timeout
         self._failure_count = 0
         self._opened_at: float | None = None
+        self._wall_opened_at: float | None = None
         self._lock = threading.Lock()
 
     def is_open(self) -> bool:
@@ -49,6 +50,7 @@ class CircuitBreaker:
                     elapsed,
                 )
                 self._opened_at = None
+                self._wall_opened_at = None
                 self._failure_count = 0
                 return False
             return True
@@ -59,6 +61,7 @@ class CircuitBreaker:
             if self._failure_count >= self.failure_threshold:
                 if self._opened_at is None:
                     self._opened_at = time.monotonic()
+                    self._wall_opened_at = time.time()
                     _log.warning(
                         "Circuit '%s' OPEN after %d failures — will retry in %.0fs",
                         self.name,
@@ -70,6 +73,19 @@ class CircuitBreaker:
         with self._lock:
             self._failure_count = 0
             self._opened_at = None
+            self._wall_opened_at = None
+
+    @property
+    def failure_count(self) -> int:
+        with self._lock:
+            return self._failure_count
+
+    def seconds_open(self) -> float:
+        """Wall-clock seconds since the circuit opened; 0.0 if currently closed."""
+        with self._lock:
+            if self._wall_opened_at is None:
+                return 0.0
+            return time.time() - self._wall_opened_at
 
 
 # ── Flash Crash Circuit Breaker ───────────────────────────────────────────────

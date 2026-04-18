@@ -47,7 +47,7 @@ def get_min_edge_for_confidence(spread: float, is_live: bool = False) -> float:
 
 
 STRONG_EDGE = float(
-    os.getenv("STRONG_EDGE", "0.25")
+    os.getenv("STRONG_EDGE", "0.30")
 )  # threshold for "STRONG BUY" label
 MED_EDGE = float(
     os.getenv("MED_EDGE", "0.15")

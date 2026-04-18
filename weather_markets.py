@@ -25,7 +25,7 @@ from circuit_breaker import CircuitBreaker
 from climate_indices import get_enso_index, temperature_adjustment
 from climatology import climatological_prob
 from kalshi_client import KalshiClient, _request_with_retry
-from nws import get_live_observation, nws_prob, obs_prob
+from nws import fetch_nbm_forecast, get_live_observation, nws_prob, obs_prob
 from schema_validator import validate_forecast
 from utils import KALSHI_FEE_RATE, MAX_DAYS_OUT, normal_cdf
 
@@ -54,6 +54,16 @@ _ensemble_cb = CircuitBreaker(
 # Minimum combined volume + open_interest required to trade a market.
 # Below this the market is effectively illiquid — fills are unreliable.
 MIN_LIQUIDITY: int = 50
+
+# Volume-only gate: skip signals where volume alone is below this threshold.
+# At very low volume the market price is set by a handful of trades and is
+# not reliable as a probability estimate. Override via MIN_SIGNAL_VOLUME env var.
+MIN_SIGNAL_VOLUME: int = int(os.getenv("MIN_SIGNAL_VOLUME", "50"))
+
+# Model-spread gate: suppress signals when the multi-model high/low spread is
+# wider than this many °F. Wide spread = models disagree = high flip risk.
+# Override via MAX_MODEL_SPREAD_F env var.
+MAX_MODEL_SPREAD_F: float = float(os.getenv("MAX_MODEL_SPREAD_F", "8.0"))
 
 # Single source of truth for edge calculation logic version.
 # Increment whenever kelly_fraction, bayesian_kelly_fraction, edge_confidence,
@@ -470,7 +480,30 @@ def get_weather_forecast(city: str, target_date: date) -> dict | None:
                 continue
 
     if not highs:
-        # Open-Meteo unavailable — try Pirate Weather (HRRR-based) as fallback
+        # Open-Meteo unavailable — try NBM (NWS gridpoints) + weatherapi first,
+        # then fall back to Pirate Weather as a last resort.
+        nbm_data = fetch_nbm_forecast(city, coords, target_date)
+        if nbm_data is not None:
+            if nbm_data.get("high_f") is not None:
+                highs.append((nbm_data["high_f"], 1.0))
+            if nbm_data.get("low_f") is not None:
+                lows.append((nbm_data["low_f"], 1.0))
+
+        wa_data = fetch_temperature_weatherapi(city, target_date)
+        if wa_data is not None:
+            if wa_data.get("high_f") is not None:
+                highs.append((wa_data["high_f"], 1.0))
+            if wa_data.get("low_f") is not None:
+                lows.append((wa_data["low_f"], 1.0))
+
+        if highs:
+            _log.info(
+                "[DataSource] open_meteo_ensemble disabled — using NBM + weatherapi for %s",
+                city,
+            )
+
+    if not highs:
+        # NBM + weatherapi also unavailable — try Pirate Weather (HRRR-based)
         pw_data = fetch_temperature_pirate_weather(city, target_date)
         if pw_data is not None:
             _log.info(
@@ -585,8 +618,96 @@ def fetch_temperature_nbm(city: str, target_date: date) -> float | None:
         return result
     except Exception as exc:
         _ensemble_cb.record_failure()
-        _log.debug("fetch_temperature_nbm(%s): %s", city, exc)
+        _log.warning(
+            "open_meteo_ensemble: failure #%d (NBM/%s) — %s: %s",
+            _ensemble_cb.failure_count,
+            city,
+            type(exc).__name__,
+            exc,
+        )
         _NBM_CACHE[cache_key] = (None, time.monotonic())
+        return None
+
+
+# ── weatherapi.com (commercial, independent model chain) ─────────────────────
+
+WEATHERAPI_KEY: str = os.getenv("WEATHERAPI_KEY", "")
+_WEATHERAPI_BASE = "https://api.weatherapi.com/v1/forecast.json"
+_weatherapi_cb = CircuitBreaker(
+    name="weatherapi", failure_threshold=3, recovery_timeout=3600
+)
+_WEATHERAPI_CACHE: dict[tuple, tuple[dict | None, float]] = {}
+
+
+def fetch_temperature_weatherapi(city: str, target_date: date) -> dict | None:
+    """
+    Fetch high/low from weatherapi.com (free tier: 1M calls/month).
+
+    Returns {"high_f": float, "low_f": float} or None if WEATHERAPI_KEY is
+    unset, the circuit is open, or the request fails.
+    """
+    if not WEATHERAPI_KEY:
+        return None
+
+    cache_key = (city, target_date.isoformat())
+    cached = _WEATHERAPI_CACHE.get(cache_key)
+    if cached is not None:
+        val, ts = cached
+        if time.monotonic() - ts < _MODEL_CACHE_TTL:
+            return val
+
+    coords = CITY_COORDS.get(city)
+    if not coords:
+        return None
+    lat, lon, _ = coords
+
+    if _weatherapi_cb.is_open():
+        _log.debug("[CircuitBreaker] weatherapi circuit open — skipping fetch")
+        return None
+
+    today = date.today()
+    days_ahead = max(1, (target_date - today).days + 1)
+    if days_ahead > 14:
+        _WEATHERAPI_CACHE[cache_key] = (None, time.monotonic())
+        return None
+
+    try:
+        resp = requests.get(
+            _WEATHERAPI_BASE,
+            params={
+                "key": WEATHERAPI_KEY,
+                "q": f"{lat},{lon}",
+                "days": str(days_ahead),
+                "aqi": "no",
+                "alerts": "no",
+            },
+            timeout=8,
+        )
+        resp.raise_for_status()
+        _weatherapi_cb.record_success()
+        data = resp.json()
+        target_str = target_date.isoformat()
+        forecast_days = data.get("forecast", {}).get("forecastday", [])
+        day_data = next((d for d in forecast_days if d.get("date") == target_str), None)
+        if day_data is None:
+            _WEATHERAPI_CACHE[cache_key] = (None, time.monotonic())
+            return None
+        day = day_data.get("day", {})
+        high = day.get("maxtemp_f")
+        low = day.get("mintemp_f")
+        result = (
+            {"high_f": float(high), "low_f": float(low)}
+            if high is not None and low is not None
+            else None
+        )
+        _WEATHERAPI_CACHE[cache_key] = (result, time.monotonic())
+        return result
+    except Exception as exc:
+        _weatherapi_cb.record_failure()
+        _log.debug(
+            "fetch_temperature_weatherapi(%s): %s: %s", city, type(exc).__name__, exc
+        )
+        _WEATHERAPI_CACHE[cache_key] = (None, time.monotonic())
         return None
 
 
@@ -959,7 +1080,13 @@ def fetch_temperature_ecmwf(city: str, target_date: date) -> float | None:
         return result
     except Exception as exc:
         _ensemble_cb.record_failure()
-        _log.debug("fetch_temperature_ecmwf(%s): %s", city, exc)
+        _log.warning(
+            "open_meteo_ensemble: failure #%d (ECMWF/%s) — %s: %s",
+            _ensemble_cb.failure_count,
+            city,
+            type(exc).__name__,
+            exc,
+        )
         _ECMWF_CACHE[cache_key] = (None, time.monotonic())
         return None
 
@@ -1002,7 +1129,12 @@ def _fetch_model_ensemble(
             _ensemble_cb.record_success()
         except Exception as _exc:
             _ensemble_cb.record_failure()
-            _log.warning("open_meteo ensemble fetch failed: %s", _exc)
+            _log.warning(
+                "open_meteo_ensemble: failure #%d (hourly) — %s: %s",
+                _ensemble_cb.failure_count,
+                type(_exc).__name__,
+                _exc,
+            )
             return []
         data = resp.json()
         # #71: validate expected response structure
@@ -1030,7 +1162,12 @@ def _fetch_model_ensemble(
             _ensemble_cb.record_success()
         except Exception as _exc:
             _ensemble_cb.record_failure()
-            _log.warning("open_meteo ensemble fetch failed: %s", _exc)
+            _log.warning(
+                "open_meteo_ensemble: failure #%d (daily) — %s: %s",
+                _ensemble_cb.failure_count,
+                type(_exc).__name__,
+                _exc,
+            )
             return []
         data = resp.json()
         # #71: validate expected response structure
@@ -1339,6 +1476,29 @@ def _model_weights(city: str, month: int | None = None) -> dict[str, float]:
         ecmwf_w = 1.5  # conservative default
 
     return {"icon_seamless": 1.0, "gfs_seamless": 1.0, "ecmwf_ifs04": ecmwf_w}
+
+
+def check_ensemble_circuit_health() -> None:
+    """
+    Log a warning if the open_meteo_ensemble circuit has been open for >24 hours.
+    Call once at cron startup to surface prolonged outages immediately.
+    """
+    secs = _ensemble_cb.seconds_open()
+    if secs <= 0:
+        return
+    hours = secs / 3600
+    if hours >= 24:
+        _log.warning(
+            "[DataSource] open_meteo_ensemble circuit has been OPEN for %.1f hours — "
+            "NBM + weatherapi are now the primary ensemble sources",
+            hours,
+        )
+    else:
+        _log.info(
+            "[DataSource] open_meteo_ensemble circuit OPEN (%.0f min) — "
+            "using NBM + weatherapi as fallback",
+            secs / 60,
+        )
 
 
 def get_ensemble_temps(
@@ -2385,7 +2545,12 @@ def _get_consensus_probs(
                     _ensemble_cb.record_success()
                 except Exception as _exc:
                     _ensemble_cb.record_failure()
-                    _log.warning("open_meteo ensemble fetch failed: %s", _exc)
+                    _log.warning(
+                        "open_meteo_ensemble: failure #%d (consensus) — %s: %s",
+                        _ensemble_cb.failure_count,
+                        type(_exc).__name__,
+                        _exc,
+                    )
                     return None, None
                 data = resp.json()
                 daily = data.get("daily", {})
@@ -2512,7 +2677,13 @@ def _fetch_ensemble_precip(
             ]
         except Exception as _exc:
             _ensemble_cb.record_failure()
-            _log.warning("open_meteo ensemble fetch failed: %s", _exc)
+            _log.warning(
+                "open_meteo_ensemble: failure #%d (model=%s) — %s: %s",
+                _ensemble_cb.failure_count,
+                model,
+                type(_exc).__name__,
+                _exc,
+            )
             return []
 
     for model in ENSEMBLE_MODELS:
@@ -2879,6 +3050,17 @@ def analyze_trade(enriched: dict) -> dict | None:
     if _vol < MIN_LIQUIDITY:
         return None
 
+    # ── Volume gate: price is unreliable when trade count is tiny ────────────
+    _raw_vol = float(enriched.get("volume_fp") or enriched.get("volume") or 0)
+    if _raw_vol < MIN_SIGNAL_VOLUME:
+        _log.debug(
+            "Skipping %s — volume %.0f below MIN_SIGNAL_VOLUME %d",
+            enriched.get("ticker", "?"),
+            _raw_vol,
+            MIN_SIGNAL_VOLUME,
+        )
+        return None
+
     # ── Spread gate: skip illiquid markets with wide bid-ask spreads ─────────
     _prices = parse_market_price(enriched)
     _yes_ask = _prices.get("yes_ask", 0) or 0
@@ -2967,6 +3149,19 @@ def analyze_trade(enriched: dict) -> dict | None:
         forecast_temp = forecast["low_f"] if var == "min" else forecast["high_f"]
         if forecast_temp is None:
             return None
+
+        # ── Model-spread gate: suppress when multi-model spread is too wide ───
+        _high_range = forecast.get("high_range")
+        if _high_range and len(_high_range) == 2:
+            _spread_f = _high_range[1] - _high_range[0]
+            if _spread_f > MAX_MODEL_SPREAD_F:
+                _log.debug(
+                    "Skipping %s — model spread %.1f°F exceeds MAX_MODEL_SPREAD_F %.1f°F",
+                    enriched.get("ticker", "?"),
+                    _spread_f,
+                    MAX_MODEL_SPREAD_F,
+                )
+                return None
 
         # Apply per-city static bias correction before probability calculation
         forecast_temp_raw = forecast_temp

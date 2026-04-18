@@ -196,6 +196,35 @@ def get_nws_daily_forecast(city: str, coords: tuple) -> dict[str, dict]:
     return result
 
 
+def fetch_nbm_forecast(city: str, coords: tuple, target_date: date) -> dict | None:
+    """
+    Return NBM high/low for a specific date via the NWS gridpoints API.
+
+    NBM (National Blend of Models) is NOAA's official multi-model consensus —
+    more accurate than raw GFS/ICON for days 1–7 and has no rate limits for
+    reasonable use. This is the same data source as get_nws_daily_forecast()
+    but returns a flat {"high_f", "low_f"} dict for easy use as a fallback.
+
+    Returns {"high_f": float | None, "low_f": float | None} or None if
+    the NWS circuit is open or the date is not in the forecast window.
+    """
+    daily = get_nws_daily_forecast(city, coords)
+    if not daily:
+        return None
+    target_str = target_date.isoformat()
+    day = daily.get(target_str)
+    if not day:
+        return None
+    high = day.get("high")
+    low = day.get("low")
+    if high is None and low is None:
+        return None
+    return {
+        "high_f": float(high) if high is not None else None,
+        "low_f": float(low) if low is not None else None,
+    }
+
+
 def nws_prob(
     city: str, coords: tuple, target_date: date, condition: dict
 ) -> float | None:

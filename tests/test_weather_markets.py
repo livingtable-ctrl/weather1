@@ -740,3 +740,251 @@ def test_om_rate_limit_enforces_interval(monkeypatch):
     elapsed = time.monotonic() - t0
 
     assert elapsed >= 0.08  # at least ~_OM_MIN_INTERVAL between two calls
+
+
+# ── Phase 1: NBM + weatherapi fallback chain ─────────────────────────────────
+
+
+class TestFetchNbmForecast:
+    """fetch_nbm_forecast() wraps get_nws_daily_forecast() into a flat dict."""
+
+    def test_returns_high_low_dict(self, monkeypatch):
+        from datetime import date
+
+        from nws import fetch_nbm_forecast
+
+        target = date(2026, 5, 1)
+        coords = (40.77, -73.97, "America/New_York")
+
+        monkeypatch.setattr(
+            "nws.get_nws_daily_forecast",
+            lambda city, coords: {target.isoformat(): {"high": 72.0, "low": 55.0}},
+        )
+        result = fetch_nbm_forecast("NYC", coords, target)
+        assert result == {"high_f": 72.0, "low_f": 55.0}
+
+    def test_returns_none_when_date_missing(self, monkeypatch):
+        from datetime import date
+
+        from nws import fetch_nbm_forecast
+
+        monkeypatch.setattr("nws.get_nws_daily_forecast", lambda *a: {})
+        result = fetch_nbm_forecast(
+            "NYC", (40.77, -73.97, "America/New_York"), date(2026, 5, 1)
+        )
+        assert result is None
+
+    def test_returns_none_when_nws_unavailable(self, monkeypatch):
+        from datetime import date
+
+        from nws import fetch_nbm_forecast
+
+        monkeypatch.setattr("nws.get_nws_daily_forecast", lambda *a: None)
+        result = fetch_nbm_forecast(
+            "NYC", (40.77, -73.97, "America/New_York"), date(2026, 5, 1)
+        )
+        assert result is None
+
+    def test_partial_data_high_only(self, monkeypatch):
+        from datetime import date
+
+        from nws import fetch_nbm_forecast
+
+        target = date(2026, 5, 1)
+        monkeypatch.setattr(
+            "nws.get_nws_daily_forecast",
+            lambda *a: {target.isoformat(): {"high": 68.0, "low": None}},
+        )
+        result = fetch_nbm_forecast("NYC", (40.77, -73.97, "America/New_York"), target)
+        assert result == {"high_f": 68.0, "low_f": None}
+
+
+class TestFetchTemperatureWeatherapi:
+    """fetch_temperature_weatherapi() requires WEATHERAPI_KEY to be set."""
+
+    def test_returns_none_when_key_missing(self):
+        from datetime import date
+
+        import weather_markets as wm
+
+        orig = wm.WEATHERAPI_KEY
+        wm.WEATHERAPI_KEY = ""
+        try:
+            result = wm.fetch_temperature_weatherapi("NYC", date(2026, 5, 1))
+            assert result is None
+        finally:
+            wm.WEATHERAPI_KEY = orig
+
+    def test_parses_response_correctly(self, monkeypatch):
+        import datetime
+        from unittest.mock import MagicMock
+
+        import weather_markets as wm
+
+        # Use a date within the 14-day forecast window
+        target = datetime.date.today() + datetime.timedelta(days=3)
+        fake_response = {
+            "forecast": {
+                "forecastday": [
+                    {
+                        "date": target.isoformat(),
+                        "day": {"maxtemp_f": 74.5, "mintemp_f": 58.1},
+                    }
+                ]
+            }
+        }
+        mock_resp = MagicMock()
+        mock_resp.raise_for_status.return_value = None
+        mock_resp.json.return_value = fake_response
+
+        monkeypatch.setattr(wm, "WEATHERAPI_KEY", "test-key")
+        monkeypatch.setattr(wm.requests, "get", lambda *a, **kw: mock_resp)
+        wm._WEATHERAPI_CACHE.clear()
+
+        result = wm.fetch_temperature_weatherapi("NYC", target)
+        assert result == {"high_f": 74.5, "low_f": 58.1}
+
+    def test_returns_none_on_request_failure(self, monkeypatch):
+        from datetime import date
+
+        import weather_markets as wm
+
+        monkeypatch.setattr(wm, "WEATHERAPI_KEY", "test-key")
+        monkeypatch.setattr(
+            "requests.get", lambda *a, **kw: (_ for _ in ()).throw(OSError("timeout"))
+        )
+        wm._WEATHERAPI_CACHE.clear()
+        wm._weatherapi_cb.record_success()  # ensure circuit closed
+
+        result = wm.fetch_temperature_weatherapi("NYC", date(2026, 5, 1))
+        assert result is None
+
+    def test_circuit_breaker_skips_when_open(self, monkeypatch):
+        from datetime import date
+
+        import weather_markets as wm
+
+        monkeypatch.setattr(wm, "WEATHERAPI_KEY", "test-key")
+        wm._WEATHERAPI_CACHE.clear()
+        # Trip the circuit
+        wm._weatherapi_cb._failure_count = wm._weatherapi_cb.failure_threshold
+        wm._weatherapi_cb._opened_at = __import__("time").monotonic()
+
+        result = wm.fetch_temperature_weatherapi("NYC", date(2026, 5, 1))
+        assert result is None
+        # Restore
+        wm._weatherapi_cb.record_success()
+
+
+class TestGetWeatherForecastFallbackChain:
+    """get_weather_forecast() should try NBM + weatherapi before Pirate Weather."""
+
+    def test_uses_nbm_when_open_meteo_fails(self, monkeypatch):
+        from datetime import date
+
+        import weather_markets as wm
+
+        target = date(2026, 5, 1)
+
+        # Open-Meteo always fails
+        monkeypatch.setattr(
+            "weather_markets._forecast_cb._failure_count",
+            wm._forecast_cb.failure_threshold,
+        )
+        monkeypatch.setattr(
+            "weather_markets._forecast_cb._opened_at", __import__("time").monotonic()
+        )
+
+        # NBM returns data
+        monkeypatch.setattr(
+            wm,
+            "fetch_nbm_forecast",
+            lambda city, coords, dt: {"high_f": 71.0, "low_f": 54.0},
+        )
+        # weatherapi unavailable
+        monkeypatch.setattr(wm, "fetch_temperature_weatherapi", lambda *a: None)
+        # Pirate Weather should NOT be called
+        called = []
+        monkeypatch.setattr(
+            wm,
+            "fetch_temperature_pirate_weather",
+            lambda *a: called.append(True) or None,
+        )
+
+        wm._FORECAST_CACHE.clear()
+        result = wm.get_weather_forecast("NYC", target)
+
+        assert result is not None
+        assert result["high_f"] == pytest.approx(71.0)
+        assert not called, "Pirate Weather should not be called when NBM succeeds"
+
+    def test_falls_through_to_pirate_when_nbm_and_weatherapi_fail(self, monkeypatch):
+        from datetime import date
+
+        import weather_markets as wm
+
+        target = date(2026, 5, 1)
+
+        # Open-Meteo fails
+        monkeypatch.setattr(
+            "weather_markets._forecast_cb._failure_count",
+            wm._forecast_cb.failure_threshold,
+        )
+        monkeypatch.setattr(
+            "weather_markets._forecast_cb._opened_at", __import__("time").monotonic()
+        )
+
+        # NBM + weatherapi both fail
+        monkeypatch.setattr(wm, "fetch_nbm_forecast", lambda *a: None)
+        monkeypatch.setattr(wm, "fetch_temperature_weatherapi", lambda *a: None)
+
+        # Pirate Weather succeeds
+        monkeypatch.setattr(
+            wm,
+            "fetch_temperature_pirate_weather",
+            lambda *a: {"high_f": 69.0, "low_f": 52.0, "precip_in": 0.0},
+        )
+
+        wm._FORECAST_CACHE.clear()
+        result = wm.get_weather_forecast("NYC", target)
+
+        assert result is not None
+        assert result["_source"] == "pirate_weather"
+
+
+class TestCheckEnsembleCircuitHealth:
+    """check_ensemble_circuit_health() warns when circuit has been open >24h."""
+
+    def test_no_warning_when_circuit_closed(self, caplog):
+        import weather_markets as wm
+
+        wm._ensemble_cb.record_success()  # ensure closed
+        with caplog.at_level("WARNING"):
+            wm.check_ensemble_circuit_health()
+        assert "open_meteo_ensemble" not in caplog.text
+
+    def test_logs_info_when_open_under_24h(self, monkeypatch, caplog):
+        import time
+
+        import weather_markets as wm
+
+        # Simulate circuit open for 1 hour
+        monkeypatch.setattr(wm._ensemble_cb, "_wall_opened_at", time.time() - 3600)
+        monkeypatch.setattr(wm._ensemble_cb, "_opened_at", time.monotonic())
+        with caplog.at_level("INFO"):
+            wm.check_ensemble_circuit_health()
+        assert "open_meteo_ensemble" in caplog.text
+        wm._ensemble_cb.record_success()
+
+    def test_logs_warning_when_open_over_24h(self, monkeypatch, caplog):
+        import time
+
+        import weather_markets as wm
+
+        # Simulate circuit open for 25 hours
+        monkeypatch.setattr(wm._ensemble_cb, "_wall_opened_at", time.time() - 25 * 3600)
+        monkeypatch.setattr(wm._ensemble_cb, "_opened_at", time.monotonic())
+        with caplog.at_level("WARNING"):
+            wm.check_ensemble_circuit_health()
+        assert "24" in caplog.text or "hours" in caplog.text
+        wm._ensemble_cb.record_success()

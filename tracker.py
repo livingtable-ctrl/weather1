@@ -591,6 +591,52 @@ def brier_score(city: str | None = None) -> float | None:
     return sum((r["our_prob"] - r["settled_yes"]) ** 2 for r in rows) / len(rows)
 
 
+def get_brier_by_tier(
+    strong_threshold: float = 0.30,
+    med_threshold: float = 0.15,
+) -> dict[str, dict]:
+    """
+    Brier score split by signal tier based on abs(edge) at prediction time.
+
+    Tiers:
+      strong — abs(edge) >= strong_threshold (default 0.30)
+      med    — med_threshold <= abs(edge) < strong_threshold
+      weak   — abs(edge) < med_threshold
+
+    Returns {"strong": {"brier": float, "n": int}, "med": ..., "weak": ...}
+    with None brier for tiers with no settled predictions.
+    """
+    init_db()
+    with _conn() as con:
+        rows = con.execute(
+            """
+            SELECT p.our_prob, p.edge, o.settled_yes
+            FROM predictions p
+            JOIN outcomes o ON p.ticker = o.ticker
+            WHERE p.our_prob IS NOT NULL AND p.edge IS NOT NULL
+            """
+        ).fetchall()
+
+    tiers: dict[str, list[float]] = {"strong": [], "med": [], "weak": []}
+    for r in rows:
+        abs_edge = abs(r["edge"])
+        sq_err = (r["our_prob"] - r["settled_yes"]) ** 2
+        if abs_edge >= strong_threshold:
+            tiers["strong"].append(sq_err)
+        elif abs_edge >= med_threshold:
+            tiers["med"].append(sq_err)
+        else:
+            tiers["weak"].append(sq_err)
+
+    return {
+        tier: {
+            "brier": round(sum(errs) / len(errs), 6) if errs else None,
+            "n": len(errs),
+        }
+        for tier, errs in tiers.items()
+    }
+
+
 def get_brier_over_time(weeks: int = 12) -> list[dict]:
     """Return mean Brier score per ISO week for the last `weeks` weeks.
 

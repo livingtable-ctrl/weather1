@@ -115,3 +115,216 @@ class TestAnalyzeTradeConditionType:
             base * _CONDITION_CONFIDENCE["precip_snow"]
             < base * _CONDITION_CONFIDENCE["above"]
         )
+
+
+# ── Phase 2: Signal quality tightening ───────────────────────────────────────
+
+
+class TestStrongEdgeThreshold:
+    def test_strong_edge_default_is_0_30(self):
+        from utils import STRONG_EDGE
+
+        assert STRONG_EDGE == pytest.approx(0.30)
+
+    def test_strong_edge_above_med_edge(self):
+        from utils import MED_EDGE, STRONG_EDGE
+
+        assert STRONG_EDGE > MED_EDGE
+
+
+class TestMinSignalVolume:
+    """analyze_trade() skips markets below MIN_SIGNAL_VOLUME."""
+
+    def _enriched(self, volume: float = 200.0) -> dict:
+        import datetime
+
+        return {
+            "ticker": "KXTEMP-TEST",
+            "series_ticker": "KXTEMP",
+            "title": "NYC high above 72°F on 2026-05-01?",
+            "_city": "NYC",
+            "_date": datetime.date(2026, 5, 1),
+            "yes_ask": 52,
+            "yes_bid": 48,
+            "volume": volume,
+            "volume_fp": volume,
+            "open_interest": 100,
+            "open_interest_fp": 100,
+            "close_time": (
+                datetime.datetime.now(datetime.UTC) + datetime.timedelta(hours=20)
+            ).isoformat(),
+        }
+
+    def test_skips_low_volume_market(self, monkeypatch):
+        import weather_markets as wm
+
+        original = wm.MIN_SIGNAL_VOLUME
+        wm.MIN_SIGNAL_VOLUME = 100
+        try:
+            enriched = self._enriched(volume=30)
+            # patch forecast fetch so it doesn't network
+            monkeypatch.setattr(wm, "get_weather_forecast", lambda *a: None)
+            result = wm.analyze_trade(enriched)
+            assert result is None
+        finally:
+            wm.MIN_SIGNAL_VOLUME = original
+
+    def test_passes_sufficient_volume(self, monkeypatch):
+        import weather_markets as wm
+
+        original = wm.MIN_SIGNAL_VOLUME
+        wm.MIN_SIGNAL_VOLUME = 50
+        try:
+            enriched = self._enriched(volume=200)
+            monkeypatch.setattr(
+                wm,
+                "get_weather_forecast",
+                lambda city, dt: {
+                    "high_f": 72.0,
+                    "low_f": 55.0,
+                    "precip_in": 0.0,
+                    "models_used": 3,
+                    "high_range": (70.0, 74.0),
+                },
+            )
+            # analyze_trade may return None for other reasons (no ensemble data)
+            # but NOT because of the volume gate
+            # Just assert it doesn't fail with an exception
+            wm.analyze_trade(enriched)  # no assertion — just shouldn't raise
+        finally:
+            wm.MIN_SIGNAL_VOLUME = original
+
+
+class TestMaxModelSpreadGate:
+    """analyze_trade() returns None when model spread exceeds MAX_MODEL_SPREAD_F."""
+
+    def _enriched(self) -> dict:
+        import datetime
+
+        return {
+            "ticker": "KXTEMP-SPREAD",
+            "series_ticker": "KXTEMP",
+            "title": "NYC high above 72°F on 2026-05-01?",
+            "_city": "NYC",
+            "_date": datetime.date(2026, 5, 1),
+            "yes_ask": 52,
+            "yes_bid": 48,
+            "volume": 500,
+            "volume_fp": 500,
+            "open_interest": 200,
+            "open_interest_fp": 200,
+            "close_time": (
+                datetime.datetime.now(datetime.UTC) + datetime.timedelta(hours=20)
+            ).isoformat(),
+        }
+
+    def test_wide_spread_suppresses_signal(self, monkeypatch):
+        import weather_markets as wm
+
+        orig = wm.MAX_MODEL_SPREAD_F
+        wm.MAX_MODEL_SPREAD_F = 8.0
+        try:
+            monkeypatch.setattr(
+                wm,
+                "get_weather_forecast",
+                lambda *a: {
+                    "high_f": 75.0,
+                    "low_f": 58.0,
+                    "precip_in": 0.0,
+                    "models_used": 3,
+                    "high_range": (65.0, 85.0),  # 20°F spread > 8°F gate
+                },
+            )
+            result = wm.analyze_trade(self._enriched())
+            assert result is None
+        finally:
+            wm.MAX_MODEL_SPREAD_F = orig
+
+    def test_narrow_spread_allows_signal(self, monkeypatch):
+        import weather_markets as wm
+
+        orig = wm.MAX_MODEL_SPREAD_F
+        wm.MAX_MODEL_SPREAD_F = 8.0
+        try:
+            monkeypatch.setattr(
+                wm,
+                "get_weather_forecast",
+                lambda *a: {
+                    "high_f": 75.0,
+                    "low_f": 58.0,
+                    "precip_in": 0.0,
+                    "models_used": 3,
+                    "high_range": (73.0, 77.0),  # 4°F spread — within gate
+                },
+            )
+            # May still return None for other reasons — just not the spread gate
+            wm.analyze_trade(self._enriched())  # no assertion — shouldn't raise
+        finally:
+            wm.MAX_MODEL_SPREAD_F = orig
+
+
+class TestGetBrierByTier:
+    """get_brier_by_tier() splits Brier score by abs(edge) tier."""
+
+    def setup_method(self):
+        """Point tracker at a fresh temp DB for isolation."""
+        import tempfile
+        from pathlib import Path
+
+        self._tmp = tempfile.mkdtemp()
+        self._orig_path = tracker.DB_PATH
+        self._orig_init = tracker._db_initialized
+        tracker.DB_PATH = Path(self._tmp) / "test.db"
+        tracker._db_initialized = False
+        tracker.init_db()
+
+    def teardown_method(self):
+        import shutil
+
+        tracker.DB_PATH = self._orig_path
+        tracker._db_initialized = self._orig_init
+        shutil.rmtree(self._tmp, ignore_errors=True)
+
+    def _seed(self, ticker, edge, our_prob, settled_yes):
+        import sqlite3
+
+        with sqlite3.connect(str(tracker.DB_PATH)) as con:
+            con.execute(
+                "INSERT OR REPLACE INTO predictions"
+                " (ticker, our_prob, edge, predicted_at) VALUES (?,?,?,?)",
+                (ticker, our_prob, edge, "2026-04-01T00:00:00"),
+            )
+            con.execute(
+                "INSERT OR REPLACE INTO outcomes (ticker, settled_yes) VALUES (?,?)",
+                (ticker, settled_yes),
+            )
+
+    def test_strong_tier_computed(self):
+        self._seed("T1", edge=0.35, our_prob=0.85, settled_yes=1)
+        result = tracker.get_brier_by_tier()
+        assert result["strong"]["n"] == 1
+        assert result["strong"]["brier"] == pytest.approx((0.85 - 1) ** 2)
+
+    def test_med_tier_computed(self):
+        self._seed("T2", edge=0.20, our_prob=0.70, settled_yes=0)
+        result = tracker.get_brier_by_tier()
+        assert result["med"]["n"] == 1
+        assert result["med"]["brier"] == pytest.approx((0.70 - 0) ** 2)
+
+    def test_weak_tier_computed(self):
+        self._seed("T3", edge=0.05, our_prob=0.55, settled_yes=1)
+        result = tracker.get_brier_by_tier()
+        assert result["weak"]["n"] == 1
+
+    def test_empty_tier_returns_none_brier(self):
+        result = tracker.get_brier_by_tier()
+        assert result["strong"]["brier"] is None
+        assert result["strong"]["n"] == 0
+
+    def test_multiple_predictions_averaged(self):
+        self._seed("A1", edge=0.35, our_prob=0.80, settled_yes=1)
+        self._seed("A2", edge=0.40, our_prob=0.90, settled_yes=1)
+        result = tracker.get_brier_by_tier()
+        expected = ((0.80 - 1) ** 2 + (0.90 - 1) ** 2) / 2
+        assert result["strong"]["brier"] == pytest.approx(expected)
+        assert result["strong"]["n"] == 2

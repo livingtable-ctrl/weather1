@@ -58,10 +58,12 @@ from weather_markets import (
     CITY_COORDS,
     _feels_like,
     analyze_trade,
+    check_ensemble_circuit_health,
     detect_hedge_opportunity,
     enrich_with_forecast,
     fetch_temperature_ecmwf,
     fetch_temperature_nbm,
+    fetch_temperature_weatherapi,
     get_weather_forecast,
     get_weather_markets,
     is_liquid,
@@ -2242,6 +2244,12 @@ def cmd_cron(client: KalshiClient, min_edge: float = MIN_EDGE) -> None:
     # P3.2 — detect orders placed in the last 5 minutes at startup
     _check_startup_orders()
 
+    # Phase 1 — surface prolonged Open-Meteo outages immediately
+    try:
+        check_ensemble_circuit_health()
+    except Exception as _e:
+        _log.debug("cmd_cron: check_ensemble_circuit_health failed: %s", _e)
+
     # P8.2 — anomaly detection at start of cron cycle
     try:
         from alerts import run_anomaly_check as _run_anomaly_check
@@ -2376,6 +2384,10 @@ def cmd_cron(client: KalshiClient, min_edge: float = MIN_EDGE) -> None:
                     pass
                 try:
                     fetch_temperature_ecmwf(_c, _dt)
+                except Exception:
+                    pass
+                try:
+                    fetch_temperature_weatherapi(_c, _dt)
                 except Exception:
                     pass
                 for _v in ("max", "min"):
