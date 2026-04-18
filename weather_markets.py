@@ -24,6 +24,7 @@ from calibration import load_seasonal_weights as _load_seasonal_weights
 from circuit_breaker import CircuitBreaker
 from climate_indices import get_enso_index, temperature_adjustment
 from climatology import climatological_prob
+from forecast_cache import ForecastCache
 from kalshi_client import KalshiClient, _request_with_retry
 from nws import fetch_nbm_forecast, get_live_observation, nws_prob, obs_prob
 from schema_validator import validate_forecast
@@ -177,9 +178,8 @@ ENSEMBLE_MODELS_EXTENDED = [
 # Dedicated session for NBM / Open-Meteo forecast calls (mockable in tests)
 _om_session: requests.Session = requests.Session()
 
-# Ensemble cache: key -> (list[float], timestamp)
-_ENSEMBLE_CACHE: dict = {}
-_ENSEMBLE_CACHE_TTL = 4 * 60 * 60  # 4 hours — matches loop interval
+# Ensemble cache: key -> list[float] (TTL handled by ForecastCache)
+_ensemble_cache: ForecastCache[list[float]] = ForecastCache(ttl_secs=4 * 3600)
 
 # Rate limiter: enforce minimum gap between Open-Meteo requests to avoid 429 bursts.
 _OM_RATE_LOCK = threading.Lock()
@@ -204,9 +204,10 @@ def _om_request(method: str, url: str, **kwargs) -> requests.Response:
     return _request_with_retry(method, url, **kwargs)
 
 
-# Forecast cache: (city, date_iso) -> (dict, timestamp)
-_FORECAST_CACHE: dict = {}
-_FORECAST_CACHE_TTL = 4 * 60 * 60  # 4 hours — matches loop interval
+# Forecast cache: (city, date_iso) -> dict (TTL handled by ForecastCache)
+_forecast_cache: ForecastCache[dict] = ForecastCache(ttl_secs=4 * 3600)
+# TTL constant kept for disk-cache loading/pruning logic below
+_FORECAST_CACHE_TTL = 4 * 60 * 60
 
 # Disk-backed forecast cache — survives process restarts so `analyze` is fast
 # on the 2nd+ run within the same 90-minute window.
@@ -232,7 +233,7 @@ def _load_forecast_disk_cache() -> None:
                 city, date_iso = key_str.split("|", 1)
                 mem_key = (city, date_iso)
                 # Approximate monotonic timestamp from wall-clock age
-                _FORECAST_CACHE[mem_key] = (entry["data"], time.monotonic() - age)
+                _forecast_cache.set_at(mem_key, entry["data"], time.monotonic() - age)
                 loaded += 1
         if loaded:
             _log.debug("forecast disk cache: loaded %d entries", loaded)
@@ -404,11 +405,9 @@ def get_weather_forecast(city: str, target_date: date) -> dict | None:
     and return the averaged values. Results are cached for 90 minutes.
     """
     cache_key = (city, target_date.isoformat())
-    cached = _FORECAST_CACHE.get(cache_key)
-    if cached is not None:
-        data, ts = cached
-        if time.monotonic() - ts < _ttl_until_next_cycle():
-            return data
+    data = _forecast_cache.get(cache_key)
+    if data is not None:
+        return data
 
     coords = CITY_COORDS.get(city)
     if not coords:
@@ -541,7 +540,7 @@ def get_weather_forecast(city: str, target_date: date) -> dict | None:
                 "_snow_accum_in": pw_data.get("_snow_accum_in"),
                 "_ice_accum_in": pw_data.get("_ice_accum_in"),
             }
-            _FORECAST_CACHE[cache_key] = (result, time.monotonic())
+            _forecast_cache.set(cache_key, result)
             _save_forecast_disk_entry(cache_key, result)
             return result
         return None
@@ -560,7 +559,7 @@ def get_weather_forecast(city: str, target_date: date) -> dict | None:
         "models_used": len(highs),
         "high_range": (min(high_vals), max(high_vals)),
     }
-    _FORECAST_CACHE[cache_key] = (result, time.monotonic())
+    _forecast_cache.set(cache_key, result)
     _save_forecast_disk_entry(cache_key, result)
     return result
 
@@ -1495,11 +1494,9 @@ def get_ensemble_temps(
     hour: local hour (0-23) for hourly markets like KXTEMPNYCH.
     """
     cache_key = (city, target_date.isoformat(), hour, var)
-    cached = _ENSEMBLE_CACHE.get(cache_key)
-    if cached is not None:
-        data, ts = cached
-        if time.monotonic() - ts < _ttl_until_next_cycle():
-            return data
+    cached_data = _ensemble_cache.get(cache_key)
+    if cached_data is not None:
+        return cached_data
 
     coords = CITY_COORDS.get(city)
     if not coords:
@@ -1526,7 +1523,7 @@ def get_ensemble_temps(
         except Exception:
             pass
 
-    _ENSEMBLE_CACHE[cache_key] = (all_temps, time.monotonic())
+    _ensemble_cache.set(cache_key, all_temps)
     return all_temps
 
 
@@ -2493,15 +2490,7 @@ def _get_consensus_probs(
             tz = coords[2] if len(coords) > 2 else "UTC"
             var_field = f"temperature_2m_{'max' if var == 'max' else 'min'}"
             cache_key = (model_name, city, target_date.isoformat(), var, hour)
-            cached = _ENSEMBLE_CACHE.get(cache_key)
-            if cached:
-                temps, ts = cached
-                if time.time() - ts < _ENSEMBLE_CACHE_TTL:
-                    pass  # use cached
-                else:
-                    temps = None
-            else:
-                temps = None
+            temps = _ensemble_cache.get(cache_key)
 
             if temps is None:
                 if _ensemble_cb.is_open():
@@ -2542,7 +2531,7 @@ def _get_consensus_probs(
                     if k.startswith(var_field) and v and v[0] is not None
                 ]
                 temps = members
-                _ENSEMBLE_CACHE[cache_key] = (temps, time.time())
+                _ensemble_cache.set(cache_key, temps)
 
             if len(temps) < 5:
                 return None, None

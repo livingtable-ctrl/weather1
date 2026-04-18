@@ -911,7 +911,7 @@ class TestGetWeatherForecastFallbackChain:
             lambda *a: called.append(True) or None,
         )
 
-        wm._FORECAST_CACHE.clear()
+        wm._forecast_cache.clear()
         result = wm.get_weather_forecast("NYC", target)
 
         assert result is not None
@@ -945,7 +945,7 @@ class TestGetWeatherForecastFallbackChain:
             lambda *a: {"high_f": 69.0, "low_f": 52.0, "precip_in": 0.0},
         )
 
-        wm._FORECAST_CACHE.clear()
+        wm._forecast_cache.clear()
         result = wm.get_weather_forecast("NYC", target)
 
         assert result is not None

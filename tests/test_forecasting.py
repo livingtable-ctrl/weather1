@@ -594,9 +594,8 @@ class TestDynamicCacheTTL:
         ttl = _ttl_until_next_cycle(now)
         assert abs(ttl - 3600) < 60
 
-    def test_ttl_used_when_caching_forecast(self):
-        """get_weather_forecast reads cache using _ttl_until_next_cycle as TTL check."""
-        import time as _time
+    def test_cache_hit_returns_forecast_without_fetch(self):
+        """get_weather_forecast returns cached data without making API calls."""
         from datetime import date
         from unittest.mock import patch
 
@@ -605,19 +604,14 @@ class TestDynamicCacheTTL:
         cache_key = ("NYC", date(2026, 4, 15).isoformat())
         fake_data = {"high_f": 75.0, "low_f": 60.0, "precip_in": 0.0}
 
-        with patch(
-            "weather_markets._ttl_until_next_cycle", return_value=7200
-        ) as mock_ttl:
-            # Seed cache with fresh data (should be returned without fetching)
-            wm._FORECAST_CACHE[cache_key] = (fake_data, _time.monotonic())
-            wm.get_weather_forecast("NYC", date(2026, 4, 15))
+        wm._forecast_cache.set(cache_key, fake_data)
+        with patch("weather_markets._om_request") as mock_req:
+            result = wm.get_weather_forecast("NYC", date(2026, 4, 15))
+        assert result == fake_data
+        mock_req.assert_not_called()
 
-        # _ttl_until_next_cycle must have been called during the cache read-check
-        mock_ttl.assert_called()
-
-    def test_ttl_used_when_caching_ensemble(self):
-        """get_ensemble_temps reads cache using _ttl_until_next_cycle as TTL check."""
-        import time as _time
+    def test_cache_hit_returns_ensemble_without_fetch(self):
+        """get_ensemble_temps returns cached data without making API calls."""
         from datetime import date
         from unittest.mock import patch
 
@@ -626,15 +620,11 @@ class TestDynamicCacheTTL:
         cache_key = ("NYC", date(2026, 4, 15).isoformat(), None, "max")
         fresh_data = [70.0] * 20
 
-        with patch(
-            "weather_markets._ttl_until_next_cycle", return_value=7200
-        ) as mock_ttl:
-            # Seed cache with fresh data (should be returned without fetching)
-            wm._ENSEMBLE_CACHE[cache_key] = (fresh_data, _time.monotonic())
-            wm.get_ensemble_temps("NYC", date(2026, 4, 15))
-
-        # If _ttl_until_next_cycle was used for TTL check, it should have been called
-        mock_ttl.assert_called()
+        wm._ensemble_cache.set(cache_key, fresh_data)
+        with patch("weather_markets._om_request") as mock_req:
+            result = wm.get_ensemble_temps("NYC", date(2026, 4, 15))
+        assert result == fresh_data
+        mock_req.assert_not_called()
 
 
 class TestForecastModelWeightsTrackerIntegration:

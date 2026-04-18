@@ -101,7 +101,7 @@ class TestForecastAccuracyFixtures:
         observed_low = fixture["observed_low"]
 
         # Flush the forecast cache so we hit the mock
-        wm._FORECAST_CACHE.clear()
+        wm._forecast_cache.clear()
 
         # Mock Open-Meteo — return values close to observed
         coords = wm.CITY_COORDS.get(city)
@@ -145,7 +145,7 @@ class TestForecastAccuracyFixtures:
         """get_weather_forecast() always returns the expected schema keys."""
         import weather_markets as wm
 
-        wm._FORECAST_CACHE.clear()
+        wm._forecast_cache.clear()
         city, target_date = "NYC", date(2026, 4, 1)
         coords = wm.CITY_COORDS.get(city)
         assert coords is not None
@@ -170,7 +170,7 @@ class TestForecastAccuracyFixtures:
         """When all sources fail, get_weather_forecast() returns None without raising."""
         import weather_markets as wm
 
-        wm._FORECAST_CACHE.clear()
+        wm._forecast_cache.clear()
         city, target_date = "NYC", date(2026, 4, 5)
 
         rsps.add(rsps.GET, wm.FORECAST_BASE, status=429)

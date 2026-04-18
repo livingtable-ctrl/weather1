@@ -30,8 +30,8 @@ def _open_meteo_payload(target: str, high: float, low: float, precip: float) -> 
 class TestGetWeatherForecastMocked(unittest.TestCase):
     def setUp(self):
         # Clear module-level caches so mocked responses are always used
-        weather_markets._FORECAST_CACHE.clear()
-        weather_markets._ENSEMBLE_CACHE.clear()
+        weather_markets._forecast_cache.clear()
+        weather_markets._ensemble_cache.clear()
         weather_markets._MAE_WEIGHTS_CACHE.clear()
         # Force static 3-model weights so tests don't depend on tracker state
         self._weights_patch = patch(
