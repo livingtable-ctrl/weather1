@@ -31,7 +31,7 @@ _log = logging.getLogger("main")
 
 def _main_module():  # type: ignore[return]
     """Return the live ``main`` module object (never cache at import time)."""
-    return sys.modules["main"]
+    return sys.modules.get("main") or sys.modules["__main__"]
 
 
 def _lock_path() -> Path:
