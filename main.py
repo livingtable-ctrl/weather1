@@ -21,6 +21,7 @@ from dotenv import load_dotenv
 from tabulate import tabulate
 
 import execution_log
+from ab_test import ABTest as _ABTest
 from colors import (
     bold,
     cyan,
@@ -73,6 +74,14 @@ from weather_markets import (
 load_dotenv()
 
 _bot_config = _load_config()
+
+# C6: A/B test for PAPER_MIN_EDGE — empirically finds the best edge threshold.
+# Variants sampled round-robin; loser auto-disabled after 50 trades.
+_MIN_EDGE_AB_TEST = _ABTest(
+    name="min_edge_variants",
+    variants={"low": 0.05, "medium": 0.07, "high": 0.09},
+    max_trades_per_variant=50,
+)
 
 REFRESH_SECS = 300  # watch mode interval
 _WATCH_STATE_PATH = Path(__file__).parent / "data" / ".watch_state.json"
@@ -2338,6 +2347,21 @@ def _validate_trade_opportunity(opp: dict, live: bool = False) -> tuple[bool, st
     else:
         min_edge = PAPER_MIN_EDGE if not live else MIN_EDGE
 
+    # C6: for paper mode, pick the A/B test variant and use its threshold.
+    # Only override when no ensemble-spread confidence tiering was applied —
+    # confidence tiering already raises the bar; the AB test owns the base case.
+    if not live:
+        try:
+            _ab_variant_name, _ab_variant_val = _MIN_EDGE_AB_TEST.pick_variant()
+            if _ab_variant_val is not None:
+                opp["_ab_variant"] = (
+                    _ab_variant_name  # carry forward to place_paper_order
+                )
+                if _ens_spread is None:  # tiering inactive — AB test owns min_edge
+                    min_edge = float(_ab_variant_val)
+        except Exception:
+            pass
+
     if edge < min_edge:
         return False, f"edge {edge:.1%} < {min_edge:.1%} (spread={_ens_spread})"
 
@@ -2648,6 +2672,7 @@ def _auto_place_trades(
                     icon_forecast_mean=a.get("icon_forecast_mean"),
                     gfs_forecast_mean=a.get("gfs_forecast_mean"),
                     condition_threshold=a.get("condition", {}).get("threshold"),
+                    ab_variant=a.get("_ab_variant"),  # C6: propagate A/B variant tag
                 )
                 print(
                     green(

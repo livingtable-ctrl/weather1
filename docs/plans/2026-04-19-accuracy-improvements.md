@@ -217,12 +217,12 @@ else:
 
 | # | Status | Title | File(s) |
 |---|--------|-------|---------|
-| C1 | ⬜ | Tighten `MAX_MODEL_SPREAD_F` from 8.0°F to 5.5°F | `.env` (env var, no code change) |
+| C1 | ✅ | Tighten `MAX_MODEL_SPREAD_F` from 8.0°F to 5.5°F | `.env` (env var, no code change) |
 | C2 | ✅ | Require all 3 sources for consensus bonus (not just 2) | `weather_markets.py` |
 | C3 | ✅ | Hard-skip trades when regime is "volatile" (std > 12°F) | `weather_markets.py` |
-| C4 | ⬜ | Reduce `MAX_DAYS_OUT` from 5 to 2 (or 3 max) | `.env` (env var, no code change) |
+| C4 | ✅ | Reduce `MAX_DAYS_OUT` from 5 to 2 (or 3 max) | `.env` (env var, no code change) |
 | C5 | ✅ | Reduce calibration grid step from 5% to 1% | `calibration.py` |
-| C6 | ⬜ | Add `ABTest` for `MIN_EDGE` variants (0.05 / 0.07 / 0.09) | `main.py`, `ab_test.py` |
+| C6 | ✅ | Add `ABTest` for `MIN_EDGE` variants (0.05 / 0.07 / 0.09) | `main.py`, `ab_test.py` |
 
 ### C1 — Tighter model spread gate
 At 8°F spread, your two primary models (GFS, ICON) disagree by a full
@@ -266,10 +266,10 @@ correct way to find the optimal edge threshold empirically.
 
 | # | Status | Title | File(s) |
 |---|--------|-------|---------|
-| D1 | ⬜ | Give ECMWF higher weight in `model_temps` Gaussian blend | `weather_markets.py` |
-| D2 | ⬜ | Add winter/summer sigma split to `_HISTORICAL_SIGMA` | `weather_markets.py` |
-| D3 | ⬜ | Fix persistence baseline: use today's observed max, not current temp | `weather_markets.py` |
-| D4 | ⬜ | Feed `backtest` walk-forward optimal params back to config | `backtest.py`, `config.py` |
+| D1 | ✅ | Give ECMWF higher weight in `model_temps` Gaussian blend | `weather_markets.py` |
+| D2 | ✅ | Add winter/summer sigma split to `_HISTORICAL_SIGMA` | `weather_markets.py` |
+| D3 | ✅ | Fix persistence baseline: use today's observed max, not current temp | `weather_markets.py` |
+| D4 | ✅ | Feed `backtest` walk-forward optimal params back to config | `backtest.py`, `config.py` |
 | D5 | ✅ | Add `train-bias` to weekly cron (Sunday 02:00 UTC) | `cron.py` |
 | D6 | ✅ | Lower calibration minimum samples: 50 seasonal → 20, 30 city → 15 | `calibration.py` |
 

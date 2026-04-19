@@ -478,6 +478,7 @@ def place_paper_order(
     icon_forecast_mean: float | None = None,  # per-model means for ensemble scoring
     gfs_forecast_mean: float | None = None,
     condition_threshold: float | None = None,  # market threshold (e.g. 70°F)
+    ab_variant: str | None = None,  # C6: A/B test variant name for MIN_EDGE experiment
 ) -> dict:
     """
     Place a paper trade. Deducts quantity * entry_price from balance.
@@ -549,6 +550,7 @@ def place_paper_order(
         "icon_forecast_mean": icon_forecast_mean,
         "gfs_forecast_mean": gfs_forecast_mean,
         "condition_threshold": condition_threshold,
+        "ab_variant": ab_variant,  # C6: track which MIN_EDGE variant this trade used
     }
 
     # #50: compute slippage-adjusted fill price and store on the trade record
@@ -1815,6 +1817,23 @@ def auto_settle_paper_trades(client=None) -> int:
             try:
                 settle_paper_trade(t["id"], outcome)
                 settled += 1
+                # C6: record outcome to A/B test if this trade carried a variant tag
+                _ab_var = t.get("ab_variant")
+                if _ab_var:
+                    try:
+                        from ab_test import ABTest
+
+                        _ab = ABTest(
+                            name="min_edge_variants",
+                            variants={"low": 0.05, "medium": 0.07, "high": 0.09},
+                        )
+                        _ab.record_outcome(
+                            _ab_var,
+                            won=bool(outcome),
+                            edge_realized=float(t.get("net_edge") or 0),
+                        )
+                    except Exception:
+                        pass
             except Exception:
                 pass
     return settled

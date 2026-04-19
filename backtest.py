@@ -661,6 +661,45 @@ def check_overfitting(in_sample_brier: float, out_of_sample_brier: float) -> dic
 # ── Walk-Forward Backtesting ──────────────────────────────────────────────────
 
 
+def _find_optimal_min_edge(trades: list[dict]) -> float | None:
+    """D4: Find the edge threshold that maximises win rate for trades above it.
+    Returns the best threshold among [0.04..0.10] with >=10 qualifying trades,
+    or None if there is insufficient data.
+    """
+    THRESHOLDS = [0.04, 0.05, 0.06, 0.07, 0.08, 0.09, 0.10]
+    best_threshold: float | None = None
+    best_wr = -1.0
+    for thr in THRESHOLDS:
+        subset = [t for t in trades if abs(t.get("edge", 0) or 0) >= thr]
+        if len(subset) < 10:
+            continue
+        wr = sum(1 for t in subset if t.get("settled_yes")) / len(subset)
+        if wr > best_wr:
+            best_wr = wr
+            best_threshold = thr
+    return best_threshold
+
+
+def save_walk_forward_params(results: dict, path: Path | None = None) -> None:
+    """D4: Persist walk-forward results so config.py can use optimal_min_edge
+    as a soft override for PAPER_MIN_EDGE (env var still takes precedence).
+    """
+    import time
+
+    p = path or DATA_DIR / "walk_forward_params.json"
+    out = {
+        "mean_brier": results.get("mean_brier"),
+        "std_brier": results.get("std_brier"),
+        "n_folds": results.get("n_folds"),
+        "optimal_min_edge": results.get("optimal_min_edge"),
+        "saved_at": time.time(),
+    }
+    try:
+        p.write_text(json.dumps(out, indent=2))
+    except Exception:
+        pass
+
+
 def walk_forward_split(
     trades: list[dict],
     train_months: int = 6,
@@ -773,9 +812,15 @@ def walk_forward_backtest(
         round(statistics.stdev(valid_scores), 4) if len(valid_scores) > 1 else None
     )
 
-    return {
+    # D4: compute optimal min_edge from all trades and persist for config.py
+    optimal_min_edge = _find_optimal_min_edge(trades)
+    result_out = {
         "folds": fold_results,
         "mean_brier": mean_brier,
         "std_brier": std_brier,
         "n_folds": len(fold_results),
+        "optimal_min_edge": optimal_min_edge,
     }
+    if len(fold_results) >= 2:
+        save_walk_forward_params(result_out)
+    return result_out

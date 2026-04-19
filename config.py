@@ -5,8 +5,32 @@ Import individual constants from here rather than from utils.py for new code.
 
 from __future__ import annotations
 
+import json
 import os
 from dataclasses import dataclass, field
+from pathlib import Path
+
+_DATA_DIR = Path(__file__).parent / "data"
+
+
+def _paper_min_edge_default() -> float:
+    """D4: Env var takes precedence; fall back to walk-forward optimal if available,
+    then hardcoded 0.05 default.
+    """
+    env_val = os.getenv("PAPER_MIN_EDGE")
+    if env_val is not None:
+        return float(env_val)
+    # Soft override from walk-forward backtest
+    try:
+        p = _DATA_DIR / "walk_forward_params.json"
+        if p.exists():
+            data = json.loads(p.read_text())
+            opt = data.get("optimal_min_edge")
+            if opt is not None and 0.03 <= float(opt) <= 0.15:
+                return float(opt)
+    except Exception:
+        pass
+    return 0.05
 
 
 @dataclass
@@ -17,9 +41,7 @@ class BotConfig:
     min_edge: float = field(
         default_factory=lambda: float(os.getenv("MIN_EDGE", "0.07"))
     )
-    paper_min_edge: float = field(
-        default_factory=lambda: float(os.getenv("PAPER_MIN_EDGE", "0.05"))
-    )
+    paper_min_edge: float = field(default_factory=_paper_min_edge_default)
     strong_edge: float = field(
         default_factory=lambda: float(os.getenv("STRONG_EDGE", "0.30"))
     )

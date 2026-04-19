@@ -992,12 +992,34 @@ def _compute_ensemble_spread(temps: dict[str, float | None]) -> float:
 
 # Historical forecast RMSE per city/season (Phase C Gaussian probability)
 # Season: 1=Winter(DJF), 2=Spring(MAM), 3=Summer(JJA), 4=Fall(SON)
+# D2: summer sigma tightened where climate is more stable; DEN added (mountain terrain).
 _HISTORICAL_SIGMA: dict[str, dict[int, float]] = {
     "NYC": {1: 5.5, 2: 6.0, 3: 5.0, 4: 5.8},
-    "MIA": {1: 3.5, 2: 4.0, 3: 3.0, 4: 3.5},
-    "CHI": {1: 7.0, 2: 6.5, 3: 5.5, 4: 6.5},
-    "LAX": {1: 4.0, 2: 4.5, 3: 4.0, 4: 4.5},
+    "MIA": {
+        1: 3.5,
+        2: 4.0,
+        3: 2.5,
+        4: 3.5,
+    },  # D2: summer tighter — sea breeze dampens variability
+    "CHI": {
+        1: 7.0,
+        2: 6.5,
+        3: 4.5,
+        4: 6.5,
+    },  # D2: summer tighter — stable continental pattern
+    "LAX": {
+        1: 4.0,
+        2: 4.5,
+        3: 3.0,
+        4: 4.5,
+    },  # D2: summer tighter — marine layer stabilises temps
     "DAL": {1: 5.0, 2: 5.5, 3: 4.5, 4: 5.5},
+    "DEN": {
+        1: 7.5,
+        2: 6.0,
+        3: 4.0,
+        4: 6.0,
+    },  # D2: added — volatile winter, predictable summer
 }
 _DEFAULT_SIGMA = 5.0
 
@@ -3225,17 +3247,24 @@ def analyze_trade(enriched: dict) -> dict | None:
             p_win_gaussian = None
 
         # Blend Gaussian with ensemble fraction (fall back to ens_prob if temps available)
+        # D1: Weight ECMWF 2× NBM — ECMWF ~20% more accurate for days 1–3.
+        _model_weights_d1: dict[str, float] = {"nbm": 1.0, "ecmwf": 2.0}
+        _weighted_valid = sum(
+            _model_weights_d1.get(m, 1.0)
+            for m, t in model_temps.items()
+            if t is not None
+        )
         n_valid = len([t for t in model_temps.values() if t is not None])
         raw_fraction = sum(
-            1
-            for t in model_temps.values()
+            _model_weights_d1.get(m, 1.0)
+            for m, t in model_temps.items()
             if t is not None
             and (
                 t > condition.get("threshold", 0)
                 if condition.get("type") == "above"
                 else t < condition.get("threshold", 0)
             )
-        ) / max(1, n_valid)
+        ) / max(1.0, _weighted_valid)
 
         if (
             n_valid >= 1
@@ -3336,7 +3365,17 @@ def analyze_trade(enriched: dict) -> dict | None:
                 from nws import get_live_observation as _get_live_obs
 
                 _live = _get_live_obs(city, coords) if days_out <= 1 else None
-                _live_temp = _live.get("temp_f") if _live else None
+                # D3: For HIGH markets at days_out=0 the instantaneous current temp
+                # is misleading after noon (the high has already occurred and is higher).
+                # Prefer today's observed max when the observation includes it.
+                if var == "max" and days_out == 0 and _live:
+                    _live_temp = (
+                        _live.get("max_temp_f")
+                        or _live.get("high_f")
+                        or _live.get("temp_f")
+                    )
+                else:
+                    _live_temp = _live.get("temp_f") if _live else None
                 _current_temp: float = (
                     float(_live_temp) if _live_temp is not None else forecast_temp_raw
                 )
