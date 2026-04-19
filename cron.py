@@ -683,6 +683,49 @@ def cmd_cron(client: KalshiClient, min_edge: float = MIN_EDGE) -> None:
     except Exception:
         pass
 
+    # F3: Auto-trigger calibration every 25 new settled trades
+    try:
+        import os as _os_cal
+
+        if not _os_cal.environ.get("PYTEST_CURRENT_TEST"):
+            _cal_sentinel = Path(__file__).parent / "data" / ".last_calibration_count"
+            import tracker as _tracker_cal
+
+            _current_settled = _tracker_cal.count_settled_predictions()
+            _last_cal_count = 0
+            if _cal_sentinel.exists():
+                try:
+                    _last_cal_count = int(_cal_sentinel.read_text().strip())
+                except Exception:
+                    pass
+            if _current_settled - _last_cal_count >= 25:
+                _log.info(
+                    "cmd_cron: F3 auto-calibration triggered "
+                    "(%d settled since last run, threshold=25)",
+                    _current_settled - _last_cal_count,
+                )
+                import tracker as _tk
+                from calibration import (
+                    calibrate_city_weights as _cal_city,
+                )
+                from calibration import (
+                    calibrate_seasonal_weights as _cal_season,
+                )
+
+                _db = _tk.DB_PATH
+                try:
+                    _cal_season(_db)
+                    _cal_city(_db)
+                    _cal_sentinel.write_text(str(_current_settled))
+                    _log.info("cmd_cron: F3 calibration complete — weights updated")
+                    print(
+                        dim("  [AutoCal] Calibration complete — blend weights updated.")
+                    )
+                except Exception as _cal_err:
+                    _log.warning("cmd_cron: F3 calibration failed: %s", _cal_err)
+    except Exception as _e:
+        _log.debug("cmd_cron: F3 auto-calibration check failed: %s", _e)
+
     # Phase 7 — price-based stop-loss check before model-based early exits
     try:
         import paper as _paper_sl
