@@ -22,7 +22,9 @@ def _cholesky(mat: list[list[float]]) -> list[list[float]] | None:
             s = sum(L[i][k] * L[j][k] for k in range(j))
             if i == j:
                 v = mat[i][i] - s
-                if v <= 1e-12:
+                if (
+                    v <= 1e-8
+                ):  # F6: raised from 1e-12 — catches near-singular matrices earlier
                     return None
                 L[i][j] = math.sqrt(v)
             else:
