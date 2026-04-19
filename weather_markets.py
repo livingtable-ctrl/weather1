@@ -446,7 +446,7 @@ def get_weather_forecast(city: str, target_date: date) -> dict | None:
             _forecast_cb.record_success()
         except Exception as _exc:
             _forecast_cb.record_failure()
-            _log.warning("open_meteo forecast fetch failed: %s", _exc)
+            _log.debug("open_meteo forecast fetch failed: %s", _exc)
             return None
         data = resp.json()
         validate_forecast(data.get("daily", {}), source="open_meteo")
@@ -620,7 +620,7 @@ def fetch_temperature_nbm(city: str, target_date: date) -> float | None:
         return result
     except Exception as exc:
         _ensemble_cb.record_failure()
-        _log.warning(
+        _log.debug(
             "open_meteo_ensemble: failure #%d (NBM/%s) — %s: %s",
             _ensemble_cb.failure_count,
             city,
@@ -1082,7 +1082,7 @@ def fetch_temperature_ecmwf(city: str, target_date: date) -> float | None:
         return result
     except Exception as exc:
         _ensemble_cb.record_failure()
-        _log.warning(
+        _log.debug(
             "open_meteo_ensemble: failure #%d (ECMWF/%s) — %s: %s",
             _ensemble_cb.failure_count,
             city,
@@ -1131,7 +1131,7 @@ def _fetch_model_ensemble(
             _ensemble_cb.record_success()
         except Exception as _exc:
             _ensemble_cb.record_failure()
-            _log.warning(
+            _log.debug(
                 "open_meteo_ensemble: failure #%d (hourly) — %s: %s",
                 _ensemble_cb.failure_count,
                 type(_exc).__name__,
@@ -1164,7 +1164,7 @@ def _fetch_model_ensemble(
             _ensemble_cb.record_success()
         except Exception as _exc:
             _ensemble_cb.record_failure()
-            _log.warning(
+            _log.debug(
                 "open_meteo_ensemble: failure #%d (daily) — %s: %s",
                 _ensemble_cb.failure_count,
                 type(_exc).__name__,
@@ -2516,7 +2516,7 @@ def _get_consensus_probs(
                     _ensemble_cb.record_success()
                 except Exception as _exc:
                     _ensemble_cb.record_failure()
-                    _log.warning(
+                    _log.debug(
                         "open_meteo_ensemble: failure #%d (consensus) — %s: %s",
                         _ensemble_cb.failure_count,
                         type(_exc).__name__,
@@ -2652,7 +2652,7 @@ def _fetch_ensemble_precip(
             ]
         except Exception as _exc:
             _ensemble_cb.record_failure()
-            _log.warning(
+            _log.debug(
                 "open_meteo_ensemble: failure #%d (model=%s) — %s: %s",
                 _ensemble_cb.failure_count,
                 model,
