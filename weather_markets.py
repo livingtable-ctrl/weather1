@@ -2823,6 +2823,9 @@ def _analyze_precip_trade(
     ci_adj_kelly = bayesian_kelly(
         ci_low, ci_high, entry_price, fee_rate=KALSHI_FEE_RATE
     )
+    # E3: discount Kelly proportionally to CI width (wider CI = more uncertainty)
+    _ci_scale = max(0.25, 1.0 - (ci_high - ci_low) * 2.0)
+    ci_adj_kelly = round(ci_adj_kelly * _ci_scale, 6)
     if precip_consensus:
         ci_adj_kelly = round(ci_adj_kelly * 1.25, 6)
     condition_type_scale = _CONDITION_CONFIDENCE.get(condition["type"], 1.0)
@@ -2950,6 +2953,9 @@ def _analyze_snow_trade(
     ci_adj_kelly = bayesian_kelly(
         ci_low, ci_high, entry_price, fee_rate=KALSHI_FEE_RATE
     )
+    # E3: discount Kelly proportionally to CI width
+    _ci_scale = max(0.25, 1.0 - (ci_high - ci_low) * 2.0)
+    ci_adj_kelly = round(ci_adj_kelly * _ci_scale, 6)
     condition_type_scale = _CONDITION_CONFIDENCE.get(condition["type"], 1.0)
     ci_adj_kelly = round(ci_adj_kelly * condition_type_scale, 6)
     ci_adj_kelly = min(ci_adj_kelly, 0.25)
@@ -3712,6 +3718,8 @@ def analyze_trade(enriched: dict) -> dict | None:
     # Then apply the same quality/anomaly/spread/time modifiers as before.
     bk = bayesian_kelly(ci_low, ci_high, entry_price, fee_rate=KALSHI_FEE_RATE)
     condition_type_scale = _CONDITION_CONFIDENCE.get(condition["type"], 1.0)
+    # E3: discount Kelly proportionally to CI width (wider CI = more uncertainty)
+    _ci_scale = max(0.25, 1.0 - (ci_high - ci_low) * 2.0)
     ci_adjusted_kelly = round(
         bk
         * quality_scale
@@ -3719,7 +3727,8 @@ def analyze_trade(enriched: dict) -> dict | None:
         * spread_scale
         * time_kelly_scale
         * _confidence_boost
-        * condition_type_scale,  # #39: scale down Kelly for harder-to-forecast conditions
+        * condition_type_scale  # #39: scale down Kelly for harder-to-forecast conditions
+        * _ci_scale,  # E3: CI-width uncertainty discount
         6,
     )
     ci_adjusted_kelly = min(ci_adjusted_kelly, 0.25)
@@ -3767,6 +3776,7 @@ def analyze_trade(enriched: dict) -> dict | None:
         "ci_low": ci_low,
         "ci_high": ci_high,
         "ci_width": ci_high - ci_low,
+        "ci_scale": _ci_scale,
         "kelly": kelly,
         "fee_adjusted_kelly": fee_adjusted_kelly,
         "ci_adjusted_kelly": ci_adjusted_kelly,
