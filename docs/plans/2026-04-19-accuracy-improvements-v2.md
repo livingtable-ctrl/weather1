@@ -41,11 +41,11 @@ Status: ⬜ = not started · 🔄 = in progress · ✅ = done
 
 | # | Status | Title | File(s) |
 |---|--------|-------|---------|
-| E1 | ⬜ | Per-quintile bias correction (replace global offset) | `tracker.py`, `weather_markets.py` |
-| E2 | ⬜ | Blend Gaussian with ensemble instead of fallback-only | `weather_markets.py` |
-| E3 | ⬜ | Scale Kelly by CI width (not just point estimate) | `weather_markets.py` |
-| E4 | ⬜ | Validate NWS temp observation before feeding to CDF | `nws.py` |
-| E5 | ⬜ | Reduce NWS blend weight when NWS diverges from ensemble | `weather_markets.py` |
+| E1 | ✅ | Per-quintile bias correction (replace global offset) | `tracker.py`, `weather_markets.py` |
+| E2 | ✅ | Blend Gaussian with ensemble instead of fallback-only | `weather_markets.py` |
+| E3 | ✅ | Scale Kelly by CI width (not just point estimate) | `weather_markets.py` |
+| E4 | ✅ | Validate NWS temp observation before feeding to CDF | `nws.py` |
+| E5 | ✅ | Reduce NWS blend weight when NWS diverges from ensemble | `weather_markets.py` |
 
 ### E1 — Per-quintile bias correction
 
