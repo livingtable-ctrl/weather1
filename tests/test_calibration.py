@@ -101,19 +101,19 @@ class TestCalibrateSeasonalWeights:
             assert 0.0 <= w[k] <= 1.0, f"{k} out of range: {w[k]}"
 
     def test_below_threshold_omits_season(self):
-        """30 predictions (< 50) → season omitted from output."""
+        """10 predictions (< 20) → season omitted from output."""
         from calibration import calibrate_seasonal_weights
 
-        _seed_db(self._db, _make_winter_rows(30))
+        _seed_db(self._db, _make_winter_rows(10))
         result = calibrate_seasonal_weights(self._db)
-        assert "winter" not in result, "winter should be absent with only 30 rows"
+        assert "winter" not in result, "winter should be absent with only 10 rows"
 
     def test_rows_without_source_probs_not_counted(self):
         """Rows missing ensemble_prob/nws_prob/clim_prob must not count toward threshold."""
         from calibration import calibrate_seasonal_weights
 
-        rows = _make_winter_rows(60)
-        for r in rows[:35]:
+        rows = _make_winter_rows(30)
+        for r in rows[:15]:
             r["ensemble_prob"] = None
             r["nws_prob"] = None
             r["clim_prob"] = None
@@ -131,10 +131,10 @@ class TestCalibrateCityWeights:
         shutil.rmtree(self._tmpdir, ignore_errors=True)
 
     def test_returns_weights_for_qualifying_city(self):
-        """35 NYC predictions → NYC weights present and valid."""
+        """16 NYC predictions (>= 15) → NYC weights present and valid."""
         from calibration import calibrate_city_weights
 
-        rows = _make_winter_rows(35, base_ticker="NYC")
+        rows = _make_winter_rows(16, base_ticker="NYC")
         _seed_db(self._db, rows)
         result = calibrate_city_weights(self._db)
         assert "NYC" in result
@@ -142,10 +142,10 @@ class TestCalibrateCityWeights:
         assert abs(w["ensemble"] + w["climatology"] + w["nws"] - 1.0) < 1e-6
 
     def test_below_threshold_omits_city(self):
-        """20 predictions (< 30) → city absent."""
+        """10 predictions (< 15) → city absent."""
         from calibration import calibrate_city_weights
 
-        rows = _make_winter_rows(20, base_ticker="SPARSE")
+        rows = _make_winter_rows(10, base_ticker="SPARSE")
         _seed_db(self._db, rows)
         result = calibrate_city_weights(self._db)
         assert "NYC" not in result

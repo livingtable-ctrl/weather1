@@ -112,7 +112,9 @@ CITY_COORDS = _load_city_coords()
 # Per-city static bias corrections (°F) — subtract from model forecast before
 # computing probability. Positive = model runs warm; negative = model runs cold.
 # Sources: Weather Edge MCP field data, NWS station comparison reports.
-_STATION_BIAS: dict[str, float] = {
+# B4: Split station bias by HIGH (max) vs LOW (min) markets.
+# Warm biases in GFS/ICON are strongest for daytime peaks; overnight lows differ.
+_STATION_BIAS_HIGH: dict[str, float] = {
     "NYC": 1.0,  # KNYC: NWS gridpoint overshoots Central Park by ~1°F (warm)
     "MIA": 3.0,  # KMIA: GFS southern warm bias, confirmed via field research
     "DEN": 2.0,  # KDEN: Mountain terrain uncertainty, conservative correction
@@ -120,9 +122,19 @@ _STATION_BIAS: dict[str, float] = {
     "DAL": 0.5,  # KDFW: GFS southern warm bias (minor)
     "LAX": 0.0,  # KLAX: No known systematic bias
 }
+_STATION_BIAS_LOW: dict[str, float] = {
+    "NYC": 0.5,  # Overnight lows: smaller warm bias than daytime highs
+    "MIA": 1.5,  # MIA overnight lows still warm-biased but less than highs
+    "DEN": 1.0,  # Denver nights: model still warm but less extreme
+    "CHI": 0.0,  # CHI lows: no consistent bias observed
+    "DAL": 0.0,  # DAL lows: no consistent bias observed
+    "LAX": 0.0,  # KLAX: No known systematic bias
+}
+# Legacy alias — used by any callers that don't pass var
+_STATION_BIAS = _STATION_BIAS_HIGH
 
 
-def apply_station_bias(city: str, forecast_temp: float) -> float:
+def apply_station_bias(city: str, forecast_temp: float, var: str = "max") -> float:
     """
     Apply per-city static bias correction to a model forecast temperature.
     Subtracts the known warm bias so probability calculations are centered
@@ -131,11 +143,13 @@ def apply_station_bias(city: str, forecast_temp: float) -> float:
     Args:
         city: City code (e.g. "NYC", "MIA")
         forecast_temp: Raw model forecast in °F
+        var: "max" for daily high markets, "min" for daily low markets (B4)
 
     Returns:
         Bias-corrected temperature in °F (unchanged if city unknown)
     """
-    bias = _STATION_BIAS.get(city.upper(), 0.0)
+    table = _STATION_BIAS_LOW if var == "min" else _STATION_BIAS_HIGH
+    bias = table.get(city.upper(), 0.0)
     return forecast_temp - bias
 
 
@@ -3138,9 +3152,9 @@ def analyze_trade(enriched: dict) -> dict | None:
                 )
                 return None
 
-        # Apply per-city static bias correction before probability calculation
+        # Apply per-city static bias correction before probability calculation (B4: pass var)
         forecast_temp_raw = forecast_temp
-        forecast_temp = apply_station_bias(city, forecast_temp)
+        forecast_temp = apply_station_bias(city, forecast_temp, var=var)
 
         days_out = max(0, (target_date - date.today()).days)
 
@@ -3170,7 +3184,14 @@ def analyze_trade(enriched: dict) -> dict | None:
                 lo, hi = condition["lower"], condition["upper"]
                 ens_prob = sum(1 for t in temps if lo <= t <= hi) / len(temps)
         else:
-            sigma = _forecast_uncertainty(target_date) * sigma_mult
+            # B7: prefer ens_stats["std"] when available — actual model disagreement
+            # is more informative than the generic days-out lookup table.
+            _ens_std = ens_stats.get("std") if ens_stats else None
+            sigma = (
+                _ens_std
+                if _ens_std and _ens_std > 0
+                else _forecast_uncertainty(target_date)
+            ) * sigma_mult
             ens_prob = _forecast_probability(condition, forecast_temp, sigma)
 
         # ── Phase C: extended ensemble members (NBM + ECMWF AIFS) ───────────────
@@ -3385,6 +3406,46 @@ def analyze_trade(enriched: dict) -> dict | None:
                 **({"persistence": w_persist} if w_persist > 0 else {}),
             }
 
+        # ── 6b. MOS blend (B1/B2/B6) — applied BEFORE bias correction ───────────
+        # B6: MOS is moved here so the full blended value (ensemble+NWS+clim+MOS)
+        # is bias-corrected together instead of reintroducing an uncalibrated signal.
+        # B2: use fetch_mos_best() which prefers NAM for days_out<=1 (tighter RMSE).
+        # B1: use MOS-specific sigma instead of generic _forecast_uncertainty().
+        _mos_data_pre: dict | None = None
+        try:
+            import mos as _mos_mod
+
+            _mos_sta = _mos_mod.get_mos_station(city)
+            if _mos_sta:
+                _mos_data_pre = _mos_mod.fetch_mos_best(
+                    _mos_sta, target_date=target_date
+                )
+        except Exception:
+            pass
+
+        if _mos_data_pre is not None:
+            # Pick high vs low temp from MOS based on market type (B4 complement)
+            _mos_temp_field = "min_temp_f" if var == "min" else "max_temp_f"
+            _mos_temp_val = _mos_data_pre.get(_mos_temp_field) or _mos_data_pre.get(
+                "max_temp_f"
+            )
+            if _mos_temp_val is not None:
+                try:
+                    _mos_sigma_val = _mos_data_pre.get(
+                        "sigma"
+                    ) or _forecast_uncertainty(target_date)
+                    _mos_p_pre = _forecast_probability(
+                        condition, _mos_temp_val, _mos_sigma_val
+                    )
+                    if _mos_p_pre is not None:
+                        blended_prob = 0.5 * blended_prob + 0.5 * _mos_p_pre
+                        blended_prob = max(0.01, min(0.99, blended_prob))
+                        blend_sources["mos"] = 0.5  # record MOS contribution
+                except Exception as _mos_pre_exc:
+                    _log.debug(
+                        "MOS pre-bias blend failed for %s: %s", city, _mos_pre_exc
+                    )
+
         # ── 7. Bias correction from tracker ─────────────────────────────────────
         bias = 0.0
         try:
@@ -3402,10 +3463,12 @@ def analyze_trade(enriched: dict) -> dict | None:
             )
 
         # ── Consensus signal: all available sources agree on direction ───────────
+        # C2: require all 3 independent sources (ensemble, NWS, climatology) to agree.
+        # 2-of-2 (e.g. NWS + ensemble) share GFS heritage and is not true independence.
         sources_with_data = [
             p for p in [ens_prob, _nws_prob, clim_prob] if p is not None
         ]
-        consensus = len(sources_with_data) >= 2 and (
+        consensus = len(sources_with_data) >= 3 and (
             all(p > 0.5 for p in sources_with_data)
             or all(p < 0.5 for p in sources_with_data)
         )
@@ -3481,6 +3544,29 @@ def analyze_trade(enriched: dict) -> dict | None:
     except Exception:
         pass
 
+    # C3: Hard-skip when atmosphere is in "volatile" regime (ensemble std > 12°F).
+    # A 20% Kelly reduction is not enough protection when models disagree by 12+°F —
+    # the probability estimate could be off by ±0.50. Return None to skip entirely.
+    if _regime_info.get("regime") == "volatile" and not metar_locked:
+        _log.debug(
+            "analyze_trade: skipping %s — volatile regime (std>12°F), ensemble too uncertain",
+            enriched.get("ticker", "?"),
+        )
+        return None
+
+    # A1: Apply ML-based probability calibration correction (GradientBoosting per city).
+    # Only fires when a trained model exists (requires 200+ settled trades per city).
+    # Falls back to blended_prob unchanged when no model is available.
+    try:
+        from ml_bias import apply_ml_prob_correction
+
+        blended_prob = apply_ml_prob_correction(
+            city, blended_prob, target_date.month, days_out
+        )
+        blended_prob = max(0.01, min(0.99, blended_prob))
+    except Exception:
+        pass
+
     # Log source availability for per-city reliability tracking
     try:
         from tracker import log_source_attempt as _log_src
@@ -3515,29 +3601,8 @@ def analyze_trade(enriched: dict) -> dict | None:
     # A 5% spread → 10% reduction; 25% spread → 50% reduction; floor at 0.50
     spread_scale = max(0.50, 1.0 - spread_cost * 2)
 
-    # ── MOS forecast (station-specific post-processing) ──────────────────
-    mos_data = None
-    try:
-        import mos as _mos
-
-        _mos_station = _mos.get_mos_station(city)
-        if _mos_station:
-            mos_data = _mos.fetch_mos(_mos_station, target_date=target_date)
-    except Exception:
-        pass
-
-    # If MOS data available, blend it with blended_prob before edge computation
-    if mos_data and mos_data.get("max_temp_f") is not None:
-        _mos_temp = mos_data["max_temp_f"]
-        try:
-            _mos_sigma = _forecast_uncertainty(target_date)
-            _mos_p = _forecast_probability(condition, _mos_temp, _mos_sigma)
-            if _mos_p is not None:
-                # Blend: 50% existing blended + 50% MOS-based probability
-                blended_prob = 0.5 * blended_prob + 0.5 * _mos_p
-                blended_prob = max(0.01, min(0.99, blended_prob))
-        except Exception as _mos_exc:
-            _log.debug("MOS probability blend failed for %s: %s", city, _mos_exc)
+    # mos_data alias for return dict compatibility
+    mos_data = _mos_data_pre if not metar_locked else None
 
     edge = blended_prob - market_prob
 

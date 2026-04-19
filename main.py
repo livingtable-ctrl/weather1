@@ -1930,6 +1930,34 @@ def cmd_today(client: KalshiClient) -> None:
         print(
             dim(f"  Trade ID: {trade.get('id', '?')}  |  Balance: ${get_balance():.2f}")
         )
+        # A2: Record feature contributions so feature_importance analytics can learn
+        # which signals (ensemble spread, model agreement, etc.) predict wins.
+        try:
+            from feature_importance import record_feature_contribution
+
+            _days_out_fi = (
+                (best_a.get("target_date") - __import__("datetime").date.today()).days
+                if best_a.get("target_date")
+                else 0
+            )
+            record_feature_contribution(
+                ticker,
+                {
+                    "ensemble_spread": best_a.get("ensemble_spread", 0) or 0,
+                    "model_agreement": 1.0 if best_a.get("model_consensus") else 0.0,
+                    "days_out": _days_out_fi,
+                    "edge": best_a.get("edge", 0) or 0,
+                    "kelly_fraction": best_a.get("ci_adjusted_kelly", 0) or 0,
+                    "data_quality": best_a.get("data_quality", 0) or 0,
+                    "near_threshold": 1.0 if best_a.get("near_threshold") else 0.0,
+                    "regime": 1.0
+                    if best_a.get("regime")
+                    in ("heat_dome", "cold_snap", "blocking_high")
+                    else 0.0,
+                },
+            )
+        except Exception:
+            pass
     except Exception as e:
         print(red(f"  Failed to place trade: {e}"))
 

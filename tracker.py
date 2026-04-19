@@ -556,8 +556,11 @@ def get_bias(
         weighted_bias += (r["our_prob"] - r["settled_yes"]) * weight
         total_weight += weight
 
-    # #9: if most recent sample is >14 days old, bias estimate is stale — don't apply
-    if min_age_days > 14:
+    # B5: relaxed stale cutoff from 14 → 60 days.
+    # The exponential decay (30-day half-life) already smoothly reduces the influence
+    # of old data. A hard zero cutoff at 14 days was too aggressive for a bot with a
+    # small trade history — bias correction was inactive almost all the time.
+    if min_age_days > 60:
         return 0.0
 
     if total_weight == 0:
@@ -1199,6 +1202,13 @@ def sync_outcomes(client) -> int:
                 settled_yes = result == "yes"
                 if log_outcome(ticker, settled_yes):
                     count += 1
+                    # A3: update feature importance log so we can learn which signals predicted wins
+                    try:
+                        from feature_importance import update_outcome as _fi_update
+
+                        _fi_update(ticker, settled_yes)
+                    except Exception:
+                        pass
         except Exception as exc:
             # 404 means the market never existed or was deleted — silence it forever
             if "404" in str(exc):

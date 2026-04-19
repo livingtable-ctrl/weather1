@@ -884,6 +884,31 @@ def cmd_cron(client: KalshiClient, min_edge: float = MIN_EDGE) -> None:
     except Exception:
         pass
 
+    # D5: Weekly — retrain ML bias model as new settled trades accumulate.
+    # Runs on Sunday early morning. Falls back silently if sklearn isn't installed
+    # or fewer than 200 trades exist per city (threshold enforced inside train_bias_model).
+    try:
+        import os as _os_tb
+
+        if not _os_tb.environ.get("PYTEST_CURRENT_TEST"):
+            _now_dow = datetime.now(UTC).weekday()  # 6 = Sunday
+            _now_hour = datetime.now(UTC).hour
+            if _now_dow == 6 and _now_hour == 2:
+                _log.info(
+                    "cmd_cron: running weekly ML bias model retrain (Sunday 02:00 UTC)"
+                )
+                from ml_bias import train_bias_model as _train_bias
+
+                _trained = _train_bias()
+                if _trained:
+                    print(
+                        dim(
+                            f"  [MLBias] Retrained {len(_trained)} city model(s): {', '.join(_trained.keys())}"
+                        )
+                    )
+    except Exception as _e:
+        _log.debug("cmd_cron: ML bias retrain failed: %s", _e)
+
     # Sync data/ to cloud (OneDrive / Google Drive / custom path) after every cron run
     try:
         from cloud_backup import backup_data as _backup

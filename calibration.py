@@ -14,9 +14,11 @@ from pathlib import Path
 
 _log = logging.getLogger(__name__)
 
-_SEASONAL_MIN = 50  # minimum settled predictions with source probs per season
-_CITY_MIN = 30  # minimum settled predictions with source probs per city
-_WEIGHT_STEP = 0.05  # grid resolution; 0.05 → 231 unique (w_e, w_c, w_n) triples
+_SEASONAL_MIN = (
+    20  # D6: lowered from 50 — calibration fires sooner as trades accumulate
+)
+_CITY_MIN = 15  # D6: lowered from 30 — same rationale
+_WEIGHT_STEP = 0.01  # C5: finer grid; 0.01 → 5,151 triples (still <1s); finds weights like (0.71, 0.12, 0.17)
 
 _MONTH_TO_SEASON: dict[int, str] = {
     12: "winter",
