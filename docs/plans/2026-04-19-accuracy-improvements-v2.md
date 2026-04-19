@@ -157,10 +157,10 @@ Renormalize remaining blend weights accordingly.
 
 | # | Status | Title | File(s) |
 |---|--------|-------|---------|
-| F1 | ⬜ | Scale same-day obs weight by hour (not flat 0.95) | `weather_markets.py` |
-| F2 | ⬜ | Apply consensus Kelly bonus before the 0.25 cap | `weather_markets.py` |
-| F3 | ⬜ | Auto-trigger calibration every 25 new settled trades | `calibration.py`, `cron.py` |
-| F4 | ⬜ | Fix race condition in `feature_importance.update_outcome()` | `feature_importance.py` |
+| F1 | ✅ | Scale same-day obs weight by hour (not flat 0.95) | `weather_markets.py` |
+| F2 | ✅ | Apply consensus Kelly bonus before the 0.25 cap | `weather_markets.py` |
+| F3 | ✅ | Auto-trigger calibration every 25 new settled trades | `calibration.py`, `cron.py` |
+| F4 | ✅ | Fix race condition in `feature_importance.update_outcome()` | `feature_importance.py` |
 | F5 | ⬜ | Skip markets where both bid and ask are zero | `weather_markets.py` |
 | F6 | ⬜ | Raise Cholesky positive-definite threshold 1e-12 → 1e-8 | `monte_carlo.py` |
 | F7 | ⬜ | Break A/B test ties randomly, not alphabetically | `ab_test.py` |
