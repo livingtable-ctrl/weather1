@@ -3279,8 +3279,12 @@ def analyze_trade(enriched: dict) -> dict | None:
                 if n_valid >= 3
                 else 0.8 * p_win_gaussian + 0.2 * raw_fraction
             )
-            # Only use Gaussian blend when large ensemble didn't produce a result
-            if ens_prob is None:
+            # E2: blend Gaussian into ensemble when both are available.
+            # Ensemble fraction (member count) is noisy with small/skewed draws;
+            # the Gaussian CDF around forecast_mean smooths it without losing signal.
+            if ens_prob is not None:
+                ens_prob = 0.70 * ens_prob + 0.30 * gaussian_blend
+            else:
                 ens_prob = gaussian_blend
 
         # ── Model consensus check ────────────────────────────────────────────────

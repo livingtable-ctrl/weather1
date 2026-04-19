@@ -652,3 +652,93 @@ class TestForecastModelWeightsTrackerIntegration:
             result = _forecast_model_weights(month=7, city="NYC")
         # seasonal summer: ecmwf_w = 1.5
         assert result.get("ecmwf_ifs04") == 1.5
+
+
+class TestGaussianEnsembleBlend:
+    """E2: Gaussian probability is blended into ensemble fraction, not only used as fallback."""
+
+    def _enriched(self, forecast_high: float, threshold: float = 70.0):
+        from datetime import date, timedelta
+
+        target = date.today() + timedelta(days=1)
+        return {
+            "ticker": f"KXHIGHNY-{target.strftime('%d%b%y').upper()}-T{threshold:.0f}",
+            "title": f"NYC high > {threshold:.0f}°F",
+            "_city": "NYC",
+            "_date": target,
+            "_hour": None,
+            "_forecast": {
+                "high_f": forecast_high,
+                "low_f": 55.0,
+                "precip_in": 0.0,
+                "date": target.isoformat(),
+                "city": "NYC",
+                "models_used": 3,
+                "high_range": (forecast_high - 4, forecast_high + 4),
+            },
+            "yes_bid": 0.45,
+            "yes_ask": 0.55,
+            "no_bid": 0.45,
+            "close_time": "",
+            "series_ticker": "KXHIGHNY",
+            "volume": 500,
+            "open_interest": 200,
+        }
+
+    def test_gaussian_lifts_zero_ensemble_when_forecast_is_high(self):
+        """E2: when all ensemble members are below threshold but forecast is well above,
+        Gaussian blend should raise ens_prob above 0.0."""
+        import weather_markets as wm
+
+        # All 20 ensemble members at 65°F → raw ens_prob = 0/20 = 0.0
+        # forecast_high = 80°F → Gaussian P(T>70|N(80,σ)) ≈ high
+        # nbm = ecmwf = 80°F → raw_fraction = 1.0
+        # New blend: 0.70*0.0 + 0.30*gaussian_blend > 0
+        enriched = self._enriched(forecast_high=80.0, threshold=70.0)
+
+        with (
+            patch.object(wm, "get_ensemble_temps", return_value=[65.0] * 20),
+            patch("weather_markets.fetch_temperature_nbm", return_value=80.0),
+            patch("weather_markets.fetch_temperature_ecmwf", return_value=80.0),
+            patch("climatology.climatological_prob", return_value=0.5),
+            patch("nws.nws_prob", return_value=None),
+            patch("nws.get_live_observation", return_value=None),
+            patch("climate_indices.temperature_adjustment", return_value=0.0),
+        ):
+            result = wm.analyze_trade(enriched)
+
+        assert result is not None
+        # With pure ensemble the signal would be 0.0 (all members below threshold).
+        # The Gaussian blend must push forecast_prob above 0.
+        assert result["forecast_prob"] > 0.05, (
+            f"Gaussian blend should lift forecast_prob above 0 when forecast is 80°F,"
+            f" got {result['forecast_prob']:.3f}"
+        )
+
+    def test_gaussian_pulls_down_ceiling_ensemble(self):
+        """E2: when all ensemble members exceed threshold but forecast is close to it,
+        Gaussian blend should reduce ens_prob below 1.0."""
+        import weather_markets as wm
+
+        # All 20 ensemble members at 75°F → raw ens_prob = 20/20 = 1.0
+        # forecast_high = 68°F → Gaussian P(T>70|N(68,σ)) < 1.0
+        # nbm = ecmwf = 68°F → raw_fraction = 0.0
+        # New blend: 0.70*1.0 + 0.30*gaussian_blend < 1.0
+        enriched = self._enriched(forecast_high=68.0, threshold=70.0)
+
+        with (
+            patch.object(wm, "get_ensemble_temps", return_value=[75.0] * 20),
+            patch("weather_markets.fetch_temperature_nbm", return_value=68.0),
+            patch("weather_markets.fetch_temperature_ecmwf", return_value=68.0),
+            patch("climatology.climatological_prob", return_value=0.4),
+            patch("nws.nws_prob", return_value=None),
+            patch("nws.get_live_observation", return_value=None),
+            patch("climate_indices.temperature_adjustment", return_value=0.0),
+        ):
+            result = wm.analyze_trade(enriched)
+
+        assert result is not None
+        assert result["forecast_prob"] < 0.95, (
+            f"Gaussian blend should pull forecast_prob below 1.0 when forecast is 68°F,"
+            f" got {result['forecast_prob']:.3f}"
+        )
