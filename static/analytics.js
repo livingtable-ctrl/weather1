@@ -2,17 +2,26 @@
 (function () {
   'use strict';
 
-  function cssVar(name) {
-    return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || name;
-  }
+  // Resolve CSS custom properties once at load time (CSS is render-blocking so this is safe).
+  // Fallbacks are the dark-theme hex values in case getPropertyValue returns empty.
+  var _cs = getComputedStyle(document.documentElement);
+  var C = {
+    text:   (_cs.getPropertyValue('--text').trim()       || '#c9d1d9'),
+    border: (_cs.getPropertyValue('--border').trim()     || '#30363d'),
+    accent: (_cs.getPropertyValue('--accent').trim()     || '#58a6ff'),
+    muted:  (_cs.getPropertyValue('--text-muted').trim() || '#8b949e'),
+    bg:     (_cs.getPropertyValue('--surface').trim()    || '#161b22'),
+  };
+
+  var LAYOUT = {
+    paper_bgcolor: C.bg,
+    plot_bgcolor:  C.bg,
+    font: { color: C.text, family: 'Consolas', size: 12 },
+    margin: { t: 20, b: 40, l: 55, r: 20 }
+  };
 
   function makeLayout(extra) {
-    return Object.assign({
-      paper_bgcolor: 'transparent',
-      plot_bgcolor: 'transparent',
-      font: { color: cssVar('--text'), family: 'Consolas', size: 12 },
-      margin: { t: 20, b: 40, l: 55, r: 20 }
-    }, extra || {});
+    return Object.assign({}, LAYOUT, extra || {});
   }
 
   function loadAnalytics() {
@@ -32,12 +41,12 @@
         if (calEl && typeof Plotly !== 'undefined') {
           Plotly.newPlot(calEl, [
             { x: [0, 1], y: [0, 1], type: 'scatter', mode: 'lines', name: 'Perfect',
-              line: { color: cssVar('--text-muted'), dash: 'dash', width: 1 } },
+              line: { color: C.muted, dash: 'dash', width: 1 } },
             { x: xCal, y: yCal, type: 'scatter', mode: 'markers+lines', name: 'Model',
-              marker: { color: cssVar('--accent'), size: 7 }, line: { color: cssVar('--accent') } }
+              marker: { color: C.accent, size: 7 }, line: { color: C.accent } }
           ], makeLayout({
-            xaxis: { title: 'Predicted Prob', gridcolor: cssVar('--border'), zeroline: false, range: [0, 1] },
-            yaxis: { title: 'Actual Rate', gridcolor: cssVar('--border'), zeroline: false, range: [0, 1] }
+            xaxis: { title: 'Predicted Prob', gridcolor: C.border, zeroline: false, range: [0, 1] },
+            yaxis: { title: 'Actual Rate',    gridcolor: C.border, zeroline: false, range: [0, 1] }
           }), { responsive: true });
         }
       }
@@ -49,13 +58,13 @@
         if (rocEl && typeof Plotly !== 'undefined') {
           Plotly.newPlot(rocEl, [
             { x: [0, 1], y: [0, 1], type: 'scatter', mode: 'lines', name: 'Random',
-              line: { color: cssVar('--text-muted'), dash: 'dash', width: 1 } },
+              line: { color: C.muted, dash: 'dash', width: 1 } },
             { x: roc.fpr, y: roc.tpr, type: 'scatter', mode: 'lines',
               name: 'Model (AUC=' + (roc.auc || 0).toFixed(3) + ')',
-              line: { color: cssVar('--accent'), width: 2 } }
+              line: { color: C.accent, width: 2 } }
           ], makeLayout({
-            xaxis: { title: 'FPR', gridcolor: cssVar('--border'), zeroline: false, range: [0, 1] },
-            yaxis: { title: 'TPR', gridcolor: cssVar('--border'), zeroline: false, range: [0, 1] }
+            xaxis: { title: 'FPR', gridcolor: C.border, zeroline: false, range: [0, 1] },
+            yaxis: { title: 'TPR', gridcolor: C.border, zeroline: false, range: [0, 1] }
           }), { responsive: true });
         }
       }
@@ -70,10 +79,10 @@
           Plotly.newPlot(attrEl, [{
             type: 'bar', orientation: 'h',
             x: brierVals, y: sources,
-            marker: { color: cssVar('--accent') }
+            marker: { color: C.accent }
           }], makeLayout({
-            xaxis: { title: 'Brier Score', gridcolor: cssVar('--border'), zeroline: false },
-            yaxis: { gridcolor: cssVar('--border') }
+            xaxis: { title: 'Brier Score', gridcolor: C.border, zeroline: false },
+            yaxis: { gridcolor: C.border }
           }), { responsive: true });
         }
       }
@@ -93,8 +102,8 @@
               return v < 0.25 ? '#3fb950' : v < 0.35 ? '#e3b341' : '#f85149';
             })}
           }], makeLayout({
-            xaxis: { gridcolor: cssVar('--border') },
-            yaxis: { title: 'Brier', gridcolor: cssVar('--border'), zeroline: false }
+            xaxis: { gridcolor: C.border },
+            yaxis: { title: 'Brier', gridcolor: C.border, zeroline: false }
           }), { responsive: true });
         }
       }
@@ -129,11 +138,11 @@
         x: data.map(function (d) { return d.week; }),
         y: data.map(function (d) { return d.brier; }),
         type: 'scatter', mode: 'lines+markers',
-        line: { color: cssVar('--accent'), width: 2 },
-        marker: { color: cssVar('--accent'), size: 6 }
+        line: { color: C.accent, width: 2 },
+        marker: { color: C.accent, size: 6 }
       }], makeLayout({
-        xaxis: { gridcolor: cssVar('--border'), zeroline: false },
-        yaxis: { title: 'Brier', gridcolor: cssVar('--border'), zeroline: false }
+        xaxis: { gridcolor: C.border, zeroline: false },
+        yaxis: { title: 'Brier', gridcolor: C.border, zeroline: false }
       }), { responsive: true });
     }).catch(function (err) { console.error('brier history fetch failed:', err); });
   }
@@ -178,7 +187,7 @@
           var v = d[city][s];
           var td = row.insertCell();
           td.textContent = v !== undefined ? (v * 100).toFixed(0) + '%' : '—';
-          td.style.color = cssVar('--text-muted');
+          td.style.color = C.muted;
         });
       });
       el.innerHTML = '';
@@ -216,7 +225,6 @@
     fetch('/api/source-reliability').then(function (r) { return r.json(); }).then(function (d) {
       var el = document.getElementById('source-reliability-table');
       if (!el) return;
-      // d is {city: {source: {successes, failures, rate, total}}} — aggregate across cities
       var agg = {};
       Object.values(d).forEach(function (cityData) {
         Object.keys(cityData).forEach(function (src) {

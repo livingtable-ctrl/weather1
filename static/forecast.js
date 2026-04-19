@@ -2,15 +2,22 @@
 (function () {
   'use strict';
 
-  function cssVar(name) {
-    return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || name;
-  }
+  // Resolve CSS custom properties once at load time.
+  // Fallbacks are the dark-theme hex values in case getPropertyValue returns empty.
+  var _cs = getComputedStyle(document.documentElement);
+  var C = {
+    text:   (_cs.getPropertyValue('--text').trim()       || '#c9d1d9'),
+    border: (_cs.getPropertyValue('--border').trim()     || '#30363d'),
+    accent: (_cs.getPropertyValue('--accent').trim()     || '#58a6ff'),
+    muted:  (_cs.getPropertyValue('--text-muted').trim() || '#8b949e'),
+    bg:     (_cs.getPropertyValue('--surface').trim()    || '#161b22'),
+  };
 
   function makeLayout(extra) {
     return Object.assign({
-      paper_bgcolor: 'transparent',
-      plot_bgcolor: 'transparent',
-      font: { color: cssVar('--text'), family: 'Consolas', size: 12 },
+      paper_bgcolor: C.bg,
+      plot_bgcolor:  C.bg,
+      font: { color: C.text, family: 'Consolas', size: 12 },
       margin: { t: 20, b: 60, l: 100, r: 20 }
     }, extra || {});
   }
@@ -68,27 +75,27 @@
 
       var tdLow = row.insertCell();
       tdLow.textContent = f.low_f !== null ? f.low_f.toFixed(1) + '°F' : '—';
-      tdLow.style.color = 'var(--text-muted)';
+      tdLow.style.color = C.muted;
 
       var tdRange = row.insertCell();
       var lo = f.high_range[0], hi = f.high_range[1];
       var spread = hi - lo;
       tdRange.textContent = lo.toFixed(0) + '–' + hi.toFixed(0) + '°';
-      tdRange.style.color = spread <= 2 ? 'var(--pos)' : spread <= 5 ? 'var(--warn)' : 'var(--neg)';
+      tdRange.style.color = spread <= 2 ? '#3fb950' : spread <= 5 ? '#e3b341' : '#f85149';
       tdRange.title = 'Model spread: ' + spread.toFixed(1) + '°F';
 
       var tdPrecip = row.insertCell();
       if (f.precip_in > 0.01) {
         tdPrecip.textContent = f.precip_in.toFixed(2) + '"';
-        tdPrecip.style.color = 'var(--warn)';
+        tdPrecip.style.color = '#e3b341';
       } else {
         tdPrecip.textContent = 'Dry';
-        tdPrecip.style.color = 'var(--text-muted)';
+        tdPrecip.style.color = C.muted;
       }
 
       var tdModels = row.insertCell();
       tdModels.textContent = f.models_used + ' model' + (f.models_used !== 1 ? 's' : '');
-      tdModels.style.color = f.models_used >= 3 ? 'var(--pos)' : f.models_used === 2 ? 'var(--warn)' : 'var(--neg)';
+      tdModels.style.color = f.models_used >= 3 ? '#3fb950' : f.models_used === 2 ? '#e3b341' : '#f85149';
     });
 
     el.innerHTML = '';
@@ -126,8 +133,8 @@
         return v < 0.25 ? '#3fb950' : v < 0.35 ? '#e3b341' : '#f85149';
       })}
     }], makeLayout({
-      xaxis: { title: 'Brier Score', gridcolor: cssVar('--border'), zeroline: false },
-      yaxis: { gridcolor: cssVar('--border'), automargin: true }
+      xaxis: { title: 'Brier Score', gridcolor: C.border, zeroline: false },
+      yaxis: { gridcolor: C.border, automargin: true }
     }), { responsive: true });
   }
 
@@ -191,8 +198,8 @@
       })}
     }], makeLayout({
       margin: { t: 20, b: 40, l: 55, r: 20 },
-      xaxis: { gridcolor: cssVar('--border') },
-      yaxis: { title: 'Std Dev (MAE °F)', gridcolor: cssVar('--border'), zeroline: false }
+      xaxis: { gridcolor: C.border },
+      yaxis: { title: 'Std Dev (MAE °F)', gridcolor: C.border, zeroline: false }
     }), { responsive: true });
   }
 
