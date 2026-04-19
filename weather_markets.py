@@ -3444,6 +3444,16 @@ def analyze_trade(enriched: dict) -> dict | None:
                 w_persist = 0.0
                 persistence_p = None
 
+            # E5: reduce NWS weight when it diverges from ensemble by > 0.20
+            if (
+                _nws_prob is not None
+                and ens_prob is not None
+                and abs(_nws_prob - ens_prob) > 0.20
+            ):
+                w_nws_trimmed = w_nws * 0.5
+                w_ens += w_nws - w_nws_trimmed
+                w_nws = w_nws_trimmed
+
             blended_prob = (
                 w_ens * (ens_prob if ens_prob is not None else 0.5)
                 + w_clim * (clim_prob if clim_prob is not None else 0.5)
