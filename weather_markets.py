@@ -3400,11 +3400,20 @@ def analyze_trade(enriched: dict) -> dict | None:
 
         # ── 6. Weighted blend ────────────────────────────────────────────────────
         if obs_override is not None:
-            # Same-day with live obs — trust almost entirely
-            blended_prob = (
-                obs_override * 0.95 + (ens_prob if ens_prob is not None else 0.5) * 0.05
+            # F1: scale obs weight by local hour — early morning obs is a floor,
+            # not the final outcome; ramp from 0.55 at midnight to 0.95 by 18:00.
+            try:
+                import zoneinfo
+
+                _local_hour = datetime.now(zoneinfo.ZoneInfo(_tz)).hour
+            except Exception:
+                _local_hour = datetime.now(UTC).hour
+            _obs_w = min(0.95, 0.55 + _local_hour / 24.0 * 0.40)
+            _ens_w = 1.0 - _obs_w
+            blended_prob = _obs_w * obs_override + _ens_w * (
+                ens_prob if ens_prob is not None else 0.5
             )
-            blend_sources = {"obs": 0.95, "ensemble": 0.05}
+            blend_sources = {"obs": round(_obs_w, 4), "ensemble": round(_ens_w, 4)}
         else:
             _month = (
                 target_date.month
