@@ -243,6 +243,10 @@ def nws_prob(
     temp = day.get("low") if var == "min" else day.get("high")
     if temp is None:
         return None
+    # E4: reject implausible NWS forecast temperatures before feeding CDF
+    if not (-60.0 <= float(temp) <= 130.0):
+        _log.warning("NWS forecast temp out of range for %s: %s°F", city, temp)
+        return None
 
     # NWS is calibrated — use tighter sigma than raw ensemble.
     # Same-day: NWS high/low is near-certain (1°F); tighten significantly.
@@ -308,8 +312,15 @@ def get_live_observation(city: str, coords: tuple) -> dict | None:
             temp_c = (props.get("temperature") or {}).get("value")
             if temp_c is None:
                 return None
+            temp_f = temp_c * 9 / 5 + 32
+            # E4: reject implausible observation temperatures before use
+            if not (-60.0 <= temp_f <= 130.0):
+                _log.warning(
+                    "NWS observation temp out of range for %s: %.1f°F", city, temp_f
+                )
+                return None
             obs = {
-                "temp_f": temp_c * 9 / 5 + 32,
+                "temp_f": temp_f,
                 "timestamp": props.get("timestamp", ""),
                 "description": props.get("textDescription", ""),
             }
