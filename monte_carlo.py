@@ -298,6 +298,7 @@ def simulate_portfolio(
         "current_balance": round(current_balance, 2),
         "n_simulations": n_simulations,
         "correlation_applied": correlation_applied,
+        "pnl_distribution": sim_pnls,  # sorted raw outcomes for histogram
     }
 
 

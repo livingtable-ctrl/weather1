@@ -5697,33 +5697,9 @@ def cmd_montecarlo(client: KalshiClient) -> None:  # noqa: ARG001
     )
     print(f"  Prob of profit: {pp:.0%}")
 
-    # ASCII histogram of outcomes — re-run inline for raw distribution
-    import random as _random
-
-    from utils import KALSHI_FEE_RATE as _fee_r
-
-    trade_params2 = []
-    for t in open_trades:
-        ep = t.get("entry_price", 0.5)
-        cost = t.get("cost", 0.0)
-        qty = t.get("quantity", 1)
-        wp = t.get("entry_prob") or 0.5
-        wp = max(0.0, min(1.0, wp))
-        if t.get("side") == "no":
-            wp = 1 - wp
-        win_pnl = qty * (1.0 - (1.0 - ep) * _fee_r) - cost
-        loss_pnl = -cost
-        trade_params2.append({"win_prob": wp, "win_pnl": win_pnl, "loss_pnl": loss_pnl})
-
-    rng2 = _random.Random(0)
-    sim_pnls2 = []
-    for _ in range(200):
-        total = sum(
-            tp["win_pnl"] if rng2.random() < tp["win_prob"] else tp["loss_pnl"]
-            for tp in trade_params2
-        )
-        sim_pnls2.append(total)
-    sim_pnls2.sort()
+    # ASCII histogram — built from the same 1000-run distribution already computed
+    sim_pnls2 = result["pnl_distribution"]  # sorted list of 1000 outcomes
+    n_sims = result["n_simulations"]
 
     min_pnl = sim_pnls2[0]
     max_pnl = sim_pnls2[-1]
@@ -5734,7 +5710,7 @@ def cmd_montecarlo(client: KalshiClient) -> None:  # noqa: ARG001
         idx = min(n_bins - 1, int((pnl - min_pnl) / span * n_bins))
         bins[idx] += 1
 
-    print(bold("\n  Outcome distribution (200 simulations):"))
+    print(bold(f"\n  Outcome distribution ({n_sims} simulations):"))
     max_bin = max(bins) if bins else 1
     for i, count in enumerate(bins):
         lo = min_pnl + (i / n_bins) * span
