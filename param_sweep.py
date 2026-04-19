@@ -7,6 +7,7 @@ Usage:
 
 from __future__ import annotations
 
+import json
 import logging
 from pathlib import Path
 
@@ -73,6 +74,34 @@ def sweep_parameter(
         reverse=True,
     )
     return results
+
+
+def load_swept_min_edge(min_trades: int = 10) -> float | None:
+    """
+    Read data/param_sweep_results.json and return the PAPER_MIN_EDGE value with
+    the best win-rate that has at least `min_trades` settled trades.
+    Returns None when the file is absent or no threshold meets the sample floor.
+    """
+    try:
+        out_path = Path(__file__).parent / "data" / "param_sweep_results.json"
+        if not out_path.exists():
+            return None
+        data = json.loads(out_path.read_text())
+        results = data.get("PAPER_MIN_EDGE", [])
+        valid = [
+            r
+            for r in results
+            if r.get("trades", 0) >= min_trades and r.get("win_rate") is not None
+        ]
+        if not valid:
+            return None
+        best = max(valid, key=lambda r: float(r["win_rate"]))
+        val = float(best["value"])
+        if 0.03 <= val <= 0.15:
+            return val
+    except Exception:
+        pass
+    return None
 
 
 def run_sweep(trades: list[dict] | None = None) -> dict:

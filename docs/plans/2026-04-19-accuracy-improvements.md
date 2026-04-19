@@ -13,8 +13,8 @@ Status column: ⬜ = not started · 🔄 = in progress · ✅ = done
 | A1 | ✅ | Wire `apply_ml_prob_correction()` into `analyze_trade` | `weather_markets.py`, `ml_bias.py` |
 | A2 | ✅ | Call `record_feature_contribution()` when every trade is placed | `main.py`, `feature_importance.py` |
 | A3 | ✅ | Call `update_outcome()` when every trade settles | `main.py`, `feature_importance.py` |
-| A4 | ⬜ | Auto-place consistency arbitrage trades (not just display them) | `main.py`, `consistency.py` |
-| A5 | ⬜ | Run `param_sweep` on startup and write optimal `PAPER_MIN_EDGE` back to config | `param_sweep.py`, `config.py` |
+| A4 | ✅ | Auto-place consistency arbitrage trades (not just display them) | `main.py`, `consistency.py` |
+| A5 | ✅ | Run `param_sweep` on startup and write optimal `PAPER_MIN_EDGE` back to config | `param_sweep.py`, `config.py` |
 
 ### A1 — Wire `apply_ml_prob_correction()`
 **Problem:** `ml_bias.py` trains a GradientBoosting model that predicts

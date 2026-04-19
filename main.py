@@ -1026,6 +1026,9 @@ def _analyze_once(
     except Exception:
         _open_trades = []
 
+    # A4: ticker→city map built during enrichment for arb exposure checks
+    _arb_ticker_city: dict[str, str] = {}
+
     for i, m in enumerate(markets, 1):
         if total > 5:
             print(f"\r  Scanning [{i}/{total}]...", end="", flush=True)
@@ -1040,6 +1043,7 @@ def _analyze_once(
                 "Market analysis failed for %s: %s", m.get("ticker", "?"), exc
             )
             continue
+        _arb_ticker_city[m.get("ticker", "")] = enriched.get("_city", "")
         if not analysis or abs(analysis["edge"]) < min_edge:
             continue
         # #64: tag analysis as a hedge if it reduces existing open exposure
@@ -1227,6 +1231,22 @@ def _analyze_once(
         violations = find_violations(markets)
         if violations:
             print(bold("\n── Arbitrage Opportunities ──\n"))
+            from weather_markets import MIN_SIGNAL_VOLUME as _ARB_MIN_VOL
+
+            _arb_vol: dict[str, float] = {
+                m.get("ticker", ""): float(m.get("volume_fp") or m.get("volume") or 0)
+                for m in markets
+            }
+            # Build city→open-cost map from already-loaded open trades
+            _arb_city_cost: dict[str, float] = {}
+            for _ot in _open_trades:
+                _oc = _ot.get("city") or ""
+                _arb_city_cost[_oc] = _arb_city_cost.get(_oc, 0.0) + float(
+                    _ot.get("cost", 0.0)
+                )
+
+            from paper import place_paper_order as _arb_ppo
+
             for v in violations:
                 print(
                     green(
@@ -1237,6 +1257,65 @@ def _analyze_once(
                 )
                 if hasattr(v, "description") and v.description:
                     print(dim(f"  {v.description}"))
+
+                # A4: auto-place when edge, volume, and city-exposure all pass
+                if v.guaranteed_edge < 0.05:
+                    continue
+                buy_vol = _arb_vol.get(v.buy_ticker, 0.0)
+                sell_vol = _arb_vol.get(v.sell_ticker, 0.0)
+                if buy_vol < _ARB_MIN_VOL or sell_vol < _ARB_MIN_VOL:
+                    print(
+                        dim(
+                            f"  [Arb] Skipped — volume {buy_vol:.0f}/{sell_vol:.0f}"
+                            f" < {_ARB_MIN_VOL}"
+                        )
+                    )
+                    continue
+                _arb_city = (
+                    _arb_ticker_city.get(v.buy_ticker)
+                    or _arb_ticker_city.get(v.sell_ticker)
+                    or ""
+                )
+                _ARB_CITY_LIMIT = 25.0  # max $25 open arb exposure per city-group
+                if _arb_city_cost.get(_arb_city, 0.0) >= _ARB_CITY_LIMIT:
+                    print(
+                        dim(
+                            f"  [Arb] Skipped — {_arb_city or 'unknown'} exposure"
+                            f" ${_arb_city_cost.get(_arb_city, 0):.2f}"
+                            f" >= ${_ARB_CITY_LIMIT:.0f}"
+                        )
+                    )
+                    continue
+                try:
+                    yes_price = max(0.01, min(0.99, v.buy_prob))
+                    no_price = max(0.01, min(0.99, 1.0 - v.sell_prob))
+                    _arb_ppo(
+                        v.buy_ticker,
+                        "yes",
+                        1,
+                        yes_price,
+                        thesis="consistency-arb",
+                        city=_arb_city or None,
+                    )
+                    _arb_ppo(
+                        v.sell_ticker,
+                        "no",
+                        1,
+                        no_price,
+                        thesis="consistency-arb",
+                        city=_arb_city or None,
+                    )
+                    _arb_city_cost[_arb_city] = (
+                        _arb_city_cost.get(_arb_city, 0.0) + yes_price + no_price
+                    )
+                    print(
+                        green(
+                            f"  [Arb] Placed: BUY YES {v.buy_ticker} @ {yes_price:.0%}"
+                            f" + BUY NO {v.sell_ticker} @ {no_price:.0%}"
+                        )
+                    )
+                except Exception as _arb_exc:
+                    print(dim(f"  [Arb] Could not place: {_arb_exc}"))
     except Exception:
         pass
 

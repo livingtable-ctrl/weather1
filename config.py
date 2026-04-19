@@ -14,13 +14,13 @@ _DATA_DIR = Path(__file__).parent / "data"
 
 
 def _paper_min_edge_default() -> float:
-    """D4: Env var takes precedence; fall back to walk-forward optimal if available,
-    then hardcoded 0.05 default.
+    """D4/A5: Env var takes precedence; fall back to walk-forward optimal, then
+    param-sweep optimal, then hardcoded 0.05 default.
     """
     env_val = os.getenv("PAPER_MIN_EDGE")
     if env_val is not None:
         return float(env_val)
-    # Soft override from walk-forward backtest
+    # Soft override from walk-forward backtest (highest data priority)
     try:
         p = _DATA_DIR / "walk_forward_params.json"
         if p.exists():
@@ -28,6 +28,15 @@ def _paper_min_edge_default() -> float:
             opt = data.get("optimal_min_edge")
             if opt is not None and 0.03 <= float(opt) <= 0.15:
                 return float(opt)
+    except Exception:
+        pass
+    # Soft override from param sweep results
+    try:
+        from param_sweep import load_swept_min_edge
+
+        swept = load_swept_min_edge()
+        if swept is not None:
+            return swept
     except Exception:
         pass
     return 0.05
