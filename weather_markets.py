@@ -3750,12 +3750,13 @@ def analyze_trade(enriched: dict) -> dict | None:
         * _ci_scale,  # E3: CI-width uncertainty discount
         6,
     )
-    ci_adjusted_kelly = min(ci_adjusted_kelly, 0.25)
-
-    # Consensus bonus: all sources agree → size up 25%
+    # F2: apply consensus bonus BEFORE the cap so it actually takes effect.
+    # Consensus trades get a higher ceiling (0.33) to reward highest-conviction signals.
     if consensus:
         ci_adjusted_kelly = round(ci_adjusted_kelly * 1.25, 6)
-    ci_adjusted_kelly = min(ci_adjusted_kelly, 0.25)
+        ci_adjusted_kelly = min(ci_adjusted_kelly, 0.33)
+    else:
+        ci_adjusted_kelly = min(ci_adjusted_kelly, 0.25)
 
     # Near-threshold penalty: forecast is within ±3°F of threshold → high flip risk
     if near_threshold:
