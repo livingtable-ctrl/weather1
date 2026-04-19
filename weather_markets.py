@@ -3262,16 +3262,21 @@ def analyze_trade(enriched: dict) -> dict | None:
             p_win_gaussian = None
 
         # Blend Gaussian with ensemble fraction (fall back to ens_prob if temps available)
-        # D1: Weight ECMWF 2× NBM — ECMWF ~20% more accurate for days 1–3.
+        # F8: prefer tracker-derived model weights (live MAE per model); fall back to
+        # D1 hardcoded prior (ECMWF 2× NBM) when tracker returns nothing.
         _model_weights_d1: dict[str, float] = {"nbm": 1.0, "ecmwf": 2.0}
+        _dyn_weights = _dynamic_model_weights(
+            city, month=target_date.month if target_date else None
+        )
+        _active_weights: dict[str, float] = (
+            _dyn_weights if _dyn_weights else _model_weights_d1
+        )
         _weighted_valid = sum(
-            _model_weights_d1.get(m, 1.0)
-            for m, t in model_temps.items()
-            if t is not None
+            _active_weights.get(m, 1.0) for m, t in model_temps.items() if t is not None
         )
         n_valid = len([t for t in model_temps.values() if t is not None])
         raw_fraction = sum(
-            _model_weights_d1.get(m, 1.0)
+            _active_weights.get(m, 1.0)
             for m, t in model_temps.items()
             if t is not None
             and (
