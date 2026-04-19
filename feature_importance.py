@@ -47,26 +47,22 @@ def record_feature_contribution(
 
 def update_outcome(ticker: str, outcome: bool) -> None:
     """
-    Update the outcome for the most recent entry for this ticker.
-    Call this when a trade settles to enable accuracy analysis per feature.
+    Record the outcome for a settled trade.
+
+    F4: Uses append-only writes to avoid the read-modify-write race condition
+    when two settlements occur concurrently. get_feature_summary() de-duplicates
+    by ticker, keeping the latest outcome record.
     """
     try:
-        if not _FEATURE_LOG_PATH.exists():
-            return
-        lines = _FEATURE_LOG_PATH.read_text(encoding="utf-8").splitlines()
-        updated = False
-        for i in range(len(lines) - 1, -1, -1):
-            try:
-                entry = json.loads(lines[i])
-                if entry.get("ticker") == ticker and entry.get("outcome") is None:
-                    entry["outcome"] = outcome
-                    lines[i] = json.dumps(entry)
-                    updated = True
-                    break
-            except Exception:
-                continue
-        if updated:
-            _FEATURE_LOG_PATH.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        _FEATURE_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+        record = {
+            "type": "outcome",
+            "ticker": ticker,
+            "outcome": outcome,
+            "ts": time.time(),
+        }
+        with open(_FEATURE_LOG_PATH, "a", encoding="utf-8") as f:
+            f.write(json.dumps(record) + "\n")
     except Exception as exc:
         _log.debug("update_outcome: %s", exc)
 
@@ -75,6 +71,9 @@ def get_feature_summary(min_trades: int = 10) -> dict[str, dict]:
     """
     Compute average feature values for winning vs losing trades.
     Returns a dict keyed by feature name with win/loss averages and correlation.
+
+    F4: Handles both legacy inline-outcome records and the new append-only
+    outcome records. For the latter, de-duplicates by ticker keeping the latest.
     """
     if not _FEATURE_LOG_PATH.exists():
         return {}
@@ -83,17 +82,40 @@ def get_feature_summary(min_trades: int = 10) -> dict[str, dict]:
     losses: dict[str, list[float]] = {}
 
     try:
-        for line in _FEATURE_LOG_PATH.read_text(encoding="utf-8").splitlines():
+        raw_lines = _FEATURE_LOG_PATH.read_text(encoding="utf-8").splitlines()
+
+        # F4: build latest outcome per ticker from append-only outcome records
+        latest_outcomes: dict[str, tuple[float, bool]] = {}  # ticker -> (ts, outcome)
+        feature_entries: list[dict] = []
+
+        for line in raw_lines:
             try:
                 entry = json.loads(line)
-                if entry.get("outcome") is None:
-                    continue
-                bucket = wins if entry["outcome"] else losses
-                for feat, val in entry.get("features", {}).items():
-                    if isinstance(val, int | float):
-                        bucket.setdefault(feat, []).append(float(val))
             except Exception:
                 continue
+            if entry.get("type") == "outcome":
+                ticker = entry.get("ticker", "")
+                ts = float(entry.get("ts", 0))
+                outcome = entry.get("outcome")
+                if ticker and outcome is not None:
+                    if ticker not in latest_outcomes or ts > latest_outcomes[ticker][0]:
+                        latest_outcomes[ticker] = (ts, bool(outcome))
+            elif "features" in entry:
+                feature_entries.append(entry)
+
+        for entry in feature_entries:
+            ticker = entry.get("ticker", "")
+            # Prefer append-only outcome record; fall back to inline outcome (legacy)
+            if ticker in latest_outcomes:
+                outcome = latest_outcomes[ticker][1]
+            else:
+                outcome = entry.get("outcome")
+            if outcome is None:
+                continue
+            bucket = wins if outcome else losses
+            for feat, val in entry.get("features", {}).items():
+                if isinstance(val, int | float):
+                    bucket.setdefault(feat, []).append(float(val))
     except Exception as exc:
         _log.debug("get_feature_summary: %s", exc)
         return {}
