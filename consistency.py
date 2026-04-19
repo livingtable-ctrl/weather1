@@ -79,6 +79,10 @@ def _group_markets(markets: list[dict]) -> dict:
 
         cond_type, threshold = parsed
         prices = parse_market_price(m)
+        # F5: skip markets with no real quote — implied_prob=0 from a stale/empty book
+        # would generate spurious violations
+        if not prices.get("has_quote", True):
+            continue
         implied = prices["implied_prob"]
 
         key = (series, date_str)

@@ -1642,12 +1642,16 @@ def parse_market_price(market: dict) -> dict:
     no_bid_f = to_float(no_bid)
     mid = (yes_bid_f + yes_ask_f) / 2 if yes_ask_f > 0 else yes_bid_f
 
+    # F5: flag markets with no real quote so callers can skip them cleanly
+    has_quote = mid > 0
+
     return {
         "yes_bid": yes_bid_f,
         "yes_ask": yes_ask_f,
         "no_bid": no_bid_f,
         "mid": mid,
         "implied_prob": mid,  # mid-price ≈ market probability
+        "has_quote": has_quote,
     }
 
 
@@ -3082,6 +3086,9 @@ def analyze_trade(enriched: dict) -> dict | None:
 
     # ── Spread gate: skip illiquid markets with wide bid-ask spreads ─────────
     _prices = parse_market_price(enriched)
+    # F5: skip markets where both bid and ask are zero (no real quote)
+    if not _prices.get("has_quote", True):
+        return None
     _yes_ask = _prices.get("yes_ask", 0) or 0
     _yes_bid = _prices.get("yes_bid", 0) or 0
     if _yes_ask > 0 and _yes_bid > 0:
