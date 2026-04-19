@@ -2,12 +2,18 @@
 (function () {
   'use strict';
 
-  var LAYOUT = {
-    paper_bgcolor: 'transparent',
-    plot_bgcolor: 'transparent',
-    font: { color: 'var(--text)', family: 'Consolas', size: 12 },
-    margin: { t: 20, b: 40, l: 80, r: 20 }
-  };
+  function cssVar(name) {
+    return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || name;
+  }
+
+  function makeLayout(extra) {
+    return Object.assign({
+      paper_bgcolor: 'transparent',
+      plot_bgcolor: 'transparent',
+      font: { color: cssVar('--text'), family: 'Consolas', size: 12 },
+      margin: { t: 20, b: 40, l: 80, r: 20 }
+    }, extra || {});
+  }
 
   function loadRisk() {
     fetch('/api/risk').then(function (r) { return r.json(); }).then(function (d) {
@@ -27,10 +33,10 @@
           type: 'bar', orientation: 'h',
           x: ce.map(function (c) { return c.exposure; }),
           y: ce.map(function (c) { return c.city; }),
-          marker: { color: 'var(--accent)' }
-        }], Object.assign({}, LAYOUT, {
-          xaxis: { title: '$', gridcolor: 'var(--border)', zeroline: false },
-          yaxis: { gridcolor: 'var(--border)', automargin: true }
+          marker: { color: cssVar('--accent') }
+        }], makeLayout({
+          xaxis: { title: '$', gridcolor: cssVar('--border'), zeroline: false },
+          yaxis: { gridcolor: cssVar('--border'), automargin: true }
         }), { responsive: true });
       } else if (ceEl && !ce.length) {
         ceEl.innerHTML = '<p class="neu" style="padding:20px">No open positions.</p>';
@@ -46,7 +52,7 @@
           values: [dir.yes || 0, dir.no || 0],
           marker: { colors: ['#3fb950', '#f85149'] },
           textinfo: 'label+percent'
-        }], Object.assign({}, LAYOUT, { margin: { t: 20, b: 20, l: 20, r: 20 } }), { responsive: true });
+        }], makeLayout({ margin: { t: 20, b: 20, l: 20, r: 20 } }), { responsive: true });
       }
 
       // Expiry clustering bar chart — each bar = a date with 2+ positions
@@ -61,9 +67,9 @@
           marker: { color: ec.map(function (e) {
             return e.count >= 4 ? '#f85149' : e.count >= 3 ? '#e3b341' : '#58a6ff';
           })}
-        }], Object.assign({}, LAYOUT, {
-          xaxis: { gridcolor: 'var(--border)' },
-          yaxis: { title: 'Position Count', gridcolor: 'var(--border)', zeroline: false, dtick: 1 }
+        }], makeLayout({
+          xaxis: { gridcolor: cssVar('--border') },
+          yaxis: { title: 'Position Count', gridcolor: cssVar('--border'), zeroline: false, dtick: 1 }
         }), { responsive: true });
       } else if (ecEl && !ec.length) {
         ecEl.innerHTML = '<p class="neu" style="padding:20px">No expiry concentration risk.</p>';

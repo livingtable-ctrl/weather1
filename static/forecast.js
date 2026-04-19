@@ -2,12 +2,18 @@
 (function () {
   'use strict';
 
-  var LAYOUT = {
-    paper_bgcolor: 'transparent',
-    plot_bgcolor: 'transparent',
-    font: { color: 'var(--text)', family: 'Consolas', size: 12 },
-    margin: { t: 20, b: 60, l: 100, r: 20 }
-  };
+  function cssVar(name) {
+    return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || name;
+  }
+
+  function makeLayout(extra) {
+    return Object.assign({
+      paper_bgcolor: 'transparent',
+      plot_bgcolor: 'transparent',
+      font: { color: cssVar('--text'), family: 'Consolas', size: 12 },
+      margin: { t: 20, b: 60, l: 100, r: 20 }
+    }, extra || {});
+  }
 
   // ── Live forecast tables ────────────────────────────────────────────────────
 
@@ -119,9 +125,9 @@
       marker: { color: brierVals.map(function (v) {
         return v < 0.25 ? '#3fb950' : v < 0.35 ? '#e3b341' : '#f85149';
       })}
-    }], Object.assign({}, LAYOUT, {
-      xaxis: { title: 'Brier Score', gridcolor: 'var(--border)', zeroline: false },
-      yaxis: { gridcolor: 'var(--border)', automargin: true }
+    }], makeLayout({
+      xaxis: { title: 'Brier Score', gridcolor: cssVar('--border'), zeroline: false },
+      yaxis: { gridcolor: cssVar('--border'), automargin: true }
     }), { responsive: true });
   }
 
@@ -183,10 +189,10 @@
       marker: { color: stdVals.map(function (v) {
         return v < 1.0 ? '#3fb950' : v < 2.0 ? '#e3b341' : '#f85149';
       })}
-    }], Object.assign({}, LAYOUT, {
+    }], makeLayout({
       margin: { t: 20, b: 40, l: 55, r: 20 },
-      xaxis: { gridcolor: 'var(--border)' },
-      yaxis: { title: 'Std Dev (MAE °F)', gridcolor: 'var(--border)', zeroline: false }
+      xaxis: { gridcolor: cssVar('--border') },
+      yaxis: { title: 'Std Dev (MAE °F)', gridcolor: cssVar('--border'), zeroline: false }
     }), { responsive: true });
   }
 

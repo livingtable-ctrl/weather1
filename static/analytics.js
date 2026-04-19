@@ -2,12 +2,18 @@
 (function () {
   'use strict';
 
-  var LAYOUT_BASE = {
-    paper_bgcolor: 'transparent',
-    plot_bgcolor: 'transparent',
-    font: { color: 'var(--text)', family: 'Consolas', size: 12 },
-    margin: { t: 20, b: 40, l: 55, r: 20 }
-  };
+  function cssVar(name) {
+    return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || name;
+  }
+
+  function makeLayout(extra) {
+    return Object.assign({
+      paper_bgcolor: 'transparent',
+      plot_bgcolor: 'transparent',
+      font: { color: cssVar('--text'), family: 'Consolas', size: 12 },
+      margin: { t: 20, b: 40, l: 55, r: 20 }
+    }, extra || {});
+  }
 
   function loadAnalytics() {
     fetch('/api/analytics').then(function (r) { return r.json(); }).then(function (d) {
@@ -26,12 +32,12 @@
         if (calEl && typeof Plotly !== 'undefined') {
           Plotly.newPlot(calEl, [
             { x: [0, 1], y: [0, 1], type: 'scatter', mode: 'lines', name: 'Perfect',
-              line: { color: 'var(--text-muted)', dash: 'dash', width: 1 } },
+              line: { color: cssVar('--text-muted'), dash: 'dash', width: 1 } },
             { x: xCal, y: yCal, type: 'scatter', mode: 'markers+lines', name: 'Model',
-              marker: { color: 'var(--accent)', size: 7 }, line: { color: 'var(--accent)' } }
-          ], Object.assign({}, LAYOUT_BASE, {
-            xaxis: { title: 'Predicted Prob', gridcolor: 'var(--border)', zeroline: false, range: [0, 1] },
-            yaxis: { title: 'Actual Rate', gridcolor: 'var(--border)', zeroline: false, range: [0, 1] }
+              marker: { color: cssVar('--accent'), size: 7 }, line: { color: cssVar('--accent') } }
+          ], makeLayout({
+            xaxis: { title: 'Predicted Prob', gridcolor: cssVar('--border'), zeroline: false, range: [0, 1] },
+            yaxis: { title: 'Actual Rate', gridcolor: cssVar('--border'), zeroline: false, range: [0, 1] }
           }), { responsive: true });
         }
       }
@@ -43,13 +49,13 @@
         if (rocEl && typeof Plotly !== 'undefined') {
           Plotly.newPlot(rocEl, [
             { x: [0, 1], y: [0, 1], type: 'scatter', mode: 'lines', name: 'Random',
-              line: { color: 'var(--text-muted)', dash: 'dash', width: 1 } },
+              line: { color: cssVar('--text-muted'), dash: 'dash', width: 1 } },
             { x: roc.fpr, y: roc.tpr, type: 'scatter', mode: 'lines',
               name: 'Model (AUC=' + (roc.auc || 0).toFixed(3) + ')',
-              line: { color: 'var(--accent)', width: 2 } }
-          ], Object.assign({}, LAYOUT_BASE, {
-            xaxis: { title: 'FPR', gridcolor: 'var(--border)', zeroline: false, range: [0, 1] },
-            yaxis: { title: 'TPR', gridcolor: 'var(--border)', zeroline: false, range: [0, 1] }
+              line: { color: cssVar('--accent'), width: 2 } }
+          ], makeLayout({
+            xaxis: { title: 'FPR', gridcolor: cssVar('--border'), zeroline: false, range: [0, 1] },
+            yaxis: { title: 'TPR', gridcolor: cssVar('--border'), zeroline: false, range: [0, 1] }
           }), { responsive: true });
         }
       }
@@ -64,10 +70,10 @@
           Plotly.newPlot(attrEl, [{
             type: 'bar', orientation: 'h',
             x: brierVals, y: sources,
-            marker: { color: 'var(--accent)' }
-          }], Object.assign({}, LAYOUT_BASE, {
-            xaxis: { title: 'Brier Score', gridcolor: 'var(--border)', zeroline: false },
-            yaxis: { gridcolor: 'var(--border)' }
+            marker: { color: cssVar('--accent') }
+          }], makeLayout({
+            xaxis: { title: 'Brier Score', gridcolor: cssVar('--border'), zeroline: false },
+            yaxis: { gridcolor: cssVar('--border') }
           }), { responsive: true });
         }
       }
@@ -86,9 +92,9 @@
             marker: { color: dVals.map(function (v) {
               return v < 0.25 ? '#3fb950' : v < 0.35 ? '#e3b341' : '#f85149';
             })}
-          }], Object.assign({}, LAYOUT_BASE, {
-            xaxis: { gridcolor: 'var(--border)' },
-            yaxis: { title: 'Brier', gridcolor: 'var(--border)', zeroline: false }
+          }], makeLayout({
+            xaxis: { gridcolor: cssVar('--border') },
+            yaxis: { title: 'Brier', gridcolor: cssVar('--border'), zeroline: false }
           }), { responsive: true });
         }
       }
@@ -123,11 +129,11 @@
         x: data.map(function (d) { return d.week; }),
         y: data.map(function (d) { return d.brier; }),
         type: 'scatter', mode: 'lines+markers',
-        line: { color: 'var(--accent)', width: 2 },
-        marker: { color: 'var(--accent)', size: 6 }
-      }], Object.assign({}, LAYOUT_BASE, {
-        xaxis: { gridcolor: 'var(--border)', zeroline: false },
-        yaxis: { title: 'Brier', gridcolor: 'var(--border)', zeroline: false }
+        line: { color: cssVar('--accent'), width: 2 },
+        marker: { color: cssVar('--accent'), size: 6 }
+      }], makeLayout({
+        xaxis: { gridcolor: cssVar('--border'), zeroline: false },
+        yaxis: { title: 'Brier', gridcolor: cssVar('--border'), zeroline: false }
       }), { responsive: true });
     }).catch(function (err) { console.error('brier history fetch failed:', err); });
   }
@@ -172,7 +178,7 @@
           var v = d[city][s];
           var td = row.insertCell();
           td.textContent = v !== undefined ? (v * 100).toFixed(0) + '%' : '—';
-          td.style.color = 'var(--text-muted)';
+          td.style.color = cssVar('--text-muted');
         });
       });
       el.innerHTML = '';
