@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import json
 import logging
+import random
 import time
 from pathlib import Path
 from typing import Any
@@ -102,8 +103,11 @@ class ABTest:
             )
             return fallback, self.variants[fallback]
 
-        # Pick the variant with fewest trades (most in need of data)
-        chosen = min(active, key=lambda v: self._state[v]["trades"])
+        # Pick the variant with fewest trades (most in need of data).
+        # F7: break ties randomly so alphabetically-first variant isn't favoured.
+        min_trades = min(self._state[v]["trades"] for v in active)
+        tied = [v for v in active if self._state[v]["trades"] == min_trades]
+        chosen = random.choice(tied)
         return chosen, self.variants[chosen]
 
     def record_outcome(
@@ -176,7 +180,10 @@ def get_active_variant(test_name: str) -> tuple[str, Any]:
                 and s.get("trades", 0) < _DEFAULT_MAX_TRADES
             ]
             if active:
-                chosen = min(active, key=lambda v: state[v]["trades"])
+                # F7: break ties randomly
+                _min_t = min(state[v]["trades"] for v in active)
+                _tied = [v for v in active if state[v]["trades"] == _min_t]
+                chosen = random.choice(_tied)
                 return chosen, None
     except Exception as exc:
         _log.debug("get_active_variant: %s", exc)
