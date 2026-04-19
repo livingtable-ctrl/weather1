@@ -84,7 +84,7 @@
             x: dKeys.map(function (k) { return k + ' days'; }),
             y: dVals,
             marker: { color: dVals.map(function (v) {
-              return v < 0.25 ? 'var(--pos)' : v < 0.35 ? 'var(--warn)' : 'var(--neg)';
+              return v < 0.25 ? '#3fb950' : v < 0.35 ? '#e3b341' : '#f85149';
             })}
           }], Object.assign({}, LAYOUT_BASE, {
             xaxis: { gridcolor: 'var(--border)' },

@@ -117,7 +117,7 @@
       text: brierVals.map(function (v) { return v.toFixed(3); }),
       textposition: 'outside',
       marker: { color: brierVals.map(function (v) {
-        return v < 0.25 ? 'var(--pos)' : v < 0.35 ? 'var(--warn)' : 'var(--neg)';
+        return v < 0.25 ? '#3fb950' : v < 0.35 ? '#e3b341' : '#f85149';
       })}
     }], Object.assign({}, LAYOUT, {
       xaxis: { title: 'Brier Score', gridcolor: 'var(--border)', zeroline: false },
@@ -181,7 +181,7 @@
       x: cityNames,
       y: stdVals,
       marker: { color: stdVals.map(function (v) {
-        return v < 1.0 ? 'var(--pos)' : v < 2.0 ? 'var(--warn)' : 'var(--neg)';
+        return v < 1.0 ? '#3fb950' : v < 2.0 ? '#e3b341' : '#f85149';
       })}
     }], Object.assign({}, LAYOUT, {
       margin: { t: 20, b: 40, l: 55, r: 20 },

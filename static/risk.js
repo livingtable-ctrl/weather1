@@ -59,7 +59,7 @@
           y: ec.map(function (e) { return e.count; }),
           text: ec.map(function (e) { return '$' + e.total_cost.toFixed(2); }),
           marker: { color: ec.map(function (e) {
-            return e.count >= 4 ? 'var(--neg)' : e.count >= 3 ? 'var(--warn)' : 'var(--accent)';
+            return e.count >= 4 ? '#f85149' : e.count >= 3 ? '#e3b341' : '#58a6ff';
           })}
         }], Object.assign({}, LAYOUT, {
           xaxis: { gridcolor: 'var(--border)' },
