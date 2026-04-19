@@ -1747,3 +1747,95 @@ class TestRetentionPolicy:
                 "SELECT COUNT(*) FROM predictions WHERE ticker = 'NEW-TICKER'"
             ).fetchone()[0]
         assert count == 1
+
+
+class TestGetQuintileBias(unittest.TestCase):
+    """E1: per-quintile bias correction."""
+
+    def setUp(self):
+        self._tmpdir = tempfile.mkdtemp()
+        self._orig = tracker.DB_PATH
+        tracker.DB_PATH = Path(self._tmpdir) / "test_predictions.db"
+        tracker._db_initialized = False
+
+    def tearDown(self):
+        tracker.DB_PATH = self._orig
+        tracker._db_initialized = False
+        shutil.rmtree(self._tmpdir, ignore_errors=True)
+
+    def _seed(self, our_prob: float, settled_yes: int, n: int = 10, city: str = "NYC"):
+        """Insert n settled predictions at our_prob in quintile of our_prob."""
+        for i in range(n):
+            tk = f"QQ-{our_prob:.2f}-{city}-{i}"
+            tracker.log_prediction(
+                tk,
+                city,
+                date(2026, 4, 1),
+                {
+                    "condition": {"type": "above", "threshold": 70.0},
+                    "forecast_prob": our_prob,
+                    "market_prob": 0.50,
+                    "edge": our_prob - 0.50,
+                    "method": "ensemble",
+                    "n_members": 20,
+                },
+            )
+            tracker.log_outcome(tk, settled_yes=bool(settled_yes))
+
+    def test_falls_back_to_global_when_quintile_empty(self):
+        """With no data in the target quintile, returns global bias."""
+        # Seed data only in the 0.60-0.80 quintile (our_prob=0.70)
+        # so the 0.40-0.60 quintile has nothing
+        self._seed(our_prob=0.70, settled_yes=0, n=10)
+        # Query for a prob in the 0.40-0.60 quintile — should fall back to global
+        result = tracker.get_quintile_bias("NYC", 4, forecast_prob=0.50, min_samples=5)
+        global_bias = tracker.get_bias("NYC", 4, min_samples=5)
+        self.assertAlmostEqual(result, global_bias, places=6)
+
+    def test_quintile_specific_bias_returned(self):
+        """Bias for a well-populated quintile differs from the global bias."""
+        # Over-predict in the 0.60-0.80 bucket (all lose)
+        self._seed(our_prob=0.70, settled_yes=0, n=15)
+        # Under-predict in the 0.20-0.40 bucket (all win)
+        self._seed(our_prob=0.30, settled_yes=1, n=15)
+
+        high_bias = tracker.get_quintile_bias("NYC", 4, forecast_prob=0.70)
+        low_bias = tracker.get_quintile_bias("NYC", 4, forecast_prob=0.30)
+
+        # 0.70 bucket: our_prob > outcome → positive bias (over-estimate)
+        self.assertGreater(high_bias, 0.0)
+        # 0.30 bucket: our_prob < outcome → negative bias (under-estimate)
+        self.assertLess(low_bias, 0.0)
+        # The two quintiles should have different corrections
+        self.assertNotAlmostEqual(high_bias, low_bias, places=3)
+
+    def test_returns_zero_when_no_data_at_all(self):
+        """Empty DB → both global and quintile bias return 0.0."""
+        result = tracker.get_quintile_bias("NYC", 4, forecast_prob=0.55, min_samples=5)
+        self.assertEqual(result, 0.0)
+
+    def test_quintile_boundary_0_maps_to_first_bucket(self):
+        """forecast_prob=0.0 maps to quintile 0 (0.0–0.20)."""
+        self._seed(our_prob=0.10, settled_yes=0, n=10)
+        result = tracker.get_quintile_bias("NYC", 4, forecast_prob=0.0, min_samples=5)
+        expected = tracker.get_quintile_bias(
+            "NYC", 4, forecast_prob=0.10, min_samples=5
+        )
+        self.assertAlmostEqual(result, expected, places=6)
+
+    def test_quintile_boundary_1_maps_to_last_bucket(self):
+        """forecast_prob=1.0 maps to quintile 4 (0.80–1.0)."""
+        self._seed(our_prob=0.90, settled_yes=0, n=10)
+        result = tracker.get_quintile_bias("NYC", 4, forecast_prob=1.0, min_samples=5)
+        expected = tracker.get_quintile_bias(
+            "NYC", 4, forecast_prob=0.90, min_samples=5
+        )
+        self.assertAlmostEqual(result, expected, places=6)
+
+    def test_city_isolation(self):
+        """Quintile bias for NYC does not bleed into CHI."""
+        self._seed(our_prob=0.70, settled_yes=0, n=10, city="NYC")
+        result_chi = tracker.get_quintile_bias(
+            "CHI", 4, forecast_prob=0.70, min_samples=5
+        )
+        self.assertEqual(result_chi, 0.0)

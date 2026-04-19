@@ -2774,10 +2774,12 @@ def _analyze_precip_trade(
     # ── Bias correction from tracker (same as temperature path) ──────────────
     bias = 0.0
     try:
-        from tracker import get_bias
+        from tracker import get_quintile_bias
 
         city = enriched.get("_city")
-        bias = get_bias(city, target_date.month, condition_type=condition["type"])
+        bias = get_quintile_bias(
+            city, target_date.month, blended_prob, condition_type=condition["type"]
+        )
         blended_prob = blended_prob - bias
     except Exception as _exc:
         # #109: log with ticker so failures are traceable
@@ -3488,9 +3490,11 @@ def analyze_trade(enriched: dict) -> dict | None:
         # ── 7. Bias correction from tracker ─────────────────────────────────────
         bias = 0.0
         try:
-            from tracker import get_bias
+            from tracker import get_quintile_bias
 
-            bias = get_bias(city, target_date.month, condition_type=condition["type"])
+            bias = get_quintile_bias(
+                city, target_date.month, blended_prob, condition_type=condition["type"]
+            )
             blended_prob = max(0.01, min(0.99, blended_prob - bias))
         except Exception as _exc:
             # #109: log with ticker/city so failures are traceable

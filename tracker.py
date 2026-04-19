@@ -568,6 +568,82 @@ def get_bias(
     return weighted_bias / total_weight
 
 
+_QUINTILE_EDGES = (0.0, 0.20, 0.40, 0.60, 0.80, 1.01)  # 1.01 so 1.0 falls in last bin
+
+
+def get_quintile_bias(
+    city: str | None,
+    month: int | None,
+    forecast_prob: float,
+    min_samples: int = 5,
+    condition_type: str | None = None,
+) -> float:
+    """
+    Per-quintile bias correction.
+
+    Bins settled predictions by ``our_prob`` into 5 equal-width buckets
+    (0–0.20, 0.20–0.40, 0.40–0.60, 0.60–0.80, 0.80–1.0) and returns the
+    exponentially-weighted mean bias for the bucket that ``forecast_prob``
+    falls into.  Falls back to the global ``get_bias()`` when the target
+    bucket has fewer than ``min_samples`` rows.
+    """
+    quintile_idx = min(4, int(forecast_prob / 0.20))
+    q_lo = _QUINTILE_EDGES[quintile_idx]
+    q_hi = _QUINTILE_EDGES[quintile_idx + 1]
+
+    init_db()
+    with _conn() as con:
+        query = """
+            SELECT p.our_prob, o.settled_yes, p.predicted_at
+            FROM predictions p
+            JOIN outcomes o ON p.ticker = o.ticker
+            WHERE p.our_prob IS NOT NULL
+              AND p.our_prob >= ? AND p.our_prob < ?
+        """
+        params: list = [q_lo, q_hi]
+        if city:
+            query += " AND p.city = ?"
+            params.append(city)
+        if month:
+            query += " AND strftime('%m', p.market_date) = ?"
+            params.append(f"{month:02d}")
+        if condition_type is not None:
+            query += " AND p.condition_type = ?"
+            params.append(condition_type)
+
+        rows = con.execute(query, params).fetchall()
+
+    if len(rows) < min_samples:
+        return get_bias(
+            city, month, min_samples=min_samples, condition_type=condition_type
+        )
+
+    now = datetime.now(UTC)
+    weighted_bias = 0.0
+    total_weight = 0.0
+    min_age_days = float("inf")
+    for r in rows:
+        try:
+            predicted_at = datetime.fromisoformat(
+                r["predicted_at"].replace("Z", "+00:00")
+            )
+            if predicted_at.tzinfo is not None:
+                predicted_at = predicted_at.replace(tzinfo=None)
+            age_days = max(0.0, (now - predicted_at).total_seconds() / 86400)
+        except (ValueError, TypeError, AttributeError):
+            age_days = 0.0
+        min_age_days = min(min_age_days, age_days)
+        weight = math.exp(-age_days / 30.0)
+        weighted_bias += (r["our_prob"] - r["settled_yes"]) * weight
+        total_weight += weight
+
+    if min_age_days > 60:
+        return 0.0
+    if total_weight == 0:
+        return 0.0
+    return weighted_bias / total_weight
+
+
 def get_brier_by_days_out() -> dict[str, float]:
     """
     Brier score segmented by forecast horizon.
