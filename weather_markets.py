@@ -66,6 +66,13 @@ MIN_SIGNAL_VOLUME: int = int(os.getenv("MIN_SIGNAL_VOLUME", "50"))
 # Override via MAX_MODEL_SPREAD_F env var.
 MAX_MODEL_SPREAD_F: float = float(os.getenv("MAX_MODEL_SPREAD_F", "8.0"))
 
+# Extreme-price gate: skip markets where yes_ask is below this floor or above
+# 1 - floor.  When the market prices an outcome at < 5¢ or > 95¢ it has near-
+# certainty that our blended model cannot beat.  Betting against extreme consensus
+# inflates net_edge via small denominator and almost always loses.
+# Override via MIN_MARKET_PRICE env var (e.g. MIN_MARKET_PRICE=0.03).
+MIN_MARKET_PRICE: float = float(os.getenv("MIN_MARKET_PRICE", "0.05"))
+
 # Single source of truth for edge calculation logic version.
 # Increment whenever kelly_fraction, bayesian_kelly_fraction, edge_confidence,
 # or time_decay_edge logic changes, so outputs can be traced.
@@ -3119,6 +3126,23 @@ def analyze_trade(enriched: dict) -> dict | None:
         _mid = (_yes_ask + _yes_bid) / 2
         if _mid > 0 and (_yes_ask - _yes_bid) / _mid > 0.30:
             return None  # spread > 30% of mid — not tradeable
+
+    # ── Extreme-price gate: skip near-certain markets ────────────────────────
+    # When yes_ask < MIN_MARKET_PRICE the market prices the outcome as near-
+    # impossible.  Our blended model almost certainly lacks whatever information
+    # (live obs, settlement status, crowd wisdom) drove the price that low.
+    # Dividing net_ev by a tiny entry_price also inflates edge_pct by 100-200×,
+    # producing spurious "2900% edge" signals.  Same logic in reverse above 0.95.
+    if _yes_ask > 0 and (
+        _yes_ask < MIN_MARKET_PRICE or _yes_ask > 1 - MIN_MARKET_PRICE
+    ):
+        _log.debug(
+            "Skipping %s — extreme market price yes_ask=%.3f (gate=%.2f)",
+            enriched.get("ticker", "?"),
+            _yes_ask,
+            MIN_MARKET_PRICE,
+        )
+        return None
 
     # ── Time-of-day risk assessment ──────────────────────────────────────────
     _tz = coords[2] if len(coords) > 2 else "UTC"
