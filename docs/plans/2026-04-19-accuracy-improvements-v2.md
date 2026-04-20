@@ -328,13 +328,13 @@ All fixed and merged to master in commit b980622.
 
 | # | Status | Title | File(s) |
 |---|--------|-------|---------|
-| G1 | ⬜ | Log and renormalize when climatology returns None | `weather_markets.py` |
-| G2 | ⬜ | Spread gate should check `low_range` for LOW markets | `weather_markets.py` |
-| G3 | ⬜ | Raise or warn on `fsync` failure in `atomic_write_json` | `safe_io.py` |
-| G4 | ⬜ | Fix tracker unique index to handle timezone edge case | `tracker.py` |
-| G5 | ⬜ | Schedule `run_sweep()` weekly in cron | `cron.py` |
-| G6 | ⬜ | Align cache TTL to monotonic time throughout | `forecast_cache.py`, `weather_markets.py` |
-| G7 | ⬜ | Log summary when all notification channels fail | `notify.py` |
+| G1 | ✅ | Log and renormalize when climatology returns None | `weather_markets.py` |
+| G2 | ✅ | Spread gate should check `low_range` for LOW markets | `weather_markets.py` |
+| G3 | ✅ | Raise or warn on `fsync` failure in `atomic_write_json` | `safe_io.py` |
+| G4 | ✅ | Fix tracker unique index to handle timezone edge case | `tracker.py` |
+| G5 | ✅ | Schedule `run_sweep()` weekly in cron | `cron.py` |
+| G6 | ✅ | Align cache TTL to monotonic time throughout | `weather_markets.py` |
+| G7 | ✅ | Log summary when all notification channels fail | `notify.py` |
 
 ### G1 — Renormalize blend when climatology is unavailable
 
