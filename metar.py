@@ -165,6 +165,15 @@ MARKET_STATION_MAP: dict[str, str] = {
     "Seattle": "KSEA",
     "Denver": "KDEN",
     "Atlanta": "KATL",
+    # Additional cities matching Kalshi ticker detection
+    "Austin": "KAUS",
+    "Washington": "KDCA",
+    "Philadelphia": "KPHL",
+    "OklahomaCity": "KOKC",
+    "SanFrancisco": "KSFO",
+    "Minneapolis": "KMSP",
+    "Houston": "KIAH",
+    "SanAntonio": "KSAT",
 }
 
 _OBS_PATH = Path("data/metar_observations.json")

@@ -104,6 +104,15 @@ def _load_city_coords() -> dict:
         "Seattle": (47.4502, -122.3088, "America/Los_Angeles"),
         "Denver": (39.8561, -104.6737, "America/Denver"),
         "Atlanta": (33.6407, -84.4277, "America/New_York"),
+        # Additional cities detected in Kalshi tickers but previously missing coords
+        "Austin": (30.1945, -97.6699, "America/Chicago"),
+        "Washington": (38.9531, -77.4565, "America/New_York"),
+        "Philadelphia": (39.8719, -75.2411, "America/New_York"),
+        "OklahomaCity": (35.3931, -97.6008, "America/Chicago"),
+        "SanFrancisco": (37.6190, -122.3750, "America/Los_Angeles"),
+        "Minneapolis": (44.8848, -93.2223, "America/Chicago"),
+        "Houston": (29.9902, -95.3368, "America/Chicago"),
+        "SanAntonio": (29.5337, -98.4698, "America/Chicago"),
     }
 
 
@@ -3034,6 +3043,7 @@ def analyze_trade(enriched: dict) -> dict | None:
     target_date = enriched.get("_date")
     city = enriched.get("_city")
     hour = enriched.get("_hour")
+
     if not forecast:
         return None  # no forecast data available for this market
     if not target_date:

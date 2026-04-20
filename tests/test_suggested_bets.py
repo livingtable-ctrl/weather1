@@ -37,6 +37,7 @@ class TestSuggestedBetsEndpoint:
     @patch("weather_markets.analyze_trade")
     @patch("weather_markets.enrich_with_forecast", side_effect=lambda m: m)
     @patch("weather_markets.get_weather_markets")
+    @patch("utils.MIN_EDGE", 0.05)  # pin threshold so test is immune to env changes
     def test_returns_top_n_sorted_by_ev(
         self, mock_markets, mock_enrich, mock_analyze, mock_balance
     ):
