@@ -241,7 +241,8 @@ def _load_forecast_disk_cache() -> None:
         now = time.time()
         loaded = 0
         for key_str, entry in raw.items():
-            age = now - entry.get("ts_posix", 0)
+            # G6: clamp age to ≥0 to guard against NTP corrections or clock resets
+            age = max(0.0, now - entry.get("ts_posix", 0))
             if age < _FORECAST_CACHE_TTL:
                 # Reconstruct in-memory key as tuple; stored ts converted to monotonic approx
                 city, date_iso = key_str.split("|", 1)
@@ -564,6 +565,7 @@ def get_weather_forecast(city: str, target_date: date) -> dict | None:
         return sum(v * w for v, w in pairs) / total_w
 
     high_vals = [v for v, _ in highs]
+    low_vals = [v for v, _ in lows]
     result = {
         "date": target_date.isoformat(),
         "city": city,
@@ -572,6 +574,8 @@ def get_weather_forecast(city: str, target_date: date) -> dict | None:
         "precip_in": _wavg(precips) if precips else 0.0,
         "models_used": len(highs),
         "high_range": (min(high_vals), max(high_vals)),
+        # G2: low_range for model-spread gate on LOW markets
+        "low_range": (min(low_vals), max(low_vals)) if low_vals else None,
     }
     _forecast_cache.set(cache_key, result)
     _save_forecast_disk_entry(cache_key, result)
@@ -3234,9 +3238,11 @@ def analyze_trade(enriched: dict) -> dict | None:
             return None
 
         # ── Model-spread gate: suppress when multi-model spread is too wide ───
-        _high_range = forecast.get("high_range")
-        if _high_range and len(_high_range) == 2:
-            _spread_f = _high_range[1] - _high_range[0]
+        # G2: check low_range for LOW markets (var=="min"), high_range otherwise
+        _spread_range_key = "low_range" if var == "min" else "high_range"
+        _spread_range = forecast.get(_spread_range_key)
+        if _spread_range and len(_spread_range) == 2:
+            _spread_f = _spread_range[1] - _spread_range[0]
             if _spread_f > MAX_MODEL_SPREAD_F:
                 _log.debug(
                     "Skipping %s — model spread %.1f°F exceeds MAX_MODEL_SPREAD_F %.1f°F",

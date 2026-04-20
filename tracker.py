@@ -22,7 +22,7 @@ DB_PATH.parent.mkdir(exist_ok=True)
 
 _db_initialized = False
 
-_SCHEMA_VERSION = 13  # increment when _MIGRATIONS list grows
+_SCHEMA_VERSION = 16  # increment when _MIGRATIONS list grows
 
 _MIGRATIONS = [
     # v1 → v2: add condition_type column (if not already added)
@@ -82,6 +82,12 @@ _MIGRATIONS = [
     # when that migration was written had it silently skipped. Duplicate-column error
     # is caught by _run_migrations and treated as "already applied".
     "ALTER TABLE predictions ADD COLUMN ensemble_prob REAL",
+    # v13 → v14: G4 — add explicit predicted_date column for reliable UPSERT key
+    "ALTER TABLE predictions ADD COLUMN predicted_date TEXT",
+    # v14 → v15: G4 — drop the old SQLite-function-based unique index
+    "DROP INDEX IF EXISTS idx_pred_ticker_date",
+    # v15 → v16: G4 — create new explicit-column unique index
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_pred_ticker_pdate ON predictions(ticker, predicted_date)",
 ]
 
 
@@ -422,8 +428,12 @@ def log_prediction(
         _json.dumps(blend_sources) if blend_sources is not None else None
     )
 
+    # G4: use today's wall-clock date as explicit UPSERT key (avoids SQLite
+    # date(predicted_at) timezone ambiguity around UTC midnight).
+    predicted_date = date.today().isoformat()
+
     with _conn() as con:
-        # Atomic upsert — unique index on (ticker, date(predicted_at)) prevents
+        # Atomic upsert — unique index on (ticker, predicted_date) prevents
         # duplicate rows from concurrent calls (TOCTOU of old SELECT+INSERT pattern).
         con.execute(
             """
@@ -432,9 +442,9 @@ def log_prediction(
                threshold_lo, threshold_hi, our_prob, raw_prob, market_prob,
                edge, method, n_members, predicted_at, days_out, forecast_cycle,
                blend_sources, ensemble_prob, nws_prob, clim_prob, edge_calc_version,
-               signal_source)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'),?,?,?,?,?,?,?,?)
-            ON CONFLICT(ticker, date(predicted_at)) DO UPDATE SET
+               signal_source, predicted_date)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'),?,?,?,?,?,?,?,?,?)
+            ON CONFLICT(ticker, predicted_date) DO UPDATE SET
                 our_prob         = excluded.our_prob,
                 raw_prob         = excluded.raw_prob,
                 market_prob      = excluded.market_prob,
@@ -471,6 +481,7 @@ def log_prediction(
                 clim_prob,
                 edge_calc_version,
                 signal_source,
+                predicted_date,
             ),
         )
 

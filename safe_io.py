@@ -66,8 +66,8 @@ def atomic_write_json(
                 try:
                     os.fsync(f.fileno())
                 except OSError as _fsync_err:
-                    _log.debug(
-                        "fsync failed for %s (non-fatal on some filesystems): %s",
+                    _log.warning(
+                        "fsync failed for %s — data may not be durable on crash: %s",
                         tmp_path_str,
                         _fsync_err,
                     )

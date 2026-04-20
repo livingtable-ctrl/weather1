@@ -952,6 +952,31 @@ def cmd_cron(client: KalshiClient, min_edge: float = MIN_EDGE) -> None:
     except Exception as _e:
         _log.debug("cmd_cron: ML bias retrain failed: %s", _e)
 
+    # G5: Weekly — run parameter sweep after bias retrain so sweep sees fresh model.
+    # Runs Sunday 03:00 UTC (one hour after train-bias).
+    try:
+        import os as _os_sweep
+
+        if not _os_sweep.environ.get("PYTEST_CURRENT_TEST"):
+            _sweep_dow = datetime.now(UTC).weekday()  # 6 = Sunday
+            _sweep_hour = datetime.now(UTC).hour
+            if _sweep_dow == 6 and _sweep_hour == 3:
+                _log.info("cmd_cron: running weekly parameter sweep (Sunday 03:00 UTC)")
+                from param_sweep import run_sweep as _run_sweep
+
+                try:
+                    _sweep_result = _run_sweep()
+                    if _sweep_result:
+                        print(
+                            dim(
+                                "  [Sweep] Weekly parameter sweep complete — results updated."
+                            )
+                        )
+                except Exception as _sweep_err:
+                    _log.warning("cmd_cron: weekly sweep failed: %s", _sweep_err)
+    except Exception as _e:
+        _log.debug("cmd_cron: weekly sweep check failed: %s", _e)
+
     # Sync data/ to cloud (OneDrive / Google Drive / custom path) after every cron run
     try:
         from cloud_backup import backup_data as _backup

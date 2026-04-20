@@ -203,6 +203,11 @@ def alert_strong_signal(
             f"Kelly: {kelly:.1%} of bankroll\n{city}"
         )
 
+    import logging as _logging
+
+    _ch_log = _logging.getLogger(__name__)
+    successes: list[bool] = []
+
     # Desktop notification (plyer)
     if _ENABLED and "desktop" in _CHANNELS:
         try:
@@ -212,24 +217,35 @@ def alert_strong_signal(
                 app_name="Kalshi Weather",
                 timeout=10,
             )
+            successes.append(True)
         except Exception:
-            pass
+            successes.append(False)
+    elif "desktop" in _CHANNELS:
+        successes.append(False)
 
     # Pushover
     if "pushover" in _CHANNELS:
-        _send_pushover(title, msg)
+        successes.append(_send_pushover(title, msg))
 
     # ntfy
     if "ntfy" in _CHANNELS:
         ntfy_topic = os.getenv("NTFY_TOPIC", "")
         if ntfy_topic:
-            _send_ntfy(ntfy_topic, title, msg)
+            successes.append(_send_ntfy(ntfy_topic, title, msg))
 
     # Discord webhook — green for BUY YES, red for BUY NO
     if "discord" in _CHANNELS:
         discord_color = 0xF85149 if side.lower() == "no" else 0x3FB950
-        _send_discord(title, msg, color=discord_color)
+        successes.append(_send_discord(title, msg, color=discord_color))
 
     # Email
     if "email" in _CHANNELS:
-        _send_email(title, msg)
+        successes.append(_send_email(title, msg))
+
+    # G7: warn when every configured channel failed to deliver the alert
+    if successes and not any(successes):
+        _ch_log.warning(
+            "alert_strong_signal: all %d channel(s) failed for %s — signal not delivered",
+            len(successes),
+            ticker,
+        )
