@@ -3532,18 +3532,47 @@ def analyze_trade(enriched: dict) -> dict | None:
                 w_ens += w_nws - w_nws_trimmed
                 w_nws = w_nws_trimmed
 
-            blended_prob = (
-                w_ens * (ens_prob if ens_prob is not None else 0.5)
-                + w_clim * (clim_prob if clim_prob is not None else 0.5)
-                + w_nws * (_nws_prob if _nws_prob is not None else 0.5)
-                + w_persist * (persistence_p if persistence_p is not None else 0.5)
-            )
-            blend_sources = {
-                "ensemble": w_ens,
-                "climatology": w_clim,
-                "nws": w_nws,
-                **({"persistence": w_persist} if w_persist > 0 else {}),
-            }
+            # G1: renormalize weights when sources are unavailable.
+            # Previously missing sources were substituted with 0.5 (meaningless
+            # fallback that skews the blend and doesn't sum to 1.0 correctly).
+            # Now: zero out missing source weights and renormalize remaining ones.
+            _src_probs = [
+                (w_ens, ens_prob),
+                (w_clim, clim_prob),
+                (w_nws, _nws_prob),
+                (w_persist, persistence_p),
+            ]
+            _active = [(w, p) for w, p in _src_probs if p is not None and w > 0]
+            if not _active:
+                # No sources at all — use uninformative prior
+                _log.debug(
+                    "analyze_trade: all blend sources None for %s — using 0.5",
+                    enriched.get("ticker", "?"),
+                )
+                blended_prob = 0.5
+                blend_sources = {}
+            else:
+                _total_w = sum(w for w, _ in _active)
+                blended_prob = sum((w / _total_w) * p for w, p in _active)
+                # Reconstruct normalized weights for blend_sources
+                _norm = {
+                    "ensemble": w_ens / _total_w if ens_prob is not None else 0.0,
+                    "climatology": w_clim / _total_w if clim_prob is not None else 0.0,
+                    "nws": w_nws / _total_w if _nws_prob is not None else 0.0,
+                }
+                if persistence_p is not None and w_persist > 0:
+                    _norm["persistence"] = w_persist / _total_w
+                blend_sources = {k: round(v, 4) for k, v in _norm.items() if v > 0}
+                if ens_prob is None:
+                    _log.debug(
+                        "analyze_trade: ensemble missing for %s — renormalized blend",
+                        enriched.get("ticker", "?"),
+                    )
+                if clim_prob is None:
+                    _log.debug(
+                        "analyze_trade: climatology missing for %s — renormalized blend",
+                        enriched.get("ticker", "?"),
+                    )
 
         # ── 6b. MOS blend (B1/B2/B6) — applied BEFORE bias correction ───────────
         # B6: MOS is moved here so the full blended value (ensemble+NWS+clim+MOS)
