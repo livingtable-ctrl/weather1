@@ -3089,6 +3089,16 @@ def analyze_trade(enriched: dict) -> dict | None:
     # F5: skip markets where both bid and ask are zero (no real quote)
     if not _prices.get("has_quote", True):
         return None
+    # Market divergence gate: when the market is highly confident (>70%) and
+    # our model strongly disagrees (<25%), the market almost certainly has
+    # information we don't (same-day obs, late-breaking data). Skip to avoid
+    # systematically betting against a well-informed crowd.
+    _mkt_p = _prices.get("implied_prob", 0.5)
+    if _mkt_p > 0.70 or _mkt_p < 0.30:
+        # We'll check our blended_prob later — store market_prob for gate
+        # (gate is applied after blended_prob is computed, below)
+        pass
+    _divergence_gate_market_prob = _mkt_p
     _yes_ask = _prices.get("yes_ask", 0) or 0
     _yes_bid = _prices.get("yes_bid", 0) or 0
     if _yes_ask > 0 and _yes_bid > 0:
@@ -3127,22 +3137,69 @@ def analyze_trade(enriched: dict) -> dict | None:
         import metar as _metar
 
         _metar_sta = _metar_station_for_city(city)
-        if (
-            _metar_sta
-            and target_date == date.today()
-            and condition.get("type") in ("above", "below")
-            and condition.get("threshold")
-        ):
+        if _metar_sta and target_date == date.today():
             _metar_obs = _metar.fetch_metar(_metar_sta)
             if _metar_obs:
-                _metar_lockout = _metar.check_metar_lockout(
-                    current_temp_f=_metar_obs["current_temp_f"],
-                    threshold_f=float(condition["threshold"]),
-                    direction=condition["type"],
-                    obs_time=_metar_obs["obs_time"],
-                    city_tz=_CITY_TZ.get(city, "America/New_York"),
-                )
-                if _metar_lockout["locked"]:
+                _cond_type = condition.get("type")
+                if _cond_type in ("above", "below") and condition.get("threshold"):
+                    _metar_lockout = _metar.check_metar_lockout(
+                        current_temp_f=_metar_obs["current_temp_f"],
+                        threshold_f=float(condition["threshold"]),
+                        direction=_cond_type,
+                        obs_time=_metar_obs["obs_time"],
+                        city_tz=_CITY_TZ.get(city, "America/New_York"),
+                    )
+                elif _cond_type == "between":
+                    # Bug fix: extend METAR lock-in to "between" bucket markets.
+                    # If temp is inside [lower, upper] after 2 PM → lock YES.
+                    # If temp is >3°F outside the nearest bucket edge → lock NO.
+                    _lo = float(condition.get("lower", 0))
+                    _hi = float(condition.get("upper", 0))
+                    _ct = _metar_obs["current_temp_f"]
+                    try:
+                        import zoneinfo as _zi
+
+                        _lh = (
+                            _metar_obs["obs_time"]
+                            .astimezone(
+                                _zi.ZoneInfo(_CITY_TZ.get(city, "America/New_York"))
+                            )
+                            .hour
+                        )
+                    except Exception:
+                        _lh = 0
+                    if _lh >= 14:
+                        if _lo <= _ct <= _hi:
+                            _metar_lockout = {
+                                "locked": True,
+                                "outcome": "yes",
+                                "confidence": 0.95,
+                                "reason": f"METAR {_ct:.1f}°F inside bucket [{_lo},{_hi}]",
+                            }
+                        elif _ct < _lo - 3.0 or _ct > _hi + 3.0:
+                            _metar_lockout = {
+                                "locked": True,
+                                "outcome": "no",
+                                "confidence": 0.92,
+                                "reason": f"METAR {_ct:.1f}°F outside bucket [{_lo},{_hi}] by >3°F",
+                            }
+                        else:
+                            _metar_lockout = {
+                                "locked": False,
+                                "outcome": None,
+                                "confidence": 0.0,
+                                "reason": "near bucket edge — uncertain",
+                            }
+                    else:
+                        _metar_lockout = {
+                            "locked": False,
+                            "outcome": None,
+                            "confidence": 0.0,
+                            "reason": f"too early ({_lh}h < 14h local)",
+                        }
+                else:
+                    _metar_lockout = {"locked": False}
+                if _metar_lockout.get("locked"):
                     metar_locked = True
                     metar_lockout = _metar_lockout
                     _metar_p = (
@@ -3687,6 +3744,23 @@ def analyze_trade(enriched: dict) -> dict | None:
 
     # mos_data alias for return dict compatibility
     mos_data = _mos_data_pre if not metar_locked else None
+
+    # Market divergence gate: if the market is highly confident (>70%) AND our
+    # model is on the opposite side (<25%), the crowd has information we lack.
+    # Skip rather than bet against a confident, well-informed market.
+    if not metar_locked:
+        _mkt_conf = _divergence_gate_market_prob
+        _our_conf = blended_prob
+        if (_mkt_conf > 0.70 and _our_conf < 0.25) or (
+            _mkt_conf < 0.30 and _our_conf > 0.75
+        ):
+            _log.debug(
+                "analyze_trade: divergence gate skip %s — market=%.2f our=%.2f",
+                enriched.get("ticker", "?"),
+                _mkt_conf,
+                _our_conf,
+            )
+            return None
 
     edge = blended_prob - market_prob
 

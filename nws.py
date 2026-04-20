@@ -373,7 +373,14 @@ def obs_prob(obs: dict, condition: dict) -> float:
     elif condition["type"] == "below":
         return normal_cdf(condition["threshold"], temp, sigma)
     elif condition["type"] == "between":
-        return normal_cdf(condition["upper"], temp, sigma) - normal_cdf(
-            condition["lower"], temp, sigma
+        lower = condition["lower"]
+        upper = condition["upper"]
+        # Bug fix: sigma=1.0 gives only 38% for a temp centered in a 1°F bucket.
+        # When the observed temp is inside the bucket the daily high is essentially
+        # confirmed there → use sigma=0.25 (~95% for centered temp).
+        # When outside the bucket keep sigma=1.0 for appropriate uncertainty.
+        sigma_between = 0.25 if lower <= temp <= upper else 1.0
+        return normal_cdf(upper, temp, sigma_between) - normal_cdf(
+            lower, temp, sigma_between
         )
     return 0.0
