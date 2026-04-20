@@ -305,7 +305,26 @@ if the tracker returns None.
 
 ---
 
+## Hotfix — 2026-04-19 (found via live diagnostic, not audit)
+
+Three structural bugs discovered after running a diagnostic on 15 settled trades.
+All fixed and merged to master in commit b980622.
+
+| # | Status | Title | File(s) |
+|---|--------|-------|---------|
+| H1 | ✅ | `obs_prob` between sigma: 1.0 → 0.25 when temp inside bucket | `nws.py` |
+| H2 | ✅ | METAR lock-in extended to `between` conditions | `weather_markets.py` |
+| H3 | ✅ | Market divergence gate: skip when market >70% and we <25% | `weather_markets.py` |
+
+**Root causes found:**
+- Same-day `between` markets: sigma=1.0 gives 38% for a 1°F bucket center; market prices 95%. Fixed with sigma=0.25 → 95.4%.
+- METAR lock-in was hardcoded to `("above", "below")` — `between` never got near-certainty lock-in.
+- Warm spring bias (unfixable with <50 trades): model predicts temps 5–10°F too cold for April/May. Will self-correct as bias table fills. G1 (climatology renormalization) elevated in priority as it likely compounds this.
+
+---
+
 ## Phase G — Lower impact: reliability and edge cases
+*G1 elevated after diagnostic — missing climatology likely compounds warm bias.*
 
 | # | Status | Title | File(s) |
 |---|--------|-------|---------|
