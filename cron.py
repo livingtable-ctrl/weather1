@@ -520,8 +520,26 @@ def cmd_cron(client: KalshiClient, min_edge: float = MIN_EDGE) -> None:
             return m, enriched, _main.analyze_trade(enriched)
 
         _analysis_batch: list[dict] = []  # #perf: collect for single bulk insert
+        # Dedup by ticker before analysis — same market can appear twice when the
+        # Kalshi API returns it under both the old series format (KXHIGH-NYC-…)
+        # and the new format (KXHIGHNY-…) in the same batch.
+        _seen_analysis_tickers: set[str] = set()
+        _deduped_markets: list[dict] = []
+        for _dm in markets:
+            _dm_ticker = _dm.get("ticker", "")
+            if _dm_ticker not in _seen_analysis_tickers:
+                _seen_analysis_tickers.add(_dm_ticker)
+                _deduped_markets.append(_dm)
+        if len(_deduped_markets) < len(markets):
+            _log.debug(
+                "cmd_cron: deduped %d duplicate ticker(s) before analysis",
+                len(markets) - len(_deduped_markets),
+            )
+
         with ThreadPoolExecutor(max_workers=12) as _pool:
-            _futures = {_pool.submit(_enrich_and_analyze, m): m for m in markets}
+            _futures = {
+                _pool.submit(_enrich_and_analyze, m): m for m in _deduped_markets
+            }
             for fut in _as_completed(_futures):
                 try:
                     m, enriched, analysis = fut.result()
