@@ -73,6 +73,10 @@ def _validate_checksum(data: dict) -> None:
 DATA_PATH = _project_root() / "data" / "paper_trades.json"
 DATA_PATH.parent.mkdir(exist_ok=True)
 
+# Loss-limit override flag — written by reset_daily_loss_limit(), checked by
+# is_daily_loss_halted().  Keyed to the UTC date so it auto-expires at midnight.
+_LOSS_OVERRIDE_PATH = DATA_PATH.parent / "loss_limit_override.json"
+
 STARTING_BALANCE = 1000.0  # default paper bankroll in dollars
 
 
@@ -1461,10 +1465,46 @@ def get_daily_pnl(client=None) -> float:
         return settled_pnl
 
 
+def reset_daily_loss_limit(reason: str = "manual admin override") -> None:
+    """
+    Waive the daily loss limit for the rest of today (UTC).
+
+    Writes a flag file keyed to the current UTC date.  The flag is automatically
+    ignored after midnight UTC because is_daily_loss_halted() compares against
+    today's date on every call — no cleanup required.
+
+    Use when a bug caused phantom paper losses and you want to resume trading
+    without waiting for the automatic reset.
+    """
+    today_str = datetime.now(UTC).strftime("%Y-%m-%d")
+    try:
+        import json as _json
+
+        _LOSS_OVERRIDE_PATH.write_text(
+            _json.dumps({"waived_for_date": today_str, "reason": reason}),
+            encoding="utf-8",
+        )
+        _log.warning("Daily loss limit waived for %s — reason: %s", today_str, reason)
+    except Exception as exc:
+        _log.error("reset_daily_loss_limit: could not write flag: %s", exc)
+
+
 def is_daily_loss_halted(client=None) -> bool:
     """Return True if today's P&L is worse than -MAX_DAILY_LOSS_PCT * STARTING_BALANCE.
     Pass a live client to include unrealized MTM in the check (#46).
     """
+    # Check for admin override (e.g. after a bug caused phantom losses).
+    # The override is date-keyed so it expires automatically at midnight UTC.
+    try:
+        import json as _json
+
+        if _LOSS_OVERRIDE_PATH.exists():
+            _flag = _json.loads(_LOSS_OVERRIDE_PATH.read_text(encoding="utf-8"))
+            if _flag.get("waived_for_date") == datetime.now(UTC).strftime("%Y-%m-%d"):
+                return False  # override active for today
+    except Exception:
+        pass  # never block trading on a flag-read failure
+
     return get_daily_pnl(client) < -(MAX_DAILY_LOSS_PCT * STARTING_BALANCE)
 
 
