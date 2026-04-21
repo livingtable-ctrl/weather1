@@ -2542,6 +2542,31 @@ def cmd_override(action: str, duration_minutes: int = 60) -> None:
     print(dim("  Usage: py main.py override pause [minutes]  |  unpause  |  status"))
 
 
+def cmd_admin(action: str, reason: str = "manual admin override") -> None:
+    """
+    Admin commands for paper trading system.
+
+    Actions:
+      reset-loss  — waive today's daily loss limit (e.g. after a bug caused
+                    phantom losses).  Expires automatically at midnight UTC.
+    """
+    if action == "reset-loss":
+        from paper import reset_daily_loss_limit
+
+        reset_daily_loss_limit(reason=reason)
+        print(
+            green(
+                "  Daily loss limit waived for the rest of today (UTC).\n"
+                "  Run cron now — trading will resume normally.\n"
+                "  The override expires automatically at midnight UTC."
+            )
+        )
+        return
+
+    print(red(f"  Unknown admin action: {action!r}"))
+    print(dim("  Usage: py main.py admin reset-loss"))
+
+
 def _auto_place_trades(
     opps: list,
     client=None,
@@ -6584,6 +6609,12 @@ def main():
         action = sys.argv[2] if len(sys.argv) > 2 else "status"
         mins = int(sys.argv[3]) if len(sys.argv) > 3 else 60
         cmd_override(action, mins)
+    elif cmd == "admin":
+        action = sys.argv[2] if len(sys.argv) > 2 else ""
+        reason = (
+            " ".join(sys.argv[3:]) if len(sys.argv) > 3 else "manual admin override"
+        )
+        cmd_admin(action, reason)
     elif cmd == "replay":
         trade_id = sys.argv[2] if len(sys.argv) > 2 else ""
         if not trade_id:
