@@ -733,10 +733,17 @@ def cmd_cron(client: KalshiClient, min_edge: float = MIN_EDGE) -> None:
         _open_for_sl = _paper_sl.get_open_trades()
         if _open_for_sl and client is not None:
             _yes_prices: dict[str, float] = {}
+            from weather_markets import parse_market_price as _parse_sl_price
+
             for _t in _open_for_sl:
                 try:
                     _mkt = client.get_market(_t["ticker"])
-                    _yes_prices[_t["ticker"]] = (_mkt.get("yes_ask", 0) or 0) / 100
+                    # Use parse_market_price so both cents and decimal API formats
+                    # are handled correctly.  A raw "/ 100" would mis-price
+                    # markets already returned in decimal (0-1) format, making
+                    # every position look like a 99% instant loss and firing the
+                    # stop on the same cron run the trade was placed.
+                    _yes_prices[_t["ticker"]] = _parse_sl_price(_mkt)["yes_ask"]
                 except Exception:
                     pass
             _sl_tickers = _paper_sl.check_stop_losses(_open_for_sl, _yes_prices)
