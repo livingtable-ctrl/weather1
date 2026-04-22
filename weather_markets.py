@@ -1959,7 +1959,7 @@ def _time_risk(close_time_str: str, tz: str) -> tuple[str, float]:
       "LOW" / 0.5  — within 2 hours of close (near-real-time data available)
       "LOW" / 0.7  — market closes after 8pm local (weather station already read)
       "LOW" / 0.8  — same-day market (closes today local time)
-      "MEDIUM" / 0.85 — closes within 24 hours (tomorrow's market)
+      "MEDIUM" / 0.85 — closes within 36 hours (tomorrow's market)
       "HIGH" / 1.0 — far-out market, no timing advantage
 
     sigma_multiplier < 1.0 means reduce forecast uncertainty (we know more).
@@ -1980,7 +1980,7 @@ def _time_risk(close_time_str: str, tz: str) -> tuple[str, float]:
             return ("LOW", 0.7)
         elif closes_today:
             return ("LOW", 0.8)
-        elif hours_to_close <= 24:
+        elif hours_to_close <= 36:
             return ("MEDIUM", 0.85)
         else:
             return ("HIGH", 1.0)
