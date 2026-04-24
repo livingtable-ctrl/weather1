@@ -10,7 +10,9 @@
     fetch('/api/trades').then(function (r) { return r.json(); }).then(function (d) {
       renderSummary(d.open || [], d.closed || []);
       renderOpen(d.open || []);
-      _closed = d.closed || [];
+      _closed = (d.closed || []).slice().sort(function (a, b) {
+        return (b.entered_at || '').localeCompare(a.entered_at || '');
+      });
       populateCityFilter(_closed);
       renderClosed();
     }).catch(function (err) { console.error('trades fetch failed:', err); });
