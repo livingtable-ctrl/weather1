@@ -463,7 +463,11 @@ def kelly_quantity(
     dollars = kelly_bet_dollars(kelly_fraction, cap=cap, method=method)
     if dollars < min_dollars:
         return 0
-    return min(int(dollars / price), 500)
+    # L8-B: int() truncation silently produces 0 when dollars < price
+    # (e.g. $0.80 bet at $0.65/contract → int(1.23)=1 is fine, but
+    #  $0.50 bet at $0.65/contract → int(0.77)=0 silently skips the trade).
+    # Use round() and clamp to [1, 500] — dollars already passed min_dollars.
+    return min(max(1, round(dollars / price)), 500)
 
 
 def place_paper_order(

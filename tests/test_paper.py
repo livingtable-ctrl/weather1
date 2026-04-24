@@ -72,6 +72,26 @@ class TestKellyCompounding(unittest.TestCase):
 
         self.assertEqual(paper.kelly_quantity(0.0, 0.50), 0)
 
+    def test_kelly_quantity_no_truncation_to_zero(self):
+        """L8-B: int() truncation silently gave 0 when dollars < price.
+
+        Scenario: cap forces dollars=$0.50, price=$0.65/contract.
+        dollars/price = 0.769 → int()=0 (BUG), round()=1 (fixed).
+
+        Must pass min_dollars=0.40 explicitly so the min_dollars gate
+        doesn't fire before we reach the truncation.
+        """
+        import paper
+
+        # dollars=$0.50 (from cap), price=$0.65 → ratio=0.769
+        # int(0.769)=0 (bug), round(0.769)=1 (fix)
+        qty = paper.kelly_quantity(0.10, price=0.65, cap=0.50, min_dollars=0.40)
+        self.assertGreaterEqual(
+            qty,
+            1,
+            "kelly_quantity must return ≥1 after min_dollars gate — int() truncation bug",
+        )
+
     def test_balance_decreases_after_order(self):
         import paper
 
