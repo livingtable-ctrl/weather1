@@ -974,11 +974,15 @@ def portfolio_kelly_fraction(
     If existing city/date exposure >= MAX_CITY_DATE_EXPOSURE, returns 0.0.
     """
     # Global cap: halt new positions if total open exposure >= 50% of starting balance
-    if get_total_exposure() >= MAX_TOTAL_OPEN_EXPOSURE:
+    # L3-A: capture total_exp once so we can clamp the final result to remaining room.
+    total_exp = get_total_exposure()
+    if total_exp >= MAX_TOTAL_OPEN_EXPOSURE:
         return 0.0
 
     if not city or not target_date_str:
-        return base_fraction
+        # L3-A: even with no city context, clamp to remaining portfolio room
+        remaining = MAX_TOTAL_OPEN_EXPOSURE - total_exp
+        return round(min(base_fraction, remaining), 6)
 
     existing = get_city_date_exposure(city, target_date_str)
     if existing >= MAX_CITY_DATE_EXPOSURE:
@@ -1016,7 +1020,11 @@ def portfolio_kelly_fraction(
         )
         result *= covariance_kelly_scale(city, base_prob, side)
 
-    return round(result, 6)
+    # L3-A: clamp to remaining portfolio room — prevents correlated independent
+    # Kelly fractions from summing past MAX_TOTAL_OPEN_EXPOSURE.
+    # Without this, 10 positions each at Kelly=10% could push total to 100%.
+    remaining = MAX_TOTAL_OPEN_EXPOSURE - total_exp
+    return round(min(result, remaining), 6)
 
 
 def covariance_kelly_scale(

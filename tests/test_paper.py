@@ -356,6 +356,96 @@ class TestPortfolioKelly(unittest.TestCase):
         self.assertEqual(trade["city"], "NYC")
         self.assertEqual(trade["target_date"], "2026-04-09")
 
+    # ── L3-A: portfolio-level Kelly cap tests ────────────────────────────────
+
+    def test_l3a_kelly_clamped_to_remaining_room(self):
+        """L3-A: when portfolio is 80% full, a 20% Kelly is clamped to 10% (remaining room).
+
+        Before L3-A fix, portfolio_kelly_fraction returned the full city/date-scaled
+        Kelly even when total exposure was 40%. Adding a 20% trade would push total
+        to 60%, exceeding MAX_TOTAL_OPEN_EXPOSURE=50% with no push-back.
+        """
+        import paper
+
+        # Place $400 trade → total exposure = 0.40 (80% of 0.50 cap)
+        # Use a different city so city/date scaling doesn't interfere
+        paper.place_paper_order(
+            "TK_CHI", "yes", 800, 0.50, city="Chicago", target_date="2026-05-01"
+        )
+        total_exp = paper.get_total_exposure()
+        self.assertAlmostEqual(total_exp, 0.40, places=3)
+
+        # Request Kelly=0.20 for a new NYC trade; remaining room = 0.50 - 0.40 = 0.10
+        result = paper.portfolio_kelly_fraction(0.20, "NYC", "2026-05-02")
+
+        # L3-A invariant: result must be ≤ remaining room (0.10), not 0.20
+        self.assertLessEqual(
+            result,
+            0.10 + 1e-6,
+            f"Kelly {result:.4f} must be clamped to remaining room 0.10 "
+            "when portfolio exposure is 0.40",
+        )
+        self.assertGreater(result, 0.0, "Some Kelly must be returned when room exists")
+
+    def test_l3a_no_city_context_also_clamped(self):
+        """L3-A: even with no city/date context, result is clamped to remaining room."""
+        import paper
+
+        # Place $400 trade → 40% exposure; remaining room = 10%
+        paper.place_paper_order(
+            "TK_CHI", "yes", 800, 0.50, city="Chicago", target_date="2026-05-01"
+        )
+
+        # No city/date → previously passed base_fraction through unchanged (0.20)
+        result = paper.portfolio_kelly_fraction(0.20, None, None)
+
+        self.assertLessEqual(
+            result,
+            0.10 + 1e-6,
+            f"No-city Kelly {result:.4f} must be clamped to remaining room 0.10",
+        )
+
+    def test_l3a_sum_of_independent_kellys_bounded(self):
+        """L3-A: placing N independent city/date trades cannot push total Kelly sum past cap.
+
+        This is the core invariant: 10 positions each with base_fraction=0.10 must
+        NOT collectively commit more than MAX_TOTAL_OPEN_EXPOSURE of the bankroll.
+        """
+        import paper
+
+        cities = [
+            ("NYC", "2026-05-01"),
+            ("Chicago", "2026-05-02"),
+            ("LA", "2026-05-03"),
+            ("Miami", "2026-05-04"),
+            ("Dallas", "2026-05-05"),
+            ("Denver", "2026-05-06"),
+            ("Boston", "2026-05-07"),
+            ("Phoenix", "2026-05-08"),
+        ]
+        total_committed_kelly = 0.0
+        for city, date in cities:
+            adj = paper.portfolio_kelly_fraction(0.10, city, date)
+            if adj > 0:
+                # Simulate placing the trade: cost = adj * STARTING_BALANCE
+                cost = adj * paper.STARTING_BALANCE
+                qty = max(1, round(cost / 0.50))
+                try:
+                    paper.place_paper_order(
+                        f"TK_{city}", "yes", qty, 0.50, city=city, target_date=date
+                    )
+                    total_committed_kelly += adj
+                except ValueError:
+                    break  # balance too low — stop
+
+        total_exp = paper.get_total_exposure()
+        self.assertLessEqual(
+            total_exp,
+            paper.MAX_TOTAL_OPEN_EXPOSURE + 0.01,  # 1% tolerance for rounding
+            f"Total exposure {total_exp:.4f} must not exceed MAX_TOTAL_OPEN_EXPOSURE "
+            f"{paper.MAX_TOTAL_OPEN_EXPOSURE} after N independent trades",
+        )
+
 
 class TestHighWaterMark(unittest.TestCase):
     def setUp(self):
