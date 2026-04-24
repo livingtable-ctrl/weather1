@@ -140,3 +140,113 @@ def test_auto_place_trades_logs_analysis_attempt_failure(monkeypatch, caplog, tm
         "log_analysis_attempt failure must be logged.\n"
         f"Records: {[r.message for r in caplog.records]}"
     )
+
+
+# ── L1-B: price re-fetch before placement ─────────────────────────────────────
+
+
+class _FakeClient:
+    """Minimal KalshiClient stand-in for price-refresh tests."""
+
+    def __init__(self, implied_prob: float):
+        self._implied_prob = implied_prob
+
+    def get_market(self, ticker: str) -> dict:
+        # Return a market dict whose yes_bid/yes_ask give the desired implied prob.
+        # implied_prob = (yes_bid + yes_ask) / 2  →  symmetric spread: both at prob*100
+        cents = int(round(self._implied_prob * 100))
+        return {
+            "ticker": ticker,
+            "yes_bid": cents,
+            "yes_ask": cents,
+            "no_bid": 100 - cents,
+            "no_ask": 100 - cents,
+        }
+
+
+def test_l1b_price_refresh_uses_fresh_market_prob(monkeypatch):
+    """L1-B: when a client is supplied, entry_price must reflect the re-fetched
+    market probability, not the stale value in the analysis dict.
+
+    Scenario: analysis recorded market_prob=0.50 (stale), but the live market
+    has moved to 0.60.  Entry price for YES side should be 0.60, not 0.50.
+    """
+    _stub_auto_prereqs(monkeypatch)
+
+    captured_prices: list[float] = []
+
+    def _capture_place(ticker, side, qty, price, **kwargs):
+        captured_prices.append(price)
+        return {"id": 1, "status": "open", "cost": price * qty}
+
+    monkeypatch.setattr("main.place_paper_order", _capture_place)
+
+    import main
+
+    opp = _make_opp("KXREFRESH")  # market_prob=0.50 (stale)
+    client = _FakeClient(implied_prob=0.60)  # live price is 0.60
+
+    result = main._auto_place_trades([opp], client=client)
+    assert result == 1, "Expected 1 placed trade"
+    assert len(captured_prices) == 1
+    assert abs(captured_prices[0] - 0.60) < 0.01, (
+        f"L1-B: entry_price should be the fresh market price 0.60, "
+        f"got {captured_prices[0]:.3f}. Stale analysis price (0.50) was used."
+    )
+
+
+def test_l1b_price_refresh_skips_when_edge_gone(monkeypatch):
+    """L1-B: if the fresh market price eliminates our edge, trade must be skipped.
+
+    Scenario: analysis said YES at market_prob=0.50, forecast_prob=0.80.
+    Market moved to 0.85 before placement — we'd now be buying YES at 0.85
+    against a forecast of 0.80, a *negative* edge.  Must skip.
+    """
+    _stub_auto_prereqs(monkeypatch)
+
+    placed: list[str] = []
+
+    def _capture_place(ticker, side, qty, price, **kwargs):
+        placed.append(ticker)
+        return {"id": 1, "status": "open", "cost": price * qty}
+
+    monkeypatch.setattr("main.place_paper_order", _capture_place)
+
+    import main
+
+    opp = _make_opp("KXEDGE_GONE")  # market_prob=0.50, forecast_prob=0.80, YES
+    client = _FakeClient(implied_prob=0.85)  # market moved above our forecast!
+
+    result = main._auto_place_trades([opp], client=client)
+    assert result == 0, (
+        f"L1-B: trade should be skipped when fresh price (0.85) exceeds "
+        f"forecast_prob (0.80), got placed={placed}"
+    )
+
+
+def test_l1b_no_client_uses_stale_price(monkeypatch):
+    """L1-B: without a client (paper-only mode), stale analysis price is used.
+
+    This tests the graceful fallback path — no crash, trade proceeds at the
+    price recorded during analysis.
+    """
+    _stub_auto_prereqs(monkeypatch)
+
+    captured_prices: list[float] = []
+
+    def _capture_place(ticker, side, qty, price, **kwargs):
+        captured_prices.append(price)
+        return {"id": 1, "status": "open", "cost": price * qty}
+
+    monkeypatch.setattr("main.place_paper_order", _capture_place)
+
+    import main
+
+    opp = _make_opp("KXNOCLIENT")  # market_prob=0.50
+    result = main._auto_place_trades([opp], client=None)
+    assert result == 1, "Expected 1 placed trade in paper-only mode"
+    assert len(captured_prices) == 1
+    # Without a client, entry_price comes from the stale market_prob=0.50
+    assert abs(captured_prices[0] - 0.50) < 0.01, (
+        f"L1-B fallback: expected stale entry_price 0.50, got {captured_prices[0]:.3f}"
+    )

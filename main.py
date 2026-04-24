@@ -2694,10 +2694,62 @@ def _auto_place_trades(
         )
         if adj_kelly < 0.002:
             continue
+        # L1-B: Re-fetch live price before placement — the analysis price may be
+        # several minutes stale by the time execution runs.  If a client is available
+        # (live mode or paper+client), fetch the current orderbook and use the
+        # fresh implied probability instead of the cached value.
+        # Falls back to the analysis price in pure paper mode (no client).
+        _stale_mkt_prob = float(a.get("market_prob", 0.50) or 0.50)
+        _mkt_prob = _stale_mkt_prob
+        if client is not None:
+            try:
+                _fresh_market = client.get_market(ticker)
+                _fresh_prices = parse_market_price(_fresh_market)
+                _fresh_implied = _fresh_prices.get("implied_prob")
+                if isinstance(_fresh_implied, float) and 0.0 < _fresh_implied < 1.0:
+                    if abs(_fresh_implied - _stale_mkt_prob) > 0.01:
+                        _fetch_age = time.time() - (
+                            a.get("data_fetched_at") or time.time()
+                        )
+                        _log.info(
+                            "_auto_place_trades: %s price updated %.3f→%.3f "
+                            "(was %.0fs stale)",
+                            ticker,
+                            _stale_mkt_prob,
+                            _fresh_implied,
+                            _fetch_age,
+                        )
+                    _mkt_prob = _fresh_implied
+                    # Carry fresh market dict into _place_live_order so it uses
+                    # the current price, not the one from the analysis batch.
+                    a = {**a, "market": _fresh_market, "market_prob": _fresh_implied}
+            except Exception as _pf_err:
+                _log.debug(
+                    "_auto_place_trades: price re-fetch failed for %s: %s",
+                    ticker,
+                    _pf_err,
+                )
         # Use market implied prob as entry price — flip for NO side
         # Skip if market_prob is near 0 or 1 (degenerate markets — no real two-sided market)
-        _mkt_prob = float(a.get("market_prob", 0.50) or 0.50)
         if _mkt_prob < 0.02 or _mkt_prob > 0.98:
+            continue
+        # L1-B: if the fresh price shows the edge has reversed (market moved against
+        # us between analysis and now), skip rather than placing a losing trade.
+        _forecast_prob = float(a.get("forecast_prob", _mkt_prob) or _mkt_prob)
+        _fresh_edge = (
+            _forecast_prob - _mkt_prob
+            if rec_side == "yes"
+            else _mkt_prob - _forecast_prob
+        )
+        if _fresh_edge <= 0:
+            _log.info(
+                "_auto_place_trades: skip %s — edge gone after price refresh "
+                "(forecast=%.3f market=%.3f side=%s)",
+                ticker,
+                _forecast_prob,
+                _mkt_prob,
+                rec_side,
+            )
             continue
         entry_price = 1.0 - _mkt_prob if rec_side == "no" else _mkt_prob
         method = a.get("method")
