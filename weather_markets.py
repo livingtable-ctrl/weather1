@@ -577,7 +577,8 @@ def get_weather_forecast(city: str, target_date: date) -> dict | None:
                 "_snow_accum_in": pw_data.get("_snow_accum_in"),
                 "_ice_accum_in": pw_data.get("_ice_accum_in"),
             }
-            _forecast_cache.set(cache_key, result)
+            # L5-A: align TTL to next NWS model cycle, not a flat 4 h window
+            _forecast_cache.set_with_ttl(cache_key, result, _ttl_until_next_cycle())
             _save_forecast_disk_entry(cache_key, result)
             return result
         return None
@@ -599,7 +600,8 @@ def get_weather_forecast(city: str, target_date: date) -> dict | None:
         # G2: low_range for model-spread gate on LOW markets
         "low_range": (min(low_vals), max(low_vals)) if low_vals else None,
     }
-    _forecast_cache.set(cache_key, result)
+    # L5-A: align TTL to next NWS model cycle, not a flat 4 h window
+    _forecast_cache.set_with_ttl(cache_key, result, _ttl_until_next_cycle())
     _save_forecast_disk_entry(cache_key, result)
     return result
 
@@ -1587,7 +1589,8 @@ def get_ensemble_temps(
         except Exception:
             pass
 
-    _ensemble_cache.set(cache_key, all_temps)
+    # L5-A: align TTL to next NWS model cycle, not a flat 4 h window
+    _ensemble_cache.set_with_ttl(cache_key, all_temps, _ttl_until_next_cycle())
     return all_temps
 
 
@@ -2607,7 +2610,8 @@ def _get_consensus_probs(
                     if k.startswith(var_field) and v and v[0] is not None
                 ]
                 temps = members
-                _ensemble_cache.set(cache_key, temps)
+                # L5-A: align TTL to next NWS model cycle
+                _ensemble_cache.set_with_ttl(cache_key, temps, _ttl_until_next_cycle())
 
             if len(temps) < 5:
                 return None, None
