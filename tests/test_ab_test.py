@@ -169,3 +169,65 @@ class TestABTest:
         variant_name, variant_value = test.pick_variant()
         assert variant_name == "control"
         assert variant_value == 0.08
+
+
+# ── L4-A: get_active_variant must return actual variant value ─────────────────
+
+
+def test_l4a_get_active_variant_returns_value(tmp_path, monkeypatch):
+    """L4-A: get_active_variant must return the variant value, not None.
+
+    Previously always returned None because variant values were not persisted to
+    the state file.  ABTest.__init__ now stores 'value' in the state JSON so
+    get_active_variant() can retrieve it without holding an ABTest instance.
+    """
+    ab_dir = tmp_path / "ab_tests"
+    ab_dir.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setattr(_ab_module, "_AB_TEST_DIR", ab_dir)
+
+    ABTest(
+        name="threshold_test",
+        variants={"control": 0.08, "higher": 0.10, "lower": 0.06},
+    )
+
+    variant_name, value = get_active_variant("threshold_test")
+    assert variant_name in {"control", "higher", "lower"}, (
+        f"Unexpected variant name: {variant_name!r}"
+    )
+    expected = {"control": 0.08, "higher": 0.10, "lower": 0.06}
+    assert value == expected[variant_name], (
+        f"L4-A: get_active_variant returned value={value!r} for variant {variant_name!r}; "
+        f"expected {expected[variant_name]!r}.  "
+        "get_active_variant must return the stored variant value, not None."
+    )
+
+
+def test_l4a_get_active_variant_value_survives_reload(tmp_path, monkeypatch):
+    """L4-A: variant value must round-trip through disk (JSON serialize/deserialize).
+
+    Simulates the real production scenario: ABTest is constructed in process A,
+    and get_active_variant is called in a separate process B that has no access
+    to the original ABTest instance.
+    """
+    ab_dir = tmp_path / "ab_tests"
+    ab_dir.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setattr(_ab_module, "_AB_TEST_DIR", ab_dir)
+
+    # Process A: create and persist the test
+    ABTest(
+        name="reload_test",
+        variants={"control": 0.08, "aggressive": 0.15},
+    )
+
+    # Simulate process B: drop in-memory state, read purely from disk
+    import importlib
+
+    importlib.reload(_ab_module)
+    monkeypatch.setattr(_ab_module, "_AB_TEST_DIR", ab_dir)
+
+    variant_name, value = _ab_module.get_active_variant("reload_test")
+    expected = {"control": 0.08, "aggressive": 0.15}
+    assert value == expected.get(variant_name), (
+        f"L4-A: value {value!r} for variant {variant_name!r} did not survive disk reload; "
+        f"expected {expected.get(variant_name)!r}"
+    )

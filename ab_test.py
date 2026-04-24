@@ -83,6 +83,8 @@ class ABTest:
                     "total_edge": 0.0,
                     "disabled": False,
                     "created_at": time.time(),
+                    # L4-A: persist variant value so get_active_variant() can return it
+                    "value": variants[v],
                 }
                 changed = True
         if changed:
@@ -167,8 +169,15 @@ def list_all_summaries() -> dict[str, dict]:
 def get_active_variant(test_name: str) -> tuple[str, Any]:
     """
     Convenience: load a named test from disk and pick the active variant.
-    Returns (variant_name, None) — the value lives in the ABTest definition.
-    Falls back to ("control", None) if test not found or all variants exhausted.
+
+    Returns (variant_name, variant_value).  The value is read from the persisted
+    state file (stored there by ABTest.__init__ under the "value" key).
+    Falls back to ("control", None) if the test is not found on disk or all
+    variants are exhausted/disabled.
+
+    L4-A fix: previously always returned None for the value because the variant
+    values were never written to the state file.  Now ABTest.__init__ stores
+    "value" alongside "trades"/"wins"/etc., so this function can return it.
     """
     try:
         state = _load_test_state(test_name)
@@ -184,7 +193,8 @@ def get_active_variant(test_name: str) -> tuple[str, Any]:
                 _min_t = min(state[v]["trades"] for v in active)
                 _tied = [v for v in active if state[v]["trades"] == _min_t]
                 chosen = random.choice(_tied)
-                return chosen, None
+                # L4-A: return the persisted variant value, not None
+                return chosen, state[chosen].get("value")
     except Exception as exc:
         _log.debug("get_active_variant: %s", exc)
     return "control", None
