@@ -2846,6 +2846,17 @@ def _auto_place_trades(
                 _open_trades_list.append(trade)
                 placed += 1
                 daily_spent += trade.get("cost", 0.0)
+                # L3-C: log paper order so was_traded_today() blocks same-day re-entry
+                # after a position is settled and the process restarts.
+                execution_log.log_order(
+                    ticker=ticker,
+                    side=rec_side,
+                    quantity=qty,
+                    price=entry_price,
+                    order_type="market",
+                    status="filled",
+                    live=False,
+                )
                 # #55: update analysis attempt to mark this market as traded
                 try:
                     import datetime as _dt2
@@ -3078,6 +3089,8 @@ def cmd_watch(
 
                 exit_recs = check_model_exits(client)
                 for rec in exit_recs:
+                    import paper as _paper_exit
+
                     t = rec["trade"]
                     reason = (
                         "MODEL FLIPPED"
@@ -3091,6 +3104,28 @@ def cmd_watch(
                             f"(edge now {rec['current_edge']:+.1%})"
                         )
                     )
+                    try:
+                        exit_price = _midpoint_price(rec["market"], rec["held_side"])
+                        result = _paper_exit.close_paper_early(t["id"], exit_price)
+                        print(
+                            red(
+                                f"  [Closed] #{t['id']} {t['ticker']} "
+                                f"@ {exit_price:.0%}  pnl=${result['pnl']:.2f}"
+                            )
+                        )
+                        _log.info(
+                            "[ModelExit] #%s %s %s closed: reason=%s edge=%+.3f pnl=$%.2f",
+                            t["id"],
+                            t["ticker"],
+                            rec["held_side"],
+                            rec["reason"],
+                            rec["current_edge"],
+                            result["pnl"],
+                        )
+                    except Exception as _exc:
+                        _log.warning(
+                            "[ModelExit] Failed to close #%s: %s", t["id"], _exc
+                        )
                 for exp in check_expiring_trades():
                     t = exp["trade"]
                     hrs = exp["hours_left"]

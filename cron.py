@@ -548,6 +548,7 @@ def cmd_cron(client: KalshiClient, min_edge: float = MIN_EDGE) -> None:
                 if not analysis:
                     continue
                 net_edge = analysis.get("net_edge", analysis["edge"])
+                adjusted_edge = analysis.get("adjusted_edge", net_edge)
                 # #55: collect analysis attempt for bulk DB insert after loop
                 try:
                     import datetime as _dt
@@ -573,7 +574,7 @@ def cmd_cron(client: KalshiClient, min_edge: float = MIN_EDGE) -> None:
                 except Exception:
                     pass
                 # P1.3: Use PAPER_MIN_EDGE (5%) so more signals are captured for observation.
-                if abs(net_edge) < PAPER_MIN_EDGE:
+                if abs(adjusted_edge) < PAPER_MIN_EDGE:
                     continue
                 signal = analysis.get("net_signal", analysis.get("signal", "")).strip()
                 time_risk = analysis.get("time_risk", "\u2014")
@@ -612,9 +613,9 @@ def cmd_cron(client: KalshiClient, min_edge: float = MIN_EDGE) -> None:
                         "is_hedge": analysis.get("_is_hedge", False),
                     }
                 )
-                if abs(net_edge) >= _effective_strong_edge:
+                if abs(adjusted_edge) >= _effective_strong_edge:
                     strong_opps.append((enriched, analysis))
-                elif abs(net_edge) >= MED_EDGE:
+                elif abs(adjusted_edge) >= MED_EDGE:
                     med_opps.append((enriched, analysis))
     except Exception as _e:
         import logging as _logging

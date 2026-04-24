@@ -1321,6 +1321,7 @@ def check_model_exits(client=None) -> list[dict]:
                         "reason": "model_flipped",
                         "current_edge": round(net_edge, 4),
                         "held_side": held_side,
+                        "market": market,
                     }
                 )
             elif edge_gone:
@@ -1330,6 +1331,7 @@ def check_model_exits(client=None) -> list[dict]:
                         "reason": "edge_gone",
                         "current_edge": round(net_edge, 4),
                         "held_side": held_side,
+                        "market": market,
                     }
                 )
         except Exception:

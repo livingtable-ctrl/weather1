@@ -205,3 +205,108 @@ def test_cron_kill_switch_halts_before_scan(cron_env):
     assert len(markets_called) == 0, (
         "Kill switch: get_weather_markets must not be called"
     )
+
+
+# ---------------------------------------------------------------------------
+# L2-E regression tests: gate must use adjusted_edge, not net_edge
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.integration
+def test_cron_gate_blocks_when_adjusted_edge_below_threshold(cron_env):
+    """A market whose net_edge clears STRONG_EDGE but adjusted_edge does not must
+    NOT be auto-placed — the gate must use adjusted_edge (L2-E)."""
+    tmp_path, client, main, paper = cron_env
+    from utils import STRONG_EDGE
+
+    fake_market = {"ticker": "KXHIGH-NYC-26APR25-B70", "yes_bid": 30, "yes_ask": 34}
+    fake_enriched = dict(
+        fake_market, _city="NYC", _date="2026-04-25", _target_date="2026-04-25"
+    )
+    # net_edge passes STRONG_EDGE; adjusted_edge (net_edge * 0.4) does not
+    net_edge_val = STRONG_EDGE + 0.05  # e.g. 0.20 if STRONG_EDGE=0.15
+    fake_analysis = {
+        "edge": net_edge_val,
+        "net_edge": net_edge_val,
+        "adjusted_edge": net_edge_val * 0.4,  # far-out market confidence penalty
+        "signal": "STRONG BUY",
+        "net_signal": "STRONG BUY",
+        "recommended_side": "yes",
+        "time_risk": "LOW",
+        "forecast_prob": 0.75,
+        "market_prob": 0.30,
+        "days_out": 5,
+        "target_date": "2026-04-25",
+    }
+
+    placed_calls: list = []
+
+    def _fake_auto_place(opps, client=None, cap=None, **kwargs):
+        placed_calls.extend(opps)
+        return len(opps)
+
+    with (
+        patch.object(main, "get_weather_markets", return_value=[fake_market]),
+        patch.object(main, "enrich_with_forecast", return_value=fake_enriched),
+        patch.object(main, "analyze_trade", return_value=fake_analysis),
+        patch.object(main, "_auto_place_trades", side_effect=_fake_auto_place),
+        patch("tracker.detect_brier_drift", return_value={"drifting": False}),
+        patch("paper.is_paused_drawdown", return_value=False),
+    ):
+        try:
+            main.cmd_cron(client)
+        except SystemExit:
+            pass
+
+    assert len(placed_calls) == 0, (
+        "Gate must block when adjusted_edge < STRONG_EDGE even if net_edge passes (L2-E)"
+    )
+
+
+@pytest.mark.integration
+def test_cron_gate_allows_when_adjusted_edge_above_threshold(cron_env):
+    """A market whose adjusted_edge clears STRONG_EDGE must be auto-placed (L2-E)."""
+    tmp_path, client, main, paper = cron_env
+    from utils import STRONG_EDGE
+
+    fake_market = {"ticker": "KXHIGH-NYC-26APR26-B70", "yes_bid": 30, "yes_ask": 34}
+    fake_enriched = dict(
+        fake_market, _city="NYC", _date="2026-04-26", _target_date="2026-04-26"
+    )
+    net_edge_val = STRONG_EDGE + 0.10
+    fake_analysis = {
+        "edge": net_edge_val,
+        "net_edge": net_edge_val,
+        "adjusted_edge": net_edge_val,  # high-confidence near-term market
+        "signal": "STRONG BUY",
+        "net_signal": "STRONG BUY",
+        "recommended_side": "yes",
+        "time_risk": "LOW",
+        "forecast_prob": 0.80,
+        "market_prob": 0.30,
+        "days_out": 1,
+        "target_date": "2026-04-26",
+    }
+
+    placed_calls: list = []
+
+    def _fake_auto_place(opps, client=None, cap=None, **kwargs):
+        placed_calls.extend(opps)
+        return len(opps)
+
+    with (
+        patch.object(main, "get_weather_markets", return_value=[fake_market]),
+        patch.object(main, "enrich_with_forecast", return_value=fake_enriched),
+        patch.object(main, "analyze_trade", return_value=fake_analysis),
+        patch.object(main, "_auto_place_trades", side_effect=_fake_auto_place),
+        patch("tracker.detect_brier_drift", return_value={"drifting": False}),
+        patch("paper.is_paused_drawdown", return_value=False),
+    ):
+        try:
+            main.cmd_cron(client)
+        except SystemExit:
+            pass
+
+    assert len(placed_calls) > 0, (
+        "Gate must allow trade when adjusted_edge >= STRONG_EDGE (L2-E)"
+    )
