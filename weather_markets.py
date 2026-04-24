@@ -3863,7 +3863,14 @@ def analyze_trade(enriched: dict) -> dict | None:
     prices = parse_market_price(enriched)
     market_prob = prices["implied_prob"]
     rec_side = "yes" if blended_prob > market_prob else "no"
-    entry_price = prices["yes_ask"] if rec_side == "yes" else prices["no_bid"]
+    # L2-A: NO entry is at no_ask = 1 - yes_bid (what we pay to buy NO),
+    # NOT no_bid = 1 - yes_ask (what market makers pay us to sell NO back).
+    # Using no_bid understates entry cost and overstates NO-side edge/Kelly.
+    entry_price = (
+        prices["yes_ask"]
+        if rec_side == "yes"
+        else (1.0 - prices["yes_bid"] if prices["yes_bid"] > 0 else 0.0)
+    )
     if entry_price == 0:
         entry_price = 1 - market_prob if rec_side == "no" else market_prob
     kelly = kelly_fraction(
