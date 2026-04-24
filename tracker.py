@@ -514,6 +514,11 @@ def log_outcome(ticker: str, settled_yes: bool) -> bool:
 
 # ── Bias correction ───────────────────────────────────────────────────────────
 
+# L4-C: shrinkage prior — controls how quickly bias corrections ramp up with
+# sample count.  With prior=10, a 5-sample estimate is shrunk to 33% of its
+# face value; a 100-sample estimate retains 91%.  Formula: n / (n + prior).
+_BIAS_SHRINKAGE_PRIOR: int = 10
+
 
 def get_bias(
     city: str | None,
@@ -580,7 +585,10 @@ def get_bias(
 
     if total_weight == 0:
         return 0.0
-    return weighted_bias / total_weight
+    raw_bias = weighted_bias / total_weight
+    # L4-C: shrink toward 0 — reduces variance when sample count is low
+    n = len(rows)
+    return raw_bias * n / (n + _BIAS_SHRINKAGE_PRIOR)
 
 
 _QUINTILE_EDGES = (0.0, 0.20, 0.40, 0.60, 0.80, 1.01)  # 1.01 so 1.0 falls in last bin
@@ -657,7 +665,10 @@ def get_quintile_bias(
         return 0.0
     if total_weight == 0:
         return 0.0
-    return weighted_bias / total_weight
+    raw_bias = weighted_bias / total_weight
+    # L4-C: shrink toward 0 — reduces variance when sample count is low
+    n = len(rows)
+    return raw_bias * n / (n + _BIAS_SHRINKAGE_PRIOR)
 
 
 def get_brier_by_days_out() -> dict[str, float]:

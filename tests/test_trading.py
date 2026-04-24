@@ -1107,3 +1107,94 @@ def test_get_quintile_bias_excludes_null_city_rows(tmp_path):
         tracker._db_initialized = False
 
     assert isinstance(bias, float), "get_quintile_bias must return a float (L4-B)"
+
+
+# ── L4-C regression: small-sample shrinkage toward 0 ──
+
+
+def test_get_bias_shrinks_toward_zero_for_small_samples(tmp_path):
+    """With only min_samples rows, the returned bias must be strictly smaller in
+    magnitude than the raw mean bias — shrinkage prevents single-outlier dominance (L4-C)."""
+    import sqlite3
+    from datetime import date
+    from unittest.mock import patch
+
+    import tracker
+
+    db_path = tmp_path / "tracker.db"
+    with patch.object(tracker, "DB_PATH", db_path):
+        tracker._db_initialized = False
+        tracker.init_db()
+
+        today = date.today().isoformat()
+        con = sqlite3.connect(str(db_path))
+
+        # 5 predictions: all our_prob=0.80, all settled YES=0 → raw bias = +0.80
+        # With shrinkage prior=10: shrunk = 0.80 * 5/15 ≈ 0.267
+        for i in range(5):
+            tkr = f"KXHIGH-TEST-SMALL-{i}"
+            con.execute(
+                "INSERT INTO predictions (ticker, city, market_date, our_prob, predicted_at)"
+                " VALUES (?, 'TEST', ?, 0.80, ?)",
+                (tkr, today, today),
+            )
+            con.execute(
+                "INSERT INTO outcomes (ticker, settled_yes, settled_at) VALUES (?, 0, ?)",
+                (tkr, today),
+            )
+        con.commit()
+        con.close()
+
+        bias = tracker.get_bias(city="TEST", month=None)
+        tracker._db_initialized = False
+
+    # Raw bias would be 0.80; shrinkage must bring it below that
+    assert 0 < bias < 0.80, (
+        f"get_bias with 5 samples must shrink below raw mean 0.80; got {bias:.4f} (L4-C)"
+    )
+    # At n=5, prior=10: expected ≈ 0.267; allow small floating-point tolerance
+    assert bias < 0.40, (
+        f"Shrinkage at n=5 must reduce bias to <0.40; got {bias:.4f} (L4-C)"
+    )
+
+
+def test_get_bias_near_full_strength_for_large_samples(tmp_path):
+    """With many samples the shrinkage factor is negligible — bias stays near its
+    raw computed value (L4-C)."""
+    import sqlite3
+    from datetime import date
+    from unittest.mock import patch
+
+    import tracker
+
+    db_path = tmp_path / "tracker.db"
+    with patch.object(tracker, "DB_PATH", db_path):
+        tracker._db_initialized = False
+        tracker.init_db()
+
+        today = date.today().isoformat()
+        con = sqlite3.connect(str(db_path))
+
+        # 100 predictions: all our_prob=0.60, all settled YES=0 → raw bias = +0.60
+        # With shrinkage prior=10: shrunk = 0.60 * 100/110 ≈ 0.545
+        for i in range(100):
+            tkr = f"KXHIGH-TEST-LARGE-{i}"
+            con.execute(
+                "INSERT INTO predictions (ticker, city, market_date, our_prob, predicted_at)"
+                " VALUES (?, 'BIG', ?, 0.60, ?)",
+                (tkr, today, today),
+            )
+            con.execute(
+                "INSERT INTO outcomes (ticker, settled_yes, settled_at) VALUES (?, 0, ?)",
+                (tkr, today),
+            )
+        con.commit()
+        con.close()
+
+        bias = tracker.get_bias(city="BIG", month=None)
+        tracker._db_initialized = False
+
+    # n=100, prior=10: multiplier = 100/110 ≈ 0.909 — should be > 85% of raw 0.60
+    assert bias > 0.50, (
+        f"With n=100 samples shrinkage should be <10%; bias={bias:.4f} (L4-C)"
+    )
