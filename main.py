@@ -2909,6 +2909,12 @@ def _auto_place_trades(
                         _e2,
                     )
             except Exception as e:
+                # L1-D: surface every placement failure visibly — logging alone is
+                # silent when the operator is watching the console.
+                _err_msg = (
+                    f"  [Auto] PAPER ORDER FAILED {ticker} {rec_side.upper()}: {e}"
+                )
+                print(red(_err_msg))
                 logging.getLogger(__name__).warning(
                     "_auto_place_trades: paper order FAILED ticker=%s side=%s: %s",
                     ticker,

@@ -142,6 +142,36 @@ def test_auto_place_trades_logs_analysis_attempt_failure(monkeypatch, caplog, tm
     )
 
 
+# ── L1-D: paper order failure must be printed visibly ────────────────────────
+
+
+def test_l1d_paper_failure_printed_to_console(monkeypatch, capsys):
+    """L1-D: place_paper_order failure must print a visible error — not just log.
+
+    A WARNING log is silent when the operator is watching console output.
+    The error must appear in stdout/stderr so it cannot be missed.
+    """
+    _stub_auto_prereqs(monkeypatch)
+
+    def boom(*a, **kw):
+        raise RuntimeError("disk full")
+
+    monkeypatch.setattr("main.place_paper_order", boom)
+
+    import main
+
+    result = main._auto_place_trades([_make_opp("KXPRINTFAIL")])
+
+    assert result == 0
+    captured = capsys.readouterr()
+    output = captured.out + captured.err
+    assert "KXPRINTFAIL" in output and ("disk full" in output or "FAILED" in output), (
+        "L1-D: paper order failure must be printed to console (stdout/stderr), "
+        "not only logged to the WARNING logger.\n"
+        f"Console output was: {output!r}"
+    )
+
+
 # ── L1-B: price re-fetch before placement ─────────────────────────────────────
 
 
