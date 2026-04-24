@@ -1006,7 +1006,7 @@ setInterval(() => {{
             try:
                 with open(cron_log, encoding="utf-8") as f:
                     lines = f.readlines()
-                for line in lines[-200:]:
+                for line in lines[-500:]:
                     line = line.strip()
                     if not line:
                         continue
@@ -1023,7 +1023,17 @@ setInterval(() => {{
             if e.get("signal") == "ALERT" or e.get("level") in ("WARNING", "ERROR")
         ]
 
-        return jsonify({"log": entries, "alerts": alerts[-50:]})
+        # Deduplicate signal log by ticker — keep the most recent entry per ticker.
+        # The cron appends on every run, so the same ticker accumulates across scans.
+        # Showing the latest reading per market avoids confusing duplicate rows.
+        _seen: dict[str, dict] = {}
+        for e in entries:
+            ticker = e.get("ticker", "")
+            # Always replace — later entries are more recent (log is chronological)
+            _seen[ticker] = e
+        deduped = sorted(_seen.values(), key=lambda e: e.get("ts", ""), reverse=True)
+
+        return jsonify({"log": deduped, "alerts": alerts[-50:]})
 
     @app.route("/forecast")
     def forecast_page():
