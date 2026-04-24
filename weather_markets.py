@@ -1016,38 +1016,36 @@ def _compute_ensemble_spread(temps: dict[str, float | None]) -> float:
     return statistics.stdev(values)
 
 
-# Historical forecast RMSE per city/season (Phase C Gaussian probability)
+# NWS Day-3 high/low temperature forecast RMSE (σ, °F) per city/season.
+# L8-C fix: (1) keyed by the city names enrich_with_forecast() stores in _city
+#           (previous keys were abbreviated codes — "LAX","CHI","DAL" — which
+#           never matched the full names "LA","Chicago","Dallas", so all cities
+#           except NYC silently fell through to _DEFAULT_SIGMA = 5.0°F).
+#           (2) values reduced from climatological std (5–8°F) to actual NWS
+#           forecast RMSE (~2–4°F); sigma_mult applied at call site to scale
+#           further for time-of-day horizon.
 # Season: 1=Winter(DJF), 2=Spring(MAM), 3=Summer(JJA), 4=Fall(SON)
-# D2: summer sigma tightened where climate is more stable; DEN added (mountain terrain).
 _HISTORICAL_SIGMA: dict[str, dict[int, float]] = {
-    "NYC": {1: 5.5, 2: 6.0, 3: 5.0, 4: 5.8},
-    "MIA": {
-        1: 3.5,
-        2: 4.0,
-        3: 2.5,
-        4: 3.5,
-    },  # D2: summer tighter — sea breeze dampens variability
-    "CHI": {
-        1: 7.0,
-        2: 6.5,
-        3: 4.5,
-        4: 6.5,
-    },  # D2: summer tighter — stable continental pattern
-    "LAX": {
-        1: 4.0,
-        2: 4.5,
-        3: 3.0,
-        4: 4.5,
-    },  # D2: summer tighter — marine layer stabilises temps
-    "DAL": {1: 5.0, 2: 5.5, 3: 4.5, 4: 5.5},
-    "DEN": {
-        1: 7.5,
-        2: 6.0,
-        3: 4.0,
-        4: 6.0,
-    },  # D2: added — volatile winter, predictable summer
+    "NYC": {1: 3.0, 2: 3.5, 3: 3.0, 4: 3.0},
+    "Chicago": {1: 4.0, 2: 3.5, 3: 3.0, 4: 4.0},  # continental, volatile winter
+    "LA": {1: 2.5, 2: 3.0, 3: 2.5, 4: 3.0},  # marine layer stabilises
+    "Miami": {1: 2.0, 2: 2.5, 3: 2.0, 4: 2.5},  # tropical, very stable
+    "Dallas": {1: 3.5, 2: 3.5, 3: 3.0, 4: 3.5},
+    "Denver": {1: 4.5, 2: 4.0, 3: 3.5, 4: 4.0},  # mountain terrain, volatile
+    "Boston": {1: 3.0, 2: 3.5, 3: 3.0, 4: 3.0},
+    "Phoenix": {1: 3.0, 2: 3.0, 3: 2.5, 4: 3.0},  # desert, low variability
+    "Seattle": {1: 2.5, 2: 3.0, 3: 2.5, 4: 2.5},  # marine, stable
+    "Atlanta": {1: 3.5, 2: 3.5, 3: 3.0, 4: 3.5},
+    "Austin": {1: 3.5, 2: 3.5, 3: 3.0, 4: 3.5},
+    "Houston": {1: 3.0, 2: 3.0, 3: 2.5, 4: 3.0},
+    "Minneapolis": {1: 4.5, 2: 4.0, 3: 3.0, 4: 4.0},  # extreme winter variability
+    "Washington": {1: 3.0, 2: 3.5, 3: 3.0, 4: 3.0},
+    "Philadelphia": {1: 3.0, 2: 3.5, 3: 3.0, 4: 3.0},
+    "SanFrancisco": {1: 2.5, 2: 3.0, 3: 2.5, 4: 2.5},  # marine, very stable
+    "SanAntonio": {1: 3.0, 2: 3.5, 3: 3.0, 4: 3.0},
+    "OklahomaCity": {1: 4.0, 2: 4.0, 3: 3.5, 4: 4.0},  # tornado alley, variable
 }
-_DEFAULT_SIGMA = 5.0
+_DEFAULT_SIGMA = 3.5
 
 
 def _month_to_season(month: int) -> int:
@@ -1058,9 +1056,13 @@ def _month_to_season(month: int) -> int:
 
 
 def get_historical_sigma(city: str, month: int) -> float:
-    """Return historical forecast RMSE (sigma) for a city in °F."""
+    """Return NWS Day-3 forecast RMSE (sigma, °F) for a city.
+
+    City must match the name stored in the _city field by enrich_with_forecast()
+    (e.g. "NYC", "Chicago", "LA", "Miami").  Unknown cities return _DEFAULT_SIGMA.
+    """
     season = _month_to_season(month)
-    return _HISTORICAL_SIGMA.get(city.upper(), {}).get(season, _DEFAULT_SIGMA)
+    return _HISTORICAL_SIGMA.get(city, {}).get(season, _DEFAULT_SIGMA)
 
 
 def gaussian_probability(
@@ -3419,7 +3421,10 @@ def analyze_trade(enriched: dict) -> dict | None:
 
         # ── Phase C: Gaussian probability + blend with raw ensemble fraction ─────
         target_month = target_date.month
-        sigma_gauss = get_historical_sigma(city, target_month)
+        # L8-C: apply sigma_mult (time-of-day horizon discount) so near-term
+        # markets get tighter Gaussian uncertainty — same discount applied to
+        # the ensemble sigma at line 3401.
+        sigma_gauss = get_historical_sigma(city, target_month) * sigma_mult
         cond_type = condition.get("type", "above")
         if cond_type in ("above", "below"):
             p_win_gaussian = gaussian_probability(
