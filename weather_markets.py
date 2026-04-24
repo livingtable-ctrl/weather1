@@ -66,6 +66,12 @@ MIN_SIGNAL_VOLUME: int = int(os.getenv("MIN_SIGNAL_VOLUME", "50"))
 # Override via MAX_MODEL_SPREAD_F env var.
 MAX_MODEL_SPREAD_F: float = float(os.getenv("MAX_MODEL_SPREAD_F", "8.0"))
 
+# MOS blend weight: fraction of the final blended probability assigned to MOS
+# when a MOS forecast is available.  The remaining (1 - weight) fraction stays
+# with the existing ensemble+NWS+climatology blend, preserving its internal
+# proportions.  Must be in [0.0, 0.5).  Override via MOS_BLEND_WEIGHT env var.
+_MOS_BLEND_WEIGHT: float = float(os.getenv("MOS_BLEND_WEIGHT", "0.20"))
+
 # Extreme-price gate: skip markets where yes_ask is below this floor or above
 # 1 - floor.  When the market prices an outcome at < 5¢ or > 95¢ it has near-
 # certainty that our blended model cannot beat.  Betting against extreme consensus
@@ -3679,9 +3685,18 @@ def analyze_trade(enriched: dict) -> dict | None:
                         condition, _mos_temp_val, _mos_sigma_val
                     )
                     if _mos_p_pre is not None:
-                        blended_prob = 0.5 * blended_prob + 0.5 * _mos_p_pre
+                        # Incorporate MOS as a weighted source while preserving
+                        # the normalisation of the existing blend.  The prior
+                        # blend (ensemble + NWS + clim + persistence) is scaled
+                        # down by (1 - w) so that sum(blend_sources) stays 1.0.
+                        _w = _MOS_BLEND_WEIGHT
+                        blended_prob = (1.0 - _w) * blended_prob + _w * _mos_p_pre
                         blended_prob = max(0.01, min(0.99, blended_prob))
-                        blend_sources["mos"] = 0.5  # record MOS contribution
+                        blend_sources = {
+                            k: round(v * (1.0 - _w), 4)
+                            for k, v in blend_sources.items()
+                        }
+                        blend_sources["mos"] = round(_w, 4)
                 except Exception as _mos_pre_exc:
                     _log.debug(
                         "MOS pre-bias blend failed for %s: %s", city, _mos_pre_exc
