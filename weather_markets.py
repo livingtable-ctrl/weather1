@@ -1655,17 +1655,34 @@ def censoring_correction(
 
 def parse_market_price(market: dict) -> dict:
     """Extract yes/no bid prices and implied probability from a market."""
+
     # API returns either yes_bid/yes_ask (legacy) or yes_bid_dollars/yes_ask_dollars (current)
-    yes_bid = market.get("yes_bid") or market.get("yes_bid_dollars") or 0
-    yes_ask = market.get("yes_ask") or market.get("yes_ask_dollars") or 0
-    no_bid = market.get("no_bid") or market.get("no_bid_dollars") or 0
+    # L2-D: use None-check coalesce so a valid 0-valued field (0¢ bid) is not
+    # bypassed by the falsy `or` operator.
+    def _coalesce(market: dict, *keys: str) -> object:
+        """Return first non-None value for any of keys, or 0."""
+        for k in keys:
+            v = market.get(k)
+            if v is not None:
+                return v
+        return 0
+
+    yes_bid = _coalesce(market, "yes_bid", "yes_bid_dollars")
+    yes_ask = _coalesce(market, "yes_ask", "yes_ask_dollars")
+    no_bid = _coalesce(market, "no_bid", "no_bid_dollars")
 
     # Prices may be cents (int) or dollar strings depending on API version
     def to_float(v) -> float:
         if isinstance(v, str):
-            return float(v)
-        if isinstance(v, int | float) and v > 1:
-            return v / 100.0  # legacy cents format
+            v_f = float(v)
+            # String prices > 1.0 are in the legacy cents-as-string format
+            return v_f / 100.0 if v_f > 1.0 else v_f
+        # L2-D: split int vs float so integer 1 (= 1¢) is correctly divided by
+        # 100.  The old `v > 1` test returned float(1) = 1.0 for a 1¢ market.
+        if isinstance(v, int) and v >= 1:
+            return v / 100.0  # integer cents format (e.g. 55 → 0.55)
+        if isinstance(v, float) and v > 1.0:
+            return v / 100.0  # float >1.0 also indicates cents (some API variants)
         return float(v)
 
     yes_bid_f = to_float(yes_bid)

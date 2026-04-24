@@ -103,6 +103,36 @@ class TestParseMarketPrice:
         result = parse_market_price(market)
         assert result["mid"] == pytest.approx(0.40)
 
+    # ── L2-D regression tests ─────────────────────────────────────────────────
+
+    def test_l2d_integer_1_converted_to_1_cent(self):
+        """L2-D: integer value 1 (= 1¢) must be divided by 100, not returned as 1.0.
+
+        The old `v > 1` check did not trigger for v == 1, so a 1¢ market
+        was parsed as $1.00 — an off-by-100× error on the rarest markets.
+        """
+        market = {"yes_bid": 1, "yes_ask": 2, "no_bid": 98}
+        result = parse_market_price(market)
+        assert result["yes_bid"] == pytest.approx(0.01), (
+            f"L2-D: yes_bid=1 (1¢) should parse to 0.01, got {result['yes_bid']}"
+        )
+        assert result["yes_ask"] == pytest.approx(0.02), (
+            f"L2-D: yes_ask=2 (2¢) should parse to 0.02, got {result['yes_ask']}"
+        )
+
+    def test_l2d_zero_bid_not_bypassed_by_or(self):
+        """L2-D: a valid 0¢ bid must not be bypassed by the or-fallback.
+
+        When yes_bid=0 and yes_bid_dollars is present, the old `or` operator
+        treated 0 as falsy and used yes_bid_dollars instead — corrupting the price.
+        """
+        # yes_bid=0 is a valid 0¢ bid; yes_bid_dollars should NOT be used
+        market = {"yes_bid": 0, "yes_bid_dollars": 0.55, "yes_ask": 50}
+        result = parse_market_price(market)
+        assert result["yes_bid"] == pytest.approx(0.0), (
+            f"L2-D: yes_bid=0 should parse to 0.0; or-bypass returned {result['yes_bid']}"
+        )
+
 
 class TestEntryEdgeVsMidEdge:
     """L7-C: entry_side_edge must use ask price, not mid, for each side."""
