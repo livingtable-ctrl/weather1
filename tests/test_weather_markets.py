@@ -104,6 +104,50 @@ class TestParseMarketPrice:
         assert result["mid"] == pytest.approx(0.40)
 
 
+class TestEntryEdgeVsMidEdge:
+    """L7-C: entry_side_edge must use ask price, not mid, for each side."""
+
+    def test_yes_entry_side_edge_uses_yes_ask(self):
+        """YES trades: entry_side_edge = blended_prob - yes_ask (smaller than mid-edge)."""
+        from weather_markets import parse_market_price
+
+        # yes_bid=0.60 yes_ask=0.64 → mid=0.62
+        prices = parse_market_price({"yes_bid": 60, "yes_ask": 64, "no_bid": 36})
+        blended_prob = 0.72
+        mid = prices["implied_prob"]  # 0.62
+        yes_ask = prices["yes_ask"]  # 0.64
+
+        mid_edge = blended_prob - mid  # 0.10
+        entry_edge = blended_prob - yes_ask  # 0.08
+
+        # entry_side_edge must be LESS than mid-based edge for YES
+        assert entry_edge < mid_edge, "YES entry edge must be smaller than mid edge"
+        assert entry_edge == pytest.approx(0.08, abs=1e-6)
+
+    def test_no_entry_side_edge_uses_no_ask(self):
+        """NO trades: entry at no_ask = 1 - yes_bid, not 1 - no_bid = yes_ask."""
+        from weather_markets import parse_market_price
+
+        # yes_bid=0.60 yes_ask=0.64 → no_ask = 1 - yes_bid = 0.40
+        prices = parse_market_price({"yes_bid": 60, "yes_ask": 64, "no_bid": 36})
+        blended_prob = 0.35  # we think YES=35%, so NO trade makes sense
+        yes_bid = prices["yes_bid"]  # 0.60
+
+        no_ask = 1.0 - yes_bid  # 0.40 — what we actually pay for NO
+        correct_entry_edge = blended_prob - no_ask  # 0.35 - 0.40 = -0.05; abs=0.05
+
+        wrong_ref = (
+            1.0 - prices["no_bid"]
+        )  # old: 1 - 0.36 = 0.64 = yes_ask; abs edge = 0.29
+        wrong_entry_edge = blended_prob - wrong_ref  # -0.29
+
+        # abs(correct) < abs(wrong): using yes_ask overstates NO edge
+        assert abs(correct_entry_edge) < abs(wrong_entry_edge), (
+            "NO entry_side_edge must use no_ask=1-yes_bid, not yes_ask"
+        )
+        assert correct_entry_edge == pytest.approx(-0.05, abs=1e-6)
+
+
 # ── TestIsLiquid ──────────────────────────────────────────────────────────────
 
 

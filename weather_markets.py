@@ -3890,14 +3890,19 @@ def analyze_trade(enriched: dict) -> dict | None:
 
     signal = _edge_label(edge)
 
-    # #61: entry-side edge uses actual ask/bid rather than mid-price
+    # #61 / L7-C: entry-side edge uses the actual fill price, not mid.
+    # YES entry is at yes_ask. NO entry is at no_ask = 1 - yes_bid.
+    # Using mid understates real spread cost: a 7% apparent edge may be only 4–5%
+    # real after a 3–6% spread. The gate (line ~1047 in main.py) uses entry_side_edge.
     if rec_side == "yes":
         entry_side_market_prob = (
             prices["yes_ask"] if prices["yes_ask"] > 0 else market_prob
         )
     else:
+        # no_ask = 1 - yes_bid (what we actually pay to acquire NO contracts)
+        # (note: no_bid returned by API = 1 - yes_ask, NOT the NO buy price)
         entry_side_market_prob = (
-            (1 - prices["no_bid"]) if prices["no_bid"] > 0 else market_prob
+            (1.0 - prices["yes_bid"]) if prices["yes_bid"] > 0 else market_prob
         )
     entry_side_edge = blended_prob - entry_side_market_prob
 

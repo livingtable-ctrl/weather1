@@ -1044,7 +1044,13 @@ def _analyze_once(
             )
             continue
         _arb_ticker_city[m.get("ticker", "")] = enriched.get("_city", "")
-        if not analysis or abs(analysis["edge"]) < min_edge:
+        # L7-C: gate on entry_side_edge (vs actual ask price) not mid-price edge.
+        # entry_side_edge = blended_prob - yes_ask (YES) or blended_prob - no_ask (NO).
+        # A 7% mid-edge may shrink to 4% at ask; gating on mid lets those trades through.
+        if not analysis:
+            continue
+        _gate_edge = analysis.get("entry_side_edge", analysis["edge"])
+        if abs(_gate_edge) < min_edge:
             continue
         # #64: tag analysis as a hedge if it reduces existing open exposure
         analysis["_is_hedge"] = detect_hedge_opportunity(analysis, _open_trades)
