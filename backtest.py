@@ -88,20 +88,30 @@ def fetch_archive_temps(
 
         exact = None
         nearby = []
+        nearby_excl = []  # L6-A: surrounding days EXCLUDING the target
         for t, v in zip(times, vals):
             if v is None:
                 continue
             if t == target_str:
                 exact = v
+            else:
+                nearby_excl.append(v)
             nearby.append(v)
 
         if exact is None:
             return []
 
-        sigma = statistics.stdev(nearby) if len(nearby) >= 4 else 3.0
+        # L6-A fix: centre the synthetic ensemble on a *forecast* (mean of
+        # surrounding days), NOT on the actual observed temperature.
+        # Centering on `exact` made the ensemble "know" the answer — giving
+        # an artificially good Brier score in backtest.
+        # The nearby-day average is a realistic proxy for a persistence-style
+        # model forecast (what you'd have predicted without seeing the outcome).
+        forecast_mean = statistics.mean(nearby_excl) if nearby_excl else exact
+        sigma = statistics.stdev(nearby_excl) if len(nearby_excl) >= 4 else 3.0
         # #22: seed from target_str hash for varied (but deterministic) ensembles
         random.seed(hash(target_str) & 0xFFFFFFFF)
-        result = [exact + random.gauss(0, sigma) for _ in range(50)]
+        result = [forecast_mean + random.gauss(0, sigma) for _ in range(50)]
         try:
             cache_file.write_text(json.dumps(result))
         except Exception:
