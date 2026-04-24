@@ -939,7 +939,13 @@ def check_exit_targets(client=None) -> int:
                         pos_quantity,
                         target,
                     )
-                settle_paper_trade(t["id"], outcome_yes=(t["side"] == "yes"))
+                # Exit at the actual market price, not full-settlement $1.00 payout.
+                # For YES trades: exit at current YES bid.
+                # For NO trades: exit_price is in NO-contract units = 1 - yes_bid.
+                _exit_price = (
+                    current_price if t["side"] == "yes" else 1.0 - current_price
+                )
+                close_paper_early(t["id"], round(_exit_price, 4))
                 exited += 1
         except Exception:
             continue
@@ -1867,9 +1873,14 @@ def auto_settle_paper_trades(client=None) -> int:
                             name="min_edge_variants",
                             variants={"low": 0.05, "medium": 0.07, "high": 0.09},
                         )
+                        # won must reflect whether *our side* won, not just whether
+                        # YES resolved — a NO-side trade wins when outcome=False.
+                        _trade_won = (t["side"] == "yes" and outcome) or (
+                            t["side"] == "no" and not outcome
+                        )
                         _ab.record_outcome(
                             _ab_var,
-                            won=bool(outcome),
+                            won=_trade_won,
                             edge_realized=float(t.get("net_edge") or 0),
                         )
                     except Exception:

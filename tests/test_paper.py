@@ -661,6 +661,55 @@ class TestAutoSettlePaperTrades(unittest.TestCase):
         result = tracker.get_outcome_for_ticker("NOTEXIST")
         self.assertIsNone(result)
 
+    def test_no_side_win_recorded_as_win(self):
+        """NO-side trade that wins (outcome=NO) must be settled as a win, not a loss."""
+        import paper
+
+        trade = paper.place_paper_order("TKNO", "no", 10, 0.40)
+        balance_before = paper.get_balance()
+        # Outcome is NO (outcome_yes=False) → NO-holder wins
+        paper.settle_paper_trade(trade["id"], outcome_yes=False)
+        result = [t for t in paper._load()["trades"] if t["id"] == trade["id"]][0]
+        self.assertTrue(result["settled"])
+        self.assertGreater(result["pnl"], 0, "NO-side win must have positive P&L")
+        self.assertGreater(paper.get_balance(), balance_before)
+
+    def test_no_side_loss_recorded_as_loss(self):
+        """NO-side trade that loses (outcome=YES) must have zero payout."""
+        import paper
+
+        trade = paper.place_paper_order("TKNOL", "no", 10, 0.40)
+        balance_before = paper.get_balance()
+        # Outcome is YES (outcome_yes=True) → NO-holder loses
+        paper.settle_paper_trade(trade["id"], outcome_yes=True)
+        result = [t for t in paper._load()["trades"] if t["id"] == trade["id"]][0]
+        self.assertTrue(result["settled"])
+        self.assertLess(result["pnl"], 0, "NO-side loss must have negative P&L")
+        # Cost was already deducted at order time; on a loss payout=0, balance unchanged
+        self.assertEqual(paper.get_balance(), balance_before)
+
+    def test_check_exit_targets_uses_exit_price_not_full_settlement(self):
+        """check_exit_targets must close at market price (close_paper_early), not $1 settlement."""
+        from unittest.mock import MagicMock
+
+        import paper
+
+        trade = paper.place_paper_order("TKEX", "yes", 10, 0.50, exit_target=0.80)
+        # Simulate: current YES bid = 0.85 (exceeds exit_target=0.80)
+        mock_client = MagicMock()
+        mock_client.get_market.return_value = {"yes_bid": 0.85}
+        paper.check_exit_targets(mock_client)
+        result = [t for t in paper._load()["trades"] if t["id"] == trade["id"]][0]
+        self.assertTrue(result["settled"])
+        # close_paper_early sets outcome='early_exit'; settle_paper_trade sets 'yes'/'no'
+        self.assertEqual(
+            result["outcome"],
+            "early_exit",
+            "Exit target close must use close_paper_early, not full settlement",
+        )
+        # P&L should reflect actual exit price: (0.85 - 0.50) * 10 = $3.50
+        self.assertAlmostEqual(result["pnl"], 3.50, places=2)
+
     def test_get_outcome_for_ticker_returns_correct_value(self):
         import tracker
 
