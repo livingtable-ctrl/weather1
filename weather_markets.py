@@ -2822,7 +2822,12 @@ def _analyze_precip_trade(
     prices = parse_market_price(enriched)
     market_prob = prices["implied_prob"]
     rec_side = "yes" if blended_prob > market_prob else "no"
-    entry_price = prices["yes_ask"] if rec_side == "yes" else prices["no_bid"]
+    # L8-A / L2-A: NO entry is at no_ask = 1 - yes_bid (not no_bid = 1 - yes_ask)
+    entry_price = (
+        prices["yes_ask"]
+        if rec_side == "yes"
+        else (1.0 - prices["yes_bid"] if prices["yes_bid"] > 0 else 0.0)
+    )
     if entry_price == 0:
         entry_price = 1 - market_prob if rec_side == "no" else market_prob
 
@@ -2831,6 +2836,13 @@ def _analyze_precip_trade(
     net_ev = p_win * payout * (1 - KALSHI_FEE_RATE) - (1 - p_win) * entry_price
     net_edge = net_ev / entry_price if entry_price > 0 else 0.0
     edge = blended_prob - market_prob
+    # L8-A / L7-C: entry_side_edge vs actual fill price (ask), not mid
+    _esmp = (
+        prices["yes_ask"]
+        if rec_side == "yes"
+        else (1.0 - prices["yes_bid"] if prices["yes_bid"] > 0 else market_prob)
+    )
+    entry_side_edge = blended_prob - _esmp
     kelly = kelly_fraction(p_win, entry_price)
     fee_kel = kelly_fraction(p_win, entry_price, fee_rate=KALSHI_FEE_RATE)
 
@@ -2903,6 +2915,7 @@ def _analyze_precip_trade(
         "target_date": target_date.isoformat()
         if hasattr(target_date, "isoformat")
         else str(target_date),
+        "entry_side_edge": round(entry_side_edge, 4),  # L8-A/L7-C: vs ask price
     }
 
 
@@ -2963,7 +2976,12 @@ def _analyze_snow_trade(
     prices = parse_market_price(enriched)
     market_prob = prices["implied_prob"]
     rec_side = "yes" if blended_prob > market_prob else "no"
-    entry_price = prices["yes_ask"] if rec_side == "yes" else prices["no_bid"]
+    # L8-A / L2-A: NO entry is at no_ask = 1 - yes_bid (not no_bid = 1 - yes_ask)
+    entry_price = (
+        prices["yes_ask"]
+        if rec_side == "yes"
+        else (1.0 - prices["yes_bid"] if prices["yes_bid"] > 0 else 0.0)
+    )
     if entry_price == 0:
         entry_price = 1 - market_prob if rec_side == "no" else market_prob
 
@@ -2972,6 +2990,13 @@ def _analyze_snow_trade(
     net_ev = p_win * payout * (1 - KALSHI_FEE_RATE) - (1 - p_win) * entry_price
     net_edge = net_ev / entry_price if entry_price > 0 else 0.0
     edge = blended_prob - market_prob
+    # L8-A / L7-C: entry_side_edge vs actual fill price (ask), not mid
+    _esmp = (
+        prices["yes_ask"]
+        if rec_side == "yes"
+        else (1.0 - prices["yes_bid"] if prices["yes_bid"] > 0 else market_prob)
+    )
+    entry_side_edge = blended_prob - _esmp
     kelly = kelly_fraction(p_win, entry_price)
     fee_kel = kelly_fraction(p_win, entry_price, fee_rate=KALSHI_FEE_RATE)
 
@@ -3031,6 +3056,7 @@ def _analyze_snow_trade(
         "target_date": target_date.isoformat()
         if hasattr(target_date, "isoformat")
         else str(target_date),
+        "entry_side_edge": round(entry_side_edge, 4),  # L8-A/L7-C: vs ask price
     }
 
 
