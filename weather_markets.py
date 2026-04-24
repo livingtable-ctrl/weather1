@@ -1848,7 +1848,15 @@ def enrich_with_forecast(market: dict) -> dict:
         city = "NYC"
     elif "CHI" in ticker_up or "chicago" in title:
         city = "Chicago"
-    elif "LA" in ticker_up or "los angeles" in title:
+    elif (
+        # L5-B: "LA" is a substring of DALLAS, PHILADELPHIA, ATLANTA — use
+        # specific series-prefix patterns or an exact hyphen-delimited segment
+        # instead of bare substring match.
+        "HIGHLA" in ticker_up
+        or "LOWLA" in ticker_up
+        or any(seg == "LA" for seg in ticker_up.split("-"))
+        or "los angeles" in title
+    ):
         city = "LA"
     elif "BOS" in ticker_up or "boston" in title:
         city = "Boston"

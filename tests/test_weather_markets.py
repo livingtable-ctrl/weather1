@@ -1032,3 +1032,54 @@ class TestCheckEnsembleCircuitHealth:
             wm.check_ensemble_circuit_health()
         assert "24" in caplog.text or "hours" in caplog.text
         wm._ensemble_cb.record_success()
+
+
+class TestCityDetection:
+    """L5-B: bare 'LA' in ticker_up substring must not misfire on city names
+    that contain 'LA' (DALLAS, ATLANTA, PHILADELPHIA)."""
+
+    def _city(self, ticker: str, title: str = "") -> str | None:
+        """Call enrich_with_forecast with a mocked forecast and return _city."""
+        from unittest.mock import patch
+
+        import weather_markets as wm
+
+        market = {"ticker": ticker, "title": title}
+        with patch.object(wm, "get_weather_forecast", return_value=None):
+            result = wm.enrich_with_forecast(market)
+        return result.get("_city")
+
+    # ── LA must still be detected ────────────────────────────────────────────
+
+    def test_la_high_temp_series_detected(self):
+        """KXHIGHLA temperature series → city == 'LA'."""
+        assert self._city("KXHIGHLA-26APR25-T75-B") == "LA"
+
+    def test_la_low_temp_series_detected(self):
+        """KXLOWLA temperature series → city == 'LA'."""
+        assert self._city("KXLOWLA-26APR25-T55-B") == "LA"
+
+    def test_la_as_hyphen_segment_detected(self):
+        """Rain market with '-LA-' segment (KXRAIN-LA-...) → city == 'LA'."""
+        assert self._city("KXRAIN-LA-26APR25-2IN") == "LA"
+
+    def test_la_title_detected(self):
+        """'los angeles' in title → city == 'LA' even with generic ticker."""
+        assert self._city("KXRAIN-26APR25-2IN", "los angeles rain > 2 inches") == "LA"
+
+    # ── Substring-false-positive cities must NOT be misdetected as LA ────────
+
+    def test_dallas_full_name_in_ticker_not_la(self):
+        """KXRAIN-DALLAS ticker: 'DALLAS' contains 'LA' — must be Dallas, not LA."""
+        city = self._city("KXRAIN-DALLAS-26APR25-2IN", "dallas rain")
+        assert city == "Dallas", f"Expected 'Dallas', got {city!r}"
+
+    def test_atlanta_full_name_in_ticker_not_la(self):
+        """KXRAIN-ATLANTA ticker: 'ATLANTA' contains 'LA' — must be Atlanta, not LA."""
+        city = self._city("KXRAIN-ATLANTA-26APR25-2IN", "atlanta rain")
+        assert city == "Atlanta", f"Expected 'Atlanta', got {city!r}"
+
+    def test_philadelphia_full_name_in_ticker_not_la(self):
+        """KXRAIN-PHILADELPHIA ticker: 'PHILA' contains 'LA' — must be Philadelphia."""
+        city = self._city("KXRAIN-PHILADELPHIA-26APR25-2IN", "philadelphia rain")
+        assert city == "Philadelphia", f"Expected 'Philadelphia', got {city!r}"
