@@ -3028,6 +3028,127 @@ def _analyze_snow_trade(
     }
 
 
+def _metar_lock_in(
+    city: str,
+    target_date: date,
+    condition: dict,
+    ticker: str = "?",
+) -> tuple[bool, float, dict]:
+    """
+    Check METAR same-day lock-in for a temperature market.
+
+    Fetches the latest METAR observation for the city's station and determines
+    whether the current observed temperature is conclusive enough to skip the
+    slow ensemble probability pipeline.  Only fires for today's markets after
+    14:00 local time.
+
+    Returns:
+        (locked, blended_prob, lockout_details)
+
+        locked        – True when the observation is conclusive.
+        blended_prob  – Ready-to-use probability in [0.01, 0.99].
+                        Meaningful only when locked=True.
+        lockout_details – Raw dict from check_metar_lockout / bucket logic.
+                          Empty dict when not applicable or on error.
+    """
+    try:
+        import metar as _metar
+
+        _metar_sta = _metar_station_for_city(city)
+        if not (_metar_sta and target_date == date.today()):
+            return False, 0.0, {}
+
+        _metar_obs = _metar.fetch_metar(_metar_sta)
+        if not _metar_obs:
+            return False, 0.0, {}
+
+        _cond_type = condition.get("type")
+
+        if _cond_type in ("above", "below") and condition.get("threshold"):
+            _lockout = _metar.check_metar_lockout(
+                current_temp_f=_metar_obs["current_temp_f"],
+                threshold_f=float(condition["threshold"]),
+                direction=_cond_type,
+                obs_time=_metar_obs["obs_time"],
+                city_tz=_CITY_TZ.get(city, "America/New_York"),
+            )
+
+        elif _cond_type == "between":
+            # Extend METAR lock-in to "between" bucket markets.
+            # If temp is inside [lower, upper] after 2 PM → lock YES.
+            # If temp is >3°F outside the nearest bucket edge → lock NO.
+            _lo = float(condition.get("lower", 0))
+            _hi = float(condition.get("upper", 0))
+            _ct = _metar_obs["current_temp_f"]
+            try:
+                import zoneinfo as _zi
+
+                _lh = (
+                    _metar_obs["obs_time"]
+                    .astimezone(_zi.ZoneInfo(_CITY_TZ.get(city, "America/New_York")))
+                    .hour
+                )
+            except Exception:
+                _lh = 0
+
+            if _lh >= 14:
+                if _lo <= _ct <= _hi:
+                    _lockout = {
+                        "locked": True,
+                        "outcome": "yes",
+                        "confidence": 0.95,
+                        "reason": f"METAR {_ct:.1f}°F inside bucket [{_lo},{_hi}]",
+                    }
+                elif _ct < _lo - 3.0 or _ct > _hi + 3.0:
+                    _lockout = {
+                        "locked": True,
+                        "outcome": "no",
+                        "confidence": 0.92,
+                        "reason": f"METAR {_ct:.1f}°F outside bucket [{_lo},{_hi}] by >3°F",
+                    }
+                else:
+                    _lockout = {
+                        "locked": False,
+                        "outcome": None,
+                        "confidence": 0.0,
+                        "reason": "near bucket edge — uncertain",
+                    }
+            else:
+                _lockout = {
+                    "locked": False,
+                    "outcome": None,
+                    "confidence": 0.0,
+                    "reason": f"too early ({_lh}h < 14h local)",
+                }
+
+        else:
+            _lockout = {"locked": False}
+
+        # Always surface the observed temp so callers don't need the raw obs object.
+        _lockout.setdefault("current_temp_f", _metar_obs["current_temp_f"])
+
+        if _lockout.get("locked"):
+            _metar_p = (
+                _lockout["confidence"]
+                if _lockout["outcome"] == "yes"
+                else (1.0 - _lockout["confidence"])
+            )
+            _log.info(
+                "METAR lock-in %s: %s (conf=%.0f%%) — %s",
+                ticker,
+                _lockout["outcome"],
+                _lockout["confidence"] * 100,
+                _lockout["reason"],
+            )
+            return True, max(0.01, min(0.99, _metar_p)), _lockout
+
+        return False, 0.0, _lockout
+
+    except Exception as _metar_exc:
+        _log.debug("METAR lock-in check failed for %s: %s", ticker, _metar_exc)
+        return False, 0.0, {}
+
+
 def analyze_trade(enriched: dict) -> dict | None:
     """
     Full multi-source trade analysis pipeline:
@@ -3168,99 +3289,11 @@ def analyze_trade(enriched: dict) -> dict | None:
 
     # ── METAR same-day lock-in check ─────────────────────────────────────────
     # After 2 PM local time, if METAR confirms the outcome, skip slow ensemble.
-    metar_locked = False
-    metar_lockout: dict = {}
-    _metar_obs = None
-    try:
-        import metar as _metar
-
-        _metar_sta = _metar_station_for_city(city)
-        if _metar_sta and target_date == date.today():
-            _metar_obs = _metar.fetch_metar(_metar_sta)
-            if _metar_obs:
-                _cond_type = condition.get("type")
-                if _cond_type in ("above", "below") and condition.get("threshold"):
-                    _metar_lockout = _metar.check_metar_lockout(
-                        current_temp_f=_metar_obs["current_temp_f"],
-                        threshold_f=float(condition["threshold"]),
-                        direction=_cond_type,
-                        obs_time=_metar_obs["obs_time"],
-                        city_tz=_CITY_TZ.get(city, "America/New_York"),
-                    )
-                elif _cond_type == "between":
-                    # Bug fix: extend METAR lock-in to "between" bucket markets.
-                    # If temp is inside [lower, upper] after 2 PM → lock YES.
-                    # If temp is >3°F outside the nearest bucket edge → lock NO.
-                    _lo = float(condition.get("lower", 0))
-                    _hi = float(condition.get("upper", 0))
-                    _ct = _metar_obs["current_temp_f"]
-                    try:
-                        import zoneinfo as _zi
-
-                        _lh = (
-                            _metar_obs["obs_time"]
-                            .astimezone(
-                                _zi.ZoneInfo(_CITY_TZ.get(city, "America/New_York"))
-                            )
-                            .hour
-                        )
-                    except Exception:
-                        _lh = 0
-                    if _lh >= 14:
-                        if _lo <= _ct <= _hi:
-                            _metar_lockout = {
-                                "locked": True,
-                                "outcome": "yes",
-                                "confidence": 0.95,
-                                "reason": f"METAR {_ct:.1f}°F inside bucket [{_lo},{_hi}]",
-                            }
-                        elif _ct < _lo - 3.0 or _ct > _hi + 3.0:
-                            _metar_lockout = {
-                                "locked": True,
-                                "outcome": "no",
-                                "confidence": 0.92,
-                                "reason": f"METAR {_ct:.1f}°F outside bucket [{_lo},{_hi}] by >3°F",
-                            }
-                        else:
-                            _metar_lockout = {
-                                "locked": False,
-                                "outcome": None,
-                                "confidence": 0.0,
-                                "reason": "near bucket edge — uncertain",
-                            }
-                    else:
-                        _metar_lockout = {
-                            "locked": False,
-                            "outcome": None,
-                            "confidence": 0.0,
-                            "reason": f"too early ({_lh}h < 14h local)",
-                        }
-                else:
-                    _metar_lockout = {"locked": False}
-                if _metar_lockout.get("locked"):
-                    metar_locked = True
-                    metar_lockout = _metar_lockout
-                    _metar_p = (
-                        _metar_lockout["confidence"]
-                        if _metar_lockout["outcome"] == "yes"
-                        else (1.0 - _metar_lockout["confidence"])
-                    )
-                    _log.info(
-                        "METAR lock-in %s: %s (conf=%.0f%%) — %s",
-                        enriched.get("ticker", "?"),
-                        _metar_lockout["outcome"],
-                        _metar_lockout["confidence"] * 100,
-                        _metar_lockout["reason"],
-                    )
-                    blended_prob = max(0.01, min(0.99, _metar_p))
-    except Exception as _metar_exc:
-        _log.debug(
-            "METAR lock-in check failed for %s: %s",
-            enriched.get("ticker", "?"),
-            _metar_exc,
-        )
-        metar_locked = False
-        metar_lockout = {}
+    metar_locked, _metar_blended_prob, metar_lockout = _metar_lock_in(
+        city, target_date, condition, ticker=enriched.get("ticker", "?")
+    )
+    if metar_locked:
+        blended_prob = _metar_blended_prob
 
     if not metar_locked:
         series = (enriched.get("series_ticker") or enriched.get("ticker", "")).upper()
@@ -3710,9 +3743,7 @@ def analyze_trade(enriched: dict) -> dict | None:
         condition["var"] = var
         days_out = max(0, (target_date - date.today()).days)
         _fallback_temp = forecast["low_f"] if var == "min" else forecast["high_f"]
-        forecast_temp = (
-            _metar_obs["current_temp_f"] if _metar_obs else (_fallback_temp or 0.0)
-        )
+        forecast_temp = metar_lockout.get("current_temp_f") or (_fallback_temp or 0.0)
         forecast_temp_raw = forecast_temp
         temps = []
         ens_prob = None
