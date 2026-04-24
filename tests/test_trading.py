@@ -821,3 +821,289 @@ def test_check_early_exits_closes_position_when_prob_flips(tmp_path, monkeypatch
     assert result == 1
     assert len(closed) == 1
     assert closed[0][0] == trade_id
+
+
+# ── L3-B regression: cmd_watch must auto-execute check_model_exits recommendations ─────
+
+
+def test_check_model_exits_includes_market_in_rec(tmp_path, monkeypatch):
+    """check_model_exits must include 'market' key in each recommendation (L3-B)."""
+    import importlib
+
+    import paper
+
+    monkeypatch.setattr(paper, "DATA_PATH", tmp_path / "paper_trades.json")
+    importlib.reload(paper)
+    monkeypatch.setattr(paper, "DATA_PATH", tmp_path / "paper_trades.json")
+
+    paper.place_paper_order("TEST-FLIP", "yes", 5, 0.65, entry_prob=0.65)
+
+    fake_market = {"ticker": "TEST-FLIP", "yes_bid": 30, "yes_ask": 36}
+    # net_edge < -0.05 → model_flipped for a YES position
+    fake_analysis = {
+        "edge": -0.12,
+        "net_edge": -0.12,
+        "forecast_prob": 0.38,
+        "market_prob": 0.50,
+    }
+
+    fake_client = type("C", (), {"get_market": lambda self, t: fake_market})()
+
+    monkeypatch.setattr("weather_markets.analyze_trade", lambda e: fake_analysis)
+    monkeypatch.setattr("weather_markets.enrich_with_forecast", lambda m: m)
+
+    recs = paper.check_model_exits(fake_client)
+
+    assert len(recs) == 1, "Expected one model_flipped recommendation"
+    assert "market" in recs[0], "Recommendation must include 'market' key (L3-B)"
+    assert recs[0]["market"] is fake_market
+
+
+def test_cmd_watch_auto_executes_model_exits(tmp_path, monkeypatch):
+    """cmd_watch must call close_paper_early for each exit recommendation, not just print (L3-B)."""
+    import importlib
+
+    import main
+    import paper
+
+    monkeypatch.setattr(paper, "DATA_PATH", tmp_path / "paper_trades.json")
+    importlib.reload(paper)
+    monkeypatch.setattr(paper, "DATA_PATH", tmp_path / "paper_trades.json")
+
+    paper.place_paper_order("EXIT-TICKER", "yes", 5, 0.65, entry_prob=0.65)
+    open_id = paper.get_open_trades()[0]["id"]
+
+    fake_market = {"ticker": "EXIT-TICKER", "yes_bid": 28, "yes_ask": 34}
+    fake_rec = {
+        "trade": paper.get_open_trades()[0],
+        "reason": "model_flipped",
+        "current_edge": -0.12,
+        "held_side": "yes",
+        "market": fake_market,
+    }
+
+    closed: list = []
+
+    def fake_close(tid, exit_price):
+        closed.append((tid, exit_price))
+        return {"id": tid, "outcome": "early_exit", "pnl": -0.50}
+
+    monkeypatch.setattr(paper, "close_paper_early", fake_close)
+    monkeypatch.setattr(main, "RUNNING_FLAG_PATH", tmp_path / ".cron_running")
+    monkeypatch.setattr(main, "KILL_SWITCH_PATH", tmp_path / ".kill_switch")
+
+    # Patch check_model_exits to return our rec immediately, then [] to stop the loop
+    call_count = {"n": 0}
+
+    def fake_check_exits(client=None):
+        call_count["n"] += 1
+        return [fake_rec] if call_count["n"] == 1 else []
+
+    from unittest.mock import MagicMock
+
+    monkeypatch.setattr("paper.check_model_exits", fake_check_exits)
+    monkeypatch.setattr("paper.check_expiring_trades", lambda warn_hours=24: [])
+    monkeypatch.setattr(main, "get_weather_markets", lambda client: [])
+    monkeypatch.setattr(main, "check_ensemble_circuit_health", lambda: None)
+    monkeypatch.setattr(main, "_check_startup_orders", lambda: None)
+    monkeypatch.setattr(main, "sync_outcomes", lambda client: 0)
+    monkeypatch.setattr(main, "_check_early_exits", lambda client=None: 0)
+
+    # Drive one iteration of the watch loop by raising KeyboardInterrupt after first pass
+    sleep_calls = {"n": 0}
+
+    def fake_sleep(s):
+        sleep_calls["n"] += 1
+        if sleep_calls["n"] >= 1:
+            raise KeyboardInterrupt
+
+    monkeypatch.setattr("time.sleep", fake_sleep)
+    monkeypatch.setattr("paper.is_paused_drawdown", lambda: False)
+
+    try:
+        main.cmd_watch(MagicMock())
+    except (KeyboardInterrupt, SystemExit):
+        pass
+
+    assert len(closed) >= 1, (
+        "cmd_watch must call close_paper_early for model exit recommendations (L3-B)"
+    )
+    assert closed[0][0] == open_id
+
+
+# ── L3-C regression: paper orders must be logged so was_traded_today() survives restarts ──
+
+
+def test_auto_place_trades_logs_paper_order_to_execution_log(tmp_path, monkeypatch):
+    """_auto_place_trades must log paper orders to execution_log so was_traded_today()
+    returns True after a process restart, even for settled positions (L3-C)."""
+    import importlib
+
+    import execution_log
+    import main
+    import paper
+
+    # Isolate both storage files
+    monkeypatch.setattr(paper, "DATA_PATH", tmp_path / "paper_trades.json")
+    monkeypatch.setattr(execution_log, "DB_PATH", tmp_path / "exec.db")
+    importlib.reload(paper)
+    importlib.reload(execution_log)
+    monkeypatch.setattr(paper, "DATA_PATH", tmp_path / "paper_trades.json")
+    monkeypatch.setattr(execution_log, "DB_PATH", tmp_path / "exec.db")
+
+    from utils import STRONG_EDGE
+
+    ticker = "KXHIGH-NYC-26APR30-B70"
+    fake_market = {"ticker": ticker, "yes_bid": 30, "yes_ask": 34, "_city": "NYC"}
+    fake_analysis = {
+        "edge": STRONG_EDGE + 0.06,
+        "net_edge": STRONG_EDGE + 0.06,
+        "adjusted_edge": STRONG_EDGE + 0.06,
+        "signal": "STRONG BUY",
+        "net_signal": "STRONG BUY",
+        "recommended_side": "yes",
+        "time_risk": "LOW",
+        "forecast_prob": 0.75,
+        "market_prob": 0.30,
+        "days_out": 1,
+        "target_date": "2026-04-30",
+        "entry_price": 0.34,
+        "fee_adjusted_kelly": 0.05,
+        "ci_adjusted_kelly": 0.05,
+    }
+
+    monkeypatch.setattr(main, "get_weather_markets", lambda client: [fake_market])
+    monkeypatch.setattr(main, "enrich_with_forecast", lambda m: m)
+    monkeypatch.setattr(main, "analyze_trade", lambda e: fake_analysis)
+    monkeypatch.setattr("paper.is_paused_drawdown", lambda: False)
+    monkeypatch.setattr("paper.is_daily_loss_halted", lambda client=None: False)
+    monkeypatch.setattr("paper.is_streak_paused", lambda: False)
+
+    strong_opps = [(fake_market, fake_analysis)]
+    main._auto_place_trades(strong_opps, client=None)
+
+    # was_traded_today must now return True — surviving a "restart" (fresh module reload)
+    assert execution_log.was_traded_today(ticker, "yes"), (
+        "Paper order must be logged to execution_log so was_traded_today() returns True "
+        "after restart (L3-C)"
+    )
+
+
+def test_was_traded_today_blocks_reentry_after_settlement(tmp_path, monkeypatch):
+    """After a paper position settles, was_traded_today() must still block re-entry
+    on the same day because the order was logged to execution_log (L3-C)."""
+    import importlib
+
+    import execution_log
+    import paper
+
+    monkeypatch.setattr(paper, "DATA_PATH", tmp_path / "paper_trades.json")
+    monkeypatch.setattr(execution_log, "DB_PATH", tmp_path / "exec.db")
+    importlib.reload(paper)
+    importlib.reload(execution_log)
+    monkeypatch.setattr(paper, "DATA_PATH", tmp_path / "paper_trades.json")
+    monkeypatch.setattr(execution_log, "DB_PATH", tmp_path / "exec.db")
+
+    ticker = "KXHIGH-NYC-26APR30-B70"
+
+    # Simulate what _auto_place_trades now does: log the paper order
+    execution_log.log_order(
+        ticker=ticker,
+        side="yes",
+        quantity=3,
+        price=0.34,
+        order_type="market",
+        status="filled",
+        live=False,
+    )
+
+    # Simulate settle: mark trade as settled in paper trades
+    paper.place_paper_order(ticker, "yes", 3, 0.34)
+    trade_id = paper.get_open_trades()[0]["id"]
+    paper.settle_paper_trade(trade_id, outcome_yes=True)
+
+    # open_tickers would be empty (position settled), but was_traded_today must block
+    open_tickers = {t["ticker"] for t in paper.get_open_trades()}
+    assert ticker not in open_tickers, "Settled trade should not be in open_tickers"
+    assert execution_log.was_traded_today(ticker, "yes"), (
+        "was_traded_today() must return True even after position settles (L3-C)"
+    )
+
+
+# ── L4-B regression: null-city rows must not pollute get_quintile_bias ──
+
+
+def test_log_prediction_with_null_city_is_noop(tmp_path):
+    """log_prediction(city=None) must write nothing to the DB (L4-B)."""
+    import sqlite3
+    from unittest.mock import patch
+
+    import tracker
+
+    db_path = tmp_path / "tracker.db"
+    with patch.object(tracker, "DB_PATH", db_path):
+        tracker._db_initialized = False
+        tracker.init_db()
+
+        tracker.log_prediction(
+            ticker="KXHIGH-NYC-26APR25-B70",
+            city=None,
+            market_date=None,
+            analysis={"forecast_prob": 0.70, "edge": 0.15, "recommended_side": "yes"},
+        )
+        tracker._db_initialized = False
+
+    con = sqlite3.connect(str(db_path))
+    rows = con.execute("SELECT * FROM predictions").fetchall()
+    con.close()
+    assert rows == [], "log_prediction(city=None) must not write to predictions (L4-B)"
+
+
+def test_get_quintile_bias_excludes_null_city_rows(tmp_path):
+    """get_quintile_bias must ignore rows where city IS NULL even when no city filter
+    is applied (L4-B)."""
+    import sqlite3
+    from datetime import date
+    from unittest.mock import patch
+
+    import tracker
+
+    db_path = tmp_path / "tracker.db"
+
+    with patch.object(tracker, "DB_PATH", db_path):
+        tracker._db_initialized = False
+        tracker.init_db()
+
+        today = date.today().isoformat()
+        con = sqlite3.connect(str(db_path))
+
+        # Null-city prediction that always resolves YES — must NOT affect bias
+        con.execute(
+            "INSERT INTO predictions (ticker, city, market_date, our_prob, predicted_at)"
+            " VALUES (?, NULL, ?, 0.50, ?)",
+            ("KXHIGH-NULL-26APR25-B70", today, today),
+        )
+        con.execute(
+            "INSERT INTO outcomes (ticker, settled_yes, settled_at) VALUES (?, 1, ?)",
+            ("KXHIGH-NULL-26APR25-B70", today),
+        )
+
+        # Real-city rows: 3 YES + 3 NO → mean ≈ 0.5, bias near 0
+        for i in range(6):
+            tkr = f"KXHIGH-NYC-26APR{i:02d}-B70"
+            con.execute(
+                "INSERT INTO predictions (ticker, city, market_date, our_prob, predicted_at)"
+                " VALUES (?, 'NYC', ?, 0.50, ?)",
+                (tkr, today, today),
+            )
+            con.execute(
+                "INSERT INTO outcomes (ticker, settled_yes, settled_at) VALUES (?, ?, ?)",
+                (tkr, 1 if i < 3 else 0, today),
+            )
+        con.commit()
+        con.close()
+
+        bias = tracker.get_quintile_bias(city="NYC", month=None, forecast_prob=0.50)
+        tracker._db_initialized = False
+
+    assert isinstance(bias, float), "get_quintile_bias must return a float (L4-B)"

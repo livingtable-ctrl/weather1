@@ -415,6 +415,10 @@ def log_prediction(
     """
     import json as _json
 
+    # L4-B: null city pollutes cross-city bias queries — skip logging entirely
+    if city is None:
+        return
+
     init_db()
     cond = analysis.get("condition", {})
     lo = cond.get("threshold", cond.get("lower"))
@@ -609,6 +613,7 @@ def get_quintile_bias(
             FROM predictions p
             JOIN outcomes o ON p.ticker = o.ticker
             WHERE p.our_prob IS NOT NULL
+              AND p.city IS NOT NULL
               AND p.our_prob >= ? AND p.our_prob < ?
         """
         params: list = [q_lo, q_hi]
