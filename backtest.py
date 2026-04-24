@@ -333,8 +333,11 @@ def run_backtest(
         if entry_price <= 0:
             entry_price = market_prob if rec_side == "yes" else 1 - market_prob
 
+        # L2-B: always pass fee_rate so backtest Kelly matches live sizing
         kelly = kelly_fraction(
-            our_prob if rec_side == "yes" else 1 - our_prob, entry_price
+            our_prob if rec_side == "yes" else 1 - our_prob,
+            entry_price,
+            fee_rate=KALSHI_FEE_RATE,
         )
         stake = min(kelly, 0.05)  # cap at 5% per trade for backtest
         won = (rec_side == "yes" and actual == 1) or (rec_side == "no" and actual == 0)

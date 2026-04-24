@@ -342,6 +342,85 @@ def test_snow_prob_uses_slr_not_1_to_10():
 # ── TestKellyCap ──────────────────────────────────────────────────────────────
 
 
+class TestKellyFeeRate:
+    """L2-B: kelly_fraction must always be called with fee_rate=KALSHI_FEE_RATE.
+
+    Fee-free Kelly (fee_rate=0.0) overstates position size because it ignores
+    the 7% Kalshi fee on winnings. This inflates sizing by ~5–10% for typical
+    edges, leading to systematic over-betting and negative expected P&L.
+    """
+
+    def test_fee_adjusted_kelly_less_than_fee_free(self):
+        """Fee-adjusted Kelly must be strictly less than fee-free Kelly for any positive edge.
+
+        L2-B invariant: KALSHI_FEE_RATE=0.07 reduces net winnings, so the optimal
+        bet fraction under the fee is lower than without it.
+        """
+        from utils import KALSHI_FEE_RATE
+
+        our_prob = 0.65
+        price = 0.50  # fair odds
+
+        kelly_no_fee = kelly_fraction(our_prob, price, fee_rate=0.0)
+        kelly_with_fee = kelly_fraction(our_prob, price, fee_rate=KALSHI_FEE_RATE)
+
+        assert kelly_no_fee > 0, "Positive edge must produce positive Kelly"
+        assert kelly_with_fee < kelly_no_fee, (
+            f"Fee-adjusted Kelly {kelly_with_fee:.4f} must be < fee-free Kelly "
+            f"{kelly_no_fee:.4f} — fee reduces optimal bet size"
+        )
+
+    def test_kelly_default_is_not_zero_fee(self):
+        """Calling kelly_fraction with explicit fee_rate=KALSHI_FEE_RATE must differ from fee_rate=0.
+
+        This test documents that the default fee_rate=0.0 in kelly_fraction() is a
+        historical artefact — all production call sites must pass KALSHI_FEE_RATE explicitly.
+        """
+        from utils import KALSHI_FEE_RATE
+
+        our_prob = 0.60
+        price = 0.45
+
+        default_kelly = kelly_fraction(our_prob, price)  # uses fee_rate=0.0 default
+        fee_kelly = kelly_fraction(our_prob, price, fee_rate=KALSHI_FEE_RATE)
+
+        assert default_kelly != pytest.approx(fee_kelly), (
+            "fee_rate=0.0 and fee_rate=KALSHI_FEE_RATE must produce different Kelly values"
+        )
+        assert default_kelly > fee_kelly, (
+            "Fee-free Kelly must exceed fee-adjusted Kelly for any profitable trade"
+        )
+
+    def test_fee_adjusted_never_exceeds_fee_free_across_probs(self):
+        """L2-B: for all valid (prob, price) pairs, fee-adjusted Kelly ≤ fee-free Kelly.
+
+        This is the core invariant — any call site that omits fee_rate=KALSHI_FEE_RATE
+        systematically overstates position size. We verify over a grid of realistic inputs.
+        """
+        from utils import KALSHI_FEE_RATE
+
+        # Grid of realistic (our_prob, market_price) combos where there is positive edge
+        cases = [
+            (0.60, 0.45),  # 15pp edge
+            (0.65, 0.50),  # 15pp edge at mid
+            (0.55, 0.40),  # 15pp edge
+            (0.70, 0.55),  # 15pp edge
+            (0.80, 0.65),  # 15pp edge, high confidence
+        ]
+        for our_prob, price in cases:
+            free_k = kelly_fraction(our_prob, price, fee_rate=0.0)
+            fee_k = kelly_fraction(our_prob, price, fee_rate=KALSHI_FEE_RATE)
+            assert fee_k <= free_k + 1e-9, (
+                f"prob={our_prob}, price={price}: "
+                f"fee-adjusted Kelly {fee_k:.6f} must not exceed fee-free Kelly {free_k:.6f}"
+            )
+            if free_k > 0:
+                assert fee_k < free_k, (
+                    f"prob={our_prob}, price={price}: "
+                    f"fee-adjusted Kelly must be strictly less than fee-free Kelly when edge exists"
+                )
+
+
 class TestKellyCap:
     """Verify kelly_fraction hard cap is 33% (raised from 25%)."""
 

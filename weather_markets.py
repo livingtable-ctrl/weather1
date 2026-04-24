@@ -2853,7 +2853,8 @@ def _analyze_precip_trade(
         else (1.0 - prices["yes_bid"] if prices["yes_bid"] > 0 else market_prob)
     )
     entry_side_edge = blended_prob - _esmp
-    kelly = kelly_fraction(p_win, entry_price)
+    # L2-B: always pass fee_rate so kelly is fee-adjusted; fee-free Kelly overstates size
+    kelly = kelly_fraction(p_win, entry_price, fee_rate=KALSHI_FEE_RATE)
     fee_kel = kelly_fraction(p_win, entry_price, fee_rate=KALSHI_FEE_RATE)
 
     # ── Bootstrap CI on precip ensemble ──────────────────────────────────────
@@ -3007,7 +3008,8 @@ def _analyze_snow_trade(
         else (1.0 - prices["yes_bid"] if prices["yes_bid"] > 0 else market_prob)
     )
     entry_side_edge = blended_prob - _esmp
-    kelly = kelly_fraction(p_win, entry_price)
+    # L2-B: always pass fee_rate so kelly is fee-adjusted; fee-free Kelly overstates size
+    kelly = kelly_fraction(p_win, entry_price, fee_rate=KALSHI_FEE_RATE)
     fee_kel = kelly_fraction(p_win, entry_price, fee_rate=KALSHI_FEE_RATE)
 
     ci_low, ci_high = blended_prob, blended_prob
@@ -3886,8 +3888,11 @@ def analyze_trade(enriched: dict) -> dict | None:
     )
     if entry_price == 0:
         entry_price = 1 - market_prob if rec_side == "no" else market_prob
+    # L2-B: always pass fee_rate so kelly is fee-adjusted; fee-free Kelly overstates size
     kelly = kelly_fraction(
-        blended_prob if rec_side == "yes" else 1 - blended_prob, entry_price
+        blended_prob if rec_side == "yes" else 1 - blended_prob,
+        entry_price,
+        fee_rate=KALSHI_FEE_RATE,
     )
 
     # ── 10a. Bid-ask spread cost ─────────────────────────────────────────────
