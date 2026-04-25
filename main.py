@@ -6022,7 +6022,7 @@ def cmd_simulate(client: KalshiClient) -> None:
     print(dim("  Loading last 20 finalized weather markets...\n"))
 
     try:
-        markets = client.get_markets(status="finalized", limit=50)
+        markets = client.get_markets(status="settled", limit=50)
     except Exception as e:
         print(red(f"  Could not load markets: {e}"))
         return
