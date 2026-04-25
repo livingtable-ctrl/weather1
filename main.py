@@ -4072,18 +4072,8 @@ def cmd_help() -> None:
 
 # ── Browse markets ────────────────────────────────────────────────────────────
 
-_BROWSE_CITIES = [
-    "NYC",
-    "Chicago",
-    "LA",
-    "Boston",
-    "Miami",
-    "Dallas",
-    "Phoenix",
-    "Seattle",
-    "Denver",
-    "Atlanta",
-]
+# Derived from CITY_COORDS so new cities in data/cities.json appear automatically.
+_BROWSE_CITIES = sorted(CITY_COORDS.keys())
 
 
 def cmd_browse(client: KalshiClient) -> None:
@@ -4094,7 +4084,9 @@ def cmd_browse(client: KalshiClient) -> None:
     for i, city in enumerate(_BROWSE_CITIES, 1):
         print(f"  {cyan(str(i)):<5} {city}")
     print()
-    raw = input(dim("  Pick a city (1–10, or Enter for all): ")).strip()
+    raw = input(
+        dim(f"  Pick a city (1–{len(_BROWSE_CITIES)}, or Enter for all): ")
+    ).strip()
 
     city_filter: str | None = None
     if raw.isdigit() and 1 <= int(raw) <= len(_BROWSE_CITIES):

@@ -671,16 +671,14 @@ setInterval(() => {{
         except Exception as e:
             return jsonify({"status": "error", "message": str(e)}), 500
 
-    MAX_SIGNALS_CACHE_AGE_SECS = 90 * 60  # 90 minutes
+    MAX_SIGNALS_CACHE_AGE_SECS = 4 * 60 * 60  # 4 hours — one full cron cycle
 
     @app.route("/api/live_signals")
     def api_live_signals():
         """Serve the signals cache written by the last cron run."""
-        import pathlib
-
         from paper import get_open_trades
 
-        cache_path = pathlib.Path("data/signals_cache.json")
+        cache_path = Path(__file__).parent / "data" / "signals_cache.json"
         if not cache_path.exists():
             return jsonify(
                 {
@@ -998,9 +996,7 @@ setInterval(() => {{
 
     @app.route("/api/signals")
     def api_signals():
-        import pathlib
-
-        cron_log = pathlib.Path("data/cron.log")
+        cron_log = Path(__file__).parent / "data" / "cron.log"
         entries = []
         if cron_log.exists():
             try:
