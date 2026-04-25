@@ -1192,3 +1192,69 @@ class TestCityDetection:
         """KXRAIN-PHILADELPHIA ticker: 'PHILA' contains 'LA' — must be Philadelphia."""
         city = self._city("KXRAIN-PHILADELPHIA-26APR25-2IN", "philadelphia rain")
         assert city == "Philadelphia", f"Expected 'Philadelphia', got {city!r}"
+
+
+class TestLearnedWeightsTTL:
+    """L4-D: load_learned_weights() must discard files older than 7 days."""
+
+    def test_stale_weights_file_falls_back_to_defaults(self, tmp_path):
+        """File mtime 8 days ago → loader returns {} (default weights)."""
+        import json
+        import time
+        from unittest.mock import patch
+
+        import weather_markets as wm
+
+        fake_weights = {"Dallas": {"ecmwf_ifs04": 2.0, "gfs_seamless": 1.0}}
+        weights_file = tmp_path / "learned_weights.json"
+        weights_file.write_text(json.dumps(fake_weights))
+        eight_days_ago = time.time() - 8 * 86400
+
+        orig = wm._LEARNED_WEIGHTS
+        wm._LEARNED_WEIGHTS = {}
+        try:
+            with (
+                patch("weather_markets.os.path.getmtime", return_value=eight_days_ago),
+                patch("weather_markets.Path") as mock_path_cls,
+            ):
+                # Path(__file__).parent / "data" / "learned_weights.json"
+                mock_path_inst = mock_path_cls.return_value.parent.__truediv__.return_value.__truediv__.return_value
+                mock_path_inst.exists.return_value = True
+                mock_path_inst.read_text.return_value = json.dumps(fake_weights)
+                result = wm.load_learned_weights()
+        finally:
+            wm._LEARNED_WEIGHTS = orig
+
+        assert result == {}, f"Expected {{}} for stale file, got {result!r}"
+
+    def test_fresh_weights_file_is_loaded(self, tmp_path):
+        """File mtime 1 day ago → loader reads and returns file contents."""
+        import json
+        import time
+        from unittest.mock import patch
+
+        import weather_markets as wm
+
+        fake_weights = {"Dallas": {"ecmwf_ifs04": 2.0, "gfs_seamless": 1.0}}
+        weights_file = tmp_path / "learned_weights.json"
+        weights_file.write_text(json.dumps(fake_weights))
+        one_day_ago = time.time() - 1 * 86400
+
+        orig = wm._LEARNED_WEIGHTS
+        wm._LEARNED_WEIGHTS = {}
+        try:
+            with (
+                patch("weather_markets.os.path.getmtime", return_value=one_day_ago),
+                patch("weather_markets.Path") as mock_path_cls,
+            ):
+                # Path(__file__).parent / "data" / "learned_weights.json"
+                mock_path_inst = mock_path_cls.return_value.parent.__truediv__.return_value.__truediv__.return_value
+                mock_path_inst.exists.return_value = True
+                mock_path_inst.read_text.return_value = json.dumps(fake_weights)
+                result = wm.load_learned_weights()
+        finally:
+            wm._LEARNED_WEIGHTS = orig
+
+        assert result == fake_weights, (
+            f"Expected weights dict for fresh file, got {result!r}"
+        )

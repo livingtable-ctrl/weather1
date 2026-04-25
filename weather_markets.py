@@ -1258,19 +1258,30 @@ def _fetch_model_ensemble(
 
 
 _LEARNED_WEIGHTS: dict = {}  # cached after first load
+_LEARNED_WEIGHTS_TTL_DAYS = 7
 
 
 def load_learned_weights() -> dict:
     """
     Load per-city model weights previously saved by save_learned_weights().
     Format: {city: {model: weight, ...}, ...}
-    Returns empty dict if file missing or malformed. Cached for the session.
+    Returns empty dict if file missing, malformed, or older than 7 days. Cached for the session.
     """
     global _LEARNED_WEIGHTS
     if _LEARNED_WEIGHTS:
         return _LEARNED_WEIGHTS
     path = Path(__file__).parent / "data" / "learned_weights.json"
     if not path.exists():
+        return {}
+    mtime = os.path.getmtime(path)
+    age_secs = time.time() - mtime
+    if age_secs > _LEARNED_WEIGHTS_TTL_DAYS * 86400:
+        logging.warning(
+            "[ModelWeights] learned_weights.json is %.1f days old (> %d-day TTL) — "
+            "falling back to default weights",
+            age_secs / 86400,
+            _LEARNED_WEIGHTS_TTL_DAYS,
+        )
         return {}
     try:
         import json as _json
