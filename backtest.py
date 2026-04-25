@@ -227,6 +227,31 @@ def stratified_train_test_split(
     return train, holdout
 
 
+def _fetch_settled_markets(client, max_pages: int = 20) -> list[dict]:
+    """
+    Fetch all settled Kalshi markets using cursor-based pagination.
+    Returns a flat list across all pages.
+    Raises the original HTTPError on API failure so callers can surface it.
+    """
+    markets: list[dict] = []
+    cursor: str | None = None
+
+    for _ in range(max_pages):
+        params: dict = {"status": "settled", "limit": 200}
+        if cursor:
+            params["cursor"] = cursor
+
+        data = client._get("/markets", params=params, auth=True)
+        page = data.get("markets", [])
+        markets.extend(page)
+
+        cursor = data.get("cursor") or data.get("next_cursor")
+        if not cursor or not page:
+            break
+
+    return markets
+
+
 def run_backtest(
     client,
     city_filter: str | None = None,
@@ -261,7 +286,7 @@ def run_backtest(
         if holdout_days_count > 0
         else None
     )
-    markets = client.get_markets(status="settled", limit=200)
+    markets = _fetch_settled_markets(client, max_pages=20)
 
     results = []
     for _prog_i, m in enumerate(markets, 1):
