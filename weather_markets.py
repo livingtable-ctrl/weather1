@@ -3409,6 +3409,7 @@ def analyze_trade(enriched: dict) -> dict | None:
         ens_stats = ensemble_stats(temps) if len(temps) >= 10 else None
         method = "normal_dist"
         ens_prob: float | None = None
+        gauss_prob: float | None = None  # L6-B: Gaussian as separate named source
 
         if len(temps) >= 10:
             method = "ensemble"
@@ -3503,13 +3504,12 @@ def analyze_trade(enriched: dict) -> dict | None:
                 if n_valid >= 3
                 else 0.8 * p_win_gaussian + 0.2 * raw_fraction
             )
-            # E2: blend Gaussian into ensemble when both are available.
-            # Ensemble fraction (member count) is noisy with small/skewed draws;
-            # the Gaussian CDF around forecast_mean smooths it without losing signal.
-            if ens_prob is not None:
-                ens_prob = 0.70 * ens_prob + 0.30 * gaussian_blend
-            else:
-                ens_prob = gaussian_blend
+            # L6-B: keep ens_prob as the raw member-count fraction; expose
+            # Gaussian as a separate named source so blend_sources labels it
+            # correctly.  The final blend still allocates 30% of the ensemble
+            # slot to Gaussian (same numeric result), but the accounting is
+            # now honest: blend_sources shows "gaussian: X%" independently.
+            gauss_prob = gaussian_blend
 
         # ── Model consensus check ────────────────────────────────────────────────
         model_consensus = True
@@ -3681,12 +3681,19 @@ def analyze_trade(enriched: dict) -> dict | None:
                 w_ens += w_nws - w_nws_trimmed
                 w_nws = w_nws_trimmed
 
+            # L6-B: split ensemble weight so Gaussian appears as its own source
+            # instead of being silently embedded in the "ensemble" bucket.
+            # Preserves the same 70/30 split that was previously baked in-place.
+            _w_gauss = w_ens * 0.30 if gauss_prob is not None else 0.0
+            _w_ens_final = w_ens * (0.70 if gauss_prob is not None else 1.0)
+
             # G1: renormalize weights when sources are unavailable.
             # Previously missing sources were substituted with 0.5 (meaningless
             # fallback that skews the blend and doesn't sum to 1.0 correctly).
             # Now: zero out missing source weights and renormalize remaining ones.
             _src_probs = [
-                (w_ens, ens_prob),
+                (_w_ens_final, ens_prob),
+                (_w_gauss, gauss_prob),
                 (w_clim, clim_prob),
                 (w_nws, _nws_prob),
                 (w_persist, persistence_p),
@@ -3705,7 +3712,10 @@ def analyze_trade(enriched: dict) -> dict | None:
                 blended_prob = sum((w / _total_w) * p for w, p in _active)
                 # Reconstruct normalized weights for blend_sources
                 _norm = {
-                    "ensemble": w_ens / _total_w if ens_prob is not None else 0.0,
+                    "ensemble": _w_ens_final / _total_w
+                    if ens_prob is not None
+                    else 0.0,
+                    "gaussian": _w_gauss / _total_w if gauss_prob is not None else 0.0,
                     "climatology": w_clim / _total_w if clim_prob is not None else 0.0,
                     "nws": w_nws / _total_w if _nws_prob is not None else 0.0,
                 }
@@ -3858,6 +3868,7 @@ def analyze_trade(enriched: dict) -> dict | None:
         ensemble_spread_prob = 0.0
         p_win_gaussian = None
         sigma_gauss = None
+        gauss_prob = None  # L6-B: no Gaussian in METAR-locked path
 
     # Regime detection
     _regime_info: dict = {}
@@ -4111,6 +4122,7 @@ def analyze_trade(enriched: dict) -> dict | None:
         "ensemble_spread_f": ensemble_spread_f,
         "n_ensemble_members": sum(1 for v in model_temps.values() if v is not None),
         "p_win_gaussian": p_win_gaussian,
+        "gaussian_prob": gauss_prob,  # L6-B: raw Gaussian blend (separate from ens_prob)
         "forecast_sigma": sigma_gauss,
         # Regime detection
         "regime": _regime_info.get("regime", "normal"),
