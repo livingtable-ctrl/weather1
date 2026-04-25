@@ -5,9 +5,13 @@ Simulates N random outcome scenarios given current open positions.
 
 from __future__ import annotations
 
+import logging
 import math
 import random
+from datetime import date
 from pathlib import Path
+
+_log = logging.getLogger(__name__)
 
 
 def _cholesky(mat: list[list[float]]) -> list[list[float]] | None:
@@ -192,6 +196,13 @@ def simulate_portfolio(
     trade_params: list[dict] = []
     for t in open_trades:
         ticker = t.get("ticker", "")
+
+        # Skip past-date trades awaiting settlement — they carry no forward risk
+        # and their stale entry_prob would skew the simulation.
+        _tdate = t.get("target_date")
+        if _tdate and _tdate < date.today().isoformat():
+            _log.debug("Monte Carlo: skipping past-date trade %s (%s)", ticker, _tdate)
+            continue
         side = t.get("side", "yes")
         entry_price = t.get("entry_price", 0.5)
         cost = t.get("cost", 0.0)

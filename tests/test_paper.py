@@ -1341,6 +1341,70 @@ class TestMonteCarloCholesky:
         spread = result["p90_pnl"] - result["p10_pnl"]
         assert spread > 5.0
 
+    def test_past_date_trade_excluded_from_simulation(self):
+        """Trades whose target_date is in the past are skipped — no forward risk."""
+        import warnings
+        from datetime import date, timedelta
+
+        from monte_carlo import simulate_portfolio
+
+        past = (date.today() - timedelta(days=1)).isoformat()
+        future = (date.today() + timedelta(days=1)).isoformat()
+
+        stale_trade = {
+            "ticker": "KXSTALE-PAST",
+            "side": "yes",
+            "entry_price": 0.43,
+            "cost": 4.73,
+            "quantity": 11,
+            "city": "Phoenix",
+            "target_date": past,
+            "entry_prob": 0.929,  # would trigger clamp warning if not skipped
+        }
+        future_trade = {
+            "ticker": "KXFUTURE",
+            "side": "yes",
+            "entry_price": 0.50,
+            "cost": 5.00,
+            "quantity": 10,
+            "city": "Dallas",
+            "target_date": future,
+            "entry_prob": 0.55,
+        }
+
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            result = simulate_portfolio([stale_trade, future_trade], n_simulations=200)
+
+        # No clamp warning should be raised for the stale trade
+        clamp_warnings = [w for w in caught if "clamped" in str(w.message)]
+        assert clamp_warnings == [], f"Unexpected clamp warning: {clamp_warnings}"
+        # Result should reflect only the future trade (non-trivial distribution)
+        assert result["p10_pnl"] < result["p90_pnl"]
+
+    def test_past_date_only_portfolio_returns_empty_result(self):
+        """All-stale portfolio skips every trade and returns the zero-position result."""
+        from datetime import date, timedelta
+
+        from monte_carlo import simulate_portfolio
+
+        past = (date.today() - timedelta(days=2)).isoformat()
+        stale = {
+            "ticker": "KXSTALE",
+            "side": "yes",
+            "entry_price": 0.50,
+            "cost": 5.00,
+            "quantity": 10,
+            "city": "Phoenix",
+            "target_date": past,
+            "entry_prob": 0.929,
+        }
+
+        result = simulate_portfolio([stale], n_simulations=200)
+        # Should behave like an empty portfolio
+        assert result["median_pnl"] == 0.0
+        assert result["prob_ruin"] == 0.0
+
 
 class TestCheckStopLosses:
     def _trade(self, ticker, side, entry_price, qty):
