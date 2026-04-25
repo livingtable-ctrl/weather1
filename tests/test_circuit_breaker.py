@@ -125,3 +125,37 @@ class TestCircuitBreakerBackoff:
             cb.record_success()
         cb.record_failure()
         assert cb._current_timeout == pytest.approx(60.0)
+
+
+class TestCircuitBreakerBurstWindow:
+    def test_parallel_failures_count_as_one_event(self):
+        """3 simultaneous failures within burst_window must not count as 3 events.
+
+        Regression for L5-C: 3 parallel model fetches all failing at once used to
+        record 3 failure events, tripping a threshold=6 circuit after only 2 batches.
+        With burst_window=5s each batch counts as 1 event.
+        """
+        cb = CircuitBreaker(
+            "test", failure_threshold=6, recovery_timeout=1800, burst_window=5.0
+        )
+        # Simulate 3 parallel failures landing at the same instant (burst 1)
+        cb.record_failure()
+        cb.record_failure()
+        cb.record_failure()
+        # Only 1 event should have been counted
+        assert cb.failure_count == 1
+        assert not cb.is_open()
+
+    def test_sequential_failures_outside_window_each_count(self):
+        """Failures spaced further apart than burst_window each increment the counter."""
+        cb = CircuitBreaker(
+            "test", failure_threshold=3, recovery_timeout=1800, burst_window=0.01
+        )
+        cb.record_failure()
+        time.sleep(0.05)  # outside the 10ms burst window
+        cb.record_failure()
+        time.sleep(0.05)
+        cb.record_failure()
+        # All 3 are independent events — circuit should be open
+        assert cb.failure_count == 3
+        assert cb.is_open()

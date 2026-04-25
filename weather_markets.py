@@ -37,14 +37,22 @@ socket.setdefaulttimeout(
 _log = logging.getLogger(__name__)
 
 # Primary circuit breaker: 3-model daily forecast (FORECAST_BASE).
-# Higher threshold + longer recovery because these are cached and precious.
+# burst_window=5s: parallel model fetches that all fail within the same request
+# batch count as one failure event, not three.  recovery_timeout=30 min is
+# proportional to Open-Meteo's typical MTTR (minutes, not hours).
 _forecast_cb = CircuitBreaker(
-    name="open_meteo_forecast", failure_threshold=6, recovery_timeout=6 * 3600
+    name="open_meteo_forecast",
+    failure_threshold=6,
+    recovery_timeout=1800,
+    burst_window=5.0,
 )
 # Supplementary circuit breaker: ensemble spread, NBM, ECMWF high-res (ENSEMBLE_BASE).
 # Failures here degrade quality but don't block primary signals.
 _ensemble_cb = CircuitBreaker(
-    name="open_meteo_ensemble", failure_threshold=4, recovery_timeout=6 * 3600
+    name="open_meteo_ensemble",
+    failure_threshold=4,
+    recovery_timeout=1800,
+    burst_window=5.0,
 )
 
 # ── Trading filters ───────────────────────────────────────────────────────────

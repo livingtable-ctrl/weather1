@@ -33,16 +33,21 @@ class CircuitBreaker:
         failure_threshold: int = 5,
         recovery_timeout: float = 300,
         backoff_multiplier: float = 1.0,
+        burst_window: float = 0.0,
     ):
         self.name = name
         self.failure_threshold = failure_threshold
         self.recovery_timeout = recovery_timeout
         self.backoff_multiplier = backoff_multiplier
+        # Failures within burst_window seconds of the previous one count as one event.
+        # Set > 0 to absorb parallel request failures that all land simultaneously.
+        self.burst_window = burst_window
         self._failure_count = 0
         self._trip_count = 0  # how many times the circuit has opened
         self._opened_at: float | None = None
         self._wall_opened_at: float | None = None
         self._current_timeout: float = recovery_timeout
+        self._last_failure_at: float | None = None
         self._lock = threading.Lock()
 
     def is_open(self) -> bool:
@@ -64,6 +69,16 @@ class CircuitBreaker:
 
     def record_failure(self) -> None:
         with self._lock:
+            now = time.monotonic()
+            if (
+                self.burst_window > 0.0
+                and self._last_failure_at is not None
+                and now - self._last_failure_at < self.burst_window
+            ):
+                # Still within the burst window — this failure is part of the same
+                # parallel request batch; don't count it as a new failure event.
+                return
+            self._last_failure_at = now
             self._failure_count += 1
             if self._failure_count >= self.failure_threshold:
                 if self._opened_at is None:
