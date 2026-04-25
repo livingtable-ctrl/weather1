@@ -1192,3 +1192,108 @@ class TestCityDetection:
         """KXRAIN-PHILADELPHIA ticker: 'PHILA' contains 'LA' — must be Philadelphia."""
         city = self._city("KXRAIN-PHILADELPHIA-26APR25-2IN", "philadelphia rain")
         assert city == "Philadelphia", f"Expected 'Philadelphia', got {city!r}"
+
+
+class TestLearnedWeightsTTL:
+    """L4-D: load_learned_weights() must discard files older than 7 days."""
+
+    def test_stale_weights_file_falls_back_to_defaults(self, tmp_path):
+        """File mtime 8 days ago → loader returns {} (default weights)."""
+        import json
+        import time
+        from unittest.mock import patch
+
+        import weather_markets as wm
+
+        fake_weights = {"Dallas": {"ecmwf_ifs04": 2.0, "gfs_seamless": 1.0}}
+        weights_file = tmp_path / "learned_weights.json"
+        weights_file.write_text(json.dumps(fake_weights))
+        eight_days_ago = time.time() - 8 * 86400
+
+        orig = wm._LEARNED_WEIGHTS
+        wm._LEARNED_WEIGHTS = {}
+        try:
+            with (
+                patch("weather_markets.os.path.getmtime", return_value=eight_days_ago),
+                patch("weather_markets.Path") as mock_path_cls,
+            ):
+                # Path(__file__).parent / "data" / "learned_weights.json"
+                mock_path_inst = mock_path_cls.return_value.parent.__truediv__.return_value.__truediv__.return_value
+                mock_path_inst.exists.return_value = True
+                mock_path_inst.read_text.return_value = json.dumps(fake_weights)
+                result = wm.load_learned_weights()
+        finally:
+            wm._LEARNED_WEIGHTS = orig
+
+        assert result == {}, f"Expected {{}} for stale file, got {result!r}"
+
+    def test_fresh_weights_file_is_loaded(self, tmp_path):
+        """File mtime 1 day ago → loader reads and returns file contents."""
+        import json
+        import time
+        from unittest.mock import patch
+
+        import weather_markets as wm
+
+        fake_weights = {"Dallas": {"ecmwf_ifs04": 2.0, "gfs_seamless": 1.0}}
+        weights_file = tmp_path / "learned_weights.json"
+        weights_file.write_text(json.dumps(fake_weights))
+        one_day_ago = time.time() - 1 * 86400
+
+        orig = wm._LEARNED_WEIGHTS
+        wm._LEARNED_WEIGHTS = {}
+        try:
+            with (
+                patch("weather_markets.os.path.getmtime", return_value=one_day_ago),
+                patch("weather_markets.Path") as mock_path_cls,
+            ):
+                # Path(__file__).parent / "data" / "learned_weights.json"
+                mock_path_inst = mock_path_cls.return_value.parent.__truediv__.return_value.__truediv__.return_value
+                mock_path_inst.exists.return_value = True
+                mock_path_inst.read_text.return_value = json.dumps(fake_weights)
+                result = wm.load_learned_weights()
+        finally:
+            wm._LEARNED_WEIGHTS = orig
+
+        assert result == fake_weights, (
+            f"Expected weights dict for fresh file, got {result!r}"
+        )
+
+
+# ── TestUtcTodayDate ──────────────────────────────────────────────────────────
+
+
+class TestUtcTodayDate:
+    """L5-E: weather_markets must use datetime.now(UTC).date() not date.today()."""
+
+    def test_market_lookup_uses_utc_date_not_local(self):
+        """_forecast_uncertainty should use UTC date, so patching datetime.now()
+        changes the days_out calculation."""
+        from datetime import UTC, date, datetime
+        from unittest.mock import MagicMock, patch
+
+        import weather_markets as wm
+
+        # Use a target date 3 days from a known UTC reference date
+        known_utc_date = date(2025, 6, 15)
+        target = date(2025, 6, 18)  # 3 days out → uncertainty == 4.0
+
+        mock_dt = MagicMock(spec=datetime)
+        mock_dt.now.return_value.date.return_value = known_utc_date
+
+        with patch("weather_markets.datetime", mock_dt):
+            result = wm._forecast_uncertainty(target)
+
+        # 3 days out → 4.0 per _forecast_uncertainty() ladder
+        assert result == 4.0, f"Expected 4.0 (3 days out from UTC date), got {result!r}"
+        # Verify datetime.now was called with UTC sentinel
+        mock_dt.now.assert_called_once_with(UTC)
+
+    def test_no_date_today_calls_remain(self):
+        """weather_markets.py must not contain any date.today() calls."""
+        from pathlib import Path
+
+        src = (Path(__file__).parent.parent / "weather_markets.py").read_text()
+        assert "date.today()" not in src, (
+            "Found date.today() in weather_markets.py — replace with datetime.now(UTC).date()"
+        )
