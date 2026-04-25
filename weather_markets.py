@@ -717,7 +717,7 @@ def fetch_temperature_weatherapi(city: str, target_date: date) -> dict | None:
         _log.debug("[CircuitBreaker] weatherapi circuit open — skipping fetch")
         return None
 
-    today = date.today()
+    today = datetime.now(UTC).date()
     days_ahead = max(1, (target_date - today).days + 1)
     if days_ahead > 14:
         _WEATHERAPI_CACHE[cache_key] = (None, time.monotonic())
@@ -796,7 +796,7 @@ def fetch_temperature_pirate_weather(city: str, target_date: date) -> dict | Non
         _log.debug("[CircuitBreaker] pirate_weather circuit open — skipping fetch")
         return None
 
-    today = date.today()
+    today = datetime.now(UTC).date()
     is_historical = target_date < today
 
     try:
@@ -1268,17 +1268,30 @@ def _fetch_model_ensemble(
 _LEARNED_WEIGHTS: dict = {}  # cached after first load
 
 
+_LEARNED_WEIGHTS_TTL_DAYS = 7
+
+
 def load_learned_weights() -> dict:
     """
     Load per-city model weights previously saved by save_learned_weights().
     Format: {city: {model: weight, ...}, ...}
-    Returns empty dict if file missing or malformed. Cached for the session.
+    Returns empty dict if file missing, malformed, or older than 7 days. Cached for the session.
     """
     global _LEARNED_WEIGHTS
     if _LEARNED_WEIGHTS:
         return _LEARNED_WEIGHTS
     path = Path(__file__).parent / "data" / "learned_weights.json"
     if not path.exists():
+        return {}
+    mtime = os.path.getmtime(path)
+    age_secs = time.time() - mtime
+    if age_secs > _LEARNED_WEIGHTS_TTL_DAYS * 86400:
+        logging.warning(
+            "[ModelWeights] learned_weights.json is %.1f days old (> %d-day TTL) — "
+            "falling back to default weights",
+            age_secs / 86400,
+            _LEARNED_WEIGHTS_TTL_DAYS,
+        )
         return {}
     try:
         import json as _json
@@ -1322,17 +1335,17 @@ def save_forecast_snapshot(ticker: str, forecast_data: dict) -> None:
     """
     try:
         import json as _json
-        from datetime import date as _date
 
         snap_dir = Path(__file__).parent / "data" / "forecast_snapshots"
         snap_dir.mkdir(parents=True, exist_ok=True)
         safe_ticker = ticker.replace("/", "-").replace(":", "-")
-        path = snap_dir / f"{safe_ticker}_{_date.today().isoformat()}.json"
+        _today_str = datetime.now(UTC).date().isoformat()
+        path = snap_dir / f"{safe_ticker}_{_today_str}.json"
         # Don't overwrite existing snapshot for same ticker+day
         if not path.exists():
             snapshot = {
                 "ticker": ticker,
-                "snapshot_date": _date.today().isoformat(),
+                "snapshot_date": _today_str,
                 "forecast": forecast_data,
             }
             path.write_text(_json.dumps(snapshot, indent=2, default=str))
@@ -1982,7 +1995,7 @@ def _forecast_uncertainty(target_date: date) -> float:
     Estimated standard deviation of forecast error in °F.
     Weather forecasts get less accurate further out.
     """
-    days_out = (target_date - date.today()).days
+    days_out = (target_date - datetime.now(UTC).date()).days
     if days_out <= 1:
         return 3.0
     elif days_out <= 3:
@@ -2788,7 +2801,7 @@ def _analyze_precip_trade(
     Uses ensemble precipitation members + climatological rain frequency.
     """
     lat, lon, tz = coords
-    days_out = max(0, (target_date - date.today()).days)
+    days_out = max(0, (target_date - datetime.now(UTC).date()).days)
 
     # ── Ensemble precipitation probability ───────────────────────────────────
     _raw_members = _fetch_ensemble_precip(lat, lon, tz, target_date)
@@ -2968,7 +2981,7 @@ def _analyze_snow_trade(
     Falls back to a climatological base rate: 20% in winter (Dec-Feb), 5% otherwise.
     """
     lat, lon, tz = coords
-    days_out = max(0, (target_date - date.today()).days)
+    days_out = max(0, (target_date - datetime.now(UTC).date()).days)
 
     # ── Ensemble precipitation as proxy ──────────────────────────────────────
     _raw_snow = _fetch_ensemble_precip(lat, lon, tz, target_date)
@@ -3128,7 +3141,7 @@ def _metar_lock_in(
         import metar as _metar
 
         _metar_sta = _metar_station_for_city(city)
-        if not (_metar_sta and target_date == date.today()):
+        if not (_metar_sta and target_date == datetime.now(UTC).date()):
             return False, 0.0, {}
 
         _metar_obs = _metar.fetch_metar(_metar_sta)
@@ -3276,7 +3289,7 @@ def analyze_trade(enriched: dict) -> dict | None:
         return None
 
     # ── Days-out gate: only trade markets expiring within MAX_DAYS_OUT days ──
-    _days_out_check = max(0, (target_date - date.today()).days)
+    _days_out_check = max(0, (target_date - datetime.now(UTC).date()).days)
     if _days_out_check > MAX_DAYS_OUT:
         return None
 
@@ -3396,7 +3409,7 @@ def analyze_trade(enriched: dict) -> dict | None:
         forecast_temp_raw = forecast_temp
         forecast_temp = apply_station_bias(city, forecast_temp, var=var)
 
-        days_out = max(0, (target_date - date.today()).days)
+        days_out = max(0, (target_date - datetime.now(UTC).date()).days)
 
     if not metar_locked:
         # ── 1. Ensemble probability ──────────────────────────────────────────────
@@ -3791,6 +3804,16 @@ def analyze_trade(enriched: dict) -> dict | None:
                             for k, v in blend_sources.items()
                         }
                         blend_sources["mos"] = round(_w, 4)
+                        # L6-E: renormalise so floating-point rounding never
+                        # lets weights drift above 1.0 after MOS injection.
+                        _bs_total = sum(blend_sources.values())
+                        if _bs_total > 0:
+                            blend_sources = {
+                                k: v / _bs_total for k, v in blend_sources.items()
+                            }
+                        else:
+                            _n = len(blend_sources)
+                            blend_sources = {k: 1.0 / _n for k in blend_sources}
                 except Exception as _mos_pre_exc:
                     _log.debug(
                         "MOS pre-bias blend failed for %s: %s", city, _mos_pre_exc
@@ -3850,7 +3873,7 @@ def analyze_trade(enriched: dict) -> dict | None:
         series = (enriched.get("series_ticker") or enriched.get("ticker", "")).upper()
         var = "min" if "LOW" in series else "max"
         condition["var"] = var
-        days_out = max(0, (target_date - date.today()).days)
+        days_out = max(0, (target_date - datetime.now(UTC).date()).days)
         _fallback_temp = forecast["low_f"] if var == "min" else forecast["high_f"]
         forecast_temp = metar_lockout.get("current_temp_f") or (_fallback_temp or 0.0)
         forecast_temp_raw = forecast_temp

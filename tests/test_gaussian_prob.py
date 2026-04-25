@@ -340,3 +340,121 @@ class TestBetweenMarketGaussian:
             f"blend_sources must include 'gaussian' for 'between' markets; got {blend}"
         )
         assert blend["gaussian"] > 0.0
+
+
+# ── L6-E regression: blend_sources weights must always sum to ≤ 1.0 ─────────
+
+
+class TestBlendSourcesNormalisation:
+    """Regression tests for L6-E: MOS injection must not push blend_sources
+    weights above 1.0.  After normalisation the sum must equal 1.0 (±0.001)
+    and blended_prob must stay in [0, 1]."""
+
+    def _make_enriched(self):
+        from datetime import date, timedelta
+
+        target = date.today() + timedelta(days=2)
+        return {
+            "ticker": f"KXHIGHNY-{target.strftime('%d%b%y').upper()}-T70",
+            "title": "NYC high > 70°F",
+            "_city": "NYC",
+            "_date": target,
+            "_hour": None,
+            "_forecast": {
+                "high_f": 72.0,
+                "low_f": 60.0,
+                "precip_in": 0.0,
+                "date": target.isoformat(),
+                "city": "NYC",
+                "models_used": 3,
+                "high_range": (70.0, 74.0),
+            },
+            "yes_bid": 0.45,
+            "yes_ask": 0.55,
+            "no_bid": 0.45,
+            "close_time": "",
+            "series_ticker": "KXHIGHNY",
+            "volume": 500,
+            "open_interest": 200,
+        }
+
+    def test_blend_sources_weights_sum_to_one_with_mos(self):
+        """L6-E: after MOS injection blend_sources weights must still sum to
+        1.0 (within floating-point tolerance) and blended_prob in [0, 1]."""
+        from unittest.mock import MagicMock, patch
+
+        import weather_markets as wm
+
+        enriched = self._make_enriched()
+
+        # Fake MOS data that will trigger the MOS blend path
+        _fake_mos = MagicMock()
+        _fake_mos.get_mos_station = lambda city: "KJFK"
+        _fake_mos.fetch_mos_best = lambda station, target_date=None: {
+            "max_temp_f": 71.0,
+            "min_temp_f": 60.0,
+            "sigma": 3.5,
+        }
+
+        with (
+            patch.object(wm, "get_ensemble_temps", return_value=[72.0] * 20),
+            patch.object(wm, "fetch_temperature_nbm", return_value=72.5),
+            patch.object(wm, "fetch_temperature_ecmwf", return_value=73.0),
+            patch("climatology.climatological_prob", return_value=0.55),
+            patch("nws.nws_prob", return_value=0.60),
+            patch("nws.get_live_observation", return_value=None),
+            patch("climate_indices.temperature_adjustment", return_value=0.0),
+            patch.dict("sys.modules", {"mos": _fake_mos}),
+        ):
+            result = wm.analyze_trade(enriched)
+
+        assert result is not None
+        blend = result.get("blend_sources", {})
+        total = sum(blend.values())
+        assert total == pytest.approx(1.0, abs=0.001), (
+            f"blend_sources weights must sum to 1.0 after MOS injection; "
+            f"got {total:.6f} with sources {blend}"
+        )
+        fp = result.get("forecast_prob", -1.0)
+        assert 0.0 <= fp <= 1.0, (
+            f"forecast_prob must be in [0, 1] after MOS injection; got {fp}"
+        )
+
+    def test_blend_sources_weights_sum_to_one_without_mos(self):
+        """L6-E: without MOS the normalisation guard must not break the normal
+        blend path — weights still sum to 1.0 and blended_prob in [0, 1]."""
+        from unittest.mock import MagicMock, patch
+
+        import weather_markets as wm
+
+        enriched = self._make_enriched()
+
+        # MOS module returns no station so the MOS blend path is skipped
+        _fake_mos_no_station = MagicMock()
+        _fake_mos_no_station.get_mos_station = lambda city: None
+
+        with (
+            patch.object(wm, "get_ensemble_temps", return_value=[72.0] * 20),
+            patch.object(wm, "fetch_temperature_nbm", return_value=72.5),
+            patch.object(wm, "fetch_temperature_ecmwf", return_value=73.0),
+            patch("climatology.climatological_prob", return_value=0.55),
+            patch("nws.nws_prob", return_value=0.60),
+            patch("nws.get_live_observation", return_value=None),
+            patch("climate_indices.temperature_adjustment", return_value=0.0),
+            patch.dict("sys.modules", {"mos": _fake_mos_no_station}),
+        ):
+            result = wm.analyze_trade(enriched)
+
+        assert result is not None
+        blend = result.get("blend_sources", {})
+        # Without MOS the blend sources should still be present and sum to 1.0
+        if blend:
+            total = sum(blend.values())
+            assert total == pytest.approx(1.0, abs=0.001), (
+                f"blend_sources weights must sum to 1.0 without MOS; "
+                f"got {total:.6f} with sources {blend}"
+            )
+        fp = result.get("forecast_prob", -1.0)
+        assert 0.0 <= fp <= 1.0, (
+            f"forecast_prob must be in [0, 1] without MOS; got {fp}"
+        )
