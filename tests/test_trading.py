@@ -1327,3 +1327,114 @@ def test_auto_place_uses_no_ask_not_mid_for_no_trades(monkeypatch):
         f"L7-B: NO entry_price={captured_prices[0]:.4f} must be no_ask=0.62 "
         f"(= 1 - yes_bid = 1 - 0.38), not 1 - mid = 0.60"
     )
+
+
+# ── L7-D regression: net_edge and adjusted_edge must decay near close ─────────
+
+
+class TestTimeDecayEdgeScope:
+    """Regression tests for L7-D: time_decay_edge must apply to all edge metrics
+    (edge, entry_side_edge, net_edge → adjusted_edge), not only the display 'edge'.
+
+    Before fix: only result['edge'] was decayed.  result['net_edge'] and
+    result['adjusted_edge'] were computed AFTER the decay block and received the
+    full undecayed net EV, so the gate (adjusted_edge) passed near-close markets
+    at full strength even when the display showed a near-zero 'edge'.
+    """
+
+    _ENRICHED = {
+        "title": "NYC high > 70°F",
+        "_city": "NYC",
+        "_hour": None,
+        "_forecast": {
+            "high_f": 74.0,
+            "low_f": 60.0,
+            "precip_in": 0.0,
+            "city": "NYC",
+            "models_used": 3,
+            "high_range": (72.0, 76.0),
+        },
+        "yes_bid": 38,
+        "yes_ask": 42,
+        "no_bid": 58,
+        "close_time": "",  # overridden per test
+        "series_ticker": "KXHIGHNY",
+        "volume": 1000,
+        "open_interest": 400,
+    }
+
+    def _make_enriched(self, close_iso: str):
+        from datetime import date, timedelta
+
+        target = date.today() + timedelta(days=0)  # same-day market
+        e = dict(self._ENRICHED)
+        e["_date"] = target
+        e["_forecast"] = dict(self._ENRICHED["_forecast"])
+        e["_forecast"]["date"] = target.isoformat()
+        e["ticker"] = f"KXHIGHNY-{target.strftime('%d%b%y').upper()}-T70"
+        e["close_time"] = close_iso
+        return e
+
+    def _run(self, close_iso: str):
+        from unittest.mock import patch
+
+        import weather_markets as wm
+
+        enriched = self._make_enriched(close_iso)
+        with (
+            patch.object(
+                wm, "get_ensemble_temps", return_value=[75.0] * 12 + [65.0] * 8
+            ),
+            patch.object(wm, "fetch_temperature_nbm", return_value=74.0),
+            patch.object(wm, "fetch_temperature_ecmwf", return_value=74.5),
+            patch("climatology.climatological_prob", return_value=0.60),
+            patch("nws.nws_prob", return_value=None),
+            patch("nws.get_live_observation", return_value=None),
+            patch("climate_indices.temperature_adjustment", return_value=0.0),
+        ):
+            return wm.analyze_trade(enriched)
+
+    def test_net_edge_reduced_near_close_vs_far(self):
+        """Regression for L7-D: net_edge must be smaller when close_time is
+        imminent (1h away) compared to far (24h away) for the same forecast.
+
+        Before fix: both returned the same net_edge because time decay was not
+        applied to net_edge — only to the display 'edge'.
+        """
+        from datetime import UTC, datetime, timedelta
+
+        now = datetime.now(UTC)
+        far_close = (now + timedelta(hours=24)).isoformat()
+        near_close = (now + timedelta(minutes=30)).isoformat()
+
+        far = self._run(far_close)
+        near = self._run(near_close)
+
+        assert far is not None and near is not None
+        assert near["net_edge"] < far["net_edge"], (
+            f"L7-D: net_edge must be smaller when close is near: "
+            f"near={near['net_edge']:.4f} far={far['net_edge']:.4f} — "
+            f"before fix both were equal (time decay didn't reach net_edge)"
+        )
+
+    def test_adjusted_edge_zero_at_close(self):
+        """Regression for L7-D: adjusted_edge must be 0 when market has already
+        closed (close_time in the past).
+
+        Before fix: adjusted_edge was based on undecayed net_edge and remained
+        positive even past close, allowing ghost trades past market expiry.
+        """
+        from datetime import UTC, datetime, timedelta
+
+        past_close = (datetime.now(UTC) - timedelta(minutes=5)).isoformat()
+        result = self._run(past_close)
+
+        assert result is not None
+        assert result["adjusted_edge"] == 0.0, (
+            f"L7-D: adjusted_edge must be 0 when market is past close; "
+            f"got {result['adjusted_edge']:.4f}"
+        )
+        assert result["net_edge"] == 0.0, (
+            f"L7-D: net_edge must be 0 when market is past close; "
+            f"got {result['net_edge']:.4f}"
+        )

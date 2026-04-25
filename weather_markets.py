@@ -3984,15 +3984,22 @@ def analyze_trade(enriched: dict) -> dict | None:
 
     edge = blended_prob - market_prob
 
-    # #63: Time-decay edge — scale linearly to zero as market approaches close
+    # #63 / L7-D: Time-decay edge — scale linearly to zero as market approaches close.
+    # Compute _time_decay_factor once and apply to all edge metrics (edge,
+    # entry_side_edge, net_edge) so the gate (adjusted_edge) and sort key
+    # reflect intra-day time risk — not only the display 'edge'.
+    # Before L7-D, only 'edge' was decayed; net_edge → adjusted_edge remained at
+    # full strength so same-day near-close markets passed the gate unchecked.
+    _time_decay_factor = 1.0
     _close_str = enriched.get("close_time", "")
     if _close_str:
         try:
             _close_dt = datetime.fromisoformat(_close_str.replace("Z", "+00:00"))
-            edge = time_decay_edge(edge, _close_dt, reference_hours=8.0)
+            _time_decay_factor = time_decay_edge(1.0, _close_dt, reference_hours=8.0)
         except (ValueError, TypeError):
             pass
 
+    edge = edge * _time_decay_factor
     signal = _edge_label(edge)
 
     # #61 / L7-C: entry-side edge uses the actual fill price, not mid.
@@ -4009,7 +4016,8 @@ def analyze_trade(enriched: dict) -> dict | None:
         entry_side_market_prob = (
             (1.0 - prices["yes_bid"]) if prices["yes_bid"] > 0 else market_prob
         )
-    entry_side_edge = blended_prob - entry_side_market_prob
+    # L7-D: apply same time-decay factor so gate uses time-adjusted entry_side_edge
+    entry_side_edge = (blended_prob - entry_side_market_prob) * _time_decay_factor
 
     # #62: explicit illiquid flag (spread > 5%)
     illiquid = spread_cost > 0.05
@@ -4026,7 +4034,9 @@ def analyze_trade(enriched: dict) -> dict | None:
         p_win = 1 - blended_prob
         net_ev = p_win * payout * (1 - KALSHI_FEE_RATE) - blended_prob * entry_price
 
-    net_edge = net_ev / entry_price if entry_price > 0 else 0.0
+    # L7-D: apply time-decay so adjusted_edge (= net_edge * edge_conf) also shrinks
+    # near close — before this fix adjusted_edge used full net_edge for same-day markets
+    net_edge = (net_ev / entry_price if entry_price > 0 else 0.0) * _time_decay_factor
     _edge_conf = edge_confidence(days_out, condition_type=condition["type"])
     adjusted_edge = net_edge * _edge_conf
     net_signal = _edge_label(adjusted_edge)
