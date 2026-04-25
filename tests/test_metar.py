@@ -154,3 +154,129 @@ class TestCheckMetarLockout:
         )
 
         assert result["locked"] is False
+
+
+# ── L6-D regression: dynamic lock-in confidence ──────────────────────────────
+
+
+class TestDynamicLockInConfidence:
+    """Regression tests for L6-D: METAR lock-in confidence must scale with
+    temperature clearance and time of day rather than using a hardcoded 0.90.
+
+    Previously _LOCK_IN_CONFIDENCE = 0.90 was applied unconditionally, causing
+    near-threshold afternoon lock-ins (e.g. 3°F at 2 PM) to be treated with
+    the same confidence as clear afternoon lock-ins (e.g. 15°F at 10 PM).
+    """
+
+    def test_near_threshold_early_afternoon_confidence_below_old_hardcoded(self):
+        """Regression for L6-D: 3°F clearance at 2 PM must yield confidence < 0.90.
+
+        Before fix: hardcoded 0.90.  After fix: 0.720 — avoids over-betting
+        near-threshold markets at the earliest lock-in hour.
+        """
+        import metar
+
+        # 3°F above threshold (exactly at the default margin), 2 PM ET
+        obs_time = datetime(2026, 4, 17, 18, 0, tzinfo=UTC)  # 2 PM ET (UTC-4 in April)
+        result = metar.check_metar_lockout(
+            current_temp_f=68.0,  # threshold + 3°F (just at trigger margin)
+            threshold_f=65.0,
+            direction="above",
+            obs_time=obs_time,
+            city_tz="America/New_York",
+            margin_f=3.0,
+        )
+
+        assert result["locked"] is True
+        assert result["confidence"] < 0.90, (
+            f"Near-threshold afternoon lock-in gave confidence={result['confidence']:.3f}; "
+            f"must be < 0.90 to avoid over-betting (was hardcoded 0.90 before L6-D fix)"
+        )
+        # Must still be a meaningful probability (not negligible)
+        assert result["confidence"] >= 0.70, (
+            f"Confidence {result['confidence']:.3f} too low — lock-in should still be useful"
+        )
+
+    def test_large_clearance_late_evening_gets_high_confidence(self):
+        """Regression for L6-D: 15°F clearance at 10 PM must yield confidence >= 0.90.
+
+        Large margin + late hour → outcome is very certain; Kelly should be high.
+        """
+        import metar
+
+        # 15°F above threshold, 10 PM ET
+        obs_time = datetime(2026, 4, 18, 2, 0, tzinfo=UTC)  # 10 PM ET
+        result = metar.check_metar_lockout(
+            current_temp_f=80.0,  # threshold + 15°F
+            threshold_f=65.0,
+            direction="above",
+            obs_time=obs_time,
+            city_tz="America/New_York",
+            margin_f=3.0,
+        )
+
+        assert result["locked"] is True
+        assert result["confidence"] >= 0.90, (
+            f"Large-clearance late-evening lock-in gave confidence={result['confidence']:.3f}; "
+            f"must be >= 0.90 for a 15°F margin at 10 PM"
+        )
+
+    def test_confidence_increases_with_clearance(self):
+        """Confidence must be strictly higher for larger temperature clearance
+        at the same time of day."""
+        import metar
+
+        obs_time = datetime(2026, 4, 17, 21, 0, tzinfo=UTC)  # 5 PM ET
+
+        small = metar.check_metar_lockout(
+            current_temp_f=68.0,  # 3°F above threshold
+            threshold_f=65.0,
+            direction="above",
+            obs_time=obs_time,
+            city_tz="America/New_York",
+            margin_f=3.0,
+        )
+        large = metar.check_metar_lockout(
+            current_temp_f=78.0,  # 13°F above threshold
+            threshold_f=65.0,
+            direction="above",
+            obs_time=obs_time,
+            city_tz="America/New_York",
+            margin_f=3.0,
+        )
+
+        assert small["locked"] is True
+        assert large["locked"] is True
+        assert large["confidence"] > small["confidence"], (
+            f"Larger clearance must give higher confidence: "
+            f"13°F={large['confidence']:.3f} vs 3°F={small['confidence']:.3f}"
+        )
+
+    def test_confidence_increases_with_hour(self):
+        """Confidence must be strictly higher for a later observation time
+        with the same temperature clearance."""
+        import metar
+
+        early = metar.check_metar_lockout(
+            current_temp_f=78.0,  # 13°F above 65°F threshold
+            threshold_f=65.0,
+            direction="above",
+            obs_time=datetime(2026, 4, 17, 18, 0, tzinfo=UTC),  # 2 PM ET
+            city_tz="America/New_York",
+            margin_f=3.0,
+        )
+        late = metar.check_metar_lockout(
+            current_temp_f=78.0,  # same clearance
+            threshold_f=65.0,
+            direction="above",
+            obs_time=datetime(2026, 4, 18, 2, 0, tzinfo=UTC),  # 10 PM ET
+            city_tz="America/New_York",
+            margin_f=3.0,
+        )
+
+        assert early["locked"] is True
+        assert late["locked"] is True
+        assert late["confidence"] > early["confidence"], (
+            f"Later lock-in must have higher confidence: "
+            f"10 PM={late['confidence']:.3f} vs 2 PM={early['confidence']:.3f}"
+        )

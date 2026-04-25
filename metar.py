@@ -20,7 +20,36 @@ _log = logging.getLogger(__name__)
 
 _METAR_URL = "https://aviationweather.gov/api/data/metar"
 _LOCK_IN_HOUR = 14  # 2 PM local — earliest lock-in time
-_LOCK_IN_CONFIDENCE = 0.90  # probability to assign to locked outcome
+
+
+def _dynamic_lock_in_confidence(
+    clearance_f: float,
+    local_hour: int,
+    margin_f: float = 3.0,
+) -> float:
+    """Compute METAR lock-in confidence from temperature clearance and time of day.
+
+    L6-D fix: replaces the hardcoded ``_LOCK_IN_CONFIDENCE = 0.90`` constant.
+    Two factors scale the probability upward from a conservative base:
+
+    * **Clearance factor** – how far the observed temperature is beyond the
+      trigger margin.  Saturates at 10 °F extra clearance (i.e. 13 °F total
+      when ``margin_f=3``).
+    * **Hour factor** – how late in the afternoon the lock-in fires.  Saturates
+      at 8 PM local (hour 20).  Later = daily high/low is more settled.
+
+    Resulting confidence ∈ [0.72, 0.97]:
+      - 3 °F clearance at 2 PM  → 0.720  (was 0.90 — over-bet near-threshold)
+      - 3 °F clearance at 8 PM  → 0.790
+      - 10 °F clearance at 5 PM → 0.881
+      - 13 °F clearance at 8 PM → 0.970
+    """
+    extra_f = max(0.0, clearance_f - margin_f)
+    c_factor = min(1.0, extra_f / 10.0)
+    h_factor = min(1.0, (local_hour - _LOCK_IN_HOUR) / 6.0)
+    conf = 0.72 + 0.18 * c_factor + 0.07 * h_factor
+    return round(min(0.97, max(0.72, conf)), 3)
+
 
 _session = requests.Session()
 _session.mount(
@@ -116,32 +145,45 @@ def check_metar_lockout(
     # 2. Check temperature clearance
     if direction == "above":
         if current_temp_f >= threshold_f + margin_f:
+            # L6-D: confidence scales with clearance and time of day
+            _conf = _dynamic_lock_in_confidence(
+                current_temp_f - threshold_f, local_time.hour, margin_f
+            )
             return {
                 "locked": True,
                 "outcome": "yes",
-                "confidence": _LOCK_IN_CONFIDENCE,
+                "confidence": _conf,
                 "reason": f"METAR {current_temp_f:.1f}°F >= threshold {threshold_f}°F + margin {margin_f}°F",
             }
         elif current_temp_f <= threshold_f - margin_f:
+            _conf = _dynamic_lock_in_confidence(
+                threshold_f - current_temp_f, local_time.hour, margin_f
+            )
             return {
                 "locked": True,
                 "outcome": "no",
-                "confidence": _LOCK_IN_CONFIDENCE,
+                "confidence": _conf,
                 "reason": f"METAR {current_temp_f:.1f}°F <= threshold {threshold_f}°F - margin {margin_f}°F",
             }
     elif direction == "below":
         if current_temp_f <= threshold_f - margin_f:
+            _conf = _dynamic_lock_in_confidence(
+                threshold_f - current_temp_f, local_time.hour, margin_f
+            )
             return {
                 "locked": True,
                 "outcome": "yes",
-                "confidence": _LOCK_IN_CONFIDENCE,
+                "confidence": _conf,
                 "reason": f"METAR {current_temp_f:.1f}°F <= threshold {threshold_f}°F - margin {margin_f}°F",
             }
         elif current_temp_f >= threshold_f + margin_f:
+            _conf = _dynamic_lock_in_confidence(
+                current_temp_f - threshold_f, local_time.hour, margin_f
+            )
             return {
                 "locked": True,
                 "outcome": "no",
-                "confidence": _LOCK_IN_CONFIDENCE,
+                "confidence": _conf,
                 "reason": f"METAR {current_temp_f:.1f}°F >= threshold {threshold_f}°F + margin {margin_f}°F",
             }
 
