@@ -66,3 +66,27 @@ class TestFetchSettledMarkets:
 
         with pytest.raises((requests.HTTPError, RuntimeError)):
             backtest._fetch_settled_markets(fake_client, max_pages=5)
+
+
+class TestCmdBacktestErrorHandling:
+    def test_api_error_prints_message_not_traceback(self, monkeypatch, capsys):
+        """cmd_backtest must catch API errors and print a readable message."""
+        from unittest.mock import MagicMock, patch
+
+        import requests
+
+        import main
+
+        fake_client = MagicMock()
+        resp = MagicMock()
+        resp.status_code = 400
+        http_err = requests.HTTPError("400 Bad Request", response=resp)
+
+        with patch("backtest.run_backtest", side_effect=http_err):
+            main.cmd_backtest(fake_client, [])
+
+        captured = capsys.readouterr()
+        output = captured.out + captured.err
+        assert (
+            "400" in output or "Bad Request" in output or "error" in output.lower()
+        ), "Expected a readable error message, got nothing"
