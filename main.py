@@ -5309,12 +5309,18 @@ def cmd_backtest(client: KalshiClient, args: list):
         bar = "█" * filled + "░" * (20 - filled)
         print(f"\r  [{bar}] {pct:.0%}  ({i}/{n})", end="", flush=True)
 
-    summary = run_backtest(
-        client,
-        city_filter=city_filter,
-        days_back=days_back,
-        on_progress=_bt_progress,
-    )
+    try:
+        summary = run_backtest(
+            client,
+            city_filter=city_filter,
+            days_back=days_back,
+            on_progress=_bt_progress,
+        )
+    except Exception as e:
+        print()  # newline after progress bar
+        print(red(f"  Backtest failed: {e}"))
+        print(dim("  Tip: check your API credentials and try again."))
+        return
     n_scored = summary["n_markets"]
     print(f"\r  Scored {n_scored} weather market(s).              ")
     if n_scored < 30:
@@ -6014,7 +6020,7 @@ def cmd_simulate(client: KalshiClient) -> None:
     print(dim("  Loading last 20 finalized weather markets...\n"))
 
     try:
-        markets = client.get_markets(status="finalized", limit=50)
+        markets = client.get_markets(status="settled", limit=50)
     except Exception as e:
         print(red(f"  Could not load markets: {e}"))
         return
