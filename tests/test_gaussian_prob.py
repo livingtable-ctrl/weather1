@@ -245,3 +245,98 @@ class TestGaussianBlendSeparateSource:
             f"ensemble_prob={result['ensemble_prob']:.4f} should be the raw member "
             f"fraction {raw_frac:.4f}, not the Gaussian-blended value"
         )
+
+
+# ── L6-C regression: "between" markets must get Gaussian smoothing ────────────
+
+
+class TestBetweenMarketGaussian:
+    """Regression tests for L6-C: 'between' condition markets must receive a
+    Gaussian probability estimate so the blend is not left with only noisy
+    ensemble member counting (steps of 0, 0.1, 0.2 … from <10 members)."""
+
+    def _make_between_enriched(self):
+        """Ticker ending -B70.5 → between 70.0 and 71.0."""
+        from datetime import date, timedelta
+
+        target = date.today() + timedelta(days=2)
+        return {
+            "ticker": f"KXHIGHNY-{target.strftime('%d%b%y').upper()}-B70.5",
+            "title": "NYC high between 70 and 71°F",
+            "_city": "NYC",
+            "_date": target,
+            "_hour": None,
+            "_forecast": {
+                "high_f": 70.5,
+                "low_f": 60.0,
+                "precip_in": 0.0,
+                "date": target.isoformat(),
+                "city": "NYC",
+                "models_used": 3,
+                "high_range": (69.0, 72.0),
+            },
+            "yes_bid": 0.15,
+            "yes_ask": 0.20,
+            "no_bid": 0.80,
+            "close_time": "",
+            "series_ticker": "KXHIGHNY",
+            "volume": 500,
+            "open_interest": 200,
+        }
+
+    def test_between_market_has_nonzero_p_win_gaussian(self):
+        """Regression for L6-C: p_win_gaussian must not be None for 'between'
+        condition markets.  Previously the else-branch always set it to None.
+        """
+        from unittest.mock import patch
+
+        import weather_markets as wm
+
+        enriched = self._make_between_enriched()
+
+        with (
+            patch.object(wm, "get_ensemble_temps", return_value=[70.5] * 20),
+            patch.object(wm, "fetch_temperature_nbm", return_value=70.8),
+            patch.object(wm, "fetch_temperature_ecmwf", return_value=71.2),
+            patch("climatology.climatological_prob", return_value=0.10),
+            patch("nws.nws_prob", return_value=None),
+            patch("nws.get_live_observation", return_value=None),
+            patch("climate_indices.temperature_adjustment", return_value=0.0),
+        ):
+            result = wm.analyze_trade(enriched)
+
+        assert result is not None
+        assert result["p_win_gaussian"] is not None, (
+            "p_win_gaussian must be set for 'between' condition markets"
+        )
+        assert 0.0 < result["p_win_gaussian"] < 1.0, (
+            f"p_win_gaussian={result['p_win_gaussian']} must be in (0, 1)"
+        )
+
+    def test_between_market_blend_sources_reports_gaussian(self):
+        """Regression for L6-C: blend_sources must contain 'gaussian' for
+        'between' condition markets, proving the Gaussian is actually blended.
+        """
+        from unittest.mock import patch
+
+        import weather_markets as wm
+
+        enriched = self._make_between_enriched()
+
+        with (
+            patch.object(wm, "get_ensemble_temps", return_value=[70.5] * 20),
+            patch.object(wm, "fetch_temperature_nbm", return_value=70.8),
+            patch.object(wm, "fetch_temperature_ecmwf", return_value=71.2),
+            patch("climatology.climatological_prob", return_value=0.10),
+            patch("nws.nws_prob", return_value=None),
+            patch("nws.get_live_observation", return_value=None),
+            patch("climate_indices.temperature_adjustment", return_value=0.0),
+        ):
+            result = wm.analyze_trade(enriched)
+
+        assert result is not None
+        blend = result.get("blend_sources", {})
+        assert "gaussian" in blend, (
+            f"blend_sources must include 'gaussian' for 'between' markets; got {blend}"
+        )
+        assert blend["gaussian"] > 0.0

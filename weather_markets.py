@@ -3465,6 +3465,14 @@ def analyze_trade(enriched: dict) -> dict | None:
                 sigma=sigma_gauss,
                 direction=cond_type,
             )
+        elif cond_type == "between":
+            # L6-C: "between" markets also get a Gaussian estimate.
+            # P(lower ≤ T ≤ upper) = CDF(upper; mean, σ) − CDF(lower; mean, σ).
+            # Previously p_win_gaussian was always None here, so the blend had no
+            # smoothing for range markets — just noisy ensemble member counting.
+            p_win_gaussian = _forecast_probability(
+                condition, forecast_temp, sigma_gauss
+            )
         else:
             p_win_gaussian = None
 
@@ -3510,6 +3518,12 @@ def analyze_trade(enriched: dict) -> dict | None:
             # slot to Gaussian (same numeric result), but the accounting is
             # now honest: blend_sources shows "gaussian: X%" independently.
             gauss_prob = gaussian_blend
+        elif cond_type == "between" and p_win_gaussian is not None:
+            # L6-C: use Gaussian directly for "between" conditions.  raw_fraction
+            # is too coarse here — with only 2-3 models each is either inside or
+            # outside the 1°F bucket, giving steps of 0 / 0.5 / 1.0.  The Gaussian
+            # CDF difference gives a continuous, calibrated estimate instead.
+            gauss_prob = p_win_gaussian
 
         # ── Model consensus check ────────────────────────────────────────────────
         model_consensus = True
