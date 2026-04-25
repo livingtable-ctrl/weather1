@@ -1266,6 +1266,7 @@ def _fetch_model_ensemble(
 
 
 _LEARNED_WEIGHTS: dict = {}  # cached after first load
+_LEARNED_WEIGHTS_TTL_DAYS = 7
 
 
 _LEARNED_WEIGHTS_TTL_DAYS = 7
