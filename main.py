@@ -2701,6 +2701,16 @@ def _auto_place_trades(
         # Falls back to the analysis price in pure paper mode (no client).
         _stale_mkt_prob = float(a.get("market_prob", 0.50) or 0.50)
         _mkt_prob = _stale_mkt_prob
+        # L7-B: initialize ask prices from the stale enriched market dict so we
+        # have real bid/ask even when no live client is present.
+        # YES fill = yes_ask (what you actually pay); NO fill = 1 - yes_bid (= no_ask).
+        _stale_prices = parse_market_price(m)
+        _fill_yes_ask: float = (
+            float(_stale_prices.get("yes_ask") or 0) or _stale_mkt_prob
+        )
+        _fill_yes_bid: float = float(_stale_prices.get("yes_bid") or 0) or (
+            1.0 - _stale_mkt_prob
+        )
         if client is not None:
             try:
                 _fresh_market = client.get_market(ticker)
@@ -2723,6 +2733,13 @@ def _auto_place_trades(
                     # Carry fresh market dict into _place_live_order so it uses
                     # the current price, not the one from the analysis batch.
                     a = {**a, "market": _fresh_market, "market_prob": _fresh_implied}
+                # L7-B: update ask prices from fresh market when available
+                _fya = float(_fresh_prices.get("yes_ask") or 0)
+                _fyb = float(_fresh_prices.get("yes_bid") or 0)
+                if _fya > 0:
+                    _fill_yes_ask = _fya
+                if _fyb > 0:
+                    _fill_yes_bid = _fyb
             except Exception as _pf_err:
                 _log.debug(
                     "_auto_place_trades: price re-fetch failed for %s: %s",
@@ -2751,7 +2768,9 @@ def _auto_place_trades(
                 rec_side,
             )
             continue
-        entry_price = 1.0 - _mkt_prob if rec_side == "no" else _mkt_prob
+        # L7-B: fill at ask (not mid) — YES pays yes_ask, NO pays 1 - yes_bid (= no_ask).
+        # Using mid understates entry cost by half the spread, making paper P&L look better.
+        entry_price = (1.0 - _fill_yes_bid) if rec_side == "no" else _fill_yes_ask
         method = a.get("method")
         consensus_mult = 0.5 if not a.get("model_consensus", True) else 1.0
         adj_kelly_final = adj_kelly * consensus_mult

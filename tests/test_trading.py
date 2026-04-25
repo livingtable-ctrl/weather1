@@ -1198,3 +1198,132 @@ def test_get_bias_near_full_strength_for_large_samples(tmp_path):
     assert bias > 0.50, (
         f"With n=100 samples shrinkage should be <10%; bias={bias:.4f} (L4-C)"
     )
+
+
+# ── L7-B regression: paper fill price must be ask, not mid ───────────────────
+
+
+def _l7b_common_patches(monkeypatch):
+    """Apply the common monkeypatches needed for L7-B _auto_place_trades tests."""
+    import main
+    import paper
+
+    monkeypatch.setattr(paper, "is_paused_drawdown", lambda: False)
+    monkeypatch.setattr(paper, "is_daily_loss_halted", lambda client=None: False)
+    monkeypatch.setattr(paper, "is_streak_paused", lambda: False)
+    monkeypatch.setattr(main, "_daily_paper_spend", lambda: 0.0)
+    return main, paper
+
+
+def test_auto_place_uses_yes_ask_not_mid_for_yes_trades(monkeypatch):
+    """Regression for L7-B: for YES trades, entry_price passed to place_paper_order
+    must equal yes_ask (what you actually pay), not the mid-price.
+
+    Before fix: entry_price = market_prob = mid = (38+42)/2/100 = 0.40
+    After fix:  entry_price = yes_ask = 42/100 = 0.42
+    """
+    main, paper = _l7b_common_patches(monkeypatch)
+
+    captured_prices = []
+
+    def fake_place_paper_order(ticker, side, qty, entry_price, **kwargs):
+        captured_prices.append(entry_price)
+        return {"id": 1}
+
+    monkeypatch.setattr("main.place_paper_order", fake_place_paper_order)
+
+    # Market with yes_bid=38¢, yes_ask=42¢ → mid=40¢ (market_prob=0.40)
+    # Correct YES fill price = yes_ask = 0.42 (not mid 0.40)
+    fake_market = {
+        "ticker": "KXHIGHNYC-26APR30-T70",
+        "yes_bid": 38,
+        "yes_ask": 42,
+        "_city": "NYC",
+        "_date": None,
+    }
+
+    fake_analysis = {
+        "edge": 0.25,  # blended_prob - mid = 0.65 - 0.40
+        "net_edge": 0.20,
+        "adjusted_edge": 0.20,
+        "signal": "STRONG BUY",
+        "net_signal": "STRONG BUY",
+        "recommended_side": "yes",
+        "time_risk": "LOW",
+        "forecast_prob": 0.65,
+        "market_prob": 0.40,  # mid-price
+        "days_out": 2,
+        "target_date": "2026-04-30",
+        "fee_adjusted_kelly": 0.06,
+        "ci_adjusted_kelly": 0.06,
+        "model_consensus": True,
+        "near_threshold": False,
+        "method": "ensemble",
+    }
+
+    main._auto_place_trades([(fake_market, fake_analysis)], client=None)
+
+    assert len(captured_prices) == 1, (
+        f"Expected exactly 1 paper order; got {len(captured_prices)}"
+    )
+    assert abs(captured_prices[0] - 0.42) < 0.001, (
+        f"L7-B: YES entry_price={captured_prices[0]:.4f} must be yes_ask=0.42, "
+        f"not mid=0.40 (paper P&L would be systematically optimistic)"
+    )
+
+
+def test_auto_place_uses_no_ask_not_mid_for_no_trades(monkeypatch):
+    """Regression for L7-B: for NO trades, entry_price must equal no_ask = 1 - yes_bid
+    (what you actually pay to buy NO), not 1 - mid.
+
+    Market: yes_bid=38¢, yes_ask=42¢ → mid=40¢, no_ask=62¢ (=1-0.38)
+    Before fix: entry_price = 1 - mid = 1 - 0.40 = 0.60
+    After fix:  entry_price = 1 - yes_bid = 1 - 0.38 = 0.62
+    """
+    main, paper = _l7b_common_patches(monkeypatch)
+
+    captured_prices = []
+
+    def fake_place_paper_order(ticker, side, qty, entry_price, **kwargs):
+        captured_prices.append(entry_price)
+        return {"id": 1}
+
+    monkeypatch.setattr("main.place_paper_order", fake_place_paper_order)
+
+    # Market with yes_bid=38¢, yes_ask=42¢ → mid=40¢
+    # Correct NO fill price = no_ask = 1 - yes_bid = 1 - 0.38 = 0.62 (not 1 - 0.40 = 0.60)
+    fake_market = {
+        "ticker": "KXHIGHNYC-26APR30-T70",
+        "yes_bid": 38,
+        "yes_ask": 42,
+        "_city": "NYC",
+        "_date": None,
+    }
+    fake_analysis = {
+        "edge": -0.15,  # blended_prob - mid = 0.25 - 0.40 (negative → NO side)
+        "net_edge": 0.10,
+        "adjusted_edge": 0.10,
+        "signal": "SELL",
+        "net_signal": "SELL",
+        "recommended_side": "no",
+        "time_risk": "LOW",
+        "forecast_prob": 0.25,  # we think YES prob is 25%; market says 40% → buy NO
+        "market_prob": 0.40,  # mid-price
+        "days_out": 2,
+        "target_date": "2026-04-30",
+        "fee_adjusted_kelly": 0.05,
+        "ci_adjusted_kelly": 0.05,
+        "model_consensus": True,
+        "near_threshold": False,
+        "method": "ensemble",
+    }
+
+    main._auto_place_trades([(fake_market, fake_analysis)], client=None)
+
+    assert len(captured_prices) == 1, (
+        f"Expected exactly 1 paper order; got {len(captured_prices)}"
+    )
+    assert abs(captured_prices[0] - 0.62) < 0.001, (
+        f"L7-B: NO entry_price={captured_prices[0]:.4f} must be no_ask=0.62 "
+        f"(= 1 - yes_bid = 1 - 0.38), not 1 - mid = 0.60"
+    )
