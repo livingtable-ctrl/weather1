@@ -475,6 +475,38 @@ class TestMarketStationMap:
                 f"{city}: station '{station}' doesn't start with K"
             )
 
+    def test_chicago_station_is_kord_not_kmdw(self):
+        """Regression for L5-D: Chicago must map to O'Hare (KORD), not Midway (KMDW).
+
+        Kalshi settles Chicago markets against the KORD (O'Hare) NWS station.
+        KORD and KMDW are ~12 miles apart and can differ 2-5°F — using KMDW
+        would introduce systematic settlement mismatch.
+        """
+        assert metar.MARKET_STATION_MAP["Chicago"] == "KORD", (
+            "Chicago must use KORD (O'Hare), not KMDW (Midway) — Kalshi settles against O'Hare"
+        )
+
+    def test_chicago_coords_closer_to_kord_than_kmdw(self):
+        """CITY_COORDS Chicago must be near O'Hare, not Midway.
+
+        KORD (O'Hare): 41.9803, -87.9090
+        KMDW (Midway): 41.7861, -87.7522
+        A coord near Midway would mismatch the settlement station used in MARKET_STATION_MAP.
+        """
+        from weather_markets import CITY_COORDS
+
+        lat, lon, _ = CITY_COORDS["Chicago"]
+        # O'Hare reference
+        kord_lat, kord_lon = 41.9803, -87.9090
+        kmdw_lat, kmdw_lon = 41.7861, -87.7522
+
+        dist_kord = ((lat - kord_lat) ** 2 + (lon - kord_lon) ** 2) ** 0.5
+        dist_kmdw = ((lat - kmdw_lat) ** 2 + (lon - kmdw_lon) ** 2) ** 0.5
+        assert dist_kord < dist_kmdw, (
+            f"Chicago coords ({lat}, {lon}) are closer to Midway than O'Hare — "
+            "must match KORD (settlement station)"
+        )
+
 
 class TestRecordObservation:
     def setup_method(self):

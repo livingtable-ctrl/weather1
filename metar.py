@@ -156,7 +156,7 @@ def check_metar_lockout(
 # Maps city name (matching CITY_COORDS keys) to primary ICAO observation station.
 MARKET_STATION_MAP: dict[str, str] = {
     "NYC": "KNYC",
-    "Chicago": "KMDW",
+    "Chicago": "KORD",
     "LA": "KLAX",
     "Miami": "KMIA",
     "Boston": "KBOS",
