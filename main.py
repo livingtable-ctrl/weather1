@@ -898,6 +898,7 @@ def cmd_market(client: KalshiClient, ticker: str, verbose: bool = False):
                 forecast_cycle=_current_forecast_cycle(),
                 edge_calc_version=_ECV,
                 signal_source=analysis.get("method"),
+                blend_sources=analysis.get("blend_sources"),
             )
         except Exception as _exc:
             logging.getLogger(__name__).warning(
@@ -2946,6 +2947,7 @@ def _auto_place_trades(
                         forecast_cycle=_current_forecast_cycle(),
                         edge_calc_version=_ECV2,
                         signal_source=a.get("method"),
+                        blend_sources=a.get("blend_sources"),
                     )
                 except Exception as _e2:
                     logging.getLogger(__name__).warning(
