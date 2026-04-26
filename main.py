@@ -5060,21 +5060,29 @@ def cmd_menu(client: KalshiClient):
             break
 
         elif name_stripped == "Analyze":
-            cmd_analyze(client)
+            try:
+                cmd_analyze(client)
+            except KeyboardInterrupt:
+                print(yellow("\n  Analyze cancelled."))
+                continue  # skip the Press Enter pause — already returned to menu context
 
         elif name_stripped == "Today":
             cmd_today(client)
 
-        elif name_stripped == "Loop":
+        elif name_stripped == "Cron":
             print(bold("\n  ── Run Cron ──\n"))
             print(dim("  Running a cron cycle now (uses cached data if fresh)…\n"))
+            sys.stdout.flush()
             try:
                 cmd_cron._called_from_loop = True  # type: ignore[attr-defined]
                 cmd_cron(client)
+            except KeyboardInterrupt:
+                print(yellow("\n  Cron cancelled."))
             except Exception as exc:
                 print(red(f"  Cron error: {exc}"))
             finally:
                 cmd_cron._called_from_loop = False  # type: ignore[attr-defined]
+            sys.stdout.flush()
             print(
                 dim(
                     "\n  Tip: run  py main.py loop  in a separate terminal to auto-run every 4h."
@@ -5274,7 +5282,12 @@ def cmd_menu(client: KalshiClient):
             cmd_report()
 
         elif name_stripped == "Brief":
-            cmd_brief(client)
+            try:
+                cmd_brief(client)
+            except KeyboardInterrupt:
+                print(yellow("\n  Brief cancelled."))
+            except Exception as _e:
+                print(red(f"\n  Brief failed: {_e}"))
 
         elif name_stripped == "Browse":
             cmd_browse(client)
@@ -5285,7 +5298,8 @@ def cmd_menu(client: KalshiClient):
         elif name_stripped == "Help":
             cmd_help()
 
-        input(dim("\n  Press Enter to return to menu..."))
+        print(dim("\n  Press Enter to return to menu..."), end="", flush=True)
+        input()
 
 
 # ── Backtest ─────────────────────────────────────────────────────────────────
