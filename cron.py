@@ -685,6 +685,10 @@ def cmd_cron(client: KalshiClient, min_edge: float = MIN_EDGE) -> None:
         placed_count += (
             _main._auto_place_trades(strong_opps, client=client, cap=strong_cap) or 0
         )
+        for _opp, _ana in strong_opps:
+            _ticker = _opp.get("ticker", "?")
+            _edge = _ana.get("net_edge", _ana.get("edge", 0))
+            print(dim(f"    placed: {_ticker} edge={_edge:+.1%}"))
     if med_opps:
         print(
             bold(
@@ -692,6 +696,10 @@ def cmd_cron(client: KalshiClient, min_edge: float = MIN_EDGE) -> None:
             )
         )
         placed_count += _main._auto_place_trades(med_opps, client=client, cap=20.0) or 0
+        for _opp, _ana in med_opps:
+            _ticker = _opp.get("ticker", "?")
+            _edge = _ana.get("net_edge", _ana.get("edge", 0))
+            print(dim(f"    placed: {_ticker} edge={_edge:+.1%}"))
 
     # Auto-settle any pending trades whose markets have resolved
     settled_count = 0
@@ -701,6 +709,19 @@ def cmd_cron(client: KalshiClient, min_edge: float = MIN_EDGE) -> None:
             print(green(f"  [Settle] Recorded {settled_count} new outcome(s)."))
     except Exception:
         pass
+
+    # Settle resolved paper trades (marks paper.json won/lost to match tracker outcomes)
+    paper_settled_count = 0
+    try:
+        from paper import auto_settle_paper_trades
+
+        paper_settled_count = auto_settle_paper_trades(client)
+        if paper_settled_count > 0:
+            print(
+                green(f"  [PaperSettle] Settled {paper_settled_count} paper trade(s).")
+            )
+    except Exception as _e:
+        _log.warning("cmd_cron: auto_settle_paper_trades failed: %s", _e)
 
     # F3: Auto-trigger calibration every 25 new settled trades
     try:
