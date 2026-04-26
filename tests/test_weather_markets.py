@@ -851,6 +851,10 @@ def test_model_consensus_false_when_models_disagree(monkeypatch):
             "wind_mph": 5.0,
         },
     )
+    # Disable METAR lock-in: _metar_lock_in compares target_date against
+    # datetime.now(UTC).date(). When the local "tomorrow" equals the UTC date
+    # (US timezones after ~20:00 local), it fires and skips the consensus block.
+    monkeypatch.setattr(wm, "_metar_lock_in", lambda *a, **kw: (False, 0.0, {}))
 
     from datetime import date, timedelta
 

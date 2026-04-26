@@ -702,8 +702,16 @@ class TestGaussianEnsembleBlend:
             patch("weather_markets.fetch_temperature_ecmwf", return_value=80.0),
             patch("climatology.climatological_prob", return_value=0.5),
             patch("nws.nws_prob", return_value=None),
-            patch("nws.get_live_observation", return_value=None),
+            # Patch the weather_markets-namespace reference (imported with `from
+            # nws import get_live_observation`) so obs_override stays None.
+            # Patching nws.get_live_observation alone does NOT intercept this.
+            patch("weather_markets.get_live_observation", return_value=None),
+            patch("weather_markets.obs_prob", return_value=None),
             patch("climate_indices.temperature_adjustment", return_value=0.0),
+            # Disable METAR lock-in: when local "tomorrow" == UTC today (US
+            # timezones after ~20:00 local), METAR fires and bypasses the
+            # ensemble/Gaussian path this test exercises.
+            patch.object(wm, "_metar_lock_in", return_value=(False, 0.0, {})),
         ):
             result = wm.analyze_trade(enriched)
 

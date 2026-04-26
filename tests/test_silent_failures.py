@@ -43,6 +43,11 @@ def _patch_analyze_prereqs():
         # Skip observation override
         patch("weather_markets.get_live_observation", return_value=None),
         patch("weather_markets.obs_prob", return_value=None),
+        # Disable METAR lock-in: _metar_lock_in compares target_date against
+        # datetime.now(UTC).date().  When the local "tomorrow" equals the UTC
+        # date (possible in US timezones after ~20:00 local / 00:00 UTC), the
+        # check fires and bypasses the entire ensemble path these tests exercise.
+        patch("weather_markets._metar_lock_in", return_value=(False, 0.0, {})),
     ]
 
 
@@ -67,6 +72,7 @@ def test_analyze_trade_logs_consensus_failure(caplog):
                 patches[4],
                 patches[5],
                 patches[6],
+                patches[7],
             ):
                 analyze_trade(_make_enriched())
 
@@ -110,7 +116,11 @@ def test_analyze_trade_logs_nws_prob_failure(caplog):
                                     with patch(
                                         "weather_markets.obs_prob", return_value=None
                                     ):
-                                        analyze_trade(_make_enriched())
+                                        with patch(
+                                            "weather_markets._metar_lock_in",
+                                            return_value=(False, 0.0, {}),
+                                        ):
+                                            analyze_trade(_make_enriched())
 
     assert any("nws down" in r.message for r in caplog.records), (
         "nws_prob failure must be logged, not silently swallowed.\n"
@@ -147,7 +157,11 @@ def test_analyze_trade_logs_climatological_failure(caplog):
                                 with patch(
                                     "weather_markets.obs_prob", return_value=None
                                 ):
-                                    analyze_trade(_make_enriched())
+                                    with patch(
+                                        "weather_markets._metar_lock_in",
+                                        return_value=(False, 0.0, {}),
+                                    ):
+                                        analyze_trade(_make_enriched())
 
     assert any("clim error" in r.message for r in caplog.records), (
         "climatological_prob failure must be logged, not silently swallowed.\n"
