@@ -17,7 +17,14 @@ from pathlib import Path
 import execution_log
 from colors import bold, cyan, dim, green, red, yellow
 from kalshi_client import KalshiClient
-from utils import DRIFT_TIGHTEN_EDGE, MED_EDGE, MIN_EDGE, PAPER_MIN_EDGE, STRONG_EDGE
+from utils import (
+    DRIFT_TIGHTEN_EDGE,
+    MED_EDGE,
+    MIN_EDGE,
+    MIN_PROB_EDGE,
+    PAPER_MIN_EDGE,
+    STRONG_EDGE,
+)
 
 # Use the "main" logger name so that existing tests which capture
 # logging.getLogger("main") continue to see cron log output.
@@ -575,6 +582,14 @@ def cmd_cron(client: KalshiClient, min_edge: float = MIN_EDGE) -> None:
                     pass
                 # P1.3: Use PAPER_MIN_EDGE (5%) so more signals are captured for observation.
                 if abs(adjusted_edge) < PAPER_MIN_EDGE:
+                    continue
+                # Probability-edge gate: require ≥8pp conviction even when ROI edge passes.
+                # On 50¢ contracts PAPER_MIN_EDGE only needs 2.5pp — this filters near-noise.
+                _prob_edge = abs(
+                    analysis.get("forecast_prob", 0.5)
+                    - analysis.get("market_prob", 0.5)
+                )
+                if _prob_edge < MIN_PROB_EDGE:
                     continue
                 signal = analysis.get("net_signal", analysis.get("signal", "")).strip()
                 time_risk = analysis.get("time_risk", "\u2014")

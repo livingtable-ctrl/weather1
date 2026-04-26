@@ -19,6 +19,10 @@ MIN_EDGE = float(os.getenv("MIN_EDGE", "0.07"))  # minimum edge to show in analy
 # Paper trading uses a lower threshold to capture more signals for observation.
 # Must be <= 5% per system requirements (P1.3). Override via PAPER_MIN_EDGE env var.
 PAPER_MIN_EDGE = float(os.getenv("PAPER_MIN_EDGE", "0.05"))
+# Minimum probability-delta edge (forecast_prob − market_prob) to place a trade.
+# Filters out signals where ROI edge exists but probability conviction is low.
+# 8pp = ~2× the 4pp ask/bid half-spread on a typical 50¢ Kalshi contract.
+MIN_PROB_EDGE = float(os.getenv("MIN_PROB_EDGE", "0.08"))
 
 # Confidence-tiered edge thresholds
 # HIGH: spread < 0.05 (models agree) → lower bar

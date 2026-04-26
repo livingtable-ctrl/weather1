@@ -3543,7 +3543,7 @@ def analyze_trade(enriched: dict) -> dict | None:
         model_consensus = True
         icon_forecast_mean: float | None = None
         gfs_forecast_mean: float | None = None
-        if ens_prob is not None and len(temps) >= 10:
+        if ens_prob is not None and len(temps) >= 2:
             try:
                 icon_p, gfs_p, icon_forecast_mean, gfs_forecast_mean = (
                     _get_consensus_probs(

@@ -2638,6 +2638,16 @@ def _auto_place_trades(
     placed = 0
     from utils import MAX_DAILY_SPEND
 
+    # Concurrent-position cap: never hold more than MAX_CONCURRENT_POSITIONS at once.
+    MAX_CONCURRENT_POSITIONS = int(os.getenv("MAX_CONCURRENT_POSITIONS", "20"))
+    if len(_open_trades_list) >= MAX_CONCURRENT_POSITIONS:
+        print(
+            yellow(
+                f"  [Auto] Position cap reached ({len(_open_trades_list)}/{MAX_CONCURRENT_POSITIONS} open) — no auto-trades."
+            )
+        )
+        return 0
+
     daily_spent = _daily_paper_spend()
     if daily_spent >= MAX_DAILY_SPEND:
         print(

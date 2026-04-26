@@ -300,9 +300,11 @@ def run_backtest(
         enriched = enrich_with_forecast(m)
         city = enriched.get("_city")
         tdate = enriched.get("_date")
-        forecast = enriched.get("_forecast")
 
-        if not city or not tdate or not forecast:
+        # Backtest uses archive data (fetch_archive_temps / fetch_archive_precip) for
+        # probability, NOT the live forecast.  Forecast is None for past dates, so do
+        # NOT gate on it here — only require city and tdate.
+        if not city or not tdate:
             continue
         if city_filter and city.lower() != city_filter.lower():
             continue
@@ -333,7 +335,7 @@ def run_backtest(
             condition["var"] = var
 
             temps = fetch_archive_temps(lat, lon, tz, tdate, var=var)
-            if len(temps) < 10:
+            if len(temps) < 1:
                 continue
 
             if condition["type"] == "above":
