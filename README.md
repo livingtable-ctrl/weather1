@@ -7,7 +7,7 @@ An automated paper (and optionally live) trading bot for Kalshi weather predicti
 ## Requirements
 
 - Windows 10/11
-- Python 3.12 — download from [python.org](https://www.python.org/downloads/) (do not use 3.13 or 3.14)
+- Python 3.12 or later — download from [python.org](https://www.python.org/downloads/)
 - A Kalshi account — sign up at [kalshi.com](https://kalshi.com)
 
 ---
@@ -194,7 +194,7 @@ To have the bot scan automatically while your PC sleeps:
 4. Under Conditions → Power: check "Wake the computer to run this task"
 5. Under Settings: check "Run task as soon as possible after a scheduled start is missed"
 
-The batch file uses Python 3.12 explicitly and puts the PC back to sleep after the scan finishes (only if no one was already using it).
+The batch file puts the PC back to sleep after the scan finishes (only if no one was already using it).
 
 During cron runs, the bot optionally opens a WebSocket connection to the Kalshi order book to fetch real-time mid prices before falling back to the REST API.
 
@@ -211,8 +211,10 @@ All settings have sensible defaults. Override any of them in `.env`:
 | `KALSHI_ENV` | `demo` | `demo` for paper trading, `prod` for live |
 | `MIN_EDGE` | `0.07` | Minimum edge to show in scan output |
 | `PAPER_MIN_EDGE` | `0.05` | Minimum edge to auto-place a paper trade |
+| `MIN_PROB_EDGE` | `0.08` | Minimum probability-delta (forecast − market) to auto-place a paper trade |
+| `MAX_CONCURRENT_POSITIONS` | `20` | Max open positions before auto-trades pause |
 | `MED_EDGE` | `0.15` | Edge threshold for medium-confidence signal tier |
-| `STRONG_EDGE` | `0.25` | Edge threshold for a strong signal |
+| `STRONG_EDGE` | `0.30` | Edge threshold for a strong signal |
 | `MAX_DAILY_SPEND` | `500.0` | Max dollars to spend per day on paper trades |
 | `MAX_DAILY_LOSS_PCT` | `0.03` | Halt auto-trading if daily loss exceeds this fraction of balance |
 | `MAX_SINGLE_TICKER_EXPOSURE` | `0.10` | Max fraction of starting balance in any single market |
@@ -242,7 +244,8 @@ All settings have sensible defaults. Override any of them in `.env`:
 ## Project structure
 
 ```
-main.py               — CLI entry point and cron runner
+main.py               — CLI entry point and interactive menu
+cron.py               — Silent cron scan used by Task Scheduler auto-trading
 weather_markets.py    — Forecast engine and trade analysis
 paper.py              — Paper trading, Kelly sizing, portfolio exposure
 tracker.py            — Trade logging, Brier scoring, bias detection
