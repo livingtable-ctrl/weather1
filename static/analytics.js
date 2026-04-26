@@ -33,9 +33,10 @@
       }
 
       // Calibration curve: predicted prob buckets vs actual outcome rate
-      var calBuckets = d.model_calibration_buckets;
-      if (calBuckets) {
-        var xCal = calBuckets.map(function (b) { return b.predicted_prob; });
+      // API returns {buckets:[...]} — unwrap first so .map() doesn't throw TypeError
+      var calBuckets = d.model_calibration_buckets && d.model_calibration_buckets.buckets;
+      if (calBuckets && calBuckets.length) {
+        var xCal = calBuckets.map(function (b) { return b.our_prob_avg; });
         var yCal = calBuckets.map(function (b) { return b.actual_rate; });
         var calEl = document.getElementById('calibration-chart');
         if (calEl && typeof Plotly !== 'undefined') {
@@ -52,14 +53,17 @@
       }
 
       // ROC curve with AUC in legend
+      // API returns roc.points:[{fpr,tpr}] — not flat roc.fpr/roc.tpr arrays
       var roc = d.roc_auc;
-      if (roc && roc.fpr && roc.tpr) {
+      if (roc && roc.points && roc.points.length) {
+        var rocFpr = roc.points.map(function (p) { return p.fpr; });
+        var rocTpr = roc.points.map(function (p) { return p.tpr; });
         var rocEl = document.getElementById('roc-chart');
         if (rocEl && typeof Plotly !== 'undefined') {
           Plotly.newPlot(rocEl, [
             { x: [0, 1], y: [0, 1], type: 'scatter', mode: 'lines', name: 'Random',
               line: { color: C.muted, dash: 'dash', width: 1 } },
-            { x: roc.fpr, y: roc.tpr, type: 'scatter', mode: 'lines',
+            { x: rocFpr, y: rocTpr, type: 'scatter', mode: 'lines',
               name: 'Model (AUC=' + (roc.auc || 0).toFixed(3) + ')',
               line: { color: C.accent, width: 2 } }
           ], makeLayout({
@@ -73,7 +77,7 @@
       var attr = d.component_attribution;
       if (attr) {
         var sources = Object.keys(attr);
-        var brierVals = sources.map(function (s) { return (attr[s] || {}).brier_score || 0; });
+        var brierVals = sources.map(function (s) { return (attr[s] || {}).brier || 0; });
         var attrEl = document.getElementById('attribution-chart');
         if (attrEl && typeof Plotly !== 'undefined') {
           Plotly.newPlot(attrEl, [{
