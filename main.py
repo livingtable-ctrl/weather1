@@ -2331,6 +2331,21 @@ def _check_early_exits(client=None) -> int:
             else:
                 shift = current_prob - entry_prob  # positive = prob rose against NO
 
+            # Minimum hold time — skip exits for trades placed within 12 hours
+            entered_at_str = trade.get("entered_at", "")
+            if entered_at_str:
+                try:
+                    entered_dt = datetime.fromisoformat(
+                        entered_at_str.replace("Z", "+00:00")
+                    )
+                    if entered_dt.tzinfo is None:
+                        entered_dt = entered_dt.replace(tzinfo=UTC)
+                    hours_held = (datetime.now(UTC) - entered_dt).total_seconds() / 3600
+                    if hours_held < 12:
+                        continue
+                except (ValueError, TypeError):
+                    pass
+
             if shift > 0.15:
                 exit_price = _midpoint_price(market, side)
                 result = _paper.close_paper_early(trade["id"], exit_price)

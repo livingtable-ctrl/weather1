@@ -13,7 +13,7 @@ import json
 import logging
 import os
 import zlib as _zlib
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from safe_io import AtomicWriteError, atomic_write_json
@@ -1308,12 +1308,30 @@ def check_model_exits(client=None) -> list[dict]:
                 continue
             held_side = t["side"]
             net_edge = analysis.get("net_edge", analysis["edge"])
-            # Model flipped: we're long YES but model now strongly favors NO, or vice versa
-            flipped = (held_side == "yes" and net_edge < -0.05) or (
-                held_side == "no" and net_edge > 0.05
+
+            # Minimum hold time: do not exit positions entered within the last 12 hours.
+            # New forecast data stabilises after 6–12h; early exits on noisy first-cycle
+            # updates are almost always spurious.
+            entered_at_str = t.get("entered_at", "")
+            if entered_at_str:
+                try:
+                    entered_dt = datetime.fromisoformat(
+                        entered_at_str.replace("Z", "+00:00")
+                    )
+                    if entered_dt.tzinfo is None:
+                        entered_dt = entered_dt.replace(tzinfo=UTC)
+                    hours_held = (datetime.now(UTC) - entered_dt).total_seconds() / 3600
+                    if hours_held < 12:
+                        continue  # too soon — let the position breathe
+                except (ValueError, TypeError):
+                    pass
+
+            # Model flipped: requires a meaningful reversal (10pp threshold)
+            flipped = (held_side == "yes" and net_edge < -0.10) or (
+                held_side == "no" and net_edge > 0.10
             )
-            # Edge gone: less than 3% after fees — no longer worth holding
-            edge_gone = abs(net_edge) < 0.03
+            # Edge gone: only exit when edge is meaningfully negative (>10pp negative)
+            edge_gone = net_edge < -0.10
             if flipped:
                 recommendations.append(
                     {
@@ -1915,7 +1933,7 @@ def get_rolling_sharpe(window_days: int = 30) -> float | None:
     """
     import math
     import statistics
-    from datetime import UTC, datetime, timedelta
+    from datetime import UTC, datetime
 
     cutoff = (datetime.now(UTC) - timedelta(days=window_days)).strftime("%Y-%m-%d")
     settled = [

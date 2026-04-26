@@ -799,6 +799,16 @@ def test_check_early_exits_closes_position_when_prob_flips(tmp_path, monkeypatch
     place_paper_order("TEST-TICKER", "yes", 5, 0.70, entry_prob=0.70)
     trade_id = get_open_trades()[0]["id"]
 
+    # Back-date entered_at so the 12h hold-time guard doesn't block the exit check
+    from datetime import datetime as _dt
+    from datetime import timedelta as _td
+
+    _old_time = (_dt.now(UTC) - _td(hours=24)).isoformat()
+    _pdata = paper._load()
+    for _t in _pdata.get("trades", []):
+        _t["entered_at"] = _old_time
+    paper._save(_pdata)
+
     closed = []
 
     def fake_close(tid, exit_price):
@@ -838,8 +848,18 @@ def test_check_model_exits_includes_market_in_rec(tmp_path, monkeypatch):
 
     paper.place_paper_order("TEST-FLIP", "yes", 5, 0.65, entry_prob=0.65)
 
+    # Back-date entered_at so the 12h hold-time guard doesn't block the exit check
+    from datetime import datetime as _dt
+    from datetime import timedelta as _td
+
+    _old_time = (_dt.now(UTC) - _td(hours=24)).isoformat()
+    _pdata = paper._load()
+    for _t in _pdata.get("trades", []):
+        _t["entered_at"] = _old_time
+    paper._save(_pdata)
+
     fake_market = {"ticker": "TEST-FLIP", "yes_bid": 30, "yes_ask": 36}
-    # net_edge < -0.05 → model_flipped for a YES position
+    # net_edge < -0.10 → model_flipped for a YES position
     fake_analysis = {
         "edge": -0.12,
         "net_edge": -0.12,
