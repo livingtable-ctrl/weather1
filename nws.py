@@ -363,10 +363,13 @@ def get_live_precip_obs(city: str, coords: tuple) -> float | None:
 def obs_prob(obs: dict, condition: dict) -> float:
     """
     Convert a live observation to a probability.
-    For same-day markets the temp is essentially known — use a very tight sigma.
+    Uses sigma=3.5 — a midday temperature reading is not the final daily
+    high/low; intraday spread is 3-5°F and sigma=1.0 produced near-binary
+    probabilities (2%/98%) that devastated Brier scores when outcome differed.
     """
     temp = obs["temp_f"]
-    sigma = 1.0  # near-certain once observed
+    # Realistic intraday uncertainty: matches historical daily-high/low spread.
+    sigma = 3.5
 
     if condition["type"] == "above":
         return 1.0 - normal_cdf(condition["threshold"], temp, sigma)

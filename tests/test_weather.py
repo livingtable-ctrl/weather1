@@ -334,5 +334,39 @@ class TestObsProbBetweenSigma(unittest.TestCase):
         )
 
 
+class TestObsProbAboveBelowSigma(unittest.TestCase):
+    """Regression: obs_prob for 'above'/'below' must use sigma=3.5, not sigma=1.0.
+
+    sigma=1.0 produced near-binary probabilities (2%/98%) when temp was near
+    the threshold — a 68°F midday reading with a 70°F threshold gave 2.3%,
+    but the daily high could easily reach 72°F. sigma=3.5 matches intraday
+    spread and gives calibrated probabilities that don't devastate Brier scores.
+    """
+
+    def test_above_near_threshold_not_near_zero(self):
+        """Temp 2°F below 'above' threshold → must be meaningfully above 0."""
+        from nws import obs_prob
+
+        obs = {"temp_f": 68.0}
+        p = obs_prob(obs, {"type": "above", "threshold": 70.0})
+        self.assertGreater(
+            p,
+            0.10,
+            f"obs_prob 'above' with temp near threshold must be >0.10; got {p:.3f}",
+        )
+
+    def test_below_near_threshold_not_near_one(self):
+        """Temp 2°F above 'below' threshold → must be meaningfully below 1."""
+        from nws import obs_prob
+
+        obs = {"temp_f": 42.0}
+        p = obs_prob(obs, {"type": "below", "threshold": 40.0})
+        self.assertLess(
+            p,
+            0.90,
+            f"obs_prob 'below' with temp near threshold must be <0.90; got {p:.3f}",
+        )
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
