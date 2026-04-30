@@ -5252,26 +5252,51 @@ def cmd_menu(client: KalshiClient):
                 elif settle_sub == "2":
                     _cmd_settle_open(client)
             elif sub == "4":
-                from paper import check_model_exits
+                try:
+                    from paper import check_model_exits, close_paper_early
 
-                recs = check_model_exits(client)
-                if not recs:
-                    print(green("  All open positions look fine — no exit signals."))
-                else:
-                    print(bold(f"\n  {len(recs)} exit signal(s):\n"))
-                    for rec in recs:
-                        t = rec["trade"]
-                        reason = (
-                            "Model flipped direction"
-                            if rec["reason"] == "model_flipped"
-                            else "Edge evaporated (<3%)"
-                        )
+                    recs = check_model_exits(client)
+                    if not recs:
                         print(
-                            yellow(
-                                f"  #{t['id']}  {t['ticker']}  {t['side'].upper()}"
-                                f"  —  {reason}  (edge now {rec['current_edge']:+.1%})"
-                            )
+                            green("  All open positions look fine — no exit signals.")
                         )
+                    else:
+                        print(bold(f"\n  {len(recs)} exit signal(s):\n"))
+                        for rec in recs:
+                            t = rec["trade"]
+                            reason = (
+                                "Model flipped direction"
+                                if rec["reason"] == "model_flipped"
+                                else "Edge evaporated (<3%)"
+                            )
+                            print(
+                                yellow(
+                                    f"  #{t['id']}  {t['ticker']}  {t['side'].upper()}"
+                                    f"  —  {reason}  (edge now {rec['current_edge']:+.1%})"
+                                )
+                            )
+                            try:
+                                choice = (
+                                    input(dim("  Close this position now? (y/N): "))
+                                    .strip()
+                                    .lower()
+                                )
+                            except (KeyboardInterrupt, EOFError):
+                                print()
+                                break
+                            if choice == "y":
+                                try:
+                                    exit_price = _midpoint_price(
+                                        rec["market"], rec["held_side"]
+                                    )
+                                    close_paper_early(t["id"], exit_price)
+                                    print(green(f"  #{t['id']} {t['ticker']} closed."))
+                                except Exception as _ce:
+                                    print(red(f"  Could not close: {_ce}"))
+                            else:
+                                print(dim(f"  #{t['id']} {t['ticker']} — skipped."))
+                except (KeyboardInterrupt, EOFError):
+                    print()
             elif sub == "5":
                 cmd_montecarlo(client)
             elif sub == "6":
