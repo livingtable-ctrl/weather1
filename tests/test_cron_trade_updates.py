@@ -3,10 +3,31 @@
 from unittest.mock import MagicMock
 
 
+def _apply_cron_isolation(monkeypatch, tmp_path):
+    """Stub out all guards that can cause cmd_cron to exit early.
+
+    Without these stubs, stale lock files or DB state from earlier tests in the
+    full suite can cause cmd_cron to exit before reaching the code under test.
+    """
+    import main
+
+    lock_path = tmp_path / ".cron.lock"
+    ks_path = tmp_path / ".kill_switch"
+    monkeypatch.setattr(main, "LOCK_PATH", lock_path, raising=False)
+    monkeypatch.setattr(main, "KILL_SWITCH_PATH", ks_path, raising=False)
+    monkeypatch.setattr(main, "_write_cron_running_flag", lambda: None)
+    monkeypatch.setattr(main, "_check_startup_orders", lambda: None)
+    monkeypatch.setattr(main, "_check_manual_override", lambda: False)
+    monkeypatch.setattr(main, "check_ensemble_circuit_health", lambda: None)
+    monkeypatch.setattr(main, "get_weather_markets", lambda client: [])
+
+
 class TestCronSettlesPaperTrades:
-    def test_cmd_cron_calls_auto_settle_paper_trades(self, monkeypatch):
+    def test_cmd_cron_calls_auto_settle_paper_trades(self, monkeypatch, tmp_path):
         """cmd_cron must call auto_settle_paper_trades so paper trades get marked won/lost."""
         import cron
+
+        _apply_cron_isolation(monkeypatch, tmp_path)
 
         settle_calls = []
 
@@ -15,7 +36,6 @@ class TestCronSettlesPaperTrades:
             return 1  # settled 1 trade
 
         monkeypatch.setattr("paper.auto_settle_paper_trades", fake_auto_settle)
-        monkeypatch.setattr("main.get_weather_markets", lambda client: [])
         fake_client = MagicMock()
 
         try:
@@ -27,9 +47,11 @@ class TestCronSettlesPaperTrades:
             "cmd_cron must call auto_settle_paper_trades(client) to settle resolved paper trades"
         )
 
-    def test_auto_settle_called_after_sync_outcomes(self, monkeypatch):
+    def test_auto_settle_called_after_sync_outcomes(self, monkeypatch, tmp_path):
         """auto_settle_paper_trades must be called in the same cron cycle as sync_outcomes."""
         import cron
+
+        _apply_cron_isolation(monkeypatch, tmp_path)
 
         call_order = []
 
@@ -41,7 +63,6 @@ class TestCronSettlesPaperTrades:
             "paper.auto_settle_paper_trades",
             lambda client=None: (call_order.append("settle"), 1)[1],
         )
-        monkeypatch.setattr("main.get_weather_markets", lambda client: [])
 
         fake_client = MagicMock()
         try:
@@ -75,13 +96,15 @@ class TestCronPrintPlacedTrades:
         assert len(captured.out) > 0, "cmd_cron produced no output at all"
 
     def test_per_ticker_print_code_exists_in_cron(self):
-        """cron.py must contain per-ticker placement print (not just total count)."""
+        """cron.py must track placement count and include it in the run summary."""
         import inspect
 
         import cron
 
-        source = inspect.getsource(cron.cmd_cron)
-        # After our fix, "placed:" text should appear in the placement output section
-        assert "placed:" in source, (
-            "cmd_cron must print 'placed: <ticker>' for each newly placed paper trade"
+        # Placement logic lives in _cmd_cron_body (cmd_cron is a thin lock-wrapper).
+        # After the Task-2 fix the per-ticker loops were removed; _auto_place_trades
+        # handles per-trade printing internally. cron tracks the total via placed_count.
+        source = inspect.getsource(cron._cmd_cron_body)
+        assert "placed_count" in source, (
+            "_cmd_cron_body must track placement count via placed_count"
         )
