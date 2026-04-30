@@ -167,3 +167,29 @@ def test_simulate_uses_series_fetch_not_global_pagination(monkeypatch):
         "cmd_simulate must call _fetch_settled_markets, not get_markets"
     )
     assert client.get_markets.call_count == 0, "get_markets must NOT be called"
+
+
+def test_get_weather_markets_does_not_call_global_get_markets(monkeypatch):
+    """get_weather_markets must not call client.get_markets() without series_ticker.
+    Strategy 1 (global open-market scan) is removed — Strategy 2 covers all known series.
+    """
+    from unittest.mock import MagicMock
+
+    import weather_markets
+
+    client = MagicMock()
+    client.get_markets.return_value = []
+
+    monkeypatch.setattr(weather_markets, "_MARKETS_CACHE", None)
+
+    weather_markets.get_weather_markets(client, force=True)
+
+    for call in client.get_markets.call_args_list:
+        kwargs = (
+            call.kwargs
+            if hasattr(call, "kwargs")
+            else (call[1] if len(call) > 1 else {})
+        )
+        assert "series_ticker" in kwargs, (
+            f"get_weather_markets must not call get_markets without series_ticker, got: {call}"
+        )

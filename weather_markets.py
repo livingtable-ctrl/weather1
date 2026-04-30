@@ -1791,16 +1791,10 @@ def get_weather_markets(
     results = []
     seen = set()
 
-    # Strategy 1: fetch open markets and filter
-    try:
-        markets = client.get_markets(status="open", limit=limit)
-        for m in markets:
-            if m.get("ticker") not in seen and is_weather_market(m) and not is_stale(m):
-                results.append(m)
-                seen.add(m["ticker"])
-    except Exception as e:
-        print(f"[warn] Could not fetch markets: {e}")
-
+    # Strategy 2 below fetches all known series directly via series_ticker= queries.
+    # A global open-market scan (Strategy 1) was removed: client.get_markets() does not
+    # expose the API cursor, making reliable pagination impossible. New Kalshi series
+    # should be added to known_series below.
     # Strategy 2: known weather series tickers — fetch in parallel (#127)
     known_series = [
         "KXHIGHNY",
