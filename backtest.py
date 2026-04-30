@@ -342,6 +342,14 @@ def run_backtest(
     )
     markets = _fetch_settled_markets(client, max_pages=20)
 
+    diag = {
+        "n_fetched": len(markets),
+        "n_result_ok": 0,
+        "n_parsed": 0,
+        "n_in_window": 0,
+        "n_archive": 0,
+    }
+
     results = []
     for _prog_i, m in enumerate(markets, 1):
         if on_progress:
@@ -350,6 +358,7 @@ def run_backtest(
         result = m.get("result", "")
         if result not in ("yes", "no"):
             continue
+        diag["n_result_ok"] += 1
 
         enriched = enrich_with_forecast(m)
         city = enriched.get("_city")
@@ -360,10 +369,12 @@ def run_backtest(
         # NOT gate on it here — only require city and tdate.
         if not city or not tdate:
             continue
+        diag["n_parsed"] += 1
         if city_filter and city.lower() != city_filter.lower():
             continue
         if tdate < cutoff:
             continue
+        diag["n_in_window"] += 1
 
         coords = CITY_COORDS.get(city)
         if not coords:
@@ -404,6 +415,7 @@ def run_backtest(
                 lo, hi = condition["lower"], condition["upper"]
                 our_prob = sum(1 for t in temps if lo <= t <= hi) / len(temps)
 
+        diag["n_archive"] += 1
         prices = parse_market_price(m)
         market_prob = prices["implied_prob"]
         actual = 1 if result == "yes" else 0
@@ -526,6 +538,7 @@ def run_backtest(
             "bench_yes_pnl": 0.0,
             "bench_market_pnl": 0.0,
             "bench_random_pnl": 0.0,
+            "diagnostic": diag,
         }
 
     train = [r for r in results if not r["holdout"]]

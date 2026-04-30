@@ -5416,7 +5416,48 @@ def cmd_backtest(client: KalshiClient, args: list):
 
     n = summary["n_markets"]
     if n == 0:
-        print(yellow("No finalized weather markets found in this window."))
+        print(yellow(f"  No scoreable markets found in the last {days_back} days."))
+        diag = summary.get("diagnostic", {})
+        if diag:
+            print(
+                dim(
+                    f"    Fetched:      {diag['n_fetched']:>4}   weather markets from Kalshi"
+                )
+            )
+            print(
+                dim(f"    Result ok:    {diag['n_result_ok']:>4}   had a yes/no result")
+            )
+            print(
+                dim(
+                    f"    Parsed:       {diag['n_parsed']:>4}   city + date extractable"
+                )
+            )
+            print(
+                dim(
+                    f"    In window:    {diag['n_in_window']:>4}   within last {days_back} days"
+                )
+            )
+            print(
+                dim(
+                    f"    Archive data: {diag['n_archive']:>4}   had historical weather data"
+                )
+            )
+            if diag["n_fetched"] == 0:
+                print(
+                    yellow("    ↳ No settled markets found — check API connectivity.")
+                )
+            elif diag["n_in_window"] == 0:
+                print(
+                    yellow(
+                        f"    ↳ All markets outside the {days_back}-day window. Try: py main.py backtest --days 365"
+                    )
+                )
+            elif diag["n_archive"] == 0:
+                print(
+                    yellow(
+                        "    ↳ Archive data missing — markets may be too recent. Try again tomorrow or use --days 180."
+                    )
+                )
         return
 
     brier = summary["brier"]
