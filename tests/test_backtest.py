@@ -47,6 +47,49 @@ class TestFetchSettledMarkets:
         second_call_params = fake_client._get.call_args_list[1][1]["params"]
         assert second_call_params.get("cursor") == "abc123"
 
+    def test_min_close_time_forwarded_to_api(self, monkeypatch):
+        """_fetch_settled_markets must pass min_close_time to every API call.
+
+        Root cause: without this filter the Kalshi API returns markets sorted
+        oldest-first when authenticated, so max_pages=20 only surfaces 2022-2024
+        markets — all outside the 90-day window — scoring zero.
+        """
+        from unittest.mock import MagicMock
+
+        import backtest
+
+        monkeypatch.setattr(backtest, "_WEATHER_SERIES", ["KXHIGHNY"])
+        fake_client = MagicMock()
+        fake_client._get.return_value = {"markets": [], "cursor": None}
+
+        backtest._fetch_settled_markets(
+            fake_client,
+            max_pages=1,
+            min_close_time="2026-01-30T00:00:00+00:00",
+        )
+
+        called_params = fake_client._get.call_args_list[0][1]["params"]
+        assert called_params.get("min_close_time") == "2026-01-30T00:00:00+00:00", (
+            f"min_close_time must be forwarded to the API; got params={called_params}"
+        )
+
+    def test_min_close_time_omitted_when_none(self, monkeypatch):
+        """When min_close_time is None the param must not appear in the API call."""
+        from unittest.mock import MagicMock
+
+        import backtest
+
+        monkeypatch.setattr(backtest, "_WEATHER_SERIES", ["KXHIGHNY"])
+        fake_client = MagicMock()
+        fake_client._get.return_value = {"markets": [], "cursor": None}
+
+        backtest._fetch_settled_markets(fake_client, max_pages=1, min_close_time=None)
+
+        called_params = fake_client._get.call_args_list[0][1]["params"]
+        assert "min_close_time" not in called_params, (
+            f"min_close_time must not appear when None; got params={called_params}"
+        )
+
     def test_api_error_skips_series_and_continues(self, monkeypatch):
         """_fetch_settled_markets silently skips a series that errors and continues."""
         from unittest.mock import MagicMock

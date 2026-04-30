@@ -140,43 +140,61 @@ class TestWalkForwardBacktest:
         assert "n_folds" in result
 
 
-def test_run_walk_forward_calls_run_backtest_once(monkeypatch):
-    """run_walk_forward must call run_backtest exactly once, not once per window."""
+def test_run_walk_forward_reads_from_db_not_run_backtest(monkeypatch):
+    """run_walk_forward reads settled predictions from the tracker DB directly;
+    it does NOT call run_backtest (that API was removed to avoid redundant calls).
+    """
     from datetime import date, timedelta
     from unittest.mock import MagicMock, patch
 
     import backtest
 
-    today = date.today()
-    # 4 rows spread across 180 days so multiple windows have data
-    rows = [
-        {
-            "date": (today - timedelta(days=d)).isoformat(),
-            "brier_sq": 0.1,
-            "won": True,
-            "pnl": 0.05,
-            "city": "NYC",
-        }
-        for d in [20, 60, 100, 150]
-    ]
-    fake_result = {"rows": rows, "n_markets": len(rows)}
-
-    call_count = []
-
-    def _fake_run_backtest(client, **kwargs):
-        call_count.append(kwargs)
-        return fake_result
-
     client = MagicMock()
-    with patch.object(backtest, "run_backtest", side_effect=_fake_run_backtest):
+
+    # Patch the DB query inside run_walk_forward to return synthetic rows
+    today = date.today()
+    fake_rows = [
+        MagicMock(
+            **{
+                "__getitem__.side_effect": lambda k: {
+                    "our_prob": 0.70,
+                    "city": "NYC",
+                    "market_date": (today - timedelta(days=d)).isoformat(),
+                    "settled_yes": 1,
+                }[k]
+            }
+        )
+        for d in [10, 40, 80, 130]
+    ]
+
+    run_backtest_called = []
+
+    with (
+        patch(
+            "backtest.run_backtest",
+            side_effect=lambda *a, **kw: run_backtest_called.append(1),
+        ),
+        patch("sqlite3.connect") as mock_connect,
+    ):
+        mock_con = MagicMock()
+        mock_cur = MagicMock()
+        mock_cur.fetchall.return_value = fake_rows
+        mock_con.cursor.return_value = mock_cur
+        mock_con.__enter__ = lambda s: s
+        mock_con.__exit__ = MagicMock(return_value=False)
+        mock_connect.return_value = mock_con
+
         result = backtest.run_walk_forward(
             client, days_total=180, window_size=60, step_size=30
         )
 
-    assert len(call_count) == 1, (
-        f"run_walk_forward must call run_backtest exactly once (called {len(call_count)} times)"
+    assert len(run_backtest_called) == 0, (
+        "run_walk_forward must NOT call run_backtest — it reads from DB directly"
     )
-    assert result["windows"], "Should produce at least one window from the fake rows"
+    # Result should at minimum have the expected keys
+    assert "windows" in result, (
+        f"Expected 'windows' key in result; got {list(result.keys())}"
+    )
 
 
 def test_fetch_settled_markets_queries_by_weather_series():

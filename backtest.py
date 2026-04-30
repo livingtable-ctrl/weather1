@@ -269,7 +269,9 @@ _WEATHER_SERIES = [
 ]
 
 
-def _fetch_settled_markets(client, max_pages: int = 20) -> list[dict]:
+def _fetch_settled_markets(
+    client, max_pages: int = 20, min_close_time: str | None = None
+) -> list[dict]:
     """
     Fetch settled Kalshi weather markets by iterating known weather series.
 
@@ -279,6 +281,9 @@ def _fetch_settled_markets(client, max_pages: int = 20) -> list[dict]:
     does for live markets.
 
     max_pages is applied per series to bound total API calls.
+    min_close_time (ISO-8601) is passed to the API so only markets settled on
+    or after that timestamp are returned.  Without it the API may return markets
+    from years ago — which all fall outside the backtest window and score 0.
     """
     seen: set[str] = set()
     markets: list[dict] = []
@@ -289,6 +294,8 @@ def _fetch_settled_markets(client, max_pages: int = 20) -> list[dict]:
             params: dict = {"series_ticker": series, "status": "settled", "limit": 200}
             if cursor:
                 params["cursor"] = cursor
+            if min_close_time:
+                params["min_close_time"] = min_close_time
             try:
                 data = client._get("/markets", params=params, auth=True)
             except Exception:
@@ -340,7 +347,21 @@ def run_backtest(
         if holdout_days_count > 0
         else None
     )
-    markets = _fetch_settled_markets(client, max_pages=20)
+    # Pass min_close_time so the API only returns markets settled within the
+    # window.  This avoids fetching thousands of old markets that are all
+    # outside the window and score zero (root cause: API returns oldest-first
+    # when authenticated, so max_pages=20 only surfaces 2022-2024 markets).
+    _cutoff_ts = (
+        __import__("datetime")
+        .datetime(
+            cutoff.year,
+            cutoff.month,
+            cutoff.day,
+            tzinfo=__import__("datetime").timezone.utc,
+        )
+        .isoformat()
+    )
+    markets = _fetch_settled_markets(client, max_pages=20, min_close_time=_cutoff_ts)
 
     diag = {
         "n_fetched": len(markets),
