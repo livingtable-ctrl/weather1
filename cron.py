@@ -230,25 +230,9 @@ def _check_manual_override() -> bool:
         return False
 
 
-# ---------------------------------------------------------------------------
-# Main cron command
-# ---------------------------------------------------------------------------
-
-
-def cmd_cron(client: KalshiClient, min_edge: float = MIN_EDGE) -> None:
-    """Silent background scan — writes to data/cron.log, auto-places strong paper trades."""
-    import sys as _sys
-
-    # Resolve the live main module so monkeypatched attributes are used
+def _cmd_cron_body(client: KalshiClient, min_edge: float = MIN_EDGE) -> None:
+    """Core scan logic — extracted from cmd_cron so it can be wrapped in try/finally."""
     _main = _main_module()
-
-    # P3.4 — acquire file lock; exit immediately if another instance is running
-    # Use _main lookup so monkeypatch.setattr(main, "_acquire_cron_lock", ...) is respected.
-    if not _main._acquire_cron_lock():
-        _log.warning("cmd_cron: could not acquire lock — skipping this run")
-        if not getattr(cmd_cron, "_called_from_loop", False):
-            _sys.exit(1)
-        return
 
     # P8.3 — hard kill switch: touch data/.kill_switch to halt immediately
     if _kill_switch_path().exists():
@@ -260,21 +244,18 @@ def cmd_cron(client: KalshiClient, min_edge: float = MIN_EDGE) -> None:
                 "\n  \u26a0  KILL SWITCH ACTIVE \u2014 trading halted. Delete data/.kill_switch to resume.\n"
             )
         )
-        _main._release_cron_lock()
         return
 
     # P8.4 — manual override check (time-limited pause)
     # Use main-module lookup so test monkeypatching of main._check_manual_override works.
     if _main._check_manual_override():
         _log.warning("cmd_cron: manual override active — skipping this run")
-        _main._release_cron_lock()
         return
 
     from paper import is_accuracy_halted as _is_accuracy_halted
 
     if _is_accuracy_halted():
         _log.warning("[cron] accuracy circuit breaker active — skipping market scan")
-        _main._release_cron_lock()
         return
 
     # Graduation gate — prevent accidental live trading before sufficient predictions exist
@@ -282,7 +263,6 @@ def cmd_cron(client: KalshiClient, min_edge: float = MIN_EDGE) -> None:
         _check_graduation_gate()
     except RuntimeError as _gate_err:
         _log.error("%s", _gate_err)
-        _main._release_cron_lock()
         return
 
     # Spend cap validation — warn if MAX_DAILY_SPEND exceeds current balance
@@ -361,8 +341,6 @@ def cmd_cron(client: KalshiClient, min_edge: float = MIN_EDGE) -> None:
                 "cmd_cron: BLACK SWAN conditions triggered — halting. Conditions: %s",
                 _bs_conditions,
             )
-            _main._release_cron_lock()
-            _main._clear_cron_running_flag()
             return
     except Exception as _e:
         _log.debug("cmd_cron: run_black_swan_check failed: %s", _e)
@@ -1047,18 +1025,46 @@ def cmd_cron(client: KalshiClient, min_edge: float = MIN_EDGE) -> None:
     except Exception:
         pass  # never crash the scheduler over a backup failure
 
-    _main._clear_cron_running_flag()
-    try:
-        _last_run_path = Path(__file__).parent / "data" / ".cron_last_run"
-        _last_run_path.write_text(__import__("datetime").datetime.now().isoformat())
-    except Exception:
-        pass
-    _main._release_cron_lock()
     print(
         cyan(
             f"  [cron] scan complete \u2014 {datetime.now(UTC).strftime('%Y-%m-%d %H:%M:%S')} UTC"
         ),
         flush=True,
     )
+
+
+# ---------------------------------------------------------------------------
+# Main cron command
+# ---------------------------------------------------------------------------
+
+
+def cmd_cron(client: KalshiClient, min_edge: float = MIN_EDGE) -> None:
+    """Silent background scan — writes to data/cron.log, auto-places strong paper trades."""
+    import sys as _sys
+
+    # Resolve the live main module so monkeypatched attributes are used
+    _main = _main_module()
+
+    # P3.4 — acquire file lock; exit immediately if another instance is running
+    # Use _main lookup so monkeypatch.setattr(main, "_acquire_cron_lock", ...) is respected.
+    if not _main._acquire_cron_lock():
+        _log.warning("cmd_cron: could not acquire lock — skipping this run")
+        if not getattr(cmd_cron, "_called_from_loop", False):
+            _sys.exit(1)
+        return
+
+    try:
+        _cmd_cron_body(client, min_edge)
+    except KeyboardInterrupt:
+        print()
+        _log.warning("cmd_cron: interrupted by user")
+    finally:
+        _main._clear_cron_running_flag()
+        try:
+            _last_run_path = Path(__file__).parent / "data" / ".cron_last_run"
+            _last_run_path.write_text(__import__("datetime").datetime.now().isoformat())
+        except Exception:
+            pass
+        _main._release_cron_lock()
     if not getattr(cmd_cron, "_called_from_loop", False):
         _sys.exit(0)

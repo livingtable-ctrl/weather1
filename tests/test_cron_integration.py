@@ -310,3 +310,25 @@ def test_cron_gate_allows_when_adjusted_edge_above_threshold(cron_env):
     assert len(placed_calls) > 0, (
         "Gate must allow trade when adjusted_edge >= STRONG_EDGE (L2-E)"
     )
+
+
+@pytest.mark.integration
+def test_cron_lock_released_on_keyboard_interrupt(cron_env):
+    """Lock must be cleaned up even if cron is interrupted mid-run."""
+    import cron as _cron
+
+    tmp_path, client, main, paper = cron_env
+    lock_path = tmp_path / "cron.lock"
+    main.LOCK_PATH = lock_path
+
+    def _raise(*a, **kw):
+        raise KeyboardInterrupt
+
+    main._write_cron_running_flag = _raise
+
+    try:
+        _cron.cmd_cron(client)
+    except (KeyboardInterrupt, SystemExit):
+        pass
+
+    assert not lock_path.exists(), "Lock file must be deleted after KeyboardInterrupt"
