@@ -3601,7 +3601,12 @@ def analyze_trade(enriched: dict) -> dict | None:
         # ── 5. Live observation override (same-day markets) ──────────────────────
         live_obs: dict | None = None
         obs_override: float | None = None
-        if days_out == 0:
+        # Skip obs for "between" markets — current temperature tells us where the
+        # reading is NOW, not where the daily high will peak; a 1°F band is too
+        # narrow for an intra-day obs to be reliable.  Without this guard the obs
+        # gets 85-90% blend weight after 2 PM and produces wildly miscalibrated
+        # probabilities (Brier 0.40 observed in 29 settled "between" predictions).
+        if days_out == 0 and condition.get("type") != "between":
             try:
                 live_obs = get_live_observation(city, coords)
                 if live_obs:

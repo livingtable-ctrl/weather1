@@ -291,5 +291,48 @@ class TestCIAdjustedKelly(unittest.TestCase):
             self.assertGreaterEqual(a["ci_adjusted_kelly"], 0.0)
 
 
+class TestObsProbBetweenSigma(unittest.TestCase):
+    """Regression: obs_prob for 'between' must use sigma=3.5, not sigma=0.25.
+
+    The old sigma=0.25 when temp was inside the bucket gave ~95% probability,
+    treating a midday temperature reading as confirmation of the daily high.
+    With sigma=3.5 the probability is ~11% when centered — correctly reflecting
+    that the daily high could still move 3-5°F after the observation.
+    """
+
+    def _cond(self, lo, hi):
+        return {"type": "between", "lower": lo, "upper": hi}
+
+    def test_centered_temp_gives_low_probability(self):
+        """Temp at centre of a 1°F band → ~11%, not ~95%."""
+        from nws import obs_prob
+
+        obs = {"temp_f": 70.5}
+        p = obs_prob(obs, self._cond(70.0, 71.0))
+        self.assertLess(
+            p, 0.20, f"obs_prob for centred 'between' must be <0.20; got {p:.3f}"
+        )
+
+    def test_centered_temp_not_near_one(self):
+        """Old sigma=0.25 gave ~0.95; new sigma=3.5 must give much less."""
+        from nws import obs_prob
+
+        obs = {"temp_f": 70.5}
+        p = obs_prob(obs, self._cond(70.0, 71.0))
+        self.assertLess(
+            p, 0.50, f"obs_prob for 'between' must not be near 1; got {p:.3f}"
+        )
+
+    def test_temp_outside_bucket_gives_low_probability(self):
+        """Temp 5°F above the bucket → probability should be tiny."""
+        from nws import obs_prob
+
+        obs = {"temp_f": 76.0}
+        p = obs_prob(obs, self._cond(70.0, 71.0))
+        self.assertLess(
+            p, 0.10, f"obs_prob for temp far outside bucket must be <0.10; got {p:.3f}"
+        )
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -458,3 +458,99 @@ class TestBlendSourcesNormalisation:
         assert 0.0 <= fp <= 1.0, (
             f"forecast_prob must be in [0, 1] without MOS; got {fp}"
         )
+
+
+# ── Regression: obs_override must NOT apply to "between" markets ─────────────
+
+
+class TestBetweenObsDisabled:
+    """obs_override is suppressed for 'between' condition markets.
+
+    Historical calibration on 29 settled "between" predictions showed Brier
+    0.405 — driven by obs getting 85-90% blend weight after 2 PM with
+    sigma=0.25, treating current temperature as confirmation of the daily high.
+    A 1°F band is too narrow for an intra-day observation to be predictive.
+    """
+
+    def _make_between_enriched_same_day(self):
+        from datetime import date
+
+        today = date.today()
+        return {
+            "ticker": f"KXHIGHNY-{today.strftime('%d%b%y').upper()}-B70.5",
+            "title": "NYC high between 70 and 71°F",
+            "_city": "NYC",
+            "_date": today,
+            "_hour": None,
+            "_forecast": {
+                "high_f": 70.5,
+                "low_f": 60.0,
+                "precip_in": 0.0,
+                "date": today.isoformat(),
+                "city": "NYC",
+                "models_used": 3,
+                "high_range": (69.0, 72.0),
+            },
+            "yes_bid": 0.15,
+            "yes_ask": 0.20,
+            "no_bid": 0.80,
+            "close_time": "",
+            "series_ticker": "KXHIGHNY",
+            "volume": 500,
+            "open_interest": 200,
+        }
+
+    def test_between_obs_not_in_blend_sources(self):
+        """For same-day 'between' markets, blend_sources must NOT contain 'obs'
+        even when get_live_observation returns a valid reading."""
+        from unittest.mock import patch
+
+        import weather_markets as wm
+
+        enriched = self._make_between_enriched_same_day()
+        fake_obs = {"temp_f": 70.4, "humidity": 55, "wind_mph": 5}
+
+        with (
+            patch.object(wm, "get_ensemble_temps", return_value=[70.5] * 20),
+            patch.object(wm, "fetch_temperature_nbm", return_value=70.8),
+            patch.object(wm, "fetch_temperature_ecmwf", return_value=71.2),
+            patch("climatology.climatological_prob", return_value=0.10),
+            patch("nws.nws_prob", return_value=None),
+            patch("nws.get_live_observation", return_value=fake_obs),
+            patch("climate_indices.temperature_adjustment", return_value=0.0),
+        ):
+            result = wm.analyze_trade(enriched)
+
+        assert result is not None
+        blend = result.get("blend_sources", {})
+        assert "obs" not in blend, (
+            f"'obs' must not appear in blend_sources for 'between' markets; got {blend}"
+        )
+
+    def test_between_obs_suppressed_forecast_prob_is_low(self):
+        """Without obs override, 'between' forecast_prob must be in a
+        calibrated range (~5-20%) not inflated to 80-95%."""
+        from unittest.mock import patch
+
+        import weather_markets as wm
+
+        enriched = self._make_between_enriched_same_day()
+        fake_obs = {"temp_f": 70.4, "humidity": 55, "wind_mph": 5}
+
+        with (
+            patch.object(wm, "get_ensemble_temps", return_value=[70.5] * 20),
+            patch.object(wm, "fetch_temperature_nbm", return_value=70.8),
+            patch.object(wm, "fetch_temperature_ecmwf", return_value=71.2),
+            patch("climatology.climatological_prob", return_value=0.10),
+            patch("nws.nws_prob", return_value=None),
+            patch("nws.get_live_observation", return_value=fake_obs),
+            patch("climate_indices.temperature_adjustment", return_value=0.0),
+        ):
+            result = wm.analyze_trade(enriched)
+
+        assert result is not None
+        fp = result.get("forecast_prob", 1.0)
+        assert fp < 0.40, (
+            f"forecast_prob={fp:.3f} for a 1°F 'between' band must be below 0.40; "
+            f"obs override is disabled so value should reflect Gaussian uncertainty only"
+        )

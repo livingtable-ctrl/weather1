@@ -375,12 +375,10 @@ def obs_prob(obs: dict, condition: dict) -> float:
     elif condition["type"] == "between":
         lower = condition["lower"]
         upper = condition["upper"]
-        # Bug fix: sigma=1.0 gives only 38% for a temp centered in a 1°F bucket.
-        # When the observed temp is inside the bucket the daily high is essentially
-        # confirmed there → use sigma=0.25 (~95% for centered temp).
-        # When outside the bucket keep sigma=1.0 for appropriate uncertainty.
-        sigma_between = 0.25 if lower <= temp <= upper else 1.0
-        return normal_cdf(upper, temp, sigma_between) - normal_cdf(
-            lower, temp, sigma_between
-        )
+        # Use realistic sigma for "between" markets.  The prior sigma=0.25 when
+        # the temp is inside the bucket assumed the obs confirmed the daily high,
+        # but the daily high often moves 3-5°F after a midday reading.  Use
+        # sigma=3.5 (matching historical forecast uncertainty) so the obs gives
+        # a calibrated ~11% probability when centered, not a misleading 95%.
+        return normal_cdf(upper, temp, 3.5) - normal_cdf(lower, temp, 3.5)
     return 0.0
