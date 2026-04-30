@@ -807,13 +807,15 @@ def _cmd_cron_body(client: KalshiClient, min_edge: float = MIN_EDGE) -> bool | N
             if len(_brier_weeks) >= 2:
                 _recent_two = [w["brier"] for w in _brier_weeks[-2:]]
                 if all(b > _BRIER_THRESH for b in _recent_two):
+                    from tracker import format_brier_alert as _fmt_brier
+
                     _brier_msg = (
                         f"Brier score has exceeded {_BRIER_THRESH} for two consecutive weeks "
                         f"({_recent_two[0]:.4f}, {_recent_two[1]:.4f}). "
                         "Review model quality before continuing live trades."
                     )
                     _log.warning("P10.3 Brier alert: %s", _brier_msg)
-                    print(red(f"  [BrierAlert] {_brier_msg}"))
+                    print(red(_fmt_brier(scores=_recent_two)))
                     try:
                         from notify import _send_discord as _brier_discord
 
