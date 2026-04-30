@@ -160,3 +160,15 @@ class TestCmdBrief:
         assert "KXHIGH-NYC" in out, (
             f"Good market should still appear after bad market is skipped, got:\n{out}"
         )
+
+
+def test_brier_alert_includes_guidance():
+    """format_brier_alert() output should include actionable next steps."""
+    from tracker import format_brier_alert
+
+    msg = format_brier_alert(scores=[0.3559, 0.2315])
+    assert (
+        "backtest" in msg.lower()
+        or "calibrat" in msg.lower()
+        or "review" in msg.lower()
+    ), f"BrierAlert should include actionable guidance, got:\n{msg}"

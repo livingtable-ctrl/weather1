@@ -5252,26 +5252,51 @@ def cmd_menu(client: KalshiClient):
                 elif settle_sub == "2":
                     _cmd_settle_open(client)
             elif sub == "4":
-                from paper import check_model_exits
+                try:
+                    from paper import check_model_exits, close_paper_early
 
-                recs = check_model_exits(client)
-                if not recs:
-                    print(green("  All open positions look fine — no exit signals."))
-                else:
-                    print(bold(f"\n  {len(recs)} exit signal(s):\n"))
-                    for rec in recs:
-                        t = rec["trade"]
-                        reason = (
-                            "Model flipped direction"
-                            if rec["reason"] == "model_flipped"
-                            else "Edge evaporated (<3%)"
-                        )
+                    recs = check_model_exits(client)
+                    if not recs:
                         print(
-                            yellow(
-                                f"  #{t['id']}  {t['ticker']}  {t['side'].upper()}"
-                                f"  —  {reason}  (edge now {rec['current_edge']:+.1%})"
-                            )
+                            green("  All open positions look fine — no exit signals.")
                         )
+                    else:
+                        print(bold(f"\n  {len(recs)} exit signal(s):\n"))
+                        for rec in recs:
+                            t = rec["trade"]
+                            reason = (
+                                "Model flipped direction"
+                                if rec["reason"] == "model_flipped"
+                                else "Edge evaporated (<3%)"
+                            )
+                            print(
+                                yellow(
+                                    f"  #{t['id']}  {t['ticker']}  {t['side'].upper()}"
+                                    f"  —  {reason}  (edge now {rec['current_edge']:+.1%})"
+                                )
+                            )
+                            try:
+                                choice = (
+                                    input(dim("  Close this position now? (y/N): "))
+                                    .strip()
+                                    .lower()
+                                )
+                            except (KeyboardInterrupt, EOFError):
+                                print()
+                                break
+                            if choice == "y":
+                                try:
+                                    exit_price = _midpoint_price(
+                                        rec["market"], rec["held_side"]
+                                    )
+                                    close_paper_early(t["id"], exit_price)
+                                    print(green(f"  #{t['id']} {t['ticker']} closed."))
+                                except Exception as _ce:
+                                    print(red(f"  Could not close: {_ce}"))
+                            else:
+                                print(dim(f"  #{t['id']} {t['ticker']} — skipped."))
+                except (KeyboardInterrupt, EOFError):
+                    print()
             elif sub == "5":
                 cmd_montecarlo(client)
             elif sub == "6":
@@ -5391,7 +5416,48 @@ def cmd_backtest(client: KalshiClient, args: list):
 
     n = summary["n_markets"]
     if n == 0:
-        print(yellow("No finalized weather markets found in this window."))
+        print(yellow(f"  No scoreable markets found in the last {days_back} days."))
+        diag = summary.get("diagnostic", {})
+        if diag:
+            print(
+                dim(
+                    f"    Fetched:      {diag['n_fetched']:>4}   weather markets from Kalshi"
+                )
+            )
+            print(
+                dim(f"    Result ok:    {diag['n_result_ok']:>4}   had a yes/no result")
+            )
+            print(
+                dim(
+                    f"    Parsed:       {diag['n_parsed']:>4}   city + date extractable"
+                )
+            )
+            print(
+                dim(
+                    f"    In window:    {diag['n_in_window']:>4}   within last {days_back} days"
+                )
+            )
+            print(
+                dim(
+                    f"    Archive data: {diag['n_archive']:>4}   had historical weather data"
+                )
+            )
+            if diag["n_fetched"] == 0:
+                print(
+                    yellow("    ↳ No settled markets found — check API connectivity.")
+                )
+            elif diag["n_in_window"] == 0:
+                print(
+                    yellow(
+                        f"    ↳ All markets outside the {days_back}-day window. Try: py main.py backtest --days 365"
+                    )
+                )
+            elif diag["n_archive"] == 0:
+                print(
+                    yellow(
+                        "    ↳ Archive data missing — markets may be too recent. Try again tomorrow or use --days 180."
+                    )
+                )
         return
 
     brier = summary["brier"]
@@ -6053,6 +6119,15 @@ def cmd_montecarlo(client: KalshiClient) -> None:  # noqa: ARG001
         print(f"  {label:>16}  {color(bar)}  {count}")
     print()
 
+    if result.get("n_clamped", 0) > 0:
+        print(
+            dim(
+                f"  ℹ  {result['n_clamped']} position(s) had extreme probabilities"
+                f" (<5% or >90%) and were clamped to the safe range."
+                f" This is a guard against stale data — not an error."
+            )
+        )
+
 
 # ── Web dashboard ─────────────────────────────────────────────────────────────
 
@@ -6078,21 +6153,19 @@ def cmd_simulate(client: KalshiClient) -> None:
     print(dim("  Loading last 20 finalized weather markets...\n"))
 
     try:
-        markets = client.get_markets(status="settled", limit=50)
+        from backtest import _fetch_settled_markets
+
+        all_markets = _fetch_settled_markets(client)
     except Exception as e:
         print(red(f"  Could not load markets: {e}"))
         return
 
     from weather_markets import (
         enrich_with_forecast,
-        is_weather_market,
         parse_market_price,
     )
 
-    markets = [m for m in markets if is_weather_market(m)]
-    weather = [
-        m for m in markets if is_weather_market(m) and m.get("result") in ("yes", "no")
-    ][:20]
+    weather = [m for m in all_markets if m.get("result") in ("yes", "no")][:20]
     if not weather:
         print(yellow("  No finalized weather markets found."))
         return

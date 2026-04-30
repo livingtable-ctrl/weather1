@@ -2220,6 +2220,28 @@ def detect_brier_drift(
     }
 
 
+def format_brier_alert(scores: list[float]) -> str:
+    """Return a multi-line BrierAlert string with explanation and actionable next steps.
+
+    Args:
+        scores: The two most recent weekly Brier scores that exceeded the threshold.
+    """
+    from utils import BRIER_ALERT_THRESHOLD
+
+    scores_str = ", ".join(f"{s:.4f}" for s in scores)
+    return (
+        f"[BrierAlert] Brier score has exceeded {BRIER_ALERT_THRESHOLD} for two consecutive"
+        f" weeks ({scores_str}).\n"
+        f"  What this means: your model's probability forecasts are poorly calibrated.\n"
+        f"  Next steps:\n"
+        f"    1. Run: py main.py backtest --days 180   (see which cities/conditions are worst)\n"
+        f"    2. Run: py main.py validate              (check if performance is degrading over time)\n"
+        f"    3. Run: py main.py calibrate             (recalibrate probability outputs)\n"
+        f"    4. Check learned_weights.json age — if >7 days, re-run validate and save new weights\n"
+        f"  Live trading will continue but consider pausing until Brier < {BRIER_ALERT_THRESHOLD}."
+    )
+
+
 # ── Unselected bias tracking (#55) ────────────────────────────────────────────
 
 

@@ -126,3 +126,99 @@ class TestBrierScoreComputation:
         assert result["auc"] == pytest.approx(1.0, abs=1e-6), (
             f"Expected AUC=1.0 for perfect classifier, got {result['auc']}"
         )
+
+
+def test_simulate_uses_series_fetch_not_global_pagination(monkeypatch):
+    """cmd_simulate must call backtest._fetch_settled_markets (series-based), not get_markets."""
+    from unittest.mock import MagicMock
+
+    import main
+
+    weather_markets_returned = [
+        {
+            "ticker": "KXHIGHNY-25APR30-T65",
+            "title": "High temp NYC above 65",
+            "result": "yes",
+            "close_time": "2025-04-30T12:00:00Z",
+            "yes_ask": 60,
+            "yes_bid": 58,
+        },
+    ]
+
+    fetch_called = {"n": 0}
+
+    def _fake_fetch(client, **kw):
+        fetch_called["n"] += 1
+        return weather_markets_returned
+
+    monkeypatch.setattr("backtest._fetch_settled_markets", _fake_fetch)
+    monkeypatch.setattr("weather_markets.is_weather_market", lambda m: True)
+    monkeypatch.setattr("weather_markets.enrich_with_forecast", lambda m: m)
+    monkeypatch.setattr(
+        "weather_markets.parse_market_price",
+        lambda m: {"mid": 0.60, "yes_ask": 60, "yes_bid": 58},
+    )
+
+    client = MagicMock()
+    monkeypatch.setattr("builtins.input", lambda *a: "s")
+
+    main.cmd_simulate(client)
+    assert fetch_called["n"] == 1, (
+        "cmd_simulate must call _fetch_settled_markets, not get_markets"
+    )
+    assert client.get_markets.call_count == 0, "get_markets must NOT be called"
+
+
+def test_get_weather_markets_does_not_call_global_get_markets(monkeypatch):
+    """get_weather_markets must not call client.get_markets() without series_ticker.
+    Strategy 1 (global open-market scan) is removed — Strategy 2 covers all known series.
+    """
+    from unittest.mock import MagicMock
+
+    import weather_markets
+
+    client = MagicMock()
+    client.get_markets.return_value = []
+
+    monkeypatch.setattr(weather_markets, "_MARKETS_CACHE", None)
+
+    weather_markets.get_weather_markets(client, force=True)
+
+    for call in client.get_markets.call_args_list:
+        kwargs = (
+            call.kwargs
+            if hasattr(call, "kwargs")
+            else (call[1] if len(call) > 1 else {})
+        )
+        assert "series_ticker" in kwargs, (
+            f"get_weather_markets must not call get_markets without series_ticker, got: {call}"
+        )
+
+
+def test_montecarlo_explains_clamping_in_output(monkeypatch, capsys):
+    """When MC clamps a probability, the UI should explain this is expected/defensive."""
+    import main
+    import paper
+
+    # A trade with entry_prob=0.01 will be clamped to 0.05 inside simulate_portfolio
+    clamped_trade = {
+        "id": 1,
+        "ticker": "KXHIGHNY-25APR30-T65",
+        "side": "yes",
+        "qty": 5,
+        "entry_price": 0.60,
+        "entry_prob": 0.01,
+        "city": "NYC",
+        "cost": 3.0,
+    }
+    monkeypatch.setattr(paper, "get_open_trades", lambda: [clamped_trade])
+    monkeypatch.setattr(paper, "get_balance", lambda: 500.0)
+
+    from unittest.mock import MagicMock
+
+    client = MagicMock()
+    main.cmd_montecarlo(client)
+    out = capsys.readouterr().out
+    assert (
+        "clamp" in out.lower() or "guard" in out.lower() or "extreme" in out.lower()
+    ), f"Should explain clamping, got:\n{out}"
