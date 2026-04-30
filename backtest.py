@@ -598,6 +598,7 @@ def run_walk_forward(
       city_win_rates: {city: win_rate},
     }
     """
+    import sqlite3
     import statistics
 
     # #20: validate that window parameters don't create gaps or excessive overlap
@@ -609,46 +610,66 @@ def run_walk_forward(
             "some history will be skipped (gap between windows)."
         )
 
-    if client is None:
-        return {
-            "windows": [],
-            "avg_brier": None,
-            "avg_win_rate": None,
-            "stability_score": None,
-            "trend": "unknown",
-            "city_win_rates": {},
-        }
-
     from datetime import date, timedelta
 
-    # Fetch all markets once — slicing into windows happens in memory.
-    # The original approach called run_backtest once per window (N+1 API fetches),
-    # making the function extremely slow and appearing frozen.
+    # Read directly from the tracker DB — all the data we need is already logged
+    # (forecast_prob + outcome + city + market_date). Zero API calls required.
+    # client and on_progress are kept as parameters for API compatibility but unused.
+    from tracker import DB_PATH as _TRACKER_DB
+
+    _empty: dict = {
+        "windows": [],
+        "avg_brier": None,
+        "avg_win_rate": None,
+        "stability_score": None,
+        "trend": "unknown",
+        "city_win_rates": {},
+    }
+
+    cutoff = (date.today() - timedelta(days=days_total)).isoformat()
     try:
-        full_result = run_backtest(
-            client,
-            city_filter=city_filter,
-            days_back=days_total,
-            verbose=False,
-            holdout_fraction=0.0,
-            on_progress=on_progress,
-        )
-    except Exception as e:
+        _con = sqlite3.connect(_TRACKER_DB)
+        _con.row_factory = sqlite3.Row
+        _cur = _con.cursor()
+        _q = """
+            SELECT p.our_prob, p.city, p.market_date, o.settled_yes
+            FROM predictions p
+            JOIN outcomes o ON p.ticker = o.ticker
+            WHERE p.market_date >= ?
+              AND p.our_prob IS NOT NULL
+              AND o.settled_yes IS NOT NULL
+        """
+        _params: list = [cutoff]
+        if city_filter:
+            _q += " AND p.city = ?"
+            _params.append(city_filter)
+        _cur.execute(_q, _params)
+        _db_rows = _cur.fetchall()
+        _con.close()
+    except Exception as _e:
         import logging as _logging
 
         _logging.getLogger(__name__).warning(
-            "run_walk_forward: run_backtest failed: %s", e
+            "run_walk_forward: DB query failed: %s", _e
         )
-        return {
-            "windows": [],
-            "avg_brier": None,
-            "avg_win_rate": None,
-            "stability_score": None,
-            "trend": "unknown",
-            "city_win_rates": {},
-        }
+        return _empty
 
-    all_rows = full_result.get("rows", [])
+    if not _db_rows:
+        return _empty
+
+    all_rows = []
+    for _r in _db_rows:
+        _prob = float(_r["our_prob"])
+        _outcome = int(_r["settled_yes"])
+        all_rows.append(
+            {
+                "date": _r["market_date"],
+                "city": _r["city"] or "",
+                "brier_sq": (_prob - _outcome) ** 2,
+                "won": (_prob >= 0.5) == bool(_outcome),
+                "pnl": 0.0,  # entry price not available in tracker DB
+            }
+        )
 
     today = date.today()
     windows = []
