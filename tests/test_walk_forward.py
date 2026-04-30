@@ -138,3 +138,29 @@ class TestWalkForwardBacktest:
         assert "mean_brier" in result
         assert "std_brier" in result
         assert "n_folds" in result
+
+
+def test_walkforward_prints_no_data_message_when_empty(monkeypatch, capsys):
+    """When no windows have data, cmd_walkforward should print a clear no-data message."""
+    from unittest.mock import MagicMock
+
+    import main
+
+    empty_result = {
+        "windows": [],
+        "avg_brier": None,
+        "avg_win_rate": None,
+        "stability_score": None,
+        "trend": "unknown",
+        "city_win_rates": {},
+    }
+    monkeypatch.setattr("backtest.run_walk_forward", lambda *a, **kw: empty_result)
+
+    client = MagicMock()
+    main.cmd_walkforward(client)
+    out = capsys.readouterr().out
+    assert (
+        "no data" in out.lower()
+        or "no settled" in out.lower()
+        or "0 windows" in out.lower()
+    ), f"Should print a clear no-data message, got:\n{out}"

@@ -4580,6 +4580,17 @@ def cmd_walkforward(client: KalshiClient) -> None:
         print(red(f"  Walk-forward test failed: {e}"))
         return
 
+    windows = result.get("windows", [])
+    if not windows:
+        print(
+            yellow(
+                "  No data found in the walk-forward windows.\n"
+                "  This usually means there are no settled markets in the last 180 days.\n"
+                "  Try running: py main.py backtest --days 365"
+            )
+        )
+        return
+
     avg_brier = result.get("avg_brier")
     avg_win_rate = result.get("avg_win_rate")
     stability_score = result.get("stability_score")
