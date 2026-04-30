@@ -26,11 +26,14 @@ class TestCmdSimulateStatusParam:
 
 
 class TestFetchSettledMarkets:
-    def test_pagination_follows_cursor(self, monkeypatch):
-        """_fetch_settled_markets must follow the cursor until exhausted."""
+    def test_pagination_follows_cursor_within_series(self, monkeypatch):
+        """_fetch_settled_markets follows cursor pages within a single series."""
         from unittest.mock import MagicMock
 
         import backtest
+
+        # Stub _WEATHER_SERIES to a single series so call count is predictable
+        monkeypatch.setattr(backtest, "_WEATHER_SERIES", ["KXHIGHNY"])
 
         fake_client = MagicMock()
         page1 = {"markets": [{"ticker": "T1"}], "cursor": "abc123"}
@@ -44,24 +47,28 @@ class TestFetchSettledMarkets:
         second_call_params = fake_client._get.call_args_list[1][1]["params"]
         assert second_call_params.get("cursor") == "abc123"
 
-    def test_api_error_raises_with_clear_message(self, monkeypatch):
-        """_fetch_settled_markets must raise on 400 errors."""
+    def test_api_error_skips_series_and_continues(self, monkeypatch):
+        """_fetch_settled_markets silently skips a series that errors and continues."""
         from unittest.mock import MagicMock
 
         import requests
 
         import backtest
 
+        # Two series: first errors, second succeeds
+        monkeypatch.setattr(backtest, "_WEATHER_SERIES", ["KXHIGHNY", "KXLOWNY"])
+
         fake_client = MagicMock()
-        resp = MagicMock()
-        resp.status_code = 400
-        resp.text = "Bad Request"
-        fake_client._get.side_effect = requests.HTTPError(response=resp)
+        ok_page = {"markets": [{"ticker": "KXLOWNY-25APR30-T40"}], "cursor": None}
+        fake_client._get.side_effect = [
+            requests.HTTPError(response=MagicMock(status_code=400, text="Bad Request")),
+            ok_page,
+        ]
 
-        import pytest
+        result = backtest._fetch_settled_markets(fake_client, max_pages=5)
 
-        with pytest.raises((requests.HTTPError, RuntimeError)):
-            backtest._fetch_settled_markets(fake_client, max_pages=5)
+        assert len(result) == 1, "Should return markets from the successful series"
+        assert result[0]["ticker"] == "KXLOWNY-25APR30-T40"
 
 
 class TestCmdBacktestErrorHandling:
