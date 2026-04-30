@@ -237,7 +237,7 @@ def _fetch_settled_markets(client, max_pages: int = 20) -> list[dict]:
     cursor: str | None = None
 
     for _ in range(max_pages):
-        params: dict = {"status": "settled", "limit": 200}
+        params: dict = {"status": "finalized", "limit": 200}
         if cursor:
             params["cursor"] = cursor
 
