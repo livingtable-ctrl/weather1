@@ -321,6 +321,8 @@ def test_cron_lock_released_on_keyboard_interrupt(cron_env):
     lock_path = tmp_path / "cron.lock"
     main.LOCK_PATH = lock_path
 
+    _original = main._write_cron_running_flag
+
     def _raise(*a, **kw):
         raise KeyboardInterrupt
 
@@ -330,5 +332,7 @@ def test_cron_lock_released_on_keyboard_interrupt(cron_env):
         _cron.cmd_cron(client)
     except (KeyboardInterrupt, SystemExit):
         pass
+    finally:
+        main._write_cron_running_flag = _original
 
     assert not lock_path.exists(), "Lock file must be deleted after KeyboardInterrupt"
