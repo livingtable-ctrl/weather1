@@ -146,19 +146,19 @@ CITY_COORDS = _load_city_coords()
 # Warm biases in GFS/ICON are strongest for daytime peaks; overnight lows differ.
 _STATION_BIAS_HIGH: dict[str, float] = {
     "NYC": 1.0,  # KNYC: NWS gridpoint overshoots Central Park by ~1°F (warm)
-    "MIA": 3.0,  # KMIA: GFS southern warm bias, confirmed via field research
-    "DEN": 2.0,  # KDEN: Mountain terrain uncertainty, conservative correction
-    "CHI": 0.5,  # KORD: Minor warm bias
-    "DAL": 0.5,  # KDFW: GFS southern warm bias (minor)
-    "LAX": 0.0,  # KLAX: No known systematic bias
+    "Miami": 3.0,  # KMIA: GFS southern warm bias, confirmed via field research
+    "Denver": 2.0,  # KDEN: Mountain terrain uncertainty, conservative correction
+    "Chicago": 0.5,  # KORD: Minor warm bias
+    "Dallas": 0.5,  # KDFW: GFS southern warm bias (minor)
+    "LA": 0.0,  # KLAX: No known systematic bias
 }
 _STATION_BIAS_LOW: dict[str, float] = {
     "NYC": 0.5,  # Overnight lows: smaller warm bias than daytime highs
-    "MIA": 1.5,  # MIA overnight lows still warm-biased but less than highs
-    "DEN": 1.0,  # Denver nights: model still warm but less extreme
-    "CHI": 0.0,  # CHI lows: no consistent bias observed
-    "DAL": 0.0,  # DAL lows: no consistent bias observed
-    "LAX": 0.0,  # KLAX: No known systematic bias
+    "Miami": 1.5,  # KMIA overnight lows still warm-biased but less than highs
+    "Denver": 1.0,  # Denver nights: model still warm but less extreme
+    "Chicago": 0.0,  # KORD lows: no consistent bias observed
+    "Dallas": 0.0,  # KDFW lows: no consistent bias observed
+    "LA": 0.0,  # KLAX: No known systematic bias
 }
 # Legacy alias — used by any callers that don't pass var
 _STATION_BIAS = _STATION_BIAS_HIGH
@@ -171,7 +171,7 @@ def apply_station_bias(city: str, forecast_temp: float, var: str = "max") -> flo
     on the station's actual expected temperature.
 
     Args:
-        city: City code (e.g. "NYC", "MIA")
+        city: City name matching CITY_COORDS keys (e.g. "NYC", "Miami", "Chicago")
         forecast_temp: Raw model forecast in °F
         var: "max" for daily high markets, "min" for daily low markets (B4)
 
@@ -179,7 +179,7 @@ def apply_station_bias(city: str, forecast_temp: float, var: str = "max") -> flo
         Bias-corrected temperature in °F (unchanged if city unknown)
     """
     table = _STATION_BIAS_LOW if var == "min" else _STATION_BIAS_HIGH
-    bias = table.get(city.upper(), 0.0)
+    bias = table.get(city, 0.0)
     return forecast_temp - bias
 
 

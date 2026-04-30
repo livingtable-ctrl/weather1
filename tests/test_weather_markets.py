@@ -1301,3 +1301,50 @@ class TestUtcTodayDate:
         assert "date.today()" not in src, (
             "Found date.today() in weather_markets.py — replace with datetime.now(UTC).date()"
         )
+
+
+class TestStationBiasKeys:
+    """Regression: bias dict keys must match CITY_COORDS keys exactly.
+
+    Previously used 3-letter codes (MIA, DEN, CHI, DAL, LAX) while city names
+    passed at runtime are full names (Miami, Denver, Chicago, Dallas, LA).
+    Only NYC accidentally matched, so all other corrections silently returned 0.
+    """
+
+    def test_miami_high_bias_applies(self):
+        from weather_markets import apply_station_bias
+
+        corrected = apply_station_bias("Miami", 90.0, var="max")
+        assert corrected == 87.0, (
+            f"Miami 3°F warm bias must be applied; got {corrected}"
+        )
+
+    def test_denver_high_bias_applies(self):
+        from weather_markets import apply_station_bias
+
+        corrected = apply_station_bias("Denver", 75.0, var="max")
+        assert corrected == 73.0, (
+            f"Denver 2°F warm bias must be applied; got {corrected}"
+        )
+
+    def test_chicago_high_bias_applies(self):
+        from weather_markets import apply_station_bias
+
+        corrected = apply_station_bias("Chicago", 80.0, var="max")
+        assert corrected == 79.5, (
+            f"Chicago 0.5°F warm bias must be applied; got {corrected}"
+        )
+
+    def test_nyc_still_works(self):
+        from weather_markets import apply_station_bias
+
+        corrected = apply_station_bias("NYC", 72.0, var="max")
+        assert corrected == 71.0, f"NYC 1°F warm bias must still apply; got {corrected}"
+
+    def test_unknown_city_returns_unchanged(self):
+        from weather_markets import apply_station_bias
+
+        corrected = apply_station_bias("Boston", 65.0, var="max")
+        assert corrected == 65.0, (
+            f"Unknown city must return unchanged temp; got {corrected}"
+        )
