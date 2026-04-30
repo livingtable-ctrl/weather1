@@ -22,14 +22,14 @@ class TestApplyStationBias:
         """Miami has a -3°F bias correction."""
         from weather_markets import apply_station_bias
 
-        corrected = apply_station_bias("MIA", 90.0)
+        corrected = apply_station_bias("Miami", 90.0)
         assert corrected == pytest.approx(87.0, abs=0.01)
 
     def test_denver_bias_negative(self):
         """Denver has a -2°F bias correction."""
         from weather_markets import apply_station_bias
 
-        corrected = apply_station_bias("DEN", 65.0)
+        corrected = apply_station_bias("Denver", 65.0)
         assert corrected == pytest.approx(63.0, abs=0.01)
 
     def test_unknown_city_no_change(self):
@@ -42,7 +42,7 @@ class TestApplyStationBias:
         """LA has no known systematic bias."""
         from weather_markets import apply_station_bias
 
-        assert apply_station_bias("LAX", 75.0) == pytest.approx(75.0)
+        assert apply_station_bias("LA", 75.0) == pytest.approx(75.0)
 
     def test_bias_table_exists(self):
         """_STATION_BIAS dict is importable."""
