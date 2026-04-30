@@ -140,6 +140,45 @@ class TestWalkForwardBacktest:
         assert "n_folds" in result
 
 
+def test_run_walk_forward_calls_run_backtest_once(monkeypatch):
+    """run_walk_forward must call run_backtest exactly once, not once per window."""
+    from datetime import date, timedelta
+    from unittest.mock import MagicMock, patch
+
+    import backtest
+
+    today = date.today()
+    # 4 rows spread across 180 days so multiple windows have data
+    rows = [
+        {
+            "date": (today - timedelta(days=d)).isoformat(),
+            "brier_sq": 0.1,
+            "won": True,
+            "pnl": 0.05,
+            "city": "NYC",
+        }
+        for d in [20, 60, 100, 150]
+    ]
+    fake_result = {"rows": rows, "n_markets": len(rows)}
+
+    call_count = []
+
+    def _fake_run_backtest(client, **kwargs):
+        call_count.append(kwargs)
+        return fake_result
+
+    client = MagicMock()
+    with patch.object(backtest, "run_backtest", side_effect=_fake_run_backtest):
+        result = backtest.run_walk_forward(
+            client, days_total=180, window_size=60, step_size=30
+        )
+
+    assert len(call_count) == 1, (
+        f"run_walk_forward must call run_backtest exactly once (called {len(call_count)} times)"
+    )
+    assert result["windows"], "Should produce at least one window from the fake rows"
+
+
 def test_walkforward_prints_no_data_message_when_empty(monkeypatch, capsys):
     """When no windows have data, cmd_walkforward should print a clear no-data message."""
     from unittest.mock import MagicMock

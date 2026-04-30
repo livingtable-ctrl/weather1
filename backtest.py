@@ -551,6 +551,37 @@ def run_walk_forward(
             "city_win_rates": {},
         }
 
+    from datetime import date, timedelta
+
+    # Fetch all markets once — slicing into windows happens in memory.
+    # The original approach called run_backtest once per window (N+1 API fetches),
+    # making the function extremely slow and appearing frozen.
+    try:
+        full_result = run_backtest(
+            client,
+            city_filter=city_filter,
+            days_back=days_total,
+            verbose=False,
+            holdout_fraction=0.0,
+        )
+    except Exception as e:
+        import logging as _logging
+
+        _logging.getLogger(__name__).warning(
+            "run_walk_forward: run_backtest failed: %s", e
+        )
+        return {
+            "windows": [],
+            "avg_brier": None,
+            "avg_win_rate": None,
+            "stability_score": None,
+            "trend": "unknown",
+            "city_win_rates": {},
+        }
+
+    all_rows = full_result.get("rows", [])
+
+    today = date.today()
     windows = []
     for offset in range(0, days_total - window_size + 1, step_size):
         start_days = days_total - offset
@@ -558,40 +589,27 @@ def run_walk_forward(
         if end_days < 0:
             end_days = 0
 
-        try:
-            result = run_backtest(
-                client,
-                city_filter=city_filter,
-                days_back=start_days,
-                verbose=False,
-                holdout_fraction=0.0,
-            )
-            # Filter to rows within the window
-            from datetime import date, timedelta
-
-            window_start = date.today() - timedelta(days=start_days)
-            window_end = date.today() - timedelta(days=end_days)
-            rows = [
-                r
-                for r in result.get("rows", [])
-                if window_start <= date.fromisoformat(r["date"]) <= window_end
-            ]
-            if not rows:
-                continue
-            brier_w = sum(r["brier_sq"] for r in rows) / len(rows)
-            wins_w = sum(1 for r in rows if r["won"])
-            windows.append(
-                {
-                    "start_date": window_start.isoformat(),
-                    "end_date": window_end.isoformat(),
-                    "brier": round(brier_w, 4),
-                    "win_rate": round(wins_w / len(rows), 3),
-                    "pnl": round(sum(r["pnl"] for r in rows), 4),
-                    "n": len(rows),
-                }
-            )
-        except Exception:
+        window_start = today - timedelta(days=start_days)
+        window_end = today - timedelta(days=end_days)
+        rows = [
+            r
+            for r in all_rows
+            if window_start <= date.fromisoformat(r["date"]) <= window_end
+        ]
+        if not rows:
             continue
+        brier_w = sum(r["brier_sq"] for r in rows) / len(rows)
+        wins_w = sum(1 for r in rows if r["won"])
+        windows.append(
+            {
+                "start_date": window_start.isoformat(),
+                "end_date": window_end.isoformat(),
+                "brier": round(brier_w, 4),
+                "win_rate": round(wins_w / len(rows), 3),
+                "pnl": round(sum(r["pnl"] for r in rows), 4),
+                "n": len(rows),
+            }
+        )
 
     if not windows:
         return {
@@ -629,25 +647,15 @@ def run_walk_forward(
     else:
         trend = "stable"
 
-    # City win rates for learned weights
-    try:
-        all_result = run_backtest(
-            client,
-            city_filter=city_filter,
-            days_back=days_total,
-            verbose=False,
-            holdout_fraction=0.0,
-        )
-        city_rows: dict[str, list] = {}
-        for r in all_result.get("rows", []):
-            city_rows.setdefault(r.get("city", ""), []).append(r["won"])
-        city_win_rates = {
-            city: round(sum(ws) / len(ws), 3)
-            for city, ws in city_rows.items()
-            if city and len(ws) >= 5
-        }
-    except Exception:
-        city_win_rates = {}
+    # City win rates from the already-fetched rows — no extra API call
+    city_rows: dict[str, list] = {}
+    for r in all_rows:
+        city_rows.setdefault(r.get("city", ""), []).append(r["won"])
+    city_win_rates = {
+        city: round(sum(ws) / len(ws), 3)
+        for city, ws in city_rows.items()
+        if city and len(ws) >= 5
+    }
 
     return {
         "windows": windows,
