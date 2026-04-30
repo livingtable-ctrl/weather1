@@ -583,6 +583,7 @@ def run_walk_forward(
     window_size: int = 60,
     step_size: int = 30,
     city_filter: str | None = None,
+    on_progress=None,
 ) -> dict:
     """
     Walk-forward validation: slide a fixed-size window across the history,
@@ -630,6 +631,7 @@ def run_walk_forward(
             days_back=days_total,
             verbose=False,
             holdout_fraction=0.0,
+            on_progress=on_progress,
         )
     except Exception as e:
         import logging as _logging

@@ -4573,12 +4573,25 @@ def cmd_walkforward(client: KalshiClient) -> None:
     from backtest import run_walk_forward
 
     _header("Walk-Forward Validation")
-    print(dim("  Running walk-forward test (this may take a moment)...\n"))
+    print(dim("  Fetching and scoring markets (this may take a moment)..."))
+
+    _wf_total: list[int] = [0]
+
+    def _wf_progress(i: int, total: int) -> None:
+        _wf_total[0] = total
+        filled = int(i / total * 30) if total else 0
+        bar = "█" * filled + "░" * (30 - filled)
+        pct = int(i / total * 100) if total else 0
+        print(f"\r  [{bar}] {pct:3d}%  {i}/{total}", end="", flush=True)
+
     try:
-        result = run_walk_forward(client)
+        result = run_walk_forward(client, on_progress=_wf_progress)
     except Exception as e:
-        print(red(f"  Walk-forward test failed: {e}"))
+        print(red(f"\n  Walk-forward test failed: {e}"))
         return
+    finally:
+        if _wf_total[0]:
+            print()  # newline after progress bar
 
     windows = result.get("windows", [])
     if not windows:
