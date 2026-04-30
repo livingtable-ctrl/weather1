@@ -4649,9 +4649,9 @@ def cmd_walkforward(client: KalshiClient) -> None:
         )
         try:
             save_choice = (
-                input(dim("  Save as learned weights? (y/N): ")).strip().lower()
+                input(dim("  Save as learned weights? (Y/n): ")).strip().lower()
             )
-            if save_choice == "y":
+            if save_choice != "n":
                 save_learned_weights(city_win_rates)
                 # #25/#118: also update weights from tracker MAE data
                 try:
