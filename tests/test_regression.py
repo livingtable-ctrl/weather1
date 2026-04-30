@@ -126,3 +126,44 @@ class TestBrierScoreComputation:
         assert result["auc"] == pytest.approx(1.0, abs=1e-6), (
             f"Expected AUC=1.0 for perfect classifier, got {result['auc']}"
         )
+
+
+def test_simulate_uses_series_fetch_not_global_pagination(monkeypatch):
+    """cmd_simulate must call backtest._fetch_settled_markets (series-based), not get_markets."""
+    from unittest.mock import MagicMock
+
+    import main
+
+    weather_markets_returned = [
+        {
+            "ticker": "KXHIGHNY-25APR30-T65",
+            "title": "High temp NYC above 65",
+            "result": "yes",
+            "close_time": "2025-04-30T12:00:00Z",
+            "yes_ask": 60,
+            "yes_bid": 58,
+        },
+    ]
+
+    fetch_called = {"n": 0}
+
+    def _fake_fetch(client, **kw):
+        fetch_called["n"] += 1
+        return weather_markets_returned
+
+    monkeypatch.setattr("backtest._fetch_settled_markets", _fake_fetch)
+    monkeypatch.setattr("weather_markets.is_weather_market", lambda m: True)
+    monkeypatch.setattr("weather_markets.enrich_with_forecast", lambda m: m)
+    monkeypatch.setattr(
+        "weather_markets.parse_market_price",
+        lambda m: {"mid": 0.60, "yes_ask": 60, "yes_bid": 58},
+    )
+
+    client = MagicMock()
+    monkeypatch.setattr("builtins.input", lambda *a: "s")
+
+    main.cmd_simulate(client)
+    assert fetch_called["n"] == 1, (
+        "cmd_simulate must call _fetch_settled_markets, not get_markets"
+    )
+    assert client.get_markets.call_count == 0, "get_markets must NOT be called"

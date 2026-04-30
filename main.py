@@ -6103,21 +6103,19 @@ def cmd_simulate(client: KalshiClient) -> None:
     print(dim("  Loading last 20 finalized weather markets...\n"))
 
     try:
-        markets = client.get_markets(status="settled", limit=50)
+        from backtest import _fetch_settled_markets
+
+        all_markets = _fetch_settled_markets(client)
     except Exception as e:
         print(red(f"  Could not load markets: {e}"))
         return
 
     from weather_markets import (
         enrich_with_forecast,
-        is_weather_market,
         parse_market_price,
     )
 
-    markets = [m for m in markets if is_weather_market(m)]
-    weather = [
-        m for m in markets if is_weather_market(m) and m.get("result") in ("yes", "no")
-    ][:20]
+    weather = [m for m in all_markets if m.get("result") in ("yes", "no")][:20]
     if not weather:
         print(yellow("  No finalized weather markets found."))
         return
