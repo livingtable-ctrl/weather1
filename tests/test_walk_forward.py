@@ -179,10 +179,10 @@ def test_run_walk_forward_calls_run_backtest_once(monkeypatch):
     assert result["windows"], "Should produce at least one window from the fake rows"
 
 
-def test_fetch_settled_markets_uses_finalized_status():
-    """_fetch_settled_markets must query status=finalized, not status=settled.
-    Kalshi marks concluded markets as 'finalized'; 'settled' is the later payment
-    state and returns far fewer (or zero) weather markets."""
+def test_fetch_settled_markets_queries_by_weather_series():
+    """_fetch_settled_markets must query by series_ticker, not dump all global markets.
+    The global status=settled endpoint returns thousands of non-weather markets and
+    buries weather series beyond the page limit."""
     from unittest.mock import MagicMock
 
     import backtest
@@ -193,10 +193,15 @@ def test_fetch_settled_markets_uses_finalized_status():
     backtest._fetch_settled_markets(client, max_pages=1)
 
     assert client._get.called
-    params_used = client._get.call_args[1].get("params") or client._get.call_args[0][1]
-    assert params_used.get("status") == "finalized", (
-        f"_fetch_settled_markets must use status='finalized', got {params_used.get('status')!r}"
-    )
+    # Every call must include a series_ticker param (weather series filter)
+    for call in client._get.call_args_list:
+        params_used = call[1].get("params") or call[0][1]
+        assert "series_ticker" in params_used, (
+            f"_fetch_settled_markets must filter by series_ticker; got params: {params_used}"
+        )
+        assert params_used.get("status") == "settled", (
+            f"_fetch_settled_markets must use status='settled'; got {params_used.get('status')!r}"
+        )
 
 
 def test_walkforward_prints_no_data_message_when_empty(monkeypatch, capsys):

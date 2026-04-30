@@ -227,27 +227,81 @@ def stratified_train_test_split(
     return train, holdout
 
 
+_WEATHER_SERIES = [
+    "KXHIGHNY",
+    "KXHIGHCHI",
+    "KXHIGHLA",
+    "KXHIGHBOS",
+    "KXHIGHMIA",
+    "KXHIGHTDAL",
+    "KXHIGHTPHX",
+    "KXHIGHTSEA",
+    "KXHIGHDEN",
+    "KXHIGHTATL",
+    "KXHIGHAUS",
+    "KXHIGHTDC",
+    "KXHIGHTPHIL",
+    "KXHIGHTOKC",
+    "KXHIGHTSFO",
+    "KXHIGHTMIN",
+    "KXHIGHHOUM",
+    "KXHIGHTSATX",
+    "KXLOWNY",
+    "KXLOWCHI",
+    "KXLOWLA",
+    "KXLOWBOS",
+    "KXLOWMIA",
+    "KXLOWTDAL",
+    "KXLOWTPHX",
+    "KXLOWTSEA",
+    "KXLOWDEN",
+    "KXLOWTATL",
+    "KXLOWAUS",
+    "KXLOWTDC",
+    "KXLOWTPHIL",
+    "KXLOWTOKC",
+    "KXLOWTSFO",
+    "KXLOWTMIN",
+    "KXLOWHOUM",
+    "KXLOWTSATX",
+    "KXRAIN",
+    "KXSNOW",
+]
+
+
 def _fetch_settled_markets(client, max_pages: int = 20) -> list[dict]:
     """
-    Fetch all settled Kalshi markets using cursor-based pagination.
-    Returns a flat list across all pages.
-    Raises the original HTTPError on API failure so callers can surface it.
+    Fetch settled Kalshi weather markets by iterating known weather series.
+
+    Querying all markets globally (status=settled) returns thousands of
+    non-weather markets and buries the weather series beyond the page limit.
+    Instead we query each known series directly, exactly as get_weather_markets
+    does for live markets.
+
+    max_pages is applied per series to bound total API calls.
     """
+    seen: set[str] = set()
     markets: list[dict] = []
-    cursor: str | None = None
 
-    for _ in range(max_pages):
-        params: dict = {"status": "finalized", "limit": 200}
-        if cursor:
-            params["cursor"] = cursor
-
-        data = client._get("/markets", params=params, auth=True)
-        page = data.get("markets", [])
-        markets.extend(page)
-
-        cursor = data.get("cursor") or data.get("next_cursor")
-        if not cursor or not page:
-            break
+    for series in _WEATHER_SERIES:
+        cursor: str | None = None
+        for _ in range(max_pages):
+            params: dict = {"series_ticker": series, "status": "settled", "limit": 200}
+            if cursor:
+                params["cursor"] = cursor
+            try:
+                data = client._get("/markets", params=params, auth=True)
+            except Exception:
+                break
+            page = data.get("markets", [])
+            for m in page:
+                t = m.get("ticker", "")
+                if t and t not in seen:
+                    seen.add(t)
+                    markets.append(m)
+            cursor = data.get("cursor") or data.get("next_cursor")
+            if not cursor or not page:
+                break
 
     return markets
 
