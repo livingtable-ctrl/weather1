@@ -193,3 +193,32 @@ def test_get_weather_markets_does_not_call_global_get_markets(monkeypatch):
         assert "series_ticker" in kwargs, (
             f"get_weather_markets must not call get_markets without series_ticker, got: {call}"
         )
+
+
+def test_montecarlo_explains_clamping_in_output(monkeypatch, capsys):
+    """When MC clamps a probability, the UI should explain this is expected/defensive."""
+    import main
+    import paper
+
+    # A trade with entry_prob=0.01 will be clamped to 0.05 inside simulate_portfolio
+    clamped_trade = {
+        "id": 1,
+        "ticker": "KXHIGHNY-25APR30-T65",
+        "side": "yes",
+        "qty": 5,
+        "entry_price": 0.60,
+        "entry_prob": 0.01,
+        "city": "NYC",
+        "cost": 3.0,
+    }
+    monkeypatch.setattr(paper, "get_open_trades", lambda: [clamped_trade])
+    monkeypatch.setattr(paper, "get_balance", lambda: 500.0)
+
+    from unittest.mock import MagicMock
+
+    client = MagicMock()
+    main.cmd_montecarlo(client)
+    out = capsys.readouterr().out
+    assert (
+        "clamp" in out.lower() or "guard" in out.lower() or "extreme" in out.lower()
+    ), f"Should explain clamping, got:\n{out}"

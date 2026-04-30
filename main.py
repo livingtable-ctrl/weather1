@@ -6119,6 +6119,15 @@ def cmd_montecarlo(client: KalshiClient) -> None:  # noqa: ARG001
         print(f"  {label:>16}  {color(bar)}  {count}")
     print()
 
+    if result.get("n_clamped", 0) > 0:
+        print(
+            dim(
+                f"  ℹ  {result['n_clamped']} position(s) had extreme probabilities"
+                f" (<5% or >90%) and were clamped to the safe range."
+                f" This is a guard against stale data — not an error."
+            )
+        )
+
 
 # ── Web dashboard ─────────────────────────────────────────────────────────────
 

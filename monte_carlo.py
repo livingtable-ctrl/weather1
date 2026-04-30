@@ -194,6 +194,7 @@ def simulate_portfolio(
 
     # Build per-trade parameters including city for correlation lookup
     trade_params: list[dict] = []
+    n_clamped = 0
     for t in open_trades:
         ticker = t.get("ticker", "")
 
@@ -229,6 +230,7 @@ def simulate_portfolio(
                 stacklevel=2,
             )
             win_prob = clamped
+            n_clamped += 1
 
         # If we win: payout per contract = 1 - fee on winnings
         winnings_per = 1.0 - entry_price
@@ -312,6 +314,7 @@ def simulate_portfolio(
         "n_simulations": n_simulations,
         "correlation_applied": correlation_applied,
         "pnl_distribution": sim_pnls,  # sorted raw outcomes for histogram
+        "n_clamped": n_clamped,
     }
 
 
