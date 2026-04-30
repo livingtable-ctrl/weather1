@@ -2119,10 +2119,16 @@ def cmd_brief(client: KalshiClient, send_email: bool = False) -> None:
         markets = get_weather_markets(client)
         analyzed = []
         for m in markets:
-            enriched = enrich_with_forecast(m)
-            analysis = analyze_trade(enriched)
-            if analysis and abs(analysis.get("net_edge", analysis["edge"])) >= MIN_EDGE:
-                analyzed.append((enriched, analysis))
+            try:
+                enriched = enrich_with_forecast(m)
+                analysis = analyze_trade(enriched)
+                if (
+                    analysis
+                    and abs(analysis.get("net_edge", analysis["edge"])) >= MIN_EDGE
+                ):
+                    analyzed.append((enriched, analysis))
+            except Exception:
+                continue
         top3 = sorted(
             analyzed,
             key=lambda x: abs(x[1].get("net_edge", x[1]["edge"])),
@@ -2144,7 +2150,7 @@ def cmd_brief(client: KalshiClient, send_email: bool = False) -> None:
         else:
             print(dim("  No opportunities above threshold."))
     except Exception as e:
-        print(dim(f"  (Could not scan markets: {e})"))
+        print(yellow(f"  ⚠  Could not scan markets: {e}"))
 
     # Exit signals
     try:

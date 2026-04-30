@@ -83,3 +83,80 @@ class TestCmdCronGuards:
             main.cmd_cron(client)  # should not raise
         finally:
             main.cmd_cron._called_from_loop = False
+
+
+class TestCmdBrief:
+    def test_top_opportunities_shows_error_reason(self, monkeypatch, capsys):
+        """When market fetch fails, brief prints a visible warning containing the error."""
+        import main
+        import paper
+
+        monkeypatch.setattr(
+            main,
+            "get_weather_markets",
+            lambda *a, **kw: (_ for _ in ()).throw(RuntimeError("API timeout")),
+        )
+        monkeypatch.setattr(paper, "get_balance", lambda *a, **kw: 1000.0)
+        monkeypatch.setattr(paper, "get_daily_pnl", lambda *a, **kw: 0.0)
+        monkeypatch.setattr(paper, "get_current_streak", lambda *a, **kw: ("none", 0))
+        monkeypatch.setattr(paper, "get_open_trades", lambda *a, **kw: [])
+        monkeypatch.setattr(paper, "check_expiring_trades", lambda *a, **kw: [])
+        monkeypatch.setattr(paper, "check_model_exits", lambda *a, **kw: [])
+        monkeypatch.setattr(paper, "graduation_check", lambda *a, **kw: None)
+        monkeypatch.setattr(paper, "check_aged_positions", lambda *a, **kw: [])
+
+        client = MagicMock()
+        main.cmd_brief(client)
+
+        out = capsys.readouterr().out
+        assert "API timeout" in out, f"Error reason must appear in output, got:\n{out}"
+
+    def test_single_bad_market_does_not_abort_scan(self, monkeypatch, capsys):
+        """One market failing enrich/analyze should not kill the rest of the scan."""
+        import main
+        import paper
+
+        good_market = {"ticker": "KXHIGH-NYC-26APR30-B70", "yes_bid": 30, "yes_ask": 34}
+        bad_market = {"ticker": "KXHIGH-BAD-26APR30-B70", "yes_bid": 0, "yes_ask": 0}
+
+        monkeypatch.setattr(
+            main, "get_weather_markets", lambda *a, **kw: [bad_market, good_market]
+        )
+
+        def _enrich(m):
+            if m.get("ticker", "").startswith("KXHIGH-BAD"):
+                raise ValueError("bad market data")
+            return {
+                **m,
+                "_city": "NYC",
+                "_date": "2026-04-30",
+                "_target_date": "2026-04-30",
+            }
+
+        monkeypatch.setattr(main, "enrich_with_forecast", _enrich)
+        monkeypatch.setattr(
+            main,
+            "analyze_trade",
+            lambda *a, **kw: {
+                "edge": 0.20,
+                "net_edge": 0.20,
+                "signal": "BUY",
+                "recommended_side": "yes",
+            },
+        )
+        monkeypatch.setattr(paper, "get_balance", lambda *a, **kw: 1000.0)
+        monkeypatch.setattr(paper, "get_daily_pnl", lambda *a, **kw: 0.0)
+        monkeypatch.setattr(paper, "get_current_streak", lambda *a, **kw: ("none", 0))
+        monkeypatch.setattr(paper, "get_open_trades", lambda *a, **kw: [])
+        monkeypatch.setattr(paper, "check_expiring_trades", lambda *a, **kw: [])
+        monkeypatch.setattr(paper, "check_model_exits", lambda *a, **kw: [])
+        monkeypatch.setattr(paper, "graduation_check", lambda *a, **kw: None)
+        monkeypatch.setattr(paper, "check_aged_positions", lambda *a, **kw: [])
+
+        client = MagicMock()
+        main.cmd_brief(client)
+
+        out = capsys.readouterr().out
+        assert "KXHIGH-NYC" in out, (
+            f"Good market should still appear after bad market is skipped, got:\n{out}"
+        )

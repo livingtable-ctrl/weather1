@@ -230,7 +230,7 @@ def _check_manual_override() -> bool:
         return False
 
 
-def _cmd_cron_body(client: KalshiClient, min_edge: float = MIN_EDGE) -> None:
+def _cmd_cron_body(client: KalshiClient, min_edge: float = MIN_EDGE) -> bool | None:
     """Core scan logic — extracted from cmd_cron so it can be wrapped in try/finally."""
     _main = _main_module()
 
@@ -244,26 +244,26 @@ def _cmd_cron_body(client: KalshiClient, min_edge: float = MIN_EDGE) -> None:
                 "\n  \u26a0  KILL SWITCH ACTIVE \u2014 trading halted. Delete data/.kill_switch to resume.\n"
             )
         )
-        return
+        return None
 
     # P8.4 — manual override check (time-limited pause)
     # Use main-module lookup so test monkeypatching of main._check_manual_override works.
     if _main._check_manual_override():
         _log.warning("cmd_cron: manual override active — skipping this run")
-        return
+        return None
 
     from paper import is_accuracy_halted as _is_accuracy_halted
 
     if _is_accuracy_halted():
         _log.warning("[cron] accuracy circuit breaker active — skipping market scan")
-        return
+        return None
 
     # Graduation gate — prevent accidental live trading before sufficient predictions exist
     try:
         _check_graduation_gate()
     except RuntimeError as _gate_err:
         _log.error("%s", _gate_err)
-        return
+        return None
 
     # Spend cap validation — warn if MAX_DAILY_SPEND exceeds current balance
     _check_spend_cap_vs_balance()
@@ -341,7 +341,7 @@ def _cmd_cron_body(client: KalshiClient, min_edge: float = MIN_EDGE) -> None:
                 "cmd_cron: BLACK SWAN conditions triggered — halting. Conditions: %s",
                 _bs_conditions,
             )
-            return
+            return None
     except Exception as _e:
         _log.debug("cmd_cron: run_black_swan_check failed: %s", _e)
 
@@ -1023,6 +1023,7 @@ def _cmd_cron_body(client: KalshiClient, min_edge: float = MIN_EDGE) -> None:
         ),
         flush=True,
     )
+    return True  # signals full scan completed (early returns return None)
 
 
 # ---------------------------------------------------------------------------
@@ -1045,8 +1046,9 @@ def cmd_cron(client: KalshiClient, min_edge: float = MIN_EDGE) -> None:
             _sys.exit(1)
         return
 
+    _full_scan = False
     try:
-        _cmd_cron_body(client, min_edge)
+        _full_scan = bool(_cmd_cron_body(client, min_edge))
     except KeyboardInterrupt:
         print()
         _log.warning("cmd_cron: interrupted by user")
@@ -1058,5 +1060,5 @@ def cmd_cron(client: KalshiClient, min_edge: float = MIN_EDGE) -> None:
         except Exception:
             pass
         _main._release_cron_lock()
-    if not getattr(cmd_cron, "_called_from_loop", False):
+    if _full_scan and not getattr(cmd_cron, "_called_from_loop", False):
         _sys.exit(0)
