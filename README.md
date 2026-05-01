@@ -224,7 +224,7 @@ All settings have sensible defaults. Override any of them in `.env`:
 | `STRATEGY` | `kelly` | Sizing strategy: `kelly`, `fixed_pct`, or `fixed_dollars` |
 | `FIXED_BET_PCT` | `0.01` | Fraction of balance per trade when `STRATEGY=fixed_pct` |
 | `FIXED_BET_DOLLARS` | `10.0` | Dollars per trade when `STRATEGY=fixed_dollars` |
-| `DRAWDOWN_HALT_PCT` | `0.50` | Halt all trading if balance falls below this fraction of peak |
+| `DRAWDOWN_HALT_PCT` | `0.20` | Halt all trading if balance falls below this fraction of peak |
 | `NWS_USER_AGENT` | `kalshi-weather-predictor/1.0` | User-Agent string sent to the NOAA API |
 | `PIRATE_WEATHER_API_KEY` | — | API key for Pirate Weather fallback forecasts (optional) |
 | `LOG_LEVEL` | `WARNING` | Python logging level for the `kalshi` logger |

@@ -3333,8 +3333,9 @@ def cmd_dashboard(client: KalshiClient) -> None:  # noqa: ARG001
 
     scale = drawdown_scaling_factor()
     if scale < 1.0:
+        from paper import MAX_DRAWDOWN_FRACTION as _dd_pct
         if scale == 0.0:
-            sizing_str = red("PAUSED  (>50% drawdown from peak)")
+            sizing_str = red(f"PAUSED  (>{_dd_pct:.0%} drawdown from peak)")
         else:
             sizing_str = yellow(f"{scale:.0%} of normal  (recovering from drawdown)")
         print(f"  Sizing:  {sizing_str}")
@@ -5320,7 +5321,7 @@ def cmd_menu(client: KalshiClient):
                 else:
                     print(
                         yellow(
-                            "  Not yet — need 20+ settled trades with >55% win rate and positive P&L."
+                            "  Not yet — need 30+ settled trades, Brier ≤ 0.20, and +$50 profit."
                         )
                     )
             elif sub == "8":
@@ -5748,15 +5749,15 @@ def cmd_paper(args: list, client: KalshiClient | None = None):
             print(red("price must be a decimal; qty (optional) must be an integer"))
             return
 
-        # Drawdown guard: block auto-sizing when balance < 50% of starting bankroll
+        # Drawdown guard: block auto-sizing when drawdown exceeds MAX_DRAWDOWN_FRACTION
         if is_paused_drawdown() and qty is None:
-            from paper import MAX_DRAWDOWN_FRACTION, STARTING_BALANCE
+            from paper import MAX_DRAWDOWN_FRACTION, get_peak_balance
 
-            floor = STARTING_BALANCE * MAX_DRAWDOWN_FRACTION
+            floor = get_peak_balance() * (1 - MAX_DRAWDOWN_FRACTION)
             print(
                 red(
                     f"\n  [Drawdown] Auto-sizing paused — balance is below "
-                    f"${floor:.0f} (50% of ${STARTING_BALANCE:.0f} starting bankroll)."
+                    f"${floor:.0f} ({MAX_DRAWDOWN_FRACTION:.0%} drawdown from peak of ${get_peak_balance():.0f})."
                 )
             )
             print(
@@ -6853,17 +6854,17 @@ def main():
     elif cmd == "features":
         cmd_features()
     elif cmd == "override":
-        action = sys.argv[2] if len(sys.argv) > 2 else "status"
-        mins = int(sys.argv[3]) if len(sys.argv) > 3 else 60
+        action = args[1] if len(args) > 1 else "status"
+        mins = int(args[2]) if len(args) > 2 else 60
         cmd_override(action, mins)
     elif cmd == "admin":
-        action = sys.argv[2] if len(sys.argv) > 2 else ""
+        action = args[1] if len(args) > 1 else ""
         reason = (
-            " ".join(sys.argv[3:]) if len(sys.argv) > 3 else "manual admin override"
+            " ".join(args[2:]) if len(args) > 2 else "manual admin override"
         )
         cmd_admin(action, reason)
     elif cmd == "replay":
-        trade_id = sys.argv[2] if len(sys.argv) > 2 else ""
+        trade_id = args[1] if len(args) > 1 else ""
         if not trade_id:
             print("Usage: py main.py replay <trade_id>")
         else:
@@ -6883,7 +6884,7 @@ def main():
     elif cmd == "train-bias":
         cmd_train_bias()
     elif cmd in ("retire", "retire-strategies"):
-        do_run = "--run" in sys.argv[2:]
+        do_run = "--run" in args[1:]
         cmd_retire_strategies(run=do_run)
     elif cmd in ("config-check", "config"):
         cmd_config_check()

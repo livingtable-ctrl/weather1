@@ -712,6 +712,8 @@ def test_auto_place_trades_med_tier_uses_20_cap(monkeypatch):
     monkeypatch.setattr(paper, "is_daily_loss_halted", fake_is_daily_loss_halted)
     monkeypatch.setattr(paper, "is_streak_paused", fake_is_streak_paused)
     monkeypatch.setattr(main, "_daily_paper_spend", lambda: 0.0)
+    monkeypatch.setattr(main, "_validate_trade_opportunity", lambda opp, live=False: (True, "ok"))
+    monkeypatch.setattr(main.execution_log, "was_traded_today", lambda ticker, side: False)
 
     opps = [
         (
@@ -1232,6 +1234,8 @@ def _l7b_common_patches(monkeypatch):
     monkeypatch.setattr(paper, "is_daily_loss_halted", lambda client=None: False)
     monkeypatch.setattr(paper, "is_streak_paused", lambda: False)
     monkeypatch.setattr(main, "_daily_paper_spend", lambda: 0.0)
+    monkeypatch.setattr(main, "_validate_trade_opportunity", lambda opp, live=False: (True, "ok"))
+    monkeypatch.setattr(main.execution_log, "was_traded_today", lambda ticker, side: False)
     return main, paper
 
 

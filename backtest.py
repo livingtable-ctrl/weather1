@@ -109,9 +109,10 @@ def fetch_archive_temps(
         # model forecast (what you'd have predicted without seeing the outcome).
         forecast_mean = statistics.mean(nearby_excl) if nearby_excl else exact
         sigma = statistics.stdev(nearby_excl) if len(nearby_excl) >= 4 else 3.0
-        # #22: seed from target_str hash for varied (but deterministic) ensembles
-        random.seed(hash(target_str) & 0xFFFFFFFF)
-        result = [forecast_mean + random.gauss(0, sigma) for _ in range(50)]
+        # B7/B8: use a local Random instance so we don't pollute the global RNG
+        # and so the seed is truly deterministic (hash() is process-randomised in 3.3+)
+        _rng = random.Random(int(hash(target_str[:8].encode()) & 0xFFFFFFFF))
+        result = [forecast_mean + _rng.gauss(0, sigma) for _ in range(50)]
         try:
             cache_file.write_text(json.dumps(result))
         except Exception:
@@ -186,6 +187,52 @@ def fetch_archive_precip(
         return (result, "value")
     except Exception:
         return (None, "api_error")
+
+
+def fetch_archive_precip_prob(
+    lat: float, lon: float, tz: str, target_date: date, window_days: int = 30
+) -> float | None:
+    """
+    Estimate precipitation probability for target_date using the prior
+    window_days of archive data (no lookahead — only past dates are used).
+
+    Returns fraction of prior days with measurable precip (>0.01 inch),
+    which is a legitimate persistence/climatological forecast proxy.
+    Returns None if fewer than 7 prior days of data are available.
+    """
+    start = target_date - timedelta(days=window_days)
+    end = target_date - timedelta(days=1)  # strictly before target
+
+    params = {
+        "latitude": lat,
+        "longitude": lon,
+        "start_date": start.isoformat(),
+        "end_date": end.isoformat(),
+        "daily": "precipitation_sum",
+        "precipitation_unit": "inch",
+        "timezone": tz,
+    }
+    try:
+        import time as _time_pp
+        resp = None
+        for _attempt in range(3):
+            resp = requests.get(ARCHIVE_ENS_BASE, params=params, timeout=30)  # type: ignore[arg-type]
+            if resp.status_code == 429:
+                _time_pp.sleep(2 ** _attempt)
+                continue
+            resp.raise_for_status()
+            break
+        else:
+            return None
+        if resp is None:
+            return None
+        vals = resp.json().get("daily", {}).get("precipitation_sum", [])
+        valid = [v for v in vals if v is not None]
+        if len(valid) < 7:
+            return None
+        return sum(1 for v in valid if v > 0.01) / len(valid)
+    except Exception:
+        return None
 
 
 # ── Backtest runner ───────────────────────────────────────────────────────────
@@ -408,13 +455,13 @@ def run_backtest(
 
         # ── Precipitation markets ─────────────────────────────────────────────
         if condition["type"] in ("precip_above", "precip_any"):
-            obs, _reason = fetch_archive_precip(lat, lon, tz, tdate)
-            if obs is None:
+            # B2: use prior-30-day precip frequency as forecast probability.
+            # The old code set our_prob from the realized obs (1.0 or 0.0),
+            # which was lookahead leakage — we'd never know the outcome at
+            # trade time. The rolling rainy-day fraction uses only past data.
+            our_prob = fetch_archive_precip_prob(lat, lon, tz, tdate)
+            if our_prob is None:
                 continue
-            if condition["type"] == "precip_any":
-                our_prob = 1.0 if obs > 0.01 else 0.0
-            else:
-                our_prob = 1.0 if obs > condition["threshold"] else 0.0
         else:
             # ── Temperature markets ───────────────────────────────────────────
             var = "min" if "LOW" in ticker.upper() else "max"
@@ -443,7 +490,8 @@ def run_backtest(
         brier_sq = (our_prob - actual) ** 2
 
         rec_side = "yes" if our_prob > market_prob else "no"
-        entry_price = prices["yes_ask"] if rec_side == "yes" else prices["no_bid"]
+        # B1: NO entry is no_ask = 1 - yes_bid (matches live pricing in weather_markets.py)
+        entry_price = prices["yes_ask"] if rec_side == "yes" else 1.0 - prices["yes_bid"]
         if entry_price <= 0:
             entry_price = market_prob if rec_side == "yes" else 1 - market_prob
 
