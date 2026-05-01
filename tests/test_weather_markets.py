@@ -789,6 +789,7 @@ def test_analyze_trade_result_has_model_consensus_field(monkeypatch):
 
     # Patch get_ensemble_temps to return a stable set of temps
     monkeypatch.setattr(wm, "get_ensemble_temps", lambda *a, **kw: [72.0] * 20)
+    monkeypatch.setattr(wm, "get_ensemble_members", lambda *a, **kw: None)
     # Patch _get_consensus_probs to return agreeing models (consensus True)
     monkeypatch.setattr(wm, "_get_consensus_probs", lambda *a, **kw: (0.70, 0.72))
     # Patch get_weather_forecast to return a simple forecast
@@ -837,6 +838,7 @@ def test_model_consensus_false_when_models_disagree(monkeypatch):
     from weather_markets import analyze_trade
 
     monkeypatch.setattr(wm, "get_ensemble_temps", lambda *a, **kw: [72.0] * 20)
+    monkeypatch.setattr(wm, "get_ensemble_members", lambda *a, **kw: None)
     # Models disagree by 15pp
     monkeypatch.setattr(
         wm, "_get_consensus_probs", lambda *a, **kw: (0.75, 0.60, 74.0, 68.0)

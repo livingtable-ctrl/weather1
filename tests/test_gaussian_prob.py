@@ -194,6 +194,7 @@ class TestGaussianBlendSeparateSource:
             ),
             patch.object(wm, "fetch_temperature_nbm", return_value=73.0),
             patch.object(wm, "fetch_temperature_ecmwf", return_value=74.0),
+            patch.object(wm, "get_ensemble_members", return_value=None),
             patch("climatology.climatological_prob", return_value=0.55),
             patch("nws.nws_prob", return_value=None),
             patch("nws.get_live_observation", return_value=None),
@@ -232,6 +233,7 @@ class TestGaussianBlendSeparateSource:
             patch.object(wm, "get_ensemble_temps", return_value=ensemble_temps),
             patch.object(wm, "fetch_temperature_nbm", return_value=73.0),
             patch.object(wm, "fetch_temperature_ecmwf", return_value=74.0),
+            patch.object(wm, "get_ensemble_members", return_value=None),
             patch("climatology.climatological_prob", return_value=0.55),
             patch("nws.nws_prob", return_value=None),
             patch("nws.get_live_observation", return_value=None),
@@ -298,6 +300,7 @@ class TestBetweenMarketGaussian:
             patch.object(wm, "get_ensemble_temps", return_value=[70.5] * 20),
             patch.object(wm, "fetch_temperature_nbm", return_value=70.8),
             patch.object(wm, "fetch_temperature_ecmwf", return_value=71.2),
+            patch.object(wm, "get_ensemble_members", return_value=None),
             patch("climatology.climatological_prob", return_value=0.10),
             patch("nws.nws_prob", return_value=None),
             patch("nws.get_live_observation", return_value=None),
@@ -327,6 +330,7 @@ class TestBetweenMarketGaussian:
             patch.object(wm, "get_ensemble_temps", return_value=[70.5] * 20),
             patch.object(wm, "fetch_temperature_nbm", return_value=70.8),
             patch.object(wm, "fetch_temperature_ecmwf", return_value=71.2),
+            patch.object(wm, "get_ensemble_members", return_value=None),
             patch("climatology.climatological_prob", return_value=0.10),
             patch("nws.nws_prob", return_value=None),
             patch("nws.get_live_observation", return_value=None),
@@ -400,6 +404,7 @@ class TestBlendSourcesNormalisation:
             patch.object(wm, "get_ensemble_temps", return_value=[72.0] * 20),
             patch.object(wm, "fetch_temperature_nbm", return_value=72.5),
             patch.object(wm, "fetch_temperature_ecmwf", return_value=73.0),
+            patch.object(wm, "get_ensemble_members", return_value=None),
             patch("climatology.climatological_prob", return_value=0.55),
             patch("nws.nws_prob", return_value=0.60),
             patch("nws.get_live_observation", return_value=None),
@@ -437,6 +442,7 @@ class TestBlendSourcesNormalisation:
             patch.object(wm, "get_ensemble_temps", return_value=[72.0] * 20),
             patch.object(wm, "fetch_temperature_nbm", return_value=72.5),
             patch.object(wm, "fetch_temperature_ecmwf", return_value=73.0),
+            patch.object(wm, "get_ensemble_members", return_value=None),
             patch("climatology.climatological_prob", return_value=0.55),
             patch("nws.nws_prob", return_value=0.60),
             patch("nws.get_live_observation", return_value=None),
@@ -514,6 +520,7 @@ class TestBetweenObsDisabled:
             patch.object(wm, "get_ensemble_temps", return_value=[70.5] * 20),
             patch.object(wm, "fetch_temperature_nbm", return_value=70.8),
             patch.object(wm, "fetch_temperature_ecmwf", return_value=71.2),
+            patch.object(wm, "get_ensemble_members", return_value=None),
             patch("climatology.climatological_prob", return_value=0.10),
             patch("nws.nws_prob", return_value=None),
             patch("nws.get_live_observation", return_value=fake_obs),
@@ -541,6 +548,7 @@ class TestBetweenObsDisabled:
             patch.object(wm, "get_ensemble_temps", return_value=[70.5] * 20),
             patch.object(wm, "fetch_temperature_nbm", return_value=70.8),
             patch.object(wm, "fetch_temperature_ecmwf", return_value=71.2),
+            patch.object(wm, "get_ensemble_members", return_value=None),
             patch("climatology.climatological_prob", return_value=0.10),
             patch("nws.nws_prob", return_value=None),
             patch("nws.get_live_observation", return_value=fake_obs),
@@ -554,3 +562,137 @@ class TestBetweenObsDisabled:
             f"forecast_prob={fp:.3f} for a 1°F 'between' band must be below 0.45; "
             f"obs override is disabled so value should reflect Gaussian uncertainty only"
         )
+
+
+# ── Phase 1: get_ensemble_members (Task 1.1) ──────────────────────────────────
+
+
+def test_fetch_ensemble_members_returns_list():
+    """get_ensemble_members returns a list of ≥10 floats on success."""
+    from datetime import date, timedelta
+    from unittest.mock import MagicMock, patch
+
+    import weather_markets as wm
+
+    target_date = date.today() + timedelta(days=3)
+    target_str = target_date.isoformat()
+
+    # Open-Meteo daily ensemble API returns per-member daily aggregates.
+    # Keys: temperature_2m_max_member01 … temperature_2m_max_member51
+    fake_daily: dict = {"time": [target_str]}
+    for i in range(1, 52):
+        key = f"temperature_2m_max_member{i:02d}"
+        fake_daily[key] = [68.0 + i * 0.1]  # °F values 68.1 – 73.1
+
+    mock_response = MagicMock()
+    mock_response.json.return_value = {"daily": fake_daily}
+
+    with patch("weather_markets._om_request", return_value=mock_response):
+        members = wm.get_ensemble_members(40.77, -73.96, target_str, var="max", tz="America/New_York")
+
+    assert members is not None
+    assert len(members) >= 10
+    # Values should be in the mocked °F range
+    assert all(65.0 < m < 80.0 for m in members)
+
+
+def test_get_ensemble_members_returns_none_on_failure():
+    """get_ensemble_members returns None when the API errors."""
+    from unittest.mock import patch
+
+    import weather_markets as wm
+
+    with patch("weather_markets._om_request", side_effect=Exception("timeout")):
+        result = wm.get_ensemble_members(40.77, -73.96, "2026-06-15", var="max")
+
+    assert result is None
+
+
+# ── Phase 1: ensemble_cdf_prob (Task 1.2) ─────────────────────────────────────
+
+
+def test_ensemble_cdf_prob_above_at_median():
+    """50th-percentile threshold → P(above) near 0.50."""
+    import statistics
+
+    import weather_markets as wm
+
+    members = list(range(60, 111))  # 51 values: 60–110°F
+    median = statistics.median(members)  # 85°F
+    p = wm.ensemble_cdf_prob(members, {"type": "above", "threshold": median})
+    assert 0.45 <= p <= 0.55
+
+
+def test_ensemble_cdf_prob_below_threshold_below_all():
+    """Threshold below all members → P(above) near 1.0."""
+    import weather_markets as wm
+
+    members = [70.0] * 51
+    p = wm.ensemble_cdf_prob(members, {"type": "above", "threshold": 50.0})
+    assert p > 0.95
+
+
+def test_ensemble_cdf_prob_between():
+    """P(between) counts members in range."""
+    import weather_markets as wm
+
+    # 51 members: 11 between 69-71, rest outside
+    members = [65.0] * 20 + [70.0] * 11 + [75.0] * 20
+    p = wm.ensemble_cdf_prob(members, {"type": "between", "lower": 69.0, "upper": 71.0})
+    assert abs(p - 11 / 51) < 0.02
+
+
+# ── Phase 1: blend integration (Task 1.3) ─────────────────────────────────────
+
+
+def test_analyze_trade_includes_ensemble_cdf_in_blend_sources(monkeypatch):
+    """When get_ensemble_members succeeds, blend_sources includes 'ensemble_cdf'."""
+    from datetime import date, timedelta
+    from unittest.mock import patch
+
+    import weather_markets as wm
+
+    fake_members = [68.0 + i * 0.2 for i in range(51)]
+
+    target = date.today() + timedelta(days=2)
+    enriched = {
+        "ticker": f"KXHIGHNY-{target.strftime('%d%b%y').upper()}-T72",
+        "title": "NYC high > 72°F?",
+        "_city": "NYC",
+        "_date": target,
+        "_hour": None,
+        "_forecast": {
+            "high_f": 72.0,
+            "low_f": 60.0,
+            "precip_in": 0.0,
+            "date": target.isoformat(),
+            "city": "NYC",
+            "models_used": 3,
+            "high_range": (70.0, 74.0),
+        },
+        "yes_bid": 0.40,
+        "yes_ask": 0.44,
+        "volume": 300,
+        "open_interest": 150,
+        "close_time": "",
+        "series_ticker": "KXHIGHNY",
+    }
+
+    with (
+        patch.object(wm, "get_ensemble_temps", return_value=[72.0] * 20),
+        patch.object(wm, "fetch_temperature_nbm", return_value=72.5),
+        patch.object(wm, "fetch_temperature_ecmwf", return_value=73.0),
+        patch.object(wm, "get_ensemble_members", return_value=fake_members),
+        patch("climatology.climatological_prob", return_value=0.50),
+        patch("nws.nws_prob", return_value=None),
+        patch("nws.get_live_observation", return_value=None),
+        patch("climate_indices.temperature_adjustment", return_value=0.0),
+    ):
+        result = wm.analyze_trade(enriched)
+
+    assert result is not None
+    src = result.get("blend_sources", {})
+    assert "ensemble_cdf" in src, f"ensemble_cdf missing from blend_sources: {src}"
+    assert src["ensemble_cdf"] > 0.0, f"ensemble_cdf weight must be positive; got {src}"
+    total = sum(src.values())
+    assert total == pytest.approx(1.0, abs=0.001), f"blend_sources must sum to 1.0; got {total}"

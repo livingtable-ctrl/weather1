@@ -1644,6 +1644,77 @@ def ensemble_stats(temps: list[float]) -> dict:
     }
 
 
+def get_ensemble_members(
+    lat: float,
+    lon: float,
+    target_date_str: str,
+    var: str = "max",
+    tz: str = "UTC",
+) -> list[float] | None:
+    """
+    Fetch all ECMWF IFS04 ensemble members for daily high (var='max') or
+    low (var='min') temperature on target_date. Returns values in °F.
+
+    Uses _fetch_model_ensemble (daily endpoint) so the 51 per-member daily
+    aggregates come directly from Open-Meteo without manual hourly max/min
+    computation. Disk-caches to data/ensemble_cache/ for the session TTL.
+    """
+    import json as _json_em
+
+    cache_dir = Path(__file__).parent / "data" / "ensemble_cache"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    cache_file = cache_dir / f"{lat:.3f}_{lon:.3f}_{target_date_str}_{var}.json"
+    if cache_file.exists():
+        try:
+            return _json_em.loads(cache_file.read_text())
+        except Exception:
+            pass
+
+    try:
+        target_date = date.fromisoformat(target_date_str)
+        members = _fetch_model_ensemble(lat, lon, tz, target_date, "ecmwf_ifs04", None, var)
+    except Exception as _e:
+        _log.debug("get_ensemble_members: fetch failed: %s", _e)
+        return None
+
+    if len(members) < 10:
+        _log.debug("get_ensemble_members: only %d ECMWF IFS04 members returned", len(members))
+        return None
+
+    try:
+        cache_file.write_text(_json_em.dumps(members))
+    except Exception:
+        pass
+
+    return members
+
+
+def ensemble_cdf_prob(members: list[float], condition: dict) -> float:
+    """
+    Compute P(outcome | condition) from raw ensemble members via empirical CDF.
+    More accurate than Gaussian approximation for skewed or bimodal distributions.
+
+    Args:
+        members: list of forecast values in °F (e.g., 51 ECMWF IFS04 members)
+        condition: {"type": "above"/"below"/"between", "threshold"/"lower"/"upper"}
+    """
+    if not members:
+        return 0.5
+
+    n = len(members)
+    ctype = condition.get("type", "above")
+
+    if ctype == "above":
+        return sum(1 for m in members if m > condition["threshold"]) / n
+    if ctype == "below":
+        return sum(1 for m in members if m < condition["threshold"]) / n
+    if ctype == "between":
+        lo, hi = condition["lower"], condition["upper"]
+        return sum(1 for m in members if lo <= m <= hi) / n
+
+    return 0.5
+
+
 def censoring_correction(
     probs: list[float],
     condition: dict,
@@ -3714,12 +3785,28 @@ def analyze_trade(enriched: dict) -> dict | None:
             _w_gauss = w_ens * 0.30 if gauss_prob is not None else 0.0
             _w_ens_final = w_ens * (0.70 if gauss_prob is not None else 1.0)
 
+            # Phase 1: Empirical CDF from 51 ECMWF IFS04 ensemble members.
+            # Splits _w_ens_final 50/50 between raw member-count fraction and the
+            # empirical CDF when members are available, preserving total weight.
+            _ensemble_cdf_prob: float | None = None
+            try:
+                _cdf_members = get_ensemble_members(
+                    coords[0], coords[1], target_date.isoformat(), var=var, tz=_tz
+                )
+                if _cdf_members:
+                    _ensemble_cdf_prob = ensemble_cdf_prob(_cdf_members, condition)
+            except Exception:
+                pass
+            _w_ens_raw = _w_ens_final * (0.5 if _ensemble_cdf_prob is not None else 1.0)
+            _w_cdf = _w_ens_final * (0.5 if _ensemble_cdf_prob is not None else 0.0)
+
             # G1: renormalize weights when sources are unavailable.
             # Previously missing sources were substituted with 0.5 (meaningless
             # fallback that skews the blend and doesn't sum to 1.0 correctly).
             # Now: zero out missing source weights and renormalize remaining ones.
             _src_probs = [
-                (_w_ens_final, ens_prob),
+                (_w_ens_raw, ens_prob),
+                (_w_cdf, _ensemble_cdf_prob),
                 (_w_gauss, gauss_prob),
                 (w_clim, clim_prob),
                 (w_nws, _nws_prob),
@@ -3739,9 +3826,8 @@ def analyze_trade(enriched: dict) -> dict | None:
                 blended_prob = sum((w / _total_w) * p for w, p in _active)
                 # Reconstruct normalized weights for blend_sources
                 _norm = {
-                    "ensemble": _w_ens_final / _total_w
-                    if ens_prob is not None
-                    else 0.0,
+                    "ensemble": _w_ens_raw / _total_w if ens_prob is not None else 0.0,
+                    "ensemble_cdf": _w_cdf / _total_w if _ensemble_cdf_prob is not None else 0.0,
                     "gaussian": _w_gauss / _total_w if gauss_prob is not None else 0.0,
                     "climatology": w_clim / _total_w if clim_prob is not None else 0.0,
                     "nws": w_nws / _total_w if _nws_prob is not None else 0.0,
