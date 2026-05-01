@@ -20,9 +20,16 @@ These should be fixed before implementing any new phases.
 | B2 | P0 | Precip backtest sets `our_prob` from realized obs (lookahead leakage) — use forecast prob at trade time | `backtest.py` |
 | B3 | P1 | Graduation criteria UX mismatch — menu says 20 trades/55% win rate, code requires 30 trades/Brier≤0.20/$50 P&L | `main.py` |
 | B4 | P1 | `DRAWDOWN_HALT_PCT` default inconsistency — README says 0.50, code defaults to 0.20, paper.py comment says 50% | `README`, `paper.py` |
+| B5 | P1 | Drawdown floor display math wrong — UI shows `STARTING_BALANCE * 0.20 = $200` but actual halt threshold is `peak * 0.80 = $800` | `main.py` |
+| B6 | P1 | `--debug` flag breaks `override`/`admin`/`replay` — those branches read raw `sys.argv` positions after `--debug` is stripped from `args`, shifting indices | `main.py` |
+| B7 | P1 | Backtest seeds use `hash()` which is process-randomized in Python 3.3+ — results differ across runs on identical data | `backtest.py` |
+| B8 | P2 | `fetch_archive_temps` calls `random.seed()` on global RNG — pollutes randomness in other modules/tests | `backtest.py` |
+| B9 | P2 | Command alias mismatch — README says `walk-forward` alias is `wf` but router maps `wf` to `walkforward` and `wfbt` to `walk-forward` | `README`, `main.py` |
+| B10 | P2 | Stale status wording — UI prints `>50% drawdown from peak` but actual halt is 20% | `main.py` |
+| B11 | P1 | Cron lock test isolation — `cron_env` fixture doesn't monkeypatch `LOCK_PATH`, causing `test_cron_integration.py` failures when a fresh lock exists | `tests/test_cron_integration.py` |
 
-> **Note on B3 and B4:** These are trivial string/comment fixes — do them in Cursor directly.
-> **Note on B1 and B2:** Non-trivial backtest logic — fix via Claude Code to avoid regressions.
+> **Fix in Cursor (trivial string/doc changes):** B3, B4, B9, B10
+> **Fix via Claude Code (logic changes with tests):** B1, B2, B5, B6, B7, B8, B11
 
 ---
 
