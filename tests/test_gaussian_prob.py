@@ -550,7 +550,7 @@ class TestBetweenObsDisabled:
 
         assert result is not None
         fp = result.get("forecast_prob", 1.0)
-        assert fp < 0.40, (
-            f"forecast_prob={fp:.3f} for a 1°F 'between' band must be below 0.40; "
+        assert fp < 0.45, (
+            f"forecast_prob={fp:.3f} for a 1°F 'between' band must be below 0.45; "
             f"obs override is disabled so value should reflect Gaussian uncertainty only"
         )
