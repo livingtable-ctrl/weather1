@@ -83,31 +83,44 @@ Once Phase A is complete, open Claude Code on the new machine (just `claude` in 
 
 ---
 
-### Task B.1: Clone the repo and install Python dependencies
+### Task B.1: Check prerequisites, then clone and install
 
 - [ ] 🤖 **Step 1: Paste this prompt into Claude Code**
 
 ```
 Do these steps in order, stop and report any errors before continuing:
 
-1. Clone the repo:
+1. Check Python and Git are installed:
+   python --version
+   git --version
+   If either command fails, stop immediately and tell me — I need to 
+   install the missing tool before continuing.
+
+2. Clone the repo:
    git clone https://github.com/livingtable-ctrl/weather1.git "C:\Users\<yourname>\claude kalshi"
 
-2. Change into the project folder:
+3. Change into the project folder:
    cd "C:\Users\<yourname>\claude kalshi"
 
-3. Install Python dependencies:
+4. Install Python dependencies:
    pip install -r requirements.txt
 
-4. Confirm pip install succeeded by running:
+5. Confirm pip install succeeded by running:
    python -c "import requests, scipy, flask, pytest; print('dependencies OK')"
 
-Report the output of step 4.
+Report the output of every step.
 ```
 
 Replace `<yourname>` with your actual Windows username before pasting.
 
-- [ ] 🧑 **Step 2: Confirm Claude reports "dependencies OK"**
+- [ ] 🧑 **Step 2: If Python or Git is missing, install them first**
+
+- Python 3.12+: https://python.org/downloads — tick "Add Python to PATH" during install
+- Git: https://git-scm.com/downloads — all defaults are fine
+
+Then re-run the prompt above.
+
+- [ ] 🧑 **Step 3: Confirm Claude reports "dependencies OK"**
 
 If any package fails to install, Claude will tell you what went wrong and fix it.
 
