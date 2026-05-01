@@ -4,7 +4,7 @@
 
 **Goal:** Get the Kalshi weather trading project fully running on a new Windows machine so development can resume exactly where it left off.
 
-**Architecture:** Two-phase setup. Phase A is manual file transfers that must happen before Claude Code can help (skills folder + private key). Phase B is fully automated by Claude — clone, install deps, configure env, verify. Ends with a single prompt to resume the feature roadmap.
+**Architecture:** Two-phase setup. Phase A is manual file transfers that must happen before Claude Code can help (skills folder + private key + data folder). Phase B is fully automated by Claude — clone, install deps, configure env, verify. Ends with a single prompt to resume the feature roadmap.
 
 **Tech Stack:** Python 3.12+, Git, Claude Code (already installed), pip, existing `requirements.txt`
 
@@ -74,6 +74,41 @@ C:\Users\thesa\claude kalshi\kalshi_private_key.pem
 Copy it via USB drive or another secure method. Do NOT email it or upload it to any cloud service — it is a private key.
 
 Set it aside for now. You will place it in the project folder in Task B.3.
+
+---
+
+### Task A.3: Copy the data folder from old computer
+
+This contains your prediction history, paper trading P&L, and calibration weights.
+It is **not in git** — without it you lose all Brier score history and paper trade records.
+
+**Files:**
+- Source (old computer): `C:\Users\thesa\claude kalshi\data\`
+- Destination (new computer): `C:\Users\<yourname>\claude kalshi\data\`
+
+> Note: the project folder won't exist on the new machine yet (that happens in Task B.1).
+> Transfer the data folder now and paste it in after the clone completes.
+
+- [ ] 🧑 **Step 1: On the OLD computer — zip the data folder**
+
+Navigate to `C:\Users\thesa\claude kalshi\`, right-click the `data` folder →
+Send to → Compressed (zipped) folder. Save as `kalshi-data.zip` on a USB drive
+or Google Drive.
+
+- [ ] 🧑 **Step 2: Set it aside — you will place it after cloning in Task B.1**
+
+After Task B.1 clones the repo, extract `kalshi-data.zip` so the result is:
+```
+C:\Users\<yourname>\claude kalshi\data\
+```
+
+- [ ] 🧑 **Step 3: Verify the key files are present**
+
+Confirm these exist after extraction:
+```
+C:\Users\<yourname>\claude kalshi\data\predictions.db
+C:\Users\<yourname>\claude kalshi\data\paper_trades.json
+```
 
 ---
 
@@ -237,6 +272,7 @@ in tests/test_gaussian_prob.py, then proceed through the plan task by task.
 **Spec coverage:**
 - [x] Skills folder copy — Task A.1
 - [x] Private key transfer — Task A.2
+- [x] Data folder (predictions.db, paper trades) — Task A.3
 - [x] Repo clone — Task B.1
 - [x] Python deps — Task B.1
 - [x] .env setup — Task B.2
