@@ -10,6 +10,22 @@
 
 ---
 
+## Bugs to fix (from 2026-05-01 Cursor audit)
+
+These should be fixed before implementing any new phases.
+
+| # | Priority | Summary | Files |
+|---|----------|---------|-------|
+| B1 | P0 | Backtest NO-side entry uses `no_bid` — should use `1 - yes_bid` (same as live pricing) | `backtest.py` |
+| B2 | P0 | Precip backtest sets `our_prob` from realized obs (lookahead leakage) — use forecast prob at trade time | `backtest.py` |
+| B3 | P1 | Graduation criteria UX mismatch — menu says 20 trades/55% win rate, code requires 30 trades/Brier≤0.20/$50 P&L | `main.py` |
+| B4 | P1 | `DRAWDOWN_HALT_PCT` default inconsistency — README says 0.50, code defaults to 0.20, paper.py comment says 50% | `README`, `paper.py` |
+
+> **Note on B3 and B4:** These are trivial string/comment fixes — do them in Cursor directly.
+> **Note on B1 and B2:** Non-trivial backtest logic — fix via Claude Code to avoid regressions.
+
+---
+
 ## Phase overview (implement in this order)
 
 | Phase | Feature | Est. Brier gain | Effort | Data prereq |
