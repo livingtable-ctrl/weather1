@@ -236,7 +236,8 @@ _ANOMALY_THRESHOLD = 0.12  # pp drift required to flag a market
 def check_market_anomalies(signals: list[dict]) -> list[dict]:
     """Return signals where |blended_prob − market_price| > _ANOMALY_THRESHOLD."""
     return [
-        s for s in signals
+        s
+        for s in signals
         if abs(s.get("blended_prob", 0.5) - s.get("market_price", 0.5))
         > _ANOMALY_THRESHOLD
     ]
@@ -701,6 +702,24 @@ def _cmd_cron_body(client: KalshiClient, min_edge: float = MIN_EDGE) -> bool | N
                 )
     except Exception as _e:
         _log.debug("cmd_cron: read_settlement_signals failed: %s", _e)
+
+    # \u2500\u2500 Scan summary line \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+    _n_with_edge = len(signals_cache)
+    _n_strong = len(strong_opps)
+    _n_med = len(med_opps)
+    if _n_with_edge == 0:
+        print(
+            dim(
+                f"  [cron] Scanned {scanned} market(s) \u2014 no actionable signals found."
+            )
+        )
+    else:
+        print(
+            dim(
+                f"  [cron] Scanned {scanned} market(s) \u2014 "
+                f"{_n_with_edge} with edge (strong={_n_strong}, med={_n_med})"
+            )
+        )
 
     placed_count = 0
     if strong_opps:

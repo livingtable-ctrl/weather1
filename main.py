@@ -68,7 +68,6 @@ from weather_markets import (
     get_weather_markets,
     is_liquid,
     parse_market_price,
-    save_learned_weights,
 )
 
 load_dotenv()
@@ -4716,7 +4715,8 @@ def cmd_walkforward(client: KalshiClient) -> None:
     ]
     print(tabulate(wf_rows, headers=["Metric", "Value"], tablefmt="rounded_outline"))
 
-    # Offer to save learned weights if city_win_rates is populated
+    # Offer to update learned weights from tracker MAE data (not win-rates — those
+    # are a different format and must not overwrite {model: weight} dicts).
     city_win_rates = result.get("city_win_rates", {})
     if city_win_rates:
         print(
@@ -4724,11 +4724,14 @@ def cmd_walkforward(client: KalshiClient) -> None:
         )
         try:
             save_choice = (
-                input(dim("  Save as learned weights? (Y/n): ")).strip().lower()
+                input(dim("  Update tracker-derived model weights? (Y/n): "))
+                .strip()
+                .lower()
             )
             if save_choice != "n":
-                save_learned_weights(city_win_rates)
-                # #25/#118: also update weights from tracker MAE data
+                # #25/#118: update model weights from tracker MAE data (correct format)
+                # Do NOT call save_learned_weights(city_win_rates) — win rates are
+                # floats, not {model: weight} dicts, and would corrupt the weight file.
                 try:
                     from weather_markets import update_learned_weights_from_tracker
 
@@ -4739,9 +4742,15 @@ def cmd_walkforward(client: KalshiClient) -> None:
                                 f"  MAE-derived weights updated for {len(tracker_weights)} cities."
                             )
                         )
+                    else:
+                        print(
+                            dim(
+                                "  No tracker data available yet — keeping existing weights."
+                            )
+                        )
                 except Exception:
                     pass
-                print(green("  Learned weights saved."))
+                print(green("  Walk-forward results logged."))
         except (KeyboardInterrupt, EOFError):
             print()
 

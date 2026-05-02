@@ -1573,7 +1573,20 @@ def _model_weights(city: str, month: int | None = None) -> dict[str, float]:
     # 2. Pre-saved learned weights from last backtest run
     lw = load_learned_weights()
     if city in lw:
-        return dict(lw[city])
+        city_data = lw[city]
+        if isinstance(city_data, dict):
+            return dict(city_data)
+        else:
+            # Guard: learned_weights.json sometimes gets written with raw win-rates
+            # (floats) instead of the expected {model: weight} dict — e.g. when a
+            # walk-forward backtest saves city_win_rates directly.  Fall through to
+            # seasonal defaults rather than crashing with "float is not iterable".
+            _log.debug(
+                "[ModelWeights] %s: learned_weights.json has %s (expected dict) — "
+                "skipping, using seasonal defaults",
+                city,
+                type(city_data).__name__,
+            )
 
     # 3. Seasonal ECMWF weight: better in winter for mid-latitude US cities
     if month is not None:
