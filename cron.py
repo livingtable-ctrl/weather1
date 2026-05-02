@@ -230,6 +230,31 @@ def _check_manual_override() -> bool:
         return False
 
 
+_ANOMALY_THRESHOLD = 0.12  # pp drift required to flag a market
+
+
+def check_market_anomalies(signals: list[dict]) -> list[dict]:
+    """Return signals where |blended_prob − market_price| > _ANOMALY_THRESHOLD."""
+    return [
+        s for s in signals
+        if abs(s.get("blended_prob", 0.5) - s.get("market_price", 0.5))
+        > _ANOMALY_THRESHOLD
+    ]
+
+
+def report_anomalies(anomalies: list[dict]) -> None:
+    """Print anomaly warnings; no-op when list is empty."""
+    if not anomalies:
+        return
+    print(f"\n  Market anomalies ({len(anomalies)}) — price drifted against model:")
+    for a in anomalies:
+        ticker = a.get("ticker", "?")
+        our = a.get("blended_prob", 0.0)
+        mkt = a.get("market_price", 0.0)
+        print(f"  {ticker:<35} our={our:.0%}  market={mkt:.0%}  drift={mkt - our:+.0%}")
+    _log.warning("Anomalies flagged: %s", [a.get("ticker") for a in anomalies])
+
+
 def _cmd_cron_body(client: KalshiClient, min_edge: float = MIN_EDGE) -> bool | None:
     """Core scan logic — extracted from cmd_cron so it can be wrapped in try/finally."""
     _main = _main_module()
@@ -645,6 +670,18 @@ def _cmd_cron_body(client: KalshiClient, min_edge: float = MIN_EDGE) -> bool | N
             json.dump(cache_payload, f)
     except Exception:
         pass
+
+    # Check for market anomalies — price drifted >12pp against our model
+    _anomaly_signals = [
+        {
+            "ticker": s["ticker"],
+            "blended_prob": s["forecast_prob"] / 100.0,
+            "market_price": s["market_prob"] / 100.0,
+        }
+        for s in signals_cache
+    ]
+    _anomalies = check_market_anomalies(_anomaly_signals)
+    report_anomalies(_anomalies)
 
     # Log any active settlement lag signals from the settlement monitor
     try:

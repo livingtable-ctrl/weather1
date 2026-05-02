@@ -336,3 +336,32 @@ def test_cron_lock_released_on_keyboard_interrupt(cron_env):
         main._write_cron_running_flag = _original
 
     assert not lock_path.exists(), "Lock file must be deleted after KeyboardInterrupt"
+
+
+# ── Phase 7: Market anomaly detection ────────────────────────────────────────
+
+
+def test_report_anomalies_prints_drifted_markets(capsys):
+    """report_anomalies prints ticker and drift for markets >12pp from model."""
+    import cron as _cron
+
+    anomalies = [
+        {"ticker": "KXHIGHNY-26MAY05-T70", "blended_prob": 0.65, "market_price": 0.82},
+    ]
+    _cron.report_anomalies(anomalies)
+    out = capsys.readouterr().out
+    assert "KXHIGHNY" in out
+    assert "anomal" in out.lower() or "drift" in out.lower() or "%" in out
+
+
+def test_check_market_anomalies_filters_by_threshold():
+    """check_market_anomalies returns only signals with drift > 0.12."""
+    import cron as _cron
+
+    signals = [
+        {"ticker": "A", "blended_prob": 0.60, "market_price": 0.75},  # 15pp → flagged
+        {"ticker": "B", "blended_prob": 0.60, "market_price": 0.65},  # 5pp  → not flagged
+    ]
+    flagged = _cron.check_market_anomalies(signals)
+    assert len(flagged) == 1
+    assert flagged[0]["ticker"] == "A"
