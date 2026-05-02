@@ -315,3 +315,46 @@ class TestDrawdownHaltDefault:
 
         importlib.reload(utils)
         assert utils.DRAWDOWN_HALT_PCT == pytest.approx(0.20)
+
+
+class TestDailyLossThresholdScalesWithBalance:
+    """is_daily_loss_halted uses current balance, not STARTING_BALANCE."""
+
+    def test_threshold_grows_with_balance(self, tmp_path, monkeypatch):
+        """When balance has grown 2x, the halt threshold doubles (3% of 2x = 6% of start)."""
+        import paper
+
+        monkeypatch.setattr(paper, "DATA_PATH", tmp_path / "paper_trades.json")
+
+        # Simulate a grown balance of $2000 (2x start)
+        monkeypatch.setattr(paper, "get_balance", lambda: 2000.0)
+        # A $55 loss: > 3% of $1000 (old threshold) but < 3% of $2000 (new threshold)
+        monkeypatch.setattr(paper, "get_daily_pnl", lambda client=None: -55.0)
+
+        # Should NOT be halted — $55 < 3% of $2000 = $60
+        assert paper.is_daily_loss_halted() is False
+
+    def test_threshold_at_starting_balance_unchanged(self, tmp_path, monkeypatch):
+        """When balance equals STARTING_BALANCE, behavior matches the old threshold."""
+        import paper
+
+        monkeypatch.setattr(paper, "DATA_PATH", tmp_path / "paper_trades.json")
+        monkeypatch.setattr(paper, "get_balance", lambda: float(paper.STARTING_BALANCE))
+        # $25 < 3% of $1000 → not halted
+        monkeypatch.setattr(paper, "get_daily_pnl", lambda client=None: -25.0)
+        assert paper.is_daily_loss_halted() is False
+
+        # $35 > 3% of $1000 → halted
+        monkeypatch.setattr(paper, "get_daily_pnl", lambda client=None: -35.0)
+        assert paper.is_daily_loss_halted() is True
+
+    def test_threshold_never_below_starting_balance(self, tmp_path, monkeypatch):
+        """If balance somehow drops below STARTING_BALANCE, threshold uses STARTING_BALANCE floor."""
+        import paper
+
+        monkeypatch.setattr(paper, "DATA_PATH", tmp_path / "paper_trades.json")
+        monkeypatch.setattr(paper, "get_balance", lambda: 500.0)  # below start
+        # $25 > 3% of $500 = $15, but threshold floor is 3% of $1000 = $30
+        # So $25 < $30 → not halted (floor protects against over-tightening)
+        monkeypatch.setattr(paper, "get_daily_pnl", lambda client=None: -25.0)
+        assert paper.is_daily_loss_halted() is False

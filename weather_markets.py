@@ -3382,6 +3382,8 @@ def analyze_trade(enriched: dict) -> dict | None:
         return None  # could not parse target date from ticker
     if not city:
         return None  # unrecognized city in ticker
+    if target_date < datetime.now(UTC).date():
+        return None  # market target date already passed — Kalshi hasn't settled yet but no edge
 
     # P0.3: Reject stale enriched data. Absence of timestamp → treat as fresh.
     import time as _time_wm

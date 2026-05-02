@@ -16,7 +16,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
-from datetime import date
+from datetime import date, timedelta
 from unittest.mock import patch
 
 import pytest
@@ -24,13 +24,18 @@ import pytest
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
 
+_FUTURE_DATE = date.today() + timedelta(days=3)
+
+
 def _make_enriched(
-    ticker: str = "KXHIGHNY-26APR15-T68",
+    ticker: str = "KXHIGHNY-FUTURE-T68",
     city: str = "NYC",
-    target_date: date = date(2026, 4, 15),
+    target_date: date | None = None,
     forecast: dict | None = None,
 ) -> dict:
     """Build a minimal enriched market dict as produced by enrich_market()."""
+    if target_date is None:
+        target_date = _FUTURE_DATE
     if forecast is None:
         forecast = {
             "high_f": 72.0,
@@ -41,14 +46,14 @@ def _make_enriched(
     return {
         "ticker": ticker,
         "series_ticker": "KXHIGHNY",
-        "title": "NYC High Temp > 68°F on Apr 15",
+        "title": "NYC High Temp > 68°F on future date",
         "yes_bid": 0.55,
         "yes_ask": 0.60,
         "no_bid": 0.40,
         "no_ask": 0.45,
         "volume": 3000,
         "open_interest": 1000,
-        "close_time": "2026-04-15T23:59:00Z",
+        "close_time": (target_date.isoformat() + "T23:59:00Z"),
         "status": "open",
         "_city": city,
         "_date": target_date,
@@ -243,14 +248,14 @@ class TestAnalyzePipelineExtra:
         from weather_markets import analyze_trade
 
         enriched = _make_enriched(
-            ticker="KXLOWNY-26APR15-T55",
+            ticker="KXLOWNY-FUTURE-T55",
             city="NYC",
-            target_date=date(2026, 4, 15),
+            target_date=_FUTURE_DATE,
             forecast={
                 "high_f": 68.0,
                 "low_f": 52.0,
                 "precip_in": 0.0,
-                "date": "2026-04-15",
+                "date": _FUTURE_DATE.isoformat(),
             },
         )
         enriched["series_ticker"] = "KXLOWNY"
@@ -282,14 +287,14 @@ class TestAnalyzePipelineExtra:
         from weather_markets import analyze_trade
 
         enriched = _make_enriched(
-            ticker="KXRAIN-26APR15",
+            ticker="KXRAIN-FUTURE",
             city="NYC",
-            target_date=date(2026, 4, 15),
+            target_date=_FUTURE_DATE,
             forecast={
                 "high_f": 68.0,
                 "low_f": 55.0,
                 "precip_in": 0.02,
-                "date": "2026-04-15",
+                "date": _FUTURE_DATE.isoformat(),
             },
         )
         enriched["series_ticker"] = "KXRAIN"

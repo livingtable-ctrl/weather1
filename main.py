@@ -222,7 +222,6 @@ def _kv(label: str, value: str) -> None:
     print(f"  {label:<10}{value}")
 
 
-
 def _format_expiry(close_time: str) -> str:
     """Format time remaining until market close: '2h 15m', '3d 4h', red if <2h."""
     if not close_time:
@@ -3335,6 +3334,7 @@ def cmd_dashboard(client: KalshiClient) -> None:  # noqa: ARG001
     scale = drawdown_scaling_factor()
     if scale < 1.0:
         from paper import MAX_DRAWDOWN_FRACTION as _dd_pct
+
         if scale == 0.0:
             sizing_str = red(f"PAUSED  (>{_dd_pct:.0%} drawdown from peak)")
         else:
@@ -4014,18 +4014,19 @@ def cmd_readiness(client) -> bool:
     gates: list[tuple[str, bool, str]] = []
 
     try:
-        bt = _bt.run_backtest(client, days=60)
+        bt = _bt.run_backtest(client, days_back=60)
         brier = bt.get("brier", 1.0)
-        roc   = bt.get("roc_auc", 0.0)
-        n     = bt.get("n_trades", 0)
+        roc = bt.get("roc_auc", 0.0)
+        n = bt.get("n_trades", 0)
         gates.append(("Brier < 0.20  (60d)", brier < 0.20, f"Brier={brier:.4f}  n={n}"))
-        gates.append(("ROC-AUC > 0.60 (60d)", roc > 0.60,  f"ROC-AUC={roc:.3f}"))
-        gates.append(("≥50 trades     (60d)", n >= 50,      f"n={n}"))
+        gates.append(("ROC-AUC > 0.60 (60d)", roc > 0.60, f"ROC-AUC={roc:.3f}"))
+        gates.append(("≥50 trades     (60d)", n >= 50, f"n={n}"))
     except Exception as e:
         gates.append(("Backtest", False, f"Error: {e}"))
 
     try:
         from paper import get_max_drawdown_pct as _gdd
+
         dd = _gdd()
         gates.append(("Drawdown < 10%", dd < 0.10, f"drawdown={dd:.1%}"))
     except Exception:
@@ -4035,9 +4036,15 @@ def cmd_readiness(client) -> bool:
         import time as _time
 
         from circuit_breaker import flash_crash_cb as _cb
+
         any_cooldown = any(_time.time() < exp for exp in _cb._cooldowns.values())
-        gates.append(("Circuit breaker clear", not any_cooldown,
-                      "active cooldowns" if any_cooldown else "clear"))
+        gates.append(
+            (
+                "Circuit breaker clear",
+                not any_cooldown,
+                "active cooldowns" if any_cooldown else "clear",
+            )
+        )
     except Exception:
         gates.append(("Circuit breaker", False, "Could not check"))
 
@@ -4880,13 +4887,16 @@ def cmd_calibrate() -> None:
                 f"  {ctype:10s}: ensemble={w['ensemble']:.2f}  clim={w['climatology']:.2f}  nws={w['nws']:.2f}"
             )
     else:
-        print("\nCondition weights: insufficient data — using city/seasonal/hardcoded defaults.")
+        print(
+            "\nCondition weights: insufficient data — using city/seasonal/hardcoded defaults."
+        )
 
     print(f"\nWritten to: {seasonal_path}")
     print(f"           {city_path}")
     print(f"           {condition_path}")
 
     import weather_markets as _wm
+
     _wm._CONDITION_WEIGHTS.clear()
     _wm._CONDITION_WEIGHTS.update(condition)
 
@@ -4898,19 +4908,23 @@ def cmd_calibrate() -> None:
 
         with _sqlite3.connect(str(DB_PATH)) as _con:
             _con.row_factory = _sqlite3.Row
-            _platt_rows = [dict(r) for r in _con.execute(
-                "SELECT city, our_prob, settled_yes FROM predictions "
-                "WHERE settled_yes IS NOT NULL AND our_prob IS NOT NULL"
-            ).fetchall()]
+            _platt_rows = [
+                dict(r)
+                for r in _con.execute(
+                    "SELECT city, our_prob, settled_yes FROM predictions "
+                    "WHERE settled_yes IS NOT NULL AND our_prob IS NOT NULL"
+                ).fetchall()
+            ]
         platt = _train_platt(_platt_rows, min_samples=200)
         if platt:
             _platt_path = data_dir / "platt_models.json"
-            _platt_path.write_text(json.dumps(
-                {city: list(ab) for city, ab in platt.items()}, indent=2
-            ))
+            _platt_path.write_text(
+                json.dumps({city: list(ab) for city, ab in platt.items()}, indent=2)
+            )
             print(green(f"\nPlatt models trained for: {', '.join(sorted(platt))}"))
             print(f"  Written to: {_platt_path}")
             import weather_markets as _wm
+
             _wm._PLATT_MODELS = None  # invalidate cache so next call reloads
         else:
             print(dim("\nPlatt: need 200+ settled trades per city (not yet)"))
@@ -6971,9 +6985,7 @@ def main():
         cmd_override(action, mins)
     elif cmd == "admin":
         action = args[1] if len(args) > 1 else ""
-        reason = (
-            " ".join(args[2:]) if len(args) > 2 else "manual admin override"
-        )
+        reason = " ".join(args[2:]) if len(args) > 2 else "manual admin override"
         cmd_admin(action, reason)
     elif cmd == "replay":
         trade_id = args[1] if len(args) > 1 else ""

@@ -1528,7 +1528,11 @@ def reset_daily_loss_limit(reason: str = "manual admin override") -> None:
 
 
 def is_daily_loss_halted(client=None) -> bool:
-    """Return True if today's P&L is worse than -MAX_DAILY_LOSS_PCT * STARTING_BALANCE.
+    """Return True if today's P&L is worse than -MAX_DAILY_LOSS_PCT * current balance.
+
+    Threshold is based on the current balance (not STARTING_BALANCE) so the cap
+    scales up naturally as the account grows. Uses get_balance() which reflects
+    settled trades and open-position costs already deducted at entry.
     Pass a live client to include unrealized MTM in the check (#46).
     """
     # Check for admin override (e.g. after a bug caused phantom losses).
@@ -1543,7 +1547,9 @@ def is_daily_loss_halted(client=None) -> bool:
     except Exception:
         pass  # never block trading on a flag-read failure
 
-    return get_daily_pnl(client) < -(MAX_DAILY_LOSS_PCT * STARTING_BALANCE)
+    _balance = get_balance()
+    _threshold = MAX_DAILY_LOSS_PCT * max(_balance, STARTING_BALANCE)
+    return get_daily_pnl(client) < -_threshold
 
 
 def check_aged_positions() -> list[dict]:
