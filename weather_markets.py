@@ -347,9 +347,14 @@ def _load_platt_models() -> dict[str, tuple[float, float]]:
     global _PLATT_MODELS
     if _PLATT_MODELS is None:
         import json
+
         path = Path(__file__).parent / "data" / "platt_models.json"
         try:
-            _PLATT_MODELS = {k: tuple(v) for k, v in json.loads(path.read_text()).items()} if path.exists() else {}
+            _PLATT_MODELS = (
+                {k: tuple(v) for k, v in json.loads(path.read_text()).items()}
+                if path.exists()
+                else {}
+            )
         except Exception:
             _PLATT_MODELS = {}
     return _PLATT_MODELS
@@ -1690,13 +1695,17 @@ def get_ensemble_members(
 
     try:
         target_date = date.fromisoformat(target_date_str)
-        members = _fetch_model_ensemble(lat, lon, tz, target_date, "ecmwf_ifs04", None, var)
+        members = _fetch_model_ensemble(
+            lat, lon, tz, target_date, "ecmwf_ifs04", None, var
+        )
     except Exception as _e:
         _log.debug("get_ensemble_members: fetch failed: %s", _e)
         return None
 
     if len(members) < 10:
-        _log.debug("get_ensemble_members: only %d ECMWF IFS04 members returned", len(members))
+        _log.debug(
+            "get_ensemble_members: only %d ECMWF IFS04 members returned", len(members)
+        )
         return None
 
     try:
@@ -2295,11 +2304,11 @@ def _blend_weights(
         # Degenerate calibration data; fall through to condition/seasonal/hardcoded
 
     # 2. Condition-type calibration weights
-    if condition_type and condition_type in _CONDITION_WEIGHTS:
-        cal = _CONDITION_WEIGHTS[condition_type]
-        w_ens = cal["ensemble"]
-        w_clim = cal["climatology"]
-        w_nws = cal["nws"]
+    _cond_cal = _CONDITION_WEIGHTS.get(condition_type) if condition_type else None
+    if isinstance(_cond_cal, dict):
+        w_ens = _cond_cal["ensemble"]
+        w_clim = _cond_cal["climatology"]
+        w_nws = _cond_cal["nws"]
         if not has_nws:
             w_ens += w_nws * 0.6
             w_clim += w_nws * 0.4
@@ -2396,7 +2405,12 @@ def _confidence_scaled_blend_weights(
 ) -> tuple[float, float, float]:
     """#31: _blend_weights scaled by inverse ensemble variance."""
     w_ens, w_clim, w_nws = _blend_weights(
-        days_out, has_nws, has_clim, city=city, season=season, condition_type=condition_type
+        days_out,
+        has_nws,
+        has_clim,
+        city=city,
+        season=season,
+        condition_type=condition_type,
     )
     if ens_std is None or ens_std <= 0:
         return w_ens, w_clim, w_nws
@@ -3745,10 +3759,11 @@ def analyze_trade(enriched: dict) -> dict | None:
                 _current_temp: float = (
                     float(_live_temp) if _live_temp is not None else forecast_temp_raw
                 )
-                _cond_type = condition["type"]
                 _tlo = condition.get("threshold", condition.get("lower", forecast_temp))
                 _thi = condition.get("upper")
-                persistence_p = _persistence_prob(_cond_type, _tlo, _thi, _current_temp)
+                persistence_p = _persistence_prob(
+                    condition["type"], _tlo, _thi, _current_temp
+                )
             except Exception:
                 pass
 
@@ -3795,7 +3810,7 @@ def analyze_trade(enriched: dict) -> dict | None:
                 ens_std=ens_stats.get("std") if ens_stats else None,
                 city=city,
                 season=_season,
-                condition_type=_cond_type,
+                condition_type=condition.get("type"),
             )
             # #26: persistence baseline at 15% for days_out <= 2
             if persistence_p is not None and days_out <= 2:
@@ -3866,7 +3881,9 @@ def analyze_trade(enriched: dict) -> dict | None:
                 # Reconstruct normalized weights for blend_sources
                 _norm = {
                     "ensemble": _w_ens_raw / _total_w if ens_prob is not None else 0.0,
-                    "ensemble_cdf": _w_cdf / _total_w if _ensemble_cdf_prob is not None else 0.0,
+                    "ensemble_cdf": _w_cdf / _total_w
+                    if _ensemble_cdf_prob is not None
+                    else 0.0,
                     "gaussian": _w_gauss / _total_w if gauss_prob is not None else 0.0,
                     "climatology": w_clim / _total_w if clim_prob is not None else 0.0,
                     "nws": w_nws / _total_w if _nws_prob is not None else 0.0,
@@ -4072,6 +4089,7 @@ def analyze_trade(enriched: dict) -> dict | None:
         _platt = _load_platt_models()
         if _platt:
             from ml_bias import apply_platt_per_city as _apply_platt
+
             blended_prob = _apply_platt(city, blended_prob, _platt)
             blended_prob = max(0.01, min(0.99, blended_prob))
     except Exception:
