@@ -1467,7 +1467,9 @@ class TestTimeDecayEdgeScope:
 def test_cmd_readiness_fails_when_brier_above_threshold(monkeypatch, capsys):
     """cmd_readiness returns False and prints FAIL when Brier > 0.20."""
     from unittest.mock import MagicMock
-    import circuit_breaker, main
+
+    import circuit_breaker
+    import main
 
     monkeypatch.setattr(
         "backtest.run_backtest",
@@ -1486,7 +1488,9 @@ def test_cmd_readiness_fails_when_brier_above_threshold(monkeypatch, capsys):
 def test_cmd_readiness_passes_when_all_gates_clear(monkeypatch, capsys):
     """cmd_readiness returns True only when all 5 gates pass."""
     from unittest.mock import MagicMock
-    import circuit_breaker, main
+
+    import circuit_breaker
+    import main
 
     monkeypatch.setattr(
         "backtest.run_backtest",

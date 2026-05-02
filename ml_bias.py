@@ -123,8 +123,8 @@ def _sigmoid(x: float) -> float:
 
 def _fit_platt(xs: list[float], ys: list[int]) -> tuple[float, float]:
     """Fit Platt scaling (A, B) via cross-entropy minimisation with scipy."""
-    from scipy.optimize import minimize  # type: ignore[import-untyped]
     import numpy as np
+    from scipy.optimize import minimize  # type: ignore[import-untyped]
 
     xa = np.array(xs, dtype=float)
     ya = np.array(ys, dtype=float)

@@ -4033,6 +4033,7 @@ def cmd_readiness(client) -> bool:
 
     try:
         import time as _time
+
         from circuit_breaker import flash_crash_cb as _cb
         any_cooldown = any(_time.time() < exp for exp in _cb._cooldowns.values())
         gates.append(("Circuit breaker clear", not any_cooldown,
@@ -4892,6 +4893,7 @@ def cmd_calibrate() -> None:
     # Per-city Platt scaling (requires 200+ settled predictions per city)
     try:
         import sqlite3 as _sqlite3
+
         from ml_bias import train_platt_per_city as _train_platt
 
         with _sqlite3.connect(str(DB_PATH)) as _con:

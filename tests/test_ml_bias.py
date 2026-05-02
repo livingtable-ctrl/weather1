@@ -56,6 +56,7 @@ class TestMLBias:
 def test_train_platt_per_city_returns_coefficients():
     """train_platt_per_city returns {city: (A, B)} for cities with >=200 samples."""
     import random
+
     import ml_bias
 
     random.seed(42)

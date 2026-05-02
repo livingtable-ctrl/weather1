@@ -245,6 +245,7 @@ def test_run_backtest_reports_per_condition_type(monkeypatch):
     """run_backtest result includes brier_by_condition dict."""
     from datetime import date
     from unittest.mock import MagicMock
+
     import backtest
 
     markets = [
@@ -274,10 +275,11 @@ def test_run_backtest_reports_per_condition_type(monkeypatch):
 
 def test_calibrate_condition_weights_returns_per_type_dict():
     """calibrate_condition_weights returns dict keyed by condition type."""
+    import os
     import random
     import sqlite3
     import tempfile
-    import os
+
     from calibration import calibrate_condition_weights
 
     random.seed(0)
