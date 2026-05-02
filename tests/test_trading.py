@@ -1467,14 +1467,14 @@ class TestTimeDecayEdgeScope:
 def test_cmd_readiness_fails_when_brier_above_threshold(monkeypatch, capsys):
     """cmd_readiness returns False and prints FAIL when Brier > 0.20."""
     from unittest.mock import MagicMock
-    import main
+    import circuit_breaker, main
 
     monkeypatch.setattr(
         "backtest.run_backtest",
         lambda *a, **kw: {"brier": 0.28, "roc_auc": 0.65, "n_trades": 120},
     )
-    monkeypatch.setattr("main._get_current_drawdown", lambda: 0.05)
-    monkeypatch.setattr("main._circuit_breaker_open", lambda: False)
+    monkeypatch.setattr("paper.get_max_drawdown_pct", lambda: 0.05)
+    monkeypatch.setattr(circuit_breaker.flash_crash_cb, "_cooldowns", {})
 
     result = main.cmd_readiness(MagicMock())
     out = capsys.readouterr().out
@@ -1486,14 +1486,14 @@ def test_cmd_readiness_fails_when_brier_above_threshold(monkeypatch, capsys):
 def test_cmd_readiness_passes_when_all_gates_clear(monkeypatch, capsys):
     """cmd_readiness returns True only when all 5 gates pass."""
     from unittest.mock import MagicMock
-    import main
+    import circuit_breaker, main
 
     monkeypatch.setattr(
         "backtest.run_backtest",
         lambda *a, **kw: {"brier": 0.18, "roc_auc": 0.67, "n_trades": 120},
     )
-    monkeypatch.setattr("main._get_current_drawdown", lambda: 0.05)
-    monkeypatch.setattr("main._circuit_breaker_open", lambda: False)
+    monkeypatch.setattr("paper.get_max_drawdown_pct", lambda: 0.05)
+    monkeypatch.setattr(circuit_breaker.flash_crash_cb, "_cooldowns", {})
 
     result = main.cmd_readiness(MagicMock())
     out = capsys.readouterr().out

@@ -222,23 +222,6 @@ def _kv(label: str, value: str) -> None:
     print(f"  {label:<10}{value}")
 
 
-def _get_current_drawdown() -> float:
-    """Return peak-to-trough drawdown fraction (0.0–1.0). Wraps paper.get_max_drawdown_pct."""
-    from paper import get_max_drawdown_pct
-    try:
-        return float(get_max_drawdown_pct())
-    except Exception:
-        return 0.0
-
-
-def _circuit_breaker_open() -> bool:
-    """Return True when the flash-crash circuit breaker is currently open."""
-    from circuit_breaker import flash_crash_cb
-    try:
-        return bool(flash_crash_cb.is_open())
-    except Exception:
-        return False
-
 
 def _format_expiry(close_time: str) -> str:
     """Format time remaining until market close: '2h 15m', '3d 4h', red if <2h."""
@@ -4042,14 +4025,18 @@ def cmd_readiness(client) -> bool:
         gates.append(("Backtest", False, f"Error: {e}"))
 
     try:
-        dd = _get_current_drawdown()
+        from paper import get_max_drawdown_pct as _gdd
+        dd = _gdd()
         gates.append(("Drawdown < 10%", dd < 0.10, f"drawdown={dd:.1%}"))
     except Exception:
         gates.append(("Drawdown", False, "Could not compute"))
 
     try:
-        cb = _circuit_breaker_open()
-        gates.append(("Circuit breaker closed", not cb, "open" if cb else "closed"))
+        import time as _time
+        from circuit_breaker import flash_crash_cb as _cb
+        any_cooldown = any(_time.time() < exp for exp in _cb._cooldowns.values())
+        gates.append(("Circuit breaker clear", not any_cooldown,
+                      "active cooldowns" if any_cooldown else "clear"))
     except Exception:
         gates.append(("Circuit breaker", False, "Could not check"))
 
