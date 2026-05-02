@@ -544,10 +544,14 @@ class TestBetweenObsDisabled:
         enriched = self._make_between_enriched_same_day()
         fake_obs = {"temp_f": 70.4, "humidity": 55, "wind_mph": 5}
 
+        # Spread temps 69–78.5°F: only 70.0, 70.5, 71.0 land in the [70–71] band
+        # → empirical ens_prob = 3/20 = 15%, well within the expected ~5–20% range.
+        # [70.5]*20 was the original value but caused ens_prob=1.0 (all in band).
+        spread_temps = [69.0 + i * 0.5 for i in range(20)]
         with (
-            patch.object(wm, "get_ensemble_temps", return_value=[70.5] * 20),
-            patch.object(wm, "fetch_temperature_nbm", return_value=70.8),
-            patch.object(wm, "fetch_temperature_ecmwf", return_value=71.2),
+            patch.object(wm, "get_ensemble_temps", return_value=spread_temps),
+            patch.object(wm, "fetch_temperature_nbm", return_value=74.5),
+            patch.object(wm, "fetch_temperature_ecmwf", return_value=75.0),
             patch.object(wm, "get_ensemble_members", return_value=None),
             patch("climatology.climatological_prob", return_value=0.10),
             patch("nws.nws_prob", return_value=None),
