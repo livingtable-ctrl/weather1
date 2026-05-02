@@ -227,12 +227,15 @@ _om_session: requests.Session = requests.Session()
 _ensemble_cache: ForecastCache[list[float]] = ForecastCache(ttl_secs=4 * 3600)
 
 # Rate limiter: enforce minimum gap between Open-Meteo requests to avoid 429 bursts.
-# Open-Meteo free tier allows 600 req/min (≈10/s). We use 0.1s so the serialized
-# rate limiter caps us at 10 req/s, keeping within quota while keeping cron fast.
+# The ensemble endpoint (ensemble-api.open-meteo.com) is stricter than the forecast
+# endpoint; 0.1s caused repeated 429s + 60s retries (net slower than 0.3s baseline).
+# At 0.3s we stay well under the free-tier cap and avoid most throttling.
 # Any 429 that slips through is caught by _om_request and retried after Retry-After.
 _OM_RATE_LOCK = threading.Lock()
 _OM_LAST_REQUEST_TS: float = 0.0
-_OM_MIN_INTERVAL: float = 0.1  # seconds between requests (10 req/s max)
+_OM_MIN_INTERVAL: float = (
+    0.3  # seconds between requests (~3 req/s, avoids ensemble 429s)
+)
 
 
 def _om_rate_limit() -> None:
