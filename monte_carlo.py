@@ -223,11 +223,9 @@ def simulate_portfolio(
         # #48: clamp to [0.05, 0.9] — extreme values likely stale or bad data
         clamped = max(0.05, min(0.9, win_prob))
         if clamped != win_prob:
-            import warnings
-
-            warnings.warn(
-                f"Monte Carlo: win_prob {win_prob:.3f} for {ticker} clamped to {clamped:.3f}",
-                stacklevel=2,
+            _log.warning(
+                "Monte Carlo: win_prob %.3f for %s clamped to %.3f",
+                win_prob, ticker, clamped,
             )
             win_prob = clamped
             n_clamped += 1

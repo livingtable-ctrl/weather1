@@ -1343,7 +1343,6 @@ class TestMonteCarloCholesky:
 
     def test_past_date_trade_excluded_from_simulation(self):
         """Trades whose target_date is in the past are skipped — no forward risk."""
-        import warnings
         from datetime import date, timedelta
 
         from monte_carlo import simulate_portfolio
@@ -1372,13 +1371,13 @@ class TestMonteCarloCholesky:
             "entry_prob": 0.55,
         }
 
-        with warnings.catch_warnings(record=True) as caught:
-            warnings.simplefilter("always")
-            result = simulate_portfolio([stale_trade, future_trade], n_simulations=200)
+        result = simulate_portfolio([stale_trade, future_trade], n_simulations=200)
 
-        # No clamp warning should be raised for the stale trade
-        clamp_warnings = [w for w in caught if "clamped" in str(w.message)]
-        assert clamp_warnings == [], f"Unexpected clamp warning: {clamp_warnings}"
+        # Stale trade must be skipped entirely — n_clamped==0 proves it wasn't
+        # processed through the clamping path (entry_prob=0.929 would have fired).
+        assert result["n_clamped"] == 0, (
+            f"Stale trade should be skipped before clamping, got n_clamped={result['n_clamped']}"
+        )
         # Result should reflect only the future trade (non-trivial distribution)
         assert result["p10_pnl"] < result["p90_pnl"]
 
