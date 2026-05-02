@@ -20,6 +20,7 @@ from pathlib import Path
 import requests
 
 from calibration import load_city_weights as _load_city_weights
+from calibration import load_condition_weights as _load_condition_weights
 from calibration import load_seasonal_weights as _load_seasonal_weights
 from circuit_breaker import CircuitBreaker
 from climate_indices import get_enso_index, temperature_adjustment
@@ -335,6 +336,7 @@ _MARKETS_CACHE_TTL = 60  # 60 seconds
 # ── Calibration data (loaded once at import; empty dicts = use hardcoded weights) ──
 _CITY_WEIGHTS: dict[str, dict[str, float]] = _load_city_weights()
 _SEASONAL_WEIGHTS: dict[str, dict[str, float]] = _load_seasonal_weights()
+_CONDITION_WEIGHTS: dict[str, dict[str, float]] = _load_condition_weights()
 
 # ── Per-city Platt scaling models (loaded once; None = not yet loaded) ────────
 _PLATT_MODELS: dict[str, tuple[float, float]] | None = None
@@ -2268,10 +2270,11 @@ def _blend_weights(
     has_clim: bool,
     city: str | None = None,
     season: str | None = None,
+    condition_type: str | None = None,
 ) -> tuple[float, float, float]:
     """Return (w_ensemble, w_climatology, w_nws).
 
-    Priority: city-specific calibration > seasonal calibration > hardcoded schedule.
+    Priority: city > condition-type > seasonal > hardcoded schedule.
     """
     # 1. City-specific calibration weights
     if city and city in _CITY_WEIGHTS:
@@ -2289,9 +2292,27 @@ def _blend_weights(
         total = w_ens + w_clim + w_nws
         if total > 0.0:
             return w_ens / total, w_clim / total, w_nws / total
+        # Degenerate calibration data; fall through to condition/seasonal/hardcoded
+
+    # 2. Condition-type calibration weights
+    if condition_type and condition_type in _CONDITION_WEIGHTS:
+        cal = _CONDITION_WEIGHTS[condition_type]
+        w_ens = cal["ensemble"]
+        w_clim = cal["climatology"]
+        w_nws = cal["nws"]
+        if not has_nws:
+            w_ens += w_nws * 0.6
+            w_clim += w_nws * 0.4
+            w_nws = 0.0
+        if not has_clim:
+            w_ens += w_clim
+            w_clim = 0.0
+        total = w_ens + w_clim + w_nws
+        if total > 0.0:
+            return w_ens / total, w_clim / total, w_nws / total
         # Degenerate calibration data; fall through to seasonal/hardcoded
 
-    # 2. Seasonal calibration weights
+    # 3. Seasonal calibration weights
     if season and season in _SEASONAL_WEIGHTS:
         cal = _SEASONAL_WEIGHTS[season]
         w_ens = cal["ensemble"]
@@ -2371,10 +2392,11 @@ def _confidence_scaled_blend_weights(
     ens_std: float | None = None,
     city: str | None = None,
     season: str | None = None,
+    condition_type: str | None = None,
 ) -> tuple[float, float, float]:
     """#31: _blend_weights scaled by inverse ensemble variance."""
     w_ens, w_clim, w_nws = _blend_weights(
-        days_out, has_nws, has_clim, city=city, season=season
+        days_out, has_nws, has_clim, city=city, season=season, condition_type=condition_type
     )
     if ens_std is None or ens_std <= 0:
         return w_ens, w_clim, w_nws
@@ -3773,6 +3795,7 @@ def analyze_trade(enriched: dict) -> dict | None:
                 ens_std=ens_stats.get("std") if ens_stats else None,
                 city=city,
                 season=_season,
+                condition_type=_cond_type,
             )
             # #26: persistence baseline at 15% for days_out <= 2
             if persistence_p is not None and days_out <= 2:

@@ -4815,7 +4815,11 @@ def cmd_calibrate() -> None:
     """Recompute seasonal and per-city blend weights from settled predictions."""
     import json
 
-    from calibration import calibrate_city_weights, calibrate_seasonal_weights
+    from calibration import (
+        calibrate_city_weights,
+        calibrate_condition_weights,
+        calibrate_seasonal_weights,
+    )
     from tracker import DB_PATH
 
     data_dir = (
@@ -4831,6 +4835,7 @@ def cmd_calibrate() -> None:
     try:
         seasonal = calibrate_seasonal_weights(DB_PATH)
         city = calibrate_city_weights(DB_PATH)
+        condition = calibrate_condition_weights(DB_PATH)
     except Exception as exc:  # noqa: BLE001
         print(f"\nCalibration skipped — could not read DB: {exc}")
         print(
@@ -4841,9 +4846,11 @@ def cmd_calibrate() -> None:
 
     seasonal_path = data_dir / "seasonal_weights.json"
     city_path = data_dir / "city_weights.json"
+    condition_path = data_dir / "condition_weights.json"
 
     seasonal_path.write_text(json.dumps(seasonal, indent=2))
     city_path.write_text(json.dumps(city, indent=2))
+    condition_path.write_text(json.dumps(condition, indent=2))
 
     if seasonal:
         print(f"\nSeasonal weights ({len(seasonal)} seasons calibrated):")
@@ -4865,8 +4872,22 @@ def cmd_calibrate() -> None:
     else:
         print("\nCity weights: insufficient data for any city — using defaults.")
 
+    if condition:
+        print(f"\nCondition weights ({len(condition)} condition types calibrated):")
+        for ctype, w in sorted(condition.items()):
+            print(
+                f"  {ctype:10s}: ensemble={w['ensemble']:.2f}  clim={w['climatology']:.2f}  nws={w['nws']:.2f}"
+            )
+    else:
+        print("\nCondition weights: insufficient data — using city/seasonal/hardcoded defaults.")
+
     print(f"\nWritten to: {seasonal_path}")
     print(f"           {city_path}")
+    print(f"           {condition_path}")
+
+    import weather_markets as _wm
+    _wm._CONDITION_WEIGHTS.clear()
+    _wm._CONDITION_WEIGHTS.update(condition)
 
     # Per-city Platt scaling (requires 200+ settled predictions per city)
     try:

@@ -78,7 +78,7 @@ def _load_rows(db_path: Path) -> list[sqlite3.Row]:
         con.row_factory = sqlite3.Row
         return con.execute(
             """
-            SELECT p.city, p.market_date,
+            SELECT p.city, p.market_date, p.condition_type,
                    p.ensemble_prob, p.nws_prob, p.clim_prob,
                    o.settled_yes
             FROM predictions p
@@ -190,4 +190,81 @@ def load_city_weights(path: str | Path | None = None) -> dict[str, dict[str, flo
         return json.loads(p.read_text())
     except Exception as exc:
         _log.debug("load_city_weights: could not read %s: %s", p, exc)
+        return {}
+
+
+_CONDITION_MIN = 100
+
+
+def calibrate_condition_weights(
+    db_path: str | Path,
+    min_samples: int = _CONDITION_MIN,
+) -> dict[str, dict[str, float]]:
+    """Grid-search optimal blend weights per condition type (above/below/between).
+
+    Returns: {condition_type: {ensemble, climatology, nws}} for types with >= min_samples rows.
+    """
+    db_path = Path(db_path)
+    con = sqlite3.connect(str(db_path))
+    try:
+        con.row_factory = sqlite3.Row
+        raw_rows = con.execute(
+            """
+            SELECT p.condition_type,
+                   p.ensemble_prob, p.clim_prob, p.nws_prob,
+                   o.settled_yes
+            FROM predictions p
+            JOIN outcomes o ON p.ticker = o.ticker
+            WHERE p.ensemble_prob IS NOT NULL
+              AND p.clim_prob IS NOT NULL
+              AND p.nws_prob IS NOT NULL
+              AND o.settled_yes IS NOT NULL
+            """
+        ).fetchall()
+    finally:
+        con.close()
+
+    type_rows: dict[str, list[tuple[float, float, float, int]]] = {}
+    for row in raw_rows:
+        ctype = row["condition_type"]
+        if not ctype:
+            continue
+        type_rows.setdefault(ctype, []).append(
+            (
+                row["ensemble_prob"],
+                row["clim_prob"],
+                row["nws_prob"],
+                row["settled_yes"],
+            )
+        )
+
+    result: dict[str, dict[str, float]] = {}
+    for ctype, crows in type_rows.items():
+        if len(crows) < min_samples:
+            _log.info(
+                "calibrate_condition_weights: %s has %d rows (need %d) — skipping",
+                ctype,
+                len(crows),
+                min_samples,
+            )
+            continue
+        result[ctype] = _best_weights(crows)
+    return result
+
+
+def load_condition_weights(
+    path: str | Path | None = None,
+) -> dict[str, dict[str, float]]:
+    """Load per-condition-type weights from JSON. Returns {} if file missing."""
+    p = (
+        Path(path)
+        if path
+        else Path(__file__).parent / "data" / "condition_weights.json"
+    )
+    if not p.exists():
+        return {}
+    try:
+        return json.loads(p.read_text())
+    except Exception as exc:
+        _log.debug("load_condition_weights: could not read %s: %s", p, exc)
         return {}

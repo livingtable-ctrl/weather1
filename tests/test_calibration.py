@@ -237,3 +237,79 @@ class TestCalibrateCLI:
         assert "winter" in loaded
         w = loaded["winter"]
         assert abs(w["ensemble"] + w["climatology"] + w["nws"] - 1.0) < 1e-6
+
+
+# ── Phase 5.1: brier_by_condition in backtest ─────────────────────────────────
+
+def test_run_backtest_reports_per_condition_type(monkeypatch):
+    """run_backtest result includes brier_by_condition dict."""
+    from datetime import date
+    from unittest.mock import MagicMock
+    import backtest
+
+    markets = [
+        {"ticker": "KXHIGHNY-26MAY01-T70", "result": "yes", "title": "NYC high > 70°F"},
+        {"ticker": "KXHIGHNY-26MAY01-B67.5", "result": "no", "title": "NYC high 67-68°F"},
+    ]
+    monkeypatch.setattr("backtest._fetch_settled_markets", lambda *a, **kw: markets)
+    monkeypatch.setattr(
+        "weather_markets.enrich_with_forecast",
+        lambda m: {
+            **m,
+            "_city": "NYC",
+            "_date": date(2026, 5, 1),
+            "_lat": 40.77,
+            "_lon": -73.96,
+            "_tz": "America/New_York",
+        },
+    )
+    monkeypatch.setattr("backtest.fetch_archive_temps", lambda *a, **kw: [70.0] * 20)
+
+    result = backtest.run_backtest(MagicMock(), days_back=30)
+    assert "brier_by_condition" in result
+    assert isinstance(result["brier_by_condition"], dict)
+
+
+# ── Phase 5.2: calibrate_condition_weights ────────────────────────────────────
+
+def test_calibrate_condition_weights_returns_per_type_dict():
+    """calibrate_condition_weights returns dict keyed by condition type."""
+    import random
+    import sqlite3
+    import tempfile
+    import os
+    from calibration import calibrate_condition_weights
+
+    random.seed(0)
+    with tempfile.TemporaryDirectory() as d:
+        db = os.path.join(d, "predictions.db")
+        con = sqlite3.connect(db)
+        con.executescript("""
+            CREATE TABLE predictions (
+                ticker TEXT, condition_type TEXT,
+                ensemble_prob REAL, clim_prob REAL, nws_prob REAL
+            );
+            CREATE TABLE outcomes (ticker TEXT, settled_yes INTEGER);
+        """)
+        for ctype in ("above", "below", "between"):
+            for i in range(120):
+                t = f"{ctype}-{i}"
+                ep = random.uniform(0.3, 0.8)
+                cp = random.uniform(0.3, 0.7)
+                np_ = random.uniform(0.3, 0.7)
+                y = random.randint(0, 1)
+                con.execute(
+                    "INSERT INTO predictions VALUES (?,?,?,?,?)",
+                    (t, ctype, ep, cp, np_),
+                )
+                con.execute("INSERT INTO outcomes VALUES (?,?)", (t, y))
+        con.commit()
+        con.close()
+
+        weights = calibrate_condition_weights(db, min_samples=100)
+
+    assert "above" in weights
+    assert "below" in weights
+    for w in weights.values():
+        assert "ensemble" in w
+        assert abs(sum(w.values()) - 1.0) < 0.01, "weights must sum to 1"

@@ -419,6 +419,7 @@ def run_backtest(
     }
 
     results = []
+    _cond_acc: dict[str, list[float]] = {}
     for _prog_i, m in enumerate(markets, 1):
         if on_progress:
             on_progress(_prog_i, len(markets))
@@ -488,6 +489,7 @@ def run_backtest(
         market_prob = prices["implied_prob"]
         actual = 1 if result == "yes" else 0
         brier_sq = (our_prob - actual) ** 2
+        _cond_acc.setdefault(condition["type"], []).append(brier_sq)
 
         rec_side = "yes" if our_prob > market_prob else "no"
         # B1: NO entry is no_ask = 1 - yes_bid (matches live pricing in weather_markets.py)
@@ -607,6 +609,7 @@ def run_backtest(
             "bench_yes_pnl": 0.0,
             "bench_market_pnl": 0.0,
             "bench_random_pnl": 0.0,
+            "brier_by_condition": {},
             "diagnostic": diag,
         }
 
@@ -640,6 +643,10 @@ def run_backtest(
         "bench_yes_pnl": round(bench_yes_pnl, 4),
         "bench_market_pnl": round(bench_market_pnl, 4),
         "bench_random_pnl": round(bench_random_pnl, 4),
+        "brier_by_condition": {
+            ctype: {"brier": round(sum(errs) / len(errs), 4), "n": len(errs)}
+            for ctype, errs in _cond_acc.items()
+        },
     }
 
 
