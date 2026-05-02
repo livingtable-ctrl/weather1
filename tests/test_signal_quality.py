@@ -1,7 +1,7 @@
 """Tests for Group 2 signal quality improvements."""
 
 import tempfile
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -429,7 +429,7 @@ class TestPortfolioVar:
             "cost": round(entry_price * qty, 2),
             "quantity": qty,
             "city": city,
-            "target_date": "2026-05-01",
+            "target_date": (date.today() + timedelta(days=1)).isoformat(),
             "entry_prob": win_prob,
         }
 

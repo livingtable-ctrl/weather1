@@ -1308,8 +1308,11 @@ class TestMonteCarloCholesky:
 
     def test_simulate_portfolio_correlated_widens_distribution(self):
         """Correlated positions (same city/date) should widen P&L distribution vs independent."""
+        from datetime import date, timedelta
+
         from monte_carlo import simulate_portfolio
 
+        future = (date.today() + timedelta(days=1)).isoformat()
         # Two perfectly correlated positions: same city, same date
         trades = [
             {
@@ -1319,7 +1322,7 @@ class TestMonteCarloCholesky:
                 "cost": 5.0,
                 "quantity": 10,
                 "city": "NYC",
-                "target_date": "2026-05-01",
+                "target_date": future,
                 "entry_prob": 0.5,
             },
             {
@@ -1329,7 +1332,7 @@ class TestMonteCarloCholesky:
                 "cost": 5.0,
                 "quantity": 10,
                 "city": "NYC",
-                "target_date": "2026-05-01",
+                "target_date": future,
                 "entry_prob": 0.5,
             },
         ]
