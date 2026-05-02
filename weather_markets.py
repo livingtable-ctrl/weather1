@@ -4335,6 +4335,9 @@ def analyze_trade(enriched: dict) -> dict | None:
         ),
         # Edge calculation version — increment when kelly/edge logic changes
         "edge_calc_version": EDGE_CALC_VERSION,
+        # Phase 6.0: obs-weight learning fields (None when no obs override)
+        "obs_weight_used": _obs_w if obs_override is not None else None,
+        "local_hour": _local_hour if obs_override is not None else None,
     }
     save_forecast_snapshot(enriched.get("ticker", "unknown"), forecast)
     return _result

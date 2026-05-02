@@ -22,7 +22,7 @@ DB_PATH.parent.mkdir(exist_ok=True)
 
 _db_initialized = False
 
-_SCHEMA_VERSION = 16  # increment when _MIGRATIONS list grows
+_SCHEMA_VERSION = 18  # increment when _MIGRATIONS list grows
 
 _MIGRATIONS = [
     # v1 → v2: add condition_type column (if not already added)
@@ -88,6 +88,10 @@ _MIGRATIONS = [
     "DROP INDEX IF EXISTS idx_pred_ticker_date",
     # v15 → v16: G4 — create new explicit-column unique index
     "CREATE UNIQUE INDEX IF NOT EXISTS idx_pred_ticker_pdate ON predictions(ticker, predicted_date)",
+    # v16 → v17: Phase 6.0 — log obs weight used for same-day blend
+    "ALTER TABLE predictions ADD COLUMN obs_weight_used REAL",
+    # v17 → v18: Phase 6.0 — log local hour at prediction time for obs-weight learning
+    "ALTER TABLE predictions ADD COLUMN local_hour INTEGER",
 ]
 
 
@@ -446,8 +450,8 @@ def log_prediction(
                threshold_lo, threshold_hi, our_prob, raw_prob, market_prob,
                edge, method, n_members, predicted_at, days_out, forecast_cycle,
                blend_sources, ensemble_prob, nws_prob, clim_prob, edge_calc_version,
-               signal_source, predicted_date)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'),?,?,?,?,?,?,?,?,?)
+               signal_source, predicted_date, obs_weight_used, local_hour)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'),?,?,?,?,?,?,?,?,?,?,?)
             ON CONFLICT(ticker, predicted_date) DO UPDATE SET
                 our_prob         = excluded.our_prob,
                 raw_prob         = excluded.raw_prob,
@@ -462,7 +466,9 @@ def log_prediction(
                 nws_prob         = excluded.nws_prob,
                 clim_prob        = excluded.clim_prob,
                 edge_calc_version= excluded.edge_calc_version,
-                signal_source    = excluded.signal_source
+                signal_source    = excluded.signal_source,
+                obs_weight_used  = excluded.obs_weight_used,
+                local_hour       = excluded.local_hour
             """,
             (
                 ticker,
@@ -486,6 +492,8 @@ def log_prediction(
                 edge_calc_version,
                 signal_source,
                 predicted_date,
+                analysis.get("obs_weight_used"),
+                analysis.get("local_hour"),
             ),
         )
 
