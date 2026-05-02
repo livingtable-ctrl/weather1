@@ -49,3 +49,44 @@ class TestMLBias:
 
         # Corrected: 0.60 + 0.05 = 0.65
         assert result == pytest.approx(0.65, abs=0.01)
+
+
+# ── Phase 2: per-city Platt scaling ──────────────────────────────────────────
+
+def test_train_platt_per_city_returns_coefficients():
+    """train_platt_per_city returns {city: (A, B)} for cities with >=200 samples."""
+    import random
+    import ml_bias
+
+    random.seed(42)
+    rows = []
+    for _ in range(250):
+        p = random.uniform(0.3, 0.8)
+        rows.append({"city": "NYC", "our_prob": p,
+                     "settled_yes": 1 if random.random() < p else 0})
+    for _ in range(50):
+        rows.append({"city": "Chicago", "our_prob": 0.6, "settled_yes": 1})
+
+    models = ml_bias.train_platt_per_city(rows, min_samples=200)
+
+    assert "NYC" in models, "NYC (250 samples) must be trained"
+    assert "Chicago" not in models, "Chicago (<200) must be skipped"
+    a, b = models["NYC"]
+    assert isinstance(a, float) and isinstance(b, float)
+
+
+def test_apply_platt_per_city_unknown_city_unchanged():
+    """Unknown city returns raw prob unchanged."""
+    import ml_bias
+
+    p = ml_bias.apply_platt_per_city("Dallas", 0.65, {})
+    assert p == pytest.approx(0.65)
+
+
+def test_apply_platt_identity_calibration():
+    """A=1.0, B=0.0 (identity) returns approximately the input probability."""
+    import ml_bias
+
+    models = {"NYC": (1.0, 0.0)}
+    p = ml_bias.apply_platt_per_city("NYC", 0.70, models)
+    assert 0.60 <= p <= 0.80

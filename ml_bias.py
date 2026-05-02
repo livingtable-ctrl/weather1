@@ -110,6 +110,81 @@ def train_bias_model(min_samples: int = 200) -> dict:
     return models
 
 
+def _logit(p: float) -> float:
+    import math
+    p = max(1e-6, min(1 - 1e-6, p))
+    return math.log(p / (1 - p))
+
+
+def _sigmoid(x: float) -> float:
+    import math
+    return 1.0 / (1.0 + math.exp(-x))
+
+
+def _fit_platt(xs: list[float], ys: list[int]) -> tuple[float, float]:
+    """Fit Platt scaling (A, B) via cross-entropy minimisation with scipy."""
+    from scipy.optimize import minimize  # type: ignore[import-untyped]
+    import numpy as np
+
+    xa = np.array(xs, dtype=float)
+    ya = np.array(ys, dtype=float)
+
+    def neg_log_likelihood(params: np.ndarray) -> float:
+        a, b = params
+        p = 1.0 / (1.0 + np.exp(-(a * xa + b)))
+        p = np.clip(p, 1e-9, 1 - 1e-9)
+        return -float(np.sum(ya * np.log(p) + (1 - ya) * np.log(1 - p)))
+
+    res = minimize(neg_log_likelihood, x0=[1.0, 0.0], method="L-BFGS-B")
+    return float(res.x[0]), float(res.x[1])
+
+
+def train_platt_per_city(
+    rows: list[dict],
+    min_samples: int = 200,
+) -> dict[str, tuple[float, float]]:
+    """
+    Train per-city Platt scaling: fits (A, B) via cross-entropy on logit(p).
+    Returns {city: (A, B)} where calibrated_prob = sigmoid(A * logit(p) + B).
+    Skips cities with fewer than min_samples settled predictions.
+    """
+    from collections import defaultdict
+
+    by_city: dict[str, list] = defaultdict(list)
+    for r in rows:
+        city, p, y = r.get("city"), r.get("our_prob"), r.get("settled_yes")
+        if city and p is not None and y is not None:
+            try:
+                by_city[city].append((_logit(float(p)), int(y)))
+            except (ValueError, TypeError):
+                pass
+
+    result: dict[str, tuple[float, float]] = {}
+    for city, samples in by_city.items():
+        if len(samples) < min_samples:
+            continue
+        try:
+            xs = [x for x, _ in samples]
+            ys = [label for _, label in samples]
+            result[city] = _fit_platt(xs, ys)
+        except Exception:
+            pass
+
+    return result
+
+
+def apply_platt_per_city(
+    city: str,
+    raw_prob: float,
+    models: dict[str, tuple[float, float]],
+) -> float:
+    """Apply per-city Platt calibration; returns raw_prob unchanged if no model."""
+    if city not in models:
+        return raw_prob
+    a, b = models[city]
+    return _sigmoid(a * _logit(raw_prob) + b)
+
+
 def apply_ml_prob_correction(
     city: str,
     our_prob: float,

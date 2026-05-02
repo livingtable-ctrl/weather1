@@ -336,6 +336,22 @@ _MARKETS_CACHE_TTL = 60  # 60 seconds
 _CITY_WEIGHTS: dict[str, dict[str, float]] = _load_city_weights()
 _SEASONAL_WEIGHTS: dict[str, dict[str, float]] = _load_seasonal_weights()
 
+# ── Per-city Platt scaling models (loaded once; None = not yet loaded) ────────
+_PLATT_MODELS: dict[str, tuple[float, float]] | None = None
+
+
+def _load_platt_models() -> dict[str, tuple[float, float]]:
+    """Load platt_models.json once per process; return empty dict when absent."""
+    global _PLATT_MODELS
+    if _PLATT_MODELS is None:
+        import json
+        path = Path(__file__).parent / "data" / "platt_models.json"
+        try:
+            _PLATT_MODELS = {k: tuple(v) for k, v in json.loads(path.read_text()).items()} if path.exists() else {}
+        except Exception:
+            _PLATT_MODELS = {}
+    return _PLATT_MODELS
+
 
 def _current_forecast_cycle() -> str:
     """
@@ -4024,6 +4040,17 @@ def analyze_trade(enriched: dict) -> dict | None:
             city, blended_prob, target_date.month, days_out
         )
         blended_prob = max(0.01, min(0.99, blended_prob))
+    except Exception:
+        pass
+
+    # A2: Per-city Platt scaling — loaded once via module-level cache.
+    # Requires 200+ settled trades per city; no-op when model absent.
+    try:
+        _platt = _load_platt_models()
+        if _platt:
+            from ml_bias import apply_platt_per_city as _apply_platt
+            blended_prob = _apply_platt(city, blended_prob, _platt)
+            blended_prob = max(0.01, min(0.99, blended_prob))
     except Exception:
         pass
 

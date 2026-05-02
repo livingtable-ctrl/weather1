@@ -4867,7 +4867,34 @@ def cmd_calibrate() -> None:
 
     print(f"\nWritten to: {seasonal_path}")
     print(f"           {city_path}")
-    print("Restart the app (or re-import weather_markets) to pick up new weights.")
+
+    # Per-city Platt scaling (requires 200+ settled predictions per city)
+    try:
+        import sqlite3 as _sqlite3
+        from ml_bias import train_platt_per_city as _train_platt
+
+        with _sqlite3.connect(str(DB_PATH)) as _con:
+            _con.row_factory = _sqlite3.Row
+            _platt_rows = [dict(r) for r in _con.execute(
+                "SELECT city, our_prob, settled_yes FROM predictions "
+                "WHERE settled_yes IS NOT NULL AND our_prob IS NOT NULL"
+            ).fetchall()]
+        platt = _train_platt(_platt_rows, min_samples=200)
+        if platt:
+            _platt_path = data_dir / "platt_models.json"
+            _platt_path.write_text(json.dumps(
+                {city: list(ab) for city, ab in platt.items()}, indent=2
+            ))
+            print(green(f"\nPlatt models trained for: {', '.join(sorted(platt))}"))
+            print(f"  Written to: {_platt_path}")
+            import weather_markets as _wm
+            _wm._PLATT_MODELS = None  # invalidate cache so next call reloads
+        else:
+            print(dim("\nPlatt: need 200+ settled trades per city (not yet)"))
+    except Exception as _exc:
+        print(dim(f"\nPlatt calibration skipped: {_exc}"))
+
+    print("\nRestart the app (or re-import weather_markets) to pick up new weights.")
 
 
 # ── Interactive menu ──────────────────────────────────────────────────────────
