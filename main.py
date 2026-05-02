@@ -6896,6 +6896,12 @@ def main():
             except (IndexError, ValueError):
                 pass
         cmd_cron(client, min_edge=_cron_edge)
+    elif cmd == "unlock":
+        if LOCK_PATH.exists():
+            LOCK_PATH.unlink()
+            print(green("  Cron lock released."))
+        else:
+            print(dim("  No cron lock file found — nothing to release."))
     elif cmd == "setup":
         cmd_setup()
     elif cmd == "markets":
