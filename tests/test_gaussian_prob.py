@@ -535,36 +535,49 @@ class TestBetweenObsDisabled:
         )
 
     def test_between_obs_suppressed_forecast_prob_is_low(self):
-        """Without obs override, 'between' forecast_prob must be in a
-        calibrated range (~5-20%) not inflated to 80-95%."""
+        """Obs suppression is the mechanism keeping 'between' probability calibrated.
+
+        Setup: ensemble mean ~74°F (only 3/20 members in [70–71] band → ens_prob≈15%),
+        but obs=70.5°F sits dead-center in the band.  If obs were blended at its
+        typical ~80% weight it would push forecast_prob to ~0.85.  Suppression
+        must hold forecast_prob below 0.45 AND keep 'obs' out of blend_sources.
+        """
         from unittest.mock import patch
 
         import weather_markets as wm
 
         enriched = self._make_between_enriched_same_day()
-        fake_obs = {"temp_f": 70.4, "humidity": 55, "wind_mph": 5}
+        # obs dead-center in [70–71]: maximum impact if suppression were absent
+        obs_in_band = {"temp_f": 70.5, "humidity": 55, "wind_mph": 5}
 
-        # Spread temps 69–78.5°F: only 70.0, 70.5, 71.0 land in the [70–71] band
-        # → empirical ens_prob = 3/20 = 15%, well within the expected ~5–20% range.
-        # [70.5]*20 was the original value but caused ens_prob=1.0 (all in band).
+        # Ensemble spread 69–78.5°F: 70.0, 70.5, 71.0 land in band → ens_prob=3/20=15%.
+        # Mean (~73.75°F) is clearly outside the band, so the low final probability
+        # comes from obs suppression, not from the ensemble coincidentally missing the band.
         spread_temps = [69.0 + i * 0.5 for i in range(20)]
+
         with (
             patch.object(wm, "get_ensemble_temps", return_value=spread_temps),
-            patch.object(wm, "fetch_temperature_nbm", return_value=74.5),
-            patch.object(wm, "fetch_temperature_ecmwf", return_value=75.0),
+            patch.object(wm, "fetch_temperature_nbm", return_value=73.5),
+            patch.object(wm, "fetch_temperature_ecmwf", return_value=74.0),
             patch.object(wm, "get_ensemble_members", return_value=None),
             patch("climatology.climatological_prob", return_value=0.10),
             patch("nws.nws_prob", return_value=None),
-            patch("nws.get_live_observation", return_value=fake_obs),
+            patch("nws.get_live_observation", return_value=obs_in_band),
             patch("climate_indices.temperature_adjustment", return_value=0.0),
         ):
             result = wm.analyze_trade(enriched)
 
         assert result is not None
+        blend = result.get("blend_sources", {})
         fp = result.get("forecast_prob", 1.0)
+
+        assert "obs" not in blend, (
+            f"obs suppressed for 'between' markets; got blend_sources={blend}"
+        )
         assert fp < 0.45, (
-            f"forecast_prob={fp:.3f} for a 1°F 'between' band must be below 0.45; "
-            f"obs override is disabled so value should reflect Gaussian uncertainty only"
+            f"forecast_prob={fp:.3f} — obs=70.5 dead-center in [70–71] band "
+            f"would push this to ~0.85 without suppression; "
+            f"suppression must hold it below 0.45"
         )
 
 
