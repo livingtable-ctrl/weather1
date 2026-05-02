@@ -222,6 +222,24 @@ def _kv(label: str, value: str) -> None:
     print(f"  {label:<10}{value}")
 
 
+def _get_current_drawdown() -> float:
+    """Return peak-to-trough drawdown fraction (0.0–1.0). Wraps paper.get_max_drawdown_pct."""
+    from paper import get_max_drawdown_pct
+    try:
+        return float(get_max_drawdown_pct())
+    except Exception:
+        return 0.0
+
+
+def _circuit_breaker_open() -> bool:
+    """Return True when the flash-crash circuit breaker is currently open."""
+    from circuit_breaker import flash_crash_cb
+    try:
+        return bool(flash_crash_cb.is_open())
+    except Exception:
+        return False
+
+
 def _format_expiry(close_time: str) -> str:
     """Format time remaining until market close: '2h 15m', '3d 4h', red if <2h."""
     if not close_time:
@@ -3994,6 +4012,63 @@ def cmd_config_check() -> None:
     print()
 
 
+def cmd_readiness(client) -> bool:
+    """
+    Run pre-live-trading checklist.  Returns True only if ALL gates pass.
+    Usage: py main.py readiness
+    Exit code: 0 = ready, 1 = not ready.
+
+    Gates:
+      1. Brier < 0.20 over last 60 days (needs 50+ trades)
+      2. ROC-AUC > 0.60 over last 60 days
+      3. At least 50 settled trades in the last 60 days
+      4. Drawdown < 10%
+      5. No circuit breaker currently open
+    """
+    import backtest as _bt
+
+    _header("Live Trading Readiness Check")
+    gates: list[tuple[str, bool, str]] = []
+
+    try:
+        bt = _bt.run_backtest(client, days=60)
+        brier = bt.get("brier", 1.0)
+        roc   = bt.get("roc_auc", 0.0)
+        n     = bt.get("n_trades", 0)
+        gates.append(("Brier < 0.20  (60d)", brier < 0.20, f"Brier={brier:.4f}  n={n}"))
+        gates.append(("ROC-AUC > 0.60 (60d)", roc > 0.60,  f"ROC-AUC={roc:.3f}"))
+        gates.append(("≥50 trades     (60d)", n >= 50,      f"n={n}"))
+    except Exception as e:
+        gates.append(("Backtest", False, f"Error: {e}"))
+
+    try:
+        dd = _get_current_drawdown()
+        gates.append(("Drawdown < 10%", dd < 0.10, f"drawdown={dd:.1%}"))
+    except Exception:
+        gates.append(("Drawdown", False, "Could not compute"))
+
+    try:
+        cb = _circuit_breaker_open()
+        gates.append(("Circuit breaker closed", not cb, "open" if cb else "closed"))
+    except Exception:
+        gates.append(("Circuit breaker", False, "Could not check"))
+
+    all_pass = True
+    for label, passed, detail in gates:
+        icon = green("✓ PASS") if passed else red("✗ FAIL")
+        print(f"  {icon}  {label:<30} {dim(detail)}")
+        if not passed:
+            all_pass = False
+
+    print()
+    if all_pass:
+        print(green("  ✓ ALL GATES PASSED — system is ready for live trading"))
+    else:
+        print(red("  ✗ NOT READY — fix failing gates before going live"))
+
+    return all_pass
+
+
 def cmd_code_audit() -> None:
     """P10.4: Feature sprawl audit — list file sizes and orphan cmd_ functions."""
     import ast
@@ -6892,6 +6967,9 @@ def main():
         cmd_code_audit()
     elif cmd in ("settlement-monitor", "settle-monitor"):
         cmd_settlement_monitor(client, args[1:])
+    elif cmd == "readiness":
+        ready = cmd_readiness(client)
+        sys.exit(0 if ready else 1)
     else:
         print(red(f"Unknown command: {cmd}"))
         print(dim("Run  py main.py  for the interactive menu."))

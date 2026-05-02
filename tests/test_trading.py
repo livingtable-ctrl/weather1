@@ -1462,3 +1462,41 @@ class TestTimeDecayEdgeScope:
             f"L7-D: net_edge must be 0 when market is past close; "
             f"got {result['net_edge']:.4f}"
         )
+
+
+def test_cmd_readiness_fails_when_brier_above_threshold(monkeypatch, capsys):
+    """cmd_readiness returns False and prints FAIL when Brier > 0.20."""
+    from unittest.mock import MagicMock
+    import main
+
+    monkeypatch.setattr(
+        "backtest.run_backtest",
+        lambda *a, **kw: {"brier": 0.28, "roc_auc": 0.65, "n_trades": 120},
+    )
+    monkeypatch.setattr("main._get_current_drawdown", lambda: 0.05)
+    monkeypatch.setattr("main._circuit_breaker_open", lambda: False)
+
+    result = main.cmd_readiness(MagicMock())
+    out = capsys.readouterr().out
+
+    assert result is False
+    assert "FAIL" in out or "✗" in out
+
+
+def test_cmd_readiness_passes_when_all_gates_clear(monkeypatch, capsys):
+    """cmd_readiness returns True only when all 5 gates pass."""
+    from unittest.mock import MagicMock
+    import main
+
+    monkeypatch.setattr(
+        "backtest.run_backtest",
+        lambda *a, **kw: {"brier": 0.18, "roc_auc": 0.67, "n_trades": 120},
+    )
+    monkeypatch.setattr("main._get_current_drawdown", lambda: 0.05)
+    monkeypatch.setattr("main._circuit_breaker_open", lambda: False)
+
+    result = main.cmd_readiness(MagicMock())
+    out = capsys.readouterr().out
+
+    assert result is True
+    assert "PASS" in out or "✓" in out
