@@ -43,17 +43,17 @@ _log = logging.getLogger(__name__)
 # proportional to Open-Meteo's typical MTTR (minutes, not hours).
 _forecast_cb = CircuitBreaker(
     name="open_meteo_forecast",
-    failure_threshold=6,
-    recovery_timeout=1800,
-    burst_window=5.0,
+    failure_threshold=10,  # raised from 6 — need more real failures before tripping
+    recovery_timeout=300,  # lowered from 1800s — retry after 5 min not 30 min
+    burst_window=10.0,  # wider burst window absorbs parallel fetches
 )
 # Supplementary circuit breaker: ensemble spread, NBM, ECMWF high-res (ENSEMBLE_BASE).
 # Failures here degrade quality but don't block primary signals.
 _ensemble_cb = CircuitBreaker(
     name="open_meteo_ensemble",
-    failure_threshold=4,
-    recovery_timeout=1800,
-    burst_window=5.0,
+    failure_threshold=8,  # raised from 4
+    recovery_timeout=300,  # lowered from 1800s
+    burst_window=10.0,
 )
 
 # ── Trading filters ───────────────────────────────────────────────────────────
@@ -229,7 +229,9 @@ _ensemble_cache: ForecastCache[list[float]] = ForecastCache(ttl_secs=4 * 3600)
 # Rate limiter: enforce minimum gap between Open-Meteo requests to avoid 429 bursts.
 _OM_RATE_LOCK = threading.Lock()
 _OM_LAST_REQUEST_TS: float = 0.0
-_OM_MIN_INTERVAL: float = 3.0  # seconds between requests (~0.33 req/s) — conservative to avoid university throttling
+_OM_MIN_INTERVAL: float = (
+    5.0  # seconds between requests — raised from 3s to reduce 429s
+)
 
 
 def _om_rate_limit() -> None:
@@ -244,9 +246,22 @@ def _om_rate_limit() -> None:
 
 
 def _om_request(method: str, url: str, **kwargs) -> requests.Response:
-    """Rate-limited wrapper for all Open-Meteo API calls."""
+    """Rate-limited wrapper for all Open-Meteo API calls.
+
+    Handles 429 (rate limit) by sleeping and retrying once — 429 is NOT
+    counted as a circuit-breaker failure since the API is up, just throttling.
+    """
     _om_rate_limit()
-    return _request_with_retry(method, url, **kwargs)
+    resp = _request_with_retry(method, url, **kwargs)
+    if resp.status_code == 429:
+        retry_after = int(resp.headers.get("Retry-After", 60))
+        _log.warning(
+            "Open-Meteo rate limited (429) — sleeping %ds before retry", retry_after
+        )
+        time.sleep(retry_after)
+        _om_rate_limit()
+        resp = _request_with_retry(method, url, **kwargs)
+    return resp
 
 
 # Forecast cache: (city, date_iso) -> dict (TTL handled by ForecastCache)

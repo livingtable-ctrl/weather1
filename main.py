@@ -2363,7 +2363,11 @@ def _check_early_exits(client=None) -> int:
                 )
                 closed += 1
         except Exception as exc:
-            _log.warning(f"[EarlyExit] Error checking {ticker}: {exc}")
+            import traceback as _tb
+
+            _log.warning(
+                f"[EarlyExit] Error checking {ticker}: {exc}\n{_tb.format_exc()}"
+            )
             continue
 
     return closed
