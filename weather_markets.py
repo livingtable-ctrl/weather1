@@ -230,7 +230,7 @@ _ensemble_cache: ForecastCache[list[float]] = ForecastCache(ttl_secs=4 * 3600)
 _OM_RATE_LOCK = threading.Lock()
 _OM_LAST_REQUEST_TS: float = 0.0
 _OM_MIN_INTERVAL: float = (
-    5.0  # seconds between requests — raised from 3s to reduce 429s
+    1.0  # seconds between requests — 429s now retried, so tight gap is fine
 )
 
 
