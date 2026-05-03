@@ -642,17 +642,20 @@ def settle_paper_trade(trade_id: int, outcome_yes: bool) -> dict:
         if t["id"] == trade_id and not t["settled"]:
             qty = t["quantity"]
             side = t["side"]
-            cost = t["cost"]
+            # P0-1: use actual_fill_price (slippage-adjusted) so P&L matches
+            # the fill stored on the trade record, not the pre-slippage price.
+            entry_price = t.get("actual_fill_price") or t["entry_price"]
+            cost = entry_price * qty
             won = (side == "yes" and outcome_yes) or (side == "no" and not outcome_yes)
             # Fee is charged on winnings (profit) only, not the full $1 payout.
             # net_payout_per_contract = 1.0 - winnings * fee_rate
-            entry_price = t["entry_price"]
             winnings_per_contract = 1.0 - entry_price
             net_payout_per_contract = 1.0 - winnings_per_contract * KALSHI_FEE_RATE
             payout = qty * net_payout_per_contract if won else 0.0
             pnl = payout - cost
 
             t["settled"] = True
+            t["settled_at"] = datetime.now(UTC).isoformat()
             t["outcome"] = "yes" if outcome_yes else "no"
             t["pnl"] = round(pnl, 4)
             data["balance"] += payout
@@ -716,14 +719,27 @@ def settle_paper_trade(trade_id: int, outcome_yes: bool) -> dict:
 
 
 def _score_ensemble_members(trade: dict, outcome_yes: bool) -> None:
-    """Log per-model forecast accuracy after settlement for _dynamic_model_weights()."""
+    """Log per-model forecast accuracy after settlement for _dynamic_model_weights().
+
+    Only scores when a real METAR observation is available — the synthetic
+    threshold±3°F proxy produced fabricated MAE values that corrupted weights.
+    """
     city = trade.get("city")
     target_date = trade.get("target_date")
-    threshold = trade.get("condition_threshold")
-    if not city or not target_date or threshold is None:
+    if not city or not target_date:
         return
-    # Proxy actual temp: threshold ± 3°F based on settled outcome
-    actual_temp = threshold + 3.0 if outcome_yes else threshold - 3.0
+    # Require a real observed temperature; skip rather than fabricate
+    try:
+        from nws import get_live_observation as _get_obs
+        from weather_markets import CITY_COORDS as _coords_map
+
+        coords = _coords_map.get(city, ())
+        obs = _get_obs(city, coords) if coords else None
+        actual_temp = obs.get("temp_f") if obs else None
+    except Exception:
+        actual_temp = None
+    if actual_temp is None:
+        return
     model_means = {
         "icon_seamless": trade.get("icon_forecast_mean"),
         "gfs_seamless": trade.get("gfs_forecast_mean"),
@@ -817,25 +833,24 @@ def check_stop_losses(
     return exits
 
 
+def _exposure_denom() -> float:
+    """P0-4: exposure denominator scales with balance so caps stay proportional.
+    Floor at STARTING_BALANCE so drawdown never makes caps looser than intended."""
+    return max(STARTING_BALANCE, get_balance())
+
+
 def get_city_date_exposure(city: str, target_date_str: str) -> float:
-    """
-    Return the fraction of STARTING_BALANCE committed to open trades for
-    this city + target date. Uses STARTING_BALANCE as denominator so the
-    check stays stable as balance fluctuates.
-    """
+    """Return the fraction of current balance committed to open trades for this city + date."""
     committed = sum(
         t["cost"]
         for t in get_open_trades()
         if t.get("city") == city and t.get("target_date") == target_date_str
     )
-    return committed / STARTING_BALANCE
+    return committed / _exposure_denom()
 
 
 def get_directional_exposure(city: str, target_date_str: str, side: str) -> float:
-    """
-    Return the fraction of STARTING_BALANCE in open trades for this
-    city + date + direction (YES or NO). Used to penalise concentrated positions.
-    """
+    """Return the fraction of current balance in open trades for this city + date + direction."""
     committed = sum(
         t["cost"]
         for t in get_open_trades()
@@ -843,22 +858,19 @@ def get_directional_exposure(city: str, target_date_str: str, side: str) -> floa
         and t.get("target_date") == target_date_str
         and t.get("side") == side
     )
-    return committed / STARTING_BALANCE
+    return committed / _exposure_denom()
 
 
 def get_total_exposure() -> float:
-    """
-    Return the total fraction of STARTING_BALANCE committed across all open trades.
-    Used to enforce the global portfolio cap (MAX_TOTAL_OPEN_EXPOSURE).
-    """
+    """Return the total fraction of current balance committed across all open trades."""
     committed = sum(t["cost"] for t in get_open_trades())
-    return committed / STARTING_BALANCE
+    return committed / _exposure_denom()
 
 
 def get_ticker_exposure(ticker: str) -> float:
-    """Return fraction of STARTING_BALANCE committed to open trades for this ticker (#47)."""
+    """Return fraction of current balance committed to open trades for this ticker (#47)."""
     committed = sum(t["cost"] for t in get_open_trades() if t.get("ticker") == ticker)
-    return committed / STARTING_BALANCE
+    return committed / _exposure_denom()
 
 
 def position_age_kelly_scale(ticker: str) -> float:
@@ -901,7 +913,7 @@ def get_correlated_exposure(city: str, target_date_str: str) -> float:
             for t in get_open_trades()
             if t.get("city") in group and t.get("target_date") == target_date_str
         )
-        / STARTING_BALANCE
+        / _exposure_denom()
     )
 
 
@@ -930,19 +942,6 @@ def check_exit_targets(client=None) -> int:
                 t["side"] == "no" and current_price <= 1 - target
             )
             if should_exit:
-                import random as _rand
-
-                pos_quantity = t.get("quantity", 1)
-                filled = min(pos_quantity, int(pos_quantity * _rand.uniform(0.7, 1.0)))
-                if filled < pos_quantity:
-                    _log.info(
-                        "check_exit_targets: partial fill for trade %d — "
-                        "filled %d of %d contracts at target %.2f",
-                        t["id"],
-                        filled,
-                        pos_quantity,
-                        target,
-                    )
                 # Exit at the actual market price, not full-settlement $1.00 payout.
                 # For YES trades: exit at current YES bid.
                 # For NO trades: exit_price is in NO-contract units = 1 - yes_bid.
@@ -1400,8 +1399,8 @@ def get_current_streak() -> tuple[str, int]:
     ]
     if not settled:
         return ("none", 0)
-    # Sort by entered_at as a proxy for settled time
-    settled.sort(key=lambda t: t.get("entered_at", ""))
+    # P2-1: sort by actual settlement time, not entry time
+    settled.sort(key=lambda t: t.get("settled_at") or t.get("entered_at", ""))
     # Walk backwards to find streak direction
     last_pnl = settled[-1]["pnl"]
     if last_pnl is None:
@@ -1488,10 +1487,13 @@ def get_daily_pnl(client=None) -> float:
     positions so the daily loss limit accounts for positions that are underwater.
     """
     today_str = datetime.now(UTC).strftime("%Y-%m-%d")
+    # P0-2: filter by settled_at (settlement date), not entered_at (entry date).
+    # Trades entered days ago but settling today must count against today's loss cap.
     settled_pnl = sum(
         t.get("pnl", 0.0) or 0.0
         for t in _load()["trades"]
-        if t.get("settled") and t.get("entered_at", "")[:10] == today_str
+        if t.get("settled")
+        and t.get("settled_at", t.get("entered_at", ""))[:10] == today_str
     )
     if client is None:
         return settled_pnl
