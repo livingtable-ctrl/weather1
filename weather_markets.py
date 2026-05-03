@@ -3036,7 +3036,7 @@ def _analyze_precip_trade(
     payout = 1 - entry_price
     p_win = blended_prob if rec_side == "yes" else 1 - blended_prob
     net_ev = p_win * payout * (1 - KALSHI_FEE_RATE) - (1 - p_win) * entry_price
-    net_edge = net_ev / entry_price if entry_price > 0 else 0.0
+    net_edge = min(net_ev / entry_price if entry_price > 0 else 0.0, 3.0)
     edge = blended_prob - market_prob
     # L8-A / L7-C: entry_side_edge vs actual fill price (ask), not mid
     _esmp = (
@@ -3191,7 +3191,7 @@ def _analyze_snow_trade(
     payout = 1 - entry_price
     p_win = blended_prob if rec_side == "yes" else 1 - blended_prob
     net_ev = p_win * payout * (1 - KALSHI_FEE_RATE) - (1 - p_win) * entry_price
-    net_edge = net_ev / entry_price if entry_price > 0 else 0.0
+    net_edge = min(net_ev / entry_price if entry_price > 0 else 0.0, 3.0)
     edge = blended_prob - market_prob
     # L8-A / L7-C: entry_side_edge vs actual fill price (ask), not mid
     _esmp = (
@@ -4247,7 +4247,9 @@ def analyze_trade(enriched: dict) -> dict | None:
 
     # L7-D: apply time-decay so adjusted_edge (= net_edge * edge_conf) also shrinks
     # near close — before this fix adjusted_edge used full net_edge for same-day markets
-    net_edge = (net_ev / entry_price if entry_price > 0 else 0.0) * _time_decay_factor
+    net_edge = min(
+        (net_ev / entry_price if entry_price > 0 else 0.0) * _time_decay_factor, 3.0
+    )
     _edge_conf = edge_confidence(days_out, condition_type=condition["type"])
     adjusted_edge = net_edge * _edge_conf
     net_signal = _edge_label(adjusted_edge)
