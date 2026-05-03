@@ -438,6 +438,11 @@ def _cmd_cron_body(client: KalshiClient, min_edge: float = MIN_EDGE) -> bool | N
 
     log_path = Path(__file__).parent / "data" / "cron.log"
     log_path.parent.mkdir(exist_ok=True)
+    if log_path.exists() and log_path.stat().st_size > 5 * 1024 * 1024:
+        try:
+            log_path.replace(log_path.with_suffix(".log.1"))
+        except OSError:
+            pass
 
     # P0.5: Log state snapshot at the start of every cron run for consistency auditing.
     try:
