@@ -301,10 +301,27 @@ def validate_api_key(client: KalshiClient) -> bool:
         return False
 
 
+# P0-15: files that must never be deleted by cleanup — they are updated only when
+# explicit calibration commands run, not on every cron cycle.
+_PERMANENT_DATA_FILES = {
+    "paper_trades.json",
+    "seasonal_weights.json",
+    "city_weights.json",
+    "condition_weights.json",
+    "walk_forward_params.json",
+    "platt_models.json",
+    "live_config.json",
+    "retired_strategies.json",
+    "learned_weights.json",
+    "learned_correlations.json",
+}
+
+
 def cleanup_data_dir() -> None:
     """
     Delete stale cached data files to prevent unbounded growth.
-    Skips climate_*.json (1-year TTL managed by climatology.py).
+    Skips climate_*.json (1-year TTL managed by climatology.py),
+    dot-files, and permanent calibration weight files (_PERMANENT_DATA_FILES).
     Only deletes files older than 2 days to avoid removing files still
     useful for markets that cross midnight.
     """
@@ -316,6 +333,8 @@ def cleanup_data_dir() -> None:
     cutoff = _time.time() - 2 * 24 * 3600  # 2 days ago
     for f in data_dir.glob("*.json"):
         if f.name.startswith("climate_") or f.name.startswith("."):
+            continue
+        if f.name in _PERMANENT_DATA_FILES:
             continue
         try:
             if f.stat().st_mtime < cutoff:
