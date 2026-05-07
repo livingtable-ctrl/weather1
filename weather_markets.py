@@ -3044,7 +3044,11 @@ def _analyze_precip_trade(
         if rec_side == "yes"
         else (1.0 - prices["yes_bid"] if prices["yes_bid"] > 0 else market_prob)
     )
-    entry_side_edge = blended_prob - _esmp
+    # P0-14: NO edge = P(NO wins) - cost_of_NO; sign was inverted, blocking all valid NOs
+    if rec_side == "yes":
+        entry_side_edge = blended_prob - _esmp
+    else:
+        entry_side_edge = (1.0 - blended_prob) - _esmp
     # L2-B: always pass fee_rate so kelly is fee-adjusted; fee-free Kelly overstates size
     kelly = kelly_fraction(p_win, entry_price, fee_rate=KALSHI_FEE_RATE)
     fee_kel = kelly_fraction(p_win, entry_price, fee_rate=KALSHI_FEE_RATE)
@@ -3199,7 +3203,11 @@ def _analyze_snow_trade(
         if rec_side == "yes"
         else (1.0 - prices["yes_bid"] if prices["yes_bid"] > 0 else market_prob)
     )
-    entry_side_edge = blended_prob - _esmp
+    # P0-14: NO edge = P(NO wins) - cost_of_NO; sign was inverted, blocking all valid NOs
+    if rec_side == "yes":
+        entry_side_edge = blended_prob - _esmp
+    else:
+        entry_side_edge = (1.0 - blended_prob) - _esmp
     # L2-B: always pass fee_rate so kelly is fee-adjusted; fee-free Kelly overstates size
     kelly = kelly_fraction(p_win, entry_price, fee_rate=KALSHI_FEE_RATE)
     fee_kel = kelly_fraction(p_win, entry_price, fee_rate=KALSHI_FEE_RATE)
@@ -4228,7 +4236,13 @@ def analyze_trade(enriched: dict) -> dict | None:
             (1.0 - prices["yes_bid"]) if prices["yes_bid"] > 0 else market_prob
         )
     # L7-D: apply same time-decay factor so gate uses time-adjusted entry_side_edge
-    entry_side_edge = (blended_prob - entry_side_market_prob) * _time_decay_factor
+    # P0-14: NO edge = P(NO wins) - cost_of_NO; sign was inverted, blocking all valid NOs
+    if rec_side == "yes":
+        entry_side_edge = (blended_prob - entry_side_market_prob) * _time_decay_factor
+    else:
+        entry_side_edge = (
+            1.0 - blended_prob - entry_side_market_prob
+        ) * _time_decay_factor
 
     # #62: explicit illiquid flag (spread > 5%)
     illiquid = spread_cost > 0.05
