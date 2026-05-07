@@ -335,19 +335,19 @@ class TestPollPendingOrdersExtended:
         assert order["pnl"] == pytest.approx(0.837, rel=1e-3)
 
     def test_no_side_settlement_yes_wins(self):
-        """NO bet loses when YES wins: pnl = -qty * (1 - price)."""
+        """NO bet loses when YES wins: pnl = -qty * price (NO contract cost)."""
         from datetime import UTC, datetime, timedelta
         from unittest.mock import MagicMock
 
         import execution_log
         import main
 
-        # Bought NO at YES-price 0.40 (paid 0.60 per contract)
+        # price stores the NO contract price: YES=0.40 market → NO costs 0.60
         execution_log.log_order(
             ticker="KXHIGH-25MAY15-T75",
             side="no",
             quantity=3,
-            price=0.40,
+            price=0.60,
             status="filled",
             live=True,
             fill_quantity=3,
@@ -367,23 +367,23 @@ class TestPollPendingOrdersExtended:
         order = orders[0]
         assert order["outcome_yes"] == 1
         assert order["settled_at"] is not None
-        # pnl = -3 * (1 - 0.40) = -3 * 0.60 = -1.80
+        # pnl = -3 * 0.60 = -1.80
         assert order["pnl"] == pytest.approx(-1.80, rel=1e-3)
 
     def test_no_side_settlement_no_wins(self):
-        """NO bet wins when NO wins: pnl = qty * price * (1 - fee)."""
+        """NO bet wins when NO wins: pnl = qty * (1 - price) * (1 - fee)."""
         from datetime import UTC, datetime, timedelta
         from unittest.mock import MagicMock
 
         import execution_log
         import main
 
-        # Bought NO at YES-price 0.40 (paid 0.60 per contract)
+        # price stores the NO contract price: YES=0.40 market → NO costs 0.60
         execution_log.log_order(
             ticker="KXHIGH-25MAY15-T75",
             side="no",
             quantity=3,
-            price=0.40,
+            price=0.60,
             status="filled",
             live=True,
             fill_quantity=3,
@@ -403,5 +403,5 @@ class TestPollPendingOrdersExtended:
         order = orders[0]
         assert order["outcome_yes"] == 0
         assert order["settled_at"] is not None
-        # pnl = 3 * 0.40 * (1 - 0.07) = 3 * 0.40 * 0.93 = 1.116
+        # pnl = 3 * (1 - 0.60) * (1 - 0.07) = 3 * 0.40 * 0.93 = 1.116
         assert order["pnl"] == pytest.approx(1.116, rel=1e-3)

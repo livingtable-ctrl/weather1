@@ -1542,18 +1542,22 @@ def _poll_pending_orders(client, config: dict | None = None) -> None:
                 continue  # unparseable close_time — skip defensively
             outcome_yes = result == "yes"
             side = order["side"]
-            price = order["price"]  # always YES-side decimal (0.0–1.0)
+            # price is the entry-side contract price: YES price for YES orders,
+            # NO price (= 1 - yes_bid) for NO orders.
+            price = order["price"]
             qty = order.get("fill_quantity") or order["quantity"]
             if outcome_yes and side == "yes":
-                pnl = qty * (1 - price) * (1 - _fee)
+                pnl = (
+                    qty * (1 - price) * (1 - _fee)
+                )  # won YES: profit = (1-cost)*(1-fee)
             elif not outcome_yes and side == "yes":
-                pnl = -qty * price
+                pnl = -qty * price  # lost YES: lose cost
             elif outcome_yes and side == "no":
-                pnl = -qty * (
-                    1 - price
-                )  # YES wins, NO loses: lost (1-price) per contract
+                pnl = -qty * price  # YES wins, NO loses: lose NO cost
             else:  # not outcome_yes, side == "no" — NO wins
-                pnl = qty * price * (1 - _fee)  # won price per contract minus fee
+                pnl = (
+                    qty * (1 - price) * (1 - _fee)
+                )  # won NO: profit = (1-cost)*(1-fee)
             pnl = round(pnl, 4)
             execution_log.record_live_settlement(order["id"], outcome_yes, pnl)
             execution_log.add_live_loss(-pnl)  # negative pnl = loss adds to counter
