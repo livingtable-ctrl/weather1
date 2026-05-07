@@ -1577,6 +1577,15 @@ def _place_live_order(
 
     Returns (placed, dollar_cost). Caller must add cost to the DB via add_live_loss().
     """
+    # 0. Graduation + safety gate — must pass before any live order
+    from trading_gates import pre_live_trade_check
+
+    try:
+        pre_live_trade_check()
+    except RuntimeError as _gate_err:
+        _log.warning("[LIVE] Gate blocked %s: %s", ticker, _gate_err)
+        return False, 0.0
+
     # 1. Daily loss check
     if execution_log.get_today_live_loss() >= config["daily_loss_limit"]:
         print(
