@@ -22,7 +22,7 @@ DB_PATH.parent.mkdir(exist_ok=True)
 
 _db_initialized = False
 
-_SCHEMA_VERSION = 18  # increment when _MIGRATIONS list grows
+_SCHEMA_VERSION = 19  # increment when _MIGRATIONS list grows
 
 _MIGRATIONS = [
     # v1 → v2: add condition_type column (if not already added)
@@ -1304,7 +1304,7 @@ def sync_outcomes(client) -> int:
                     try:
                         close_dt = datetime.fromisoformat(
                             close_time_str.replace("Z", "+00:00")
-                        ).replace(tzinfo=None)
+                        )
                         hours_since = (now_utc - close_dt).total_seconds() / 3600
                         if hours_since < 1.0:
                             continue  # too soon; wait for finalization to stabilize

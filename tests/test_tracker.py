@@ -8,7 +8,7 @@ import shutil
 import sqlite3
 import tempfile
 import unittest
-from datetime import date
+from datetime import UTC, date
 from pathlib import Path
 
 import pytest
@@ -1839,3 +1839,162 @@ class TestGetQuintileBias(unittest.TestCase):
             "CHI", 4, forecast_prob=0.70, min_samples=5
         )
         self.assertEqual(result_chi, 0.0)
+
+
+# ── P0-12: _SCHEMA_VERSION must equal len(_MIGRATIONS) ───────────────────────
+
+
+class TestSchemaVersionMatchesMigrations(unittest.TestCase):
+    """P0-12 — _SCHEMA_VERSION must equal the number of migrations so local_hour
+    column is applied and user_version is set correctly."""
+
+    def setUp(self):
+        self._tmpdir = tempfile.mkdtemp()
+        self._orig = tracker.DB_PATH
+        tracker.DB_PATH = Path(self._tmpdir) / "test_schema.db"
+        tracker._db_initialized = False
+
+    def tearDown(self):
+        tracker.DB_PATH = self._orig
+        tracker._db_initialized = False
+        shutil.rmtree(self._tmpdir, ignore_errors=True)
+
+    def test_schema_version_equals_migration_count(self):
+        """_SCHEMA_VERSION must equal len(_MIGRATIONS) — off-by-one leaves last migration unapplied."""
+        self.assertEqual(
+            tracker._SCHEMA_VERSION,
+            len(tracker._MIGRATIONS),
+            f"_SCHEMA_VERSION={tracker._SCHEMA_VERSION} but there are "
+            f"{len(tracker._MIGRATIONS)} migrations — mismatch causes the last "
+            "migration to be skipped or re-run every time",
+        )
+
+    def test_local_hour_column_exists_after_init(self):
+        """After init_db(), the predictions table must have the local_hour column."""
+        import sqlite3
+
+        tracker.init_db()
+        with sqlite3.connect(str(tracker.DB_PATH)) as con:
+            cols = {row[1] for row in con.execute("PRAGMA table_info(predictions)")}
+        self.assertIn(
+            "local_hour",
+            cols,
+            "local_hour column missing — migration v19 was not applied",
+        )
+
+    def test_user_version_equals_schema_version_after_init(self):
+        """After init_db(), PRAGMA user_version must equal _SCHEMA_VERSION."""
+        import sqlite3
+
+        tracker.init_db()
+        with sqlite3.connect(str(tracker.DB_PATH)) as con:
+            user_ver = con.execute("PRAGMA user_version").fetchone()[0]
+        self.assertEqual(
+            user_ver,
+            tracker._SCHEMA_VERSION,
+            f"PRAGMA user_version={user_ver} != _SCHEMA_VERSION={tracker._SCHEMA_VERSION}",
+        )
+
+    def test_log_prediction_succeeds_with_local_hour(self):
+        """log_prediction must not crash when local_hour is present in analysis dict."""
+        tracker.init_db()
+        tracker.log_prediction(
+            "LHOUR-TEST",
+            "NYC",
+            date(2026, 5, 1),
+            {
+                "condition": {"type": "above", "threshold": 70.0},
+                "forecast_prob": 0.65,
+                "market_prob": 0.50,
+                "edge": 0.15,
+                "method": "ensemble",
+                "n_members": 50,
+                "local_hour": 14,
+            },
+        )
+        history = tracker.get_history()
+        self.assertEqual(len(history), 1)
+        self.assertEqual(history[0]["ticker"], "LHOUR-TEST")
+
+
+# ── P0-13: sync_outcomes aware/naive datetime fix ────────────────────────────
+
+
+class TestSyncOutcomesDatetimeFix(unittest.TestCase):
+    """P0-13 — sync_outcomes must not crash on aware/naive datetime subtraction."""
+
+    def setUp(self):
+        self._tmpdir = tempfile.mkdtemp()
+        self._orig = tracker.DB_PATH
+        tracker.DB_PATH = Path(self._tmpdir) / "test_sync.db"
+        tracker._db_initialized = False
+        tracker.init_db()
+
+    def tearDown(self):
+        tracker.DB_PATH = self._orig
+        tracker._db_initialized = False
+        shutil.rmtree(self._tmpdir, ignore_errors=True)
+
+    def _log(self, ticker):
+        tracker.log_prediction(
+            ticker,
+            "NYC",
+            date(2026, 4, 1),
+            {
+                "condition": {"type": "above", "threshold": 70.0},
+                "forecast_prob": 0.70,
+                "market_prob": 0.50,
+                "edge": 0.20,
+                "method": "ensemble",
+                "n_members": 50,
+            },
+        )
+
+    def test_sync_outcomes_does_not_raise_on_z_suffix_close_time(self):
+        """close_time with Z suffix must not raise TypeError (aware vs naive mismatch)."""
+        from unittest.mock import MagicMock
+
+        self._log("TK-ZSUFFIX")
+
+        mock_client = MagicMock()
+        # Provide a close_time >1 hour ago in UTC with Z suffix (the previously broken path)
+        mock_client.get_market.return_value = {
+            "status": "finalized",
+            "result": "yes",
+            "close_time": "2026-01-01T00:00:00Z",
+        }
+        # Must not raise
+        count = tracker.sync_outcomes(mock_client)
+        self.assertEqual(count, 1)
+
+    def test_sync_outcomes_does_not_raise_on_offset_close_time(self):
+        """close_time with +00:00 offset must not raise TypeError."""
+        from unittest.mock import MagicMock
+
+        self._log("TK-OFFSET")
+        mock_client = MagicMock()
+        mock_client.get_market.return_value = {
+            "status": "finalized",
+            "result": "no",
+            "close_time": "2026-01-01T00:00:00+00:00",
+        }
+        count = tracker.sync_outcomes(mock_client)
+        self.assertEqual(count, 1)
+
+    def test_sync_outcomes_skips_market_closed_less_than_1h_ago(self):
+        """Markets finalized less than 1 hour ago must be skipped (Kalshi may revise)."""
+        from datetime import datetime as _datetime
+        from datetime import timedelta
+        from unittest.mock import MagicMock
+
+        self._log("TK-RECENT")
+        # close_time 30 minutes ago
+        recent_close = (_datetime.now(UTC) - timedelta(minutes=30)).isoformat()
+        mock_client = MagicMock()
+        mock_client.get_market.return_value = {
+            "status": "finalized",
+            "result": "yes",
+            "close_time": recent_close,
+        }
+        count = tracker.sync_outcomes(mock_client)
+        self.assertEqual(count, 0, "Should skip markets finalized < 1h ago")
