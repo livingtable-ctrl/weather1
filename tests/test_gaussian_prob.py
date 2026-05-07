@@ -479,9 +479,9 @@ class TestBetweenObsDisabled:
     """
 
     def _make_between_enriched_same_day(self):
-        from datetime import date
+        from datetime import UTC, datetime
 
-        today = date.today()
+        today = datetime.now(UTC).date()
         return {
             "ticker": f"KXHIGHNY-{today.strftime('%d%b%y').upper()}-B70.5",
             "title": "NYC high between 70 and 71°F",
@@ -605,7 +605,9 @@ def test_fetch_ensemble_members_returns_list():
     mock_response.json.return_value = {"daily": fake_daily}
 
     with patch("weather_markets._om_request", return_value=mock_response):
-        members = wm.get_ensemble_members(40.77, -73.96, target_str, var="max", tz="America/New_York")
+        members = wm.get_ensemble_members(
+            40.77, -73.96, target_str, var="max", tz="America/New_York"
+        )
 
     assert members is not None
     assert len(members) >= 10
@@ -712,4 +714,6 @@ def test_analyze_trade_includes_ensemble_cdf_in_blend_sources(monkeypatch):
     assert "ensemble_cdf" in src, f"ensemble_cdf missing from blend_sources: {src}"
     assert src["ensemble_cdf"] > 0.0, f"ensemble_cdf weight must be positive; got {src}"
     total = sum(src.values())
-    assert total == pytest.approx(1.0, abs=0.001), f"blend_sources must sum to 1.0; got {total}"
+    assert total == pytest.approx(1.0, abs=0.001), (
+        f"blend_sources must sum to 1.0; got {total}"
+    )
