@@ -87,9 +87,9 @@ MAX_VAR_DOLLARS = float(os.getenv("MAX_VAR_DOLLARS", "200.0"))
 # Set to 0 to disable stop-losses entirely.
 STOP_LOSS_MULT = float(os.getenv("STOP_LOSS_MULT", "2.0"))
 
-# #P10.1: Micro live trades — place a real order at MICRO_LIVE_FRACTION of paper size
-# alongside every paper trade. Requires ENABLE_MICRO_LIVE=true to activate.
-ENABLE_MICRO_LIVE: bool = os.getenv("ENABLE_MICRO_LIVE", "").lower() == "true"
+# Micro live trades — hard-disabled until re-implemented with pre_live_trade_check(),
+# execution_log writes, idempotency key, and add_live_loss() accounting (see P0-3/P0-4).
+ENABLE_MICRO_LIVE: bool = False
 MICRO_LIVE_FRACTION: float = float(os.getenv("MICRO_LIVE_FRACTION", "0.01"))
 MICRO_LIVE_MIN_DOLLARS: float = float(os.getenv("MICRO_LIVE_MIN_DOLLARS", "1.0"))
 

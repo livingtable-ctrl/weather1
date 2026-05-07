@@ -101,6 +101,7 @@ class TestPlaceOrderApiSemantics:
         }
 
         with (
+            patch("trading_gates.LiveTradingGate.check", return_value=(True, "ok")),
             patch("execution_log.was_ordered_this_cycle", return_value=False),
             patch("execution_log.log_order", return_value=1),
             patch.object(main, "_count_open_live_orders", return_value=0),
