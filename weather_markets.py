@@ -53,9 +53,9 @@ _forecast_cb = CircuitBreaker(
 # Failures here degrade quality but don't block primary signals.
 _ensemble_cb = CircuitBreaker(
     name="open_meteo_ensemble",
-    failure_threshold=8,  # raised from 4
-    recovery_timeout=300,  # lowered from 1800s
-    burst_window=10.0,
+    failure_threshold=3,  # trip after 3 distinct failures (e.g. 3 rate-limited cities)
+    recovery_timeout=300,  # 5 min recovery window
+    burst_window=1.0,  # absorb truly simultaneous parallel hits, not sequential ones
 )
 
 # ── Trading filters ───────────────────────────────────────────────────────────
@@ -289,9 +289,8 @@ def _om_request(method: str, url: str, **kwargs) -> requests.Response:
     _om_rate_limit()
     resp = _OM_SESSION.request(method, url, **kwargs)
     if resp.status_code == 429:
-        _log.warning(
-            "Open-Meteo rate limited (429) for %s — returning immediately so fallback can engage",
-            url,
+        _log.debug(
+            "Open-Meteo rate limited (429) — CB failure recorded, fallback will engage"
         )
     return resp
 
