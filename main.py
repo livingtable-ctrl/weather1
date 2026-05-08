@@ -2348,6 +2348,9 @@ def _check_early_exits(client=None) -> int:
     if not open_trades:
         return 0
 
+    markets = get_weather_markets(client)
+    markets_by_ticker = {m["ticker"]: m for m in markets}
+
     closed = 0
     for trade in open_trades:
         ticker = trade.get("ticker", "")
@@ -2357,8 +2360,7 @@ def _check_early_exits(client=None) -> int:
             continue  # cannot assess shift without entry probability
 
         try:
-            markets = get_weather_markets(client)
-            market = next((m for m in markets if m.get("ticker") == ticker), None)
+            market = markets_by_ticker.get(ticker)
             if not market:
                 continue  # market may have closed already
             enriched = enrich_with_forecast(market)

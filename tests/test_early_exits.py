@@ -95,6 +95,49 @@ class TestCheckModelExitsThresholds:
         )
 
 
+class TestCheckEarlyExitsApiCallCount:
+    def test_get_weather_markets_called_once_for_multiple_trades(self):
+        """P1-20: get_weather_markets must be called once regardless of N open trades."""
+        import main
+
+        trades = [_make_trade(entered_hours_ago=24, side="yes") for _ in range(5)]
+        for i, t in enumerate(trades):
+            t["id"] = i + 1
+            t["ticker"] = f"KXWT-T5{i}"
+
+        markets = [{"ticker": f"KXWT-T5{i}", "yes_bid": 30} for i in range(5)]
+        mock_analysis = {"forecast_prob": 0.65, "net_edge": 0.05}
+        mock_client = MagicMock()
+
+        with (
+            patch("main.get_weather_markets", return_value=markets) as mock_fetch,
+            patch("main.enrich_with_forecast", return_value={}),
+            patch("main.analyze_trade", return_value=mock_analysis),
+            patch("paper.get_open_trades", return_value=trades),
+        ):
+            main._check_early_exits(mock_client)
+
+        assert mock_fetch.call_count == 1, (
+            f"get_weather_markets called {mock_fetch.call_count}× for 5 trades; "
+            "must be called exactly once before the loop (P1-20)"
+        )
+
+    def test_get_weather_markets_not_called_when_no_open_trades(self):
+        """P1-20: no API call at all when there are no open trades."""
+        import main
+
+        mock_client = MagicMock()
+
+        with (
+            patch("main.get_weather_markets") as mock_fetch,
+            patch("paper.get_open_trades", return_value=[]),
+        ):
+            result = main._check_early_exits(mock_client)
+
+        assert result == 0
+        mock_fetch.assert_not_called()
+
+
 class TestCheckEarlyExitsHoldTime:
     def test_new_trade_not_exited_by_probability_shift(self):
         """_check_early_exits must not exit a trade entered less than 12 hours ago."""
