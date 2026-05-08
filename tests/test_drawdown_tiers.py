@@ -92,20 +92,30 @@ class TestDrawdownScalingFactor:
 
 
 class TestDrawdownTiersRelativeToHalt:
-    """Tiers must be relative to halt threshold, not hardcoded absolutes."""
+    """P2-2: Tiers must be absolute constants, not derived from DRAWDOWN_HALT_PCT."""
 
-    def test_tiers_scale_with_halt_threshold(self, monkeypatch):
-        """With 20% halt, tier thresholds should shift proportionally."""
+    def test_tier_constants_are_ordered(self, monkeypatch):
+        """Tier ordering invariant: TIER_1 < TIER_2 < TIER_3 < TIER_4 <= 1.0."""
+        import paper
+
+        assert paper._DRAWDOWN_TIER_1 < paper._DRAWDOWN_TIER_2
+        assert paper._DRAWDOWN_TIER_2 < paper._DRAWDOWN_TIER_3
+        assert paper._DRAWDOWN_TIER_3 < paper._DRAWDOWN_TIER_4
+        assert paper._DRAWDOWN_TIER_4 <= 1.0
+
+    def test_tier_constants_are_absolute(self, monkeypatch):
+        """P2-2: tiers must not shift when DRAWDOWN_HALT_PCT is non-default."""
         import importlib
 
         import paper
 
-        monkeypatch.setenv("DRAWDOWN_HALT_PCT", "0.20")
+        monkeypatch.setenv("DRAWDOWN_HALT_PCT", "0.30")
         importlib.reload(paper)
-        # Halt is at 80% of peak. Tier 2 (conservative) must be above halt (>80%)
-        assert paper._DRAWDOWN_TIER_2 > paper._DRAWDOWN_TIER_1
-        assert paper._DRAWDOWN_TIER_3 > paper._DRAWDOWN_TIER_2
-        assert paper._DRAWDOWN_TIER_4 > paper._DRAWDOWN_TIER_3
+        # With absolute constants, tiers stay at canonical values regardless of halt %
+        assert paper._DRAWDOWN_TIER_1 == 0.80
+        assert paper._DRAWDOWN_TIER_2 == 0.85
+        assert paper._DRAWDOWN_TIER_3 == 0.90
+        assert paper._DRAWDOWN_TIER_4 == 0.95
 
     def test_halt_at_20pct_drawdown(self, mock_balance_1000, monkeypatch):
         """At 20% drawdown, scaling factor should be 0.0."""

@@ -117,15 +117,16 @@ MAX_DRAWDOWN_FRACTION = _env_float("DRAWDOWN_HALT_PCT", "0.20")
 MAX_DAILY_LOSS_PCT = _env_float("MAX_DAILY_LOSS_PCT", "0.03")  # default 3%
 MAX_POSITION_AGE_DAYS = _env_int("MAX_POSITION_AGE_DAYS", "7")
 
-# Drawdown tier thresholds as fractions of peak balance.
-# All tiers are derived relative to MAX_DRAWDOWN_FRACTION so they remain
-# reachable regardless of what halt threshold is configured.
-_DRAWDOWN_TIER_1 = (
-    1.0 - MAX_DRAWDOWN_FRACTION
-)  # halt below this (e.g. 0.80 at 20% halt)
-_DRAWDOWN_TIER_2 = _DRAWDOWN_TIER_1 + 0.05  # 10% sizing  (e.g. 0.85)
-_DRAWDOWN_TIER_3 = _DRAWDOWN_TIER_1 + 0.10  # 30% sizing  (e.g. 0.90)
-_DRAWDOWN_TIER_4 = _DRAWDOWN_TIER_1 + 0.15  # 70% sizing  (e.g. 0.95)
+# Drawdown tier thresholds as absolute fractions of peak balance.
+# Fixed at canonical values so a non-default DRAWDOWN_HALT_PCT doesn't
+# silently shift all boundaries and change risk behaviour.
+_DRAWDOWN_TIER_1 = 0.80  # halt at or below this (20% drawdown)
+_DRAWDOWN_TIER_2 = 0.85  # 10% Kelly (15% drawdown)
+_DRAWDOWN_TIER_3 = 0.90  # 30% Kelly (10% drawdown)
+_DRAWDOWN_TIER_4 = 0.95  # 70% Kelly ( 5% drawdown)
+assert (
+    _DRAWDOWN_TIER_1 < _DRAWDOWN_TIER_2 < _DRAWDOWN_TIER_3 < _DRAWDOWN_TIER_4 <= 1.0
+), "Tier ordering invariant violated"
 
 MAX_TOTAL_OPEN_EXPOSURE = (
     0.50  # max fraction of starting balance in open positions total
@@ -526,9 +527,9 @@ def place_paper_order(
             f"Order too small (${cost:.2f}). Minimum order is ${MIN_ORDER_COST:.2f}."
         )
 
-    # #47: enforce single-ticker exposure cap
+    # #47: enforce single-ticker exposure cap using same denom as get_ticker_exposure
     if (
-        get_ticker_exposure(ticker) + cost / STARTING_BALANCE
+        get_ticker_exposure(ticker) + cost / _exposure_denom()
         > MAX_SINGLE_TICKER_EXPOSURE
     ):
         raise ValueError(
