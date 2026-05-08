@@ -128,6 +128,22 @@ assert (
     _DRAWDOWN_TIER_1 < _DRAWDOWN_TIER_2 < _DRAWDOWN_TIER_3 < _DRAWDOWN_TIER_4 <= 1.0
 ), "Tier ordering invariant violated"
 
+_EXPECTED_HALT_PCT = 0.20
+if abs(MAX_DRAWDOWN_FRACTION - _EXPECTED_HALT_PCT) > 1e-9:
+    import logging as _logging_tmp
+
+    _logging_tmp.getLogger(__name__).warning(
+        "DRAWDOWN_HALT_PCT=%.2f differs from the %.2f the tier constants "
+        "(_DRAWDOWN_TIER_1–4) were calibrated for. Tiers will not align with "
+        "the halt boundary — Kelly reductions may not apply in the expected "
+        "drawdown range. Consider updating the tier constants or reverting "
+        "DRAWDOWN_HALT_PCT to %.2f.",
+        MAX_DRAWDOWN_FRACTION,
+        _EXPECTED_HALT_PCT,
+        _EXPECTED_HALT_PCT,
+    )
+    del _logging_tmp
+
 MAX_TOTAL_OPEN_EXPOSURE = (
     0.50  # max fraction of starting balance in open positions total
 )

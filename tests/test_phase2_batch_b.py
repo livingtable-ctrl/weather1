@@ -54,6 +54,39 @@ class TestDrawdownTierAbsolute:
             "TIER_4 must stay at 0.95 regardless of DRAWDOWN_HALT_PCT"
         )
 
+    def test_non_default_halt_emits_warning(self, monkeypatch, caplog):
+        """Non-default DRAWDOWN_HALT_PCT must log a warning about tier misalignment."""
+        import importlib
+        import logging
+
+        import paper
+
+        monkeypatch.setenv("DRAWDOWN_HALT_PCT", "0.30")
+        with caplog.at_level(logging.WARNING, logger="paper"):
+            importlib.reload(paper)
+
+        assert any("DRAWDOWN_HALT_PCT" in r.message for r in caplog.records), (
+            "Non-default halt % must warn that tiers are miscalibrated"
+        )
+
+    def test_default_halt_no_warning(self, monkeypatch, caplog):
+        """Default DRAWDOWN_HALT_PCT=0.20 must NOT emit the tier warning."""
+        import importlib
+        import logging
+
+        import paper
+
+        monkeypatch.setenv("DRAWDOWN_HALT_PCT", "0.20")
+        with caplog.at_level(logging.WARNING, logger="paper"):
+            importlib.reload(paper)
+
+        tier_warnings = [
+            r
+            for r in caplog.records
+            if "tier" in r.message.lower() and "DRAWDOWN" in r.message
+        ]
+        assert len(tier_warnings) == 0, "Default halt% must not produce tier warning"
+
     def test_scaling_at_tier_boundaries(self):
         """Spot-check the step function at each canonical boundary."""
         import paper
