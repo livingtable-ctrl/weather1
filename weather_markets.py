@@ -3414,17 +3414,23 @@ def _metar_lock_in(
 
             if _lh >= 14:
                 if _lo <= _ct <= _hi:
+                    _clearance_yes = min(_ct - _lo, _hi - _ct)
                     _lockout = {
                         "locked": True,
                         "outcome": "yes",
-                        "confidence": 0.95,
+                        "confidence": _metar._dynamic_lock_in_confidence(
+                            _clearance_yes, _lh
+                        ),
                         "reason": f"METAR {_ct:.1f}°F inside bucket [{_lo},{_hi}]",
                     }
                 elif _ct < _lo - 3.0 or _ct > _hi + 3.0:
+                    _clearance_no = _ct - _hi if _ct > _hi else _lo - _ct
                     _lockout = {
                         "locked": True,
                         "outcome": "no",
-                        "confidence": 0.92,
+                        "confidence": _metar._dynamic_lock_in_confidence(
+                            _clearance_no, _lh
+                        ),
                         "reason": f"METAR {_ct:.1f}°F outside bucket [{_lo},{_hi}] by >3°F",
                     }
                 else:

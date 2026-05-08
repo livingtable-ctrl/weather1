@@ -45,6 +45,7 @@ _gridpoint_cache: dict = {}
 _station_cache: dict = {}
 _forecast_cache: dict = {}
 _obs_cache: dict = {}  # city -> (timestamp, observation_dict)
+_precip_cache: dict = {}  # city -> (timestamp, precip_inches | None)
 
 # Per-city lock prevents concurrent threads from fetching the same city observation
 # simultaneously (thread-race fix: 4 workers × 5 cities = 20 fetches → 5 fetches)
@@ -338,26 +339,51 @@ def get_live_precip_obs(city: str, coords: tuple) -> float | None:
     Fetch the latest observed precipitation (inches) from NWS for same-day markets.
     Uses precipitationLastHour, falling back to precipitationLast6Hours / 6.
     Returns None if unavailable or the station doesn't report precip.
+    Cached for OBS_TTL seconds. Thread-safe via per-city lock. Circuit-broken.
     """
-    lat, lon, _ = coords
-    station_id = _get_obs_station(lat, lon)
-    if not station_id:
+    if _nws_cb.is_open():
+        _log.warning("NWS circuit open — skipping precip obs for %s", city)
         return None
-    try:
-        data = _get(f"{NWS_BASE}/stations/{station_id}/observations/latest")
-        props = data.get("properties", {})
-        # Try 1-hour precip first
-        p1h = (props.get("precipitationLastHour") or {}).get("value")
-        if p1h is not None:
-            # NWS reports in mm; convert to inches
-            return round(float(p1h) / 25.4, 4)
-        # Fallback to 6-hour average
-        p6h = (props.get("precipitationLast6Hours") or {}).get("value")
-        if p6h is not None:
-            return round(float(p6h) / 6 / 25.4, 4)
-    except Exception:
-        pass
-    return None
+
+    now = time.time()
+    if city in _precip_cache:
+        cached_at, val = _precip_cache[city]
+        if now - cached_at < OBS_TTL:
+            return val
+
+    with _get_obs_lock(city):
+        try:
+            now = time.time()
+            if city in _precip_cache:
+                cached_at, val = _precip_cache[city]
+                if now - cached_at < OBS_TTL:
+                    return val
+
+            lat, lon, _ = coords
+            station_id = _get_obs_station(lat, lon)
+            if not station_id:
+                return None
+
+            data = _get(f"{NWS_BASE}/stations/{station_id}/observations/latest")
+            props = data.get("properties", {})
+            p1h = (props.get("precipitationLastHour") or {}).get("value")
+            if p1h is not None:
+                result = round(float(p1h) / 25.4, 4)
+                _precip_cache[city] = (time.time(), result)
+                _nws_cb.record_success()
+                return result
+            p6h = (props.get("precipitationLast6Hours") or {}).get("value")
+            if p6h is not None:
+                result = round(float(p6h) / 6 / 25.4, 4)
+                _precip_cache[city] = (time.time(), result)
+                _nws_cb.record_success()
+                return result
+            _nws_cb.record_success()
+            return None
+        except Exception as exc:
+            _nws_cb.record_failure()
+            _log.warning("NWS precip obs failed for %s: %s", city, exc)
+            return None
 
 
 def obs_prob(obs: dict, condition: dict) -> float:
