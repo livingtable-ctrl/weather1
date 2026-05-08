@@ -5,11 +5,19 @@ from unittest.mock import patch
 import pytest
 
 
+@pytest.fixture(autouse=True)
+def _force_demo_env():
+    """Ensure KALSHI_ENV=demo so _build_app doesn't require DASHBOARD_PASSWORD."""
+    with patch("main.KALSHI_ENV", "demo"):
+        yield
+
+
 @pytest.fixture
 def client():
     from web_app import _build_app
 
-    app = _build_app(object())  # dummy client
+    with patch("main.KALSHI_ENV", "demo"):
+        app = _build_app(object())  # dummy client
     app.config["TESTING"] = True
     with app.test_client() as c:
         yield c

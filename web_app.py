@@ -107,6 +107,18 @@ def _build_app(client):
     app = Flask(__name__)
     app.config["TEMPLATES_AUTO_RELOAD"] = True
 
+    # Enforce password requirement in prod — the dashboard exposes kill switch
+    # and trade control endpoints that must never be unauthenticated in production.
+    import main as _main_mod
+
+    if getattr(_main_mod, "KALSHI_ENV", "demo") == "prod" and not os.getenv(
+        "DASHBOARD_PASSWORD"
+    ):
+        raise RuntimeError(
+            "DASHBOARD_PASSWORD must be set when KALSHI_ENV=prod. "
+            "The dashboard exposes kill switch and trade control endpoints."
+        )
+
     @app.before_request
     def _check_auth():
         import utils as _utils
@@ -651,9 +663,20 @@ setInterval(() => {{
             }
         )
 
+    _cron_last_spawn: dict[str, float] = {}  # IP → last spawn timestamp
+    _CRON_RATE_LIMIT_SECS = 300  # one spawn per IP per 5 minutes
+
     @app.route("/api/run_cron", methods=["POST"])
+    @_require_auth
     def api_run_cron():
         """Trigger a cron scan in the background and return immediately."""
+        import time
+
+        ip = _flask_request.remote_addr or "unknown"
+        last = _cron_last_spawn.get(ip, 0.0)
+        if time.time() - last < _CRON_RATE_LIMIT_SECS:
+            return jsonify({"error": "rate limited: 1 cron spawn per 5 minutes"}), 429
+        _cron_last_spawn[ip] = time.time()
         try:
             subprocess.Popen(
                 [
@@ -970,6 +993,7 @@ setInterval(() => {{
         return jsonify(data)
 
     @app.route("/api/halt", methods=["POST"])
+    @_require_auth
     def api_halt():
         """Write kill-switch file to stop cron from placing new trades."""
         from flask import request as _req
@@ -983,6 +1007,7 @@ setInterval(() => {{
         return jsonify({"halted": True, "reason": reason})
 
     @app.route("/api/resume", methods=["POST"])
+    @_require_auth
     def api_resume():
         """Remove kill-switch file to allow cron to resume."""
         existed = _KS_PATH.exists()

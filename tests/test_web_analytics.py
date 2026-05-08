@@ -5,6 +5,13 @@ from unittest.mock import patch
 import pytest
 
 
+@pytest.fixture(autouse=True)
+def _force_demo_env():
+    """Ensure KALSHI_ENV=demo so _build_app doesn't require DASHBOARD_PASSWORD."""
+    with patch("main.KALSHI_ENV", "demo"):
+        yield
+
+
 @pytest.fixture
 def analytics_client():
     from web_app import _build_app

@@ -4,6 +4,15 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def _force_demo_env():
+    """Ensure KALSHI_ENV=demo so _build_app doesn't require DASHBOARD_PASSWORD."""
+    with patch("main.KALSHI_ENV", "demo"):
+        yield
+
 
 def _make_analysis(net_edge: float, kelly: float = 0.10) -> dict:
     return {
