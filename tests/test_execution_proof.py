@@ -43,6 +43,19 @@ def _stub_auto_prereqs(monkeypatch):
     monkeypatch.setattr(
         "main.execution_log.was_ordered_this_cycle", lambda t, s, c: False
     )
+    # Stub execution_log writes — prevents P0-10 pre-log from writing to the real
+    # DB and causing was_traded_today to return True on subsequent test runs
+    monkeypatch.setattr("main.execution_log.was_traded_today", lambda t, s: False)
+    monkeypatch.setattr("main.execution_log.log_order", lambda *a, **kw: 999)
+    monkeypatch.setattr("main.execution_log.log_order_result", lambda *a, **kw: None)
+    # Stub system health — CI environments can report 100% CPU and block trades
+    import system_health
+
+    monkeypatch.setattr(
+        system_health,
+        "check_system_health",
+        lambda: system_health.HealthStatus(healthy=True, reason=""),
+    )
 
 
 # ── _auto_place_trades returns placed count ──────────────────────────────────
