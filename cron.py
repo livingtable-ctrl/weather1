@@ -503,7 +503,9 @@ def _cmd_cron_body(client: KalshiClient, min_edge: float = MIN_EDGE) -> bool | N
     except Exception as _e:
         _log.debug("cmd_cron: check_config_integrity failed: %s", _e)
 
-    # Optional: start WebSocket for real-time price feeds
+    # Optional: start WebSocket for real-time price feeds.
+    # Created here; subscribed and started after market list is fetched so the
+    # subscribe() call (which must precede start()) has real tickers to use.
     _ws = None
     try:
         from kalshi_ws import KalshiWebSocket
@@ -512,10 +514,6 @@ def _cmd_cron_body(client: KalshiClient, min_edge: float = MIN_EDGE) -> bool | N
         key_pem = os.getenv("KALSHI_PRIVATE_KEY_PEM", "")
         if api_key and key_pem:
             _ws = KalshiWebSocket(api_key, key_pem)
-            # Subscribe to all active weather market tickers
-            # _ws.subscribe(active_tickers)  # add after market scan
-            _ws.start()
-            _log.info("WebSocket thread started")
     except Exception as exc:
         _log.debug("WebSocket not available: %s", exc)
 
@@ -561,6 +559,19 @@ def _cmd_cron_body(client: KalshiClient, min_edge: float = MIN_EDGE) -> bool | N
         markets = _main.get_weather_markets(client)
         scanned = len(markets)
         print(dim(f"  [cron] scanning {scanned} market(s)\u2026"), flush=True)
+
+        if _ws is not None:
+            try:
+                _ws_tickers = [m.get("ticker") for m in markets if m.get("ticker")]
+                if _ws_tickers:
+                    _ws.subscribe(_ws_tickers)
+                _ws.start()
+                _log.info(
+                    "WebSocket thread started with %d ticker(s)", len(_ws_tickers)
+                )
+            except Exception as _ws_exc:
+                _log.debug("WebSocket start failed: %s", _ws_exc)
+                _ws = None
 
         # Pre-warm forecast/model caches for all unique city/date pairs so the
         # parallel scan hits cache instead of making redundant network requests.
