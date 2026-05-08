@@ -1,5 +1,7 @@
 """Tests for kalshi_client.py."""
 
+from unittest.mock import MagicMock, patch
+
 import pytest
 
 
@@ -166,3 +168,115 @@ class TestKeyPermissions:
         with caplog.at_level(logging.WARNING, logger="kalshi_client"):
             kalshi_client._check_key_permissions(key_file)
         assert caplog.text == ""
+
+
+class TestGetMarketsPagination:
+    """P1-19: get_markets must follow cursor pagination until exhausted."""
+
+    def _make_client(self):
+        with patch("kalshi_client.KalshiClient.__init__", return_value=None):
+            import kalshi_client
+
+            client = kalshi_client.KalshiClient.__new__(kalshi_client.KalshiClient)
+        return client
+
+    def test_single_page_returns_all_markets(self):
+        """No cursor in response → single call, all markets returned."""
+        import kalshi_client
+
+        client = self._make_client()
+        page1 = [
+            {"ticker": f"MKT-{i}", "yes_bid": 50, "yes_ask": 55, "volume": 100}
+            for i in range(3)
+        ]
+        client._get = MagicMock(return_value={"markets": page1})
+        client._validate = MagicMock()
+
+        with patch.object(kalshi_client, "validate_market"):
+            result = client.get_markets(status="open")
+
+        assert len(result) == 3
+        assert client._get.call_count == 1
+
+    def test_two_page_pagination_combines_results(self):
+        """Cursor on first page → second call made, both pages combined."""
+        import kalshi_client
+
+        client = self._make_client()
+        page1 = [{"ticker": "MKT-1", "yes_bid": 50, "yes_ask": 55, "volume": 100}]
+        page2 = [{"ticker": "MKT-2", "yes_bid": 50, "yes_ask": 55, "volume": 100}]
+
+        client._get = MagicMock(
+            side_effect=[
+                {"markets": page1, "cursor": "abc123"},
+                {"markets": page2},
+            ]
+        )
+        client._validate = MagicMock()
+
+        with patch.object(kalshi_client, "validate_market"):
+            result = client.get_markets()
+
+        assert len(result) == 2
+        assert client._get.call_count == 2
+        assert result[0]["ticker"] == "MKT-1"
+        assert result[1]["ticker"] == "MKT-2"
+
+    def test_cursor_passed_on_second_call(self):
+        """The cursor value from page 1 is passed as a param on the page 2 call."""
+        import kalshi_client
+
+        client = self._make_client()
+        client._get = MagicMock(
+            side_effect=[
+                {
+                    "markets": [
+                        {"ticker": "MKT-1", "yes_bid": 50, "yes_ask": 55, "volume": 100}
+                    ],
+                    "cursor": "cur42",
+                },
+                {"markets": []},
+            ]
+        )
+        client._validate = MagicMock()
+
+        with patch.object(kalshi_client, "validate_market"):
+            client.get_markets(status="open")
+
+        second_call_kwargs = client._get.call_args_list[1]
+        params_passed = second_call_kwargs[1].get("params") or second_call_kwargs[0][1]
+        assert params_passed.get("cursor") == "cur42"
+
+    def test_three_pages_returns_all(self):
+        """Three pages with cursors → all 3 pages combined."""
+        import kalshi_client
+
+        client = self._make_client()
+        client._get = MagicMock(
+            side_effect=[
+                {
+                    "markets": [
+                        {"ticker": "A", "yes_bid": 50, "yes_ask": 55, "volume": 100}
+                    ],
+                    "cursor": "c1",
+                },
+                {
+                    "markets": [
+                        {"ticker": "B", "yes_bid": 50, "yes_ask": 55, "volume": 100}
+                    ],
+                    "cursor": "c2",
+                },
+                {
+                    "markets": [
+                        {"ticker": "C", "yes_bid": 50, "yes_ask": 55, "volume": 100}
+                    ]
+                },
+            ]
+        )
+        client._validate = MagicMock()
+
+        with patch.object(kalshi_client, "validate_market"):
+            result = client.get_markets()
+
+        assert len(result) == 3
+        assert client._get.call_count == 3

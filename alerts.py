@@ -199,6 +199,15 @@ def save_alerts(alerts_list: list[dict], path: Path | None = None) -> None:
     safe_io.atomic_write_json({"alerts": alerts_list}, target)
 
 
+def _trade_won(trade: dict) -> bool:
+    """Return True if the trade was profitable regardless of which side was taken."""
+    side = trade.get("side", "yes")
+    outcome = trade.get("outcome", "")
+    if side == "yes":
+        return outcome == "yes"
+    return outcome == "no"
+
+
 def check_anomalies(trades: list[dict]) -> list[str]:
     """
     Detect anomalous patterns in recent trade history.
@@ -221,7 +230,7 @@ def check_anomalies(trades: list[dict]) -> list[str]:
 
     # 1. Win rate collapse
     if len(settled) >= 5:
-        wins = sum(1 for t in settled if t.get("outcome") == "yes")
+        wins = sum(1 for t in settled if _trade_won(t))
         win_rate = wins / len(settled)
         if win_rate < 0.30:
             alerts_out.append(
@@ -244,10 +253,9 @@ def check_anomalies(trades: list[dict]) -> list[str]:
             )
 
     # 3. Consecutive losses
-    outcomes = [t.get("outcome") for t in recent if t.get("outcome") in ("yes", "no")]
     consec = 0
-    for o in outcomes:
-        if o == "no":
+    for t in [t for t in recent if t.get("outcome") in ("yes", "no")]:
+        if not _trade_won(t):
             consec += 1
         else:
             break
@@ -310,10 +318,9 @@ def check_black_swan_conditions(
     recent = sorted(
         trades, key=lambda t: t.get("placed_at", t.get("ts", 0)), reverse=True
     )
-    outcomes = [t.get("outcome") for t in recent if t.get("outcome") in ("yes", "no")]
     consec = 0
-    for o in outcomes:
-        if o == "no":
+    for t in [t for t in recent if t.get("outcome") in ("yes", "no")]:
+        if not _trade_won(t):
             consec += 1
         else:
             break

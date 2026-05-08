@@ -199,12 +199,22 @@ class KalshiClient:
     # ── Public endpoints (no auth needed) ────────────────────────────────────
 
     def get_markets(self, **params) -> list[dict]:
-        data = self._get("/markets", params=params or None, auth=True)
-        self._validate(data, "markets", "/markets")
-        markets = data.get("markets", [])
-        for market in markets:
-            validate_market(market, source="kalshi")
-        return markets
+        all_markets: list[dict] = []
+        cursor: str | None = None
+        while True:
+            p = dict(params)
+            if cursor:
+                p["cursor"] = cursor
+            data = self._get("/markets", params=p or None, auth=True)
+            self._validate(data, "markets", "/markets")
+            page = data.get("markets", [])
+            for market in page:
+                validate_market(market, source="kalshi")
+            all_markets.extend(page)
+            cursor = data.get("cursor")
+            if not cursor:
+                break
+        return all_markets
 
     def get_market(self, ticker: str) -> dict:
         data = self._get(f"/markets/{ticker}", auth=True)
