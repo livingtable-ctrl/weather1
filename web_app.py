@@ -674,7 +674,7 @@ setInterval(() => {{
 
         from cron import _is_cron_running
 
-        # P0-16: reject the request if a cron process already holds the lock,
+        # Reject the request if a cron process already holds the lock,
         # preventing concurrent runs that would each place independent orders.
         if _is_cron_running():
             return jsonify({"error": "cron already running"}), 409
@@ -725,7 +725,7 @@ setInterval(() => {{
                 }
             )
 
-        # P3.5 — age validation: reject stale signals_cache.json (>90 min old)
+        # Age validation: reject stale signals_cache.json (>90 min old)
         signals_age = time.time() - os.path.getmtime(cache_path)
         if signals_age > MAX_SIGNALS_CACHE_AGE_SECS:
             _log.warning(

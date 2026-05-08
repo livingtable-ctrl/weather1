@@ -74,7 +74,6 @@ load_dotenv()
 
 _bot_config = _load_config()
 
-# C6: A/B test for PAPER_MIN_EDGE — empirically finds the best edge threshold.
 # Variants sampled round-robin; loser auto-disabled after 50 trades.
 _MIN_EDGE_AB_TEST = _ABTest(
     name="min_edge_variants",
@@ -2494,7 +2493,7 @@ def _validate_trade_opportunity(opp: dict, live: bool = False) -> tuple[bool, st
     else:
         min_edge = PAPER_MIN_EDGE if not live else MIN_EDGE
 
-    # C6: for paper mode, pick the A/B test variant and use its threshold.
+    # For paper mode, pick the A/B test variant and use its threshold.
     # Only override when no ensemble-spread confidence tiering was applied —
     # confidence tiering already raises the bar; the AB test owns the base case.
     if not live:
@@ -2729,7 +2728,6 @@ def _auto_place_trades(
 
         ticker = m.get("ticker", "") or a.get("ticker", "")
 
-        # P1.2: Pre-trade validation gate — log every rejection reason.
         # Merge ticker from market dict so tuple-format callers aren't penalised.
         _ok, _reject_reason = _validate_trade_opportunity(
             {**a, "ticker": ticker}, live=live
@@ -2746,7 +2744,6 @@ def _auto_place_trades(
             continue
         rec_side = a.get("recommended_side", a.get("side", "yes"))
 
-        # P1.5: Daily dedup — don't re-trade same market+side on the same calendar day
         if execution_log.was_traded_today(ticker, rec_side):
             _log.debug(
                 "_auto_place_trades: skip %s/%s — already traded today",
@@ -2773,7 +2770,7 @@ def _auto_place_trades(
         # Falls back to the analysis price in pure paper mode (no client).
         _stale_mkt_prob = float(a.get("market_prob", 0.50) or 0.50)
         _mkt_prob = _stale_mkt_prob
-        # L7-B: initialize ask prices from the stale enriched market dict so we
+        # Initialize ask prices from the stale enriched market dict so we
         # have real bid/ask even when no live client is present.
         # YES fill = yes_ask (what you actually pay); NO fill = 1 - yes_bid (= no_ask).
         _stale_prices = parse_market_price(m)
@@ -2805,7 +2802,6 @@ def _auto_place_trades(
                     # Carry fresh market dict into _place_live_order so it uses
                     # the current price, not the one from the analysis batch.
                     a = {**a, "market": _fresh_market, "market_prob": _fresh_implied}
-                # L7-B: update ask prices from fresh market when available
                 _fya = float(_fresh_prices.get("yes_ask") or 0)
                 _fyb = float(_fresh_prices.get("yes_bid") or 0)
                 if _fya > 0:
@@ -2840,7 +2836,7 @@ def _auto_place_trades(
                 rec_side,
             )
             continue
-        # L7-B: fill at ask (not mid) — YES pays yes_ask, NO pays 1 - yes_bid (= no_ask).
+        # Fill at ask (not mid) — YES pays yes_ask, NO pays 1 - yes_bid (no_ask).
         # Using mid understates entry cost by half the spread, making paper P&L look better.
         entry_price = (1.0 - _fill_yes_bid) if rec_side == "no" else _fill_yes_ask
         method = a.get("method")
@@ -2911,8 +2907,7 @@ def _auto_place_trades(
                     )
                 )
                 continue
-            # P0-10: pre-log with status="pending" before touching paper_trades.json
-            # so a crash between write and log doesn't create a dedup blind spot.
+            # Pre-log before touching paper_trades.json so a crash between the two writes leaves a detectable record.
             log_id = execution_log.log_order(
                 ticker=ticker,
                 side=rec_side,
@@ -2937,7 +2932,7 @@ def _auto_place_trades(
                     icon_forecast_mean=a.get("icon_forecast_mean"),
                     gfs_forecast_mean=a.get("gfs_forecast_mean"),
                     condition_threshold=a.get("condition", {}).get("threshold"),
-                    ab_variant=a.get("_ab_variant"),  # C6: propagate A/B variant tag
+                    ab_variant=a.get("_ab_variant"),
                 )
                 print(
                     green(
@@ -2949,14 +2944,12 @@ def _auto_place_trades(
                 _open_trades_list.append(trade)
                 placed += 1
                 daily_spent += trade.get("cost", 0.0)
-                # L3-C: update pre-logged entry to "filled" so was_traded_today()
-                # blocks same-day re-entry after a position is settled and restarts.
+                # Update pre-logged entry to "filled" so was_traded_today() blocks same-day re-entry.
                 execution_log.log_order_result(
                     log_id,
                     status="filled",
                     response={"id": str(trade.get("id", ""))},
                 )
-                # #55: update analysis attempt to mark this market as traded
                 try:
                     import datetime as _dt2
 
@@ -3020,11 +3013,9 @@ def _auto_place_trades(
                         _e2,
                     )
             except Exception as e:
-                # P0-10: mark the pre-logged entry as failed so dedup doesn't
-                # treat this as a successful placement on the next cycle.
+                # Mark pre-logged entry as failed so dedup treats this as a known failure.
                 execution_log.log_order_result(log_id, status="failed", error=str(e))
-                # L1-D: surface every placement failure visibly — logging alone is
-                # silent when the operator is watching the console.
+                # Surface placement failures visibly — a WARNING log is silent when watching console output.
                 _err_msg = (
                     f"  [Auto] PAPER ORDER FAILED {ticker} {rec_side.upper()}: {e}"
                 )

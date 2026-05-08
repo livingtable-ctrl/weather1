@@ -26,7 +26,6 @@ _initialized = False
 def _conn() -> sqlite3.Connection:
     con = sqlite3.connect(DB_PATH)
     con.row_factory = sqlite3.Row
-    # #98: same WAL pragmas as predictions DB
     con.execute("PRAGMA journal_mode=WAL")
     con.execute("PRAGMA synchronous=NORMAL")
     return con
@@ -148,7 +147,7 @@ def log_order_result(
     error_type: str | None = None,
 ) -> None:
     """Update an existing order log entry with the final status/response.
-    #5/#75: structured error fields allow querying failures without parsing JSON.
+    Structured error fields allow querying failures without parsing JSON.
     """
     init_log()
     with _conn() as con:

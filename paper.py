@@ -488,7 +488,7 @@ def place_paper_order(
     icon_forecast_mean: float | None = None,  # per-model means for ensemble scoring
     gfs_forecast_mean: float | None = None,
     condition_threshold: float | None = None,  # market threshold (e.g. 70°F)
-    ab_variant: str | None = None,  # C6: A/B test variant name for MIN_EDGE experiment
+    ab_variant: str | None = None,
 ) -> dict:
     """
     Place a paper trade. Deducts quantity * entry_price from balance.
@@ -560,7 +560,7 @@ def place_paper_order(
         "icon_forecast_mean": icon_forecast_mean,
         "gfs_forecast_mean": gfs_forecast_mean,
         "condition_threshold": condition_threshold,
-        "ab_variant": ab_variant,  # C6: track which MIN_EDGE variant this trade used
+        "ab_variant": ab_variant,
     }
 
     # #50: compute slippage-adjusted fill price and store on the trade record
@@ -704,7 +704,7 @@ def settle_paper_trade(trade_id: int, outcome_yes: bool) -> dict:
             except Exception:
                 pass
 
-            # #55: record outcome on analysis_attempt so bias stats are queryable
+            # Record outcome on analysis_attempt so bias stats are queryable.
             try:
                 from tracker import settle_analysis_attempt as _settle_attempt
 
@@ -975,13 +975,13 @@ def portfolio_kelly_fraction(
     If existing city/date exposure >= MAX_CITY_DATE_EXPOSURE, returns 0.0.
     """
     # Global cap: halt new positions if total open exposure >= 50% of starting balance
-    # L3-A: capture total_exp once so we can clamp the final result to remaining room.
+    # Capture total_exp once so we can clamp the final result to remaining room.
     total_exp = get_total_exposure()
     if total_exp >= MAX_TOTAL_OPEN_EXPOSURE:
         return 0.0
 
     if not city or not target_date_str:
-        # L3-A: even with no city context, clamp to remaining portfolio room
+        # Even with no city context, clamp to remaining portfolio room
         remaining = MAX_TOTAL_OPEN_EXPOSURE - total_exp
         return round(min(base_fraction, remaining), 6)
 
@@ -1021,7 +1021,7 @@ def portfolio_kelly_fraction(
         )
         result *= covariance_kelly_scale(city, base_prob, side)
 
-    # L3-A: clamp to remaining portfolio room — prevents correlated independent
+    # Clamp to remaining portfolio room — prevents correlated independent
     # Kelly fractions from summing past MAX_TOTAL_OPEN_EXPOSURE.
     # Without this, 10 positions each at Kelly=10% could push total to 100%.
     remaining = MAX_TOTAL_OPEN_EXPOSURE - total_exp
@@ -1905,7 +1905,6 @@ def auto_settle_paper_trades(client=None) -> int:
             try:
                 settle_paper_trade(t["id"], outcome)
                 settled += 1
-                # C6: record outcome to A/B test if this trade carried a variant tag
                 _ab_var = t.get("ab_variant")
                 if _ab_var:
                     try:

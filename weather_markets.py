@@ -647,7 +647,7 @@ def get_weather_forecast(city: str, target_date: date) -> dict | None:
         "precip_in": _wavg(precips) if precips else 0.0,
         "models_used": len(highs),
         "high_range": (min(high_vals), max(high_vals)),
-        # G2: low_range for model-spread gate on LOW markets
+        # Low_range for model-spread gate on LOW markets
         "low_range": (min(low_vals), max(low_vals)) if low_vals else None,
     }
     # L5-A: align TTL to next NWS model cycle, not a flat 4 h window
@@ -1842,7 +1842,7 @@ def parse_market_price(market: dict) -> dict:
     no_bid_f = to_float(no_bid)
     mid = (yes_bid_f + yes_ask_f) / 2 if yes_ask_f > 0 else yes_bid_f
 
-    # F5: flag markets with no real quote so callers can skip them cleanly
+    # Skip markets where both bid and ask are zero (no real quote).
     has_quote = mid > 0
 
     return {
@@ -3014,7 +3014,6 @@ def _analyze_precip_trade(
         )
         blended_prob = blended_prob - bias
     except Exception as _exc:
-        # #109: log with ticker so failures are traceable
         _log.debug(
             "Bias correction skipped for %s: %s", enriched.get("ticker", "?"), _exc
         )
@@ -3044,12 +3043,12 @@ def _analyze_precip_trade(
         if rec_side == "yes"
         else (1.0 - prices["yes_bid"] if prices["yes_bid"] > 0 else market_prob)
     )
-    # P0-14: NO edge = P(NO wins) - cost_of_NO; sign was inverted, blocking all valid NOs
+    # NO edge = P(NO wins) - cost_of_NO; the sign was previously inverted, which blocked all valid NO trades.
     if rec_side == "yes":
         entry_side_edge = blended_prob - _esmp
     else:
         entry_side_edge = (1.0 - blended_prob) - _esmp
-    # L2-B: always pass fee_rate so kelly is fee-adjusted; fee-free Kelly overstates size
+    # Always pass fee_rate so Kelly is fee-adjusted; fee-free Kelly overstates size.
     kelly = kelly_fraction(p_win, entry_price, fee_rate=KALSHI_FEE_RATE)
     fee_kel = kelly_fraction(p_win, entry_price, fee_rate=KALSHI_FEE_RATE)
 
@@ -3203,12 +3202,12 @@ def _analyze_snow_trade(
         if rec_side == "yes"
         else (1.0 - prices["yes_bid"] if prices["yes_bid"] > 0 else market_prob)
     )
-    # P0-14: NO edge = P(NO wins) - cost_of_NO; sign was inverted, blocking all valid NOs
+    # NO edge = P(NO wins) - cost_of_NO; the sign was previously inverted, which blocked all valid NO trades.
     if rec_side == "yes":
         entry_side_edge = blended_prob - _esmp
     else:
         entry_side_edge = (1.0 - blended_prob) - _esmp
-    # L2-B: always pass fee_rate so kelly is fee-adjusted; fee-free Kelly overstates size
+    # Always pass fee_rate so Kelly is fee-adjusted; fee-free Kelly overstates size.
     kelly = kelly_fraction(p_win, entry_price, fee_rate=KALSHI_FEE_RATE)
     fee_kel = kelly_fraction(p_win, entry_price, fee_rate=KALSHI_FEE_RATE)
 
@@ -3406,7 +3405,6 @@ def analyze_trade(enriched: dict) -> dict | None:
       8. Bootstrap confidence interval
       9. Kelly fraction
     """
-    # #116: explicit precondition check with helpful error context
     if not isinstance(enriched, dict):
         raise ValueError(
             f"analyze_trade: enriched must be a dict, got {type(enriched)}"
@@ -3474,7 +3472,7 @@ def analyze_trade(enriched: dict) -> dict | None:
 
     # ── Spread gate: skip illiquid markets with wide bid-ask spreads ─────────
     _prices = parse_market_price(enriched)
-    # F5: skip markets where both bid and ask are zero (no real quote)
+    # Skip markets where both bid and ask are zero (no real quote).
     if not _prices.get("has_quote", True):
         return None
     # Market divergence gate: when the market is highly confident (>70%) and
@@ -3551,7 +3549,7 @@ def analyze_trade(enriched: dict) -> dict | None:
             return None
 
         # ── Model-spread gate: suppress when multi-model spread is too wide ───
-        # G2: check low_range for LOW markets (var=="min"), high_range otherwise
+        # Check low_range for LOW markets (var=="min"), high_range otherwise
         _spread_range_key = "low_range" if var == "min" else "high_range"
         _spread_range = forecast.get(_spread_range_key)
         if _spread_range and len(_spread_range) == 2:
@@ -3582,7 +3580,7 @@ def analyze_trade(enriched: dict) -> dict | None:
         ens_stats = ensemble_stats(temps) if len(temps) >= 10 else None
         method = "normal_dist"
         ens_prob: float | None = None
-        gauss_prob: float | None = None  # L6-B: Gaussian as separate named source
+        gauss_prob: float | None = None  # Gaussian as separate named source
 
         if len(temps) >= 10:
             method = "ensemble"
@@ -3598,7 +3596,7 @@ def analyze_trade(enriched: dict) -> dict | None:
                 lo, hi = condition["lower"], condition["upper"]
                 ens_prob = sum(1 for t in temps if lo <= t <= hi) / len(temps)
         else:
-            # B7: prefer ens_stats["std"] when available — actual model disagreement
+            # Prefer ens_stats["std"] when available — actual model disagreement
             # is more informative than the generic days-out lookup table.
             _ens_std = ens_stats.get("std") if ens_stats else None
             sigma = (
@@ -3626,7 +3624,7 @@ def analyze_trade(enriched: dict) -> dict | None:
 
         # ── Phase C: Gaussian probability + blend with raw ensemble fraction ─────
         target_month = target_date.month
-        # L8-C: apply sigma_mult (time-of-day horizon discount) so near-term
+        # Apply sigma_mult (time-of-day horizon discount) so near-term
         # markets get tighter Gaussian uncertainty — same discount applied to
         # the ensemble sigma at line 3401.
         sigma_gauss = get_historical_sigma(city, target_month) * sigma_mult
@@ -3639,7 +3637,7 @@ def analyze_trade(enriched: dict) -> dict | None:
                 direction=cond_type,
             )
         elif cond_type == "between":
-            # L6-C: "between" markets also get a Gaussian estimate.
+            # "between" markets also get a Gaussian estimate.
             # P(lower ≤ T ≤ upper) = CDF(upper; mean, σ) − CDF(lower; mean, σ).
             # Previously p_win_gaussian was always None here, so the blend had no
             # smoothing for range markets — just noisy ensemble member counting.
@@ -3650,7 +3648,7 @@ def analyze_trade(enriched: dict) -> dict | None:
             p_win_gaussian = None
 
         # Blend Gaussian with ensemble fraction (fall back to ens_prob if temps available)
-        # F8: prefer tracker-derived model weights (live MAE per model); fall back to
+        # Prefer tracker-derived model weights (live MAE per model); fall back to
         # D1 hardcoded prior (ECMWF 2× NBM) when tracker returns nothing.
         _model_weights_d1: dict[str, float] = {"nbm": 1.0, "ecmwf": 2.0}
         _dyn_weights = _dynamic_model_weights(
@@ -3685,14 +3683,14 @@ def analyze_trade(enriched: dict) -> dict | None:
                 if n_valid >= 3
                 else 0.8 * p_win_gaussian + 0.2 * raw_fraction
             )
-            # L6-B: keep ens_prob as the raw member-count fraction; expose
+            # Keep ens_prob as the raw member-count fraction; expose
             # Gaussian as a separate named source so blend_sources labels it
             # correctly.  The final blend still allocates 30% of the ensemble
             # slot to Gaussian (same numeric result), but the accounting is
             # now honest: blend_sources shows "gaussian: X%" independently.
             gauss_prob = gaussian_blend
         elif cond_type == "between" and p_win_gaussian is not None:
-            # L6-C: use Gaussian directly for "between" conditions.  raw_fraction
+            # Use Gaussian directly for "between" conditions.  raw_fraction
             # is too coarse here — with only 2-3 models each is either inside or
             # outside the 1°F bucket, giving steps of 0 / 0.5 / 1.0.  The Gaussian
             # CDF difference gives a continuous, calibrated estimate instead.
@@ -3787,7 +3785,7 @@ def analyze_trade(enriched: dict) -> dict | None:
                 from nws import get_live_observation as _get_live_obs
 
                 _live = _get_live_obs(city, coords) if days_out <= 1 else None
-                # D3: For HIGH markets at days_out=0 the instantaneous current temp
+                # For HIGH markets at days_out=0 the instantaneous current temp
                 # is misleading after noon (the high has already occurred and is higher).
                 # Prefer today's observed max when the observation includes it.
                 if var == "max" and days_out == 0 and _live:
@@ -3811,7 +3809,7 @@ def analyze_trade(enriched: dict) -> dict | None:
 
         # ── 6. Weighted blend ────────────────────────────────────────────────────
         if obs_override is not None:
-            # F1: scale obs weight by local hour — early morning obs is a floor,
+            # Scale obs weight by local hour — early morning obs is a floor,
             # not the final outcome; ramp from 0.55 at midnight to 0.95 by 18:00.
             try:
                 import zoneinfo
@@ -3854,7 +3852,6 @@ def analyze_trade(enriched: dict) -> dict | None:
                 season=_season,
                 condition_type=condition.get("type"),
             )
-            # #26: persistence baseline at 15% for days_out <= 2
             if persistence_p is not None and days_out <= 2:
                 w_persist = 0.15
                 scale = 1.0 - w_persist
@@ -3865,7 +3862,7 @@ def analyze_trade(enriched: dict) -> dict | None:
                 w_persist = 0.0
                 persistence_p = None
 
-            # E5: reduce NWS weight when it diverges from ensemble by > 0.20
+            # Reduce NWS weight when it diverges from ensemble by > 0.20
             if (
                 _nws_prob is not None
                 and ens_prob is not None
@@ -3875,7 +3872,7 @@ def analyze_trade(enriched: dict) -> dict | None:
                 w_ens += w_nws - w_nws_trimmed
                 w_nws = w_nws_trimmed
 
-            # L6-B: split ensemble weight so Gaussian appears as its own source
+            # Split ensemble weight so Gaussian appears as its own source
             # instead of being silently embedded in the "ensemble" bucket.
             # Preserves the same 70/30 split that was previously baked in-place.
             _w_gauss = w_ens * 0.30 if gauss_prob is not None else 0.0
@@ -3896,7 +3893,7 @@ def analyze_trade(enriched: dict) -> dict | None:
             _w_ens_raw = _w_ens_final * (0.5 if _ensemble_cdf_prob is not None else 1.0)
             _w_cdf = _w_ens_final * (0.5 if _ensemble_cdf_prob is not None else 0.0)
 
-            # G1: renormalize weights when sources are unavailable.
+            # Renormalize weights when sources are unavailable.
             # Previously missing sources were substituted with 0.5 (meaningless
             # fallback that skews the blend and doesn't sum to 1.0 correctly).
             # Now: zero out missing source weights and renormalize remaining ones.
@@ -3945,10 +3942,10 @@ def analyze_trade(enriched: dict) -> dict | None:
                     )
 
         # ── 6b. MOS blend (B1/B2/B6) — applied BEFORE bias correction ───────────
-        # B6: MOS is moved here so the full blended value (ensemble+NWS+clim+MOS)
+        # MOS is moved here so the full blended value (ensemble+NWS+clim+MOS)
         # is bias-corrected together instead of reintroducing an uncalibrated signal.
-        # B2: use fetch_mos_best() which prefers NAM for days_out<=1 (tighter RMSE).
-        # B1: use MOS-specific sigma instead of generic _forecast_uncertainty().
+        # Use fetch_mos_best() which prefers NAM for days_out<=1 (tighter RMSE).
+        # Use MOS-specific sigma instead of generic _forecast_uncertainty().
         _mos_data_pre: dict | None = None
         try:
             import mos as _mos_mod
@@ -3988,7 +3985,7 @@ def analyze_trade(enriched: dict) -> dict | None:
                             for k, v in blend_sources.items()
                         }
                         blend_sources["mos"] = round(_w, 4)
-                        # L6-E: renormalise so floating-point rounding never
+                        # Renormalise so floating-point rounding never
                         # lets weights drift above 1.0 after MOS injection.
                         _bs_total = sum(blend_sources.values())
                         if _bs_total > 0:
@@ -4013,7 +4010,6 @@ def analyze_trade(enriched: dict) -> dict | None:
             )
             blended_prob = max(0.01, min(0.99, blended_prob - bias))
         except Exception as _exc:
-            # #109: log with ticker/city so failures are traceable
             _log.debug(
                 "Bias correction skipped for %s (%s): %s",
                 enriched.get("ticker", "?"),
@@ -4022,7 +4018,7 @@ def analyze_trade(enriched: dict) -> dict | None:
             )
 
         # ── Consensus signal: all available sources agree on direction ───────────
-        # C2: require all 3 independent sources (ensemble, NWS, climatology) to agree.
+        # Require all 3 independent sources (ensemble, NWS, climatology) to agree.
         # 2-of-2 (e.g. NWS + ensemble) share GFS heritage and is not true independence.
         sources_with_data = [
             p for p in [ens_prob, _nws_prob, clim_prob] if p is not None
@@ -4089,7 +4085,7 @@ def analyze_trade(enriched: dict) -> dict | None:
         ensemble_spread_prob = 0.0
         p_win_gaussian = None
         sigma_gauss = None
-        gauss_prob = None  # L6-B: no Gaussian in METAR-locked path
+        gauss_prob = None  # No Gaussian in METAR-locked path
 
     # Regime detection
     _regime_info: dict = {}
@@ -4102,7 +4098,7 @@ def analyze_trade(enriched: dict) -> dict | None:
     except Exception:
         pass
 
-    # C3: Hard-skip when atmosphere is in "volatile" regime (ensemble std > 12°F).
+    # Hard-skip when atmosphere is in "volatile" regime (ensemble std > 12°F).
     # A 20% Kelly reduction is not enough protection when models disagree by 12+°F —
     # the probability estimate could be off by ±0.50. Return None to skip entirely.
     if _regime_info.get("regime") == "volatile" and not metar_locked:
@@ -4112,7 +4108,7 @@ def analyze_trade(enriched: dict) -> dict | None:
         )
         return None
 
-    # A1: Apply ML-based probability calibration correction (GradientBoosting per city).
+    # Apply ML-based probability calibration correction (GradientBoosting per city).
     # Only fires when a trained model exists (requires 200+ settled trades per city).
     # Falls back to blended_prob unchanged when no model is available.
     try:
@@ -4125,7 +4121,7 @@ def analyze_trade(enriched: dict) -> dict | None:
     except Exception:
         pass
 
-    # A2: Per-city Platt scaling — loaded once via module-level cache.
+    # Per-city Platt scaling — loaded once via module-level cache.
     # Requires 200+ settled trades per city; no-op when model absent.
     try:
         _platt = _load_platt_models()
@@ -4147,8 +4143,7 @@ def analyze_trade(enriched: dict) -> dict | None:
     except Exception:
         pass
 
-    # P0-11: retired strategy gate — skip markets whose forecast method has
-    # been flagged as underperforming (e.g. ensemble Brier > threshold).
+    # Retired strategy gate — skip markets whose forecast method has been flagged as underperforming.
     try:
         from tracker import get_retired_strategies as _get_retired
 
@@ -4168,7 +4163,7 @@ def analyze_trade(enriched: dict) -> dict | None:
     prices = parse_market_price(enriched)
     market_prob = prices["implied_prob"]
     rec_side = "yes" if blended_prob > market_prob else "no"
-    # L2-A: NO entry is at no_ask = 1 - yes_bid (what we pay to buy NO),
+    # NO entry is at no_ask = 1 - yes_bid (what we pay to buy NO),
     # NOT no_bid = 1 - yes_ask (what market makers pay us to sell NO back).
     # Using no_bid understates entry cost and overstates NO-side edge/Kelly.
     entry_price = (
@@ -4178,7 +4173,7 @@ def analyze_trade(enriched: dict) -> dict | None:
     )
     if entry_price == 0:
         entry_price = 1 - market_prob if rec_side == "no" else market_prob
-    # L2-B: always pass fee_rate so kelly is fee-adjusted; fee-free Kelly overstates size
+    # Always pass fee_rate so Kelly is fee-adjusted; fee-free Kelly overstates size.
     kelly = kelly_fraction(
         blended_prob if rec_side == "yes" else 1 - blended_prob,
         entry_price,
@@ -4253,7 +4248,7 @@ def analyze_trade(enriched: dict) -> dict | None:
             (1.0 - prices["yes_bid"]) if prices["yes_bid"] > 0 else market_prob
         )
     # L7-D: apply same time-decay factor so gate uses time-adjusted entry_side_edge
-    # P0-14: NO edge = P(NO wins) - cost_of_NO; sign was inverted, blocking all valid NOs
+    # NO edge = P(NO wins) - cost_of_NO; the sign was previously inverted, which blocked all valid NO trades.
     if rec_side == "yes":
         entry_side_edge = (blended_prob - entry_side_market_prob) * _time_decay_factor
     else:
@@ -4390,7 +4385,7 @@ def analyze_trade(enriched: dict) -> dict | None:
         "ensemble_spread_f": ensemble_spread_f,
         "n_ensemble_members": sum(1 for v in model_temps.values() if v is not None),
         "p_win_gaussian": p_win_gaussian,
-        "gaussian_prob": gauss_prob,  # L6-B: raw Gaussian blend (separate from ens_prob)
+        "gaussian_prob": gauss_prob,  # Raw Gaussian blend (separate from ens_prob)
         "forecast_sigma": sigma_gauss,
         # Regime detection
         "regime": _regime_info.get("regime", "normal"),

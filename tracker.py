@@ -131,7 +131,6 @@ def _run_migrations(con: sqlite3.Connection) -> None:
 def _conn() -> sqlite3.Connection:
     con = sqlite3.connect(DB_PATH)
     con.row_factory = sqlite3.Row
-    # #98: WAL mode for better concurrency + performance
     con.execute("PRAGMA journal_mode=WAL")
     con.execute("PRAGMA synchronous=NORMAL")
     con.execute("PRAGMA cache_size=10000")

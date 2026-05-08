@@ -385,10 +385,9 @@ def _cmd_cron_body(client: KalshiClient, min_edge: float = MIN_EDGE) -> bool | N
 
         _purge(retention_days=730)
 
-    # P3.1 — graceful shutdown flag
-    # Use main-module lookup so test monkeypatching works.
+    # Graceful shutdown flag — use main-module lookup so test monkeypatching works.
     _main._write_cron_running_flag()
-    # P3.2 — detect orders placed in the last 5 minutes at startup
+    # Detect orders placed in the last 5 minutes at startup
     _main._check_startup_orders()
 
     # Phase 1 — surface prolonged Open-Meteo outages immediately
@@ -431,7 +430,7 @@ def _cmd_cron_body(client: KalshiClient, min_edge: float = MIN_EDGE) -> bool | N
     except Exception as _e:
         _log.debug("cmd_cron: run_anomaly_check failed: %s", _e)
 
-    # P10.2 — black swan emergency shutdown check
+    # Black swan emergency shutdown check
     try:
         from alerts import run_black_swan_check as _run_black_swan_check
 
@@ -445,7 +444,7 @@ def _cmd_cron_body(client: KalshiClient, min_edge: float = MIN_EDGE) -> bool | N
     except Exception as _e:
         _log.debug("cmd_cron: run_black_swan_check failed: %s", _e)
 
-    # P10.1 — drift detection; tighten STRONG_EDGE for this run when drifting
+    # Drift detection; tighten STRONG_EDGE for this run when drifting
     _effective_strong_edge = STRONG_EDGE
     _drift_result: dict = {"drifting": False}
     try:
@@ -462,7 +461,7 @@ def _cmd_cron_body(client: KalshiClient, min_edge: float = MIN_EDGE) -> bool | N
     except Exception as _e:
         _log.debug("cmd_cron: detect_brier_drift failed: %s", _e)
 
-    # P9.5 — strategy retirement check (log-only, non-blocking)
+    # Strategy retirement check (log-only, non-blocking)
     try:
         from tracker import auto_retire_strategies as _auto_retire
 
@@ -472,7 +471,7 @@ def _cmd_cron_body(client: KalshiClient, min_edge: float = MIN_EDGE) -> bool | N
     except Exception as _e:
         _log.debug("cmd_cron: auto_retire_strategies failed: %s", _e)
 
-    # P10.3 — config integrity check (log warning if changed)
+    # Config integrity check (log warning if changed)
     try:
         from utils import check_config_integrity as _check_config_integrity
 
@@ -639,7 +638,7 @@ def _cmd_cron_body(client: KalshiClient, min_edge: float = MIN_EDGE) -> bool | N
                     continue
                 net_edge = analysis.get("net_edge", analysis["edge"])
                 adjusted_edge = analysis.get("adjusted_edge", net_edge)
-                # #55: collect analysis attempt for bulk DB insert after loop
+                # Collect analysis attempt for bulk DB insert after loop.
                 try:
                     import datetime as _dt
 
@@ -663,7 +662,7 @@ def _cmd_cron_body(client: KalshiClient, min_edge: float = MIN_EDGE) -> bool | N
                     )
                 except Exception:
                     pass
-                # P1.3: Use PAPER_MIN_EDGE (5%) so more signals are captured for observation.
+                # Use PAPER_MIN_EDGE (5%) so more signals are captured for observation.
                 if abs(adjusted_edge) < PAPER_MIN_EDGE:
                     continue
                 # Probability-edge gate: require ≥8pp conviction even when ROI edge passes.
@@ -930,7 +929,7 @@ def _cmd_cron_body(client: KalshiClient, min_edge: float = MIN_EDGE) -> bool | N
     except Exception as _e:
         _log.debug("cmd_cron: stop-loss check failed: %s", _e)
 
-    # P10.3 — weekly Brier alert: notify if score > threshold two weeks running
+    # Weekly Brier alert: notify if score > threshold two weeks running
     try:
         import os as _os_brier
 
@@ -964,7 +963,7 @@ def _cmd_cron_body(client: KalshiClient, min_edge: float = MIN_EDGE) -> bool | N
     except Exception as _e:
         _log.debug("cmd_cron: brier alert check failed: %s", _e)
 
-    # P10.4 — slippage alert: warn if mean fill slippage exceeds threshold
+    # Slippage alert: warn if mean fill slippage exceeds threshold
     try:
         import os as _os_slip
 
@@ -1175,7 +1174,7 @@ def cmd_cron(client: KalshiClient, min_edge: float = MIN_EDGE) -> None:
     # Resolve the live main module so monkeypatched attributes are used
     _main = _main_module()
 
-    # P3.4 — acquire file lock; exit immediately if another instance is running
+    # Acquire file lock; exit immediately if another instance is running.
     # Use _main lookup so monkeypatch.setattr(main, "_acquire_cron_lock", ...) is respected.
     if not _main._acquire_cron_lock():
         _log.warning("cmd_cron: could not acquire lock — skipping this run")
