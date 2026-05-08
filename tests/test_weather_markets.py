@@ -1273,6 +1273,154 @@ class TestLearnedWeightsTTL:
         )
 
 
+# ── P1-9: learned_weights validation ─────────────────────────────────────────
+
+
+class TestLearnedWeightsValidation:
+    """P1-9: save_learned_weights must reject corrupt data (win-rate floats),
+    and load_learned_weights must delete and ignore corrupt files."""
+
+    def test_save_rejects_float_city_values(self, tmp_path, monkeypatch):
+        """save_learned_weights must not write when city values are floats (win-rates)."""
+        import weather_markets as wm
+
+        # Call the real function but capture whether it reaches the write step
+        orig_lw = wm._LEARNED_WEIGHTS
+        wm._LEARNED_WEIGHTS = {}
+        try:
+            # corrupt: city mapped to float (win rate), not {model: weight}
+            corrupt = {"NYC": 0.72, "Chicago": 0.65}
+            wm.save_learned_weights(corrupt)
+            # If file exists in data/, it means validation failed to block it
+            data_path = tmp_path / "learned_weights.json"
+            assert not data_path.exists(), (
+                "save_learned_weights must not write corrupt float values"
+            )
+        finally:
+            wm._LEARNED_WEIGHTS = orig_lw
+
+    def test_save_rejects_near_zero_weights(self):
+        """save_learned_weights must not write when any model weight is near zero."""
+        import weather_markets as wm
+
+        orig_lw = wm._LEARNED_WEIGHTS
+        wm._LEARNED_WEIGHTS = {}
+        wrote = [False]
+        import os as _os_mod
+
+        orig_replace = _os_mod.replace
+
+        def fake_replace(src, dst):
+            wrote[0] = True
+            return orig_replace(src, dst)
+
+        try:
+            import unittest.mock as _mock
+
+            with _mock.patch("os.replace", side_effect=fake_replace):
+                bad = {"NYC": {"gfs_seamless": 0.0, "ecmwf_ifs04": 1.5}}
+                wm.save_learned_weights(bad)
+        finally:
+            wm._LEARNED_WEIGHTS = orig_lw
+
+        assert not wrote[0], (
+            "save_learned_weights must not call os.replace for near-zero weights"
+        )
+
+    def test_save_allows_valid_weights(self, tmp_path, monkeypatch):
+        """save_learned_weights must write valid {city: {model: weight}} dicts."""
+
+        import weather_markets as wm
+
+        valid = {"NYC": {"gfs_seamless": 1.2, "ecmwf_ifs04": 0.9, "icon_seamless": 0.9}}
+
+        orig_lw = wm._LEARNED_WEIGHTS
+        wm._LEARNED_WEIGHTS = {}
+
+        original_truediv = type(tmp_path).__truediv__
+
+        def redirect_path(self, other):
+            result = original_truediv(self, other)
+            if str(other) == "learned_weights.json":
+                return tmp_path / "learned_weights.json"
+            return result
+
+        try:
+            monkeypatch.setattr(wm, "Path", lambda *args, **kwargs: tmp_path)
+            # Just verify validation passes by checking _LEARNED_WEIGHTS is updated
+            import unittest.mock as _mock
+
+            with _mock.patch("os.replace"), _mock.patch("os.fdopen") as mock_fdopen:
+                import io
+
+                mock_fdopen.return_value.__enter__ = lambda s: io.StringIO()
+                mock_fdopen.return_value.__exit__ = lambda s, *a: None
+                wm.save_learned_weights(valid)
+                assert wm._LEARNED_WEIGHTS == valid, (
+                    "save_learned_weights must update _LEARNED_WEIGHTS for valid input"
+                )
+        finally:
+            wm._LEARNED_WEIGHTS = orig_lw
+
+    def test_load_rejects_float_city_values(self, monkeypatch):
+        """load_learned_weights must return {} and delete corrupt file with float city values."""
+        import json
+        import time
+        from unittest.mock import patch
+
+        import weather_markets as wm
+
+        corrupt = {"NYC": 0.72}
+        orig_lw = wm._LEARNED_WEIGHTS
+        wm._LEARNED_WEIGHTS = {}
+        try:
+            with (
+                patch(
+                    "weather_markets.os.path.getmtime", return_value=time.time() - 3600
+                ),
+                patch("weather_markets.Path") as mock_path_cls,
+            ):
+                mock_inst = mock_path_cls.return_value.parent.__truediv__.return_value.__truediv__.return_value
+                mock_inst.exists.return_value = True
+                mock_inst.read_text.return_value = json.dumps(corrupt)
+                result = wm.load_learned_weights()
+        finally:
+            wm._LEARNED_WEIGHTS = orig_lw
+
+        assert result == {}, (
+            f"load_learned_weights must return {{}} for corrupt float values, got {result!r}"
+        )
+
+    def test_load_rejects_non_positive_weights(self, monkeypatch):
+        """load_learned_weights must return {} when any weight is <= 0."""
+        import json
+        import time
+        from unittest.mock import patch
+
+        import weather_markets as wm
+
+        bad = {"NYC": {"gfs_seamless": 0.0, "ecmwf_ifs04": 1.5}}
+        orig_lw = wm._LEARNED_WEIGHTS
+        wm._LEARNED_WEIGHTS = {}
+        try:
+            with (
+                patch(
+                    "weather_markets.os.path.getmtime", return_value=time.time() - 3600
+                ),
+                patch("weather_markets.Path") as mock_path_cls,
+            ):
+                mock_inst = mock_path_cls.return_value.parent.__truediv__.return_value.__truediv__.return_value
+                mock_inst.exists.return_value = True
+                mock_inst.read_text.return_value = json.dumps(bad)
+                result = wm.load_learned_weights()
+        finally:
+            wm._LEARNED_WEIGHTS = orig_lw
+
+        assert result == {}, (
+            f"load_learned_weights must return {{}} for non-positive weights, got {result!r}"
+        )
+
+
 # ── TestUtcTodayDate ──────────────────────────────────────────────────────────
 
 

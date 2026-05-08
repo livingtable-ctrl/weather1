@@ -96,11 +96,39 @@ def fetch_metar(station: str) -> dict | None:
     else:
         temp_f = float(temp_f)
 
-    obs_time_str = obs.get("obsTime", "")
-    try:
-        obs_time = datetime.fromisoformat(obs_time_str.replace("Z", "+00:00"))
-    except Exception:
-        obs_time = datetime.now(UTC)
+    # P1-2: plausibility check — physically impossible temperatures
+    if not (-80.0 <= temp_f <= 140.0):
+        _log.warning(
+            "%s: METAR temp_f=%.1f outside plausible range — discarding",
+            station,
+            temp_f,
+        )
+        return None
+
+    # P1-2: staleness gate — never fabricate a timestamp for a missing obsTime.
+    # A missing or unparseable obsTime means we can't verify freshness; reject rather
+    # than silently treating stale data as current.
+    obs_time_str = obs.get("obsTime") or ""
+    obs_time = None
+    if obs_time_str:
+        try:
+            obs_time = datetime.fromisoformat(obs_time_str.replace("Z", "+00:00"))
+        except Exception:
+            pass
+    if obs_time is None:
+        _log.warning(
+            "%s: METAR obsTime missing or unparseable — refusing to use stale data",
+            station,
+        )
+        return None
+    age_minutes = (datetime.now(UTC) - obs_time).total_seconds() / 60
+    if age_minutes > 90:
+        _log.warning(
+            "%s: METAR observation %d min old — too stale for lock-in",
+            station,
+            int(age_minutes),
+        )
+        return None
 
     return {
         "current_temp_f": temp_f,

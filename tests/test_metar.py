@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import sys
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import patch
 
@@ -11,11 +11,17 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-# Sample METAR API response
+
+def _fresh_obs_time() -> str:
+    """Return an obsTime string 15 minutes in the past (always within the 90-min staleness gate)."""
+    return (datetime.now(UTC) - timedelta(minutes=15)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+# Sample METAR API response — uses a fresh obsTime so P1-2 staleness gate accepts it
 METAR_RESPONSE = [
     {
         "icaoId": "KNYC",
-        "obsTime": "2026-04-17T17:00:00Z",
+        "obsTime": _fresh_obs_time(),
         "temp": 22.2,  # °C (72°F)
         "dewp": 10.0,
         "tmpf": 72.0,  # °F if provided, else computed
@@ -25,7 +31,7 @@ METAR_RESPONSE = [
 METAR_RESPONSE_COLD = [
     {
         "icaoId": "KNYC",
-        "obsTime": "2026-04-17T17:00:00Z",
+        "obsTime": _fresh_obs_time(),
         "temp": 10.0,  # 50°F — clearly below a 65°F threshold
         "dewp": 5.0,
     }
@@ -50,7 +56,7 @@ class TestFetchMetar:
         """If only Celsius provided, convert to Fahrenheit."""
         import metar
 
-        response = [{"icaoId": "KNYC", "obsTime": "2026-04-17T17:00:00Z", "temp": 20.0}]
+        response = [{"icaoId": "KNYC", "obsTime": _fresh_obs_time(), "temp": 20.0}]
         with patch.object(metar, "_session") as mock:
             mock.get.return_value.json.return_value = response
             mock.get.return_value.raise_for_status.return_value = None
@@ -74,6 +80,98 @@ class TestFetchMetar:
 
         with patch.object(metar, "_session") as mock:
             mock.get.return_value.json.return_value = []
+            mock.get.return_value.raise_for_status.return_value = None
+            result = metar.fetch_metar("KNYC")
+
+        assert result is None
+
+    # ── P1-2: staleness gate ──────────────────────────────────────────────────
+
+    def test_returns_none_when_obstime_missing(self):
+        """P1-2: response with no obsTime key → None (no fabricated timestamp)."""
+        import metar
+
+        response = [{"icaoId": "KNYC", "tmpf": 72.0}]  # no obsTime
+        with patch.object(metar, "_session") as mock:
+            mock.get.return_value.json.return_value = response
+            mock.get.return_value.raise_for_status.return_value = None
+            result = metar.fetch_metar("KNYC")
+
+        assert result is None, (
+            "fetch_metar must return None when obsTime is absent — "
+            "fabricating a timestamp would make a stale observation appear current"
+        )
+
+    def test_returns_none_when_obstime_unparseable(self):
+        """P1-2: response with invalid obsTime string → None."""
+        import metar
+
+        response = [{"icaoId": "KNYC", "tmpf": 72.0, "obsTime": "not-a-date"}]
+        with patch.object(metar, "_session") as mock:
+            mock.get.return_value.json.return_value = response
+            mock.get.return_value.raise_for_status.return_value = None
+            result = metar.fetch_metar("KNYC")
+
+        assert result is None
+
+    def test_returns_none_when_observation_stale(self):
+        """P1-2: observation older than 90 minutes → None."""
+        import metar
+
+        stale_time = (datetime.now(UTC) - timedelta(minutes=120)).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        )
+        response = [{"icaoId": "KNYC", "tmpf": 72.0, "obsTime": stale_time}]
+        with patch.object(metar, "_session") as mock:
+            mock.get.return_value.json.return_value = response
+            mock.get.return_value.raise_for_status.return_value = None
+            result = metar.fetch_metar("KNYC")
+
+        assert result is None, (
+            "fetch_metar must return None for a 120-minute-old observation"
+        )
+
+    def test_returns_result_when_observation_fresh(self):
+        """P1-2: observation 30 minutes old → accepted."""
+        import metar
+
+        fresh_time = (datetime.now(UTC) - timedelta(minutes=30)).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        )
+        response = [{"icaoId": "KNYC", "tmpf": 72.0, "obsTime": fresh_time}]
+        with patch.object(metar, "_session") as mock:
+            mock.get.return_value.json.return_value = response
+            mock.get.return_value.raise_for_status.return_value = None
+            result = metar.fetch_metar("KNYC")
+
+        assert result is not None
+        assert result["current_temp_f"] == pytest.approx(72.0)
+
+    def test_returns_none_for_implausible_high_temp(self):
+        """P1-2: temperature above 140°F → None (physically impossible)."""
+        import metar
+
+        fresh_time = (datetime.now(UTC) - timedelta(minutes=5)).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        )
+        response = [{"icaoId": "KNYC", "tmpf": 999.0, "obsTime": fresh_time}]
+        with patch.object(metar, "_session") as mock:
+            mock.get.return_value.json.return_value = response
+            mock.get.return_value.raise_for_status.return_value = None
+            result = metar.fetch_metar("KNYC")
+
+        assert result is None
+
+    def test_returns_none_for_implausible_low_temp(self):
+        """P1-2: temperature below -80°F → None (physically impossible)."""
+        import metar
+
+        fresh_time = (datetime.now(UTC) - timedelta(minutes=5)).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        )
+        response = [{"icaoId": "KNYC", "tmpf": -100.0, "obsTime": fresh_time}]
+        with patch.object(metar, "_session") as mock:
+            mock.get.return_value.json.return_value = response
             mock.get.return_value.raise_for_status.return_value = None
             result = metar.fetch_metar("KNYC")
 

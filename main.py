@@ -4985,6 +4985,24 @@ def cmd_calibrate() -> None:
     except Exception as _exc:
         print(dim(f"\nPlatt calibration skipped: {_exc}"))
 
+    # P1-9: generate learned_weights.json from tracker inverse-MAE data
+    try:
+        from weather_markets import update_learned_weights_from_tracker as _ulwft
+
+        lw = _ulwft()
+        if lw:
+            print(f"\nLearned weights updated for: {', '.join(sorted(lw))}")
+            lw_path = data_dir / "learned_weights.json"
+            print(f"  Written to: {lw_path}")
+        else:
+            print(
+                dim(
+                    "\nLearned weights: insufficient tracker data (need 20+ obs per model per city)"
+                )
+            )
+    except Exception as _lw_exc:
+        print(dim(f"\nLearned weights skipped: {_lw_exc}"))
+
     print("\nRestart the app (or re-import weather_markets) to pick up new weights.")
 
 

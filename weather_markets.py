@@ -1339,10 +1339,34 @@ def load_learned_weights() -> dict:
     try:
         import json as _json
 
-        _LEARNED_WEIGHTS = _json.loads(path.read_text())
-        return _LEARNED_WEIGHTS
+        loaded = _json.loads(path.read_text())
     except Exception:
         return {}
+    # P1-9: reject corrupt files where city values are floats (win-rates) not dicts
+    for city, city_data in loaded.items():
+        if not isinstance(city_data, dict):
+            logging.warning(
+                "[ModelWeights] learned_weights.json corrupt: city %s has %s — deleting",
+                city,
+                type(city_data).__name__,
+            )
+            try:
+                path.unlink()
+            except OSError:
+                pass
+            return {}
+        if any(v <= 0 for v in city_data.values()):
+            logging.warning(
+                "[ModelWeights] learned_weights.json corrupt: city %s has non-positive weight — deleting",
+                city,
+            )
+            try:
+                path.unlink()
+            except OSError:
+                pass
+            return {}
+    _LEARNED_WEIGHTS = loaded
+    return _LEARNED_WEIGHTS
 
 
 def save_learned_weights(weights: dict) -> None:
@@ -1353,6 +1377,22 @@ def save_learned_weights(weights: dict) -> None:
     import json as _json
     import os as _os
     import tempfile as _tmp
+
+    # P1-9: validate before writing — reject win-rate floats masquerading as weights
+    for city, city_data in weights.items():
+        if not isinstance(city_data, dict):
+            logging.error(
+                "[ModelWeights] city %s has non-dict weights (%s) — not persisting",
+                city,
+                type(city_data).__name__,
+            )
+            return
+        if any(v < 0.001 for v in city_data.values()):
+            logging.error(
+                "[ModelWeights] city %s has near-zero weights — not persisting (corruption risk)",
+                city,
+            )
+            return
 
     path = Path(__file__).parent / "data" / "learned_weights.json"
     path.parent.mkdir(exist_ok=True)
@@ -2101,6 +2141,15 @@ def enrich_with_forecast(market: dict) -> dict:
 
     import time as _time_enrich
 
+    # P1-1: use the cache entry's original fetch time, not the current wall clock.
+    # Converts the stored monotonic timestamp back to wall-clock via the age offset.
+    _data_fetched_at = _time_enrich.time()
+    if city and target_date:
+        _cache_key = (city, target_date.isoformat())
+        _cached_val, _hit, _cache_ts = _forecast_cache.get_with_ts(_cache_key)
+        if _hit:
+            _data_fetched_at = _cache_ts
+
     return {
         **market,
         "_city": city,
@@ -2108,7 +2157,7 @@ def enrich_with_forecast(market: dict) -> dict:
         "_hour": hour,
         "_forecast": forecast,
         "_forecast_uncertain": _forecast_uncertain,
-        "data_fetched_at": _time_enrich.time(),
+        "data_fetched_at": _data_fetched_at,
     }
 
 

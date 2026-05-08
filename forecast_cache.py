@@ -54,6 +54,30 @@ class ForecastCache[T]:
         with self._lock:
             self._store[key] = (value, ts)
 
+    def get_with_ts(self, key) -> tuple:
+        """Return (value, hit, wall_clock_fetch_ts).
+
+        wall_clock_fetch_ts is derived from the stored monotonic timestamp so it
+        reflects when the entry was originally fetched, not when get_with_ts was
+        called.  Returns (None, False, 0.0) on miss or expiry.
+        """
+        with self._lock:
+            entry = self._store.get(key)
+            if entry is None:
+                return None, False, 0.0
+            if len(entry) == 3:
+                value, ts, entry_ttl = entry
+                effective_ttl = entry_ttl
+            else:
+                value, ts = entry
+                effective_ttl = self._ttl
+            if time.monotonic() - ts > effective_ttl:
+                del self._store[key]
+                return None, False, 0.0
+            age = time.monotonic() - ts
+            wall_clock_ts = time.time() - age
+            return value, True, wall_clock_ts
+
     def clear(self) -> None:
         with self._lock:
             self._store.clear()

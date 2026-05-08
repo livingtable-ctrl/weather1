@@ -1,5 +1,5 @@
 from datetime import UTC
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -749,4 +749,74 @@ class TestGaussianEnsembleBlend:
         assert result["forecast_prob"] < 0.95, (
             f"Gaussian blend should pull forecast_prob below 1.0 when forecast is 68°F,"
             f" got {result['forecast_prob']:.3f}"
+        )
+
+
+# ── P1-1: enrich_with_forecast uses cache timestamp ───────────────────────────
+
+
+class TestEnrichWithForecastCacheTimestamp:
+    """P1-1: data_fetched_at must reflect the cache entry's original fetch time,
+    not the current wall-clock time when enrich_with_forecast is called."""
+
+    def test_enrich_uses_cache_timestamp_not_current_time(self, monkeypatch):
+        """When the forecast is already cached, data_fetched_at must equal the
+        original cache store time, not the time enrich_with_forecast runs."""
+        import time
+
+        import weather_markets as wm
+
+        store_wall = time.time() - 7200  # 2 hours ago
+        target_date_str = "2026-05-10"
+        cache_key = ("NYC", target_date_str)
+
+        fake_forecast = {
+            "high_f": 72.0,
+            "low_f": 55.0,
+            "precip_in": 0.0,
+            "date": target_date_str,
+            "city": "NYC",
+            "models_used": 3,
+            "high_range": (70.0, 74.0),
+        }
+
+        mock_cache = MagicMock()
+        mock_cache.get_with_ts.side_effect = (
+            lambda key: (fake_forecast, True, store_wall)
+            if key == cache_key
+            else (None, False, 0.0)
+        )
+        mock_cache.get.return_value = fake_forecast
+
+        monkeypatch.setattr(wm, "_forecast_cache", mock_cache)
+
+        # Kalshi ticker format: YYMONDD (year-first) e.g. 26MAY10
+        market = {"ticker": "KXHIGHNY-26MAY10-T70", "title": "NYC high > 70°F"}
+        result = wm.enrich_with_forecast(market)
+
+        assert abs(result["data_fetched_at"] - store_wall) < 5, (
+            f"data_fetched_at should be ~{store_wall:.0f} (cache store time), "
+            f"got {result['data_fetched_at']:.0f} (diff={result['data_fetched_at'] - store_wall:.1f}s)"
+        )
+
+    def test_enrich_uses_current_time_on_cache_miss(self, monkeypatch):
+        """On a cache miss, data_fetched_at must be the current wall-clock time."""
+        import time
+
+        import weather_markets as wm
+
+        mock_cache = MagicMock()
+        mock_cache.get_with_ts.return_value = (None, False, 0.0)
+        mock_cache.get.return_value = None
+
+        monkeypatch.setattr(wm, "_forecast_cache", mock_cache)
+
+        before = time.time()
+        market = {"ticker": "KXHIGHNY-26MAY10-T70", "title": "NYC high > 70°F"}
+        result = wm.enrich_with_forecast(market)
+        after = time.time()
+
+        assert before <= result["data_fetched_at"] <= after + 1, (
+            f"On cache miss, data_fetched_at should be current time, "
+            f"got {result['data_fetched_at']:.0f} (window {before:.0f}–{after:.0f})"
         )

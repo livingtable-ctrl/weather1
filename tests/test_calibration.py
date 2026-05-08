@@ -238,8 +238,35 @@ class TestCalibrateCLI:
         w = loaded["winter"]
         assert abs(w["ensemble"] + w["climatology"] + w["nws"] - 1.0) < 1e-6
 
+    def test_calibrate_calls_update_learned_weights(self, monkeypatch):
+        """P1-9: cmd_calibrate() must call update_learned_weights_from_tracker()."""
+        import main
+        import tracker
+        import weather_markets
+
+        rows = _make_winter_rows(60)
+        _seed_db(self._db, rows)
+
+        monkeypatch.setattr(tracker, "DB_PATH", self._db)
+        monkeypatch.setattr(main, "_CALIBRATE_DATA_DIR", self._data_dir)
+
+        called = []
+
+        def fake_update():
+            called.append(True)
+            return {}
+
+        monkeypatch.setattr(
+            weather_markets, "update_learned_weights_from_tracker", fake_update
+        )
+
+        main.cmd_calibrate()
+
+        assert called, "cmd_calibrate() must call update_learned_weights_from_tracker()"
+
 
 # ── Phase 5.1: brier_by_condition in backtest ─────────────────────────────────
+
 
 def test_run_backtest_reports_per_condition_type(monkeypatch):
     """run_backtest result includes brier_by_condition dict."""
@@ -250,7 +277,11 @@ def test_run_backtest_reports_per_condition_type(monkeypatch):
 
     markets = [
         {"ticker": "KXHIGHNY-26MAY01-T70", "result": "yes", "title": "NYC high > 70°F"},
-        {"ticker": "KXHIGHNY-26MAY01-B67.5", "result": "no", "title": "NYC high 67-68°F"},
+        {
+            "ticker": "KXHIGHNY-26MAY01-B67.5",
+            "result": "no",
+            "title": "NYC high 67-68°F",
+        },
     ]
     monkeypatch.setattr("backtest._fetch_settled_markets", lambda *a, **kw: markets)
     monkeypatch.setattr(
@@ -272,6 +303,7 @@ def test_run_backtest_reports_per_condition_type(monkeypatch):
 
 
 # ── Phase 5.2: calibrate_condition_weights ────────────────────────────────────
+
 
 def test_calibrate_condition_weights_returns_per_type_dict():
     """calibrate_condition_weights returns dict keyed by condition type."""
