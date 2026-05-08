@@ -119,36 +119,84 @@ def _check_startup_orders() -> None:
         _log.warning("cmd_cron: _check_startup_orders failed: %s", _e)
 
 
+try:
+    import psutil as _psutil
+
+    _PSUTIL_AVAILABLE = True
+except ImportError:
+    _PSUTIL_AVAILABLE = False
+
+
 def _acquire_cron_lock() -> bool:
     """
-    Try to acquire the cron file lock.
+    Try to acquire the cron file lock. Fail CLOSED on every error.
 
-    Returns True if the lock was acquired (caller may proceed).
-    Returns False if a fresh lock file exists (another instance is running).
-    A stale lock (>600 s) is overridden and True is returned.
+    Returns True only when the lock is cleanly written by this process.
+    Returns False in every other case — including I/O errors — so a
+    concurrent cron run is never allowed through on an unexpected failure.
+
+    Stale detection is PID-aware when psutil is available:
+    - Live PID  → block (another instance is really running).
+    - Dead PID  → override (process is gone, lock is stale).
+    - No psutil → conservative 1800 s age threshold before overriding.
     """
-    import os as _os
     import time as _time
 
     lp = _lock_path()
     try:
         if lp.exists():
-            age = _time.time() - lp.stat().st_mtime
-            if age < 600:
+            try:
+                existing = json.loads(lp.read_text())
+                pid = existing.get("pid")
+                started_at = existing.get("started_at", 0)
+                heartbeat = existing.get("heartbeat", started_at)
+            except Exception as parse_err:
+                # Unreadable / corrupt lock — fail closed; do not override.
                 _log.warning(
-                    "cmd_cron: lock file exists and is fresh (age=%.0fs) — "
-                    "another instance may be running; skipping this run",
-                    age,
+                    "cmd_cron: unreadable lock file (%s) — aborting (fail-closed)",
+                    parse_err,
                 )
                 return False
-            # Stale — fall through to overwrite
-            _log.warning("cmd_cron: overriding stale lock file (age=%.0fs)", age)
+
+            if pid and _PSUTIL_AVAILABLE:
+                if _psutil.pid_exists(pid):
+                    age = _time.time() - started_at
+                    _log.warning(
+                        "cmd_cron: lock held by live PID %d (started %.0fs ago) — skipping",
+                        pid,
+                        age,
+                    )
+                    return False
+                # PID is gone — safe to override.
+                _log.warning("cmd_cron: overriding stale lock from dead PID %d", pid)
+            else:
+                # psutil unavailable — use conservative heartbeat age.
+                age = _time.time() - heartbeat
+                if age < 1800:
+                    _log.warning(
+                        "cmd_cron: lock age %.0fs < 1800s; refusing to override without psutil",
+                        age,
+                    )
+                    return False
+                _log.warning(
+                    "cmd_cron: overriding stale lock (%.0fs old, psutil unavailable)",
+                    age,
+                )
+
         lp.parent.mkdir(exist_ok=True)
-        lp.write_text(str(_os.getpid()))
+        lock_data = {
+            "pid": os.getpid(),
+            "started_at": _time.time(),
+            "heartbeat": _time.time(),
+        }
+        lp.write_text(json.dumps(lock_data))
         return True
-    except Exception as _e:
-        _log.warning("cmd_cron: could not acquire lock: %s — proceeding anyway", _e)
-        return True  # fail-open: don't block cron on unexpected I/O errors
+
+    except Exception as exc:
+        _log.error(
+            "cmd_cron: lock acquisition failed: %s — aborting (fail-closed)", exc
+        )
+        return False  # FAIL CLOSED — never proceed on unexpected error
 
 
 def _release_cron_lock() -> None:

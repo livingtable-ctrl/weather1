@@ -73,6 +73,7 @@ def test_cmd_cron_logs_state_snapshot(tmp_path, monkeypatch):
     # Isolate from real data/ files so kill switch and black swan don't interfere
     monkeypatch.setattr(main, "RUNNING_FLAG_PATH", tmp_path / ".cron_running")
     monkeypatch.setattr(main, "KILL_SWITCH_PATH", tmp_path / ".kill_switch")
+    monkeypatch.setattr(main, "LOCK_PATH", tmp_path / ".cron_lock")
     monkeypatch.setattr("alerts.run_black_swan_check", lambda: [])
     monkeypatch.setattr("alerts.run_anomaly_check", lambda log_results=False: None)
 

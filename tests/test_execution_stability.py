@@ -193,7 +193,9 @@ class TestCheckStartupOrders:
 
 class TestCronLock:
     def test_lock_acquired_when_no_file(self, tmp_path, monkeypatch):
-        """_acquire_cron_lock() returns True and writes the lock file when none exists."""
+        """_acquire_cron_lock() returns True and writes JSON lock when none exists."""
+        import json
+
         main = _import_main()
         lock = tmp_path / ".cron.lock"
         monkeypatch.setattr(main, "LOCK_PATH", lock)
@@ -202,34 +204,66 @@ class TestCronLock:
 
         assert result is True, "lock should be acquired"
         assert lock.exists(), "lock file must be written"
-        pid_text = lock.read_text().strip()
-        assert pid_text.isdigit(), "lock file should contain the process PID"
+        data = json.loads(lock.read_text())
+        assert data["pid"] == os.getpid(), "lock file should contain the process PID"
+        assert "started_at" in data
+        assert "heartbeat" in data
 
     def test_lock_denied_when_fresh_file_exists(self, tmp_path, monkeypatch):
-        """_acquire_cron_lock() returns False when lock file is <600 s old."""
+        """_acquire_cron_lock() returns False when a live PID holds the lock."""
+        import json
+        from unittest.mock import patch
+
         main = _import_main()
         lock = tmp_path / ".cron.lock"
-        lock.write_text("99999")  # mtime ≈ now, age ≈ 0 s
+        lock.write_text(
+            json.dumps(
+                {
+                    "pid": os.getpid(),
+                    "started_at": time.time(),
+                    "heartbeat": time.time(),
+                }
+            )
+        )
         monkeypatch.setattr(main, "LOCK_PATH", lock)
 
-        result = main._acquire_cron_lock()
+        with (
+            patch("cron._psutil") as mock_psutil,
+            patch("cron._PSUTIL_AVAILABLE", True),
+        ):
+            mock_psutil.pid_exists.return_value = True
+            result = main._acquire_cron_lock()
 
-        assert result is False, "fresh lock must be denied"
+        assert result is False, "live-PID lock must be denied"
 
     def test_stale_lock_overridden(self, tmp_path, monkeypatch):
-        """_acquire_cron_lock() returns True and overwrites a lock file older than 600 s."""
+        """_acquire_cron_lock() returns True when the locking PID is dead."""
+        import json
+        from unittest.mock import patch
+
         main = _import_main()
         lock = tmp_path / ".cron.lock"
-        lock.write_text("99999")
-        stale_mtime = time.time() - 700
-        os.utime(lock, (stale_mtime, stale_mtime))
+        lock.write_text(
+            json.dumps(
+                {
+                    "pid": 99999999,
+                    "started_at": time.time() - 700,
+                    "heartbeat": time.time() - 700,
+                }
+            )
+        )
         monkeypatch.setattr(main, "LOCK_PATH", lock)
 
-        result = main._acquire_cron_lock()
+        with (
+            patch("cron._psutil") as mock_psutil,
+            patch("cron._PSUTIL_AVAILABLE", True),
+        ):
+            mock_psutil.pid_exists.return_value = False
+            result = main._acquire_cron_lock()
 
-        assert result is True, "stale lock (>600s) should be overridden"
-        new_pid = lock.read_text().strip()
-        assert new_pid == str(os.getpid()), (
+        assert result is True, "dead-PID lock should be overridden"
+        data = json.loads(lock.read_text())
+        assert data["pid"] == os.getpid(), (
             "lock file should contain current PID after override"
         )
 

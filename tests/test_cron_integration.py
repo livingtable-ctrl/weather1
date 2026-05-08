@@ -28,6 +28,7 @@ def cron_env(tmp_path, monkeypatch):
 
     monkeypatch.setattr(main, "RUNNING_FLAG_PATH", tmp_path / ".cron_running")
     monkeypatch.setattr(main, "KILL_SWITCH_PATH", tmp_path / ".kill_switch")
+    monkeypatch.setattr(main, "LOCK_PATH", tmp_path / ".cron_lock")
     monkeypatch.setattr(main, "get_weather_markets", lambda client: [])
     monkeypatch.setattr(main, "check_ensemble_circuit_health", lambda: None)
     monkeypatch.setattr(main, "_check_startup_orders", lambda: None)
@@ -360,7 +361,11 @@ def test_check_market_anomalies_filters_by_threshold():
 
     signals = [
         {"ticker": "A", "blended_prob": 0.60, "market_price": 0.75},  # 15pp → flagged
-        {"ticker": "B", "blended_prob": 0.60, "market_price": 0.65},  # 5pp  → not flagged
+        {
+            "ticker": "B",
+            "blended_prob": 0.60,
+            "market_price": 0.65,
+        },  # 5pp  → not flagged
     ]
     flagged = _cron.check_market_anomalies(signals)
     assert len(flagged) == 1

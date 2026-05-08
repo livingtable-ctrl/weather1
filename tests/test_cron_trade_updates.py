@@ -78,10 +78,16 @@ class TestCronSettlesPaperTrades:
 
 
 class TestCronPrintPlacedTrades:
-    def test_cron_prints_signal_count_when_markets_found(self, monkeypatch, capsys):
+    def test_cron_prints_signal_count_when_markets_found(
+        self, monkeypatch, capsys, tmp_path
+    ):
         """cmd_cron must emit output describing scan results and any placement activity."""
         import cron
+        import main
 
+        monkeypatch.setattr(main, "LOCK_PATH", tmp_path / ".cron_lock")
+        monkeypatch.setattr(main, "KILL_SWITCH_PATH", tmp_path / ".kill_switch")
+        monkeypatch.setattr(main, "RUNNING_FLAG_PATH", tmp_path / ".cron_running")
         monkeypatch.setattr("main.get_weather_markets", lambda client: [])
         monkeypatch.setattr("paper.auto_settle_paper_trades", lambda client=None: 0)
 
