@@ -50,6 +50,23 @@ def get_mos_station(city: str) -> str | None:
     return _CITY_STATION.get(city.upper())
 
 
+_MOS_SPECIAL_CODES = frozenset(("M", "m", "T", "t", "", "N/A"))
+
+
+def _parse_temp(value) -> float | None:
+    """Parse MOS temperature field, handling ASOS special codes."""
+    if value is None:
+        return None
+    s = str(value).strip()
+    if s in _MOS_SPECIAL_CODES:
+        return None
+    try:
+        return float(s)
+    except (ValueError, TypeError):
+        _log.debug("Unparseable MOS temp value: %r", value)
+        return None
+
+
 def fetch_mos(
     station: str,
     target_date: date | None = None,
@@ -101,7 +118,9 @@ def fetch_mos(
     if not day_rows:
         return None
 
-    temps = [r["tmp"] for r in day_rows if r.get("tmp") is not None]
+    temps: list[float] = [
+        t for r in day_rows if (t := _parse_temp(r.get("tmp"))) is not None
+    ]
     if not temps:
         return None
 

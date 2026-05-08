@@ -1437,7 +1437,7 @@ def is_streak_paused() -> bool:
     settled = [
         t for t in _load()["trades"] if t.get("settled") and t.get("pnl") is not None
     ]
-    settled.sort(key=lambda t: t.get("entered_at", ""))
+    settled.sort(key=lambda t: t.get("settled_at") or t.get("entered_at", ""))
     streak_pnl = sum(t["pnl"] for t in settled[-n:] if t.get("pnl") is not None)
     return streak_pnl < -(STARTING_BALANCE * 0.02)
 

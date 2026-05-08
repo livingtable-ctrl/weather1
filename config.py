@@ -6,11 +6,13 @@ Import individual constants from here rather than from utils.py for new code.
 from __future__ import annotations
 
 import json
+import logging
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
 _DATA_DIR = Path(__file__).parent / "data"
+_log = logging.getLogger(__name__)
 
 
 def _paper_min_edge_default() -> float:
@@ -27,7 +29,13 @@ def _paper_min_edge_default() -> float:
             data = json.loads(p.read_text())
             opt = data.get("optimal_min_edge")
             if opt is not None and 0.03 <= float(opt) <= 0.15:
-                return float(opt)
+                val = float(opt)
+                _log.warning(
+                    "PAPER_MIN_EDGE loaded from walk_forward_params.json: %.4f "
+                    "(override with PAPER_MIN_EDGE env var to pin a value)",
+                    val,
+                )
+                return val
     except Exception:
         pass
     # Soft override from param sweep results
@@ -36,6 +44,11 @@ def _paper_min_edge_default() -> float:
 
         swept = load_swept_min_edge()
         if swept is not None:
+            _log.warning(
+                "PAPER_MIN_EDGE loaded from param_sweep_results.json: %.4f "
+                "(override with PAPER_MIN_EDGE env var to pin a value)",
+                swept,
+            )
             return swept
     except Exception:
         pass

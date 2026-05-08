@@ -2902,7 +2902,9 @@ def _get_consensus_probs(
     return _cons_result
 
 
-def kelly_fraction(our_prob: float, price: float, fee_rate: float = 0.0) -> float:
+def kelly_fraction(
+    our_prob: float, price: float, fee_rate: float = KALSHI_FEE_RATE
+) -> float:
     """
     Half-Kelly criterion for a binary prediction market.
     price    = cost per contract in dollars (e.g. 0.30 means you pay $0.30, win $0.70)
