@@ -2911,6 +2911,18 @@ def _auto_place_trades(
                     )
                 )
                 continue
+            # P0-10: pre-log with status="pending" before touching paper_trades.json
+            # so a crash between write and log doesn't create a dedup blind spot.
+            log_id = execution_log.log_order(
+                ticker=ticker,
+                side=rec_side,
+                quantity=qty,
+                price=entry_price,
+                order_type="market",
+                status="pending",
+                forecast_cycle=cycle,
+                live=False,
+            )
             try:
                 trade = place_paper_order(
                     ticker,
@@ -2937,16 +2949,12 @@ def _auto_place_trades(
                 _open_trades_list.append(trade)
                 placed += 1
                 daily_spent += trade.get("cost", 0.0)
-                # L3-C: log paper order so was_traded_today() blocks same-day re-entry
-                # after a position is settled and the process restarts.
-                execution_log.log_order(
-                    ticker=ticker,
-                    side=rec_side,
-                    quantity=qty,
-                    price=entry_price,
-                    order_type="market",
+                # L3-C: update pre-logged entry to "filled" so was_traded_today()
+                # blocks same-day re-entry after a position is settled and restarts.
+                execution_log.log_order_result(
+                    log_id,
                     status="filled",
-                    live=False,
+                    response={"id": str(trade.get("id", ""))},
                 )
                 # #55: update analysis attempt to mark this market as traded
                 try:
@@ -3012,6 +3020,9 @@ def _auto_place_trades(
                         _e2,
                     )
             except Exception as e:
+                # P0-10: mark the pre-logged entry as failed so dedup doesn't
+                # treat this as a successful placement on the next cycle.
+                execution_log.log_order_result(log_id, status="failed", error=str(e))
                 # L1-D: surface every placement failure visibly — logging alone is
                 # silent when the operator is watching the console.
                 _err_msg = (
