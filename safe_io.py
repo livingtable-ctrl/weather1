@@ -90,23 +90,32 @@ def atomic_write_json(
             if attempt < retries - 1:
                 time.sleep(1.0)
 
-    # Try fallback: explicit fallback_dir or /tmp
-    fallback_candidates = []
+    # All retries exhausted — write emergency copy for manual operator recovery only.
+    # This is NOT a transparent fallback; the caller will still get an error.
+    emergency_path: Path | None = None
+    emergency_candidates = []
     if fallback_dir:
-        fallback_candidates.append(Path(fallback_dir))
-    fallback_candidates.append(Path(tempfile.gettempdir()))
+        emergency_candidates.append(Path(fallback_dir))
+    emergency_candidates.append(Path(tempfile.gettempdir()))
 
-    for fb_dir in fallback_candidates:
-        fallback_path = fb_dir / path.name
+    for fb_dir in emergency_candidates:
+        emergency_path = fb_dir / path.name
         try:
-            _log.error("Writing to fallback location: %s", fallback_path)
-            fallback_path.parent.mkdir(parents=True, exist_ok=True)
-            with open(fallback_path, "w", encoding="utf-8") as f:
+            emergency_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(emergency_path, "w", encoding="utf-8") as f:
                 f.write(payload)
-            return
+            _log.error(
+                "Emergency copy written to %s for manual recovery (original write failed)",
+                emergency_path,
+            )
+            break
         except Exception as fb_exc:
-            _log.error("Fallback write also failed for %s: %s", fallback_path, fb_exc)
+            _log.error("Emergency copy also failed for %s: %s", emergency_path, fb_exc)
+            emergency_path = None
 
-    raise RuntimeError(
-        f"Failed to write {path} after {retries} attempts (including fallback): {last_exc}"
+    raise AtomicWriteError(
+        f"Failed to write {path} after {retries} attempts. "
+        f"Disk full, permissions error, or path unavailable. "
+        f"Emergency copy written to {emergency_path} for manual recovery. "
+        f"Original error: {last_exc}"
     )

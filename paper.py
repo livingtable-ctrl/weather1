@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import csv
 import hashlib
+import hmac as _hmac
 import json
 import logging
 import os
@@ -42,31 +43,33 @@ def _validate_crc(data: dict) -> None:
 
 
 def _compute_checksum(payload: dict) -> str:
-    """Compute SHA-256 checksum (first 16 hex chars) of payload excluding '_checksum' key."""
+    """Compute full SHA-256 checksum (64 hex chars) of payload excluding '_checksum' key."""
     body = json.dumps(
         {k: v for k, v in payload.items() if k != "_checksum"},
         indent=2,
         sort_keys=True,
         default=str,
     ).encode()
-    return hashlib.sha256(body).hexdigest()[:16]
+    return hashlib.sha256(body).hexdigest()
 
 
 def _validate_checksum(data: dict) -> None:
-    """Validate SHA-256 checksum in data dict. Raises ValueError on mismatch.
+    """Validate SHA-256 checksum in data dict. Raises CorruptionError on mismatch.
 
-    Accepts legacy 8-char checksums (prefix of the full 16-char value) to allow
-    seamless migration from the old 8-char format without data corruption errors.
+    Accepts stored lengths 8 (very old legacy), 16 (prior format), or 64 (current).
+    Uses constant-time comparison to prevent timing side-channels.
     """
     stored = data.get("_checksum")
     if stored is None:
         return
+    compare_len = len(stored)
+    if compare_len not in (8, 16, 64):
+        raise CorruptionError(f"Unexpected checksum length {compare_len}")
     expected = _compute_checksum(data)
-    # Accept stored value if it equals the expected value OR is a valid prefix of it
-    # (handles migration from 8-char to 16-char checksums).
-    if not expected.startswith(stored):
-        raise ValueError(
-            f"paper trades checksum mismatch: stored={stored!r}, expected={expected!r}"
+    if not _hmac.compare_digest(expected[:compare_len], stored):
+        raise CorruptionError(
+            f"paper trades checksum mismatch: stored={stored[:8]}..., "
+            f"expected={expected[:compare_len]}"
         )
 
 

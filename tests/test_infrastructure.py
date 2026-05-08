@@ -212,9 +212,10 @@ def test_atomic_write_falls_back_to_tmp_on_oserror(tmp_path, monkeypatch):
         pass  # acceptable: double failure raises RuntimeError
 
 
-def test_atomic_write_raises_runtime_error_on_double_failure(tmp_path, monkeypatch):
-    """If both primary and /tmp writes fail, RuntimeError is raised."""
+def test_atomic_write_raises_on_double_failure(tmp_path, monkeypatch):
+    """If both primary and /tmp writes fail, AtomicWriteError is raised."""
     import safe_io
+    from safe_io import AtomicWriteError
 
     call_count = {"n": 0}
 
@@ -224,7 +225,7 @@ def test_atomic_write_raises_runtime_error_on_double_failure(tmp_path, monkeypat
 
     monkeypatch.setattr("builtins.open", _always_fail)
 
-    with pytest.raises((RuntimeError, OSError)):
+    with pytest.raises((AtomicWriteError, RuntimeError, OSError)):
         safe_io.atomic_write_json({"x": 1}, tmp_path / "data.json", retries=1)
 
 
@@ -364,7 +365,7 @@ def test_pragma_migrations_incremental(tmp_path):
 
 
 def test_paper_save_embeds_sha256_checksum(tmp_path, monkeypatch):
-    """Saved paper trades JSON contains a '_checksum' key with 16-char hex SHA-256."""
+    """Saved paper trades JSON contains a '_checksum' key with full 64-char hex SHA-256."""
     import paper
 
     monkeypatch.setattr(paper, "DATA_PATH", tmp_path / "paper_trades.json")
@@ -372,7 +373,8 @@ def test_paper_save_embeds_sha256_checksum(tmp_path, monkeypatch):
 
     raw = _json.loads((tmp_path / "paper_trades.json").read_text())
     assert "_checksum" in raw
-    assert len(raw["_checksum"]) == 16
+    # P1-5: new writes use full 64-char SHA-256 hex (was 16-char prefix)
+    assert len(raw["_checksum"]) == 64
     int(raw["_checksum"], 16)  # verify valid hex
 
 

@@ -1007,10 +1007,12 @@ setInterval(() => {{
 
         body = _req.get_json(silent=True) or {}
         reason = body.get("reason", "manual halt via API")
-        _KS_PATH.parent.mkdir(exist_ok=True)
-        _KS_PATH.write_text(
+        _KS_PATH.parent.mkdir(parents=True, exist_ok=True)
+        _tmp = _KS_PATH.with_suffix(".tmp")
+        _tmp.write_text(
             json.dumps({"reason": reason, "halted_at": datetime.now(UTC).isoformat()})
         )
+        _tmp.replace(_KS_PATH)
         return jsonify({"halted": True, "reason": reason})
 
     @app.route("/api/resume", methods=["POST"])

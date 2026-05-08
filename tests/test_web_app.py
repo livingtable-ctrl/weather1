@@ -514,6 +514,27 @@ class TestKillSwitchAPI:
         assert payload["reason"] == "test halt"
         assert "halted_at" in payload
 
+    def test_halt_no_leftover_tmp_file(self, tmp_path, monkeypatch):
+        """P1-16: atomic write must not leave a .tmp file after successful halt."""
+        import web_app
+
+        ks_path = tmp_path / ".kill_switch"
+        monkeypatch.setattr(web_app, "_KS_PATH", ks_path)
+
+        app = web_app._build_app(client=None)
+        app.config["TESTING"] = True
+
+        with app.test_client() as c:
+            c.post(
+                "/api/halt",
+                json={"reason": "atomic test"},
+                content_type="application/json",
+            )
+
+        tmp_file = ks_path.with_suffix(".tmp")
+        assert not tmp_file.exists(), "Atomic write must not leave a .tmp file behind"
+        assert ks_path.exists(), "Kill switch file must exist after halt"
+
     def test_resume_removes_kill_switch_file(self, tmp_path, monkeypatch):
         """POST /api/resume removes the kill-switch file."""
         import web_app
