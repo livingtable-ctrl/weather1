@@ -4147,6 +4147,23 @@ def analyze_trade(enriched: dict) -> dict | None:
     except Exception:
         pass
 
+    # P0-11: retired strategy gate — skip markets whose forecast method has
+    # been flagged as underperforming (e.g. ensemble Brier > threshold).
+    try:
+        from tracker import get_retired_strategies as _get_retired
+
+        _retired = _get_retired()
+        if method in _retired:
+            _log.info(
+                "analyze_trade: skipping %s — method '%s' is retired (Brier %.4f)",
+                enriched.get("ticker", "?"),
+                method,
+                _retired[method].get("brier", 0),
+            )
+            return None
+    except Exception as _ret_exc:
+        _log.debug("analyze_trade: retired-strategy check failed: %s", _ret_exc)
+
     # ── 10. Kelly fraction ───────────────────────────────────────────────────
     prices = parse_market_price(enriched)
     market_prob = prices["implied_prob"]

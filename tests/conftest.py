@@ -9,6 +9,19 @@ import pytest
 
 
 @pytest.fixture(autouse=True)
+def isolate_retired_strategies(tmp_path, monkeypatch):
+    """Redirect tracker._RETIRED_PATH to an empty temp file for every test.
+
+    Prevents the real retired_strategies.json on disk (which may have
+    'ensemble' retired) from blocking analyze_trade in unrelated tests.
+    Tests that exercise the retirement gate write their own data to the
+    redirected path via auto_retire_strategies(), so they still work correctly.
+    Tests that need a specific retired state use patch() context managers.
+    """
+    monkeypatch.setattr("tracker._RETIRED_PATH", tmp_path / "retired_strategies.json")
+
+
+@pytest.fixture(autouse=True)
 def reset_open_meteo_circuit_breaker():
     """Reset all weather_markets circuit breakers before every test.
 
