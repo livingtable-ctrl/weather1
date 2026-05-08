@@ -1616,7 +1616,22 @@ def _place_live_order(
     if execution_log.was_ordered_this_cycle(ticker, side, cycle):
         return False, 0.0
 
-    # 5. Place order
+    # 5. Pre-log BEFORE touching the API — crash recovery depends on this record.
+    #    If the process dies between here and step 6, the "pending" row is the
+    #    only evidence the order was attempted; _recover_pending_orders() at next
+    #    startup will reconcile it against the Kalshi API.
+    log_id = execution_log.log_order(
+        ticker=ticker,
+        side=side,
+        quantity=quantity,
+        price=price,
+        order_type="limit",
+        status="pending",
+        forecast_cycle=cycle,
+        live=True,
+    )
+
+    # 6. Place order
     try:
         response = client.place_order(
             ticker=ticker,
@@ -1627,29 +1642,18 @@ def _place_live_order(
             time_in_force="good_till_canceled",
             cycle=cycle,
         )
-        execution_log.log_order(
-            ticker=ticker,
-            side=side,
-            quantity=quantity,
-            price=price,
-            order_type="limit",
-            status="pending",
+        # Update the pre-logged row with the exchange response.
+        execution_log.log_order_result(
+            log_id,
+            status="placed",
             response=response,
-            forecast_cycle=cycle,
-            live=True,
         )
         return True, dollar_cost
     except Exception as exc:
-        execution_log.log_order(
-            ticker=ticker,
-            side=side,
-            quantity=quantity,
-            price=price,
-            order_type="limit",
+        execution_log.log_order_result(
+            log_id,
             status="failed",
             error=str(exc),
-            forecast_cycle=cycle,
-            live=True,
         )
         print(f"[LIVE] Order failed for {ticker}: {exc}")
         return False, 0.0
