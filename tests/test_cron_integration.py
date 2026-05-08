@@ -21,8 +21,12 @@ def cron_env(tmp_path, monkeypatch):
     import alerts
     import paper
 
-    monkeypatch.setattr(paper, "DATA_PATH", tmp_path / "paper_trades.json")
+    # Reload BEFORE patching — reload resets module-level state, then monkeypatch
+    # sets DATA_PATH to tmp_path. Reversing this order caused reload() to undo the
+    # patch, leaving cron body functions (e.g. auto_settle_paper_trades) writing to
+    # the real data/paper_trades.json during test runs.
     importlib.reload(paper)
+    monkeypatch.setattr(paper, "DATA_PATH", tmp_path / "paper_trades.json")
 
     import main
 
@@ -431,8 +435,9 @@ def test_p1_12_kill_switch_mid_scan_breaks_loop(monkeypatch, tmp_path, caplog):
     import alerts
     import paper
 
-    monkeypatch.setattr(paper, "DATA_PATH", tmp_path / "paper_trades.json")
+    # Reload BEFORE patching to avoid reload() undoing the monkeypatch
     importlib.reload(paper)
+    monkeypatch.setattr(paper, "DATA_PATH", tmp_path / "paper_trades.json")
 
     import main
 
