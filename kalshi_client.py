@@ -55,7 +55,7 @@ def _build_session() -> requests.Session:
         total=3,
         backoff_factor=1.0,
         status_forcelist={429, 500, 502, 503},
-        allowed_methods={"GET", "POST", "DELETE"},
+        allowed_methods={"GET", "DELETE"},  # POST excluded — orders must not auto-retry
         respect_retry_after_header=True,
         raise_on_status=False,
     )
@@ -252,30 +252,72 @@ class KalshiClient:
         count: float,
         price: float,
         time_in_force: str = "good_till_canceled",
+        cycle: str | None = None,
     ) -> dict:
         """
-        Place a limit order.
+        Place a limit order with a deterministic idempotency key.
 
         Args:
-            ticker:  Market ticker, e.g. "KXHIGHNY-26APR09-T72"
-            side:    "yes" or "no"
-            action:  "buy" or "sell"
-            count:   Number of contracts
-            price:   Price in dollars, e.g. 0.65 means $0.65 per contract
+            ticker:        Market ticker, e.g. "KXHIGHNY-26APR09-T72"
+            side:          "yes" or "no"
+            action:        "buy" or "sell"
+            count:         Number of contracts
+            price:         Price in dollars, e.g. 0.65 means $0.65 per contract
             time_in_force: "good_till_canceled", "fill_or_kill", "immediate_or_cancel"
+            cycle:         Forecast cycle string (e.g. "12z") for deterministic dedup key.
+                           If omitted, a random UUID is used so retries won't dedup.
         """
+        import hashlib
+        import uuid
+
+        # Deterministic within a cycle: same ticker+side+count+price+cycle → same ID.
+        # Kalshi deduplicates server-side when the same client_order_id is resubmitted.
+        idempotency_input = (
+            f"{ticker}:{side}:{action}:{count:.2f}:{price:.4f}:{cycle or uuid.uuid4()}"
+        )
+        client_order_id = hashlib.sha256(idempotency_input.encode()).hexdigest()[:32]
+
         body = {
             "ticker": ticker,
             "side": side,
             "action": action,
             "count_fp": f"{count:.2f}",
             "time_in_force": time_in_force,
+            "client_order_id": client_order_id,
         }
         if side == "yes":
             body["yes_price_dollars"] = f"{price:.4f}"
         else:
             body["no_price_dollars"] = f"{price:.4f}"
-        return self._post("/portfolio/orders", body)
+
+        try:
+            return self._post("/portfolio/orders", body)
+        except Exception as exc:
+            # POST was not retried automatically (see _build_session).
+            # On any failure, check whether the order landed anyway before re-raising.
+            existing = self._find_order_by_client_id(client_order_id)
+            if existing:
+                import logging
+
+                logging.getLogger(__name__).warning(
+                    "place_order: order landed despite exception; returning existing %s",
+                    existing.get("order_id"),
+                )
+                return existing
+            raise exc
+
+    def _find_order_by_client_id(self, client_order_id: str) -> dict | None:
+        """Return the open order matching client_order_id, or None if not found."""
+        try:
+            data = self._get(
+                "/portfolio/orders", params={"status": "resting"}, auth=True
+            )
+            for order in data.get("orders", []):
+                if order.get("client_order_id") == client_order_id:
+                    return order
+        except Exception:
+            pass
+        return None
 
     def get_order(self, order_id: str) -> dict:
         """Fetch a single order by ID from the Kalshi portfolio API.

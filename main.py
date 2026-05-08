@@ -1625,6 +1625,7 @@ def _place_live_order(
             count=quantity,
             price=price,
             time_in_force="good_till_canceled",
+            cycle=cycle,
         )
         execution_log.log_order(
             ticker=ticker,
