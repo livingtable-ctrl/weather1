@@ -1519,11 +1519,15 @@ class TestNoSideEntryEdgeSign:
         monkeypatch.setattr(wm, "climatological_prob", lambda *a, **kw: 0.75)
         monkeypatch.setattr(wm, "temperature_adjustment", lambda *a, **kw: 0.0)
         monkeypatch.setattr(wm, "_metar_lock_in", lambda *a, **kw: (False, 0.0, {}))
+        # Pin all network/file sources so blended_prob is deterministic across envs
+        monkeypatch.setattr(wm, "get_ensemble_temps", lambda *a, **kw: [95.0] * 20)
+        monkeypatch.setattr(wm, "fetch_temperature_nbm", lambda *a, **kw: None)
+        monkeypatch.setattr(wm, "fetch_temperature_ecmwf", lambda *a, **kw: None)
+        monkeypatch.setattr(wm, "get_ensemble_members", lambda *a, **kw: [])
+        monkeypatch.setattr(wm, "apply_station_bias", lambda c, t, var="max": t)
 
         enriched = self._make_enriched(yes_bid_cents=35, yes_ask_cents=40)
-        # Override forecast so ensemble agrees with high YES probability
         enriched["_forecast"]["high_f"] = 95.0
-        enriched["_forecast"]["temps"] = [95.0] * 50
 
         result = wm.analyze_trade(enriched)
 
