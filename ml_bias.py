@@ -6,27 +6,96 @@ Train: python main.py train-bias
 
 from __future__ import annotations
 
+import hashlib
+import hmac as _hmac_mod
 import logging
+import os
 import pickle
 from pathlib import Path
 
 _log = logging.getLogger(__name__)
 _MODEL_PATH = Path(__file__).parent / "data" / "bias_models.pkl"
+_HMAC_PATH = Path(__file__).parent / "data" / ".bias_models.hmac"
 _MODELS_CACHE: dict | None = None
 
 
+def _hmac_secret() -> bytes:
+    """Return the HMAC secret from env. Empty string disables verification (dev only)."""
+    return os.getenv("MODEL_HMAC_SECRET", "").encode()
+
+
+def _compute_hmac(data: bytes) -> str:
+    """Compute HMAC-SHA256 of data using MODEL_HMAC_SECRET."""
+    secret = _hmac_secret()
+    if not secret:
+        raise RuntimeError(
+            "MODEL_HMAC_SECRET must be set in .env before loading bias models."
+        )
+    return _hmac_mod.new(secret, data, hashlib.sha256).hexdigest()
+
+
+def _write_hmac(pkl_bytes: bytes) -> None:
+    """Write HMAC sidecar for a freshly serialised pickle."""
+    _HMAC_PATH.parent.mkdir(exist_ok=True)
+    _HMAC_PATH.write_text(_compute_hmac(pkl_bytes))
+
+
 def _load_models() -> dict:
+    """Load bias models from disk after HMAC verification.
+
+    Refuses to deserialise if:
+    - MODEL_HMAC_SECRET is not set (would skip verification)
+    - The .hmac sidecar is missing
+    - The HMAC does not match (file may be tampered)
+
+    In all rejection cases returns {} so the caller falls back to no
+    bias correction rather than loading a potentially malicious payload.
+    """
     global _MODELS_CACHE
     if _MODELS_CACHE is not None:
         return _MODELS_CACHE
     if not _MODEL_PATH.exists():
         return {}
+
+    secret = _hmac_secret()
+    if not secret:
+        _log.warning(
+            "ml_bias: MODEL_HMAC_SECRET not set — skipping bias models (RCE risk)."
+        )
+        _MODELS_CACHE = {}
+        return {}
+
     try:
-        with open(_MODEL_PATH, "rb") as f:
-            _MODELS_CACHE = pickle.load(f)
-            return _MODELS_CACHE
+        raw = _MODEL_PATH.read_bytes()
+
+        if not _HMAC_PATH.exists():
+            _log.error(
+                "ml_bias: %s missing — refusing to load pkl (RCE risk). "
+                "Retrain to regenerate both files.",
+                _HMAC_PATH.name,
+            )
+            _MODELS_CACHE = {}
+            return {}
+
+        expected = _HMAC_PATH.read_text().strip()
+        actual = _compute_hmac(raw)
+
+        if not _hmac_mod.compare_digest(expected, actual):
+            _log.error(
+                "ml_bias: HMAC mismatch on %s — file may be tampered. "
+                "Skipping bias correction.",
+                _MODEL_PATH.name,
+            )
+            _MODELS_CACHE = {}
+            return {}
+
+        # HMAC verified — safe to deserialise
+        _MODELS_CACHE = pickle.loads(raw)  # noqa: S301 (verified above)
+        return _MODELS_CACHE
+
     except Exception as exc:
-        _log.debug("ml_bias: load failed: %s", exc)
+        _log.warning("ml_bias: load failed: %s — using no correction", exc)
+        _MODELS_CACHE = {}
         return {}
 
 
@@ -101,8 +170,16 @@ def train_bias_model(min_samples: int = 200) -> dict:
 
     if models:
         _MODEL_PATH.parent.mkdir(exist_ok=True)
-        with open(_MODEL_PATH, "wb") as f:
-            pickle.dump(models, f)
+        pkl_bytes = pickle.dumps(models)
+        _MODEL_PATH.write_bytes(pkl_bytes)
+        try:
+            _write_hmac(pkl_bytes)
+            _log.info("ml_bias: wrote HMAC sidecar to %s", _HMAC_PATH.name)
+        except RuntimeError as hmac_err:
+            _log.warning(
+                "ml_bias: could not write HMAC (%s) — set MODEL_HMAC_SECRET in .env",
+                hmac_err,
+            )
         global _MODELS_CACHE
         _MODELS_CACHE = models
         _log.info("ml_bias: saved %d city models to %s", len(models), _MODEL_PATH)
@@ -112,12 +189,14 @@ def train_bias_model(min_samples: int = 200) -> dict:
 
 def _logit(p: float) -> float:
     import math
+
     p = max(1e-6, min(1 - 1e-6, p))
     return math.log(p / (1 - p))
 
 
 def _sigmoid(x: float) -> float:
     import math
+
     return 1.0 / (1.0 + math.exp(-x))
 
 
