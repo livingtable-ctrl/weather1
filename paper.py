@@ -77,7 +77,9 @@ DATA_PATH.parent.mkdir(exist_ok=True)
 # is_daily_loss_halted().  Keyed to the UTC date so it auto-expires at midnight.
 _LOSS_OVERRIDE_PATH = DATA_PATH.parent / "loss_limit_override.json"
 
-STARTING_BALANCE = 1000.0  # default paper bankroll in dollars
+STARTING_BALANCE: float = float(
+    os.getenv("STARTING_BALANCE", "1000.0")
+)  # set to actual funded amount
 
 
 def _env_float(name: str, default: str) -> float:

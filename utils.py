@@ -82,6 +82,11 @@ DRAWDOWN_HALT_PCT = float(os.getenv("DRAWDOWN_HALT_PCT", "0.20"))  # halt below 
 # Set to 0 to disable. Override via MAX_VAR_DOLLARS env var.
 MAX_VAR_DOLLARS = float(os.getenv("MAX_VAR_DOLLARS", "200.0"))
 
+# Starting paper bankroll in dollars. Set STARTING_BALANCE in .env to match your actual
+# funded amount — all drawdown tiers, daily loss limits, and Kelly sizing reference this.
+# paper.py reads this directly from os.getenv so it stays in sync.
+STARTING_BALANCE: float = float(os.getenv("STARTING_BALANCE", "1000.0"))
+
 # #P7: Stop-loss multiplier. A position is closed early when its unrealized loss
 # exceeds cost / STOP_LOSS_MULT. Default 2.0 → exit when price halves (lost 50% of cost).
 # Set to 0 to disable stop-losses entirely.
