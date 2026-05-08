@@ -1206,6 +1206,15 @@ def cmd_cron(client: KalshiClient, min_edge: float = MIN_EDGE) -> None:
     """Silent background scan — writes to data/cron.log, auto-places strong paper trades."""
     import sys as _sys
 
+    if os.getenv("KALSHI_ENV") == "prod":
+        _log.warning("=" * 60)
+        _log.warning("CRON RUNNING IN PRODUCTION MODE — REAL MONEY TRADES ENABLED")
+        _log.warning(
+            "KALSHI_ENV=prod | STARTING_BALANCE=$%.2f",
+            float(os.getenv("STARTING_BALANCE", "1000")),
+        )
+        _log.warning("=" * 60)
+
     # Resolve the live main module so monkeypatched attributes are used
     _main = _main_module()
 

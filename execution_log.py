@@ -431,13 +431,15 @@ def get_order_by_id(order_id: str) -> dict | None:
 
 
 def append_entry(entry: dict, path: Path | None = None) -> None:
-    """Write a single entry dict as a JSON file using safe_io for resilient disk writes (#8)."""
-    import safe_io
+    """Append a single entry dict as a JSONL line to the entries log."""
+    import json
 
     target = (
-        Path(path) if path is not None else DB_PATH.parent / "execution_entries.json"
+        Path(path) if path is not None else DB_PATH.parent / "execution_entries.jsonl"
     )
-    safe_io.atomic_write_json(entry, target)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    with target.open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps(entry) + "\n")
 
 
 def get_recent_api_latency_ms(window_seconds: int = 300) -> float | None:

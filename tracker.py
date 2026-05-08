@@ -67,30 +67,32 @@ _MIGRATIONS = [
     )""",
     # v7 → v8: add error column to api_requests (#69)
     "ALTER TABLE api_requests ADD COLUMN error TEXT",
-    # v8 → v9: per-source probabilities for blend weight calibration (#118/#122)
+    # v7 → v8: per-source probabilities for blend weight calibration (#118/#122)
     "ALTER TABLE predictions ADD COLUMN ensemble_prob REAL",
+    # v8 → v9: nws_prob for blend weight calibration
     "ALTER TABLE predictions ADD COLUMN nws_prob REAL",
+    # v9 → v10: clim_prob for blend weight calibration
     "ALTER TABLE predictions ADD COLUMN clim_prob REAL",
-    # v9 → v10: strategy version stamp on each prediction row (P9.1)
+    # v10 → v11: strategy version stamp on each prediction row (P9.1)
     "ALTER TABLE predictions ADD COLUMN edge_calc_version TEXT",
-    # v10 → v11: signal source tracking for P&L attribution (Phase G Task 2)
+    # v11 → v12: signal source tracking for P&L attribution (Phase G Task 2)
     "ALTER TABLE predictions ADD COLUMN signal_source TEXT",
-    # v11 → v12: unique index on (ticker, predicted_date) prevents duplicate predictions
+    # v12 → v13: unique index on (ticker, predicted_date) prevents duplicate predictions
     # from TOCTOU race between SELECT and INSERT in log_prediction.
     "CREATE UNIQUE INDEX IF NOT EXISTS idx_pred_ticker_date ON predictions(ticker, date(predicted_at))",
-    # v12 → v13: recovery — ensemble_prob was at v8 in the list but DBs already at v8+
+    # v13 → v14: recovery — ensemble_prob was at v7 in the list but DBs already at v7+
     # when that migration was written had it silently skipped. Duplicate-column error
     # is caught by _run_migrations and treated as "already applied".
     "ALTER TABLE predictions ADD COLUMN ensemble_prob REAL",
-    # v13 → v14: G4 — add explicit predicted_date column for reliable UPSERT key
+    # v14 → v15: G4 — add explicit predicted_date column for reliable UPSERT key
     "ALTER TABLE predictions ADD COLUMN predicted_date TEXT",
-    # v14 → v15: G4 — drop the old SQLite-function-based unique index
+    # v15 → v16: G4 — drop the old SQLite-function-based unique index
     "DROP INDEX IF EXISTS idx_pred_ticker_date",
-    # v15 → v16: G4 — create new explicit-column unique index
+    # v16 → v17: G4 — create new explicit-column unique index
     "CREATE UNIQUE INDEX IF NOT EXISTS idx_pred_ticker_pdate ON predictions(ticker, predicted_date)",
-    # v16 → v17: Phase 6.0 — log obs weight used for same-day blend
+    # v17 → v18: Phase 6.0 — log obs weight used for same-day blend
     "ALTER TABLE predictions ADD COLUMN obs_weight_used REAL",
-    # v17 → v18: Phase 6.0 — log local hour at prediction time for obs-weight learning
+    # v18 → v19: Phase 6.0 — log local hour at prediction time for obs-weight learning
     "ALTER TABLE predictions ADD COLUMN local_hour INTEGER",
 ]
 

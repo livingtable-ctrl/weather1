@@ -6939,6 +6939,15 @@ def main():
     else:
         logging.disable(logging.DEBUG)
 
+    if KALSHI_ENV == "prod":
+        _log.warning("=" * 60)
+        _log.warning("RUNNING IN PRODUCTION MODE — REAL MONEY TRADES ENABLED")
+        _log.warning(
+            "KALSHI_ENV=prod | STARTING_BALANCE=$%.2f",
+            float(os.getenv("STARTING_BALANCE", "1000")),
+        )
+        _log.warning("=" * 60)
+
     init_db()
     cleanup_data_dir()
 

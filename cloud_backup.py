@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import os
 import shutil
+from datetime import UTC, datetime
 from pathlib import Path
 
 _log = logging.getLogger(__name__)
@@ -138,7 +139,8 @@ def backup_data(data_dir: Path | None = None) -> bool:
     if data_dir is None:
         data_dir = Path(__file__).parent / "data"
 
-    dest = sync_root / "KalshiBot" / "data"
+    today_str = datetime.now(UTC).strftime("%Y-%m-%d")
+    dest = sync_root / "KalshiBot" / "data" / today_str
     dest.mkdir(parents=True, exist_ok=True)
 
     copied = 0
@@ -150,18 +152,41 @@ def backup_data(data_dir: Path | None = None) -> bool:
                 shutil.copy2(src_file, dest / src_file.name)
                 copied += 1
         _log.info("cloud_backup: synced %d file(s) to %s", copied, dest)
+
+        # Prune backup directories older than 30 days
+        backup_root = sync_root / "KalshiBot" / "data"
+        for old_dir in backup_root.iterdir():
+            if not old_dir.is_dir():
+                continue
+            try:
+                from datetime import date
+
+                dir_date = date.fromisoformat(old_dir.name)
+                if (date.today() - dir_date).days > 30:
+                    shutil.rmtree(old_dir)
+                    _log.debug("cloud_backup: pruned old backup %s", old_dir.name)
+            except ValueError:
+                pass  # not a date-named directory
         return True
     except Exception as exc:
         _log.warning("cloud_backup: sync failed: %s", exc)
         return False
 
 
-def restore_data(data_dir: Path | None = None) -> bool:
+def restore_data(data_dir: Path | None = None, confirm: bool = False) -> bool:
     """
     Copy files from <sync_folder>/KalshiBot/data/ back into local data/.
     Use this on a new PC after cloning the repo.
+
+    confirm=True is required to prevent accidental overwrites of live files.
     Returns True on success, False if nothing to restore.
     """
+    if not confirm:
+        raise ValueError(
+            "restore_data() requires confirm=True to prevent accidental overwrite of live files. "
+            "Pass confirm=True only after verifying the backup source is correct."
+        )
+
     sync_root = _find_sync_folder()
     if sync_root is None:
         print(
@@ -169,13 +194,35 @@ def restore_data(data_dir: Path | None = None) -> bool:
         )
         return False
 
-    src = sync_root / "KalshiBot" / "data"
-    if not src.exists():
-        print(f"No backup found at {src}")
+    # Find the most recent date-stamped backup directory
+    backup_root = sync_root / "KalshiBot" / "data"
+    if not backup_root.exists():
+        print(f"No backup found at {backup_root}")
         return False
+
+    date_dirs = sorted(
+        (d for d in backup_root.iterdir() if d.is_dir()),
+        key=lambda d: d.name,
+        reverse=True,
+    )
+    src = next((d for d in date_dirs if d.name[:4].isdigit()), None)
+    if src is None:
+        # Fall back to backup_root itself for pre-rotation backups
+        src = backup_root
 
     if data_dir is None:
         data_dir = Path(__file__).parent / "data"
+
+    # Snapshot current data/ before overwriting
+    snapshot_dir = (
+        data_dir / f".pre_restore_{datetime.now(UTC).strftime('%Y%m%dT%H%M%S')}"
+    )
+    if data_dir.exists():
+        shutil.copytree(
+            data_dir, snapshot_dir, ignore=shutil.ignore_patterns("*.shm", "*.wal")
+        )
+        print(f"  Current data/ snapshotted to {snapshot_dir.name}")
+
     data_dir.mkdir(parents=True, exist_ok=True)
 
     copied = 0
