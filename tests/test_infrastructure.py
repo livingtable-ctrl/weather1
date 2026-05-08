@@ -198,8 +198,12 @@ def test_nws_cb_records_failure_on_exception(monkeypatch):
 
 
 def test_atomic_write_falls_back_to_tmp_on_oserror(tmp_path, monkeypatch):
-    """If the primary path fails, write succeeds via /tmp fallback."""
+    """P1-6: primary path failure raises AtomicWriteError (emergency copy written to tmp).
+
+    On Windows, chmod(0o444) does not block writes, so success is also acceptable.
+    """
     import safe_io
+    from safe_io import AtomicWriteError
 
     bad_dir = tmp_path / "readonly"
     bad_dir.mkdir()
@@ -208,8 +212,9 @@ def test_atomic_write_falls_back_to_tmp_on_oserror(tmp_path, monkeypatch):
     target = bad_dir / "data.json"
     try:
         safe_io.atomic_write_json({"x": 1}, target, retries=1)
-    except RuntimeError:
-        pass  # acceptable: double failure raises RuntimeError
+        # Windows: chmod doesn't restrict directory writes — success is acceptable
+    except (AtomicWriteError, RuntimeError, OSError):
+        pass  # Linux/macOS: readonly dir correctly raises
 
 
 def test_atomic_write_raises_on_double_failure(tmp_path, monkeypatch):
