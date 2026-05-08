@@ -1,0 +1,6 @@
+{
+  "_note": "Blend weights per condition type. All entries are uncalibrated neutral defaults until enough settled trades accumulate.",
+  "above":   {"ensemble": 0.34, "climatology": 0.33, "nws": 0.33},
+  "below":   {"ensemble": 0.34, "climatology": 0.30, "nws": 0.36},
+  "between": {"ensemble": 0.34, "climatology": 0.33, "nws": 0.33}
+}

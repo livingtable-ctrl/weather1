@@ -1,0 +1,17 @@
+{
+  "_note": "Per-city blend weights. Minneapolis reset from artifact 0.97 climatology. All others are uncalibrated neutral defaults.",
+  "Minneapolis": {"ensemble": 0.34, "climatology": 0.33, "nws": 0.33},
+  "NYC":         {"ensemble": 0.34, "climatology": 0.33, "nws": 0.33},
+  "Chicago":     {"ensemble": 0.34, "climatology": 0.33, "nws": 0.33},
+  "Miami":       {"ensemble": 0.34, "climatology": 0.33, "nws": 0.33},
+  "Dallas":      {"ensemble": 0.34, "climatology": 0.33, "nws": 0.33},
+  "Denver":      {"ensemble": 0.34, "climatology": 0.33, "nws": 0.33},
+  "LA":          {"ensemble": 0.34, "climatology": 0.33, "nws": 0.33},
+  "SanFrancisco":{"ensemble": 0.34, "climatology": 0.33, "nws": 0.33},
+  "Seattle":     {"ensemble": 0.34, "climatology": 0.33, "nws": 0.33},
+  "Boston":      {"ensemble": 0.34, "climatology": 0.33, "nws": 0.33},
+  "Atlanta":     {"ensemble": 0.34, "climatology": 0.33, "nws": 0.33},
+  "Philadelphia":{"ensemble": 0.34, "climatology": 0.33, "nws": 0.33},
+  "Houston":     {"ensemble": 0.34, "climatology": 0.33, "nws": 0.33},
+  "Washington":  {"ensemble": 0.34, "climatology": 0.33, "nws": 0.33}
+}

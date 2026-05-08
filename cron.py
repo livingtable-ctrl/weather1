@@ -392,9 +392,11 @@ def _cmd_cron_body(client: KalshiClient, min_edge: float = MIN_EDGE) -> bool | N
     from datetime import date as _date
 
     if _date.today().weekday() == 0:  # Monday
+        from tracker import prune_api_requests as _prune_api
         from tracker import purge_old_predictions as _purge
 
         _purge(retention_days=730)
+        _prune_api(days_to_keep=90)
 
     # Graceful shutdown flag — use main-module lookup so test monkeypatching works.
     _main._write_cron_running_flag()

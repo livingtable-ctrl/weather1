@@ -1,0 +1,7 @@
+{
+  "_note": "Blend weights per season. spring=calibrated; summer/fall/winter=uncalibrated neutral defaults.",
+  "spring": {"ensemble": 0.45, "climatology": 0.20, "nws": 0.35},
+  "summer": {"ensemble": 0.34, "climatology": 0.33, "nws": 0.33},
+  "fall":   {"ensemble": 0.34, "climatology": 0.33, "nws": 0.33},
+  "winter": {"ensemble": 0.34, "climatology": 0.33, "nws": 0.33}
+}

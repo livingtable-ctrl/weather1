@@ -268,3 +268,35 @@ def load_condition_weights(
     except Exception as exc:
         _log.debug("load_condition_weights: could not read %s: %s", p, exc)
         return {}
+
+
+def validate_weight_files(
+    seasonal: dict | None = None,
+    city: dict | None = None,
+    condition: dict | None = None,
+) -> None:
+    """P2-7: Warn on missing or malformed weight file entries at startup."""
+    if seasonal is None:
+        seasonal = load_seasonal_weights()
+    if city is None:
+        city = load_city_weights()
+    if condition is None:
+        condition = load_condition_weights()
+
+    for season in ("spring", "summer", "fall", "winter"):
+        w = seasonal.get(season)
+        if w is None:
+            _log.warning(
+                "No seasonal weights for %s — using hardcoded defaults", season
+            )
+        elif abs(sum(v for k, v in w.items() if not k.startswith("_")) - 1.0) > 0.005:
+            _log.error("Seasonal weights for %s don't sum to 1.0: %s", season, w)
+
+    for ctype in ("above", "below", "between"):
+        w = condition.get(ctype)
+        if w is None:
+            _log.warning(
+                "No condition weights for %s — using hardcoded defaults", ctype
+            )
+        elif abs(sum(v for k, v in w.items() if not k.startswith("_")) - 1.0) > 0.005:
+            _log.error("Condition weights for %s don't sum to 1.0: %s", ctype, w)

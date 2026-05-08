@@ -15,14 +15,19 @@ Temperature adjustment logic (applied to climatological baseline only):
 
 from __future__ import annotations
 
+import threading
+import time
 from datetime import date
 
 import requests
 
 CPC_BASE = "https://www.cpc.ncep.noaa.gov"
 
-# In-memory cache
+# In-memory cache with 24-hour TTL so long-running processes refresh daily
 _indices_cache: dict = {}
+_indices_loaded_at: float = 0.0
+_INDICES_TTL_SECS: float = 86400.0
+_indices_lock = threading.Lock()
 
 
 # ── Fetch helpers ─────────────────────────────────────────────────────────────
@@ -100,42 +105,50 @@ def get_indices(
 ) -> dict:
     """
     Return current (or specified) AO, NAO, ENSO values.
-    Results cached for the session.
+    Results are cached with a 24-hour TTL so long-running processes refresh daily.
+    Thread-safe.
     """
-    if _indices_cache:
-        return _indices_cache.get("latest", {})
+    global _indices_cache, _indices_loaded_at
 
-    now = date.today()
-    year = target_year or now.year
-    month = target_month or now.month
+    with _indices_lock:
+        if (
+            _indices_cache
+            and (time.monotonic() - _indices_loaded_at) < _INDICES_TTL_SECS
+        ):
+            return _indices_cache.get("latest", {})
 
-    ao_url = f"{CPC_BASE}/products/precip/CWlink/daily_ao_index/ao.index.b50.current.ascii.table"
-    nao_url = f"{CPC_BASE}/products/precip/CWlink/pna/norm.nao.monthly.b5001.current.ascii.table"
+        now = date.today()
+        year = target_year or now.year
+        month = target_month or now.month
 
-    ao_data = _fetch_monthly_index(ao_url)
-    nao_data = _fetch_monthly_index(nao_url)
-    enso_data = _fetch_enso()
+        ao_url = f"{CPC_BASE}/products/precip/CWlink/daily_ao_index/ao.index.b50.current.ascii.table"
+        nao_url = f"{CPC_BASE}/products/precip/CWlink/pna/norm.nao.monthly.b5001.current.ascii.table"
 
-    def latest(data, y, m, lookback=3):
-        for i in range(lookback):
-            mm = m - i
-            yy = y
-            if mm <= 0:
-                mm += 12
-                yy -= 1
-            if (yy, mm) in data:
-                return data[(yy, mm)]
-        return 0.0
+        ao_data = _fetch_monthly_index(ao_url)
+        nao_data = _fetch_monthly_index(nao_url)
+        enso_data = _fetch_enso()
 
-    result = {
-        "ao": latest(ao_data, year, month),
-        "nao": latest(nao_data, year, month),
-        "enso": latest(enso_data, year, month),
-        "year": year,
-        "month": month,
-    }
-    _indices_cache["latest"] = result
-    return result
+        def latest(data, y, m, lookback=3):
+            for i in range(lookback):
+                mm = m - i
+                yy = y
+                if mm <= 0:
+                    mm += 12
+                    yy -= 1
+                if (yy, mm) in data:
+                    return data[(yy, mm)]
+            return 0.0
+
+        result = {
+            "ao": latest(ao_data, year, month),
+            "nao": latest(nao_data, year, month),
+            "enso": latest(enso_data, year, month),
+            "year": year,
+            "month": month,
+        }
+        _indices_cache["latest"] = result
+        _indices_loaded_at = time.monotonic()
+        return result
 
 
 def get_enso_index(

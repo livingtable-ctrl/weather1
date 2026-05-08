@@ -361,6 +361,27 @@ def log_api_request(
         _log.warning("Failed to log API request: %s", exc)
 
 
+def prune_api_requests(days_to_keep: int = 90) -> int:
+    """P2-13: Delete api_requests rows older than days_to_keep. Returns row count deleted."""
+    from datetime import UTC, timedelta
+
+    init_db()
+    cutoff = (datetime.now(UTC) - timedelta(days=days_to_keep)).isoformat()
+    try:
+        with _conn() as con:
+            deleted = con.execute(
+                "DELETE FROM api_requests WHERE logged_at < ?", (cutoff,)
+            ).rowcount
+        if deleted > 0:
+            _log.info(
+                "Pruned %d api_requests rows older than %d days", deleted, days_to_keep
+            )
+        return deleted
+    except Exception as exc:
+        _log.warning("prune_api_requests failed: %s", exc)
+        return 0
+
+
 def log_audit(
     action: str,
     ticker: str | None = None,
