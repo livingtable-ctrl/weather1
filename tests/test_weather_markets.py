@@ -407,25 +407,26 @@ class TestKellyFeeRate:
             f"{kelly_no_fee:.4f} — fee reduces optimal bet size"
         )
 
-    def test_kelly_default_is_not_zero_fee(self):
-        """Calling kelly_fraction with explicit fee_rate=KALSHI_FEE_RATE must differ from fee_rate=0.
+    def test_kelly_default_equals_kalshi_fee_rate(self):
+        """Default kelly_fraction() must use KALSHI_FEE_RATE, not 0.
 
-        This test documents that the default fee_rate=0.0 in kelly_fraction() is a
-        historical artefact — all production call sites must pass KALSHI_FEE_RATE explicitly.
+        P2-8 fix: the old default was fee_rate=0.0 (a footgun). The default is now
+        KALSHI_FEE_RATE so callers that omit fee_rate get production-correct sizing.
         """
         from utils import KALSHI_FEE_RATE
 
         our_prob = 0.60
         price = 0.45
 
-        default_kelly = kelly_fraction(our_prob, price)  # uses fee_rate=0.0 default
+        default_kelly = kelly_fraction(our_prob, price)
         fee_kelly = kelly_fraction(our_prob, price, fee_rate=KALSHI_FEE_RATE)
+        zero_fee_kelly = kelly_fraction(our_prob, price, fee_rate=0.0)
 
-        assert default_kelly != pytest.approx(fee_kelly), (
-            "fee_rate=0.0 and fee_rate=KALSHI_FEE_RATE must produce different Kelly values"
+        assert default_kelly == pytest.approx(fee_kelly), (
+            "Default kelly_fraction() must equal explicit fee_rate=KALSHI_FEE_RATE"
         )
-        assert default_kelly > fee_kelly, (
-            "Fee-free Kelly must exceed fee-adjusted Kelly for any profitable trade"
+        assert default_kelly < zero_fee_kelly, (
+            "Default (fee-adjusted) Kelly must be smaller than fee-free Kelly"
         )
 
     def test_fee_adjusted_never_exceeds_fee_free_across_probs(self):

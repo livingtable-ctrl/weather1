@@ -34,19 +34,21 @@ class TestKellyFraction(unittest.TestCase):
         self.assertEqual(k, 0.0)
 
     def test_half_kelly(self):
-        """Result should be half of full Kelly."""
+        """Result should be half of full Kelly (fee-free formula verification)."""
         # Full Kelly = (b*p - q) / b  where b = (1-price)/price
         p, price = 0.70, 0.50
         b = (1 - price) / price
         q = 1 - p
         full_k = (b * p - q) / b
-        self.assertAlmostEqual(kelly_fraction(p, price), full_k / 2, places=6)
+        self.assertAlmostEqual(
+            kelly_fraction(p, price, fee_rate=0.0), full_k / 2, places=6
+        )
 
     def test_fee_reduces_kelly(self):
-        """Kelly with fee should be <= Kelly without fee."""
-        k_gross = kelly_fraction(0.70, 0.50)
+        """Kelly with fee should be strictly less than fee-free Kelly."""
+        k_gross = kelly_fraction(0.70, 0.50, fee_rate=0.0)
         k_net = kelly_fraction(0.70, 0.50, fee_rate=0.07)
-        self.assertLessEqual(k_net, k_gross)
+        self.assertLess(k_net, k_gross)
 
     def test_fee_wipes_small_edge(self):
         """A tiny edge that is negative after fees should return 0."""
