@@ -214,11 +214,12 @@ def fetch_archive_precip_prob(
     }
     try:
         import time as _time_pp
+
         resp = None
         for _attempt in range(3):
             resp = requests.get(ARCHIVE_ENS_BASE, params=params, timeout=30)  # type: ignore[arg-type]
             if resp.status_code == 429:
-                _time_pp.sleep(2 ** _attempt)
+                _time_pp.sleep(2**_attempt)
                 continue
             resp.raise_for_status()
             break
@@ -493,7 +494,9 @@ def run_backtest(
 
         rec_side = "yes" if our_prob > market_prob else "no"
         # B1: NO entry is no_ask = 1 - yes_bid (matches live pricing in weather_markets.py)
-        entry_price = prices["yes_ask"] if rec_side == "yes" else 1.0 - prices["yes_bid"]
+        entry_price = (
+            prices["yes_ask"] if rec_side == "yes" else 1.0 - prices["yes_bid"]
+        )
         if entry_price <= 0:
             entry_price = market_prob if rec_side == "yes" else 1 - market_prob
 
@@ -1003,16 +1006,21 @@ def walk_forward_backtest(
 
     folds_data = walk_forward_split(trades, train_months, test_months)
     fold_results = []
+    _per_fold_edges: list[tuple[int, float | None]] = []
 
-    for train, test in folds_data:
+    for fold_idx, (train, test) in enumerate(folds_data):
         test_brier = _brier_score_from_trades(test)
         test_months_list = sorted(set(t["market_date"][:7] for t in test))
+        # Derive threshold from training data only \u2014 no look-ahead into test fold.
+        fold_edge = _find_optimal_min_edge(train)
+        _per_fold_edges.append((fold_idx, fold_edge))
         fold_results.append(
             {
                 "test_period": f"{test_months_list[0]} \u2014 {test_months_list[-1]}",
                 "n_train": len(train),
                 "n_test": len(test),
                 "brier": round(test_brier, 4) if test_brier is not None else None,
+                "optimal_min_edge": fold_edge,
             }
         )
 
@@ -1026,8 +1034,14 @@ def walk_forward_backtest(
         round(statistics.stdev(valid_scores), 4) if len(valid_scores) > 1 else None
     )
 
-    # D4: compute optimal min_edge from all trades and persist for config.py
-    optimal_min_edge = _find_optimal_min_edge(trades)
+    # D4: derive optimal min_edge from TRAINING folds only (no look-ahead bias).
+    # Each fold contributes a threshold tuned on its own training window; we
+    # take the median across folds so no single fold dominates.
+    train_edges = [e for _, e in _per_fold_edges if e is not None]
+    if train_edges:
+        optimal_min_edge: float | None = statistics.median(train_edges)
+    else:
+        optimal_min_edge = None
     result_out = {
         "folds": fold_results,
         "mean_brier": mean_brier,

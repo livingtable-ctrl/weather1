@@ -20,10 +20,18 @@ TOLERANCE = 0.01
 
 
 def test_brier_score_not_degraded():
+    if not BASELINE_FILE.exists():
+        pytest.fail(
+            "Regression baseline file missing. "
+            "Run: python tests/generate_baseline.py to create it. "
+            "Model quality regression cannot be detected without it."
+        )
     baseline = json.loads(BASELINE_FILE.read_text())
     baseline_bs = baseline.get("brier_score")
     if baseline_bs is None:
-        pytest.skip("No baseline Brier score yet")
+        pytest.fail(
+            "Baseline brier_score is None — baseline file is incomplete or corrupted"
+        )
     from tracker import brier_score
 
     current = brier_score()
@@ -34,13 +42,23 @@ def test_brier_score_not_degraded():
 
 
 def test_roc_auc_not_degraded():
+    if not BASELINE_FILE.exists():
+        pytest.fail(
+            "Regression baseline file missing. "
+            "Run: python tests/generate_baseline.py to create it. "
+            "Model quality regression cannot be detected without it."
+        )
     baseline = json.loads(BASELINE_FILE.read_text())
     baseline_roc = baseline.get("roc_auc")
     if baseline_roc is None:
-        pytest.skip("No baseline ROC-AUC yet")
+        pytest.fail(
+            "Baseline roc_auc is None — baseline file is incomplete or corrupted"
+        )
     from tracker import get_roc_auc
 
-    current = get_roc_auc()
+    result = get_roc_auc()
+    assert result is not None
+    current = result["auc"] if isinstance(result, dict) else result
     assert current is not None
     assert current >= baseline_roc - TOLERANCE
 

@@ -22,6 +22,20 @@ def isolate_retired_strategies(tmp_path, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def isolate_circuit_breaker_state(tmp_path, monkeypatch):
+    """Redirect circuit_breaker._CB_STATE_PATH to a per-test temp file.
+
+    CircuitBreaker.__init__ now calls _load_state() which reads from
+    _CB_STATE_PATH. Without isolation, state from one test (or from the
+    real data/ directory) leaks into subsequent tests, causing spurious
+    open-circuit failures.
+    """
+    import circuit_breaker
+
+    monkeypatch.setattr(circuit_breaker, "_CB_STATE_PATH", tmp_path / ".cb_state.json")
+
+
+@pytest.fixture(autouse=True)
 def reset_open_meteo_circuit_breaker():
     """Reset all weather_markets circuit breakers before every test.
 

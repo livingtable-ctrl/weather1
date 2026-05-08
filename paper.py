@@ -647,9 +647,10 @@ def settle_paper_trade(trade_id: int, outcome_yes: bool) -> dict:
         if t["id"] == trade_id and not t["settled"]:
             qty = t["quantity"]
             side = t["side"]
-            # P0-1: use actual_fill_price (slippage-adjusted) so P&L matches
-            # the fill stored on the trade record, not the pre-slippage price.
-            entry_price = t.get("actual_fill_price") or t["entry_price"]
+            # P1-8: use entry_price as cost basis — this is what was deducted
+            # from the balance at entry. actual_fill_price records slippage for
+            # analytics but must not affect settlement accounting.
+            entry_price = t["entry_price"]
             cost = entry_price * qty
             won = (side == "yes" and outcome_yes) or (side == "no" and not outcome_yes)
             # Fee is charged on winnings (profit) only, not the full $1 payout.
@@ -1483,6 +1484,38 @@ def is_accuracy_halted() -> bool:
         pass  # never block on SPRT failure
 
     return False
+
+
+def get_accuracy_halt_reason() -> str:
+    """Return a human-readable reason string for the current accuracy halt, or '' if not halted."""
+    from utils import ACCURACY_MIN_SAMPLE, ACCURACY_MIN_WIN_RATE, ACCURACY_WINDOW_TRADES
+
+    try:
+        from tracker import get_rolling_win_rate
+
+        win_rate, count = get_rolling_win_rate(window=ACCURACY_WINDOW_TRADES)
+        if (
+            count >= ACCURACY_MIN_SAMPLE
+            and win_rate is not None
+            and win_rate < ACCURACY_MIN_WIN_RATE
+        ):
+            return (
+                f"rolling win rate {win_rate * 100:.1f}% over last {count} trades "
+                f"< {ACCURACY_MIN_WIN_RATE * 100:.0f}% threshold"
+            )
+    except Exception:
+        pass
+
+    try:
+        import tracker
+
+        sprt = tracker.sprt_model_health()
+        if sprt["status"] == "degraded":
+            return f"SPRT model degradation: llr={sprt.get('llr', 0.0):.4f} n={sprt.get('n', 0)}"
+    except Exception:
+        pass
+
+    return ""
 
 
 def get_daily_pnl(client=None) -> float:

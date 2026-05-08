@@ -1255,6 +1255,20 @@ def _analyze_once(
         violations = find_violations(markets)
         if violations:
             print(bold("\n── Arbitrage Opportunities ──\n"))
+            from trading_gates import LiveTradingGate as _LiveTradingGate
+
+            _arb_gate = _LiveTradingGate()
+            _arb_allowed, _arb_gate_reason = _arb_gate.check()
+            if not _arb_allowed:
+                _log.warning(
+                    "consistency: skipping all corrective trades — gate blocked: %s",
+                    _arb_gate_reason,
+                )
+                print(
+                    yellow(
+                        f"  [Arb] All corrective trades skipped — halt active: {_arb_gate_reason}"
+                    )
+                )
             from weather_markets import MIN_SIGNAL_VOLUME as _ARB_MIN_VOL
 
             _arb_vol: dict[str, float] = {
@@ -1282,7 +1296,9 @@ def _analyze_once(
                 if hasattr(v, "description") and v.description:
                     print(dim(f"  {v.description}"))
 
-                # A4: auto-place when edge, volume, and city-exposure all pass
+                # A4: auto-place when gate open, edge, volume, and city-exposure all pass
+                if not _arb_allowed:
+                    continue
                 if v.guaranteed_edge < 0.05:
                     continue
                 buy_vol = _arb_vol.get(v.buy_ticker, 0.0)

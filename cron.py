@@ -358,10 +358,15 @@ def _cmd_cron_body(client: KalshiClient, min_edge: float = MIN_EDGE) -> bool | N
         _log.warning("cmd_cron: manual override active — skipping this run")
         return None
 
+    from paper import get_accuracy_halt_reason as _get_accuracy_halt_reason
     from paper import is_accuracy_halted as _is_accuracy_halted
 
     if _is_accuracy_halted():
-        _log.warning("[cron] accuracy circuit breaker active — skipping market scan")
+        _reason = _get_accuracy_halt_reason()
+        _log.warning(
+            "ACCURACY HALT ACTIVE: %s — skipping all trades this cycle",
+            _reason or "accuracy circuit breaker active",
+        )
         return None
 
     # Graduation gate — prevent accidental live trading before sufficient predictions exist
