@@ -379,23 +379,27 @@ def test_check_market_anomalies_filters_by_threshold():
 
 
 @pytest.mark.integration
-def test_p1_15_anomaly_check_halts_cron(cron_env, caplog):
+def test_p1_15_anomaly_check_halts_cron(cron_env, caplog, monkeypatch):
     """P1-15: when run_anomaly_check returns anomalies, cron must halt before placement."""
 
     tmp_path, client, main, paper = cron_env
 
     placed = []
 
-    def _fake_place(opps, client=None, cap=None):
+    def _fake_place(opps, client=None, cap=None, **kwargs):
         placed.extend(opps)
         return len(opps)
 
-    main._auto_place_trades = _fake_place
-
-    # Return a non-empty anomaly list to trigger the halt
+    # Use monkeypatch so both attributes are restored after the test, preventing
+    # contamination of subsequent tests that call _auto_place_trades(live=...).
     import alerts as _alerts
 
-    _alerts.run_anomaly_check = lambda log_results=False: ["WIN RATE COLLAPSE: 20%"]
+    monkeypatch.setattr(main, "_auto_place_trades", _fake_place)
+    monkeypatch.setattr(
+        _alerts,
+        "run_anomaly_check",
+        lambda log_results=False: ["WIN RATE COLLAPSE: 20%"],
+    )
 
     import cron as _cron
 
