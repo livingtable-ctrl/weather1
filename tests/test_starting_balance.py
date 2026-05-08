@@ -41,8 +41,12 @@ class TestStartingBalanceEnvVar:
         monkeypatch.setenv("STARTING_BALANCE", "2000.0")
         import paper
 
-        monkeypatch.setattr(paper, "DATA_PATH", tmp_path / "paper_trades.json")
+        # Reload FIRST so the env var is picked up, THEN patch DATA_PATH.
+        # If the order is reversed, reload re-executes the module body and
+        # resets DATA_PATH to the real production path, causing reset_paper_account()
+        # to wipe live data.
         importlib.reload(paper)
+        monkeypatch.setattr(paper, "DATA_PATH", tmp_path / "paper_trades.json")
 
         paper.reset_paper_account()
         assert paper.get_balance() == 2000.0
