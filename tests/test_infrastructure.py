@@ -250,18 +250,21 @@ def test_alerts_write_raises_on_failure(tmp_path, monkeypatch):
 
 
 def test_execution_log_write_raises_on_failure(tmp_path, monkeypatch):
-    """execution_log.py write function raises RuntimeError if disk write fails twice."""
+    """execution_log.py append_entry propagates OSError when the file cannot be written."""
     try:
         import execution_log
     except ImportError:
         pytest.skip("execution_log module not present")
 
-    monkeypatch.setattr(
-        "safe_io.atomic_write_json",
-        lambda *a, **kw: (_ for _ in ()).throw(OSError("full")),
-    )
-    with pytest.raises((RuntimeError, OSError)):
-        execution_log.append_entry({"action": "test"}, tmp_path / "exec_log.json")
+    # append_entry now uses plain file-append (JSONL); make the target unwritable
+    target = tmp_path / "exec_log.jsonl"
+    target.touch()
+    target.chmod(0o444)  # read-only
+    try:
+        with pytest.raises((RuntimeError, OSError, PermissionError)):
+            execution_log.append_entry({"action": "test"}, target)
+    finally:
+        target.chmod(0o644)  # restore so tmp_path cleanup works
 
 
 # ── HTTPAdapter Retry parameters (#67) ────────────────────────────────────────

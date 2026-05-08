@@ -99,7 +99,7 @@ class TestDrawdownTierAbsolute:
             (0.86, 0.30),  # above TIER_2, below TIER_3 → conservative
             (0.90, 0.30),  # at TIER_3 → conservative
             (0.91, 0.70),  # above TIER_3, below TIER_4 → reduced
-            (0.95, 0.70),  # at TIER_4 → reduced
+            (0.95, 1.0),  # at TIER_4 exactly → full (P2-31: < not <=)
             (0.96, 1.0),  # above TIER_4 → full
         ]
         for recovery, expected_scale in cases:
