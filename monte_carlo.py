@@ -254,9 +254,13 @@ def simulate_portfolio(
     from paper import position_correlation_matrix
 
     corr_mat = position_correlation_matrix(open_trades)
-    chol = _cholesky(
-        corr_mat
-    )  # None if matrix is not positive definite (fallback to independent)
+    chol = _cholesky(corr_mat)
+    if chol is None:
+        _log.warning(
+            "Monte Carlo: correlation matrix is not positive-definite "
+            "(%d trades) — falling back to independent draws",
+            len(trade_params),
+        )
 
     from statistics import NormalDist as _NormalDist
 
@@ -301,7 +305,7 @@ def simulate_portfolio(
     prob_positive = sum(1 for p in sim_pnls if p > 0) / n
     prob_ruin = sum(1 for p in sim_pnls if p < -ruin_threshold) / n
 
-    correlation_applied = any(tp["city"] for tp in trade_params)
+    correlation_applied = chol is not None and any(tp["city"] for tp in trade_params)
 
     return {
         "median_pnl": round(median_pnl, 2),
