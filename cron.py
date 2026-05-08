@@ -207,6 +207,32 @@ def _release_cron_lock() -> None:
         _log.warning("cmd_cron: could not release lock: %s", _e)
 
 
+def _is_cron_running() -> bool:
+    """Read-only check: return True if a cron process holds the lock right now.
+
+    Uses the same PID-aware logic as _acquire_cron_lock but never writes.
+    Returns False (not running) when the lock file is absent, stale, or unreadable,
+    so callers default to allowing a new run rather than blocking indefinitely.
+    """
+    import time as _time
+
+    lp = _lock_path()
+    if not lp.exists():
+        return False
+    try:
+        existing = json.loads(lp.read_text())
+        pid = existing.get("pid")
+        started_at = existing.get("started_at", 0)
+        heartbeat = existing.get("heartbeat", started_at)
+    except Exception:
+        return False  # unreadable lock — treat as not running
+
+    if pid and _PSUTIL_AVAILABLE:
+        return bool(_psutil.pid_exists(pid))
+    # psutil unavailable — treat as running only if the lock is recent
+    return (_time.time() - heartbeat) < 1800
+
+
 def _check_graduation_gate() -> None:
     """Prevent accidental live trading before enough settled predictions exist.
 

@@ -672,6 +672,13 @@ setInterval(() => {{
         """Trigger a cron scan in the background and return immediately."""
         import time
 
+        from cron import _is_cron_running
+
+        # P0-16: reject the request if a cron process already holds the lock,
+        # preventing concurrent runs that would each place independent orders.
+        if _is_cron_running():
+            return jsonify({"error": "cron already running"}), 409
+
         ip = _flask_request.remote_addr or "unknown"
         last = _cron_last_spawn.get(ip, 0.0)
         if time.time() - last < _CRON_RATE_LIMIT_SECS:
