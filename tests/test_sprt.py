@@ -59,6 +59,58 @@ class TestSprtModelHealth:
         assert isinstance(result["llr"], float)
         assert isinstance(result["n"], int)
 
+    def test_sprt_degraded_with_tighter_p1(self):
+        """P1-17: p1=0.45 fires on moderate degradation that p1=0.35 would miss.
+
+        18/50 = 36% win rate pushes LLR above upper boundary (≈2.81 > 2.77).
+        With the old p1=0.35 this same sequence would not trigger degraded.
+        """
+        import tracker
+
+        with patch.object(tracker, "_get_recent_win_loss", return_value=(18, 50)):
+            result = tracker.sprt_model_health(
+                p0=0.55, p1=0.45, alpha=0.05, beta=0.20, min_trades=20
+            )
+
+        assert result["status"] == "degraded"
+
+    def test_sprt_lower_boundary_returns_cleared(self):
+        """P1-17: 29/50 wins pushes LLR below lower boundary → cleared=True."""
+        import tracker
+
+        # 29/50 = 58% win rate, LLR ≈ -1.61 < lower ≈ -1.56 → accept H0
+        with patch.object(tracker, "_get_recent_win_loss", return_value=(29, 50)):
+            result = tracker.sprt_model_health(
+                p0=0.55, p1=0.45, alpha=0.05, beta=0.20, min_trades=20
+            )
+
+        assert result["status"] == "ok"
+        assert result.get("cleared") is True
+
+    def test_sprt_min_trades_default_is_20(self, monkeypatch):
+        """P1-17: default SPRT_MIN_TRADES is 20 (was 5)."""
+        import utils
+
+        assert utils.SPRT_MIN_TRADES == 20
+
+    def test_sprt_p1_default_is_0_45(self, monkeypatch):
+        """P1-17: default SPRT_P1 is 0.45 (was 0.35)."""
+        import utils
+
+        assert utils.SPRT_P1 == 0.45
+
+    def test_sprt_insufficient_data_with_new_min_trades(self, monkeypatch):
+        """P1-17: 15 trades returns insufficient_data with default min_trades=20."""
+        import tracker
+        import utils
+
+        monkeypatch.setattr(utils, "SPRT_MIN_TRADES", 20)
+
+        with patch.object(tracker, "_get_recent_win_loss", return_value=(8, 15)):
+            result = tracker.sprt_model_health()
+
+        assert result["status"] == "insufficient_data"
+
 
 class TestIsAccuracyHaltedSprt:
     """Tests for SPRT wired into paper.is_accuracy_halted()."""

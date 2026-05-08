@@ -899,6 +899,7 @@ def sprt_model_health(
     min_trades = min_trades if min_trades is not None else utils.SPRT_MIN_TRADES
 
     upper = math.log((1 - beta) / alpha)  # reject H0 (degraded) boundary
+    lower = math.log(beta / (1 - alpha))  # accept H0 (healthy) boundary
 
     wins, n = _get_recent_win_loss(window)
 
@@ -908,11 +909,11 @@ def sprt_model_health(
     llr = wins * math.log(p1 / p0) + (n - wins) * math.log((1 - p1) / (1 - p0))
 
     if llr >= upper:
-        status = "degraded"
+        return {"status": "degraded", "llr": round(llr, 4), "n": n}
+    elif llr <= lower:
+        return {"status": "ok", "cleared": True, "llr": round(llr, 4), "n": n}
     else:
-        status = "ok"  # lower boundary or continuation region — not enough evidence
-
-    return {"status": status, "llr": round(llr, 4), "n": n}
+        return {"status": "ok", "llr": round(llr, 4), "n": n}
 
 
 def get_brier_by_tier(

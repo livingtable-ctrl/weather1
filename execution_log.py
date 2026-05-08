@@ -189,14 +189,15 @@ def was_recently_ordered(ticker: str, side: str, within_minutes: int = 10) -> bo
 
 def was_traded_today(ticker: str, side: str) -> bool:
     """
-    Return True if this ticker+side was ordered (any status) today (UTC).
-    Prevents trading the same market+side multiple times per calendar day (P1.5).
+    Return True if this ticker+side was successfully ordered today (UTC).
+    Excludes failed orders so a timeout doesn't permanently blacklist the ticker.
     """
     init_log()
     today = datetime.now(UTC).date().isoformat()
     with _conn() as con:
         row = con.execute(
-            "SELECT 1 FROM orders WHERE ticker=? AND side=? AND placed_at LIKE ? LIMIT 1",
+            "SELECT 1 FROM orders WHERE ticker=? AND side=? AND placed_at LIKE ? "
+            "AND status != 'failed' LIMIT 1",
             (ticker, side, f"{today}%"),
         ).fetchone()
     return row is not None

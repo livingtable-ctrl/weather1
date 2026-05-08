@@ -1,7 +1,7 @@
 """Shared pytest fixtures for the Kalshi weather markets test suite."""
 
 import json
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -70,7 +70,7 @@ def sample_forecast():
 
 @pytest.fixture
 def target_date():
-    return date(2025, 4, 9)
+    return date.today() + timedelta(days=3)
 
 
 @pytest.fixture

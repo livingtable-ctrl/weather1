@@ -113,11 +113,11 @@ MIN_BRIER_SAMPLES: int = int(os.getenv("MIN_BRIER_SAMPLES", "30"))
 
 # SPRT model degradation detection constants (Task 22)
 SPRT_P0: float = float(os.getenv("SPRT_P0", "0.55"))  # null hypothesis win rate
-SPRT_P1: float = float(os.getenv("SPRT_P1", "0.35"))  # alternative (degraded) win rate
+SPRT_P1: float = float(os.getenv("SPRT_P1", "0.45"))  # alternative (degraded) win rate
 SPRT_ALPHA: float = float(os.getenv("SPRT_ALPHA", "0.05"))  # false positive rate
 SPRT_BETA: float = float(os.getenv("SPRT_BETA", "0.20"))  # false negative rate
 SPRT_MIN_TRADES: int = int(
-    os.getenv("SPRT_MIN_TRADES", "5")
+    os.getenv("SPRT_MIN_TRADES", "20")
 )  # min trades before SPRT activates
 
 # #P10.4: Live slippage alert threshold in cents.

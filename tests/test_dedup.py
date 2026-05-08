@@ -1,5 +1,14 @@
 """Tests for P1.5 — was_traded_today() daily dedup guard in execution_log."""
 
+import datetime
+
+
+def test_target_date_fixture_is_future(target_date):
+    """P1-11: target_date fixture must always return a future date, not a hardcoded past."""
+    assert target_date > datetime.date.today(), (
+        f"target_date {target_date} is not in the future"
+    )
+
 
 def test_was_traded_today_false_for_new_ticker(tmp_path, monkeypatch):
     """A ticker never traded today must return False."""
@@ -54,6 +63,37 @@ def test_was_traded_today_false_for_different_ticker(tmp_path, monkeypatch):
     from execution_log import was_traded_today
 
     assert not was_traded_today("KXOTHER", "yes")
+
+
+def test_was_traded_today_ignores_failed_orders(tmp_path, monkeypatch):
+    """A ticker with only a failed order today must return False (P1-13)."""
+    import execution_log
+
+    monkeypatch.setattr(execution_log, "DB_PATH", tmp_path / "exec.db")
+    execution_log._initialized = False
+    execution_log.init_log()
+    # Log a failed order (API timeout scenario)
+    execution_log.log_order("KXTEST", "yes", 5, 0.60, "limit", "failed", live=False)
+
+    from execution_log import was_traded_today
+
+    assert not was_traded_today("KXTEST", "yes"), (
+        "A failed order must not count as traded today — timeout should allow retry"
+    )
+
+
+def test_was_traded_today_true_for_non_failed_status(tmp_path, monkeypatch):
+    """A pending/sent/filled order today must still block re-entry (P1-13)."""
+    import execution_log
+
+    monkeypatch.setattr(execution_log, "DB_PATH", tmp_path / "exec.db")
+    execution_log._initialized = False
+    execution_log.init_log()
+    execution_log.log_order("KXTEST", "yes", 5, 0.60, "limit", "filled", live=False)
+
+    from execution_log import was_traded_today
+
+    assert was_traded_today("KXTEST", "yes")
 
 
 def test_auto_place_trades_skips_already_traded_today(tmp_path, monkeypatch):
