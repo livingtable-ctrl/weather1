@@ -18,6 +18,8 @@ from datetime import UTC, date, datetime
 from pathlib import Path
 
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 from calibration import load_city_weights as _load_city_weights
 from calibration import load_condition_weights as _load_condition_weights
@@ -249,23 +251,60 @@ def _om_rate_limit() -> None:
         _OM_LAST_REQUEST_TS = time.monotonic()
 
 
+def _build_om_session() -> requests.Session:
+    """Build a dedicated session for Open-Meteo that does NOT auto-retry on 429.
+
+    429 handling is done explicitly in _om_request so we control the backoff and
+    can give up after a fixed number of attempts.  Auto-retrying 429 via the
+    HTTPAdapter would cause Retry-After sleeps to stack with _om_request's own
+    sleep, locking the cron for many minutes per city.
+    """
+    session = requests.Session()
+    retry = Retry(
+        total=3,
+        backoff_factor=0.5,
+        status_forcelist={500, 502, 503, 504},  # 5xx only — NOT 429
+        allowed_methods={"GET"},
+        raise_on_status=False,
+    )
+    adapter = HTTPAdapter(max_retries=retry)
+    session.mount("https://", adapter)
+    session.mount("http://", adapter)
+    return session
+
+
+_OM_SESSION = _build_om_session()
+_OM_MAX_RETRIES = 3  # max 429 retries before giving up on a city this cycle
+
+
 def _om_request(method: str, url: str, **kwargs) -> requests.Response:
     """Rate-limited wrapper for all Open-Meteo API calls.
 
-    Handles 429 (rate limit) by sleeping and retrying once — 429 is NOT
-    counted as a circuit-breaker failure since the API is up, just throttling.
+    Retries on 429 up to _OM_MAX_RETRIES times, sleeping for Retry-After
+    seconds each time, then gives up so the cron can continue.  429 is NOT
+    counted as a circuit-breaker failure — the API is up, just throttling.
     """
-    _om_rate_limit()
-    resp = _request_with_retry(method, url, **kwargs)
-    if resp.status_code == 429:
-        retry_after = int(resp.headers.get("Retry-After", 60))
-        _log.warning(
-            "Open-Meteo rate limited (429) — sleeping %ds before retry", retry_after
-        )
-        time.sleep(retry_after)
+    kwargs.setdefault("timeout", 15)
+    for attempt in range(1, _OM_MAX_RETRIES + 1):
         _om_rate_limit()
-        resp = _request_with_retry(method, url, **kwargs)
-    return resp
+        resp = _OM_SESSION.request(method, url, **kwargs)
+        if resp.status_code != 429:
+            return resp
+        retry_after = int(resp.headers.get("Retry-After", 60))
+        if attempt < _OM_MAX_RETRIES:
+            _log.warning(
+                "Open-Meteo rate limited (429) — sleeping %ds before retry %d/%d",
+                retry_after,
+                attempt,
+                _OM_MAX_RETRIES,
+            )
+            time.sleep(retry_after)
+        else:
+            _log.error(
+                "Open-Meteo still rate limited after %d attempts — skipping this request",
+                _OM_MAX_RETRIES,
+            )
+    return resp  # return last 429 so caller can decide how to handle
 
 
 # Forecast cache: (city, date_iso) -> dict (TTL handled by ForecastCache)
