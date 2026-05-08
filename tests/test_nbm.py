@@ -34,9 +34,10 @@ class TestNBMFetch:
             }
         }
         with patch("weather_markets._NBM_CACHE", {}):
-            with patch("weather_markets._request_with_retry") as mock_req:
+            with patch("weather_markets._om_request") as mock_req:
                 mock_req.return_value.json.return_value = mock_response
                 mock_req.return_value.raise_for_status.return_value = None
+                mock_req.return_value.status_code = 200
                 result = fetch_temperature_nbm("NYC", date(2026, 4, 17))
 
         # Should return the max daily temp in °F
@@ -51,7 +52,7 @@ class TestNBMFetch:
         from weather_markets import fetch_temperature_nbm
 
         with patch("weather_markets._NBM_CACHE", {}):
-            with patch("weather_markets._request_with_retry") as mock_req:
+            with patch("weather_markets._om_request") as mock_req:
                 mock_req.side_effect = requests.RequestException("timeout")
                 result = fetch_temperature_nbm("NYC", date(2026, 4, 17))
 
