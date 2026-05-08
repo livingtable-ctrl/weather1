@@ -426,7 +426,13 @@ def _cmd_cron_body(client: KalshiClient, min_edge: float = MIN_EDGE) -> bool | N
     try:
         from alerts import run_anomaly_check as _run_anomaly_check
 
-        _run_anomaly_check(log_results=True)
+        _detected_anomalies = _run_anomaly_check(log_results=True)
+        if _detected_anomalies:
+            _log.error(
+                "cmd_cron: anomalies detected — halting trade placement this cycle: %s",
+                _detected_anomalies,
+            )
+            return None
     except Exception as _e:
         _log.debug("cmd_cron: run_anomaly_check failed: %s", _e)
 
@@ -630,6 +636,11 @@ def _cmd_cron_body(client: KalshiClient, min_edge: float = MIN_EDGE) -> bool | N
                 _pool.submit(_enrich_and_analyze, m): m for m in _deduped_markets
             }
             for fut in _as_completed(_futures):
+                if _kill_switch_path().exists():
+                    _log.warning(
+                        "cmd_cron: kill switch activated mid-scan — stopping analysis"
+                    )
+                    break
                 try:
                     m, enriched, analysis = fut.result()
                 except Exception:

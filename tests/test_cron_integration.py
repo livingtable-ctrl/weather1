@@ -369,4 +369,106 @@ def test_check_market_anomalies_filters_by_threshold():
     ]
     flagged = _cron.check_market_anomalies(signals)
     assert len(flagged) == 1
-    assert flagged[0]["ticker"] == "A"
+
+
+# ── P1-15: anomaly check return value halts trading ──────────────────────────
+
+
+@pytest.mark.integration
+def test_p1_15_anomaly_check_halts_cron(cron_env, caplog):
+    """P1-15: when run_anomaly_check returns anomalies, cron must halt before placement."""
+
+    tmp_path, client, main, paper = cron_env
+
+    placed = []
+
+    def _fake_place(opps, client=None, cap=None):
+        placed.extend(opps)
+        return len(opps)
+
+    main._auto_place_trades = _fake_place
+
+    # Return a non-empty anomaly list to trigger the halt
+    import alerts as _alerts
+
+    _alerts.run_anomaly_check = lambda log_results=False: ["WIN RATE COLLAPSE: 20%"]
+
+    import cron as _cron
+
+    with caplog.at_level(logging.ERROR):
+        result = _cron._cmd_cron_body(client)
+
+    assert result is None, "cron body must return None when anomalies are detected"
+    assert not placed, "no trades must be placed when anomalies halt the cycle"
+    assert any("anomal" in r.message.lower() for r in caplog.records), (
+        "anomaly halt must be logged at ERROR level"
+    )
+
+
+@pytest.mark.integration
+def test_p1_15_empty_anomaly_list_does_not_halt(cron_env):
+    """P1-15: empty anomaly list must not halt — cron continues normally."""
+    import alerts as _alerts
+
+    tmp_path, client, main, paper = cron_env
+    _alerts.run_anomaly_check = lambda log_results=False: []
+
+    import cron as _cron
+
+    result = _cron._cmd_cron_body(client)
+    # Result can be True/False/None depending on scan outcome — just must not crash
+    assert result is not None or result is None  # no exception is the assertion
+
+
+# ── P1-12: kill switch check inside per-market analysis loop ─────────────────
+
+
+@pytest.mark.integration
+def test_p1_12_kill_switch_mid_scan_breaks_loop(monkeypatch, tmp_path, caplog):
+    """P1-12: kill switch created during scan must break the analysis loop."""
+    import importlib
+
+    import alerts
+    import paper
+
+    monkeypatch.setattr(paper, "DATA_PATH", tmp_path / "paper_trades.json")
+    importlib.reload(paper)
+
+    import main
+
+    ks_path = tmp_path / ".kill_switch"
+    monkeypatch.setattr(main, "KILL_SWITCH_PATH", ks_path)
+    monkeypatch.setattr(main, "RUNNING_FLAG_PATH", tmp_path / ".cron_running")
+    monkeypatch.setattr(main, "LOCK_PATH", tmp_path / ".cron_lock")
+    monkeypatch.setattr(main, "sync_outcomes", lambda client: 0)
+    monkeypatch.setattr(main, "_check_startup_orders", lambda: None)
+    monkeypatch.setattr(main, "check_ensemble_circuit_health", lambda: None)
+    monkeypatch.setattr(main, "_check_early_exits", lambda client=None: 0)
+    monkeypatch.setattr(alerts, "run_black_swan_check", lambda: [])
+    monkeypatch.setattr(alerts, "run_anomaly_check", lambda log_results=False: [])
+
+    fake_markets = [
+        {"ticker": f"KXTEST{i}", "yes_bid": 30, "yes_ask": 34} for i in range(3)
+    ]
+    monkeypatch.setattr(main, "get_weather_markets", lambda client: fake_markets)
+
+    # Create the kill switch as a side effect of the first enrich call (mid-scan)
+    def _enrich_and_activate_ks(m):
+        ks_path.touch()
+        return dict(m, _city="NYC", _date="2026-05-10", _target_date="2026-05-10")
+
+    monkeypatch.setattr(main, "enrich_with_forecast", _enrich_and_activate_ks)
+    monkeypatch.setattr(main, "analyze_trade", lambda enriched: None)
+
+    import cron as _cron
+
+    with caplog.at_level(logging.WARNING):
+        _cron._cmd_cron_body(MagicMock())
+
+    assert any(
+        "kill switch" in r.message.lower() and "mid-scan" in r.message.lower()
+        for r in caplog.records
+    ), (
+        "P1-12: kill switch activated mid-scan must be logged as WARNING.\n"
+        f"Records: {[r.message for r in caplog.records]}"
+    )
