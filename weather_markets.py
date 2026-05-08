@@ -274,37 +274,26 @@ def _build_om_session() -> requests.Session:
 
 
 _OM_SESSION = _build_om_session()
-_OM_MAX_RETRIES = 3  # max 429 retries before giving up on a city this cycle
 
 
 def _om_request(method: str, url: str, **kwargs) -> requests.Response:
     """Rate-limited wrapper for all Open-Meteo API calls.
 
-    Retries on 429 up to _OM_MAX_RETRIES times, sleeping for Retry-After
-    seconds each time, then gives up so the cron can continue.  429 is NOT
-    counted as a circuit-breaker failure — the API is up, just throttling.
+    On 429: returns immediately without sleeping.  The caller's except block
+    records a circuit-breaker failure; after the threshold is reached the CB
+    opens and all further Open-Meteo calls are skipped instantly, allowing the
+    Pirate Weather / NWS fallback to take over within seconds rather than
+    waiting for Retry-After sleep cycles across every model and every city.
     """
     kwargs.setdefault("timeout", 15)
-    for attempt in range(1, _OM_MAX_RETRIES + 1):
-        _om_rate_limit()
-        resp = _OM_SESSION.request(method, url, **kwargs)
-        if resp.status_code != 429:
-            return resp
-        retry_after = int(resp.headers.get("Retry-After", 60))
-        if attempt < _OM_MAX_RETRIES:
-            _log.warning(
-                "Open-Meteo rate limited (429) — sleeping %ds before retry %d/%d",
-                retry_after,
-                attempt,
-                _OM_MAX_RETRIES,
-            )
-            time.sleep(retry_after)
-        else:
-            _log.error(
-                "Open-Meteo still rate limited after %d attempts — skipping this request",
-                _OM_MAX_RETRIES,
-            )
-    return resp  # return last 429 so caller can decide how to handle
+    _om_rate_limit()
+    resp = _OM_SESSION.request(method, url, **kwargs)
+    if resp.status_code == 429:
+        _log.warning(
+            "Open-Meteo rate limited (429) for %s — returning immediately so fallback can engage",
+            url,
+        )
+    return resp
 
 
 # Forecast cache: (city, date_iso) -> dict (TTL handled by ForecastCache)
