@@ -4117,8 +4117,9 @@ def cmd_calibrate() -> None:
             _platt_rows = [
                 dict(r)
                 for r in _con.execute(
-                    "SELECT city, our_prob, settled_yes FROM predictions "
-                    "WHERE settled_yes IS NOT NULL AND our_prob IS NOT NULL"
+                    "SELECT p.city, p.our_prob, o.settled_yes "
+                    "FROM predictions p JOIN outcomes o ON p.ticker = o.ticker "
+                    "WHERE o.settled_yes IS NOT NULL AND p.our_prob IS NOT NULL"
                 ).fetchall()
             ]
         platt = _train_platt(_platt_rows, min_samples=15)
