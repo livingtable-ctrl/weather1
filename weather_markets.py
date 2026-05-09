@@ -4233,9 +4233,9 @@ def analyze_trade(enriched: dict) -> dict | None:
         )
         return None
 
-    # Apply exactly one ML correction per city — GBM takes precedence over Platt.
-    # Applying both sequentially compounds corrections and pushes probs to extremes (#45).
-    _gbm_applied = False
+    # Apply exactly one city-level ML correction (GBM > Platt), then fall back to
+    # global temperature scaling which requires no per-city data.
+    _city_correction_applied = False
     try:
         from ml_bias import apply_ml_prob_correction, has_ml_model
 
@@ -4244,19 +4244,33 @@ def analyze_trade(enriched: dict) -> dict | None:
                 city, blended_prob, target_date.month, days_out
             )
             blended_prob = max(0.01, min(0.99, blended_prob))
-            _gbm_applied = True
+            _city_correction_applied = True
     except Exception:
         pass
 
     # Platt scaling is only applied when no GBM model exists for this city.
-    if not _gbm_applied:
+    if not _city_correction_applied:
         try:
             _platt = _load_platt_models()
             if _platt:
                 from ml_bias import apply_platt_per_city as _apply_platt
 
-                blended_prob = _apply_platt(city, blended_prob, _platt)
-                blended_prob = max(0.01, min(0.99, blended_prob))
+                _new_prob = _apply_platt(city, blended_prob, _platt)
+                if _new_prob != blended_prob:
+                    blended_prob = _new_prob
+                    blended_prob = max(0.01, min(0.99, blended_prob))
+                    _city_correction_applied = True
+        except Exception:
+            pass
+
+    # Global temperature scaling — compresses overconfident predictions toward 0.5.
+    # Applied when no city-specific model fired (uses all settled data, not per-city).
+    if not _city_correction_applied:
+        try:
+            from ml_bias import apply_temperature_scaling as _apply_temp
+
+            blended_prob = _apply_temp(blended_prob)
+            blended_prob = max(0.01, min(0.99, blended_prob))
         except Exception:
             pass
 

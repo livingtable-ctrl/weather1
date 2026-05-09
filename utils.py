@@ -35,6 +35,10 @@ PAPER_MIN_EDGE = float(os.getenv("PAPER_MIN_EDGE", "0.05"))
 # 8pp = ~2× the 4pp ask/bid half-spread on a typical 50¢ Kalshi contract.
 MIN_PROB_EDGE = float(os.getenv("MIN_PROB_EDGE", "0.08"))
 
+# Per-city probability-edge overrides for high-variance markets.
+# Dallas Brier (0.33) is worse than the naive baseline — requires stronger conviction.
+CITY_MIN_PROB_EDGE: dict[str, float] = {"Dallas": 0.15}
+
 # Confidence-tiered edge thresholds
 # HIGH: spread < 0.05 (models agree) → lower bar
 # MODERATE: 0.05 ≤ spread < 0.15 → standard bar

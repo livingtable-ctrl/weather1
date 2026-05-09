@@ -3117,14 +3117,23 @@ def cmd_version_compare() -> None:
 
 def cmd_train_bias() -> None:
     """Train ML bias correction models from tracker DB data."""
-    from ml_bias import train_bias_model
+    from ml_bias import train_bias_model, train_temperature_scaling
 
     print("Training ML bias models (requires 200+ settled trades per city)...")
     models = train_bias_model(min_samples=200)
     if not models:
-        print("Not enough data yet. Keep trading — retrain after 6 months.")
+        print(
+            "Not enough data yet for per-city GBM. Keep trading — retrain after 6 months."
+        )
     else:
-        print(f"Trained models for: {', '.join(sorted(models.keys()))}")
+        print(f"Trained GBM models for: {', '.join(sorted(models.keys()))}")
+
+    print("Training global temperature scaling...")
+    T = train_temperature_scaling()
+    if T is None:
+        print("Not enough data for temperature scaling yet (need 50+ settled trades).")
+    else:
+        print(f"Temperature T={T:.4f} fitted successfully.")
 
 
 def cmd_retire_strategies(run: bool = False) -> None:
@@ -4112,7 +4121,7 @@ def cmd_calibrate() -> None:
                     "WHERE settled_yes IS NOT NULL AND our_prob IS NOT NULL"
                 ).fetchall()
             ]
-        platt = _train_platt(_platt_rows, min_samples=200)
+        platt = _train_platt(_platt_rows, min_samples=15)
         if platt:
             _platt_path = data_dir / "platt_models.json"
             _platt_path.write_text(

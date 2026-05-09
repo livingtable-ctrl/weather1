@@ -16,7 +16,9 @@ from pathlib import Path
 _log = logging.getLogger(__name__)
 _MODEL_PATH = Path(__file__).parent / "data" / "bias_models.pkl"
 _HMAC_PATH = Path(__file__).parent / "data" / ".bias_models.hmac"
+_TEMP_PATH = Path(__file__).parent / "data" / "temperature_scale.json"
 _MODELS_CACHE: dict | None = None
+_TEMP_CACHE: float | None = None
 
 
 def _hmac_secret() -> bytes:
@@ -243,7 +245,7 @@ def _fit_platt(xs: list[float], ys: list[int]) -> tuple[float, float]:
 
 def train_platt_per_city(
     rows: list[dict],
-    min_samples: int = 200,
+    min_samples: int = 15,
 ) -> dict[str, tuple[float, float]]:
     """
     Train per-city Platt scaling: fits (A, B) via cross-entropy on logit(p).
@@ -315,3 +317,93 @@ def apply_ml_prob_correction(
 def has_ml_model(city: str) -> bool:
     """Return True if a trained GBM correction model exists for this city."""
     return _load_models().get(city.upper()) is not None
+
+
+def _load_temperature_scale() -> float | None:
+    global _TEMP_CACHE
+    if _TEMP_CACHE is not None:
+        return _TEMP_CACHE
+    if not _TEMP_PATH.exists():
+        return None
+    try:
+        import json
+
+        data = json.loads(_TEMP_PATH.read_text())
+        _TEMP_CACHE = float(data["T"])
+        return _TEMP_CACHE
+    except Exception:
+        return None
+
+
+def train_temperature_scaling(min_samples: int = 50) -> float | None:
+    """Fit global temperature T via log-loss minimisation on all settled predictions.
+
+    Calibrated prob = sigmoid(logit(raw_prob) / T).  T > 1 compresses
+    overconfident predictions toward 0.5.  Saves to data/temperature_scale.json.
+    """
+    import tracker
+
+    tracker.init_db()
+    try:
+        with tracker._conn() as con:
+            rows = con.execute(
+                "SELECT p.our_prob, o.settled_yes FROM predictions p "
+                "JOIN outcomes o ON p.ticker = o.ticker "
+                "WHERE p.our_prob IS NOT NULL AND o.settled_yes IS NOT NULL"
+            ).fetchall()
+    except Exception as exc:
+        _log.warning("train_temperature_scaling: DB query failed: %s", exc)
+        return None
+
+    if len(rows) < min_samples:
+        _log.info(
+            "train_temperature_scaling: only %d samples, need %d",
+            len(rows),
+            min_samples,
+        )
+        return None
+
+    try:
+        import json
+
+        import numpy as np
+        from scipy.optimize import minimize_scalar  # type: ignore[import-untyped]
+
+        probs = np.clip([float(p) for p, _ in rows], 1e-6, 1 - 1e-6)
+        labels = np.array([float(y) for _, y in rows])
+        logits = np.log(probs / (1 - probs))
+
+        def neg_log_likelihood(T: float) -> float:
+            if T <= 0:
+                return 1e9
+            p_cal = np.clip(1.0 / (1.0 + np.exp(-logits / T)), 1e-9, 1 - 1e-9)
+            return -float(
+                np.sum(labels * np.log(p_cal) + (1 - labels) * np.log(1 - p_cal))
+            )
+
+        result = minimize_scalar(
+            neg_log_likelihood, bounds=(0.1, 5.0), method="bounded"
+        )
+        T = float(result.x)
+
+        _TEMP_PATH.parent.mkdir(exist_ok=True)
+        _TEMP_PATH.write_text(json.dumps({"T": T, "n_samples": len(rows)}))
+        global _TEMP_CACHE
+        _TEMP_CACHE = T
+        _log.info("train_temperature_scaling: T=%.4f on %d samples", T, len(rows))
+        return T
+
+    except ImportError:
+        _log.warning("train_temperature_scaling: scipy/numpy not installed")
+        return None
+    except Exception as exc:
+        _log.warning("train_temperature_scaling: fitting failed: %s", exc)
+        return None
+
+
+def apply_temperature_scaling(prob: float) -> float:
+    """Apply global temperature calibration; returns prob unchanged if no model trained."""
+    T = _load_temperature_scale()
+    if T is None or abs(T - 1.0) < 0.01:
+        return prob
+    return _sigmoid(_logit(prob) / T)

@@ -20,6 +20,7 @@ import execution_log
 from colors import bold, cyan, dim, green, red, yellow
 from kalshi_client import KalshiClient
 from utils import (
+    CITY_MIN_PROB_EDGE,
     DRIFT_TIGHTEN_EDGE,
     MED_EDGE,
     MIN_EDGE,
@@ -766,12 +767,14 @@ def _cmd_cron_body(
                 if abs(adjusted_edge) < PAPER_MIN_EDGE:
                     continue
                 # Probability-edge gate: require ≥8pp conviction even when ROI edge passes.
-                # On 50¢ contracts PAPER_MIN_EDGE only needs 2.5pp — this filters near-noise.
+                # High-variance cities (e.g. Dallas) use a stricter per-city threshold.
                 _prob_edge = abs(
                     analysis.get("forecast_prob", 0.5)
                     - analysis.get("market_prob", 0.5)
                 )
-                if _prob_edge < MIN_PROB_EDGE:
+                _city_key = enriched.get("_city", "")
+                _min_edge = CITY_MIN_PROB_EDGE.get(_city_key, MIN_PROB_EDGE)
+                if _prob_edge < _min_edge:
                     continue
                 signal = analysis.get("net_signal", analysis.get("signal", "")).strip()
                 time_risk = analysis.get("time_risk", "\u2014")
@@ -1221,6 +1224,7 @@ def _cmd_cron_body(
                     "cmd_cron: running weekly ML bias model retrain (>=6 days since last)"
                 )
                 from ml_bias import train_bias_model as _train_bias
+                from ml_bias import train_temperature_scaling as _train_temp
 
                 _trained = _train_bias()
                 if _trained:
@@ -1231,6 +1235,9 @@ def _cmd_cron_body(
                             f"  [MLBias] Retrained {len(_trained)} city model(s): {', '.join(_trained.keys())}"
                         )
                     )
+                _T = _train_temp()
+                if _T is not None:
+                    print(dim(f"  [TempScale] T={_T:.4f} fitted"))
     except Exception as _e:
         _log.debug("cmd_cron: ML bias retrain failed: %s", _e)
 
