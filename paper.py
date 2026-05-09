@@ -1093,7 +1093,7 @@ def covariance_kelly_scale(
         p_i: float = float(_ep_raw) if _ep_raw is not None else 0.5
         p_i = max(0.01, min(0.99, p_i))
         sigma_i = (p_i * (1 - p_i)) ** 0.5
-        w_i = t.get("cost", 0.0) / max(STARTING_BALANCE, 1.0)
+        w_i = t.get("cost", 0.0) / max(_exposure_denom(), 1.0)
         weighted_corr_sum += corr * sigma_i * w_i
         total_weight += w_i
 
@@ -1817,8 +1817,7 @@ def export_tax_csv(path: str, tax_year: int | None = None) -> int:
     if tax_year is not None:
         filtered = []
         for t in settled:
-            # Use entered_at as a proxy for date sold (we don't track settled_at separately)
-            date_str = (t.get("entered_at") or "")[:4]
+            date_str = (t.get("settled_at") or t.get("entered_at") or "")[:4]
             if date_str == str(tax_year):
                 filtered.append(t)
         settled = filtered
@@ -1841,7 +1840,7 @@ def export_tax_csv(path: str, tax_year: int | None = None) -> int:
         for t in settled:
             desc = f"Kalshi {t.get('ticker', '')} {t.get('side', '').upper()}"
             date_acq = (t.get("entered_at") or "")[:10]
-            date_sold = date_acq  # same day for paper trades (simplified)
+            date_sold = (t.get("settled_at") or t.get("entered_at") or "")[:10]
             pnl = t.get("pnl") or 0.0
             cost = t.get("cost") or 0.0
             proceeds = round(cost + pnl, 4)
@@ -1879,14 +1878,15 @@ def get_balance_history() -> list[dict]:
             pnl = t["pnl"]
             payout = cost + pnl
             balance += payout
-            # Sort after entry by appending "z" suffix for stable ordering
+            settled_ts = t.get("settled_at") or entered_at
             history.append(
                 {
-                    "ts": entered_at + "z",
+                    "ts": settled_ts,
                     "balance": round(balance, 4),
                     "event": f"Settled {ticker} {t.get('outcome', '')}",
                 }
             )
+    history.sort(key=lambda e: str(e["ts"]))
     return history
 
 
@@ -2211,7 +2211,7 @@ def check_position_limits(
             "limit": max_cost_per_market,
         }
 
-    if get_total_exposure() + new_cost / STARTING_BALANCE >= MAX_TOTAL_OPEN_EXPOSURE:
+    if get_total_exposure() + new_cost / _exposure_denom() >= MAX_TOTAL_OPEN_EXPOSURE:
         return {
             "ok": False,
             "reason": "Would exceed global portfolio exposure cap (50%)",
