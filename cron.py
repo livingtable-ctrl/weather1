@@ -565,6 +565,7 @@ def _cmd_cron_body(client: KalshiClient, min_edge: float = MIN_EDGE) -> bool | N
     strong_opps: list = []  # edge 25%+, any time risk
     signals_cache: list = []
     scanned = 0
+    _consistency_skip = False  # P3-14: init before try so it is always bound
     try:
         from concurrent.futures import ThreadPoolExecutor
         from concurrent.futures import as_completed as _as_completed
@@ -574,7 +575,6 @@ def _cmd_cron_body(client: KalshiClient, min_edge: float = MIN_EDGE) -> bool | N
         print(dim(f"  [cron] scanning {scanned} market(s)\u2026"), flush=True)
 
         # P3-14: consistency check \u2014 log violations; halt auto-trading if too many
-        _consistency_skip = False
         try:
             from consistency import find_violations as _find_violations
 
