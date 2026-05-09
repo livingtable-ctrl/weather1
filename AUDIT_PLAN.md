@@ -1005,7 +1005,7 @@ for market in markets:
 
 ---
 
-## Phase 2 — Correctness & Observability
+## ✅ Phase 2 — Correctness & Observability (COMPLETE)
 
 **Fix within 1 month. These affect forecast accuracy, risk math, and operational visibility.**
 
@@ -1332,7 +1332,7 @@ def get_live_precip_obs(station_id):
 
 ---
 
-### P2-16 · No Startup Warning When KALSHI_ENV=prod
+### ✅ P2-16 · No Startup Warning When KALSHI_ENV=prod
 **File:** `main.py`, `cron.py`  
 
 **Fix:**
@@ -1347,7 +1347,7 @@ if os.getenv("KALSHI_ENV") == "prod":
 
 ---
 
-### P2-17 · Validate Market Prices in Schema Validator
+### ✅ P2-17 · Validate Market Prices in Schema Validator
 **File:** `schema_validator.py:validate_market`  
 
 **Fix:**
@@ -1379,7 +1379,7 @@ Call `validate_market()` at entry to `analyze_trade()` as a pre-condition guard.
 
 ---
 
-### P2-18 · Fix UTC/Local Date Inconsistencies
+### ✅ P2-18 · Fix UTC/Local Date Inconsistencies
 **Files:** `nws.py:nws_prob`, `mos.py:fetch_mos`, `cron.py:_check_startup_orders`  
 **Root cause:** Several places use `date.today()` (system local) where `datetime.now(UTC).date()` should be used.
 
@@ -1405,7 +1405,7 @@ if placed_dt.tzinfo is None:
 
 ---
 
-### P2-19 · Make Anomaly Detection Block Trading (Not Just Log)
+### ✅ P2-19 · Make Anomaly Detection Block Trading (Not Just Log)
 **File:** `alerts.py:run_anomaly_check`, `cron.py:_cmd_cron_body`  
 
 **Fix — tiered response:**
@@ -1438,7 +1438,7 @@ if should_halt:
 
 ---
 
-### P2-20 · Add Timestamped Cloud Backup Rotation
+### ✅ P2-20 · Add Timestamped Cloud Backup Rotation
 **File:** `cloud_backup.py:backup_data`  
 
 **Fix:**
@@ -2068,133 +2068,133 @@ def _check_early_exits(client, open_trades, paper_mode):
 
 ## Phase 2 — New P2 Issues (Deep Pass)
 
-### P2-21 · Fix METAR 0Â°F Threshold Bug — `condition.get("threshold")` Falsy for Zero
+### ✅ P2-21 · Fix METAR 0Â°F Threshold Bug — `condition.get("threshold")` Falsy for Zero
 **File:** `weather_markets.py:_metar_lock_in` (~line 3303)  
 **Root cause:** `if _cond_type in ("above", "below") and condition.get("threshold"):` — the truthiness check is False when `threshold == 0.0`. Freeze markets (above/below 0Â°F) silently skip METAR lock-in.  
 **Fix:** `condition.get("threshold") is not None`
 
-### P2-22 · Fix METAR Missing `obsTime` — Fabricated Timestamp Bypasses Staleness Gate
+### ✅ P2-22 · Fix METAR Missing `obsTime` — Fabricated Timestamp Bypasses Staleness Gate
 **File:** `metar.py:fetch_metar` (~line 99)  
 **Root cause:** Missing or malformed `obsTime` replaced with `datetime.now(UTC)`, making stale observations appear fresh. The P1-2 staleness gate checks age from `obs_time` — but the fabricated timestamp always gives age=0.  
 **Fix:** Return `None` when `obsTime` is absent or unparseable; never fabricate a timestamp.
 
-### P2-23 · Fix METAR Lock-In Missing for 12 of 18 Cities
+### ✅ P2-23 · Fix METAR Lock-In Missing for 12 of 18 Cities
 **File:** `weather_markets.py:_metar_station_for_city` (~line 200)  
 **Root cause:** The internal `_MAP` in `weather_markets.py` only has 6 cities; `metar.py:MARKET_STATION_MAP` has 18. Merge them and populate `_CITY_TZ` for all 18.
 
-### P2-24 · Fix `_confidence_scaled_blend_weights` — Negative Weights Possible Under High-Confidence Scaling
+### ✅ P2-24 · Fix `_confidence_scaled_blend_weights` — Negative Weights Possible Under High-Confidence Scaling
 **File:** `weather_markets.py:_confidence_scaled_blend_weights` (~line 2451)  
 **Root cause:** When `scale > 1` (tight ensemble spread), redistributing delta to `w_clim`/`w_nws` can make them go below zero.  
 **Fix:** `w_clim_new = max(0.0, w_clim_new); w_nws_new = max(0.0, w_nws_new)` after redistribution.
 
-### P2-25 · Fix `date.today()` in `nws.py`, `mos.py`, `tracker.py:log_prediction`
+### ✅ P2-25 · Fix `date.today()` in `nws.py`, `mos.py`, `tracker.py:log_prediction`
 **File:** `nws.py:253`, `mos.py:111,144`, `tracker.py:430,441`  
 **Root cause:** Local-clock date used where UTC date is required. Between midnight UTC and local midnight, `days_out` and predicted_date UPSERT key are off by 1.  
 **Fix:** Replace all `date.today()` with `datetime.now(timezone.utc).date()` in these locations.
 
-### P2-26 · Fix `clim_prior=0.30` Hardcoded in Precip/Snow Blend
+### ✅ P2-26 · Fix `clim_prior=0.30` Hardcoded in Precip/Snow Blend
 **File:** `weather_markets.py:_analyze_precip_trade` (~line 2995), `_analyze_snow_trade` (~line 3165)  
 **Root cause:** The hardcoded 30% prior ignores city/season — Miami summer is 60%+, Denver winter is 10%.  
 **Fix:** Call `climatological_prob(city, coords, target_date, condition)` and fall back to 0.30 only on failure.
 
-### P2-27 · Fix `sync_outcomes` and `log_prediction` UTC Date Inconsistency
+### ✅ P2-27 · Fix `sync_outcomes` and `log_prediction` UTC Date Inconsistency
 **Covered by P2-25 above** — `log_prediction` uses `date.today()` for `predicted_date` UPSERT key.
 
-### P2-28 · Fix `get_balance_history` — Settlement Events at Entry Timestamp, Not `settled_at`
+### ✅ P2-28 · Fix `get_balance_history` — Settlement Events at Entry Timestamp, Not `settled_at`
 **File:** `paper.py:get_balance_history` (~line 1804)  
 **Root cause:** Settlement events are keyed to `entered_at` in the sort, so the P&L chart shows payouts at trade-entry time rather than settlement time. Drawdown curves appear shallower than reality.  
 **Fix:** Emit settlement events using `settled_at` as the timestamp; re-sort history by `ts` after construction.
 
-### P2-29 · Fix `export_tax_csv` — Filters by Entry Year Instead of Settlement Year
+### ✅ P2-29 · Fix `export_tax_csv` — Filters by Entry Year Instead of Settlement Year
 **File:** `paper.py:export_tax_csv` (~line 1762)  
 **Root cause:** `date_str = t.get("entered_at")[:4]` — a December 2025 trade settling January 2026 appears in the wrong tax year.  
 **Fix:** Use `t.get("settled_at") or t.get("entered_at")` for both the tax year filter and the "Date Sold" field.
 
-### P2-30 · Fix `append_entry` Overwrites Instead of Appending
+### ✅ P2-30 · Fix `append_entry` Overwrites Instead of Appending
 **File:** `execution_log.py:append_entry` (~line 433)  
 **Root cause:** `atomic_write_json(entry, target)` replaces the file entirely. Every call loses all prior entries.  
 **Fix:** Rename to `write_entry` to match behavior, or switch to JSONL append format.
 
-### P2-31 · Fix Tier-4 Drawdown Boundary — Exactly 95% Recovery Gets 70% Kelly
+### ✅ P2-31 · Fix Tier-4 Drawdown Boundary — Exactly 95% Recovery Gets 70% Kelly
 **File:** `paper.py:drawdown_scaling_factor` (~line 352)  
 **Root cause:** `if recovery <= _DRAWDOWN_TIER_4: return 0.70` — at exactly 0.95, returns 70% instead of 100%. Docstring says `> TIER_4 â†’ full sizing`.  
 **Fix:** Change `<=` to `<` for the TIER_4 boundary check.
 
-### P2-32 · Fix `covariance_kelly_scale` Uses `STARTING_BALANCE` Not `_exposure_denom()`
+### ✅ P2-32 · Fix `covariance_kelly_scale` Uses `STARTING_BALANCE` Not `_exposure_denom()`
 **File:** `paper.py:covariance_kelly_scale` (~line 1073)  
 **Root cause:** Position weight `w_i = cost / STARTING_BALANCE` overstates weights when account grows above $1,000, making correlated Kelly reduction more aggressive than intended.  
 **Fix:** `w_i = cost / max(_exposure_denom(), 1.0)`
 
-### P2-33 · Fix `check_position_limits` and Ticker-Exposure Mixed-Denominator Bug
+### ✅ P2-33 · Fix `check_position_limits` and Ticker-Exposure Mixed-Denominator Bug
 **File:** `paper.py:check_position_limits` (~line 2160), `paper.py:place_paper_order` (~line 526)  
 **Root cause:** Two additional exposure checks (beyond P2-4) use `STARTING_BALANCE` as denominator instead of `_exposure_denom()`, causing premature limit triggers or bypasses as the account grows.  
 **Fix:** Replace `STARTING_BALANCE` with `_exposure_denom()` in both locations.
 
-### P2-34 · Fix HTTP 200 Error Body Treated as Success in `kalshi_client.py`
+### ✅ P2-34 · Fix HTTP 200 Error Body Treated as Success in `kalshi_client.py`
 **File:** `kalshi_client.py:_get/_post/_delete` (~line 166)  
 **Root cause:** `raise_for_status()` only raises on 4xx/5xx. Kalshi can return 200 with `{"error": "market_closed"}`. `place_order()` doesn't inspect for an error field.  
 **Fix:** After `resp.json()`, check `if isinstance(data, dict) and "error" in data: raise ValueError(...)`.
 
-### P2-35 · Fix ML Retrain Gate Checks Exact UTC Hour — Scheduled Runs Never Match
+### ✅ P2-35 · Fix ML Retrain Gate Checks Exact UTC Hour — Scheduled Runs Never Match
 **File:** `cron.py:~line 1031`  
 **Root cause:** Retrain fires only when `_now_dow == 6 and _now_hour == 2`. Cron runs at 08:15, 14:15, 20:15 UTC — never matches. Models are never retrained automatically.  
 **Fix:** Use a `.last_ml_retrain` marker file and check if â‰¥6 days have elapsed since last retrain.
 
-### P2-36 · Fix Degenerate Ensemble Detection — All-Identical Members Pass at Max Confidence
+### ✅ P2-36 · Fix Degenerate Ensemble Detection — All-Identical Members Pass at Max Confidence
 **File:** `weather_markets.py:ensemble_stats` (~line 1694)  
 **Root cause:** `std=0.0` from all-identical ensemble members is treated as maximum confidence (same as `std=None`). A broken API returning 82 identical values goes undetected.  
 **Fix:** Add `"degenerate": std == 0.0 and len(temps) > 5` to `ensemble_stats()` return; skip trade if degenerate.
 
-### P2-37 · Fix `param_sweep.py` In-Sample Optimization Overwrites Live `PAPER_MIN_EDGE`
+### ✅ P2-37 · Fix `param_sweep.py` In-Sample Optimization Overwrites Live `PAPER_MIN_EDGE`
 **File:** `param_sweep.py:run_sweep`  
 **Root cause:** Sweep uses all historical data with no train/test split. Best threshold found is 100% in-sample. Result overwrites `walk_forward_params.json` which sets live `PAPER_MIN_EDGE`.  
 **Fix:** Add 70/30 temporal split; only save result if validation win rate improves over holdout baseline.
 
-### P2-38 · Fix `ForecastCache` Unbounded Growth
+### ✅ P2-38 · Fix `ForecastCache` Unbounded Growth
 **File:** `forecast_cache.py:ForecastCache`  
 **Root cause:** No size limit or proactive expiry sweep. All module-level caches (`_CONSENSUS_CACHE`, `_MAE_WEIGHTS_CACHE`, etc.) also grow without bound. Long-running process will eventually OOM.  
 **Fix:** Add `max_size=500` LRU eviction and a `prune_expired()` method called from cron.
 
-### P2-39 · Fix `_blend_probabilities` Bypasses Calibration System
+### ✅ P2-39 · Fix `_blend_probabilities` Bypasses Calibration System
 **File:** `weather_markets.py:_blend_probabilities` (~line 2501)  
 **Root cause:** Standalone function uses hardcoded weights instead of calling `_blend_weights()`. Any caller routing through here ignores all calibration.  
 **Fix:** Delete the function or refactor it to delegate to `_blend_weights()`.
 
-### P2-40 · Fix SPRT — Add Lower Boundary and Minimum Sample Check
+### ✅ P2-40 · Fix SPRT — Add Lower Boundary and Minimum Sample Check
 **Covered by P1-17 above.**
 
-### P2-41 · Fix `_SCHEMA_VERSION` Migration Comment Numbering Off by 2
+### ✅ P2-41 · Fix `_SCHEMA_VERSION` Migration Comment Numbering Off by 2
 **File:** `tracker.py:~line 70`  
 **Root cause:** Three `ALTER TABLE` statements labeled `# v8 â†’ v9` but occupy three separate version slots. All migration comments from index 9 onward are mislabeled.  
 **Fix:** Renumber all migration comments to match their actual `index + 1` version numbers.
 
-### P2-42 · Fix `zip()` Truncation in `climatology.py` — Mismatched Archive List Lengths
+### ✅ P2-42 · Fix `zip()` Truncation in `climatology.py` — Mismatched Archive List Lengths
 **File:** `climatology.py:_climatological_prob_inner` (~line 140)  
 **Root cause:** `zip(dates, highs, lows)` silently truncates to shortest list if API returns mismatched lengths. Years of data silently discarded.  
 **Fix:** Check lengths before zip; log warning and use minimum if mismatched.
 
-### P2-43 · Fix `KALSHI_ENV` Stale After `cmd_settings` Change
+### ✅ P2-43 · Fix `KALSHI_ENV` Stale After `cmd_settings` Change
 **File:** `main.py:204`  
 **Root cause:** `KALSHI_ENV` read at import time; `cmd_settings` reloads `.env` but doesn't refresh the module-level constant. Client built after settings change still uses old env.  
 **Fix:** Read `os.getenv("KALSHI_ENV", "demo")` at `build_client()` call time, not at import.
 
-### P2-44 · Fix GBM Bias Model — No Holdout Validation Before Persisting
+### ✅ P2-44 · Fix GBM Bias Model — No Holdout Validation Before Persisting
 **File:** `ml_bias.py:train_bias_model`  
 **Root cause:** 100 trees / depth-3 GBM on 200 samples, no holdout. Guaranteed overfit. Corrections can be in wrong direction.  
 **Fix:** Reduce to 50 trees / depth-2 / `min_samples_leaf=10`. Add 80/20 holdout; skip save if holdout MSE â‰¥ no-correction baseline.
 
-### P2-45 · Fix GBM + Platt Sequential Application — Compounding Corrections
+### ✅ P2-45 · Fix GBM + Platt Sequential Application — Compounding Corrections
 **File:** `weather_markets.py:analyze_trade` (~line 4111)  
 **Root cause:** Both GBM and Platt corrections applied sequentially with no guard. Compounding pushes probabilities to extremes.  
 **Fix:** Apply only one correction per city; add post-correction clamp `max(0.01, min(0.99, blended_prob))`.
 
-### P2-46 · Fix `A/B Test` — Exhaustion Uses Hardcoded 50 Ignoring Configured `max_trades`
+### ✅ P2-46 · Fix `A/B Test` — Exhaustion Uses Hardcoded 50 Ignoring Configured `max_trades`
 **Covered by P3 recommendation to redesign A/B test — promote to P2:**  
 **File:** `ab_test.py:get_active_variant` (~line 188)  
 **Root cause:** `_DEFAULT_MAX_TRADES=50` used regardless of configured max. A 200-trade experiment stops at 50.  
 **Fix:** Persist `max_trades_per_variant` in state `_meta` key; read it back in `get_active_variant`.
 
-### P2-47 · Fix `restore_data()` — Silently Overwrites All Live Files Without Confirmation
+### ✅ P2-47 · Fix `restore_data()` — Silently Overwrites All Live Files Without Confirmation
 **File:** `cloud_backup.py:restore_data` (~line 159)  
 **Root cause:** `restore_data()` overwrites `paper_trades.json` and other live files with no pre-backup, no confirmation prompt, no dry-run mode.  
 **Fix:** Require explicit `confirm=True` parameter; back up current files to a timestamped snapshot before restore.
