@@ -75,7 +75,9 @@ def test_cmd_cron_logs_state_snapshot(tmp_path, monkeypatch):
     monkeypatch.setattr(main, "KILL_SWITCH_PATH", tmp_path / ".kill_switch")
     monkeypatch.setattr(main, "LOCK_PATH", tmp_path / ".cron_lock")
     monkeypatch.setattr("alerts.run_black_swan_check", lambda: [])
-    monkeypatch.setattr("alerts.run_anomaly_check", lambda log_results=False: None)
+    monkeypatch.setattr(
+        "alerts.run_anomaly_check", lambda log_results=False: ([], False)
+    )
 
     log_records = []
 

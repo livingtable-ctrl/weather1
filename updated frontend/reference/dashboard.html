@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard{% endblock %}
+{% block page_title %}Dashboard{% endblock %}
+
+{% block content %}
+<!-- Stat cards — populated by SSE (/api/stream) and /api/graduation -->
+<div class="stats">
+  <div class="stat-card">
+    <div class="stat-label">Paper Balance</div>
+    <div class="stat-value pos" id="stat-balance">—</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Open Positions</div>
+    <div class="stat-value" id="stat-open">—</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Win Rate</div>
+    <div class="stat-value" id="stat-winrate">—</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Brier Score</div>
+    <div class="stat-value" id="stat-brier">—</div>
+  </div>
+  <div class="stat-card" id="live-pnl-card" style="display:none">
+    <div class="stat-label">Live P&amp;L (today)</div>
+    <div class="stat-value" id="stat-live-pnl">—</div>
+    <div style="font-size:0.78em;color:var(--text-muted);margin-top:4px" id="stat-live-open"></div>
+  </div>
+</div>
+
+<p class="live-indicator" style="margin-bottom:20px">
+  <span class="live-dot" id="dash-dot"></span>
+  <span id="dash-updated">Connecting…</span>
+  <span id="dash-ts" style="margin-left:8px;font-size:0.82em;color:var(--text-muted)"></span>
+</p>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:24px">
+  <!-- Fear/Greed gauge -->
+  <div class="chart-wrap">
+    <h2>Fear / Greed Index</h2>
+    <div id="fear-greed-chart" style="height:200px"></div>
+  </div>
+  <!-- Graduation progress -->
+  <div class="chart-wrap">
+    <h2>Graduation Progress</h2>
+    <div class="progress-wrap">
+      <div class="progress-label">
+        <span>Trades completed</span>
+        <span id="grad-trades-label">—/30</span>
+      </div>
+      <div class="progress-bar-bg">
+        <div class="progress-bar-fill" id="grad-trades-bar" style="width:0%"></div>
+      </div>
+    </div>
+    <div class="progress-wrap" style="margin-top:12px">
+      <div class="progress-label">
+        <span>Net P&amp;L</span>
+        <span id="grad-pnl-label">—/$50</span>
+      </div>
+      <div class="progress-bar-bg">
+        <div class="progress-bar-fill" id="grad-pnl-bar" style="width:0%"></div>
+      </div>
+    </div>
+    <div class="progress-wrap" style="margin-top:12px">
+      <div class="progress-label">
+        <span>Brier Score</span>
+        <span id="grad-brier-label">—/&lt;0.20</span>
+      </div>
+      <div class="progress-bar-bg">
+        <div class="progress-bar-fill" id="grad-brier-bar" style="width:0%"></div>
+      </div>
+    </div>
+    <p id="grad-status" style="margin-top:14px;font-size:0.88em;color:var(--text-muted)"></p>
+  </div>
+</div>
+
+<!-- Balance history chart -->
+<div class="chart-wrap section">
+  <h2>Balance History</h2>
+  <div style="margin-bottom:10px">
+    <button onclick="loadBalanceChart('')" data-range="" class="range-btn" style="background:var(--surface);border:1px solid var(--border);color:var(--text-muted);border-radius:4px;padding:3px 10px;cursor:pointer;font-size:0.82em;margin-right:4px">Default</button>
+    <button onclick="loadBalanceChart('1mo')" data-range="1mo" class="range-btn" style="background:var(--surface);border:1px solid var(--border);color:var(--text-muted);border-radius:4px;padding:3px 10px;cursor:pointer;font-size:0.82em;margin-right:4px">1mo</button>
+    <button onclick="loadBalanceChart('3mo')" data-range="3mo" class="range-btn" style="background:var(--surface);border:1px solid var(--border);color:var(--text-muted);border-radius:4px;padding:3px 10px;cursor:pointer;font-size:0.82em;margin-right:4px">3mo</button>
+    <button onclick="loadBalanceChart('1yr')" data-range="1yr" class="range-btn" style="background:var(--surface);border:1px solid var(--border);color:var(--text-muted);border-radius:4px;padding:3px 10px;cursor:pointer;font-size:0.82em;margin-right:4px">1yr</button>
+    <button onclick="loadBalanceChart('all')" data-range="all" class="range-btn" style="background:var(--surface);border:1px solid var(--border);color:var(--text-muted);border-radius:4px;padding:3px 10px;cursor:pointer;font-size:0.82em">All</button>
+  </div>
+  <div id="balance-chart" style="height:220px"></div>
+</div>
+
+<!-- Data Sources circuit breaker status -->
+<div class="chart-wrap section" style="margin-bottom:24px">
+  <h2>Data Sources</h2>
+  <div id="circuit-status-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;margin-top:8px">
+    <p class="neu" style="grid-column:1/-1">Loading…</p>
+  </div>
+</div>
+
+<!-- Open positions + top opportunities side by side -->
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:24px">
+  <div class="section" style="margin-bottom:0">
+    <h2>Open Positions</h2>
+    <div id="open-positions-widget"><p class="neu">Loading…</p></div>
+  </div>
+  <div class="section" style="margin-bottom:0">
+    <h2>Top Opportunities</h2>
+    <div id="markets-strip"><p class="neu">Waiting for live data…</p></div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='dashboard.js') }}"></script>
+{% endblock %}

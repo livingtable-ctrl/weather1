@@ -265,9 +265,48 @@ def check_anomalies(trades: list[dict]) -> list[str]:
     return alerts_out
 
 
-def run_anomaly_check(log_results: bool = True) -> list[str]:
+# Thresholds that trigger a trading halt (vs. soft warning only).
+ALERT_HALT_THRESHOLDS: dict[str, float] = {
+    "WIN_RATE_COLLAPSE": 0.25,  # win rate below 25% → halt
+    "CONSECUTIVE_LOSSES": 6.0,  # 6+ consecutive losses → halt
+    "EDGE_DECAY": -0.10,  # average edge below -10% → halt
+}
+
+
+def _is_halt_level(alert_msg: str) -> bool:
+    """Return True when an alert message crosses the halt threshold."""
+    msg = alert_msg.upper()
+    if "WIN_RATE_COLLAPSE" in msg or "WIN RATE COLLAPSE" in msg:
+        # Extract the percentage from the message (e.g. "20%")
+        import re as _re
+
+        m = _re.search(r"(\d+)%", msg)
+        if m:
+            rate = int(m.group(1)) / 100.0
+            return rate < ALERT_HALT_THRESHOLDS["WIN_RATE_COLLAPSE"]
+        return True  # can't parse → halt to be safe
+    if "CONSECUTIVE LOSSES" in msg:
+        import re as _re
+
+        m = _re.search(r"(\d+)\s+LOSS", msg)
+        if m:
+            return int(m.group(1)) >= ALERT_HALT_THRESHOLDS["CONSECUTIVE_LOSSES"]
+        return True
+    if "EDGE DECAY" in msg:
+        import re as _re
+
+        m = _re.search(r"EDGE\s+([-\d.]+)%", msg)
+        if m:
+            rate = float(m.group(1)) / 100.0
+            return rate < ALERT_HALT_THRESHOLDS["EDGE_DECAY"]
+        return True
+    return False
+
+
+def run_anomaly_check(log_results: bool = True) -> tuple[list[str], bool]:
     """
     Load paper trades and run anomaly detection. Log any alerts found.
+    Returns (alert_messages, should_halt).
     Call this at the start of each cron cycle.
     """
     try:
@@ -275,13 +314,17 @@ def run_anomaly_check(log_results: bool = True) -> list[str]:
 
         trades = load_paper_trades()
         anomalies = check_anomalies(trades)
+        should_halt = any(_is_halt_level(a) for a in anomalies)
         if anomalies and log_results:
             for msg in anomalies:
-                _log.warning("ANOMALY ALERT: %s", msg)
-        return anomalies
+                if _is_halt_level(msg):
+                    _log.error("ANOMALY HALT: %s", msg)
+                else:
+                    _log.warning("ANOMALY ALERT: %s", msg)
+        return anomalies, should_halt
     except Exception as exc:
         _log.debug("run_anomaly_check: %s", exc)
-        return []
+        return [], False
 
 
 # ── P10.2: Black swan emergency shutdown ──────────────────────────────────────

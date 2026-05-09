@@ -338,7 +338,9 @@ class TestCronLock:
         monkeypatch.setattr(main, "RUNNING_FLAG_PATH", tmp_path / ".cron_running")
         monkeypatch.setattr(main, "KILL_SWITCH_PATH", tmp_path / ".kill_switch")
         monkeypatch.setattr("alerts.run_black_swan_check", lambda: [])
-        monkeypatch.setattr("alerts.run_anomaly_check", lambda log_results=False: None)
+        monkeypatch.setattr(
+            "alerts.run_anomaly_check", lambda log_results=False: ([], False)
+        )
 
         with pytest.raises(SystemExit):
             main.cmd_cron(MagicMock())

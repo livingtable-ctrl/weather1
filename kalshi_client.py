@@ -158,6 +158,14 @@ class KalshiClient:
 
         return urlparse(self.base_url).path + path
 
+    @staticmethod
+    def _check_error_body(data: object, path: str) -> None:
+        """Raise ValueError if a 200 response contains an error field."""
+        if isinstance(data, dict) and "error" in data:
+            raise ValueError(
+                f"Kalshi API returned 200 with error body at {path!r}: {data['error']!r}"
+            )
+
     def _get(self, path: str, params: dict = None, auth: bool = False) -> dict:
         url = self.base_url + path
         headers = self._sign_headers("GET", self._full_path(path)) if auth else {}
@@ -165,21 +173,27 @@ class KalshiClient:
             "GET", url, headers=headers, params=params, timeout=10
         )
         resp.raise_for_status()
-        return resp.json()
+        data = resp.json()
+        self._check_error_body(data, path)
+        return data
 
     def _post(self, path: str, body: dict) -> dict:
         url = self.base_url + path
         headers = self._sign_headers("POST", self._full_path(path))
         resp = _request_with_retry("POST", url, headers=headers, json=body, timeout=10)
         resp.raise_for_status()
-        return resp.json()
+        data = resp.json()
+        self._check_error_body(data, path)
+        return data
 
     def _delete(self, path: str) -> dict:
         url = self.base_url + path
         headers = self._sign_headers("DELETE", self._full_path(path))
         resp = _request_with_retry("DELETE", url, headers=headers, timeout=10)
         resp.raise_for_status()
-        return resp.json()
+        data = resp.json()
+        self._check_error_body(data, path)
+        return data
 
     @staticmethod
     def _validate(data: dict, expected_key: str, endpoint: str) -> None:

@@ -11,9 +11,18 @@ import logging
 _log = logging.getLogger(__name__)
 
 
+def _price_to_decimal(v: object) -> float | None:
+    """Normalize a price value to decimal (0–1). Returns None if unparseable."""
+    try:
+        f = float(v)  # type: ignore[arg-type]
+        return f / 100.0 if f > 1.0 else f
+    except (TypeError, ValueError):
+        return None
+
+
 def validate_market(data: dict, source: str = "kalshi") -> bool:
     """
-    Validate a Kalshi market dict has required fields.
+    Validate a Kalshi market dict has required fields and sane prices.
     Returns True if valid, False if critical fields are missing/wrong type.
     Logs a WARNING for each violation found.
 
@@ -42,6 +51,47 @@ def validate_market(data: dict, source: str = "kalshi") -> bool:
                 "schema_validator[%s]: market missing required field %r",
                 source,
                 primary,
+            )
+            ok = False
+
+    # Price range validation — only when both bid and ask are present
+    raw_bid = (
+        data.get("yes_bid")
+        if data.get("yes_bid") is not None
+        else data.get("yes_bid_dollars")
+    )
+    raw_ask = (
+        data.get("yes_ask")
+        if data.get("yes_ask") is not None
+        else data.get("yes_ask_dollars")
+    )
+    if raw_bid is not None and raw_ask is not None:
+        bid = _price_to_decimal(raw_bid)
+        ask = _price_to_decimal(raw_ask)
+        ticker = data.get("ticker", "?")
+        if bid is None or not (0.0 < bid < 1.0):
+            _log.warning(
+                "schema_validator[%s]: %s yes_bid %.4f out of range (0, 1)",
+                source,
+                ticker,
+                bid if bid is not None else float("nan"),
+            )
+            ok = False
+        if ask is None or not (0.0 < ask < 1.0):
+            _log.warning(
+                "schema_validator[%s]: %s yes_ask %.4f out of range (0, 1)",
+                source,
+                ticker,
+                ask if ask is not None else float("nan"),
+            )
+            ok = False
+        if bid is not None and ask is not None and bid >= ask:
+            _log.warning(
+                "schema_validator[%s]: %s inverted spread bid %.4f >= ask %.4f",
+                source,
+                ticker,
+                bid,
+                ask,
             )
             ok = False
 

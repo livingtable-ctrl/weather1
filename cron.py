@@ -443,13 +443,18 @@ def _cmd_cron_body(client: KalshiClient, min_edge: float = MIN_EDGE) -> bool | N
     try:
         from alerts import run_anomaly_check as _run_anomaly_check
 
-        _detected_anomalies = _run_anomaly_check(log_results=True)
-        if _detected_anomalies:
+        _detected_anomalies, _should_halt = _run_anomaly_check(log_results=True)
+        if _should_halt:
             _log.error(
-                "cmd_cron: anomalies detected — halting trade placement this cycle: %s",
+                "cmd_cron: anomaly halt triggered — stopping trade placement this cycle: %s",
                 _detected_anomalies,
             )
             return None
+        elif _detected_anomalies:
+            _log.warning(
+                "cmd_cron: soft anomaly warnings (below halt threshold), continuing: %s",
+                _detected_anomalies,
+            )
     except Exception as _e:
         _log.debug("cmd_cron: run_anomaly_check failed: %s", _e)
 

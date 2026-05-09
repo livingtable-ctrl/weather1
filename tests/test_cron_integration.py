@@ -39,7 +39,9 @@ def cron_env(tmp_path, monkeypatch):
     monkeypatch.setattr(main, "sync_outcomes", lambda client: 0)
     monkeypatch.setattr(main, "_check_early_exits", lambda client=None: 0)
     monkeypatch.setattr(alerts, "run_black_swan_check", lambda: [])
-    monkeypatch.setattr(alerts, "run_anomaly_check", lambda log_results=False: None)
+    monkeypatch.setattr(
+        alerts, "run_anomaly_check", lambda log_results=False: ([], False)
+    )
 
     client = MagicMock()
     yield tmp_path, client, main, paper
@@ -398,7 +400,7 @@ def test_p1_15_anomaly_check_halts_cron(cron_env, caplog, monkeypatch):
     monkeypatch.setattr(
         _alerts,
         "run_anomaly_check",
-        lambda log_results=False: ["WIN RATE COLLAPSE: 20%"],
+        lambda log_results=False: (["WIN RATE COLLAPSE: 20%"], True),
     )
 
     import cron as _cron
@@ -419,7 +421,7 @@ def test_p1_15_empty_anomaly_list_does_not_halt(cron_env):
     import alerts as _alerts
 
     tmp_path, client, main, paper = cron_env
-    _alerts.run_anomaly_check = lambda log_results=False: []
+    _alerts.run_anomaly_check = lambda log_results=False: ([], False)
 
     import cron as _cron
 
@@ -454,7 +456,9 @@ def test_p1_12_kill_switch_mid_scan_breaks_loop(monkeypatch, tmp_path, caplog):
     monkeypatch.setattr(main, "check_ensemble_circuit_health", lambda: None)
     monkeypatch.setattr(main, "_check_early_exits", lambda client=None: 0)
     monkeypatch.setattr(alerts, "run_black_swan_check", lambda: [])
-    monkeypatch.setattr(alerts, "run_anomaly_check", lambda log_results=False: [])
+    monkeypatch.setattr(
+        alerts, "run_anomaly_check", lambda log_results=False: ([], False)
+    )
 
     fake_markets = [
         {"ticker": f"KXTEST{i}", "yes_bid": 30, "yes_ask": 34} for i in range(3)

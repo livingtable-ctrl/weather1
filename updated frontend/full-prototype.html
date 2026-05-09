@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Kalshi Bot · Full Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,400;8..60,500;8..60,600;8..60,700&display=swap" rel="stylesheet">
+  <style>
+    html, body { margin: 0; padding: 0; height: 100%; }
+    body { font-family: Inter, ui-sans-serif, system-ui, -apple-system, sans-serif; background: var(--bg-page, #fafafa); }
+    :root {
+      --bg-page: #fafafa; --bg-card: #ffffff; --bg-subtle: #f8f9fb;
+      --bg-muted: #f1f5f9; --border: #e7eaef;
+      --text: #0f172a; --text-muted: #64748b; --text-faint: #94a3b8;
+    }
+  </style>
+  <script>
+    // Pre-paint theme init: avoid white flash on dark mode reload
+    (function () {
+      var t = localStorage.getItem('kalshi-theme') || 'light';
+      var dark = {
+        '--bg-page': '#0f1115', '--bg-card': '#181b22', '--bg-subtle': '#1e222a',
+        '--bg-muted': '#2a2f3a', '--border': '#2e333d',
+        '--text': '#eef0f5', '--text-muted': '#a3acb8', '--text-faint': '#737d8a'
+      };
+      if (t === 'dark') Object.keys(dark).forEach(function (k) {
+        document.documentElement.style.setProperty(k, dark[k]);
+      });
+    })();
+  </script>
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+  <script src="mock-data.js"></script>
+  <script type="text/babel" src="full-prototype-v2.jsx"></script>
+</head>
+<body>
+  <div id="full-proto-root"></div>
+</body>
+</html>

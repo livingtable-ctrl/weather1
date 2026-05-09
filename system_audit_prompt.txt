@@ -1,0 +1,272 @@
+I want an exhaustive, enterprise-grade audit of the entire project/codebase.
+Treat this as a real-world production system review being performed by a team
+of senior software architects, security engineers, performance specialists, and
+maintainability reviewers — with the specific expertise of a quantitative
+trading systems engineer who understands prediction markets, Kelly sizing,
+forecast calibration, and financial data integrity.
+
+This is an automated weather prediction market trading bot for Kalshi. It
+forecasts temperature outcomes for 15+ US cities, calculates edges vs market
+prices, and executes trades (paper by default, optionally live). It runs as a
+single Windows process via a cron loop. There is no CI/CD pipeline, no
+containerization, no horizontal scaling, and no cloud infrastructure beyond an
+optional S3 backup. Do not audit for those things.
+
+CURRENT SYSTEM STATUS: The system is in paper trading mode. It has not yet
+graduated to live trading (graduation requires 30+ settled trades, $50 profit,
+Brier score ≤ 0.20). Some issues are theoretical until live mode is enabled;
+others affect paper accuracy and calibration right now. Prioritize accordingly.
+
+IMPORTANT INSTRUCTION FOR AI AUDITORS: Read every file in full before drawing
+conclusions. Do not make assumptions about what the code looks like — open and
+read it. Do not skip any module, test file, or data file. Reason from actual
+code, not from file names or descriptions.
+
+Review everything without skipping components, including:
+
+-   All modules and subsystems
+-   Internal architecture and design patterns
+-   Cross-module interactions and dependency chains
+-   Kalshi API integration and order lifecycle
+-   Forecast pipeline and data flow
+-   Financial math and trade sizing logic
+-   Data integrity and file/database state management
+-   Concurrency and threading within a single process
+-   Error handling and recovery logic
+-   Logging, telemetry, and observability
+-   Testing systems and coverage
+-   Dependencies and package health
+-   Security posture
+-   Reliability and fault tolerance
+-   Technical debt and maintainability
+
+I do NOT want a surface-level review.
+
+I want deep investigation into:
+-   Root causes instead of symptoms
+-   Architectural weaknesses
+-   Hidden systemic risks
+-   Fragile design decisions
+-   Unsafe assumptions
+-   Areas likely to fail under real trading conditions
+-   Components that create disproportionate maintenance burden
+-   Complexity that exceeds the actual needs of the system
+-   Anything that would concern a senior engineer during a
+    production-readiness review for a live-money trading system
+
+Analyze the system from the perspective of:
+-   A system betting real money where bugs have direct dollar consequences
+-   Long cron uptime with unattended operation
+-   Partial API failure (Kalshi down, Open-Meteo rate-limiting, NWS unavailable)
+-   Malformed or stale forecast data silently passing through the pipeline
+-   File corruption or partial writes on crash
+-   A developer returning to the codebase after 6 months
+
+Specific production failure scenarios to evaluate:
+-   Kalshi API times out after an order is received but before response returns
+    — does the retry create a duplicate position, and is there deduplication logic?
+-   Open-Meteo returns stale or malformed data — does the blend pipeline degrade
+    gracefully or silently pass bad probabilities to the trade gate?
+-   paper_trades.json is corrupted on boot — does the checksum catch it, and
+    what happens next? Is the system halted or does it continue without the ledger?
+-   Cron runs exactly at market close — do the time decay gate and the
+    target_date UTC gate interact correctly, or can a ghost trade slip through?
+-   Balance drops below 80% of peak — does the drawdown halt actually block all
+    trade placement paths, or only the primary one?
+
+For EVERY issue, provide:
+
+1.  Severity (Critical / High / Medium / Low)
+2.  Confidence level (Confirmed / Likely / Possible)
+3.  Exact location (file / function / line where known)
+4.  Category (Security / Financial Safety / Performance / Architecture /
+    Reliability / Maintainability / Testing / Observability / etc.)
+5.  Root cause
+6.  Technical explanation
+7.  Real-world consequences if ignored (in trading terms where applicable)
+8.  Reproduction scenario (if applicable)
+9.  Recommended fix
+10. Alternative fix approaches
+11. Estimated implementation difficulty
+12. Risk of implementing the fix
+13. Expected impact after fixing
+14. Priority relative to all other issues
+
+Actively search for:
+
+FINANCIAL SAFETY (highest priority — bugs here lose real money):
+-   Kelly fraction formula correctness, half-Kelly application, drawdown tier
+    multipliers (90-95% → 70%, 85-90% → 30%, 80-85% → 10%, <80% → HALT)
+-   Exposure limit calculations (get_city_date_exposure, get_directional_exposure,
+    get_total_exposure, get_ticker_exposure) — denominator correctness after the
+    _exposure_denom() change
+-   Fee calculation in settle_paper_trade — fee on winnings only, not full payout
+-   P&L math — payout, cost, actual_fill_price vs entry_price
+-   Paper vs live mode separation — any path where KALSHI_ENV=prod or
+    ENABLE_MICRO_LIVE=true could execute real orders while bypassing paper guards
+-   Graduation gate — all 3 conditions (30 settled trades, $50 profit, Brier ≤ 0.20)
+    correctly gating live trading with no bypass path
+-   STARTING_BALANCE hardcoded at $1,000 — are drawdown calculations correct if
+    the actual starting balance differs?
+
+CRITICAL CONSTANTS (utils.py):
+-   utils.py is the source of all critical financial constants: MIN_EDGE,
+    PAPER_MIN_EDGE, KALSHI_FEE_RATE, MAX_DAYS_OUT, FIXED_BET_PCT,
+    FIXED_BET_DOLLARS, STRATEGY, and others. Verify these constants are correct,
+    consistently used across all modules, and never shadowed or overridden
+    incorrectly by local variables or environment variables.
+
+DATA FILES (audit these alongside the code):
+-   data/paper_trades.json — live ledger; verify checksum integrity and that
+    the balance, open trades, and settled trades are internally consistent
+-   data/predictions.db — outcomes database; verify schema matches the 16
+    migrations and that Brier scores are being computed correctly
+-   data/seasonal_weights.json / data/city_weights.json — calibration outputs;
+    verify weights sum to 1.0 and are plausible given the training data
+-   data/learned_weights.json — known past corruption (commit bd6c0ef caused
+    zero signals across all cron runs); verify the fix is robust and the file
+    has a corruption-detection mechanism
+-   data/learned_correlations.json — used by Monte Carlo Cholesky; verify
+    values are in [-1, 1] and the matrix is positive semi-definite
+-   data/bias_models.pkl — ML bias models; verify integrity check before load
+
+DATA INTEGRITY (code):
+-   safe_io.py on Windows — os.rename() raises FileExistsError if destination
+    exists (unlike POSIX where rename is atomic); os.replace() is required for
+    true atomicity. Confirm which is used for paper_trades.json writes
+-   paper_trades.json CRC-32 + SHA-256 checksum round-trip — validate on every
+    read AND write, correct key exclusion, legacy 8-char migration path
+-   paper_trades.json indefinite growth — no archiving of settled trades; assess
+    checksum and read/write performance degradation at scale
+-   safe_io.py orphaned temp files — crash after temp write but before rename
+    leaves files accumulating silently
+-   forecast_cache.py thread safety — in-memory cache read/write under concurrent
+    access from background threads
+-   tracker.py 16 schema migrations — are they idempotent, do they handle partial
+    application on crash, can the DB be left in a broken invalid state?
+-   UTC vs local date consistency throughout — date.today() vs
+    datetime.now(UTC).date() mismatches anywhere in the codebase (one confirmed
+    bug already fixed in tests; look for production-path instances)
+
+RELIABILITY / SILENT FAILURES:
+-   Kill switch + cron lock + running flag interactions on unclean exit — does a
+    crashed cron run leave the system in a state where subsequent runs are blocked
+    or warned incorrectly?
+-   Circuit breaker OPEN/HALF-OPEN state — does OPEN actually block all requests,
+    does HALF-OPEN correctly test before re-closing, does burst window correctly
+    absorb parallel failures as a single event?
+-   consistency.py and alerts.py — do these enforce (block trades) or only
+    log/notify? If notify-only, what happens when notify.py fails?
+-   notify.py failure handling — if the Brier auto-halt fires but the notification
+    channel fails, does the halt still execute independently? Or is halt coupled
+    to notification success?
+-   execution_log.py completeness — if the process crashes between order placement
+    and the log write, that order is unlogged and invisible to the audit trail
+-   METAR lock-in after 2 PM bypasses the full ensemble pipeline — no sanity check
+    against the ensemble before committing to the locked probability; erroneous
+    station data would go undetected
+-   Kalshi client retry on timeout — duplicate order risk, is there an idempotency
+    key or post-placement order-list check to detect doubles?
+
+SECURITY:
+-   kalshi_private_key.pem file permissions — is it readable only by the owner?
+-   .env, data/, and paper_trades.json in .gitignore — confirm no sensitive files
+    committed to the repo
+-   ml_bias.py pickle — bias_models.pkl loaded with pickle; a tampered file
+    executes arbitrary code on load. Is the file integrity verified before loading?
+-   web_app.py Flask — is debug mode disabled? Flask debug=True exposes a remote
+    code execution console. Is there any authentication on kill switch / trade
+    control endpoints accessible at localhost:5000?
+
+ML / FORECAST:
+-   calibration.py grid search — is the calibration correctly held out from the
+    backtest evaluation data, or is the same historical data used for both
+    optimization and evaluation (look-ahead bias)?
+-   ML bias model fallback — behavior when model file missing, city has <200
+    settled trades, or sklearn is unavailable
+-   Brier drift auto-halt — SPRT logic correctness (SPRT_P0=0.55, SPRT_P1=0.35),
+    two-consecutive-week trigger, does it halt trading or only notify?
+-   A/B test round-robin integrity — no cross-variant contamination, auto-disable
+    after 50 trades per variant statistically valid?
+-   monte_carlo.py Cholesky decomposition — what happens if the correlation matrix
+    is not positive semi-definite (e.g., due to a corrupted learned_correlations.json)?
+
+SCHEMA / MIGRATIONS:
+-   tracker.py 16 migrations applied via PRAGMA user_version — idempotent,
+    crash-safe, no state left invalid on partial application
+
+OBSERVABILITY:
+-   Are all trade placement, settlement, rejection, and halt events logged with
+    enough context to reconstruct what happened after a silent failure?
+-   Is there any monitoring gap between a trade being placed and it appearing in
+    both execution_log and paper_trades.json?
+
+MAINTAINABILITY / UNKNOWN STATUS:
+-   main.py at ~3,600 lines — God file assessment; global state creating hidden
+    coupling with cron.py (the _main_module() runtime lookup hack suggests this
+    is already a known problem)
+-   regime.py, feature_importance.py, param_sweep.py, kalshi_ws.py — are these
+    wired into the live trading path or dead/dev-only code? Flag any dead code
+    that adds maintenance surface without value
+-   web_app.py — no authentication on sensitive endpoints including kill switch
+    and override controls
+
+OPERATIONAL:
+-   data/backups/ 30-day local retention — all local backups lost if system is
+    offline >30 days; only S3 (optional, not always configured) survives
+-   The 8 skipped tests in the test suite — what are they skipping and why?
+    Are any of them skipping critical financial safety tests?
+
+Also actively search for:
+-   Race conditions within the single-process threading model
+-   Silent failure scenarios — places where exceptions are caught and swallowed
+    without any log or alert
+-   Redundant abstractions and over-engineering
+-   Dead code paths
+-   Fragile code paths
+-   Poor API contracts
+-   Data consistency risks between paper_trades.json and predictions.db
+-   Cache invalidation problems in forecast_cache.py
+-   Technical debt accumulation patterns
+
+Identify:
+-   Single points of failure
+-   Most fragile systems
+-   Components most likely to cause incorrect trades
+-   Highest-risk financial logic
+-   Highest maintenance-cost areas
+-   Parts of the system that should potentially be redesigned or rewritten
+
+Also provide:
+-   A prioritized "fix first" roadmap focused on financial safety first
+-   Quick wins with high ROI
+-   Long-term strategic improvements
+-   Refactor recommendations
+-   Testing strategy improvements (especially around the 8 skipped tests)
+-   Observability improvements
+
+Where possible:
+-   Include concrete examples
+-   Reference exact code paths and line numbers
+-   Explain tradeoffs
+-   Estimate financial impact (not just technical impact)
+
+Do not avoid harsh conclusions.
+
+If something is poorly designed, fragile, unsafe, inefficient, or fundamentally
+flawed, state it directly and explain why. This system bets real money. Accuracy
+and completeness matter more than politeness.
+
+Do not default to assuming current architecture decisions are correct. Challenge
+assumptions where appropriate.
+
+Distinguish clearly between:
+-   Confirmed issues
+-   Probable risks
+-   Hypothetical concerns
+-   Style preferences
+
+Prioritize accuracy, technical depth, realism, and actionable insight.
+
+The goal is to make this system safe enough to trade live money reliably,
+with confidence that no silent bug is draining the account.

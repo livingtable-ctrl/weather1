@@ -201,6 +201,18 @@ def _save_watch_state(tickers: set) -> None:
 
 
 KALSHI_ENV = os.getenv("KALSHI_ENV", "demo")
+
+
+def _kalshi_env() -> str:
+    """Read KALSHI_ENV fresh from the environment each call (survives cmd_settings reload)."""
+    return os.getenv("KALSHI_ENV", "demo")
+
+
+def _market_base_url() -> str:
+    """Return the correct Kalshi base URL based on the current env setting."""
+    return "https://kalshi.com" if _kalshi_env() == "prod" else "https://demo.kalshi.co"
+
+
 MARKET_BASE_URL = (
     "https://kalshi.com" if KALSHI_ENV == "prod" else "https://demo.kalshi.co"
 )
@@ -726,7 +738,7 @@ def cmd_markets(client: KalshiClient):
                 prob_color(prices["implied_prob"]),
                 signal_color(f"{sig} ({edge:+.0%})") if analysis else dim("—"),
                 m.get("volume", 0),
-                cyan(f"{MARKET_BASE_URL}/markets/{ticker}"),
+                cyan(f"{_market_base_url()}/markets/{ticker}"),
             ]
         )
 
@@ -769,7 +781,7 @@ def cmd_market(client: KalshiClient, ticker: str, verbose: bool = False):
     liquid = is_liquid(market)
 
     # ── Compact summary (always shown) ───────────────────────────────────────
-    market_url = f"{MARKET_BASE_URL}/markets/{ticker}"
+    market_url = f"{_market_base_url()}/markets/{ticker}"
     _header(market.get("title", ticker)[:50])
     print(f"  {cyan(market_url)}")
     _kv("Closes:", (market.get("close_time") or "N/A")[:19].replace("T", " "))
@@ -1116,7 +1128,7 @@ def _analyze_once(
             net_edge = a.get("net_edge", a["edge"])
             risk = a.get("time_risk", "—")
             title = (m.get("title") or ticker)[:38]
-            url = f"{MARKET_BASE_URL}/markets/{ticker}"
+            url = f"{_market_base_url()}/markets/{ticker}"
             urls.append((ticker, url))
             ticker_str = green(f"* {ticker}") if is_new else ticker
             our_pct = f"{a['forecast_prob'] * 100:.0f}%"
@@ -5155,7 +5167,7 @@ def cmd_menu(client: KalshiClient):
     key_map = {opt[0].lower(): str(i) for i, opt in enumerate(top_options, 1)}
 
     while True:
-        env_text = f"[{KALSHI_ENV.upper()}]"
+        env_text = f"[{_kalshi_env().upper()}]"
         title_visible = f"   Kalshi Weather Prediction Markets   {env_text}"
 
         # Build status line
@@ -6939,7 +6951,7 @@ def main():
     else:
         logging.disable(logging.DEBUG)
 
-    if KALSHI_ENV == "prod":
+    if _kalshi_env() == "prod":
         _log.warning("=" * 60)
         _log.warning("RUNNING IN PRODUCTION MODE — REAL MONEY TRADES ENABLED")
         _log.warning(
