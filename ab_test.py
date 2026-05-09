@@ -158,6 +158,8 @@ class ABTest:
         """Return summary statistics for all variants."""
         out = {}
         for v, s in self._state.items():
+            if v == "_meta":
+                continue
             trades = s["trades"]
             out[v] = {
                 "trades": trades,
