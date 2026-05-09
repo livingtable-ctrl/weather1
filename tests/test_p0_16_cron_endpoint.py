@@ -91,7 +91,7 @@ class TestIsCronRunning:
     def test_returns_false_when_no_lock_file(self, tmp_path, monkeypatch):
         import cron
 
-        monkeypatch.setattr("main.LOCK_PATH", tmp_path / ".cron.lock")
+        monkeypatch.setattr("cron.LOCK_PATH", tmp_path / ".cron.lock")
         assert cron._is_cron_running() is False
 
     def test_returns_false_for_dead_pid_with_psutil(self, tmp_path, monkeypatch):
@@ -103,7 +103,7 @@ class TestIsCronRunning:
         lock_file.write_text(
             json.dumps({"pid": 999999999, "started_at": 0, "heartbeat": 0})
         )
-        monkeypatch.setattr("main.LOCK_PATH", lock_file)
+        monkeypatch.setattr("cron.LOCK_PATH", lock_file)
         monkeypatch.setattr("cron._PSUTIL_AVAILABLE", True)
         monkeypatch.setattr("cron._psutil", MagicMock(pid_exists=lambda p: False))
 
@@ -119,7 +119,7 @@ class TestIsCronRunning:
         lock_file.write_text(
             json.dumps({"pid": os.getpid(), "started_at": 0, "heartbeat": 0})
         )
-        monkeypatch.setattr("main.LOCK_PATH", lock_file)
+        monkeypatch.setattr("cron.LOCK_PATH", lock_file)
         monkeypatch.setattr("cron._PSUTIL_AVAILABLE", True)
         monkeypatch.setattr("cron._psutil", MagicMock(pid_exists=lambda p: True))
 
@@ -130,6 +130,6 @@ class TestIsCronRunning:
 
         lock_file = tmp_path / ".cron.lock"
         lock_file.write_text("not valid json {{")
-        monkeypatch.setattr("main.LOCK_PATH", lock_file)
+        monkeypatch.setattr("cron.LOCK_PATH", lock_file)
 
         assert cron._is_cron_running() is False

@@ -34,11 +34,12 @@ def _import_main():
 class TestWriteCronRunningFlag:
     def test_flag_written_at_start(self, tmp_path, monkeypatch):
         """_write_cron_running_flag() creates the flag file with a UTC ISO timestamp."""
-        main = _import_main()
-        flag = tmp_path / ".cron_running"
-        monkeypatch.setattr(main, "RUNNING_FLAG_PATH", flag)
+        import cron
 
-        main._write_cron_running_flag()
+        flag = tmp_path / ".cron_running"
+        monkeypatch.setattr(cron, "RUNNING_FLAG_PATH", flag)
+
+        cron._write_cron_running_flag()
 
         assert flag.exists(), "flag file should be created"
         content = flag.read_text().strip()
@@ -48,27 +49,29 @@ class TestWriteCronRunningFlag:
 
     def test_flag_cleared_at_end(self, tmp_path, monkeypatch):
         """_clear_cron_running_flag() removes the flag file."""
-        main = _import_main()
+        import cron
+
         flag = tmp_path / ".cron_running"
         flag.write_text("2026-04-14T00:00:00+00:00")
-        monkeypatch.setattr(main, "RUNNING_FLAG_PATH", flag)
+        monkeypatch.setattr(cron, "RUNNING_FLAG_PATH", flag)
 
-        main._clear_cron_running_flag()
+        cron._clear_cron_running_flag()
 
         assert not flag.exists(), "flag file should be deleted"
 
     def test_stale_flag_no_warning(self, tmp_path, monkeypatch, caplog):
         """A flag older than 600 s must NOT trigger a warning."""
-        main = _import_main()
+        import cron
+
         flag = tmp_path / ".cron_running"
         flag.write_text("2026-04-14T00:00:00+00:00")
         # Back-date mtime by 700 s
         stale_mtime = time.time() - 700
         os.utime(flag, (stale_mtime, stale_mtime))
-        monkeypatch.setattr(main, "RUNNING_FLAG_PATH", flag)
+        monkeypatch.setattr(cron, "RUNNING_FLAG_PATH", flag)
 
         with caplog.at_level(logging.WARNING, logger="main"):
-            main._write_cron_running_flag()
+            cron._write_cron_running_flag()
 
         warning_msgs = [
             r.message for r in caplog.records if r.levelno == logging.WARNING
@@ -79,14 +82,15 @@ class TestWriteCronRunningFlag:
 
     def test_fresh_flag_triggers_warning(self, tmp_path, monkeypatch, caplog):
         """A flag younger than 600 s must trigger a WARNING."""
-        main = _import_main()
+        import cron
+
         flag = tmp_path / ".cron_running"
         flag.write_text("2026-04-14T00:00:00+00:00")
         # mtime is implicitly 'now', so age ≈ 0 s
-        monkeypatch.setattr(main, "RUNNING_FLAG_PATH", flag)
+        monkeypatch.setattr(cron, "RUNNING_FLAG_PATH", flag)
 
         with caplog.at_level(logging.WARNING, logger="main"):
-            main._write_cron_running_flag()
+            cron._write_cron_running_flag()
 
         warning_msgs = [
             r.message for r in caplog.records if r.levelno == logging.WARNING
@@ -97,12 +101,13 @@ class TestWriteCronRunningFlag:
 
     def test_clear_missing_flag_is_noop(self, tmp_path, monkeypatch):
         """_clear_cron_running_flag() must not raise when flag does not exist."""
-        main = _import_main()
+        import cron
+
         flag = tmp_path / ".cron_running"
         assert not flag.exists()
-        monkeypatch.setattr(main, "RUNNING_FLAG_PATH", flag)
+        monkeypatch.setattr(cron, "RUNNING_FLAG_PATH", flag)
 
-        main._clear_cron_running_flag()  # must not raise
+        cron._clear_cron_running_flag()  # must not raise
 
 
 # ===========================================================================
@@ -131,7 +136,7 @@ class TestCheckStartupOrders:
         main = _import_main()
         fake_orders = [self._recent_order(minutes_ago=2)]
         monkeypatch.setattr(
-            "main.execution_log.get_recent_orders", lambda limit=50: fake_orders
+            "cron.execution_log.get_recent_orders", lambda limit=50: fake_orders
         )
 
         with caplog.at_level(logging.WARNING, logger="main"):
@@ -149,7 +154,7 @@ class TestCheckStartupOrders:
         main = _import_main()
         fake_orders = [self._recent_order(minutes_ago=10)]
         monkeypatch.setattr(
-            "main.execution_log.get_recent_orders", lambda limit=50: fake_orders
+            "cron.execution_log.get_recent_orders", lambda limit=50: fake_orders
         )
 
         with caplog.at_level(logging.WARNING, logger="main"):
@@ -165,7 +170,7 @@ class TestCheckStartupOrders:
     def test_no_orders_no_warning(self, monkeypatch, caplog):
         """Empty order list must not trigger any warning."""
         main = _import_main()
-        monkeypatch.setattr("main.execution_log.get_recent_orders", lambda limit=50: [])
+        monkeypatch.setattr("cron.execution_log.get_recent_orders", lambda limit=50: [])
 
         with caplog.at_level(logging.WARNING, logger="main"):
             main._check_startup_orders()
@@ -179,7 +184,7 @@ class TestCheckStartupOrders:
         """If execution_log.get_recent_orders raises, _check_startup_orders must not propagate."""
         main = _import_main()
         monkeypatch.setattr(
-            "main.execution_log.get_recent_orders",
+            "cron.execution_log.get_recent_orders",
             lambda limit=50: (_ for _ in ()).throw(RuntimeError("db locked")),
         )
         # Should not raise
@@ -196,9 +201,11 @@ class TestCronLock:
         """_acquire_cron_lock() returns True and writes JSON lock when none exists."""
         import json
 
+        import cron
+
         main = _import_main()
         lock = tmp_path / ".cron.lock"
-        monkeypatch.setattr(main, "LOCK_PATH", lock)
+        monkeypatch.setattr(cron, "LOCK_PATH", lock)
 
         result = main._acquire_cron_lock()
 
@@ -214,6 +221,8 @@ class TestCronLock:
         import json
         from unittest.mock import patch
 
+        import cron
+
         main = _import_main()
         lock = tmp_path / ".cron.lock"
         lock.write_text(
@@ -225,7 +234,7 @@ class TestCronLock:
                 }
             )
         )
-        monkeypatch.setattr(main, "LOCK_PATH", lock)
+        monkeypatch.setattr(cron, "LOCK_PATH", lock)
 
         with (
             patch("cron._psutil") as mock_psutil,
@@ -241,6 +250,8 @@ class TestCronLock:
         import json
         from unittest.mock import patch
 
+        import cron
+
         main = _import_main()
         lock = tmp_path / ".cron.lock"
         lock.write_text(
@@ -252,7 +263,7 @@ class TestCronLock:
                 }
             )
         )
-        monkeypatch.setattr(main, "LOCK_PATH", lock)
+        monkeypatch.setattr(cron, "LOCK_PATH", lock)
 
         with (
             patch("cron._psutil") as mock_psutil,
@@ -269,10 +280,12 @@ class TestCronLock:
 
     def test_release_lock_removes_file(self, tmp_path, monkeypatch):
         """_release_cron_lock() deletes the lock file."""
+        import cron
+
         main = _import_main()
         lock = tmp_path / ".cron.lock"
         lock.write_text(str(os.getpid()))
-        monkeypatch.setattr(main, "LOCK_PATH", lock)
+        monkeypatch.setattr(cron, "LOCK_PATH", lock)
 
         main._release_cron_lock()
 
@@ -280,10 +293,12 @@ class TestCronLock:
 
     def test_release_missing_lock_is_noop(self, tmp_path, monkeypatch):
         """_release_cron_lock() must not raise when lock file does not exist."""
+        import cron
+
         main = _import_main()
         lock = tmp_path / ".cron.lock"
         assert not lock.exists()
-        monkeypatch.setattr(main, "LOCK_PATH", lock)
+        monkeypatch.setattr(cron, "LOCK_PATH", lock)
 
         main._release_cron_lock()  # must not raise
 
@@ -335,8 +350,10 @@ class TestCronLock:
             lambda: {"balance": 0.0, "open_trades_count": 0, "peak_balance": 0.0},
         )
         # Isolate from real data/ files — kill switch and black swan checks
-        monkeypatch.setattr(main, "RUNNING_FLAG_PATH", tmp_path / ".cron_running")
-        monkeypatch.setattr(main, "KILL_SWITCH_PATH", tmp_path / ".kill_switch")
+        import cron as _cron_mod
+
+        monkeypatch.setattr(_cron_mod, "RUNNING_FLAG_PATH", tmp_path / ".cron_running")
+        monkeypatch.setattr(_cron_mod, "KILL_SWITCH_PATH", tmp_path / ".kill_switch")
         monkeypatch.setattr("alerts.run_black_swan_check", lambda: [])
         monkeypatch.setattr(
             "alerts.run_anomaly_check", lambda log_results=False: ([], False)

@@ -141,10 +141,10 @@ class TestCronConsistencyCheck:
         src = inspect.getsource(cron._cmd_cron_body)
         # Both _consistency_skip and _auto_place_trades must appear
         assert "_consistency_skip" in src
-        assert "_auto_place_trades" in src
+        assert "auto_place_trades" in src
         # The skip flag must appear before the trading block
         skip_pos = src.index("_consistency_skip")
-        trade_pos = src.index("_auto_place_trades")
+        trade_pos = src.index("auto_place_trades")
         assert skip_pos < trade_pos, (
             "_consistency_skip must appear before _auto_place_trades in source"
         )

@@ -47,16 +47,15 @@ class TestProdStartupWarning:
         assert prod_warnings, "No PRODUCTION warning logged when KALSHI_ENV=prod"
 
     def test_cron_logs_prod_warning(self, caplog):
-        import cron
+        import main
 
         with caplog.at_level(logging.WARNING, logger="main"):
             with patch.dict(
                 "os.environ", {"KALSHI_ENV": "prod", "STARTING_BALANCE": "1000"}
             ):
-                with patch.object(cron, "_main_module") as mock_main:
-                    mock_main.return_value._acquire_cron_lock.return_value = False
+                with patch.object(main, "_acquire_cron_lock", return_value=False):
                     try:
-                        cron.cmd_cron(client=None)
+                        main.cmd_cron(client=None)
                     except SystemExit:
                         pass
 
@@ -66,14 +65,13 @@ class TestProdStartupWarning:
         )
 
     def test_no_warning_in_demo(self, caplog):
-        import cron
+        import main
 
         with caplog.at_level(logging.WARNING, logger="main"):
             with patch.dict("os.environ", {"KALSHI_ENV": "demo"}):
-                with patch.object(cron, "_main_module") as mock_main:
-                    mock_main.return_value._acquire_cron_lock.return_value = False
+                with patch.object(main, "_acquire_cron_lock", return_value=False):
                     try:
-                        cron.cmd_cron(client=None)
+                        main.cmd_cron(client=None)
                     except SystemExit:
                         pass
 

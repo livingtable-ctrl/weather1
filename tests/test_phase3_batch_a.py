@@ -144,25 +144,9 @@ class TestCronWalCheckpoint:
 
         import cron
 
-        with (
-            patch.object(cron, "_cmd_cron_body", return_value=False),
-            patch("cron._main_module") as mock_main,
-            patch("cron.sqlite3", create=True) as _,
-        ):
-            mock_main.return_value._acquire_cron_lock.return_value = True
-            mock_main.return_value._clear_cron_running_flag.return_value = None
-            mock_main.return_value._release_cron_lock.return_value = None
-
-            # Patch the inline sqlite3 import inside finally to track calls
-            fake_sqlite = MagicMock()
-            fake_conn = MagicMock()
-            fake_sqlite.connect.return_value.__enter__ = lambda s: fake_conn
-            fake_sqlite.connect.return_value.__exit__ = MagicMock(return_value=False)
-
-            with patch.dict("sys.modules", {"sqlite3": fake_sqlite}):
-                # Just verify the cron finally block tries to import and execute
-                # The actual checkpoint is tested structurally — the code exists
-                pass
+        with patch.object(cron, "_cmd_cron_body", return_value=False):
+            # Structural test only — just verify the checkpoint code exists in source
+            pass
 
         # Structural test: verify the checkpoint code is present in the source
         import inspect

@@ -63,11 +63,17 @@ class TestMaxConcurrentPositions:
         monkeypatch.setattr(paper, "is_daily_loss_halted", lambda c: False)
         monkeypatch.setattr(paper, "is_streak_paused", lambda: False)
         monkeypatch.setattr(paper, "is_paused_drawdown", lambda: False)
-        monkeypatch.setattr(main, "_daily_paper_spend", lambda: 0.0)
+        import order_executor
+
+        monkeypatch.setattr(order_executor, "_daily_paper_spend", lambda: 0.0)
         monkeypatch.setattr(
-            main, "_validate_trade_opportunity", lambda opp, live=False: (True, "ok")
+            order_executor,
+            "_validate_trade_opportunity",
+            lambda opp, live=False: (True, "ok"),
         )
-        monkeypatch.setattr(main, "_current_forecast_cycle", lambda: "2026-04-25-06")
+        monkeypatch.setattr(
+            order_executor, "_current_forecast_cycle", lambda: "2026-04-25-06"
+        )
         monkeypatch.setattr(paper, "place_paper_order", MagicMock())
 
         opps = [self._make_opp(i) for i in range(5)]
@@ -89,11 +95,17 @@ class TestMaxConcurrentPositions:
         monkeypatch.setattr(paper, "is_daily_loss_halted", lambda c: False)
         monkeypatch.setattr(paper, "is_streak_paused", lambda: False)
         monkeypatch.setattr(paper, "is_paused_drawdown", lambda: False)
-        monkeypatch.setattr(main, "_daily_paper_spend", lambda: 0.0)
+        import order_executor
+
+        monkeypatch.setattr(order_executor, "_daily_paper_spend", lambda: 0.0)
         monkeypatch.setattr(
-            main, "_validate_trade_opportunity", lambda opp, live=False: (True, "ok")
+            order_executor,
+            "_validate_trade_opportunity",
+            lambda opp, live=False: (True, "ok"),
         )
-        monkeypatch.setattr(main, "_current_forecast_cycle", lambda: "2026-04-25-06")
+        monkeypatch.setattr(
+            order_executor, "_current_forecast_cycle", lambda: "2026-04-25-06"
+        )
 
         placed_count = 0
 
@@ -107,7 +119,7 @@ class TestMaxConcurrentPositions:
         mock_exec_log = MagicMock()
         mock_exec_log.was_ordered_this_cycle.return_value = False
         mock_exec_log.was_traded_today.return_value = False
-        monkeypatch.setattr(main, "execution_log", mock_exec_log)
+        monkeypatch.setattr(order_executor, "execution_log", mock_exec_log)
 
         opps = [self._make_opp(i) for i in range(5)]
         result = main._auto_place_trades(opps, client=None, live=False)

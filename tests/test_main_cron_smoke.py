@@ -12,13 +12,14 @@ import pytest
 @pytest.fixture()
 def minimal_mocks(tmp_path, monkeypatch):
     """Patch every external call cmd_cron makes so it can run without network."""
+    import cron
     import main
 
     # Redirect lock and kill-switch paths to tmp_path so they don't interfere with production
     lock_path = tmp_path / ".cron.lock"
     ks_path = tmp_path / ".kill_switch"
-    monkeypatch.setattr(main, "LOCK_PATH", lock_path, raising=False)
-    monkeypatch.setattr(main, "KILL_SWITCH_PATH", ks_path, raising=False)
+    monkeypatch.setattr(cron, "LOCK_PATH", lock_path, raising=False)
+    monkeypatch.setattr(cron, "KILL_SWITCH_PATH", ks_path, raising=False)
 
     # No markets returned by default
     monkeypatch.setattr(main, "get_weather_markets", lambda client: [])
@@ -41,11 +42,12 @@ def minimal_mocks(tmp_path, monkeypatch):
 class TestCmdCronGuards:
     def test_kill_switch_blocks_market_scan(self, minimal_mocks, monkeypatch):
         """cmd_cron exits early when the kill switch file is present."""
+        import cron
         import main
 
         ks_path = minimal_mocks / ".kill_switch"
         ks_path.write_text('{"reason": "test"}')
-        monkeypatch.setattr(main, "KILL_SWITCH_PATH", ks_path, raising=False)
+        monkeypatch.setattr(cron, "KILL_SWITCH_PATH", ks_path, raising=False)
 
         scan_called = []
         monkeypatch.setattr(

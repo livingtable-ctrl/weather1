@@ -40,10 +40,10 @@ def _stub_prereqs(monkeypatch):
     monkeypatch.setattr(
         "paper.portfolio_kelly_fraction", lambda kf, c, d, side=None: kf
     )
-    monkeypatch.setattr("main._daily_paper_spend", lambda: 0.0)
-    monkeypatch.setattr("main._current_forecast_cycle", lambda: "12z")
+    monkeypatch.setattr("order_executor._daily_paper_spend", lambda: 0.0)
+    monkeypatch.setattr("order_executor._current_forecast_cycle", lambda: "12z")
     monkeypatch.setattr(
-        "main.execution_log.was_ordered_this_cycle", lambda t, s, c: False
+        "order_executor.execution_log.was_ordered_this_cycle", lambda t, s, c: False
     )
 
 
@@ -78,7 +78,7 @@ class TestPaperPreLog:
             seen_pending.extend(pending)
             return {"id": 1, "status": "open", "cost": price * qty}
 
-        monkeypatch.setattr("main.place_paper_order", fake_place)
+        monkeypatch.setattr("order_executor.place_paper_order", fake_place)
 
         import main
 
@@ -100,7 +100,7 @@ class TestPaperPreLog:
         def fake_place(ticker, side, qty, price, **kwargs):
             return {"id": 42, "status": "open", "cost": price * qty}
 
-        monkeypatch.setattr("main.place_paper_order", fake_place)
+        monkeypatch.setattr("order_executor.place_paper_order", fake_place)
 
         import main
 
@@ -122,7 +122,7 @@ class TestPaperPreLog:
         def boom(ticker, side, qty, price, **kwargs):
             raise RuntimeError("disk full")
 
-        monkeypatch.setattr("main.place_paper_order", boom)
+        monkeypatch.setattr("order_executor.place_paper_order", boom)
 
         import main
 
