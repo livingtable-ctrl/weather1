@@ -1531,11 +1531,11 @@ Extract the following into `order_executor.py`:
 
 This is the highest-value extraction from the God file. These are the financial-critical functions with the most test coverage requirements and the most bug history.
 
-### P3-10 · Persist SQLite with FULL Synchronous for execution_log
+### ✅ P3-10 · Persist SQLite with FULL Synchronous for execution_log
 **File:** `execution_log.py`  
 Change `PRAGMA synchronous=NORMAL` to `PRAGMA synchronous=FULL` for `execution_log.db`. This is the financial audit trail. The write volume is low enough that the performance cost is negligible. `tracker.db` and `predictions.db` can remain at NORMAL.
 
-### P3-11 · Fix Backtest Brier Key Naming
+### ✅ P3-11 · Fix Backtest Brier Key Naming
 **File:** `backtest.py`  
 Rename `"brier"` key in the return dict to `"train_brier"`. Rename `"val_brier"` to remain `"val_brier"`. Add a guard: if `val_n < 10`, add a `"val_brier_unreliable": True` flag. This prevents callers from treating in-sample Brier as a generalization metric.
 
@@ -1543,7 +1543,7 @@ Rename `"brier"` key in the return dict to `"train_brier"`. Rename `"val_brier"`
 **File:** `ml_bias.py:train_bias_model`  
 Before persisting the model, split the last 20% of data as hold-out. Train on first 80%. Only persist if hold-out Brier improves vs. uncorrected baseline by >0.005. Log the comparison.
 
-### P3-13 · Consolidate Kelly Cap Constants
+### ✅ P3-13 · Consolidate Kelly Cap Constants
 **Files:** `weather_markets.py`, `paper.py`  
 Kelly cap is 0.33 in `weather_markets.py` and 0.25 in `paper.py`. The operative cap in production is 0.25. Decide one value, move it to `utils.py` as `KELLY_CAP: float = 0.25`, and use it in both places.
 
@@ -1551,7 +1551,7 @@ Kelly cap is 0.33 in `weather_markets.py` and 0.25 in `paper.py`. The operative 
 **File:** `cron.py:_cmd_cron_body`, `consistency.py`  
 Call `find_violations(markets)` after the market scan. Log all violations at WARNING level. Optionally add a threshold: if more than N violations exist, skip auto-trading for that cycle.
 
-### P3-15 · SQLite WAL Checkpoint and Cleanup Strategy
+### ✅ P3-15 · SQLite WAL Checkpoint and Cleanup Strategy
 **File:** `cron.py` (end of cron run)  
 At the end of each cron run, checkpoint the WAL:
 ```python
@@ -2214,17 +2214,17 @@ Same temporal isolation fix as P3-1 must be applied to `calibrate_condition_weig
 ### P3-18 · Fix `stratified_train_test_split` Dead Code in `backtest.py`
 Defined but never called. Either use it in `run_backtest` for holdout stratification by city/condition, or remove it.
 
-### P3-19 · Fix `hash(bytes)` Non-Deterministic in `backtest.py`
+### ✅ P3-19 · Fix `hash(bytes)` Non-Deterministic in `backtest.py`
 **File:** `backtest.py:fetch_archive_temps`  
 `hash(target_str[:8].encode())` is PYTHONHASHSEED-randomised. Two runs of the same backtest produce different results.  
 **Fix:** `int(hashlib.md5(target_str.encode()).hexdigest()[:8], 16)`
 
-### P3-20 · Fix `correlation_applied` Flag Misleading When Cholesky Fails
+### ✅ P3-20 · Fix `correlation_applied` Flag Misleading When Cholesky Fails
 **File:** `monte_carlo.py:simulate_portfolio`  
 `correlation_applied = any(tp["city"] for tp in trade_params)` is set regardless of Cholesky success.  
 **Fix:** `correlation_applied = chol is not None`
 
-### P3-21 · Fix `_validate()` Warn-Only — Schema Change Returns Empty Market List
+### ✅ P3-21 · Fix `_validate()` Warn-Only — Schema Change Returns Empty Market List
 **File:** `kalshi_client.py:_validate`  
 Silent `warnings.warn()` invisible in cron log. Schema change causes bot to see 0 markets with no alert.  
 **Fix:** Replace `warnings.warn()` with `_log.error()` to ensure it appears in the log file.
