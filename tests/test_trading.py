@@ -696,9 +696,10 @@ def test_auto_place_trades_med_tier_uses_20_cap(monkeypatch):
     def fake_was_ordered_this_cycle(ticker, side, cycle):
         return False
 
-    monkeypatch.setattr("main.place_paper_order", fake_place_paper_order)
+    monkeypatch.setattr("order_executor.place_paper_order", fake_place_paper_order)
     monkeypatch.setattr(
-        "main.execution_log.was_ordered_this_cycle", fake_was_ordered_this_cycle
+        "order_executor.execution_log.was_ordered_this_cycle",
+        fake_was_ordered_this_cycle,
     )
 
     import paper
@@ -711,12 +712,14 @@ def test_auto_place_trades_med_tier_uses_20_cap(monkeypatch):
     monkeypatch.setattr(paper, "is_paused_drawdown", fake_is_paused_drawdown)
     monkeypatch.setattr(paper, "is_daily_loss_halted", fake_is_daily_loss_halted)
     monkeypatch.setattr(paper, "is_streak_paused", fake_is_streak_paused)
-    monkeypatch.setattr(main, "_daily_paper_spend", lambda: 0.0)
+    import order_executor as _oe
+
+    monkeypatch.setattr(_oe, "_daily_paper_spend", lambda: 0.0)
     monkeypatch.setattr(
-        main, "_validate_trade_opportunity", lambda opp, live=False: (True, "ok")
+        _oe, "_validate_trade_opportunity", lambda opp, live=False: (True, "ok")
     )
     monkeypatch.setattr(
-        main.execution_log, "was_traded_today", lambda ticker, side: False
+        _oe.execution_log, "was_traded_today", lambda ticker, side: False
     )
 
     opps = [
@@ -746,14 +749,18 @@ def test_auto_place_trades_med_tier_uses_20_cap(monkeypatch):
 
 def test_auto_place_trades_stops_at_daily_spend_cap(monkeypatch):
     """Should not place trades when MAX_DAILY_SPEND is already reached."""
-    import main
     import paper
     import utils
 
     monkeypatch.setattr(
         utils, "MAX_DAILY_SPEND", 0.01
     )  # $0.01 cap — immediately exceeded
-    monkeypatch.setattr(main, "_daily_paper_spend", lambda: 50.0)  # already spent $50
+    import order_executor as _oe
+
+    monkeypatch.setattr(
+        _oe, "MAX_DAILY_SPEND", 0.01
+    )  # $0.01 cap in order_executor's namespace
+    monkeypatch.setattr(_oe, "_daily_paper_spend", lambda: 50.0)  # already spent $50
 
     placed_count = [0]
 
@@ -790,7 +797,6 @@ def test_check_early_exits_closes_position_when_prob_flips(tmp_path, monkeypatch
     """If updated prob shifts >15pp against position, close_paper_early is called."""
     import importlib
 
-    import main
     import paper
 
     # Isolate paper storage in a temp dir so other tests' trades don't bleed in
@@ -824,11 +830,13 @@ def test_check_early_exits_closes_position_when_prob_flips(tmp_path, monkeypatch
     fake_market = {"ticker": "TEST-TICKER", "yes_bid": 48, "yes_ask": 52}
     fake_analysis = {"forecast_prob": 0.50, "market_prob": 0.65}
 
-    # Patch at the module where names are resolved inside _check_early_exits
+    # Patch at the module where names are resolved inside _check_early_exits (order_executor)
+    import order_executor as _oe
+
     monkeypatch.setattr(paper, "close_paper_early", fake_close)
-    monkeypatch.setattr(main, "analyze_trade", lambda e: fake_analysis)
-    monkeypatch.setattr(main, "enrich_with_forecast", lambda m: m)
-    monkeypatch.setattr(main, "get_weather_markets", lambda client: [fake_market])
+    monkeypatch.setattr(_oe, "analyze_trade", lambda e: fake_analysis)
+    monkeypatch.setattr(_oe, "enrich_with_forecast", lambda m: m)
+    monkeypatch.setattr(_oe, "get_weather_markets", lambda client: [fake_market])
 
     from main import _check_early_exits
 
@@ -1237,12 +1245,14 @@ def _l7b_common_patches(monkeypatch):
     monkeypatch.setattr(paper, "is_paused_drawdown", lambda: False)
     monkeypatch.setattr(paper, "is_daily_loss_halted", lambda client=None: False)
     monkeypatch.setattr(paper, "is_streak_paused", lambda: False)
-    monkeypatch.setattr(main, "_daily_paper_spend", lambda: 0.0)
+    import order_executor as _oe
+
+    monkeypatch.setattr(_oe, "_daily_paper_spend", lambda: 0.0)
     monkeypatch.setattr(
-        main, "_validate_trade_opportunity", lambda opp, live=False: (True, "ok")
+        _oe, "_validate_trade_opportunity", lambda opp, live=False: (True, "ok")
     )
     monkeypatch.setattr(
-        main.execution_log, "was_traded_today", lambda ticker, side: False
+        _oe.execution_log, "was_traded_today", lambda ticker, side: False
     )
     return main, paper
 
@@ -1262,7 +1272,7 @@ def test_auto_place_uses_yes_ask_not_mid_for_yes_trades(monkeypatch):
         captured_prices.append(entry_price)
         return {"id": 1}
 
-    monkeypatch.setattr("main.place_paper_order", fake_place_paper_order)
+    monkeypatch.setattr("order_executor.place_paper_order", fake_place_paper_order)
 
     # Market with yes_bid=38¢, yes_ask=42¢ → mid=40¢ (market_prob=0.40)
     # Correct YES fill price = yes_ask = 0.42 (not mid 0.40)
@@ -1320,7 +1330,7 @@ def test_auto_place_uses_no_ask_not_mid_for_no_trades(monkeypatch):
         captured_prices.append(entry_price)
         return {"id": 1}
 
-    monkeypatch.setattr("main.place_paper_order", fake_place_paper_order)
+    monkeypatch.setattr("order_executor.place_paper_order", fake_place_paper_order)
 
     # Market with yes_bid=38¢, yes_ask=42¢ → mid=40¢
     # Correct NO fill price = no_ask = 1 - yes_bid = 1 - 0.38 = 0.62 (not 1 - 0.40 = 0.60)

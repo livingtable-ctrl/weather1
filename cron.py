@@ -1,9 +1,9 @@
 """cron.py — Background cron runner extracted from main.py.
 
 Contains cmd_cron and its private cron-only helpers.
-Paths (LOCK_PATH, KILL_SWITCH_PATH, RUNNING_FLAG_PATH) are read from the
-``main`` module at call-time so that test monkeypatching via
-``monkeypatch.setattr(main, "LOCK_PATH", ...)`` is respected.
+Path constants (LOCK_PATH, KILL_SWITCH_PATH, RUNNING_FLAG_PATH) are defined
+here; main.py re-exports them.  Tests that need to redirect paths should
+patch ``cron.LOCK_PATH`` (not ``main.LOCK_PATH``).
 """
 
 from __future__ import annotations
@@ -11,7 +11,8 @@ from __future__ import annotations
 import json
 import logging
 import os
-import sys
+from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import UTC
 from pathlib import Path
 
@@ -33,25 +34,58 @@ _log = logging.getLogger("main")
 
 
 # ---------------------------------------------------------------------------
-# Internal helpers — path accessors that respect main-module monkeypatching
+# Path constants (owned here; main.py re-exports them)
+# ---------------------------------------------------------------------------
+
+# P3.1 — graceful shutdown flag
+RUNNING_FLAG_PATH: Path = Path(__file__).parent / "data" / ".cron_running"
+
+# P3.4 — file-based cron lock (prevents concurrent cron instances)
+LOCK_PATH: Path = Path(__file__).parent / "data" / ".cron.lock"
+
+# P8.3 — hard kill switch path
+KILL_SWITCH_PATH: Path = Path(__file__).parent / "data" / ".kill_switch"
+
+
+# ---------------------------------------------------------------------------
+# CronContext — explicit dependency injection replacing _main_module() hack
 # ---------------------------------------------------------------------------
 
 
-def _main_module():  # type: ignore[return]
-    """Return the live ``main`` module object (never cache at import time)."""
-    return sys.modules.get("main") or sys.modules["__main__"]
+@dataclass
+class CronContext:
+    """All callable dependencies that cmd_cron needs from outside cron.py.
 
+    Constructed in main.py at call-time so test monkeypatching of
+    ``main.get_weather_markets`` etc. is picked up automatically.
+    """
 
-def _lock_path() -> Path:
-    return _main_module().LOCK_PATH  # type: ignore[attr-defined]
+    # Lock / flag management (defined in cron.py, re-exported via main)
+    acquire_cron_lock: Callable[[], bool]
+    release_cron_lock: Callable[[], None]
+    write_cron_running_flag: Callable[[], None]
+    clear_cron_running_flag: Callable[[], None]
 
+    # Startup checks (defined in cron.py / main.py)
+    check_manual_override: Callable[[], bool]
+    check_startup_orders: Callable[[], None]
 
-def _kill_switch_path() -> Path:
-    return _main_module().KILL_SWITCH_PATH  # type: ignore[attr-defined]
+    # Weather data (from weather_markets)
+    get_weather_markets: Callable
+    enrich_with_forecast: Callable
+    analyze_trade: Callable
+    get_weather_forecast: Callable
+    fetch_temperature_nbm: Callable
+    fetch_temperature_ecmwf: Callable
+    fetch_temperature_weatherapi: Callable
+    check_ensemble_circuit_health: Callable
 
+    # Execution (from order_executor, re-exported via main)
+    auto_place_trades: Callable
+    check_early_exits: Callable
 
-def _running_flag_path() -> Path:
-    return _main_module().RUNNING_FLAG_PATH  # type: ignore[attr-defined]
+    # Outcome tracking (from tracker)
+    sync_outcomes: Callable
 
 
 # ---------------------------------------------------------------------------
@@ -63,7 +97,7 @@ def _write_cron_running_flag() -> None:
     """Write UTC ISO timestamp to RUNNING_FLAG_PATH; warn if a fresh flag already exists."""
     import time as _time
 
-    rfp = _running_flag_path()
+    rfp = RUNNING_FLAG_PATH
     try:
         if rfp.exists():
             age = _time.time() - rfp.stat().st_mtime
@@ -86,7 +120,7 @@ def _write_cron_running_flag() -> None:
 def _clear_cron_running_flag() -> None:
     """Delete RUNNING_FLAG_PATH if it exists."""
     try:
-        _running_flag_path().unlink(missing_ok=True)
+        RUNNING_FLAG_PATH.unlink(missing_ok=True)
     except Exception as _e:
         _log.warning("cmd_cron: could not clear running flag: %s", _e)
 
@@ -146,7 +180,7 @@ def _acquire_cron_lock() -> bool:
     """
     import time as _time
 
-    lp = _lock_path()
+    lp = LOCK_PATH
     try:
         if lp.exists():
             try:
@@ -212,7 +246,7 @@ def _acquire_cron_lock() -> bool:
 def _release_cron_lock() -> None:
     """Delete the cron lock file."""
     try:
-        _lock_path().unlink(missing_ok=True)
+        LOCK_PATH.unlink(missing_ok=True)
     except Exception as _e:
         _log.warning("cmd_cron: could not release lock: %s", _e)
 
@@ -226,7 +260,7 @@ def _is_cron_running() -> bool:
     """
     import time as _time
 
-    lp = _lock_path()
+    lp = LOCK_PATH
     if not lp.exists():
         return False
     try:
@@ -340,12 +374,12 @@ def report_anomalies(anomalies: list[dict]) -> None:
     _log.warning("Anomalies flagged: %s", [a.get("ticker") for a in anomalies])
 
 
-def _cmd_cron_body(client: KalshiClient, min_edge: float = MIN_EDGE) -> bool | None:
+def _cmd_cron_body(
+    ctx: CronContext, client: KalshiClient, min_edge: float = MIN_EDGE
+) -> bool | None:
     """Core scan logic — extracted from cmd_cron so it can be wrapped in try/finally."""
-    _main = _main_module()
-
     # P8.3 — hard kill switch: touch data/.kill_switch to halt immediately
-    if _kill_switch_path().exists():
+    if KILL_SWITCH_PATH.exists():
         _log.critical(
             "KILL SWITCH ACTIVATED — halting cron execution immediately. Remove data/.kill_switch to resume."
         )
@@ -357,8 +391,7 @@ def _cmd_cron_body(client: KalshiClient, min_edge: float = MIN_EDGE) -> bool | N
         return None
 
     # P8.4 — manual override check (time-limited pause)
-    # Use main-module lookup so test monkeypatching of main._check_manual_override works.
-    if _main._check_manual_override():
+    if ctx.check_manual_override():
         _log.warning("cmd_cron: manual override active — skipping this run")
         return None
 
@@ -406,14 +439,12 @@ def _cmd_cron_body(client: KalshiClient, min_edge: float = MIN_EDGE) -> bool | N
 
         _prune_features()
 
-    # Graceful shutdown flag — use main-module lookup so test monkeypatching works.
-    _main._write_cron_running_flag()
-    # Detect orders placed in the last 5 minutes at startup
-    _main._check_startup_orders()
+    ctx.write_cron_running_flag()
+    ctx.check_startup_orders()
 
     # Phase 1 — surface prolonged Open-Meteo outages immediately
     try:
-        _main.check_ensemble_circuit_health()
+        ctx.check_ensemble_circuit_health()
     except Exception as _e:
         _log.debug("cmd_cron: check_ensemble_circuit_health failed: %s", _e)
 
@@ -570,7 +601,7 @@ def _cmd_cron_body(client: KalshiClient, min_edge: float = MIN_EDGE) -> bool | N
         from concurrent.futures import ThreadPoolExecutor
         from concurrent.futures import as_completed as _as_completed
 
-        markets = _main.get_weather_markets(client)
+        markets = ctx.get_weather_markets(client)
         scanned = len(markets)
         print(dim(f"  [cron] scanning {scanned} market(s)\u2026"), flush=True)
 
@@ -611,7 +642,7 @@ def _cmd_cron_body(client: KalshiClient, min_edge: float = MIN_EDGE) -> bool | N
         # parallel scan hits cache instead of making redundant network requests.
         _city_dates: set[tuple[str, str]] = set()
         for _m in markets:
-            _enriched_preview = _main.enrich_with_forecast(_m)
+            _enriched_preview = ctx.enrich_with_forecast(_m)
             _city = _enriched_preview.get("_city") or ""
             _td = _enriched_preview.get("_date")
             if _city and _td:
@@ -630,19 +661,19 @@ def _cmd_cron_body(client: KalshiClient, min_edge: float = MIN_EDGE) -> bool | N
                 _c, _d = city_date
                 _dt = __import__("datetime").date.fromisoformat(_d)
                 try:
-                    _main.get_weather_forecast(_c, _dt)
+                    ctx.get_weather_forecast(_c, _dt)
                 except Exception:
                     pass
                 try:
-                    _main.fetch_temperature_nbm(_c, _dt)
+                    ctx.fetch_temperature_nbm(_c, _dt)
                 except Exception:
                     pass
                 try:
-                    _main.fetch_temperature_ecmwf(_c, _dt)
+                    ctx.fetch_temperature_ecmwf(_c, _dt)
                 except Exception:
                     pass
                 try:
-                    _main.fetch_temperature_weatherapi(_c, _dt)
+                    ctx.fetch_temperature_weatherapi(_c, _dt)
                 except Exception:
                     pass
                 for _v in ("max", "min"):
@@ -669,8 +700,8 @@ def _cmd_cron_body(client: KalshiClient, min_edge: float = MIN_EDGE) -> bool | N
                         pass
 
         def _enrich_and_analyze(m: dict) -> tuple[dict, dict, dict | None]:
-            enriched = _main.enrich_with_forecast(m)
-            return m, enriched, _main.analyze_trade(enriched)
+            enriched = ctx.enrich_with_forecast(m)
+            return m, enriched, ctx.analyze_trade(enriched)
 
         _analysis_batch: list[dict] = []  # #perf: collect for single bulk insert
         # Dedup by ticker before analysis — same market can appear twice when the
@@ -694,7 +725,7 @@ def _cmd_cron_body(client: KalshiClient, min_edge: float = MIN_EDGE) -> bool | N
                 _pool.submit(_enrich_and_analyze, m): m for m in _deduped_markets
             }
             for fut in _as_completed(_futures):
-                if _kill_switch_path().exists():
+                if KILL_SWITCH_PATH.exists():
                     _log.warning(
                         "cmd_cron: kill switch activated mid-scan — stopping analysis"
                     )
@@ -884,8 +915,7 @@ def _cmd_cron_body(client: KalshiClient, min_edge: float = MIN_EDGE) -> bool | N
                 )
             )
             placed_count += (
-                _main._auto_place_trades(strong_opps, client=client, cap=strong_cap)
-                or 0
+                ctx.auto_place_trades(strong_opps, client=client, cap=strong_cap) or 0
             )
         if med_opps:
             print(
@@ -894,13 +924,13 @@ def _cmd_cron_body(client: KalshiClient, min_edge: float = MIN_EDGE) -> bool | N
                 )
             )
             placed_count += (
-                _main._auto_place_trades(med_opps, client=client, cap=20.0) or 0
+                ctx.auto_place_trades(med_opps, client=client, cap=20.0) or 0
             )
 
     # Auto-settle any pending trades whose markets have resolved
     settled_count = 0
     try:
-        settled_count = _main.sync_outcomes(client)
+        settled_count = ctx.sync_outcomes(client)
         if settled_count > 0:
             print(green(f"  [Settle] Recorded {settled_count} new outcome(s)."))
     except Exception:
@@ -1061,7 +1091,7 @@ def _cmd_cron_body(client: KalshiClient, min_edge: float = MIN_EDGE) -> bool | N
 
     # Check open positions for early exit opportunities
     try:
-        exits = _main._check_early_exits(client=client)
+        exits = ctx.check_early_exits(client=client)
         if exits > 0:
             print(green(f"  [EarlyExit] Closed {exits} position(s) on model update."))
     except Exception as _e:
@@ -1251,7 +1281,9 @@ def _cmd_cron_body(client: KalshiClient, min_edge: float = MIN_EDGE) -> bool | N
 # ---------------------------------------------------------------------------
 
 
-def cmd_cron(client: KalshiClient, min_edge: float = MIN_EDGE) -> None:
+def cmd_cron(
+    ctx: CronContext, client: KalshiClient, min_edge: float = MIN_EDGE
+) -> None:
     """Silent background scan — writes to data/cron.log, auto-places strong paper trades."""
     import sys as _sys
 
@@ -1264,12 +1296,7 @@ def cmd_cron(client: KalshiClient, min_edge: float = MIN_EDGE) -> None:
         )
         _log.warning("=" * 60)
 
-    # Resolve the live main module so monkeypatched attributes are used
-    _main = _main_module()
-
-    # Acquire file lock; exit immediately if another instance is running.
-    # Use _main lookup so monkeypatch.setattr(main, "_acquire_cron_lock", ...) is respected.
-    if not _main._acquire_cron_lock():
+    if not ctx.acquire_cron_lock():
         _log.warning("cmd_cron: could not acquire lock — skipping this run")
         if not getattr(cmd_cron, "_called_from_loop", False):
             _sys.exit(1)
@@ -1277,12 +1304,12 @@ def cmd_cron(client: KalshiClient, min_edge: float = MIN_EDGE) -> None:
 
     _full_scan = False
     try:
-        _full_scan = bool(_cmd_cron_body(client, min_edge))
+        _full_scan = bool(_cmd_cron_body(ctx, client, min_edge))
     except KeyboardInterrupt:
         print()
         _log.warning("cmd_cron: interrupted by user")
     finally:
-        _main._clear_cron_running_flag()
+        ctx.clear_cron_running_flag()
         try:
             _last_run_path = Path(__file__).parent / "data" / ".cron_last_run"
             _last_run_path.write_text(__import__("datetime").datetime.now().isoformat())
@@ -1297,6 +1324,6 @@ def cmd_cron(client: KalshiClient, min_edge: float = MIN_EDGE) -> None:
                 _wc.execute("PRAGMA wal_checkpoint(PASSIVE)")
         except Exception:
             pass
-        _main._release_cron_lock()
+        ctx.release_cron_lock()
     if _full_scan and not getattr(cmd_cron, "_called_from_loop", False):
         _sys.exit(0)

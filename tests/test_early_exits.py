@@ -110,9 +110,11 @@ class TestCheckEarlyExitsApiCallCount:
         mock_client = MagicMock()
 
         with (
-            patch("main.get_weather_markets", return_value=markets) as mock_fetch,
-            patch("main.enrich_with_forecast", return_value={}),
-            patch("main.analyze_trade", return_value=mock_analysis),
+            patch(
+                "order_executor.get_weather_markets", return_value=markets
+            ) as mock_fetch,
+            patch("order_executor.enrich_with_forecast", return_value={}),
+            patch("order_executor.analyze_trade", return_value=mock_analysis),
             patch("paper.get_open_trades", return_value=trades),
         ):
             main._check_early_exits(mock_client)
@@ -129,7 +131,7 @@ class TestCheckEarlyExitsApiCallCount:
         mock_client = MagicMock()
 
         with (
-            patch("main.get_weather_markets") as mock_fetch,
+            patch("order_executor.get_weather_markets") as mock_fetch,
             patch("paper.get_open_trades", return_value=[]),
         ):
             result = main._check_early_exits(mock_client)
@@ -151,9 +153,9 @@ class TestCheckEarlyExitsHoldTime:
         mock_client.get_market.return_value = mock_market
 
         with (
-            patch("main.get_weather_markets", return_value=[mock_market]),
-            patch("main.enrich_with_forecast", return_value=mock_market),
-            patch("main.analyze_trade", return_value=mock_analysis),
+            patch("order_executor.get_weather_markets", return_value=[mock_market]),
+            patch("order_executor.enrich_with_forecast", return_value=mock_market),
+            patch("order_executor.analyze_trade", return_value=mock_analysis),
             patch("paper.get_open_trades", return_value=[new_trade]),
         ):
             closed = main._check_early_exits(mock_client)

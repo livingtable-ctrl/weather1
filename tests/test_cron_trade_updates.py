@@ -9,12 +9,13 @@ def _apply_cron_isolation(monkeypatch, tmp_path):
     Without these stubs, stale lock files or DB state from earlier tests in the
     full suite can cause cmd_cron to exit before reaching the code under test.
     """
+    import cron as _cron
     import main
 
     lock_path = tmp_path / ".cron.lock"
     ks_path = tmp_path / ".kill_switch"
-    monkeypatch.setattr(main, "LOCK_PATH", lock_path, raising=False)
-    monkeypatch.setattr(main, "KILL_SWITCH_PATH", ks_path, raising=False)
+    monkeypatch.setattr(_cron, "LOCK_PATH", lock_path, raising=False)
+    monkeypatch.setattr(_cron, "KILL_SWITCH_PATH", ks_path, raising=False)
     monkeypatch.setattr(main, "_write_cron_running_flag", lambda: None)
     monkeypatch.setattr(main, "_check_startup_orders", lambda: None)
     monkeypatch.setattr(main, "_check_manual_override", lambda: False)
@@ -25,7 +26,7 @@ def _apply_cron_isolation(monkeypatch, tmp_path):
 class TestCronSettlesPaperTrades:
     def test_cmd_cron_calls_auto_settle_paper_trades(self, monkeypatch, tmp_path):
         """cmd_cron must call auto_settle_paper_trades so paper trades get marked won/lost."""
-        import cron
+        import main
 
         _apply_cron_isolation(monkeypatch, tmp_path)
 
@@ -39,9 +40,9 @@ class TestCronSettlesPaperTrades:
         fake_client = MagicMock()
 
         try:
-            cron.cmd_cron(fake_client)
+            main.cmd_cron(fake_client)
         except (Exception, SystemExit):
-            pass  # cron calls sys.exit(0) at the end — catch it so the assert runs
+            pass  # cmd_cron calls sys.exit(0) at the end — catch it so the assert runs
 
         assert len(settle_calls) > 0, (
             "cmd_cron must call auto_settle_paper_trades(client) to settle resolved paper trades"
@@ -49,14 +50,15 @@ class TestCronSettlesPaperTrades:
 
     def test_auto_settle_called_after_sync_outcomes(self, monkeypatch, tmp_path):
         """auto_settle_paper_trades must be called in the same cron cycle as sync_outcomes."""
-        import cron
+        import main
 
         _apply_cron_isolation(monkeypatch, tmp_path)
 
         call_order = []
 
         monkeypatch.setattr(
-            "main.sync_outcomes",
+            main,
+            "sync_outcomes",
             lambda client: (call_order.append("sync"), 0)[1],
         )
         monkeypatch.setattr(
@@ -66,7 +68,7 @@ class TestCronSettlesPaperTrades:
 
         fake_client = MagicMock()
         try:
-            cron.cmd_cron(fake_client)
+            main.cmd_cron(fake_client)
         except (Exception, SystemExit):
             pass
 
@@ -85,15 +87,15 @@ class TestCronPrintPlacedTrades:
         import cron
         import main
 
-        monkeypatch.setattr(main, "LOCK_PATH", tmp_path / ".cron_lock")
-        monkeypatch.setattr(main, "KILL_SWITCH_PATH", tmp_path / ".kill_switch")
-        monkeypatch.setattr(main, "RUNNING_FLAG_PATH", tmp_path / ".cron_running")
+        monkeypatch.setattr(cron, "LOCK_PATH", tmp_path / ".cron_lock")
+        monkeypatch.setattr(cron, "KILL_SWITCH_PATH", tmp_path / ".kill_switch")
+        monkeypatch.setattr(cron, "RUNNING_FLAG_PATH", tmp_path / ".cron_running")
         monkeypatch.setattr("main.get_weather_markets", lambda client: [])
         monkeypatch.setattr("paper.auto_settle_paper_trades", lambda client=None: 0)
 
         fake_client = MagicMock()
         try:
-            cron.cmd_cron(fake_client)
+            main.cmd_cron(fake_client)
         except (Exception, SystemExit):
             pass
 

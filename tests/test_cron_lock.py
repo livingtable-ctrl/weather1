@@ -10,12 +10,10 @@ from unittest.mock import patch
 
 def _acquire(monkeypatch, tmp_path):
     """Helper: point LOCK_PATH at tmp_path and call _acquire_cron_lock."""
-    import main
-
-    lock_path = tmp_path / ".cron_lock"
-    monkeypatch.setattr(main, "LOCK_PATH", lock_path)
     import cron
 
+    lock_path = tmp_path / ".cron_lock"
+    monkeypatch.setattr(cron, "LOCK_PATH", lock_path)
     return cron._acquire_cron_lock(), lock_path
 
 
@@ -39,10 +37,10 @@ class TestAcquireCronLockFreshInstall:
 class TestAcquireCronLockLivePid:
     def test_blocks_when_live_pid_holds_lock(self, tmp_path, monkeypatch):
         """Lock held by a live PID → returns False (fail closed)."""
-        import main
+        import cron
 
         lock_path = tmp_path / ".cron_lock"
-        monkeypatch.setattr(main, "LOCK_PATH", lock_path)
+        monkeypatch.setattr(cron, "LOCK_PATH", lock_path)
         lock_path.write_text(
             json.dumps(
                 {
@@ -66,10 +64,10 @@ class TestAcquireCronLockLivePid:
 
     def test_overrides_dead_pid_lock(self, tmp_path, monkeypatch):
         """Lock held by a dead PID → returns True and overwrites lock."""
-        import main
+        import cron
 
         lock_path = tmp_path / ".cron_lock"
-        monkeypatch.setattr(main, "LOCK_PATH", lock_path)
+        monkeypatch.setattr(cron, "LOCK_PATH", lock_path)
         lock_path.write_text(
             json.dumps(
                 {
@@ -97,10 +95,10 @@ class TestAcquireCronLockLivePid:
 class TestAcquireCronLockNoPsutil:
     def test_blocks_when_lock_is_fresh_without_psutil(self, tmp_path, monkeypatch):
         """Without psutil, a lock < 1800s old must block."""
-        import main
+        import cron
 
         lock_path = tmp_path / ".cron_lock"
-        monkeypatch.setattr(main, "LOCK_PATH", lock_path)
+        monkeypatch.setattr(cron, "LOCK_PATH", lock_path)
         lock_path.write_text(
             json.dumps(
                 {
@@ -120,10 +118,10 @@ class TestAcquireCronLockNoPsutil:
 
     def test_overrides_stale_lock_without_psutil(self, tmp_path, monkeypatch):
         """Without psutil, a lock > 1800s old must be overridden."""
-        import main
+        import cron
 
         lock_path = tmp_path / ".cron_lock"
-        monkeypatch.setattr(main, "LOCK_PATH", lock_path)
+        monkeypatch.setattr(cron, "LOCK_PATH", lock_path)
         lock_path.write_text(
             json.dumps(
                 {
@@ -145,10 +143,10 @@ class TestAcquireCronLockNoPsutil:
 class TestAcquireCronLockFailClosed:
     def test_fails_closed_on_corrupt_lock_file(self, tmp_path, monkeypatch):
         """Corrupt / unreadable lock → returns False, never True."""
-        import main
+        import cron
 
         lock_path = tmp_path / ".cron_lock"
-        monkeypatch.setattr(main, "LOCK_PATH", lock_path)
+        monkeypatch.setattr(cron, "LOCK_PATH", lock_path)
         lock_path.write_text("not valid json {{{{")
 
         import cron
@@ -158,12 +156,10 @@ class TestAcquireCronLockFailClosed:
 
     def test_fails_closed_on_io_error(self, tmp_path, monkeypatch):
         """I/O error writing lock → returns False, never True (old code returned True)."""
-        import main
+        import cron
 
         lock_path = tmp_path / ".cron_lock"
-        monkeypatch.setattr(main, "LOCK_PATH", lock_path)
-
-        import cron
+        monkeypatch.setattr(cron, "LOCK_PATH", lock_path)
 
         with patch.object(
             lock_path.parent.__class__, "mkdir", side_effect=OSError("disk full")

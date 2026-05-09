@@ -37,17 +37,21 @@ def _stub_auto_prereqs(monkeypatch):
     monkeypatch.setattr(
         "paper.portfolio_kelly_fraction", lambda kf, c, d, side=None: kf
     )
-    # These are on main directly
-    monkeypatch.setattr("main._daily_paper_spend", lambda: 0.0)
-    monkeypatch.setattr("main._current_forecast_cycle", lambda: "12z")
+    # These now live in order_executor (re-exported by main)
+    monkeypatch.setattr("order_executor._daily_paper_spend", lambda: 0.0)
+    monkeypatch.setattr("order_executor._current_forecast_cycle", lambda: "12z")
     monkeypatch.setattr(
-        "main.execution_log.was_ordered_this_cycle", lambda t, s, c: False
+        "order_executor.execution_log.was_ordered_this_cycle", lambda t, s, c: False
     )
     # Stub execution_log writes — prevents P0-10 pre-log from writing to the real
     # DB and causing was_traded_today to return True on subsequent test runs
-    monkeypatch.setattr("main.execution_log.was_traded_today", lambda t, s: False)
-    monkeypatch.setattr("main.execution_log.log_order", lambda *a, **kw: 999)
-    monkeypatch.setattr("main.execution_log.log_order_result", lambda *a, **kw: None)
+    monkeypatch.setattr(
+        "order_executor.execution_log.was_traded_today", lambda t, s: False
+    )
+    monkeypatch.setattr("order_executor.execution_log.log_order", lambda *a, **kw: 999)
+    monkeypatch.setattr(
+        "order_executor.execution_log.log_order_result", lambda *a, **kw: None
+    )
     # Stub system health — CI environments can report 100% CPU and block trades
     import system_health
 
@@ -74,7 +78,7 @@ def test_auto_place_trades_returns_placed_count(monkeypatch, tmp_path):
         placed_tickers.append(ticker)
         return {"id": len(placed_tickers), "status": "open", "cost": price * qty}
 
-    monkeypatch.setattr("main.place_paper_order", fake_place)
+    monkeypatch.setattr("order_executor.place_paper_order", fake_place)
 
     import main
 
@@ -105,7 +109,7 @@ def test_auto_place_trades_logs_paper_failure(monkeypatch, caplog):
     def boom(*a, **kw):
         raise RuntimeError("db locked")
 
-    monkeypatch.setattr("main.place_paper_order", boom)
+    monkeypatch.setattr("order_executor.place_paper_order", boom)
 
     import main
 
@@ -136,7 +140,7 @@ def test_auto_place_trades_logs_analysis_attempt_failure(monkeypatch, caplog, tm
         placed.append(ticker)
         return {"id": 1, "status": "open", "cost": price * qty}
 
-    monkeypatch.setattr("main.place_paper_order", fake_place)
+    monkeypatch.setattr("order_executor.place_paper_order", fake_place)
 
     import main
 
@@ -169,7 +173,7 @@ def test_l1d_paper_failure_printed_to_console(monkeypatch, capsys):
     def boom(*a, **kw):
         raise RuntimeError("disk full")
 
-    monkeypatch.setattr("main.place_paper_order", boom)
+    monkeypatch.setattr("order_executor.place_paper_order", boom)
 
     import main
 
@@ -222,7 +226,7 @@ def test_l1b_price_refresh_uses_fresh_market_prob(monkeypatch):
         captured_prices.append(price)
         return {"id": 1, "status": "open", "cost": price * qty}
 
-    monkeypatch.setattr("main.place_paper_order", _capture_place)
+    monkeypatch.setattr("order_executor.place_paper_order", _capture_place)
 
     import main
 
@@ -253,7 +257,7 @@ def test_l1b_price_refresh_skips_when_edge_gone(monkeypatch):
         placed.append(ticker)
         return {"id": 1, "status": "open", "cost": price * qty}
 
-    monkeypatch.setattr("main.place_paper_order", _capture_place)
+    monkeypatch.setattr("order_executor.place_paper_order", _capture_place)
 
     import main
 
@@ -281,7 +285,7 @@ def test_l1b_no_client_uses_stale_price(monkeypatch):
         captured_prices.append(price)
         return {"id": 1, "status": "open", "cost": price * qty}
 
-    monkeypatch.setattr("main.place_paper_order", _capture_place)
+    monkeypatch.setattr("order_executor.place_paper_order", _capture_place)
 
     import main
 

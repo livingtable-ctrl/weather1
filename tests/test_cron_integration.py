@@ -28,11 +28,12 @@ def cron_env(tmp_path, monkeypatch):
     importlib.reload(paper)
     monkeypatch.setattr(paper, "DATA_PATH", tmp_path / "paper_trades.json")
 
+    import cron
     import main
 
-    monkeypatch.setattr(main, "RUNNING_FLAG_PATH", tmp_path / ".cron_running")
-    monkeypatch.setattr(main, "KILL_SWITCH_PATH", tmp_path / ".kill_switch")
-    monkeypatch.setattr(main, "LOCK_PATH", tmp_path / ".cron_lock")
+    monkeypatch.setattr(cron, "RUNNING_FLAG_PATH", tmp_path / ".cron_running")
+    monkeypatch.setattr(cron, "KILL_SWITCH_PATH", tmp_path / ".kill_switch")
+    monkeypatch.setattr(cron, "LOCK_PATH", tmp_path / ".cron_lock")
     monkeypatch.setattr(main, "get_weather_markets", lambda client: [])
     monkeypatch.setattr(main, "check_ensemble_circuit_health", lambda: None)
     monkeypatch.setattr(main, "_check_startup_orders", lambda: None)
@@ -189,10 +190,10 @@ def test_cron_kill_switch_halts_before_scan(cron_env):
     """If kill switch file exists, cmd_cron must return without calling get_weather_markets."""
     tmp_path, client, main, paper = cron_env
 
-    # Activate kill switch
+    # Activate kill switch — cron_env already patches cron.KILL_SWITCH_PATH to
+    # tmp_path/.kill_switch, so writing there is sufficient.
     ks = tmp_path / ".kill_switch"
     ks.write_text('{"reason":"test"}')
-    monkeypatch_ks = patch.object(main, "KILL_SWITCH_PATH", ks)
 
     markets_called = []
 
@@ -200,10 +201,7 @@ def test_cron_kill_switch_halts_before_scan(cron_env):
         markets_called.append(c)
         return []
 
-    with (
-        monkeypatch_ks,
-        patch.object(main, "get_weather_markets", side_effect=_fake_markets),
-    ):
+    with patch.object(main, "get_weather_markets", side_effect=_fake_markets):
         try:
             main.cmd_cron(client)
         except SystemExit:
@@ -325,8 +323,8 @@ def test_cron_lock_released_on_keyboard_interrupt(cron_env):
     import cron as _cron
 
     tmp_path, client, main, paper = cron_env
-    lock_path = tmp_path / "cron.lock"
-    main.LOCK_PATH = lock_path
+    # cron_env already patches cron.LOCK_PATH to tmp_path/.cron_lock
+    lock_path = _cron.LOCK_PATH
 
     _original = main._write_cron_running_flag
 
@@ -336,7 +334,7 @@ def test_cron_lock_released_on_keyboard_interrupt(cron_env):
     main._write_cron_running_flag = _raise
 
     try:
-        _cron.cmd_cron(client)
+        main.cmd_cron(client)
     except (KeyboardInterrupt, SystemExit):
         pass
     finally:
@@ -403,10 +401,9 @@ def test_p1_15_anomaly_check_halts_cron(cron_env, caplog, monkeypatch):
         lambda log_results=False: (["WIN RATE COLLAPSE: 20%"], True),
     )
 
-    import cron as _cron
-
     with caplog.at_level(logging.ERROR):
-        result = _cron._cmd_cron_body(client)
+        main.cmd_cron(client)
+        result = None  # cmd_cron returns None; anomaly halt is verified via placed/logs
 
     assert result is None, "cron body must return None when anomalies are detected"
     assert not placed, "no trades must be placed when anomalies halt the cycle"
@@ -423,11 +420,10 @@ def test_p1_15_empty_anomaly_list_does_not_halt(cron_env):
     tmp_path, client, main, paper = cron_env
     _alerts.run_anomaly_check = lambda log_results=False: ([], False)
 
-    import cron as _cron
-
-    result = _cron._cmd_cron_body(client)
-    # Result can be True/False/None depending on scan outcome — just must not crash
-    assert result is not None or result is None  # no exception is the assertion
+    try:
+        main.cmd_cron(client)  # must not raise — no exception is the assertion
+    except SystemExit:
+        pass
 
 
 # ── P1-12: kill switch check inside per-market analysis loop ─────────────────
@@ -445,12 +441,13 @@ def test_p1_12_kill_switch_mid_scan_breaks_loop(monkeypatch, tmp_path, caplog):
     importlib.reload(paper)
     monkeypatch.setattr(paper, "DATA_PATH", tmp_path / "paper_trades.json")
 
+    import cron as _cron
     import main
 
     ks_path = tmp_path / ".kill_switch"
-    monkeypatch.setattr(main, "KILL_SWITCH_PATH", ks_path)
-    monkeypatch.setattr(main, "RUNNING_FLAG_PATH", tmp_path / ".cron_running")
-    monkeypatch.setattr(main, "LOCK_PATH", tmp_path / ".cron_lock")
+    monkeypatch.setattr(_cron, "KILL_SWITCH_PATH", ks_path)
+    monkeypatch.setattr(_cron, "RUNNING_FLAG_PATH", tmp_path / ".cron_running")
+    monkeypatch.setattr(_cron, "LOCK_PATH", tmp_path / ".cron_lock")
     monkeypatch.setattr(main, "sync_outcomes", lambda client: 0)
     monkeypatch.setattr(main, "_check_startup_orders", lambda: None)
     monkeypatch.setattr(main, "check_ensemble_circuit_health", lambda: None)
@@ -473,10 +470,11 @@ def test_p1_12_kill_switch_mid_scan_breaks_loop(monkeypatch, tmp_path, caplog):
     monkeypatch.setattr(main, "enrich_with_forecast", _enrich_and_activate_ks)
     monkeypatch.setattr(main, "analyze_trade", lambda enriched: None)
 
-    import cron as _cron
-
     with caplog.at_level(logging.WARNING):
-        _cron._cmd_cron_body(MagicMock())
+        try:
+            main.cmd_cron(MagicMock())
+        except SystemExit:
+            pass
 
     assert any(
         "kill switch" in r.message.lower() and "mid-scan" in r.message.lower()

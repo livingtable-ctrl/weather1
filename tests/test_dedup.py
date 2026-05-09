@@ -119,7 +119,9 @@ def test_auto_place_trades_skips_already_traded_today(tmp_path, monkeypatch):
     monkeypatch.setattr(
         "paper.portfolio_kelly_fraction", lambda kf, city, dt, side="yes": 0.10
     )
-    monkeypatch.setattr(main, "_daily_paper_spend", lambda: 0.0)
+    import order_executor as _oe
+
+    monkeypatch.setattr(_oe, "_daily_paper_spend", lambda: 0.0)
 
     import datetime
     import time
