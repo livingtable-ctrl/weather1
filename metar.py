@@ -108,13 +108,28 @@ def fetch_metar(station: str) -> dict | None:
     # P1-2: staleness gate — never fabricate a timestamp for a missing obsTime.
     # A missing or unparseable obsTime means we can't verify freshness; reject rather
     # than silently treating stale data as current.
-    obs_time_str = obs.get("obsTime") or ""
+    # The API returns obsTime as a Unix integer epoch; fall back to reportTime (ISO str).
     obs_time = None
-    if obs_time_str:
+    raw_obs_time = obs.get("obsTime")
+    if isinstance(raw_obs_time, int | float) and raw_obs_time > 0:
         try:
-            obs_time = datetime.fromisoformat(obs_time_str.replace("Z", "+00:00"))
+            obs_time = datetime.fromtimestamp(raw_obs_time, UTC)
         except Exception:
             pass
+    elif isinstance(raw_obs_time, str) and raw_obs_time:
+        try:
+            obs_time = datetime.fromisoformat(raw_obs_time.replace("Z", "+00:00"))
+        except Exception:
+            pass
+    if obs_time is None:
+        report_time_str = obs.get("reportTime") or ""
+        if report_time_str:
+            try:
+                obs_time = datetime.fromisoformat(
+                    report_time_str.replace("Z", "+00:00")
+                )
+            except Exception:
+                pass
     if obs_time is None:
         _log.warning(
             "%s: METAR obsTime missing or unparseable — refusing to use stale data",
