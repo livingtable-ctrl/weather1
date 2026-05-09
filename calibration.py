@@ -6,9 +6,9 @@ Outputs: data/seasonal_weights.json, data/city_weights.json
 
 from __future__ import annotations
 
-import itertools
 import json
 import logging
+import random as _random
 import sqlite3
 from pathlib import Path
 
@@ -17,8 +17,11 @@ _log = logging.getLogger(__name__)
 _SEASONAL_MIN = (
     20  # D6: lowered from 50 — calibration fires sooner as trades accumulate
 )
-_CITY_MIN = 15  # D6: lowered from 30 — same rationale
-_WEIGHT_STEP = 0.01  # C5: finer grid; 0.01 → 5,151 triples (still <1s); finds weights like (0.71, 0.12, 0.17)
+_CITY_MIN = 50  # P3-7/P3-25: raised to 50 for statistical reliability (SE ~0.07)
+_N_RANDOM_SEARCH = 200  # P3-7: random search replaces exhaustive 5,151-triple grid
+_BRIER_IMPROVEMENT_GATE = (
+    0.005  # P3-7: min val-set improvement to accept calibrated weights
+)
 
 _MONTH_TO_SEASON: dict[int, str] = {
     12: "winter",
@@ -35,41 +38,67 @@ _MONTH_TO_SEASON: dict[int, str] = {
     11: "fall",
 }
 
-_WEIGHT_VALUES = [round(i * _WEIGHT_STEP, 10) for i in range(int(1 / _WEIGHT_STEP) + 1)]
-_WEIGHT_TRIPLES = [
-    (e, c, n)
-    for e, c, n in itertools.product(_WEIGHT_VALUES, repeat=3)
-    if abs(e + c + n - 1.0) < 1e-9
-]
-
 
 def _brier(
     rows: list[tuple[float, float, float, int]], we: float, wc: float, wn: float
 ) -> float:
-    """Compute Brier score for a weight combo against a list of (ens, clim, nws, settled)."""
-    if not rows:
+    """Compute Brier score for a weight combo. Skips rows with any None component (P3-17)."""
+    valid = [
+        (e, c, n, s)
+        for e, c, n, s in rows
+        if e is not None and c is not None and n is not None and s is not None
+    ]
+    if not valid:
         return float("inf")
-    total = 0.0
-    for ens, clim, nws, settled in rows:
-        p = we * ens + wc * clim + wn * nws
-        total += (p - settled) ** 2
-    return total / len(rows)
+    total = sum((we * e + wc * c + wn * n - s) ** 2 for e, c, n, s in valid)
+    return total / len(valid)
 
 
-def _best_weights(rows: list[tuple[float, float, float, int]]) -> dict[str, float]:
-    """Grid-search weight triples; return the one minimizing Brier score."""
-    if not _WEIGHT_TRIPLES:
-        _log.warning(
-            "_best_weights: _WEIGHT_TRIPLES is empty — returning equal weights"
-        )
-        return {"ensemble": 1 / 3, "climatology": 1 / 3, "nws": 1 / 3}
+def _split_rows(
+    dated_rows: list[tuple],
+    cutoff_date: str | None,
+) -> tuple[
+    list[tuple[float, float, float, int]], list[tuple[float, float, float, int]]
+]:
+    """Split (date_str, ens, clim, nws, settled) rows into (train, val) plain tuples.
+
+    Uses explicit cutoff_date if given; otherwise auto-computes the 80th-percentile date.
+    """
+    if cutoff_date is None:
+        sorted_dates = sorted(r[0] for r in dated_rows)
+        idx = max(1, int(len(sorted_dates) * 0.8))
+        cutoff_date = sorted_dates[min(idx, len(sorted_dates) - 1)]
+    train = [(e, c, n, s) for d, e, c, n, s in dated_rows if d < cutoff_date]
+    val = [(e, c, n, s) for d, e, c, n, s in dated_rows if d >= cutoff_date]
+    return train, val
+
+
+def _best_weights(
+    train_rows: list[tuple[float, float, float, int]],
+    val_rows: list[tuple[float, float, float, int]],
+) -> dict[str, float]:
+    """Random-search 200 simplex samples on train_rows; gate on val Brier improvement (P3-7)."""
+    equal = (1 / 3, 1 / 3, 1 / 3)
     best_score = float("inf")
-    best = (1 / 3, 1 / 3, 1 / 3)
-    for we, wc, wn in _WEIGHT_TRIPLES:
-        score = _brier(rows, we, wc, wn)
+    best = equal
+    rng = _random.Random(42)
+    for _ in range(_N_RANDOM_SEARCH):
+        a = rng.random()
+        b = rng.random()
+        if a > b:
+            a, b = b, a
+        we, wc, wn = a, b - a, 1.0 - b
+        score = _brier(train_rows, we, wc, wn)
         if score < best_score:
             best_score = score
             best = (we, wc, wn)
+
+    if val_rows:
+        val_baseline = _brier(val_rows, *equal)
+        val_calibrated = _brier(val_rows, *best)
+        if val_baseline - val_calibrated <= _BRIER_IMPROVEMENT_GATE:
+            return {"ensemble": equal[0], "climatology": equal[1], "nws": equal[2]}
+
     return {"ensemble": best[0], "climatology": best[1], "nws": best[2]}
 
 
@@ -91,15 +120,19 @@ def _load_rows(db_path: Path) -> list[sqlite3.Row]:
         ).fetchall()
 
 
-def calibrate_seasonal_weights(db_path: str | Path) -> dict[str, dict[str, float]]:
+def calibrate_seasonal_weights(
+    db_path: str | Path,
+    cutoff_date: str | None = None,
+) -> dict[str, dict[str, float]]:
     """Grid-search optimal blend weights per season.
 
     Returns: {season: {ensemble, climatology, nws}} for seasons with >= _SEASONAL_MIN rows.
+    Weights are trained on rows before cutoff_date (auto 80/20 split if omitted).
     """
     db_path = Path(db_path)
     rows = _load_rows(db_path)
 
-    season_rows: dict[str, list[tuple[float, float, float, int]]] = {}
+    season_rows: dict[str, list[tuple]] = {}
     for row in rows:
         try:
             month = int(str(row["market_date"])[5:7])
@@ -110,6 +143,7 @@ def calibrate_seasonal_weights(db_path: str | Path) -> dict[str, dict[str, float
             continue
         season_rows.setdefault(season, []).append(
             (
+                str(row["market_date"]),
                 row["ensemble_prob"],
                 row["clim_prob"],
                 row["nws_prob"],
@@ -127,25 +161,31 @@ def calibrate_seasonal_weights(db_path: str | Path) -> dict[str, dict[str, float
                 _SEASONAL_MIN,
             )
             continue
-        result[season] = _best_weights(srows)
+        train, val = _split_rows(srows, cutoff_date)
+        result[season] = _best_weights(train, val)
     return result
 
 
-def calibrate_city_weights(db_path: str | Path) -> dict[str, dict[str, float]]:
+def calibrate_city_weights(
+    db_path: str | Path,
+    cutoff_date: str | None = None,
+) -> dict[str, dict[str, float]]:
     """Grid-search optimal blend weights per city.
 
     Returns: {city: {ensemble, climatology, nws}} for cities with >= _CITY_MIN rows.
+    Weights are trained on rows before cutoff_date (auto 80/20 split if omitted).
     """
     db_path = Path(db_path)
     rows = _load_rows(db_path)
 
-    city_rows: dict[str, list[tuple[float, float, float, int]]] = {}
+    city_rows: dict[str, list[tuple]] = {}
     for row in rows:
         city = row["city"]
         if not city:
             continue
         city_rows.setdefault(city, []).append(
             (
+                str(row["market_date"]),
                 row["ensemble_prob"],
                 row["clim_prob"],
                 row["nws_prob"],
@@ -163,7 +203,8 @@ def calibrate_city_weights(db_path: str | Path) -> dict[str, dict[str, float]]:
                 _CITY_MIN,
             )
             continue
-        result[city] = _best_weights(crows)
+        train, val = _split_rows(crows, cutoff_date)
+        result[city] = _best_weights(train, val)
     return result
 
 
@@ -199,10 +240,12 @@ _CONDITION_MIN = 100
 def calibrate_condition_weights(
     db_path: str | Path,
     min_samples: int = _CONDITION_MIN,
+    cutoff_date: str | None = None,
 ) -> dict[str, dict[str, float]]:
     """Grid-search optimal blend weights per condition type (above/below/between).
 
     Returns: {condition_type: {ensemble, climatology, nws}} for types with >= min_samples rows.
+    Weights are trained on rows before cutoff_date (auto 80/20 split if omitted).
     """
     db_path = Path(db_path)
     con = sqlite3.connect(str(db_path))
@@ -210,7 +253,7 @@ def calibrate_condition_weights(
         con.row_factory = sqlite3.Row
         raw_rows = con.execute(
             """
-            SELECT p.condition_type,
+            SELECT p.condition_type, p.market_date,
                    p.ensemble_prob, p.clim_prob, p.nws_prob,
                    o.settled_yes
             FROM predictions p
@@ -224,13 +267,14 @@ def calibrate_condition_weights(
     finally:
         con.close()
 
-    type_rows: dict[str, list[tuple[float, float, float, int]]] = {}
+    type_rows: dict[str, list[tuple]] = {}
     for row in raw_rows:
         ctype = row["condition_type"]
         if not ctype:
             continue
         type_rows.setdefault(ctype, []).append(
             (
+                str(row["market_date"]) if row["market_date"] else "",
                 row["ensemble_prob"],
                 row["clim_prob"],
                 row["nws_prob"],
@@ -248,7 +292,8 @@ def calibrate_condition_weights(
                 min_samples,
             )
             continue
-        result[ctype] = _best_weights(crows)
+        train, val = _split_rows(crows, cutoff_date)
+        result[ctype] = _best_weights(train, val)
     return result
 
 

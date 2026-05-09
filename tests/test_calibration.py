@@ -131,10 +131,10 @@ class TestCalibrateCityWeights:
         shutil.rmtree(self._tmpdir, ignore_errors=True)
 
     def test_returns_weights_for_qualifying_city(self):
-        """16 NYC predictions (>= 15) → NYC weights present and valid."""
+        """55 NYC predictions (>= 50) → NYC weights present and valid."""
         from calibration import calibrate_city_weights
 
-        rows = _make_winter_rows(16, base_ticker="NYC")
+        rows = _make_winter_rows(55, base_ticker="NYC")
         _seed_db(self._db, rows)
         result = calibrate_city_weights(self._db)
         assert "NYC" in result
@@ -142,7 +142,7 @@ class TestCalibrateCityWeights:
         assert abs(w["ensemble"] + w["climatology"] + w["nws"] - 1.0) < 1e-6
 
     def test_below_threshold_omits_city(self):
-        """10 predictions (< 15) → city absent."""
+        """10 predictions (< 50) → city absent."""
         from calibration import calibrate_city_weights
 
         rows = _make_winter_rows(10, base_ticker="SPARSE")
@@ -320,7 +320,7 @@ def test_calibrate_condition_weights_returns_per_type_dict():
         con = sqlite3.connect(db)
         con.executescript("""
             CREATE TABLE predictions (
-                ticker TEXT, condition_type TEXT,
+                ticker TEXT, condition_type TEXT, market_date TEXT,
                 ensemble_prob REAL, clim_prob REAL, nws_prob REAL
             );
             CREATE TABLE outcomes (ticker TEXT, settled_yes INTEGER);
@@ -332,9 +332,11 @@ def test_calibrate_condition_weights_returns_per_type_dict():
                 cp = random.uniform(0.3, 0.7)
                 np_ = random.uniform(0.3, 0.7)
                 y = random.randint(0, 1)
+                month = (i % 12) + 1
+                date_str = f"2025-{month:02d}-{(i % 28) + 1:02d}"
                 con.execute(
-                    "INSERT INTO predictions VALUES (?,?,?,?,?)",
-                    (t, ctype, ep, cp, np_),
+                    "INSERT INTO predictions VALUES (?,?,?,?,?,?)",
+                    (t, ctype, date_str, ep, cp, np_),
                 )
                 con.execute("INSERT INTO outcomes VALUES (?,?)", (t, y))
         con.commit()
