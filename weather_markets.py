@@ -1781,14 +1781,16 @@ def ensemble_stats(temps: list[float]) -> dict:
     """Summary statistics for a list of ensemble member temperatures."""
     if not temps:
         return {}
+    _std = statistics.stdev(temps) if len(temps) > 1 else 0.0
     return {
         "n": len(temps),
         "mean": statistics.mean(temps),
-        "std": statistics.stdev(temps) if len(temps) > 1 else 0.0,
+        "std": _std,
         "min": min(temps),
         "max": max(temps),
         "p10": sorted(temps)[min(int(len(temps) * 0.10), len(temps) - 1)],
         "p90": sorted(temps)[min(int(len(temps) * 0.90), len(temps) - 1)],
+        "degenerate": len(temps) > 5 and _std == 0.0,
     }
 
 
@@ -2554,8 +2556,8 @@ def _confidence_scaled_blend_weights(
     delta = w_ens - w_ens_scaled
     total_others = w_clim + w_nws
     if total_others > 0:
-        w_clim_new = w_clim + delta * (w_clim / total_others)
-        w_nws_new = w_nws + delta * (w_nws / total_others)
+        w_clim_new = max(0.0, w_clim + delta * (w_clim / total_others))
+        w_nws_new = max(0.0, w_nws + delta * (w_nws / total_others))
     else:
         w_clim_new = w_clim
         w_nws_new = w_nws
@@ -2607,41 +2609,34 @@ def _blend_probabilities(
     days_out: int = 3,
 ) -> float | None:
     """
-    #33: Blend ensemble, NWS, and climatological probabilities with NWS always included.
+    #33/#39: Blend ensemble, NWS, and climatological probabilities via _blend_weights().
 
-    NWS weights:
-      days_out 0–3: 0.35
-      days_out 4–7: 0.25
-      days_out 7+:  0.10
-
-    Handles None inputs by renormalizing weights among available sources.
+    Delegates to _blend_weights() so calibration weights (city/season/condition)
+    are respected. Handles None inputs by renormalizing weights among available sources.
     Returns None only if all inputs are None.
     """
-    if days_out <= 3:
-        w_nws_base = 0.35
-    elif days_out <= 7:
-        w_nws_base = 0.25
-    else:
-        w_nws_base = 0.10
-
-    # Remaining weight split evenly between ensemble and clim
-    w_rem = 1.0 - w_nws_base
-    w_ens_base = w_rem * 0.65  # ensemble gets ~2/3 of remaining
-    w_clim_base = w_rem * 0.35  # climatology gets ~1/3 of remaining
-
-    sources = []
-    if ensemble_prob is not None:
-        sources.append((ensemble_prob, w_ens_base))
-    if nws_prob is not None:
-        sources.append((nws_prob, w_nws_base))
-    if clim_prob is not None:
-        sources.append((clim_prob, w_clim_base))
-
-    if not sources:
+    if ensemble_prob is None and nws_prob is None and clim_prob is None:
         return None
 
-    total_w = sum(w for _, w in sources)
-    return sum(p * w for p, w in sources) / total_w
+    w_ens, w_clim, w_nws = _blend_weights(
+        days_out,
+        has_nws=nws_prob is not None,
+        has_clim=clim_prob is not None,
+    )
+
+    blended = 0.0
+    total_w = 0.0
+    if ensemble_prob is not None:
+        blended += ensemble_prob * w_ens
+        total_w += w_ens
+    if nws_prob is not None:
+        blended += nws_prob * w_nws
+        total_w += w_nws
+    if clim_prob is not None:
+        blended += clim_prob * w_clim
+        total_w += w_clim
+
+    return blended / total_w if total_w > 0 else None
 
 
 def bayesian_kelly(
@@ -3096,7 +3091,11 @@ def _analyze_precip_trade(
     w_ens, w_clim, _ = _blend_weights(
         days_out, has_nws=False, has_clim=True
     )  # calibration not yet wired for precip/snow path
-    clim_prior = 0.30  # rough historical rain frequency as fallback prior
+    city = enriched.get("_city", "")
+    try:
+        clim_prior = climatological_prob(city, coords, target_date, condition) or 0.30
+    except Exception:
+        clim_prior = 0.30
     blended_prob = ens_prob * w_ens + clim_prior * w_clim
 
     # Same-day override: observation is near-certain (precip already fell or didn't)
@@ -3269,7 +3268,16 @@ def _analyze_snow_trade(
 
     # ── Climatological base rate fallback ────────────────────────────────────
     is_winter_month = target_date.month in (12, 1, 2)
-    clim_prior = 0.20 if is_winter_month else 0.05
+    _snow_default = 0.20 if is_winter_month else 0.05
+    try:
+        clim_prior = (
+            climatological_prob(
+                enriched.get("_city", ""), coords, target_date, condition
+            )
+            or _snow_default
+        )
+    except Exception:
+        clim_prior = _snow_default
 
     if ens_prob is None:
         ens_prob = clim_prior
@@ -3688,6 +3696,13 @@ def analyze_trade(enriched: dict) -> dict | None:
         if hour is not None and len(temps) >= 5:
             forecast_temp = statistics.mean(temps)
         ens_stats = ensemble_stats(temps) if len(temps) >= 10 else None
+        if ens_stats and ens_stats.get("degenerate"):
+            _log.warning(
+                "analyze_trade: skipping %s — degenerate ensemble (all %d members identical)",
+                enriched.get("ticker", "?"),
+                ens_stats["n"],
+            )
+            return None
         method = "normal_dist"
         ens_prob: float | None = None
         gauss_prob: float | None = None  # Gaussian as separate named source
@@ -4218,30 +4233,32 @@ def analyze_trade(enriched: dict) -> dict | None:
         )
         return None
 
-    # Apply ML-based probability calibration correction (GradientBoosting per city).
-    # Only fires when a trained model exists (requires 200+ settled trades per city).
-    # Falls back to blended_prob unchanged when no model is available.
+    # Apply exactly one ML correction per city — GBM takes precedence over Platt.
+    # Applying both sequentially compounds corrections and pushes probs to extremes (#45).
+    _gbm_applied = False
     try:
-        from ml_bias import apply_ml_prob_correction
+        from ml_bias import apply_ml_prob_correction, has_ml_model
 
-        blended_prob = apply_ml_prob_correction(
-            city, blended_prob, target_date.month, days_out
-        )
-        blended_prob = max(0.01, min(0.99, blended_prob))
-    except Exception:
-        pass
-
-    # Per-city Platt scaling — loaded once via module-level cache.
-    # Requires 200+ settled trades per city; no-op when model absent.
-    try:
-        _platt = _load_platt_models()
-        if _platt:
-            from ml_bias import apply_platt_per_city as _apply_platt
-
-            blended_prob = _apply_platt(city, blended_prob, _platt)
+        if has_ml_model(city):
+            blended_prob = apply_ml_prob_correction(
+                city, blended_prob, target_date.month, days_out
+            )
             blended_prob = max(0.01, min(0.99, blended_prob))
+            _gbm_applied = True
     except Exception:
         pass
+
+    # Platt scaling is only applied when no GBM model exists for this city.
+    if not _gbm_applied:
+        try:
+            _platt = _load_platt_models()
+            if _platt:
+                from ml_bias import apply_platt_per_city as _apply_platt
+
+                blended_prob = _apply_platt(city, blended_prob, _platt)
+                blended_prob = max(0.01, min(0.99, blended_prob))
+        except Exception:
+            pass
 
     # Log source availability for per-city reliability tracking
     try:

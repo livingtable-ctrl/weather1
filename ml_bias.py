@@ -287,3 +287,8 @@ def apply_ml_prob_correction(
     except Exception as exc:
         _log.debug("apply_ml_prob_correction(%s): %s", city, exc)
         return our_prob
+
+
+def has_ml_model(city: str) -> bool:
+    """Return True if a trained GBM correction model exists for this city."""
+    return _load_models().get(city.upper()) is not None
