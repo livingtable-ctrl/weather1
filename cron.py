@@ -573,6 +573,27 @@ def _cmd_cron_body(client: KalshiClient, min_edge: float = MIN_EDGE) -> bool | N
         scanned = len(markets)
         print(dim(f"  [cron] scanning {scanned} market(s)\u2026"), flush=True)
 
+        # P3-14: consistency check \u2014 log violations; halt auto-trading if too many
+        _consistency_skip = False
+        try:
+            from consistency import find_violations as _find_violations
+
+            _violations = _find_violations(markets)
+            if _violations:
+                _log.warning(
+                    "cmd_cron: %d consistency violation(s) detected: %s",
+                    len(_violations),
+                    [v.description for v in _violations[:5]],
+                )
+                if len(_violations) > 5:
+                    _consistency_skip = True
+                    _log.error(
+                        "cmd_cron: %d violations exceed threshold (5) \u2014 skipping auto-trading this cycle",
+                        len(_violations),
+                    )
+        except Exception as _ce:
+            _log.debug("cmd_cron: consistency check failed: %s", _ce)
+
         if _ws is not None:
             try:
                 _ws_tickers = [m.get("ticker") for m in markets if m.get("ticker")]
@@ -848,25 +869,33 @@ def _cmd_cron_body(client: KalshiClient, min_edge: float = MIN_EDGE) -> bool | N
         )
 
     placed_count = 0
-    if strong_opps:
-        from paper import _dynamic_kelly_cap
+    if _consistency_skip:
+        _log.warning(
+            "cmd_cron: auto-trading skipped this cycle due to consistency violations"
+        )
+    else:
+        if strong_opps:
+            from paper import _dynamic_kelly_cap
 
-        strong_cap = _dynamic_kelly_cap()
-        print(
-            bold(
-                f"\n  !! {len(strong_opps)} STRONG SIGNAL(S) \u2014 placing paper trades (cap=${strong_cap:.0f}) !!"
+            strong_cap = _dynamic_kelly_cap()
+            print(
+                bold(
+                    f"\n  !! {len(strong_opps)} STRONG SIGNAL(S) \u2014 placing paper trades (cap=${strong_cap:.0f}) !!"
+                )
             )
-        )
-        placed_count += (
-            _main._auto_place_trades(strong_opps, client=client, cap=strong_cap) or 0
-        )
-    if med_opps:
-        print(
-            bold(
-                f"\n  !! {len(med_opps)} MED SIGNAL(S) \u2014 placing paper trades (cap=$20) !!"
+            placed_count += (
+                _main._auto_place_trades(strong_opps, client=client, cap=strong_cap)
+                or 0
             )
-        )
-        placed_count += _main._auto_place_trades(med_opps, client=client, cap=20.0) or 0
+        if med_opps:
+            print(
+                bold(
+                    f"\n  !! {len(med_opps)} MED SIGNAL(S) \u2014 placing paper trades (cap=$20) !!"
+                )
+            )
+            placed_count += (
+                _main._auto_place_trades(med_opps, client=client, cap=20.0) or 0
+            )
 
     # Auto-settle any pending trades whose markets have resolved
     settled_count = 0

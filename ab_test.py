@@ -28,7 +28,7 @@ _log = logging.getLogger(__name__)
 _AB_TEST_DIR = Path(__file__).parent / "data" / "ab_tests"
 _AB_TEST_DIR.mkdir(parents=True, exist_ok=True)
 
-_DEFAULT_MAX_TRADES = 50  # matches ABTest.max_trades_per_variant default
+_DEFAULT_MAX_TRADES = 200  # P3-2: raised to 200 for adequate statistical power
 
 
 def _load_test_state(test_name: str) -> dict:
@@ -64,7 +64,7 @@ class ABTest:
         self,
         name: str,
         variants: dict[str, Any],
-        max_trades_per_variant: int = 50,
+        max_trades_per_variant: int = 200,
         disable_threshold: float = 0.20,  # disable if win rate < this vs best variant
     ) -> None:
         self.name = name
