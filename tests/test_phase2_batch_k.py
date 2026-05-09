@@ -269,8 +269,8 @@ class TestOnlyOneMlCorrectionApplied:
         assert "has_ml_model" in src, (
             "analyze_trade must call has_ml_model to prevent dual correction"
         )
-        assert "_gbm_applied" in src, (
-            "analyze_trade must track _gbm_applied to skip Platt when GBM ran"
+        assert "_city_correction_applied" in src, (
+            "analyze_trade must track _city_correction_applied to skip Platt when GBM ran"
         )
 
     def test_platt_not_called_when_gbm_model_present(self):
@@ -290,13 +290,13 @@ class TestOnlyOneMlCorrectionApplied:
             mock_platt_load.assert_not_called()
 
     def test_gbm_and_platt_not_sequentially_applied(self):
-        """Verify source: Platt block is inside 'if not _gbm_applied' guard."""
+        """Verify source: Platt block is inside '_city_correction_applied' guard."""
         import inspect
 
         import weather_markets
 
         src = inspect.getsource(weather_markets.analyze_trade)
-        # The Platt section must be guarded by _gbm_applied
-        assert "if not _gbm_applied" in src, (
-            "Platt application must be gated by 'if not _gbm_applied'"
+        # The Platt section must be guarded by _city_correction_applied
+        assert "if not _city_correction_applied" in src, (
+            "Platt application must be gated by 'if not _city_correction_applied'"
         )
