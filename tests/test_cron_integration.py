@@ -288,7 +288,7 @@ def test_cron_gate_allows_when_adjusted_edge_above_threshold(cron_env):
         "recommended_side": "yes",
         "time_risk": "LOW",
         "forecast_prob": 0.80,
-        "market_prob": 0.30,
+        "market_prob": 0.35,  # ratio=2.29 — passes MAX_MARKET_DIVERGENCE_RATIO (2.5)
         "days_out": 1,
         "target_date": "2026-04-26",
     }

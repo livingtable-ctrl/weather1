@@ -745,7 +745,7 @@ class TestBlendWeightCalibrationPriority:
     """_blend_weights() must use city weights > seasonal weights > hardcoded."""
 
     def test_city_weights_override_hardcoded(self, monkeypatch):
-        """If city weights loaded, _blend_weights returns them regardless of days_out."""
+        """If city weights loaded, _blend_weights uses them (days_out=3 = no NWS scaling)."""
         import weather_markets as wm
 
         city_weights = {"NYC": {"ensemble": 0.50, "climatology": 0.10, "nws": 0.40}}
@@ -753,13 +753,13 @@ class TestBlendWeightCalibrationPriority:
         monkeypatch.setattr(wm, "_SEASONAL_WEIGHTS", {})
 
         w_ens, w_clim, w_nws = wm._blend_weights(
-            days_out=5, has_nws=True, has_clim=True, city="NYC", season="spring"
+            days_out=3, has_nws=True, has_clim=True, city="NYC", season="spring"
         )
         assert w_ens == pytest.approx(0.50, abs=1e-6)
         assert w_nws == pytest.approx(0.40, abs=1e-6)
 
     def test_seasonal_weights_used_when_no_city_weights(self, monkeypatch):
-        """If no city weights but seasonal weights loaded, use seasonal."""
+        """If no city weights but seasonal weights loaded, use seasonal (days_out=3 = no NWS scaling)."""
         import weather_markets as wm
 
         monkeypatch.setattr(wm, "_CITY_WEIGHTS", {})
@@ -770,7 +770,7 @@ class TestBlendWeightCalibrationPriority:
         )
 
         w_ens, w_clim, w_nws = wm._blend_weights(
-            days_out=5, has_nws=True, has_clim=True, city="NYC", season="spring"
+            days_out=3, has_nws=True, has_clim=True, city="NYC", season="spring"
         )
         assert w_ens == pytest.approx(0.45, abs=1e-6)
         assert w_nws == pytest.approx(0.35, abs=1e-6)
