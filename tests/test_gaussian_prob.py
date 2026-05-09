@@ -297,7 +297,32 @@ class TestBetweenMarketGaussian:
         enriched = self._make_between_enriched()
 
         with (
-            patch.object(wm, "get_ensemble_temps", return_value=[70.5] * 20),
+            patch.object(
+                wm,
+                "get_ensemble_temps",
+                return_value=[
+                    68.5,
+                    69.5,
+                    70.5,
+                    71.5,
+                    72.5,
+                    68.5,
+                    69.5,
+                    70.5,
+                    71.5,
+                    72.5,
+                    68.5,
+                    69.5,
+                    70.5,
+                    71.5,
+                    72.5,
+                    68.5,
+                    69.5,
+                    70.5,
+                    71.5,
+                    72.5,
+                ],
+            ),
             patch.object(wm, "fetch_temperature_nbm", return_value=70.8),
             patch.object(wm, "fetch_temperature_ecmwf", return_value=71.2),
             patch.object(wm, "get_ensemble_members", return_value=None),
@@ -327,7 +352,32 @@ class TestBetweenMarketGaussian:
         enriched = self._make_between_enriched()
 
         with (
-            patch.object(wm, "get_ensemble_temps", return_value=[70.5] * 20),
+            patch.object(
+                wm,
+                "get_ensemble_temps",
+                return_value=[
+                    68.5,
+                    69.5,
+                    70.5,
+                    71.5,
+                    72.5,
+                    68.5,
+                    69.5,
+                    70.5,
+                    71.5,
+                    72.5,
+                    68.5,
+                    69.5,
+                    70.5,
+                    71.5,
+                    72.5,
+                    68.5,
+                    69.5,
+                    70.5,
+                    71.5,
+                    72.5,
+                ],
+            ),
             patch.object(wm, "fetch_temperature_nbm", return_value=70.8),
             patch.object(wm, "fetch_temperature_ecmwf", return_value=71.2),
             patch.object(wm, "get_ensemble_members", return_value=None),
@@ -401,7 +451,32 @@ class TestBlendSourcesNormalisation:
         }
 
         with (
-            patch.object(wm, "get_ensemble_temps", return_value=[72.0] * 20),
+            patch.object(
+                wm,
+                "get_ensemble_temps",
+                return_value=[
+                    70.0,
+                    71.0,
+                    72.0,
+                    73.0,
+                    74.0,
+                    70.0,
+                    71.0,
+                    72.0,
+                    73.0,
+                    74.0,
+                    70.0,
+                    71.0,
+                    72.0,
+                    73.0,
+                    74.0,
+                    70.0,
+                    71.0,
+                    72.0,
+                    73.0,
+                    74.0,
+                ],
+            ),
             patch.object(wm, "fetch_temperature_nbm", return_value=72.5),
             patch.object(wm, "fetch_temperature_ecmwf", return_value=73.0),
             patch.object(wm, "get_ensemble_members", return_value=None),
@@ -439,7 +514,32 @@ class TestBlendSourcesNormalisation:
         _fake_mos_no_station.get_mos_station = lambda city: None
 
         with (
-            patch.object(wm, "get_ensemble_temps", return_value=[72.0] * 20),
+            patch.object(
+                wm,
+                "get_ensemble_temps",
+                return_value=[
+                    70.0,
+                    71.0,
+                    72.0,
+                    73.0,
+                    74.0,
+                    70.0,
+                    71.0,
+                    72.0,
+                    73.0,
+                    74.0,
+                    70.0,
+                    71.0,
+                    72.0,
+                    73.0,
+                    74.0,
+                    70.0,
+                    71.0,
+                    72.0,
+                    73.0,
+                    74.0,
+                ],
+            ),
             patch.object(wm, "fetch_temperature_nbm", return_value=72.5),
             patch.object(wm, "fetch_temperature_ecmwf", return_value=73.0),
             patch.object(wm, "get_ensemble_members", return_value=None),
@@ -517,7 +617,32 @@ class TestBetweenObsDisabled:
         fake_obs = {"temp_f": 70.4, "humidity": 55, "wind_mph": 5}
 
         with (
-            patch.object(wm, "get_ensemble_temps", return_value=[70.5] * 20),
+            patch.object(
+                wm,
+                "get_ensemble_temps",
+                return_value=[
+                    68.5,
+                    69.5,
+                    70.5,
+                    71.5,
+                    72.5,
+                    68.5,
+                    69.5,
+                    70.5,
+                    71.5,
+                    72.5,
+                    68.5,
+                    69.5,
+                    70.5,
+                    71.5,
+                    72.5,
+                    68.5,
+                    69.5,
+                    70.5,
+                    71.5,
+                    72.5,
+                ],
+            ),
             patch.object(wm, "fetch_temperature_nbm", return_value=70.8),
             patch.object(wm, "fetch_temperature_ecmwf", return_value=71.2),
             patch.object(wm, "get_ensemble_members", return_value=None),
@@ -656,7 +781,53 @@ def test_ensemble_cdf_prob_between():
     import weather_markets as wm
 
     # 51 members: 11 between 69-71, rest outside
-    members = [65.0] * 20 + [70.0] * 11 + [75.0] * 20
+    members = (
+        [
+            63.0,
+            64.0,
+            65.0,
+            66.0,
+            67.0,
+            63.0,
+            64.0,
+            65.0,
+            66.0,
+            67.0,
+            63.0,
+            64.0,
+            65.0,
+            66.0,
+            67.0,
+            63.0,
+            64.0,
+            65.0,
+            66.0,
+            67.0,
+        ]
+        + [70.0] * 11
+        + [
+            73.0,
+            74.0,
+            75.0,
+            76.0,
+            77.0,
+            73.0,
+            74.0,
+            75.0,
+            76.0,
+            77.0,
+            73.0,
+            74.0,
+            75.0,
+            76.0,
+            77.0,
+            73.0,
+            74.0,
+            75.0,
+            76.0,
+            77.0,
+        ]
+    )
     p = wm.ensemble_cdf_prob(members, {"type": "between", "lower": 69.0, "upper": 71.0})
     assert abs(p - 11 / 51) < 0.02
 
@@ -698,7 +869,32 @@ def test_analyze_trade_includes_ensemble_cdf_in_blend_sources(monkeypatch):
     }
 
     with (
-        patch.object(wm, "get_ensemble_temps", return_value=[72.0] * 20),
+        patch.object(
+            wm,
+            "get_ensemble_temps",
+            return_value=[
+                70.0,
+                71.0,
+                72.0,
+                73.0,
+                74.0,
+                70.0,
+                71.0,
+                72.0,
+                73.0,
+                74.0,
+                70.0,
+                71.0,
+                72.0,
+                73.0,
+                74.0,
+                70.0,
+                71.0,
+                72.0,
+                73.0,
+                74.0,
+            ],
+        ),
         patch.object(wm, "fetch_temperature_nbm", return_value=72.5),
         patch.object(wm, "fetch_temperature_ecmwf", return_value=73.0),
         patch.object(wm, "get_ensemble_members", return_value=fake_members),

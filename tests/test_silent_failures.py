@@ -34,7 +34,26 @@ def _patch_analyze_prereqs():
             return_value={"type": "above", "threshold": 82.0, "var": "max"},
         ),
         # 15 ensemble temps so ens_prob is not None and len(temps) >= 10
-        patch("weather_markets.get_ensemble_temps", return_value=[85.0] * 15),
+        patch(
+            "weather_markets.get_ensemble_temps",
+            return_value=[
+                83.0,
+                84.0,
+                85.0,
+                86.0,
+                87.0,
+                83.0,
+                84.0,
+                85.0,
+                86.0,
+                87.0,
+                83.0,
+                84.0,
+                85.0,
+                86.0,
+                87.0,
+            ],
+        ),
         # Skip NWS (return None = not available)
         patch("weather_markets.nws_prob", return_value=None),
         # Skip climatology
@@ -94,7 +113,26 @@ def test_analyze_trade_logs_nws_prob_failure(caplog):
             "weather_markets._parse_market_condition",
             return_value={"type": "above", "threshold": 82.0, "var": "max"},
         ):
-            with patch("weather_markets.get_ensemble_temps", return_value=[85.0] * 15):
+            with patch(
+                "weather_markets.get_ensemble_temps",
+                return_value=[
+                    83.0,
+                    84.0,
+                    85.0,
+                    86.0,
+                    87.0,
+                    83.0,
+                    84.0,
+                    85.0,
+                    86.0,
+                    87.0,
+                    83.0,
+                    84.0,
+                    85.0,
+                    86.0,
+                    87.0,
+                ],
+            ):
                 with patch(
                     "weather_markets.nws_prob", side_effect=RuntimeError("nws down")
                 ):
@@ -140,7 +178,26 @@ def test_analyze_trade_logs_climatological_failure(caplog):
             "weather_markets._parse_market_condition",
             return_value={"type": "above", "threshold": 82.0, "var": "max"},
         ):
-            with patch("weather_markets.get_ensemble_temps", return_value=[85.0] * 15):
+            with patch(
+                "weather_markets.get_ensemble_temps",
+                return_value=[
+                    83.0,
+                    84.0,
+                    85.0,
+                    86.0,
+                    87.0,
+                    83.0,
+                    84.0,
+                    85.0,
+                    86.0,
+                    87.0,
+                    83.0,
+                    84.0,
+                    85.0,
+                    86.0,
+                    87.0,
+                ],
+            ):
                 with patch("weather_markets.nws_prob", return_value=None):
                     with patch(
                         "weather_markets._get_consensus_probs",
