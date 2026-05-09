@@ -1488,15 +1488,15 @@ Also fix: `get_active_variant` must read `max_trades_per_variant` from the persi
 **File:** `monte_carlo.py:simulate_portfolio`  
 Increase `n_simulations` from 1000 to 5000 for the `portfolio_var` call used as a hard trade gate. At 1000, the p5 estimator has Â±$5-10 noise on a $200 gate. Add nearest-PSD repair (eigenvalue flooring) so the Cholesky path completes even with near-singular matrices.
 
-### P3-4 · Implement CircuitBreaker.execute() Wrapper
+### ✅ P3-4 · Implement CircuitBreaker.execute() Wrapper
 **File:** `circuit_breaker.py`  
 Add an `execute(fn, *args, **kwargs)` method that enforces the circuit check automatically. Make it the recommended API. This turns protection from opt-in to opt-out.
 
-### P3-5 · Split Kalshi Circuit Breakers by Operation Type
+### ✅ P3-5 · Split Kalshi Circuit Breakers by Operation Type
 **File:** `kalshi_client.py`  
 Create separate circuit breakers for read operations (`get_market`, `get_markets`, `get_orders`) and write operations (`place_order`, `cancel_order`). 5 read failures should not block order placement.
 
-### P3-6 · Add True HALF-OPEN State to CircuitBreaker
+### ✅ P3-6 · Add True HALF-OPEN State to CircuitBreaker
 **File:** `circuit_breaker.py`  
 After `recovery_timeout`, allow exactly one probe request. If it succeeds â†’ CLOSED. If it fails â†’ re-open with exponential backoff multiplier. This prevents the current behavior where recovery allows up to `failure_threshold - 1` additional failures.
 
