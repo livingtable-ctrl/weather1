@@ -763,6 +763,10 @@ def _cmd_cron_body(
                     )
                 except Exception:
                     pass
+                # Skip same-day markets (days_out == 0): by market open the market has
+                # real-time weather data our ensemble forecast cannot match.
+                if int(analysis.get("days_out", 1)) == 0:
+                    continue
                 # Use PAPER_MIN_EDGE (5%) so more signals are captured for observation.
                 if abs(adjusted_edge) < PAPER_MIN_EDGE:
                     continue
