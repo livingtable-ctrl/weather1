@@ -6302,7 +6302,9 @@ def cmd_montecarlo(client: KalshiClient) -> None:  # noqa: ARG001
         dim(f"  Simulating 1000 outcomes for {len(open_trades)} open position(s)...\n")
     )
 
-    result = simulate_portfolio(open_trades, n_simulations=1000)
+    result = simulate_portfolio(
+        open_trades, n_simulations=1000, include_distribution=True
+    )
 
     med = result["median_pnl"]
     p10 = result["p10_pnl"]

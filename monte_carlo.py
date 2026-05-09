@@ -39,6 +39,20 @@ def _cholesky(mat: list[list[float]]) -> list[list[float]] | None:
     return L
 
 
+def _repair_psd(mat: list[list[float]]) -> list[list[float]]:
+    """Nearest-PSD repair via eigenvalue flooring: add minimal diagonal shift until Cholesky succeeds."""
+    n = len(mat)
+    result = [row[:] for row in mat]
+    eps = 1e-8
+    for _ in range(60):  # eps doubles each iter; 60 doublings = ~0.06 max shift
+        if _cholesky(result) is not None:
+            return result
+        for i in range(n):
+            result[i][i] += eps
+        eps *= 2.0
+    return result
+
+
 # Default pairwise correlation coefficients for cities with shared weather patterns.
 _DEFAULT_CORRELATIONS: dict[tuple[str, str], float] = {
     ("NYC", "Boston"): 0.7,
@@ -159,6 +173,7 @@ def simulate_portfolio(
     n_simulations: int = 1000,
     analysis_map: dict | None = None,  # ticker -> analyze_trade result
     correlation_matrix: dict | None = None,
+    include_distribution: bool = False,
 ) -> dict:
     """
     For each simulation: randomly resolve each open trade as win/loss
@@ -257,11 +272,19 @@ def simulate_portfolio(
     corr_mat = position_correlation_matrix(open_trades)
     chol = _cholesky(corr_mat)
     if chol is None:
-        _log.warning(
-            "Monte Carlo: correlation matrix is not positive-definite "
-            "(%d trades) — falling back to independent draws",
-            len(trade_params),
-        )
+        repaired = _repair_psd(corr_mat)
+        chol = _cholesky(repaired)
+        if chol is None:
+            _log.warning(
+                "Monte Carlo: correlation matrix not positive-definite even after PSD repair "
+                "(%d trades) — falling back to independent draws",
+                len(trade_params),
+            )
+        else:
+            _log.debug(
+                "Monte Carlo: PSD repair applied to correlation matrix (%d trades)",
+                len(trade_params),
+            )
 
     from statistics import NormalDist as _NormalDist
 
@@ -308,7 +331,7 @@ def simulate_portfolio(
 
     correlation_applied = chol is not None and any(tp["city"] for tp in trade_params)
 
-    return {
+    out: dict = {
         "median_pnl": round(median_pnl, 2),
         "p5_pnl": round(p5_pnl, 2),
         "p10_pnl": round(p10_pnl, 2),
@@ -318,15 +341,17 @@ def simulate_portfolio(
         "current_balance": round(current_balance, 2),
         "n_simulations": n_simulations,
         "correlation_applied": correlation_applied,
-        "pnl_distribution": sim_pnls,  # sorted raw outcomes for histogram
         "n_clamped": n_clamped,
     }
+    if include_distribution:
+        out["pnl_distribution"] = sim_pnls  # sorted raw outcomes for histogram
+    return out
 
 
 def portfolio_var(
     open_trades: list[dict],
     confidence: float = 0.05,
-    n_simulations: int = 1000,
+    n_simulations: int = 5000,
 ) -> float:
     """
     Return the dollar loss at the given confidence level (VaR).

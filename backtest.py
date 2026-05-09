@@ -240,42 +240,6 @@ def fetch_archive_precip_prob(
 # ── Backtest runner ───────────────────────────────────────────────────────────
 
 
-def stratified_train_test_split(
-    records: list[dict],
-    holdout_frac: float = 0.2,
-    strat_keys: tuple = ("city", "condition_type"),
-) -> tuple[list[dict], list[dict]]:
-    """
-    #21: Stratified train/test split that ensures all strata appear in holdout.
-
-    Stratifies by (city, condition_type) — or any other strat_keys — so that
-    each combination is sampled proportionally in the holdout set.
-
-    Returns (train, holdout) lists.
-    """
-    import math
-
-    # Group records by strata
-    strata: dict[tuple, list[dict]] = {}
-    for rec in records:
-        key = tuple(rec.get(k) for k in strat_keys)
-        strata.setdefault(key, []).append(rec)
-
-    train: list[dict] = []
-    holdout: list[dict] = []
-
-    for key, group in strata.items():
-        n = len(group)
-        n_holdout = max(1, math.ceil(n * holdout_frac))  # at least 1 per stratum
-        # Sort for determinism (by first key in record if available)
-        sorted_group = sorted(group, key=lambda r: str(r.get("date", "")))
-        # Take from the end (most recent) as holdout — mirrors temporal split
-        holdout.extend(sorted_group[-n_holdout:])
-        train.extend(sorted_group[:-n_holdout])
-
-    return train, holdout
-
-
 _WEATHER_SERIES = [
     "KXHIGHNY",
     "KXHIGHCHI",

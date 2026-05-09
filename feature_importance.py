@@ -14,6 +14,7 @@ from pathlib import Path
 
 _log = logging.getLogger(__name__)
 _FEATURE_LOG_PATH = Path(__file__).parent / "data" / "feature_importance.jsonl"
+_MAX_LOG_LINES = 50_000
 
 
 def record_feature_contribution(
@@ -65,6 +66,27 @@ def update_outcome(ticker: str, outcome: bool) -> None:
             f.write(json.dumps(record) + "\n")
     except Exception as exc:
         _log.debug("update_outcome: %s", exc)
+
+
+def prune_feature_log(max_lines: int = _MAX_LOG_LINES) -> int:
+    """Truncate feature_importance.jsonl to the most recent max_lines entries.
+
+    Returns the number of lines pruned, or 0 if no pruning was needed.
+    """
+    if not _FEATURE_LOG_PATH.exists():
+        return 0
+    try:
+        lines = _FEATURE_LOG_PATH.read_text(encoding="utf-8").splitlines(keepends=True)
+        if len(lines) <= max_lines:
+            return 0
+        kept = lines[-max_lines:]
+        pruned = len(lines) - max_lines
+        _FEATURE_LOG_PATH.write_text("".join(kept), encoding="utf-8")
+        _log.info("prune_feature_log: pruned %d lines (kept %d)", pruned, max_lines)
+        return pruned
+    except Exception as exc:
+        _log.debug("prune_feature_log: %s", exc)
+        return 0
 
 
 def get_feature_summary(min_trades: int = 10) -> dict[str, dict]:

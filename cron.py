@@ -402,6 +402,10 @@ def _cmd_cron_body(client: KalshiClient, min_edge: float = MIN_EDGE) -> bool | N
         _purge(retention_days=730)
         _prune_api(days_to_keep=90)
 
+        from feature_importance import prune_feature_log as _prune_features
+
+        _prune_features()
+
     # Graceful shutdown flag — use main-module lookup so test monkeypatching works.
     _main._write_cron_running_flag()
     # Detect orders placed in the last 5 minutes at startup
