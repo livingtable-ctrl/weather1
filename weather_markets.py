@@ -2409,6 +2409,29 @@ def _edge_label(edge: float) -> str:
         return f"WEAK {direction}     "
 
 
+def _nws_days_out_scale(
+    w_ens: float, w_clim: float, w_nws: float, days_out: int
+) -> tuple[float, float, float]:
+    """Boost NWS weight at short range (1-2 days) and reduce at long range (4+ days).
+
+    Scale factor: 2.0× at days_out=1, 1.0× at days_out=3, 0.6× at days_out≥5.
+    Calibrated base weights assume a mid-range horizon; this corrects for skill decay.
+    """
+    if w_nws == 0.0 or days_out <= 0:
+        return w_ens, w_clim, w_nws
+    scale = max(0.6, min(2.0, 2.0 - (days_out - 1) * 0.5))
+    w_nws_new = min(w_nws * scale, 0.85)
+    remaining = 1.0 - w_nws_new
+    ec_total = w_ens + w_clim
+    if ec_total > 0:
+        w_ens_new = remaining * w_ens / ec_total
+        w_clim_new = remaining * w_clim / ec_total
+    else:
+        w_ens_new = remaining
+        w_clim_new = 0.0
+    return w_ens_new, w_clim_new, w_nws_new
+
+
 def _blend_weights(
     days_out: int,
     has_nws: bool,
@@ -2436,7 +2459,8 @@ def _blend_weights(
             w_clim = 0.0
         total = w_ens + w_clim + w_nws
         if total > 0.0:
-            return w_ens / total, w_clim / total, w_nws / total
+            w_ens, w_clim, w_nws = w_ens / total, w_clim / total, w_nws / total
+            return _nws_days_out_scale(w_ens, w_clim, w_nws, days_out)
         # Degenerate calibration data; fall through to condition/seasonal/hardcoded
 
     # 2. Condition-type calibration weights
@@ -2454,7 +2478,8 @@ def _blend_weights(
             w_clim = 0.0
         total = w_ens + w_clim + w_nws
         if total > 0.0:
-            return w_ens / total, w_clim / total, w_nws / total
+            w_ens, w_clim, w_nws = w_ens / total, w_clim / total, w_nws / total
+            return _nws_days_out_scale(w_ens, w_clim, w_nws, days_out)
         # Degenerate calibration data; fall through to seasonal/hardcoded
 
     # 3. Seasonal calibration weights
@@ -2472,7 +2497,8 @@ def _blend_weights(
             w_clim = 0.0
         total = w_ens + w_clim + w_nws
         if total > 0.0:
-            return w_ens / total, w_clim / total, w_nws / total
+            w_ens, w_clim, w_nws = w_ens / total, w_clim / total, w_nws / total
+            return _nws_days_out_scale(w_ens, w_clim, w_nws, days_out)
         # Degenerate calibration data; fall through to hardcoded schedule
 
     # 3. Hardcoded schedule (original logic)

@@ -22,8 +22,10 @@ from kalshi_client import KalshiClient
 from utils import (
     CITY_MIN_PROB_EDGE,
     DRIFT_TIGHTEN_EDGE,
+    MAX_MARKET_DIVERGENCE_RATIO,
     MED_EDGE,
     MIN_EDGE,
+    MIN_MARKET_PROB_TO_BET_WITH,
     MIN_PROB_EDGE,
     PAPER_MIN_EDGE,
     STRONG_EDGE,
@@ -766,6 +768,21 @@ def _cmd_cron_body(
                 # Skip same-day markets (days_out == 0): by market open the market has
                 # real-time weather data our ensemble forecast cannot match.
                 if int(analysis.get("days_out", 1)) == 0:
+                    continue
+                # Market divergence cap: skip when we disagree with the market by
+                # more than 2.5× — the market is right nearly every time in that case.
+                _side = analysis.get("recommended_side", "yes")
+                _our_p = analysis.get("forecast_prob", 0.5)
+                _mkt_p = analysis.get("market_prob", 0.5)
+                if _side == "yes":
+                    _mkt_dir = _mkt_p
+                    _our_dir = _our_p
+                else:
+                    _mkt_dir = 1.0 - _mkt_p
+                    _our_dir = 1.0 - _our_p
+                if _mkt_dir < MIN_MARKET_PROB_TO_BET_WITH:
+                    continue
+                if _mkt_dir > 0 and _our_dir / _mkt_dir > MAX_MARKET_DIVERGENCE_RATIO:
                     continue
                 # Use PAPER_MIN_EDGE (5%) so more signals are captured for observation.
                 if abs(adjusted_edge) < PAPER_MIN_EDGE:

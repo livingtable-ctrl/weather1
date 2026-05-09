@@ -39,6 +39,13 @@ MIN_PROB_EDGE = float(os.getenv("MIN_PROB_EDGE", "0.08"))
 # Dallas Brier (0.33) is worse than the naive baseline — requires stronger conviction.
 CITY_MIN_PROB_EDGE: dict[str, float] = {"Dallas": 0.15}
 
+# Market divergence cap: don't bet heavily against the market.
+# When our model disagrees with the market by >2.5× the market says, the market
+# is right nearly every time — we're fighting better real-time information.
+MAX_MARKET_DIVERGENCE_RATIO = 2.5
+# Don't bet YES when market already prices event at <12% (or NO when >88%).
+MIN_MARKET_PROB_TO_BET_WITH = 0.12
+
 # Confidence-tiered edge thresholds
 # HIGH: spread < 0.05 (models agree) → lower bar
 # MODERATE: 0.05 ≤ spread < 0.15 → standard bar
