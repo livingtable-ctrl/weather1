@@ -243,25 +243,29 @@ class TestFetchArchiveTempsDeterministicSeed:
         assert r1 == r2, "fetch_archive_temps not deterministic across two calls"
 
 
-# ── P3-20: correlation_applied == chol is not None ───────────────────────────
+# ── P3-20: correlation_applied requires both Cholesky success AND city presence ──
 
 
 class TestMonteCarloCorrelationApplied:
-    """P3-20: correlation_applied must reflect Cholesky success, not city presence."""
+    """P3-20: correlation_applied = chol is not None AND any city present.
 
-    def _run_sim(self, chol_returns_none: bool) -> dict:
+    When Cholesky fails (chol=None), independent draws are used → False.
+    When no trades have a city, the correlation matrix is identity (no-op) → False.
+    """
+
+    def _run_sim(self, chol_returns_none: bool, city: str = "NYC") -> dict:
         from monte_carlo import simulate_portfolio
 
         open_trades = [
             {
                 "ticker": "KXNYC-25JAN15-T35",
-                "city": "NYC",
+                "city": city,
                 "side": "yes",
                 "entry_price": 0.50,
                 "cost": 5.0,
                 "quantity": 10,
                 "entry_prob": 0.65,
-                "target_date": "2099-01-15",  # future date so not skipped
+                "target_date": "2099-01-15",
             }
         ]
         chol_val = None if chol_returns_none else [[1.0]]
@@ -277,9 +281,14 @@ class TestMonteCarloCorrelationApplied:
         result = self._run_sim(chol_returns_none=True)
         assert result["correlation_applied"] is False
 
-    def test_correlation_applied_true_when_cholesky_succeeds(self):
-        result = self._run_sim(chol_returns_none=False)
+    def test_correlation_applied_true_when_cholesky_succeeds_with_city(self):
+        result = self._run_sim(chol_returns_none=False, city="NYC")
         assert result["correlation_applied"] is True
+
+    def test_correlation_applied_false_when_no_city(self):
+        """No city means correlation is a no-op — must be False even if Cholesky succeeds."""
+        result = self._run_sim(chol_returns_none=False, city="")
+        assert result["correlation_applied"] is False
 
 
 # ── P3-21: _validate uses _log.error, not warnings.warn ─────────────────────

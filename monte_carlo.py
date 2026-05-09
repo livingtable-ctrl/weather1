@@ -306,7 +306,7 @@ def simulate_portfolio(
     prob_positive = sum(1 for p in sim_pnls if p > 0) / n
     prob_ruin = sum(1 for p in sim_pnls if p < -ruin_threshold) / n
 
-    correlation_applied = chol is not None
+    correlation_applied = chol is not None and any(tp["city"] for tp in trade_params)
 
     return {
         "median_pnl": round(median_pnl, 2),

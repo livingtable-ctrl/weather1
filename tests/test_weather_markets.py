@@ -460,14 +460,16 @@ class TestKellyFeeRate:
 
 
 class TestKellyCap:
-    """Verify kelly_fraction hard cap is 33% (raised from 25%)."""
+    """Verify kelly_fraction hard cap is KELLY_CAP=0.25 (P3-13: unified from 0.33)."""
 
-    def test_kelly_fraction_caps_at_33_pct(self):
-        """Very high edge → fraction is capped at 0.33, not 0.25."""
+    def test_kelly_fraction_caps_at_kelly_cap(self):
+        """Very high edge → fraction is capped at KELLY_CAP (0.25)."""
+        from utils import KELLY_CAP
+
         # our_prob=0.95, price=0.10: full Kelly would be enormous
         result = kelly_fraction(our_prob=0.95, price=0.10, fee_rate=0.02)
-        assert result == pytest.approx(0.33, abs=1e-6), (
-            f"Expected Kelly cap 0.33, got {result}"
+        assert result == pytest.approx(KELLY_CAP, abs=1e-6), (
+            f"Expected Kelly cap {KELLY_CAP}, got {result}"
         )
 
 
