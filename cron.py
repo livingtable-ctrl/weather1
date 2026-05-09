@@ -12,6 +12,7 @@ import json
 import logging
 import os
 import sys
+from datetime import UTC
 from pathlib import Path
 
 import execution_log
@@ -104,7 +105,10 @@ def _check_startup_orders() -> None:
             try:
                 from datetime import datetime as _dt
 
-                placed_ts = _dt.fromisoformat(placed_at_str).timestamp()
+                placed_dt = _dt.fromisoformat(placed_at_str)
+                if placed_dt.tzinfo is None:
+                    placed_dt = placed_dt.replace(tzinfo=UTC)
+                placed_ts = placed_dt.timestamp()
             except ValueError:
                 continue
             if placed_ts >= cutoff:
@@ -389,9 +393,9 @@ def _cmd_cron_body(client: KalshiClient, min_edge: float = MIN_EDGE) -> bool | N
     )
 
     # Weekly DB retention sweep (runs on Monday only)
-    from datetime import date as _date
+    from utils import utc_today as _utc_today
 
-    if _date.today().weekday() == 0:  # Monday
+    if _utc_today().weekday() == 0:  # Monday UTC
         from tracker import prune_api_requests as _prune_api
         from tracker import purge_old_predictions as _purge
 

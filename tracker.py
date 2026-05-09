@@ -14,6 +14,7 @@ import sqlite3
 from datetime import UTC, date, datetime
 
 from safe_io import project_root as _project_root
+from utils import utc_today as _utc_today
 
 _log = logging.getLogger(__name__)
 
@@ -449,7 +450,7 @@ def log_prediction(
     cond = analysis.get("condition", {})
     lo = cond.get("threshold", cond.get("lower"))
     hi = cond.get("threshold", cond.get("upper"))
-    days_out = (market_date - date.today()).days if market_date is not None else None
+    days_out = (market_date - _utc_today()).days if market_date is not None else None
     # #53: raw_prob is pre-bias-correction; forecast_prob is the adjusted value
     bias = analysis.get("bias_correction", 0.0) or 0.0
     forecast_prob = analysis.get("forecast_prob")
@@ -460,7 +461,7 @@ def log_prediction(
 
     # G4: use today's wall-clock date as explicit UPSERT key (avoids SQLite
     # date(predicted_at) timezone ambiguity around UTC midnight).
-    predicted_date = date.today().isoformat()
+    predicted_date = _utc_today().isoformat()
 
     with _conn() as con:
         # Atomic upsert — unique index on (ticker, predicted_date) prevents

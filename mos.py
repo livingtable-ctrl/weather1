@@ -11,6 +11,8 @@ from datetime import date, timedelta
 import requests
 from requests.adapters import HTTPAdapter, Retry
 
+from utils import utc_today as _utc_today
+
 _log = logging.getLogger(__name__)
 
 # IEM MOS API endpoint
@@ -125,9 +127,7 @@ def fetch_mos(
         return None
 
     # B1: compute days_out and look up MOS-specific RMSE as sigma
-    from datetime import date as _date
-
-    days_out = max(0, (target_date - _date.today()).days)
+    days_out = max(0, (target_date - _utc_today()).days)
     sigma_table = MOS_SIGMA.get(model.upper(), MOS_SIGMA["GFS"])
     max_key = max(sigma_table.keys())
     sigma = sigma_table.get(days_out, sigma_table[max_key])
@@ -158,9 +158,7 @@ def fetch_mos_best(
 
         target_date = datetime.now(UTC).date() + timedelta(days=1)
 
-    from datetime import date as _date
-
-    days_out = max(0, (target_date - _date.today()).days)
+    days_out = max(0, (target_date - _utc_today()).days)
 
     if days_out <= 1:
         # Try NAM first — tighter RMSE for same-day and next-day markets

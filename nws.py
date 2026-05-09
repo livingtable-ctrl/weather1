@@ -21,6 +21,7 @@ import requests
 from circuit_breaker import CircuitBreaker
 from schema_validator import validate_nws_response
 from utils import normal_cdf
+from utils import utc_today as _utc_today
 
 socket.setdefaulttimeout(
     10
@@ -251,7 +252,7 @@ def nws_prob(
 
     # NWS is calibrated — use tighter sigma than raw ensemble.
     # Same-day: NWS high/low is near-certain (1°F); tighten significantly.
-    days_out = (target_date - date.today()).days
+    days_out = (target_date - _utc_today()).days
     if days_out <= 0:
         sigma = 1.0
     elif days_out <= 2:

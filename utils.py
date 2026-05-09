@@ -7,6 +7,13 @@ from __future__ import annotations
 import logging
 import math
 import os
+from datetime import UTC, date, datetime
+
+
+def utc_today() -> date:
+    """Return the current UTC date. Use everywhere instead of date.today()."""
+    return datetime.now(UTC).date()
+
 
 # ── Kalshi platform constant ──────────────────────────────────────────────────
 

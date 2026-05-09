@@ -8,8 +8,9 @@ from __future__ import annotations
 import logging
 import math
 import random
-from datetime import date
 from pathlib import Path
+
+from utils import utc_today as _utc_today
 
 _log = logging.getLogger(__name__)
 
@@ -201,7 +202,7 @@ def simulate_portfolio(
         # Skip past-date trades awaiting settlement — they carry no forward risk
         # and their stale entry_prob would skew the simulation.
         _tdate = t.get("target_date")
-        if _tdate and _tdate < date.today().isoformat():
+        if _tdate and _tdate < _utc_today().isoformat():
             _log.debug("Monte Carlo: skipping past-date trade %s (%s)", ticker, _tdate)
             continue
         side = t.get("side", "yes")
