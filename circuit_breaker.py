@@ -14,6 +14,7 @@ import logging
 import threading
 import time
 from pathlib import Path
+from typing import Any
 
 _log = logging.getLogger(__name__)
 
@@ -54,6 +55,7 @@ class CircuitBreaker:
         self._wall_opened_at: float | None = None
         self._current_timeout: float = recovery_timeout
         self._last_failure_at: float | None = None
+        self._half_open: bool = False
         self._lock = threading.Lock()
         self._load_state()
 
@@ -116,22 +118,44 @@ class CircuitBreaker:
         with self._lock:
             if self._opened_at is None:
                 return False
+            if self._half_open:
+                # Probe already dispatched — block subsequent callers until it resolves.
+                return True
             elapsed = time.monotonic() - self._opened_at
             if elapsed >= self._current_timeout:
                 _log.info(
-                    "Circuit '%s' half-open after %.0fs — allowing probe",
+                    "Circuit '%s' HALF-OPEN after %.0fs — allowing one probe",
                     self.name,
                     elapsed,
                 )
-                self._opened_at = None
-                self._wall_opened_at = None
+                self._half_open = True
                 self._failure_count = 0
                 self._save_state()
-                return False
+                return False  # This caller is the probe
             return True
 
     def record_failure(self) -> None:
         with self._lock:
+            if self._half_open:
+                # Probe failed — reopen immediately with exponential backoff.
+                self._half_open = False
+                self._trip_count += 1
+                if self.backoff_multiplier > 1.0 and self._trip_count > 1:
+                    self._current_timeout = min(
+                        self.recovery_timeout
+                        * (self.backoff_multiplier ** (self._trip_count - 1)),
+                        86400.0,
+                    )
+                self._opened_at = time.monotonic()
+                self._wall_opened_at = time.time()
+                _log.warning(
+                    "Circuit '%s' REOPENED after failed probe (trip %d) — retry in %.0fs",
+                    self.name,
+                    self._trip_count,
+                    self._current_timeout,
+                )
+                self._save_state()
+                return
             now_wall = time.time()
             if (
                 self.burst_window > 0.0
@@ -165,11 +189,15 @@ class CircuitBreaker:
 
     def record_success(self) -> None:
         with self._lock:
+            was_half_open = self._half_open
+            self._half_open = False
             self._failure_count = 0
             self._opened_at = None
             self._wall_opened_at = None
             # _trip_count and _current_timeout are intentionally preserved across
             # successes so backoff accumulates over repeated open/close cycles.
+            if was_half_open:
+                _log.info("Circuit '%s' CLOSED after successful probe", self.name)
             self._save_state()
 
     @property
@@ -185,13 +213,29 @@ class CircuitBreaker:
             return time.time() - self._wall_opened_at
 
     def seconds_until_retry(self) -> float:
-        """Seconds remaining before the circuit allows a probe; 0.0 if closed."""
+        """Seconds remaining before the circuit allows a probe; 0.0 if closed or half-open."""
         with self._lock:
-            if self._opened_at is None:
+            if self._opened_at is None or self._half_open:
                 return 0.0
             elapsed = time.monotonic() - self._opened_at
             remaining = self._current_timeout - elapsed
             return max(0.0, remaining)
+
+    def execute(self, fn: Any, *args: Any, **kwargs: Any) -> Any:
+        """Call fn(*args, **kwargs) with automatic circuit protection.
+
+        Raises CircuitOpenError if the circuit is open.
+        Records success or failure automatically.
+        """
+        if self.is_open():
+            raise CircuitOpenError(self.name)
+        try:
+            result = fn(*args, **kwargs)
+        except Exception:
+            self.record_failure()
+            raise
+        self.record_success()
+        return result
 
 
 # ── Flash Crash Circuit Breaker ───────────────────────────────────────────────

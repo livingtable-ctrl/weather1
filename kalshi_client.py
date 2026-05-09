@@ -18,7 +18,13 @@ from schema_validator import validate_market
 
 _log = logging.getLogger(__name__)
 
-_kalshi_cb = CircuitBreaker(name="kalshi_api", failure_threshold=5, recovery_timeout=60)
+# Separate circuit breakers so read failures don't block order placement.
+_kalshi_cb_read = CircuitBreaker(
+    name="kalshi_api_read", failure_threshold=5, recovery_timeout=60
+)
+_kalshi_cb_write = CircuitBreaker(
+    name="kalshi_api_write", failure_threshold=5, recovery_timeout=60
+)
 
 
 def _check_key_permissions(key_path) -> None:
@@ -72,20 +78,25 @@ def _request_with_retry(method: str, url: str, **kwargs) -> requests.Response:
     """
     Call _SESSION.request with automatic retry via HTTPAdapter (#67).
     Falls back to latency logging for slow responses (#108).
-    Guarded by _kalshi_cb to avoid hammering a downed Kalshi API.
+    Guarded by per-type circuit breakers: read failures don't block writes.
     """
     # Apply default timeout if caller didn't specify one
     kwargs.setdefault("timeout", DEFAULT_TIMEOUT)
 
-    if _kalshi_cb.is_open():
-        raise CircuitOpenError("kalshi_api")
+    _cb = (
+        _kalshi_cb_write
+        if method.upper() in ("POST", "PUT", "PATCH", "DELETE")
+        else _kalshi_cb_read
+    )
+    if _cb.is_open():
+        raise CircuitOpenError(_cb.name)
 
     _t0 = time.perf_counter()
     try:
         resp = _SESSION.request(method, url, **kwargs)
-        _kalshi_cb.record_success()
+        _cb.record_success()
     except Exception as _exc:
-        _kalshi_cb.record_failure()
+        _cb.record_failure()
         raise
     _elapsed = time.perf_counter() - _t0
     # #108: warn on slow API responses so latency issues are visible
