@@ -73,8 +73,18 @@ class ABTest:
         self.disable_threshold = disable_threshold
         self._state = _load_test_state(name)
 
-        # Initialize state for new variants
+        # Persist max_trades_per_variant so get_active_variant() reads the configured limit
         changed = False
+        if (
+            self._state.get("_meta", {}).get("max_trades_per_variant")
+            != max_trades_per_variant
+        ):
+            self._state.setdefault("_meta", {})["max_trades_per_variant"] = (
+                max_trades_per_variant
+            )
+            changed = True
+
+        # Initialize state for new variants
         for v in variants:
             if v not in self._state:
                 self._state[v] = {
@@ -182,11 +192,15 @@ def get_active_variant(test_name: str) -> tuple[str, Any]:
     try:
         state = _load_test_state(test_name)
         if state:
+            _max_trades = state.get("_meta", {}).get(
+                "max_trades_per_variant", _DEFAULT_MAX_TRADES
+            )
             active = [
                 v
                 for v, s in state.items()
-                if not s.get("disabled", False)
-                and s.get("trades", 0) < _DEFAULT_MAX_TRADES
+                if v != "_meta"
+                and not s.get("disabled", False)
+                and s.get("trades", 0) < _max_trades
             ]
             if active:
                 # F7: break ties randomly

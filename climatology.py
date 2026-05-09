@@ -137,6 +137,19 @@ def _climatological_prob_inner(
     target_doy = target_date.timetuple().tm_yday
     temps = []
 
+    _n_dates = len(data["dates"])
+    _n_highs = len(data["highs"])
+    _n_lows = len(data["lows"])
+    if _n_dates != _n_highs or _n_dates != _n_lows:
+        _log.warning(
+            "climatology: mismatched list lengths dates=%d highs=%d lows=%d for %s"
+            " — truncating to shortest",
+            _n_dates,
+            _n_highs,
+            _n_lows,
+            city,
+        )
+
     for date_str, high, low in zip(data["dates"], data["highs"], data["lows"]):
         if high is None or low is None:
             continue

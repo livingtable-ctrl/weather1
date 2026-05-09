@@ -1140,22 +1140,29 @@ def _cmd_cron_body(client: KalshiClient, min_edge: float = MIN_EDGE) -> bool | N
         pass
 
     # D5: Weekly — retrain ML bias model as new settled trades accumulate.
-    # Runs on Sunday early morning. Falls back silently if sklearn isn't installed
-    # or fewer than 200 trades exist per city (threshold enforced inside train_bias_model).
+    # Uses a marker file instead of exact-hour matching so scheduled runs never miss.
+    _LAST_ML_RETRAIN_PATH = Path(__file__).parent / "data" / ".last_ml_retrain"
     try:
         import os as _os_tb
 
         if not _os_tb.environ.get("PYTEST_CURRENT_TEST"):
-            _now_dow = datetime.now(UTC).weekday()  # 6 = Sunday
-            _now_hour = datetime.now(UTC).hour
-            if _now_dow == 6 and _now_hour == 2:
+            _should_retrain = True
+            if _LAST_ML_RETRAIN_PATH.exists():
+                _days_since = (
+                    datetime.now(UTC).timestamp()
+                    - _LAST_ML_RETRAIN_PATH.stat().st_mtime
+                ) / 86400
+                _should_retrain = _days_since >= 6
+            if _should_retrain:
                 _log.info(
-                    "cmd_cron: running weekly ML bias model retrain (Sunday 02:00 UTC)"
+                    "cmd_cron: running weekly ML bias model retrain (>=6 days since last)"
                 )
                 from ml_bias import train_bias_model as _train_bias
 
                 _trained = _train_bias()
                 if _trained:
+                    _LAST_ML_RETRAIN_PATH.parent.mkdir(exist_ok=True)
+                    _LAST_ML_RETRAIN_PATH.touch()
                     print(
                         dim(
                             f"  [MLBias] Retrained {len(_trained)} city model(s): {', '.join(_trained.keys())}"

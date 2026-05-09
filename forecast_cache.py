@@ -9,12 +9,13 @@ import time
 
 class ForecastCache[T]:
     """
-    Thread-safe dict-based cache with per-entry TTL.
+    Thread-safe dict-based cache with per-entry TTL and LRU eviction.
     Keys are arbitrary hashable objects; values are typed by the T parameter.
     """
 
-    def __init__(self, ttl_secs: float = 4 * 3600) -> None:
+    def __init__(self, ttl_secs: float = 4 * 3600, max_size: int = 500) -> None:
         self._ttl = ttl_secs
+        self._max_size = max_size
         self._store: dict = {}
         self._lock = threading.Lock()
 
@@ -36,8 +37,17 @@ class ForecastCache[T]:
                 return None
             return value
 
+    def _evict_oldest(self) -> None:
+        """Remove the entry with the smallest (oldest) timestamp. Must hold _lock."""
+        if not self._store:
+            return
+        oldest_key = min(self._store, key=lambda k: self._store[k][1])
+        del self._store[oldest_key]
+
     def set(self, key, value: T) -> None:
         with self._lock:
+            if key not in self._store and len(self._store) >= self._max_size:
+                self._evict_oldest()
             self._store[key] = (value, time.monotonic())
 
     def set_with_ttl(self, key, value: T, ttl_secs: float) -> None:
@@ -47,6 +57,8 @@ class ForecastCache[T]:
         than a flat 4-hour window.  Call with ttl_secs=_ttl_until_next_cycle().
         """
         with self._lock:
+            if key not in self._store and len(self._store) >= self._max_size:
+                self._evict_oldest()
             self._store[key] = (value, time.monotonic(), ttl_secs)
 
     def set_at(self, key, value: T, ts: float) -> None:
@@ -77,6 +89,21 @@ class ForecastCache[T]:
             age = time.monotonic() - ts
             wall_clock_ts = time.time() - age
             return value, True, wall_clock_ts
+
+    def prune_expired(self) -> int:
+        """Remove all expired entries. Returns the number of entries removed."""
+        now = time.monotonic()
+        removed = 0
+        with self._lock:
+            expired = [
+                k
+                for k, entry in self._store.items()
+                if now - entry[1] > (entry[2] if len(entry) == 3 else self._ttl)
+            ]
+            for k in expired:
+                del self._store[k]
+                removed += 1
+        return removed
 
     def clear(self) -> None:
         with self._lock:

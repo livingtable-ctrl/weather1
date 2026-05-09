@@ -107,7 +107,9 @@ def load_swept_min_edge(min_trades: int = 10) -> float | None:
 def run_sweep(trades: list[dict] | None = None) -> dict:
     """
     Run a sweep across key parameters using historical paper trades.
-    Prints results and returns a summary dict.
+    Uses a 70/30 temporal split: optimises on the first 70%, validates on the last 30%.
+    Results are only saved when the best threshold improves win rate over the unfiltered
+    holdout baseline — preventing pure in-sample overfit from polluting live parameters.
     """
     if trades is None:
         try:
@@ -124,33 +126,75 @@ def run_sweep(trades: list[dict] | None = None) -> dict:
     # Only sweep settled trades (we know outcomes)
     settled = [t for t in trades if t.get("outcome") in ("yes", "no") or "won" in t]
 
+    if len(settled) < 20:
+        return {"error": "Too few settled trades to split (need ≥20)."}
+
+    # 70/30 temporal split — preserve chronological order
+    split_idx = int(len(settled) * 0.70)
+    train_trades = settled[:split_idx]
+    val_trades = settled[split_idx:]
+
     params_to_sweep = {
         "PAPER_MIN_EDGE": [0.03, 0.05, 0.06, 0.07, 0.08, 0.10, 0.12, 0.15],
         "MED_EDGE": [0.10, 0.12, 0.15, 0.17, 0.20],
     }
 
     all_results = {}
+    should_save = True
+
     for param, values in params_to_sweep.items():
-        results = sweep_parameter(param, values, settled)
-        all_results[param] = results
+        train_results = sweep_parameter(param, values, train_trades)
+        all_results[param] = train_results
 
         print(f"\n  Sweep: {param}")
         print(f"  {'Value':>8}  {'Trades':>6}  {'Win Rate':>10}  {'Avg Edge':>10}")
         print("  " + "─" * 42)
-        for r in results:
+        for r in train_results:
             wr = f"{r['win_rate']:.1%}" if r["win_rate"] is not None else "N/A"
             ae = f"{r['avg_edge']:.3f}" if r["avg_edge"] is not None else "N/A"
             print(f"  {r['value']:>8.3f}  {r['trades']:>6}  {wr:>10}  {ae:>10}")
 
-    # Save results
-    out_path = Path(__file__).parent / "data" / "param_sweep_results.json"
-    import safe_io
+        # Validate best threshold on holdout
+        valid_train = [r for r in train_results if r.get("win_rate") is not None]
+        if not valid_train or not val_trades:
+            continue
+        best_val = max(valid_train, key=lambda r: float(r["win_rate"]))
 
-    try:
-        safe_io.atomic_write_json(all_results, out_path)
-        _log.info("param_sweep: results saved to %s", out_path)
-    except Exception as exc:
-        _log.warning("param_sweep: could not save results: %s", exc)
+        val_results = sweep_parameter(param, [best_val["value"]], val_trades)
+        val_wr = val_results[0].get("win_rate") if val_results else None
+
+        # Holdout baseline: unfiltered win rate on validation set
+        baseline_results = sweep_parameter(param, [0.0], val_trades)
+        baseline_wr = baseline_results[0].get("win_rate") if baseline_results else None
+
+        if val_wr is not None and baseline_wr is not None:
+            print(
+                f"  Holdout win rate at {best_val['value']:.3f}: {val_wr:.1%}  "
+                f"(baseline: {baseline_wr:.1%})"
+            )
+            if val_wr < baseline_wr:
+                _log.warning(
+                    "param_sweep: %s best threshold %.3f does not improve holdout "
+                    "(%.1f%% vs baseline %.1f%%) — skipping save",
+                    param,
+                    best_val["value"],
+                    val_wr * 100,
+                    baseline_wr * 100,
+                )
+                should_save = False
+
+    # Save results only when every param cleared the holdout bar
+    if should_save:
+        out_path = Path(__file__).parent / "data" / "param_sweep_results.json"
+        import safe_io
+
+        try:
+            safe_io.atomic_write_json(all_results, out_path)
+            _log.info("param_sweep: results saved to %s", out_path)
+        except Exception as exc:
+            _log.warning("param_sweep: could not save results: %s", exc)
+    else:
+        _log.warning("param_sweep: results NOT saved — holdout validation failed")
 
     return all_results
 

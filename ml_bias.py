@@ -160,9 +160,32 @@ def train_bias_model(min_samples: int = 200) -> dict:
         X = [[s["our_prob"], s["month"], s["days_out"], 0.0] for s in samples]
         y = [s["actual"] - s["our_prob"] for s in samples]
 
+        # 80/20 temporal holdout — skip city if model doesn't beat zero-correction
+        _split = int(len(X) * 0.80)
+        X_train, X_val = X[:_split], X[_split:]
+        y_train, y_val = y[:_split], y[_split:]
+
         try:
-            model = GradientBoostingRegressor(n_estimators=100, max_depth=3)
-            model.fit(X, y)
+            model = GradientBoostingRegressor(
+                n_estimators=50, max_depth=2, min_samples_leaf=10
+            )
+            model.fit(X_train, y_train)
+
+            if X_val:
+                _preds = model.predict(X_val)
+                _model_mse = sum((p - a) ** 2 for p, a in zip(_preds, y_val)) / len(
+                    y_val
+                )
+                _baseline_mse = sum(a**2 for a in y_val) / len(y_val)
+                if _model_mse >= _baseline_mse:
+                    _log.warning(
+                        "ml_bias: %s holdout MSE %.4f >= baseline %.4f — skipping save",
+                        city,
+                        _model_mse,
+                        _baseline_mse,
+                    )
+                    continue
+
             models[city.upper()] = model
             _log.info("ml_bias: trained model for %s on %d samples", city, len(samples))
         except Exception as exc:
