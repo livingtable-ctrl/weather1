@@ -31,7 +31,7 @@ from forecast_cache import ForecastCache
 from kalshi_client import KalshiClient, _request_with_retry
 from nws import fetch_nbm_forecast, get_live_observation, nws_prob, obs_prob
 from schema_validator import validate_forecast
-from utils import KALSHI_FEE_RATE, MAX_DAYS_OUT, normal_cdf
+from utils import KALSHI_FEE_RATE, KELLY_CAP, MAX_DAYS_OUT, normal_cdf
 
 socket.setdefaulttimeout(
     10
@@ -2943,7 +2943,7 @@ def kelly_fraction(
     q = 1 - our_prob
     full_kelly = (b * our_prob - q) / b
     half_kelly = max(0.0, full_kelly / 2)  # half-Kelly for safety
-    return min(half_kelly, 0.33)  # hard cap at 33% of bankroll
+    return min(half_kelly, KELLY_CAP)
 
 
 def time_decay_edge(

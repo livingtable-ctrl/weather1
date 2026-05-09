@@ -14,6 +14,7 @@ For each finalized weather market:
 
 from __future__ import annotations
 
+import hashlib
 import json
 import random
 from datetime import date, timedelta
@@ -111,7 +112,7 @@ def fetch_archive_temps(
         sigma = statistics.stdev(nearby_excl) if len(nearby_excl) >= 4 else 3.0
         # B7/B8: use a local Random instance so we don't pollute the global RNG
         # and so the seed is truly deterministic (hash() is process-randomised in 3.3+)
-        _rng = random.Random(int(hash(target_str[:8].encode()) & 0xFFFFFFFF))
+        _rng = random.Random(int(hashlib.md5(target_str.encode()).hexdigest()[:8], 16))
         result = [forecast_mean + _rng.gauss(0, sigma) for _ in range(50)]
         try:
             cache_file.write_text(json.dumps(result))
@@ -602,12 +603,13 @@ def run_backtest(
     if not results:
         return {
             "n_markets": 0,
-            "brier": None,
+            "train_brier": None,
             "win_rate": None,
             "total_pnl": 0.0,
             "rows": [],
             "val_brier": None,
             "val_n": 0,
+            "val_brier_unreliable": True,
             "val_win_rate": None,
             "bench_yes_pnl": 0.0,
             "bench_market_pnl": 0.0,
@@ -636,12 +638,13 @@ def run_backtest(
 
     return {
         "n_markets": len(results),
-        "brier": train_brier,
+        "train_brier": train_brier,
         "win_rate": train_wr,
         "total_pnl": round(total_pnl, 4),
         "rows": results,
         "val_brier": val_brier,
         "val_n": val_n,
+        "val_brier_unreliable": val_n < 10,
         "val_win_rate": val_wr,
         "bench_yes_pnl": round(bench_yes_pnl, 4),
         "bench_market_pnl": round(bench_market_pnl, 4),

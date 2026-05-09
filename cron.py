@@ -1255,6 +1255,15 @@ def cmd_cron(client: KalshiClient, min_edge: float = MIN_EDGE) -> None:
             _last_run_path.write_text(__import__("datetime").datetime.now().isoformat())
         except Exception:
             pass
+        try:
+            import sqlite3 as _sqlite3
+
+            from tracker import DB_PATH as _TRACKER_DB
+
+            with _sqlite3.connect(_TRACKER_DB) as _wc:
+                _wc.execute("PRAGMA wal_checkpoint(PASSIVE)")
+        except Exception:
+            pass
         _main._release_cron_lock()
     if _full_scan and not getattr(cmd_cron, "_called_from_loop", False):
         _sys.exit(0)

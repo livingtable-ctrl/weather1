@@ -199,15 +199,14 @@ class KalshiClient:
     def _validate(data: dict, expected_key: str, endpoint: str) -> None:
         """Warn (don't crash) if the API response shape has changed."""
         if not isinstance(data, dict) or expected_key not in data:
-            import warnings
-
             actual = (
                 list(data.keys()) if isinstance(data, dict) else type(data).__name__
             )
-            warnings.warn(
-                f"[Kalshi API] '{endpoint}' response missing '{expected_key}'. "
-                f"Actual keys: {actual}. The API may have changed.",
-                stacklevel=3,
+            _log.error(
+                "[Kalshi API] '%s' response missing '%s'. Actual keys: %s. The API may have changed.",
+                endpoint,
+                expected_key,
+                actual,
             )
 
     # ── Public endpoints (no auth needed) ────────────────────────────────────

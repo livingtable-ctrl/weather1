@@ -19,7 +19,7 @@ from pathlib import Path
 
 from safe_io import AtomicWriteError, atomic_write_json
 from safe_io import project_root as _project_root
-from utils import FIXED_BET_DOLLARS, FIXED_BET_PCT, KALSHI_FEE_RATE, STRATEGY
+from utils import FIXED_BET_DOLLARS, FIXED_BET_PCT, KALSHI_FEE_RATE, KELLY_CAP, STRATEGY
 
 _log = logging.getLogger(__name__)
 
@@ -458,7 +458,7 @@ def kelly_bet_dollars(
     elif STRATEGY == "fixed_dollars":
         dollars = min(FIXED_BET_DOLLARS, balance)
     else:
-        fraction = max(0.0, min(kelly_fraction * scale, 0.25))
+        fraction = max(0.0, min(kelly_fraction * scale, KELLY_CAP))
         dollars = round(balance * fraction, 2)
 
     if is_streak_paused():
@@ -1130,7 +1130,7 @@ def portfolio_kelly(positions: list[dict]) -> list[float]:
         win_p = our_p if side == "yes" else 1.0 - our_p
         win_p = max(0.01, min(0.99, win_p))
         rk = kelly_fraction(win_p, mkt_p)
-        raw_kelly.append(max(0.0, min(0.25, rk)))
+        raw_kelly.append(max(0.0, min(KELLY_CAP, rk)))
         sigmas.append((win_p * (1 - win_p)) ** 0.5)
 
     scaled: list[float] = []

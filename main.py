@@ -405,7 +405,7 @@ def auto_backtest(client: KalshiClient) -> None:
                 pass
 
             # Compare recent (7-day) Brier vs all-time
-            recent_brier = summary.get("brier")
+            recent_brier = summary.get("train_brier")
             all_time_brier = brier_score()
             if (
                 recent_brier is not None
@@ -420,7 +420,7 @@ def auto_backtest(client: KalshiClient) -> None:
                 )
             # Overfitting guard: compare in-sample (train) vs out-of-sample (val) Brier
             val_brier = summary.get("val_brier")
-            train_brier = summary.get("brier")
+            train_brier = summary.get("train_brier")
             if train_brier is not None and val_brier is not None:
                 try:
                     from backtest import check_overfitting
@@ -5687,7 +5687,7 @@ def cmd_backtest(client: KalshiClient, args: list):
                 )
         return
 
-    brier = summary["brier"]
+    brier = summary["train_brier"]
     win_rate = summary["win_rate"]
     pnl = summary["total_pnl"]
     val_brier = summary.get("val_brier")

@@ -21,6 +21,10 @@ def utc_today() -> date:
 # Maker (limit) orders pay 0%. Override via KALSHI_FEE_RATE in .env.
 KALSHI_FEE_RATE = float(os.getenv("KALSHI_FEE_RATE", "0.07"))
 
+# Hard cap on Kelly fraction — applied in both weather_markets.py and paper.py.
+# Operative production cap is 0.25 (quarter-Kelly ceiling).
+KELLY_CAP: float = 0.25
+
 # Edge thresholds — override via .env
 MIN_EDGE = float(os.getenv("MIN_EDGE", "0.07"))  # minimum edge to show in analyze
 # Paper trading uses a lower threshold to capture more signals for observation.
