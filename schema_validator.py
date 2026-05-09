@@ -70,7 +70,7 @@ def validate_market(data: dict, source: str = "kalshi") -> bool:
         ask = _price_to_decimal(raw_ask)
         ticker = data.get("ticker", "?")
         if bid is None or not (0.0 < bid < 1.0):
-            _log.warning(
+            _log.debug(
                 "schema_validator[%s]: %s yes_bid %.4f out of range (0, 1)",
                 source,
                 ticker,
@@ -78,7 +78,7 @@ def validate_market(data: dict, source: str = "kalshi") -> bool:
             )
             ok = False
         if ask is None or not (0.0 < ask < 1.0):
-            _log.warning(
+            _log.debug(
                 "schema_validator[%s]: %s yes_ask %.4f out of range (0, 1)",
                 source,
                 ticker,
