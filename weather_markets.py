@@ -186,28 +186,54 @@ def apply_station_bias(city: str, forecast_temp: float, var: str = "max") -> flo
     return forecast_temp - bias
 
 
-# City → timezone and METAR station (same as Kalshi settlement stations)
+# City → timezone (keys match CITY_COORDS / metar.MARKET_STATION_MAP)
 _CITY_TZ: dict[str, str] = {
     "NYC": "America/New_York",
-    "MIA": "America/New_York",
-    "CHI": "America/Chicago",
-    "LAX": "America/Los_Angeles",
-    "DAL": "America/Chicago",
-    "DEN": "America/Denver",
+    "Chicago": "America/Chicago",
+    "LA": "America/Los_Angeles",
+    "Miami": "America/New_York",
+    "Boston": "America/New_York",
+    "Dallas": "America/Chicago",
+    "Phoenix": "America/Phoenix",
+    "Seattle": "America/Los_Angeles",
+    "Denver": "America/Denver",
+    "Atlanta": "America/New_York",
+    "Austin": "America/Chicago",
+    "Washington": "America/New_York",
+    "Philadelphia": "America/New_York",
+    "OklahomaCity": "America/Chicago",
+    "SanFrancisco": "America/Los_Angeles",
+    "Minneapolis": "America/Chicago",
+    "Houston": "America/Chicago",
+    "SanAntonio": "America/Chicago",
+}
+
+# City → primary ICAO observation station (mirrors metar.MARKET_STATION_MAP)
+_CITY_METAR_STATION: dict[str, str] = {
+    "NYC": "KNYC",
+    "Chicago": "KORD",
+    "LA": "KLAX",
+    "Miami": "KMIA",
+    "Boston": "KBOS",
+    "Dallas": "KDFW",
+    "Phoenix": "KPHX",
+    "Seattle": "KSEA",
+    "Denver": "KDEN",
+    "Atlanta": "KATL",
+    "Austin": "KAUS",
+    "Washington": "KDCA",
+    "Philadelphia": "KPHL",
+    "OklahomaCity": "KOKC",
+    "SanFrancisco": "KSFO",
+    "Minneapolis": "KMSP",
+    "Houston": "KIAH",
+    "SanAntonio": "KSAT",
 }
 
 
 def _metar_station_for_city(city: str) -> str | None:
     """Return the METAR/ASOS station for a city (matches Kalshi settlement)."""
-    _MAP: dict[str, str] = {
-        "NYC": "KNYC",
-        "MIA": "KMIA",
-        "CHI": "KORD",
-        "LAX": "KLAX",
-        "DAL": "KDFW",
-        "DEN": "KDEN",
-    }
-    return _MAP.get(city.upper())
+    return _CITY_METAR_STATION.get(city)
 
 
 FORECAST_BASE = "https://api.open-meteo.com/v1/forecast"
@@ -3385,7 +3411,7 @@ def _metar_lock_in(
 
         _cond_type = condition.get("type")
 
-        if _cond_type in ("above", "below") and condition.get("threshold"):
+        if _cond_type in ("above", "below") and condition.get("threshold") is not None:
             _lockout = _metar.check_metar_lockout(
                 current_temp_f=_metar_obs["current_temp_f"],
                 threshold_f=float(condition["threshold"]),
