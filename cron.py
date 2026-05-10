@@ -965,10 +965,24 @@ def _cmd_cron_body(
     try:
         from paper import auto_settle_paper_trades
 
-        paper_settled_count = auto_settle_paper_trades(client)
+        _settled_trades = auto_settle_paper_trades(client)
+        paper_settled_count = len(_settled_trades)
         if paper_settled_count > 0:
+            _net_pnl = sum(t.get("pnl") or 0.0 for t in _settled_trades)
+            for _st in _settled_trades:
+                _ticker = _st.get("ticker", "?")
+                _side = (_st.get("side") or "?").upper()
+                _pnl = _st.get("pnl") or 0.0
+                _result = green("WON ") if _pnl > 0 else red("LOST")
+                _pnl_str = f"+${_pnl:.2f}" if _pnl >= 0 else f"-${abs(_pnl):.2f}"
+                print(f"  [PaperSettle] {_ticker}  {_side}-side  {_result}  {_pnl_str}")
+            _net_str = (
+                f"+${_net_pnl:.2f}" if _net_pnl >= 0 else f"-${abs(_net_pnl):.2f}"
+            )
             print(
-                green(f"  [PaperSettle] Settled {paper_settled_count} paper trade(s).")
+                green(
+                    f"  [PaperSettle] {paper_settled_count} trade(s) settled — net P&L: {_net_str}"
+                )
             )
     except Exception as _e:
         _log.warning("cmd_cron: auto_settle_paper_trades failed: %s", _e)

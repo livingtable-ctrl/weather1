@@ -752,7 +752,7 @@ class TestAutoSettlePaperTrades(unittest.TestCase):
         tracker.log_outcome("TKAUTO", True)  # YES settled
 
         settled = paper.auto_settle_paper_trades()
-        self.assertEqual(settled, 1)
+        self.assertEqual(len(settled), 1)
         open_trades = paper.get_open_trades()
         self.assertEqual(len(open_trades), 0)
 
@@ -762,7 +762,7 @@ class TestAutoSettlePaperTrades(unittest.TestCase):
 
         paper.place_paper_order("TKPENDING", "yes", 10, 0.50)
         settled = paper.auto_settle_paper_trades()
-        self.assertEqual(settled, 0)
+        self.assertEqual(len(settled), 0)
         self.assertEqual(len(paper.get_open_trades()), 1)
 
     def test_get_outcome_for_ticker_returns_none_when_missing(self):

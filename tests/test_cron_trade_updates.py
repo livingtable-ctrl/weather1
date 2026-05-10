@@ -34,7 +34,7 @@ class TestCronSettlesPaperTrades:
 
         def fake_auto_settle(client=None):
             settle_calls.append(client)
-            return 1  # settled 1 trade
+            return [{"ticker": "FAKE", "side": "yes", "pnl": 1.0}]  # settled 1 trade
 
         monkeypatch.setattr("paper.auto_settle_paper_trades", fake_auto_settle)
         fake_client = MagicMock()
@@ -63,7 +63,7 @@ class TestCronSettlesPaperTrades:
         )
         monkeypatch.setattr(
             "paper.auto_settle_paper_trades",
-            lambda client=None: (call_order.append("settle"), 1)[1],
+            lambda client=None: (call_order.append("settle"), [])[1],
         )
 
         fake_client = MagicMock()
@@ -91,7 +91,7 @@ class TestCronPrintPlacedTrades:
         monkeypatch.setattr(cron, "KILL_SWITCH_PATH", tmp_path / ".kill_switch")
         monkeypatch.setattr(cron, "RUNNING_FLAG_PATH", tmp_path / ".cron_running")
         monkeypatch.setattr("main.get_weather_markets", lambda client: [])
-        monkeypatch.setattr("paper.auto_settle_paper_trades", lambda client=None: 0)
+        monkeypatch.setattr("paper.auto_settle_paper_trades", lambda client=None: [])
 
         fake_client = MagicMock()
         try:

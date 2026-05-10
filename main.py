@@ -571,13 +571,14 @@ def cmd_settle(client: KalshiClient) -> None:
 
     count = sync_outcomes(client)
     paper = auto_settle_paper_trades(client)
-    total = count + paper
+    paper_count = len(paper)
+    total = count + paper_count
     if total > 0:
         parts = []
         if count:
             parts.append(f"{count} outcome(s) recorded")
-        if paper:
-            parts.append(f"{paper} paper trade(s) settled")
+        if paper_count:
+            parts.append(f"{paper_count} paper trade(s) settled")
         print(green(f"  [Settle] {', '.join(parts)}."))
     else:
         print(dim("  [Settle] No new outcomes to record."))

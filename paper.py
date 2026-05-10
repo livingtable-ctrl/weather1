@@ -1931,17 +1931,17 @@ def undo_last_trade(max_minutes: int = 5) -> dict | None:
     return last
 
 
-def auto_settle_paper_trades(client=None) -> int:
+def auto_settle_paper_trades(client=None) -> list[dict]:
     """
     Settle any open paper trades whose tickers have recorded outcomes.
     First checks the tracker DB, then falls back to the Kalshi API directly
     for trades that were never logged to the tracker (e.g. manual paper buys).
-    Returns the number of trades settled.
+    Returns a list of settled trade dicts (each has ticker, side, pnl, outcome).
     """
     from tracker import get_outcome_for_ticker
 
     open_trades = get_open_trades()
-    settled = 0
+    settled_trades: list[dict] = []
     for t in open_trades:
         outcome = get_outcome_for_ticker(t["ticker"])
 
@@ -1956,8 +1956,8 @@ def auto_settle_paper_trades(client=None) -> int:
 
         if outcome is not None:
             try:
-                settle_paper_trade(t["id"], outcome)
-                settled += 1
+                settled = settle_paper_trade(t["id"], outcome)
+                settled_trades.append(settled)
                 _ab_var = t.get("ab_variant")
                 if _ab_var:
                     try:
@@ -1981,7 +1981,7 @@ def auto_settle_paper_trades(client=None) -> int:
                         pass
             except Exception:
                 pass
-    return settled
+    return settled_trades
 
 
 # ── Portfolio analytics ───────────────────────────────────────────────────────
