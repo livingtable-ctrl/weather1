@@ -651,34 +651,43 @@ def _cmd_cron_body(
             if _city and _td:
                 _city_dates.add((_city, str(_td)))
         if _city_dates:
+            _n_pairs = len(_city_dates)
             print(
                 dim(
-                    f"  [cron] pre-warming forecasts for {len(_city_dates)} city/date pair(s)\u2026"
+                    f"  [cron] pre-warming forecasts for {_n_pairs} city/date pair(s)..."
                 ),
                 flush=True,
             )
 
-            # \u2500\u2500 Step 1: batch Open-Meteo (3 HTTP calls cover all cities) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+            # Step 1: batch Open-Meteo (3 HTTP calls cover all cities)
             from weather_markets import batch_prewarm_forecasts
 
-            _batch_written = batch_prewarm_forecasts(_city_dates)
-            if _batch_written:
+            _om_models = ["gfs_seamless", "ecmwf_ifs04", "icon_seamless"]
+            _n_models = len(_om_models)
+
+            def _om_progress(current: int, total: int, model: str, ok: bool) -> None:
+                _tick = "OK" if ok else "FAIL"
                 print(
-                    dim(f"  [cron] batch pre-warm: {_batch_written} OM entries cached"),
+                    dim(f"  [OM batch] [{current}/{total}] {model:<20} {_tick}"),
                     flush=True,
                 )
 
-            # \u2500\u2500 Step 2: per-city sources that don't support batching \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
-            # NBM, ECMWF, WeatherAPI, ensemble \u2014 still run in parallel but with
-            # a smaller thread pool now that OM data is already cached.
+            _batch_written = batch_prewarm_forecasts(
+                _city_dates, progress_cb=_om_progress
+            )
+            print(
+                dim(
+                    f"  [OM batch] {_batch_written} cache entries written"
+                    f" across {_n_models} models"
+                ),
+                flush=True,
+            )
+
+            # Step 2: per-city sources that don't support batching
+            # NBM + WeatherAPI only -- no OM rate lock contention.
             def _warm_one(city_date: tuple[str, str]) -> None:
                 _c, _d = city_date
                 _dt = __import__("datetime").date.fromisoformat(_d)
-                # Only warm non-OM sources here — OM forecast is already populated
-                # by batch_prewarm_forecasts above.  Ensemble calls (get_ensemble_temps,
-                # _get_consensus_probs) share the 1.5s OM rate lock and would add
-                # 100+ seconds of queuing for 25 cities; they're fetched on-demand
-                # during the analysis scan instead.
                 try:
                     ctx.fetch_temperature_nbm(_c, _dt)
                 except Exception:
@@ -688,17 +697,34 @@ def _cmd_cron_body(
                 except Exception:
                     pass
 
-            # 4 workers: NBM/ECMWF/WeatherAPI are independent APIs \u2014 safe to
-            # parallelise, but fewer workers than before since OM is pre-done.
-            with ThreadPoolExecutor(max_workers=min(len(_city_dates), 4)) as _warm_pool:
+            import threading as _threading
+
+            _warm_done = 0
+            _warm_lock = _threading.Lock()
+
+            def _warm_one_tracked(city_date: tuple[str, str]) -> None:
+                nonlocal _warm_done
+                _warm_one(city_date)
+                with _warm_lock:
+                    _warm_done += 1
+                    _cur = _warm_done
+                # \r returns cursor to line start so the counter updates in place
+                print(
+                    f"  [NBM/WA]  warming city sources... ({_cur}/{_n_pairs})",
+                    end="\r",
+                    flush=True,
+                )
+
+            with ThreadPoolExecutor(max_workers=min(_n_pairs, 4)) as _warm_pool:
                 _warm_futures = [
-                    _warm_pool.submit(_warm_one, _cd) for _cd in _city_dates
+                    _warm_pool.submit(_warm_one_tracked, _cd) for _cd in _city_dates
                 ]
                 for _wf in _as_completed(_warm_futures):
                     try:
                         _wf.result()
                     except Exception:
                         pass
+            print(flush=True)  # newline after in-place counter
 
         def _enrich_and_analyze(m: dict) -> tuple[dict, dict, dict | None]:
             enriched = ctx.enrich_with_forecast(m)

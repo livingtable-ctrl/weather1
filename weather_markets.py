@@ -13,6 +13,7 @@ import socket
 import statistics
 import threading
 import time
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, date, datetime
 from pathlib import Path
@@ -712,7 +713,10 @@ def get_weather_forecast(city: str, target_date: date) -> dict | None:
     return result
 
 
-def batch_prewarm_forecasts(city_dates: set[tuple[str, str]]) -> int:
+def batch_prewarm_forecasts(
+    city_dates: set[tuple[str, str]],
+    progress_cb: Callable[[int, int, str, bool], None] | None = None,
+) -> int:
     """Pre-warm _forecast_cache with batched Open-Meteo requests.
 
     Instead of one HTTP call per city per model (30 cities × 3 models = 90 calls),
@@ -720,6 +724,11 @@ def batch_prewarm_forecasts(city_dates: set[tuple[str, str]]) -> int:
     returns a JSON list with one element per location.  Total cost: 3 calls.
 
     Already-cached entries are skipped.  Returns the number of cache entries written.
+
+    Args:
+        city_dates: Set of (city, date_iso) pairs to pre-warm.
+        progress_cb: Optional callback invoked after each model fetch with
+            (current, total, model_name, success).  Use for progress display.
     """
     if _forecast_cb.is_open():
         _log.debug("[batch_prewarm] forecast circuit open — skipping batch pre-warm")
@@ -753,10 +762,11 @@ def batch_prewarm_forecasts(city_dates: set[tuple[str, str]]) -> int:
     # city → model → daily dict
     city_model_data: dict[str, dict[str, dict]] = {c: {} for c in city_names}
 
-    for model in batch_models:
+    for idx, model in enumerate(batch_models, start=1):
         if _forecast_cb.is_open():
             _log.debug("[batch_prewarm] circuit opened mid-batch — stopping")
             break
+        ok = False
         try:
             resp = _om_request(
                 "GET",
@@ -782,9 +792,12 @@ def batch_prewarm_forecasts(city_dates: set[tuple[str, str]]) -> int:
             for i, city in enumerate(city_names):
                 if i < len(results):
                     city_model_data[city][model] = results[i].get("daily", {})
+            ok = True
         except Exception as exc:
             _forecast_cb.record_failure()
             _log.debug("[batch_prewarm] model %s failed: %s", model, exc)
+        if progress_cb is not None:
+            progress_cb(idx, len(batch_models), model, ok)
 
     # Blend available models and populate cache for each city/date pair.
     written = 0
