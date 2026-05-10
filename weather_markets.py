@@ -712,6 +712,131 @@ def get_weather_forecast(city: str, target_date: date) -> dict | None:
     return result
 
 
+def batch_prewarm_forecasts(city_dates: set[tuple[str, str]]) -> int:
+    """Pre-warm _forecast_cache with batched Open-Meteo requests.
+
+    Instead of one HTTP call per city per model (30 cities × 3 models = 90 calls),
+    sends ONE request per model with all city lat/lons comma-separated.  Open-Meteo
+    returns a JSON list with one element per location.  Total cost: 3 calls.
+
+    Already-cached entries are skipped.  Returns the number of cache entries written.
+    """
+    if _forecast_cb.is_open():
+        _log.debug("[batch_prewarm] forecast circuit open — skipping batch pre-warm")
+        return 0
+
+    # Collect unique cities that aren't already fully cached for every requested date.
+    cities_needed: set[str] = set()
+    for city, date_iso in city_dates:
+        if _forecast_cache.get((city, date_iso)) is None:
+            cities_needed.add(city)
+
+    if not cities_needed:
+        _log.debug("[batch_prewarm] all entries already cached — nothing to fetch")
+        return 0
+
+    coords_list = [
+        (city, CITY_COORDS[city])
+        for city in sorted(cities_needed)
+        if city in CITY_COORDS
+    ]
+    if not coords_list:
+        return 0
+
+    lats = [c[1][0] for c in coords_list]
+    lons = [c[1][1] for c in coords_list]
+    city_names = [c[0] for c in coords_list]
+
+    # Fetch 3 models in sequence (sequential to respect rate limit; each call covers
+    # all cities so total latency ≈ 3 × one city's latency, not 30 × 3).
+    batch_models = ["gfs_seamless", "ecmwf_ifs04", "icon_seamless"]
+    # city → model → daily dict
+    city_model_data: dict[str, dict[str, dict]] = {c: {} for c in city_names}
+
+    for model in batch_models:
+        if _forecast_cb.is_open():
+            _log.debug("[batch_prewarm] circuit opened mid-batch — stopping")
+            break
+        try:
+            resp = _om_request(
+                "GET",
+                FORECAST_BASE,
+                params={
+                    "latitude": ",".join(str(x) for x in lats),
+                    "longitude": ",".join(str(x) for x in lons),
+                    "daily": "temperature_2m_max,temperature_2m_min,precipitation_sum",
+                    "temperature_unit": "fahrenheit",
+                    "precipitation_unit": "inch",
+                    "timezone": "auto",
+                    "forecast_days": 16,
+                    "models": model,
+                },
+                timeout=30,
+            )
+            resp.raise_for_status()
+            _forecast_cb.record_success()
+            results = resp.json()
+            # Single location → dict; multiple → list of dicts
+            if isinstance(results, dict):
+                results = [results]
+            for i, city in enumerate(city_names):
+                if i < len(results):
+                    city_model_data[city][model] = results[i].get("daily", {})
+        except Exception as exc:
+            _forecast_cb.record_failure()
+            _log.debug("[batch_prewarm] model %s failed: %s", model, exc)
+
+    # Blend available models and populate cache for each city/date pair.
+    written = 0
+    for city in city_names:
+        model_data = city_model_data.get(city, {})
+        if not model_data:
+            continue
+        # Use the date list from whichever model responded first
+        dates_list: list[str] = next(
+            (v.get("time", []) for v in model_data.values() if v.get("time")), []
+        )
+        for j, date_str in enumerate(dates_list):
+            cache_key = (city, date_str)
+            if _forecast_cache.get(cache_key) is not None:
+                continue  # already cached (e.g. from disk load)
+            highs, lows, precips = [], [], []
+            for mdata in model_data.values():
+                h = mdata.get("temperature_2m_max", [])
+                lo = mdata.get("temperature_2m_min", [])
+                p = mdata.get("precipitation_sum", [])
+                if j < len(h) and h[j] is not None:
+                    highs.append(h[j])
+                if j < len(lo) and lo[j] is not None:
+                    lows.append(lo[j])
+                if j < len(p) and p[j] is not None:
+                    precips.append(p[j])
+            if not highs:
+                continue
+            entry: dict = {
+                "date": date_str,
+                "city": city,
+                "high_f": sum(highs) / len(highs),
+                "low_f": sum(lows) / len(lows) if lows else None,
+                "precip_in": sum(precips) / len(precips) if precips else 0.0,
+                "models_used": len(highs),
+                "high_range": (min(highs), max(highs)),
+                "low_range": (min(lows), max(lows)) if lows else None,
+                "_source": "batch_prewarm",
+            }
+            _forecast_cache.set_with_ttl(cache_key, entry, _ttl_until_next_cycle())
+            _save_forecast_disk_entry(cache_key, entry)
+            written += 1
+
+    _log.info(
+        "[batch_prewarm] wrote %d cache entries for %d cities (%d models attempted)",
+        written,
+        len(city_names),
+        len(batch_models),
+    )
+    return written
+
+
 # ── NBM (National Blend of Models) ──────────────────────────────────────────
 
 _NBM_CACHE: dict[tuple, tuple[float | None, float]] = {}

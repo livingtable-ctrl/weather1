@@ -658,15 +658,24 @@ def _cmd_cron_body(
                 flush=True,
             )
 
+            # \u2500\u2500 Step 1: batch Open-Meteo (3 HTTP calls cover all cities) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+            from weather_markets import batch_prewarm_forecasts
+
+            _batch_written = batch_prewarm_forecasts(_city_dates)
+            if _batch_written:
+                print(
+                    dim(f"  [cron] batch pre-warm: {_batch_written} OM entries cached"),
+                    flush=True,
+                )
+
+            # \u2500\u2500 Step 2: per-city sources that don't support batching \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+            # NBM, ECMWF, WeatherAPI, ensemble \u2014 still run in parallel but with
+            # a smaller thread pool now that OM data is already cached.
             def _warm_one(city_date: tuple[str, str]) -> None:
                 from weather_markets import _get_consensus_probs, get_ensemble_temps
 
                 _c, _d = city_date
                 _dt = __import__("datetime").date.fromisoformat(_d)
-                try:
-                    ctx.get_weather_forecast(_c, _dt)
-                except Exception:
-                    pass
                 try:
                     ctx.fetch_temperature_nbm(_c, _dt)
                 except Exception:
@@ -692,7 +701,9 @@ def _cmd_cron_body(
                 except Exception:
                     pass
 
-            with ThreadPoolExecutor(max_workers=min(len(_city_dates), 8)) as _warm_pool:
+            # 4 workers: NBM/ECMWF/WeatherAPI are independent APIs \u2014 safe to
+            # parallelise, but fewer workers than before since OM is pre-done.
+            with ThreadPoolExecutor(max_workers=min(len(_city_dates), 4)) as _warm_pool:
                 _warm_futures = [
                     _warm_pool.submit(_warm_one, _cd) for _cd in _city_dates
                 ]
