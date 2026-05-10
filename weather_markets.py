@@ -53,7 +53,7 @@ _forecast_cb = CircuitBreaker(
 # Failures here degrade quality but don't block primary signals.
 _ensemble_cb = CircuitBreaker(
     name="open_meteo_ensemble",
-    failure_threshold=3,  # trip after 3 distinct failures (e.g. 3 rate-limited cities)
+    failure_threshold=6,  # raised from 3 — pre-warming 30 pairs triggers false trips
     recovery_timeout=300,  # 5 min recovery window
     burst_window=1.0,  # absorb truly simultaneous parallel hits, not sequential ones
 )
@@ -264,7 +264,7 @@ _ensemble_cache: ForecastCache[list[float]] = ForecastCache(ttl_secs=8 * 3600)
 _OM_RATE_LOCK = threading.Lock()
 _OM_LAST_REQUEST_TS: float = 0.0
 _OM_MIN_INTERVAL: float = (
-    0.5  # seconds between requests (~2 req/s, safe margin for ensemble endpoint)
+    1.5  # seconds between requests (~0.67 req/s, safe for strict ensemble endpoint)
 )
 
 
