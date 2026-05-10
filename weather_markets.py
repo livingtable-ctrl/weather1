@@ -256,6 +256,9 @@ _om_session: requests.Session = requests.Session()
 # 8-hour TTL: NWP forecasts don't change dramatically between model cycles and
 # the longer window prevents rate-limit hammering on consecutive manual cron runs.
 _ensemble_cache: ForecastCache[list[float]] = ForecastCache(ttl_secs=8 * 3600)
+_ENSEMBLE_CACHE_TTL = 8 * 60 * 60  # seconds — mirrors in-memory TTL
+_ENSEMBLE_DISK_CACHE_PATH = Path("data/ensemble_cache.json")
+_ENSEMBLE_DISK_LOCK = threading.Lock()
 
 # Rate limiter: enforce minimum gap between Open-Meteo requests to avoid 429 bursts.
 # The ensemble endpoint (ensemble-api.open-meteo.com) is stricter than the forecast
@@ -397,6 +400,71 @@ def _save_forecast_disk_entry(cache_key: tuple, data: dict) -> None:
 
 # Populate in-memory cache from disk on import
 _load_forecast_disk_cache()
+
+
+# ── Ensemble disk cache ───────────────────────────────────────────────────────
+# Same pattern as forecast disk cache.  Keys are JSON-serialised tuples so
+# they survive None values (hour=None) and variable-length forms cleanly.
+
+
+def _load_ensemble_disk_cache() -> None:
+    """Load non-expired ensemble entries from disk into the in-memory cache."""
+    if not _ENSEMBLE_DISK_CACHE_PATH.exists():
+        return
+    try:
+        import json as _json
+
+        with _ENSEMBLE_DISK_LOCK:
+            raw = _json.loads(_ENSEMBLE_DISK_CACHE_PATH.read_text(encoding="utf-8"))
+        now = time.time()
+        loaded = 0
+        for key_str, entry in raw.items():
+            age = max(0.0, now - entry.get("ts_posix", 0))
+            if age < _ENSEMBLE_CACHE_TTL:
+                mem_key = tuple(_json.loads(key_str))
+                _ensemble_cache.set_at(mem_key, entry["data"], time.monotonic() - age)
+                loaded += 1
+        if loaded:
+            _log.debug("ensemble disk cache: loaded %d entries", loaded)
+    except Exception as exc:
+        _log.debug("ensemble disk cache load failed (non-fatal): %s", exc)
+
+
+def _save_ensemble_disk_entry(cache_key: tuple, data: list[float]) -> None:
+    """Persist a single ensemble cache entry to disk asynchronously."""
+
+    def _write() -> None:
+        try:
+            import json as _json
+
+            key_str = _json.dumps(list(cache_key))
+            now = time.time()
+            with _ENSEMBLE_DISK_LOCK:
+                if _ENSEMBLE_DISK_CACHE_PATH.exists():
+                    raw: dict = _json.loads(
+                        _ENSEMBLE_DISK_CACHE_PATH.read_text(encoding="utf-8")
+                    )
+                else:
+                    raw = {}
+                raw[key_str] = {"data": data, "ts_posix": now}
+                # Prune expired entries so the file doesn't grow indefinitely
+                raw = {
+                    k: v
+                    for k, v in raw.items()
+                    if now - v.get("ts_posix", 0) < _ENSEMBLE_CACHE_TTL
+                }
+                _ENSEMBLE_DISK_CACHE_PATH.write_text(
+                    _json.dumps(raw, default=str), encoding="utf-8"
+                )
+        except Exception as exc:
+            _log.debug("ensemble disk cache write failed (non-fatal): %s", exc)
+
+    threading.Thread(target=_write, daemon=True).start()
+
+
+# Populate ensemble in-memory cache from disk on import
+_load_ensemble_disk_cache()
+
 
 # Maximum age of forecast data before analyze_trade rejects it.
 # Set higher than _FORECAST_CACHE_TTL so cache expiry happens first.
@@ -1902,6 +1970,7 @@ def get_ensemble_temps(
 
     # L5-A: align TTL to next NWS model cycle, not a flat 4 h window
     _ensemble_cache.set_with_ttl(cache_key, all_temps, _ttl_until_next_cycle())
+    _save_ensemble_disk_entry(cache_key, all_temps)
     return all_temps
 
 
@@ -3064,6 +3133,7 @@ def _get_consensus_probs(
                 temps = members
                 # L5-A: align TTL to next NWS model cycle
                 _ensemble_cache.set_with_ttl(cache_key, temps, _ttl_until_next_cycle())
+                _save_ensemble_disk_entry(cache_key, temps)
 
             if len(temps) < 5:
                 return None, None
