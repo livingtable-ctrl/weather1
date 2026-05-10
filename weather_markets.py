@@ -430,36 +430,59 @@ def _load_ensemble_disk_cache() -> None:
         _log.debug("ensemble disk cache load failed (non-fatal): %s", exc)
 
 
+# Pending ensemble entries accumulated during a run — flushed in one batch
+# write at process exit via flush_ensemble_disk_cache().  Background daemon
+# threads were unreliable: the analysis scan is the last thing that runs, so
+# daemon threads were killed before they could write anything.
+_ensemble_disk_pending: dict[str, dict] = {}
+
+
 def _save_ensemble_disk_entry(cache_key: tuple, data: list[float]) -> None:
-    """Persist a single ensemble cache entry to disk asynchronously."""
+    """Queue an ensemble cache entry for the next batch flush."""
+    import json as _json
 
-    def _write() -> None:
-        try:
-            import json as _json
+    key_str = _json.dumps(list(cache_key))
+    with _ENSEMBLE_DISK_LOCK:
+        _ensemble_disk_pending[key_str] = {"data": data, "ts_posix": time.time()}
 
-            key_str = _json.dumps(list(cache_key))
-            now = time.time()
-            with _ENSEMBLE_DISK_LOCK:
-                if _ENSEMBLE_DISK_CACHE_PATH.exists():
-                    raw: dict = _json.loads(
-                        _ENSEMBLE_DISK_CACHE_PATH.read_text(encoding="utf-8")
-                    )
-                else:
-                    raw = {}
-                raw[key_str] = {"data": data, "ts_posix": now}
-                # Prune expired entries so the file doesn't grow indefinitely
-                raw = {
-                    k: v
-                    for k, v in raw.items()
-                    if now - v.get("ts_posix", 0) < _ENSEMBLE_CACHE_TTL
-                }
-                _ENSEMBLE_DISK_CACHE_PATH.write_text(
-                    _json.dumps(raw, default=str), encoding="utf-8"
-                )
-        except Exception as exc:
-            _log.debug("ensemble disk cache write failed (non-fatal): %s", exc)
 
-    threading.Thread(target=_write, daemon=True).start()
+def flush_ensemble_disk_cache() -> int:
+    """Write all pending ensemble entries to disk in one atomic operation.
+
+    Call this at the end of a cron run (before process exit) so the entries
+    survive to warm the next run.  Returns the number of entries written.
+    """
+    import json as _json
+
+    with _ENSEMBLE_DISK_LOCK:
+        if not _ensemble_disk_pending:
+            return 0
+        pending = dict(_ensemble_disk_pending)
+        _ensemble_disk_pending.clear()
+
+    try:
+        now = time.time()
+        if _ENSEMBLE_DISK_CACHE_PATH.exists():
+            raw: dict = _json.loads(
+                _ENSEMBLE_DISK_CACHE_PATH.read_text(encoding="utf-8")
+            )
+        else:
+            raw = {}
+        raw.update(pending)
+        # Prune expired entries so the file doesn't grow indefinitely
+        raw = {
+            k: v
+            for k, v in raw.items()
+            if now - v.get("ts_posix", 0) < _ENSEMBLE_CACHE_TTL
+        }
+        _ENSEMBLE_DISK_CACHE_PATH.write_text(
+            _json.dumps(raw, default=str), encoding="utf-8"
+        )
+        _log.debug("ensemble disk cache: flushed %d entries to disk", len(pending))
+        return len(pending)
+    except Exception as exc:
+        _log.debug("ensemble disk cache flush failed (non-fatal): %s", exc)
+        return 0
 
 
 # Populate ensemble in-memory cache from disk on import

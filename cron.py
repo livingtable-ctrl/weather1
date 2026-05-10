@@ -1325,6 +1325,21 @@ def _cmd_cron_body(
     except Exception as _e:
         _log.debug("cmd_cron: weekly sweep check failed: %s", _e)
 
+    # Flush ensemble disk cache before exit \u2014 daemon threads were killed before
+    # writing; a single synchronous batch write here guarantees the next run
+    # starts with a warm ensemble cache and avoids circuit breaker trips.
+    try:
+        from weather_markets import flush_ensemble_disk_cache as _flush_ensemble
+
+        _flushed = _flush_ensemble()
+        if _flushed:
+            print(
+                dim(f"  [cron] ensemble cache: {_flushed} entries saved to disk"),
+                flush=True,
+            )
+    except Exception as _e:
+        _log.debug("ensemble cache flush failed: %s", _e)
+
     # Sync data/ to cloud (OneDrive / Google Drive / custom path) after every cron run
     try:
         from cloud_backup import backup_data as _backup
