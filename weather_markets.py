@@ -252,17 +252,19 @@ ENSEMBLE_MODELS_EXTENDED = [
 _om_session: requests.Session = requests.Session()
 
 # Ensemble cache: key -> list[float] (TTL handled by ForecastCache)
-_ensemble_cache: ForecastCache[list[float]] = ForecastCache(ttl_secs=4 * 3600)
+# 8-hour TTL: NWP forecasts don't change dramatically between model cycles and
+# the longer window prevents rate-limit hammering on consecutive manual cron runs.
+_ensemble_cache: ForecastCache[list[float]] = ForecastCache(ttl_secs=8 * 3600)
 
 # Rate limiter: enforce minimum gap between Open-Meteo requests to avoid 429 bursts.
 # The ensemble endpoint (ensemble-api.open-meteo.com) is stricter than the forecast
 # endpoint; 0.1s caused repeated 429s + 60s retries (net slower than 0.3s baseline).
-# At 0.3s we stay well under the free-tier cap and avoid most throttling.
+# At 0.5s we stay safely under the free-tier cap and avoid throttling on both endpoints.
 # Any 429 that slips through is caught by _om_request and retried after Retry-After.
 _OM_RATE_LOCK = threading.Lock()
 _OM_LAST_REQUEST_TS: float = 0.0
 _OM_MIN_INTERVAL: float = (
-    0.3  # seconds between requests (~3 req/s, avoids ensemble 429s)
+    0.5  # seconds between requests (~2 req/s, safe margin for ensemble endpoint)
 )
 
 
@@ -322,9 +324,10 @@ def _om_request(method: str, url: str, **kwargs) -> requests.Response:
 
 
 # Forecast cache: (city, date_iso) -> dict (TTL handled by ForecastCache)
-_forecast_cache: ForecastCache[dict] = ForecastCache(ttl_secs=4 * 3600)
+# 8-hour TTL matches ensemble cache — prevents cache misses on consecutive runs.
+_forecast_cache: ForecastCache[dict] = ForecastCache(ttl_secs=8 * 3600)
 # TTL constant kept for disk-cache loading/pruning logic below
-_FORECAST_CACHE_TTL = 4 * 60 * 60
+_FORECAST_CACHE_TTL = 8 * 60 * 60
 
 # Disk-backed forecast cache — survives process restarts so `analyze` is fast
 # on the 2nd+ run within the same 90-minute window.
