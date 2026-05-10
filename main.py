@@ -5313,6 +5313,49 @@ def cmd_paper(args: list, client: KalshiClient | None = None):
                 )
             )
 
+        # ── Settled trade history ─────────────────────────────────────────────
+        settled_ = [t for t in all_ if t.get("settled")]
+        if settled_:
+            settled_.sort(key=lambda t: t.get("settled_at") or "", reverse=True)
+            print(bold(f"\n  Settled trades ({len(settled_)}):"))
+            s_rows = []
+            for t in settled_:
+                pnl = t.get("pnl") or 0.0
+                pnl_str = (
+                    green(f"+${pnl:.2f}") if pnl >= 0 else red(f"-${abs(pnl):.2f}")
+                )
+                result = green("WIN ") if pnl > 0 else red("LOSS")
+                s_rows.append(
+                    [
+                        t["id"],
+                        t["ticker"],
+                        t["side"].upper(),
+                        t["quantity"],
+                        f"${t['entry_price']:.4f}",
+                        f"${t['cost']:.2f}",
+                        result,
+                        pnl_str,
+                        (t.get("settled_at") or "")[:10],
+                    ]
+                )
+            print(
+                tabulate(
+                    s_rows,
+                    headers=[
+                        "#",
+                        "Ticker",
+                        "Side",
+                        "Qty",
+                        "Entry",
+                        "Cost",
+                        "Result",
+                        "P&L",
+                        "Settled",
+                    ],
+                    tablefmt="rounded_outline",
+                )
+            )
+
         # ── Factor exposure, expiry clustering, unrealized P&L ───────────────
         if open_ and client:
             try:
