@@ -87,6 +87,40 @@ const M = data; // rest of component code unchanged
 
 ---
 
+## Backend modules added since this prototype was designed
+
+The Python backend has grown significantly. The prototype data shapes still align, but these new systems should be surfaced in the dashboard:
+
+| Module | What it does | Suggested UI placement |
+|---|---|---|
+| `ab_test.py` | A/B experiment framework (run `python main.py ab-summary`) | New section in **Analytics** tab — show active experiments, lift, p-value |
+| `notify.py` | Discord/email/desktop/Pushover/ntfy notifications | New **Notifications** subsection in settings + recent-sends log |
+| `main.py override` (set/clear/status, TTL minutes) | Temporary pause separate from kill switch | Sibling button next to **Kill switch** with countdown + reason |
+| `settlement_monitor.py` | Settlement lag signal detection | New **Lag** card in Risk tab |
+| `alerts.py` (anomaly + black swan auto-halt) | Auto-halt triggers on anomalous market conditions | Banner above Overview when an auto-halt is active; show trigger reason |
+| `cloud_backup.py` | OneDrive/Drive sync of `data/` after every cron | Footer indicator: "Last backup: 12 min ago ✓" |
+| `execution_log.py` | Audit log of every order placed/filled/cancelled | New **Audit** tab or drawer accessible from any trade row |
+| `feature_importance.py` | Per-source importance for current model | Add to Calibration / Analytics — small bar chart |
+| `consistency.py` | Cross-market consistency checks | Risk tab — flag inconsistent prices across related markets |
+| `forecast_cache.py` | Forecast caching layer | Settings: cache TTL + manual invalidate button |
+| `kalshi_ws.py` | WebSocket order book (real-time mid prices) | Connection status indicator in nav (next to "● Live") |
+| Multiple notification channels (`NOTIFY_CHANNELS=desktop,discord,pushover,ntfy,email`) | Per-channel toggles | Settings → Notifications, one row per channel |
+
+### Settings page — now more important
+
+The original handoff flagged a settings page as a known gap. Given the backend additions, this is now **the highest-priority new screen**. It should expose:
+
+- Strategy mode (`kelly` / `fixed_pct` / `fixed_dollars`) + per-mode params
+- All `MIN_EDGE`, `PAPER_MIN_EDGE`, `MAX_*` thresholds from `.env`
+- Notification channels (toggle each)
+- Kill switch + override pause (with TTL)
+- Cloud backup path + status
+- Drift/calibration thresholds
+
+`config.py` and `.env.example` document the full surface — wire the UI to read/write these via a new `/api/config` GET/PATCH endpoint.
+
+---
+
 ## Known gaps the design did NOT address
 
 These need to be designed AFTER real data is wired, because mock data hides the real complexity:

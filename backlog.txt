@@ -1,0 +1,32 @@
+BACKLOG — future improvements to implement when ready
+======================================================
+
+[SAME-DAY NOWCASTING]
+Priority: Medium (revisit once Brier is consistently < 0.20 on multi-day markets)
+
+Problem:
+  Same-day markets (days_out == 0) are currently skipped entirely because the
+  ensemble forecast has no skill vs real-time market information. Traders can
+  see current temperatures; we can't compete with a stale multi-day forecast.
+
+What the fix looks like:
+  Build a separate nowcasting pipeline for days_out == 0 that ignores the
+  ensemble and uses:
+    1. Current observed temperature from METAR (infrastructure already exists)
+    2. Observed high so far today (from METAR history)
+    3. Rate of warming trend (is temp still rising or peaked?)
+    4. NWS hourly forecast for remaining hours of the day
+
+  With those inputs you can estimate whether a temperature threshold will be
+  hit today with reasonable accuracy. The ensemble probability becomes irrelevant.
+
+Why not now:
+  - Same-day markets have lower liquidity and thinner edges
+  - Core 2-5 day calibration is still improving (Brier dropping toward 0.20)
+  - Nowcasting pipeline is ~2-3 weeks of work
+  - Would be competing against traders watching current conditions in real time
+
+When to revisit:
+  - Brier consistently < 0.20 for 4+ weeks
+  - Multi-day win rate stable and above Gate 2 threshold
+  - Have spare bandwidth for a standalone pipeline build
