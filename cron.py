@@ -672,32 +672,19 @@ def _cmd_cron_body(
             # NBM, ECMWF, WeatherAPI, ensemble \u2014 still run in parallel but with
             # a smaller thread pool now that OM data is already cached.
             def _warm_one(city_date: tuple[str, str]) -> None:
-                from weather_markets import _get_consensus_probs, get_ensemble_temps
-
                 _c, _d = city_date
                 _dt = __import__("datetime").date.fromisoformat(_d)
+                # Only warm non-OM sources here — OM forecast is already populated
+                # by batch_prewarm_forecasts above.  Ensemble calls (get_ensemble_temps,
+                # _get_consensus_probs) share the 1.5s OM rate lock and would add
+                # 100+ seconds of queuing for 25 cities; they're fetched on-demand
+                # during the analysis scan instead.
                 try:
                     ctx.fetch_temperature_nbm(_c, _dt)
                 except Exception:
                     pass
                 try:
-                    ctx.fetch_temperature_ecmwf(_c, _dt)
-                except Exception:
-                    pass
-                try:
                     ctx.fetch_temperature_weatherapi(_c, _dt)
-                except Exception:
-                    pass
-                for _v in ("max", "min"):
-                    try:
-                        get_ensemble_temps(_c, _dt, var=_v)
-                    except Exception:
-                        pass
-                # Warm inner ICON/GFS daily cache used by consensus check
-                try:
-                    _get_consensus_probs(
-                        _c, _dt, {"type": "above", "threshold": 68.0}, var="max"
-                    )
                 except Exception:
                     pass
 
