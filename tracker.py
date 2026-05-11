@@ -804,6 +804,11 @@ def brier_score(city: str | None = None) -> float | None:
     """
     Brier score = mean((our_prob - outcome)²).
     Lower is better. 0.25 = random, 0.0 = perfect.
+
+    Primary source: tracker predictions + outcomes JOIN (populated by log_prediction
+    + sync_outcomes).  Fallback: paper_trades.db where entry_prob and outcome are
+    recorded directly at trade time — covers the common case where cron places trades
+    without a prior analyze-command prediction log entry.
     """
     init_db()
     with _conn() as con:
@@ -819,9 +824,32 @@ def brier_score(city: str | None = None) -> float | None:
             params.append(city)
         rows = con.execute(query, params).fetchall()
 
-    if not rows:
-        return None
-    return sum((r["our_prob"] - r["settled_yes"]) ** 2 for r in rows) / len(rows)
+    if rows:
+        return sum((r["our_prob"] - r["settled_yes"]) ** 2 for r in rows) / len(rows)
+
+    # ── Fallback: compute from paper_trades (entry_prob + outcome) ────────────
+    # paper_trades stores entry_prob (our model's P(YES)) and outcome ('yes'/'no').
+    # This covers trades placed by cron that were never run through cmd_analyze.
+    try:
+        from paper import get_all_trades as _get_all_trades
+
+        trades = _get_all_trades()
+        pairs: list[tuple[float, int]] = []
+        for t in trades:
+            prob = t.get("entry_prob")
+            outcome = t.get("outcome")
+            if prob is None or outcome not in ("yes", "no"):
+                continue
+            if city and t.get("city") != city:
+                continue
+            settled_yes = 1 if outcome == "yes" else 0
+            pairs.append((float(prob), settled_yes))
+        if pairs:
+            return sum((p - y) ** 2 for p, y in pairs) / len(pairs)
+    except Exception:
+        pass
+
+    return None
 
 
 def get_rolling_win_rate(window: int = 20) -> tuple[float | None, int]:
