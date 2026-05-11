@@ -46,9 +46,17 @@ KALSHI_ENV=demo
 - Place your downloaded `.pem` file in the project folder and name it `kalshi_private_key.pem`
 - Keep `KALSHI_ENV=demo` until you are ready to trade real money
 
-**5. (Optional) Get a Pirate Weather API key**
+**5. (Optional) Get forecast API keys**
 
-Pirate Weather is used as a fallback forecast source when Open-Meteo is unavailable. Free tier is 20,000 calls/month — get a key at [pirateweather.net](https://pirateweather.net). Add it to `.env`:
+Two additional forecast sources improve accuracy and serve as fallbacks when Open-Meteo is unavailable.
+
+**WeatherAPI** — provides current observations and short-range forecasts. Free tier covers 1M calls/month. Get a key at [weatherapi.com](https://www.weatherapi.com). Add it to `.env`:
+
+```
+WEATHERAPI_KEY=your-key-here
+```
+
+**Pirate Weather** — HRRR-based ensemble fallback. Free tier is 20,000 calls/month. Get a key at [pirateweather.net](https://pirateweather.net). Add it to `.env`:
 
 ```
 PIRATE_WEATHER_API_KEY=your-key-here
@@ -176,11 +184,12 @@ Run `python main.py montecarlo` to simulate 1,000 portfolio outcomes based on cu
 **Forecast sources**
 
 The bot queries multiple forecast sources and weights them by historical accuracy:
-- **NWS/NBM** — National Weather Service gridded forecasts (primary)
-- **Open-Meteo ensemble** — ICON, GFS, and other models (primary)
-- **Pirate Weather** — HRRR-based fallback when Open-Meteo is unavailable
+- **Open-Meteo ensemble** — ICON, GFS Seamless, and ECMWF IFS models (primary); pre-warmed in batch each cron run
+- **NWS/NBM** — National Weather Service gridded temperature forecasts (primary)
+- **WeatherAPI** — current observations and short-range forecasts (secondary; requires `WEATHERAPI_KEY`)
+- **Pirate Weather** — HRRR-based fallback when other sources are unavailable (requires `PIRATE_WEATHER_API_KEY`)
 
-Each source has its own circuit breaker: if it fails repeatedly, it backs off automatically and retries after a cooldown period.
+Each source has its own circuit breaker: if it fails repeatedly, it backs off automatically and retries after a cooldown period. The `data_quality` score (0–1) reflects how many sources returned data and scales Kelly bet size accordingly.
 
 ---
 
@@ -227,6 +236,9 @@ All settings have sensible defaults. Override any of them in `.env`:
 | `DRAWDOWN_HALT_PCT` | `0.20` | Halt all trading if balance falls below this fraction of peak |
 | `NWS_USER_AGENT` | `kalshi-weather-predictor/1.0` | User-Agent string sent to the NOAA API |
 | `PIRATE_WEATHER_API_KEY` | — | API key for Pirate Weather fallback forecasts (optional) |
+| `WEATHERAPI_KEY` | — | API key for WeatherAPI forecast source (optional; 1M calls/month free) |
+| `MAX_MODEL_SPREAD_F` | `8.0` | Skip markets where ICON and GFS disagree by more than this many °F |
+| `MODEL_HMAC_SECRET` | — | HMAC secret for verifying ML bias model file integrity (set automatically by `train-bias`) |
 | `LOG_LEVEL` | `WARNING` | Python logging level for the `kalshi` logger |
 | `DISCORD_WEBHOOK_URL` | — | Discord webhook for trade notifications (optional) |
 | `DISCORD_WEBHOOK_URLS` | — | Comma-separated list of Discord webhooks (optional) |
