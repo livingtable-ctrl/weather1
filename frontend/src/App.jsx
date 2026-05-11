@@ -1,6 +1,36 @@
 import React, {
-  useState, useMemo, useEffect, useRef, useContext, createContext,
+  useState, useMemo, useEffect, useRef, useContext, createContext, Component,
 } from 'react';
+
+// ---------------------------------------------------------------------------
+// Error boundary — catches render crashes and shows the error instead of
+// a white screen so we can diagnose tab-specific issues
+// ---------------------------------------------------------------------------
+class ErrorBoundary extends Component {
+  constructor(props) { super(props); this.state = { error: null }; }
+  static getDerivedStateFromError(e) { return { error: e }; }
+  render() {
+    if (this.state.error) {
+      return (
+        <main style={{ maxWidth: 800, margin: '60px auto', padding: '0 28px' }}>
+          <div style={{ padding: '20px 24px', borderRadius: 12, background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.3)' }}>
+            <p style={{ margin: 0, fontWeight: 700, color: '#ef4444', fontSize: 15 }}>Tab crashed — JS error</p>
+            <pre style={{ margin: '12px 0 0', fontSize: 12, whiteSpace: 'pre-wrap', color: 'var(--text-muted)', fontFamily: 'ui-monospace, monospace' }}>
+              {this.state.error?.message}
+              {'\n\n'}
+              {this.state.error?.stack}
+            </pre>
+            <button onClick={() => this.setState({ error: null })}
+              style={{ marginTop: 14, padding: '7px 14px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--text)', cursor: 'pointer', fontSize: 13 }}>
+              Dismiss
+            </button>
+          </div>
+        </main>
+      );
+    }
+    return this.props.children;
+  }
+}
 import MOCK from './mockData.js';
 import useData, { authHeader } from './useData.js';
 
@@ -784,17 +814,22 @@ function AnalyticsTab() {
           <p style={{ color: 'var(--text-muted)', fontSize: 12, marginBottom: 14, lineHeight: 1.4 }}>
             Accuracy degrades with horizon. 1–2 days out is strongest.
           </p>
-          {Object.entries(M.brierByDays || {}).map(([day, brier]) => (
-            <div key={day} style={{ marginBottom: 10 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 5 }}>
-                <span style={{ fontWeight: 600 }}>{day} day{day !== '1' ? 's' : ''} out</span>
-                <span style={{ fontFamily: 'ui-monospace, monospace', fontSize: 11, fontWeight: 700, color: brier < 0.20 ? '#16a34a' : brier < 0.30 ? '#ca8a04' : '#ef4444' }}>{brier.toFixed(3)}</span>
+          {Object.entries(M.brierByDays || {}).map(([day, brier]) => {
+            const b = brier != null ? Number(brier) : null;
+            const color = b == null ? '#8b949e' : b < 0.20 ? '#16a34a' : b < 0.30 ? '#ca8a04' : '#ef4444';
+            const barW = b != null ? Math.max(0, Math.min(100, ((0.35 - b) / 0.35) * 100)) : 0;
+            return (
+              <div key={day} style={{ marginBottom: 10 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 5 }}>
+                  <span style={{ fontWeight: 600 }}>{day} day{day !== '1' ? 's' : ''} out</span>
+                  <span style={{ fontFamily: 'ui-monospace, monospace', fontSize: 11, fontWeight: 700, color }}>{b != null ? b.toFixed(3) : '—'}</span>
+                </div>
+                <div style={{ height: 6, background: 'var(--bg-muted)', borderRadius: 3, overflow: 'hidden' }}>
+                  <div style={{ width: barW + '%', height: '100%', background: color }} />
+                </div>
               </div>
-              <div style={{ height: 6, background: 'var(--bg-muted)', borderRadius: 3, overflow: 'hidden' }}>
-                <div style={{ width: ((0.35 - brier) / 0.35) * 100 + '%', height: '100%', background: brier < 0.20 ? '#16a34a' : brier < 0.30 ? '#ca8a04' : '#ef4444' }} />
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </section>
       </div>
 
@@ -1243,7 +1278,9 @@ export default function App() {
           onToggleTheme={() => setTheme(t => t === 'dark' ? 'light' : 'dark')}
           connected={connected}
         />
-        <TabComponent />
+        <ErrorBoundary key={activeTab}>
+          <TabComponent />
+        </ErrorBoundary>
       </div>
     </DataContext.Provider>
   );
