@@ -760,9 +760,9 @@ function AnalyticsTab() {
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 18, marginBottom: 18 }}>
         <section style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 14, padding: '20px' }}>
           <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600, marginBottom: 14 }}>P&L by model source</h3>
-          {M.modelAccuracy.map((m) => {
+          {(M.modelAccuracy || []).map((m) => {
             const pnl = m.edge_realized * 800;
-            const base = M.modelAccuracy.reduce((a, x) => a + x.edge_realized * 800, 0);
+            const base = (M.modelAccuracy || []).reduce((a, x) => a + x.edge_realized * 800, 0);
             const pct = base > 0 ? (pnl / base) * 100 : 0;
             return (
               <div key={m.model} style={{ marginBottom: 12 }}>
@@ -784,7 +784,7 @@ function AnalyticsTab() {
           <p style={{ color: 'var(--text-muted)', fontSize: 12, marginBottom: 14, lineHeight: 1.4 }}>
             Accuracy degrades with horizon. 1–2 days out is strongest.
           </p>
-          {Object.entries(M.brierByDays).map(([day, brier]) => (
+          {Object.entries(M.brierByDays || {}).map(([day, brier]) => (
             <div key={day} style={{ marginBottom: 10 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 5 }}>
                 <span style={{ fontWeight: 600 }}>{day} day{day !== '1' ? 's' : ''} out</span>
@@ -811,13 +811,13 @@ function AnalyticsTab() {
             </tr>
           </thead>
           <tbody>
-            {Object.entries(M.cityCalibration).map(([city, cal]) => (
+            {Object.entries(M.cityCalibration || {}).map(([city, cal]) => (
               <tr key={city} style={{ borderBottom: '1px solid var(--bg-muted)' }}>
                 <td style={{ padding: '12px 16px', fontWeight: 600 }}>{normCity(city)}</td>
-                <td style={{ padding: '12px 16px', textAlign: 'right', fontFamily: 'ui-monospace, monospace' }}>{cal.n}</td>
-                <td style={{ padding: '12px 16px', textAlign: 'right', fontFamily: 'ui-monospace, monospace', color: cal.brier < 0.20 ? '#16a34a' : '#ca8a04' }}>{cal.brier.toFixed(3)}</td>
+                <td style={{ padding: '12px 16px', textAlign: 'right', fontFamily: 'ui-monospace, monospace' }}>{cal.n ?? '—'}</td>
+                <td style={{ padding: '12px 16px', textAlign: 'right', fontFamily: 'ui-monospace, monospace', color: (cal.brier ?? 1) < 0.20 ? '#16a34a' : '#ca8a04' }}>{cal.brier != null ? cal.brier.toFixed(3) : '—'}</td>
                 <td style={{ padding: '12px 16px', textAlign: 'right', fontFamily: 'ui-monospace, monospace', color: 'var(--text-muted)' }}>
-                  {cal.bias >= 0 ? '+' : ''}{cal.bias.toFixed(3)}
+                  {cal.bias != null ? (cal.bias >= 0 ? '+' : '') + cal.bias.toFixed(3) : '—'}
                 </td>
               </tr>
             ))}
