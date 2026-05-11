@@ -1831,10 +1831,8 @@ def cmd_today(client: KalshiClient) -> None:
 
     _clim_preload(CITY_COORDS)
 
-    best_m = None
-    best_a = None
-    best_abs_edge = 0.0
-
+    # Collect top 3 candidates sorted by abs(net_edge) descending
+    top_picks: list[tuple[dict, dict]] = []  # (enriched_market, analysis)
     for m in markets:
         enriched = enrich_with_forecast(m)
         analysis = analyze_trade(enriched)
@@ -1847,113 +1845,133 @@ def cmd_today(client: KalshiClient) -> None:
             continue
         if analysis.get("time_risk") == "HIGH":
             continue
-        if abs(net_edge) > best_abs_edge:
-            best_abs_edge = abs(net_edge)
-            best_m = enriched
-            best_a = analysis
+        top_picks.append((enriched, analysis))
+        top_picks.sort(
+            key=lambda x: abs(x[1].get("net_edge", x[1]["edge"])), reverse=True
+        )
+        top_picks = top_picks[:3]
 
-    if best_m is None or best_a is None:
+    if not top_picks:
         print(yellow("  No strong opportunities today. Consider waiting."))
         return
 
-    ticker = best_m.get("ticker", "")
-    title = best_m.get("title") or ticker
-    net_edge = best_a.get("net_edge", best_a["edge"])
-    prob_edge = best_a.get("edge", net_edge)  # raw probability-point gap
-    forecast_prob = best_a["forecast_prob"]
-    market_prob = best_a["market_prob"]
-    side = best_a["recommended_side"]
-    time_risk = best_a.get("time_risk", "—")
-    consensus = best_a.get("consensus", "")
-    regime_desc = best_a.get("regime_description", "")
-    n_members = best_a.get("n_members", 0)
-    ci_kelly = best_a.get("ci_adjusted_kelly", best_a.get("fee_adjusted_kelly", 0.0))
-    entry_price = market_prob if side == "yes" else 1 - market_prob
+    best_m, best_a = top_picks[0]
+
+    def _pick_display(
+        enriched: dict, analysis: dict, balance: float, label: str
+    ) -> None:
+        """Print full detail block for one pick."""
+        _ticker = enriched.get("ticker", "")
+        _title = enriched.get("title") or _ticker
+        _net_edge = analysis.get("net_edge", analysis["edge"])
+        _prob_edge = analysis.get("edge", _net_edge)
+        _forecast_prob = analysis["forecast_prob"]
+        _market_prob = analysis["market_prob"]
+        _side = analysis["recommended_side"]
+        _time_risk = analysis.get("time_risk", "—")
+        _consensus = analysis.get("consensus", "")
+        _regime_desc = analysis.get("regime_description", "")
+        _n_members = analysis.get("n_members", 0)
+        _ci_kelly = analysis.get(
+            "ci_adjusted_kelly", analysis.get("fee_adjusted_kelly", 0.0)
+        )
+        _entry_price = _market_prob if _side == "yes" else 1 - _market_prob
+
+        _bet_dollars = kelly_bet_dollars(_ci_kelly)
+        _win_per_dollar = (1 - _entry_price) * (1 - _fee)
+        _if_correct = (
+            round(_bet_dollars / _entry_price * _win_per_dollar, 2)
+            if _entry_price > 0 and _bet_dollars > 0
+            else 0.0
+        )
+
+        _why_parts: list[str] = []
+        if _n_members > 0:
+            _why_parts.append(f"Our ensemble of {_n_members} weather models")
+        if _regime_desc and isinstance(_regime_desc, str):
+            _why_parts.append(_regime_desc)
+        if _consensus and isinstance(_consensus, str):
+            _why_parts.append(_consensus)
+        if not _why_parts:
+            _why_parts.append("Our weather forecast models")
+        _why = ". ".join(_why_parts)
+
+        if abs(_net_edge) >= 0.25 and _time_risk == "LOW":
+            _confidence = green("HIGH (all sources agree — consensus signal)")
+        elif abs(_net_edge) >= 0.15:
+            _confidence = yellow("MEDIUM")
+        else:
+            _confidence = dim("MODERATE")
+
+        _risk_label = (
+            green("LOW")
+            if _time_risk == "LOW"
+            else (yellow("MEDIUM") if _time_risk != "HIGH" else red("HIGH"))
+        )
+
+        print(f"  {bold(label)}")
+        print(f"  Market:   {bold(_ticker)}")
+        print(f"  Question: {_title}")
+        print()
+        print(f"  Our model:   {bold(f'{_forecast_prob:.0%}')} chance of YES")
+        print(f"  Market says: {bold(f'{_market_prob:.0%}')} chance of YES")
+        _disp_edge = _prob_edge if _side == "yes" else -_prob_edge
+        _edge_str = (
+            green(f"+{_disp_edge:.0%}") if _disp_edge > 0 else red(f"{_disp_edge:.0%}")
+        )
+        _roi_str = (
+            green(f"+{_net_edge:.0%}") if _net_edge > 0 else red(f"{_net_edge:.0%}")
+        )
+        print(
+            f"  Your edge:   {_edge_str} probability gap  ({_roi_str} expected ROI after fees)"
+        )
+        print()
+        print(
+            f"  Recommendation: BUY {bold(_side.upper())} at {bold(f'{_entry_price:.0%}')} per contract"
+        )
+        print()
+        print(f"  Why: {_why}")
+        print()
+        if _bet_dollars > 0:
+            _pct_bal = _bet_dollars / balance * 100 if balance > 0 else 0
+            print(
+                f"  Suggested bet: {green(f'${_bet_dollars:.2f}')} (Kelly sizing, {_pct_bal:.1f}% of your ${balance:.0f} balance)"
+            )
+            print(f"  If correct: win {green(f'${_if_correct:.2f}')} after fees")
+            print(f"  If wrong:   lose {red(f'${_bet_dollars:.2f}')}")
+        else:
+            print(
+                dim(
+                    "  Suggested bet: Kelly sizing unavailable — drawdown guard may be active"
+                )
+            )
+        print()
+        print(f"  Risk level:  {_risk_label}")
+        print(f"  Confidence:  {_confidence}")
+        print()
 
     balance = get_balance()
-    bet_dollars = kelly_bet_dollars(ci_kelly)
-    win_per_dollar = (1 - entry_price) * (1 - _fee)
-    if entry_price > 0 and bet_dollars > 0:
-        if_correct = round(bet_dollars / entry_price * win_per_dollar, 2)
-    else:
-        if_correct = 0.0
 
-    # Build "Why" explanation
-    why_parts = []
-    if n_members > 0:
-        why_parts.append(f"Our ensemble of {n_members} weather models")
-    if regime_desc and isinstance(regime_desc, str):
-        why_parts.append(regime_desc)
-    if consensus and isinstance(consensus, str):
-        why_parts.append(consensus)
-    if not why_parts:
-        why_parts.append("Our weather forecast models")
-    why = ". ".join(why_parts)
+    # ── #1 Primary pick — full detail + placement prompt ─────────────────────
+    _pick_display(best_m, best_a, balance, "#1 Best Pick")
 
-    # Confidence label
-    if abs(net_edge) >= 0.25 and time_risk == "LOW":
-        confidence = green("HIGH (all sources agree — consensus signal)")
-    elif abs(net_edge) >= 0.15:
-        confidence = yellow("MEDIUM")
-    else:
-        confidence = dim("MODERATE")
-
-    risk_label = (
-        green("LOW")
-        if time_risk == "LOW"
-        else (yellow("MEDIUM") if time_risk != "HIGH" else red("HIGH"))
-    )
-
-    print(f"  Market:  {bold(ticker)}")
-    print(f"  Question: {title}")
-    print()
-    print(f"  Our model:   {bold(f'{forecast_prob:.0%}')} chance of YES")
-    print(f"  Market says: {bold(f'{market_prob:.0%}')} chance of YES")
-    _disp_edge = prob_edge if side == "yes" else -prob_edge
-    edge_str = (
-        green(f"+{_disp_edge:.0%}") if _disp_edge > 0 else red(f"{_disp_edge:.0%}")
-    )
-    roi_str = green(f"+{net_edge:.0%}") if net_edge > 0 else red(f"{net_edge:.0%}")
-    print(
-        f"  Your edge:   {edge_str} probability gap  ({roi_str} expected ROI after fees)"
-    )
-    print()
-    print(
-        f"  Recommendation: BUY {bold(side.upper())} at {bold(f'{entry_price:.0%}')} per contract"
-    )
-    print()
-    print(f"  Why: {why}")
-    print()
-    if bet_dollars > 0:
-        pct_bal = bet_dollars / balance * 100 if balance > 0 else 0
-        print(
-            f"  Suggested bet: {green(f'${bet_dollars:.2f}')} (Kelly sizing, {pct_bal:.1f}% of your ${balance:.0f} balance)"
-        )
-        print(f"  If correct: win {green(f'${if_correct:.2f}')} after fees")
-        print(f"  If wrong:   lose {red(f'${bet_dollars:.2f}')}")
-    else:
-        print(
-            dim(
-                "  Suggested bet: Kelly sizing unavailable — drawdown guard may be active"
-            )
-        )
-    print()
-    print(f"  Risk level:  {risk_label}")
-    print(f"  Confidence:  {confidence}")
-    print()
-
-    # ── Inline placement ─────────────────────────────────────────────────────
     from paper import kelly_quantity
     from paper import place_paper_order as _ppo_today  # noqa: F811
     from utils import MAX_DAILY_SPEND
 
-    qty = kelly_quantity(ci_kelly, entry_price) if entry_price > 0 else 0
+    _ticker1 = best_m.get("ticker", "")
+    _side1 = best_a["recommended_side"]
+    _market_prob1 = best_a["market_prob"]
+    _entry_price1 = _market_prob1 if _side1 == "yes" else 1 - _market_prob1
+    _ci_kelly1 = best_a.get("ci_adjusted_kelly", best_a.get("fee_adjusted_kelly", 0.0))
+    _bet_dollars1 = kelly_bet_dollars(_ci_kelly1)
+    _qty1 = kelly_quantity(_ci_kelly1, _entry_price1) if _entry_price1 > 0 else 0
 
     try:
         raw = (
             input(
                 dim(
-                    f"  [P] Place {side.upper()} x{qty} ${bet_dollars:.2f}  [Enter] Back: "
+                    f"  [P] Place {_side1.upper()} x{_qty1} ${_bet_dollars1:.2f}  [Enter] Skip: "
                 )
             )
             .strip()
@@ -1963,72 +1981,100 @@ def cmd_today(client: KalshiClient) -> None:
         print()
         return
 
-    if raw != "P":
-        return
-
-    if qty < 1 or bet_dollars <= 0:
-        print(yellow("  Kelly sizing produced 0 contracts — trade not placed."))
-        return
-
-    if _daily_paper_spend() + bet_dollars > MAX_DAILY_SPEND:
-        print(
-            yellow(
-                f"  Daily spend cap would be exceeded (${_daily_paper_spend():.2f}/${MAX_DAILY_SPEND:.0f}). Trade not placed."
+    if raw == "P":
+        if _qty1 < 1 or _bet_dollars1 <= 0:
+            print(yellow("  Kelly sizing produced 0 contracts — trade not placed."))
+        elif _daily_paper_spend() + _bet_dollars1 > MAX_DAILY_SPEND:
+            print(
+                yellow(
+                    f"  Daily spend cap would be exceeded (${_daily_paper_spend():.2f}/${MAX_DAILY_SPEND:.0f}). Trade not placed."
+                )
             )
-        )
-        return
+        else:
+            try:
+                trade = _ppo_today(
+                    _ticker1,
+                    _side1,
+                    _qty1,
+                    _entry_price1,
+                    entry_prob=best_a["forecast_prob"],
+                    net_edge=best_a.get("net_edge"),
+                    city=best_m.get("_city"),
+                    target_date=best_a.get("target_date"),
+                    method=best_a.get("method"),
+                )
+                cost = round(_entry_price1 * _qty1, 2)
+                print(
+                    green(
+                        f"\n  ✓ Placed: BUY {_side1.upper()} x{_qty1} @ {_entry_price1:.0%} — cost ${cost:.2f}"
+                    )
+                )
+                print(
+                    dim(
+                        f"  Trade ID: {trade.get('id', '?')}  |  Balance: ${get_balance():.2f}"
+                    )
+                )
+                try:
+                    from feature_importance import record_feature_contribution
 
-    try:
-        trade = _ppo_today(
-            ticker,
-            side,
-            qty,
-            entry_price,
-            entry_prob=forecast_prob,
-            net_edge=best_a.get("net_edge"),
-            city=best_m.get("_city"),
-            target_date=best_a.get("target_date"),
-            method=best_a.get("method"),
-        )
-        cost = round(entry_price * qty, 2)
-        print(
-            green(
-                f"\n  ✓ Placed: BUY {side.upper()} x{qty} @ {entry_price:.0%} — cost ${cost:.2f}"
-            )
-        )
-        print(
-            dim(f"  Trade ID: {trade.get('id', '?')}  |  Balance: ${get_balance():.2f}")
-        )
-        # A2: Record feature contributions so feature_importance analytics can learn
-        # which signals (ensemble spread, model agreement, etc.) predict wins.
-        try:
-            from feature_importance import record_feature_contribution
+                    _days_out_fi = (
+                        (
+                            best_a.get("target_date")
+                            - __import__("datetime").date.today()
+                        ).days
+                        if best_a.get("target_date")
+                        else 0
+                    )
+                    record_feature_contribution(
+                        _ticker1,
+                        {
+                            "ensemble_spread": best_a.get("ensemble_spread", 0) or 0,
+                            "model_agreement": 1.0
+                            if best_a.get("model_consensus")
+                            else 0.0,
+                            "days_out": _days_out_fi,
+                            "edge": best_a.get("edge", 0) or 0,
+                            "kelly_fraction": best_a.get("ci_adjusted_kelly", 0) or 0,
+                            "data_quality": best_a.get("data_quality", 0) or 0,
+                            "near_threshold": 1.0
+                            if best_a.get("near_threshold")
+                            else 0.0,
+                            "regime": 1.0
+                            if best_a.get("regime")
+                            in ("heat_dome", "cold_snap", "blocking_high")
+                            else 0.0,
+                        },
+                    )
+                except Exception:
+                    pass
+            except Exception as e:
+                print(red(f"  Failed to place trade: {e}"))
 
-            _days_out_fi = (
-                (best_a.get("target_date") - __import__("datetime").date.today()).days
-                if best_a.get("target_date")
-                else 0
+    # ── Runner-ups #2 and #3 — compact one-liner each ────────────────────────
+    if len(top_picks) > 1:
+        print(dim("  ── Also consider ") + dim("─" * 44))
+        for rank, (rm, ra) in enumerate(top_picks[1:], start=2):
+            _rt = rm.get("ticker", "")
+            _rs = ra["recommended_side"]
+            _rmp = ra["market_prob"]
+            _rep = _rmp if _rs == "yes" else 1 - _rmp
+            _rpe = ra.get("edge", 0)
+            _rdisp = _rpe if _rs == "yes" else -_rpe
+            _redge_s = green(f"+{_rdisp:.0%}") if _rdisp > 0 else red(f"{_rdisp:.0%}")
+            _rtr = ra.get("time_risk", "—")
+            _rrisk = (
+                green("LOW")
+                if _rtr == "LOW"
+                else (yellow("MED") if _rtr != "HIGH" else red("HIGH"))
             )
-            record_feature_contribution(
-                ticker,
-                {
-                    "ensemble_spread": best_a.get("ensemble_spread", 0) or 0,
-                    "model_agreement": 1.0 if best_a.get("model_consensus") else 0.0,
-                    "days_out": _days_out_fi,
-                    "edge": best_a.get("edge", 0) or 0,
-                    "kelly_fraction": best_a.get("ci_adjusted_kelly", 0) or 0,
-                    "data_quality": best_a.get("data_quality", 0) or 0,
-                    "near_threshold": 1.0 if best_a.get("near_threshold") else 0.0,
-                    "regime": 1.0
-                    if best_a.get("regime")
-                    in ("heat_dome", "cold_snap", "blocking_high")
-                    else 0.0,
-                },
+            _rck = ra.get("ci_adjusted_kelly", ra.get("fee_adjusted_kelly", 0.0))
+            _rbet = kelly_bet_dollars(_rck)
+            _rbet_s = f"${_rbet:.0f}" if _rbet > 0 else "—"
+            print(
+                f"  #{rank}  {bold(_rt)}  BUY {_rs.upper()} @ {_rep:.0%}"
+                f"  edge {_redge_s}  risk {_rrisk}  Kelly {_rbet_s}"
             )
-        except Exception:
-            pass
-    except Exception as e:
-        print(red(f"  Failed to place trade: {e}"))
+        print()
 
 
 def cmd_brief(client: KalshiClient, send_email: bool = False) -> None:
