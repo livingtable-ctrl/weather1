@@ -3725,7 +3725,7 @@ def _analyze_snow_trade(
         "fee_adjusted_kelly": fee_kel,
         "ci_adjusted_kelly": ci_adj_kelly,
         "time_risk": "HIGH",
-        "consensus": False,
+        "consensus": "",
         "model_consensus": True,
         "near_threshold": False,
         "days_out": days_out,
