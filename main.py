@@ -7,6 +7,8 @@ import logging
 import os
 import sys
 import time
+import traceback as _traceback
+import types
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
@@ -101,6 +103,54 @@ from weather_markets import (
 load_dotenv()
 
 _bot_config = _load_config()
+
+# Crash log: write uncaught exceptions (including from threads) to data/crash.log
+# so the error survives even when the terminal window closes before the user can read it.
+_CRASH_LOG = Path(__file__).parent / "data" / "crash.log"
+_CRASH_LOG.parent.mkdir(exist_ok=True)
+
+
+def _write_crash_log(header: str, text: str) -> None:
+    try:
+        with open(_CRASH_LOG, "a", encoding="utf-8") as _f:
+            _f.write(f"\n{'=' * 60}\n{header}\n{'=' * 60}\n{text}\n")
+    except Exception:
+        pass
+
+
+def _excepthook(
+    exc_type: type[BaseException],
+    exc_val: BaseException,
+    exc_tb: types.TracebackType | None,
+) -> None:
+    msg = "".join(_traceback.format_exception(exc_type, exc_val, exc_tb))
+    _write_crash_log(
+        f"UNCAUGHT EXCEPTION {datetime.now().isoformat(timespec='seconds')}",
+        msg,
+    )
+    sys.__excepthook__(exc_type, exc_val, exc_tb)
+
+
+sys.excepthook = _excepthook
+
+try:
+    import threading as _threading
+
+    def _thread_excepthook(args: _threading.ExceptHookArgs) -> None:
+        msg = "".join(
+            _traceback.format_exception(
+                args.exc_type, args.exc_value, args.exc_traceback
+            )
+        )
+        _write_crash_log(
+            f"THREAD EXCEPTION {datetime.now().isoformat(timespec='seconds')} "
+            f"thread={args.thread}",
+            msg,
+        )
+
+    _threading.excepthook = _thread_excepthook
+except Exception:
+    pass
 
 # Variants sampled round-robin; loser auto-disabled after 50 trades.
 REFRESH_SECS = 300  # watch mode interval
