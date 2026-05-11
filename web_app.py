@@ -424,6 +424,12 @@ def _build_app(client):
 
     @app.route("/")
     def index():
+        from flask import send_from_directory as _sfd
+
+        dist = Path(__file__).parent / "static" / "dist"
+        if (dist / "index.html").exists():
+            return _sfd(str(dist), "index.html")
+        # Fallback: old Jinja template while frontend build hasn't run yet
         return render_template("dashboard.html")
 
     @app.route("/analyze")
@@ -1217,6 +1223,346 @@ setInterval(() => {{
             checks["cron_lock_error"] = str(exc)
 
         return jsonify({"ok": True, "checks": checks, "timestamp": _time.time()})
+
+    # ------------------------------------------------------------------ #
+    #  NEW DASHBOARD ENDPOINTS  (wired in React frontend v2)              #
+    # ------------------------------------------------------------------ #
+
+    @app.route("/api/config")
+    def api_config():
+        """BotConfig fields for the Settings tab."""
+        try:
+            from config import BotConfig
+
+            cfg = BotConfig()
+            return jsonify(
+                {
+                    "min_edge": cfg.min_edge,
+                    "paper_min_edge": cfg.paper_min_edge,
+                    "strong_edge": cfg.strong_edge,
+                    "med_edge": cfg.med_edge,
+                    "max_daily_spend": cfg.max_daily_spend,
+                    "max_days_out": cfg.max_days_out,
+                    "drawdown_halt_pct": cfg.drawdown_halt_pct,
+                    "enable_micro_live": cfg.enable_micro_live,
+                    "min_brier_samples": cfg.min_brier_samples,
+                    "kalshi_fee_rate": cfg.kalshi_fee_rate,
+                }
+            )
+        except Exception as exc:
+            return jsonify({"error": str(exc)}), 500
+
+    @app.route("/api/ab-tests")
+    def api_ab_tests():
+        """A/B test summaries for the Settings tab."""
+        try:
+            from ab_test import list_all_summaries
+
+            summaries = list_all_summaries()
+            tests = [
+                {
+                    "name": name,
+                    "variant": s.get("current_variant"),
+                    "trades": s.get("total_trades", 0),
+                    "edge_realized": s.get("edge_realized"),
+                    "description": s.get("description", ""),
+                }
+                for name, s in summaries.items()
+            ]
+            return jsonify(tests)
+        except Exception as exc:
+            return jsonify({"error": str(exc)}), 500
+
+    @app.route("/api/override", methods=["GET"])
+    def api_override_get():
+        """Return current manual override state (or {active: false})."""
+        _ov_path = Path(__file__).parent / "data" / ".manual_override.json"
+        if not _ov_path.exists():
+            return jsonify({"active": False, "override_until": None})
+        try:
+            state = json.loads(_ov_path.read_text())
+            return jsonify(
+                {"active": True, "override_until": state.get("expires_at"), **state}
+            )
+        except Exception as exc:
+            return jsonify({"error": str(exc)}), 500
+
+    @app.route("/api/override", methods=["POST"])
+    @_require_auth
+    def api_override_set():
+        """Set a time-limited manual override. Body: {reason, duration_minutes}."""
+        from datetime import UTC, datetime, timedelta
+
+        from flask import request as _req
+
+        body = _req.get_json(silent=True) or {}
+        reason = body.get("reason", "manual override via dashboard")
+        minutes = int(body.get("duration_minutes", 60))
+        now = datetime.now(UTC)
+        state = {
+            "reason": reason,
+            "created_at": now.isoformat(),
+            "expires_at": (now + timedelta(minutes=minutes)).isoformat(),
+            "duration_minutes": minutes,
+        }
+        _ov_path = Path(__file__).parent / "data" / ".manual_override.json"
+        _ov_path.parent.mkdir(parents=True, exist_ok=True)
+        _tmp = _ov_path.with_suffix(".tmp")
+        _tmp.write_text(json.dumps(state, indent=2))
+        _tmp.replace(_ov_path)
+        return jsonify({"set": True, **state})
+
+    @app.route("/api/override", methods=["DELETE"])
+    @_require_auth
+    def api_override_clear():
+        """Remove the manual override file."""
+        _ov_path = Path(__file__).parent / "data" / ".manual_override.json"
+        existed = _ov_path.exists()
+        if existed:
+            _ov_path.unlink()
+        return jsonify({"cleared": True, "was_active": existed})
+
+    @app.route("/api/backup-status")
+    def api_backup_status():
+        """Last backup time inferred from data/backups/ directory."""
+        from datetime import UTC, datetime
+
+        data_dir = Path(__file__).parent / "data"
+        backup_dir = data_dir / "backups"
+        result: dict = {
+            "last_backup_at": None,
+            "backup_size_mb": None,
+            "backup_count": 0,
+        }
+        if backup_dir.exists():
+            files = sorted(
+                backup_dir.iterdir(), key=lambda p: p.stat().st_mtime, reverse=True
+            )
+            result["backup_count"] = len([f for f in files if f.is_file()])
+            live_files = [f for f in files if f.is_file()]
+            if live_files:
+                latest = live_files[0]
+                result["last_backup_at"] = datetime.fromtimestamp(
+                    latest.stat().st_mtime, tz=UTC
+                ).isoformat()
+                result["backup_size_mb"] = round(latest.stat().st_size / 1_048_576, 3)
+        # Also expose paper_trades.json mtime as a data-freshness proxy
+        pt = data_dir / "paper_trades.json"
+        if pt.exists():
+            from datetime import UTC, datetime
+
+            result["data_mtime"] = datetime.fromtimestamp(
+                pt.stat().st_mtime, tz=UTC
+            ).isoformat()
+        return jsonify(result)
+
+    @app.route("/api/feature-importance")
+    def api_feature_importance():
+        """Feature importance summary from the last cron run."""
+        try:
+            from feature_importance import get_feature_summary
+
+            summary = get_feature_summary(min_trades=5)
+            return jsonify(summary or {})
+        except Exception as exc:
+            return jsonify({"error": str(exc)}), 500
+
+    @app.route("/api/system-events")
+    def api_system_events():
+        """Synthesised event feed: recent orders + CB trips + override + kill switch."""
+        events: list[dict] = []
+
+        # Recent orders from execution_log.db
+        try:
+            from execution_log import get_recent_orders
+
+            for o in get_recent_orders(limit=20):
+                events.append(
+                    {
+                        "ts": o.get("placed_at", ""),
+                        "level": "info" if o.get("status") == "filled" else "warn",
+                        "text": (
+                            f"Order: {o.get('ticker')} {(o.get('side') or '').upper()} "
+                            f"x{o.get('quantity')} @ {float(o.get('price') or 0):.2f} "
+                            f"[{o.get('status', '')}]"
+                        ),
+                        "source": "order",
+                    }
+                )
+        except Exception:
+            pass
+
+        # Kill switch
+        if _KS_PATH.exists():
+            try:
+                ks = json.loads(_KS_PATH.read_text())
+                events.append(
+                    {
+                        "ts": ks.get("halted_at", ""),
+                        "level": "warn",
+                        "text": f"⛔ Kill switch active: {ks.get('reason', 'manual halt')}",
+                        "source": "kill_switch",
+                    }
+                )
+            except Exception:
+                pass
+
+        # Manual override
+        _ov_path = Path(__file__).parent / "data" / ".manual_override.json"
+        if _ov_path.exists():
+            try:
+                ov = json.loads(_ov_path.read_text())
+                events.append(
+                    {
+                        "ts": ov.get("created_at", ""),
+                        "level": "info",
+                        "text": (
+                            f"Override active until {ov.get('expires_at', '?')[:16]}: "
+                            f"{ov.get('reason', '')}"
+                        ),
+                        "source": "override",
+                    }
+                )
+            except Exception:
+                pass
+
+        events.sort(key=lambda e: e.get("ts", ""), reverse=True)
+        return jsonify(events[:30])
+
+    @app.route("/api/forecast-cache")
+    def api_forecast_cache_info():
+        """Forecast cache metadata (size, age, staleness)."""
+        import time as _time
+        from datetime import UTC, datetime
+
+        cache_file = Path(__file__).parent / "data" / "forecast_cache.json"
+        if not cache_file.exists():
+            return jsonify(
+                {"entries": 0, "age_seconds": None, "stale": True, "last_updated": None}
+            )
+        try:
+            age = _time.time() - cache_file.stat().st_mtime
+            data = json.loads(cache_file.read_text())
+            return jsonify(
+                {
+                    "entries": len(data),
+                    "age_seconds": round(age),
+                    "stale": age > 3600,
+                    "last_updated": datetime.fromtimestamp(
+                        cache_file.stat().st_mtime, tz=UTC
+                    ).isoformat(),
+                }
+            )
+        except Exception as exc:
+            return jsonify({"error": str(exc)}), 500
+
+    @app.route("/api/forecast-cache/invalidate", methods=["POST"])
+    @_require_auth
+    def api_forecast_cache_invalidate():
+        """Delete the on-disk forecast cache so the next cron run rebuilds it."""
+        cache_file = Path(__file__).parent / "data" / "forecast_cache.json"
+        if cache_file.exists():
+            cache_file.unlink()
+            return jsonify({"cleared": True})
+        return jsonify({"cleared": False, "note": "cache file not present"})
+
+    @app.route("/api/execution-log")
+    def api_execution_log():
+        """Recent orders from execution_log.db (last 50)."""
+        try:
+            from execution_log import get_recent_orders
+
+            return jsonify(get_recent_orders(limit=50))
+        except Exception as exc:
+            return jsonify({"error": str(exc)}), 500
+
+    @app.route("/api/settlement-signals")
+    def api_settlement_signals():
+        """Active settlement signals from the monitor (last 4 h)."""
+        try:
+            from settlement_monitor import read_settlement_signals
+
+            return jsonify(read_settlement_signals(max_age_minutes=240))
+        except Exception as exc:
+            return jsonify({"error": str(exc)}), 500
+
+    @app.route("/api/city-brier")
+    def api_city_brier():
+        """Simple {city: brier_score} map for the Forecast tab heatmap."""
+        try:
+            from tracker import get_calibration_by_city
+
+            cal = get_calibration_by_city() or {}
+            result = {
+                city: d.get("brier")
+                for city, d in cal.items()
+                if d.get("brier") is not None
+            }
+            return jsonify(result)
+        except Exception as exc:
+            return jsonify({"error": str(exc)}), 500
+
+    @app.route("/api/ml-models")
+    def api_ml_models():
+        """Which cities have trained ML bias-correction models."""
+        try:
+            from ml_bias import has_ml_model
+            from weather_markets import CITY_COORDS
+
+            return jsonify({city: has_ml_model(city) for city in sorted(CITY_COORDS)})
+        except Exception as exc:
+            return jsonify({"error": str(exc)}), 500
+
+    @app.route("/api/paper-order", methods=["POST"])
+    @_require_auth
+    def api_paper_order():
+        """Manually place a paper trade from the Signals tab Approve button.
+
+        Body (JSON):
+          ticker       str   required
+          side         str   "yes" | "no"
+          quantity     int   default 1
+          entry_price  float (0, 1]  required
+          entry_prob   float optional
+          net_edge     float optional
+          city         str   optional
+          target_date  str   optional ISO date
+        """
+        from paper import place_paper_order
+
+        body = _flask_request.get_json(force=True, silent=True) or {}
+        ticker = body.get("ticker", "").strip()
+        side = body.get("side", "yes").strip().lower()
+        if not ticker:
+            return jsonify({"error": "ticker required"}), 400
+        if side not in ("yes", "no"):
+            return jsonify({"error": "side must be yes or no"}), 400
+        try:
+            entry_price = float(body["entry_price"])
+        except (KeyError, TypeError, ValueError):
+            return jsonify({"error": "entry_price required"}), 400
+        quantity = int(body.get("quantity", 1)) or 1
+        entry_prob = body.get("entry_prob")
+        net_edge = body.get("net_edge")
+        city = body.get("city") or None
+        target_date = body.get("target_date") or None
+        try:
+            trade = place_paper_order(
+                ticker=ticker,
+                side=side,
+                quantity=quantity,
+                entry_price=entry_price,
+                entry_prob=float(entry_prob) if entry_prob is not None else None,
+                net_edge=float(net_edge) if net_edge is not None else None,
+                city=city,
+                target_date=target_date,
+                thesis="manual approval via dashboard",
+            )
+            return jsonify({"ok": True, "trade_id": trade.get("id")}), 201
+        except Exception as exc:
+            return jsonify({"error": str(exc)}), 500
+
+    # ------------------------------------------------------------------ #
 
     return app
 
