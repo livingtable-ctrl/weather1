@@ -1881,9 +1881,9 @@ def cmd_today(client: KalshiClient) -> None:
     why_parts = []
     if n_members > 0:
         why_parts.append(f"Our ensemble of {n_members} weather models")
-    if regime_desc:
+    if regime_desc and isinstance(regime_desc, str):
         why_parts.append(regime_desc)
-    if consensus:
+    if consensus and isinstance(consensus, str):
         why_parts.append(consensus)
     if not why_parts:
         why_parts.append("Our weather forecast models")
