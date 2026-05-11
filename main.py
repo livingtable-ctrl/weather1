@@ -1246,12 +1246,23 @@ def _analyze_once(
         else:
             cond_desc = "the condition"
 
+        if side == "yes":
+            market_line = (
+                f"  The market only prices it at {market_prob:.0%} — a {gap:.0%} gap. "
+                f"A $10 bet wins ${win_amount:.2f}\n"
+                f"  after fees if you're right (and loses $10 if wrong)."
+            )
+        else:
+            no_price = 1 - market_prob
+            market_line = (
+                f"  The market prices YES at {market_prob:.0%} — we say only {forecast_prob:.0%} — "
+                f"so we buy NO at {no_price:.0%}. A $10 bet wins ${win_amount:.2f}\n"
+                f"  after fees if you're right (and loses $10 if wrong)."
+            )
         return (
             f"Model thinks there's a {forecast_prob:.0%} chance {city} hits {cond_desc} "
             f"on {date_str}.\n"
-            f"  The market only prices it at {market_prob:.0%} — a {gap:.0%} gap. "
-            f"A $10 bet wins ${win_amount:.2f}\n"
-            f"  after fees if you're right (and loses $10 if wrong)."
+            f"{market_line}"
         )
 
     hdrs = [
