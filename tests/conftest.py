@@ -36,6 +36,23 @@ def isolate_circuit_breaker_state(tmp_path, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def isolate_tracker_db(tmp_path, monkeypatch):
+    """Redirect tracker.DB_PATH to a per-test temp DB and initialize the schema.
+
+    Prevents 'no such table: outcomes' (and related) errors when any code path
+    queries the tracker DB during tests that don't explicitly set one up.
+    The _db_initialized flag is also reset so init_db() actually runs against
+    the redirected path rather than short-circuiting on the module-level init.
+    """
+    import tracker
+
+    db = tmp_path / "tracker.db"
+    monkeypatch.setattr(tracker, "DB_PATH", db)
+    monkeypatch.setattr(tracker, "_db_initialized", False)
+    tracker.init_db()
+
+
+@pytest.fixture(autouse=True)
 def reset_open_meteo_circuit_breaker():
     """Reset all weather_markets circuit breakers before every test.
 
