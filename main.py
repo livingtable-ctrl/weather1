@@ -16,6 +16,22 @@ if sys.stdout and hasattr(sys.stdout, "reconfigure"):
 elif sys.platform == "win32":
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
 
+# Guard: show clear stdout error on missing packages (not a silent stderr crash)
+try:
+    import dotenv as _dotenv_check  # noqa: F401
+    import requests as _requests_check  # noqa: F401
+    import tabulate as _tabulate_check  # noqa: F401
+except ImportError as _e:
+    print(f"\n  ERROR: Required package missing: {_e}")
+    print("  Fix:  pip install -r requirements.txt")
+    print("  Note: On Windows use  py main.py  not  python main.py\n")
+    if sys.platform == "win32" and sys.stdin.isatty():
+        try:
+            input("  Press Enter to close...")
+        except (EOFError, KeyboardInterrupt):
+            pass
+    sys.exit(1)
+
 from dotenv import load_dotenv
 from tabulate import tabulate
 
@@ -4486,7 +4502,12 @@ def cmd_menu(client: KalshiClient):
                 continue  # skip the Press Enter pause — already returned to menu context
 
         elif name_stripped == "Today":
-            cmd_today(client)
+            try:
+                cmd_today(client)
+            except KeyboardInterrupt:
+                print()
+            except Exception as exc:
+                print(red(f"  Today error: {exc}"))
 
         elif name_stripped == "Cron":
             print(bold("\n  ── Run Cron ──\n"))
@@ -6191,7 +6212,13 @@ def main():
     if cmd == "menu":
         cmd_menu(client)
     elif cmd in ("today", "t"):
-        cmd_today(client)
+        try:
+            cmd_today(client)
+        except KeyboardInterrupt:
+            print()
+        except Exception as exc:
+            print(red(f"  Error: {exc}"), file=sys.stderr)
+            raise
     elif cmd == "brief":
         cmd_brief(client, send_email="--email" in args)
     elif cmd == "cron":
@@ -6350,4 +6377,20 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("\n  Interrupted.")
+    except SystemExit:
+        raise
+    except Exception as _top_exc:
+        import traceback
+
+        print(f"\n  Fatal error: {_top_exc}", file=sys.stderr)
+        traceback.print_exc()
+        if sys.platform == "win32":
+            try:
+                input("\n  Press Enter to close...")
+            except (EOFError, KeyboardInterrupt):
+                pass
+        sys.exit(1)
