@@ -1845,6 +1845,8 @@ def cmd_today(client: KalshiClient) -> None:
             continue
         if analysis.get("time_risk") == "HIGH":
             continue
+        if int(analysis.get("days_out", 1)) == 0:
+            continue
         top_picks.append((enriched, analysis))
         top_picks.sort(
             key=lambda x: abs(x[1].get("net_edge", x[1]["edge"])), reverse=True
