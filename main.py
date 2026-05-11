@@ -1194,6 +1194,8 @@ def _analyze_once(
         # A 7% mid-edge may shrink to 4% at ask; gating on mid lets those trades through.
         if not analysis:
             continue
+        if int(analysis.get("days_out", 1)) == 0:
+            continue
         _gate_edge = analysis.get("entry_side_edge", analysis["edge"])
         if abs(_gate_edge) < min_edge:
             continue
@@ -1246,12 +1248,15 @@ def _analyze_once(
             url = f"{_market_base_url()}/markets/{ticker}"
             urls.append((ticker, url))
             ticker_str = green(f"* {ticker}") if is_new else ticker
-            our_pct = f"{a['forecast_prob'] * 100:.0f}%"
             mkt_pct = f"{a['market_prob'] * 100:.0f}%"
+            # Show probability-point gap (directional: positive = favours recommended side)
+            _raw_edge = a.get("edge", 0.0)
+            _side = a["recommended_side"]
+            _disp_edge = _raw_edge if _side == "yes" else -_raw_edge
             edge_pct = (
-                green(f"+{net_edge * 100:.0f}%")
-                if net_edge > 0
-                else red(f"{net_edge * 100:.0f}%")
+                green(f"+{_disp_edge * 100:.0f}%")
+                if _disp_edge > 0
+                else red(f"{_disp_edge * 100:.0f}%")
             )
             # #64: show hedge tag when this trade reduces open directional exposure
             buy_side = bold(a["recommended_side"].upper())
@@ -1264,8 +1269,8 @@ def _analyze_once(
                     title,
                     m.get("_city", ""),
                     m.get("_date").isoformat() if m.get("_date") else "",
-                    prob_color(a["forecast_prob"]) + f" {our_pct}",
-                    f"{mkt_pct}",
+                    prob_color(a["forecast_prob"]),
+                    mkt_pct,
                     edge_pct,
                     risk,
                     _format_expiry(m.get("close_time", "")),
@@ -1523,7 +1528,9 @@ def _analyze_once(
         n_scanned = len(markets)
         if all_opps:
             best_m, best_a = max(all_opps, key=lambda x: abs(x[1]["edge"]))
-            best_edge = best_a["edge"]
+            _be_raw = best_a["edge"]
+            _be_side = best_a["recommended_side"]
+            best_edge = _be_raw if _be_side == "yes" else -_be_raw
             best_ticker = best_m.get("ticker", "")
             opp_word = "opp" if n_total == 1 else "opps"
             print(
