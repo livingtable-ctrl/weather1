@@ -643,11 +643,13 @@ def _cmd_cron_body(
 
         # Pre-warm forecast/model caches for all unique city/date pairs so the
         # parallel scan hits cache instead of making redundant network requests.
+        # Use parse_city_date (no network calls) to avoid tripping the forecast
+        # circuit breaker before batch_prewarm_forecasts gets a chance to run.
+        from weather_markets import parse_city_date as _parse_city_date
+
         _city_dates: set[tuple[str, str]] = set()
         for _m in markets:
-            _enriched_preview = ctx.enrich_with_forecast(_m)
-            _city = _enriched_preview.get("_city") or ""
-            _td = _enriched_preview.get("_date")
+            _city, _td = _parse_city_date(_m)
             if _city and _td:
                 _city_dates.add((_city, str(_td)))
         if _city_dates:

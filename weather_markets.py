@@ -822,7 +822,9 @@ def batch_prewarm_forecasts(
             (current, total, model_name, success).  Use for progress display.
     """
     if _forecast_cb.is_open():
-        _log.debug("[batch_prewarm] forecast circuit open — skipping batch pre-warm")
+        _log.warning(
+            "[batch_prewarm] forecast circuit breaker OPEN — skipping batch pre-warm (OM unavailable)"
+        )
         return 0
 
     # Collect unique cities that aren't already fully cached for every requested date.
@@ -2329,6 +2331,82 @@ MONTH_MAP = {
 }
 
 
+def parse_city_date(market: dict) -> tuple[str | None, date | None]:
+    """
+    Extract (city, target_date) from a market dict without any network calls.
+    Used for bulk collection of city/date pairs before batch pre-warming.
+    Returns (None, None) for unrecognised markets.
+    """
+    ticker = market.get("ticker", "")
+    title = (market.get("title") or "").lower()
+    ticker_up = ticker.upper()
+
+    city = None
+    if "NY" in ticker_up or "new york" in title:
+        city = "NYC"
+    elif "CHI" in ticker_up or "chicago" in title:
+        city = "Chicago"
+    elif (
+        "HIGHLA" in ticker_up
+        or "LOWLA" in ticker_up
+        or any(seg == "LA" for seg in ticker_up.split("-"))
+        or "los angeles" in title
+    ):
+        city = "LA"
+    elif "BOS" in ticker_up or "boston" in title:
+        city = "Boston"
+    elif "MIA" in ticker_up or "miami" in title:
+        city = "Miami"
+    elif "TDAL" in ticker_up or "dallas" in title:
+        city = "Dallas"
+    elif "TPHX" in ticker_up or "phoenix" in title:
+        city = "Phoenix"
+    elif "TSEA" in ticker_up or "seattle" in title:
+        city = "Seattle"
+    elif "DEN" in ticker_up or "denver" in title:
+        city = "Denver"
+    elif "TATL" in ticker_up or "atlanta" in title:
+        city = "Atlanta"
+    elif "AUS" in ticker_up or "austin" in title:
+        city = "Austin"
+    elif "TDC" in ticker_up or "washington" in title:
+        city = "Washington"
+    elif "TPHIL" in ticker_up or "philadelphia" in title:
+        city = "Philadelphia"
+    elif "TOKC" in ticker_up or "oklahoma" in title:
+        city = "OklahomaCity"
+    elif "TSFO" in ticker_up or "san francisco" in title:
+        city = "SanFrancisco"
+    elif "TMIN" in ticker_up or "minneapolis" in title:
+        city = "Minneapolis"
+    elif "HOUM" in ticker_up or "houston" in title:
+        city = "Houston"
+    elif "TSATX" in ticker_up or "san antonio" in title:
+        city = "SanAntonio"
+
+    target_date = None
+    hourly_match = re.search(r"(\d{2})([A-Z]{3})(\d{2})(\d{2})", ticker_up)
+    daily_match = re.search(r"(\d{2})([A-Z]{3})(\d{2})(?!\d)", ticker_up)
+    if hourly_match:
+        yy, mon_str, dd, _ = hourly_match.groups()
+        month = MONTH_MAP.get(mon_str)
+        if month:
+            try:
+                target_date = date(2000 + int(yy), month, int(dd))
+            except ValueError:
+                pass
+    elif daily_match:
+        yy, mon_str, dd = daily_match.groups()
+        month = MONTH_MAP.get(mon_str)
+        if month:
+            try:
+                target_date = date(2000 + int(yy), month, int(dd))
+            except ValueError:
+                pass
+
+    return city, target_date
+
+
 def enrich_with_forecast(market: dict) -> dict:
     """
     Attach forecast data to a market dict.
@@ -2584,6 +2662,11 @@ def _parse_market_condition(market: dict) -> dict | None:
     # Extract the condition part after the date, e.g. "T68", "T53", "B67.5"
     cond_match = re.search(r"-([TB])(\d+(?:\.\d+)?)$", ticker)
     if not cond_match:
+        _log.warning(
+            "_parse_market_condition[%s]: no T/B suffix match in ticker (title=%r)",
+            ticker,
+            title[:80],
+        )
         return None
 
     kind, val_str = cond_match.group(1), cond_match.group(2)
@@ -2599,6 +2682,16 @@ def _parse_market_condition(market: dict) -> dict | None:
         elif "<" in title or "below" in title or " be <" in title:
             return {"type": "below", "threshold": val}
         else:
+            _log.warning(
+                "_parse_market_condition[%s]: T-type but no direction keyword in title=%r "
+                "(has_lt=%s has_gt=%s has_below=%s has_above=%s)",
+                ticker,
+                title[:80],
+                "<" in title,
+                ">" in title,
+                "below" in title,
+                "above" in title,
+            )
             return None
 
 
@@ -3792,13 +3885,28 @@ def analyze_trade(enriched: dict) -> dict | None:
     city = enriched.get("_city")
     hour = enriched.get("_hour")
 
+    _tkr = enriched.get("ticker", "?")
     if not forecast:
+        _log.warning(
+            "analyze_trade[%s]: gate=no_forecast city=%s date=%s",
+            _tkr,
+            city,
+            target_date,
+        )
         return None  # no forecast data available for this market
     if not target_date:
+        _log.warning("analyze_trade[%s]: gate=no_date city=%s", _tkr, city)
         return None  # could not parse target date from ticker
     if not city:
+        _log.warning("analyze_trade[%s]: gate=no_city date=%s", _tkr, target_date)
         return None  # unrecognized city in ticker
     if target_date < datetime.now(UTC).date():
+        _log.warning(
+            "analyze_trade[%s]: gate=past_date target=%s today=%s",
+            _tkr,
+            target_date,
+            datetime.now(UTC).date(),
+        )
         return None  # market target date already passed — Kalshi hasn't settled yet but no edge
 
     # P0.3: Reject stale enriched data. Absence of timestamp → treat as fresh.
@@ -3818,15 +3926,28 @@ def analyze_trade(enriched: dict) -> dict | None:
 
     condition = _parse_market_condition(enriched)
     if not condition:
+        _log.warning(
+            "analyze_trade[%s]: gate=condition_parse_failed title=%r ticker=%s",
+            _tkr,
+            enriched.get("title", "")[:80],
+            _tkr,
+        )
         return None
 
     coords = CITY_COORDS.get(city)
     if not coords:
+        _log.warning("analyze_trade[%s]: gate=no_coords city=%s", _tkr, city)
         return None
 
     # ── Days-out gate: only trade markets expiring within MAX_DAYS_OUT days ──
     _days_out_check = max(0, (target_date - datetime.now(UTC).date()).days)
     if _days_out_check > MAX_DAYS_OUT:
+        _log.warning(
+            "analyze_trade[%s]: gate=days_out days=%d max=%d",
+            _tkr,
+            _days_out_check,
+            MAX_DAYS_OUT,
+        )
         return None
 
     # ── Liquidity gate: skip markets with no real open interest ──────────────
@@ -3835,14 +3956,29 @@ def analyze_trade(enriched: dict) -> dict | None:
         enriched.get("open_interest_fp") or enriched.get("open_interest") or 0
     )
     if _vol < MIN_LIQUIDITY:
+        _log.warning(
+            "analyze_trade[%s]: gate=liquidity vol=%.0f oi=%.0f combined=%.0f min=%d "
+            "(volume_fp=%s volume=%s oi_fp=%s oi=%s)",
+            _tkr,
+            float(enriched.get("volume_fp") or enriched.get("volume") or 0),
+            float(
+                enriched.get("open_interest_fp") or enriched.get("open_interest") or 0
+            ),
+            _vol,
+            MIN_LIQUIDITY,
+            enriched.get("volume_fp"),
+            enriched.get("volume"),
+            enriched.get("open_interest_fp"),
+            enriched.get("open_interest"),
+        )
         return None
 
     # ── Volume gate: price is unreliable when trade count is tiny ────────────
     _raw_vol = float(enriched.get("volume_fp") or enriched.get("volume") or 0)
     if _raw_vol < MIN_SIGNAL_VOLUME:
-        _log.debug(
-            "Skipping %s — volume %.0f below MIN_SIGNAL_VOLUME %d",
-            enriched.get("ticker", "?"),
+        _log.warning(
+            "analyze_trade[%s]: gate=min_signal_volume raw_vol=%.0f min=%d",
+            _tkr,
             _raw_vol,
             MIN_SIGNAL_VOLUME,
         )
@@ -3852,6 +3988,12 @@ def analyze_trade(enriched: dict) -> dict | None:
     _prices = parse_market_price(enriched)
     # Skip markets where both bid and ask are zero (no real quote).
     if not _prices.get("has_quote", True):
+        _log.warning(
+            "analyze_trade[%s]: gate=no_quote bid=%.3f ask=%.3f",
+            _tkr,
+            _prices.get("yes_bid", 0),
+            _prices.get("yes_ask", 0),
+        )
         return None
     # Market divergence gate: when the market is highly confident (>70%) and
     # our model strongly disagrees (<25%), the market almost certainly has
@@ -3868,6 +4010,13 @@ def analyze_trade(enriched: dict) -> dict | None:
     if _yes_ask > 0 and _yes_bid > 0:
         _mid = (_yes_ask + _yes_bid) / 2
         if _mid > 0 and (_yes_ask - _yes_bid) / _mid > 0.30:
+            _log.warning(
+                "analyze_trade[%s]: gate=spread bid=%.3f ask=%.3f spread_pct=%.1f%%",
+                _tkr,
+                _yes_bid,
+                _yes_ask,
+                (_yes_ask - _yes_bid) / _mid * 100,
+            )
             return None  # spread > 30% of mid — not tradeable
 
     # ── Extreme-price gate: skip near-certain markets ────────────────────────
@@ -3879,9 +4028,9 @@ def analyze_trade(enriched: dict) -> dict | None:
     if _yes_ask > 0 and (
         _yes_ask < MIN_MARKET_PRICE or _yes_ask > 1 - MIN_MARKET_PRICE
     ):
-        _log.debug(
-            "Skipping %s — extreme market price yes_ask=%.3f (gate=%.2f)",
-            enriched.get("ticker", "?"),
+        _log.warning(
+            "analyze_trade[%s]: gate=extreme_price yes_ask=%.3f gate=%.2f",
+            _tkr,
             _yes_ask,
             MIN_MARKET_PRICE,
         )
