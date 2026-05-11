@@ -4506,8 +4506,15 @@ def cmd_menu(client: KalshiClient):
                 cmd_today(client)
             except KeyboardInterrupt:
                 print()
-            except Exception as exc:
-                print(red(f"  Today error: {exc}"))
+            except BaseException as exc:
+                import traceback as _tb
+
+                print(red(f"\n  Today crashed: {type(exc).__name__}: {exc}"))
+                _tb.print_exc()
+                try:
+                    input(dim("  Press Enter to continue..."))
+                except (EOFError, KeyboardInterrupt):
+                    pass
 
         elif name_stripped == "Cron":
             print(bold("\n  ── Run Cron ──\n"))
@@ -6381,12 +6388,17 @@ if __name__ == "__main__":
         main()
     except KeyboardInterrupt:
         print("\n  Interrupted.")
-    except SystemExit:
+    except SystemExit as _se:
+        if _se.code not in (0, None) and sys.platform == "win32":
+            try:
+                input(f"\n  Exited (code {_se.code}). Press Enter to close...")
+            except (EOFError, KeyboardInterrupt):
+                pass
         raise
     except Exception as _top_exc:
         import traceback
 
-        print(f"\n  Fatal error: {_top_exc}", file=sys.stderr)
+        print(f"\n  Fatal error: {_top_exc}")
         traceback.print_exc()
         if sys.platform == "win32":
             try:
