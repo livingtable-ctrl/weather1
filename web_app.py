@@ -990,6 +990,27 @@ setInterval(() => {{
             except Exception:
                 _drift = {"drifting": False}
 
+            try:
+                from paper import get_daily_pnl
+
+                today_pnl = round(get_daily_pnl(), 2)
+            except Exception:
+                today_pnl = None
+
+            try:
+                import paper as _paper
+
+                starting_balance = float(_paper.STARTING_BALANCE)
+            except Exception:
+                starting_balance = None
+
+            try:
+                from order_executor import _daily_paper_spend
+
+                daily_spend = round(_daily_paper_spend(), 2)
+            except Exception:
+                daily_spend = None
+
             data = {
                 "balance": round(get_balance(), 2),
                 "open_count": len(get_open_trades()),
@@ -999,6 +1020,9 @@ setInterval(() => {{
                 "mean_slippage_cents": mean_slippage,
                 "kill_switch_active": _KS_PATH.exists(),
                 "brier_drift": _drift,
+                "today_pnl": today_pnl,
+                "starting_balance": starting_balance,
+                "daily_spend": daily_spend,
                 "timestamp": datetime.now(UTC).isoformat(),
             }
         except Exception as e:
@@ -1232,6 +1256,8 @@ setInterval(() => {{
     def api_config():
         """BotConfig fields for the Settings tab."""
         try:
+            import os as _os
+
             from config import BotConfig
 
             cfg = BotConfig()
@@ -1247,6 +1273,9 @@ setInterval(() => {{
                     "enable_micro_live": cfg.enable_micro_live,
                     "min_brier_samples": cfg.min_brier_samples,
                     "kalshi_fee_rate": cfg.kalshi_fee_rate,
+                    # Env-var-only settings (not in BotConfig dataclass)
+                    "env": _os.getenv("KALSHI_ENV", "demo"),
+                    "strategy": _os.getenv("SIZING_STRATEGY", "kelly"),
                 }
             )
         except Exception as exc:

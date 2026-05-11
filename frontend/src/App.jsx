@@ -228,6 +228,153 @@ function StatCard({ label, value, delta, deltaTone, sub, tooltip }) {
 }
 
 // ---------------------------------------------------------------------------
+// BalanceSparkline  — Fix 5
+// Inline SVG chart of /api/balance_history  [{ts, balance, event}]
+// ---------------------------------------------------------------------------
+function BalanceSparkline({ hist }) {
+  if (!hist || hist.length < 2) return null;
+
+  const W = 900, H = 120, PAD = { top: 12, right: 16, bottom: 24, left: 56 };
+  const innerW = W - PAD.left - PAD.right;
+  const innerH = H - PAD.top - PAD.bottom;
+
+  const balances = hist.map(p => p.balance);
+  const minB = Math.min(...balances);
+  const maxB = Math.max(...balances);
+  const rangeB = maxB - minB || 1;
+
+  const xs = hist.map((_, i) => PAD.left + (i / (hist.length - 1)) * innerW);
+  const ys = hist.map(p => PAD.top + (1 - (p.balance - minB) / rangeB) * innerH);
+
+  const linePts = xs.map((x, i) => `${x},${ys[i]}`).join(' ');
+  const areaPts = [
+    `${xs[0]},${PAD.top + innerH}`,
+    ...xs.map((x, i) => `${x},${ys[i]}`),
+    `${xs[xs.length - 1]},${PAD.top + innerH}`,
+  ].join(' ');
+
+  // Mark event points (non-null event field)
+  const events = hist.filter(p => p.event);
+  const lastBalance = balances[balances.length - 1];
+
+  return (
+    <section style={{
+      background: 'var(--bg-card)', border: '1px solid var(--border)',
+      borderRadius: 14, padding: '20px', marginBottom: 18,
+    }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10 }}>
+        <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600 }}>Balance history</h3>
+        <span style={{ fontSize: 12, color: 'var(--text-muted)', fontFamily: 'ui-monospace, monospace' }}>
+          ${Number(lastBalance).toFixed(2)} current
+        </span>
+      </div>
+      <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 'auto', display: 'block', overflow: 'visible' }}>
+        <defs>
+          <linearGradient id="sparkGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.18" />
+            <stop offset="100%" stopColor="#3b82f6" stopOpacity="0.01" />
+          </linearGradient>
+        </defs>
+        {/* Filled area */}
+        <polygon points={areaPts} fill="url(#sparkGrad)" />
+        {/* Line */}
+        <polyline points={linePts} fill="none" stroke="#3b82f6" strokeWidth="2" strokeLinejoin="round" />
+        {/* Event dots */}
+        {events.map((p, i) => {
+          const idx = hist.indexOf(p);
+          return <circle key={i} cx={xs[idx]} cy={ys[idx]} r="4" fill="#f59e0b" stroke="white" strokeWidth="1.5" />;
+        })}
+        {/* Current balance endpoint dot */}
+        <circle cx={xs[xs.length - 1]} cy={ys[ys.length - 1]} r="4" fill="#3b82f6" stroke="white" strokeWidth="2" />
+        {/* Y-axis labels */}
+        <text x={PAD.left - 6} y={PAD.top + 4} textAnchor="end" fontSize="10" fill="var(--text-faint)"
+          fontFamily="ui-monospace, monospace">${Math.round(maxB)}</text>
+        <text x={PAD.left - 6} y={PAD.top + innerH + 4} textAnchor="end" fontSize="10" fill="var(--text-faint)"
+          fontFamily="ui-monospace, monospace">${Math.round(minB)}</text>
+        {/* X-axis: first and last dates */}
+        {hist[0]?.ts && (
+          <text x={xs[0]} y={H - 4} textAnchor="start" fontSize="10" fill="var(--text-faint)">
+            {new Date(hist[0].ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+          </text>
+        )}
+        {hist[hist.length - 1]?.ts && (
+          <text x={xs[xs.length - 1]} y={H - 4} textAnchor="end" fontSize="10" fill="var(--text-faint)">
+            {new Date(hist[hist.length - 1].ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+          </text>
+        )}
+      </svg>
+      {events.length > 0 && (
+        <div style={{ fontSize: 10, color: 'var(--text-faint)', marginTop: 4 }}>
+          <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: '#f59e0b', marginRight: 4, verticalAlign: 'middle' }} />
+          Yellow dots = account events
+        </div>
+      )}
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// SystemEventsCard  — Fix 4
+// Renders M.alerts from /api/system-events as a timestamped feed
+// ---------------------------------------------------------------------------
+function SystemEventsCard({ alerts }) {
+  const items = Array.isArray(alerts) ? alerts.slice(0, 6) : [];
+
+  function relTime(ts) {
+    if (!ts) return '';
+    const diffMs = Date.now() - new Date(ts);
+    const mins = Math.round(diffMs / 60_000);
+    if (mins < 1) return 'just now';
+    if (mins < 60) return `${mins}m ago`;
+    const hrs = Math.round(mins / 60);
+    if (hrs < 24) return `${hrs}h ago`;
+    return `${Math.round(hrs / 24)}d ago`;
+  }
+
+  function badgeStyle(level) {
+    const styles = {
+      error:   { background: '#fee2e2', color: '#dc2626' },
+      warning: { background: '#fef9c3', color: '#ca8a04' },
+      info:    { background: '#dbeafe', color: '#2563eb' },
+    };
+    return styles[level] || styles.info;
+  }
+
+  return (
+    <section style={{
+      background: 'var(--bg-card)', border: '1px solid var(--border)',
+      borderRadius: 14, padding: '20px',
+    }}>
+      <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600, marginBottom: 14 }}>System events</h3>
+      {items.length === 0 ? (
+        <div style={{ color: 'var(--text-faint)', fontSize: 13, padding: '8px 0' }}>No recent events.</div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {items.map((evt, i) => (
+            <div key={i} style={{
+              display: 'flex', alignItems: 'flex-start', gap: 10,
+              padding: '10px 12px', borderRadius: 8, background: 'var(--bg-subtle)',
+            }}>
+              <span style={{
+                ...badgeStyle(evt.level),
+                fontSize: 10, fontWeight: 700, padding: '2px 7px',
+                borderRadius: 4, textTransform: 'uppercase', whiteSpace: 'nowrap', marginTop: 1,
+              }}>
+                {evt.level || 'info'}
+              </span>
+              <span style={{ fontSize: 13, flex: 1, lineHeight: 1.5 }}>{evt.message || evt.msg || JSON.stringify(evt)}</span>
+              <span style={{ fontSize: 11, color: 'var(--text-faint)', whiteSpace: 'nowrap', marginTop: 2 }}>
+                {relTime(evt.ts || evt.timestamp)}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // OverviewTab
 // ---------------------------------------------------------------------------
 function OverviewTab() {
@@ -236,15 +383,18 @@ function OverviewTab() {
   const grad = s.graduation;
   const today = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
   const pnlToday = s.today_pnl;
+  const pnlKnown = pnlToday != null;
 
   return (
     <main style={{ maxWidth: 1360, margin: '0 auto', padding: '24px 28px 40px' }}>
       <div style={{ marginBottom: 18 }}>
         <div style={{ color: 'var(--text-muted)', fontSize: 12, fontWeight: 500, marginBottom: 3 }}>{today}</div>
         <h1 style={{ margin: 0, fontSize: 28, fontWeight: 700, letterSpacing: '-0.025em', fontFamily: "'Source Serif 4', Georgia, serif" }}>
-          {pnlToday >= 0
-            ? <>Up <span style={{ color: '#16a34a' }}>+${pnlToday.toFixed(2)}</span> today — {s.open_count} positions open{grad.ready ? ', graduation gate cleared.' : '.'}</>
-            : <>Down <span style={{ color: '#ef4444' }}>-${Math.abs(pnlToday).toFixed(2)}</span> today — {s.open_count} positions open.</>
+          {!pnlKnown
+            ? <>{s.open_count} positions open{grad.ready ? ' — graduation gate cleared.' : '.'}</>
+            : pnlToday >= 0
+              ? <>Up <span style={{ color: '#16a34a' }}>+${Number(pnlToday).toFixed(2)}</span> today — {s.open_count} positions open{grad.ready ? ', graduation gate cleared.' : '.'}</>
+              : <>Down <span style={{ color: '#ef4444' }}>-${Math.abs(Number(pnlToday)).toFixed(2)}</span> today — {s.open_count} positions open.</>
           }
         </h1>
       </div>
@@ -341,7 +491,7 @@ function OverviewTab() {
       </div>
 
       {/* Summary cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 18 }}>
         {[
           { title: 'Open Positions',    count: M.positions.length,         desc: 'View all with detail' },
           { title: 'Top Opportunities', count: M.opportunities.length,     desc: 'Signals with edge' },
@@ -358,6 +508,12 @@ function OverviewTab() {
           </section>
         ))}
       </div>
+
+      {/* Balance history sparkline — Fix 5 */}
+      <BalanceSparkline hist={M.balanceHist} />
+
+      {/* System events feed — Fix 4 */}
+      <SystemEventsCard alerts={M.alerts} />
     </main>
   );
 }
@@ -1078,12 +1234,12 @@ function SettingsTab() {
   const [overrideDuration, setOverrideDuration] = useState(60);
   const [overrideMsg, setOverrideMsg] = useState('');
 
-  // Config params — from /api/config (M.config) merged with stats fallbacks
+  // Config params — all read from /api/config (M.config); stats fallback for max_daily_spend
   const configRows = [
-    { key: 'strategy',          label: 'Sizing strategy',     value: s.strategy || '—' },
-    { key: 'env',               label: 'Environment',         value: s.env || '—' },
-    { key: 'max_daily_spend',   label: 'Max daily spend',     value: s.max_daily_spend != null ? '$' + s.max_daily_spend : '—' },
-    { key: 'min_edge',          label: 'Min edge threshold',  value: M.config?.min_edge != null ? (M.config.min_edge * 100).toFixed(1) + '%' : '— (load /api/config)' },
+    { key: 'strategy',          label: 'Sizing strategy',     value: M.config?.strategy || s.strategy || '—' },
+    { key: 'env',               label: 'Environment',         value: M.config?.env       || s.env       || '—' },
+    { key: 'max_daily_spend',   label: 'Max daily spend',     value: (M.config?.max_daily_spend ?? s.max_daily_spend) != null ? '$' + (M.config?.max_daily_spend ?? s.max_daily_spend) : '—' },
+    { key: 'min_edge',          label: 'Min edge threshold',  value: M.config?.min_edge != null ? (M.config.min_edge * 100).toFixed(1) + '%' : '—' },
     { key: 'strong_edge',       label: 'Strong edge',         value: M.config?.strong_edge != null ? (M.config.strong_edge * 100).toFixed(1) + '%' : '—' },
     { key: 'drawdown_halt_pct', label: 'Drawdown halt %',     value: M.config?.drawdown_halt_pct != null ? M.config.drawdown_halt_pct + '%' : '—' },
     { key: 'max_days_out',      label: 'Max days out',        value: M.config?.max_days_out != null ? M.config.max_days_out + ' days' : '—' },

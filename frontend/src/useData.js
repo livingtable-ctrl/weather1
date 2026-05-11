@@ -63,18 +63,26 @@ async function safe(path) {
  * grad    → {trades_done, win_rate, total_pnl, brier, ready,
  *             fear_greed_score, fear_greed_label}
  */
-function mapStats(status, grad, prevStats) {
+function mapStats(status, grad, config, prevStats) {
   const base = { ...prevStats };
 
   if (status && !status.error) {
-    if (status.balance      != null) base.balance       = status.balance;
-    if (status.open_count   != null) base.open_count    = status.open_count;
-    if (status.brier        != null) base.brier         = status.brier;
-    if (status.kill_switch_active != null) base.kill_switch = status.kill_switch_active;
-    if (status.fear_greed_score  != null) {
+    if (status.balance          != null) base.balance          = status.balance;
+    if (status.open_count       != null) base.open_count       = status.open_count;
+    if (status.brier            != null) base.brier            = status.brier;
+    if (status.kill_switch_active != null) base.kill_switch    = status.kill_switch_active;
+    if (status.today_pnl        != null) base.today_pnl        = status.today_pnl;
+    if (status.starting_balance != null) base.starting_balance = status.starting_balance;
+    if (status.daily_spend      != null) base.daily_spend      = status.daily_spend;
+    if (status.fear_greed_score != null) {
       base.fear_greed       = status.fear_greed_score;
       base.fear_greed_label = status.fear_greed_label;
     }
+  }
+
+  // max_daily_spend lives in /api/config, not /api/status
+  if (config && !config.error && config.max_daily_spend != null) {
+    base.max_daily_spend = config.max_daily_spend;
   }
 
   if (grad && !grad.error) {
@@ -282,8 +290,8 @@ export default function useData(setConnected) {
         // Start from the current state so SSE patches aren't wiped
         const next = { ...prev };
 
-        // Stats (status + graduation)
-        const statsPatch = mapStats(statusR, gradR, prev.stats);
+        // Stats (status + graduation + config for max_daily_spend)
+        const statsPatch = mapStats(statusR, gradR, configR, prev.stats);
         next.stats = { ...MOCK.stats, ...statsPatch };
 
         // Circuit breakers
