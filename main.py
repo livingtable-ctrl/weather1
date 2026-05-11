@@ -68,6 +68,7 @@ from weather_markets import (
     CITY_COORDS,
     _feels_like,
     analyze_trade,
+    batch_prewarm_forecasts,
     check_ensemble_circuit_health,  # noqa: F401 — used via main.* in cron.py
     detect_hedge_opportunity,
     enrich_with_forecast,
@@ -77,6 +78,7 @@ from weather_markets import (
     get_weather_forecast,
     get_weather_markets,
     is_liquid,
+    parse_city_date,
     parse_market_price,
 )
 
@@ -1748,6 +1750,15 @@ def cmd_today(client: KalshiClient) -> None:
         print(red(f"  Could not load markets: {e}"))
         return
 
+    # Pre-warm the forecast cache in one batch before the per-market loop.
+    # No-op if the cache is already warm from a recent cron run.
+    _city_dates: set[tuple[str, str]] = set()
+    for _m in markets:
+        _city, _td = parse_city_date(_m)
+        if _city and _td:
+            _city_dates.add((_city, str(_td)))
+    batch_prewarm_forecasts(_city_dates)
+
     best_m = None
     best_a = None
     best_abs_edge = 0.0
@@ -2001,6 +2012,12 @@ def cmd_brief(client: KalshiClient, send_email: bool = False) -> None:
     print(bold("\n  ── Top Opportunities ──"))
     try:
         markets = get_weather_markets(client)
+        _cd: set[tuple[str, str]] = set()
+        for _m in markets:
+            _c, _d = parse_city_date(_m)
+            if _c and _d:
+                _cd.add((_c, str(_d)))
+        batch_prewarm_forecasts(_cd)
         analyzed = []
         for m in markets:
             try:
