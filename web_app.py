@@ -1630,3 +1630,15 @@ def start_web(client, port: int = 5000, open_browser: bool = True) -> None:
     log = logging.getLogger("werkzeug")
     log.setLevel(logging.ERROR)
     _app.run(host="127.0.0.1", port=port, debug=False, use_reloader=False)
+
+
+if __name__ == "__main__":
+    # Run the dashboard standalone (no live Kalshi client — read-only paper mode)
+    from kalshi_client import KalshiClient
+
+    try:
+        _standalone_client = KalshiClient()
+    except Exception:
+        _standalone_client = None  # type: ignore[assignment]
+
+    start_web(_standalone_client, port=5000, open_browser=False)
