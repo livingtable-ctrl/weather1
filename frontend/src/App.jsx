@@ -252,16 +252,16 @@ function OverviewTab() {
       {/* KPI row */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 18 }}>
         <StatCard label="Paper balance" tooltip="Simulated cash balance in the paper-trading sandbox. No real money."
-          value={'$' + s.balance.toFixed(2)}
-          delta={(s.balance >= s.starting_balance ? '+' : '') + ((s.balance - s.starting_balance) / s.starting_balance * 100).toFixed(1) + '%'}
+          value={'$' + Number(s.balance).toFixed(2)}
+          delta={(s.balance >= s.starting_balance ? '+' : '') + ((Number(s.balance) - Number(s.starting_balance)) / Number(s.starting_balance) * 100).toFixed(1) + '%'}
           deltaTone={s.balance >= s.starting_balance ? 'pos' : 'neg'}
-          sub={'from $' + s.starting_balance.toFixed(2) + ' start'} />
+          sub={'from $' + Number(s.starting_balance).toFixed(2) + ' start'} />
         <StatCard label="Open positions" tooltip="Active contracts that haven't expired or been closed yet."
           value={s.open_count} sub={s.settled_count + ' settled so far'} />
         <StatCard label="Win rate" tooltip="% of settled trades that were profitable."
           value={s.win_rate != null ? (s.win_rate * 100).toFixed(1) + '%' : '—'} />
         <StatCard label="Brier score" tooltip="Forecast quality (0=perfect, 0.25=random). Lower is better. Target ≤0.20."
-          value={s.brier != null ? s.brier.toFixed(3) : '—'}
+          value={s.brier != null ? Number(s.brier).toFixed(3) : '—'}
           deltaTone="pos" sub="target ≤0.20" />
       </div>
 
@@ -729,18 +729,20 @@ function ForecastTab() {
         <p style={{ color: 'var(--text-muted)', fontSize: 12, marginBottom: 14, lineHeight: 1.4 }}>
           Lower = better. Target ≤0.20 per city. Accumulates after 10+ settled trades.
         </p>
-        {Object.entries(M.cityBrier).sort((a, b) => a[1] - b[1]).map(([city, brier]) => {
-          const pct = ((0.25 - brier) / 0.25) * 100;
+        {Object.entries(M.cityBrier || {}).sort((a, b) => Number(a[1]) - Number(b[1])).map(([city, brier]) => {
+          const b = brier != null ? Number(brier) : null;
+          const color = b == null ? '#8b949e' : b < 0.20 ? '#16a34a' : b < 0.30 ? '#ca8a04' : '#ef4444';
+          const pct = b != null ? Math.max(0, Math.min(100, ((0.25 - b) / 0.25) * 100)) : 0;
           return (
             <div key={city} style={{ marginBottom: 10 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 5 }}>
                 <span style={{ fontWeight: 600 }}>{normCity(city)}</span>
-                <span style={{ fontFamily: 'ui-monospace, monospace', fontSize: 11, fontWeight: 700, color: brier < 0.20 ? '#16a34a' : brier < 0.30 ? '#ca8a04' : '#ef4444' }}>
-                  {brier.toFixed(3)}
+                <span style={{ fontFamily: 'ui-monospace, monospace', fontSize: 11, fontWeight: 700, color }}>
+                  {b != null ? b.toFixed(3) : '—'}
                 </span>
               </div>
               <div style={{ height: 6, background: 'var(--bg-muted)', borderRadius: 3, overflow: 'hidden' }}>
-                <div style={{ width: pct + '%', height: '100%', background: brier < 0.20 ? '#16a34a' : brier < 0.30 ? '#ca8a04' : '#ef4444' }} />
+                <div style={{ width: pct + '%', height: '100%', background: color }} />
               </div>
             </div>
           );
@@ -776,15 +778,15 @@ function AnalyticsTab() {
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 18 }}>
         <StatCard label="Total P&L" tooltip="Cumulative P&L across all settled trades."
-          value={M.stats.month_pnl != null ? (M.stats.month_pnl >= 0 ? '+' : '') + '$' + M.stats.month_pnl.toFixed(2) : '—'}
+          value={M.stats.month_pnl != null ? (M.stats.month_pnl >= 0 ? '+' : '') + '$' + Number(M.stats.month_pnl).toFixed(2) : '—'}
           sub={M.stats.settled_count + ' settled trades'} />
         <StatCard label="Win rate" tooltip="% of settled trades that were profitable."
-          value={M.stats.win_rate != null ? (M.stats.win_rate * 100).toFixed(1) + '%' : '—'} />
+          value={M.stats.win_rate != null ? (Number(M.stats.win_rate) * 100).toFixed(1) + '%' : '—'} />
         <StatCard label="AUC" tooltip="Area under ROC curve. 0.5 = random, 1.0 = perfect. Above 0.70 is solid."
-          value={M.auc != null ? M.auc.toFixed(3) : '—'} sub="ROC area" />
+          value={M.auc != null ? Number(M.auc).toFixed(3) : '—'} sub="ROC area" />
         <StatCard label="Avg price improve" tooltip="Avg cents better than displayed ask on fills."
-          value={M.priceImprovement?.total_trades > 0 ? '+' + M.priceImprovement.avg_improvement_cents.toFixed(2) + '¢' : '—'}
-          sub={M.priceImprovement?.total_trades > 0 ? M.priceImprovement.positive_pct.toFixed(0) + '% positive' : 'No real fills yet'} />
+          value={M.priceImprovement?.total_trades > 0 ? '+' + Number(M.priceImprovement.avg_improvement_cents).toFixed(2) + '¢' : '—'}
+          sub={M.priceImprovement?.total_trades > 0 ? Number(M.priceImprovement.positive_pct).toFixed(0) + '% positive' : 'No real fills yet'} />
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 18, marginBottom: 18 }}>
@@ -850,9 +852,9 @@ function AnalyticsTab() {
               <tr key={city} style={{ borderBottom: '1px solid var(--bg-muted)' }}>
                 <td style={{ padding: '12px 16px', fontWeight: 600 }}>{normCity(city)}</td>
                 <td style={{ padding: '12px 16px', textAlign: 'right', fontFamily: 'ui-monospace, monospace' }}>{cal.n ?? '—'}</td>
-                <td style={{ padding: '12px 16px', textAlign: 'right', fontFamily: 'ui-monospace, monospace', color: (cal.brier ?? 1) < 0.20 ? '#16a34a' : '#ca8a04' }}>{cal.brier != null ? cal.brier.toFixed(3) : '—'}</td>
+                <td style={{ padding: '12px 16px', textAlign: 'right', fontFamily: 'ui-monospace, monospace', color: (Number(cal.brier) || 1) < 0.20 ? '#16a34a' : '#ca8a04' }}>{cal.brier != null ? Number(cal.brier).toFixed(3) : '—'}</td>
                 <td style={{ padding: '12px 16px', textAlign: 'right', fontFamily: 'ui-monospace, monospace', color: 'var(--text-muted)' }}>
-                  {cal.bias != null ? (cal.bias >= 0 ? '+' : '') + cal.bias.toFixed(3) : '—'}
+                  {cal.bias != null ? (cal.bias >= 0 ? '+' : '') + Number(cal.bias).toFixed(3) : '—'}
                 </td>
               </tr>
             ))}
