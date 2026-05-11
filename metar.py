@@ -61,6 +61,12 @@ _session.mount(
     ),
 )
 
+# In-process cache: station → (result, monotonic_time).
+# METAR stations update every 20–30 min; 5-min TTL eliminates redundant HTTP
+# calls when cmd_today / cmd_scan loop over many markets for the same cities.
+_METAR_CACHE: dict[str, tuple[dict | None, float]] = {}
+_METAR_CACHE_TTL = 300  # 5 minutes
+
 
 def fetch_metar(station: str) -> dict | None:
     """
@@ -70,6 +76,15 @@ def fetch_metar(station: str) -> dict | None:
         dict with keys: current_temp_f, station, obs_time (datetime UTC)
         or None on failure
     """
+    import time as _time
+
+    key = station.upper()
+    cached = _METAR_CACHE.get(key)
+    if cached is not None:
+        result, ts = cached
+        if _time.monotonic() - ts < _METAR_CACHE_TTL:
+            return result
+
     try:
         resp = _session.get(
             _METAR_URL,
@@ -80,9 +95,11 @@ def fetch_metar(station: str) -> dict | None:
         data = resp.json()
     except Exception as exc:
         _log.debug("fetch_metar(%s): %s", station, exc)
+        _METAR_CACHE[key] = (None, _time.monotonic())
         return None
 
     if not data:
+        _METAR_CACHE[key] = (None, _time.monotonic())
         return None
 
     obs = data[0]
@@ -135,6 +152,7 @@ def fetch_metar(station: str) -> dict | None:
             "%s: METAR obsTime missing or unparseable — refusing to use stale data",
             station,
         )
+        _METAR_CACHE[key] = (None, _time.monotonic())
         return None
     age_minutes = (datetime.now(UTC) - obs_time).total_seconds() / 60
     if age_minutes > 90:
@@ -143,13 +161,16 @@ def fetch_metar(station: str) -> dict | None:
             station,
             int(age_minutes),
         )
+        _METAR_CACHE[key] = (None, _time.monotonic())
         return None
 
-    return {
+    result = {
         "current_temp_f": temp_f,
         "station": obs.get("icaoId", station),
         "obs_time": obs_time,
     }
+    _METAR_CACHE[key] = (result, _time.monotonic())
+    return result
 
 
 def check_metar_lockout(
