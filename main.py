@@ -1859,6 +1859,7 @@ def cmd_today(client: KalshiClient) -> None:
     ticker = best_m.get("ticker", "")
     title = best_m.get("title") or ticker
     net_edge = best_a.get("net_edge", best_a["edge"])
+    prob_edge = best_a.get("edge", net_edge)  # raw probability-point gap
     forecast_prob = best_a["forecast_prob"]
     market_prob = best_a["market_prob"]
     side = best_a["recommended_side"]
@@ -1908,8 +1909,14 @@ def cmd_today(client: KalshiClient) -> None:
     print()
     print(f"  Our model:   {bold(f'{forecast_prob:.0%}')} chance of YES")
     print(f"  Market says: {bold(f'{market_prob:.0%}')} chance of YES")
-    edge_str = green(f"+{net_edge:.0%}") if net_edge > 0 else red(f"{net_edge:.0%}")
-    print(f"  Your edge:   {edge_str} (after fees)")
+    _disp_edge = prob_edge if side == "yes" else -prob_edge
+    edge_str = (
+        green(f"+{_disp_edge:.0%}") if _disp_edge > 0 else red(f"{_disp_edge:.0%}")
+    )
+    roi_str = green(f"+{net_edge:.0%}") if net_edge > 0 else red(f"{net_edge:.0%}")
+    print(
+        f"  Your edge:   {edge_str} probability gap  ({roi_str} expected ROI after fees)"
+    )
     print()
     print(
         f"  Recommendation: BUY {bold(side.upper())} at {bold(f'{entry_price:.0%}')} per contract"
