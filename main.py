@@ -1759,6 +1759,12 @@ def cmd_today(client: KalshiClient) -> None:
             _city_dates.add((_city, str(_td)))
     batch_prewarm_forecasts(_city_dates)
 
+    # Pre-load 30yr climatology for all cities — downloads once, cached to disk
+    # for 1 year. Silent if already cached; prints progress only on first download.
+    from climatology import preload_all as _clim_preload
+
+    _clim_preload(CITY_COORDS)
+
     best_m = None
     best_a = None
     best_abs_edge = 0.0
@@ -2018,6 +2024,9 @@ def cmd_brief(client: KalshiClient, send_email: bool = False) -> None:
             if _c and _d:
                 _cd.add((_c, str(_d)))
         batch_prewarm_forecasts(_cd)
+        from climatology import preload_all as _clim_preload_b
+
+        _clim_preload_b(CITY_COORDS)
         analyzed = []
         for m in markets:
             try:

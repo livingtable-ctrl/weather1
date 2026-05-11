@@ -45,16 +45,26 @@ def _cache_is_stale(cache: Path) -> bool:
     return (time.time() - cache.stat().st_mtime) > CACHE_MAX_AGE
 
 
+# In-memory cache so repeated calls within one process (e.g. 5 markets for NYC
+# all calling climatological_prob) only hit disk once per city per run.
+_MEM_CACHE: dict[str, dict] = {}
+
+
 def fetch_historical(city: str, coords: tuple, force: bool = False) -> dict | None:
     """
     Download 30 years of daily high/low for a city and cache to disk.
     Auto-refreshes if the cache is older than 1 year.
     Returns dict with keys: dates, highs, lows.
     """
+    if not force and city in _MEM_CACHE:
+        return _MEM_CACHE[city]
+
     cache = _cache_path(city)
     if cache.exists() and not force and not _cache_is_stale(cache):
         with open(cache) as f:
-            return json.load(f)
+            data = json.load(f)
+        _MEM_CACHE[city] = data
+        return data
 
     lat, lon, tz = coords
     end_year = date.today().year - 1
@@ -80,6 +90,7 @@ def fetch_historical(city: str, coords: tuple, force: bool = False) -> dict | No
         }
         with open(cache, "w") as f:
             json.dump(data, f)
+        _MEM_CACHE[city] = data
         return data
     except Exception:
         # #4: If download fails, return stale cache but warn if it's very old
@@ -92,7 +103,9 @@ def fetch_historical(city: str, coords: tuple, force: bool = False) -> dict | No
                     flush=True,
                 )
             with open(cache) as f:
-                return json.load(f)
+                data = json.load(f)
+            _MEM_CACHE[city] = data
+            return data
         return None
 
 
