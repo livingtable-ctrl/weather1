@@ -36,6 +36,21 @@ def isolate_circuit_breaker_state(tmp_path, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def clear_metar_cache():
+    """Clear the in-process METAR cache before every test.
+
+    metar._METAR_CACHE is a module-level dict with a 5-minute TTL.  If any
+    earlier test (or a real network call during collection) populates it for
+    a station, all subsequent fetch_metar() calls return the cached value
+    without touching the mocked _session, causing every TestFetchMetar test
+    to receive real live data instead of the fixture response.
+    """
+    import metar
+
+    metar._METAR_CACHE.clear()
+
+
+@pytest.fixture(autouse=True)
 def isolate_tracker_db(tmp_path, monkeypatch):
     """Redirect tracker.DB_PATH to a per-test temp DB and initialize the schema.
 
