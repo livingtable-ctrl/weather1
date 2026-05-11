@@ -7,6 +7,8 @@ import logging
 import os
 import sys
 import time
+import traceback as _traceback
+import types
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
@@ -15,6 +17,22 @@ if sys.stdout and hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 elif sys.platform == "win32":
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+
+# Guard: show clear stdout error on missing packages (not a silent stderr crash)
+try:
+    import dotenv as _dotenv_check  # noqa: F401
+    import requests as _requests_check  # noqa: F401
+    import tabulate as _tabulate_check  # noqa: F401
+except ImportError as _e:
+    print(f"\n  ERROR: Required package missing: {_e}")
+    print("  Fix:  pip install -r requirements.txt")
+    print("  Note: On Windows use  py main.py  not  python main.py\n")
+    if sys.platform == "win32" and sys.stdin.isatty():
+        try:
+            input("  Press Enter to close...")
+        except (EOFError, KeyboardInterrupt):
+            pass
+    sys.exit(1)
 
 from dotenv import load_dotenv
 from tabulate import tabulate
@@ -85,6 +103,54 @@ from weather_markets import (
 load_dotenv()
 
 _bot_config = _load_config()
+
+# Crash log: write uncaught exceptions (including from threads) to data/crash.log
+# so the error survives even when the terminal window closes before the user can read it.
+_CRASH_LOG = Path(__file__).parent / "data" / "crash.log"
+_CRASH_LOG.parent.mkdir(exist_ok=True)
+
+
+def _write_crash_log(header: str, text: str) -> None:
+    try:
+        with open(_CRASH_LOG, "a", encoding="utf-8") as _f:
+            _f.write(f"\n{'=' * 60}\n{header}\n{'=' * 60}\n{text}\n")
+    except Exception:
+        pass
+
+
+def _excepthook(
+    exc_type: type[BaseException],
+    exc_val: BaseException,
+    exc_tb: types.TracebackType | None,
+) -> None:
+    msg = "".join(_traceback.format_exception(exc_type, exc_val, exc_tb))
+    _write_crash_log(
+        f"UNCAUGHT EXCEPTION {datetime.now().isoformat(timespec='seconds')}",
+        msg,
+    )
+    sys.__excepthook__(exc_type, exc_val, exc_tb)
+
+
+sys.excepthook = _excepthook
+
+try:
+    import threading as _threading
+
+    def _thread_excepthook(args: _threading.ExceptHookArgs) -> None:
+        msg = "".join(
+            _traceback.format_exception(
+                args.exc_type, args.exc_value, args.exc_traceback
+            )
+        )
+        _write_crash_log(
+            f"THREAD EXCEPTION {datetime.now().isoformat(timespec='seconds')} "
+            f"thread={args.thread}",
+            msg,
+        )
+
+    _threading.excepthook = _thread_excepthook
+except Exception:
+    pass
 
 # Variants sampled round-robin; loser auto-disabled after 50 trades.
 REFRESH_SECS = 300  # watch mode interval
@@ -4486,7 +4552,19 @@ def cmd_menu(client: KalshiClient):
                 continue  # skip the Press Enter pause — already returned to menu context
 
         elif name_stripped == "Today":
-            cmd_today(client)
+            try:
+                cmd_today(client)
+            except KeyboardInterrupt:
+                print()
+            except BaseException as exc:
+                import traceback as _tb
+
+                print(red(f"\n  Today crashed: {type(exc).__name__}: {exc}"))
+                _tb.print_exc()
+                try:
+                    input(dim("  Press Enter to continue..."))
+                except (EOFError, KeyboardInterrupt):
+                    pass
 
         elif name_stripped == "Cron":
             print(bold("\n  ── Run Cron ──\n"))
@@ -6191,7 +6269,13 @@ def main():
     if cmd == "menu":
         cmd_menu(client)
     elif cmd in ("today", "t"):
-        cmd_today(client)
+        try:
+            cmd_today(client)
+        except KeyboardInterrupt:
+            print()
+        except Exception as exc:
+            print(red(f"  Error: {exc}"), file=sys.stderr)
+            raise
     elif cmd == "brief":
         cmd_brief(client, send_email="--email" in args)
     elif cmd == "cron":
@@ -6350,4 +6434,25 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("\n  Interrupted.")
+    except SystemExit as _se:
+        if _se.code not in (0, None) and sys.platform == "win32":
+            try:
+                input(f"\n  Exited (code {_se.code}). Press Enter to close...")
+            except (EOFError, KeyboardInterrupt):
+                pass
+        raise
+    except Exception as _top_exc:
+        import traceback
+
+        print(f"\n  Fatal error: {_top_exc}")
+        traceback.print_exc()
+        if sys.platform == "win32":
+            try:
+                input("\n  Press Enter to close...")
+            except (EOFError, KeyboardInterrupt):
+                pass
+        sys.exit(1)
