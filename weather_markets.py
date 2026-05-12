@@ -328,27 +328,40 @@ _ENSEMBLE_CACHE_TTL = 8 * 60 * 60  # seconds — mirrors in-memory TTL
 _ENSEMBLE_DISK_CACHE_PATH = Path("data/ensemble_cache.json")
 _ENSEMBLE_DISK_LOCK = threading.Lock()
 
-# Rate limiter: enforce minimum gap between Open-Meteo requests to avoid 429 bursts.
-# The ensemble endpoint (ensemble-api.open-meteo.com) is stricter than the forecast
-# endpoint; 0.1s caused repeated 429s + 60s retries (net slower than 0.3s baseline).
-# At 0.5s we stay safely under the free-tier cap and avoid throttling on both endpoints.
-# Any 429 that slips through is caught by _om_request and retried after Retry-After.
-_OM_RATE_LOCK = threading.Lock()
-_OM_LAST_REQUEST_TS: float = 0.0
-_OM_MIN_INTERVAL: float = (
-    1.5  # seconds between requests (~0.67 req/s, safe for strict ensemble endpoint)
-)
+# Two separate rate limiters: forecast endpoint is more permissive than ensemble.
+# ensemble-api.open-meteo.com is the stricter one (0.1s caused 429s+60s retries);
+# api.open-meteo.com (forecast) handled 0.5s without throttling.
+# Splitting them avoids per-city NBM/ECMWF forecast calls being serialized at
+# the ensemble rate, which was adding ~80s to the prewarm (54 calls × 1.5s).
+_OM_FORECAST_RATE_LOCK = threading.Lock()
+_OM_FORECAST_MIN_INTERVAL: float = 0.5  # api.open-meteo.com — 2 req/s
+_OM_FORECAST_STATE: list[float] = [0.0]  # [last_ts]; list so closure can mutate
+
+_OM_ENSEMBLE_RATE_LOCK = threading.Lock()
+_OM_ENSEMBLE_MIN_INTERVAL: float = 1.5  # ensemble-api.open-meteo.com — strict
+_OM_ENSEMBLE_STATE: list[float] = [0.0]
 
 
-def _om_rate_limit() -> None:
-    """Block until the minimum inter-request interval has elapsed."""
-    global _OM_LAST_REQUEST_TS
-    with _OM_RATE_LOCK:
+def _om_rate_limit(url: str) -> None:
+    """Block until the per-endpoint minimum inter-request interval has elapsed."""
+    if "ensemble-api" in url:
+        lock, interval, state = (
+            _OM_ENSEMBLE_RATE_LOCK,
+            _OM_ENSEMBLE_MIN_INTERVAL,
+            _OM_ENSEMBLE_STATE,
+        )
+    else:
+        lock, interval, state = (
+            _OM_FORECAST_RATE_LOCK,
+            _OM_FORECAST_MIN_INTERVAL,
+            _OM_FORECAST_STATE,
+        )
+    with lock:
         now = time.monotonic()
-        wait = _OM_MIN_INTERVAL - (now - _OM_LAST_REQUEST_TS)
+        wait = interval - (now - state[0])
         if wait > 0:
             time.sleep(wait)
-        _OM_LAST_REQUEST_TS = time.monotonic()
+        state[0] = time.monotonic()
 
 
 def _build_om_session() -> requests.Session:
@@ -386,7 +399,7 @@ def _om_request(method: str, url: str, **kwargs) -> requests.Response:
     waiting for Retry-After sleep cycles across every model and every city.
     """
     kwargs.setdefault("timeout", 15)
-    _om_rate_limit()
+    _om_rate_limit(url)
     resp = _OM_SESSION.request(method, url, **kwargs)
     if resp.status_code == 429:
         _log.debug(

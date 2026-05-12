@@ -898,21 +898,24 @@ def test_model_consensus_false_when_models_disagree(monkeypatch):
 
 
 def test_om_rate_limit_enforces_interval(monkeypatch):
-    """_om_rate_limit ensures at least _OM_MIN_INTERVAL seconds between calls."""
+    """_om_rate_limit ensures at least the per-endpoint interval between calls."""
     import time
 
     import weather_markets as wm
 
-    # Reset state
-    monkeypatch.setattr(wm, "_OM_LAST_REQUEST_TS", 0.0)
-    monkeypatch.setattr(wm, "_OM_MIN_INTERVAL", 0.1)
+    # Use the forecast endpoint (0.5s normally); override to 0.1s for test speed.
+    monkeypatch.setattr(wm, "_OM_FORECAST_MIN_INTERVAL", 0.1)
+    wm._OM_FORECAST_STATE[0] = (
+        0.0  # reset last-ts so first call doesn't inherit old state
+    )
 
+    forecast_url = "https://api.open-meteo.com/v1/forecast"
     t0 = time.monotonic()
-    wm._om_rate_limit()
-    wm._om_rate_limit()
+    wm._om_rate_limit(forecast_url)
+    wm._om_rate_limit(forecast_url)
     elapsed = time.monotonic() - t0
 
-    assert elapsed >= 0.08  # at least ~_OM_MIN_INTERVAL between two calls
+    assert elapsed >= 0.08  # at least ~_OM_FORECAST_MIN_INTERVAL between two calls
 
 
 # ── Phase 1: NBM + weatherapi fallback chain ─────────────────────────────────
