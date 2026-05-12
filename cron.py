@@ -600,6 +600,15 @@ def _cmd_cron_body(
     signals_cache: list = []
     scanned = 0
     _consistency_skip = False  # P3-14: init before try so it is always bound
+    _dbg: dict = {
+        "no_analysis": 0,
+        "same_day": 0,
+        "mkt_prob": 0,
+        "divergence": 0,
+        "net_edge": 0,
+        "prob_edge": 0,
+        "passed": 0,
+    }
     try:
         from concurrent.futures import ThreadPoolExecutor
         from concurrent.futures import as_completed as _as_completed
@@ -764,6 +773,7 @@ def _cmd_cron_body(
                 except Exception:
                     continue
                 if not analysis:
+                    _dbg["no_analysis"] += 1
                     continue
                 net_edge = analysis.get("net_edge", analysis["edge"])
                 adjusted_edge = analysis.get("adjusted_edge", net_edge)
@@ -794,6 +804,7 @@ def _cmd_cron_body(
                 # Skip same-day markets (days_out == 0): by market open the market has
                 # real-time weather data our ensemble forecast cannot match.
                 if int(analysis.get("days_out", 1)) == 0:
+                    _dbg["same_day"] += 1
                     continue
                 # Market divergence cap: skip when we disagree with the market by
                 # more than 2.5× — the market is right nearly every time in that case.
@@ -807,11 +818,14 @@ def _cmd_cron_body(
                     _mkt_dir = 1.0 - _mkt_p
                     _our_dir = 1.0 - _our_p
                 if _mkt_dir < MIN_MARKET_PROB_TO_BET_WITH:
+                    _dbg["mkt_prob"] += 1
                     continue
                 if _mkt_dir > 0 and _our_dir / _mkt_dir > MAX_MARKET_DIVERGENCE_RATIO:
+                    _dbg["divergence"] += 1
                     continue
                 # Use PAPER_MIN_EDGE (5%) so more signals are captured for observation.
                 if abs(adjusted_edge) < PAPER_MIN_EDGE:
+                    _dbg["net_edge"] += 1
                     continue
                 # Probability-edge gate: require ≥8pp conviction even when ROI edge passes.
                 # High-variance cities (e.g. Dallas) use a stricter per-city threshold.
@@ -822,7 +836,9 @@ def _cmd_cron_body(
                 _city_key = enriched.get("_city", "")
                 _min_edge = CITY_MIN_PROB_EDGE.get(_city_key, MIN_PROB_EDGE)
                 if _prob_edge < _min_edge:
+                    _dbg["prob_edge"] += 1
                     continue
+                _dbg["passed"] += 1
                 signal = analysis.get("net_signal", analysis.get("signal", "")).strip()
                 time_risk = analysis.get("time_risk", "\u2014")
                 stars = (
@@ -935,6 +951,15 @@ def _cmd_cron_body(
     _n_with_edge = len(signals_cache)
     _n_strong = len(strong_opps)
     _n_med = len(med_opps)
+    print(
+        dim(
+            f"  [cron] filter breakdown \u2014 no_analysis:{_dbg['no_analysis']} "
+            f"same_day:{_dbg['same_day']} mkt_prob:{_dbg['mkt_prob']} "
+            f"divergence:{_dbg['divergence']} net_edge:{_dbg['net_edge']} "
+            f"prob_edge:{_dbg['prob_edge']} passed:{_dbg['passed']}"
+        ),
+        flush=True,
+    )
     if _n_with_edge == 0:
         print(
             dim(
