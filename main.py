@@ -2174,14 +2174,16 @@ def cmd_brief(client: KalshiClient, send_email: bool = False) -> None:
         )[:3]
         if top3:
             for m, a in top3:
-                net_edge = a.get("net_edge", a["edge"])
+                _raw_edge = a.get("edge", 0.0)
+                _side = a["recommended_side"]
+                _disp_edge = _raw_edge if _side == "yes" else -_raw_edge
                 edge_s = (
-                    green(f"+{net_edge:.0%}")
-                    if net_edge > 0
-                    else red(f"{net_edge:.0%}")
+                    green(f"+{_disp_edge:.0%}")
+                    if _disp_edge > 0
+                    else red(f"{_disp_edge:.0%}")
                 )
                 ticker = m.get("ticker", "")
-                side = a["recommended_side"].upper()
+                side = _side.upper()
                 print(
                     f"  {ticker:<32} {side:<4} {edge_s}  {dim(a.get('signal', '').strip())}"
                 )

@@ -3901,7 +3901,7 @@ def analyze_trade(enriched: dict) -> dict | None:
         _log.warning("analyze_trade[%s]: gate=no_city date=%s", _tkr, target_date)
         return None  # unrecognized city in ticker
     if target_date < datetime.now(UTC).date():
-        _log.warning(
+        _log.debug(
             "analyze_trade[%s]: gate=past_date target=%s today=%s",
             _tkr,
             target_date,
@@ -3942,7 +3942,7 @@ def analyze_trade(enriched: dict) -> dict | None:
     # ── Days-out gate: only trade markets expiring within MAX_DAYS_OUT days ──
     _days_out_check = max(0, (target_date - datetime.now(UTC).date()).days)
     if _days_out_check > MAX_DAYS_OUT:
-        _log.warning(
+        _log.debug(
             "analyze_trade[%s]: gate=days_out days=%d max=%d",
             _tkr,
             _days_out_check,
@@ -3956,7 +3956,7 @@ def analyze_trade(enriched: dict) -> dict | None:
         enriched.get("open_interest_fp") or enriched.get("open_interest") or 0
     )
     if _vol < MIN_LIQUIDITY:
-        _log.warning(
+        _log.debug(
             "analyze_trade[%s]: gate=liquidity vol=%.0f oi=%.0f combined=%.0f min=%d "
             "(volume_fp=%s volume=%s oi_fp=%s oi=%s)",
             _tkr,
@@ -3976,7 +3976,7 @@ def analyze_trade(enriched: dict) -> dict | None:
     # ── Volume gate: price is unreliable when trade count is tiny ────────────
     _raw_vol = float(enriched.get("volume_fp") or enriched.get("volume") or 0)
     if _raw_vol < MIN_SIGNAL_VOLUME:
-        _log.warning(
+        _log.debug(
             "analyze_trade[%s]: gate=min_signal_volume raw_vol=%.0f min=%d",
             _tkr,
             _raw_vol,
@@ -3988,7 +3988,7 @@ def analyze_trade(enriched: dict) -> dict | None:
     _prices = parse_market_price(enriched)
     # Skip markets where both bid and ask are zero (no real quote).
     if not _prices.get("has_quote", True):
-        _log.warning(
+        _log.debug(
             "analyze_trade[%s]: gate=no_quote bid=%.3f ask=%.3f",
             _tkr,
             _prices.get("yes_bid", 0),
@@ -4010,7 +4010,7 @@ def analyze_trade(enriched: dict) -> dict | None:
     if _yes_ask > 0 and _yes_bid > 0:
         _mid = (_yes_ask + _yes_bid) / 2
         if _mid > 0 and (_yes_ask - _yes_bid) / _mid > 0.30:
-            _log.warning(
+            _log.debug(
                 "analyze_trade[%s]: gate=spread bid=%.3f ask=%.3f spread_pct=%.1f%%",
                 _tkr,
                 _yes_bid,
@@ -4028,7 +4028,7 @@ def analyze_trade(enriched: dict) -> dict | None:
     if _yes_ask > 0 and (
         _yes_ask < MIN_MARKET_PRICE or _yes_ask > 1 - MIN_MARKET_PRICE
     ):
-        _log.warning(
+        _log.debug(
             "analyze_trade[%s]: gate=extreme_price yes_ask=%.3f gate=%.2f",
             _tkr,
             _yes_ask,
