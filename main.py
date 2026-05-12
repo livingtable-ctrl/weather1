@@ -5664,26 +5664,29 @@ def cmd_montecarlo(client: KalshiClient) -> None:  # noqa: ARG001
     pr = result["prob_ruin"]
     bal = result["current_balance"]
 
-    med_s = green(f"+${med:.2f}") if med >= 0 else red(f"-${abs(med):.2f}")
-    p10_s = red(f"-${abs(p10):.2f}") if p10 < 0 else green(f"+${p10:.2f}")
-    p90_s = green(f"+${p90:.2f}") if p90 >= 0 else red(f"-${abs(p90):.2f}")
+    sim_pnls = result.get("pnl_distribution", [])
+    actual_max = sim_pnls[-1] if sim_pnls else p90
+    actual_min = sim_pnls[0] if sim_pnls else p10
+
+    def _pnl_str(v: float) -> str:
+        return green(f"+${v:.2f}") if v >= 0 else red(f"-${abs(v):.2f}")
 
     print(f"  Balance:    ${bal:.2f}")
     print(
-        f"  Best case:  {p90_s}  |  Median: {med_s}  |  Worst case: {p10_s}  |  Ruin risk: {pr:.0%}"
+        f"  Max: {_pnl_str(actual_max)}  |  p90: {_pnl_str(p90)}  |  Median: {_pnl_str(med)}"
+        f"  |  p10: {_pnl_str(p10)}  |  Min: {_pnl_str(actual_min)}"
     )
-    print(f"  Prob of profit: {pp:.0%}")
+    print(f"  Prob of profit: {pp:.0%}  |  Ruin risk: {pr:.0%}")
 
     # ASCII histogram — built from the same 1000-run distribution already computed
-    sim_pnls2 = result["pnl_distribution"]  # sorted list of 1000 outcomes
     n_sims = result["n_simulations"]
 
-    min_pnl = sim_pnls2[0]
-    max_pnl = sim_pnls2[-1]
+    min_pnl = sim_pnls[0] if sim_pnls else 0.0
+    max_pnl = sim_pnls[-1] if sim_pnls else 0.0
     span = max_pnl - min_pnl if max_pnl != min_pnl else 1.0
     n_bins = 10
     bins = [0] * n_bins
-    for pnl in sim_pnls2:
+    for pnl in sim_pnls:
         idx = min(n_bins - 1, int((pnl - min_pnl) / span * n_bins))
         bins[idx] += 1
 
