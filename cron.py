@@ -758,6 +758,11 @@ def _cmd_cron_body(
                 len(markets) - len(_deduped_markets),
             )
 
+        from weather_markets import get_gate_counts as _get_gate_counts
+        from weather_markets import reset_gate_counts as _reset_gate_counts
+
+        _reset_gate_counts()
+
         with ThreadPoolExecutor(max_workers=12) as _pool:
             _futures = {
                 _pool.submit(_enrich_and_analyze, m): m for m in _deduped_markets
@@ -951,6 +956,12 @@ def _cmd_cron_body(
     _n_with_edge = len(signals_cache)
     _n_strong = len(strong_opps)
     _n_med = len(med_opps)
+    _gate_detail = _get_gate_counts()
+    _gate_str = (
+        " ".join(f"{k}:{v}" for k, v in sorted(_gate_detail.items()))
+        if _gate_detail
+        else "none"
+    )
     print(
         dim(
             f"  [cron] filter breakdown \u2014 no_analysis:{_dbg['no_analysis']} "
@@ -960,6 +971,7 @@ def _cmd_cron_body(
         ),
         flush=True,
     )
+    print(dim(f"  [cron] analyze_trade gates \u2014 {_gate_str}"), flush=True)
     if _n_with_edge == 0:
         print(
             dim(

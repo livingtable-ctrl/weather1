@@ -40,6 +40,26 @@ socket.setdefaulttimeout(
 
 _log = logging.getLogger(__name__)
 
+# Thread-safe gate counter — reset by cron between scans to track why analyze_trade returns None.
+_gate_counts: dict[str, int] = {}
+_gate_counts_lock = threading.Lock()
+
+
+def _count_gate(name: str) -> None:
+    with _gate_counts_lock:
+        _gate_counts[name] = _gate_counts.get(name, 0) + 1
+
+
+def reset_gate_counts() -> None:
+    with _gate_counts_lock:
+        _gate_counts.clear()
+
+
+def get_gate_counts() -> dict[str, int]:
+    with _gate_counts_lock:
+        return dict(_gate_counts)
+
+
 # Primary circuit breaker: 3-model daily forecast (FORECAST_BASE).
 # burst_window=5s: parallel model fetches that all fail within the same request
 # batch count as one failure event, not three.  recovery_timeout=30 min is
@@ -3897,12 +3917,15 @@ def analyze_trade(enriched: dict) -> dict | None:
             city,
             target_date,
         )
+        _count_gate("no_forecast")
         return None  # no forecast data available for this market
     if not target_date:
         _log.warning("analyze_trade[%s]: gate=no_date city=%s", _tkr, city)
+        _count_gate("no_date")
         return None  # could not parse target date from ticker
     if not city:
         _log.warning("analyze_trade[%s]: gate=no_city date=%s", _tkr, target_date)
+        _count_gate("no_city")
         return None  # unrecognized city in ticker
     if target_date < datetime.now(UTC).date():
         _log.debug(
@@ -3911,6 +3934,7 @@ def analyze_trade(enriched: dict) -> dict | None:
             target_date,
             datetime.now(UTC).date(),
         )
+        _count_gate("past_date")
         return None  # market target date already passed — Kalshi hasn't settled yet but no edge
 
     # P0.3: Reject stale enriched data. Absence of timestamp → treat as fresh.
@@ -3926,6 +3950,7 @@ def analyze_trade(enriched: dict) -> dict | None:
                 data_age,
                 FORECAST_MAX_AGE_SECS,
             )
+            _count_gate("stale_data")
             return None
 
     condition = _parse_market_condition(enriched)
@@ -3936,11 +3961,13 @@ def analyze_trade(enriched: dict) -> dict | None:
             enriched.get("title", "")[:80],
             _tkr,
         )
+        _count_gate("condition_parse")
         return None
 
     coords = CITY_COORDS.get(city)
     if not coords:
         _log.warning("analyze_trade[%s]: gate=no_coords city=%s", _tkr, city)
+        _count_gate("no_coords")
         return None
 
     # ── Days-out gate: only trade markets expiring within MAX_DAYS_OUT days ──
@@ -3952,6 +3979,7 @@ def analyze_trade(enriched: dict) -> dict | None:
             _days_out_check,
             MAX_DAYS_OUT,
         )
+        _count_gate("days_out")
         return None
 
     # ── Liquidity gate: skip markets with no real open interest ──────────────
@@ -3975,6 +4003,7 @@ def analyze_trade(enriched: dict) -> dict | None:
             enriched.get("open_interest_fp"),
             enriched.get("open_interest"),
         )
+        _count_gate("liquidity")
         return None
 
     # ── Volume gate: price is unreliable when trade count is tiny ────────────
@@ -3986,6 +4015,7 @@ def analyze_trade(enriched: dict) -> dict | None:
             _raw_vol,
             MIN_SIGNAL_VOLUME,
         )
+        _count_gate("min_volume")
         return None
 
     # ── Spread gate: skip illiquid markets with wide bid-ask spreads ─────────
@@ -3998,6 +4028,7 @@ def analyze_trade(enriched: dict) -> dict | None:
             _prices.get("yes_bid", 0),
             _prices.get("yes_ask", 0),
         )
+        _count_gate("no_quote")
         return None
     # Market divergence gate: when the market is highly confident (>70%) and
     # our model strongly disagrees (<25%), the market almost certainly has
@@ -4021,6 +4052,7 @@ def analyze_trade(enriched: dict) -> dict | None:
                 _yes_ask,
                 (_yes_ask - _yes_bid) / _mid * 100,
             )
+            _count_gate("spread")
             return None  # spread > 30% of mid — not tradeable
 
     # ── Extreme-price gate: skip near-certain markets ────────────────────────
@@ -4038,6 +4070,7 @@ def analyze_trade(enriched: dict) -> dict | None:
             _yes_ask,
             MIN_MARKET_PRICE,
         )
+        _count_gate("extreme_price")
         return None
 
     # ── Time-of-day risk assessment ──────────────────────────────────────────
