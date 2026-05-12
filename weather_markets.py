@@ -70,13 +70,24 @@ _forecast_cb = CircuitBreaker(
     recovery_timeout=300,  # lowered from 1800s — retry after 5 min not 30 min
     burst_window=10.0,  # wider burst window absorbs parallel fetches
 )
-# Supplementary circuit breaker: ensemble spread, NBM, ECMWF high-res (ENSEMBLE_BASE).
+# Supplementary circuit breaker: ensemble spread and ECMWF high-res (ENSEMBLE_BASE).
 # Failures here degrade quality but don't block primary signals.
 _ensemble_cb = CircuitBreaker(
     name="open_meteo_ensemble",
-    failure_threshold=6,  # raised from 3 — pre-warming 30 pairs triggers false trips
+    failure_threshold=10,  # raised — ensemble failures shouldn't trip on a few slow responses
     recovery_timeout=300,  # 5 min recovery window
-    burst_window=1.0,  # absorb truly simultaneous parallel hits, not sequential ones
+    burst_window=15.0,  # wide window: 30-city prewarm fires many parallel requests
+)
+
+# Separate circuit breaker for the NBM (Open-Meteo model="nbm") fetch.
+# NBM and ensemble hit the same API but are independent signals — one failing
+# should NOT gate the other.  Prewarm fires 30 parallel NBM calls so we use a
+# high failure threshold and a wide burst window to avoid false trips.
+_nbm_om_cb = CircuitBreaker(
+    name="nbm_openmeteo",
+    failure_threshold=12,
+    recovery_timeout=300,
+    burst_window=15.0,
 )
 
 # ── Trading filters ───────────────────────────────────────────────────────────
@@ -169,20 +180,56 @@ CITY_COORDS = _load_city_coords()
 # B4: Split station bias by HIGH (max) vs LOW (min) markets.
 # Warm biases in GFS/ICON are strongest for daytime peaks; overnight lows differ.
 _STATION_BIAS_HIGH: dict[str, float] = {
+    # East Coast
     "NYC": 1.0,  # KNYC: NWS gridpoint overshoots Central Park by ~1°F (warm)
+    "Boston": 0.5,  # KBOS: Minor warm bias similar to NYC
+    "Philadelphia": 1.0,  # KPHL: Similar to NYC urban heat island
+    "Washington": 1.0,  # KDCA: Urban heat + GFS warm bias
+    # South/Gulf
     "Miami": 3.0,  # KMIA: GFS southern warm bias, confirmed via field research
-    "Denver": 2.0,  # KDEN: Mountain terrain uncertainty, conservative correction
-    "Chicago": 0.5,  # KORD: Minor warm bias
+    "Atlanta": 1.0,  # KATL: Southeast warm bias
+    "Houston": 2.0,  # KHOU: Humid subtropical, GFS runs hot
     "Dallas": 0.5,  # KDFW: GFS southern warm bias (minor)
-    "LA": 0.0,  # KLAX: No known systematic bias
+    "Austin": 1.5,  # KAUS: Similar to Dallas but higher elevation variation
+    "SanAntonio": 1.5,  # KSAT: Southern Texas warm bias
+    "OklahomaCity": 1.0,  # KOKC: Southern Plains warm bias
+    # Southwest
+    "Phoenix": 2.5,  # KPHX: Desert environment; GFS routinely overshoots high temps
+    # Mountain
+    "Denver": 2.0,  # KDEN: Mountain terrain uncertainty, conservative correction
+    # Midwest
+    "Chicago": 0.5,  # KORD: Minor warm bias
+    "Minneapolis": 1.5,  # KMSP: Continental interior; GFS warm bias stronger than coasts
+    # West Coast
+    "LA": 0.0,  # KLAX: Marine influence largely corrects GFS bias
+    "SanFrancisco": 0.0,  # KSFO: Strong marine layer, GFS frequently cold — no correction
+    "Seattle": -0.5,  # KSEA: GFS tends cold for Pacific Northwest marine climate
 }
 _STATION_BIAS_LOW: dict[str, float] = {
+    # East Coast
     "NYC": 0.5,  # Overnight lows: smaller warm bias than daytime highs
+    "Boston": 0.0,  # KBOS lows: no consistent bias
+    "Philadelphia": 0.5,  # Similar to NYC nights
+    "Washington": 0.5,  # KDCA nights: urban heat retained
+    # South/Gulf
     "Miami": 1.5,  # KMIA overnight lows still warm-biased but less than highs
-    "Denver": 1.0,  # Denver nights: model still warm but less extreme
-    "Chicago": 0.0,  # KORD lows: no consistent bias observed
+    "Atlanta": 0.5,  # KATL nights
+    "Houston": 1.0,  # KHOU: Humid subtropical, nights stay warm
     "Dallas": 0.0,  # KDFW lows: no consistent bias observed
+    "Austin": 0.5,  # KAUS nights
+    "SanAntonio": 0.5,  # KSAT nights
+    "OklahomaCity": 0.0,  # KOKC lows: no consistent bias
+    # Southwest
+    "Phoenix": 0.5,  # KPHX nights: desert cools rapidly, smaller bias than highs
+    # Mountain
+    "Denver": 1.0,  # Denver nights: model still warm but less extreme
+    # Midwest
+    "Chicago": 0.0,  # KORD lows: no consistent bias observed
+    "Minneapolis": 0.5,  # KMSP nights
+    # West Coast
     "LA": 0.0,  # KLAX: No known systematic bias
+    "SanFrancisco": 0.0,  # KSFO: No correction
+    "Seattle": 0.0,  # KSEA nights: no consistent bias
 }
 # Legacy alias — used by any callers that don't pass var
 _STATION_BIAS = _STATION_BIAS_HIGH
@@ -993,8 +1040,8 @@ def fetch_temperature_nbm(city: str, target_date: date) -> float | None:
         return None
     lat, lon, _ = coords
 
-    if _ensemble_cb.is_open():
-        _log.debug("[CircuitBreaker] open_meteo circuit open — skipping NBM fetch")
+    if _nbm_om_cb.is_open():
+        _log.debug("[CircuitBreaker] nbm_openmeteo circuit open — skipping NBM fetch")
         return None
 
     try:
@@ -1014,7 +1061,7 @@ def fetch_temperature_nbm(city: str, target_date: date) -> float | None:
             timeout=8,
         )
         resp.raise_for_status()
-        _ensemble_cb.record_success()
+        _nbm_om_cb.record_success()
         data = resp.json()
         temps = data.get("hourly", {}).get("temperature_2m", [])
         valid = [t for t in temps if t is not None]
@@ -1022,10 +1069,10 @@ def fetch_temperature_nbm(city: str, target_date: date) -> float | None:
         _NBM_CACHE[cache_key] = (result, time.monotonic())
         return result
     except Exception as exc:
-        _ensemble_cb.record_failure()
+        _nbm_om_cb.record_failure()
         _log.debug(
-            "open_meteo_ensemble: failure #%d (NBM/%s) — %s: %s",
-            _ensemble_cb.failure_count,
+            "nbm_openmeteo: failure #%d (NBM/%s) — %s: %s",
+            _nbm_om_cb.failure_count,
             city,
             type(exc).__name__,
             exc,

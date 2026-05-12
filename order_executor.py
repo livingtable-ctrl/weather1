@@ -613,6 +613,8 @@ def _auto_place_trades(
         return edge * kelly * urgency
 
     opps = sorted(opps, key=_opp_sort_key, reverse=True)
+    _skip_reasons: list[str] = []
+
     for item in opps:
         # Support both (market, analysis) tuple format and flat opp dict format
         if isinstance(item, tuple):
@@ -632,9 +634,11 @@ def _auto_place_trades(
                 ticker or "(no ticker)",
                 _reject_reason,
             )
+            _skip_reasons.append(f"{ticker}: validate({_reject_reason})")
             continue
 
         if ticker in open_tickers:
+            _skip_reasons.append(f"{ticker}: already_open")
             continue
         rec_side = a.get("recommended_side", a.get("side", "yes"))
 
@@ -644,6 +648,7 @@ def _auto_place_trades(
                 ticker,
                 rec_side,
             )
+            _skip_reasons.append(f"{ticker}: traded_today")
             continue
         city = m.get("_city")
         target_date_obj = m.get("_date")
@@ -656,6 +661,7 @@ def _auto_place_trades(
             {"city": city, "target_date": target_date_str}, _open_trades_list
         )
         if adj_kelly < 0.002:
+            _skip_reasons.append(f"{ticker}: kelly_too_small({adj_kelly:.4f})")
             continue
         # L1-B: Re-fetch live price before placement — the analysis price may be
         # several minutes stale by the time execution runs.  If a client is available
@@ -711,6 +717,7 @@ def _auto_place_trades(
         # Use market implied prob as entry price — flip for NO side
         # Skip if market_prob is near 0 or 1 (degenerate markets — no real two-sided market)
         if _mkt_prob < 0.02 or _mkt_prob > 0.98:
+            _skip_reasons.append(f"{ticker}: degenerate_price({_mkt_prob:.2f})")
             continue
         # L1-B: if the fresh price shows the edge has reversed (market moved against
         # us between analysis and now), skip rather than placing a losing trade.
@@ -729,6 +736,9 @@ def _auto_place_trades(
                 _mkt_prob,
                 rec_side,
             )
+            _skip_reasons.append(
+                f"{ticker}: edge_gone(fcst={_forecast_prob:.2f} mkt={_mkt_prob:.2f})"
+            )
             continue
         # Fill at ask (not mid) — YES pays yes_ask, NO pays 1 - yes_bid (no_ask).
         # Using mid understates entry cost by half the spread, making paper P&L look better.
@@ -738,6 +748,9 @@ def _auto_place_trades(
         adj_kelly_final = adj_kelly * consensus_mult
         qty = kelly_quantity(adj_kelly_final, entry_price, cap=cap, method=method)
         if qty < 1:
+            _skip_reasons.append(
+                f"{ticker}: qty_zero(kelly={adj_kelly_final:.4f} price={entry_price:.2f})"
+            )
             continue
 
         # Pre-trade VaR gate: skip if adding this position would push 5th-percentile
@@ -766,6 +779,9 @@ def _auto_place_trades(
                         abs(projected_var),
                         MAX_VAR_DOLLARS,
                     )
+                    _skip_reasons.append(
+                        f"{ticker}: var_limit(${abs(projected_var):.0f}>${MAX_VAR_DOLLARS:.0f})"
+                    )
                     continue
             except Exception as _var_err:
                 _log.debug(
@@ -775,6 +791,7 @@ def _auto_place_trades(
         # Cycle-aware deduplication — skip if already ordered on this forecast cycle
         cycle = _current_forecast_cycle()
         if execution_log.was_ordered_this_cycle(ticker, rec_side, cycle):
+            _skip_reasons.append(f"{ticker}: already_this_cycle")
             continue
 
         if live and live_config:
@@ -797,6 +814,9 @@ def _auto_place_trades(
                     yellow(
                         f"  [Auto] Skipping {ticker}: would exceed daily cap (${daily_spent:.2f}/${MAX_DAILY_SPEND:.0f})"
                     )
+                )
+                _skip_reasons.append(
+                    f"{ticker}: daily_cap(${daily_spent:.0f}/${MAX_DAILY_SPEND:.0f})"
                 )
                 continue
             # Pre-log before touching paper_trades.json so a crash between the two writes leaves a detectable record.
@@ -975,4 +995,10 @@ def _auto_place_trades(
 
     if placed == 0:
         print(dim("  [Auto] No qualifying signals this scan."))
+    if _skip_reasons:
+        from colors import dim as _dim
+
+        print(_dim(f"  [Auto] Skipped {len(_skip_reasons)} signal(s):"))
+        for _r in _skip_reasons:
+            print(_dim(f"    • {_r}"))
     return placed
