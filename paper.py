@@ -1931,6 +1931,20 @@ def undo_last_trade(max_minutes: int = 5) -> dict | None:
     return last
 
 
+def _mark_needs_manual_settle(trade_id: int) -> None:
+    """Set needs_manual_settle=True on a trade so the dashboard can flag it."""
+    data = _load()
+    changed = False
+    for t in data["trades"]:
+        if t["id"] == trade_id and not t.get("settled"):
+            if not t.get("needs_manual_settle"):
+                t["needs_manual_settle"] = True
+                changed = True
+            break
+    if changed:
+        _save(data)
+
+
 def auto_settle_paper_trades(client=None) -> list[dict]:
     """
     Settle any open paper trades whose tickers have recorded outcomes.
@@ -1951,8 +1965,23 @@ def auto_settle_paper_trades(client=None) -> list[dict]:
                 market = client.get_market(t["ticker"])
                 if market.get("status") == "finalized":
                     outcome = market.get("result") == "yes"
-            except Exception:
-                pass
+            except Exception as _exc:
+                if "404" in str(_exc):
+                    # Market was archived by Kalshi after resolution — we can no longer
+                    # fetch the result programmatically.  Flag the trade so the web UI
+                    # shows a "needs manual settle" warning and the user can close it.
+                    logging.getLogger(__name__).warning(
+                        "auto_settle: %s returned 404 — market archived by Kalshi "
+                        "(entered %s, side=%s, cost=$%.2f). "
+                        "Set needs_manual_settle=true so dashboard can highlight it.",
+                        t["ticker"],
+                        str(t.get("entered_at", "?"))[:10],
+                        t.get("side"),
+                        t.get("cost", 0),
+                    )
+                    # Persist the flag so the API and UI can surface it
+                    _mark_needs_manual_settle(t["id"])
+                # Other errors (network, auth): skip silently — will retry next run
 
         if outcome is not None:
             try:

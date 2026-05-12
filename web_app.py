@@ -809,7 +809,7 @@ setInterval(() => {{
                 }
             )
 
-        # Age validation: reject stale signals_cache.json (>90 min old)
+        # Age validation: reject stale signals_cache.json (>4 h old)
         signals_age = time.time() - os.path.getmtime(cache_path)
         if signals_age > MAX_SIGNALS_CACHE_AGE_SECS:
             _log.warning(
@@ -974,6 +974,8 @@ setInterval(() => {{
         for t in open_trades:
             snap = snapshot.get(t.get("ticker", ""), {})
             t["current_yes_ask"] = snap.get("yes_ask")
+            # Pass through needs_manual_settle flag so the UI can badge it
+            t.setdefault("needs_manual_settle", bool(t.get("needs_manual_settle")))
 
         all_trades = get_all_trades()
         closed = [t for t in all_trades if t.get("settled")]
@@ -1682,6 +1684,39 @@ setInterval(() => {{
                 target_date=target_date,
                 thesis="manual approval via dashboard",
             )
+            # Register in tracker predictions so sync_outcomes / auto_settle
+            # can find the Kalshi outcome automatically when the market resolves.
+            # Without this, only trades placed by cron end up in predictions and
+            # web-placed trades were silently stuck open forever.
+            try:
+                import datetime as _dt_wa
+
+                from tracker import log_prediction as _log_pred_wa
+
+                _ep = (
+                    float(entry_prob) if entry_prob is not None else float(entry_price)
+                )
+                _td_wa: _dt_wa.date | None = None
+                if target_date:
+                    try:
+                        _td_wa = _dt_wa.date.fromisoformat(target_date)
+                    except ValueError:
+                        pass
+                _log_pred_wa(
+                    ticker,
+                    city,  # None is handled inside log_prediction (skips if None)
+                    _td_wa,
+                    {
+                        "forecast_prob": _ep,
+                        "market_prob": float(entry_price),
+                        "edge": float(net_edge) if net_edge is not None else 0.0,
+                        "recommended_side": side,
+                        "condition": {},
+                    },
+                    signal_source="dashboard",
+                )
+            except Exception as _pe:
+                _log.debug("api_paper_order: tracker log_prediction failed: %s", _pe)
             return jsonify({"ok": True, "trade_id": trade.get("id")}), 201
         except Exception as exc:
             return jsonify({"error": str(exc)}), 500
