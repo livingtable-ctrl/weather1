@@ -910,8 +910,6 @@ def batch_prewarm_forecasts(
         )
         for j, date_str in enumerate(dates_list):
             cache_key = (city, date_str)
-            if _forecast_cache.get(cache_key) is not None:
-                continue  # already cached (e.g. from disk load)
             highs, lows, precips = [], [], []
             for mdata in model_data.values():
                 h = mdata.get("temperature_2m_max", [])
