@@ -74,9 +74,9 @@ _forecast_cb = CircuitBreaker(
 # Failures here degrade quality but don't block primary signals.
 _ensemble_cb = CircuitBreaker(
     name="open_meteo_ensemble",
-    failure_threshold=6,  # trip quickly — pre-warm will populate cache before analysis
-    recovery_timeout=30,  # 30s fast-fail recovery (was 300s — caused 5-min analysis stalls)
-    burst_window=2.0,  # tight window: circuit opens within ~12s of a flaky endpoint
+    failure_threshold=6,
+    recovery_timeout=300,  # 300s: outlasts inter-run gap so circuit stays open across
+    burst_window=2.0,  # runs when endpoint is consistently down (same as nbm_om_cb)
 )
 
 # Separate circuit breaker for the NBM (Open-Meteo model="nbm") fetch.
@@ -87,9 +87,9 @@ _ensemble_cb = CircuitBreaker(
 _nbm_om_cb = CircuitBreaker(
     name="nbm_openmeteo",
     failure_threshold=6,
-    recovery_timeout=30,  # 30s: fast-fail recovery so probes don't stall cron for 5 min
-    burst_window=2.0,
-)
+    recovery_timeout=300,  # 300s: outlasts the gap between cron runs so circuit stays
+    burst_window=2.0,  # open across runs — prevents re-burning 30 s of timeouts
+)  # each run when the endpoint is consistently down
 
 # ── Trading filters ───────────────────────────────────────────────────────────
 # Only analyse markets expiring within this many days. Days 3-4 carry higher
