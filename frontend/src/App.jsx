@@ -1160,6 +1160,119 @@ function ForecastTab() {
 }
 
 // ---------------------------------------------------------------------------
+// BrierTrendChart  — interactive weekly Brier sparkline with hover tooltip
+// ---------------------------------------------------------------------------
+function BrierTrendChart({ hist }) {
+  const [hoveredIdx, setHoveredIdx] = useState(null);
+  const svgRef = useRef(null);
+
+  const W = 800, H = 100;
+  const PAD = { top: 12, right: 8, bottom: 8, left: 8 };
+  const innerW = W - PAD.left - PAD.right;
+  const innerH = H - PAD.top - PAD.bottom;
+
+  const briersArr = hist.map(h => h.brier);
+  const minB = Math.max(0, Math.min(...briersArr) - 0.02);
+  const maxB = Math.max(...briersArr) + 0.02;
+  const range = maxB - minB || 0.01;
+
+  const xs = hist.map((_, i) => PAD.left + (i / (hist.length - 1)) * innerW);
+  const toY = b => PAD.top + (1 - (b - minB) / range) * innerH;
+  const ys = hist.map(h => toY(h.brier));
+  const targetY = toY(0.20);
+
+  const pts = xs.map((x, i) => `${x},${ys[i]}`).join(' ');
+  const areaPts = [
+    `${xs[0]},${PAD.top + innerH}`,
+    ...xs.map((x, i) => `${x},${ys[i]}`),
+    `${xs[xs.length - 1]},${PAD.top + innerH}`,
+  ].join(' ');
+
+  const trend = briersArr[briersArr.length - 1] - briersArr[0];
+  const hovered = hoveredIdx != null ? hist[hoveredIdx] : null;
+
+  // Hit-area: wide invisible rects over each point column
+  const colW = hist.length > 1 ? innerW / (hist.length - 1) : innerW;
+
+  return (
+    <section style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 14, padding: '20px', marginBottom: 18 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 12 }}>
+        <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600 }}>Brier score trend (weekly)</h3>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+          {hovered ? (
+            <span style={{ fontSize: 13, fontFamily: 'ui-monospace, monospace', fontWeight: 700,
+              color: hovered.brier <= 0.20 ? '#16a34a' : '#3b82f6' }}>
+              {hovered.week}: <strong>{hovered.brier.toFixed(3)}</strong>
+              {hovered.brier <= 0.20 && <span style={{ color: '#16a34a', marginLeft: 6, fontSize: 11 }}>✓ target</span>}
+            </span>
+          ) : (
+            <span style={{ fontSize: 11, color: 'var(--text-faint)' }}>Hover a point to inspect</span>
+          )}
+          <span style={{ fontSize: 12, color: trend < 0 ? '#16a34a' : '#ef4444', fontWeight: 600, fontFamily: 'ui-monospace, monospace' }}>
+            {trend < 0 ? '▼' : '▲'} {Math.abs(trend * 100).toFixed(1)}pts over {hist.length}w
+          </span>
+        </div>
+      </div>
+
+      <svg ref={svgRef} viewBox={`0 0 ${W} ${H}`}
+        style={{ width: '100%', height: 'auto', display: 'block', overflow: 'visible', cursor: 'crosshair' }}
+        onMouseLeave={() => setHoveredIdx(null)}>
+        <defs>
+          <linearGradient id="brierGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.15" />
+            <stop offset="100%" stopColor="#3b82f6" stopOpacity="0.01" />
+          </linearGradient>
+        </defs>
+
+        {/* Fill area */}
+        <polygon points={areaPts} fill="url(#brierGrad)" />
+
+        {/* Target line */}
+        {targetY >= PAD.top && targetY <= PAD.top + innerH && (
+          <line x1={PAD.left} y1={targetY} x2={W - PAD.right} y2={targetY}
+            stroke="#16a34a" strokeWidth="1" strokeDasharray="5,4" opacity="0.6" />
+        )}
+
+        {/* Crosshair for hovered point */}
+        {hoveredIdx != null && (
+          <line x1={xs[hoveredIdx]} y1={PAD.top} x2={xs[hoveredIdx]} y2={PAD.top + innerH}
+            stroke="var(--text-faint)" strokeWidth="1" strokeDasharray="3,3" opacity="0.5" />
+        )}
+
+        {/* Sparkline */}
+        <polyline points={pts} fill="none" stroke="#3b82f6" strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
+
+        {/* Data points */}
+        {hist.map((h, i) => {
+          const isHov = hoveredIdx === i;
+          const color = h.brier <= 0.20 ? '#16a34a' : '#3b82f6';
+          return (
+            <g key={i}>
+              <circle cx={xs[i]} cy={ys[i]} r={isHov ? 6 : 4}
+                fill={isHov ? color : color} stroke="white" strokeWidth={isHov ? 2.5 : 1.5}
+                style={{ transition: 'r 0.1s' }} />
+              {/* Wide invisible hit area */}
+              <rect
+                x={xs[i] - colW / 2} y={PAD.top}
+                width={colW} height={innerH}
+                fill="transparent"
+                onMouseEnter={() => setHoveredIdx(i)}
+              />
+            </g>
+          );
+        })}
+      </svg>
+
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: 'var(--text-faint)', marginTop: 4 }}>
+        <span>{hist[0]?.week}</span>
+        <span style={{ color: '#16a34a' }}>— target 0.20</span>
+        <span>{hist[hist.length - 1]?.week}</span>
+      </div>
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // AnalyticsTab  — empty-state banner when post-wipe data is absent
 // ---------------------------------------------------------------------------
 function AnalyticsTab() {
@@ -1243,45 +1356,9 @@ function AnalyticsTab() {
       </div>
 
       {/* Brier score trend */}
-      {Array.isArray(M.brierHistory) && M.brierHistory.length > 1 && (() => {
-        const hist = M.brierHistory;
-        const briersArr = hist.map(h => h.brier);
-        const minB = Math.min(...briersArr);
-        const maxB = Math.max(...briersArr) || 0.25;
-        const W = 800, H = 80, padL = 0, padR = 0;
-        const innerW = W - padL - padR;
-        const xs = hist.map((_, i) => padL + (i / (hist.length - 1)) * innerW);
-        const ys = hist.map(h => H - ((h.brier - Math.max(0, minB - 0.02)) / (maxB - Math.max(0, minB - 0.02) + 0.01)) * H * 0.85 - 5);
-        const pts = xs.map((x, i) => `${x},${ys[i]}`).join(' ');
-        const trend = briersArr[briersArr.length - 1] - briersArr[0];
-        return (
-          <section style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 14, padding: '20px', marginBottom: 18 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 12 }}>
-              <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600 }}>Brier score trend (weekly)</h3>
-              <span style={{ fontSize: 12, color: trend < 0 ? '#16a34a' : '#ef4444', fontWeight: 600, fontFamily: 'ui-monospace, monospace' }}>
-                {trend < 0 ? '▼ Improving' : '▲ Worsening'} {Math.abs(trend * 100).toFixed(1)}pts over {hist.length} weeks
-              </span>
-            </div>
-            <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 'auto', display: 'block', overflow: 'visible' }}>
-              <polyline points={pts} fill="none" stroke="#3b82f6" strokeWidth="2.5" strokeLinejoin="round" />
-              {hist.map((h, i) => (
-                <g key={i}>
-                  <circle cx={xs[i]} cy={ys[i]} r="4" fill={h.brier <= 0.20 ? '#16a34a' : '#3b82f6'} stroke="white" strokeWidth="1.5" />
-                  <title>{h.week}: {h.brier.toFixed(3)}</title>
-                </g>
-              ))}
-              <line x1={padL} y1={H - ((0.20 - Math.max(0, minB - 0.02)) / (maxB - Math.max(0, minB - 0.02) + 0.01)) * H * 0.85 - 5}
-                    x2={W - padR} y2={H - ((0.20 - Math.max(0, minB - 0.02)) / (maxB - Math.max(0, minB - 0.02) + 0.01)) * H * 0.85 - 5}
-                    stroke="#16a34a" strokeWidth="1" strokeDasharray="4,4" opacity="0.5" />
-            </svg>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: 'var(--text-faint)', marginTop: 4 }}>
-              <span>{hist[0]?.week}</span>
-              <span style={{ color: '#16a34a', fontSize: 10 }}>— target 0.20</span>
-              <span>{hist[hist.length - 1]?.week}</span>
-            </div>
-          </section>
-        );
-      })()}
+      {Array.isArray(M.brierHistory) && M.brierHistory.length > 1 && (
+        <BrierTrendChart hist={M.brierHistory} />
+      )}
 
       <section style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 14, overflow: 'hidden' }}>
         <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border)' }}>
