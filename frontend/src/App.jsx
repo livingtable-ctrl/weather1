@@ -470,7 +470,7 @@ function OverviewTab() {
           ].map((g) => {
             const pct = g.invert
               ? Math.min(100, Math.max(0, (1 - g.current / 0.25) * 100))
-              : Math.min(100, (g.current / g.target) * 100);
+              : Math.min(100, Math.max(0, (g.current / g.target) * 100));
             return (
               <div key={g.label}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 5 }}>
