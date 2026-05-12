@@ -5501,7 +5501,10 @@ def cmd_paper(args: list, client: KalshiClient | None = None):
                 pnl_str = (
                     green(f"+${pnl:.2f}") if pnl >= 0 else red(f"-${abs(pnl):.2f}")
                 )
-                result = green("WIN ") if pnl > 0 else red("LOSS")
+                if t.get("outcome") == "early_exit":
+                    result = yellow("EXIT")
+                else:
+                    result = green("WIN ") if pnl > 0 else red("LOSS")
                 s_rows.append(
                     [
                         t["id"],

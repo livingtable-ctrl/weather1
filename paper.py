@@ -794,6 +794,7 @@ def close_paper_early(trade_id: int, exit_price: float) -> dict:
             cost = t["cost"]  # entry_price * qty, already stored
             pnl = round(proceeds - cost, 4)
             t["settled"] = True
+            t["settled_at"] = datetime.now(UTC).isoformat()
             t["outcome"] = "early_exit"
             t["exit_price"] = round(exit_price, 4)
             t["pnl"] = pnl
@@ -1272,14 +1273,13 @@ def get_performance() -> dict:
 
     wins = sum(1 for t in trades if t["pnl"] and t["pnl"] > 0)
     total = sum(t["pnl"] for t in trades if t["pnl"] is not None)
-    capital = sum(t["cost"] for t in trades if t["cost"] is not None)
     return {
         "settled": len(trades),
         "open": len(get_open_trades()),
         "wins": wins,
         "win_rate": wins / len(trades),
         "total_pnl": round(total, 2),
-        "roi": round(total / capital, 4) if capital else None,
+        "roi": round(total / STARTING_BALANCE, 4),
         "balance": round(get_balance(), 2),
         "peak_balance": round(get_peak_balance(), 2),
         "max_drawdown_pct": round(get_max_drawdown_pct(), 4),
