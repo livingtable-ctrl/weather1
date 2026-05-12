@@ -707,7 +707,11 @@ setInterval(() => {{
             # On Windows: CREATE_NO_WINDOW prevents the child from attaching to
             # (or blocking on) the parent's console window, which can cause the
             # child to hang on stdout/stderr writes if the console is detached.
-            _cflags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
+            _cflags = (
+                getattr(subprocess, "CREATE_NO_WINDOW", 0)
+                if sys.platform == "win32"
+                else 0
+            )
             proc = subprocess.Popen(
                 [sys.executable, "-u", str(Path(__file__).parent / "main.py"), "cron"],
                 cwd=str(Path(__file__).parent),
