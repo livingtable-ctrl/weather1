@@ -1170,6 +1170,87 @@ def batch_prewarm_ensemble(
                     _save_ensemble_disk_entry(cache_key, all_temps)
                     written += 1
 
+    # Precipitation: 3 models × 1 var = 3 more ENSEMBLE_BASE calls.
+    # Populates _PRECIP_ENSEMBLE_CACHE keyed by (lat, lon, date_iso) so
+    # _fetch_ensemble_precip skips the wire during analysis.
+    precip_models = [*ENSEMBLE_MODELS, "ecmwf_ifs04"]
+    for model in precip_models:
+        if _ensemble_cb.is_open():
+            break
+        ok = False
+        try:
+            resp = _om_request(
+                "GET",
+                ENSEMBLE_BASE,
+                params={
+                    "latitude": ",".join(str(x) for x in lats),
+                    "longitude": ",".join(str(x) for x in lons),
+                    "daily": "precipitation_sum",
+                    "precipitation_unit": "inch",
+                    "timezone": "auto",
+                    "forecast_days": 16,
+                    "models": model,
+                },
+                timeout=30,
+            )
+            resp.raise_for_status()
+            _ensemble_cb.record_success()
+            ok = True
+
+            data = resp.json()
+            if isinstance(data, dict):
+                data = [data]
+
+            ecmwf_mult = 3 if date.today().month in (10, 11, 12, 1, 2, 3) else 2
+            for i, city_name in enumerate(city_names):
+                if i >= len(data):
+                    break
+                city_resp = data[i]
+                if not isinstance(city_resp, dict):
+                    continue
+                daily = city_resp.get("daily", {})
+                if not isinstance(daily, dict):
+                    continue
+                dates_list = daily.get("time", [])
+                lat_i, lon_i = lats[i], lons[i]
+
+                for date_iso in unique_dates:
+                    if date_iso not in dates_list:
+                        continue
+                    idx = dates_list.index(date_iso)
+                    members = [
+                        daily[k][idx]
+                        for k in daily
+                        if k.startswith("precipitation_sum_member")
+                        and isinstance(daily[k], list)
+                        and idx < len(daily[k])
+                        and daily[k][idx] is not None
+                    ]
+                    if not members:
+                        continue
+                    cache_key_p = (lat_i, lon_i, date_iso)
+                    cached_p = _PRECIP_ENSEMBLE_CACHE.get(cache_key_p)
+                    if (
+                        cached_p is not None
+                        and time.monotonic() - cached_p[1] < _MODEL_CACHE_TTL
+                    ):
+                        existing = cached_p[0]
+                    else:
+                        existing = []
+                    mult = ecmwf_mult if model == "ecmwf_ifs04" else 1
+                    combined = existing + members * mult
+                    _PRECIP_ENSEMBLE_CACHE[cache_key_p] = (combined, time.monotonic())
+                    written += 1
+
+        except Exception as exc:
+            _ensemble_cb.record_failure()
+            _log.debug(
+                "batch_prewarm_ensemble precip: model=%s — %s: %s",
+                model,
+                type(exc).__name__,
+                exc,
+            )
+
     _log.info(
         "[batch_prewarm_ensemble] wrote %d cache entries (%d cities, %d dates)",
         written,
@@ -1183,6 +1264,8 @@ def batch_prewarm_ensemble(
 
 _NBM_CACHE: dict[tuple, tuple[float | None, float]] = {}
 _ECMWF_CACHE: dict[tuple, tuple[float | None, float]] = {}
+# Keyed by (lat, lon, date_iso) — shared across all _fetch_ensemble_precip callers.
+_PRECIP_ENSEMBLE_CACHE: dict[tuple, tuple[list[float], float]] = {}
 _MODEL_CACHE_TTL = 4 * 60 * 60  # 4 hours
 
 
@@ -2541,11 +2624,20 @@ def get_weather_markets(
 
     with ThreadPoolExecutor(max_workers=4) as pool:
         futures = {pool.submit(_fetch_series, s): s for s in known_series}
-        for fut in as_completed(futures):
-            for m in fut.result():
-                if m.get("ticker") not in seen:
-                    results.append(m)
-                    seen.add(m["ticker"])
+        try:
+            for fut in as_completed(futures, timeout=30):
+                try:
+                    for m in fut.result():
+                        if m.get("ticker") not in seen:
+                            results.append(m)
+                            seen.add(m["ticker"])
+                except Exception:
+                    pass
+        except TimeoutError:
+            _log.warning(
+                "get_weather_markets: Kalshi API timed out after 30s — using %d partial results",
+                len(results),
+            )
 
     _MARKETS_CACHE = (results, now)
     return results
@@ -3570,6 +3662,13 @@ def _fetch_ensemble_precip(
     ECMWF is fetched separately and appended twice (2× weight) to match the
     temperature ensemble weighting in _model_weights().
     """
+    _precip_cache_key = (lat, lon, target_date.isoformat())
+    _cached_precip = _PRECIP_ENSEMBLE_CACHE.get(_precip_cache_key)
+    if _cached_precip is not None:
+        _vals, _ts = _cached_precip
+        if time.monotonic() - _ts < _MODEL_CACHE_TTL:
+            return _vals
+
     results = []
     target_str = target_date.isoformat()
     prefix = "precipitation_sum_member"
@@ -3628,6 +3727,7 @@ def _fetch_ensemble_precip(
     # #70: return None instead of [] when no members fetched (caller can distinguish)
     if not results and not date_in_range:
         return None  # type: ignore[return-value]  # date outside forecast range
+    _PRECIP_ENSEMBLE_CACHE[_precip_cache_key] = (results, time.monotonic())
     return results
 
 
