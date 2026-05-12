@@ -775,6 +775,19 @@ def _cmd_cron_body(
                         pass
             print(flush=True)  # newline after in-place counter
 
+        # Suppress probing on any circuit that opened during prewarm.
+        # Analysis should use fallback sources immediately, not stall every
+        # recovery_timeout seconds waiting on a probe that may also fail.
+        from weather_markets import _ensemble_cb, _forecast_cb, _nbm_om_cb
+
+        for _cb in (_nbm_om_cb, _ensemble_cb, _forecast_cb):
+            if _cb.seconds_open() > 0:
+                _cb.suppress_probe()
+                _log.warning(
+                    "cron: circuit '%s' open after prewarm — probing suppressed for this run",
+                    _cb.name,
+                )
+
         def _enrich_and_analyze(m: dict) -> tuple[dict, dict, dict | None]:
             enriched = ctx.enrich_with_forecast(m)
             return m, enriched, ctx.analyze_trade(enriched)

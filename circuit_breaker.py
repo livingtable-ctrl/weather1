@@ -56,6 +56,7 @@ class CircuitBreaker:
         self._current_timeout: float = recovery_timeout
         self._last_failure_at: float | None = None
         self._half_open: bool = False
+        self._probe_enabled: bool = True
         self._lock = threading.Lock()
         self._load_state()
 
@@ -119,12 +120,26 @@ class CircuitBreaker:
         except Exception as exc:
             _log.debug("CB state save failed (non-critical): %s", exc)
 
+    def suppress_probe(self) -> None:
+        """Prevent automatic probing for the rest of this process lifetime.
+
+        Call this after prewarm when the circuit is open: the analysis phase
+        should use fallback sources immediately rather than stalling every
+        recovery_timeout seconds waiting for a probe that may also fail.
+        Probing resumes naturally on the next process start.
+        """
+        with self._lock:
+            self._probe_enabled = False
+
     def is_open(self) -> bool:
         with self._lock:
             if self._opened_at is None:
                 return False
             if self._half_open:
                 # Probe already dispatched — block subsequent callers until it resolves.
+                return True
+            if not self._probe_enabled:
+                # Probing suppressed (analysis phase) — stay open, no HALF-OPEN.
                 return True
             elapsed = time.monotonic() - self._opened_at
             if elapsed >= self._current_timeout:
