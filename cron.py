@@ -817,11 +817,13 @@ def _cmd_cron_body(
 
         _reset_gate_counts()
 
-        # Per-market analysis timeout: 3 min total for all markets.
-        # Manual pool (no `with`) so shutdown(wait=False) can be used in
-        # finally — `with ThreadPoolExecutor` calls shutdown(wait=True) on
-        # __exit__, which blocks forever on a hung Windows SSL socket.
-        _ANALYSIS_TIMEOUT_S = 180
+        # Per-market analysis timeout: 6 min total for all markets.
+        # 288 markets / 12 workers with METAR+MOS per market needs ~5-6 min
+        # in the worst case.  Manual pool (no `with`) so shutdown(wait=False)
+        # can be used in finally — `with ThreadPoolExecutor` calls
+        # shutdown(wait=True) on __exit__, which blocks forever on a hung
+        # Windows SSL socket.  Watchdog hard-kills at 720s as backstop.
+        _ANALYSIS_TIMEOUT_S = 360  # was 180
         _pool = ThreadPoolExecutor(max_workers=12)
         try:
             _futures = {
@@ -1499,7 +1501,7 @@ def _cmd_cron_body(
 # ---------------------------------------------------------------------------
 
 
-def _install_cron_watchdog(timeout_secs: int = 480) -> None:
+def _install_cron_watchdog(timeout_secs: int = 720) -> None:
     """Start a daemon thread that hard-kills the process if cron hangs > timeout_secs.
 
     Used because signal.SIGALRM is unavailable on Windows.  The thread is
