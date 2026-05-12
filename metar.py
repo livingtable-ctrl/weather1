@@ -56,7 +56,9 @@ _session.mount(
     "https://",
     HTTPAdapter(
         max_retries=Retry(
-            total=3, backoff_factor=0.5, status_forcelist=[500, 502, 503, 504]
+            total=1,  # was 3 — Retry(total=3) + timeout=10 → 43 s/call; total=1 caps at ~21 s
+            backoff_factor=0.5,
+            status_forcelist=[500, 502, 503, 504],
         )
     ),
 )

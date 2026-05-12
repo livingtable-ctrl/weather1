@@ -799,7 +799,9 @@ def get_weather_forecast(city: str, target_date: date) -> dict | None:
             pool.submit(_fetch_one, model, weight): model
             for model, weight in model_weights.items()
         }
-        for fut in as_completed(futures):
+        # 60 s timeout: 3 models × max ~24.5 s each; if a thread slips past its
+        # HTTP timeout (Windows SSL edge case) this ensures we don't wait forever.
+        for fut in as_completed(futures, timeout=60):
             try:
                 model_data = fut.result()
                 if model_data is None:
@@ -1865,7 +1867,9 @@ def _fetch_model_ensemble(
     if hour is not None:
         params["hourly"] = "temperature_2m"
         try:
-            resp = _om_request("GET", ENSEMBLE_BASE, params=params, timeout=20)
+            resp = _om_request(
+                "GET", ENSEMBLE_BASE, params=params, timeout=12
+            )  # was 20 — Retry(1)×20=40s/call; 12 caps at 24.5s
             resp.raise_for_status()
             _ensemble_cb.record_success()
         except Exception as _exc:
@@ -1898,7 +1902,9 @@ def _fetch_model_ensemble(
         daily_var = "temperature_2m_max" if var == "max" else "temperature_2m_min"
         params["daily"] = daily_var
         try:
-            resp = _om_request("GET", ENSEMBLE_BASE, params=params, timeout=20)
+            resp = _om_request(
+                "GET", ENSEMBLE_BASE, params=params, timeout=12
+            )  # was 20 — Retry(1)×20=40s/call; 12 caps at 24.5s
             resp.raise_for_status()
             _ensemble_cb.record_success()
         except Exception as _exc:
@@ -3570,7 +3576,9 @@ def _get_consensus_probs(
                     "end_date": target_date.isoformat(),
                 }
                 try:
-                    resp = _om_request("GET", ENSEMBLE_BASE, params=params, timeout=20)
+                    resp = _om_request(
+                        "GET", ENSEMBLE_BASE, params=params, timeout=12
+                    )  # was 20 — Retry(1)×20=40s/call; 12 caps at 24.5s
                     if not resp:
                         return None, None
                     resp.raise_for_status()
@@ -3708,7 +3716,9 @@ def _fetch_ensemble_precip(
                 "timezone": tz,
                 "forecast_days": 16,
             }
-            resp = _om_request("GET", ENSEMBLE_BASE, params=params, timeout=20)
+            resp = _om_request(
+                "GET", ENSEMBLE_BASE, params=params, timeout=12
+            )  # was 20 — Retry(1)×20=40s/call; 12 caps at 24.5s
             resp.raise_for_status()
             _ensemble_cb.record_success()
             daily = resp.json().get("daily", {})
