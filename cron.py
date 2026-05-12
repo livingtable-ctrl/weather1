@@ -709,6 +709,10 @@ def _cmd_cron_body(
                 except Exception:
                     pass
                 try:
+                    ctx.fetch_temperature_ecmwf(_c, _dt)
+                except Exception:
+                    pass
+                try:
                     ctx.fetch_temperature_weatherapi(_c, _dt)
                 except Exception:
                     pass

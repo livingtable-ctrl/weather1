@@ -74,9 +74,9 @@ _forecast_cb = CircuitBreaker(
 # Failures here degrade quality but don't block primary signals.
 _ensemble_cb = CircuitBreaker(
     name="open_meteo_ensemble",
-    failure_threshold=10,  # raised — ensemble failures shouldn't trip on a few slow responses
-    recovery_timeout=300,  # 5 min recovery window
-    burst_window=15.0,  # wide window: 30-city prewarm fires many parallel requests
+    failure_threshold=6,  # trip quickly — pre-warm will populate cache before analysis
+    recovery_timeout=30,  # 30s fast-fail recovery (was 300s — caused 5-min analysis stalls)
+    burst_window=2.0,  # tight window: circuit opens within ~12s of a flaky endpoint
 )
 
 # Separate circuit breaker for the NBM (Open-Meteo model="nbm") fetch.
@@ -87,7 +87,7 @@ _ensemble_cb = CircuitBreaker(
 _nbm_om_cb = CircuitBreaker(
     name="nbm_openmeteo",
     failure_threshold=6,
-    recovery_timeout=300,
+    recovery_timeout=30,  # 30s: fast-fail recovery so probes don't stall cron for 5 min
     burst_window=2.0,
 )
 
@@ -1545,7 +1545,7 @@ def fetch_temperature_ecmwf(city: str, target_date: date) -> float | None:
                 "end_date": target_date.isoformat(),
                 "timezone": "auto",
             },
-            timeout=8,
+            timeout=5,  # reduced from 8s — matches NBM timeout; circuit opens fast on slow endpoints
         )
         resp.raise_for_status()
         _ensemble_cb.record_success()
