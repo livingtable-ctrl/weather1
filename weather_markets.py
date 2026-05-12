@@ -1306,8 +1306,10 @@ _MODEL_CACHE_TTL = 4 * 60 * 60  # 4 hours
 
 def fetch_temperature_nbm(city: str, target_date: date) -> float | None:
     """
-    Fetch NBM (National Blend of Models) max daily temperature for a city.
-    Uses Open-Meteo with model="nbm" — NWS-calibrated blend of GFS/HRRR/ECMWF.
+    Fetch best-available Open-Meteo max daily temperature for a city.
+    Previously used model="nbm" (NOAA National Blend of Models), but Open-Meteo
+    removed that model name in 2026.  Now uses model="best_match" — Open-Meteo's
+    auto-selected optimal model per location (covers days 1–4, full 24 h/day).
 
     Returns max temperature for target_date in °F, or None on failure.
     """
@@ -1336,7 +1338,7 @@ def fetch_temperature_nbm(city: str, target_date: date) -> float | None:
                 "longitude": lon,
                 "hourly": "temperature_2m",
                 "temperature_unit": "fahrenheit",
-                "models": "nbm",
+                "models": "best_match",
                 "start_date": target_date.isoformat(),
                 "end_date": target_date.isoformat(),
                 "timezone": "auto",
