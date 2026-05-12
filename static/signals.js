@@ -22,10 +22,10 @@
   }
 
   function renderSummary(s, ts) {
-    setText('sum-scanned', s.scanned || '—');
-    setText('sum-edge', s.with_edge || '—');
-    setText('sum-strong', s.strong || '—');
-    setText('sum-lowrisk', s.low_risk !== undefined ? s.low_risk : '—');
+    setText('sum-scanned', s.scanned != null ? s.scanned : '—');
+    setText('sum-edge',    s.with_edge != null ? s.with_edge : '—');
+    setText('sum-strong',  s.strong != null ? s.strong : '—');
+    setText('sum-lowrisk', s.low_risk != null ? s.low_risk : '—');
     var tsEl = document.getElementById('sum-ts');
     if (tsEl && ts) {
       var scanTime = new Date(ts + 'Z');
