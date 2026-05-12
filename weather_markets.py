@@ -1028,6 +1028,157 @@ def batch_prewarm_forecasts(
     return written
 
 
+def batch_prewarm_ensemble(
+    city_dates: set[tuple[str, str]],
+    progress_cb: Callable[[int, int, str, bool], None] | None = None,
+) -> int:
+    """Pre-warm _ensemble_cache with batched ENSEMBLE_BASE requests.
+
+    Instead of one request per city per model (30 cities × 3 models × 2 vars = 180
+    calls), sends ONE request per (model, var) with all city lat/lons comma-separated.
+    Total cost: 6 calls. At 1.5 s/call this cuts ensemble prewarm from ~270 s to
+    ~30 s (rate overhead + HTTP latency).
+
+    Returns the number of _ensemble_cache entries written.
+    """
+    if _ensemble_cb.is_open():
+        _log.warning(
+            "[batch_prewarm_ensemble] ensemble circuit OPEN — skipping batch prewarm"
+        )
+        return 0
+
+    unique_cities: set[str] = {city for city, _ in city_dates}
+    unique_dates: set[str] = {date_iso for _, date_iso in city_dates}
+
+    coords_list = [
+        (city, CITY_COORDS[city])
+        for city in sorted(unique_cities)
+        if city in CITY_COORDS
+    ]
+    if not coords_list:
+        return 0
+
+    city_names = [c[0] for c in coords_list]
+    lats = [c[1][0] for c in coords_list]
+    lons = [c[1][1] for c in coords_list]
+
+    ensemble_models = [*ENSEMBLE_MODELS, "ecmwf_ifs04"]
+    vars_to_fetch = [("max", "temperature_2m_max"), ("min", "temperature_2m_min")]
+    total_calls = len(ensemble_models) * len(vars_to_fetch)
+    call_num = 0
+
+    # raw_members[(city, date_iso, var_str)] accumulates members across models
+    # before weighting; keyed by model for per-model weight application.
+    raw_by_model: dict[str, dict[tuple[str, str, str], list[float]]] = {
+        m: {} for m in ensemble_models
+    }
+
+    for model in ensemble_models:
+        if _ensemble_cb.is_open():
+            break
+        for var_str, daily_key in vars_to_fetch:
+            call_num += 1
+            ok = False
+            try:
+                resp = _om_request(
+                    "GET",
+                    ENSEMBLE_BASE,
+                    params={
+                        "latitude": ",".join(str(x) for x in lats),
+                        "longitude": ",".join(str(x) for x in lons),
+                        "daily": daily_key,
+                        "temperature_unit": "fahrenheit",
+                        "timezone": "auto",
+                        "forecast_days": 16,
+                        "models": model,
+                    },
+                    timeout=30,
+                )
+                resp.raise_for_status()
+                _ensemble_cb.record_success()
+                ok = True
+
+                data = resp.json()
+                if isinstance(data, dict):
+                    data = [data]
+
+                for i, city_name in enumerate(city_names):
+                    if i >= len(data):
+                        break
+                    city_resp = data[i]
+                    if not isinstance(city_resp, dict):
+                        continue
+                    daily = city_resp.get("daily", {})
+                    if not isinstance(daily, dict):
+                        continue
+                    dates = daily.get("time", [])
+
+                    for date_iso in unique_dates:
+                        if date_iso not in dates:
+                            continue
+                        idx = dates.index(date_iso)
+                        member_temps = [
+                            daily[k][idx]
+                            for k in daily
+                            if k.startswith(f"{daily_key}_member")
+                            and isinstance(daily[k], list)
+                            and idx < len(daily[k])
+                            and daily[k][idx] is not None
+                        ]
+                        if member_temps:
+                            raw_by_model[model][(city_name, date_iso, var_str)] = (
+                                member_temps
+                            )
+
+            except Exception as exc:
+                _ensemble_cb.record_failure()
+                _log.debug(
+                    "batch_prewarm_ensemble: model=%s var=%s — %s: %s",
+                    model,
+                    var_str,
+                    type(exc).__name__,
+                    exc,
+                )
+
+            if progress_cb:
+                progress_cb(call_num, total_calls, f"{model}/{var_str}", ok)
+
+    # Combine raw members across models with the same weighting as get_ensemble_temps,
+    # then populate _ensemble_cache for each (city, date, None, var).
+    written = 0
+    for city_name in city_names:
+        for date_iso in unique_dates:
+            target_month = date.fromisoformat(date_iso).month
+            weights = _model_weights(city_name, month=target_month)
+            for var_str, _ in vars_to_fetch:
+                cache_key = (city_name, date_iso, None, var_str)
+                if _ensemble_cache.get(cache_key) is not None:
+                    continue  # already warm (e.g. loaded from disk)
+                all_temps: list[float] = []
+                for model in ensemble_models:
+                    member_temps = raw_by_model[model].get(
+                        (city_name, date_iso, var_str), []
+                    )
+                    base_w = weights.get(model, 1.0)
+                    w = 1.0 + (base_w - 1.0) * 1.0  # decay=1.0 for fresh data
+                    repeats = max(1, round(w * 2))
+                    all_temps.extend(member_temps * repeats)
+                if all_temps:
+                    _ensemble_cache.set_with_ttl(
+                        cache_key, all_temps, _ttl_until_next_cycle()
+                    )
+                    _save_ensemble_disk_entry(cache_key, all_temps)
+                    written += 1
+
+    _log.info(
+        "[batch_prewarm_ensemble] wrote %d cache entries (%d cities, %d dates)",
+        written,
+        len(city_names),
+        len(unique_dates),
+    )
+    return written
+
+
 # ── NBM (National Blend of Models) ──────────────────────────────────────────
 
 _NBM_CACHE: dict[tuple, tuple[float | None, float]] = {}

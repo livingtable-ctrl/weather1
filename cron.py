@@ -675,8 +675,12 @@ def _cmd_cron_body(
                 flush=True,
             )
 
-            # Step 1: batch Open-Meteo (3 HTTP calls cover all cities)
-            from weather_markets import batch_prewarm_forecasts
+            # Step 1a: batch Open-Meteo forecast (3 HTTP calls cover all cities)
+            from weather_markets import (
+                batch_prewarm_ensemble,
+                batch_prewarm_forecasts,
+                flush_ensemble_disk_cache,
+            )
 
             _om_models = ["gfs_seamless", "ecmwf_ifs04", "icon_seamless"]
             _n_models = len(_om_models)
@@ -698,6 +702,31 @@ def _cmd_cron_body(
                 ),
                 flush=True,
             )
+
+            # Step 1b: batch ensemble prewarm (6 calls: 3 models × 2 vars)
+            # Replaces ~90 individual calls during analysis (was ~270 s at 1.5 s/call).
+            _ens_models = [*_om_models]  # icon_seamless, ecmwf_ifs04, gfs_seamless
+            _ens_vars = 2
+
+            def _ens_progress(current: int, total: int, label: str, ok: bool) -> None:
+                _tick = "OK" if ok else "FAIL"
+                print(
+                    dim(f"  [ENS batch] [{current}/{total}] {label:<26} {_tick}"),
+                    flush=True,
+                )
+
+            _ens_written = batch_prewarm_ensemble(
+                _city_dates, progress_cb=_ens_progress
+            )
+            print(
+                dim(
+                    f"  [ENS batch] {_ens_written} cache entries written"
+                    f" across {len(_ens_models)} models × {_ens_vars} vars"
+                ),
+                flush=True,
+            )
+            # Flush to disk immediately so a canceled run still warms the next run.
+            flush_ensemble_disk_cache()
 
             # Step 2: per-city sources that don't support batching
             # NBM + WeatherAPI only -- no OM rate lock contention.
