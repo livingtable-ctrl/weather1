@@ -635,6 +635,7 @@ function SignalsTab() {
   const [minEdge, setMinEdge] = useState(5);
   const [selectedOpp, setSelectedOpp] = useState(null);
   const [actionMsg, setActionMsg] = useState('');
+  const [qtyMap, setQtyMap] = useState({});
 
   const filtered = useMemo(() =>
     M.opportunities.filter(o => o.edge_pct >= minEdge),
@@ -648,13 +649,14 @@ function SignalsTab() {
       return;
     }
     // approve → place a manual paper order at the current market price
+    const qty = parseInt(qtyMap[opp.ticker] || 1, 10) || 1;
     fetch('/api/paper-order', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...authHeader() },
       body: JSON.stringify({
         ticker:      opp.ticker,
         side:        (opp.side || 'yes').toLowerCase(),
-        quantity:    1,
+        quantity:    qty,
         entry_price: opp.market_prob != null ? opp.market_prob / 100 : 0.5,
         entry_prob:  opp.forecast_prob != null ? opp.forecast_prob / 100 : null,
         net_edge:    opp.edge_pct != null ? opp.edge_pct / 100 : null,
@@ -778,7 +780,17 @@ function SignalsTab() {
                     {!o.near_threshold && !o.is_hedge && !o.already_held && <span style={{ color: 'var(--text-faint)' }}>—</span>}
                   </td>
                   <td style={{ padding: '12px 16px' }} onClick={e => e.stopPropagation()}>
-                    <div style={{ display: 'flex', gap: 6 }}>
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                      <input
+                        type="number" min="1" step="1"
+                        value={qtyMap[o.ticker] ?? 1}
+                        onChange={e => setQtyMap(prev => ({ ...prev, [o.ticker]: e.target.value }))}
+                        style={{
+                          width: 48, padding: '3px 5px', borderRadius: 5,
+                          border: '1px solid var(--border)', background: 'var(--bg-muted)',
+                          color: 'var(--text)', fontSize: 11, textAlign: 'center',
+                        }}
+                      />
                       <button onClick={() => handleAction(o, 'approve')} style={{
                         padding: '4px 10px', borderRadius: 6, border: '1px solid #16a34a',
                         background: 'rgba(34,197,94,0.08)', color: '#16a34a',
