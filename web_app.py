@@ -669,43 +669,103 @@ setInterval(() => {{
             }
         )
 
-    _cron_last_spawn: dict[str, float] = {}  # IP → last spawn timestamp
-    _CRON_RATE_LIMIT_SECS = 300  # one spawn per IP per 5 minutes
+    _cron_proc: subprocess.Popen | None = None
+    _CRON_WEB_LOG = Path(__file__).parent / "data" / "cron_web.log"
 
     @app.route("/api/run_cron", methods=["POST"])
     @_require_auth
     def api_run_cron():
-        """Trigger a cron scan in the background and return immediately."""
-        import time
+        """Spawn a cron scan subprocess, capturing output to cron_web.log."""
 
         from cron import _is_cron_running
 
-        # Reject the request if a cron process already holds the lock,
-        # preventing concurrent runs that would each place independent orders.
         if _is_cron_running():
             return jsonify({"error": "cron already running"}), 409
 
-        ip = _flask_request.remote_addr or "unknown"
-        last = _cron_last_spawn.get(ip, 0.0)
-        if time.time() - last < _CRON_RATE_LIMIT_SECS:
-            return jsonify({"error": "rate limited: 1 cron spawn per 5 minutes"}), 429
-        _cron_last_spawn[ip] = time.time()
+        _CRON_WEB_LOG.write_text("")  # truncate log for fresh run
         try:
-            subprocess.Popen(
-                [
-                    sys.executable,
-                    str(Path(__file__).parent / "main.py"),
-                    "cron",
-                    "--edge",
-                    "5",
-                ],
+            log_f = open(_CRON_WEB_LOG, "w", encoding="utf-8", buffering=1)
+            proc = subprocess.Popen(
+                [sys.executable, "-u", str(Path(__file__).parent / "main.py"), "cron"],
                 cwd=str(Path(__file__).parent),
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
+                stdout=log_f,
+                stderr=log_f,
+                env={**__import__("os").environ, "PYTHONUNBUFFERED": "1"},
             )
-            return jsonify({"status": "started"})
+            log_f.close()  # child holds its own fd
+            # store on the function object so it survives across requests
+            api_run_cron._proc = proc
+            return jsonify({"status": "started", "pid": proc.pid})
         except Exception as e:
             return jsonify({"status": "error", "message": str(e)}), 500
+
+    api_run_cron._proc = None  # type: ignore[attr-defined]
+
+    @app.route("/api/cron-status")
+    @_require_auth
+    def api_cron_status():
+        """Return running state and last N lines of cron_web.log."""
+        import re as _re
+
+        proc = api_run_cron._proc
+        running = False
+        exit_code = None
+        if proc is not None:
+            exit_code = proc.poll()
+            running = exit_code is None
+        else:
+            from cron import _is_cron_running
+
+            running = _is_cron_running()
+
+        lines: list[str] = []
+        if _CRON_WEB_LOG.exists():
+            try:
+                raw = _CRON_WEB_LOG.read_text(
+                    encoding="utf-8", errors="replace"
+                ).splitlines()
+                ansi = _re.compile(r"\x1b\[[0-9;]*[mK]")
+                lines = [ansi.sub("", ln) for ln in raw[-200:] if ln.strip()]
+            except Exception:
+                pass
+
+        return jsonify({"running": running, "exit_code": exit_code, "log": lines})
+
+    @app.route("/api/cancel-cron", methods=["POST"])
+    @_require_auth
+    def api_cancel_cron():
+        """Terminate the running cron subprocess."""
+        proc = api_run_cron._proc
+        if proc is None or proc.poll() is not None:
+            return jsonify({"error": "no cron running"}), 404
+        proc.terminate()
+        return jsonify({"ok": True})
+
+    @app.route("/api/weekly-report")
+    @_require_auth
+    def api_weekly_report():
+        """Generate and serve the weekly PDF/HTML report as a download."""
+        import tempfile as _tmp
+
+        from pdf_report import generate_weekly_report
+
+        try:
+            with _tmp.TemporaryDirectory() as td:
+                out = generate_weekly_report(str(Path(td) / "report"))
+                out_path = Path(out)
+                mime = "application/pdf" if out_path.suffix == ".pdf" else "text/html"
+                data = out_path.read_bytes()
+            from flask import Response as _Resp
+
+            return _Resp(
+                data,
+                mimetype=mime,
+                headers={
+                    "Content-Disposition": f"attachment; filename=weekly_report{out_path.suffix}"
+                },
+            )
+        except Exception as exc:
+            return jsonify({"error": str(exc)}), 500
 
     MAX_SIGNALS_CACHE_AGE_SECS = 4 * 60 * 60  # 4 hours — one full cron cycle
 

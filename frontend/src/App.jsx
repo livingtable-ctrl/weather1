@@ -584,8 +584,8 @@ function PositionsTab() {
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
           <thead>
             <tr style={{ background: 'var(--bg-subtle)', color: 'var(--text-muted)', fontSize: 12 }}>
-              {['Ticker', 'City', 'Side', 'Cost', 'Qty', 'Mark', 'Fcst', 'Edge', 'Model', 'Expiry', 'Age'].map((h, i) => (
-                <th key={h} style={{ padding: '12px 16px', textAlign: i >= 3 && i <= 7 ? 'right' : 'left', fontWeight: 600, borderBottom: '1px solid var(--border)' }}>{h}</th>
+              {['Ticker', 'City', 'Side', 'Cost', 'Qty', 'Mark', 'Fcst', 'Edge', 'Unrl. P&L', 'Model', 'Expiry', 'Age'].map((h, i) => (
+                <th key={h} style={{ padding: '12px 16px', textAlign: i >= 3 && i <= 8 ? 'right' : 'left', fontWeight: 600, borderBottom: '1px solid var(--border)' }}>{h}</th>
               ))}
             </tr>
           </thead>
@@ -609,6 +609,17 @@ function PositionsTab() {
                 <td style={{ padding: '14px 16px', textAlign: 'right', fontFamily: 'ui-monospace, monospace', color: 'var(--text-muted)' }}>{p.mark.toFixed(2)}</td>
                 <td style={{ padding: '14px 16px', textAlign: 'right', fontFamily: 'ui-monospace, monospace' }}>{p.fcst.toFixed(2)}</td>
                 <td style={{ padding: '14px 16px', textAlign: 'right', color: '#16a34a', fontWeight: 700, fontFamily: 'ui-monospace, monospace' }}>+{(p.edge * 100).toFixed(1)}%</td>
+                {(() => {
+                  const upnl = (p.mark - p.cost / p.qty) * p.qty;
+                  const color = !p.markIsLive ? 'var(--text-faint)' : upnl >= 0 ? '#16a34a' : '#ef4444';
+                  const label = (upnl >= 0 ? '+' : '-') + '$' + Math.abs(upnl).toFixed(2);
+                  return (
+                    <td title={!p.markIsLive ? 'Mark price not live — showing entry price' : undefined}
+                      style={{ padding: '14px 16px', textAlign: 'right', fontFamily: 'ui-monospace, monospace', fontSize: 11, fontWeight: 600, color }}>
+                      {label}
+                    </td>
+                  );
+                })()}
                 <td style={{ padding: '14px 16px', fontFamily: 'ui-monospace, monospace', fontSize: 11, color: 'var(--text-muted)' }}>{p.model}</td>
                 <td style={{ padding: '14px 16px', fontFamily: 'ui-monospace, monospace', fontSize: 11, color: 'var(--text-muted)' }}>{p.expiry}</td>
                 <td style={{ padding: '14px 16px', textAlign: 'right', fontFamily: 'ui-monospace, monospace', fontSize: 11, color: 'var(--text-faint)' }}>{p.age_h}h</td>
@@ -643,11 +654,11 @@ function PositionsTab() {
               { label: 'Cost basis',     value: '$' + selectedPos.cost.toFixed(2) },
               { label: 'Quantity',       value: selectedPos.qty + ' contracts' },
               { label: 'Current mark',   value: selectedPos.mark.toFixed(2) },
-              { label: 'Unrealized P&L', value: '+$' + ((selectedPos.mark - selectedPos.cost / selectedPos.qty) * selectedPos.qty).toFixed(2) },
+              { label: 'Unrealized P&L', value: (() => { const u = (selectedPos.mark - selectedPos.cost / selectedPos.qty) * selectedPos.qty; return (u >= 0 ? '+' : '-') + '$' + Math.abs(u).toFixed(2); })(), color: (() => { const u = (selectedPos.mark - selectedPos.cost / selectedPos.qty) * selectedPos.qty; return u >= 0 ? '#16a34a' : '#ef4444'; })() },
             ].map((item) => (
               <div key={item.label}>
                 <div style={{ color: 'var(--text-faint)', fontSize: 11, marginBottom: 4 }}>{item.label}</div>
-                <div style={{ fontWeight: 600, fontSize: 15, fontFamily: 'ui-monospace, monospace' }}>{item.value}</div>
+                <div style={{ fontWeight: 600, fontSize: 15, fontFamily: 'ui-monospace, monospace', color: item.color || 'inherit' }}>{item.value}</div>
               </div>
             ))}
           </div>
@@ -666,6 +677,12 @@ function SignalsTab() {
   const [selectedOpp, setSelectedOpp] = useState(null);
   const [actionMsg, setActionMsg] = useState('');
   const [qtyMap, setQtyMap] = useState({});
+  const [confirmPending, setConfirmPending] = useState(null); // {opp, qty}
+  const PLACED_KEY = 'kalshi-placed-signals';
+  const [placedSet, setPlacedSet] = useState(() => {
+    try { return new Set(JSON.parse(sessionStorage.getItem(PLACED_KEY) || '[]')); }
+    catch { return new Set(); }
+  });
 
   const filtered = useMemo(() =>
     M.opportunities.filter(o => o.edge_pct >= minEdge),
@@ -678,8 +695,16 @@ function SignalsTab() {
       setTimeout(() => setActionMsg(''), 2500);
       return;
     }
-    // approve → place a manual paper order at the current market price
-    const qty = parseInt(qtyMap[opp.ticker] ?? opp.kelly_qty ?? 1, 10) || 1;
+    // approve → show confirmation dialog first
+    const mp = (opp.market_prob || 0) / 100;
+    const qty = parseInt(qtyMap[opp.ticker] ?? (opp.kelly_qty || (opp.kelly_dollars > 0 && mp > 0 ? Math.max(1, Math.floor(opp.kelly_dollars / mp)) : 1)) ?? 1, 10) || 1;
+    setConfirmPending({ opp, qty });
+  }
+
+  function handleConfirm() {
+    if (!confirmPending) return;
+    const { opp, qty } = confirmPending;
+    setConfirmPending(null);
     fetch('/api/paper-order', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...authHeader() },
@@ -691,13 +716,22 @@ function SignalsTab() {
         entry_prob:  opp.forecast_prob != null ? opp.forecast_prob / 100 : null,
         net_edge:    opp.edge_pct != null ? opp.edge_pct / 100 : null,
         city:        opp.city || null,
-        target_date: opp.expiry || null,
+        target_date: opp.target_date || opp.expiry || null,
       }),
     })
       .then(r => r.json())
       .then(d => {
         setActionMsg(d.error ? `✗ ${d.error}` : `✓ ${opp.ticker} placed`);
         setTimeout(() => setActionMsg(''), 3000);
+        if (!d.error) {
+          const key = `${opp.ticker}|${opp.target_date || opp.expiry || ''}`;
+          setPlacedSet(prev => {
+            const next = new Set([...prev, key]);
+            try { sessionStorage.setItem(PLACED_KEY, JSON.stringify([...next])); } catch {}
+            return next;
+          });
+          M.refresh();
+        }
       })
       .catch(() => {
         setActionMsg(`✗ Request failed`);
@@ -712,6 +746,17 @@ function SignalsTab() {
           <h1 style={{ margin: 0, fontSize: 24, fontWeight: 700, letterSpacing: '-0.02em' }}>Signals</h1>
           <p style={{ margin: '4px 0 0', color: 'var(--text-muted)', fontSize: 13 }}>
             {filtered.length} opportunities above {minEdge}% edge
+            {M.signalsMeta?.generatedAt && (() => {
+              const ageMs = Date.now() - new Date(M.signalsMeta.generatedAt).getTime();
+              const ageMin = Math.round(ageMs / 60000);
+              const isStale = M.signalsMeta.stale || ageMin > 90;
+              const label = ageMin < 60 ? `${ageMin}m ago` : `${Math.round(ageMin / 60)}h ${ageMin % 60}m ago`;
+              return (
+                <span style={{ marginLeft: 10, color: isStale ? '#f59e0b' : 'var(--text-faint)', fontSize: 11 }}>
+                  {isStale ? '⚠ ' : ''}Last scan: {label}
+                </span>
+              );
+            })()}
           </p>
           <p style={{ margin: '6px 0 0', color: 'var(--text-muted)', fontSize: 12, maxWidth: 560, lineHeight: 1.5 }}>
             Each row is a market the bot would enter. Stars rank conviction. Click a row to expand; use Approve / Reject to act.
@@ -766,9 +811,13 @@ function SignalsTab() {
               const stars = o.stars || '★';
               const starColor = stars.length >= 2 ? '#16a34a' : stars.length === 1 ? '#ca8a04' : 'var(--text-faint)';
               const kelly = o.kelly_dollars > 0 ? '$' + o.kelly_dollars.toFixed(2) : '—';
+              const placed = placedSet.has(`${o.ticker}|${o.target_date || o.expiry || ''}`);
               return (
-                <tr key={i} onClick={() => setSelectedOpp(selectedOpp === o ? null : o)} style={{
-                  borderBottom: '1px solid var(--bg-muted)', cursor: 'pointer',
+                <tr key={i} onClick={() => !placed && setSelectedOpp(selectedOpp === o ? null : o)} style={{
+                  borderBottom: '1px solid var(--bg-muted)',
+                  cursor: placed ? 'default' : 'pointer',
+                  opacity: placed ? 0.4 : 1,
+                  pointerEvents: placed ? 'none' : 'auto',
                   background: selectedOpp === o ? 'var(--bg-subtle)' : o.already_held ? 'rgba(59,130,246,0.04)' : 'transparent',
                 }}>
                   <td style={{ padding: '12px 16px', color: starColor, letterSpacing: 1 }}>{stars}</td>
@@ -811,27 +860,36 @@ function SignalsTab() {
                   </td>
                   <td style={{ padding: '12px 16px' }} onClick={e => e.stopPropagation()}>
                     <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                      <input
-                        type="number" min="1" step="1"
-                        value={qtyMap[o.ticker] ?? (o.kelly_qty || 1)}
-                        onChange={e => setQtyMap(prev => ({ ...prev, [o.ticker]: e.target.value }))}
-                        title={o.kelly_qty ? `Kelly suggests ${o.kelly_qty} contracts` : 'Quantity'}
-                        style={{
-                          width: 52, padding: '3px 5px', borderRadius: 5,
-                          border: '1px solid var(--border)', background: 'var(--bg-muted)',
-                          color: 'var(--text)', fontSize: 11, textAlign: 'center',
-                        }}
-                      />
-                      <button onClick={() => handleAction(o, 'approve')} style={{
-                        padding: '4px 10px', borderRadius: 6, border: '1px solid #16a34a',
-                        background: 'rgba(34,197,94,0.08)', color: '#16a34a',
-                        fontSize: 11, fontWeight: 600, cursor: 'pointer',
-                      }}>✓</button>
-                      <button onClick={() => handleAction(o, 'reject')} style={{
-                        padding: '4px 10px', borderRadius: 6, border: '1px solid var(--border)',
-                        background: 'transparent', color: 'var(--text-muted)',
-                        fontSize: 11, fontWeight: 600, cursor: 'pointer',
-                      }}>✗</button>
+                      {(() => {
+                        const mp = (o.market_prob || 0) / 100;
+                        const kellyQty = o.kelly_qty
+                          || (o.kelly_dollars > 0 && mp > 0
+                            ? Math.max(1, Math.floor(o.kelly_dollars / mp))
+                            : 1);
+                        return (<>
+                          <input
+                            type="number" min="1" step="1"
+                            value={qtyMap[o.ticker] ?? kellyQty}
+                            onChange={e => setQtyMap(prev => ({ ...prev, [o.ticker]: e.target.value }))}
+                            title={`Kelly suggests ${kellyQty} contracts`}
+                            style={{
+                              width: 52, padding: '3px 5px', borderRadius: 5,
+                              border: '1px solid var(--border)', background: 'var(--bg-muted)',
+                              color: 'var(--text)', fontSize: 11, textAlign: 'center',
+                            }}
+                          />
+                          <button onClick={() => handleAction(o, 'approve')} style={{
+                            padding: '4px 10px', borderRadius: 6, border: '1px solid #16a34a',
+                            background: 'rgba(34,197,94,0.08)', color: '#16a34a',
+                            fontSize: 11, fontWeight: 600, cursor: 'pointer',
+                          }}>✓</button>
+                          <button onClick={() => handleAction(o, 'reject')} style={{
+                            padding: '4px 10px', borderRadius: 6, border: '1px solid var(--border)',
+                            background: 'transparent', color: 'var(--text-muted)',
+                            fontSize: 11, fontWeight: 600, cursor: 'pointer',
+                          }}>✗</button>
+                        </>);
+                      })()}
                     </div>
                   </td>
                 </tr>
@@ -858,7 +916,7 @@ function SignalsTab() {
               { label: 'Forecast p',      value: selectedOpp.forecast_prob.toFixed(1) + '%' },
               { label: 'Market p',        value: selectedOpp.market_prob.toFixed(1) + '%' },
               { label: 'Kelly $',         value: selectedOpp.kelly_dollars > 0 ? '$' + selectedOpp.kelly_dollars.toFixed(2) : '—' },
-              { label: 'Kelly contracts', value: selectedOpp.kelly_qty > 0 ? selectedOpp.kelly_qty + ' cts' : '—' },
+              { label: 'Kelly contracts', value: (() => { const mp2 = (selectedOpp.market_prob || 0) / 100; const kq = selectedOpp.kelly_qty || (selectedOpp.kelly_dollars > 0 && mp2 > 0 ? Math.max(1, Math.floor(selectedOpp.kelly_dollars / mp2)) : 0); return kq > 0 ? kq + ' cts' : '—'; })() },
             ].map(item => (
               <div key={item.label}>
                 <div style={{ color: 'var(--text-faint)', fontSize: 11, marginBottom: 4 }}>{item.label}</div>
@@ -870,6 +928,40 @@ function SignalsTab() {
             <strong>Suggested action:</strong> Buy {selectedOpp.side.toUpperCase()} — forecast probability ({selectedOpp.forecast_prob.toFixed(1)}%) exceeds market ({selectedOpp.market_prob.toFixed(1)}%) by {selectedOpp.edge_pct.toFixed(1)} pts.
           </div>
         </section>
+      )}
+
+      {/* Confirmation modal */}
+      {confirmPending && (
+        <div style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100,
+        }} onClick={() => setConfirmPending(null)}>
+          <div onClick={e => e.stopPropagation()} style={{
+            background: 'var(--bg-card)', border: '1px solid var(--border)',
+            borderRadius: 14, padding: '24px 28px', minWidth: 340, maxWidth: 420,
+          }}>
+            <h3 style={{ margin: '0 0 6px', fontSize: 16, fontWeight: 700 }}>Confirm trade</h3>
+            <p style={{ margin: '0 0 18px', color: 'var(--text-muted)', fontSize: 13, lineHeight: 1.5 }}>
+              Place <strong>{confirmPending.qty} contract{confirmPending.qty !== 1 ? 's' : ''}</strong> of{' '}
+              <strong style={{ color: '#3b82f6' }}>{confirmPending.opp.ticker}</strong>{' '}
+              <strong style={{ color: confirmPending.opp.side === 'yes' ? '#16a34a' : '#ef4444' }}>
+                {(confirmPending.opp.side || 'YES').toUpperCase()}
+              </strong>{' '}
+              at <strong>{confirmPending.opp.market_prob?.toFixed(1)}¢</strong>?
+              {' '}Cost: <strong>${(confirmPending.qty * (confirmPending.opp.market_prob || 0) / 100).toFixed(2)}</strong>.
+            </p>
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+              <button onClick={() => setConfirmPending(null)} style={{
+                padding: '9px 18px', borderRadius: 8, border: '1px solid var(--border)',
+                background: 'var(--bg-card)', color: 'var(--text-muted)', fontWeight: 500, fontSize: 13, cursor: 'pointer',
+              }}>Cancel</button>
+              <button onClick={handleConfirm} style={{
+                padding: '9px 20px', borderRadius: 8, border: 'none',
+                background: '#16a34a', color: 'white', fontWeight: 700, fontSize: 13, cursor: 'pointer',
+              }}>Place order</button>
+            </div>
+          </div>
+        </div>
       )}
     </main>
   );
@@ -1277,6 +1369,28 @@ function SettingsTab() {
   const [overrideReason, setOverrideReason] = useState('');
   const [overrideDuration, setOverrideDuration] = useState(60);
   const [overrideMsg, setOverrideMsg] = useState('');
+  const { cronState, handleRunCron, handleCancelCron } = M;
+  const cronLogRef = useRef(null);
+  const [reportMsg, setReportMsg] = useState('');
+
+  function handleDownloadReport() {
+    setReportMsg('Generating…');
+    fetch('/api/weekly-report', { headers: authHeader() })
+      .then(r => {
+        if (!r.ok) return r.json().then(d => { throw new Error(d.error || 'Failed'); });
+        return r.blob().then(blob => {
+          const ct = r.headers.get('content-type') || '';
+          const ext = ct.includes('pdf') ? '.pdf' : '.html';
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url; a.download = `weekly_report${ext}`; a.click();
+          URL.revokeObjectURL(url);
+          setReportMsg('✓ Downloaded');
+          setTimeout(() => setReportMsg(''), 3000);
+        });
+      })
+      .catch(e => { setReportMsg(`✗ ${e.message}`); setTimeout(() => setReportMsg(''), 4000); });
+  }
 
   // Config params — all read from /api/config (M.config); stats fallback for max_daily_spend
   const configRows = [
@@ -1304,6 +1418,11 @@ function SettingsTab() {
       })
       .catch(() => { setOverrideMsg('✗ Request failed'); setTimeout(() => setOverrideMsg(''), 3000); });
   }
+
+  // Auto-scroll log to bottom when new lines arrive
+  useEffect(() => {
+    if (cronLogRef.current) cronLogRef.current.scrollTop = cronLogRef.current.scrollHeight;
+  }, [cronState?.log?.length]);
 
   function handleClearOverride() {
     fetch('/api/override', {
@@ -1341,6 +1460,22 @@ function SettingsTab() {
               <div style={{ fontWeight: 600, fontFamily: 'ui-monospace, monospace', fontSize: 14 }}>{row.value}</div>
             </div>
           ))}
+        </div>
+      </section>
+
+      {/* Weekly report */}
+      <section style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 14, padding: '16px 20px', marginBottom: 18, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div>
+          <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600, marginBottom: 3 }}>Weekly report</h3>
+          <p style={{ margin: 0, color: 'var(--text-muted)', fontSize: 12 }}>Download a PDF summary of recent trades, P&L, and forecast accuracy.</p>
+        </div>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+          {reportMsg && <span style={{ fontSize: 12, color: reportMsg.startsWith('✓') ? '#16a34a' : reportMsg === 'Generating…' ? 'var(--text-muted)' : '#ef4444', fontWeight: 600 }}>{reportMsg}</span>}
+          <button onClick={handleDownloadReport} disabled={reportMsg === 'Generating…'} style={{
+            padding: '9px 18px', borderRadius: 8, border: '1px solid var(--border)',
+            background: 'var(--bg-subtle)', color: 'var(--text)', fontWeight: 600, fontSize: 13,
+            cursor: reportMsg === 'Generating…' ? 'not-allowed' : 'pointer',
+          }}>Download report</button>
         </div>
       </section>
 
@@ -1412,6 +1547,64 @@ function SettingsTab() {
         )}
       </section>
 
+      {/* Cron scan */}
+      <section style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 14, padding: '20px', marginBottom: 18 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: cronState.log.length ? 14 : 0 }}>
+          <div>
+            <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600, marginBottom: 4 }}>Cron scan</h3>
+            <p style={{ margin: 0, color: 'var(--text-muted)', fontSize: 12 }}>
+              {cronState.status === 'running' && 'Scan in progress — signals will update when complete.'}
+              {cronState.status === 'done'    && 'Scan complete. Signals refreshed.'}
+              {cronState.status === 'error'   && 'Scan finished with errors — see log below.'}
+              {cronState.status === 'cancelled' && 'Scan cancelled.'}
+              {(cronState.status === 'idle')  && 'Run a market scan to refresh signals and place paper trades if edges are found.'}
+            </p>
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            {cronState.status === 'running' && (
+              <button onClick={handleCancelCron} style={{
+                padding: '10px 16px', borderRadius: 8, border: '1px solid #ef4444',
+                background: 'transparent', color: '#ef4444',
+                fontWeight: 600, fontSize: 13, cursor: 'pointer',
+              }}>Cancel</button>
+            )}
+            <button
+              onClick={handleRunCron}
+              disabled={cronState.status === 'running'}
+              style={{
+                padding: '10px 20px', borderRadius: 8, border: 'none',
+                background: cronState.status === 'running' ? 'var(--bg-muted)' : '#3b82f6',
+                color: cronState.status === 'running' ? 'var(--text-muted)' : 'white',
+                fontWeight: 600, fontSize: 13,
+                cursor: cronState.status === 'running' ? 'not-allowed' : 'pointer',
+              }}>
+              {cronState.status === 'running' ? 'Running…' : 'Run scan'}
+            </button>
+          </div>
+        </div>
+        {cronState.log.length > 0 && (
+          <div ref={cronLogRef} style={{
+            background: 'var(--bg-subtle)', border: '1px solid var(--border)',
+            borderRadius: 8, padding: '10px 14px',
+            maxHeight: 320, overflowY: 'auto',
+            fontFamily: 'ui-monospace, monospace', fontSize: 11.5,
+            lineHeight: 1.6, color: 'var(--text-muted)',
+            whiteSpace: 'pre-wrap', wordBreak: 'break-all',
+          }}>
+            {cronState.log.map((line, i) => {
+              const isError = /error|traceback|exception/i.test(line);
+              const isWarn  = /warning|warn/i.test(line);
+              const isTrade = /placed|trade|BUY|SELL|order/i.test(line);
+              const color = isError ? '#ef4444' : isWarn ? '#f59e0b' : isTrade ? '#22c55e' : 'inherit';
+              return <div key={i} style={{ color }}>{line}</div>;
+            })}
+            {cronState.status === 'running' && (
+              <div style={{ color: '#3b82f6', marginTop: 4 }}>▌</div>
+            )}
+          </div>
+        )}
+      </section>
+
       {/* Kill switch */}
       <section style={{ background: 'var(--bg-card)', border: '1px solid #ef4444', borderRadius: 14, padding: '20px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -1456,6 +1649,8 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('Overview');
   const [theme, setTheme] = useState(() => localStorage.getItem('kalshi-theme') || 'light');
   const [connected, setConnected] = useState(false);
+  const [cronState, setCronState] = useState({ status: 'idle', log: [], exitCode: null });
+  const cronPollRef = useRef(null);
 
   useEffect(() => {
     applyTheme(theme);
@@ -1464,10 +1659,67 @@ export default function App() {
 
   const data = useData(setConnected);
 
+  // Check if a cron is already running on mount (e.g. started before page load)
+  useEffect(() => {
+    fetch('/api/cron-status', { headers: authHeader() })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        if (d?.running) {
+          setCronState({ status: 'running', log: d.log || [], exitCode: null });
+          startCronPoll();
+        }
+      })
+      .catch(() => {});
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => () => { if (cronPollRef.current) clearInterval(cronPollRef.current); }, []);
+
+  function startCronPoll() {
+    if (cronPollRef.current) clearInterval(cronPollRef.current);
+    cronPollRef.current = setInterval(() => {
+      fetch('/api/cron-status', { headers: authHeader() })
+        .then(r => r.ok ? r.json() : null)
+        .then(d => {
+          if (!d) return;
+          const status = d.running ? 'running' : (d.exit_code === 0 ? 'done' : 'error');
+          setCronState({ status, log: d.log || [], exitCode: d.exit_code });
+          if (!d.running) {
+            clearInterval(cronPollRef.current);
+            cronPollRef.current = null;
+            data.refresh();
+          }
+        })
+        .catch(() => {});
+    }, 3000);
+  }
+
+  function handleRunCron() {
+    setCronState({ status: 'running', log: ['Starting scan…'], exitCode: null });
+    fetch('/api/run_cron', { method: 'POST', headers: authHeader() })
+      .then(r => r.json())
+      .then(d => {
+        if (d.error) {
+          setCronState({ status: 'error', log: [d.error], exitCode: 1 });
+        } else {
+          startCronPoll();
+        }
+      })
+      .catch(() => setCronState({ status: 'error', log: ['Request failed — is the server running?'], exitCode: 1 }));
+  }
+
+  function handleCancelCron() {
+    fetch('/api/cancel-cron', { method: 'POST', headers: authHeader() })
+      .then(() => {
+        if (cronPollRef.current) { clearInterval(cronPollRef.current); cronPollRef.current = null; }
+        setCronState(prev => ({ ...prev, status: 'cancelled', log: [...prev.log, '— cancelled by user —'] }));
+      })
+      .catch(() => {});
+  }
+
   const TabComponent = TABS[activeTab] || OverviewTab;
 
   return (
-    <DataContext.Provider value={data}>
+    <DataContext.Provider value={{ ...data, cronState, handleRunCron, handleCancelCron }}>
       <div style={{
         background: 'var(--bg-page)', color: 'var(--text)',
         fontFamily: "Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif",

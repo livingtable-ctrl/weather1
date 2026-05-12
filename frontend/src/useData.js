@@ -150,23 +150,26 @@ function mapTrades(raw) {
   // Closed trades already have the right shape for TradesTab
   // (ticker, city, side, outcome, pnl, entered_at, actual_fill_price, net_edge, …)
 
-  const open = (raw.open || []).map(t => ({
-    id:     t.id,
-    ticker: t.ticker,
-    city:   t.city,
-    side:   t.side,
-    cost:   t.cost,
-    qty:    t.quantity,
-    // current_yes_ask is enriched by the endpoint; fall back to fill price
-    mark:   t.current_yes_ask ?? t.actual_fill_price ?? t.entry_price ?? 0,
-    fcst:   t.entry_prob,
-    edge:   t.net_edge,
-    expiry: t.target_date,
-    model:  null,
-    age_h:  t.entered_at
-      ? Math.round((Date.now() - new Date(t.entered_at)) / 3_600_000)
-      : 0,
-  }));
+  const open = (raw.open || []).map(t => {
+    const markLive = t.current_yes_ask != null;
+    return {
+      id:         t.id,
+      ticker:     t.ticker,
+      city:       t.city,
+      side:       t.side,
+      cost:       t.cost,
+      qty:        t.quantity,
+      mark:       t.current_yes_ask ?? t.actual_fill_price ?? t.entry_price ?? 0,
+      markIsLive: markLive,
+      fcst:       t.entry_prob,
+      edge:       t.net_edge,
+      expiry:     t.target_date,
+      model:      null,
+      age_h:      t.entered_at
+        ? Math.round((Date.now() - new Date(t.entered_at)) / 3_600_000)
+        : 0,
+    };
+  });
 
   return { closed, open };
 }
@@ -180,11 +183,12 @@ function mapTrades(raw) {
 function mapSignals(raw) {
   if (!raw) return null;
   const sigs = Array.isArray(raw) ? raw : (raw.signals || []);
-  if (!sigs.length) return null;
-  return sigs.map(s => ({
-    ...s,
-    side: (s.side || '').toLowerCase(),
-  }));
+  return {
+    signals: sigs.map(s => ({ ...s, side: (s.side || '').toLowerCase() })),
+    generatedAt: raw.generated_at || null,
+    stale: raw.stale || false,
+    staleMessage: raw.message || null,
+  };
 }
 
 /**
@@ -322,8 +326,15 @@ export default function useData(setConnected) {
         if (forecasts) Object.assign(next, forecasts);
 
         // Signals / opportunities
-        const sigs = mapSignals(signalsR);
-        if (sigs) next.opportunities = sigs;
+        const sigsResult = mapSignals(signalsR);
+        if (sigsResult) {
+          if (sigsResult.signals.length) next.opportunities = sigsResult.signals;
+          next.signalsMeta = {
+            generatedAt: sigsResult.generatedAt,
+            stale: sigsResult.stale,
+            staleMessage: sigsResult.staleMessage,
+          };
+        }
 
         // Bot config (SettingsTab config grid)
         if (configR && !configR.error) next.config = configR;
