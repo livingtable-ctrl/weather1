@@ -37,24 +37,20 @@ def check_system_health() -> HealthStatus:
         cpu = psutil.cpu_percent(interval=None)
         mem = psutil.virtual_memory().percent
 
+        # CPU and RAM are monitored but never block trades — spikes are normal
+        # during cron scans and do not affect trade execution quality.
         if cpu >= CPU_WARN_PCT:
             _log.warning(
-                "system_health: CPU usage %.1f%% >= threshold %.1f%%", cpu, CPU_WARN_PCT
+                "system_health: CPU usage %.1f%% >= threshold %.1f%% (warning only — not blocking)",
+                cpu,
+                CPU_WARN_PCT,
             )
-            return HealthStatus(
-                False, f"CPU usage too high: {cpu:.1f}% (threshold {CPU_WARN_PCT}%)"
-            )
-
         if mem >= MEM_WARN_PCT:
             _log.warning(
-                "system_health: memory usage %.1f%% >= threshold %.1f%%",
+                "system_health: memory usage %.1f%% >= threshold %.1f%% (warning only — not blocking)",
                 mem,
                 MEM_WARN_PCT,
             )
-            return HealthStatus(
-                False, f"Memory usage too high: {mem:.1f}% (threshold {MEM_WARN_PCT}%)"
-            )
-
         _log.debug("system_health: CPU %.1f%% MEM %.1f%% — OK", cpu, mem)
     except ImportError:
         _log.debug("system_health: psutil not installed — skipping CPU/memory check")
