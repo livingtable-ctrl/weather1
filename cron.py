@@ -609,6 +609,11 @@ def _cmd_cron_body(
         "prob_edge": 0,
         "passed": 0,
     }
+    # Hoist gate-count helpers so they are always bound even if the try block
+    # exits early (exception path) and the finally block references them.
+    from weather_markets import get_gate_counts as _get_gate_counts
+    from weather_markets import reset_gate_counts as _reset_gate_counts
+
     try:
         from concurrent.futures import ThreadPoolExecutor
         from concurrent.futures import as_completed as _as_completed
@@ -757,9 +762,6 @@ def _cmd_cron_body(
                 "cmd_cron: deduped %d duplicate ticker(s) before analysis",
                 len(markets) - len(_deduped_markets),
             )
-
-        from weather_markets import get_gate_counts as _get_gate_counts
-        from weather_markets import reset_gate_counts as _reset_gate_counts
 
         _reset_gate_counts()
 

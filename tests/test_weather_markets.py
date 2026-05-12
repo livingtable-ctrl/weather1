@@ -1508,7 +1508,7 @@ class TestStationBiasKeys:
     def test_unknown_city_returns_unchanged(self):
         from weather_markets import apply_station_bias
 
-        corrected = apply_station_bias("Boston", 65.0, var="max")
+        corrected = apply_station_bias("Tulsa", 65.0, var="max")
         assert corrected == 65.0, (
             f"Unknown city must return unchanged temp; got {corrected}"
         )
