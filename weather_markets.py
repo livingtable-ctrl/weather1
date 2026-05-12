@@ -794,27 +794,43 @@ def get_weather_forecast(city: str, target_date: date) -> dict | None:
         p = daily.get("precipitation_sum", [None])[idx]
         return (h, lo, p, weight)
 
-    with ThreadPoolExecutor(max_workers=len(model_weights)) as pool:  # #124: dynamic
+    # Manual pool management (no `with` block) so we can call shutdown(wait=False)
+    # if as_completed times out.  Using `with ThreadPoolExecutor` calls
+    # shutdown(wait=True) on __exit__, which blocks forever if a thread is stuck
+    # on a hung Windows SSL connection that ignores the socket timeout.
+    _pool = ThreadPoolExecutor(max_workers=len(model_weights))  # #124: dynamic
+    try:
         futures = {
-            pool.submit(_fetch_one, model, weight): model
+            _pool.submit(_fetch_one, model, weight): model
             for model, weight in model_weights.items()
         }
-        # 60 s timeout: 3 models × max ~24.5 s each; if a thread slips past its
-        # HTTP timeout (Windows SSL edge case) this ensures we don't wait forever.
-        for fut in as_completed(futures, timeout=60):
-            try:
-                model_data = fut.result()
-                if model_data is None:
+        try:
+            # 60 s timeout: 3 models × max ~24.5 s each; if a thread slips past
+            # its HTTP timeout (Windows SSL edge case) this caps the wait.
+            for fut in as_completed(futures, timeout=60):
+                try:
+                    model_data = fut.result()
+                    if model_data is None:
+                        continue
+                    h, lo, p, weight = model_data
+                    if h is not None:
+                        highs.append((h, weight))
+                    if lo is not None:
+                        lows.append((lo, weight))
+                    if p is not None:
+                        precips.append((p, weight))
+                except Exception:
                     continue
-                h, lo, p, weight = model_data
-                if h is not None:
-                    highs.append((h, weight))
-                if lo is not None:
-                    lows.append((lo, weight))
-                if p is not None:
-                    precips.append((p, weight))
-            except Exception:
-                continue
+        except TimeoutError:
+            _log.debug(
+                "get_weather_forecast(%s): model fetch pool timed out — using partial results",
+                city,
+            )
+    finally:
+        # wait=False: don't block on threads that are stuck on a dead socket.
+        # The watchdog will kill the process if truly hung; threads time out on
+        # their own via the HTTP timeout and clean up eventually.
+        _pool.shutdown(wait=False)
 
     if not highs:
         # Open-Meteo unavailable — try NBM (NWS gridpoints) + weatherapi first,
@@ -2645,8 +2661,9 @@ def get_weather_markets(
         except Exception:
             return []
 
-    with ThreadPoolExecutor(max_workers=4) as pool:
-        futures = {pool.submit(_fetch_series, s): s for s in known_series}
+    _mkt_pool = ThreadPoolExecutor(max_workers=4)
+    try:
+        futures = {_mkt_pool.submit(_fetch_series, s): s for s in known_series}
         try:
             for fut in as_completed(futures, timeout=30):
                 try:
@@ -2661,6 +2678,8 @@ def get_weather_markets(
                 "get_weather_markets: Kalshi API timed out after 30s — using %d partial results",
                 len(results),
             )
+    finally:
+        _mkt_pool.shutdown(wait=False)
 
     _MARKETS_CACHE = (results, now)
     return results
@@ -5365,17 +5384,25 @@ def analyze_markets_parallel(
         enriched = enrich_with_forecast(market)
         return idx, analyze_trade(enriched)
 
-    with ThreadPoolExecutor(max_workers=max_workers) as pool:
-        futures = {pool.submit(_worker, i, m): i for i, m in enumerate(markets)}
-        for fut in as_completed(futures):
-            idx = futures[fut]
-            try:
-                _, analysis = fut.result()
-                results[idx] = analysis
-            except Exception as exc:
-                _log.warning(
-                    "analyze_markets_parallel: market index %d failed: %s", idx, exc
-                )
-                results[idx] = None
+    _amc_pool = ThreadPoolExecutor(max_workers=max_workers)
+    try:
+        futures = {_amc_pool.submit(_worker, i, m): i for i, m in enumerate(markets)}
+        try:
+            for fut in as_completed(futures, timeout=300):
+                idx = futures[fut]
+                try:
+                    _, analysis = fut.result()
+                    results[idx] = analysis
+                except Exception as exc:
+                    _log.warning(
+                        "analyze_markets_parallel: market index %d failed: %s", idx, exc
+                    )
+                    results[idx] = None
+        except TimeoutError:
+            _log.warning(
+                "analyze_markets_parallel: timed out after 300s — returning partial results"
+            )
+    finally:
+        _amc_pool.shutdown(wait=False)
 
     return results
