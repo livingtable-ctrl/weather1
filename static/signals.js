@@ -260,13 +260,37 @@
     if (btn) { btn.textContent = '⏳ Scanning…'; btn.disabled = true; }
     fetch('/api/run_cron', { method: 'POST' })
       .then(function (r) { return r.json(); })
-      .then(function () {
-        if (btn) btn.textContent = '⏳ Running (≈30s)…';
-        // Poll for fresh cache after ~35 seconds
-        setTimeout(function () {
-          loadLiveSignals();
+      .then(function (resp) {
+        if (resp && resp.error) {
           if (btn) { btn.textContent = '▶ Run Scan Now'; btn.disabled = false; }
-        }, 35000);
+          alert(resp.error);
+          return;
+        }
+        if (btn) btn.textContent = '⏳ Running (0s)…';
+        // Poll /api/cron-status every 5s until the subprocess exits,
+        // then reload signals.  Hard cap at 8 min (matches watchdog).
+        var elapsed = 0;
+        var pollMs = 5000;
+        var maxMs  = 480000;
+        var poller = setInterval(function () {
+          elapsed += pollMs;
+          fetch('/api/cron-status')
+            .then(function (r) { return r.json(); })
+            .then(function (s) {
+              if (!s.running || elapsed >= maxMs) {
+                clearInterval(poller);
+                loadLiveSignals();
+                loadSignals();
+                if (btn) { btn.textContent = '▶ Run Scan Now'; btn.disabled = false; }
+              } else if (btn) {
+                btn.textContent = '⏳ Running (' + Math.round(elapsed / 1000) + 's)…';
+              }
+            })
+            .catch(function () {
+              clearInterval(poller);
+              if (btn) { btn.textContent = '▶ Run Scan Now'; btn.disabled = false; }
+            });
+        }, pollMs);
       })
       .catch(function () {
         if (btn) { btn.textContent = '▶ Run Scan Now'; btn.disabled = false; }
