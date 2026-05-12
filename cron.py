@@ -811,11 +811,16 @@ def _cmd_cron_body(
 
         _reset_gate_counts()
 
+        # Per-market analysis timeout: 3 min total for all markets.  Without a
+        # timeout, a single hung thread (e.g. a stalled SSL connection that slipped
+        # past the socket backstop) prevents the entire scan from completing.
+        _ANALYSIS_TIMEOUT_S = 180
         with ThreadPoolExecutor(max_workers=12) as _pool:
             _futures = {
                 _pool.submit(_enrich_and_analyze, m): m for m in _deduped_markets
             }
-            for fut in _as_completed(_futures):
+            _timed_out = False
+            for fut in _as_completed(_futures, timeout=_ANALYSIS_TIMEOUT_S):
                 if KILL_SWITCH_PATH.exists():
                     _log.warning(
                         "cmd_cron: kill switch activated mid-scan — stopping analysis"
@@ -933,6 +938,18 @@ def _cmd_cron_body(
                     strong_opps.append((enriched, analysis))
                 elif abs(adjusted_edge) >= MED_EDGE:
                     med_opps.append((enriched, analysis))
+    except TimeoutError:
+        _log.error(
+            "cmd_cron: analysis scan timed out after %ds — %d markets processed so far",
+            _ANALYSIS_TIMEOUT_S,
+            _dbg["passed"]
+            + _dbg["no_analysis"]
+            + _dbg["same_day"]
+            + _dbg["mkt_prob"]
+            + _dbg["divergence"]
+            + _dbg["net_edge"]
+            + _dbg["prob_edge"],
+        )
     except Exception as _e:
         import logging as _logging
 
@@ -1449,6 +1466,40 @@ def _cmd_cron_body(
 # ---------------------------------------------------------------------------
 
 
+def _install_cron_watchdog(timeout_secs: int = 480) -> None:
+    """Start a daemon thread that hard-kills the process if cron hangs > timeout_secs.
+
+    Used because signal.SIGALRM is unavailable on Windows.  The thread is
+    daemonised so it dies automatically when the main thread exits normally.
+    Adjust timeout_secs via env var CRON_WATCHDOG_SECS (default 8 min).
+    """
+    import threading as _threading
+    import time as _time_wdog
+
+    _wdog_secs = int(os.getenv("CRON_WATCHDOG_SECS", str(timeout_secs)))
+
+    def _watchdog() -> None:
+        _time_wdog.sleep(_wdog_secs)
+        # If we're still alive here the cron body hung
+        _log.critical(
+            "CRON WATCHDOG: cron has been running for %ds — force-killing process to prevent infinite hang",
+            _wdog_secs,
+        )
+        print(
+            f"\n  ⚠  CRON WATCHDOG: exceeded {_wdog_secs}s limit — killing process\n",
+            flush=True,
+        )
+        os._exit(
+            1
+        )  # hard kill — no cleanup; preferred over sys.exit so finally blocks don't re-hang
+
+    _wdog_thread = _threading.Thread(
+        target=_watchdog, name="cron-watchdog", daemon=True
+    )
+    _wdog_thread.start()
+    _log.debug("cron watchdog armed: %ds", _wdog_secs)
+
+
 def cmd_cron(
     ctx: CronContext, client: KalshiClient, min_edge: float = MIN_EDGE
 ) -> None:
@@ -1463,6 +1514,11 @@ def cmd_cron(
             float(os.getenv("STARTING_BALANCE", "1000")),
         )
         _log.warning("=" * 60)
+
+    # Arm a hard-kill watchdog.  If the network layer hangs past the socket
+    # backstop (a known Windows/SSL edge case), the watchdog ensures cron never
+    # blocks forever.  Default: 8 minutes; override via CRON_WATCHDOG_SECS env.
+    _install_cron_watchdog()
 
     if not ctx.acquire_cron_lock():
         _log.warning("cmd_cron: could not acquire lock — skipping this run")

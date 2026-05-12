@@ -343,7 +343,14 @@ _OM_ENSEMBLE_STATE: list[float] = [0.0]
 
 
 def _om_rate_limit(url: str) -> None:
-    """Block until the per-endpoint minimum inter-request interval has elapsed."""
+    """Block until the per-endpoint minimum inter-request interval has elapsed.
+
+    IMPORTANT: the lock is released BEFORE sleeping so that concurrent threads
+    can each reserve their own time slot atomically without blocking each other
+    for the full sleep duration.  Holding the lock during sleep serialised all
+    12 analysis workers (each waiting 1.5 s while the lock was held), causing
+    the cron to hang for many minutes.
+    """
     if "ensemble-api" in url:
         lock, interval, state = (
             _OM_ENSEMBLE_RATE_LOCK,
@@ -358,10 +365,14 @@ def _om_rate_limit(url: str) -> None:
         )
     with lock:
         now = time.monotonic()
-        wait = interval - (now - state[0])
-        if wait > 0:
-            time.sleep(wait)
-        state[0] = time.monotonic()
+        wait = max(0.0, interval - (now - state[0]))
+        # Reserve the next slot atomically: advance state[0] so the next caller
+        # receives a slot that is interval seconds after ours, not after now.
+        state[0] = now + wait
+    if wait > 0:
+        time.sleep(
+            wait
+        )  # sleep OUTSIDE the lock — other threads can reserve in parallel
 
 
 def _build_om_session() -> requests.Session:
@@ -371,10 +382,16 @@ def _build_om_session() -> requests.Session:
     can give up after a fixed number of attempts.  Auto-retrying 429 via the
     HTTPAdapter would cause Retry-After sleeps to stack with _om_request's own
     sleep, locking the cron for many minutes per city.
+
+    Retry total reduced to 1: with timeout=12 per attempt, total=3 meant
+    4 × 12 s + backoff ≈ 51 s per call.  Six sequential prewarm calls could
+    therefore block for 5+ minutes on a slow/down endpoint before the circuit
+    breaker trips.  total=1 caps a single call at 2 × 12 + 0.5 s ≈ 25 s.
+    The circuit breaker (failure_threshold=10) handles persistent outages.
     """
     session = requests.Session()
     retry = Retry(
-        total=3,
+        total=1,
         backoff_factor=0.5,
         status_forcelist={500, 502, 503, 504},  # 5xx only — NOT 429
         allowed_methods={"GET"},
@@ -961,7 +978,7 @@ def batch_prewarm_forecasts(
                     "forecast_days": 16,
                     "models": model,
                 },
-                timeout=30,
+                timeout=12,  # was 30 — with Retry(total=3) a 30s timeout meant 4×30+backoff≈123s/call
             )
             resp.raise_for_status()
             _forecast_cb.record_success()
