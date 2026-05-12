@@ -3845,11 +3845,15 @@ def cmd_settings(client: KalshiClient | None = None) -> None:  # noqa: ARG001
             continue
         if raw.upper() == "W":
             import subprocess as _sp
+            import time as _time
+            import webbrowser as _wb
 
             _bat = Path(__file__).parent / "start.bat"
             if _bat.exists():
                 _sp.Popen(["cmd.exe", "/c", "start", "", str(_bat)], shell=False)
                 print(green("  Launching web dashboard via start.bat..."))
+                _time.sleep(2)
+                _wb.open("http://localhost:5173")
             else:
                 _c2 = client if client else build_client()
                 cmd_web(_c2)
