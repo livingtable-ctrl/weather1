@@ -827,14 +827,20 @@ def batch_prewarm_forecasts(
         )
         return 0
 
-    # Collect unique cities that aren't already fully cached for every requested date.
+    # Collect unique cities whose cache entry is absent or too old to pass the
+    # FORECAST_MAX_AGE_SECS freshness gate in analyze_trade.
+    import time as _time_prewarm
+
     cities_needed: set[str] = set()
     for city, date_iso in city_dates:
-        if _forecast_cache.get((city, date_iso)) is None:
+        _val, _hit, _ts = _forecast_cache.get_with_ts((city, date_iso))
+        if not _hit or (_time_prewarm.time() - _ts) >= FORECAST_MAX_AGE_SECS:
             cities_needed.add(city)
 
     if not cities_needed:
-        _log.debug("[batch_prewarm] all entries already cached — nothing to fetch")
+        _log.debug(
+            "[batch_prewarm] all entries already cached and fresh — nothing to fetch"
+        )
         return 0
 
     coords_list = [
