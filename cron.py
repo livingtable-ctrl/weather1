@@ -764,15 +764,21 @@ def _cmd_cron_body(
                     flush=True,
                 )
 
-            with ThreadPoolExecutor(max_workers=min(_n_pairs, 4)) as _warm_pool:
+            _warm_pool = ThreadPoolExecutor(max_workers=min(_n_pairs, 4))
+            try:
                 _warm_futures = [
                     _warm_pool.submit(_warm_one_tracked, _cd) for _cd in _city_dates
                 ]
-                for _wf in _as_completed(_warm_futures):
-                    try:
-                        _wf.result()
-                    except Exception:
-                        pass
+                try:
+                    for _wf in _as_completed(_warm_futures, timeout=60):
+                        try:
+                            _wf.result()
+                        except Exception:
+                            pass
+                except TimeoutError:
+                    _log.warning("cmd_cron: city source warm-up timed out after 60s")
+            finally:
+                _warm_pool.shutdown(wait=False)
             print(flush=True)  # newline after in-place counter
 
         # Suppress probing on any circuit that opened during prewarm.
@@ -811,134 +817,161 @@ def _cmd_cron_body(
 
         _reset_gate_counts()
 
-        # Per-market analysis timeout: 3 min total for all markets.  Without a
-        # timeout, a single hung thread (e.g. a stalled SSL connection that slipped
-        # past the socket backstop) prevents the entire scan from completing.
+        # Per-market analysis timeout: 3 min total for all markets.
+        # Manual pool (no `with`) so shutdown(wait=False) can be used in
+        # finally — `with ThreadPoolExecutor` calls shutdown(wait=True) on
+        # __exit__, which blocks forever on a hung Windows SSL socket.
         _ANALYSIS_TIMEOUT_S = 180
-        with ThreadPoolExecutor(max_workers=12) as _pool:
+        _pool = ThreadPoolExecutor(max_workers=12)
+        try:
             _futures = {
                 _pool.submit(_enrich_and_analyze, m): m for m in _deduped_markets
             }
             _timed_out = False
-            for fut in _as_completed(_futures, timeout=_ANALYSIS_TIMEOUT_S):
-                if KILL_SWITCH_PATH.exists():
-                    _log.warning(
-                        "cmd_cron: kill switch activated mid-scan — stopping analysis"
-                    )
-                    break
-                try:
-                    m, enriched, analysis = fut.result()
-                except Exception:
-                    continue
-                if not analysis:
-                    _dbg["no_analysis"] += 1
-                    continue
-                net_edge = analysis.get("net_edge", analysis["edge"])
-                adjusted_edge = analysis.get("adjusted_edge", net_edge)
-                # Collect analysis attempt for bulk DB insert after loop.
-                try:
-                    import datetime as _dt
+            try:
+                for fut in _as_completed(_futures, timeout=_ANALYSIS_TIMEOUT_S):
+                    if KILL_SWITCH_PATH.exists():
+                        _log.warning(
+                            "cmd_cron: kill switch activated mid-scan — stopping analysis"
+                        )
+                        break
+                    try:
+                        m, enriched, analysis = fut.result()
+                    except Exception:
+                        continue
+                    if not analysis:
+                        _dbg["no_analysis"] += 1
+                        continue
+                    net_edge = analysis.get("net_edge", analysis["edge"])
+                    adjusted_edge = analysis.get("adjusted_edge", net_edge)
+                    # Collect analysis attempt for bulk DB insert after loop.
+                    try:
+                        import datetime as _dt
 
-                    _td = analysis.get("target_date") or enriched.get("_target_date")
-                    if isinstance(_td, str):
-                        try:
-                            _td = _dt.date.fromisoformat(_td)
-                        except ValueError:
-                            _td = None
-                    _analysis_batch.append(
+                        _td = analysis.get("target_date") or enriched.get(
+                            "_target_date"
+                        )
+                        if isinstance(_td, str):
+                            try:
+                                _td = _dt.date.fromisoformat(_td)
+                            except ValueError:
+                                _td = None
+                        _analysis_batch.append(
+                            {
+                                "ticker": m.get("ticker", ""),
+                                "city": enriched.get("_city"),
+                                "condition": str(analysis.get("condition", "")),
+                                "target_date": _td,
+                                "forecast_prob": analysis.get("forecast_prob", 0.0),
+                                "market_prob": analysis.get("market_prob", 0.0),
+                                "days_out": int(analysis.get("days_out", 0)),
+                                "was_traded": False,
+                            }
+                        )
+                    except Exception:
+                        pass
+                    # Skip same-day markets (days_out == 0): by market open the market has
+                    # real-time weather data our ensemble forecast cannot match.
+                    if int(analysis.get("days_out", 1)) == 0:
+                        _dbg["same_day"] += 1
+                        continue
+                    # Market divergence cap: skip when we disagree with the market by
+                    # more than 2.5× — the market is right nearly every time in that case.
+                    _side = analysis.get("recommended_side", "yes")
+                    _our_p = analysis.get("forecast_prob", 0.5)
+                    _mkt_p = analysis.get("market_prob", 0.5)
+                    if _side == "yes":
+                        _mkt_dir = _mkt_p
+                        _our_dir = _our_p
+                    else:
+                        _mkt_dir = 1.0 - _mkt_p
+                        _our_dir = 1.0 - _our_p
+                    if _mkt_dir < MIN_MARKET_PROB_TO_BET_WITH:
+                        _dbg["mkt_prob"] += 1
+                        continue
+                    if (
+                        _mkt_dir > 0
+                        and _our_dir / _mkt_dir > MAX_MARKET_DIVERGENCE_RATIO
+                    ):
+                        _dbg["divergence"] += 1
+                        continue
+                    # Use PAPER_MIN_EDGE (5%) so more signals are captured for observation.
+                    if abs(adjusted_edge) < PAPER_MIN_EDGE:
+                        _dbg["net_edge"] += 1
+                        continue
+                    # Probability-edge gate: require ≥8pp conviction even when ROI edge passes.
+                    # High-variance cities (e.g. Dallas) use a stricter per-city threshold.
+                    _prob_edge = abs(
+                        analysis.get("forecast_prob", 0.5)
+                        - analysis.get("market_prob", 0.5)
+                    )
+                    _city_key = enriched.get("_city", "")
+                    _min_edge = CITY_MIN_PROB_EDGE.get(_city_key, MIN_PROB_EDGE)
+                    if _prob_edge < _min_edge:
+                        _dbg["prob_edge"] += 1
+                        continue
+                    _dbg["passed"] += 1
+                    signal = analysis.get(
+                        "net_signal", analysis.get("signal", "")
+                    ).strip()
+                    time_risk = analysis.get("time_risk", "\u2014")
+                    stars = (
+                        "\u2605\u2605\u2605"
+                        if "STRONG" in signal and time_risk == "LOW"
+                        else "\u2605\u2605"
+                        if "STRONG" in signal
+                        else "\u2605"
+                    )
+                    entry = {
+                        "ts": datetime.now(UTC).isoformat(),
+                        "ticker": m.get("ticker", ""),
+                        "signal": signal,
+                        "net_edge": round(net_edge, 4),
+                        "city": enriched.get("_city", ""),
+                    }
+                    with open(log_path, "a", encoding="utf-8") as f:
+                        f.write(json.dumps(entry) + "\n")
+                    signals_cache.append(
                         {
                             "ticker": m.get("ticker", ""),
-                            "city": enriched.get("_city"),
-                            "condition": str(analysis.get("condition", "")),
-                            "target_date": _td,
-                            "forecast_prob": analysis.get("forecast_prob", 0.0),
-                            "market_prob": analysis.get("market_prob", 0.0),
-                            "days_out": int(analysis.get("days_out", 0)),
-                            "was_traded": False,
+                            "city": enriched.get("_city", "\u2014"),
+                            "side": analysis.get("recommended_side", "\u2014").upper(),
+                            "signal": signal,
+                            "stars": stars,
+                            "edge_pct": round(net_edge * 100, 1),
+                            "forecast_prob": round(
+                                analysis.get("forecast_prob", 0) * 100, 1
+                            ),
+                            "market_prob": round(
+                                analysis.get("market_prob", 0) * 100, 1
+                            ),
+                            "time_risk": time_risk,
+                            "kelly_dollars": 0.0,  # balance unknown at cron time; filled by web
+                            "already_held": False,
+                            "near_threshold": analysis.get("near_threshold", False),
+                            "is_hedge": analysis.get("_is_hedge", False),
                         }
                     )
-                except Exception:
-                    pass
-                # Skip same-day markets (days_out == 0): by market open the market has
-                # real-time weather data our ensemble forecast cannot match.
-                if int(analysis.get("days_out", 1)) == 0:
-                    _dbg["same_day"] += 1
-                    continue
-                # Market divergence cap: skip when we disagree with the market by
-                # more than 2.5× — the market is right nearly every time in that case.
-                _side = analysis.get("recommended_side", "yes")
-                _our_p = analysis.get("forecast_prob", 0.5)
-                _mkt_p = analysis.get("market_prob", 0.5)
-                if _side == "yes":
-                    _mkt_dir = _mkt_p
-                    _our_dir = _our_p
-                else:
-                    _mkt_dir = 1.0 - _mkt_p
-                    _our_dir = 1.0 - _our_p
-                if _mkt_dir < MIN_MARKET_PROB_TO_BET_WITH:
-                    _dbg["mkt_prob"] += 1
-                    continue
-                if _mkt_dir > 0 and _our_dir / _mkt_dir > MAX_MARKET_DIVERGENCE_RATIO:
-                    _dbg["divergence"] += 1
-                    continue
-                # Use PAPER_MIN_EDGE (5%) so more signals are captured for observation.
-                if abs(adjusted_edge) < PAPER_MIN_EDGE:
-                    _dbg["net_edge"] += 1
-                    continue
-                # Probability-edge gate: require ≥8pp conviction even when ROI edge passes.
-                # High-variance cities (e.g. Dallas) use a stricter per-city threshold.
-                _prob_edge = abs(
-                    analysis.get("forecast_prob", 0.5)
-                    - analysis.get("market_prob", 0.5)
+                    if abs(adjusted_edge) >= _effective_strong_edge:
+                        strong_opps.append((enriched, analysis))
+                    elif abs(adjusted_edge) >= MED_EDGE:
+                        med_opps.append((enriched, analysis))
+            except TimeoutError:
+                _log.error(
+                    "cmd_cron: analysis scan timed out after %ds — %d markets processed",
+                    _ANALYSIS_TIMEOUT_S,
+                    _dbg["passed"]
+                    + _dbg["no_analysis"]
+                    + _dbg["same_day"]
+                    + _dbg["mkt_prob"]
+                    + _dbg["divergence"]
+                    + _dbg["net_edge"]
+                    + _dbg["prob_edge"],
                 )
-                _city_key = enriched.get("_city", "")
-                _min_edge = CITY_MIN_PROB_EDGE.get(_city_key, MIN_PROB_EDGE)
-                if _prob_edge < _min_edge:
-                    _dbg["prob_edge"] += 1
-                    continue
-                _dbg["passed"] += 1
-                signal = analysis.get("net_signal", analysis.get("signal", "")).strip()
-                time_risk = analysis.get("time_risk", "\u2014")
-                stars = (
-                    "\u2605\u2605\u2605"
-                    if "STRONG" in signal and time_risk == "LOW"
-                    else "\u2605\u2605"
-                    if "STRONG" in signal
-                    else "\u2605"
-                )
-                entry = {
-                    "ts": datetime.now(UTC).isoformat(),
-                    "ticker": m.get("ticker", ""),
-                    "signal": signal,
-                    "net_edge": round(net_edge, 4),
-                    "city": enriched.get("_city", ""),
-                }
-                with open(log_path, "a", encoding="utf-8") as f:
-                    f.write(json.dumps(entry) + "\n")
-                signals_cache.append(
-                    {
-                        "ticker": m.get("ticker", ""),
-                        "city": enriched.get("_city", "\u2014"),
-                        "side": analysis.get("recommended_side", "\u2014").upper(),
-                        "signal": signal,
-                        "stars": stars,
-                        "edge_pct": round(net_edge * 100, 1),
-                        "forecast_prob": round(
-                            analysis.get("forecast_prob", 0) * 100, 1
-                        ),
-                        "market_prob": round(analysis.get("market_prob", 0) * 100, 1),
-                        "time_risk": time_risk,
-                        "kelly_dollars": 0.0,  # balance unknown at cron time; filled by web
-                        "already_held": False,
-                        "near_threshold": analysis.get("near_threshold", False),
-                        "is_hedge": analysis.get("_is_hedge", False),
-                    }
-                )
-                if abs(adjusted_edge) >= _effective_strong_edge:
-                    strong_opps.append((enriched, analysis))
-                elif abs(adjusted_edge) >= MED_EDGE:
-                    med_opps.append((enriched, analysis))
+        finally:
+            _pool.shutdown(wait=False)  # never block on a stuck SSL thread
     except TimeoutError:
+        pass  # already handled inside pool block above
         _log.error(
             "cmd_cron: analysis scan timed out after %ds — %d markets processed so far",
             _ANALYSIS_TIMEOUT_S,
