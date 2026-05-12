@@ -526,6 +526,27 @@ function PositionsTab() {
   const [filter, setFilter] = useState('');
   const [sortKey, setSortKey] = useState('edge');
   const [selectedPos, setSelectedPos] = useState(null);
+  const [closeMsg, setCloseMsg] = useState('');
+
+  function handleClose(pos) {
+    if (!pos.id) { setCloseMsg('✗ No trade ID'); setTimeout(() => setCloseMsg(''), 3000); return; }
+    fetch('/api/close-position', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeader() },
+      body: JSON.stringify({ trade_id: pos.id, exit_price: pos.mark || 0 }),
+    })
+      .then(r => r.json())
+      .then(d => {
+        if (d.error) { setCloseMsg(`✗ ${d.error}`); }
+        else {
+          const pnl = d.pnl != null ? (d.pnl >= 0 ? `+$${d.pnl.toFixed(2)}` : `-$${Math.abs(d.pnl).toFixed(2)}`) : '';
+          setCloseMsg(`✓ Closed ${pos.ticker} ${pnl}`);
+          setSelectedPos(null);
+        }
+        setTimeout(() => setCloseMsg(''), 4000);
+      })
+      .catch(() => { setCloseMsg('✗ Request failed'); setTimeout(() => setCloseMsg(''), 3000); });
+  }
 
   const filtered = useMemo(() => {
     const f = filter.toLowerCase();
@@ -605,7 +626,15 @@ function PositionsTab() {
                 Opened {selectedPos.age_h}h ago · {selectedPos.model} forecast · closes {selectedPos.expiry}
               </p>
             </div>
-            <button onClick={() => setSelectedPos(null)} style={{ padding: '6px 12px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg-card)', fontSize: 12, cursor: 'pointer', color: 'var(--text)' }}>Close</button>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              {closeMsg && <span style={{ fontSize: 12, fontWeight: 600, color: closeMsg.startsWith('✓') ? '#16a34a' : '#ef4444' }}>{closeMsg}</span>}
+              <button onClick={() => handleClose(selectedPos)} style={{
+                padding: '6px 14px', borderRadius: 7, border: '1px solid #ef4444',
+                background: 'rgba(239,68,68,0.08)', color: '#ef4444',
+                fontSize: 12, fontWeight: 600, cursor: 'pointer',
+              }}>Close Position</button>
+              <button onClick={() => setSelectedPos(null)} style={{ padding: '6px 12px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg-card)', fontSize: 12, cursor: 'pointer', color: 'var(--text)' }}>Dismiss</button>
+            </div>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 16 }}>
             {[

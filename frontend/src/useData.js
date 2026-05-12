@@ -151,6 +151,7 @@ function mapTrades(raw) {
   // (ticker, city, side, outcome, pnl, entered_at, actual_fill_price, net_edge, …)
 
   const open = (raw.open || []).map(t => ({
+    id:     t.id,
     ticker: t.ticker,
     city:   t.city,
     side:   t.side,

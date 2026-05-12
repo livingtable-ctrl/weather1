@@ -1591,6 +1591,34 @@ setInterval(() => {{
         except Exception as exc:
             return jsonify({"error": str(exc)}), 500
 
+    @app.route("/api/close-position", methods=["POST"])
+    @_require_auth
+    def api_close_position():
+        """Close an open paper trade early at the current mark price.
+
+        Body (JSON):
+          trade_id    int    required
+          exit_price  float  (0, 1] required — current mark price
+        """
+        from paper import close_paper_early
+
+        body = _flask_request.get_json(force=True, silent=True) or {}
+        try:
+            trade_id = int(body["trade_id"])
+        except (KeyError, TypeError, ValueError):
+            return jsonify({"error": "trade_id required"}), 400
+        try:
+            exit_price = float(body["exit_price"])
+        except (KeyError, TypeError, ValueError):
+            return jsonify({"error": "exit_price required"}), 400
+        try:
+            trade = close_paper_early(trade_id, exit_price)
+            return jsonify({"ok": True, "pnl": trade.get("pnl")}), 200
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 404
+        except Exception as exc:
+            return jsonify({"error": str(exc)}), 500
+
     # ------------------------------------------------------------------ #
 
     return app
