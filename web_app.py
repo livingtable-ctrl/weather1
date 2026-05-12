@@ -700,15 +700,24 @@ setInterval(() => {{
         try:
             _CRON_WEB_LOG.parent.mkdir(exist_ok=True)
             _CRON_WEB_LOG.write_text("")  # truncate log for fresh run
-            log_f = open(_CRON_WEB_LOG, "w", encoding="utf-8", buffering=1)
+            # Open stdout/stderr log. Binary mode avoids Windows line-buffering
+            # quirks; the child writes via its own duplicated handle so we close
+            # our copy immediately after Popen returns.
+            log_f = open(_CRON_WEB_LOG, "wb")
+            # On Windows: CREATE_NO_WINDOW prevents the child from attaching to
+            # (or blocking on) the parent's console window, which can cause the
+            # child to hang on stdout/stderr writes if the console is detached.
+            _cflags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
             proc = subprocess.Popen(
                 [sys.executable, "-u", str(Path(__file__).parent / "main.py"), "cron"],
                 cwd=str(Path(__file__).parent),
+                stdin=subprocess.DEVNULL,  # never inherit Flask's stdin
                 stdout=log_f,
                 stderr=log_f,
                 env={**__import__("os").environ, "PYTHONUNBUFFERED": "1"},
+                creationflags=_cflags,
             )
-            log_f.close()  # child holds its own fd
+            log_f.close()  # child holds its own duplicated handle
             # store on the function object so it survives across requests
             api_run_cron._proc = proc
             api_run_cron._last_spawn = _time.monotonic()
