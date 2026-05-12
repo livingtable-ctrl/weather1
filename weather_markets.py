@@ -81,13 +81,14 @@ _ensemble_cb = CircuitBreaker(
 
 # Separate circuit breaker for the NBM (Open-Meteo model="nbm") fetch.
 # NBM and ensemble hit the same API but are independent signals — one failing
-# should NOT gate the other.  Prewarm fires 30 parallel NBM calls so we use a
-# high failure threshold and a wide burst window to avoid false trips.
+# should NOT gate the other.
+# burst_window=2s: absorbs the few truly-simultaneous parallel hits during
+# analysis without being so wide that a flaky endpoint hangs for minutes.
 _nbm_om_cb = CircuitBreaker(
     name="nbm_openmeteo",
-    failure_threshold=12,
+    failure_threshold=6,
     recovery_timeout=300,
-    burst_window=15.0,
+    burst_window=2.0,
 )
 
 # ── Trading filters ───────────────────────────────────────────────────────────
@@ -1058,7 +1059,7 @@ def fetch_temperature_nbm(city: str, target_date: date) -> float | None:
                 "end_date": target_date.isoformat(),
                 "timezone": "auto",
             },
-            timeout=8,
+            timeout=5,
         )
         resp.raise_for_status()
         _nbm_om_cb.record_success()
