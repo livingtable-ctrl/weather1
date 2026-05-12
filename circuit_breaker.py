@@ -72,12 +72,19 @@ class CircuitBreaker:
             cb = state.get(self.name, {})
             self._failure_count = cb.get("failure_count", 0)
             self._trip_count = cb.get("trip_count", 0)
-            # Cap at self.recovery_timeout so reducing the timeout in code takes effect
-            # immediately even when a larger value was persisted from an older run.
-            self._current_timeout = min(
-                cb.get("current_timeout", self.recovery_timeout),
-                self.recovery_timeout,
-            )
+            # Always honour the code-level recovery_timeout when backoff is off
+            # (backoff_multiplier==1.0).  Without this, raising recovery_timeout in
+            # code has no effect because the old smaller value persists in state and
+            # min() picks it.  Circuits with backoff (multiplier>1) preserve the
+            # stored timeout (which can legitimately exceed recovery_timeout) but
+            # still cap it so lowering recovery_timeout in code takes effect.
+            if self.backoff_multiplier <= 1.0:
+                self._current_timeout = self.recovery_timeout
+            else:
+                self._current_timeout = min(
+                    cb.get("current_timeout", self.recovery_timeout),
+                    self.recovery_timeout,
+                )
             self._last_failure_at = cb.get("last_failure_at")
             wall_opened_at = cb.get("opened_at")
             if wall_opened_at is not None:
