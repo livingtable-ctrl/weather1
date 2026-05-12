@@ -486,6 +486,9 @@ function OverviewTab() {
             );
           })}
         </div>
+        <p style={{ color: 'var(--text-muted)', fontSize: 11, marginTop: 12, lineHeight: 1.4 }}>
+          Note: same-day trade settlement will be added in a future update.
+        </p>
       </section>
 
       {/* Fear/Greed + Data sources */}
