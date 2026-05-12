@@ -76,7 +76,10 @@ class TestMutationEndpointsRequireAuth:
     def test_run_cron_rate_limited_after_first_spawn(self):
         app = _make_app()
         with app.test_client() as c:
-            with patch("utils.DASHBOARD_PASSWORD", "secret"), patch("subprocess.Popen"):
+            with (
+                patch("utils.DASHBOARD_PASSWORD", "secret"),
+                patch("subprocess.Popen", return_value=MagicMock(pid=99)),
+            ):
                 resp1 = c.post("/api/run_cron", headers=_basic_auth("secret"))
                 assert resp1.status_code == 200
                 resp2 = c.post("/api/run_cron", headers=_basic_auth("secret"))

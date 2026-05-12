@@ -49,7 +49,7 @@ class TestRunCronConcurrentGuard:
                 patch("cron._is_cron_running", return_value=False),
                 patch("subprocess.Popen") as mock_popen,
             ):
-                mock_popen.return_value = MagicMock()
+                mock_popen.return_value = MagicMock(pid=12345)
                 resp = c.post("/api/run_cron", headers=_auth_headers())
 
         assert resp.status_code == 200

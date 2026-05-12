@@ -672,18 +672,26 @@ setInterval(() => {{
     _cron_proc: subprocess.Popen | None = None
     _CRON_WEB_LOG = Path(__file__).parent / "data" / "cron_web.log"
 
+    _CRON_RATE_LIMIT_S = 60.0  # minimum seconds between spawns
+
     @app.route("/api/run_cron", methods=["POST"])
     @_require_auth
     def api_run_cron():
         """Spawn a cron scan subprocess, capturing output to cron_web.log."""
+        import time as _time
 
         from cron import _is_cron_running
 
         if _is_cron_running():
             return jsonify({"error": "cron already running"}), 409
 
-        _CRON_WEB_LOG.write_text("")  # truncate log for fresh run
+        now = _time.monotonic()
+        if now - api_run_cron._last_spawn < _CRON_RATE_LIMIT_S:
+            return jsonify({"error": "rate limited — wait before spawning again"}), 429
+
         try:
+            _CRON_WEB_LOG.parent.mkdir(exist_ok=True)
+            _CRON_WEB_LOG.write_text("")  # truncate log for fresh run
             log_f = open(_CRON_WEB_LOG, "w", encoding="utf-8", buffering=1)
             proc = subprocess.Popen(
                 [sys.executable, "-u", str(Path(__file__).parent / "main.py"), "cron"],
@@ -695,11 +703,13 @@ setInterval(() => {{
             log_f.close()  # child holds its own fd
             # store on the function object so it survives across requests
             api_run_cron._proc = proc
+            api_run_cron._last_spawn = _time.monotonic()
             return jsonify({"status": "started", "pid": proc.pid})
         except Exception as e:
             return jsonify({"status": "error", "message": str(e)}), 500
 
     api_run_cron._proc = None  # type: ignore[attr-defined]
+    api_run_cron._last_spawn = 0.0  # type: ignore[attr-defined]
 
     @app.route("/api/cron-status")
     @_require_auth
