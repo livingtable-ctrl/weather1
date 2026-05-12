@@ -74,7 +74,7 @@ _forecast_cb = CircuitBreaker(
 # Failures here degrade quality but don't block primary signals.
 _ensemble_cb = CircuitBreaker(
     name="open_meteo_ensemble",
-    failure_threshold=6,
+    failure_threshold=3,
     recovery_timeout=300,  # 300s: outlasts inter-run gap so circuit stays open across
     burst_window=2.0,  # runs when endpoint is consistently down (same as nbm_om_cb)
 )
@@ -86,7 +86,7 @@ _ensemble_cb = CircuitBreaker(
 # analysis without being so wide that a flaky endpoint hangs for minutes.
 _nbm_om_cb = CircuitBreaker(
     name="nbm_openmeteo",
-    failure_threshold=6,
+    failure_threshold=3,
     recovery_timeout=300,  # 300s: outlasts the gap between cron runs so circuit stays
     burst_window=2.0,  # open across runs — prevents re-burning 30 s of timeouts
 )  # each run when the endpoint is consistently down
@@ -398,7 +398,7 @@ def _om_request(method: str, url: str, **kwargs) -> requests.Response:
     Pirate Weather / NWS fallback to take over within seconds rather than
     waiting for Retry-After sleep cycles across every model and every city.
     """
-    kwargs.setdefault("timeout", 15)
+    kwargs.setdefault("timeout", 8)
     _om_rate_limit(url)
     resp = _OM_SESSION.request(method, url, **kwargs)
     if resp.status_code == 429:
@@ -1092,7 +1092,7 @@ def batch_prewarm_ensemble(
                         "forecast_days": 16,
                         "models": model,
                     },
-                    timeout=30,
+                    timeout=8,
                 )
                 resp.raise_for_status()
                 _ensemble_cb.record_success()
@@ -1191,7 +1191,7 @@ def batch_prewarm_ensemble(
                     "forecast_days": 16,
                     "models": model,
                 },
-                timeout=30,
+                timeout=8,
             )
             resp.raise_for_status()
             _ensemble_cb.record_success()
