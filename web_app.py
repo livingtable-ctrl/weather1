@@ -320,6 +320,14 @@ def _build_app(client):
             {
                 "labels": [(p.get("ts") or "")[:16] or "Start" for p in points],
                 "values": [p["balance"] for p in points],
+                "points": [
+                    {
+                        "ts": p.get("ts", ""),
+                        "balance": p["balance"],
+                        "event": p.get("event", ""),
+                    }
+                    for p in points
+                ],
             }
         )
 

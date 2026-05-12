@@ -310,8 +310,8 @@ export default function useData(setConnected) {
         if (trades.closed?.length) next.closedTrades = trades.closed;
         if (trades.open?.length)   next.positions    = trades.open;
 
-        // Balance history
-        if (Array.isArray(balHistR) && balHistR.length) next.balanceHist = balHistR;
+        // Balance history — endpoint returns {labels, values, points}
+        if (Array.isArray(balHistR?.points) && balHistR.points.length) next.balanceHist = balHistR.points;
 
         // Risk metrics
         Object.assign(next, mapRisk(riskR));
