@@ -250,6 +250,14 @@ const MOCK = {
   rocCurve, auc, brierByDays, priceImprovement,
   cityCalibration, closedTrades,
   agedPositions, correlatedEvents, directionalBias, expiryCluster,
+  signalsMeta: { generatedAt: null, stale: false, staleMessage: null },
+  brierHistory: [
+    { week: '2026-W01', brier: 0.231 }, { week: '2026-W02', brier: 0.218 },
+    { week: '2026-W03', brier: 0.204 }, { week: '2026-W04', brier: 0.197 },
+    { week: '2026-W05', brier: 0.189 }, { week: '2026-W06', brier: 0.192 },
+    { week: '2026-W07', brier: 0.183 }, { week: '2026-W08', brier: 0.176 },
+  ],
+  backupStatus: null,
 };
 
 export default MOCK;

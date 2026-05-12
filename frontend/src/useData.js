@@ -280,6 +280,7 @@ export default function useData(setConnected) {
         safe('/api/override'),          // 12
         safe('/api/system-events'),     // 13
         safe('/api/backup-status'),     // 14
+        safe('/api/brier_history'),     // 15
       ]);
 
       // Unwrap allSettled — treat rejected as null
@@ -289,6 +290,7 @@ export default function useData(setConnected) {
         priceImpR, forecastsR, signalsR,
         configR, abTestsR, overrideR,
         systemEventsR, backupStatusR,
+        brierHistoryR,
       ] = results.map(r => r.status === 'fulfilled' ? r.value : null);
 
       setData(prev => {
@@ -356,6 +358,9 @@ export default function useData(setConnected) {
 
         // Backup status (Settings / future footer)
         if (backupStatusR && !backupStatusR.error) next.backupStatus = backupStatusR;
+
+        // Brier history trend (AnalyticsTab chart)
+        if (Array.isArray(brierHistoryR) && brierHistoryR.length) next.brierHistory = brierHistoryR;
 
         return next;
       });

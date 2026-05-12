@@ -35,6 +35,28 @@ import MOCK from './mockData.js';
 import useData, { authHeader } from './useData.js';
 
 // ---------------------------------------------------------------------------
+// Toast  — lightweight ephemeral notification system
+// ---------------------------------------------------------------------------
+function ToastContainer({ toasts }) {
+  if (!toasts.length) return null;
+  return (
+    <div style={{
+      position: 'fixed', bottom: 24, right: 24, zIndex: 1000,
+      display: 'flex', flexDirection: 'column', gap: 8, pointerEvents: 'none',
+    }}>
+      {toasts.map(t => (
+        <div key={t.id} style={{
+          padding: '11px 18px', borderRadius: 10, fontSize: 13, fontWeight: 600,
+          boxShadow: '0 4px 16px rgba(0,0,0,0.25)',
+          background: t.type === 'error' ? '#ef4444' : t.type === 'warn' ? '#f59e0b' : '#16a34a',
+          color: 'white', maxWidth: 340, lineHeight: 1.4,
+        }}>{t.message}</div>
+      ))}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // City display-name normalization  (backend uses CamelCase keys)
 // ---------------------------------------------------------------------------
 const CITY_NAMES = {
@@ -76,7 +98,7 @@ function applyTheme(t) {
 // ---------------------------------------------------------------------------
 // Shared: Nav
 // ---------------------------------------------------------------------------
-function Nav({ active, onNavigate, theme, onToggleTheme, connected }) {
+function Nav({ active, onNavigate, theme, onToggleTheme, connected, refreshCountdown }) {
   const TABS = ['Overview', 'Positions', 'Signals', 'Forecast', 'Analytics', 'Risk', 'Trades', 'Settings'];
   const M = useContext(DataContext);
   const ks = M?.stats?.kill_switch;
@@ -111,6 +133,12 @@ function Nav({ active, onNavigate, theme, onToggleTheme, connected }) {
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        {/* Auto-refresh countdown */}
+        {refreshCountdown != null && (
+          <span title="Next data refresh" style={{ fontSize: 11, color: 'var(--text-faint)', fontFamily: 'ui-monospace, monospace' }}>
+            ↻ {refreshCountdown}s
+          </span>
+        )}
         {/* SSE live indicator */}
         <span title={connected ? 'Live stream connected' : 'Stream disconnected'} style={{
           display: 'inline-flex', alignItems: 'center', gap: 5,
@@ -384,6 +412,10 @@ function OverviewTab() {
   const today = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
   const pnlToday = s.today_pnl;
   const pnlKnown = pnlToday != null;
+  const unrealizedPnl = M.positions.reduce((sum, p) => {
+    const entryPerCt = p.cost / p.qty;
+    return sum + (p.mark - entryPerCt) * p.qty;
+  }, 0);
 
   return (
     <main style={{ maxWidth: 1360, margin: '0 auto', padding: '24px 28px 40px' }}>
@@ -397,6 +429,11 @@ function OverviewTab() {
               : <>Down <span style={{ color: '#ef4444' }}>-${Math.abs(Number(pnlToday)).toFixed(2)}</span> today — {s.open_count} positions open.</>
           }
         </h1>
+        {M.positions.length > 0 && (
+          <p style={{ margin: '6px 0 0', fontSize: 13, color: unrealizedPnl >= 0 ? '#16a34a' : '#ef4444' }}>
+            {unrealizedPnl >= 0 ? '+' : ''}{unrealizedPnl.toFixed(2)} unrealized P&amp;L across {M.positions.length} open positions
+          </p>
+        )}
       </div>
 
       {/* KPI row */}
@@ -528,6 +565,12 @@ function PositionsTab() {
   const [selectedPos, setSelectedPos] = useState(null);
   const [closeMsg, setCloseMsg] = useState('');
 
+  useEffect(() => {
+    const handler = () => setSelectedPos(null);
+    document.addEventListener('kalshi:escape', handler);
+    return () => document.removeEventListener('kalshi:escape', handler);
+  }, []);
+
   function handleClose(pos) {
     if (!pos.id) { setCloseMsg('✗ No trade ID'); setTimeout(() => setCloseMsg(''), 3000); return; }
     fetch('/api/close-position', {
@@ -564,9 +607,15 @@ function PositionsTab() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 18 }}>
         <div>
           <h1 style={{ margin: 0, fontSize: 24, fontWeight: 700, letterSpacing: '-0.02em' }}>Open Positions</h1>
-          <p style={{ margin: '4px 0 0', color: 'var(--text-muted)', fontSize: 13 }}>
-            {M.positions.length} positions · ${M.positions.reduce((a, p) => a + p.cost, 0).toFixed(2)} deployed
-          </p>
+          {(() => {
+            const deployed = M.positions.reduce((a, p) => a + p.cost, 0);
+            const available = (M.stats.balance || 0) - deployed;
+            return (
+              <p style={{ margin: '4px 0 0', color: 'var(--text-muted)', fontSize: 13 }}>
+                {M.positions.length} positions · <span style={{ color: '#3b82f6', fontWeight: 600 }}>${deployed.toFixed(2)}</span> deployed · <span style={{ color: '#16a34a', fontWeight: 600 }}>${available.toFixed(2)}</span> available
+              </p>
+            );
+          })()}
         </div>
         <div style={{ display: 'flex', gap: 10 }}>
           <input placeholder="Filter by city or ticker…" value={filter} onChange={e => setFilter(e.target.value)}
@@ -584,7 +633,7 @@ function PositionsTab() {
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
           <thead>
             <tr style={{ background: 'var(--bg-subtle)', color: 'var(--text-muted)', fontSize: 12 }}>
-              {['Ticker', 'City', 'Side', 'Cost', 'Qty', 'Mark', 'Fcst', 'Edge', 'Unrl. P&L', 'Model', 'Expiry', 'Age'].map((h, i) => (
+              {['Ticker', 'City', 'Side', 'Cost', 'Qty', 'Mark ¢', 'Fcst ¢', 'Edge', 'Unrl. P&L', 'Model', 'Expiry', 'Age'].map((h, i) => (
                 <th key={h} style={{ padding: '12px 16px', textAlign: i >= 3 && i <= 8 ? 'right' : 'left', fontWeight: 600, borderBottom: '1px solid var(--border)' }}>{h}</th>
               ))}
             </tr>
@@ -606,8 +655,8 @@ function PositionsTab() {
                 </td>
                 <td style={{ padding: '14px 16px', textAlign: 'right', fontFamily: 'ui-monospace, monospace' }}>${p.cost.toFixed(2)}</td>
                 <td style={{ padding: '14px 16px', textAlign: 'right', fontFamily: 'ui-monospace, monospace' }}>{p.qty}</td>
-                <td style={{ padding: '14px 16px', textAlign: 'right', fontFamily: 'ui-monospace, monospace', color: 'var(--text-muted)' }}>{p.mark.toFixed(2)}</td>
-                <td style={{ padding: '14px 16px', textAlign: 'right', fontFamily: 'ui-monospace, monospace' }}>{p.fcst.toFixed(2)}</td>
+                <td style={{ padding: '14px 16px', textAlign: 'right', fontFamily: 'ui-monospace, monospace', color: 'var(--text-muted)' }}>{(p.mark * 100).toFixed(0)}¢</td>
+                <td style={{ padding: '14px 16px', textAlign: 'right', fontFamily: 'ui-monospace, monospace' }}>{(p.fcst * 100).toFixed(0)}¢</td>
                 <td style={{ padding: '14px 16px', textAlign: 'right', color: '#16a34a', fontWeight: 700, fontFamily: 'ui-monospace, monospace' }}>+{(p.edge * 100).toFixed(1)}%</td>
                 {(() => {
                   const upnl = (p.mark - p.cost / p.qty) * p.qty;
@@ -704,6 +753,12 @@ function SignalsTab() {
     M.opportunities.filter(o => o.edge_pct >= minEdge),
     [minEdge, M.opportunities]
   );
+
+  useEffect(() => {
+    const handler = () => { setSelectedOpp(null); setConfirmPending(null); };
+    document.addEventListener('kalshi:escape', handler);
+    return () => document.removeEventListener('kalshi:escape', handler);
+  }, []);
 
   function handleAction(opp, action) {
     if (action === 'reject') {
@@ -809,6 +864,28 @@ function SignalsTab() {
         ))}
       </section>
 
+      {filtered.length === 0 && (
+        <section style={{
+          background: 'var(--bg-card)', border: '1px solid var(--border)',
+          borderRadius: 14, padding: '40px 24px', marginBottom: 18,
+          textAlign: 'center',
+        }}>
+          <div style={{ fontSize: 32, marginBottom: 12 }}>📡</div>
+          <h3 style={{ margin: '0 0 8px', fontSize: 16, fontWeight: 600 }}>No signals above {minEdge}% edge</h3>
+          <p style={{ margin: '0 0 20px', color: 'var(--text-muted)', fontSize: 13, lineHeight: 1.5, maxWidth: 400, marginLeft: 'auto', marginRight: 'auto' }}>
+            {M.opportunities.length === 0
+              ? 'No scan data yet. Run a cron scan in the Settings tab to fetch live market data and generate signals.'
+              : `${M.opportunities.length} signal${M.opportunities.length !== 1 ? 's' : ''} found but all are below the ${minEdge}% edge filter. Try lowering the threshold.`}
+          </p>
+          {M.opportunities.length === 0 && (
+            <button onClick={() => {/* navigate to settings */}} style={{
+              padding: '9px 20px', borderRadius: 8, border: 'none',
+              background: '#3b82f6', color: 'white', fontWeight: 600, fontSize: 13, cursor: 'pointer',
+            }}>Go to Settings → Run scan</button>
+          )}
+        </section>
+      )}
+      {filtered.length > 0 && (
       <section style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 14, overflow: 'hidden', marginBottom: 18 }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
           <thead>
@@ -923,6 +1000,7 @@ function SignalsTab() {
           </tbody>
         </table>
       </section>
+      )}
 
       {selectedOpp && (
         <section style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 14, padding: '20px 24px' }}>
@@ -955,26 +1033,38 @@ function SignalsTab() {
         </section>
       )}
 
-      {/* Confirmation modal */}
+      {/* Confirmation modal — Escape cancels, Enter confirms */}
       {confirmPending && (
-        <div style={{
-          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100,
-        }} onClick={() => setConfirmPending(null)}>
+        <div
+          onKeyDown={e => { if (e.key === 'Enter') handleConfirm(); }}
+          style={{
+            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100,
+          }} onClick={() => setConfirmPending(null)}>
           <div onClick={e => e.stopPropagation()} style={{
             background: 'var(--bg-card)', border: '1px solid var(--border)',
             borderRadius: 14, padding: '24px 28px', minWidth: 340, maxWidth: 420,
           }}>
             <h3 style={{ margin: '0 0 6px', fontSize: 16, fontWeight: 700 }}>Confirm trade</h3>
-            <p style={{ margin: '0 0 18px', color: 'var(--text-muted)', fontSize: 13, lineHeight: 1.5 }}>
-              Place <strong>{confirmPending.qty} contract{confirmPending.qty !== 1 ? 's' : ''}</strong> of{' '}
-              <strong style={{ color: '#3b82f6' }}>{confirmPending.opp.ticker}</strong>{' '}
-              <strong style={{ color: confirmPending.opp.side === 'yes' ? '#16a34a' : '#ef4444' }}>
-                {(confirmPending.opp.side || 'YES').toUpperCase()}
-              </strong>{' '}
-              at <strong>{confirmPending.opp.market_prob?.toFixed(1)}¢</strong>?
-              {' '}Cost: <strong>${(confirmPending.qty * (confirmPending.opp.market_prob || 0) / 100).toFixed(2)}</strong>.
-            </p>
+            {(() => {
+              const cost = confirmPending.qty * (confirmPending.opp.market_prob || 0) / 100;
+              const remaining = (M.stats.balance || 0) - M.positions.reduce((a, p) => a + p.cost, 0) - cost;
+              return (
+                <p style={{ margin: '0 0 18px', color: 'var(--text-muted)', fontSize: 13, lineHeight: 1.5 }}>
+                  Place <strong>{confirmPending.qty} contract{confirmPending.qty !== 1 ? 's' : ''}</strong> of{' '}
+                  <strong style={{ color: '#3b82f6' }}>{confirmPending.opp.ticker}</strong>{' '}
+                  <strong style={{ color: confirmPending.opp.side === 'yes' ? '#16a34a' : '#ef4444' }}>
+                    {(confirmPending.opp.side || 'YES').toUpperCase()}
+                  </strong>{' '}
+                  at <strong>{confirmPending.opp.market_prob?.toFixed(1)}¢</strong>?
+                  {' '}Cost: <strong>${cost.toFixed(2)}</strong>.
+                  <br />
+                  <span style={{ fontSize: 12, color: remaining < 10 ? '#ef4444' : 'var(--text-faint)' }}>
+                    Balance after: <strong>${remaining.toFixed(2)}</strong>
+                  </span>
+                </p>
+              );
+            })()}
             <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
               <button onClick={() => setConfirmPending(null)} style={{
                 padding: '9px 18px', borderRadius: 8, border: '1px solid var(--border)',
@@ -1152,6 +1242,47 @@ function AnalyticsTab() {
         </section>
       </div>
 
+      {/* Brier score trend */}
+      {Array.isArray(M.brierHistory) && M.brierHistory.length > 1 && (() => {
+        const hist = M.brierHistory;
+        const briersArr = hist.map(h => h.brier);
+        const minB = Math.min(...briersArr);
+        const maxB = Math.max(...briersArr) || 0.25;
+        const W = 800, H = 80, padL = 0, padR = 0;
+        const innerW = W - padL - padR;
+        const xs = hist.map((_, i) => padL + (i / (hist.length - 1)) * innerW);
+        const ys = hist.map(h => H - ((h.brier - Math.max(0, minB - 0.02)) / (maxB - Math.max(0, minB - 0.02) + 0.01)) * H * 0.85 - 5);
+        const pts = xs.map((x, i) => `${x},${ys[i]}`).join(' ');
+        const trend = briersArr[briersArr.length - 1] - briersArr[0];
+        return (
+          <section style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 14, padding: '20px', marginBottom: 18 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 12 }}>
+              <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600 }}>Brier score trend (weekly)</h3>
+              <span style={{ fontSize: 12, color: trend < 0 ? '#16a34a' : '#ef4444', fontWeight: 600, fontFamily: 'ui-monospace, monospace' }}>
+                {trend < 0 ? '▼ Improving' : '▲ Worsening'} {Math.abs(trend * 100).toFixed(1)}pts over {hist.length} weeks
+              </span>
+            </div>
+            <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 'auto', display: 'block', overflow: 'visible' }}>
+              <polyline points={pts} fill="none" stroke="#3b82f6" strokeWidth="2.5" strokeLinejoin="round" />
+              {hist.map((h, i) => (
+                <g key={i}>
+                  <circle cx={xs[i]} cy={ys[i]} r="4" fill={h.brier <= 0.20 ? '#16a34a' : '#3b82f6'} stroke="white" strokeWidth="1.5" />
+                  <title>{h.week}: {h.brier.toFixed(3)}</title>
+                </g>
+              ))}
+              <line x1={padL} y1={H - ((0.20 - Math.max(0, minB - 0.02)) / (maxB - Math.max(0, minB - 0.02) + 0.01)) * H * 0.85 - 5}
+                    x2={W - padR} y2={H - ((0.20 - Math.max(0, minB - 0.02)) / (maxB - Math.max(0, minB - 0.02) + 0.01)) * H * 0.85 - 5}
+                    stroke="#16a34a" strokeWidth="1" strokeDasharray="4,4" opacity="0.5" />
+            </svg>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: 'var(--text-faint)', marginTop: 4 }}>
+              <span>{hist[0]?.week}</span>
+              <span style={{ color: '#16a34a', fontSize: 10 }}>— target 0.20</span>
+              <span>{hist[hist.length - 1]?.week}</span>
+            </div>
+          </section>
+        );
+      })()}
+
       <section style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 14, overflow: 'hidden' }}>
         <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border)' }}>
           <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600 }}>City calibration detail</h3>
@@ -1282,19 +1413,49 @@ function TradesTab() {
   const [page, setPage] = useState(0);
   const [cityFilter, setCityFilter] = useState('');
   const [sideFilter, setSideFilter] = useState('');
+  const [sortKey, setSortKey] = useState('date');
   const PAGE_SIZE = 10;
 
   const cities = useMemo(() => [...new Set(M.closedTrades.map(t => t.city))].sort(), [M.closedTrades]);
 
-  const filtered = useMemo(() =>
-    M.closedTrades.filter(t => (!cityFilter || t.city === cityFilter) && (!sideFilter || t.side === sideFilter)),
-    [cityFilter, sideFilter, M.closedTrades]
-  );
+  const filtered = useMemo(() => {
+    const rows = M.closedTrades.filter(t => (!cityFilter || t.city === cityFilter) && (!sideFilter || t.side === sideFilter));
+    if (sortKey === 'pnl_desc') return [...rows].sort((a, b) => (b.pnl ?? 0) - (a.pnl ?? 0));
+    if (sortKey === 'pnl_asc')  return [...rows].sort((a, b) => (a.pnl ?? 0) - (b.pnl ?? 0));
+    return [...rows].sort((a, b) => (b.entered_at || '').localeCompare(a.entered_at || ''));
+  }, [cityFilter, sideFilter, sortKey, M.closedTrades]);
 
   const paginated = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
   const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
   const wins = M.closedTrades.filter(t => t.pnl > 0).length;
   const losses = M.closedTrades.filter(t => t.pnl != null && t.pnl < 0).length;
+
+  function handleExportCSV() {
+    const headers = ['Ticker', 'City', 'Side', 'Entry ¢', 'Quantity', 'Cost', 'Net Edge', 'Outcome', 'P&L', 'Entered At', 'Settled At', 'Hold Days'];
+    const rows = M.closedTrades.map(t => {
+      const holdDays = (t.entered_at && t.settled_at)
+        ? ((new Date(t.settled_at) - new Date(t.entered_at)) / 86400000).toFixed(1)
+        : '';
+      return [
+        t.ticker, t.city, t.side,
+        t.entry_price != null ? (t.entry_price * 100).toFixed(0) : '',
+        t.quantity ?? '',
+        t.cost != null ? t.cost.toFixed(2) : '',
+        t.net_edge != null ? (t.net_edge * 100).toFixed(2) + '%' : '',
+        t.outcome ?? '',
+        t.pnl != null ? t.pnl.toFixed(2) : '',
+        t.entered_at ?? '',
+        t.settled_at ?? '',
+        holdDays,
+      ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(',');
+    });
+    const csv = [headers.join(','), ...rows].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `trades_${new Date().toISOString().slice(0,10)}.csv`; a.click();
+    URL.revokeObjectURL(url);
+  }
 
   return (
     <main style={{ maxWidth: 1360, margin: '0 auto', padding: '24px 28px 40px' }}>
@@ -1317,6 +1478,16 @@ function TradesTab() {
             <option value="yes">YES</option>
             <option value="no">NO</option>
           </select>
+          <select value={sortKey} onChange={e => { setSortKey(e.target.value); setPage(0); }}
+            style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-card)', fontSize: 13, cursor: 'pointer', color: 'var(--text)' }}>
+            <option value="date">Sort by Date</option>
+            <option value="pnl_desc">Sort by P&L ↓</option>
+            <option value="pnl_asc">Sort by P&L ↑</option>
+          </select>
+          <button onClick={handleExportCSV} title="Export to CSV"
+            style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-card)', fontSize: 13, cursor: 'pointer', color: 'var(--text)', fontWeight: 500 }}>
+            ↓ CSV
+          </button>
         </div>
       </div>
 
@@ -1324,8 +1495,8 @@ function TradesTab() {
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
           <thead>
             <tr style={{ background: 'var(--bg-subtle)', color: 'var(--text-muted)', fontSize: 12 }}>
-              {['Ticker', 'City', 'Side', 'Entry', 'Net Edge', 'Outcome', 'P&L', 'Entered'].map((h, i) => (
-                <th key={h} style={{ padding: '12px 16px', textAlign: [3, 4, 6].includes(i) ? 'right' : 'left', fontWeight: 600, borderBottom: '1px solid var(--border)' }}>{h}</th>
+              {['Ticker', 'City', 'Side', 'Entry', 'Net Edge', 'Outcome', 'P&L', 'Hold', 'Entered'].map((h, i) => (
+                <th key={h} style={{ padding: '12px 16px', textAlign: [3, 4, 6, 7].includes(i) ? 'right' : 'left', fontWeight: 600, borderBottom: '1px solid var(--border)' }}>{h}</th>
               ))}
             </tr>
           </thead>
@@ -1359,6 +1530,11 @@ function TradesTab() {
                   </td>
                   <td style={{ padding: '14px 16px', textAlign: 'right', fontFamily: 'ui-monospace, monospace', fontWeight: 700, color: t.pnl == null ? 'var(--text-faint)' : t.pnl >= 0 ? '#16a34a' : '#ef4444' }}>
                     {t.pnl == null ? '—' : (t.pnl >= 0 ? '+' : '') + '$' + t.pnl.toFixed(2)}
+                  </td>
+                  <td style={{ padding: '14px 16px', textAlign: 'right', fontFamily: 'ui-monospace, monospace', fontSize: 11, color: 'var(--text-faint)' }}>
+                    {(t.entered_at && t.settled_at)
+                      ? Math.ceil((new Date(t.settled_at) - new Date(t.entered_at)) / 86400000) + 'd'
+                      : '—'}
                   </td>
                   <td style={{ padding: '14px 16px', fontFamily: 'ui-monospace, monospace', fontSize: 11, color: 'var(--text-faint)' }}>
                     {t.entered_at ? new Date(t.entered_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '—'}
@@ -1572,6 +1748,41 @@ function SettingsTab() {
         )}
       </section>
 
+      {/* Backup status */}
+      {M.backupStatus && (
+        <section style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 14, padding: '16px 20px', marginBottom: 18 }}>
+          <h3 style={{ margin: '0 0 10px', fontSize: 15, fontWeight: 600 }}>Backup status</h3>
+          <div style={{ display: 'flex', gap: 24, fontSize: 13, flexWrap: 'wrap' }}>
+            <div>
+              <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Last backup</span>
+              <div style={{ fontWeight: 600, fontFamily: 'ui-monospace, monospace', marginTop: 2 }}>
+                {M.backupStatus.last_backup_at
+                  ? new Date(M.backupStatus.last_backup_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+                  : 'Never'}
+              </div>
+            </div>
+            <div>
+              <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Backup count</span>
+              <div style={{ fontWeight: 600, fontFamily: 'ui-monospace, monospace', marginTop: 2 }}>{M.backupStatus.backup_count ?? 0}</div>
+            </div>
+            {M.backupStatus.backup_size_mb != null && (
+              <div>
+                <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Latest size</span>
+                <div style={{ fontWeight: 600, fontFamily: 'ui-monospace, monospace', marginTop: 2 }}>{M.backupStatus.backup_size_mb} MB</div>
+              </div>
+            )}
+            {M.backupStatus.data_mtime && (
+              <div>
+                <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Data last modified</span>
+                <div style={{ fontWeight: 600, fontFamily: 'ui-monospace, monospace', marginTop: 2 }}>
+                  {new Date(M.backupStatus.data_mtime).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                </div>
+              </div>
+            )}
+          </div>
+        </section>
+      )}
+
       {/* Cron scan */}
       <section style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 14, padding: '20px', marginBottom: 18 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: cronState.log.length ? 14 : 0 }}>
@@ -1582,7 +1793,13 @@ function SettingsTab() {
               {cronState.status === 'done'    && 'Scan complete. Signals refreshed.'}
               {cronState.status === 'error'   && 'Scan finished with errors — see log below.'}
               {cronState.status === 'cancelled' && 'Scan cancelled.'}
-              {(cronState.status === 'idle')  && 'Run a market scan to refresh signals and place paper trades if edges are found.'}
+              {(cronState.status === 'idle')  && (() => {
+                const meta = M.signalsMeta;
+                if (!meta?.generatedAt) return 'Run a market scan to refresh signals and place paper trades if edges are found.';
+                const ageMin = Math.round((Date.now() - new Date(meta.generatedAt)) / 60000);
+                const label = ageMin < 60 ? `${ageMin}m ago` : `${Math.floor(ageMin / 60)}h ${ageMin % 60}m ago`;
+                return `Last scan: ${label}. Run again to refresh signals.`;
+              })()}
             </p>
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
@@ -1675,12 +1892,21 @@ export default function App() {
   const [theme, setTheme] = useState(() => localStorage.getItem('kalshi-theme') || 'light');
   const [connected, setConnected] = useState(false);
   const [cronState, setCronState] = useState({ status: 'idle', log: [], exitCode: null });
+  const [toasts, setToasts] = useState([]);
+  const [refreshCountdown, setRefreshCountdown] = useState(60);
   const cronPollRef = useRef(null);
+  const countdownRef = useRef(null);
 
   useEffect(() => {
     applyTheme(theme);
     localStorage.setItem('kalshi-theme', theme);
   }, [theme]);
+
+  function addToast(message, type = 'success', duration = 4000) {
+    const id = Date.now();
+    setToasts(prev => [...prev, { id, message, type }]);
+    setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), duration);
+  }
 
   const data = useData(setConnected);
 
@@ -1697,7 +1923,31 @@ export default function App() {
       .catch(() => {});
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => () => { if (cronPollRef.current) clearInterval(cronPollRef.current); }, []);
+  useEffect(() => () => {
+    if (cronPollRef.current) clearInterval(cronPollRef.current);
+    if (countdownRef.current) clearInterval(countdownRef.current);
+  }, []);
+
+  // Auto-refresh countdown (resets to 60 whenever data refreshes)
+  useEffect(() => {
+    setRefreshCountdown(60);
+    if (countdownRef.current) clearInterval(countdownRef.current);
+    countdownRef.current = setInterval(() => {
+      setRefreshCountdown(prev => prev <= 1 ? 60 : prev - 1);
+    }, 1000);
+    return () => clearInterval(countdownRef.current);
+  }, [data.stats?.timestamp]);
+
+  // Global keyboard shortcuts
+  useEffect(() => {
+    function handleKeyDown(e) {
+      if (e.key === 'Escape') {
+        document.dispatchEvent(new CustomEvent('kalshi:escape'));
+      }
+    }
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   function startCronPoll() {
     if (cronPollRef.current) clearInterval(cronPollRef.current);
@@ -1712,6 +1962,11 @@ export default function App() {
             clearInterval(cronPollRef.current);
             cronPollRef.current = null;
             data.refresh();
+            const msg = d.exit_code === 0 ? 'Cron scan complete — signals updated.' : 'Cron scan finished with errors.';
+            addToast(msg, d.exit_code === 0 ? 'success' : 'error');
+            if ('Notification' in window && Notification.permission === 'granted') {
+              new Notification('Kalshi scan complete', { body: msg, icon: '/favicon.ico' });
+            }
           }
         })
         .catch(() => {});
@@ -1719,6 +1974,9 @@ export default function App() {
   }
 
   function handleRunCron() {
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
     setCronState({ status: 'running', log: ['Starting scan…'], exitCode: null });
     fetch('/api/run_cron', { method: 'POST', headers: authHeader() })
       .then(r => r.json())
@@ -1756,7 +2014,9 @@ export default function App() {
           theme={theme}
           onToggleTheme={() => setTheme(t => t === 'dark' ? 'light' : 'dark')}
           connected={connected}
+          refreshCountdown={refreshCountdown}
         />
+        <ToastContainer toasts={toasts} />
         <ErrorBoundary key={activeTab}>
           <TabComponent />
         </ErrorBoundary>
