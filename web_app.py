@@ -759,11 +759,26 @@ setInterval(() => {{
         except Exception as e:
             return jsonify({"error": str(e), "signals": []}), 500
 
-        # Annotate already-held tickers
+        # Annotate already-held tickers and fill kelly_dollars + kelly_qty
         try:
+            from paper import get_balance as _gb
+
+            balance = _gb()
             open_tickers = {t["ticker"] for t in get_open_trades()}
             for s in data.get("signals", []):
                 s["already_held"] = s.get("ticker", "") in open_tickers
+                # Compute Kelly size now that we have the current balance
+                fp = (s.get("forecast_prob") or 0) / 100
+                mp = (s.get("market_prob") or 0) / 100
+                if fp > 0 and 0 < mp < 1:
+                    kelly_f = max(0.0, (fp - mp) / (1 - mp))
+                    kelly_f = min(kelly_f, 0.25)  # cap at 25% of balance
+                    kd = round(kelly_f * balance, 2)
+                    s["kelly_dollars"] = kd
+                    s["kelly_qty"] = max(1, int(kd / mp)) if mp > 0 else 1
+                else:
+                    s["kelly_dollars"] = 0.0
+                    s["kelly_qty"] = 1
         except Exception:
             pass
 

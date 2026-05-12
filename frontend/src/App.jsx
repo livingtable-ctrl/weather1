@@ -678,7 +678,7 @@ function SignalsTab() {
       return;
     }
     // approve → place a manual paper order at the current market price
-    const qty = parseInt(qtyMap[opp.ticker] || 1, 10) || 1;
+    const qty = parseInt(qtyMap[opp.ticker] ?? opp.kelly_qty ?? 1, 10) || 1;
     fetch('/api/paper-order', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...authHeader() },
@@ -812,10 +812,11 @@ function SignalsTab() {
                     <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                       <input
                         type="number" min="1" step="1"
-                        value={qtyMap[o.ticker] ?? 1}
+                        value={qtyMap[o.ticker] ?? (o.kelly_qty || 1)}
                         onChange={e => setQtyMap(prev => ({ ...prev, [o.ticker]: e.target.value }))}
+                        title={o.kelly_qty ? `Kelly suggests ${o.kelly_qty} contracts` : 'Quantity'}
                         style={{
-                          width: 48, padding: '3px 5px', borderRadius: 5,
+                          width: 52, padding: '3px 5px', borderRadius: 5,
                           border: '1px solid var(--border)', background: 'var(--bg-muted)',
                           color: 'var(--text)', fontSize: 11, textAlign: 'center',
                         }}
@@ -850,12 +851,13 @@ function SignalsTab() {
             </div>
             <button onClick={() => setSelectedOpp(null)} style={{ padding: '6px 12px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg-card)', fontSize: 12, cursor: 'pointer', color: 'var(--text)' }}>Close</button>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 16 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 16, marginBottom: 16 }}>
             {[
-              { label: 'Edge',         value: '+' + selectedOpp.edge_pct.toFixed(1) + '%' },
-              { label: 'Forecast p',   value: selectedOpp.forecast_prob.toFixed(1) + '%' },
-              { label: 'Market p',     value: selectedOpp.market_prob.toFixed(1) + '%' },
-              { label: 'Kelly $',      value: selectedOpp.kelly_dollars > 0 ? '$' + selectedOpp.kelly_dollars.toFixed(2) : '—' },
+              { label: 'Edge',            value: '+' + selectedOpp.edge_pct.toFixed(1) + '%' },
+              { label: 'Forecast p',      value: selectedOpp.forecast_prob.toFixed(1) + '%' },
+              { label: 'Market p',        value: selectedOpp.market_prob.toFixed(1) + '%' },
+              { label: 'Kelly $',         value: selectedOpp.kelly_dollars > 0 ? '$' + selectedOpp.kelly_dollars.toFixed(2) : '—' },
+              { label: 'Kelly contracts', value: selectedOpp.kelly_qty > 0 ? selectedOpp.kelly_qty + ' cts' : '—' },
             ].map(item => (
               <div key={item.label}>
                 <div style={{ color: 'var(--text-faint)', fontSize: 11, marginBottom: 4 }}>{item.label}</div>
