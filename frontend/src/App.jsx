@@ -542,6 +542,7 @@ function PositionsTab() {
           const pnl = d.pnl != null ? (d.pnl >= 0 ? `+$${d.pnl.toFixed(2)}` : `-$${Math.abs(d.pnl).toFixed(2)}`) : '';
           setCloseMsg(`✓ Closed ${pos.ticker} ${pnl}`);
           setSelectedPos(null);
+          M.refresh();
         }
         setTimeout(() => setCloseMsg(''), 4000);
       })

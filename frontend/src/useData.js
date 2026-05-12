@@ -406,5 +406,5 @@ export default function useData(setConnected) {
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  return data;
+  return { ...data, refresh: fetchAll };
 }
