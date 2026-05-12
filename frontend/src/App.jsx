@@ -495,7 +495,7 @@ function OverviewTab() {
         {[
           { title: 'Open Positions',    count: M.positions.length,         desc: 'View all with detail' },
           { title: 'Top Opportunities', count: M.opportunities.length,     desc: 'Signals with edge' },
-          { title: 'Closed Trades',     count: M.closedTrades.length,      desc: 'History & P&L' },
+          { title: 'Closed Trades',     count: M.closedTrades.length,      desc: (() => { const w = M.closedTrades.filter(t => t.pnl > 0).length; const l = M.closedTrades.filter(t => t.pnl != null && t.pnl < 0).length; return M.closedTrades.length ? `${w}W / ${l}L` : 'History & P&L'; })() },
           { title: 'Forecast Quality',  count: Object.keys(M.cityBrier).length, desc: 'Cities tracked' },
         ].map((card) => (
           <section key={card.title} style={{
@@ -621,7 +621,20 @@ function PositionsTab() {
                   );
                 })()}
                 <td style={{ padding: '14px 16px', fontFamily: 'ui-monospace, monospace', fontSize: 11, color: 'var(--text-muted)' }}>{p.model}</td>
-                <td style={{ padding: '14px 16px', fontFamily: 'ui-monospace, monospace', fontSize: 11, color: 'var(--text-muted)' }}>{p.expiry}</td>
+                <td style={{ padding: '14px 16px', fontFamily: 'ui-monospace, monospace', fontSize: 11 }}>
+                  {(() => {
+                    if (!p.expiry) return <span style={{ color: 'var(--text-faint)' }}>—</span>;
+                    const today = new Date().toISOString().slice(0, 10);
+                    const overdue = p.expiry < today;
+                    const daysOut = Math.ceil((new Date(p.expiry) - new Date(new Date().toDateString())) / 86400000);
+                    return (
+                      <span title={overdue ? 'Past expiry — needs settlement' : undefined}
+                        style={{ color: overdue ? '#ef4444' : daysOut <= 1 ? '#f59e0b' : 'var(--text-muted)', fontWeight: overdue ? 700 : 'inherit' }}>
+                        {overdue && '⚠ '}{p.expiry}
+                      </span>
+                    );
+                  })()}
+                </td>
                 <td style={{ padding: '14px 16px', textAlign: 'right', fontFamily: 'ui-monospace, monospace', fontSize: 11, color: 'var(--text-faint)' }}>{p.age_h}h</td>
               </tr>
             ))}
@@ -636,6 +649,9 @@ function PositionsTab() {
               <h3 style={{ margin: 0, fontSize: 17, fontWeight: 600 }}>{normCity(selectedPos.city)} · {selectedPos.ticker}</h3>
               <p style={{ margin: '4px 0 0', color: 'var(--text-muted)', fontSize: 13 }}>
                 Opened {selectedPos.age_h}h ago · {selectedPos.model} forecast · closes {selectedPos.expiry}
+                {selectedPos.expiry && selectedPos.expiry < new Date().toISOString().slice(0, 10) &&
+                  <span style={{ color: '#ef4444', fontWeight: 700, marginLeft: 6 }}>— PAST EXPIRY</span>
+                }
               </p>
             </div>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -797,7 +813,7 @@ function SignalsTab() {
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
           <thead>
             <tr style={{ background: 'var(--bg-subtle)', color: 'var(--text-muted)', fontSize: 12 }}>
-              {['★', 'Ticker', 'City', 'Side', 'Forecast', 'Market', 'Edge', 'Risk', 'Kelly $', 'Flags', 'Action'].map((h, i) => (
+              {['★', 'Ticker', 'City', 'Side', 'Forecast', 'Market', 'Edge', 'Risk', 'Kelly $', 'Expires', 'Flags', 'Action'].map((h, i) => (
                 <th key={h} style={{
                   padding: '12px 16px', fontWeight: 600, borderBottom: '1px solid var(--border)',
                   textAlign: [4, 5, 6, 8].includes(i) ? 'right' : 'left',
@@ -851,6 +867,15 @@ function SignalsTab() {
                   </td>
                   <td style={{ padding: '12px 16px', textAlign: 'right', fontFamily: 'ui-monospace, monospace', color: 'var(--text-muted)', fontSize: 12 }}>
                     {kelly}
+                  </td>
+                  <td style={{ padding: '12px 16px', fontFamily: 'ui-monospace, monospace', fontSize: 11, color: 'var(--text-muted)' }}>
+                    {(() => {
+                      const td = o.target_date || o.expiry;
+                      if (!td) return '—';
+                      const daysOut = Math.ceil((new Date(td) - new Date(new Date().toDateString())) / 86400000);
+                      const color = daysOut <= 1 ? '#f59e0b' : daysOut <= 3 ? 'var(--text-muted)' : 'var(--text-faint)';
+                      return <span style={{ color }}>{td} <span style={{ fontSize: 10 }}>({daysOut}d)</span></span>;
+                    })()}
                   </td>
                   <td style={{ padding: '12px 16px', fontSize: 13 }}>
                     {o.near_threshold && <span title="Near threshold" style={{ color: '#ca8a04' }}>⚠ </span>}
