@@ -57,6 +57,11 @@ def _collect_data() -> dict:
     }
 
 
+def _pdf(s: str) -> str:
+    """Replace characters outside Latin-1 so Helvetica doesn't crash."""
+    return s.replace("—", "-").encode("latin-1", errors="replace").decode("latin-1")
+
+
 def _generate_pdf(data: dict, output_path: Path) -> None:
     """Generate PDF using fpdf2."""
     pdf = FPDF()  # type: ignore[misc]
@@ -65,7 +70,7 @@ def _generate_pdf(data: dict, output_path: Path) -> None:
 
     # Title
     pdf.set_font("Helvetica", "B", 18)
-    pdf.cell(0, 12, "Kalshi Weather Trading — Weekly Report", ln=True)
+    pdf.cell(0, 12, _pdf("Kalshi Weather Trading - Weekly Report"), ln=True)
     pdf.set_font("Helvetica", "", 10)
     pdf.cell(0, 6, f"Generated: {data['generated_at']}", ln=True)
     pdf.ln(4)
@@ -77,8 +82,8 @@ def _generate_pdf(data: dict, output_path: Path) -> None:
     pnl_str = (
         f"+${data['pnl']:.2f}" if data["pnl"] >= 0 else f"-${abs(data['pnl']):.2f}"
     )
-    wr_str = f"{data['win_rate']:.0%}" if data["win_rate"] is not None else "—"
-    bs_str = f"{data['brier']:.4f}" if data["brier"] is not None else "—"
+    wr_str = f"{data['win_rate']:.0%}" if data["win_rate"] is not None else "-"
+    bs_str = f"{data['brier']:.4f}" if data["brier"] is not None else "-"
     summary_lines = [
         f"Balance:      ${data['balance']:.2f}",
         f"Total P&L:    {pnl_str}",
@@ -86,10 +91,10 @@ def _generate_pdf(data: dict, output_path: Path) -> None:
         f"Brier Score:  {bs_str}",
         f"Max Drawdown: {data['max_drawdown']:.1f}%",
         f"Streak:       {data['streak_n']}x {data['streak_kind']}",
-        f"Fear/Greed:   {data['fg_score']} — {data['fg_label']}",
+        f"Fear/Greed:   {data['fg_score']} - {data['fg_label']}",
     ]
     for line in summary_lines:
-        pdf.cell(0, 6, line, ln=True)
+        pdf.cell(0, 6, _pdf(line), ln=True)
     pdf.ln(4)
 
     # Open positions
@@ -103,7 +108,7 @@ def _generate_pdf(data: dict, output_path: Path) -> None:
         headers = ["Ticker", "Side", "Qty", "Entry", "Cost", "Date"]
         pdf.set_font("Helvetica", "B", 9)
         for h, w in zip(headers, col_w):
-            pdf.cell(w, 6, h, border=1)
+            pdf.cell(w, 6, _pdf(h), border=1)
         pdf.ln()
         pdf.set_font("Helvetica", "", 9)
         for t in data["open_trades"]:
@@ -116,7 +121,7 @@ def _generate_pdf(data: dict, output_path: Path) -> None:
                 str(t.get("target_date", ""))[:10],
             ]
             for val, w in zip(row, col_w):
-                pdf.cell(w, 6, val, border=1)
+                pdf.cell(w, 6, _pdf(val), border=1)
             pdf.ln()
     pdf.ln(4)
 
@@ -132,7 +137,7 @@ def _generate_pdf(data: dict, output_path: Path) -> None:
         headers2 = ["Ticker", "Side", "Outcome", "P&L", "Date"]
         pdf.set_font("Helvetica", "B", 9)
         for h, w in zip(headers2, col_w2):
-            pdf.cell(w, 6, h, border=1)
+            pdf.cell(w, 6, _pdf(h), border=1)
         pdf.ln()
         pdf.set_font("Helvetica", "", 9)
         for t in reversed(settled):
@@ -141,12 +146,12 @@ def _generate_pdf(data: dict, output_path: Path) -> None:
             row2 = [
                 t.get("ticker", "")[:22],
                 t.get("side", "").upper(),
-                (t.get("outcome") or "—").upper(),
+                (t.get("outcome") or "-").upper(),
                 p_str,
                 (t.get("entered_at") or "")[:10],
             ]
             for val, w in zip(row2, col_w2):
-                pdf.cell(w, 6, val, border=1)
+                pdf.cell(w, 6, _pdf(val), border=1)
             pdf.ln()
 
     pdf.output(str(output_path))
