@@ -71,7 +71,12 @@ class CircuitBreaker:
             cb = state.get(self.name, {})
             self._failure_count = cb.get("failure_count", 0)
             self._trip_count = cb.get("trip_count", 0)
-            self._current_timeout = cb.get("current_timeout", self.recovery_timeout)
+            # Cap at self.recovery_timeout so reducing the timeout in code takes effect
+            # immediately even when a larger value was persisted from an older run.
+            self._current_timeout = min(
+                cb.get("current_timeout", self.recovery_timeout),
+                self.recovery_timeout,
+            )
             self._last_failure_at = cb.get("last_failure_at")
             wall_opened_at = cb.get("opened_at")
             if wall_opened_at is not None:
