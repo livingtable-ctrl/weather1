@@ -1564,10 +1564,14 @@ function RiskTab() {
 // ---------------------------------------------------------------------------
 // TradesTab  — early_exit badge, net_edge cap, real trade shape
 // ---------------------------------------------------------------------------
-function outcomeBadge(outcome) {
+function outcomeBadge(outcome, pnl) {
   if (outcome === 'yes')        return { bg: 'rgba(34,197,94,0.12)',  color: '#16a34a',        label: 'YES' };
   if (outcome === 'no')         return { bg: 'rgba(239,68,68,0.12)',  color: '#ef4444',        label: 'NO' };
-  if (outcome === 'early_exit') return { bg: 'rgba(148,163,184,0.15)', color: '#64748b',       label: 'EARLY EXIT' };
+  if (outcome === 'early_exit') {
+    if (pnl > 0)  return { bg: 'rgba(34,197,94,0.10)',  color: '#16a34a', label: 'EARLY EXIT' };
+    if (pnl < 0)  return { bg: 'rgba(239,68,68,0.10)',  color: '#ef4444', label: 'EARLY EXIT' };
+    return               { bg: 'rgba(148,163,184,0.15)', color: '#64748b', label: 'EARLY EXIT' };
+  }
   return                               { bg: 'rgba(148,163,184,0.10)', color: 'var(--text-faint)', label: outcome?.toUpperCase() || '—' };
 }
 
@@ -1665,7 +1669,7 @@ function TradesTab() {
           </thead>
           <tbody>
             {paginated.map((t, i) => {
-              const badge = outcomeBadge(t.outcome);
+              const badge = outcomeBadge(t.outcome, t.pnl);
               // net_edge may be stored as ratio (real data) or absent (mock)
               const netEdgeDisplay = t.net_edge != null ? fmtEdge(t.net_edge) : '—';
               return (

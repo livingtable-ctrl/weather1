@@ -374,7 +374,7 @@ def _check_early_exits(client=None) -> int:
                 except (ValueError, TypeError):
                     pass
 
-            if shift > 0.15:
+            if shift > 0.25:
                 exit_price = _midpoint_price(market, side)
                 result = _paper.close_paper_early(trade["id"], exit_price)
                 _log.info(

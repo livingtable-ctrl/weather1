@@ -488,8 +488,9 @@ def kelly_quantity(
     # L8-B: int() truncation silently produces 0 when dollars < price
     # (e.g. $0.80 bet at $0.65/contract → int(1.23)=1 is fine, but
     #  $0.50 bet at $0.65/contract → int(0.77)=0 silently skips the trade).
-    # Use round() and clamp to [1, 500] — dollars already passed min_dollars.
-    return min(max(1, round(dollars / price)), 500)
+    # Use round() and clamp to [1, 100] — hard cap prevents 200-400 contract
+    # positions on cheap markets where a single adverse move wipes the position.
+    return min(max(1, round(dollars / price)), 100)
 
 
 def place_paper_order(
