@@ -779,6 +779,26 @@ def _cmd_cron_body(
                         _mos_mod.fetch_mos_best(_mos_sta, target_date=_dt)
                 except Exception:
                     pass
+                # ── NWS hourly obs (600s TTL; used for same-day obs override and
+                #    persistence baseline — not batched, must prewarm per city) ──
+                try:
+                    from nws import get_live_observation as _nws_obs
+                    from weather_markets import CITY_COORDS as _city_coords2
+
+                    _coords2 = _city_coords2.get(_c)
+                    if _coords2:
+                        _nws_obs(_c, _coords2)
+                except Exception:
+                    pass
+                try:
+                    from nws import get_live_precip_obs as _nws_precip_obs
+                    from weather_markets import CITY_COORDS as _city_coords3
+
+                    _coords3 = _city_coords3.get(_c)
+                    if _coords3:
+                        _nws_precip_obs(_c, _coords3)
+                except Exception:
+                    pass
 
             import threading as _threading
 
