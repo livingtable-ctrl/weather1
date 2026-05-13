@@ -277,6 +277,7 @@ class TestFetchMosSpecialCodes:
                 {"ftime": "2026-04-17 21:00", "tmp": 60},
             ]
         }
+        mos._MOS_CACHE.clear()
         with patch.object(mos, "_session") as mock_sess:
             mock_sess.get.return_value.json.return_value = response
             mock_sess.get.return_value.raise_for_status.return_value = None
@@ -296,6 +297,7 @@ class TestFetchMosSpecialCodes:
                 {"ftime": "2026-04-17 15:00", "tmp": "M"},
             ]
         }
+        mos._MOS_CACHE.clear()
         with patch.object(mos, "_session") as mock_sess:
             mock_sess.get.return_value.json.return_value = response
             mock_sess.get.return_value.raise_for_status.return_value = None
