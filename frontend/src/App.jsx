@@ -1385,24 +1385,36 @@ function AnalyticsTab() {
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 18, marginBottom: 18 }}>
         <section style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 14, padding: '20px' }}>
-          <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600, marginBottom: 14 }}>P&L by model source</h3>
-          {(M.modelAccuracy || []).map((m) => {
-            const pnl = m.edge_realized * 800;
-            const base = (M.modelAccuracy || []).reduce((a, x) => a + x.edge_realized * 800, 0);
-            const pct = base > 0 ? (pnl / base) * 100 : 0;
-            return (
-              <div key={m.model} style={{ marginBottom: 12 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 5 }}>
-                  <span style={{ fontWeight: 600 }}>{m.model}</span>
-                  <span style={{ color: '#16a34a', fontFamily: 'ui-monospace, monospace', fontSize: 12, fontWeight: 600 }}>+${pnl.toFixed(2)}</span>
-                </div>
-                <div style={{ position: 'relative', height: 18, background: 'var(--bg-muted)', borderRadius: 4, overflow: 'hidden' }}>
-                  <div style={{ position: 'absolute', inset: 0, width: pct + '%', background: '#3b82f6' }} />
-                  <span style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', fontSize: 11, color: 'var(--text)', fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>{pct.toFixed(0)}%</span>
-                </div>
-              </div>
-            );
-          })}
+          <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600, marginBottom: 4 }}>Brier by model source</h3>
+          <p style={{ color: 'var(--text-muted)', fontSize: 12, marginBottom: 14, lineHeight: 1.4 }}>
+            Per-source Brier score based on dominant blend model at prediction time.
+          </p>
+          {M.brierBySource && Object.keys(M.brierBySource).length > 0 ? (
+            Object.entries(M.brierBySource)
+              .sort((a, b) => a[1].brier - b[1].brier)
+              .map(([src, val]) => {
+                const b = Number(val.brier);
+                const color = b < 0.20 ? '#16a34a' : b < 0.30 ? '#ca8a04' : '#ef4444';
+                const barW = Math.max(0, Math.min(100, ((0.35 - b) / 0.35) * 100));
+                return (
+                  <div key={src} style={{ marginBottom: 12 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 5 }}>
+                      <span style={{ fontWeight: 600 }}>{src.toUpperCase()}</span>
+                      <span style={{ fontFamily: 'ui-monospace, monospace', fontSize: 11, fontWeight: 700, color }}>
+                        {b.toFixed(3)} <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>n={val.n}</span>
+                      </span>
+                    </div>
+                    <div style={{ height: 6, background: 'var(--bg-muted)', borderRadius: 3, overflow: 'hidden' }}>
+                      <div style={{ width: barW + '%', height: '100%', background: color }} />
+                    </div>
+                  </div>
+                );
+              })
+          ) : (
+            <p style={{ color: 'var(--text-faint)', fontSize: 12, fontStyle: 'italic' }}>
+              No data yet — requires settled trades with blend source metadata.
+            </p>
+          )}
         </section>
 
         <section style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 14, padding: '20px' }}>

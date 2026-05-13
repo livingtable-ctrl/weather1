@@ -234,8 +234,9 @@ function mapAnalytics(raw) {
   if (raw.brier_by_days)        patch.brierByDays      = raw.brier_by_days;
   if (raw.city_calibration)     patch.cityCalibration  = raw.city_calibration;
   if (raw.city_heatmap)         patch.cityBrier        = raw.city_heatmap;
-  if (raw.roc_auc        != null) patch.auc            = raw.roc_auc;
-  if (raw.component_attribution) patch.pnlAttribution  = raw.component_attribution;
+  // roc_auc is a dict {auc, n, points} — extract the float
+  if (raw.roc_auc?.auc != null) patch.auc              = raw.roc_auc.auc;
+  if (raw.component_attribution) patch.brierBySource   = raw.component_attribution;
   return patch;
 }
 
@@ -364,10 +365,15 @@ export default function useData(setConnected) {
         if (Array.isArray(brierHistoryR) && brierHistoryR.length) next.brierHistory = brierHistoryR;
 
         // City calibration Brier scores — replace mock data with real values.
-        // If API returns empty {} (not enough settled trades yet), clear mock
-        // so the chart shows an empty state instead of fake numbers.
+        // API returns {CityName: {brier, bias, n}}; extract .brier float.
+        // If empty {} (not enough trades yet), clear mock so chart shows empty state.
         if (forecastQualityR && forecastQualityR.city_heatmap != null) {
-          next.cityBrier = forecastQualityR.city_heatmap;
+          const raw = forecastQualityR.city_heatmap;
+          const normalized = {};
+          for (const [city, val] of Object.entries(raw)) {
+            normalized[city] = typeof val === 'object' && val !== null ? val.brier : val;
+          }
+          next.cityBrier = normalized;
         }
 
         return next;
