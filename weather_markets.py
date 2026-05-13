@@ -3910,9 +3910,15 @@ def _analyze_precip_trade(
     )
 
     # #39: Bayesian Kelly — integrate over uniform posterior on CI range
-    ci_adj_kelly = bayesian_kelly(
-        ci_low, ci_high, entry_price, fee_rate=KALSHI_FEE_RATE
-    )
+    # For NO bets, flip CI to P(NO wins) space so kelly_fraction uses the right side.
+    if rec_side == "no":
+        ci_adj_kelly = bayesian_kelly(
+            1.0 - ci_high, 1.0 - ci_low, entry_price, fee_rate=KALSHI_FEE_RATE
+        )
+    else:
+        ci_adj_kelly = bayesian_kelly(
+            ci_low, ci_high, entry_price, fee_rate=KALSHI_FEE_RATE
+        )
     # E3: discount Kelly proportionally to CI width (wider CI = more uncertainty)
     _ci_scale = max(0.25, 1.0 - (ci_high - ci_low) * 2.0)
     ci_adj_kelly = round(ci_adj_kelly * _ci_scale, 6)
@@ -4066,10 +4072,15 @@ def _analyze_snow_trade(
     if len(precip_members) >= 5:
         ci_low, ci_high = _bootstrap_ci_precip(precip_members, condition)
 
-    # #39: Bayesian Kelly
-    ci_adj_kelly = bayesian_kelly(
-        ci_low, ci_high, entry_price, fee_rate=KALSHI_FEE_RATE
-    )
+    # #39: Bayesian Kelly — flip CI for NO bets so integration is over P(win)
+    if rec_side == "no":
+        ci_adj_kelly = bayesian_kelly(
+            1.0 - ci_high, 1.0 - ci_low, entry_price, fee_rate=KALSHI_FEE_RATE
+        )
+    else:
+        ci_adj_kelly = bayesian_kelly(
+            ci_low, ci_high, entry_price, fee_rate=KALSHI_FEE_RATE
+        )
     # E3: discount Kelly proportionally to CI width
     _ci_scale = max(0.25, 1.0 - (ci_high - ci_low) * 2.0)
     ci_adj_kelly = round(ci_adj_kelly * _ci_scale, 6)
@@ -5249,8 +5260,13 @@ def analyze_trade(enriched: dict) -> dict | None:
     time_kelly_scale = max(0.35, 1.0 - (days_out / 14.0) * 0.50)
 
     # #39: Bayesian Kelly — integrate over uniform posterior on [ci_low, ci_high]
-    # Then apply the same quality/anomaly/spread/time modifiers as before.
-    bk = bayesian_kelly(ci_low, ci_high, entry_price, fee_rate=KALSHI_FEE_RATE)
+    # For NO bets, flip CI to P(win) space — CI is on P(YES), but Kelly needs P(win).
+    if rec_side == "no":
+        bk = bayesian_kelly(
+            1.0 - ci_high, 1.0 - ci_low, entry_price, fee_rate=KALSHI_FEE_RATE
+        )
+    else:
+        bk = bayesian_kelly(ci_low, ci_high, entry_price, fee_rate=KALSHI_FEE_RATE)
     condition_type_scale = _CONDITION_CONFIDENCE.get(condition["type"], 1.0)
     # E3: discount Kelly proportionally to CI width (wider CI = more uncertainty)
     _ci_scale = max(0.25, 1.0 - (ci_high - ci_low) * 2.0)
