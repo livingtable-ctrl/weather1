@@ -800,6 +800,17 @@ setInterval(() => {{
 
     MAX_SIGNALS_CACHE_AGE_SECS = 4 * 60 * 60  # 4 hours — one full cron cycle
 
+    @app.route("/api/scan-version")
+    def api_scan_version():
+        """Lightweight endpoint: returns the mtime of signals_cache.json.
+        Frontend polls this every 5 s to detect new cron completions and
+        trigger an immediate fetchAll() instead of waiting for the 60 s timer.
+        """
+        cache_path = Path(__file__).parent / "data" / "signals_cache.json"
+        if not cache_path.exists():
+            return jsonify({"version": None})
+        return jsonify({"version": int(os.path.getmtime(cache_path))})
+
     @app.route("/api/live_signals")
     def api_live_signals():
         """Serve the signals cache written by the last cron run."""

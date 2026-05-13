@@ -260,6 +260,8 @@ function StatCard({ label, value, delta, deltaTone, sub, tooltip }) {
 // Inline SVG chart of /api/balance_history  [{ts, balance, event}]
 // ---------------------------------------------------------------------------
 function BalanceSparkline({ hist }) {
+  const [hoverIdx, setHoverIdx] = useState(null);
+
   if (!hist || hist.length < 2) return null;
 
   const W = 900, H = 120, PAD = { top: 12, right: 16, bottom: 24, left: 56 };
@@ -281,9 +283,33 @@ function BalanceSparkline({ hist }) {
     `${xs[xs.length - 1]},${PAD.top + innerH}`,
   ].join(' ');
 
-  // Mark event points (non-null event field)
   const events = hist.filter(p => p.event);
   const lastBalance = balances[balances.length - 1];
+
+  const handleMouseMove = (e) => {
+    const svg = e.currentTarget;
+    const rect = svg.getBoundingClientRect();
+    const mouseX = (e.clientX - rect.left) * (W / rect.width);
+    const innerX = mouseX - PAD.left;
+    const idx = Math.round((innerX / innerW) * (hist.length - 1));
+    setHoverIdx(Math.max(0, Math.min(hist.length - 1, idx)));
+  };
+
+  // Tooltip box: flip to left side when near right edge
+  const tip = hoverIdx !== null ? (() => {
+    const x = xs[hoverIdx];
+    const y = ys[hoverIdx];
+    const pt = hist[hoverIdx];
+    const label = pt?.ts
+      ? new Date(pt.ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+      : '';
+    const value = `$${Number(pt.balance).toFixed(2)}`;
+    const tipW = 90, tipH = 32, tipPad = 8;
+    const flipX = x + tipW + tipPad > W - PAD.right;
+    const tx = flipX ? x - tipW - tipPad : x + tipPad;
+    const ty = Math.max(PAD.top, Math.min(y - tipH / 2, PAD.top + innerH - tipH));
+    return { x, y, tx, ty, tipW, tipH, label, value, isEvent: !!pt?.event };
+  })() : null;
 
   return (
     <section style={{
@@ -296,7 +322,12 @@ function BalanceSparkline({ hist }) {
           ${Number(lastBalance).toFixed(2)} current
         </span>
       </div>
-      <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 'auto', display: 'block', overflow: 'visible' }}>
+      <svg
+        viewBox={`0 0 ${W} ${H}`}
+        style={{ width: '100%', height: 'auto', display: 'block', overflow: 'visible', cursor: 'crosshair' }}
+        onMouseMove={handleMouseMove}
+        onMouseLeave={() => setHoverIdx(null)}
+      >
         <defs>
           <linearGradient id="sparkGrad" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.18" />
@@ -330,6 +361,35 @@ function BalanceSparkline({ hist }) {
             {new Date(hist[hist.length - 1].ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
           </text>
         )}
+        {/* Hover crosshair + tooltip */}
+        {tip && (
+          <>
+            <line
+              x1={tip.x} y1={PAD.top} x2={tip.x} y2={PAD.top + innerH}
+              stroke="var(--text-faint)" strokeWidth="1" strokeDasharray="3,3"
+            />
+            <circle cx={tip.x} cy={tip.y} r="5"
+              fill={tip.isEvent ? '#f59e0b' : '#3b82f6'} stroke="white" strokeWidth="2"
+            />
+            <rect x={tip.tx} y={tip.ty} width={tip.tipW} height={tip.tipH} rx="5"
+              fill="var(--bg-card)" stroke="var(--border)" strokeWidth="1"
+              style={{ filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.15))' }}
+            />
+            <text x={tip.tx + tip.tipW / 2} y={tip.ty + 11} textAnchor="middle"
+              fontSize="9" fill="var(--text-muted)" fontFamily="ui-monospace, monospace">
+              {tip.label}
+            </text>
+            <text x={tip.tx + tip.tipW / 2} y={tip.ty + 24} textAnchor="middle"
+              fontSize="11" fontWeight="600" fill="var(--text)" fontFamily="ui-monospace, monospace">
+              {tip.value}
+            </text>
+          </>
+        )}
+        {/* Transparent overlay to ensure mouse events fire across full chart area */}
+        <rect
+          x={PAD.left} y={PAD.top} width={innerW} height={innerH}
+          fill="transparent" style={{ pointerEvents: 'all' }}
+        />
       </svg>
       {events.length > 0 && (
         <div style={{ fontSize: 10, color: 'var(--text-faint)', marginTop: 4 }}>

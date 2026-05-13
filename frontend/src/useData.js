@@ -416,8 +416,24 @@ export default function useData(setConnected) {
     startSSE();
     timerRef.current = setInterval(fetchAll, 60_000); // refresh every 60 s
 
+    // Fast scan-version poll: detect cron completion without waiting 60 s.
+    // Checks signals_cache.json mtime every 5 s; triggers fetchAll() the
+    // moment the timestamp advances (i.e. a new cron run just finished).
+    let lastVersion = null;
+    const scanPollRef = setInterval(() => {
+      fetch('/api/scan-version')
+        .then(r => r.ok ? r.json() : null)
+        .then(d => {
+          if (!d || d.version == null) return;
+          if (lastVersion !== null && d.version !== lastVersion) fetchAll();
+          lastVersion = d.version;
+        })
+        .catch(() => {});
+    }, 5_000);
+
     return () => {
       clearInterval(timerRef.current);
+      clearInterval(scanPollRef);
       sseRef.current?.close();
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
