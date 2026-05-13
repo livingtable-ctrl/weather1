@@ -28,6 +28,12 @@ MOS_RESPONSE_EMPTY = {"data": []}
 
 
 class TestFetchMos:
+    def setup_method(self):
+        """Clear the MOS in-process cache before each test."""
+        import mos
+
+        mos._MOS_CACHE.clear()
+
     def test_returns_dict_on_success(self):
         """fetch_mos returns a dict with max_temp_f on success."""
         import mos

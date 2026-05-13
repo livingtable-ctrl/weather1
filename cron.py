@@ -728,11 +728,14 @@ def _cmd_cron_body(
             # Flush to disk immediately so a canceled run still warms the next run.
             flush_ensemble_disk_cache()
 
-            # Step 2: per-city sources that don't support batching
-            # NBM + WeatherAPI only -- no OM rate lock contention.
+            # Step 2: per-city sources that don't support batching.
+            # Covers NBM, ECMWF, WeatherAPI, NWS daily forecast, METAR, and MOS
+            # so that analyze_trade finds all caches warm and makes zero live
+            # network calls per market during the analysis pool phase.
             def _warm_one(city_date: tuple[str, str]) -> None:
                 _c, _d = city_date
                 _dt = __import__("datetime").date.fromisoformat(_d)
+                # ── Open-Meteo point models ──────────────────────────────────
                 try:
                     ctx.fetch_temperature_nbm(_c, _dt)
                 except Exception:
@@ -743,6 +746,37 @@ def _cmd_cron_body(
                     pass
                 try:
                     ctx.fetch_temperature_weatherapi(_c, _dt)
+                except Exception:
+                    pass
+                # ── NWS daily forecast (cached per city, covers all dates) ──
+                try:
+                    from nws import get_nws_daily_forecast as _nws_daily
+                    from weather_markets import CITY_COORDS as _city_coords
+
+                    _coords = _city_coords.get(_c)
+                    if _coords:
+                        _nws_daily(_c, _coords)
+                except Exception:
+                    pass
+                # ── METAR current observation (cached per station, 5-min TTL) ─
+                try:
+                    from metar import fetch_metar as _fetch_metar
+                    from weather_markets import (
+                        _metar_station_for_city as _metar_sta,
+                    )
+
+                    _msta = _metar_sta(_c)
+                    if _msta:
+                        _fetch_metar(_msta)
+                except Exception:
+                    pass
+                # ── MOS forecast (cached per station/date/model, 1-hour TTL) ──
+                try:
+                    import mos as _mos_mod
+
+                    _mos_sta = _mos_mod.get_mos_station(_c)
+                    if _mos_sta:
+                        _mos_mod.fetch_mos_best(_mos_sta, target_date=_dt)
                 except Exception:
                     pass
 
@@ -764,19 +798,19 @@ def _cmd_cron_body(
                     flush=True,
                 )
 
-            _warm_pool = ThreadPoolExecutor(max_workers=min(_n_pairs, 4))
+            _warm_pool = ThreadPoolExecutor(max_workers=min(_n_pairs, 8))
             try:
                 _warm_futures = [
                     _warm_pool.submit(_warm_one_tracked, _cd) for _cd in _city_dates
                 ]
                 try:
-                    for _wf in _as_completed(_warm_futures, timeout=60):
+                    for _wf in _as_completed(_warm_futures, timeout=120):
                         try:
                             _wf.result()
                         except Exception:
                             pass
                 except TimeoutError:
-                    _log.warning("cmd_cron: city source warm-up timed out after 60s")
+                    _log.warning("cmd_cron: city source warm-up timed out after 120s")
             finally:
                 _warm_pool.shutdown(wait=False)
             print(flush=True)  # newline after in-place counter
@@ -818,13 +852,17 @@ def _cmd_cron_body(
         _reset_gate_counts()
 
         # Per-market analysis timeout: 6 min total for all markets.
-        # 288 markets / 12 workers with METAR+MOS per market needs ~5-6 min
-        # in the worst case.  Manual pool (no `with`) so shutdown(wait=False)
-        # can be used in finally — `with ThreadPoolExecutor` calls
-        # shutdown(wait=True) on __exit__, which blocks forever on a hung
-        # Windows SSL socket.  Watchdog hard-kills at 720s as backstop.
-        _ANALYSIS_TIMEOUT_S = 360  # was 180
-        _pool = ThreadPoolExecutor(max_workers=12)
+        # All network sources (NWS, METAR, MOS, NBM) are prewarmed before this
+        # pool starts, so each market should hit only in-memory caches.
+        # Workers reduced to 8 (was 12): fewer concurrent SSL connections lowers
+        # the chance of Windows SSL hangs; cache-warm analysis is CPU-bound so
+        # 8 workers saturate the pipeline without racing on network resources.
+        # Manual pool (no `with`) so shutdown(wait=False) can be used in finally
+        # — `with ThreadPoolExecutor` calls shutdown(wait=True) on __exit__,
+        # which blocks forever on a hung Windows SSL socket.
+        # Watchdog hard-kills at 720s as backstop.
+        _ANALYSIS_TIMEOUT_S = 360
+        _pool = ThreadPoolExecutor(max_workers=8)
         try:
             _futures = {
                 _pool.submit(_enrich_and_analyze, m): m for m in _deduped_markets

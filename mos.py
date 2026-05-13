@@ -6,6 +6,7 @@ Station-specific post-processed forecasts — same ASOS stations Kalshi settles 
 from __future__ import annotations
 
 import logging
+import time
 from datetime import date, timedelta
 
 import requests
@@ -47,6 +48,13 @@ _session.mount(
         )
     ),
 )
+
+
+# In-process cache: (station, date_iso, model) → (result, monotonic_time).
+# MOS updates every ~6 h; 1-hour TTL prevents redundant HTTP calls when
+# cmd_cron / analyze_trade loop over many markets for the same cities.
+_MOS_CACHE: dict[tuple, tuple[dict | None, float]] = {}
+_MOS_CACHE_TTL = 3600  # 1 hour
 
 
 def get_mos_station(city: str) -> str | None:
@@ -101,6 +109,14 @@ def fetch_mos(
 
     date_str = target_date.isoformat()
 
+    # Check cache before hitting the network.
+    _cache_key = (station.upper(), date_str, model.upper())
+    _cached = _MOS_CACHE.get(_cache_key)
+    if _cached is not None:
+        _result, _ts = _cached
+        if time.monotonic() - _ts < _MOS_CACHE_TTL:
+            return _result
+
     try:
         resp = _session.get(
             _MOS_URL,
@@ -111,21 +127,25 @@ def fetch_mos(
         payload = resp.json()
     except Exception as exc:
         _log.debug("fetch_mos(%s): %s", station, exc)
+        _MOS_CACHE[_cache_key] = (None, time.monotonic())
         return None
 
     rows = payload.get("data", [])
     if not rows:
+        _MOS_CACHE[_cache_key] = (None, time.monotonic())
         return None
 
     # Filter to rows on the target date (ftime starts with date_str)
     day_rows = [r for r in rows if str(r.get("ftime", "")).startswith(date_str)]
     if not day_rows:
+        _MOS_CACHE[_cache_key] = (None, time.monotonic())
         return None
 
     temps: list[float] = [
         t for r in day_rows if (t := _parse_temp(r.get("tmp"))) is not None
     ]
     if not temps:
+        _MOS_CACHE[_cache_key] = (None, time.monotonic())
         return None
 
     # B1: compute days_out and look up MOS-specific RMSE as sigma
@@ -134,7 +154,7 @@ def fetch_mos(
     max_key = max(sigma_table.keys())
     sigma = sigma_table.get(days_out, sigma_table[max_key])
 
-    return {
+    result = {
         "max_temp_f": float(max(temps)),
         "min_temp_f": float(min(temps)),
         "n_hours": len(day_rows),
@@ -142,6 +162,8 @@ def fetch_mos(
         "model": model,
         "sigma": sigma,
     }
+    _MOS_CACHE[_cache_key] = (result, time.monotonic())
+    return result
 
 
 def fetch_mos_best(
