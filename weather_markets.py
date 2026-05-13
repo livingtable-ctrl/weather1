@@ -1236,7 +1236,9 @@ def batch_prewarm_ensemble(
             if isinstance(data, dict):
                 data = [data]
 
-            ecmwf_mult = 3 if date.today().month in (10, 11, 12, 1, 2, 3) else 2
+            ecmwf_mult = (
+                3 if datetime.now(UTC).date().month in (10, 11, 12, 1, 2, 3) else 2
+            )
             for i, city_name in enumerate(city_names):
                 if i >= len(data):
                     break
