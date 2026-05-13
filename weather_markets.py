@@ -5328,6 +5328,7 @@ def analyze_trade(enriched: dict) -> dict | None:
         "ci_high": ci_high,
         "ci_width": ci_high - ci_low,
         "ci_scale": _ci_scale,
+        "entry_price": entry_price,
         "kelly": kelly,
         "fee_adjusted_kelly": fee_adjusted_kelly,
         "ci_adjusted_kelly": ci_adjusted_kelly,
