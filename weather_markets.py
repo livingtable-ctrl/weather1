@@ -5097,6 +5097,17 @@ def analyze_trade(enriched: dict) -> dict | None:
         except Exception:
             pass
 
+    # Realign CI to the bias/ML-corrected forecast.  The bootstrap CI is anchored
+    # to the raw ensemble distribution; GBM/Platt/temperature-scaling corrections
+    # may shift blended_prob well outside that range, leaving the entire CI below
+    # the Kelly breakeven and causing bayesian_kelly to return 0 despite real edge.
+    # Preserve CI width (ensemble spread = uncertainty magnitude) but center on
+    # blended_prob so the integration sees the corrected estimate.
+    if temps:
+        _ci_half = (ci_high - ci_low) / 2.0
+        ci_low = max(0.01, blended_prob - _ci_half)
+        ci_high = min(0.99, blended_prob + _ci_half)
+
     # Log source availability for per-city reliability tracking
     try:
         from tracker import log_source_attempt as _log_src
