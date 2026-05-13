@@ -281,6 +281,7 @@ export default function useData(setConnected) {
         safe('/api/system-events'),     // 13
         safe('/api/backup-status'),     // 14
         safe('/api/brier_history'),     // 15
+        safe('/api/forecast_quality'),  // 16
       ]);
 
       // Unwrap allSettled — treat rejected as null
@@ -290,7 +291,7 @@ export default function useData(setConnected) {
         priceImpR, forecastsR, signalsR,
         configR, abTestsR, overrideR,
         systemEventsR, backupStatusR,
-        brierHistoryR,
+        brierHistoryR, forecastQualityR,
       ] = results.map(r => r.status === 'fulfilled' ? r.value : null);
 
       setData(prev => {
@@ -361,6 +362,13 @@ export default function useData(setConnected) {
 
         // Brier history trend (AnalyticsTab chart)
         if (Array.isArray(brierHistoryR) && brierHistoryR.length) next.brierHistory = brierHistoryR;
+
+        // City calibration Brier scores — replace mock data with real values.
+        // If API returns empty {} (not enough settled trades yet), clear mock
+        // so the chart shows an empty state instead of fake numbers.
+        if (forecastQualityR && forecastQualityR.city_heatmap != null) {
+          next.cityBrier = forecastQualityR.city_heatmap;
+        }
 
         return next;
       });

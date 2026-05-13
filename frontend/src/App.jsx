@@ -1205,6 +1205,11 @@ function ForecastTab() {
         <p style={{ color: 'var(--text-muted)', fontSize: 12, marginBottom: 14, lineHeight: 1.4 }}>
           Lower = better. Target ≤0.20 per city. Accumulates after 10+ settled trades.
         </p>
+        {Object.keys(M.cityBrier || {}).length === 0 && (
+          <p style={{ color: 'var(--text-faint)', fontSize: 12, fontStyle: 'italic' }}>
+            No data yet — requires 10+ settled trades per city.
+          </p>
+        )}
         {Object.entries(M.cityBrier || {}).sort((a, b) => Number(a[1]) - Number(b[1])).map(([city, brier]) => {
           const b = brier != null ? Number(brier) : null;
           const color = b == null ? '#8b949e' : b < 0.20 ? '#16a34a' : b < 0.30 ? '#ca8a04' : '#ef4444';
