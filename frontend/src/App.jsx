@@ -1020,7 +1020,13 @@ function SignalsTab() {
                   <td style={{ padding: '12px 16px', fontSize: 13 }}>
                     {o.near_threshold && <span title="Near threshold" style={{ color: '#ca8a04' }}>⚠ </span>}
                     {o.is_hedge      && <span title="Hedges open position" style={{ color: 'var(--text-muted)' }}>↔ </span>}
-                    {o.already_held  && <span title="Already held" style={{ color: '#3b82f6' }}>● </span>}
+                    {o.already_held  && (
+                      <span title="You already have an open position in this market" style={{
+                        display: 'inline-block', padding: '1px 6px', borderRadius: 999,
+                        background: 'rgba(59,130,246,0.12)', color: '#3b82f6',
+                        fontSize: 10, fontWeight: 600,
+                      }}>HELD</span>
+                    )}
                     {!o.near_threshold && !o.is_hedge && !o.already_held && <span style={{ color: 'var(--text-faint)' }}>—</span>}
                   </td>
                   <td style={{ padding: '12px 16px' }} onClick={e => e.stopPropagation()}>
