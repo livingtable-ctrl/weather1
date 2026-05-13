@@ -505,7 +505,13 @@ def _validate_trade_opportunity(opp: dict, live: bool = False) -> tuple[bool, st
     # Kelly check
     kelly = opp.get("ci_adjusted_kelly", opp.get("fee_adjusted_kelly", 0.0))
     if kelly < 0.002:
-        return False, f"kelly={kelly:.4f} too small"
+        _ep = opp.get("entry_price", "?")
+        _fp = opp.get("forecast_prob", "?")
+        _side = opp.get("recommended_side", "?")
+        return (
+            False,
+            f"kelly={kelly:.4f} too small (forecast={_fp} entry={_ep} side={_side})",
+        )
 
     # Ticker check
     ticker = opp.get("ticker", "")
@@ -547,6 +553,7 @@ def _auto_place_trades(
     """
     from paper import (
         corr_kelly_scale,
+        drawdown_scaling_factor,
         get_open_trades,
         is_daily_loss_halted,
         is_paused_drawdown,
@@ -746,6 +753,9 @@ def _auto_place_trades(
         method = a.get("method")
         consensus_mult = 0.5 if not a.get("model_consensus", True) else 1.0
         adj_kelly_final = adj_kelly * consensus_mult
+        if drawdown_scaling_factor() == 0.0:
+            _skip_reasons.append(f"{ticker}: drawdown_halt")
+            continue
         qty = kelly_quantity(adj_kelly_final, entry_price, cap=cap, method=method)
         if qty < 1:
             _skip_reasons.append(

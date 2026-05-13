@@ -13,6 +13,8 @@ import os
 import socket
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor as _TPE
+from concurrent.futures import TimeoutError as _FutureTimeout
 from datetime import date, datetime
 from pathlib import Path
 
@@ -52,6 +54,11 @@ _precip_cache: dict = {}  # city -> (timestamp, precip_inches | None)
 # simultaneously (thread-race fix: 4 workers × 5 cities = 20 fetches → 5 fetches)
 _obs_locks: dict[str, threading.Lock] = {}
 _obs_locks_mu = threading.Lock()
+
+# Hard wall-clock timeout for obs HTTP calls — Windows SSL can hang past
+# socket-level timeouts; a thread pool future gives a reliable deadline.
+_OBS_WALL_SECS = 7.0
+_obs_fetch_pool = _TPE(max_workers=4, thread_name_prefix="nws-obs")
 
 # Persistent station-ID cache: station→coord mappings never change, so we can
 # avoid the NWS /observationStations round-trip on subsequent process starts.
@@ -109,6 +116,20 @@ def _get(url: str, params: dict | None = None) -> dict:
         _log.warning("NWS API slow: %.1fs for %s", _elapsed, url)
     resp.raise_for_status()
     return resp.json()
+
+
+def _get_obs(url: str) -> dict:
+    """_get with a hard wall-clock deadline for observation endpoints.
+
+    Windows SSL can hang indefinitely past socket-level timeouts. Submitting
+    to a thread pool and calling .result(timeout=N) gives a reliable deadline
+    regardless of OS-level SSL stalls.
+    """
+    try:
+        return _obs_fetch_pool.submit(_get, url).result(timeout=_OBS_WALL_SECS)
+    except _FutureTimeout:
+        _log.warning("NWS obs wall-clock timeout (%.0fs) for %s", _OBS_WALL_SECS, url)
+        raise TimeoutError(f"wall-clock timeout on {url}")
 
 
 def _get_gridpoint(lat: float, lon: float) -> tuple[str, int, int]:
@@ -309,7 +330,7 @@ def get_live_observation(city: str, coords: tuple) -> dict | None:
             if not station_id:
                 return None
 
-            data = _get(f"{NWS_BASE}/stations/{station_id}/observations/latest")
+            data = _get_obs(f"{NWS_BASE}/stations/{station_id}/observations/latest")
             props = data.get("properties", {})
             temp_c = (props.get("temperature") or {}).get("value")
             if temp_c is None:
@@ -365,7 +386,7 @@ def get_live_precip_obs(city: str, coords: tuple) -> float | None:
             if not station_id:
                 return None
 
-            data = _get(f"{NWS_BASE}/stations/{station_id}/observations/latest")
+            data = _get_obs(f"{NWS_BASE}/stations/{station_id}/observations/latest")
             props = data.get("properties", {})
             p1h = (props.get("precipitationLastHour") or {}).get("value")
             if p1h is not None:

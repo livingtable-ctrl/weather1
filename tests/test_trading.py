@@ -712,6 +712,7 @@ def test_auto_place_trades_med_tier_uses_20_cap(monkeypatch):
     monkeypatch.setattr(paper, "is_paused_drawdown", fake_is_paused_drawdown)
     monkeypatch.setattr(paper, "is_daily_loss_halted", fake_is_daily_loss_halted)
     monkeypatch.setattr(paper, "is_streak_paused", fake_is_streak_paused)
+    monkeypatch.setattr(paper, "drawdown_scaling_factor", lambda: 1.0)
     import order_executor as _oe
 
     monkeypatch.setattr(_oe, "_daily_paper_spend", lambda: 0.0)
@@ -1245,6 +1246,7 @@ def _l7b_common_patches(monkeypatch):
     monkeypatch.setattr(paper, "is_paused_drawdown", lambda: False)
     monkeypatch.setattr(paper, "is_daily_loss_halted", lambda client=None: False)
     monkeypatch.setattr(paper, "is_streak_paused", lambda: False)
+    monkeypatch.setattr(paper, "drawdown_scaling_factor", lambda: 1.0)
     import order_executor as _oe
 
     monkeypatch.setattr(_oe, "_daily_paper_spend", lambda: 0.0)
@@ -1253,6 +1255,9 @@ def _l7b_common_patches(monkeypatch):
     )
     monkeypatch.setattr(
         _oe.execution_log, "was_traded_today", lambda ticker, side: False
+    )
+    monkeypatch.setattr(
+        _oe.execution_log, "was_ordered_this_cycle", lambda ticker, side, cycle: False
     )
     return main, paper
 
