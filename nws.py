@@ -101,8 +101,8 @@ _load_station_cache()
 def _get(url: str, params: dict | None = None) -> dict:
     _t0 = time.perf_counter()
     resp = _session.get(
-        url, params=params, timeout=8
-    )  # #125: session reuses connections
+        url, params=params, timeout=(5, 8)
+    )  # (connect, read) — 5s cap on SSL handshake; #125: session reuses connections
     _elapsed = time.perf_counter() - _t0
     # #108: warn on slow NWS responses
     if _elapsed > 5:

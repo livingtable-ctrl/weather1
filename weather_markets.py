@@ -4472,6 +4472,7 @@ def analyze_trade(enriched: dict) -> dict | None:
 
         forecast_temp = forecast["low_f"] if var == "min" else forecast["high_f"]
         if forecast_temp is None:
+            _count_gate("no_temp")
             return None
 
         # ── Model-spread gate: suppress when multi-model spread is too wide ───
@@ -4487,6 +4488,7 @@ def analyze_trade(enriched: dict) -> dict | None:
                     _spread_f,
                     MAX_MODEL_SPREAD_F,
                 )
+                _count_gate("model_spread")
                 return None
 
         # Apply per-city static bias correction before probability calculation (B4: pass var)
@@ -4510,6 +4512,7 @@ def analyze_trade(enriched: dict) -> dict | None:
                 enriched.get("ticker", "?"),
                 ens_stats["n"],
             )
+            _count_gate("degenerate_ens")
             return None
         method = "normal_dist"
         ens_prob: float | None = None
@@ -5039,6 +5042,7 @@ def analyze_trade(enriched: dict) -> dict | None:
             "analyze_trade: skipping %s — volatile regime (std>12°F), ensemble too uncertain",
             enriched.get("ticker", "?"),
         )
+        _count_gate("volatile_regime")
         return None
 
     # Apply exactly one city-level ML correction (GBM > Platt), then fall back to
@@ -5104,6 +5108,7 @@ def analyze_trade(enriched: dict) -> dict | None:
                 method,
                 _retired[method].get("brier", 0),
             )
+            _count_gate("retired_method")
             return None
     except Exception as _ret_exc:
         _log.debug("analyze_trade: retired-strategy check failed: %s", _ret_exc)
@@ -5160,6 +5165,7 @@ def analyze_trade(enriched: dict) -> dict | None:
                 _mkt_conf,
                 _our_conf,
             )
+            _count_gate("analysis_diverge")
             return None
 
     edge = blended_prob - market_prob

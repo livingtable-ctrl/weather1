@@ -105,7 +105,7 @@ def fetch_mos(
         resp = _session.get(
             _MOS_URL,
             params={"station": station.upper(), "model": model},
-            timeout=10,
+            timeout=(5, 10),  # (connect, read) — 5s cap on SSL handshake
         )
         resp.raise_for_status()
         payload = resp.json()

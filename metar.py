@@ -91,7 +91,7 @@ def fetch_metar(station: str) -> dict | None:
         resp = _session.get(
             _METAR_URL,
             params={"ids": station.upper(), "format": "json"},
-            timeout=10,
+            timeout=(5, 10),  # (connect, read) — 5s cap on SSL handshake
         )
         resp.raise_for_status()
         data = resp.json()
