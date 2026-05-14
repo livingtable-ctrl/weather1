@@ -4899,9 +4899,20 @@ def analyze_trade(enriched: dict) -> dict | None:
 
             _mos_sta = _mos_mod.get_mos_station(city)
             if _mos_sta:
-                _mos_data_pre = _mos_mod.fetch_mos_best(
-                    _mos_sta, target_date=target_date
-                )
+                # Only fetch MOS if pre-warm already cached it — prevents slow
+                # per-market network calls from causing the 360s analysis timeout.
+                # The pre-warm pool covers all city/date pairs; if a pair wasn't
+                # warmed (pool timed out), skip MOS rather than block the worker.
+                if _mos_mod.is_mos_cached(_mos_sta, target_date):
+                    _mos_data_pre = _mos_mod.fetch_mos_best(
+                        _mos_sta, target_date=target_date
+                    )
+                else:
+                    _log.debug(
+                        "analyze_trade: MOS not pre-warmed for %s/%s — skipping to avoid scan stall",
+                        city,
+                        target_date,
+                    )
         except Exception:
             pass
 

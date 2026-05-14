@@ -37,7 +37,9 @@ NWS_BASE = "https://api.weather.gov"
 # #68: load User-Agent from env so it can be updated without a code change
 _nws_ua = os.getenv("NWS_USER_AGENT", "kalshi-weather-predictor/1.0 (user@localhost)")
 UA_HEADER = {"User-Agent": _nws_ua}
-OBS_TTL = 600  # seconds — re-fetch observation if older than this
+OBS_TTL = (
+    900  # seconds — extended so pre-warm survives the full analysis window (was 600)
+)
 
 # #125: shared session for connection pooling
 _session = requests.Session()

@@ -62,6 +62,29 @@ def get_mos_station(city: str) -> str | None:
     return _CITY_STATION.get(city.upper())
 
 
+def is_mos_cached(station: str, target_date: date | None) -> bool:
+    """Return True if a fresh MOS cache entry exists for this station/date (no network call).
+
+    Used by analyze_trade to skip the MOS fetch entirely when the pre-warm didn't
+    cover this city/date, avoiding slow per-market network calls during the analysis
+    phase.  Returns False if the cache entry is missing or has expired.
+    """
+    if not station or not target_date:
+        return False
+    date_str = (
+        target_date.isoformat()
+        if hasattr(target_date, "isoformat")
+        else str(target_date)
+    )
+    now = time.monotonic()
+    for model in ("NAM", "GFS"):
+        key = (station.upper(), date_str, model)
+        cached = _MOS_CACHE.get(key)
+        if cached is not None and (now - cached[1]) < _MOS_CACHE_TTL:
+            return True
+    return False
+
+
 _MOS_SPECIAL_CODES = frozenset(("M", "m", "T", "t", "", "N/A"))
 
 

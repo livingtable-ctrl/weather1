@@ -67,7 +67,9 @@ _session.mount(
 # METAR stations update every 20–30 min; 5-min TTL eliminates redundant HTTP
 # calls when cmd_today / cmd_scan loop over many markets for the same cities.
 _METAR_CACHE: dict[str, tuple[dict | None, float]] = {}
-_METAR_CACHE_TTL = 300  # 5 minutes
+_METAR_CACHE_TTL = (
+    900  # 15 minutes — extended so pre-warm survives the full analysis window
+)
 
 
 def fetch_metar(station: str) -> dict | None:

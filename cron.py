@@ -824,13 +824,18 @@ def _cmd_cron_body(
                     _warm_pool.submit(_warm_one_tracked, _cd) for _cd in _city_dates
                 ]
                 try:
-                    for _wf in _as_completed(_warm_futures, timeout=120):
+                    for _wf in _as_completed(_warm_futures, timeout=200):
                         try:
                             _wf.result()
                         except Exception:
                             pass
                 except TimeoutError:
-                    _log.warning("cmd_cron: city source warm-up timed out after 120s")
+                    _log.warning(
+                        "cmd_cron: city source warm-up timed out after 200s — "
+                        "%d/%d pairs completed; analysis will skip MOS for uncached markets",
+                        _warm_done,
+                        _n_pairs,
+                    )
             finally:
                 _warm_pool.shutdown(wait=False)
             print(flush=True)  # newline after in-place counter
