@@ -1,4 +1,5 @@
 @echo off
+title Kalshi Cron
 
 :: Set working directory so relative paths in .env resolve correctly
 cd /d "C:\Users\thesa\claude kalshi"
@@ -9,11 +10,14 @@ cd /d "C:\Users\thesa\claude kalshi"
 :run_cron
 "C:\Users\thesa\AppData\Local\Programs\Python\Python312\python.exe" "C:\Users\thesa\claude kalshi\main.py" cron
 
+:: Restore window if Windows pushed it to background/minimized during the run
+powershell -NoProfile -Command ^
+  "Add-Type -MemberDefinition '[DllImport(\"user32.dll\")] public static extern bool ShowWindow(IntPtr h, int n); [DllImport(\"kernel32.dll\")] public static extern IntPtr GetConsoleWindow();' -Name WinAPI -Namespace Win32 2>$null; [Win32.WinAPI]::ShowWindow([Win32.WinAPI]::GetConsoleWindow(), 9)" ^
+  2>nul
+
 :: Only sleep if:
 ::   1. No active console session (PC was woken just for this task), AND
 ::   2. No interactive user is currently logged on to the physical console
-:: This prevents accidental sleep when the user is at the PC but the window
-:: happens to be in the background.
 query session console 2>nul | findstr /i "Active" >nul 2>&1
 if errorlevel 1 (
     query user 2>nul | findstr /v "^USERNAME" | findstr /i "console" >nul 2>&1
