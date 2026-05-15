@@ -43,8 +43,10 @@ CITY_MIN_PROB_EDGE: dict[str, float] = {"Dallas": 0.15}
 # When our model disagrees with the market by >2.5× the market says, the market
 # is right nearly every time — we're fighting better real-time information.
 MAX_MARKET_DIVERGENCE_RATIO = 2.5
-# Don't bet YES when market already prices event at <12% (or NO when >88%).
-MIN_MARKET_PROB_TO_BET_WITH = 0.12
+# Don't bet when the market is highly confident against our position.
+# Raised from 0.12 → 0.25: data shows 0/5 wins when market gave our bet <25% odds.
+# When market prices an event at <25% (or >75%), it has been correct every time.
+MIN_MARKET_PROB_TO_BET_WITH = 0.25
 
 # Confidence-tiered edge thresholds
 # HIGH: spread < 0.05 (models agree) → lower bar
