@@ -647,6 +647,16 @@ def _auto_place_trades(
         if ticker in open_tickers:
             _skip_reasons.append(f"{ticker}: already_open")
             continue
+        # Belt-and-suspenders: catch cross-run duplicates when open_tickers is stale
+        # (e.g. position incorrectly marked settled between runs). Ticker encodes date
+        # so a match within 7 days is always a re-entry bug, never a new opportunity.
+        if execution_log.was_ordered_recently(ticker, days=7):
+            _log.debug(
+                "_auto_place_trades: skip %s — filled order exists in last 7 days",
+                ticker,
+            )
+            _skip_reasons.append(f"{ticker}: ordered_recently")
+            continue
         rec_side = a.get("recommended_side", a.get("side", "yes"))
 
         if execution_log.was_traded_today(ticker, rec_side):

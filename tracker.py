@@ -23,7 +23,7 @@ DB_PATH.parent.mkdir(exist_ok=True)
 
 _db_initialized = False
 
-_SCHEMA_VERSION = 19  # increment when _MIGRATIONS list grows
+_SCHEMA_VERSION = 20  # increment when _MIGRATIONS list grows
 
 _MIGRATIONS = [
     # v1 → v2: add condition_type column (if not already added)
@@ -95,6 +95,9 @@ _MIGRATIONS = [
     "ALTER TABLE predictions ADD COLUMN obs_weight_used REAL",
     # v18 → v19: Phase 6.0 — log local hour at prediction time for obs-weight learning
     "ALTER TABLE predictions ADD COLUMN local_hour INTEGER",
+    # v19 → v20: log the bias-corrected forecast temperature at trade time so we can
+    # measure the systematic temperature bias driving our probability miscalibration.
+    "ALTER TABLE predictions ADD COLUMN forecast_temp_f REAL",
 ]
 
 
@@ -473,8 +476,9 @@ def log_prediction(
                threshold_lo, threshold_hi, our_prob, raw_prob, market_prob,
                edge, method, n_members, predicted_at, days_out, forecast_cycle,
                blend_sources, ensemble_prob, nws_prob, clim_prob, edge_calc_version,
-               signal_source, predicted_date, obs_weight_used, local_hour)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'),?,?,?,?,?,?,?,?,?,?,?)
+               signal_source, predicted_date, obs_weight_used, local_hour,
+               forecast_temp_f)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'),?,?,?,?,?,?,?,?,?,?,?,?)
             ON CONFLICT(ticker, predicted_date) DO UPDATE SET
                 our_prob         = excluded.our_prob,
                 raw_prob         = excluded.raw_prob,
@@ -491,7 +495,8 @@ def log_prediction(
                 edge_calc_version= excluded.edge_calc_version,
                 signal_source    = excluded.signal_source,
                 obs_weight_used  = excluded.obs_weight_used,
-                local_hour       = excluded.local_hour
+                local_hour       = excluded.local_hour,
+                forecast_temp_f  = excluded.forecast_temp_f
             """,
             (
                 ticker,
@@ -517,6 +522,7 @@ def log_prediction(
                 predicted_date,
                 analysis.get("obs_weight_used"),
                 analysis.get("local_hour"),
+                analysis.get("forecast_temp"),
             ),
         )
 

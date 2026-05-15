@@ -42,7 +42,9 @@ CITY_MIN_PROB_EDGE: dict[str, float] = {"Dallas": 0.15}
 # Market divergence cap: don't bet heavily against the market.
 # When our model disagrees with the market by >2.5× the market says, the market
 # is right nearly every time — we're fighting better real-time information.
-MAX_MARKET_DIVERGENCE_RATIO = 2.5
+MAX_MARKET_DIVERGENCE_RATIO = (
+    2.0  # tightened from 2.5 — don't bet when we see 2x market odds
+)
 # Don't bet when the market is highly confident against our position.
 # Raised from 0.12 → 0.25: data shows 0/5 wins when market gave our bet <25% odds.
 # When market prices an event at <25% (or >75%), it has been correct every time.

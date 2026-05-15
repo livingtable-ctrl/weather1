@@ -218,6 +218,24 @@ def was_ordered_this_cycle(ticker: str, side: str, cycle: str) -> bool:
     return row is not None
 
 
+def was_ordered_recently(ticker: str, days: int = 7) -> bool:
+    """Return True if a filled order for this ticker was placed within the last N days.
+
+    Belt-and-suspenders duplicate guard: catches cross-run re-entries when
+    get_open_trades() returns stale data (e.g. after an incorrect early settlement).
+    Safe to use because weather market tickers encode the target date, so the same
+    ticker appearing within 7 days is always a duplicate, never a new opportunity.
+    """
+    init_log()
+    with _conn() as con:
+        row = con.execute(
+            "SELECT 1 FROM orders WHERE ticker=? AND status='filled' "
+            "AND placed_at >= datetime('now', ?) LIMIT 1",
+            (ticker, f"-{days} days"),
+        ).fetchone()
+    return row is not None
+
+
 def get_today_live_loss() -> float:
     """Return today's accumulated live loss in dollars (UTC date). Returns 0.0 if no row."""
     init_log()
