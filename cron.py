@@ -29,6 +29,7 @@ from utils import (
     MIN_PROB_EDGE,
     PAPER_MIN_EDGE,
     STRONG_EDGE,
+    min_prob_edge_for_days_out,
 )
 
 # Use the "main" logger name so that existing tests which capture
@@ -964,14 +965,18 @@ def _cmd_cron_body(
                     if abs(adjusted_edge) < PAPER_MIN_EDGE:
                         _dbg["net_edge"] += 1
                         continue
-                    # Probability-edge gate: require ≥8pp conviction even when ROI edge passes.
-                    # High-variance cities (e.g. Dallas) use a stricter per-city threshold.
+                    # Probability-edge gate: require minimum conviction based on
+                    # market horizon (further out = more time for repricing + more
+                    # ensemble uncertainty) and per-city Brier overrides.
                     _prob_edge = abs(
                         analysis.get("forecast_prob", 0.5)
                         - analysis.get("market_prob", 0.5)
                     )
                     _city_key = enriched.get("_city", "")
-                    _min_edge = CITY_MIN_PROB_EDGE.get(_city_key, MIN_PROB_EDGE)
+                    _days_out_val = int(analysis.get("days_out", 1))
+                    _city_min = CITY_MIN_PROB_EDGE.get(_city_key, MIN_PROB_EDGE)
+                    _days_min = min_prob_edge_for_days_out(_days_out_val)
+                    _min_edge = max(_city_min, _days_min)
                     if _prob_edge < _min_edge:
                         _dbg["prob_edge"] += 1
                         continue

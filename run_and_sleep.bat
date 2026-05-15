@@ -10,10 +10,9 @@ cd /d "C:\Users\thesa\claude kalshi"
 :run_cron
 "C:\Users\thesa\AppData\Local\Programs\Python\Python312\python.exe" "C:\Users\thesa\claude kalshi\main.py" cron
 
-:: Restore window if Windows pushed it to background/minimized during the run
-powershell -NoProfile -Command ^
-  "Add-Type -MemberDefinition '[DllImport(\"user32.dll\")] public static extern bool ShowWindow(IntPtr h, int n); [DllImport(\"kernel32.dll\")] public static extern IntPtr GetConsoleWindow();' -Name WinAPI -Namespace Win32 2>$null; [Win32.WinAPI]::ShowWindow([Win32.WinAPI]::GetConsoleWindow(), 9)" ^
-  2>nul
+:: Restore window after cron — ShowWindow(SW_RESTORE) + SetForegroundWindow
+:: Using -File to avoid cmd.exe quote-escaping mangling the inline -Command string
+powershell -NoProfile -ExecutionPolicy Bypass -File "C:\Users\thesa\claude kalshi\restore_window.ps1" 2>nul
 
 :: Only sleep if:
 ::   1. No active console session (PC was woken just for this task), AND

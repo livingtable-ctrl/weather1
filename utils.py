@@ -39,6 +39,25 @@ MIN_PROB_EDGE = float(os.getenv("MIN_PROB_EDGE", "0.08"))
 # Dallas Brier (0.33) is worse than the naive baseline — requires stronger conviction.
 CITY_MIN_PROB_EDGE: dict[str, float] = {"Dallas": 0.15}
 
+
+def min_prob_edge_for_days_out(days_out: int) -> float:
+    """Minimum probability-edge required based on market horizon.
+
+    Further-out markets need higher conviction: the crowd has more time to
+    reprice against us before settlement, and ensemble accuracy degrades
+    with horizon. Thresholds derived from calibrated competitor benchmarks.
+
+      days_out == 1 → 12pp  (next-day: model is reasonably accurate)
+      days_out == 2 → 15pp  (2-day: meaningful ensemble spread)
+      days_out >= 3 → 18pp  (3-5 day: high uncertainty, demand strong edge)
+    """
+    if days_out <= 1:
+        return 0.12
+    if days_out == 2:
+        return 0.15
+    return 0.18
+
+
 # Market divergence cap: don't bet heavily against the market.
 # When our model disagrees with the market by >2.5× the market says, the market
 # is right nearly every time — we're fighting better real-time information.
@@ -93,7 +112,7 @@ MAX_DAYS_OUT = int(os.getenv("MAX_DAYS_OUT", "5"))  # scan markets up to N days 
 MAX_POSITION_AGE_DAYS = int(os.getenv("MAX_POSITION_AGE_DAYS", "7"))
 
 # #120: Betting strategy — kelly | fixed_pct | fixed_dollars
-# kelly:         standard half-Kelly sizing (default)
+# kelly:         quarter-Kelly sizing (default)
 # fixed_pct:     always bet FIXED_BET_PCT of balance (set FIXED_BET_PCT env var)
 # fixed_dollars: always bet FIXED_BET_DOLLARS (set FIXED_BET_DOLLARS env var)
 STRATEGY = os.getenv("STRATEGY", "kelly").lower()

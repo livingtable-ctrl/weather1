@@ -3656,7 +3656,7 @@ def kelly_fraction(
     our_prob: float, price: float, fee_rate: float = KALSHI_FEE_RATE
 ) -> float:
     """
-    Half-Kelly criterion for a binary prediction market.
+    Quarter-Kelly criterion for a binary prediction market.
     price    = cost per contract in dollars (e.g. 0.30 means you pay $0.30, win $0.70)
     fee_rate = fraction of winnings charged as fee (e.g. 0.07 for Kalshi's 7% fee)
     Returns recommended fraction of bankroll to bet (0–1).
@@ -3664,6 +3664,8 @@ def kelly_fraction(
     Kelly formula: f* = (b*p - q) / b  where b = net odds (win per $1 risked)
     For Kalshi: you pay `price`, win `(1-price)*(1-fee_rate)` net of fee.
     Net odds b = (1-price)*(1-fee_rate) / price
+    Quarter-Kelly (full/4) matches calibrated competitors and reduces variance
+    during the bias-correction phase while we accumulate settlement data.
     """
     if our_prob <= 0 or our_prob >= 1 or price <= 0 or price >= 1:
         return 0.0
@@ -3671,8 +3673,10 @@ def kelly_fraction(
     b = winnings / price  # net odds: win $b for every $1 staked
     q = 1 - our_prob
     full_kelly = (b * our_prob - q) / b
-    half_kelly = max(0.0, full_kelly / 2)  # half-Kelly for safety
-    return min(half_kelly, KELLY_CAP)
+    quarter_kelly = max(
+        0.0, full_kelly / 4
+    )  # quarter-Kelly: matches calibrated competitors, reduces downside during bias-correction phase
+    return min(quarter_kelly, KELLY_CAP)
 
 
 def time_decay_edge(
