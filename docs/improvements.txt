@@ -1,0 +1,108 @@
+KALSHI WEATHER BOT — IMPROVEMENT BACKLOG
+Last updated: 2026-05-14
+==========================================
+
+HIGH PRIORITY (implement soon)
+--------------------------------
+1.  Duplicate trade prevention
+    Same ticker entered multiple times in same/consecutive cron runs.
+    Confirmed bug — Seattle KXHIGHSEA-26MAY09-T58 entered 3x.
+
+2.  Edge realization rate
+    Correlation between computed net_edge and actual outcome.
+    Critical validation — tells you if net_edge is actually predictive.
+
+3.  Break-even stop-loss
+    Once a position is up 30%, move stop-loss to entry price.
+    Free downside protection on winning trades.
+
+4.  Max positions per settlement date
+    Hard cap on how many positions can expire on the same date.
+    9 positions all expiring May 14 is real concentration risk.
+
+5.  Profit factor metric
+    Gross profit / gross loss ratio.
+    Standard system quality measure, easy to compute from existing data.
+
+6.  City-level Kelly scaling from Brier
+    Cities with high Brier scores (SF=0.563, ATL=0.475) should get
+    smaller positions automatically. Data already exists in calibration.
+
+
+MEDIUM PRIORITY (implement after graduation)
+---------------------------------------------
+7.  Partial exits
+    Close 50% of position instead of 100% when model reverses.
+    Keeps skin in the game if the reversal turns out to be noise.
+
+8.  Take-profit ladder
+    Close 33% at +25%, another 33% at +45%, let remainder run.
+    Better than single exit_target for locking in gains progressively.
+
+9.  Spread width as Kelly multiplier
+    Tight bid-ask spread = market has strong consensus = size up.
+    Wide spread = uncertainty = reduce size. Binary pass/fail currently.
+
+10. Near-settlement calibration logging
+    Log predicted probability vs market price 1-2h before each market closes.
+    Builds a dataset for model accuracy specifically when it matters most.
+
+11. Overnight gap protection
+    Do not enter new positions within 90 minutes of a major GFS model
+    update window (00Z/06Z/12Z/18Z). Avoids adverse overnight moves.
+
+12. Re-entry after early exit
+    If model remains bullish after an early exit, re-enter at the new price.
+    Currently exits are permanent even when the signal persists.
+
+13. Dead man's switch upgrade
+    Current guard is 10 minutes. Upgrade to 48h alert if cron hasn't run.
+    Prevents silent scheduler failures going unnoticed.
+
+14. Push/SMS notifications
+    Alert when a trade is entered, exited, or settles.
+    Essential for manual operation without watching terminal constantly.
+
+
+LOW PRIORITY / POST-GRADUATION
+--------------------------------
+15. Store all Kalshi outcomes
+    Currently only stores outcomes for markets we analyzed.
+    Storing all finalized Kalshi weather markets builds richer calibration data.
+
+16. Log rotation
+    No RotatingFileHandler in place. Logs will grow indefinitely.
+    Operational hygiene to prevent disk fill over time.
+
+17. Database VACUUM
+    SQLite performance degrades without periodic VACUUM.
+    Schedule as part of weekly maintenance.
+
+18. Weather alert integration
+    NWS heat advisories and freeze warnings are free public data.
+    Directly relevant signal for HIGH/LOW temperature markets.
+
+19. Wind/cloud cover as model inputs
+    Wind direction/speed signals cold fronts (rapid temp drop).
+    Cloud cover compresses daily high/low range.
+    Build only after core model edge is proven.
+
+20. Dew point coastal correction
+    METAR readings from airports differ from city center in coastal cities
+    (SF, Miami) due to ocean influence. Dew point fetched but unused.
+
+21. Health check cron timing
+    Upgrade existing /health endpoint to include last cron run timestamp.
+    Currently returns {"status": "ok"} with no timing info.
+
+
+POST-GRADUATION FEATURES (separate category)
+---------------------------------------------
+- Same-day markets
+  Disabled because ensemble (GFS/ICON/ECMWF) is wrong at 0 days out.
+  Requires purpose-built intraday model using HRRR + per-city temperature
+  delta distributions by hour. Trade only before 11 AM local.
+
+- Correlation-aware position sizing
+  Reduce individual Kelly when adding correlated positions (e.g. two
+  Dallas heat NO bets). Requires 50+ settled trades for reliable estimates.
