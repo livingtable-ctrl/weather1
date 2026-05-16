@@ -46,7 +46,7 @@ def _dynamic_lock_in_confidence(
     """
     extra_f = max(0.0, clearance_f - margin_f)
     c_factor = min(1.0, extra_f / 10.0)
-    h_factor = min(1.0, (local_hour - _LOCK_IN_HOUR) / 6.0)
+    h_factor = max(0.0, min(1.0, (local_hour - _LOCK_IN_HOUR) / 6.0))
     conf = 0.72 + 0.18 * c_factor + 0.07 * h_factor
     return round(min(0.97, max(0.72, conf)), 3)
 
@@ -286,7 +286,7 @@ MARKET_STATION_MAP: dict[str, str] = {
     "SanAntonio": "KSAT",
 }
 
-_OBS_PATH = Path("data/metar_observations.json")
+_OBS_PATH = Path(__file__).parent / "data" / "metar_observations.json"
 _OBS_LOCK = threading.Lock()
 _MIN_OBS_FOR_MODEL = 200
 

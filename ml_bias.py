@@ -219,8 +219,10 @@ def train_bias_model(min_samples: int = 200) -> dict:
                 "ml_bias: could not write HMAC (%s) — set MODEL_HMAC_SECRET in .env",
                 hmac_err,
             )
-        global _MODELS_CACHE
-        _MODELS_CACHE = models
+        global _MODELS_CACHE, _LOAD_ATTEMPTED
+        # Invalidate cache so next _load_models() re-verifies the new pkl via HMAC
+        _MODELS_CACHE = None
+        _LOAD_ATTEMPTED = False
         _log.info("ml_bias: saved %d city models to %s", len(models), _MODEL_PATH)
 
     return models

@@ -618,7 +618,7 @@ def place_paper_order(
         _log_pi(
             ticker,
             desired=entry_price,
-            actual=entry_price,
+            actual=actual_fill_price,
             quantity=quantity,
             side=side,
         )

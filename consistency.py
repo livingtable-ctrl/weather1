@@ -81,7 +81,7 @@ def _group_markets(markets: list[dict]) -> dict:
         prices = parse_market_price(m)
         # F5: skip markets with no real quote — implied_prob=0 from a stale/empty book
         # would generate spurious violations
-        if not prices.get("has_quote", True):
+        if not prices.get("has_quote", False):
             continue
         implied = prices["implied_prob"]
 

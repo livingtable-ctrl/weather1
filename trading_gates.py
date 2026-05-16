@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 
 _log = logging.getLogger(__name__)
 
@@ -12,13 +13,9 @@ class LiveTradingGate:
 
     def check(self) -> tuple[bool, str]:
         """Return (allowed, reason). Fail-closed: any exception → blocked."""
-        try:
-            import main as _main
-
-            if _main.KALSHI_ENV != "prod":
-                return False, f"KALSHI_ENV={_main.KALSHI_ENV}, not prod"
-        except Exception as exc:
-            return False, f"Could not read KALSHI_ENV: {exc}"
+        kalshi_env = os.getenv("KALSHI_ENV", "demo")
+        if kalshi_env != "prod":
+            return False, f"KALSHI_ENV={kalshi_env}, not prod"
 
         try:
             from paper import (

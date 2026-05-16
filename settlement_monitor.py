@@ -94,7 +94,7 @@ def read_settlement_signals(max_age_minutes: int = 120) -> list[dict]:
     if not _SIGNALS_PATH.exists():
         return []
     try:
-        data = json.loads(_SIGNALS_PATH.read_text())
+        data = json.loads(_SIGNALS_PATH.read_text(encoding="utf-8"))
         signals = data.get("signals", [])
     except Exception:
         return []
@@ -233,6 +233,7 @@ def run_settlement_monitor(client, duration_minutes: int = 120) -> None:
         if all_signals:
             write_settlement_signals(all_signals)
 
-        time.sleep(_POLL_INTERVAL_SECONDS)
+        remaining = (end_time - datetime.now(UTC)).total_seconds()
+        time.sleep(min(_POLL_INTERVAL_SECONDS, max(0, remaining)))
 
     _log.info("Settlement lag monitor complete. %d signals written.", len(all_signals))
