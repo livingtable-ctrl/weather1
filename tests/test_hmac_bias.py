@@ -30,6 +30,7 @@ class TestHmacVerification:
         monkeypatch.setattr(ml_bias, "_MODEL_PATH", pkl_path)
         monkeypatch.setattr(ml_bias, "_HMAC_PATH", hmac_path)
         monkeypatch.setattr(ml_bias, "_MODELS_CACHE", None)
+        monkeypatch.setattr(ml_bias, "_LOAD_ATTEMPTED", False)
         return pkl_path, hmac_path
 
     def test_valid_hmac_loads_models(self, tmp_path, monkeypatch):
