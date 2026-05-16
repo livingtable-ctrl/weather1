@@ -87,6 +87,13 @@ def reset_open_meteo_circuit_breaker():
     yield
 
 
+@pytest.fixture(autouse=True)
+def _set_dashboard_unprotected(monkeypatch):
+    """Set DASHBOARD_UNPROTECTED=true so web_app imports/builds don't require DASHBOARD_PASSWORD."""
+    monkeypatch.setenv("DASHBOARD_UNPROTECTED", "true")
+    monkeypatch.delenv("DASHBOARD_PASSWORD", raising=False)
+
+
 FIXTURES = Path(__file__).parent / "fixtures"
 
 

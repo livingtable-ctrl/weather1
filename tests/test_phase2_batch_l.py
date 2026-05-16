@@ -171,13 +171,14 @@ class TestRunAnomalyCheckReturnsTuple:
         )
 
     def test_exception_returns_empty_no_halt(self):
-        """On exception, return ([], False) — never crash cron."""
+        """On exception, return ([error_msg], True) — fail-closed (R6)."""
         with patch("paper.load_paper_trades", side_effect=RuntimeError("db error")):
             from alerts import run_anomaly_check
 
             msgs, should_halt = run_anomaly_check()
-        assert msgs == []
-        assert should_halt is False
+        assert len(msgs) == 1
+        assert "db error" in msgs[0]
+        assert should_halt is True
 
 
 class TestCronUsesAnomalyTuple:

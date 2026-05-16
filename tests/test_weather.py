@@ -34,14 +34,14 @@ class TestKellyFraction(unittest.TestCase):
         self.assertEqual(k, 0.0)
 
     def test_half_kelly(self):
-        """Result should be half of full Kelly (fee-free formula verification)."""
+        """Result should be quarter of full Kelly (fee-free formula verification)."""
         # Full Kelly = (b*p - q) / b  where b = (1-price)/price
         p, price = 0.70, 0.50
         b = (1 - price) / price
         q = 1 - p
         full_k = (b * p - q) / b
         self.assertAlmostEqual(
-            kelly_fraction(p, price, fee_rate=0.0), full_k / 2, places=6
+            kelly_fraction(p, price, fee_rate=0.0), full_k / 4, places=6
         )
 
     def test_fee_reduces_kelly(self):

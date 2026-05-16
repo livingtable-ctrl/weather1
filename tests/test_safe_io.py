@@ -99,7 +99,10 @@ def test_verify_backup_logs_checksum_on_success(tmp_path, caplog):
     with caplog.at_level(logging.INFO):
         verify_backup(good)
     assert any(
-        "crc32" in r.message.lower() or checksum in r.message for r in caplog.records
+        "crc32" in r.message.lower()
+        or "sha-256" in r.message.lower()
+        or checksum in r.message
+        for r in caplog.records
     )
 
 
