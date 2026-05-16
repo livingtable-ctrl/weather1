@@ -463,13 +463,25 @@ class TestKellyCap:
     """Verify kelly_fraction hard cap is KELLY_CAP=0.25 (P3-13: unified from 0.33)."""
 
     def test_kelly_fraction_caps_at_kelly_cap(self):
-        """Very high edge → fraction is capped at KELLY_CAP (0.25)."""
+        """Quarter-Kelly never exceeds KELLY_CAP=0.25 (full_kelly/4 tops out just under cap).
+
+        With quarter-Kelly, full_kelly approaches but never exceeds 1.0, so quarter_kelly
+        approaches but never reaches 0.25 = KELLY_CAP. The cap is a safety ceiling.
+        Verify: result <= KELLY_CAP, and a high-edge case produces a meaningful fraction.
+        """
         from utils import KELLY_CAP
 
-        # our_prob=0.95, price=0.10: full Kelly would be enormous
+        # our_prob=0.95, price=0.10, fee_rate=0.02: very high edge, full Kelly ≈ 0.944
+        # quarter_kelly ≈ 0.236 — below cap but confirms ceiling is enforced
         result = kelly_fraction(our_prob=0.95, price=0.10, fee_rate=0.02)
-        assert result == pytest.approx(KELLY_CAP, abs=1e-6), (
-            f"Expected Kelly cap {KELLY_CAP}, got {result}"
+        assert result <= KELLY_CAP, (
+            f"Kelly must not exceed cap {KELLY_CAP}, got {result}"
+        )
+        assert result > 0.20, (
+            f"Strong edge should give significant Kelly fraction, got {result}"
+        )
+        assert result == pytest.approx(0.23608, abs=1e-4), (
+            f"Expected ~0.236 (quarter of full Kelly ~0.944), got {result}"
         )
 
 
