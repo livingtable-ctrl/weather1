@@ -23,7 +23,7 @@ DB_PATH.parent.mkdir(exist_ok=True)
 
 _db_initialized = False
 
-_SCHEMA_VERSION = 20  # increment when _MIGRATIONS list grows
+_SCHEMA_VERSION = 21  # increment when _MIGRATIONS list grows
 
 _MIGRATIONS = [
     # v1 → v2: add condition_type column (if not already added)
@@ -98,6 +98,9 @@ _MIGRATIONS = [
     # v19 → v20: log the bias-corrected forecast temperature at trade time so we can
     # measure the systematic temperature bias driving our probability miscalibration.
     "ALTER TABLE predictions ADD COLUMN forecast_temp_f REAL",
+    # v20 → v21: track resolution status so 404-not-found tickers are skipped without
+    # deleting their historical prediction rows (fixes H4 — transient 404 destroyed records).
+    "ALTER TABLE predictions ADD COLUMN status TEXT DEFAULT 'active'",
 ]
 
 
@@ -603,8 +606,7 @@ def get_bias(
             predicted_at = datetime.fromisoformat(
                 r["predicted_at"].replace("Z", "+00:00")
             )
-            if predicted_at.tzinfo is not None:
-                predicted_at = predicted_at.replace(tzinfo=None)
+            # Keep tzinfo intact so that (now - predicted_at) works without TypeError.
             age_days = max(0.0, (now - predicted_at).total_seconds() / 86400)
         except (ValueError, TypeError, AttributeError):
             age_days = 0.0
@@ -688,8 +690,7 @@ def get_quintile_bias(
             predicted_at = datetime.fromisoformat(
                 r["predicted_at"].replace("Z", "+00:00")
             )
-            if predicted_at.tzinfo is not None:
-                predicted_at = predicted_at.replace(tzinfo=None)
+            # Keep tzinfo intact so that (now - predicted_at) works without TypeError.
             age_days = max(0.0, (now - predicted_at).total_seconds() / 86400)
         except (ValueError, TypeError, AttributeError):
             age_days = 0.0
@@ -867,7 +868,7 @@ def get_rolling_win_rate(window: int = 20) -> tuple[float | None, int]:
     with _conn() as con:
         rows = con.execute(
             """
-            SELECT o.settled_yes, p.side
+            SELECT o.settled_yes, p.our_prob
             FROM predictions p
             JOIN outcomes o ON p.ticker = o.ticker
             ORDER BY o.settled_at DESC
@@ -881,8 +882,8 @@ def get_rolling_win_rate(window: int = 20) -> tuple[float | None, int]:
     wins = sum(
         1
         for r in rows
-        if (r["side"] == "yes" and r["settled_yes"] == 1)
-        or (r["side"] == "no" and r["settled_yes"] == 0)
+        if (r["our_prob"] >= 0.5 and r["settled_yes"] == 1)
+        or (r["our_prob"] < 0.5 and r["settled_yes"] == 0)
     )
     return wins / count, count
 
@@ -1343,6 +1344,7 @@ def sync_outcomes(client) -> int:
         pending = con.execute("""
             SELECT DISTINCT ticker FROM predictions p
             WHERE NOT EXISTS (SELECT 1 FROM outcomes o WHERE o.ticker = p.ticker)
+              AND (p.status IS NULL OR p.status = 'active')
         """).fetchall()
 
     count = 0
@@ -1379,14 +1381,19 @@ def sync_outcomes(client) -> int:
                     except Exception:
                         pass
         except Exception as exc:
-            # 404 means the market never existed or was deleted — silence it forever
+            # 404 means the market never existed or was deleted — mark it so we skip
+            # future poll attempts without deleting historical prediction records.
+            # Deleting rows would corrupt Brier/win-rate calculations for losing trades.
             if "404" in str(exc):
-                _log.debug(
-                    "sync_outcomes: %s not found on Kalshi — removing from pending",
+                _log.warning(
+                    "sync_outcomes: %s not found on Kalshi (404) — marking not_found",
                     ticker,
                 )
                 with _conn() as con:
-                    con.execute("DELETE FROM predictions WHERE ticker = ?", (ticker,))
+                    con.execute(
+                        "UPDATE predictions SET status = 'not_found' WHERE ticker = ?",
+                        (ticker,),
+                    )
             else:
                 _log.warning(
                     "sync_outcomes: failed to fetch/record %s: %s", ticker, exc

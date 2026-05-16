@@ -295,7 +295,8 @@ def _is_halt_level(alert_msg: str) -> bool:
     if "EDGE DECAY" in msg:
         import re as _re
 
-        m = _re.search(r"EDGE\s+([-\d.]+)%", msg)
+        # Message format: "EDGE DECAY: average edge -5.2% in last N trades"
+        m = _re.search(r"average edge ([-\d.]+)%", msg)
         if m:
             rate = float(m.group(1)) / 100.0
             return rate < ALERT_HALT_THRESHOLDS["EDGE_DECAY"]
@@ -323,8 +324,10 @@ def run_anomaly_check(log_results: bool = True) -> tuple[list[str], bool]:
                     _log.warning("ANOMALY ALERT: %s", msg)
         return anomalies, should_halt
     except Exception as exc:
-        _log.debug("run_anomaly_check: %s", exc)
-        return [], False
+        _log.error(
+            "run_anomaly_check: exception during check: %s — treating as halt", exc
+        )
+        return [f"anomaly check error: {exc}"], True
 
 
 # ── P10.2: Black swan emergency shutdown ──────────────────────────────────────
@@ -439,15 +442,45 @@ def activate_black_swan_halt(reason: str) -> None:
     except Exception as exc:
         _log.error("black_swan: could not write reason file: %s", exc)
 
-    # Activate kill switch
+    # Activate kill switch — verify it was actually created
     _KILL_SWITCH_PATH.parent.mkdir(exist_ok=True)
-    _KILL_SWITCH_PATH.touch()
+    try:
+        _KILL_SWITCH_PATH.touch()
+        if not _KILL_SWITCH_PATH.exists():
+            _log.critical(
+                "BLACK SWAN HALT: kill switch file creation succeeded but file not found — "
+                "trading may NOT be halted. Manual intervention required."
+            )
+        else:
+            _log.critical(
+                "BLACK SWAN HALT ACTIVATED: %s — kill switch engaged. "
+                "Run `py main.py resume` after investigation to re-enable.",
+                reason,
+            )
+    except Exception as ks_exc:
+        _log.critical(
+            "BLACK SWAN HALT: failed to create kill switch file: %s — "
+            "trading may NOT be halted. Manual intervention required.",
+            ks_exc,
+        )
 
-    _log.critical(
-        "BLACK SWAN HALT ACTIVATED: %s — kill switch engaged. "
-        "Run `py main.py resume` after investigation to re-enable.",
-        reason,
-    )
+    # Send external notification so operator learns about halt immediately
+    try:
+        import notify as _notify
+
+        _title = "⚠ BLACK SWAN HALT ACTIVATED"
+        _msg = f"{reason}\n\nKill switch engaged. Run `py main.py resume` after investigation."
+        for _chan_fn in [
+            lambda: _notify._send_pushover(_title, _msg),
+            lambda: _notify._send_discord(_title, _msg, color=0xF85149),
+            lambda: _notify._send_email(_title, _msg),
+        ]:
+            try:
+                _chan_fn()
+            except Exception:
+                pass
+    except Exception as _n_exc:
+        _log.warning("activate_black_swan_halt: notification failed: %s", _n_exc)
 
 
 def get_black_swan_status() -> dict | None:
@@ -476,10 +509,12 @@ def run_black_swan_check(
     trades: list[dict] | None = None,
     balance: float | None = None,
     peak_balance: float | None = None,
+    client=None,
 ) -> list[str]:
     """P10.2: Load state and run black swan detection. Auto-halts if triggered.
 
     Called at the start of each cron cycle after anomaly detection.
+    Pass client to use real Kalshi API balance instead of paper-state balance.
     Returns list of triggered condition strings.
     """
     try:
@@ -496,6 +531,24 @@ def run_black_swan_check(
                 peak_balance = snap.get("peak_balance", peak_balance)
             except Exception:
                 pass
+        # Prefer real Kalshi API balance when client is available — paper balance
+        # diverges from actual equity after fees, fills, and unrecorded positions.
+        if client is not None:
+            try:
+                bal_data = client.get_balance()
+                # Kalshi returns balance in cents; convert to dollars.
+                api_balance_cents = bal_data.get("balance", None)
+                if api_balance_cents is not None:
+                    balance = float(api_balance_cents) / 100.0
+                    _log.debug(
+                        "black_swan: using real Kalshi balance $%.2f for daily loss check",
+                        balance,
+                    )
+            except Exception as _bal_exc:
+                _log.debug(
+                    "black_swan: could not fetch Kalshi balance, using paper state: %s",
+                    _bal_exc,
+                )
 
         conditions = check_black_swan_conditions(trades, balance, peak_balance)
         if conditions:
@@ -503,5 +556,9 @@ def run_black_swan_check(
             activate_black_swan_halt(reason)
         return conditions
     except Exception as exc:
-        _log.debug("run_black_swan_check: %s", exc)
-        return []
+        _log.error(
+            "run_black_swan_check: exception during check: %s — treating as triggered",
+            exc,
+        )
+        activate_black_swan_halt(f"black swan check error: {exc}")
+        return [f"black swan check error: {exc}"]

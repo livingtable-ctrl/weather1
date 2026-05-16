@@ -446,6 +446,15 @@ def _cmd_cron_body(
     ctx.write_cron_running_flag()
     ctx.check_startup_orders()
 
+    # Reconcile any 'pending' live orders left by a previous crash
+    if client is not None:
+        try:
+            from order_executor import _recover_pending_orders
+
+            _recover_pending_orders(client)
+        except Exception as _rpo_exc:
+            _log.warning("cmd_cron: _recover_pending_orders failed: %s", _rpo_exc)
+
     # Phase 1 — surface prolonged Open-Meteo outages immediately
     try:
         ctx.check_ensemble_circuit_health()
@@ -501,7 +510,7 @@ def _cmd_cron_body(
     try:
         from alerts import run_black_swan_check as _run_black_swan_check
 
-        _bs_conditions = _run_black_swan_check()
+        _bs_conditions = _run_black_swan_check(client=client)
         if _bs_conditions:
             _log.critical(
                 "cmd_cron: BLACK SWAN conditions triggered — halting. Conditions: %s",
@@ -1101,22 +1110,55 @@ def _cmd_cron_body(
     _anomalies = check_market_anomalies(_anomaly_signals)
     report_anomalies(_anomalies)
 
-    # Log any active settlement lag signals from the settlement monitor
+    # Act on any active settlement lag signals from the settlement monitor (R20).
+    # High-confidence signals (\u226580%) trigger early close of the matched paper trade.
     try:
         from settlement_monitor import read_settlement_signals
 
         _settlement_sigs = read_settlement_signals()
         if _settlement_sigs:
             _log.info("Settlement lag signals: %d active", len(_settlement_sigs))
+            from paper import close_paper_early as _close_early
+            from paper import get_open_trades as _get_open_trades
+
+            _open_by_ticker = {t["ticker"]: t for t in _get_open_trades()}
             for sig in _settlement_sigs:
+                _sig_ticker = sig["ticker"]
+                _sig_outcome = sig.get("outcome", "")
+                _sig_conf = sig.get("confidence", 0.0)
                 _log.info(
                     "  \u2192 %s %s (conf=%.0f%%, %.1f\u00b0F vs %.1f\u00b0F threshold)",
-                    sig["ticker"],
-                    sig["outcome"],
-                    sig.get("confidence", 0) * 100,
+                    _sig_ticker,
+                    _sig_outcome,
+                    _sig_conf * 100,
                     sig.get("current_temp_f", 0),
                     sig.get("threshold_f", 0),
                 )
+                if _sig_conf >= 0.80 and _sig_ticker in _open_by_ticker:
+                    _trade = _open_by_ticker[_sig_ticker]
+                    # Exit price: 1.0 if signal matches our side, 0.0 if against.
+                    _side = _trade.get("side", "yes")
+                    if (_side == "yes" and _sig_outcome == "yes") or (
+                        _side == "no" and _sig_outcome == "no"
+                    ):
+                        _exit_price = 0.97  # winning side: near full payout
+                    else:
+                        _exit_price = 0.03  # losing side: near zero
+                    try:
+                        _close_early(_trade["id"], _exit_price)
+                        _log.info(
+                            "Settlement signal: closed %s early at %.2f (conf=%.0f%%, outcome=%s)",
+                            _sig_ticker,
+                            _exit_price,
+                            _sig_conf * 100,
+                            _sig_outcome,
+                        )
+                    except Exception as _ce:
+                        _log.warning(
+                            "Settlement signal: failed to close %s: %s",
+                            _sig_ticker,
+                            _ce,
+                        )
     except Exception as _e:
         _log.debug("cmd_cron: read_settlement_signals failed: %s", _e)
 

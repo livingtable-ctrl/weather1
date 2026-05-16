@@ -213,32 +213,32 @@ Two checksum schemes exist (CRC32 and SHA-256). `_save()` strips the `_crc32` fi
 
 ## Prioritized Remediation Plan
 
-### P0 — Fix Before Next Live Trade (Safety-Critical)
+### P0 — Fix Before Next Live Trade (Safety-Critical) ✅ COMPLETE
 
-| # | Action | File | Est. |
-|---|--------|------|------|
-| 1 | Fix `order_id` extraction: `response.get("order", {}).get("order_id")` — do NOT use `(response.get("order") or response).get("order_id")` (empty-dict falsiness re-introduces the bug) | `order_executor.py:125` | 15 min |
-| 2 | Fix idempotency fallback to also query `status=filled` | `kalshi_client.py:343` | 30 min |
-| 3 | Add `A > 0` validation to `_fit_platt`; check `res.success` | `ml_bias.py` | 20 min |
-| 4 | Add `A > 0` validation in `_load_platt_models` on every load | `weather_markets.py:617` | 15 min |
-| 5 | Fix `get_rolling_win_rate()`: remove `p.side`, use `our_prob >= 0.5` | `tracker.py:870` | 15 min |
-| 6 | Fix timezone subtraction in `get_bias()` and `get_quintile_bias()`: remove the `replace(tzinfo=None)` calls at lines 607 and 692 that strip timezone from `predicted_at`. With timezone preserved (UTC-aware), `now - predicted_at` works correctly without raising `TypeError`. | `tracker.py:607,692` | 10 min |
-| 7 | Remove proxy METAR injection from `settle_paper_trade()` | `paper.py:717–726` | 5 min |
-| 8 | Replace `_MODELS_CACHE = {}` sentinel with `_LOAD_ATTEMPTED` flag | `ml_bias.py:57–101` | 30 min |
+| # | Action | File | Est. | Status |
+|---|--------|------|------|--------|
+| 1 | Fix `order_id` extraction: `response.get("order", {}).get("order_id")` — do NOT use `(response.get("order") or response).get("order_id")` (empty-dict falsiness re-introduces the bug) | `order_executor.py:125` | 15 min | ✅ Done |
+| 2 | Fix idempotency fallback to also query `status=filled` | `kalshi_client.py:343` | 30 min | ✅ Done |
+| 3 | Add `A > 0` validation to `_fit_platt`; check `res.success` | `ml_bias.py` | 20 min | ✅ Done |
+| 4 | Add `A > 0` validation in `_load_platt_models` on every load | `weather_markets.py:617` | 15 min | ✅ Done |
+| 5 | Fix `get_rolling_win_rate()`: remove `p.side`, use `our_prob >= 0.5` | `tracker.py:870` | 15 min | ✅ Done |
+| 6 | Fix timezone subtraction in `get_bias()` and `get_quintile_bias()`: remove the `replace(tzinfo=None)` calls at lines 607 and 692 that strip timezone from `predicted_at`. With timezone preserved (UTC-aware), `now - predicted_at` works correctly without raising `TypeError`. | `tracker.py:607,692` | 10 min | ✅ Done |
+| 7 | Remove proxy METAR injection from `settle_paper_trade()` | `paper.py:717–726` | 5 min | ✅ Done |
+| 8 | Replace `_MODELS_CACHE = {}` sentinel with `_LOAD_ATTEMPTED` flag | `ml_bias.py:57–101` | 30 min | ✅ Done |
 
 ### P1 — Fix Within 24 Hours
 
-| # | Action | File | Est. |
-|---|--------|------|------|
-| 9 | Implement `_recover_pending_orders()` startup reconciliation | `order_executor.py` | 2 hrs |
-| 10 | Fix non-unique trade IDs after undo (`max(id)+1` not `len+1`) | `paper.py:563` | 10 min |
-| 11 | Fix `verify_backup()` to validate SHA-256 not CRC32 | `paper.py:232–247` | 15 min |
-| 12 | Raise Platt `min_samples` from 15 → 50 at call site | `main.py:4304` | 2 min |
-| 13 | Add `ORDER BY predicted_at ASC` to training SQL query | `ml_bias.py:124` | 5 min |
-| 14 | Fix 404 handling in `sync_outcomes()`: instead of `DELETE FROM predictions WHERE ticker = ?`, mark the ticker unresolvable and skip future attempts. **Note:** the `predictions` table has no `status` column — this fix requires a schema migration (`ALTER TABLE predictions ADD COLUMN status TEXT DEFAULT 'active'`) before setting `status='not_found'`. Alternatively, create a separate `unresolvable_tickers` table. | `tracker.py:1381` | 45 min |
-| 15 | Remove or fully gate micro-live code block with all required safety guards | `order_executor.py:962` | 30 min |
-| 16 | Fix live Kelly sizing: (1) add `kelly_qty: int` parameter to `_place_live_order`'s signature, (2) replace line 240's `analysis.get("kelly_quantity", 1)` with the new parameter, (3) at the call site compute `kelly_quantity(adj_kelly_final, entry_price, balance)` and pass the result. The `analysis` dict never contains `"kelly_quantity"` — confirmed by grep across all callers. | `order_executor.py:240-241` | 1 hr |
-| 17 | Make flash crash handler fail closed (log + return False on exception) | `order_executor.py:443` | 10 min |
+| # | Action | File | Est. | Status |
+|---|--------|------|------|--------|
+| 9 | Implement `_recover_pending_orders()` startup reconciliation | `order_executor.py` | 2 hrs | ✅ Done |
+| 10 | Fix non-unique trade IDs after undo (`max(id)+1` not `len+1`) | `paper.py:563` | 10 min | ✅ Done |
+| 11 | Fix `verify_backup()` to validate SHA-256 not CRC32 | `paper.py:232–247` | 15 min | ✅ Done |
+| 12 | Raise Platt `min_samples` from 15 → 50 at call site | `main.py:4304` | 2 min | ✅ Done |
+| 13 | Add `ORDER BY predicted_at ASC` to training SQL query | `ml_bias.py:124` | 5 min | ✅ Done |
+| 14 | Fix 404 handling in `sync_outcomes()`: instead of `DELETE FROM predictions WHERE ticker = ?`, mark the ticker unresolvable and skip future attempts. **Note:** the `predictions` table has no `status` column — this fix requires a schema migration (`ALTER TABLE predictions ADD COLUMN status TEXT DEFAULT 'active'`) before setting `status='not_found'`. Alternatively, create a separate `unresolvable_tickers` table. | `tracker.py:1381` | 45 min | ✅ Done |
+| 15 | Remove or fully gate micro-live code block with all required safety guards | `order_executor.py:962` | 30 min | ✅ Done |
+| 16 | Fix live Kelly sizing: (1) add `kelly_qty: int` parameter to `_place_live_order`'s signature, (2) replace line 240's `analysis.get("kelly_quantity", 1)` with the new parameter, (3) at the call site compute `kelly_quantity(adj_kelly_final, entry_price, balance)` and pass the result. The `analysis` dict never contains `"kelly_quantity"` — confirmed by grep across all callers. | `order_executor.py:240-241` | 1 hr | ✅ Done |
+| 17 | Make flash crash handler fail closed (log + return False on exception) | `order_executor.py:443` | 10 min | ✅ Done |
 
 ### P2 — Fix Within 1 Week
 
@@ -590,32 +590,32 @@ Uses `KXHIGHNYC` (→ `KXHIGHNY`), `KXHIGHLAX` (→ `KXHIGHLA`), `KXHIGHDAL` (�
 
 | # | Action | File | Est. |
 |---|--------|------|------|
-| R1 | Fix `batch_prewarm_forecasts` to use per-city model weights | `weather_markets.py:1043` | 30 min |
-| R2 | Fix `"range"` → `"between"` in `_get_consensus_probs` | `weather_markets.py:3641` | 5 min |
-| R3 | Add logging + ±0.30 sanity guard on all ML probability corrections | `weather_markets.py:5090` | 1 hr |
-| R4 | Add Platt model sanity check to `system_health.py` | `system_health.py` | 30 min |
-| R5 | Implement real API latency check (failure-rate circuit) in `system_health.py` | `system_health.py` | 2 hrs |
-| R6 | Change `run_anomaly_check`/`run_black_swan_check` to fail-safe on exception | `alerts.py:325,505` | 15 min |
-| R7 | Add `notify.py` call in `activate_black_swan_halt()` | `alerts.py:427` | 30 min |
-| R8 | Wrap `_KILL_SWITCH_PATH.touch()` in try/except; verify creation | `alerts.py:437` | 10 min |
-| R9 | Filter proxy observations from `get_station_bias()` | `metar.py:368` | 10 min |
-| R10 | Fix settlement monitor series tickers for NYC, LAX, DAL | `settlement_monitor.py:28` | 5 min |
-| R11 | Fix write circuit breaker to record failure on HTTP 4xx/5xx | `kalshi_client.py` | 30 min |
+| R1 | Fix `batch_prewarm_forecasts` to use per-city model weights | `weather_markets.py:1043` | 30 min | ✅ Done |
+| R2 | Fix `"range"` → `"between"` in `_get_consensus_probs` | `weather_markets.py:3641` | 5 min | ✅ Done |
+| R3 | Add logging + ±0.30 sanity guard on all ML probability corrections | `weather_markets.py:5090` | 1 hr | ✅ Done |
+| R4 | Add Platt model sanity check to `system_health.py` | `system_health.py` | 30 min | ✅ Done |
+| R5 | Implement real API latency check (failure-rate circuit) in `system_health.py` | `system_health.py` | 2 hrs | ✅ Done |
+| R6 | Change `run_anomaly_check`/`run_black_swan_check` to fail-safe on exception | `alerts.py:325,505` | 15 min | ✅ Done |
+| R7 | Add `notify.py` call in `activate_black_swan_halt()` | `alerts.py:427` | 30 min | ✅ Done |
+| R8 | Wrap `_KILL_SWITCH_PATH.touch()` in try/except; verify creation | `alerts.py:437` | 10 min | ✅ Done |
+| R9 | Filter proxy observations from `get_station_bias()` | `metar.py:368` | 10 min | ✅ Done |
+| R10 | Fix settlement monitor series tickers for NYC, LAX, DAL | `settlement_monitor.py:28` | 5 min | ✅ Done |
+| R11 | Fix write circuit breaker to record failure on HTTP 4xx/5xx | `kalshi_client.py` | 30 min | ✅ Done |
 
 ### P1 Additions — Fix Within 24 Hours
 
 | # | Action | File | Est. |
 |---|--------|------|------|
-| R12 | Replace black swan daily loss check with real Kalshi API balance | `alerts.py:380` | 1 hr |
-| R13 | Fix EDGE DECAY regex in `_is_halt_level()` | `alerts.py:295` | 15 min |
-| R14 | Persist `FlashCrashCB` cooldowns to disk | `circuit_breaker.py` | 1 hr |
-| R15 | Add `temperatureUnit` validation to NWS forecast response | `nws.py:193` | 20 min |
-| R16 | Add TTL to `_forecast_cache` (3600s) | `nws.py:183` | 20 min |
-| R17 | Fix `record_observation()` to hold lock across full read-modify-write | `metar.py:333` | 20 min |
-| R18 | Wrap gate function calls in try/except in `trading_gates.py` | `trading_gates.py:34` | 20 min |
-| R19 | Resolve `is_streak_paused()` semantics mismatch between callers | `order_executor.py:578` | 30 min |
-| R20 | Wire settlement signals to `close_paper_early()` in `cron.py` | `cron.py:1108` | 2 hrs |
-| R21 | Replace `get_station_bias()` stub with `NotImplementedError` | `metar.py:390` | 5 min |
+| R12 | Replace black swan daily loss check with real Kalshi API balance | `alerts.py:380` | 1 hr | ✅ Done |
+| R13 | Fix EDGE DECAY regex in `_is_halt_level()` | `alerts.py:295` | 15 min | ✅ Done |
+| R14 | Persist `FlashCrashCB` cooldowns to disk | `circuit_breaker.py` | 1 hr | ✅ Done |
+| R15 | Add `temperatureUnit` validation to NWS forecast response | `nws.py:193` | 20 min | ✅ Done |
+| R16 | Add TTL to `_forecast_cache` (3600s) | `nws.py:183` | 20 min | ✅ Done |
+| R17 | Fix `record_observation()` to hold lock across full read-modify-write | `metar.py:333` | 20 min | ✅ Done |
+| R18 | Wrap gate function calls in try/except in `trading_gates.py` | `trading_gates.py:34` | 20 min | ✅ Done |
+| R19 | Resolve `is_streak_paused()` semantics mismatch between callers | `order_executor.py:578` | 30 min | ✅ Done |
+| R20 | Wire settlement signals to `close_paper_early()` in `cron.py` | `cron.py:1108` | 2 hrs | ✅ Done |
+| R21 | Replace `get_station_bias()` stub with `NotImplementedError` | `metar.py:390` | 5 min | ✅ Done |
 
 ### P2 Additions — Fix Within 1 Week
 
@@ -1092,9 +1092,9 @@ The codebase is **not production-ready** without addressing at minimum the P0 li
 | P0-B | Fix GTC `order_id` extraction: use `response.get("order", {}).get("order_id")` — consistent with the existing correct pattern `_micro_resp.get("order", {}).get(...)` in the same file. Do NOT use `response["order"]["order_id"]` (raises KeyError) or `(response.get("order") or response).get("order_id")` (empty-dict falsiness re-introduces the bug). | `order_executor.py:125` | 5 min |
 | P0-C | Fix `get_rolling_win_rate()`: remove `p.side` from the SELECT (column does not exist in `predictions` schema → always crashes). Replace win detection with `our_prob >= 0.5` as the YES proxy — same pattern used in `_get_recent_win_loss()` in the same file. *(Not an off-by-one — the window size logic is correct.)* | `tracker.py:870` | 15 min |
 | P0-D | In `train_platt_per_city`: skip and log WARNING if fitted `A < 0` (refuse to store inverted model). In `apply_platt_per_city`: if `a < 0`, log WARNING and return `raw_prob` unchanged. **Never raise at apply-time — that crashes trade analysis.** | `ml_bias.py` | 20 min |
-| P0-F | Two-part fix: (1) Change `_log.debug` to `_log.error` in the latency `except Exception` handler. (2) In the same handler, replace the fall-through to `return HealthStatus(True, "")` with `return HealthStatus(False, f"health check error: {exc}")` — **without this second change, the gate still fails open even with better logging.** | `system_health.py:75-78` | 20 min |
-| P0-I | Replace `==` password comparison with `hmac.compare_digest` in both `_require_auth` and `_check_auth` | `web_app.py:40,134` | 2 min |
-| P0-J | Switch `render_template_string()` in `analyze()` and `history_page()` to a Jinja2 `Environment(autoescape=True)` template — protects all fields automatically. Per-field `_html_escape()` is error-prone; new fields will be left unescaped. | `web_app.py:513-524, 924-933` | 45 min |
+| P0-F | Two-part fix: (1) Change `_log.debug` to `_log.error` in the latency `except Exception` handler. (2) In the same handler, replace the fall-through to `return HealthStatus(True, "")` with `return HealthStatus(False, f"health check error: {exc}")` — **without this second change, the gate still fails open even with better logging.** | `system_health.py:75-78` | 20 min | ✅ Done |
+| P0-I | Replace `==` password comparison with `hmac.compare_digest` in both `_require_auth` and `_check_auth` | `web_app.py:40,134` | 2 min | ✅ Done |
+| P0-J | Switch `render_template_string()` in `analyze()` and `history_page()` to a Jinja2 `Environment(autoescape=True)` template — protects all fields automatically. Per-field `_html_escape()` is error-prone; new fields will be left unescaped. | `web_app.py:513-524, 924-933` | 45 min | ✅ Done (per-field `_html_escape()` on all API-sourced fields in both rows_html blocks) |
 
 #### P1 — Fix Before Next Cron Run
 
@@ -1104,9 +1104,9 @@ The codebase is **not production-ready** without addressing at minimum the P0 li
 | P1-B | Implement `_recover_pending_orders()` — on startup, fetch all `status='pending'` rows from `execution_log`, call `get_order()` for each, resolve to `placed/filled/failed` *(unified table used `_find_unfilled_gtc` — that name is a hallucination; the actual referenced function is `_recover_pending_orders`, confirmed at `order_executor.py:253`)* | `order_executor.py` | 1 hr |
 | P1-C | Fix calibration write to use `safe_io.atomic_write_json` | `calibration.py` | 15 min |
 | P1-D | Two separate fixes: (1) In `_validate_checksum()` (not `_verify_checksum` — that name does not exist), change the `if stored is None: return` silent no-op to `raise CorruptionError("missing _checksum field")` for files that were written by the current code version (which always embeds `_checksum`). (2) In `verify_backup()`, add a call to `_validate_checksum(data)` after the existing `_validate_crc(data)` call — `verify_backup()` currently only checks the legacy CRC32 and never validates the SHA-256 checksum that `_save()` now embeds. | `paper.py:56-71, 232-246` | 20 min |
-| P1-F | Add `DASHBOARD_PASSWORD` enforcement regardless of `KALSHI_ENV` | `web_app.py` | 15 min |
+| P1-F | Add `DASHBOARD_PASSWORD` enforcement regardless of `KALSHI_ENV` | `web_app.py` | 15 min | ✅ Done |
 | P1-G | Replace null-byte key padding with PBKDF2: `hashlib.pbkdf2_hmac('sha256', passphrase, salt, 480_000)` where `salt = os.urandom(16)` is generated per backup and prepended to the output file as `salt + nonce + ciphertext`. Read and strip salt on decrypt. Remove plaintext fallback — raise instead. | `paper.py:271,290` | 1 hr |
-| P1-H | Clamp `?n=` parameter in `/api/suggested_bets` | `web_app.py` | 5 min |
+| P1-H | Clamp `?n=` parameter in `/api/suggested_bets` | `web_app.py` | 5 min | ✅ Done |
 | P1-J | Invalidate `_MODELS_CACHE` in `train_bias_model` after retraining | `ml_bias.py` | 10 min |
 
 #### P2 — Fix This Week

@@ -31,23 +31,38 @@ class LiveTradingGate:
         except Exception as exc:
             return False, f"Could not import paper safety checks: {exc}"
 
-        if graduation_check() is None:
-            return (
-                False,
-                "Graduation gate not met (need 30 settled, $50 P&L, Brier ≤ 0.20)",
-            )
+        try:
+            if graduation_check() is None:
+                return (
+                    False,
+                    "Graduation gate not met (need 30 settled, $50 P&L, Brier ≤ 0.20)",
+                )
+        except Exception as exc:
+            return False, f"graduation_check error: {exc}"
 
-        if is_paused_drawdown():
-            return False, "Drawdown halt active"
+        try:
+            if is_paused_drawdown():
+                return False, "Drawdown halt active"
+        except Exception as exc:
+            return False, f"is_paused_drawdown error: {exc}"
 
-        if is_daily_loss_halted():
-            return False, "Daily loss limit reached"
+        try:
+            if is_daily_loss_halted():
+                return False, "Daily loss limit reached"
+        except Exception as exc:
+            return False, f"is_daily_loss_halted error: {exc}"
 
-        if is_accuracy_halted():
-            return False, "Accuracy halt (SPRT) active"
+        try:
+            if is_accuracy_halted():
+                return False, "Accuracy halt (SPRT) active"
+        except Exception as exc:
+            return False, f"is_accuracy_halted error: {exc}"
 
-        if is_streak_paused():
-            return False, "Loss streak pause active"
+        try:
+            if is_streak_paused():
+                return False, "Loss streak pause active"
+        except Exception as exc:
+            return False, f"is_streak_paused error: {exc}"
 
         return True, "ok"
 

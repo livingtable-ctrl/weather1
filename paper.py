@@ -230,7 +230,7 @@ def _save(data: dict) -> None:
 
 
 def verify_backup(path) -> bool:
-    """#104: Verify a backup file's CRC32 checksum. Returns True on success."""
+    """Verify a backup file's SHA-256 checksum. Returns True on success."""
     path = Path(path)
     try:
         data = json.loads(path.read_bytes())
@@ -238,12 +238,11 @@ def verify_backup(path) -> bool:
         _log.error("verify_backup: could not read %s: %s", path, e)
         return False
     try:
-        _validate_crc(data)
+        _validate_checksum(data)
     except CorruptionError as e:
-        _log.error("verify_backup: CRC32 mismatch in %s: %s", path, e)
+        _log.error("verify_backup: SHA-256 mismatch in %s: %s", path, e)
         return False
-    checksum = data.get("_crc32", "no-crc32")
-    _log.info("verify_backup: CRC32 OK for %s (crc32=%s)", path.name, checksum)
+    _log.info("verify_backup: SHA-256 OK for %s", path.name)
     return True
 
 
@@ -561,7 +560,7 @@ def place_paper_order(
         )
 
     trade = {
-        "id": len(data["trades"]) + 1,
+        "id": max((t["id"] for t in data["trades"]), default=0) + 1,
         "ticker": ticker,
         "side": side,
         "quantity": quantity,
@@ -712,19 +711,6 @@ def settle_paper_trade(trade_id: int, outcome_yes: bool) -> dict:
 
             # Score per-model forecast means against outcome for dynamic weighting
             _score_ensemble_members(t, outcome_yes)
-
-            # Phase 4: record proxy METAR observation so station-level bias can accumulate
-            try:
-                from metar import record_observation as _record_obs
-
-                _city = t.get("city")
-                _date = t.get("target_date")
-                _thr = t.get("condition_threshold")
-                if _city and _date and _thr is not None:
-                    _proxy_high = _thr + 3.0 if outcome_yes else _thr - 3.0
-                    _record_obs(_city, _date, _proxy_high, proxy=True)
-            except Exception:
-                pass
 
             # Record outcome on analysis_attempt so bias stats are queryable.
             try:

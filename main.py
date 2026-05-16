@@ -4301,7 +4301,7 @@ def cmd_calibrate() -> None:
                     "WHERE o.settled_yes IS NOT NULL AND p.our_prob IS NOT NULL"
                 ).fetchall()
             ]
-        platt = _train_platt(_platt_rows, min_samples=15)
+        platt = _train_platt(_platt_rows, min_samples=50)
         if platt:
             _platt_path = data_dir / "platt_models.json"
             _platt_path.write_text(

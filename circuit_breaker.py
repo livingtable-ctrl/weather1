@@ -268,11 +268,17 @@ class CircuitBreaker:
 # ── Flash Crash Circuit Breaker ───────────────────────────────────────────────
 
 
+_FLASH_CRASH_COOLDOWN_PATH = (
+    Path(__file__).parent / "data" / ".flash_crash_cooldowns.json"
+)
+
+
 class FlashCrashCB:
     """
     Per-market flash crash detection.
     Trips when price moves > threshold_pct within window_seconds.
-    Blocks that ticker for cooldown_seconds. Resets on restart (intentional).
+    Blocks that ticker for cooldown_seconds.
+    Cooldowns are persisted to disk so restarts don't lose active protection (R14).
     """
 
     def __init__(
@@ -286,6 +292,36 @@ class FlashCrashCB:
         self.cooldown_seconds = cooldown_seconds
         self._history: dict[str, list[tuple[float, float]]] = {}
         self._cooldowns: dict[str, float] = {}
+        self._load_cooldowns()
+
+    def _load_cooldowns(self) -> None:
+        """Load persisted cooldowns from disk, discarding any that have already expired."""
+        try:
+            if _FLASH_CRASH_COOLDOWN_PATH.exists():
+                raw: dict[str, float] = json.loads(
+                    _FLASH_CRASH_COOLDOWN_PATH.read_text(encoding="utf-8")
+                )
+                now = time.time()
+                self._cooldowns = {t: exp for t, exp in raw.items() if exp > now}
+                if self._cooldowns:
+                    _log.info(
+                        "FlashCrashCB: restored %d active cooldown(s) from disk",
+                        len(self._cooldowns),
+                    )
+        except Exception as exc:
+            _log.debug("FlashCrashCB: could not load cooldowns: %s", exc)
+
+    def _save_cooldowns(self) -> None:
+        """Persist current (non-expired) cooldowns to disk."""
+        try:
+            _FLASH_CRASH_COOLDOWN_PATH.parent.mkdir(parents=True, exist_ok=True)
+            now = time.time()
+            active = {t: exp for t, exp in self._cooldowns.items() if exp > now}
+            _FLASH_CRASH_COOLDOWN_PATH.write_text(
+                json.dumps(active, indent=2), encoding="utf-8"
+            )
+        except Exception as exc:
+            _log.debug("FlashCrashCB: could not save cooldowns: %s", exc)
 
     def check(self, ticker: str, current_price: float) -> bool:
         """Record price and return True if this observation triggered a crash."""
@@ -309,6 +345,7 @@ class FlashCrashCB:
                 self.window_seconds,
                 self.cooldown_seconds,
             )
+            self._save_cooldowns()
             return True
         return False
 

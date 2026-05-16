@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import base64 as _base64
 import functools
+import hmac as _hmac
 import json
 import logging
 import os
@@ -37,7 +38,7 @@ def _require_auth(f):
             try:
                 decoded = _base64.b64decode(auth[6:]).decode("utf-8")
                 _, password = decoded.split(":", 1)
-                if password == pwd:
+                if _hmac.compare_digest(password, pwd):
                     return f(*args, **kwargs)
             except Exception:
                 pass
@@ -109,13 +110,10 @@ def _build_app(client):
 
     # Enforce password requirement in prod — the dashboard exposes kill switch
     # and trade control endpoints that must never be unauthenticated in production.
-    import main as _main_mod
 
-    if getattr(_main_mod, "KALSHI_ENV", "demo") == "prod" and not os.getenv(
-        "DASHBOARD_PASSWORD"
-    ):
+    if not os.getenv("DASHBOARD_PASSWORD"):
         raise RuntimeError(
-            "DASHBOARD_PASSWORD must be set when KALSHI_ENV=prod. "
+            "DASHBOARD_PASSWORD must be set. "
             "The dashboard exposes kill switch and trade control endpoints."
         )
 
@@ -131,7 +129,7 @@ def _build_app(client):
             try:
                 decoded = _base64.b64decode(auth[6:]).decode("utf-8")
                 _, password = decoded.split(":", 1)
-                if password == pwd:
+                if _hmac.compare_digest(password, pwd):
                     return None  # authenticated
             except Exception:
                 pass
@@ -512,9 +510,9 @@ def _build_app(client):
             )
             rows_html += f"""
             <tr>
-              <td>{ticker}</td>
-              <td>{(m.get("title") or ticker)[:38]}</td>
-              <td>{m.get("_city", "—")}</td>
+              <td>{_html_escape(ticker)}</td>
+              <td>{_html_escape((m.get("title") or ticker)[:38])}</td>
+              <td>{_html_escape(m.get("_city", "—"))}</td>
               <td>{a["forecast_prob"]:.0%}</td>
               <td>{a["market_prob"]:.0%}</td>
               <td class="{edge_cls}">{edge_str}</td>
@@ -620,7 +618,7 @@ setInterval(() => {{
             get_weather_markets,
         )
 
-        n = int(freq.args.get("n", 3))
+        n = max(1, min(int(freq.args.get("n", 3)), 20))
 
         try:
             markets = get_weather_markets(client)
@@ -923,7 +921,7 @@ setInterval(() => {{
             p_str = f"+${p:.2f}" if p >= 0 else f"-${abs(p):.2f}"
             rows_html += f"""<tr>
               <td>{t["id"]}</td>
-              <td>{t["ticker"][:28]}</td>
+              <td>{_html_escape(t["ticker"][:28])}</td>
               <td>{"YES" if t["side"] == "yes" else "NO"}</td>
               <td>{t["quantity"]}</td>
               <td>${t["entry_price"]:.3f}</td>

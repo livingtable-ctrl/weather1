@@ -94,10 +94,15 @@ def _request_with_retry(method: str, url: str, **kwargs) -> requests.Response:
     _t0 = time.perf_counter()
     try:
         resp = _SESSION.request(method, url, **kwargs)
-        _cb.record_success()
     except Exception as _exc:
         _cb.record_failure()
         raise
+    # 5xx = infrastructure failure → trip the breaker.
+    # 4xx = client/auth error → not an infra failure, don't penalise the breaker.
+    if resp.status_code >= 500:
+        _cb.record_failure()
+    else:
+        _cb.record_success()
     _elapsed = time.perf_counter() - _t0
     # #108: warn on slow API responses so latency issues are visible
     if _elapsed > 5:
@@ -341,7 +346,11 @@ class KalshiClient:
             raise exc
 
     def _find_order_by_client_id(self, client_order_id: str) -> dict | None:
-        """Return the open order matching client_order_id, or None if not found."""
+        """Return the order matching client_order_id, or None if not found.
+
+        Checks resting orders first, then filled — covers the taker-fill case where an
+        order lands and fills immediately before the timeout retry fires.
+        """
         try:
             data = self._get(
                 "/portfolio/orders", params={"status": "resting"}, auth=True
@@ -349,6 +358,18 @@ class KalshiClient:
             for order in data.get("orders", []):
                 if order.get("client_order_id") == client_order_id:
                     return order
+        except Exception:
+            pass
+        # Second pass: check filled orders only if resting lookup found nothing.
+        try:
+            data = self._get(
+                "/portfolio/orders", params={"status": "filled"}, auth=True
+            )
+            for order in data.get("orders", []):
+                if order.get("client_order_id") == client_order_id:
+                    # Return with status overridden to "placed" so the dedup guard stays
+                    # active; the GTC poll loop will promote it to "filled" shortly.
+                    return {**order, "status": "placed"}
         except Exception:
             pass
         return None

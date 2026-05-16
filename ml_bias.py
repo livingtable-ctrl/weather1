@@ -18,6 +18,7 @@ _MODEL_PATH = Path(__file__).parent / "data" / "bias_models.pkl"
 _HMAC_PATH = Path(__file__).parent / "data" / ".bias_models.hmac"
 _TEMP_PATH = Path(__file__).parent / "data" / "temperature_scale.json"
 _MODELS_CACHE: dict | None = None
+_LOAD_ATTEMPTED: bool = False  # True only after a successful or definitive load
 _TEMP_CACHE: float | None = None
 
 
@@ -52,19 +53,27 @@ def _load_models() -> dict:
 
     In all rejection cases returns {} so the caller falls back to no
     bias correction rather than loading a potentially malicious payload.
+
+    Uses _LOAD_ATTEMPTED to distinguish "loaded successfully, no models found" ({})
+    from "never loaded yet" (None). Transient failures (missing secret at early startup)
+    do NOT permanently poison the cache — the next call will retry.
     """
-    global _MODELS_CACHE
-    if _MODELS_CACHE is not None:
-        return _MODELS_CACHE
+    global _MODELS_CACHE, _LOAD_ATTEMPTED
+    if _LOAD_ATTEMPTED:
+        return _MODELS_CACHE if _MODELS_CACHE is not None else {}
     if not _MODEL_PATH.exists():
+        # File absent is definitive — mark attempted so we don't re-check every call.
+        _LOAD_ATTEMPTED = True
+        _MODELS_CACHE = {}
         return {}
 
     secret = _hmac_secret()
     if not secret:
+        # Secret missing is likely a transient startup ordering issue — do NOT set
+        # _LOAD_ATTEMPTED so the next call retries once the env is populated.
         _log.warning(
             "ml_bias: MODEL_HMAC_SECRET not set — skipping bias models (RCE risk)."
         )
-        _MODELS_CACHE = {}
         return {}
 
     try:
@@ -76,6 +85,7 @@ def _load_models() -> dict:
                 "Retrain to regenerate both files.",
                 _HMAC_PATH.name,
             )
+            _LOAD_ATTEMPTED = True
             _MODELS_CACHE = {}
             return {}
 
@@ -88,16 +98,19 @@ def _load_models() -> dict:
                 "Skipping bias correction.",
                 _MODEL_PATH.name,
             )
+            _LOAD_ATTEMPTED = True
             _MODELS_CACHE = {}
             return {}
 
         # HMAC verified — safe to deserialise
         _MODELS_CACHE = pickle.loads(raw)  # noqa: S301 (verified above)
-        return _MODELS_CACHE
+        _LOAD_ATTEMPTED = True
+        return _MODELS_CACHE if isinstance(_MODELS_CACHE, dict) else {}
 
     except Exception as exc:
-        _log.warning("ml_bias: load failed: %s — using no correction", exc)
-        _MODELS_CACHE = {}
+        _log.warning("ml_bias: load failed: %s — will retry on next call", exc)
+        # Do NOT set _LOAD_ATTEMPTED — transient I/O errors should not permanently
+        # disable correction for the process lifetime.
         return {}
 
 
@@ -127,11 +140,12 @@ def train_bias_model(min_samples: int = 200) -> dict:
                 SELECT
                     p.city, p.our_prob,
                     CAST(strftime('%m', p.market_date) AS INTEGER) AS month,
-                    CAST(julianday(p.market_date) - julianday(p.predicted_at) AS INTEGER) AS days_out,
+                    CAST(julianday(date(p.market_date)) - julianday(date(p.predicted_at)) AS INTEGER) AS days_out,
                     o.settled_yes
                 FROM predictions p
                 JOIN outcomes o ON p.ticker = o.ticker
                 WHERE p.city IS NOT NULL AND p.our_prob IS NOT NULL
+                ORDER BY p.predicted_at ASC
                 """
             ).fetchall()
     except Exception as exc:
@@ -240,7 +254,15 @@ def _fit_platt(xs: list[float], ys: list[int]) -> tuple[float, float]:
         return -float(np.sum(ya * np.log(p) + (1 - ya) * np.log(1 - p)))
 
     res = minimize(neg_log_likelihood, x0=[1.0, 0.0], method="L-BFGS-B")
-    return float(res.x[0]), float(res.x[1])
+    if not res.success:
+        raise ValueError(f"Platt optimizer did not converge: {res.message}")
+    a, b = float(res.x[0]), float(res.x[1])
+    if a <= 0 or abs(a) > 5 or abs(b) > 5:
+        raise ValueError(
+            f"Platt fit produced invalid coefficients A={a:.4f}, B={b:.4f}; "
+            "expected A>0, |A|<=5, |B|<=5"
+        )
+    return a, b
 
 
 def train_platt_per_city(
