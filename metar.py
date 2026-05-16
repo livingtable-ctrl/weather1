@@ -302,6 +302,26 @@ def _load_obs() -> list[dict]:
         return []
 
 
+def _load_obs_nolock() -> list[dict]:
+    """Load without acquiring _OBS_LOCK — caller must hold the lock."""
+    if not _OBS_PATH.exists():
+        return []
+    try:
+        return json.loads(_OBS_PATH.read_text(encoding="utf-8"))
+    except Exception as exc:
+        _log.debug("metar: could not load observations: %s", exc)
+        return []
+
+
+def _save_obs_nolock(records: list[dict]) -> None:
+    """Save without acquiring _OBS_LOCK — caller must hold the lock."""
+    try:
+        _OBS_PATH.parent.mkdir(parents=True, exist_ok=True)
+        _OBS_PATH.write_text(json.dumps(records, indent=2), encoding="utf-8")
+    except Exception as exc:
+        _log.debug("metar: could not save observations: %s", exc)
+
+
 def _save_obs(records: list[dict]) -> None:
     try:
         _OBS_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -330,24 +350,27 @@ def record_observation(
     if not station_id:
         return
 
-    records = _load_obs()
-    # Deduplicate: replace existing record for same station+date
-    records = [
-        r
-        for r in records
-        if not (r["station_id"] == station_id and r["date"] == date_str)
-    ]
-    records.append(
-        {
-            "station_id": station_id,
-            "city": city,
-            "date": date_str,
-            "high_f": round(high_f, 2),
-            "low_f": round(low_f, 2) if low_f is not None else None,
-            "proxy": proxy,
-        }
-    )
-    _save_obs(records)
+    # Hold lock across the full read-modify-write to prevent concurrent settlements
+    # from silently dropping each other's records (R17).
+    with _OBS_LOCK:
+        records = _load_obs_nolock()
+        # Deduplicate: replace existing record for same station+date
+        records = [
+            r
+            for r in records
+            if not (r["station_id"] == station_id and r["date"] == date_str)
+        ]
+        records.append(
+            {
+                "station_id": station_id,
+                "city": city,
+                "date": date_str,
+                "high_f": round(high_f, 2),
+                "low_f": round(low_f, 2) if low_f is not None else None,
+                "proxy": proxy,
+            }
+        )
+        _save_obs_nolock(records)
     _log.debug(
         "metar: recorded %s %s high=%.1f%s",
         station_id,
@@ -376,7 +399,9 @@ def get_station_bias(city: str, month: int) -> float | None:
         return None
 
     records = _load_obs()
-    station_records = [r for r in records if r["station_id"] == station_id]
+    station_records = [
+        r for r in records if r["station_id"] == station_id and not r.get("proxy")
+    ]
 
     if len(station_records) < _MIN_OBS_FOR_MODEL:
         return None
@@ -385,6 +410,7 @@ def get_station_bias(city: str, month: int) -> float | None:
     if len(month_records) < 20:
         return None
 
-    # Placeholder: once forecast temps are stored alongside observations,
-    # compute mean(forecast_high - observed_high) here.
-    return 0.0
+    raise NotImplementedError(
+        "get_station_bias() requires forecast_high stored alongside observations; "
+        "not yet implemented."
+    )

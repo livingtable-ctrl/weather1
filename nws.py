@@ -48,7 +48,8 @@ _session.headers.update(UA_HEADER)
 # In-memory caches
 _gridpoint_cache: dict = {}
 _station_cache: dict = {}
-_forecast_cache: dict = {}
+_forecast_cache: dict = {}  # city -> (fetched_at_epoch, data)
+_FORECAST_CACHE_TTL = 3600  # seconds
 _obs_cache: dict = {}  # city -> (timestamp, observation_dict)
 _precip_cache: dict = {}  # city -> (timestamp, precip_inches | None)
 
@@ -180,8 +181,9 @@ def get_nws_daily_forecast(city: str, coords: tuple) -> dict[str, dict]:
     NWS forecasts are professionally made and bias-corrected — they often
     outperform raw model output especially at 1-5 day range.
     """
-    if city in _forecast_cache:
-        return _forecast_cache[city]
+    cached = _forecast_cache.get(city)
+    if cached is not None and time.time() - cached[0] < _FORECAST_CACHE_TTL:
+        return cached[1]
 
     if _nws_cb.is_open():
         _log.warning("NWS circuit open — skipping daily forecast for %s", city)
@@ -208,6 +210,15 @@ def get_nws_daily_forecast(city: str, coords: tuple) -> dict[str, dict]:
             temp = period.get("temperature")
             if temp is None:
                 continue
+            temp_unit = period.get("temperatureUnit", "F")
+            if temp_unit != "F":
+                _log.warning(
+                    "NWS forecast: unexpected temperatureUnit=%r for %s %s — skipping period",
+                    temp_unit,
+                    city,
+                    date_str,
+                )
+                continue
             if date_str not in result:
                 result[date_str] = {"high": None, "low": None}
             if period.get("isDaytime", True):
@@ -217,7 +228,7 @@ def get_nws_daily_forecast(city: str, coords: tuple) -> dict[str, dict]:
         except Exception:
             continue
 
-    _forecast_cache[city] = result
+    _forecast_cache[city] = (time.time(), result)
     return result
 
 

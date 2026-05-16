@@ -33,6 +33,15 @@ _MONITOR_CITIES = {
     "DAL": {"station": "KDFW", "tz": "America/Chicago"},
 }
 
+# Kalshi series ticker prefix per city — NOT simply "KXHIGH" + city code
+_CITY_SERIES_TICKER = {
+    "NYC": "KXHIGHNY",
+    "MIA": "KXHIGHMIA",
+    "CHI": "KXHIGHCHI",
+    "LAX": "KXHIGHLA",
+    "DAL": "KXHIGHTDAL",
+}
+
 # Settlement lag monitoring window: 5 PM – 7 PM local
 _MONITOR_START_HOUR = 17
 _MONITOR_END_HOUR = 19
@@ -190,7 +199,9 @@ def run_settlement_monitor(client, duration_minutes: int = 120) -> None:
 
                 active_tickers: list[dict] = []
                 try:
-                    markets = client.get_markets(series_ticker=f"KXHIGH{city}")
+                    markets = client.get_markets(
+                        series_ticker=_CITY_SERIES_TICKER[city]
+                    )
                     for m in markets or []:
                         if m.get("status") == "open":
                             ticker = m.get("ticker", "")

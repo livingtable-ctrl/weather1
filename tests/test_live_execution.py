@@ -185,7 +185,7 @@ class TestPollPendingOrders:
         monkeypatch.setattr(execution_log, "DB_PATH", Path(tmp.name))
         monkeypatch.setattr(execution_log, "_initialized", False)
 
-        # Log a pending live order
+        # Log a pending live order — response uses the real Kalshi API envelope shape
         execution_log.log_order(
             ticker="KXHIGH-25MAY15-T75",
             side="yes",
@@ -193,7 +193,7 @@ class TestPollPendingOrders:
             price=0.55,
             status="pending",
             live=True,
-            response={"order_id": "ord_abc123"},
+            response={"order": {"order_id": "ord_abc123"}},
         )
 
         # Mock client that returns filled status
@@ -256,7 +256,7 @@ class TestPollPendingOrdersExtended:
             price=0.55,
             status="pending",
             live=True,
-            response={"order_id": "ord_abc"},
+            response={"order": {"order_id": "ord_abc"}},
         )
         # Backdate placed_at to 2 hours ago
         old_time = (datetime.now(UTC) - timedelta(hours=2)).isoformat()
@@ -289,7 +289,7 @@ class TestPollPendingOrdersExtended:
             price=0.55,
             status="pending",
             live=True,
-            response={"order_id": "ord_fresh"},
+            response={"order": {"order_id": "ord_fresh"}},
         )
 
         mock_client = MagicMock()

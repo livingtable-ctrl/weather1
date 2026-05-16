@@ -615,11 +615,22 @@ def _load_platt_models() -> dict[str, tuple[float, float]]:
 
         path = Path(__file__).parent / "data" / "platt_models.json"
         try:
-            _PLATT_MODELS = (
+            raw = (
                 {k: tuple(v) for k, v in json.loads(path.read_text()).items()}
                 if path.exists()
                 else {}
             )
+            validated: dict[str, tuple[float, float]] = {}
+            for city, (a, b) in raw.items():
+                if a <= 0:
+                    _log.error(
+                        "Platt model for %s has A=%s (<=0) — signal would be inverted; skipping",
+                        city,
+                        a,
+                    )
+                    continue
+                validated[city] = (float(a), float(b))
+            _PLATT_MODELS = validated
         except Exception:
             _PLATT_MODELS = {}
     return _PLATT_MODELS
@@ -1024,30 +1035,44 @@ def batch_prewarm_forecasts(
         dates_list: list[str] = next(
             (v.get("time", []) for v in model_data.values() if v.get("time")), []
         )
+        # Derive month from the first available date string (YYYY-MM-DD)
+        _month = int(dates_list[0][5:7]) if dates_list else 1
+        _weights = _forecast_model_weights(_month, city)
+
         for j, date_str in enumerate(dates_list):
             cache_key = (city, date_str)
-            highs, lows, precips = [], [], []
-            for mdata in model_data.values():
+            highs: list[tuple[float, float]] = []
+            lows: list[tuple[float, float]] = []
+            precips: list[tuple[float, float]] = []
+            for model_name, mdata in model_data.items():
+                w = _weights.get(model_name, 1.0)
                 h = mdata.get("temperature_2m_max", [])
                 lo = mdata.get("temperature_2m_min", [])
                 p = mdata.get("precipitation_sum", [])
                 if j < len(h) and h[j] is not None:
-                    highs.append(h[j])
+                    highs.append((h[j], w))
                 if j < len(lo) and lo[j] is not None:
-                    lows.append(lo[j])
+                    lows.append((lo[j], w))
                 if j < len(p) and p[j] is not None:
-                    precips.append(p[j])
+                    precips.append((p[j], w))
             if not highs:
                 continue
+
+            def _wavg_local(pairs: list[tuple[float, float]]) -> float:
+                total_w = sum(wt for _, wt in pairs)
+                return sum(v * wt for v, wt in pairs) / total_w
+
+            high_vals = [v for v, _ in highs]
+            low_vals = [v for v, _ in lows]
             entry: dict = {
                 "date": date_str,
                 "city": city,
-                "high_f": sum(highs) / len(highs),
-                "low_f": sum(lows) / len(lows) if lows else None,
-                "precip_in": sum(precips) / len(precips) if precips else 0.0,
+                "high_f": _wavg_local(highs),
+                "low_f": _wavg_local(lows) if lows else None,
+                "precip_in": _wavg_local(precips) if precips else 0.0,
                 "models_used": len(highs),
-                "high_range": (min(highs), max(highs)),
-                "low_range": (min(lows), max(lows)) if lows else None,
+                "high_range": (min(high_vals), max(high_vals)),
+                "low_range": (min(low_vals), max(low_vals)) if low_vals else None,
                 "_source": "batch_prewarm",
             }
             _forecast_cache.set_with_ttl(cache_key, entry, _ttl_until_next_cycle())
@@ -3637,7 +3662,7 @@ def _get_consensus_probs(
                 return sum(1 for t in temps if t > thresh) / len(temps), mean_temp
             elif ctype == "below" and thresh is not None:
                 return sum(1 for t in temps if t < thresh) / len(temps), mean_temp
-            elif ctype == "range":
+            elif ctype in ("between", "range"):
                 lo = condition.get("lower", 0)
                 hi = condition.get("upper", 999)
                 return sum(1 for t in temps if lo <= t <= hi) / len(temps), mean_temp
@@ -5074,15 +5099,35 @@ def analyze_trade(enriched: dict) -> dict | None:
     # Apply exactly one city-level ML correction (GBM > Platt), then fall back to
     # global temperature scaling which requires no per-city data.
     _city_correction_applied = False
+    _pre_correction_prob = blended_prob  # captured for logging / sanity guard
+    _ML_CORRECTION_LIMIT = (
+        0.30  # skip any correction that shifts prob by more than this
+    )
     try:
         from ml_bias import apply_ml_prob_correction, has_ml_model
 
         if has_ml_model(city):
-            blended_prob = apply_ml_prob_correction(
+            _corrected = apply_ml_prob_correction(
                 city, blended_prob, target_date.month, days_out
             )
-            blended_prob = max(0.01, min(0.99, blended_prob))
-            _city_correction_applied = True
+            _delta = abs(_corrected - blended_prob)
+            _log.info(
+                "analyze_trade: GBM correction %s %.3f → %.3f (Δ%.3f)",
+                city,
+                blended_prob,
+                _corrected,
+                _delta,
+            )
+            if _delta > _ML_CORRECTION_LIMIT:
+                _log.warning(
+                    "analyze_trade: GBM correction for %s exceeds ±%.2f (Δ=%.3f) — skipping",
+                    city,
+                    _ML_CORRECTION_LIMIT,
+                    _delta,
+                )
+            else:
+                blended_prob = max(0.01, min(0.99, _corrected))
+                _city_correction_applied = True
     except Exception:
         pass
 
@@ -5095,9 +5140,24 @@ def analyze_trade(enriched: dict) -> dict | None:
 
                 _new_prob = _apply_platt(city, blended_prob, _platt)
                 if _new_prob != blended_prob:
-                    blended_prob = _new_prob
-                    blended_prob = max(0.01, min(0.99, blended_prob))
-                    _city_correction_applied = True
+                    _delta = abs(_new_prob - blended_prob)
+                    _log.info(
+                        "analyze_trade: Platt correction %s %.3f → %.3f (Δ%.3f)",
+                        city,
+                        blended_prob,
+                        _new_prob,
+                        _delta,
+                    )
+                    if _delta > _ML_CORRECTION_LIMIT:
+                        _log.warning(
+                            "analyze_trade: Platt correction for %s exceeds ±%.2f (Δ=%.3f) — skipping",
+                            city,
+                            _ML_CORRECTION_LIMIT,
+                            _delta,
+                        )
+                    else:
+                        blended_prob = max(0.01, min(0.99, _new_prob))
+                        _city_correction_applied = True
         except Exception:
             pass
 
@@ -5107,8 +5167,22 @@ def analyze_trade(enriched: dict) -> dict | None:
         try:
             from ml_bias import apply_temperature_scaling as _apply_temp
 
-            blended_prob = _apply_temp(blended_prob)
-            blended_prob = max(0.01, min(0.99, blended_prob))
+            _corrected = _apply_temp(blended_prob)
+            _delta = abs(_corrected - blended_prob)
+            _log.info(
+                "analyze_trade: temp-scaling %.3f → %.3f (Δ%.3f)",
+                blended_prob,
+                _corrected,
+                _delta,
+            )
+            if _delta > _ML_CORRECTION_LIMIT:
+                _log.warning(
+                    "analyze_trade: temp-scaling exceeds ±%.2f (Δ=%.3f) — skipping",
+                    _ML_CORRECTION_LIMIT,
+                    _delta,
+                )
+            else:
+                blended_prob = max(0.01, min(0.99, _corrected))
         except Exception:
             pass
 

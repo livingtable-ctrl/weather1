@@ -93,6 +93,76 @@ def _count_open_live_orders() -> int:
 
 
 # ---------------------------------------------------------------------------
+# Startup crash recovery
+# ---------------------------------------------------------------------------
+
+
+def _recover_pending_orders(client) -> None:
+    """Reconcile 'pending' execution_log rows against the Kalshi API at startup.
+
+    A crash in the ~50ms window between pre-logging an order and the API call
+    leaves a phantom 'pending' row that permanently blacklists the ticker via
+    dedup guards. This function resolves those rows on startup so the dedup
+    state is accurate.
+    """
+    pending = [
+        o
+        for o in execution_log.get_recent_orders(limit=200)
+        if o.get("live") and o.get("status") == "pending"
+    ]
+    if not pending:
+        return
+
+    _log.info(
+        "[Recovery] Checking %d pending live order(s) against Kalshi API", len(pending)
+    )
+    for order in pending:
+        row_id = order["id"]
+        ticker = order.get("ticker", "?")
+        try:
+            response = order.get("response")
+            if response:
+                if isinstance(response, str):
+                    response = json.loads(response)
+                order_id = (
+                    response.get("order", {}).get("order_id") if response else None
+                )
+            else:
+                order_id = None
+
+            if not order_id:
+                # No API order_id stored — the crash happened before the API call.
+                # Mark failed so it stops blocking dedup.
+                execution_log.log_order_result(
+                    row_id, status="failed", error="no order_id at recovery"
+                )
+                _log.warning(
+                    "[Recovery] %s row %d: no order_id — marked failed", ticker, row_id
+                )
+                continue
+
+            result = client.get_order(order_id)
+            api_status = result.get("status", "")
+            if api_status == "resting":
+                execution_log.log_order_result(row_id, status="placed")
+                _log.info("[Recovery] %s row %d: resting → placed", ticker, row_id)
+            elif api_status in ("filled", "canceled", "expired"):
+                execution_log.log_order_result(row_id, status=api_status)
+                _log.info(
+                    "[Recovery] %s row %d: resolved to %s", ticker, row_id, api_status
+                )
+            else:
+                _log.warning(
+                    "[Recovery] %s row %d: unknown API status %r — leaving pending",
+                    ticker,
+                    row_id,
+                    api_status,
+                )
+        except Exception as exc:
+            _log.warning("[Recovery] %s row %d: lookup failed: %s", ticker, row_id, exc)
+
+
+# ---------------------------------------------------------------------------
 # Live order lifecycle
 # ---------------------------------------------------------------------------
 
@@ -122,7 +192,7 @@ def _poll_pending_orders(client, config: dict | None = None) -> None:
                 if isinstance(order["response"], str)
                 else order["response"]
             )
-            order_id = response.get("order_id") if response else None
+            order_id = response.get("order", {}).get("order_id") if response else None
             if not order_id:
                 continue
 
@@ -204,6 +274,7 @@ def _place_live_order(
     config: dict,
     client,
     cycle: str,
+    kelly_qty: int = 1,
 ) -> tuple[bool, float]:
     """Place a live Kalshi order with hard-stop guards.
 
@@ -237,7 +308,6 @@ def _place_live_order(
     price = _midpoint_price(market, side)
     if price <= 0:
         return False, 0.0
-    kelly_qty = int(analysis.get("kelly_quantity", 1))
     max_qty = math.floor(config["max_trade_dollars"] / price)
     quantity = min(kelly_qty, max_qty)
     if quantity <= 0:
@@ -428,7 +498,7 @@ def _validate_trade_opportunity(opp: dict, live: bool = False) -> tuple[bool, st
     except Exception as _exc:
         _log.debug("WS cache lookup skipped: %s", _exc)
 
-    # Flash crash check
+    # Flash crash check — fail closed on any internal error
     try:
         from circuit_breaker import flash_crash_cb
 
@@ -439,8 +509,11 @@ def _validate_trade_opportunity(opp: dict, live: bool = False) -> tuple[bool, st
             flash_crash_cb.check(opp["ticker"], float(mid))
         if flash_crash_cb.is_in_cooldown(opp["ticker"]):
             return False, "flash crash cooldown"
-    except Exception:
-        pass
+    except Exception as _fc_exc:
+        _log.error(
+            "flash crash check raised unexpectedly: %s — blocking trade", _fc_exc
+        )
+        return False, f"flash crash check error: {_fc_exc}"
 
     # "Between" bucket markets (B82.5 etc.) use a 1°F normal-distribution band with
     # σ=3–5.5°F → our probability is systematically 2–8% while the market prices at
@@ -575,7 +648,8 @@ def _auto_place_trades(
             )
         )
         return 0
-    if is_streak_paused():
+    _streak_paused = is_streak_paused()
+    if _streak_paused:
         print(
             yellow("  [Auto] Loss streak detected — Kelly halved for all auto-trades.")
         )
@@ -677,6 +751,8 @@ def _auto_place_trades(
         adj_kelly *= corr_kelly_scale(
             {"city": city, "target_date": target_date_str}, _open_trades_list
         )
+        if _streak_paused:
+            adj_kelly *= 0.5  # halve Kelly during loss streak
         if adj_kelly < 0.002:
             _skip_reasons.append(f"{ticker}: kelly_too_small({adj_kelly:.4f})")
             continue
@@ -815,6 +891,10 @@ def _auto_place_trades(
             continue
 
         if live and live_config:
+            _live_balance = live_config.get("balance", 0.0)
+            _live_kelly_qty = kelly_quantity(
+                adj_kelly_final, entry_price, cap=cap, method=method
+            )
             opp_placed, cost = _place_live_order(
                 ticker=ticker,
                 side=rec_side,
@@ -822,6 +902,7 @@ def _auto_place_trades(
                 config=live_config,
                 client=client,
                 cycle=cycle,
+                kelly_qty=_live_kelly_qty,
             )
             if opp_placed:
                 execution_log.add_live_loss(cost)
@@ -972,44 +1053,81 @@ def _auto_place_trades(
                     and client is not None
                     and not os.getenv("PYTEST_CURRENT_TEST")
                 ):
-                    _micro_price = entry_price
-                    _micro_qty = max(1, math.floor(qty * MICRO_LIVE_FRACTION))
-                    _micro_cost = _micro_price * _micro_qty
-                    if _micro_cost >= MICRO_LIVE_MIN_DOLLARS:
-                        try:
-                            _micro_resp = client.place_order(
+                    # Safety guards — micro-live must respect the same limits as full live
+                    _micro_daily_loss = execution_log.get_today_live_loss()
+                    _micro_daily_limit = (live_config or {}).get(
+                        "daily_loss_limit", 0.0
+                    )
+                    if (
+                        _micro_daily_limit > 0
+                        and _micro_daily_loss >= _micro_daily_limit
+                    ):
+                        _log.warning(
+                            "[MicroLive] daily loss limit reached — skipping %s", ticker
+                        )
+                    elif execution_log.was_traded_today(ticker, rec_side):
+                        _log.warning(
+                            "[MicroLive] dedup blocked %s/%s — already traded today",
+                            ticker,
+                            rec_side,
+                        )
+                    else:
+                        _micro_price = entry_price
+                        _micro_qty = max(1, math.floor(qty * MICRO_LIVE_FRACTION))
+                        _micro_cost = _micro_price * _micro_qty
+                        if _micro_cost >= MICRO_LIVE_MIN_DOLLARS:
+                            _micro_log_id = execution_log.log_order(
                                 ticker=ticker,
                                 side=rec_side,
-                                action="buy",
-                                count=_micro_qty,
-                                price=_micro_price,
-                                time_in_force="good_till_canceled",
-                            )
-                            _micro_fill = (
-                                _micro_resp.get("order", {}).get("avg_price")
-                                or _micro_price
-                            )
-                            from tracker import log_live_fill as _log_fill
-
-                            _log_fill(
-                                ticker=ticker,
-                                side=rec_side,
-                                paper_price=_micro_price,
-                                fill_price=_micro_fill,
                                 quantity=_micro_qty,
+                                price=_micro_price,
+                                order_type="limit",
+                                status="pending",
+                                forecast_cycle=cycle,
+                                live=True,
                             )
-                            _log.info(
-                                "[MicroLive] %s %s×%s @ %.3f (fill %.3f)",
-                                ticker,
-                                _micro_qty,
-                                rec_side,
-                                _micro_price,
-                                _micro_fill,
-                            )
-                        except Exception as _ml_exc:
-                            _log.warning(
-                                "[MicroLive] order failed for %s: %s", ticker, _ml_exc
-                            )
+                            try:
+                                _micro_resp = client.place_order(
+                                    ticker=ticker,
+                                    side=rec_side,
+                                    action="buy",
+                                    count=_micro_qty,
+                                    price=_micro_price,
+                                    time_in_force="good_till_canceled",
+                                )
+                                execution_log.log_order_result(
+                                    _micro_log_id, status="placed", response=_micro_resp
+                                )
+                                _micro_fill = (
+                                    _micro_resp.get("order", {}).get("avg_price")
+                                    or _micro_price
+                                )
+                                from tracker import log_live_fill as _log_fill
+
+                                _log_fill(
+                                    ticker=ticker,
+                                    side=rec_side,
+                                    paper_price=_micro_price,
+                                    fill_price=_micro_fill,
+                                    quantity=_micro_qty,
+                                )
+                                _log.info(
+                                    "[MicroLive] %s %s×%s @ %.3f (fill %.3f)",
+                                    ticker,
+                                    _micro_qty,
+                                    rec_side,
+                                    _micro_price,
+                                    _micro_fill,
+                                )
+                            except Exception as _ml_exc:
+                                execution_log.log_order_result(
+                                    _micro_log_id, status="failed", error=str(_ml_exc)
+                                )
+                                _log.warning(
+                                    "[MicroLive] order failed for %s: %s",
+                                    ticker,
+                                    _ml_exc,
+                                )
             except Exception:
                 pass
 
