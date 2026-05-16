@@ -1983,6 +1983,7 @@ def _fetch_model_ensemble(
 
 _LEARNED_WEIGHTS: dict = {}  # cached after first load
 _LEARNED_WEIGHTS_TTL_DAYS = 7
+_LEARNED_WEIGHTS_TTL_WARNED = False  # log-once flag — prevents per-market spam
 
 
 _LEARNED_WEIGHTS_TTL_DAYS = 7
@@ -2003,12 +2004,15 @@ def load_learned_weights() -> dict:
     mtime = os.path.getmtime(path)
     age_secs = time.time() - mtime
     if age_secs > _LEARNED_WEIGHTS_TTL_DAYS * 86400:
-        logging.warning(
-            "[ModelWeights] learned_weights.json is %.1f days old (> %d-day TTL) — "
-            "falling back to default weights",
-            age_secs / 86400,
-            _LEARNED_WEIGHTS_TTL_DAYS,
-        )
+        global _LEARNED_WEIGHTS_TTL_WARNED
+        if not _LEARNED_WEIGHTS_TTL_WARNED:
+            logging.warning(
+                "[ModelWeights] learned_weights.json is %.1f days old (> %d-day TTL) — "
+                "falling back to default weights",
+                age_secs / 86400,
+                _LEARNED_WEIGHTS_TTL_DAYS,
+            )
+            _LEARNED_WEIGHTS_TTL_WARNED = True
         return {}
     try:
         import json as _json
@@ -4223,7 +4227,7 @@ def _metar_lock_in(
                     .hour
                 )
             except Exception:
-                _lh = 0
+                return False, 0.0, {}  # can't determine local hour — skip lock-in
 
             if _lh >= 14:
                 if _lo <= _ct <= _hi:
