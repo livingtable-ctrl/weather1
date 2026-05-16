@@ -1293,8 +1293,8 @@ def _cmd_cron_body(
                     if _sl_trade.get("side") == "no":
                         _sl_exit_price = 1.0 - _sl_exit_price
                     _paper_sl.close_paper_early(_sl_trade["id"], _sl_exit_price)
-                    _log.warning(
-                        "[StopLoss] Closed %s \u2014 price moved against position",
+                    _log.info(
+                        "[StopLoss] Closed %s \u2014 price breached stop threshold",
                         _sl_ticker,
                     )
                     print(
