@@ -230,12 +230,17 @@ def _save(data: dict) -> None:
 
 
 def verify_backup(path) -> bool:
-    """Verify a backup file's SHA-256 checksum. Returns True on success."""
+    """Verify a backup file's CRC32 (legacy) and SHA-256 checksums. Returns True on success."""
     path = Path(path)
     try:
         data = json.loads(path.read_bytes())
     except (json.JSONDecodeError, OSError) as e:
         _log.error("verify_backup: could not read %s: %s", path, e)
+        return False
+    try:
+        _validate_crc(data)
+    except CorruptionError as e:
+        _log.error("verify_backup: CRC32 mismatch in %s: %s", path, e)
         return False
     try:
         _validate_checksum(data)

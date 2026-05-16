@@ -295,8 +295,8 @@ def _is_halt_level(alert_msg: str) -> bool:
     if "EDGE DECAY" in msg:
         import re as _re
 
-        # Message format: "EDGE DECAY: average edge -5.2% in last N trades"
-        m = _re.search(r"average edge ([-\d.]+)%", msg)
+        # Message format: "EDGE DECAY: AVERAGE EDGE -5.2% IN LAST N TRADES" (uppercased by caller)
+        m = _re.search(r"AVERAGE EDGE ([-\d.]+)%", msg)
         if m:
             rate = float(m.group(1)) / 100.0
             return rate < ALERT_HALT_THRESHOLDS["EDGE_DECAY"]

@@ -54,7 +54,7 @@ def test_cron_places_paper_trade_on_strong_signal(cron_env):
     tmp_path, client, main, paper = cron_env
     from utils import STRONG_EDGE
 
-    fake_market = {"ticker": "KXHIGH-NYC-26APR17-B70", "yes_bid": 30, "yes_ask": 34}
+    fake_market = {"ticker": "KXHIGH-NYC-26APR17-B70", "yes_bid": 40, "yes_ask": 44}
     fake_enriched = dict(
         fake_market, _city="NYC", _date="2026-04-17", _target_date="2026-04-17"
     )
@@ -66,7 +66,7 @@ def test_cron_places_paper_trade_on_strong_signal(cron_env):
         "recommended_side": "yes",
         "time_risk": "LOW",
         "forecast_prob": 0.75,
-        "market_prob": 0.30,
+        "market_prob": 0.40,  # ratio=1.875 — passes MAX_MARKET_DIVERGENCE_RATIO (2.0)
         "days_out": 1,
         "target_date": "2026-04-17",
     }
@@ -274,7 +274,7 @@ def test_cron_gate_allows_when_adjusted_edge_above_threshold(cron_env):
     tmp_path, client, main, paper = cron_env
     from utils import STRONG_EDGE
 
-    fake_market = {"ticker": "KXHIGH-NYC-26APR26-B70", "yes_bid": 30, "yes_ask": 34}
+    fake_market = {"ticker": "KXHIGH-NYC-26APR26-B70", "yes_bid": 45, "yes_ask": 49}
     fake_enriched = dict(
         fake_market, _city="NYC", _date="2026-04-26", _target_date="2026-04-26"
     )
@@ -288,7 +288,7 @@ def test_cron_gate_allows_when_adjusted_edge_above_threshold(cron_env):
         "recommended_side": "yes",
         "time_risk": "LOW",
         "forecast_prob": 0.80,
-        "market_prob": 0.35,  # ratio=2.29 — passes MAX_MARKET_DIVERGENCE_RATIO (2.5)
+        "market_prob": 0.45,  # ratio=1.78 — passes MAX_MARKET_DIVERGENCE_RATIO (2.0)
         "days_out": 1,
         "target_date": "2026-04-26",
     }
