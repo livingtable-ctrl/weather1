@@ -6,18 +6,19 @@ import pytest
 
 
 @pytest.fixture(autouse=True)
-def _force_demo_env():
-    """Ensure KALSHI_ENV=demo so _build_app doesn't require DASHBOARD_PASSWORD."""
-    with patch("main.KALSHI_ENV", "demo"):
-        yield
+def _force_demo_env(monkeypatch):
+    """Set DASHBOARD_UNPROTECTED=true so _build_app doesn't require DASHBOARD_PASSWORD."""
+    monkeypatch.setenv("DASHBOARD_UNPROTECTED", "true")
+    monkeypatch.delenv("DASHBOARD_PASSWORD", raising=False)
 
 
 @pytest.fixture
-def client():
+def client(monkeypatch):
+    monkeypatch.setenv("DASHBOARD_UNPROTECTED", "true")
+    monkeypatch.delenv("DASHBOARD_PASSWORD", raising=False)
     from web_app import _build_app
 
-    with patch("main.KALSHI_ENV", "demo"):
-        app = _build_app(object())  # dummy client
+    app = _build_app(object())  # dummy client
     app.config["TESTING"] = True
     with app.test_client() as c:
         yield c

@@ -112,10 +112,17 @@ def _build_app(client):
     # and trade control endpoints that must never be unauthenticated in production.
 
     if not os.getenv("DASHBOARD_PASSWORD"):
-        raise RuntimeError(
-            "DASHBOARD_PASSWORD must be set. "
-            "The dashboard exposes kill switch and trade control endpoints."
-        )
+        if os.getenv("DASHBOARD_UNPROTECTED", "").lower() == "true":
+            _log.warning(
+                "DASHBOARD_UNPROTECTED=true — dashboard running without password protection. "
+                "Do NOT use in production."
+            )
+        else:
+            raise RuntimeError(
+                "DASHBOARD_PASSWORD must be set. "
+                "The dashboard exposes kill switch and trade control endpoints. "
+                "Set DASHBOARD_UNPROTECTED=true to run without a password (dev/test only)."
+            )
 
     @app.before_request
     def _check_auth():
