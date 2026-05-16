@@ -795,7 +795,7 @@ def test_auto_place_trades_stops_at_daily_spend_cap(monkeypatch):
 
 
 def test_check_early_exits_closes_position_when_prob_flips(tmp_path, monkeypatch):
-    """If updated prob shifts >15pp against position, close_paper_early is called."""
+    """If updated prob shifts >25pp against position, close_paper_early is called."""
     import importlib
 
     import paper
@@ -829,7 +829,8 @@ def test_check_early_exits_closes_position_when_prob_flips(tmp_path, monkeypatch
         return {"id": tid, "outcome": "early_exit", "pnl": -1.0}
 
     fake_market = {"ticker": "TEST-TICKER", "yes_bid": 48, "yes_ask": 52}
-    fake_analysis = {"forecast_prob": 0.50, "market_prob": 0.65}
+    # entry_prob=0.70 → current=0.40: shift=0.30 > 0.25 threshold → triggers early exit
+    fake_analysis = {"forecast_prob": 0.40, "market_prob": 0.50}
 
     # Patch at the module where names are resolved inside _check_early_exits (order_executor)
     import order_executor as _oe
@@ -1258,6 +1259,9 @@ def _l7b_common_patches(monkeypatch):
     )
     monkeypatch.setattr(
         _oe.execution_log, "was_ordered_this_cycle", lambda ticker, side, cycle: False
+    )
+    monkeypatch.setattr(
+        _oe.execution_log, "was_ordered_recently", lambda ticker, days=7: False
     )
     return main, paper
 

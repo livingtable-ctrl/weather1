@@ -88,6 +88,20 @@ def reset_open_meteo_circuit_breaker():
 
 
 @pytest.fixture(autouse=True)
+def isolate_execution_log(tmp_path, monkeypatch):
+    """Redirect execution_log.DB_PATH to a per-test temp file.
+
+    execution_log.db is a module-level singleton. Without isolation,
+    was_ordered_recently() sees filled rows from prior tests in the same
+    process, causing subsequent tests (same ticker) to be incorrectly skipped.
+    """
+    import execution_log
+
+    monkeypatch.setattr(execution_log, "DB_PATH", tmp_path / "execution_log.db")
+    monkeypatch.setattr(execution_log, "_initialized", False)
+
+
+@pytest.fixture(autouse=True)
 def _set_dashboard_unprotected(monkeypatch):
     """Set DASHBOARD_UNPROTECTED=true so web_app imports/builds don't require DASHBOARD_PASSWORD."""
     monkeypatch.setenv("DASHBOARD_UNPROTECTED", "true")
