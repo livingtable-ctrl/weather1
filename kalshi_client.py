@@ -28,11 +28,41 @@ _kalshi_cb_write = CircuitBreaker(
 
 
 def _check_key_permissions(key_path) -> None:
-    """Warn if the private key file is readable by group or others (Unix only)."""
+    """Warn if the private key file is readable by group/others (Unix) or
+    by accounts other than the current user (Windows via icacls)."""
     import platform
     import stat as _stat
 
-    if platform.system() == "Windows":
+    system = platform.system()
+    if system == "Windows":
+        # P2-G: restrict key file to current user only using icacls.
+        # icacls is available on all modern Windows versions (Vista+).
+        import subprocess
+
+        try:
+            # Remove inherited permissions, grant current user Full Control only.
+            subprocess.run(
+                [
+                    "icacls",
+                    str(key_path),
+                    "/inheritance:r",  # remove inherited entries
+                    "/grant:r",
+                    f"{platform.node()}\\{__import__('os').getlogin()}:(F)",
+                ],
+                check=True,
+                capture_output=True,
+                timeout=10,
+            )
+        except FileNotFoundError:
+            pass  # icacls not available (e.g. wine/WSL) — skip silently
+        except Exception as _exc:
+            _log.warning(
+                "Could not restrict key file permissions via icacls (%s): %s. "
+                "Ensure %s is readable only by your user account.",
+                key_path,
+                _exc,
+                key_path,
+            )
         return
     try:
         mode = key_path.stat().st_mode
@@ -60,7 +90,8 @@ def _build_session() -> requests.Session:
     retry = Retry(
         total=3,
         backoff_factor=1.0,
-        status_forcelist={429, 500, 502, 503},
+        # P2-F: 504 added — consistent with _RETRY_STATUSES which already included it
+        status_forcelist={429, 500, 502, 503, 504},
         allowed_methods={"GET", "DELETE"},  # POST excluded — orders must not auto-retry
         respect_retry_after_header=True,
         raise_on_status=False,
@@ -119,6 +150,9 @@ def _request_with_retry(method: str, url: str, **kwargs) -> requests.Response:
         log_api_request(method, endpoint, resp.status_code, elapsed_ms, error=error_str)
     except Exception as _e:
         _log.debug("_request_with_retry: log_api_request failed: %s", _e)
+    # P2-F: raise for any HTTP error so callers that omit raise_for_status()
+    # never accidentally receive a silent 4xx/5xx response object.
+    resp.raise_for_status()
     return resp
 
 

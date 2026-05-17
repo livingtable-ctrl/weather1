@@ -265,9 +265,17 @@ def purge_old_predictions(retention_days: int = 730) -> int:
     cutoff = f"-{retention_days} days"
     init_db()
     with _conn() as con:
-        con.execute(
+        # Item 24: only delete predictions that have a SETTLED outcome older
+        # than the retention cutoff.  The previous query used
+        # "NOT IN (SELECT ticker FROM outcomes)", which would also delete
+        # unsettled predictions that simply haven't received an outcome row
+        # yet — effectively purging open trades prematurely.
+        #
+        # Order matters: delete predictions BEFORE outcomes so the JOIN in
+        # the predictions subquery can still find the outcome rows.
+        result = con.execute(
             """
-            DELETE FROM outcomes
+            DELETE FROM predictions
             WHERE ticker IN (
                 SELECT p.ticker FROM predictions p
                 JOIN outcomes o ON p.ticker = o.ticker
@@ -276,11 +284,12 @@ def purge_old_predictions(retention_days: int = 730) -> int:
             """,
             (cutoff,),
         )
-        result = con.execute(
+        # Delete orphaned outcome rows for the tickers we just removed.
+        con.execute(
             """
-            DELETE FROM predictions
-            WHERE ticker NOT IN (SELECT ticker FROM outcomes)
-              AND predicted_at < datetime('now', ?)
+            DELETE FROM outcomes
+            WHERE ticker NOT IN (SELECT ticker FROM predictions)
+              AND settled_at < datetime('now', ?)
             """,
             (cutoff,),
         )
