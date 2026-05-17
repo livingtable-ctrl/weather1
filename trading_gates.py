@@ -13,7 +13,15 @@ class LiveTradingGate:
 
     def check(self) -> tuple[bool, str]:
         """Return (allowed, reason). Fail-closed: any exception → blocked."""
-        kalshi_env = os.getenv("KALSHI_ENV", "demo")
+        # Lazy import avoids circular dependency (main imports trading_gates).
+        # Fall back to env var if main is not yet importable (e.g. unit tests
+        # that don't patch main.KALSHI_ENV).
+        try:
+            import main as _main  # noqa: PLC0415
+
+            kalshi_env = _main.KALSHI_ENV
+        except Exception:
+            kalshi_env = os.getenv("KALSHI_ENV", "demo")
         if kalshi_env != "prod":
             return False, f"KALSHI_ENV={kalshi_env}, not prod"
 
