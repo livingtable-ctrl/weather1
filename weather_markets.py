@@ -4664,7 +4664,7 @@ def analyze_trade(enriched: dict) -> dict | None:
         elif cond_type == "between" and p_win_gaussian is not None:
             # Use Gaussian directly for "between" conditions.  raw_fraction
             # is too coarse here — with only 2-3 models each is either inside or
-            # outside the 1°F bucket, giving steps of 0 / 0.5 / 1.0.  The Gaussian
+            # outside the 2°F bucket, giving steps of 0 / 0.5 / 1.0.  The Gaussian
             # CDF difference gives a continuous, calibrated estimate instead.
             gauss_prob = p_win_gaussian
 
@@ -4737,9 +4737,9 @@ def analyze_trade(enriched: dict) -> dict | None:
         live_obs: dict | None = None
         obs_override: float | None = None
         # Skip obs for "between" markets — current temperature tells us where the
-        # reading is NOW, not where the daily high will peak; a 1°F band is too
-        # narrow for an intra-day obs to be reliable.  Without this guard the obs
-        # gets 85-90% blend weight after 2 PM and produces wildly miscalibrated
+        # reading is NOW, not where the daily high will peak; even a 2°F band is
+        # too narrow for an intra-day obs to be reliable.  Without this guard the
+        # obs gets 85-90% blend weight after 2 PM and produces wildly miscalibrated
         # probabilities (Brier 0.40 observed in 29 settled "between" predictions).
         if days_out == 0 and condition.get("type") != "between":
             try:

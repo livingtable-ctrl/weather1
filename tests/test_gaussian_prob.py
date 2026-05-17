@@ -575,7 +575,9 @@ class TestBetweenObsDisabled:
     Historical calibration on 29 settled "between" predictions showed Brier
     0.405 — driven by obs getting 85-90% blend weight after 2 PM with
     sigma=0.25, treating current temperature as confirmation of the daily high.
-    A 1°F band is too narrow for an intra-day observation to be predictive.
+    Kalshi between-buckets are 2°F wide (B70.5 → [69.5, 71.5]); an intra-day
+    obs is still not reliable enough to anchor the probability for a 2°F band
+    because the daily high can drift ±3-4°F from the current reading.
     """
 
     def _make_between_enriched_same_day(self):
@@ -584,18 +586,22 @@ class TestBetweenObsDisabled:
         today = datetime.now(UTC).date()
         return {
             "ticker": f"KXHIGHNY-{today.strftime('%d%b%y').upper()}-B70.5",
-            "title": "NYC high between 70 and 71°F",
+            # Band is [69.5, 71.5] (2°F wide, centered on 70.5).
+            # forecast high (75°F) is clearly above the band so the model-only
+            # probability is low; obs (70.5°F, in-band) is suppressed — that
+            # tension is exactly what these tests verify.
+            "title": "NYC high between 69.5 and 71.5°F",
             "_city": "NYC",
             "_date": today,
             "_hour": None,
             "_forecast": {
-                "high_f": 70.5,
-                "low_f": 60.0,
+                "high_f": 75.0,
+                "low_f": 63.0,
                 "precip_in": 0.0,
                 "date": today.isoformat(),
                 "city": "NYC",
                 "models_used": 3,
-                "high_range": (69.0, 72.0),
+                "high_range": (73.5, 76.5),
             },
             "yes_bid": 0.15,
             "yes_ask": 0.20,
@@ -617,6 +623,9 @@ class TestBetweenObsDisabled:
         fake_obs = {"temp_f": 70.4, "humidity": 55, "wind_mph": 5}
 
         with (
+            # Disable METAR lockout so the test exercises the obs-suppression
+            # path rather than the lock-in fast-path.
+            patch.object(wm, "_metar_lock_in", return_value=(False, 0.0, {})),
             patch.object(
                 wm,
                 "get_ensemble_temps",
@@ -662,25 +671,36 @@ class TestBetweenObsDisabled:
     def test_between_obs_suppressed_forecast_prob_is_low(self):
         """Obs suppression is the mechanism keeping 'between' probability calibrated.
 
-        Setup: ensemble mean ~74°F (only 3/20 members in [70–71] band → ens_prob≈15%),
-        but obs=70.5°F sits dead-center in the band.  If obs were blended at its
-        typical ~80% weight it would push forecast_prob to ~0.85.  Suppression
-        must hold forecast_prob below 0.45 AND keep 'obs' out of blend_sources.
+        Setup: forecast high=75°F and ensemble mean ~73.75°F are both well above
+        the B70.5 band [69.5, 71.5] (2°F wide), giving a low model probability.
+        obs=70.5°F sits dead-center in the band — if obs were blended at its
+        typical ~80% weight it would push forecast_prob high.  Suppression must
+        hold forecast_prob below 0.45 AND keep 'obs' out of blend_sources.
+
+        Ensemble spread 69–78.5°F: members 69.5, 70.0, 70.5, 71.0, 71.5 land in
+        band → ens_prob=5/20=25%.  The forecast (75°F, well above band) keeps
+        the Gaussian contribution low, so without obs the final blend stays low.
         """
         from unittest.mock import patch
 
         import weather_markets as wm
 
         enriched = self._make_between_enriched_same_day()
-        # obs dead-center in [70–71]: maximum impact if suppression were absent
+        # obs dead-center in [69.5–71.5]: maximum impact if suppression were absent
         obs_in_band = {"temp_f": 70.5, "humidity": 55, "wind_mph": 5}
 
-        # Ensemble spread 69–78.5°F: 70.0, 70.5, 71.0 land in band → ens_prob=3/20=15%.
-        # Mean (~73.75°F) is clearly outside the band, so the low final probability
-        # comes from obs suppression, not from the ensemble coincidentally missing the band.
+        # Ensemble spread 69–78.5°F: 69.5, 70.0, 70.5, 71.0, 71.5 land in
+        # [69.5, 71.5] band → ens_prob=5/20=25%.  Mean (~73.75°F) is above the
+        # band; the Gaussian contribution from forecast_temp=75°F is small.
         spread_temps = [69.0 + i * 0.5 for i in range(20)]
 
         with (
+            # Disable METAR lockout so the test exercises the obs-suppression
+            # path rather than the lock-in fast-path.  (With a 2°F bucket
+            # [69.5, 71.5], today's actual METAR reading can land in-band and
+            # trigger lockout, which would bypass the ensemble pipeline entirely
+            # and make the assertion trivially wrong.)
+            patch.object(wm, "_metar_lock_in", return_value=(False, 0.0, {})),
             patch.object(wm, "get_ensemble_temps", return_value=spread_temps),
             patch.object(wm, "fetch_temperature_nbm", return_value=73.5),
             patch.object(wm, "fetch_temperature_ecmwf", return_value=74.0),
@@ -700,9 +720,8 @@ class TestBetweenObsDisabled:
             f"obs suppressed for 'between' markets; got blend_sources={blend}"
         )
         assert fp < 0.45, (
-            f"forecast_prob={fp:.3f} — obs=70.5 dead-center in [70–71] band "
-            f"would push this to ~0.85 without suppression; "
-            f"suppression must hold it below 0.45"
+            f"forecast_prob={fp:.3f} — forecast=75°F well above [69.5–71.5] band "
+            f"and obs suppressed; final blend should stay below 0.45"
         )
 
 
