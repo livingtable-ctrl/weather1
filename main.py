@@ -4206,7 +4206,6 @@ _CALIBRATE_DATA_DIR: "Path | None" = None  # overridable in tests
 
 def cmd_calibrate() -> None:
     """Recompute seasonal and per-city blend weights from settled predictions."""
-    import json
 
     from calibration import (
         calibrate_city_weights,
@@ -4241,9 +4240,11 @@ def cmd_calibrate() -> None:
     city_path = data_dir / "city_weights.json"
     condition_path = data_dir / "condition_weights.json"
 
-    seasonal_path.write_text(json.dumps(seasonal, indent=2))
-    city_path.write_text(json.dumps(city, indent=2))
-    condition_path.write_text(json.dumps(condition, indent=2))
+    import safe_io as _safe_io
+
+    _safe_io.atomic_write_json(seasonal, seasonal_path)
+    _safe_io.atomic_write_json(city, city_path)
+    _safe_io.atomic_write_json(condition, condition_path)
 
     if seasonal:
         print(f"\nSeasonal weights ({len(seasonal)} seasons calibrated):")
@@ -4304,8 +4305,8 @@ def cmd_calibrate() -> None:
         platt = _train_platt(_platt_rows, min_samples=50)
         if platt:
             _platt_path = data_dir / "platt_models.json"
-            _platt_path.write_text(
-                json.dumps({city: list(ab) for city, ab in platt.items()}, indent=2)
+            _safe_io.atomic_write_json(
+                {city: list(ab) for city, ab in platt.items()}, _platt_path
             )
             print(green(f"\nPlatt models trained for: {', '.join(sorted(platt))}"))
             print(f"  Written to: {_platt_path}")

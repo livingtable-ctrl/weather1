@@ -314,19 +314,34 @@ def _load_obs_nolock() -> list[dict]:
 
 
 def _save_obs_nolock(records: list[dict]) -> None:
-    """Save without acquiring _OBS_LOCK — caller must hold the lock."""
+    """Save without acquiring _OBS_LOCK — caller must hold the lock.
+
+    Writes atomically (temp file → os.replace) so a crash mid-write never
+    produces a partial/empty observations file.
+    """
+    import os as _os
+
     try:
         _OBS_PATH.parent.mkdir(parents=True, exist_ok=True)
-        _OBS_PATH.write_text(json.dumps(records, indent=2), encoding="utf-8")
+        payload = json.dumps(records, indent=2)
+        tmp = _OBS_PATH.with_suffix(".tmp")
+        tmp.write_text(payload, encoding="utf-8")
+        _os.replace(tmp, _OBS_PATH)
     except Exception as exc:
         _log.debug("metar: could not save observations: %s", exc)
 
 
 def _save_obs(records: list[dict]) -> None:
+    """Save observations, acquiring _OBS_LOCK internally."""
+    import os as _os
+
     try:
         _OBS_PATH.parent.mkdir(parents=True, exist_ok=True)
+        payload = json.dumps(records, indent=2)
+        tmp = _OBS_PATH.with_suffix(".tmp")
         with _OBS_LOCK:
-            _OBS_PATH.write_text(json.dumps(records, indent=2), encoding="utf-8")
+            tmp.write_text(payload, encoding="utf-8")
+            _os.replace(tmp, _OBS_PATH)
     except Exception as exc:
         _log.debug("metar: could not save observations: %s", exc)
 

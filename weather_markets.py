@@ -487,9 +487,9 @@ def _save_forecast_disk_entry(cache_key: tuple, data: dict) -> None:
                     for k, v in raw.items()
                     if now - v.get("ts_posix", 0) < _FORECAST_CACHE_TTL
                 }
-                _FORECAST_DISK_CACHE_PATH.write_text(
-                    _json.dumps(raw, default=str), encoding="utf-8"
-                )
+                import safe_io as _safe_io
+
+                _safe_io.atomic_write_json(raw, _FORECAST_DISK_CACHE_PATH)
         except Exception as exc:
             _log.debug("forecast disk cache write failed (non-fatal): %s", exc)
 
