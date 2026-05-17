@@ -218,7 +218,7 @@ def load_seasonal_weights(
     try:
         return json.loads(p.read_text())
     except Exception as exc:
-        _log.debug("load_seasonal_weights: could not read %s: %s", p, exc)
+        _log.warning("load_seasonal_weights: could not read %s: %s", p, exc)
         return {}
 
 
@@ -230,7 +230,7 @@ def load_city_weights(path: str | Path | None = None) -> dict[str, dict[str, flo
     try:
         return json.loads(p.read_text())
     except Exception as exc:
-        _log.debug("load_city_weights: could not read %s: %s", p, exc)
+        _log.warning("load_city_weights: could not read %s: %s", p, exc)
         return {}
 
 
@@ -311,7 +311,7 @@ def load_condition_weights(
     try:
         return json.loads(p.read_text())
     except Exception as exc:
-        _log.debug("load_condition_weights: could not read %s: %s", p, exc)
+        _log.warning("load_condition_weights: could not read %s: %s", p, exc)
         return {}
 
 

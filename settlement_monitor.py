@@ -206,9 +206,21 @@ def run_settlement_monitor(client, duration_minutes: int = 120) -> None:
                         if m.get("status") == "open":
                             ticker = m.get("ticker", "")
                             subtitle = m.get("subtitle", "")
-                            match = re.search(r"(\d+)", subtitle)
+                            # R36: capture optional decimal component so
+                            # subtitles like "above 80.5°F" parse correctly.
+                            match = re.search(r"(\d+(?:\.\d+)?)", subtitle)
                             if match:
                                 threshold = float(match.group(1))
+                                # Plausibility guard: reject obviously wrong
+                                # parses (e.g. year digits from the ticker).
+                                if not (-60.0 <= threshold <= 130.0):
+                                    _log.debug(
+                                        "settlement_monitor: implausible threshold "
+                                        "%.1f from subtitle %r — skipping",
+                                        threshold,
+                                        subtitle,
+                                    )
+                                    continue
                                 direction = (
                                     "above" if "above" in subtitle.lower() else "below"
                                 )

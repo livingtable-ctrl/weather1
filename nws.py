@@ -193,13 +193,15 @@ def get_nws_daily_forecast(city: str, coords: tuple) -> dict[str, dict]:
     try:
         grid_id, gx, gy = _get_gridpoint(lat, lon)
         data = _get(f"{NWS_BASE}/gridpoints/{grid_id}/{gx},{gy}/forecast")
-        _nws_cb.record_success()
     except Exception as exc:
         _nws_cb.record_failure()
         _log.warning("NWS daily forecast failed for %s: %s", city, exc)
         return {}
 
+    # R30: validate BEFORE recording success so a malformed-but-HTTP-200
+    # response doesn't credit the circuit breaker.
     validate_nws_response(data)
+    _nws_cb.record_success()
     periods = data.get("properties", {}).get("periods", [])
     result: dict[str, dict] = {}
 

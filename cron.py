@@ -446,6 +446,15 @@ def _cmd_cron_body(
     ctx.write_cron_running_flag()
     ctx.check_startup_orders()
 
+    # Item 19: validate weight files at startup so missing/malformed entries
+    # are surfaced in the log before any trade analysis begins.
+    try:
+        from calibration import validate_weight_files as _vwf
+
+        _vwf()
+    except Exception as _vwf_exc:
+        _log.warning("cmd_cron: validate_weight_files failed: %s", _vwf_exc)
+
     # Reconcile any 'pending' live orders left by a previous crash
     if client is not None:
         try:
