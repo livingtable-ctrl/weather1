@@ -189,6 +189,58 @@ class TestAutoPlaceTradeGuards:
             f"Expected trade skipped when cost would exceed daily cap, got {result}"
         )
 
+    def test_paused_drawdown_returns_zero(self, monkeypatch):
+        """P2-B: is_paused_drawdown=True must block all auto-trades and return 0."""
+        import execution_log
+        import main
+
+        _patch_paper_guards(monkeypatch, paused_drawdown=True)
+        monkeypatch.setattr(main, "_daily_paper_spend", lambda: 0.0)
+        monkeypatch.setattr(
+            execution_log, "was_traded_today", lambda ticker, side: False
+        )
+        monkeypatch.setattr(
+            execution_log,
+            "was_ordered_this_cycle",
+            lambda ticker, side, cycle: False,
+        )
+
+        result = main._auto_place_trades([_make_opp()], client=None, live=False)
+        assert result == 0, (
+            f"Expected 0 trades when is_paused_drawdown=True, got {result}"
+        )
+
+    def test_concurrent_position_cap_returns_zero(self, monkeypatch):
+        """P2-B: when open trade count >= MAX_CONCURRENT_POSITIONS, no new trades."""
+        import execution_log
+        import main
+        import paper
+
+        max_pos = 3
+        monkeypatch.setenv("MAX_CONCURRENT_POSITIONS", str(max_pos))
+
+        _patch_paper_guards(monkeypatch, loss_halted=False)
+        # Fill open trades up to the cap
+        fake_open = [
+            {"ticker": f"KXFAKE-{i}", "side": "yes", "qty": 1, "entry_price": 0.5}
+            for i in range(max_pos)
+        ]
+        monkeypatch.setattr(paper, "get_open_trades", lambda: fake_open)
+        monkeypatch.setattr(main, "_daily_paper_spend", lambda: 0.0)
+        monkeypatch.setattr(
+            execution_log, "was_traded_today", lambda ticker, side: False
+        )
+        monkeypatch.setattr(
+            execution_log,
+            "was_ordered_this_cycle",
+            lambda ticker, side, cycle: False,
+        )
+
+        result = main._auto_place_trades([_make_opp()], client=None, live=False)
+        assert result == 0, (
+            f"Expected 0 trades when open positions == MAX_CONCURRENT_POSITIONS, got {result}"
+        )
+
 
 # ── Task 11 (P2.5): Paper/live separation ────────────────────────────────────
 

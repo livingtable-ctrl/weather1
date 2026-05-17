@@ -104,12 +104,33 @@ class TestTracker(unittest.TestCase):
         self.assertEqual(bias, 0.0)
 
     def test_log_outcome_replace(self):
-        """Logging outcome twice replaces the first."""
-        tracker.log_outcome("TK1", True)
-        tracker.log_outcome("TK1", False)
-        # No crash; most recent value should be False (0)
-        tracker.get_history()
-        # Outcome is stored independently; just verify it doesn't raise
+        """P2-C: log_outcome refuses to overwrite an existing finalized outcome (by design).
+
+        The first call returns True (newly recorded).
+        The second call for the same ticker returns False (no-op — refuses to overwrite).
+        The stored value must remain the ORIGINAL value, not the second call's value.
+        """
+        first = tracker.log_outcome("TK1", True)
+        second = tracker.log_outcome("TK1", False)
+
+        self.assertTrue(
+            first, "First log_outcome call should return True (newly recorded)"
+        )
+        self.assertFalse(
+            second, "Second log_outcome call should return False (refused to overwrite)"
+        )
+
+        # Confirm the DB still holds the original value (True / 1), not the second call's value.
+        import sqlite3
+
+        with sqlite3.connect(str(tracker.DB_PATH)) as con:
+            row = con.execute(
+                "SELECT settled_yes FROM outcomes WHERE ticker = ?", ("TK1",)
+            ).fetchone()
+        self.assertIsNotNone(row, "Outcome row must exist in DB")
+        self.assertEqual(
+            row[0], 1, "Stored value must be 1 (True), not overwritten by second call"
+        )
 
     def test_sync_outcomes_records_finalized(self):
         """sync_outcomes should record YES outcome for a finalized market."""

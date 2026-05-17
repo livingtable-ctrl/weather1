@@ -66,3 +66,24 @@ def test_gate_skipped_when_micro_live_explicitly_false(monkeypatch):
     monkeypatch.setattr(utils, "MIN_BRIER_SAMPLES", 30)
 
     main._check_graduation_gate()
+
+
+def test_gate_fails_closed_when_db_unavailable(monkeypatch):
+    """P2-D: Gate must fail-closed when the tracker DB is unavailable.
+
+    If count_settled_predictions raises (e.g. DB locked or missing),
+    the gate must NOT silently pass — it should propagate the error so
+    that live trading is blocked, not accidentally allowed.
+    """
+    monkeypatch.setenv("ENABLE_MICRO_LIVE", "true")
+
+    import main
+    import tracker
+
+    def _raise_db_error():
+        raise RuntimeError("DB unavailable")
+
+    monkeypatch.setattr(tracker, "count_settled_predictions", _raise_db_error)
+
+    with pytest.raises(RuntimeError):
+        main._check_graduation_gate()

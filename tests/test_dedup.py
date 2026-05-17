@@ -142,3 +142,70 @@ def test_auto_place_trades_skips_already_traded_today(tmp_path, monkeypatch):
 
     placed = main._auto_place_trades([opp], client=None)
     assert placed == 0, "Must not place a trade for a ticker already traded today"
+
+
+def test_live_mode_dedup_blocks_already_traded_ticker(tmp_path, monkeypatch):
+    """P2-A: dedup guard must fire in live=True mode, not just paper mode.
+
+    When a ticker has already been traded today (logged in execution_log),
+    _auto_place_trades(..., live=True) must skip it rather than placing a
+    real Kalshi order.  If live_order_calls is empty, the guard worked.
+    """
+    import datetime
+    import time
+
+    import execution_log
+    import main
+    import paper
+
+    monkeypatch.setattr(execution_log, "DB_PATH", tmp_path / "exec.db")
+    execution_log._initialized = False
+    execution_log.init_log()
+    monkeypatch.setattr(paper, "DATA_PATH", tmp_path / "paper_trades.json")
+
+    # Pre-log the ticker as already traded today (live=True path) so the guard fires.
+    execution_log.log_order("KXTEST-LIVE", "yes", 5, 0.60, "limit", "filled", live=True)
+
+    monkeypatch.setattr("paper.is_paused_drawdown", lambda: False)
+    monkeypatch.setattr("paper.is_daily_loss_halted", lambda c: False)
+    monkeypatch.setattr("paper.is_streak_paused", lambda: False)
+    monkeypatch.setattr("paper.get_open_trades", lambda: [])
+    monkeypatch.setattr("paper.kelly_quantity", lambda kf, p, cap=None, method=None: 5)
+    monkeypatch.setattr(
+        "paper.portfolio_kelly_fraction", lambda kf, city, dt, side="yes": 0.10
+    )
+
+    import order_executor as _oe
+
+    monkeypatch.setattr(_oe, "_daily_paper_spend", lambda: 0.0)
+
+    # Capture any calls to _place_live_order to assert the guard fired before it.
+    live_order_calls: list = []
+
+    def _fake_live_order(**kwargs):
+        live_order_calls.append(kwargs)
+        return False, 0.0
+
+    monkeypatch.setattr(main, "_place_live_order", _fake_live_order)
+
+    opp = {
+        "ticker": "KXTEST-LIVE",
+        "recommended_side": "yes",
+        "_city": "NYC",
+        "_date": datetime.date.today() + datetime.timedelta(days=1),
+        "ci_adjusted_kelly": 0.10,
+        "fee_adjusted_kelly": 0.10,
+        "market_prob": 0.45,
+        "forecast_prob": 0.60,
+        "net_edge": 0.20,
+        "model_consensus": True,
+        "data_fetched_at": time.time(),
+    }
+
+    placed = main._auto_place_trades([opp], client=None, live=True)
+    assert placed == 0, (
+        "live=True must not place a trade for a ticker already traded today"
+    )
+    assert live_order_calls == [], (
+        "_place_live_order must not be called when dedup guard fires"
+    )

@@ -53,6 +53,7 @@ class TestMLBias:
 
 # ── Phase 2: per-city Platt scaling ──────────────────────────────────────────
 
+
 def test_train_platt_per_city_returns_coefficients():
     """train_platt_per_city returns {city: (A, B)} for cities with >=200 samples."""
     import random
@@ -63,8 +64,13 @@ def test_train_platt_per_city_returns_coefficients():
     rows = []
     for _ in range(250):
         p = random.uniform(0.3, 0.8)
-        rows.append({"city": "NYC", "our_prob": p,
-                     "settled_yes": 1 if random.random() < p else 0})
+        rows.append(
+            {
+                "city": "NYC",
+                "our_prob": p,
+                "settled_yes": 1 if random.random() < p else 0,
+            }
+        )
     for _ in range(50):
         rows.append({"city": "Chicago", "our_prob": 0.6, "settled_yes": 1})
 
@@ -91,3 +97,26 @@ def test_apply_platt_identity_calibration():
     models = {"NYC": (1.0, 0.0)}
     p = ml_bias.apply_platt_per_city("NYC", 0.70, models)
     assert 0.60 <= p <= 0.80
+
+
+def test_apply_platt_per_city_monotonicity():
+    """P2-I: apply_platt_per_city must preserve monotonic ordering.
+
+    If raw_p1 < raw_p2 then calibrated_p1 <= calibrated_p2.
+    Platt scaling (sigmoid of a linear transform) is monotone when A > 0,
+    so this invariant must hold for any valid trained model.
+    """
+    import ml_bias
+
+    # Use a non-trivial but positive-slope model (A=2.0, B=-0.5)
+    models = {"NYC": (2.0, -0.5)}
+
+    raw_probs = [0.10, 0.20, 0.30, 0.40, 0.50, 0.60, 0.70, 0.80, 0.90]
+    calibrated = [ml_bias.apply_platt_per_city("NYC", p, models) for p in raw_probs]
+
+    for i in range(len(calibrated) - 1):
+        assert calibrated[i] <= calibrated[i + 1], (
+            f"Monotonicity violated at index {i}: "
+            f"apply_platt({raw_probs[i]})={calibrated[i]:.4f} > "
+            f"apply_platt({raw_probs[i + 1]})={calibrated[i + 1]:.4f}"
+        )
