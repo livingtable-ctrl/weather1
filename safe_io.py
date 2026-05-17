@@ -96,6 +96,9 @@ def atomic_write_json(
     emergency_candidates = []
     if fallback_dir:
         emergency_candidates.append(Path(fallback_dir))
+    # P2-H: prefer the project data dir so the emergency copy is in a monitored,
+    # operator-visible location.  System temp is kept as a last-resort fallback.
+    emergency_candidates.append(project_root() / "data")
     emergency_candidates.append(Path(tempfile.gettempdir()))
 
     for fb_dir in emergency_candidates:

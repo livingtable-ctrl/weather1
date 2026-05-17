@@ -4419,7 +4419,8 @@ def analyze_trade(enriched: dict) -> dict | None:
     # ── Spread gate: skip illiquid markets with wide bid-ask spreads ─────────
     _prices = parse_market_price(enriched)
     # Skip markets where both bid and ask are zero (no real quote).
-    if not _prices.get("has_quote", True):
+    # R28: default False — a missing has_quote key means no real quote, not a valid one.
+    if not _prices.get("has_quote", False):
         _log.debug(
             "analyze_trade[%s]: gate=no_quote bid=%.3f ask=%.3f",
             _tkr,
