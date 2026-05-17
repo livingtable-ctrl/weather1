@@ -3901,7 +3901,6 @@ def _analyze_precip_trade(
     else:
         entry_side_edge = (1.0 - blended_prob) - _esmp
     # Always pass fee_rate so Kelly is fee-adjusted; fee-free Kelly overstates size.
-    kelly = kelly_fraction(p_win, entry_price, fee_rate=KALSHI_FEE_RATE)
     fee_kel = kelly_fraction(p_win, entry_price, fee_rate=KALSHI_FEE_RATE)
 
     # ── Bootstrap CI on precip ensemble ──────────────────────────────────────
@@ -3968,7 +3967,7 @@ def _analyze_precip_trade(
         "ci_low": ci_low,
         "ci_high": ci_high,
         "ci_width": round(ci_high - ci_low, 4),
-        "kelly": kelly,
+        "kelly": fee_kel,
         "fee_adjusted_kelly": fee_kel,
         "ci_adjusted_kelly": ci_adj_kelly,
         "time_risk": "HIGH",
@@ -4094,7 +4093,6 @@ def _analyze_snow_trade(
     else:
         entry_side_edge = (1.0 - blended_prob) - _esmp
     # Always pass fee_rate so Kelly is fee-adjusted; fee-free Kelly overstates size.
-    kelly = kelly_fraction(p_win, entry_price, fee_rate=KALSHI_FEE_RATE)
     fee_kel = kelly_fraction(p_win, entry_price, fee_rate=KALSHI_FEE_RATE)
 
     ci_low, ci_high = blended_prob, blended_prob
@@ -4147,7 +4145,7 @@ def _analyze_snow_trade(
         "ci_low": ci_low,
         "ci_high": ci_high,
         "ci_width": round(ci_high - ci_low, 4),
-        "kelly": kelly,
+        "kelly": fee_kel,
         "fee_adjusted_kelly": fee_kel,
         "ci_adjusted_kelly": ci_adj_kelly,
         "time_risk": "HIGH",

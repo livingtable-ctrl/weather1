@@ -406,3 +406,114 @@ class TestPollPendingOrdersExtended:
         assert order["settled_at"] is not None
         # pnl = 3 * (1 - 0.60) * (1 - 0.07) = 3 * 0.40 * 0.93 = 1.116
         assert order["pnl"] == pytest.approx(1.116, rel=1e-3)
+
+
+class TestPlaceLiveOrderDedup:
+    """_place_live_order must return (False, 0.0) when the ticker was already
+    ordered this cycle — testing the dedup check INSIDE the function itself,
+    not the higher-level _auto_place_trades wrapper that mocks it away."""
+
+    def test_returns_false_when_already_ordered_this_cycle(self):
+        import os
+        from unittest.mock import MagicMock, patch
+
+        import order_executor
+
+        ticker = "KXHIGHNY-26MAY17-T72"
+        cycle = "18z"
+        mock_client = MagicMock()
+
+        analysis = {
+            "market": {"yes_bid": 60, "yes_ask": 65, "no_bid": 35},
+            "kelly_quantity": 3,
+            "edge": 0.12,
+        }
+        config = {
+            "daily_loss_limit": 200,
+            "max_open_positions": 10,
+            "max_trade_dollars": 50,
+        }
+
+        with (
+            # Pass the env / gate checks
+            patch("trading_gates.pre_live_trade_check", return_value=None),
+            patch.dict(
+                os.environ,
+                {"KALSHI_ENV": "prod", "LIVE_TRADING_ENABLED": "true"},
+            ),
+            # Daily loss and open-position checks pass
+            patch("order_executor.execution_log.get_today_live_loss", return_value=0),
+            patch("order_executor._count_open_live_orders", return_value=0),
+            # Dedup: ticker already ordered this cycle
+            patch(
+                "order_executor.execution_log.was_ordered_this_cycle",
+                return_value=True,
+            ),
+        ):
+            placed, cost = order_executor._place_live_order(
+                ticker=ticker,
+                side="yes",
+                analysis=analysis,
+                config=config,
+                client=mock_client,
+                cycle=cycle,
+            )
+
+        assert placed is False, (
+            "should not place when ticker already ordered this cycle"
+        )
+        assert cost == 0.0
+        mock_client.place_order.assert_not_called()
+
+    def test_places_order_when_not_yet_ordered(self):
+        """Positive control: order fires when dedup finds no prior order this cycle."""
+        import os
+        from unittest.mock import MagicMock, patch
+
+        import order_executor
+
+        ticker = "KXHIGHNY-26MAY17-T72"
+        cycle = "18z"
+        mock_client = MagicMock()
+        mock_client.place_order.return_value = {
+            "order": {"id": "ord_abc", "status": "resting"}
+        }
+
+        analysis = {
+            "market": {"yes_bid": 60, "yes_ask": 65, "no_bid": 35},
+            "kelly_quantity": 3,
+            "edge": 0.12,
+        }
+        config = {
+            "daily_loss_limit": 200,
+            "max_open_positions": 10,
+            "max_trade_dollars": 50,
+        }
+
+        with (
+            patch("trading_gates.pre_live_trade_check", return_value=None),
+            patch.dict(
+                os.environ,
+                {"KALSHI_ENV": "prod", "LIVE_TRADING_ENABLED": "true"},
+            ),
+            patch("order_executor.execution_log.get_today_live_loss", return_value=0),
+            patch("order_executor._count_open_live_orders", return_value=0),
+            # Dedup: not yet ordered this cycle
+            patch(
+                "order_executor.execution_log.was_ordered_this_cycle",
+                return_value=False,
+            ),
+            patch("order_executor.execution_log.log_order", return_value=1),
+            patch("order_executor.execution_log.log_order_result"),
+        ):
+            placed, cost = order_executor._place_live_order(
+                ticker=ticker,
+                side="yes",
+                analysis=analysis,
+                config=config,
+                client=mock_client,
+                cycle=cycle,
+            )
+
+        assert placed is True
+        mock_client.place_order.assert_called_once()

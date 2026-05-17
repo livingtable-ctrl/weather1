@@ -123,7 +123,9 @@ class CircuitBreaker:
                 "saved_at": time.time(),
             }
             _CB_STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
-            _CB_STATE_PATH.write_text(json.dumps(state))
+            from safe_io import atomic_write_json as _atomic_write_json
+
+            _atomic_write_json(state, _CB_STATE_PATH)
         except Exception as exc:
             _log.debug("CB state save failed (non-critical): %s", exc)
 

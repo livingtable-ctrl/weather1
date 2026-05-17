@@ -653,7 +653,7 @@ def place_paper_order(
             if active:
                 variant = min(active, key=lambda v: _ab_state[v]["trades"])
                 _ticker_map[ticker] = variant
-                _ab_ticker_map_path.write_text(json.dumps(_ticker_map))
+                atomic_write_json(_ticker_map, _ab_ticker_map_path)
     except Exception:
         pass
     return trade
@@ -710,7 +710,7 @@ def settle_paper_trade(trade_id: int, outcome_yes: bool) -> dict:
                             variants={"control": 0.08, "higher": 0.10, "lower": 0.06},
                         )
                         _ab_test.record_outcome(_variant, won, abs(pnl))
-                        _ticker_map_path.write_text(_json.dumps(_ticker_map))
+                        atomic_write_json(_ticker_map, _ticker_map_path)
             except Exception:
                 pass
 
