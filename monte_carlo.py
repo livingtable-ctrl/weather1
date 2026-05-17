@@ -111,12 +111,18 @@ def load_correlations_from_backtest() -> dict:
 def save_correlations(city_pairs_dict: dict) -> None:
     """
     #49: Persist city-pair correlations to data/correlations.json.
+
+    Keys may be frozensets or strings; both are converted to "CityA|CityB"
+    before serialisation so the JSON file is always valid.
     """
     import json
 
     _CORR_PATH.parent.mkdir(parents=True, exist_ok=True)
-    payload = {k: float(v) for k, v in city_pairs_dict.items()}
-    _CORR_PATH.write_text(json.dumps(payload, indent=2))
+    serialisable: dict[str, float] = {}
+    for k, v in city_pairs_dict.items():
+        key = "|".join(sorted(k)) if isinstance(k, frozenset) else str(k)
+        serialisable[key] = float(v)
+    _CORR_PATH.write_text(json.dumps(serialisable, indent=2))
 
 
 def _load_dynamic_correlations() -> dict[frozenset, float] | None:
@@ -208,8 +214,11 @@ def simulate_portfolio(
 
     from utils import KALSHI_FEE_RATE
 
-    # Build per-trade parameters including city for correlation lookup
+    # Build per-trade parameters including city for correlation lookup.
+    # active_trades mirrors trade_params so position_correlation_matrix
+    # receives exactly the same set (past-date trades are excluded from both).
     trade_params: list[dict] = []
+    active_trades: list[dict] = []  # original dicts — parallel to trade_params
     n_clamped = 0
     for t in open_trades:
         ticker = t.get("ticker", "")
@@ -254,6 +263,7 @@ def simulate_portfolio(
         win_pnl = qty * net_payout_per - cost
         loss_pnl = -cost
 
+        active_trades.append(t)
         trade_params.append(
             {
                 "win_prob": win_prob,
@@ -269,7 +279,9 @@ def simulate_portfolio(
     # position_correlation_matrix uses same-city/date and city-pair rules from paper.py.
     from paper import position_correlation_matrix
 
-    corr_mat = position_correlation_matrix(open_trades)
+    # Use active_trades (past-date trades already excluded) so the matrix
+    # dimension matches n_trades = len(trade_params).
+    corr_mat = position_correlation_matrix(active_trades)
     chol = _cholesky(corr_mat)
     if chol is None:
         repaired = _repair_psd(corr_mat)
@@ -360,9 +372,12 @@ def portfolio_var(
     A negative return means a loss; e.g. -42.10 means there's a 5% chance
     of losing more than $42.10.
     """
-    result = simulate_portfolio(open_trades, n_simulations=n_simulations)
-    return (
-        result["p5_pnl"]
-        if confidence == 0.05
-        else result[f"p{int(confidence * 100)}_pnl"]
+    result = simulate_portfolio(
+        open_trades, n_simulations=n_simulations, include_distribution=True
     )
+    dist = result.get("pnl_distribution")
+    if not dist:
+        return 0.0
+    # dist is sorted ascending; confidence=0.05 → 5th-percentile index
+    idx = max(0, min(len(dist) - 1, int(len(dist) * confidence)))
+    return dist[idx]
