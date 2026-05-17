@@ -2188,9 +2188,11 @@ def _weights_from_mae(
     weights: dict[str, float] = {}
     for model, stats in acc.items():
         city_bd = stats.get("city_breakdown", {})
-        # Prefer city-level MAE if we have enough data there
+        city_n_bd = stats.get("city_n_breakdown", {})
+        # R25: use per-city observation count (not number of distinct cities) to
+        # decide whether city-specific MAE is reliable enough to use.
         city_mae = city_bd.get(city)
-        city_n = sum(1 for _ in city_bd) if city_bd else 0
+        city_n = city_n_bd.get(city, 0)
         mae = city_mae if (city_mae is not None and city_n >= min_n) else stats["mae"]
         n = stats["n"]
         if n < min_n or mae <= 0:
@@ -2734,6 +2736,61 @@ MONTH_MAP = {
 }
 
 
+def _parse_city_from_ticker(ticker: str, title: str = "") -> str | None:
+    """
+    R24: Single source of truth for city detection from a market ticker + title.
+    Called by parse_city_date and enrich_with_forecast to avoid duplicate logic.
+    Returns the canonical city name string, or None for unrecognised markets.
+    """
+    ticker_up = ticker.upper()
+    title_lo = title.lower()
+    if "NY" in ticker_up or "new york" in title_lo:
+        return "NYC"
+    if "CHI" in ticker_up or "chicago" in title_lo:
+        return "Chicago"
+    if (
+        # L5-B: "LA" is a substring of DALLAS, PHILADELPHIA, ATLANTA — use
+        # specific series-prefix patterns or an exact hyphen-delimited segment
+        # instead of bare substring match.
+        "HIGHLA" in ticker_up
+        or "LOWLA" in ticker_up
+        or any(seg == "LA" for seg in ticker_up.split("-"))
+        or "los angeles" in title_lo
+    ):
+        return "LA"
+    if "BOS" in ticker_up or "boston" in title_lo:
+        return "Boston"
+    if "MIA" in ticker_up or "miami" in title_lo:
+        return "Miami"
+    if "TDAL" in ticker_up or "dallas" in title_lo:
+        return "Dallas"
+    if "TPHX" in ticker_up or "phoenix" in title_lo:
+        return "Phoenix"
+    if "TSEA" in ticker_up or "seattle" in title_lo:
+        return "Seattle"
+    if "DEN" in ticker_up or "denver" in title_lo:
+        return "Denver"
+    if "TATL" in ticker_up or "atlanta" in title_lo:
+        return "Atlanta"
+    if "AUS" in ticker_up or "austin" in title_lo:
+        return "Austin"
+    if "TDC" in ticker_up or "washington" in title_lo:
+        return "Washington"
+    if "TPHIL" in ticker_up or "philadelphia" in title_lo:
+        return "Philadelphia"
+    if "TOKC" in ticker_up or "oklahoma" in title_lo:
+        return "OklahomaCity"
+    if "TSFO" in ticker_up or "san francisco" in title_lo:
+        return "SanFrancisco"
+    if "TMIN" in ticker_up or "minneapolis" in title_lo:
+        return "Minneapolis"
+    if "HOUM" in ticker_up or "houston" in title_lo:
+        return "Houston"
+    if "TSATX" in ticker_up or "san antonio" in title_lo:
+        return "SanAntonio"
+    return None
+
+
 def parse_city_date(market: dict) -> tuple[str | None, date | None]:
     """
     Extract (city, target_date) from a market dict without any network calls.
@@ -2741,51 +2798,10 @@ def parse_city_date(market: dict) -> tuple[str | None, date | None]:
     Returns (None, None) for unrecognised markets.
     """
     ticker = market.get("ticker", "")
-    title = (market.get("title") or "").lower()
+    title = market.get("title") or ""
     ticker_up = ticker.upper()
 
-    city = None
-    if "NY" in ticker_up or "new york" in title:
-        city = "NYC"
-    elif "CHI" in ticker_up or "chicago" in title:
-        city = "Chicago"
-    elif (
-        "HIGHLA" in ticker_up
-        or "LOWLA" in ticker_up
-        or any(seg == "LA" for seg in ticker_up.split("-"))
-        or "los angeles" in title
-    ):
-        city = "LA"
-    elif "BOS" in ticker_up or "boston" in title:
-        city = "Boston"
-    elif "MIA" in ticker_up or "miami" in title:
-        city = "Miami"
-    elif "TDAL" in ticker_up or "dallas" in title:
-        city = "Dallas"
-    elif "TPHX" in ticker_up or "phoenix" in title:
-        city = "Phoenix"
-    elif "TSEA" in ticker_up or "seattle" in title:
-        city = "Seattle"
-    elif "DEN" in ticker_up or "denver" in title:
-        city = "Denver"
-    elif "TATL" in ticker_up or "atlanta" in title:
-        city = "Atlanta"
-    elif "AUS" in ticker_up or "austin" in title:
-        city = "Austin"
-    elif "TDC" in ticker_up or "washington" in title:
-        city = "Washington"
-    elif "TPHIL" in ticker_up or "philadelphia" in title:
-        city = "Philadelphia"
-    elif "TOKC" in ticker_up or "oklahoma" in title:
-        city = "OklahomaCity"
-    elif "TSFO" in ticker_up or "san francisco" in title:
-        city = "SanFrancisco"
-    elif "TMIN" in ticker_up or "minneapolis" in title:
-        city = "Minneapolis"
-    elif "HOUM" in ticker_up or "houston" in title:
-        city = "Houston"
-    elif "TSATX" in ticker_up or "san antonio" in title:
-        city = "SanAntonio"
+    city = _parse_city_from_ticker(ticker, title)
 
     target_date = None
     hourly_match = re.search(r"(\d{2})([A-Z]{3})(\d{2})(\d{2})", ticker_up)
@@ -2816,55 +2832,12 @@ def enrich_with_forecast(market: dict) -> dict:
     Parses city, date, and (for hourly markets) hour from the ticker.
     """
     ticker = market.get("ticker", "")
-    title = (market.get("title") or "").lower()
+    title = market.get("title") or ""
     ticker_up = ticker.upper()
 
-    # Detect city
-    city = None
-    if "NY" in ticker_up or "new york" in title:
-        city = "NYC"
-    elif "CHI" in ticker_up or "chicago" in title:
-        city = "Chicago"
-    elif (
-        # L5-B: "LA" is a substring of DALLAS, PHILADELPHIA, ATLANTA — use
-        # specific series-prefix patterns or an exact hyphen-delimited segment
-        # instead of bare substring match.
-        "HIGHLA" in ticker_up
-        or "LOWLA" in ticker_up
-        or any(seg == "LA" for seg in ticker_up.split("-"))
-        or "los angeles" in title
-    ):
-        city = "LA"
-    elif "BOS" in ticker_up or "boston" in title:
-        city = "Boston"
-    elif "MIA" in ticker_up or "miami" in title:
-        city = "Miami"
-    elif "TDAL" in ticker_up or "dallas" in title:
-        city = "Dallas"
-    elif "TPHX" in ticker_up or "phoenix" in title:
-        city = "Phoenix"
-    elif "TSEA" in ticker_up or "seattle" in title:
-        city = "Seattle"
-    elif "DEN" in ticker_up or "denver" in title:
-        city = "Denver"
-    elif "TATL" in ticker_up or "atlanta" in title:
-        city = "Atlanta"
-    elif "AUS" in ticker_up or "austin" in title:
-        city = "Austin"
-    elif "TDC" in ticker_up or "washington" in title:
-        city = "Washington"
-    elif "TPHIL" in ticker_up or "philadelphia" in title:
-        city = "Philadelphia"
-    elif "TOKC" in ticker_up or "oklahoma" in title:
-        city = "OklahomaCity"
-    elif "TSFO" in ticker_up or "san francisco" in title:
-        city = "SanFrancisco"
-    elif "TMIN" in ticker_up or "minneapolis" in title:
-        city = "Minneapolis"
-    elif "HOUM" in ticker_up or "houston" in title:
-        city = "Houston"
-    elif "TSATX" in ticker_up or "san antonio" in title:
-        city = "SanAntonio"
+    # R24: city detection delegated to shared helper (eliminates duplication with
+    # parse_city_date and keeps both functions in sync automatically).
+    city = _parse_city_from_ticker(ticker, title)
 
     # Detect date + optional hour
     # Hourly tickers: KXTEMPNYCH-26APR0908-T45.99  → date=26APR09, hour=08
@@ -4069,6 +4042,25 @@ def _analyze_snow_trade(
     blended_prob = ens_prob * w_ens + clim_prior * w_clim
     blended_prob = max(0.01, min(0.99, blended_prob))
 
+    # R23: wire bias correction for snow markets (same pattern as precip/temp paths)
+    bias = 0.0
+    try:
+        from tracker import get_quintile_bias
+
+        bias = get_quintile_bias(
+            enriched.get("_city"),
+            target_date.month,
+            blended_prob,
+            condition_type=condition["type"],
+        )
+        blended_prob = blended_prob - bias
+    except Exception as _exc:
+        _log.debug(
+            "Snow bias correction skipped for %s: %s", enriched.get("ticker", "?"), _exc
+        )
+
+    blended_prob = max(0.01, min(0.99, blended_prob))
+
     prices = parse_market_price(enriched)
     market_prob = prices["implied_prob"]
     rec_side = "yes" if blended_prob > market_prob else "no"
@@ -4143,7 +4135,7 @@ def _analyze_snow_trade(
         "obs_prob": None,
         "live_obs": None,
         "index_adj": 0.0,
-        "bias_correction": 0.0,
+        "bias_correction": bias,
         "blend_sources": {"ensemble": w_ens, "climatology": w_clim},
         "method": "snow_ensemble" if len(precip_members) >= 10 else "snow_clim",
         "ensemble_stats": None,

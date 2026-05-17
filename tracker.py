@@ -1470,6 +1470,9 @@ def get_member_accuracy(days_back: int = 60) -> dict:
             "mae": round(mae, 4),
             "n": len(entries),
             "city_breakdown": {c: round(v, 4) for c, v in city_mae.items()},
+            # R25: per-city observation counts so _weights_from_mae can gate on
+            # sample size rather than number of distinct cities.
+            "city_n_breakdown": {c: len(v) for c, v in city_errs.items()},
         }
     return result
 
