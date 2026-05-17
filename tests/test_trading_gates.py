@@ -1,6 +1,10 @@
 """P0-2: LiveTradingGate must block live orders when graduation/safety gates fail."""
 
+import os
 from unittest.mock import MagicMock, patch
+
+# Convenience context: both env vars required to pass the first two checks.
+_PROD_ENV = {"KALSHI_ENV": "prod", "LIVE_TRADING_ENABLED": "true"}
 
 
 class TestLiveTradingGate:
@@ -16,10 +20,36 @@ class TestLiveTradingGate:
         assert not allowed
         assert "not prod" in reason
 
+    def test_blocks_when_live_trading_not_enabled(self):
+        """LIVE_TRADING_ENABLED must be explicitly 'true' — KALSHI_ENV=prod alone is not enough."""
+        gate = self._gate()
+        with (
+            patch("main.KALSHI_ENV", "prod"),
+            patch.dict(os.environ, {"LIVE_TRADING_ENABLED": "false"}),
+        ):
+            allowed, reason = gate.check()
+        assert not allowed
+        assert "LIVE_TRADING_ENABLED" in reason
+
+    def test_blocks_when_live_trading_env_absent(self):
+        """Gate must block when LIVE_TRADING_ENABLED is not set at all."""
+        gate = self._gate()
+        env_without_flag = {
+            k: v for k, v in os.environ.items() if k != "LIVE_TRADING_ENABLED"
+        }
+        with (
+            patch("main.KALSHI_ENV", "prod"),
+            patch.dict(os.environ, env_without_flag, clear=True),
+        ):
+            allowed, reason = gate.check()
+        assert not allowed
+        assert "LIVE_TRADING_ENABLED" in reason
+
     def test_blocks_when_graduation_not_met(self):
         gate = self._gate()
         with (
             patch("main.KALSHI_ENV", "prod"),
+            patch.dict(os.environ, _PROD_ENV),
             patch("paper.graduation_check", return_value=None),
             patch("paper.is_paused_drawdown", return_value=False),
             patch("paper.is_daily_loss_halted", return_value=False),
@@ -34,6 +64,7 @@ class TestLiveTradingGate:
         gate = self._gate()
         with (
             patch("main.KALSHI_ENV", "prod"),
+            patch.dict(os.environ, _PROD_ENV),
             patch("paper.graduation_check", return_value={"settled": 35}),
             patch("paper.is_paused_drawdown", return_value=True),
             patch("paper.is_daily_loss_halted", return_value=False),
@@ -48,6 +79,7 @@ class TestLiveTradingGate:
         gate = self._gate()
         with (
             patch("main.KALSHI_ENV", "prod"),
+            patch.dict(os.environ, _PROD_ENV),
             patch("paper.graduation_check", return_value={"settled": 35}),
             patch("paper.is_paused_drawdown", return_value=False),
             patch("paper.is_daily_loss_halted", return_value=True),
@@ -62,6 +94,7 @@ class TestLiveTradingGate:
         gate = self._gate()
         with (
             patch("main.KALSHI_ENV", "prod"),
+            patch.dict(os.environ, _PROD_ENV),
             patch("paper.graduation_check", return_value={"settled": 35}),
             patch("paper.is_paused_drawdown", return_value=False),
             patch("paper.is_daily_loss_halted", return_value=False),
@@ -76,6 +109,7 @@ class TestLiveTradingGate:
         gate = self._gate()
         with (
             patch("main.KALSHI_ENV", "prod"),
+            patch.dict(os.environ, _PROD_ENV),
             patch("paper.graduation_check", return_value={"settled": 35}),
             patch("paper.is_paused_drawdown", return_value=False),
             patch("paper.is_daily_loss_halted", return_value=False),
@@ -90,6 +124,7 @@ class TestLiveTradingGate:
         gate = self._gate()
         with (
             patch("main.KALSHI_ENV", "prod"),
+            patch.dict(os.environ, _PROD_ENV),
             patch("paper.graduation_check", return_value={"settled": 35}),
             patch("paper.is_paused_drawdown", return_value=False),
             patch("paper.is_daily_loss_halted", return_value=False),

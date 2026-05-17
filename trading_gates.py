@@ -25,6 +25,12 @@ class LiveTradingGate:
         if kalshi_env != "prod":
             return False, f"KALSHI_ENV={kalshi_env}, not prod"
 
+        # Secondary interlock: require an explicit opt-in flag so that a
+        # misconfigured KALSHI_ENV=prod in a shadow/test run cannot fire
+        # real orders on its own.  Both conditions must be true simultaneously.
+        if os.getenv("LIVE_TRADING_ENABLED", "").strip().lower() != "true":
+            return False, "LIVE_TRADING_ENABLED not set to 'true'"
+
         try:
             from paper import (
                 graduation_check,

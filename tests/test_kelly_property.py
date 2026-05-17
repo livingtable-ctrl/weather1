@@ -28,11 +28,12 @@ def test_kelly_fraction_never_negative(our_prob, price, fee_rate):
 )
 @settings(max_examples=200)
 def test_kelly_fraction_never_exceeds_cap(our_prob, price):
-    """kelly_fraction never exceeds the hard cap of 0.33."""
+    """kelly_fraction never exceeds the hard cap (KELLY_CAP = 0.25)."""
+    from utils import KELLY_CAP
     from weather_markets import kelly_fraction
 
     result = kelly_fraction(our_prob, price)
-    assert result <= 0.33
+    assert result <= KELLY_CAP
 
 
 @given(

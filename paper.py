@@ -1634,20 +1634,30 @@ def graduation_check(
     Criteria:
       - >= min_trades settled trades (statistical validity)
       - total_pnl >= min_pnl (genuinely profitable, not just lucky win rate)
-      - brier_score <= max_brier (model is calibrated — random guessing = 0.25)
+      - brier_score <= max_brier AND >= MIN_BRIER_SAMPLES settled predictions
+        (model is calibrated — random guessing = 0.25; Brier is unreliable on
+        small samples so the same guard used by _dynamic_kelly_cap applies here)
 
     Win rate is no longer a gate: it ignores position sizing and payout asymmetry.
     A bot buying NO at $0.03 can have a 97% win rate yet still lose money on the
     rare $0.03→$1.00 adverse move. P&L + calibration is the real signal.
     """
     from tracker import brier_score as _brier_score
+    from tracker import count_settled_predictions as _count_settled
+    from utils import MIN_BRIER_SAMPLES
 
     perf = get_performance()
     settled = perf.get("settled", 0)
     win_rate = perf.get("win_rate")
     total_pnl = perf.get("total_pnl", 0.0)
     roi = perf.get("roi")
-    brier = _brier_score()
+
+    # Require MIN_BRIER_SAMPLES before trusting the Brier score.  Without
+    # this guard, 30 lucky early trades can open the gate on a Brier computed
+    # from too few predictions to be statistically meaningful.
+    brier_sample_count = _count_settled()
+    brier = _brier_score() if brier_sample_count >= MIN_BRIER_SAMPLES else None
+
     if (
         settled >= min_trades
         and total_pnl >= min_pnl
@@ -1660,6 +1670,7 @@ def graduation_check(
             "total_pnl": total_pnl,
             "roi": roi,
             "brier": brier,
+            "brier_samples": brier_sample_count,
         }
     return None
 
