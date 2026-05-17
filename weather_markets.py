@@ -1982,11 +1982,8 @@ def _fetch_model_ensemble(
 
 
 _LEARNED_WEIGHTS: dict = {}  # cached after first load
-_LEARNED_WEIGHTS_TTL_DAYS = 7
+_LEARNED_WEIGHTS_TTL_DAYS = 7  # P3-7: single definition (duplicate removed)
 _LEARNED_WEIGHTS_TTL_WARNED = False  # log-once flag — prevents per-market spam
-
-
-_LEARNED_WEIGHTS_TTL_DAYS = 7
 
 
 def load_learned_weights() -> dict:

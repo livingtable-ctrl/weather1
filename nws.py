@@ -10,7 +10,6 @@ from __future__ import annotations
 import json
 import logging
 import os
-import socket
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor as _TPE
@@ -24,10 +23,6 @@ from circuit_breaker import CircuitBreaker
 from schema_validator import validate_nws_response
 from utils import normal_cdf
 from utils import utc_today as _utc_today
-
-socket.setdefaulttimeout(
-    10
-)  # hard backstop — requests timeout unreliable on Windows SSL
 
 _log = logging.getLogger(__name__)
 

@@ -36,20 +36,18 @@ class LiveTradingGate:
         except Exception as exc:
             return False, f"Could not import paper safety checks: {exc}"
 
-        try:
-            if graduation_check() is None:
-                return (
-                    False,
-                    "Graduation gate not met (need 30 settled, $50 P&L, Brier ≤ 0.20)",
-                )
-        except Exception as exc:
-            return False, f"graduation_check error: {exc}"
-
+        # P3-6: cheapest checks first — in-memory/file reads before DB/API calls.
         try:
             if is_paused_drawdown():
                 return False, "Drawdown halt active"
         except Exception as exc:
             return False, f"is_paused_drawdown error: {exc}"
+
+        try:
+            if is_streak_paused():
+                return False, "Loss streak pause active"
+        except Exception as exc:
+            return False, f"is_streak_paused error: {exc}"
 
         try:
             if is_daily_loss_halted():
@@ -63,11 +61,15 @@ class LiveTradingGate:
         except Exception as exc:
             return False, f"is_accuracy_halted error: {exc}"
 
+        # Most expensive: reads tracker DB + computes Brier — run last.
         try:
-            if is_streak_paused():
-                return False, "Loss streak pause active"
+            if graduation_check() is None:
+                return (
+                    False,
+                    "Graduation gate not met (need 30 settled, $50 P&L, Brier ≤ 0.20)",
+                )
         except Exception as exc:
-            return False, f"is_streak_paused error: {exc}"
+            return False, f"graduation_check error: {exc}"
 
         return True, "ok"
 

@@ -194,9 +194,24 @@ def mark_triggered(alert_id: int) -> None:
 
 
 def save_alerts(alerts_list: list[dict], path: Path | None = None) -> None:
-    """Write alerts list to path using safe_io for resilient disk writes (#8)."""
+    """Write alerts list to path using safe_io for resilient disk writes (#8).
+
+    P3-9: preserves next_id from the existing file so the counter survives
+    round-trips through save_alerts and IDs never collide after reload.
+    """
     target = Path(path) if path is not None else _DATA_PATH
-    safe_io.atomic_write_json({"alerts": alerts_list}, target)
+    try:
+        existing = (
+            json.loads(target.read_text(encoding="utf-8")) if target.exists() else {}
+        )
+    except Exception:
+        existing = {}
+    next_id = existing.get("next_id", 1)
+    # Ensure next_id stays ahead of the highest ID in the current list.
+    if alerts_list:
+        max_id = max((a.get("id", 0) for a in alerts_list), default=0)
+        next_id = max(next_id, max_id + 1)
+    safe_io.atomic_write_json({"alerts": alerts_list, "next_id": next_id}, target)
 
 
 def _trade_won(trade: dict) -> bool:

@@ -98,3 +98,41 @@ def test_kelly_monotone_in_prob(our_prob, price):
     f1 = kelly_fraction(our_prob, price)
     f2 = kelly_fraction(our_prob + 0.05, price)
     assert f2 >= f1 - 1e-9  # allow floating-point tolerance
+
+
+@given(
+    kelly_frac=st.floats(min_value=0.0, max_value=0.25),
+    drawdown_scale=st.floats(min_value=0.0, max_value=1.0),
+    balance=st.floats(min_value=10.0, max_value=10_000.0),
+)
+@settings(max_examples=200)
+def test_kelly_bet_dollars_never_exceeds_balance(kelly_frac, drawdown_scale, balance):
+    """P3-3: kelly_bet_dollars * drawdown_scaling_factor must never exceed current balance.
+
+    The product represents the maximum dollar exposure per trade. A rounding
+    error or unclamped multiplier should not allow it to exceed the account balance.
+    """
+    import tempfile
+    from pathlib import Path
+    from unittest.mock import patch
+
+    import paper
+
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp) / "paper_trades.json"
+        tmp_path.write_text(
+            f'{{"_version": 2, "balance": {balance}, "peak_balance": {balance}, "trades": []}}'
+        )
+        with (
+            patch.object(paper, "DATA_PATH", tmp_path),
+            patch.object(paper, "drawdown_scaling_factor", lambda: drawdown_scale),
+            patch.object(paper, "is_streak_paused", lambda: False),
+            patch.object(paper, "_method_kelly_multiplier", lambda method: 1.0),
+            patch.object(paper, "_dynamic_kelly_cap", lambda: balance * 2),
+        ):
+            dollars = paper.kelly_bet_dollars(kelly_frac)
+            # The resulting dollar bet must never exceed the current balance.
+            assert dollars <= balance + 0.01, (
+                f"kelly_bet_dollars={dollars:.4f} > balance={balance:.4f} "
+                f"(kelly_frac={kelly_frac}, drawdown_scale={drawdown_scale})"
+            )

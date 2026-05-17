@@ -25,12 +25,26 @@ _SIGNALS_PATH = _project_root() / "data" / "settlement_signals.json"
 _SIGNALS_PATH.parent.mkdir(exist_ok=True)
 
 # Cities and their METAR stations + timezones
+# P3-8: expanded to all 18 traded cities (was 5).
 _MONITOR_CITIES = {
     "NYC": {"station": "KNYC", "tz": "America/New_York"},
     "MIA": {"station": "KMIA", "tz": "America/New_York"},
     "CHI": {"station": "KORD", "tz": "America/Chicago"},
     "LAX": {"station": "KLAX", "tz": "America/Los_Angeles"},
     "DAL": {"station": "KDFW", "tz": "America/Chicago"},
+    "BOS": {"station": "KBOS", "tz": "America/New_York"},
+    "PHX": {"station": "KPHX", "tz": "America/Phoenix"},
+    "SEA": {"station": "KSEA", "tz": "America/Los_Angeles"},
+    "DEN": {"station": "KDEN", "tz": "America/Denver"},
+    "ATL": {"station": "KATL", "tz": "America/New_York"},
+    "AUS": {"station": "KAUS", "tz": "America/Chicago"},
+    "DC": {"station": "KDCA", "tz": "America/New_York"},
+    "PHI": {"station": "KPHL", "tz": "America/New_York"},
+    "OKC": {"station": "KOKC", "tz": "America/Chicago"},
+    "SFO": {"station": "KSFO", "tz": "America/Los_Angeles"},
+    "MSP": {"station": "KMSP", "tz": "America/Chicago"},
+    "HOU": {"station": "KHOU", "tz": "America/Chicago"},
+    "SAT": {"station": "KSAT", "tz": "America/Chicago"},
 }
 
 # Kalshi series ticker prefix per city — NOT simply "KXHIGH" + city code
@@ -40,6 +54,19 @@ _CITY_SERIES_TICKER = {
     "CHI": "KXHIGHCHI",
     "LAX": "KXHIGHLA",
     "DAL": "KXHIGHTDAL",
+    "BOS": "KXHIGHBOS",
+    "PHX": "KXHIGHTPHX",
+    "SEA": "KXHIGHTSEA",
+    "DEN": "KXHIGHDEN",
+    "ATL": "KXHIGHTATL",
+    "AUS": "KXHIGHAUS",
+    "DC": "KXHIGHTDC",
+    "PHI": "KXHIGHTPHIL",
+    "OKC": "KXHIGHTOKC",
+    "SFO": "KXHIGHTSFO",
+    "MSP": "KXHIGHTMIN",
+    "HOU": "KXHIGHHOUM",
+    "SAT": "KXHIGHTSATX",
 }
 
 # Settlement lag monitoring window: 5 PM – 7 PM local
@@ -186,8 +213,16 @@ def run_settlement_monitor(client, duration_minutes: int = 120) -> None:
     _log.info("Settlement lag monitor starting (duration=%dmin)", duration_minutes)
     end_time = datetime.now(UTC) + timedelta(minutes=duration_minutes)
 
-    all_signals: list[dict] = []
-    signalled_tickers: set[str] = set()
+    # P3-2: seed in-memory state from the signals file so a restart during the
+    # settlement window doesn't re-fire signals that were already written.
+    existing_signals = read_settlement_signals(max_age_minutes=120)
+    all_signals: list[dict] = list(existing_signals)
+    signalled_tickers: set[str] = {s["ticker"] for s in existing_signals}
+    if signalled_tickers:
+        _log.info(
+            "Settlement lag monitor: restored %d signal(s) from disk",
+            len(signalled_tickers),
+        )
 
     while datetime.now(UTC) < end_time:
         for city in _MONITOR_CITIES:

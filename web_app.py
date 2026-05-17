@@ -960,6 +960,7 @@ setInterval(() => {{
         return render_template_string(html)
 
     @app.route("/api/export")
+    @_require_auth
     def api_export():
         """#83: Download CSV of prediction history with outcomes."""
         import io
@@ -1379,6 +1380,7 @@ setInterval(() => {{
     # ------------------------------------------------------------------ #
 
     @app.route("/api/config")
+    @_require_auth
     def api_config():
         """BotConfig fields for the Settings tab."""
         try:
