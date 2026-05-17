@@ -3562,6 +3562,11 @@ def _get_consensus_probs(
         target_date.isoformat(),
         condition.get("type"),
         condition.get("threshold"),
+        # Include bucket bounds so distinct between-markets (e.g. B64.5 vs
+        # B66.5 for the same city/date) don't share a cache slot.  Both are
+        # None for above/below conditions, so those keys are unaffected.
+        condition.get("lower"),
+        condition.get("upper"),
         var,
         hour,
     )

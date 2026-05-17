@@ -141,13 +141,62 @@ def read_settlement_signals(max_age_minutes: int = 120) -> list[dict]:
     return active
 
 
+def _check_between_settlement(
+    current_temp_f: float,
+    lower_f: float,
+    upper_f: float,
+) -> dict:
+    """
+    Determine settlement outcome for a between-bucket market.
+
+    Returns a dict with keys: locked (bool), outcome (str|None),
+    confidence (float).
+
+    Lock logic (mirrors _metar_lock_in in weather_markets.py):
+    • YES — temp is anywhere inside [lower, upper].  By 5-7 PM the daily
+      high is almost certainly established; confidence scales with clearance
+      from the nearest edge.
+    • NO  — temp is outside by > (_SETTLEMENT_MARGIN_F + 1.0)°F from the
+      nearest edge.  The extra 1°F guard prevents a premature NO when the
+      reading is just below or above the bucket boundary.
+    • Neither — temp is near the edge; outcome is still uncertain.
+
+    Args:
+        current_temp_f: Latest METAR temperature
+        lower_f: Bucket lower bound (e.g. 66.5)
+        upper_f: Bucket upper bound (e.g. 68.5)
+    """
+    if lower_f <= current_temp_f <= upper_f:
+        # Inside the band → lock YES.  Clearance only affects confidence,
+        # not the lock condition (consistent with _metar_lock_in).
+        clearance = min(current_temp_f - lower_f, upper_f - current_temp_f)
+        confidence = min(0.95, 0.70 + clearance * 0.05)
+        return {"locked": True, "outcome": "yes", "confidence": confidence}
+
+    # Outside the band.  Use (_SETTLEMENT_MARGIN_F + 1.0)°F guard to avoid
+    # locking NO when the reading is just outside the bucket boundary.
+    clearance = (
+        current_temp_f - upper_f
+        if current_temp_f > upper_f
+        else lower_f - current_temp_f
+    )
+    if clearance >= _SETTLEMENT_MARGIN_F + 1.0:
+        confidence = min(0.95, 0.60 + clearance * 0.03)
+        return {"locked": True, "outcome": "no", "confidence": confidence}
+
+    return {"locked": False, "outcome": None, "confidence": 0.0}
+
+
 def check_city_settlement(city: str, active_tickers: list[dict]) -> list[dict]:
     """
     Check METAR for a city and return any new settlement signals.
 
     Args:
         city: City code (e.g. "NYC")
-        active_tickers: List of active market dicts with ticker, threshold, direction
+        active_tickers: List of active market dicts.  Each dict must contain
+            either:
+              • direction="above"|"below" + threshold (T-ticker markets), or
+              • direction="between" + lower + upper   (B-ticker markets)
 
     Returns:
         List of new settlement signal dicts
@@ -164,10 +213,38 @@ def check_city_settlement(city: str, active_tickers: list[dict]) -> list[dict]:
 
     new_signals = []
     for market in active_tickers:
+        direction = market.get("direction", "above")
+
+        if direction == "between":
+            lower_f = float(market.get("lower", 0))
+            upper_f = float(market.get("upper", 0))
+            lockout = _check_between_settlement(obs["current_temp_f"], lower_f, upper_f)
+            if lockout["locked"]:
+                center_f = (lower_f + upper_f) / 2
+                signal = build_settlement_signal(
+                    ticker=market["ticker"],
+                    city=city,
+                    outcome=lockout["outcome"],
+                    confidence=lockout["confidence"],
+                    current_temp_f=obs["current_temp_f"],
+                    threshold_f=center_f,
+                )
+                new_signals.append(signal)
+                _log.info(
+                    "SETTLEMENT LAG signal: %s → %s (conf=%.0f%%) — temp %.1f°F vs bucket [%.1f, %.1f]°F",
+                    market["ticker"],
+                    lockout["outcome"],
+                    lockout["confidence"] * 100,
+                    obs["current_temp_f"],
+                    lower_f,
+                    upper_f,
+                )
+            continue
+
+        # T-ticker (above / below) — original path
         if market.get("threshold") is None:
             continue
         threshold_f = float(market["threshold"])
-        direction = market.get("direction", "above")
 
         lockout = check_metar_lockout(
             current_temp_f=obs["current_temp_f"],
@@ -241,6 +318,37 @@ def run_settlement_monitor(client, duration_minutes: int = 120) -> None:
                         if m.get("status") == "open":
                             ticker = m.get("ticker", "")
                             subtitle = m.get("subtitle", "")
+
+                            # ── B-ticker (between-bucket) ─────────────────
+                            # Detect from the ticker suffix, not the subtitle.
+                            # Subtitle keywords ("above"/"below") are absent
+                            # for between markets, so subtitle-based parsing
+                            # would silently mis-classify these as "below".
+                            b_match = re.search(r"-B(\d+(?:\.\d+)?)$", ticker.upper())
+                            if b_match:
+                                center = float(b_match.group(1))
+                                if not (-60.0 <= center <= 130.0):
+                                    _log.debug(
+                                        "settlement_monitor: implausible B-ticker "
+                                        "center %.1f from %r — skipping",
+                                        center,
+                                        ticker,
+                                    )
+                                    continue
+                                # Kalshi between-buckets are 2°F wide, centered
+                                # on the ticker value (see _parse_market_condition).
+                                active_tickers.append(
+                                    {
+                                        "ticker": ticker,
+                                        "direction": "between",
+                                        "lower": center - 1.0,
+                                        "upper": center + 1.0,
+                                        "threshold": None,
+                                    }
+                                )
+                                continue
+
+                            # ── T-ticker (above / below) ──────────────────
                             # R36: capture optional decimal component so
                             # subtitles like "above 80.5°F" parse correctly.
                             match = re.search(r"(\d+(?:\.\d+)?)", subtitle)

@@ -1726,3 +1726,70 @@ class TestNoSideEntryEdgeSign:
         assert buggy < 0, (
             "Old buggy formula produced negative edge (confirms the bug existed)"
         )
+
+
+class TestConsensusCacheKeyBetween:
+    """_get_consensus_probs cache key must include lower/upper for between-markets.
+
+    Before the fix, all between-markets for the same city/date/var/hour shared
+    a single cache slot (threshold=None for all of them), so B64.5 would get
+    the cached result for B66.5 that was analysed moments before.
+    """
+
+    def test_different_buckets_get_separate_cache_entries(self, monkeypatch):
+        """Two between-markets with different lower/upper produce distinct keys."""
+        import time
+
+        import weather_markets as wm
+
+        # Clear cache before test to avoid cross-test contamination.
+        wm._CONSENSUS_CACHE.clear()
+
+        call_args_list: list[dict] = []
+
+        def _fake_get_ensemble_temps(
+            city, target_date, *, hour=None, var="max", model=None
+        ):
+            # Return temps that differ per bucket so the cache entry is distinguishable.
+            return (
+                [64.0 + i for i in range(10)]
+                if call_args_list
+                else [70.0 + i for i in range(10)]
+            )
+
+        # Track how many times the underlying Open-Meteo fetch is called.
+        fetch_calls = []
+
+        def _fake_fetch(url, **kwargs):
+            fetch_calls.append(url)
+            # Return a minimal valid response
+            return None  # causes _model_prob_and_mean to return (None, None)
+
+        condition_b645 = {"type": "between", "lower": 63.5, "upper": 65.5}
+        condition_b665 = {"type": "between", "lower": 65.5, "upper": 67.5}
+
+        from datetime import date
+
+        today = date.today()
+
+        # Build cache keys manually to verify they differ
+        key_b645 = ("NYC", today.isoformat(), "between", None, 63.5, 65.5, "max", None)
+        key_b665 = ("NYC", today.isoformat(), "between", None, 65.5, 67.5, "max", None)
+        assert key_b645 != key_b665, "Cache keys for distinct buckets must differ"
+
+        # Seed the cache with different results for the two buckets.
+        wm._CONSENSUS_CACHE[key_b645] = ((0.20, 0.22, 64.0, 64.5), time.monotonic())
+        wm._CONSENSUS_CACHE[key_b665] = ((0.55, 0.58, 66.0, 66.5), time.monotonic())
+
+        r645 = wm._get_consensus_probs("NYC", today, condition_b645)
+        r665 = wm._get_consensus_probs("NYC", today, condition_b665)
+
+        # Each bucket must return its own cached value, not the other's.
+        assert r645[0] == pytest.approx(0.20, abs=1e-6), (
+            f"B64.5 icon_prob wrong: {r645}"
+        )
+        assert r665[0] == pytest.approx(0.55, abs=1e-6), (
+            f"B66.5 icon_prob wrong: {r665}"
+        )
+
+        wm._CONSENSUS_CACHE.clear()
