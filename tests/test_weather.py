@@ -132,13 +132,16 @@ class TestParseMarketCondition(unittest.TestCase):
         self.assertAlmostEqual(c["threshold"], 45.0)
 
     def test_bucket(self):
-        m = self._market("KXHIGHNY-26APR09-B67.5", "NYC high between 67-68°F?")
+        # B67.5 is a 2-degree-wide bucket centered at 67.5 → [66.5, 68.5].
+        # Adjacent tickers are 2°F apart (e.g. B65.5, B67.5, B69.5) so the
+        # half-width must be 1.0°F to tile without gaps.
+        m = self._market("KXHIGHNY-26APR09-B67.5", "NYC high between 66.5-68.5°F?")
         c = _parse_market_condition(m)
         self.assertIsNotNone(c)
         assert c is not None
         self.assertEqual(c["type"], "between")
-        self.assertAlmostEqual(c["lower"], 67.0)
-        self.assertAlmostEqual(c["upper"], 68.0)
+        self.assertAlmostEqual(c["lower"], 66.5)
+        self.assertAlmostEqual(c["upper"], 68.5)
 
     def test_precip_any(self):
         m = self._market("KXRAIN-NY-26APR09", "Will there be any rain in NYC?")

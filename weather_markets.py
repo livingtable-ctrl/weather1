@@ -2964,7 +2964,7 @@ def _parse_market_condition(market: dict) -> dict | None:
     Returns a dict like:
       {"type": "above", "threshold": 68.0}         — temperature above X°F
       {"type": "below", "threshold": 53.0}         — temperature below X°F
-      {"type": "between", "lower": 67.0, "upper": 68.0}
+      {"type": "between", "lower": 66.5, "upper": 68.5}  — B67.5 ticker (2°F wide)
       {"type": "precip_above", "threshold": 0.10}  — precip > 0.10 in
       {"type": "precip_any"}                        — any measurable precip (>0.01 in)
     Returns None if unparseable.
@@ -3046,8 +3046,10 @@ def _parse_market_condition(market: dict) -> dict | None:
     val = float(val_str)
 
     if kind == "B":
-        # Bucket: B67.5 means range [67, 68]
-        return {"type": "between", "lower": val - 0.5, "upper": val + 0.5}
+        # Bucket: B67.5 means range [66.5, 68.5] — Kalshi between-buckets are 2°F
+        # wide, centered on val.  Adjacent tickers are 2°F apart (e.g. B64.5,
+        # B66.5) and must tile without gaps, so the half-width is 1.0°F, not 0.5°F.
+        return {"type": "between", "lower": val - 1.0, "upper": val + 1.0}
     else:
         # T: determine above or below from title
         if ">" in title or "above" in title or " be >" in title:
