@@ -434,6 +434,41 @@ def _method_kelly_multiplier(method: str | None) -> float:
         return 1.0
 
 
+def _city_kelly_multiplier(city: str | None) -> float:
+    """Scale Kelly down for cities where the model has historically underperformed.
+
+    Uses per-city Brier score from tracker. Requires at least 10 settled predictions
+    for that city before applying any reduction (neutral at 1.0 until then).
+
+    Brier scale:
+      ≤ 0.15  — excellent  → 1.00 (no reduction)
+      ≤ 0.20  — good       → 0.85 (slight reduction)
+      ≤ 0.25  — near-random → 0.65 (meaningful reduction)
+      > 0.25  — poor        → 0.40 (heavy reduction; SF/ATL territory)
+    """
+    if not city:
+        return 1.0
+    _MIN_CITY_SAMPLES = 10
+    try:
+        from tracker import get_calibration_by_city as _by_city
+
+        cal = _by_city()
+        city_data = cal.get(city, {})
+        n = city_data.get("n", 0)
+        if n < _MIN_CITY_SAMPLES:
+            return 1.0
+        brier = city_data.get("brier", 0.20)
+        if brier <= 0.15:
+            return 1.00
+        if brier <= 0.20:
+            return 0.85
+        if brier <= 0.25:
+            return 0.65
+        return 0.40
+    except Exception:
+        return 1.0
+
+
 def kelly_bet_dollars(
     kelly_fraction: float,
     cap: float | None = None,
@@ -562,6 +597,23 @@ def place_paper_order(
         raise ValueError(
             f"Insufficient paper balance (${data['balance']:.2f}) "
             f"for this order (${cost:.2f})."
+        )
+
+    # Belt-and-suspenders duplicate guard: reject if an unsettled position already
+    # exists for this ticker. All upstream checks (open_tickers, was_traded_today,
+    # was_ordered_recently) should catch this first, but a crash between writes
+    # or a cleared execution_log could leave an orphaned open trade undetected.
+    _existing_open = [
+        t for t in data["trades"] if t["ticker"] == ticker and not t.get("settled")
+    ]
+    if _existing_open:
+        _log.warning(
+            "place_paper_order: duplicate blocked for %s — %d open position(s) already exist",
+            ticker,
+            len(_existing_open),
+        )
+        raise ValueError(
+            f"Duplicate paper order: {ticker} already has an open position"
         )
 
     trade = {
@@ -1035,6 +1087,11 @@ def portfolio_kelly_fraction(
         )
         result *= covariance_kelly_scale(city, base_prob, side)
 
+    # City-level Brier scaling: automatically reduce position size for cities where
+    # the model has historically underperformed (e.g. SF Brier=0.563, ATL Brier=0.475).
+    # Applied last so all other multipliers compound correctly before this floor.
+    result *= _city_kelly_multiplier(city)
+
     # Clamp to remaining portfolio room — prevents correlated independent
     # Kelly fractions from summing past MAX_TOTAL_OPEN_EXPOSURE.
     # Without this, 10 positions each at Kelly=10% could push total to 100%.
@@ -1275,6 +1332,85 @@ def get_performance() -> dict:
         "balance": round(get_balance(), 2),
         "peak_balance": round(get_peak_balance(), 2),
         "max_drawdown_pct": round(get_max_drawdown_pct(), 4),
+    }
+
+
+def get_edge_realization_rate() -> dict:
+    """Measure how well the model's computed net_edge predicts actual outcomes.
+
+    For each settled trade with a recorded net_edge, computes:
+    - Pearson correlation between net_edge and win (1) / loss (0)
+    - Win rate broken down by edge bucket (<5%, 5-10%, 10-15%, 15-20%, >20%)
+
+    A positive correlation means higher-edge trades are winning more often —
+    the edge signal is genuinely predictive. Near-zero or negative correlation
+    means the signal is noise and the model needs recalibration.
+
+    Returns a dict with keys: n, correlation, buckets, calibrated.
+    Requires at least 5 settled trades with net_edge to produce a result.
+    """
+    trades = [
+        t
+        for t in get_all_trades()
+        if t.get("settled")
+        and t.get("net_edge") is not None
+        and t.get("outcome") is not None
+        and t.get("side") is not None
+    ]
+    if len(trades) < 5:
+        return {
+            "n": len(trades),
+            "correlation": None,
+            "buckets": [],
+            "calibrated": False,
+        }
+
+    edges = [float(t["net_edge"]) for t in trades]
+    # won=1 when the side we bet on matched the outcome (YES bet + YES outcome, or NO+NO)
+    won = [1.0 if t["outcome"] == t["side"] else 0.0 for t in trades]
+
+    # Pearson r between edge and binary outcome
+    n = len(edges)
+    mean_e = sum(edges) / n
+    mean_w = sum(won) / n
+    cov = sum((e - mean_e) * (w - mean_w) for e, w in zip(edges, won))
+    var_e = sum((e - mean_e) ** 2 for e in edges)
+    var_w = sum((w - mean_w) ** 2 for w in won)
+    if var_e * var_w == 0:
+        corr: float | None = None
+    else:
+        corr = round(cov / (var_e * var_w) ** 0.5, 4)
+
+    # Bucket win rates by edge range
+    _buckets_def = [
+        (float("-inf"), 0.05, "<5%"),
+        (0.05, 0.10, "5-10%"),
+        (0.10, 0.15, "10-15%"),
+        (0.15, 0.20, "15-20%"),
+        (0.20, float("inf"), ">20%"),
+    ]
+    buckets = []
+    for lo, hi, label in _buckets_def:
+        bt_won = [w for e, w in zip(edges, won) if lo <= e < hi]
+        if bt_won:
+            buckets.append(
+                {
+                    "label": label,
+                    "edge_min": lo if lo != float("-inf") else None,
+                    "edge_max": hi if hi != float("inf") else None,
+                    "n": len(bt_won),
+                    "win_rate": round(sum(bt_won) / len(bt_won), 3),
+                }
+            )
+
+    # Calibrated = correlation is positive and there are enough samples to trust it
+    calibrated = corr is not None and corr > 0.10 and n >= 20
+
+    return {
+        "n": n,
+        "correlation": corr,
+        "buckets": buckets,
+        "calibrated": calibrated,
     }
 
 

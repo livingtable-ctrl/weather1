@@ -658,6 +658,15 @@ def _auto_place_trades(
     open_tickers = {t["ticker"] for t in _open_trades_list}
     placed = 0
 
+    # Per-date concentration cap: track how many open positions settle on each date.
+    # Prevents correlated single-day exposure (e.g. 9 positions all expiring May 14).
+    from collections import Counter as _Counter
+
+    MAX_POSITIONS_PER_DATE = int(os.getenv("MAX_POSITIONS_PER_DATE", "4"))
+    _date_counts = _Counter(
+        t.get("target_date") for t in _open_trades_list if t.get("target_date")
+    )
+
     # Concurrent-position cap: never hold more than MAX_CONCURRENT_POSITIONS at once.
     MAX_CONCURRENT_POSITIONS = int(os.getenv("MAX_CONCURRENT_POSITIONS", "20"))
     if len(_open_trades_list) >= MAX_CONCURRENT_POSITIONS:
@@ -744,6 +753,14 @@ def _auto_place_trades(
         city = m.get("_city")
         target_date_obj = m.get("_date")
         target_date_str = target_date_obj.isoformat() if target_date_obj else None
+
+        # Per-date concentration cap: skip if too many positions already settle this date
+        if target_date_str and _date_counts[target_date_str] >= MAX_POSITIONS_PER_DATE:
+            _skip_reasons.append(
+                f"{ticker}: date_cap({target_date_str} {_date_counts[target_date_str]}/{MAX_POSITIONS_PER_DATE})"
+            )
+            continue
+
         ci_kelly = a.get("ci_adjusted_kelly", a.get("fee_adjusted_kelly", 0.0))
         adj_kelly = portfolio_kelly_fraction(
             ci_kelly, city, target_date_str, side=rec_side
@@ -907,6 +924,8 @@ def _auto_place_trades(
             if opp_placed:
                 execution_log.add_live_loss(cost)
                 open_tickers.add(ticker)
+                if target_date_str:
+                    _date_counts[target_date_str] += 1
                 placed += 1
         else:
             trade_cost = round(entry_price * qty, 2)
@@ -955,6 +974,8 @@ def _auto_place_trades(
                 )
                 open_tickers.add(ticker)
                 _open_trades_list.append(trade)
+                if target_date_str:
+                    _date_counts[target_date_str] += 1
                 placed += 1
                 daily_spent += trade.get("cost", 0.0)
                 # Update pre-logged entry to "filled" so was_traded_today() blocks same-day re-entry.
