@@ -14,6 +14,10 @@ cd /d "C:\Users\thesa\claude kalshi"
 :: Using -File to avoid cmd.exe quote-escaping mangling the inline -Command string
 powershell -NoProfile -ExecutionPolicy Bypass -File "C:\Users\thesa\claude kalshi\restore_window.ps1" 2>nul
 
+echo.
+echo Cron run complete. Press any key or wait 5 minutes to close...
+timeout /t 300
+
 :: Only sleep if:
 ::   1. No active console session (PC was woken just for this task), AND
 ::   2. No interactive user is currently logged on to the physical console
@@ -22,7 +26,3 @@ if errorlevel 1 (
     query user 2>nul | findstr /v "^USERNAME" | findstr /i "console" >nul 2>&1
     if errorlevel 1 rundll32.exe powrprof.dll,SetSuspendState 0,1,0
 )
-
-echo.
-echo Cron run complete. Press any key to close...
-pause >nul
