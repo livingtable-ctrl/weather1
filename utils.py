@@ -137,6 +137,11 @@ STARTING_BALANCE: float = float(os.getenv("STARTING_BALANCE", "1000.0"))
 # Set to 0 to disable stop-losses entirely.
 STOP_LOSS_MULT = float(os.getenv("STOP_LOSS_MULT", "2.0"))
 
+# Break-even stop trigger: once a position's unrealized profit reaches this fraction
+# of its cost (default 30%), move the stop to entry price. Any subsequent fall back
+# to entry or below triggers a scratch exit — the position can no longer lose money.
+BREAKEVEN_TRIGGER_PCT: float = float(os.getenv("BREAKEVEN_TRIGGER_PCT", "0.30"))
+
 # Micro live trades — hard-disabled until re-implemented with pre_live_trade_check(),
 # execution_log writes, idempotency key, and add_live_loss() accounting (see P0-3/P0-4).
 ENABLE_MICRO_LIVE: bool = False

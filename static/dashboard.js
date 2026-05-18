@@ -75,6 +75,13 @@
           ? (d.win_rate * 100).toFixed(1) + '%' : '—';
       }
 
+      var pf = document.getElementById('stat-profit-factor');
+      if (pf) {
+        pf.textContent = (d.profit_factor !== null && d.profit_factor !== undefined)
+          ? d.profit_factor.toFixed(2) : '—';
+        pf.className = 'stat-value' + (d.profit_factor > 1 ? ' pos' : d.profit_factor !== null && d.profit_factor !== undefined ? ' neg' : '');
+      }
+
       // Trades progress bar
       var done = d.trades_done || 0;
       var tradesLabel = document.getElementById('grad-trades-label');

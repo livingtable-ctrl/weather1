@@ -633,6 +633,7 @@ def _auto_place_trades(
         is_streak_paused,
         kelly_quantity,
         portfolio_kelly_fraction,
+        spread_kelly_multiplier,
     )
 
     if is_paused_drawdown():
@@ -855,7 +856,19 @@ def _auto_place_trades(
         entry_price = (1.0 - _fill_yes_bid) if rec_side == "no" else _fill_yes_ask
         method = a.get("method")
         consensus_mult = 0.5 if not a.get("model_consensus", True) else 1.0
-        adj_kelly_final = adj_kelly * consensus_mult
+        _net_edge_val = float(a.get("net_edge") or a.get("edge") or 0)
+        _spread_mult = spread_kelly_multiplier(
+            _fill_yes_bid, _fill_yes_ask, _net_edge_val
+        )
+        adj_kelly_final = adj_kelly * consensus_mult * _spread_mult
+        if _spread_mult < 0.95:
+            _log.info(
+                "_auto_place_trades: %s spread=%.3f eats %.0f%% of edge → Kelly×%.2f",
+                ticker,
+                _fill_yes_ask - _fill_yes_bid,
+                (1 - _spread_mult) * 100,
+                _spread_mult,
+            )
         if drawdown_scaling_factor() == 0.0:
             _skip_reasons.append(f"{ticker}: drawdown_halt")
             continue

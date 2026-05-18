@@ -469,6 +469,24 @@ def _city_kelly_multiplier(city: str | None) -> float:
         return 1.0
 
 
+def spread_kelly_multiplier(yes_bid: float, yes_ask: float, net_edge: float) -> float:
+    """Scale Kelly down when the bid-ask spread eats a significant fraction of edge.
+
+    Entering at ask (not mid) immediately costs spread/2 per contract. If that cost
+    is a large share of net_edge, the real expected value is much lower than modelled.
+    The multiplier is: clamp(effective_edge / net_edge, 0.5, 1.0) where
+    effective_edge = net_edge - spread/2.
+
+    Returns 1.0 when spread data is unavailable or net_edge <= 0 (no penalty).
+    """
+    spread = yes_ask - yes_bid
+    if spread <= 0 or net_edge <= 0:
+        return 1.0
+    effective_edge = net_edge - spread / 2.0
+    mult = effective_edge / net_edge
+    return round(max(0.5, min(1.0, mult)), 3)
+
+
 def kelly_bet_dollars(
     kelly_fraction: float,
     cap: float | None = None,
@@ -630,6 +648,7 @@ def place_paper_order(
         "entered_at": datetime.now(UTC).isoformat(),
         "placed_at": datetime.now(UTC).isoformat(),
         "entry_hour": datetime.now(UTC).hour,
+        "peak_profit_pct": None,
         "settled": False,
         "outcome": None,
         "pnl": None,
@@ -899,6 +918,70 @@ def check_stop_losses(
         if unrealized_pnl < stop_threshold:
             exits.append(ticker)
 
+    return exits
+
+
+def update_peak_profits(
+    open_trades: list[dict], current_yes_prices: dict[str, float]
+) -> bool:
+    """Update peak_profit_pct on open trades if current unrealized profit is a new high.
+
+    Saves atomically only when at least one peak is updated. Returns True if any
+    trade was updated. Called each cron run before check_breakeven_stops().
+    """
+    data = _load()
+    changed = False
+    for t in data["trades"]:
+        if t.get("settled"):
+            continue
+        ticker = t.get("ticker", "")
+        current_yes = current_yes_prices.get(ticker)
+        if current_yes is None:
+            continue
+        entry_price = t.get("entry_price", 0.0)
+        qty = t.get("quantity", 0)
+        cost = t.get("cost") or entry_price * qty
+        if cost <= 0 or qty <= 0:
+            continue
+        side = t.get("side", "yes")
+        current_side_price = current_yes if side == "yes" else 1.0 - current_yes
+        unrealized_profit_pct = (current_side_price - entry_price) * qty / cost
+        stored_peak = t.get("peak_profit_pct")
+        if stored_peak is None or unrealized_profit_pct > stored_peak:
+            t["peak_profit_pct"] = round(unrealized_profit_pct, 4)
+            changed = True
+    if changed:
+        _save(data)
+    return changed
+
+
+def check_breakeven_stops(
+    open_trades: list[dict], current_yes_prices: dict[str, float]
+) -> list[str]:
+    """Return tickers whose break-even stop has triggered.
+
+    Fires when: peak_profit_pct >= BREAKEVEN_TRIGGER_PCT AND current unrealized
+    pnl <= 0 (price has fallen back to entry or below). Requires update_peak_profits()
+    to have been called first so peak_profit_pct is current.
+    """
+    from utils import BREAKEVEN_TRIGGER_PCT
+
+    exits: list[str] = []
+    for t in open_trades:
+        peak = t.get("peak_profit_pct")
+        if peak is None or peak < BREAKEVEN_TRIGGER_PCT:
+            continue
+        ticker = t.get("ticker", "")
+        current_yes = current_yes_prices.get(ticker)
+        if current_yes is None:
+            continue
+        entry_price = t.get("entry_price", 0.0)
+        qty = t.get("quantity", 0)
+        side = t.get("side", "yes")
+        current_side_price = current_yes if side == "yes" else 1.0 - current_yes
+        unrealized_pnl = (current_side_price - entry_price) * qty
+        if unrealized_pnl <= 0:
+            exits.append(ticker)
     return exits
 
 
@@ -1333,7 +1416,24 @@ def get_performance() -> dict:
         "balance": round(get_balance(), 2),
         "peak_balance": round(get_peak_balance(), 2),
         "max_drawdown_pct": round(get_max_drawdown_pct(), 4),
+        "profit_factor": get_profit_factor(),
     }
+
+
+def get_profit_factor() -> float | None:
+    """Gross profit / gross loss across all settled trades.
+
+    Returns None when there are no losses yet (undefined, not infinity).
+    A value > 1.0 means average wins are larger than average losses.
+    """
+    trades = [
+        t for t in _load()["trades"] if t.get("settled") and t.get("pnl") is not None
+    ]
+    gross_profit = sum(t["pnl"] for t in trades if t["pnl"] > 0)
+    gross_loss = abs(sum(t["pnl"] for t in trades if t["pnl"] < 0))
+    if gross_loss == 0:
+        return None
+    return round(gross_profit / gross_loss, 2)
 
 
 def get_edge_realization_rate() -> dict:

@@ -419,6 +419,7 @@ def _build_app(client):
                 "trades_done": perf.get("settled", 0),
                 "win_rate": perf.get("win_rate"),
                 "total_pnl": perf.get("total_pnl", 0.0),
+                "profit_factor": perf.get("profit_factor"),
                 "brier": _brier_score(),
                 "ready": gc is not None,
                 "fear_greed_score": fg_score,

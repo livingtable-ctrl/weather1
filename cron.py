@@ -1332,6 +1332,9 @@ def _cmd_cron_body(
                     _yes_prices[_t["ticker"]] = _parse_sl_price(_mkt)["yes_ask"]
                 except Exception:
                     pass
+            # Update peak profit highs before any stop checks
+            _paper_sl.update_peak_profits(_open_for_sl, _yes_prices)
+
             _sl_tickers = _paper_sl.check_stop_losses(_open_for_sl, _yes_prices)
             for _sl_ticker in _sl_tickers:
                 _sl_trade = next(
@@ -1351,6 +1354,32 @@ def _cmd_cron_body(
                     print(
                         red(
                             f"  [StopLoss] Closed {_sl_ticker} \u2014 price breached stop threshold"
+                        )
+                    )
+
+            # Break-even stop: if position was ever up >=30% of cost and has
+            # since fallen back to entry, exit at scratch (no loss possible)
+            _open_for_sl = _paper_sl.get_open_trades()  # reload after any stop exits
+            _be_tickers = _paper_sl.check_breakeven_stops(_open_for_sl, _yes_prices)
+            for _be_ticker in _be_tickers:
+                _be_trade = next(
+                    (t for t in _open_for_sl if t["ticker"] == _be_ticker), None
+                )
+                if _be_trade:
+                    _be_exit_price = _yes_prices.get(
+                        _be_ticker, _be_trade["entry_price"]
+                    )
+                    if _be_trade.get("side") == "no":
+                        _be_exit_price = 1.0 - _be_exit_price
+                    _paper_sl.close_paper_early(_be_trade["id"], _be_exit_price)
+                    _log.info(
+                        "[BreakEven] Closed %s \u2014 fell back to entry after peaking %.0f%% profit",
+                        _be_ticker,
+                        (_be_trade.get("peak_profit_pct") or 0) * 100,
+                    )
+                    print(
+                        yellow(
+                            f"  [BreakEven] Closed {_be_ticker} \u2014 scratch exit (peaked then fell to entry)"
                         )
                     )
     except Exception as _e:
