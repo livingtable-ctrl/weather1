@@ -628,6 +628,7 @@ def place_paper_order(
         "city": city,
         "target_date": target_date,
         "entered_at": datetime.now(UTC).isoformat(),
+        "placed_at": datetime.now(UTC).isoformat(),
         "entry_hour": datetime.now(UTC).hour,
         "settled": False,
         "outcome": None,
