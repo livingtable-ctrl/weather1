@@ -20,6 +20,12 @@ _log = logging.getLogger(__name__)
 
 _CB_STATE_PATH = Path(__file__).parent / "data" / ".cb_state.json"
 
+# Serialises all cross-instance writes to the shared .cb_state.json file.
+# Each CircuitBreaker has its own self._lock for internal state, but without
+# this module-level lock concurrent record_success() calls from parallel batch
+# fetches race on the read-modify-write in _save_state() → WinError 32/5.
+_CB_STATE_FILE_LOCK = threading.Lock()
+
 
 class CircuitOpenError(Exception):
     """Raised when a circuit breaker is open (source is down)."""
@@ -108,24 +114,25 @@ class CircuitBreaker:
         if not self._persist:
             return
         try:
-            state: dict = {}
-            if _CB_STATE_PATH.exists():
-                try:
-                    state = json.loads(_CB_STATE_PATH.read_text())
-                except Exception:
-                    state = {}
-            state[self.name] = {
-                "failure_count": self._failure_count,
-                "trip_count": self._trip_count,
-                "current_timeout": self._current_timeout,
-                "opened_at": self._wall_opened_at,
-                "last_failure_at": self._last_failure_at,
-                "saved_at": time.time(),
-            }
-            _CB_STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
-            from safe_io import atomic_write_json as _atomic_write_json
+            with _CB_STATE_FILE_LOCK:
+                state: dict = {}
+                if _CB_STATE_PATH.exists():
+                    try:
+                        state = json.loads(_CB_STATE_PATH.read_text())
+                    except Exception:
+                        state = {}
+                state[self.name] = {
+                    "failure_count": self._failure_count,
+                    "trip_count": self._trip_count,
+                    "current_timeout": self._current_timeout,
+                    "opened_at": self._wall_opened_at,
+                    "last_failure_at": self._last_failure_at,
+                    "saved_at": time.time(),
+                }
+                _CB_STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
+                from safe_io import atomic_write_json as _atomic_write_json
 
-            _atomic_write_json(state, _CB_STATE_PATH)
+                _atomic_write_json(state, _CB_STATE_PATH)
         except Exception as exc:
             _log.debug("CB state save failed (non-critical): %s", exc)
 
