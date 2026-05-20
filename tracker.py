@@ -1343,6 +1343,103 @@ def get_source_reliability(city: str | None = None, days: int = 30) -> dict:
     return result
 
 
+def _fetch_actual_daily_temp(
+    lat: float, lon: float, tz: str, target_date: date, var: str
+) -> float | None:
+    """Fetch observed daily high (var='max') or low (var='min') from Open-Meteo archive."""
+    import requests
+
+    daily_var = "temperature_2m_max" if var == "max" else "temperature_2m_min"
+    params: dict[str, str | float] = {
+        "latitude": lat,
+        "longitude": lon,
+        "start_date": target_date.isoformat(),
+        "end_date": target_date.isoformat(),
+        "daily": daily_var,
+        "temperature_unit": "fahrenheit",
+        "timezone": tz,
+    }
+    try:
+        resp = requests.get(
+            "https://archive-api.open-meteo.com/v1/archive",
+            params=params,
+            timeout=15,
+        )
+        resp.raise_for_status()
+        vals = resp.json().get("daily", {}).get(daily_var, [])
+        if vals and vals[0] is not None:
+            return float(vals[0])
+    except Exception:
+        pass
+    return None
+
+
+def audit_settlement(ticker: str, settled_yes: bool) -> None:
+    """Cross-check Kalshi's settlement against Open-Meteo archive data.
+
+    Logs a WARNING when archive temperature contradicts Kalshi's YES/NO result,
+    which can indicate a station mapping error or a rare Kalshi settlement mistake.
+    Skips silently if the ticker is unparseable, archive is unavailable, or the
+    condition type can't be verified with a single temperature value (e.g. between,
+    precipitation).
+    """
+    try:
+        from weather_markets import CITY_COORDS as _coords
+        from weather_markets import _parse_market_condition as _parse_cond
+        from weather_markets import parse_city_date as _parse_city_date
+
+        city, target_date = _parse_city_date({"ticker": ticker, "title": ""})
+        if not city or not target_date:
+            return
+
+        coords = _coords.get(city)
+        if not coords:
+            return
+        lat, lon, tz = coords
+
+        cond = _parse_cond({"ticker": ticker, "title": ""})
+        if not cond:
+            return
+
+        cond_type = cond.get("type", "")
+        if cond_type not in ("above", "below"):
+            return  # between/precip can't be audited with a single daily value
+
+        threshold = cond.get("threshold")
+        if threshold is None:
+            return
+
+        var = "max" if cond_type == "above" else "min"
+        actual = _fetch_actual_daily_temp(lat, lon, tz, target_date, var)
+        if actual is None:
+            return
+
+        archive_yes = (
+            (actual > threshold) if cond_type == "above" else (actual < threshold)
+        )
+
+        if archive_yes != settled_yes:
+            _log.warning(
+                "settlement_audit MISMATCH %s — Kalshi=%s archive=%.1f°F threshold=%.1f°F (%s→%s)",
+                ticker,
+                "YES" if settled_yes else "NO",
+                actual,
+                threshold,
+                cond_type,
+                "YES" if archive_yes else "NO",
+            )
+        else:
+            _log.debug(
+                "settlement_audit OK %s — Kalshi=%s archive=%.1f°F threshold=%.1f°F",
+                ticker,
+                "YES" if settled_yes else "NO",
+                actual,
+                threshold,
+            )
+    except Exception as exc:
+        _log.debug("audit_settlement: skipped for %s: %s", ticker, exc)
+
+
 def sync_outcomes(client) -> int:
     """
     Check settled markets in the DB against Kalshi and record outcomes.
@@ -1387,6 +1484,11 @@ def sync_outcomes(client) -> int:
                         from feature_importance import update_outcome as _fi_update
 
                         _fi_update(ticker, settled_yes)
+                    except Exception:
+                        pass
+                    # Cross-check Kalshi's outcome against Open-Meteo archive
+                    try:
+                        audit_settlement(ticker, settled_yes)
                     except Exception:
                         pass
         except Exception as exc:

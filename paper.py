@@ -153,11 +153,14 @@ MAX_DIRECTIONAL_EXPOSURE = (
 )
 
 # Cities that tend to move together due to shared weather patterns.
+# Broader regional clusters so get_correlated_exposure covers all 18 traded cities.
+# Seattle is standalone — Pacific Maritime pattern is distinct from the West cluster.
 _CORRELATED_CITY_GROUPS = [
-    {"NYC", "Boston"},
-    {"Chicago", "Denver"},
-    {"LA", "Phoenix"},
-    {"Dallas", "Atlanta"},
+    {"NYC", "Boston", "Philadelphia", "Washington"},
+    {"Chicago", "Minneapolis", "Denver"},
+    {"LA", "Phoenix", "SanFrancisco"},
+    {"Dallas", "Houston", "SanAntonio", "Austin", "OklahomaCity"},
+    {"Atlanta", "Miami"},
 ]
 MAX_CORRELATED_EXPOSURE = 0.35  # max combined fraction across a correlated group
 
@@ -167,12 +170,22 @@ MAX_CORRELATED_EXPOSURE = 0.35  # max combined fraction across a correlated grou
 _CITY_PAIR_CORR: dict[frozenset, float] = {
     frozenset({"NYC", "Boston"}): 0.85,
     frozenset({"NYC", "Philadelphia"}): 0.80,
-    frozenset({"Chicago", "Denver"}): 0.45,
+    frozenset({"NYC", "Washington"}): 0.75,
+    frozenset({"Boston", "Philadelphia"}): 0.78,
+    frozenset({"Boston", "Washington"}): 0.70,
+    frozenset({"Philadelphia", "Washington"}): 0.80,
     frozenset({"Chicago", "Minneapolis"}): 0.60,
+    frozenset({"Chicago", "Denver"}): 0.45,
     frozenset({"LA", "Phoenix"}): 0.55,
-    frozenset({"LA", "San Francisco"}): 0.50,
-    frozenset({"Dallas", "Atlanta"}): 0.55,
+    frozenset({"LA", "SanFrancisco"}): 0.50,  # was "San Francisco" — name mismatch bug
     frozenset({"Dallas", "Houston"}): 0.70,
+    frozenset({"Dallas", "SanAntonio"}): 0.72,
+    frozenset({"Dallas", "Austin"}): 0.68,
+    frozenset({"Dallas", "OklahomaCity"}): 0.62,
+    frozenset({"Houston", "SanAntonio"}): 0.75,
+    frozenset({"Houston", "Austin"}): 0.70,
+    frozenset({"Houston", "OklahomaCity"}): 0.58,
+    frozenset({"Dallas", "Atlanta"}): 0.55,
     frozenset({"Miami", "Atlanta"}): 0.50,
 }
 MAX_SINGLE_TICKER_EXPOSURE = _env_float("MAX_SINGLE_TICKER_EXPOSURE", "0.10")  # #47
