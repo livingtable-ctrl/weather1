@@ -1587,6 +1587,53 @@ def _cmd_cron_body(
     except Exception as _e:
         _log.debug("cmd_cron: ML bias retrain failed: %s", _e)
 
+    # D5b: Refresh per-city ensemble model weights (learned_weights.json) whenever
+    # the file is ≥5 days old — a 2-day buffer before the 7-day TTL warning fires.
+    # Gated on the file's own mtime so no separate marker file is needed, and the
+    # refresh runs independently of D5's bias-retrain gate (i.e. still fires even
+    # if bias retrain was skipped because _should_retrain was False).
+    # Note: the prewarm for this run already completed, so freshened weights take
+    # effect on the *next* cron run — unavoidable without restructuring the flow.
+    _WEIGHTS_PATH = Path(__file__).parent / "data" / "learned_weights.json"
+    try:
+        import os as _os_lw
+
+        if not _os_lw.environ.get("PYTEST_CURRENT_TEST"):
+            _weights_age_days = (
+                (datetime.now(UTC).timestamp() - _WEIGHTS_PATH.stat().st_mtime) / 86400
+                if _WEIGHTS_PATH.exists()
+                else 999.0
+            )
+            if _weights_age_days >= 5:
+                from weather_markets import (
+                    update_learned_weights_from_tracker as _upd_weights,
+                )
+
+                _new_weights = _upd_weights()
+                if _new_weights:
+                    _cities_updated = sorted(_new_weights.keys())
+                    _log.info(
+                        "cmd_cron: learned weights refreshed for %d city/model(s) "
+                        "(was %.1f days old): %s",
+                        len(_new_weights),
+                        _weights_age_days,
+                        ", ".join(_cities_updated),
+                    )
+                    print(
+                        dim(
+                            f"  [ModelWeights] Refreshed weights for"
+                            f" {len(_new_weights)} city/model(s)"
+                            f" (was {_weights_age_days:.1f}d old)"
+                        )
+                    )
+                else:
+                    _log.debug(
+                        "cmd_cron: learned weights update skipped — "
+                        "insufficient tracker data (min_n=20 per city)"
+                    )
+    except Exception as _e:
+        _log.debug("cmd_cron: learned weights refresh failed: %s", _e)
+
     # G5: Weekly — run parameter sweep after bias retrain so sweep sees fresh model.
     # Runs Sunday 03:00 UTC (one hour after train-bias).
     try:
