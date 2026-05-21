@@ -222,7 +222,6 @@ class KalshiClient:
         resp = _request_with_retry(
             "GET", url, headers=headers, params=params, timeout=10
         )
-        resp.raise_for_status()
         data = resp.json()
         self._check_error_body(data, path)
         return data
@@ -231,7 +230,6 @@ class KalshiClient:
         url = self.base_url + path
         headers = self._sign_headers("POST", self._full_path(path))
         resp = _request_with_retry("POST", url, headers=headers, json=body, timeout=10)
-        resp.raise_for_status()
         data = resp.json()
         self._check_error_body(data, path)
         return data
@@ -240,7 +238,6 @@ class KalshiClient:
         url = self.base_url + path
         headers = self._sign_headers("DELETE", self._full_path(path))
         resp = _request_with_retry("DELETE", url, headers=headers, timeout=10)
-        resp.raise_for_status()
         data = resp.json()
         self._check_error_body(data, path)
         return data
