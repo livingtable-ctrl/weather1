@@ -10,6 +10,7 @@ from tabulate import tabulate
 
 from colors import bold, dim, edge_color, green, prob_color, red, yellow
 from kalshi_client import KalshiClient
+from paper import get_profit_factor
 from tracker import (
     brier_score,
     brier_score_by_method,
@@ -177,6 +178,44 @@ def cmd_history(client: KalshiClient) -> None:  # noqa: PLR0912, PLR0915
             )
     else:
         print(dim("\n  Brier score will appear once markets settle."))
+
+    # ── Profit factor ─────────────────────────────────────────────────────────
+    pf_data = get_profit_factor()
+    if pf_data["n"] >= 3:
+        pf = pf_data["profit_factor"]
+        wlr = pf_data["win_loss_ratio"]
+        if pf is None:
+            pf_str = dim("n/a (no losses yet)")
+        elif pf >= 1.5:
+            pf_str = green(f"{pf:.2f}")
+        elif pf >= 1.0:
+            pf_str = yellow(f"{pf:.2f}")
+        else:
+            pf_str = red(f"{pf:.2f}")
+        if wlr is None:
+            wlr_str = dim("n/a")
+        elif wlr >= 2.0:
+            wlr_str = green(f"{wlr:.2f}x")
+        elif wlr >= 1.0:
+            wlr_str = yellow(f"{wlr:.2f}x")
+        else:
+            wlr_str = red(f"{wlr:.2f}x")
+        gross_note = dim(
+            "(gross +$"
+            + f"{pf_data['gross_profit']:.2f}"
+            + " / -$"
+            + f"{pf_data['gross_loss']:.2f}"
+            + ")"
+        )
+        wins_note = dim(
+            "(" + str(pf_data["n_wins"]) + "W / " + str(pf_data["n_losses"]) + "L)"
+        )
+        print(f"\n  Profit factor: {bold(pf_str)}  {gross_note}")
+        print(
+            f"  Avg win: {green('$' + str(pf_data['avg_win']))}  "
+            f"Avg loss: {red('$' + str(pf_data['avg_loss']))}  "
+            f"Win/loss ratio: {wlr_str}  {wins_note}"
+        )
 
     # ── Market Calibration ────────────────────────────────────────────────────
     try:

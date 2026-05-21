@@ -1430,24 +1430,54 @@ def get_performance() -> dict:
         "balance": round(get_balance(), 2),
         "peak_balance": round(get_peak_balance(), 2),
         "max_drawdown_pct": round(get_max_drawdown_pct(), 4),
-        "profit_factor": get_profit_factor(),
+        "profit_factor": get_profit_factor()["profit_factor"],
     }
 
 
-def get_profit_factor() -> float | None:
-    """Gross profit / gross loss across all settled trades.
+def get_profit_factor() -> dict:
+    """Gross profit / gross loss from settled trades.
 
-    Returns None when there are no losses yet (undefined, not infinity).
-    A value > 1.0 means average wins are larger than average losses.
+    Profit factor > 1.0 means gross winnings exceed gross losses.
+    At a 25% win rate, you need profit factor > 3.0 to be net positive
+    (each win must cover 3 losses on average).
+
+    Returns:
+        profit_factor  -- gross_profit / gross_loss, or None if no losses yet
+        gross_profit   -- sum of pnl on winning trades ($)
+        gross_loss     -- absolute sum of pnl on losing trades ($)
+        avg_win        -- mean $ per winning trade
+        avg_loss       -- mean $ per losing trade (absolute)
+        win_loss_ratio -- avg_win / avg_loss (size asymmetry)
+        n_wins         -- number of winning settled trades
+        n_losses       -- number of losing settled trades
+        n              -- total settled trades with pnl recorded
     """
-    trades = [
+    settled = [
         t for t in _load()["trades"] if t.get("settled") and t.get("pnl") is not None
     ]
-    gross_profit = sum(t["pnl"] for t in trades if t["pnl"] > 0)
-    gross_loss = abs(sum(t["pnl"] for t in trades if t["pnl"] < 0))
-    if gross_loss == 0:
-        return None
-    return round(gross_profit / gross_loss, 2)
+    wins = [t["pnl"] for t in settled if t["pnl"] > 0]
+    losses = [t["pnl"] for t in settled if t["pnl"] < 0]
+
+    gross_profit = sum(wins)
+    gross_loss = abs(sum(losses))
+    avg_win = gross_profit / len(wins) if wins else 0.0
+    avg_loss = gross_loss / len(losses) if losses else 0.0
+    profit_factor = (gross_profit / gross_loss) if gross_loss > 0 else None
+    win_loss_ratio = (avg_win / avg_loss) if avg_loss > 0 else None
+
+    return {
+        "profit_factor": round(profit_factor, 3) if profit_factor is not None else None,
+        "gross_profit": round(gross_profit, 2),
+        "gross_loss": round(gross_loss, 2),
+        "avg_win": round(avg_win, 2),
+        "avg_loss": round(avg_loss, 2),
+        "win_loss_ratio": round(win_loss_ratio, 3)
+        if win_loss_ratio is not None
+        else None,
+        "n_wins": len(wins),
+        "n_losses": len(losses),
+        "n": len(settled),
+    }
 
 
 def get_edge_realization_rate() -> dict:
