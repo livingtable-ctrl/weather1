@@ -1211,6 +1211,19 @@ def _cmd_cron_body(
             "cmd_cron: auto-trading skipped this cycle due to consistency violations"
         )
     else:
+
+        def _kelly_sort_key(opp: tuple) -> float:
+            a = opp[1]
+            return abs(
+                a.get(
+                    "ci_adjusted_kelly", a.get("kelly_fraction", a.get("net_edge", 0))
+                )
+                or 0
+            )
+
+        strong_opps.sort(key=_kelly_sort_key, reverse=True)
+        med_opps.sort(key=_kelly_sort_key, reverse=True)
+
         if strong_opps:
             from paper import _dynamic_kelly_cap
 
