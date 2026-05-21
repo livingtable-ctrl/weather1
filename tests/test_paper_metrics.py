@@ -37,7 +37,10 @@ class TestProfitFactor:
         import paper
 
         monkeypatch.setattr(paper, "DATA_PATH", p)
-        assert paper.get_profit_factor() is None
+        result = paper.get_profit_factor()
+        assert result["profit_factor"] is None
+        assert result["n_wins"] == 2
+        assert result["n_losses"] == 0
 
     def test_no_settled_returns_none(self, tmp_path, monkeypatch):
         data = {"balance": 1000.0, "peak_balance": 1000.0, "trades": []}
@@ -46,7 +49,9 @@ class TestProfitFactor:
         import paper
 
         monkeypatch.setattr(paper, "DATA_PATH", p)
-        assert paper.get_profit_factor() is None
+        result = paper.get_profit_factor()
+        assert result["profit_factor"] is None
+        assert result["n"] == 0
 
     def test_basic_ratio(self, tmp_path, monkeypatch):
         # gross_profit=10, gross_loss=5 → profit_factor=2.0
@@ -54,7 +59,15 @@ class TestProfitFactor:
         import paper
 
         monkeypatch.setattr(paper, "DATA_PATH", p)
-        assert paper.get_profit_factor() == 2.0
+        result = paper.get_profit_factor()
+        assert result["profit_factor"] == 2.0
+        assert result["gross_profit"] == 10.0
+        assert result["gross_loss"] == 5.0
+        assert result["avg_win"] == 5.0
+        assert result["avg_loss"] == 2.5
+        assert result["win_loss_ratio"] == 2.0
+        assert result["n_wins"] == 2
+        assert result["n_losses"] == 2
 
     def test_get_performance_includes_profit_factor(self, tmp_path, monkeypatch):
         p = self._make_trades(tmp_path, [6.0, -3.0])
