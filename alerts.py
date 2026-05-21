@@ -419,9 +419,7 @@ def check_black_swan_conditions(
         from tracker import brier_score as _brier_score
         from tracker import get_history as _get_history
 
-        settled = [
-            p for p in _get_history() if p.get("outcome") not in (None, "", "pending")
-        ]
+        settled = [p for p in _get_history() if p.get("settled_yes") is not None]
         if len(settled) >= BLACK_SWAN_BRIER_MIN_SAMPLES:
             bs = _brier_score()
             if bs is not None and bs > BLACK_SWAN_BRIER_THRESHOLD:

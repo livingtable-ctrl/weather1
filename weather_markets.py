@@ -5163,40 +5163,45 @@ def analyze_trade(enriched: dict) -> dict | None:
             _MIN_BIAS_CORRECTION_TRADES,
             [
                 f
-                for f in ("ml_models.pkl", "platt_models.pkl", "temperature_scale.json")
+                for f in (
+                    "bias_models.pkl",
+                    "platt_models.json",
+                    "temperature_scale.json",
+                )
                 if (Path(__file__).parent / "data" / f).exists()
             ],
         )
         _city_correction_applied = (
             True  # skip all three tiers via the guard flags below
         )
-    try:
-        from ml_bias import apply_ml_prob_correction, has_ml_model
+    if not _city_correction_applied:
+        try:
+            from ml_bias import apply_ml_prob_correction, has_ml_model
 
-        if has_ml_model(city):
-            _corrected = apply_ml_prob_correction(
-                city, blended_prob, target_date.month, days_out
-            )
-            _delta = abs(_corrected - blended_prob)
-            _log.info(
-                "analyze_trade: GBM correction %s %.3f → %.3f (Δ%.3f)",
-                city,
-                blended_prob,
-                _corrected,
-                _delta,
-            )
-            if _delta > _ML_CORRECTION_LIMIT:
-                _log.warning(
-                    "analyze_trade: GBM correction for %s exceeds ±%.2f (Δ=%.3f) — skipping",
+            if has_ml_model(city):
+                _corrected = apply_ml_prob_correction(
+                    city, blended_prob, target_date.month, days_out
+                )
+                _delta = abs(_corrected - blended_prob)
+                _log.info(
+                    "analyze_trade: GBM correction %s %.3f → %.3f (Δ%.3f)",
                     city,
-                    _ML_CORRECTION_LIMIT,
+                    blended_prob,
+                    _corrected,
                     _delta,
                 )
-            else:
-                blended_prob = max(0.01, min(0.99, _corrected))
-                _city_correction_applied = True
-    except Exception:
-        pass
+                if _delta > _ML_CORRECTION_LIMIT:
+                    _log.warning(
+                        "analyze_trade: GBM correction for %s exceeds ±%.2f (Δ=%.3f) — skipping",
+                        city,
+                        _ML_CORRECTION_LIMIT,
+                        _delta,
+                    )
+                else:
+                    blended_prob = max(0.01, min(0.99, _corrected))
+                    _city_correction_applied = True
+        except Exception:
+            pass
 
     # Platt scaling is only applied when no GBM model exists for this city.
     if not _city_correction_applied:
