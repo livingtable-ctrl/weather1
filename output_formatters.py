@@ -155,11 +155,23 @@ def cmd_history(client: KalshiClient) -> None:  # noqa: PLR0912, PLR0915
                     if stats["bias"] < -0.03
                     else dim(f"{stats['bias']:+.3f}")
                 )
-                type_rows.append([ctype, f"{stats['brier']:.4f}", bias_str, stats["n"]])
+                win_rate = stats.get("win_rate")
+                win_str = (
+                    green(f"{win_rate:.0%}")
+                    if win_rate is not None and win_rate >= 0.55
+                    else red(f"{win_rate:.0%}")
+                    if win_rate is not None and win_rate < 0.40
+                    else f"{win_rate:.0%}"
+                    if win_rate is not None
+                    else dim("—")
+                )
+                type_rows.append(
+                    [ctype, f"{stats['brier']:.4f}", bias_str, win_str, stats["n"]]
+                )
             print(
                 tabulate(
                     type_rows,
-                    headers=["Type", "Brier", "Bias", "N"],
+                    headers=["Type", "Brier", "Bias", "Win%", "N"],
                     tablefmt="rounded_outline",
                 )
             )
