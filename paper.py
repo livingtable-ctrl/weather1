@@ -770,6 +770,7 @@ def settle_paper_trade(trade_id: int, outcome_yes: bool) -> dict:
             t["settled"] = True
             t["settled_at"] = datetime.now(UTC).isoformat()
             t["outcome"] = "yes" if outcome_yes else "no"
+            t["won"] = won
             t["pnl"] = round(pnl, 4)
             data["balance"] += payout
             # Update high-water mark after any balance change

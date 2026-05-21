@@ -1239,8 +1239,8 @@ def _cmd_cron_body(
         settled_count = ctx.sync_outcomes(client)
         if settled_count > 0:
             print(green(f"  [Settle] Recorded {settled_count} new outcome(s)."))
-    except Exception:
-        pass
+    except Exception as _sync_exc:
+        _log.warning("cmd_cron: sync_outcomes failed: %s", _sync_exc)
 
     # Settle resolved paper trades (marks paper.json won/lost to match tracker outcomes)
     paper_settled_count = 0

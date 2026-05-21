@@ -569,8 +569,8 @@ def _validate_trade_opportunity(opp: dict, live: bool = False) -> tuple[bool, st
                 )
                 if _ens_spread is None:  # tiering inactive — AB test owns min_edge
                     min_edge = float(_ab_variant_val)
-        except Exception:
-            pass
+        except Exception as _ab_exc:
+            _log.debug("_auto_place_trades: A/B variant pick failed: %s", _ab_exc)
 
     if edge < min_edge:
         return False, f"edge {edge:.1%} < {min_edge:.1%} (spread={_ens_spread})"
@@ -1162,8 +1162,10 @@ def _auto_place_trades(
                                     ticker,
                                     _ml_exc,
                                 )
-            except Exception:
-                pass
+            except Exception as _ml_outer_exc:
+                _log.warning(
+                    "[MicroLive] unexpected error for %s: %s", ticker, _ml_outer_exc
+                )
 
     if placed == 0:
         print(dim("  [Auto] No qualifying signals this scan."))
