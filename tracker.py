@@ -1267,9 +1267,11 @@ def get_calibration_by_type() -> dict[str, dict]:
     for ctype, pairs in by_type.items():
         errors = [(p - y) ** 2 for p, y in pairs]
         biases = [p - y for p, y in pairs]
+        wins = sum(1 for p, y in pairs if (p >= 0.5 and y == 1) or (p < 0.5 and y == 0))
         result[ctype] = {
             "brier": sum(errors) / len(errors),
             "bias": sum(biases) / len(biases),
+            "win_rate": wins / len(pairs),
             "n": len(pairs),
         }
     return result

@@ -123,6 +123,18 @@ _MOS_BLEND_WEIGHT: float = float(os.getenv("MOS_BLEND_WEIGHT", "0.20"))
 # Override via MIN_MARKET_PRICE env var (e.g. MIN_MARKET_PRICE=0.03).
 MIN_MARKET_PRICE: float = float(os.getenv("MIN_MARKET_PRICE", "0.05"))
 
+# Maximum ensemble sigma (°F) used for probability calculation on short-horizon forecasts.
+# The raw GFS ensemble spread overstates 1-day temperature uncertainty vs NWS calibrated
+# RMSE (~1.5–2°F).  Capping prevents near-zero probabilities on 2°F-wide "between" bins.
+# Override via SIGMA_1DAY_CAP / SIGMA_2DAY_CAP env vars.
+_SIGMA_1DAY_CAP: float = float(os.getenv("SIGMA_1DAY_CAP", "3.0"))
+_SIGMA_2DAY_CAP: float = float(os.getenv("SIGMA_2DAY_CAP", "4.0"))
+
+# Minimum settled-trade count before any ML bias correction tier activates.
+# Guards against applying models trained on backtesting data to live paper trades.
+# Override via MIN_BIAS_CORRECTION_TRADES env var.
+_MIN_BIAS_CORRECTION_TRADES: int = int(os.getenv("MIN_BIAS_CORRECTION_TRADES", "50"))
+
 # Single source of truth for edge calculation logic version.
 # Increment whenever kelly_fraction, bayesian_kelly_fraction, edge_confidence,
 # or time_decay_edge logic changes, so outputs can be traced.
@@ -4574,12 +4586,44 @@ def analyze_trade(enriched: dict) -> dict | None:
             # Prefer ens_stats["std"] when available — actual model disagreement
             # is more informative than the generic days-out lookup table.
             _ens_std = ens_stats.get("std") if ens_stats else None
-            sigma = (
+            _raw_sigma = (
                 _ens_std
                 if _ens_std and _ens_std > 0
                 else _forecast_uncertainty(target_date)
-            ) * sigma_mult
+            )
+            # Cap raw sigma before applying sigma_mult so the time-of-day
+            # reduction from _time_risk() still applies proportionally.
+            # Raw GFS ensemble spread (5–10°F) overstates 1-day uncertainty;
+            # NWS calibrated RMSE is ~1.5–2°F.  Cap keeps "between" probabilities
+            # plausible for the 2°F-wide bins Kalshi uses.
+            _prob_sigma_cap = (
+                _SIGMA_1DAY_CAP
+                if days_out <= 1
+                else _SIGMA_2DAY_CAP
+                if days_out <= 2
+                else _raw_sigma
+            )
+            if _raw_sigma > _prob_sigma_cap:
+                _log.debug(
+                    "analyze_trade: capping ensemble sigma %.2f→%.2f "
+                    "(city=%s days_out=%d)",
+                    _raw_sigma,
+                    _prob_sigma_cap,
+                    city,
+                    days_out,
+                )
+            sigma = min(_raw_sigma, _prob_sigma_cap) * sigma_mult
             ens_prob = _forecast_probability(condition, forecast_temp, sigma)
+            if condition.get("type") == "between":
+                _log.info(
+                    "analyze_trade between sigma: raw=%.2f cap=%.2f "
+                    "final=%.2f → ens_prob=%.3f (city=%s)",
+                    _raw_sigma,
+                    _prob_sigma_cap,
+                    sigma,
+                    ens_prob,
+                    city,
+                )
 
         # ── Phase C: extended ensemble members (NBM + ECMWF AIFS) ───────────────
         model_temps: dict[str, float | None] = {}
@@ -5097,11 +5141,35 @@ def analyze_trade(enriched: dict) -> dict | None:
 
     # Apply exactly one city-level ML correction (GBM > Platt), then fall back to
     # global temperature scaling which requires no per-city data.
+    # Gate: skip all correction tiers until enough live trades have settled.
+    # Per-tier guards gate training; this gate prevents inference from models
+    # trained on backtesting data being applied to live paper trades.
     _city_correction_applied = False
     _pre_correction_prob = blended_prob  # captured for logging / sanity guard
     _ML_CORRECTION_LIMIT = (
         0.30  # skip any correction that shifts prob by more than this
     )
+    try:
+        from tracker import count_settled_predictions as _count_settled
+
+        _n_settled = _count_settled()
+    except Exception:
+        _n_settled = 0
+    if _n_settled < _MIN_BIAS_CORRECTION_TRADES:
+        _log.debug(
+            "analyze_trade: bias correction inactive (%d/%d settled trades) "
+            "— models on disk: %s",
+            _n_settled,
+            _MIN_BIAS_CORRECTION_TRADES,
+            [
+                f
+                for f in ("ml_models.pkl", "platt_models.pkl", "temperature_scale.json")
+                if (Path(__file__).parent / "data" / f).exists()
+            ],
+        )
+        _city_correction_applied = (
+            True  # skip all three tiers via the guard flags below
+        )
     try:
         from ml_bias import apply_ml_prob_correction, has_ml_model
 
@@ -5222,6 +5290,27 @@ def analyze_trade(enriched: dict) -> dict | None:
             return None
     except Exception as _ret_exc:
         _log.debug("analyze_trade: retired-strategy check failed: %s", _ret_exc)
+
+    # ── 9b. Between-contract floor alert ─────────────────────────────────────
+    # If our blended probability for a "between" contract is implausibly low
+    # (< 15%) while the market prices it above 30%, this almost certainly means
+    # a sigma or calibration error rather than genuine edge.  Skip to avoid
+    # compounding losses from a miscalibrated signal.
+    # _divergence_gate_market_prob is set from _prices earlier in the function.
+    if (
+        condition.get("type") == "between"
+        and blended_prob < 0.15
+        and _divergence_gate_market_prob > 0.30
+    ):
+        _log.warning(
+            "analyze_trade: skipping %s — between prob %.3f implausibly low "
+            "vs market %.3f (sigma cap may need lowering)",
+            enriched.get("ticker", "?"),
+            blended_prob,
+            _divergence_gate_market_prob,
+        )
+        _count_gate("between_floor")
+        return None
 
     # ── 10. Kelly fraction ───────────────────────────────────────────────────
     prices = parse_market_price(enriched)
