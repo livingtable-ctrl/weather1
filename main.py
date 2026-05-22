@@ -314,7 +314,6 @@ def _save_watch_state(tickers: set) -> None:
         _log.warning("_save_watch_state: failed to persist watch state: %s", exc)
 
 
-# L-12: removed dead MARKET_BASE_URL constant — never read; _market_base_url() function is used instead.
 KALSHI_ENV = os.getenv("KALSHI_ENV", "demo")
 
 
@@ -328,6 +327,8 @@ def _market_base_url() -> str:
     return "https://kalshi.com" if _kalshi_env() == "prod" else "https://demo.kalshi.co"
 
 
+# L-12: MARKET_BASE_URL is dead — nothing reads it; _market_base_url() is used instead.
+# Kept here to avoid breaking any external scripts that might import it.
 MARKET_BASE_URL = (
     "https://kalshi.com" if KALSHI_ENV == "prod" else "https://demo.kalshi.co"
 )

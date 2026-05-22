@@ -944,9 +944,15 @@ def _cmd_cron_body(
                     except Exception as exc:
                         # CR-2: log at WARNING so a completely broken model is visible
                         # (previously silent — all markets could fail with zero log output)
+                        # Use _futures[fut] to recover the market dict — `m` is unbound
+                        # on the first failing future because dict-comprehension loop vars
+                        # don't leak into the enclosing scope in Python 3.
+                        _failed_mkt = _futures.get(fut, {})
                         _log.warning(
                             "cmd_cron: analysis failed for %s: %s — skipping ticker",
-                            m.get("ticker", "?") if isinstance(m, dict) else "?",
+                            _failed_mkt.get("ticker", "?")
+                            if isinstance(_failed_mkt, dict)
+                            else "?",
                             exc,
                         )
                         _dbg["analysis_errors"] = _dbg.get("analysis_errors", 0) + 1
