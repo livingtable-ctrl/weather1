@@ -83,6 +83,14 @@ def _group_markets(markets: list[dict]) -> dict:
             series = parts[0] if parts else ""
 
         date_match = re.search(r"(\d{2}[A-Z]{3}\d{2})", ticker)
+        # L-8: warn when ticker format doesn't match — silent drop masks API format changes
+        if date_match is None and series:
+            import logging as _clog
+
+            _clog.getLogger(__name__).warning(
+                "consistency: could not extract date from ticker %r — excluded from grouping",
+                ticker,
+            )
         date_str = date_match.group(1) if date_match else ""
 
         if not series or not date_str:
@@ -181,4 +189,7 @@ def find_violations(markets: list[dict]) -> list[Violation]:
                 )
 
     violations.sort(key=lambda v: v.guaranteed_edge, reverse=True)
-    return violations
+    # M-16: remove violations with non-positive edge — wide spreads produce negative
+    # guaranteed_edge (bid_hi - ask_lo < 0) which is not a real arb opportunity.
+    real_violations = [v for v in violations if v.guaranteed_edge > 0]
+    return real_violations

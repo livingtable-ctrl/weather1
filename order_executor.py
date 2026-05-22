@@ -290,7 +290,9 @@ def _place_live_order(
         return False, 0.0
 
     # 1. Daily loss check
-    if execution_log.get_today_live_loss() >= config["daily_loss_limit"]:
+    if execution_log.get_today_live_loss() >= config.get(
+        "daily_loss_limit", float("inf")
+    ):  # M-5: avoid KeyError
         print(
             f"[LIVE] Daily loss limit ${config['daily_loss_limit']} reached — skipping {ticker}"
         )
@@ -305,6 +307,16 @@ def _place_live_order(
 
     # 3. Size computation — Kelly quantity, capped by max_trade_dollars
     market = analysis.get("market", {})
+    # H-5: validate that at least one real price exists before computing midpoint.
+    # A missing/empty market dict produces a fabricated 50¢ price via _midpoint_price defaults.
+    _yes_bid = market.get("yes_bid")
+    _yes_ask = market.get("yes_ask")
+    if not _yes_bid and not _yes_ask:
+        _log.warning(
+            "[LIVE] %s: market dict has no bid or ask — cannot price order, skipping",
+            ticker,
+        )
+        return False, 0.0
     price = _midpoint_price(market, side)
     if price <= 0:
         return False, 0.0
@@ -446,6 +458,14 @@ def _check_early_exits(client=None) -> int:
 
             if shift > 0.25:
                 exit_price = _midpoint_price(market, side)
+                # H-4: never close at zero — missing market data returns 0.0 which
+                # records maximum loss even if the trade was profitable.
+                if exit_price <= 0:
+                    _log.debug(
+                        "[EarlyExit] skip %s — could not compute exit price (market data missing)",
+                        ticker,
+                    )
+                    continue
                 result = _paper.close_paper_early(trade["id"], exit_price)
                 _log.info(
                     f"[EarlyExit] #{trade['id']} {ticker} {side.upper()} closed: "
@@ -751,8 +771,22 @@ def _auto_place_trades(
             )
             _skip_reasons.append(f"{ticker}: traded_today")
             continue
-        city = m.get("_city")
+        city = m.get("_city") or a.get(
+            "city"
+        )  # M-6: flat-dict opps lack underscore fields
         target_date_obj = m.get("_date")
+        if target_date_obj is None:
+            # M-6: flat-dict format — fall back to analysis dict
+            _raw_date = a.get("target_date")
+            if isinstance(_raw_date, str):
+                try:
+                    import datetime as _dt_m6
+
+                    target_date_obj = _dt_m6.date.fromisoformat(_raw_date)
+                except ValueError:
+                    pass
+            elif hasattr(_raw_date, "isoformat"):
+                target_date_obj = _raw_date
         target_date_str = target_date_obj.isoformat() if target_date_obj else None
 
         # Per-date concentration cap: skip if too many positions already settle this date
@@ -854,6 +888,21 @@ def _auto_place_trades(
         # Fill at ask (not mid) — YES pays yes_ask, NO pays 1 - yes_bid (no_ask).
         # Using mid understates entry cost by half the spread, making paper P&L look better.
         entry_price = (1.0 - _fill_yes_bid) if rec_side == "no" else _fill_yes_ask
+        # H-3: skip if entry price is impossible — happens when yes_bid=0 with no fresh data.
+        # A NO trade with yes_bid=0 gives entry_price=1.0 (wrong); a YES trade with
+        # yes_ask=0 gives entry_price=0.0 (wrong).  Either indicates missing market data.
+        if entry_price <= 0 or entry_price >= 1.0:
+            _log.warning(
+                "_auto_place_trades: skip %s — no valid entry price "
+                "(yes_bid=%.3f yes_ask=%.3f mkt_prob=%.3f side=%s)",
+                ticker,
+                _fill_yes_bid,
+                _fill_yes_ask,
+                _mkt_prob,
+                rec_side,
+            )
+            _skip_reasons.append(f"{ticker}: no_valid_price")
+            continue
         method = a.get("method")
         consensus_mult = 0.5 if not a.get("model_consensus", True) else 1.0
         _net_edge_val = float(a.get("net_edge") or a.get("edge") or 0)
@@ -922,8 +971,14 @@ def _auto_place_trades(
 
         if live and live_config:
             _live_balance = live_config.get("balance", 0.0)
+            # CR-4: pass live balance so Kelly sizing uses the live account denominator,
+            # not paper_trades.json balance (which diverges as live and paper accounts differ).
             _live_kelly_qty = kelly_quantity(
-                adj_kelly_final, entry_price, cap=cap, method=method
+                adj_kelly_final,
+                entry_price,
+                cap=cap,
+                method=method,
+                balance_override=_live_balance if _live_balance > 0 else None,
             )
             opp_placed, cost = _place_live_order(
                 ticker=ticker,
@@ -1099,9 +1154,11 @@ def _auto_place_trades(
                         _log.warning(
                             "[MicroLive] daily loss limit reached — skipping %s", ticker
                         )
-                    elif execution_log.was_traded_today(ticker, rec_side):
+                    elif execution_log.was_traded_today(ticker, rec_side, live=True):
+                        # H-6: filter to live=True so the paper order just logged doesn't
+                        # self-block the micro-live placement (paper orders have live=0).
                         _log.warning(
-                            "[MicroLive] dedup blocked %s/%s — already traded today",
+                            "[MicroLive] dedup blocked %s/%s — already traded today (live)",
                             ticker,
                             rec_side,
                         )
@@ -1132,6 +1189,9 @@ def _auto_place_trades(
                                 execution_log.log_order_result(
                                     _micro_log_id, status="placed", response=_micro_resp
                                 )
+                                # CR-3: register the cost against the daily loss limit so
+                                # subsequent micro-live trades respect the safety cap.
+                                execution_log.add_live_loss(_micro_cost)
                                 _micro_fill = (
                                     _micro_resp.get("order", {}).get("avg_price")
                                     or _micro_price

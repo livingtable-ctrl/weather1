@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import logging
 import sqlite3
+import threading as _el_threading
 import warnings
 from datetime import UTC, datetime
 from pathlib import Path
@@ -21,6 +22,8 @@ DB_PATH = Path(__file__).parent / "data" / "execution_log.db"
 DB_PATH.parent.mkdir(exist_ok=True)
 
 _initialized = False
+# L-7: protect the initialization flag against concurrent first-call races
+_init_lock = _el_threading.Lock()
 
 
 def _conn() -> sqlite3.Connection:
@@ -35,6 +38,9 @@ def init_log() -> None:
     global _initialized
     if _initialized:
         return
+    with _init_lock:  # L-7: double-checked locking prevents concurrent double-init
+        if _initialized:
+            return
     with _conn() as con:
         con.executescript("""
         CREATE TABLE IF NOT EXISTS orders (
@@ -86,7 +92,8 @@ def init_log() -> None:
                 con.execute(stmt)
             except sqlite3.OperationalError:
                 pass
-    _initialized = True
+    with _init_lock:
+        _initialized = True
 
 
 def log_order(
@@ -175,11 +182,17 @@ def was_recently_ordered(ticker: str, side: str, within_minutes: int = 10) -> bo
     """
     init_log()
     with _conn() as con:
+        # H-21: normalize placed_at to SQLite format before comparing — Python ISO-T
+        # timestamps ('T' separator) sort lexicographically later than SQLite space-format
+        # timestamps, causing all same-day ISO-T rows to always appear "within window"
+        # regardless of actual time.
         row = con.execute(
             """
             SELECT 1 FROM orders
             WHERE ticker = ? AND side = ? AND status != 'failed'
-              AND placed_at >= datetime('now', ?)
+              AND strftime('%Y-%m-%d %H:%M:%S',
+                    replace(replace(placed_at, 'T', ' '), 'Z', ''))
+                  >= datetime('now', ?)
             LIMIT 1
             """,
             (ticker, side, f"-{within_minutes} minutes"),
@@ -187,17 +200,22 @@ def was_recently_ordered(ticker: str, side: str, within_minutes: int = 10) -> bo
     return row is not None
 
 
-def was_traded_today(ticker: str, side: str) -> bool:
+def was_traded_today(ticker: str, side: str, live: bool | None = None) -> bool:
     """
     Return True if this ticker+side was successfully ordered today (UTC).
     Excludes failed orders so a timeout doesn't permanently blacklist the ticker.
+
+    live: if True, only match live orders (live=1); if False, only paper; if None, match both.
+    H-6: the live= filter lets the micro-live dedup check be scoped to live orders only,
+    preventing the paper order from self-blocking the micro-live placement.
     """
     init_log()
     today = datetime.now(UTC).date().isoformat()
+    live_clause = "" if live is None else f" AND live = {1 if live else 0}"
     with _conn() as con:
         row = con.execute(
-            "SELECT 1 FROM orders WHERE ticker=? AND side=? AND placed_at LIKE ? "
-            "AND status != 'failed' LIMIT 1",
+            f"SELECT 1 FROM orders WHERE ticker=? AND side=? AND placed_at LIKE ? "
+            f"AND status != 'failed'{live_clause} LIMIT 1",
             (ticker, side, f"{today}%"),
         ).fetchone()
     return row is not None
@@ -228,8 +246,11 @@ def was_ordered_recently(ticker: str, days: int = 7) -> bool:
     """
     init_log()
     with _conn() as con:
+        # H-22: match any non-failed/cancelled status — orders stuck in 'sent'/'pending'
+        # after a crash would be invisible with status='filled' only, allowing re-entry.
         row = con.execute(
-            "SELECT 1 FROM orders WHERE ticker=? AND status='filled' "
+            "SELECT 1 FROM orders WHERE ticker=? "
+            "AND status NOT IN ('failed', 'cancelled') "
             "AND placed_at >= datetime('now', ?) LIMIT 1",
             (ticker, f"-{days} days"),
         ).fetchone()

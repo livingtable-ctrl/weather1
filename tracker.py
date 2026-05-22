@@ -118,15 +118,20 @@ def _run_migrations(con: sqlite3.Connection) -> None:
             continue
         try:
             con.execute(sql)
+            # H-18: write user_version immediately after each migration so a crash
+            # between steps leaves the version accurate rather than at v0.
+            con.execute(f"PRAGMA user_version={version}")
             _log.info("Applied migration v%d", version)
         except Exception as e:
             err_str = str(e).lower()
             if "duplicate column" in err_str or "already exists" in err_str:
+                # Migration already applied — still advance the version cursor.
+                con.execute(f"PRAGMA user_version={version}")
                 _log.debug("Migration v%d already applied: %s", version, e)
             else:
                 raise
 
-    # Update PRAGMA user_version to reflect applied migrations
+    # Ensure final version is set (covers case where all migrations were skipped)
     con.execute(f"PRAGMA user_version={_SCHEMA_VERSION}")
 
     # Keep schema_version table in sync for backward compatibility
@@ -466,7 +471,10 @@ def log_prediction(
     lo = cond.get("threshold", cond.get("lower"))
     hi = cond.get("threshold", cond.get("upper"))
     days_out = (market_date - _utc_today()).days if market_date is not None else None
-    # #53: raw_prob is pre-bias-correction; forecast_prob is the adjusted value
+    # #53: raw_prob is pre-bias-correction; forecast_prob is the adjusted value.
+    # M-12: arithmetic is correct — bias_correction stores the amount SUBTRACTED from
+    # the blended prob to produce forecast_prob, so adding it back reconstructs the
+    # pre-correction value: raw = forecast + bias_correction.
     bias = analysis.get("bias_correction", 0.0) or 0.0
     forecast_prob = analysis.get("forecast_prob")
     raw_prob = round(forecast_prob + bias, 6) if forecast_prob is not None else None
@@ -546,19 +554,17 @@ def log_outcome(ticker: str, settled_yes: bool) -> bool:
     """
     init_db()
     with _conn() as con:
-        existing = con.execute(
-            "SELECT 1 FROM outcomes WHERE ticker = ?", (ticker,)
-        ).fetchone()
-        if existing:
-            return False  # already settled; refuse duplicate
-        con.execute(
+        # H-19: use INSERT OR IGNORE to make this atomic — the previous SELECT+INSERT
+        # pattern had a TOCTOU race where two concurrent runs could both pass the
+        # "already exists" check and then one would silently fail on the UNIQUE constraint.
+        result = con.execute(
             """
-            INSERT INTO outcomes (ticker, settled_yes, settled_at)
+            INSERT OR IGNORE INTO outcomes (ticker, settled_yes, settled_at)
             VALUES (?, ?, datetime('now'))
-        """,
+            """,
             (ticker, 1 if settled_yes else 0),
         )
-    return True
+    return result.rowcount > 0  # True = newly inserted; False = already existed
 
 
 # ── Bias correction ───────────────────────────────────────────────────────────
@@ -628,7 +634,13 @@ def get_bias(
     # The exponential decay (30-day half-life) already smoothly reduces the influence
     # of old data. A hard zero cutoff at 14 days was too aggressive for a bot with a
     # small trade history — bias correction was inactive almost all the time.
+    # M-13: use min_age_days (all data is stale) not max_age_days (which fires if even
+    # one row is old, e.g. a single recent row would prevent the cutoff from ever firing).
     if min_age_days > 60:
+        _log.debug(
+            "get_quintile_bias: all %d rows older than 60 days — returning 0.0",
+            len(rows),
+        )
         return 0.0
 
     if total_weight == 0:

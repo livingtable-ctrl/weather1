@@ -15,6 +15,30 @@ _DATA_DIR = Path(__file__).parent / "data"
 _log = logging.getLogger(__name__)
 
 
+def _env_float(name: str, default: str) -> float:
+    """H-11: parse a float env var with a clear error message on bad input."""
+    val = os.getenv(name, default)
+    try:
+        return float(val)
+    except (ValueError, TypeError):
+        raise ValueError(
+            f"Environment variable {name}={val!r} is not a valid number. "
+            f"Check your .env file."
+        ) from None
+
+
+def _env_int(name: str, default: str) -> int:
+    """H-11: parse an int env var with a clear error message on bad input."""
+    val = os.getenv(name, default)
+    try:
+        return int(val)
+    except (ValueError, TypeError):
+        raise ValueError(
+            f"Environment variable {name}={val!r} is not a valid integer. "
+            f"Check your .env file."
+        ) from None
+
+
 def _paper_min_edge_default() -> float:
     """D4/A5: Env var takes precedence; fall back to walk-forward optimal, then
     param-sweep optimal, then hardcoded 0.05 default.
@@ -58,32 +82,26 @@ def _paper_min_edge_default() -> float:
 @dataclass
 class BotConfig:
     kalshi_fee_rate: float = field(
-        default_factory=lambda: float(os.getenv("KALSHI_FEE_RATE", "0.07"))
+        default_factory=lambda: _env_float("KALSHI_FEE_RATE", "0.07")
     )
-    min_edge: float = field(
-        default_factory=lambda: float(os.getenv("MIN_EDGE", "0.07"))
-    )
+    min_edge: float = field(default_factory=lambda: _env_float("MIN_EDGE", "0.07"))
     paper_min_edge: float = field(default_factory=_paper_min_edge_default)
     strong_edge: float = field(
-        default_factory=lambda: float(os.getenv("STRONG_EDGE", "0.30"))
+        default_factory=lambda: _env_float("STRONG_EDGE", "0.30")
     )
-    med_edge: float = field(
-        default_factory=lambda: float(os.getenv("MED_EDGE", "0.15"))
-    )
+    med_edge: float = field(default_factory=lambda: _env_float("MED_EDGE", "0.15"))
     max_daily_spend: float = field(
-        default_factory=lambda: float(os.getenv("MAX_DAILY_SPEND", "500.0"))
+        default_factory=lambda: _env_float("MAX_DAILY_SPEND", "500.0")
     )
-    max_days_out: int = field(
-        default_factory=lambda: int(os.getenv("MAX_DAYS_OUT", "5"))
-    )
+    max_days_out: int = field(default_factory=lambda: _env_int("MAX_DAYS_OUT", "5"))
     drawdown_halt_pct: float = field(
-        default_factory=lambda: float(os.getenv("DRAWDOWN_HALT_PCT", "0.20"))
+        default_factory=lambda: _env_float("DRAWDOWN_HALT_PCT", "0.20")
     )
     enable_micro_live: bool = field(
         default_factory=lambda: os.getenv("ENABLE_MICRO_LIVE", "").lower() == "true"
     )
     min_brier_samples: int = field(
-        default_factory=lambda: int(os.getenv("MIN_BRIER_SAMPLES", "30"))
+        default_factory=lambda: _env_int("MIN_BRIER_SAMPLES", "30")
     )
     dashboard_password: str = field(
         default_factory=lambda: os.getenv("DASHBOARD_PASSWORD", "")

@@ -187,6 +187,11 @@ def _acquire_cron_lock() -> bool:
     lp = LOCK_PATH
     try:
         if lp.exists():
+            # CR-1: safe defaults so `if pid` at line below never raises NameError
+            # when the inner try block exits via the except path.
+            pid = None
+            started_at = 0
+            heartbeat = 0
             try:
                 existing = json.loads(lp.read_text())
                 pid = existing.get("pid")
@@ -583,14 +588,19 @@ def _cmd_cron_body(
     except Exception as exc:
         _log.debug("WebSocket not available: %s", exc)
 
-    from kalshi_ws import get_ws_health as _get_ws_health
+    # H-1: import inside try so a missing/broken kalshi_ws module doesn't crash
+    # _cmd_cron_body before any market analysis runs.
+    try:
+        from kalshi_ws import get_ws_health as _get_ws_health
 
-    _ws_h = _get_ws_health()
-    if _ws_h["stale"]:
-        _log.warning(
-            "[cron] WebSocket cache is stale (idle %.0fs) — mid-prices may be unreliable",
-            _ws_h["idle_secs"],
-        )
+        _ws_h = _get_ws_health()
+        if _ws_h["stale"]:
+            _log.warning(
+                "[cron] WebSocket cache is stale (idle %.0fs) — mid-prices may be unreliable",
+                _ws_h["idle_secs"],
+            )
+    except Exception as _ws_health_err:
+        _log.debug("WebSocket health check unavailable: %s", _ws_health_err)
 
     log_path = Path(__file__).parent / "data" / "cron.log"
     log_path.parent.mkdir(exist_ok=True)
@@ -659,7 +669,13 @@ def _cmd_cron_body(
                         len(_violations),
                     )
         except Exception as _ce:
-            _log.debug("cmd_cron: consistency check failed: %s", _ce)
+            # M-3: treat a broken consistency module as a safety failure — halt trading
+            _log.warning(
+                "cmd_cron: consistency check raised an exception — "
+                "skipping auto-trading this cycle: %s",
+                _ce,
+            )
+            _consistency_skip = True
 
         if _ws is not None:
             try:
@@ -846,8 +862,11 @@ def _cmd_cron_body(
                     for _wf in _as_completed(_warm_futures, timeout=200):
                         try:
                             _wf.result()
-                        except Exception:
-                            pass
+                        except Exception as _prewarm_exc:
+                            # M-4: log at DEBUG so transient per-city failures are traceable
+                            _log.debug(
+                                "cmd_cron: prewarm failed for a city: %s", _prewarm_exc
+                            )
                 except TimeoutError:
                     _log.warning(
                         "cmd_cron: city source warm-up timed out after 200s — "
@@ -892,6 +911,7 @@ def _cmd_cron_body(
                 "cmd_cron: deduped %d duplicate ticker(s) before analysis",
                 len(markets) - len(_deduped_markets),
             )
+        scanned = len(_deduped_markets)  # L-2: report post-dedup count in summary
 
         _reset_gate_counts()
 
@@ -921,12 +941,22 @@ def _cmd_cron_body(
                         break
                     try:
                         m, enriched, analysis = fut.result()
-                    except Exception:
+                    except Exception as exc:
+                        # CR-2: log at WARNING so a completely broken model is visible
+                        # (previously silent — all markets could fail with zero log output)
+                        _log.warning(
+                            "cmd_cron: analysis failed for %s: %s — skipping ticker",
+                            m.get("ticker", "?") if isinstance(m, dict) else "?",
+                            exc,
+                        )
+                        _dbg["analysis_errors"] = _dbg.get("analysis_errors", 0) + 1
                         continue
                     if not analysis:
                         _dbg["no_analysis"] += 1
                         continue
-                    net_edge = analysis.get("net_edge", analysis["edge"])
+                    net_edge = analysis.get(
+                        "net_edge", analysis.get("edge", 0.0)
+                    )  # H-2: avoid KeyError
                     adjusted_edge = analysis.get("adjusted_edge", net_edge)
                     # Collect analysis attempt for bulk DB insert after loop.
                     try:
@@ -1342,7 +1372,15 @@ def _cmd_cron_body(
                     # markets already returned in decimal (0-1) format, making
                     # every position look like a 99% instant loss and firing the
                     # stop on the same cron run the trade was placed.
-                    _yes_prices[_t["ticker"]] = _parse_sl_price(_mkt)["yes_ask"]
+                    # M-2: use .get() so a missing yes_ask key doesn't raise KeyError
+                    _ask = _parse_sl_price(_mkt).get("yes_ask")
+                    if _ask is not None:
+                        _yes_prices[_t["ticker"]] = _ask
+                    else:
+                        _log.debug(
+                            "[StopLoss] no yes_ask for %s — will fall back to entry_price",
+                            _t["ticker"],
+                        )
                 except Exception:
                     pass
             # Update peak profit highs before any stop checks
@@ -1396,7 +1434,11 @@ def _cmd_cron_body(
                         )
                     )
     except Exception as _e:
-        _log.debug("cmd_cron: stop-loss check failed: %s", _e)
+        # M-1: stop-loss failures must be ERROR-level — DEBUG is invisible in production
+        _log.error(
+            "[StopLoss] check_stop_losses failed — stop-loss protection inactive this cycle: %s",
+            _e,
+        )
 
     # Weekly Brier alert: notify if score > threshold two weeks running
     try:
@@ -1779,7 +1821,13 @@ def cmd_cron(
         ctx.clear_cron_running_flag()
         try:
             _last_run_path = Path(__file__).parent / "data" / ".cron_last_run"
-            _last_run_path.write_text(__import__("datetime").datetime.now().isoformat())
+            # L-1: write UTC timestamp — naive local time is inconsistent with all
+            # other system timestamps and produces wrong elapsed-time calculations.
+            _last_run_path.write_text(
+                __import__("datetime")
+                .datetime.now(__import__("datetime").timezone.utc)
+                .isoformat()
+            )
         except Exception:
             pass
         try:

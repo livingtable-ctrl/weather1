@@ -60,7 +60,9 @@ def _load_models() -> dict:
     """
     global _MODELS_CACHE, _LOAD_ATTEMPTED
     if _LOAD_ATTEMPTED:
-        return _MODELS_CACHE if _MODELS_CACHE is not None else {}
+        return (
+            _MODELS_CACHE if isinstance(_MODELS_CACHE, dict) else {}
+        )  # CR-5: same guard as first-call path
     if not _MODEL_PATH.exists():
         # File absent is definitive — mark attempted so we don't re-check every call.
         _LOAD_ATTEMPTED = True
@@ -207,6 +209,12 @@ def train_bias_model(min_samples: int = 200) -> dict:
         except Exception as exc:
             _log.warning("ml_bias: training failed for %s: %s", city, exc)
 
+    global _MODELS_CACHE, _LOAD_ATTEMPTED
+    # M-17: always reset so next _load_models() re-reads from disk, even if retrain
+    # produced zero models (e.g. all cities failed the holdout gate).
+    _MODELS_CACHE = None
+    _LOAD_ATTEMPTED = False
+
     if models:
         _MODEL_PATH.parent.mkdir(exist_ok=True)
         pkl_bytes = pickle.dumps(models)
@@ -219,10 +227,6 @@ def train_bias_model(min_samples: int = 200) -> dict:
                 "ml_bias: could not write HMAC (%s) — set MODEL_HMAC_SECRET in .env",
                 hmac_err,
             )
-        global _MODELS_CACHE, _LOAD_ATTEMPTED
-        # Invalidate cache so next _load_models() re-verifies the new pkl via HMAC
-        _MODELS_CACHE = None
-        _LOAD_ATTEMPTED = False
         _log.info("ml_bias: saved %d city models to %s", len(models), _MODEL_PATH)
 
     return models
@@ -332,6 +336,16 @@ def apply_ml_prob_correction(
 
     try:
         correction = float(model.predict([[our_prob, month, days_out, 0.0]])[0])
+        # H-15: cap correction magnitude to prevent signal inversion on sparse/overfitted models
+        _max_corr = float(os.getenv("ML_BIAS_MAX_CORRECTION", "0.25"))
+        if abs(correction) > _max_corr:
+            _log.debug(
+                "apply_ml_prob_correction(%s): clamping correction %.3f → ±%.3f",
+                city,
+                correction,
+                _max_corr,
+            )
+            correction = max(-_max_corr, min(_max_corr, correction))
         return max(0.0, min(1.0, our_prob + correction))
     except Exception as exc:
         _log.debug("apply_ml_prob_correction(%s): %s", city, exc)

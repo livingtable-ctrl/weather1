@@ -314,6 +314,7 @@ def _save_watch_state(tickers: set) -> None:
         _log.warning("_save_watch_state: failed to persist watch state: %s", exc)
 
 
+# L-12: removed dead MARKET_BASE_URL constant — never read; _market_base_url() function is used instead.
 KALSHI_ENV = os.getenv("KALSHI_ENV", "demo")
 
 
@@ -765,6 +766,13 @@ def cmd_loop(client: KalshiClient, args: list[str] | None = None) -> None:
         try:
             cmd_cron._called_from_loop = True  # type: ignore[attr-defined]
             cmd_cron(client)
+        except SystemExit as exc:
+            # H-9: suppress sys.exit() calls inside cmd_cron — the loop must survive them.
+            # SystemExit inherits from BaseException so `except Exception` does not catch it.
+            _log.warning(
+                "cmd_cron called sys.exit(%s) — suppressed to keep loop running",
+                exc.code,
+            )
         except Exception as exc:
             print(red(f"  Cron error: {exc}"))
         finally:
@@ -811,7 +819,9 @@ def cmd_loop(client: KalshiClient, args: list[str] | None = None) -> None:
                 end="\r",
                 flush=True,
             )
-            _time.sleep(min(60, remaining))
+            # H-10: clamp to non-negative — DST changes and NTP syncs can make
+            # remaining transiently negative, causing ValueError in time.sleep().
+            _time.sleep(max(0.0, min(60.0, remaining)))
 
     except KeyboardInterrupt:
         print(f"\n{dim('[loop] Stopped.')}")
@@ -1577,6 +1587,17 @@ def _load_live_config() -> dict:
         _LIVE_CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
         _LIVE_CONFIG_PATH.write_text(
             json.dumps(_LIVE_CONFIG_DEFAULT, indent=2), encoding="utf-8"
+        )
+        return dict(_LIVE_CONFIG_DEFAULT)
+    except (json.JSONDecodeError, ValueError, KeyError) as exc:
+        # M-20: corrupted live_config.json (interrupted write) must fall back to
+        # defaults — previously an unhandled JSONDecodeError crashed the watch path.
+        import logging as _cfg_log
+
+        _cfg_log.getLogger(__name__).error(
+            "_load_live_config: %s is corrupted (%s) — using defaults",
+            _LIVE_CONFIG_PATH,
+            exc,
         )
         return dict(_LIVE_CONFIG_DEFAULT)
 
@@ -6338,7 +6359,11 @@ def main():
         client = build_client()
         auto_backup()
         # Show onboarding wizard on first run
-        if _needs_onboarding():
+        try:
+            _do_onboard = _needs_onboarding()
+        except Exception:
+            _do_onboard = False  # M-18: DB errors must not block the interactive menu
+        if _do_onboard:
             cmd_onboard()
         cmd_menu(client)
         return
@@ -6472,7 +6497,14 @@ def main():
         cmd_features()
     elif cmd == "override":
         action = args[1] if len(args) > 1 else "status"
-        mins = int(args[2]) if len(args) > 2 else 60
+        # CR-6: non-integer minutes arg raises ValueError before cmd_override is called,
+        # silently failing the safety-pause command at exactly the wrong moment.
+        try:
+            mins = int(args[2]) if len(args) > 2 else 60
+        except ValueError:
+            print(f"Error: minutes must be a whole number, got {args[2]!r}")
+            print("Usage: python main.py override [pause|resume|status] [minutes]")
+            sys.exit(1)
         cmd_override(action, mins)
     elif cmd == "admin":
         action = args[1] if len(args) > 1 else ""

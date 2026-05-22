@@ -641,6 +641,17 @@ def _load_platt_models() -> dict[str, tuple[float, float]]:
                         a,
                     )
                     continue
+                # H-16: re-validate coefficient bounds at load time — training enforces
+                # |A|≤5 and |B|≤5 but a corrupted/manually edited file bypasses that.
+                if abs(a) > 5 or abs(b) > 5:
+                    _log.warning(
+                        "Platt model for %s has out-of-bounds coefficients "
+                        "(A=%.2f B=%.2f) — skipping to prevent extreme miscalibration",
+                        city,
+                        a,
+                        b,
+                    )
+                    continue
                 validated[city] = (float(a), float(b))
             _PLATT_MODELS = validated
         except Exception:
@@ -973,7 +984,10 @@ def batch_prewarm_forecasts(
     cities_needed: set[str] = set()
     for city, date_iso in city_dates:
         _val, _hit, _ts = _forecast_cache.get_with_ts((city, date_iso))
-        if not _hit or (_time_prewarm.time() - _ts) >= FORECAST_MAX_AGE_SECS:
+        # L-10: use monotonic() consistently — _forecast_cache stores monotonic timestamps
+        # (time.monotonic() - age at load) but the original check used time.time() (wall clock).
+        # POSIX epoch >> monotonic uptime, so every cached entry appeared stale on every call.
+        if not _hit or (_time_prewarm.monotonic() - _ts) >= FORECAST_MAX_AGE_SECS:
             cities_needed.add(city)
 
     if not cities_needed:
@@ -1343,14 +1357,18 @@ _PRECIP_ENSEMBLE_CACHE: dict[tuple, tuple[list[float], float]] = {}
 _MODEL_CACHE_TTL = 4 * 60 * 60  # 4 hours
 
 
-def fetch_temperature_nbm(city: str, target_date: date) -> float | None:
+def fetch_temperature_nbm(
+    city: str, target_date: date, var: str = "max"
+) -> float | None:
     """
-    Fetch best-available Open-Meteo max daily temperature for a city.
+    Fetch best-available Open-Meteo max or min daily temperature for a city.
     Previously used model="nbm" (NOAA National Blend of Models), but Open-Meteo
     removed that model name in 2026.  Now uses model="best_match" — Open-Meteo's
     auto-selected optimal model per location (covers days 1–4, full 24 h/day).
 
-    Returns max temperature for target_date in °F, or None on failure.
+    var: "max" for daily high (default), "min" for daily low.
+    H-13: LOW markets require min(temps), not max(temps).
+    Returns temperature in °F for target_date, or None on failure.
     """
     cache_key = (city, target_date.isoformat())
     cached = _NBM_CACHE.get(cache_key)
@@ -1389,7 +1407,8 @@ def fetch_temperature_nbm(city: str, target_date: date) -> float | None:
         data = resp.json()
         temps = data.get("hourly", {}).get("temperature_2m", [])
         valid = [t for t in temps if t is not None]
-        result = float(max(valid)) if valid else None
+        # H-13: return min for LOW markets, max for HIGH markets
+        result = float(min(valid) if var == "min" else max(valid)) if valid else None
         _NBM_CACHE[cache_key] = (result, time.monotonic())
         return result
     except Exception as exc:
@@ -1830,13 +1849,17 @@ def gaussian_probability(
         return max(0.0, min(1.0, cdf))
 
 
-def fetch_temperature_ecmwf(city: str, target_date: date) -> float | None:
+def fetch_temperature_ecmwf(
+    city: str, target_date: date, var: str = "max"
+) -> float | None:
     """
-    Fetch ECMWF AIFS ensemble max daily temperature for a city.
+    Fetch ECMWF AIFS ensemble max or min daily temperature for a city.
     Uses Open-Meteo with models="ecmwf_aifs025".
     Outperforms GFS by ~20% for days 1–3 (operational since July 2025).
 
-    Returns max temperature for target_date in °F, or None on failure.
+    var: "max" for daily high (default), "min" for daily low.
+    H-13: LOW markets require min(temps), not max(temps).
+    Returns temperature in °F for target_date, or None on failure.
     """
     cache_key = (city, target_date.isoformat())
     cached = _ECMWF_CACHE.get(cache_key)
@@ -1875,7 +1898,8 @@ def fetch_temperature_ecmwf(city: str, target_date: date) -> float | None:
         data = resp.json()
         temps = data.get("hourly", {}).get("temperature_2m", [])
         valid = [t for t in temps if t is not None]
-        result = float(max(valid)) if valid else None
+        # H-13: return min for LOW markets, max for HIGH markets
+        result = float(min(valid) if var == "min" else max(valid)) if valid else None
         _ECMWF_CACHE[cache_key] = (result, time.monotonic())
         return result
     except Exception as exc:
@@ -3069,6 +3093,24 @@ def _parse_market_condition(market: dict) -> dict | None:
         elif "<" in title or "below" in title or " be <" in title:
             return {"type": "below", "threshold": val}
         else:
+            # M-15: fall back to series ticker prefix before returning None —
+            # KXHIGH unambiguously means "above", KXLOW means "below".
+            # This survives Kalshi title rewording.
+            series_for_dir = (market.get("series_ticker") or ticker).upper()
+            if "KXHIGH" in series_for_dir or "HIGH" in series_for_dir:
+                _log.debug(
+                    "_parse_market_condition[%s]: inferred 'above' from series ticker (no title match)",
+                    ticker,
+                )
+                return {"type": "above", "threshold": val}
+            elif "KXLOW" in series_for_dir or (
+                "LOW" in series_for_dir and "BELOW" not in series_for_dir
+            ):
+                _log.debug(
+                    "_parse_market_condition[%s]: inferred 'below' from series ticker (no title match)",
+                    ticker,
+                )
+                return {"type": "below", "threshold": val}
             _log.warning(
                 "_parse_market_condition[%s]: T-type but no direction keyword in title=%r "
                 "(has_lt=%s has_gt=%s has_below=%s has_above=%s)",
@@ -4628,8 +4670,9 @@ def analyze_trade(enriched: dict) -> dict | None:
         # ── Phase C: extended ensemble members (NBM + ECMWF AIFS) ───────────────
         model_temps: dict[str, float | None] = {}
         try:
-            model_temps["nbm"] = fetch_temperature_nbm(city, target_date)
-            model_temps["ecmwf"] = fetch_temperature_ecmwf(city, target_date)
+            # H-13: pass var so LOW markets get daily min, not max
+            model_temps["nbm"] = fetch_temperature_nbm(city, target_date, var=var)
+            model_temps["ecmwf"] = fetch_temperature_ecmwf(city, target_date, var=var)
         except Exception as _ext_exc:
             _log.debug(
                 "Phase C extended ensemble fetch failed for %s: %s", city, _ext_exc

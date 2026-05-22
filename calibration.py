@@ -93,11 +93,19 @@ def _best_weights(
             best_score = score
             best = (we, wc, wn)
 
-    if val_rows:
-        val_baseline = _brier(val_rows, *equal)
-        val_calibrated = _brier(val_rows, *best)
-        if val_baseline - val_calibrated <= _BRIER_IMPROVEMENT_GATE:
-            return {"ensemble": equal[0], "climatology": equal[1], "nws": equal[2]}
+    # M-19: refuse to return in-sample weights when there are no validation rows —
+    # the improvement gate would be skipped and overfitted weights would enter production.
+    if not val_rows:
+        _log.warning(
+            "calibrate_blend_weights: no validation rows after train/val split — "
+            "returning equal weights to avoid overfitting"
+        )
+        return {"ensemble": equal[0], "climatology": equal[1], "nws": equal[2]}
+
+    val_baseline = _brier(val_rows, *equal)
+    val_calibrated = _brier(val_rows, *best)
+    if val_baseline - val_calibrated <= _BRIER_IMPROVEMENT_GATE:
+        return {"ensemble": equal[0], "climatology": equal[1], "nws": equal[2]}
 
     return {"ensemble": best[0], "climatology": best[1], "nws": best[2]}
 
@@ -336,6 +344,9 @@ def validate_weight_files(
             )
         elif abs(sum(v for k, v in w.items() if not k.startswith("_")) - 1.0) > 0.005:
             _log.error("Seasonal weights for %s don't sum to 1.0: %s", season, w)
+        # L-9: reject negative individual weights — they produce probabilities outside [0,1]
+        elif any(v < 0 for k, v in w.items() if not k.startswith("_")):
+            _log.error("Seasonal weights for %s contain negative values: %s", season, w)
 
     for ctype in ("above", "below", "between"):
         w = condition.get(ctype)

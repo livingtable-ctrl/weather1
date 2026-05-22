@@ -221,7 +221,9 @@ def cleanup_temp_files() -> int:
     Returns number of files removed.
     """
     count = 0
-    for f in DATA_PATH.parent.glob(".paper_trades_*.json"):
+    for f in DATA_PATH.parent.glob(
+        ".paper_trades.json_*.tmp"
+    ):  # L-6: match actual atomic write temp names
         try:
             f.unlink()
             count += 1
@@ -388,7 +390,9 @@ def drawdown_scaling_factor() -> float:
         return 0.10
     if recovery <= _DRAWDOWN_TIER_3:
         return 0.30
-    if recovery < _DRAWDOWN_TIER_4:
+    if (
+        recovery <= _DRAWDOWN_TIER_4
+    ):  # L-3: was `<`; at exactly 5% drawdown tier must apply
         return 0.70
     return 1.0
 
@@ -504,6 +508,7 @@ def kelly_bet_dollars(
     kelly_fraction: float,
     cap: float | None = None,
     method: str | None = None,
+    balance_override: float | None = None,  # CR-4: live path passes live balance
 ) -> float:
     """
     Return the dollar amount to bet.
@@ -521,12 +526,15 @@ def kelly_bet_dollars(
     scale = drawdown_scaling_factor()
     if scale == 0.0:
         return 0.0
-    balance = get_balance()
+    # CR-4: use live balance when provided (live path), otherwise paper balance
+    balance = balance_override if balance_override is not None else get_balance()
 
+    # M-11: apply drawdown scale to ALL strategies, not just Kelly.
+    # Previously fixed_pct and fixed_dollars ignored intermediate tiers (0.10, 0.30, 0.70).
     if STRATEGY == "fixed_pct":
-        dollars = round(balance * min(FIXED_BET_PCT, 0.25), 2)
+        dollars = round(balance * min(FIXED_BET_PCT, 0.25) * scale, 2)
     elif STRATEGY == "fixed_dollars":
-        dollars = min(FIXED_BET_DOLLARS, balance)
+        dollars = round(min(FIXED_BET_DOLLARS, balance) * scale, 2)
     else:
         fraction = max(0.0, min(kelly_fraction * scale, KELLY_CAP))
         dollars = round(balance * fraction, 2)
@@ -549,10 +557,13 @@ def kelly_quantity(
     min_dollars: float = 1.0,
     cap: float | None = None,
     method: str | None = None,
+    balance_override: float | None = None,  # CR-4: propagate to kelly_bet_dollars
 ) -> int:
     if price <= 0:
         return 0
-    dollars = kelly_bet_dollars(kelly_fraction, cap=cap, method=method)
+    dollars = kelly_bet_dollars(
+        kelly_fraction, cap=cap, method=method, balance_override=balance_override
+    )
     if dollars < min_dollars:
         return 0
     # L8-B: int() truncation silently produces 0 when dollars < price
@@ -648,7 +659,12 @@ def place_paper_order(
         )
 
     trade = {
-        "id": max((t["id"] for t in data["trades"]), default=0) + 1,
+        # H-8: filter to integer IDs before max() — any None id raises TypeError
+        "id": max(
+            (t["id"] for t in data["trades"] if isinstance(t.get("id"), int)),
+            default=0,
+        )
+        + 1,
         "ticker": ticker,
         "side": side,
         "quantity": quantity,
@@ -1701,12 +1717,21 @@ def get_current_streak() -> tuple[str, int]:
     last_pnl = settled[-1]["pnl"]
     if last_pnl is None:
         return ("none", 0)
-    direction = "win" if last_pnl > 0 else "loss"
+    # M-10: breakeven (pnl==0) is neutral — it must not extend a loss streak
+    # and cause an unwarranted 50% Kelly reduction.
+    if last_pnl > 0:
+        direction = "win"
+    elif last_pnl < 0:
+        direction = "loss"
+    else:
+        return ("neutral", 0)
     streak = 1
     for t in reversed(settled[:-1]):
         pnl = t.get("pnl")
         if pnl is None:
             break
+        if pnl == 0:
+            break  # neutral trade ends the streak
         trade_dir = "win" if pnl > 0 else "loss"
         if trade_dir == direction:
             streak += 1
@@ -1821,7 +1846,9 @@ def get_daily_pnl(client=None) -> float:
         t.get("pnl", 0.0) or 0.0
         for t in _load()["trades"]
         if t.get("settled")
-        and t.get("settled_at", t.get("entered_at", ""))[:10] == today_str
+        # M-9: require settled_at — falling back to entered_at mis-attributes
+        # settlement-day losses to the entry date, under-reporting today's P&L.
+        and t.get("settled_at", "")[:10] == today_str
     )
     if client is None:
         return settled_pnl
@@ -2248,7 +2275,18 @@ def auto_settle_paper_trades(client=None) -> list[dict]:
             try:
                 market = client.get_market(t["ticker"])
                 if market.get("status") == "finalized":
-                    outcome = market.get("result") == "yes"
+                    # H-7: guard against cancelled/voided results — "cancelled"=="yes"
+                    # is False, which would settle the trade as a loss (wrong).
+                    _result = market.get("result")
+                    if _result not in ("yes", "no"):
+                        logging.getLogger(__name__).warning(
+                            "auto_settle: skipping %s — unexpected result %r "
+                            "(market may be cancelled/voided)",
+                            t["ticker"],
+                            _result,
+                        )
+                    else:
+                        outcome = _result == "yes"
             except Exception as _exc:
                 if "404" in str(_exc):
                     # Market was archived by Kalshi after resolution — we can no longer
@@ -2271,6 +2309,7 @@ def auto_settle_paper_trades(client=None) -> list[dict]:
             try:
                 settled = settle_paper_trade(t["id"], outcome)
                 settled_trades.append(settled)
+
                 _ab_var = t.get("ab_variant")
                 if _ab_var:
                     try:
@@ -2292,8 +2331,14 @@ def auto_settle_paper_trades(client=None) -> list[dict]:
                         )
                     except Exception:
                         pass
-            except Exception:
-                pass
+            except Exception as _settle_exc:
+                # M-7: log settlement failures — silent swallow hides corruption/disk errors
+                logging.getLogger(__name__).error(
+                    "auto_settle: settlement failed for trade %s (%s): %s",
+                    t.get("id"),
+                    t.get("ticker"),
+                    _settle_exc,
+                )
     return settled_trades
 
 
@@ -2322,7 +2367,9 @@ def get_rolling_sharpe(window_days: int = 30) -> float | None:
     # Build daily P&L map
     daily: dict[str, float] = {}
     for t in settled:
-        day = (t.get("entered_at", "") or "")[:10]
+        # L-4: group by settled_at not entered_at — entry-date grouping distorts the
+        # return series (all costs on Monday, all gains on Friday for a week-long trade).
+        day = (t.get("settled_at") or t.get("entered_at") or "")[:10]
         if day:
             daily[day] = daily.get(day, 0.0) + (t.get("pnl") or 0.0)
 
@@ -2355,8 +2402,10 @@ def get_attribution() -> dict:
         qty = t.get("quantity", 1) or 1
         cost = t.get("cost", 0.0) or 0.0
         winnings_per = 1.0 - entry_price
+        # L-5: for NO trades win_prob = 1-ep (market prob), not ep (our prob of YES)
+        win_prob = ep if t.get("side") == "yes" else (1.0 - ep)
         # Expected P&L if we could repeat this bet infinitely at our model's probability
-        expected = ep * (qty * (1.0 - winnings_per * KALSHI_FEE_RATE)) - cost
+        expected = win_prob * (qty * (1.0 - winnings_per * KALSHI_FEE_RATE)) - cost
         actual = t["pnl"]
         pnl_from_edge += expected
         pnl_from_luck += actual - expected
@@ -2665,6 +2714,7 @@ def calc_trade_pnl(trade: dict) -> float:
         won = outcome == "no"
 
     if won:
-        return (1.0 - fill_price) * quantity
+        # M-8: apply fee consistent with settle_paper_trade — winnings are net of fee
+        return round(quantity * (1.0 - fill_price) * (1.0 - KALSHI_FEE_RATE), 4)
     else:
-        return -fill_price * quantity
+        return round(-fill_price * quantity, 4)

@@ -146,6 +146,19 @@ def get_indices(
             "year": year,
             "month": month,
         }
+        # H-17: only cache when at least one index was successfully fetched.
+        # A full-zero result from a network outage must not lock in zero adjustments
+        # for the next 24 hours — leave _indices_loaded_at unchanged so the next
+        # call retries immediately.
+        if result["ao"] == 0.0 and result["nao"] == 0.0 and result["enso"] == 0.0:
+            import logging as _ci_log
+
+            _ci_log.getLogger(__name__).warning(
+                "climate_indices: all three NOAA fetches returned empty — "
+                "NOT caching zero result; will retry on next call"
+            )
+            return result  # return zeros for this call but don't update the timestamp
+
         _indices_cache["latest"] = result
         _indices_loaded_at = time.monotonic()
         return result
