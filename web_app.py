@@ -1782,6 +1782,198 @@ setInterval(() => {{
             return jsonify({"error": str(exc)}), 500
 
     # ------------------------------------------------------------------ #
+    #  ADAPTER ROUTES  (React dashboard — clean JSON, no Jinja2 shape)   #
+    # ------------------------------------------------------------------ #
+
+    @app.route("/api/opportunities")
+    def api_opportunities():
+        """Enriched alias of /api/suggested_bets with star ratings and flag fields."""
+        from flask import request as _freq
+
+        from paper import get_balance
+        from utils import MIN_EDGE
+        from weather_markets import (
+            analyze_trade,
+            enrich_with_forecast,
+            get_weather_markets,
+        )
+
+        try:
+            n = max(1, min(int(_freq.args.get("n", 10)), 50))
+        except (TypeError, ValueError):
+            n = 10
+
+        try:
+            markets = get_weather_markets(client)
+        except Exception as exc:  # noqa: BLE001
+            return jsonify({"error": str(exc), "opportunities": []}), 500
+
+        balance = get_balance()
+        results: list[dict] = []
+
+        for m in markets:
+            try:
+                enriched = enrich_with_forecast(m)
+                analysis = analyze_trade(enriched)
+                if not analysis:
+                    continue
+                net_edge = abs(analysis.get("net_edge", analysis.get("edge", 0)))
+                if net_edge < MIN_EDGE:
+                    continue
+                kelly = analysis.get(
+                    "ci_adjusted_kelly",
+                    analysis.get("fee_adjusted_kelly", analysis.get("kelly", 0)),
+                )
+                kelly_dollars = round(float(kelly) * balance, 2)
+                edge_pct = round(net_edge * 100, 1)
+                if edge_pct >= 15:
+                    stars = "★★★"
+                elif edge_pct >= 10:
+                    stars = "★★"
+                else:
+                    stars = "★"
+                results.append(
+                    {
+                        "ticker": m.get("ticker", ""),
+                        "title": (m.get("title") or m.get("ticker", ""))[:60],
+                        "city": m.get("_city", "—"),
+                        "recommended_side": analysis.get("recommended_side", "yes"),
+                        "edge_pct": edge_pct,
+                        "kelly_fraction": round(float(kelly), 4),
+                        "kelly_dollars": kelly_dollars,
+                        "suggested_dollars": kelly_dollars,
+                        "forecast_prob": round(
+                            float(analysis.get("forecast_prob", 0)) * 100, 1
+                        ),
+                        "market_prob": round(
+                            float(analysis.get("market_prob", 0)) * 100, 1
+                        ),
+                        "signal": analysis.get("signal", "—"),
+                        "stars": stars,
+                        "near_threshold": bool(analysis.get("near_threshold", False)),
+                        "is_hedge": bool(analysis.get("is_hedge", False)),
+                        "time_risk": analysis.get("time_risk", "—"),
+                        "model_agreement": None,
+                    }
+                )
+            except Exception:  # noqa: BLE001
+                continue
+
+        results.sort(key=lambda x: x["edge_pct"], reverse=True)
+        return jsonify(
+            {
+                "opportunities": results[:n],
+                "balance": round(balance, 2),
+                "min_edge": MIN_EDGE,
+                "generated_at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S"),
+            }
+        )
+
+    @app.route("/api/alerts")
+    def api_alerts():
+        """Alias of /api/system-events — recent system events for the React dashboard."""
+        return api_system_events()
+
+    @app.route("/api/execution-quality")
+    def api_execution_quality():
+        """Reshape of /api/price-improvement — execution quality stats for the React UI."""
+        try:
+            from tracker import get_price_improvement_stats
+
+            stats = get_price_improvement_stats()
+            if stats is None:
+                return jsonify(
+                    {
+                        "avg_improvement_cents": None,
+                        "median_improvement_cents": None,
+                        "positive_pct": None,
+                        "total_trades": 0,
+                        "note": "insufficient data (< 5 trades)",
+                    }
+                )
+            return jsonify(
+                {
+                    "avg_improvement_cents": round(stats["mean"] * 100, 4),
+                    "median_improvement_cents": round(stats["median"] * 100, 4),
+                    "positive_pct": stats["positive_pct"],
+                    "total_trades": stats["count"],
+                }
+            )
+        except Exception as exc:  # noqa: BLE001
+            return jsonify({"error": str(exc)}), 500
+
+    @app.route("/api/model-accuracy")
+    def api_model_accuracy():
+        """Combine /api/model-attribution + /api/city-brier into one response."""
+        per_model: list[dict] = []
+        try:
+            from tracker import get_component_attribution
+
+            for src, data in get_component_attribution().items():
+                per_model.append(
+                    {
+                        "model": src,
+                        "trades": data.get("n", 0),
+                        "brier": round(float(data.get("brier", 0)), 4),
+                        "win_rate": None,
+                        "edge_realized": None,
+                    }
+                )
+            per_model.sort(key=lambda x: x["brier"])
+        except Exception:  # noqa: BLE001
+            pass
+
+        city_brier: dict = {}
+        try:
+            from tracker import get_calibration_by_city
+
+            for city, d in (get_calibration_by_city() or {}).items():
+                if d.get("brier") is not None:
+                    city_brier[city] = d["brier"]
+        except Exception:  # noqa: BLE001
+            pass
+
+        return jsonify({"per_model": per_model, "city_brier": city_brier})
+
+    @app.route("/api/forecast")
+    def api_forecast():
+        """Per-city ensemble forecast for day=0 (today) or day=1 (tomorrow)."""
+        from datetime import date, timedelta
+
+        from flask import request as _freq
+
+        from weather_markets import CITY_COORDS, get_weather_forecast
+
+        try:
+            day = int(_freq.args.get("day", 0))
+        except (TypeError, ValueError):
+            day = 0
+
+        if day not in (0, 1):
+            return jsonify({"error": "day must be 0 or 1"}), 400
+
+        target = date.today() + timedelta(days=day)
+        cities: dict[str, dict] = {}
+
+        for city in sorted(CITY_COORDS):
+            try:
+                f = get_weather_forecast(city, target)
+                if f:
+                    cities[city] = {
+                        "high_f": round(f["high_f"], 1),
+                        "low_f": round(f["low_f"], 1) if f.get("low_f") else None,
+                        "precip_in": round(f.get("precip_in", 0), 2),
+                        "models_used": f.get("models_used", 1),
+                        "high_range": list(
+                            f.get("high_range", [f["high_f"], f["high_f"]])
+                        ),
+                    }
+            except Exception:  # noqa: BLE001
+                pass
+
+        return jsonify({"day": day, "date": target.isoformat(), "cities": cities})
+
+    # ------------------------------------------------------------------ #
 
     return app
 

@@ -112,9 +112,10 @@ function mapStats(status, grad, config, prevStats) {
 const CB_LABELS = {
   open_meteo_forecast:  'Open-Meteo Forecast',
   open_meteo_ensemble:  'Open-Meteo Ensemble',
+  nbm_openmeteo:        'NWS / NBM',
+  nws:                  'NWS / NBM',
   weatherapi:           'WeatherAPI',
   pirate_weather:       'Pirate Weather',
-  nws:                  'NWS / NBM',
   kalshi_api_read:      'Kalshi REST',
   climatology:          'Climatology',
 };
@@ -233,7 +234,6 @@ function mapAnalytics(raw) {
   const patch = {};
   if (raw.brier_by_days)        patch.brierByDays      = raw.brier_by_days;
   if (raw.city_calibration)     patch.cityCalibration  = raw.city_calibration;
-  if (raw.city_heatmap)         patch.cityBrier        = raw.city_heatmap;
   // roc_auc is a dict {auc, n, points} — extract the float
   if (raw.roc_auc?.auc != null) patch.auc              = raw.roc_auc.auc;
   if (raw.component_attribution) patch.brierBySource   = raw.component_attribution;

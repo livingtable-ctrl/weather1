@@ -12,7 +12,10 @@ function balanceWalk(start, days, drift, vol, seed) {
   const now = Date.now();
   for (let i = 0; i < days; i++) {
     bal += drift + (rng() - 0.5) * vol;
-    out.push({ t: now - (days - i) * 86400000, v: +bal.toFixed(2) });
+    out.push({
+      ts: new Date(now - (days - i) * 86400000).toISOString(),
+      balance: +bal.toFixed(2),
+    });
   }
   return out;
 }

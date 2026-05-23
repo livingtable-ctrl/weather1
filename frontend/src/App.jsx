@@ -31,7 +31,6 @@ class ErrorBoundary extends Component {
     return this.props.children;
   }
 }
-import MOCK from './mockData.js';
 import useData, { authHeader } from './useData.js';
 
 // ---------------------------------------------------------------------------
@@ -450,7 +449,7 @@ function SystemEventsCard({ alerts }) {
               }}>
                 {evt.level || 'info'}
               </span>
-              <span style={{ fontSize: 13, flex: 1, lineHeight: 1.5 }}>{evt.message || evt.msg || JSON.stringify(evt)}</span>
+              <span style={{ fontSize: 13, flex: 1, lineHeight: 1.5 }}>{evt.message || evt.msg || evt.text || JSON.stringify(evt)}</span>
               <span style={{ fontSize: 11, color: 'var(--text-faint)', whiteSpace: 'nowrap', marginTop: 2 }}>
                 {relTime(evt.ts || evt.timestamp)}
               </span>
