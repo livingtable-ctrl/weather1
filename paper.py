@@ -13,6 +13,7 @@ import hmac as _hmac
 import json
 import logging
 import os
+import threading
 import zlib as _zlib
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -75,6 +76,9 @@ def _validate_checksum(data: dict) -> None:
 
 DATA_PATH = _project_root() / "data" / "paper_trades.json"
 DATA_PATH.parent.mkdir(exist_ok=True)
+
+# Serialises concurrent read-modify-write cycles from Flask threads.
+_DATA_LOCK = threading.Lock()
 
 # Loss-limit override flag — written by reset_daily_loss_limit(), checked by
 # is_daily_loss_halted().  Keyed to the UTC date so it auto-expires at midnight.
@@ -616,92 +620,96 @@ def place_paper_order(
             f"Daily loss limit reached — trading halted for today. (${daily_pnl:.2f} lost)"
         )
 
-    data = _load()
-    cost = quantity * entry_price
+    _DATA_LOCK.acquire()
+    try:
+        data = _load()
+        cost = quantity * entry_price
 
-    # #42: enforce minimum order size
-    if cost < MIN_ORDER_COST:
-        raise ValueError(
-            f"Order too small (${cost:.2f}). Minimum order is ${MIN_ORDER_COST:.2f}."
-        )
+        # #42: enforce minimum order size
+        if cost < MIN_ORDER_COST:
+            raise ValueError(
+                f"Order too small (${cost:.2f}). Minimum order is ${MIN_ORDER_COST:.2f}."
+            )
 
-    # #47: enforce single-ticker exposure cap using same denom as get_ticker_exposure
-    if (
-        get_ticker_exposure(ticker) + cost / _exposure_denom()
-        > MAX_SINGLE_TICKER_EXPOSURE
-    ):
-        raise ValueError(
-            f"Single-ticker exposure cap reached for {ticker} "
-            f"(max {MAX_SINGLE_TICKER_EXPOSURE:.0%} of starting balance)."
-        )
+        # #47: enforce single-ticker exposure cap using same denom as get_ticker_exposure
+        if (
+            get_ticker_exposure(ticker) + cost / _exposure_denom()
+            > MAX_SINGLE_TICKER_EXPOSURE
+        ):
+            raise ValueError(
+                f"Single-ticker exposure cap reached for {ticker} "
+                f"(max {MAX_SINGLE_TICKER_EXPOSURE:.0%} of starting balance)."
+            )
 
-    if data["balance"] < cost:
-        raise ValueError(
-            f"Insufficient paper balance (${data['balance']:.2f}) "
-            f"for this order (${cost:.2f})."
-        )
+        if data["balance"] < cost:
+            raise ValueError(
+                f"Insufficient paper balance (${data['balance']:.2f}) "
+                f"for this order (${cost:.2f})."
+            )
 
-    # Belt-and-suspenders duplicate guard: reject if an unsettled position already
-    # exists for this ticker. All upstream checks (open_tickers, was_traded_today,
-    # was_ordered_recently) should catch this first, but a crash between writes
-    # or a cleared execution_log could leave an orphaned open trade undetected.
-    _existing_open = [
-        t for t in data["trades"] if t["ticker"] == ticker and not t.get("settled")
-    ]
-    if _existing_open:
-        _log.warning(
-            "place_paper_order: duplicate blocked for %s — %d open position(s) already exist",
-            ticker,
-            len(_existing_open),
-        )
-        raise ValueError(
-            f"Duplicate paper order: {ticker} already has an open position"
-        )
+        # Belt-and-suspenders duplicate guard: reject if an unsettled position already
+        # exists for this ticker. All upstream checks (open_tickers, was_traded_today,
+        # was_ordered_recently) should catch this first, but a crash between writes
+        # or a cleared execution_log could leave an orphaned open trade undetected.
+        _existing_open = [
+            t for t in data["trades"] if t["ticker"] == ticker and not t.get("settled")
+        ]
+        if _existing_open:
+            _log.warning(
+                "place_paper_order: duplicate blocked for %s — %d open position(s) already exist",
+                ticker,
+                len(_existing_open),
+            )
+            raise ValueError(
+                f"Duplicate paper order: {ticker} already has an open position"
+            )
 
-    trade = {
-        # H-8: filter to integer IDs before max() — any None id raises TypeError
-        "id": max(
-            (t["id"] for t in data["trades"] if isinstance(t.get("id"), int)),
-            default=0,
-        )
-        + 1,
-        "ticker": ticker,
-        "side": side,
-        "quantity": quantity,
-        "entry_price": entry_price,
-        "entry_prob": entry_prob,
-        "net_edge": net_edge,
-        "cost": cost,
-        "city": city,
-        "target_date": target_date,
-        "entered_at": datetime.now(UTC).isoformat(),
-        "placed_at": datetime.now(UTC).isoformat(),
-        "entry_hour": datetime.now(UTC).hour,
-        "peak_profit_pct": None,
-        "settled": False,
-        "outcome": None,
-        "pnl": None,
-        "exit_target": exit_target,
-        "thesis": thesis,
-        "icon_forecast_mean": icon_forecast_mean,
-        "gfs_forecast_mean": gfs_forecast_mean,
-        "condition_threshold": condition_threshold,
-        "ab_variant": ab_variant,
-    }
+        trade = {
+            # H-8: filter to integer IDs before max() — any None id raises TypeError
+            "id": max(
+                (t["id"] for t in data["trades"] if isinstance(t.get("id"), int)),
+                default=0,
+            )
+            + 1,
+            "ticker": ticker,
+            "side": side,
+            "quantity": quantity,
+            "entry_price": entry_price,
+            "entry_prob": entry_prob,
+            "net_edge": net_edge,
+            "cost": cost,
+            "city": city,
+            "target_date": target_date,
+            "entered_at": datetime.now(UTC).isoformat(),
+            "placed_at": datetime.now(UTC).isoformat(),
+            "entry_hour": datetime.now(UTC).hour,
+            "peak_profit_pct": None,
+            "settled": False,
+            "outcome": None,
+            "pnl": None,
+            "exit_target": exit_target,
+            "thesis": thesis,
+            "icon_forecast_mean": icon_forecast_mean,
+            "gfs_forecast_mean": gfs_forecast_mean,
+            "condition_threshold": condition_threshold,
+            "ab_variant": ab_variant,
+        }
 
-    # #50: compute slippage-adjusted fill price and store on the trade record
-    actual_fill_price = slippage_adjusted_price(entry_price, quantity, side)
-    # #73: simulate random fill slippage with Gaussian noise
-    import random as _random
+        # #50: compute slippage-adjusted fill price and store on the trade record
+        actual_fill_price = slippage_adjusted_price(entry_price, quantity, side)
+        # #73: simulate random fill slippage with Gaussian noise
+        import random as _random
 
-    _gauss_noise = _random.gauss(0, 0.002)
-    actual_fill_price = actual_fill_price * (1 + _gauss_noise)
-    actual_fill_price = round(max(0.01, min(0.99, actual_fill_price)), 6)
-    trade["actual_fill_price"] = actual_fill_price
+        _gauss_noise = _random.gauss(0, 0.002)
+        actual_fill_price = actual_fill_price * (1 + _gauss_noise)
+        actual_fill_price = round(max(0.01, min(0.99, actual_fill_price)), 6)
+        trade["actual_fill_price"] = actual_fill_price
 
-    data["balance"] -= cost
-    data["trades"].append(trade)
-    _save(data)
+        data["balance"] -= cost
+        data["trades"].append(trade)
+        _save(data)
+    finally:
+        _DATA_LOCK.release()
     # #79: warn if order processing exceeded MAX_ORDER_LATENCY_MS
     _elapsed_ms = (_time.monotonic() - _order_start) * 1000
     if _elapsed_ms > MAX_ORDER_LATENCY_MS:
@@ -880,24 +888,25 @@ def close_paper_early(trade_id: int, exit_price: float) -> dict:
     (entry_price is always the price paid per contract for our side.)
     Updates balance with proceeds (exit_price * quantity).
     """
-    data = _load()
-    for t in data["trades"]:
-        if t["id"] == trade_id and not t["settled"]:
-            qty = t["quantity"]
-            proceeds = round(exit_price * qty, 4)
-            cost = t["cost"]  # entry_price * qty, already stored
-            pnl = round(proceeds - cost, 4)
-            t["settled"] = True
-            t["settled_at"] = datetime.now(UTC).isoformat()
-            t["outcome"] = "early_exit"
-            t["exit_price"] = round(exit_price, 4)
-            t["pnl"] = pnl
-            data["balance"] += proceeds
-            data["peak_balance"] = max(
-                data.get("peak_balance", STARTING_BALANCE), data["balance"]
-            )
-            _save(data)
-            return t
+    with _DATA_LOCK:
+        data = _load()
+        for t in data["trades"]:
+            if t["id"] == trade_id and not t["settled"]:
+                qty = t["quantity"]
+                proceeds = round(exit_price * qty, 4)
+                cost = t["cost"]  # entry_price * qty, already stored
+                pnl = round(proceeds - cost, 4)
+                t["settled"] = True
+                t["settled_at"] = datetime.now(UTC).isoformat()
+                t["outcome"] = "early_exit"
+                t["exit_price"] = round(exit_price, 4)
+                t["pnl"] = pnl
+                data["balance"] += proceeds
+                data["peak_balance"] = max(
+                    data.get("peak_balance", STARTING_BALANCE), data["balance"]
+                )
+                _save(data)
+                return t
     raise ValueError(f"Trade {trade_id} not found or already settled.")
 
 
