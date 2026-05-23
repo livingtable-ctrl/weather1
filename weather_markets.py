@@ -979,10 +979,9 @@ def batch_prewarm_forecasts(
     cities_needed: set[str] = set()
     for city, date_iso in city_dates:
         _val, _hit, _ts = _forecast_cache.get_with_ts((city, date_iso))
-        # L-10: use monotonic() consistently — _forecast_cache stores monotonic timestamps
-        # (time.monotonic() - age at load) but the original check used time.time() (wall clock).
-        # POSIX epoch >> monotonic uptime, so every cached entry appeared stale on every call.
-        if not _hit or (_time_prewarm.monotonic() - _ts) >= FORECAST_MAX_AGE_SECS:
+        # get_with_ts() returns a wall-clock timestamp (time.time() - age), so compare with
+        # time.time() not time.monotonic() (uptime ≈ 3600 s vs epoch ≈ 1.7e9 s — always negative).
+        if not _hit or (_time_prewarm.time() - _ts) >= FORECAST_MAX_AGE_SECS:
             cities_needed.add(city)
 
     if not cities_needed:

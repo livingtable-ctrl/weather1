@@ -884,28 +884,39 @@ setInterval(() => {{
 
         # Annotate already-held tickers and fill kelly_dollars + kelly_qty
         try:
-            open_tickers = {t["ticker"] for t in get_open_trades()}
+            from paper import corr_kelly_scale as _cks
+            from paper import kelly_bet_dollars as _kbd
+            from paper import kelly_quantity as _kq
+            from paper import portfolio_kelly_fraction as _pkf
+            from utils import KALSHI_FEE_RATE as _fee_rate
+            from weather_markets import kelly_fraction as _kf_wm
+
+            _open_trades = get_open_trades()
+            open_tickers = {t["ticker"] for t in _open_trades}
             for s in data.get("signals", []):
                 s["already_held"] = s.get("ticker", "") in open_tickers
-                # Compute Kelly size using the same path as the bot:
-                # kelly_fraction (fee-adjusted quarter-Kelly) → kelly_bet_dollars
-                # (applies drawdown scale + streak halving + Brier cap) → kelly_quantity.
+                # Mirror the bot's full Kelly sizing chain:
+                # kelly_fraction → portfolio_kelly_fraction (position/correlation limits)
+                # → corr_kelly_scale (pairwise correlation) → consensus_mult
+                # → kelly_bet_dollars (drawdown + streak + Brier cap) → kelly_quantity.
+                # spread_kelly_multiplier omitted: live bid/ask not stored in signals cache.
                 fp = (s.get("forecast_prob") or 0) / 100
                 mp = (s.get("market_prob") or 0) / 100
                 side = (s.get("side") or "yes").lower()
                 if fp > 0 and 0 < mp < 1:
-                    from paper import kelly_bet_dollars as _kbd
-                    from paper import kelly_quantity as _kq
-                    from utils import KALSHI_FEE_RATE as _fee_rate
-                    from weather_markets import kelly_fraction as _kf_wm
-
                     if side == "no":
                         _our_prob = max(0.01, min(0.99, 1.0 - fp))
                         side_price = max(0.01, min(0.99, 1.0 - mp))
                     else:
                         _our_prob = max(0.01, min(0.99, fp))
                         side_price = max(0.01, min(0.99, mp))
+                    city = s.get("city") or None
+                    target_date = s.get("target_date") or None
                     kf = _kf_wm(_our_prob, side_price, _fee_rate)
+                    kf = _pkf(kf, city, target_date, side=side)
+                    kf *= _cks({"city": city, "target_date": target_date}, _open_trades)
+                    if not s.get("model_consensus", True):
+                        kf *= 0.5
                     s["kelly_dollars"] = _kbd(kf)
                     s["kelly_qty"] = _kq(kf, side_price)
                 else:

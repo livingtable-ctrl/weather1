@@ -1055,14 +1055,17 @@ def _cmd_cron_body(
                     }
                     with open(log_path, "a", encoding="utf-8") as f:
                         f.write(json.dumps(entry) + "\n")
+                    _tdate = enriched.get("_date")
                     signals_cache.append(
                         {
                             "ticker": m.get("ticker", ""),
                             "city": enriched.get("_city", "\u2014"),
+                            "target_date": _tdate.isoformat() if _tdate else None,
                             "side": analysis.get("recommended_side", "\u2014").upper(),
                             "signal": signal,
                             "stars": stars,
                             "edge_pct": round(net_edge * 100, 1),
+                            "net_edge": round(net_edge, 6),
                             "forecast_prob": round(
                                 analysis.get("forecast_prob", 0) * 100, 1
                             ),
@@ -1070,6 +1073,7 @@ def _cmd_cron_body(
                                 analysis.get("market_prob", 0) * 100, 1
                             ),
                             "time_risk": time_risk,
+                            "model_consensus": analysis.get("model_consensus", True),
                             "kelly_dollars": 0.0,  # balance unknown at cron time; filled by web
                             "already_held": False,
                             "near_threshold": analysis.get("near_threshold", False),

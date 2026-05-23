@@ -773,74 +773,84 @@ def settle_paper_trade(trade_id: int, outcome_yes: bool) -> dict:
     Record settlement for a paper trade. YES wins if outcome_yes=True.
     Returns the updated trade.
     """
-    data = _load()
-    for t in data["trades"]:
-        if t["id"] == trade_id and not t["settled"]:
-            qty = t["quantity"]
-            side = t["side"]
-            # P1-8: use entry_price as cost basis — this is what was deducted
-            # from the balance at entry. actual_fill_price records slippage for
-            # analytics but must not affect settlement accounting.
-            entry_price = t["entry_price"]
-            cost = entry_price * qty
-            won = (side == "yes" and outcome_yes) or (side == "no" and not outcome_yes)
-            # Fee is charged on winnings (profit) only, not the full $1 payout.
-            # net_payout_per_contract = 1.0 - winnings * fee_rate
-            winnings_per_contract = 1.0 - entry_price
-            net_payout_per_contract = 1.0 - winnings_per_contract * KALSHI_FEE_RATE
-            payout = qty * net_payout_per_contract if won else 0.0
-            pnl = payout - cost
-
-            t["settled"] = True
-            t["settled_at"] = datetime.now(UTC).isoformat()
-            t["outcome"] = "yes" if outcome_yes else "no"
-            t["won"] = won
-            t["pnl"] = round(pnl, 4)
-            data["balance"] += payout
-            # Update high-water mark after any balance change
-            data["peak_balance"] = max(
-                data.get("peak_balance", STARTING_BALANCE), data["balance"]
-            )
-            _save(data)
-
-            # A/B framework: record settlement outcome for edge_threshold experiment
-            try:
-                import json as _json
-
-                from ab_test import _AB_TEST_DIR as _AB_DIR
-                from ab_test import ABTest as _ABTest
-
-                _ticker_map_path = _AB_DIR / "edge_threshold_ticker_map.json"
-                if _ticker_map_path.exists():
-                    _ticker_map = _json.loads(_ticker_map_path.read_text())
-                    _variant = _ticker_map.pop(t.get("ticker", ""), None)
-                    if _variant:
-                        _ab_test = _ABTest(
-                            name="edge_threshold",
-                            variants={"control": 0.08, "higher": 0.10, "lower": 0.06},
-                        )
-                        _ab_test.record_outcome(_variant, won, abs(pnl))
-                        atomic_write_json(_ticker_map, _ticker_map_path)
-            except Exception:
-                pass
-
-            # Score per-model forecast means against outcome for dynamic weighting
-            _score_ensemble_members(t, outcome_yes)
-
-            # Record outcome on analysis_attempt so bias stats are queryable.
-            try:
-                from tracker import settle_analysis_attempt as _settle_attempt
-
-                _settle_attempt(
-                    ticker=t.get("ticker", ""),
-                    target_date=t.get("target_date"),
-                    outcome=1 if outcome_yes else 0,
+    _settled: dict | None = None
+    with _DATA_LOCK:
+        data = _load()
+        for t in data["trades"]:
+            if t["id"] == trade_id and not t["settled"]:
+                qty = t["quantity"]
+                side = t["side"]
+                # P1-8: use entry_price as cost basis — this is what was deducted
+                # from the balance at entry. actual_fill_price records slippage for
+                # analytics but must not affect settlement accounting.
+                entry_price = t["entry_price"]
+                cost = entry_price * qty
+                won = (side == "yes" and outcome_yes) or (
+                    side == "no" and not outcome_yes
                 )
-            except Exception:
-                pass
+                # Fee is charged on winnings (profit) only, not the full $1 payout.
+                # net_payout_per_contract = 1.0 - winnings * fee_rate
+                winnings_per_contract = 1.0 - entry_price
+                net_payout_per_contract = 1.0 - winnings_per_contract * KALSHI_FEE_RATE
+                payout = qty * net_payout_per_contract if won else 0.0
+                pnl = payout - cost
 
-            return t
-    raise ValueError(f"Trade {trade_id} not found or already settled.")
+                t["settled"] = True
+                t["settled_at"] = datetime.now(UTC).isoformat()
+                t["outcome"] = "yes" if outcome_yes else "no"
+                t["won"] = won
+                t["pnl"] = round(pnl, 4)
+                data["balance"] += payout
+                # Update high-water mark after any balance change
+                data["peak_balance"] = max(
+                    data.get("peak_balance", STARTING_BALANCE), data["balance"]
+                )
+                _save(data)
+                _settled = t
+                break
+    if _settled is None:
+        raise ValueError(f"Trade {trade_id} not found or already settled.")
+    t = _settled
+    won = t["won"]
+    pnl = t["pnl"]
+
+    # A/B framework: record settlement outcome for edge_threshold experiment
+    try:
+        import json as _json
+
+        from ab_test import _AB_TEST_DIR as _AB_DIR
+        from ab_test import ABTest as _ABTest
+
+        _ticker_map_path = _AB_DIR / "edge_threshold_ticker_map.json"
+        if _ticker_map_path.exists():
+            _ticker_map = _json.loads(_ticker_map_path.read_text())
+            _variant = _ticker_map.pop(t.get("ticker", ""), None)
+            if _variant:
+                _ab_test = _ABTest(
+                    name="edge_threshold",
+                    variants={"control": 0.08, "higher": 0.10, "lower": 0.06},
+                )
+                _ab_test.record_outcome(_variant, won, abs(pnl))
+                atomic_write_json(_ticker_map, _ticker_map_path)
+    except Exception:
+        pass
+
+    # Score per-model forecast means against outcome for dynamic weighting
+    _score_ensemble_members(t, outcome_yes)
+
+    # Record outcome on analysis_attempt so bias stats are queryable.
+    try:
+        from tracker import settle_analysis_attempt as _settle_attempt
+
+        _settle_attempt(
+            ticker=t.get("ticker", ""),
+            target_date=t.get("target_date"),
+            outcome=1 if outcome_yes else 0,
+        )
+    except Exception:
+        pass
+
+    return t
 
 
 def _score_ensemble_members(trade: dict, outcome_yes: bool) -> None:
