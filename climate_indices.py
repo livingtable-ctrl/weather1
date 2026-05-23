@@ -35,8 +35,11 @@ _indices_lock = threading.Lock()
 
 def _fetch_monthly_index(url: str) -> dict[tuple[int, int], float]:
     """
-    Parse a NOAA CPC monthly index table (year + 12 monthly values per row).
+    Parse a NOAA CPC monthly index table (year + up to 12 monthly values per row).
     Returns dict keyed by (year, month) -> value.
+
+    Accepts both complete rows (13 cols) and partial current-year rows (2+ cols)
+    so that the most recent months are always available for lookback.
     """
     try:
         resp = requests.get(url, timeout=15)
@@ -44,10 +47,12 @@ def _fetch_monthly_index(url: str) -> dict[tuple[int, int], float]:
         result = {}
         for line in resp.text.splitlines():
             parts = line.split()
-            if len(parts) == 13:
+            if len(parts) >= 2:
                 try:
                     year = int(parts[0])
                     for m, v in enumerate(parts[1:], start=1):
+                        if m > 12:
+                            break
                         val = float(v)
                         if val > -99:  # -99.9 = missing
                             result[(year, m)] = val
@@ -63,7 +68,7 @@ def _fetch_enso() -> dict[tuple[int, int], float]:
     Parse the ONI (Oceanic Niño Index) from NOAA CPC.
     Returns dict keyed by (year, month_mid) -> ANOM value.
     """
-    url = f"{CPC_BASE}/data/indices/oni.ascii.txt"
+    url = f"{CPC_BASE}/data/indices/oni.ascii.txt"  # 4-col format: SEAS YR TOTAL ANOM
     season_month = {
         "DJF": 1,
         "JFM": 2,
@@ -84,10 +89,11 @@ def _fetch_enso() -> dict[tuple[int, int], float]:
         result = {}
         for line in resp.text.splitlines():
             parts = line.split()
-            if len(parts) >= 5 and parts[0] in season_month:
+            # File format: SEAS YR TOTAL ANOM (4 cols). parts[3] = ANOM.
+            if len(parts) >= 4 and parts[0] in season_month:
                 try:
                     year = int(parts[1])
-                    anom = float(parts[4])
+                    anom = float(parts[3])
                     month = season_month[parts[0]]
                     result[(year, month)] = anom
                 except (ValueError, IndexError):
@@ -121,7 +127,7 @@ def get_indices(
         year = target_year or now.year
         month = target_month or now.month
 
-        ao_url = f"{CPC_BASE}/products/precip/CWlink/daily_ao_index/ao.index.b50.current.ascii.table"
+        ao_url = f"{CPC_BASE}/products/precip/CWlink/daily_ao_index/monthly.ao.index.b50.current.ascii.table"
         nao_url = f"{CPC_BASE}/products/precip/CWlink/pna/norm.nao.monthly.b5001.current.ascii.table"
 
         ao_data = _fetch_monthly_index(ao_url)
