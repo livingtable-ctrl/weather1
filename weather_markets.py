@@ -1231,6 +1231,9 @@ def batch_prewarm_ensemble(
 
     # Combine raw members across models with the same weighting as get_ensemble_temps,
     # then populate _ensemble_cache for each (city, date, None, var).
+    # H-14: also write per-model entries so _get_consensus_probs hits cache instead
+    # of going to the network for every market.  _get_consensus_probs reads keys of
+    # the form (model_name, city, date_iso, var, hour); daily markets use hour=None.
     written = 0
     for city_name in city_names:
         for date_iso in unique_dates:
@@ -1249,6 +1252,14 @@ def batch_prewarm_ensemble(
                     w = 1.0 + (base_w - 1.0) * 1.0  # decay=1.0 for fresh data
                     repeats = max(1, round(w * 2))
                     all_temps.extend(member_temps * repeats)
+                    # H-14: write per-model entry for _get_consensus_probs
+                    if member_temps:
+                        _model_key = (model, city_name, date_iso, var_str, None)
+                        if _ensemble_cache.get(_model_key) is None:
+                            _ensemble_cache.set_with_ttl(
+                                _model_key, member_temps, _ttl_until_next_cycle()
+                            )
+                            _save_ensemble_disk_entry(_model_key, member_temps)
                 if all_temps:
                     _ensemble_cache.set_with_ttl(
                         cache_key, all_temps, _ttl_until_next_cycle()
@@ -1577,21 +1588,29 @@ def fetch_temperature_pirate_weather(city: str, target_date: date) -> dict | Non
         if is_historical:
             entry = daily_data[0]
         else:
-            # Match by calendar date — each entry's `time` is midnight local Unix timestamp
-            target_ts_start = int(
-                datetime(
-                    target_date.year, target_date.month, target_date.day, tzinfo=UTC
-                ).timestamp()
-            )
-            target_ts_end = target_ts_start + 86400
+            # M-14: Match by local calendar date — Pirate Weather `time` is midnight
+            # in the city's local timezone, not UTC midnight.  Converting through the
+            # city tz avoids up to ±12-hour mismatches that silently returned today's
+            # block when tomorrow's data was requested.
+            import zoneinfo as _zi
+
+            _city_tz = _zi.ZoneInfo(_CITY_TZ.get(city, "America/New_York"))
             entry = next(
                 (
                     d
                     for d in daily_data
-                    if target_ts_start <= d.get("time", 0) < target_ts_end
+                    if datetime.fromtimestamp(d.get("time", 0), tz=_city_tz).date()
+                    == target_date
                 ),
-                daily_data[0],  # fallback to first day if date match fails
+                None,
             )
+            if entry is None:
+                _log.warning(
+                    "fetch_temperature_pirate_weather(%s): no block matched %s — using first block",
+                    city,
+                    target_date,
+                )
+                entry = daily_data[0]
 
         # temperatureMax is the absolute daily extreme; prefer over temperatureHigh (daytime only)
         high = entry.get("temperatureMax") or entry.get("temperatureHigh")

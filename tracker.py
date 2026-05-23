@@ -23,7 +23,7 @@ DB_PATH.parent.mkdir(exist_ok=True)
 
 _db_initialized = False
 
-_SCHEMA_VERSION = 21  # increment when _MIGRATIONS list grows
+_SCHEMA_VERSION = 22  # increment when _MIGRATIONS list grows
 
 _MIGRATIONS = [
     # v1 → v2: add condition_type column (if not already added)
@@ -101,6 +101,13 @@ _MIGRATIONS = [
     # v20 → v21: track resolution status so 404-not-found tickers are skipped without
     # deleting their historical prediction rows (fixes H4 — transient 404 destroyed records).
     "ALTER TABLE predictions ADD COLUMN status TEXT DEFAULT 'active'",
+    # v21 → v22: H-20 — normalise settled_at to SQLite format (YYYY-MM-DD HH:MM:SS).
+    # Python ISO-T format ('T' separator, '+00:00' suffix) was written by older code
+    # paths.  Mixed formats corrupt date-range queries that rely on lexicographic order.
+    """UPDATE outcomes
+       SET settled_at = strftime('%Y-%m-%d %H:%M:%S',
+           replace(replace(settled_at, 'T', ' '), 'Z', ''))
+       WHERE settled_at LIKE '%T%'""",
 ]
 
 
