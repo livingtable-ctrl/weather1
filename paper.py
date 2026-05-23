@@ -78,7 +78,9 @@ DATA_PATH = _project_root() / "data" / "paper_trades.json"
 DATA_PATH.parent.mkdir(exist_ok=True)
 
 # Serialises concurrent read-modify-write cycles from Flask threads.
-_DATA_LOCK = threading.Lock()
+_DATA_LOCK = (
+    threading.RLock()
+)  # RLock: get_open_trades/get_balance called inside locked sections
 
 # Loss-limit override flag — written by reset_daily_loss_limit(), checked by
 # is_daily_loss_halted().  Keyed to the UTC date so it auto-expires at midnight.
@@ -333,12 +335,14 @@ def cloud_backup(local_path) -> bool | None:
 
 
 def get_balance() -> float:
-    return _load()["balance"]
+    with _DATA_LOCK:
+        return _load()["balance"]
 
 
 def get_peak_balance() -> float:
     """Return the highest balance ever reached (high-water mark)."""
-    return _load().get("peak_balance", STARTING_BALANCE)
+    with _DATA_LOCK:
+        return _load().get("peak_balance", STARTING_BALANCE)
 
 
 def get_state_snapshot() -> dict:
@@ -921,7 +925,43 @@ def close_paper_early(trade_id: int, exit_price: float) -> dict:
 
 
 def get_open_trades() -> list[dict]:
-    return [t for t in _load()["trades"] if not t["settled"]]
+    with _DATA_LOCK:
+        return [t for t in _load()["trades"] if not t["settled"]]
+
+
+def validate_paper_trades_integrity() -> list[str]:
+    """Check paper_trades.json for structural corruption. Returns a list of error strings."""
+    errors: list[str] = []
+    try:
+        with _DATA_LOCK:
+            data = _load()
+        trades = data.get("trades", [])
+        ids = [t.get("id") for t in trades]
+        if len(ids) != len(set(ids)):
+            errors.append(
+                f"duplicate trade IDs detected: {len(ids) - len(set(ids))} duplicates"
+            )
+        settled_pnl = sum(t.get("pnl") or 0 for t in trades if t.get("settled"))
+        open_cost = sum(t.get("cost", 0) for t in trades if not t.get("settled"))
+        # balance = start + net pnl from settled trades - capital locked in open trades
+        # pnl = payout - cost, so settled cost is already embedded — not double-counted
+        computed_balance = STARTING_BALANCE + settled_pnl - open_cost
+        actual_balance = data.get("balance", 0)
+        if abs(computed_balance - actual_balance) > 0.05:
+            errors.append(
+                f"balance drift: computed={computed_balance:.4f} actual={actual_balance:.4f} "
+                f"delta={abs(computed_balance - actual_balance):.4f}"
+            )
+        for t in trades:
+            if t.get("settled") and t.get("settled_at") is None:
+                errors.append(
+                    f"trade {t.get('id')} settled=True but missing settled_at"
+                )
+            if t.get("settled") and t.get("pnl") is None:
+                errors.append(f"trade {t.get('id')} settled=True but missing pnl")
+    except Exception as exc:
+        errors.append(f"integrity check failed: {exc}")
+    return errors
 
 
 def check_stop_losses(

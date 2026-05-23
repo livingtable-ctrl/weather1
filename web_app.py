@@ -888,6 +888,7 @@ setInterval(() => {{
             from paper import kelly_bet_dollars as _kbd
             from paper import kelly_quantity as _kq
             from paper import portfolio_kelly_fraction as _pkf
+            from paper import spread_kelly_multiplier as _skm
             from utils import KALSHI_FEE_RATE as _fee_rate
             from weather_markets import kelly_fraction as _kf_wm
 
@@ -896,10 +897,9 @@ setInterval(() => {{
             for s in data.get("signals", []):
                 s["already_held"] = s.get("ticker", "") in open_tickers
                 # Mirror the bot's full Kelly sizing chain:
-                # kelly_fraction → portfolio_kelly_fraction (position/correlation limits)
-                # → corr_kelly_scale (pairwise correlation) → consensus_mult
+                # kelly_fraction → portfolio_kelly_fraction → corr_kelly_scale
+                # → consensus_mult → spread_kelly_multiplier
                 # → kelly_bet_dollars (drawdown + streak + Brier cap) → kelly_quantity.
-                # spread_kelly_multiplier omitted: live bid/ask not stored in signals cache.
                 fp = (s.get("forecast_prob") or 0) / 100
                 mp = (s.get("market_prob") or 0) / 100
                 side = (s.get("side") or "yes").lower()
@@ -917,11 +917,28 @@ setInterval(() => {{
                     kf *= _cks({"city": city, "target_date": target_date}, _open_trades)
                     if not s.get("model_consensus", True):
                         kf *= 0.5
+                    kf *= _skm(
+                        s.get("yes_bid", 0), s.get("yes_ask", 0), s.get("net_edge", 0)
+                    )
                     s["kelly_dollars"] = _kbd(kf)
                     s["kelly_qty"] = _kq(kf, side_price)
                 else:
                     s["kelly_dollars"] = 0.0
                     s["kelly_qty"] = 1
+        except Exception:
+            pass
+
+        # Annotate brier state and cache age so the frontend can surface them
+        try:
+            from tracker import brier_score as _bs
+            from tracker import count_settled_predictions as _csp
+            from utils import MIN_BRIER_SAMPLES as _mbs
+
+            _n_settled = _csp()
+            _brier_val = _bs() if _n_settled >= _mbs else None
+            data["brier_score"] = _brier_val
+            data["brier_cap_active"] = _n_settled < _mbs
+            data["cache_age_secs"] = round(signals_age)
         except Exception:
             pass
 
@@ -1383,13 +1400,24 @@ setInterval(() => {{
         except Exception as exc:
             checks["paper_trades_count_error"] = str(exc)
 
+        # paper_trades.json structural integrity
+        try:
+            from paper import validate_paper_trades_integrity as _vpt
+
+            _integrity_errors = _vpt()
+            checks["paper_trades_integrity"] = (
+                "ok" if not _integrity_errors else _integrity_errors
+            )
+        except Exception as exc:
+            checks["paper_trades_integrity_error"] = str(exc)
+
         # signals_cache.json age
         try:
             signals_path = Path(__file__).parent / "data" / "signals_cache.json"
             if signals_path.exists():
                 age_secs = _time.time() - os.path.getmtime(signals_path)
                 checks["signals_cache_age_secs"] = round(age_secs)
-                checks["signals_cache_stale"] = age_secs > 90 * 60
+                checks["signals_cache_stale"] = age_secs > MAX_SIGNALS_CACHE_AGE_SECS
             else:
                 checks["signals_cache_exists"] = False
         except Exception as exc:

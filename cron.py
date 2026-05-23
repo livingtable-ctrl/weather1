@@ -1056,6 +1056,9 @@ def _cmd_cron_body(
                     with open(log_path, "a", encoding="utf-8") as f:
                         f.write(json.dumps(entry) + "\n")
                     _tdate = enriched.get("_date")
+                    from weather_markets import parse_market_price as _pmp
+
+                    _prices = _pmp(m)
                     signals_cache.append(
                         {
                             "ticker": m.get("ticker", ""),
@@ -1066,6 +1069,8 @@ def _cmd_cron_body(
                             "stars": stars,
                             "edge_pct": round(net_edge * 100, 1),
                             "net_edge": round(net_edge, 6),
+                            "yes_bid": _prices["yes_bid"],
+                            "yes_ask": _prices["yes_ask"],
                             "forecast_prob": round(
                                 analysis.get("forecast_prob", 0) * 100, 1
                             ),
