@@ -24,6 +24,7 @@ DB_PATH.parent.mkdir(exist_ok=True)
 _initialized = False
 # L-7: protect the initialization flag against concurrent first-call races
 _init_lock = _el_threading.Lock()
+_append_lock = _el_threading.Lock()  # WA-9: serialize concurrent JSONL appends
 
 
 def _conn() -> sqlite3.Connection:
@@ -38,61 +39,64 @@ def init_log() -> None:
     global _initialized
     if _initialized:
         return
-    with _init_lock:  # L-7: double-checked locking prevents concurrent double-init
-        if _initialized:
+    with (
+        _init_lock
+    ):  # L-7: hold the lock for the entire init body (double-checked locking)
+        if (
+            _initialized
+        ):  # re-check inside lock — another thread may have finished first
             return
-    with _conn() as con:
-        con.executescript("""
-        CREATE TABLE IF NOT EXISTS orders (
-            id             INTEGER PRIMARY KEY AUTOINCREMENT,
-            ticker         TEXT    NOT NULL,
-            side           TEXT    NOT NULL,   -- "yes" or "no"
-            quantity       INTEGER NOT NULL,
-            price          REAL    NOT NULL,
-            order_type     TEXT,              -- "market" or "limit"
-            status         TEXT,              -- "sent", "pending", "filled", "failed", "cancelled"
-            response       TEXT,              -- JSON-encoded API response
-            error          TEXT,              -- error message if failed
-            placed_at      TEXT    NOT NULL,
-            -- #75: structured columns for querying failures without JSON parsing
-            fill_quantity  INTEGER,           -- contracts actually filled
-            error_code     TEXT,              -- HTTP status or error type
-            error_type     TEXT,              -- exception class name
-            forecast_cycle TEXT,              -- forecast cycle for cycle-aware dedup
-            live           INTEGER DEFAULT 0, -- 1 if this is a live order
-            settled_at     TEXT,              -- ISO timestamp when settlement outcome was recorded
-            outcome_yes    INTEGER,           -- 1 if YES side won, 0 if NO side won
-            pnl            REAL               -- net P&L after Kalshi fee in dollars
-        );
+        with _conn() as con:
+            con.executescript("""
+            CREATE TABLE IF NOT EXISTS orders (
+                id             INTEGER PRIMARY KEY AUTOINCREMENT,
+                ticker         TEXT    NOT NULL,
+                side           TEXT    NOT NULL,   -- "yes" or "no"
+                quantity       INTEGER NOT NULL,
+                price          REAL    NOT NULL,
+                order_type     TEXT,              -- "market" or "limit"
+                status         TEXT,              -- "sent", "pending", "filled", "failed", "cancelled"
+                response       TEXT,              -- JSON-encoded API response
+                error          TEXT,              -- error message if failed
+                placed_at      TEXT    NOT NULL,
+                -- #75: structured columns for querying failures without JSON parsing
+                fill_quantity  INTEGER,           -- contracts actually filled
+                error_code     TEXT,              -- HTTP status or error type
+                error_type     TEXT,              -- exception class name
+                forecast_cycle TEXT,              -- forecast cycle for cycle-aware dedup
+                live           INTEGER DEFAULT 0, -- 1 if this is a live order
+                settled_at     TEXT,              -- ISO timestamp when settlement outcome was recorded
+                outcome_yes    INTEGER,           -- 1 if YES side won, 0 if NO side won
+                pnl            REAL               -- net P&L after Kalshi fee in dollars
+            );
 
-        CREATE INDEX IF NOT EXISTS idx_orders_ticker    ON orders(ticker, placed_at);
-        CREATE INDEX IF NOT EXISTS idx_orders_status    ON orders(status);
-        CREATE INDEX IF NOT EXISTS idx_orders_placed_at ON orders(placed_at);
+            CREATE INDEX IF NOT EXISTS idx_orders_ticker    ON orders(ticker, placed_at);
+            CREATE INDEX IF NOT EXISTS idx_orders_status    ON orders(status);
+            CREATE INDEX IF NOT EXISTS idx_orders_placed_at ON orders(placed_at);
 
-        CREATE TABLE IF NOT EXISTS daily_live_loss (
-            date       TEXT PRIMARY KEY,
-            total      REAL NOT NULL DEFAULT 0.0,
-            updated_at TEXT NOT NULL
-        );
-        """)
-    # Migration: add structured error columns for older DBs
-    migrations = [
-        "ALTER TABLE orders ADD COLUMN fill_quantity INTEGER",
-        "ALTER TABLE orders ADD COLUMN error_code TEXT",
-        "ALTER TABLE orders ADD COLUMN error_type TEXT",
-        "ALTER TABLE orders ADD COLUMN forecast_cycle TEXT",
-        "ALTER TABLE orders ADD COLUMN live INTEGER DEFAULT 0",
-        "ALTER TABLE orders ADD COLUMN settled_at TEXT",
-        "ALTER TABLE orders ADD COLUMN outcome_yes INTEGER",
-        "ALTER TABLE orders ADD COLUMN pnl REAL",
-    ]
-    with _conn() as con:
-        for stmt in migrations:
-            try:
-                con.execute(stmt)
-            except sqlite3.OperationalError:
-                pass
-    with _init_lock:
+            CREATE TABLE IF NOT EXISTS daily_live_loss (
+                date       TEXT PRIMARY KEY,
+                total      REAL NOT NULL DEFAULT 0.0,
+                updated_at TEXT NOT NULL
+            );
+            """)
+        # Migration: add structured error columns for older DBs
+        migrations = [
+            "ALTER TABLE orders ADD COLUMN fill_quantity INTEGER",
+            "ALTER TABLE orders ADD COLUMN error_code TEXT",
+            "ALTER TABLE orders ADD COLUMN error_type TEXT",
+            "ALTER TABLE orders ADD COLUMN forecast_cycle TEXT",
+            "ALTER TABLE orders ADD COLUMN live INTEGER DEFAULT 0",
+            "ALTER TABLE orders ADD COLUMN settled_at TEXT",
+            "ALTER TABLE orders ADD COLUMN outcome_yes INTEGER",
+            "ALTER TABLE orders ADD COLUMN pnl REAL",
+        ]
+        with _conn() as con:
+            for stmt in migrations:
+                try:
+                    con.execute(stmt)
+                except sqlite3.OperationalError:
+                    pass
         _initialized = True
 
 
@@ -477,17 +481,6 @@ def append_entry(entry: dict, path: Path | None = None) -> None:
         Path(path) if path is not None else DB_PATH.parent / "execution_entries.jsonl"
     )
     target.parent.mkdir(parents=True, exist_ok=True)
-    with target.open("a", encoding="utf-8") as fh:
-        fh.write(json.dumps(entry) + "\n")
-
-
-def get_recent_api_latency_ms(window_seconds: int = 300) -> float | None:
-    """
-    Return the average API response latency (in ms) over the last `window_seconds`.
-    Returns None if no latency data is available.
-
-    NOTE: The orders table does not currently have a latency_ms column.
-    This function always returns None until that column is added.
-    """
-    # latency_ms column does not exist in the orders table schema — return None.
-    return None
+    with _append_lock:
+        with target.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(entry) + "\n")

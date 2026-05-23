@@ -126,6 +126,11 @@ def _build_app(client):
 
     @app.before_request
     def _check_auth():
+        # Single auth layer for ALL routes — including kill switch, halt/resume,
+        # paper-order, close-position, and override endpoints.
+        # Route-level @_require_auth decorators were removed (WA-16): before_request
+        # runs unconditionally on every request, making per-route decoration redundant
+        # and creating a confusing dual-layer with no added security.
         import utils as _utils
 
         pwd = _utils.DASHBOARD_PASSWORD
@@ -405,11 +410,20 @@ def _build_app(client):
 
     @app.route("/api/graduation")
     def api_graduation():
+        import inspect
+
         try:
             from paper import fear_greed_index, get_performance, graduation_check
         except ImportError as e:
             return jsonify({"error": str(e)}), 500
         from tracker import brier_score as _brier_score
+
+        # Extract graduation thresholds from the function signature so the frontend
+        # always displays the values actually used — not hardcoded JS fallbacks (WA-8).
+        _gc_params = inspect.signature(graduation_check).parameters
+        _min_trades = _gc_params["min_trades"].default
+        _min_pnl = _gc_params["min_pnl"].default
+        _max_brier = _gc_params["max_brier"].default
 
         perf = get_performance()
         gc = graduation_check()
@@ -424,6 +438,9 @@ def _build_app(client):
                 "ready": gc is not None,
                 "fear_greed_score": fg_score,
                 "fear_greed_label": fg_label,
+                "trades_target": _min_trades,
+                "pnl_target": _min_pnl,
+                "brier_target": _max_brier,
             }
         )
 
@@ -689,7 +706,6 @@ setInterval(() => {{
     _CRON_RATE_LIMIT_S = 60.0  # minimum seconds between spawns
 
     @app.route("/api/run_cron", methods=["POST"])
-    @_require_auth
     def api_run_cron():
         """Spawn a cron scan subprocess, capturing output to cron_web.log."""
         import time as _time
@@ -739,7 +755,6 @@ setInterval(() => {{
     api_run_cron._last_spawn = 0.0  # type: ignore[attr-defined]
 
     @app.route("/api/cron-status")
-    @_require_auth
     def api_cron_status():
         """Return running state and last N lines of cron_web.log."""
         import re as _re
@@ -769,7 +784,6 @@ setInterval(() => {{
         return jsonify({"running": running, "exit_code": exit_code, "log": lines})
 
     @app.route("/api/cancel-cron", methods=["POST"])
-    @_require_auth
     def api_cancel_cron():
         """Terminate the running cron subprocess."""
         proc = api_run_cron._proc
@@ -779,7 +793,6 @@ setInterval(() => {{
         return jsonify({"ok": True})
 
     @app.route("/api/weekly-report")
-    @_require_auth
     def api_weekly_report():
         """Generate and serve the weekly PDF/HTML report as a download."""
         import tempfile as _tmp
@@ -840,7 +853,9 @@ setInterval(() => {{
             )
 
         # Age validation: reject stale signals_cache.json (>4 h old)
-        signals_age = time.time() - os.path.getmtime(cache_path)
+        signals_mtime = os.path.getmtime(cache_path)
+        signals_age = time.time() - signals_mtime
+        _last_scan_at = datetime.fromtimestamp(signals_mtime, UTC).isoformat()
         if signals_age > MAX_SIGNALS_CACHE_AGE_SECS:
             _log.warning(
                 "signals_cache.json is %.0f minutes old — serving empty signals",
@@ -855,7 +870,7 @@ setInterval(() => {{
                         "strong": 0,
                         "low_risk": 0,
                     },
-                    "generated_at": None,
+                    "generated_at": _last_scan_at,  # preserve last-scan time even when stale
                     "stale": True,
                     "message": f"Signals cache is stale ({signals_age / 60:.0f} min old) — waiting for next cron scan.",
                 }
@@ -878,12 +893,23 @@ setInterval(() => {{
                 # Compute Kelly size now that we have the current balance
                 fp = (s.get("forecast_prob") or 0) / 100
                 mp = (s.get("market_prob") or 0) / 100
+                side = (s.get("side") or "yes").lower()
                 if fp > 0 and 0 < mp < 1:
-                    kelly_f = max(0.0, (fp - mp) / (1 - mp))
+                    # Kelly formula differs by side: YES = (fp-mp)/(1-mp), NO = (mp-fp)/mp
+                    if side == "no":
+                        kelly_f = max(0.0, (mp - fp) / mp)
+                    else:
+                        kelly_f = max(0.0, (fp - mp) / (1 - mp))
                     kelly_f = min(kelly_f, 0.25)  # cap at 25% of balance
                     kd = round(kelly_f * balance, 2)
                     s["kelly_dollars"] = kd
-                    s["kelly_qty"] = max(1, int(kd / mp)) if mp > 0 else 1
+                    # Price per contract for our side; cap qty at 100 (matches kelly_quantity)
+                    side_price = (1.0 - mp) if side == "no" else mp
+                    s["kelly_qty"] = (
+                        min(100, max(1, round(kd / side_price)))
+                        if side_price > 0
+                        else 1
+                    )
                 else:
                     s["kelly_dollars"] = 0.0
                     s["kelly_qty"] = 1
@@ -961,7 +987,6 @@ setInterval(() => {{
         return render_template_string(html)
 
     @app.route("/api/export")
-    @_require_auth
     def api_export():
         """#83: Download CSV of prediction history with outcomes."""
         import io
@@ -1156,7 +1181,6 @@ setInterval(() => {{
         return jsonify(data)
 
     @app.route("/api/halt", methods=["POST"])
-    @_require_auth
     def api_halt():
         """Write kill-switch file to stop cron from placing new trades."""
         from flask import request as _req
@@ -1172,7 +1196,6 @@ setInterval(() => {{
         return jsonify({"halted": True, "reason": reason})
 
     @app.route("/api/resume", methods=["POST"])
-    @_require_auth
     def api_resume():
         """Remove kill-switch file to allow cron to resume."""
         existed = _KS_PATH.exists()
@@ -1381,7 +1404,6 @@ setInterval(() => {{
     # ------------------------------------------------------------------ #
 
     @app.route("/api/config")
-    @_require_auth
     def api_config():
         """BotConfig fields for the Settings tab."""
         try:
@@ -1446,7 +1468,6 @@ setInterval(() => {{
             return jsonify({"error": str(exc)}), 500
 
     @app.route("/api/override", methods=["POST"])
-    @_require_auth
     def api_override_set():
         """Set a time-limited manual override. Body: {reason, duration_minutes}."""
         from datetime import UTC, datetime, timedelta
@@ -1471,7 +1492,6 @@ setInterval(() => {{
         return jsonify({"set": True, **state})
 
     @app.route("/api/override", methods=["DELETE"])
-    @_require_auth
     def api_override_clear():
         """Remove the manual override file."""
         _ov_path = Path(__file__).parent / "data" / ".manual_override.json"
@@ -1615,7 +1635,6 @@ setInterval(() => {{
             return jsonify({"error": str(exc)}), 500
 
     @app.route("/api/forecast-cache/invalidate", methods=["POST"])
-    @_require_auth
     def api_forecast_cache_invalidate():
         """Delete the on-disk forecast cache so the next cron run rebuilds it."""
         cache_file = Path(__file__).parent / "data" / "forecast_cache.json"
@@ -1672,7 +1691,6 @@ setInterval(() => {{
             return jsonify({"error": str(exc)}), 500
 
     @app.route("/api/paper-order", methods=["POST"])
-    @_require_auth
     def api_paper_order():
         """Manually place a paper trade from the Signals tab Approve button.
 
@@ -1754,7 +1772,6 @@ setInterval(() => {{
             return jsonify({"error": str(exc)}), 500
 
     @app.route("/api/close-position", methods=["POST"])
-    @_require_auth
     def api_close_position():
         """Close an open paper trade early at the current mark price.
 

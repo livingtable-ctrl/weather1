@@ -23,7 +23,7 @@ DB_PATH.parent.mkdir(exist_ok=True)
 
 _db_initialized = False
 
-_SCHEMA_VERSION = 22  # increment when _MIGRATIONS list grows
+_SCHEMA_VERSION = 23  # increment when _MIGRATIONS list grows
 
 _MIGRATIONS = [
     # v1 → v2: add condition_type column (if not already added)
@@ -108,6 +108,9 @@ _MIGRATIONS = [
        SET settled_at = strftime('%Y-%m-%d %H:%M:%S',
            replace(replace(settled_at, 'T', ' '), 'Z', ''))
        WHERE settled_at LIKE '%T%'""",
+    # v22 → v23: timestamp for 404-not-found marking so sync_outcomes can re-attempt
+    # after 7 days instead of skipping the ticker permanently (WA-4).
+    "ALTER TABLE predictions ADD COLUMN not_found_at TEXT",
 ]
 
 
@@ -1468,10 +1471,17 @@ def sync_outcomes(client) -> int:
     """
     init_db()
     with _conn() as con:
+        # Include tickers that were marked not_found more than 7 days ago so a
+        # transient Kalshi 404 doesn't permanently exclude a valid market.
         pending = con.execute("""
             SELECT DISTINCT ticker FROM predictions p
             WHERE NOT EXISTS (SELECT 1 FROM outcomes o WHERE o.ticker = p.ticker)
-              AND (p.status IS NULL OR p.status = 'active')
+              AND (
+                p.status IS NULL
+                OR p.status = 'active'
+                OR (p.status = 'not_found'
+                    AND p.not_found_at < datetime('now', '-7 days'))
+              )
         """).fetchall()
 
     count = 0
@@ -1513,17 +1523,19 @@ def sync_outcomes(client) -> int:
                     except Exception:
                         pass
         except Exception as exc:
-            # 404 means the market never existed or was deleted — mark it so we skip
-            # future poll attempts without deleting historical prediction records.
-            # Deleting rows would corrupt Brier/win-rate calculations for losing trades.
+            # 404 means the market was not found on Kalshi — stamp not_found_at so
+            # sync_outcomes re-attempts after 7 days.  Permanent blacklisting was
+            # removed because transient Kalshi 404s (API glitches, load balancer
+            # quirks) were silently dropping valid markets from Brier/P&L stats.
             if "404" in str(exc):
                 _log.warning(
-                    "sync_outcomes: %s not found on Kalshi (404) — marking not_found",
+                    "sync_outcomes: %s not found on Kalshi (404) — will retry after 7 days",
                     ticker,
                 )
                 with _conn() as con:
                     con.execute(
-                        "UPDATE predictions SET status = 'not_found' WHERE ticker = ?",
+                        "UPDATE predictions SET status = 'not_found', not_found_at = datetime('now') "
+                        "WHERE ticker = ?",
                         (ticker,),
                     )
             else:

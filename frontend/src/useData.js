@@ -94,11 +94,11 @@ function mapStats(status, grad, config, prevStats) {
     }
     base.graduation = {
       trades_done:   grad.trades_done   ?? base.graduation?.trades_done   ?? 0,
-      trades_target: base.graduation?.trades_target ?? 30,
+      trades_target: grad.trades_target ?? base.graduation?.trades_target ?? 30,
       total_pnl:     grad.total_pnl     ?? base.graduation?.total_pnl     ?? 0,
-      pnl_target:    base.graduation?.pnl_target    ?? 50,
+      pnl_target:    grad.pnl_target    ?? base.graduation?.pnl_target    ?? 50,
       brier:         grad.brier         ?? base.graduation?.brier         ?? null,
-      brier_target:  base.graduation?.brier_target  ?? 0.20,
+      brier_target:  grad.brier_target  ?? base.graduation?.brier_target  ?? 0.20,
       ready:         grad.ready         ?? false,
     };
     // Derive settled_count from trades_done if not already set
@@ -183,7 +183,7 @@ function mapTrades(raw) {
  */
 function mapSignals(raw) {
   if (!raw) return null;
-  const sigs = Array.isArray(raw) ? raw : (raw.signals || []);
+  const sigs = raw.signals || [];
   return {
     signals: sigs.map(s => ({ ...s, side: (s.side || '').toLowerCase() })),
     generatedAt: raw.generated_at || null,
@@ -399,8 +399,17 @@ export default function useData(setConnected) {
     const sse = new EventSource('/api/stream');
     sseRef.current = sse;
 
-    sse.addEventListener('open', () => setConnected(true));
-    sse.addEventListener('error', () => setConnected(false));
+    let errorCount = 0;
+    sse.addEventListener('open', () => { setConnected(true); errorCount = 0; });
+    sse.addEventListener('error', () => {
+      setConnected(false);
+      errorCount++;
+      // After 2 consecutive errors (covers auth 401 loop) give up — polling keeps data fresh.
+      if (errorCount >= 2) {
+        sse.close();
+        sseRef.current = null;
+      }
+    });
 
     // Unnamed messages
     sse.addEventListener('message', handleSSEEvent);

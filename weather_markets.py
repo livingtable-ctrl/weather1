@@ -9,7 +9,6 @@ import logging
 import os
 import random
 import re
-import socket
 import statistics
 import threading
 import time
@@ -33,10 +32,6 @@ from kalshi_client import KalshiClient, _request_with_retry
 from nws import fetch_nbm_forecast, get_live_observation, nws_prob, obs_prob
 from schema_validator import validate_forecast
 from utils import KALSHI_FEE_RATE, KELLY_CAP, MAX_DAYS_OUT, normal_cdf
-
-socket.setdefaulttimeout(
-    10
-)  # hard backstop — requests timeout unreliable on Windows SSL
 
 _log = logging.getLogger(__name__)
 
@@ -585,9 +580,9 @@ def flush_ensemble_disk_cache() -> int:
             for k, v in raw.items()
             if now - v.get("ts_posix", 0) < _ENSEMBLE_CACHE_TTL
         }
-        _ENSEMBLE_DISK_CACHE_PATH.write_text(
-            _json.dumps(raw, default=str), encoding="utf-8"
-        )
+        import safe_io as _safe_io
+
+        _safe_io.atomic_write_json(raw, _ENSEMBLE_DISK_CACHE_PATH)
         _log.debug("ensemble disk cache: flushed %d entries to disk", len(pending))
         return len(pending)
     except Exception as exc:
