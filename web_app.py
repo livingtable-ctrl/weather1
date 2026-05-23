@@ -884,32 +884,30 @@ setInterval(() => {{
 
         # Annotate already-held tickers and fill kelly_dollars + kelly_qty
         try:
-            from paper import get_balance as _gb
-
-            balance = _gb()
             open_tickers = {t["ticker"] for t in get_open_trades()}
             for s in data.get("signals", []):
                 s["already_held"] = s.get("ticker", "") in open_tickers
-                # Compute Kelly size now that we have the current balance
+                # Compute Kelly size using the same path as the bot:
+                # kelly_fraction (fee-adjusted quarter-Kelly) → kelly_bet_dollars
+                # (applies drawdown scale + streak halving + Brier cap) → kelly_quantity.
                 fp = (s.get("forecast_prob") or 0) / 100
                 mp = (s.get("market_prob") or 0) / 100
                 side = (s.get("side") or "yes").lower()
                 if fp > 0 and 0 < mp < 1:
-                    # Kelly formula differs by side: YES = (fp-mp)/(1-mp), NO = (mp-fp)/mp
+                    from paper import kelly_bet_dollars as _kbd
+                    from paper import kelly_quantity as _kq
+                    from utils import KALSHI_FEE_RATE as _fee_rate
+                    from weather_markets import kelly_fraction as _kf_wm
+
                     if side == "no":
-                        kelly_f = max(0.0, (mp - fp) / mp)
+                        _our_prob = max(0.01, min(0.99, 1.0 - fp))
+                        side_price = max(0.01, min(0.99, 1.0 - mp))
                     else:
-                        kelly_f = max(0.0, (fp - mp) / (1 - mp))
-                    kelly_f = min(kelly_f, 0.25)  # cap at 25% of balance
-                    kd = round(kelly_f * balance, 2)
-                    s["kelly_dollars"] = kd
-                    # Price per contract for our side; cap qty at 100 (matches kelly_quantity)
-                    side_price = (1.0 - mp) if side == "no" else mp
-                    s["kelly_qty"] = (
-                        min(100, max(1, round(kd / side_price)))
-                        if side_price > 0
-                        else 1
-                    )
+                        _our_prob = max(0.01, min(0.99, fp))
+                        side_price = max(0.01, min(0.99, mp))
+                    kf = _kf_wm(_our_prob, side_price, _fee_rate)
+                    s["kelly_dollars"] = _kbd(kf)
+                    s["kelly_qty"] = _kq(kf, side_price)
                 else:
                     s["kelly_dollars"] = 0.0
                     s["kelly_qty"] = 1
@@ -1704,6 +1702,11 @@ setInterval(() => {{
           city         str   optional
           target_date  str   optional ISO date
         """
+        from cron import KILL_SWITCH_PATH as _ksp
+
+        if _ksp.exists():
+            return jsonify({"error": "kill switch active — trading paused"}), 503
+
         from paper import place_paper_order
 
         body = _flask_request.get_json(force=True, silent=True) or {}
@@ -1718,6 +1721,23 @@ setInterval(() => {{
         except (KeyError, TypeError, ValueError):
             return jsonify({"error": "entry_price required"}), 400
         quantity = int(body.get("quantity", 1)) or 1
+        # Cap quantity at Kelly limit so the dashboard cannot oversize a trade
+        try:
+            from paper import kelly_quantity as _kq_cap
+            from utils import KALSHI_FEE_RATE as _fee_cap
+            from weather_markets import kelly_fraction as _kf_cap
+
+            _ep_raw = body.get("entry_prob")
+            _ep_val = float(_ep_raw) if _ep_raw is not None else entry_price
+            _our_prob = max(
+                0.01, min(0.99, (1.0 - _ep_val) if side == "no" else _ep_val)
+            )
+            _kf_val = _kf_cap(_our_prob, entry_price, _fee_cap)
+            _max_qty = _kq_cap(_kf_val, entry_price)
+            if _max_qty > 0:
+                quantity = min(quantity, _max_qty)
+        except Exception:
+            pass
         entry_prob = body.get("entry_prob")
         net_edge = body.get("net_edge")
         city = body.get("city") or None

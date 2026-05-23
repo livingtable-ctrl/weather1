@@ -131,10 +131,13 @@ def _recover_pending_orders(client) -> None:
                 order_id = None
 
             if not order_id:
-                # No API order_id stored — the crash happened before the API call.
-                # Mark failed so it stops blocking dedup.
+                # No order_id stored — crash may have happened before OR after the
+                # API call (we can't tell). Use 'sent' so dedup blocks re-placement
+                # for 7 days rather than risking a duplicate live order.
                 execution_log.log_order_result(
-                    row_id, status="failed", error="no order_id at recovery"
+                    row_id,
+                    status="sent",
+                    error="no order_id at recovery — treated as sent to prevent duplicate",
                 )
                 _log.warning(
                     "[Recovery] %s row %d: no order_id — marked failed", ticker, row_id
@@ -803,8 +806,6 @@ def _auto_place_trades(
         adj_kelly *= corr_kelly_scale(
             {"city": city, "target_date": target_date_str}, _open_trades_list
         )
-        if _streak_paused:
-            adj_kelly *= 0.5  # halve Kelly during loss streak
         if adj_kelly < 0.002:
             _skip_reasons.append(f"{ticker}: kelly_too_small({adj_kelly:.4f})")
             continue
