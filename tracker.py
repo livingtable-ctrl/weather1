@@ -2345,13 +2345,17 @@ def _save_retired_strategies(retired: dict) -> None:
 
 
 def auto_retire_strategies(
-    min_samples: int = 20,
+    min_samples: int = 50,
     retire_threshold: float = 0.25,
 ) -> list[str]:
     """P9.5: Auto-retire forecasting methods whose Brier score exceeds retire_threshold.
 
     Brier score > 0.25 means worse than random chance. Methods are persisted to
     data/retired_strategies.json and can be unretired via unretire_strategy().
+
+    min_samples=50 aligns with the train_bias activation threshold — below 50
+    trades the Brier estimate has too much sampling variance to reliably distinguish
+    a genuinely failing method from an uncalibrated-but-fixable one.
 
     Args:
         min_samples: minimum settled predictions required before a method is eligible.
