@@ -61,30 +61,22 @@ def get_gate_counts() -> dict[str, int]:
 # proportional to Open-Meteo's typical MTTR (minutes, not hours).
 _forecast_cb = CircuitBreaker(
     name="open_meteo_forecast",
-    failure_threshold=10,  # raised from 6 — need more real failures before tripping
-    recovery_timeout=300,  # lowered from 1800s — retry after 5 min not 30 min
-    burst_window=10.0,  # wider burst window absorbs parallel fetches
+    failure_threshold=int(os.getenv("CB_FORECAST_THRESHOLD", "10")),
+    recovery_timeout=int(os.getenv("CB_FORECAST_TIMEOUT", "300")),
+    burst_window=10.0,
 )
-# Supplementary circuit breaker: ensemble spread and ECMWF high-res (ENSEMBLE_BASE).
-# Failures here degrade quality but don't block primary signals.
 _ensemble_cb = CircuitBreaker(
     name="open_meteo_ensemble",
-    failure_threshold=3,
-    recovery_timeout=300,  # 300s: outlasts inter-run gap so circuit stays open across
-    burst_window=2.0,  # runs when endpoint is consistently down (same as nbm_om_cb)
+    failure_threshold=int(os.getenv("CB_ENSEMBLE_THRESHOLD", "3")),
+    recovery_timeout=int(os.getenv("CB_ENSEMBLE_TIMEOUT", "300")),
+    burst_window=2.0,
 )
-
-# Separate circuit breaker for the NBM (Open-Meteo model="nbm") fetch.
-# NBM and ensemble hit the same API but are independent signals — one failing
-# should NOT gate the other.
-# burst_window=2s: absorbs the few truly-simultaneous parallel hits during
-# analysis without being so wide that a flaky endpoint hangs for minutes.
 _nbm_om_cb = CircuitBreaker(
     name="nbm_openmeteo",
-    failure_threshold=3,
-    recovery_timeout=300,  # 300s: outlasts the gap between cron runs so circuit stays
-    burst_window=2.0,  # open across runs — prevents re-burning 30 s of timeouts
-)  # each run when the endpoint is consistently down
+    failure_threshold=int(os.getenv("CB_NBM_THRESHOLD", "3")),
+    recovery_timeout=int(os.getenv("CB_NBM_TIMEOUT", "300")),
+    burst_window=2.0,
+)
 
 # ── Trading filters ───────────────────────────────────────────────────────────
 # Only analyse markets expiring within this many days. Days 3-4 carry higher
@@ -856,9 +848,12 @@ def get_weather_forecast(city: str, target_date: date) -> dict | None:
                 city,
             )
     finally:
-        # wait=False: don't block on threads that are stuck on a dead socket.
-        # The watchdog will kill the process if truly hung; threads time out on
-        # their own via the HTTP timeout and clean up eventually.
+        _pending = [f for f in futures if not f.done()]
+        if _pending:
+            _log.debug(
+                "get_weather_forecast: shutdown with %d future(s) still running",
+                len(_pending),
+            )
         _pool.shutdown(wait=False)
 
     if not highs:
@@ -2783,6 +2778,12 @@ def get_weather_markets(
                 len(results),
             )
     finally:
+        _pending = [f for f in futures if not f.done()]
+        if _pending:
+            _log.debug(
+                "get_weather_markets: shutdown with %d future(s) still running",
+                len(_pending),
+            )
         _mkt_pool.shutdown(wait=False)
 
     _MARKETS_CACHE = (results, now)
@@ -5741,6 +5742,12 @@ def analyze_markets_parallel(
                 "analyze_markets_parallel: timed out after 300s — returning partial results"
             )
     finally:
+        _pending = [f for f in futures if not f.done()]
+        if _pending:
+            _log.debug(
+                "analyze_markets_parallel: shutdown with %d future(s) still running",
+                len(_pending),
+            )
         _amc_pool.shutdown(wait=False)
 
     return results
