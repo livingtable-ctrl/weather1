@@ -1294,8 +1294,25 @@ def _cmd_cron_body(
     # Auto-settle any pending trades whose markets have resolved
     settled_count = 0
     try:
-        settled_count = ctx.sync_outcomes(client)
+        _settled_outcomes = ctx.sync_outcomes(client)
+        settled_count = len(_settled_outcomes)
         if settled_count > 0:
+            for _so in _settled_outcomes:
+                _so_ticker = _so["ticker"]
+                _so_outcome = "YES" if _so["settled_yes"] else "NO "
+                _so_prob = _so.get("our_prob")
+                if _so_prob is not None:
+                    _so_predicted = "YES" if _so_prob >= 0.5 else "NO "
+                    _so_won = (_so["settled_yes"] and _so_prob >= 0.5) or (
+                        not _so["settled_yes"] and _so_prob < 0.5
+                    )
+                    _so_result = green("WON ") if _so_won else red("LOST")
+                    print(
+                        f"  [Settle] {_so_ticker}  predicted={_so_predicted}"
+                        f"  outcome={_so_outcome}  {_so_result}"
+                    )
+                else:
+                    print(f"  [Settle] {_so_ticker}  outcome={_so_outcome}")
             print(green(f"  [Settle] Recorded {settled_count} new outcome(s)."))
     except Exception as _sync_exc:
         _log.warning("cmd_cron: sync_outcomes failed: %s", _sync_exc)
