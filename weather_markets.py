@@ -1821,12 +1821,35 @@ def _month_to_season(month: int) -> int:
     ]
 
 
-def get_historical_sigma(city: str, month: int) -> float:
-    """Return NWS Day-3 forecast RMSE (sigma, °F) for a city.
+_dynamic_sigma: dict = {}
 
-    City must match the name stored in the _city field by enrich_with_forecast()
-    (e.g. "NYC", "Chicago", "LA", "Miami").  Unknown cities return _DEFAULT_SIGMA.
+
+def _load_dynamic_sigma() -> dict:
+    global _dynamic_sigma
+    if _dynamic_sigma:
+        return _dynamic_sigma
+    try:
+        from climatology import load_all_sigmas
+
+        _dynamic_sigma = load_all_sigmas(CITY_COORDS)
+    except Exception as _e:
+        _log.debug("Dynamic sigma unavailable: %s", _e)
+    return _dynamic_sigma
+
+
+def get_historical_sigma(city: str, month: int, var: str = "max") -> float:
+    """Return forecast RMSE sigma (°F) for a city/month.
+
+    Prefers dynamic values computed from 30yr climate archive (per-month resolution).
+    Falls back to static seasonal table, then _DEFAULT_SIGMA.
     """
+    dynamic = _load_dynamic_sigma()
+    city_data = dynamic.get(city, {})
+    var_key = "min" if var == "min" else "max"
+    dyn_val = city_data.get(var_key, {}).get(str(month))
+    if dyn_val:
+        return float(dyn_val)
+    # Static fallback (seasonal granularity)
     season = _month_to_season(month)
     return _HISTORICAL_SIGMA.get(city, {}).get(season, _DEFAULT_SIGMA)
 
@@ -4597,9 +4620,48 @@ def analyze_trade(enriched: dict) -> dict | None:
                 _count_gate("model_spread")
                 return None
 
-        # Apply per-city static bias correction before probability calculation (B4: pass var)
+        # Bias correction: prefer NBM-delta (dynamic) over static per-city table.
+        # NBM is professionally bias-corrected by NWS; the GFS-NBM delta gives a
+        # data-driven correction without manually tuned per-city constants.
+        # Falls back to static table when NBM is unavailable.
         forecast_temp_raw = forecast_temp
-        forecast_temp = apply_station_bias(city, forecast_temp, var=var)
+        _nbm_bias_temp: float | None = None
+        try:
+            _nbm_bias_temp = fetch_temperature_nbm(city, target_date, var=var)
+        except Exception:
+            pass
+
+        if _nbm_bias_temp is not None:
+            _nbm_delta = forecast_temp - _nbm_bias_temp  # positive = GFS warm-biased
+            _nbm_delta_clamped = max(-4.0, min(8.0, _nbm_delta))
+            forecast_temp = forecast_temp - _nbm_delta_clamped
+            _log.debug(
+                "analyze_trade: NBM-delta bias %.1f°F→%.1f°F "
+                "(nbm=%.1f delta=%.1f clamped=%.1f city=%s)",
+                forecast_temp_raw,
+                forecast_temp,
+                _nbm_bias_temp,
+                _nbm_delta,
+                _nbm_delta_clamped,
+                city,
+            )
+            if condition.get("type") == "between":
+                _log.info(
+                    "analyze_trade between NBM-delta: gfs=%.1f nbm=%.1f "
+                    "corrected=%.1f (city=%s)",
+                    forecast_temp_raw,
+                    _nbm_bias_temp,
+                    forecast_temp,
+                    city,
+                )
+        else:
+            forecast_temp = apply_station_bias(city, forecast_temp, var=var)
+            _log.debug(
+                "analyze_trade: static bias %.1f°F→%.1f°F (city=%s nbm=unavailable)",
+                forecast_temp_raw,
+                forecast_temp,
+                city,
+            )
 
         days_out = max(0, (target_date - datetime.now(UTC).date()).days)
 
@@ -4683,8 +4745,8 @@ def analyze_trade(enriched: dict) -> dict | None:
         # ── Phase C: extended ensemble members (NBM + ECMWF AIFS) ───────────────
         model_temps: dict[str, float | None] = {}
         try:
-            # H-13: pass var so LOW markets get daily min, not max
-            model_temps["nbm"] = fetch_temperature_nbm(city, target_date, var=var)
+            # Reuse NBM already fetched for bias correction above (avoids double fetch).
+            model_temps["nbm"] = _nbm_bias_temp
             model_temps["ecmwf"] = fetch_temperature_ecmwf(city, target_date, var=var)
         except Exception as _ext_exc:
             _log.debug(
@@ -4702,7 +4764,7 @@ def analyze_trade(enriched: dict) -> dict | None:
         # Apply sigma_mult (time-of-day horizon discount) so near-term
         # markets get tighter Gaussian uncertainty — same discount applied to
         # the ensemble sigma at line 3401.
-        sigma_gauss = get_historical_sigma(city, target_month) * sigma_mult
+        sigma_gauss = get_historical_sigma(city, target_month, var=var) * sigma_mult
         cond_type = condition.get("type", "above")
         if cond_type in ("above", "below"):
             p_win_gaussian = gaussian_probability(
