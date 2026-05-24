@@ -2070,7 +2070,7 @@ def load_learned_weights() -> dict:
     if age_secs > _LEARNED_WEIGHTS_TTL_DAYS * 86400:
         global _LEARNED_WEIGHTS_TTL_WARNED
         if not _LEARNED_WEIGHTS_TTL_WARNED:
-            logging.warning(
+            _log.warning(
                 "[ModelWeights] learned_weights.json is %.1f days old (> %d-day TTL) — "
                 "falling back to default weights",
                 age_secs / 86400,
