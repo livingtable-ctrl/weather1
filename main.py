@@ -480,7 +480,7 @@ def auto_settle(client: KalshiClient) -> None:
 
     def _run():
         try:
-            count = sync_outcomes(client)
+            count = len(sync_outcomes(client))
             if count > 0:
                 from paper import auto_settle_paper_trades
 
@@ -639,7 +639,7 @@ def cmd_settle(client: KalshiClient) -> None:
     """
     from paper import auto_settle_paper_trades
 
-    count = sync_outcomes(client)
+    count = len(sync_outcomes(client))
     paper = auto_settle_paper_trades(client)
     paper_count = len(paper)
     total = count + paper_count

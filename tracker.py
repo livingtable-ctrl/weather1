@@ -1464,10 +1464,11 @@ def audit_settlement(ticker: str, settled_yes: bool) -> None:
         _log.debug("audit_settlement: skipped for %s: %s", ticker, exc)
 
 
-def sync_outcomes(client) -> int:
+def sync_outcomes(client) -> list[dict]:
     """
     Check settled markets in the DB against Kalshi and record outcomes.
-    Returns number of new outcomes recorded.
+    Returns list of dicts with keys: ticker, settled_yes, our_prob, city.
+    For backward compatibility, len() of the return value equals the settled count.
     """
     init_db()
     with _conn() as con:
@@ -1484,7 +1485,7 @@ def sync_outcomes(client) -> int:
               )
         """).fetchall()
 
-    count = 0
+    settled: list[dict] = []
     now_utc = datetime.now(UTC)
     for row in pending:
         ticker = row["ticker"]
@@ -1509,7 +1510,29 @@ def sync_outcomes(client) -> int:
                         pass
                 settled_yes = result == "yes"
                 if log_outcome(ticker, settled_yes):
-                    count += 1
+                    # Look up our prediction for this ticker to compute win/loss
+                    _our_prob: float | None = None
+                    _city: str | None = None
+                    try:
+                        with _conn() as _pc:
+                            _pr = _pc.execute(
+                                "SELECT our_prob, city FROM predictions WHERE ticker = ? "
+                                "ORDER BY predicted_at DESC LIMIT 1",
+                                (ticker,),
+                            ).fetchone()
+                            if _pr:
+                                _our_prob = _pr["our_prob"]
+                                _city = _pr["city"]
+                    except Exception:
+                        pass
+                    settled.append(
+                        {
+                            "ticker": ticker,
+                            "settled_yes": settled_yes,
+                            "our_prob": _our_prob,
+                            "city": _city,
+                        }
+                    )
                     # A3: update feature importance log so we can learn which signals predicted wins
                     try:
                         from feature_importance import update_outcome as _fi_update
@@ -1543,7 +1566,7 @@ def sync_outcomes(client) -> int:
                     "sync_outcomes: failed to fetch/record %s: %s", ticker, exc
                 )
             continue
-    return count
+    return settled
 
 
 def log_member_score(
