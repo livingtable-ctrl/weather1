@@ -371,7 +371,7 @@ def cmd_history(client: KalshiClient) -> None:  # noqa: PLR0912, PLR0915
                 )
                 decay_rows.append(
                     [
-                        bucket.get("days_label", "?"),
+                        bucket.get("bucket", "?"),
                         edge_s,
                         bucket.get("n", 0),
                     ]
