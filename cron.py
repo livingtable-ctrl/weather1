@@ -558,6 +558,12 @@ def _cmd_cron_body(
         _newly_retired = _auto_retire()
         if _newly_retired:
             _log.warning("cmd_cron: auto-retired strategy methods: %s", _newly_retired)
+            print(
+                red(
+                    f"\n  ⚠  STRATEGY RETIRED: {', '.join(_newly_retired)} — "
+                    "Brier exceeded threshold. Run: python main.py unretire_strategy <method>\n"
+                )
+            )
     except Exception as _e:
         _log.debug("cmd_cron: auto_retire_strategies failed: %s", _e)
 
@@ -1439,6 +1445,17 @@ def _cmd_cron_body(
                             f"  [StopLoss] Closed {_sl_ticker} \u2014 price breached stop threshold"
                         )
                     )
+                    # Record stop-loss exit in live_fills for accuracy audit
+                    try:
+                        from tracker import mark_fill_stop_loss as _mark_sl
+
+                        _mark_sl(_sl_ticker, _sl_exit_price)
+                    except Exception as _sl_log_exc:
+                        _log.debug(
+                            "[StopLoss] could not record stop-loss fill for %s: %s",
+                            _sl_ticker,
+                            _sl_log_exc,
+                        )
 
             # Break-even stop: if position was ever up >=30% of cost and has
             # since fallen back to entry, exit at scratch (no loss possible)
@@ -1543,6 +1560,8 @@ def _cmd_cron_body(
         from paper import get_open_trades as _get_open
 
         _open = _get_open()
+        if not _open:
+            print(yellow("  [cron] No open positions — portfolio is flat."))
         if _open:
             _var = portfolio_var(_open, n_simulations=500)
             _exp = None

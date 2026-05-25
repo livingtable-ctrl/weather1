@@ -23,7 +23,7 @@ DB_PATH.parent.mkdir(exist_ok=True)
 
 _db_initialized = False
 
-_SCHEMA_VERSION = 23  # increment when _MIGRATIONS list grows
+_SCHEMA_VERSION = 25  # increment when _MIGRATIONS list grows
 
 _MIGRATIONS = [
     # v1 → v2: add condition_type column (if not already added)
@@ -111,6 +111,16 @@ _MIGRATIONS = [
     # v22 → v23: timestamp for 404-not-found marking so sync_outcomes can re-attempt
     # after 7 days instead of skipping the ticker permanently (WA-4).
     "ALTER TABLE predictions ADD COLUMN not_found_at TEXT",
+    # v23 → v24: disputed flag on outcomes — set when settlement_audit detects a
+    # mismatch between Kalshi's settled result and our archive data. Disputed rows
+    # are excluded from Brier score and calibration training to prevent corrupted
+    # ground-truth labels from polluting the model.
+    "ALTER TABLE outcomes ADD COLUMN disputed INTEGER DEFAULT 0",
+    # v24 → v25: stop-loss tracking — record whether each closed trade was a
+    # stop-loss exit and at what price, so we can audit whether stops saved money
+    # or exited positions that would have settled profitably.
+    "ALTER TABLE live_fills ADD COLUMN was_stop_loss INTEGER DEFAULT 0",
+    "ALTER TABLE live_fills ADD COLUMN stop_loss_exit_price REAL",
 ]
 
 
@@ -753,6 +763,7 @@ def get_brier_by_days_out() -> dict[str, float]:
             FROM predictions p
             JOIN outcomes o ON p.ticker = o.ticker
             WHERE p.our_prob IS NOT NULL AND p.days_out IS NOT NULL
+              AND (o.disputed IS NULL OR o.disputed = 0)
         """).fetchall()
 
     buckets: dict[str, list[float]] = {"0-2d": [], "3-5d": [], "6-10d": [], "11+d": []}
@@ -786,6 +797,7 @@ def brier_score_by_method(min_samples: int = 20) -> dict[str, float]:
             FROM predictions p
             JOIN outcomes o ON p.ticker = o.ticker
             WHERE p.our_prob IS NOT NULL AND p.method IS NOT NULL
+              AND (o.disputed IS NULL OR o.disputed = 0)
         """).fetchall()
 
     by_method: dict[str, list] = {}
@@ -838,6 +850,14 @@ def get_component_attribution() -> dict[str, dict]:
     }
 
 
+def get_settled_count() -> int:
+    """Return the total number of settled market outcomes recorded in the DB."""
+    init_db()
+    with _conn() as con:
+        row = con.execute("SELECT COUNT(*) FROM outcomes").fetchone()
+    return row[0] if row else 0
+
+
 def brier_score(city: str | None = None) -> float | None:
     """
     Brier score = mean((our_prob - outcome)²).
@@ -854,7 +874,7 @@ def brier_score(city: str | None = None) -> float | None:
             SELECT p.our_prob, o.settled_yes
             FROM predictions p
             JOIN outcomes o ON p.ticker = o.ticker
-            WHERE p.our_prob IS NOT NULL
+            WHERE p.our_prob IS NOT NULL AND (o.disputed IS NULL OR o.disputed = 0)
         """
         params: list = []
         if city:
@@ -1452,6 +1472,7 @@ def audit_settlement(ticker: str, settled_yes: bool) -> None:
                 cond_type,
                 "YES" if archive_yes else "NO",
             )
+            mark_outcome_disputed(ticker)
         else:
             _log.debug(
                 "settlement_audit OK %s — Kalshi=%s archive=%.1f°F threshold=%.1f°F",
@@ -1462,6 +1483,99 @@ def audit_settlement(ticker: str, settled_yes: bool) -> None:
             )
     except Exception as exc:
         _log.debug("audit_settlement: skipped for %s: %s", ticker, exc)
+
+
+def mark_outcome_disputed(ticker: str) -> None:
+    """Mark an outcome row as disputed (archive/Kalshi settlement mismatch).
+    Disputed rows are excluded from Brier scores and calibration training.
+    """
+    init_db()
+    try:
+        with _conn() as con:
+            con.execute("UPDATE outcomes SET disputed = 1 WHERE ticker = ?", (ticker,))
+    except Exception as exc:
+        _log.debug("mark_outcome_disputed: failed for %s: %s", ticker, exc)
+
+
+def get_disputed_count() -> int:
+    """Return the number of outcomes flagged as disputed (settlement audit mismatch)."""
+    init_db()
+    with _conn() as con:
+        row = con.execute("SELECT COUNT(*) FROM outcomes WHERE disputed = 1").fetchone()
+    return row[0] if row else 0
+
+
+def mark_fill_stop_loss(ticker: str, exit_price: float) -> None:
+    """Record that a live_fills row was closed via stop-loss and at what price."""
+    init_db()
+    try:
+        with _conn() as con:
+            con.execute(
+                """UPDATE live_fills SET was_stop_loss = 1, stop_loss_exit_price = ?
+                   WHERE ticker = ? AND filled_at = (
+                       SELECT MAX(filled_at) FROM live_fills WHERE ticker = ?
+                   )""",
+                (exit_price, ticker, ticker),
+            )
+    except Exception as exc:
+        _log.debug("mark_fill_stop_loss: failed for %s: %s", ticker, exc)
+
+
+def get_stop_loss_accuracy() -> dict:
+    """
+    Audit stop-loss decisions: compare exit price to eventual settlement.
+    Returns {"total": n, "saved_money": n, "exited_winner": n, "avg_saving": float}.
+    A stop-loss 'saved money' if the settled outcome would have lost more than the exit did.
+    """
+    init_db()
+    with _conn() as con:
+        rows = con.execute("""
+            SELECT lf.ticker, lf.stop_loss_exit_price, lf.side,
+                   lf.entry_price, lf.quantity, o.settled_yes
+            FROM live_fills lf
+            JOIN outcomes o ON lf.ticker = o.ticker
+            WHERE lf.was_stop_loss = 1
+              AND lf.stop_loss_exit_price IS NOT NULL
+              AND (o.disputed IS NULL OR o.disputed = 0)
+        """).fetchall()
+
+    if not rows:
+        return {"total": 0, "saved_money": 0, "exited_winner": 0, "avg_saving": 0.0}
+
+    saved = 0
+    exited_winner = 0
+    savings: list[float] = []
+    for r in rows:
+        ep = r["entry_price"] or 0.0
+        sl_price = r["stop_loss_exit_price"]
+        qty = r["quantity"] or 1
+        side = r["side"] or "yes"
+        settled = r["settled_yes"]
+
+        # P&L if stop-loss fired (what we actually got)
+        sl_pnl = (sl_price - ep) * qty
+
+        # P&L if held to settlement
+        settle_price = (
+            1.0
+            if (settled and side == "yes") or (not settled and side == "no")
+            else 0.0
+        )
+        hold_pnl = (settle_price - ep) * qty
+
+        saving = sl_pnl - hold_pnl  # positive = stop-loss saved us money
+        savings.append(saving)
+        if saving > 0:
+            saved += 1
+        elif hold_pnl > 0 and sl_pnl < hold_pnl:
+            exited_winner += 1
+
+    return {
+        "total": len(rows),
+        "saved_money": saved,
+        "exited_winner": exited_winner,
+        "avg_saving": round(sum(savings) / len(savings), 4) if savings else 0.0,
+    }
 
 
 def sync_outcomes(client) -> list[dict]:

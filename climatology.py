@@ -269,6 +269,54 @@ def compute_sigma_from_climate(
     return result
 
 
+_SIGMA_MIN = 1.0  # °F — below this is physically implausible
+_SIGMA_MAX = 20.0  # °F — above this suggests a data error
+
+
+def _validate_sigma_cache(data: dict) -> bool:
+    """
+    Validate the structure and plausibility of a forecast_sigma cache dict.
+    Returns True if all values look reasonable, False if anything is suspect.
+    Logs a warning for every out-of-range value found.
+    """
+    if not isinstance(data, dict):
+        _log.warning("forecast_sigma.json: top-level is not a dict")
+        return False
+    ok = True
+    for city, city_data in data.items():
+        if not isinstance(city_data, dict):
+            _log.warning("forecast_sigma.json: city %s value is not a dict", city)
+            ok = False
+            continue
+        for var_key in ("max", "min"):
+            var_data = city_data.get(var_key, {})
+            if not isinstance(var_data, dict):
+                continue
+            for month_str, sigma in var_data.items():
+                if not isinstance(sigma, int | float):
+                    _log.warning(
+                        "forecast_sigma.json: %s/%s/month %s sigma is not numeric: %r",
+                        city,
+                        var_key,
+                        month_str,
+                        sigma,
+                    )
+                    ok = False
+                elif not (_SIGMA_MIN <= sigma <= _SIGMA_MAX):
+                    _log.warning(
+                        "forecast_sigma.json: %s/%s/month %s sigma=%.2f out of "
+                        "plausible range [%.1f, %.1f]°F",
+                        city,
+                        var_key,
+                        month_str,
+                        sigma,
+                        _SIGMA_MIN,
+                        _SIGMA_MAX,
+                    )
+                    ok = False
+    return ok
+
+
 def load_all_sigmas(city_coords: dict, force: bool = False) -> dict:
     """
     Return per-city, per-month forecast sigmas computed from 30yr climate archive.
@@ -283,8 +331,14 @@ def load_all_sigmas(city_coords: dict, force: bool = False) -> dict:
         age = time.time() - _SIGMA_CACHE_PATH.stat().st_mtime
         if age < _SIGMA_CACHE_AGE:
             with open(_SIGMA_CACHE_PATH) as f:
-                _sigma_mem_cache = json.load(f)
-            return _sigma_mem_cache
+                loaded = json.load(f)
+            if _validate_sigma_cache(loaded):
+                _sigma_mem_cache = loaded
+                return _sigma_mem_cache
+            # Cache failed validation — fall through to recompute
+            _log.warning(
+                "forecast_sigma.json failed validation — recomputing from climate archive"
+            )
 
     result: dict = {}
     for city, coords in city_coords.items():
@@ -299,6 +353,7 @@ def load_all_sigmas(city_coords: dict, force: bool = False) -> dict:
             },
         }
 
+    _validate_sigma_cache(result)  # warn on any implausible values before persisting
     try:
         with open(_SIGMA_CACHE_PATH, "w") as f:
             json.dump(result, f, indent=2)

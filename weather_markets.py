@@ -31,7 +31,14 @@ from forecast_cache import ForecastCache
 from kalshi_client import KalshiClient, _request_with_retry
 from nws import fetch_nbm_forecast, get_live_observation, nws_prob, obs_prob
 from schema_validator import validate_forecast
-from utils import KALSHI_FEE_RATE, KELLY_CAP, MAX_DAYS_OUT, normal_cdf
+from utils import (
+    BETWEEN_FLOOR_MARKET_MIN,
+    BETWEEN_FLOOR_MODEL_MAX,
+    KALSHI_FEE_RATE,
+    KELLY_CAP,
+    MAX_DAYS_OUT,
+    normal_cdf,
+)
 
 _log = logging.getLogger(__name__)
 
@@ -116,6 +123,14 @@ MIN_MARKET_PRICE: float = float(os.getenv("MIN_MARKET_PRICE", "0.05"))
 # Override via SIGMA_1DAY_CAP / SIGMA_2DAY_CAP env vars.
 _SIGMA_1DAY_CAP: float = float(os.getenv("SIGMA_1DAY_CAP", "3.0"))
 _SIGMA_2DAY_CAP: float = float(os.getenv("SIGMA_2DAY_CAP", "4.0"))
+
+# Horizon-dependent sigma scale factors — NWS RMSE decreases as forecast horizon shortens.
+# Day-3 RMSE ≈ 100% of climatological sigma (baseline).
+# Day-2 RMSE ≈ 70%, Day-1 RMSE ≈ 50% (empirically from NWS verification statistics).
+# Applied to sigma_gauss in analyze_trade *in addition to* the time-of-day sigma_mult.
+# Override via SIGMA_SCALE_DAY1 / SIGMA_SCALE_DAY2 env vars.
+_SIGMA_SCALE_DAY1: float = float(os.getenv("SIGMA_SCALE_DAY1", "0.50"))
+_SIGMA_SCALE_DAY2: float = float(os.getenv("SIGMA_SCALE_DAY2", "0.70"))
 
 # Minimum settled-trade count before any ML bias correction tier activates.
 # Guards against applying models trained on backtesting data to live paper trades.
@@ -1849,6 +1864,25 @@ def get_historical_sigma(city: str, month: int, var: str = "max") -> float:
     return _HISTORICAL_SIGMA.get(city, {}).get(season, _DEFAULT_SIGMA)
 
 
+def horizon_sigma_scale(days_out: int) -> float:
+    """
+    Scale sigma down for short forecast horizons based on NWS RMSE verification data.
+
+    NWS Day-3 RMSE is the baseline (scale=1.0). Closer-in forecasts are more
+    accurate — Day-1 RMSE is empirically ~50% of Day-3, Day-2 ~70%.
+    This prevents the climatological sigma (calibrated for Day-3) from
+    over-widening the Gaussian for near-term bets, which produces artificially
+    low between-market probabilities.
+
+    Scales are env-var overridable: SIGMA_SCALE_DAY1, SIGMA_SCALE_DAY2.
+    """
+    if days_out <= 1:
+        return _SIGMA_SCALE_DAY1
+    elif days_out == 2:
+        return _SIGMA_SCALE_DAY2
+    return 1.0  # Day-3+ uses full climatological sigma
+
+
 def gaussian_probability(
     forecast_mean: float,
     threshold: float,
@@ -2070,12 +2104,22 @@ def load_learned_weights() -> dict:
     if age_secs > _LEARNED_WEIGHTS_TTL_DAYS * 86400:
         global _LEARNED_WEIGHTS_TTL_WARNED
         if not _LEARNED_WEIGHTS_TTL_WARNED:
-            _log.warning(
-                "[ModelWeights] learned_weights.json is %.1f days old (> %d-day TTL) — "
-                "falling back to default weights",
-                age_secs / 86400,
-                _LEARNED_WEIGHTS_TTL_DAYS,
-            )
+            # Only warn when we have enough settled trades that fresh weights
+            # would actually matter — below _MIN_BIAS_CORRECTION_TRADES the
+            # weights are intentionally stale by design (not enough data to retrain).
+            try:
+                from tracker import get_settled_count as _get_settled_count
+
+                _settled = _get_settled_count()
+            except Exception:
+                _settled = 0
+            if _settled >= _MIN_BIAS_CORRECTION_TRADES:
+                _log.warning(
+                    "[ModelWeights] learned_weights.json is %.1f days old (> %d-day TTL) — "
+                    "falling back to default weights",
+                    age_secs / 86400,
+                    _LEARNED_WEIGHTS_TTL_DAYS,
+                )
             _LEARNED_WEIGHTS_TTL_WARNED = True
         return {}
     try:
@@ -2087,7 +2131,7 @@ def load_learned_weights() -> dict:
     # P1-9: reject corrupt files where city values are floats (win-rates) not dicts
     for city, city_data in loaded.items():
         if not isinstance(city_data, dict):
-            logging.warning(
+            _log.warning(
                 "[ModelWeights] learned_weights.json corrupt: city %s has %s — deleting",
                 city,
                 type(city_data).__name__,
@@ -2098,7 +2142,7 @@ def load_learned_weights() -> dict:
                 pass
             return {}
         if any(v <= 0 for v in city_data.values()):
-            logging.warning(
+            _log.warning(
                 "[ModelWeights] learned_weights.json corrupt: city %s has non-positive weight — deleting",
                 city,
             )
@@ -2123,14 +2167,14 @@ def save_learned_weights(weights: dict) -> None:
     # P1-9: validate before writing — reject win-rate floats masquerading as weights
     for city, city_data in weights.items():
         if not isinstance(city_data, dict):
-            logging.error(
+            _log.error(
                 "[ModelWeights] city %s has non-dict weights (%s) — not persisting",
                 city,
                 type(city_data).__name__,
             )
             return
         if any(v < 0.001 for v in city_data.values()):
-            logging.error(
+            _log.error(
                 "[ModelWeights] city %s has near-zero weights — not persisting (corruption risk)",
                 city,
             )
@@ -4636,7 +4680,7 @@ def analyze_trade(enriched: dict) -> dict | None:
             _nbm_delta = forecast_temp - _nbm_bias_temp  # positive = GFS warm-biased
             _nbm_delta_clamped = max(-4.0, min(8.0, _nbm_delta))
             forecast_temp = forecast_temp - _nbm_delta_clamped
-            _log.debug(
+            _log.info(
                 "analyze_trade: NBM-delta bias %.1f°F→%.1f°F "
                 "(nbm=%.1f delta=%.1f clamped=%.1f city=%s)",
                 forecast_temp_raw,
@@ -4762,10 +4806,15 @@ def analyze_trade(enriched: dict) -> dict | None:
 
         # ── Phase C: Gaussian probability + blend with raw ensemble fraction ─────
         target_month = target_date.month
-        # Apply sigma_mult (time-of-day horizon discount) so near-term
-        # markets get tighter Gaussian uncertainty — same discount applied to
-        # the ensemble sigma at line 3401.
-        sigma_gauss = get_historical_sigma(city, target_month, var=var) * sigma_mult
+        # Apply sigma_mult (time-of-day horizon discount) and horizon_sigma_scale
+        # (days_out discount) so near-term markets get tighter Gaussian uncertainty.
+        # horizon_sigma_scale: Day-1 ≈ 0.50×, Day-2 ≈ 0.70×, Day-3+ ≈ 1.00×
+        # This prevents climatological sigma (calibrated for Day-3) from producing
+        # artificially low between-market probabilities on 1-2 day forecasts.
+        _h_scale = horizon_sigma_scale(days_out)
+        sigma_gauss = (
+            get_historical_sigma(city, target_month, var=var) * sigma_mult * _h_scale
+        )
         cond_type = condition.get("type", "above")
         if cond_type in ("above", "below"):
             p_win_gaussian = gaussian_probability(
@@ -5423,12 +5472,12 @@ def analyze_trade(enriched: dict) -> dict | None:
     # _divergence_gate_market_prob is set from _prices earlier in the function.
     if (
         condition.get("type") == "between"
-        and blended_prob < 0.15
-        and _divergence_gate_market_prob > 0.30
+        and blended_prob < BETWEEN_FLOOR_MODEL_MAX
+        and _divergence_gate_market_prob > BETWEEN_FLOOR_MARKET_MIN
     ):
         _log.warning(
             "analyze_trade: skipping %s — between prob %.3f implausibly low "
-            "vs market %.3f (sigma cap may need lowering)",
+            "vs market %.3f (likely calibration under-bias; check train_bias)",
             enriched.get("ticker", "?"),
             blended_prob,
             _divergence_gate_market_prob,
