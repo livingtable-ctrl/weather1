@@ -213,10 +213,59 @@ def cmd_cron(client: "KalshiClient", min_edge: float = MIN_EDGE) -> None:
     up at call-time because ``_build_cron_context()`` reads the current
     module-level names (which monkeypatch has already replaced).
     """
+    _called_from_loop = getattr(cmd_cron, "_called_from_loop", False)
+
+    # When run manually (not from the loop), offer a one-shot override if the
+    # kill switch is active so the user doesn't have to delete the file just to
+    # run one cycle.  The loop is non-interactive so it silently skips instead.
+    _kill_path = Path(__file__).parent / "data" / ".kill_switch"
+    if _kill_path.exists() and not _called_from_loop:
+        _bs_path = Path(__file__).parent / "data" / ".black_swan_active"
+        _reason_str = ""
+        if _bs_path.exists():
+            try:
+                _bs_data = json.loads(_bs_path.read_text(encoding="utf-8"))
+                _reason_str = f"\n  Reason: {_bs_data.get('reason', 'unknown')}"
+            except Exception:
+                pass
+        print(red(f"\n  ⚠  Kill switch active — trading halted.{_reason_str}"))
+        print(dim("  Delete data/.kill_switch to permanently resume."))
+        try:
+            _ans = (
+                input(yellow("  Override and run this cycle anyway? (y/N): "))
+                .strip()
+                .lower()
+            )
+        except (EOFError, KeyboardInterrupt):
+            print()
+            return
+        if _ans != "y":
+            return
+        # Temporarily move the kill switch so cron's internal check doesn't
+        # double-fire.  Restored in the finally block — override is one-shot.
+        _kill_tmp = _kill_path.with_name(".kill_switch.tmp")
+        _kill_path.rename(_kill_tmp)
+        print(
+            yellow(
+                "  [override] Running one cycle — kill switch will be restored after.\n"
+            )
+        )
+        try:
+            _cron_cmd_cron._called_from_loop = False  # type: ignore[attr-defined]
+            _cron_cmd_cron(_build_cron_context(), client, min_edge=min_edge)
+        finally:
+            if _kill_tmp.exists():
+                if _kill_path.exists():
+                    _kill_tmp.unlink()  # black swan re-created it during the run
+                else:
+                    _kill_tmp.rename(_kill_path)
+            print(
+                yellow("  [override] Kill switch restored — still active for next run.")
+            )
+        return
+
     # Propagate _called_from_loop flag so cron's loop-mode sys.exit guard works.
-    _cron_cmd_cron._called_from_loop = getattr(  # type: ignore[attr-defined]
-        cmd_cron, "_called_from_loop", False
-    )
+    _cron_cmd_cron._called_from_loop = _called_from_loop  # type: ignore[attr-defined]
     _cron_cmd_cron(_build_cron_context(), client, min_edge=min_edge)
 
 
@@ -755,10 +804,16 @@ def cmd_loop(client: KalshiClient, args: list[str] | None = None) -> None:
     def _now() -> datetime:
         return datetime.now()
 
-    _BLACK_SWAN_PATH = Path(__file__).parent / "data" / ".black_swan_active"
-
-    def _do_cron_and_settle() -> None:
-        """Run one cron cycle and auto-settle if post-9 PM."""
+    def _run_cycle(label: str) -> None:
+        print(bold(f"\n[loop] ── {label} ── {_now().strftime('%Y-%m-%d %H:%M')} ──"))
+        if _KILL_PATH.exists():
+            print(
+                red(
+                    "  Kill switch active — skipping cycle."
+                    " Run  py main.py cron  manually to override for one run."
+                )
+            )
+            return
         try:
             cmd_cron._called_from_loop = True  # type: ignore[attr-defined]
             cmd_cron(client)
@@ -786,60 +841,6 @@ def cmd_loop(client: KalshiClient, args: list[str] | None = None) -> None:
                     print(dim("  [loop] No new settlements."))
             except Exception as exc:
                 print(red(f"  [loop] Settle error: {exc}"))
-
-    def _run_cycle(label: str) -> None:
-        print(bold(f"\n[loop] ── {label} ── {_now().strftime('%Y-%m-%d %H:%M')} ──"))
-        if _KILL_PATH.exists():
-            # Show the trigger reason if black swan state file is present
-            _reason_str = ""
-            if _BLACK_SWAN_PATH.exists():
-                try:
-                    _bs_data = json.loads(_BLACK_SWAN_PATH.read_text(encoding="utf-8"))
-                    _reason_str = f"\n  Reason: {_bs_data.get('reason', 'unknown')}"
-                except Exception:
-                    pass
-            print(red(f"  ⚠  Kill switch active — trading halted.{_reason_str}"))
-            print(dim("  Delete data/.kill_switch to permanently resume."))
-            # Offer a one-shot override for this cycle only
-            try:
-                _ans = (
-                    input(yellow("  Override and run this cycle anyway? (y/N): "))
-                    .strip()
-                    .lower()
-                )
-            except (EOFError, KeyboardInterrupt):
-                print()
-                return
-            if _ans != "y":
-                return
-            # Temporarily move the kill switch file so cron's internal check
-            # doesn't fire.  We restore it in the finally block so the switch
-            # remains active for every subsequent cycle — this is one-shot.
-            _kill_tmp = _KILL_PATH.with_name(".kill_switch.tmp")
-            _KILL_PATH.rename(_kill_tmp)
-            print(
-                yellow(
-                    "  [override] Running one cycle — kill switch will be restored after.\n"
-                )
-            )
-            try:
-                _do_cron_and_settle()
-            finally:
-                # Always restore: override is single-use.
-                # If cron re-triggered the black swan and re-created .kill_switch,
-                # just delete the tmp; the new file is already there.
-                if _kill_tmp.exists():
-                    if _KILL_PATH.exists():
-                        _kill_tmp.unlink()  # new one already written by black swan
-                    else:
-                        _kill_tmp.rename(_KILL_PATH)
-                print(
-                    yellow(
-                        "  [override] Kill switch restored — still active for next cycle."
-                    )
-                )
-            return
-        _do_cron_and_settle()
 
     print(
         bold(
