@@ -4739,14 +4739,16 @@ def cmd_menu(client: KalshiClient):
             print(dim("  Running a cron cycle now (uses cached data if fresh)…\n"))
             sys.stdout.flush()
             try:
-                cmd_cron._called_from_loop = True  # type: ignore[attr-defined]
+                # Do NOT set _called_from_loop=True here — that would bypass the
+                # kill switch override prompt.  Instead catch SystemExit explicitly
+                # so cron's end-of-scan sys.exit(0) doesn't close the menu.
                 cmd_cron(client)
+            except SystemExit:
+                pass  # normal cron exit — menu keeps running
             except KeyboardInterrupt:
                 print(yellow("\n  Cron cancelled."))
             except Exception as exc:
                 print(red(f"  Cron error: {exc}"))
-            finally:
-                cmd_cron._called_from_loop = False  # type: ignore[attr-defined]
             sys.stdout.flush()
             print(
                 dim(
