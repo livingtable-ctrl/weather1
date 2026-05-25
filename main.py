@@ -156,6 +156,7 @@ except Exception:
 REFRESH_SECS = 300  # watch mode interval
 _WATCH_STATE_PATH = Path(__file__).parent / "data" / ".watch_state.json"
 
+import cron as _cron_module  # noqa: E402 — used to set USER_OVERRIDE_ACTIVE flag
 from cron import (  # noqa: E402  (after module-level constants)
     KILL_SWITCH_PATH,  # noqa: F401 — re-exported; tests patch main.KILL_SWITCH_PATH
     LOCK_PATH,  # noqa: F401 — re-exported; tests patch main.LOCK_PATH
@@ -252,8 +253,10 @@ def cmd_cron(client: "KalshiClient", min_edge: float = MIN_EDGE) -> None:
         )
         try:
             _cron_cmd_cron._called_from_loop = False  # type: ignore[attr-defined]
+            _cron_module.USER_OVERRIDE_ACTIVE = True
             _cron_cmd_cron(_build_cron_context(), client, min_edge=min_edge)
         finally:
+            _cron_module.USER_OVERRIDE_ACTIVE = False
             if _kill_tmp.exists():
                 if _kill_path.exists():
                     _kill_tmp.unlink()  # black swan re-created it during the run

@@ -50,6 +50,11 @@ LOCK_PATH: Path = Path(__file__).parent / "data" / ".cron.lock"
 # P8.3 — hard kill switch path
 KILL_SWITCH_PATH: Path = Path(__file__).parent / "data" / ".kill_switch"
 
+# Set to True by the manual override path in main.cmd_cron to suppress the
+# black swan re-check for one run when the user has explicitly acknowledged
+# the halt condition.  Always reset to False in a finally block.
+USER_OVERRIDE_ACTIVE: bool = False
+
 
 # ---------------------------------------------------------------------------
 # CronContext — explicit dependency injection replacing _main_module() hack
@@ -520,19 +525,25 @@ def _cmd_cron_body(
     except Exception as _e:
         _log.debug("cmd_cron: run_anomaly_check failed: %s", _e)
 
-    # Black swan emergency shutdown check
-    try:
-        from alerts import run_black_swan_check as _run_black_swan_check
+    # Black swan emergency shutdown check (skipped when user has explicitly
+    # overridden the kill switch for this one run via  py main.py cron)
+    if USER_OVERRIDE_ACTIVE:
+        _log.warning(
+            "cmd_cron: user override active — skipping black swan re-check for this run"
+        )
+    else:
+        try:
+            from alerts import run_black_swan_check as _run_black_swan_check
 
-        _bs_conditions = _run_black_swan_check(client=client)
-        if _bs_conditions:
-            _log.critical(
-                "cmd_cron: BLACK SWAN conditions triggered — halting. Conditions: %s",
-                _bs_conditions,
-            )
-            return None
-    except Exception as _e:
-        _log.debug("cmd_cron: run_black_swan_check failed: %s", _e)
+            _bs_conditions = _run_black_swan_check(client=client)
+            if _bs_conditions:
+                _log.critical(
+                    "cmd_cron: BLACK SWAN conditions triggered — halting. Conditions: %s",
+                    _bs_conditions,
+                )
+                return None
+        except Exception as _e:
+            _log.debug("cmd_cron: run_black_swan_check failed: %s", _e)
 
     # Drift detection; tighten STRONG_EDGE for this run when drifting
     _effective_strong_edge = STRONG_EDGE
