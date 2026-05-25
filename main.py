@@ -3357,6 +3357,23 @@ def cmd_retire_strategies(run: bool = False) -> None:
     print()
 
 
+def cmd_unretire_strategy(method: str) -> None:
+    """Manually un-retire a forecasting method that was auto-retired."""
+    from tracker import unretire_strategy
+
+    if unretire_strategy(method):
+        print(green(f"\n  ✓ Un-retired strategy method: {method}\n"))
+    else:
+        print(red(f"\n  ✗ Method '{method}' was not retired — nothing to undo.\n"))
+        from tracker import get_retired_strategies
+
+        retired = get_retired_strategies()
+        if retired:
+            print(f"  Currently retired: {', '.join(retired.keys())}\n")
+        else:
+            print("  No strategies are currently retired.\n")
+
+
 def cmd_config_check() -> None:
     """P10.3: Show current config fingerprint and detect cross-run changes."""
     from utils import check_config_integrity, get_config_fingerprint
@@ -6534,6 +6551,12 @@ def main():
     elif cmd in ("retire", "retire-strategies"):
         do_run = "--run" in args[1:]
         cmd_retire_strategies(run=do_run)
+    elif cmd in ("unretire", "unretire-strategy"):
+        method_arg = args[1] if len(args) > 1 else ""
+        if not method_arg:
+            print("Usage: py main.py unretire <method>  (e.g. unretire ensemble)")
+        else:
+            cmd_unretire_strategy(method_arg)
     elif cmd in ("config-check", "config"):
         cmd_config_check()
     elif cmd in ("code-audit", "audit"):
