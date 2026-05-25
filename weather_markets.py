@@ -4817,9 +4817,18 @@ def analyze_trade(enriched: dict) -> dict | None:
         )
         sigma_gauss = max(sigma_gauss, 1.5)
         cond_type = condition.get("type", "above")
+        # Use forecast_temp_raw (pre-bias-correction) for the Gaussian mean so it
+        # agrees with the ensemble component, which already counts raw model member
+        # temps directly against thresholds without any station-bias adjustment.
+        # Station bias corrects the point-estimate displayed to the user and stored
+        # in the DB, but applying it to the Gaussian pulls the distribution mean
+        # cold while the dominant ensemble signal stays warm — the two sources fight
+        # each other and the blend under-estimates P(above) and P(between).
+        # At < 50 settled trades the hardcoded bias values are unverified; train_bias
+        # will learn the empirical correction once the data threshold is reached.
         if cond_type in ("above", "below"):
             p_win_gaussian = gaussian_probability(
-                forecast_mean=forecast_temp,
+                forecast_mean=forecast_temp_raw,
                 threshold=float(condition.get("threshold", 0)),
                 sigma=sigma_gauss,
                 direction=cond_type,
@@ -4830,7 +4839,7 @@ def analyze_trade(enriched: dict) -> dict | None:
             # Previously p_win_gaussian was always None here, so the blend had no
             # smoothing for range markets — just noisy ensemble member counting.
             p_win_gaussian = _forecast_probability(
-                condition, forecast_temp, sigma_gauss
+                condition, forecast_temp_raw, sigma_gauss
             )
         else:
             p_win_gaussian = None
