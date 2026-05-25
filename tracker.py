@@ -1453,7 +1453,7 @@ def audit_settlement(ticker: str, settled_yes: bool) -> None:
         if threshold is None:
             return
 
-        var = "max" if cond_type == "above" else "min"
+        var = "min" if "LOWT" in ticker.upper() else "max"
         actual = _fetch_actual_daily_temp(lat, lon, tz, target_date, var)
         if actual is None:
             return

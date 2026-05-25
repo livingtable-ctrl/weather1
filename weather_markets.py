@@ -4815,6 +4815,7 @@ def analyze_trade(enriched: dict) -> dict | None:
         sigma_gauss = (
             get_historical_sigma(city, target_month, var=var) * sigma_mult * _h_scale
         )
+        sigma_gauss = max(sigma_gauss, 1.5)
         cond_type = condition.get("type", "above")
         if cond_type in ("above", "below"):
             p_win_gaussian = gaussian_probability(
