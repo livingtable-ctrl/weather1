@@ -16,6 +16,7 @@ from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, date, datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import requests
 from requests.adapters import HTTPAdapter
@@ -41,6 +42,11 @@ from utils import (
 )
 
 _log = logging.getLogger(__name__)
+
+# Kalshi weather markets are based on Eastern Time observations.
+# Using ET date (not UTC) for days_out avoids incorrectly treating
+# markets as "same day" after midnight UTC (~8 PM ET).
+_ET = ZoneInfo("America/New_York")
 
 # Thread-safe gate counter — reset by cron between scans to track why analyze_trade returns None.
 _gate_counts: dict[str, int] = {}
@@ -2155,6 +2161,13 @@ def load_learned_weights() -> dict:
     return _LEARNED_WEIGHTS
 
 
+# Valid Open-Meteo model names that may appear in learned_weights.json.
+# Any other key (e.g. "ensemble_blend") silently excluded ECMWF in the past.
+_VALID_LEARNED_WEIGHT_MODELS: frozenset[str] = frozenset(
+    {"gfs_seamless", "ecmwf_ifs04", "icon_seamless"}
+)
+
+
 def save_learned_weights(weights: dict) -> None:
     """
     Persist per-city model weights to data/learned_weights.json atomically.
@@ -2177,6 +2190,16 @@ def save_learned_weights(weights: dict) -> None:
             _log.error(
                 "[ModelWeights] city %s has near-zero weights — not persisting (corruption risk)",
                 city,
+            )
+            return
+        # Whitelist: reject any model name not in the known Open-Meteo model set.
+        # Previously "ensemble_blend" silently excluded ecmwf_ifs04 from blending.
+        invalid_models = set(city_data.keys()) - _VALID_LEARNED_WEIGHT_MODELS
+        if invalid_models:
+            _log.error(
+                "[ModelWeights] city %s has unrecognised model name(s) %s — not persisting",
+                city,
+                sorted(invalid_models),
             )
             return
 
@@ -3934,7 +3957,7 @@ def _analyze_precip_trade(
     Uses ensemble precipitation members + climatological rain frequency.
     """
     lat, lon, tz = coords
-    days_out = max(0, (target_date - datetime.now(UTC).date()).days)
+    days_out = max(0, (target_date - datetime.now(_ET).date()).days)
 
     # ── Ensemble precipitation probability ───────────────────────────────────
     _raw_members = _fetch_ensemble_precip(lat, lon, tz, target_date)
@@ -4126,7 +4149,7 @@ def _analyze_snow_trade(
     Falls back to a climatological base rate: 20% in winter (Dec-Feb), 5% otherwise.
     """
     lat, lon, tz = coords
-    days_out = max(0, (target_date - datetime.now(UTC).date()).days)
+    days_out = max(0, (target_date - datetime.now(_ET).date()).days)
 
     # ── Ensemble precipitation as proxy ──────────────────────────────────────
     _raw_snow = _fetch_ensemble_precip(lat, lon, tz, target_date)
@@ -4708,7 +4731,7 @@ def analyze_trade(enriched: dict) -> dict | None:
                 city,
             )
 
-        days_out = max(0, (target_date - datetime.now(UTC).date()).days)
+        days_out = max(0, (target_date - datetime.now(_ET).date()).days)
 
     if not metar_locked:
         # ── 1. Ensemble probability ──────────────────────────────────────────────
@@ -5261,7 +5284,7 @@ def analyze_trade(enriched: dict) -> dict | None:
         series = (enriched.get("series_ticker") or enriched.get("ticker", "")).upper()
         var = "min" if "LOW" in series else "max"
         condition["var"] = var
-        days_out = max(0, (target_date - datetime.now(UTC).date()).days)
+        days_out = max(0, (target_date - datetime.now(_ET).date()).days)
         _fallback_temp = forecast["low_f"] if var == "min" else forecast["high_f"]
         forecast_temp = metar_lockout.get("current_temp_f") or (_fallback_temp or 0.0)
         forecast_temp_raw = forecast_temp
@@ -5743,6 +5766,9 @@ def analyze_trade(enriched: dict) -> dict | None:
         # Phase 6.0: obs-weight learning fields (None when no obs override)
         "obs_weight_used": _obs_w if obs_override is not None else None,
         "local_hour": _local_hour if obs_override is not None else None,
+        # Raw (pre-bias-correction) forecast temperature used as Gaussian mean.
+        # Useful for diagnosing cold-bias: compare to market-implied temperature.
+        "forecast_temp_raw": round(forecast_temp_raw, 2),
     }
     save_forecast_snapshot(enriched.get("ticker", "unknown"), forecast)
     return _result

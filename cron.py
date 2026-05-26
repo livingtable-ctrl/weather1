@@ -384,7 +384,12 @@ def report_anomalies(anomalies: list[dict]) -> None:
         ticker = a.get("ticker", "?")
         our = a.get("blended_prob", 0.0)
         mkt = a.get("market_price", 0.0)
-        print(f"  {ticker:<35} our={our:.0%}  market={mkt:.0%}  drift={mkt - our:+.0%}")
+        raw_temp = a.get("forecast_temp_raw")
+        temp_str = f"  raw={raw_temp:.1f}°F" if raw_temp is not None else ""
+        print(
+            f"  {ticker:<35} our={our:.0%}  market={mkt:.0%}"
+            f"  drift={mkt - our:+.0%}{temp_str}"
+        )
     _log.warning("Anomalies flagged: %s", [a.get("ticker") for a in anomalies])
 
 
