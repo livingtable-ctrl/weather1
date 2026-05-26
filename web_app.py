@@ -716,7 +716,7 @@ setInterval(() => {{
             return jsonify({"error": "cron already running"}), 409
 
         now = _time.monotonic()
-        if now - api_run_cron._last_spawn < _CRON_RATE_LIMIT_S:
+        if now - api_run_cron._last_spawn < _CRON_RATE_LIMIT_S:  # type: ignore[attr-defined]
             return jsonify({"error": "rate limited — wait before spawning again"}), 429
 
         try:
@@ -745,8 +745,8 @@ setInterval(() => {{
             )
             log_f.close()  # child holds its own duplicated handle
             # store on the function object so it survives across requests
-            api_run_cron._proc = proc
-            api_run_cron._last_spawn = _time.monotonic()
+            api_run_cron._proc = proc  # type: ignore[attr-defined]
+            api_run_cron._last_spawn = _time.monotonic()  # type: ignore[attr-defined]
             return jsonify({"status": "started", "pid": proc.pid})
         except Exception as e:
             return jsonify({"status": "error", "message": str(e)}), 500
@@ -759,7 +759,7 @@ setInterval(() => {{
         """Return running state and last N lines of cron_web.log."""
         import re as _re
 
-        proc = api_run_cron._proc
+        proc = api_run_cron._proc  # type: ignore[attr-defined]
         running = False
         exit_code = None
         if proc is not None:
@@ -786,7 +786,7 @@ setInterval(() => {{
     @app.route("/api/cancel-cron", methods=["POST"])
     def api_cancel_cron():
         """Terminate the running cron subprocess."""
-        proc = api_run_cron._proc
+        proc = api_run_cron._proc  # type: ignore[attr-defined]
         if proc is None or proc.poll() is not None:
             return jsonify({"error": "no cron running"}), 404
         proc.terminate()
