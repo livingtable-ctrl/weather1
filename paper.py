@@ -77,6 +77,11 @@ def _validate_checksum(data: dict) -> None:
 DATA_PATH = _project_root() / "data" / "paper_trades.json"
 DATA_PATH.parent.mkdir(exist_ok=True)
 
+# Set to True by the kill switch override path in main.cmd_cron so that any
+# trades placed during an override run are tagged via_kill_switch_override=True
+# in the paper trades ledger.  Always reset in a finally block.
+KILL_SWITCH_OVERRIDE_ACTIVE: bool = False
+
 # Serialises concurrent read-modify-write cycles from Flask threads.
 _DATA_LOCK = (
     threading.RLock()
@@ -695,6 +700,9 @@ def place_paper_order(
             "gfs_forecast_mean": gfs_forecast_mean,
             "condition_threshold": condition_threshold,
             "ab_variant": ab_variant,
+            # Flagged when placed during a kill-switch override run so these
+            # trades can be isolated for analysis after settlement.
+            "via_kill_switch_override": KILL_SWITCH_OVERRIDE_ACTIVE,
         }
 
         # #50: compute slippage-adjusted fill price and store on the trade record
