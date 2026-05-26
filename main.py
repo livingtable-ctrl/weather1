@@ -3417,12 +3417,24 @@ def cmd_retire_strategies(run: bool = False) -> None:
     print()
 
 
-def cmd_unretire_strategy(method: str) -> None:
-    """Manually un-retire a forecasting method that was auto-retired."""
+def cmd_unretire_strategy(method: str, pin_hours: float = 72.0) -> None:
+    """Manually un-retire a forecasting method that was auto-retired.
+
+    Writes a 72-hour retirement-immunity pin by default so the next cron run
+    cannot immediately re-retire the method.  Pass pin_hours=0 to skip the pin.
+    """
     from tracker import unretire_strategy
 
-    if unretire_strategy(method):
-        print(green(f"\n  ✓ Un-retired strategy method: {method}\n"))
+    if unretire_strategy(method, pin_hours=pin_hours):
+        if pin_hours > 0:
+            print(
+                green(
+                    f"\n  ✓ Un-retired '{method}' — pinned for {pin_hours:.0f} h "
+                    f"(auto-retirement immunity until pin expires).\n"
+                )
+            )
+        else:
+            print(green(f"\n  ✓ Un-retired strategy method: {method}\n"))
     else:
         print(red(f"\n  ✗ Method '{method}' was not retired — nothing to undo.\n"))
         from tracker import get_retired_strategies
@@ -6616,9 +6628,23 @@ def main():
     elif cmd in ("unretire", "unretire-strategy"):
         method_arg = args[1] if len(args) > 1 else ""
         if not method_arg:
-            print("Usage: py main.py unretire <method>  (e.g. unretire ensemble)")
+            print(
+                "Usage: py main.py unretire <method> [--pin HOURS]\n"
+                "  e.g.  py main.py unretire ensemble          # 72 h pin (default)\n"
+                "        py main.py unretire ensemble --pin 168 # 7-day pin\n"
+                "        py main.py unretire ensemble --pin 0   # no pin (re-retires next cron)"
+            )
         else:
-            cmd_unretire_strategy(method_arg)
+            _pin_h = 72.0
+            _args_rest = args[2:]
+            if "--pin" in _args_rest:
+                _pi = _args_rest.index("--pin")
+                try:
+                    _pin_h = float(_args_rest[_pi + 1])
+                except (IndexError, ValueError):
+                    print(red("  --pin requires a number of hours, e.g. --pin 168"))
+                    sys.exit(1)
+            cmd_unretire_strategy(method_arg, pin_hours=_pin_h)
     elif cmd in ("config-check", "config"):
         cmd_config_check()
     elif cmd in ("code-audit", "audit"):

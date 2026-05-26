@@ -2213,6 +2213,51 @@ def get_model_calibration_buckets() -> dict:
 # ── P9.1: Strategy version performance comparison ─────────────────────────────
 
 _RETIRED_PATH = _project_root() / "data" / "retired_strategies.json"
+_PINS_PATH = _project_root() / "data" / "strategy_pins.json"
+
+
+def _get_strategy_pins() -> dict[str, str]:
+    """Return {method: pinned_until_iso} for currently active pins."""
+    if not _PINS_PATH.exists():
+        return {}
+    try:
+        import json as _json
+
+        return _json.loads(_PINS_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def _save_strategy_pins(pins: dict[str, str]) -> None:
+    import json as _json
+    import os as _os
+    import tempfile as _tempfile
+
+    _PINS_PATH.parent.mkdir(exist_ok=True)
+    with _tempfile.NamedTemporaryFile(
+        "w",
+        dir=_PINS_PATH.parent,
+        prefix=".pins_",
+        suffix=".json",
+        delete=False,
+        encoding="utf-8",
+    ) as tmp:
+        _json.dump(pins, tmp, indent=2)
+        tmp_name = tmp.name
+    _os.replace(tmp_name, _PINS_PATH)
+
+
+def is_strategy_pinned(method: str) -> bool:
+    """Return True if method has an active retirement-immunity pin."""
+    pins = _get_strategy_pins()
+    until_str = pins.get(method)
+    if not until_str:
+        return False
+    try:
+        until = datetime.fromisoformat(until_str)
+        return datetime.now(UTC) < until
+    except Exception:
+        return False
 
 
 def get_brier_by_version(min_samples: int = 10) -> dict[str, dict]:
@@ -2343,6 +2388,15 @@ def auto_retire_strategies(
 
     for method, brier in scores.items():
         if method not in retired and brier > retire_threshold:
+            if is_strategy_pinned(method):
+                _log.info(
+                    "strategy_retirement: skipping re-retirement of pinned method=%s "
+                    "(Brier %.4f > threshold %.4f — pin still active)",
+                    method,
+                    brier,
+                    retire_threshold,
+                )
+                continue
             retired[method] = {
                 "retired_at": now_str,
                 "reason": f"Brier {brier:.4f} > threshold {retire_threshold:.4f}",
@@ -2362,13 +2416,30 @@ def auto_retire_strategies(
     return newly_retired
 
 
-def unretire_strategy(method: str) -> bool:
-    """P9.5: Manually un-retire a strategy method. Returns True if it was retired."""
+def unretire_strategy(method: str, pin_hours: float = 72.0) -> bool:
+    """P9.5: Manually un-retire a strategy method. Returns True if it was retired.
+
+    Also writes a retirement-immunity pin for ``pin_hours`` (default 72 h) so
+    that the very next cron run does not immediately re-retire the method if
+    its Brier is still above the threshold.  Pass pin_hours=0 to skip the pin.
+    """
     retired = get_retired_strategies()
     if method in retired:
         del retired[method]
         _save_retired_strategies(retired)
         _log.info("strategy_retirement: un-retired method=%s", method)
+        if pin_hours > 0:
+            pins = _get_strategy_pins()
+            from datetime import timedelta as _td
+
+            pins[method] = (datetime.now(UTC) + _td(hours=pin_hours)).isoformat()
+            _save_strategy_pins(pins)
+            _log.info(
+                "strategy_retirement: pinned method=%s for %.0f h (until %s)",
+                method,
+                pin_hours,
+                pins[method][:19],
+            )
         return True
     return False
 
