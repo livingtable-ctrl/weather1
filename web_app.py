@@ -420,10 +420,16 @@ def _build_app(client):
 
         # Extract graduation thresholds from the function signature so the frontend
         # always displays the values actually used — not hardcoded JS fallbacks (WA-8).
-        _gc_params = inspect.signature(graduation_check).parameters
-        _min_trades = _gc_params["min_trades"].default
-        _min_pnl = _gc_params["min_pnl"].default
-        _max_brier = _gc_params["max_brier"].default
+        # Fallback to defaults when graduation_check is mocked (no real signature).
+        try:
+            _gc_params = inspect.signature(graduation_check).parameters
+            _min_trades = _gc_params["min_trades"].default
+            _min_pnl = _gc_params["min_pnl"].default
+            _max_brier = _gc_params["max_brier"].default
+        except (KeyError, ValueError):
+            _min_trades = 30
+            _min_pnl = 50.0
+            _max_brier = 0.20
 
         perf = get_performance()
         gc = graduation_check()

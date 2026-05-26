@@ -398,9 +398,7 @@ def drawdown_scaling_factor() -> float:
         return 0.10
     if recovery <= _DRAWDOWN_TIER_3:
         return 0.30
-    if (
-        recovery <= _DRAWDOWN_TIER_4
-    ):  # L-3: was `<`; at exactly 5% drawdown tier must apply
+    if recovery < _DRAWDOWN_TIER_4:  # P2-31: strict < so exactly at TIER_4 returns full
         return 0.70
     return 1.0
 

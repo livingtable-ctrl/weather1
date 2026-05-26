@@ -308,8 +308,11 @@ class TestSimulateFill:
 
 class TestCalcTradePnl:
     def test_yes_win_with_actual_fill_price(self):
-        """YES side, settled YES, actual_fill_price=0.62 on 10 contracts."""
+        """YES side, settled YES, actual_fill_price=0.62 on 10 contracts.
+        calc_trade_pnl deducts the Kalshi taker fee from winnings (M-8).
+        """
         from paper import calc_trade_pnl
+        from utils import KALSHI_FEE_RATE
 
         trade = {
             "side": "yes",
@@ -318,11 +321,11 @@ class TestCalcTradePnl:
             "quantity": 10,
         }
         pnl = calc_trade_pnl(trade)
-        expected = (1.0 - 0.62) * 10  # = 3.80
+        expected = (1.0 - 0.62) * 10 * (1.0 - KALSHI_FEE_RATE)  # net of fee
         assert pnl == pytest.approx(expected)
 
     def test_yes_loss_uses_actual_fill_price(self):
-        """YES side, settled NO → loss."""
+        """YES side, settled NO → loss. No fee on losses."""
         from paper import calc_trade_pnl
 
         trade = {
@@ -332,12 +335,13 @@ class TestCalcTradePnl:
             "quantity": 10,
         }
         pnl = calc_trade_pnl(trade)
-        expected = -0.62 * 10  # = -6.20
+        expected = -0.62 * 10  # = -6.20 (no fee on losses)
         assert pnl == pytest.approx(expected)
 
     def test_falls_back_to_entry_price_when_no_actual_fill(self):
-        """When actual_fill_price is absent, uses entry_price."""
+        """When actual_fill_price is absent, uses entry_price. Fee applied on win."""
         from paper import calc_trade_pnl
+        from utils import KALSHI_FEE_RATE
 
         trade = {
             "side": "yes",
@@ -346,12 +350,13 @@ class TestCalcTradePnl:
             "quantity": 5,
         }
         pnl = calc_trade_pnl(trade)
-        expected = (1.0 - 0.60) * 5  # = 2.00
+        expected = (1.0 - 0.60) * 5 * (1.0 - KALSHI_FEE_RATE)  # net of fee
         assert pnl == pytest.approx(expected)
 
     def test_no_side_win(self):
-        """NO side, settled NO → win."""
+        """NO side, settled NO → win. Fee applied to winnings."""
         from paper import calc_trade_pnl
+        from utils import KALSHI_FEE_RATE
 
         trade = {
             "side": "no",
@@ -360,7 +365,7 @@ class TestCalcTradePnl:
             "quantity": 10,
         }
         pnl = calc_trade_pnl(trade)
-        expected = (1.0 - 0.40) * 10  # = 6.00
+        expected = (1.0 - 0.40) * 10 * (1.0 - KALSHI_FEE_RATE)  # net of fee
         assert pnl == pytest.approx(expected)
 
 

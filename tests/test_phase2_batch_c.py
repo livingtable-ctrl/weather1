@@ -155,13 +155,20 @@ class TestClimateIndicesTTL:
 
     def test_cache_served_within_ttl(self):
         """A second call within TTL must not hit the network."""
+        import datetime as _dt
+
         import climate_indices
 
         call_count = [0]
+        # Return a non-zero value for the current month so the H-17 all-zeros
+        # guard does not block caching (it only skips cache when AO+NAO+ENSO
+        # are all 0.0, which happens with an empty dict mock).
+        _today = _dt.date.today()
+        _non_zero_data = {(_today.year, _today.month): 0.5}
 
         def counting_fetch(url):
             call_count[0] += 1
-            return {}
+            return _non_zero_data
 
         # Reset cache state
         climate_indices._indices_cache = {}

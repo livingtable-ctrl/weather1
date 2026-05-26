@@ -198,18 +198,19 @@ def _acquire_cron_lock() -> bool:
                 started_at = existing.get("started_at", 0)
                 heartbeat = existing.get("heartbeat", started_at)
             except Exception as parse_err:
-                # Unreadable / corrupt / old-format lock — treat as stale and remove.
-                # Old cron versions wrote a plain integer PID; that dict.get() call
-                # raises AttributeError. Safe to override: if a real process held the
-                # lock it would have written the new JSON format.
+                # Fail closed: corrupt / unreadable lock means we cannot verify whether
+                # another cron instance is running. Remove the bad file and refuse to
+                # proceed — callers can retry. (Old plain-integer-PID format also hits
+                # this path; the safer choice is still to block rather than proceed.)
                 _log.warning(
-                    "cmd_cron: unreadable lock file (%s) — treating as stale, removing",
+                    "cmd_cron: unreadable lock file (%s) — fail-closed, aborting",
                     parse_err,
                 )
                 try:
                     lp.unlink()
                 except OSError:
                     pass
+                return False
 
             if pid and _PSUTIL_AVAILABLE:
                 if _psutil.pid_exists(pid):
