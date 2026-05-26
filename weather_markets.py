@@ -16,7 +16,6 @@ from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, date, datetime
 from pathlib import Path
-from zoneinfo import ZoneInfo
 
 import requests
 from requests.adapters import HTTPAdapter
@@ -32,21 +31,9 @@ from forecast_cache import ForecastCache
 from kalshi_client import KalshiClient, _request_with_retry
 from nws import fetch_nbm_forecast, get_live_observation, nws_prob, obs_prob
 from schema_validator import validate_forecast
-from utils import (
-    BETWEEN_FLOOR_MARKET_MIN,
-    BETWEEN_FLOOR_MODEL_MAX,
-    KALSHI_FEE_RATE,
-    KELLY_CAP,
-    MAX_DAYS_OUT,
-    normal_cdf,
-)
+from utils import KALSHI_FEE_RATE, KELLY_CAP, MAX_DAYS_OUT, normal_cdf
 
 _log = logging.getLogger(__name__)
-
-# Kalshi weather markets are based on Eastern Time observations.
-# Using ET date (not UTC) for days_out avoids incorrectly treating
-# markets as "same day" after midnight UTC (~8 PM ET).
-_ET = ZoneInfo("America/New_York")
 
 # Thread-safe gate counter — reset by cron between scans to track why analyze_trade returns None.
 _gate_counts: dict[str, int] = {}
@@ -74,22 +61,30 @@ def get_gate_counts() -> dict[str, int]:
 # proportional to Open-Meteo's typical MTTR (minutes, not hours).
 _forecast_cb = CircuitBreaker(
     name="open_meteo_forecast",
-    failure_threshold=int(os.getenv("CB_FORECAST_THRESHOLD", "10")),
-    recovery_timeout=int(os.getenv("CB_FORECAST_TIMEOUT", "300")),
-    burst_window=10.0,
+    failure_threshold=10,  # raised from 6 — need more real failures before tripping
+    recovery_timeout=300,  # lowered from 1800s — retry after 5 min not 30 min
+    burst_window=10.0,  # wider burst window absorbs parallel fetches
 )
+# Supplementary circuit breaker: ensemble spread and ECMWF high-res (ENSEMBLE_BASE).
+# Failures here degrade quality but don't block primary signals.
 _ensemble_cb = CircuitBreaker(
     name="open_meteo_ensemble",
-    failure_threshold=int(os.getenv("CB_ENSEMBLE_THRESHOLD", "3")),
-    recovery_timeout=int(os.getenv("CB_ENSEMBLE_TIMEOUT", "300")),
-    burst_window=2.0,
+    failure_threshold=3,
+    recovery_timeout=300,  # 300s: outlasts inter-run gap so circuit stays open across
+    burst_window=2.0,  # runs when endpoint is consistently down (same as nbm_om_cb)
 )
+
+# Separate circuit breaker for the NBM (Open-Meteo model="nbm") fetch.
+# NBM and ensemble hit the same API but are independent signals — one failing
+# should NOT gate the other.
+# burst_window=2s: absorbs the few truly-simultaneous parallel hits during
+# analysis without being so wide that a flaky endpoint hangs for minutes.
 _nbm_om_cb = CircuitBreaker(
     name="nbm_openmeteo",
-    failure_threshold=int(os.getenv("CB_NBM_THRESHOLD", "3")),
-    recovery_timeout=int(os.getenv("CB_NBM_TIMEOUT", "300")),
-    burst_window=2.0,
-)
+    failure_threshold=3,
+    recovery_timeout=300,  # 300s: outlasts the gap between cron runs so circuit stays
+    burst_window=2.0,  # open across runs — prevents re-burning 30 s of timeouts
+)  # each run when the endpoint is consistently down
 
 # ── Trading filters ───────────────────────────────────────────────────────────
 # Only analyse markets expiring within this many days. Days 3-4 carry higher
@@ -129,14 +124,6 @@ MIN_MARKET_PRICE: float = float(os.getenv("MIN_MARKET_PRICE", "0.05"))
 # Override via SIGMA_1DAY_CAP / SIGMA_2DAY_CAP env vars.
 _SIGMA_1DAY_CAP: float = float(os.getenv("SIGMA_1DAY_CAP", "3.0"))
 _SIGMA_2DAY_CAP: float = float(os.getenv("SIGMA_2DAY_CAP", "4.0"))
-
-# Horizon-dependent sigma scale factors — NWS RMSE decreases as forecast horizon shortens.
-# Day-3 RMSE ≈ 100% of climatological sigma (baseline).
-# Day-2 RMSE ≈ 70%, Day-1 RMSE ≈ 50% (empirically from NWS verification statistics).
-# Applied to sigma_gauss in analyze_trade *in addition to* the time-of-day sigma_mult.
-# Override via SIGMA_SCALE_DAY1 / SIGMA_SCALE_DAY2 env vars.
-_SIGMA_SCALE_DAY1: float = float(os.getenv("SIGMA_SCALE_DAY1", "0.50"))
-_SIGMA_SCALE_DAY2: float = float(os.getenv("SIGMA_SCALE_DAY2", "0.70"))
 
 # Minimum settled-trade count before any ML bias correction tier activates.
 # Guards against applying models trained on backtesting data to live paper trades.
@@ -869,12 +856,9 @@ def get_weather_forecast(city: str, target_date: date) -> dict | None:
                 city,
             )
     finally:
-        _pending = [f for f in futures if not f.done()]
-        if _pending:
-            _log.debug(
-                "get_weather_forecast: shutdown with %d future(s) still running",
-                len(_pending),
-            )
+        # wait=False: don't block on threads that are stuck on a dead socket.
+        # The watchdog will kill the process if truly hung; threads time out on
+        # their own via the HTTP timeout and clean up eventually.
         _pool.shutdown(wait=False)
 
     if not highs:
@@ -1837,56 +1821,14 @@ def _month_to_season(month: int) -> int:
     ]
 
 
-_dynamic_sigma: dict = {}
+def get_historical_sigma(city: str, month: int) -> float:
+    """Return NWS Day-3 forecast RMSE (sigma, °F) for a city.
 
-
-def _load_dynamic_sigma() -> dict:
-    global _dynamic_sigma
-    if _dynamic_sigma:
-        return _dynamic_sigma
-    try:
-        from climatology import load_all_sigmas
-
-        _dynamic_sigma = load_all_sigmas(CITY_COORDS)
-    except Exception as _e:
-        _log.debug("Dynamic sigma unavailable: %s", _e)
-    return _dynamic_sigma
-
-
-def get_historical_sigma(city: str, month: int, var: str = "max") -> float:
-    """Return forecast RMSE sigma (°F) for a city/month.
-
-    Prefers dynamic values computed from 30yr climate archive (per-month resolution).
-    Falls back to static seasonal table, then _DEFAULT_SIGMA.
+    City must match the name stored in the _city field by enrich_with_forecast()
+    (e.g. "NYC", "Chicago", "LA", "Miami").  Unknown cities return _DEFAULT_SIGMA.
     """
-    dynamic = _load_dynamic_sigma()
-    city_data = dynamic.get(city, {})
-    var_key = "min" if var == "min" else "max"
-    dyn_val = city_data.get(var_key, {}).get(str(month))
-    if dyn_val:
-        return float(dyn_val)
-    # Static fallback (seasonal granularity)
     season = _month_to_season(month)
     return _HISTORICAL_SIGMA.get(city, {}).get(season, _DEFAULT_SIGMA)
-
-
-def horizon_sigma_scale(days_out: int) -> float:
-    """
-    Scale sigma down for short forecast horizons based on NWS RMSE verification data.
-
-    NWS Day-3 RMSE is the baseline (scale=1.0). Closer-in forecasts are more
-    accurate — Day-1 RMSE is empirically ~50% of Day-3, Day-2 ~70%.
-    This prevents the climatological sigma (calibrated for Day-3) from
-    over-widening the Gaussian for near-term bets, which produces artificially
-    low between-market probabilities.
-
-    Scales are env-var overridable: SIGMA_SCALE_DAY1, SIGMA_SCALE_DAY2.
-    """
-    if days_out <= 1:
-        return _SIGMA_SCALE_DAY1
-    elif days_out == 2:
-        return _SIGMA_SCALE_DAY2
-    return 1.0  # Day-3+ uses full climatological sigma
 
 
 def gaussian_probability(
@@ -2110,22 +2052,12 @@ def load_learned_weights() -> dict:
     if age_secs > _LEARNED_WEIGHTS_TTL_DAYS * 86400:
         global _LEARNED_WEIGHTS_TTL_WARNED
         if not _LEARNED_WEIGHTS_TTL_WARNED:
-            # Only warn when we have enough settled trades that fresh weights
-            # would actually matter — below _MIN_BIAS_CORRECTION_TRADES the
-            # weights are intentionally stale by design (not enough data to retrain).
-            try:
-                from tracker import get_settled_count as _get_settled_count
-
-                _settled = _get_settled_count()
-            except Exception:
-                _settled = 0
-            if _settled >= _MIN_BIAS_CORRECTION_TRADES:
-                _log.warning(
-                    "[ModelWeights] learned_weights.json is %.1f days old (> %d-day TTL) — "
-                    "falling back to default weights",
-                    age_secs / 86400,
-                    _LEARNED_WEIGHTS_TTL_DAYS,
-                )
+            logging.warning(
+                "[ModelWeights] learned_weights.json is %.1f days old (> %d-day TTL) — "
+                "falling back to default weights",
+                age_secs / 86400,
+                _LEARNED_WEIGHTS_TTL_DAYS,
+            )
             _LEARNED_WEIGHTS_TTL_WARNED = True
         return {}
     try:
@@ -2137,7 +2069,7 @@ def load_learned_weights() -> dict:
     # P1-9: reject corrupt files where city values are floats (win-rates) not dicts
     for city, city_data in loaded.items():
         if not isinstance(city_data, dict):
-            _log.warning(
+            logging.warning(
                 "[ModelWeights] learned_weights.json corrupt: city %s has %s — deleting",
                 city,
                 type(city_data).__name__,
@@ -2148,7 +2080,7 @@ def load_learned_weights() -> dict:
                 pass
             return {}
         if any(v <= 0 for v in city_data.values()):
-            _log.warning(
+            logging.warning(
                 "[ModelWeights] learned_weights.json corrupt: city %s has non-positive weight — deleting",
                 city,
             )
@@ -2159,13 +2091,6 @@ def load_learned_weights() -> dict:
             return {}
     _LEARNED_WEIGHTS = loaded
     return _LEARNED_WEIGHTS
-
-
-# Valid Open-Meteo model names that may appear in learned_weights.json.
-# Any other key (e.g. "ensemble_blend") silently excluded ECMWF in the past.
-_VALID_LEARNED_WEIGHT_MODELS: frozenset[str] = frozenset(
-    {"gfs_seamless", "ecmwf_ifs04", "icon_seamless"}
-)
 
 
 def save_learned_weights(weights: dict) -> None:
@@ -2180,26 +2105,16 @@ def save_learned_weights(weights: dict) -> None:
     # P1-9: validate before writing — reject win-rate floats masquerading as weights
     for city, city_data in weights.items():
         if not isinstance(city_data, dict):
-            _log.error(
+            logging.error(
                 "[ModelWeights] city %s has non-dict weights (%s) — not persisting",
                 city,
                 type(city_data).__name__,
             )
             return
         if any(v < 0.001 for v in city_data.values()):
-            _log.error(
+            logging.error(
                 "[ModelWeights] city %s has near-zero weights — not persisting (corruption risk)",
                 city,
-            )
-            return
-        # Whitelist: reject any model name not in the known Open-Meteo model set.
-        # Previously "ensemble_blend" silently excluded ecmwf_ifs04 from blending.
-        invalid_models = set(city_data.keys()) - _VALID_LEARNED_WEIGHT_MODELS
-        if invalid_models:
-            _log.error(
-                "[ModelWeights] city %s has unrecognised model name(s) %s — not persisting",
-                city,
-                sorted(invalid_models),
             )
             return
 
@@ -2845,12 +2760,6 @@ def get_weather_markets(
                 len(results),
             )
     finally:
-        _pending = [f for f in futures if not f.done()]
-        if _pending:
-            _log.debug(
-                "get_weather_markets: shutdown with %d future(s) still running",
-                len(_pending),
-            )
         _mkt_pool.shutdown(wait=False)
 
     _MARKETS_CACHE = (results, now)
@@ -3957,7 +3866,7 @@ def _analyze_precip_trade(
     Uses ensemble precipitation members + climatological rain frequency.
     """
     lat, lon, tz = coords
-    days_out = max(0, (target_date - datetime.now(_ET).date()).days)
+    days_out = max(0, (target_date - datetime.now(UTC).date()).days)
 
     # ── Ensemble precipitation probability ───────────────────────────────────
     _raw_members = _fetch_ensemble_precip(lat, lon, tz, target_date)
@@ -4149,7 +4058,7 @@ def _analyze_snow_trade(
     Falls back to a climatological base rate: 20% in winter (Dec-Feb), 5% otherwise.
     """
     lat, lon, tz = coords
-    days_out = max(0, (target_date - datetime.now(_ET).date()).days)
+    days_out = max(0, (target_date - datetime.now(UTC).date()).days)
 
     # ── Ensemble precipitation as proxy ──────────────────────────────────────
     _raw_snow = _fetch_ensemble_precip(lat, lon, tz, target_date)
@@ -4688,50 +4597,11 @@ def analyze_trade(enriched: dict) -> dict | None:
                 _count_gate("model_spread")
                 return None
 
-        # Bias correction: prefer NBM-delta (dynamic) over static per-city table.
-        # NBM is professionally bias-corrected by NWS; the GFS-NBM delta gives a
-        # data-driven correction without manually tuned per-city constants.
-        # Falls back to static table when NBM is unavailable.
+        # Apply per-city static bias correction before probability calculation (B4: pass var)
         forecast_temp_raw = forecast_temp
-        _nbm_bias_temp: float | None = None
-        try:
-            _nbm_bias_temp = fetch_temperature_nbm(city, target_date, var=var)
-        except Exception:
-            pass
+        forecast_temp = apply_station_bias(city, forecast_temp, var=var)
 
-        if _nbm_bias_temp is not None:
-            _nbm_delta = forecast_temp - _nbm_bias_temp  # positive = GFS warm-biased
-            _nbm_delta_clamped = max(-4.0, min(8.0, _nbm_delta))
-            forecast_temp = forecast_temp - _nbm_delta_clamped
-            _log.info(
-                "analyze_trade: NBM-delta bias %.1f°F→%.1f°F "
-                "(nbm=%.1f delta=%.1f clamped=%.1f city=%s)",
-                forecast_temp_raw,
-                forecast_temp,
-                _nbm_bias_temp,
-                _nbm_delta,
-                _nbm_delta_clamped,
-                city,
-            )
-            if condition.get("type") == "between":
-                _log.info(
-                    "analyze_trade between NBM-delta: gfs=%.1f nbm=%.1f "
-                    "corrected=%.1f (city=%s)",
-                    forecast_temp_raw,
-                    _nbm_bias_temp,
-                    forecast_temp,
-                    city,
-                )
-        else:
-            forecast_temp = apply_station_bias(city, forecast_temp, var=var)
-            _log.debug(
-                "analyze_trade: static bias %.1f°F→%.1f°F (city=%s nbm=unavailable)",
-                forecast_temp_raw,
-                forecast_temp,
-                city,
-            )
-
-        days_out = max(0, (target_date - datetime.now(_ET).date()).days)
+        days_out = max(0, (target_date - datetime.now(UTC).date()).days)
 
     if not metar_locked:
         # ── 1. Ensemble probability ──────────────────────────────────────────────
@@ -4813,8 +4683,8 @@ def analyze_trade(enriched: dict) -> dict | None:
         # ── Phase C: extended ensemble members (NBM + ECMWF AIFS) ───────────────
         model_temps: dict[str, float | None] = {}
         try:
-            # Reuse NBM already fetched for bias correction above (avoids double fetch).
-            model_temps["nbm"] = _nbm_bias_temp
+            # H-13: pass var so LOW markets get daily min, not max
+            model_temps["nbm"] = fetch_temperature_nbm(city, target_date, var=var)
             model_temps["ecmwf"] = fetch_temperature_ecmwf(city, target_date, var=var)
         except Exception as _ext_exc:
             _log.debug(
@@ -4829,29 +4699,14 @@ def analyze_trade(enriched: dict) -> dict | None:
 
         # ── Phase C: Gaussian probability + blend with raw ensemble fraction ─────
         target_month = target_date.month
-        # Apply sigma_mult (time-of-day horizon discount) and horizon_sigma_scale
-        # (days_out discount) so near-term markets get tighter Gaussian uncertainty.
-        # horizon_sigma_scale: Day-1 ≈ 0.50×, Day-2 ≈ 0.70×, Day-3+ ≈ 1.00×
-        # This prevents climatological sigma (calibrated for Day-3) from producing
-        # artificially low between-market probabilities on 1-2 day forecasts.
-        _h_scale = horizon_sigma_scale(days_out)
-        sigma_gauss = (
-            get_historical_sigma(city, target_month, var=var) * sigma_mult * _h_scale
-        )
-        sigma_gauss = max(sigma_gauss, 1.5)
+        # Apply sigma_mult (time-of-day horizon discount) so near-term
+        # markets get tighter Gaussian uncertainty — same discount applied to
+        # the ensemble sigma at line 3401.
+        sigma_gauss = get_historical_sigma(city, target_month) * sigma_mult
         cond_type = condition.get("type", "above")
-        # Use forecast_temp_raw (pre-bias-correction) for the Gaussian mean so it
-        # agrees with the ensemble component, which already counts raw model member
-        # temps directly against thresholds without any station-bias adjustment.
-        # Station bias corrects the point-estimate displayed to the user and stored
-        # in the DB, but applying it to the Gaussian pulls the distribution mean
-        # cold while the dominant ensemble signal stays warm — the two sources fight
-        # each other and the blend under-estimates P(above) and P(between).
-        # At < 50 settled trades the hardcoded bias values are unverified; train_bias
-        # will learn the empirical correction once the data threshold is reached.
         if cond_type in ("above", "below"):
             p_win_gaussian = gaussian_probability(
-                forecast_mean=forecast_temp_raw,
+                forecast_mean=forecast_temp,
                 threshold=float(condition.get("threshold", 0)),
                 sigma=sigma_gauss,
                 direction=cond_type,
@@ -4862,7 +4717,7 @@ def analyze_trade(enriched: dict) -> dict | None:
             # Previously p_win_gaussian was always None here, so the blend had no
             # smoothing for range markets — just noisy ensemble member counting.
             p_win_gaussian = _forecast_probability(
-                condition, forecast_temp_raw, sigma_gauss
+                condition, forecast_temp, sigma_gauss
             )
         else:
             p_win_gaussian = None
@@ -5284,7 +5139,7 @@ def analyze_trade(enriched: dict) -> dict | None:
         series = (enriched.get("series_ticker") or enriched.get("ticker", "")).upper()
         var = "min" if "LOW" in series else "max"
         condition["var"] = var
-        days_out = max(0, (target_date - datetime.now(_ET).date()).days)
+        days_out = max(0, (target_date - datetime.now(UTC).date()).days)
         _fallback_temp = forecast["low_f"] if var == "min" else forecast["high_f"]
         forecast_temp = metar_lockout.get("current_temp_f") or (_fallback_temp or 0.0)
         forecast_temp_raw = forecast_temp
@@ -5505,12 +5360,12 @@ def analyze_trade(enriched: dict) -> dict | None:
     # _divergence_gate_market_prob is set from _prices earlier in the function.
     if (
         condition.get("type") == "between"
-        and blended_prob < BETWEEN_FLOOR_MODEL_MAX
-        and _divergence_gate_market_prob > BETWEEN_FLOOR_MARKET_MIN
+        and blended_prob < 0.15
+        and _divergence_gate_market_prob > 0.30
     ):
         _log.warning(
             "analyze_trade: skipping %s — between prob %.3f implausibly low "
-            "vs market %.3f (likely calibration under-bias; check train_bias)",
+            "vs market %.3f (sigma cap may need lowering)",
             enriched.get("ticker", "?"),
             blended_prob,
             _divergence_gate_market_prob,
@@ -5766,9 +5621,6 @@ def analyze_trade(enriched: dict) -> dict | None:
         # Phase 6.0: obs-weight learning fields (None when no obs override)
         "obs_weight_used": _obs_w if obs_override is not None else None,
         "local_hour": _local_hour if obs_override is not None else None,
-        # Raw (pre-bias-correction) forecast temperature used as Gaussian mean.
-        # Useful for diagnosing cold-bias: compare to market-implied temperature.
-        "forecast_temp_raw": round(forecast_temp_raw, 2),
     }
     save_forecast_snapshot(enriched.get("ticker", "unknown"), forecast)
     return _result
@@ -5827,12 +5679,6 @@ def analyze_markets_parallel(
                 "analyze_markets_parallel: timed out after 300s — returning partial results"
             )
     finally:
-        _pending = [f for f in futures if not f.done()]
-        if _pending:
-            _log.debug(
-                "analyze_markets_parallel: shutdown with %d future(s) still running",
-                len(_pending),
-            )
         _amc_pool.shutdown(wait=False)
 
     return results

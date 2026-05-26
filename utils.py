@@ -137,13 +137,6 @@ STARTING_BALANCE: float = float(os.getenv("STARTING_BALANCE", "1000.0"))
 # Set to 0 to disable stop-losses entirely.
 STOP_LOSS_MULT = float(os.getenv("STOP_LOSS_MULT", "2.0"))
 
-# Between-market floor gate: skip a "between" contract when our blended probability
-# is implausibly low relative to the market price. Both thresholds are tunable via
-# env vars — lower BETWEEN_FLOOR_MODEL_MAX to tighten (block more), raise to loosen.
-# Default: block when model < 15% AND market > 30% (calibration under-bias indicator).
-BETWEEN_FLOOR_MODEL_MAX: float = float(os.getenv("BETWEEN_FLOOR_MODEL_MAX", "0.15"))
-BETWEEN_FLOOR_MARKET_MIN: float = float(os.getenv("BETWEEN_FLOOR_MARKET_MIN", "0.30"))
-
 # Break-even stop trigger: once a position's unrealized profit reaches this fraction
 # of its cost (default 30%), move the stop to entry price. Any subsequent fall back
 # to entry or below triggers a scratch exit — the position can no longer lose money.

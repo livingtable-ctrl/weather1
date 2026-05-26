@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import json
 import logging
-import statistics
 import time
 from datetime import date
 from pathlib import Path
@@ -227,143 +226,6 @@ def persistence_prob(
     return None
 
 
-# NWS Day-3 temperature RMSE is empirically ~60% of climatological std.
-# Applying this fraction converts raw variability into a calibrated forecast sigma.
-FORECAST_RMSE_FRACTION = 0.60
-_SIGMA_FLOOR = 1.5  # never allow sigma < 1.5°F regardless of climate data
-
-_SIGMA_CACHE_PATH = DATA_DIR / "forecast_sigma.json"
-_SIGMA_CACHE_AGE = 30 * 24 * 3600  # refresh monthly
-_sigma_mem_cache: dict = {}
-
-
-def compute_sigma_from_climate(
-    city: str, coords: tuple, var: str = "max"
-) -> dict[int, float]:
-    """
-    Compute per-month forecast sigma (°F) from 30yr climate archive for one city.
-    Returns {month: sigma} for months 1-12 that have enough data (>= 30 points).
-    Empty dict on data error.
-    """
-    data = fetch_historical(city, coords)
-    if not data:
-        return {}
-
-    key = "highs" if var == "max" else "lows"
-    by_month: dict[int, list[float]] = {m: [] for m in range(1, 13)}
-
-    for date_str, val in zip(data["dates"], data[key]):
-        if val is None:
-            continue
-        try:
-            m = date.fromisoformat(date_str).month
-            by_month[m].append(val)
-        except ValueError:
-            continue
-
-    result: dict[int, float] = {}
-    for m, vals in by_month.items():
-        if len(vals) >= 30:
-            std = statistics.stdev(vals)
-            result[m] = round(max(_SIGMA_FLOOR, std * FORECAST_RMSE_FRACTION), 2)
-    return result
-
-
-_SIGMA_MIN = 1.0  # °F — below this is physically implausible
-_SIGMA_MAX = 20.0  # °F — above this suggests a data error
-
-
-def _validate_sigma_cache(data: dict) -> bool:
-    """
-    Validate the structure and plausibility of a forecast_sigma cache dict.
-    Returns True if all values look reasonable, False if anything is suspect.
-    Logs a warning for every out-of-range value found.
-    """
-    if not isinstance(data, dict):
-        _log.warning("forecast_sigma.json: top-level is not a dict")
-        return False
-    ok = True
-    for city, city_data in data.items():
-        if not isinstance(city_data, dict):
-            _log.warning("forecast_sigma.json: city %s value is not a dict", city)
-            ok = False
-            continue
-        for var_key in ("max", "min"):
-            var_data = city_data.get(var_key, {})
-            if not isinstance(var_data, dict):
-                continue
-            for month_str, sigma in var_data.items():
-                if not isinstance(sigma, int | float):
-                    _log.warning(
-                        "forecast_sigma.json: %s/%s/month %s sigma is not numeric: %r",
-                        city,
-                        var_key,
-                        month_str,
-                        sigma,
-                    )
-                    ok = False
-                elif not (_SIGMA_MIN <= sigma <= _SIGMA_MAX):
-                    _log.warning(
-                        "forecast_sigma.json: %s/%s/month %s sigma=%.2f out of "
-                        "plausible range [%.1f, %.1f]°F",
-                        city,
-                        var_key,
-                        month_str,
-                        sigma,
-                        _SIGMA_MIN,
-                        _SIGMA_MAX,
-                    )
-                    ok = False
-    return ok
-
-
-def load_all_sigmas(city_coords: dict, force: bool = False) -> dict:
-    """
-    Return per-city, per-month forecast sigmas computed from 30yr climate archive.
-    Structure: {city: {"max": {month_str: sigma}, "min": {month_str: sigma}}}
-    Cached to data/forecast_sigma.json, refreshed monthly.
-    """
-    global _sigma_mem_cache
-    if _sigma_mem_cache and not force:
-        return _sigma_mem_cache
-
-    if not force and _SIGMA_CACHE_PATH.exists():
-        age = time.time() - _SIGMA_CACHE_PATH.stat().st_mtime
-        if age < _SIGMA_CACHE_AGE:
-            with open(_SIGMA_CACHE_PATH) as f:
-                loaded = json.load(f)
-            if _validate_sigma_cache(loaded):
-                _sigma_mem_cache = loaded
-                return _sigma_mem_cache
-            # Cache failed validation — fall through to recompute
-            _log.warning(
-                "forecast_sigma.json failed validation — recomputing from climate archive"
-            )
-
-    result: dict = {}
-    for city, coords in city_coords.items():
-        result[city] = {
-            "max": {
-                str(k): v
-                for k, v in compute_sigma_from_climate(city, coords, var="max").items()
-            },
-            "min": {
-                str(k): v
-                for k, v in compute_sigma_from_climate(city, coords, var="min").items()
-            },
-        }
-
-    _validate_sigma_cache(result)  # warn on any implausible values before persisting
-    try:
-        with open(_SIGMA_CACHE_PATH, "w") as f:
-            json.dump(result, f, indent=2)
-    except OSError as e:
-        _log.warning("Could not write forecast_sigma.json: %s", e)
-
-    _sigma_mem_cache = result
-    return result
-
-
 def preload_all(city_coords: dict) -> None:
     """Fetch and cache historical data for all cities. Refreshes stale caches."""
     for city, coords in city_coords.items():
@@ -374,10 +236,3 @@ def preload_all(city_coords: dict) -> None:
         elif _cache_is_stale(cache):
             print(f"  Refreshing climate history for {city} (>1yr old)...", flush=True)
             fetch_historical(city, coords, force=True)
-
-    # Recompute sigma cache if stale or missing (runs after climate data is fresh)
-    if not _SIGMA_CACHE_PATH.exists() or (
-        time.time() - _SIGMA_CACHE_PATH.stat().st_mtime > _SIGMA_CACHE_AGE
-    ):
-        print("  Computing per-city forecast sigma from climate archive...", flush=True)
-        load_all_sigmas(city_coords, force=True)

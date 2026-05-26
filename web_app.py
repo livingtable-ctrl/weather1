@@ -455,8 +455,13 @@ def _build_app(client):
 
     @app.route("/")
     def index():
-        # Serve the React dashboard (Babel in-browser, no build step required)
-        return render_template("index.html")
+        from flask import send_from_directory as _sfd
+
+        dist = Path(__file__).parent / "static" / "dist"
+        if (dist / "index.html").exists():
+            return _sfd(str(dist), "index.html")
+        # Fallback: old Jinja template while frontend build hasn't run yet
+        return render_template("dashboard.html")
 
     @app.route("/analyze")
     def analyze():
@@ -711,7 +716,7 @@ setInterval(() => {{
             return jsonify({"error": "cron already running"}), 409
 
         now = _time.monotonic()
-        if now - api_run_cron._last_spawn < _CRON_RATE_LIMIT_S:  # type: ignore[attr-defined]
+        if now - api_run_cron._last_spawn < _CRON_RATE_LIMIT_S:
             return jsonify({"error": "rate limited — wait before spawning again"}), 429
 
         try:
@@ -740,8 +745,8 @@ setInterval(() => {{
             )
             log_f.close()  # child holds its own duplicated handle
             # store on the function object so it survives across requests
-            api_run_cron._proc = proc  # type: ignore[attr-defined]
-            api_run_cron._last_spawn = _time.monotonic()  # type: ignore[attr-defined]
+            api_run_cron._proc = proc
+            api_run_cron._last_spawn = _time.monotonic()
             return jsonify({"status": "started", "pid": proc.pid})
         except Exception as e:
             return jsonify({"status": "error", "message": str(e)}), 500
@@ -754,7 +759,7 @@ setInterval(() => {{
         """Return running state and last N lines of cron_web.log."""
         import re as _re
 
-        proc = api_run_cron._proc  # type: ignore[attr-defined]
+        proc = api_run_cron._proc
         running = False
         exit_code = None
         if proc is not None:
@@ -781,7 +786,7 @@ setInterval(() => {{
     @app.route("/api/cancel-cron", methods=["POST"])
     def api_cancel_cron():
         """Terminate the running cron subprocess."""
-        proc = api_run_cron._proc  # type: ignore[attr-defined]
+        proc = api_run_cron._proc
         if proc is None or proc.poll() is not None:
             return jsonify({"error": "no cron running"}), 404
         proc.terminate()
@@ -2043,104 +2048,6 @@ setInterval(() => {{
                 pass
 
         return jsonify({"day": day, "date": target.isoformat(), "cities": cities})
-
-    # ------------------------------------------------------------------ #
-    # React dashboard convenience aliases
-    # ------------------------------------------------------------------ #
-
-    @app.route("/api/positions")
-    def api_positions():
-        """Open trades only — convenience alias used by the React dashboard."""
-        try:
-            from paper import get_open_trades
-        except ImportError as e:
-            return jsonify({"error": str(e)}), 500
-        open_trades = get_open_trades()
-        snapshot = {m["ticker"]: m for m in _get_live_market_snapshot()}
-        for t in open_trades:
-            snap = snapshot.get(t.get("ticker", ""), {})
-            t["current_yes_ask"] = snap.get("yes_ask")
-            t.setdefault("needs_manual_settle", bool(t.get("needs_manual_settle")))
-        return jsonify(open_trades)
-
-    @app.route("/api/balance-history")
-    def api_balance_history_dash():
-        """Dash-URL alias for /api/balance_history."""
-        return balance_history()
-
-    @app.route("/api/kill-switch", methods=["POST"])
-    def api_kill_switch():
-        """Alias for /api/halt — used by the React dashboard kill-switch button."""
-        return api_halt()
-
-    @app.route("/api/config", methods=["PATCH"])
-    def api_config_patch():
-        """Write updated bot settings back to the .env file."""
-        from flask import request as _req
-
-        body = _req.get_json(silent=True) or {}
-
-        # Field name → (env var name, transform fn)
-        FIELD_MAP = {
-            "min_edge": ("MIN_EDGE", lambda v: str(round(float(v) / 100, 4))),
-            "paper_min_edge": (
-                "PAPER_MIN_EDGE",
-                lambda v: str(round(float(v) / 100, 4)),
-            ),
-            "max_position_size": ("MAX_DAILY_SPEND", lambda v: str(int(float(v)))),
-            "max_total_exposure": ("MAX_TOTAL_EXPOSURE", lambda v: str(int(float(v)))),
-            "strategy_mode": ("SIZING_STRATEGY", str),
-            "drawdown_halt_pct": (
-                "DRAWDOWN_HALT_PCT",
-                lambda v: str(round(float(v), 4)),
-            ),
-        }
-
-        env_path = Path(__file__).parent / ".env"
-        try:
-            lines = env_path.read_text(encoding="utf-8").splitlines(keepends=True)
-        except FileNotFoundError:
-            lines = []
-
-        updates: dict[str, str] = {}
-        for field, (env_key, transform) in FIELD_MAP.items():
-            if field in body:
-                try:
-                    updates[env_key] = transform(body[field])  # type: ignore[operator]
-                except (ValueError, TypeError):
-                    pass
-
-        if not updates:
-            return jsonify({"ok": True, "updated": 0})
-
-        new_lines = []
-        applied: set[str] = set()
-        for line in lines:
-            stripped = line.strip()
-            for env_key, new_val in updates.items():
-                if stripped.startswith(env_key + "=") or stripped.startswith(
-                    env_key + " ="
-                ):
-                    line = f"{env_key}={new_val}\n"
-                    applied.add(env_key)
-                    break
-            new_lines.append(line)
-
-        for env_key, new_val in updates.items():
-            if env_key not in applied:
-                new_lines.append(f"{env_key}={new_val}\n")
-
-        _tmp = env_path.with_suffix(".tmp")
-        _tmp.write_text("".join(new_lines), encoding="utf-8")
-        _tmp.replace(env_path)
-
-        # Reload env vars in-process so changes take effect without restart
-        for env_key, new_val in updates.items():
-            os.environ[env_key] = new_val
-
-        return jsonify(
-            {"ok": True, "updated": len(updates), "keys": list(updates.keys())}
-        )
 
     # ------------------------------------------------------------------ #
 

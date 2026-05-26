@@ -156,8 +156,6 @@ except Exception:
 REFRESH_SECS = 300  # watch mode interval
 _WATCH_STATE_PATH = Path(__file__).parent / "data" / ".watch_state.json"
 
-import cron as _cron_module  # noqa: E402 — used to set USER_OVERRIDE_ACTIVE flag
-import paper as _paper_module  # noqa: E402 — used to set KILL_SWITCH_OVERRIDE_ACTIVE flag
 from cron import (  # noqa: E402  (after module-level constants)
     KILL_SWITCH_PATH,  # noqa: F401 — re-exported; tests patch main.KILL_SWITCH_PATH
     LOCK_PATH,  # noqa: F401 — re-exported; tests patch main.LOCK_PATH
@@ -215,63 +213,10 @@ def cmd_cron(client: "KalshiClient", min_edge: float = MIN_EDGE) -> None:
     up at call-time because ``_build_cron_context()`` reads the current
     module-level names (which monkeypatch has already replaced).
     """
-    _called_from_loop = getattr(cmd_cron, "_called_from_loop", False)
-
-    # When run manually (not from the loop), offer a one-shot override if the
-    # kill switch is active so the user doesn't have to delete the file just to
-    # run one cycle.  The loop is non-interactive so it silently skips instead.
-    _kill_path = Path(__file__).parent / "data" / ".kill_switch"
-    if _kill_path.exists() and not _called_from_loop:
-        _bs_path = Path(__file__).parent / "data" / ".black_swan_active"
-        _reason_str = ""
-        if _bs_path.exists():
-            try:
-                _bs_data = json.loads(_bs_path.read_text(encoding="utf-8"))
-                _reason_str = f"\n  Reason: {_bs_data.get('reason', 'unknown')}"
-            except Exception:
-                pass
-        print(red(f"\n  ⚠  Kill switch active — trading halted.{_reason_str}"))
-        print(dim("  Delete data/.kill_switch to permanently resume."))
-        try:
-            _ans = (
-                input(yellow("  Override and run this cycle anyway? (y/N): "))
-                .strip()
-                .lower()
-            )
-        except (EOFError, KeyboardInterrupt):
-            print()
-            return
-        if _ans != "y":
-            return
-        # Temporarily move the kill switch so cron's internal check doesn't
-        # double-fire.  Restored in the finally block — override is one-shot.
-        _kill_tmp = _kill_path.with_name(".kill_switch.tmp")
-        _kill_path.rename(_kill_tmp)
-        print(
-            yellow(
-                "  [override] Running one cycle — kill switch will be restored after.\n"
-            )
-        )
-        try:
-            _cron_cmd_cron._called_from_loop = False  # type: ignore[attr-defined]
-            _cron_module.USER_OVERRIDE_ACTIVE = True
-            _paper_module.KILL_SWITCH_OVERRIDE_ACTIVE = True
-            _cron_cmd_cron(_build_cron_context(), client, min_edge=min_edge)
-        finally:
-            _cron_module.USER_OVERRIDE_ACTIVE = False
-            _paper_module.KILL_SWITCH_OVERRIDE_ACTIVE = False
-            if _kill_tmp.exists():
-                if _kill_path.exists():
-                    _kill_tmp.unlink()  # black swan re-created it during the run
-                else:
-                    _kill_tmp.rename(_kill_path)
-            print(
-                yellow("  [override] Kill switch restored — still active for next run.")
-            )
-        return
-
     # Propagate _called_from_loop flag so cron's loop-mode sys.exit guard works.
-    _cron_cmd_cron._called_from_loop = _called_from_loop  # type: ignore[attr-defined]
+    _cron_cmd_cron._called_from_loop = getattr(  # type: ignore[attr-defined]
+        cmd_cron, "_called_from_loop", False
+    )
     _cron_cmd_cron(_build_cron_context(), client, min_edge=min_edge)
 
 
@@ -535,7 +480,7 @@ def auto_settle(client: KalshiClient) -> None:
 
     def _run():
         try:
-            count = len(sync_outcomes(client))
+            count = sync_outcomes(client)
             if count > 0:
                 from paper import auto_settle_paper_trades
 
@@ -694,7 +639,7 @@ def cmd_settle(client: KalshiClient) -> None:
     """
     from paper import auto_settle_paper_trades
 
-    count = len(sync_outcomes(client))
+    count = sync_outcomes(client)
     paper = auto_settle_paper_trades(client)
     paper_count = len(paper)
     total = count + paper_count
@@ -815,8 +760,7 @@ def cmd_loop(client: KalshiClient, args: list[str] | None = None) -> None:
         if _KILL_PATH.exists():
             print(
                 red(
-                    "  Kill switch active — skipping cycle."
-                    " Run  py main.py cron  manually to override for one run."
+                    "  Kill switch active — skipping cycle. Delete data/.kill_switch to resume."
                 )
             )
             return
@@ -3413,23 +3357,6 @@ def cmd_retire_strategies(run: bool = False) -> None:
     print()
 
 
-def cmd_unretire_strategy(method: str) -> None:
-    """Manually un-retire a forecasting method that was auto-retired."""
-    from tracker import unretire_strategy
-
-    if unretire_strategy(method):
-        print(green(f"\n  ✓ Un-retired strategy method: {method}\n"))
-    else:
-        print(red(f"\n  ✗ Method '{method}' was not retired — nothing to undo.\n"))
-        from tracker import get_retired_strategies
-
-        retired = get_retired_strategies()
-        if retired:
-            print(f"  Currently retired: {', '.join(retired.keys())}\n")
-        else:
-            print("  No strategies are currently retired.\n")
-
-
 def cmd_config_check() -> None:
     """P10.3: Show current config fingerprint and detect cross-run changes."""
     from utils import check_config_integrity, get_config_fingerprint
@@ -4742,16 +4669,14 @@ def cmd_menu(client: KalshiClient):
             print(dim("  Running a cron cycle now (uses cached data if fresh)…\n"))
             sys.stdout.flush()
             try:
-                # Do NOT set _called_from_loop=True here — that would bypass the
-                # kill switch override prompt.  Instead catch SystemExit explicitly
-                # so cron's end-of-scan sys.exit(0) doesn't close the menu.
+                cmd_cron._called_from_loop = True  # type: ignore[attr-defined]
                 cmd_cron(client)
-            except SystemExit:
-                pass  # normal cron exit — menu keeps running
             except KeyboardInterrupt:
                 print(yellow("\n  Cron cancelled."))
             except Exception as exc:
                 print(red(f"  Cron error: {exc}"))
+            finally:
+                cmd_cron._called_from_loop = False  # type: ignore[attr-defined]
             sys.stdout.flush()
             print(
                 dim(
@@ -6609,12 +6534,6 @@ def main():
     elif cmd in ("retire", "retire-strategies"):
         do_run = "--run" in args[1:]
         cmd_retire_strategies(run=do_run)
-    elif cmd in ("unretire", "unretire-strategy"):
-        method_arg = args[1] if len(args) > 1 else ""
-        if not method_arg:
-            print("Usage: py main.py unretire <method>  (e.g. unretire ensemble)")
-        else:
-            cmd_unretire_strategy(method_arg)
     elif cmd in ("config-check", "config"):
         cmd_config_check()
     elif cmd in ("code-audit", "audit"):

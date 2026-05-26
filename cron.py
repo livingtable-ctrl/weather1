@@ -50,11 +50,6 @@ LOCK_PATH: Path = Path(__file__).parent / "data" / ".cron.lock"
 # P8.3 — hard kill switch path
 KILL_SWITCH_PATH: Path = Path(__file__).parent / "data" / ".kill_switch"
 
-# Set to True by the manual override path in main.cmd_cron to suppress the
-# black swan re-check for one run when the user has explicitly acknowledged
-# the halt condition.  Always reset to False in a finally block.
-USER_OVERRIDE_ACTIVE: bool = False
-
 
 # ---------------------------------------------------------------------------
 # CronContext — explicit dependency injection replacing _main_module() hack
@@ -384,12 +379,7 @@ def report_anomalies(anomalies: list[dict]) -> None:
         ticker = a.get("ticker", "?")
         our = a.get("blended_prob", 0.0)
         mkt = a.get("market_price", 0.0)
-        raw_temp = a.get("forecast_temp_raw")
-        temp_str = f"  raw={raw_temp:.1f}°F" if raw_temp is not None else ""
-        print(
-            f"  {ticker:<35} our={our:.0%}  market={mkt:.0%}"
-            f"  drift={mkt - our:+.0%}{temp_str}"
-        )
+        print(f"  {ticker:<35} our={our:.0%}  market={mkt:.0%}  drift={mkt - our:+.0%}")
     _log.warning("Anomalies flagged: %s", [a.get("ticker") for a in anomalies])
 
 
@@ -530,25 +520,19 @@ def _cmd_cron_body(
     except Exception as _e:
         _log.debug("cmd_cron: run_anomaly_check failed: %s", _e)
 
-    # Black swan emergency shutdown check (skipped when user has explicitly
-    # overridden the kill switch for this one run via  py main.py cron)
-    if USER_OVERRIDE_ACTIVE:
-        _log.warning(
-            "cmd_cron: user override active — skipping black swan re-check for this run"
-        )
-    else:
-        try:
-            from alerts import run_black_swan_check as _run_black_swan_check
+    # Black swan emergency shutdown check
+    try:
+        from alerts import run_black_swan_check as _run_black_swan_check
 
-            _bs_conditions = _run_black_swan_check(client=client)
-            if _bs_conditions:
-                _log.critical(
-                    "cmd_cron: BLACK SWAN conditions triggered — halting. Conditions: %s",
-                    _bs_conditions,
-                )
-                return None
-        except Exception as _e:
-            _log.debug("cmd_cron: run_black_swan_check failed: %s", _e)
+        _bs_conditions = _run_black_swan_check(client=client)
+        if _bs_conditions:
+            _log.critical(
+                "cmd_cron: BLACK SWAN conditions triggered — halting. Conditions: %s",
+                _bs_conditions,
+            )
+            return None
+    except Exception as _e:
+        _log.debug("cmd_cron: run_black_swan_check failed: %s", _e)
 
     # Drift detection; tighten STRONG_EDGE for this run when drifting
     _effective_strong_edge = STRONG_EDGE
@@ -574,12 +558,6 @@ def _cmd_cron_body(
         _newly_retired = _auto_retire()
         if _newly_retired:
             _log.warning("cmd_cron: auto-retired strategy methods: %s", _newly_retired)
-            print(
-                red(
-                    f"\n  ⚠  STRATEGY RETIRED: {', '.join(_newly_retired)} — "
-                    "Brier exceeded threshold. Run: python main.py unretire_strategy <method>\n"
-                )
-            )
     except Exception as _e:
         _log.debug("cmd_cron: auto_retire_strategies failed: %s", _e)
 
@@ -1085,7 +1063,11 @@ def _cmd_cron_body(
                         {
                             "ticker": m.get("ticker", ""),
                             "city": enriched.get("_city", "\u2014"),
-                            "target_date": _tdate.isoformat() if _tdate else None,
+                            "target_date": (
+                                _tdate
+                                if isinstance(_tdate, str)
+                                else (_tdate.isoformat() if _tdate else None)
+                            ),
                             "side": analysis.get("recommended_side", "\u2014").upper(),
                             "signal": signal,
                             "stars": stars,
@@ -1316,25 +1298,8 @@ def _cmd_cron_body(
     # Auto-settle any pending trades whose markets have resolved
     settled_count = 0
     try:
-        _settled_outcomes = ctx.sync_outcomes(client)
-        settled_count = len(_settled_outcomes)
+        settled_count = ctx.sync_outcomes(client)
         if settled_count > 0:
-            for _so in _settled_outcomes:
-                _so_ticker = _so["ticker"]
-                _so_outcome = "YES" if _so["settled_yes"] else "NO "
-                _so_prob = _so.get("our_prob")
-                if _so_prob is not None:
-                    _so_predicted = "YES" if _so_prob >= 0.5 else "NO "
-                    _so_won = (_so["settled_yes"] and _so_prob >= 0.5) or (
-                        not _so["settled_yes"] and _so_prob < 0.5
-                    )
-                    _so_result = green("WON ") if _so_won else red("LOST")
-                    print(
-                        f"  [Settle] {_so_ticker}  predicted={_so_predicted}"
-                        f"  outcome={_so_outcome}  {_so_result}"
-                    )
-                else:
-                    print(f"  [Settle] {_so_ticker}  outcome={_so_outcome}")
             print(green(f"  [Settle] Recorded {settled_count} new outcome(s)."))
     except Exception as _sync_exc:
         _log.warning("cmd_cron: sync_outcomes failed: %s", _sync_exc)
@@ -1461,17 +1426,6 @@ def _cmd_cron_body(
                             f"  [StopLoss] Closed {_sl_ticker} \u2014 price breached stop threshold"
                         )
                     )
-                    # Record stop-loss exit in live_fills for accuracy audit
-                    try:
-                        from tracker import mark_fill_stop_loss as _mark_sl
-
-                        _mark_sl(_sl_ticker, _sl_exit_price)
-                    except Exception as _sl_log_exc:
-                        _log.debug(
-                            "[StopLoss] could not record stop-loss fill for %s: %s",
-                            _sl_ticker,
-                            _sl_log_exc,
-                        )
 
             # Break-even stop: if position was ever up >=30% of cost and has
             # since fallen back to entry, exit at scratch (no loss possible)
@@ -1576,8 +1530,6 @@ def _cmd_cron_body(
         from paper import get_open_trades as _get_open
 
         _open = _get_open()
-        if not _open:
-            print(yellow("  [cron] No open positions — portfolio is flat."))
         if _open:
             _var = portfolio_var(_open, n_simulations=500)
             _exp = None
