@@ -30,6 +30,10 @@ def tmp_tracker(tmp_path, monkeypatch):
     monkeypatch.setattr(tracker, "DB_PATH", tmp_path / "predictions.db")
     monkeypatch.setattr(tracker, "_db_initialized", False)
     monkeypatch.setattr(tracker, "_RETIRED_PATH", tmp_path / "retired_strategies.json")
+    # Redirect pins file so tests never write to the real data/strategy_pins.json.
+    # Without this, unretire_strategy(pin_hours=72) would contaminate the live
+    # trading state with test method names pinned for 72 hours.
+    monkeypatch.setattr(tracker, "_PINS_PATH", tmp_path / "strategy_pins.json")
     tracker.init_db()
     return tracker
 

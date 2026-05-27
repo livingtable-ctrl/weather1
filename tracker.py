@@ -2217,15 +2217,44 @@ _PINS_PATH = _project_root() / "data" / "strategy_pins.json"
 
 
 def _get_strategy_pins() -> dict[str, str]:
-    """Return {method: pinned_until_iso} for currently active pins."""
+    """Return {method: pinned_until_iso} for currently active (non-expired) pins.
+
+    Expired and malformed entries are pruned on each read so the file stays tidy
+    and a single corrupted entry can never silently clear all pins.
+    """
     if not _PINS_PATH.exists():
         return {}
     try:
         import json as _json
 
-        return _json.loads(_PINS_PATH.read_text(encoding="utf-8"))
-    except Exception:
+        raw = _json.loads(_PINS_PATH.read_text(encoding="utf-8"))
+    except Exception as _e:
+        _log.warning(
+            "strategy_pins: failed to read %s — treating all pins as empty: %s",
+            _PINS_PATH,
+            _e,
+        )
         return {}
+    # Keep only entries that parse correctly and have not yet expired.
+    # Handles naive datetimes written by older code by treating them as UTC.
+    now = datetime.now(UTC)
+    active: dict[str, str] = {}
+    for method, until_str in raw.items():
+        try:
+            until = datetime.fromisoformat(until_str)
+            if until.tzinfo is None:
+                until = until.replace(tzinfo=UTC)
+            if now < until:
+                active[method] = until_str
+        except Exception:
+            pass  # malformed entry — discard silently
+    if len(active) != len(raw):
+        # Prune the file so stale entries don't accumulate across many cycles.
+        try:
+            _save_strategy_pins(active)
+        except Exception as _prune_exc:
+            _log.debug("strategy_pins: could not prune expired entries: %s", _prune_exc)
+    return active
 
 
 def _save_strategy_pins(pins: dict[str, str]) -> None:
@@ -2255,6 +2284,10 @@ def is_strategy_pinned(method: str) -> bool:
         return False
     try:
         until = datetime.fromisoformat(until_str)
+        # Treat naive datetimes as UTC so an old pin written without a timezone
+        # suffix never raises TypeError on comparison with datetime.now(UTC).
+        if until.tzinfo is None:
+            until = until.replace(tzinfo=UTC)
         return datetime.now(UTC) < until
     except Exception:
         return False

@@ -223,6 +223,27 @@ def cmd_cron(client: "KalshiClient", min_edge: float = MIN_EDGE) -> None:
     # Use _cron_module.KILL_SWITCH_PATH so test monkeypatches on cron.KILL_SWITCH_PATH
     # are picked up here (hardcoding the path would bypass test isolation).
     _kill_path = _cron_module.KILL_SWITCH_PATH
+
+    # If a previous override run was hard-killed by the cron watchdog (os._exit
+    # bypasses finally blocks), .kill_switch.tmp may have been left behind without
+    # being renamed back.  Restore it now so the kill switch is never silently lost.
+    _kill_stale_tmp = _kill_path.with_name(".kill_switch.tmp")
+    if _kill_stale_tmp.exists() and not _kill_path.exists():
+        try:
+            _kill_stale_tmp.rename(_kill_path)
+            import logging as _logging
+
+            _logging.getLogger(__name__).warning(
+                "cmd_cron: restored kill switch from stale .kill_switch.tmp "
+                "(prior override run was hard-killed by the watchdog)"
+            )
+        except Exception as _restore_exc:
+            import logging as _logging
+
+            _logging.getLogger(__name__).error(
+                "cmd_cron: could not restore .kill_switch from .kill_switch.tmp: %s",
+                _restore_exc,
+            )
     if _kill_path.exists() and not _called_from_loop:
         _bs_path = Path(__file__).parent / "data" / ".black_swan_active"
         _reason_str = ""

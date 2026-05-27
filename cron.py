@@ -531,25 +531,24 @@ def _cmd_cron_body(
     except Exception as _e:
         _log.debug("cmd_cron: run_anomaly_check failed: %s", _e)
 
-    # Black swan emergency shutdown check (skipped when user has explicitly
-    # overridden the kill switch for this one run via  py main.py cron)
-    if USER_OVERRIDE_ACTIVE:
-        _log.warning(
-            "cmd_cron: user override active — skipping black swan re-check for this run"
-        )
-    else:
-        try:
-            from alerts import run_black_swan_check as _run_black_swan_check
+    # Black swan emergency shutdown check.  Always runs — even during a user
+    # override — so conditions that arise MID-RUN (after trades are placed) are
+    # caught immediately rather than waiting for the next cycle.  If the check
+    # fires during an override run it recreates .kill_switch; the finally block
+    # in main.cmd_cron detects this and keeps the new file rather than restoring
+    # the original, so the halt is still enforced after the one permitted cycle.
+    try:
+        from alerts import run_black_swan_check as _run_black_swan_check
 
-            _bs_conditions = _run_black_swan_check(client=client)
-            if _bs_conditions:
-                _log.critical(
-                    "cmd_cron: BLACK SWAN conditions triggered — halting. Conditions: %s",
-                    _bs_conditions,
-                )
-                return None
-        except Exception as _e:
-            _log.debug("cmd_cron: run_black_swan_check failed: %s", _e)
+        _bs_conditions = _run_black_swan_check(client=client)
+        if _bs_conditions:
+            _log.critical(
+                "cmd_cron: BLACK SWAN conditions triggered — halting. Conditions: %s",
+                _bs_conditions,
+            )
+            return None
+    except Exception as _e:
+        _log.debug("cmd_cron: run_black_swan_check failed: %s", _e)
 
     # Drift detection; tighten STRONG_EDGE for this run when drifting
     _effective_strong_edge = STRONG_EDGE
