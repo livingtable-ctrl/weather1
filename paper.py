@@ -605,6 +605,8 @@ def place_paper_order(
     gfs_forecast_mean: float | None = None,
     condition_threshold: float | None = None,  # market threshold (e.g. 70°F)
     ab_variant: str | None = None,
+    close_time: str
+    | None = None,  # ISO datetime when market closes — used by 24h settlement gate
 ) -> dict:
     """
     Place a paper trade. Deducts quantity * entry_price from balance.
@@ -703,6 +705,7 @@ def place_paper_order(
             "gfs_forecast_mean": gfs_forecast_mean,
             "condition_threshold": condition_threshold,
             "ab_variant": ab_variant,
+            "close_time": close_time,
             # Flagged when placed during a kill-switch override run so these
             # trades can be isolated for analysis after settlement.
             "via_kill_switch_override": KILL_SWITCH_OVERRIDE_ACTIVE,
