@@ -439,17 +439,20 @@ def _dynamic_kelly_cap() -> float:
 def _method_kelly_multiplier(method: str | None) -> float:
     """Scale Kelly by per-method Brier. Poor method (Brier > 0.20) → 0.75×.
 
-    Returns 1.0 (neutral) when fewer than MIN_BRIER_SAMPLES predictions have settled.
+    Uses a higher minimum sample threshold (50) than general Brier checks (30)
+    because per-method Brier on small samples is noisy enough to misfire and
+    reduce sizing precisely when recovery needs full Kelly. 50 samples gives the
+    per-method Brier meaningful statistical weight before it affects trade size.
     """
     if not method:
         return 1.0
-    from utils import MIN_BRIER_SAMPLES
+    _METHOD_MIN_SAMPLES = 50  # separate from MIN_BRIER_SAMPLES (30) intentionally
 
     try:
         from tracker import brier_score_by_method as _by_method
         from tracker import count_settled_predictions as _count
 
-        if _count() < MIN_BRIER_SAMPLES:
+        if _count() < _METHOD_MIN_SAMPLES:
             return 1.0
         scores = _by_method(min_samples=5)
         if method not in scores:

@@ -550,7 +550,24 @@ def _cmd_cron_body(
     except Exception as _e:
         _log.debug("cmd_cron: run_black_swan_check failed: %s", _e)
 
-    # Drift detection; tighten STRONG_EDGE for this run when drifting
+    # Snapshot directional accuracy once for use by drift detection and pin logic below.
+    # Directional accuracy measures whether the model's predicted direction is correct
+    # on naturally-settled trades (excluding stop-loss exits). When it's high, Brier
+    # degradation is being caused by stop losses rather than bad forecasting — tightening
+    # edge thresholds in that scenario reduces opportunity without fixing the real problem.
+    _directional_accuracy: float | None = None
+    try:
+        from paper import get_edge_realization_rate as _get_err
+
+        _err = _get_err()
+        _directional_accuracy = _err.get("directional_accuracy")
+    except Exception as _e:
+        _log.debug("cmd_cron: directional_accuracy fetch failed: %s", _e)
+
+    # Drift detection; tighten STRONG_EDGE for this run when drifting.
+    # Skip tightening when directional accuracy is high (≥ 0.70): in that case Brier
+    # degradation is from stop-loss exits, not model errors, so raising the edge
+    # threshold would reduce opportunity without improving forecast quality.
     _effective_strong_edge = STRONG_EDGE
     _drift_result: dict = {"drifting": False}
     try:
@@ -558,12 +575,19 @@ def _cmd_cron_body(
 
         _drift_result = _detect_brier_drift()
         if _drift_result["drifting"]:
-            _effective_strong_edge = STRONG_EDGE + DRIFT_TIGHTEN_EDGE
-            _log.warning(
-                "cmd_cron: %s — tightening STRONG_EDGE to %.2f for this run",
-                _drift_result["message"],
-                _effective_strong_edge,
-            )
+            if _directional_accuracy is not None and _directional_accuracy >= 0.70:
+                _log.info(
+                    "cmd_cron: Brier drift detected but directional_accuracy=%.2f — "
+                    "drift is from stop-loss exits, not model errors; skipping edge tighten",
+                    _directional_accuracy,
+                )
+            else:
+                _effective_strong_edge = STRONG_EDGE + DRIFT_TIGHTEN_EDGE
+                _log.warning(
+                    "cmd_cron: %s — tightening STRONG_EDGE to %.2f for this run",
+                    _drift_result["message"],
+                    _effective_strong_edge,
+                )
     except Exception as _e:
         _log.debug("cmd_cron: detect_brier_drift failed: %s", _e)
 
@@ -576,6 +600,54 @@ def _cmd_cron_body(
             _log.warning("cmd_cron: auto-retired strategy methods: %s", _newly_retired)
     except Exception as _e:
         _log.debug("cmd_cron: auto_retire_strategies failed: %s", _e)
+
+    # Auto-extend ensemble pin when it is within 48 h of expiry and directional
+    # accuracy is still healthy. The pin prevents auto-retirement of a method whose
+    # Brier is high due to stop-loss exits rather than bad direction. Without this,
+    # the pin requires manual renewal every 7 days to keep the bot trading.
+    try:
+        import json as _json_pin
+        from datetime import timedelta as _td_pin
+        from pathlib import Path as _Path_pin
+
+        _pins_path = _Path_pin(__file__).parent / "data" / "strategy_pins.json"
+        _pins: dict = {}
+        if _pins_path.exists():
+            try:
+                _pins = _json_pin.loads(_pins_path.read_text())
+            except Exception:
+                pass
+        _ensemble_expiry_str = _pins.get("ensemble")
+        _should_renew = False
+        if _ensemble_expiry_str:
+            try:
+                _expiry_dt = datetime.fromisoformat(_ensemble_expiry_str)
+                _hours_left = (_expiry_dt - datetime.now(UTC)).total_seconds() / 3600
+                if _hours_left < 48:
+                    _should_renew = True
+            except Exception:
+                _should_renew = True  # malformed expiry — renew to be safe
+        # Also renew if pin is missing entirely (ensemble unprotected)
+        if not _ensemble_expiry_str:
+            _should_renew = True
+        if _should_renew:
+            _da = _directional_accuracy if _directional_accuracy is not None else 0.0
+            if _da >= 0.70:
+                _pins["ensemble"] = (datetime.now(UTC) + _td_pin(hours=168)).isoformat()
+                _pins_path.write_text(_json_pin.dumps(_pins, indent=2))
+                _log.info(
+                    "cmd_cron: auto-renewed ensemble pin for 168 h "
+                    "(directional_accuracy=%.2f)",
+                    _da,
+                )
+            else:
+                _log.warning(
+                    "cmd_cron: ensemble pin expiring but directional_accuracy=%.2f < 0.70 "
+                    "— not auto-renewing; check model quality",
+                    _da,
+                )
+    except Exception as _e:
+        _log.debug("cmd_cron: ensemble pin auto-renew failed: %s", _e)
 
     # Config integrity check (log warning if changed)
     try:
@@ -1347,7 +1419,9 @@ def _cmd_cron_body(
     except Exception as _e:
         _log.warning("cmd_cron: auto_settle_paper_trades failed: %s", _e)
 
-    # F3: Auto-trigger calibration every 25 new settled trades
+    # F3: Auto-trigger calibration every 25 new settled trades, but only after
+    # reaching 50 total. With fewer samples the grid search overfits to noise —
+    # the minimum meaningful calibration sample is 50 predictions.
     try:
         import os as _os_cal
 
@@ -1362,7 +1436,7 @@ def _cmd_cron_body(
                     _last_cal_count = int(_cal_sentinel.read_text().strip())
                 except Exception:
                     pass
-            if _current_settled - _last_cal_count >= 25:
+            if _current_settled >= 50 and _current_settled - _last_cal_count >= 25:
                 _log.info(
                     "cmd_cron: F3 auto-calibration triggered "
                     "(%d settled since last run, threshold=25)",
@@ -1564,6 +1638,25 @@ def _cmd_cron_body(
             print(dim(f"  [cron] Portfolio VaR (5%): {_var_s}  |  Expected: {_exp_s}"))
     except Exception:
         pass
+
+    # Calibration readiness reminder — fire once when approaching the 50-trade gate
+    # so it doesn't get missed the way the 25-trade auto-calibration did.
+    try:
+        import os as _os_cal_remind
+
+        if not _os_cal_remind.environ.get("PYTEST_CURRENT_TEST"):
+            import tracker as _tk_remind
+
+            _cal_remind_count = _tk_remind.count_settled_predictions()
+            if 45 <= _cal_remind_count < 50:
+                print(
+                    yellow(
+                        f"  [CalRemind] {_cal_remind_count}/50 settled predictions — "
+                        "run `py main.py calibrate` when you reach 50 to update blend weights."
+                    )
+                )
+    except Exception as _e:
+        _log.debug("cmd_cron: calibration reminder failed: %s", _e)
 
     # Phase 9 — alert if any circuit transitioned closed→open during this scan
     try:
