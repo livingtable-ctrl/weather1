@@ -1053,6 +1053,9 @@ def _auto_place_trades(
                     gfs_forecast_mean=a.get("gfs_forecast_mean"),
                     condition_threshold=a.get("condition", {}).get("threshold"),
                     ab_variant=a.get("_ab_variant"),
+                    close_time=m.get(
+                        "close_time"
+                    ),  # needed for 24h settlement gate in stop loss checks
                 )
                 print(
                     green(
