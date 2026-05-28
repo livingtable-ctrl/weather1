@@ -997,6 +997,21 @@ def check_stop_losses(
         if not ticker or qty <= 0 or cost <= 0:
             continue
 
+        # In the final 24h before settlement, binary markets converge to the actual
+        # temperature outcome. GFS/ensemble-driven intraday price swings in this window
+        # are noise — let the market settle naturally rather than locking in a loss.
+        close_time_str = t.get("close_time") or t.get("expires_at")
+        if close_time_str:
+            try:
+                close_dt = datetime.fromisoformat(close_time_str.replace("Z", "+00:00"))
+                hours_to_settlement = (
+                    close_dt - datetime.now(UTC)
+                ).total_seconds() / 3600
+                if hours_to_settlement < 24:
+                    continue
+            except (ValueError, TypeError):
+                pass
+
         current_yes = current_yes_prices.get(ticker)
         if current_yes is None:
             continue
@@ -1067,6 +1082,21 @@ def check_breakeven_stops(
         if peak is None or peak < BREAKEVEN_TRIGGER_PCT:
             continue
         ticker = t.get("ticker", "")
+
+        # Same 24h time-gate as check_stop_losses: in the final day before settlement
+        # price swings are outcome-convergence noise, not a signal to exit.
+        close_time_str = t.get("close_time") or t.get("expires_at")
+        if close_time_str:
+            try:
+                close_dt = datetime.fromisoformat(close_time_str.replace("Z", "+00:00"))
+                hours_to_settlement = (
+                    close_dt - datetime.now(UTC)
+                ).total_seconds() / 3600
+                if hours_to_settlement < 24:
+                    continue
+            except (ValueError, TypeError):
+                pass
+
         current_yes = current_yes_prices.get(ticker)
         if current_yes is None:
             continue
@@ -1564,39 +1594,69 @@ def get_profit_factor() -> dict:
 def get_edge_realization_rate() -> dict:
     """Measure how well the model's computed net_edge predicts actual outcomes.
 
-    For each settled trade with a recorded net_edge, computes:
-    - Pearson correlation between net_edge and win (1) / loss (0)
-    - Win rate broken down by edge bucket (<5%, 5-10%, 10-15%, 15-20%, >20%)
+    Reports two separate metrics because early_exit trades (stop losses) contaminate
+    directional accuracy — the model may be right on direction but the position gets
+    closed by a price swing before settlement.
 
-    A positive correlation means higher-edge trades are winning more often —
-    the edge signal is genuinely predictive. Near-zero or negative correlation
-    means the signal is noise and the model needs recalibration.
+    directional_accuracy: only naturally-settled trades (outcome in ('yes','no')).
+        Win = outcome == side. Uncontaminated by stop-loss exits. Answers whether
+        the model's predicted direction is correct.
 
-    Returns a dict with keys: n, correlation, buckets, calibrated.
+    economic_win_rate: all settled trades, win = pnl > 0. Answers whether the system
+        is making money net of stop losses and fees. This is what actually matters for
+        graduation and drawdown recovery.
+
+    Pearson correlation uses economic outcome (pnl > 0) so it reflects real profitability.
+    Using outcome==side would count 26 early exits as losses even when the model was right.
+
+    Returns a dict with keys: n, n_natural, directional_accuracy, economic_win_rate,
+    correlation, buckets, calibrated.
     Requires at least 5 settled trades with net_edge to produce a result.
     """
-    trades = [
+    all_settled = [
         t
         for t in get_all_trades()
         if t.get("settled")
         and t.get("net_edge") is not None
         and t.get("outcome") is not None
         and t.get("side") is not None
+        and t.get("pnl") is not None
     ]
-    if len(trades) < 5:
+
+    # Directional accuracy — only trades that reached natural settlement (no stop fires)
+    natural = [t for t in all_settled if t.get("outcome") in ("yes", "no")]
+    n_natural = len(natural)
+    if n_natural > 0:
+        dir_wins = sum(1 for t in natural if t["outcome"] == t["side"])
+        directional_accuracy: float | None = round(dir_wins / n_natural, 4)
+    else:
+        directional_accuracy = None
+
+    n = len(all_settled)
+
+    # Economic win rate — all settled trades, pnl > 0 is the win signal
+    if n > 0:
+        econ_wins = sum(1 for t in all_settled if t["pnl"] > 0)
+        economic_win_rate: float | None = round(econ_wins / n, 4)
+    else:
+        economic_win_rate = None
+
+    if n < 5:
         return {
-            "n": len(trades),
+            "n": n,
+            "n_natural": n_natural,
+            "directional_accuracy": directional_accuracy,
+            "economic_win_rate": economic_win_rate,
             "correlation": None,
             "buckets": [],
             "calibrated": False,
         }
 
-    edges = [float(t["net_edge"]) for t in trades]
-    # won=1 when the side we bet on matched the outcome (YES bet + YES outcome, or NO+NO)
-    won = [1.0 if t["outcome"] == t["side"] else 0.0 for t in trades]
+    edges = [float(t["net_edge"]) for t in all_settled]
+    # Economic outcome: 1 if the trade made money, 0 if not
+    won = [1.0 if t["pnl"] > 0 else 0.0 for t in all_settled]
 
-    # Pearson r between edge and binary outcome
-    n = len(edges)
+    # Pearson r between net_edge and economic outcome
     mean_e = sum(edges) / n
     mean_w = sum(won) / n
     cov = sum((e - mean_e) * (w - mean_w) for e, w in zip(edges, won))
@@ -1607,7 +1667,7 @@ def get_edge_realization_rate() -> dict:
     else:
         corr = round(cov / (var_e * var_w) ** 0.5, 4)
 
-    # Bucket win rates by edge range
+    # Bucket economic win rates by edge range
     _buckets_def = [
         (float("-inf"), 0.05, "<5%"),
         (0.05, 0.10, "5-10%"),
@@ -1634,6 +1694,9 @@ def get_edge_realization_rate() -> dict:
 
     return {
         "n": n,
+        "n_natural": n_natural,
+        "directional_accuracy": directional_accuracy,
+        "economic_win_rate": economic_win_rate,
         "correlation": corr,
         "buckets": buckets,
         "calibrated": calibrated,

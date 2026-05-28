@@ -459,6 +459,25 @@ def _check_early_exits(client=None) -> int:
                 except (ValueError, TypeError):
                     pass
 
+            # Settlement gate — same rationale as the stop-loss 24h gate in paper.py.
+            # GFS intraday updates can shift forecast_prob by >25pp in the final hours
+            # before settlement without the temperature outcome actually changing.
+            # Let the market converge naturally rather than closing a winning position
+            # on a transient model revision.
+            close_time_str = trade.get("close_time") or trade.get("expires_at")
+            if close_time_str:
+                try:
+                    close_dt = datetime.fromisoformat(
+                        close_time_str.replace("Z", "+00:00")
+                    )
+                    hours_to_settlement = (
+                        close_dt - datetime.now(UTC)
+                    ).total_seconds() / 3600
+                    if hours_to_settlement < 24:
+                        continue
+                except (ValueError, TypeError):
+                    pass
+
             if shift > 0.25:
                 exit_price = _midpoint_price(market, side)
                 # H-4: never close at zero — missing market data returns 0.0 which
