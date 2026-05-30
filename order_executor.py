@@ -1051,6 +1051,7 @@ def _auto_place_trades(
                     method=a.get("method"),
                     icon_forecast_mean=a.get("icon_forecast_mean"),
                     gfs_forecast_mean=a.get("gfs_forecast_mean"),
+                    forecast_temp=a.get("forecast_temp"),
                     condition_threshold=a.get("condition", {}).get("threshold"),
                     ab_variant=a.get("_ab_variant"),
                     close_time=m.get(

@@ -1705,6 +1705,65 @@ def get_model_weights(city: str, window_days: int = 30) -> dict[str, float]:
     return {m: round(v / total, 6) for m, v in exps.items()}
 
 
+def get_dynamic_station_bias(
+    city: str,
+    var: str = "max",
+    min_samples: int = 10,
+) -> tuple[float, int]:
+    """Return mean signed temperature error (predicted - actual) per city from
+    real METAR observations logged at settlement.
+
+    Positive return value means the models run warm for this city (they over-predict
+    temperature); negative means models run cold (they under-predict).  The caller
+    should subtract this from the raw forecast temperature before computing probability.
+
+    Prioritises rows where model = 'blended' (the exact blended forecast_temp used
+    at trade entry) when available; falls back to icon_seamless + gfs_seamless
+    averages when no blended rows exist yet.
+
+    Returns (mean_signed_error, sample_count).  Returns (0.0, 0) when the city has
+    fewer than min_samples observations — caller keeps the static bias table.
+    """
+    init_db()
+    try:
+        with _conn() as con:
+            # Prefer 'blended' rows (exact forecast_temp recorded since Plan 3 was deployed)
+            blended_rows = con.execute(
+                """
+                SELECT predicted_temp, actual_temp
+                FROM ensemble_member_scores
+                WHERE city = ? AND model = 'blended'
+                  AND predicted_temp IS NOT NULL AND actual_temp IS NOT NULL
+                """,
+                (city,),
+            ).fetchall()
+
+            if len(blended_rows) >= min_samples:
+                errors = [r["predicted_temp"] - r["actual_temp"] for r in blended_rows]
+                return round(sum(errors) / len(errors), 4), len(errors)
+
+            # Fall back to all models (icon + gfs approximation)
+            all_rows = con.execute(
+                """
+                SELECT predicted_temp, actual_temp
+                FROM ensemble_member_scores
+                WHERE city = ?
+                  AND predicted_temp IS NOT NULL AND actual_temp IS NOT NULL
+                """,
+                (city,),
+            ).fetchall()
+
+            if len(all_rows) < min_samples:
+                return 0.0, len(all_rows)
+
+            errors = [r["predicted_temp"] - r["actual_temp"] for r in all_rows]
+            return round(sum(errors) / len(errors), 4), len(errors)
+
+    except Exception as exc:
+        _log.debug("get_dynamic_station_bias(%s): %s", city, exc)
+        return 0.0, 0
+
+
 def get_market_calibration(n_buckets: int = 10) -> dict:
     """
     How well-calibrated are the MARKET PRICES (not our model)?

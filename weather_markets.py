@@ -134,6 +134,19 @@ _SIGMA_2DAY_CAP: float = float(os.getenv("SIGMA_2DAY_CAP", "4.0"))
 _BETWEEN_SIGMA_1DAY_CAP: float = float(os.getenv("BETWEEN_SIGMA_1DAY_CAP", "1.8"))
 _BETWEEN_SIGMA_2DAY_CAP: float = float(os.getenv("BETWEEN_SIGMA_2DAY_CAP", "2.5"))
 
+# Dynamic temperature bias cache: (city, var) → (signed_error_f, sample_count, monotonic_ts)
+# Populated lazily from tracker.get_dynamic_station_bias(). TTL matches model cache.
+_DYNAMIC_BIAS_CACHE: dict[tuple, tuple[float, int, float]] = {}
+_DYNAMIC_BIAS_CACHE_TTL: float = 4 * 60 * 60  # 4 hours
+
+# Market price credibility anchor weights by condition type.
+# Between markets have a ~23% systematic cold bias vs market ~46%; anchor more heavily.
+# Above/below: 10/10 directional accuracy — anchor lightly for calibration only.
+# Set to 0.0 to disable. Override via env vars.
+_MARKET_ANCHOR_BETWEEN: float = float(os.getenv("MARKET_ANCHOR_BETWEEN", "0.25"))
+_MARKET_ANCHOR_ABOVE: float = float(os.getenv("MARKET_ANCHOR_ABOVE", "0.10"))
+_MARKET_ANCHOR_BELOW: float = float(os.getenv("MARKET_ANCHOR_BELOW", "0.10"))
+
 # Minimum settled-trade count before any ML bias correction tier activates.
 # Guards against applying models trained on backtesting data to live paper trades.
 # Override via MIN_BIAS_CORRECTION_TRADES env var.
@@ -269,6 +282,42 @@ def apply_station_bias(city: str, forecast_temp: float, var: str = "max") -> flo
     table = _STATION_BIAS_LOW if var == "min" else _STATION_BIAS_HIGH
     bias = table.get(city, 0.0)
     return forecast_temp - bias
+
+
+def _get_combined_station_bias(city: str, var: str = "max") -> float:
+    """Return the best available temperature bias correction for a city.
+
+    Blends the static hand-coded bias table with a dynamic correction derived from
+    real METAR observations logged at settlement.  As sample count grows, the dynamic
+    correction takes over — at 10 samples it contributes 20%, at 50+ samples 100%.
+
+    This means the static table is the reliable fallback for new cities while the
+    dynamic correction gradually dominates once the data is trustworthy.
+    """
+    static_bias = (_STATION_BIAS_LOW if var == "min" else _STATION_BIAS_HIGH).get(
+        city, 0.0
+    )
+
+    cached = _DYNAMIC_BIAS_CACHE.get((city, var))
+    if cached is not None and time.monotonic() - cached[2] < _DYNAMIC_BIAS_CACHE_TTL:
+        dyn_bias, count = cached[0], cached[1]
+    else:
+        try:
+            from tracker import get_dynamic_station_bias as _gdbs
+
+            dyn_bias, count = _gdbs(city, var, min_samples=10)
+        except Exception:
+            dyn_bias, count = 0.0, 0
+        _DYNAMIC_BIAS_CACHE[(city, var)] = (dyn_bias, count, time.monotonic())
+
+    if count < 10:
+        return static_bias
+
+    # Blend: 0% dynamic at 10 samples → 100% dynamic at 50+ samples.
+    # The transition is linear so the correction stabilises quickly once we have
+    # enough observations without jumping abruptly from static to dynamic.
+    dynamic_weight = min(1.0, (count - 10) / 40.0)
+    return static_bias * (1.0 - dynamic_weight) + dyn_bias * dynamic_weight
 
 
 # City → timezone (keys match CITY_COORDS / metar.MARKET_STATION_MAP)
@@ -4606,9 +4655,12 @@ def analyze_trade(enriched: dict) -> dict | None:
                 _count_gate("model_spread")
                 return None
 
-        # Apply per-city static bias correction before probability calculation (B4: pass var)
+        # Apply per-city bias correction before probability calculation (B4: pass var).
+        # _get_combined_station_bias() blends the static hand-coded table with a
+        # dynamic correction learned from real METAR observations — the dynamic weight
+        # grows as sample count increases (10 samples: 20%, 50+ samples: 100%).
         forecast_temp_raw = forecast_temp
-        forecast_temp = apply_station_bias(city, forecast_temp, var=var)
+        forecast_temp = forecast_temp - _get_combined_station_bias(city, var=var)
 
         days_out = max(0, (target_date - datetime.now(UTC).date()).days)
 
@@ -5114,16 +5166,55 @@ def analyze_trade(enriched: dict) -> dict | None:
                 _exc,
             )
 
-        # ── 7b. Global temperature scaling ──────────────────────────────────────
+        # ── 7b. Per-condition temperature scaling ────────────────────────────────
         # Corrects systematic probability bias (e.g. NWF cold bias pushing all
-        # predictions low).  Trained by cmd_calibrate once 35+ settled trades exist.
-        # apply_temperature_scaling() is a no-op identity when no model is trained.
+        # predictions low).  Uses a condition-specific T when available (between
+        # markets have a much larger calibration gap than above/below) and falls
+        # back to the global T.  Trained by cmd_calibrate once enough settled
+        # trades exist per condition type.  No-op when no model is trained.
         try:
             from ml_bias import apply_temperature_scaling as _apply_temp_scale
 
-            blended_prob = max(0.01, min(0.99, _apply_temp_scale(blended_prob)))
+            blended_prob = max(
+                0.01,
+                min(
+                    0.99,
+                    _apply_temp_scale(
+                        blended_prob, condition_type=condition.get("type")
+                    ),
+                ),
+            )
         except Exception:
             pass
+
+        # ── 7c. Market price credibility anchor ──────────────────────────────────
+        # For condition types where our model has known calibration gaps, blend a
+        # fraction of blended_prob toward the market mid-price.  The market
+        # aggregates live observations and professional traders we cannot replicate.
+        # Guard: only anchor when the market has a real quote (mid not at extremes).
+        # The anchor adjusts the magnitude of our confidence, not its direction —
+        # we still bet whichever side our model favours; Kelly sizing just becomes
+        # more realistic.
+        _anchor_weights: dict[str, float] = {
+            "between": _MARKET_ANCHOR_BETWEEN,
+            "above": _MARKET_ANCHOR_ABOVE,
+            "below": _MARKET_ANCHOR_BELOW,
+        }
+        _anchor_w = _anchor_weights.get(condition.get("type", ""), 0.0)
+        _mkt_mid = _divergence_gate_market_prob  # set earlier from parse_market_price
+        if _anchor_w > 0 and 0.05 < _mkt_mid < 0.95:
+            _pre_anchor = blended_prob
+            blended_prob = (1.0 - _anchor_w) * blended_prob + _anchor_w * _mkt_mid
+            blended_prob = max(0.01, min(0.99, blended_prob))
+            _log.debug(
+                "analyze_trade[%s]: market_anchor type=%s w=%.2f model=%.3f market=%.3f → %.3f",
+                enriched.get("ticker", "?"),
+                condition.get("type"),
+                _anchor_w,
+                _pre_anchor,
+                _mkt_mid,
+                blended_prob,
+            )
 
         # ── Consensus signal: all available sources agree on direction ───────────
         # Require all 3 independent sources (ensemble, NWS, climatology) to agree.

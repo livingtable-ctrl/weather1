@@ -19,7 +19,9 @@ _HMAC_PATH = Path(__file__).parent / "data" / ".bias_models.hmac"
 _TEMP_PATH = Path(__file__).parent / "data" / "temperature_scale.json"
 _MODELS_CACHE: dict | None = None
 _LOAD_ATTEMPTED: bool = False  # True only after a successful or definitive load
-_TEMP_CACHE: float | None = None
+_TEMP_CACHE: dict | None = (
+    None  # {condition_key: T} where condition_key is "global"|"between"|"above"|"below"
+)
 
 
 def _hmac_secret() -> bytes:
@@ -357,7 +359,16 @@ def has_ml_model(city: str) -> bool:
     return _load_models().get(city.upper()) is not None
 
 
-def _load_temperature_scale() -> float | None:
+def _load_temperature_scale() -> dict | None:
+    """Load the temperature scaling table from disk.
+
+    Supports two file formats:
+    - New: {"global": {"T": 5.06, "n": 40}, "between": {"T": 6.8, "n": 23}, ...}
+    - Old (backward-compat): {"T": 5.06, "n_samples": 60}  → promoted to {"global": {"T": ...}}
+
+    Returns a dict keyed by condition type (including "global"), or None when the file
+    is absent or unreadable.
+    """
     global _TEMP_CACHE
     if _TEMP_CACHE is not None:
         return _TEMP_CACHE
@@ -366,8 +377,17 @@ def _load_temperature_scale() -> float | None:
     try:
         import json
 
-        data = json.loads(_TEMP_PATH.read_text())
-        _TEMP_CACHE = float(data["T"])
+        raw = json.loads(_TEMP_PATH.read_text())
+        if "T" in raw:
+            # Old single-value format — promote to new multi-condition dict
+            _TEMP_CACHE = {"global": float(raw["T"])}
+        else:
+            # New format: extract T value from each condition dict
+            _TEMP_CACHE = {
+                k: float(v["T"])
+                for k, v in raw.items()
+                if isinstance(v, dict) and "T" in v
+            }
         return _TEMP_CACHE
     except Exception:
         return None
@@ -447,7 +467,7 @@ def train_temperature_scaling(min_samples: int = 35) -> float | None:
         _TEMP_PATH.parent.mkdir(exist_ok=True)
         _TEMP_PATH.write_text(json.dumps({"T": T, "n_samples": len(rows)}))
         global _TEMP_CACHE
-        _TEMP_CACHE = T
+        _TEMP_CACHE = None  # force reload from disk so next apply_temperature_scaling picks up new T
         _log.info("train_temperature_scaling: T=%.4f on %d samples", T, len(rows))
         return T
 
@@ -459,9 +479,176 @@ def train_temperature_scaling(min_samples: int = 35) -> float | None:
         return None
 
 
-def apply_temperature_scaling(prob: float) -> float:
-    """Apply global temperature calibration; returns prob unchanged if no model trained."""
-    T = _load_temperature_scale()
+def apply_temperature_scaling(prob: float, condition_type: str | None = None) -> float:
+    """Apply temperature calibration; returns prob unchanged if no model is trained.
+
+    Lookup order: per-condition T (if condition_type provided and trained) →
+    global T → no-op.  This lets between-market corrections be stronger than
+    above/below corrections without affecting each other.
+    """
+    table = _load_temperature_scale()
+    if table is None:
+        return prob
+    T = None
+    if condition_type is not None:
+        T = table.get(condition_type)
+    if T is None:
+        T = table.get("global")
     if T is None or abs(T - 1.0) < 0.01:
         return prob
     return _sigmoid(_logit(prob) / T)
+
+
+def train_all_temperature_scaling(
+    min_samples_global: int = 35,
+    min_samples_condition: int = 15,
+) -> dict[str, float]:
+    """Train T for the global pool and for each condition type that has enough data.
+
+    Condition-specific T values capture the fact that 'between' markets have a
+    much larger calibration gap than 'above'/'below' markets and need a different
+    compression factor.
+
+    Saves a unified JSON to data/temperature_scale.json:
+        {"global": {"T": 5.06, "n": 40}, "between": {"T": 6.8, "n": 23}, ...}
+
+    Returns {condition_key: T} for every key that was trained and saved.
+    """
+    import tracker
+
+    tracker.init_db()
+
+    try:
+        import json
+
+        import numpy as np
+        from scipy.optimize import minimize_scalar  # type: ignore[import-untyped]
+    except ImportError:
+        _log.warning("train_all_temperature_scaling: scipy/numpy not installed")
+        return {}
+
+    def _fit_T(probs_raw: list[float], labels_raw: list[float]) -> float | None:
+        """Fit T via NLL minimisation; return T or None if fit fails / doesn't improve."""
+        if len(probs_raw) < 1:
+            return None
+        probs = np.clip(probs_raw, 1e-6, 1 - 1e-6)
+        labels = np.array(labels_raw)
+        logits = np.log(probs / (1 - probs))
+
+        def nll(T: float) -> float:
+            if T <= 0:
+                return 1e9
+            p_cal = np.clip(1.0 / (1.0 + np.exp(-logits / T)), 1e-9, 1 - 1e-9)
+            return -float(
+                np.sum(labels * np.log(p_cal) + (1 - labels) * np.log(1 - p_cal))
+            )
+
+        result = minimize_scalar(nll, bounds=(0.5, 15.0), method="bounded")
+        T = float(result.x)
+        if nll(T) >= nll(1.0):
+            return None
+        return T
+
+    # Fetch all settled rows with condition_type
+    try:
+        with tracker._conn() as con:
+            rows = con.execute(
+                """
+                SELECT p.our_prob, o.settled_yes, p.condition_type
+                FROM predictions p
+                JOIN outcomes o ON p.ticker = o.ticker
+                WHERE p.our_prob IS NOT NULL AND o.settled_yes IS NOT NULL
+                """
+            ).fetchall()
+    except Exception as exc:
+        _log.warning("train_all_temperature_scaling: DB query failed: %s", exc)
+        return {}
+
+    all_probs = [float(r["our_prob"]) for r in rows]
+    all_labels = [float(r["settled_yes"]) for r in rows]
+
+    # Read existing file so we only overwrite keys we actually retrain
+    existing: dict = {}
+    if _TEMP_PATH.exists():
+        try:
+            existing = json.loads(_TEMP_PATH.read_text())
+            if "T" in existing:
+                # Old format — wrap in new structure
+                existing = {
+                    "global": {"T": existing["T"], "n": existing.get("n_samples", 0)}
+                }
+        except Exception:
+            existing = {}
+
+    trained: dict[str, float] = {}
+
+    # Global fit
+    if len(all_probs) >= min_samples_global:
+        T_global = _fit_T(all_probs, all_labels)
+        if T_global is not None:
+            existing["global"] = {"T": T_global, "n": len(all_probs)}
+            trained["global"] = T_global
+            _log.info(
+                "train_all_temperature_scaling: global T=%.4f on %d samples",
+                T_global,
+                len(all_probs),
+            )
+        else:
+            _log.info(
+                "train_all_temperature_scaling: global T fit no better than T=1.0 — skipping"
+            )
+    else:
+        _log.info(
+            "train_all_temperature_scaling: only %d global samples, need %d",
+            len(all_probs),
+            min_samples_global,
+        )
+
+    # Per-condition fits
+    by_type: dict[str, tuple[list[float], list[float]]] = {}
+    for r in rows:
+        ct = r["condition_type"]
+        if ct:
+            if ct not in by_type:
+                by_type[ct] = ([], [])
+            by_type[ct][0].append(float(r["our_prob"]))
+            by_type[ct][1].append(float(r["settled_yes"]))
+
+    for ctype, (cprobs, clabels) in by_type.items():
+        if len(cprobs) < min_samples_condition:
+            _log.info(
+                "train_all_temperature_scaling: %s has %d samples, need %d — skipping",
+                ctype,
+                len(cprobs),
+                min_samples_condition,
+            )
+            continue
+        T_cond = _fit_T(cprobs, clabels)
+        if T_cond is not None:
+            existing[ctype] = {"T": T_cond, "n": len(cprobs)}
+            trained[ctype] = T_cond
+            _log.info(
+                "train_all_temperature_scaling: %s T=%.4f on %d samples",
+                ctype,
+                T_cond,
+                len(cprobs),
+            )
+        else:
+            _log.info(
+                "train_all_temperature_scaling: %s T fit no better than T=1.0 — skipping",
+                ctype,
+            )
+
+    if existing:
+        _TEMP_PATH.parent.mkdir(exist_ok=True)
+        _TEMP_PATH.write_text(json.dumps(existing, indent=2))
+        # Invalidate the in-memory cache so the next call reads the new file
+        global _TEMP_CACHE
+        _TEMP_CACHE = None
+        _log.info(
+            "train_all_temperature_scaling: saved %d keys to %s",
+            len(existing),
+            _TEMP_PATH,
+        )
+
+    return trained

@@ -603,6 +603,8 @@ def place_paper_order(
     method: str | None = None,  # analysis method ('ensemble', 'normal_dist', etc.)
     icon_forecast_mean: float | None = None,  # per-model means for ensemble scoring
     gfs_forecast_mean: float | None = None,
+    forecast_temp: float
+    | None = None,  # blended forecast temp used for probability (exact bias baseline)
     condition_threshold: float | None = None,  # market threshold (e.g. 70°F)
     ab_variant: str | None = None,
     close_time: str
@@ -703,6 +705,7 @@ def place_paper_order(
             "thesis": thesis,
             "icon_forecast_mean": icon_forecast_mean,
             "gfs_forecast_mean": gfs_forecast_mean,
+            "forecast_temp": forecast_temp,
             "condition_threshold": condition_threshold,
             "ab_variant": ab_variant,
             "close_time": close_time,
@@ -891,9 +894,12 @@ def _score_ensemble_members(trade: dict, outcome_yes: bool) -> None:
         actual_temp = None
     if actual_temp is None:
         return
-    model_means = {
+    model_means: dict[str, float | None] = {
         "icon_seamless": trade.get("icon_forecast_mean"),
         "gfs_seamless": trade.get("gfs_forecast_mean"),
+        # "blended" is the exact bias-corrected forecast_temp used for probability
+        # calculation — preferred by get_dynamic_station_bias() over the per-model means.
+        "blended": trade.get("forecast_temp"),
     }
     try:
         from tracker import log_member_score as _log_ms

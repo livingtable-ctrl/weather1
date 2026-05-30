@@ -3388,7 +3388,7 @@ def cmd_version_compare() -> None:
 
 def cmd_train_bias() -> None:
     """Train ML bias correction models from tracker DB data."""
-    from ml_bias import train_bias_model, train_temperature_scaling
+    from ml_bias import train_all_temperature_scaling, train_bias_model
 
     print("Training ML bias models (requires 200+ settled trades per city)...")
     models = train_bias_model(min_samples=200)
@@ -3399,12 +3399,15 @@ def cmd_train_bias() -> None:
     else:
         print(f"Trained GBM models for: {', '.join(sorted(models.keys()))}")
 
-    print("Training global temperature scaling...")
-    T = train_temperature_scaling()
-    if T is None:
-        print("Not enough data for temperature scaling yet (need 50+ settled trades).")
+    print("Training per-condition temperature scaling...")
+    trained_ts = train_all_temperature_scaling()
+    if not trained_ts:
+        print(
+            "Not enough data for temperature scaling yet (need 35+ global settled trades)."
+        )
     else:
-        print(f"Temperature T={T:.4f} fitted successfully.")
+        for key, T in sorted(trained_ts.items()):
+            print(f"  [{key}] T={T:.4f}")
 
 
 def cmd_retire_strategies(run: bool = False) -> None:
@@ -4576,34 +4579,42 @@ def cmd_calibrate() -> None:
     # T < 1 pushes toward extremes.  Works reliably on 35+ settled trades.
     print()
     try:
-        from ml_bias import train_temperature_scaling as _train_ts
+        from ml_bias import train_all_temperature_scaling as _train_all_ts
 
-        T = _train_ts()
-        if T is not None:
-            if abs(T - 1.0) < 0.05:
-                print(
-                    dim(
-                        f"Temperature scaling: T={T:.3f} — probabilities are well-calibrated globally."
-                    )
-                )
-            elif T > 1:
-                print(
-                    green(
-                        f"Temperature scaling: T={T:.3f} trained — predictions were running too extreme; compressing toward 0.5."
-                    )
-                )
-                print(dim("  Applied automatically in analyze_trade on next run."))
-            else:
-                print(
-                    green(
-                        f"Temperature scaling: T={T:.3f} trained — predictions were too conservative; pushing toward extremes."
-                    )
-                )
-                print(dim("  Applied automatically in analyze_trade on next run."))
-        else:
+        trained = _train_all_ts()
+        if not trained:
             print(
                 dim(
-                    "Temperature scaling: need 35+ settled predictions (not yet — run again after more trades settle)."
+                    "Temperature scaling: need 35+ global settled predictions "
+                    "(not yet — run again after more trades settle)."
+                )
+            )
+        else:
+            for key, T in sorted(trained.items()):
+                label = f"[{key}]" if key != "global" else "[global]"
+                if abs(T - 1.0) < 0.05:
+                    print(
+                        dim(
+                            f"Temperature scaling {label}: T={T:.3f} — well-calibrated."
+                        )
+                    )
+                elif T > 1:
+                    print(
+                        green(
+                            f"Temperature scaling {label}: T={T:.3f} — compressing toward 0.5 "
+                            f"(predictions were running too extreme)."
+                        )
+                    )
+                else:
+                    print(
+                        green(
+                            f"Temperature scaling {label}: T={T:.3f} — pushing toward extremes "
+                            f"(predictions were too conservative)."
+                        )
+                    )
+            print(
+                dim(
+                    "  Applied automatically per condition type in analyze_trade on next run."
                 )
             )
     except ImportError:
