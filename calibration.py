@@ -323,6 +323,47 @@ def load_condition_weights(
         return {}
 
 
+def calibrate_and_save(
+    db_path: str | Path | None = None,
+    data_dir: str | Path | None = None,
+) -> tuple[dict, dict, dict]:
+    """Run all three blend-weight calibrations and write results atomically to disk.
+
+    This is the single canonical implementation used by both ``py main.py calibrate``
+    and the F3 cron auto-calibration block.  Keeping the disk-write logic here means
+    changes to output paths or format only need to happen in one place.
+
+    Returns (seasonal, city, condition) dicts — same as calling each function
+    individually.  Cache invalidation (e.g. weather_markets._CONDITION_WEIGHTS) is
+    the caller's responsibility to avoid a circular import dependency.
+
+    Raises on DB read failure so callers can handle the error message appropriately.
+    """
+    import safe_io as _safe_io
+    from tracker import DB_PATH as _DB_PATH
+
+    _db = Path(db_path) if db_path else _DB_PATH
+    _dir = Path(data_dir) if data_dir else Path(__file__).parent / "data"
+    _dir.mkdir(exist_ok=True)
+
+    seasonal = calibrate_seasonal_weights(_db)
+    city = calibrate_city_weights(_db)
+    condition = calibrate_condition_weights(_db)
+
+    _safe_io.atomic_write_json(seasonal, _dir / "seasonal_weights.json")
+    _safe_io.atomic_write_json(city, _dir / "city_weights.json")
+    _safe_io.atomic_write_json(condition, _dir / "condition_weights.json")
+
+    _log.info(
+        "calibrate_and_save: wrote seasonal(%d) city(%d) condition(%d) to %s",
+        len(seasonal),
+        len(city),
+        len(condition),
+        _dir,
+    )
+    return seasonal, city, condition
+
+
 def validate_weight_files(
     seasonal: dict | None = None,
     city: dict | None = None,

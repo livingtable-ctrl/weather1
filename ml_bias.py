@@ -301,8 +301,13 @@ def train_platt_per_city(
             xs = [x for x, _ in samples]
             ys = [label for _, label in samples]
             result[city] = _fit_platt(xs, ys)
-        except Exception:
-            pass
+        except Exception as _exc:
+            _log.warning(
+                "train_platt_per_city: fit failed for %s (%d samples): %s",
+                city,
+                len(samples),
+                _exc,
+            )
 
     return result
 

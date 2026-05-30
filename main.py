@@ -4444,11 +4444,7 @@ _CALIBRATE_DATA_DIR: "Path | None" = None  # overridable in tests
 def cmd_calibrate() -> None:
     """Recompute seasonal and per-city blend weights from settled predictions."""
 
-    from calibration import (
-        calibrate_city_weights,
-        calibrate_condition_weights,
-        calibrate_seasonal_weights,
-    )
+    from calibration import calibrate_and_save
     from tracker import DB_PATH
 
     data_dir = (
@@ -4462,9 +4458,7 @@ def cmd_calibrate() -> None:
     print(f"  Database: {DB_PATH}")
 
     try:
-        seasonal = calibrate_seasonal_weights(DB_PATH)
-        city = calibrate_city_weights(DB_PATH)
-        condition = calibrate_condition_weights(DB_PATH)
+        seasonal, city, condition = calibrate_and_save(DB_PATH, data_dir)
     except Exception as exc:  # noqa: BLE001
         print(f"\nCalibration skipped — could not read DB: {exc}")
         print(
@@ -4476,12 +4470,6 @@ def cmd_calibrate() -> None:
     seasonal_path = data_dir / "seasonal_weights.json"
     city_path = data_dir / "city_weights.json"
     condition_path = data_dir / "condition_weights.json"
-
-    import safe_io as _safe_io
-
-    _safe_io.atomic_write_json(seasonal, seasonal_path)
-    _safe_io.atomic_write_json(city, city_path)
-    _safe_io.atomic_write_json(condition, condition_path)
 
     if seasonal:
         print(f"\nSeasonal weights ({len(seasonal)} seasons calibrated):")
@@ -4527,6 +4515,7 @@ def cmd_calibrate() -> None:
     try:
         import sqlite3 as _sqlite3
 
+        import safe_io as _safe_io
         from ml_bias import train_platt_per_city as _train_platt
 
         with _sqlite3.connect(str(DB_PATH)) as _con:

@@ -1458,38 +1458,14 @@ def _cmd_cron_body(
                     "(%d settled since last run, threshold=25)",
                     _current_settled - _last_cal_count,
                 )
-                import tracker as _tk
-                from calibration import (
-                    calibrate_city_weights as _cal_city,
-                )
-                from calibration import (
-                    calibrate_condition_weights as _cal_condition,
-                )
-                from calibration import (
-                    calibrate_seasonal_weights as _cal_season,
-                )
+                from calibration import calibrate_and_save as _cal_and_save
 
-                _db = _tk.DB_PATH
                 _data_dir = Path(__file__).parent / "data"
                 try:
-                    import safe_io as _safe_io_cal
                     import weather_markets as _wm_cal
 
-                    _seasonal_w = _cal_season(_db)
-                    _city_w = _cal_city(_db)
-                    _condition_w = _cal_condition(_db)
-
-                    # Write results to disk — the three calibrate functions are pure
-                    # (they return dicts and write nothing themselves), so this write
-                    # is what actually persists the updated weights.
-                    _safe_io_cal.atomic_write_json(
-                        _seasonal_w, _data_dir / "seasonal_weights.json"
-                    )
-                    _safe_io_cal.atomic_write_json(
-                        _city_w, _data_dir / "city_weights.json"
-                    )
-                    _safe_io_cal.atomic_write_json(
-                        _condition_w, _data_dir / "condition_weights.json"
+                    _seasonal_w, _city_w, _condition_w = _cal_and_save(
+                        data_dir=_data_dir
                     )
 
                     # Invalidate in-memory cache so the new weights take effect
