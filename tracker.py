@@ -2558,10 +2558,10 @@ def format_brier_alert(scores: list[float]) -> str:
         f" weeks ({scores_str}).\n"
         f"  What this means: your model's probability forecasts are poorly calibrated.\n"
         f"  Next steps:\n"
-        f"    1. Run: py main.py backtest --days 180   (see which cities/conditions are worst)\n"
-        f"    2. Run: py main.py validate              (check if performance is degrading over time)\n"
-        f"    3. Run: py main.py calibrate             (recalibrate probability outputs)\n"
-        f"    4. Check learned_weights.json age — if >7 days, re-run validate and save new weights\n"
+        f"    1. Run: py main.py calibrate             (trains temperature scaling + recalibrates blend weights)\n"
+        f"    2. Run: py main.py validate              (shows calibration curve — which buckets are off and by how much)\n"
+        f"    3. Run: py main.py backtest --days 180   (shows synthetic archive Brier + live model calibration curve)\n"
+        f"    4. Temperature scaling is the primary fix — check data/temperature_scale.json exists after step 1\n"
         f"  Live trading will continue but consider pausing until Brier < {BRIER_ALERT_THRESHOLD}."
     )
 

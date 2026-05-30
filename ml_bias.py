@@ -373,11 +373,13 @@ def _load_temperature_scale() -> float | None:
         return None
 
 
-def train_temperature_scaling(min_samples: int = 50) -> float | None:
+def train_temperature_scaling(min_samples: int = 35) -> float | None:
     """Fit global temperature T via log-loss minimisation on all settled predictions.
 
     Calibrated prob = sigmoid(logit(raw_prob) / T).  T > 1 compresses
-    overconfident predictions toward 0.5.  Saves to data/temperature_scale.json.
+    probabilities toward 0.5; T < 1 pushes toward extremes.  At 40 settled
+    trades this is a single-parameter global fit and does not overfit.
+    Saves to data/temperature_scale.json.
     """
     import tracker
 

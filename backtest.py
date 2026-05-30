@@ -522,24 +522,6 @@ def run_backtest(
         else:
             bench_rand = -yes_stake
 
-        # ── Log ensemble member score for temperature markets ─────────────────
-        if condition["type"] not in ("precip_above", "precip_any") and temps:
-            try:
-                from tracker import log_member_score as _log_ms
-
-                member_mean = sum(temps) / len(temps)
-                # actual_temp is not directly known from result alone; use temps mean as proxy
-                # We record predicted mean vs an estimate of actual via archive
-                _log_ms(
-                    city=city,
-                    model="ensemble_blend",
-                    predicted_temp=round(member_mean, 2),
-                    actual_temp=round(member_mean + (actual - our_prob) * 10, 2),
-                    target_date_str=tdate.isoformat(),
-                )
-            except Exception:
-                pass
-
         results.append(
             {
                 "ticker": ticker,

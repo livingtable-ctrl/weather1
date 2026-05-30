@@ -4219,6 +4219,108 @@ def cmd_walkforward(client: KalshiClient) -> None:
     ]
     print(tabulate(wf_rows, headers=["Metric", "Value"], tablefmt="rounded_outline"))
 
+    # ── Calibration curve from real logged predictions ───────────────────────
+    # This shows WHERE the Brier score is coming from — which probability buckets
+    # are miscalibrated and in which direction.  Unlike backtest (which replays
+    # synthetic archive data), this uses the actual probabilities logged at trade time.
+    try:
+        import sqlite3 as _sql
+
+        from tracker import DB_PATH as _DB_PATH
+
+        _calib_rows = (
+            _sql.connect(str(_DB_PATH))
+            .execute(
+                """
+            SELECT p.our_prob, p.condition_type, o.settled_yes
+            FROM predictions p
+            JOIN outcomes o ON p.ticker = o.ticker
+            WHERE p.our_prob IS NOT NULL AND o.settled_yes IS NOT NULL
+            """
+            )
+            .fetchall()
+        )
+
+        if len(_calib_rows) >= 10:
+            from collections import defaultdict
+
+            _buckets: dict = defaultdict(list)
+            for _p, _ct, _a in _calib_rows:
+                _b = int(float(_p) * 5) / 5  # round to nearest 0.20
+                _buckets[_b].append((float(_p), int(_a)))
+
+            print(bold("\n  ── Calibration Curve (predicted vs actual) ──\n"))
+            print(dim("  Bucket    Predicted   Actual    N    Bias      Status"))
+            print(dim("  " + "─" * 56))
+            for _b in sorted(_buckets):
+                _items = _buckets[_b]
+                _avg_p = sum(x[0] for x in _items) / len(_items)
+                _avg_a = sum(x[1] for x in _items) / len(_items)
+                _bias = _avg_p - _avg_a
+                _status = (
+                    red(f"  LOW {abs(_bias):.0%}")
+                    if _bias < -0.10
+                    else yellow(f"  low {abs(_bias):.0%}")
+                    if _bias < -0.05
+                    else red(f"  HIGH {_bias:.0%}")
+                    if _bias > 0.10
+                    else yellow(f"  high {_bias:.0%}")
+                    if _bias > 0.05
+                    else green("  OK")
+                )
+                print(
+                    f"  {_avg_p * 100:>5.0f}%     {_avg_p * 100:>6.1f}%   {_avg_a * 100:>6.1f}%  {len(_items):>3}  {_bias * 100:>+6.1f}%{_status}"
+                )
+
+            _all_p = [float(r[0]) for r in _calib_rows]
+            _all_a = [int(r[2]) for r in _calib_rows]
+            _mean_p = sum(_all_p) / len(_all_p)
+            _mean_a = sum(_all_a) / len(_all_a)
+            _sys_bias = _mean_p - _mean_a
+            _sys_str = (
+                red(
+                    f"  Model predicts {abs(_sys_bias):.1%} TOO LOW on average — buys NO on events that actually happen."
+                )
+                if _sys_bias < -0.08
+                else red(
+                    f"  Model predicts {_sys_bias:.1%} TOO HIGH on average — buys YES on events that don't happen."
+                )
+                if _sys_bias > 0.08
+                else green("  No significant systematic bias detected.")
+            )
+            print(f"\n{_sys_str}")
+            print(
+                dim(
+                    f"  Mean predicted: {_mean_p:.1%}  |  Mean actual: {_mean_a:.1%}  |  N={len(_calib_rows)}"
+                )
+            )
+
+            # Per-condition breakdown
+            _cond: dict = defaultdict(list)
+            for _p, _ct, _a in _calib_rows:
+                _cond[_ct or "unknown"].append((float(_p), int(_a)))
+            if len(_cond) > 1:
+                print(bold("\n  Per-condition Brier:"))
+                for _ct, _items in sorted(
+                    _cond.items(),
+                    key=lambda x: -sum((p - a) ** 2 for p, a in x[1]) / len(x[1]),
+                ):
+                    _b_ct = sum((p - a) ** 2 for p, a in _items) / len(_items)
+                    _avg_p_ct = sum(p for p, _ in _items) / len(_items)
+                    _avg_a_ct = sum(a for _, a in _items) / len(_items)
+                    _b_str = (
+                        red(f"{_b_ct:.4f}")
+                        if _b_ct > 0.25
+                        else yellow(f"{_b_ct:.4f}")
+                        if _b_ct > 0.18
+                        else green(f"{_b_ct:.4f}")
+                    )
+                    print(
+                        f"    {_ct:10s}  Brier={_b_str}  pred={_avg_p_ct:.1%}  actual={_avg_a_ct:.1%}  N={len(_items)}"
+                    )
+    except Exception as _cal_exc:
+        _log.debug("cmd_walkforward: calibration curve failed: %s", _cal_exc)
+
     # Offer to update learned weights from tracker MAE data (not win-rates — those
     # are a different format and must not overwrite {model: weight} dicts).
     city_win_rates = result.get("city_win_rates", {})
@@ -4467,6 +4569,51 @@ def cmd_calibrate() -> None:
             )
     except Exception as _lw_exc:
         print(dim(f"\nLearned weights skipped: {_lw_exc}"))
+
+    # Global temperature scaling — single-parameter fit that corrects systematic
+    # probability bias (e.g. the NWF cold bias that makes predictions run ~18%
+    # below actual settlement rates).  T > 1 pushes probabilities toward 0.5;
+    # T < 1 pushes toward extremes.  Works reliably on 35+ settled trades.
+    print()
+    try:
+        from ml_bias import train_temperature_scaling as _train_ts
+
+        T = _train_ts()
+        if T is not None:
+            if abs(T - 1.0) < 0.05:
+                print(
+                    dim(
+                        f"Temperature scaling: T={T:.3f} — probabilities are well-calibrated globally."
+                    )
+                )
+            elif T > 1:
+                print(
+                    green(
+                        f"Temperature scaling: T={T:.3f} trained — predictions were running too extreme; compressing toward 0.5."
+                    )
+                )
+                print(dim("  Applied automatically in analyze_trade on next run."))
+            else:
+                print(
+                    green(
+                        f"Temperature scaling: T={T:.3f} trained — predictions were too conservative; pushing toward extremes."
+                    )
+                )
+                print(dim("  Applied automatically in analyze_trade on next run."))
+        else:
+            print(
+                dim(
+                    "Temperature scaling: need 35+ settled predictions (not yet — run again after more trades settle)."
+                )
+            )
+    except ImportError:
+        print(
+            dim(
+                "Temperature scaling skipped: scipy/numpy not installed (pip install scipy numpy)."
+            )
+        )
+    except Exception as _ts_exc:
+        print(dim(f"Temperature scaling skipped: {_ts_exc}"))
 
     print("\nRestart the app (or re-import weather_markets) to pick up new weights.")
 
@@ -5314,6 +5461,82 @@ def cmd_backtest(client: KalshiClient, args: list):
             tablefmt="rounded_outline",
         )
     )
+
+    # ── Calibration curve from live tracker (not archive replay) ────────────
+    # This shows how well your LIVE model's probabilities predict outcomes —
+    # separate from the synthetic archive replay above, which uses different
+    # (fake) probabilities and can't diagnose the real model's bias.
+    try:
+        import sqlite3 as _btsql
+
+        from tracker import DB_PATH as _BT_DB_PATH
+
+        _bt_calib = (
+            _btsql.connect(str(_BT_DB_PATH))
+            .execute(
+                """
+            SELECT p.our_prob, p.condition_type, o.settled_yes
+            FROM predictions p
+            JOIN outcomes o ON p.ticker = o.ticker
+            WHERE p.our_prob IS NOT NULL AND o.settled_yes IS NOT NULL
+            """
+            )
+            .fetchall()
+        )
+        if len(_bt_calib) >= 10:
+            from collections import defaultdict as _dd
+
+            _bt_bkts: dict = _dd(list)
+            for _bp, _bct, _ba in _bt_calib:
+                _bb = int(float(_bp) * 5) / 5
+                _bt_bkts[_bb].append((float(_bp), int(_ba)))
+
+            print(
+                bold(
+                    "\n  ── Live Model Calibration (real predictions vs outcomes) ──\n"
+                )
+            )
+            print(dim("  Predicted   Actual    N    Bias"))
+            print(dim("  " + "─" * 36))
+            for _bb in sorted(_bt_bkts):
+                _bi = _bt_bkts[_bb]
+                _bp_avg = sum(x[0] for x in _bi) / len(_bi)
+                _ba_avg = sum(x[1] for x in _bi) / len(_bi)
+                _bb_bias = _bp_avg - _ba_avg
+                _bb_s = (
+                    red(f"{_bb_bias * 100:>+6.1f}%  ← predictions TOO LOW")
+                    if _bb_bias < -0.10
+                    else green(f"{_bb_bias * 100:>+6.1f}%")
+                    if abs(_bb_bias) < 0.05
+                    else yellow(f"{_bb_bias * 100:>+6.1f}%")
+                )
+                print(
+                    f"  {_bp_avg * 100:>6.1f}%   {_ba_avg * 100:>6.1f}%  {len(_bi):>3}   {_bb_s}"
+                )
+            _bt_mean_p = sum(float(r[0]) for r in _bt_calib) / len(_bt_calib)
+            _bt_mean_a = sum(int(r[2]) for r in _bt_calib) / len(_bt_calib)
+            _bt_sys = _bt_mean_p - _bt_mean_a
+            print()
+            if _bt_sys < -0.08:
+                print(
+                    red(
+                        f"  Systematic bias: {_bt_sys * 100:+.1f}% — model runs LOW. Run  py main.py calibrate  to train temperature scaling."
+                    )
+                )
+            elif _bt_sys > 0.08:
+                print(
+                    red(
+                        f"  Systematic bias: {_bt_sys * 100:+.1f}% — model runs HIGH. Run  py main.py calibrate  to train temperature scaling."
+                    )
+                )
+            else:
+                print(
+                    green(
+                        f"  Systematic bias: {_bt_sys * 100:+.1f}% — no significant global bias."
+                    )
+                )
+    except Exception as _bt_cal_exc:
+        _log.debug("cmd_backtest: calibration curve failed: %s", _bt_cal_exc)
 
     # ── Breakdown by condition type ──────────────────────────────────────────
     import re as _re
@@ -6596,7 +6819,8 @@ def main():
         cmd_weekly_summary()
     elif cmd == "journal":
         cmd_journal()
-    elif cmd in ("walkforward", "wf"):
+    elif cmd in ("walkforward", "wf", "validate"):
+        # "validate" is the name advertised in the Brier alert — route it here
         cmd_walkforward(client)
     elif cmd in ("walk-forward", "wfbt"):
         cmd_walk_forward()

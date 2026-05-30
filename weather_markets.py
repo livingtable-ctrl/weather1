@@ -118,12 +118,21 @@ _MOS_BLEND_WEIGHT: float = float(os.getenv("MOS_BLEND_WEIGHT", "0.20"))
 # Override via MIN_MARKET_PRICE env var (e.g. MIN_MARKET_PRICE=0.03).
 MIN_MARKET_PRICE: float = float(os.getenv("MIN_MARKET_PRICE", "0.05"))
 
-# Maximum ensemble sigma (°F) used for probability calculation on short-horizon forecasts.
-# The raw GFS ensemble spread overstates 1-day temperature uncertainty vs NWS calibrated
-# RMSE (~1.5–2°F).  Capping prevents near-zero probabilities on 2°F-wide "between" bins.
+# Maximum ensemble sigma (°F) for above/below threshold markets.
+# Raw GFS ensemble spread (5–10°F) overstates 1-day uncertainty; NWS calibrated RMSE is
+# 1.5–2°F.  These caps apply only to above/below direction markets.
 # Override via SIGMA_1DAY_CAP / SIGMA_2DAY_CAP env vars.
 _SIGMA_1DAY_CAP: float = float(os.getenv("SIGMA_1DAY_CAP", "3.0"))
 _SIGMA_2DAY_CAP: float = float(os.getenv("SIGMA_2DAY_CAP", "4.0"))
+
+# Tighter sigma caps for "between" bracket markets.  A 2°F-wide bin with σ=3°F
+# can only ever reach 26.6% probability — well below the 40–50% the market correctly
+# prices these at.  NWS RMSE of 1.5–2°F gives a max between-prob of ~40–53%,
+# which matches observed settlement rates.  Keeping above/below caps separate avoids
+# inadvertently tightening direction-market uncertainty.
+# Override via BETWEEN_SIGMA_1DAY_CAP / BETWEEN_SIGMA_2DAY_CAP env vars.
+_BETWEEN_SIGMA_1DAY_CAP: float = float(os.getenv("BETWEEN_SIGMA_1DAY_CAP", "1.8"))
+_BETWEEN_SIGMA_2DAY_CAP: float = float(os.getenv("BETWEEN_SIGMA_2DAY_CAP", "2.5"))
 
 # Minimum settled-trade count before any ML bias correction tier activates.
 # Guards against applying models trained on backtesting data to live paper trades.
@@ -4648,13 +4657,15 @@ def analyze_trade(enriched: dict) -> dict | None:
             )
             # Cap raw sigma before applying sigma_mult so the time-of-day
             # reduction from _time_risk() still applies proportionally.
-            # Raw GFS ensemble spread (5–10°F) overstates 1-day uncertainty;
-            # NWS calibrated RMSE is ~1.5–2°F.  Cap keeps "between" probabilities
-            # plausible for the 2°F-wide bins Kalshi uses.
+            # "between" markets use a tighter cap — their 2°F bracket width means
+            # larger sigma collapses probability (σ=3 → max 26.6%; σ=1.8 → max 44.3%).
+            # above/below markets use the looser cap since sigma affects the tail
+            # probability differently for direction bets.
+            _is_between = condition.get("type") == "between"
             _prob_sigma_cap = (
-                _SIGMA_1DAY_CAP
+                (_BETWEEN_SIGMA_1DAY_CAP if _is_between else _SIGMA_1DAY_CAP)
                 if days_out <= 1
-                else _SIGMA_2DAY_CAP
+                else (_BETWEEN_SIGMA_2DAY_CAP if _is_between else _SIGMA_2DAY_CAP)
                 if days_out <= 2
                 else _raw_sigma
             )
@@ -5102,6 +5113,17 @@ def analyze_trade(enriched: dict) -> dict | None:
                 city,
                 _exc,
             )
+
+        # ── 7b. Global temperature scaling ──────────────────────────────────────
+        # Corrects systematic probability bias (e.g. NWF cold bias pushing all
+        # predictions low).  Trained by cmd_calibrate once 35+ settled trades exist.
+        # apply_temperature_scaling() is a no-op identity when no model is trained.
+        try:
+            from ml_bias import apply_temperature_scaling as _apply_temp_scale
+
+            blended_prob = max(0.01, min(0.99, _apply_temp_scale(blended_prob)))
+        except Exception:
+            pass
 
         # ── Consensus signal: all available sources agree on direction ───────────
         # Require all 3 independent sources (ensemble, NWS, climatology) to agree.
