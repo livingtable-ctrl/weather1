@@ -1832,15 +1832,25 @@ def _cmd_cron_body(
         _log.debug("cmd_cron: learned weights refresh failed: %s", _e)
 
     # G5: Weekly — run parameter sweep after bias retrain so sweep sees fresh model.
-    # Runs Sunday 03:00 UTC (one hour after train-bias).
+    # Uses a marker file (same pattern as D5) so the sweep fires on the first cron
+    # run after 7 days regardless of when the bot is running — the exact-hour check
+    # fired multiple times per hour if cron ran every 15 min, and never fired if the
+    # bot wasn't running at Sunday 03:00 UTC.
+    _LAST_SWEEP_PATH = Path(__file__).parent / "data" / ".last_param_sweep"
     try:
         import os as _os_sweep
 
         if not _os_sweep.environ.get("PYTEST_CURRENT_TEST"):
-            _sweep_dow = datetime.now(UTC).weekday()  # 6 = Sunday
-            _sweep_hour = datetime.now(UTC).hour
-            if _sweep_dow == 6 and _sweep_hour == 3:
-                _log.info("cmd_cron: running weekly parameter sweep (Sunday 03:00 UTC)")
+            _should_sweep = True
+            if _LAST_SWEEP_PATH.exists():
+                _sweep_days_since = (
+                    datetime.now(UTC).timestamp() - _LAST_SWEEP_PATH.stat().st_mtime
+                ) / 86400
+                _should_sweep = _sweep_days_since >= 7
+            if _should_sweep:
+                _log.info(
+                    "cmd_cron: running weekly parameter sweep (>=7 days since last)"
+                )
                 from param_sweep import run_sweep as _run_sweep
 
                 try:
@@ -1853,6 +1863,10 @@ def _cmd_cron_body(
                         )
                 except Exception as _sweep_err:
                     _log.warning("cmd_cron: weekly sweep failed: %s", _sweep_err)
+                # Always touch marker after attempting so the gate closes correctly
+                # even when param_sweep has no data to work with yet.
+                _LAST_SWEEP_PATH.parent.mkdir(exist_ok=True)
+                _LAST_SWEEP_PATH.touch()
     except Exception as _e:
         _log.debug("cmd_cron: weekly sweep check failed: %s", _e)
 

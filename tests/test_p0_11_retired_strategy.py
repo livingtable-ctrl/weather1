@@ -68,7 +68,9 @@ def _stub_heavy_deps(monkeypatch):
         "weather_markets.get_ensemble_members",
         lambda lat, lon, date, var="max", tz="UTC": [],
     )
-    monkeypatch.setattr("weather_markets.apply_station_bias", lambda c, t, var="max": t)
+    monkeypatch.setattr(
+        "weather_markets._get_combined_station_bias", lambda c, var="max": 0.0
+    )
     monkeypatch.setattr(
         "weather_markets._get_consensus_probs",
         lambda city, date, cond, hour=None, var="max": (0.60, 0.58, 78.0, 77.0),

@@ -5308,8 +5308,7 @@ def analyze_trade(enriched: dict) -> dict | None:
         _count_gate("volatile_regime")
         return None
 
-    # Apply exactly one city-level ML correction (GBM > Platt), then fall back to
-    # global temperature scaling which requires no per-city data.
+    # Apply exactly one city-level ML correction (GBM > Platt).
     # Gate: skip all correction tiers until enough live trades have settled.
     # Per-tier guards gate training; this gate prevents inference from models
     # trained on backtesting data being applied to live paper trades.
@@ -5399,31 +5398,6 @@ def analyze_trade(enriched: dict) -> dict | None:
                     else:
                         blended_prob = max(0.01, min(0.99, _new_prob))
                         _city_correction_applied = True
-        except Exception:
-            pass
-
-    # Global temperature scaling — compresses overconfident predictions toward 0.5.
-    # Applied when no city-specific model fired (uses all settled data, not per-city).
-    if not _city_correction_applied:
-        try:
-            from ml_bias import apply_temperature_scaling as _apply_temp
-
-            _corrected = _apply_temp(blended_prob)
-            _delta = abs(_corrected - blended_prob)
-            _log.info(
-                "analyze_trade: temp-scaling %.3f → %.3f (Δ%.3f)",
-                blended_prob,
-                _corrected,
-                _delta,
-            )
-            if _delta > _ML_CORRECTION_LIMIT:
-                _log.warning(
-                    "analyze_trade: temp-scaling exceeds ±%.2f (Δ=%.3f) — skipping",
-                    _ML_CORRECTION_LIMIT,
-                    _delta,
-                )
-            else:
-                blended_prob = max(0.01, min(0.99, _corrected))
         except Exception:
             pass
 
