@@ -1,0 +1,1 @@
+{"nodes": [{"id": "sem_safe_io", "label": "Safe IO (atomic writes + CRC integrity)", "file_type": "code", "source_file": "safe_io.py", "source_location": null, "source_url": null, "captured_at": null, "author": null, "contributor": null}], "edges": [], "hyperedges": []}

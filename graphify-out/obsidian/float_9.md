@@ -1,0 +1,17 @@
+---
+source_file: "consistency.py"
+type: "code"
+community: "Module: tests"
+location: "L30"
+tags:
+  - graphify/code
+  - graphify/EXTRACTED
+  - community/Module_tests
+---
+
+# float
+
+## Connections
+- [[_parse_threshold()]] - `references` [EXTRACTED]
+
+#graphify/code #graphify/EXTRACTED #community/Module_tests

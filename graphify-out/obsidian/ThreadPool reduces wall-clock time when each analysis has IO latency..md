@@ -1,0 +1,17 @@
+---
+source_file: "tests/test_infrastructure.py"
+type: "rationale"
+community: "Circuit Breaker Fault Tolerance"
+location: "L519"
+tags:
+  - graphify/rationale
+  - graphify/EXTRACTED
+  - community/Circuit_Breaker_Fault_Tolerance
+---
+
+# ThreadPool reduces wall-clock time when each analysis has I/O latency.
+
+## Connections
+- [[test_analyze_markets_parallel_is_faster_than_sequential()]] - `rationale_for` [EXTRACTED]
+
+#graphify/rationale #graphify/EXTRACTED #community/Circuit_Breaker_Fault_Tolerance

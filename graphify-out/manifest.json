@@ -1,0 +1,1432 @@
+{
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\.graphify_detect.json": {
+    "mtime": 1780117657.912715,
+    "ast_hash": "211dc61f2dc348fd989a1a61c55f248d",
+    "semantic_hash": "211dc61f2dc348fd989a1a61c55f248d"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\ab_test.py": {
+    "mtime": 1780117645.1283405,
+    "ast_hash": "41e85a325335fde76858c8e5f8093d1b",
+    "semantic_hash": "41e85a325335fde76858c8e5f8093d1b"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\alerts.py": {
+    "mtime": 1780117645.1293402,
+    "ast_hash": "356493002fb3da44c0fe00de714691c9",
+    "semantic_hash": "356493002fb3da44c0fe00de714691c9"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\backtest.py": {
+    "mtime": 1780117645.1304543,
+    "ast_hash": "553656116957802fae59dd606cdda28b",
+    "semantic_hash": "553656116957802fae59dd606cdda28b"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\calibration.py": {
+    "mtime": 1780117645.1304543,
+    "ast_hash": "31c25744ec49f08306361d92fc264be8",
+    "semantic_hash": "31c25744ec49f08306361d92fc264be8"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\check_edge.py": {
+    "mtime": 1780117645.1304543,
+    "ast_hash": "d1497a38824606c1e8ad30da487f8e35",
+    "semantic_hash": "d1497a38824606c1e8ad30da487f8e35"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\circuit_breaker.py": {
+    "mtime": 1780117645.1315207,
+    "ast_hash": "6891b68ea869e99e6a6813091c9db679",
+    "semantic_hash": "6891b68ea869e99e6a6813091c9db679"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\climate_indices.py": {
+    "mtime": 1780117645.1315207,
+    "ast_hash": "77293eb93f2516e43122c8dc5047f6cb",
+    "semantic_hash": "77293eb93f2516e43122c8dc5047f6cb"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\climatology.py": {
+    "mtime": 1780117645.1325212,
+    "ast_hash": "03fccceb345ff06eca6c27eb945a0b87",
+    "semantic_hash": "03fccceb345ff06eca6c27eb945a0b87"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\cloud_backup.py": {
+    "mtime": 1780117645.1325212,
+    "ast_hash": "7e47125b3e03daf8743fa3a10715bc37",
+    "semantic_hash": "7e47125b3e03daf8743fa3a10715bc37"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\colors.py": {
+    "mtime": 1780117645.1325212,
+    "ast_hash": "7df9550fc92d876bb01fe0166e185bea",
+    "semantic_hash": "7df9550fc92d876bb01fe0166e185bea"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\config.py": {
+    "mtime": 1780117645.1335206,
+    "ast_hash": "164cf672bbb9ec86158163070d08a060",
+    "semantic_hash": "164cf672bbb9ec86158163070d08a060"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\consistency.py": {
+    "mtime": 1780117645.1335206,
+    "ast_hash": "5866a0fa4923f627931446b811cf59be",
+    "semantic_hash": "5866a0fa4923f627931446b811cf59be"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\cron.py": {
+    "mtime": 1780117645.13452,
+    "ast_hash": "e491b1aa40e06dd895223398fd876cf6",
+    "semantic_hash": "e491b1aa40e06dd895223398fd876cf6"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\execution_log.py": {
+    "mtime": 1780117645.1585264,
+    "ast_hash": "7453c8f88576b58f370df1f17fb30349",
+    "semantic_hash": "7453c8f88576b58f370df1f17fb30349"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\feature_importance.py": {
+    "mtime": 1780117645.1585264,
+    "ast_hash": "006a43c579be4bed5780fc452a52d43d",
+    "semantic_hash": "006a43c579be4bed5780fc452a52d43d"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\forecast_cache.py": {
+    "mtime": 1780117645.1629684,
+    "ast_hash": "cf0edf504db6a3c28735feb41d0bb572",
+    "semantic_hash": "cf0edf504db6a3c28735feb41d0bb572"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\kalshi_client.py": {
+    "mtime": 1780117645.1640332,
+    "ast_hash": "9b727e3f984877a962e6e79d8a1fb5f1",
+    "semantic_hash": "9b727e3f984877a962e6e79d8a1fb5f1"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\kalshi_ws.py": {
+    "mtime": 1780117645.1640332,
+    "ast_hash": "57effa239c534122c3792eec594d082d",
+    "semantic_hash": "57effa239c534122c3792eec594d082d"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\main.py": {
+    "mtime": 1780117645.1688528,
+    "ast_hash": "8028e3c31fc253606a9b7a0e85972448",
+    "semantic_hash": "8028e3c31fc253606a9b7a0e85972448"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\market_types.py": {
+    "mtime": 1780117645.1688528,
+    "ast_hash": "aa01dd1b677e92a12c65b98d7a4b4a13",
+    "semantic_hash": "aa01dd1b677e92a12c65b98d7a4b4a13"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\metar.py": {
+    "mtime": 1780117645.1688528,
+    "ast_hash": "d9b98ee52ff5a12d0428f56fc0aff81b",
+    "semantic_hash": "d9b98ee52ff5a12d0428f56fc0aff81b"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\ml_bias.py": {
+    "mtime": 1780117645.1699374,
+    "ast_hash": "f41b5d842dec4360ff12dc07c7104455",
+    "semantic_hash": "f41b5d842dec4360ff12dc07c7104455"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\monte_carlo.py": {
+    "mtime": 1780117645.1699374,
+    "ast_hash": "10b9d9077e1e7b7a4c0f6cd1a60c9383",
+    "semantic_hash": "10b9d9077e1e7b7a4c0f6cd1a60c9383"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\mos.py": {
+    "mtime": 1780117645.1709363,
+    "ast_hash": "af58f0cc5d23e35f3a3fd3383db7757e",
+    "semantic_hash": "af58f0cc5d23e35f3a3fd3383db7757e"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\notify.py": {
+    "mtime": 1780117645.1769772,
+    "ast_hash": "9665eeca4b90803fe99eab4c8460b402",
+    "semantic_hash": "9665eeca4b90803fe99eab4c8460b402"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\nws.py": {
+    "mtime": 1780117645.1769772,
+    "ast_hash": "c20432a7a83a2b2057ac94ee3228dc2d",
+    "semantic_hash": "c20432a7a83a2b2057ac94ee3228dc2d"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\order_executor.py": {
+    "mtime": 1780117645.1779776,
+    "ast_hash": "a39ff0a3fb8c4a4ea27a31201818a1d2",
+    "semantic_hash": "a39ff0a3fb8c4a4ea27a31201818a1d2"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\output_formatters.py": {
+    "mtime": 1780117645.1779776,
+    "ast_hash": "eae9ef57e5194cdaf1d7fd94cee41481",
+    "semantic_hash": "eae9ef57e5194cdaf1d7fd94cee41481"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\paper.py": {
+    "mtime": 1780117645.1789773,
+    "ast_hash": "d4dc92d2b25019565ed91afa382cca9f",
+    "semantic_hash": "d4dc92d2b25019565ed91afa382cca9f"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\param_sweep.py": {
+    "mtime": 1780117645.1799786,
+    "ast_hash": "f889dab2e27cd01fda66fe6c0b7b49c8",
+    "semantic_hash": "f889dab2e27cd01fda66fe6c0b7b49c8"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\pdf_report.py": {
+    "mtime": 1780117645.1799786,
+    "ast_hash": "1bcd83c21c555bf1cd07d6b7d4d6fb27",
+    "semantic_hash": "1bcd83c21c555bf1cd07d6b7d4d6fb27"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\regime.py": {
+    "mtime": 1780117645.1810732,
+    "ast_hash": "8aa985c0b728aefc6c9dccee04102184",
+    "semantic_hash": "8aa985c0b728aefc6c9dccee04102184"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\restore_window.ps1": {
+    "mtime": 1780117645.1810732,
+    "ast_hash": "98a65148784de09901a805a1789f5ba7",
+    "semantic_hash": "98a65148784de09901a805a1789f5ba7"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\safe_io.py": {
+    "mtime": 1780117645.1820743,
+    "ast_hash": "4464c967c1d43c4c4b45b77e2ecd9140",
+    "semantic_hash": "4464c967c1d43c4c4b45b77e2ecd9140"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\schema_validator.py": {
+    "mtime": 1780117645.1820743,
+    "ast_hash": "a5d2bf673ee975a48107dce85d53c176",
+    "semantic_hash": "a5d2bf673ee975a48107dce85d53c176"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\settlement_monitor.py": {
+    "mtime": 1780117645.1830738,
+    "ast_hash": "21658cf24f9f574962e109e9edc3e8c1",
+    "semantic_hash": "21658cf24f9f574962e109e9edc3e8c1"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\sigma_audit.py": {
+    "mtime": 1780117645.1830738,
+    "ast_hash": "36423412e9fefa898013e8871354fc11",
+    "semantic_hash": "36423412e9fefa898013e8871354fc11"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\system_health.py": {
+    "mtime": 1780117645.1900742,
+    "ast_hash": "3dd4b830d9c9e19100b06132677fd9d9",
+    "semantic_hash": "3dd4b830d9c9e19100b06132677fd9d9"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\tracker.py": {
+    "mtime": 1780117645.237763,
+    "ast_hash": "a2b1e79046ee93c27b59da10b9aee5c3",
+    "semantic_hash": "a2b1e79046ee93c27b59da10b9aee5c3"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\trading_gates.py": {
+    "mtime": 1780117645.237763,
+    "ast_hash": "f9f5d12e54caee177f744698aee81b07",
+    "semantic_hash": "f9f5d12e54caee177f744698aee81b07"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\utils.py": {
+    "mtime": 1780117645.2497635,
+    "ast_hash": "f7ec3a9eda47d04b364a7d86446db9bd",
+    "semantic_hash": "f7ec3a9eda47d04b364a7d86446db9bd"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\weather_markets.py": {
+    "mtime": 1780117645.2507625,
+    "ast_hash": "482910ac6d83eaa4b5dc752172ce0594",
+    "semantic_hash": "482910ac6d83eaa4b5dc752172ce0594"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\web_app.py": {
+    "mtime": 1780117645.2517626,
+    "ast_hash": "06e7e74b5ee4304373329be1dadfc77b",
+    "semantic_hash": "06e7e74b5ee4304373329be1dadfc77b"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\frontend\\package.json": {
+    "mtime": 1780117645.1640332,
+    "ast_hash": "12ebc1dd693a4b1d6c0430f05f6b17df",
+    "semantic_hash": "12ebc1dd693a4b1d6c0430f05f6b17df"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\frontend\\vite.config.js": {
+    "mtime": 1780117645.1640332,
+    "ast_hash": "2cb4cee473464ad482b0245a5d1a1d79",
+    "semantic_hash": "2cb4cee473464ad482b0245a5d1a1d79"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\frontend\\src\\App.jsx": {
+    "mtime": 1780117645.1640332,
+    "ast_hash": "618a4776b60295e36d149476f99f0994",
+    "semantic_hash": "618a4776b60295e36d149476f99f0994"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\frontend\\src\\main.jsx": {
+    "mtime": 1780117645.1640332,
+    "ast_hash": "1f7d55a5ad976edcb22c0c275954113f",
+    "semantic_hash": "1f7d55a5ad976edcb22c0c275954113f"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\frontend\\src\\mockData.js": {
+    "mtime": 1780117645.1640332,
+    "ast_hash": "dfdbe47d211d13cfe1c392d0eab912a1",
+    "semantic_hash": "dfdbe47d211d13cfe1c392d0eab912a1"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\frontend\\src\\useData.js": {
+    "mtime": 1780117645.1640332,
+    "ast_hash": "b187d6961223e79a9a89c39cb2a7ccd5",
+    "semantic_hash": "b187d6961223e79a9a89c39cb2a7ccd5"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\static\\analytics.js": {
+    "mtime": 1780117645.184074,
+    "ast_hash": "b4e532d471305f4cc9414ca7565e88e7",
+    "semantic_hash": "b4e532d471305f4cc9414ca7565e88e7"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\static\\dashboard.js": {
+    "mtime": 1780117645.1850743,
+    "ast_hash": "868305d2bc44478c6dedc622ce02360f",
+    "semantic_hash": "868305d2bc44478c6dedc622ce02360f"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\static\\forecast.js": {
+    "mtime": 1780117645.188074,
+    "ast_hash": "ca42c50ec161c36482c01f473321fc15",
+    "semantic_hash": "ca42c50ec161c36482c01f473321fc15"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\static\\risk.js": {
+    "mtime": 1780117645.188074,
+    "ast_hash": "892a00760f94410d3e3a3b605fa3725d",
+    "semantic_hash": "892a00760f94410d3e3a3b605fa3725d"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\static\\signals.js": {
+    "mtime": 1780117645.189074,
+    "ast_hash": "a9324c125360d1f3063ae6c5377e2f4f",
+    "semantic_hash": "a9324c125360d1f3063ae6c5377e2f4f"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\static\\trades.js": {
+    "mtime": 1780117645.189074,
+    "ast_hash": "94fa32ddba68f0c965229f39c1b0e621",
+    "semantic_hash": "94fa32ddba68f0c965229f39c1b0e621"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\tests\\conftest.py": {
+    "mtime": 1780117645.1950743,
+    "ast_hash": "3ab232992de3abc356beb21749e8f915",
+    "semantic_hash": "3ab232992de3abc356beb21749e8f915"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\tests\\test_ab_test.py": {
+    "mtime": 1780117645.196074,
+    "ast_hash": "10af1b7e57bb4834f661532b3cc72438",
+    "semantic_hash": "10af1b7e57bb4834f661532b3cc72438"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\tests\\test_alerts_side.py": {
+    "mtime": 1780117645.1970742,
+    "ast_hash": "5a16f43f7de44a3ae8a9488b793d961d",
+    "semantic_hash": "5a16f43f7de44a3ae8a9488b793d961d"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\tests\\test_backlog_batch.py": {
+    "mtime": 1780117645.1974213,
+    "ast_hash": "ebc003eb996b6cbfb611831b7a2634d3",
+    "semantic_hash": "ebc003eb996b6cbfb611831b7a2634d3"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\tests\\test_backtest.py": {
+    "mtime": 1780117645.1979241,
+    "ast_hash": "6f2a778adfb8b9307896b8887c827932",
+    "semantic_hash": "6f2a778adfb8b9307896b8887c827932"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\tests\\test_backtest_stratified.py": {
+    "mtime": 1780117645.1984458,
+    "ast_hash": "7a0b76de8f111b4e6c1d73046da78a17",
+    "semantic_hash": "7a0b76de8f111b4e6c1d73046da78a17"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\tests\\test_calibration.py": {
+    "mtime": 1780117645.1989636,
+    "ast_hash": "8b5b50eceaa9d42a4bc5d3327aae9dbc",
+    "semantic_hash": "8b5b50eceaa9d42a4bc5d3327aae9dbc"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\tests\\test_circuit_breaker.py": {
+    "mtime": 1780117645.1989636,
+    "ast_hash": "acc2aa5fd1a76f4b424d7a8cb671e072",
+    "semantic_hash": "acc2aa5fd1a76f4b424d7a8cb671e072"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\tests\\test_cleanup_data_dir.py": {
+    "mtime": 1780117645.1994832,
+    "ast_hash": "1b172abc2f8fa08c57704214abdf0b63",
+    "semantic_hash": "1b172abc2f8fa08c57704214abdf0b63"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\tests\\test_cloud_backup.py": {
+    "mtime": 1780117645.2000701,
+    "ast_hash": "596fdf679958657049a298b92ebf7a5b",
+    "semantic_hash": "596fdf679958657049a298b92ebf7a5b"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\tests\\test_confidence_tiers.py": {
+    "mtime": 1780117645.2005973,
+    "ast_hash": "f6020ab56b14743098cb7fefc3a7fce5",
+    "semantic_hash": "f6020ab56b14743098cb7fefc3a7fce5"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\tests\\test_config.py": {
+    "mtime": 1780117645.2011232,
+    "ast_hash": "bdf09bad1ffc48263ada297ced2f4e84",
+    "semantic_hash": "bdf09bad1ffc48263ada297ced2f4e84"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\tests\\test_consistency.py": {
+    "mtime": 1780117645.201647,
+    "ast_hash": "434099ecd545aababcc948885a282e3f",
+    "semantic_hash": "434099ecd545aababcc948885a282e3f"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\tests\\test_cron_integration.py": {
+    "mtime": 1780117645.2021883,
+    "ast_hash": "4da2095b72977b77f8da61c744ee14c6",
+    "semantic_hash": "4da2095b72977b77f8da61c744ee14c6"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\tests\\test_cron_lock.py": {
+    "mtime": 1780117645.2021883,
+    "ast_hash": "5a73f44a6c599e263474d59f94ac37c4",
+    "semantic_hash": "5a73f44a6c599e263474d59f94ac37c4"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\tests\\test_cron_trade_updates.py": {
+    "mtime": 1780117645.202703,
+    "ast_hash": "6238e0c35c3f74e06b1a0e49bbe6aa1b",
+    "semantic_hash": "6238e0c35c3f74e06b1a0e49bbe6aa1b"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\tests\\test_data_freshness.py": {
+    "mtime": 1780117645.2032206,
+    "ast_hash": "3979a014dcaaa61935bf3f7e1c65e24e",
+    "semantic_hash": "3979a014dcaaa61935bf3f7e1c65e24e"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\tests\\test_debug_fixes.py": {
+    "mtime": 1780117645.2037373,
+    "ast_hash": "9124aadc78b1a37db02609b927f70fe3",
+    "semantic_hash": "9124aadc78b1a37db02609b927f70fe3"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\tests\\test_dedup.py": {
+    "mtime": 1780117645.204258,
+    "ast_hash": "400ed7d19a291f2c222521591736c625",
+    "semantic_hash": "400ed7d19a291f2c222521591736c625"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\tests\\test_drawdown_tiers.py": {
+    "mtime": 1780117645.204258,
+    "ast_hash": "917eec934b0990f1a91ba04368a7b3e6",
+    "semantic_hash": "917eec934b0990f1a91ba04368a7b3e6"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\tests\\test_early_exits.py": {
+    "mtime": 1780117645.2047796,
+    "ast_hash": "83f0389e11b00a8caffa05c6a7f7e104",
+    "semantic_hash": "83f0389e11b00a8caffa05c6a7f7e104"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\tests\\test_ecmwf.py": {
+    "mtime": 1780117645.2052987,
+    "ast_hash": "76aebf06e7da24a6017b83e72ecec1c4",
+    "semantic_hash": "76aebf06e7da24a6017b83e72ecec1c4"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\tests\\test_edge_threshold.py": {
+    "mtime": 1780117645.2058198,
+    "ast_hash": "8e29995da73a5e313718b59b1c74ee80",
+    "semantic_hash": "8e29995da73a5e313718b59b1c74ee80"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\tests\\test_edge_version.py": {
+    "mtime": 1780117645.2058198,
+    "ast_hash": "5dc37e213c73551b31569aa046bc4024",
+    "semantic_hash": "5dc37e213c73551b31569aa046bc4024"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\tests\\test_execution_log.py": {
+    "mtime": 1780117645.2058198,
+    "ast_hash": "eb5f92a1ca48b5aa69194b029a3cf2eb",
+    "semantic_hash": "eb5f92a1ca48b5aa69194b029a3cf2eb"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\tests\\test_execution_proof.py": {
+    "mtime": 1780117645.206342,
+    "ast_hash": "3799478fed0c8381209cc1abbbec1e0b",
+    "semantic_hash": "3799478fed0c8381209cc1abbbec1e0b"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\tests\\test_execution_stability.py": {
+    "mtime": 1780117645.206863,
+    "ast_hash": "e3c88b0fbe376bd52ef87693f9048c12",
+    "semantic_hash": "e3c88b0fbe376bd52ef87693f9048c12"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\tests\\test_flash_crash_cb.py": {
+    "mtime": 1780117645.2073817,
+    "ast_hash": "2d0b944f52c3da9772fb7549e188bfb8",
+    "semantic_hash": "2d0b944f52c3da9772fb7549e188bfb8"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\tests\\test_forecasting.py": {
+    "mtime": 1780117645.2089398,
+    "ast_hash": "b864af1d3534b49f49e65c77af742aa6",
+    "semantic_hash": "b864af1d3534b49f49e65c77af742aa6"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\tests\\test_forecast_accuracy.py": {
+    "mtime": 1780117645.2079031,
+    "ast_hash": "1a1bae9cb4422cd831589c5733041ee5",
+    "semantic_hash": "1a1bae9cb4422cd831589c5733041ee5"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\tests\\test_forecast_cache.py": {
+    "mtime": 1780117645.2079031,
+    "ast_hash": "bdbbc091cef687c0675b275303f763a9",
+    "semantic_hash": "bdbbc091cef687c0675b275303f763a9"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\tests\\test_gaussian_prob.py": {
+    "mtime": 1780117645.2089398,
+    "ast_hash": "0ab18167fc57c10f5bbf4b35cc4daf25",
+    "semantic_hash": "0ab18167fc57c10f5bbf4b35cc4daf25"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\tests\\test_graduation_gate.py": {
+    "mtime": 1780117645.209457,
+    "ast_hash": "f44acbf4c80aae879781e7758f29121c",
+    "semantic_hash": "f44acbf4c80aae879781e7758f29121c"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\tests\\test_hmac_bias.py": {
+    "mtime": 1780117645.209457,
+    "ast_hash": "6193b8c8f3a79f04da35daa5f36ee30a",
+    "semantic_hash": "6193b8c8f3a79f04da35daa5f36ee30a"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\tests\\test_http.py": {
+    "mtime": 1780117645.209457,
+    "ast_hash": "6420d918320753896906ca441e0ad236",
+    "semantic_hash": "6420d918320753896906ca441e0ad236"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\tests\\test_idempotency.py": {
+    "mtime": 1780117645.2104616,
+    "ast_hash": "1e2a6361e364e5399ed7d1eab014dae5",
+    "semantic_hash": "1e2a6361e364e5399ed7d1eab014dae5"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\tests\\test_infrastructure.py": {
+    "mtime": 1780117645.2104616,
+    "ast_hash": "cf7e6d3d8e27cb4a5581a39e52591d29",
+    "semantic_hash": "cf7e6d3d8e27cb4a5581a39e52591d29"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\tests\\test_integration.py": {
+    "mtime": 1780117645.2104616,
+    "ast_hash": "2e13afaed4f2802f7415e31f113421a1",
+    "semantic_hash": "2e13afaed4f2802f7415e31f113421a1"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\tests\\test_integration_live.py": {
+    "mtime": 1780117645.211461,
+    "ast_hash": "65dcbda18926750e1419b2320de68cc0",
+    "semantic_hash": "65dcbda18926750e1419b2320de68cc0"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\tests\\test_kalshi_client.py": {
+    "mtime": 1780117645.211461,
+    "ast_hash": "e05e67ccacef01bdf440c1ee93c77d41",
+    "semantic_hash": "e05e67ccacef01bdf440c1ee93c77d41"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\tests\\test_kalshi_ws.py": {
+    "mtime": 1780117645.211461,
+    "ast_hash": "15c79153a06cd47beb26d40aed7e1933",
+    "semantic_hash": "15c79153a06cd47beb26d40aed7e1933"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\tests\\test_kelly_property.py": {
+    "mtime": 1780117645.2124615,
+    "ast_hash": "cc29f5eeae60dea29bb2519bac89f097",
+    "semantic_hash": "cc29f5eeae60dea29bb2519bac89f097"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\tests\\test_live_execution.py": {
+    "mtime": 1780117645.2124615,
+    "ast_hash": "d4638573859f1f232c8a8987f108e8db",
+    "semantic_hash": "d4638573859f1f232c8a8987f108e8db"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\tests\\test_main_cron_smoke.py": {
+    "mtime": 1780117645.213461,
+    "ast_hash": "5598f04fb713b72fde96a185dc11a239",
+    "semantic_hash": "5598f04fb713b72fde96a185dc11a239"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\tests\\test_menu_ux.py": {
+    "mtime": 1780117645.213461,
+    "ast_hash": "7305263c706ffad241f5dff87c551c79",
+    "semantic_hash": "7305263c706ffad241f5dff87c551c79"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\tests\\test_metar.py": {
+    "mtime": 1780117645.213461,
+    "ast_hash": "d41b64355567db2379e13a3c147e28a8",
+    "semantic_hash": "d41b64355567db2379e13a3c147e28a8"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\tests\\test_ml_bias.py": {
+    "mtime": 1780117645.2144613,
+    "ast_hash": "c59e141e1dc9e1ef16670ff88db308c7",
+    "semantic_hash": "c59e141e1dc9e1ef16670ff88db308c7"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\tests\\test_mos.py": {
+    "mtime": 1780117645.2144613,
+    "ast_hash": "3c64404518de98a654f91c3e470b0385",
+    "semantic_hash": "3c64404518de98a654f91c3e470b0385"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\tests\\test_nbm.py": {
+    "mtime": 1780117645.2144613,
+    "ast_hash": "8ae1d46dd6c6efb7d591fade184908cb",
+    "semantic_hash": "8ae1d46dd6c6efb7d591fade184908cb"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\tests\\test_obs_weight.py": {
+    "mtime": 1780117645.2154613,
+    "ast_hash": "767f1521a2d4e036df8da03f610e8f2c",
+    "semantic_hash": "767f1521a2d4e036df8da03f610e8f2c"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\tests\\test_p0_10_paper_prelog.py": {
+    "mtime": 1780117645.2154613,
+    "ast_hash": "fde26728e04b5b71fa1b9b47105bc7d0",
+    "semantic_hash": "fde26728e04b5b71fa1b9b47105bc7d0"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\tests\\test_p0_11_retired_strategy.py": {
+    "mtime": 1780117645.2164612,
+    "ast_hash": "fc52756e5a052682cfb6e7dbe94fc57f",
+    "semantic_hash": "fc52756e5a052682cfb6e7dbe94fc57f"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\tests\\test_p0_16_cron_endpoint.py": {
+    "mtime": 1780117645.2164612,
+    "ast_hash": "cee9afa93518d9a4113c3664f9849297",
+    "semantic_hash": "cee9afa93518d9a4113c3664f9849297"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\tests\\test_p1_remaining.py": {
+    "mtime": 1780117645.2174609,
+    "ast_hash": "af5f2862b2b7b0157f9da9177e4419de",
+    "semantic_hash": "af5f2862b2b7b0157f9da9177e4419de"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\tests\\test_p9_p10.py": {
+    "mtime": 1780117645.2174609,
+    "ast_hash": "c109ae02548ce8d968cb076b2ce8a1b3",
+    "semantic_hash": "c109ae02548ce8d968cb076b2ce8a1b3"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\tests\\test_paper.py": {
+    "mtime": 1780117645.2174609,
+    "ast_hash": "c4a38fd69b4e99c289ef075c224aa9cc",
+    "semantic_hash": "c4a38fd69b4e99c289ef075c224aa9cc"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\tests\\test_paper_metrics.py": {
+    "mtime": 1780117645.2184608,
+    "ast_hash": "7267255cd81e216a1f1735b2edc1720e",
+    "semantic_hash": "7267255cd81e216a1f1735b2edc1720e"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\tests\\test_param_sweep_load.py": {
+    "mtime": 1780117645.2184608,
+    "ast_hash": "86f29d4d5eccffaaff4e4830b071d2dd",
+    "semantic_hash": "86f29d4d5eccffaaff4e4830b071d2dd"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\tests\\test_phase2_batch_a.py": {
+    "mtime": 1780117645.219462,
+    "ast_hash": "02f9924c24b57248b14e914ea3240a2c",
+    "semantic_hash": "02f9924c24b57248b14e914ea3240a2c"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\tests\\test_phase2_batch_b.py": {
+    "mtime": 1780117645.219462,
+    "ast_hash": "31761da98de90f618b49f570b8ad8c99",
+    "semantic_hash": "31761da98de90f618b49f570b8ad8c99"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\tests\\test_phase2_batch_c.py": {
+    "mtime": 1780117645.2204618,
+    "ast_hash": "8f90c2efaa3e481b32bda20cfcd81868",
+    "semantic_hash": "8f90c2efaa3e481b32bda20cfcd81868"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\tests\\test_phase2_batch_d.py": {
+    "mtime": 1780117645.2204618,
+    "ast_hash": "00edb1260ef92fa7d0663d326f83192a",
+    "semantic_hash": "00edb1260ef92fa7d0663d326f83192a"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\tests\\test_phase2_batch_e.py": {
+    "mtime": 1780117645.2204618,
+    "ast_hash": "785e2696f5a6e19390d8d30249504d80",
+    "semantic_hash": "785e2696f5a6e19390d8d30249504d80"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\tests\\test_phase2_batch_f.py": {
+    "mtime": 1780117645.2214615,
+    "ast_hash": "eb37c51fab22ca2d1ca9485a79666e63",
+    "semantic_hash": "eb37c51fab22ca2d1ca9485a79666e63"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\tests\\test_phase2_batch_g.py": {
+    "mtime": 1780117645.2214615,
+    "ast_hash": "94f20ce85a2f661e5d8e6017806fc40d",
+    "semantic_hash": "94f20ce85a2f661e5d8e6017806fc40d"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\tests\\test_phase2_batch_h.py": {
+    "mtime": 1780117645.2214615,
+    "ast_hash": "2d8ffd5155c8932b7d49a878362230e7",
+    "semantic_hash": "2d8ffd5155c8932b7d49a878362230e7"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\tests\\test_phase2_batch_i.py": {
+    "mtime": 1780117645.2224624,
+    "ast_hash": "47e69f1f82f3b2094d701356cfe9dfb0",
+    "semantic_hash": "47e69f1f82f3b2094d701356cfe9dfb0"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\tests\\test_phase2_batch_j.py": {
+    "mtime": 1780117645.2234614,
+    "ast_hash": "fc07f39f77a2ac7117e0ef4334c40c43",
+    "semantic_hash": "fc07f39f77a2ac7117e0ef4334c40c43"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\tests\\test_phase2_batch_k.py": {
+    "mtime": 1780117645.2234614,
+    "ast_hash": "a1d0a9fc4e4b75ae27a114d26731a5cb",
+    "semantic_hash": "a1d0a9fc4e4b75ae27a114d26731a5cb"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\tests\\test_phase2_batch_l.py": {
+    "mtime": 1780117645.2234614,
+    "ast_hash": "f0baf5687e7c3d583fbda26c88c11882",
+    "semantic_hash": "f0baf5687e7c3d583fbda26c88c11882"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\tests\\test_phase2_batch_m.py": {
+    "mtime": 1780117645.2244618,
+    "ast_hash": "6abbe98304a79ac4c0216c184b8a35aa",
+    "semantic_hash": "6abbe98304a79ac4c0216c184b8a35aa"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\tests\\test_phase3_batch_a.py": {
+    "mtime": 1780117645.225464,
+    "ast_hash": "074a614249ce5e311b7861479156c9a0",
+    "semantic_hash": "074a614249ce5e311b7861479156c9a0"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\tests\\test_phase3_batch_b.py": {
+    "mtime": 1780117645.225464,
+    "ast_hash": "6add6857a68dc19c9c720d9b49e6f4a5",
+    "semantic_hash": "6add6857a68dc19c9c720d9b49e6f4a5"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\tests\\test_phase3_batch_c.py": {
+    "mtime": 1780117645.2264624,
+    "ast_hash": "f9223a0d2f2d2cd32532f57eaf5e6df1",
+    "semantic_hash": "f9223a0d2f2d2cd32532f57eaf5e6df1"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\tests\\test_phase3_batch_d.py": {
+    "mtime": 1780117645.2264624,
+    "ast_hash": "20c184a18c7095dd2f4744dfe5959ae2",
+    "semantic_hash": "20c184a18c7095dd2f4744dfe5959ae2"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\tests\\test_phase3_batch_e.py": {
+    "mtime": 1780117645.2264624,
+    "ast_hash": "0f5f1cb06125e9057e789113159809f4",
+    "semantic_hash": "0f5f1cb06125e9057e789113159809f4"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\tests\\test_phase4.py": {
+    "mtime": 1780117645.2274616,
+    "ast_hash": "2914ede10fe8d6c5b27b6231bea106a3",
+    "semantic_hash": "2914ede10fe8d6c5b27b6231bea106a3"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\tests\\test_pnl_attribution.py": {
+    "mtime": 1780117645.2274616,
+    "ast_hash": "94cb4bb348ec7e05e88730fc6b416d4a",
+    "semantic_hash": "94cb4bb348ec7e05e88730fc6b416d4a"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\tests\\test_prelog.py": {
+    "mtime": 1780117645.2274616,
+    "ast_hash": "1d3e55b2f57e8b3feb2df97543310805",
+    "semantic_hash": "1d3e55b2f57e8b3feb2df97543310805"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\tests\\test_regression.py": {
+    "mtime": 1780117645.2274616,
+    "ast_hash": "3f28fe288395b51492432ce9b2c2b28f",
+    "semantic_hash": "3f28fe288395b51492432ce9b2c2b28f"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\tests\\test_risk_control.py": {
+    "mtime": 1780117645.2284615,
+    "ast_hash": "546fe96e9a9a324146dc79c72d4649f1",
+    "semantic_hash": "546fe96e9a9a324146dc79c72d4649f1"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\tests\\test_safe_io.py": {
+    "mtime": 1780117645.2284615,
+    "ast_hash": "1afc77e784f67577b420a559e7778ce4",
+    "semantic_hash": "1afc77e784f67577b420a559e7778ce4"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\tests\\test_schema_drift.py": {
+    "mtime": 1780117645.2284615,
+    "ast_hash": "edb068523d859b4398eff5161599cb91",
+    "semantic_hash": "edb068523d859b4398eff5161599cb91"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\tests\\test_settlement_monitor.py": {
+    "mtime": 1780117645.229462,
+    "ast_hash": "fca806d63389bc2357b813102089b7f0",
+    "semantic_hash": "fca806d63389bc2357b813102089b7f0"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\tests\\test_signal_quality.py": {
+    "mtime": 1780117645.229462,
+    "ast_hash": "14d36423e7facbe077da0606640f3719",
+    "semantic_hash": "14d36423e7facbe077da0606640f3719"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\tests\\test_silent_failures.py": {
+    "mtime": 1780117645.229462,
+    "ast_hash": "3005114500e1f8f469ef28694ae78ede",
+    "semantic_hash": "3005114500e1f8f469ef28694ae78ede"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\tests\\test_spend_validation.py": {
+    "mtime": 1780117645.229462,
+    "ast_hash": "e1d0963eeb27026362c73b0c650191b7",
+    "semantic_hash": "e1d0963eeb27026362c73b0c650191b7"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\tests\\test_sprt.py": {
+    "mtime": 1780117645.229462,
+    "ast_hash": "8341e1a78ed326bc04a5921f76bcc035",
+    "semantic_hash": "8341e1a78ed326bc04a5921f76bcc035"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\tests\\test_starting_balance.py": {
+    "mtime": 1780117645.229462,
+    "ast_hash": "03785debaf2d0a75ec2d37e957181eaa",
+    "semantic_hash": "03785debaf2d0a75ec2d37e957181eaa"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\tests\\test_state_consistency.py": {
+    "mtime": 1780117645.229462,
+    "ast_hash": "f78c0a9a029d8d575790db09d7e414b8",
+    "semantic_hash": "f78c0a9a029d8d575790db09d7e414b8"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\tests\\test_station_bias.py": {
+    "mtime": 1780117645.229462,
+    "ast_hash": "391f839bc143afc93c64baec12f7a72f",
+    "semantic_hash": "391f839bc143afc93c64baec12f7a72f"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\tests\\test_suggested_bets.py": {
+    "mtime": 1780117645.229462,
+    "ast_hash": "86c3b3a3693699047c4deff353d550b0",
+    "semantic_hash": "86c3b3a3693699047c4deff353d550b0"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\tests\\test_tracker.py": {
+    "mtime": 1780117645.229462,
+    "ast_hash": "b99f4d1942a29fa936f847e54f8c1eaa",
+    "semantic_hash": "b99f4d1942a29fa936f847e54f8c1eaa"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\tests\\test_trade_improvements.py": {
+    "mtime": 1780117645.2335627,
+    "ast_hash": "b9803b04a32a092063c14d12ef8e4e8d",
+    "semantic_hash": "b9803b04a32a092063c14d12ef8e4e8d"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\tests\\test_trade_validation.py": {
+    "mtime": 1780117645.2335627,
+    "ast_hash": "1c63ac5bae89aa784204abf0d1ab7d78",
+    "semantic_hash": "1c63ac5bae89aa784204abf0d1ab7d78"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\tests\\test_trading.py": {
+    "mtime": 1780117645.2335627,
+    "ast_hash": "e5d3a21d85c5443dc9abaac9accf7610",
+    "semantic_hash": "e5d3a21d85c5443dc9abaac9accf7610"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\tests\\test_trading_gates.py": {
+    "mtime": 1780117645.2347639,
+    "ast_hash": "6c4d0abd1fa7a038125fe53ff280a32e",
+    "semantic_hash": "6c4d0abd1fa7a038125fe53ff280a32e"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\tests\\test_walk_forward.py": {
+    "mtime": 1780117645.2347639,
+    "ast_hash": "e1bdc02209ee94d94e4721b9385429ae",
+    "semantic_hash": "e1bdc02209ee94d94e4721b9385429ae"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\tests\\test_weather.py": {
+    "mtime": 1780117645.2357626,
+    "ast_hash": "0347c7e012c50575efd5f9803524731d",
+    "semantic_hash": "0347c7e012c50575efd5f9803524731d"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\tests\\test_weather_markets.py": {
+    "mtime": 1780117645.2357626,
+    "ast_hash": "c12be9eec9472e20f2b1df72add54d7d",
+    "semantic_hash": "c12be9eec9472e20f2b1df72add54d7d"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\tests\\test_web_analytics.py": {
+    "mtime": 1780117645.2357626,
+    "ast_hash": "a1c89ebd79f28baa538a8f9da14a5f3d",
+    "semantic_hash": "a1c89ebd79f28baa538a8f9da14a5f3d"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\tests\\test_web_app.py": {
+    "mtime": 1780117645.236763,
+    "ast_hash": "b253cf53ad4fd58cac83d0761729cc87",
+    "semantic_hash": "b253cf53ad4fd58cac83d0761729cc87"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\tests\\test_web_auth.py": {
+    "mtime": 1780117645.236763,
+    "ast_hash": "08645611b374cfd98360a20ebd554c74",
+    "semantic_hash": "08645611b374cfd98360a20ebd554c74"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\tests\\__init__.py": {
+    "mtime": 1780117645.1940742,
+    "ast_hash": "d41d8cd98f00b204e9800998ecf8427e",
+    "semantic_hash": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\tests\\fixtures\\regression_baseline.json": {
+    "mtime": 1780117645.196074,
+    "ast_hash": "51fe9aaeebc010c41b3c8b5868d7397b",
+    "semantic_hash": "51fe9aaeebc010c41b3c8b5868d7397b"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\tests\\fixtures\\sample_forecast.json": {
+    "mtime": 1780117645.196074,
+    "ast_hash": "cfdb06396c5ef115604566662e8d21cd",
+    "semantic_hash": "cfdb06396c5ef115604566662e8d21cd"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\tests\\fixtures\\sample_markets.json": {
+    "mtime": 1780117645.196074,
+    "ast_hash": "76306b59dbd70c1007cbf3ccc976a71c",
+    "semantic_hash": "76306b59dbd70c1007cbf3ccc976a71c"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\updated frontend\\.design-canvas.state.json": {
+    "mtime": 1780117645.238765,
+    "ast_hash": "20a4371df9d36f35f12a3e0516c5ba77",
+    "semantic_hash": "20a4371df9d36f35f12a3e0516c5ba77"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\updated frontend\\design-canvas.jsx": {
+    "mtime": 1780117645.2397628,
+    "ast_hash": "0950ec9a021402ad1b0bf71764e6f8cd",
+    "semantic_hash": "0950ec9a021402ad1b0bf71764e6f8cd"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\updated frontend\\full-prototype-v2.jsx": {
+    "mtime": 1780117645.2407653,
+    "ast_hash": "3e94a7fde37746176840faf14702876f",
+    "semantic_hash": "3e94a7fde37746176840faf14702876f"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\updated frontend\\full-prototype.jsx": {
+    "mtime": 1780117645.2417626,
+    "ast_hash": "3859268e0b8a05bf149f29ec6048cd72",
+    "semantic_hash": "3859268e0b8a05bf149f29ec6048cd72"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\updated frontend\\mock-data.js": {
+    "mtime": 1780117645.2417626,
+    "ast_hash": "f9549b68a57c5a793879e782b0f2f79f",
+    "semantic_hash": "f9549b68a57c5a793879e782b0f2f79f"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\updated frontend\\prototype.jsx": {
+    "mtime": 1780117645.2417626,
+    "ast_hash": "71c322dadd8ec6dcbe2346118621d378",
+    "semantic_hash": "71c322dadd8ec6dcbe2346118621d378"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\updated frontend\\tweaks-panel.jsx": {
+    "mtime": 1780117645.2477646,
+    "ast_hash": "57011f25c9a7189038c2f317aeef1fbc",
+    "semantic_hash": "57011f25c9a7189038c2f317aeef1fbc"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\updated frontend\\variation-calm.jsx": {
+    "mtime": 1780117645.2477646,
+    "ast_hash": "81593404f1f9e902cd9cca33c186e9a7",
+    "semantic_hash": "81593404f1f9e902cd9cca33c186e9a7"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\updated frontend\\variation-editorial.jsx": {
+    "mtime": 1780117645.2487626,
+    "ast_hash": "67739b406227bc90cc650263a609631c",
+    "semantic_hash": "67739b406227bc90cc650263a609631c"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\updated frontend\\variation-hybrid.jsx": {
+    "mtime": 1780117645.2487626,
+    "ast_hash": "3edc9c239b639a367394968ce1068e0e",
+    "semantic_hash": "3edc9c239b639a367394968ce1068e0e"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\updated frontend\\variation-terminal.jsx": {
+    "mtime": 1780117645.2497635,
+    "ast_hash": "8f152f45e4bbba8b9bbe9e3d099a2ba5",
+    "semantic_hash": "8f152f45e4bbba8b9bbe9e3d099a2ba5"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\updated frontend\\reference\\analytics.js": {
+    "mtime": 1780117645.2427642,
+    "ast_hash": "b4e532d471305f4cc9414ca7565e88e7",
+    "semantic_hash": "b4e532d471305f4cc9414ca7565e88e7"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\updated frontend\\reference\\dashboard.js": {
+    "mtime": 1780117645.243763,
+    "ast_hash": "89eb44ac519a182637fc2db3ebdf481e",
+    "semantic_hash": "89eb44ac519a182637fc2db3ebdf481e"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\updated frontend\\reference\\forecast.js": {
+    "mtime": 1780117645.244764,
+    "ast_hash": "ca42c50ec161c36482c01f473321fc15",
+    "semantic_hash": "ca42c50ec161c36482c01f473321fc15"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\updated frontend\\reference\\risk.js": {
+    "mtime": 1780117645.244764,
+    "ast_hash": "892a00760f94410d3e3a3b605fa3725d",
+    "semantic_hash": "892a00760f94410d3e3a3b605fa3725d"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\updated frontend\\reference\\signals.js": {
+    "mtime": 1780117645.2457628,
+    "ast_hash": "8bc152f7d4652dfe131dfd8b16b20eb0",
+    "semantic_hash": "8bc152f7d4652dfe131dfd8b16b20eb0"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\updated frontend\\reference\\trades.js": {
+    "mtime": 1780117645.2467625,
+    "ast_hash": "94fa32ddba68f0c965229f39c1b0e621",
+    "semantic_hash": "94fa32ddba68f0c965229f39c1b0e621"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\.pre-commit-config.yaml": {
+    "mtime": 1780117645.12534,
+    "ast_hash": "6daebb04f2b51cb156a24551e329b359",
+    "semantic_hash": "6daebb04f2b51cb156a24551e329b359"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\ai_code_hallucination_audit_prompt.md": {
+    "mtime": 1780117645.1283405,
+    "ast_hash": "46c21164d4dc3e150e50cc0006d53261",
+    "semantic_hash": "46c21164d4dc3e150e50cc0006d53261"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\AUDIT_PLAN.md": {
+    "mtime": 1780117645.1273406,
+    "ast_hash": "0f2a979a17051754b676f764e5cd9244",
+    "semantic_hash": "0f2a979a17051754b676f764e5cd9244"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\backlog.txt": {
+    "mtime": 1780117645.1293402,
+    "ast_hash": "bcfc4199b152fa72a1b15c0ed93975a1",
+    "semantic_hash": "bcfc4199b152fa72a1b15c0ed93975a1"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\code_review_plan.md": {
+    "mtime": 1780117645.1325212,
+    "ast_hash": "c8e7b7d6a0ac6cf69b448a556f877d87",
+    "semantic_hash": "c8e7b7d6a0ac6cf69b448a556f877d87"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\COMMANDS.md": {
+    "mtime": 1780117645.1273406,
+    "ast_hash": "a6f0b3530e78d6d7317fa37a1661fbd6",
+    "semantic_hash": "a6f0b3530e78d6d7317fa37a1661fbd6"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\LIVE_TRADING_RUNBOOK.md": {
+    "mtime": 1780117645.1273406,
+    "ast_hash": "9bd909e22ce56135912ee05d1ee9e4b0",
+    "semantic_hash": "9bd909e22ce56135912ee05d1ee9e4b0"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\mypy_out.txt": {
+    "mtime": 1780117645.1709363,
+    "ast_hash": "d41d8cd98f00b204e9800998ecf8427e",
+    "semantic_hash": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\README.md": {
+    "mtime": 1780117645.1283405,
+    "ast_hash": "b20ad6c3def3cb77632abafbe5e25755",
+    "semantic_hash": "b20ad6c3def3cb77632abafbe5e25755"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\requirements.txt": {
+    "mtime": 1780117645.1810732,
+    "ast_hash": "afd8534e41efa1609aba9fdbb565202d",
+    "semantic_hash": "afd8534e41efa1609aba9fdbb565202d"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\system_audit_prompt.txt": {
+    "mtime": 1780117645.1900742,
+    "ast_hash": "00ed021091f467fcfabff8a912dbe568",
+    "semantic_hash": "00ed021091f467fcfabff8a912dbe568"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\test_output.txt": {
+    "mtime": 1780117645.1930745,
+    "ast_hash": "5bf20cd3e78d04a4cbe8eb6662e24a76",
+    "semantic_hash": "5bf20cd3e78d04a4cbe8eb6662e24a76"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\test_output2.txt": {
+    "mtime": 1780117645.1940742,
+    "ast_hash": "dd1d3fbf61ecdd1c00960171fd0c1ffd",
+    "semantic_hash": "dd1d3fbf61ecdd1c00960171fd0c1ffd"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\.github\\workflows\\ci.yml": {
+    "mtime": 1780117645.12534,
+    "ast_hash": "50fca724a3871fffc98a6367ecc70def",
+    "semantic_hash": "50fca724a3871fffc98a6367ecc70def"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\docs\\audit-2026-04-23.md": {
+    "mtime": 1780117645.1365213,
+    "ast_hash": "4a380b8273fc2803e59c5716af7670cc",
+    "semantic_hash": "4a380b8273fc2803e59c5716af7670cc"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\docs\\audit_findings.md": {
+    "mtime": 1780117645.137521,
+    "ast_hash": "ce4ccfb2e980b4401fffe890865ee158",
+    "semantic_hash": "ce4ccfb2e980b4401fffe890865ee158"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\docs\\improvements.txt": {
+    "mtime": 1780117645.137521,
+    "ast_hash": "54930762141c57756d53d11e536ffb50",
+    "semantic_hash": "54930762141c57756d53d11e536ffb50"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\docs\\PRIORITY-CHECKLIST.md": {
+    "mtime": 1780117645.1365213,
+    "ast_hash": "6802e547f9afdf41fb830698cc469b67",
+    "semantic_hash": "6802e547f9afdf41fb830698cc469b67"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\docs\\RESEARCH-FINDINGS.md": {
+    "mtime": 1780117645.1365213,
+    "ast_hash": "f29366dbe4b00b30027774ee9e307649",
+    "semantic_hash": "f29366dbe4b00b30027774ee9e307649"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\docs\\plans\\2026-04-10-phase1-testing-foundation.md": {
+    "mtime": 1780117645.138521,
+    "ast_hash": "17c11133ba742bae774550af92d6dff1",
+    "semantic_hash": "17c11133ba742bae774550af92d6dff1"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\docs\\plans\\2026-04-10-phase2-infrastructure.md": {
+    "mtime": 1780117645.138521,
+    "ast_hash": "6b74e19f707154e7711a3173d236d106",
+    "semantic_hash": "6b74e19f707154e7711a3173d236d106"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\docs\\plans\\2026-04-10-phase3-tracker-analytics.md": {
+    "mtime": 1780117645.1395233,
+    "ast_hash": "e4cebb77b3ee88a5417129479c2c08f4",
+    "semantic_hash": "e4cebb77b3ee88a5417129479c2c08f4"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\docs\\plans\\2026-04-10-phase4-forecasting.md": {
+    "mtime": 1780117645.1395233,
+    "ast_hash": "85ed116c6da2d7ad574d02ae4e9a3fa4",
+    "semantic_hash": "85ed116c6da2d7ad574d02ae4e9a3fa4"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\docs\\plans\\2026-04-10-phase5-trading-portfolio.md": {
+    "mtime": 1780117645.1395233,
+    "ast_hash": "3abe6da3e722c760e23559480fd1378a",
+    "semantic_hash": "3abe6da3e722c760e23559480fd1378a"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\docs\\plans\\2026-04-10-phase6-dashboard.md": {
+    "mtime": 1780117645.1405213,
+    "ast_hash": "9aa351148fe296754bec0725edda7695",
+    "semantic_hash": "9aa351148fe296754bec0725edda7695"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\docs\\plans\\2026-04-10-phase7-data-safety.md": {
+    "mtime": 1780117645.1405213,
+    "ast_hash": "5596b8e639f034e3f54867e55d907f9f",
+    "semantic_hash": "5596b8e639f034e3f54867e55d907f9f"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\docs\\plans\\2026-04-17-score-improvements.md": {
+    "mtime": 1780117645.1415212,
+    "ast_hash": "d87bc8fe110edb3179cd0fb20691c881",
+    "semantic_hash": "d87bc8fe110edb3179cd0fb20691c881"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\docs\\plans\\2026-04-19-accuracy-improvements-v2.md": {
+    "mtime": 1780117645.1415212,
+    "ast_hash": "6bc1db790653535a895c50c1b84a2fe9",
+    "semantic_hash": "6bc1db790653535a895c50c1b84a2fe9"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\docs\\plans\\2026-04-19-accuracy-improvements.md": {
+    "mtime": 1780117645.1415212,
+    "ast_hash": "91f6b68608ebfc4b7b64814dbbe39779",
+    "semantic_hash": "91f6b68608ebfc4b7b64814dbbe39779"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\docs\\superpowers\\plans\\2026-04-10-dashboard-modernization.md": {
+    "mtime": 1780117645.142521,
+    "ast_hash": "7ad8868326c4ca06fea7a8c3ced0f588",
+    "semantic_hash": "7ad8868326c4ca06fea7a8c3ced0f588"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\docs\\superpowers\\plans\\2026-04-10-execution-pipeline.md": {
+    "mtime": 1780117645.142521,
+    "ast_hash": "9d93613c5d2dceb0fca08f306927649a",
+    "semantic_hash": "9d93613c5d2dceb0fca08f306927649a"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\docs\\superpowers\\plans\\2026-04-10-group-a-testing.md": {
+    "mtime": 1780117645.1435206,
+    "ast_hash": "85b99450e28ed42069df6ad5c0307105",
+    "semantic_hash": "85b99450e28ed42069df6ad5c0307105"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\docs\\superpowers\\plans\\2026-04-10-group-b-data-integrity.md": {
+    "mtime": 1780117645.1435206,
+    "ast_hash": "c27df088cc28a312fbaf465c3a38582e",
+    "semantic_hash": "c27df088cc28a312fbaf465c3a38582e"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\docs\\superpowers\\plans\\2026-04-10-group-c-model-forecasting.md": {
+    "mtime": 1780117645.1445212,
+    "ast_hash": "2dec8473ff1455848eb3094d0ebc853d",
+    "semantic_hash": "2dec8473ff1455848eb3094d0ebc853d"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\docs\\superpowers\\plans\\2026-04-10-group-d-trading-kelly.md": {
+    "mtime": 1780117645.1445212,
+    "ast_hash": "0ec048d0b815d1de84d1ee1f4b31e075",
+    "semantic_hash": "0ec048d0b815d1de84d1ee1f4b31e075"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\docs\\superpowers\\plans\\2026-04-10-group-e-calibration-scoring.md": {
+    "mtime": 1780117645.1445212,
+    "ast_hash": "99bfe9976e8f62f58c2092eff26d0c36",
+    "semantic_hash": "99bfe9976e8f62f58c2092eff26d0c36"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\docs\\superpowers\\plans\\2026-04-10-group-f-infrastructure.md": {
+    "mtime": 1780117645.1455212,
+    "ast_hash": "30b60cd3c649339d444574a28c53a069",
+    "semantic_hash": "30b60cd3c649339d444574a28c53a069"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\docs\\superpowers\\plans\\2026-04-10-group-g-dashboard.md": {
+    "mtime": 1780117645.1455212,
+    "ast_hash": "863f79aa99c310c06a0529df028f76ea",
+    "semantic_hash": "863f79aa99c310c06a0529df028f76ea"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\docs\\superpowers\\plans\\2026-04-10-live-order-lifecycle.md": {
+    "mtime": 1780117645.1455212,
+    "ast_hash": "f6d74db5e79a1a313f2a3ec7261bb2ce",
+    "semantic_hash": "f6d74db5e79a1a313f2a3ec7261bb2ce"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\docs\\superpowers\\plans\\2026-04-10-model-signal-calibration.md": {
+    "mtime": 1780117645.1465209,
+    "ast_hash": "27ac51956a0e4e42d5cc38a45f4e12b3",
+    "semantic_hash": "27ac51956a0e4e42d5cc38a45f4e12b3"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\docs\\superpowers\\plans\\2026-04-10-signal-quality.md": {
+    "mtime": 1780117645.1465209,
+    "ast_hash": "3338d41870e1bf1c1b10dc56963f28d7",
+    "semantic_hash": "3338d41870e1bf1c1b10dc56963f28d7"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\docs\\superpowers\\plans\\2026-04-10-suggested-bets.md": {
+    "mtime": 1780117645.1465209,
+    "ast_hash": "059a1b94f9972fd91fec6b048f01bf1f",
+    "semantic_hash": "059a1b94f9972fd91fec6b048f01bf1f"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\docs\\superpowers\\plans\\2026-04-11-profit-optimization.md": {
+    "mtime": 1780117645.1475213,
+    "ast_hash": "5af0a42c6730912e5e09e8238bddd8d9",
+    "semantic_hash": "5af0a42c6730912e5e09e8238bddd8d9"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\docs\\superpowers\\plans\\2026-04-13-system-hardening.md": {
+    "mtime": 1780117645.1475213,
+    "ast_hash": "616a2cc787366395b07ac89fbf865b79",
+    "semantic_hash": "616a2cc787366395b07ac89fbf865b79"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\docs\\superpowers\\plans\\2026-04-14-p10-long-term-health.md": {
+    "mtime": 1780117645.1475213,
+    "ast_hash": "49f516b036377543183742fe4f293094",
+    "semantic_hash": "49f516b036377543183742fe4f293094"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\docs\\superpowers\\plans\\2026-04-14-p2-risk-control.md": {
+    "mtime": 1780117645.1485212,
+    "ast_hash": "15851e17b581675dc69d6ecf24596b71",
+    "semantic_hash": "15851e17b581675dc69d6ecf24596b71"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\docs\\superpowers\\plans\\2026-04-14-p3-execution-stability.md": {
+    "mtime": 1780117645.1485212,
+    "ast_hash": "c9609ff98f120a491b5a0dcdb57ca521",
+    "semantic_hash": "c9609ff98f120a491b5a0dcdb57ca521"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\docs\\superpowers\\plans\\2026-04-14-p4-logging-foundation.md": {
+    "mtime": 1780117645.1485212,
+    "ast_hash": "8dcb1b8a9872016d40806c157dfb9b2e",
+    "semantic_hash": "8dcb1b8a9872016d40806c157dfb9b2e"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\docs\\superpowers\\plans\\2026-04-14-p5-testing-layer.md": {
+    "mtime": 1780117645.149521,
+    "ast_hash": "37a7ead75806c9cc4efb2bfd1600607b",
+    "semantic_hash": "37a7ead75806c9cc4efb2bfd1600607b"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\docs\\superpowers\\plans\\2026-04-14-p6-data-engineering.md": {
+    "mtime": 1780117645.149521,
+    "ast_hash": "81da14f756dc8374aeaed698f51c1abc",
+    "semantic_hash": "81da14f756dc8374aeaed698f51c1abc"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\docs\\superpowers\\plans\\2026-04-14-p7-market-realism.md": {
+    "mtime": 1780117645.149521,
+    "ast_hash": "8cdf9d1b579cbeb597b93ce0e35838d2",
+    "semantic_hash": "8cdf9d1b579cbeb597b93ce0e35838d2"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\docs\\superpowers\\plans\\2026-04-14-p8-monitoring.md": {
+    "mtime": 1780117645.1505208,
+    "ast_hash": "2266eb530d720fa6e84f30a8643bffd9",
+    "semantic_hash": "2266eb530d720fa6e84f30a8643bffd9"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\docs\\superpowers\\plans\\2026-04-14-p9-strategy-intelligence.md": {
+    "mtime": 1780117645.1505208,
+    "ast_hash": "9307c99fdd1f0aabaa1382e87185ae65",
+    "semantic_hash": "9307c99fdd1f0aabaa1382e87185ae65"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\docs\\superpowers\\plans\\2026-04-15-p11-signal-execution-intelligence.md": {
+    "mtime": 1780117645.1505208,
+    "ast_hash": "eae39850277b2704e2e8f92b084ceaeb",
+    "semantic_hash": "eae39850277b2704e2e8f92b084ceaeb"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\docs\\superpowers\\plans\\2026-04-15-p12-signal-calibration-intelligence.md": {
+    "mtime": 1780117645.1515212,
+    "ast_hash": "a1ec8c15d20c75470fc32db037478150",
+    "semantic_hash": "a1ec8c15d20c75470fc32db037478150"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\docs\\superpowers\\plans\\2026-04-16-master-priority-roadmap.md": {
+    "mtime": 1780117645.1515212,
+    "ast_hash": "9131ede1e95a8e7b829f1c53652a86dc",
+    "semantic_hash": "9131ede1e95a8e7b829f1c53652a86dc"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\docs\\superpowers\\plans\\2026-04-16-phase-a-data-foundation.md": {
+    "mtime": 1780117645.1515212,
+    "ast_hash": "f45208bdf7795148bebdcec7d0054c3d",
+    "semantic_hash": "f45208bdf7795148bebdcec7d0054c3d"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\docs\\superpowers\\plans\\2026-04-16-phase-b-risk-engine.md": {
+    "mtime": 1780117645.1525216,
+    "ast_hash": "2aae794f0b9a13254f154f6d908edef9",
+    "semantic_hash": "2aae794f0b9a13254f154f6d908edef9"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\docs\\superpowers\\plans\\2026-04-16-phase-c-new-data-sources.md": {
+    "mtime": 1780117645.1525216,
+    "ast_hash": "4b8811b866fd78cad1a27476b967d4a1",
+    "semantic_hash": "4b8811b866fd78cad1a27476b967d4a1"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\docs\\superpowers\\plans\\2026-04-16-phase-d-monitoring-settlement.md": {
+    "mtime": 1780117645.1525216,
+    "ast_hash": "d3481954a096f07eeceddf44bcccc938",
+    "semantic_hash": "d3481954a096f07eeceddf44bcccc938"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\docs\\superpowers\\plans\\2026-04-16-phase-e-walk-forward-backtest.md": {
+    "mtime": 1780117645.1535206,
+    "ast_hash": "0cabb6114a2000fd397918514dc79d2a",
+    "semantic_hash": "0cabb6114a2000fd397918514dc79d2a"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\docs\\superpowers\\plans\\2026-04-16-phase-f-websocket.md": {
+    "mtime": 1780117645.1535206,
+    "ast_hash": "03c5889fe6ce2256231cb02c8e6ac64f",
+    "semantic_hash": "03c5889fe6ce2256231cb02c8e6ac64f"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\docs\\superpowers\\plans\\2026-04-16-phase-g-long-term.md": {
+    "mtime": 1780117645.1535206,
+    "ast_hash": "c6f7425099864b2c4aca26e0962a16b3",
+    "semantic_hash": "c6f7425099864b2c4aca26e0962a16b3"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\docs\\superpowers\\plans\\2026-04-18-remediation.md": {
+    "mtime": 1780117645.1545215,
+    "ast_hash": "a6368c752b9dc6e8fdea75fb7747570c",
+    "semantic_hash": "a6368c752b9dc6e8fdea75fb7747570c"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\docs\\superpowers\\plans\\2026-04-25-fix-backtest-simulate-validate.md": {
+    "mtime": 1780117645.1545215,
+    "ast_hash": "89421433f4e575c56d35d46d8d4e3c50",
+    "semantic_hash": "89421433f4e575c56d35d46d8d4e3c50"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\docs\\superpowers\\plans\\2026-04-25-fix-browse-cities.md": {
+    "mtime": 1780117645.1545215,
+    "ast_hash": "123a7a998606c11ecfd266fc21fcdc4a",
+    "semantic_hash": "123a7a998606c11ecfd266fc21fcdc4a"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\docs\\superpowers\\plans\\2026-04-25-fix-cron-trade-updates.md": {
+    "mtime": 1780117645.1545215,
+    "ast_hash": "bf6ead3d2e52b8836e400ca00218ee1d",
+    "semantic_hash": "bf6ead3d2e52b8836e400ca00218ee1d"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\docs\\superpowers\\plans\\2026-04-25-fix-early-exits.md": {
+    "mtime": 1780117645.1545215,
+    "ast_hash": "8e7d148325dd85dbd9f551cdfc7305c6",
+    "semantic_hash": "8e7d148325dd85dbd9f551cdfc7305c6"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\docs\\superpowers\\plans\\2026-04-25-fix-menu-ux.md": {
+    "mtime": 1780117645.1565228,
+    "ast_hash": "bd4e22d5f14a85bd55aaa5cce9b5039e",
+    "semantic_hash": "bd4e22d5f14a85bd55aaa5cce9b5039e"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\docs\\superpowers\\plans\\2026-04-25-fix-signals-page.md": {
+    "mtime": 1780117645.1565228,
+    "ast_hash": "6a6978924e3b08650f6b4dadbefa0670",
+    "semantic_hash": "6a6978924e3b08650f6b4dadbefa0670"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\docs\\superpowers\\plans\\2026-04-25-fix-web-analytics.md": {
+    "mtime": 1780117645.1565228,
+    "ast_hash": "ae02ccf4a7b68a3bf5b887f550359fbb",
+    "semantic_hash": "ae02ccf4a7b68a3bf5b887f550359fbb"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\docs\\superpowers\\plans\\2026-04-25-profit-goal.md": {
+    "mtime": 1780117645.1565228,
+    "ast_hash": "6785cd2313b7e8e5e1cecc4d1c351cfb",
+    "semantic_hash": "6785cd2313b7e8e5e1cecc4d1c351cfb"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\docs\\superpowers\\plans\\2026-04-25-top-5-trades.md": {
+    "mtime": 1780117645.1565228,
+    "ast_hash": "b90525c7e7dc99167ae65f9b530451f8",
+    "semantic_hash": "b90525c7e7dc99167ae65f9b530451f8"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\docs\\superpowers\\plans\\2026-04-30-bug-fixes.md": {
+    "mtime": 1780117645.1585264,
+    "ast_hash": "a70bd86083bd49bdc812eab7845d46ec",
+    "semantic_hash": "a70bd86083bd49bdc812eab7845d46ec"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\docs\\superpowers\\plans\\2026-05-01-feature-roadmap.md": {
+    "mtime": 1780117645.1585264,
+    "ast_hash": "03545c1068abae9b54fe16a0616b3788",
+    "semantic_hash": "03545c1068abae9b54fe16a0616b3788"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\docs\\superpowers\\plans\\2026-05-01-new-computer-setup.md": {
+    "mtime": 1780117645.1585264,
+    "ast_hash": "72c0feccce66af59aede7b1363cf5314",
+    "semantic_hash": "72c0feccce66af59aede7b1363cf5314"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\docs\\superpowers\\plans\\do-after-graduation.md": {
+    "mtime": 1780117645.1585264,
+    "ast_hash": "2f02ea45a4c426add94b8aac4567f00a",
+    "semantic_hash": "2f02ea45a4c426add94b8aac4567f00a"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\docs\\superpowers\\specs\\2026-04-10-dashboard-modernization-design.md": {
+    "mtime": 1780117645.1585264,
+    "ast_hash": "cb28900d83bae8633ca036dc9cecf7d4",
+    "semantic_hash": "cb28900d83bae8633ca036dc9cecf7d4"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\docs\\superpowers\\specs\\2026-04-10-execution-pipeline-design.md": {
+    "mtime": 1780117645.1585264,
+    "ast_hash": "79d78ff6784cd5e6ca0a6ac45bd7ab88",
+    "semantic_hash": "79d78ff6784cd5e6ca0a6ac45bd7ab88"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\docs\\superpowers\\specs\\2026-04-10-live-order-lifecycle-design.md": {
+    "mtime": 1780117645.1585264,
+    "ast_hash": "218c2a711fa7f0cc42349c8f52e69201",
+    "semantic_hash": "218c2a711fa7f0cc42349c8f52e69201"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\docs\\superpowers\\specs\\2026-04-10-model-signal-calibration-design.md": {
+    "mtime": 1780117645.1585264,
+    "ast_hash": "3c90589580c12aae317b65308c7724ab",
+    "semantic_hash": "3c90589580c12aae317b65308c7724ab"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\docs\\superpowers\\specs\\2026-04-10-signal-quality-design.md": {
+    "mtime": 1780117645.1585264,
+    "ast_hash": "019681b83fefcfafd523b506172421f6",
+    "semantic_hash": "019681b83fefcfafd523b506172421f6"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\docs\\superpowers\\specs\\2026-04-10-suggested-bets-design.md": {
+    "mtime": 1780117645.1585264,
+    "ast_hash": "d8265522c09947bcb08b9121ae843ce3",
+    "semantic_hash": "d8265522c09947bcb08b9121ae843ce3"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\docs\\superpowers\\specs\\2026-04-11-profit-optimization-design.md": {
+    "mtime": 1780117645.1585264,
+    "ast_hash": "61d38cecc7caadbf667baaa1761ef742",
+    "semantic_hash": "61d38cecc7caadbf667baaa1761ef742"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\frontend\\index.html": {
+    "mtime": 1780117645.163395,
+    "ast_hash": "ce47f61781eba82f80450ef001aa1a47",
+    "semantic_hash": "ce47f61781eba82f80450ef001aa1a47"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\templates\\analytics.html": {
+    "mtime": 1780117645.1910746,
+    "ast_hash": "f32565284b34a2ab3823b09d2e267257",
+    "semantic_hash": "f32565284b34a2ab3823b09d2e267257"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\templates\\base.html": {
+    "mtime": 1780117645.1910746,
+    "ast_hash": "642c325354e887e36717e935cc9001a1",
+    "semantic_hash": "642c325354e887e36717e935cc9001a1"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\templates\\dashboard.html": {
+    "mtime": 1780117645.1910746,
+    "ast_hash": "c68f0014646daf7c118b41d1f17f2c78",
+    "semantic_hash": "c68f0014646daf7c118b41d1f17f2c78"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\templates\\forecast.html": {
+    "mtime": 1780117645.1910746,
+    "ast_hash": "c6cc31ddee5b8a65a9157dc2725d64b6",
+    "semantic_hash": "c6cc31ddee5b8a65a9157dc2725d64b6"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\templates\\risk.html": {
+    "mtime": 1780117645.192075,
+    "ast_hash": "c49f8d088a28573c00aee45364e90b7e",
+    "semantic_hash": "c49f8d088a28573c00aee45364e90b7e"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\templates\\signals.html": {
+    "mtime": 1780117645.192075,
+    "ast_hash": "773e86256232ca622ec9938ff251343a",
+    "semantic_hash": "773e86256232ca622ec9938ff251343a"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\templates\\trades.html": {
+    "mtime": 1780117645.192075,
+    "ast_hash": "70bb74b0ccc478a6017c997c81f3a8fe",
+    "semantic_hash": "70bb74b0ccc478a6017c997c81f3a8fe"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\updated frontend\\full-prototype.html": {
+    "mtime": 1780117645.2407653,
+    "ast_hash": "3cef0bac62bccf3aedf675c34604e169",
+    "semantic_hash": "3cef0bac62bccf3aedf675c34604e169"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\updated frontend\\HANDOFF.md": {
+    "mtime": 1780117645.238765,
+    "ast_hash": "d1bc0c78d3ec8721cd8d594389f2b420",
+    "semantic_hash": "d1bc0c78d3ec8721cd8d594389f2b420"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\updated frontend\\Kalshi Bot Dashboard.html": {
+    "mtime": 1780117645.2397628,
+    "ast_hash": "557f2469181096fbc040fcb24f79c267",
+    "semantic_hash": "557f2469181096fbc040fcb24f79c267"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\updated frontend\\prototype.html": {
+    "mtime": 1780117645.2417626,
+    "ast_hash": "867731c02b5ea31f7f977e246c3ad840",
+    "semantic_hash": "867731c02b5ea31f7f977e246c3ad840"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\updated frontend\\reference\\analytics.html": {
+    "mtime": 1780117645.2427642,
+    "ast_hash": "f32565284b34a2ab3823b09d2e267257",
+    "semantic_hash": "f32565284b34a2ab3823b09d2e267257"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\updated frontend\\reference\\base.html": {
+    "mtime": 1780117645.243763,
+    "ast_hash": "642c325354e887e36717e935cc9001a1",
+    "semantic_hash": "642c325354e887e36717e935cc9001a1"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\updated frontend\\reference\\dashboard.html": {
+    "mtime": 1780117645.243763,
+    "ast_hash": "c622f4a31b85ba416dd2a027bfc4411b",
+    "semantic_hash": "c622f4a31b85ba416dd2a027bfc4411b"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\updated frontend\\reference\\forecast.html": {
+    "mtime": 1780117645.244764,
+    "ast_hash": "c6cc31ddee5b8a65a9157dc2725d64b6",
+    "semantic_hash": "c6cc31ddee5b8a65a9157dc2725d64b6"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\updated frontend\\reference\\risk.html": {
+    "mtime": 1780117645.244764,
+    "ast_hash": "c49f8d088a28573c00aee45364e90b7e",
+    "semantic_hash": "c49f8d088a28573c00aee45364e90b7e"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\updated frontend\\reference\\signals.html": {
+    "mtime": 1780117645.2457628,
+    "ast_hash": "773e86256232ca622ec9938ff251343a",
+    "semantic_hash": "773e86256232ca622ec9938ff251343a"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\updated frontend\\reference\\trades.html": {
+    "mtime": 1780117645.2457628,
+    "ast_hash": "70bb74b0ccc478a6017c997c81f3a8fe",
+    "semantic_hash": "70bb74b0ccc478a6017c997c81f3a8fe"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\updated frontend\\screenshots\\dark-v2.png": {
+    "mtime": 1780117645.2467625,
+    "ast_hash": "d4356a800854d2cc439683db23724393",
+    "semantic_hash": "d4356a800854d2cc439683db23724393"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\updated frontend\\screenshots\\dark.png": {
+    "mtime": 1780117645.2467625,
+    "ast_hash": "3db7c04752e10ea693d08db6b442b1d1",
+    "semantic_hash": "3db7c04752e10ea693d08db6b442b1d1"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\frosty-leakey-c41696\\updated frontend\\screenshots\\light.png": {
+    "mtime": 1780117645.2477646,
+    "ast_hash": "83250b58b5ce50d51ae42f2c0f214055",
+    "semantic_hash": "83250b58b5ce50d51ae42f2c0f214055"
+  }
+}

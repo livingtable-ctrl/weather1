@@ -1,0 +1,215 @@
+---
+type: community
+cohesion: 0.04
+members: 128
+---
+
+# Forecast Analysis Engine
+
+**Cohesion:** 0.04 - loosely connected
+**Members:** 128 nodes
+
+## Members
+- [[118 Compute and persist per-city model weights from tracker MAE data.     Ret]] - rationale - weather_markets.py
+- [[118 Compute per-city inverse-MAE weights from tracker data and persist to]] - rationale - weather_markets.py
+- [[126 Return seconds until the next NWP model cycle data becomes available.]] - rationale - weather_markets.py
+- [[25118 Derive per-model blend weights from inverse-MAE scores in tracker.]] - rationale - weather_markets.py
+- [[31 _blend_weights scaled by inverse ensemble variance.]] - rationale - weather_markets.py
+- [[3339 Blend ensemble, NWS, and climatological probabilities via _blend_weight]] - rationale - weather_markets.py
+- [[39 Bayesian Kelly — integrate kelly_fraction over a uniform posterior on]] - rationale - weather_markets.py
+- [[.test_all_none_returns_none()]] - code - tests/test_phase2_batch_k.py
+- [[.test_all_sources()]] - code - tests/test_phase2_batch_k.py
+- [[.test_none_ens_std_returns_base_weights()]] - code - tests/test_forecasting.py
+- [[.test_only_ensemble_prob()]] - code - tests/test_phase2_batch_k.py
+- [[.test_result_agrees_with_blend_weights()]] - code - tests/test_phase2_batch_k.py
+- [[All-None inputs must return None.]] - rationale - tests/test_phase2_batch_k.py
+- [[Block until the per-endpoint minimum inter-request interval has elapsed.]] - rationale - weather_markets.py
+- [[Boost NWS weight at short range (1-2 days) and reduce at long range (4+ days).]] - rationale - weather_markets.py
+- [[Bootstrap 90% CI for a precipitation ensemble probability.]] - rationale - weather_markets.py
+- [[Check METAR same-day lock-in for a temperature market.      Fetches the latest]] - rationale - weather_markets.py
+- [[Compute P(outcome  condition) from raw ensemble members via empirical CDF.]] - rationale - weather_markets.py
+- [[Compute mean of non-None values in a {model temp} dict.]] - rationale - weather_markets.py
+- [[Compute std dev of non-None values. Returns 0.0 if fewer than 2 valid.]] - rationale - weather_markets.py
+- [[Convert a probability edge to a human-readable signal.]] - rationale - weather_markets.py
+- [[Convert month (1-12) to season index (1=Winter, 2=Spring, 3=Summer, 4=Fall).]] - rationale - weather_markets.py
+- [[Determine time-of-day risk level and forecast sigma multiplier.      Returns (]] - rationale - weather_markets.py
+- [[Estimated standard deviation of forecast error in °F.     Weather forecasts get]] - rationale - weather_markets.py
+- [[Extract (city, target_date) from a market dict without any network calls.     U]] - rationale - weather_markets.py
+- [[Fetch ECMWF AIFS ensemble max or min daily temperature for a city.     Uses Ope]] - rationale - weather_markets.py
+- [[Fetch all ECMWF IFS04 ensemble members for daily high (var='max') or     low (v]] - rationale - weather_markets.py
+- [[Fetch all ensemble member temps from one model for a given locationdate.     v]] - rationale - weather_markets.py
+- [[Fetch and analyze Kalshi weather prediction markets. Compares market-implied pr]] - rationale - weather_markets.py
+- [[Fetch best-available Open-Meteo max or min daily temperature for a city.     Pr]] - rationale - weather_markets.py
+- [[Fetch daily highlowprecip from three forecast models (GFS, ECMWF, ICON)     a]] - rationale - weather_markets.py
+- [[Fetch ensemble precipitation members (inches) for a citydate.     ECMWF is fet]] - rationale - weather_markets.py
+- [[Fetch highlow from weatherapi.com (free tier 1M callsmonth).      Returns {]] - rationale - weather_markets.py
+- [[Fetch per-model ensemble probabilities for ICON and GFS separately.      Retur]] - rationale - weather_markets.py
+- [[Fetch weather data from Pirate Weather (HRRRGFSGEFS blend).     Used as fallb]] - rationale - weather_markets.py
+- [[Full multi-source trade analysis pipeline       1. Ensemble probability (80+ m]] - rationale - weather_markets.py
+- [[Load platt_models.json once per process; return empty dict when absent.]] - rationale - weather_markets.py
+- [[Persist a single forecast cache entry to disk asynchronously.]] - rationale - weather_markets.py
+- [[Persist per-city model weights to datalearned_weights.json atomically.     Cal]] - rationale - weather_markets.py
+- [[Phase 2 Batch K regression tests P2-24P2-26P2-36P2-39P2-45 — weather_market]] - rationale - tests/test_phase2_batch_k.py
+- [[Pre-warm _ensemble_cache with batched ENSEMBLE_BASE requests.      Instead of]] - rationale - weather_markets.py
+- [[Pre-warm _forecast_cache with batched Open-Meteo requests.      Instead of one]] - rationale - weather_markets.py
+- [[Probability analysis for precipitation markets (rainsnow).     Uses ensemble p]] - rationale - weather_markets.py
+- [[Probability analysis for snowice markets.     Uses ensemble precipitation prob]] - rationale - weather_markets.py
+- [[Queue an ensemble cache entry for the next batch flush.]] - rationale - weather_markets.py
+- [[R24 Single source of truth for city detection from a market ticker + title.]] - rationale - weather_markets.py
+- [[Rate-limited wrapper for all Open-Meteo API calls.      On 429 returns immedi]] - rationale - weather_markets.py
+- [[Result must match manual application of _blend_weights.]] - rationale - tests/test_phase2_batch_k.py
+- [[Return (w_ensemble, w_climatology, w_nws).      Priority city  condition-typ]] - rationale - weather_markets.py
+- [[Return NWS Day-3 forecast RMSE (sigma, °F) for a city.      City must match th]] - rationale - weather_markets.py
+- [[Return True if a trained GBM correction model exists for this city.]] - rationale - ml_bias.py
+- [[Return True if the ensemble spread (p90-p10) is unusually wide — a sign the]] - rationale - weather_markets.py
+- [[Return True if the new trade would partially hedge an existing open position]] - rationale - weather_markets.py
+- [[Return all ensemble member temperatures for a citydate, combining     ICON (51]] - rationale - weather_markets.py
+- [[Return per-model weights for the ensemble blend.     Priority order       1.]] - rationale - weather_markets.py
+- [[Return the METARASOS station for a city (matches Kalshi settlement).]] - rationale - weather_markets.py
+- [[Return the best available temperature bias correction for a city.      Blends]] - rationale - weather_markets.py
+- [[Run analyze_trade on each market concurrently (127).     Returns list of resul]] - rationale - weather_markets.py
+- [[Save raw forecast data used for a trade decision to dataforecast_snapshots.]] - rationale - weather_markets.py
+- [[Single source returns that source's probability (renormalized).]] - rationale - tests/test_phase2_batch_k.py
+- [[TestBlendProbabilitiesDelegatesToBlendWeights]] - code - tests/test_phase2_batch_k.py
+- [[With all sources, result is a weighted blend (0  result  1).]] - rationale - tests/test_phase2_batch_k.py
+- [[_analyze_precip_trade()]] - code - weather_markets.py
+- [[_analyze_snow_trade()]] - code - weather_markets.py
+- [[_blend_probabilities must use _blend_weights, not hardcoded values.]] - rationale - tests/test_phase2_batch_k.py
+- [[_blend_probabilities()]] - code - weather_markets.py
+- [[_blend_weights()]] - code - weather_markets.py
+- [[_bootstrap_ci_precip()]] - code - weather_markets.py
+- [[_compute_ensemble_mean()]] - code - weather_markets.py
+- [[_compute_ensemble_spread()]] - code - weather_markets.py
+- [[_confidence_scaled_blend_weights()]] - code - weather_markets.py
+- [[_count_gate()]] - code - weather_markets.py
+- [[_edge_label()]] - code - weather_markets.py
+- [[_fetch_ensemble_precip()]] - code - weather_markets.py
+- [[_fetch_model_ensemble()]] - code - weather_markets.py
+- [[_forecast_uncertainty()]] - code - weather_markets.py
+- [[_get_combined_station_bias()]] - code - weather_markets.py
+- [[_get_consensus_probs()]] - code - weather_markets.py
+- [[_load_platt_models()]] - code - weather_markets.py
+- [[_metar_lock_in()]] - code - weather_markets.py
+- [[_metar_station_for_city()]] - code - weather_markets.py
+- [[_model_weights()]] - code - weather_markets.py
+- [[_month_to_season()]] - code - weather_markets.py
+- [[_nws_days_out_scale()]] - code - weather_markets.py
+- [[_om_rate_limit()]] - code - weather_markets.py
+- [[_om_request()]] - code - weather_markets.py
+- [[_parse_city_from_ticker()]] - code - weather_markets.py
+- [[_save_ensemble_disk_entry()]] - code - weather_markets.py
+- [[_save_forecast_disk_entry()]] - code - weather_markets.py
+- [[_time_risk()]] - code - weather_markets.py
+- [[_ttl_until_next_cycle()]] - code - weather_markets.py
+- [[_weights_from_mae()]] - code - weather_markets.py
+- [[analyze_markets_parallel()]] - code - weather_markets.py
+- [[analyze_trade()]] - code - weather_markets.py
+- [[batch_prewarm_ensemble()]] - code - weather_markets.py
+- [[batch_prewarm_forecasts()]] - code - weather_markets.py
+- [[bayesian_kelly()]] - code - weather_markets.py
+- [[bool_14]] - code - ml_bias.py
+- [[bool_24]] - code - weather_markets.py
+- [[date_7]] - code - weather_markets.py
+- [[datetime_1]] - code - weather_markets.py
+- [[detect_hedge_opportunity()]] - code - weather_markets.py
+- [[ens_std=None → identical result to _blend_weights.]] - rationale - tests/test_forecasting.py
+- [[ensemble_cdf_prob()]] - code - weather_markets.py
+- [[fetch_temperature_ecmwf()]] - code - weather_markets.py
+- [[fetch_temperature_nbm()]] - code - weather_markets.py
+- [[fetch_temperature_pirate_weather()]] - code - weather_markets.py
+- [[fetch_temperature_weatherapi()]] - code - weather_markets.py
+- [[float_31]] - code - weather_markets.py
+- [[get_ensemble_members()]] - code - weather_markets.py
+- [[get_ensemble_temps()]] - code - weather_markets.py
+- [[get_gate_counts()]] - code - weather_markets.py
+- [[get_historical_sigma()]] - code - weather_markets.py
+- [[get_weather_forecast()]] - code - weather_markets.py
+- [[has_ml_model()]] - code - ml_bias.py
+- [[int_26]] - code - weather_markets.py
+- [[is_forecast_anomalous()]] - code - weather_markets.py
+- [[is_weather_market()]] - code - weather_markets.py
+- [[learn_seasonal_weights()]] - code - weather_markets.py
+- [[parse_city_date()]] - code - weather_markets.py
+- [[save_forecast_snapshot()]] - code - weather_markets.py
+- [[save_learned_weights()]] - code - weather_markets.py
+- [[str_33]] - code - weather_markets.py
+- [[test_ensemble_confidence_scale_clamped()]] - code - tests/test_weather_markets.py
+- [[test_ensemble_confidence_scale_no_std_unchanged()]] - code - tests/test_weather_markets.py
+- [[test_phase2_batch_k.py]] - code - tests/test_phase2_batch_k.py
+- [[update_learned_weights_from_tracker()]] - code - weather_markets.py
+- [[weather_markets.py]] - code - weather_markets.py
+
+## Live Query (requires Dataview plugin)
+
+```dataview
+TABLE source_file, type FROM #community/Forecast_Analysis_Engine
+SORT file.name ASC
+```
+
+## Connections to other communities
+- 27 edges to [[_COMMUNITY_Python Types & Utilities]]
+- 21 edges to [[_COMMUNITY_Model Weights & Ensemble Blend]]
+- 21 edges to [[_COMMUNITY_SnowPrecip Physics]]
+- 15 edges to [[_COMMUNITY_Cron Scheduler]]
+- 12 edges to [[_COMMUNITY_Module tests]]
+- 12 edges to [[_COMMUNITY_Tracker Analytics (BrierBias)]]
+- 12 edges to [[_COMMUNITY_Module tests]]
+- 10 edges to [[_COMMUNITY_Module tests]]
+- 10 edges to [[_COMMUNITY_Module tests]]
+- 9 edges to [[_COMMUNITY_Circuit Breaker Fault Tolerance]]
+- 9 edges to [[_COMMUNITY_Module frosty]]
+- 9 edges to [[_COMMUNITY_Module frosty]]
+- 8 edges to [[_COMMUNITY_Module frosty]]
+- 7 edges to [[_COMMUNITY_Module tests]]
+- 6 edges to [[_COMMUNITY_Module tests]]
+- 6 edges to [[_COMMUNITY_Module frosty]]
+- 6 edges to [[_COMMUNITY_AB Testing System]]
+- 6 edges to [[_COMMUNITY_Module frosty]]
+- 6 edges to [[_COMMUNITY_Kelly Criterion Sizing]]
+- 6 edges to [[_COMMUNITY_Module tests]]
+- 6 edges to [[_COMMUNITY_Module tests]]
+- 5 edges to [[_COMMUNITY_CLI & Preload Pipeline]]
+- 5 edges to [[_COMMUNITY_Module tests]]
+- 5 edges to [[_COMMUNITY_Module tests]]
+- 5 edges to [[_COMMUNITY_Module tests]]
+- 5 edges to [[_COMMUNITY_Module tests]]
+- 4 edges to [[_COMMUNITY_Module tests]]
+- 4 edges to [[_COMMUNITY_Module tests]]
+- 4 edges to [[_COMMUNITY_Module frosty]]
+- 4 edges to [[_COMMUNITY_Module tests]]
+- 4 edges to [[_COMMUNITY_Module tests]]
+- 4 edges to [[_COMMUNITY_Module tests]]
+- 4 edges to [[_COMMUNITY_Module tests]]
+- 4 edges to [[_COMMUNITY_Module tests]]
+- 4 edges to [[_COMMUNITY_Module tests]]
+- 4 edges to [[_COMMUNITY_Module tests]]
+- 3 edges to [[_COMMUNITY_Module frosty]]
+- 3 edges to [[_COMMUNITY_Paper Trading & Exits]]
+- 3 edges to [[_COMMUNITY_Module tests]]
+- 3 edges to [[_COMMUNITY_Module tests]]
+- 3 edges to [[_COMMUNITY_Module tests]]
+- 3 edges to [[_COMMUNITY_Module tests]]
+- 2 edges to [[_COMMUNITY_Module tests]]
+- 2 edges to [[_COMMUNITY_Module frosty]]
+- 2 edges to [[_COMMUNITY_Module frosty]]
+- 2 edges to [[_COMMUNITY_Module frosty]]
+- 2 edges to [[_COMMUNITY_Module tests]]
+- 2 edges to [[_COMMUNITY_Module tests]]
+- 2 edges to [[_COMMUNITY_Module tests]]
+- 2 edges to [[_COMMUNITY_Module tests]]
+- 2 edges to [[_COMMUNITY_Module tests]]
+- 2 edges to [[_COMMUNITY_Module tests]]
+- 1 edge to [[_COMMUNITY_Module frosty]]
+- 1 edge to [[_COMMUNITY_Module frosty]]
+- 1 edge to [[_COMMUNITY_Module frosty]]
+- 1 edge to [[_COMMUNITY_Module frosty]]
+- 1 edge to [[_COMMUNITY_Module frosty]]
+- 1 edge to [[_COMMUNITY_Module tests]]
+- 1 edge to [[_COMMUNITY_Module tests]]
+
+## Top bridge nodes
+- [[weather_markets.py]] - degree 117, connects to 37 communities
+- [[analyze_trade()]] - degree 98, connects to 28 communities
+- [[float_31]] - degree 47, connects to 16 communities
+- [[int_26]] - degree 32, connects to 10 communities
+- [[str_33]] - degree 43, connects to 7 communities

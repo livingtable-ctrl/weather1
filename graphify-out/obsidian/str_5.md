@@ -1,0 +1,18 @@
+---
+source_file: "climate_indices.py"
+type: "code"
+community: "Module: frosty"
+location: "L36"
+tags:
+  - graphify/code
+  - graphify/EXTRACTED
+  - community/Module_frosty
+---
+
+# str
+
+## Connections
+- [[_fetch_monthly_index()]] - `references` [EXTRACTED]
+- [[temperature_adjustment()]] - `references` [EXTRACTED]
+
+#graphify/code #graphify/EXTRACTED #community/Module_frosty
