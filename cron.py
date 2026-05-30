@@ -1752,21 +1752,35 @@ def _cmd_cron_body(
                 _log.info(
                     "cmd_cron: running weekly ML bias model retrain (>=6 days since last)"
                 )
+                from ml_bias import train_all_temperature_scaling as _train_all_ts
                 from ml_bias import train_bias_model as _train_bias
-                from ml_bias import train_temperature_scaling as _train_temp
 
                 _trained = _train_bias()
                 if _trained:
-                    _LAST_ML_RETRAIN_PATH.parent.mkdir(exist_ok=True)
-                    _LAST_ML_RETRAIN_PATH.touch()
                     print(
                         dim(
                             f"  [MLBias] Retrained {len(_trained)} city model(s): {', '.join(_trained.keys())}"
                         )
                     )
-                _T = _train_temp()
-                if _T is not None:
-                    print(dim(f"  [TempScale] T={_T:.4f} fitted"))
+                # Use train_all_temperature_scaling so per-condition T values (between,
+                # above, below) are preserved — the old single-T function overwrites the
+                # combined JSON format and loses the per-condition entries each cron run.
+                _ts_result = _train_all_ts()
+                if _ts_result:
+                    _global_T = _ts_result.get("global")
+                    _between_T = _ts_result.get("between")
+                    _parts = []
+                    if _global_T is not None:
+                        _parts.append(f"global={_global_T:.4f}")
+                    if _between_T is not None:
+                        _parts.append(f"between={_between_T:.4f}")
+                    print(dim(f"  [TempScale] fitted — {', '.join(_parts)}"))
+                # Always touch the marker after attempting the retrain so the weekly gate
+                # fires correctly even when bias models lack enough data to train (200+
+                # samples/city).  Without this the marker never gets written and the
+                # retrain block fires on every cron cycle instead of weekly.
+                _LAST_ML_RETRAIN_PATH.parent.mkdir(exist_ok=True)
+                _LAST_ML_RETRAIN_PATH.touch()
     except Exception as _e:
         _log.debug("cmd_cron: ML bias retrain failed: %s", _e)
 
