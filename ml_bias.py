@@ -421,10 +421,28 @@ def train_temperature_scaling(min_samples: int = 35) -> float | None:
                 np.sum(labels * np.log(p_cal) + (1 - labels) * np.log(1 - p_cal))
             )
 
+        # Upper bound 15.0 — the optimal T for a model running ~18% below actual
+        # is typically 5–7; capping at 5.0 caused the optimizer to always return
+        # the boundary value.  Lower bound 0.5 prevents T from compressing
+        # probabilities to near-zero (T=0.1 produced NLL=193 vs T=5.0 NLL=27).
         result = minimize_scalar(
-            neg_log_likelihood, bounds=(0.1, 5.0), method="bounded"
+            neg_log_likelihood, bounds=(0.5, 15.0), method="bounded"
         )
         T = float(result.x)
+
+        # Refuse to save if this T makes calibration worse than no scaling (T=1).
+        # Protects against stale data or optimizer edge cases writing a bad file.
+        nll_baseline = neg_log_likelihood(1.0)
+        nll_fitted = neg_log_likelihood(T)
+        if nll_fitted >= nll_baseline:
+            _log.warning(
+                "train_temperature_scaling: fitted T=%.4f (NLL=%.4f) is no better "
+                "than T=1.0 (NLL=%.4f) — skipping save to avoid degrading calibration",
+                T,
+                nll_fitted,
+                nll_baseline,
+            )
+            return None
 
         _TEMP_PATH.parent.mkdir(exist_ok=True)
         _TEMP_PATH.write_text(json.dumps({"T": T, "n_samples": len(rows)}))
