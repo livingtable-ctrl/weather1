@@ -445,19 +445,35 @@ def _cmd_cron_body(
         flush=True,
     )
 
-    # Weekly DB retention sweep (runs on Monday only)
+    # Weekly DB retention sweep (runs on Monday only, at most once per 7 days).
+    # Uses a marker file so back-to-back cron runs on the same Monday don't
+    # re-run the sweep.  A skipped Monday is handled automatically: next Monday
+    # the marker will be ≥14 days old and the sweep fires normally.
     from utils import utc_today as _utc_today
 
+    _MONDAY_SWEEP_PATH = Path(__file__).parent / "data" / ".last_monday_sweep"
     if _utc_today().weekday() == 0:  # Monday UTC
-        from tracker import prune_api_requests as _prune_api
-        from tracker import purge_old_predictions as _purge
+        _sweep_age = (
+            (datetime.now(UTC).timestamp() - _MONDAY_SWEEP_PATH.stat().st_mtime) / 86400
+            if _MONDAY_SWEEP_PATH.exists()
+            else 999.0
+        )
+        if _sweep_age >= 7:
+            try:
+                from tracker import prune_api_requests as _prune_api
+                from tracker import purge_old_predictions as _purge
 
-        _purge(retention_days=730)
-        _prune_api(days_to_keep=90)
+                _purge(retention_days=730)
+                _prune_api(days_to_keep=90)
 
-        from feature_importance import prune_feature_log as _prune_features
+                from feature_importance import prune_feature_log as _prune_features
 
-        _prune_features()
+                _prune_features()
+            except Exception as _sweep_exc:
+                _log.warning("cmd_cron: Monday sweep failed: %s", _sweep_exc)
+            finally:
+                _MONDAY_SWEEP_PATH.parent.mkdir(exist_ok=True)
+                _MONDAY_SWEEP_PATH.touch()
 
     ctx.write_cron_running_flag()
     ctx.check_startup_orders()
@@ -1737,6 +1753,7 @@ def _cmd_cron_body(
     # D5: Weekly — retrain ML bias model as new settled trades accumulate.
     # Uses a marker file instead of exact-hour matching so scheduled runs never miss.
     _LAST_ML_RETRAIN_PATH = Path(__file__).parent / "data" / ".last_ml_retrain"
+    _should_retrain = False  # declared before try so finally can read it
     try:
         import os as _os_tb
 
@@ -1775,33 +1792,40 @@ def _cmd_cron_body(
                     if _between_T is not None:
                         _parts.append(f"between={_between_T:.4f}")
                     print(dim(f"  [TempScale] fitted — {', '.join(_parts)}"))
-                # Always touch the marker after attempting the retrain so the weekly gate
-                # fires correctly even when bias models lack enough data to train (200+
-                # samples/city).  Without this the marker never gets written and the
-                # retrain block fires on every cron cycle instead of weekly.
-                _LAST_ML_RETRAIN_PATH.parent.mkdir(exist_ok=True)
-                _LAST_ML_RETRAIN_PATH.touch()
     except Exception as _e:
         _log.debug("cmd_cron: ML bias retrain failed: %s", _e)
+    finally:
+        # Touch the marker whenever the retrain block ran — even on exception.
+        # Without this, a crash in _train_bias()/_train_all_ts() leaves the marker
+        # unwritten and the weekly gate fires on every subsequent cron cycle.
+        if _should_retrain:
+            _LAST_ML_RETRAIN_PATH.parent.mkdir(exist_ok=True)
+            _LAST_ML_RETRAIN_PATH.touch()
 
-    # D5b: Refresh per-city ensemble model weights (learned_weights.json) whenever
-    # the file is ≥5 days old — a 2-day buffer before the 7-day TTL warning fires.
-    # Gated on the file's own mtime so no separate marker file is needed, and the
-    # refresh runs independently of D5's bias-retrain gate (i.e. still fires even
-    # if bias retrain was skipped because _should_retrain was False).
+    # D5b: Refresh per-city ensemble model weights (learned_weights.json) every 5 days.
+    # Uses a SEPARATE gate file (.last_weights_refresh) rather than the data file's
+    # own mtime.  The data file mtime only advances when update_learned_weights_from_tracker
+    # returns data (>=20 predictions/city); if tracker has insufficient data the function
+    # returns {} without writing anything, leaving the mtime old and causing the block
+    # to fire on every cron cycle.  The gate file always advances after the attempt.
     # Note: the prewarm for this run already completed, so freshened weights take
     # effect on the *next* cron run — unavoidable without restructuring the flow.
-    _WEIGHTS_PATH = Path(__file__).parent / "data" / "learned_weights.json"
+    _WEIGHTS_GATE_PATH = Path(__file__).parent / "data" / ".last_weights_refresh"
+    _should_refresh_weights = False  # declared before try so finally can read it
     try:
         import os as _os_lw
 
         if not _os_lw.environ.get("PYTEST_CURRENT_TEST"):
-            _weights_age_days = (
-                (datetime.now(UTC).timestamp() - _WEIGHTS_PATH.stat().st_mtime) / 86400
-                if _WEIGHTS_PATH.exists()
+            _should_refresh_weights = True
+            _weights_gate_age = (
+                (datetime.now(UTC).timestamp() - _WEIGHTS_GATE_PATH.stat().st_mtime)
+                / 86400
+                if _WEIGHTS_GATE_PATH.exists()
                 else 999.0
             )
-            if _weights_age_days >= 5:
+            if _weights_gate_age < 5:
+                _should_refresh_weights = False
+            if _should_refresh_weights:
                 from weather_markets import (
                     update_learned_weights_from_tracker as _upd_weights,
                 )
@@ -1811,16 +1835,16 @@ def _cmd_cron_body(
                     _cities_updated = sorted(_new_weights.keys())
                     _log.info(
                         "cmd_cron: learned weights refreshed for %d city/model(s) "
-                        "(was %.1f days old): %s",
+                        "(gate was %.1f days old): %s",
                         len(_new_weights),
-                        _weights_age_days,
+                        _weights_gate_age,
                         ", ".join(_cities_updated),
                     )
                     print(
                         dim(
                             f"  [ModelWeights] Refreshed weights for"
                             f" {len(_new_weights)} city/model(s)"
-                            f" (was {_weights_age_days:.1f}d old)"
+                            f" (gate was {_weights_gate_age:.1f}d old)"
                         )
                     )
                 else:
@@ -1830,6 +1854,12 @@ def _cmd_cron_body(
                     )
     except Exception as _e:
         _log.debug("cmd_cron: learned weights refresh failed: %s", _e)
+    finally:
+        # Always advance the gate after an attempt so a no-op (insufficient data)
+        # doesn't leave the gate at age 999 and refire every cycle.
+        if _should_refresh_weights:
+            _WEIGHTS_GATE_PATH.parent.mkdir(exist_ok=True)
+            _WEIGHTS_GATE_PATH.touch()
 
     # G5: Weekly — run parameter sweep after bias retrain so sweep sees fresh model.
     # Uses a marker file (same pattern as D5) so the sweep fires on the first cron

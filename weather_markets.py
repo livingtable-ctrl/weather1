@@ -5045,13 +5045,15 @@ def analyze_trade(enriched: dict) -> dict | None:
             ]
             _active = [(w, p) for w, p in _src_probs if p is not None and w > 0]
             if not _active:
-                # No sources at all — use uninformative prior
-                _log.debug(
-                    "analyze_trade: all blend sources None for %s — using 0.5",
+                # No sources at all — returning None so the caller skips this
+                # market entirely rather than trading on a meaningless 0.5 prior.
+                # A market priced at 0.05 would show 0.45 edge against a 0.5 model
+                # prob, producing a confident trade with zero forecast basis.
+                _log.warning(
+                    "analyze_trade: all forecast sources unavailable for %s — skipping market",
                     enriched.get("ticker", "?"),
                 )
-                blended_prob = 0.5
-                blend_sources = {}
+                return None
             else:
                 _total_w = sum(w for w, _ in _active)
                 blended_prob = sum((w / _total_w) * p for w, p in _active)
@@ -5184,8 +5186,13 @@ def analyze_trade(enriched: dict) -> dict | None:
                     ),
                 ),
             )
-        except Exception:
-            pass
+        except Exception as _exc:
+            _log.error(
+                "analyze_trade: temperature scaling failed for %s: %s",
+                enriched.get("ticker", "?"),
+                _exc,
+            )
+            # blended_prob remains unscaled — degraded but tradeable
 
         # ── 7c. Market price credibility anchor ──────────────────────────────────
         # For condition types where our model has known calibration gaps, blend a

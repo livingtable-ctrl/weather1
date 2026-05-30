@@ -1409,7 +1409,8 @@ class TestMonteCarloCholesky:
 
 
 class TestCheckStopLosses:
-    def _trade(self, ticker, side, entry_price, qty):
+    def _trade(self, ticker, side, entry_price, qty, close_time="2099-01-01T00:00:00Z"):
+        # close_time defaults to far-future so Fix 1's 24h gate doesn't skip the trade.
         cost = round(entry_price * qty, 4)
         return {
             "ticker": ticker,
@@ -1418,6 +1419,7 @@ class TestCheckStopLosses:
             "quantity": qty,
             "cost": cost,
             "settled": False,
+            "close_time": close_time,
         }
 
     def test_stop_triggers_when_yes_price_halves(self):
@@ -1477,3 +1479,39 @@ class TestCheckStopLosses:
         prices = {"T1": 0.20, "T2": 0.55}
         result = check_stop_losses([t1, t2], prices)
         assert result == ["T1"]
+
+    def test_stop_loss_result_wires_to_close_paper_early(self, tmp_path, monkeypatch):
+        """Full chain: stop fires → close_paper_early settles the trade and updates balance."""
+        import paper
+
+        monkeypatch.setattr(paper, "DATA_PATH", tmp_path / "paper_trades.json")
+        # Reload so the module re-reads the patched DATA_PATH for balance/trades state.
+        import importlib
+
+        importlib.reload(paper)
+        monkeypatch.setattr(paper, "DATA_PATH", tmp_path / "paper_trades.json")
+
+        # Place a trade: 10 contracts at $0.60 → cost $6.00, balance $994.00
+        trade = paper.place_paper_order(
+            "T_INTEGRATION",
+            "yes",
+            10,
+            0.60,
+            close_time="2099-01-01T00:00:00Z",
+        )
+
+        # Price drops to 0.29 → unrealized PnL = (0.29 - 0.60) * 10 = -$3.10
+        # stop_threshold = -(cost / MULT) = -(6.0 / 2) = -$3.00 → breach
+        prices = {"T_INTEGRATION": 0.29}
+        tickers = paper.check_stop_losses(paper.get_open_trades(), prices)
+        assert "T_INTEGRATION" in tickers, (
+            "Stop should fire when loss exceeds threshold"
+        )
+
+        # Wire stop result to close_paper_early
+        exit_price = prices["T_INTEGRATION"]
+        paper.close_paper_early(trade["id"], exit_price)
+
+        assert paper.get_open_trades() == [], "Trade must be closed after early exit"
+        # balance: started 1000 − cost(6.00) + proceeds(0.29 * 10 = 2.90) = 996.90
+        assert paper.get_balance() == pytest.approx(996.90, abs=0.01)

@@ -120,3 +120,86 @@ def test_apply_platt_per_city_monotonicity():
             f"apply_platt({raw_probs[i]})={calibrated[i]:.4f} > "
             f"apply_platt({raw_probs[i + 1]})={calibrated[i + 1]:.4f}"
         )
+
+
+# ── Temperature scaling (apply_temperature_scaling) ──────────────────────────
+
+
+class TestApplyTemperatureScaling:
+    """Tests for apply_temperature_scaling — the per-condition calibration step.
+
+    Each test patches _TEMP_PATH and clears _TEMP_CACHE so the loader always
+    reads from the tmp file rather than the real data/temperature_scale.json.
+    Cross-test cache pollution is prevented by resetting _TEMP_CACHE to None
+    both before and after each test via a helper.
+    """
+
+    def _load_table(self, tmp_path, monkeypatch, content: dict):
+        """Write content to a temp file and wire ml_bias to read it."""
+        import json
+
+        import ml_bias
+
+        ts_file = tmp_path / "temperature_scale.json"
+        ts_file.write_text(json.dumps(content))
+        monkeypatch.setattr(ml_bias, "_TEMP_PATH", ts_file)
+        ml_bias._TEMP_CACHE = None  # force fresh load from tmp file
+
+    def test_no_file_returns_prob_unchanged(self, tmp_path, monkeypatch):
+        """Returns prob unchanged when temperature_scale.json does not exist."""
+        import ml_bias
+
+        monkeypatch.setattr(ml_bias, "_TEMP_PATH", tmp_path / "nonexistent.json")
+        ml_bias._TEMP_CACHE = None
+        result = ml_bias.apply_temperature_scaling(0.75)
+        ml_bias._TEMP_CACHE = None  # teardown — don't bleed into next test
+        assert result == pytest.approx(0.75)
+
+    def test_global_T_compresses_toward_0p5(self, tmp_path, monkeypatch):
+        """With a global T > 1, output is compressed toward 0.5 from both sides."""
+        self._load_table(tmp_path, monkeypatch, {"global": {"T": 2.0, "n": 50}})
+        import ml_bias
+
+        result = ml_bias.apply_temperature_scaling(0.80)
+        result_low = ml_bias.apply_temperature_scaling(0.20)
+        ml_bias._TEMP_CACHE = None
+        assert 0.5 < result < 0.80, f"Expected compression toward 0.5, got {result}"
+        assert 0.20 < result_low < 0.5, (
+            f"Expected compression toward 0.5, got {result_low}"
+        )
+
+    def test_per_condition_T_used_when_available(self, tmp_path, monkeypatch):
+        """condition_type='between' uses the between T, not the global T."""
+        self._load_table(
+            tmp_path,
+            monkeypatch,
+            {
+                "global": {"T": 2.0, "n": 50},
+                "between": {"T": 8.0, "n": 25},
+            },
+        )
+        import ml_bias
+
+        result_between = ml_bias.apply_temperature_scaling(
+            0.80, condition_type="between"
+        )
+        result_global = ml_bias.apply_temperature_scaling(0.80, condition_type="above")
+        ml_bias._TEMP_CACHE = None
+        # Higher T = more compression toward 0.5, so between result < global result
+        assert result_between < result_global, (
+            f"between T=8 should compress more than global T=2: "
+            f"between={result_between:.4f}, global={result_global:.4f}"
+        )
+
+    def test_falls_back_to_global_when_condition_absent(self, tmp_path, monkeypatch):
+        """Falls back to global T when condition_type is not in the table."""
+        self._load_table(tmp_path, monkeypatch, {"global": {"T": 2.0, "n": 50}})
+        import ml_bias
+
+        # condition_type="above" not in table — must use global T (not no-op)
+        result = ml_bias.apply_temperature_scaling(0.80, condition_type="above")
+        ml_bias._TEMP_CACHE = None
+        assert 0.5 < result < 0.80, (
+            f"Expected global T fallback (compression), got {result} — "
+            "no-op would return 0.80"
+        )

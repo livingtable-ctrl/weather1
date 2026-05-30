@@ -1012,17 +1012,27 @@ def check_stop_losses(
         # In the final 24h before settlement, binary markets converge to the actual
         # temperature outcome. GFS/ensemble-driven intraday price swings in this window
         # are noise — let the market settle naturally rather than locking in a loss.
+        # Hard-skip trades with no close_time — we cannot apply the gate, and
+        # silently bypassing it risks closing positions at settlement-convergence prices.
         close_time_str = t.get("close_time") or t.get("expires_at")
-        if close_time_str:
-            try:
-                close_dt = datetime.fromisoformat(close_time_str.replace("Z", "+00:00"))
-                hours_to_settlement = (
-                    close_dt - datetime.now(UTC)
-                ).total_seconds() / 3600
-                if hours_to_settlement < 24:
-                    continue
-            except (ValueError, TypeError):
-                pass
+        if not close_time_str:
+            _log.warning(
+                "[StopLoss] skipping exit for %s — close_time missing, cannot apply 24h gate",
+                ticker,
+            )
+            continue
+        try:
+            close_dt = datetime.fromisoformat(close_time_str.replace("Z", "+00:00"))
+            hours_to_settlement = (close_dt - datetime.now(UTC)).total_seconds() / 3600
+            if hours_to_settlement < 24:
+                continue
+        except (ValueError, TypeError):
+            _log.warning(
+                "[StopLoss] skipping exit for %s — close_time unparseable: %s",
+                ticker,
+                close_time_str,
+            )
+            continue
 
         current_yes = current_yes_prices.get(ticker)
         if current_yes is None:
@@ -1097,17 +1107,26 @@ def check_breakeven_stops(
 
         # Same 24h time-gate as check_stop_losses: in the final day before settlement
         # price swings are outcome-convergence noise, not a signal to exit.
+        # Hard-skip trades with no close_time — same reasoning as check_stop_losses.
         close_time_str = t.get("close_time") or t.get("expires_at")
-        if close_time_str:
-            try:
-                close_dt = datetime.fromisoformat(close_time_str.replace("Z", "+00:00"))
-                hours_to_settlement = (
-                    close_dt - datetime.now(UTC)
-                ).total_seconds() / 3600
-                if hours_to_settlement < 24:
-                    continue
-            except (ValueError, TypeError):
-                pass
+        if not close_time_str:
+            _log.warning(
+                "[BreakevenStop] skipping exit for %s — close_time missing, cannot apply 24h gate",
+                ticker,
+            )
+            continue
+        try:
+            close_dt = datetime.fromisoformat(close_time_str.replace("Z", "+00:00"))
+            hours_to_settlement = (close_dt - datetime.now(UTC)).total_seconds() / 3600
+            if hours_to_settlement < 24:
+                continue
+        except (ValueError, TypeError):
+            _log.warning(
+                "[BreakevenStop] skipping exit for %s — close_time unparseable: %s",
+                ticker,
+                close_time_str,
+            )
+            continue
 
         current_yes = current_yes_prices.get(ticker)
         if current_yes is None:

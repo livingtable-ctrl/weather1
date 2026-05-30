@@ -464,19 +464,30 @@ def _check_early_exits(client=None) -> int:
             # before settlement without the temperature outcome actually changing.
             # Let the market converge naturally rather than closing a winning position
             # on a transient model revision.
+            # Hard-skip trades with no close_time — same reasoning as paper.py
+            # check_stop_losses: silently bypassing the 24h gate risks closing
+            # positions at settlement-convergence prices.
             close_time_str = trade.get("close_time") or trade.get("expires_at")
-            if close_time_str:
-                try:
-                    close_dt = datetime.fromisoformat(
-                        close_time_str.replace("Z", "+00:00")
-                    )
-                    hours_to_settlement = (
-                        close_dt - datetime.now(UTC)
-                    ).total_seconds() / 3600
-                    if hours_to_settlement < 24:
-                        continue
-                except (ValueError, TypeError):
-                    pass
+            if not close_time_str:
+                _log.warning(
+                    "[EarlyExit] skipping exit for %s — close_time missing, cannot apply 24h gate",
+                    trade.get("ticker", "?"),
+                )
+                continue
+            try:
+                close_dt = datetime.fromisoformat(close_time_str.replace("Z", "+00:00"))
+                hours_to_settlement = (
+                    close_dt - datetime.now(UTC)
+                ).total_seconds() / 3600
+                if hours_to_settlement < 24:
+                    continue
+            except (ValueError, TypeError):
+                _log.warning(
+                    "[EarlyExit] skipping exit for %s — close_time unparseable: %s",
+                    trade.get("ticker", "?"),
+                    close_time_str,
+                )
+                continue
 
             if shift > 0.25:
                 exit_price = _midpoint_price(market, side)
