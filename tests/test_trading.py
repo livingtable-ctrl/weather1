@@ -813,8 +813,16 @@ def test_check_early_exits_closes_position_when_prob_flips(tmp_path, monkeypatch
 
     from paper import get_open_trades, place_paper_order
 
-    # Place an open YES trade at 70% prob
-    place_paper_order("TEST-TICKER", "yes", 5, 0.70, entry_prob=0.70)
+    # Place an open YES trade at 70% prob.
+    # close_time far in the future so the 24h gate doesn't skip the early-exit check.
+    place_paper_order(
+        "TEST-TICKER",
+        "yes",
+        5,
+        0.70,
+        entry_prob=0.70,
+        close_time="2099-01-01T00:00:00Z",
+    )
     trade_id = get_open_trades()[0]["id"]
 
     # Back-date entered_at so the 12h hold-time guard doesn't block the exit check
@@ -1467,9 +1475,9 @@ class TestTimeDecayEdgeScope:
         near = self._run(near_close)
 
         assert far is not None and near is not None
-        assert near["net_edge"] < far["net_edge"], (
-            f"L7-D: net_edge must be smaller when close is near: "
-            f"near={near['net_edge']:.4f} far={far['net_edge']:.4f} — "
+        assert abs(near["net_edge"]) < abs(far["net_edge"]), (
+            f"L7-D: time decay must reduce net_edge magnitude when close is near: "
+            f"|near|={abs(near['net_edge']):.4f} |far|={abs(far['net_edge']):.4f} — "
             f"before fix both were equal (time decay didn't reach net_edge)"
         )
 

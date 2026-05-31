@@ -98,6 +98,9 @@ class TestBreakEvenStop:
             "outcome": None,
             "pnl": None,
             "peak_profit_pct": peak,
+            # 24h gate requires close_time; set far in the future so the gate
+            # never fires during tests (we're testing the breakeven trigger, not the gate)
+            "close_time": "2099-01-01T00:00:00Z",
         }
 
     def test_no_peak_no_exit(self):
