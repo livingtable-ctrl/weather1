@@ -249,3 +249,63 @@ def alert_strong_signal(
             len(successes),
             ticker,
         )
+
+
+def send_system_alert(title: str, message: str) -> None:
+    """
+    Send a system-level alert (not trade-specific) through all configured backends.
+    Used for operational events like the dead-man's-switch 48h cron gap.
+
+    Uses a 6-hour cooldown under the "__system__" key so back-to-back cron runs
+    don't spam — separate from the per-ticker trade cooldown.
+    Never raises.
+    """
+    _SYSTEM_COOLDOWN_SECS = 21_600  # 6 hours between system alerts
+    now = time.time()
+    if now - _last_notified.get("__system__", 0.0) < _SYSTEM_COOLDOWN_SECS:
+        return
+    _last_notified["__system__"] = now
+
+    import logging as _logging
+
+    _sys_log = _logging.getLogger(__name__)
+    successes: list[bool] = []
+
+    # Desktop notification
+    if _ENABLED and "desktop" in _CHANNELS:
+        try:
+            _notif.notify(
+                title=title,
+                message=message,
+                app_name="Kalshi Weather",
+                timeout=10,
+            )
+            successes.append(True)
+        except Exception:
+            successes.append(False)
+    elif "desktop" in _CHANNELS:
+        successes.append(False)
+
+    # Pushover
+    if "pushover" in _CHANNELS:
+        successes.append(_send_pushover(title, message))
+
+    # ntfy
+    if "ntfy" in _CHANNELS:
+        ntfy_topic = os.getenv("NTFY_TOPIC", "")
+        if ntfy_topic:
+            successes.append(_send_ntfy(ntfy_topic, title, message))
+
+    # Discord — orange for system alerts (0xE3B341)
+    if "discord" in _CHANNELS:
+        successes.append(_send_discord(title, message, color=0xE3B341))
+
+    # Email
+    if "email" in _CHANNELS:
+        successes.append(_send_email(title, message))
+
+    if successes and not any(successes):
+        _sys_log.warning(
+            "send_system_alert: all %d channel(s) failed — alert not delivered",
+            len(successes),
+        )

@@ -214,10 +214,21 @@ def _setup_logging() -> logging.Logger:
     level = os.getenv("LOG_LEVEL", "WARNING").upper()
     root.setLevel(getattr(logging, level, logging.WARNING))
     handler = logging.StreamHandler()
-    handler.setFormatter(
-        logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s")
-    )
+    _fmt = logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+    handler.setFormatter(_fmt)
     root.addHandler(handler)
+
+    # Opt-in file logging: set LOG_FILE env var to persist logs to disk.
+    # Uses RotatingFileHandler (10 MB max, 3 backups) so the file never grows unbounded.
+    # When LOG_FILE is absent this block is skipped entirely — no behavior change.
+    _log_file = os.getenv("LOG_FILE", "")
+    if _log_file:
+        from logging.handlers import RotatingFileHandler
+
+        _fh = RotatingFileHandler(_log_file, maxBytes=10 * 1024 * 1024, backupCount=3)
+        _fh.setFormatter(_fmt)
+        root.addHandler(_fh)
+
     return root
 
 

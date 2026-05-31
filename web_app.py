@@ -245,7 +245,33 @@ def _build_app(client):
 
     @app.route("/health")
     def health():
-        return jsonify({"status": "ok", "timestamp": datetime.now(UTC).isoformat()})
+        """Health check endpoint. Includes last cron run timing so external monitors
+        (e.g. UptimeRobot) can detect a stale bot without watching terminal output."""
+        _last_run_path = Path(__file__).parent / "data" / ".cron_last_run"
+        _stale_threshold = float(os.environ.get("CRON_STALE_HOURS", "6.0"))
+        _last_cron: str | None = None
+        _hours_since: float | None = None
+        _cron_stale = False
+        if _last_run_path.exists():
+            try:
+                _hours_since = round(
+                    (datetime.now(UTC).timestamp() - _last_run_path.stat().st_mtime)
+                    / 3600,
+                    2,
+                )
+                _last_cron = _last_run_path.read_text().strip() or None
+                _cron_stale = _hours_since > _stale_threshold
+            except Exception:
+                pass
+        return jsonify(
+            {
+                "status": "ok",
+                "timestamp": datetime.now(UTC).isoformat(),
+                "last_cron_run": _last_cron,
+                "hours_since_cron": _hours_since,
+                "cron_stale": _cron_stale,
+            }
+        )
 
     @app.route("/api/stream")
     def stream():

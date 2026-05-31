@@ -426,6 +426,30 @@ def _cmd_cron_body(
         )
         return None
 
+    # Dead-man's-switch: if more than 48h have elapsed since the last cron run completed,
+    # log a warning and fire a system notification so the user knows the bot went quiet.
+    # .cron_last_run is written in the cmd_cron finally block on every completion, so a
+    # gap > 48h means the process was stopped or crashing for at least two days.
+    try:
+        _last_run_path = Path(__file__).parent / "data" / ".cron_last_run"
+        if _last_run_path.exists():
+            import time as _gap_time
+
+            _gap_hours = (_gap_time.time() - _last_run_path.stat().st_mtime) / 3600
+            if _gap_hours > 48:
+                _log.warning(
+                    "cmd_cron: %.0fh since last cron run — gap alert fired",
+                    _gap_hours,
+                )
+                from notify import send_system_alert as _sys_alert
+
+                _sys_alert(
+                    "Kalshi cron gap detected",
+                    f"Last run was {_gap_hours:.0f}h ago — check the bot.",
+                )
+    except Exception as _gap_exc:
+        _log.debug("cmd_cron: dead-man's-switch check failed: %s", _gap_exc)
+
     # Graduation gate — prevent accidental live trading before sufficient predictions exist
     try:
         _check_graduation_gate()
@@ -469,6 +493,20 @@ def _cmd_cron_body(
                 from feature_importance import prune_feature_log as _prune_features
 
                 _prune_features()
+
+                # Compact the SQLite DB after pruning removes rows. VACUUM reclaims
+                # dead pages that accumulate from deleted predictions/API records.
+                # isolation_level=None gives explicit autocommit — VACUUM cannot run
+                # inside a Python sqlite3 implicit transaction.
+                import sqlite3 as _sqlite3_vac
+
+                from tracker import DB_PATH as _db_path_vac
+
+                with _sqlite3_vac.connect(
+                    str(_db_path_vac), isolation_level=None
+                ) as _vac_con:
+                    _vac_con.execute("VACUUM")
+                    _log.debug("cmd_cron: Monday VACUUM complete")
             except Exception as _sweep_exc:
                 _log.warning("cmd_cron: Monday sweep failed: %s", _sweep_exc)
             finally:
