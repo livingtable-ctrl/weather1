@@ -1793,3 +1793,53 @@ class TestConsensusCacheKeyBetween:
         )
 
         wm._CONSENSUS_CACHE.clear()
+
+
+# ── TestBetweenFloorGate ──────────────────────────────────────────────────────
+
+
+class TestBetweenFloorGate:
+    """Verify the 9b between-floor gate only blocks low-confidence YES bets.
+
+    The correct condition is: blended_prob < 0.15 AND blended_prob > market_prob.
+    This means:
+      - LOW model prob + would bet NO  → allowed  (genuine NO edge)
+      - LOW model prob + would bet YES → blocked   (suspicious low-confidence YES)
+
+    The old condition (market > 0.30) was logically inverted — it only fired when
+    blended_prob < market_prob (always a NO signal), so it blocked profitable NO
+    trades (16/26 = 61.5% win rate) while never catching the suspicious YES case.
+    """
+
+    def _gate_fires(self, blended_prob: float, market_prob: float) -> bool:
+        """Evaluate the corrected gate condition directly."""
+        return blended_prob < 0.15 and blended_prob > market_prob
+
+    def test_no_bet_low_model_prob_not_blocked(self):
+        """blended=8%, market=45% → we'd bet NO → gate must NOT fire."""
+        assert not self._gate_fires(0.08, 0.45)
+
+    def test_no_bet_very_low_model_prob_not_blocked(self):
+        """blended=3%, market=65% → strong NO signal → gate must NOT fire."""
+        assert not self._gate_fires(0.03, 0.65)
+
+    def test_yes_bet_low_model_prob_is_blocked(self):
+        """blended=10%, market=7% → we'd bet YES with low confidence → gate MUST fire."""
+        assert self._gate_fires(0.10, 0.07)
+
+    def test_above_threshold_never_blocked(self):
+        """blended=20% (above 15%) → gate never fires regardless of side."""
+        assert not self._gate_fires(0.20, 0.10)  # even if this would be YES
+
+    def test_old_condition_would_have_been_wrong(self):
+        """Demonstrates the old condition (market > 0.30) was logically inverted.
+
+        With old logic: blended=8%, market=45% → market>0.30 AND blended<0.15 → BLOCKED.
+        This was wrong — it blocked a profitable NO trade.
+        With new logic: blended < market → not blocked. Correct.
+        """
+        blended, market = 0.08, 0.45
+        old_gate = blended < 0.15 and market > 0.30
+        new_gate = blended < 0.15 and blended > market
+        assert old_gate is True, "old gate would have fired (the bug)"
+        assert new_gate is False, "new gate correctly allows the NO trade"

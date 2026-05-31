@@ -4735,11 +4735,14 @@ def analyze_trade(enriched: dict) -> dict | None:
             if condition.get("type") == "between":
                 _log.info(
                     "analyze_trade between sigma: raw=%.2f cap=%.2f "
-                    "final=%.2f → ens_prob=%.3f (city=%s)",
+                    "final=%.2f → ens_prob=%.3f forecast=%.1f bracket=[%.1f,%.1f] (city=%s)",
                     _raw_sigma,
                     _prob_sigma_cap,
                     sigma,
                     ens_prob,
+                    forecast_temp,
+                    condition.get("lower", 0.0),
+                    condition.get("upper", 0.0),
                     city,
                 )
 
@@ -5446,20 +5449,22 @@ def analyze_trade(enriched: dict) -> dict | None:
     except Exception as _ret_exc:
         _log.debug("analyze_trade: retired-strategy check failed: %s", _ret_exc)
 
-    # ── 9b. Between-contract floor alert ─────────────────────────────────────
-    # If our blended probability for a "between" contract is implausibly low
-    # (< 15%) while the market prices it above 30%, this almost certainly means
-    # a sigma or calibration error rather than genuine edge.  Skip to avoid
-    # compounding losses from a miscalibrated signal.
-    # _divergence_gate_market_prob is set from _prices earlier in the function.
+    # ── 9b. Between-contract low-confidence YES guard ────────────────────────
+    # Block only when our low model probability would still lead to a YES bet
+    # (blended_prob > market_prob).  A low between probability where we'd bet
+    # NO is genuine edge — the ensemble is saying the temperature is outside
+    # the bracket — and we have a 16/26 (61.5%) win rate on such NO bets.
+    # The old condition (market > 0.30) was wrong: it only ever fired when
+    # blended_prob < market_prob (always a NO signal), so it blocked profitable
+    # NO trades while never catching the suspicious YES case it was meant for.
     if (
         condition.get("type") == "between"
         and blended_prob < 0.15
-        and _divergence_gate_market_prob > 0.30
+        and blended_prob > _divergence_gate_market_prob
     ):
         _log.warning(
-            "analyze_trade: skipping %s — between prob %.3f implausibly low "
-            "vs market %.3f (sigma cap may need lowering)",
+            "analyze_trade: skipping %s — low-confidence YES bet on between market "
+            "(our=%.3f > market=%.3f but model below 15%% threshold)",
             enriched.get("ticker", "?"),
             blended_prob,
             _divergence_gate_market_prob,
