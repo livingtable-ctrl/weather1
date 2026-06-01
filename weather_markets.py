@@ -5304,6 +5304,11 @@ def analyze_trade(enriched: dict) -> dict | None:
         p_win_gaussian = None
         sigma_gauss = None
         gauss_prob = None  # No Gaussian in METAR-locked path
+        # Temperature scaling runs only in the non-METAR path (section 7b above).
+        # Initialise False here so the Platt-skip guard at line ~5397 still works
+        # correctly — METAR-locked trades never need temperature scaling because
+        # blended_prob is derived directly from the observation lock, not a model blend.
+        _temp_scaling_applied = False
 
     # Regime detection
     _regime_info: dict = {}
