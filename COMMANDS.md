@@ -20,8 +20,13 @@ All commands: `py main.py <command> [args]`
 | `market <TICKER>` | Show details for a single market |
 | `market <TICKER> --verbose` | Show full market data including order book |
 | `forecast <city>` | Show ensemble forecast for a city (e.g. `forecast NYC`) |
-| `analyze` | Scan markets and score edges (display only, no trades placed) |
+| `browse` | Browse all open markets by city with live prices |
+| `analyze` | Scan markets and score edges — shows top 50 regardless of threshold |
+| `analyze --edge 12` | Same but override minimum edge threshold (number = percent) |
 | `analyze --live` | Same but also shows live market prices |
+| `watch` | Auto-refresh analyze every 5 min; desktop alert on new strong signals |
+| `watch --auto` | Same + automatically place paper trades on qualifying signals |
+| `watch --live` | Same + route qualifying signals to live orders |
 
 ---
 
@@ -31,13 +36,13 @@ All commands: `py main.py <command> [args]`
 |---|---|
 | `paper buy <TICKER> <yes/no> <price>` | Manually place a paper trade (auto-sizes via Kelly) |
 | `paper buy <TICKER> <yes/no> <price> <qty>` | Manually place with specific quantity |
-| `paper results` | Show all paper trades with P&L |
+| `paper results` | Show all paper trades with P&L, directional exposure, and unrealized P&L |
 | `paper settle <trade_id> <yes/no>` | Manually settle a specific paper trade |
 | `paper reset` | **⚠ Destructive** — wipe all paper trades and reset balance to $1,000 |
 | `settle` | Sync settled market outcomes from Kalshi and record in tracker |
 | `watch-settle` | Poll until all same-day open trades are settled |
 | `cancel <order_id>` | Cancel a live order |
-| `buy <TICKER> <yes/no> <qty> <price>` | Place a live order |
+| `buy <TICKER> <yes/no> <qty> <price>` | Place a live YES/NO order |
 | `sell <TICKER> <yes/no> <qty> <price>` | Place a live sell order |
 
 ---
@@ -48,7 +53,9 @@ All commands: `py main.py <command> [args]`
 |---|---|
 | `backtest` | Run backtest on historical data |
 | `backtest --days 180` | Backtest over the last 180 days |
-| `validate` | Walk-forward validation — checks if performance is degrading over time |
+| `walkforward` | Walk-forward validation — checks if performance is degrading over time |
+| `validate` | Alias for `walkforward` |
+| `walk-forward` | Full walk-forward backtest with rolling windows |
 | `calibrate` | Refit Platt scaling and temperature scaling from settled predictions |
 | `train-bias` | Retrain GBM bias model + Platt per city + temperature scaling |
 | `drift` | Check for model drift (compares recent vs historical Brier) |
@@ -58,6 +65,7 @@ All commands: `py main.py <command> [args]`
 | `replay <trade_id>` | Replay a specific trade's decision logic |
 | `consistency` | Scan for arbitrage / consistency violations across related markets |
 | `montecarlo` | Monte Carlo simulation of portfolio outcomes |
+| `simulate` | Interactive simulation sandbox — test your instincts on past markets |
 | `ab-summary` | Show A/B experiment results (edge threshold variants) |
 
 ---
@@ -71,7 +79,6 @@ All commands: `py main.py <command> [args]`
 | `export` | Export prediction history and trades to CSV in `data/exports/` |
 | `report` | Generate PDF report |
 | `weekly` | Weekly performance summary |
-| `walk-forward` | Full walk-forward backtest with rolling windows |
 | `pnl-attribution` | Break down P&L by city, model source, condition type |
 
 ---
@@ -91,6 +98,7 @@ All commands: `py main.py <command> [args]`
 | `restore` | Restore data from cloud backup (OneDrive/Drive) |
 | `settlement-monitor` | Run METAR settlement lag monitor (polls 5–7 PM local) |
 | `loop` | Self-scheduling run loop — runs cron every N hours automatically |
+| `schedule` | View/manage scheduled cron cycles |
 
 ---
 
@@ -100,6 +108,10 @@ All commands: `py main.py <command> [args]`
 |---|---|
 | `admin reset-loss` | Waive today's daily loss limit (expires midnight UTC) — use after a bug caused phantom losses |
 | `admin reset-loss "reason"` | Same with a reason string logged |
+| `retire-strategies` | Retire underperforming strategies (dry run — shows what would be retired) |
+| `retire-strategies --run` | Actually retire them |
+| `unretire-strategy <method>` | Re-enable a retired strategy with a 72h pin |
+| `unretire-strategy <method> --pin 168` | Same with a custom pin duration in hours |
 | `paper reset` | **⚠ Wipes all paper trades** and resets balance to $1,000 |
 
 ---
@@ -109,13 +121,13 @@ All commands: `py main.py <command> [args]`
 | Command | Description |
 |---|---|
 | `setup` | First-time setup wizard |
+| `onboard` | Run onboarding flow for new users |
 | `menu` | Interactive terminal menu (alternative to CLI commands) |
 | `web` | Start Flask web dashboard on localhost |
 | `settings` | View/edit bot settings interactively |
 | `config-check` | Validate `.env` config — checks all required vars are set |
 | `version-compare` | Compare current code version against last known good |
 | `code-audit` | Run internal code audit checks |
-| `onboard` | Run onboarding flow for new users |
 
 ---
 
@@ -146,5 +158,13 @@ py main.py backtest --days 180
 ```
 py main.py analyze
 py main.py analyze --live
-py main.py analyze --edge 0.12
+py main.py analyze --edge 12
+```
+
+**`watch` flags:**
+```
+py main.py watch
+py main.py watch --auto       # auto-place paper trades
+py main.py watch --live       # route to live orders
+py main.py watch --edge 12    # override edge threshold
 ```

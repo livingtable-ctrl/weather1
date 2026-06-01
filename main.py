@@ -6941,6 +6941,18 @@ def main():
     elif cmd == "readiness":
         ready = cmd_readiness(client)
         sys.exit(0 if ready else 1)
+    elif cmd == "today":
+        cmd_today(client)
+    elif cmd == "calibrate":
+        cmd_calibrate()
+    elif cmd in ("settings", "config-settings"):
+        cmd_settings(client)
+    elif cmd == "onboard":
+        cmd_onboard()
+    elif cmd == "browse":
+        cmd_browse(client)
+    elif cmd in ("schedule", "schedule-cycles"):
+        cmd_schedule()
     else:
         print(red(f"Unknown command: {cmd}"))
         print(dim("Run  py main.py  for the interactive menu."))
