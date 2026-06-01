@@ -5177,6 +5177,14 @@ def analyze_trade(enriched: dict) -> dict | None:
         # markets have a much larger calibration gap than above/below) and falls
         # back to the global T.  Trained by cmd_calibrate once enough settled
         # trades exist per condition type.  No-op when no model is trained.
+        #
+        # Track whether scaling actually moved blended_prob so the Platt fallback
+        # in section 9 can skip itself when temperature scaling already ran.
+        # Platt and temperature scaling are both logit-space compression operations
+        # (Platt: A·logit + B; temp scale: logit / T) — stacking both would
+        # over-compress toward 0.5. GBM in section 9a is a different correction
+        # (city-level systematic bias) and is fine to stack with temp scaling.
+        _prob_before_temp_scale = blended_prob
         try:
             from ml_bias import apply_temperature_scaling as _apply_temp_scale
 
@@ -5196,6 +5204,7 @@ def analyze_trade(enriched: dict) -> dict | None:
                 _exc,
             )
             # blended_prob remains unscaled — degraded but tradeable
+        _temp_scaling_applied = abs(blended_prob - _prob_before_temp_scale) > 1e-6
 
         # ── 7c. Market price credibility anchor ──────────────────────────────────
         # For condition types where our model has known calibration gaps, blend a
@@ -5381,8 +5390,11 @@ def analyze_trade(enriched: dict) -> dict | None:
         except Exception:
             pass
 
-    # Platt scaling is only applied when no GBM model exists for this city.
-    if not _city_correction_applied:
+    # Platt scaling is only applied when no GBM model exists for this city AND
+    # temperature scaling (section 7b) has not already corrected calibration.
+    # Both are logit-space compression operations — applying both would over-compress
+    # probabilities toward 0.5. GBM (above) is a different correction and can stack.
+    if not _city_correction_applied and not _temp_scaling_applied:
         try:
             _platt = _load_platt_models()
             if _platt:
