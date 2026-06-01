@@ -1480,7 +1480,6 @@ def audit_settlement(ticker: str, settled_yes: bool) -> None:
             if lo is None or hi is None:
                 return
             archive_yes = lo < actual < hi
-            threshold = (lo + hi) / 2  # midpoint for logging
         else:
             return
 
