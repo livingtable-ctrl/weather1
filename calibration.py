@@ -159,11 +159,17 @@ def calibrate_seasonal_weights(
             )
         )
 
-    result: dict[str, dict[str, float]] = {}
+    _neutral = {"ensemble": 1 / 3, "climatology": 1 / 3, "nws": 1 / 3}
+    # Always return all four seasons — use neutral defaults for any season that
+    # lacks enough data. This keeps the output file complete so callers never see
+    # "No seasonal weights for X" warnings during early accumulation.
+    result: dict[str, dict[str, float]] = {
+        s: _neutral for s in _MONTH_TO_SEASON.values()
+    }
     for season, srows in season_rows.items():
         if len(srows) < _SEASONAL_MIN:
             _log.info(
-                "calibrate_seasonal_weights: %s has %d rows (need %d) — skipping",
+                "calibrate_seasonal_weights: %s has %d rows (need %d) — using neutral defaults",
                 season,
                 len(srows),
                 _SEASONAL_MIN,
@@ -290,11 +296,16 @@ def calibrate_condition_weights(
             )
         )
 
-    result: dict[str, dict[str, float]] = {}
+    _neutral = {"ensemble": 1 / 3, "climatology": 1 / 3, "nws": 1 / 3}
+    # Always return all three condition types — use neutral defaults for any type
+    # that lacks enough data so the output file is always complete.
+    result: dict[str, dict[str, float]] = {
+        c: _neutral for c in ("above", "below", "between")
+    }
     for ctype, crows in type_rows.items():
         if len(crows) < min_samples:
             _log.info(
-                "calibrate_condition_weights: %s has %d rows (need %d) — skipping",
+                "calibrate_condition_weights: %s has %d rows (need %d) — using neutral defaults",
                 ctype,
                 len(crows),
                 min_samples,
@@ -350,42 +361,18 @@ def calibrate_and_save(
     city = calibrate_city_weights(_db)
     condition = calibrate_condition_weights(_db)
 
-    # Merge newly calibrated entries over the existing file so that seasons/
-    # conditions without enough data keep their previous neutral entries rather
-    # than being silently dropped (which causes noisy "no weights" warnings every
-    # cron cycle until enough data accumulates to calibrate them too).
-    _neutral = {"ensemble": 1 / 3, "climatology": 1 / 3, "nws": 1 / 3}
-    _all_seasons = ("spring", "summer", "fall", "winter")
-    _all_conditions = ("above", "below", "between")
-
-    existing_seasonal = load_seasonal_weights(_dir / "seasonal_weights.json")
-    merged_seasonal = {
-        s: seasonal.get(s) or existing_seasonal.get(s) or _neutral for s in _all_seasons
-    }
-    merged_seasonal.update(seasonal)  # calibrated entries always win
-
-    existing_city = load_city_weights(_dir / "city_weights.json")
-    merged_city = {**existing_city, **city}  # calibrated entries win
-
-    existing_condition = load_condition_weights(_dir / "condition_weights.json")
-    merged_condition = {
-        c: condition.get(c) or existing_condition.get(c) or _neutral
-        for c in _all_conditions
-    }
-    merged_condition.update(condition)  # calibrated entries always win
-
-    _safe_io.atomic_write_json(merged_seasonal, _dir / "seasonal_weights.json")
-    _safe_io.atomic_write_json(merged_city, _dir / "city_weights.json")
-    _safe_io.atomic_write_json(merged_condition, _dir / "condition_weights.json")
+    _safe_io.atomic_write_json(seasonal, _dir / "seasonal_weights.json")
+    _safe_io.atomic_write_json(city, _dir / "city_weights.json")
+    _safe_io.atomic_write_json(condition, _dir / "condition_weights.json")
 
     _log.info(
         "calibrate_and_save: wrote seasonal(%d) city(%d) condition(%d) to %s",
-        len(merged_seasonal),
-        len(merged_city),
-        len(merged_condition),
+        len(seasonal),
+        len(city),
+        len(condition),
         _dir,
     )
-    return merged_seasonal, merged_city, merged_condition
+    return seasonal, city, condition
 
 
 def validate_weight_files(
