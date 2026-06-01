@@ -1281,16 +1281,14 @@ def _analyze_once(
             )
             continue
         _arb_ticker_city[m.get("ticker", "")] = enriched.get("_city", "")
-        # L7-C: gate on entry_side_edge (vs actual ask price) not mid-price edge.
-        # entry_side_edge = blended_prob - yes_ask (YES) or blended_prob - no_ask (NO).
-        # A 7% mid-edge may shrink to 4% at ask; gating on mid lets those trades through.
         if not analysis:
             continue
         if int(analysis.get("days_out", 1)) == 0:
             continue
+        # Tag whether this market passes the edge threshold so make_rows can dim it,
+        # but do NOT drop it — analyse always shows top 50 regardless of edge.
         _gate_edge = analysis.get("entry_side_edge", analysis["edge"])
-        if abs(_gate_edge) < min_edge:
-            continue
+        analysis["_passes_edge"] = abs(_gate_edge) >= min_edge
         # #64: tag analysis as a hedge if it reduces existing open exposure
         analysis["_is_hedge"] = detect_hedge_opportunity(analysis, _open_trades)
         liquid = is_liquid(m)
@@ -1326,10 +1324,11 @@ def _analyze_once(
     def make_rows(opps):
         rows = []
         urls = []
-        # Sort best opportunity (highest net edge) first
-        for m, a in sorted(
+        # Sort best opportunity (highest net edge) first, show top 50 regardless of edge gate
+        sorted_opps = sorted(
             opps, key=lambda x: abs(x[1].get("net_edge", x[1]["edge"])), reverse=True
-        ):
+        )[:50]
+        for m, a in sorted_opps:
             is_new = (
                 previous_tickers is not None and m.get("ticker") not in previous_tickers
             )
@@ -1339,7 +1338,12 @@ def _analyze_once(
             title = (m.get("title") or ticker)[:38]
             url = f"{_market_base_url()}/markets/{ticker}"
             urls.append((ticker, url))
-            ticker_str = green(f"* {ticker}") if is_new else ticker
+            if is_new:
+                ticker_str = green(f"* {ticker}")
+            elif not a.get("_passes_edge", True):
+                ticker_str = dim(ticker)
+            else:
+                ticker_str = ticker
             mkt_pct = f"{a['market_prob'] * 100:.0f}%"
             # Show probability-point gap (directional: positive = favours recommended side)
             _raw_edge = a.get("edge", 0.0)
@@ -1444,18 +1448,25 @@ def _analyze_once(
         "Buy",
     ]
 
+    _liquid_passing = [x for x in liquid_opps if x[1].get("_passes_edge", True)]
     if liquid_opps:
         rows, urls = make_rows(liquid_opps)
         print(
-            bold(f"\n── Best Opportunities — Ready to Trade ({len(liquid_opps)}) ──\n")
+            bold(
+                f"\n── Markets — Ready to Trade (top {min(50, len(liquid_opps))},"
+                f" {len(_liquid_passing)} above edge threshold) ──\n"
+            )
         )
         print(tabulate(rows, headers=hdrs, tablefmt="rounded_outline"))
-        # Top pick plain-English explanation
-        best_m, best_a = max(
-            liquid_opps, key=lambda x: abs(x[1].get("net_edge", x[1]["edge"]))
-        )
-        explanation = _plain_english(best_a, best_m)
-        print(f"\n  {bold('Top pick:')} {explanation}")
+        print(dim(f"  Dimmed tickers are below the >{min_edge:.0%} edge threshold."))
+        # Top pick plain-English explanation (best above-threshold pick only)
+        passing = [(m, a) for m, a in liquid_opps if a.get("_passes_edge", True)]
+        if passing:
+            best_m, best_a = max(
+                passing, key=lambda x: abs(x[1].get("net_edge", x[1]["edge"]))
+            )
+            explanation = _plain_english(best_a, best_m)
+            print(f"\n  {bold('Top pick:')} {explanation}")
         if urls:
             print(dim("\n  Market links:"))
             for ticker, url in urls:
@@ -1464,10 +1475,12 @@ def _analyze_once(
         print(dim("  No tradeable opportunities right now (none with live quotes)."))
 
     if no_quote_opps:
+        _nq_passing = [x for x in no_quote_opps if x[1].get("_passes_edge", True)]
         rows, urls = make_rows(no_quote_opps)
         print(
             bold(
-                f"\n── More Opportunities — No Price Set Yet ({len(no_quote_opps)}) ──\n"
+                f"\n── Markets — No Price Set Yet (top {min(50, len(no_quote_opps))},"
+                f" {len(_nq_passing)} above edge threshold) ──\n"
             )
         )
         print(tabulate(rows, headers=hdrs, tablefmt="rounded_outline"))
@@ -1475,6 +1488,7 @@ def _analyze_once(
             dim(
                 "  These markets have no buyers/sellers yet."
                 " You can still place a limit order to set your own price."
+                f" Dimmed tickers are below the >{min_edge:.0%} edge threshold."
             )
         )
         if urls:
@@ -1483,7 +1497,7 @@ def _analyze_once(
                 print(f"    {ticker:<32} {cyan(url)}")
 
     if not liquid_opps and not no_quote_opps:
-        print(yellow(f"  No opportunities right now (need >{min_edge:.0%} edge)."))
+        print(yellow("  No markets with a valid forecast found right now."))
 
     # ── Arbitrage surface ────────────────────────────────────────────────────
     try:
@@ -1595,11 +1609,13 @@ def _analyze_once(
         pass
 
     # ── Portfolio correlation warning ────────────────────────────────────────
+    # Only warn on above-threshold opps — sub-threshold markets aren't being traded.
     all_opps = liquid_opps + no_quote_opps
+    _tradeable_opps = [(m, a) for m, a in all_opps if a.get("_passes_edge", True)]
     from collections import Counter
 
     city_date_counts: Counter = Counter()
-    for m, _ in all_opps:
+    for m, _ in _tradeable_opps:
         key = (m.get("_city", ""), str(m.get("_date", "")))
         city_date_counts[key] += 1
     for (city, dt), cnt in city_date_counts.items():
@@ -1616,10 +1632,11 @@ def _analyze_once(
             print(yellow(f"  └{bar}┘"))
 
     if show_summary:
-        n_total = len(liquid_opps) + len(no_quote_opps)
+        n_total = len(_tradeable_opps)
         n_scanned = len(markets)
-        if all_opps:
-            best_m, best_a = max(all_opps, key=lambda x: abs(x[1]["edge"]))
+        _tradeable_liquid = [x for x in _tradeable_opps if is_liquid(x[0])]
+        if _tradeable_opps:
+            best_m, best_a = max(_tradeable_opps, key=lambda x: abs(x[1]["edge"]))
             _be_raw = best_a["edge"]
             _be_side = best_a["recommended_side"]
             best_edge = _be_raw if _be_side == "yes" else -_be_raw
@@ -1628,7 +1645,7 @@ def _analyze_once(
             print(
                 dim(
                     f"\n  {n_scanned} markets scanned · {n_total} {opp_word}"
-                    f" ({len(liquid_opps)} liquid)"
+                    f" ({len(_tradeable_liquid)} liquid)"
                     f" · best edge {best_edge:+.1%} {best_ticker}"
                 )
             )
@@ -1641,9 +1658,12 @@ def _analyze_once(
             )
 
     found = {m.get("ticker") for m, _ in all_opps}
-    # Expose liquid_opps to callers (e.g., auto-trade watch mode)
+    # Expose only above-threshold liquid opps to callers (e.g., auto-trade watch mode).
+    # The display shows all markets, but auto-trading must only see edge-qualifying ones.
     if _liquid_opps_out is not None:
-        _liquid_opps_out.extend(liquid_opps)
+        _liquid_opps_out.extend(
+            (m, a) for m, a in liquid_opps if a.get("_passes_edge", True)
+        )
     return found
 
 
@@ -5918,22 +5938,34 @@ def cmd_paper(args: list, client: KalshiClient | None = None):
 
                 factor_exp = get_factor_exposure()
                 if factor_exp:
-                    print(bold("\n  Factor exposure:"))
-                    fe_rows = []
-                    for factor, val in sorted(factor_exp.items()):
-                        val_s = (
-                            green(f"${val:.2f}")
-                            if val >= 0
-                            else red(f"-${abs(val):.2f}")
-                        )
-                        fe_rows.append([factor, val_s])
+                    bias = factor_exp.get("net_bias", "Balanced")
+                    bias_s = yellow(bias) if bias != "Balanced" else green(bias)
+                    yes_cost = factor_exp.get("yes_cost", 0.0)
+                    no_cost = factor_exp.get("no_cost", 0.0)
+                    yes_cities = ", ".join(factor_exp.get("cities_long_yes", [])) or "—"
+                    no_cities = ", ".join(factor_exp.get("cities_long_no", [])) or "—"
+                    print(bold("\n  Directional exposure:"))
                     print(
                         tabulate(
-                            fe_rows,
-                            headers=["Factor", "Exposure"],
+                            [
+                                [
+                                    "YES positions",
+                                    factor_exp.get("yes_count", 0),
+                                    f"${yes_cost:.2f}",
+                                    yes_cities,
+                                ],
+                                [
+                                    "NO positions",
+                                    factor_exp.get("no_count", 0),
+                                    f"${no_cost:.2f}",
+                                    no_cities,
+                                ],
+                            ],
+                            headers=["Side", "Count", "At risk", "Cities"],
                             tablefmt="rounded_outline",
                         )
                     )
+                    print(f"  Net bias: {bias_s}")
 
                 clustering = get_expiry_date_clustering()
                 if clustering:
@@ -6027,6 +6059,16 @@ def cmd_montecarlo(client: KalshiClient) -> None:  # noqa: ARG001
     result = simulate_portfolio(
         open_trades, n_simulations=1000, include_distribution=True
     )
+
+    if result.get("all_past_date"):
+        print(
+            yellow(
+                f"  All {len(open_trades)} open position(s) have already passed their"
+                " settlement date (UTC). Nothing to simulate — outcomes are decided,"
+                " just awaiting official settlement."
+            )
+        )
+        return
 
     med = result["median_pnl"]
     p10 = result["p10_pnl"]

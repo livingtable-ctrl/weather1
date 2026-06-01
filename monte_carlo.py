@@ -273,6 +273,21 @@ def simulate_portfolio(
             }
         )
 
+    if not trade_params:
+        return {
+            "median_pnl": 0.0,
+            "p5_pnl": 0.0,
+            "p10_pnl": 0.0,
+            "p90_pnl": 0.0,
+            "prob_positive": 0.0,
+            "prob_ruin": 0.0,
+            "current_balance": round(current_balance, 2),
+            "n_simulations": 0,
+            "correlation_applied": False,
+            "n_clamped": 0,
+            "all_past_date": True,
+        }
+
     ruin_threshold = current_balance * 0.20  # losing >20% of current balance
 
     # Build correlation matrix and Cholesky factor for correlated draws.
