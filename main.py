@@ -4635,6 +4635,18 @@ def cmd_calibrate() -> None:
     except Exception as _ts_exc:
         print(dim(f"Temperature scaling skipped: {_ts_exc}"))
 
+    # Update the cron sentinel so the next auto-calibration cycle doesn't
+    # immediately re-run calibration that was just done manually.
+    try:
+        from tracker import count_settled_predictions as _count_settled
+
+        _sentinel = Path(__file__).parent / "data" / ".last_calibration_count"
+        _sentinel.write_text(str(_count_settled()))
+    except Exception as _sen_exc:
+        _log.warning(
+            "cmd_calibrate: could not update calibration sentinel: %s", _sen_exc
+        )
+
     print("\nRestart the app (or re-import weather_markets) to pick up new weights.")
 
 
