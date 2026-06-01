@@ -282,9 +282,12 @@ def nws_prob(
         return None
 
     # NWS is calibrated — use tighter sigma than raw ensemble.
-    # Same-day: NWS high/low is near-certain (1°F); tighten significantly.
+    # Same-day and 1-day: NWS high/low is professionally calibrated to ±1°F
+    # accuracy at this range.  Using sigma=2 here structurally caps probability
+    # at 38% for any 2°F-wide "between" range regardless of forecast accuracy —
+    # empirically shown to cause systematic underestimation on narrow range markets.
     days_out = (target_date - _utc_today()).days
-    if days_out <= 0:
+    if days_out <= 1:
         sigma = 1.0
     elif days_out <= 2:
         sigma = 2.0

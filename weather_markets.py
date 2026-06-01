@@ -5214,6 +5214,11 @@ def analyze_trade(enriched: dict) -> dict | None:
         # The anchor adjusts the magnitude of our confidence, not its direction —
         # we still bet whichever side our model favours; Kelly sizing just becomes
         # more realistic.
+        #
+        # Save the raw model probability BEFORE anchoring.  Section 7d uses this
+        # to measure the true model-market disagreement — after anchoring the gap
+        # is artificially compressed toward zero and would mask genuine conflicts.
+        _prob_before_anchor = blended_prob
         _anchor_weights: dict[str, float] = {
             "between": _MARKET_ANCHOR_BETWEEN,
             "above": _MARKET_ANCHOR_ABOVE,
@@ -5234,6 +5239,26 @@ def analyze_trade(enriched: dict) -> dict | None:
                 _mkt_mid,
                 blended_prob,
             )
+
+        # ── 7d. Model-market gap gate ─────────────────────────────────────────────
+        # When the raw model disagrees with the market by >25%, the market is
+        # right far more often than our model.  Empirical result across 51 settled
+        # trades: 74% win rate at 10-20% gap, 50% at 20-30%, 20% at 30%+.
+        # The market aggregates real-time intraday observations (hourly station
+        # readings, same-day temperature trends) that overnight NWS/ensemble
+        # forecasts cannot replicate.  At >25% disagreement the market's
+        # informational advantage consistently outweighs our model's edge.
+        # Gate on the pre-anchor gap so blending doesn't hide the disagreement.
+        _model_mkt_gap = abs(_prob_before_anchor - _divergence_gate_market_prob)
+        if _model_mkt_gap > 0.25 and 0.05 < _divergence_gate_market_prob < 0.95:
+            _log.debug(
+                "analyze_trade[%s]: model-market gap %.2f > 0.25 — skipping "
+                "(market has real-time observational advantage at this gap size)",
+                enriched.get("ticker", "?"),
+                _model_mkt_gap,
+            )
+            _count_gate("model_mkt_gap")
+            return None
 
         # ── Consensus signal: all available sources agree on direction ───────────
         # Require all 3 independent sources (ensemble, NWS, climatology) to agree.

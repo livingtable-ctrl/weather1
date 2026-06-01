@@ -23,7 +23,7 @@ DB_PATH.parent.mkdir(exist_ok=True)
 
 _db_initialized = False
 
-_SCHEMA_VERSION = 23  # increment when _MIGRATIONS list grows
+_SCHEMA_VERSION = 24  # increment when _MIGRATIONS list grows
 
 _MIGRATIONS = [
     # v1 → v2: add condition_type column (if not already added)
@@ -111,6 +111,11 @@ _MIGRATIONS = [
     # v22 → v23: timestamp for 404-not-found marking so sync_outcomes can re-attempt
     # after 7 days instead of skipping the ticker permanently (WA-4).
     "ALTER TABLE predictions ADD COLUMN not_found_at TEXT",
+    # v23 → v24: store the actual observed settlement temperature from Open-Meteo
+    # archive so empirical NWS sigma calibration can be computed per city.
+    # Without this we only know YES/NO — not the actual temperature — which makes
+    # it impossible to measure real forecast error distributions.
+    "ALTER TABLE outcomes ADD COLUMN settled_temp_f REAL",
 ]
 
 
@@ -1426,39 +1431,73 @@ def audit_settlement(ticker: str, settled_yes: bool) -> None:
             return
 
         cond_type = cond.get("type", "")
-        if cond_type not in ("above", "below"):
-            return  # between/precip can't be audited with a single daily value
 
-        threshold = cond.get("threshold")
-        if threshold is None:
-            return
+        # Determine which daily temperature variable to fetch.
+        # HIGH temp markets (KXHIGH...) need the daily max; LOW temp markets need min.
+        # between markets use the same logic — the range is on a specific var.
+        ticker_upper = ticker.upper()
+        if "HIGH" in ticker_upper:
+            var = "max"
+        elif "LOWT" in ticker_upper or "LOW" in ticker_upper:
+            var = "min"
+        elif cond_type == "above":
+            var = "max"
+        elif cond_type == "below":
+            var = "min"
+        else:
+            return  # precipitation or unknown — skip
 
-        var = "max" if cond_type == "above" else "min"
         actual = _fetch_actual_daily_temp(lat, lon, tz, target_date, var)
         if actual is None:
             return
 
-        archive_yes = (
-            (actual > threshold) if cond_type == "above" else (actual < threshold)
-        )
+        # Store the observed temperature so we can compute empirical NWS forecast
+        # error distributions per city — the foundation for data-driven sigma
+        # calibration that will replace the current hardcoded sigma values.
+        with _conn() as con:
+            con.execute(
+                "UPDATE outcomes SET settled_temp_f = ? WHERE ticker = ?",
+                (round(actual, 1), ticker),
+            )
+        _log.debug("settlement_audit: stored actual temp %.1f°F for %s", actual, ticker)
+
+        # Consistency check: only verifiable for above/below single-threshold markets.
+        # between markets define a range — a single temp point confirms or denies
+        # the range membership, which we can check too.
+        if cond_type == "above":
+            threshold = cond.get("threshold")
+            if threshold is None:
+                return
+            archive_yes = actual > threshold
+        elif cond_type == "below":
+            threshold = cond.get("threshold")
+            if threshold is None:
+                return
+            archive_yes = actual < threshold
+        elif cond_type == "between":
+            lo = cond.get("lower")
+            hi = cond.get("upper")
+            if lo is None or hi is None:
+                return
+            archive_yes = lo < actual < hi
+            threshold = (lo + hi) / 2  # midpoint for logging
+        else:
+            return
 
         if archive_yes != settled_yes:
             _log.warning(
-                "settlement_audit MISMATCH %s — Kalshi=%s archive=%.1f°F threshold=%.1f°F (%s→%s)",
+                "settlement_audit MISMATCH %s — Kalshi=%s archive=%.1f°F (%s)",
                 ticker,
                 "YES" if settled_yes else "NO",
                 actual,
-                threshold,
                 cond_type,
-                "YES" if archive_yes else "NO",
             )
         else:
             _log.debug(
-                "settlement_audit OK %s — Kalshi=%s archive=%.1f°F threshold=%.1f°F",
+                "settlement_audit OK %s — Kalshi=%s archive=%.1f°F",
                 ticker,
                 "YES" if settled_yes else "NO",
                 actual,
-                threshold,
             )
     except Exception as exc:
         _log.debug("audit_settlement: skipped for %s: %s", ticker, exc)
