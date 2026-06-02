@@ -1,7 +1,7 @@
 {
   "_note": "Blend weights per season. All reset to neutral defaults — auto-calibration at 28 samples (below 50-trade minimum) produced overfitted spring weights. Will recalibrate at 50+ settled predictions.",
-  "spring": {"ensemble": 0.34, "climatology": 0.33, "nws": 0.33},
-  "summer": {"ensemble": 0.34, "climatology": 0.33, "nws": 0.33},
-  "fall":   {"ensemble": 0.34, "climatology": 0.33, "nws": 0.33},
-  "winter": {"ensemble": 0.34, "climatology": 0.33, "nws": 0.33}
+  "spring": {"ensemble": 0.34, "climatology": 0.33, "nws": 0.33, "_uncalibrated": true},
+  "summer": {"ensemble": 0.34, "climatology": 0.33, "nws": 0.33, "_uncalibrated": true},
+  "fall":   {"ensemble": 0.34, "climatology": 0.33, "nws": 0.33, "_uncalibrated": true},
+  "winter": {"ensemble": 0.34, "climatology": 0.33, "nws": 0.33, "_uncalibrated": true}
 }
