@@ -159,10 +159,19 @@ def calibrate_seasonal_weights(
             )
         )
 
-    _neutral = {"ensemble": 1 / 3, "climatology": 1 / 3, "nws": 1 / 3}
+    _neutral = {
+        "ensemble": 1 / 3,
+        "climatology": 1 / 3,
+        "nws": 1 / 3,
+        "_uncalibrated": True,
+    }
     # Always return all four seasons — use neutral defaults for any season that
     # lacks enough data. This keeps the output file complete so callers never see
     # "No seasonal weights for X" warnings during early accumulation.
+    # "_uncalibrated": True is the machine-readable flag: _blend_weights checks for
+    # it and falls through to the hardcoded schedule rather than calling
+    # _nws_days_out_scale on these placeholder values. The "_" prefix means
+    # validate_weight_files already skips it in the sum-to-1 check.
     result: dict[str, dict[str, float]] = {
         s: _neutral for s in _MONTH_TO_SEASON.values()
     }
@@ -296,9 +305,15 @@ def calibrate_condition_weights(
             )
         )
 
-    _neutral = {"ensemble": 1 / 3, "climatology": 1 / 3, "nws": 1 / 3}
+    _neutral = {
+        "ensemble": 1 / 3,
+        "climatology": 1 / 3,
+        "nws": 1 / 3,
+        "_uncalibrated": True,
+    }
     # Always return all three condition types — use neutral defaults for any type
     # that lacks enough data so the output file is always complete.
+    # See calibrate_seasonal_weights for the "_uncalibrated" flag rationale.
     result: dict[str, dict[str, float]] = {
         c: _neutral for c in ("above", "below", "between")
     }

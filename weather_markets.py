@@ -3291,7 +3291,7 @@ def _blend_weights(
 
     # 2. Condition-type calibration weights
     _cond_cal = _CONDITION_WEIGHTS.get(condition_type) if condition_type else None
-    if isinstance(_cond_cal, dict):
+    if isinstance(_cond_cal, dict) and not _cond_cal.get("_uncalibrated"):
         w_ens = _cond_cal["ensemble"]
         w_clim = _cond_cal["climatology"]
         w_nws = _cond_cal["nws"]
@@ -3309,7 +3309,11 @@ def _blend_weights(
         # Degenerate calibration data; fall through to seasonal/hardcoded
 
     # 3. Seasonal calibration weights
-    if season and season in _SEASONAL_WEIGHTS:
+    if (
+        season
+        and season in _SEASONAL_WEIGHTS
+        and not _SEASONAL_WEIGHTS[season].get("_uncalibrated")
+    ):
         cal = _SEASONAL_WEIGHTS[season]
         w_ens = cal["ensemble"]
         w_clim = cal["climatology"]
@@ -5362,6 +5366,12 @@ def analyze_trade(enriched: dict) -> dict | None:
     # Per-tier guards gate training; this gate prevents inference from models
     # trained on backtesting data being applied to live paper trades.
     _city_correction_applied = False
+    if metar_locked:
+        # blended_prob is observation-locked, not a model blend. GBM and Platt
+        # were trained on model-blend outputs and must not run on METAR-derived
+        # probabilities. Without this guard, Platt fires at 50+ settled trades
+        # because _temp_scaling_applied=False in the METAR path, opening the gate.
+        _city_correction_applied = True
     _pre_correction_prob = blended_prob  # captured for logging / sanity guard
     _ML_CORRECTION_LIMIT = (
         0.30  # skip any correction that shifts prob by more than this

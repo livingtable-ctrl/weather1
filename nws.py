@@ -282,12 +282,16 @@ def nws_prob(
         return None
 
     # NWS is calibrated — use tighter sigma than raw ensemble.
-    # Same-day and 1-day: NWS high/low is professionally calibrated to ±1°F
-    # accuracy at this range.  Using sigma=2 here structurally caps probability
-    # at 38% for any 2°F-wide "between" range regardless of forecast accuracy —
-    # empirically shown to cause systematic underestimation on narrow range markets.
+    # Same-day (days_out<=0): sigma=1.0 for all types — NWS is ±1°F at this range
+    # and _nws_days_out_scale returns early at days_out<=0, so no compounding.
+    # 1-day between-only: sigma=1.0 fixes the structural 38.4% cap on 2°F-wide
+    # "between" ranges. Scoped to between only because _nws_days_out_scale(2.0)
+    # also fires at days_out=1 — applying sigma=1 to above/below would compound
+    # with that weight doubling and inflate blended_prob past the 0.25 gap gate.
     days_out = (target_date - _utc_today()).days
-    if days_out <= 1:
+    if days_out <= 0:
+        sigma = 1.0
+    elif days_out == 1 and condition.get("type") == "between":
         sigma = 1.0
     elif days_out <= 2:
         sigma = 2.0

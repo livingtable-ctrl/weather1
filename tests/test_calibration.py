@@ -101,12 +101,17 @@ class TestCalibrateSeasonalWeights:
             assert 0.0 <= w[k] <= 1.0, f"{k} out of range: {w[k]}"
 
     def test_below_threshold_omits_season(self):
-        """10 predictions (< 20) → season omitted from output."""
+        """10 predictions (< 20) → season returned with neutral uncalibrated defaults."""
         from calibration import calibrate_seasonal_weights
 
         _seed_db(self._db, _make_winter_rows(10))
         result = calibrate_seasonal_weights(self._db)
-        assert "winter" not in result, "winter should be absent with only 10 rows"
+        # Under-sampled seasons now return neutral defaults so callers never see
+        # "missing key" warnings. The "_uncalibrated" flag tells _blend_weights to
+        # fall through to the hardcoded schedule rather than using these values.
+        assert "winter" in result, "under-sampled season should have neutral defaults"
+        assert result["winter"].get("_uncalibrated") is True
+        assert abs(result["winter"]["ensemble"] - 1 / 3) < 1e-6
 
     def test_rows_without_source_probs_not_counted(self):
         """Rows missing ensemble_prob/nws_prob/clim_prob must not count toward threshold."""
@@ -119,7 +124,9 @@ class TestCalibrateSeasonalWeights:
             r["clim_prob"] = None
         _seed_db(self._db, rows)
         result = calibrate_seasonal_weights(self._db)
-        assert "winter" not in result
+        # 15 valid rows < _SEASONAL_MIN=20 → neutral defaults, not data-derived weights
+        assert "winter" in result
+        assert result["winter"].get("_uncalibrated") is True
 
 
 class TestCalibrateCityWeights:
