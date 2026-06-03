@@ -35,6 +35,11 @@ except ImportError as _e:
     sys.exit(1)
 
 from dotenv import load_dotenv
+
+# Must run before any local module imports so module-level env-var constants
+# (e.g. paper.MAX_DRAWDOWN_FRACTION) read the correct values from .env.
+load_dotenv()
+
 from tabulate import tabulate
 
 import order_executor  # noqa: F401 — imported for side-effects (e.g. _MIN_EDGE_AB_TEST init)
@@ -99,8 +104,6 @@ from weather_markets import (
     parse_city_date,
     parse_market_price,
 )
-
-load_dotenv()
 
 _bot_config = _load_config()
 
