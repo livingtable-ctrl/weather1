@@ -29,7 +29,7 @@ class TestPnLAttribution:
         tmp_tracker.log_prediction(
             "TICKER-A",
             "NYC",
-            date(2026, 4, 17),
+            date(2099, 4, 17),
             {"forecast_prob": 0.70, "market_prob": 0.50, "edge": 0.20, "condition": {}},
             signal_source="metar_lockout",
         )
@@ -47,7 +47,7 @@ class TestPnLAttribution:
             tmp_tracker.log_prediction(
                 ticker,
                 "NYC",
-                date(2026, 4, i + 1),
+                date(2099, 4, i + 1),
                 {
                     "forecast_prob": 0.70,
                     "market_prob": 0.50,
@@ -63,7 +63,7 @@ class TestPnLAttribution:
             tmp_tracker.log_prediction(
                 ticker,
                 "NYC",
-                date(2026, 4, i + 1),
+                date(2099, 4, i + 1),
                 {
                     "forecast_prob": 0.90,
                     "market_prob": 0.50,
@@ -86,7 +86,7 @@ class TestPnLAttribution:
             tmp_tracker.log_prediction(
                 ticker,
                 "NYC",
-                date(2026, 4, i + 1),
+                date(2099, 4, i + 1),
                 {
                     "forecast_prob": 0.65,
                     "market_prob": 0.50,

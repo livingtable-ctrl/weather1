@@ -2952,7 +2952,7 @@ def get_model_attribution_by_city() -> dict[str, dict[str, float]]:
     with _conn() as con:
         rows = con.execute(
             """SELECT city, blend_sources
-               FROM predictions
+               FROM multiday_predictions
                WHERE blend_sources IS NOT NULL AND city IS NOT NULL"""
         ).fetchall()
 

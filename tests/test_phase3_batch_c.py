@@ -22,13 +22,14 @@ def _make_db(tmp_path: Path, rows: list[dict]) -> Path:
         con.executescript("""
             CREATE TABLE predictions (
                 ticker TEXT, city TEXT, market_date TEXT, condition_type TEXT,
-                ensemble_prob REAL, nws_prob REAL, clim_prob REAL
+                ensemble_prob REAL, nws_prob REAL, clim_prob REAL,
+                days_out INTEGER
             );
             CREATE TABLE outcomes (ticker TEXT PRIMARY KEY, settled_yes INTEGER);
         """)
         for r in rows:
             con.execute(
-                "INSERT INTO predictions VALUES (?,?,?,?,?,?,?)",
+                "INSERT INTO predictions VALUES (?,?,?,?,?,?,?,?)",
                 (
                     r["ticker"],
                     r.get("city", "NYC"),
@@ -37,6 +38,7 @@ def _make_db(tmp_path: Path, rows: list[dict]) -> Path:
                     r.get("ensemble_prob"),
                     r.get("nws_prob"),
                     r.get("clim_prob"),
+                    r.get("days_out", 1),
                 ),
             )
             con.execute(
