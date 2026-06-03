@@ -1,5 +1,20 @@
 {
-  "above":   {"ensemble": 0.3333333333333333, "climatology": 0.3333333333333333, "nws": 0.3333333333333333, "_uncalibrated": true},
-  "below":   {"ensemble": 0.3333333333333333, "climatology": 0.3333333333333333, "nws": 0.3333333333333333, "_uncalibrated": true},
-  "between": {"ensemble": 0.3333333333333333, "climatology": 0.3333333333333333, "nws": 0.3333333333333333, "_uncalibrated": true}
+  "above": {
+    "ensemble": 0.3333333333333333,
+    "climatology": 0.3333333333333333,
+    "nws": 0.3333333333333333,
+    "_uncalibrated": true
+  },
+  "below": {
+    "ensemble": 0.3333333333333333,
+    "climatology": 0.3333333333333333,
+    "nws": 0.3333333333333333,
+    "_uncalibrated": true
+  },
+  "between": {
+    "ensemble": 0.3333333333333333,
+    "climatology": 0.3333333333333333,
+    "nws": 0.3333333333333333,
+    "_uncalibrated": true
+  }
 }
