@@ -258,6 +258,14 @@ def init_db() -> None:
             logged_at       TEXT    NOT NULL
         );
         CREATE INDEX IF NOT EXISTS idx_live_fills_ticker ON live_fills(ticker, logged_at);
+
+        -- Single definition of "multi-day prediction": excludes same-day trades
+        -- (days_out=0) which use METAR-locked probs, not ensemble forecasts.
+        -- NULL days_out means the row predates the column and is treated as multi-day.
+        -- All analytics queries use this view so the filter is defined once.
+        CREATE VIEW IF NOT EXISTS multiday_predictions AS
+            SELECT * FROM predictions
+            WHERE days_out IS NULL OR days_out >= 1;
         """)
     # #99: versioned migrations replacing ad-hoc ALTER TABLE try/except blocks
     # Also handles legacy columns (days_out, raw_prob) via the CREATE TABLE schema above
@@ -607,7 +615,7 @@ def get_bias(
     with _conn() as con:
         query = """
             SELECT p.our_prob, o.settled_yes, p.predicted_at
-            FROM predictions p
+            FROM multiday_predictions p
             JOIN outcomes o ON p.ticker = o.ticker
             WHERE p.our_prob IS NOT NULL
         """
@@ -693,7 +701,7 @@ def get_quintile_bias(
     with _conn() as con:
         query = """
             SELECT p.our_prob, o.settled_yes, p.predicted_at
-            FROM predictions p
+            FROM multiday_predictions p
             JOIN outcomes o ON p.ticker = o.ticker
             WHERE p.our_prob IS NOT NULL
               AND p.city IS NOT NULL
@@ -791,12 +799,13 @@ def brier_score_by_method(min_samples: int = 20) -> dict[str, float]:
     """
     Brier score broken down by method string (e.g. 'ensemble', 'normal_dist').
     Returns {method: brier} for methods with enough data.
+    Excludes same-day trades (days_out=0) so same-day METAR results don't skew method scores.
     """
     init_db()
     with _conn() as con:
         rows = con.execute("""
             SELECT p.method, p.our_prob, o.settled_yes
-            FROM predictions p
+            FROM multiday_predictions p
             JOIN outcomes o ON p.ticker = o.ticker
             WHERE p.our_prob IS NOT NULL AND p.method IS NOT NULL
         """).fetchall()
@@ -826,7 +835,7 @@ def get_component_attribution() -> dict[str, dict]:
     with _conn() as con:
         rows = con.execute("""
             SELECT p.our_prob, p.blend_sources, o.settled_yes
-            FROM predictions p
+            FROM multiday_predictions p
             JOIN outcomes o ON p.ticker = o.ticker
             WHERE p.our_prob IS NOT NULL
               AND p.blend_sources IS NOT NULL
@@ -851,10 +860,15 @@ def get_component_attribution() -> dict[str, dict]:
     }
 
 
-def brier_score(city: str | None = None) -> float | None:
+def brier_score(city: str | None = None, min_days_out: int = 1) -> float | None:
     """
     Brier score = mean((our_prob - outcome)²).
     Lower is better. 0.25 = random, 0.0 = perfect.
+
+    Excludes same-day trades (days_out=0) by default because same-day uses
+    METAR-locked probs, not ensemble forecasts — mixing them distorts the
+    multi-day model quality signal used for graduation and calibration gates.
+    Pass min_days_out=0 to include all trades.
 
     Primary source: tracker predictions + outcomes JOIN (populated by log_prediction
     + sync_outcomes).  Fallback: paper_trades.db where entry_prob and outcome are
@@ -862,10 +876,11 @@ def brier_score(city: str | None = None) -> float | None:
     without a prior analyze-command prediction log entry.
     """
     init_db()
+    table = "multiday_predictions" if min_days_out > 0 else "predictions"
     with _conn() as con:
-        query = """
+        query = f"""
             SELECT p.our_prob, o.settled_yes
-            FROM predictions p
+            FROM {table} p
             JOIN outcomes o ON p.ticker = o.ticker
             WHERE p.our_prob IS NOT NULL
         """
@@ -893,6 +908,14 @@ def brier_score(city: str | None = None) -> float | None:
                 continue
             if city and t.get("city") != city:
                 continue
+            # NULL/missing days_out in paper trades predates the column — treat as multi-day.
+            trade_days_out = t.get("days_out")
+            if (
+                min_days_out > 0
+                and trade_days_out is not None
+                and trade_days_out < min_days_out
+            ):
+                continue
             settled_yes = 1 if outcome == "yes" else 0
             pairs.append((float(prob), settled_yes))
         if pairs:
@@ -913,7 +936,7 @@ def get_rolling_win_rate(window: int = 20) -> tuple[float | None, int]:
         rows = con.execute(
             """
             SELECT o.settled_yes, p.our_prob
-            FROM predictions p
+            FROM multiday_predictions p
             JOIN outcomes o ON p.ticker = o.ticker
             ORDER BY o.settled_at DESC
             LIMIT ?
@@ -954,7 +977,7 @@ def _get_recent_win_loss(window: int) -> tuple[int, int]:
         rows = con.execute(
             """
             SELECT p.our_prob, o.settled_yes
-            FROM predictions p
+            FROM multiday_predictions p
             JOIN outcomes o ON p.ticker = o.ticker
             WHERE p.our_prob IS NOT NULL
             ORDER BY o.settled_at DESC
@@ -1039,7 +1062,7 @@ def get_brier_by_tier(
         rows = con.execute(
             """
             SELECT p.our_prob, p.edge, o.settled_yes
-            FROM predictions p
+            FROM multiday_predictions p
             JOIN outcomes o ON p.ticker = o.ticker
             WHERE p.our_prob IS NOT NULL AND p.edge IS NOT NULL
             """
@@ -1065,11 +1088,14 @@ def get_brier_by_tier(
     }
 
 
-def get_brier_over_time(weeks: int = 12) -> list[dict]:
+def get_brier_over_time(weeks: int = 12, min_days_out: int = 1) -> list[dict]:
     """Return mean Brier score per ISO week for the last `weeks` weeks.
 
     Joins settled predictions with outcomes, groups by strftime('%Y-W%W', predicted_at),
     computes mean (our_prob - settled_yes)^2 per week.
+
+    min_days_out=1 excludes same-day (days_out=0) trades so the multi-day Brier
+    alert isn't inflated by same-day settlements which have separate tracking.
 
     Returns [{"week": "2025-W40", "brier": 0.21}, ...] sorted ascending.
     Returns an empty list if no settled predictions exist in the window.
@@ -1080,15 +1106,16 @@ def get_brier_over_time(weeks: int = 12) -> list[dict]:
     cutoff = (
         datetime.datetime.now(datetime.UTC) - datetime.timedelta(weeks=weeks)
     ).isoformat()
+    table = "multiday_predictions" if min_days_out > 0 else "predictions"
     with _conn() as con:
         rows = con.execute(
-            """
+            f"""
             SELECT
                 strftime('%Y-W%W', p.predicted_at) AS week,
                 AVG(
                     (p.our_prob - o.settled_yes) * (p.our_prob - o.settled_yes)
                 ) AS brier
-            FROM predictions p
+            FROM {table} p
             JOIN outcomes o ON o.ticker = p.ticker
             WHERE p.predicted_at >= ?
               AND p.our_prob IS NOT NULL
@@ -1111,7 +1138,7 @@ def brier_skill_score(city: str | None = None) -> float | None:
     with _conn() as con:
         query = """
             SELECT p.our_prob, p.market_prob, o.settled_yes
-            FROM predictions p
+            FROM multiday_predictions p
             JOIN outcomes o ON p.ticker = o.ticker
             WHERE p.our_prob IS NOT NULL AND p.market_prob IS NOT NULL
         """
@@ -1168,7 +1195,7 @@ def get_calibration_trend(weeks: int = 8) -> list[dict]:
                 strftime('%Y-W%W', p.market_date) AS week,
                 p.our_prob,
                 o.settled_yes
-            FROM predictions p
+            FROM multiday_predictions p
             JOIN outcomes o ON p.ticker = o.ticker
             WHERE p.our_prob IS NOT NULL
               AND p.market_date IS NOT NULL
@@ -1207,7 +1234,7 @@ def get_calibration_by_city(
         query = """
             SELECT p.city, p.our_prob, o.settled_yes,
                    CAST(strftime('%m', p.market_date) AS INTEGER) AS month
-            FROM predictions p
+            FROM multiday_predictions p
             JOIN outcomes o ON p.ticker = o.ticker
             WHERE p.our_prob IS NOT NULL AND p.city IS NOT NULL
         """
@@ -1244,7 +1271,7 @@ def get_calibration_by_season() -> dict[str, dict]:
         rows = con.execute("""
             SELECT p.our_prob, o.settled_yes,
                    CAST(strftime('%m', p.market_date) AS INTEGER) AS month
-            FROM predictions p
+            FROM multiday_predictions p
             JOIN outcomes o ON p.ticker = o.ticker
             WHERE p.our_prob IS NOT NULL AND p.market_date IS NOT NULL
         """).fetchall()
@@ -1287,7 +1314,7 @@ def get_calibration_by_type() -> dict[str, dict]:
     with _conn() as con:
         rows = con.execute("""
             SELECT p.condition_type, p.our_prob, o.settled_yes
-            FROM predictions p
+            FROM multiday_predictions p
             JOIN outcomes o ON p.ticker = o.ticker
             WHERE p.our_prob IS NOT NULL AND p.condition_type IS NOT NULL
         """).fetchall()
@@ -1894,7 +1921,7 @@ def get_confusion_matrix(threshold: float = 0.5) -> dict:
     with _conn() as con:
         rows = con.execute("""
             SELECT p.our_prob, o.settled_yes
-            FROM predictions p
+            FROM multiday_predictions p
             JOIN outcomes o ON p.ticker = o.ticker
             WHERE p.our_prob IS NOT NULL
         """).fetchall()
@@ -1955,7 +1982,7 @@ def get_optimal_threshold() -> dict | None:
     with _conn() as con:
         rows = con.execute("""
             SELECT p.our_prob, o.settled_yes
-            FROM predictions p
+            FROM multiday_predictions p
             JOIN outcomes o ON p.ticker = o.ticker
             WHERE p.our_prob IS NOT NULL
         """).fetchall()
@@ -2003,7 +2030,7 @@ def get_roc_auc() -> dict:
     with _conn() as con:
         rows = con.execute("""
             SELECT p.our_prob, o.settled_yes
-            FROM predictions p
+            FROM multiday_predictions p
             JOIN outcomes o ON p.ticker = o.ticker
             WHERE p.our_prob IS NOT NULL
         """).fetchall()
@@ -2070,7 +2097,7 @@ def get_edge_decay_curve(condition_type: str | None = None) -> list[dict]:
     with _conn() as con:
         query = """
             SELECT p.our_prob, p.market_prob, p.days_out, o.settled_yes
-            FROM predictions p
+            FROM multiday_predictions p
             JOIN outcomes o ON p.ticker = o.ticker
             WHERE p.our_prob IS NOT NULL AND p.market_prob IS NOT NULL
               AND p.days_out IS NOT NULL
@@ -2283,7 +2310,7 @@ def get_model_calibration_buckets() -> dict:
     with _conn() as con:
         rows = con.execute("""
             SELECT p.our_prob, o.settled_yes
-            FROM predictions p
+            FROM multiday_predictions p
             JOIN outcomes o ON p.ticker = o.ticker
             WHERE p.our_prob IS NOT NULL
         """).fetchall()
@@ -2408,7 +2435,7 @@ def get_brier_by_version(min_samples: int = 10) -> dict[str, dict]:
     with _conn() as con:
         rows = con.execute("""
             SELECT p.edge_calc_version, p.our_prob, o.settled_yes
-            FROM predictions p
+            FROM multiday_predictions p
             JOIN outcomes o ON p.ticker = o.ticker
             WHERE p.our_prob IS NOT NULL
               AND p.edge_calc_version IS NOT NULL
@@ -2440,7 +2467,7 @@ def get_pnl_by_signal_source(min_samples: int = 10) -> dict[str, dict]:
                 COALESCE(p.signal_source, 'unknown') AS source,
                 p.our_prob,
                 o.settled_yes
-            FROM predictions p
+            FROM multiday_predictions p
             JOIN outcomes o ON p.ticker = o.ticker
             WHERE p.our_prob IS NOT NULL
             """

@@ -124,6 +124,7 @@ def _load_rows(db_path: Path) -> list[sqlite3.Row]:
               AND p.nws_prob IS NOT NULL
               AND p.clim_prob IS NOT NULL
               AND o.settled_yes IS NOT NULL
+              AND (p.days_out IS NULL OR p.days_out >= 1)
             """
         ).fetchall()
 
@@ -285,6 +286,7 @@ def calibrate_condition_weights(
               AND p.clim_prob IS NOT NULL
               AND p.nws_prob IS NOT NULL
               AND o.settled_yes IS NOT NULL
+              AND (p.days_out IS NULL OR p.days_out >= 1)
             """
         ).fetchall()
     finally:

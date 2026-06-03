@@ -79,7 +79,7 @@ class TestTracker(unittest.TestCase):
         """Brier score should be computed correctly from outcomes."""
         ticker = "KXBRIER-TEST"
         tracker.log_prediction(
-            ticker, "NYC", date(2026, 4, 1), self._fake_analysis(0.80)
+            ticker, "NYC", date(2099, 1, 1), self._fake_analysis(0.80)
         )
         tracker.log_outcome(ticker, settled_yes=True)
         bs = tracker.brier_score()
@@ -90,7 +90,10 @@ class TestTracker(unittest.TestCase):
 
     def test_brier_returns_none_when_empty(self):
         """brier_score() should return None with no settled outcomes."""
-        self.assertIsNone(tracker.brier_score())
+        from unittest.mock import patch
+
+        with patch("paper.get_all_trades", return_value=[]):
+            self.assertIsNone(tracker.brier_score())
 
     def test_bias_insufficient_data(self):
         """get_bias() should return 0.0 with fewer samples than min_samples."""
@@ -203,7 +206,7 @@ class TestTracker(unittest.TestCase):
         """get_calibration_by_city returns correct Brier + bias per city."""
         ticker = "TKCAL"
         tracker.log_prediction(
-            ticker, "NYC", date(2026, 4, 9), self._fake_analysis(0.80)
+            ticker, "NYC", date(2099, 1, 1), self._fake_analysis(0.80)
         )
         tracker.log_outcome(ticker, True)  # settled YES, our_prob=0.80
 
@@ -225,7 +228,7 @@ class TestTracker(unittest.TestCase):
         # Log one 'above' prediction
         ticker_a = "TKTYPE-A"
         tracker.log_prediction(
-            ticker_a, "NYC", date(2026, 4, 9), self._fake_analysis(0.80)
+            ticker_a, "NYC", date(2099, 1, 1), self._fake_analysis(0.80)
         )
         tracker.log_outcome(ticker_a, True)  # our_prob=0.80, settled YES
 
@@ -239,7 +242,7 @@ class TestTracker(unittest.TestCase):
             "method": "ensemble",
             "n_members": 50,
         }
-        tracker.log_prediction(ticker_b, "CHI", date(2026, 4, 9), analysis_b)
+        tracker.log_prediction(ticker_b, "CHI", date(2099, 1, 1), analysis_b)
         tracker.log_outcome(ticker_b, False)  # our_prob=0.60, settled NO (0)
 
         result = tracker.get_calibration_by_type()
@@ -316,7 +319,7 @@ class TestBrierScore(unittest.TestCase):
             "method": "ensemble",
             "n_members": 20,
         }
-        tracker.log_prediction(ticker, "NYC", date(2026, 4, 1), analysis)
+        tracker.log_prediction(ticker, "NYC", date(2099, 1, 1), analysis)
         tracker.log_outcome(ticker, settled_yes)
 
     def test_perfect_prediction_brier_zero(self):
@@ -337,7 +340,10 @@ class TestBrierScore(unittest.TestCase):
 
     def test_no_data_returns_none(self):
         """brier_score() returns None when there are no settled predictions."""
-        result = tracker.brier_score()
+        from unittest.mock import patch
+
+        with patch("paper.get_all_trades", return_value=[]):
+            result = tracker.brier_score()
         self.assertIsNone(result)
 
     def test_midpoint_prediction(self):
@@ -433,7 +439,7 @@ class TestGetBrierOverTime(unittest.TestCase):
             "method": "ensemble",
             "n_members": 20,
         }
-        tracker.log_prediction(ticker, "NYC", date(2026, 4, 1), analysis)
+        tracker.log_prediction(ticker, "NYC", date(2099, 1, 1), analysis)
         tracker.log_outcome(ticker, settled_yes)
 
     def test_empty_db_returns_empty_list(self):
@@ -525,7 +531,7 @@ class _Phase3Base(unittest.TestCase):
 
             with sqlite3.connect(str(tracker.DB_PATH)) as con:
                 con.execute(
-                    "UPDATE predictions SET condition_type=? WHERE ticker=?",
+                    "UPDATE predictions SET days_out=1, condition_type=? WHERE ticker=?",
                     (condition_type, ticker),
                 )
 
@@ -959,7 +965,7 @@ def test_get_component_attribution_returns_per_source_brier(tmp_path):
         tracker.log_prediction(
             ticker="ENS1",
             city="NYC",
-            market_date=date(2025, 6, 1),
+            market_date=date(2099, 1, 1),
             analysis={
                 "condition": {"type": "above", "threshold": 70.0},
                 "forecast_prob": 0.90,
@@ -975,7 +981,7 @@ def test_get_component_attribution_returns_per_source_brier(tmp_path):
         tracker.log_prediction(
             ticker="CLIM1",
             city="NYC",
-            market_date=date(2025, 6, 2),
+            market_date=date(2099, 1, 2),
             analysis={
                 "condition": {"type": "above", "threshold": 70.0},
                 "forecast_prob": 0.80,
@@ -1555,7 +1561,7 @@ class TestCalibrationByCityConditionTypeGrpB(unittest.TestCase):
         tracker.log_prediction(
             ticker,
             city,
-            date(2026, 4, 5),
+            date(2099, 1, 1),
             {
                 "forecast_prob": our_prob,
                 "market_prob": 0.5,
@@ -1791,7 +1797,7 @@ class TestGetQuintileBias(unittest.TestCase):
             tracker.log_prediction(
                 tk,
                 city,
-                date(2026, 4, 1),
+                date(2099, 4, 1),
                 {
                     "condition": {"type": "above", "threshold": 70.0},
                     "forecast_prob": our_prob,

@@ -99,7 +99,7 @@ class TestBrierScoreComputation:
             tracker.log_prediction(
                 ticker,
                 "NYC",
-                date(2026, 4, 10),
+                date(2099, 1, 1),
                 {
                     "forecast_prob": prob,
                     "market_prob": 0.5,
@@ -129,7 +129,10 @@ class TestBrierScoreComputation:
 
     def test_brier_score_no_data_returns_none(self):
         """brier_score() on empty DB returns None (not 0.0, not error)."""
-        result = tracker.brier_score()
+        from unittest.mock import patch
+
+        with patch("paper.get_all_trades", return_value=[]):
+            result = tracker.brier_score()
         assert result is None
 
     def test_roc_auc_perfect_classifier(self):

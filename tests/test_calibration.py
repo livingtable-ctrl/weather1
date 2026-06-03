@@ -328,7 +328,8 @@ def test_calibrate_condition_weights_returns_per_type_dict():
         con.executescript("""
             CREATE TABLE predictions (
                 ticker TEXT, condition_type TEXT, market_date TEXT,
-                ensemble_prob REAL, clim_prob REAL, nws_prob REAL
+                ensemble_prob REAL, clim_prob REAL, nws_prob REAL,
+                days_out INTEGER
             );
             CREATE TABLE outcomes (ticker TEXT, settled_yes INTEGER);
         """)
@@ -342,8 +343,8 @@ def test_calibrate_condition_weights_returns_per_type_dict():
                 month = (i % 12) + 1
                 date_str = f"2025-{month:02d}-{(i % 28) + 1:02d}"
                 con.execute(
-                    "INSERT INTO predictions VALUES (?,?,?,?,?,?)",
-                    (t, ctype, date_str, ep, cp, np_),
+                    "INSERT INTO predictions VALUES (?,?,?,?,?,?,?)",
+                    (t, ctype, date_str, ep, cp, np_, 1),
                 )
                 con.execute("INSERT INTO outcomes VALUES (?,?)", (t, y))
         con.commit()

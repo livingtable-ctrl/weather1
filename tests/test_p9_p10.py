@@ -45,7 +45,7 @@ def _log_and_settle(t, ticker, method, our_prob, settled_yes, version="v1.0"):
     t.log_prediction(
         ticker,
         "NYC",
-        _date.today(),
+        _date(2099, 1, 1),
         {
             "forecast_prob": our_prob,
             "market_prob": 0.50,
