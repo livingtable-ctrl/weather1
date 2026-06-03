@@ -748,7 +748,7 @@ def get_quintile_bias(
 def get_brier_by_days_out() -> dict[str, float]:
     """
     Brier score segmented by forecast horizon.
-    Returns {"0-2d": brier, "3-5d": brier, "6-10d": brier, "11+d": brier}
+    Returns {"same_day": brier, "1-2d": brier, "3-5d": brier, "6-10d": brier, "11+d": brier}
     Only buckets with >= 5 settled predictions are included.
     """
     init_db()

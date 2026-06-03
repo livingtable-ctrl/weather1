@@ -1813,6 +1813,10 @@ setInterval(() => {{
         net_edge = body.get("net_edge")
         city = body.get("city") or None
         target_date = body.get("target_date") or None
+        # days_out from the signal (0 = same-day METAR, 1+ = multi-day forecast).
+        # Without this the trade record stores None, which the cap logic reads as
+        # multi-day (None != 0) and incorrectly consumes a multi-day date slot.
+        _days_out_raw = body.get("days_out")
         try:
             trade = place_paper_order(
                 ticker=ticker,
@@ -1824,6 +1828,7 @@ setInterval(() => {{
                 city=city,
                 target_date=target_date,
                 thesis="manual approval via dashboard",
+                days_out=int(_days_out_raw) if _days_out_raw is not None else None,
             )
             # Register in tracker predictions so sync_outcomes / auto_settle
             # can find the Kalshi outcome automatically when the market resolves.

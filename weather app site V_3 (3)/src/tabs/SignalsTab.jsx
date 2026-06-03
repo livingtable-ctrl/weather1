@@ -62,6 +62,7 @@ export default function SignalsTab() {
         net_edge:    opp.edge_pct != null ? opp.edge_pct / 100 : null,
         city:        opp.city || null,
         target_date: opp.target_date || opp.expiry || null,
+        days_out:    opp.days_out ?? null,
       }),
     })
       .then(r => r.json())
@@ -105,6 +106,7 @@ export default function SignalsTab() {
           net_edge:    opp.edge_pct != null ? opp.edge_pct / 100 : null,
           city:        opp.city || null,
           target_date: opp.target_date || opp.expiry || null,
+          days_out:    opp.days_out ?? null,
         }),
       }).then(r => r.json());
     })).then(() => {

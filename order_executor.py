@@ -1133,7 +1133,7 @@ def _auto_place_trades(
                         target_date=_td2,
                         forecast_prob=a.get("forecast_prob", 0.0),
                         market_prob=a.get("market_prob", 0.0),
-                        days_out=int(a.get("days_out", 0)),
+                        days_out=int(a.get("days_out", 1)),
                         was_traded=True,
                     )
                 except Exception as _e:
