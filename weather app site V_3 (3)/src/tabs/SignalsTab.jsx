@@ -126,6 +126,109 @@ export default function SignalsTab() {
     setTimeout(() => setBulkActionMsg(''), 2500);
   }
 
+  // Shared row renderer — used by both Same-Day and Multi-Day sections.
+  // Defined inside the component so it closes over state (expandedId, selectedIds, etc.)
+  // without needing to thread them as props.
+  function renderRows(opps) {
+    return opps.map((o, i) => {
+      const side = o.side.toLowerCase();
+      const stars = o.stars || '★';
+      const starColor = stars.length >= 2 ? '#16a34a' : stars.length === 1 ? '#ca8a04' : 'var(--text-faint)';
+      const kelly = o.kelly_dollars > 0 ? '$' + o.kelly_dollars.toFixed(2) : '—';
+      const placed = placedSet.has(`${o.ticker}|${o.target_date || o.expiry || ''}`);
+      const isExpanded = expandedId === o.ticker;
+      const belowThreshold = o.passes_threshold === false || (o.passes_threshold === undefined && o.edge_pct < minEdge);
+      return (
+        <React.Fragment key={i}>
+          <tr onClick={() => !placed && setExpandedId(isExpanded ? null : o.ticker)} style={{
+            borderBottom: isExpanded ? 'none' : '1px solid var(--bg-muted)',
+            cursor: placed ? 'default' : 'pointer',
+            opacity: placed ? 0.4 : belowThreshold ? 0.55 : 1,
+            pointerEvents: placed ? 'none' : 'auto',
+            background: isExpanded ? 'var(--bg-subtle)' : o.already_held ? 'rgba(59,130,246,0.04)' : 'transparent',
+          }}>
+            <td style={{ padding: '14px 16px', textAlign: 'center' }} onClick={e => e.stopPropagation()}>
+              <input type="checkbox" checked={selectedIds.has(o.ticker)}
+                onChange={(e) => { const next = new Set(selectedIds); if (e.target.checked) next.add(o.ticker); else next.delete(o.ticker); setSelectedIds(next); }}
+                style={{ cursor: 'pointer' }} />
+            </td>
+            <td style={{ padding: '12px 16px', color: starColor, letterSpacing: 1 }}>{stars}</td>
+            <td style={{ padding: '12px 16px', fontFamily: 'ui-monospace, monospace', fontSize: 11, color: '#3b82f6' }}>{o.ticker}</td>
+            <td style={{ padding: '12px 16px', fontWeight: 600 }}>{normCity(o.city)}</td>
+            <td style={{ padding: '12px 16px' }}>
+              <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 999, background: side === 'yes' ? 'rgba(34,197,94,0.12)' : 'rgba(239,68,68,0.12)', color: side === 'yes' ? '#16a34a' : '#ef4444', fontSize: 10, fontWeight: 600, textTransform: 'uppercase' }}>{side}</span>
+            </td>
+            <td style={{ padding: '12px 16px', textAlign: 'right', fontFamily: 'ui-monospace, monospace', color: 'var(--text-muted)' }}>{o.forecast_prob.toFixed(1)}%</td>
+            <td style={{ padding: '12px 16px', textAlign: 'right', fontFamily: 'ui-monospace, monospace', color: 'var(--text-muted)' }}>{o.market_prob.toFixed(1)}%</td>
+            <td style={{ padding: '12px 16px', textAlign: 'right', color: '#16a34a', fontWeight: 700, fontFamily: 'ui-monospace, monospace' }}>+{o.edge_pct.toFixed(1)}%</td>
+            <td style={{ padding: '12px 16px' }}>
+              <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 999, fontSize: 10, fontWeight: 600, background: o.time_risk === 'LOW' ? 'rgba(34,197,94,0.12)' : o.time_risk === 'MEDIUM' ? 'rgba(234,179,8,0.12)' : 'rgba(239,68,68,0.12)', color: o.time_risk === 'LOW' ? '#16a34a' : o.time_risk === 'MEDIUM' ? '#ca8a04' : '#ef4444' }}>{o.time_risk}</span>
+            </td>
+            <td style={{ padding: '12px 16px', textAlign: 'right', fontFamily: 'ui-monospace, monospace', color: 'var(--text-muted)', fontSize: 12 }}>{kelly}</td>
+            <td style={{ padding: '12px 16px', fontFamily: 'ui-monospace, monospace', fontSize: 11, color: 'var(--text-muted)' }}>
+              {(() => {
+                const td = o.target_date || o.expiry;
+                if (!td) return '—';
+                const daysOut = Math.ceil((new Date(td) - new Date(new Date().toDateString())) / 86400000);
+                const color = daysOut <= 1 ? '#f59e0b' : daysOut <= 3 ? 'var(--text-muted)' : 'var(--text-faint)';
+                return <span style={{ color }}>{td} <span style={{ fontSize: 10 }}>({daysOut}d)</span></span>;
+              })()}
+            </td>
+            <td style={{ padding: '12px 16px', fontSize: 13 }}>
+              {belowThreshold && <span title={`Edge ${o.edge_pct.toFixed(1)}% below ${minEdge}% threshold`} style={{ display: 'inline-block', padding: '1px 6px', borderRadius: 999, marginRight: 4, background: 'rgba(100,116,139,0.12)', color: 'var(--text-muted)', fontSize: 10, fontWeight: 600 }}>LOW EDGE</span>}
+              {o.near_threshold && <span title="Near threshold" style={{ color: '#ca8a04' }}>⚠ </span>}
+              {o.is_hedge      && <span title="Hedges open position" style={{ color: 'var(--text-muted)' }}>↔ </span>}
+              {o.already_held  && <span title="Already held" style={{ display: 'inline-block', padding: '1px 6px', borderRadius: 999, background: 'rgba(59,130,246,0.12)', color: '#3b82f6', fontSize: 10, fontWeight: 600 }}>HELD</span>}
+              {!belowThreshold && !o.near_threshold && !o.is_hedge && !o.already_held && <span style={{ color: 'var(--text-faint)' }}>—</span>}
+            </td>
+            <td style={{ padding: '12px 16px' }} onClick={e => e.stopPropagation()}>
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                {(() => {
+                  const mp = (o.market_prob || 0) / 100;
+                  const kellyQty = o.kelly_qty || (o.kelly_dollars > 0 && mp > 0 ? Math.max(1, Math.floor(o.kelly_dollars / mp)) : 1);
+                  return (<>
+                    <input type="number" min="1" step="1" value={qtyMap[o.ticker] ?? kellyQty}
+                      onChange={e => setQtyMap(prev => ({ ...prev, [o.ticker]: e.target.value }))}
+                      title={`Kelly suggests ${kellyQty} contracts`}
+                      style={{ width: 52, padding: '3px 5px', borderRadius: 5, border: '1px solid var(--border)', background: 'var(--bg-muted)', color: 'var(--text)', fontSize: 11, textAlign: 'center' }} />
+                    <button onClick={() => handleAction(o, 'approve')} style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid #16a34a', background: 'rgba(34,197,94,0.08)', color: '#16a34a', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>✓</button>
+                    <button onClick={() => handleAction(o, 'reject')} style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-muted)', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>✗</button>
+                  </>);
+                })()}
+              </div>
+            </td>
+          </tr>
+          {isExpanded && (
+            <tr style={{ background: 'var(--bg-subtle)', borderBottom: '1px solid var(--border)' }}>
+              <td colSpan="13" style={{ padding: '20px 24px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 16, marginBottom: 16 }}>
+                  {[
+                    { label: 'Edge',     value: '+' + o.edge_pct.toFixed(1) + '%', highlight: true },
+                    { label: 'Forecast', value: o.forecast_prob.toFixed(1) + '%' },
+                    { label: 'Market',   value: o.market_prob.toFixed(1) + '%' },
+                    { label: 'Kelly $',  value: o.kelly_dollars > 0 ? '$' + o.kelly_dollars.toFixed(2) : '—' },
+                    { label: 'Model',    value: o.model || '—' },
+                    { label: 'Days Out', value: (() => { const td = o.target_date || o.expiry; if (!td) return '—'; return Math.ceil((new Date(td) - new Date()) / 86400000) + 'd'; })() },
+                  ].map(item => (
+                    <div key={item.label}>
+                      <div style={{ color: 'var(--text-faint)', fontSize: 11, marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{item.label}</div>
+                      <div style={{ fontWeight: 600, fontSize: 15, fontFamily: 'ui-monospace, monospace', color: item.highlight ? '#16a34a' : 'inherit' }}>{item.value}</div>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ padding: '12px', background: 'var(--bg-card)', borderRadius: 8, border: '1px solid var(--border)', fontSize: 12, color: 'var(--text-muted)' }}>
+                  <strong>Market:</strong> {o.ticker} · <strong>Side:</strong> {o.side.toUpperCase()} · <strong>Risk:</strong> {o.time_risk}
+                  {o.near_threshold && <span style={{ marginLeft: 12, color: '#ca8a04' }}>⚠ Near threshold</span>}
+                  {o.is_hedge && <span style={{ marginLeft: 12 }}>↔ Hedges existing position</span>}
+                </div>
+              </td>
+            </tr>
+          )}
+        </React.Fragment>
+      );
+    });
+  }
+
   return (
     <main style={{ maxWidth: 1360, margin: '0 auto', padding: '24px 28px 40px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 18 }}>
@@ -240,7 +343,7 @@ export default function SignalsTab() {
             <span style={{
               padding: '2px 8px', borderRadius: 999, fontSize: 11, fontWeight: 600,
               background: 'rgba(59,130,246,0.12)', color: '#3b82f6',
-            }}>METAR-locked · settles today</span>
+            }}>settles today</span>
             <span style={{ color: 'var(--text-faint)', fontSize: 12 }}>{sameDayOpps.length} candidate{sameDayOpps.length !== 1 ? 's' : ''}</span>
           </div>
           <section style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 14, overflow: 'hidden' }}>
@@ -267,170 +370,7 @@ export default function SignalsTab() {
               </tr>
             </thead>
             <tbody>
-              {sameDayOpps.map((o, i) => {
-                const side = o.side.toLowerCase();
-                const stars = o.stars || '★';
-                const starColor = stars.length >= 2 ? '#16a34a' : stars.length === 1 ? '#ca8a04' : 'var(--text-faint)';
-                const kelly = o.kelly_dollars > 0 ? '$' + o.kelly_dollars.toFixed(2) : '—';
-                const placed = placedSet.has(`${o.ticker}|${o.target_date || o.expiry || ''}`);
-                const isExpanded = expandedId === o.ticker;
-                // Use the backend's passes_threshold flag when available (set by cron.py gate logic).
-                // Fall back to the manual slider for older cache files that don't have the field.
-                const belowThreshold = o.passes_threshold === false || (o.passes_threshold === undefined && o.edge_pct < minEdge);
-                return (
-                  <React.Fragment key={i}>
-                    <tr onClick={() => !placed && setExpandedId(isExpanded ? null : o.ticker)} style={{
-                      borderBottom: isExpanded ? 'none' : '1px solid var(--bg-muted)',
-                      cursor: placed ? 'default' : 'pointer',
-                      opacity: placed ? 0.4 : belowThreshold ? 0.55 : 1,
-                      pointerEvents: placed ? 'none' : 'auto',
-                      background: isExpanded ? 'var(--bg-subtle)' : o.already_held ? 'rgba(59,130,246,0.04)' : 'transparent',
-                    }}>
-                      <td style={{ padding: '14px 16px', textAlign: 'center' }} onClick={e => e.stopPropagation()}>
-                        <input
-                          type="checkbox"
-                          checked={selectedIds.has(o.ticker)}
-                          onChange={(e) => {
-                            const next = new Set(selectedIds);
-                            if (e.target.checked) next.add(o.ticker);
-                            else next.delete(o.ticker);
-                            setSelectedIds(next);
-                          }}
-                          style={{ cursor: 'pointer' }}
-                        />
-                      </td>
-                      <td style={{ padding: '12px 16px', color: starColor, letterSpacing: 1 }}>{stars}</td>
-                      <td style={{ padding: '12px 16px', fontFamily: 'ui-monospace, monospace', fontSize: 11, color: '#3b82f6' }}>
-                        {o.ticker}
-                      </td>
-                      <td style={{ padding: '12px 16px', fontWeight: 600 }}>{normCity(o.city)}</td>
-                      <td style={{ padding: '12px 16px' }}>
-                        <span style={{
-                          display: 'inline-block', padding: '2px 8px', borderRadius: 999,
-                          background: side === 'yes' ? 'rgba(34,197,94,0.12)' : 'rgba(239,68,68,0.12)',
-                          color: side === 'yes' ? '#16a34a' : '#ef4444',
-                          fontSize: 10, fontWeight: 600, textTransform: 'uppercase',
-                        }}>{side}</span>
-                      </td>
-                      <td style={{ padding: '12px 16px', textAlign: 'right', fontFamily: 'ui-monospace, monospace', color: 'var(--text-muted)' }}>
-                        {o.forecast_prob.toFixed(1)}%
-                      </td>
-                      <td style={{ padding: '12px 16px', textAlign: 'right', fontFamily: 'ui-monospace, monospace', color: 'var(--text-muted)' }}>
-                        {o.market_prob.toFixed(1)}%
-                      </td>
-                      <td style={{ padding: '12px 16px', textAlign: 'right', color: '#16a34a', fontWeight: 700, fontFamily: 'ui-monospace, monospace' }}>
-                        +{o.edge_pct.toFixed(1)}%
-                      </td>
-                      <td style={{ padding: '12px 16px' }}>
-                        <span style={{
-                          display: 'inline-block', padding: '2px 8px', borderRadius: 999, fontSize: 10, fontWeight: 600,
-                          background: o.time_risk === 'LOW' ? 'rgba(34,197,94,0.12)' : o.time_risk === 'MEDIUM' ? 'rgba(234,179,8,0.12)' : 'rgba(239,68,68,0.12)',
-                          color: o.time_risk === 'LOW' ? '#16a34a' : o.time_risk === 'MEDIUM' ? '#ca8a04' : '#ef4444',
-                        }}>{o.time_risk}</span>
-                      </td>
-                      <td style={{ padding: '12px 16px', textAlign: 'right', fontFamily: 'ui-monospace, monospace', color: 'var(--text-muted)', fontSize: 12 }}>
-                        {kelly}
-                      </td>
-                      <td style={{ padding: '12px 16px', fontFamily: 'ui-monospace, monospace', fontSize: 11, color: 'var(--text-muted)' }}>
-                        {(() => {
-                          const td = o.target_date || o.expiry;
-                          if (!td) return '—';
-                          const daysOut = Math.ceil((new Date(td) - new Date(new Date().toDateString())) / 86400000);
-                          const color = daysOut <= 1 ? '#f59e0b' : daysOut <= 3 ? 'var(--text-muted)' : 'var(--text-faint)';
-                          return <span style={{ color }}>{td} <span style={{ fontSize: 10 }}>({daysOut}d)</span></span>;
-                        })()}
-                      </td>
-                      <td style={{ padding: '12px 16px', fontSize: 13 }}>
-                        {belowThreshold && (
-                          <span title={`Edge ${o.edge_pct.toFixed(1)}% is below your ${minEdge}% highlight threshold — bot would not auto-trade this`} style={{
-                            display: 'inline-block', padding: '1px 6px', borderRadius: 999, marginRight: 4,
-                            background: 'rgba(100,116,139,0.12)', color: 'var(--text-muted)',
-                            fontSize: 10, fontWeight: 600,
-                          }}>LOW EDGE</span>
-                        )}
-                        {o.near_threshold && <span title="Near threshold" style={{ color: '#ca8a04' }}>⚠ </span>}
-                        {o.is_hedge      && <span title="Hedges open position" style={{ color: 'var(--text-muted)' }}>↔ </span>}
-                        {o.already_held  && (
-                          <span title="You already have an open position in this market" style={{
-                            display: 'inline-block', padding: '1px 6px', borderRadius: 999,
-                            background: 'rgba(59,130,246,0.12)', color: '#3b82f6',
-                            fontSize: 10, fontWeight: 600,
-                          }}>HELD</span>
-                        )}
-                        {!belowThreshold && !o.near_threshold && !o.is_hedge && !o.already_held && <span style={{ color: 'var(--text-faint)' }}>—</span>}
-                      </td>
-                      <td style={{ padding: '12px 16px' }} onClick={e => e.stopPropagation()}>
-                        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                          {(() => {
-                            const mp = (o.market_prob || 0) / 100;
-                            const kellyQty = o.kelly_qty
-                              || (o.kelly_dollars > 0 && mp > 0
-                                ? Math.max(1, Math.floor(o.kelly_dollars / mp))
-                                : 1);
-                            return (<>
-                              <input
-                                type="number" min="1" step="1"
-                                value={qtyMap[o.ticker] ?? kellyQty}
-                                onChange={e => setQtyMap(prev => ({ ...prev, [o.ticker]: e.target.value }))}
-                                title={`Kelly suggests ${kellyQty} contracts`}
-                                style={{
-                                  width: 52, padding: '3px 5px', borderRadius: 5,
-                                  border: '1px solid var(--border)', background: 'var(--bg-muted)',
-                                  color: 'var(--text)', fontSize: 11, textAlign: 'center',
-                                }}
-                              />
-                              <button onClick={() => handleAction(o, 'approve')} style={{
-                                padding: '4px 10px', borderRadius: 6, border: '1px solid #16a34a',
-                                background: 'rgba(34,197,94,0.08)', color: '#16a34a',
-                                fontSize: 11, fontWeight: 600, cursor: 'pointer',
-                              }}>✓</button>
-                              <button onClick={() => handleAction(o, 'reject')} style={{
-                                padding: '4px 10px', borderRadius: 6, border: '1px solid var(--border)',
-                                background: 'transparent', color: 'var(--text-muted)',
-                                fontSize: 11, fontWeight: 600, cursor: 'pointer',
-                              }}>✗</button>
-                            </>);
-                          })()}
-                        </div>
-                      </td>
-                    </tr>
-                    {/* Signal Detail Card (expanded row) */}
-                    {isExpanded && (
-                      <tr style={{ background: 'var(--bg-subtle)', borderBottom: '1px solid var(--border)' }}>
-                        <td colSpan="13" style={{ padding: '20px 24px' }}>
-                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 16, marginBottom: 16 }}>
-                            {[
-                              { label: 'Edge', value: '+' + o.edge_pct.toFixed(1) + '%', highlight: true },
-                              { label: 'Forecast', value: o.forecast_prob.toFixed(1) + '%' },
-                              { label: 'Market', value: o.market_prob.toFixed(1) + '%' },
-                              { label: 'Kelly $', value: o.kelly_dollars > 0 ? '$' + o.kelly_dollars.toFixed(2) : '—' },
-                              { label: 'Model', value: o.model || '—' },
-                              { label: 'Days Out', value: (() => {
-                                const td = o.target_date || o.expiry;
-                                if (!td) return '—';
-                                return Math.ceil((new Date(td) - new Date()) / 86400000) + 'd';
-                              })() },
-                            ].map(item => (
-                              <div key={item.label}>
-                                <div style={{ color: 'var(--text-faint)', fontSize: 11, marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{item.label}</div>
-                                <div style={{
-                                  fontWeight: 600, fontSize: 15, fontFamily: 'ui-monospace, monospace',
-                                  color: item.highlight ? '#16a34a' : 'inherit'
-                                }}>{item.value}</div>
-                              </div>
-                            ))}
-                          </div>
-                          <div style={{ padding: '12px', background: 'var(--bg-card)', borderRadius: 8, border: '1px solid var(--border)', fontSize: 12, color: 'var(--text-muted)' }}>
-                            <strong>Market:</strong> {o.ticker} · <strong>Side:</strong> {o.side.toUpperCase()} · <strong>Risk:</strong> {o.time_risk}
-                            {o.near_threshold && <span style={{ marginLeft: 12, color: '#ca8a04' }}>⚠ Near threshold</span>}
-                            {o.is_hedge && <span style={{ marginLeft: 12 }}>↔ Hedges existing position</span>}
-                          </div>
-                        </td>
-                      </tr>
-                    )}
-                  </React.Fragment>
-                );
-              })}
+              {renderRows(sameDayOpps)}
             </tbody>
           </table>
           </section>
@@ -472,102 +412,7 @@ export default function SignalsTab() {
               </tr>
             </thead>
             <tbody>
-              {multiDayOpps.map((o, i) => {
-                const side = o.side.toLowerCase();
-                const stars = o.stars || '★';
-                const starColor = stars.length >= 2 ? '#16a34a' : stars.length === 1 ? '#ca8a04' : 'var(--text-faint)';
-                const kelly = o.kelly_dollars > 0 ? '$' + o.kelly_dollars.toFixed(2) : '—';
-                const placed = placedSet.has(`${o.ticker}|${o.target_date || o.expiry || ''}`);
-                const isExpanded = expandedId === o.ticker;
-                const belowThreshold = o.passes_threshold === false || (o.passes_threshold === undefined && o.edge_pct < minEdge);
-                return (
-                  <React.Fragment key={i}>
-                    <tr onClick={() => !placed && setExpandedId(isExpanded ? null : o.ticker)} style={{
-                      borderBottom: isExpanded ? 'none' : '1px solid var(--bg-muted)',
-                      cursor: placed ? 'default' : 'pointer',
-                      opacity: placed ? 0.4 : belowThreshold ? 0.55 : 1,
-                      pointerEvents: placed ? 'none' : 'auto',
-                      background: isExpanded ? 'var(--bg-subtle)' : o.already_held ? 'rgba(59,130,246,0.04)' : 'transparent',
-                    }}>
-                      <td style={{ padding: '14px 16px', textAlign: 'center' }} onClick={e => e.stopPropagation()}>
-                        <input type="checkbox" checked={selectedIds.has(o.ticker)}
-                          onChange={(e) => { const next = new Set(selectedIds); if (e.target.checked) next.add(o.ticker); else next.delete(o.ticker); setSelectedIds(next); }}
-                          style={{ cursor: 'pointer' }} />
-                      </td>
-                      <td style={{ padding: '12px 16px', color: starColor, letterSpacing: 1 }}>{stars}</td>
-                      <td style={{ padding: '12px 16px', fontFamily: 'ui-monospace, monospace', fontSize: 11, color: '#3b82f6' }}>{o.ticker}</td>
-                      <td style={{ padding: '12px 16px', fontWeight: 600 }}>{normCity(o.city)}</td>
-                      <td style={{ padding: '12px 16px' }}>
-                        <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 999, background: side === 'yes' ? 'rgba(34,197,94,0.12)' : 'rgba(239,68,68,0.12)', color: side === 'yes' ? '#16a34a' : '#ef4444', fontSize: 10, fontWeight: 600, textTransform: 'uppercase' }}>{side}</span>
-                      </td>
-                      <td style={{ padding: '12px 16px', textAlign: 'right', fontFamily: 'ui-monospace, monospace', color: 'var(--text-muted)' }}>{o.forecast_prob.toFixed(1)}%</td>
-                      <td style={{ padding: '12px 16px', textAlign: 'right', fontFamily: 'ui-monospace, monospace', color: 'var(--text-muted)' }}>{o.market_prob.toFixed(1)}%</td>
-                      <td style={{ padding: '12px 16px', textAlign: 'right', color: '#16a34a', fontWeight: 700, fontFamily: 'ui-monospace, monospace' }}>+{o.edge_pct.toFixed(1)}%</td>
-                      <td style={{ padding: '12px 16px' }}>
-                        <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 999, fontSize: 10, fontWeight: 600, background: o.time_risk === 'LOW' ? 'rgba(34,197,94,0.12)' : o.time_risk === 'MEDIUM' ? 'rgba(234,179,8,0.12)' : 'rgba(239,68,68,0.12)', color: o.time_risk === 'LOW' ? '#16a34a' : o.time_risk === 'MEDIUM' ? '#ca8a04' : '#ef4444' }}>{o.time_risk}</span>
-                      </td>
-                      <td style={{ padding: '12px 16px', textAlign: 'right', fontFamily: 'ui-monospace, monospace', color: 'var(--text-muted)', fontSize: 12 }}>{kelly}</td>
-                      <td style={{ padding: '12px 16px', fontFamily: 'ui-monospace, monospace', fontSize: 11, color: 'var(--text-muted)' }}>
-                        {(() => {
-                          const td = o.target_date || o.expiry;
-                          if (!td) return '—';
-                          const daysOut = Math.ceil((new Date(td) - new Date(new Date().toDateString())) / 86400000);
-                          const color = daysOut <= 1 ? '#f59e0b' : daysOut <= 3 ? 'var(--text-muted)' : 'var(--text-faint)';
-                          return <span style={{ color }}>{td} <span style={{ fontSize: 10 }}>({daysOut}d)</span></span>;
-                        })()}
-                      </td>
-                      <td style={{ padding: '12px 16px', fontSize: 13 }}>
-                        {belowThreshold && <span title={`Edge below threshold`} style={{ display: 'inline-block', padding: '1px 6px', borderRadius: 999, marginRight: 4, background: 'rgba(100,116,139,0.12)', color: 'var(--text-muted)', fontSize: 10, fontWeight: 600 }}>LOW EDGE</span>}
-                        {o.near_threshold && <span title="Near threshold" style={{ color: '#ca8a04' }}>⚠ </span>}
-                        {o.is_hedge      && <span title="Hedges open position" style={{ color: 'var(--text-muted)' }}>↔ </span>}
-                        {o.already_held  && <span title="Already held" style={{ display: 'inline-block', padding: '1px 6px', borderRadius: 999, background: 'rgba(59,130,246,0.12)', color: '#3b82f6', fontSize: 10, fontWeight: 600 }}>HELD</span>}
-                        {!belowThreshold && !o.near_threshold && !o.is_hedge && !o.already_held && <span style={{ color: 'var(--text-faint)' }}>—</span>}
-                      </td>
-                      <td style={{ padding: '12px 16px' }} onClick={e => e.stopPropagation()}>
-                        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                          {(() => {
-                            const mp = (o.market_prob || 0) / 100;
-                            const kellyQty = o.kelly_qty || (o.kelly_dollars > 0 && mp > 0 ? Math.max(1, Math.floor(o.kelly_dollars / mp)) : 1);
-                            return (<>
-                              <input type="number" min="1" step="1" value={qtyMap[o.ticker] ?? kellyQty}
-                                onChange={e => setQtyMap(prev => ({ ...prev, [o.ticker]: e.target.value }))}
-                                style={{ width: 52, padding: '3px 5px', borderRadius: 5, border: '1px solid var(--border)', background: 'var(--bg-muted)', color: 'var(--text)', fontSize: 11, textAlign: 'center' }} />
-                              <button onClick={() => handleAction(o, 'approve')} style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid #16a34a', background: 'rgba(34,197,94,0.08)', color: '#16a34a', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>✓</button>
-                              <button onClick={() => handleAction(o, 'reject')} style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-muted)', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>✗</button>
-                            </>);
-                          })()}
-                        </div>
-                      </td>
-                    </tr>
-                    {isExpanded && (
-                      <tr style={{ background: 'var(--bg-subtle)', borderBottom: '1px solid var(--border)' }}>
-                        <td colSpan="13" style={{ padding: '20px 24px' }}>
-                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 16, marginBottom: 16 }}>
-                            {[
-                              { label: 'Edge', value: '+' + o.edge_pct.toFixed(1) + '%', highlight: true },
-                              { label: 'Forecast', value: o.forecast_prob.toFixed(1) + '%' },
-                              { label: 'Market', value: o.market_prob.toFixed(1) + '%' },
-                              { label: 'Kelly $', value: o.kelly_dollars > 0 ? '$' + o.kelly_dollars.toFixed(2) : '—' },
-                              { label: 'Model', value: o.model || '—' },
-                              { label: 'Days Out', value: (() => { const td = o.target_date || o.expiry; if (!td) return '—'; return Math.ceil((new Date(td) - new Date()) / 86400000) + 'd'; })() },
-                            ].map(item => (
-                              <div key={item.label}>
-                                <div style={{ color: 'var(--text-faint)', fontSize: 11, marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{item.label}</div>
-                                <div style={{ fontWeight: 600, fontSize: 15, fontFamily: 'ui-monospace, monospace', color: item.highlight ? '#16a34a' : 'inherit' }}>{item.value}</div>
-                              </div>
-                            ))}
-                          </div>
-                          <div style={{ padding: '12px', background: 'var(--bg-card)', borderRadius: 8, border: '1px solid var(--border)', fontSize: 12, color: 'var(--text-muted)' }}>
-                            <strong>Market:</strong> {o.ticker} · <strong>Side:</strong> {o.side.toUpperCase()} · <strong>Risk:</strong> {o.time_risk}
-                            {o.near_threshold && <span style={{ marginLeft: 12, color: '#ca8a04' }}>⚠ Near threshold</span>}
-                            {o.is_hedge && <span style={{ marginLeft: 12 }}>↔ Hedges existing position</span>}
-                          </div>
-                        </td>
-                      </tr>
-                    )}
-                  </React.Fragment>
-                );
-              })}
+              {renderRows(multiDayOpps)}
             </tbody>
           </table>
           </section>

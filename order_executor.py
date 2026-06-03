@@ -721,16 +721,17 @@ def _auto_place_trades(
     # quickly and don't consume the multi-day concentration budget. Set via
     # MAX_SAME_DAY_POSITIONS env var (default 8).
     MAX_SAME_DAY_POSITIONS = int(os.getenv("MAX_SAME_DAY_POSITIONS", "8"))
-    _today_str = date.today().isoformat()
-    # Count open same-day positions (settle today) separately from multi-day.
-    _same_day_open = sum(
-        1 for t in _open_trades_list if t.get("target_date") == _today_str
-    )
-    # Multi-day cap only tracks positions settling on future dates.
+    # Count open same-day positions using days_out stored at placement time.
+    # Using stored days_out (not target_date == today) avoids misclassifying a
+    # days_out=1 trade placed yesterday as same-day just because it settles today.
+    # Trades placed before this field existed default to 1 (multi-day) so they
+    # fall into the normal date-cap path rather than consuming same-day slots.
+    _same_day_open = sum(1 for t in _open_trades_list if t.get("days_out", 1) == 0)
+    # Multi-day cap tracks all positions placed as days_out >= 1, grouped by date.
     _multiday_date_counts = _Counter(
         t.get("target_date")
         for t in _open_trades_list
-        if t.get("target_date") and t.get("target_date") != _today_str
+        if t.get("target_date") and t.get("days_out", 1) != 0
     )
 
     # Concurrent-position cap: never hold more than MAX_CONCURRENT_POSITIONS at once.
@@ -1092,6 +1093,7 @@ def _auto_place_trades(
                     close_time=m.get(
                         "close_time"
                     ),  # needed for 24h settlement gate in stop loss checks
+                    days_out=int(a.get("days_out", 1)),
                 )
                 print(
                     green(

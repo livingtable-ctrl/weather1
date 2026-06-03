@@ -609,6 +609,8 @@ def place_paper_order(
     ab_variant: str | None = None,
     close_time: str
     | None = None,  # ISO datetime when market closes — used by 24h settlement gate
+    days_out: int
+    | None = None,  # forecast horizon at placement time; 0 = same-day METAR trade
 ) -> dict:
     """
     Place a paper trade. Deducts quantity * entry_price from balance.
@@ -709,6 +711,7 @@ def place_paper_order(
             "condition_threshold": condition_threshold,
             "ab_variant": ab_variant,
             "close_time": close_time,
+            "days_out": days_out,
             # Flagged when placed during a kill-switch override run so these
             # trades can be isolated for analysis after settlement.
             "via_kill_switch_override": KILL_SWITCH_OVERRIDE_ACTIVE,
