@@ -717,8 +717,20 @@ def _auto_place_trades(
     from collections import Counter as _Counter
 
     MAX_POSITIONS_PER_DATE = int(os.getenv("MAX_POSITIONS_PER_DATE", "4"))
-    _date_counts = _Counter(
-        t.get("target_date") for t in _open_trades_list if t.get("target_date")
+    # Same-day (days_out==0) METAR trades use a higher separate cap — they settle
+    # quickly and don't consume the multi-day concentration budget. Set via
+    # MAX_SAME_DAY_POSITIONS env var (default 8).
+    MAX_SAME_DAY_POSITIONS = int(os.getenv("MAX_SAME_DAY_POSITIONS", "8"))
+    _today_str = date.today().isoformat()
+    # Count open same-day positions (settle today) separately from multi-day.
+    _same_day_open = sum(
+        1 for t in _open_trades_list if t.get("target_date") == _today_str
+    )
+    # Multi-day cap only tracks positions settling on future dates.
+    _multiday_date_counts = _Counter(
+        t.get("target_date")
+        for t in _open_trades_list
+        if t.get("target_date") and t.get("target_date") != _today_str
     )
 
     # Concurrent-position cap: never hold more than MAX_CONCURRENT_POSITIONS at once.
@@ -822,10 +834,20 @@ def _auto_place_trades(
                 target_date_obj = _raw_date
         target_date_str = target_date_obj.isoformat() if target_date_obj else None
 
-        # Per-date concentration cap: skip if too many positions already settle this date
-        if target_date_str and _date_counts[target_date_str] >= MAX_POSITIONS_PER_DATE:
+        # Per-date concentration cap: same-day and multi-day use separate limits.
+        _is_same_day = int(a.get("days_out", 1)) == 0
+        if _is_same_day:
+            if _same_day_open >= MAX_SAME_DAY_POSITIONS:
+                _skip_reasons.append(
+                    f"{ticker}: sameday_cap({_same_day_open}/{MAX_SAME_DAY_POSITIONS})"
+                )
+                continue
+        elif (
+            target_date_str
+            and _multiday_date_counts[target_date_str] >= MAX_POSITIONS_PER_DATE
+        ):
             _skip_reasons.append(
-                f"{ticker}: date_cap({target_date_str} {_date_counts[target_date_str]}/{MAX_POSITIONS_PER_DATE})"
+                f"{ticker}: date_cap({target_date_str} {_multiday_date_counts[target_date_str]}/{MAX_POSITIONS_PER_DATE})"
             )
             continue
 
@@ -1023,8 +1045,10 @@ def _auto_place_trades(
             if opp_placed:
                 execution_log.add_live_loss(cost)
                 open_tickers.add(ticker)
-                if target_date_str:
-                    _date_counts[target_date_str] += 1
+                if _is_same_day:
+                    _same_day_open += 1
+                elif target_date_str:
+                    _multiday_date_counts[target_date_str] += 1
                 placed += 1
         else:
             trade_cost = round(entry_price * qty, 2)
@@ -1077,8 +1101,10 @@ def _auto_place_trades(
                 )
                 open_tickers.add(ticker)
                 _open_trades_list.append(trade)
-                if target_date_str:
-                    _date_counts[target_date_str] += 1
+                if _is_same_day:
+                    _same_day_open += 1
+                elif target_date_str:
+                    _multiday_date_counts[target_date_str] += 1
                 placed += 1
                 daily_spent += trade.get("cost", 0.0)
                 # Update pre-logged entry to "filled" so was_traded_today() blocks same-day re-entry.

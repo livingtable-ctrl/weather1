@@ -773,7 +773,7 @@ def _cmd_cron_body(
     _consistency_skip = False  # P3-14: init before try so it is always bound
     _dbg: dict = {
         "no_analysis": 0,
-        "same_day": 0,
+        "same_day": 0,  # informational only — same-day markets are no longer filtered
         "mkt_prob": 0,
         "divergence": 0,
         "net_edge": 0,
@@ -1132,11 +1132,17 @@ def _cmd_cron_body(
                         )
                     except Exception:
                         pass
-                    # Skip same-day markets (days_out == 0): by market open the market has
-                    # real-time weather data our ensemble forecast cannot match.
+                    # Same-day markets (days_out == 0) are re-enabled. analyze_trade
+                    # uses METAR-locked probabilities for same-day above/below markets,
+                    # which gives tight CI width → larger ci_adjusted_kelly → the only
+                    # realistic path to qty >= 1 while in TIER_3 drawdown. Between
+                    # markets at days_out == 0 skip the obs override in analyze_trade
+                    # (line 4917) so they fall back to ensemble and are covered by the
+                    # between_floor gate. The same divergence, gap, liquidity, and
+                    # min_prob_edge gates still apply to all same-day candidates.
                     if int(analysis.get("days_out", 1)) == 0:
                         _dbg["same_day"] += 1
-                        continue
+                        # fall through — do not skip
                     # Market divergence cap: skip when we disagree with the market by
                     # more than 2.5× — the market is right nearly every time in that case.
                     _side = analysis.get("recommended_side", "yes")
@@ -1157,10 +1163,15 @@ def _cmd_cron_body(
                     ):
                         _dbg["divergence"] += 1
                         continue
-                    # Use PAPER_MIN_EDGE (5%) so more signals are captured for observation.
+                    # Track whether this candidate clears both edge gates.
+                    # Below-threshold candidates are still written to signals_cache
+                    # so the dashboard can show them; only candidates that pass are
+                    # eligible for auto-trading (strong_opps / med_opps / log entry).
+                    _passes_threshold = True
                     if abs(adjusted_edge) < PAPER_MIN_EDGE:
                         _dbg["net_edge"] += 1
-                        continue
+                        _passes_threshold = False
+
                     # Probability-edge gate: require minimum conviction based on
                     # market horizon (further out = more time for repricing + more
                     # ensemble uncertainty) and per-city Brier overrides.
@@ -1173,30 +1184,38 @@ def _cmd_cron_body(
                     _city_min = CITY_MIN_PROB_EDGE.get(_city_key, MIN_PROB_EDGE)
                     _days_min = min_prob_edge_for_days_out(_days_out_val)
                     _min_edge = max(_city_min, _days_min)
-                    if _prob_edge < _min_edge:
+                    if _passes_threshold and _prob_edge < _min_edge:
                         _dbg["prob_edge"] += 1
-                        continue
-                    _dbg["passed"] += 1
+                        _passes_threshold = False
+
+                    if _passes_threshold:
+                        _dbg["passed"] += 1
                     signal = analysis.get(
                         "net_signal", analysis.get("signal", "")
                     ).strip()
                     time_risk = analysis.get("time_risk", "\u2014")
                     stars = (
                         "\u2605\u2605\u2605"
-                        if "STRONG" in signal and time_risk == "LOW"
+                        if _passes_threshold
+                        and "STRONG" in signal
+                        and time_risk == "LOW"
                         else "\u2605\u2605"
-                        if "STRONG" in signal
+                        if _passes_threshold and "STRONG" in signal
                         else "\u2605"
+                        if _passes_threshold
+                        else ""
                     )
-                    entry = {
-                        "ts": datetime.now(UTC).isoformat(),
-                        "ticker": m.get("ticker", ""),
-                        "signal": signal,
-                        "net_edge": round(net_edge, 4),
-                        "city": enriched.get("_city", ""),
-                    }
-                    with open(log_path, "a", encoding="utf-8") as f:
-                        f.write(json.dumps(entry) + "\n")
+                    # Only write a log entry for candidates that cleared the gates.
+                    if _passes_threshold:
+                        entry = {
+                            "ts": datetime.now(UTC).isoformat(),
+                            "ticker": m.get("ticker", ""),
+                            "signal": signal,
+                            "net_edge": round(net_edge, 4),
+                            "city": enriched.get("_city", ""),
+                        }
+                        with open(log_path, "a", encoding="utf-8") as f:
+                            f.write(json.dumps(entry) + "\n")
                     _tdate = enriched.get("_date")
                     from weather_markets import parse_market_price as _pmp
 
@@ -1229,23 +1248,28 @@ def _cmd_cron_body(
                             "already_held": False,
                             "near_threshold": analysis.get("near_threshold", False),
                             "is_hedge": analysis.get("_is_hedge", False),
+                            "passes_threshold": _passes_threshold,
+                            "days_out": int(analysis.get("days_out", 1)),
                         }
                     )
-                    if abs(adjusted_edge) >= _effective_strong_edge:
-                        strong_opps.append((enriched, analysis))
-                    elif abs(adjusted_edge) >= MED_EDGE:
-                        med_opps.append((enriched, analysis))
+                    # Only consider for auto-trading if edge gates passed.
+                    if _passes_threshold:
+                        if abs(adjusted_edge) >= _effective_strong_edge:
+                            strong_opps.append((enriched, analysis))
+                        elif abs(adjusted_edge) >= MED_EDGE:
+                            med_opps.append((enriched, analysis))
             except TimeoutError:
                 _log.error(
                     "cmd_cron: analysis scan timed out after %ds — %d markets processed",
                     _ANALYSIS_TIMEOUT_S,
                     _dbg["passed"]
                     + _dbg["no_analysis"]
-                    + _dbg["same_day"]
                     + _dbg["mkt_prob"]
                     + _dbg["divergence"]
                     + _dbg["net_edge"]
                     + _dbg["prob_edge"],
+                    # same_day excluded: it is informational and would double-count
+                    # markets that also appear in passed/net_edge/prob_edge
                 )
         finally:
             _pool.shutdown(wait=False)  # never block on a stuck SSL thread
@@ -1256,11 +1280,11 @@ def _cmd_cron_body(
             _ANALYSIS_TIMEOUT_S,
             _dbg["passed"]
             + _dbg["no_analysis"]
-            + _dbg["same_day"]
             + _dbg["mkt_prob"]
             + _dbg["divergence"]
             + _dbg["net_edge"]
             + _dbg["prob_edge"],
+            # same_day excluded: informational only, would double-count
         )
     except Exception as _e:
         import logging as _logging
@@ -1280,14 +1304,20 @@ def _cmd_cron_body(
     # Write rich signals cache for the web dashboard
     try:
         cache_path = Path(__file__).parent / "data" / "signals_cache.json"
-        strong = [s for s in signals_cache if "STRONG" in s["signal"]]
+        above_threshold = [s for s in signals_cache if s.get("passes_threshold", True)]
+        strong = [s for s in above_threshold if "STRONG" in s["signal"]]
         low_risk = [s for s in strong if s["time_risk"] == "LOW"]
-        signals_cache.sort(key=lambda x: abs(x["edge_pct"]), reverse=True)
+        # Sort: above-threshold candidates first (by edge), then below-threshold (by edge).
+        signals_cache.sort(
+            key=lambda x: (not x.get("passes_threshold", True), -abs(x["edge_pct"]))
+        )
         cache_payload = {
-            "signals": signals_cache[:50],
+            "signals": signals_cache[:200],
             "summary": {
                 "scanned": scanned,
-                "with_edge": len(signals_cache),
+                "with_edge": len(
+                    above_threshold
+                ),  # only counts candidates that cleared edge gates
                 "strong": len(strong),
                 "low_risk": len(low_risk),
             },
@@ -1363,7 +1393,7 @@ def _cmd_cron_body(
         _log.debug("cmd_cron: read_settlement_signals failed: %s", _e)
 
     # \u2500\u2500 Scan summary line \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
-    _n_with_edge = len(signals_cache)
+    _n_with_edge = sum(1 for s in signals_cache if s.get("passes_threshold", True))
     _n_strong = len(strong_opps)
     _n_med = len(med_opps)
     _gate_detail = _get_gate_counts()
@@ -1375,7 +1405,7 @@ def _cmd_cron_body(
     print(
         dim(
             f"  [cron] filter breakdown \u2014 no_analysis:{_dbg['no_analysis']} "
-            f"same_day:{_dbg['same_day']} mkt_prob:{_dbg['mkt_prob']} "
+            f"same_day_seen:{_dbg['same_day']} mkt_prob:{_dbg['mkt_prob']} "
             f"divergence:{_dbg['divergence']} net_edge:{_dbg['net_edge']} "
             f"prob_edge:{_dbg['prob_edge']} passed:{_dbg['passed']}"
         ),

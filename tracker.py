@@ -760,12 +760,20 @@ def get_brier_by_days_out() -> dict[str, float]:
             WHERE p.our_prob IS NOT NULL AND p.days_out IS NOT NULL
         """).fetchall()
 
-    buckets: dict[str, list[float]] = {"0-2d": [], "3-5d": [], "6-10d": [], "11+d": []}
+    buckets: dict[str, list[float]] = {
+        "same_day": [],  # days_out == 0 (METAR-locked)
+        "1-2d": [],  # days_out 1–2 (was "0-2d" before same-day was re-enabled)
+        "3-5d": [],
+        "6-10d": [],
+        "11+d": [],
+    }
     for r in rows:
         d = r["days_out"]
         err = (r["our_prob"] - r["settled_yes"]) ** 2
-        if d <= 2:
-            buckets["0-2d"].append(err)
+        if d == 0:
+            buckets["same_day"].append(err)
+        elif d <= 2:
+            buckets["1-2d"].append(err)
         elif d <= 5:
             buckets["3-5d"].append(err)
         elif d <= 10:
