@@ -484,21 +484,36 @@ def train_temperature_scaling(min_samples: int = 35) -> float | None:
         return None
 
 
-def apply_temperature_scaling(prob: float, condition_type: str | None = None) -> float:
+def apply_temperature_scaling(
+    prob: float,
+    condition_type: str | None = None,
+    days_out: int | None = None,
+) -> float:
     """Apply temperature calibration; returns prob unchanged if no model is trained.
 
-    Lookup order: per-condition T (if condition_type provided and trained) →
-    global T → no-op.  This lets between-market corrections be stronger than
-    above/below corrections without affecting each other.
+    Same-day trades (days_out=0) use a dedicated 'sameday' T fitted only on
+    METAR-derived probabilities.  Their distribution (sharp, near 0/1) is
+    fundamentally different from ensemble forecasts — applying multi-day T=3+
+    would wrongly compress METAR probs toward 0.5 and under-size same-day bets.
+    If T_sameday is not yet trained (gate: 20 settled same-day trades), prob is
+    returned unchanged rather than applying the wrong multi-day T.
+
+    Multi-day lookup order: per-condition T → global T → no-op.
     """
     table = _load_temperature_scale()
     if table is None:
         return prob
     T = None
-    if condition_type is not None:
-        T = table.get(condition_type)
-    if T is None:
-        T = table.get("global")
+    if days_out is not None and days_out == 0:
+        # Same-day path: sameday T only — no fallback to global/condition.
+        T = table.get("sameday")
+        if T is None:
+            return prob
+    else:
+        if condition_type is not None:
+            T = table.get(condition_type)
+        if T is None:
+            T = table.get("global")
     if T is None or abs(T - 1.0) < 0.01:
         return prob
     return _sigmoid(_logit(prob) / T)
@@ -554,7 +569,9 @@ def train_all_temperature_scaling(
             return None
         return T
 
-    # Fetch all settled rows with condition_type
+    # Fetch settled rows split by days_out:
+    # - Multi-day (days_out >= 1 or NULL) are ensemble-derived — use for global + per-condition T
+    # - Same-day (days_out = 0) are METAR-derived — different distribution, need their own T
     try:
         with tracker._conn() as con:
             rows = con.execute(
@@ -563,6 +580,16 @@ def train_all_temperature_scaling(
                 FROM predictions p
                 JOIN outcomes o ON p.ticker = o.ticker
                 WHERE p.our_prob IS NOT NULL AND o.settled_yes IS NOT NULL
+                  AND (p.days_out IS NULL OR p.days_out >= 1)
+                """
+            ).fetchall()
+            sameday_rows = con.execute(
+                """
+                SELECT p.our_prob, o.settled_yes
+                FROM predictions p
+                JOIN outcomes o ON p.ticker = o.ticker
+                WHERE p.our_prob IS NOT NULL AND o.settled_yes IS NOT NULL
+                  AND p.days_out = 0
                 """
             ).fetchall()
     except Exception as exc:
@@ -643,6 +670,34 @@ def train_all_temperature_scaling(
                 "train_all_temperature_scaling: %s T fit no better than T=1.0 — skipping",
                 ctype,
             )
+
+    # Same-day T — fit on METAR-derived probabilities only.
+    # These cluster near 0/1 (current obs is close to the threshold or far from it),
+    # so multi-day T values (typically 3–4) would wrongly compress them toward 0.5.
+    # 20-sample gate keeps variance manageable; fewer would overfit a single T parameter.
+    _SAMEDAY_MIN = 20
+    sd_probs = [float(r[0]) for r in sameday_rows]
+    sd_labels = [float(r[1]) for r in sameday_rows]
+    if len(sd_probs) >= _SAMEDAY_MIN:
+        T_sameday = _fit_T(sd_probs, sd_labels)
+        if T_sameday is not None:
+            existing["sameday"] = {"T": T_sameday, "n": len(sd_probs)}
+            trained["sameday"] = T_sameday
+            _log.info(
+                "train_all_temperature_scaling: sameday T=%.4f on %d samples",
+                T_sameday,
+                len(sd_probs),
+            )
+        else:
+            _log.info(
+                "train_all_temperature_scaling: sameday T fit no better than T=1.0 — skipping"
+            )
+    else:
+        _log.info(
+            "train_all_temperature_scaling: only %d same-day settled samples, need %d — skipping",
+            len(sd_probs),
+            _SAMEDAY_MIN,
+        )
 
     if existing:
         _TEMP_PATH.parent.mkdir(exist_ok=True)

@@ -203,3 +203,64 @@ class TestApplyTemperatureScaling:
             f"Expected global T fallback (compression), got {result} — "
             "no-op would return 0.80"
         )
+
+    def test_sameday_uses_sameday_T(self, tmp_path, monkeypatch):
+        """days_out=0 uses 'sameday' T, not the global T."""
+        self._load_table(
+            tmp_path,
+            monkeypatch,
+            {"global": {"T": 3.0, "n": 51}, "sameday": {"T": 1.5, "n": 25}},
+        )
+        import ml_bias
+
+        result_sameday = ml_bias.apply_temperature_scaling(0.90, days_out=0)
+        result_global = ml_bias.apply_temperature_scaling(0.90)
+        ml_bias._TEMP_CACHE = None
+
+        # sameday T=1.5 compresses less toward 0.5 than global T=3.0,
+        # so sameday result should be closer to 0.90
+        assert result_sameday > result_global, (
+            f"sameday T=1.5 should compress less than global T=3.0: "
+            f"sameday={result_sameday:.4f}, global={result_global:.4f}"
+        )
+        assert result_sameday < 0.90, "sameday T=1.5 should still compress somewhat"
+
+    def test_sameday_no_fallback_to_global(self, tmp_path, monkeypatch):
+        """days_out=0 returns prob unchanged when 'sameday' key absent — no global fallback.
+
+        METAR-derived probabilities are sharp (near 0/1); applying multi-day T=3+
+        would wrongly compress them toward 0.5.  Until 20 same-day trades settle,
+        the identity scaling (T=1.0 no-op) is safer than the wrong multi-day T.
+        """
+        self._load_table(
+            tmp_path,
+            monkeypatch,
+            {"global": {"T": 3.0, "n": 51}},  # global exists, sameday does not
+        )
+        import ml_bias
+
+        result = ml_bias.apply_temperature_scaling(0.85, days_out=0)
+        ml_bias._TEMP_CACHE = None
+
+        assert result == pytest.approx(0.85), (
+            f"days_out=0 with no sameday T should return prob unchanged, got {result}"
+        )
+
+    def test_multiday_unaffected_by_sameday_key(self, tmp_path, monkeypatch):
+        """days_out=1 still uses per-condition/global T even when sameday key is present."""
+        self._load_table(
+            tmp_path,
+            monkeypatch,
+            {"global": {"T": 3.0, "n": 51}, "sameday": {"T": 1.5, "n": 25}},
+        )
+        import ml_bias
+
+        result = ml_bias.apply_temperature_scaling(
+            0.80, condition_type="above", days_out=1
+        )
+        ml_bias._TEMP_CACHE = None
+
+        # 'above' not in table, so falls back to global T=3.0 — strong compression
+        assert 0.5 < result < 0.80, (
+            f"days_out=1 should use global T=3.0 (compression), got {result}"
+        )

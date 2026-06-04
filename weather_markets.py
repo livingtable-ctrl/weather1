@@ -5197,7 +5197,9 @@ def analyze_trade(enriched: dict) -> dict | None:
                 min(
                     0.99,
                     _apply_temp_scale(
-                        blended_prob, condition_type=condition.get("type")
+                        blended_prob,
+                        condition_type=condition.get("type"),
+                        days_out=days_out,
                     ),
                 ),
             )
