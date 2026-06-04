@@ -55,6 +55,11 @@ KILL_SWITCH_PATH: Path = Path(__file__).parent / "data" / ".kill_switch"
 # the halt condition.  Always reset to False in a finally block.
 USER_OVERRIDE_ACTIVE: bool = False
 
+# Set to True by the manual override path in main.cmd_cron when the user
+# explicitly acknowledges an anomaly halt and wants to trade one cycle anyway.
+# Always reset to False in a finally block.
+ANOMALY_OVERRIDE_ACTIVE: bool = False
+
 
 # ---------------------------------------------------------------------------
 # CronContext — explicit dependency injection replacing _main_module() hack
@@ -572,11 +577,17 @@ def _cmd_cron_body(
 
         _detected_anomalies, _should_halt = _run_anomaly_check(log_results=True)
         if _should_halt:
-            _log.error(
-                "cmd_cron: anomaly halt triggered — stopping trade placement this cycle: %s",
-                _detected_anomalies,
-            )
-            return None
+            if ANOMALY_OVERRIDE_ACTIVE or USER_OVERRIDE_ACTIVE:
+                _log.warning(
+                    "cmd_cron: anomaly halt overridden by user for this cycle: %s",
+                    _detected_anomalies,
+                )
+            else:
+                _log.error(
+                    "cmd_cron: anomaly halt triggered — stopping trade placement this cycle: %s",
+                    _detected_anomalies,
+                )
+                return None
         elif _detected_anomalies:
             _log.warning(
                 "cmd_cron: soft anomaly warnings (below halt threshold), continuing: %s",
