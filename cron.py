@@ -55,11 +55,6 @@ KILL_SWITCH_PATH: Path = Path(__file__).parent / "data" / ".kill_switch"
 # the halt condition.  Always reset to False in a finally block.
 USER_OVERRIDE_ACTIVE: bool = False
 
-# Set to True by the manual override path in main.cmd_cron when the user
-# explicitly acknowledges an anomaly halt and wants to trade one cycle anyway.
-# Always reset to False in a finally block.
-ANOMALY_OVERRIDE_ACTIVE: bool = False
-
 
 # ---------------------------------------------------------------------------
 # CronContext — explicit dependency injection replacing _main_module() hack
@@ -577,7 +572,27 @@ def _cmd_cron_body(
 
         _detected_anomalies, _should_halt = _run_anomaly_check(log_results=True)
         if _should_halt:
-            if ANOMALY_OVERRIDE_ACTIVE or USER_OVERRIDE_ACTIVE:
+            if USER_OVERRIDE_ACTIVE:
+                # Kill-switch override already acknowledged — suppress anomaly halt too
+                # so the user isn't double-prompted in the same manual run.
+                _log.warning(
+                    "cmd_cron: anomaly halt suppressed (kill-switch override active): %s",
+                    _detected_anomalies,
+                )
+            elif not getattr(cmd_cron, "_called_from_loop", False):
+                # Interactive manual run — offer one-shot override inline.
+                print(yellow(f"\n  ⚠  Anomaly halt: {', '.join(_detected_anomalies)}"))
+                print(dim("  Anomaly check re-runs next cycle regardless."))
+                try:
+                    _anom_ans = (
+                        input(yellow("  Override and run this cycle anyway? (y/N): "))
+                        .strip()
+                        .lower()
+                    )
+                except (EOFError, KeyboardInterrupt, OSError):
+                    _anom_ans = ""
+                if _anom_ans != "y":
+                    return None
                 _log.warning(
                     "cmd_cron: anomaly halt overridden by user for this cycle: %s",
                     _detected_anomalies,

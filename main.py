@@ -297,44 +297,6 @@ def cmd_cron(client: "KalshiClient", min_edge: float = MIN_EDGE) -> None:
             )
         return
 
-    # Anomaly halt check: prompt for one-shot override when running manually.
-    # Loop mode is non-interactive so it silently respects the halt.
-    if not _called_from_loop:
-        try:
-            from alerts import run_anomaly_check as _run_anomaly_check_pre
-
-            _pre_anomalies, _pre_should_halt = _run_anomaly_check_pre(log_results=False)
-        except Exception:
-            _pre_anomalies, _pre_should_halt = [], False
-        if _pre_should_halt:
-            print(yellow(f"\n  ⚠  Anomaly halt: {', '.join(_pre_anomalies)}"))
-            print(
-                dim("  Anomaly check re-runs next cycle regardless of this override.")
-            )
-            try:
-                _anom_ans = (
-                    input(yellow("  Override and run this cycle anyway? (y/N): "))
-                    .strip()
-                    .lower()
-                )
-            except (EOFError, KeyboardInterrupt, OSError):
-                _anom_ans = ""
-            if _anom_ans != "y":
-                return
-            print(
-                yellow(
-                    "  [override] Running one cycle — anomaly halt remains active.\n"
-                )
-            )
-            try:
-                _cron_cmd_cron._called_from_loop = False  # type: ignore[attr-defined]
-                _cron_module.ANOMALY_OVERRIDE_ACTIVE = True
-                _cron_cmd_cron(_build_cron_context(), client, min_edge=min_edge)
-            finally:
-                _cron_module.ANOMALY_OVERRIDE_ACTIVE = False
-                print(yellow("  [override] Anomaly check re-runs next cycle."))
-            return
-
     # Normal (non-override) path: propagate _called_from_loop flag so cron's
     # loop-mode sys.exit guard works.
     _cron_cmd_cron._called_from_loop = _called_from_loop  # type: ignore[attr-defined]
