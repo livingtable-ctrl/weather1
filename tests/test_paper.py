@@ -255,6 +255,52 @@ class TestMaxDrawdown(unittest.TestCase):
         paper.place_paper_order("TK", "yes", 200, 1.00)  # cost=$200 → balance=$800
         self.assertFalse(paper.is_paused_drawdown())
 
+    def test_effective_balance_adds_back_same_day_cost(self):
+        """get_effective_balance() adds back open same-day trade costs."""
+        import paper
+
+        paper.place_paper_order("SD1", "no", 18, 1.00, days_out=0)  # cost=$18
+        eff = paper.get_effective_balance()
+        bal = paper.get_balance()
+        self.assertAlmostEqual(eff, bal + 18.0, places=2)
+
+    def test_effective_balance_ignores_multiday_cost(self):
+        """get_effective_balance() does NOT add back multi-day trade costs."""
+        import paper
+
+        paper.place_paper_order("MD1", "no", 18, 1.00, days_out=1)  # multi-day
+        eff = paper.get_effective_balance()
+        bal = paper.get_balance()
+        self.assertAlmostEqual(eff, bal, places=2)
+
+    def test_paused_drawdown_ignores_same_day_costs(self):
+        """is_paused_drawdown() stays False when balance dips below halt only due
+        to open same-day costs — effective balance is still above the floor."""
+        import paper
+
+        # Drain to just above the 20% halt floor ($800), then add a same-day cost
+        # that would push actual balance below $800 but effective balance stays above.
+        paper.place_paper_order("BIG", "yes", 190, 1.00)  # balance → $810
+        paper.place_paper_order("SD2", "no", 15, 1.00, days_out=0)  # balance → $795
+        self.assertFalse(
+            paper.is_paused_drawdown()
+        )  # effective = $795 + $15 = $810 > $800
+
+    def test_reset_peak_sets_to_current_balance(self):
+        """reset_peak_balance() resets peak to current balance, preserving trades."""
+        import paper
+
+        paper.place_paper_order("TK", "yes", 100, 1.00)  # balance → $900
+        paper.settle_paper_trade(
+            paper.get_open_trades()[0]["id"], False
+        )  # loss → $900-$100
+        # peak is still $1000; reset it
+        new_peak = paper.reset_peak_balance(reason="test")
+        self.assertAlmostEqual(new_peak, paper.get_balance(), places=2)
+        self.assertAlmostEqual(paper.get_peak_balance(), paper.get_balance(), places=2)
+        # trade history preserved
+        self.assertEqual(len(paper.get_all_trades()), 1)
+
 
 class TestPortfolioKelly(unittest.TestCase):
     def setUp(self):

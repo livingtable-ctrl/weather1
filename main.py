@@ -2508,6 +2508,10 @@ def cmd_admin(action: str, reason: str = "manual admin override") -> None:
     Actions:
       reset-loss  — waive today's daily loss limit (e.g. after a bug caused
                     phantom losses).  Expires automatically at midnight UTC.
+      reset-peak  — reset the high-water mark to the current settled balance.
+                    Use after a rough patch where the original peak is blocking
+                    the model from gathering new data. Preserves all trade
+                    history, predictions, and Brier data.
     """
     if action == "reset-loss":
         from paper import reset_daily_loss_limit
@@ -2522,8 +2526,22 @@ def cmd_admin(action: str, reason: str = "manual admin override") -> None:
         )
         return
 
+    if action == "reset-peak":
+        from paper import get_peak_balance, reset_peak_balance
+
+        old_peak = get_peak_balance()
+        new_peak = reset_peak_balance(reason=reason)
+        print(
+            green(
+                f"  Peak balance reset: ${old_peak:.2f} → ${new_peak:.2f}\n"
+                f"  Drawdown tiers now recalculated from ${new_peak:.2f}.\n"
+                f"  Run cron to resume trading at updated Kelly fractions."
+            )
+        )
+        return
+
     print(red(f"  Unknown admin action: {action!r}"))
-    print(dim("  Usage: py main.py admin reset-loss"))
+    print(dim("  Usage: py main.py admin reset-loss | reset-peak"))
 
 
 def cmd_watch(
