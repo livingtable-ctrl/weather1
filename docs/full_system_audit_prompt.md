@@ -211,6 +211,10 @@ If the `!= "between"` guard is absent or wrong, flag CRITICAL.
 
 **E3.** `get_max_drawdown_pct()` — confirm it uses actual `get_balance()` (not effective
 balance). It is a reporting metric, intentionally not the same as trading decisions.
+Then confirm no call site in `cron.py` or `order_executor.py` uses `get_max_drawdown_pct()`
+to gate or scale an order. If it appears in a trading decision path, that is CRITICAL —
+it uses un-adjusted balance and would make the wrong halt/scale decision when same-day
+costs are open.
 
 **E4.** `reset_peak_balance()` — confirm it raises `ValueError` if `confirmed=True` is
 not passed. Confirm the CLI prompt in `main.py cmd_admin` requires the user to type
@@ -265,6 +269,14 @@ A weaker signal should not claim a cap slot over a stronger one from the same da
 
 **G4.** Confirm `MAX_DAILY_SPEND` cap is enforced and counts both same-day and
 multi-day spend. Confirm it is not reset mid-scan if the cron loop retries.
+
+**G5.** signals_cache `days_out` passthrough — in `cron.py`, signals are analyzed
+and stored in a cache before orders are placed. Confirm `days_out` is preserved in
+each cached signal dict and is passed through to `order_executor` when the order is
+placed. If `days_out` is dropped or defaults to a wrong value at the order placement
+step, same-day signals would be treated as multi-day — wrong position caps, wrong
+calibration path, wrong drawdown cost accounting. Cite the exact field in the cache
+dict and the exact argument passed to the order function.
 
 ---
 
