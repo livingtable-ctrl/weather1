@@ -49,14 +49,15 @@ you must show the bug actively fires or will fire on the next plausible code pat
 2. `tracker.py` — DB schema, `multiday_predictions` view definition, all SQL queries
 3. `ml_bias.py` — temperature scaling train+apply, GBM train+apply, Platt train+apply
 4. `calibration.py` — blend weight training queries (`_load_rows`, each calibrate function)
-5. `nws.py` — sigma scoping by days_out and condition_type
+5. `nws.py` — sigma scoping by days_out and condition_type; `_nws_days_out_scale()`
 6. `weather_markets.py` — `analyze_trade()` full flow: blending → temp scaling → GBM → Platt → Kelly
-7. `cron.py` — settlement loop, calibration gate, kill switch, drawdown check, ensemble pin
-8. `order_executor.py` — trade placement, paper trade recording, retry logic
-9. `main.py` — `load_dotenv()` position, `cmd_calibrate()`, `cmd_admin()` reset-peak
-10. `safe_io.py` — atomic write implementation
-11. `circuit_breaker.py` — thresholds and trigger logic
-12. `alerts.py` — Brier alert and anomaly detection
+7. `monte_carlo.py` — VaR / portfolio risk; how open positions are valued by days_out
+8. `cron.py` — settlement loop, calibration gate, kill switch, drawdown check, ensemble pin
+9. `order_executor.py` — trade placement, paper trade recording, retry logic
+10. `main.py` — `load_dotenv()` position, `cmd_calibrate()`, `cmd_admin()` reset-peak
+11. `safe_io.py` — atomic write implementation
+12. `circuit_breaker.py` — thresholds and trigger logic
+13. `alerts.py` — Brier alert, win rate collapse alert, anomaly detection
 
 ---
 
@@ -155,6 +156,13 @@ the NWS forecast function) — confirm it uses `sigma=3.5`, NOT `sigma=1.0`.
 The obs function is for current METAR readings mid-day; sigma=1.0 there would produce
 near-binary probabilities from an intraday reading (the daily max hasn't been reached yet).
 
+**C3.** In `weather_markets.py`, find `_nws_days_out_scale()` (or equivalent NWS weight
+scaling function). Confirm it returns early or returns weight=0 when `days_out == 0`.
+For same-day above/below trades the METAR obs overrides the ensemble blend — if NWS is
+also double-weighted at days_out=0 by this function, same-day above/below blended_prob
+would silently pick up extra NWS influence on top of the METAR lock-in, producing
+double-counted NWS signal. Flag CRITICAL if the weight-doubling fires at days_out=0.
+
 ---
 
 ### D. Market Anchor for Same-day Trades
@@ -174,6 +182,19 @@ disagrees with the market by >25%. For same-day METAR trades, our model probabil
 derived from the same observation data the market uses — so a gap >25% is more suspicious
 than for multi-day. Confirm whether this gate is applied to same-day trades and whether
 that is appropriate.
+
+**D3. METAR lock-in invariant (CRITICAL if violated)** — In `weather_markets.py`,
+the same-day METAR lock-in replaces `blended_prob` with a METAR-derived observation
+probability for `days_out == 0` trades. Confirm this lock-in has an explicit guard that
+**skips between-condition markets**. Between markets (e.g. HIGH between 85.5–87.5°F) have
+a 2°F band; a current METAR reading tells you where the temperature is NOW, not where
+the daily high will peak — applying METAR lock-in to between markets produces wildly
+miscalibrated probabilities. The guard should read:
+```
+if days_out == 0 and condition.get("type") != "between":
+    # METAR lock-in
+```
+If the `!= "between"` guard is absent or wrong, flag CRITICAL.
 
 ---
 
@@ -280,19 +301,50 @@ runs so the next cron cycle doesn't immediately re-run calibration.
 `min_days_out=1` so same-day trades don't inflate the two-week rolling Brier
 that drives the P10.3 alert.
 
+**I4.** In `ml_bias.py`, after `train_all_temperature_scaling()` writes the new
+`temperature_scale.json`, confirm it sets `_TEMP_CACHE = None` to invalidate the
+in-process cache. If it doesn't, any trades placed in the same cron cycle after
+auto-calibration will use the old (pre-calibration) T value until the process restarts.
+The fix is a single `global _TEMP_CACHE; _TEMP_CACHE = None` after the file write.
+
+**I5.** In `alerts.py` (or wherever the win rate collapse alert is computed) — confirm
+the rolling win rate window (e.g. last 8 settled trades) uses `multiday_predictions`
+or equivalent filter. If same-day trades are included, a run of same-day losses
+(e.g. METAR bets in a volatile weather event) would trigger a "WIN RATE COLLAPSE" alert
+even when multi-day model performance is healthy. Cite the exact query or list comprehension.
+
 ---
 
-### J. Atomic Writes and Data Integrity
+### J. VaR and Portfolio Risk
 
-**J1.** In `paper.py` — confirm every function that calls `_save()` holds `_DATA_LOCK`
+**J1.** In `monte_carlo.py` — confirm how open same-day positions are valued.
+Same-day trades settle the same calendar day; their forward price risk is effectively
+zero by the time the evening cron scan runs (the market closes in hours).
+Confirm one of the following is true:
+- Same-day open positions are excluded from VaR computation (treated as zero-risk)
+- OR they are modelled with a very short horizon that correctly produces near-zero VaR
+
+If same-day positions are valued the same as multi-day positions (e.g. same Monte Carlo
+horizon), VaR would be overstated. Flag MEDIUM if overstated but harmless;
+flag HIGH if it could trigger a risk halt incorrectly.
+
+**J2.** Confirm the VaR computation does not crash or produce NaN when ALL open
+positions are same-day (i.e. the multi-day portfolio is empty). Edge case: an empty
+position list or all-zero variances could cause a division by zero.
+
+---
+
+### K. Atomic Writes and Data Integrity
+
+**K1.** In `paper.py` — confirm every function that calls `_save()` holds `_DATA_LOCK`
 for the entire read-modify-write cycle. Look for patterns where `_load()` and `_save()`
 are called in the same function but in separate lock blocks.
 
-**J2.** In `safe_io.py` — confirm `atomic_write_json()` uses a temp file + `os.rename()`
+**K2.** In `safe_io.py` — confirm `atomic_write_json()` uses a temp file + `os.rename()`
 (or equivalent) pattern. A crash between write and rename must not leave a partial
 file at the target path.
 
-**J3.** Confirm `tracker.py` enables SQLite WAL mode (`PRAGMA journal_mode=WAL`) in `_conn()`.
+**K3.** Confirm `tracker.py` enables SQLite WAL mode (`PRAGMA journal_mode=WAL`) in `_conn()`.
 Confirm no function holds a connection object open across a `yield` or async boundary
 that could cause a lock to be held longer than intended.
 
@@ -327,6 +379,30 @@ if `load_dotenv()` runs after the import, `.env` overrides have no effect.
 
 ---
 
+### M. Open-Ended — What Did We Miss?
+
+After completing categories A–L, step back and ask: **what risk exists in this codebase
+that the above checklist does not cover?**
+
+Specifically look for:
+- Any place a probability or dollar amount is used in a trading decision without being
+  validated as finite and in-range (0 < p < 1, cost > 0). A NaN or negative value
+  entering the Kelly formula produces undefined bet sizes.
+- Any function that silently returns a safe-looking default (0.5, 0.0, True) on
+  exception rather than propagating the error — if that default has a downstream
+  trading consequence the operator cannot see.
+- Any hardcoded threshold that should be configurable from `.env` but isn't, making
+  it impossible to adjust without a code deploy.
+- Any log message that says "skipping" or "falling back" in a path that could silently
+  hide a miscalibration or data error from the operator.
+- Any same-day vs multi-day distinction this prompt did not explicitly ask you to check.
+
+Report up to 3 findings from this open-ended sweep with the same evidence standard
+(file + line number + pasted code). If you find nothing, say so explicitly — "nothing
+found" is a valid and useful result.
+
+---
+
 ## Output Format
 
 For each finding:
@@ -338,7 +414,7 @@ Code:
     <paste exact lines from source>
 Issue: <what is wrong>
 Impact: <what breaks or could break and when>
-Fix: <specific change needed, with pseudocode if helpful>
+Fix: <exact file, line, and replacement code — not pseudocode>
 ```
 
 Severity levels:
