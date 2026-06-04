@@ -295,11 +295,31 @@ class TestMaxDrawdown(unittest.TestCase):
             paper.get_open_trades()[0]["id"], False
         )  # loss → $900-$100
         # peak is still $1000; reset it
-        new_peak = paper.reset_peak_balance(reason="test")
+        new_peak = paper.reset_peak_balance(reason="test", confirmed=True)
         self.assertAlmostEqual(new_peak, paper.get_balance(), places=2)
         self.assertAlmostEqual(paper.get_peak_balance(), paper.get_balance(), places=2)
         # trade history preserved
         self.assertEqual(len(paper.get_all_trades()), 1)
+
+    def test_reset_peak_requires_confirmed(self):
+        """reset_peak_balance() raises ValueError without confirmed=True."""
+        import paper
+
+        with self.assertRaises(ValueError):
+            paper.reset_peak_balance(reason="test")
+
+    def test_max_drawdown_pct_consistent_with_effective_balance(self):
+        """get_max_drawdown_pct() uses effective balance — same-day costs
+        don't inflate reported drawdown beyond what the trading system acts on."""
+        import paper
+
+        paper.place_paper_order("BIG", "yes", 150, 1.00)  # balance → $850
+        paper.place_paper_order("SD3", "no", 30, 1.00, days_out=0)  # balance → $820
+        # effective = $820 + $30 = $850; drawdown = (1000 - 850) / 1000 = 0.15
+        pct = paper.get_max_drawdown_pct()
+        self.assertAlmostEqual(pct, 0.15, places=2)
+        # raw balance gives (1000 - 820) / 1000 = 0.18 — effective is lower
+        self.assertLess(pct, (1000 - paper.get_balance()) / 1000)
 
 
 class TestPortfolioKelly(unittest.TestCase):

@@ -2527,10 +2527,29 @@ def cmd_admin(action: str, reason: str = "manual admin override") -> None:
         return
 
     if action == "reset-peak":
-        from paper import get_peak_balance, reset_peak_balance
+        from paper import get_balance, get_peak_balance, reset_peak_balance
 
         old_peak = get_peak_balance()
-        new_peak = reset_peak_balance(reason=reason)
+        current = get_balance()
+        print(
+            yellow(
+                f"  This will reset the peak from ${old_peak:.2f} → ${current:.2f}.\n"
+                f"  New halt floor: ${current * 0.80:.2f}  (80% of ${current:.2f}).\n"
+                f"  This is irreversible. Type 'yes' to confirm: "
+            ),
+            end="",
+            flush=True,
+        )
+        try:
+            answer = input().strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            print(dim("  Cancelled."))
+            return
+        if answer != "yes":
+            print(dim("  Cancelled."))
+            return
+        new_peak = reset_peak_balance(reason=reason, confirmed=True)
         print(
             green(
                 f"  Peak balance reset: ${old_peak:.2f} → ${new_peak:.2f}\n"

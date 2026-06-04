@@ -365,37 +365,52 @@ def get_state_snapshot() -> dict:
     }
 
 
-def get_max_drawdown_pct() -> float:
-    """Current drawdown from peak as a fraction (0.0 = no drawdown, 1.0 = total loss)."""
-    peak = get_peak_balance()
-    if peak <= 0:
-        return 0.0
-    return max(0.0, (peak - get_balance()) / peak)
+def _drawdown_snapshot() -> tuple[float, float]:
+    """Return (effective_balance, peak_balance) as a single atomic read.
 
+    Acquires _DATA_LOCK once and reads paper_trades.json once — both values
+    come from the same consistent snapshot so is_paused_drawdown() and
+    drawdown_scaling_factor() can never see a peak from one file-state and a
+    balance from another.
 
-def get_effective_balance() -> float:
-    """Balance adjusted to exclude open same-day trade costs.
-
-    Same-day (days_out=0) trades lock up capital for hours but settle same-day —
-    their cost is temporarily locked, not lost. Including it in drawdown
-    calculations causes the multi-day guard to fire on locked capital rather
-    than actual model performance.
-
-    Reads paper_trades.json once so balance and open-trade list are a
-    consistent atomic snapshot (avoids two separate _load() calls).
-
-    Used only by is_paused_drawdown() and drawdown_scaling_factor().
-    All other callers that need actual available capital use get_balance().
+    effective_balance = actual balance + sum of open same-day trade costs.
+    Same-day (days_out=0) costs are temporarily locked capital that settle
+    within hours — they are not losses and should not move the drawdown tier.
     """
     with _DATA_LOCK:
         data = _load()
     balance = data.get("balance", STARTING_BALANCE)
+    peak = data.get("peak_balance", STARTING_BALANCE)
     same_day_locked = sum(
         t.get("cost", 0.0)
         for t in data.get("trades", [])
         if not t.get("settled") and t.get("days_out") == 0
     )
-    return balance + same_day_locked
+    return balance + same_day_locked, peak
+
+
+def get_effective_balance() -> float:
+    """Balance plus open same-day trade costs — the value used for drawdown decisions.
+
+    Same-day (days_out=0) trade costs are temporarily locked capital that settle
+    within hours. Adding them back gives the balance the trading system acts on,
+    which can differ from the raw Kalshi balance when same-day trades are open.
+
+    Thin public wrapper over _drawdown_snapshot() for dashboard/monitoring use.
+    """
+    return _drawdown_snapshot()[0]
+
+
+def get_max_drawdown_pct() -> float:
+    """Current drawdown from peak as a fraction (0.0 = no drawdown, 1.0 = total loss).
+
+    Uses effective balance (adds back open same-day costs) so the displayed
+    drawdown matches what the trading system actually acts on.
+    """
+    effective, peak = _drawdown_snapshot()
+    if peak <= 0:
+        return 0.0
+    return max(0.0, (peak - effective) / peak)
 
 
 def is_paused_drawdown() -> bool:
@@ -403,18 +418,19 @@ def is_paused_drawdown() -> bool:
     Return True if balance has fallen more than MAX_DRAWDOWN_FRACTION from the
     peak balance (high-water mark). Auto-sizing is halted; manual qty still works.
 
-    Uses get_effective_balance() so open same-day trade costs (temporarily locked
-    capital that settles within hours) do not trigger the guard.
+    Uses _drawdown_snapshot() so effective balance and peak come from a single
+    atomic read — no risk of seeing mismatched values from two separate reads.
     """
-    return get_effective_balance() < get_peak_balance() * (1 - MAX_DRAWDOWN_FRACTION)
+    effective, peak = _drawdown_snapshot()
+    return effective < peak * (1 - MAX_DRAWDOWN_FRACTION)
 
 
 def drawdown_scaling_factor() -> float:
     """
     Return a 0.0–1.0 Kelly multiplier based on drawdown from peak (high-water mark).
 
-    Uses get_effective_balance() so open same-day trade costs do not push the
-    Kelly multiplier into a lower tier — only actual settled losses matter.
+    Uses _drawdown_snapshot() for an atomic read of both effective balance and
+    peak — same-day open costs are excluded so only settled losses affect the tier.
 
     All thresholds are relative to MAX_DRAWDOWN_FRACTION (DRAWDOWN_HALT_PCT env var).
     With the default 20% halt:
@@ -424,10 +440,10 @@ def drawdown_scaling_factor() -> float:
       15–20% drawdown (TIER_1–TIER_2)  → 0.10  survival
       >= 20% drawdown (≤ TIER_1 = 0.80) → 0.00  halted
     """
-    peak = get_peak_balance()
+    effective, peak = _drawdown_snapshot()
     if peak <= 0:
         return 1.0
-    recovery = get_effective_balance() / peak
+    recovery = effective / peak
     if recovery <= _DRAWDOWN_TIER_1:
         return 0.0
     if recovery <= _DRAWDOWN_TIER_2:
@@ -439,15 +455,20 @@ def drawdown_scaling_factor() -> float:
     return 1.0
 
 
-def reset_peak_balance(reason: str = "") -> float:
+def reset_peak_balance(reason: str = "", confirmed: bool = False) -> float:
     """Reset the high-water mark to the current settled balance.
 
     Use after a rough patch where the peak is no longer reachable and is
     blocking the model from gathering new data. All trade history, predictions,
     and Brier data are preserved — only the drawdown reference point changes.
 
+    Requires confirmed=True to prevent accidental calls — this is irreversible.
     Returns the new peak balance.
     """
+    if not confirmed:
+        raise ValueError(
+            "reset_peak_balance() is irreversible — pass confirmed=True to proceed."
+        )
     with _DATA_LOCK:
         data = _load()
         new_peak = data["balance"]
