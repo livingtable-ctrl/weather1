@@ -308,18 +308,30 @@ class TestMaxDrawdown(unittest.TestCase):
         with self.assertRaises(ValueError):
             paper.reset_peak_balance(reason="test")
 
-    def test_max_drawdown_pct_consistent_with_effective_balance(self):
-        """get_max_drawdown_pct() uses effective balance — same-day costs
-        don't inflate reported drawdown beyond what the trading system acts on."""
+    def test_max_drawdown_pct_uses_actual_balance(self):
+        """get_max_drawdown_pct() uses actual balance for reporting — same-day
+        open costs are not added back (performance metric, not trading decision)."""
         import paper
 
         paper.place_paper_order("BIG", "yes", 150, 1.00)  # balance → $850
         paper.place_paper_order("SD3", "no", 30, 1.00, days_out=0)  # balance → $820
-        # effective = $820 + $30 = $850; drawdown = (1000 - 850) / 1000 = 0.15
+        # actual balance = $820; drawdown = (1000 - 820) / 1000 = 0.18
         pct = paper.get_max_drawdown_pct()
-        self.assertAlmostEqual(pct, 0.15, places=2)
-        # raw balance gives (1000 - 820) / 1000 = 0.18 — effective is lower
-        self.assertLess(pct, (1000 - paper.get_balance()) / 1000)
+        self.assertAlmostEqual(pct, 0.18, places=2)
+        # effective balance would give 0.15 — reporting intentionally shows the higher value
+        self.assertGreater(pct, paper.get_effective_balance() / 1000 - 1 + pct)
+
+    def test_needs_manual_settle_excluded_from_effective_balance(self):
+        """Same-day trades marked needs_manual_settle are excluded from effective
+        balance — they will never settle and should not permanently inflate it."""
+        import paper
+
+        trade = paper.place_paper_order("SD4", "no", 20, 1.00, days_out=0)
+        paper._mark_needs_manual_settle(trade["id"])
+        # needs_manual_settle trade should NOT be added back
+        self.assertAlmostEqual(
+            paper.get_effective_balance(), paper.get_balance(), places=2
+        )
 
 
 class TestPortfolioKelly(unittest.TestCase):

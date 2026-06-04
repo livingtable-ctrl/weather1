@@ -384,7 +384,9 @@ def _drawdown_snapshot() -> tuple[float, float]:
     same_day_locked = sum(
         t.get("cost", 0.0)
         for t in data.get("trades", [])
-        if not t.get("settled") and t.get("days_out") == 0
+        if not t.get("settled")
+        and t.get("days_out") == 0
+        and not t.get("needs_manual_settle")  # archived markets never settle — exclude
     )
     return balance + same_day_locked, peak
 
@@ -404,13 +406,14 @@ def get_effective_balance() -> float:
 def get_max_drawdown_pct() -> float:
     """Current drawdown from peak as a fraction (0.0 = no drawdown, 1.0 = total loss).
 
-    Uses effective balance (adds back open same-day costs) so the displayed
-    drawdown matches what the trading system actually acts on.
+    Uses actual settled balance — same-day open costs are operational noise
+    in a performance/reporting metric and should not be added back here.
+    Trading decisions use _drawdown_snapshot() (effective balance) separately.
     """
-    effective, peak = _drawdown_snapshot()
+    peak = get_peak_balance()
     if peak <= 0:
         return 0.0
-    return max(0.0, (peak - effective) / peak)
+    return max(0.0, (peak - get_balance()) / peak)
 
 
 def is_paused_drawdown() -> bool:
