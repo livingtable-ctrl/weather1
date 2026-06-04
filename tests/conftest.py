@@ -185,6 +185,25 @@ def mock_market():
     }
 
 
+@pytest.fixture(autouse=True)
+def isolate_paper_data(tmp_path, monkeypatch):
+    """Redirect paper.DATA_PATH to a per-test temp file.
+
+    Prevents open trades, balance, and peak_balance from the real
+    data/paper_trades.json leaking into unrelated tests.  Without this,
+    kelly_bet_dollars() and drawdown_scaling_factor() inside analyze_trade
+    see production state (many open trades, reset peak) and may return None
+    when isolated tests expect a valid signal.
+
+    Tests that need a specific paper state (mock_balance_1000, cron_env) apply
+    their own monkeypatches on top of this one; the last setattr wins for the
+    duration of that test and everything is restored together at teardown.
+    """
+    import paper
+
+    monkeypatch.setattr(paper, "DATA_PATH", tmp_path / "paper_trades.json")
+
+
 @pytest.fixture
 def mock_balance_1000(tmp_path, monkeypatch):
     """Patch paper to use a temp data file and start with $1000 balance."""

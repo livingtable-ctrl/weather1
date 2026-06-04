@@ -104,10 +104,7 @@ class TestDrawdownTierAbsolute:
         ]
         for recovery, expected_scale in cases:
             balance = recovery * 1000.0
-            with (
-                patch("paper.get_balance", return_value=balance),
-                patch("paper.get_peak_balance", return_value=1000.0),
-            ):
+            with patch("paper._drawdown_snapshot", return_value=(balance, 1000.0)):
                 result = paper.drawdown_scaling_factor()
             assert result == pytest.approx(expected_scale), (
                 f"At recovery={recovery}: expected {expected_scale}, got {result}"

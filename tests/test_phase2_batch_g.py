@@ -88,9 +88,10 @@ class TestDrawdownTier4Boundary:
     def _call_with_recovery(self, recovery: float) -> float:
         import paper
 
-        with patch.object(paper, "get_peak_balance", return_value=1000.0):
-            with patch.object(paper, "get_balance", return_value=1000.0 * recovery):
-                return paper.drawdown_scaling_factor()
+        with patch.object(
+            paper, "_drawdown_snapshot", return_value=(1000.0 * recovery, 1000.0)
+        ):
+            return paper.drawdown_scaling_factor()
 
     def test_exactly_tier4_returns_full(self):
         """recovery == 0.95 (exactly at tier-4) must return 1.0, not 0.70."""
