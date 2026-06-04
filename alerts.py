@@ -328,7 +328,13 @@ def run_anomaly_check(log_results: bool = True) -> tuple[list[str], bool]:
     try:
         from paper import load_paper_trades
 
-        trades = load_paper_trades()
+        # Filter to multi-day trades only — same-day METAR losses must not trigger
+        # WIN_RATE_COLLAPSE or CONSECUTIVE_LOSSES halts when the multi-day model is healthy.
+        trades = [
+            t
+            for t in load_paper_trades()
+            if t.get("days_out") is None or t.get("days_out", 1) >= 1
+        ]
         anomalies = check_anomalies(trades)
         should_halt = any(_is_halt_level(a) for a in anomalies)
         if anomalies and log_results:
@@ -417,10 +423,11 @@ def check_black_swan_conditions(
     # 3. Brier score collapse
     try:
         from tracker import brier_score as _brier_score
-        from tracker import get_history as _get_history
+        from tracker import count_settled_predictions as _count_settled
 
-        settled = [p for p in _get_history() if p.get("settled_yes") is not None]
-        if len(settled) >= BLACK_SWAN_BRIER_MIN_SAMPLES:
+        # Use multi-day count so same-day trades don't clear the gate prematurely.
+        _n_settled = _count_settled()
+        if _n_settled >= BLACK_SWAN_BRIER_MIN_SAMPLES:
             bs = _brier_score()
             if bs is not None and bs > BLACK_SWAN_BRIER_THRESHOLD:
                 triggered.append(
@@ -429,9 +436,9 @@ def check_black_swan_conditions(
                 )
         else:
             _log.debug(
-                "black_swan: skipping Brier check — only %d settled prediction(s) "
+                "black_swan: skipping Brier check — only %d multi-day settled prediction(s) "
                 "(min required: %d)",
-                len(settled),
+                _n_settled,
                 BLACK_SWAN_BRIER_MIN_SAMPLES,
             )
     except Exception:

@@ -229,6 +229,12 @@ def simulate_portfolio(
         if _tdate and _tdate < _utc_today().isoformat():
             _log.debug("Monte Carlo: skipping past-date trade %s (%s)", ticker, _tdate)
             continue
+        # Same-day trades settle within hours — zero residual forward price risk.
+        if t.get("days_out") == 0:
+            _log.debug(
+                "Monte Carlo: skipping same-day trade %s (settles today)", ticker
+            )
+            continue
         side = t.get("side", "yes")
         entry_price = t.get("entry_price", 0.5)
         cost = t.get("cost", 0.0)

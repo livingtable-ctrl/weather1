@@ -5431,8 +5431,12 @@ def analyze_trade(enriched: dict) -> dict | None:
                 else:
                     blended_prob = max(0.01, min(0.99, _corrected))
                     _city_correction_applied = True
-        except Exception:
-            pass
+        except Exception as _gbm_exc:
+            _log.warning(
+                "analyze_trade: GBM correction failed for %s: %s",
+                enriched.get("ticker", "?"),
+                _gbm_exc,
+            )
 
     # Platt scaling is only applied when no GBM model exists for this city AND
     # temperature scaling (section 7b) has not already corrected calibration.
@@ -5466,8 +5470,12 @@ def analyze_trade(enriched: dict) -> dict | None:
                     else:
                         blended_prob = max(0.01, min(0.99, _new_prob))
                         _city_correction_applied = True
-        except Exception:
-            pass
+        except Exception as _platt_exc:
+            _log.warning(
+                "analyze_trade: Platt scaling failed for %s: %s",
+                enriched.get("ticker", "?"),
+                _platt_exc,
+            )
 
     # Realign CI to the bias/ML-corrected forecast.  The bootstrap CI is anchored
     # to the raw ensemble distribution; GBM/Platt/temperature-scaling corrections

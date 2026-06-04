@@ -1025,6 +1025,15 @@ def _auto_place_trades(
 
         if live and live_config:
             _live_balance = live_config.get("balance", 0.0)
+            # Per-iteration daily cap check for live path — the initial check at the top
+            # of this function is a single read and is never updated, so multiple live
+            # trades in one cycle can exceed MAX_DAILY_SPEND without this guard.
+            _live_cost_estimate = round(entry_price * qty, 2)
+            if daily_spent + _live_cost_estimate > MAX_DAILY_SPEND:
+                _skip_reasons.append(
+                    f"{ticker}: daily_cap(${daily_spent:.0f}/${MAX_DAILY_SPEND:.0f})"
+                )
+                continue
             # CR-4: pass live balance so Kelly sizing uses the live account denominator,
             # not paper_trades.json balance (which diverges as live and paper accounts differ).
             _live_kelly_qty = kelly_quantity(
@@ -1045,6 +1054,7 @@ def _auto_place_trades(
             )
             if opp_placed:
                 execution_log.add_live_loss(cost)
+                daily_spent += cost
                 open_tickers.add(ticker)
                 if _is_same_day:
                     _same_day_open += 1

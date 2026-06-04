@@ -1141,29 +1141,30 @@ def update_peak_profits(
     Saves atomically only when at least one peak is updated. Returns True if any
     trade was updated. Called each cron run before check_breakeven_stops().
     """
-    data = _load()
-    changed = False
-    for t in data["trades"]:
-        if t.get("settled"):
-            continue
-        ticker = t.get("ticker", "")
-        current_yes = current_yes_prices.get(ticker)
-        if current_yes is None:
-            continue
-        entry_price = t.get("entry_price", 0.0)
-        qty = t.get("quantity", 0)
-        cost = t.get("cost") or entry_price * qty
-        if cost <= 0 or qty <= 0:
-            continue
-        side = t.get("side", "yes")
-        current_side_price = current_yes if side == "yes" else 1.0 - current_yes
-        unrealized_profit_pct = (current_side_price - entry_price) * qty / cost
-        stored_peak = t.get("peak_profit_pct")
-        if stored_peak is None or unrealized_profit_pct > stored_peak:
-            t["peak_profit_pct"] = round(unrealized_profit_pct, 4)
-            changed = True
-    if changed:
-        _save(data)
+    with _DATA_LOCK:
+        data = _load()
+        changed = False
+        for t in data["trades"]:
+            if t.get("settled"):
+                continue
+            ticker = t.get("ticker", "")
+            current_yes = current_yes_prices.get(ticker)
+            if current_yes is None:
+                continue
+            entry_price = t.get("entry_price", 0.0)
+            qty = t.get("quantity", 0)
+            cost = t.get("cost") or entry_price * qty
+            if cost <= 0 or qty <= 0:
+                continue
+            side = t.get("side", "yes")
+            current_side_price = current_yes if side == "yes" else 1.0 - current_yes
+            unrealized_profit_pct = (current_side_price - entry_price) * qty / cost
+            stored_peak = t.get("peak_profit_pct")
+            if stored_peak is None or unrealized_profit_pct > stored_peak:
+                t["peak_profit_pct"] = round(unrealized_profit_pct, 4)
+                changed = True
+        if changed:
+            _save(data)
     return changed
 
 
@@ -1743,6 +1744,22 @@ def get_edge_realization_rate() -> dict:
     else:
         directional_accuracy = None
 
+    # Multi-day only directional accuracy — used for trading decisions (ensemble pin,
+    # Brier-drift suppression). Same-day METAR trades have near-100% directional accuracy
+    # by construction so mixing them inflates the metric above 0.70 even when the
+    # multi-day model has degraded.
+    multiday_natural = [
+        t for t in natural if (_dout := t.get("days_out")) is None or _dout >= 1
+    ]
+    n_multiday_natural = len(multiday_natural)
+    if n_multiday_natural > 0:
+        md_dir_wins = sum(1 for t in multiday_natural if t["outcome"] == t["side"])
+        multiday_directional_accuracy: float | None = round(
+            md_dir_wins / n_multiday_natural, 4
+        )
+    else:
+        multiday_directional_accuracy = None
+
     n = len(all_settled)
 
     # Economic win rate — all settled trades, pnl > 0 is the win signal
@@ -1757,6 +1774,7 @@ def get_edge_realization_rate() -> dict:
             "n": n,
             "n_natural": n_natural,
             "directional_accuracy": directional_accuracy,
+            "multiday_directional_accuracy": multiday_directional_accuracy,
             "economic_win_rate": economic_win_rate,
             "correlation": None,
             "buckets": [],
@@ -1807,6 +1825,7 @@ def get_edge_realization_rate() -> dict:
         "n": n,
         "n_natural": n_natural,
         "directional_accuracy": directional_accuracy,
+        "multiday_directional_accuracy": multiday_directional_accuracy,
         "economic_win_rate": economic_win_rate,
         "correlation": corr,
         "buckets": buckets,
@@ -2507,6 +2526,11 @@ def auto_settle_paper_trades(client=None) -> list[dict]:
     open_trades = get_open_trades()
     settled_trades: list[dict] = []
     for t in open_trades:
+        # Already flagged as needing manual resolution — skip to avoid a pointless
+        # Kalshi 404 API call and WARNING log on every cron cycle.
+        if t.get("needs_manual_settle"):
+            continue
+
         outcome = get_outcome_for_ticker(t["ticker"])
 
         # Fallback: query Kalshi API directly if not in tracker

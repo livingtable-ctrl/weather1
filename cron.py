@@ -614,7 +614,7 @@ def _cmd_cron_body(
         from paper import get_edge_realization_rate as _get_err
 
         _err = _get_err()
-        _directional_accuracy = _err.get("directional_accuracy")
+        _directional_accuracy = _err.get("multiday_directional_accuracy")
     except Exception as _e:
         _log.debug("cmd_cron: directional_accuracy fetch failed: %s", _e)
 
@@ -1444,6 +1444,15 @@ def _cmd_cron_body(
 
         strong_opps.sort(key=_kelly_sort_key, reverse=True)
         med_opps.sort(key=_kelly_sort_key, reverse=True)
+
+        # Final kill switch check — a mid-scan activation breaks the analysis loop
+        # but without this check placement would still proceed for already-found signals.
+        if KILL_SWITCH_PATH.exists():
+            _log.warning(
+                "cmd_cron: kill switch activated before placement — skipping %d signal(s)",
+                len(strong_opps) + len(med_opps),
+            )
+            return None
 
         if strong_opps:
             from paper import _dynamic_kelly_cap
