@@ -4584,7 +4584,7 @@ def cmd_calibrate() -> None:
                 dict(r)
                 for r in _con.execute(
                     "SELECT p.city, p.our_prob, o.settled_yes "
-                    "FROM predictions p JOIN outcomes o ON p.ticker = o.ticker "
+                    "FROM multiday_predictions p JOIN outcomes o ON p.ticker = o.ticker "
                     "WHERE o.settled_yes IS NOT NULL AND p.our_prob IS NOT NULL"
                 ).fetchall()
             ]

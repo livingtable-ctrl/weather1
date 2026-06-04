@@ -146,7 +146,7 @@ def train_bias_model(min_samples: int = 200) -> dict:
                     CAST(strftime('%m', p.market_date) AS INTEGER) AS month,
                     CAST(julianday(date(p.market_date)) - julianday(date(p.predicted_at)) AS INTEGER) AS days_out,
                     o.settled_yes
-                FROM predictions p
+                FROM multiday_predictions p
                 JOIN outcomes o ON p.ticker = o.ticker
                 WHERE p.city IS NOT NULL AND p.our_prob IS NOT NULL
                 ORDER BY p.predicted_at ASC

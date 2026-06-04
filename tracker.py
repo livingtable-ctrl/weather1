@@ -956,11 +956,16 @@ def get_rolling_win_rate(window: int = 20) -> tuple[float | None, int]:
 
 
 def count_settled_predictions() -> int:
-    """Return the number of predictions with a known outcome."""
+    """Return the number of multi-day predictions with a known outcome.
+
+    Uses multiday_predictions view (days_out >= 1 or NULL) so same-day METAR
+    trades don't inflate calibration gates or the graduation threshold — those
+    are assessed on multi-day ensemble performance, not same-day observations.
+    """
     init_db()
     with _conn() as con:
         row = con.execute(
-            "SELECT COUNT(*) FROM predictions p JOIN outcomes o ON p.ticker = o.ticker"
+            "SELECT COUNT(*) FROM multiday_predictions p JOIN outcomes o ON p.ticker = o.ticker"
         ).fetchone()
     return row[0] if row else 0
 

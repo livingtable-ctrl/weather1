@@ -5403,7 +5403,9 @@ def analyze_trade(enriched: dict) -> dict | None:
         _city_correction_applied = (
             True  # skip all three tiers via the guard flags below
         )
-    if not _city_correction_applied:
+    if not _city_correction_applied and days_out > 0:
+        # Skip GBM correction for same-day trades — the model is trained on
+        # multi-day ensemble probabilities and would corrupt METAR-derived probs.
         try:
             from ml_bias import apply_ml_prob_correction, has_ml_model
 
@@ -5436,7 +5438,9 @@ def analyze_trade(enriched: dict) -> dict | None:
     # temperature scaling (section 7b) has not already corrected calibration.
     # Both are logit-space compression operations — applying both would over-compress
     # probabilities toward 0.5. GBM (above) is a different correction and can stack.
-    if not _city_correction_applied and not _temp_scaling_applied:
+    if not _city_correction_applied and not _temp_scaling_applied and days_out > 0:
+        # Skip Platt correction for same-day trades — trained on multi-day
+        # ensemble probs; applying to METAR-derived probs would miscalibrate.
         try:
             _platt = _load_platt_models()
             if _platt:
