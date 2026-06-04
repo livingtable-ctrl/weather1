@@ -592,6 +592,10 @@ def _cmd_cron_body(
                 except (EOFError, KeyboardInterrupt, OSError):
                     _anom_ans = ""
                 if _anom_ans != "y":
+                    _log.error(
+                        "cmd_cron: anomaly halt triggered — stopping trade placement this cycle: %s",
+                        _detected_anomalies,
+                    )
                     return None
                 _log.warning(
                     "cmd_cron: anomaly halt overridden by user for this cycle: %s",
