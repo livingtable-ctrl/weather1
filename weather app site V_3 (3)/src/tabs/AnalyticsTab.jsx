@@ -305,10 +305,11 @@ function SamedayCalibCard() {
   const toX = p => PAD.left + p * iW;
   const toY = p => PAD.top + (1 - p) * iH;
 
-  // Time-of-day slot ordering and labels
-  const TOD_ORDER = ['morning', 'afternoon', 'evening'];
-  const TOD_LABELS = { morning: 'Morning (6–11)', afternoon: 'Afternoon (12–17)', evening: 'Evening (18+)' };
+  // Time-of-day slot ordering and labels — must match tod_slots in tracker.py
+  const TOD_ORDER = ['night', 'morning', 'afternoon', 'evening'];
+  const TOD_LABELS = { night: 'Night (0–5)', morning: 'Morning (6–11)', afternoon: 'Afternoon (12–17)', evening: 'Evening (18+)' };
   const TOD_HINT = {
+    night:     'Pre-dawn placement — temperature still well below daily max; strong underestimation expected',
     morning:   'Temp still rising → model tends to underestimate daily high (negative bias)',
     afternoon: 'Near daily peak → most reliable window',
     evening:   'Temp falling after peak → model may overestimate remaining YES chance (positive bias)',
@@ -355,7 +356,7 @@ function SamedayCalibCard() {
                 {t_sameday != null ? t_sameday.toFixed(2) : 'untrained'}
               </div>
               <div style={{ fontSize: 10, color: 'var(--text-faint)' }}>
-                {t_sameday == null ? 'needs ' + gate + ' settled' : t_sameday.toFixed(2) === '1.00' ? 'identity (no compression)' : 'calibration active'}
+                {t_sameday == null ? 'needs ' + gate + ' settled' : Math.abs(t_sameday - 1.0) < 0.01 ? 'identity (no compression)' : 'calibration active'}
               </div>
             </div>
             <div style={{ padding: '12px 16px', background: 'var(--bg-subtle)', borderRadius: 10, minWidth: 110 }}>
@@ -371,7 +372,7 @@ function SamedayCalibCard() {
               <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 8, color: 'var(--text-muted)' }}>
                 Calibration curve (predicted vs actual)
               </div>
-              <svg viewBox={`0 0 ${W} ${H}`} style={{ width: W, height: H, display: 'block', overflow: 'visible' }}>
+              <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 'auto', display: 'block', overflow: 'visible' }}>
                 {/* Axes */}
                 <line x1={PAD.left} y1={PAD.top} x2={PAD.left} y2={PAD.top + iH}
                   stroke="var(--border)" strokeWidth="1" />

@@ -1369,7 +1369,7 @@ def get_sameday_calibration() -> dict:
     with _conn() as con:
         rows = con.execute(
             """
-            SELECT p.our_prob, o.settled_yes, p.local_hour, p.condition_type
+            SELECT p.our_prob, o.settled_yes, p.local_hour
             FROM predictions p
             JOIN outcomes o ON p.ticker = o.ticker
             WHERE p.our_prob IS NOT NULL
@@ -1438,7 +1438,11 @@ def get_sameday_calibration() -> dict:
     # temperature-peak-timing bias: morning placements underestimate the daily
     # high (temp still rising), evening placements overestimate (high already
     # passed).  bias = mean_prob - mean_actual; positive = model overestimates.
+    # Night (0-5) is included so the TOD n-counts always sum to the overall n
+    # for any trade that has local_hour populated.  Excludes by the is-not-None
+    # guard only — no hours are silently dropped.
     tod_slots = {
+        "night": (0, 6),
         "morning": (6, 12),
         "afternoon": (12, 18),
         "evening": (18, 24),
