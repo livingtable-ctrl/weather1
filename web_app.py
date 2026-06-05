@@ -414,6 +414,21 @@ def _build_app(client):
             result = {"error": str(e)}
         return jsonify(result)
 
+    @app.route("/api/sameday-calibration")
+    def api_sameday_calibration():
+        """Same-day METAR-locked trade calibration — completely separate from multi-day.
+
+        Returns calibration curve buckets, time-of-day bias breakdown, and
+        current T_sameday from temperature_scale.json.  Gate is 20 settled
+        same-day trades; returns n=0 and empty buckets until then.
+        """
+        try:
+            from tracker import get_sameday_calibration
+
+            return jsonify(get_sameday_calibration())
+        except Exception as exc:
+            return jsonify({"error": str(exc)}), 500
+
     @app.route("/api/model-attribution")
     def model_attribution():
         """#84 — per-city average model blend weights."""

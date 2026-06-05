@@ -1344,6 +1344,139 @@ def get_calibration_by_type() -> dict[str, dict]:
     return result
 
 
+def get_sameday_calibration() -> dict:
+    """Calibration analytics for same-day (days_out=0) METAR-locked predictions.
+
+    Completely isolated from multi-day calibration — only queries rows where
+    days_out=0 and never touches the multiday_predictions view.
+
+    Returns:
+      n           — total same-day settled predictions
+      gate        — minimum samples needed before T_sameday is trained (20)
+      gate_met    — True when n >= gate
+      brier       — overall Brier score across all same-day settled trades
+      t_sameday   — current T from temperature_scale.json (1.0 = identity / untrained)
+      calibration_buckets — [{bucket_low, bucket_high, predicted_mean, actual_rate, n}]
+                    5 equal-width bins from 0→1; bins with no data are omitted.
+                    METAR probs cluster near 0/1 so mid-range bins will often be empty.
+      by_time_of_day — {morning, afternoon, evening} each with
+                    {n, brier, mean_prob, mean_actual, bias}
+                    bias = mean_prob - mean_actual (positive = model overestimates)
+    """
+    import json as _json
+
+    init_db()
+    with _conn() as con:
+        rows = con.execute(
+            """
+            SELECT p.our_prob, o.settled_yes, p.local_hour, p.condition_type
+            FROM predictions p
+            JOIN outcomes o ON p.ticker = o.ticker
+            WHERE p.our_prob IS NOT NULL
+              AND o.settled_yes IS NOT NULL
+              AND p.days_out = 0
+            ORDER BY p.predicted_at ASC
+            """
+        ).fetchall()
+
+    # Read T_sameday from temperature_scale.json so the dashboard can show
+    # whether the calibration has been trained yet.
+    t_sameday: float | None = None
+    _ts_path = _project_root() / "data" / "temperature_scale.json"
+    if _ts_path.exists():
+        try:
+            ts = _json.loads(_ts_path.read_text())
+            sd = ts.get("sameday", {})
+            if isinstance(sd, dict) and "T" in sd:
+                t_sameday = float(sd["T"])
+        except Exception:
+            pass
+
+    _GATE = 20
+    n = len(rows)
+
+    if n == 0:
+        return {
+            "n": 0,
+            "gate": _GATE,
+            "gate_met": False,
+            "brier": None,
+            "t_sameday": t_sameday,
+            "calibration_buckets": [],
+            "by_time_of_day": {},
+        }
+
+    probs = [float(r["our_prob"]) for r in rows]
+    actuals = [int(r["settled_yes"]) for r in rows]
+
+    brier = round(sum((p - a) ** 2 for p, a in zip(probs, actuals)) / n, 4)
+
+    # Five equal-width probability bins from 0 to 1. METAR-locked probs live
+    # near 0 and 1 because the current observation is usually either clearly
+    # above or clearly below the threshold — mid-range bins will often be empty.
+    bucket_edges = [0.0, 0.2, 0.4, 0.6, 0.8, 1.001]
+    cal_buckets = []
+    for i in range(len(bucket_edges) - 1):
+        lo, hi = bucket_edges[i], bucket_edges[i + 1]
+        members = [(p, a) for p, a in zip(probs, actuals) if lo <= p < hi]
+        if not members:
+            continue
+        predicted_mean = sum(p for p, _ in members) / len(members)
+        actual_rate = sum(a for _, a in members) / len(members)
+        cal_buckets.append(
+            {
+                "bucket_low": lo,
+                "bucket_high": min(bucket_edges[i + 1], 1.0),
+                "predicted_mean": round(predicted_mean, 4),
+                "actual_rate": round(actual_rate, 4),
+                "n": len(members),
+            }
+        )
+
+    # Time-of-day breakdown: morning/afternoon/evening based on local_hour
+    # recorded at prediction time.  This is the key diagnostic for the
+    # temperature-peak-timing bias: morning placements underestimate the daily
+    # high (temp still rising), evening placements overestimate (high already
+    # passed).  bias = mean_prob - mean_actual; positive = model overestimates.
+    tod_slots = {
+        "morning": (6, 12),
+        "afternoon": (12, 18),
+        "evening": (18, 24),
+    }
+    by_tod: dict[str, dict] = {}
+    for slot, (lo_h, hi_h) in tod_slots.items():
+        members = [
+            (float(r["our_prob"]), int(r["settled_yes"]))
+            for r in rows
+            if r["local_hour"] is not None and lo_h <= r["local_hour"] < hi_h
+        ]
+        if not members:
+            continue
+        slot_n = len(members)
+        slot_probs = [p for p, _ in members]
+        slot_actuals = [a for _, a in members]
+        slot_brier = sum((p - a) ** 2 for p, a in members) / slot_n
+        mean_prob = sum(slot_probs) / slot_n
+        mean_actual = sum(slot_actuals) / slot_n
+        by_tod[slot] = {
+            "n": slot_n,
+            "brier": round(slot_brier, 4),
+            "mean_prob": round(mean_prob, 4),
+            "mean_actual": round(mean_actual, 4),
+            "bias": round(mean_prob - mean_actual, 4),
+        }
+
+    return {
+        "n": n,
+        "gate": _GATE,
+        "gate_met": n >= _GATE,
+        "brier": brier,
+        "t_sameday": t_sameday,
+        "calibration_buckets": cal_buckets,
+        "by_time_of_day": by_tod,
+    }
+
+
 def export_predictions_csv(path: str) -> int:
     """Export prediction history with outcomes to CSV. Returns row count."""
     import csv
