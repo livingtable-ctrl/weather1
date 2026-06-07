@@ -106,7 +106,10 @@ MED_EDGE = float(
 )  # threshold for medium-confidence auto-trade tier
 MAX_DAILY_SPEND = float(
     os.getenv("MAX_DAILY_SPEND", "500.0")
-)  # max total paper dollars auto-traded per day
+)  # max multi-day paper dollars auto-traded per day (days_out >= 1)
+MAX_SAME_DAY_SPEND = float(
+    os.getenv("MAX_SAME_DAY_SPEND", "500.0")
+)  # max same-day paper dollars auto-traded per day (days_out == 0)
 MAX_DAILY_LOSS_PCT = float(os.getenv("MAX_DAILY_LOSS_PCT", "0.03"))
 MAX_DAYS_OUT = int(os.getenv("MAX_DAYS_OUT", "5"))  # scan markets up to N days out
 MAX_POSITION_AGE_DAYS = int(os.getenv("MAX_POSITION_AGE_DAYS", "7"))
@@ -255,6 +258,7 @@ def get_config_fingerprint() -> dict:
         "STRONG_EDGE": STRONG_EDGE,
         "MED_EDGE": MED_EDGE,
         "MAX_DAILY_SPEND": MAX_DAILY_SPEND,
+        "MAX_SAME_DAY_SPEND": MAX_SAME_DAY_SPEND,
         "MAX_DAILY_LOSS_PCT": MAX_DAILY_LOSS_PCT,
         "MAX_DAYS_OUT": MAX_DAYS_OUT,
         "MAX_POSITION_AGE_DAYS": MAX_POSITION_AGE_DAYS,

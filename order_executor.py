@@ -20,7 +20,13 @@ from datetime import UTC, date, datetime
 import execution_log
 from ab_test import ABTest as _ABTest
 from colors import dim, green, red, yellow
-from utils import MAX_DAILY_SPEND, MAX_VAR_DOLLARS, MIN_EDGE, PAPER_MIN_EDGE
+from utils import (
+    MAX_DAILY_SPEND,
+    MAX_SAME_DAY_SPEND,
+    MAX_VAR_DOLLARS,
+    MIN_EDGE,
+    PAPER_MIN_EDGE,
+)
 from weather_markets import (
     analyze_trade,
     enrich_with_forecast,
@@ -384,9 +390,9 @@ def _place_live_order(
 def _daily_paper_spend() -> float:
     """Sum of multi-day paper trade costs placed today (UTC date). Used for daily spend cap.
 
-    Same-day trades (days_out=0) are excluded because they are already rate-limited
-    by MAX_SAME_DAY_POSITIONS. Including them would drain MAX_DAILY_SPEND before
-    multi-day signals get a chance to execute on the same calendar day.
+    Same-day trades (days_out=0) are excluded because they have their own separate
+    dollar cap (MAX_SAME_DAY_SPEND) tracked by _daily_sameday_spend(). Including
+    them here would drain MAX_DAILY_SPEND and block multi-day signals.
     Legacy trades with no days_out field are treated as multi-day (included).
     """
     from paper import _load
@@ -399,6 +405,26 @@ def _daily_paper_spend() -> float:
         if t.get("entered_at", "")[:10] == today
         and t.get("days_out", 1)
         != 0  # exclude same-day; legacy (None) treated as multi-day
+    )
+
+
+def _daily_sameday_spend() -> float:
+    """Sum of same-day paper trade costs placed today (UTC date). Used for same-day spend cap.
+
+    Only counts trades with days_out=0. These are already rate-limited by
+    MAX_SAME_DAY_POSITIONS (count cap); this provides a parallel dollar cap via
+    MAX_SAME_DAY_SPEND so large Kelly sizes cannot exhaust the full balance in one day.
+    Legacy trades with no days_out field are treated as multi-day (not counted here).
+    """
+    from paper import _load
+
+    today = datetime.now(UTC).date().isoformat()
+    data = _load()
+    return sum(
+        t.get("cost", 0.0)
+        for t in data["trades"]
+        if t.get("entered_at", "")[:10] == today
+        and t.get("days_out") == 0  # strict equality — legacy (None) falls to multi-day
     )
 
 
@@ -753,10 +779,15 @@ def _auto_place_trades(
         return 0
 
     daily_spent = _daily_paper_spend()
-    if daily_spent >= MAX_DAILY_SPEND:
+    sameday_spent = _daily_sameday_spend()
+    # Only abort entirely when BOTH caps are exhausted. If only the multi-day cap
+    # is full, same-day signals can still be placed (and vice versa). Per-signal
+    # checks below enforce each cap independently.
+    if daily_spent >= MAX_DAILY_SPEND and sameday_spent >= MAX_SAME_DAY_SPEND:
         print(
             yellow(
-                f"  [Auto] Daily spend cap reached (${daily_spent:.2f}/${MAX_DAILY_SPEND:.0f}) — no auto-trades."
+                f"  [Auto] All spend caps reached (multi-day ${daily_spent:.2f}/${MAX_DAILY_SPEND:.0f},"
+                f" same-day ${sameday_spent:.2f}/${MAX_SAME_DAY_SPEND:.0f}) — no auto-trades."
             )
         )
         return 0
@@ -1037,7 +1068,13 @@ def _auto_place_trades(
             # of this function is a single read and is never updated, so multiple live
             # trades in one cycle can exceed MAX_DAILY_SPEND without this guard.
             _live_cost_estimate = round(entry_price * qty, 2)
-            if daily_spent + _live_cost_estimate > MAX_DAILY_SPEND:
+            if _is_same_day:
+                if sameday_spent + _live_cost_estimate > MAX_SAME_DAY_SPEND:
+                    _skip_reasons.append(
+                        f"{ticker}: sameday_cap(${sameday_spent:.0f}/${MAX_SAME_DAY_SPEND:.0f})"
+                    )
+                    continue
+            elif daily_spent + _live_cost_estimate > MAX_DAILY_SPEND:
                 _skip_reasons.append(
                     f"{ticker}: daily_cap(${daily_spent:.0f}/${MAX_DAILY_SPEND:.0f})"
                 )
@@ -1062,7 +1099,10 @@ def _auto_place_trades(
             )
             if opp_placed:
                 execution_log.add_live_loss(cost)
-                daily_spent += cost
+                if _is_same_day:
+                    sameday_spent += cost
+                else:
+                    daily_spent += cost
                 open_tickers.add(ticker)
                 if _is_same_day:
                     _same_day_open += 1
@@ -1071,7 +1111,18 @@ def _auto_place_trades(
                 placed += 1
         else:
             trade_cost = round(entry_price * qty, 2)
-            if daily_spent + trade_cost > MAX_DAILY_SPEND:
+            if _is_same_day:
+                if sameday_spent + trade_cost > MAX_SAME_DAY_SPEND:
+                    print(
+                        yellow(
+                            f"  [Auto] Skipping {ticker}: would exceed same-day cap (${sameday_spent:.2f}/${MAX_SAME_DAY_SPEND:.0f})"
+                        )
+                    )
+                    _skip_reasons.append(
+                        f"{ticker}: sameday_cap(${sameday_spent:.0f}/${MAX_SAME_DAY_SPEND:.0f})"
+                    )
+                    continue
+            elif daily_spent + trade_cost > MAX_DAILY_SPEND:
                 print(
                     yellow(
                         f"  [Auto] Skipping {ticker}: would exceed daily cap (${daily_spent:.2f}/${MAX_DAILY_SPEND:.0f})"
@@ -1126,7 +1177,10 @@ def _auto_place_trades(
                 elif target_date_str:
                     _multiday_date_counts[target_date_str] += 1
                 placed += 1
-                daily_spent += trade.get("cost", 0.0)
+                if _is_same_day:
+                    sameday_spent += trade.get("cost", 0.0)
+                else:
+                    daily_spent += trade.get("cost", 0.0)
                 # Update pre-logged entry to "filled" so was_traded_today() blocks same-day re-entry.
                 execution_log.log_order_result(
                     log_id,
