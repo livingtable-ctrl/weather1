@@ -253,11 +253,20 @@ def check_anomalies(trades: list[dict]) -> list[str]:
                 f"(threshold: 30%)"
             )
 
-    # 2. Edge decay
+    # 2. Edge decay — use net_edge (current field) with legacy fallbacks.
+    # The filter must also accept net_edge; using only t.get("edge") would
+    # silently exclude all trades since paper.py writes "net_edge", not "edge".
     edges = [
-        float(t.get("edge", t.get("expected_value", 0)) or 0)
+        float(
+            (
+                t.get("edge")
+                if t.get("edge") is not None
+                else t.get("net_edge", t.get("expected_value", 0))
+            )
+            or 0  # outer `or 0` strips any None before float() sees it
+        )
         for t in recent
-        if t.get("edge") is not None
+        if t.get("edge") is not None or t.get("net_edge") is not None
     ]
     if len(edges) >= 5:
         avg_edge = sum(edges) / len(edges)

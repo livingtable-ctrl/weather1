@@ -2097,7 +2097,9 @@ def load_learned_weights() -> dict:
     """
     Load per-city model weights previously saved by save_learned_weights().
     Format: {city: {model: weight, ...}, ...}
-    Returns empty dict if file missing, malformed, or older than 7 days. Cached for the session.
+    Returns empty dict if file missing, malformed, empty, or has real content older than 7 days.
+    An empty file ({}) is silently ignored regardless of age — nothing to go stale.
+    Cached for the session.
     """
     global _LEARNED_WEIGHTS
     if _LEARNED_WEIGHTS:
@@ -2107,6 +2109,19 @@ def load_learned_weights() -> dict:
         return {}
     mtime = os.path.getmtime(path)
     age_secs = time.time() - mtime
+    try:
+        import json as _json
+
+        loaded = _json.loads(path.read_text())
+    except Exception:
+        return {}
+    # If the file has no actual city weights, age doesn't matter — there is nothing
+    # to go stale. Return {} silently so we don't spam warnings when the file exists
+    # but hasn't been populated yet (e.g. before enough per-city tracker data exists).
+    if not loaded:
+        return {}
+    # File has real content: enforce TTL so stale learned weights don't mislead the
+    # ensemble. Warn once per session then return {} so the bot uses neutral defaults.
     if age_secs > _LEARNED_WEIGHTS_TTL_DAYS * 86400:
         global _LEARNED_WEIGHTS_TTL_WARNED
         if not _LEARNED_WEIGHTS_TTL_WARNED:
@@ -2117,12 +2132,6 @@ def load_learned_weights() -> dict:
                 _LEARNED_WEIGHTS_TTL_DAYS,
             )
             _LEARNED_WEIGHTS_TTL_WARNED = True
-        return {}
-    try:
-        import json as _json
-
-        loaded = _json.loads(path.read_text())
-    except Exception:
         return {}
     # P1-9: reject corrupt files where city values are floats (win-rates) not dicts
     for city, city_data in loaded.items():

@@ -23,15 +23,25 @@ def sweep_parameter(
     For each value in `values`, simulate applying that parameter value
     to the historical trade list and compute win rate, trade count, avg edge.
 
-    `trades` is a list of paper trade dicts with keys: edge, won (bool or 0/1), kelly_fraction.
-    Returns a list of result dicts sorted by win_rate desc.
+    `trades` is a list of paper trade dicts with keys: net_edge, won (bool),
+    outcome ('yes'/'no').  Returns a list of result dicts sorted by win_rate desc.
+
+    Edge field priority: "edge" (legacy) → "net_edge" (current) → "expected_value" → 0.
+    Note: net_edge is stored on the 0.15–0.87 scale (probability difference after spread
+    adjustment), so thresholds should be calibrated against that range.
     """
     results = []
 
     for val in values:
         filtered = []
         for t in trades:
-            edge = t.get("edge", t.get("expected_value", 0))
+            # net_edge is the field paper.py writes; "edge"/"expected_value" are kept
+            # for backwards compatibility with any hand-crafted test fixtures.
+            edge = (
+                t.get("edge")
+                if t.get("edge") is not None
+                else t.get("net_edge", t.get("expected_value", 0))
+            )
             if edge is None:
                 continue
             if param_name == "PAPER_MIN_EDGE" and float(edge) < val:
@@ -53,9 +63,21 @@ def sweep_parameter(
             )
             continue
 
-        wins = sum(1 for t in filtered if t.get("won") or t.get("outcome") == "yes")
+        # Use the explicit won flag — don't fall back to outcome=='yes' because
+        # that incorrectly counts NO bets that lost (outcome='yes', won=False) as wins.
+        wins = sum(1 for t in filtered if t.get("won") is True)
         avg_edge = (
-            sum(float(t.get("edge", t.get("expected_value", 0)) or 0) for t in filtered)
+            sum(
+                float(
+                    (
+                        t.get("edge")
+                        if t.get("edge") is not None
+                        else t.get("net_edge", t.get("expected_value", 0))
+                    )
+                    or 0  # outer `or 0` strips any None before float() sees it
+                )
+                for t in filtered
+            )
             / total
         )
 
@@ -134,9 +156,13 @@ def run_sweep(trades: list[dict] | None = None) -> dict:
     train_trades = settled[:split_idx]
     val_trades = settled[split_idx:]
 
+    # Thresholds are on the net_edge scale (0.15–0.87 range in current trades).
+    # load_swept_min_edge clamps its return to [0.03, 0.15], so auto-tuned values
+    # fed back into PAPER_MIN_EDGE config stay in the safe range regardless of
+    # which threshold wins here.
     params_to_sweep = {
-        "PAPER_MIN_EDGE": [0.03, 0.05, 0.06, 0.07, 0.08, 0.10, 0.12, 0.15],
-        "MED_EDGE": [0.10, 0.12, 0.15, 0.17, 0.20],
+        "PAPER_MIN_EDGE": [0.15, 0.20, 0.25, 0.30, 0.35, 0.40],
+        "MED_EDGE": [0.15, 0.20, 0.25, 0.30, 0.35],
     }
 
     all_results = {}

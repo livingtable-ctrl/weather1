@@ -382,7 +382,13 @@ def _place_live_order(
 
 
 def _daily_paper_spend() -> float:
-    """Sum of paper trade costs placed today (UTC date). Used for daily spend cap."""
+    """Sum of multi-day paper trade costs placed today (UTC date). Used for daily spend cap.
+
+    Same-day trades (days_out=0) are excluded because they are already rate-limited
+    by MAX_SAME_DAY_POSITIONS. Including them would drain MAX_DAILY_SPEND before
+    multi-day signals get a chance to execute on the same calendar day.
+    Legacy trades with no days_out field are treated as multi-day (included).
+    """
     from paper import _load
 
     today = datetime.now(UTC).date().isoformat()
@@ -391,6 +397,8 @@ def _daily_paper_spend() -> float:
         t.get("cost", 0.0)
         for t in data["trades"]
         if t.get("entered_at", "")[:10] == today
+        and t.get("days_out", 1)
+        != 0  # exclude same-day; legacy (None) treated as multi-day
     )
 
 
