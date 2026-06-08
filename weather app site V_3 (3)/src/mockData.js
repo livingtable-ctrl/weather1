@@ -162,6 +162,11 @@ const stats = {
   override_until: null,
   strategy: 'kelly',
   env: 'demo',
+  peak_balance: 1247.83,
+  halt_floor: 998.26,
+  kelly_factor: 1.0,
+  drawdown_pct: 0.0,
+  drawdown_tier: 'TIER_1',
 };
 
 const mlModels = [
@@ -282,6 +287,32 @@ const MOCK = {
     { week: '2026-W07', brier: 0.183 }, { week: '2026-W08', brier: 0.176 },
   ],
   backupStatus: null,
+  anomalyStatus: {
+    window_trades: [],
+    n: 0,
+    wins: 0,
+    losses: 0,
+    win_rate: null,
+    halt_threshold: 0.25,
+    min_samples: 5,
+    anomaly_detected: false,
+    should_halt: false,
+    anomaly_messages: [],
+    active: false,
+  },
+  calibrationStatus: {
+    last_calibration_n: null,
+    current_n: 0,
+    next_eligible_n: 50,
+    eligible: false,
+    T_global: null,
+    T_between: null,
+  },
+  scanStats: {
+    filters: {},
+    gate_counts: {},
+    total_scanned: 0,
+  },
 };
 
 export default MOCK;

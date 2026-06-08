@@ -112,7 +112,7 @@ function MinEdgeBacktestChart({ threshold, onThresholdChange }) {
       <div style={{ display: 'flex', gap: 16, alignItems: 'center', marginBottom: 18 }}>
         <label style={{ fontSize: 13, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>Min edge threshold:</label>
         <input
-          type="range" min="0" max="30" step="0.5"
+          type="range" min="0" max="60" step="0.5"
           value={threshold}
           onChange={e => onThresholdChange(parseFloat(e.target.value))}
           style={{ flex: 1 }}
@@ -478,6 +478,230 @@ function SamedayCalibCard() {
 }
 
 // ---------------------------------------------------------------------------
+// MultiDayCalibCard — multi-day temperature-scaling calibration gate status.
+// Shows when calibration last ran (at N trades) and when next run is eligible.
+// Analogous to SamedayCalibCard but for the multi-day ensemble.
+// ---------------------------------------------------------------------------
+function MultiDayCalibCard() {
+  const M = useContext(DataContext);
+  const cal = M.calibrationStatus;
+  if (!cal) return null;
+
+  const { last_calibration_n, current_n, next_eligible_n, eligible, T_global, T_between } = cal;
+  const progress = next_eligible_n > 0 ? Math.min(100, (current_n / next_eligible_n) * 100) : 100;
+
+  return (
+    <section style={{
+      background: 'var(--bg-card)', border: '1px solid var(--border)',
+      borderRadius: 14, padding: '20px', marginBottom: 18,
+    }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, marginBottom: 4 }}>
+        <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600 }}>Multi-Day Calibration Gate</h3>
+        <span style={{
+          fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 10,
+          background: eligible ? 'rgba(34,197,94,0.12)' : 'rgba(234,179,8,0.12)',
+          color: eligible ? '#16a34a' : '#ca8a04',
+        }}>
+          {eligible ? 'eligible — run calibrate' : `${current_n}/${next_eligible_n} trades`}
+        </span>
+      </div>
+      <p style={{ margin: '0 0 16px', color: 'var(--text-muted)', fontSize: 12, lineHeight: 1.4 }}>
+        Multi-day temperature scaling (T_global, T_between). Gate: 50 first run, then every 25 new settled trades.
+        {last_calibration_n != null ? ` Last run at ${last_calibration_n} settled.` : ' Never run yet.'}
+      </p>
+
+      {/* Progress toward next eligible run */}
+      <div style={{ marginBottom: 16 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 5 }}>
+          <span style={{ fontWeight: 600 }}>Progress to next eligible run</span>
+          <span style={{ fontFamily: 'ui-monospace, monospace', color: eligible ? '#16a34a' : 'var(--text-muted)' }}>
+            {current_n} / {next_eligible_n} settled
+          </span>
+        </div>
+        <div style={{ height: 8, background: 'var(--bg-muted)', borderRadius: 4, overflow: 'hidden' }}>
+          <div style={{
+            width: progress + '%', height: '100%',
+            background: eligible ? '#16a34a' : '#3b82f6', transition: 'width 0.4s',
+          }} />
+        </div>
+      </div>
+
+      {/* Current T values */}
+      <div style={{ display: 'flex', gap: 12 }}>
+        <div style={{ padding: '12px 16px', background: 'var(--bg-subtle)', borderRadius: 10, minWidth: 110 }}>
+          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 3 }}>T_global</div>
+          <div style={{ fontSize: 20, fontWeight: 700, fontFamily: 'ui-monospace, monospace' }}>
+            {T_global != null ? T_global.toFixed(2) : '—'}
+          </div>
+          <div style={{ fontSize: 10, color: 'var(--text-faint)' }}>
+            {T_global == null ? 'not calibrated' : T_global > 1 ? 'sharpening probs' : 'flattening probs'}
+          </div>
+        </div>
+        <div style={{ padding: '12px 16px', background: 'var(--bg-subtle)', borderRadius: 10, minWidth: 110 }}>
+          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 3 }}>T_between</div>
+          <div style={{ fontSize: 20, fontWeight: 700, fontFamily: 'ui-monospace, monospace' }}>
+            {T_between != null ? T_between.toFixed(2) : '—'}
+          </div>
+          <div style={{ fontSize: 10, color: 'var(--text-faint)' }}>between markets only</div>
+        </div>
+        {last_calibration_n != null && (
+          <div style={{ padding: '12px 16px', background: 'var(--bg-subtle)', borderRadius: 10, minWidth: 110 }}>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 3 }}>Last ran at</div>
+            <div style={{ fontSize: 20, fontWeight: 700, fontFamily: 'ui-monospace, monospace' }}>{last_calibration_n}</div>
+            <div style={{ fontSize: 10, color: 'var(--text-faint)' }}>settled trades</div>
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// CityPnLChart — total P&L and win rate by city, derived from closedTrades.
+// Complements ForecastHeatmapChart (which shows Brier) with financial outcomes.
+// ---------------------------------------------------------------------------
+function CityPnLChart() {
+  const M = useContext(DataContext);
+
+  const cityData = useMemo(() => {
+    if (!M.closedTrades || M.closedTrades.length === 0) return [];
+    const map = {};
+    M.closedTrades.forEach(t => {
+      const city = t.city || 'Unknown';
+      if (!map[city]) map[city] = { city, pnl: 0, wins: 0, total: 0 };
+      map[city].pnl += t.pnl || 0;
+      map[city].total += 1;
+      if ((t.pnl || 0) > 0) map[city].wins += 1;
+    });
+    return Object.values(map).sort((a, b) => b.pnl - a.pnl);
+  }, [M.closedTrades]);
+
+  if (cityData.length === 0) {
+    return (
+      <section style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 14, padding: '20px', marginBottom: 18 }}>
+        <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600, marginBottom: 8 }}>City P&L</h3>
+        <p style={{ color: 'var(--text-faint)', fontSize: 13, fontStyle: 'italic' }}>No closed trades yet.</p>
+      </section>
+    );
+  }
+
+  const maxAbsPnl = Math.max(1, ...cityData.map(c => Math.abs(c.pnl)));
+
+  return (
+    <section style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 14, padding: '20px', marginBottom: 18 }}>
+      <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600, marginBottom: 4 }}>City P&L</h3>
+      <p style={{ color: 'var(--text-muted)', fontSize: 12, marginBottom: 14, lineHeight: 1.4 }}>
+        Total P&L and win rate per city across all settled trades.
+      </p>
+      <div style={{ display: 'grid', gap: 8 }}>
+        {cityData.map(c => {
+          const barPct = (Math.abs(c.pnl) / maxAbsPnl) * 100;
+          const isPos = c.pnl >= 0;
+          const winRate = c.total > 0 ? (c.wins / c.total) * 100 : 0;
+          return (
+            <div key={c.city}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 4 }}>
+                <span style={{ fontWeight: 600 }}>{normCity(c.city)}</span>
+                <span style={{ fontFamily: 'ui-monospace, monospace', color: isPos ? '#16a34a' : '#ef4444' }}>
+                  {isPos ? '+' : ''}${c.pnl.toFixed(2)}&nbsp;
+                  <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>
+                    {winRate.toFixed(0)}% ({c.wins}W/{c.total - c.wins}L)
+                  </span>
+                </span>
+              </div>
+              <div style={{ height: 6, background: 'var(--bg-muted)', borderRadius: 3, overflow: 'hidden' }}>
+                <div style={{
+                  width: barPct + '%', height: '100%',
+                  background: isPos ? '#16a34a' : '#ef4444',
+                }} />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// MarketTypeSplitCard — win rate and P&L split by market type.
+// Above/below threshold tickers contain '-T' before the threshold value.
+// Between tickers contain '-B' before the low end of the range.
+// ---------------------------------------------------------------------------
+function MarketTypeSplitCard() {
+  const M = useContext(DataContext);
+
+  const { threshold, between } = useMemo(() => {
+    const t = { wins: 0, total: 0, pnl: 0 };
+    const b = { wins: 0, total: 0, pnl: 0 };
+    (M.closedTrades || []).forEach(trade => {
+      // Between tickers have '-B' immediately before a digit (e.g., -B70.5)
+      // Above/below tickers use '-T' before the threshold digit (e.g., -T74)
+      const isBetween = trade.ticker && /-B\d/.test(trade.ticker);
+      const bucket = isBetween ? b : t;
+      bucket.total += 1;
+      bucket.pnl += trade.pnl || 0;
+      if ((trade.pnl || 0) > 0) bucket.wins += 1;
+    });
+    return { threshold: t, between: b };
+  }, [M.closedTrades]);
+
+  if (threshold.total === 0 && between.total === 0) {
+    return (
+      <section style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 14, padding: '20px', marginBottom: 18 }}>
+        <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600, marginBottom: 8 }}>Market type split</h3>
+        <p style={{ color: 'var(--text-faint)', fontSize: 13, fontStyle: 'italic' }}>No closed trades yet.</p>
+      </section>
+    );
+  }
+
+  const types = [
+    { label: 'Above / Below threshold', key: 'threshold', data: threshold, color: '#3b82f6' },
+    { label: 'Between range', key: 'between', data: between, color: '#8b5cf6' },
+  ];
+
+  return (
+    <section style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 14, padding: '20px', marginBottom: 18 }}>
+      <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600, marginBottom: 4 }}>Market type split</h3>
+      <p style={{ color: 'var(--text-muted)', fontSize: 12, marginBottom: 14, lineHeight: 1.4 }}>
+        Above/below = single-threshold markets (-T). Between = range markets (-B). Performance differs: between markets have higher model uncertainty.
+      </p>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+        {types.map(({ label, key, data, color }) => {
+          const winRate = data.total > 0 ? (data.wins / data.total) * 100 : null;
+          return (
+            <div key={key} style={{ padding: '16px', background: 'var(--bg-subtle)', borderRadius: 10 }}>
+              <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 12, color }}>{label}</div>
+              <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+                <div>
+                  <div style={{ fontSize: 10, color: 'var(--text-faint)', marginBottom: 2 }}>Trades</div>
+                  <div style={{ fontSize: 20, fontWeight: 700 }}>{data.total}</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 10, color: 'var(--text-faint)', marginBottom: 2 }}>Win rate</div>
+                  <div style={{ fontSize: 20, fontWeight: 700 }}>
+                    {winRate != null ? winRate.toFixed(0) + '%' : '—'}
+                  </div>
+                  {data.total > 0 && (
+                    <div style={{ fontSize: 10, color: 'var(--text-faint)' }}>{data.wins}W / {data.total - data.wins}L</div>
+                  )}
+                </div>
+                <div>
+                  <div style={{ fontSize: 10, color: 'var(--text-faint)', marginBottom: 2 }}>P&L</div>
+                  <div style={{ fontSize: 20, fontWeight: 700, color: data.pnl >= 0 ? '#16a34a' : '#ef4444' }}>
+                    {data.total > 0 ? (data.pnl >= 0 ? '+' : '') + '$' + data.pnl.toFixed(2) : '—'}
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // AnalyticsTab — empty-state banner when post-wipe data is absent
 // ---------------------------------------------------------------------------
 export default function AnalyticsTab() {
@@ -486,7 +710,7 @@ export default function AnalyticsTab() {
 
   // Chart state
   const [equityGroupBy, setEquityGroupBy] = useState('total');
-  const [minEdgeThreshold, setMinEdgeThreshold] = useState(8.0);
+  const [minEdgeThreshold, setMinEdgeThreshold] = useState(15.0);
 
   return (
     <main style={{ maxWidth: 1360, margin: '0 auto', padding: '24px 28px 40px' }}>
@@ -561,10 +785,15 @@ export default function AnalyticsTab() {
             const b = brier != null ? Number(brier) : null;
             const color = b == null ? '#8b949e' : b < 0.20 ? '#16a34a' : b < 0.30 ? '#ca8a04' : '#ef4444';
             const barW = b != null ? Math.max(0, Math.min(100, ((0.35 - b) / 0.35) * 100)) : 0;
+            // Backend returns string bucket keys ('same_day', '1-2d') rather than integer keys,
+            // so we map them to readable labels instead of blindly appending "days out".
+            const dayLabel = day === 'same_day' ? 'Same Day'
+              : day === '1-2d' ? '1-2 Days'
+              : `${day} day${day !== '1' ? 's' : ''} out`;
             return (
               <div key={day} style={{ marginBottom: 10 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 5 }}>
-                  <span style={{ fontWeight: 600 }}>{day} day{day !== '1' ? 's' : ''} out</span>
+                  <span style={{ fontWeight: 600 }}>{dayLabel}</span>
                   <span style={{ fontFamily: 'ui-monospace, monospace', fontSize: 11, fontWeight: 700, color }}>{b != null ? b.toFixed(3) : '—'}</span>
                 </div>
                 <div style={{ height: 6, background: 'var(--bg-muted)', borderRadius: 3, overflow: 'hidden' }}>
@@ -585,10 +814,15 @@ export default function AnalyticsTab() {
       <EquityCurveChart groupBy={equityGroupBy} onGroupByChange={setEquityGroupBy} />
       <MinEdgeBacktestChart threshold={minEdgeThreshold} onThresholdChange={setMinEdgeThreshold} />
       <ForecastHeatmapChart />
+      {/* City P&L alongside the Brier heatmap — financial view of the same cities */}
+      <CityPnLChart />
       <CalendarPnLChart />
+      {/* Market type split — between vs threshold performance comparison */}
+      <MarketTypeSplitCard />
 
-      {/* Same-day METAR calibration — separate from multi-day, own data path */}
+      {/* Calibration cards — same-day and multi-day side by side */}
       <SamedayCalibCard />
+      <MultiDayCalibCard />
 
       <section style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 14, overflow: 'hidden' }}>
         <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border)' }}>

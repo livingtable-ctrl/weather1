@@ -1341,6 +1341,12 @@ def _cmd_cron_body(
         signals_cache.sort(
             key=lambda x: (not x.get("passes_threshold", True), -abs(x["edge_pct"]))
         )
+        # Capture gate-level rejection counts so the dashboard can show a
+        # filter-breakdown chart without needing any in-memory state from cron.
+        try:
+            _filter_gate_counts = _get_gate_counts()
+        except Exception:
+            _filter_gate_counts = {}
         cache_payload = {
             "signals": signals_cache[:200],
             "summary": {
@@ -1350,6 +1356,11 @@ def _cmd_cron_body(
                 ),  # only counts candidates that cleared edge gates
                 "strong": len(strong),
                 "low_risk": len(low_risk),
+            },
+            "filter_stats": {
+                "filters": dict(_dbg),
+                "gate_counts": _filter_gate_counts,
+                "total_scanned": scanned,
             },
             "generated_at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S"),
         }

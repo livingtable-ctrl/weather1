@@ -239,8 +239,13 @@ export default function SignalsTab() {
           <p style={{ margin: '4px 0 0', color: 'var(--text-muted)', fontSize: 13 }}>
             {filtered.length} candidate{filtered.length !== 1 ? 's' : ''} · {filtered.filter(o => o.passes_threshold !== false).length} above bot threshold
             {M.signalsMeta?.generatedAt && (() => {
-              const ageMs = Date.now() - new Date(M.signalsMeta.generatedAt).getTime();
-              const ageMin = Math.round(ageMs / 60000);
+              // Append 'Z' if the timestamp has no timezone info so browsers
+              // treat it as UTC rather than local time (which would make
+              // ageMs negative for US timezones and break the label).
+              const ts = M.signalsMeta.generatedAt;
+              const utcTs = (ts.endsWith('Z') || ts.includes('+')) ? ts : ts + 'Z';
+              const ageMs = Date.now() - new Date(utcTs).getTime();
+              const ageMin = Math.max(0, Math.round(ageMs / 60000));
               const isStale = M.signalsMeta.stale || ageMin > 90;
               const label = ageMin < 60 ? `${ageMin}m ago` : `${Math.round(ageMin / 60)}h ${ageMin % 60}m ago`;
               return (

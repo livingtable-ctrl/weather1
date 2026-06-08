@@ -352,6 +352,19 @@ def _build_app(client):
             # default (empty or invalid range): last N points
             points = history[-_DEFAULT_HISTORY_POINTS:]
 
+        # Always append a synthetic "now" point at the real current balance so
+        # the chart endpoint reflects open-trade cost deductions, not just the
+        # last settlement.  Only added when the balance actually differs (i.e.
+        # trades have been placed since the most recent settlement event).
+        from paper import get_balance as _get_balance
+
+        current_balance = _get_balance()
+        if points and abs(points[-1]["balance"] - current_balance) > 0.005:
+            now_ts = _now_utc().isoformat()
+            points = list(points) + [
+                {"ts": now_ts, "balance": current_balance, "event": ""}
+            ]
+
         return jsonify(
             {
                 "labels": [(p.get("ts") or "")[:16] or "Start" for p in points],
@@ -1235,6 +1248,44 @@ setInterval(() => {{
             except Exception:
                 daily_spend = None
 
+            # Drawdown tier fields for the dashboard risk row
+            peak_balance: float | None = None
+            halt_floor: float | None = None
+            kelly_factor: float | None = None
+            drawdown_pct: float | None = None
+            drawdown_tier: str | None = None
+            try:
+                from paper import (
+                    drawdown_scaling_factor as _dsf,
+                )
+                from paper import (
+                    get_max_drawdown_pct as _dmax,
+                )
+                from paper import (
+                    get_peak_balance as _gpeak,
+                )
+
+                _peak = _gpeak()
+                _kf = _dsf()
+                _kf_rounded = round(_kf, 2)
+                if _kf_rounded >= 1.0:
+                    _tier = "TIER_1"
+                elif _kf_rounded >= 0.70:
+                    _tier = "TIER_2"
+                elif _kf_rounded >= 0.30:
+                    _tier = "TIER_3"
+                elif _kf_rounded > 0.0:
+                    _tier = "TIER_4"
+                else:
+                    _tier = "HALTED"
+                peak_balance = round(_peak, 2)
+                halt_floor = round(_peak * 0.80, 2)
+                kelly_factor = round(_kf, 4)
+                drawdown_pct = round(_dmax() * 100, 2)
+                drawdown_tier = _tier
+            except Exception:
+                pass  # defaults already set above
+
             data = {
                 "balance": round(get_balance(), 2),
                 "open_count": len(get_open_trades()),
@@ -1247,11 +1298,156 @@ setInterval(() => {{
                 "today_pnl": today_pnl,
                 "starting_balance": starting_balance,
                 "daily_spend": daily_spend,
+                "peak_balance": peak_balance,
+                "halt_floor": halt_floor,
+                "kelly_factor": kelly_factor,
+                "drawdown_pct": drawdown_pct,
+                "drawdown_tier": drawdown_tier,
                 "timestamp": datetime.now(UTC).isoformat(),
             }
         except Exception as e:
             data = {"error": str(e)}
         return jsonify(data)
+
+    @app.route("/api/anomaly-status")
+    def api_anomaly_status():
+        """Current state of the win-rate anomaly detection window.
+
+        Exposes the same window of multi-day trades that run_anomaly_check()
+        evaluates, so the dashboard can show the current W/L list and how far
+        the win rate is from the halt threshold.
+        """
+        try:
+            from alerts import (
+                ALERT_HALT_THRESHOLDS,
+                _trade_won,
+                run_anomaly_check,
+            )
+            from paper import load_paper_trades
+
+            # Same multi-day filter as run_anomaly_check
+            all_trades = [
+                t
+                for t in load_paper_trades()
+                if t.get("days_out") is None or t.get("days_out", 1) >= 1
+            ]
+            recent = sorted(
+                all_trades,
+                key=lambda t: t.get("placed_at", t.get("ts", "")),
+                reverse=True,
+            )[:10]
+            settled = [t for t in recent if t.get("outcome") in ("yes", "no")]
+
+            n = len(settled)
+            wins = sum(1 for t in settled if _trade_won(t))
+            losses = n - wins
+            win_rate = round(wins / n, 4) if n > 0 else None
+
+            halt_threshold = ALERT_HALT_THRESHOLDS["WIN_RATE_COLLAPSE"]  # 0.25
+            min_samples = 5  # matches check_anomalies gate
+
+            anomalies, should_halt = run_anomaly_check(log_results=False)
+
+            window_trades = [
+                {
+                    "ticker": t.get("ticker", ""),
+                    "won": _trade_won(t),
+                    "pnl": t.get("pnl"),
+                    "entered_at": t.get("entered_at", ""),
+                }
+                for t in settled
+            ]
+
+            return jsonify(
+                {
+                    "window_trades": window_trades,
+                    "n": n,
+                    "wins": wins,
+                    "losses": losses,
+                    "win_rate": win_rate,
+                    "halt_threshold": halt_threshold,
+                    "min_samples": min_samples,
+                    "anomaly_detected": bool(anomalies),
+                    "should_halt": should_halt,
+                    "anomaly_messages": anomalies,
+                    "active": n >= min_samples,
+                }
+            )
+        except Exception as exc:
+            return jsonify({"error": str(exc)}), 500
+
+    @app.route("/api/calibration-status")
+    def api_calibration_status():
+        """Multi-day temperature-scaling calibration gate status.
+
+        Shows when calibration last ran, current settled-trade count, and
+        when the next run is eligible (last_n + 25 new trades).
+        """
+        try:
+            from tracker import count_settled_predictions
+
+            current_n = count_settled_predictions()
+
+            ts_path = Path(__file__).parent / "data" / "temperature_scale.json"
+            last_calibration_n: int | None = None
+            T_global: float | None = None
+            T_between: float | None = None
+
+            if ts_path.exists():
+                try:
+                    _ts = json.loads(ts_path.read_text())
+                    _global = _ts.get("global", {})
+                    _between = _ts.get("between", {})
+                    if isinstance(_global, dict):
+                        last_calibration_n = _global.get("n")
+                        T_global = _global.get("T")
+                    if isinstance(_between, dict):
+                        T_between = _between.get("T")
+                except Exception:
+                    pass
+
+            # If never calibrated, next eligible at the first-time gate (50 trades)
+            next_eligible_n = (
+                last_calibration_n + 25 if last_calibration_n is not None else 50
+            )
+            eligible = current_n >= next_eligible_n
+
+            return jsonify(
+                {
+                    "last_calibration_n": last_calibration_n,
+                    "current_n": current_n,
+                    "next_eligible_n": next_eligible_n,
+                    "eligible": eligible,
+                    "T_global": round(T_global, 4) if T_global is not None else None,
+                    "T_between": round(T_between, 4) if T_between is not None else None,
+                }
+            )
+        except Exception as exc:
+            return jsonify({"error": str(exc)}), 500
+
+    @app.route("/api/scan-stats")
+    def api_scan_stats():
+        """Filter rejection counts from the most recent cron scan.
+
+        Reads the filter_stats block written to signals_cache.json by cron.
+        Returns an empty object if no scan has run yet.
+        """
+        cache_path = Path(__file__).parent / "data" / "signals_cache.json"
+        if not cache_path.exists():
+            return jsonify({"filters": {}, "gate_counts": {}, "total_scanned": 0})
+        try:
+            with open(cache_path, encoding="utf-8") as _f:
+                _cache = json.load(_f)
+            stats = _cache.get("filter_stats", {})
+            return jsonify(
+                {
+                    "filters": stats.get("filters", {}),
+                    "gate_counts": stats.get("gate_counts", {}),
+                    "total_scanned": stats.get("total_scanned", 0),
+                }
+            )
+        except Exception as exc:
+            return jsonify({"error": str(exc)}), 500
 
     @app.route("/api/halt", methods=["POST"])
     def api_halt():

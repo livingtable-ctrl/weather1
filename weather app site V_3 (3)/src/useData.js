@@ -78,6 +78,12 @@ function mapStats(status, grad, config, prevStats) {
       base.fear_greed       = status.fear_greed_score;
       base.fear_greed_label = status.fear_greed_label;
     }
+    // Drawdown risk row fields — new as of 2026-06-08 dashboard update
+    if (status.peak_balance  != null) base.peak_balance  = status.peak_balance;
+    if (status.halt_floor    != null) base.halt_floor    = status.halt_floor;
+    if (status.kelly_factor  != null) base.kelly_factor  = status.kelly_factor;
+    if (status.drawdown_pct  != null) base.drawdown_pct  = status.drawdown_pct;
+    if (status.drawdown_tier != null) base.drawdown_tier = status.drawdown_tier;
   }
 
   // max_daily_spend lives in /api/config, not /api/status
@@ -164,7 +170,11 @@ function mapTrades(raw) {
       markIsLive: markLive,
       fcst:       t.entry_prob,
       edge:       t.net_edge,
-      expiry:     t.target_date,
+      // Use the date portion of close_time (when Kalshi closes the market)
+      // rather than target_date (the observation day), which is one day early
+      // for same-day trades that close overnight UTC.
+      expiry:     t.close_time ? t.close_time.slice(0, 10) : t.target_date,
+      close_time: t.close_time ?? null,
       model:      null,
       age_h:      t.entered_at
         ? Math.round((Date.now() - new Date(t.entered_at)) / 3_600_000)
@@ -294,6 +304,9 @@ export default function useData(setConnected) {
         safe('/api/brier_history'),        // 15
         safe('/api/forecast_quality'),     // 16
         safe('/api/sameday-calibration'),  // 17
+        safe('/api/anomaly-status'),       // 18
+        safe('/api/calibration-status'),   // 19
+        safe('/api/scan-stats'),           // 20
       ]);
 
       // Unwrap allSettled — treat rejected as null
@@ -305,6 +318,7 @@ export default function useData(setConnected) {
         systemEventsR, backupStatusR,
         brierHistoryR, forecastQualityR,
         samedayCalibR,
+        anomalyStatusR, calibStatusR, scanStatsR,
       ] = results.map(r => r.status === 'fulfilled' ? r.value : null);
 
       setData(prev => {
@@ -391,6 +405,15 @@ export default function useData(setConnected) {
         // Same-day METAR calibration — separate from multi-day, own card in Analytics tab.
         const sd = mapSamedayCalib(samedayCalibR);
         if (sd) next.samedayCalibration = sd;
+
+        // Anomaly window — win-rate collapse detection state
+        if (anomalyStatusR && !anomalyStatusR.error) next.anomalyStatus = anomalyStatusR;
+
+        // Multi-day temperature-scaling calibration gate
+        if (calibStatusR && !calibStatusR.error) next.calibrationStatus = calibStatusR;
+
+        // Scan filter rejection counts from last cron run
+        if (scanStatsR && !scanStatsR.error) next.scanStats = scanStatsR;
 
         return next;
       });
