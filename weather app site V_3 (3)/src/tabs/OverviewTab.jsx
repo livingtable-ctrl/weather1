@@ -2,6 +2,54 @@ import React, { useContext } from 'react';
 import { DataContext } from '../DataContext.js';
 import { normCity, StatCard, BalanceSparkline, SystemEventsCard } from '../shared.jsx';
 
+// ---------------------------------------------------------------------------
+// LastSettlementBatch — compact inline summary of the most recently settled
+// batch. Groups by target_date (observation day) so a single cron settlement
+// run appears as one batch instead of spread across entered_at times.
+// ---------------------------------------------------------------------------
+function LastSettlementBatch() {
+  const M = useContext(DataContext);
+
+  const settled = (M.closedTrades || []).filter(t => t.target_date);
+  if (settled.length < 2) return null;
+
+  const sortedDates = [...new Set(settled.map(t => t.target_date))].sort();
+  const latestDate = sortedDates[sortedDates.length - 1];
+  const batch = settled.filter(t => t.target_date === latestDate);
+
+  // Single-trade batches aren't meaningful to summarize
+  if (batch.length < 2) return null;
+
+  const wins = batch.filter(t => t.pnl > 0).length;
+  const losses = batch.filter(t => t.pnl <= 0).length;
+  const netPnl = batch.reduce((s, t) => s + (t.pnl || 0), 0);
+
+  // Append T12:00:00Z so the date parses in UTC and doesn't shift by timezone
+  const label = new Date(latestDate + 'T12:00:00Z')
+    .toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+
+  return (
+    <div style={{
+      display: 'flex', gap: 14, alignItems: 'center', flexWrap: 'wrap',
+      padding: '12px 18px', background: 'var(--bg-card)',
+      border: '1px solid var(--border)', borderRadius: 10, marginBottom: 18, fontSize: 13,
+    }}>
+      <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>Last settlement · {label}</span>
+      <span style={{ color: '#16a34a', fontWeight: 600 }}>{wins}W</span>
+      <span style={{ color: '#ef4444', fontWeight: 600 }}>{losses}L</span>
+      <span style={{
+        fontFamily: 'ui-monospace, monospace', fontWeight: 700,
+        color: netPnl >= 0 ? '#16a34a' : '#ef4444',
+      }}>
+        {netPnl >= 0 ? '+' : ''}{netPnl.toFixed(2)}
+      </span>
+      <span style={{ color: 'var(--text-faint)', fontSize: 11 }}>
+        {batch.length} trade{batch.length !== 1 ? 's' : ''}
+      </span>
+    </div>
+  );
+}
+
 export default function OverviewTab() {
   const M = useContext(DataContext);
   const s = M.stats;
@@ -187,6 +235,9 @@ export default function OverviewTab() {
 
       {/* Balance history sparkline */}
       <BalanceSparkline hist={M.balanceHist} />
+
+      {/* Most recent settlement batch — W/L/PnL summary grouped by target_date */}
+      <LastSettlementBatch />
 
       {/* System events feed */}
       <SystemEventsCard alerts={M.alerts} />

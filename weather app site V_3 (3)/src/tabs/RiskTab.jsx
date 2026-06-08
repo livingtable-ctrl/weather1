@@ -3,6 +3,180 @@ import { DataContext } from '../DataContext.js';
 import { authHeader } from '../useData.js';
 import { StatCard } from '../shared.jsx';
 
+// ---------------------------------------------------------------------------
+// BrierAlertCard — P10.3 Brier degradation alert. Fires when weekly Brier
+// exceeds 0.22 (P10.3_THRESHOLD in alerts.py) for 2+ consecutive weeks.
+// Threshold hardcoded here so the card stays frontend-only with no new endpoint.
+// ---------------------------------------------------------------------------
+function BrierAlertCard() {
+  const M = useContext(DataContext);
+  const THRESHOLD = 0.22;
+  const recent = (M.brierHistory || []).slice(-6);
+
+  if (recent.length < 2) return null;
+
+  let consecutiveAbove = 0;
+  for (let i = recent.length - 1; i >= 0; i--) {
+    if (recent[i].brier > THRESHOLD) consecutiveAbove++;
+    else break;
+  }
+
+  const latest = recent[recent.length - 1];
+  const statusColor = consecutiveAbove >= 2 ? '#ef4444' : consecutiveAbove === 1 ? '#ca8a04' : '#16a34a';
+  const statusLabel = consecutiveAbove >= 2 ? 'DEGRADING' : consecutiveAbove === 1 ? 'ALERT' : 'CLEAR';
+  const borderColor = consecutiveAbove >= 2 ? 'rgba(239,68,68,0.4)' : consecutiveAbove === 1 ? 'rgba(202,138,4,0.4)' : 'var(--border)';
+
+  const W = 400, H = 70, PAD = { top: 8, right: 16, bottom: 20, left: 8 };
+  const iW = W - PAD.left - PAD.right;
+  const iH = H - PAD.top - PAD.bottom;
+
+  const allBriers = recent.map(e => e.brier);
+  // Pad min/max so the 0.22 threshold line is always visible with breathing room
+  const minB = Math.min(THRESHOLD - 0.05, ...allBriers);
+  const maxB = Math.max(THRESHOLD + 0.05, ...allBriers);
+  const rangeB = maxB - minB || 0.01;
+
+  const toX = i => PAD.left + (i / Math.max(recent.length - 1, 1)) * iW;
+  const toY = b => PAD.top + (1 - (b - minB) / rangeB) * iH;
+
+  const pts = recent.map((e, i) => `${toX(i)},${toY(e.brier)}`).join(' ');
+  const threshY = toY(THRESHOLD);
+  const endX = toX(recent.length - 1);
+  const endY = toY(latest.brier);
+
+  const consecutiveText = consecutiveAbove === 0
+    ? 'Within target'
+    : `${consecutiveAbove} consecutive week${consecutiveAbove > 1 ? 's' : ''} above threshold`;
+
+  return (
+    <section style={{
+      background: 'var(--bg-card)', border: `1px solid ${borderColor}`,
+      borderRadius: 14, padding: '20px', marginBottom: 18,
+    }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
+        <div>
+          <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600, marginBottom: 4 }}>P10.3 Brier alert</h3>
+          <p style={{ margin: 0, color: 'var(--text-muted)', fontSize: 12, lineHeight: 1.4 }}>
+            Weekly Brier vs 0.22 threshold. Alert fires when above limit 2+ consecutive weeks.
+          </p>
+        </div>
+        <span style={{
+          fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 999, flexShrink: 0, marginLeft: 12,
+          background: consecutiveAbove >= 2 ? 'rgba(239,68,68,0.12)' : consecutiveAbove === 1 ? 'rgba(202,138,4,0.12)' : 'rgba(22,163,74,0.12)',
+          color: statusColor,
+        }}>{statusLabel}</span>
+      </div>
+
+      <div style={{ display: 'flex', gap: 20, marginBottom: 10, fontSize: 13, flexWrap: 'wrap' }}>
+        <div>
+          <span style={{ color: 'var(--text-muted)' }}>Latest ({latest.week}):</span>{' '}
+          <strong style={{ fontFamily: 'ui-monospace, monospace', color: latest.brier > THRESHOLD ? '#ef4444' : '#16a34a' }}>
+            {latest.brier.toFixed(3)}
+          </strong>
+          <span style={{ color: 'var(--text-muted)', marginLeft: 6 }}>
+            — {latest.brier > THRESHOLD ? 'above' : 'below'} {THRESHOLD} limit
+          </span>
+        </div>
+        <div style={{ color: consecutiveAbove === 0 ? '#16a34a' : statusColor }}>
+          {consecutiveText}
+        </div>
+      </div>
+
+      <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 'auto', display: 'block', overflow: 'visible' }}>
+        {/* Dashed threshold line at 0.22 */}
+        <line x1={PAD.left} y1={threshY} x2={W - PAD.right} y2={threshY}
+          stroke="rgba(239,68,68,0.5)" strokeWidth="1" strokeDasharray="4,3" />
+        <polyline points={pts} fill="none" stroke={statusColor} strokeWidth="2" strokeLinejoin="round" />
+        <circle cx={endX} cy={endY} r="4" fill={statusColor} stroke="white" strokeWidth="2" />
+        {recent.map((e, i) => (
+          <text key={i} x={toX(i)} y={H - 4} textAnchor="middle"
+            fontSize="9" fill="var(--text-faint)" fontFamily="ui-monospace, monospace">
+            {e.week.slice(-3)}
+          </text>
+        ))}
+      </svg>
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// KillSwitchCriteriaCard — checklist of conditions the operator should verify
+// before removing the kill switch manually. Invisible when kill switch is off.
+// ---------------------------------------------------------------------------
+function KillSwitchCriteriaCard() {
+  const M = useContext(DataContext);
+  if (!M.stats.kill_switch) return null;
+
+  const anomalyDetected = M.anomalyStatus?.anomaly_detected;
+  const drawdownTier = M.stats.drawdown_tier;
+  const brier = M.stats.brier;
+
+  const allPass = anomalyDetected === false && drawdownTier === 'TIER_1' && brier != null && brier < 0.35;
+
+  const checks = [
+    {
+      label: 'Anomaly clear',
+      icon: anomalyDetected === false ? '✓' : anomalyDetected === true ? '✗' : '?',
+      color: anomalyDetected === false ? '#16a34a' : anomalyDetected === true ? '#ef4444' : '#8b949e',
+      rowBg: anomalyDetected === false ? 'rgba(22,163,74,0.06)' : anomalyDetected === true ? 'rgba(239,68,68,0.06)' : 'var(--bg-subtle)',
+    },
+    {
+      label: 'Drawdown TIER_1',
+      icon: drawdownTier === 'TIER_1' ? '✓' : drawdownTier == null ? '?' : '✗',
+      color: drawdownTier === 'TIER_1' ? '#16a34a' : drawdownTier == null ? '#8b949e' : '#ca8a04',
+      rowBg: drawdownTier === 'TIER_1' ? 'rgba(22,163,74,0.06)' : drawdownTier == null ? 'var(--bg-subtle)' : 'rgba(202,138,4,0.06)',
+    },
+    {
+      label: 'Brier below 0.35',
+      icon: brier == null ? '?' : brier < 0.35 ? '✓' : '✗',
+      color: brier == null ? '#8b949e' : brier < 0.35 ? '#16a34a' : '#ef4444',
+      rowBg: brier == null ? 'var(--bg-subtle)' : brier < 0.35 ? 'rgba(22,163,74,0.06)' : 'rgba(239,68,68,0.06)',
+    },
+  ];
+
+  return (
+    <section style={{
+      background: 'var(--bg-card)',
+      border: `1px solid ${allPass ? 'rgba(22,163,74,0.4)' : 'rgba(245,158,11,0.3)'}`,
+      borderRadius: 14, padding: '20px', marginBottom: 18,
+    }}>
+      <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600, marginBottom: 4 }}>Kill switch removal criteria</h3>
+      <p style={{ margin: '0 0 14px', color: 'var(--text-muted)', fontSize: 12, lineHeight: 1.4 }}>
+        Conditions to verify before removing the kill switch manually.
+      </p>
+      <div style={{ display: 'grid', gap: 10 }}>
+        {checks.map(c => (
+          <div key={c.label} style={{
+            display: 'flex', alignItems: 'center', gap: 12,
+            padding: '10px 14px', borderRadius: 8, background: c.rowBg,
+          }}>
+            <span style={{
+              width: 24, height: 24, borderRadius: '50%', flexShrink: 0,
+              background: c.color === '#16a34a' ? 'rgba(22,163,74,0.15)'
+                : c.color === '#ef4444' ? 'rgba(239,68,68,0.15)'
+                : c.color === '#ca8a04' ? 'rgba(202,138,4,0.15)'
+                : 'rgba(139,148,158,0.15)',
+              color: c.color, fontSize: 13, fontWeight: 700,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>{c.icon}</span>
+            <span style={{ fontSize: 13, fontWeight: 500 }}>{c.label}</span>
+            <span style={{ fontSize: 11, color: c.color, marginLeft: 'auto' }}>
+              {c.icon === '✓' ? 'Pass' : c.icon === '✗' ? 'Fail' : 'Unknown'}
+            </span>
+          </div>
+        ))}
+      </div>
+      <p style={{ margin: '12px 0 0', fontSize: 11, color: 'var(--text-faint)', lineHeight: 1.5 }}>
+        Meeting these conditions does not auto-remove the kill switch — run{' '}
+        <code style={{ background: 'var(--bg-subtle)', padding: '1px 4px', borderRadius: 3 }}>
+          py main.py admin kill-switch off
+        </code>{' '}
+        manually.
+      </p>
+    </section>
+  );
+}
+
 export default function RiskTab() {
   const M = useContext(DataContext);
   const totalCost = M.positions.reduce((a, p) => a + p.cost, 0);
@@ -221,6 +395,12 @@ export default function RiskTab() {
           })()}
         </section>
       )}
+
+      {/* P10.3 Brier degradation alert — sparkline + consecutive-weeks counter */}
+      <BrierAlertCard />
+
+      {/* Kill switch removal criteria — only visible when kill switch is active */}
+      <KillSwitchCriteriaCard />
 
       {/* Kill switch */}
       <section style={{ background: 'var(--bg-card)', border: '1px solid #ef4444', borderRadius: 14, padding: '20px' }}>

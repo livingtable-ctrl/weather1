@@ -702,6 +702,156 @@ function MarketTypeSplitCard() {
 }
 
 // ---------------------------------------------------------------------------
+// SameDayPerfCard — same-day (days_out=0, METAR-locked) trades vs multi-day
+// ensemble trades, side by side. Re-enabled Jun 2 but had no dedicated view.
+// ---------------------------------------------------------------------------
+function SameDayPerfCard() {
+  const M = useContext(DataContext);
+
+  const sameDayTrades = (M.closedTrades || []).filter(t => t.days_out === 0);
+  // null days_out means an old multi-day trade placed before the field was stored
+  const multiDayTrades = (M.closedTrades || []).filter(t => t.days_out !== 0);
+
+  if (sameDayTrades.length === 0) {
+    return (
+      <section style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 14, padding: '20px', marginBottom: 18 }}>
+        <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600, marginBottom: 8 }}>Same-day performance</h3>
+        <p style={{ color: 'var(--text-faint)', fontSize: 13, fontStyle: 'italic' }}>No settled same-day trades yet.</p>
+      </section>
+    );
+  }
+
+  function calcStats(trades) {
+    const wins = trades.filter(t => t.pnl > 0).length;
+    const totalPnl = trades.reduce((s, t) => s + (t.pnl || 0), 0);
+    const withEdge = trades.filter(t => t.net_edge != null);
+    const avgEdge = withEdge.length > 0
+      ? withEdge.reduce((s, t) => s + t.net_edge, 0) / withEdge.length
+      : null;
+    return { count: trades.length, wins, losses: trades.length - wins, totalPnl, avgEdge };
+  }
+
+  const sd = calcStats(sameDayTrades);
+  const md = calcStats(multiDayTrades);
+
+  const types = [
+    { label: 'Same-day (METAR)', color: '#3b82f6', d: sd },
+    { label: 'Multi-day (ensemble)', color: '#8b5cf6', d: md },
+  ];
+
+  return (
+    <section style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 14, padding: '20px', marginBottom: 18 }}>
+      <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600, marginBottom: 4 }}>Same-day performance</h3>
+      <p style={{ color: 'var(--text-muted)', fontSize: 12, marginBottom: 14, lineHeight: 1.4 }}>
+        METAR-locked same-day trades (days_out=0) vs multi-day ensemble trades. Avg edge compares only trades with edge data.
+      </p>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+        {types.map(({ label, color, d }) => {
+          const winRate = d.count > 0 ? ((d.wins / d.count) * 100).toFixed(0) + '%' : '—';
+          const pnlStr = d.count > 0 ? (d.totalPnl >= 0 ? '+' : '') + '$' + d.totalPnl.toFixed(2) : '—';
+          const edgeStr = d.avgEdge != null ? (d.avgEdge * 100).toFixed(1) + '%' : '—';
+          return (
+            <div key={label} style={{ padding: '16px', background: 'var(--bg-subtle)', borderRadius: 10 }}>
+              <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 12, color }}>{label}</div>
+              <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+                <div>
+                  <div style={{ fontSize: 10, color: 'var(--text-faint)', marginBottom: 2 }}>Trades</div>
+                  <div style={{ fontSize: 20, fontWeight: 700 }}>{d.count}</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 10, color: 'var(--text-faint)', marginBottom: 2 }}>Win rate</div>
+                  <div style={{ fontSize: 20, fontWeight: 700 }}>{winRate}</div>
+                  {d.count > 0 && <div style={{ fontSize: 10, color: 'var(--text-faint)' }}>{d.wins}W / {d.losses}L</div>}
+                </div>
+                <div>
+                  <div style={{ fontSize: 10, color: 'var(--text-faint)', marginBottom: 2 }}>P&L</div>
+                  <div style={{ fontSize: 20, fontWeight: 700, color: d.count > 0 ? (d.totalPnl >= 0 ? '#16a34a' : '#ef4444') : 'var(--text)' }}>
+                    {pnlStr}
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 10, color: 'var(--text-faint)', marginBottom: 2 }}>Avg edge</div>
+                  <div style={{ fontSize: 20, fontWeight: 700 }}>{edgeStr}</div>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+// Bucket definitions for the edge histogram — 5% intervals starting at 15%.
+// Kept module-level so they aren't re-created on each render.
+const EDGE_BUCKETS = [
+  { label: '<15%',   min: -Infinity, max: 0.15   },
+  { label: '15–20%', min: 0.15,      max: 0.20   },
+  { label: '20–25%', min: 0.20,      max: 0.25   },
+  { label: '25–30%', min: 0.25,      max: 0.30   },
+  { label: '30–35%', min: 0.30,      max: 0.35   },
+  { label: '35%+',   min: 0.35,      max: Infinity },
+];
+
+// ---------------------------------------------------------------------------
+// EdgeHistogram — horizontal bar chart of net_edge distribution across closed
+// trades. Buckets at 5% intervals; green for high-conviction (≥25%) buckets.
+// ---------------------------------------------------------------------------
+function EdgeHistogram() {
+  const M = useContext(DataContext);
+
+  const bucketCounts = useMemo(() => {
+    const trades = (M.closedTrades || []).filter(t => t.net_edge != null);
+    if (trades.length === 0) return null;
+    return EDGE_BUCKETS.map(b => ({
+      label: b.label,
+      min: b.min,
+      count: trades.filter(t => t.net_edge >= b.min && t.net_edge < b.max).length,
+    }));
+  }, [M.closedTrades]);
+
+  if (!bucketCounts) {
+    return (
+      <section style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 14, padding: '20px', marginBottom: 18 }}>
+        <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600, marginBottom: 8 }}>Edge distribution</h3>
+        <p style={{ color: 'var(--text-faint)', fontSize: 13, fontStyle: 'italic' }}>No trades with edge data yet.</p>
+      </section>
+    );
+  }
+
+  const maxCount = Math.max(1, ...bucketCounts.map(b => b.count));
+
+  return (
+    <section style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 14, padding: '20px', marginBottom: 18 }}>
+      <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600, marginBottom: 4 }}>Edge distribution</h3>
+      <p style={{ color: 'var(--text-muted)', fontSize: 12, marginBottom: 14, lineHeight: 1.4 }}>
+        Distribution of net_edge across closed trades. Green bars (≥25%) are the high-conviction range.
+      </p>
+      <div style={{ display: 'grid', gap: 8 }}>
+        {bucketCounts.map(b => {
+          const barPct = (b.count / maxCount) * 100;
+          // Buckets with min >= 0.25 are the high-conviction range → green
+          const color = b.min >= 0.25 ? '#16a34a' : '#3b82f6';
+          return (
+            <div key={b.label} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span style={{ width: 54, fontSize: 11, fontWeight: 500, color: 'var(--text-muted)', flexShrink: 0, textAlign: 'right' }}>
+                {b.label}
+              </span>
+              <div style={{ flex: 1, height: 20, background: 'var(--bg-muted)', borderRadius: 4, overflow: 'hidden' }}>
+                <div style={{ width: barPct + '%', height: '100%', background: color, borderRadius: 4 }} />
+              </div>
+              <span style={{ fontSize: 11, fontFamily: 'ui-monospace, monospace', color: 'var(--text-muted)', minWidth: 24, flexShrink: 0 }}>
+                {b.count}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // AnalyticsTab — empty-state banner when post-wipe data is absent
 // ---------------------------------------------------------------------------
 export default function AnalyticsTab() {
@@ -819,6 +969,10 @@ export default function AnalyticsTab() {
       <CalendarPnLChart />
       {/* Market type split — between vs threshold performance comparison */}
       <MarketTypeSplitCard />
+      {/* Same-day METAR vs multi-day ensemble performance breakdown */}
+      <SameDayPerfCard />
+      {/* Net edge histogram — shows whether edge is concentrated or spread out */}
+      <EdgeHistogram />
 
       {/* Calibration cards — same-day and multi-day side by side */}
       <SamedayCalibCard />
