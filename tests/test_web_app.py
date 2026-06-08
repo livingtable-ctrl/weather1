@@ -30,7 +30,13 @@ def test_balance_history_default_50(client):
         {"ts": f"2024-01-{d:02d}T00:00:00", "balance": 900 + d, "event": "T"}
         for d in range(1, 92)
     ]
-    with patch("paper.get_balance_history", return_value=history):
+    last_bal = history[-1]["balance"]
+    # Patch get_balance to match the last history point so the live-tail
+    # synthetic append (added for open-trade cost tracking) is skipped.
+    with (
+        patch("paper.get_balance_history", return_value=history),
+        patch("paper.get_balance", return_value=last_bal),
+    ):
         r = client.get("/api/balance_history")
         data = r.get_json()
         assert len(data["labels"]) <= 50
@@ -42,7 +48,11 @@ def test_balance_history_range_all(client):
         {"ts": f"2024-01-{d:02d}T00:00:00", "balance": 900 + d, "event": "T"}
         for d in range(1, 92)
     ]
-    with patch("paper.get_balance_history", return_value=history):
+    last_bal = history[-1]["balance"]
+    with (
+        patch("paper.get_balance_history", return_value=history),
+        patch("paper.get_balance", return_value=last_bal),
+    ):
         r = client.get("/api/balance_history?range=all")
         data = r.get_json()
         assert len(data["labels"]) == 91
@@ -54,7 +64,11 @@ def test_balance_history_invalid_range_default(client):
         {"ts": f"2024-01-{d:02d}T00:00:00", "balance": 900 + d, "event": "T"}
         for d in range(1, 92)
     ]
-    with patch("paper.get_balance_history", return_value=history):
+    last_bal = history[-1]["balance"]
+    with (
+        patch("paper.get_balance_history", return_value=history),
+        patch("paper.get_balance", return_value=last_bal),
+    ):
         r = client.get("/api/balance_history?range=bogus")
         assert r.status_code == 200
         data = r.get_json()
@@ -385,8 +399,12 @@ def test_balance_history_range_3mo_longer_than_default(tmp_path, monkeypatch):
         {"ts": (now - timedelta(days=120 - i)).isoformat(), "balance": 1000.0 + i}
         for i in range(100)
     ]
+    last_bal = fake_history[-1]["balance"]
     monkeypatch.setattr(paper, "get_balance_history", lambda: fake_history)
     monkeypatch.setattr(web_app, "_now_utc", lambda: now)
+    # Patch get_balance to match the last history point so the live-tail
+    # synthetic append is skipped — this test is checking slicing, not the tail.
+    monkeypatch.setattr(paper, "get_balance", lambda: last_bal)
 
     app = web_app._build_app(client=None)
     client = app.test_client()
