@@ -5,7 +5,7 @@ import { normCity, StatCard, BrierTrendChart } from '../shared.jsx';
 // ---------------------------------------------------------------------------
 // EquityCurveChart — running cumulative P&L from closedTrades, sorted by date
 // ---------------------------------------------------------------------------
-function EquityCurveChart({ groupBy, onGroupByChange }) {
+function EquityCurveChart() {
   const M = useContext(DataContext);
   const trades = M.closedTrades;
 
@@ -50,19 +50,7 @@ function EquityCurveChart({ groupBy, onGroupByChange }) {
 
   return (
     <section style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 14, padding: '20px', marginBottom: 18 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-        <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600 }}>Equity curve</h3>
-        <div style={{ display: 'flex', gap: 6 }}>
-          {['total'].map(g => (
-            <button key={g} onClick={() => onGroupByChange(g)} style={{
-              padding: '4px 10px', borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: 'pointer',
-              border: `1px solid ${groupBy === g ? '#3b82f6' : 'var(--border)'}`,
-              background: groupBy === g ? 'rgba(59,130,246,0.1)' : 'transparent',
-              color: groupBy === g ? '#3b82f6' : 'var(--text-muted)',
-            }}>{g}</button>
-          ))}
-        </div>
-      </div>
+      <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600, marginBottom: 12 }}>Equity curve</h3>
       <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 'auto', display: 'block', overflow: 'visible' }}>
         {/* Zero line */}
         {zeroY >= PAD.top && zeroY <= PAD.top + innerH && (
@@ -859,7 +847,6 @@ export default function AnalyticsTab() {
   const isEmpty = M.stats.brier == null || M.stats.settled_count < 5;
 
   // Chart state
-  const [equityGroupBy, setEquityGroupBy] = useState('total');
   const [minEdgeThreshold, setMinEdgeThreshold] = useState(15.0);
 
   return (
@@ -955,13 +942,18 @@ export default function AnalyticsTab() {
         </section>
       </div>
 
-      {/* Brier score trend */}
-      {Array.isArray(M.brierHistory) && M.brierHistory.length > 1 && (
+      {/* Brier score trend — show empty-state card rather than silently rendering nothing */}
+      {Array.isArray(M.brierHistory) && M.brierHistory.length > 1 ? (
         <BrierTrendChart hist={M.brierHistory} />
+      ) : (
+        <section style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 14, padding: '20px', marginBottom: 18 }}>
+          <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600, marginBottom: 8 }}>Weekly Brier trend</h3>
+          <p style={{ color: 'var(--text-faint)', fontSize: 13, fontStyle: 'italic' }}>No weekly history yet — needs 2+ weeks of settled data.</p>
+        </section>
       )}
 
       {/* Charts */}
-      <EquityCurveChart groupBy={equityGroupBy} onGroupByChange={setEquityGroupBy} />
+      <EquityCurveChart />
       <MinEdgeBacktestChart threshold={minEdgeThreshold} onThresholdChange={setMinEdgeThreshold} />
       <ForecastHeatmapChart />
       {/* City P&L alongside the Brier heatmap — financial view of the same cities */}

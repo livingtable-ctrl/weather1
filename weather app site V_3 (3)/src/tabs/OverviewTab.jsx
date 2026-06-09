@@ -62,6 +62,18 @@ export default function OverviewTab() {
     return sum + (p.mark - entryPerCt) * p.qty;
   }, 0);
 
+  // Compute alert states here so we can render a top-of-page banner — both
+  // conditions are operationally critical and easy to miss if only in RiskTab.
+  const killSwitchActive = s.kill_switch;
+  const BRIER_THRESHOLD = 0.22;
+  const recentBrier = (M.brierHistory || []).slice(-6);
+  let consecutiveBrierAbove = 0;
+  for (let i = recentBrier.length - 1; i >= 0; i--) {
+    if (recentBrier[i].brier > BRIER_THRESHOLD) consecutiveBrierAbove++;
+    else break;
+  }
+  const brierAlertFiring = consecutiveBrierAbove >= 1;
+
   return (
     <main style={{ maxWidth: 1360, margin: '0 auto', padding: '24px 28px 40px' }}>
       <div style={{ marginBottom: 18 }}>
@@ -80,6 +92,37 @@ export default function OverviewTab() {
           </p>
         )}
       </div>
+
+      {/* Alert banner — kill switch and/or Brier degradation. Shown here so
+          critical alerts are visible without navigating to RiskTab. */}
+      {(killSwitchActive || brierAlertFiring) && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
+          {killSwitchActive && (
+            <div style={{
+              padding: '10px 16px', borderRadius: 9,
+              background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.35)',
+              color: '#ef4444', fontSize: 13, fontWeight: 600,
+            }}>
+              ⛔ Kill switch active — all new trades halted. Run{' '}
+              <code style={{ background: 'rgba(239,68,68,0.08)', padding: '1px 5px', borderRadius: 3, fontWeight: 400 }}>
+                py main.py cron
+              </code>{' '}
+              to override for one cycle.
+            </div>
+          )}
+          {brierAlertFiring && (
+            <div style={{
+              padding: '10px 16px', borderRadius: 9,
+              background: 'rgba(202,138,4,0.07)', border: '1px solid rgba(202,138,4,0.35)',
+              color: '#92400e', fontSize: 13, fontWeight: 600,
+            }}>
+              ⚠ P10.3 Brier alert —{' '}
+              {consecutiveBrierAbove} consecutive week{consecutiveBrierAbove > 1 ? 's' : ''} above 0.22 threshold.{' '}
+              <span style={{ fontWeight: 400 }}>See Risk tab for details.</span>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* KPI row */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 12 }}>
@@ -170,9 +213,6 @@ export default function OverviewTab() {
             );
           })}
         </div>
-        <p style={{ color: 'var(--text-muted)', fontSize: 11, marginTop: 12, lineHeight: 1.4 }}>
-          Note: same-day trade settlement will be added in a future update.
-        </p>
       </section>
 
       {/* Fear/Greed + Data sources */}

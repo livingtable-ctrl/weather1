@@ -215,6 +215,16 @@ export default function PositionsTab() {
               const today = new Date().toISOString().slice(0, 10);
               const overdue = p.expiry && today > p.expiry;
               const daysOut = p.expiry ? Math.ceil((new Date(p.expiry) - new Date(new Date().toDateString())) / 86400000) : 0;
+              // Show a countdown using close_time (exact UTC market close) when available.
+              // Falls back gracefully to showing nothing when the field is absent (old trades).
+              const closeMs = p.close_time ? new Date(p.close_time).getTime() : null;
+              const msLeft = closeMs != null ? closeMs - Date.now() : null;
+              const hoursLeft = msLeft != null ? Math.floor(msLeft / 3600000) : null;
+              const timeLeftLabel = msLeft == null ? null
+                : msLeft < 0 ? 'closed'
+                : hoursLeft >= 24 ? `${Math.floor(hoursLeft / 24)}d`
+                : hoursLeft >= 1 ? `${hoursLeft}h`
+                : `${Math.round(msLeft / 60000)}m`;
               return (
                 <tr key={i} onClick={() => setSelectedPos(selectedPos === p ? null : p)} style={{
                   borderBottom: '1px solid var(--bg-muted)', cursor: 'pointer',
@@ -267,6 +277,15 @@ export default function PositionsTab() {
                           {overdue ? '! ' : ''}{p.expiry}
                         </span>
                     }
+                    {timeLeftLabel != null && (
+                      <div style={{
+                        fontSize: 10,
+                        color: msLeft < 0 ? '#ef4444' : msLeft < 7200000 ? '#f59e0b' : 'var(--text-faint)',
+                        marginTop: 2,
+                      }}>
+                        {msLeft < 0 ? 'past close' : `closes in ${timeLeftLabel}`}
+                      </div>
+                    )}
                   </td>
                   <td style={{ padding: '14px 16px', textAlign: 'right', fontFamily: 'ui-monospace, monospace', fontSize: 11, color: 'var(--text-faint)' }}>{p.age_h}h</td>
                 </tr>

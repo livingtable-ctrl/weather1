@@ -182,6 +182,9 @@ export default function RiskTab() {
   const totalCost = M.positions.reduce((a, p) => a + p.cost, 0);
   const balance = M.stats.balance;
   const heatPct = balance > 0 ? ((totalCost / balance) * 100).toFixed(0) : 0;
+  // Guard against division by zero when there are no open positions
+  const biasTotal = (M.directionalBias.yes || 0) + (M.directionalBias.no || 0);
+  const bullishPct = biasTotal > 0 ? ((M.directionalBias.yes / biasTotal) * 100).toFixed(0) : null;
 
   return (
     <main style={{ maxWidth: 1360, margin: '0 auto', padding: '24px 28px 40px' }}>
@@ -214,7 +217,7 @@ export default function RiskTab() {
             <div style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 8 }}>YES / NO positions</div>
           </div>
           <div style={{ padding: '10px 12px', borderRadius: 8, background: 'var(--bg-muted)', fontSize: 11, color: 'var(--text-muted)' }}>
-            {((M.directionalBias.yes / (M.directionalBias.yes + M.directionalBias.no)) * 100).toFixed(0)}% bullish bias
+            {bullishPct != null ? `${bullishPct}% bullish bias` : 'No open positions'}
           </div>
         </section>
 
