@@ -39,7 +39,7 @@ export default function SettingsTab() {
     { key: 'max_same_day_spend', label: 'Max same-day spend',  value: M.config?.max_same_day_spend != null ? '$' + M.config.max_same_day_spend : '—' },
     { key: 'min_edge',          label: 'Min edge threshold',  value: M.config?.min_edge != null ? (M.config.min_edge * 100).toFixed(1) + '%' : '—' },
     { key: 'strong_edge',       label: 'Strong edge',         value: M.config?.strong_edge != null ? (M.config.strong_edge * 100).toFixed(1) + '%' : '—' },
-    { key: 'drawdown_halt_pct', label: 'Drawdown halt %',     value: M.config?.drawdown_halt_pct != null ? M.config.drawdown_halt_pct + '%' : '—' },
+    { key: 'drawdown_halt_pct', label: 'Drawdown halt %',     value: M.config?.drawdown_halt_pct != null ? (M.config.drawdown_halt_pct * 100).toFixed(1) + '%' : '—' },
     { key: 'max_days_out',      label: 'Max days out',        value: M.config?.max_days_out != null ? M.config.max_days_out + ' days' : '—' },
   ];
 
