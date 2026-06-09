@@ -72,7 +72,10 @@ export default function OverviewTab() {
     if (recentBrier[i].brier > BRIER_THRESHOLD) consecutiveBrierAbove++;
     else break;
   }
-  const brierAlertFiring = consecutiveBrierAbove >= 1;
+  // P10.3 is formally defined as TWO consecutive weeks above threshold.
+  // Fire a softer "warning" at one week so the user can see it coming.
+  const brierAlertFiring   = consecutiveBrierAbove >= 2; // true P10.3: 2+ weeks
+  const brierWarningFiring = consecutiveBrierAbove === 1; // early warning: 1 week
 
   return (
     <main style={{ maxWidth: 1360, margin: '0 auto', padding: '24px 28px 40px' }}>
@@ -95,7 +98,7 @@ export default function OverviewTab() {
 
       {/* Alert banner — kill switch and/or Brier degradation. Shown here so
           critical alerts are visible without navigating to RiskTab. */}
-      {(killSwitchActive || brierAlertFiring) && (
+      {(killSwitchActive || brierAlertFiring || brierWarningFiring) && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
           {killSwitchActive && (
             <div style={{
@@ -110,15 +113,24 @@ export default function OverviewTab() {
               to override for one cycle.
             </div>
           )}
+          {/* brierAlertFiring = P10.3 criterion met (2+ weeks). brierWarningFiring = 1 week, watching. */}
           {brierAlertFiring && (
+            <div style={{
+              padding: '10px 16px', borderRadius: 9,
+              background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.35)',
+              color: '#ef4444', fontSize: 13, fontWeight: 600,
+            }}>
+              🔴 P10.3 Brier alert — {consecutiveBrierAbove} consecutive weeks above 0.22.{' '}
+              <span style={{ fontWeight: 400 }}>See Risk tab for details.</span>
+            </div>
+          )}
+          {brierWarningFiring && (
             <div style={{
               padding: '10px 16px', borderRadius: 9,
               background: 'rgba(202,138,4,0.07)', border: '1px solid rgba(202,138,4,0.35)',
               color: '#92400e', fontSize: 13, fontWeight: 600,
             }}>
-              ⚠ P10.3 Brier alert —{' '}
-              {consecutiveBrierAbove} consecutive week{consecutiveBrierAbove > 1 ? 's' : ''} above 0.22 threshold.{' '}
-              <span style={{ fontWeight: 400 }}>See Risk tab for details.</span>
+              ⚠ Brier warning — 1 week above 0.22 threshold. P10.3 alert fires if next week is also above.
             </div>
           )}
         </div>
@@ -179,6 +191,32 @@ export default function OverviewTab() {
         );
       })()}
 
+      {/* Next settlement info — derived from open position close_times so the
+          user always knows how long until the current batch resolves. */}
+      {M.positions.length > 0 && (() => {
+        const closeTimes = M.positions
+          .map(p => p.close_time ? new Date(p.close_time).getTime() : null)
+          .filter(Boolean);
+        if (closeTimes.length === 0) return null;
+        const nextClose = Math.min(...closeTimes);
+        const msLeft = nextClose - Date.now();
+        const isPast = msLeft < 0;
+        const hoursLeft = Math.floor(msLeft / 3600000);
+        const timeLabel = isPast ? 'Settlement overdue — check Positions tab'
+          : hoursLeft >= 24 ? `Next settlement in ~${Math.floor(hoursLeft / 24)}d ${hoursLeft % 24}h`
+          : hoursLeft >= 1  ? `Next settlement in ~${hoursLeft}h`
+          : `Next settlement in ~${Math.round(msLeft / 60000)}m`;
+        return (
+          <div style={{
+            fontSize: 12, marginBottom: 18, marginTop: -10,
+            color: isPast ? '#ef4444' : msLeft < 7200000 ? '#ca8a04' : 'var(--text-faint)',
+            fontFamily: 'ui-monospace, monospace',
+          }}>
+            {timeLabel} · {M.positions.length} open position{M.positions.length !== 1 ? 's' : ''}
+          </div>
+        );
+      })()}
+
       {/* Graduation gates */}
       <section style={{
         background: 'var(--bg-card)', border: '1px solid var(--border)',
@@ -186,7 +224,7 @@ export default function OverviewTab() {
       }}>
         <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600, marginBottom: 4 }}>Graduation progress</h3>
         <p style={{ color: 'var(--text-muted)', fontSize: 12, marginBottom: 16, lineHeight: 1.4 }}>
-          Three gates to go live: 30+ trades, $50+ P&L, Brier ≤0.20.{' '}
+          Three gates to go live: {grad.trades_target}+ trades, ${grad.pnl_target}+ P&L, Brier ≤{grad.brier_target}.{' '}
           {grad.ready ? '✓ All gates cleared!' : 'Keep building track record…'}
         </p>
         <div style={{ display: 'grid', gap: 14 }}>
@@ -195,8 +233,11 @@ export default function OverviewTab() {
             { label: 'P&L',    current: grad.total_pnl,   target: grad.pnl_target,    unit: '$', invert: false, complete: grad.total_pnl >= grad.pnl_target },
             { label: 'Brier',  current: grad.brier,       target: grad.brier_target,  unit: '',  invert: true,  complete: grad.brier <= grad.brier_target },
           ].map((g) => {
+            // For the Brier bar the scale runs from a 0.25 "baseline" down to the target
+            // (e.g. 0.20). This way the bar hits 100% exactly when the gate is cleared,
+            // rather than hitting 100% only at impossible perfect prediction (Brier=0).
             const pct = g.invert
-              ? Math.min(100, Math.max(0, (1 - g.current / 0.25) * 100))
+              ? Math.min(100, Math.max(0, (0.25 - g.current) / (0.25 - g.target) * 100))
               : Math.min(100, Math.max(0, (g.current / g.target) * 100));
             return (
               <div key={g.label}>

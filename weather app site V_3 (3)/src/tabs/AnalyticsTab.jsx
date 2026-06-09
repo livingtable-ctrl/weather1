@@ -11,13 +11,16 @@ function EquityCurveChart() {
 
   const points = useMemo(() => {
     if (!trades || trades.length === 0) return [];
+    // Sort by settled_at (when the outcome was known), not entered_at (when the trade was placed).
+    // For multi-day trades these differ by 1-3 days, so using entered_at shifted P&L to the wrong
+    // point on the chart.
     const sorted = [...trades]
-      .filter(t => t.entered_at && t.pnl != null)
-      .sort((a, b) => a.entered_at.localeCompare(b.entered_at));
+      .filter(t => t.settled_at && t.pnl != null)
+      .sort((a, b) => a.settled_at.localeCompare(b.settled_at));
     let cum = 0;
     return sorted.map(t => {
       cum += t.pnl;
-      return { date: t.entered_at.slice(0, 10), cum, pnl: t.pnl };
+      return { date: t.settled_at.slice(0, 10), cum, pnl: t.pnl };
     });
   }, [trades]);
 
@@ -212,8 +215,10 @@ function CalendarPnLChart() {
 
     const map = {};
     trades.forEach(t => {
-      if (!t.entered_at || t.pnl == null) return;
-      const wk = getWeekKey(t.entered_at);
+      // Use settled_at (when P&L was realised) not entered_at (when the bet was placed).
+      // A trade entered in week N but settled in week N+1 belongs to week N+1's P&L.
+      if (!t.settled_at || t.pnl == null) return;
+      const wk = getWeekKey(t.settled_at);
       if (!map[wk]) map[wk] = { week: wk, pnl: 0, count: 0 };
       map[wk].pnl += t.pnl;
       map[wk].count += 1;
@@ -840,6 +845,75 @@ function EdgeHistogram() {
 }
 
 // ---------------------------------------------------------------------------
+// RollingWinRateChart — rolling 10-trade win rate over time.
+// Shows whether performance is trending up or down, which the overall win-rate
+// stat hides. Uses settled_at so the timeline matches actual outcomes.
+// ---------------------------------------------------------------------------
+function RollingWinRateChart() {
+  const M = useContext(DataContext);
+  const WINDOW = 10;
+
+  const points = useMemo(() => {
+    const trades = [...(M.closedTrades || [])]
+      .filter(t => t.settled_at && t.pnl != null)
+      .sort((a, b) => a.settled_at.localeCompare(b.settled_at));
+    if (trades.length < WINDOW) return null;
+    return trades.map((_, i) => {
+      if (i < WINDOW - 1) return null;
+      const slice = trades.slice(i - WINDOW + 1, i + 1);
+      const wins = slice.filter(t => t.pnl > 0).length;
+      return { i: i + 1, date: trades[i].settled_at.slice(0, 10), rate: wins / WINDOW };
+    }).filter(Boolean);
+  }, [M.closedTrades]);
+
+  if (!points || points.length < 2) {
+    return (
+      <section style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 14, padding: '20px', marginBottom: 18 }}>
+        <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600, marginBottom: 8 }}>Rolling win rate ({WINDOW}-trade window)</h3>
+        <p style={{ color: 'var(--text-faint)', fontSize: 13, fontStyle: 'italic' }}>Need {WINDOW + 1}+ settled trades to show a trend.</p>
+      </section>
+    );
+  }
+
+  const W = 900, H = 120, PAD = { top: 12, right: 16, bottom: 8, left: 44 };
+  const innerW = W - PAD.left - PAD.right;
+  const innerH = H - PAD.top - PAD.bottom;
+
+  const xs = points.map((_, i) => PAD.left + (i / Math.max(points.length - 1, 1)) * innerW);
+  const toY = r => PAD.top + (1 - r) * innerH;
+  const ys  = points.map(p => toY(p.rate));
+  const linePts = xs.map((x, i) => `${x},${ys[i]}`).join(' ');
+
+  const latest = points[points.length - 1];
+  const lineColor = latest.rate >= 0.55 ? '#16a34a' : latest.rate >= 0.45 ? '#ca8a04' : '#ef4444';
+  const y50 = toY(0.5);
+
+  return (
+    <section style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 14, padding: '20px', marginBottom: 18 }}>
+      <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600, marginBottom: 12 }}>Rolling win rate ({WINDOW}-trade window)</h3>
+      <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 'auto', display: 'block', overflow: 'visible' }}>
+        {/* 50% break-even reference line */}
+        <line x1={PAD.left} y1={y50} x2={W - PAD.right} y2={y50}
+          stroke="var(--border)" strokeWidth="1" strokeDasharray="4,3" />
+        <text x={PAD.left - 6} y={y50 + 4} textAnchor="end" fontSize="10" fill="var(--text-faint)" fontFamily="ui-monospace, monospace">50%</text>
+        {/* 100% and 0% axis labels */}
+        <text x={PAD.left - 6} y={PAD.top + 4} textAnchor="end" fontSize="10" fill="var(--text-faint)" fontFamily="ui-monospace, monospace">100%</text>
+        <text x={PAD.left - 6} y={PAD.top + innerH + 4} textAnchor="end" fontSize="10" fill="var(--text-faint)" fontFamily="ui-monospace, monospace">0%</text>
+        {/* Win rate line */}
+        <polyline points={linePts} fill="none" stroke={lineColor} strokeWidth="2" strokeLinejoin="round" />
+        {/* Endpoint dot */}
+        <circle cx={xs[xs.length - 1]} cy={ys[ys.length - 1]} r="4" fill={lineColor} stroke="white" strokeWidth="2" />
+      </svg>
+      <div style={{ fontSize: 11, color: 'var(--text-faint)', marginTop: 6 }}>
+        Latest {WINDOW}-trade window:{' '}
+        <strong style={{ color: lineColor }}>{(latest.rate * 100).toFixed(0)}%</strong>
+        {' · '}{points.length} windows across {(M.closedTrades || []).filter(t => t.settled_at && t.pnl != null).length} settled trades
+      </div>
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // AnalyticsTab — empty-state banner when post-wipe data is absent
 // ---------------------------------------------------------------------------
 export default function AnalyticsTab() {
@@ -954,6 +1028,8 @@ export default function AnalyticsTab() {
 
       {/* Charts */}
       <EquityCurveChart />
+      {/* Rolling win rate — shows whether performance is trending vs. a static overall rate */}
+      <RollingWinRateChart />
       <MinEdgeBacktestChart threshold={minEdgeThreshold} onThresholdChange={setMinEdgeThreshold} />
       <ForecastHeatmapChart />
       {/* City P&L alongside the Brier heatmap — financial view of the same cities */}

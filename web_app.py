@@ -1707,6 +1707,10 @@ setInterval(() => {{
                     # Env-var-only settings (not in BotConfig dataclass)
                     "env": _os.getenv("KALSHI_ENV", "demo"),
                     "strategy": _os.getenv("SIZING_STRATEGY", "kelly"),
+                    # Same-day spend cap lives in utils, not BotConfig — read env directly
+                    "max_same_day_spend": float(
+                        _os.getenv("MAX_SAME_DAY_SPEND", "500.0")
+                    ),
                 }
             )
         except Exception as exc:
