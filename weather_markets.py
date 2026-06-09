@@ -4639,6 +4639,45 @@ def analyze_trade(enriched: dict) -> dict | None:
     metar_locked, _metar_blended_prob, metar_lockout = _metar_lock_in(
         city, target_date, condition, ticker=enriched.get("ticker", "?")
     )
+
+    # ── Between-bucket gate ───────────────────────────────────────────────────
+    # Between markets (B86.5 = ±1°F band) are only tradeable when two conditions
+    # are met:
+    #   1. METAR lock-in fired — without it, our ensemble sigma (3–5.5°F) assigns
+    #      probabilities well below market-maker METAR pricing, so no edge is
+    #      recoverable regardless of drift.
+    #   2. For YES bets: the observed temp is ≥1.5°F inside the band.  Kalshi's
+    #      official settlement station is typically 1–3°F away from our METAR
+    #      station; a reading near the band edge can be flipped by that gap.
+    #      NO bets already require >3°F clearance (enforced in _metar_lock_in),
+    #      so they are inherently safe from station-gap reversals.
+    if condition.get("type") == "between":
+        if not metar_locked:
+            _log.debug(
+                "analyze_trade: skipping %s — between market, no METAR lock-in "
+                "(ensemble sigma too wide for 2°F band)",
+                enriched.get("ticker", "?"),
+            )
+            _count_gate("between_no_metar")
+            return None
+        if metar_lockout.get("outcome") == "yes":
+            _lo = float(condition.get("lower", 0.0))
+            _hi = float(condition.get("upper", 0.0))
+            _ct = float(metar_lockout.get("current_temp_f", 0.0))
+            _yes_clearance = min(_ct - _lo, _hi - _ct)
+            if _yes_clearance < 1.5:
+                _log.debug(
+                    "analyze_trade: skipping %s — between market YES, clearance "
+                    "%.1f°F < 1.5°F station-gap buffer (METAR %.1f°F in [%.1f, %.1f])",
+                    enriched.get("ticker", "?"),
+                    _yes_clearance,
+                    _ct,
+                    _lo,
+                    _hi,
+                )
+                _count_gate("between_edge")
+                return None
+
     if metar_locked:
         blended_prob = _metar_blended_prob
 

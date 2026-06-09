@@ -602,16 +602,10 @@ def _validate_trade_opportunity(opp: dict, live: bool = False) -> tuple[bool, st
         )
         return False, f"flash crash check error: {_fc_exc}"
 
-    # "Between" bucket markets (B82.5 etc.) use a 1°F normal-distribution band with
-    # σ=3–5.5°F → our probability is systematically 2–8% while the market prices at
-    # 84–98% (market makers have METAR data on settlement day).  We lose nearly every
-    # one of these trades and they are the primary driver of Brier score inflation.
-    # Exclude them until METAR lock-in probability is wired into the "between" path.
-    if opp.get("condition_type") == "between":
-        return (
-            False,
-            "between-bucket markets excluded (insufficient 1°F-band precision)",
-        )
+    # Between-bucket markets are gated upstream in weather_markets.analyze_trade:
+    # only signals with METAR lock-in AND (for YES bets) ≥1.5°F clearance from the
+    # band edge reach this point.  The old gate here used the wrong key name and
+    # never fired — logic moved to the correct location.
 
     # Edge check — net_edge must be positive, raw edge must agree with side, and
     # raw edge must clear MIN_EDGE so near-zero-price contracts don't slip through
