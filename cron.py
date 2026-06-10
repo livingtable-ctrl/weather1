@@ -469,6 +469,27 @@ def _cmd_cron_body(
         flush=True,
     )
 
+    # Settle any resolved trades before scanning so same-day slot counts reflect
+    # current open risk, not yesterday's expired-but-not-yet-settled positions.
+    # Running settlement first means _same_day_open in order_executor is clean at
+    # trade time \u2014 expired Jun(N-1) same-day trades won't block Jun(N) slots.
+    try:
+        from paper import auto_settle_paper_trades as _pre_settle
+
+        _pre_settled = _pre_settle(client)
+        if _pre_settled:
+            _pre_net = sum(t.get("pnl") or 0.0 for t in _pre_settled)
+            _pre_str = (
+                f"+${_pre_net:.2f}" if _pre_net >= 0 else f"-${abs(_pre_net):.2f}"
+            )
+            print(
+                green(
+                    f"  [PreSettle] {len(_pre_settled)} trade(s) settled before scan \u2014 net P&L: {_pre_str}"
+                )
+            )
+    except Exception as _pre_settle_exc:
+        _log.warning("cmd_cron: pre-scan settlement failed: %s", _pre_settle_exc)
+
     # Weekly DB retention sweep (runs on Monday only, at most once per 7 days).
     # Uses a marker file so back-to-back cron runs on the same Monday don't
     # re-run the sweep.  A skipped Monday is handled automatically: next Monday

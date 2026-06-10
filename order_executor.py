@@ -754,7 +754,26 @@ def _auto_place_trades(
     # days_out=1 trade placed yesterday as same-day just because it settles today.
     # Trades placed before this field existed default to 1 (multi-day) so they
     # fall into the normal date-cap path rather than consuming same-day slots.
-    _same_day_open = sum(1 for t in _open_trades_list if t.get("days_out", 1) == 0)
+    #
+    # Only count same-day trades whose market has not yet expired. A Jun9 same-day
+    # trade that closed at 23:59 UTC is no longer a live risk position — it's
+    # awaiting settlement bookkeeping. Counting it against today's cap blocks all
+    # Jun10 slots until settlement detection runs (which happens after trading in
+    # the cron cycle). Trades missing close_time are assumed still live (safe default).
+    _now_utc = datetime.now(UTC)
+
+    def _is_still_live(t: dict) -> bool:
+        ct = t.get("close_time")
+        if not ct:
+            return True
+        try:
+            return datetime.fromisoformat(ct.replace("Z", "+00:00")) > _now_utc
+        except (ValueError, TypeError):
+            return True
+
+    _same_day_open = sum(
+        1 for t in _open_trades_list if t.get("days_out", 1) == 0 and _is_still_live(t)
+    )
     # Multi-day cap tracks all positions placed as days_out >= 1, grouped by date.
     _multiday_date_counts = _Counter(
         t.get("target_date")
