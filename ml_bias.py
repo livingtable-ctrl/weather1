@@ -149,6 +149,7 @@ def train_bias_model(min_samples: int = 200) -> dict:
                 FROM multiday_predictions p
                 JOIN outcomes o ON p.ticker = o.ticker
                 WHERE p.city IS NOT NULL AND p.our_prob IS NOT NULL
+                  AND (p.condition_type IS NULL OR p.condition_type != 'between')
                 ORDER BY p.predicted_at ASC
                 """
             ).fetchall()

@@ -4299,6 +4299,7 @@ def cmd_walkforward(client: KalshiClient) -> None:
             FROM predictions p
             JOIN outcomes o ON p.ticker = o.ticker
             WHERE p.our_prob IS NOT NULL AND o.settled_yes IS NOT NULL
+              AND (p.condition_type IS NULL OR p.condition_type != 'between')
             """
             )
             .fetchall()
@@ -5552,6 +5553,7 @@ def cmd_backtest(client: KalshiClient, args: list):
             FROM predictions p
             JOIN outcomes o ON p.ticker = o.ticker
             WHERE p.our_prob IS NOT NULL AND o.settled_yes IS NOT NULL
+              AND (p.condition_type IS NULL OR p.condition_type != 'between')
             """
             )
             .fetchall()

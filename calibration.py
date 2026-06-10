@@ -288,6 +288,7 @@ def calibrate_condition_weights(
               AND p.nws_prob IS NOT NULL
               AND o.settled_yes IS NOT NULL
               AND (p.days_out IS NULL OR p.days_out >= 1)
+              AND (p.condition_type IS NULL OR p.condition_type != 'between')
             """
         ).fetchall()
     finally:
