@@ -505,6 +505,7 @@ def train_all_temperature_scaling(
                 JOIN outcomes o ON p.ticker = o.ticker
                 WHERE p.our_prob IS NOT NULL AND o.settled_yes IS NOT NULL
                   AND p.days_out = 0
+                  AND (p.condition_type IS NULL OR p.condition_type != 'between')
                 """
             ).fetchall()
     except Exception as exc:
