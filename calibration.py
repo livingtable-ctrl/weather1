@@ -125,6 +125,7 @@ def _load_rows(db_path: Path) -> list[sqlite3.Row]:
               AND p.clim_prob IS NOT NULL
               AND o.settled_yes IS NOT NULL
               AND (p.days_out IS NULL OR p.days_out >= 1)
+              AND (p.condition_type IS NULL OR p.condition_type != 'between')
             """
         ).fetchall()
 

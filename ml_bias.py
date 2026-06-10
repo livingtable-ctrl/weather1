@@ -434,7 +434,7 @@ def apply_temperature_scaling(
 
 
 def train_all_temperature_scaling(
-    min_samples_global: int = 35,
+    min_samples_global: int = 20,
     min_samples_condition: int = 15,
 ) -> dict[str, float]:
     """Train T for the global pool and for each condition type that has enough data.
@@ -495,6 +495,7 @@ def train_all_temperature_scaling(
                 JOIN outcomes o ON p.ticker = o.ticker
                 WHERE p.our_prob IS NOT NULL AND o.settled_yes IS NOT NULL
                   AND (p.days_out IS NULL OR p.days_out >= 1)
+                  AND (p.condition_type IS NULL OR p.condition_type != 'between')
                 """
             ).fetchall()
             sameday_rows = con.execute(

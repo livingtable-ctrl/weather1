@@ -4586,6 +4586,7 @@ def cmd_calibrate() -> None:
                     "SELECT p.city, p.our_prob, o.settled_yes "
                     "FROM multiday_predictions p JOIN outcomes o ON p.ticker = o.ticker "
                     "WHERE o.settled_yes IS NOT NULL AND p.our_prob IS NOT NULL"
+                    "  AND (p.condition_type IS NULL OR p.condition_type != 'between')"
                 ).fetchall()
             ]
         platt = _train_platt(_platt_rows, min_samples=50)
