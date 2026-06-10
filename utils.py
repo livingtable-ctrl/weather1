@@ -110,6 +110,14 @@ MAX_DAILY_SPEND = float(
 MAX_SAME_DAY_SPEND = float(
     os.getenv("MAX_SAME_DAY_SPEND", "500.0")
 )  # max same-day paper dollars auto-traded per day (days_out == 0)
+SAME_DAY_RESERVE_SLOTS = int(os.getenv("SAME_DAY_RESERVE_SLOTS", "0"))
+# How many same-day slots to hold back before SAME_DAY_RESERVE_AFTER_HOUR_UTC. 0 = disabled.
+SAME_DAY_RESERVE_AFTER_HOUR_UTC = int(
+    os.getenv("SAME_DAY_RESERVE_AFTER_HOUR_UTC", "12")
+)
+# UTC hour at which reserved slots are released (0-23). Default 12 = noon UTC.
+SAME_DAY_RESERVE_MIN_SAMPLES = int(os.getenv("SAME_DAY_RESERVE_MIN_SAMPLES", "40"))
+# Minimum settled same-day trades required before reservation logic activates.
 MAX_DAILY_LOSS_PCT = float(os.getenv("MAX_DAILY_LOSS_PCT", "0.03"))
 MAX_DAYS_OUT = int(os.getenv("MAX_DAYS_OUT", "5"))  # scan markets up to N days out
 MAX_POSITION_AGE_DAYS = int(os.getenv("MAX_POSITION_AGE_DAYS", "7"))

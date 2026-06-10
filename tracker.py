@@ -970,6 +970,18 @@ def count_settled_predictions() -> int:
     return row[0] if row else 0
 
 
+def count_settled_sameday_predictions() -> int:
+    """Count same-day (days_out=0) predictions with a known outcome."""
+    init_db()
+    with _conn() as con:
+        row = con.execute(
+            "SELECT COUNT(*) FROM predictions p "
+            "JOIN outcomes o ON p.ticker = o.ticker "
+            "WHERE p.days_out = 0"
+        ).fetchone()
+    return row[0] if row else 0
+
+
 def _get_recent_win_loss(window: int) -> tuple[int, int]:
     """Query the last `window` settled predictions and count wins.
 

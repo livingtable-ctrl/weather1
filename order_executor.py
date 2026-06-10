@@ -429,6 +429,44 @@ def _daily_sameday_spend() -> float:
 
 
 # ---------------------------------------------------------------------------
+# Same-day slot reservation
+# ---------------------------------------------------------------------------
+
+
+def _sameday_effective_cap(max_positions: int) -> int:
+    """Effective same-day slot cap for the current UTC hour.
+
+    When SAME_DAY_RESERVE_SLOTS > 0 and SAME_DAY_RESERVE_MIN_SAMPLES settled
+    same-day trades exist, holds back slots before SAME_DAY_RESERVE_AFTER_HOUR_UTC
+    so later scans (with more accumulated METAR observations) have room to trade.
+    Fails open on any error so a DB lookup failure never blocks trades.
+    """
+    from utils import (
+        SAME_DAY_RESERVE_AFTER_HOUR_UTC,
+        SAME_DAY_RESERVE_MIN_SAMPLES,
+        SAME_DAY_RESERVE_SLOTS,
+    )
+
+    if SAME_DAY_RESERVE_SLOTS <= 0:
+        return max_positions  # feature disabled
+
+    try:
+        from tracker import count_settled_sameday_predictions
+
+        settled = count_settled_sameday_predictions()
+    except Exception:
+        return max_positions  # fail open — never block trades on a lookup error
+
+    if settled < SAME_DAY_RESERVE_MIN_SAMPLES:
+        return max_positions  # not enough data to calibrate, no reservation
+
+    if datetime.now(UTC).hour >= SAME_DAY_RESERVE_AFTER_HOUR_UTC:
+        return max_positions  # past cutoff hour, release reserved slots
+
+    return max(0, max_positions - SAME_DAY_RESERVE_SLOTS)
+
+
+# ---------------------------------------------------------------------------
 # Early exit
 # ---------------------------------------------------------------------------
 
@@ -774,6 +812,19 @@ def _auto_place_trades(
     _same_day_open = sum(
         1 for t in _open_trades_list if t.get("days_out", 1) == 0 and _is_still_live(t)
     )
+    # Compute reservation-adjusted cap once per scan, not inside the signal loop.
+    # Calling inside the loop would fire a DB query per signal (20+ per scan).
+    # Cap is stable within a scan; it only needs to update between cron cycles.
+    _eff_sameday_cap = _sameday_effective_cap(MAX_SAME_DAY_POSITIONS)
+    if _eff_sameday_cap < MAX_SAME_DAY_POSITIONS:
+        _log.info(
+            "_auto_place_trades: same-day cap reduced to %d/%d "
+            "(holding %d slots until %d:00 UTC)",
+            _eff_sameday_cap,
+            MAX_SAME_DAY_POSITIONS,
+            MAX_SAME_DAY_POSITIONS - _eff_sameday_cap,
+            int(os.getenv("SAME_DAY_RESERVE_AFTER_HOUR_UTC", "12")),
+        )
     # Multi-day cap tracks all positions placed as days_out >= 1, grouped by date.
     _multiday_date_counts = _Counter(
         t.get("target_date")
@@ -890,9 +941,9 @@ def _auto_place_trades(
         # Per-date concentration cap: same-day and multi-day use separate limits.
         _is_same_day = int(a.get("days_out", 1)) == 0
         if _is_same_day:
-            if _same_day_open >= MAX_SAME_DAY_POSITIONS:
+            if _same_day_open >= _eff_sameday_cap:
                 _skip_reasons.append(
-                    f"{ticker}: sameday_cap({_same_day_open}/{MAX_SAME_DAY_POSITIONS})"
+                    f"{ticker}: sameday_cap({_same_day_open}/{_eff_sameday_cap})"
                 )
                 continue
         elif (

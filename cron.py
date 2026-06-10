@@ -490,6 +490,26 @@ def _cmd_cron_body(
     except Exception as _pre_settle_exc:
         _log.warning("cmd_cron: pre-scan settlement failed: %s", _pre_settle_exc)
 
+    # When SAME_DAY_RESERVE_SLOTS=0 (feature off) and enough same-day data has
+    # accumulated, remind the user to analyze time-of-day performance and activate.
+    try:
+        from utils import SAME_DAY_RESERVE_MIN_SAMPLES, SAME_DAY_RESERVE_SLOTS
+
+        if SAME_DAY_RESERVE_SLOTS == 0:
+            from tracker import count_settled_sameday_predictions
+
+            _sd_count = count_settled_sameday_predictions()
+            if _sd_count >= SAME_DAY_RESERVE_MIN_SAMPLES:
+                print(
+                    yellow(
+                        f"  [SameDayReserve] {_sd_count} same-day trades settled — "
+                        f"analyze entered_at vs win rate by hour, then set "
+                        f"SAME_DAY_RESERVE_SLOTS in .env to activate slot reservation."
+                    )
+                )
+    except Exception:
+        pass
+
     # Weekly DB retention sweep (runs on Monday only, at most once per 7 days).
     # Uses a marker file so back-to-back cron runs on the same Monday don't
     # re-run the sweep.  A skipped Monday is handled automatically: next Monday
