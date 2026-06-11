@@ -242,7 +242,10 @@ def simulate_portfolio(
             win_prob = forecast_prob if side == "yes" else 1 - forecast_prob
         else:
             entry_prob = t.get("entry_prob")
-            win_prob = entry_prob if entry_prob is not None else 0.5
+            if entry_prob is not None:
+                win_prob = entry_prob if side == "yes" else 1.0 - entry_prob
+            else:
+                win_prob = 0.5
 
         win_prob = max(0.0, min(1.0, win_prob))
         # #48: clamp to [0.05, 0.9] — extreme values likely stale or bad data
