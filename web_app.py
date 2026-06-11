@@ -2118,10 +2118,11 @@ setInterval(() => {{
         """Enriched alias of /api/suggested_bets with star ratings and flag fields."""
         from flask import request as _freq
 
-        from paper import get_balance
+        from paper import get_balance, get_open_trades
         from utils import MIN_EDGE
         from weather_markets import (
             analyze_trade,
+            detect_hedge_opportunity,
             enrich_with_forecast,
             get_weather_markets,
         )
@@ -2137,6 +2138,7 @@ setInterval(() => {{
             return jsonify({"error": str(exc), "opportunities": []}), 500
 
         balance = get_balance()
+        open_trades = get_open_trades()
         results: list[dict] = []
 
         for m in markets:
@@ -2179,7 +2181,7 @@ setInterval(() => {{
                         "signal": analysis.get("signal", "—"),
                         "stars": stars,
                         "near_threshold": bool(analysis.get("near_threshold", False)),
-                        "is_hedge": bool(analysis.get("is_hedge", False)),
+                        "is_hedge": detect_hedge_opportunity(analysis, open_trades),
                         "time_risk": analysis.get("time_risk", "—"),
                         "model_agreement": None,
                     }

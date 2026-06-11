@@ -4444,7 +4444,7 @@ def cmd_walk_forward() -> None:
             "settled_yes": t.get("outcome") == "yes",
             "city": t.get("city", ""),
             "method": t.get("method", ""),
-            "edge": t.get("edge", 0),
+            "edge": t.get("net_edge", t.get("edge", 0)),
         }
         for t in trades_raw
         if t.get("outcome") in ("yes", "no")
