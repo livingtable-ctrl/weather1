@@ -1561,10 +1561,67 @@ def get_source_reliability(city: str | None = None, days: int = 30) -> dict:
     return result
 
 
+def _fetch_asos_daily_temp(station: str, target_date: date, var: str) -> float | None:
+    """Fetch daily high (var='max') or low (var='min') from IEM ASOS archive.
+
+    Uses Iowa Environmental Mesonet hourly ASOS observations for the exact
+    ICAO station Kalshi uses for settlement — a point reading, not a grid cell.
+    Returns max or min of all hourly tmpf observations for the UTC day.
+    Falls back to None on any fetch or parse error.
+    """
+    import requests
+
+    params: dict[str, str | int] = {
+        "station": station,
+        "data": "tmpf",
+        "year1": target_date.year,
+        "month1": target_date.month,
+        "day1": target_date.day,
+        "year2": target_date.year,
+        "month2": target_date.month,
+        "day2": target_date.day,
+        "tz": "UTC",
+        "format": "onlycomma",
+        "latlon": "no",
+        "missing": "M",
+        "trace": "T",
+        "direct": "no",
+        "report_type": "3",  # METAR automated observations
+    }
+    try:
+        resp = requests.get(
+            "https://mesonet.agron.iastate.edu/cgi-bin/request/asos.py",
+            params=params,
+            timeout=15,
+        )
+        resp.raise_for_status()
+        temps: list[float] = []
+        for line in resp.text.splitlines():
+            parts = line.split(",")
+            if len(parts) < 3:
+                continue
+            raw = parts[2].strip()
+            try:
+                temps.append(float(raw))
+            except ValueError:
+                continue  # 'M' (missing) or header row
+        if not temps:
+            return None
+        return max(temps) if var == "max" else min(temps)
+    except Exception:
+        return None
+
+
 def _fetch_actual_daily_temp(
     lat: float, lon: float, tz: str, target_date: date, var: str
 ) -> float | None:
-    """Fetch observed daily high (var='max') or low (var='min') from Open-Meteo archive."""
+    """Fetch observed daily high (var='max') or low (var='min') from Open-Meteo archive.
+
+    Fallback used when no ASOS station is mapped for a city. Prefer
+    _fetch_asos_daily_temp for any city with a known ICAO station — Open-Meteo
+    uses gridded ERA5 reanalysis which can differ from point station readings
+    by up to 3°F at cities where the airport sits in a different microclimate.
+    """
     import requests
 
     daily_var = "temperature_2m_max" if var == "max" else "temperature_2m_min"
@@ -1593,16 +1650,21 @@ def _fetch_actual_daily_temp(
 
 
 def audit_settlement(ticker: str, settled_yes: bool) -> None:
-    """Cross-check Kalshi's settlement against Open-Meteo archive data.
+    """Cross-check Kalshi's settlement against ASOS station archive data.
+
+    Uses the same ICAO station Kalshi uses for settlement (via IEM ASOS archive)
+    so the comparison is apples-to-apples. Falls back to Open-Meteo gridded data
+    only when no station is mapped for the city.
 
     Logs a WARNING when archive temperature contradicts Kalshi's YES/NO result,
-    which can indicate a station mapping error or a rare Kalshi settlement mistake.
+    which can indicate a data source lag or a rare Kalshi settlement mistake.
     Skips silently if the ticker is unparseable, archive is unavailable, or the
     condition type can't be verified with a single temperature value (e.g. between,
     precipitation).
     """
     try:
         from weather_markets import CITY_COORDS as _coords
+        from weather_markets import _metar_station_for_city as _station_for_city
         from weather_markets import _parse_market_condition as _parse_cond
         from weather_markets import parse_city_date as _parse_city_date
 
@@ -1636,7 +1698,15 @@ def audit_settlement(ticker: str, settled_yes: bool) -> None:
         else:
             return  # precipitation or unknown — skip
 
-        actual = _fetch_actual_daily_temp(lat, lon, tz, target_date, var)
+        # Prefer ASOS station data (same source as Kalshi settlement).
+        # Fall back to Open-Meteo gridded archive only when no station is mapped.
+        station = _station_for_city(city)
+        if station:
+            actual = _fetch_asos_daily_temp(station, target_date, var)
+            source = f"ASOS:{station}"
+        else:
+            actual = _fetch_actual_daily_temp(lat, lon, tz, target_date, var)
+            source = "OpenMeteo"
         if actual is None:
             return
 
@@ -1674,17 +1744,19 @@ def audit_settlement(ticker: str, settled_yes: bool) -> None:
 
         if archive_yes != settled_yes:
             _log.warning(
-                "settlement_audit MISMATCH %s — Kalshi=%s archive=%.1f°F (%s)",
+                "settlement_audit MISMATCH %s — Kalshi=%s %s=%.1f°F (%s)",
                 ticker,
                 "YES" if settled_yes else "NO",
+                source,
                 actual,
                 cond_type,
             )
         else:
             _log.debug(
-                "settlement_audit OK %s — Kalshi=%s archive=%.1f°F",
+                "settlement_audit OK %s — Kalshi=%s %s=%.1f°F",
                 ticker,
                 "YES" if settled_yes else "NO",
+                source,
                 actual,
             )
     except Exception as exc:
