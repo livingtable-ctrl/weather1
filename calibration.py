@@ -8,8 +8,10 @@ from __future__ import annotations
 
 import json
 import logging
+import math as _math
 import random as _random
 import sqlite3
+from datetime import date as _date_type
 from pathlib import Path
 
 _log = logging.getLogger(__name__)
@@ -19,9 +21,20 @@ _SEASONAL_MIN = (
 )
 _CITY_MIN = 50  # P3-7/P3-25: raised to 50 for statistical reliability (SE ~0.07)
 _N_RANDOM_SEARCH = 200  # P3-7: random search replaces exhaustive 5,151-triple grid
-_BRIER_IMPROVEMENT_GATE = (
-    0.005  # P3-7: min val-set improvement to accept calibrated weights
-)
+_BRIER_IMPROVEMENT_GATE = 0.001  # min val-set improvement to accept calibrated weights
+_RECENCY_HALFLIFE_DAYS = 90  # exponential decay: trade 90 days old gets ~37% weight
+
+
+def _compute_recency_weight(date_str: str) -> float:
+    """Exponential decay weight so recent settled trades count more in calibration."""
+    try:
+        days_ago = (
+            _date_type.today() - _date_type.fromisoformat(str(date_str)[:10])
+        ).days
+        return _math.exp(-max(0, days_ago) / _RECENCY_HALFLIFE_DAYS)
+    except Exception:
+        return 1.0
+
 
 _MONTH_TO_SEASON: dict[int, str] = {
     12: "winter",
@@ -39,37 +52,35 @@ _MONTH_TO_SEASON: dict[int, str] = {
 }
 
 
-def _brier(
-    rows: list[tuple[float, float, float, int]], we: float, wc: float, wn: float
-) -> float:
-    """Compute Brier score for a weight combo. Skips rows with any None component (P3-17)."""
-    valid = [
-        (e, c, n, s)
-        for e, c, n, s in rows
-        if e is not None and c is not None and n is not None and s is not None
-    ]
-    if not valid:
-        return float("inf")
-    total = sum((we * e + wc * c + wn * n - s) ** 2 for e, c, n, s in valid)
-    return total / len(valid)
+def _brier(rows: list[tuple], we: float, wc: float, wn: float) -> float:
+    """Compute weighted Brier score. Rows are (e, c, n, s[, weight]). Skips None components."""
+    total = 0.0
+    sum_w = 0.0
+    for row in rows:
+        e, c, n, s = row[0], row[1], row[2], row[3]
+        if any(x is None for x in (e, c, n, s)):
+            continue
+        w = row[4] if len(row) > 4 else 1.0
+        total += w * (we * e + wc * c + wn * n - s) ** 2
+        sum_w += w
+    return total / sum_w if sum_w > 0 else float("inf")
 
 
 def _split_rows(
     dated_rows: list[tuple],
     cutoff_date: str | None,
-) -> tuple[
-    list[tuple[float, float, float, int]], list[tuple[float, float, float, int]]
-]:
-    """Split (date_str, ens, clim, nws, settled) rows into (train, val) plain tuples.
+) -> tuple[list[tuple], list[tuple]]:
+    """Split (date_str, e, c, n, s[, weight]) rows into (train, val) tuples (date stripped).
 
     Uses explicit cutoff_date if given; otherwise auto-computes the 80th-percentile date.
+    Weight in position 5 is passed through if present so _brier can use recency weighting.
     """
     if cutoff_date is None:
         sorted_dates = sorted(r[0] for r in dated_rows)
         idx = max(1, int(len(sorted_dates) * 0.8))
         cutoff_date = sorted_dates[min(idx, len(sorted_dates) - 1)]
-    train = [(e, c, n, s) for d, e, c, n, s in dated_rows if d < cutoff_date]
-    val = [(e, c, n, s) for d, e, c, n, s in dated_rows if d >= cutoff_date]
+    train = [r[1:] for r in dated_rows if r[0] < cutoff_date]
+    val = [r[1:] for r in dated_rows if r[0] >= cutoff_date]
     return train, val
 
 
@@ -125,7 +136,6 @@ def _load_rows(db_path: Path) -> list[sqlite3.Row]:
               AND p.clim_prob IS NOT NULL
               AND o.settled_yes IS NOT NULL
               AND (p.days_out IS NULL OR p.days_out >= 1)
-              AND (p.condition_type IS NULL OR p.condition_type != 'between')
             """
         ).fetchall()
 
@@ -151,13 +161,15 @@ def calibrate_seasonal_weights(
         season = _MONTH_TO_SEASON.get(month)
         if season is None:
             continue
+        date_str = str(row["market_date"])
         season_rows.setdefault(season, []).append(
             (
-                str(row["market_date"]),
+                date_str,
                 row["ensemble_prob"],
                 row["clim_prob"],
                 row["nws_prob"],
                 row["settled_yes"],
+                _compute_recency_weight(date_str),
             )
         )
 
@@ -208,13 +220,15 @@ def calibrate_city_weights(
         city = row["city"]
         if not city:
             continue
+        date_str = str(row["market_date"])
         city_rows.setdefault(city, []).append(
             (
-                str(row["market_date"]),
+                date_str,
                 row["ensemble_prob"],
                 row["clim_prob"],
                 row["nws_prob"],
                 row["settled_yes"],
+                _compute_recency_weight(date_str),
             )
         )
 
@@ -259,7 +273,7 @@ def load_city_weights(path: str | Path | None = None) -> dict[str, dict[str, flo
         return {}
 
 
-_CONDITION_MIN = 100
+_CONDITION_MIN = 20
 
 
 def calibrate_condition_weights(
@@ -288,7 +302,6 @@ def calibrate_condition_weights(
               AND p.nws_prob IS NOT NULL
               AND o.settled_yes IS NOT NULL
               AND (p.days_out IS NULL OR p.days_out >= 1)
-              AND (p.condition_type IS NULL OR p.condition_type != 'between')
             """
         ).fetchall()
     finally:
@@ -299,13 +312,15 @@ def calibrate_condition_weights(
         ctype = row["condition_type"]
         if not ctype:
             continue
+        date_str = str(row["market_date"]) if row["market_date"] else ""
         type_rows.setdefault(ctype, []).append(
             (
-                str(row["market_date"]) if row["market_date"] else "",
+                date_str,
                 row["ensemble_prob"],
                 row["clim_prob"],
                 row["nws_prob"],
                 row["settled_yes"],
+                _compute_recency_weight(date_str),
             )
         )
 
