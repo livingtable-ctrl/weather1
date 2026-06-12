@@ -390,9 +390,12 @@ def check_black_swan_conditions(
     if not trades:
         return triggered
 
-    # 1. Extreme consecutive losses
+    # 1. Extreme consecutive losses — multi-day only; same-day METAR-locked trades
+    # must not count as model failures since they're near-certain outcomes, not predictions.
     recent = sorted(
-        trades, key=lambda t: t.get("placed_at", t.get("ts", 0)), reverse=True
+        [t for t in trades if t.get("days_out", 1) >= 1],
+        key=lambda t: t.get("placed_at", t.get("ts", 0)),
+        reverse=True,
     )
     consec = 0
     for t in [t for t in recent if t.get("outcome") in ("yes", "no")]:
@@ -579,9 +582,6 @@ def run_black_swan_check(
                     _bal_exc,
                 )
 
-        # Exclude same-day trades — the consecutive-loss check is calibrated for
-        # multi-day model predictions, not METAR-locked near-certain outcomes.
-        trades = [t for t in trades if t.get("days_out", 1) >= 1]
         conditions = check_black_swan_conditions(trades, balance, peak_balance)
         if conditions:
             reason = "; ".join(conditions)
