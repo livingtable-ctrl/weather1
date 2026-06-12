@@ -1965,7 +1965,9 @@ def get_current_streak() -> tuple[str, int]:
     settled trades all going the same direction.
     """
     settled = [
-        t for t in _load()["trades"] if t["settled"] and t.get("pnl") is not None
+        t
+        for t in _load()["trades"]
+        if t["settled"] and t.get("pnl") is not None and t.get("days_out", 1) >= 1
     ]
     if not settled:
         return ("none", 0)
@@ -2008,7 +2010,9 @@ def is_streak_paused() -> bool:
         return False
     # Check PnL magnitude of the streak, not just count
     settled = [
-        t for t in _load()["trades"] if t.get("settled") and t.get("pnl") is not None
+        t
+        for t in _load()["trades"]
+        if t.get("settled") and t.get("pnl") is not None and t.get("days_out", 1) >= 1
     ]
     settled.sort(key=lambda t: t.get("settled_at") or t.get("entered_at", ""))
     streak_pnl = sum(t["pnl"] for t in settled[-n:] if t.get("pnl") is not None)

@@ -1631,6 +1631,10 @@ def _cmd_cron_body(
                     # immediately in this cron run rather than waiting for next restart.
                     _wm_cal._CONDITION_WEIGHTS.clear()
                     _wm_cal._CONDITION_WEIGHTS.update(_condition_w)
+                    _wm_cal._SEASONAL_WEIGHTS.clear()
+                    _wm_cal._SEASONAL_WEIGHTS.update(_seasonal_w)
+                    _wm_cal._CITY_WEIGHTS.clear()
+                    _wm_cal._CITY_WEIGHTS.update(_city_w)
 
                     _cal_sentinel.write_text(str(_current_settled))
                     _log.info(
