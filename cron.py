@@ -1966,6 +1966,15 @@ def _cmd_cron_body(
                 from calibration import calibrate_and_save as _calibrate_blend
 
                 _seas_w, _city_w, _cond_w = _calibrate_blend()
+
+                # Push new weights into the running module so this loop cycle
+                # uses them immediately — otherwise they sit on disk until restart.
+                import weather_markets as _wm
+
+                _wm._SEASONAL_WEIGHTS = _seas_w
+                _wm._CONDITION_WEIGHTS = _cond_w
+                _wm._CITY_WEIGHTS = _city_w
+
                 _cond_live = {
                     ct: cw for ct, cw in _cond_w.items() if not cw.get("_uncalibrated")
                 }

@@ -3247,14 +3247,15 @@ def _edge_label(edge: float) -> str:
 def _nws_days_out_scale(
     w_ens: float, w_clim: float, w_nws: float, days_out: int
 ) -> tuple[float, float, float]:
-    """Boost NWS weight at short range (1-2 days) and reduce at long range (4+ days).
+    """Decay NWS weight at longer horizons; preserve calibrated weights at days_out=1.
 
-    Scale factor: 2.0× at days_out=1, 1.0× at days_out=3, 0.6× at days_out≥5.
-    Calibrated base weights assume a mid-range horizon; this corrects for skill decay.
+    Scale factor: 1.0x at days_out=1 (no change — calibration data is at d=1),
+    decaying 10% per day beyond that, floored at 0.6x. NWS capped at 0.85 to
+    prevent over-concentration when calibrated nws weight is very high.
     """
     if w_nws == 0.0 or days_out <= 0:
         return w_ens, w_clim, w_nws
-    scale = max(0.6, min(2.0, 2.0 - (days_out - 1) * 0.5))
+    scale = max(0.6, 1.0 - (days_out - 1) * 0.10)
     w_nws_new = min(w_nws * scale, 0.85)
     remaining = 1.0 - w_nws_new
     ec_total = w_ens + w_clim
