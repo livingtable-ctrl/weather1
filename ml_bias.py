@@ -462,8 +462,16 @@ def train_all_temperature_scaling(
         _log.warning("train_all_temperature_scaling: scipy/numpy not installed")
         return {}
 
+    _T_UPPER_BOUND = 8.0
+
     def _fit_T(probs_raw: list[float], labels_raw: list[float]) -> float | None:
-        """Fit T via NLL minimisation; return T or None if fit fails / doesn't improve."""
+        """Fit T via NLL minimisation; return T or None if fit fails / doesn't improve.
+
+        If T hits the upper bound, that signals directional bias (mean_pred != mean_actual)
+        rather than a confidence-calibration problem.  T-scaling can't fix directional bias —
+        it only pushes probabilities toward 0.50.  In that case we return None so the caller
+        keeps whatever T is already stored, and logs a warning so the issue is visible.
+        """
         if len(probs_raw) < 1:
             return None
         probs = np.clip(probs_raw, 1e-6, 1 - 1e-6)
@@ -478,8 +486,26 @@ def train_all_temperature_scaling(
                 np.sum(labels * np.log(p_cal) + (1 - labels) * np.log(1 - p_cal))
             )
 
-        result = minimize_scalar(nll, bounds=(0.5, 15.0), method="bounded")
+        result = minimize_scalar(nll, bounds=(0.5, _T_UPPER_BOUND), method="bounded")
         T = float(result.x)
+
+        # T at the boundary means NLL still improving past the limit — directional bias, not a
+        # confidence problem.  Skip the update so the existing T stays in place.
+        if T >= _T_UPPER_BOUND * 0.99:
+            mean_pred = float(np.mean(probs_raw))
+            mean_actual = float(np.mean(labels_raw))
+            _log.warning(
+                "train_all_temperature_scaling: T=%.4f hit upper bound (%.1f) on %d samples "
+                "— directional bias suspected (mean_pred=%.3f vs mean_actual=%.3f); "
+                "T-scaling cannot fix this; keeping existing T",
+                T,
+                _T_UPPER_BOUND,
+                len(probs_raw),
+                mean_pred,
+                mean_actual,
+            )
+            return None
+
         if nll(T) >= nll(1.0):
             return None
         return T
