@@ -1187,7 +1187,7 @@ def get_history(limit: int = 50) -> list[dict]:
                 p.ticker, p.city, p.market_date, p.condition_type,
                 p.threshold_lo, p.threshold_hi,
                 p.our_prob, p.market_prob, p.edge,
-                p.method, p.predicted_at,
+                p.method, p.predicted_at, p.days_out,
                 o.settled_yes
             FROM predictions p
             LEFT JOIN outcomes o ON p.ticker = o.ticker

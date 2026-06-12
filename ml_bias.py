@@ -13,6 +13,8 @@ import os
 import pickle
 from pathlib import Path
 
+from safe_io import atomic_write_json
+
 _log = logging.getLogger(__name__)
 _MODEL_PATH = Path(__file__).parent / "data" / "bias_models.pkl"
 _HMAC_PATH = Path(__file__).parent / "data" / ".bias_models.hmac"
@@ -643,8 +645,7 @@ def train_all_temperature_scaling(
         )
 
     if existing:
-        _TEMP_PATH.parent.mkdir(exist_ok=True)
-        _TEMP_PATH.write_text(json.dumps(existing, indent=2))
+        atomic_write_json(existing, _TEMP_PATH)
         # Invalidate the in-memory cache so the next call reads the new file
         global _TEMP_CACHE
         _TEMP_CACHE = None

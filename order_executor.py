@@ -856,7 +856,10 @@ def _auto_place_trades(
         )
         return 0
 
-    # P7.4 — rank opportunities by composite priority before execution
+    # P7.4 — rank opportunities by edge × Kelly descending. Same-day and
+    # multi-day signals draw from separate caps so they don't compete for the
+    # same slots — an urgency multiplier would only displace higher-Kelly
+    # signals in favour of lower-Kelly ones without improving placement rate.
     def _opp_sort_key(item: object) -> float:
         a_ = item[1] if isinstance(item, tuple) else item
         if not isinstance(a_, dict):
@@ -868,9 +871,7 @@ def _auto_place_trades(
             a_.get("kelly_fraction", a_.get("ci_adjusted_kelly", a_.get("kelly", 0)))
             or 0
         )
-        days_out = float(a_.get("days_out", a_.get("days_to_expiry", 3)) or 3)
-        urgency = max(0.5, min(1.5, 2.0 / max(days_out, 0.5)))
-        return edge * kelly * urgency
+        return edge * kelly
 
     opps = sorted(opps, key=_opp_sort_key, reverse=True)
     _skip_reasons: list[str] = []
