@@ -1960,6 +1960,36 @@ def _cmd_cron_body(
                     if _between_T is not None:
                         _parts.append(f"between={_between_T:.4f}")
                     print(dim(f"  [TempScale] fitted — {', '.join(_parts)}"))
+
+                # F3: auto-calibrate blend weights alongside bias/T-scaling so seasonal
+                # and condition weights reflect the most recent settlement data.
+                from calibration import calibrate_and_save as _calibrate_blend
+
+                _seas_w, _city_w, _cond_w = _calibrate_blend()
+                _cond_live = {
+                    ct: cw for ct, cw in _cond_w.items() if not cw.get("_uncalibrated")
+                }
+                if _cond_live:
+                    _cal_lines = ", ".join(
+                        f"{ct}:nws={_cond_live[ct].get('nws', 0):.2f}"
+                        for ct in sorted(_cond_live)
+                    )
+                    print(dim(f"  [Calibrate] condition weights: {_cal_lines}"))
+                else:
+                    print(
+                        dim(
+                            "  [Calibrate] condition weights: all types below min-samples — neutral"
+                        )
+                    )
+                _seas_live = {
+                    s: w for s, w in _seas_w.items() if not w.get("_uncalibrated")
+                }
+                if _seas_live:
+                    _seas_lines = ", ".join(
+                        f"{s}:nws={_seas_live[s].get('nws', 0):.2f}"
+                        for s in sorted(_seas_live)
+                    )
+                    print(dim(f"  [Calibrate] seasonal weights: {_seas_lines}"))
     except Exception as _e:
         _log.debug("cmd_cron: ML bias retrain failed: %s", _e)
     finally:
