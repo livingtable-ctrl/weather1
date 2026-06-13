@@ -1561,25 +1561,46 @@ def get_source_reliability(city: str | None = None, days: int = 30) -> dict:
     return result
 
 
-def _fetch_asos_daily_temp(station: str, target_date: date, var: str) -> float | None:
+def _fetch_asos_daily_temp(
+    station: str, target_date: date, var: str, city_tz: str = "UTC"
+) -> float | None:
     """Fetch daily high (var='max') or low (var='min') from IEM ASOS archive.
 
     Uses Iowa Environmental Mesonet hourly ASOS observations for the exact
     ICAO station Kalshi uses for settlement — a point reading, not a grid cell.
-    Returns max or min of all hourly tmpf observations for the UTC day.
+
+    Fetches the UTC window that covers the LOCAL calendar day for city_tz (US
+    cities are UTC-4 to UTC-8, so local midnight falls at 04:00–08:00 UTC,
+    spanning two UTC calendar dates). Only readings whose local timestamp falls
+    on target_date are included, which prevents the previous evening's readings
+    from inflating the daily max/min.
+
     Falls back to None on any fetch or parse error.
     """
+    from zoneinfo import ZoneInfo
+
     import requests
+
+    tz_obj = ZoneInfo(city_tz)
+    # Compute UTC date range that covers the full local calendar day
+    local_start = datetime(
+        target_date.year, target_date.month, target_date.day, 0, 0, 0, tzinfo=tz_obj
+    )
+    local_end = datetime(
+        target_date.year, target_date.month, target_date.day, 23, 59, 59, tzinfo=tz_obj
+    )
+    utc_start_date = local_start.astimezone(UTC).date()
+    utc_end_date = local_end.astimezone(UTC).date()
 
     params: dict[str, str | int] = {
         "station": station,
         "data": "tmpf",
-        "year1": target_date.year,
-        "month1": target_date.month,
-        "day1": target_date.day,
-        "year2": target_date.year,
-        "month2": target_date.month,
-        "day2": target_date.day,
+        "year1": utc_start_date.year,
+        "month1": utc_start_date.month,
+        "day1": utc_start_date.day,
+        "year2": utc_end_date.year,
+        "month2": utc_end_date.month,
+        "day2": utc_end_date.day,
         "tz": "UTC",
         "format": "onlycomma",
         "latlon": "no",
@@ -1600,11 +1621,20 @@ def _fetch_asos_daily_temp(station: str, target_date: date, var: str) -> float |
             parts = line.split(",")
             if len(parts) < 3:
                 continue
+            # Filter to readings within the local calendar day
+            try:
+                obs_utc = datetime.strptime(parts[1].strip(), "%Y-%m-%d %H:%M").replace(
+                    tzinfo=UTC
+                )
+                if obs_utc.astimezone(tz_obj).date() != target_date:
+                    continue
+            except ValueError:
+                continue  # Header row or unparseable timestamp
             raw = parts[2].strip()
             try:
                 temps.append(float(raw))
             except ValueError:
-                continue  # 'M' (missing) or header row
+                continue  # 'M' (missing)
         if not temps:
             return None
         return max(temps) if var == "max" else min(temps)
@@ -1702,7 +1732,7 @@ def audit_settlement(ticker: str, settled_yes: bool) -> None:
         # Fall back to Open-Meteo gridded archive only when no station is mapped.
         station = _station_for_city(city)
         if station:
-            actual = _fetch_asos_daily_temp(station, target_date, var)
+            actual = _fetch_asos_daily_temp(station, target_date, var, city_tz=tz)
             source = f"ASOS:{station}"
         else:
             actual = _fetch_actual_daily_temp(lat, lon, tz, target_date, var)
