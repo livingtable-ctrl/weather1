@@ -2565,11 +2565,15 @@ def cmd_admin(action: str, reason: str = "manual admin override") -> None:
         from paper import get_all_trades as _get_all
 
         trades = [t for t in _get_all() if t.get("days_out") == 0 and t.get("settled")]
-        for label, cond_types in [
-            ("Above/Below", ("above", "below")),
-            ("Between", ("between",)),
+
+        def _sd_mkt_type(ticker: str) -> str:
+            return "between" if "-B" in ticker.upper() else "above_below"
+
+        for label, mkt_key in [
+            ("Above/Below", "above_below"),
+            ("Between", "between"),
         ]:
-            subset = [t for t in trades if t.get("condition_type") in cond_types]
+            subset = [t for t in trades if _sd_mkt_type(t.get("ticker", "")) == mkt_key]
             print(f"\n  === {label} same-day settled ===")
             if not subset:
                 print("  No settled trades yet.")
