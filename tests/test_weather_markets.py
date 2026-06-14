@@ -757,7 +757,7 @@ class TestBlendWeightCalibrationPriority:
     """_blend_weights() must use city weights > seasonal weights > hardcoded."""
 
     def test_city_weights_override_hardcoded(self, monkeypatch):
-        """If city weights loaded, _blend_weights uses them (days_out=3 = no NWS scaling)."""
+        """If city weights loaded, _blend_weights uses them (days_out=1 = neutral NWS scale)."""
         import weather_markets as wm
 
         city_weights = {"NYC": {"ensemble": 0.50, "climatology": 0.10, "nws": 0.40}}
@@ -765,13 +765,13 @@ class TestBlendWeightCalibrationPriority:
         monkeypatch.setattr(wm, "_SEASONAL_WEIGHTS", {})
 
         w_ens, w_clim, w_nws = wm._blend_weights(
-            days_out=3, has_nws=True, has_clim=True, city="NYC", season="spring"
+            days_out=1, has_nws=True, has_clim=True, city="NYC", season="spring"
         )
         assert w_ens == pytest.approx(0.50, abs=1e-6)
         assert w_nws == pytest.approx(0.40, abs=1e-6)
 
     def test_seasonal_weights_used_when_no_city_weights(self, monkeypatch):
-        """If no city weights but seasonal weights loaded, use seasonal (days_out=3 = no NWS scaling)."""
+        """If no city weights but seasonal weights loaded, use seasonal (days_out=1 = neutral NWS scale)."""
         import weather_markets as wm
 
         monkeypatch.setattr(wm, "_CITY_WEIGHTS", {})
@@ -782,7 +782,7 @@ class TestBlendWeightCalibrationPriority:
         )
 
         w_ens, w_clim, w_nws = wm._blend_weights(
-            days_out=3, has_nws=True, has_clim=True, city="NYC", season="spring"
+            days_out=1, has_nws=True, has_clim=True, city="NYC", season="spring"
         )
         assert w_ens == pytest.approx(0.45, abs=1e-6)
         assert w_nws == pytest.approx(0.35, abs=1e-6)
@@ -814,8 +814,15 @@ def test_analyze_trade_result_has_model_consensus_field(monkeypatch):
         wm, "get_ensemble_temps", lambda *a, **kw: [70.0, 71.0, 72.0, 73.0, 74.0] * 4
     )
     monkeypatch.setattr(wm, "get_ensemble_members", lambda *a, **kw: None)
-    # Patch _get_consensus_probs to return agreeing models (consensus True)
-    monkeypatch.setattr(wm, "_get_consensus_probs", lambda *a, **kw: (0.70, 0.72))
+    # Patch _get_consensus_probs to return agreeing models (consensus True) — 4-tuple
+    monkeypatch.setattr(
+        wm, "_get_consensus_probs", lambda *a, **kw: (0.70, 0.72, 74.0, 74.0)
+    )
+    monkeypatch.setattr(wm, "fetch_temperature_nbm", lambda *a, **kw: 78.0)
+    monkeypatch.setattr(wm, "fetch_temperature_ecmwf", lambda *a, **kw: 78.0)
+    monkeypatch.setattr(wm, "_SEASONAL_WEIGHTS", {})
+    monkeypatch.setattr(wm, "_CONDITION_WEIGHTS", {})
+    monkeypatch.setattr(wm, "_CITY_WEIGHTS", {})
     # Patch get_weather_forecast to return a simple forecast
     monkeypatch.setattr(
         wm,

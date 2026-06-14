@@ -72,10 +72,20 @@ def test_analyze_trade_returns_edge_version():
                 74.0,
             ],
         ),
-        patch("climatology.climatological_prob", return_value=0.6),
-        patch("nws.nws_prob", return_value=None),
+        patch("weather_markets.climatological_prob", return_value=0.6),
+        patch("weather_markets.nws_prob", return_value=None),
+        patch("weather_markets.get_live_observation", return_value=None),
+        patch("weather_markets.temperature_adjustment", return_value=0.0),
+        patch("weather_markets.fetch_temperature_nbm", return_value=69.0),
+        patch("weather_markets.fetch_temperature_ecmwf", return_value=69.0),
+        patch("weather_markets.get_ensemble_members", return_value=[]),
+        patch.object(wm, "_SEASONAL_WEIGHTS", {}),
+        patch.object(wm, "_CONDITION_WEIGHTS", {}),
+        patch.object(wm, "_CITY_WEIGHTS", {}),
+        patch.object(wm, "_get_consensus_probs", return_value=(None, None, None, None)),
+        patch.object(wm, "_metar_lock_in", return_value=(False, 0.0, {})),
         patch("nws.get_live_observation", return_value=None),
-        patch("climate_indices.temperature_adjustment", return_value=0.0),
+        patch("climatology.persistence_prob", return_value=0.3),
     ):
         result = analyze_trade(_enriched())
 

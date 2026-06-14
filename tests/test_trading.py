@@ -1449,12 +1449,19 @@ class TestTimeDecayEdgeScope:
             patch.object(
                 wm, "get_ensemble_temps", return_value=[75.0] * 12 + [65.0] * 8
             ),
-            patch.object(wm, "fetch_temperature_nbm", return_value=74.0),
-            patch.object(wm, "fetch_temperature_ecmwf", return_value=74.5),
-            patch("climatology.climatological_prob", return_value=0.60),
-            patch("nws.nws_prob", return_value=None),
-            patch("nws.get_live_observation", return_value=None),
-            patch("climate_indices.temperature_adjustment", return_value=0.0),
+            patch.object(wm, "fetch_temperature_nbm", return_value=71.0),
+            patch.object(wm, "fetch_temperature_ecmwf", return_value=71.5),
+            patch("weather_markets.get_ensemble_members", return_value=[]),
+            patch("weather_markets.climatological_prob", return_value=0.60),
+            patch("weather_markets.nws_prob", return_value=None),
+            patch("weather_markets.get_live_observation", return_value=None),
+            patch("weather_markets.temperature_adjustment", return_value=0.0),
+            patch.object(wm, "_SEASONAL_WEIGHTS", {}),
+            patch.object(wm, "_CONDITION_WEIGHTS", {}),
+            patch.object(wm, "_CITY_WEIGHTS", {}),
+            patch.object(
+                wm, "_get_consensus_probs", return_value=(None, None, None, None)
+            ),
         ):
             return wm.analyze_trade(enriched)
 

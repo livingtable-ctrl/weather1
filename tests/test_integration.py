@@ -179,10 +179,24 @@ class TestAnalyzePipeline:
         mock_obs,
     ):
         """analyze_trade succeeds even when NWS and climatology return None."""
+        from unittest.mock import patch
+
+        import weather_markets as wm
         from weather_markets import analyze_trade
 
-        enriched = _make_enriched()
-        result = analyze_trade(enriched)
+        enriched = _make_enriched(ticker="KXHIGHNY-FUTURE-T70")
+        with (
+            patch("weather_markets.fetch_temperature_nbm", return_value=69.0),
+            patch("weather_markets.fetch_temperature_ecmwf", return_value=69.0),
+            patch("weather_markets.get_ensemble_members", return_value=[]),
+            patch.object(wm, "_SEASONAL_WEIGHTS", {}),
+            patch.object(wm, "_CONDITION_WEIGHTS", {}),
+            patch.object(wm, "_CITY_WEIGHTS", {}),
+            patch.object(
+                wm, "_get_consensus_probs", return_value=(None, None, None, None)
+            ),
+        ):
+            result = analyze_trade(enriched)
 
         assert result is not None
         assert "forecast_prob" in result
