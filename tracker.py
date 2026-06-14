@@ -1610,13 +1610,34 @@ def _fetch_asos_daily_temp(
     import requests
 
     tz_obj = ZoneInfo(city_tz)
-    # Compute UTC date range that covers the full local calendar day
+    from datetime import timedelta
+
     local_start = datetime(
         target_date.year, target_date.month, target_date.day, 0, 0, 0, tzinfo=tz_obj
     )
-    local_end = datetime(
-        target_date.year, target_date.month, target_date.day, 23, 59, 59, tzinfo=tz_obj
-    )
+    # For daily minimums the coldest reading almost always occurs between midnight
+    # and 9 AM local on the FOLLOWING calendar day (NWS climate days run ~7 AM to
+    # 7 AM, so "Jun 13's" official low is the coldest reading before 7 AM Jun 14).
+    # Extend the API fetch window to cover through 10 AM local next day for min,
+    # midnight local for max (daily maximum occurs in the afternoon, never next-day).
+    if var == "min":
+        local_end = (
+            datetime(
+                target_date.year, target_date.month, target_date.day, tzinfo=tz_obj
+            )
+            + timedelta(days=1)
+            + timedelta(hours=10)
+        )
+    else:
+        local_end = datetime(
+            target_date.year,
+            target_date.month,
+            target_date.day,
+            23,
+            59,
+            59,
+            tzinfo=tz_obj,
+        )
     utc_start_date = local_start.astimezone(UTC).date()
     utc_end_date = local_end.astimezone(UTC).date()
 
@@ -1649,13 +1670,27 @@ def _fetch_asos_daily_temp(
             parts = line.split(",")
             if len(parts) < 3:
                 continue
-            # Filter to readings within the local calendar day
+            # For max: accept only readings on the target calendar day.
+            # For min: also accept readings before 10 AM local on the following
+            # day — NWS climate days run ~7 AM to 7 AM, so the overnight low
+            # recorded as "Jun 13's minimum" often occurs at 3–7 AM Jun 14 local.
             try:
                 obs_utc = datetime.strptime(parts[1].strip(), "%Y-%m-%d %H:%M").replace(
                     tzinfo=UTC
                 )
-                if obs_utc.astimezone(tz_obj).date() != target_date:
-                    continue
+                obs_local = obs_utc.astimezone(tz_obj)
+                obs_date = obs_local.date()
+                next_date = target_date + timedelta(days=1)
+                if var == "min":
+                    if obs_date == target_date:
+                        pass  # always include target day
+                    elif obs_date == next_date and obs_local.hour < 10:
+                        pass  # include early-morning next-day (overnight low)
+                    else:
+                        continue
+                else:
+                    if obs_date != target_date:
+                        continue
             except ValueError:
                 continue  # Header row or unparseable timestamp
             raw = parts[2].strip()
