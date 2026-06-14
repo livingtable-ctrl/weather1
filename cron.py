@@ -490,6 +490,37 @@ def _cmd_cron_body(
     except Exception as _pre_settle_exc:
         _log.warning("cmd_cron: pre-scan settlement failed: %s", _pre_settle_exc)
 
+    # Log trades within 0–2h of close for future calibration analysis.
+    # Data cannot be back-filled — write every cycle, deduplicate via unique index.
+    try:
+        import sqlite3 as _nsl_sqlite
+
+        from paper import check_expiring_trades as _check_expiring
+        from tracker import DB_PATH as _NSL_DB
+
+        _near = [t for t in _check_expiring(warn_hours=2) if t["hours_left"] >= 0]
+        if _near:
+            with _nsl_sqlite.connect(_NSL_DB) as _nsl_con:
+                for _nt in _near:
+                    _tr = _nt["trade"]
+                    _nsl_con.execute(
+                        "INSERT OR IGNORE INTO near_settlement_log "
+                        "(ticker, our_model_prob, market_yes_price, hours_to_close, "
+                        " trade_side, days_out, recorded_at) VALUES (?,?,?,?,?,?,?)",
+                        (
+                            _tr.get("ticker"),
+                            _tr.get("forecast_prob"),
+                            None,  # market_yes_price: Phase 2 — requires live market fetch
+                            _nt["hours_left"],
+                            _tr.get("recommended_side"),
+                            _tr.get("days_out", 0),
+                            datetime.now(UTC).isoformat(),
+                        ),
+                    )
+            _log.info("near_settlement_log: logged %d trade(s)", len(_near))
+    except Exception as _nsl_err:
+        _log.warning("near_settlement_log: write failed: %s", _nsl_err)
+
     # When SAME_DAY_RESERVE_SLOTS=0 (feature off) and enough same-day data has
     # accumulated, remind the user to analyze time-of-day performance and activate.
     try:
@@ -2220,10 +2251,26 @@ def cmd_cron(
             _last_run_path = Path(__file__).parent / "data" / ".cron_last_run"
             # L-1: write UTC timestamp — naive local time is inconsistent with all
             # other system timestamps and produces wrong elapsed-time calculations.
-            _last_run_path.write_text(
+            _now_iso = (
                 __import__("datetime")
                 .datetime.now(__import__("datetime").timezone.utc)
                 .isoformat()
+            )
+            _last_run_path.write_text(_now_iso)
+        except Exception:
+            pass
+        try:
+            _hb_path = Path(__file__).parent / "data" / "cron_heartbeat.json"
+            try:
+                _cycle = (
+                    json.loads(_hb_path.read_text()).get("cycle_count", 0) + 1
+                    if _hb_path.exists()
+                    else 1
+                )
+            except Exception:
+                _cycle = 1
+            _hb_path.write_text(
+                json.dumps({"last_run": _now_iso, "cycle_count": _cycle})
             )
         except Exception:
             pass

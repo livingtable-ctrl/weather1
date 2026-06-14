@@ -2559,8 +2559,36 @@ def cmd_admin(action: str, reason: str = "manual admin override") -> None:
         )
         return
 
+    if action == "sameday-stats":
+        from collections import defaultdict
+
+        from paper import get_all_trades as _get_all
+
+        trades = [t for t in _get_all() if t.get("days_out") == 0 and t.get("settled")]
+        for label, cond_types in [
+            ("Above/Below", ("above", "below")),
+            ("Between", ("between",)),
+        ]:
+            subset = [t for t in trades if t.get("condition_type") in cond_types]
+            print(f"\n  === {label} same-day settled ===")
+            if not subset:
+                print("  No settled trades yet.")
+                continue
+            buckets: dict = defaultdict(list)
+            for t in subset:
+                hour = int(t["entered_at"][11:13])
+                buckets[hour].append(t)
+            print(f"  {'UTC Hour':>8}  {'N':>4}  {'Win Rate':>9}")
+            for h in sorted(buckets):
+                rows = buckets[h]
+                wr = sum(1 for t in rows if (t.get("pnl") or 0) > 0) / len(rows)
+                print(f"  {h:>8}  {len(rows):>4}  {wr * 100:>8.1f}%")
+        if not trades:
+            print(dim("  No settled same-day trades found."))
+        return
+
     print(red(f"  Unknown admin action: {action!r}"))
-    print(dim("  Usage: py main.py admin reset-loss | reset-peak"))
+    print(dim("  Usage: py main.py admin reset-loss | reset-peak | sameday-stats"))
 
 
 def cmd_watch(
@@ -6734,6 +6762,27 @@ def cmd_sweep() -> None:
 # ── Router ────────────────────────────────────────────────────────────────────
 
 
+def _check_cron_staleness() -> None:
+    """Print a prominent warning if cron hasn't run in 48h."""
+    try:
+        import json as _j
+
+        _hb = Path(__file__).parent / "data" / "cron_heartbeat.json"
+        if not _hb.exists():
+            return
+        _last = datetime.fromisoformat(_j.loads(_hb.read_text())["last_run"])
+        _age_min = (datetime.now(UTC) - _last).total_seconds() / 60
+        if _age_min > 2880:  # 48h
+            print(
+                red(
+                    f"\n  WARNING: Cron last ran {_age_min / 60:.0f}h ago.\n"
+                    "  Trading is paused until cron runs. Run: py main.py cron\n"
+                )
+            )
+    except Exception:
+        pass
+
+
 def main():
     args = sys.argv[1:]
 
@@ -6774,6 +6823,10 @@ def main():
         args = [a for a in args if a != "--debug"]
     else:
         logging.disable(logging.DEBUG)
+
+    # Warn if cron is stale (skip for the cron command itself to avoid noise).
+    if not (args and args[0].lower() == "cron"):
+        _check_cron_staleness()
 
     if _kalshi_env() == "prod":
         _log.warning("=" * 60)

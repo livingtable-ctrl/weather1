@@ -92,8 +92,9 @@ function mapStats(status, grad, config, prevStats) {
   }
 
   if (grad && !grad.error) {
-    if (grad.win_rate  != null) base.win_rate  = grad.win_rate;
-    if (grad.total_pnl != null) base.month_pnl = grad.total_pnl;
+    if (grad.win_rate      != null) base.win_rate      = grad.win_rate;
+    if (grad.profit_factor != null) base.profit_factor = grad.profit_factor;
+    if (grad.total_pnl     != null) base.month_pnl     = grad.total_pnl;
     if (grad.fear_greed_score != null && base.fear_greed == null) {
       base.fear_greed       = grad.fear_greed_score;
       base.fear_greed_label = grad.fear_greed_label;

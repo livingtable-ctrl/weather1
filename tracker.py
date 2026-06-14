@@ -23,7 +23,7 @@ DB_PATH.parent.mkdir(exist_ok=True)
 
 _db_initialized = False
 
-_SCHEMA_VERSION = 24  # increment when _MIGRATIONS list grows
+_SCHEMA_VERSION = 25  # increment when _MIGRATIONS list grows
 
 _MIGRATIONS = [
     # v1 → v2: add condition_type column (if not already added)
@@ -116,6 +116,21 @@ _MIGRATIONS = [
     # Without this we only know YES/NO — not the actual temperature — which makes
     # it impossible to measure real forecast error distributions.
     "ALTER TABLE outcomes ADD COLUMN settled_temp_f REAL",
+    # v24 → v25: near-settlement snapshot log — model prob vs market price in the
+    # 0–2h window before close. Cannot be back-filled; every cron cycle adds rows.
+    # Unique index prevents duplicate rows per ticker per UTC hour.
+    """CREATE TABLE IF NOT EXISTS near_settlement_log (
+        id               INTEGER PRIMARY KEY AUTOINCREMENT,
+        ticker           TEXT    NOT NULL,
+        our_model_prob   REAL,
+        market_yes_price REAL,
+        hours_to_close   REAL    NOT NULL,
+        trade_side       TEXT    NOT NULL,
+        days_out         INTEGER NOT NULL,
+        recorded_at      TEXT    NOT NULL
+    )""",
+    """CREATE UNIQUE INDEX IF NOT EXISTS idx_nsl_ticker_hour
+        ON near_settlement_log(ticker, strftime('%Y-%m-%dT%H', recorded_at))""",
 ]
 
 
@@ -266,6 +281,19 @@ def init_db() -> None:
         CREATE VIEW IF NOT EXISTS multiday_predictions AS
             SELECT * FROM predictions
             WHERE days_out IS NULL OR days_out >= 1;
+
+        CREATE TABLE IF NOT EXISTS near_settlement_log (
+            id               INTEGER PRIMARY KEY AUTOINCREMENT,
+            ticker           TEXT    NOT NULL,
+            our_model_prob   REAL,
+            market_yes_price REAL,
+            hours_to_close   REAL    NOT NULL,
+            trade_side       TEXT    NOT NULL,
+            days_out         INTEGER NOT NULL,
+            recorded_at      TEXT    NOT NULL
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_nsl_ticker_hour
+            ON near_settlement_log(ticker, strftime('%Y-%m-%dT%H', recorded_at));
         """)
     # #99: versioned migrations replacing ad-hoc ALTER TABLE try/except blocks
     # Also handles legacy columns (days_out, raw_prob) via the CREATE TABLE schema above

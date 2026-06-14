@@ -1,4 +1,4 @@
-import React, { useContext } from 'react';
+import React, { useContext, useEffect, useState } from 'react';
 import { DataContext } from '../DataContext.js';
 import { normCity, StatCard, BalanceSparkline, SystemEventsCard } from '../shared.jsx';
 
@@ -62,6 +62,13 @@ export default function OverviewTab() {
     return sum + (p.mark - entryPerCt) * p.qty;
   }, 0);
 
+  const [cronStale, setCronStale] = useState(false);
+  useEffect(() => {
+    fetch('/health').then(r => r.json())
+      .then(d => { if ((d.hours_since_cron ?? 0) > 48) setCronStale(true); })
+      .catch(() => {});
+  }, []);
+
   // Compute alert states here so we can render a top-of-page banner — both
   // conditions are operationally critical and easy to miss if only in RiskTab.
   const killSwitchActive = s.kill_switch;
@@ -96,10 +103,27 @@ export default function OverviewTab() {
         )}
       </div>
 
-      {/* Alert banner — kill switch and/or Brier degradation. Shown here so
-          critical alerts are visible without navigating to RiskTab. */}
-      {(killSwitchActive || brierAlertFiring || brierWarningFiring) && (
+      {/* Alert banner — kill switch, Brier degradation, and cron staleness. */}
+      {(cronStale || killSwitchActive || brierAlertFiring || brierWarningFiring) && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
+          {cronStale && (
+            <div style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              padding: '10px 16px', borderRadius: 9,
+              background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.35)',
+              color: '#ef4444', fontSize: 13, fontWeight: 600,
+            }}>
+              <span>
+                Cron has not run in 48h — trading is paused. Run{' '}
+                <code style={{ background: 'rgba(239,68,68,0.08)', padding: '1px 5px', borderRadius: 3, fontWeight: 400 }}>
+                  py main.py cron
+                </code>
+              </span>
+              <button onClick={() => setCronStale(false)}
+                style={{ marginLeft: 16, background: 'none', border: 'none', color: '#ef4444',
+                         cursor: 'pointer', fontSize: 16, lineHeight: 1 }}>✕</button>
+            </div>
+          )}
           {killSwitchActive && (
             <div style={{
               padding: '10px 16px', borderRadius: 9,
@@ -137,7 +161,7 @@ export default function OverviewTab() {
       )}
 
       {/* KPI row */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 12 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12, marginBottom: 12 }}>
         <StatCard label="Paper balance" tooltip="Simulated cash balance in the paper-trading sandbox. No real money."
           value={'$' + Number(s.balance).toFixed(2)}
           delta={(s.balance >= s.starting_balance ? '+' : '') + ((Number(s.balance) - Number(s.starting_balance)) / Number(s.starting_balance) * 100).toFixed(1) + '%'}
@@ -150,6 +174,9 @@ export default function OverviewTab() {
         <StatCard label="Brier score" tooltip="Forecast quality (0=perfect, 0.25=random). Lower is better. Target ≤0.20."
           value={s.brier != null ? Number(s.brier).toFixed(3) : '—'}
           deltaTone="pos" sub="target ≤0.20" />
+        <StatCard label="Profit factor" tooltip="Gross profit ÷ gross loss. Target ≥1.50. '—' means no losses yet."
+          value={s.profit_factor != null ? Number(s.profit_factor).toFixed(2) : '—'}
+          sub={s.profit_factor != null ? (s.profit_factor >= 1.5 ? 'on target' : 'below 1.50') : null} />
       </div>
 
       {/* Drawdown risk row — peak, halt floor, current drawdown, Kelly scaling, tier */}

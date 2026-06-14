@@ -263,6 +263,27 @@ def _build_app(client):
                 _cron_stale = _hours_since > _stale_threshold
             except Exception:
                 pass
+        _cron_age_minutes: float | None = None
+        _cycle_count: int | None = None
+        _hb_path = Path(__file__).parent / "data" / "cron_heartbeat.json"
+        if _hb_path.exists():
+            try:
+                _hb = json.loads(_hb_path.read_text())
+                _hb_last = datetime.fromisoformat(_hb["last_run"])
+                _cron_age_minutes = round(
+                    (datetime.now(UTC) - _hb_last).total_seconds() / 60, 1
+                )
+                _cycle_count = _hb.get("cycle_count")
+            except Exception:
+                pass
+        if _cron_age_minutes is None and _hours_since is not None:
+            _cron_age_minutes = round(_hours_since * 60, 1)
+        try:
+            from paper import get_open_trades as _got
+
+            _open_count = len(_got())
+        except Exception:
+            _open_count = None
         return jsonify(
             {
                 "status": "ok",
@@ -270,6 +291,10 @@ def _build_app(client):
                 "last_cron_run": _last_cron,
                 "hours_since_cron": _hours_since,
                 "cron_stale": _cron_stale,
+                "cron_age_minutes": _cron_age_minutes,
+                "cycle_count": _cycle_count,
+                "kill_switch_active": _KS_PATH.exists(),
+                "open_trade_count": _open_count,
             }
         )
 

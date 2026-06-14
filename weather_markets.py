@@ -4336,8 +4336,20 @@ def _metar_lock_in(
         _cond_type = condition.get("type")
 
         if _cond_type in ("above", "below") and condition.get("threshold") is not None:
+            # Use the observed daily extreme rather than the instantaneous reading.
+            # Current temp at 8 PM is not the day's low — the minimum typically
+            # occurred at 6 AM. Key off ticker (KXLOW... vs KXHIGH...) because
+            # _cond_type describes the bet direction, not whether it's a min/max market.
+            _is_low_mkt = "LOW" in ticker.upper()
+            if _is_low_mkt:
+                _daily_ext = _metar_obs.get("min_temp_f")
+            else:
+                _daily_ext = _metar_obs.get("max_temp_f")
+            _comp_temp = (
+                _daily_ext if _daily_ext is not None else _metar_obs["current_temp_f"]
+            )
             _lockout = _metar.check_metar_lockout(
-                current_temp_f=_metar_obs["current_temp_f"],
+                current_temp_f=_comp_temp,
                 threshold_f=float(condition["threshold"]),
                 direction=_cond_type,
                 obs_time=_metar_obs["obs_time"],
@@ -5389,6 +5401,36 @@ def analyze_trade(enriched: dict) -> dict | None:
         # correctly — METAR-locked trades never need temperature scaling because
         # blended_prob is derived directly from the observation lock, not a model blend.
         _temp_scaling_applied = False
+
+        # Belt-and-suspenders: dampen ci_scale when we're in the pre-extreme window.
+        # Layer 1 (daily min/max from ASOS) handles the root cause; this handles
+        # pre-dawn uncertainty when the ASOS extreme field isn't yet populated.
+        # Not applied to between markets (already excluded from the metar_locked path).
+        if condition.get("type") != "between":
+            try:
+                import zoneinfo as _zi
+
+                _tz_b = _CITY_TZ.get(city, "America/New_York")
+                _local_hour_b = datetime.now(_zi.ZoneInfo(_tz_b)).hour
+                _low_cut = int(os.environ.get("METAR_LOW_CUTOFF_HOUR", "7"))
+                _high_cut = int(os.environ.get("METAR_HIGH_CUTOFF_HOUR", "14"))
+                _hw = float(os.environ.get("METAR_DAMPEN_HALF_WIDTH", "0.10"))
+                _dampen = (var == "min" and _local_hour_b < _low_cut) or (
+                    var == "max" and _local_hour_b < _high_cut
+                )
+                if _dampen:
+                    ci_low = max(0.0, blended_prob - _hw)
+                    ci_high = min(1.0, blended_prob + _hw)
+                    _log.debug(
+                        "METAR ci_scale dampened: %s var=%s local_hour=%d ci=[%.2f,%.2f]",
+                        enriched.get("ticker", "?"),
+                        var,
+                        _local_hour_b,
+                        ci_low,
+                        ci_high,
+                    )
+            except Exception:
+                pass
 
     # Regime detection
     _regime_info: dict = {}

@@ -168,8 +168,20 @@ def fetch_metar(station: str) -> dict | None:
         _METAR_CACHE[key] = (None, _time.monotonic())
         return None
 
+    def _safe_extreme(field: str) -> float | None:
+        raw = obs.get(field)
+        if raw is None:
+            return None
+        try:
+            val = float(raw)
+        except (TypeError, ValueError):
+            return None
+        return val if -80.0 <= val <= 140.0 else None
+
     result = {
         "current_temp_f": temp_f,
+        "min_temp_f": _safe_extreme("minf"),
+        "max_temp_f": _safe_extreme("maxf"),
         "station": obs.get("icaoId", station),
         "obs_time": obs_time,
     }
