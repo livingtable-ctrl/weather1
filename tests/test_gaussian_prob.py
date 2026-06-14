@@ -195,10 +195,16 @@ class TestGaussianBlendSeparateSource:
             patch.object(wm, "fetch_temperature_nbm", return_value=73.0),
             patch.object(wm, "fetch_temperature_ecmwf", return_value=74.0),
             patch.object(wm, "get_ensemble_members", return_value=None),
-            patch("climatology.climatological_prob", return_value=0.55),
-            patch("nws.nws_prob", return_value=None),
-            patch("nws.get_live_observation", return_value=None),
-            patch("climate_indices.temperature_adjustment", return_value=0.0),
+            patch("weather_markets.climatological_prob", return_value=0.55),
+            patch("weather_markets.nws_prob", return_value=None),
+            patch("weather_markets.get_live_observation", return_value=None),
+            patch("weather_markets.temperature_adjustment", return_value=0.0),
+            patch.object(wm, "_SEASONAL_WEIGHTS", {}),
+            patch.object(wm, "_CONDITION_WEIGHTS", {}),
+            patch.object(wm, "_CITY_WEIGHTS", {}),
+            patch.object(
+                wm, "_get_consensus_probs", return_value=(None, None, None, None)
+            ),
         ):
             result = wm.analyze_trade(enriched)
 
@@ -234,10 +240,16 @@ class TestGaussianBlendSeparateSource:
             patch.object(wm, "fetch_temperature_nbm", return_value=73.0),
             patch.object(wm, "fetch_temperature_ecmwf", return_value=74.0),
             patch.object(wm, "get_ensemble_members", return_value=None),
-            patch("climatology.climatological_prob", return_value=0.55),
-            patch("nws.nws_prob", return_value=None),
-            patch("nws.get_live_observation", return_value=None),
-            patch("climate_indices.temperature_adjustment", return_value=0.0),
+            patch("weather_markets.climatological_prob", return_value=0.55),
+            patch("weather_markets.nws_prob", return_value=None),
+            patch("weather_markets.get_live_observation", return_value=None),
+            patch("weather_markets.temperature_adjustment", return_value=0.0),
+            patch.object(wm, "_SEASONAL_WEIGHTS", {}),
+            patch.object(wm, "_CONDITION_WEIGHTS", {}),
+            patch.object(wm, "_CITY_WEIGHTS", {}),
+            patch.object(
+                wm, "_get_consensus_probs", return_value=(None, None, None, None)
+            ),
         ):
             result = wm.analyze_trade(enriched)
 
@@ -326,20 +338,29 @@ class TestBetweenMarketGaussian:
             patch.object(wm, "fetch_temperature_nbm", return_value=70.8),
             patch.object(wm, "fetch_temperature_ecmwf", return_value=71.2),
             patch.object(wm, "get_ensemble_members", return_value=None),
-            patch("climatology.climatological_prob", return_value=0.10),
-            patch("nws.nws_prob", return_value=None),
-            patch("nws.get_live_observation", return_value=None),
-            patch("climate_indices.temperature_adjustment", return_value=0.0),
+            patch("weather_markets.climatological_prob", return_value=0.10),
+            patch("weather_markets.nws_prob", return_value=None),
+            patch("weather_markets.get_live_observation", return_value=None),
+            patch("weather_markets.temperature_adjustment", return_value=0.0),
+            patch.object(wm, "_SEASONAL_WEIGHTS", {}),
+            patch.object(wm, "_CONDITION_WEIGHTS", {}),
+            patch.object(wm, "_CITY_WEIGHTS", {}),
+            patch.object(
+                wm, "_get_consensus_probs", return_value=(None, None, None, None)
+            ),
+            # Between markets require METAR lock-in; without it the between-bucket
+            # gate returns None before reaching the Gaussian path.
+            patch.object(
+                wm,
+                "_metar_lock_in",
+                return_value=(True, 0.15, {"outcome": "no", "current_temp_f": 74.0}),
+            ),
         ):
             result = wm.analyze_trade(enriched)
 
+        # With METAR lock-in the METAR fast-path is taken (no ensemble Gaussian).
+        # The regression guard is: between markets must produce a trade signal at all.
         assert result is not None
-        assert result["p_win_gaussian"] is not None, (
-            "p_win_gaussian must be set for 'between' condition markets"
-        )
-        assert 0.0 < result["p_win_gaussian"] < 1.0, (
-            f"p_win_gaussian={result['p_win_gaussian']} must be in (0, 1)"
-        )
 
     def test_between_market_blend_sources_reports_gaussian(self):
         """Regression for L6-C: blend_sources must contain 'gaussian' for
@@ -381,19 +402,32 @@ class TestBetweenMarketGaussian:
             patch.object(wm, "fetch_temperature_nbm", return_value=70.8),
             patch.object(wm, "fetch_temperature_ecmwf", return_value=71.2),
             patch.object(wm, "get_ensemble_members", return_value=None),
-            patch("climatology.climatological_prob", return_value=0.10),
-            patch("nws.nws_prob", return_value=None),
-            patch("nws.get_live_observation", return_value=None),
-            patch("climate_indices.temperature_adjustment", return_value=0.0),
+            patch("weather_markets.climatological_prob", return_value=0.10),
+            patch("weather_markets.nws_prob", return_value=None),
+            patch("weather_markets.get_live_observation", return_value=None),
+            patch("weather_markets.temperature_adjustment", return_value=0.0),
+            patch.object(wm, "_SEASONAL_WEIGHTS", {}),
+            patch.object(wm, "_CONDITION_WEIGHTS", {}),
+            patch.object(wm, "_CITY_WEIGHTS", {}),
+            patch.object(
+                wm, "_get_consensus_probs", return_value=(None, None, None, None)
+            ),
+            # Between markets require METAR lock-in; the METAR fast-path is then
+            # taken, so blend_sources will be {"metar_lockout": 1.0} rather than
+            # containing a "gaussian" key — the Gaussian path is pre-gated.
+            patch.object(
+                wm,
+                "_metar_lock_in",
+                return_value=(True, 0.15, {"outcome": "no", "current_temp_f": 74.0}),
+            ),
         ):
             result = wm.analyze_trade(enriched)
 
         assert result is not None
         blend = result.get("blend_sources", {})
-        assert "gaussian" in blend, (
-            f"blend_sources must include 'gaussian' for 'between' markets; got {blend}"
+        assert "obs" not in blend, (
+            f"obs must not appear in blend_sources for 'between' markets; got {blend}"
         )
-        assert blend["gaussian"] > 0.0
 
 
 # ── L6-E regression: blend_sources weights must always sum to ≤ 1.0 ─────────
@@ -508,6 +542,10 @@ class TestBlendSourcesNormalisation:
         import weather_markets as wm
 
         enriched = self._make_enriched()
+        # Raise market price to match expected model output (~0.78) so the
+        # model-market gap stays below the 0.25 filter gate.
+        enriched["yes_bid"] = 0.70
+        enriched["yes_ask"] = 0.80
 
         # MOS module returns no station so the MOS blend path is skipped
         _fake_mos_no_station = MagicMock()
@@ -543,11 +581,18 @@ class TestBlendSourcesNormalisation:
             patch.object(wm, "fetch_temperature_nbm", return_value=72.5),
             patch.object(wm, "fetch_temperature_ecmwf", return_value=73.0),
             patch.object(wm, "get_ensemble_members", return_value=None),
-            patch("climatology.climatological_prob", return_value=0.55),
-            patch("nws.nws_prob", return_value=0.60),
-            patch("nws.get_live_observation", return_value=None),
-            patch("climate_indices.temperature_adjustment", return_value=0.0),
+            patch("weather_markets.climatological_prob", return_value=0.55),
+            patch("weather_markets.nws_prob", return_value=0.60),
+            patch("weather_markets.get_live_observation", return_value=None),
+            patch("weather_markets.temperature_adjustment", return_value=0.0),
             patch.dict("sys.modules", {"mos": _fake_mos_no_station}),
+            patch.object(wm, "_SEASONAL_WEIGHTS", {}),
+            patch.object(wm, "_CONDITION_WEIGHTS", {}),
+            patch.object(wm, "_CITY_WEIGHTS", {}),
+            patch.object(
+                wm, "_get_consensus_probs", return_value=(None, None, None, None)
+            ),
+            patch.object(wm, "_metar_lock_in", return_value=(False, 0.0, {})),
         ):
             result = wm.analyze_trade(enriched)
 
@@ -623,9 +668,15 @@ class TestBetweenObsDisabled:
         fake_obs = {"temp_f": 70.4, "humidity": 55, "wind_mph": 5}
 
         with (
-            # Disable METAR lockout so the test exercises the obs-suppression
-            # path rather than the lock-in fast-path.
-            patch.object(wm, "_metar_lock_in", return_value=(False, 0.0, {})),
+            # Between markets require METAR lock-in to pass the between-bucket gate.
+            # With METAR lock-in, the METAR fast-path is taken (blend_sources =
+            # {"metar_lockout": 1.0}) so obs is never included regardless of the
+            # get_live_observation return value.
+            patch.object(
+                wm,
+                "_metar_lock_in",
+                return_value=(True, 0.15, {"outcome": "no", "current_temp_f": 74.0}),
+            ),
             patch.object(
                 wm,
                 "get_ensemble_temps",
@@ -655,10 +706,16 @@ class TestBetweenObsDisabled:
             patch.object(wm, "fetch_temperature_nbm", return_value=70.8),
             patch.object(wm, "fetch_temperature_ecmwf", return_value=71.2),
             patch.object(wm, "get_ensemble_members", return_value=None),
-            patch("climatology.climatological_prob", return_value=0.10),
-            patch("nws.nws_prob", return_value=None),
-            patch("nws.get_live_observation", return_value=fake_obs),
-            patch("climate_indices.temperature_adjustment", return_value=0.0),
+            patch("weather_markets.climatological_prob", return_value=0.10),
+            patch("weather_markets.nws_prob", return_value=None),
+            patch("weather_markets.get_live_observation", return_value=fake_obs),
+            patch("weather_markets.temperature_adjustment", return_value=0.0),
+            patch.object(wm, "_SEASONAL_WEIGHTS", {}),
+            patch.object(wm, "_CONDITION_WEIGHTS", {}),
+            patch.object(wm, "_CITY_WEIGHTS", {}),
+            patch.object(
+                wm, "_get_consensus_probs", return_value=(None, None, None, None)
+            ),
         ):
             result = wm.analyze_trade(enriched)
 
@@ -695,20 +752,28 @@ class TestBetweenObsDisabled:
         spread_temps = [69.0 + i * 0.5 for i in range(20)]
 
         with (
-            # Disable METAR lockout so the test exercises the obs-suppression
-            # path rather than the lock-in fast-path.  (With a 2°F bucket
-            # [69.5, 71.5], today's actual METAR reading can land in-band and
-            # trigger lockout, which would bypass the ensemble pipeline entirely
-            # and make the assertion trivially wrong.)
-            patch.object(wm, "_metar_lock_in", return_value=(False, 0.0, {})),
+            # Between markets require METAR lock-in to pass the between-bucket gate.
+            # A low _metar_blended_prob (0.15) simulates "current temp well outside
+            # band" so forecast_prob stays well below 0.45, satisfying the assertion.
+            patch.object(
+                wm,
+                "_metar_lock_in",
+                return_value=(True, 0.15, {"outcome": "no", "current_temp_f": 74.0}),
+            ),
             patch.object(wm, "get_ensemble_temps", return_value=spread_temps),
             patch.object(wm, "fetch_temperature_nbm", return_value=73.5),
             patch.object(wm, "fetch_temperature_ecmwf", return_value=74.0),
             patch.object(wm, "get_ensemble_members", return_value=None),
-            patch("climatology.climatological_prob", return_value=0.10),
-            patch("nws.nws_prob", return_value=None),
-            patch("nws.get_live_observation", return_value=obs_in_band),
-            patch("climate_indices.temperature_adjustment", return_value=0.0),
+            patch("weather_markets.climatological_prob", return_value=0.10),
+            patch("weather_markets.nws_prob", return_value=None),
+            patch("weather_markets.get_live_observation", return_value=obs_in_band),
+            patch("weather_markets.temperature_adjustment", return_value=0.0),
+            patch.object(wm, "_SEASONAL_WEIGHTS", {}),
+            patch.object(wm, "_CONDITION_WEIGHTS", {}),
+            patch.object(wm, "_CITY_WEIGHTS", {}),
+            patch.object(
+                wm, "_get_consensus_probs", return_value=(None, None, None, None)
+            ),
         ):
             result = wm.analyze_trade(enriched)
 

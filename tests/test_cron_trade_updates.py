@@ -74,7 +74,11 @@ class TestCronSettlesPaperTrades:
 
         assert "settle" in call_order, "auto_settle_paper_trades was never called"
         if "sync" in call_order and "settle" in call_order:
-            assert call_order.index("sync") < call_order.index("settle"), (
+            sync_idx = call_order.index("sync")
+            # settle may run before scan (pre-scan clear) AND after sync — only
+            # require that at least one settle follows sync
+            settle_indices = [i for i, x in enumerate(call_order) if x == "settle"]
+            assert any(i > sync_idx for i in settle_indices), (
                 "sync_outcomes should run before auto_settle_paper_trades"
             )
 

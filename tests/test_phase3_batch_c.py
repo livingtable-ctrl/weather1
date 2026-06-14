@@ -170,7 +170,7 @@ class TestRandomSearchAndGate:
                 assert 0.0 <= v <= 1.0
 
     def test_equal_weights_returned_when_gate_fails(self):
-        """When val Brier improvement <= 0.005, equal weights are returned."""
+        """When val Brier improvement <= 0.001, equal weights are returned."""
         from calibration import _best_weights
 
         # Identical rows → any weight triple scores the same → no improvement → gate fires
@@ -189,7 +189,7 @@ class TestRandomSearchAndGate:
     def test_brier_gate_constant(self):
         from calibration import _BRIER_IMPROVEMENT_GATE
 
-        assert _BRIER_IMPROVEMENT_GATE == pytest.approx(0.005)
+        assert _BRIER_IMPROVEMENT_GATE == pytest.approx(0.001)
 
     def test_calibrate_city_weights_deterministic(self, tmp_path):
         """Same data → same weights (random search uses fixed seed=42)."""
