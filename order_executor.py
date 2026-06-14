@@ -776,6 +776,9 @@ def _auto_place_trades(
 
     _open_trades_list = get_open_trades()
     open_tickers = {t["ticker"] for t in _open_trades_list}
+    _open_trade_sides: dict[str, str] = {
+        t["ticker"]: t.get("side", "yes") for t in _open_trades_list
+    }
     placed = 0
 
     # Per-date concentration cap: track how many open positions settle on each date.
@@ -899,6 +902,22 @@ def _auto_place_trades(
             continue
 
         if ticker in open_tickers:
+            _new_side = a.get("recommended_side", a.get("side", "yes"))
+            _existing_side = _open_trade_sides.get(ticker, "yes")
+            if _new_side != _existing_side:
+                _edge_pct = a.get("net_edge", a.get("edge", 0.0)) * 100
+                _log.warning(
+                    "[FlipWarning] %s — open %s, model now signals %s (edge=%.1f%%) — consider manual exit on Kalshi",
+                    ticker,
+                    _existing_side.upper(),
+                    _new_side.upper(),
+                    _edge_pct,
+                )
+                print(
+                    f"\n  !! [FLIP WARNING] {ticker} — open {_existing_side.upper()},"
+                    f" model now signals {_new_side.upper()}"
+                    f" (edge={_edge_pct:.1f}%) — consider manual exit on Kalshi !!\n"
+                )
             _skip_reasons.append(f"{ticker}: already_open")
             continue
         # Belt-and-suspenders: catch cross-run duplicates when open_tickers is stale
@@ -1169,6 +1188,7 @@ def _auto_place_trades(
                 else:
                     daily_spent += cost
                 open_tickers.add(ticker)
+                _open_trade_sides[ticker] = rec_side
                 if _is_same_day:
                     _same_day_open += 1
                 elif target_date_str:
@@ -1236,6 +1256,7 @@ def _auto_place_trades(
                     )
                 )
                 open_tickers.add(ticker)
+                _open_trade_sides[ticker] = rec_side
                 _open_trades_list.append(trade)
                 if _is_same_day:
                     _same_day_open += 1
