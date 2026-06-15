@@ -1770,7 +1770,37 @@ def audit_settlement(ticker: str, settled_yes: bool) -> None:
             return
         lat, lon, tz = coords
 
-        cond = _parse_cond({"ticker": ticker, "title": ""})
+        # Prefer condition stored in predictions DB — it was recorded with the real
+        # Kalshi market title, so direction (above vs below) is correct. Parsing
+        # with an empty title falls back to series-ticker heuristics that map
+        # KXLOW T-type markets to "below" even when the market is actually "above".
+        _db_cond: dict | None = None
+        try:
+            with _conn() as _con:
+                _row = _con.execute(
+                    "SELECT condition_type, threshold_lo, threshold_hi"
+                    " FROM predictions WHERE ticker = ?",
+                    (ticker,),
+                ).fetchone()
+            if _row:
+                _ctype, _lo, _hi = _row
+                if _ctype == "above" and _lo is not None:
+                    _db_cond = {"type": "above", "threshold": float(_lo)}
+                elif _ctype == "below" and _lo is not None:
+                    _db_cond = {"type": "below", "threshold": float(_lo)}
+                elif _ctype == "between" and _lo is not None and _hi is not None:
+                    _db_cond = {
+                        "type": "between",
+                        "lower": float(_lo),
+                        "upper": float(_hi),
+                    }
+        except Exception:
+            pass
+        cond = (
+            _db_cond
+            if _db_cond is not None
+            else _parse_cond({"ticker": ticker, "title": ""})
+        )
         if not cond:
             return
 
