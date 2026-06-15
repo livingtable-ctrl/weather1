@@ -8,6 +8,7 @@ from __future__ import annotations
 import logging
 import math
 import random
+from datetime import UTC
 from pathlib import Path
 
 from utils import utc_today as _utc_today
@@ -223,10 +224,27 @@ def simulate_portfolio(
     for t in open_trades:
         ticker = t.get("ticker", "")
 
-        # Skip past-date trades awaiting settlement — they carry no forward risk
-        # and their stale entry_prob would skew the simulation.
+        # Skip trades whose market has already closed — outcome is determined,
+        # no forward risk remains. Prefer close_time over target_date because
+        # multi-day trades close the morning after their target date (still live
+        # at midnight UTC) and same-day trades may still be open past midnight UTC.
         _tdate = t.get("target_date")
-        if _tdate and _tdate < _utc_today().isoformat():
+        _close_str = t.get("close_time")
+        if _close_str:
+            try:
+                from datetime import datetime as _dt
+
+                _close_dt = _dt.fromisoformat(_close_str.replace("Z", "+00:00"))
+                if _close_dt < _dt.now(UTC):
+                    _log.debug(
+                        "Monte Carlo: skipping closed trade %s (close_time=%s)",
+                        ticker,
+                        _close_str,
+                    )
+                    continue
+            except Exception:
+                pass  # unparseable close_time — fall through to target_date check
+        elif _tdate and _tdate < _utc_today().isoformat():
             _log.debug("Monte Carlo: skipping past-date trade %s (%s)", ticker, _tdate)
             continue
         side = t.get("side", "yes")
