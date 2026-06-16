@@ -671,6 +671,29 @@ _CONDITION_WEIGHTS: dict[str, dict[str, float]] = _load_condition_weights()
 # ── Per-city Platt scaling models (loaded once; None = not yet loaded) ────────
 _PLATT_MODELS: dict[str, tuple[float, float]] | None = None
 
+# Minimum settled below predictions required before the two data-sparse below-market
+# gates can be manually activated (BELOW_GATE_ENABLED=1 in .env).
+_BELOW_GATE_MIN_SAMPLES: int = 30
+
+
+def _below_gates_active() -> bool:
+    """Return True only when BELOW_GATE_ENABLED=1 AND >= 30 settled below predictions.
+
+    Controls two aggressive fixes (extreme-ens block, NWS-trim skip) that are based
+    on thin evidence (N=3 and N=7).  Gated so they can be activated manually once
+    enough data accumulates to confirm the patterns are real.
+    """
+    import os
+
+    if not os.getenv("BELOW_GATE_ENABLED"):
+        return False
+    try:
+        from tracker import count_settled_below_predictions
+
+        return count_settled_below_predictions() >= _BELOW_GATE_MIN_SAMPLES
+    except Exception:
+        return False
+
 
 def _load_platt_models() -> dict[str, tuple[float, float]]:
     """Load platt_models.json once per process; return empty dict when absent."""
@@ -5074,12 +5097,14 @@ def analyze_trade(enriched: dict) -> dict | None:
                 persistence_p = None
 
             # Reduce NWS weight when it diverges from ensemble by > 0.20.
-            # Exception: below markets — NWS wins 5/7 disagreements; trimming hurts.
+            # Skip trimming for below markets only when BELOW_GATE_ENABLED=1 AND >= 30
+            # settled — NWS wins 5/7 disagreements but that's too few to act on yet.
+            _skip_nws_trim = condition.get("type") == "below" and _below_gates_active()
             if (
                 _nws_prob is not None
                 and ens_prob is not None
                 and abs(_nws_prob - ens_prob) > 0.20
-                and condition.get("type") != "below"
+                and not _skip_nws_trim
             ):
                 w_nws_trimmed = w_nws * 0.5
                 w_ens += w_nws - w_nws_trimmed
@@ -5334,12 +5359,12 @@ def analyze_trade(enriched: dict) -> dict | None:
             _count_gate("model_mkt_gap")
             return None
 
-        # Gate: below markets with extreme ensemble confidence are universally wrong.
-        # 3/3 settled against the extreme ensemble direction in 15 historical below trades.
-        # Sigma widening (above) prevents formation; this gate catches cases where
-        # ens_prob was set from raw member counts (len(temps) >= 10 path) not Gaussian.
+        # Gate: below markets with extreme ensemble confidence (3/3 wrong historically).
+        # Only active when BELOW_GATE_ENABLED=1 AND >= 30 settled below predictions —
+        # based on only 3 data points so gated until evidence is stronger.
         if (
-            condition.get("type") == "below"
+            _below_gates_active()
+            and condition.get("type") == "below"
             and ens_prob is not None
             and (ens_prob < 0.10 or ens_prob > 0.90)
         ):

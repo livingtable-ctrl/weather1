@@ -1010,6 +1010,18 @@ def count_settled_sameday_predictions() -> int:
     return row[0] if row else 0
 
 
+def count_settled_below_predictions() -> int:
+    """Count multi-day below-type predictions with a known outcome."""
+    init_db()
+    with _conn() as con:
+        row = con.execute(
+            "SELECT COUNT(*) FROM multiday_predictions p "
+            "JOIN outcomes o ON p.ticker = o.ticker "
+            "WHERE p.condition_type = 'below'"
+        ).fetchone()
+    return row[0] if row else 0
+
+
 def _get_recent_win_loss(window: int) -> tuple[int, int]:
     """Query the last `window` settled predictions and count wins.
 
