@@ -4796,6 +4796,11 @@ def analyze_trade(enriched: dict) -> dict | None:
                     days_out,
                 )
             sigma = min(_raw_sigma, _prob_sigma_cap) * sigma_mult
+            # Below markets: ensemble members share physics so their spread underestimates
+            # true forecast error — empirical MAE is ~2x the ensemble std.  Widen sigma
+            # so extreme outputs (0%/99%) are suppressed before the blend.
+            if condition.get("type") == "below":
+                sigma *= 1.5
             ens_prob = _forecast_probability(condition, forecast_temp, sigma)
             if condition.get("type") == "between":
                 _log.info(
@@ -5068,11 +5073,13 @@ def analyze_trade(enriched: dict) -> dict | None:
                 w_persist = 0.0
                 persistence_p = None
 
-            # Reduce NWS weight when it diverges from ensemble by > 0.20
+            # Reduce NWS weight when it diverges from ensemble by > 0.20.
+            # Exception: below markets — NWS wins 5/7 disagreements; trimming hurts.
             if (
                 _nws_prob is not None
                 and ens_prob is not None
                 and abs(_nws_prob - ens_prob) > 0.20
+                and condition.get("type") != "below"
             ):
                 w_nws_trimmed = w_nws * 0.5
                 w_ens += w_nws - w_nws_trimmed
@@ -5325,6 +5332,23 @@ def analyze_trade(enriched: dict) -> dict | None:
                 _model_mkt_gap,
             )
             _count_gate("model_mkt_gap")
+            return None
+
+        # Gate: below markets with extreme ensemble confidence are universally wrong.
+        # 3/3 settled against the extreme ensemble direction in 15 historical below trades.
+        # Sigma widening (above) prevents formation; this gate catches cases where
+        # ens_prob was set from raw member counts (len(temps) >= 10 path) not Gaussian.
+        if (
+            condition.get("type") == "below"
+            and ens_prob is not None
+            and (ens_prob < 0.10 or ens_prob > 0.90)
+        ):
+            _log.debug(
+                "analyze_trade[%s]: below market extreme ensemble %.0f%% — skipping (3/3 wrong historically)",
+                enriched.get("ticker", "?"),
+                ens_prob * 100,
+            )
+            _count_gate("below_extreme_ens")
             return None
 
         # ── Consensus signal: all available sources agree on direction ───────────

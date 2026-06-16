@@ -24,6 +24,10 @@ _LOAD_ATTEMPTED: bool = False  # True only after a successful or definitive load
 _TEMP_CACHE: dict | None = (
     None  # {condition_key: T} where condition_key is "global"|"between"|"above"|"below"
 )
+# Empirical prior for below markets: ensemble DirAcc=28.6% (worse than random) with
+# N=15; T→8.0 boundary at fitting.  Use a conservative prior until calibration has
+# 50+ samples with positive DirAcc.  Weekly retrain overwrites this when trained.
+_T_BELOW_PRIOR: float = 6.0
 
 
 def _hmac_secret() -> bytes:
@@ -418,19 +422,25 @@ def apply_temperature_scaling(
     Multi-day lookup order: per-condition T → global T → no-op.
     """
     table = _load_temperature_scale()
-    if table is None:
-        return prob
     T = None
     if days_out is not None and days_out == 0:
         # Same-day path: sameday T only — no fallback to global/condition.
+        if table is None:
+            return prob
         T = table.get("sameday")
         if T is None:
             return prob
     else:
-        if condition_type is not None:
-            T = table.get(condition_type)
-        if T is None:
-            T = table.get("global")
+        if table is not None:
+            if condition_type is not None:
+                T = table.get(condition_type)
+            if T is None:
+                T = table.get("global")
+        # Below markets use a prior T until calibration builds up 50+ samples.
+        # Applies whether or not the scale file exists: if neither file nor
+        # condition-specific T is set, the prior prevents 0%/99% extreme outputs.
+        if T is None and condition_type == "below":
+            T = _T_BELOW_PRIOR
     if T is None or abs(T - 1.0) < 0.01:
         return prob
     return _sigmoid(_logit(prob) / T)
