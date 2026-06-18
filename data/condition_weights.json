@@ -6,9 +6,9 @@
     "_uncalibrated": true
   },
   "below": {
-    "ensemble": 0.15,
-    "climatology": 0.10,
-    "nws": 0.75
+    "ensemble": 0.05,
+    "climatology": 0.75,
+    "nws": 0.20
   },
   "between": {
     "ensemble": 0.09274584338014791,

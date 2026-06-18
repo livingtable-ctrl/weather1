@@ -396,6 +396,24 @@ def calibrate_and_save(
     city = calibrate_city_weights(_db)
     condition = calibrate_condition_weights(_db)
 
+    # Preserve any manually-set condition weights that auto-calibration left as
+    # neutral (insufficient samples).  Without this, a weekly retrain on N<20
+    # above/below trades would overwrite hand-tuned weights with equal 1/3.
+    _cond_path = _dir / "condition_weights.json"
+    if _cond_path.exists():
+        try:
+            _existing = json.loads(_cond_path.read_text())
+            for _ctype, _entry in _existing.items():
+                if (
+                    _ctype in condition
+                    and condition[_ctype].get("_uncalibrated")
+                    and isinstance(_entry, dict)
+                    and not _entry.get("_uncalibrated")
+                ):
+                    condition[_ctype] = _entry
+        except Exception:
+            pass  # corrupt / missing — use freshly-calibrated values as-is
+
     _safe_io.atomic_write_json(seasonal, _dir / "seasonal_weights.json")
     _safe_io.atomic_write_json(city, _dir / "city_weights.json")
     _safe_io.atomic_write_json(condition, _dir / "condition_weights.json")
