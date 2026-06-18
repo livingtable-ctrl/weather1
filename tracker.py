@@ -2895,6 +2895,8 @@ def _save_retired_strategies(retired: dict) -> None:
 def auto_retire_strategies(
     min_samples: int = 20,
     retire_threshold: float = 0.25,
+    current_directional_accuracy: float | None = None,
+    dir_accuracy_guard: float = 0.65,
 ) -> list[str]:
     """P9.5: Auto-retire forecasting methods whose Brier score exceeds retire_threshold.
 
@@ -2904,6 +2906,13 @@ def auto_retire_strategies(
     Args:
         min_samples: minimum settled predictions required before a method is eligible.
         retire_threshold: Brier score above which a method is considered failing.
+        current_directional_accuracy: system-wide multi-day directional accuracy (0–1).
+            When provided, methods are NOT retired if accuracy >= dir_accuracy_guard
+            because elevated Brier in that case reflects miscalibrated probabilities,
+            not a wrong-direction forecasting failure. Calibration is fixable; bad
+            direction is not.
+        dir_accuracy_guard: directional accuracy threshold below which the guard is
+            inactive and Brier-based retirement proceeds normally. Default 0.65.
 
     Returns list of newly retired method names.
     """
@@ -2921,6 +2930,21 @@ def auto_retire_strategies(
                     method,
                     brier,
                     retire_threshold,
+                )
+                continue
+            if (
+                current_directional_accuracy is not None
+                and current_directional_accuracy >= dir_accuracy_guard
+            ):
+                _log.info(
+                    "strategy_retirement: skipping method=%s "
+                    "(Brier %.4f > threshold %.4f but directional_accuracy=%.2f >= guard=%.2f "
+                    "— elevated Brier is a calibration issue, not a forecasting failure)",
+                    method,
+                    brier,
+                    retire_threshold,
+                    current_directional_accuracy,
+                    dir_accuracy_guard,
                 )
                 continue
             retired[method] = {

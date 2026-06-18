@@ -747,11 +747,17 @@ def _cmd_cron_body(
     except Exception as _e:
         _log.debug("cmd_cron: detect_brier_drift failed: %s", _e)
 
-    # Strategy retirement check (log-only, non-blocking)
+    # Strategy retirement check (log-only, non-blocking).
+    # Pass current directional accuracy so methods are not retired when direction is
+    # correct (>= 0.65) — elevated Brier in that case is a calibration issue, not a
+    # forecasting failure, and is addressable without halting signal generation.
     try:
         from tracker import auto_retire_strategies as _auto_retire
 
-        _newly_retired = _auto_retire()
+        _newly_retired = _auto_retire(
+            current_directional_accuracy=_directional_accuracy,
+            dir_accuracy_guard=0.65,
+        )
         if _newly_retired:
             _log.warning("cmd_cron: auto-retired strategy methods: %s", _newly_retired)
     except Exception as _e:
