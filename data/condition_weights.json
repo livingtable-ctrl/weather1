@@ -1,9 +1,8 @@
 {
   "above": {
-    "ensemble": 0.3333333333333333,
-    "climatology": 0.3333333333333333,
-    "nws": 0.3333333333333333,
-    "_uncalibrated": true
+    "ensemble": 0.60,
+    "climatology": 0.05,
+    "nws": 0.35
   },
   "below": {
     "ensemble": 0.05,

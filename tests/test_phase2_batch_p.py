@@ -187,8 +187,28 @@ def test_blend_weights_below_uses_condition_weights(monkeypatch):
     assert w_ens < 0.15, f"Expected ens < 0.15 for below, got {w_ens:.3f}"
 
 
-def test_blend_weights_above_falls_through_to_hardcoded(monkeypatch):
-    """_blend_weights for above should fall through to hardcoded schedule (ensemble-heavy)."""
+def test_blend_weights_above_uses_explicit_condition_weights(monkeypatch):
+    """_blend_weights for above must use explicit condition weights (ens-heavy), not hardcoded."""
+    import weather_markets as wm
+
+    monkeypatch.setattr(
+        wm,
+        "_CONDITION_WEIGHTS",
+        {
+            "above": {"ensemble": 0.60, "climatology": 0.05, "nws": 0.35},
+            "below": {"ensemble": 0.05, "climatology": 0.75, "nws": 0.20},
+        },
+    )
+
+    w = wm._blend_weights(1, has_nws=True, has_clim=True, condition_type="above")
+    w_ens, w_clim, w_nws = w
+
+    assert w_ens > 0.50, f"Expected ens-heavy for above, got {w_ens:.3f}"
+    assert w_clim < 0.10, f"Expected low clim for above, got {w_clim:.3f}"
+
+
+def test_blend_weights_above_uncalibrated_falls_through_to_hardcoded(monkeypatch):
+    """When above has _uncalibrated:true and seasonal is also uncalibrated, use hardcoded."""
     import weather_markets as wm
 
     monkeypatch.setattr(
@@ -201,7 +221,6 @@ def test_blend_weights_above_falls_through_to_hardcoded(monkeypatch):
                 "nws": 0.333,
                 "_uncalibrated": True,
             },
-            "below": {"ensemble": 0.05, "climatology": 0.75, "nws": 0.20},
         },
     )
     monkeypatch.setattr(
@@ -221,5 +240,30 @@ def test_blend_weights_above_falls_through_to_hardcoded(monkeypatch):
     w_ens, w_clim, _w_nws = w
 
     # Hardcoded days_out=1: ens ~0.61, clim ~0.04
-    assert w_ens > 0.50, f"Expected ens > 0.50 for above hardcoded, got {w_ens:.3f}"
-    assert w_clim < 0.10, f"Expected clim < 0.10 for above hardcoded, got {w_clim:.3f}"
+    assert w_ens > 0.50, f"Expected ens > 0.50 for hardcoded, got {w_ens:.3f}"
+    assert w_clim < 0.10, f"Expected clim < 0.10 for hardcoded, got {w_clim:.3f}"
+
+
+def test_t_above_prior_applied_when_no_scale_file(monkeypatch):
+    """apply_temperature_scaling must apply _T_ABOVE_PRIOR when scale file missing."""
+    import ml_bias
+
+    monkeypatch.setattr(ml_bias, "_load_temperature_scale", lambda: None)
+
+    scaled = ml_bias.apply_temperature_scaling(0.75, condition_type="above")
+    # T=6 on p=0.75: sigmoid(logit(0.75)/6) ≈ 0.546
+    assert 0.52 < scaled < 0.58, f"Expected T=6 compression, got {scaled:.4f}"
+    # Must be less than the unscaled input
+    assert scaled < 0.75
+
+
+def test_t_below_prior_reduced_to_3(monkeypatch):
+    """_T_BELOW_PRIOR is 3.0; apply_temperature_scaling compresses less than T=6."""
+    import ml_bias
+
+    monkeypatch.setattr(ml_bias, "_load_temperature_scale", lambda: None)
+
+    scaled_below = ml_bias.apply_temperature_scaling(0.75, condition_type="below")
+    # T=3 on p=0.75: sigmoid(logit(0.75)/3) ≈ 0.591 — less compressed than T=6
+    assert scaled_below > 0.55, f"T=3 should be less compressed, got {scaled_below:.4f}"
+    assert scaled_below < 0.75

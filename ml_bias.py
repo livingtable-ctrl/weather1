@@ -24,10 +24,13 @@ _LOAD_ATTEMPTED: bool = False  # True only after a successful or definitive load
 _TEMP_CACHE: dict | None = (
     None  # {condition_key: T} where condition_key is "global"|"between"|"above"|"below"
 )
-# Empirical prior for below markets: ensemble DirAcc=28.6% (worse than random) with
-# N=15; T→8.0 boundary at fitting.  Use a conservative prior until calibration has
-# 50+ samples with positive DirAcc.  Weekly retrain overwrites this when trained.
-_T_BELOW_PRIOR: float = 6.0
+# T priors for above/below markets.  Applied when temperature_scale.json is missing
+# or lacks a condition-specific entry.  Derived empirically by reblending N=14 trades
+# with current weights and grid-searching for NLL minimum (Jun 2026):
+#   below optimal T ≈ 2.8  (T=6.0 prior was set before weight fix; now too aggressive)
+#   above optimal T ≈ 8.0  (hits upper bound — blend is overconfident; T=6 practical)
+_T_BELOW_PRIOR: float = 3.0
+_T_ABOVE_PRIOR: float = 6.0
 
 
 def _hmac_secret() -> bytes:
@@ -436,11 +439,13 @@ def apply_temperature_scaling(
                 T = table.get(condition_type)
             if T is None:
                 T = table.get("global")
-        # Below markets use a prior T until calibration builds up 50+ samples.
-        # Applies whether or not the scale file exists: if neither file nor
-        # condition-specific T is set, the prior prevents 0%/99% extreme outputs.
+        # Above/below use prior Ts when neither the scale file nor a
+        # condition-specific entry is available.  Prevents unscaled extreme
+        # outputs on thin data; overwritten once calibration has enough samples.
         if T is None and condition_type == "below":
             T = _T_BELOW_PRIOR
+        elif T is None and condition_type == "above":
+            T = _T_ABOVE_PRIOR
     if T is None or abs(T - 1.0) < 0.01:
         return prob
     return _sigmoid(_logit(prob) / T)
