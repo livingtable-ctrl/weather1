@@ -204,6 +204,50 @@ class TestStrategyRetirement:
         )
         assert "dup_method" not in newly2
 
+    def test_dir_accuracy_guard_blocks_retirement(self, tmp_tracker):
+        """Method with Brier > 0.25 is NOT retired when directional accuracy >= guard.
+
+        Elevated Brier with good direction means miscalibrated probabilities, not
+        bad forecasting — retirement would halt signal generation unnecessarily.
+        """
+        for i in range(22):
+            _log_and_settle(tmp_tracker, f"GUARD-{i}", "guard_method", 0.9, False)
+
+        newly = tmp_tracker.auto_retire_strategies(
+            min_samples=20,
+            retire_threshold=0.25,
+            current_directional_accuracy=0.67,
+            dir_accuracy_guard=0.65,
+        )
+        assert "guard_method" not in newly
+        assert "guard_method" not in tmp_tracker.get_retired_strategies()
+
+    def test_dir_accuracy_guard_allows_retirement_when_direction_bad(self, tmp_tracker):
+        """Method IS retired when directional accuracy is below the guard."""
+        for i in range(22):
+            _log_and_settle(tmp_tracker, f"BAD2-{i}", "bad_dir_method", 0.9, False)
+
+        newly = tmp_tracker.auto_retire_strategies(
+            min_samples=20,
+            retire_threshold=0.25,
+            current_directional_accuracy=0.60,
+            dir_accuracy_guard=0.65,
+        )
+        assert "bad_dir_method" in newly
+
+    def test_dir_accuracy_guard_inactive_when_accuracy_none(self, tmp_tracker):
+        """Guard is skipped when directional accuracy is not available — retire normally."""
+        for i in range(22):
+            _log_and_settle(tmp_tracker, f"NONE-{i}", "none_acc_method", 0.9, False)
+
+        newly = tmp_tracker.auto_retire_strategies(
+            min_samples=20,
+            retire_threshold=0.25,
+            current_directional_accuracy=None,
+            dir_accuracy_guard=0.65,
+        )
+        assert "none_acc_method" in newly
+
 
 # ── P10.1: Drift detection ─────────────────────────────────────────────────────
 
