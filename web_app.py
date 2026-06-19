@@ -2087,6 +2087,22 @@ setInterval(() => {{
         # Without this the trade record stores None, which the cap logic reads as
         # multi-day (None != 0) and incorrectly consumes a multi-day date slot.
         _days_out_raw = body.get("days_out")
+        # Fetch close_time from Kalshi so the 24h settlement gate works on manually
+        # placed trades the same way it does on bot-placed trades.
+        _close_time: str | None = None
+        try:
+            from kalshi_client import KalshiClient as _KC
+
+            _kc = _KC(
+                key_id=os.getenv("KALSHI_KEY_ID"),
+                private_key_path=os.getenv("KALSHI_PRIVATE_KEY_PATH"),
+                env=os.getenv("KALSHI_ENV", "demo"),
+            )
+            _close_time = _kc.get_market(ticker).get("close_time")
+        except Exception as _e:
+            _log.warning(
+                "api/paper-order: could not fetch close_time for %s: %s", ticker, _e
+            )
         try:
             trade = place_paper_order(
                 ticker=ticker,
@@ -2099,6 +2115,7 @@ setInterval(() => {{
                 target_date=target_date,
                 thesis="manual approval via dashboard",
                 days_out=int(_days_out_raw) if _days_out_raw is not None else None,
+                close_time=_close_time,
             )
             # Register in tracker predictions so sync_outcomes / auto_settle
             # can find the Kalshi outcome automatically when the market resolves.
