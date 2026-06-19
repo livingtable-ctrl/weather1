@@ -781,7 +781,7 @@ setInterval(() => {{
                 "bets": top,
                 "balance": round(balance, 2),
                 "min_edge": MIN_EDGE,
-                "generated_at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S"),
+                "generated_at": datetime.now(UTC).isoformat(timespec="seconds"),
             }
         )
 
@@ -2220,7 +2220,7 @@ setInterval(() => {{
                 "opportunities": results[:n],
                 "balance": round(balance, 2),
                 "min_edge": MIN_EDGE,
-                "generated_at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S"),
+                "generated_at": datetime.now(UTC).isoformat(timespec="seconds"),
             }
         )
 
