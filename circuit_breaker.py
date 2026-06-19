@@ -16,6 +16,8 @@ import time
 from pathlib import Path
 from typing import Any
 
+from safe_io import atomic_write_json
+
 _log = logging.getLogger(__name__)
 
 _CB_STATE_PATH = Path(__file__).parent / "data" / ".cb_state.json"
@@ -321,14 +323,12 @@ class FlashCrashCB:
             _log.debug("FlashCrashCB: could not load cooldowns: %s", exc)
 
     def _save_cooldowns(self) -> None:
-        """Persist current (non-expired) cooldowns to disk."""
+        """Persist current (non-expired) cooldowns to disk atomically."""
         try:
             _FLASH_CRASH_COOLDOWN_PATH.parent.mkdir(parents=True, exist_ok=True)
             now = time.time()
             active = {t: exp for t, exp in self._cooldowns.items() if exp > now}
-            _FLASH_CRASH_COOLDOWN_PATH.write_text(
-                json.dumps(active, indent=2), encoding="utf-8"
-            )
+            atomic_write_json(active, _FLASH_CRASH_COOLDOWN_PATH)
         except Exception as exc:
             _log.debug("FlashCrashCB: could not save cooldowns: %s", exc)
 

@@ -1442,8 +1442,9 @@ def _cmd_cron_body(
             },
             "generated_at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S"),
         }
-        with open(cache_path, "w", encoding="utf-8") as f:
-            json.dump(cache_payload, f)
+        from safe_io import atomic_write_json as _atomic_write
+
+        _atomic_write(cache_payload, cache_path)
     except Exception:
         pass
 

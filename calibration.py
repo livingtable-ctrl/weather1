@@ -129,13 +129,12 @@ def _load_rows(db_path: Path) -> list[sqlite3.Row]:
             SELECT p.city, p.market_date, p.condition_type,
                    p.ensemble_prob, p.nws_prob, p.clim_prob,
                    o.settled_yes
-            FROM predictions p
+            FROM multiday_predictions p
             JOIN outcomes o ON p.ticker = o.ticker
             WHERE p.ensemble_prob IS NOT NULL
               AND p.nws_prob IS NOT NULL
               AND p.clim_prob IS NOT NULL
               AND o.settled_yes IS NOT NULL
-              AND (p.days_out IS NULL OR p.days_out >= 1)
               AND (p.condition_type IS NULL OR p.condition_type != 'between')
             """
         ).fetchall()
