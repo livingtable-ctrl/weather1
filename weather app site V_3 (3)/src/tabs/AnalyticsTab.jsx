@@ -8,6 +8,7 @@ import { normCity, StatCard, BrierTrendChart } from '../shared.jsx';
 function EquityCurveChart() {
   const M = useContext(DataContext);
   const trades = M.closedTrades;
+  const [sinceMode, setSinceMode] = useState('all');
 
   const points = useMemo(() => {
     if (!trades || trades.length === 0) return [];
@@ -33,18 +34,21 @@ function EquityCurveChart() {
     );
   }
 
+  const peakIdx = points.reduce((best, p, i) => p.cum > points[best].cum ? i : best, 0);
+  const displayPoints = sinceMode === 'peak' ? points.slice(peakIdx) : points;
+
   const W = 900, H = 120, PAD = { top: 12, right: 16, bottom: 8, left: 56 };
   const innerW = W - PAD.left - PAD.right;
   const innerH = H - PAD.top - PAD.bottom;
 
-  const cums = points.map(p => p.cum);
+  const cums = displayPoints.map(p => p.cum);
   const minC = Math.min(0, ...cums);
   const maxC = Math.max(0, ...cums);
   const range = maxC - minC || 1;
 
-  const xs = points.map((_, i) => PAD.left + (i / Math.max(points.length - 1, 1)) * innerW);
+  const xs = displayPoints.map((_, i) => PAD.left + (i / Math.max(displayPoints.length - 1, 1)) * innerW);
   const toY = c => PAD.top + (1 - (c - minC) / range) * innerH;
-  const ys = points.map(p => toY(p.cum));
+  const ys = displayPoints.map(p => toY(p.cum));
   const zeroY = toY(0);
 
   const linePts = xs.map((x, i) => `${x},${ys[i]}`).join(' ');
@@ -53,7 +57,11 @@ function EquityCurveChart() {
 
   return (
     <section style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 14, padding: '20px', marginBottom: 18 }}>
-      <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600, marginBottom: 12 }}>Equity curve</h3>
+      <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600, marginBottom: 8 }}>Equity curve</h3>
+      <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
+        <button onClick={() => setSinceMode('all')} style={{ borderRadius: 6, padding: '4px 12px', border: '1px solid var(--border)', fontSize: 12, cursor: 'pointer', background: sinceMode === 'all' ? '#3b82f6' : 'var(--bg-subtle)', color: sinceMode === 'all' ? 'white' : 'var(--text-muted)' }}>All time</button>
+        <button onClick={() => setSinceMode('peak')} style={{ borderRadius: 6, padding: '4px 12px', border: '1px solid var(--border)', fontSize: 12, cursor: 'pointer', background: sinceMode === 'peak' ? '#3b82f6' : 'var(--bg-subtle)', color: sinceMode === 'peak' ? 'white' : 'var(--text-muted)' }}>Since peak</button>
+      </div>
       <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 'auto', display: 'block', overflow: 'visible' }}>
         {/* Zero line */}
         {zeroY >= PAD.top && zeroY <= PAD.top + innerH && (
@@ -480,7 +488,7 @@ function MultiDayCalibCard() {
   const cal = M.calibrationStatus;
   if (!cal) return null;
 
-  const { last_calibration_n, current_n, next_eligible_n, eligible, T_global, T_between } = cal;
+  const { last_calibration_n, current_n, next_eligible_n, eligible, T_global, T_between, T_above, T_below } = cal;
   const progress = next_eligible_n > 0 ? Math.min(100, (current_n / next_eligible_n) * 100) : 100;
 
   return (
@@ -520,7 +528,7 @@ function MultiDayCalibCard() {
       </div>
 
       {/* Current T values */}
-      <div style={{ display: 'flex', gap: 12 }}>
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
         <div style={{ padding: '12px 16px', background: 'var(--bg-subtle)', borderRadius: 10, minWidth: 110 }}>
           <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 3 }}>T_global</div>
           <div style={{ fontSize: 20, fontWeight: 700, fontFamily: 'ui-monospace, monospace' }}>
@@ -536,6 +544,20 @@ function MultiDayCalibCard() {
             {T_between != null ? T_between.toFixed(2) : '—'}
           </div>
           <div style={{ fontSize: 10, color: 'var(--text-faint)' }}>between markets only</div>
+        </div>
+        <div style={{ padding: '12px 16px', background: 'var(--bg-subtle)', borderRadius: 10, minWidth: 110 }}>
+          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 3 }}>T_above</div>
+          <div style={{ fontSize: 20, fontWeight: 700, fontFamily: 'ui-monospace, monospace' }}>
+            {T_above != null ? T_above.toFixed(2) : '—'}
+          </div>
+          <div style={{ fontSize: 10, color: 'var(--text-faint)' }}>above/below markets</div>
+        </div>
+        <div style={{ padding: '12px 16px', background: 'var(--bg-subtle)', borderRadius: 10, minWidth: 110 }}>
+          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 3 }}>T_below</div>
+          <div style={{ fontSize: 20, fontWeight: 700, fontFamily: 'ui-monospace, monospace' }}>
+            {T_below != null ? T_below.toFixed(2) : '—'}
+          </div>
+          <div style={{ fontSize: 10, color: 'var(--text-faint)' }}>above/below markets</div>
         </div>
         {last_calibration_n != null && (
           <div style={{ padding: '12px 16px', background: 'var(--bg-subtle)', borderRadius: 10, minWidth: 110 }}>

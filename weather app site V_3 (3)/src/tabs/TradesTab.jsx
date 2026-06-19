@@ -35,6 +35,7 @@ export default function TradesTab() {
   const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
   const wins = M.closedTrades.filter(t => t.pnl > 0).length;
   const losses = M.closedTrades.filter(t => t.pnl != null && t.pnl < 0).length;
+  const other = filtered.length - wins - losses;
 
   function handleExportCSV() {
     const headers = ['Ticker', 'City', 'Side', 'Entry ¢', 'Quantity', 'Cost', 'Net Edge', 'Outcome', 'P&L', 'Entered At', 'Settled At', 'Hold Days'];
@@ -69,7 +70,7 @@ export default function TradesTab() {
         <div>
           <h1 style={{ margin: 0, fontSize: 24, fontWeight: 700, letterSpacing: '-0.02em' }}>Trade History</h1>
           <p style={{ margin: '4px 0 0', color: 'var(--text-muted)', fontSize: 13 }}>
-            {filtered.length} settled · {wins} wins · {losses} losses
+            {filtered.length} settled · {wins} wins · {losses} losses{other > 0 ? ` · ${other} breakeven` : ''}
           </p>
         </div>
         <div style={{ display: 'flex', gap: 10 }}>

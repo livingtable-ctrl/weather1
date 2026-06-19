@@ -11,6 +11,10 @@ export default function SettingsTab() {
   const { cronState, handleRunCron, handleCancelCron } = M;
   const cronLogRef = useRef(null);
   const [reportMsg, setReportMsg] = useState('');
+  const backupAgeHours = M.backupStatus?.last_backup_at
+    ? (Date.now() - new Date(M.backupStatus.last_backup_at)) / 3600000
+    : Infinity;
+  const backupStale = backupAgeHours > 24;
 
   function handleDownloadReport() {
     setReportMsg('Generating…');
@@ -193,11 +197,14 @@ export default function SettingsTab() {
           <h3 style={{ margin: '0 0 10px', fontSize: 15, fontWeight: 600 }}>Backup status</h3>
           <div style={{ display: 'flex', gap: 24, fontSize: 13, flexWrap: 'wrap' }}>
             <div>
-              <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Last backup</span>
+              <span style={{ color: backupStale ? '#ca8a04' : 'var(--text-muted)', fontSize: 11 }}>Last backup</span>
               <div style={{ fontWeight: 600, fontFamily: 'ui-monospace, monospace', marginTop: 2 }}>
                 {M.backupStatus.last_backup_at
-                  ? new Date(M.backupStatus.last_backup_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
-                  : 'Never'}
+                  ? <>
+                      {new Date(M.backupStatus.last_backup_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                      {backupStale && <span style={{ marginLeft: 6, color: '#ca8a04', fontSize: 11 }}>⚠ {Math.floor(backupAgeHours)}h ago</span>}
+                    </>
+                  : <span style={{ color: '#ef4444' }}>Never</span>}
               </div>
             </div>
             <div>

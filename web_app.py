@@ -1311,6 +1311,24 @@ setInterval(() => {{
             except Exception:
                 pass  # defaults already set above
 
+            var_95: float | None = None
+            var_99: float | None = None
+            try:
+                from monte_carlo import simulate_portfolio as _sim_portfolio
+
+                _mc_open = get_open_trades()
+                if _mc_open:
+                    _mc_result = _sim_portfolio(
+                        _mc_open, n_simulations=1000, include_distribution=True
+                    )
+                    _mc_dist = _mc_result.get("pnl_distribution", [])
+                    _mc_n = len(_mc_dist)
+                    if _mc_n > 0:
+                        var_95 = round(_mc_dist[max(0, int(_mc_n * 0.05))], 2)
+                        var_99 = round(_mc_dist[max(0, int(_mc_n * 0.01))], 2)
+            except Exception:
+                pass
+
             data = {
                 "balance": round(get_balance(), 2),
                 "open_count": len(get_open_trades()),
@@ -1328,6 +1346,8 @@ setInterval(() => {{
                 "kelly_factor": kelly_factor,
                 "drawdown_pct": drawdown_pct,
                 "drawdown_tier": drawdown_tier,
+                "var_95": var_95,
+                "var_99": var_99,
                 "timestamp": datetime.now(UTC).isoformat(),
             }
         except Exception as e:
@@ -1417,17 +1437,25 @@ setInterval(() => {{
             last_calibration_n: int | None = None
             T_global: float | None = None
             T_between: float | None = None
+            T_above: float | None = None
+            T_below: float | None = None
 
             if ts_path.exists():
                 try:
                     _ts = json.loads(ts_path.read_text())
                     _global = _ts.get("global", {})
                     _between = _ts.get("between", {})
+                    _above = _ts.get("above", {})
+                    _below = _ts.get("below", {})
                     if isinstance(_global, dict):
                         last_calibration_n = _global.get("n")
                         T_global = _global.get("T")
                     if isinstance(_between, dict):
                         T_between = _between.get("T")
+                    if isinstance(_above, dict):
+                        T_above = _above.get("T")
+                    if isinstance(_below, dict):
+                        T_below = _below.get("T")
                 except Exception:
                     pass
 
@@ -1445,6 +1473,8 @@ setInterval(() => {{
                     "eligible": eligible,
                     "T_global": round(T_global, 4) if T_global is not None else None,
                     "T_between": round(T_between, 4) if T_between is not None else None,
+                    "T_above": round(T_above, 4) if T_above is not None else None,
+                    "T_below": round(T_below, 4) if T_below is not None else None,
                 }
             )
         except Exception as exc:

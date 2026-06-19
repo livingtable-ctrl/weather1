@@ -207,6 +207,17 @@ export default function RiskTab() {
           sub={'limit $' + (M.stats.max_daily_spend || '—')} />
       </div>
 
+      {M.stats.var_95 != null && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12, marginBottom: 18 }}>
+          <StatCard label="VaR 95%" tooltip="5th-percentile P&L from Monte Carlo — 95% of days should lose less than this."
+            value={(M.stats.var_95 >= 0 ? '' : '-') + '$' + Math.abs(M.stats.var_95).toFixed(2)}
+            sub="daily loss estimate" deltaTone="neg" />
+          <StatCard label="VaR 99%" tooltip="1st-percentile P&L from Monte Carlo — 99% of days should lose less than this."
+            value={(M.stats.var_99 >= 0 ? '' : '-') + '$' + Math.abs(M.stats.var_99).toFixed(2)}
+            sub="daily loss estimate" deltaTone="neg" />
+        </div>
+      )}
+
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.4fr', gap: 18, marginBottom: 18 }}>
         <section style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 14, padding: '20px' }}>
           <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600, marginBottom: 14 }}>Directional bias</h3>

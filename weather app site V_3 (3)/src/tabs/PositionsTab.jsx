@@ -268,7 +268,7 @@ export default function PositionsTab() {
                     style={{ padding: '14px 16px', textAlign: 'right', fontFamily: 'ui-monospace, monospace', fontSize: 11, fontWeight: 600, color: upnlColor }}>
                     {upnlLabel}
                   </td>
-                  <td style={{ padding: '14px 16px', fontFamily: 'ui-monospace, monospace', fontSize: 11, color: 'var(--text-muted)' }}>{p.model}</td>
+                  <td style={{ padding: '14px 16px', fontFamily: 'ui-monospace, monospace', fontSize: 11, color: 'var(--text-muted)' }}>{p.model || '—'}</td>
                   <td style={{ padding: '14px 16px', fontFamily: 'ui-monospace, monospace', fontSize: 11 }}>
                     {!p.expiry
                       ? <span style={{ color: 'var(--text-faint)' }}>-</span>

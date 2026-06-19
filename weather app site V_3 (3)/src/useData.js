@@ -84,6 +84,8 @@ function mapStats(status, grad, config, prevStats) {
     if (status.kelly_factor  != null) base.kelly_factor  = status.kelly_factor;
     if (status.drawdown_pct  != null) base.drawdown_pct  = status.drawdown_pct;
     if (status.drawdown_tier != null) base.drawdown_tier = status.drawdown_tier;
+    if (status.var_95 != null) base.var_95 = status.var_95;
+    if (status.var_99 != null) base.var_99 = status.var_99;
   }
 
   // max_daily_spend lives in /api/config, not /api/status
