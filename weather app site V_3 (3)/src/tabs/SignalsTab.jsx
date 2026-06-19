@@ -171,9 +171,15 @@ export default function SignalsTab() {
               {(() => {
                 const td = o.target_date || o.expiry;
                 if (!td) return '—';
-                const daysOut = Math.ceil((new Date(td) - new Date(new Date().toDateString())) / 86400000);
-                const color = daysOut <= 1 ? '#f59e0b' : daysOut <= 3 ? 'var(--text-muted)' : 'var(--text-faint)';
-                return <span style={{ color }}>{td} <span style={{ fontSize: 10 }}>({daysOut}d)</span></span>;
+                // Use server-computed days_out when available — avoids timezone skew where
+                // the browser's local date (US evening) lags UTC and reports same-day
+                // markets as "(1d)" even though the server correctly classified them as 0.
+                const daysOut = o.days_out != null
+                  ? o.days_out
+                  : Math.ceil((new Date(td) - new Date(new Date().toDateString())) / 86400000);
+                const label = daysOut === 0 ? 'today' : `${daysOut}d`;
+                const color = daysOut === 0 ? '#16a34a' : daysOut <= 1 ? '#f59e0b' : daysOut <= 3 ? 'var(--text-muted)' : 'var(--text-faint)';
+                return <span style={{ color }}>{td} <span style={{ fontSize: 10 }}>({label})</span></span>;
               })()}
             </td>
             <td style={{ padding: '12px 16px', fontSize: 13 }}>
@@ -193,7 +199,7 @@ export default function SignalsTab() {
                       onChange={e => setQtyMap(prev => ({ ...prev, [o.ticker]: e.target.value }))}
                       title={`Kelly suggests ${kellyQty} contracts`}
                       style={{ width: 52, padding: '3px 5px', borderRadius: 5, border: '1px solid var(--border)', background: 'var(--bg-muted)', color: 'var(--text)', fontSize: 11, textAlign: 'center' }} />
-                    <button onClick={() => handleAction(o, 'approve')} style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid #16a34a', background: 'rgba(34,197,94,0.08)', color: '#16a34a', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>✓</button>
+                    <button onClick={() => (o.edge_pct || 0) > 0 && handleAction(o, 'approve')} disabled={(o.edge_pct || 0) <= 0} style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid #16a34a', background: 'rgba(34,197,94,0.08)', color: '#16a34a', fontSize: 11, fontWeight: 600, cursor: (o.edge_pct || 0) <= 0 ? 'not-allowed' : 'pointer', opacity: (o.edge_pct || 0) <= 0 ? 0.25 : 1 }}>✓</button>
                     <button onClick={() => handleAction(o, 'reject')} style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-muted)', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>✗</button>
                   </>);
                 })()}
