@@ -62,7 +62,8 @@ export default function ForecastTab() {
         {Object.entries(M.cityBrier || {}).sort((a, b) => Number(a[1]) - Number(b[1])).map(([city, brier]) => {
           const b = brier != null ? Number(brier) : null;
           const color = b == null ? '#8b949e' : b < 0.20 ? '#16a34a' : b < 0.30 ? '#ca8a04' : '#ef4444';
-          const pct = b != null ? Math.max(0, Math.min(100, ((0.25 - b) / 0.25) * 100)) : 0;
+          // Cities over 0.25 get a 3% sliver so the row isn't visually blank.
+          const pct = b != null ? Math.max(3, Math.min(100, ((0.25 - b) / 0.25) * 100)) : 0;
           return (
             <div key={city} style={{ marginBottom: 10 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 5 }}>
