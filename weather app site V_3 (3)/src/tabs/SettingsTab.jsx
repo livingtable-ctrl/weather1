@@ -261,7 +261,11 @@ export default function SettingsTab() {
               {(cronState.status === 'idle')  && (() => {
                 const meta = M.signalsMeta;
                 if (!meta?.generatedAt) return 'Run a market scan to refresh signals and place paper trades if edges are found.';
-                const ageMin = Math.round((Date.now() - new Date(meta.generatedAt)) / 60000);
+                // Server always sends UTC; if no timezone suffix, append Z so the browser
+                // doesn't parse as local time and produce a negative age.
+                const ts = meta.generatedAt;
+                const utcTs = (ts.includes('+') || ts.endsWith('Z')) ? ts : ts + 'Z';
+                const ageMin = Math.round((Date.now() - new Date(utcTs)) / 60000);
                 const label = ageMin < 60 ? `${ageMin}m ago` : `${Math.floor(ageMin / 60)}h ${ageMin % 60}m ago`;
                 return `Last scan: ${label}. Run again to refresh signals.`;
               })()}
