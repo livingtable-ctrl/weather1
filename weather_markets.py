@@ -839,7 +839,7 @@ def _forecast_model_weights(month: int, city: str | None = None) -> dict[str, fl
         elif enso_phase == "la_nina":
             ecmwf_w += 0.3  # La Niña winters: moderate ECMWF boost
 
-    return {"gfs_seamless": 1.0, "ecmwf_ifs04": ecmwf_w, "icon_seamless": 1.0}
+    return {"gfs_seamless": 1.0, "ecmwf_aifs025_ensemble": 1.0, "icon_seamless": 1.0}
 
 
 def get_weather_forecast(city: str, target_date: date) -> dict | None:
@@ -1223,7 +1223,7 @@ def batch_prewarm_ensemble(
     lats = [c[1][0] for c in coords_list]
     lons = [c[1][1] for c in coords_list]
 
-    ensemble_models = [*ENSEMBLE_MODELS, "ecmwf_ifs04"]
+    ensemble_models = [*ENSEMBLE_MODELS, "ecmwf_aifs025_ensemble"]
     vars_to_fetch = [("max", "temperature_2m_max"), ("min", "temperature_2m_min")]
     total_calls = len(ensemble_models) * len(vars_to_fetch)
     call_num = 0

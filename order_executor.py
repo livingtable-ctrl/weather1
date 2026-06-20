@@ -1328,6 +1328,7 @@ def _auto_place_trades(
                         edge_calc_version=_ECV2,
                         signal_source=a.get("method"),
                         blend_sources=a.get("blend_sources"),
+                        model_consensus=a.get("model_consensus"),
                     )
                 except Exception as _e2:
                     _log.warning(

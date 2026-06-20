@@ -23,7 +23,7 @@ DB_PATH.parent.mkdir(exist_ok=True)
 
 _db_initialized = False
 
-_SCHEMA_VERSION = 25  # increment when _MIGRATIONS list grows
+_SCHEMA_VERSION = 26  # increment when _MIGRATIONS list grows
 
 _MIGRATIONS = [
     # v1 → v2: add condition_type column (if not already added)
@@ -131,6 +131,10 @@ _MIGRATIONS = [
     )""",
     """CREATE UNIQUE INDEX IF NOT EXISTS idx_nsl_ticker_hour
         ON near_settlement_log(ticker, strftime('%Y-%m-%dT%H', recorded_at))""",
+    # v25 → v26: store ICON/GFS model consensus flag (1=agree, 0=disagree, NULL=unknown)
+    # so we can query whether the 0.5x Kelly multiplier in order_executor correlates with
+    # outcomes — the multiplier already fires but was never stored for analysis.
+    "ALTER TABLE predictions ADD COLUMN model_consensus INTEGER",
 ]
 
 
@@ -504,6 +508,7 @@ def log_prediction(
     clim_prob: float | None = None,
     edge_calc_version: str | None = None,
     signal_source: str | None = None,
+    model_consensus: bool | None = None,
 ) -> None:
     """Save a prediction to the database.
     Stores both the raw (pre-bias-correction) probability and the adjusted one (#53).
@@ -548,8 +553,8 @@ def log_prediction(
                edge, method, n_members, predicted_at, days_out, forecast_cycle,
                blend_sources, ensemble_prob, nws_prob, clim_prob, edge_calc_version,
                signal_source, predicted_date, obs_weight_used, local_hour,
-               forecast_temp_f)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'),?,?,?,?,?,?,?,?,?,?,?,?)
+               forecast_temp_f, model_consensus)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'),?,?,?,?,?,?,?,?,?,?,?,?,?)
             ON CONFLICT(ticker, predicted_date) DO UPDATE SET
                 our_prob         = excluded.our_prob,
                 raw_prob         = excluded.raw_prob,
@@ -567,7 +572,8 @@ def log_prediction(
                 signal_source    = excluded.signal_source,
                 obs_weight_used  = excluded.obs_weight_used,
                 local_hour       = excluded.local_hour,
-                forecast_temp_f  = excluded.forecast_temp_f
+                forecast_temp_f  = excluded.forecast_temp_f,
+                model_consensus  = excluded.model_consensus
             """,
             (
                 ticker,
@@ -594,6 +600,7 @@ def log_prediction(
                 analysis.get("obs_weight_used"),
                 analysis.get("local_hour"),
                 analysis.get("forecast_temp"),
+                int(model_consensus) if model_consensus is not None else None,
             ),
         )
 
