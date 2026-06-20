@@ -225,11 +225,18 @@ def _poll_pending_orders(client, config: dict | None = None) -> None:
                         execution_log.log_order_result(
                             row_id=order["id"], status="cancelled"
                         )
-                        _log.info(
-                            "[LIVE] pre-close GTC cancel: %s closes in %.0f min",
-                            order.get("ticker", "?"),
-                            _mins_to_close,
-                        )
+                        if _mins_to_close <= 0:
+                            _log.info(
+                                "[LIVE] pre-close GTC cancel: %s market already closed %.0f min ago",
+                                order.get("ticker", "?"),
+                                abs(_mins_to_close),
+                            )
+                        else:
+                            _log.info(
+                                "[LIVE] pre-close GTC cancel: %s closes in %.0f min",
+                                order.get("ticker", "?"),
+                                _mins_to_close,
+                            )
                         continue
                 except Exception as _exc:
                     _log.debug(
@@ -385,7 +392,7 @@ def _place_live_order(
         status="pending",
         forecast_cycle=cycle,
         live=True,
-        close_time=market.get("close_time"),
+        close_time=market.get("close_time") or market.get("expiration_time"),
     )
 
     # 6. Place order
@@ -1423,6 +1430,7 @@ def _auto_place_trades(
                         _micro_qty = max(1, math.floor(qty * MICRO_LIVE_FRACTION))
                         _micro_cost = _micro_price * _micro_qty
                         if _micro_cost >= MICRO_LIVE_MIN_DOLLARS:
+                            _micro_mkt = a.get("market", {})
                             _micro_log_id = execution_log.log_order(
                                 ticker=ticker,
                                 side=rec_side,
@@ -1432,6 +1440,8 @@ def _auto_place_trades(
                                 status="pending",
                                 forecast_cycle=cycle,
                                 live=True,
+                                close_time=_micro_mkt.get("close_time")
+                                or _micro_mkt.get("expiration_time"),
                             )
                             try:
                                 _micro_resp = client.place_order(
