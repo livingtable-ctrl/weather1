@@ -67,7 +67,8 @@ def init_log() -> None:
                 live           INTEGER DEFAULT 0, -- 1 if this is a live order
                 settled_at     TEXT,              -- ISO timestamp when settlement outcome was recorded
                 outcome_yes    INTEGER,           -- 1 if YES side won, 0 if NO side won
-                pnl            REAL               -- net P&L after Kalshi fee in dollars
+                pnl            REAL,              -- net P&L after Kalshi fee in dollars
+                close_time     TEXT               -- market close_time ISO string; used for pre-close GTC cancel
             );
 
             CREATE INDEX IF NOT EXISTS idx_orders_ticker    ON orders(ticker, placed_at);
@@ -90,6 +91,7 @@ def init_log() -> None:
             "ALTER TABLE orders ADD COLUMN settled_at TEXT",
             "ALTER TABLE orders ADD COLUMN outcome_yes INTEGER",
             "ALTER TABLE orders ADD COLUMN pnl REAL",
+            "ALTER TABLE orders ADD COLUMN close_time TEXT",
         ]
         with _conn() as con:
             for stmt in migrations:
@@ -114,6 +116,7 @@ def log_order(
     error_type: str | None = None,
     forecast_cycle: str | None = None,
     live: bool = False,
+    close_time: str | None = None,
 ) -> int:
     """
     Record a live order attempt. Returns the new row ID.
@@ -125,8 +128,9 @@ def log_order(
             """
             INSERT INTO orders
               (ticker, side, quantity, price, order_type, status, response, error,
-               placed_at, fill_quantity, error_code, error_type, forecast_cycle, live)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+               placed_at, fill_quantity, error_code, error_type, forecast_cycle, live,
+               close_time)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 ticker,
@@ -143,6 +147,7 @@ def log_order(
                 error_type,
                 forecast_cycle,
                 int(live),
+                close_time,
             ),
         )
         return cur.lastrowid or 0

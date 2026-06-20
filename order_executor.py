@@ -171,6 +171,10 @@ def _recover_pending_orders(client) -> None:
             _log.warning("[Recovery] %s row %d: lookup failed: %s", ticker, row_id, exc)
 
 
+# Cancel GTC orders this many minutes before market close — prevents leaving
+# an open order on a market that is about to expire unfilled.
+_GTC_PRECLOSE_CANCEL_MINUTES = 30
+
 # ---------------------------------------------------------------------------
 # Live order lifecycle
 # ---------------------------------------------------------------------------
@@ -204,6 +208,35 @@ def _poll_pending_orders(client, config: dict | None = None) -> None:
             order_id = response.get("order", {}).get("order_id") if response else None
             if not order_id:
                 continue
+
+            # Pre-close cancel — cancel before market expires rather than waiting
+            # for the flat 24h GTC timer. A market closing at 08:00 UTC with an
+            # order placed at 20:00 UTC would otherwise stay "pending" until 20:00
+            # UTC the next day, 12h after the market already closed unfilled.
+            _close_time_str = order.get("close_time")
+            if _close_time_str:
+                try:
+                    _close_dt = datetime.fromisoformat(
+                        _close_time_str.replace("Z", "+00:00")
+                    )
+                    _mins_to_close = (_close_dt - now_utc).total_seconds() / 60
+                    if _mins_to_close <= _GTC_PRECLOSE_CANCEL_MINUTES:
+                        client.cancel_order(order_id)
+                        execution_log.log_order_result(
+                            row_id=order["id"], status="cancelled"
+                        )
+                        _log.info(
+                            "[LIVE] pre-close GTC cancel: %s closes in %.0f min",
+                            order.get("ticker", "?"),
+                            _mins_to_close,
+                        )
+                        continue
+                except Exception as _exc:
+                    _log.debug(
+                        "[LIVE] pre-close cancel check failed for %s: %s",
+                        order.get("ticker", "?"),
+                        _exc,
+                    )
 
             # GTC age check — cancel orders older than gtc_cancel_hours
             try:
@@ -352,6 +385,7 @@ def _place_live_order(
         status="pending",
         forecast_cycle=cycle,
         live=True,
+        close_time=market.get("close_time"),
     )
 
     # 6. Place order
