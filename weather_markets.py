@@ -2424,7 +2424,11 @@ def _model_weights(city: str, month: int | None = None) -> dict[str, float]:
         # completely abandon meteorological priors with limited data
         is_winter = (month or 0) in (10, 11, 12, 1, 2, 3)
         ecmwf_prior = 2.0 if is_winter else 1.5
-        prior = {"icon_seamless": 1.0, "gfs_seamless": 1.0, "ecmwf_ifs04": ecmwf_prior}
+        prior = {
+            "icon_seamless": 1.0,
+            "gfs_seamless": 1.0,
+            "ecmwf_aifs025_ensemble": ecmwf_prior,
+        }
         blended: dict[str, float] = {}
         for m in set(mae_weights) | set(prior):
             blended[m] = 0.7 * mae_weights.get(m, 1.0) + 0.3 * prior.get(m, 1.0)
@@ -2455,7 +2459,11 @@ def _model_weights(city: str, month: int | None = None) -> dict[str, float]:
     else:
         ecmwf_w = 1.5  # conservative default
 
-    return {"icon_seamless": 1.0, "gfs_seamless": 1.0, "ecmwf_ifs04": ecmwf_w}
+    return {
+        "icon_seamless": 1.0,
+        "gfs_seamless": 1.0,
+        "ecmwf_aifs025_ensemble": ecmwf_w,
+    }
 
 
 def check_ensemble_circuit_health() -> None:
@@ -2509,7 +2517,7 @@ def get_ensemble_temps(
     decay = 1.0
 
     all_temps: list[float] = []
-    ensemble_models_with_ecmwf = [*ENSEMBLE_MODELS, "ecmwf_ifs04"]
+    ensemble_models_with_ecmwf = [*ENSEMBLE_MODELS, "ecmwf_aifs025_ensemble"]
     for model in ensemble_models_with_ecmwf:
         try:
             temps = _fetch_model_ensemble(lat, lon, tz, target_date, model, hour, var)
@@ -2566,10 +2574,10 @@ def get_ensemble_members(
     tz: str = "UTC",
 ) -> list[float] | None:
     """
-    Fetch all ECMWF IFS04 ensemble members for daily high (var='max') or
+    Fetch all ECMWF AIFS ensemble members for daily high (var='max') or
     low (var='min') temperature on target_date. Returns values in °F.
 
-    Uses _fetch_model_ensemble (daily endpoint) so the 51 per-member daily
+    Uses _fetch_model_ensemble (daily endpoint) so the 50 per-member daily
     aggregates come directly from Open-Meteo without manual hourly max/min
     computation. Disk-caches to data/ensemble_cache/ for the session TTL.
     """
@@ -2587,7 +2595,7 @@ def get_ensemble_members(
     try:
         target_date = date.fromisoformat(target_date_str)
         members = _fetch_model_ensemble(
-            lat, lon, tz, target_date, "ecmwf_ifs04", None, var
+            lat, lon, tz, target_date, "ecmwf_aifs025_ensemble", None, var
         )
     except Exception as _e:
         _log.debug("get_ensemble_members: fetch failed: %s", _e)
@@ -2595,7 +2603,7 @@ def get_ensemble_members(
 
     if len(members) < 10:
         _log.debug(
-            "get_ensemble_members: only %d ECMWF IFS04 members returned", len(members)
+            "get_ensemble_members: only %d AIFS ensemble members returned", len(members)
         )
         return None
 
