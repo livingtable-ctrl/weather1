@@ -74,7 +74,7 @@ class TestFetchMos:
 
         assert mos.get_mos_station("NYC") == "KNYC"
         assert mos.get_mos_station("MIA") == "KMIA"
-        assert mos.get_mos_station("CHI") == "KORD"
+        assert mos.get_mos_station("CHI") == "KMDW"
         assert mos.get_mos_station("LAX") == "KLAX"
         assert mos.get_mos_station("DAL") == "KDFW"
 

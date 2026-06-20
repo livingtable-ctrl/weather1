@@ -23,7 +23,7 @@ _MOS_URL = "https://mesonet.agron.iastate.edu/api/1/mos.json"
 _CITY_STATION: dict[str, str] = {
     "NYC": "KNYC",
     "MIA": "KMIA",
-    "CHI": "KORD",
+    "CHI": "KMDW",
     "LAX": "KLAX",
     "DAL": "KDFW",
     "DEN": "KDEN",  # B3: Denver added — mountain terrain makes MOS post-processing especially valuable

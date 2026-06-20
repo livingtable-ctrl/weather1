@@ -228,7 +228,7 @@ _STATION_BIAS_HIGH: dict[str, float] = {
     # Mountain
     "Denver": 2.0,  # KDEN: Mountain terrain uncertainty, conservative correction
     # Midwest
-    "Chicago": 0.5,  # KORD: Minor warm bias
+    "Chicago": 0.5,  # KMDW: Minor warm bias
     "Minneapolis": 1.5,  # KMSP: Continental interior; GFS warm bias stronger than coasts
     # West Coast
     "LA": 0.0,  # KLAX: Marine influence largely corrects GFS bias
@@ -254,7 +254,7 @@ _STATION_BIAS_LOW: dict[str, float] = {
     # Mountain
     "Denver": 1.0,  # Denver nights: model still warm but less extreme
     # Midwest
-    "Chicago": 0.0,  # KORD lows: no consistent bias observed
+    "Chicago": 0.0,  # KMDW lows: no consistent bias observed
     "Minneapolis": 0.5,  # KMSP nights
     # West Coast
     "LA": 0.0,  # KLAX: No known systematic bias
@@ -2810,7 +2810,7 @@ def get_weather_markets(
         "KXHIGHTOKC",
         "KXHIGHTSFO",
         "KXHIGHTMIN",
-        "KXHIGHHOUM",
+        "KXHIGHTHOU",
         "KXHIGHTSATX",
         "KXLOWNY",
         "KXLOWCHI",
@@ -2828,7 +2828,7 @@ def get_weather_markets(
         "KXLOWTOKC",
         "KXLOWTSFO",
         "KXLOWTMIN",
-        "KXLOWHOUM",
+        "KXLOWTHOU",
         "KXLOWTSATX",
         "KXRAIN",
         "KXSNOW",

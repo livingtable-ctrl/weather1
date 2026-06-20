@@ -29,7 +29,7 @@ _SIGNALS_PATH.parent.mkdir(exist_ok=True)
 _MONITOR_CITIES = {
     "NYC": {"station": "KNYC", "tz": "America/New_York"},
     "MIA": {"station": "KMIA", "tz": "America/New_York"},
-    "CHI": {"station": "KORD", "tz": "America/Chicago"},
+    "CHI": {"station": "KMDW", "tz": "America/Chicago"},
     "LAX": {"station": "KLAX", "tz": "America/Los_Angeles"},
     "DAL": {"station": "KDFW", "tz": "America/Chicago"},
     "BOS": {"station": "KBOS", "tz": "America/New_York"},
@@ -65,7 +65,7 @@ _CITY_SERIES_TICKER = {
     "OKC": "KXHIGHTOKC",
     "SFO": "KXHIGHTSFO",
     "MSP": "KXHIGHTMIN",
-    "HOU": "KXHIGHHOUM",
+    "HOU": "KXHIGHTHOU",
     "SAT": "KXHIGHTSATX",
 }
 
