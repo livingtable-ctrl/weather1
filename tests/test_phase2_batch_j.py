@@ -182,7 +182,7 @@ class TestMetarStationForCityAllCities:
 
     EXPECTED_STATIONS = {
         "NYC": "KNYC",
-        "Chicago": "KORD",
+        "Chicago": "KMDW",
         "LA": "KLAX",
         "Miami": "KMIA",
         "Boston": "KBOS",
@@ -197,7 +197,7 @@ class TestMetarStationForCityAllCities:
         "OklahomaCity": "KOKC",
         "SanFrancisco": "KSFO",
         "Minneapolis": "KMSP",
-        "Houston": "KIAH",
+        "Houston": "KHOU",
         "SanAntonio": "KSAT",
     }
 

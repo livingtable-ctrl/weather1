@@ -181,7 +181,7 @@ def _load_city_coords() -> dict:
     # Hardcoded fallback (exact settlement station coordinates)
     return {
         "NYC": (40.7789, -73.9692, "America/New_York"),
-        "Chicago": (41.9803, -87.9090, "America/Chicago"),
+        "Chicago": (41.7868, -87.7522, "America/Chicago"),
         "LA": (34.0190, -118.2910, "America/Los_Angeles"),
         "Miami": (25.8175, -80.3164, "America/New_York"),
         "Boston": (42.3606, -71.0106, "America/New_York"),
@@ -197,7 +197,7 @@ def _load_city_coords() -> dict:
         "OklahomaCity": (35.3931, -97.6008, "America/Chicago"),
         "SanFrancisco": (37.6190, -122.3750, "America/Los_Angeles"),
         "Minneapolis": (44.8848, -93.2223, "America/Chicago"),
-        "Houston": (29.9902, -95.3368, "America/Chicago"),
+        "Houston": (29.6454, -95.2789, "America/Chicago"),
         "SanAntonio": (29.5337, -98.4698, "America/Chicago"),
     }
 
@@ -345,7 +345,7 @@ _CITY_TZ: dict[str, str] = {
 # City → primary ICAO observation station (mirrors metar.MARKET_STATION_MAP)
 _CITY_METAR_STATION: dict[str, str] = {
     "NYC": "KNYC",
-    "Chicago": "KORD",
+    "Chicago": "KMDW",
     "LA": "KLAX",
     "Miami": "KMIA",
     "Boston": "KBOS",
@@ -360,7 +360,7 @@ _CITY_METAR_STATION: dict[str, str] = {
     "OklahomaCity": "KOKC",
     "SanFrancisco": "KSFO",
     "Minneapolis": "KMSP",
-    "Houston": "KIAH",
+    "Houston": "KHOU",
     "SanAntonio": "KSAT",
 }
 
@@ -2928,7 +2928,7 @@ def _parse_city_from_ticker(ticker: str, title: str = "") -> str | None:
         return "SanFrancisco"
     if "TMIN" in ticker_up or "minneapolis" in title_lo:
         return "Minneapolis"
-    if "HOUM" in ticker_up or "houston" in title_lo:
+    if "THOU" in ticker_up or "houston" in title_lo:
         return "Houston"
     if "TSATX" in ticker_up or "san antonio" in title_lo:
         return "SanAntonio"
