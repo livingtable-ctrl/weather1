@@ -1357,6 +1357,8 @@ def _auto_place_trades(
                             pass
                     elif hasattr(_pred_date_raw, "isoformat"):
                         _pred_date = _pred_date_raw
+                    _es2 = a.get("ensemble_stats") or {}
+                    _std2 = _es2.get("std")
                     _log_pred(
                         ticker,
                         city,
@@ -1370,6 +1372,8 @@ def _auto_place_trades(
                         signal_source=a.get("method"),
                         blend_sources=a.get("blend_sources"),
                         model_consensus=a.get("model_consensus"),
+                        ens_mean=_es2.get("mean"),
+                        ens_var=(_std2 * _std2 if _std2 is not None else None),
                     )
                 except Exception as _e2:
                     _log.warning(

@@ -1126,6 +1126,8 @@ def cmd_market(client: KalshiClient, ticker: str, verbose: bool = False):
         try:
             from weather_markets import EDGE_CALC_VERSION as _ECV
 
+            _es = analysis.get("ensemble_stats") or {}
+            _std = _es.get("std")
             log_prediction(
                 ticker,
                 enriched.get("_city"),
@@ -1138,6 +1140,8 @@ def cmd_market(client: KalshiClient, ticker: str, verbose: bool = False):
                 edge_calc_version=_ECV,
                 signal_source=analysis.get("method"),
                 blend_sources=analysis.get("blend_sources"),
+                ens_mean=_es.get("mean"),
+                ens_var=(_std * _std if _std is not None else None),
             )
         except Exception as _exc:
             logging.getLogger(__name__).warning(
