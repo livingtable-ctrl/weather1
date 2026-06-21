@@ -1029,6 +1029,18 @@ def count_settled_sameday_predictions() -> int:
     return row[0] if row else 0
 
 
+def count_emos_ready_predictions() -> int:
+    """Count multi-day predictions that have ens_mean populated (EMOS training rows)."""
+    init_db()
+    with _conn() as con:
+        row = con.execute(
+            "SELECT COUNT(*) FROM multiday_predictions p "
+            "JOIN outcomes o ON p.ticker = o.ticker "
+            "WHERE p.ens_mean IS NOT NULL AND p.ens_var IS NOT NULL"
+        ).fetchone()
+    return row[0] if row else 0
+
+
 def count_settled_below_predictions() -> int:
     """Count multi-day below-type predictions with a known outcome."""
     init_db()

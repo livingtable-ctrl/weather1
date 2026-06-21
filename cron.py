@@ -541,6 +541,39 @@ def _cmd_cron_body(
     except Exception:
         pass
 
+    # EMOS readiness reminder: print until emos_params.json exists (training done).
+    # Reminds operator to run backfill-emos and, once ~25 rows accumulated, emos-train.
+    _EMOS_PARAMS_PATH = Path(__file__).parent / "data" / "emos_params.json"
+    if not _EMOS_PARAMS_PATH.exists():
+        try:
+            from tracker import count_emos_ready_predictions
+
+            _emos_n = count_emos_ready_predictions()
+            _EMOS_TRAIN_GATE = 25
+            if _emos_n == 0:
+                print(
+                    yellow(
+                        f"  [EMOS] ens_mean rows: {_emos_n}/{_EMOS_TRAIN_GATE} — "
+                        f"run 'py main.py backfill-emos' to populate history."
+                    )
+                )
+            elif _emos_n < _EMOS_TRAIN_GATE:
+                print(
+                    yellow(
+                        f"  [EMOS] ens_mean rows: {_emos_n}/{_EMOS_TRAIN_GATE} — "
+                        f"accumulating; run 'py main.py backfill-emos' if new trades settled."
+                    )
+                )
+            else:
+                print(
+                    yellow(
+                        f"  [EMOS] ens_mean rows: {_emos_n} — READY. "
+                        f"Implement and run 'py main.py emos-train' to fit EMOS parameters."
+                    )
+                )
+        except Exception:
+            pass
+
     # Weekly DB retention sweep (runs on Monday only, at most once per 7 days).
     # Uses a marker file so back-to-back cron runs on the same Monday don't
     # re-run the sweep.  A skipped Monday is handled automatically: next Monday
