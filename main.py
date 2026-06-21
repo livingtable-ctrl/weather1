@@ -4724,6 +4724,38 @@ def cmd_calibrate() -> None:
     print("\nRestart the app (or re-import weather_markets) to pick up new weights.")
 
 
+def cmd_backfill_emos() -> None:
+    """Backfill EMOS training columns for historical settled predictions.
+
+    Part 1 — settled_temp_f: re-runs audit_settlement for any outcome that is
+    missing the observed temperature (trades settled before that column existed).
+
+    Part 2 — ens_mean/ens_var: fetches historical ensemble members from Open-Meteo
+    (ICON + GFS + ECMWF AIFS when available) for each multi-day prediction that was
+    placed without these columns.  Required before running py main.py emos-train.
+
+    Safe to re-run — already-filled rows are skipped by the SQL WHERE clause.
+    """
+    from tracker import backfill_emos_data
+
+    print("Running EMOS backfill (settled_temp_f + ens_mean/ens_var)…")
+    try:
+        temp_filled, ens_filled = backfill_emos_data()
+        print(
+            f"\nDone — settled_temp_f filled: {temp_filled}, ens_mean/ens_var filled: {ens_filled}"
+        )
+        if ens_filled == 0:
+            print(
+                dim(
+                    "  No ens_mean/ens_var filled — Open-Meteo archive may not have data "
+                    "older than ~6 months, or no settled multi-day predictions exist yet."
+                )
+            )
+    except Exception as exc:
+        print(red(f"Backfill failed: {exc}"))
+        raise
+
+
 # ── Interactive menu ──────────────────────────────────────────────────────────
 
 
@@ -7057,6 +7089,8 @@ def main():
         cmd_today(client)
     elif cmd == "calibrate":
         cmd_calibrate()
+    elif cmd in ("backfill-emos", "backfill_emos"):
+        cmd_backfill_emos()
     elif cmd in ("settings", "config-settings"):
         cmd_settings(client)
     elif cmd == "onboard":

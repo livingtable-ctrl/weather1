@@ -1917,6 +1917,174 @@ def audit_settlement(ticker: str, settled_yes: bool) -> None:
         _log.debug("audit_settlement: skipped for %s: %s", ticker, exc)
 
 
+def _fetch_ensemble_members_historical(
+    lat: float, lon: float, tz: str, target_date: date, model: str, var: str
+) -> list[float]:
+    """Fetch historical ensemble member temps from Open-Meteo for a settled trade date.
+
+    Uses start_date/end_date so the archive is accessible (the live forecast endpoint
+    only covers the next 16 days, not past dates).  Returns [] if the model or date
+    has no available data.
+    """
+    import requests as _req
+
+    daily_var = "temperature_2m_max" if var == "max" else "temperature_2m_min"
+    try:
+        resp = _req.get(
+            "https://ensemble-api.open-meteo.com/v1/ensemble",
+            params={
+                "latitude": str(lat),
+                "longitude": str(lon),
+                "models": model,
+                "temperature_unit": "fahrenheit",
+                "timezone": tz,
+                "daily": daily_var,
+                "start_date": target_date.isoformat(),
+                "end_date": target_date.isoformat(),
+            },
+            timeout=15,
+        )
+        resp.raise_for_status()
+    except Exception:
+        return []
+
+    data = resp.json()
+    if not isinstance(data, dict):
+        return []
+    daily = data.get("daily", {})
+    times = daily.get("time", [])
+    if target_date.isoformat() not in times:
+        return []
+    idx = times.index(target_date.isoformat())
+    prefix = f"{daily_var}_member"
+    return [
+        daily[k][idx]
+        for k in daily
+        if k.startswith(prefix) and daily[k][idx] is not None
+    ]
+
+
+def backfill_emos_data() -> tuple[int, int]:
+    """Backfill EMOS training data for all settled predictions.
+
+    Part 1 — settled_temp_f: calls audit_settlement for every outcome row where the
+    actual observed temperature was not stored (pre-dates the store-temp code).
+
+    Part 2 — ens_mean/ens_var: fetches historical ensemble members from Open-Meteo
+    (ICON + GFS + ECMWF AIFS if available) for each multi-day prediction that is
+    missing these columns.  Combines members the same way the live system does and
+    stores mean and variance (variance = std²) in the predictions table.
+
+    Returns (settled_temp_filled, ens_filled) counts.
+    """
+    init_db()
+
+    # ── Part 1: settled_temp_f ────────────────────────────────────────────────
+    with _conn() as con:
+        null_temp_rows = con.execute(
+            "SELECT o.ticker, o.settled_yes FROM outcomes o WHERE o.settled_temp_f IS NULL"
+        ).fetchall()
+
+    print(f"[backfill] Part 1: {len(null_temp_rows)} outcomes missing settled_temp_f")
+    settled_temp_filled = 0
+    for row in null_temp_rows:
+        try:
+            audit_settlement(row["ticker"], bool(row["settled_yes"]))
+            with _conn() as con:
+                chk = con.execute(
+                    "SELECT settled_temp_f FROM outcomes WHERE ticker = ?",
+                    (row["ticker"],),
+                ).fetchone()
+            if chk and chk["settled_temp_f"] is not None:
+                settled_temp_filled += 1
+                print(f"  temp OK {row['ticker']}: {chk['settled_temp_f']}°F")
+        except Exception as exc:
+            _log.debug("backfill settled_temp_f %s: %s", row["ticker"], exc)
+
+    # ── Part 2: ens_mean / ens_var ────────────────────────────────────────────
+    with _conn() as con:
+        null_ens_rows = con.execute(
+            """
+            SELECT p.ticker, p.city, p.market_date, p.condition_type
+            FROM predictions p
+            JOIN outcomes o ON p.ticker = o.ticker
+            WHERE p.ens_mean IS NULL
+              AND p.market_date IS NOT NULL
+              AND (p.days_out IS NULL OR p.days_out >= 1)
+            ORDER BY p.market_date
+            """
+        ).fetchall()
+
+    print(
+        f"[backfill] Part 2: {len(null_ens_rows)} multi-day predictions missing ens_mean/ens_var"
+    )
+
+    try:
+        from weather_markets import CITY_COORDS as _coords
+        from weather_markets import ensemble_stats as _ens_stats
+    except Exception as exc:
+        print(f"  ERROR: cannot import weather_markets: {exc}")
+        return settled_temp_filled, 0
+
+    # Try all three models; AIFS may return [] for older dates — that's fine.
+    _ens_models = ["icon_seamless", "gfs_seamless", "ecmwf_aifs025_ensemble"]
+    ens_filled = 0
+
+    for row in null_ens_rows:
+        ticker = row["ticker"]
+        city = row["city"]
+        market_date_str = row["market_date"]
+        cond_type = row["condition_type"] or ""
+
+        if city not in _coords or not market_date_str:
+            continue
+
+        lat, lon, tz = _coords[city]
+
+        ticker_upper = ticker.upper()
+        if "HIGH" in ticker_upper or cond_type == "above":
+            var = "max"
+        elif "LOWT" in ticker_upper or "LOW" in ticker_upper or cond_type == "below":
+            var = "min"
+        elif cond_type == "between":
+            var = "max"
+        else:
+            continue
+
+        try:
+            target_date = date.fromisoformat(market_date_str)
+        except ValueError:
+            continue
+
+        all_temps: list[float] = []
+        for model in _ens_models:
+            members = _fetch_ensemble_members_historical(
+                lat, lon, tz, target_date, model, var
+            )
+            all_temps.extend(members)
+
+        if len(all_temps) < 10:
+            print(f"  SKIP {ticker}: only {len(all_temps)} members (no archive data?)")
+            continue
+
+        stats = _ens_stats(all_temps)
+        ens_mean_val = round(stats["mean"], 3)
+        ens_var_val = round(stats["std"] ** 2, 6)
+
+        with _conn() as con:
+            con.execute(
+                "UPDATE predictions SET ens_mean = ?, ens_var = ? WHERE ticker = ?",
+                (ens_mean_val, ens_var_val, ticker),
+            )
+        ens_filled += 1
+        print(
+            f"  ens OK {ticker}: mean={ens_mean_val:.1f}°F var={ens_var_val:.2f}"
+            f" ({len(all_temps)} members)"
+        )
+
+    return settled_temp_filled, ens_filled
+
+
 def sync_outcomes(client) -> int:
     """
     Check settled markets in the DB against Kalshi and record outcomes.
