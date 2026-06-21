@@ -1929,6 +1929,7 @@ def _fetch_ensemble_members_historical(
     import requests as _req
 
     daily_var = "temperature_2m_max" if var == "max" else "temperature_2m_min"
+    date_str = target_date.isoformat()  # computed once; used four times below
     try:
         resp = _req.get(
             "https://ensemble-api.open-meteo.com/v1/ensemble",
@@ -1939,8 +1940,8 @@ def _fetch_ensemble_members_historical(
                 "temperature_unit": "fahrenheit",
                 "timezone": tz,
                 "daily": daily_var,
-                "start_date": target_date.isoformat(),
-                "end_date": target_date.isoformat(),
+                "start_date": date_str,
+                "end_date": date_str,
             },
             timeout=15,
         )
@@ -1953,15 +1954,19 @@ def _fetch_ensemble_members_historical(
         return []
     daily = data.get("daily", {})
     times = daily.get("time", [])
-    if target_date.isoformat() not in times:
+    if date_str not in times:
         return []
-    idx = times.index(target_date.isoformat())
+    idx = times.index(date_str)
     prefix = f"{daily_var}_member"
-    return [
-        daily[k][idx]
-        for k in daily
-        if k.startswith(prefix) and daily[k][idx] is not None
-    ]
+    try:
+        return [
+            daily[k][idx]
+            for k in daily
+            if k.startswith(prefix) and daily[k][idx] is not None
+        ]
+    except IndexError:
+        # Malformed response: a member key has fewer entries than expected.
+        return []
 
 
 def backfill_emos_data() -> tuple[int, int]:
@@ -1972,8 +1977,8 @@ def backfill_emos_data() -> tuple[int, int]:
 
     Part 2 — ens_mean/ens_var: fetches historical ensemble members from Open-Meteo
     (ICON + GFS + ECMWF AIFS if available) for each multi-day prediction that is
-    missing these columns.  Combines members the same way the live system does and
-    stores mean and variance (variance = std²) in the predictions table.
+    missing either column.  Applies the same per-model replication weights as the
+    live get_ensemble_temps() so backfill ens_mean/ens_var match the live distribution.
 
     Returns (settled_temp_filled, ens_filled) counts.
     """
@@ -1999,19 +2004,26 @@ def backfill_emos_data() -> tuple[int, int]:
                 settled_temp_filled += 1
                 print(f"  temp OK {row['ticker']}: {chk['settled_temp_f']}°F")
         except Exception as exc:
-            _log.debug("backfill settled_temp_f %s: %s", row["ticker"], exc)
+            print(f"  SKIP {row['ticker']}: {exc}")
 
     # ── Part 2: ens_mean / ens_var ────────────────────────────────────────────
     with _conn() as con:
+        # DISTINCT eliminates duplicate rows from multi-day re-scans of the same
+        # ticker — each market needs only one API fetch regardless of how many
+        # predicted_date rows it accumulated.
+        # OR filter catches partial writes (ens_mean set but ens_var NULL or vice
+        # versa), which can't happen under normal operation but defends against crashes.
+        # DESC order: process newest dates first so recent data is filled before the
+        # consecutive-skip circuit breaker aborts on old no-archive rows.
         null_ens_rows = con.execute(
             """
-            SELECT p.ticker, p.city, p.market_date, p.condition_type
+            SELECT DISTINCT p.ticker, p.city, p.market_date, p.condition_type
             FROM predictions p
             JOIN outcomes o ON p.ticker = o.ticker
-            WHERE p.ens_mean IS NULL
+            WHERE (p.ens_mean IS NULL OR p.ens_var IS NULL)
               AND p.market_date IS NOT NULL
               AND (p.days_out IS NULL OR p.days_out >= 1)
-            ORDER BY p.market_date
+            ORDER BY p.market_date DESC
             """
         ).fetchall()
 
@@ -2021,14 +2033,15 @@ def backfill_emos_data() -> tuple[int, int]:
 
     try:
         from weather_markets import CITY_COORDS as _coords
+        from weather_markets import _model_weights as _wm_weights
         from weather_markets import ensemble_stats as _ens_stats
     except Exception as exc:
         print(f"  ERROR: cannot import weather_markets: {exc}")
         return settled_temp_filled, 0
 
-    # Try all three models; AIFS may return [] for older dates — that's fine.
     _ens_models = ["icon_seamless", "gfs_seamless", "ecmwf_aifs025_ensemble"]
     ens_filled = 0
+    consecutive_skip = 0  # circuit breaker: abort if Open-Meteo archive is down
 
     for row in null_ens_rows:
         ticker = row["ticker"]
@@ -2056,17 +2069,31 @@ def backfill_emos_data() -> tuple[int, int]:
         except ValueError:
             continue
 
+        # Apply the same per-model weights as get_ensemble_temps() so the stored
+        # ens_mean/ens_var match what the live system computes (ECMWF AIFS is
+        # weighted 1.5x–2x via member replication; flat extend would skew the mean).
+        weights = _wm_weights(city, month=target_date.month)
         all_temps: list[float] = []
         for model in _ens_models:
             members = _fetch_ensemble_members_historical(
                 lat, lon, tz, target_date, model, var
             )
-            all_temps.extend(members)
+            if members:
+                repeats = max(1, round(weights.get(model, 1.0) * 2))
+                all_temps.extend(members * repeats)
 
         if len(all_temps) < 10:
+            consecutive_skip += 1
             print(f"  SKIP {ticker}: only {len(all_temps)} members (no archive data?)")
+            if consecutive_skip >= 5:
+                print(
+                    "  [backfill] 5 consecutive SKIP rows — Open-Meteo archive "
+                    "unavailable for these dates, stopping Part 2 early."
+                )
+                break
             continue
 
+        consecutive_skip = 0
         stats = _ens_stats(all_temps)
         ens_mean_val = round(stats["mean"], 3)
         ens_var_val = round(stats["std"] ** 2, 6)
