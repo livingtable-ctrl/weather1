@@ -542,14 +542,15 @@ def _cmd_cron_body(
         pass
 
     # EMOS readiness reminder: print until emos_params.json exists (training done).
-    # Reminds operator to run backfill-emos and, once ~25 rows accumulated, emos-train.
+    # Reminds operator to run backfill-emos and, once ~40 rows accumulated, emos-train.
+    # 40 = Gneiting 2005 minimum: 10 forecast cases per parameter × 4 EMOS parameters.
     _EMOS_PARAMS_PATH = Path(__file__).parent / "data" / "emos_params.json"
     if not _EMOS_PARAMS_PATH.exists():
         try:
             from tracker import count_emos_ready_predictions
 
             _emos_n = count_emos_ready_predictions()
-            _EMOS_TRAIN_GATE = 25
+            _EMOS_TRAIN_GATE = 40
             if _emos_n == 0:
                 print(
                     yellow(
