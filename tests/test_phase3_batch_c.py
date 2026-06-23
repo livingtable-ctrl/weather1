@@ -26,6 +26,8 @@ def _make_db(tmp_path: Path, rows: list[dict]) -> Path:
                 days_out INTEGER
             );
             CREATE TABLE outcomes (ticker TEXT PRIMARY KEY, settled_yes INTEGER);
+            CREATE VIEW multiday_predictions AS
+                SELECT * FROM predictions WHERE days_out IS NULL OR days_out >= 1;
         """)
         for r in rows:
             con.execute(

@@ -243,13 +243,17 @@ class TestForecastModelWeights(unittest.TestCase):
         """ECMWF should have weight 2.5 in winter months (Oct–Mar)."""
         for month in (10, 11, 12, 1, 2, 3):
             weights = _forecast_model_weights(month)
-            self.assertAlmostEqual(weights["ecmwf_ifs04"], 2.5, msg=f"month={month}")
+            self.assertAlmostEqual(
+                weights["ecmwf_aifs025_ensemble"], 2.5, msg=f"month={month}"
+            )
 
     def test_ecmwf_weight_summer(self):
         """ECMWF should have weight 1.5 in summer months (Apr–Sep)."""
         for month in (4, 5, 6, 7, 8, 9):
             weights = _forecast_model_weights(month)
-            self.assertAlmostEqual(weights["ecmwf_ifs04"], 1.5, msg=f"month={month}")
+            self.assertAlmostEqual(
+                weights["ecmwf_aifs025_ensemble"], 1.5, msg=f"month={month}"
+            )
 
     def test_gfs_and_icon_constant(self):
         """GFS and ICON weights should be 1.0 year-round."""

@@ -91,10 +91,10 @@ class TestEnsoPhase:
         from weather_markets import _forecast_model_weights
 
         with patch("weather_markets._get_enso_phase", return_value="neutral"):
-            neutral_w = _forecast_model_weights(1)["ecmwf_ifs04"]
+            neutral_w = _forecast_model_weights(1)["ecmwf_aifs025_ensemble"]
 
         with patch("weather_markets._get_enso_phase", return_value="el_nino"):
-            el_nino_w = _forecast_model_weights(1)["ecmwf_ifs04"]
+            el_nino_w = _forecast_model_weights(1)["ecmwf_aifs025_ensemble"]
 
         assert el_nino_w >= neutral_w
 
@@ -103,10 +103,10 @@ class TestEnsoPhase:
         from weather_markets import _forecast_model_weights
 
         with patch("weather_markets._get_enso_phase", return_value="neutral"):
-            neutral_w = _forecast_model_weights(1)["ecmwf_ifs04"]
+            neutral_w = _forecast_model_weights(1)["ecmwf_aifs025_ensemble"]
 
         with patch("weather_markets._get_enso_phase", return_value="la_nina"):
-            la_nina_w = _forecast_model_weights(1)["ecmwf_ifs04"]
+            la_nina_w = _forecast_model_weights(1)["ecmwf_aifs025_ensemble"]
 
         assert la_nina_w >= neutral_w
 
@@ -115,7 +115,7 @@ class TestEnsoPhase:
         from weather_markets import _forecast_model_weights
 
         with patch("weather_markets._get_enso_phase", return_value="el_nino"):
-            summer_w = _forecast_model_weights(7)["ecmwf_ifs04"]
+            summer_w = _forecast_model_weights(7)["ecmwf_aifs025_ensemble"]
 
         assert summer_w == pytest.approx(1.5)
 
@@ -219,14 +219,14 @@ class TestDynamicModelWeights:
         # Simulate tracker returning softmax weights where ECMWF has highest weight
         mock_weights = {
             "gfs_seamless": 0.2,
-            "ecmwf_ifs04": 0.6,
+            "ecmwf_aifs025_ensemble": 0.6,
             "icon_seamless": 0.2,
         }
         with patch("tracker.get_model_weights", return_value=mock_weights):
             result = _dynamic_model_weights(city="NYC", month=1)
 
         assert result is not None
-        assert result["ecmwf_ifs04"] > result["gfs_seamless"]
+        assert result["ecmwf_aifs025_ensemble"] > result["gfs_seamless"]
 
     def test_empty_tracker_returns_none(self):
         """Empty dict from get_model_weights (no rows) → returns None."""
@@ -295,7 +295,11 @@ class TestPerCityLearnedWeights:
         from weather_markets import _forecast_model_weights
 
         mock_weights = {
-            "NYC": {"gfs_seamless": 2.0, "ecmwf_ifs04": 0.5, "icon_seamless": 1.0}
+            "NYC": {
+                "gfs_seamless": 2.0,
+                "ecmwf_aifs025_ensemble": 0.5,
+                "icon_seamless": 1.0,
+            }
         }
 
         with patch("weather_markets.load_learned_weights", return_value=mock_weights):
@@ -303,7 +307,7 @@ class TestPerCityLearnedWeights:
                 result = _forecast_model_weights(1, city="NYC")
 
         assert result["gfs_seamless"] == pytest.approx(2.0)
-        assert result["ecmwf_ifs04"] == pytest.approx(0.5)
+        assert result["ecmwf_aifs025_ensemble"] == pytest.approx(0.5)
 
     def test_no_city_falls_back_to_seasonal(self):
         """No city → seasonal fallback (no learned weights lookup)."""
@@ -311,15 +315,23 @@ class TestPerCityLearnedWeights:
 
         with patch("weather_markets._get_enso_phase", return_value="neutral"):
             result = _forecast_model_weights(1)  # no city kwarg
-        assert result["ecmwf_ifs04"] == pytest.approx(2.5)
+        assert result["ecmwf_aifs025_ensemble"] == pytest.approx(2.5)
 
     def test_dynamic_weights_override_learned(self):
         """Dynamic tracker weights take priority over learned_weights.json."""
         from weather_markets import _forecast_model_weights
 
-        dynamic = {"gfs_seamless": 3.0, "ecmwf_ifs04": 1.0, "icon_seamless": 1.0}
+        dynamic = {
+            "gfs_seamless": 3.0,
+            "ecmwf_aifs025_ensemble": 1.0,
+            "icon_seamless": 1.0,
+        }
         learned = {
-            "NYC": {"gfs_seamless": 2.0, "ecmwf_ifs04": 0.5, "icon_seamless": 1.0}
+            "NYC": {
+                "gfs_seamless": 2.0,
+                "ecmwf_aifs025_ensemble": 0.5,
+                "icon_seamless": 1.0,
+            }
         }
 
         with patch("weather_markets._dynamic_model_weights", return_value=dynamic):

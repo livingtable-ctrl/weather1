@@ -229,29 +229,29 @@ class TestForecastModelWeights:
     def test_returns_dict_with_expected_keys(self):
         weights = _forecast_model_weights(1)
         assert isinstance(weights, dict)
-        for key in ("gfs_seamless", "ecmwf_ifs04", "icon_seamless"):
+        for key in ("gfs_seamless", "ecmwf_aifs025_ensemble", "icon_seamless"):
             assert key in weights
 
     def test_winter_month_boosts_ecmwf_weight(self):
         """ECMWF weight should be higher in winter than summer."""
-        winter_w = _forecast_model_weights(1)["ecmwf_ifs04"]
-        summer_w = _forecast_model_weights(7)["ecmwf_ifs04"]
+        winter_w = _forecast_model_weights(1)["ecmwf_aifs025_ensemble"]
+        summer_w = _forecast_model_weights(7)["ecmwf_aifs025_ensemble"]
         assert winter_w > summer_w
 
     def test_all_winter_months_use_high_ecmwf(self):
         """All winter months (Oct-Mar) should use the elevated ECMWF weight."""
         for month in self.WINTER_MONTHS:
             w = _forecast_model_weights(month)
-            assert w["ecmwf_ifs04"] == pytest.approx(2.5), (
-                f"Expected 2.5 for winter month {month}, got {w['ecmwf_ifs04']}"
+            assert w["ecmwf_aifs025_ensemble"] == pytest.approx(2.5), (
+                f"Expected 2.5 for winter month {month}, got {w['ecmwf_aifs025_ensemble']}"
             )
 
     def test_all_summer_months_use_lower_ecmwf(self):
         """All summer months (Apr-Sep) should use the lower ECMWF weight."""
         for month in self.SUMMER_MONTHS:
             w = _forecast_model_weights(month)
-            assert w["ecmwf_ifs04"] == pytest.approx(1.5), (
-                f"Expected 1.5 for summer month {month}, got {w['ecmwf_ifs04']}"
+            assert w["ecmwf_aifs025_ensemble"] == pytest.approx(1.5), (
+                f"Expected 1.5 for summer month {month}, got {w['ecmwf_aifs025_ensemble']}"
             )
 
     def test_gfs_and_icon_weights_are_constant(self):
@@ -816,10 +816,11 @@ def test_analyze_trade_result_has_model_consensus_field(monkeypatch):
     monkeypatch.setattr(wm, "get_ensemble_members", lambda *a, **kw: None)
     # Patch _get_consensus_probs to return agreeing models (consensus True) — 4-tuple
     monkeypatch.setattr(
-        wm, "_get_consensus_probs", lambda *a, **kw: (0.70, 0.72, 74.0, 74.0)
+        wm, "_get_consensus_probs", lambda *a, **kw: (0.73, 0.75, 74.0, 74.0)
     )
-    monkeypatch.setattr(wm, "fetch_temperature_nbm", lambda *a, **kw: 78.0)
-    monkeypatch.setattr(wm, "fetch_temperature_ecmwf", lambda *a, **kw: 78.0)
+    monkeypatch.setattr(wm, "fetch_temperature_nbm", lambda *a, **kw: 74.0)
+    monkeypatch.setattr(wm, "fetch_temperature_ecmwf", lambda *a, **kw: 74.0)
+    monkeypatch.setattr(wm, "_metar_lock_in", lambda *a, **kw: (False, 0.0, {}))
     monkeypatch.setattr(wm, "_SEASONAL_WEIGHTS", {})
     monkeypatch.setattr(wm, "_CONDITION_WEIGHTS", {})
     monkeypatch.setattr(wm, "_CITY_WEIGHTS", {})
@@ -843,11 +844,11 @@ def test_analyze_trade_result_has_model_consensus_field(monkeypatch):
         "_date": tomorrow,
         "_city": "NYC",
         "_hour": None,
-        "ticker": "KXHIGHNY-26APR09-T80",
-        "title": "Will NYC high temperature be above 80°F?",
+        "ticker": "KXHIGHNY-26APR09-T72",
+        "title": "Will NYC high temperature be above 72°F?",
         "series_ticker": "KXHIGH-23-NYC",
-        "yes_ask": 42,
-        "yes_bid": 38,
+        "yes_ask": 0.72,
+        "yes_bid": 0.62,
         "volume": 500,
         "open_interest": 200,
         "close_time": (
@@ -902,8 +903,8 @@ def test_model_consensus_false_when_models_disagree(monkeypatch):
         "ticker": "KXHIGHNY-26APR09-T80",
         "title": "Will NYC high temperature be above 80°F?",
         "series_ticker": "KXHIGH-23-NYC",
-        "yes_ask": 42,
-        "yes_bid": 38,
+        "yes_ask": 0.72,
+        "yes_bid": 0.62,
         "volume": 500,
         "open_interest": 200,
         "close_time": (
@@ -1247,7 +1248,7 @@ class TestLearnedWeightsTTL:
 
         import weather_markets as wm
 
-        fake_weights = {"Dallas": {"ecmwf_ifs04": 2.0, "gfs_seamless": 1.0}}
+        fake_weights = {"Dallas": {"ecmwf_aifs025_ensemble": 2.0, "gfs_seamless": 1.0}}
         weights_file = tmp_path / "learned_weights.json"
         weights_file.write_text(json.dumps(fake_weights))
         eight_days_ago = time.time() - 8 * 86400
@@ -1277,7 +1278,7 @@ class TestLearnedWeightsTTL:
 
         import weather_markets as wm
 
-        fake_weights = {"Dallas": {"ecmwf_ifs04": 2.0, "gfs_seamless": 1.0}}
+        fake_weights = {"Dallas": {"ecmwf_aifs025_ensemble": 2.0, "gfs_seamless": 1.0}}
         weights_file = tmp_path / "learned_weights.json"
         weights_file.write_text(json.dumps(fake_weights))
         one_day_ago = time.time() - 1 * 86400
@@ -1347,7 +1348,7 @@ class TestLearnedWeightsValidation:
             import unittest.mock as _mock
 
             with _mock.patch("os.replace", side_effect=fake_replace):
-                bad = {"NYC": {"gfs_seamless": 0.0, "ecmwf_ifs04": 1.5}}
+                bad = {"NYC": {"gfs_seamless": 0.0, "ecmwf_aifs025_ensemble": 1.5}}
                 wm.save_learned_weights(bad)
         finally:
             wm._LEARNED_WEIGHTS = orig_lw
@@ -1361,7 +1362,13 @@ class TestLearnedWeightsValidation:
 
         import weather_markets as wm
 
-        valid = {"NYC": {"gfs_seamless": 1.2, "ecmwf_ifs04": 0.9, "icon_seamless": 0.9}}
+        valid = {
+            "NYC": {
+                "gfs_seamless": 1.2,
+                "ecmwf_aifs025_ensemble": 0.9,
+                "icon_seamless": 0.9,
+            }
+        }
 
         orig_lw = wm._LEARNED_WEIGHTS
         wm._LEARNED_WEIGHTS = {}
@@ -1428,7 +1435,7 @@ class TestLearnedWeightsValidation:
 
         import weather_markets as wm
 
-        bad = {"NYC": {"gfs_seamless": 0.0, "ecmwf_ifs04": 1.5}}
+        bad = {"NYC": {"gfs_seamless": 0.0, "ecmwf_aifs025_ensemble": 1.5}}
         orig_lw = wm._LEARNED_WEIGHTS
         wm._LEARNED_WEIGHTS = {}
         try:

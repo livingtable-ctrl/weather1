@@ -30,6 +30,10 @@ def _seed_db(db_path: Path, rows: list[dict]) -> None:
                 settled_at TEXT
             )
         """)
+        con.execute("""
+            CREATE VIEW IF NOT EXISTS multiday_predictions AS
+                SELECT * FROM predictions WHERE days_out IS NULL OR days_out >= 1
+        """)
         for r in rows:
             con.execute(
                 """INSERT INTO predictions

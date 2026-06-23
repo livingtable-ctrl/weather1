@@ -42,7 +42,7 @@ class TestDynamicModelWeights:
 
 class TestPersistenceProb:
     def test_above_condition(self):
-        """P(N(70, 5) > 72) ≈ 0.345."""
+        """P(N(70, 5) > 72) â‰ˆ 0.345."""
         from climatology import persistence_prob
         from utils import normal_cdf
 
@@ -84,7 +84,7 @@ class TestPersistenceProb:
 
         enriched = {
             "ticker": f"KXHIGHNY-{target.strftime('%d%b%y').upper()}-T70",
-            "title": "NYC high > 70°F",
+            "title": "NYC high > 70Â°F",
             "_city": "NYC",
             "_date": target,
             "_hour": None,
@@ -146,6 +146,7 @@ class TestPersistenceProb:
             patch.object(
                 wm, "_get_consensus_probs", return_value=(None, None, None, None)
             ),
+            patch("ml_bias.apply_temperature_scaling", side_effect=lambda p, **kw: p),
         ):
             result = wm.analyze_trade(enriched)
 
@@ -180,7 +181,7 @@ class TestEnsoPhase:
             assert _get_enso_phase() == "neutral"
 
     def test_el_nino_boosts_ecmwf_in_winter(self):
-        """_forecast_model_weights gives ECMWF +0.5 extra during El Niño winter."""
+        """_forecast_model_weights gives ECMWF +0.5 extra during El NiÃ±o winter."""
         from weather_markets import _forecast_model_weights
 
         with (
@@ -189,7 +190,9 @@ class TestEnsoPhase:
             patch("weather_markets._get_enso_phase", return_value="el_nino"),
         ):
             w = _forecast_model_weights(month=1, city=None)
-        assert w["ecmwf_ifs04"] == pytest.approx(3.0)  # 2.5 base + 0.5 el_nino
+        assert w["ecmwf_aifs025_ensemble"] == pytest.approx(
+            3.0
+        )  # 2.5 base + 0.5 el_nino
 
     def test_neutral_winter_ecmwf_weight(self):
         from weather_markets import _forecast_model_weights
@@ -200,7 +203,7 @@ class TestEnsoPhase:
             patch("weather_markets._get_enso_phase", return_value="neutral"),
         ):
             w = _forecast_model_weights(month=1, city=None)
-        assert w["ecmwf_ifs04"] == pytest.approx(2.5)
+        assert w["ecmwf_aifs025_ensemble"] == pytest.approx(2.5)
 
 
 class TestFeelsLike:
@@ -209,11 +212,11 @@ class TestFeelsLike:
         from weather_markets import _feels_like
 
         result = _feels_like(30.0, wind_mph=15.0, humidity_pct=50.0)
-        # NWS wind chill formula: should be well below 30°F
+        # NWS wind chill formula: should be well below 30Â°F
         assert result < 30.0
 
     def test_moist_cold_wind_chill_humidity_penalty(self):
-        """temp<=50, wind>=3, humidity>=70 → wind chill + humidity penalty."""
+        """temp<=50, wind>=3, humidity>=70 â†’ wind chill + humidity penalty."""
         from weather_markets import _feels_like
 
         base = _feels_like(40.0, wind_mph=10.0, humidity_pct=50.0)
@@ -222,7 +225,7 @@ class TestFeelsLike:
         assert moist < base
 
     def test_moist_cold_no_wind_intermediate(self):
-        """temp<=50, no strong wind, humidity>=70 → humidity penalty only."""
+        """temp<=50, no strong wind, humidity>=70 â†’ humidity penalty only."""
         from weather_markets import _feels_like
 
         base = _feels_like(45.0, wind_mph=1.0, humidity_pct=50.0)
@@ -230,7 +233,7 @@ class TestFeelsLike:
         assert moist < base
 
     def test_heat_index_regime(self):
-        """temp>=80, humidity>=40 → heat index above raw temp."""
+        """temp>=80, humidity>=40 â†’ heat index above raw temp."""
         from weather_markets import _feels_like
 
         result = _feels_like(95.0, wind_mph=5.0, humidity_pct=70.0)
@@ -246,7 +249,7 @@ class TestFeelsLike:
 
 class TestConfidenceScaledBlendWeights:
     def test_high_ens_std_reduces_ensemble_weight(self):
-        """ens_std > 8°F (high uncertainty) must reduce w_ens vs baseline."""
+        """ens_std > 8Â°F (high uncertainty) must reduce w_ens vs baseline."""
         from weather_markets import _confidence_scaled_blend_weights
 
         w_ens_base, _, _ = _confidence_scaled_blend_weights(
@@ -258,7 +261,7 @@ class TestConfidenceScaledBlendWeights:
         assert w_ens_high < w_ens_base
 
     def test_low_ens_std_increases_ensemble_weight(self):
-        """ens_std = 2°F (tight spread) must increase w_ens vs baseline."""
+        """ens_std = 2Â°F (tight spread) must increase w_ens vs baseline."""
         from weather_markets import _confidence_scaled_blend_weights
 
         w_ens_base, _, _ = _confidence_scaled_blend_weights(
@@ -279,7 +282,7 @@ class TestConfidenceScaledBlendWeights:
             )
 
     def test_none_ens_std_returns_base_weights(self):
-        """ens_std=None → identical result to _blend_weights."""
+        """ens_std=None â†’ identical result to _blend_weights."""
         from weather_markets import _blend_weights, _confidence_scaled_blend_weights
 
         assert _confidence_scaled_blend_weights(5, True, True, None) == _blend_weights(
@@ -338,7 +341,7 @@ class TestSnowLiquidRatio:
         assert snow_liquid_ratio(32.1) == 0
 
     def test_28_to_32_range(self):
-        """28°F < wet_bulb <= 32°F → SLR 10"""
+        """28Â°F < wet_bulb <= 32Â°F â†’ SLR 10"""
         from weather_markets import snow_liquid_ratio
 
         assert snow_liquid_ratio(32.0) == 10
@@ -346,7 +349,7 @@ class TestSnowLiquidRatio:
         assert snow_liquid_ratio(28.1) == 10
 
     def test_20_to_28_range(self):
-        """20°F < wet_bulb <= 28°F → SLR 15"""
+        """20Â°F < wet_bulb <= 28Â°F â†’ SLR 15"""
         from weather_markets import snow_liquid_ratio
 
         assert snow_liquid_ratio(28.0) == 15
@@ -354,7 +357,7 @@ class TestSnowLiquidRatio:
         assert snow_liquid_ratio(20.1) == 15
 
     def test_below_20_returns_20(self):
-        """wet_bulb <= 20°F → SLR 20"""
+        """wet_bulb <= 20Â°F â†’ SLR 20"""
         from weather_markets import snow_liquid_ratio
 
         assert snow_liquid_ratio(20.0) == 20
@@ -364,7 +367,7 @@ class TestSnowLiquidRatio:
         """wet_bulb_temp returns reasonable value for known input."""
         from weather_markets import wet_bulb_temp
 
-        # 50°F, 50% RH → wet bulb should be below dry bulb
+        # 50Â°F, 50% RH â†’ wet bulb should be below dry bulb
         wb = wet_bulb_temp(50.0, 50.0)
         assert wb < 50.0
         assert wb > 32.0
@@ -372,9 +375,9 @@ class TestSnowLiquidRatio:
     def test_liquid_equiv_conversion(self):
         from weather_markets import liquid_equiv_of_snow_threshold
 
-        # 10 inches of snow at SLR=10 → 1.0 inch liquid
+        # 10 inches of snow at SLR=10 â†’ 1.0 inch liquid
         assert liquid_equiv_of_snow_threshold(10.0, 10) == pytest.approx(1.0)
-        # SLR=0 (above freezing) → infinity
+        # SLR=0 (above freezing) â†’ infinity
         assert liquid_equiv_of_snow_threshold(10.0, 0) == float("inf")
 
 
@@ -425,7 +428,7 @@ class TestForecastCycle:
         import ast
         import pathlib
 
-        # Locate main.py relative to this test file (tests/ → project root)
+        # Locate main.py relative to this test file (tests/ â†’ project root)
         main_path = pathlib.Path(__file__).parent.parent / "main.py"
         src = main_path.read_text(encoding="utf-8")
         tree = ast.parse(src)
@@ -465,7 +468,7 @@ class TestTimeDecayEdge:
         assert result == pytest.approx(0.0)
 
     def test_half_edge_at_half_reference(self):
-        """24h before close with 48h reference → edge * 0.5."""
+        """24h before close with 48h reference â†’ edge * 0.5."""
         from datetime import datetime, timedelta
 
         from weather_markets import time_decay_edge
@@ -487,7 +490,7 @@ class TestTimeDecayEdge:
 
         enriched = {
             "ticker": f"KXHIGHNY-{target.strftime('%d%b%y').upper()}-T70",
-            "title": "NYC high > 70°F",
+            "title": "NYC high > 70Â°F",
             "_city": "NYC",
             "_date": target,
             "_hour": None,
@@ -514,36 +517,36 @@ class TestTimeDecayEdge:
                 wm,
                 "get_ensemble_temps",
                 return_value=[
-                    78.0,
-                    79.0,
-                    80.0,
-                    81.0,
-                    82.0,
-                    78.0,
-                    79.0,
-                    80.0,
-                    81.0,
-                    82.0,
-                    78.0,
-                    79.0,
-                    80.0,
-                    81.0,
-                    82.0,
-                    78.0,
-                    79.0,
-                    80.0,
-                    81.0,
-                    82.0,
-                    78.0,
-                    79.0,
-                    80.0,
-                    81.0,
-                    82.0,
-                    78.0,
-                    79.0,
-                    80.0,
-                    81.0,
-                    82.0,
+                    72.0,
+                    72.0,
+                    72.0,
+                    72.0,
+                    72.0,
+                    73.0,
+                    73.0,
+                    73.0,
+                    73.0,
+                    73.0,
+                    74.0,
+                    74.0,
+                    74.0,
+                    74.0,
+                    74.0,
+                    75.0,
+                    75.0,
+                    75.0,
+                    75.0,
+                    75.0,
+                    64.0,
+                    64.0,
+                    64.0,
+                    64.0,
+                    64.0,
+                    65.0,
+                    65.0,
+                    65.0,
+                    65.0,
+                    65.0,
                 ],
             ),
             patch("weather_markets.climatological_prob", return_value=0.5),
@@ -568,7 +571,7 @@ class TestTimeDecayEdge:
         assert result is not None
         raw_edge = result["forecast_prob"] - result["market_prob"]
         reported_edge = result["edge"]
-        # With 10h to close and 48h reference, decay ≈ 10/48 ≈ 0.208
+        # With 10h to close and 48h reference, decay â‰ˆ 10/48 â‰ˆ 0.208
         # So reported_edge should be less than raw_edge (if positive)
         if abs(raw_edge) > 0.001:
             assert abs(reported_edge) < abs(raw_edge) + 1e-6
@@ -626,7 +629,7 @@ class TestLearnedWeights:
         ):
             result = wm._forecast_model_weights(month=7, city="Denver")
         # Summer: ECMWF gets 1.5
-        assert result["ecmwf_ifs04"] == pytest.approx(1.5)
+        assert result["ecmwf_aifs025_ensemble"] == pytest.approx(1.5)
 
     def test_save_and_load_learned_weights(self, tmp_path, monkeypatch):
         """Round-trip: save then load returns identical dict."""
@@ -666,7 +669,7 @@ class TestDynamicCacheTTL:
             assert ttl >= 1800, f"TTL at hour {h} is {ttl} < 1800"
 
     def test_ttl_until_next_cycle_before_02z(self):
-        """At 01:00 UTC, next cycle is 02:00 UTC → ~3600s."""
+        """At 01:00 UTC, next cycle is 02:00 UTC â†’ ~3600s."""
         from datetime import datetime
 
         from weather_markets import _ttl_until_next_cycle
@@ -736,7 +739,7 @@ class TestForecastModelWeightsTrackerIntegration:
 
         tracker_weights = {
             "gfs_seamless": 0.25,
-            "ecmwf_ifs04": 0.55,
+            "ecmwf_aifs025_ensemble": 0.55,
             "icon_seamless": 0.20,
         }
         with patch("tracker.get_model_weights", return_value=tracker_weights):
@@ -753,7 +756,7 @@ class TestForecastModelWeightsTrackerIntegration:
         ):
             result = _forecast_model_weights(month=7, city="NYC")
         # seasonal summer: ecmwf_w = 1.5
-        assert result.get("ecmwf_ifs04") == 1.5
+        assert result.get("ecmwf_aifs025_ensemble") == 1.5
 
 
 class TestGaussianEnsembleBlend:
@@ -765,7 +768,7 @@ class TestGaussianEnsembleBlend:
         target = date.today() + timedelta(days=1)
         return {
             "ticker": f"KXHIGHNY-{target.strftime('%d%b%y').upper()}-T{threshold:.0f}",
-            "title": f"NYC high > {threshold:.0f}°F",
+            "title": f"NYC high > {threshold:.0f}Â°F",
             "_city": "NYC",
             "_date": target,
             "_hour": None,
@@ -792,9 +795,9 @@ class TestGaussianEnsembleBlend:
         Gaussian blend should raise ens_prob above 0.0."""
         import weather_markets as wm
 
-        # All 20 ensemble members at 65°F → raw ens_prob = 0/20 = 0.0
-        # forecast_high = 80°F → Gaussian P(T>70|N(80,σ)) ≈ high
-        # nbm = ecmwf = 80°F → raw_fraction = 1.0
+        # All 20 ensemble members at 65Â°F â†’ raw ens_prob = 0/20 = 0.0
+        # forecast_high = 80Â°F â†’ Gaussian P(T>70|N(80,Ïƒ)) â‰ˆ high
+        # nbm = ecmwf = 80Â°F â†’ raw_fraction = 1.0
         # New blend: 0.70*0.0 + 0.30*gaussian_blend > 0
         enriched = self._enriched(forecast_high=80.0, threshold=70.0)
 
@@ -846,6 +849,7 @@ class TestGaussianEnsembleBlend:
             patch.object(
                 wm, "_get_consensus_probs", return_value=(None, None, None, None)
             ),
+            patch("ml_bias.apply_temperature_scaling", side_effect=lambda p, **kw: p),
         ):
             result = wm.analyze_trade(enriched)
 
@@ -853,7 +857,7 @@ class TestGaussianEnsembleBlend:
         # With pure ensemble the signal would be 0.0 (all members below threshold).
         # The Gaussian blend must push forecast_prob above 0.
         assert result["forecast_prob"] > 0.05, (
-            f"Gaussian blend should lift forecast_prob above 0 when forecast is 80°F,"
+            f"Gaussian blend should lift forecast_prob above 0 when forecast is 80Â°F,"
             f" got {result['forecast_prob']:.3f}"
         )
 
@@ -862,11 +866,14 @@ class TestGaussianEnsembleBlend:
         Gaussian blend should reduce ens_prob below 1.0."""
         import weather_markets as wm
 
-        # All 20 ensemble members at 75°F → raw ens_prob = 20/20 = 1.0
-        # forecast_high = 68°F → Gaussian P(T>70|N(68,σ)) < 1.0
-        # nbm = ecmwf = 68°F → raw_fraction = 0.0
+        # All 20 ensemble members at 75Â°F â†’ raw ens_prob = 20/20 = 1.0
+        # forecast_high = 68Â°F â†’ Gaussian P(T>70|N(68,Ïƒ)) < 1.0
+        # nbm = ecmwf = 68Â°F â†’ raw_fraction = 0.0
         # New blend: 0.70*1.0 + 0.30*gaussian_blend < 1.0
         enriched = self._enriched(forecast_high=68.0, threshold=70.0)
+        # Market prices consistent with model's ~0.75 ceiling estimate to avoid model_mkt_gap gate
+        enriched["yes_bid"] = 0.68
+        enriched["yes_ask"] = 0.80
 
         with (
             patch.object(
@@ -916,12 +923,12 @@ class TestGaussianEnsembleBlend:
 
         assert result is not None
         assert result["forecast_prob"] < 0.95, (
-            f"Gaussian blend should pull forecast_prob below 1.0 when forecast is 68°F,"
+            f"Gaussian blend should pull forecast_prob below 1.0 when forecast is 68Â°F,"
             f" got {result['forecast_prob']:.3f}"
         )
 
 
-# ── P1-1: enrich_with_forecast uses cache timestamp ───────────────────────────
+# â”€â”€ P1-1: enrich_with_forecast uses cache timestamp â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 
 class TestEnrichWithForecastCacheTimestamp:
@@ -960,7 +967,7 @@ class TestEnrichWithForecastCacheTimestamp:
         monkeypatch.setattr(wm, "_forecast_cache", mock_cache)
 
         # Kalshi ticker format: YYMONDD (year-first) e.g. 26MAY10
-        market = {"ticker": "KXHIGHNY-26MAY10-T70", "title": "NYC high > 70°F"}
+        market = {"ticker": "KXHIGHNY-26MAY10-T70", "title": "NYC high > 70Â°F"}
         result = wm.enrich_with_forecast(market)
 
         assert abs(result["data_fetched_at"] - store_wall) < 5, (
@@ -981,11 +988,11 @@ class TestEnrichWithForecastCacheTimestamp:
         monkeypatch.setattr(wm, "_forecast_cache", mock_cache)
 
         before = time.time()
-        market = {"ticker": "KXHIGHNY-26MAY10-T70", "title": "NYC high > 70°F"}
+        market = {"ticker": "KXHIGHNY-26MAY10-T70", "title": "NYC high > 70Â°F"}
         result = wm.enrich_with_forecast(market)
         after = time.time()
 
         assert before <= result["data_fetched_at"] <= after + 1, (
             f"On cache miss, data_fetched_at should be current time, "
-            f"got {result['data_fetched_at']:.0f} (window {before:.0f}–{after:.0f})"
+            f"got {result['data_fetched_at']:.0f} (window {before:.0f}â€“{after:.0f})"
         )
