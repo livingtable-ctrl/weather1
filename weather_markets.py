@@ -4357,7 +4357,18 @@ def _metar_lock_in(
         import metar as _metar
 
         _metar_sta = _metar_station_for_city(city)
-        if not (_metar_sta and target_date == datetime.now(UTC).date()):
+        _city_tz_str = _CITY_TZ.get(city, "America/New_York")
+        try:
+            from zoneinfo import ZoneInfo as _ZI
+
+            _local_today = datetime.now(_ZI(_city_tz_str)).date()
+        except Exception:
+            _log.warning(
+                "_metar_lock_in: ZoneInfo(%r) unavailable — falling back to UTC date",
+                _city_tz_str,
+            )
+            _local_today = datetime.now(UTC).date()
+        if not (_metar_sta and target_date == _local_today):
             return False, 0.0, {}
 
         _metar_obs = _metar.fetch_metar(_metar_sta)

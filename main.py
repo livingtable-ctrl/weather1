@@ -3141,6 +3141,9 @@ def cmd_order(client: KalshiClient, action: str, args: list):
     except ValueError:
         print(red("count and price must be numbers"))
         return
+    if count != int(count) or int(count) < 1:
+        print(red(f"count must be a whole number ≥ 1 (got {count_str})"))
+        return
 
     from execution_log import log_order, log_order_result, was_recently_ordered
 
@@ -3155,8 +3158,43 @@ def cmd_order(client: KalshiClient, action: str, args: list):
             print(dim("  Cancelled to avoid duplicate."))
             return
 
+    # Fetch market and run full analysis so the trade is tracked identically to auto-placed trades.
+    _market = None
+    _analysis = None
+    _enriched = None
+    try:
+        print(dim("  Fetching market and running analysis..."))
+        _market = client.get_market(ticker)
+        if _market:
+            _enriched = enrich_with_forecast(_market)
+            _analysis = analyze_trade(_enriched)
+    except Exception as _ae:
+        _log.warning("cmd_order: analysis failed for %s: %s", ticker, _ae)
+        print(
+            yellow(
+                f"  Analysis failed ({_ae}) — order will not be tracked in Brier/P&L."
+            )
+        )
+
+    if _analysis:
+        _fp = _analysis.get("forecast_prob", 0)
+        _mp = _analysis.get("market_prob", 0)
+        _ne = _analysis.get("net_edge", 0)
+        _kl = _analysis.get("kelly", 0)
+        _meth = _analysis.get("method", "?")
+        _model_side = "YES" if _fp > _mp else ("NO" if _fp < _mp else "NEUTRAL")
+        print(
+            f"\n  Model: {_fp:.1%}  Market: {_mp:.1%}  "
+            f"Edge: {_ne:+.1%}  Kelly: {_kl:.1%}  Method: {_meth}"
+        )
+        print(f"  Model recommends: {_model_side}  |  You are placing: {side.upper()}")
+        if (side == "yes" and _fp < _mp) or (side == "no" and _fp > _mp):
+            print(
+                yellow("  [Warning] Your side is opposite to the model recommendation.")
+            )
+
     print(
-        f"\n  {bold(action.upper())}  {count} × {ticker}  {bold(side.upper())}  @ ${price:.4f}"
+        f"\n  {bold(action.upper())}  {int(count)} × {ticker}  {bold(side.upper())}  @ ${price:.4f}"
     )
     confirm = input(yellow("  Confirm? (y/N): ")).strip().lower()
     if confirm != "y":
@@ -3164,9 +3202,11 @@ def cmd_order(client: KalshiClient, action: str, args: list):
         return
 
     row_id = log_order(ticker, side, int(count), price, order_type=action)
+    _placed_order: dict | None = None
     try:
-        result = client.place_order(ticker, side, action, count, price)
+        result = client.place_order(ticker, side, action, int(count), price)
         order = result.get("order", result)
+        _placed_order = order
         log_order_result(row_id, status=order.get("status", "sent"), response=order)
         print(green(f"  Order placed: {order.get('order_id', '')}"))
         print(
@@ -3176,6 +3216,91 @@ def cmd_order(client: KalshiClient, action: str, args: list):
         log_order_result(row_id, status="failed", error=str(e))
         print(red(f"  Order failed: {e}"))
         raise
+
+    if _placed_order and _placed_order.get("status") in ("rejected", "canceled"):
+        print(
+            yellow(
+                f"  Order {_placed_order.get('status')} — not recording as paper trade."
+            )
+        )
+        return
+
+    if _analysis and _market and _enriched:
+        try:
+            _city = _enriched.get("_city")
+            _date_raw = _enriched.get("_date")
+            _target_date: date | None = (
+                _date_raw if isinstance(_date_raw, date) else None
+            )
+            _target_date_str = _target_date.isoformat() if _target_date else None
+            _days_out = int(_analysis.get("days_out", 1))
+
+            _trade = place_paper_order(
+                ticker,
+                side,
+                int(count),
+                price,
+                entry_prob=_analysis.get("forecast_prob"),
+                net_edge=_analysis.get("net_edge"),
+                city=_city,
+                target_date=_target_date_str,
+                method=_analysis.get("method"),
+                icon_forecast_mean=_analysis.get("icon_forecast_mean"),
+                gfs_forecast_mean=_analysis.get("gfs_forecast_mean"),
+                forecast_temp=_analysis.get("forecast_temp"),
+                condition_threshold=_analysis.get("condition", {}).get("threshold"),
+                close_time=_market.get("close_time"),
+                days_out=_days_out,
+            )
+            print(
+                green(
+                    f"  Recorded as paper trade #{_trade['id']} for P&L/Brier tracking."
+                )
+            )
+
+            try:
+                from tracker import log_analysis_attempt as _log_attempt
+
+                _log_attempt(
+                    ticker=ticker,
+                    city=_city,
+                    condition=_analysis.get("condition", {}).get("type", ""),
+                    target_date=_target_date,
+                    forecast_prob=_analysis.get("forecast_prob", 0.0),
+                    market_prob=_analysis.get("market_prob", 0.0),
+                    days_out=_days_out,
+                    was_traded=True,
+                )
+            except Exception as _le:
+                _log.warning("cmd_order: log_analysis_attempt failed: %s", _le)
+
+            try:
+                from weather_markets import EDGE_CALC_VERSION as _ECV
+
+                _es = _analysis.get("ensemble_stats") or {}
+                _std = _es.get("std")
+                log_prediction(
+                    ticker,
+                    _city,
+                    _target_date,
+                    _analysis,
+                    ensemble_prob=_analysis.get("ensemble_prob"),
+                    nws_prob=_analysis.get("nws_prob"),
+                    clim_prob=_analysis.get("clim_prob"),
+                    forecast_cycle=_current_forecast_cycle(),
+                    edge_calc_version=_ECV,
+                    signal_source=_analysis.get("method"),
+                    blend_sources=_analysis.get("blend_sources"),
+                    model_consensus=_analysis.get("model_consensus"),
+                    ens_mean=_es.get("mean"),
+                    ens_var=(_std * _std if _std is not None else None),
+                )
+            except Exception as _pe:
+                _log.warning("cmd_order: log_prediction failed: %s", _pe)
+
+        except Exception as _rec_err:
+            _log.warning("cmd_order: paper trade recording failed: %s", _rec_err)
+            print(yellow(f"  [Warning] Could not record as paper trade: {_rec_err}"))
 
 
 def cmd_cancel(client: KalshiClient, order_id: str):
