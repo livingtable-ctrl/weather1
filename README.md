@@ -1,6 +1,6 @@
 # Kalshi Weather Trading Bot
 
-An automated paper (and optionally live) trading bot for Kalshi weather prediction markets. It forecasts temperature and precipitation outcomes using NWS data and ICON/GFS/NBM ensemble models, sizes positions with Kelly criterion, and graduates to live trading only after passing a calibration gate.
+An automated paper (and optionally live) trading bot for Kalshi weather prediction markets. It forecasts temperature outcomes using NWS data and ICON/GFS/ECMWF ensemble models, sizes positions with Kelly criterion, and graduates to live trading only after passing a calibration gate.
 
 ---
 
@@ -87,10 +87,12 @@ Opens a numbered menu with every feature. Good starting point.
 | Command | What it does |
 |---|---|
 | `python main.py setup` | First-time credential setup wizard |
+| `python main.py loop` | Continuous trading loop — scans, places trades, sleeps, repeats |
+| `python main.py cron` | Run one scan cycle manually (loop runs this automatically) |
 | `python main.py scan` | Scan all weather markets, print opportunities |
 | `python main.py watch` | Live watch mode — refreshes every 5 minutes |
-| `python main.py cron` | Silent scan that auto-places paper trades (used by Task Scheduler) |
 | `python main.py web` | Start the dashboard at http://localhost:5000 |
+| `python main.py order <ticker>` | Manually place a trade with full model analysis and confirmation |
 | `python main.py today` | Today's positions and PnL summary (alias: `t`) |
 | `python main.py balance` | Show account balance |
 | `python main.py positions` | Show open positions |
@@ -104,21 +106,24 @@ Opens a numbered menu with every feature. Good starting point.
 | `python main.py pnl-attribution` | P&L broken down by signal source (alias: `pnl`) |
 | `python main.py features` | Feature importance analysis |
 | `python main.py sweep` | Parameter sweep / optimization |
-| `python main.py train-bias` | Train ML calibration models from tracker DB (needs 200+ settled trades per city) |
+| `python main.py train-bias` | Train ML calibration models from tracker DB |
+| `python main.py calibrate` | Recalibrate forecast weights and temperature scaling |
 | `python main.py drift` | Detect Brier score drift |
 | `python main.py shadow` | Shadow-compare two model versions |
 | `python main.py ab-summary` | Show A/B experiment results |
+| `python main.py backfill-emos` | Backfill historical ensemble mean/variance for EMOS calibration |
 | `python main.py override <set\|clear\|status> [mins]` | Temporarily pause auto-trading without activating the kill switch |
 | `python main.py kill` | Activate kill switch to halt all trading |
 | `python main.py resume` | Resume trading after kill switch or black swan halt |
 | `python main.py settlement-monitor` | Run settlement lag monitor |
 | `python main.py weekly` | Weekly performance summary (alias: `y`) |
 | `python main.py report` | Generate PDF performance report |
-| `python main.py calibrate` | Calibration curve analysis (no API credentials required) |
 | `python main.py config-check` | Validate configuration and print active settings (alias: `config`) |
 | `python main.py journal` | Trade journal |
 | `python main.py export` | Export trade data to CSV |
 | `python main.py restore` | Restore data from cloud backup |
+| `python main.py admin sameday-stats` | Per-UTC-hour win-rate breakdown for same-day trades |
+| `python main.py admin reset-peak` | Reset peak balance to current balance (requires confirmation) |
 
 ### Dashboard
 
@@ -126,11 +131,16 @@ Opens a numbered menu with every feature. Good starting point.
 python main.py web
 ```
 
-Open your browser to `http://localhost:5000`. The dashboard shows:
-- Open positions and signals
-- PnL, win rate, Brier score
-- Model accuracy (ICON vs GFS vs NBM)
-- Price improvement and source reliability
+Open your browser to `http://localhost:5000`. The dashboard has 9 tabs:
+- **Overview** — balance, PnL, win rate, Brier score, profit factor, drawdown tier
+- **Positions** — open trades with expiry countdowns
+- **Signals** — pending opportunities split into Same-Day and Multi-Day sections
+- **Forecast** — per-city forecast details and spread
+- **Analytics** — equity curve, calibration curve, rolling win rate, same-day calibration
+- **Activity** — trade history with search and filters
+- **Risk** — Monte Carlo VaR, anomaly window, scan filter breakdown
+- **Trades** — full trade log with type/direction filters
+- **Settings** — live configuration display
 
 ---
 
@@ -151,7 +161,7 @@ When all three pass, the graduation check confirms you are ready. To actually go
 
 **Position sizing**
 
-Uses Kelly criterion scaled by forecast confidence, days until market closes, model agreement between ICON and GFS, and existing portfolio exposure. It will never bet the farm on a single market.
+Uses Kelly criterion scaled by forecast confidence, days until market closes, model agreement across ICON/GFS/ECMWF ensembles, and existing portfolio exposure. It will never bet the farm on a single market.
 
 You can switch sizing strategies by setting `STRATEGY` in `.env`:
 
@@ -160,6 +170,14 @@ You can switch sizing strategies by setting `STRATEGY` in `.env`:
 | `kelly` | Half-Kelly sizing (default) |
 | `fixed_pct` | Fixed percentage of balance; set `FIXED_BET_PCT` (default `0.01`) |
 | `fixed_dollars` | Fixed dollar amount per trade; set `FIXED_BET_DOLLARS` (default `10.0`) |
+
+**Same-day vs multi-day trades**
+
+The bot handles same-day (markets closing today) and multi-day trades separately:
+
+- Same-day above/below markets use live METAR observations to lock in current temperature, producing tighter confidence intervals and larger Kelly sizes
+- Same-day and multi-day positions each have their own slot cap and dollar spend cap (see env vars below)
+- Calibration, Brier scoring, and ML training are kept separate between the two groups
 
 **Kill switch**
 
@@ -175,7 +193,11 @@ python main.py override status
 
 **ML probability calibration**
 
-Once you have 200+ settled trades for a city, run `python main.py train-bias` to train a GradientBoosting model that corrects the bot's raw probability estimates toward observed outcome frequencies. Models are stored locally and picked up automatically on the next cron scan.
+Once you have enough settled trades, the bot automatically recalibrates forecast blend weights by condition type (above/below/between) and season on each weekly retrain. Run `python main.py train-bias` to also train a GradientBoosting model that corrects raw probability estimates toward observed outcome frequencies (requires ~200 settled predictions per city). Models are stored locally and picked up automatically on the next cron scan.
+
+**EMOS calibration**
+
+For deeper ensemble calibration, run `python main.py backfill-emos` to populate historical ensemble mean and variance from the Open-Meteo archive. Once ~25 rows are accumulated, an `emos-train` command will fit an Ensemble Model Output Statistics model that corrects for ensemble under-dispersion.
 
 **Monte Carlo portfolio simulation**
 
@@ -184,28 +206,31 @@ Run `python main.py montecarlo` to simulate 1,000 portfolio outcomes based on cu
 **Forecast sources**
 
 The bot queries multiple forecast sources and weights them by historical accuracy:
-- **Open-Meteo ensemble** — ICON, GFS Seamless, and ECMWF IFS models (primary); pre-warmed in batch each cron run
+- **Open-Meteo ensemble** — GFS Seamless, ECMWF AIFS ensemble (50 members), and ICON models (primary); pre-warmed in batch each cron run. ECMWF weight is seasonally adjusted (higher in winter).
 - **NWS/NBM** — National Weather Service gridded temperature forecasts (primary)
 - **WeatherAPI** — current observations and short-range forecasts (secondary; requires `WEATHERAPI_KEY`)
 - **Pirate Weather** — HRRR-based fallback when other sources are unavailable (requires `PIRATE_WEATHER_API_KEY`)
+- **METAR** — live airport observations used to lock in same-day market probabilities
 
 Each source has its own circuit breaker: if it fails repeatedly, it backs off automatically and retries after a cooldown period. The `data_quality` score (0–1) reflects how many sources returned data and scales Kelly bet size accordingly.
 
 ---
 
-## Automated scheduling (Windows)
+## Automated trading
 
-To have the bot scan automatically while your PC sleeps:
+To run the bot continuously:
 
-1. Open Task Scheduler → Create Task
-2. Set the action to run `run_and_sleep.bat` in the project folder
-3. Set triggers for your preferred times (e.g. 6am, 9am, 12pm, 3pm, 6pm, 9pm)
-4. Under Conditions → Power: check "Wake the computer to run this task"
-5. Under Settings: check "Run task as soon as possible after a scheduled start is missed"
+```
+python main.py loop
+```
 
-The batch file puts the PC back to sleep after the scan finishes (only if no one was already using it).
+This scans for opportunities, places trades, then sleeps until the next scan window. Scans typically produce signals in the evening (18:00–23:00 UTC) when US market close times are visible.
 
-During cron runs, the bot optionally opens a WebSocket connection to the Kalshi order book to fetch real-time mid prices before falling back to the REST API.
+To run a single scan cycle manually:
+
+```
+python main.py cron
+```
 
 ---
 
@@ -221,23 +246,28 @@ All settings have sensible defaults. Override any of them in `.env`:
 | `MIN_EDGE` | `0.07` | Minimum edge to show in scan output |
 | `PAPER_MIN_EDGE` | `0.05` | Minimum edge to auto-place a paper trade |
 | `MIN_PROB_EDGE` | `0.08` | Minimum probability-delta (forecast − market) to auto-place a paper trade |
-| `MAX_CONCURRENT_POSITIONS` | `20` | Max open positions before auto-trades pause |
+| `MAX_POSITIONS_PER_DATE` | `4` | Max open multi-day positions per settlement date |
+| `MAX_SAME_DAY_POSITIONS` | `8` | Max open same-day positions |
+| `MAX_CONCURRENT_POSITIONS` | `20` | Global max open positions before auto-trades pause |
 | `MED_EDGE` | `0.15` | Edge threshold for medium-confidence signal tier |
 | `STRONG_EDGE` | `0.30` | Edge threshold for a strong signal |
-| `MAX_DAILY_SPEND` | `500.0` | Max dollars to spend per day on paper trades |
+| `MAX_DAILY_SPEND` | `200.0` | Max dollars to spend per day on multi-day paper trades |
+| `MAX_SAME_DAY_SPEND` | `400.0` | Max dollars to spend per day on same-day paper trades |
 | `MAX_DAILY_LOSS_PCT` | `0.03` | Halt auto-trading if daily loss exceeds this fraction of balance |
 | `MAX_SINGLE_TICKER_EXPOSURE` | `0.10` | Max fraction of starting balance in any single market |
-| `MAX_DAYS_OUT` | `5` | Only trade markets closing within N days |
+| `MAX_DAYS_OUT` | `3` | Only trade markets closing within N days |
 | `MAX_POSITION_AGE_DAYS` | `7` | Close positions older than N days |
 | `KALSHI_FEE_RATE` | `0.07` | Taker fee rate (7%) |
 | `STRATEGY` | `kelly` | Sizing strategy: `kelly`, `fixed_pct`, or `fixed_dollars` |
 | `FIXED_BET_PCT` | `0.01` | Fraction of balance per trade when `STRATEGY=fixed_pct` |
 | `FIXED_BET_DOLLARS` | `10.0` | Dollars per trade when `STRATEGY=fixed_dollars` |
 | `DRAWDOWN_HALT_PCT` | `0.20` | Halt all trading if balance falls below this fraction of peak |
+| `BLACK_SWAN_BRIER_THRESHOLD` | `0.35` | Trigger black swan halt if multi-day Brier exceeds this value |
+| `BLACK_SWAN_BRIER_MIN_SAMPLES` | `30` | Minimum settled trades before Brier halt can trigger |
 | `NWS_USER_AGENT` | `kalshi-weather-predictor/1.0` | User-Agent string sent to the NOAA API |
 | `PIRATE_WEATHER_API_KEY` | — | API key for Pirate Weather fallback forecasts (optional) |
 | `WEATHERAPI_KEY` | — | API key for WeatherAPI forecast source (optional; 1M calls/month free) |
-| `MAX_MODEL_SPREAD_F` | `8.0` | Skip markets where ICON and GFS disagree by more than this many °F |
+| `MAX_MODEL_SPREAD_F` | `8.0` | Skip markets where ensemble models disagree by more than this many °F |
 | `MODEL_HMAC_SECRET` | — | HMAC secret for verifying ML bias model file integrity (set automatically by `train-bias`) |
 | `LOG_LEVEL` | `WARNING` | Python logging level for the `kalshi` logger |
 | `DISCORD_WEBHOOK_URL` | — | Discord webhook for trade notifications (optional) |
@@ -257,19 +287,27 @@ All settings have sensible defaults. Override any of them in `.env`:
 
 ```
 main.py               — CLI entry point and interactive menu
-cron.py               — Silent cron scan used by Task Scheduler auto-trading
+cron.py               — Single scan cycle: forecast, analyze, place trades
+order_executor.py     — Trade placement engine (Kelly sizing, caps, live/paper routing)
 weather_markets.py    — Forecast engine and trade analysis
-paper.py              — Paper trading, Kelly sizing, portfolio exposure
+paper.py              — Paper trading, portfolio exposure, drawdown tracking
 tracker.py            — Trade logging, Brier scoring, bias detection
+calibration.py        — Forecast blend weight calibration
+ml_bias.py            — ML probability calibration (GradientBoosting per city; temperature scaling)
 monte_carlo.py        — Monte Carlo portfolio risk simulation
 web_app.py            — Flask dashboard API
 kalshi_client.py      — Kalshi REST API client
 kalshi_ws.py          — WebSocket client for real-time order book prices
-ml_bias.py            — ML probability calibration (GradientBoosting per city)
 alerts.py             — Anomaly detection and black swan halt
 settlement_monitor.py — Settlement lag signal detection
+metar.py              — METAR observation fetching (live airport data for same-day lock-in)
+nws.py                — NWS/NBM forecast fetching
+mos.py                — MOS forecast data
+climatology.py        — Historical climatology data
+climate_indices.py    — Climate indices (ENSO, PDO, etc.)
+backtest.py           — Historical backtesting
 ab_test.py            — A/B experiment framework
-circuit_breaker.py    — Trading circuit breaker
+circuit_breaker.py    — Per-source API circuit breaker
 consistency.py        — Cross-market consistency checks
 execution_log.py      — Execution audit log
 feature_importance.py — Feature importance analysis
@@ -280,18 +318,10 @@ schema_validator.py   — Data schema validation
 system_health.py      — System health checks
 market_types.py       — Market type classification helpers
 regime.py             — Market regime detection
-calibration.py        — Probability calibration utilities
-backtest.py           — Historical backtesting
-metar.py              — METAR observation fetching
-nws.py                — NWS forecast fetching
-mos.py                — MOS forecast data
-climatology.py        — Historical climatology data
-climate_indices.py    — Climate indices (ENSO, PDO, etc.)
 cloud_backup.py       — OneDrive/Google Drive backup
 colors.py             — Terminal colour helpers
 utils.py              — Shared constants and helpers
-run_and_sleep.bat     — Windows Task Scheduler entry point
-data/                 — Local SQLite databases (trades, signals, forecasts)
+data/                 — Local SQLite databases (trades, signals, forecasts) and calibration files
 static/               — Dashboard JS and CSS
 templates/            — Dashboard HTML
 ```
@@ -327,5 +357,5 @@ CLOUD_BACKUP_PATH=C:\path\to\your\sync\folder
 - The `.env` file and `.pem` key are gitignored — never commit them
 - The bot only trades Kalshi weather markets (temperature and precipitation). It ignores all other market types.
 - `python main.py kill` writes a halt flag that persists across restarts; `python main.py resume` clears it.
-- The `train-bias` command requires `scikit-learn` (included in `requirements.txt`) and at least 200 settled predictions per city to produce a model that outperforms the static bias table.
+- The `train-bias` command requires `scikit-learn` (included in `requirements.txt`) and at least 200 settled predictions per city to produce a model that outperforms the static bias table. Basic blend-weight and temperature-scale calibration runs automatically and requires far fewer samples.
 - Add `--debug` to any command to enable verbose logging: `python main.py cron --debug`
