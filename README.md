@@ -251,19 +251,19 @@ All settings have sensible defaults. Override any of them in `.env`:
 | `MAX_CONCURRENT_POSITIONS` | `20` | Global max open positions before auto-trades pause |
 | `MED_EDGE` | `0.15` | Edge threshold for medium-confidence signal tier |
 | `STRONG_EDGE` | `0.30` | Edge threshold for a strong signal |
-| `MAX_DAILY_SPEND` | `200.0` | Max dollars to spend per day on multi-day paper trades |
-| `MAX_SAME_DAY_SPEND` | `400.0` | Max dollars to spend per day on same-day paper trades |
+| `MAX_DAILY_SPEND` | `500.0` | Max dollars to spend per day on multi-day paper trades |
+| `MAX_SAME_DAY_SPEND` | `500.0` | Max dollars to spend per day on same-day paper trades |
 | `MAX_DAILY_LOSS_PCT` | `0.03` | Halt auto-trading if daily loss exceeds this fraction of balance |
 | `MAX_SINGLE_TICKER_EXPOSURE` | `0.10` | Max fraction of starting balance in any single market |
-| `MAX_DAYS_OUT` | `3` | Only trade markets closing within N days |
+| `MAX_DAYS_OUT` | `5` | Only trade markets closing within N days |
 | `MAX_POSITION_AGE_DAYS` | `7` | Close positions older than N days |
 | `KALSHI_FEE_RATE` | `0.07` | Taker fee rate (7%) |
 | `STRATEGY` | `kelly` | Sizing strategy: `kelly`, `fixed_pct`, or `fixed_dollars` |
 | `FIXED_BET_PCT` | `0.01` | Fraction of balance per trade when `STRATEGY=fixed_pct` |
 | `FIXED_BET_DOLLARS` | `10.0` | Dollars per trade when `STRATEGY=fixed_dollars` |
 | `DRAWDOWN_HALT_PCT` | `0.20` | Halt all trading if balance falls below this fraction of peak |
-| `BLACK_SWAN_BRIER_THRESHOLD` | `0.35` | Trigger black swan halt if multi-day Brier exceeds this value |
-| `BLACK_SWAN_BRIER_MIN_SAMPLES` | `30` | Minimum settled trades before Brier halt can trigger |
+| `BLACK_SWAN_BRIER_THRESHOLD` | `0.30` | Trigger black swan halt if multi-day Brier exceeds this value |
+| `BLACK_SWAN_BRIER_MIN_SAMPLES` | `10` | Minimum settled trades before Brier halt can trigger |
 | `NWS_USER_AGENT` | `kalshi-weather-predictor/1.0` | User-Agent string sent to the NOAA API |
 | `PIRATE_WEATHER_API_KEY` | — | API key for Pirate Weather fallback forecasts (optional) |
 | `WEATHERAPI_KEY` | — | API key for WeatherAPI forecast source (optional; 1M calls/month free) |
