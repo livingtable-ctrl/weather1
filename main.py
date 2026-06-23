@@ -524,6 +524,7 @@ _PERMANENT_DATA_FILES = {
     "retired_strategies.json",
     "learned_weights.json",
     "learned_correlations.json",
+    "temperature_scale.json",
 }
 
 
