@@ -5,6 +5,7 @@ Import individual constants from here rather than from utils.py for new code.
 
 from __future__ import annotations
 
+import functools
 import json
 import logging
 import os
@@ -39,9 +40,13 @@ def _env_int(name: str, default: str) -> int:
         ) from None
 
 
+@functools.cache
 def _paper_min_edge_default() -> float:
     """D4/A5: Env var takes precedence; fall back to walk-forward optimal, then
     param-sweep optimal, then hardcoded 0.05 default.
+
+    lru_cache ensures the file is read and warning logged exactly once per process
+    even when BotConfig() is instantiated many times (e.g. in ThreadPoolExecutor).
     """
     env_val = os.getenv("PAPER_MIN_EDGE")
     if env_val is not None:
