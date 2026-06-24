@@ -7,7 +7,7 @@
   "below": {
     "ensemble": 0.05,
     "climatology": 0.75,
-    "nws": 0.20
+    "nws": 0.2
   },
   "between": {
     "ensemble": 0.09274584338014791,
