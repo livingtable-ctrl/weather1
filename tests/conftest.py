@@ -36,6 +36,19 @@ def isolate_circuit_breaker_state(tmp_path, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def clear_paper_min_edge_cache():
+    """Clear the lru_cache on _paper_min_edge_default before every test.
+
+    _paper_min_edge_default uses @functools.cache so it reads walk_forward_params.json
+    only once per process. Tests that patch config._DATA_DIR or os.environ["PAPER_MIN_EDGE"]
+    must start from a clean cache or they'll see a stale value cached by an earlier test.
+    """
+    import config
+
+    config._paper_min_edge_default.cache_clear()
+
+
+@pytest.fixture(autouse=True)
 def clear_metar_cache():
     """Clear the in-process METAR cache before every test.
 

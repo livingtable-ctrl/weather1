@@ -191,7 +191,7 @@ class TestRandomSearchAndGate:
     def test_brier_gate_constant(self):
         from calibration import _BRIER_IMPROVEMENT_GATE
 
-        assert _BRIER_IMPROVEMENT_GATE == pytest.approx(0.001)
+        assert _BRIER_IMPROVEMENT_GATE == pytest.approx(0.005)
 
     def test_calibrate_city_weights_deterministic(self, tmp_path):
         """Same data → same weights (random search uses fixed seed=42)."""
