@@ -1130,12 +1130,13 @@ def _cmd_cron_body(
                 with _warm_lock:
                     _warm_done += 1
                     _cur = _warm_done
-                # \r returns cursor to line start so the counter updates in place
-                print(
-                    f"  [NBM/WA]  warming city sources... ({_cur}/{_n_pairs})",
-                    end="\r",
-                    flush=True,
-                )
+                    # print inside the lock so a slow thread can't print a stale
+                    # counter after a faster thread already printed a higher one
+                    print(
+                        f"  [NBM/WA]  warming city sources... ({_cur}/{_n_pairs})",
+                        end="\r",
+                        flush=True,
+                    )
 
             _warm_pool = ThreadPoolExecutor(max_workers=min(_n_pairs, 8))
             try:
@@ -1547,9 +1548,9 @@ def _cmd_cron_body(
         _log.debug("cmd_cron: read_settlement_signals failed: %s", _e)
 
     # \u2500\u2500 Scan summary line \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
-    _n_with_edge = sum(1 for s in signals_cache if s.get("passes_threshold", True))
     _n_strong = len(strong_opps)
     _n_med = len(med_opps)
+    _n_with_edge = _n_strong + _n_med
     _gate_detail = _get_gate_counts()
     _gate_str = (
         " ".join(f"{k}:{v}" for k, v in sorted(_gate_detail.items()))
@@ -2028,13 +2029,7 @@ def _cmd_cron_body(
                 # combined JSON format and loses the per-condition entries each cron run.
                 _ts_result = _train_all_ts()
                 if _ts_result:
-                    _global_T = _ts_result.get("global")
-                    _between_T = _ts_result.get("between")
-                    _parts = []
-                    if _global_T is not None:
-                        _parts.append(f"global={_global_T:.4f}")
-                    if _between_T is not None:
-                        _parts.append(f"between={_between_T:.4f}")
+                    _parts = [f"{k}={v:.4f}" for k, v in sorted(_ts_result.items())]
                     print(dim(f"  [TempScale] fitted — {', '.join(_parts)}"))
 
                 # F3: auto-calibrate blend weights alongside bias/T-scaling so seasonal

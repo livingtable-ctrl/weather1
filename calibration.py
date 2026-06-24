@@ -21,7 +21,7 @@ _SEASONAL_MIN = (
 )
 _CITY_MIN = 50  # P3-7/P3-25: raised to 50 for statistical reliability (SE ~0.07)
 _N_RANDOM_SEARCH = 200  # P3-7: random search replaces exhaustive 5,151-triple grid
-_BRIER_IMPROVEMENT_GATE = 0.001  # min val-set improvement to accept calibrated weights
+_BRIER_IMPROVEMENT_GATE = 0.005  # min val-set improvement to accept calibrated weights
 _RECENCY_HALFLIFE_DAYS = 90  # exponential decay: trade 90 days old gets ~37% weight
 
 
@@ -104,14 +104,23 @@ def _best_weights(
             best_score = score
             best = (we, wc, wn)
 
-    # M-19: refuse to return in-sample weights when there are no validation rows —
-    # the improvement gate would be skipped and overfitted weights would enter production.
-    if not val_rows:
+    # M-19: refuse to return in-sample weights when validation set is too small.
+    # With < 10 val rows the _BRIER_IMPROVEMENT_GATE (0.001) is noise — a single
+    # lucky prediction can clear it and let overfitted weights enter production.
+    _MIN_VAL_ROWS = 10
+    if len(val_rows) < _MIN_VAL_ROWS:
         _log.warning(
-            "calibrate_blend_weights: no validation rows after train/val split — "
-            "returning equal weights to avoid overfitting"
+            "calibrate_blend_weights: only %d validation rows (need %d) — "
+            "returning uncalibrated so calibrate_and_save preserves existing weights",
+            len(val_rows),
+            _MIN_VAL_ROWS,
         )
-        return {"ensemble": equal[0], "climatology": equal[1], "nws": equal[2]}
+        return {
+            "ensemble": equal[0],
+            "climatology": equal[1],
+            "nws": equal[2],
+            "_uncalibrated": True,
+        }
 
     val_baseline = _brier(val_rows, *equal)
     val_calibrated = _brier(val_rows, *best)
@@ -273,7 +282,9 @@ def load_city_weights(path: str | Path | None = None) -> dict[str, dict[str, flo
         return {}
 
 
-_CONDITION_MIN = 20
+_CONDITION_MIN = (
+    60  # 60 * 0.2 = 12 val rows — minimum for improvement gate to be meaningful
+)
 
 
 def calibrate_condition_weights(
