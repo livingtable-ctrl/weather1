@@ -1418,9 +1418,9 @@ class TestTimeDecayEdgeScope:
             "models_used": 3,
             "high_range": (72.0, 76.0),
         },
-        "yes_bid": 38,
-        "yes_ask": 42,
-        "no_bid": 58,
+        "yes_bid": 50,
+        "yes_ask": 56,
+        "no_bid": 44,
         "close_time": "",  # overridden per test
         "series_ticker": "KXHIGHNY",
         "volume": 1000,
