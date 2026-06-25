@@ -229,6 +229,7 @@ class TestCalibrateCLI:
     def test_calibrate_writes_seasonal_json(self, monkeypatch):
         """cmd_calibrate() writes data/seasonal_weights.json with calibrated weights."""
         import main
+        import ml_bias
         import tracker
 
         rows = _make_winter_rows(60)
@@ -239,6 +240,11 @@ class TestCalibrateCLI:
 
         # Redirect the output data directory
         monkeypatch.setattr(main, "_CALIBRATE_DATA_DIR", self._data_dir)
+
+        # Redirect temperature_scale.json so cmd_calibrate does not overwrite the real file
+        monkeypatch.setattr(
+            ml_bias, "_TEMP_PATH", self._data_dir / "temperature_scale.json"
+        )
 
         main.cmd_calibrate()
 
@@ -252,6 +258,7 @@ class TestCalibrateCLI:
     def test_calibrate_calls_update_learned_weights(self, monkeypatch):
         """P1-9: cmd_calibrate() must call update_learned_weights_from_tracker()."""
         import main
+        import ml_bias
         import tracker
         import weather_markets
 
@@ -260,6 +267,9 @@ class TestCalibrateCLI:
 
         monkeypatch.setattr(tracker, "DB_PATH", self._db)
         monkeypatch.setattr(main, "_CALIBRATE_DATA_DIR", self._data_dir)
+        monkeypatch.setattr(
+            ml_bias, "_TEMP_PATH", self._data_dir / "temperature_scale.json"
+        )
 
         called = []
 
