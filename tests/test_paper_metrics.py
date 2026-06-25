@@ -121,7 +121,9 @@ class TestBreakEvenStop:
     def test_peak_hit_price_at_entry_triggers(self):
         import paper
 
-        t = self._open_trade("T1", "no", 0.45, 20, peak=0.35)  # was up 35%
+        t = self._open_trade(
+            "T1", "no", 0.45, 20, peak=0.80
+        )  # was up 80% — above 0.75 threshold
         # yes=0.55 → our_price=0.45 → exactly at entry → pnl=0
         result = paper.check_breakeven_stops([t], {"T1": 0.55})
         assert "T1" in result
@@ -129,7 +131,9 @@ class TestBreakEvenStop:
     def test_peak_hit_price_below_entry_triggers(self):
         import paper
 
-        t = self._open_trade("T1", "no", 0.45, 20, peak=0.50)
+        t = self._open_trade(
+            "T1", "no", 0.45, 20, peak=0.80
+        )  # was up 80% — above 0.75 threshold
         # yes=0.60 → our_price=0.40 → below entry → pnl < 0
         result = paper.check_breakeven_stops([t], {"T1": 0.60})
         assert "T1" in result

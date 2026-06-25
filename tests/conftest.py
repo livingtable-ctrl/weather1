@@ -1,5 +1,6 @@
 """Shared pytest fixtures for the Kalshi weather markets test suite."""
 
+import copy
 import json
 from datetime import date, timedelta
 from pathlib import Path
@@ -61,6 +62,50 @@ def clear_metar_cache():
     import metar
 
     metar._METAR_CACHE.clear()
+
+
+@pytest.fixture(autouse=True)
+def neutral_temperature_scaling(monkeypatch):
+    """Patch ml_bias._TEMP_CACHE to neutral T=1.0 before every test.
+
+    data/temperature_scale.json is rewritten by cron retrains and is not git-tracked.
+    Tests that call analyze_trade see different probability compressions depending on
+    what cron last wrote (e.g. T_above=0.5 amplifies probs toward extremes, causing
+    model_mkt_gap to fire non-deterministically). Patching the in-memory cache avoids
+    loading the disk file for most tests.
+
+    Tests in test_ml_bias.py that exercise temperature scaling directly reset
+    _TEMP_CACHE = None in their test body to force a reload from their own patched
+    _TEMP_PATH — those direct assignments bypass monkeypatch and take precedence.
+    """
+    import ml_bias
+
+    neutral = {
+        "above": 1.0,
+        "below": 1.0,
+        "between": 1.0,
+        "global": 1.0,
+        "sameday": 1.0,
+    }
+    monkeypatch.setattr(ml_bias, "_TEMP_CACHE", neutral)
+
+
+@pytest.fixture(autouse=True)
+def isolate_condition_weights(monkeypatch):
+    """Snapshot and restore weather_markets._CONDITION_WEIGHTS around every test.
+
+    cmd_calibrate() mutates the dict in place (.clear() + .update()) using the
+    module-level singleton. Without this fixture, calibration tests leave behind
+    overfitted weights (e.g. ens=0.996) that push analyze_trade blend probs past
+    the model_mkt_gap gate (0.25), causing subsequent tests to receive None.
+    """
+    import weather_markets
+
+    monkeypatch.setattr(
+        weather_markets,
+        "_CONDITION_WEIGHTS",
+        copy.deepcopy(weather_markets._CONDITION_WEIGHTS),
+    )
 
 
 @pytest.fixture(autouse=True)
