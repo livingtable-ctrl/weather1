@@ -521,12 +521,16 @@ def _cmd_cron_body(
     except Exception as _nsl_err:
         _log.warning("near_settlement_log: write failed: %s", _nsl_err)
 
-    # When SAME_DAY_RESERVE_SLOTS=0 (feature off) and enough same-day data has
-    # accumulated, remind the user to analyze time-of-day performance and activate.
+    # When neither dynamic nor static same-day reservation is active, remind the user
+    # to enable dynamic mode once enough data has accumulated.
     try:
-        from utils import SAME_DAY_RESERVE_MIN_SAMPLES, SAME_DAY_RESERVE_SLOTS
+        from utils import (
+            SAME_DAY_DYNAMIC_SLOTS,
+            SAME_DAY_RESERVE_MIN_SAMPLES,
+            SAME_DAY_RESERVE_SLOTS,
+        )
 
-        if SAME_DAY_RESERVE_SLOTS == 0:
+        if not SAME_DAY_DYNAMIC_SLOTS and SAME_DAY_RESERVE_SLOTS == 0:
             from tracker import count_settled_sameday_predictions
 
             _sd_count = count_settled_sameday_predictions()
@@ -534,8 +538,7 @@ def _cmd_cron_body(
                 print(
                     yellow(
                         f"  [SameDayReserve] {_sd_count} same-day trades settled — "
-                        f"analyze entered_at vs win rate by hour, then set "
-                        f"SAME_DAY_RESERVE_SLOTS in .env to activate slot reservation."
+                        f"set SAME_DAY_DYNAMIC_SLOTS=1 in .env to activate dynamic per-band cap scaling."
                     )
                 )
     except Exception:

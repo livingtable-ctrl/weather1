@@ -116,8 +116,18 @@ SAME_DAY_RESERVE_AFTER_HOUR_UTC = int(
     os.getenv("SAME_DAY_RESERVE_AFTER_HOUR_UTC", "12")
 )
 # UTC hour at which reserved slots are released (0-23). Default 12 = noon UTC.
-SAME_DAY_RESERVE_MIN_SAMPLES = int(os.getenv("SAME_DAY_RESERVE_MIN_SAMPLES", "40"))
+SAME_DAY_RESERVE_MIN_SAMPLES = int(os.getenv("SAME_DAY_RESERVE_MIN_SAMPLES", "150"))
 # Minimum settled same-day trades required before reservation logic activates.
+SAME_DAY_DYNAMIC_SLOTS = os.getenv("SAME_DAY_DYNAMIC_SLOTS", "0") in (
+    "1",
+    "true",
+    "True",
+)
+# Enable dynamic per-band cap scaling based on historical above/below win rates.
+SAME_DAY_DYNAMIC_K = int(os.getenv("SAME_DAY_DYNAMIC_K", "5"))
+# Bayesian shrinkage constant (pseudo-observation count). Lower = more responsive to data.
+SAME_DAY_DYNAMIC_BAND_HOURS = int(os.getenv("SAME_DAY_DYNAMIC_BAND_HOURS", "6"))
+# Hours per time band (6 → 4 bands). Tighten to 3 or 2 once 200+ above/below trades settled.
 MAX_DAILY_LOSS_PCT = float(os.getenv("MAX_DAILY_LOSS_PCT", "0.03"))
 MAX_DAYS_OUT = int(os.getenv("MAX_DAYS_OUT", "5"))  # scan markets up to N days out
 MAX_POSITION_AGE_DAYS = int(os.getenv("MAX_POSITION_AGE_DAYS", "7"))

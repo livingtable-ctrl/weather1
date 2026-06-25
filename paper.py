@@ -1628,6 +1628,33 @@ def load_paper_trades() -> list[dict]:
     return get_all_trades()
 
 
+def get_sameday_band_stats(band_hours: int = 6) -> dict:
+    """Per-UTC-time-band win rates for settled same-day above/below trades.
+
+    Returns {'baseline': {'wins': int, 'total': int}, 'bands': {band_index: {'wins': int, 'total': int}}}.
+    Above/below only (tickers without '-B'). band_hours controls band width (e.g. 6 → 4 bands).
+    """
+    trades = [
+        t
+        for t in get_all_trades()
+        if t.get("days_out") == 0
+        and t.get("settled")
+        and "-B" not in t.get("ticker", "").upper()
+    ]
+    baseline = {
+        "wins": sum(1 for t in trades if (t.get("pnl") or 0) > 0),
+        "total": len(trades),
+    }
+    bands: dict = {}
+    for t in trades:
+        b = int(t["entered_at"][11:13]) // band_hours
+        slot = bands.setdefault(b, {"wins": 0, "total": 0})
+        slot["total"] += 1
+        if (t.get("pnl") or 0) > 0:
+            slot["wins"] += 1
+    return {"baseline": baseline, "bands": bands}
+
+
 def get_performance() -> dict:
     """Summary stats across all settled trades."""
     trades = [t for t in _load()["trades"] if t["settled"]]

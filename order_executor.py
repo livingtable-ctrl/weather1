@@ -477,19 +477,22 @@ def _daily_sameday_spend() -> float:
 def _sameday_effective_cap(max_positions: int) -> int:
     """Effective same-day slot cap for the current UTC hour.
 
-    When SAME_DAY_RESERVE_SLOTS > 0 and SAME_DAY_RESERVE_MIN_SAMPLES settled
-    same-day trades exist, holds back slots before SAME_DAY_RESERVE_AFTER_HOUR_UTC
-    so later scans (with more accumulated METAR observations) have room to trade.
-    Fails open on any error so a DB lookup failure never blocks trades.
+    Dynamic mode: scales cap by Bayesian-blended per-band win rate vs baseline.
+    Static mode (legacy): holds back a fixed number of slots before a fixed UTC hour.
+    Fails open on any error — a lookup failure never blocks trades.
     """
     from utils import (
+        SAME_DAY_DYNAMIC_BAND_HOURS,
+        SAME_DAY_DYNAMIC_K,
+        SAME_DAY_DYNAMIC_SLOTS,
         SAME_DAY_RESERVE_AFTER_HOUR_UTC,
         SAME_DAY_RESERVE_MIN_SAMPLES,
         SAME_DAY_RESERVE_SLOTS,
     )
 
-    if SAME_DAY_RESERVE_SLOTS <= 0:
-        return max_positions  # feature disabled
+    # Fast path: both systems disabled — skip DB call entirely
+    if not SAME_DAY_DYNAMIC_SLOTS and SAME_DAY_RESERVE_SLOTS <= 0:
+        return max_positions
 
     try:
         from tracker import count_settled_sameday_predictions
@@ -499,11 +502,60 @@ def _sameday_effective_cap(max_positions: int) -> int:
         return max_positions  # fail open — never block trades on a lookup error
 
     if settled < SAME_DAY_RESERVE_MIN_SAMPLES:
-        return max_positions  # not enough data to calibrate, no reservation
+        return max_positions  # not enough data yet
 
+    # Dynamic mode: Bayesian shrinkage of per-band win rate toward baseline
+    if SAME_DAY_DYNAMIC_SLOTS:
+        try:
+            if SAME_DAY_DYNAMIC_BAND_HOURS <= 0 or SAME_DAY_DYNAMIC_K < 0:
+                _log.warning(
+                    "_sameday_effective_cap: invalid config (K=%d band_hours=%d), skipping dynamic mode",
+                    SAME_DAY_DYNAMIC_K,
+                    SAME_DAY_DYNAMIC_BAND_HOURS,
+                )
+                return max_positions
+
+            from paper import get_sameday_band_stats
+
+            stats = get_sameday_band_stats(SAME_DAY_DYNAMIC_BAND_HOURS)
+            baseline = stats["baseline"]
+            if baseline["total"] == 0:
+                return max_positions
+            baseline_wr = baseline["wins"] / baseline["total"]
+            if baseline_wr == 0:
+                # All trades lost — strongest possible signal, cap at floor
+                return 1
+            hour = datetime.now(UTC).hour
+            band = hour // SAME_DAY_DYNAMIC_BAND_HOURS
+            b_data = stats["bands"].get(band, {"wins": 0, "total": 0})
+            N = b_data["total"]
+            band_wr = b_data["wins"] / N if N > 0 else baseline_wr
+            K = SAME_DAY_DYNAMIC_K
+            blended_wr = (N / (N + K)) * band_wr + (K / (N + K)) * baseline_wr
+            scale = blended_wr / baseline_wr
+            cap = max(1, min(max_positions, round(max_positions * scale)))
+            if cap < max_positions:
+                _log.info(
+                    "_sameday_effective_cap: band=%d hour=%d cap=%d/%d "
+                    "(baseline=%.0f%% band_wr=%.0f%% N=%d blended=%.0f%%)",
+                    band,
+                    hour,
+                    cap,
+                    max_positions,
+                    baseline_wr * 100,
+                    band_wr * 100,
+                    N,
+                    blended_wr * 100,
+                )
+            return cap
+        except Exception:
+            return max_positions  # fail open
+
+    # Static mode (legacy): hold back fixed slots before a fixed UTC hour
+    if SAME_DAY_RESERVE_SLOTS <= 0:
+        return max_positions
     if datetime.now(UTC).hour >= SAME_DAY_RESERVE_AFTER_HOUR_UTC:
         return max_positions  # past cutoff hour, release reserved slots
-
     return max(0, max_positions - SAME_DAY_RESERVE_SLOTS)
 
 
@@ -861,14 +913,23 @@ def _auto_place_trades(
     # Cap is stable within a scan; it only needs to update between cron cycles.
     _eff_sameday_cap = _sameday_effective_cap(MAX_SAME_DAY_POSITIONS)
     if _eff_sameday_cap < MAX_SAME_DAY_POSITIONS:
-        _log.info(
-            "_auto_place_trades: same-day cap reduced to %d/%d "
-            "(holding %d slots until %d:00 UTC)",
-            _eff_sameday_cap,
-            MAX_SAME_DAY_POSITIONS,
-            MAX_SAME_DAY_POSITIONS - _eff_sameday_cap,
-            int(os.getenv("SAME_DAY_RESERVE_AFTER_HOUR_UTC", "12")),
-        )
+        from utils import SAME_DAY_DYNAMIC_SLOTS as _dyn
+
+        if _dyn:
+            _log.info(
+                "_auto_place_trades: same-day cap reduced to %d/%d (dynamic band scaling)",
+                _eff_sameday_cap,
+                MAX_SAME_DAY_POSITIONS,
+            )
+        else:
+            _log.info(
+                "_auto_place_trades: same-day cap reduced to %d/%d "
+                "(holding %d slots until %d:00 UTC)",
+                _eff_sameday_cap,
+                MAX_SAME_DAY_POSITIONS,
+                MAX_SAME_DAY_POSITIONS - _eff_sameday_cap,
+                int(os.getenv("SAME_DAY_RESERVE_AFTER_HOUR_UTC", "12")),
+            )
     # Multi-day cap tracks all positions placed as days_out >= 1, grouped by date.
     _multiday_date_counts = _Counter(
         t.get("target_date")
