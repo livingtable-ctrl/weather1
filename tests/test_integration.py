@@ -80,6 +80,10 @@ class TestAnalyzePipeline:
     """Integration tests for analyze_trade() (#112)."""
 
     @patch("weather_markets.get_live_observation", return_value=None)
+    @patch(
+        "weather_markets._get_consensus_probs",
+        return_value=(None, None, None, None),
+    )
     @patch("weather_markets.fetch_temperature_nbm", return_value=69.0)
     @patch("weather_markets.fetch_temperature_ecmwf", return_value=69.0)
     @patch("weather_markets.get_ensemble_members", return_value=None)
@@ -112,12 +116,18 @@ class TestAnalyzePipeline:
         mock_members,
         mock_ecmwf,
         mock_nbm,
+        mock_consensus,
         mock_obs,
     ):
         """analyze_trade returns a non-None dict with forecast_prob and edge keys."""
         from weather_markets import analyze_trade
 
         enriched = _make_enriched()
+        # T68 in late June with forecast=72 gives model ~0.84; market must be close
+        # enough to pass the model_mkt_gap gate (threshold: 0.25).
+        enriched["yes_bid"] = 0.78
+        enriched["yes_ask"] = 0.88
+        enriched["no_bid"] = 0.12
         result = analyze_trade(enriched)
 
         assert result is not None, "analyze_trade should return a dict for valid input"
@@ -327,6 +337,10 @@ class TestAnalyzePipelineExtra:
         assert "forecast_prob" in result
 
     @patch("weather_markets.get_live_observation", return_value=None)
+    @patch(
+        "weather_markets._get_consensus_probs",
+        return_value=(None, None, None, None),
+    )
     @patch("weather_markets.fetch_temperature_nbm", return_value=69.0)
     @patch("weather_markets.fetch_temperature_ecmwf", return_value=69.0)
     @patch("weather_markets.get_ensemble_members", return_value=None)
@@ -359,12 +373,18 @@ class TestAnalyzePipelineExtra:
         mock_members,
         mock_ecmwf,
         mock_nbm,
+        mock_consensus,
         mock_obs,
     ):
         """signal field must be a non-empty string with a recognised prefix (BUY, SELL, PASS, NEUTRAL, STRONG BUY, or WEAK)."""
         from weather_markets import analyze_trade
 
         enriched = _make_enriched()
+        # T68 in late June with forecast=72 gives model ~0.84; market must be close
+        # enough to pass the model_mkt_gap gate (threshold: 0.25).
+        enriched["yes_bid"] = 0.78
+        enriched["yes_ask"] = 0.88
+        enriched["no_bid"] = 0.12
         result = analyze_trade(enriched)
 
         assert result is not None
