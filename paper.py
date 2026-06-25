@@ -1634,9 +1634,11 @@ def get_sameday_band_stats(band_hours: int = 6) -> dict:
     Returns {'baseline': {'wins': int, 'total': int}, 'bands': {band_index: {'wins': int, 'total': int}}}.
     Above/below only (tickers without '-B'). band_hours controls band width (e.g. 6 → 4 bands).
     """
+    with _DATA_LOCK:
+        all_trades = _load()["trades"]
     trades = [
         t
-        for t in get_all_trades()
+        for t in all_trades
         if t.get("days_out") == 0
         and t.get("settled")
         and "-B" not in t.get("ticker", "").upper()
