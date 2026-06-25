@@ -80,6 +80,9 @@ class TestAnalyzePipeline:
     """Integration tests for analyze_trade() (#112)."""
 
     @patch("weather_markets.get_live_observation", return_value=None)
+    @patch("weather_markets.fetch_temperature_nbm", return_value=69.0)
+    @patch("weather_markets.fetch_temperature_ecmwf", return_value=69.0)
+    @patch("weather_markets.get_ensemble_members", return_value=None)
     @patch("weather_markets.nws_prob", return_value=0.62)
     @patch("weather_markets.climatological_prob", return_value=0.58)
     @patch("weather_markets.temperature_adjustment", return_value=0.0)
@@ -106,6 +109,9 @@ class TestAnalyzePipeline:
         mock_temp_adj,
         mock_clim,
         mock_nws,
+        mock_members,
+        mock_ecmwf,
+        mock_nbm,
         mock_obs,
     ):
         """analyze_trade returns a non-None dict with forecast_prob and edge keys."""
@@ -321,6 +327,9 @@ class TestAnalyzePipelineExtra:
         assert "forecast_prob" in result
 
     @patch("weather_markets.get_live_observation", return_value=None)
+    @patch("weather_markets.fetch_temperature_nbm", return_value=69.0)
+    @patch("weather_markets.fetch_temperature_ecmwf", return_value=69.0)
+    @patch("weather_markets.get_ensemble_members", return_value=None)
     @patch("weather_markets.nws_prob", return_value=0.70)
     @patch("weather_markets.climatological_prob", return_value=0.65)
     @patch("weather_markets.temperature_adjustment", return_value=0.0)
@@ -342,7 +351,15 @@ class TestAnalyzePipelineExtra:
         ],
     )
     def test_analyze_trade_signal_is_valid(
-        self, mock_ens, mock_temp_adj, mock_clim, mock_nws, mock_obs
+        self,
+        mock_ens,
+        mock_temp_adj,
+        mock_clim,
+        mock_nws,
+        mock_members,
+        mock_ecmwf,
+        mock_nbm,
+        mock_obs,
     ):
         """signal field must be a non-empty string with a recognised prefix (BUY, SELL, PASS, NEUTRAL, STRONG BUY, or WEAK)."""
         from weather_markets import analyze_trade
