@@ -891,6 +891,16 @@ def test_model_consensus_false_when_models_disagree(monkeypatch):
     # datetime.now(UTC).date(). When the local "tomorrow" equals the UTC date
     # (US timezones after ~20:00 local), it fires and skips the consensus block.
     monkeypatch.setattr(wm, "_metar_lock_in", lambda *a, **kw: (False, 0.0, {}))
+    # Patch live API calls so the test is deterministic — without these,
+    # fetch_temperature_nbm/ecmwf make real network requests and the resulting
+    # model probability shifts unpredictably, occasionally triggering the
+    # model_mkt_gap gate (>0.25) and returning None.
+    monkeypatch.setattr(wm, "fetch_temperature_nbm", lambda *a, **kw: 76.0)
+    monkeypatch.setattr(wm, "fetch_temperature_ecmwf", lambda *a, **kw: 77.0)
+    monkeypatch.setattr(wm, "climatological_prob", lambda *a, **kw: 0.20)
+    monkeypatch.setattr(wm, "nws_prob", lambda *a, **kw: 0.15)
+    monkeypatch.setattr(wm, "get_live_observation", lambda *a, **kw: None)
+    monkeypatch.setattr(wm, "temperature_adjustment", lambda *a, **kw: 0.0)
 
     from datetime import date, timedelta
 
@@ -903,8 +913,9 @@ def test_model_consensus_false_when_models_disagree(monkeypatch):
         "ticker": "KXHIGHNY-26APR09-T80",
         "title": "Will NYC high temperature be above 80°F?",
         "series_ticker": "KXHIGH-23-NYC",
-        "yes_ask": 0.72,
-        "yes_bid": 0.62,
+        "yes_ask": 0.20,
+        "yes_bid": 0.15,
+        "no_bid": 0.80,
         "volume": 500,
         "open_interest": 200,
         "close_time": (
