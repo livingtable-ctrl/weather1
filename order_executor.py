@@ -507,7 +507,7 @@ def _sameday_effective_cap(max_positions: int) -> int:
     # Dynamic mode: Bayesian shrinkage of per-band win rate toward baseline
     if SAME_DAY_DYNAMIC_SLOTS:
         try:
-            if SAME_DAY_DYNAMIC_BAND_HOURS <= 0 or SAME_DAY_DYNAMIC_K < 0:
+            if SAME_DAY_DYNAMIC_BAND_HOURS <= 0 or SAME_DAY_DYNAMIC_K <= 0:
                 _log.warning(
                     "_sameday_effective_cap: invalid config (K=%d band_hours=%d), skipping dynamic mode",
                     SAME_DAY_DYNAMIC_K,
