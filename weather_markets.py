@@ -4412,15 +4412,29 @@ def _metar_lock_in(
             try:
                 import zoneinfo as _zi
 
-                _lh = (
-                    _metar_obs["obs_time"]
-                    .astimezone(_zi.ZoneInfo(_CITY_TZ.get(city, "America/New_York")))
-                    .hour
+                _obs_local = _metar_obs["obs_time"].astimezone(
+                    _zi.ZoneInfo(_CITY_TZ.get(city, "America/New_York"))
                 )
+                _lh = _obs_local.hour
+                _obs_local_date = _obs_local.date()
             except Exception:
                 return False, 0.0, {}  # can't determine local hour — skip lock-in
 
-            if _lh >= 14:
+            # Midnight UTC = ~7 PM local CDT (prior calendar day). Comparing
+            # yesterday's evening temperature to today's 2°F between range is
+            # unreliable — the daily high hasn't occurred yet. Only fire when
+            # the METAR observation is from the same local date as target_date.
+            if _obs_local_date != target_date:
+                _lockout = {
+                    "locked": False,
+                    "outcome": None,
+                    "confidence": 0.0,
+                    "reason": (
+                        f"METAR obs from {_obs_local_date} != target {target_date}"
+                        " — prior-day temp cannot confirm today's high"
+                    ),
+                }
+            elif _lh >= 14:
                 if _lo <= _ct <= _hi:
                     _clearance_yes = min(_ct - _lo, _hi - _ct)
                     _lockout = {

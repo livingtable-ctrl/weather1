@@ -26,7 +26,9 @@ class TestBetweenLockInDynamicConfidence:
 
         today = datetime.now(UTC).date()
         fake_obs_time = MagicMock()
-        fake_obs_time.astimezone.return_value = MagicMock(hour=local_hour)
+        fake_obs_local = MagicMock(hour=local_hour)
+        fake_obs_local.date.return_value = today  # date guard: same day as target_date
+        fake_obs_time.astimezone.return_value = fake_obs_local
 
         with patch.object(wm, "_metar_station_for_city", return_value="KJFK"):
             with patch.object(
@@ -114,6 +116,56 @@ class TestBetweenLockInDynamicConfidence:
                 assert 0.72 <= conf <= 0.97, (
                     f"conf={conf:.3f} out of [0.72,0.97] for clearance={clearance}, hour={hour}"
                 )
+
+    def test_prior_day_obs_does_not_lock_between(self):
+        """METAR obs from the prior local calendar day must not lock between markets.
+
+        Midnight UTC = ~7 PM CDT (previous local date). The obs_time local hour=19
+        passes the >=14 check, but the obs is from the prior day and the daily high
+        has not yet occurred — locking NO with yesterday's evening temp was the root
+        cause of systematic between-market losses.
+        """
+        from datetime import timedelta
+        from zoneinfo import ZoneInfo
+
+        import metar as _metar
+        import weather_markets as wm
+
+        # Use local (NYC) date so the station/date guard in _metar_lock_in passes.
+        # At midnight UTC the UTC date can be one day ahead of the local date, so
+        # target_date must match _local_today (derived in local tz).
+        local_today = datetime.now(ZoneInfo("America/New_York")).date()
+        yesterday = local_today - timedelta(days=1)
+
+        fake_obs_time = MagicMock()
+        fake_obs_local = MagicMock(hour=19)  # 7 PM local — passes >=14 if unchecked
+        fake_obs_local.date.return_value = yesterday  # obs is from prior local day
+        fake_obs_time.astimezone.return_value = fake_obs_local
+
+        with patch.object(wm, "_metar_station_for_city", return_value="KJFK"):
+            with patch.object(
+                _metar,
+                "fetch_metar",
+                return_value={
+                    "current_temp_f": 85.0,  # well outside B91.5 range
+                    "obs_time": fake_obs_time,
+                },
+            ):
+                locked, prob, details = wm._metar_lock_in(
+                    city="NYC",  # NYC maps to America/New_York — matches local_today calc
+                    target_date=local_today,
+                    condition={"type": "between", "lower": 90.5, "upper": 92.5},
+                )
+
+        assert not locked, (
+            "Prior-day METAR obs (7 PM local = midnight UTC) must not lock between "
+            f"market. Got locked=True with reason={details.get('reason')}"
+        )
+        assert "prior-day" in details.get("reason", "").lower() or str(
+            yesterday
+        ) in details.get("reason", ""), (
+            f"Reason should mention date mismatch, got: {details.get('reason')}"
+        )
 
 
 # ── P2-15: get_live_precip_obs caching, locking, circuit breaker ──────────────
