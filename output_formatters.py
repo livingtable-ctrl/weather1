@@ -12,8 +12,8 @@ from colors import bold, dim, edge_color, green, prob_color, red, yellow
 from kalshi_client import KalshiClient
 from paper import get_profit_factor
 from tracker import (
-    brier_score,
     brier_score_by_method,
+    brier_score_rolling,
     get_calibration_by_city,
     get_calibration_by_type,
     get_calibration_trend,
@@ -92,7 +92,7 @@ def cmd_history(client: KalshiClient) -> None:  # noqa: PLR0912, PLR0915
     else:
         print(dim(f"  {len(rows_data)} prediction(s) total."))
 
-    bs = brier_score()
+    bs = brier_score_rolling()
     if bs is not None:
         grade = (
             green("Excellent")

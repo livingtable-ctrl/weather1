@@ -34,7 +34,7 @@ def _collect_data() -> dict:
         get_open_trades,
         get_performance,
     )
-    from tracker import brier_score
+    from tracker import brier_score_rolling
 
     perf = get_performance()
     streak_kind, streak_n = get_current_streak()
@@ -47,7 +47,7 @@ def _collect_data() -> dict:
         "win_rate": perf.get("win_rate"),
         "settled": perf.get("settled", 0),
         "max_drawdown": round(get_max_drawdown_pct() * 100, 1),
-        "brier": brier_score(),
+        "brier": brier_score_rolling(),
         "streak_kind": streak_kind,
         "streak_n": streak_n,
         "fg_score": fg_score,
