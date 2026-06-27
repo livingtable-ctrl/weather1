@@ -34,11 +34,12 @@ def _collect_data() -> dict:
         get_open_trades,
         get_performance,
     )
-    from tracker import brier_score_rolling
+    from tracker import brier_score_rolling_with_n
 
     perf = get_performance()
     streak_kind, streak_n = get_current_streak()
     fg_score, fg_label = fear_greed_index()
+    brier_val, brier_n = brier_score_rolling_with_n()
 
     return {
         "generated_at": datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC"),
@@ -47,7 +48,8 @@ def _collect_data() -> dict:
         "win_rate": perf.get("win_rate"),
         "settled": perf.get("settled", 0),
         "max_drawdown": round(get_max_drawdown_pct() * 100, 1),
-        "brier": brier_score_rolling(),
+        "brier": brier_val,
+        "brier_n": brier_n,
         "streak_kind": streak_kind,
         "streak_n": streak_n,
         "fg_score": fg_score,

@@ -1004,6 +1004,30 @@ def brier_score_rolling(weeks: int = 3) -> float | None:
     return brier_score(cutoff_days=weeks * 7)
 
 
+def brier_score_rolling_with_n(weeks: int = 3) -> tuple[float | None, int]:
+    """Returns (brier, n) for the rolling window in a single query.
+
+    Use this at display sites that need to show the sample count alongside the score.
+    """
+    init_db()
+    days = weeks * 7
+    with _conn() as con:
+        rows = con.execute(
+            f"""
+            SELECT p.our_prob, o.settled_yes
+            FROM multiday_predictions p
+            JOIN outcomes o ON p.ticker = o.ticker
+            WHERE p.our_prob IS NOT NULL
+              AND o.settled_at >= datetime('now', '-{days} days')
+            """
+        ).fetchall()
+    n = len(rows)
+    if not rows:
+        return None, 0
+    brier = sum((r["our_prob"] - r["settled_yes"]) ** 2 for r in rows) / n
+    return round(brier, 4), n
+
+
 def count_settled_predictions_rolling(weeks: int = 3) -> int:
     """Count multi-day predictions whose outcome settled within the last `weeks` weeks."""
     init_db()

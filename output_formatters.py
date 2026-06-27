@@ -13,7 +13,7 @@ from kalshi_client import KalshiClient
 from paper import get_profit_factor
 from tracker import (
     brier_score_by_method,
-    brier_score_rolling,
+    brier_score_rolling_with_n,
     get_calibration_by_city,
     get_calibration_by_type,
     get_calibration_trend,
@@ -92,7 +92,7 @@ def cmd_history(client: KalshiClient) -> None:  # noqa: PLR0912, PLR0915
     else:
         print(dim(f"  {len(rows_data)} prediction(s) total."))
 
-    bs = brier_score_rolling()
+    bs, bs_n = brier_score_rolling_with_n()
     if bs is not None:
         grade = (
             green("Excellent")
@@ -107,7 +107,7 @@ def cmd_history(client: KalshiClient) -> None:  # noqa: PLR0912, PLR0915
         sparkline_str = f"  {dim(sparkline)}" if sparkline else ""
         print(
             f"\n  Brier score: {bold(f'{bs:.4f}')}  {grade}  "
-            f"{dim('(0.00=perfect, 0.25=random)')}{sparkline_str}"
+            f"{dim(f'(3w, n={bs_n}  |  0.00=perfect, 0.25=random)')}{sparkline_str}"
         )
 
         # ── Weekly calibration trend ─────────────────────────────────────────

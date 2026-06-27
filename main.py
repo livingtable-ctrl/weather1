@@ -79,7 +79,7 @@ from output_formatters import (
 )
 from tracker import (
     brier_score,
-    brier_score_rolling,
+    brier_score_rolling_with_n,
     export_predictions_csv,
     get_calibration_trend,
     get_source_reliability,
@@ -2396,12 +2396,12 @@ def cmd_brief(client: KalshiClient, send_email: bool = False) -> None:
             perf = get_performance()
             pnl = perf.get("total_pnl", 0.0)
             wr = perf.get("win_rate")
-            bs = brier_score_rolling()
+            bs, bs_n = brier_score_rolling_with_n()
             lines = [
                 f"Balance: ${bal:.2f}",
                 f"P&L: {'+' if pnl >= 0 else ''}${pnl:.2f}",
                 f"Win rate: {wr:.0%}" if wr else "Win rate: —",
-                f"Brier: {bs:.4f}" if bs else "Brier: —",
+                f"Brier (3w, n={bs_n}): {bs:.4f}" if bs else "Brier (3w): —",
             ]
             sent = _send_email(
                 f"Kalshi Morning Briefing — {datetime.now(UTC).strftime('%Y-%m-%d')}",
@@ -2927,7 +2927,7 @@ def cmd_dashboard(client: KalshiClient) -> None:  # noqa: ARG001
         pass
 
     # ── Calibration ──────────────────────────────────────────────────────────
-    bs = brier_score_rolling()
+    bs, bs_n = brier_score_rolling_with_n()
     if bs is not None:
         grade = (
             green("Excellent")
@@ -2938,7 +2938,7 @@ def cmd_dashboard(client: KalshiClient) -> None:  # noqa: ARG001
             if bs < 0.25
             else red("Poor")
         )
-        print(f"  Brier score: {bold(f'{bs:.4f}')}  {grade}")
+        print(f"  Brier score: {bold(f'{bs:.4f}')}  {grade}  {dim(f'(3w, n={bs_n})')}")
 
     # ── Open positions ────────────────────────────────────────────────────────
     open_trades = get_open_trades()
@@ -5045,7 +5045,7 @@ def cmd_menu(client: KalshiClient):
             pass
 
         try:
-            bs = brier_score_rolling()
+            bs, bs_n = brier_score_rolling_with_n()
             if bs is not None:
                 grade = (
                     "Excellent"
@@ -5063,10 +5063,8 @@ def cmd_menu(client: KalshiClient):
                     if grade == "Fair"
                     else red
                 )
-                status_visible += f"  ·  Brier: {bs:.3f} {grade}"
-                status_colored += (
-                    f"  {dim('·')}  Brier: {grade_color(f'{bs:.3f} {grade}')}"
-                )
+                status_visible += f"  ·  Brier: {bs:.3f} {grade} (n={bs_n})"
+                status_colored += f"  {dim('·')}  Brier: {grade_color(f'{bs:.3f} {grade}')}  {dim(f'(n={bs_n})')}"
         except Exception:
             pass
 
@@ -6553,7 +6551,7 @@ def cmd_weekly_summary() -> None:
     from datetime import timedelta
 
     from paper import get_all_trades, get_balance
-    from tracker import brier_score_rolling, get_calibration_trend
+    from tracker import brier_score_rolling_with_n, get_calibration_trend
 
     now = datetime.now(UTC)
     week_start = now - timedelta(days=7)
@@ -6572,7 +6570,7 @@ def cmd_weekly_summary() -> None:
     week_pnl = sum(t.get("pnl") or 0.0 for t in settled_this_week)
     week_wins = sum(1 for t in settled_this_week if (t.get("pnl") or 0) > 0)
 
-    bs = brier_score_rolling()
+    bs, bs_n = brier_score_rolling_with_n()
     trend = get_calibration_trend(weeks=4)
     rel = get_source_reliability()
     balance = get_balance()
@@ -6600,7 +6598,7 @@ def cmd_weekly_summary() -> None:
         f"Week win rate:  {week_wins / len(settled_this_week):.0%}"
         if settled_this_week
         else "Week win rate:  —",
-        f"Brier (3w):     {bs:.4f}" if bs else "Brier (3w):     —",
+        f"Brier (3w, n={bs_n}): {bs:.4f}" if bs else "Brier (3w):       —",
         "",
     ]
 
