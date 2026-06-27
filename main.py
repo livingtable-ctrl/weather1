@@ -79,6 +79,7 @@ from output_formatters import (
 )
 from tracker import (
     brier_score,
+    brier_score_rolling,
     export_predictions_csv,
     get_calibration_trend,
     get_source_reliability,
@@ -2395,7 +2396,7 @@ def cmd_brief(client: KalshiClient, send_email: bool = False) -> None:
             perf = get_performance()
             pnl = perf.get("total_pnl", 0.0)
             wr = perf.get("win_rate")
-            bs = brier_score()
+            bs = brier_score_rolling()
             lines = [
                 f"Balance: ${bal:.2f}",
                 f"P&L: {'+' if pnl >= 0 else ''}${pnl:.2f}",
@@ -2926,7 +2927,7 @@ def cmd_dashboard(client: KalshiClient) -> None:  # noqa: ARG001
         pass
 
     # ── Calibration ──────────────────────────────────────────────────────────
-    bs = brier_score()
+    bs = brier_score_rolling()
     if bs is not None:
         grade = (
             green("Excellent")
@@ -5044,7 +5045,7 @@ def cmd_menu(client: KalshiClient):
             pass
 
         try:
-            bs = brier_score()
+            bs = brier_score_rolling()
             if bs is not None:
                 grade = (
                     "Excellent"
@@ -6552,7 +6553,7 @@ def cmd_weekly_summary() -> None:
     from datetime import timedelta
 
     from paper import get_all_trades, get_balance
-    from tracker import brier_score, get_calibration_trend
+    from tracker import brier_score_rolling, get_calibration_trend
 
     now = datetime.now(UTC)
     week_start = now - timedelta(days=7)
@@ -6571,7 +6572,7 @@ def cmd_weekly_summary() -> None:
     week_pnl = sum(t.get("pnl") or 0.0 for t in settled_this_week)
     week_wins = sum(1 for t in settled_this_week if (t.get("pnl") or 0) > 0)
 
-    bs = brier_score()
+    bs = brier_score_rolling()
     trend = get_calibration_trend(weeks=4)
     rel = get_source_reliability()
     balance = get_balance()
@@ -6599,7 +6600,7 @@ def cmd_weekly_summary() -> None:
         f"Week win rate:  {week_wins / len(settled_this_week):.0%}"
         if settled_this_week
         else "Week win rate:  —",
-        f"All-time Brier: {bs:.4f}" if bs else "All-time Brier: —",
+        f"Brier (3w):     {bs:.4f}" if bs else "Brier (3w):     —",
         "",
     ]
 

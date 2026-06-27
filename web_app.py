@@ -80,12 +80,12 @@ def _build_stream_data() -> dict:
     from datetime import UTC, datetime
 
     from paper import get_balance, get_open_trades
-    from tracker import brier_score
+    from tracker import brier_score_rolling
 
     return {
         "balance": round(get_balance(), 2),
         "open_count": len(get_open_trades()),
-        "brier": brier_score(),
+        "brier": brier_score_rolling(),
         "markets": _get_live_market_snapshot(),
         "ts": datetime.now(UTC).isoformat(),
     }
@@ -409,14 +409,14 @@ def _build_app(client):
     def api_analytics():
         try:
             from tracker import (
-                brier_score,
+                brier_score_rolling,
                 get_brier_by_days_out,
                 get_calibration_by_city,
                 get_component_attribution,
             )
 
             result: dict = {
-                "brier": brier_score(),
+                "brier": brier_score_rolling(),
                 "brier_by_days": get_brier_by_days_out(),
                 "city_calibration": get_calibration_by_city(),
                 "component_attribution": get_component_attribution(),
@@ -1015,14 +1015,13 @@ setInterval(() => {{
 
         # Annotate brier state and cache age so the frontend can surface them
         try:
-            from tracker import brier_score as _bs
-            from tracker import count_settled_predictions as _csp
-            from utils import MIN_BRIER_SAMPLES as _mbs
+            from tracker import brier_score_rolling as _bs
+            from tracker import count_settled_predictions_rolling as _csp_r
 
-            _n_settled = _csp()
-            _brier_val = _bs() if _n_settled >= _mbs else None
+            _n_rolling = _csp_r()
+            _brier_val = _bs() if _n_rolling >= 5 else None
             data["brier_score"] = _brier_val
-            data["brier_cap_active"] = _n_settled < _mbs
+            data["brier_cap_active"] = _n_rolling < 5
             data["cache_age_secs"] = round(signals_age)
         except Exception:
             pass
@@ -1229,7 +1228,7 @@ setInterval(() => {{
     def api_status():
         try:
             from paper import get_balance, get_open_trades
-            from tracker import brier_score
+            from tracker import brier_score_rolling
 
             try:
                 from paper import fear_greed_index
@@ -1332,7 +1331,7 @@ setInterval(() => {{
             data = {
                 "balance": round(get_balance(), 2),
                 "open_count": len(get_open_trades()),
-                "brier": brier_score(),
+                "brier": brier_score_rolling(),
                 "fear_greed_score": fg_score,
                 "fear_greed_label": fg_label,
                 "mean_slippage_cents": mean_slippage,

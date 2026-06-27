@@ -11,7 +11,7 @@ from __future__ import annotations
 import logging
 import math
 import sqlite3
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 
 from safe_io import project_root as _project_root
 from utils import utc_today as _utc_today
@@ -907,7 +907,11 @@ def get_component_attribution() -> dict[str, dict]:
     }
 
 
-def brier_score(city: str | None = None, min_days_out: int = 1) -> float | None:
+def brier_score(
+    city: str | None = None,
+    min_days_out: int = 1,
+    cutoff_days: int | None = None,
+) -> float | None:
     """
     Brier score = mean((our_prob - outcome)²).
     Lower is better. 0.25 = random, 0.0 = perfect.
@@ -916,6 +920,9 @@ def brier_score(city: str | None = None, min_days_out: int = 1) -> float | None:
     METAR-locked probs, not ensemble forecasts — mixing them distorts the
     multi-day model quality signal used for graduation and calibration gates.
     Pass min_days_out=0 to include all trades.
+
+    Pass cutoff_days=N to restrict to predictions whose outcome settled within
+    the last N days (rolling window).  None means all-time (default).
 
     Primary source: tracker predictions + outcomes JOIN (populated by log_prediction
     + sync_outcomes).  Fallback: paper_trades.db where entry_prob and outcome are
@@ -935,6 +942,8 @@ def brier_score(city: str | None = None, min_days_out: int = 1) -> float | None:
         if city:
             query += " AND p.city = ?"
             params.append(city)
+        if cutoff_days is not None:
+            query += f" AND o.settled_at >= datetime('now', '-{cutoff_days} days')"
         rows = con.execute(query, params).fetchall()
 
     if rows:
@@ -946,6 +955,11 @@ def brier_score(city: str | None = None, min_days_out: int = 1) -> float | None:
     try:
         from paper import get_all_trades as _get_all_trades
 
+        cutoff = (
+            datetime.now(UTC) - timedelta(days=cutoff_days)
+            if cutoff_days is not None
+            else None
+        )
         trades = _get_all_trades()
         pairs: list[tuple[float, int]] = []
         for t in trades:
@@ -963,6 +977,18 @@ def brier_score(city: str | None = None, min_days_out: int = 1) -> float | None:
                 and trade_days_out < min_days_out
             ):
                 continue
+            if cutoff is not None:
+                settled_str = t.get("settled_at")
+                if not settled_str:
+                    continue
+                try:
+                    settled_dt = datetime.fromisoformat(
+                        settled_str.replace("Z", "+00:00")
+                    )
+                    if settled_dt < cutoff:
+                        continue
+                except (ValueError, TypeError):
+                    continue
             settled_yes = 1 if outcome == "yes" else 0
             pairs.append((float(prob), settled_yes))
         if pairs:
@@ -971,6 +997,24 @@ def brier_score(city: str | None = None, min_days_out: int = 1) -> float | None:
         pass
 
     return None
+
+
+def brier_score_rolling(weeks: int = 3) -> float | None:
+    """Brier score over the most recent `weeks` weeks of settled multi-day predictions."""
+    return brier_score(cutoff_days=weeks * 7)
+
+
+def count_settled_predictions_rolling(weeks: int = 3) -> int:
+    """Count multi-day predictions whose outcome settled within the last `weeks` weeks."""
+    init_db()
+    days = weeks * 7
+    with _conn() as con:
+        row = con.execute(
+            f"SELECT COUNT(*) FROM multiday_predictions p "
+            f"JOIN outcomes o ON p.ticker = o.ticker "
+            f"WHERE o.settled_at >= datetime('now', '-{days} days')"
+        ).fetchone()
+    return row[0] if row else 0
 
 
 def get_rolling_win_rate(window: int = 20) -> tuple[float | None, int]:
