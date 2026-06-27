@@ -4860,9 +4860,10 @@ def cmd_backfill_emos() -> None:
     Part 1 — settled_temp_f: re-runs audit_settlement for any outcome that is
     missing the observed temperature (trades settled before that column existed).
 
-    Part 2 — ens_mean/ens_var: fetches historical ensemble members from Open-Meteo
-    (ICON + GFS + ECMWF AIFS when available) for each multi-day prediction that was
-    placed without these columns.  Required before running py main.py emos-train.
+    Part 2 — ens_mean: fetches the deterministic forecast from the Previous Runs API
+    (ICON + GFS + ECMWF AIFS single) at the correct lead time for each multi-day
+    prediction missing ens_mean.  ens_var is left NULL for backfill rows.
+    Required before running py main.py emos-train.
 
     Safe to re-run — already-filled rows are skipped by the SQL WHERE clause.
     """
@@ -4872,13 +4873,13 @@ def cmd_backfill_emos() -> None:
     try:
         temp_filled, ens_filled = backfill_emos_data()
         print(
-            f"\nDone — settled_temp_f filled: {temp_filled}, ens_mean/ens_var filled: {ens_filled}"
+            f"\nDone — settled_temp_f filled: {temp_filled}, ens_mean filled: {ens_filled}"
         )
         if ens_filled == 0:
             print(
                 dim(
-                    "  No ens_mean/ens_var filled — Open-Meteo archive may not have data "
-                    "older than ~6 months, or no settled multi-day predictions exist yet."
+                    "  No ens_mean filled — Previous Runs API may not have data "
+                    "for these dates, or no settled multi-day predictions are missing ens_mean."
                 )
             )
     except Exception as exc:

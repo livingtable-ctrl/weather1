@@ -1030,13 +1030,19 @@ def count_settled_sameday_predictions() -> int:
 
 
 def count_emos_ready_predictions() -> int:
-    """Count multi-day predictions that have ens_mean populated (EMOS training rows)."""
+    """Count multi-day predictions that have ens_mean populated (EMOS training rows).
+
+    ens_var may be NULL for rows backfilled from the Previous Runs API — only
+    forward-fill rows (placed after EMOS steps 1-4, Jun 21 2026+) carry both
+    columns.  The emos-train mean calibration uses all rows; variance calibration
+    uses only the forward-fill subset with non-NULL ens_var.
+    """
     init_db()
     with _conn() as con:
         row = con.execute(
             "SELECT COUNT(*) FROM multiday_predictions p "
             "JOIN outcomes o ON p.ticker = o.ticker "
-            "WHERE p.ens_mean IS NOT NULL AND p.ens_var IS NOT NULL"
+            "WHERE p.ens_mean IS NOT NULL"
         ).fetchone()
     return row[0] if row else 0
 
@@ -1981,16 +1987,87 @@ def _fetch_ensemble_members_historical(
         return []
 
 
+# Maps our live ensemble model names to their deterministic equivalents in the
+# Previous Runs API.  Individual ensemble members are only archived for 3 days;
+# the Previous Runs API stores deterministic control-run forecasts at fixed lead
+# times (previous_day1 = 24 h ahead, previous_day2 = 48 h ahead) since Jan 2024.
+_PREVIOUS_RUN_MODEL_MAP = {
+    "icon_seamless": "icon_seamless",
+    "gfs_seamless": "gfs_seamless",
+    "ecmwf_aifs025_ensemble": "ecmwf_aifs025_single",
+}
+
+
+def _fetch_previous_run_daily(
+    lat: float,
+    lon: float,
+    tz: str,
+    target_date: date,
+    prev_model: str,
+    days_out: int,
+    var: str,
+) -> float | None:
+    """Fetch one model's daily max or min from the Previous Runs API.
+
+    Requests temperature_2m_previous_day{days_out} so the stored ens_mean
+    reflects the forecast at the same lead time the live system uses at trade
+    placement.  Returns None if the model has no data for this date.
+    """
+    import requests as _req
+
+    past_days = (date.today() - target_date).days
+    if past_days < 0:
+        return None
+    lead = max(1, min(days_out, 7))
+    hourly_var = f"temperature_2m_previous_day{lead}"
+    date_str = target_date.isoformat()
+
+    try:
+        resp = _req.get(
+            "https://previous-runs-api.open-meteo.com/v1/forecast",
+            params={
+                "latitude": str(lat),
+                "longitude": str(lon),
+                "models": prev_model,
+                "temperature_unit": "fahrenheit",
+                "timezone": tz,
+                "hourly": hourly_var,
+                "past_days": str(past_days),
+                "forecast_days": "1",
+            },
+            timeout=20,
+        )
+        resp.raise_for_status()
+    except Exception:
+        return None
+
+    data = resp.json()
+    if not isinstance(data, dict):
+        return None
+    hourly = data.get("hourly", {})
+    times = hourly.get("time", [])
+    vals = [
+        v
+        for t, v in zip(times, hourly.get(hourly_var, []))
+        if date_str in t and v is not None
+    ]
+    if not vals:
+        return None
+    return max(vals) if var == "max" else min(vals)
+
+
 def backfill_emos_data() -> tuple[int, int]:
     """Backfill EMOS training data for all settled predictions.
 
     Part 1 — settled_temp_f: calls audit_settlement for every outcome row where the
     actual observed temperature was not stored (pre-dates the store-temp code).
 
-    Part 2 — ens_mean/ens_var: fetches historical ensemble members from Open-Meteo
-    (ICON + GFS + ECMWF AIFS if available) for each multi-day prediction that is
-    missing either column.  Applies the same per-model replication weights as the
-    live get_ensemble_temps() so backfill ens_mean/ens_var match the live distribution.
+    Part 2 — ens_mean: fetches the deterministic control-run forecast from the
+    Previous Runs API (ICON + GFS + ECMWF AIFS single) at the correct lead time
+    (previous_day{days_out}) for each multi-day prediction missing ens_mean.
+    ens_var is left NULL — individual ensemble members are only stored for 3 days
+    and no consistent-scale proxy exists; emos-train handles NULL ens_var by
+    using only forward-fill rows (Jun 21 2026+) for variance calibration.
 
     Returns (settled_temp_filled, ens_filled) counts.
     """
@@ -2023,16 +2100,17 @@ def backfill_emos_data() -> tuple[int, int]:
         # DISTINCT eliminates duplicate rows from multi-day re-scans of the same
         # ticker — each market needs only one API fetch regardless of how many
         # predicted_date rows it accumulated.
-        # OR filter catches partial writes (ens_mean set but ens_var NULL or vice
-        # versa), which can't happen under normal operation but defends against crashes.
+        # Filter on ens_mean IS NULL only (not ens_var) so that completed backfill
+        # rows — which have ens_mean but intentionally NULL ens_var — are not
+        # retried on every subsequent backfill-emos run.
         # DESC order: process newest dates first so recent data is filled before the
         # consecutive-skip circuit breaker aborts on old no-archive rows.
         null_ens_rows = con.execute(
             """
-            SELECT DISTINCT p.ticker, p.city, p.market_date, p.condition_type
+            SELECT DISTINCT p.ticker, p.city, p.market_date, p.condition_type, p.days_out
             FROM predictions p
             JOIN outcomes o ON p.ticker = o.ticker
-            WHERE (p.ens_mean IS NULL OR p.ens_var IS NULL)
+            WHERE p.ens_mean IS NULL
               AND p.market_date IS NOT NULL
               AND (p.days_out IS NULL OR p.days_out >= 1)
             ORDER BY p.market_date DESC
@@ -2040,85 +2118,92 @@ def backfill_emos_data() -> tuple[int, int]:
         ).fetchall()
 
     print(
-        f"[backfill] Part 2: {len(null_ens_rows)} multi-day predictions missing ens_mean/ens_var"
+        f"[backfill] Part 2: {len(null_ens_rows)} multi-day predictions missing ens_mean"
     )
 
     try:
         from weather_markets import CITY_COORDS as _coords
         from weather_markets import _model_weights as _wm_weights
-        from weather_markets import ensemble_stats as _ens_stats
     except Exception as exc:
         print(f"  ERROR: cannot import weather_markets: {exc}")
         return settled_temp_filled, 0
 
-    _ens_models = ["icon_seamless", "gfs_seamless", "ecmwf_aifs025_ensemble"]
     ens_filled = 0
-    consecutive_skip = 0  # circuit breaker: abort if Open-Meteo archive is down
+    consecutive_skip = 0  # circuit breaker: abort if Previous Runs API is down
 
     for row in null_ens_rows:
         ticker = row["ticker"]
         city = row["city"]
         market_date_str = row["market_date"]
-        cond_type = row["condition_type"] or ""
+        days_out_val = row["days_out"] or 1  # default to 1 if NULL
 
         if city not in _coords or not market_date_str:
             continue
 
         lat, lon, tz = _coords[city]
 
+        # Determine which temperature variable from the MARKET TYPE, not the
+        # condition (above/below/between).  KXHIGH markets measure the daily
+        # high; KXLOWT markets measure the daily low.  Condition type only says
+        # which side of the threshold the bet is on — it must not override this.
+        # Matches analyze_trade's own logic: var = "min" if "LOW" in series else "max".
         ticker_upper = ticker.upper()
-        if "HIGH" in ticker_upper or cond_type == "above":
+        if "HIGH" in ticker_upper:
             var = "max"
-        elif "LOWT" in ticker_upper or "LOW" in ticker_upper or cond_type == "below":
+        elif "LOWT" in ticker_upper or "LOW" in ticker_upper:
             var = "min"
-        elif cond_type == "between":
-            var = "max"
         else:
-            continue
+            var = "max"  # between markets default to high temperature
 
         try:
             target_date = date.fromisoformat(market_date_str)
         except ValueError:
             continue
 
-        # Apply the same per-model weights as get_ensemble_temps() so the stored
-        # ens_mean/ens_var match what the live system computes (ECMWF AIFS is
-        # weighted 1.5x–2x via member replication; flat extend would skew the mean).
+        # Fetch the deterministic forecast from each model at the correct lead
+        # time.  Individual ensemble members are only stored for 3 days, so we
+        # use the Previous Runs API which archives control-run forecasts at fixed
+        # lead offsets back to January 2024.  ens_var is left NULL for these
+        # backfill rows; emos-train uses forward-fill rows (which have real
+        # ensemble variance) for the variance calibration term.
         weights = _wm_weights(city, month=target_date.month)
-        all_temps: list[float] = []
-        for model in _ens_models:
-            members = _fetch_ensemble_members_historical(
-                lat, lon, tz, target_date, model, var
+        w_sum = 0.0
+        w_mean = 0.0
+        n_models = 0
+        for ens_model, prev_model in _PREVIOUS_RUN_MODEL_MAP.items():
+            val = _fetch_previous_run_daily(
+                lat, lon, tz, target_date, prev_model, days_out_val, var
             )
-            if members:
-                repeats = max(1, round(weights.get(model, 1.0) * 2))
-                all_temps.extend(members * repeats)
+            if val is None:
+                continue
+            w = weights.get(ens_model, 1.0)
+            w_sum += w
+            w_mean += w * val
+            n_models += 1
 
-        if len(all_temps) < 10:
+        if n_models == 0:
             consecutive_skip += 1
-            print(f"  SKIP {ticker}: only {len(all_temps)} members (no archive data?)")
+            print(f"  SKIP {ticker}: no models returned data for {market_date_str}")
             if consecutive_skip >= 5:
                 print(
-                    "  [backfill] 5 consecutive SKIP rows — Open-Meteo archive "
+                    "  [backfill] 5 consecutive SKIP rows — Previous Runs API "
                     "unavailable for these dates, stopping Part 2 early."
                 )
                 break
             continue
 
         consecutive_skip = 0
-        stats = _ens_stats(all_temps)
-        ens_mean_val = round(stats["mean"], 3)
-        ens_var_val = round(stats["std"] ** 2, 6)
+        ens_mean_val = round(w_mean / w_sum, 3)
 
         with _conn() as con:
             con.execute(
-                "UPDATE predictions SET ens_mean = ?, ens_var = ? WHERE ticker = ?",
-                (ens_mean_val, ens_var_val, ticker),
+                "UPDATE predictions SET ens_mean = ? WHERE ticker = ?",
+                (ens_mean_val, ticker),
             )
         ens_filled += 1
         print(
-            f"  ens OK {ticker}: mean={ens_mean_val:.1f}°F var={ens_var_val:.2f}"
-            f" ({len(all_temps)} members)"
+            f"  ens OK {ticker}: mean={ens_mean_val:.1f}°F"
+            f" ({n_models} models, days_out={days_out_val})"
         )
 
     return settled_temp_filled, ens_filled
