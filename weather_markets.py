@@ -1514,6 +1514,76 @@ def fetch_temperature_nbm(
         return None
 
 
+# ── HRRR (High-Resolution Rapid Refresh) — same-day only ────────────────────
+# HRRR runs every hour at 3 km resolution and is the best available model for
+# same-day (days_out == 0) CONUS markets after ~10 AM local time.
+# Open-Meteo exposes HRRR implicitly via model=best_match for CONUS locations.
+# This is a standalone utility; it is NOT wired into analyze_trade yet — that
+# happens once HRRR data has been validated against settled same-day trades.
+
+_HRRR_CACHE: dict[str, tuple[float | None, float]] = {}
+
+
+def _fetch_hrrr_temp(city: str, target_date: date, var: str = "max") -> float | None:
+    """Fetch HRRR-derived hourly temperature and return the daily max or min.
+
+    Uses Open-Meteo's hourly forecast endpoint with model=best_match, which
+    selects HRRR for CONUS cities.  Returns daily max when var='max', daily min
+    when var='min'.  Returns None if HRRR data is unavailable or the city is not
+    mapped in CITY_COORDS.
+
+    Intended for same-day markets (days_out == 0) only.  Uses a 4-hour in-process
+    cache matching the TTL of the other model caches (_MODEL_CACHE_TTL).
+    """
+    import requests as _req
+
+    cache_key = f"{city}_{target_date.isoformat()}_{var}"
+    cached = _HRRR_CACHE.get(cache_key)
+    if cached is not None:
+        val, ts = cached
+        if time.monotonic() - ts < _MODEL_CACHE_TTL:
+            return val
+
+    city_info = CITY_COORDS.get(city)
+    if not city_info:
+        return None
+
+    # CITY_COORDS stores (lat, lon, timezone) tuples — unpack directly.
+    lat, lon, tz = city_info[0], city_info[1], city_info[2]
+
+    date_str = target_date.isoformat()
+    try:
+        resp = _req.get(
+            FORECAST_BASE,
+            params={
+                "latitude": lat,
+                "longitude": lon,
+                "hourly": "temperature_2m",
+                "temperature_unit": "fahrenheit",
+                "timezone": tz,
+                "start_date": date_str,
+                "end_date": date_str,
+                "models": "best_match",
+                "forecast_days": 1,
+            },
+            timeout=10,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        temps = data.get("hourly", {}).get("temperature_2m", [])
+        valid = [t for t in temps if t is not None]
+        if not valid:
+            _HRRR_CACHE[cache_key] = (None, time.monotonic())
+            return None
+        result = float(max(valid) if var == "max" else min(valid))
+        _HRRR_CACHE[cache_key] = (result, time.monotonic())
+        return result
+    except Exception as exc:
+        _log.debug("_fetch_hrrr_temp: %s %s failed: %s", city, date_str, exc)
+        _HRRR_CACHE[cache_key] = (None, time.monotonic())
+        return None
+
+
 # ── weatherapi.com (commercial, independent model chain) ─────────────────────
 
 WEATHERAPI_KEY: str = os.getenv("WEATHERAPI_KEY", "")

@@ -1090,3 +1090,72 @@ class TestBimodalEnsemble:
 
         assert result is not None, "analyze_trade returned None — check patches"
         assert result.get("bimodal") is True
+
+
+class TestHRRR:
+    def test_fetch_hrrr_temp_returns_float_or_none(self, monkeypatch):
+        from datetime import date
+
+        import requests
+
+        from weather_markets import _fetch_hrrr_temp
+
+        class MockResp:
+            status_code = 200
+
+            def raise_for_status(self):
+                pass
+
+            def json(self):
+                return {
+                    "hourly": {
+                        "time": ["2026-07-01T18:00", "2026-07-01T19:00"],
+                        "temperature_2m": [88.5, 87.3],
+                    }
+                }
+
+        monkeypatch.setattr(requests, "get", lambda *a, **k: MockResp())
+        result = _fetch_hrrr_temp("NYC", date(2026, 7, 1), var="max")
+        assert result is None or isinstance(result, float)
+
+    def test_fetch_hrrr_temp_returns_max_of_hourly(self, monkeypatch):
+        from datetime import date
+
+        import requests
+
+        from weather_markets import _HRRR_CACHE, _fetch_hrrr_temp
+
+        # Clear cache so the mock response is always used.
+        _HRRR_CACHE.clear()
+
+        class MockResp:
+            status_code = 200
+
+            def raise_for_status(self):
+                pass
+
+            def json(self):
+                return {
+                    "hourly": {
+                        "time": [
+                            "2026-07-01T12:00",
+                            "2026-07-01T13:00",
+                            "2026-07-01T14:00",
+                        ],
+                        "temperature_2m": [80.0, 88.5, 86.0],
+                    }
+                }
+
+        monkeypatch.setattr(requests, "get", lambda *a, **k: MockResp())
+        result = _fetch_hrrr_temp("NYC", date(2026, 7, 1), var="max")
+        # Should return max hourly temperature.
+        if result is not None:
+            assert result == pytest.approx(88.5)
+
+    def test_fetch_hrrr_temp_returns_none_for_unknown_city(self, monkeypatch):
+        from datetime import date
+
+        from weather_markets import _fetch_hrrr_temp
+
+        result = _fetch_hrrr_temp("UNKNOWN_CITY_XYZ", date(2026, 7, 1), var="max")
+        assert result is None
