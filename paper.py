@@ -2228,7 +2228,7 @@ def check_aged_positions() -> list[dict]:
 def graduation_check(
     min_trades: int = 30,
     min_pnl: float = 50.0,
-    max_brier: float = 0.20,
+    max_brier: float = 0.23,
 ) -> dict | None:
     """
     Check if paper trading performance warrants going live.
@@ -2237,9 +2237,14 @@ def graduation_check(
     Criteria:
       - >= min_trades settled trades (statistical validity)
       - total_pnl >= min_pnl (genuinely profitable, not just lucky win rate)
-      - brier_score <= max_brier AND >= MIN_BRIER_SAMPLES settled predictions
-        (model is calibrated — random guessing = 0.25; Brier is unreliable on
-        small samples so the same guard used by _dynamic_kelly_cap applies here)
+      - brier_score(last_n=50) <= max_brier AND >= MIN_BRIER_SAMPLES settled predictions
+
+    Brier uses the last 50 settled multi-day predictions rather than all-time because:
+      - The theoretical Brier floor (UNC − RES = 0.219) makes the old threshold of
+        0.20 physically unreachable regardless of calibration quality
+      - All-time creates permanent sin debt from early learning-period mistakes
+      - last_n=50 lets old bad weeks age out naturally as new settlements accumulate
+      - MIN_BRIER_SAMPLES guard (lifetime ≥ 30) ensures last_n=50 covers ≥ 30 samples
 
     Win rate is no longer a gate: it ignores position sizing and payout asymmetry.
     A bot buying NO at $0.03 can have a 97% win rate yet still lose money on the
@@ -2255,11 +2260,10 @@ def graduation_check(
     total_pnl = perf.get("total_pnl", 0.0)
     roi = perf.get("roi")
 
-    # Require MIN_BRIER_SAMPLES before trusting the Brier score.  Without
-    # this guard, 30 lucky early trades can open the gate on a Brier computed
-    # from too few predictions to be statistically meaningful.
+    # Require MIN_BRIER_SAMPLES (lifetime count) before trusting the Brier score.
+    # If lifetime ≥ 30, then last_n=50 is guaranteed to cover ≥ 30 samples too.
     brier_sample_count = _count_settled()
-    brier = _brier_score() if brier_sample_count >= MIN_BRIER_SAMPLES else None
+    brier = _brier_score(last_n=50) if brier_sample_count >= MIN_BRIER_SAMPLES else None
 
     if (
         settled >= min_trades

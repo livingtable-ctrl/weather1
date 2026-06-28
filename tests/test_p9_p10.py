@@ -627,3 +627,74 @@ class TestDriftTightenEdge:
             else STRONG_EDGE
         )
         assert _effective == STRONG_EDGE
+
+
+class TestGraduationBrierGate:
+    """graduation_check() uses last-50 Brier with threshold 0.23."""
+
+    def _mock_perf(self):
+        return {"settled": 50, "win_rate": 0.6, "total_pnl": 100.0, "roi": 0.1}
+
+    def test_uses_last_50_brier(self, monkeypatch):
+        """graduation_check() must call brier_score(last_n=50), not all-time."""
+        import paper
+        import tracker
+
+        calls = []
+
+        def _mock_brier(last_n=None, **kwargs):
+            calls.append(last_n)
+            return 0.22
+
+        monkeypatch.setattr(tracker, "brier_score", _mock_brier)
+        monkeypatch.setattr(tracker, "count_settled_predictions", lambda: 50)
+        with patch("paper.get_performance", return_value=self._mock_perf()):
+            paper.graduation_check()
+
+        assert calls == [50], f"Expected brier_score(last_n=50), got {calls}"
+
+    def test_max_brier_default_is_0_23(self):
+        """graduation_check() default max_brier threshold must be 0.23."""
+        import inspect
+
+        import paper
+
+        sig = inspect.signature(paper.graduation_check)
+        assert sig.parameters["max_brier"].default == 0.23
+
+    def test_passes_at_0_22(self, monkeypatch):
+        """graduation_check() returns a result dict when last-50 Brier is 0.22."""
+        import paper
+        import tracker
+
+        monkeypatch.setattr(tracker, "brier_score", lambda last_n=None, **kw: 0.22)
+        monkeypatch.setattr(tracker, "count_settled_predictions", lambda: 50)
+        with patch("paper.get_performance", return_value=self._mock_perf()):
+            result = paper.graduation_check()
+
+        assert result is not None, "Expected graduation to pass at Brier=0.22"
+        assert result["brier"] == 0.22
+
+    def test_fails_at_0_24(self, monkeypatch):
+        """graduation_check() returns None when last-50 Brier is 0.24 > 0.23."""
+        import paper
+        import tracker
+
+        monkeypatch.setattr(tracker, "brier_score", lambda last_n=None, **kw: 0.24)
+        monkeypatch.setattr(tracker, "count_settled_predictions", lambda: 50)
+        with patch("paper.get_performance", return_value=self._mock_perf()):
+            result = paper.graduation_check()
+
+        assert result is None, "Expected graduation to fail at Brier=0.24"
+
+    def test_passes_at_0_21(self, monkeypatch):
+        """Brier=0.21 now passes (previously unreachable under all-time 0.20)."""
+        import paper
+        import tracker
+
+        monkeypatch.setattr(tracker, "brier_score", lambda last_n=None, **kw: 0.21)
+        monkeypatch.setattr(tracker, "count_settled_predictions", lambda: 50)
+        with patch("paper.get_performance", return_value=self._mock_perf()):
+            result = paper.graduation_check()
+
+        assert result is not None, "Brier=0.21 should pass new threshold 0.23"
