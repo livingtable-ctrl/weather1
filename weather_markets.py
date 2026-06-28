@@ -2470,6 +2470,51 @@ def _model_weights(city: str, month: int | None = None) -> dict[str, float]:
     }
 
 
+def _ensemble_circuit_is_open() -> bool:
+    """Return True if the Open-Meteo ensemble circuit breaker is currently OPEN."""
+    return _ensemble_cb.is_open()
+
+
+def _blend_with_circuit_fallback(
+    ens_prob: float | None,
+    nws_prob: float | None,
+    clim_prob: float | None,
+    w_ens: float,
+    w_nws: float,
+    w_clim: float,
+) -> float:
+    """Blend source probabilities, zeroing ens weight when circuit is OPEN.
+
+    Redistributes w_ens proportionally to w_nws and w_clim when circuit is open.
+    Handles None probabilities by excluding them and renormalizing.
+    """
+    if _ensemble_circuit_is_open() and ens_prob is not None:
+        import logging
+
+        logging.getLogger(__name__).warning(
+            "blend: ensemble circuit OPEN — excluding ens_prob from blend (was %.3f)",
+            ens_prob,
+        )
+        ens_prob = None
+
+    weights = []
+    probs = []
+    if ens_prob is not None:
+        weights.append(w_ens)
+        probs.append(ens_prob)
+    if nws_prob is not None:
+        weights.append(w_nws)
+        probs.append(nws_prob)
+    if clim_prob is not None:
+        weights.append(w_clim)
+        probs.append(clim_prob)
+
+    total_w = sum(weights)
+    if total_w <= 0:
+        return 0.5
+    return sum(w * p for w, p in zip(weights, probs)) / total_w
+
+
 def check_ensemble_circuit_health() -> None:
     """
     Log a warning if the open_meteo_ensemble circuit has been open for >24 hours.
@@ -5167,6 +5212,15 @@ def analyze_trade(enriched: dict) -> dict | None:
                 pass
             _w_ens_raw = _w_ens_final * (0.5 if _ensemble_cdf_prob is not None else 1.0)
             _w_cdf = _w_ens_final * (0.5 if _ensemble_cdf_prob is not None else 0.0)
+
+            # Circuit breaker gate: if ensemble is OPEN, treat ens_prob as missing so the
+            # renormalization in _active excludes it from the blend automatically.
+            if _ensemble_circuit_is_open() and ens_prob is not None:
+                _log.warning(
+                    "analyze_trade: ensemble circuit OPEN for %s — excluding ens_prob from blend",
+                    enriched.get("ticker", "?"),
+                )
+                ens_prob = None
 
             # Renormalize weights when sources are unavailable.
             # Previously missing sources were substituted with 0.5 (meaningless
