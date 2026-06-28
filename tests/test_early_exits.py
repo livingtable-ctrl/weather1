@@ -392,6 +392,7 @@ class TestReentryActive:
 
         # Reset cache so this test re-evaluates the gate from scratch.
         order_executor._reentry_state["active"] = None
+        order_executor._reentry_state["expires_at"] = 0.0
 
         with (
             patch("tracker.count_settled_predictions", return_value=80),
@@ -405,6 +406,7 @@ class TestReentryActive:
 
         # Leave cache clean for other tests.
         order_executor._reentry_state["active"] = None
+        order_executor._reentry_state["expires_at"] = 0.0
 
     def test_reentry_active_returns_true_and_notifies_when_both_conditions_met(self):
         """_reentry_active() must return True and call _notify_feature_activation
@@ -413,6 +415,7 @@ class TestReentryActive:
         import order_executor
 
         order_executor._reentry_state["active"] = None
+        order_executor._reentry_state["expires_at"] = 0.0
 
         notify_calls = []
 
@@ -439,6 +442,7 @@ class TestReentryActive:
         )
 
         order_executor._reentry_state["active"] = None
+        order_executor._reentry_state["expires_at"] = 0.0
 
 
 class TestReEntryEligible:
@@ -524,6 +528,7 @@ class TestPositionBuildActive:
 
         # Reset cache so this test starts unchecked.
         order_executor._build_state["active"] = None
+        order_executor._build_state["expires_at"] = 0.0
 
         monkeypatch.setattr(
             "order_executor.count_settled_predictions"
@@ -544,12 +549,14 @@ class TestPositionBuildActive:
         )
         # Reset so later tests are unaffected by the cached False.
         order_executor._build_state["active"] = None
+        order_executor._build_state["expires_at"] = 0.0
 
     def test_returns_true_and_notifies_when_conditions_met(self, monkeypatch):
         """Gate activates and fires _notify_feature_activation when 150+ settled and Brier <= 0.23."""
         import order_executor
 
         order_executor._build_state["active"] = None
+        order_executor._build_state["expires_at"] = 0.0
 
         notify_calls = []
 
@@ -574,6 +581,7 @@ class TestPositionBuildActive:
         )
 
         order_executor._build_state["active"] = None
+        order_executor._build_state["expires_at"] = 0.0
 
 
 class TestBuildEligible:
@@ -623,3 +631,145 @@ class TestBuildEligible:
         assert paper.build_eligible("KXHIGH-T70") is False, (
             "build_eligible must return False when the only trade on the ticker is settled"
         )
+
+    def test_returns_false_when_already_built(self, monkeypatch):
+        """build_eligible must return False when the position has already been built into.
+
+        Caps at one build per position — prevents compounding exposure across multiple
+        cron cycles where the 5-cent favor_move condition persists.
+        """
+        import paper
+
+        built_trade = {
+            "ticker": "KXHIGH-T70",
+            "settled": False,
+            "build_count": 1,
+        }
+        fake_data = {"trades": [built_trade], "balance": 1000.0}
+        monkeypatch.setattr(paper, "_load", lambda: fake_data)
+
+        assert paper.build_eligible("KXHIGH-T70") is False, (
+            "build_eligible must return False when build_count >= 1"
+        )
+
+
+class TestAddToPosition:
+    """Tests for paper.add_to_position()."""
+
+    def test_increases_quantity_and_updates_cost(self, monkeypatch):
+        """add_to_position must increase quantity, update cost, and set avg entry_price.
+
+        Weighted-average entry price ensures PnL calculation stays correct after
+        the additional contracts are added.
+        """
+        import paper
+
+        saved = []
+        original_trade = {
+            "id": 1,
+            "ticker": "KXHIGH-T70",
+            "side": "yes",
+            "quantity": 5,
+            "cost": 2.50,
+            "entry_price": 0.50,
+            "settled": False,
+        }
+        # Mutable copy so add_to_position can mutate target in place.
+        trade_copy = dict(original_trade)
+        fake_data = {"trades": [trade_copy], "balance": 1000.0}
+
+        monkeypatch.setattr(paper, "_load", lambda: fake_data)
+        monkeypatch.setattr(paper, "_save", lambda d: saved.append(d))
+
+        result = paper.add_to_position("KXHIGH-T70", qty=1, entry_price=0.60)
+
+        assert result is not None, "add_to_position must return the updated trade"
+        assert result["quantity"] == 6, "quantity must increase by qty=1"
+        assert abs(result["cost"] - 3.10) < 0.001, (
+            "cost must increase by 0.60 (1 × 0.60)"
+        )
+        expected_avg = 3.10 / 6
+        assert abs(result["entry_price"] - expected_avg) < 0.001, (
+            "entry_price must be weighted average of old and new cost"
+        )
+        assert result["build_count"] == 1, "build_count must be incremented to 1"
+        assert len(saved) == 1, "_save must be called once"
+
+    def test_returns_none_when_no_open_position(self, monkeypatch):
+        """add_to_position must return None if no open position exists on the ticker."""
+        import paper
+
+        fake_data = {"trades": [], "balance": 1000.0}
+        monkeypatch.setattr(paper, "_load", lambda: fake_data)
+        monkeypatch.setattr(paper, "_save", lambda d: None)
+
+        result = paper.add_to_position("KXHIGH-T70", qty=1, entry_price=0.55)
+        assert result is None, (
+            "add_to_position must return None when ticker has no open trade"
+        )
+
+    def test_increments_existing_build_count(self, monkeypatch):
+        """add_to_position must increment build_count from its current value, not reset to 1."""
+        import paper
+
+        saved = []
+        trade_copy = {
+            "id": 2,
+            "ticker": "KXHIGH-T70",
+            "quantity": 3,
+            "cost": 1.50,
+            "entry_price": 0.50,
+            "settled": False,
+            "build_count": 0,
+        }
+        fake_data = {"trades": [trade_copy], "balance": 1000.0}
+
+        monkeypatch.setattr(paper, "_load", lambda: fake_data)
+        monkeypatch.setattr(paper, "_save", lambda d: saved.append(d))
+
+        paper.add_to_position("KXHIGH-T70", qty=2, entry_price=0.55)
+        assert trade_copy["build_count"] == 1, "build_count must go from 0 to 1"
+        assert trade_copy["quantity"] == 5, "quantity must be 3 + 2 = 5"
+
+
+def test_reentry_does_not_fire_after_partial_close():
+    """C3 re-entry must NOT be attempted when a partial close leaves the position open.
+
+    After a partial close the original trade is still open, so re-entry would
+    conflict with the still-open remainder. The fix moves the C3 block inside
+    the full-close else branch so re_entry_eligible is never reached on the
+    partial-close path.
+
+    This test verifies the structure by inspecting the source code of
+    _check_early_exits: the re_entry_eligible call must appear AFTER
+    close_paper_early (in the else block), not after partial_close_position.
+    """
+    import inspect
+
+    import order_executor
+
+    source = inspect.getsource(order_executor._check_early_exits)
+
+    # Confirm that partial_close_position is present and re_entry_eligible
+    # is also present (both paths exist in the function).
+    assert "partial_close_position" in source, (
+        "_check_early_exits must still contain partial_close_position call"
+    )
+    assert "re_entry_eligible" in source, (
+        "_check_early_exits must still contain re_entry_eligible call"
+    )
+
+    # The structural guarantee: re_entry_eligible must appear AFTER
+    # close_paper_early in the source, meaning it is nested in the else block.
+    pos_partial = source.index("partial_close_position")
+    pos_reentry = source.index("re_entry_eligible")
+    pos_close_early = source.index("close_paper_early")
+
+    assert pos_close_early < pos_reentry, (
+        "re_entry_eligible must appear after close_paper_early "
+        "(it must be nested inside the full-close else branch)"
+    )
+    assert pos_partial < pos_close_early, (
+        "partial_close_position must appear before close_paper_early "
+        "(partial path is the if-branch, full close is the else-branch)"
+    )

@@ -1189,19 +1189,61 @@ def re_entry_eligible(ticker: str) -> bool:
         )
 
 
-def build_eligible(ticker: str) -> bool:
-    """Return True if there is an existing open position on this ticker.
+def add_to_position(ticker: str, qty: int, entry_price: float) -> dict | None:
+    """Add contracts to an existing open position, updating quantity and cost.
 
-    Building only makes sense when we already hold a position — we are adding
-    to a winner, not opening a new one. The exposure cap is enforced by
-    kelly_fraction() at order-placement time; this is a cheap pre-check so we
-    do not even attempt to build when no base position exists.
+    Uses weighted-average entry price so PnL calculation stays correct.
+    Increments build_count so build_eligible can cap at one build per position.
+    Returns the updated trade record, or None if no open position found.
     """
     with _DATA_LOCK:
         data = _load()
-        return any(
-            t.get("ticker") == ticker and not t.get("settled") for t in data["trades"]
+        target = next(
+            (
+                t
+                for t in data["trades"]
+                if t.get("ticker") == ticker and not t.get("settled")
+            ),
+            None,
         )
+        if target is None:
+            return None
+
+        old_qty = int(target.get("quantity", 1))
+        old_cost = float(target.get("cost", 0.0))
+        add_cost = entry_price * qty
+
+        target["quantity"] = old_qty + qty
+        target["cost"] = old_cost + add_cost
+        target["entry_price"] = (old_cost + add_cost) / (old_qty + qty)
+        target["build_count"] = target.get("build_count", 0) + 1
+
+        _save(data)
+
+    _log.info(
+        "C4 build: %s +%d @ %.3f (total qty=%d, avg_entry=%.3f, builds=%d)",
+        ticker,
+        qty,
+        entry_price,
+        target["quantity"],
+        target["entry_price"],
+        target["build_count"],
+    )
+    return target
+
+
+def build_eligible(ticker: str) -> bool:
+    """Return True if an open position exists AND has not already been built into.
+
+    Caps at one build per original position to prevent compounding exposure
+    across multiple cron cycles where the 5-cent favor_move condition persists.
+    """
+    with _DATA_LOCK:
+        data = _load()
+        for t in data["trades"]:
+            if t.get("ticker") == ticker and not t.get("settled"):
+                return t.get("build_count", 0) < 1
+        return False
 
 
 def validate_paper_trades_integrity() -> list[str]:

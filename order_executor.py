@@ -64,7 +64,7 @@ PARTIAL_EXIT_PCT = float(os.getenv("PARTIAL_EXIT_PCT", "0.50"))
 
 # Mutable state dict so tests can reset between runs by setting ["active"] = None.
 # None = unchecked this process, True/False = already determined.
-_reentry_state: dict = {"active": None}
+_reentry_state: dict = {"active": None, "expires_at": 0.0}
 
 # Minimum settled predictions and Brier threshold before re-entry fires.
 # Both conditions must be met simultaneously. Tunable via .env without a deploy.
@@ -101,7 +101,8 @@ def _reentry_active() -> bool:
     Writes a one-time notification to feature_activations.json the first time
     the gate clears, so the dashboard can surface the activation event.
     """
-    if _reentry_state["active"] is not None:
+    now = time.monotonic()
+    if _reentry_state["active"] is not None and now < _reentry_state["expires_at"]:
         return _reentry_state["active"]
 
     from tracker import brier_score as _brier
@@ -115,6 +116,7 @@ def _reentry_active() -> bool:
         and brier <= _REENTRY_BRIER_THRESHOLD
     )
     _reentry_state["active"] = active
+    _reentry_state["expires_at"] = time.monotonic() + 3600  # re-evaluate in 1 hour
 
     if active:
         from weather_markets import _notify_feature_activation
@@ -133,7 +135,7 @@ def _reentry_active() -> bool:
 
 # Mutable state dict so tests can reset between runs by setting ["active"] = None.
 # None = unchecked this process, True/False = already determined.
-_build_state: dict = {"active": None}
+_build_state: dict = {"active": None, "expires_at": 0.0}
 
 # Higher threshold than C3 re-entry — adding to a position compounds risk more
 # aggressively than entering a fresh one after an exit. Tunable via .env.
@@ -148,7 +150,8 @@ def _position_build_active() -> bool:
     compounds risk more aggressively than re-entering after an exit.
     Cached per process. Writes one-time notification on first activation.
     """
-    if _build_state["active"] is not None:
+    now = time.monotonic()
+    if _build_state["active"] is not None and now < _build_state["expires_at"]:
         return _build_state["active"]
 
     from tracker import brier_score as _brier
@@ -162,6 +165,7 @@ def _position_build_active() -> bool:
         and brier <= _BUILD_BRIER_THRESHOLD
     )
     _build_state["active"] = active
+    _build_state["expires_at"] = time.monotonic() + 3600  # re-evaluate in 1 hour
 
     if active:
         from weather_markets import _notify_feature_activation
@@ -872,34 +876,35 @@ def _check_early_exits(client=None) -> int:
                         closed += 1
                         break
 
-            # C4 position build: if the market moved >= 5 cents in our favor vs
-            # entry, add one contract to the existing position. Only fires when
-            # the auto-activation gate is met (150 settled, Brier <= 0.23) and
-            # an open position already exists on this ticker.
+            # C4 position build: if market moved >= 5 cents in our favor vs entry,
+            # add one contract to the existing position. Wrapped in try/except so a
+            # failure here cannot abort the early-exit reversal check below.
             if _position_build_active() and exit_price > 0:
-                from paper import build_eligible as _build_ok
+                try:
+                    from paper import add_to_position as _add_to_pos
+                    from paper import build_eligible as _build_ok
 
-                if _build_ok(trade.get("ticker", "")):
-                    favor_move = (
-                        (exit_price - float(trade.get("entry_price", 0.5)))
-                        if side == "yes"
-                        else (float(trade.get("entry_price", 0.5)) - exit_price)
+                    if _build_ok(trade.get("ticker", "")):
+                        favor_move = (
+                            (exit_price - float(trade.get("entry_price", 0.5)))
+                            if side == "yes"
+                            else (float(trade.get("entry_price", 0.5)) - exit_price)
+                        )
+                        if favor_move >= 0.05:
+                            _log.info(
+                                "C4 build: %s moved %.2f in our favor (entry=%.2f, now=%.2f)",
+                                trade.get("ticker", "?"),
+                                favor_move,
+                                float(trade.get("entry_price", 0.5)),
+                                exit_price,
+                            )
+                            _add_to_pos(trade.get("ticker", ""), 1, exit_price)
+                except Exception as _build_exc:
+                    _log.warning(
+                        "C4 build failed for %s: %s",
+                        trade.get("ticker", "?"),
+                        _build_exc,
                     )
-                    if favor_move >= 0.05:
-                        _log.info(
-                            "C4 build: %s moved %.2f in our favor (entry=%.2f, now=%.2f)",
-                            trade.get("ticker", "?"),
-                            favor_move,
-                            float(trade.get("entry_price", 0.5)),
-                            exit_price,
-                        )
-                        place_paper_order(
-                            trade.get("ticker", ""),
-                            side,
-                            qty=1,
-                            entry_price=exit_price,
-                            method="build",
-                        )
 
             if shift > 0.25:
                 exit_price = _midpoint_price(market, side)
@@ -934,40 +939,39 @@ def _check_early_exits(client=None) -> int:
                         f"entry_prob={entry_prob:.2f} current={current_prob:.2f} "
                         f"pnl=${result['pnl']:.2f}"
                     )
+
+                    # C3 re-entry: only after FULL close — partial close leaves the position
+                    # open so re-entry would conflict with the still-open remainder.
+                    if _reentry_active():
+                        from paper import re_entry_eligible as _re_eligible
+
+                        # Re-use close_time_str already validated above — it is guaranteed
+                        # parseable at this point so fromisoformat won't raise here.
+                        try:
+                            reentry_close_dt = datetime.fromisoformat(
+                                close_time_str.replace("Z", "+00:00")
+                            )
+                            hours_left = (
+                                reentry_close_dt - datetime.now(UTC)
+                            ).total_seconds() / 3600
+                        except Exception:
+                            hours_left = 0
+
+                        if hours_left >= 2.0 and _re_eligible(ticker):
+                            _log.info(
+                                "C3 re-entry: %s still eligible after full exit (%.1fh left)",
+                                ticker,
+                                hours_left,
+                            )
+                            place_paper_order(
+                                ticker,
+                                side,
+                                1,
+                                exit_price,
+                                method="reentry",
+                            )
+
                 closed += 1
-
-                # C3 re-entry: if the gate is active, the ticker is clear, and the
-                # market still has at least 2h until close, re-enter on the same side.
-                # This avoids losing the position entirely when the model reverted on
-                # a transient forecast update rather than a real condition change.
-                if _reentry_active():
-                    from paper import re_entry_eligible as _re_eligible
-
-                    # Re-use close_time_str already validated above — it is guaranteed
-                    # parseable at this point so fromisoformat won't raise here.
-                    try:
-                        reentry_close_dt = datetime.fromisoformat(
-                            close_time_str.replace("Z", "+00:00")
-                        )
-                        hours_left = (
-                            reentry_close_dt - datetime.now(UTC)
-                        ).total_seconds() / 3600
-                    except Exception:
-                        hours_left = 0
-
-                    if hours_left >= 2.0 and _re_eligible(ticker):
-                        _log.info(
-                            "C3 re-entry: %s still eligible after early exit (%.1fh left)",
-                            ticker,
-                            hours_left,
-                        )
-                        place_paper_order(
-                            ticker,
-                            side,
-                            1,
-                            exit_price,
-                            method="reentry",
-                        )
 
         except Exception as exc:
             import traceback as _tb
