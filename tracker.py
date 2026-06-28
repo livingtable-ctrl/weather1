@@ -11,6 +11,7 @@ from __future__ import annotations
 import logging
 import math
 import sqlite3
+from collections import defaultdict
 from datetime import UTC, date, datetime, timedelta
 
 from safe_io import project_root as _project_root
@@ -3851,8 +3852,6 @@ def get_recent_city_correlations(days: int = 60, min_pairs: int = 5) -> dict:
     Returns {(city_a, city_b): correlation_coefficient} for pairs with enough data.
     Falls back to empty dict when insufficient data.
     """
-    from collections import defaultdict
-
     init_db()
     cutoff = (datetime.now(UTC) - timedelta(days=days)).isoformat()
     with _conn() as con:

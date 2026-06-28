@@ -18,7 +18,7 @@ from __future__ import annotations
 import json
 import threading
 import time
-from datetime import UTC, date
+from datetime import UTC, date, datetime
 from pathlib import Path
 
 import requests
@@ -292,8 +292,6 @@ def _fetch_noaa_csv_index(url: str) -> dict[str, float]:
 
 def fetch_pdo_pna() -> dict:
     """Fetch PDO and PNA indices from NOAA and save to data/pdo_pna.json."""
-    from datetime import datetime
-
     pdo = _fetch_noaa_csv_index(_PDO_URL)
     pna = _fetch_noaa_csv_index(_PNA_URL)
     payload = {
@@ -312,8 +310,6 @@ def get_pdo_pna(year: int | None = None, month: int | None = None) -> dict[str, 
     Returns {"pdo": float, "pna": float}. Returns {"pdo": 0.0, "pna": 0.0} on failure.
     Accepts keyword arguments so callers and tests can use get_pdo_pna(year=Y, month=M).
     """
-    from datetime import datetime
-
     now = datetime.now(UTC)
     data = None
     if _PDO_PNA_PATH.exists():

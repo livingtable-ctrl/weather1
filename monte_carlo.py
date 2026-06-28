@@ -327,6 +327,24 @@ def simulate_portfolio(
     # Use active_trades (past-date trades already excluded) so the matrix
     # dimension matches n_trades = len(trade_params).
     corr_mat = position_correlation_matrix(active_trades)
+
+    # Apply dynamic city-pair correlation overrides from _DEFAULT_CORRELATIONS
+    if _DEFAULT_CORRELATIONS:
+        for _ii, _ti in enumerate(active_trades):
+            for _jj, _tj in enumerate(active_trades):
+                if _ii >= _jj:
+                    continue
+                _ci = _ti.get("city") or ""
+                _cj = _tj.get("city") or ""
+                if not _ci or not _cj:
+                    continue
+                _rho = _DEFAULT_CORRELATIONS.get(
+                    (_ci, _cj)
+                ) or _DEFAULT_CORRELATIONS.get((_cj, _ci))
+                if _rho is not None:
+                    corr_mat[_ii][_jj] = _rho
+                    corr_mat[_jj][_ii] = _rho
+
     chol = _cholesky(corr_mat)
     if chol is None:
         repaired = _repair_psd(corr_mat)
