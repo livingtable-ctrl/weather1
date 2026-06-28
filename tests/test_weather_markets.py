@@ -1680,17 +1680,40 @@ class TestNoSideEntryEdgeSign:
         }
 
     def test_no_trade_entry_side_edge_is_positive(self, monkeypatch):
-        """A valid NO trade must have entry_side_edge > 0 after P0-14 fix."""
+        """A valid NO trade must have entry_side_edge > 0 after P0-14 fix.
+
+        Market: yes_bid=22, yes_ask=28 → market_mid=25% YES, no_ask=78%.
+        Ensemble temps [65°F×14, 67°F×6] vs T80 → ens_prob=0%, Gaussian≈0%.
+        Clim (0.30) carries only ~8% renorm weight → blended_prob≈5%.
+        model_mkt_gap = |0.05 − 0.25| = 0.20 < 0.25 (gate does not fire).
+        NO edge = (1 − 0.05) − 0.78 = +0.17 > 0.
+        """
         import weather_markets as wm
 
-        # yes_bid=55, yes_ask=60 → no_ask = 1 - 0.55 = 0.45
-        # ensemble says 30% YES → blended ~0.30, NO edge = 0.70 - 0.45 = +0.25
+        # Patch all live API calls so blended_prob is fully deterministic.
+        # _get_consensus_probs hits Open-Meteo directly even when get_ensemble_temps
+        # is patched — both must be suppressed (Jun25 conftest note).
         monkeypatch.setattr(wm, "nws_prob", lambda *a, **kw: None)
         monkeypatch.setattr(wm, "climatological_prob", lambda *a, **kw: 0.30)
         monkeypatch.setattr(wm, "temperature_adjustment", lambda *a, **kw: 0.0)
         monkeypatch.setattr(wm, "_metar_lock_in", lambda *a, **kw: (False, 0.0, {}))
+        # Non-degenerate temps (two distinct values) all below T80 → ens_prob=0.
+        # All-identical members trigger the degenerate-ensemble guard (return None).
+        monkeypatch.setattr(
+            wm, "get_ensemble_temps", lambda *a, **kw: [65.0] * 14 + [67.0] * 6
+        )
+        monkeypatch.setattr(wm, "fetch_temperature_nbm", lambda *a, **kw: None)
+        monkeypatch.setattr(wm, "fetch_temperature_ecmwf", lambda *a, **kw: None)
+        monkeypatch.setattr(wm, "get_ensemble_members", lambda *a, **kw: [])
+        monkeypatch.setattr(wm, "apply_station_bias", lambda c, t, var="max": t)
+        monkeypatch.setattr(
+            wm, "_get_consensus_probs", lambda *a, **kw: (None, None, None, None)
+        )
 
-        enriched = self._make_enriched(yes_bid_cents=55, yes_ask_cents=60)
+        # Market says 25% YES; model says ~5% YES (ens=0, gauss≈0, clim=0.30 at
+        # 8% renorm weight; neutral_temperature_scaling autouse sets T=1.0 identity).
+        # NO edge = (1 − 0.05) − 0.78 = +0.17 > 0. Spread = 6¢/25¢ = 24% < 30%.
+        enriched = self._make_enriched(yes_bid_cents=22, yes_ask_cents=28)
         result = wm.analyze_trade(enriched)
 
         if result is None:
