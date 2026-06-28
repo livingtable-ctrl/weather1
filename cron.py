@@ -2174,22 +2174,22 @@ def _cmd_cron_body(
                         )
                 except Exception as _sweep_err:
                     _log.warning("cmd_cron: weekly sweep failed: %s", _sweep_err)
+                # Refresh PDO/PNA climate indices weekly (cheap, ~2 NOAA CSV fetches).
+                # Always-on from day one \u2014 index file is used as a gate for blend activation.
+                try:
+                    from climate_indices import fetch_pdo_pna
+
+                    fetch_pdo_pna()
+                    _log.debug("PDO/PNA indices refreshed")
+                except Exception as exc:
+                    _log.debug("PDO/PNA refresh failed (non-fatal): %s", exc)
+
                 # Always touch marker after attempting so the gate closes correctly
                 # even when param_sweep has no data to work with yet.
                 _LAST_SWEEP_PATH.parent.mkdir(exist_ok=True)
                 _LAST_SWEEP_PATH.touch()
     except Exception as _e:
         _log.debug("cmd_cron: weekly sweep check failed: %s", _e)
-
-    # Refresh PDO/PNA climate indices weekly (cheap, ~2 NOAA CSV fetches).
-    # Always-on from day one \u2014 index file is used as a gate for blend activation.
-    try:
-        from climate_indices import fetch_pdo_pna
-
-        fetch_pdo_pna()
-        _log.debug("PDO/PNA indices refreshed")
-    except Exception as exc:
-        _log.debug("PDO/PNA refresh failed (non-fatal): %s", exc)
 
     # Flush ensemble disk cache before exit \u2014 daemon threads were killed before
     # writing; a single synchronous batch write here guarantees the next run
