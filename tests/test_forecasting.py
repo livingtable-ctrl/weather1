@@ -1088,5 +1088,5 @@ class TestBimodalEnsemble:
         ):
             result = wm.analyze_trade(enriched)
 
-        if result is not None:
-            assert result.get("bimodal") is True
+        assert result is not None, "analyze_trade returned None — check patches"
+        assert result.get("bimodal") is True

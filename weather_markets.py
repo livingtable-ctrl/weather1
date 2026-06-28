@@ -2549,8 +2549,6 @@ def _detect_bimodal_ensemble(temps: list[float]) -> bool:
     if len(temps) < 10:
         return False
 
-    import statistics
-
     sorted_temps = sorted(temps)
     n = len(sorted_temps)
     gaps = [(sorted_temps[i + 1] - sorted_temps[i], i) for i in range(n - 1)]
