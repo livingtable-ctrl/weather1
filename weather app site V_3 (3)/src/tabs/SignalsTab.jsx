@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useContext, useMemo } from 'react';
 import { DataContext } from '../DataContext.js';
 import { authHeader } from '../useData.js';
-import { normCity } from '../shared.jsx';
+import { normCity, kalshiMarketUrl } from '../shared.jsx';
 
 export default function SignalsTab() {
   const M = useContext(DataContext);
@@ -155,7 +155,16 @@ export default function SignalsTab() {
                 style={{ cursor: 'pointer' }} />
             </td>
             <td style={{ padding: '12px 16px', color: starColor, letterSpacing: 1 }}>{stars}</td>
-            <td style={{ padding: '12px 16px', fontFamily: 'ui-monospace, monospace', fontSize: 11, color: '#3b82f6' }}>{o.ticker}</td>
+            <td style={{ padding: '12px 16px', fontFamily: 'ui-monospace, monospace', fontSize: 11, color: '#3b82f6' }}>
+              <a
+                href={kalshiMarketUrl(o.ticker)}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ color: '#3b82f6', textDecoration: 'none', fontFamily: 'ui-monospace, monospace', fontSize: 11 }}
+              >
+                {o.ticker} ↗
+              </a>
+            </td>
             <td style={{ padding: '12px 16px', fontWeight: 600 }}>{normCity(o.city)}</td>
             <td style={{ padding: '12px 16px' }}>
               <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 999, background: side === 'yes' ? 'rgba(34,197,94,0.12)' : 'rgba(239,68,68,0.12)', color: side === 'yes' ? '#16a34a' : '#ef4444', fontSize: 10, fontWeight: 600, textTransform: 'uppercase' }}>{side}</span>
