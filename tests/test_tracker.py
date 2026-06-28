@@ -2121,3 +2121,23 @@ def test_api_reliability_returns_empty_for_unknown_city(monkeypatch):
         assert data["city"] == "UnknownCity123"
         assert isinstance(data["bins"], list)
         assert data["n"] == 0
+
+
+def test_api_edge_realization_returns_list(monkeypatch):
+    monkeypatch.setenv("DASHBOARD_UNPROTECTED", "true")
+    monkeypatch.delenv("DASHBOARD_PASSWORD", raising=False)
+    from web_app import _build_app
+
+    app = _build_app(object())
+    app.config["TESTING"] = True
+    with app.test_client() as c:
+        resp = c.get("/api/edge-realization")
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert isinstance(data, list)
+        # Each entry should have the expected keys (may be empty list if no data)
+        for entry in data:
+            assert "city" in entry
+            assert "mean_edge" in entry
+            assert "win_rate" in entry
+            assert "n" in entry

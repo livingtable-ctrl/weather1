@@ -1,4 +1,4 @@
-import React, { useState, useContext, useMemo } from 'react';
+﻿import React, { useState, useContext, useMemo } from 'react';
 import { DataContext } from '../DataContext.js';
 import { normCity, StatCard, BrierTrendChart } from '../shared.jsx';
 
@@ -982,6 +982,14 @@ export default function AnalyticsTab() {
   // Chart state
   const [minEdgeThreshold, setMinEdgeThreshold] = useState(15.0);
   const [reliabilityData, setReliabilityData] = useState({});
+  const [edgeRealization, setEdgeRealization] = useState([]);
+
+  React.useEffect(() => {
+    fetch('/api/edge-realization')
+      .then(r => r.json())
+      .then(d => setEdgeRealization(d))
+      .catch(() => {});
+  }, []);
 
   // Fetch reliability data for top 3 cities by trade count
   React.useEffect(() => {
@@ -1162,6 +1170,32 @@ export default function AnalyticsTab() {
               </div>
             ))}
           </div>
+        </section>
+      )}
+      {edgeRealization.length > 0 && (
+        <section style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 14, overflow: 'hidden', marginTop: 18 }}>
+          <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border)' }}>
+            <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600 }}>Edge realization by city</h3>
+          </div>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+            <thead>
+              <tr style={{ background: 'var(--bg-subtle)', color: 'var(--text-muted)', fontSize: 12 }}>
+                {['City', 'Avg edge', 'Win rate', 'N'].map(h => (
+                  <th key={h} style={{ padding: '10px 16px', textAlign: h === 'City' ? 'left' : 'right', fontWeight: 600, borderBottom: '1px solid var(--border)' }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {edgeRealization.map(r => (
+                <tr key={r.city} style={{ borderBottom: '1px solid var(--bg-muted)' }}>
+                  <td style={{ padding: '10px 16px', fontWeight: 600 }}>{normCity(r.city)}</td>
+                  <td style={{ padding: '10px 16px', textAlign: 'right', fontFamily: 'ui-monospace, monospace' }}>{(r.mean_edge * 100).toFixed(1)}%</td>
+                  <td style={{ padding: '10px 16px', textAlign: 'right', fontFamily: 'ui-monospace, monospace' }}>{(r.win_rate * 100).toFixed(1)}%</td>
+                  <td style={{ padding: '10px 16px', textAlign: 'right', color: 'var(--text-muted)' }}>{r.n}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </section>
       )}
     </main>

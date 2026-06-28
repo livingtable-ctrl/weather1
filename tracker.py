@@ -3900,3 +3900,32 @@ def get_recent_city_correlations(days: int = 60, min_pairs: int = 5) -> dict:
             if d1 > 0 and d2 > 0:
                 correlations[(c1, c2)] = round(num / (d1 * d2), 3)
     return correlations
+
+
+def get_edge_realization_by_city() -> list[dict]:
+    # Compare declared edge at entry vs actual win rate to see which cities deliver on predicted edge
+    init_db()
+    with _conn() as con:
+        rows = con.execute(
+            """
+            SELECT p.city,
+                   AVG(p.edge) as mean_edge,
+                   AVG(CAST(o.settled_yes AS REAL)) as win_rate,
+                   COUNT(*) as n
+            FROM   multiday_predictions p
+            JOIN   outcomes o ON o.ticker = p.ticker
+            WHERE  p.edge IS NOT NULL
+            GROUP  BY p.city
+            HAVING COUNT(*) >= 5
+            ORDER  BY mean_edge DESC
+            """
+        ).fetchall()
+    return [
+        {
+            "city": r[0],
+            "mean_edge": round(r[1], 4),
+            "win_rate": round(r[2], 3),
+            "n": r[3],
+        }
+        for r in rows
+    ]

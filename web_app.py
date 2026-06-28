@@ -2460,6 +2460,12 @@ setInterval(() => {{
                 )
         return jsonify({"bins": result, "city": city, "n": len(rows)})
 
+    @app.route("/api/edge-realization")
+    def api_edge_realization():
+        from tracker import get_edge_realization_by_city
+
+        return jsonify(get_edge_realization_by_city())
+
     return app
 
 
