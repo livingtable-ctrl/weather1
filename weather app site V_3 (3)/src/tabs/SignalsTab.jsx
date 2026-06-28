@@ -164,6 +164,15 @@ export default function SignalsTab() {
               >
                 {o.ticker} ↗
               </a>
+              {o.model_disagreement_flag && (
+                <span
+                  title={`NWS & ensemble disagree by ${o.model_disagreement_f}°F`}
+                  style={{ marginLeft: 6, fontSize: 10, color: '#f59e0b',
+                           background: 'rgba(245,158,11,0.12)', padding: '1px 4px', borderRadius: 3 }}
+                >
+                  ⚠ {o.model_disagreement_f}°F gap
+                </span>
+              )}
             </td>
             <td style={{ padding: '12px 16px', fontWeight: 600 }}>{normCity(o.city)}</td>
             <td style={{ padding: '12px 16px' }}>

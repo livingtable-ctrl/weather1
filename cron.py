@@ -1396,6 +1396,12 @@ def _cmd_cron_body(
                             "is_hedge": analysis.get("_is_hedge", False),
                             "passes_threshold": _passes_threshold,
                             "days_out": int(analysis.get("days_out", 1)),
+                            "model_disagreement_f": analysis.get(
+                                "model_disagreement_f"
+                            ),
+                            "model_disagreement_flag": analysis.get(
+                                "model_disagreement_flag", False
+                            ),
                         }
                     )
                     # Only consider for auto-trading if edge gates passed.

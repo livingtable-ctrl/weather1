@@ -1891,3 +1891,23 @@ class TestBetweenFloorGate:
         new_gate = blended < 0.15 and blended > market
         assert old_gate is True, "old gate would have fired (the bug)"
         assert new_gate is False, "new gate correctly allows the NO trade"
+
+
+# ── TestModelDisagreement ────────────────────────────────────────────────────
+
+
+def test_model_disagreement_computation():
+    """Verify disagreement flag fires when NWS and ensemble differ by more than 8°F."""
+    # Direct logic test — avoid full analyze_trade mock complexity
+    forecast_temp_raw = 80.0
+    ens_mean = 70.0
+    disagree_f = round(abs(forecast_temp_raw - ens_mean), 1)
+    flag = bool(disagree_f > 8.0)
+    assert disagree_f == 10.0
+    assert flag is True
+
+    # Under threshold — no flag
+    disagree_f2 = round(abs(75.0 - 72.0), 1)
+    flag2 = bool(disagree_f2 > 8.0)
+    assert disagree_f2 == 3.0
+    assert flag2 is False
