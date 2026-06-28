@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import json
 import sys
-from datetime import date
+from datetime import UTC, date
 from pathlib import Path
 from unittest.mock import patch
 
@@ -698,3 +698,117 @@ class TestGraduationBrierGate:
             result = paper.graduation_check()
 
         assert result is not None, "Brier=0.21 should pass new threshold 0.23"
+
+
+# ── B2: Dynamic Correlation Matrix ────────────────────────────────────────────
+
+
+def test_get_recent_city_correlations_returns_empty_when_no_data(tmp_tracker):
+    """get_recent_city_correlations returns {} when DB has no settled multiday trades."""
+    result = tmp_tracker.get_recent_city_correlations(days=60)
+    assert result == {}, f"Expected empty dict, got {result}"
+
+
+def test_get_recent_city_correlations_computes_correlation(tmp_tracker):
+    """get_recent_city_correlations returns city-pair correlations when enough data exists."""
+    from datetime import date as _date
+    from datetime import datetime, timedelta
+
+    import tracker as t
+
+    # Insert enough (city, temp, settled_at) data points via DB directly
+    # so we have 6 common dates between NYC and Boston with clear positive correlation
+    # Use recent settled_at dates (within last 60 days) and future market_dates for days_out >= 1
+    settled_base_dt = datetime.now(UTC) - timedelta(days=50)
+    market_base = _date.today() + timedelta(days=10)  # Future dates for days_out >= 1
+
+    for i in range(6):
+        settled_dt = (settled_base_dt + timedelta(days=i)).isoformat()
+
+        # NYC ticker
+        tmp_tracker.log_prediction(
+            f"NYC-{i}",
+            "NYC",
+            market_base + timedelta(days=i),
+            {
+                "forecast_prob": 0.5,
+                "market_prob": 0.50,
+                "edge": 0.0,
+                "method": "test",
+                "condition": {"type": "above", "threshold": 70},
+            },
+        )
+        # Log outcome and then update with specific settled_at and settled_temp_f
+        tmp_tracker.log_outcome(f"NYC-{i}", True)
+        with t._conn() as con:
+            con.execute(
+                "UPDATE outcomes SET settled_temp_f = ?, settled_at = ? WHERE ticker = ?",
+                (70.0 + i * 2.0, settled_dt, f"NYC-{i}"),
+            )
+
+        # Boston ticker (same date, correlated)
+        tmp_tracker.log_prediction(
+            f"BOS-{i}",
+            "Boston",
+            market_base + timedelta(days=i),
+            {
+                "forecast_prob": 0.5,
+                "market_prob": 0.50,
+                "edge": 0.0,
+                "method": "test",
+                "condition": {"type": "above", "threshold": 70},
+            },
+        )
+        tmp_tracker.log_outcome(f"BOS-{i}", True)
+        with t._conn() as con:
+            con.execute(
+                "UPDATE outcomes SET settled_temp_f = ?, settled_at = ? WHERE ticker = ?",
+                (68.0 + i * 2.0, settled_dt, f"BOS-{i}"),
+            )
+
+    result = tmp_tracker.get_recent_city_correlations(days=60, min_pairs=5)
+    assert ("NYC", "Boston") in result or ("Boston", "NYC") in result, (
+        f"Expected NYC/Boston correlation in result keys. Got: {list(result.keys())}"
+    )
+    # They move identically, so Pearson correlation should be ~1.0
+    pair_key = ("NYC", "Boston") if ("NYC", "Boston") in result else ("Boston", "NYC")
+    assert result[pair_key] > 0.9, (
+        f"Expected correlation > 0.9 for identical-trend data, got {result[pair_key]}"
+    )
+
+
+def test_get_recent_city_correlations_skips_below_min_pairs(tmp_tracker):
+    """get_recent_city_correlations skips pairs with fewer than min_pairs common dates."""
+    from datetime import date as _date
+    from datetime import datetime, timedelta
+
+    import tracker as t
+
+    # Use recent date within last 60 days for settled_at, future date for market_date
+    settled_dt = datetime.now(UTC) - timedelta(days=30)
+    settled = settled_dt.isoformat()
+    market_date = _date.today() + timedelta(days=5)
+
+    for city, ticker in [("NYC", "NYC-0"), ("Boston", "BOS-0")]:
+        tmp_tracker.log_prediction(
+            ticker,
+            city,
+            market_date,
+            {
+                "forecast_prob": 0.5,
+                "market_prob": 0.50,
+                "edge": 0.0,
+                "method": "test",
+                "condition": {"type": "above", "threshold": 70},
+            },
+        )
+        tmp_tracker.log_outcome(ticker, True)
+        with t._conn() as con:
+            con.execute(
+                "UPDATE outcomes SET settled_temp_f = ?, settled_at = ? WHERE ticker = ?",
+                (70.0, settled, ticker),
+            )
+
+    # Only 1 shared date → below default min_pairs=5, should return {}
+    result = tmp_tracker.get_recent_city_correlations(days=60, min_pairs=5)
+    assert result == {}, f"Should skip pair with only 1 common date. Got: {result}"

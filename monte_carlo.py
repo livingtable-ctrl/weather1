@@ -213,6 +213,15 @@ def simulate_portfolio(
             "n_simulations": n_simulations,
         }
 
+    # Refresh city-pair correlations from recent settled data
+    from tracker import get_recent_city_correlations as _get_recent_corr
+
+    _dynamic = _get_recent_corr(days=60)
+    if len(_dynamic) >= 3:
+        for (c1, c2), corr in _dynamic.items():
+            _DEFAULT_CORRELATIONS[(c1, c2)] = corr
+            _DEFAULT_CORRELATIONS[(c2, c1)] = corr
+
     from utils import KALSHI_FEE_RATE
 
     # Build per-trade parameters including city for correlation lookup.

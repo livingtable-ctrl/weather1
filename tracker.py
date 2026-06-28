@@ -3840,3 +3840,64 @@ def get_model_attribution_by_city() -> dict[str, dict[str, float]]:
         n = city_counts[city]
         result[city] = {k: round(v / n, 4) for k, v in totals.items()}
     return result
+
+
+# ── B2: Dynamic Correlation Matrix ────────────────────────────────────────────
+
+
+def get_recent_city_correlations(days: int = 60, min_pairs: int = 5) -> dict:
+    """Compute pairwise city temperature correlations from recent settled outcomes.
+
+    Returns {(city_a, city_b): correlation_coefficient} for pairs with enough data.
+    Falls back to empty dict when insufficient data.
+    """
+    from collections import defaultdict
+
+    init_db()
+    cutoff = (datetime.now(UTC) - timedelta(days=days)).isoformat()
+    with _conn() as con:
+        rows = con.execute(
+            """
+            SELECT p.city, o.settled_temp_f, o.settled_at
+            FROM   predictions p
+            JOIN   outcomes o ON o.ticker = p.ticker
+            WHERE  (p.days_out IS NULL OR p.days_out >= 1)
+              AND  o.settled_at >= ?
+              AND  o.settled_temp_f IS NOT NULL
+              AND  p.city IS NOT NULL
+            """,
+            (cutoff,),
+        ).fetchall()
+
+    by_date: dict[str, dict[str, float]] = defaultdict(dict)
+    for city, temp, settled_at in rows:
+        date_str = str(settled_at)[:10]
+        by_date[date_str][city] = float(temp)
+
+    city_data: dict[str, list[float]] = defaultdict(list)
+    date_index: dict[str, list[str]] = defaultdict(list)
+    for date_str, city_temps in sorted(by_date.items()):
+        for city, temp in city_temps.items():
+            city_data[city].append(temp)
+            date_index[city].append(date_str)
+
+    cities = list(city_data.keys())
+    correlations = {}
+    for i, c1 in enumerate(cities):
+        for c2 in cities[i + 1 :]:
+            dates1 = set(date_index[c1])
+            dates2 = set(date_index[c2])
+            common = sorted(dates1 & dates2)
+            if len(common) < min_pairs:
+                continue
+            v1 = [city_data[c1][date_index[c1].index(d)] for d in common]
+            v2 = [city_data[c2][date_index[c2].index(d)] for d in common]
+            n = len(v1)
+            mx = sum(v1) / n
+            my = sum(v2) / n
+            num = sum((a - mx) * (b - my) for a, b in zip(v1, v2))
+            d1 = math.sqrt(sum((a - mx) ** 2 for a in v1))
+            d2 = math.sqrt(sum((b - my) ** 2 for b in v2))
+            if d1 > 0 and d2 > 0:
+                correlations[(c1, c2)] = round(num / (d1 * d2), 3)
+    return correlations
