@@ -201,7 +201,7 @@ export default function PositionsTab() {
                   style={{ cursor: 'pointer' }}
                 />
               </th>
-              {['🔔', 'Ticker', 'City', 'Side', 'Cost', 'Qty', 'Mark ¢', 'Fcst ¢', 'Edge', 'Unrl. P&L', 'Model', 'Expiry', 'Age'].map((h, i) => (
+              {['🔔', 'Ticker', 'City', 'Side', 'Cost', 'Qty', 'Mark ¢', 'Fcst ¢', 'Edge', 'Unrl. P&L', 'Model', 'Expiry', 'Age', 'Closes In'].map((h, i) => (
                 <th key={h} style={{ padding: '12px 16px', textAlign: i >= 4 && i <= 9 ? 'right' : 'left', fontWeight: 600, borderBottom: '1px solid var(--border)' }}>{h}</th>
               ))}
             </tr>
@@ -277,17 +277,16 @@ export default function PositionsTab() {
                           {overdue ? '! ' : ''}{p.expiry}
                         </span>
                     }
-                    {timeLeftLabel != null && (
-                      <div style={{
-                        fontSize: 10,
-                        color: msLeft < 0 ? '#ef4444' : msLeft < 7200000 ? '#f59e0b' : 'var(--text-faint)',
-                        marginTop: 2,
-                      }}>
-                        {msLeft < 0 ? 'past close' : `closes in ${timeLeftLabel}`}
-                      </div>
-                    )}
                   </td>
                   <td style={{ padding: '14px 16px', textAlign: 'right', fontFamily: 'ui-monospace, monospace', fontSize: 11, color: 'var(--text-faint)' }}>{p.age_h}h</td>
+                  <td style={{ padding: '14px 16px', fontFamily: 'ui-monospace, monospace', fontSize: 11,
+                    color: msLeft == null ? 'var(--text-faint)'
+                      : msLeft < 3_600_000 ? '#ef4444'
+                      : msLeft < 7_200_000 ? '#f59e0b'
+                      : 'var(--text-faint)',
+                  }}>
+                    {timeLeftLabel ?? '—'}
+                  </td>
                 </tr>
               );
             })}
