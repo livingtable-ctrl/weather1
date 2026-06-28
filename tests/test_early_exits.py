@@ -504,3 +504,122 @@ def test_reentry_blocked_when_partial_position_remains(monkeypatch):
 
     result = paper.re_entry_eligible("KXHIGH-T70")
     assert result is False, "should be blocked while partial position is still open"
+
+
+# ---------------------------------------------------------------------------
+# C4 position building tests
+# ---------------------------------------------------------------------------
+
+
+class TestPositionBuildActive:
+    """Tests for the _position_build_active() auto-activation gate."""
+
+    def test_returns_false_when_settled_count_below_150(self, monkeypatch):
+        """Gate must stay dormant when fewer than 150 settled predictions exist.
+
+        C4 has a higher bar than C3 because building into a position compounds
+        risk more aggressively than re-entering from scratch.
+        """
+        import order_executor
+
+        # Reset cache so this test starts unchecked.
+        order_executor._build_state["active"] = None
+
+        monkeypatch.setattr(
+            "order_executor.count_settled_predictions"
+            if hasattr(order_executor, "count_settled_predictions")
+            else "tracker.count_settled_predictions",
+            lambda: 76,
+            raising=False,
+        )
+
+        with (
+            patch("tracker.count_settled_predictions", return_value=76),
+            patch("tracker.brier_score", return_value=0.20),
+        ):
+            result = order_executor._position_build_active()
+
+        assert result is False, (
+            "_position_build_active must return False when settled < 150"
+        )
+        # Reset so later tests are unaffected by the cached False.
+        order_executor._build_state["active"] = None
+
+    def test_returns_true_and_notifies_when_conditions_met(self, monkeypatch):
+        """Gate activates and fires _notify_feature_activation when 150+ settled and Brier <= 0.23."""
+        import order_executor
+
+        order_executor._build_state["active"] = None
+
+        notify_calls = []
+
+        with (
+            patch("tracker.count_settled_predictions", return_value=155),
+            patch("tracker.brier_score", return_value=0.21),
+            patch(
+                "weather_markets._notify_feature_activation",
+                side_effect=lambda key, msg, extra: notify_calls.append(
+                    (key, msg, extra)
+                ),
+            ),
+        ):
+            result = order_executor._position_build_active()
+
+        assert result is True, (
+            "_position_build_active must return True when settled >= 150 and Brier <= 0.23"
+        )
+        assert len(notify_calls) == 1, "should fire exactly one activation notification"
+        assert notify_calls[0][0] == "c4_position_build", (
+            "notification key must be 'c4_position_build'"
+        )
+
+        order_executor._build_state["active"] = None
+
+
+class TestBuildEligible:
+    """Tests for paper.build_eligible()."""
+
+    def test_returns_false_when_no_open_position(self, monkeypatch):
+        """build_eligible must return False when no open trade exists on the ticker.
+
+        Building requires an existing position — we are adding to a winner, not
+        opening a brand-new trade.
+        """
+        import paper
+
+        fake_data = {"trades": [], "balance": 1000.0}
+        monkeypatch.setattr(paper, "_load", lambda: fake_data)
+
+        assert paper.build_eligible("KXHIGH-T70") is False, (
+            "build_eligible must return False when the ticker has no open trades"
+        )
+
+    def test_returns_true_when_open_position_exists(self, monkeypatch):
+        """build_eligible must return True when there is at least one open position."""
+        import paper
+
+        open_trade = {
+            "ticker": "KXHIGH-T70",
+            "settled": False,
+        }
+        fake_data = {"trades": [open_trade], "balance": 1000.0}
+        monkeypatch.setattr(paper, "_load", lambda: fake_data)
+
+        assert paper.build_eligible("KXHIGH-T70") is True, (
+            "build_eligible must return True when an open position exists on the ticker"
+        )
+
+    def test_returns_false_for_settled_trade_only(self, monkeypatch):
+        """A settled trade on the same ticker does not count as an open position."""
+        import paper
+
+        settled_trade = {
+            "ticker": "KXHIGH-T70",
+            "settled": True,
+        }
+        fake_data = {"trades": [settled_trade], "balance": 1000.0}
+        monkeypatch.setattr(paper, "_load", lambda: fake_data)
+
+        assert paper.build_eligible("KXHIGH-T70") is False, (
+            "build_eligible must return False when the only trade on the ticker is settled"
+        )

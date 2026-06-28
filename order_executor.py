@@ -128,6 +128,53 @@ def _reentry_active() -> bool:
 
 
 # ---------------------------------------------------------------------------
+# Position building gate (C4)
+# ---------------------------------------------------------------------------
+
+# Mutable state dict so tests can reset between runs by setting ["active"] = None.
+# None = unchecked this process, True/False = already determined.
+_build_state: dict = {"active": None}
+
+# Higher threshold than C3 re-entry — adding to a position compounds risk more
+# aggressively than entering a fresh one after an exit. Tunable via .env.
+_BUILD_MIN_SETTLED = int(os.getenv("BUILD_MIN_SETTLED", "150"))
+_BUILD_BRIER_THRESHOLD = float(os.getenv("BUILD_BRIER_THRESHOLD", "0.23"))
+
+
+def _position_build_active() -> bool:
+    """Return True when enough settled trades and Brier warrant adding to positions.
+
+    Higher threshold than C3 re-entry because building into an existing position
+    compounds risk more aggressively than re-entering after an exit.
+    Cached per process. Writes one-time notification on first activation.
+    """
+    if _build_state["active"] is not None:
+        return _build_state["active"]
+
+    from tracker import brier_score as _brier
+    from tracker import count_settled_predictions
+
+    n = count_settled_predictions()
+    brier = _brier(last_n=50)
+    active = (
+        n >= _BUILD_MIN_SETTLED
+        and brier is not None
+        and brier <= _BUILD_BRIER_THRESHOLD
+    )
+    _build_state["active"] = active
+
+    if active:
+        from weather_markets import _notify_feature_activation
+
+        _notify_feature_activation(
+            "c4_position_build",
+            f"Position building auto-activated ({n} settled, Brier(last-50)={brier:.4f})",
+            {"n_settled": n, "brier_last_50": brier},
+        )
+    return active
+
+
+# ---------------------------------------------------------------------------
 # Forecast cycle
 # ---------------------------------------------------------------------------
 
@@ -824,6 +871,35 @@ def _check_early_exits(client=None) -> int:
                         )
                         closed += 1
                         break
+
+            # C4 position build: if the market moved >= 5 cents in our favor vs
+            # entry, add one contract to the existing position. Only fires when
+            # the auto-activation gate is met (150 settled, Brier <= 0.23) and
+            # an open position already exists on this ticker.
+            if _position_build_active() and exit_price > 0:
+                from paper import build_eligible as _build_ok
+
+                if _build_ok(trade.get("ticker", "")):
+                    favor_move = (
+                        (exit_price - float(trade.get("entry_price", 0.5)))
+                        if side == "yes"
+                        else (float(trade.get("entry_price", 0.5)) - exit_price)
+                    )
+                    if favor_move >= 0.05:
+                        _log.info(
+                            "C4 build: %s moved %.2f in our favor (entry=%.2f, now=%.2f)",
+                            trade.get("ticker", "?"),
+                            favor_move,
+                            float(trade.get("entry_price", 0.5)),
+                            exit_price,
+                        )
+                        place_paper_order(
+                            trade.get("ticker", ""),
+                            side,
+                            qty=1,
+                            entry_price=exit_price,
+                            method="build",
+                        )
 
             if shift > 0.25:
                 exit_price = _midpoint_price(market, side)

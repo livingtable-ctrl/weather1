@@ -1189,6 +1189,21 @@ def re_entry_eligible(ticker: str) -> bool:
         )
 
 
+def build_eligible(ticker: str) -> bool:
+    """Return True if there is an existing open position on this ticker.
+
+    Building only makes sense when we already hold a position — we are adding
+    to a winner, not opening a new one. The exposure cap is enforced by
+    kelly_fraction() at order-placement time; this is a cheap pre-check so we
+    do not even attempt to build when no base position exists.
+    """
+    with _DATA_LOCK:
+        data = _load()
+        return any(
+            t.get("ticker") == ticker and not t.get("settled") for t in data["trades"]
+        )
+
+
 def validate_paper_trades_integrity() -> list[str]:
     """Check paper_trades.json for structural corruption. Returns a list of error strings."""
     errors: list[str] = []
