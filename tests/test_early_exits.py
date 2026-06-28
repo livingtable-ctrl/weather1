@@ -373,3 +373,118 @@ def test_take_profit_targets_for_yes_bet():
     # Second rung: close 33% at entry * 1.45 = 0.725
     assert abs(targets[1]["price"] - 0.725) < 0.001
     assert targets[1]["close_pct"] == pytest.approx(0.333, abs=0.01)
+
+
+# ---------------------------------------------------------------------------
+# C3: Re-entry gate and eligibility tests
+# ---------------------------------------------------------------------------
+
+
+class TestReentryActive:
+    def test_reentry_active_returns_false_when_settled_count_below_100(
+        self, monkeypatch
+    ):
+        """_reentry_active() must return False when settled count < 100.
+
+        Gate is DORMANT until both conditions are met — low count alone blocks it.
+        """
+        import order_executor
+
+        # Reset cache so this test re-evaluates the gate from scratch.
+        order_executor._reentry_state["active"] = None
+
+        monkeypatch.setattr(
+            "order_executor.count_settled_predictions", lambda: 80, raising=False
+        )
+        # Brier is good but count is not — gate must stay closed.
+        monkeypatch.setattr(
+            "order_executor._brier", lambda last_n=50: 0.20, raising=False
+        )
+
+        with (
+            patch("tracker.count_settled_predictions", return_value=80),
+            patch("tracker.brier_score", return_value=0.20),
+        ):
+            result = order_executor._reentry_active()
+
+        assert result is False, (
+            "_reentry_active must return False when settled count (80) < 100"
+        )
+
+        # Leave cache clean for other tests.
+        order_executor._reentry_state["active"] = None
+
+    def test_reentry_active_returns_true_and_notifies_when_both_conditions_met(self):
+        """_reentry_active() must return True and call _notify_feature_activation
+        exactly once when settled >= 100 AND Brier <= 0.23.
+        """
+        import order_executor
+
+        order_executor._reentry_state["active"] = None
+
+        notify_calls = []
+
+        with (
+            patch("tracker.count_settled_predictions", return_value=105),
+            patch("tracker.brier_score", return_value=0.21),
+            patch(
+                "weather_markets._notify_feature_activation",
+                side_effect=lambda key, msg, extra: notify_calls.append(
+                    (key, msg, extra)
+                ),
+            ),
+        ):
+            result = order_executor._reentry_active()
+
+        assert result is True, (
+            "_reentry_active must return True when settled=105 and Brier=0.21"
+        )
+        assert len(notify_calls) == 1, (
+            "_notify_feature_activation must be called exactly once on first activation"
+        )
+        assert notify_calls[0][0] == "c3_reentry", (
+            "Notification key must be 'c3_reentry'"
+        )
+
+        order_executor._reentry_state["active"] = None
+
+
+class TestReEntryEligible:
+    def test_re_entry_eligible_returns_false_when_open_position_exists(
+        self, monkeypatch
+    ):
+        """re_entry_eligible must return False when an open position exists on that ticker.
+
+        Prevents doubling up if the close hasn't propagated yet or the function
+        is called more than once in the same cron cycle.
+        """
+        import paper
+
+        existing_trade = {
+            "ticker": "KXHIGH-T70",
+            "settled": False,
+        }
+        fake_data = {"trades": [existing_trade], "balance": 1000.0}
+        monkeypatch.setattr(paper, "_load", lambda: fake_data)
+
+        result = paper.re_entry_eligible("KXHIGH-T70")
+        assert result is False, (
+            "re_entry_eligible must return False when an open position exists on the ticker"
+        )
+
+    def test_re_entry_eligible_returns_true_when_no_open_position(self, monkeypatch):
+        """re_entry_eligible must return True when no open position exists on the ticker."""
+        import paper
+
+        # Settled trade on the same ticker — should not block re-entry.
+        settled_trade = {
+            "ticker": "KXHIGH-T70",
+            "settled": True,
+        }
+        fake_data = {"trades": [settled_trade], "balance": 1000.0}
+        monkeypatch.setattr(paper, "_load", lambda: fake_data)
+
+        result = paper.re_entry_eligible("KXHIGH-T70")
+        assert result is True, (
+            "re_entry_eligible must return True when the only trade on the ticker is settled"
+        )

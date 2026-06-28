@@ -58,6 +58,19 @@ _MIN_ARB_EDGE = float(os.getenv("MIN_ARB_EDGE", "0.03"))
 # restore the original full-close behaviour.
 PARTIAL_EXIT_PCT = float(os.getenv("PARTIAL_EXIT_PCT", "0.50"))
 
+# ---------------------------------------------------------------------------
+# Re-entry gate (C3)
+# ---------------------------------------------------------------------------
+
+# Mutable state dict so tests can reset between runs by setting ["active"] = None.
+# None = unchecked this process, True/False = already determined.
+_reentry_state: dict = {"active": None}
+
+# Minimum settled predictions and Brier threshold before re-entry fires.
+# Both conditions must be met simultaneously. Tunable via .env without a deploy.
+_REENTRY_MIN_SETTLED = int(os.getenv("REENTRY_MIN_SETTLED", "100"))
+_REENTRY_BRIER_THRESHOLD = float(os.getenv("REENTRY_BRIER_THRESHOLD", "0.23"))
+
 
 def _in_gfs_update_window(now_utc=None) -> bool:
     """Return True if we are within LOCKOUT_MINS of a GFS model initialization.
@@ -76,6 +89,42 @@ def _in_gfs_update_window(now_utc=None) -> bool:
         if 0 <= (minute_of_day - update_minute) < _GFS_UPDATE_LOCKOUT_MINS:
             return True
     return False
+
+
+def _reentry_active() -> bool:
+    """Return True when enough settled trades and Brier score are good enough for re-entry.
+
+    Checked once per process, then cached in _reentry_state["active"] so we don't
+    hit the DB on every cron cycle. Tests reset the cache by setting
+    _reentry_state["active"] = None between calls.
+
+    Writes a one-time notification to feature_activations.json the first time
+    the gate clears, so the dashboard can surface the activation event.
+    """
+    if _reentry_state["active"] is not None:
+        return _reentry_state["active"]
+
+    from tracker import brier_score as _brier
+    from tracker import count_settled_predictions
+
+    n = count_settled_predictions()
+    brier = _brier(last_n=50)
+    active = (
+        n >= _REENTRY_MIN_SETTLED
+        and brier is not None
+        and brier <= _REENTRY_BRIER_THRESHOLD
+    )
+    _reentry_state["active"] = active
+
+    if active:
+        from weather_markets import _notify_feature_activation
+
+        _notify_feature_activation(
+            "c3_reentry",
+            f"Re-entry after early exit auto-activated ({n} settled, Brier(last-50)={brier:.4f})",
+            {"n_settled": n, "brier_last_50": brier},
+        )
+    return active
 
 
 # ---------------------------------------------------------------------------
@@ -810,6 +859,40 @@ def _check_early_exits(client=None) -> int:
                         f"pnl=${result['pnl']:.2f}"
                     )
                 closed += 1
+
+                # C3 re-entry: if the gate is active, the ticker is clear, and the
+                # market still has at least 2h until close, re-enter on the same side.
+                # This avoids losing the position entirely when the model reverted on
+                # a transient forecast update rather than a real condition change.
+                if _reentry_active():
+                    from paper import re_entry_eligible as _re_eligible
+
+                    # Re-use close_time_str already validated above — it is guaranteed
+                    # parseable at this point so fromisoformat won't raise here.
+                    try:
+                        reentry_close_dt = datetime.fromisoformat(
+                            close_time_str.replace("Z", "+00:00")
+                        )
+                        hours_left = (
+                            reentry_close_dt - datetime.now(UTC)
+                        ).total_seconds() / 3600
+                    except Exception:
+                        hours_left = 0
+
+                    if hours_left >= 2.0 and _re_eligible(ticker):
+                        _log.info(
+                            "C3 re-entry: %s still eligible after early exit (%.1fh left)",
+                            ticker,
+                            hours_left,
+                        )
+                        place_paper_order(
+                            ticker,
+                            side,
+                            1,
+                            exit_price,
+                            method="reentry",
+                        )
+
         except Exception as exc:
             import traceback as _tb
 

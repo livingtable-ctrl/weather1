@@ -1175,6 +1175,20 @@ def get_open_trades() -> list[dict]:
         return [t for t in _load()["trades"] if not t["settled"]]
 
 
+def re_entry_eligible(ticker: str) -> bool:
+    """Return True if this ticker can be re-entered after an early exit.
+
+    Blocks re-entry if an open position already exists on the same ticker.
+    Defensive guard — shouldn't happen right after closing, but prevents
+    doubling up if _check_early_exits is called multiple times in a cycle.
+    """
+    with _DATA_LOCK:
+        data = _load()
+        return not any(
+            t.get("ticker") == ticker and not t.get("settled") for t in data["trades"]
+        )
+
+
 def validate_paper_trades_integrity() -> list[str]:
     """Check paper_trades.json for structural corruption. Returns a list of error strings."""
     errors: list[str] = []
