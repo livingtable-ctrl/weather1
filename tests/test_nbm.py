@@ -73,3 +73,49 @@ class TestNBMFetch:
         temps = {"gfs_seamless": 70.0, "icon_seamless": 72.0, "nbm": None}
         mean = _compute_ensemble_mean(temps)
         assert mean == pytest.approx((70.0 + 72.0) / 2, abs=0.1)
+
+
+class TestNBMQuantiles:
+    def test_nws_prob_uses_quantiles_above(self):
+        """nws_prob_from_quantiles uses ECDF interpolation for above condition."""
+        from nws import nws_prob_from_quantiles
+
+        # NBM quantiles: [T10=62, T25=65, T50=68, T75=71, T90=74]
+        quantiles = {10: 62.0, 25: 65.0, 50: 68.0, 75: 71.0, 90: 74.0}
+
+        # P(T > 70) should be between 0.15 and 0.40 (threshold is between T50=68 and T75=71)
+        prob = nws_prob_from_quantiles(
+            quantiles, threshold=70.0, condition_type="above"
+        )
+        assert 0.15 <= prob <= 0.40
+
+    def test_nws_prob_at_median_is_near_half(self):
+        """P(T > median) should be ~0.50 by definition."""
+        from nws import nws_prob_from_quantiles
+
+        quantiles = {10: 62.0, 25: 65.0, 50: 68.0, 75: 71.0, 90: 74.0}
+        prob_at_median = nws_prob_from_quantiles(
+            quantiles, threshold=68.0, condition_type="above"
+        )
+        assert 0.45 <= prob_at_median <= 0.55
+
+    def test_nws_prob_below_is_complement_of_above(self):
+        """P(T < threshold) + P(T > threshold) should approximately equal 1."""
+        from nws import nws_prob_from_quantiles
+
+        quantiles = {10: 62.0, 25: 65.0, 50: 68.0, 75: 71.0, 90: 74.0}
+        p_above = nws_prob_from_quantiles(
+            quantiles, threshold=68.0, condition_type="above"
+        )
+        p_below = nws_prob_from_quantiles(
+            quantiles, threshold=68.0, condition_type="below"
+        )
+        # At an exact quantile point, above + below should sum near 1.0
+        assert abs(p_above + p_below - 1.0) < 0.01
+
+    def test_nws_prob_empty_quantiles_returns_half(self):
+        """Empty quantile dict should return 0.5 as a safe fallback."""
+        from nws import nws_prob_from_quantiles
+
+        prob = nws_prob_from_quantiles({}, threshold=70.0, condition_type="above")
+        assert prob == 0.5
