@@ -331,10 +331,7 @@ def nws_prob_from_quantiles(
     """
     q_map = {10: 0.10, 25: 0.25, 50: 0.50, 75: 0.75, 90: 0.90}
     points = sorted(
-        (temp, prob)
-        for pct, temp in quantiles.items()
-        if pct in q_map
-        for prob in [q_map[pct]]
+        (temp, q_map[pct]) for pct, temp in quantiles.items() if pct in q_map
     )
 
     if not points:
@@ -346,18 +343,19 @@ def nws_prob_from_quantiles(
     def _cdf(t: float) -> float:
         """P(T <= t) from the ECDF with linear extrapolation at the tails."""
         if t <= temps_sorted[0]:
-            # Extrapolate: below the lowest quantile, scale toward 0
             return probs_sorted[0] * max(0.0, 1.0 - (temps_sorted[0] - t) / 10.0)
         if t >= temps_sorted[-1]:
-            # Extrapolate: above the highest quantile, scale toward 1
             return 1.0 - (1.0 - probs_sorted[-1]) * max(
                 0.0, 1.0 - (t - temps_sorted[-1]) / 10.0
             )
         for i in range(len(temps_sorted) - 1):
+            gap = temps_sorted[i + 1] - temps_sorted[i]
+            if gap == 0.0:
+                continue  # skip degenerate duplicate-temp intervals
             if temps_sorted[i] <= t <= temps_sorted[i + 1]:
-                frac = (t - temps_sorted[i]) / (temps_sorted[i + 1] - temps_sorted[i])
+                frac = (t - temps_sorted[i]) / gap
                 return probs_sorted[i] + frac * (probs_sorted[i + 1] - probs_sorted[i])
-        return 0.5
+        return probs_sorted[-1]  # unreachable with valid sorted input
 
     if condition_type == "above":
         return float(1.0 - _cdf(threshold))
