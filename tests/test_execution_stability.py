@@ -365,3 +365,59 @@ class TestCronLock:
         assert release_calls, (
             "_release_cron_lock must be called even when cmd_cron raises"
         )
+
+
+# ===========================================================================
+# Task B7 — Overnight GFS Gap Protection
+# ===========================================================================
+
+
+class TestGfsUpdateWindow:
+    def test_gfs_update_window_blocks_new_trades(self):
+        """_in_gfs_update_window returns True within 90 min of GFS init, False otherwise."""
+        from order_executor import _in_gfs_update_window
+
+        # 00:30 UTC — within 90 min of 00Z → should be blocked
+        t_blocked = datetime(2026, 7, 1, 0, 30, tzinfo=UTC)
+        assert _in_gfs_update_window(now_utc=t_blocked) is True
+
+        # 02:00 UTC — 90+ minutes after 00Z → clear
+        t_clear = datetime(2026, 7, 1, 2, 0, tzinfo=UTC)
+        assert _in_gfs_update_window(now_utc=t_clear) is False
+
+        # 12:45 UTC — within 90 min of 12Z → blocked
+        t_blocked2 = datetime(2026, 7, 1, 12, 45, tzinfo=UTC)
+        assert _in_gfs_update_window(now_utc=t_blocked2) is True
+
+    def test_gfs_update_all_four_init_hours(self):
+        """GFS update windows should be True for all four initialization hours."""
+        from order_executor import _in_gfs_update_window
+
+        # Test 00Z, 06Z, 12Z, 18Z
+        for init_hour in [0, 6, 12, 18]:
+            t = datetime(2026, 7, 1, init_hour, 30, tzinfo=UTC)
+            assert _in_gfs_update_window(now_utc=t) is True, (
+                f"should be in window at {init_hour}:30"
+            )
+
+    def test_gfs_window_disabled_with_zero_lockout(self, monkeypatch):
+        """When GFS_LOCKOUT_MINS=0, _in_gfs_update_window should always return False."""
+        from order_executor import _in_gfs_update_window
+
+        monkeypatch.setenv("GFS_LOCKOUT_MINS", "0")
+        # Re-import to pick up the new env var
+        import importlib
+
+        import order_executor
+
+        importlib.reload(order_executor)
+        t_blocked = datetime(2026, 7, 1, 0, 30, tzinfo=UTC)
+        assert _in_gfs_update_window(now_utc=t_blocked) is False
+
+    def test_gfs_window_uses_current_time_when_none_provided(self):
+        """_in_gfs_update_window should use datetime.now(UTC) when now_utc=None."""
+        from order_executor import _in_gfs_update_window
+
+        # Just verify it doesn't crash and returns a bool
+        result = _in_gfs_update_window(now_utc=None)
+        assert isinstance(result, bool)
