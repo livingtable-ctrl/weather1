@@ -5,6 +5,7 @@ Compares market-implied probabilities with Open-Meteo forecast data.
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import random
@@ -420,6 +421,9 @@ _ensemble_cache: ForecastCache[list[float]] = ForecastCache(ttl_secs=8 * 3600)
 _ENSEMBLE_CACHE_TTL = 8 * 60 * 60  # seconds — mirrors in-memory TTL
 _ENSEMBLE_DISK_CACHE_PATH = Path("data/ensemble_cache.json")
 _ENSEMBLE_DISK_LOCK = threading.Lock()
+
+# Path for one-time auto-activation notifications surfaced on the dashboard.
+_FEATURE_ACTIVATIONS_PATH = Path(__file__).parent / "data" / "feature_activations.json"
 
 # Two separate rate limiters: forecast endpoint is more permissive than ensemble.
 # ensemble-api.open-meteo.com is the stricter one (0.1s caused 429s+60s retries);
@@ -3487,6 +3491,89 @@ def _nws_days_out_scale(
     return w_ens_new, w_clim_new, w_nws_new
 
 
+# Per-regime domain-knowledge blend weights (w_ens, w_clim, w_nws).
+# Extreme regimes (heat_dome, cold_snap, blocking_high) shift weight toward ensemble
+# because NWP ensembles outperform NWS MOS at extremes. Volatile shifts toward NWS.
+# "normal" is intentionally absent — falls through to existing condition/seasonal logic.
+_REGIME_BLEND_WEIGHTS: dict[str, tuple[float, float, float]] = {
+    "heat_dome": (0.70, 0.05, 0.25),
+    "cold_snap": (0.70, 0.05, 0.25),
+    "blocking_high": (0.65, 0.05, 0.30),
+    "volatile": (0.30, 0.10, 0.60),
+}
+
+# Mutable state dict so tests can reset between runs by setting ["active"] = None.
+# None = unchecked this process, True/False = already determined.
+_regime_blend_state: dict = {"active": None}
+
+
+def _regime_blend_settled_count() -> int:
+    """Thin wrapper so tests can monkeypatch the settled-trade count."""
+    from tracker import count_settled_predictions_rolling
+
+    return count_settled_predictions_rolling()
+
+
+def _notify_feature_activation(key: str, message: str, extra: dict) -> None:
+    """Write a one-time entry to feature_activations.json and log a WARNING.
+
+    Idempotent — if the key already exists the file is not modified so
+    the user can dismiss the alert without it reappearing on restart.
+    """
+    try:
+        existing = (
+            json.loads(_FEATURE_ACTIVATIONS_PATH.read_text())
+            if _FEATURE_ACTIVATIONS_PATH.exists()
+            else {}
+        )
+    except Exception:
+        existing = {}
+
+    if key in existing:
+        return  # Already notified; do not overwrite (user may have dismissed it)
+
+    existing[key] = {
+        "activated_at": date.today().isoformat(),
+        "message": message,
+        "dismissed": False,
+        **extra,
+    }
+    try:
+        import safe_io as _safe_io
+
+        _safe_io.atomic_write_json(existing, _FEATURE_ACTIVATIONS_PATH)
+    except Exception as exc:
+        _log.warning(
+            "_notify_feature_activation: could not write %s: %s",
+            _FEATURE_ACTIVATIONS_PATH,
+            exc,
+        )
+
+    _log.warning("AUTO-ACTIVATION: %s. Check the dashboard for details.", message)
+
+
+def _regime_blend_active() -> bool:
+    """Return True when enough settled trades warrant regime-specific blend weights.
+
+    Checks once per process, then caches result in _regime_blend_state["active"].
+    Writes a one-time user notification the first time the threshold is crossed.
+    """
+    if _regime_blend_state["active"] is not None:
+        return _regime_blend_state["active"]
+
+    n = _regime_blend_settled_count()
+    active = n >= 30
+    _regime_blend_state["active"] = active
+
+    if active:
+        _notify_feature_activation(
+            "a9_regime_blend",
+            f"Regime blend weights auto-activated ({n} multi-day settled trades reached)",
+            {"n_settled": n},
+        )
+    return active
+
+
 def _blend_weights(
     days_out: int,
     has_nws: bool,
@@ -3494,11 +3581,30 @@ def _blend_weights(
     city: str | None = None,
     season: str | None = None,
     condition_type: str | None = None,
+    regime: str | None = None,
 ) -> tuple[float, float, float]:
     """Return (w_ensemble, w_climatology, w_nws).
 
-    Priority: city > condition-type > seasonal > hardcoded schedule.
+    Priority: city > condition-type > seasonal > hardcoded schedule > regime override.
+    The regime override is applied last (highest priority when active) so extreme-weather
+    regimes can shift weight toward ensemble regardless of which calibration tier fired.
     """
+    # 0. Regime override — highest priority when feature is active and regime is extreme.
+    # Runs before city/condition/seasonal weights so extreme regimes always win.
+    if regime and regime in _REGIME_BLEND_WEIGHTS and _regime_blend_active():
+        w_ens, w_clim, w_nws = _REGIME_BLEND_WEIGHTS[regime]
+        if not has_nws:
+            w_ens += w_nws * 0.6
+            w_clim += w_nws * 0.4
+            w_nws = 0.0
+        if not has_clim:
+            w_ens += w_clim
+            w_clim = 0.0
+        total = w_ens + w_clim + w_nws
+        if total > 0.0:
+            w_ens, w_clim, w_nws = w_ens / total, w_clim / total, w_nws / total
+        return _nws_days_out_scale(w_ens, w_clim, w_nws, days_out)
+
     # 1. City-specific calibration weights
     if city and city in _CITY_WEIGHTS:
         cal = _CITY_WEIGHTS[city]
@@ -3623,6 +3729,7 @@ def _confidence_scaled_blend_weights(
     city: str | None = None,
     season: str | None = None,
     condition_type: str | None = None,
+    regime: str | None = None,
 ) -> tuple[float, float, float]:
     """#31: _blend_weights scaled by inverse ensemble variance."""
     w_ens, w_clim, w_nws = _blend_weights(
@@ -3632,6 +3739,7 @@ def _confidence_scaled_blend_weights(
         city=city,
         season=season,
         condition_type=condition_type,
+        regime=regime,
     )
     if ens_std is None or ens_std <= 0:
         return w_ens, w_clim, w_nws
@@ -4705,6 +4813,9 @@ def analyze_trade(enriched: dict) -> dict | None:
     hour = enriched.get("_hour")
 
     _tkr = enriched.get("ticker", "?")
+    # Initialize early so blend weight calls can read regime even before detection runs.
+    # Overwritten by the actual regime detection block further below.
+    _regime_info: dict = {}
     if not forecast:
         _log.warning(
             "analyze_trade[%s]: gate=no_forecast city=%s date=%s",
@@ -5368,6 +5479,7 @@ def analyze_trade(enriched: dict) -> dict | None:
                 city=city,
                 season=_season,
                 condition_type=condition.get("type"),
+                regime=_regime_info.get("regime"),
             )
             if persistence_p is not None and days_out <= 2:
                 w_persist = 0.15
@@ -5773,8 +5885,7 @@ def analyze_trade(enriched: dict) -> dict | None:
             except Exception:
                 pass
 
-    # Regime detection
-    _regime_info: dict = {}
+    # Regime detection — overwrites _regime_info (initialized at top of function).
     _confidence_boost = 1.0
     try:
         from regime import detect_regime as _detect_regime

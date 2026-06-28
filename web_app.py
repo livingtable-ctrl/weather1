@@ -1360,6 +1360,19 @@ setInterval(() => {{
                 "var_99": var_99,
                 "timestamp": datetime.now(UTC).isoformat(),
             }
+            try:
+                import json as _json
+
+                from weather_markets import _FEATURE_ACTIVATIONS_PATH
+
+                _activations = (
+                    _json.loads(_FEATURE_ACTIVATIONS_PATH.read_text())
+                    if _FEATURE_ACTIVATIONS_PATH.exists()
+                    else {}
+                )
+            except Exception:
+                _activations = {}
+            data["feature_activations"] = _activations
         except Exception as e:
             data = {"error": str(e)}
         return jsonify(data)

@@ -1226,3 +1226,102 @@ class TestModelBrierScores:
 
         scores = tracker.get_model_brier_scores(days=30)
         assert scores == {}
+
+
+class TestRegimeBlend:
+    def test_regime_blend_inactive_below_threshold(self, monkeypatch):
+        """_regime_blend_active returns False when settled count < 30."""
+        import weather_markets as wm
+
+        monkeypatch.setattr("weather_markets._regime_blend_settled_count", lambda: 5)
+        wm._regime_blend_state["active"] = None
+        assert wm._regime_blend_active() is False
+
+    def test_regime_blend_active_above_threshold(self, monkeypatch):
+        """_regime_blend_active returns True when settled count >= 30."""
+        import weather_markets as wm
+
+        monkeypatch.setattr("weather_markets._regime_blend_settled_count", lambda: 35)
+        # Reset cached state so the monkeypatch takes effect
+        wm._regime_blend_state["active"] = None
+        assert wm._regime_blend_active() is True
+
+    def test_heat_dome_overrides_weights(self, monkeypatch):
+        """heat_dome regime -> ens=0.70, nws=0.25, clim=0.05 (after active)."""
+        import weather_markets as wm
+
+        monkeypatch.setattr("weather_markets._regime_blend_settled_count", lambda: 35)
+        wm._regime_blend_state["active"] = None
+        w_ens, w_clim, w_nws = wm._blend_weights(
+            days_out=1,
+            has_nws=True,
+            has_clim=True,
+            city=None,
+            season=None,
+            condition_type="above",
+            regime="heat_dome",
+        )
+        assert w_ens == pytest.approx(0.70, abs=0.01)
+        assert w_nws == pytest.approx(0.25, abs=0.01)
+        assert w_clim == pytest.approx(0.05, abs=0.01)
+
+    def test_normal_regime_uses_existing_weights(self, monkeypatch):
+        """normal regime -> existing condition/seasonal weights unchanged."""
+        import weather_markets as wm
+
+        monkeypatch.setattr("weather_markets._regime_blend_settled_count", lambda: 35)
+        wm._regime_blend_state["active"] = None
+        w_ens_regime, _, _ = wm._blend_weights(
+            days_out=1,
+            has_nws=True,
+            has_clim=True,
+            city=None,
+            season=None,
+            condition_type="above",
+            regime="normal",
+        )
+        wm._regime_blend_state["active"] = None
+        w_ens_base, _, _ = wm._blend_weights(
+            days_out=1,
+            has_nws=True,
+            has_clim=True,
+            city=None,
+            season=None,
+            condition_type="above",
+            regime=None,
+        )
+        assert w_ens_regime == pytest.approx(w_ens_base, abs=0.01)
+
+    def test_notify_writes_feature_activations_file(self, monkeypatch, tmp_path):
+        """_notify_feature_activation writes data/feature_activations.json on first call."""
+        import json
+
+        import weather_markets as wm
+
+        monkeypatch.setattr(
+            wm, "_FEATURE_ACTIVATIONS_PATH", tmp_path / "feature_activations.json"
+        )
+        wm._notify_feature_activation(
+            "a9_regime_blend", "Regime blend auto-activated", {"n_settled": 31}
+        )
+        data = json.loads((tmp_path / "feature_activations.json").read_text())
+        assert "a9_regime_blend" in data
+        assert data["a9_regime_blend"]["dismissed"] is False
+        assert data["a9_regime_blend"]["n_settled"] == 31
+
+    def test_notify_does_not_overwrite_existing_key(self, monkeypatch, tmp_path):
+        """_notify_feature_activation is idempotent -- does not rewrite if key exists."""
+        import json
+
+        import weather_markets as wm
+
+        path = tmp_path / "feature_activations.json"
+        path.write_text(
+            json.dumps(
+                {"a9_regime_blend": {"activated_at": "2026-07-01", "dismissed": True}}
+            )
+        )
+        monkeypatch.setattr(wm, "_FEATURE_ACTIVATIONS_PATH", path)
+        wm._notify_feature_activation("a9_regime_blend", "should not overwrite", {})
+        data = json.loads(path.read_text())
+        assert data["a9_regime_blend"]["dismissed"] is True  # original value preserved
