@@ -18,12 +18,13 @@ import hashlib
 import json
 import logging
 import random
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 import requests
 
 from utils import KALSHI_FEE_RATE
+from weather_markets import CITY_COORDS
 
 _log = logging.getLogger(__name__)
 
@@ -252,8 +253,6 @@ def fetch_previous_run_ensemble(
     Returns temperatures in °F as a list (one per model). Empty list if unavailable.
     This gives a true point-in-time ensemble unlike the archive ±5-day spread.
     """
-    from weather_markets import CITY_COORDS
-
     coords = CITY_COORDS.get(city)
     if not coords:
         return []
@@ -463,6 +462,20 @@ def run_backtest(
         city = enriched.get("_city")
         tdate = enriched.get("_date")
 
+        # Compute actual days_out for Previous Runs backtest using market open time.
+        # Kalshi market dict has open_time (ISO-8601). Using open date as proxy for
+        # when the forecast was issued; clamped to [1,5] (API supports up to 5).
+        _open_time_str = m.get("open_time", "")
+        days_out_bt = 1  # fallback
+        if _open_time_str:
+            try:
+                _open_dt = datetime.fromisoformat(_open_time_str.replace("Z", "+00:00"))
+                _open_date = _open_dt.date()
+                if tdate and _open_date:
+                    days_out_bt = max(1, min(5, (tdate - _open_date).days))
+            except Exception:
+                pass
+
         # Backtest uses archive data (fetch_archive_temps / fetch_archive_precip) for
         # probability, NOT the live forecast.  Forecast is None for past dates, so do
         # NOT gate on it here — only require city and tdate.
@@ -499,7 +512,9 @@ def run_backtest(
             condition["var"] = var
 
             if use_previous_runs:
-                temps = fetch_previous_run_ensemble(city, tdate, days_out=1, var=var)
+                temps = fetch_previous_run_ensemble(
+                    city, tdate, days_out=days_out_bt, var=var
+                )
             else:
                 temps = fetch_archive_temps(lat, lon, tz, tdate, var=var)
             if len(temps) < 1:

@@ -172,8 +172,6 @@ class TestFetchPreviousRunEnsemble:
         """Previous Runs API call must return a list of floats."""
         from datetime import date
 
-        import requests
-
         from backtest import fetch_previous_run_ensemble
 
         class MockResp:
@@ -192,7 +190,7 @@ class TestFetchPreviousRunEnsemble:
                     }
                 }
 
-        monkeypatch.setattr(requests, "get", lambda *a, **k: MockResp())
+        monkeypatch.setattr("backtest.requests.get", lambda *a, **k: MockResp())
         temps = fetch_previous_run_ensemble(
             "NYC", date(2026, 6, 20), days_out=1, var="max"
         )
@@ -220,7 +218,7 @@ class TestFetchPreviousRunEnsemble:
         def _raise(*a, **k):
             raise requests.RequestException("timeout")
 
-        monkeypatch.setattr(requests, "get", _raise)
+        monkeypatch.setattr("backtest.requests.get", _raise)
         result = fetch_previous_run_ensemble("NYC", date(2026, 6, 20), days_out=1)
         assert result == []
 
