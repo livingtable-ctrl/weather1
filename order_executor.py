@@ -53,6 +53,11 @@ _GFS_UPDATE_LOCKOUT_MINS = int(os.getenv("GFS_LOCKOUT_MINS", "90"))
 # Set MIN_ARB_EDGE=0 in .env to disable the gate and trade all detected violations.
 _MIN_ARB_EDGE = float(os.getenv("MIN_ARB_EDGE", "0.03"))
 
+# Fraction of the position to close on an early exit signal. Default 0.50 keeps
+# half the position open in case the model reversal is noise. Set to 1.0 to
+# restore the original full-close behaviour.
+PARTIAL_EXIT_PCT = float(os.getenv("PARTIAL_EXIT_PCT", "0.50"))
+
 
 def _in_gfs_update_window(now_utc=None) -> bool:
     """Return True if we are within LOCKOUT_MINS of a GFS model initialization.
@@ -749,12 +754,29 @@ def _check_early_exits(client=None) -> int:
                         ticker,
                     )
                     continue
-                result = _paper.close_paper_early(trade["id"], exit_price)
-                _log.info(
-                    f"[EarlyExit] #{trade['id']} {ticker} {side.upper()} closed: "
-                    f"entry_prob={entry_prob:.2f} current={current_prob:.2f} "
-                    f"pnl=${result['pnl']:.2f}"
-                )
+                if PARTIAL_EXIT_PCT < 1.0:
+                    # Partial close keeps the remaining fraction open in case the
+                    # model reversal is noise. PARTIAL_EXIT_PCT is configurable via
+                    # the PARTIAL_EXIT_PCT env var (default 0.50).
+                    from paper import partial_close_position
+
+                    partial_close_position(trade["id"], close_pct=PARTIAL_EXIT_PCT)
+                    _log.info(
+                        "[EarlyExit] partial exit (%.0f%%) triggered for %s (id=%s) "
+                        "entry_prob=%.2f current=%.2f",
+                        PARTIAL_EXIT_PCT * 100,
+                        ticker,
+                        trade["id"],
+                        entry_prob,
+                        current_prob,
+                    )
+                else:
+                    result = _paper.close_paper_early(trade["id"], exit_price)
+                    _log.info(
+                        f"[EarlyExit] #{trade['id']} {ticker} {side.upper()} closed: "
+                        f"entry_prob={entry_prob:.2f} current={current_prob:.2f} "
+                        f"pnl=${result['pnl']:.2f}"
+                    )
                 closed += 1
         except Exception as exc:
             import traceback as _tb

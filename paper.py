@@ -7,6 +7,7 @@ Stored in data/paper_trades.json. Tracks:
 
 from __future__ import annotations
 
+import copy
 import csv
 import hashlib
 import hmac as _hmac
@@ -1020,6 +1021,69 @@ def close_paper_early(trade_id: int, exit_price: float) -> dict:
                 _save(data)
                 return t
     raise ValueError(f"Trade {trade_id} not found or already settled.")
+
+
+def partial_close_position(trade_id: str, close_pct: float = 0.50) -> dict | None:
+    """Close a fraction of an open position, leaving the remainder open.
+
+    Splits the trade into a closed portion (appended to the ledger) and a
+    remaining portion (the original record with reduced quantity). Returns the
+    closed portion, or None if the trade was not found.
+
+    close_pct must be strictly between 0 and 1 inclusive on the upper end.
+    """
+    if not 0.0 < close_pct <= 1.0:
+        raise ValueError(f"close_pct must be 0 < pct <= 1.0, got {close_pct}")
+
+    with _DATA_LOCK:
+        data = _load()
+        # Find the first open, non-closed trade matching the given id.
+        # Using id (not ticker) avoids ambiguity when multiple open trades share
+        # the same market but were entered at different times.
+        target = next(
+            (
+                t
+                for t in data["trades"]
+                if t.get("id") == trade_id
+                and not t.get("settled")
+                and not t.get("closed")
+            ),
+            None,
+        )
+        if target is None:
+            return None
+
+        total_qty = int(target.get("quantity", 1))
+        close_qty = max(1, round(total_qty * close_pct))
+        remain_qty = total_qty - close_qty
+
+        # Deep-copy the original record so the closed portion inherits all fields
+        # (entry_price, cost, ticker, side, etc.) without referencing the same object.
+        closed_portion = copy.deepcopy(target)
+        closed_portion["quantity"] = close_qty
+        closed_portion["closed"] = True
+        closed_portion["closed_at"] = datetime.now(UTC).isoformat(timespec="seconds")
+        closed_portion["close_reason"] = "partial_exit"
+
+        if remain_qty > 0:
+            # Reduce the original record to the remaining quantity.
+            target["quantity"] = remain_qty
+        else:
+            # Nothing left — mark the original as settled so it won't be picked up
+            # again by get_open_trades().
+            target["settled"] = True
+
+        data["trades"].append(closed_portion)
+        _save(data)
+
+    _log.info(
+        "partial close: id=%s qty=%d/%d (%.0f%%)",
+        trade_id,
+        close_qty,
+        total_qty,
+        close_pct * 100,
+    )
+    return closed_portion
 
 
 def get_open_trades() -> list[dict]:

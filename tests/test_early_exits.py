@@ -244,3 +244,91 @@ class TestBreakevenStops:
         assert updated_trade["peak_profit_pct"] == pytest.approx(0.30, abs=0.01), (
             f"Expected peak_profit_pct ≈ 0.30, got {updated_trade.get('peak_profit_pct')}"
         )
+
+
+class TestPartialClose:
+    def test_partial_close_splits_quantity_50pct(self, monkeypatch):
+        """partial_close_position with close_pct=0.50 on a 10-unit trade must leave 5 open
+        and mark a separate closed portion with quantity=5 and closed=True."""
+        import paper
+
+        # Build an open trade with 10 units using the correct "quantity" field name.
+        trade = {
+            "id": "trade-abc-123",
+            "ticker": "KXHIGH-T70",
+            "side": "yes",
+            "entry_price": 0.50,
+            "quantity": 10,
+            "cost": 5.00,
+            "settled": False,
+            "closed": False,
+        }
+
+        # Monkeypatch _load/_save so the function never touches disk.
+        fake_data = {"trades": [trade], "balance": 1000.0}
+        monkeypatch.setattr(paper, "_load", lambda: fake_data)
+        saved = []
+        monkeypatch.setattr(paper, "_save", lambda d: saved.append(d))
+
+        result = paper.partial_close_position("trade-abc-123", close_pct=0.50)
+
+        # _save must have been called exactly once with the mutated data.
+        assert saved, "partial_close_position must call _save"
+        final_data = saved[0]
+
+        trades = final_data["trades"]
+        # After the split there should be 2 trade records: the remaining open portion
+        # and the newly-appended closed portion.
+        assert len(trades) == 2, (
+            f"Expected 2 trade records after partial close, got {len(trades)}"
+        )
+
+        open_portion = next(
+            (t for t in trades if not t.get("closed") and not t.get("settled")), None
+        )
+        closed_portion = next((t for t in trades if t.get("closed")), None)
+
+        assert open_portion is not None, "Remaining open portion must still be present"
+        assert closed_portion is not None, "Closed portion must be appended"
+
+        assert open_portion["quantity"] == 5, (
+            f"Remaining quantity must be 5 (50% of 10), got {open_portion['quantity']}"
+        )
+        assert closed_portion["quantity"] == 5, (
+            f"Closed quantity must be 5 (50% of 10), got {closed_portion['quantity']}"
+        )
+        assert closed_portion["closed"] is True, "Closed portion must have closed=True"
+        assert closed_portion.get("close_reason") == "partial_exit", (
+            "Closed portion must carry close_reason='partial_exit'"
+        )
+
+        # The return value must be the closed portion.
+        assert result is not None, (
+            "partial_close_position must return the closed portion"
+        )
+        assert result["closed"] is True
+
+    def test_partial_close_returns_none_for_missing_trade(self, monkeypatch):
+        """partial_close_position must return None (not raise) when the trade id is not found."""
+        import paper
+
+        fake_data = {"trades": [], "balance": 1000.0}
+        monkeypatch.setattr(paper, "_load", lambda: fake_data)
+        monkeypatch.setattr(paper, "_save", lambda d: None)
+
+        result = paper.partial_close_position("nonexistent-id", close_pct=0.50)
+        assert result is None, "Must return None when trade is not found"
+
+    def test_partial_close_raises_on_invalid_pct(self, monkeypatch):
+        """partial_close_position must raise ValueError for close_pct outside (0, 1]."""
+        import paper
+
+        fake_data = {"trades": [], "balance": 1000.0}
+        monkeypatch.setattr(paper, "_load", lambda: fake_data)
+        monkeypatch.setattr(paper, "_save", lambda d: None)
+
+        with pytest.raises(ValueError):
+            paper.partial_close_position("any-id", close_pct=0.0)
+
+        with pytest.raises(ValueError):
+            paper.partial_close_position("any-id", close_pct=1.5)
