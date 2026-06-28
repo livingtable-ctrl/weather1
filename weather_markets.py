@@ -2536,6 +2536,51 @@ def check_ensemble_circuit_health() -> None:
         )
 
 
+_BIMODAL_KELLY_MULTIPLIER = 0.10  # 10% of normal Kelly when ensemble is bimodal
+
+
+def _detect_bimodal_ensemble(temps: list[float]) -> bool:
+    """Return True when ensemble members form two distinct clusters (bimodal distribution).
+
+    Uses a largest-gap split: if both clusters contain at least 20% of members
+    AND the gap between cluster means is >= 8 degrees F, the distribution is bimodal.
+    Requires at least 10 members; returns False for smaller ensembles.
+    """
+    if len(temps) < 10:
+        return False
+
+    import statistics
+
+    sorted_temps = sorted(temps)
+    n = len(sorted_temps)
+    gaps = [(sorted_temps[i + 1] - sorted_temps[i], i) for i in range(n - 1)]
+    max_gap, split_idx = max(gaps)
+
+    if max_gap < 6.0:
+        return False
+
+    cluster_a = sorted_temps[: split_idx + 1]
+    cluster_b = sorted_temps[split_idx + 1 :]
+
+    min_cluster_size = max(2, int(n * 0.20))
+    if len(cluster_a) < min_cluster_size or len(cluster_b) < min_cluster_size:
+        return False
+
+    mean_a = statistics.mean(cluster_a)
+    mean_b = statistics.mean(cluster_b)
+    return abs(mean_b - mean_a) >= 8.0
+
+
+def _get_bimodal_kelly_multiplier(temps: list[float]) -> float:
+    """Return 0.10 when ensemble is bimodal (two distinct weather scenarios), else 1.0."""
+    if _detect_bimodal_ensemble(temps):
+        _log.warning(
+            "BIMODAL ensemble detected (%d members) — Kelly reduced to 10%%", len(temps)
+        )
+        return _BIMODAL_KELLY_MULTIPLIER
+    return 1.0
+
+
 def get_ensemble_temps(
     city: str, target_date: date, hour: int | None = None, var: str = "max"
 ) -> list[float]:
@@ -5936,6 +5981,11 @@ def analyze_trade(enriched: dict) -> dict | None:
     if near_threshold:
         ci_adjusted_kelly = round(ci_adjusted_kelly * 0.75, 6)
 
+    # Bimodal ensemble guard: two distinct weather scenarios -> sharp Kelly reduction
+    _bimodal_mult = _get_bimodal_kelly_multiplier(temps) if temps else 1.0
+    if _bimodal_mult < 1.0:
+        ci_adjusted_kelly = round(ci_adjusted_kelly * _bimodal_mult, 6)
+
     _result = {
         # Core
         "forecast_prob": blended_prob,
@@ -5966,6 +6016,7 @@ def analyze_trade(enriched: dict) -> dict | None:
         # Ensemble details
         "ensemble_stats": ens_stats,
         "n_members": len(temps),
+        "bimodal": _bimodal_mult < 1.0,
         # Confidence + sizing
         "ci_low": ci_low,
         "ci_high": ci_high,

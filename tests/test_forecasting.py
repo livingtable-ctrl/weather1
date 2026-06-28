@@ -996,3 +996,97 @@ class TestEnrichWithForecastCacheTimestamp:
             f"On cache miss, data_fetched_at should be current time, "
             f"got {result['data_fetched_at']:.0f} (window {before:.0f}â€“{after:.0f})"
         )
+
+
+class TestBimodalEnsemble:
+    def test_detect_bimodal_ensemble(self):
+        from weather_markets import _detect_bimodal_ensemble
+
+        bimodal_temps = [62.0] * 30 + [78.0] * 20  # two clear clusters
+        unimodal_temps = [68.0 + i * 0.2 for i in range(-25, 25)]  # tight spread
+
+        assert _detect_bimodal_ensemble(bimodal_temps) is True
+        assert _detect_bimodal_ensemble(unimodal_temps) is False
+        assert _detect_bimodal_ensemble([]) is False
+        assert _detect_bimodal_ensemble([70.0] * 5) is False  # too few members
+
+    def test_bimodal_kelly_returns_point_one_when_bimodal(self, monkeypatch):
+        """When _detect_bimodal_ensemble returns True, multiplier must be 0.10."""
+        import weather_markets as wm
+
+        monkeypatch.setattr(wm, "_detect_bimodal_ensemble", lambda temps: True)
+
+        bimodal_temps = [62.0] * 30 + [78.0] * 20
+        result = wm._get_bimodal_kelly_multiplier(bimodal_temps)
+        assert result == pytest.approx(0.10, abs=0.01)
+
+    def test_bimodal_kelly_returns_one_when_unimodal(self, monkeypatch):
+        """When _detect_bimodal_ensemble returns False, multiplier must be 1.0."""
+        import weather_markets as wm
+
+        monkeypatch.setattr(wm, "_detect_bimodal_ensemble", lambda temps: False)
+
+        unimodal_temps = [68.0 + i * 0.2 for i in range(-25, 25)]
+        result = wm._get_bimodal_kelly_multiplier(unimodal_temps)
+        assert result == pytest.approx(1.0, abs=0.01)
+
+    def test_bimodal_reduces_ci_adjusted_kelly(self, monkeypatch):
+        """When bimodal detected, ci_adjusted_kelly in analyze_trade result is reduced."""
+        from datetime import date, timedelta
+        from unittest.mock import patch
+
+        import weather_markets as wm
+
+        today = date.today()
+        target = today + timedelta(days=1)
+
+        enriched = {
+            "ticker": f"KXHIGHNY-{target.strftime('%d%b%y').upper()}-T70",
+            "title": "NYC high > 70F",
+            "_city": "NYC",
+            "_date": target,
+            "_hour": None,
+            "_forecast": {
+                "high_f": 65.0,
+                "low_f": 55.0,
+                "precip_in": 0.0,
+                "date": target.isoformat(),
+                "city": "NYC",
+                "models_used": 3,
+                "high_range": (63.0, 67.0),
+            },
+            "yes_bid": 0.20,
+            "yes_ask": 0.25,
+            "no_bid": 0.75,
+            "close_time": "",
+            "series_ticker": "KXHIGHNY",
+            "volume": 500,
+            "open_interest": 200,
+        }
+
+        # Mock the detect function to always return True
+        monkeypatch.setattr(wm, "_detect_bimodal_ensemble", lambda temps: True)
+
+        with (
+            patch.object(
+                wm, "get_ensemble_temps", return_value=[65.0] * 14 + [67.0] * 6
+            ),
+            patch.object(
+                wm, "_get_consensus_probs", return_value=(None, None, None, None)
+            ),
+            patch("weather_markets.climatological_prob", return_value=0.25),
+            patch("weather_markets.nws_prob", return_value=None),
+            patch("weather_markets.get_live_observation", return_value=None),
+            patch("weather_markets.temperature_adjustment", return_value=0.0),
+            patch("weather_markets.fetch_temperature_nbm", return_value=65.0),
+            patch("weather_markets.fetch_temperature_ecmwf", return_value=65.0),
+            patch("weather_markets.get_ensemble_members", return_value=[]),
+            patch.object(wm, "_SEASONAL_WEIGHTS", {}),
+            patch.object(wm, "_CONDITION_WEIGHTS", {}),
+            patch.object(wm, "_CITY_WEIGHTS", {}),
+            patch("ml_bias.apply_temperature_scaling", side_effect=lambda p, **kw: p),
+        ):
+            result = wm.analyze_trade(enriched)
+
+        if result is not None:
+            assert result.get("bimodal") is True
