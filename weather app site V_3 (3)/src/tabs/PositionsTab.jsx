@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useContext, useMemo } from 'react';
 import { DataContext } from '../DataContext.js';
 import { authHeader } from '../useData.js';
-import { normCity } from '../shared.jsx';
+import { normCity, kalshiMarketUrl } from '../shared.jsx';
 
 export default function PositionsTab() {
   const M = useContext(DataContext);
@@ -250,7 +250,16 @@ export default function PositionsTab() {
                       color: hasAlert ? '#3b82f6' : 'var(--text-faint)',
                     }} title={hasAlert ? 'Has active alerts' : 'Add alert'}>🔔</button>
                   </td>
-                  <td style={{ padding: '14px 16px', fontFamily: 'ui-monospace, monospace', fontSize: 11, color: '#3b82f6' }}>{p.ticker}</td>
+                  <td style={{ padding: '14px 16px', fontFamily: 'ui-monospace, monospace', fontSize: 11, color: '#3b82f6' }}>
+                    <a
+                      href={kalshiMarketUrl(p.ticker)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{ color: '#3b82f6', textDecoration: 'none', fontFamily: 'ui-monospace, monospace', fontSize: 11 }}
+                    >
+                      {p.ticker} ↗
+                    </a>
+                  </td>
                   <td style={{ padding: '14px 16px', fontWeight: 600 }}>{normCity(p.city)}</td>
                   <td style={{ padding: '14px 16px' }}>
                     <span style={{

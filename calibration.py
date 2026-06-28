@@ -395,7 +395,6 @@ def calibrate_and_save(
 
     Raises on DB read failure so callers can handle the error message appropriately.
     """
-    import safe_io as _safe_io
     from tracker import DB_PATH as _DB_PATH
 
     _db = Path(db_path) if db_path else _DB_PATH
@@ -424,9 +423,11 @@ def calibrate_and_save(
         except Exception:
             pass  # corrupt / missing — use freshly-calibrated values as-is
 
-    _safe_io.atomic_write_json(seasonal, _dir / "seasonal_weights.json")
-    _safe_io.atomic_write_json(city, _dir / "city_weights.json")
-    _safe_io.atomic_write_json(condition, _dir / "condition_weights.json")
+    from safe_io import atomic_write_json_with_history
+
+    atomic_write_json_with_history(seasonal, _dir / "seasonal_weights.json")
+    atomic_write_json_with_history(city, _dir / "city_weights.json")
+    atomic_write_json_with_history(condition, _dir / "condition_weights.json")
 
     _log.info(
         "calibrate_and_save: wrote seasonal(%d) city(%d) condition(%d) to %s",

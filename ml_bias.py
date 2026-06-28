@@ -16,8 +16,6 @@ import pickle
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from safe_io import atomic_write_json
-
 if TYPE_CHECKING:
     import numpy as np
 
@@ -668,7 +666,9 @@ def train_all_temperature_scaling(
         )
 
     if existing:
-        atomic_write_json(existing, _TEMP_PATH)
+        from safe_io import atomic_write_json_with_history
+
+        atomic_write_json_with_history(existing, _TEMP_PATH)
         # Invalidate the in-memory cache so the next call reads the new file
         global _TEMP_CACHE
         _TEMP_CACHE = None
@@ -811,6 +811,8 @@ def save_emos_params(
         "mean_crps": float(mean_crps) if mean_crps is not None else None,
         "fitted_at": datetime.now(UTC).isoformat(timespec="seconds"),
     }
-    atomic_write_json(payload, _EMOS_PARAMS_PATH)
+    from safe_io import atomic_write_json_with_history
+
+    atomic_write_json_with_history(payload, _EMOS_PARAMS_PATH)
     _EMOS_CACHE = (float(a), float(b), float(c), float(d))
     _log.info("EMOS params saved: a=%.4f b=%.4f c=%.4f d=%.4f (n=%d)", a, b, c, d, n)

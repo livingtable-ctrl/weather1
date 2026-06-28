@@ -2421,6 +2421,51 @@ setInterval(() => {{
 
     # ------------------------------------------------------------------ #
 
+    @app.route("/api/reliability/<city>")
+    def api_reliability(city: str):
+        from tracker import _conn, init_db
+
+        init_db()
+        with _conn() as con:
+            rows = con.execute(
+                """
+                SELECT p.our_prob, o.settled_yes
+                FROM   multiday_predictions p
+                JOIN   outcomes o ON o.ticker = p.ticker
+                WHERE  p.city = ? AND p.our_prob IS NOT NULL
+                ORDER  BY p.our_prob
+                """,
+                (city,),
+            ).fetchall()
+
+        if not rows:
+            return jsonify({"bins": [], "city": city, "n": 0})
+
+        # Bin into 5 equal-width buckets from 0 to 1
+        bins = [(0.0, 0.2), (0.2, 0.4), (0.4, 0.6), (0.6, 0.8), (0.8, 1.0)]
+        result = []
+        for lo, hi in bins:
+            bucket = [(p, o) for p, o in rows if lo <= p < hi]
+            if bucket:
+                mean_pred = sum(p for p, _ in bucket) / len(bucket)
+                actual_rate = sum(o for _, o in bucket) / len(bucket)
+                result.append(
+                    {
+                        "bin_lo": lo,
+                        "bin_hi": hi,
+                        "mean_pred": round(mean_pred, 3),
+                        "actual_rate": round(actual_rate, 3),
+                        "n": len(bucket),
+                    }
+                )
+        return jsonify({"bins": result, "city": city, "n": len(rows)})
+
+    @app.route("/api/edge-realization")
+    def api_edge_realization():
+        from tracker import get_edge_realization_by_city
+
+        return jsonify(get_edge_realization_by_city())
+
     return app
 
 

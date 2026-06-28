@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useContext, useMemo } from 'react';
 import { DataContext } from '../DataContext.js';
 import { authHeader } from '../useData.js';
-import { normCity } from '../shared.jsx';
+import { normCity, kalshiMarketUrl } from '../shared.jsx';
 
 export default function SignalsTab() {
   const M = useContext(DataContext);
@@ -155,7 +155,25 @@ export default function SignalsTab() {
                 style={{ cursor: 'pointer' }} />
             </td>
             <td style={{ padding: '12px 16px', color: starColor, letterSpacing: 1 }}>{stars}</td>
-            <td style={{ padding: '12px 16px', fontFamily: 'ui-monospace, monospace', fontSize: 11, color: '#3b82f6' }}>{o.ticker}</td>
+            <td style={{ padding: '12px 16px', fontFamily: 'ui-monospace, monospace', fontSize: 11, color: '#3b82f6' }}>
+              <a
+                href={kalshiMarketUrl(o.ticker)}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ color: '#3b82f6', textDecoration: 'none', fontFamily: 'ui-monospace, monospace', fontSize: 11 }}
+              >
+                {o.ticker} ↗
+              </a>
+              {o.model_disagreement_flag && (
+                <span
+                  title={`NWS & ensemble disagree by ${o.model_disagreement_f}°F`}
+                  style={{ marginLeft: 6, fontSize: 10, color: '#f59e0b',
+                           background: 'rgba(245,158,11,0.12)', padding: '1px 4px', borderRadius: 3 }}
+                >
+                  ⚠ {o.model_disagreement_f}°F gap
+                </span>
+              )}
+            </td>
             <td style={{ padding: '12px 16px', fontWeight: 600 }}>{normCity(o.city)}</td>
             <td style={{ padding: '12px 16px' }}>
               <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 999, background: side === 'yes' ? 'rgba(34,197,94,0.12)' : 'rgba(239,68,68,0.12)', color: side === 'yes' ? '#16a34a' : '#ef4444', fontSize: 10, fontWeight: 600, textTransform: 'uppercase' }}>{side}</span>
@@ -229,6 +247,15 @@ export default function SignalsTab() {
                   {o.near_threshold && <span style={{ marginLeft: 12, color: '#ca8a04' }}>⚠ Near threshold</span>}
                   {o.is_hedge && <span style={{ marginLeft: 12 }}>↔ Hedges existing position</span>}
                 </div>
+                {o.ensemble_prob != null && (
+                  <div style={{ marginTop: 10, fontSize: 12, color: 'var(--text-muted)' }}>
+                    <strong>Source breakdown:</strong>
+                    {' '}Ensemble: {o.ensemble_prob.toFixed(0)}%
+                    {o.nws_prob != null && <>{' '}· NWS: {o.nws_prob.toFixed(0)}%</>}
+                    {o.clim_prob != null && <>{' '}· Clim: {o.clim_prob.toFixed(0)}%</>}
+                    {o.forecast_temp_f != null && <>{' '}· Forecast: {o.forecast_temp_f.toFixed(1)}°F</>}
+                  </div>
+                )}
               </td>
             </tr>
           )}

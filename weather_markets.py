@@ -5094,6 +5094,9 @@ def analyze_trade(enriched: dict) -> dict | None:
     if metar_locked:
         blended_prob = _metar_blended_prob
 
+    # Initialize here so the return dict can reference it regardless of which path runs.
+    disagree_f = None
+
     if not metar_locked:
         series = (enriched.get("series_ticker") or enriched.get("ticker", "")).upper()
         var = "min" if "LOW" in series else "max"
@@ -5185,6 +5188,13 @@ def analyze_trade(enriched: dict) -> dict | None:
             )
             _count_gate("degenerate_ens")
             return None
+        # NWS vs ensemble disagreement — only valid for daily high/low markets where
+        # forecast_temp_raw (NWS daily high) and ens_stats["mean"] (ensemble daily high) are
+        # the same quantity; hourly markets compare NWS daily high vs hourly ensemble mean,
+        # which structurally differ by 15-20°F and would always fire the flag spuriously.
+        if ens_stats is not None and hour is None:
+            disagree_f = round(abs(forecast_temp_raw - ens_stats["mean"]), 1)
+
         method = "normal_dist"
         ens_prob: float | None = None
         gauss_prob: float | None = None  # Gaussian as separate named source
@@ -6403,6 +6413,11 @@ def analyze_trade(enriched: dict) -> dict | None:
         # Phase 6.0: obs-weight learning fields (None when no obs override)
         "obs_weight_used": _obs_w if obs_override is not None else None,
         "local_hour": _local_hour if obs_override is not None else None,
+        # NWS/ensemble temperature gap — None when metar-locked (no ensemble run)
+        "model_disagreement_f": disagree_f if ens_stats else None,
+        "model_disagreement_flag": bool(
+            ens_stats and disagree_f is not None and disagree_f > 8.0
+        ),
     }
     save_forecast_snapshot(enriched.get("ticker", "unknown"), forecast)
     return _result

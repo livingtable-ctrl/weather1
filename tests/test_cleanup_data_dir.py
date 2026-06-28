@@ -132,3 +132,30 @@ class TestCleanupDataDir:
         }
         missing = required - _PERMANENT_DATA_FILES
         assert not missing, f"Missing from _PERMANENT_DATA_FILES: {missing}"
+
+
+def test_atomic_write_json_with_history_keeps_previous_versions(tmp_path):
+    import json
+
+    from safe_io import atomic_write_json_with_history
+
+    target = tmp_path / "weights.json"
+
+    # Write version 1
+    atomic_write_json_with_history({"a": 1}, target, max_history=3)
+    # Write version 2
+    atomic_write_json_with_history({"a": 2}, target, max_history=3)
+    # Write version 3
+    atomic_write_json_with_history({"a": 3}, target, max_history=3)
+
+    # Current file should have version 3
+    assert json.loads(target.read_text())["a"] == 3
+
+    # History directory should have two previous versions
+    history_dir = target.parent / ".history"
+    history_files = sorted(history_dir.glob(f"{target.stem}_*.json"))
+    assert len(history_files) == 2
+
+    # Oldest history file should have a=1
+    oldest = json.loads(history_files[0].read_text())
+    assert oldest["a"] == 1
