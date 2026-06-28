@@ -2060,6 +2060,19 @@ setInterval(() => {{
         except Exception as exc:
             return jsonify({"error": str(exc)}), 500
 
+    @app.route("/api/stress-test")
+    def api_stress_test():
+        """Tail-risk stress test scenarios: heat wave, cold snap, total model failure."""
+        from monte_carlo import run_stress_test
+
+        return jsonify(
+            {
+                "heat_wave": run_stress_test("heat_wave_failure"),
+                "cold_snap": run_stress_test("cold_snap_failure"),
+                "total": run_stress_test("total_model_failure"),
+            }
+        )
+
     @app.route("/api/paper-order", methods=["POST"])
     def api_paper_order():
         """Manually place a paper trade from the Signals tab Approve button.

@@ -426,3 +426,75 @@ def portfolio_var(
     # dist is sorted ascending; confidence=0.05 → 5th-percentile index
     idx = max(0, min(len(dist) - 1, int(len(dist) * confidence)))
     return dist[idx]
+
+
+_STRESS_SCENARIOS: dict[str, dict[str, list[str] | None | str | float]] = {
+    "heat_wave_failure": {
+        "description": "All southern cities' NO-above bets lose simultaneously (heat wave materializes)",
+        "cities": ["Dallas", "Houston", "Phoenix", "Atlanta", "Austin"],
+        "assumed_loss_per_position_pct": 1.00,
+    },
+    "cold_snap_failure": {
+        "description": "All northern cities' NO-below bets lose simultaneously",
+        "cities": ["Chicago", "Minneapolis", "NYC", "Boston", "Denver"],
+        "assumed_loss_per_position_pct": 1.00,
+    },
+    "total_model_failure": {
+        "description": "All open positions lose (worst case)",
+        "cities": None,
+        "assumed_loss_per_position_pct": 1.00,
+    },
+}
+
+
+def run_stress_test(scenario: str = "heat_wave_failure") -> dict:
+    """Compute worst-case P&L under a named stress scenario.
+
+    Returns {scenario, description, positions_affected, loss_dollars, balance_after,
+             pct_of_balance, below_halt, halt_floor}.
+    """
+    from paper import get_balance, get_peak_balance, load_paper_trades
+    from utils import DRAWDOWN_HALT_PCT
+
+    cfg = _STRESS_SCENARIOS.get(scenario)
+    if not cfg:
+        return {"error": f"Unknown scenario: {scenario}"}
+
+    trades = [
+        t for t in load_paper_trades() if not t.get("settled") and t.get("won") is None
+    ]
+    cities = cfg.get("cities")
+    if cities is not None:
+        trades = [
+            t
+            for t in trades
+            if t.get("city", "").lower() in [c.lower() for c in cities]  # type: ignore[union-attr]
+        ]
+
+    total_loss = 0.0
+    for t in trades:
+        side = t.get("side", "yes")
+        entry = float(t.get("entry_price", 0.5))
+        qty = int(t.get("quantity", 1))
+        loss_pct_raw = cfg.get("assumed_loss_per_position_pct")
+        if isinstance(loss_pct_raw, int | float):
+            loss_pct = float(loss_pct_raw)
+        else:
+            loss_pct = 1.0
+        cost = float(t.get("cost") or ((entry if side == "yes" else 1.0 - entry) * qty))
+        total_loss += cost * loss_pct
+
+    balance = get_balance()
+    peak = get_peak_balance()
+    halt_floor = peak * (1.0 - DRAWDOWN_HALT_PCT)
+
+    return {
+        "scenario": scenario,
+        "description": cfg.get("description", ""),
+        "positions_affected": len(trades),
+        "loss_dollars": round(total_loss, 2),
+        "balance_after": round(balance - total_loss, 2),
+        "pct_of_balance": round(total_loss / balance * 100, 1) if balance > 0 else 0.0,
+        "below_halt": (balance - total_loss) < halt_floor,
+        "halt_floor": round(halt_floor, 2),
+    }

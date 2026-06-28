@@ -812,3 +812,95 @@ def test_get_recent_city_correlations_skips_below_min_pairs(tmp_tracker):
     # Only 1 shared date → below default min_pairs=5, should return {}
     result = tmp_tracker.get_recent_city_correlations(days=60, min_pairs=5)
     assert result == {}, f"Should skip pair with only 1 common date. Got: {result}"
+
+
+# ── B6: Tail-Risk Stress Testing ────────────────────────────────────────────────
+
+
+def test_run_stress_test_heat_wave_filters_southern_cities(monkeypatch):
+    """heat_wave_failure scenario only counts Dallas/Houston/Phoenix/Atlanta/Austin trades."""
+    import monte_carlo as mc
+    import paper
+
+    trades = [
+        {
+            "ticker": "DAL-T90",
+            "city": "Dallas",
+            "side": "yes",
+            "entry_price": 0.50,
+            "quantity": 10,
+            "cost": 5.00,
+            "settled": False,
+            "won": None,
+        },
+        {
+            "ticker": "CHI-T90",
+            "city": "Chicago",
+            "side": "yes",
+            "entry_price": 0.50,
+            "quantity": 10,
+            "cost": 5.00,
+            "settled": False,
+            "won": None,
+        },
+    ]
+    monkeypatch.setattr(paper, "load_paper_trades", lambda: trades)
+    monkeypatch.setattr(paper, "get_balance", lambda: 1000.0)
+    monkeypatch.setattr(paper, "get_peak_balance", lambda: 1000.0)
+
+    result = mc.run_stress_test("heat_wave_failure")
+    # Only Dallas is in the southern cities list — Chicago is excluded
+    assert result["positions_affected"] == 1, (
+        f"Expected 1 position affected, got {result['positions_affected']}"
+    )
+    assert result["loss_dollars"] == 5.00, (
+        f"Expected $5.00 loss, got {result['loss_dollars']}"
+    )
+    assert result["scenario"] == "heat_wave_failure"
+
+
+def test_run_stress_test_total_model_failure_includes_all_cities(monkeypatch):
+    """total_model_failure scenario counts all open positions regardless of city."""
+    import monte_carlo as mc
+    import paper
+
+    trades = [
+        {
+            "ticker": "DAL-T90",
+            "city": "Dallas",
+            "side": "yes",
+            "entry_price": 0.50,
+            "quantity": 10,
+            "cost": 5.00,
+            "settled": False,
+            "won": None,
+        },
+        {
+            "ticker": "CHI-T90",
+            "city": "Chicago",
+            "side": "yes",
+            "entry_price": 0.55,
+            "quantity": 5,
+            "cost": 2.75,
+            "settled": False,
+            "won": None,
+        },
+    ]
+    monkeypatch.setattr(paper, "load_paper_trades", lambda: trades)
+    monkeypatch.setattr(paper, "get_balance", lambda: 1000.0)
+    monkeypatch.setattr(paper, "get_peak_balance", lambda: 1000.0)
+
+    result = mc.run_stress_test("total_model_failure")
+    assert result["positions_affected"] == 2
+    assert abs(result["loss_dollars"] - 7.75) < 0.01, (
+        f"Expected $7.75 total loss, got {result['loss_dollars']}"
+    )
+    assert result["below_halt"] is False  # 1000 - 7.75 >> halt floor
+
+
+def test_run_stress_test_unknown_scenario_returns_error():
+    """run_stress_test returns an error dict for unknown scenario names."""
+    import monte_carlo as mc
+
+    result = mc.run_stress_test("nonexistent_scenario")
+    assert "error" in result, f"Expected error key, got: {result}"
