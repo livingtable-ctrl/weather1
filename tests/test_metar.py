@@ -378,3 +378,75 @@ class TestDynamicLockInConfidence:
             f"Later lock-in must have higher confidence: "
             f"10 PM={late['confidence']:.3f} vs 2 PM={early['confidence']:.3f}"
         )
+
+
+class TestDewPointCorrection:
+    def test_dew_point_temp_correction_miami(self):
+        """Miami humid day: dew=76, forecast=90 → depression=14°F < 20°F → negative correction."""
+        from weather_markets import _dew_point_temp_correction
+
+        correction = _dew_point_temp_correction(
+            "Miami", dew_point_f=76.0, forecast_temp_f=90.0
+        )
+        assert correction < 0.0, (
+            "Humid day should produce negative temperature correction"
+        )
+        assert correction >= -5.0, "Correction should not exceed -5°F bound"
+
+    def test_dew_point_temp_correction_dry_city_no_effect(self):
+        """Denver (not in sensitive set) must return 0.0 regardless of dew point."""
+        from weather_markets import _dew_point_temp_correction
+
+        correction = _dew_point_temp_correction(
+            "Denver", dew_point_f=40.0, forecast_temp_f=85.0
+        )
+        assert correction == 0.0
+
+    def test_dew_point_temp_correction_dry_conditions_no_effect(self):
+        """Even for a sensitive city, depression >= 20°F means no correction."""
+        from weather_markets import _dew_point_temp_correction
+
+        correction = _dew_point_temp_correction(
+            "Houston", dew_point_f=60.0, forecast_temp_f=90.0
+        )
+        assert correction == 0.0, "Depression=30 → no correction"
+
+    def test_dew_point_temp_correction_saturated_clamped(self):
+        """At depression=0 (saturated), correction is -3.0 (not exceeding -5.0)."""
+        from weather_markets import _dew_point_temp_correction
+
+        correction = _dew_point_temp_correction(
+            "SanFrancisco", dew_point_f=70.0, forecast_temp_f=70.0
+        )
+        assert correction == -3.0
+
+    def test_fetch_metar_includes_dew_point_f(self):
+        """fetch_metar result dict must include dew_point_f key."""
+        import sys
+        from datetime import datetime
+        from pathlib import Path
+        from unittest.mock import MagicMock, patch
+
+        sys.path.insert(0, str(Path(__file__).parent.parent))
+        from metar import fetch_metar
+
+        mock_data = [
+            {
+                "tmpf": "72.0",
+                "dwpf": "65.0",
+                "obsTime": int(datetime.now(UTC).timestamp()),
+                "icaoId": "KMIA",
+            }
+        ]
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = mock_data
+        mock_resp.raise_for_status.return_value = None
+
+        with patch("metar._METAR_CACHE", {}):
+            with patch("metar._session") as mock_session:
+                mock_session.get.return_value = mock_resp
+                result = fetch_metar("KMIA")
+
+        assert result is not None
+        assert "dew_point_f" in result
+        assert result["dew_point_f"] == pytest.approx(65.0, abs=0.1)

@@ -370,6 +370,32 @@ def _metar_station_for_city(city: str) -> str | None:
     return _CITY_METAR_STATION.get(city)
 
 
+# Cities where airport dew point depression suppresses afternoon high temperatures.
+# On humid days, sea breeze and evaporative cooling cause METAR stations to read
+# 3–7°F cooler than dry-air model forecasts.
+_DEW_POINT_SENSITIVE_CITIES = {"Miami", "Houston", "SanFrancisco", "Seattle"}
+
+
+def _dew_point_temp_correction(
+    city: str, dew_point_f: float, forecast_temp_f: float
+) -> float:
+    """Return a bias correction (°F, negative = cooler) based on dew point depression.
+
+    On humid days (dew point depression < 20°F), sea breeze and evaporative cooling
+    suppress afternoon high temperatures at airport stations relative to model forecasts.
+    """
+    if city not in _DEW_POINT_SENSITIVE_CITIES:
+        return 0.0
+
+    depression = forecast_temp_f - dew_point_f
+    if depression >= 20.0:
+        return 0.0
+
+    max_correction = -3.0
+    correction = max_correction * (1.0 - depression / 20.0)
+    return round(max(-5.0, correction), 2)
+
+
 FORECAST_BASE = "https://api.open-meteo.com/v1/forecast"
 ENSEMBLE_BASE = "https://ensemble-api.open-meteo.com/v1/ensemble"
 ENSEMBLE_MODELS = [
@@ -4942,6 +4968,29 @@ def analyze_trade(enriched: dict) -> dict | None:
         # grows as sample count increases (10 samples: 20%, 50+ samples: 100%).
         forecast_temp_raw = forecast_temp
         forecast_temp = forecast_temp - _get_combined_station_bias(city, var=var)
+
+        # A6: dew point coastal correction — on humid days airport stations read
+        # cooler than model forecasts due to sea breeze / evaporative cooling.
+        # Only applies to _DEW_POINT_SENSITIVE_CITIES and only when dew_point_f is
+        # available from a fresh METAR observation; skipped silently otherwise.
+        _dp_station = _metar_station_for_city(city)
+        if _dp_station:
+            import metar as _metar_mod
+
+            _dp_obs = _metar_mod.fetch_metar(_dp_station)
+            if _dp_obs and _dp_obs.get("dew_point_f") is not None:
+                _dp_correction = _dew_point_temp_correction(
+                    city, _dp_obs["dew_point_f"], forecast_temp
+                )
+                if _dp_correction != 0.0:
+                    _log.debug(
+                        "dew point correction for %s: %.2f°F (dew=%.1f forecast=%.1f)",
+                        city,
+                        _dp_correction,
+                        _dp_obs["dew_point_f"],
+                        forecast_temp,
+                    )
+                    forecast_temp += _dp_correction
 
         days_out = max(0, (target_date - datetime.now(UTC).date()).days)
 
