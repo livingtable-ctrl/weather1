@@ -165,6 +165,8 @@ def test_no_trades_placed_when_drawdown_breached_mid_cycle(monkeypatch):
     monkeypatch.setattr(oe, "_daily_paper_spend", lambda: 0.0)
     monkeypatch.setattr(oe, "_daily_sameday_spend", lambda: 0.0)
     monkeypatch.setattr(oe, "_sameday_effective_cap", lambda max_pos: max_pos)
+    # Disable GFS window guard so this test is not time-sensitive
+    monkeypatch.setattr(oe, "_in_gfs_update_window", lambda now_utc=None: False)
 
     opps = [
         {
