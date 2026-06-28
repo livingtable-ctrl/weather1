@@ -2470,6 +2470,32 @@ def get_member_accuracy(days_back: int = 60) -> dict:
     return result
 
 
+def get_model_brier_scores(days: int = 30) -> dict[str, float]:
+    """Return per-model mean absolute error from ensemble_member_scores over the last N days.
+
+    Returns {model_name: mean_abs_error} for models with at least 10 scored rows.
+    Lower MAE = better model. Returns empty dict when no data available.
+    """
+    init_db()
+    cutoff = (datetime.now(UTC) - timedelta(days=days)).isoformat()
+    with _conn() as con:
+        rows = con.execute(
+            """
+            SELECT model,
+                   AVG(ABS(predicted_temp - actual_temp)) AS mae,
+                   COUNT(*) AS n
+            FROM   ensemble_member_scores
+            WHERE  logged_at >= ?
+              AND  actual_temp IS NOT NULL
+              AND  predicted_temp IS NOT NULL
+            GROUP  BY model
+            HAVING COUNT(*) >= 10
+            """,
+            (cutoff,),
+        ).fetchall()
+    return {r[0]: float(r[1]) for r in rows}
+
+
 def get_ensemble_member_accuracy(
     city: str | None = None,
     season: str | None = None,

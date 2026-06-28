@@ -1160,3 +1160,69 @@ class TestHRRR:
 
         result = _fetch_hrrr_temp("UNKNOWN_CITY_XYZ", date(2026, 7, 1), var="max")
         assert result is None
+
+
+class TestModelBrierScores:
+    def test_get_model_brier_scores_returns_dict(self, monkeypatch, tmp_path):
+        import tracker
+
+        monkeypatch.setattr(tracker, "DB_PATH", tmp_path / "test.db")
+        tracker._db_initialized = False
+        tracker.init_db()
+
+        with tracker._conn() as con:
+            for i in range(10):
+                con.execute(
+                    "INSERT INTO ensemble_member_scores "
+                    "(city, model, predicted_temp, actual_temp, logged_at) "
+                    "VALUES ('NYC', 'icon_seamless', ?, 73.0, datetime('now'))",
+                    (71.0 + i * 0.1,),
+                )
+                con.execute(
+                    "INSERT INTO ensemble_member_scores "
+                    "(city, model, predicted_temp, actual_temp, logged_at) "
+                    "VALUES ('NYC', 'gfs_seamless', ?, 73.0, datetime('now'))",
+                    (72.5 + i * 0.1,),
+                )
+
+        scores = tracker.get_model_brier_scores(days=30)
+        assert "icon_seamless" in scores, (
+            f"Expected 'icon_seamless' in scores: {scores}"
+        )
+        assert "gfs_seamless" in scores, f"Expected 'gfs_seamless' in scores: {scores}"
+        # icon predicted 71.0-71.9, actual=73.0 → MAE avg ≈ 1.55
+        assert 1.0 < scores["icon_seamless"] < 3.0, (
+            f"Unexpected icon MAE: {scores['icon_seamless']}"
+        )
+
+    def test_get_model_brier_scores_excludes_models_with_few_rows(
+        self, monkeypatch, tmp_path
+    ):
+        import tracker
+
+        monkeypatch.setattr(tracker, "DB_PATH", tmp_path / "test.db")
+        tracker._db_initialized = False
+        tracker.init_db()
+
+        with tracker._conn() as con:
+            # Only 5 rows — below HAVING COUNT(*) >= 10 threshold
+            for i in range(5):
+                con.execute(
+                    "INSERT INTO ensemble_member_scores "
+                    "(city, model, predicted_temp, actual_temp, logged_at) "
+                    "VALUES ('NYC', 'sparse_model', ?, 73.0, datetime('now'))",
+                    (71.0 + i * 0.1,),
+                )
+
+        scores = tracker.get_model_brier_scores(days=30)
+        assert "sparse_model" not in scores, "Model with < 10 rows should be excluded"
+
+    def test_get_model_brier_scores_empty_when_no_data(self, monkeypatch, tmp_path):
+        import tracker
+
+        monkeypatch.setattr(tracker, "DB_PATH", tmp_path / "test.db")
+        tracker._db_initialized = False
+        tracker.init_db()
+
+        scores = tracker.get_model_brier_scores(days=30)
+        assert scores == {}
