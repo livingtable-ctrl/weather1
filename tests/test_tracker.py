@@ -2103,3 +2103,21 @@ class TestSyncOutcomesDatetimeFix(unittest.TestCase):
         }
         count = tracker.sync_outcomes(mock_client)
         self.assertEqual(count, 0, "Should skip markets finalized < 1h ago")
+
+
+def test_api_reliability_returns_empty_for_unknown_city(monkeypatch):
+    monkeypatch.setenv("DASHBOARD_UNPROTECTED", "true")
+    monkeypatch.delenv("DASHBOARD_PASSWORD", raising=False)
+    from web_app import _build_app
+
+    app = _build_app(object())
+    app.config["TESTING"] = True
+    with app.test_client() as c:
+        resp = c.get("/api/reliability/UnknownCity123")
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert "bins" in data
+        assert "city" in data
+        assert data["city"] == "UnknownCity123"
+        assert isinstance(data["bins"], list)
+        assert data["n"] == 0

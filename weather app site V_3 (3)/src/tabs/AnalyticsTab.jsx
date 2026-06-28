@@ -936,6 +936,43 @@ function RollingWinRateChart() {
 }
 
 // ---------------------------------------------------------------------------
+// ReliabilityDiagramChart — SVG calibration curve for a single city
+// ---------------------------------------------------------------------------
+function ReliabilityDiagramChart({ city, data }) {
+  if (!data || !data.bins || data.bins.length === 0) {
+    return <div style={{ color: 'var(--text-muted)', fontSize: 12 }}>No data for {city}</div>;
+  }
+  const size = 200;
+  const pad = 24;
+  const inner = size - 2 * pad;
+  const toXY = (p) => ({ x: pad + p * inner, y: size - pad - p * inner });
+
+  return (
+    <svg width={size} height={size} title={`Calibration curve — ${city}`}>
+      {/* Perfect calibration diagonal */}
+      <line x1={pad} y1={size - pad} x2={size - pad} y2={pad}
+            stroke="var(--border)" strokeDasharray="4 2" strokeWidth={1} />
+      {data.bins.map((b, i) => {
+        const { x: px, y: py } = toXY(b.mean_pred);
+        const { x: ax, y: ay } = toXY(b.actual_rate);
+        return (
+          <g key={i}>
+            <line x1={px} y1={py} x2={ax} y2={ay} stroke="#3b82f6" strokeWidth={1.5} />
+            <circle cx={ax} cy={ay} r={4} fill="#3b82f6"
+                    title={`pred=${b.mean_pred.toFixed(2)} actual=${b.actual_rate.toFixed(2)} n=${b.n}`} />
+          </g>
+        );
+      })}
+      <line x1={pad} y1={pad} x2={pad} y2={size - pad} stroke="var(--border)" />
+      <line x1={pad} y1={size - pad} x2={size - pad} y2={size - pad} stroke="var(--border)" />
+      <text x={size / 2} y={size - 4} fontSize={9} textAnchor="middle" fill="var(--text-muted)">Predicted</text>
+      <text x={8} y={size / 2} fontSize={9} textAnchor="middle" fill="var(--text-muted)"
+            transform={`rotate(-90,8,${size / 2})`}>Actual</text>
+    </svg>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // AnalyticsTab — empty-state banner when post-wipe data is absent
 // ---------------------------------------------------------------------------
 export default function AnalyticsTab() {
@@ -944,6 +981,22 @@ export default function AnalyticsTab() {
 
   // Chart state
   const [minEdgeThreshold, setMinEdgeThreshold] = useState(15.0);
+  const [reliabilityData, setReliabilityData] = useState({});
+
+  // Fetch reliability data for top 3 cities by trade count
+  React.useEffect(() => {
+    const counts = {};
+    (M.closedTrades || []).forEach(t => {
+      if (t.city) counts[t.city] = (counts[t.city] || 0) + 1;
+    });
+    const top3 = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([c]) => c);
+    top3.forEach(city => {
+      fetch(`/api/reliability/${encodeURIComponent(city)}`)
+        .then(r => r.json())
+        .then(d => setReliabilityData(prev => ({ ...prev, [city]: d })))
+        .catch(() => {});
+    });
+  }, [M.closedTrades]);
 
   return (
     <main style={{ maxWidth: 1360, margin: '0 auto', padding: '24px 28px 40px' }}>
@@ -1094,6 +1147,23 @@ export default function AnalyticsTab() {
           </tbody>
         </table>
       </section>
+      {/* Per-city reliability diagrams — calibration curves by city */}
+      {Object.keys(reliabilityData).length > 0 && (
+        <section style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 14, padding: 20, marginTop: 18 }}>
+          <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600, marginBottom: 4 }}>Per-city calibration curves</h3>
+          <p style={{ color: 'var(--text-muted)', fontSize: 12, marginBottom: 14 }}>
+            Predicted probability vs actual outcome rate, binned into 5 buckets. Points above the diagonal = underconfident; below = overconfident.
+          </p>
+          <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
+            {Object.entries(reliabilityData).map(([city, data]) => (
+              <div key={city} style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6 }}>{city} <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>n={data.n}</span></div>
+                <ReliabilityDiagramChart city={city} data={data} />
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
     </main>
   );
 }
