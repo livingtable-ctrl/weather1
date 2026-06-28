@@ -3908,14 +3908,19 @@ def get_edge_realization_by_city() -> list[dict]:
     with _conn() as con:
         rows = con.execute(
             """
-            SELECT p.city,
-                   AVG(p.edge) as mean_edge,
+            SELECT sub.city,
+                   AVG(sub.edge) as mean_edge,
                    AVG(CAST(o.settled_yes AS REAL)) as win_rate,
                    COUNT(*) as n
-            FROM   multiday_predictions p
-            JOIN   outcomes o ON o.ticker = p.ticker
-            WHERE  p.edge IS NOT NULL
-            GROUP  BY p.city
+            FROM (
+                SELECT ticker, city, edge,
+                       ROW_NUMBER() OVER (PARTITION BY ticker ORDER BY predicted_at DESC) as rn
+                FROM   multiday_predictions
+                WHERE  edge IS NOT NULL
+            ) sub
+            JOIN   outcomes o ON o.ticker = sub.ticker
+            WHERE  sub.rn = 1
+            GROUP  BY sub.city
             HAVING COUNT(*) >= 5
             ORDER  BY mean_edge DESC
             """

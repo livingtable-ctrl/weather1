@@ -146,7 +146,7 @@ def atomic_write_json_with_history(
                 history_dir
                 / f"{path.stem}_{stamp}_{int(_time.monotonic() * 1000) % 1000}.json"
             )
-        history_file.write_text(path.read_text())
+        history_file.write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
 
         # Prune oldest history files if over limit
         existing = sorted(history_dir.glob(f"{path.stem}_*.json"))

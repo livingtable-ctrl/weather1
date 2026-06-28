@@ -5188,8 +5188,11 @@ def analyze_trade(enriched: dict) -> dict | None:
             )
             _count_gate("degenerate_ens")
             return None
-        # NWS vs ensemble temperature disagreement — flag when gap > 8°F
-        if ens_stats is not None:
+        # NWS vs ensemble disagreement — only valid for daily high/low markets where
+        # forecast_temp_raw (NWS daily high) and ens_stats["mean"] (ensemble daily high) are
+        # the same quantity; hourly markets compare NWS daily high vs hourly ensemble mean,
+        # which structurally differ by 15-20°F and would always fire the flag spuriously.
+        if ens_stats is not None and hour is None:
             disagree_f = round(abs(forecast_temp_raw - ens_stats["mean"]), 1)
 
         method = "normal_dist"
