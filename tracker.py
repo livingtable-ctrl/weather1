@@ -1142,6 +1142,32 @@ def count_settled_below_predictions() -> int:
     return row[0] if row else 0
 
 
+_WEST_COAST_CITIES = {"LA", "SanFrancisco", "Seattle"}
+
+
+def count_settled_west_coast_multiday() -> dict[str, int]:
+    """Return count of settled multi-day predictions per west-coast city.
+
+    Uses the predictions table (days_out >= 1 or NULL) joined to outcomes so
+    we only count rows with a known settlement temperature. Multi-day is defined
+    as days_out >= 1 OR days_out IS NULL (legacy rows before the column existed).
+    """
+    init_db()
+    with _conn() as con:
+        rows = con.execute(
+            """
+            SELECT p.city, COUNT(*)
+            FROM   predictions p
+            JOIN   outcomes o ON o.ticker = p.ticker
+            WHERE  p.city IN ('LA', 'SanFrancisco', 'Seattle')
+              AND  (p.days_out IS NULL OR p.days_out >= 1)
+              AND  o.settled_temp_f IS NOT NULL
+            GROUP  BY p.city
+            """
+        ).fetchall()
+    return {city: n for city, n in rows}
+
+
 def get_emos_training_data() -> list[dict]:
     """Return rows for EMOS fitting: {ens_mean, ens_var, settled_temp_f}.
 

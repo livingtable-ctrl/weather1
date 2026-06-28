@@ -1325,3 +1325,77 @@ class TestRegimeBlend:
         wm._notify_feature_activation("a9_regime_blend", "should not overwrite", {})
         data = json.loads(path.read_text())
         assert data["a9_regime_blend"]["dismissed"] is True  # original value preserved
+
+
+class TestPDOPNA:
+    def test_apply_pdo_pna_correction_la_winter(self, monkeypatch):
+        """LA in DJF with PDO=+1 -> approximately +0.8 degrees F correction."""
+        import climate_indices as ci
+        from climate_indices import apply_pdo_pna_correction
+
+        monkeypatch.setattr(ci, "get_pdo_pna", lambda **kw: {"pdo": 1.0, "pna": 0.0})
+        correction = apply_pdo_pna_correction("LA", forecast_temp_f=65.0, month=1)
+        assert correction == pytest.approx(0.8, abs=0.05)
+
+    def test_apply_pdo_pna_correction_unknown_city_zero(self, monkeypatch):
+        """Cities not in coefficient tables return 0.0."""
+        import climate_indices as ci
+        from climate_indices import apply_pdo_pna_correction
+
+        monkeypatch.setattr(ci, "get_pdo_pna", lambda **kw: {"pdo": 2.0, "pna": 2.0})
+        assert apply_pdo_pna_correction("Dallas", forecast_temp_f=90.0, month=7) == 0.0
+
+    def test_apply_pdo_pna_correction_clamped(self, monkeypatch):
+        """Extreme index values (PDO=10) are clamped to +-3 degrees F."""
+        import climate_indices as ci
+        from climate_indices import apply_pdo_pna_correction
+
+        monkeypatch.setattr(ci, "get_pdo_pna", lambda **kw: {"pdo": 10.0, "pna": 0.0})
+        correction = apply_pdo_pna_correction("LA", forecast_temp_f=65.0, month=1)
+        assert correction <= 3.0
+
+    def test_fetch_pdo_pna_parses_csv(self, monkeypatch, tmp_path):
+        """fetch_pdo_pna correctly parses NOAA CSV and writes pdo_pna.json."""
+        import climate_indices as ci
+
+        monkeypatch.setattr(ci, "_PDO_PNA_PATH", tmp_path / "pdo_pna.json")
+
+        csv_content = "Date,Value\n202601,0.85\n202602,-0.32\n"
+        mock_resp = type(
+            "R",
+            (),
+            {
+                "text": csv_content,
+                "raise_for_status": lambda self: None,
+            },
+        )()
+        monkeypatch.setattr(ci.requests, "get", lambda *a, **k: mock_resp)
+
+        result = ci.fetch_pdo_pna()
+        assert "202601" in result["pdo"]
+        assert result["pdo"]["202601"] == pytest.approx(0.85, abs=0.001)
+
+    def test_pdopna_inactive_below_threshold(self, monkeypatch):
+        """_pdopna_blend_active returns False when west-coast count < 20."""
+        import weather_markets as wm
+
+        monkeypatch.setattr(
+            "weather_markets._pdopna_settled_counts",
+            lambda: {"LA": 5, "SanFrancisco": 3, "Seattle": 2},
+        )
+        wm._pdopna_blend_state["active"] = None
+        assert wm._pdopna_blend_active() is False
+
+    def test_pdopna_inactive_without_index_file(self, monkeypatch, tmp_path):
+        """_pdopna_blend_active returns False when pdo_pna.json is absent."""
+        import climate_indices as ci
+        import weather_markets as wm
+
+        monkeypatch.setattr(
+            "weather_markets._pdopna_settled_counts",
+            lambda: {"LA": 25, "SanFrancisco": 22, "Seattle": 21},
+        )
+        monkeypatch.setattr(ci, "_PDO_PNA_PATH", tmp_path / "missing.json")
+        monkeypatch.setattr(wm._ci, "_PDO_PNA_PATH", tmp_path / "missing.json")
+        wm._pdopna_blend_state["active"] = None
+        assert wm._pdopna_blend_active() is False

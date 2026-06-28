@@ -22,6 +22,7 @@ import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
+import climate_indices as _ci
 import metar as _metar
 import safe_io as _safe_io
 from calibration import load_city_weights as _load_city_weights
@@ -3573,6 +3574,51 @@ def _regime_blend_active() -> bool:
     return active
 
 
+# ── PDO / PNA blend state ────────────────────────────────────────────────────
+# Mutable state dict so tests can reset between runs by setting ["active"] = None.
+# None = unchecked this process, True/False = already determined.
+_pdopna_blend_state: dict = {"active": None}
+
+# Minimum settled multi-day trades per west-coast city before PDO/PNA correction activates.
+_PDOPNA_WEST_COAST_THRESHOLD = 20
+
+
+def _pdopna_settled_counts() -> dict[str, int]:
+    """Thin wrapper so tests can monkeypatch the west-coast settled-trade counts."""
+    from tracker import count_settled_west_coast_multiday
+
+    return count_settled_west_coast_multiday()
+
+
+def _pdopna_blend_active() -> bool:
+    """Return True when PDO/PNA correction is ready to apply.
+
+    Requires BOTH: 20+ settled multi-day trades for each west-coast city (LA,
+    SanFrancisco, Seattle) AND the pdo_pna.json index file is present. Checks
+    once per process, then caches result in _pdopna_blend_state["active"].
+    Writes a one-time user notification the first time the threshold is crossed.
+    """
+    if _pdopna_blend_state["active"] is not None:
+        return _pdopna_blend_state["active"]
+
+    counts = _pdopna_settled_counts()
+    west_coast = ["LA", "SanFrancisco", "Seattle"]
+    enough_data = all(
+        counts.get(c, 0) >= _PDOPNA_WEST_COAST_THRESHOLD for c in west_coast
+    )
+    indices_available = _ci._PDO_PNA_PATH.exists()
+    active = enough_data and indices_available
+    _pdopna_blend_state["active"] = active
+
+    if active:
+        _notify_feature_activation(
+            "a10_pdopna",
+            f"PDO/PNA blend auto-activated ({_PDOPNA_WEST_COAST_THRESHOLD}+ west-coast settled trades + index file present)",
+            {"counts": counts},
+        )
+    return active
+
+
 def _blend_weights(
     days_out: int,
     has_nws: bool,
@@ -5101,6 +5147,24 @@ def analyze_trade(enriched: dict) -> dict | None:
                         forecast_temp,
                     )
                     forecast_temp += _dp_correction
+
+        # ── PDO/PNA second-order correction (dormant until threshold met) ────────
+        # Applies only for cities in the PDO or PNA coefficient tables once both
+        # 20+ settled multi-day trades per west-coast city AND pdo_pna.json exist.
+        if _pdopna_blend_active():
+            from climate_indices import apply_pdo_pna_correction
+
+            _pdopna_adj = apply_pdo_pna_correction(
+                city, forecast_temp, target_date.month
+            )
+            if _pdopna_adj != 0.0:
+                _log.debug(
+                    "PDO/PNA correction for %s: %.2f°F (month=%d)",
+                    city,
+                    _pdopna_adj,
+                    target_date.month,
+                )
+                forecast_temp += _pdopna_adj
 
         days_out = max(0, (target_date - datetime.now(UTC).date()).days)
 
