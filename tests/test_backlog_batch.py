@@ -207,6 +207,7 @@ class TestMaxPositionsPerDate:
             ),
             patch("paper.place_paper_order", return_value=mock_trade),
             patch.dict(os.environ, {"MAX_POSITIONS_PER_DATE": "4"}),
+            patch("order_executor._in_gfs_update_window", return_value=False),
         ):
             result = order_executor._auto_place_trades([opp], live=False)
 
@@ -265,6 +266,7 @@ class TestMaxPositionsPerDate:
             ),
             patch("paper.place_paper_order", return_value=mock_trade),
             patch.dict(os.environ, {"MAX_POSITIONS_PER_DATE": "4"}),
+            patch("order_executor._in_gfs_update_window", return_value=False),
         ):
             result = order_executor._auto_place_trades([opp], live=False)
 

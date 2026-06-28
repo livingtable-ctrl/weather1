@@ -60,6 +60,10 @@ def _stub_auto_prereqs(monkeypatch):
         "check_system_health",
         lambda: system_health.HealthStatus(healthy=True, reason=""),
     )
+    # Disable GFS window guard so tests are not time-sensitive
+    monkeypatch.setattr(
+        "order_executor._in_gfs_update_window", lambda now_utc=None: False
+    )
 
 
 # ── _auto_place_trades returns placed count ──────────────────────────────────
