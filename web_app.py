@@ -512,18 +512,22 @@ def _build_app(client):
         except (KeyError, ValueError):
             _min_trades = 30
             _min_pnl = 50.0
-            _max_brier = 0.20
+            _max_brier = 0.23  # must match graduation_check() default
 
         perf = get_performance()
         gc = graduation_check()
         fg_score, fg_label = fear_greed_index()
+        # Use the Brier from graduation_check() when it ran (avoids a second DB hit).
+        # When gc is None the check may have been blocked by the sample guard, so call
+        # directly with the same window so the progress bar shows a meaningful value.
+        _displayed_brier = gc["brier"] if gc is not None else _brier_score(last_n=50)
         return jsonify(
             {
                 "trades_done": perf.get("settled", 0),
                 "win_rate": perf.get("win_rate"),
                 "total_pnl": perf.get("total_pnl", 0.0),
                 "profit_factor": perf.get("profit_factor"),
-                "brier": _brier_score(),
+                "brier": _displayed_brier,
                 "ready": gc is not None,
                 "fear_greed_score": fg_score,
                 "fear_greed_label": fg_label,
