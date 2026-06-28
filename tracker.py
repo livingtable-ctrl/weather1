@@ -1050,7 +1050,8 @@ def count_settled_predictions_rolling(weeks: int = 3) -> int:
         row = con.execute(
             f"SELECT COUNT(*) FROM multiday_predictions p "
             f"JOIN outcomes o ON p.ticker = o.ticker "
-            f"WHERE o.settled_at >= datetime('now', '-{days} days')"
+            f"WHERE p.our_prob IS NOT NULL "
+            f"  AND o.settled_at >= datetime('now', '-{days} days')"
         ).fetchone()
     return row[0] if row else 0
 
