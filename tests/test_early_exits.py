@@ -393,14 +393,6 @@ class TestReentryActive:
         # Reset cache so this test re-evaluates the gate from scratch.
         order_executor._reentry_state["active"] = None
 
-        monkeypatch.setattr(
-            "order_executor.count_settled_predictions", lambda: 80, raising=False
-        )
-        # Brier is good but count is not — gate must stay closed.
-        monkeypatch.setattr(
-            "order_executor._brier", lambda last_n=50: 0.20, raising=False
-        )
-
         with (
             patch("tracker.count_settled_predictions", return_value=80),
             patch("tracker.brier_score", return_value=0.20),
@@ -488,3 +480,27 @@ class TestReEntryEligible:
         assert result is True, (
             "re_entry_eligible must return True when the only trade on the ticker is settled"
         )
+
+
+def test_reentry_blocked_when_partial_position_remains(monkeypatch):
+    """re_entry_eligible returns False when a partial close left the position open."""
+    import paper
+
+    # Simulate a trade that was partially closed — original record is still open
+    fake_data = {
+        "trades": [
+            {
+                "id": 1,
+                "ticker": "KXHIGH-T70",
+                "side": "yes",
+                "quantity": 5,  # remaining half after partial close
+                "settled": False,
+                "closed": False,
+            }
+        ],
+        "balance": 1000.0,
+    }
+    monkeypatch.setattr(paper, "_load", lambda: fake_data)
+
+    result = paper.re_entry_eligible("KXHIGH-T70")
+    assert result is False, "should be blocked while partial position is still open"
