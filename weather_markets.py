@@ -23,6 +23,7 @@ from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
 import metar as _metar
+import safe_io as _safe_io
 from calibration import load_city_weights as _load_city_weights
 from calibration import load_condition_weights as _load_condition_weights
 from calibration import load_seasonal_weights as _load_seasonal_weights
@@ -3539,8 +3540,6 @@ def _notify_feature_activation(key: str, message: str, extra: dict) -> None:
         **extra,
     }
     try:
-        import safe_io as _safe_io
-
         _safe_io.atomic_write_json(existing, _FEATURE_ACTIVATIONS_PATH)
     except Exception as exc:
         _log.warning(
@@ -3585,9 +3584,9 @@ def _blend_weights(
 ) -> tuple[float, float, float]:
     """Return (w_ensemble, w_climatology, w_nws).
 
-    Priority: city > condition-type > seasonal > hardcoded schedule > regime override.
-    The regime override is applied last (highest priority when active) so extreme-weather
-    regimes can shift weight toward ensemble regardless of which calibration tier fired.
+    Priority: regime override (highest, when active) > city > condition-type > seasonal > schedule.
+    Early return from the regime block means it wins over all other tiers when the feature
+    is active and the regime is an extreme-weather pattern.
     """
     # 0. Regime override — highest priority when feature is active and regime is extreme.
     # Runs before city/condition/seasonal weights so extreme regimes always win.
@@ -5435,6 +5434,17 @@ def analyze_trade(enriched: dict) -> dict | None:
             except Exception:
                 pass
 
+        # ── 6a. Regime detection — must run before blend weights so the regime
+        # override in _blend_weights/_confidence_scaled_blend_weights fires.
+        # _regime_info is initialized to {} at the top of analyze_trade; this block
+        # overwrites it now that ens_stats and days_out are both available.
+        try:
+            from regime import detect_regime as _detect_regime
+
+            _regime_info = _detect_regime(city, ens_stats or {}, days_out)
+        except Exception:
+            pass
+
         # ── 6. Weighted blend ────────────────────────────────────────────────────
         if obs_override is not None:
             # Scale obs weight by local hour — early morning obs is a floor,
@@ -5885,15 +5895,9 @@ def analyze_trade(enriched: dict) -> dict | None:
             except Exception:
                 pass
 
-    # Regime detection — overwrites _regime_info (initialized at top of function).
-    _confidence_boost = 1.0
-    try:
-        from regime import detect_regime as _detect_regime
-
-        _regime_info = _detect_regime(city, ens_stats or {}, days_out)
-        _confidence_boost = _regime_info.get("confidence_boost", 1.0)
-    except Exception:
-        pass
+    # _regime_info was populated earlier (section 6a) before blend weights ran.
+    # Read confidence_boost from the already-detected regime dict.
+    _confidence_boost = _regime_info.get("confidence_boost", 1.0)
 
     # Hard-skip when atmosphere is in "volatile" regime (ensemble std > 12°F).
     # A 20% Kelly reduction is not enough protection when models disagree by 12+°F —

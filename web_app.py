@@ -1361,12 +1361,10 @@ setInterval(() => {{
                 "timestamp": datetime.now(UTC).isoformat(),
             }
             try:
-                import json as _json
-
                 from weather_markets import _FEATURE_ACTIVATIONS_PATH
 
                 _activations = (
-                    _json.loads(_FEATURE_ACTIVATIONS_PATH.read_text())
+                    json.loads(_FEATURE_ACTIVATIONS_PATH.read_text())
                     if _FEATURE_ACTIVATIONS_PATH.exists()
                     else {}
                 )
