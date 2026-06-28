@@ -49,6 +49,10 @@ _MIN_EDGE_AB_TEST = _ABTest(
 _GFS_UPDATE_HOURS_UTC = [0, 6, 12, 18]  # GFS model initialization hours
 _GFS_UPDATE_LOCKOUT_MINS = int(os.getenv("GFS_LOCKOUT_MINS", "90"))
 
+# Minimum guaranteed edge (after spread) required before placing an arb pair.
+# Set MIN_ARB_EDGE=0 in .env to disable the gate and trade all detected violations.
+_MIN_ARB_EDGE = float(os.getenv("MIN_ARB_EDGE", "0.03"))
+
 
 def _in_gfs_update_window(now_utc=None) -> bool:
     """Return True if we are within LOCKOUT_MINS of a GFS model initialization.
@@ -95,6 +99,61 @@ def place_paper_order(ticker, side, qty, entry_price, **kwargs):
     from paper import place_paper_order as _ppo
 
     return _ppo(ticker, side, qty, entry_price, **kwargs)
+
+
+def place_arbitrage_pair(violation, client=None):
+    """Place both legs of a monotonicity arbitrage when guaranteed_edge is large enough.
+
+    A monotonicity violation means P(high > T_high) > P(high > T_low), which is
+    impossible.  The arb is:
+      - BUY  violation.buy_ticker  YES at violation.buy_prob  (underpriced leg)
+      - SELL  violation.sell_ticker NO  at 1 - violation.sell_prob (overpriced leg)
+
+    We skip the pair when guaranteed_edge is below _MIN_ARB_EDGE so we only act
+    on violations where the spread-adjusted profit is meaningful.  This threshold
+    is tunable via MIN_ARB_EDGE in .env without a code deploy.
+    """
+    from consistency import (
+        Violation as _Violation,  # local import — established pattern
+    )
+
+    if not isinstance(violation, _Violation):
+        raise TypeError(f"expected Violation dataclass, got {type(violation)}")
+
+    if violation.guaranteed_edge < _MIN_ARB_EDGE:
+        _log.debug(
+            "arb skipped for %s/%s: edge %.4f < minimum %.4f",
+            violation.buy_ticker,
+            violation.sell_ticker,
+            violation.guaranteed_edge,
+            _MIN_ARB_EDGE,
+        )
+        return
+
+    # BUY the underpriced lower-threshold contract YES
+    place_paper_order(
+        violation.buy_ticker,
+        "yes",
+        1,
+        violation.buy_prob,
+        method="arb_consistency",
+    )
+    # SELL the overpriced higher-threshold contract NO (NO price = 1 - yes_prob)
+    place_paper_order(
+        violation.sell_ticker,
+        "no",
+        1,
+        round(1.0 - violation.sell_prob, 4),
+        method="arb_consistency",
+    )
+    _log.info(
+        "arb placed: BUY %s YES @ %.3f / SELL %s NO @ %.3f (edge %.4f)",
+        violation.buy_ticker,
+        violation.buy_prob,
+        violation.sell_ticker,
+        1.0 - violation.sell_prob,
+        violation.guaranteed_edge,
+    )
 
 
 # ---------------------------------------------------------------------------

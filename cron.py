@@ -949,6 +949,21 @@ def _cmd_cron_body(
                     len(_violations),
                     [v.description for v in _violations[:5]],
                 )
+                # Auto-place arbitrage for each violation — the edge exists regardless
+                # of whether _consistency_skip is later set.  Place before the skip
+                # decision so we capture even borderline cycles.
+                for _arb_v in _violations:
+                    try:
+                        from order_executor import place_arbitrage_pair
+
+                        place_arbitrage_pair(_arb_v)
+                    except Exception as _arb_exc:
+                        _log.warning(
+                            "arb placement failed for %s/%s: %s",
+                            _arb_v.buy_ticker,
+                            _arb_v.sell_ticker,
+                            _arb_exc,
+                        )
                 if len(_violations) > 5:
                     _consistency_skip = True
                     _log.error(

@@ -115,3 +115,27 @@ class TestConsistency(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+def test_arbitrage_placement_called_for_real_violations(monkeypatch):
+    from consistency import Violation
+    from order_executor import place_arbitrage_pair
+
+    placed = []
+    monkeypatch.setattr(
+        "order_executor.place_paper_order",
+        lambda ticker, side, qty, price, **kwargs: placed.append((ticker, side)),
+    )
+
+    v = Violation(
+        buy_ticker="KXHIGHNY-T65",
+        sell_ticker="KXHIGHNY-T70",
+        buy_prob=0.40,
+        sell_prob=0.55,
+        guaranteed_edge=0.08,
+        description="P(>70)=55% > P(>65)=40% — impossible",
+    )
+    place_arbitrage_pair(v, client=None)
+    # BUY lower-threshold YES on T65, SELL higher-threshold NO on T70
+    assert any(t == "KXHIGHNY-T65" and s == "yes" for t, s in placed)
+    assert any(t == "KXHIGHNY-T70" and s == "no" for t, s in placed)
