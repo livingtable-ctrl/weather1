@@ -744,6 +744,38 @@ def _check_early_exits(client=None) -> int:
                 )
                 continue
 
+            # Check take-profit ladder before early-exit reversal logic.
+            # tp_rung_index is not persisted — each cron cycle re-evaluates all rungs.
+            # This means a rung can fire multiple times if the price stays above the
+            # threshold for multiple cycles. Acceptable until position tracking is extended.
+            exit_price = _midpoint_price(market, side)
+            if exit_price > 0:
+                from paper import get_take_profit_targets
+                from paper import partial_close_position as _partial_close
+
+                tp_targets = get_take_profit_targets(
+                    float(trade.get("entry_price", 0.5)),
+                    trade.get("side", "yes"),
+                )
+                rung_hit = trade.get("tp_rung_index", 0)
+                for i, rung in enumerate(tp_targets[rung_hit:], start=rung_hit):
+                    should_close = (
+                        trade.get("side") == "yes" and exit_price >= rung["price"]
+                    ) or (trade.get("side") == "no" and exit_price <= rung["price"])
+                    if should_close:
+                        _partial_close(trade["id"], close_pct=rung["close_pct"])
+                        trade["tp_rung_index"] = (
+                            i + 1
+                        )  # in-memory only; see comment above
+                        _log.info(
+                            "take-profit rung %d hit for %s at %.3f",
+                            i + 1,
+                            trade.get("ticker", "?"),
+                            exit_price,
+                        )
+                        closed += 1
+                        break
+
             if shift > 0.25:
                 exit_price = _midpoint_price(market, side)
                 # H-4: never close at zero — missing market data returns 0.0 which

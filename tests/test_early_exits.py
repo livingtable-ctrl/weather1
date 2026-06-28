@@ -332,3 +332,17 @@ class TestPartialClose:
 
         with pytest.raises(ValueError):
             paper.partial_close_position("any-id", close_pct=1.5)
+
+
+def test_take_profit_targets_for_yes_bet():
+    from paper import get_take_profit_targets
+
+    # Entry at 0.50 YES
+    targets = get_take_profit_targets(entry_price=0.50, side="yes")
+    assert len(targets) == 2
+    # First rung: close 33% at entry * 1.25 = 0.625
+    assert abs(targets[0]["price"] - 0.625) < 0.001
+    assert targets[0]["close_pct"] == pytest.approx(0.333, abs=0.01)
+    # Second rung: close 33% at entry * 1.45 = 0.725
+    assert abs(targets[1]["price"] - 0.725) < 0.001
+    assert targets[1]["close_pct"] == pytest.approx(0.333, abs=0.01)

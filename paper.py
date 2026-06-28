@@ -88,6 +88,21 @@ _DATA_LOCK = (
     threading.RLock()
 )  # RLock: get_open_trades/get_balance called inside locked sections
 
+# Take-profit ladder rungs: (gain_pct, close_pct) pairs.
+# Each tuple means "when the position has gained gain_pct from entry, close close_pct
+# of the remaining position". Configurable via env vars so live traders can tune
+# levels without touching code.
+_TP_RUNGS = [
+    (
+        float(os.getenv("TP_LEVEL_1_PCT", "0.25")),
+        float(os.getenv("TP_LEVEL_1_CLOSE", "0.333")),
+    ),
+    (
+        float(os.getenv("TP_LEVEL_2_PCT", "0.45")),
+        float(os.getenv("TP_LEVEL_2_CLOSE", "0.333")),
+    ),
+]
+
 # Loss-limit override flag — written by reset_daily_loss_limit(), checked by
 # is_daily_loss_halted().  Keyed to the UTC date so it auto-expires at midnight.
 _LOSS_OVERRIDE_PATH = DATA_PATH.parent / "loss_limit_override.json"
@@ -95,6 +110,29 @@ _LOSS_OVERRIDE_PATH = DATA_PATH.parent / "loss_limit_override.json"
 STARTING_BALANCE: float = float(
     os.getenv("STARTING_BALANCE", "1000.0")
 )  # set to actual funded amount
+
+
+def get_take_profit_targets(entry_price: float, side: str) -> list[dict]:
+    """Return take-profit price levels for a position.
+
+    Each level is {"price": float, "close_pct": float}.
+    price is the YES price at which to take profit.
+    For NO bets, thresholds are computed in NO-space then inverted back to YES prices
+    so the caller can compare directly against the market mid-price (always YES-based).
+    """
+    targets = []
+    for gain_pct, close_pct in _TP_RUNGS:
+        if side == "yes":
+            tp_price = min(0.95, entry_price * (1.0 + gain_pct))
+        else:
+            # Convert YES entry price to NO price, apply gain, convert back.
+            # A NO position profits when the YES price falls, so the trigger YES
+            # price is lower than entry.
+            no_entry = 1.0 - entry_price
+            no_tp = no_entry * (1.0 + gain_pct)
+            tp_price = max(0.05, 1.0 - no_tp)
+        targets.append({"price": round(tp_price, 3), "close_pct": close_pct})
+    return targets
 
 
 def _env_float(name: str, default: str) -> float:
