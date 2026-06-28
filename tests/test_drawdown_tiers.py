@@ -116,3 +116,91 @@ class TestDrawdownTiersRelativeToHalt:
         monkeypatch.setattr(paper, "_DRAWDOWN_TIER_4", 0.95)
         monkeypatch.setattr(paper, "_drawdown_snapshot", lambda: (970.0, 1000.0))
         assert paper.drawdown_scaling_factor() == 1.0
+
+
+def test_no_trades_placed_when_drawdown_breached_mid_cycle(monkeypatch):
+    """If balance drops below HALT mid-cycle, _auto_place_trades must stop placing.
+
+    Calls order_executor._auto_place_trades directly — the only correct way
+    to test this guard.
+    """
+    import order_executor as oe
+    import paper
+
+    placed = []
+
+    def mock_place(ticker, side, qty, entry_price, **kwargs):
+        placed.append(ticker)
+        if len(placed) == 1:
+            # After first placement, simulate balance crashing below HALT
+            monkeypatch.setattr(paper, "is_paused_drawdown", lambda: True)
+        return {
+            "ticker": ticker,
+            "side": side,
+            "settled": False,
+            "pnl": 0,
+            "id": len(placed),
+            "cost": entry_price * qty,
+        }
+
+    monkeypatch.setattr(paper, "place_paper_order", mock_place)
+    monkeypatch.setattr(paper, "is_paused_drawdown", lambda: False)
+    monkeypatch.setattr(paper, "is_daily_loss_halted", lambda _client=None: False)
+    monkeypatch.setattr(paper, "is_streak_paused", lambda: False)
+    monkeypatch.setattr(paper, "get_open_trades", lambda: [])
+    monkeypatch.setattr(paper, "drawdown_scaling_factor", lambda: 1.0)
+    monkeypatch.setattr(paper, "kelly_quantity", lambda kelly, price, **kw: 1)
+    monkeypatch.setattr(
+        paper, "portfolio_kelly_fraction", lambda kelly, city, date, side="yes": 0.05
+    )
+    monkeypatch.setattr(paper, "corr_kelly_scale", lambda opp, trades: 1.0)
+    monkeypatch.setattr(
+        paper, "spread_kelly_multiplier", lambda yes_bid, yes_ask, edge: 1.0
+    )
+    # Bypass the multi-guard validation to keep the test focused on the drawdown gate
+    monkeypatch.setattr(
+        oe, "_validate_trade_opportunity", lambda opp, live=False: (True, "ok")
+    )
+    # Bypass internal spend/cap helpers
+    monkeypatch.setattr(oe, "_daily_paper_spend", lambda: 0.0)
+    monkeypatch.setattr(oe, "_daily_sameday_spend", lambda: 0.0)
+    monkeypatch.setattr(oe, "_sameday_effective_cap", lambda max_pos: max_pos)
+
+    opps = [
+        {
+            "ticker": "KXHIGH-A",
+            "side": "yes",
+            "qty": 1,
+            "entry_price": 0.55,
+            "net_edge": 0.15,
+            "days_out": 1,
+            "ci_adjusted_kelly": 0.05,
+            "forecast_prob": 0.70,
+            "market_prob": 0.55,
+            "yes_bid": 0.52,
+            "yes_ask": 0.58,
+        },
+        {
+            "ticker": "KXHIGH-B",
+            "side": "yes",
+            "qty": 1,
+            "entry_price": 0.55,
+            "net_edge": 0.15,
+            "days_out": 1,
+            "ci_adjusted_kelly": 0.05,
+            "forecast_prob": 0.70,
+            "market_prob": 0.55,
+            "yes_bid": 0.52,
+            "yes_ask": 0.58,
+        },
+    ]
+
+    result = oe._auto_place_trades(opps, client=None)
+
+    assert len(placed) == 1, (
+        f"Expected 1 trade placed, got {len(placed)}: {placed}. "
+        "The per-trade drawdown guard must call is_paused_drawdown() before each order."
+    )
+    assert result == 1, (
+        f"Return value must be count of placements; expected 1, got {result}"
+    )

@@ -1248,6 +1248,22 @@ def _auto_place_trades(
             _skip_reasons.append(f"{ticker}: already_this_cycle")
             continue
 
+        # Per-trade drawdown gate — re-evaluated before each individual placement.
+        # The cycle-level check at the top of this function runs once; if several
+        # trades collectively push the balance below the HALT floor within a single
+        # cron cycle, this guard catches the breach before the next order goes out.
+        # Re-import on each iteration so tests (and real placement callbacks) that
+        # update paper.is_paused_drawdown mid-cycle are observed immediately.
+        from paper import is_paused_drawdown as _is_paused_now
+
+        if _is_paused_now():
+            _log.warning(
+                "auto_place_trades: HALT — drawdown floor breached mid-cycle, "
+                "stopping after %d placements",
+                placed,
+            )
+            break
+
         if live and live_config:
             _live_balance = live_config.get("balance", 0.0)
             # Per-iteration daily cap check for live path — the initial check at the top
