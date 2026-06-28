@@ -3535,7 +3535,7 @@ def _notify_feature_activation(key: str, message: str, extra: dict) -> None:
         return  # Already notified; do not overwrite (user may have dismissed it)
 
     existing[key] = {
-        "activated_at": date.today().isoformat(),
+        "activated_at": datetime.now(UTC).date().isoformat(),
         "message": message,
         "dismissed": False,
         **extra,
