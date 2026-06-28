@@ -1402,6 +1402,19 @@ def _cmd_cron_body(
                             "model_disagreement_flag": analysis.get(
                                 "model_disagreement_flag", False
                             ),
+                            # Per-source probabilities for dashboard attribution display
+                            "ensemble_prob": round(
+                                analysis.get("ensemble_prob", 0) * 100, 1
+                            )
+                            if analysis.get("ensemble_prob") is not None
+                            else None,
+                            "nws_prob": round(analysis.get("nws_prob", 0) * 100, 1)
+                            if analysis.get("nws_prob") is not None
+                            else None,
+                            "clim_prob": round(analysis.get("clim_prob", 0) * 100, 1)
+                            if analysis.get("clim_prob") is not None
+                            else None,
+                            "forecast_temp_f": analysis.get("forecast_temp"),
                         }
                     )
                     # Only consider for auto-trading if edge gates passed.

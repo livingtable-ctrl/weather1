@@ -247,6 +247,15 @@ export default function SignalsTab() {
                   {o.near_threshold && <span style={{ marginLeft: 12, color: '#ca8a04' }}>⚠ Near threshold</span>}
                   {o.is_hedge && <span style={{ marginLeft: 12 }}>↔ Hedges existing position</span>}
                 </div>
+                {o.ensemble_prob != null && (
+                  <div style={{ marginTop: 10, fontSize: 12, color: 'var(--text-muted)' }}>
+                    <strong>Source breakdown:</strong>
+                    {' '}Ensemble: {o.ensemble_prob.toFixed(0)}%
+                    {o.nws_prob != null && <>{' '}· NWS: {o.nws_prob.toFixed(0)}%</>}
+                    {o.clim_prob != null && <>{' '}· Clim: {o.clim_prob.toFixed(0)}%</>}
+                    {o.forecast_temp_f != null && <>{' '}· Forecast: {o.forecast_temp_f.toFixed(1)}°F</>}
+                  </div>
+                )}
               </td>
             </tr>
           )}
