@@ -159,3 +159,24 @@ class TestCircuitBreakerBurstWindow:
         # All 3 are independent events — circuit should be open
         assert cb.failure_count == 3
         assert cb.is_open()
+
+
+def test_blend_uses_nws_clim_only_when_ensemble_circuit_open(monkeypatch):
+    """When ensemble circuit is OPEN, blended_prob must use only nws+clim weights."""
+    import weather_markets as wm
+
+    # Force the circuit open
+    monkeypatch.setattr(wm, "_ensemble_circuit_is_open", lambda: True)
+
+    nws_prob = 0.70
+    clim_prob = 0.60
+    ens_prob = 0.10  # stale / wrong value from before the outage
+
+    w_ens, w_nws, w_clim = 0.60, 0.35, 0.05  # normal above weights
+    result = wm._blend_with_circuit_fallback(
+        ens_prob, nws_prob, clim_prob, w_ens, w_nws, w_clim
+    )
+
+    # With ens excluded, renormalized: w_nws=0.35/0.40=0.875, w_clim=0.05/0.40=0.125
+    expected = round(0.875 * nws_prob + 0.125 * clim_prob, 6)
+    assert abs(result - expected) < 1e-4

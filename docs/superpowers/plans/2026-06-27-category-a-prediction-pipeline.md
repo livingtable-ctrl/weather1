@@ -1444,25 +1444,536 @@ git commit -m "feat(backtest): add true point-in-time ensemble via Previous Runs
 
 ## A9: Per-Regime Blend Weight Selection
 
-*Lower priority — implement after EMOS is live and has 30+ settled trades.*
+**Goal:** When `regime.py` detects `heat_dome`, `cold_snap`, or `blocking_high`, shift blend weight toward ensemble (better at extremes); when `volatile`, shift toward NWS. Implemented now, **dormant until threshold is met**, then **auto-activates with user notification** — no manual action required.
 
-**Goal:** When `regime.py` detects `heat_dome` or `cold_snap`, automatically increase ECMWF-AIFS weight (better at extremes) and decrease climatology weight. When `volatile`, increase NWS weight.
+**Activation condition:** 30+ multi-day settled trades (checked at runtime via `count_settled_predictions_rolling()`). Once crossed, writes `data/feature_activations.json` once, logs a WARNING to cron, and exposes a dashboard alert via `/api/status`. Subsequent process restarts detect the file and stay active silently.
 
-**Files:** `weather_markets.py` (regime-adjusted blend before condition/seasonal lookup)
+**Files:**
+- Modify: `weather_markets.py` — add `_REGIME_BLEND_WEIGHTS`, `_regime_blend_active()`, wire into `_blend_weights()`
+- Modify: `web_app.py` — expose `feature_activations` in `/api/status`
+- New helper: `_notify_feature_activation(key, message, extra)` in `weather_markets.py`
+- Test: `tests/test_forecasting.py`
 
-*Defer to post-graduation; document the regime→weight mapping here when implementing:*
-- heat_dome: ens=0.70/nws=0.25/clim=0.05
-- cold_snap: ens=0.70/nws=0.25/clim=0.05
-- blocking_high: ens=0.65/nws=0.30/clim=0.05
-- volatile: ens=0.30/nws=0.60/clim=0.10
-- normal: use existing seasonal/condition weights
+- [ ] **Step 1: Write failing tests**
+
+```python
+# tests/test_forecasting.py — add class TestRegimeBlend
+class TestRegimeBlend:
+    def test_regime_blend_inactive_below_threshold(self, monkeypatch):
+        """_regime_blend_active returns False when settled count < 30."""
+        import weather_markets as wm
+        monkeypatch.setattr("weather_markets._regime_blend_settled_count", lambda: 5)
+        assert wm._regime_blend_active() is False
+
+    def test_regime_blend_active_above_threshold(self, monkeypatch):
+        """_regime_blend_active returns True when settled count >= 30."""
+        import weather_markets as wm
+        monkeypatch.setattr("weather_markets._regime_blend_settled_count", lambda: 35)
+        # Reset cached state so the monkeypatch takes effect
+        wm._regime_blend_state["active"] = None
+        assert wm._regime_blend_active() is True
+
+    def test_heat_dome_overrides_weights(self, monkeypatch):
+        """heat_dome regime → ens=0.70, nws=0.25, clim=0.05 (after active)."""
+        import weather_markets as wm
+        monkeypatch.setattr("weather_markets._regime_blend_settled_count", lambda: 35)
+        wm._regime_blend_state["active"] = None
+        w_ens, w_clim, w_nws = wm._blend_weights(
+            days_out=1, has_nws=True, has_clim=True,
+            city=None, season=None, condition_type="above",
+            regime="heat_dome",
+        )
+        assert w_ens == pytest.approx(0.70, abs=0.01)
+        assert w_nws == pytest.approx(0.25, abs=0.01)
+        assert w_clim == pytest.approx(0.05, abs=0.01)
+
+    def test_normal_regime_uses_existing_weights(self, monkeypatch):
+        """normal regime → existing condition/seasonal weights unchanged."""
+        import weather_markets as wm
+        monkeypatch.setattr("weather_markets._regime_blend_settled_count", lambda: 35)
+        wm._regime_blend_state["active"] = None
+        w_ens_regime, _, _ = wm._blend_weights(
+            days_out=1, has_nws=True, has_clim=True,
+            city=None, season=None, condition_type="above",
+            regime="normal",
+        )
+        w_ens_base, _, _ = wm._blend_weights(
+            days_out=1, has_nws=True, has_clim=True,
+            city=None, season=None, condition_type="above",
+            regime=None,
+        )
+        assert w_ens_regime == pytest.approx(w_ens_base, abs=0.01)
+
+    def test_notify_writes_feature_activations_file(self, monkeypatch, tmp_path):
+        """_notify_feature_activation writes data/feature_activations.json on first call."""
+        import weather_markets as wm
+        monkeypatch.setattr(wm, "_FEATURE_ACTIVATIONS_PATH", tmp_path / "feature_activations.json")
+        wm._notify_feature_activation("a9_regime_blend", "Regime blend auto-activated", {"n_settled": 31})
+        import json
+        data = json.loads((tmp_path / "feature_activations.json").read_text())
+        assert "a9_regime_blend" in data
+        assert data["a9_regime_blend"]["dismissed"] is False
+        assert data["a9_regime_blend"]["n_settled"] == 31
+
+    def test_notify_does_not_overwrite_existing_key(self, monkeypatch, tmp_path):
+        """_notify_feature_activation is idempotent — does not rewrite if key exists."""
+        import json, weather_markets as wm
+        path = tmp_path / "feature_activations.json"
+        path.write_text(json.dumps({"a9_regime_blend": {"activated_at": "2026-07-01", "dismissed": True}}))
+        monkeypatch.setattr(wm, "_FEATURE_ACTIVATIONS_PATH", path)
+        wm._notify_feature_activation("a9_regime_blend", "should not overwrite", {})
+        data = json.loads(path.read_text())
+        assert data["a9_regime_blend"]["dismissed"] is True  # original value preserved
+```
+
+- [ ] **Step 2: Add constants, state, and helpers to `weather_markets.py`**
+
+Place near the other module-level constants (after `_DEW_POINT_SENSITIVE_CITIES`):
+
+```python
+_FEATURE_ACTIVATIONS_PATH = Path(__file__).parent / "data" / "feature_activations.json"
+
+_REGIME_BLEND_WEIGHTS: dict[str, tuple[float, float, float]] = {
+    # (w_ens, w_clim, w_nws) — domain-knowledge weights for extreme regimes
+    "heat_dome":    (0.70, 0.05, 0.25),
+    "cold_snap":    (0.70, 0.05, 0.25),
+    "blocking_high": (0.65, 0.05, 0.30),
+    "volatile":     (0.30, 0.10, 0.60),
+    # "normal" is intentionally absent — falls through to existing weight logic
+}
+
+# Mutable state dict (not module-level bool) so tests can reset between runs
+_regime_blend_state: dict = {"active": None}  # None = unchecked, True/False = checked
+
+
+def _regime_blend_settled_count() -> int:
+    """Thin wrapper around tracker so tests can monkeypatch it."""
+    from tracker import count_settled_predictions_rolling
+    return count_settled_predictions_rolling()
+
+
+def _notify_feature_activation(key: str, message: str, extra: dict) -> None:
+    """Write a one-time entry to feature_activations.json and log a WARNING.
+
+    Idempotent — if the key already exists the file is not modified.
+    """
+    import json as _json
+    from datetime import date as _date
+
+    try:
+        existing = _json.loads(_FEATURE_ACTIVATIONS_PATH.read_text()) if _FEATURE_ACTIVATIONS_PATH.exists() else {}
+    except Exception:
+        existing = {}
+
+    if key in existing:
+        return  # Already notified; do not overwrite (user may have dismissed it)
+
+    existing[key] = {
+        "activated_at": _date.today().isoformat(),
+        "message": message,
+        "dismissed": False,
+        **extra,
+    }
+    try:
+        atomic_write_json(_FEATURE_ACTIVATIONS_PATH, existing)
+    except Exception as exc:
+        _log.warning("_notify_feature_activation: could not write %s: %s", _FEATURE_ACTIVATIONS_PATH, exc)
+
+    _log.warning(
+        "AUTO-ACTIVATION: %s. Check the dashboard for details.", message
+    )
+
+
+def _regime_blend_active() -> bool:
+    """Return True when enough settled trades warrant regime-specific blend weights.
+
+    Checks once per process, then caches. Writes a one-time user notification the
+    first time the threshold is crossed.
+    """
+    if _regime_blend_state["active"] is not None:
+        return _regime_blend_state["active"]
+
+    n = _regime_blend_settled_count()
+    active = n >= 30
+    _regime_blend_state["active"] = active
+
+    if active:
+        _notify_feature_activation(
+            "a9_regime_blend",
+            f"Regime blend weights auto-activated ({n} multi-day settled trades reached)",
+            {"n_settled": n},
+        )
+    return active
+```
+
+- [ ] **Step 3: Wire into `_blend_weights()`**
+
+Add `regime: str | None = None` parameter to `_blend_weights()`. At the **end** of the function, before the final return, add:
+
+```python
+# Regime override — only when threshold is met and regime is an extreme type
+if regime and regime in _REGIME_BLEND_WEIGHTS and _regime_blend_active():
+    w_ens, w_clim, w_nws = _REGIME_BLEND_WEIGHTS[regime]
+    if not has_nws:
+        w_ens += w_nws * 0.6
+        w_clim += w_nws * 0.4
+        w_nws = 0.0
+    if not has_clim:
+        w_ens += w_clim
+        w_clim = 0.0
+    total = w_ens + w_clim + w_nws
+    if total > 0.0:
+        w_ens, w_clim, w_nws = w_ens / total, w_clim / total, w_nws / total
+    return _nws_days_out_scale(w_ens, w_clim, w_nws, days_out)
+```
+
+Then in `analyze_trade`, where `_blend_weights()` is called, pass `regime=_regime_info.get("regime")`.
+
+- [ ] **Step 4: Expose `feature_activations` in `/api/status` (`web_app.py`)**
+
+In the `api_status()` function, add a try/except block alongside the others:
+
+```python
+try:
+    import json as _json
+    from weather_markets import _FEATURE_ACTIVATIONS_PATH
+    _activations = _json.loads(_FEATURE_ACTIVATIONS_PATH.read_text()) if _FEATURE_ACTIVATIONS_PATH.exists() else {}
+except Exception:
+    _activations = {}
+```
+
+Include in the returned dict: `"feature_activations": _activations`
+
+The dashboard reads this and renders a dismissible banner for any entry where `dismissed is False`. Dismissal endpoint: add a `POST /api/dismiss-feature/<key>` route that sets `dismissed: true` in the file.
+
+- [ ] **Step 5: Commit**
+
+```
+git add weather_markets.py web_app.py tests/test_forecasting.py
+git commit -m "feat(blend): regime-specific blend weights with auto-activation at 30 settled trades"
+```
 
 ---
 
 ## A10: Second-Order Climate Indices (PDO, PNA)
 
-*Lowest priority — implement only after per-city Brier shows regional patterns.*
+**Goal:** Add Pacific Decadal Oscillation (PDO) and Pacific-North American (PNA) indices to `climate_indices.py`. PDO affects west-coast city temperatures (LA, SanFrancisco, Seattle); PNA affects central/eastern US. Implemented now, **dormant until threshold is met**, then **auto-activates with user notification** — no manual action required.
 
-**Goal:** Add Pacific Decadal Oscillation (PDO) and Pacific-North American pattern (PNA) indices to `climate_indices.py`. PDO affects west coast temperatures; PNA affects central/eastern US. NOAA publishes both indices at `https://www.ncdc.noaa.gov/teleconnections/`.
+**Index fetching is always-on** from day one (passive, cheap, weekly refresh to `data/pdo_pna.json`). **Blend integration** auto-activates separately when both are true: 20+ settled multi-day trades for each west-coast city AND `data/pdo_pna.json` is populated.
 
-*No immediate implementation plan — revisit when west coast city performance lags east coast.*
+**NOAA data sources:**
+- PDO: `https://www.ncdc.noaa.gov/teleconnections/pdo/data.csv`
+- PNA: `https://www.ncdc.noaa.gov/teleconnections/pna/data.csv`
+Both return CSV: `Date,Value` rows with `YYYYMM` date format.
+
+**Temperature adjustment magnitude (domain knowledge):**
+- PDO +1 → LA/SF/Seattle approximately +0.8°F in DJF (winter), +0.3°F other seasons
+- PNA +1 → Central/Eastern US approximately +1.2°F in winter, negligible in summer
+- Apply as a `forecast_temp` correction, not a probability correction
+
+**Files:**
+- Modify: `climate_indices.py` — add `fetch_pdo_pna()`, `get_pdo_pna()`, `apply_pdo_pna_correction(city, forecast_temp_f, month)`
+- Modify: `tracker.py` — add `count_settled_west_coast_multiday()`
+- Modify: `weather_markets.py` — wire correction after station bias; add `_pdopna_blend_active()`
+- Modify: `web_app.py` — `feature_activations` key (already added in A9)
+- Test: `tests/test_forecasting.py`
+
+- [ ] **Step 1: Add `fetch_pdo_pna()` and `get_pdo_pna()` to `climate_indices.py`**
+
+```python
+_PDO_URL = "https://www.ncdc.noaa.gov/teleconnections/pdo/data.csv"
+_PNA_URL = "https://www.ncdc.noaa.gov/teleconnections/pna/data.csv"
+_PDO_PNA_PATH = Path(__file__).parent / "data" / "pdo_pna.json"
+_PDO_PNA_TTL_DAYS = 7  # fetch at most weekly; indices are monthly
+
+
+def _fetch_noaa_csv_index(url: str) -> dict[str, float]:
+    """Parse a NOAA teleconnections CSV (Date=YYYYMM, Value columns).
+
+    Returns {YYYYMM: value} dict. Skips header and missing-value rows.
+    """
+    resp = requests.get(url, timeout=20)
+    resp.raise_for_status()
+    result = {}
+    for line in resp.text.splitlines():
+        parts = line.strip().split(",")
+        if len(parts) < 2:
+            continue
+        try:
+            date_str = parts[0].strip()
+            val = float(parts[1].strip())
+            if len(date_str) == 6 and date_str.isdigit() and val > -99:
+                result[date_str] = val
+        except (ValueError, IndexError):
+            continue
+    return result
+
+
+def fetch_pdo_pna() -> dict:
+    """Fetch PDO and PNA indices from NOAA and save to data/pdo_pna.json.
+
+    Returns {"pdo": {YYYYMM: float}, "pna": {YYYYMM: float}, "fetched_at": ISO}.
+    Raises on network failure — caller should catch and skip.
+    """
+    from datetime import datetime, timezone
+    pdo = _fetch_noaa_csv_index(_PDO_URL)
+    pna = _fetch_noaa_csv_index(_PNA_URL)
+    payload = {
+        "pdo": pdo,
+        "pna": pna,
+        "fetched_at": datetime.now(timezone.utc).isoformat(),
+    }
+    _PDO_PNA_PATH.parent.mkdir(exist_ok=True)
+    _PDO_PNA_PATH.write_text(__import__("json").dumps(payload))
+    return payload
+
+
+def get_pdo_pna(year: int | None = None, month: int | None = None) -> dict[str, float]:
+    """Return current PDO and PNA values. Reads from file; fetches if stale or absent.
+
+    Returns {"pdo": float, "pna": float}. Returns {"pdo": 0.0, "pna": 0.0} on failure.
+    File is refreshed at most weekly (TTL-gated) so cron cycles don't hammer NOAA.
+    """
+    import json
+    from datetime import datetime, timezone, timedelta
+
+    now = datetime.now(timezone.utc)
+    data = None
+    if _PDO_PNA_PATH.exists():
+        try:
+            data = json.loads(_PDO_PNA_PATH.read_text())
+            fetched_at = datetime.fromisoformat(data["fetched_at"])
+            if (now - fetched_at).days < _PDO_PNA_TTL_DAYS:
+                pass  # cache is fresh; use it
+            else:
+                data = None  # stale; fall through to fetch
+        except Exception:
+            data = None
+
+    if data is None:
+        try:
+            data = fetch_pdo_pna()
+        except Exception:
+            return {"pdo": 0.0, "pna": 0.0}
+
+    target_year = year or now.year
+    target_month = month or now.month
+    key = f"{target_year}{target_month:02d}"
+
+    def _latest(index_dict: dict, lookback: int = 3) -> float:
+        for i in range(lookback):
+            m = target_month - i
+            y = target_year
+            if m <= 0:
+                m += 12
+                y -= 1
+            k = f"{y}{m:02d}"
+            if k in index_dict:
+                return float(index_dict[k])
+        return 0.0
+
+    return {
+        "pdo": _latest(data.get("pdo", {})),
+        "pna": _latest(data.get("pna", {})),
+    }
+
+
+# Seasonal PDO→temperature adjustment coefficients for west-coast cities.
+# Units: °F per +1 PDO index unit.
+_PDO_TEMP_COEFF: dict[str, dict[str, float]] = {
+    "LA":            {"DJF": 0.8, "MAM": 0.4, "JJA": 0.2, "SON": 0.4},
+    "SanFrancisco":  {"DJF": 0.8, "MAM": 0.4, "JJA": 0.2, "SON": 0.4},
+    "Seattle":       {"DJF": 0.8, "MAM": 0.4, "JJA": 0.2, "SON": 0.4},
+}
+# PNA→temperature adjustment for central/eastern US.
+_PNA_TEMP_COEFF: dict[str, dict[str, float]] = {
+    "Chicago":     {"DJF": 1.2, "MAM": 0.4, "JJA": 0.1, "SON": 0.4},
+    "Minneapolis": {"DJF": 1.2, "MAM": 0.4, "JJA": 0.1, "SON": 0.4},
+    "NYC":         {"DJF": 1.0, "MAM": 0.3, "JJA": 0.1, "SON": 0.3},
+    "Boston":      {"DJF": 1.0, "MAM": 0.3, "JJA": 0.1, "SON": 0.3},
+}
+
+
+def _month_to_season(month: int) -> str:
+    return {12: "DJF", 1: "DJF", 2: "DJF",
+            3: "MAM", 4: "MAM", 5: "MAM",
+            6: "JJA", 7: "JJA", 8: "JJA",
+            9: "SON", 10: "SON", 11: "SON"}[month]
+
+
+def apply_pdo_pna_correction(city: str, forecast_temp_f: float, month: int) -> float:
+    """Return a temperature bias correction (°F) based on PDO/PNA for the city and month.
+
+    Returns 0.0 for cities not in the coefficient tables. Does not modify forecast_temp_f
+    directly — caller adds the result: forecast_temp_f += apply_pdo_pna_correction(...).
+    """
+    season = _month_to_season(month)
+    pdo_coeff = _PDO_TEMP_COEFF.get(city, {}).get(season, 0.0)
+    pna_coeff = _PNA_TEMP_COEFF.get(city, {}).get(season, 0.0)
+
+    if pdo_coeff == 0.0 and pna_coeff == 0.0:
+        return 0.0
+
+    indices = get_pdo_pna()
+    correction = pdo_coeff * indices["pdo"] + pna_coeff * indices["pna"]
+    # Clamp: never correct more than ±3°F from a single large index excursion
+    return round(max(-3.0, min(3.0, correction)), 2)
+```
+
+- [ ] **Step 2: Add `count_settled_west_coast_multiday()` to `tracker.py`**
+
+```python
+_WEST_COAST_CITIES = {"LA", "SanFrancisco", "Seattle"}
+
+def count_settled_west_coast_multiday() -> dict[str, int]:
+    """Return count of settled multi-day predictions per west-coast city."""
+    init_db()
+    with _conn() as con:
+        rows = con.execute(
+            """
+            SELECT p.city, COUNT(*)
+            FROM   predictions p
+            JOIN   outcomes o ON o.ticker = p.ticker
+            WHERE  p.city IN ('LA', 'SanFrancisco', 'Seattle')
+              AND  (p.days_out IS NULL OR p.days_out >= 1)
+              AND  o.settled_temp_f IS NOT NULL
+            GROUP  BY p.city
+            """,
+        ).fetchall()
+    return {city: n for city, n in rows}
+```
+
+- [ ] **Step 3: Add `_pdopna_blend_active()` to `weather_markets.py` and wire correction**
+
+```python
+_pdopna_blend_state: dict = {"active": None}
+_PDOPNA_WEST_COAST_THRESHOLD = 20  # settled multi-day trades per city
+
+def _pdopna_settled_counts() -> dict[str, int]:
+    from tracker import count_settled_west_coast_multiday
+    return count_settled_west_coast_multiday()
+
+def _pdopna_blend_active() -> bool:
+    """Auto-activate PDO/PNA correction once west-coast data and index file are ready.
+
+    Checks once per process. Writes a one-time user notification on first activation.
+    """
+    if _pdopna_blend_state["active"] is not None:
+        return _pdopna_blend_state["active"]
+
+    from climate_indices import _PDO_PNA_PATH
+    counts = _pdopna_settled_counts()
+    west_coast = ["LA", "SanFrancisco", "Seattle"]
+    enough_data = all(counts.get(c, 0) >= _PDOPNA_WEST_COAST_THRESHOLD for c in west_coast)
+    indices_available = _PDO_PNA_PATH.exists()
+    active = enough_data and indices_available
+    _pdopna_blend_state["active"] = active
+
+    if active:
+        _notify_feature_activation(
+            "a10_pdopna",
+            f"PDO/PNA blend auto-activated ({_PDOPNA_WEST_COAST_THRESHOLD}+ west-coast settled trades + index file present)",
+            {"counts": counts},
+        )
+    return active
+```
+
+In `analyze_trade`, after the dew-point correction block, add:
+
+```python
+if _pdopna_blend_active():
+    from climate_indices import apply_pdo_pna_correction
+    _pdopna_adj = apply_pdo_pna_correction(city, forecast_temp, target_date.month)
+    if _pdopna_adj != 0.0:
+        _log.debug(
+            "PDO/PNA correction for %s: %.2f°F (month=%d)",
+            city, _pdopna_adj, target_date.month,
+        )
+        forecast_temp += _pdopna_adj
+```
+
+- [ ] **Step 4: Write tests**
+
+```python
+# tests/test_forecasting.py — add class TestPDOPNA
+class TestPDOPNA:
+    def test_apply_pdo_pna_correction_la_winter(self, monkeypatch):
+        """LA in DJF with PDO=+1 → approximately +0.8°F correction."""
+        from climate_indices import apply_pdo_pna_correction
+        import climate_indices as ci
+        monkeypatch.setattr(ci, "get_pdo_pna", lambda **kw: {"pdo": 1.0, "pna": 0.0})
+        correction = apply_pdo_pna_correction("LA", forecast_temp_f=65.0, month=1)
+        assert correction == pytest.approx(0.8, abs=0.05)
+
+    def test_apply_pdo_pna_correction_unknown_city_zero(self, monkeypatch):
+        """Cities not in coefficient tables return 0.0."""
+        from climate_indices import apply_pdo_pna_correction
+        import climate_indices as ci
+        monkeypatch.setattr(ci, "get_pdo_pna", lambda **kw: {"pdo": 2.0, "pna": 2.0})
+        assert apply_pdo_pna_correction("Dallas", forecast_temp_f=90.0, month=7) == 0.0
+
+    def test_apply_pdo_pna_correction_clamped(self, monkeypatch):
+        """Extreme index values (PDO=10) are clamped to ±3°F."""
+        from climate_indices import apply_pdo_pna_correction
+        import climate_indices as ci
+        monkeypatch.setattr(ci, "get_pdo_pna", lambda **kw: {"pdo": 10.0, "pna": 0.0})
+        correction = apply_pdo_pna_correction("LA", forecast_temp_f=65.0, month=1)
+        assert correction <= 3.0
+
+    def test_fetch_pdo_pna_parses_csv(self, monkeypatch, tmp_path):
+        """fetch_pdo_pna correctly parses NOAA CSV and writes pdo_pna.json."""
+        import climate_indices as ci
+        monkeypatch.setattr(ci, "_PDO_PNA_PATH", tmp_path / "pdo_pna.json")
+
+        csv_content = "Date,Value\n202601,0.85\n202602,-0.32\n"
+        mock_resp = type("R", (), {
+            "text": csv_content,
+            "raise_for_status": lambda self: None,
+        })()
+        monkeypatch.setattr(ci.requests, "get", lambda *a, **k: mock_resp)
+
+        result = ci.fetch_pdo_pna()
+        assert "202601" in result["pdo"]
+        assert result["pdo"]["202601"] == pytest.approx(0.85, abs=0.001)
+
+    def test_pdopna_inactive_below_threshold(self, monkeypatch):
+        """_pdopna_blend_active returns False when west-coast count < 20."""
+        import weather_markets as wm
+        monkeypatch.setattr("weather_markets._pdopna_settled_counts",
+                            lambda: {"LA": 5, "SanFrancisco": 3, "Seattle": 2})
+        wm._pdopna_blend_state["active"] = None
+        assert wm._pdopna_blend_active() is False
+
+    def test_pdopna_inactive_without_index_file(self, monkeypatch, tmp_path):
+        """_pdopna_blend_active returns False when pdo_pna.json is absent."""
+        import weather_markets as wm
+        from climate_indices import _PDO_PNA_PATH
+        monkeypatch.setattr("weather_markets._pdopna_settled_counts",
+                            lambda: {"LA": 25, "SanFrancisco": 22, "Seattle": 21})
+        # Point to a non-existent path
+        import climate_indices as ci
+        monkeypatch.setattr(ci, "_PDO_PNA_PATH", tmp_path / "missing.json")
+        wm._pdopna_blend_state["active"] = None
+        assert wm._pdopna_blend_active() is False
+```
+
+- [ ] **Step 5: Add weekly PDO/PNA fetch to cron**
+
+In `cron.py`, find the weekly maintenance block (search for `"calibrate"` or the weekly task section). Add:
+
+```python
+# Weekly: refresh PDO/PNA index file (passive; never blocks trading)
+try:
+    from climate_indices import fetch_pdo_pna
+    fetch_pdo_pna()
+    _log.debug("PDO/PNA indices refreshed")
+except Exception as exc:
+    _log.debug("PDO/PNA refresh failed (non-fatal): %s", exc)
+```
+
+- [ ] **Step 6: Commit**
+
+```
+git add climate_indices.py tracker.py weather_markets.py tests/test_forecasting.py
+git commit -m "feat(indices): add PDO/PNA climate indices with auto-activation at 20 west-coast settled trades"
+```

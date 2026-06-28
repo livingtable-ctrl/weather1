@@ -21,6 +21,7 @@ import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
+import metar as _metar
 from calibration import load_city_weights as _load_city_weights
 from calibration import load_condition_weights as _load_condition_weights
 from calibration import load_seasonal_weights as _load_seasonal_weights
@@ -368,6 +369,33 @@ _CITY_METAR_STATION: dict[str, str] = {
 def _metar_station_for_city(city: str) -> str | None:
     """Return the METAR/ASOS station for a city (matches Kalshi settlement)."""
     return _CITY_METAR_STATION.get(city)
+
+
+# Cities where airport dew point depression suppresses afternoon high temperatures.
+# On humid days, sea breeze and evaporative cooling cause METAR stations to read
+# 3–7°F cooler than dry-air model forecasts.
+_DEW_POINT_SENSITIVE_CITIES = {"Miami", "Houston", "SanFrancisco", "Seattle"}
+
+
+def _dew_point_temp_correction(
+    city: str, dew_point_f: float, forecast_temp_f: float
+) -> float:
+    """Return a bias correction (°F, negative = cooler) based on dew point depression.
+
+    On humid days (dew point depression < 20°F), sea breeze and evaporative cooling
+    suppress afternoon high temperatures at airport stations relative to model forecasts.
+    """
+    if city not in _DEW_POINT_SENSITIVE_CITIES:
+        return 0.0
+
+    depression = forecast_temp_f - dew_point_f
+    if depression >= 20.0:
+        return 0.0
+
+    max_correction = -3.0
+    correction = max_correction * (1.0 - depression / 20.0)
+    # Clamp handles supersaturation (dew > forecast_temp, depression < 0) on marine-layer days
+    return round(max(-5.0, correction), 2)
 
 
 FORECAST_BASE = "https://api.open-meteo.com/v1/forecast"
@@ -1514,6 +1542,76 @@ def fetch_temperature_nbm(
         return None
 
 
+# ── HRRR (High-Resolution Rapid Refresh) — same-day only ────────────────────
+# HRRR runs every hour at 3 km resolution and is the best available model for
+# same-day (days_out == 0) CONUS markets after ~10 AM local time.
+# Open-Meteo exposes HRRR implicitly via model=best_match for CONUS locations.
+# This is a standalone utility; it is NOT wired into analyze_trade yet — that
+# happens once HRRR data has been validated against settled same-day trades.
+
+_HRRR_CACHE: dict[str, tuple[float | None, float]] = {}
+
+
+def _fetch_hrrr_temp(city: str, target_date: date, var: str = "max") -> float | None:
+    """Fetch HRRR-derived hourly temperature and return the daily max or min.
+
+    Uses Open-Meteo's hourly forecast endpoint with model=best_match, which
+    selects HRRR for CONUS cities.  Returns daily max when var='max', daily min
+    when var='min'.  Returns None if HRRR data is unavailable or the city is not
+    mapped in CITY_COORDS.
+
+    Intended for same-day markets (days_out == 0) only.  Uses a 4-hour in-process
+    cache matching the TTL of the other model caches (_MODEL_CACHE_TTL).
+    """
+    import requests as _req
+
+    cache_key = f"{city}_{target_date.isoformat()}_{var}"
+    cached = _HRRR_CACHE.get(cache_key)
+    if cached is not None:
+        val, ts = cached
+        if time.monotonic() - ts < _MODEL_CACHE_TTL:
+            return val
+
+    city_info = CITY_COORDS.get(city)
+    if not city_info:
+        return None
+
+    # CITY_COORDS stores (lat, lon, timezone) tuples — unpack directly.
+    lat, lon, tz = city_info[0], city_info[1], city_info[2]
+
+    date_str = target_date.isoformat()
+    try:
+        resp = _req.get(
+            FORECAST_BASE,
+            params={
+                "latitude": lat,
+                "longitude": lon,
+                "hourly": "temperature_2m",
+                "temperature_unit": "fahrenheit",
+                "timezone": tz,
+                "start_date": date_str,
+                "end_date": date_str,
+                "models": "best_match",
+                "forecast_days": 1,
+            },
+            timeout=10,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        temps = data.get("hourly", {}).get("temperature_2m", [])
+        valid = [t for t in temps if t is not None]
+        if not valid:
+            _HRRR_CACHE[cache_key] = (None, time.monotonic())
+            return None
+        result = float(max(valid) if var == "max" else min(valid))
+        _HRRR_CACHE[cache_key] = (result, time.monotonic())
+        return result
+    except Exception as exc:
+        _log.debug("_fetch_hrrr_temp: %s %s failed: %s", city, date_str, exc)
+        _HRRR_CACHE[cache_key] = (None, time.monotonic())
+        return None
+
+
 # ── weatherapi.com (commercial, independent model chain) ─────────────────────
 
 WEATHERAPI_KEY: str = os.getenv("WEATHERAPI_KEY", "")
@@ -2470,6 +2568,49 @@ def _model_weights(city: str, month: int | None = None) -> dict[str, float]:
     }
 
 
+def _ensemble_circuit_is_open() -> bool:
+    """Return True if the Open-Meteo ensemble circuit breaker is currently OPEN."""
+    return _ensemble_cb.is_open()
+
+
+def _blend_with_circuit_fallback(
+    ens_prob: float | None,
+    nws_prob: float | None,
+    clim_prob: float | None,
+    w_ens: float,
+    w_nws: float,
+    w_clim: float,
+) -> float:
+    """Blend source probabilities, zeroing ens weight when circuit is OPEN.
+
+    Redistributes w_ens proportionally to w_nws and w_clim when circuit is open.
+    Handles None probabilities by excluding them and renormalizing.
+    """
+    if _ensemble_circuit_is_open() and ens_prob is not None:
+        _log.warning(
+            "blend: ensemble circuit OPEN — excluding ens_prob from blend (was %.3f)",
+            ens_prob,
+        )
+        ens_prob = None
+
+    weights = []
+    probs = []
+    if ens_prob is not None:
+        weights.append(w_ens)
+        probs.append(ens_prob)
+    if nws_prob is not None:
+        weights.append(w_nws)
+        probs.append(nws_prob)
+    if clim_prob is not None:
+        weights.append(w_clim)
+        probs.append(clim_prob)
+
+    total_w = sum(weights)
+    if total_w <= 0:
+        return 0.5
+    return sum(w * p for w, p in zip(weights, probs)) / total_w
+
+
 def check_ensemble_circuit_health() -> None:
     """
     Log a warning if the open_meteo_ensemble circuit has been open for >24 hours.
@@ -2491,6 +2632,49 @@ def check_ensemble_circuit_health() -> None:
             "using NBM + weatherapi as fallback",
             secs / 60,
         )
+
+
+_BIMODAL_KELLY_MULTIPLIER = 0.10  # 10% of normal Kelly when ensemble is bimodal
+
+
+def _detect_bimodal_ensemble(temps: list[float]) -> bool:
+    """Return True when ensemble members form two distinct clusters (bimodal distribution).
+
+    Uses a largest-gap split: if both clusters contain at least 20% of members
+    AND the gap between cluster means is >= 8 degrees F, the distribution is bimodal.
+    Requires at least 10 members; returns False for smaller ensembles.
+    """
+    if len(temps) < 10:
+        return False
+
+    sorted_temps = sorted(temps)
+    n = len(sorted_temps)
+    gaps = [(sorted_temps[i + 1] - sorted_temps[i], i) for i in range(n - 1)]
+    max_gap, split_idx = max(gaps)
+
+    if max_gap < 6.0:
+        return False
+
+    cluster_a = sorted_temps[: split_idx + 1]
+    cluster_b = sorted_temps[split_idx + 1 :]
+
+    min_cluster_size = max(2, int(n * 0.20))
+    if len(cluster_a) < min_cluster_size or len(cluster_b) < min_cluster_size:
+        return False
+
+    mean_a = statistics.mean(cluster_a)
+    mean_b = statistics.mean(cluster_b)
+    return abs(mean_b - mean_a) >= 8.0
+
+
+def _get_bimodal_kelly_multiplier(temps: list[float]) -> float:
+    """Return 0.10 when ensemble is bimodal (two distinct weather scenarios), else 1.0."""
+    if _detect_bimodal_ensemble(temps):
+        _log.warning(
+            "BIMODAL ensemble detected (%d members) — Kelly reduced to 10%%", len(temps)
+        )
+        return _BIMODAL_KELLY_MULTIPLIER
+    return 1.0
 
 
 def get_ensemble_temps(
@@ -4787,6 +4971,27 @@ def analyze_trade(enriched: dict) -> dict | None:
         forecast_temp_raw = forecast_temp
         forecast_temp = forecast_temp - _get_combined_station_bias(city, var=var)
 
+        # A6: dew point coastal correction — on humid days airport stations read
+        # cooler than model forecasts due to sea breeze / evaporative cooling.
+        # Only applies to _DEW_POINT_SENSITIVE_CITIES and only when dew_point_f is
+        # available from a fresh METAR observation; skipped silently otherwise.
+        _dp_station = _metar_station_for_city(city)
+        if _dp_station and city in _DEW_POINT_SENSITIVE_CITIES:
+            _dp_obs = _metar.fetch_metar(_dp_station)
+            if _dp_obs and _dp_obs.get("dew_point_f") is not None:
+                _dp_correction = _dew_point_temp_correction(
+                    city, _dp_obs["dew_point_f"], forecast_temp
+                )
+                if _dp_correction != 0.0:
+                    _log.debug(
+                        "dew point correction for %s: %.2f°F (dew=%.1f forecast=%.1f)",
+                        city,
+                        _dp_correction,
+                        _dp_obs["dew_point_f"],
+                        forecast_temp,
+                    )
+                    forecast_temp += _dp_correction
+
         days_out = max(0, (target_date - datetime.now(UTC).date()).days)
 
     if not metar_locked:
@@ -4812,17 +5017,58 @@ def analyze_trade(enriched: dict) -> dict | None:
 
         if len(temps) >= 10:
             method = "ensemble"
-            if condition["type"] == "above":
-                ens_prob = sum(1 for t in temps if t > condition["threshold"]) / len(
-                    temps
-                )
-            elif condition["type"] == "below":
-                ens_prob = sum(1 for t in temps if t < condition["threshold"]) / len(
-                    temps
-                )
+            # EMOS path: use fitted Gaussian distribution if params are available.
+            # Falls back to raw exceedance fraction when EMOS not yet trained.
+            # CRITICAL: pass ens_var = std**2 (must square std, NOT pass std directly).
+            from ml_bias import (
+                _load_emos_params,
+                emos_exceedance_prob,
+                emos_interval_prob,
+            )
+
+            _emos_params = _load_emos_params()
+            _use_emos = (
+                _emos_params is not None
+                and ens_stats is not None
+                and ens_stats.get("std") is not None
+            )
+            if _use_emos:
+                assert _emos_params is not None  # guaranteed by _use_emos check above
+                assert ens_stats is not None  # guaranteed by _use_emos check above
+                _ens_var_live = ens_stats["std"] ** 2  # variance, not std
+                if condition["type"] == "above":
+                    ens_prob = emos_exceedance_prob(
+                        _emos_params,
+                        ens_stats["mean"],
+                        _ens_var_live,
+                        condition["threshold"],
+                    )
+                elif condition["type"] == "below":
+                    ens_prob = 1.0 - emos_exceedance_prob(
+                        _emos_params,
+                        ens_stats["mean"],
+                        _ens_var_live,
+                        condition["threshold"],
+                    )
+                else:
+                    lo, hi = condition["lower"], condition["upper"]
+                    ens_prob = emos_interval_prob(
+                        _emos_params, ens_stats["mean"], _ens_var_live, lo, hi
+                    )
+                method = "emos"
             else:
-                lo, hi = condition["lower"], condition["upper"]
-                ens_prob = sum(1 for t in temps if lo <= t <= hi) / len(temps)
+                # Fallback: raw exceedance fraction
+                if condition["type"] == "above":
+                    ens_prob = sum(
+                        1 for t in temps if t > condition["threshold"]
+                    ) / len(temps)
+                elif condition["type"] == "below":
+                    ens_prob = sum(
+                        1 for t in temps if t < condition["threshold"]
+                    ) / len(temps)
+                else:
+                    lo, hi = condition["lower"], condition["upper"]
+                    ens_prob = sum(1 for t in temps if lo <= t <= hi) / len(temps)
         else:
             # Prefer ens_stats["std"] when available — actual model disagreement
             # is more informative than the generic days-out lookup table.
@@ -5167,6 +5413,15 @@ def analyze_trade(enriched: dict) -> dict | None:
                 pass
             _w_ens_raw = _w_ens_final * (0.5 if _ensemble_cdf_prob is not None else 1.0)
             _w_cdf = _w_ens_final * (0.5 if _ensemble_cdf_prob is not None else 0.0)
+
+            # Circuit breaker gate: if ensemble is OPEN, treat ens_prob as missing so the
+            # renormalization in _active excludes it from the blend automatically.
+            if _ensemble_circuit_is_open() and ens_prob is not None:
+                _log.warning(
+                    "analyze_trade: ensemble circuit OPEN for %s — excluding ens_prob from blend",
+                    enriched.get("ticker", "?"),
+                )
+                ens_prob = None
 
             # Renormalize weights when sources are unavailable.
             # Previously missing sources were substituted with 0.5 (meaningless
@@ -5884,6 +6139,11 @@ def analyze_trade(enriched: dict) -> dict | None:
     if near_threshold:
         ci_adjusted_kelly = round(ci_adjusted_kelly * 0.75, 6)
 
+    # Bimodal ensemble guard: two distinct weather scenarios -> sharp Kelly reduction
+    _bimodal_mult = _get_bimodal_kelly_multiplier(temps) if temps else 1.0
+    if _bimodal_mult < 1.0:
+        ci_adjusted_kelly = round(ci_adjusted_kelly * _bimodal_mult, 6)
+
     _result = {
         # Core
         "forecast_prob": blended_prob,
@@ -5914,6 +6174,7 @@ def analyze_trade(enriched: dict) -> dict | None:
         # Ensemble details
         "ensemble_stats": ens_stats,
         "n_members": len(temps),
+        "bimodal": _bimodal_mult < 1.0,
         # Confidence + sizing
         "ci_low": ci_low,
         "ci_high": ci_high,

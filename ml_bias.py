@@ -8,17 +8,25 @@ from __future__ import annotations
 
 import hashlib
 import hmac as _hmac_mod
+import json
 import logging
+import math
 import os
 import pickle
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from safe_io import atomic_write_json
+
+if TYPE_CHECKING:
+    import numpy as np
 
 _log = logging.getLogger(__name__)
 _MODEL_PATH = Path(__file__).parent / "data" / "bias_models.pkl"
 _HMAC_PATH = Path(__file__).parent / "data" / ".bias_models.hmac"
 _TEMP_PATH = Path(__file__).parent / "data" / "temperature_scale.json"
+_EMOS_PARAMS_PATH = Path(__file__).parent / "data" / "emos_params.json"
+_EMOS_CACHE: tuple | None = None  # cached (a, b, c, d)
 _MODELS_CACHE: dict | None = None
 _LOAD_ATTEMPTED: bool = False  # True only after a successful or definitive load
 _TEMP_CACHE: dict | None = (
@@ -671,3 +679,138 @@ def train_all_temperature_scaling(
         )
 
     return trained
+
+
+# ── EMOS (Ensemble Model Output Statistics) ───────────────────────────────────
+
+
+def fit_emos(
+    ens_mean: np.ndarray,
+    ens_var: np.ndarray,
+    obs: np.ndarray,
+) -> tuple[float, float, float, float]:
+    """Fit EMOS parameters (a, b, c, d) minimising mean CRPS.
+
+    Model: T ~ N(mu, sigma^2) where
+        mu    = a + b * ens_mean
+        sigma = sqrt(max(c + d * ens_var, 1e-6))
+
+    Optimizer works in sqrt-space (c_sq, d_sq) to keep sigma positive.
+    Returned (c, d) are c_sq**2 and d_sq**2 — non-negative by construction.
+
+    CRITICAL: pass ens_var (variance = std**2), NOT std directly.
+    Requires: pip install properscoring numpy scipy
+    """
+    import numpy as _np
+    import properscoring as _ps
+    from scipy.optimize import minimize as _minimize
+
+    ens_mean = _np.asarray(ens_mean, dtype=float)
+    ens_var = _np.asarray(ens_var, dtype=float)
+    obs = _np.asarray(obs, dtype=float)
+
+    def objective(params: list) -> float:
+        a_, b_, c_sq, d_sq = params
+        mu = a_ + b_ * ens_mean
+        sigma = _np.sqrt(_np.maximum(c_sq**2 + d_sq**2 * ens_var, 1e-6))
+        return float(_np.mean(_ps.crps_gaussian(obs, mu=mu, sig=sigma)))
+
+    res = _minimize(
+        objective,
+        x0=[0.0, 1.0, 1.0, 0.1],
+        method="Nelder-Mead",
+        options={"maxiter": 20_000, "xatol": 1e-7, "fatol": 1e-7},
+    )
+    a, b, c_sq, d_sq = res.x
+    return float(a), float(b), float(c_sq**2), float(d_sq**2)
+
+
+def emos_exceedance_prob(
+    params: tuple[float, float, float, float],
+    ens_mean: float,
+    ens_var: float,
+    threshold: float,
+) -> float:
+    """P(T > threshold) from a fitted EMOS Gaussian distribution.
+
+    CRITICAL: pass ens_var (variance = std**2), NOT std.
+    If ens_stats provides 'std', square it: ens_var = ens_stats['std'] ** 2
+    """
+    from scipy.special import ndtr
+
+    a, b, c, d = params
+    mu = a + b * ens_mean
+    sigma = math.sqrt(max(c + d * ens_var, 1e-6))
+    return float(1.0 - ndtr((threshold - mu) / sigma))
+
+
+def emos_interval_prob(
+    params: tuple[float, float, float, float],
+    ens_mean: float,
+    ens_var: float,
+    low: float,
+    high: float,
+) -> float:
+    """P(low < T < high) from a fitted EMOS Gaussian — for 'between' markets.
+
+    CRITICAL: pass ens_var (variance), NOT std.
+    """
+    from scipy.special import ndtr
+
+    a, b, c, d = params
+    mu = a + b * ens_mean
+    sigma = math.sqrt(max(c + d * ens_var, 1e-6))
+    return float(ndtr((high - mu) / sigma) - ndtr((low - mu) / sigma))
+
+
+def _load_emos_params() -> tuple[float, float, float, float] | None:
+    """Return cached (a, b, c, d) from emos_params.json, or None if not trained."""
+    global _EMOS_CACHE
+    if _EMOS_CACHE is not None:
+        return _EMOS_CACHE
+    if not _EMOS_PARAMS_PATH.exists():
+        return None
+    try:
+        data = json.loads(_EMOS_PARAMS_PATH.read_text())
+        _EMOS_CACHE = (
+            float(data["a"]),
+            float(data["b"]),
+            float(data["c"]),
+            float(data["d"]),
+        )
+        _log.info(
+            "EMOS params loaded: a=%.4f b=%.4f c=%.4f d=%.4f n=%s crps=%s",
+            *_EMOS_CACHE,
+            data.get("n", "?"),
+            data.get("mean_crps", "?"),
+        )
+        return _EMOS_CACHE
+    except Exception as exc:
+        _log.error("ml_bias: failed to load emos_params.json: %s", exc)
+        return None
+
+
+def save_emos_params(
+    a: float,
+    b: float,
+    c: float,
+    d: float,
+    n: int,
+    mean_crps: float | None = None,
+) -> None:
+    """Persist EMOS parameters and clear the in-process cache."""
+    global _EMOS_CACHE
+    from datetime import UTC, datetime
+
+    payload = {
+        "a": float(a),
+        "b": float(b),
+        "c": float(c),
+        "d": float(d),
+        "n": int(n),
+        "mean_crps": float(mean_crps) if mean_crps is not None else None,
+        "fitted_at": datetime.now(UTC).isoformat(timespec="seconds"),
+    }
+    atomic_write_json(payload, _EMOS_PARAMS_PATH)
+    _EMOS_CACHE = (float(a), float(b), float(c), float(d))
+    _log.info("EMOS params saved: a=%.4f b=%.4f c=%.4f d=%.4f (n=%d)", a, b, c, d, n)

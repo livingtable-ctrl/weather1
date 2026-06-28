@@ -311,6 +311,61 @@ def nws_prob(
     return None
 
 
+def nws_prob_from_quantiles(
+    quantiles: dict[int, float],
+    threshold: float,
+    condition_type: str,
+) -> float:
+    """Compute probability from NBM native quantiles using linear ECDF interpolation.
+
+    Args:
+        quantiles: {10: T10, 25: T25, 50: T50, 75: T75, 90: T90} in degrees F
+        threshold: temperature threshold in degrees F
+        condition_type: 'above', 'below', or 'between' (returns 0.5 for 'between')
+
+    Returns:
+        Probability in [0, 1]. Returns 0.5 if quantiles dict is empty.
+
+    Uses the NBM quantile percentiles as an empirical CDF and interpolates
+    linearly between known points. Extrapolates linearly at the tails.
+    """
+    q_map = {10: 0.10, 25: 0.25, 50: 0.50, 75: 0.75, 90: 0.90}
+    points = sorted(
+        (temp, q_map[pct]) for pct, temp in quantiles.items() if pct in q_map
+    )
+
+    if not points:
+        return 0.5
+
+    temps_sorted = [p[0] for p in points]
+    probs_sorted = [p[1] for p in points]
+
+    def _cdf(t: float) -> float:
+        """P(T <= t) from the ECDF with linear extrapolation at the tails."""
+        if t <= temps_sorted[0]:
+            return probs_sorted[0] * max(0.0, 1.0 - (temps_sorted[0] - t) / 10.0)
+        if t >= temps_sorted[-1]:
+            return 1.0 - (1.0 - probs_sorted[-1]) * max(
+                0.0, 1.0 - (t - temps_sorted[-1]) / 10.0
+            )
+        for i in range(len(temps_sorted) - 1):
+            gap = temps_sorted[i + 1] - temps_sorted[i]
+            if gap == 0.0:
+                continue  # skip degenerate duplicate-temp intervals
+            if temps_sorted[i] <= t <= temps_sorted[i + 1]:
+                frac = (t - temps_sorted[i]) / gap
+                return probs_sorted[i] + frac * (probs_sorted[i + 1] - probs_sorted[i])
+        return probs_sorted[-1]  # unreachable with valid sorted input
+
+    if condition_type == "above":
+        return float(1.0 - _cdf(threshold))
+    elif condition_type == "below":
+        return float(_cdf(threshold))
+    else:
+        # 'between' requires two thresholds — caller should use above/below instead
+        return 0.5
+
+
 # ── Real-time observations ────────────────────────────────────────────────────
 
 

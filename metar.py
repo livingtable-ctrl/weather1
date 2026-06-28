@@ -178,10 +178,27 @@ def fetch_metar(station: str) -> dict | None:
             return None
         return val if -80.0 <= val <= 140.0 else None
 
+    # Extract dew point: prefer dwpf (°F) if present, else convert dwpt (°C).
+    # Returns None when neither field is available.
+    dp_f = obs.get("dwpf")
+    if dp_f is None:
+        dp_c = obs.get("dwpt")
+        if dp_c is not None:
+            try:
+                dp_f = float(dp_c) * 9 / 5 + 32
+            except (TypeError, ValueError):
+                dp_f = None
+    else:
+        try:
+            dp_f = float(dp_f)
+        except (TypeError, ValueError):
+            dp_f = None
+
     result = {
         "current_temp_f": temp_f,
         "min_temp_f": _safe_extreme("minf"),
         "max_temp_f": _safe_extreme("maxf"),
+        "dew_point_f": dp_f,
         "station": obs.get("icaoId", station),
         "obs_time": obs_time,
     }

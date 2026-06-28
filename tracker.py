@@ -1142,6 +1142,36 @@ def count_settled_below_predictions() -> int:
     return row[0] if row else 0
 
 
+def get_emos_training_data() -> list[dict]:
+    """Return rows for EMOS fitting: {ens_mean, ens_var, settled_temp_f}.
+
+    Excludes rows where ens_mean or settled_temp_f is NULL.
+    ens_var may be NULL for backfill rows — callers must handle None.
+    Only multi-day predictions (days_out >= 1 or NULL).
+    """
+    init_db()
+    with _conn() as con:
+        rows = con.execute(
+            """
+            SELECT p.ens_mean, p.ens_var, o.settled_temp_f
+            FROM   predictions p
+            JOIN   outcomes o ON o.ticker = p.ticker
+            WHERE  p.ens_mean IS NOT NULL
+              AND  o.settled_temp_f IS NOT NULL
+              AND  (p.days_out IS NULL OR p.days_out >= 1)
+            ORDER  BY p.predicted_at
+            """
+        ).fetchall()
+    return [
+        {
+            "ens_mean": float(r[0]),
+            "ens_var": float(r[1]) if r[1] is not None else None,
+            "settled_temp_f": float(r[2]),
+        }
+        for r in rows
+    ]
+
+
 def _get_recent_win_loss(window: int) -> tuple[int, int]:
     """Query the last `window` settled predictions and count wins.
 
@@ -2438,6 +2468,32 @@ def get_member_accuracy(days_back: int = 60) -> dict:
             "city_n_breakdown": {c: len(v) for c, v in city_errs.items()},
         }
     return result
+
+
+def get_model_brier_scores(days: int = 30) -> dict[str, float]:
+    """Return per-model mean absolute error from ensemble_member_scores over the last N days.
+
+    Returns {model_name: mean_abs_error} for models with at least 10 scored rows.
+    Lower MAE = better model. Returns empty dict when no data available.
+    """
+    init_db()
+    cutoff = (datetime.now(UTC) - timedelta(days=days)).isoformat()
+    with _conn() as con:
+        rows = con.execute(
+            """
+            SELECT model,
+                   AVG(ABS(predicted_temp - actual_temp)) AS mae,
+                   COUNT(*) AS n
+            FROM   ensemble_member_scores
+            WHERE  logged_at >= ?
+              AND  actual_temp IS NOT NULL
+              AND  predicted_temp IS NOT NULL
+            GROUP  BY model
+            HAVING COUNT(*) >= 10
+            """,
+            (cutoff,),
+        ).fetchall()
+    return {r[0]: float(r[1]) for r in rows}
 
 
 def get_ensemble_member_accuracy(

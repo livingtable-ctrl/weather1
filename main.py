@@ -4855,6 +4855,80 @@ def cmd_calibrate() -> None:
     print("\nRestart the app (or re-import weather_markets) to pick up new weights.")
 
 
+def _cmd_emos_train() -> None:
+    """Two-stage EMOS fit: mean calibration (a,b) from all rows, variance (c,d) from ens_var rows."""
+    try:
+        import numpy as np
+    except ImportError:
+        print("ERROR: numpy not installed.")
+        return
+    try:
+        import properscoring  # noqa: F401
+    except ImportError:
+        print("ERROR: properscoring not installed. Run: pip install properscoring")
+        return
+
+    from ml_bias import fit_emos, save_emos_params
+    from tracker import get_emos_training_data
+
+    print("Loading EMOS training data…")
+    rows = get_emos_training_data()
+    if not rows:
+        print("No EMOS training data found. Run: py main.py backfill-emos")
+        return
+
+    n = len(rows)
+    print(f"  {n} rows with ens_mean + settled_temp_f")
+
+    ens_mean_arr = np.array([r["ens_mean"] for r in rows])
+    settled_temp_arr = np.array([r["settled_temp_f"] for r in rows])
+    # Rows without ens_var get unit-variance placeholder for stage 1
+    ens_var_all = np.array(
+        [r["ens_var"] if r["ens_var"] is not None else 1.0 for r in rows]
+    )
+
+    print("\nStage 1 — fitting a, b (mean calibration) from all rows…")
+    a, b, _, _ = fit_emos(ens_mean_arr, ens_var_all, settled_temp_arr)
+    print(f"  a = {a:.4f}   b = {b:.4f}")
+
+    var_rows = [r for r in rows if r["ens_var"] is not None]
+    n_var = len(var_rows)
+    print(
+        f"\nStage 2 — fitting c, d (variance calibration) from {n_var} rows with real ens_var…"
+    )
+
+    if n_var >= 10:
+        vm = np.array([r["ens_mean"] for r in var_rows])
+        vv = np.array([r["ens_var"] for r in var_rows])
+        vo = np.array([r["settled_temp_f"] for r in var_rows])
+        _, _, c, d = fit_emos(vm, vv, vo)
+        print(f"  c = {c:.4f}   d = {d:.4f}")
+    else:
+        c, d = 1.0, 0.1
+        print(
+            f"  WARNING: only {n_var} ens_var rows (need >= 10). Using defaults c=1.0, d=0.1"
+        )
+
+    mean_crps = None
+    try:
+        import properscoring as ps
+
+        sigma_all = np.sqrt(np.maximum(c + d * ens_var_all, 1e-6))
+        mu_all = a + b * ens_mean_arr
+        mean_crps = float(
+            np.mean(ps.crps_gaussian(settled_temp_arr, mu=mu_all, sig=sigma_all))
+        )
+        print(f"\nMean CRPS on training set: {mean_crps:.4f}")
+    except Exception:
+        pass
+
+    save_emos_params(a, b, c, d, n=n, mean_crps=mean_crps)
+    print("\nSaved → data/emos_params.json")
+    print(
+        "\nNEXT: set T_above=T_below=T_global=1.0 in data/temperature_scale.json (done in same commit as EMOS deploy)"
+    )
+
+
 def cmd_backfill_emos() -> None:
     """Backfill EMOS training columns for historical settled predictions.
 
@@ -5455,18 +5529,21 @@ def cmd_menu(client: KalshiClient):
 def cmd_backtest(client: KalshiClient, args: list):
     """
     Run a backtest on finalized Kalshi markets.
-    Usage: py main.py backtest [city] [--days N]
+    Usage: py main.py backtest [city] [--days N] [--previous-runs]
     """
     from backtest import run_backtest
 
     city_filter = None
     days_back = 90
+    use_previous_runs = False
     for i, a in enumerate(args):
         if a == "--days" and i + 1 < len(args):
             try:
                 days_back = int(args[i + 1])
             except ValueError:
                 pass
+        elif a == "--previous-runs":
+            use_previous_runs = True
         elif not a.startswith("--"):
             city_filter = a
 
@@ -5491,6 +5568,7 @@ def cmd_backtest(client: KalshiClient, args: list):
             city_filter=city_filter,
             days_back=days_back,
             on_progress=_bt_progress,
+            use_previous_runs=use_previous_runs,
         )
     except Exception as e:
         print()  # newline after progress bar
@@ -7219,6 +7297,8 @@ def main():
         cmd_today(client)
     elif cmd == "calibrate":
         cmd_calibrate()
+    elif cmd in ("emos-train", "emos_train"):
+        _cmd_emos_train()
     elif cmd in ("backfill-emos", "backfill_emos"):
         cmd_backfill_emos()
     elif cmd in ("settings", "config-settings"):
