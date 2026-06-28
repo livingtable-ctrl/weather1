@@ -1361,6 +1361,16 @@ setInterval(() => {{
                 "timestamp": datetime.now(UTC).isoformat(),
             }
             try:
+                from paper import get_portfolio_expected_value
+
+                _ev = get_portfolio_expected_value()
+                data["portfolio_ev"] = _ev["expected_profit_dollars"]
+                data["portfolio_ev_roi_pct"] = _ev["expected_roi_pct"]
+                data["portfolio_cost"] = _ev["total_cost_dollars"]
+            except Exception:
+                pass
+
+            try:
                 from weather_markets import _FEATURE_ACTIVATIONS_PATH
 
                 _activations = (

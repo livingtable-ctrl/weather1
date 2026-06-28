@@ -1628,6 +1628,44 @@ def load_paper_trades() -> list[dict]:
     return get_all_trades()
 
 
+def get_portfolio_expected_value() -> dict:
+    """Return the sum of expected profit across all open positions.
+
+    expected_profit_per_trade = cost * net_edge
+    where cost is the stored cost field (entry_price * quantity).
+
+    Returns:
+        {
+            "expected_profit_dollars": float,
+            "total_cost_dollars": float,
+            "open_position_count": int,
+            "expected_roi_pct": float,
+        }
+    """
+    trades = load_paper_trades()
+    open_trades = [t for t in trades if not t.get("settled") and t.get("won") is None]
+
+    total_cost = 0.0
+    total_ev = 0.0
+    for t in open_trades:
+        entry = float(t.get("entry_price", 0.5))
+        qty = int(t.get("quantity", 1))
+        cost = float(t.get("cost") or (entry * qty))
+        edge = float(t.get("net_edge", 0.0))
+
+        total_cost += cost
+        total_ev += cost * edge  # expected profit above cost
+
+    roi_pct = (total_ev / total_cost * 100.0) if total_cost > 0 else 0.0
+
+    return {
+        "expected_profit_dollars": round(total_ev, 2),
+        "total_cost_dollars": round(total_cost, 2),
+        "open_position_count": len(open_trades),
+        "expected_roi_pct": round(roi_pct, 2),
+    }
+
+
 def get_sameday_band_stats(band_hours: int = 6) -> dict:
     """Per-UTC-time-band win rates for settled same-day above/below trades.
 
