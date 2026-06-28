@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import json
 import sys
-from datetime import date
+from datetime import UTC, date
 from pathlib import Path
 from unittest.mock import patch
 
@@ -698,3 +698,209 @@ class TestGraduationBrierGate:
             result = paper.graduation_check()
 
         assert result is not None, "Brier=0.21 should pass new threshold 0.23"
+
+
+# ── B2: Dynamic Correlation Matrix ────────────────────────────────────────────
+
+
+def test_get_recent_city_correlations_returns_empty_when_no_data(tmp_tracker):
+    """get_recent_city_correlations returns {} when DB has no settled multiday trades."""
+    result = tmp_tracker.get_recent_city_correlations(days=60)
+    assert result == {}, f"Expected empty dict, got {result}"
+
+
+def test_get_recent_city_correlations_computes_correlation(tmp_tracker):
+    """get_recent_city_correlations returns city-pair correlations when enough data exists."""
+    from datetime import date as _date
+    from datetime import datetime, timedelta
+
+    import tracker as t
+
+    # Insert enough (city, temp, settled_at) data points via DB directly
+    # so we have 6 common dates between NYC and Boston with clear positive correlation
+    # Use recent settled_at dates (within last 60 days) and future market_dates for days_out >= 1
+    settled_base_dt = datetime.now(UTC) - timedelta(days=50)
+    market_base = _date.today() + timedelta(days=10)  # Future dates for days_out >= 1
+
+    for i in range(6):
+        settled_dt = (settled_base_dt + timedelta(days=i)).isoformat()
+
+        # NYC ticker
+        tmp_tracker.log_prediction(
+            f"NYC-{i}",
+            "NYC",
+            market_base + timedelta(days=i),
+            {
+                "forecast_prob": 0.5,
+                "market_prob": 0.50,
+                "edge": 0.0,
+                "method": "test",
+                "condition": {"type": "above", "threshold": 70},
+            },
+        )
+        # Log outcome and then update with specific settled_at and settled_temp_f
+        tmp_tracker.log_outcome(f"NYC-{i}", True)
+        with t._conn() as con:
+            con.execute(
+                "UPDATE outcomes SET settled_temp_f = ?, settled_at = ? WHERE ticker = ?",
+                (70.0 + i * 2.0, settled_dt, f"NYC-{i}"),
+            )
+
+        # Boston ticker (same date, correlated)
+        tmp_tracker.log_prediction(
+            f"BOS-{i}",
+            "Boston",
+            market_base + timedelta(days=i),
+            {
+                "forecast_prob": 0.5,
+                "market_prob": 0.50,
+                "edge": 0.0,
+                "method": "test",
+                "condition": {"type": "above", "threshold": 70},
+            },
+        )
+        tmp_tracker.log_outcome(f"BOS-{i}", True)
+        with t._conn() as con:
+            con.execute(
+                "UPDATE outcomes SET settled_temp_f = ?, settled_at = ? WHERE ticker = ?",
+                (68.0 + i * 2.0, settled_dt, f"BOS-{i}"),
+            )
+
+    result = tmp_tracker.get_recent_city_correlations(days=60, min_pairs=5)
+    assert ("NYC", "Boston") in result or ("Boston", "NYC") in result, (
+        f"Expected NYC/Boston correlation in result keys. Got: {list(result.keys())}"
+    )
+    # They move identically, so Pearson correlation should be ~1.0
+    pair_key = ("NYC", "Boston") if ("NYC", "Boston") in result else ("Boston", "NYC")
+    assert result[pair_key] > 0.9, (
+        f"Expected correlation > 0.9 for identical-trend data, got {result[pair_key]}"
+    )
+
+
+def test_get_recent_city_correlations_skips_below_min_pairs(tmp_tracker):
+    """get_recent_city_correlations skips pairs with fewer than min_pairs common dates."""
+    from datetime import date as _date
+    from datetime import datetime, timedelta
+
+    import tracker as t
+
+    # Use recent date within last 60 days for settled_at, future date for market_date
+    settled_dt = datetime.now(UTC) - timedelta(days=30)
+    settled = settled_dt.isoformat()
+    market_date = _date.today() + timedelta(days=5)
+
+    for city, ticker in [("NYC", "NYC-0"), ("Boston", "BOS-0")]:
+        tmp_tracker.log_prediction(
+            ticker,
+            city,
+            market_date,
+            {
+                "forecast_prob": 0.5,
+                "market_prob": 0.50,
+                "edge": 0.0,
+                "method": "test",
+                "condition": {"type": "above", "threshold": 70},
+            },
+        )
+        tmp_tracker.log_outcome(ticker, True)
+        with t._conn() as con:
+            con.execute(
+                "UPDATE outcomes SET settled_temp_f = ?, settled_at = ? WHERE ticker = ?",
+                (70.0, settled, ticker),
+            )
+
+    # Only 1 shared date → below default min_pairs=5, should return {}
+    result = tmp_tracker.get_recent_city_correlations(days=60, min_pairs=5)
+    assert result == {}, f"Should skip pair with only 1 common date. Got: {result}"
+
+
+# ── B6: Tail-Risk Stress Testing ────────────────────────────────────────────────
+
+
+def test_run_stress_test_heat_wave_filters_southern_cities(monkeypatch):
+    """heat_wave_failure scenario only counts Dallas/Houston/Phoenix/Atlanta/Austin trades."""
+    import monte_carlo as mc
+    import paper
+
+    trades = [
+        {
+            "ticker": "DAL-T90",
+            "city": "Dallas",
+            "side": "yes",
+            "entry_price": 0.50,
+            "quantity": 10,
+            "cost": 5.00,
+            "settled": False,
+            "won": None,
+        },
+        {
+            "ticker": "CHI-T90",
+            "city": "Chicago",
+            "side": "yes",
+            "entry_price": 0.50,
+            "quantity": 10,
+            "cost": 5.00,
+            "settled": False,
+            "won": None,
+        },
+    ]
+    monkeypatch.setattr(paper, "load_paper_trades", lambda: trades)
+    monkeypatch.setattr(paper, "get_balance", lambda: 1000.0)
+    monkeypatch.setattr(paper, "get_peak_balance", lambda: 1000.0)
+
+    result = mc.run_stress_test("heat_wave_failure")
+    # Only Dallas is in the southern cities list — Chicago is excluded
+    assert result["positions_affected"] == 1, (
+        f"Expected 1 position affected, got {result['positions_affected']}"
+    )
+    assert result["loss_dollars"] == 5.00, (
+        f"Expected $5.00 loss, got {result['loss_dollars']}"
+    )
+    assert result["scenario"] == "heat_wave_failure"
+
+
+def test_run_stress_test_total_model_failure_includes_all_cities(monkeypatch):
+    """total_model_failure scenario counts all open positions regardless of city."""
+    import monte_carlo as mc
+    import paper
+
+    trades = [
+        {
+            "ticker": "DAL-T90",
+            "city": "Dallas",
+            "side": "yes",
+            "entry_price": 0.50,
+            "quantity": 10,
+            "cost": 5.00,
+            "settled": False,
+            "won": None,
+        },
+        {
+            "ticker": "CHI-T90",
+            "city": "Chicago",
+            "side": "yes",
+            "entry_price": 0.55,
+            "quantity": 5,
+            "cost": 2.75,
+            "settled": False,
+            "won": None,
+        },
+    ]
+    monkeypatch.setattr(paper, "load_paper_trades", lambda: trades)
+    monkeypatch.setattr(paper, "get_balance", lambda: 1000.0)
+    monkeypatch.setattr(paper, "get_peak_balance", lambda: 1000.0)
+
+    result = mc.run_stress_test("total_model_failure")
+    assert result["positions_affected"] == 2
+    assert abs(result["loss_dollars"] - 7.75) < 0.01, (
+        f"Expected $7.75 total loss, got {result['loss_dollars']}"
+    )
+    assert result["below_halt"] is False  # 1000 - 7.75 >> halt floor
+
+
+def test_run_stress_test_unknown_scenario_returns_error():
+    """run_stress_test returns an error dict for unknown scenario names."""
+    import monte_carlo as mc
+
+    result = mc.run_stress_test("nonexistent_scenario")
+    assert "error" in result, f"Expected error key, got: {result}"

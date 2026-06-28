@@ -42,6 +42,32 @@ _MIN_EDGE_AB_TEST = _ABTest(
     max_trades_per_variant=50,
 )
 
+# ---------------------------------------------------------------------------
+# GFS model update window
+# ---------------------------------------------------------------------------
+
+_GFS_UPDATE_HOURS_UTC = [0, 6, 12, 18]  # GFS model initialization hours
+_GFS_UPDATE_LOCKOUT_MINS = int(os.getenv("GFS_LOCKOUT_MINS", "90"))
+
+
+def _in_gfs_update_window(now_utc=None) -> bool:
+    """Return True if we are within LOCKOUT_MINS of a GFS model initialization.
+
+    During this window, Open-Meteo may be serving the previous model run.
+    New multi-day trades should wait for the new run to propagate (~90 min).
+    Same-day trades using METAR lock-in are unaffected and skip this check.
+    """
+    if _GFS_UPDATE_LOCKOUT_MINS <= 0:
+        return False
+    if now_utc is None:
+        now_utc = datetime.now(UTC)
+    minute_of_day = now_utc.hour * 60 + now_utc.minute
+    for update_hour in _GFS_UPDATE_HOURS_UTC:
+        update_minute = update_hour * 60
+        if 0 <= (minute_of_day - update_minute) < _GFS_UPDATE_LOCKOUT_MINS:
+            return True
+    return False
+
 
 # ---------------------------------------------------------------------------
 # Forecast cycle
@@ -1246,6 +1272,31 @@ def _auto_place_trades(
         cycle = _current_forecast_cycle()
         if execution_log.was_ordered_this_cycle(ticker, rec_side, cycle):
             _skip_reasons.append(f"{ticker}: already_this_cycle")
+            continue
+
+        # Per-trade drawdown gate — re-evaluated before each individual placement.
+        # The cycle-level check at the top of this function runs once; if several
+        # trades collectively push the balance below the HALT floor within a single
+        # cron cycle, this guard catches the breach before the next order goes out.
+        # Re-import on each iteration so tests (and real placement callbacks) that
+        # update paper.is_paused_drawdown mid-cycle are observed immediately.
+        from paper import is_paused_drawdown as _is_paused_now
+
+        if _is_paused_now():
+            _log.warning(
+                "auto_place_trades: HALT — drawdown floor breached mid-cycle, "
+                "stopping after %d placements",
+                placed,
+            )
+            break
+
+        # Skip multi-day trades during GFS model update window
+        if int(a.get("days_out", 1)) >= 1 and _in_gfs_update_window():
+            _log.info(
+                "auto_place_trades: skipping %s — GFS update window active "
+                "(set GFS_LOCKOUT_MINS=0 to disable)",
+                a.get("ticker", ticker),
+            )
             continue
 
         if live and live_config:

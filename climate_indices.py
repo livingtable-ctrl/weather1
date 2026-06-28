@@ -15,9 +15,11 @@ Temperature adjustment logic (applied to climatological baseline only):
 
 from __future__ import annotations
 
+import json
 import threading
 import time
-from datetime import date
+from datetime import UTC, date, datetime
+from pathlib import Path
 
 import requests
 
@@ -255,3 +257,148 @@ def temperature_adjustment(city: str, target_date: date) -> float:
     # Cap total adjustment at ±6°F to avoid over-correction
     total = ao_adj + nao_adj + enso_adj
     return max(-6.0, min(6.0, total))
+
+
+# ── PDO / PNA (Pacific Decadal Oscillation / Pacific-North American pattern) ─
+
+
+_PDO_URL = "https://www.ncdc.noaa.gov/teleconnections/pdo/data.csv"
+_PNA_URL = "https://www.ncdc.noaa.gov/teleconnections/pna/data.csv"
+_PDO_PNA_PATH = Path(__file__).parent / "data" / "pdo_pna.json"
+_PDO_PNA_TTL_DAYS = 7
+
+
+def _fetch_noaa_csv_index(url: str) -> dict[str, float]:
+    """Parse a NOAA teleconnections CSV (Date=YYYYMM, Value columns).
+
+    Returns {YYYYMM: value} dict. Skips header and missing-value rows.
+    """
+    resp = requests.get(url, timeout=20)
+    resp.raise_for_status()
+    result = {}
+    for line in resp.text.splitlines():
+        parts = line.strip().split(",")
+        if len(parts) < 2:
+            continue
+        try:
+            date_str = parts[0].strip()
+            val = float(parts[1].strip())
+            if len(date_str) == 6 and date_str.isdigit() and val > -99:
+                result[date_str] = val
+        except (ValueError, IndexError):
+            continue
+    return result
+
+
+def fetch_pdo_pna() -> dict:
+    """Fetch PDO and PNA indices from NOAA and save to data/pdo_pna.json."""
+    pdo = _fetch_noaa_csv_index(_PDO_URL)
+    pna = _fetch_noaa_csv_index(_PNA_URL)
+    payload = {
+        "pdo": pdo,
+        "pna": pna,
+        "fetched_at": datetime.now(UTC).isoformat(),
+    }
+    _PDO_PNA_PATH.parent.mkdir(exist_ok=True)
+    _PDO_PNA_PATH.write_text(json.dumps(payload))
+    return payload
+
+
+def get_pdo_pna(year: int | None = None, month: int | None = None) -> dict[str, float]:
+    """Return current PDO and PNA values. Reads from file; fetches if stale or absent.
+
+    Returns {"pdo": float, "pna": float}. Returns {"pdo": 0.0, "pna": 0.0} on failure.
+    Accepts keyword arguments so callers and tests can use get_pdo_pna(year=Y, month=M).
+    """
+    now = datetime.now(UTC)
+    data = None
+    if _PDO_PNA_PATH.exists():
+        try:
+            data = json.loads(_PDO_PNA_PATH.read_text())
+            fetched_at = datetime.fromisoformat(data["fetched_at"])
+            if (now - fetched_at).days >= _PDO_PNA_TTL_DAYS:
+                data = None  # stale — refetch below
+        except Exception:
+            data = None
+
+    if data is None:
+        try:
+            data = fetch_pdo_pna()
+        except Exception:
+            return {"pdo": 0.0, "pna": 0.0}
+
+    target_year = year or now.year
+    target_month = month or now.month
+
+    def _latest(index_dict: dict, lookback: int = 3) -> float:
+        for i in range(lookback):
+            m = target_month - i
+            y = target_year
+            if m <= 0:
+                m += 12
+                y -= 1
+            k = f"{y}{m:02d}"
+            if k in index_dict:
+                return float(index_dict[k])
+        return 0.0
+
+    return {
+        "pdo": _latest(data.get("pdo", {})),
+        "pna": _latest(data.get("pna", {})),
+    }
+
+
+# Seasonal temperature coefficients (degrees F per +1 index unit) for PDO.
+# PDO primarily affects west-coast cities where Pacific SSTs modulate
+# onshore air temperatures — strongest in winter, weak in summer.
+_PDO_TEMP_COEFF: dict[str, dict[str, float]] = {
+    "LA": {"DJF": 0.8, "MAM": 0.4, "JJA": 0.2, "SON": 0.4},
+    "SanFrancisco": {"DJF": 0.8, "MAM": 0.4, "JJA": 0.2, "SON": 0.4},
+    "Seattle": {"DJF": 0.8, "MAM": 0.4, "JJA": 0.2, "SON": 0.4},
+}
+
+# PNA affects central and eastern US via ridge/trough modulation.
+# Positive PNA -> ridge over West, trough over East -> warmer central, colder East.
+_PNA_TEMP_COEFF: dict[str, dict[str, float]] = {
+    "Chicago": {"DJF": 1.2, "MAM": 0.4, "JJA": 0.1, "SON": 0.4},
+    "Minneapolis": {"DJF": 1.2, "MAM": 0.4, "JJA": 0.1, "SON": 0.4},
+    "NYC": {"DJF": 1.0, "MAM": 0.3, "JJA": 0.1, "SON": 0.3},
+    "Boston": {"DJF": 1.0, "MAM": 0.3, "JJA": 0.1, "SON": 0.3},
+}
+
+
+def _month_to_season(month: int) -> str:
+    """Map calendar month (1-12) to meteorological season abbreviation."""
+    return {
+        12: "DJF",
+        1: "DJF",
+        2: "DJF",
+        3: "MAM",
+        4: "MAM",
+        5: "MAM",
+        6: "JJA",
+        7: "JJA",
+        8: "JJA",
+        9: "SON",
+        10: "SON",
+        11: "SON",
+    }[month]
+
+
+def apply_pdo_pna_correction(city: str, forecast_temp_f: float, month: int) -> float:
+    """Return temperature bias correction (degrees F) based on PDO/PNA for city and month.
+
+    Returns 0.0 for cities not in coefficient tables.
+    Caller adds the result: forecast_temp_f += apply_pdo_pna_correction(...)
+    Clamped to +-3 degrees F to prevent over-correction from extreme index values.
+    """
+    season = _month_to_season(month)
+    pdo_coeff = _PDO_TEMP_COEFF.get(city, {}).get(season, 0.0)
+    pna_coeff = _PNA_TEMP_COEFF.get(city, {}).get(season, 0.0)
+
+    if pdo_coeff == 0.0 and pna_coeff == 0.0:
+        return 0.0
+
+    indices = get_pdo_pna()
+    correction = pdo_coeff * indices["pdo"] + pna_coeff * indices["pna"]
+    return round(max(-3.0, min(3.0, correction)), 2)

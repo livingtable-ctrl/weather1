@@ -3,6 +3,8 @@
 from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 
 def _make_trade(entered_hours_ago: float, side: str = "yes") -> dict:
     entered_at = (datetime.now(UTC) - timedelta(hours=entered_hours_ago)).isoformat()
@@ -162,4 +164,83 @@ class TestCheckEarlyExitsHoldTime:
 
         assert closed == 0, (
             "Trade entered 4h ago must not be exited — minimum hold time is 12h"
+        )
+
+
+class TestBreakevenStops:
+    def test_check_breakeven_stops_fires_when_peak_met_and_price_falls(self):
+        """check_breakeven_stops must return the ticker when peak was met and price fell back."""
+        import paper
+        from utils import BREAKEVEN_TRIGGER_PCT
+
+        far_future = "2099-01-01T00:00:00+00:00"  # well outside the 24h settlement gate
+        trade = {
+            "ticker": "KXHIGH-T70",
+            "side": "yes",
+            "entry_price": 0.50,
+            "quantity": 10,
+            "settled": False,
+            "won": None,
+            "peak_profit_pct": BREAKEVEN_TRIGGER_PCT + 0.01,  # peak was hit
+            "close_time": far_future,
+        }
+
+        # Price has now fallen back below entry (0.48 < 0.50)
+        exits = paper.check_breakeven_stops(
+            [trade], current_yes_prices={"KXHIGH-T70": 0.48}
+        )
+        assert "KXHIGH-T70" in exits, (
+            f"check_breakeven_stops should fire when price falls below entry. Got: {exits}"
+        )
+
+    def test_check_breakeven_stops_silent_before_peak_is_met(self):
+        """check_breakeven_stops must NOT fire when peak_profit_pct is below the trigger."""
+        import paper
+        from utils import BREAKEVEN_TRIGGER_PCT
+
+        far_future = "2099-01-01T00:00:00+00:00"
+        trade = {
+            "ticker": "KXHIGH-T70",
+            "side": "yes",
+            "entry_price": 0.50,
+            "quantity": 10,
+            "settled": False,
+            "won": None,
+            "peak_profit_pct": BREAKEVEN_TRIGGER_PCT - 0.05,  # below trigger
+            "close_time": far_future,
+        }
+
+        exits = paper.check_breakeven_stops(
+            [trade], current_yes_prices={"KXHIGH-T70": 0.40}
+        )
+        assert exits == [], f"Should not fire when peak not yet met. Got: {exits}"
+
+    def test_update_peak_profits_sets_peak_on_new_high(self, monkeypatch):
+        """update_peak_profits must record a new peak when unrealized profit exceeds stored peak."""
+        import paper
+
+        # update_peak_profits calls _load() and _save() internally.
+        # Monkeypatch _load and _save to control the data without file I/O.
+        trade = {
+            "ticker": "KXHIGH-T70",
+            "side": "yes",
+            "entry_price": 0.50,
+            "quantity": 10,  # NOT qty — paper.py uses "quantity"
+            "cost": 5.00,  # cost = 0.50 * 10
+            "settled": False,
+            "peak_profit_pct": None,
+        }
+
+        fake_data = {"trades": [trade], "balance": 1000.0}
+        monkeypatch.setattr(paper, "_load", lambda: fake_data)
+        saved = []
+        monkeypatch.setattr(paper, "_save", lambda d: saved.append(d))
+
+        # yes_ask = 0.65 → unrealized_profit_pct = (0.65 - 0.50) * 10 / 5.00 = 0.30 (30%)
+        paper.update_peak_profits([trade], current_yes_prices={"KXHIGH-T70": 0.65})
+
+        assert saved, "update_peak_profits must call _save when a new peak is found"
+        updated_trade = saved[0]["trades"][0]
+        assert updated_trade["peak_profit_pct"] == pytest.approx(0.30, abs=0.01), (
+            f"Expected peak_profit_pct ≈ 0.30, got {updated_trade.get('peak_profit_pct')}"
         )

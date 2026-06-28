@@ -1360,6 +1360,27 @@ setInterval(() => {{
                 "var_99": var_99,
                 "timestamp": datetime.now(UTC).isoformat(),
             }
+            try:
+                from paper import get_portfolio_expected_value
+
+                _ev = get_portfolio_expected_value()
+                data["portfolio_ev"] = _ev["expected_profit_dollars"]
+                data["portfolio_ev_roi_pct"] = _ev["expected_roi_pct"]
+                data["portfolio_cost"] = _ev["total_cost_dollars"]
+            except Exception:
+                pass
+
+            try:
+                from weather_markets import _FEATURE_ACTIVATIONS_PATH
+
+                _activations = (
+                    json.loads(_FEATURE_ACTIVATIONS_PATH.read_text())
+                    if _FEATURE_ACTIVATIONS_PATH.exists()
+                    else {}
+                )
+            except Exception:
+                _activations = {}
+            data["feature_activations"] = _activations
         except Exception as e:
             data = {"error": str(e)}
         return jsonify(data)
@@ -2038,6 +2059,19 @@ setInterval(() => {{
             return jsonify({city: has_ml_model(city) for city in sorted(CITY_COORDS)})
         except Exception as exc:
             return jsonify({"error": str(exc)}), 500
+
+    @app.route("/api/stress-test")
+    def api_stress_test():
+        """Tail-risk stress test scenarios: heat wave, cold snap, total model failure."""
+        from monte_carlo import run_stress_test
+
+        return jsonify(
+            {
+                "heat_wave": run_stress_test("heat_wave_failure"),
+                "cold_snap": run_stress_test("cold_snap_failure"),
+                "total": run_stress_test("total_model_failure"),
+            }
+        )
 
     @app.route("/api/paper-order", methods=["POST"])
     def api_paper_order():

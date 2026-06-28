@@ -1593,3 +1593,40 @@ class TestCheckStopLosses:
         assert paper.get_open_trades() == [], "Trade must be closed after early exit"
         # balance: started 1000 − cost(6.00) + proceeds(0.29 * 10 = 2.90) = 996.90
         assert paper.get_balance() == pytest.approx(996.90, abs=0.01)
+
+
+def test_portfolio_expected_value_positive_for_winning_trades(monkeypatch):
+    """get_portfolio_expected_value sums cost * net_edge across open positions."""
+    import paper
+
+    trades = [
+        {
+            "ticker": "T1",
+            "side": "yes",
+            "entry_price": 0.50,
+            "quantity": 10,
+            "cost": 5.00,
+            "net_edge": 0.15,
+            "settled": False,
+            "won": None,
+        },
+        {
+            "ticker": "T2",
+            "side": "yes",
+            "entry_price": 0.55,
+            "quantity": 5,
+            "cost": 2.75,
+            "net_edge": 0.20,
+            "settled": False,
+            "won": None,
+        },
+    ]
+    monkeypatch.setattr(paper, "load_paper_trades", lambda: trades)
+
+    ev = paper.get_portfolio_expected_value()
+    # T1: cost=$5.00, EV=5.00*0.15=$0.75
+    # T2: cost=$2.75, EV=2.75*0.20=$0.55
+    expected_total_profit = 0.75 + 0.55  # = 1.30
+    assert abs(ev["expected_profit_dollars"] - expected_total_profit) < 0.01
+    assert ev["open_position_count"] == 2
+    assert ev["total_cost_dollars"] == pytest.approx(7.75, abs=0.01)
