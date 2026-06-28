@@ -2489,9 +2489,7 @@ def _blend_with_circuit_fallback(
     Handles None probabilities by excluding them and renormalizing.
     """
     if _ensemble_circuit_is_open() and ens_prob is not None:
-        import logging
-
-        logging.getLogger(__name__).warning(
+        _log.warning(
             "blend: ensemble circuit OPEN — excluding ens_prob from blend (was %.3f)",
             ens_prob,
         )
