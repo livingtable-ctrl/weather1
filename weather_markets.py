@@ -21,6 +21,7 @@ import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
+import metar as _metar
 from calibration import load_city_weights as _load_city_weights
 from calibration import load_condition_weights as _load_condition_weights
 from calibration import load_seasonal_weights as _load_seasonal_weights
@@ -393,6 +394,7 @@ def _dew_point_temp_correction(
 
     max_correction = -3.0
     correction = max_correction * (1.0 - depression / 20.0)
+    # Clamp handles supersaturation (dew > forecast_temp, depression < 0) on marine-layer days
     return round(max(-5.0, correction), 2)
 
 
@@ -4974,10 +4976,8 @@ def analyze_trade(enriched: dict) -> dict | None:
         # Only applies to _DEW_POINT_SENSITIVE_CITIES and only when dew_point_f is
         # available from a fresh METAR observation; skipped silently otherwise.
         _dp_station = _metar_station_for_city(city)
-        if _dp_station:
-            import metar as _metar_mod
-
-            _dp_obs = _metar_mod.fetch_metar(_dp_station)
+        if _dp_station and city in _DEW_POINT_SENSITIVE_CITIES:
+            _dp_obs = _metar.fetch_metar(_dp_station)
             if _dp_obs and _dp_obs.get("dew_point_f") is not None:
                 _dp_correction = _dew_point_temp_correction(
                     city, _dp_obs["dew_point_f"], forecast_temp

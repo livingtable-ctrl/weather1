@@ -411,8 +411,8 @@ class TestDewPointCorrection:
         )
         assert correction == 0.0, "Depression=30 → no correction"
 
-    def test_dew_point_temp_correction_saturated_clamped(self):
-        """At depression=0 (saturated), correction is -3.0 (not exceeding -5.0)."""
+    def test_dew_point_temp_correction_at_saturation(self):
+        """At depression=0 (saturated), correction is exactly -3.0 (the formula max)."""
         from weather_markets import _dew_point_temp_correction
 
         correction = _dew_point_temp_correction(
@@ -422,12 +422,9 @@ class TestDewPointCorrection:
 
     def test_fetch_metar_includes_dew_point_f(self):
         """fetch_metar result dict must include dew_point_f key."""
-        import sys
         from datetime import datetime
-        from pathlib import Path
         from unittest.mock import MagicMock, patch
 
-        sys.path.insert(0, str(Path(__file__).parent.parent))
         from metar import fetch_metar
 
         mock_data = [
