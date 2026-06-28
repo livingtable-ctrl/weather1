@@ -355,6 +355,84 @@ class TestBrierScore(unittest.TestCase):
         self.assertAlmostEqual(bs, 0.25, places=6)
 
 
+class TestBrierScoreLastN(unittest.TestCase):
+    """Tests for brier_score(last_n=N) — last-N settled predictions."""
+
+    def setUp(self):
+        import tempfile
+
+        self._tmpdir = tempfile.mkdtemp()
+        self._orig = tracker.DB_PATH
+        tracker.DB_PATH = Path(self._tmpdir) / "test_brier_lastn.db"
+        tracker._db_initialized = False
+        tracker.init_db()
+
+    def tearDown(self):
+        tracker.DB_PATH = self._orig
+        tracker._db_initialized = False
+        import shutil
+
+        shutil.rmtree(self._tmpdir, ignore_errors=True)
+
+    def _insert(self, ticker, our_prob, settled_yes, days_ago=0):
+        analysis = {
+            "condition": {"type": "above", "threshold": 70.0},
+            "forecast_prob": our_prob,
+            "market_prob": 0.50,
+            "edge": our_prob - 0.50,
+            "method": "ensemble",
+            "n_members": 20,
+        }
+        tracker.log_prediction(ticker, "NYC", date(2099, 1, 1), analysis)
+        tracker.log_outcome(ticker, settled_yes)
+        if days_ago:
+            with tracker._conn() as con:
+                con.execute(
+                    "UPDATE outcomes SET settled_at = datetime('now', ?) WHERE ticker = ?",
+                    (f"-{days_ago} days", ticker),
+                )
+
+    def test_last_n_limits_to_most_recent(self):
+        """last_n=2 uses only the 2 most recently settled predictions."""
+        self._insert("TK-OLD", 0.0, True, days_ago=10)  # error=1.0 (bad)
+        self._insert("TK-NEW1", 1.0, True, days_ago=1)  # error=0.0 (perfect)
+        self._insert("TK-NEW2", 1.0, True, days_ago=0)  # error=0.0 (perfect)
+
+        bs = tracker.brier_score(last_n=2)
+        self.assertIsNotNone(bs)
+        self.assertAlmostEqual(bs, 0.0, places=6)
+
+    def test_last_n_greater_than_total_returns_all(self):
+        """last_n=100 with only 3 predictions behaves the same as all-time."""
+        self._insert("TK-A", 1.0, True)
+        self._insert("TK-B", 0.5, False)
+        self._insert("TK-C", 0.0, False)
+
+        bs_all = tracker.brier_score()
+        bs_lastn = tracker.brier_score(last_n=100)
+        self.assertIsNotNone(bs_all)
+        self.assertAlmostEqual(bs_all, bs_lastn, places=6)
+
+    def test_last_n_none_is_all_time(self):
+        """last_n=None (default) produces the same result as calling without last_n."""
+        self._insert("TK-X", 0.8, True, days_ago=5)
+        self._insert("TK-Y", 0.3, False, days_ago=2)
+
+        self.assertAlmostEqual(
+            tracker.brier_score(),
+            tracker.brier_score(last_n=None),
+            places=6,
+        )
+
+    def test_last_n_empty_returns_none(self):
+        """last_n=5 on empty DB returns None, not 0.0."""
+        from unittest.mock import patch
+
+        with patch("paper.get_all_trades", return_value=[]):
+            result = tracker.brier_score(last_n=5)
+        self.assertIsNone(result)
+
+
 class TestGetBias(unittest.TestCase):
     """Focused tests for tracker.get_bias() (#111)."""
 

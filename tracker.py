@@ -911,6 +911,7 @@ def brier_score(
     city: str | None = None,
     min_days_out: int = 1,
     cutoff_days: int | None = None,
+    last_n: int | None = None,
 ) -> float | None:
     """
     Brier score = mean((our_prob - outcome)²).
@@ -923,6 +924,11 @@ def brier_score(
 
     Pass cutoff_days=N to restrict to predictions whose outcome settled within
     the last N days (rolling window).  None means all-time (default).
+
+    Pass last_n=N to restrict to the N most recently settled predictions.
+    Useful for graduation gates where recent performance matters more than
+    the historical average (e.g. last_n=50 lets early bad weeks age out).
+    None means all (default).  cutoff_days and last_n can be combined.
 
     Primary source: tracker predictions + outcomes JOIN (populated by log_prediction
     + sync_outcomes).  Fallback: paper_trades.db where entry_prob and outcome are
@@ -944,6 +950,9 @@ def brier_score(
             params.append(city)
         if cutoff_days is not None:
             query += f" AND o.settled_at >= datetime('now', '-{cutoff_days} days')"
+        if last_n is not None:
+            query += " ORDER BY o.settled_at DESC"
+            query += f" LIMIT {last_n}"
         rows = con.execute(query, params).fetchall()
 
     if rows:
@@ -961,7 +970,8 @@ def brier_score(
             else None
         )
         trades = _get_all_trades()
-        pairs: list[tuple[float, int]] = []
+        # Collect (settled_at_str, prob, settled_yes) so we can sort for last_n.
+        dated: list[tuple[str, float, int]] = []
         for t in trades:
             prob = t.get("entry_prob")
             outcome = t.get("outcome")
@@ -977,8 +987,8 @@ def brier_score(
                 and trade_days_out < min_days_out
             ):
                 continue
+            settled_str = t.get("settled_at") or ""
             if cutoff is not None:
-                settled_str = t.get("settled_at")
                 if not settled_str:
                     continue
                 try:
@@ -990,7 +1000,11 @@ def brier_score(
                 except (ValueError, TypeError):
                     continue
             settled_yes = 1 if outcome == "yes" else 0
-            pairs.append((float(prob), settled_yes))
+            dated.append((settled_str, float(prob), settled_yes))
+        if last_n is not None:
+            dated.sort(key=lambda x: x[0], reverse=True)
+            dated = dated[:last_n]
+        pairs = [(p, y) for _, p, y in dated]
         if pairs:
             return sum((p - y) ** 2 for p, y in pairs) / len(pairs)
     except Exception:
