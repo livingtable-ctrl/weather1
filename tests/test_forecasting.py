@@ -1098,7 +1098,9 @@ class TestHRRR:
 
         import requests
 
-        from weather_markets import _fetch_hrrr_temp
+        from weather_markets import _HRRR_CACHE, _fetch_hrrr_temp
+
+        _HRRR_CACHE.clear()  # avoid stale cache from other tests
 
         class MockResp:
             status_code = 200
@@ -1148,9 +1150,8 @@ class TestHRRR:
 
         monkeypatch.setattr(requests, "get", lambda *a, **k: MockResp())
         result = _fetch_hrrr_temp("NYC", date(2026, 7, 1), var="max")
-        # Should return max hourly temperature.
-        if result is not None:
-            assert result == pytest.approx(88.5)
+        assert result is not None, "_fetch_hrrr_temp returned None — check cache clear"
+        assert result == pytest.approx(88.5)
 
     def test_fetch_hrrr_temp_returns_none_for_unknown_city(self, monkeypatch):
         from datetime import date
