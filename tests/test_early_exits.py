@@ -1,5 +1,6 @@
 """Tests for early exit threshold and hold-time guards."""
 
+import copy
 from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, patch
 
@@ -249,12 +250,17 @@ class TestBreakevenStops:
 class TestPartialClose:
     def test_partial_close_splits_quantity_50pct(self, monkeypatch):
         """partial_close_position with close_pct=0.50 on a 10-unit trade must leave 5 open
-        and mark a separate closed portion with quantity=5 and closed=True."""
+        and mark a separate closed portion with quantity=5 and closed=True.
+
+        Also verifies:
+        - No two trades share the same id after the split (Bug 1).
+        - The closed portion is NOT returned by get_open_trades() on the next call (Bug 2).
+        """
         import paper
 
-        # Build an open trade with 10 units using the correct "quantity" field name.
+        # Trade IDs are integers — use an integer id matching the production schema.
         trade = {
-            "id": "trade-abc-123",
+            "id": 42,
             "ticker": "KXHIGH-T70",
             "side": "yes",
             "entry_price": 0.50,
@@ -268,9 +274,9 @@ class TestPartialClose:
         fake_data = {"trades": [trade], "balance": 1000.0}
         monkeypatch.setattr(paper, "_load", lambda: fake_data)
         saved = []
-        monkeypatch.setattr(paper, "_save", lambda d: saved.append(d))
+        monkeypatch.setattr(paper, "_save", lambda d: saved.append(copy.deepcopy(d)))
 
-        result = paper.partial_close_position("trade-abc-123", close_pct=0.50)
+        result = paper.partial_close_position(42, close_pct=0.50)
 
         # _save must have been called exactly once with the mutated data.
         assert saved, "partial_close_position must call _save"
@@ -308,6 +314,27 @@ class TestPartialClose:
         )
         assert result["closed"] is True
 
+        # Bug 1: no two trades may share the same id — validate_paper_trades_integrity
+        # flags duplicate IDs as data corruption.
+        all_ids = [t["id"] for t in trades]
+        assert len(all_ids) == len(set(all_ids)), (
+            f"Duplicate trade IDs detected after partial close: {all_ids}"
+        )
+
+        # Bug 2: the closed portion must NOT appear in get_open_trades() on the next
+        # cron cycle.  get_open_trades() filters on settled only, so the closed portion
+        # must be settled=True to be invisible to it.
+        assert closed_portion.get("settled") is True, (
+            "Closed portion must have settled=True so get_open_trades() does not re-surface it"
+        )
+        # Also verify directly via get_open_trades with the saved state.
+        monkeypatch.setattr(paper, "_load", lambda: final_data)
+        open_after = paper.get_open_trades()
+        closed_ids_in_open = [t["id"] for t in open_after if t.get("closed")]
+        assert not closed_ids_in_open, (
+            f"Closed portion(s) leaked into get_open_trades(): {closed_ids_in_open}"
+        )
+
     def test_partial_close_returns_none_for_missing_trade(self, monkeypatch):
         """partial_close_position must return None (not raise) when the trade id is not found."""
         import paper
@@ -316,7 +343,7 @@ class TestPartialClose:
         monkeypatch.setattr(paper, "_load", lambda: fake_data)
         monkeypatch.setattr(paper, "_save", lambda d: None)
 
-        result = paper.partial_close_position("nonexistent-id", close_pct=0.50)
+        result = paper.partial_close_position(9999, close_pct=0.50)
         assert result is None, "Must return None when trade is not found"
 
     def test_partial_close_raises_on_invalid_pct(self, monkeypatch):
@@ -328,10 +355,10 @@ class TestPartialClose:
         monkeypatch.setattr(paper, "_save", lambda d: None)
 
         with pytest.raises(ValueError):
-            paper.partial_close_position("any-id", close_pct=0.0)
+            paper.partial_close_position(1, close_pct=0.0)
 
         with pytest.raises(ValueError):
-            paper.partial_close_position("any-id", close_pct=1.5)
+            paper.partial_close_position(1, close_pct=1.5)
 
 
 def test_take_profit_targets_for_yes_bet():

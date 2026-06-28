@@ -1061,12 +1061,16 @@ def close_paper_early(trade_id: int, exit_price: float) -> dict:
     raise ValueError(f"Trade {trade_id} not found or already settled.")
 
 
-def partial_close_position(trade_id: str, close_pct: float = 0.50) -> dict | None:
+def partial_close_position(trade_id: int, close_pct: float = 0.50) -> dict | None:
     """Close a fraction of an open position, leaving the remainder open.
 
     Splits the trade into a closed portion (appended to the ledger) and a
     remaining portion (the original record with reduced quantity). Returns the
     closed portion, or None if the trade was not found.
+
+    The closed portion is marked settled=True (not just closed=True) so that
+    get_open_trades() — which filters on settled only — does not re-surface it
+    on the next cron cycle and trigger a duplicate partial-close loop.
 
     close_pct must be strictly between 0 and 1 inclusive on the upper end.
     """
@@ -1099,27 +1103,69 @@ def partial_close_position(trade_id: str, close_pct: float = 0.50) -> dict | Non
         # (entry_price, cost, ticker, side, etc.) without referencing the same object.
         closed_portion = copy.deepcopy(target)
         closed_portion["quantity"] = close_qty
+
+        # Bug 1 fix: assign a fresh integer ID so validate_paper_trades_integrity()
+        # does not flag a duplicate.  We take max existing id + 1, matching the
+        # same pattern used by place_paper_order().
+        max_existing_id = max(
+            (t["id"] for t in data["trades"] if isinstance(t.get("id"), int)),
+            default=0,
+        )
+        closed_portion["id"] = max_existing_id + 1
+
+        # Bug 3 fix: book PnL and free capital for the closed portion, matching
+        # close_paper_early's accounting pattern.
+        # exit_price is not known at partial-close time (no live market access here),
+        # so we use entry_price as a conservative placeholder.  The close_reason field
+        # distinguishes this from a real settlement so callers can handle it separately.
+        entry_price = target.get("entry_price", 0.0)
+        partial_cost = round(entry_price * close_qty, 4)
+        proceeds = round(entry_price * close_qty, 4)  # exit at entry → pnl = 0
+        partial_pnl = round(proceeds - partial_cost, 4)
+
+        now_iso = datetime.now(UTC).isoformat()
+        # Bug 2 fix: mark settled=True (not just closed=True) so get_open_trades()
+        # — which filters only on settled — does not re-surface this record.
+        closed_portion["settled"] = True
+        closed_portion["settled_at"] = now_iso
         closed_portion["closed"] = True
-        closed_portion["closed_at"] = datetime.now(UTC).isoformat(timespec="seconds")
+        closed_portion["closed_at"] = now_iso
         closed_portion["close_reason"] = "partial_exit"
+        closed_portion["outcome"] = "partial_exit"
+        closed_portion["exit_price"] = round(
+            entry_price, 4
+        )  # placeholder; no market access
+        closed_portion["pnl"] = partial_pnl
+        closed_portion["cost"] = partial_cost
+
+        # Add proceeds back to balance (capital freed by closing this slice).
+        data["balance"] = round(data["balance"] + proceeds, 4)
+        data["peak_balance"] = max(
+            data.get("peak_balance", STARTING_BALANCE), data["balance"]
+        )
 
         if remain_qty > 0:
-            # Reduce the original record to the remaining quantity.
+            # Reduce the original record to the remaining quantity and adjust its
+            # stored cost proportionally so balance accounting stays consistent.
             target["quantity"] = remain_qty
+            target["cost"] = round(target.get("entry_price", 0.0) * remain_qty, 4)
         else:
             # Nothing left — mark the original as settled so it won't be picked up
             # again by get_open_trades().
             target["settled"] = True
+            target["settled_at"] = now_iso
+            target["pnl"] = 0.0
 
         data["trades"].append(closed_portion)
         _save(data)
 
     _log.info(
-        "partial close: id=%s qty=%d/%d (%.0f%%)",
+        "partial close: id=%s qty=%d/%d (%.0f%%) pnl=%.4f",
         trade_id,
         close_qty,
         total_qty,
         close_pct * 100,
+        partial_pnl,
     )
     return closed_portion
 
