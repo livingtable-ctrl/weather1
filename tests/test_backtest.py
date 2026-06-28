@@ -165,3 +165,70 @@ def test_backtest_reports_funnel_breakdown_when_empty(monkeypatch, capsys):
     out = capsys.readouterr().out
     assert "fetched" in out.lower(), f"Should show 'Fetched' count, got:\n{out}"
     assert "10" in out, f"Should show fetched count of 10, got:\n{out}"
+
+
+class TestFetchPreviousRunEnsemble:
+    def test_returns_list_of_floats(self, monkeypatch):
+        """Previous Runs API call must return a list of floats."""
+        from datetime import date
+
+        import requests
+
+        from backtest import fetch_previous_run_ensemble
+
+        class MockResp:
+            status_code = 200
+
+            def raise_for_status(self):
+                pass
+
+            def json(self):
+                return {
+                    "daily": {
+                        "time": ["2026-06-20"],
+                        "temperature_2m_max_previous_day1_icon_seamless": [88.5],
+                        "temperature_2m_max_previous_day1_gfs_seamless": [89.2],
+                        "temperature_2m_max_previous_day1_ecmwf_aifs025_single": [87.8],
+                    }
+                }
+
+        monkeypatch.setattr(requests, "get", lambda *a, **k: MockResp())
+        temps = fetch_previous_run_ensemble(
+            "NYC", date(2026, 6, 20), days_out=1, var="max"
+        )
+        assert isinstance(temps, list)
+        assert len(temps) > 0
+        assert all(isinstance(t, float) for t in temps)
+
+    def test_returns_empty_for_unknown_city(self):
+        """Unknown city must return empty list (no crash)."""
+        from datetime import date
+
+        from backtest import fetch_previous_run_ensemble
+
+        result = fetch_previous_run_ensemble("Atlantis", date(2026, 6, 20), days_out=1)
+        assert result == []
+
+    def test_returns_empty_on_api_error(self, monkeypatch):
+        """API errors must return empty list, never raise."""
+        from datetime import date
+
+        import requests
+
+        from backtest import fetch_previous_run_ensemble
+
+        def _raise(*a, **k):
+            raise requests.RequestException("timeout")
+
+        monkeypatch.setattr(requests, "get", _raise)
+        result = fetch_previous_run_ensemble("NYC", date(2026, 6, 20), days_out=1)
+        assert result == []
+
+    def test_run_backtest_accepts_use_previous_runs_flag(self):
+        """run_backtest() must accept use_previous_runs keyword without raising TypeError."""
+        import inspect
+
+        from backtest import run_backtest
+
+        sig = inspect.signature(run_backtest)
+        assert "use_previous_runs" in sig.parameters

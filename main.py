@@ -5529,18 +5529,21 @@ def cmd_menu(client: KalshiClient):
 def cmd_backtest(client: KalshiClient, args: list):
     """
     Run a backtest on finalized Kalshi markets.
-    Usage: py main.py backtest [city] [--days N]
+    Usage: py main.py backtest [city] [--days N] [--previous-runs]
     """
     from backtest import run_backtest
 
     city_filter = None
     days_back = 90
+    use_previous_runs = False
     for i, a in enumerate(args):
         if a == "--days" and i + 1 < len(args):
             try:
                 days_back = int(args[i + 1])
             except ValueError:
                 pass
+        elif a == "--previous-runs":
+            use_previous_runs = True
         elif not a.startswith("--"):
             city_filter = a
 
@@ -5565,6 +5568,7 @@ def cmd_backtest(client: KalshiClient, args: list):
             city_filter=city_filter,
             days_back=days_back,
             on_progress=_bt_progress,
+            use_previous_runs=use_previous_runs,
         )
     except Exception as e:
         print()  # newline after progress bar

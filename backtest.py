@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import random
 from datetime import date, timedelta
 from pathlib import Path
@@ -24,7 +25,10 @@ import requests
 
 from utils import KALSHI_FEE_RATE
 
+_log = logging.getLogger(__name__)
+
 ARCHIVE_ENS_BASE = "https://archive-api.open-meteo.com/v1/archive"
+_PREV_RUN_MODELS = ["icon_seamless", "gfs_seamless", "ecmwf_aifs025_single"]
 DATA_DIR = Path(__file__).parent / "data"
 DATA_DIR.mkdir(exist_ok=True)
 ARCHIVE_CACHE_DIR = DATA_DIR / "archive_cache"
@@ -237,6 +241,65 @@ def fetch_archive_precip_prob(
         return None
 
 
+def fetch_previous_run_ensemble(
+    city: str,
+    target_date: date,
+    days_out: int,
+    var: str = "max",
+) -> list[float]:
+    """Fetch actual model output at forecast time using the Previous Runs API.
+
+    Returns temperatures in °F as a list (one per model). Empty list if unavailable.
+    This gives a true point-in-time ensemble unlike the archive ±5-day spread.
+    """
+    from weather_markets import CITY_COORDS
+
+    coords = CITY_COORDS.get(city)
+    if not coords:
+        return []
+    lat, lon, tz = coords  # CITY_COORDS values are (lat, lon, tz) tuples — NOT dicts
+
+    daily_var_suffix = "max" if var == "max" else "min"
+    daily_vars = [
+        f"temperature_2m_{daily_var_suffix}_previous_day{days_out}_{m}"
+        for m in _PREV_RUN_MODELS
+    ]
+
+    try:
+        resp = requests.get(
+            "https://previous-runs-api.open-meteo.com/v1/forecast",
+            params={
+                "latitude": lat,
+                "longitude": lon,
+                "daily": ",".join(daily_vars),
+                "temperature_unit": "fahrenheit",
+                "timezone": tz,
+                "past_days": max(41, days_out + 2),
+                "forecast_days": 0,
+            },
+            timeout=30,
+        )
+        resp.raise_for_status()
+        data = resp.json().get("daily", {})
+        times = data.get("time", [])
+        target_str = target_date.isoformat()
+        if target_str not in times:
+            return []
+        idx = times.index(target_str)
+        temps = []
+        for v in daily_vars:
+            val_list = data.get(v, [])
+            val = val_list[idx] if idx < len(val_list) else None
+            if val is not None:
+                temps.append(float(val))
+        return temps
+    except Exception as exc:
+        _log.debug(
+            "fetch_previous_run_ensemble: %s %s failed: %s", city, target_date, exc
+        )
+        return []
+
+
 # ── Backtest runner ───────────────────────────────────────────────────────────
 
 
@@ -333,6 +396,7 @@ def run_backtest(
     verbose: bool = False,
     holdout_fraction: float = 0.20,
     on_progress=None,
+    use_previous_runs: bool = False,
 ) -> dict:
     """
     Fetch finalized weather markets from Kalshi, then simulate our
@@ -434,7 +498,10 @@ def run_backtest(
             var = "min" if "LOW" in ticker.upper() else "max"
             condition["var"] = var
 
-            temps = fetch_archive_temps(lat, lon, tz, tdate, var=var)
+            if use_previous_runs:
+                temps = fetch_previous_run_ensemble(city, tdate, days_out=1, var=var)
+            else:
+                temps = fetch_archive_temps(lat, lon, tz, tdate, var=var)
             if len(temps) < 1:
                 continue
 
