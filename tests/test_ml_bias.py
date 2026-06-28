@@ -5,6 +5,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -263,4 +264,137 @@ class TestApplyTemperatureScaling:
         # 'above' not in table, so falls back to global T=3.0 — strong compression
         assert 0.5 < result < 0.80, (
             f"days_out=1 should use global T=3.0 (compression), got {result}"
+        )
+
+
+class TestEmos:
+    def test_fit_emos_returns_four_floats(self):
+        from ml_bias import fit_emos
+
+        ens_mean = np.array([65.0, 72.0, 58.0, 80.0, 67.0, 71.0, 63.0, 75.0])
+        ens_var = np.array([4.0, 9.0, 2.25, 16.0, 3.0, 6.0, 1.0, 12.0])
+        obs = np.array([67.0, 70.0, 60.0, 82.0, 69.0, 73.0, 62.0, 77.0])
+        a, b, c, d = fit_emos(ens_mean, ens_var, obs)
+        assert isinstance(a, float)
+        assert isinstance(b, float)
+        assert c >= 0.0, f"c={c} must be non-negative"
+        assert d >= 0.0, f"d={d} must be non-negative"
+
+    def test_emos_exceedance_prob_in_bounds(self):
+        from ml_bias import emos_exceedance_prob
+
+        params = (0.5, 0.95, 1.5, 0.10)
+        prob = emos_exceedance_prob(params, ens_mean=65.0, ens_var=4.0, threshold=70.0)
+        assert 0.0 <= prob <= 1.0
+
+    def test_emos_exceedance_prob_monotone(self):
+        """Higher threshold → lower exceedance probability."""
+        from ml_bias import emos_exceedance_prob
+
+        params = (0.5, 0.95, 1.5, 0.10)
+        p_low = emos_exceedance_prob(params, 70.0, 4.0, threshold=65.0)
+        p_high = emos_exceedance_prob(params, 70.0, 4.0, threshold=80.0)
+        assert p_low > p_high
+
+    def test_emos_interval_prob_in_bounds(self):
+        from ml_bias import emos_interval_prob
+
+        params = (0.5, 0.95, 1.5, 0.10)
+        prob = emos_interval_prob(
+            params, ens_mean=68.0, ens_var=4.0, low=65.0, high=71.0
+        )
+        assert 0.0 <= prob <= 1.0
+
+    def test_emos_interval_and_exceedance_consistent(self):
+        """P(T>threshold) + P(low<T<threshold) should equal P(T>low)."""
+        from ml_bias import emos_exceedance_prob, emos_interval_prob
+
+        params = (0.5, 0.95, 1.5, 0.10)
+        p_above_65 = emos_exceedance_prob(params, 70.0, 4.0, threshold=65.0)
+        p_interval = emos_interval_prob(params, 70.0, 4.0, low=65.0, high=70.0)
+        p_above_70 = emos_exceedance_prob(params, 70.0, 4.0, threshold=70.0)
+        assert abs(p_above_65 - (p_interval + p_above_70)) < 0.001
+
+    def test_load_emos_params_returns_none_when_file_missing(
+        self, tmp_path, monkeypatch
+    ):
+        import ml_bias
+        from ml_bias import _load_emos_params
+
+        monkeypatch.setattr(ml_bias, "_EMOS_PARAMS_PATH", tmp_path / "emos_params.json")
+        monkeypatch.setattr(ml_bias, "_EMOS_CACHE", None)
+        assert _load_emos_params() is None
+
+    def test_save_and_reload_emos_params(self, tmp_path, monkeypatch):
+        import ml_bias
+        from ml_bias import _load_emos_params, save_emos_params
+
+        monkeypatch.setattr(ml_bias, "_EMOS_PARAMS_PATH", tmp_path / "emos_params.json")
+        monkeypatch.setattr(ml_bias, "_EMOS_CACHE", None)
+        save_emos_params(1.23, 0.94, 2.1, 0.18, n=79, mean_crps=0.42)
+        monkeypatch.setattr(ml_bias, "_EMOS_CACHE", None)  # force reload
+        params = _load_emos_params()
+        assert params is not None
+        a, b, c, d = params
+        assert abs(a - 1.23) < 0.001
+        assert abs(b - 0.94) < 0.001
+
+    def test_get_emos_training_data_excludes_null_ens_mean(self, tmp_path, monkeypatch):
+        import tracker
+
+        monkeypatch.setattr(tracker, "DB_PATH", tmp_path / "test.db")
+        tracker._db_initialized = False
+        tracker.init_db()
+
+        with tracker._conn() as con:
+            # Row 1: has ens_mean + settled_temp_f → should appear
+            con.execute(
+                "INSERT INTO predictions (ticker, our_prob, market_prob, predicted_at, days_out, ens_mean, ens_var) "
+                "VALUES ('KXHIGH-T70', 0.6, 0.55, '2026-06-01', 1, 72.3, 4.5)"
+            )
+            con.execute(
+                "INSERT INTO outcomes (ticker, settled_yes, settled_at, settled_temp_f) "
+                "VALUES ('KXHIGH-T70', 1, '2026-06-01', 73.0)"
+            )
+            # Row 2: ens_mean IS NULL → must be excluded
+            con.execute(
+                "INSERT INTO predictions (ticker, our_prob, market_prob, predicted_at, days_out) "
+                "VALUES ('KXHIGH-T72', 0.5, 0.48, '2026-06-02', 1)"
+            )
+            con.execute(
+                "INSERT INTO outcomes (ticker, settled_yes, settled_at, settled_temp_f) "
+                "VALUES ('KXHIGH-T72', 0, '2026-06-02', 70.0)"
+            )
+
+        rows = tracker.get_emos_training_data()
+        assert len(rows) == 1
+        assert abs(rows[0]["ens_mean"] - 72.3) < 0.01
+        assert abs(rows[0]["settled_temp_f"] - 73.0) < 0.01
+        assert rows[0]["ens_var"] == pytest.approx(4.5, abs=0.01)
+
+    def test_emos_exceedance_prob_called_via_load_emos_params(
+        self, monkeypatch, tmp_path
+    ):
+        """_load_emos_params must return the cache when _EMOS_CACHE is populated."""
+        import json
+
+        import ml_bias
+
+        params = {"a": 0.0, "b": 1.0, "c": 1.0, "d": 0.0, "n": 79}
+        params_path = tmp_path / "emos_params.json"
+        params_path.write_text(json.dumps(params))
+
+        monkeypatch.setattr(ml_bias, "_EMOS_PARAMS_PATH", params_path)
+        monkeypatch.setattr(ml_bias, "_EMOS_CACHE", None)
+
+        loaded = ml_bias._load_emos_params()
+        assert loaded is not None, "_load_emos_params returned None — file not read"
+        a, b, c, d = loaded
+        assert b == pytest.approx(1.0), "b param should be 1.0"
+
+        # With a=0, b=1, c=1, d=0: mu=ens_mean=70, sigma=sqrt(1.0)=1.
+        # P(T > 72 | N(70,1)) < 0.5
+        prob = ml_bias.emos_exceedance_prob(loaded, 70.0, 4.0, threshold=72.0)
+        assert 0.0 < prob < 0.5, (
+            f"Expected prob < 0.5 when threshold > mean; got {prob}"
         )

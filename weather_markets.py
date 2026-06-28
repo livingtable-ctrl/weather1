@@ -4898,17 +4898,58 @@ def analyze_trade(enriched: dict) -> dict | None:
 
         if len(temps) >= 10:
             method = "ensemble"
-            if condition["type"] == "above":
-                ens_prob = sum(1 for t in temps if t > condition["threshold"]) / len(
-                    temps
-                )
-            elif condition["type"] == "below":
-                ens_prob = sum(1 for t in temps if t < condition["threshold"]) / len(
-                    temps
-                )
+            # EMOS path: use fitted Gaussian distribution if params are available.
+            # Falls back to raw exceedance fraction when EMOS not yet trained.
+            # CRITICAL: pass ens_var = std**2 (must square std, NOT pass std directly).
+            from ml_bias import (
+                _load_emos_params,
+                emos_exceedance_prob,
+                emos_interval_prob,
+            )
+
+            _emos_params = _load_emos_params()
+            _use_emos = (
+                _emos_params is not None
+                and ens_stats is not None
+                and ens_stats.get("std") is not None
+            )
+            if _use_emos:
+                assert _emos_params is not None  # guaranteed by _use_emos check above
+                assert ens_stats is not None  # guaranteed by _use_emos check above
+                _ens_var_live = ens_stats["std"] ** 2  # variance, not std
+                if condition["type"] == "above":
+                    ens_prob = emos_exceedance_prob(
+                        _emos_params,
+                        ens_stats["mean"],
+                        _ens_var_live,
+                        condition["threshold"],
+                    )
+                elif condition["type"] == "below":
+                    ens_prob = 1.0 - emos_exceedance_prob(
+                        _emos_params,
+                        ens_stats["mean"],
+                        _ens_var_live,
+                        condition["threshold"],
+                    )
+                else:
+                    lo, hi = condition["lower"], condition["upper"]
+                    ens_prob = emos_interval_prob(
+                        _emos_params, ens_stats["mean"], _ens_var_live, lo, hi
+                    )
+                method = "emos"
             else:
-                lo, hi = condition["lower"], condition["upper"]
-                ens_prob = sum(1 for t in temps if lo <= t <= hi) / len(temps)
+                # Fallback: raw exceedance fraction
+                if condition["type"] == "above":
+                    ens_prob = sum(
+                        1 for t in temps if t > condition["threshold"]
+                    ) / len(temps)
+                elif condition["type"] == "below":
+                    ens_prob = sum(
+                        1 for t in temps if t < condition["threshold"]
+                    ) / len(temps)
+                else:
+                    lo, hi = condition["lower"], condition["upper"]
+                    ens_prob = sum(1 for t in temps if lo <= t <= hi) / len(temps)
         else:
             # Prefer ens_stats["std"] when available — actual model disagreement
             # is more informative than the generic days-out lookup table.
