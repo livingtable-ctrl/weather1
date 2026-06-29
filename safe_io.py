@@ -156,3 +156,15 @@ def atomic_write_json_with_history(
 
     # Write the new version atomically (call existing atomic_write_json, do NOT use json.dump)
     atomic_write_json(data, path)
+
+
+def safe_pickle_loads(raw: bytes, expected_type: type):
+    # Reject the result if the type is wrong — guards against corrupted or swapped pickle files
+    import pickle
+
+    obj = pickle.loads(raw)  # noqa: S301
+    if not isinstance(obj, expected_type):
+        raise TypeError(
+            f"safe_pickle_loads: expected {expected_type.__name__}, got {type(obj).__name__}"
+        )
+    return obj

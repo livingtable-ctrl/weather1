@@ -121,10 +121,12 @@ def _load_models() -> dict:
             _MODELS_CACHE = {}
             return {}
 
-        # HMAC verified — safe to deserialise
-        _MODELS_CACHE = pickle.loads(raw)  # noqa: S301 (verified above)
+        # HMAC verified — mark attempted before deserialising so a TypeError won't cause infinite retries
         _LOAD_ATTEMPTED = True
-        return _MODELS_CACHE if isinstance(_MODELS_CACHE, dict) else {}
+        from safe_io import safe_pickle_loads
+
+        _MODELS_CACHE = safe_pickle_loads(raw, expected_type=dict)
+        return _MODELS_CACHE or {}
 
     except Exception as exc:
         _log.warning("ml_bias: load failed: %s — will retry on next call", exc)

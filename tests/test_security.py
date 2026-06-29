@@ -81,3 +81,13 @@ def test_dotenv_no_warning_on_600(tmp_path, caplog):
 
     warns = [r for r in caplog.records if r.levelno >= logging.WARNING]
     assert not warns
+
+
+def test_pickle_loads_validates_type():
+    import pickle
+
+    from safe_io import safe_pickle_loads
+
+    assert safe_pickle_loads(pickle.dumps({"a": 1}), expected_type=dict) == {"a": 1}
+    with pytest.raises(TypeError):
+        safe_pickle_loads(pickle.dumps([1, 2, 3]), expected_type=dict)
