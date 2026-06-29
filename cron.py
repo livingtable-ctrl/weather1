@@ -8,6 +8,7 @@ patch ``cron.LOCK_PATH`` (not ``main.LOCK_PATH``).
 
 from __future__ import annotations
 
+import datetime as _dt
 import json
 import logging
 import os
@@ -19,7 +20,7 @@ from pathlib import Path
 import execution_log
 from colors import bold, cyan, dim, green, red, yellow
 from kalshi_client import KalshiClient
-from paths import KILL_SWITCH_PATH, LOCK_PATH, RUNNING_FLAG_PATH
+from paths import KILL_SWITCH_PATH, LOCK_PATH, PROD_REMINDER_PATH, RUNNING_FLAG_PATH
 from utils import (
     CITY_MIN_PROB_EDGE,
     DRIFT_TIGHTEN_EDGE,
@@ -357,6 +358,57 @@ def _check_manual_override() -> bool:
 
 _ANOMALY_THRESHOLD = 0.12  # pp drift required to flag a market
 
+# Reminder fires once per day after this date when KALSHI_ENV=prod.
+# Change this date to push the reminder further out (e.g. after graduation).
+_PROD_REMINDER_DATE = _dt.date(2026, 7, 29)
+
+_PROD_REMINDER_CHECKLIST = """\
+[1-month prod reminder] Deferred items to review:
+
+  1. emos-train       : EMOS code deployed but emos_params.json absent (fallback mode).
+                        Run: py main.py emos-train
+                        Two-stage: a+b from all 79 rows, c+d from 15 with non-NULL ens_var.
+
+  2. below_gate       : Gate is DORMANT until count_settled_below_predictions() >= 30.
+                        Check count, then set BELOW_GATE_ENABLED=1 in .env.
+
+  3. sameday-reserve  : Dormant until 150 same-day settled.
+                        Run: py main.py admin sameday-stats at 150, then set
+                        SAME_DAY_RESERVE_SLOTS + SAME_DAY_RESERVE_AFTER_HOUR_UTC in .env.
+
+  4. learned_weights  : Locked until ~150-200 multi-day settled.
+                        Do NOT update before that threshold.
+
+  5. G2/G4 splits     : Split weather_markets.py + paper.py after graduation
+                        (Brier last-50 <= 0.23 gate clears).
+"""
+
+
+def _check_prod_reminder() -> None:
+    """Log a deferred-items checklist once per day after _PROD_REMINDER_DATE in prod mode."""
+    if os.getenv("KALSHI_ENV", "demo").lower() != "prod":
+        return
+    if _dt.date.today() < _PROD_REMINDER_DATE:
+        return
+    try:
+        if PROD_REMINDER_PATH.exists():
+            last = PROD_REMINDER_PATH.read_text().strip()
+            if last == str(_dt.date.today()):
+                return
+        _log.warning(_PROD_REMINDER_CHECKLIST)
+        try:
+            from notify import send_system_alert as _alert
+
+            _alert(
+                "Kalshi bot — 1-month prod reminder",
+                "Deferred items need review: emos-train, below_gate, sameday-reserve, learned_weights, G2/G4. Check bot.log for details.",
+            )
+        except Exception as _ntfy_exc:
+            _log.debug("prod reminder ntfy failed: %s", _ntfy_exc)
+        PROD_REMINDER_PATH.write_text(str(_dt.date.today()))
+    except Exception as _exc:
+        _log.debug("_check_prod_reminder failed: %s", _exc)
+
 
 def check_market_anomalies(signals: list[dict]) -> list[dict]:
     """Return signals where |blended_prob − market_price| > _ANOMALY_THRESHOLD."""
@@ -451,6 +503,9 @@ def _cmd_cron_body(
 
     # Spend cap validation — warn if MAX_DAILY_SPEND exceeds current balance
     _check_spend_cap_vs_balance()
+
+    # 1-month prod reminder — fires once per day after _PROD_REMINDER_DATE in prod mode
+    _check_prod_reminder()
 
     from datetime import UTC, datetime
 
