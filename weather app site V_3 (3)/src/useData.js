@@ -84,8 +84,13 @@ function mapStats(status, grad, config, prevStats) {
     if (status.kelly_factor  != null) base.kelly_factor  = status.kelly_factor;
     if (status.drawdown_pct  != null) base.drawdown_pct  = status.drawdown_pct;
     if (status.drawdown_tier != null) base.drawdown_tier = status.drawdown_tier;
-    if (status.var_95 != null) base.var_95 = status.var_95;
-    if (status.var_99 != null) base.var_99 = status.var_99;
+    if (status.var_95      != null) base.var_95      = status.var_95;
+    if (status.var_99      != null) base.var_99      = status.var_99;
+    if (status.kalshi_env         != null) base.kalshi_env         = status.kalshi_env;
+    if (status.is_live            != null) base.is_live            = status.is_live;
+    if (status.portfolio_ev       != null) base.portfolio_ev       = status.portfolio_ev;
+    if (status.portfolio_ev_roi_pct != null) base.portfolio_ev_roi_pct = status.portfolio_ev_roi_pct;
+    if (status.portfolio_cost     != null) base.portfolio_cost     = status.portfolio_cost;
   }
 
   // max_daily_spend lives in /api/config, not /api/status
@@ -310,6 +315,7 @@ export default function useData(setConnected) {
         safe('/api/anomaly-status'),       // 18
         safe('/api/calibration-status'),   // 19
         safe('/api/scan-stats'),           // 20
+        safe('/api/emos-status'),          // 21
       ]);
 
       // Unwrap allSettled — treat rejected as null
@@ -322,6 +328,7 @@ export default function useData(setConnected) {
         brierHistoryR, forecastQualityR,
         samedayCalibR,
         anomalyStatusR, calibStatusR, scanStatsR,
+        emosStatusR,
       ] = results.map(r => r.status === 'fulfilled' ? r.value : null);
 
       setData(prev => {
@@ -418,6 +425,9 @@ export default function useData(setConnected) {
         // Scan filter rejection counts from last cron run
         if (scanStatsR && !scanStatsR.error) next.scanStats = scanStatsR;
 
+        // EMOS calibration status
+        if (emosStatusR) next.emosStatus = emosStatusR;
+
         return next;
       });
     } catch (e) {
@@ -475,11 +485,21 @@ export default function useData(setConnected) {
     } catch { /* ignore parse errors */ }
   }
 
+  // ── Weather alerts — separate 15-minute poll (NWS API is slow) ─────────
+  async function fetchWeatherAlerts() {
+    try {
+      const result = await safe('/api/weather-alerts');
+      if (result) setData(prev => ({ ...prev, weatherAlerts: result }));
+    } catch { /* ignore */ }
+  }
+
   // ── Lifecycle ───────────────────────────────────────────────────────────
   useEffect(() => {
     fetchAll();
+    fetchWeatherAlerts();
     startSSE();
     timerRef.current = setInterval(fetchAll, 60_000); // refresh every 60 s
+    const alertsPollRef = setInterval(fetchWeatherAlerts, 900_000); // 15 minutes
 
     // Fast scan-version poll: detect cron completion without waiting 60 s.
     // Checks signals_cache.json mtime every 5 s; triggers fetchAll() the
@@ -499,6 +519,7 @@ export default function useData(setConnected) {
     return () => {
       clearInterval(timerRef.current);
       clearInterval(scanPollRef);
+      clearInterval(alertsPollRef);
       sseRef.current?.close();
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps

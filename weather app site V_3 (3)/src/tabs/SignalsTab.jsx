@@ -226,34 +226,59 @@ export default function SignalsTab() {
           </tr>
           {isExpanded && (
             <tr style={{ background: 'var(--bg-subtle)', borderBottom: '1px solid var(--border)' }}>
-              <td colSpan="13" style={{ padding: '20px 24px' }}>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 16, marginBottom: 16 }}>
-                  {[
-                    { label: 'Edge',     value: '+' + o.edge_pct.toFixed(1) + '%', highlight: true },
-                    { label: 'Forecast', value: o.forecast_prob.toFixed(1) + '%' },
-                    { label: 'Market',   value: o.market_prob.toFixed(1) + '%' },
-                    { label: 'Kelly $',  value: o.kelly_dollars > 0 ? '$' + o.kelly_dollars.toFixed(2) : '—' },
-                    { label: 'Model',    value: o.model || '—' },
-                    { label: 'Days Out', value: (() => { const td = o.target_date || o.expiry; if (!td) return '—'; return Math.ceil((new Date(td) - new Date()) / 86400000) + 'd'; })() },
-                  ].map(item => (
-                    <div key={item.label}>
-                      <div style={{ color: 'var(--text-faint)', fontSize: 11, marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{item.label}</div>
-                      <div style={{ fontWeight: 600, fontSize: 15, fontFamily: 'ui-monospace, monospace', color: item.highlight ? '#16a34a' : 'inherit' }}>{item.value}</div>
+              <td colSpan="13" style={{ padding: '16px 24px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 12 }}>
+                  <div>
+                    <div style={{ color: 'var(--text-faint)', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 3 }}>Market Mid</div>
+                    <div style={{ fontWeight: 600, fontSize: 14, fontFamily: 'ui-monospace, monospace' }}>{o.market_prob.toFixed(1)}%</div>
+                  </div>
+                  <div>
+                    <div style={{ color: 'var(--text-faint)', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 3 }}>Model Prob</div>
+                    <div style={{ fontWeight: 600, fontSize: 14, fontFamily: 'ui-monospace, monospace', color: '#16a34a' }}>{o.forecast_prob.toFixed(1)}%</div>
+                  </div>
+                  {o.forecast_temp != null && (
+                    <div>
+                      <div style={{ color: 'var(--text-faint)', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 3 }}>Forecast Temp</div>
+                      <div style={{ fontWeight: 600, fontSize: 14, fontFamily: 'ui-monospace, monospace' }}>{Number(o.forecast_temp).toFixed(1)}°F</div>
                     </div>
-                  ))}
+                  )}
+                  {o.condition?.threshold != null && (
+                    <div>
+                      <div style={{ color: 'var(--text-faint)', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 3 }}>Threshold</div>
+                      <div style={{ fontWeight: 600, fontSize: 14, fontFamily: 'ui-monospace, monospace' }}>{o.condition.threshold}°F</div>
+                    </div>
+                  )}
+                  {o.ensemble_prob != null && (
+                    <div>
+                      <div style={{ color: 'var(--text-faint)', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 3 }}>Ensemble</div>
+                      <div style={{ fontSize: 13, fontFamily: 'ui-monospace, monospace' }}>{o.ensemble_prob.toFixed(0)}%</div>
+                    </div>
+                  )}
+                  {o.nws_prob != null && (
+                    <div>
+                      <div style={{ color: 'var(--text-faint)', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 3 }}>NWS</div>
+                      <div style={{ fontSize: 13, fontFamily: 'ui-monospace, monospace' }}>{o.nws_prob.toFixed(0)}%</div>
+                    </div>
+                  )}
+                  {o.clim_prob != null && (
+                    <div>
+                      <div style={{ color: 'var(--text-faint)', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 3 }}>Climatology</div>
+                      <div style={{ fontSize: 13, fontFamily: 'ui-monospace, monospace' }}>{o.clim_prob.toFixed(0)}%</div>
+                    </div>
+                  )}
+                  <div>
+                    <div style={{ color: 'var(--text-faint)', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 3 }}>Method</div>
+                    <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{o.method || '—'}</div>
+                  </div>
                 </div>
-                <div style={{ padding: '12px', background: 'var(--bg-card)', borderRadius: 8, border: '1px solid var(--border)', fontSize: 12, color: 'var(--text-muted)' }}>
+                <div style={{ padding: '10px 12px', background: 'var(--bg-card)', borderRadius: 7, border: '1px solid var(--border)', fontSize: 12, color: 'var(--text-muted)' }}>
                   <strong>Market:</strong> {o.ticker} · <strong>Side:</strong> {o.side.toUpperCase()} · <strong>Risk:</strong> {o.time_risk}
                   {o.near_threshold && <span style={{ marginLeft: 12, color: '#ca8a04' }}>⚠ Near threshold</span>}
                   {o.is_hedge && <span style={{ marginLeft: 12 }}>↔ Hedges existing position</span>}
                 </div>
-                {o.ensemble_prob != null && (
-                  <div style={{ marginTop: 10, fontSize: 12, color: 'var(--text-muted)' }}>
-                    <strong>Source breakdown:</strong>
-                    {' '}Ensemble: {o.ensemble_prob.toFixed(0)}%
-                    {o.nws_prob != null && <>{' '}· NWS: {o.nws_prob.toFixed(0)}%</>}
-                    {o.clim_prob != null && <>{' '}· Clim: {o.clim_prob.toFixed(0)}%</>}
-                    {o.forecast_temp_f != null && <>{' '}· Forecast: {o.forecast_temp_f.toFixed(1)}°F</>}
+                {o.model_disagreement_flag && (
+                  <div style={{ marginTop: 8, fontSize: 11, color: '#d97706' }}>
+                    ⚠ Model disagreement: NWS vs ensemble gap = {o.model_disagreement_f}°F — reduced confidence
                   </div>
                 )}
               </td>

@@ -973,6 +973,51 @@ function ReliabilityDiagramChart({ city, data }) {
 }
 
 // ---------------------------------------------------------------------------
+// EmosStatusCard — shows whether EMOS params are trained and their values
+// ---------------------------------------------------------------------------
+function EmosStatusCard({ emos }) {
+  if (!emos) return null;
+  return (
+    <div style={{
+      padding: '12px 16px', borderRadius: 6, marginBottom: 12,
+      background: 'var(--bg-card)',
+      border: `1px solid ${emos.trained ? '#16a34a' : 'var(--border)'}`,
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+        <span style={{
+          fontSize: 11, fontWeight: 700, padding: '1px 6px', borderRadius: 3,
+          background: emos.trained ? 'rgba(22,163,74,0.15)' : 'rgba(107,114,128,0.15)',
+          color: emos.trained ? '#16a34a' : 'var(--text-muted)',
+        }}>
+          {emos.trained ? 'EMOS ACTIVE' : 'EMOS NOT TRAINED'}
+        </span>
+        <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{emos.message}</span>
+      </div>
+      {emos.trained && emos.params && (
+        <div style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'ui-monospace, monospace' }}>
+          μ = {emos.params.a} + {emos.params.b}·μ_ens
+          {' | '}
+          σ = √({emos.params.c} + {emos.params.d}·σ²_ens)
+          {' | '}
+          n={emos.params.n}
+          {emos.params.mean_crps != null && ` | CRPS=${emos.params.mean_crps.toFixed(3)}`}
+        </div>
+      )}
+      {emos.trained && emos.fitted_at && (
+        <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2 }}>
+          Fitted: {new Date(emos.fitted_at).toLocaleString()}
+        </div>
+      )}
+      {!emos.trained && (
+        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
+          Raw ensemble exceedance fractions in use (uncalibrated). Run emos-train to fix calibration.
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // AnalyticsTab — empty-state banner when post-wipe data is absent
 // ---------------------------------------------------------------------------
 export default function AnalyticsTab() {
@@ -1012,6 +1057,8 @@ export default function AnalyticsTab() {
       <p style={{ margin: '0 0 16px', color: 'var(--text-muted)', fontSize: 13 }}>
         Performance, P&amp;L attribution, model comparison, calibration.
       </p>
+
+      <EmosStatusCard emos={M.emosStatus} />
 
       {isEmpty && (
         <div style={{
