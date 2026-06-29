@@ -19,6 +19,7 @@ from pathlib import Path
 import execution_log
 from colors import bold, cyan, dim, green, red, yellow
 from kalshi_client import KalshiClient
+from paths import KILL_SWITCH_PATH, LOCK_PATH, RUNNING_FLAG_PATH
 from utils import (
     CITY_MIN_PROB_EDGE,
     DRIFT_TIGHTEN_EDGE,
@@ -40,15 +41,6 @@ _log = logging.getLogger("main")
 # ---------------------------------------------------------------------------
 # Path constants (owned here; main.py re-exports them)
 # ---------------------------------------------------------------------------
-
-# P3.1 — graceful shutdown flag
-RUNNING_FLAG_PATH: Path = Path(__file__).parent / "data" / ".cron_running"
-
-# P3.4 — file-based cron lock (prevents concurrent cron instances)
-LOCK_PATH: Path = Path(__file__).parent / "data" / ".cron.lock"
-
-# P8.3 — hard kill switch path
-KILL_SWITCH_PATH: Path = Path(__file__).parent / "data" / ".kill_switch"
 
 # Set to True by the manual override path in main.cmd_cron to suppress the
 # black swan re-check for one run when the user has explicitly acknowledged

@@ -31,3 +31,21 @@ def test_validate_config_does_not_exit_in_demo_when_keys_missing(monkeypatch):
     monkeypatch.delenv("KALSHI_KEY_ID", raising=False)
     monkeypatch.delenv("KALSHI_PRIVATE_KEY_PATH", raising=False)
     main._validate_config()  # must not raise
+
+
+def test_paths_module_exports_critical_paths():
+    from pathlib import Path
+
+    import paths
+
+    required = [
+        "DB_PATH",
+        "PAPER_TRADES_PATH",
+        "TEMPERATURE_SCALE_PATH",
+        "EMOS_PARAMS_PATH",
+        "KILL_SWITCH_PATH",
+        "LAST_HEARTBEAT_PATH",
+    ]
+    for name in required:
+        assert hasattr(paths, name), f"paths.py missing {name}"
+        assert isinstance(getattr(paths, name), Path), f"paths.{name} must be a Path"

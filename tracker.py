@@ -14,12 +14,12 @@ import sqlite3
 from collections import defaultdict
 from datetime import UTC, date, datetime, timedelta
 
+from paths import DB_PATH
 from safe_io import project_root as _project_root
 from utils import utc_today as _utc_today
 
 _log = logging.getLogger(__name__)
 
-DB_PATH = _project_root() / "data" / "predictions.db"
 DB_PATH.parent.mkdir(exist_ok=True)
 
 _db_initialized = False
