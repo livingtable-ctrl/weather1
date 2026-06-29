@@ -7065,8 +7065,10 @@ def _setup_logging(log_file: str = "bot.log") -> None:
     ch.setFormatter(fmt)
     ch.setLevel(logging.INFO)
 
+    # Only remove FileHandler instances (our own) — preserve pytest caplog and other handlers
     for h in root.handlers[:]:
-        root.removeHandler(h)
+        if isinstance(h, logging.FileHandler):
+            root.removeHandler(h)
     root.addHandler(fh)
     root.addHandler(ch)
 
