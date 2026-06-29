@@ -7006,8 +7006,63 @@ def cmd_sweep() -> None:
 # ── Router ────────────────────────────────────────────────────────────────────
 
 
+def _check_key_file_permissions(key_path: str) -> None:
+    # Warn if the RSA private key file is readable by group or other users
+    p = Path(key_path)
+    if not p.exists():
+        return
+
+    if sys.platform == "win32":
+        import subprocess
+
+        try:
+            result = subprocess.run(
+                ["icacls", str(p)],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            if "Everyone" in result.stdout or "BUILTIN\\Users" in result.stdout:
+                _log.warning(
+                    "SECURITY: %s may be readable by other users (icacls shows broad access). "
+                    "Run: icacls %s /inheritance:r /grant %s:F",
+                    p,
+                    p,
+                    os.getlogin(),
+                )
+        except Exception:
+            pass
+    else:
+        mode = p.stat().st_mode & 0o777
+        if mode & 0o077:
+            _log.warning(
+                "SECURITY: %s has insecure permissions (%04o). Run: chmod 600 %s",
+                p,
+                mode,
+                p,
+            )
+
+
+def _check_dotenv_permissions(dotenv_path: str = ".env") -> None:
+    # Warn if .env is world-readable — it contains API secrets
+    p = Path(dotenv_path)
+    if not p.exists():
+        return
+
+    if sys.platform != "win32":
+        mode = p.stat().st_mode & 0o777
+        if mode & 0o077:
+            _log.warning(
+                "SECURITY: .env has insecure permissions (%04o) — contains API secrets. "
+                "Run: chmod 600 %s",
+                mode,
+                p,
+            )
+
+
 def _validate_config() -> None:
     # Exit in prod if API credentials are absent; warn-only in demo
+    _check_dotenv_permissions(".env")
     if _kalshi_env() == "prod":
         missing = [
             v for v in ("KALSHI_KEY_ID", "KALSHI_PRIVATE_KEY_PATH") if not os.getenv(v)
@@ -7021,6 +7076,9 @@ def _validate_config() -> None:
             _log.debug(
                 "_validate_config: KALSHI_KEY_ID/PRIVATE_KEY_PATH not set (demo mode — OK)"
             )
+    key_path = os.getenv("KALSHI_PRIVATE_KEY_PATH", "")
+    if key_path:
+        _check_key_file_permissions(key_path)
 
 
 def _check_cron_staleness() -> None:
