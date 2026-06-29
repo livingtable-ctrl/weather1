@@ -10,7 +10,7 @@ import os
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-HEARTBEAT_PATH = Path("data") / "last_heartbeat.txt"
+HEARTBEAT_PATH = Path(__file__).parent / "data" / "last_heartbeat.txt"
 _log = logging.getLogger("watchdog")
 
 
