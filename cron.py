@@ -613,6 +613,14 @@ def _cmd_cron_body(
                 _MONDAY_SWEEP_PATH.parent.mkdir(exist_ok=True)
                 _MONDAY_SWEEP_PATH.touch()
 
+    # Update heartbeat on every cycle so watchdog.py can detect silent crashes
+    try:
+        from watchdog import update_heartbeat as _update_hb
+
+        _update_hb()
+    except Exception as _hb_exc:
+        _log.warning("cmd_cron: update_heartbeat failed: %s", _hb_exc)
+
     ctx.write_cron_running_flag()
     ctx.check_startup_orders()
 
