@@ -955,24 +955,34 @@ def settle_paper_trade(trade_id: int, outcome_yes: bool) -> dict:
 def _score_ensemble_members(trade: dict, outcome_yes: bool) -> None:
     """Log per-model forecast accuracy after settlement for _dynamic_model_weights().
 
-    Only scores when a real METAR observation is available — the synthetic
-    threshold±3°F proxy produced fabricated MAE values that corrupted weights.
+    Uses outcomes.settled_temp_f (the Kalshi-official daily HIGH) rather than a
+    live METAR reading — the METAR at settlement time can be 5-10°F below the
+    daily max, which would corrupt station bias weights with inverted error signs.
+    settled_temp_f is populated by audit_settlement after settlement; if it is NULL
+    the function returns early and will be retried on the next cycle.
     """
     city = trade.get("city")
     target_date = trade.get("target_date")
     if not city or not target_date:
         return
-    # Require a real observed temperature; skip rather than fabricate
+    # Look up the official settled daily HIGH from the outcomes table (written by audit_settlement)
     try:
-        from nws import get_live_observation as _get_obs
-        from weather_markets import CITY_COORDS as _coords_map
+        from tracker import _conn, init_db
 
-        coords = _coords_map.get(city, ())
-        obs = _get_obs(city, coords) if coords else None
-        actual_temp = obs.get("temp_f") if obs else None
+        init_db()
+        with _conn() as con:
+            row = con.execute(
+                "SELECT settled_temp_f FROM outcomes WHERE ticker = ?",
+                (trade.get("ticker", ""),),
+            ).fetchone()
+            actual_temp = row[0] if row else None
     except Exception:
         actual_temp = None
     if actual_temp is None:
+        _log.debug(
+            "_score_ensemble_members: skipping %s — settled_temp_f not yet in outcomes",
+            trade.get("ticker", "?"),
+        )
         return
     model_means: dict[str, float | None] = {
         "icon_seamless": trade.get("icon_forecast_mean"),

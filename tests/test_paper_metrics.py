@@ -241,3 +241,52 @@ class TestSpreadKellyMultiplier:
         # From plan: spread=6¢ eats 37.5% of 8¢ edge → mult=0.625
         result = paper.spread_kelly_multiplier(0.47, 0.53, 0.08)
         assert result == 0.625
+
+
+# ---------------------------------------------------------------------------
+# Feature 4: _score_ensemble_members uses DB settled_temp_f (E12)
+# ---------------------------------------------------------------------------
+
+
+def test_score_ensemble_members_uses_db_settled_temp(tmp_path, monkeypatch):
+    import paper
+    import tracker
+
+    monkeypatch.setattr(tracker, "DB_PATH", tmp_path / "test.db")
+    tracker._db_initialized = False
+    tracker.init_db()
+
+    # Pre-populate settled_temp_f in outcomes (as audit_settlement would do)
+    with tracker._conn() as con:
+        con.execute(
+            "INSERT OR IGNORE INTO outcomes (ticker, settled_yes) VALUES (?,1)",
+            ("KXHIGHNY-26JUL04-T85",),
+        )
+        con.execute(
+            "UPDATE outcomes SET settled_temp_f=88.0 WHERE ticker=?",
+            ("KXHIGHNY-26JUL04-T85",),
+        )
+
+    trade = {
+        "ticker": "KXHIGHNY-26JUL04-T85",
+        "city": "NYC",
+        "target_date": "2026-07-04",
+        "icon_forecast_mean": 84.0,
+        "gfs_forecast_mean": 83.5,
+        "forecast_temp": 84.2,
+    }
+
+    paper._score_ensemble_members(trade, outcome_yes=True)
+
+    with tracker._conn() as con:
+        rows = con.execute(
+            "SELECT actual_temp FROM ensemble_member_scores WHERE city='NYC'"
+        ).fetchall()
+
+    assert rows, (
+        "_score_ensemble_members must insert at least one row into ensemble_member_scores"
+    )
+    actual_temps = [r[0] for r in rows]
+    assert all(abs(t - 88.0) < 0.1 for t in actual_temps), (
+        f"Expected actual_temp=88.0 (DB settled_temp_f), got: {actual_temps}"
+    )
