@@ -7006,6 +7006,23 @@ def cmd_sweep() -> None:
 # ── Router ────────────────────────────────────────────────────────────────────
 
 
+def _validate_config() -> None:
+    # Exit in prod if API credentials are absent; warn-only in demo
+    if _kalshi_env() == "prod":
+        missing = [
+            v for v in ("KALSHI_API_KEY", "KALSHI_API_SECRET") if not os.getenv(v)
+        ]
+        if missing:
+            print(f"FATAL: Missing required env vars for prod: {', '.join(missing)}")
+            print("Add these to your .env file and restart.")
+            raise SystemExit(1)
+    else:
+        if not os.getenv("KALSHI_API_KEY") or not os.getenv("KALSHI_API_SECRET"):
+            _log.debug(
+                "_validate_config: KALSHI_API_KEY/SECRET not set (demo mode — OK)"
+            )
+
+
 def _check_cron_staleness() -> None:
     """Print a prominent warning if cron hasn't run in 48h."""
     try:
@@ -7057,6 +7074,10 @@ def main():
                 cmd_setup()
                 return
         sys.exit(1)
+
+    cmd = args[0].lower() if args else ""
+    if cmd in ("loop", "cron", "scan", "analyze", "emos-train", "backfill-emos"):
+        _validate_config()
 
     # --debug enables verbose logging of API errors and silent exceptions
     if "--debug" in args:
