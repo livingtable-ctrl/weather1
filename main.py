@@ -7010,16 +7010,16 @@ def _validate_config() -> None:
     # Exit in prod if API credentials are absent; warn-only in demo
     if _kalshi_env() == "prod":
         missing = [
-            v for v in ("KALSHI_API_KEY", "KALSHI_API_SECRET") if not os.getenv(v)
+            v for v in ("KALSHI_KEY_ID", "KALSHI_PRIVATE_KEY_PATH") if not os.getenv(v)
         ]
         if missing:
             print(f"FATAL: Missing required env vars for prod: {', '.join(missing)}")
             print("Add these to your .env file and restart.")
             raise SystemExit(1)
     else:
-        if not os.getenv("KALSHI_API_KEY") or not os.getenv("KALSHI_API_SECRET"):
+        if not os.getenv("KALSHI_KEY_ID") or not os.getenv("KALSHI_PRIVATE_KEY_PATH"):
             _log.debug(
-                "_validate_config: KALSHI_API_KEY/SECRET not set (demo mode — OK)"
+                "_validate_config: KALSHI_KEY_ID/PRIVATE_KEY_PATH not set (demo mode — OK)"
             )
 
 
