@@ -3951,3 +3951,18 @@ def vacuum_database() -> None:
         after,
         before - after,
     )
+
+
+def prune_old_analysis_attempts(days: int = 30) -> int:
+    # Remove stale analysis records to keep the table from growing indefinitely
+    from datetime import UTC, datetime, timedelta
+
+    init_db()
+    cutoff = (datetime.now(UTC) - timedelta(days=days)).isoformat()
+    with _conn() as con:
+        cur = con.execute(
+            "DELETE FROM analysis_attempts WHERE analyzed_at < ?", (cutoff,)
+        )
+        n = cur.rowcount
+    _log.info("pruned %d old analysis_attempts (older than %d days)", n, days)
+    return n

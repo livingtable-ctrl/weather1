@@ -603,6 +603,10 @@ def _cmd_cron_body(
 
                 _prune_features()
 
+                from tracker import prune_old_analysis_attempts as _prune_attempts
+
+                _prune_attempts(days=30)
+
                 # Compact the SQLite DB after pruning removes rows.
                 from tracker import vacuum_database as _vacuum_db
 

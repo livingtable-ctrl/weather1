@@ -179,3 +179,37 @@ def test_vacuum_database_runs_without_error(tmp_path, monkeypatch):
         con.execute("DELETE FROM predictions WHERE ticker LIKE 'TICKER-%'")
 
     tracker.vacuum_database()  # must not raise
+
+
+def test_prune_old_analysis_attempts_removes_stale_rows(tmp_path, monkeypatch):
+    from datetime import UTC, datetime, timedelta
+
+    import tracker
+
+    monkeypatch.setattr(tracker, "DB_PATH", tmp_path / "test.db")
+    tracker._db_initialized = False
+    tracker.init_db()
+
+    old_ts = (datetime.now(UTC) - timedelta(days=60)).isoformat()
+    recent_ts = datetime.now(UTC).isoformat()
+
+    with tracker._conn() as con:
+        con.execute(
+            "INSERT INTO analysis_attempts (ticker, target_date, analyzed_at) VALUES (?,?,?)",
+            ("OLD-TICKER", "2026-01-01", old_ts),
+        )
+        con.execute(
+            "INSERT INTO analysis_attempts (ticker, target_date, analyzed_at) VALUES (?,?,?)",
+            ("RECENT-TICKER", "2026-07-01", recent_ts),
+        )
+
+    deleted = tracker.prune_old_analysis_attempts(days=30)
+
+    assert deleted == 1, f"Expected 1 row deleted, got {deleted}"
+
+    with tracker._conn() as con:
+        remaining = con.execute("SELECT ticker FROM analysis_attempts").fetchall()
+
+    tickers = [r[0] for r in remaining]
+    assert "OLD-TICKER" not in tickers
+    assert "RECENT-TICKER" in tickers
