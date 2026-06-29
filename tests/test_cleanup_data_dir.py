@@ -159,3 +159,23 @@ def test_atomic_write_json_with_history_keeps_previous_versions(tmp_path):
     # Oldest history file should have a=1
     oldest = json.loads(history_files[0].read_text())
     assert oldest["a"] == 1
+
+
+def test_vacuum_database_runs_without_error(tmp_path, monkeypatch):
+    import tracker
+
+    monkeypatch.setattr(tracker, "DB_PATH", tmp_path / "test.db")
+    tracker._db_initialized = False
+    tracker.init_db()
+
+    # Insert and delete rows to create fragmentation before vacuuming
+    with tracker._conn() as con:
+        for i in range(100):
+            con.execute(
+                "INSERT INTO predictions (ticker, our_prob, market_prob, predicted_at, days_out) "
+                "VALUES (?, 0.5, 0.5, '2026-01-01', 1)",
+                (f"TICKER-{i}",),
+            )
+        con.execute("DELETE FROM predictions WHERE ticker LIKE 'TICKER-%'")
+
+    tracker.vacuum_database()  # must not raise

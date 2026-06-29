@@ -603,19 +603,10 @@ def _cmd_cron_body(
 
                 _prune_features()
 
-                # Compact the SQLite DB after pruning removes rows. VACUUM reclaims
-                # dead pages that accumulate from deleted predictions/API records.
-                # isolation_level=None gives explicit autocommit — VACUUM cannot run
-                # inside a Python sqlite3 implicit transaction.
-                import sqlite3 as _sqlite3_vac
+                # Compact the SQLite DB after pruning removes rows.
+                from tracker import vacuum_database as _vacuum_db
 
-                from tracker import DB_PATH as _db_path_vac
-
-                with _sqlite3_vac.connect(
-                    str(_db_path_vac), isolation_level=None
-                ) as _vac_con:
-                    _vac_con.execute("VACUUM")
-                    _log.debug("cmd_cron: Monday VACUUM complete")
+                _vacuum_db()
             except Exception as _sweep_exc:
                 _log.warning("cmd_cron: Monday sweep failed: %s", _sweep_exc)
             finally:

@@ -3934,3 +3934,20 @@ def get_edge_realization_by_city() -> list[dict]:
         }
         for r in rows
     ]
+
+
+def vacuum_database() -> None:
+    # Reclaim free pages after bulk deletes — VACUUM cannot run in a transaction
+    import sqlite3 as _sqlite3_vac
+
+    with _sqlite3_vac.connect(str(DB_PATH), isolation_level=None) as con:
+        before = con.execute("PRAGMA page_count").fetchone()[0]
+        con.execute("PRAGMA wal_checkpoint(FULL)")
+        con.execute("VACUUM")
+        after = con.execute("PRAGMA page_count").fetchone()[0]
+    _log.info(
+        "VACUUM complete: page_count %d → %d (freed %d pages)",
+        before,
+        after,
+        before - after,
+    )
