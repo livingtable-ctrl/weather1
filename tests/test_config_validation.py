@@ -49,3 +49,26 @@ def test_paths_module_exports_critical_paths():
     for name in required:
         assert hasattr(paths, name), f"paths.py missing {name}"
         assert isinstance(getattr(paths, name), Path), f"paths.{name} must be a Path"
+
+
+def test_bot_config_loads_from_env(monkeypatch):
+    monkeypatch.setenv("PAPER_MIN_EDGE", "0.09")
+    monkeypatch.setenv("BREAKEVEN_TRIGGER_PCT", "0.75")
+    monkeypatch.setenv("KALSHI_ENV", "demo")
+    from config import BotConfig, reset_config
+
+    reset_config()
+    cfg = BotConfig.from_env()
+    assert abs(cfg.paper_min_edge - 0.09) < 0.001
+    assert abs(cfg.breakeven_trigger_pct - 0.75) < 0.001
+    assert cfg.kalshi_env == "demo"
+
+
+def test_bot_config_defaults_are_sane():
+    from config import BotConfig, reset_config
+
+    reset_config()
+    cfg = BotConfig()
+    assert 0.01 <= cfg.paper_min_edge <= 0.20
+    assert 0.50 <= cfg.breakeven_trigger_pct <= 1.0
+    assert cfg.max_days_out == 3
