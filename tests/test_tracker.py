@@ -2141,3 +2141,20 @@ def test_api_edge_realization_returns_list(monkeypatch):
             assert "mean_edge" in entry
             assert "win_rate" in entry
             assert "n" in entry
+
+
+def test_health_endpoint_returns_ok(monkeypatch):
+    # Health endpoint must be public (no auth) and return JSON status
+    monkeypatch.setenv("DASHBOARD_UNPROTECTED", "true")
+    monkeypatch.delenv("DASHBOARD_PASSWORD", raising=False)
+    from web_app import _build_app
+
+    app = _build_app(object())
+    app.config["TESTING"] = True
+    with app.test_client() as c:
+        resp = c.get("/health")
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data is not None
+        assert "status" in data
+        assert data["status"] == "ok"
