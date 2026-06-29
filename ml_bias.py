@@ -125,7 +125,17 @@ def _load_models() -> dict:
         _LOAD_ATTEMPTED = True
         from safe_io import safe_pickle_loads
 
-        _MODELS_CACHE = safe_pickle_loads(raw, expected_type=dict)
+        try:
+            _MODELS_CACHE = safe_pickle_loads(raw, expected_type=dict)
+        except TypeError as exc:
+            # Wrong top-level type in the pickle — permanent failure because
+            # _LOAD_ATTEMPTED is already True; retry would return {} forever anyway
+            _MODELS_CACHE = {}
+            _log.error(
+                "ml_bias: pickle type mismatch: %s — bias correction disabled for this process run",
+                exc,
+            )
+            return {}
         return _MODELS_CACHE or {}
 
     except Exception as exc:

@@ -159,7 +159,9 @@ def atomic_write_json_with_history(
 
 
 def safe_pickle_loads(raw: bytes, expected_type: type):
-    # Reject the result if the type is wrong — guards against corrupted or swapped pickle files
+    # Guards against type confusion (e.g. list where dict expected) — NOT against RCE.
+    # __reduce__ in the pickle stream executes during pickle.loads, before this check runs.
+    # Callers must verify data integrity (e.g. HMAC) before calling this function.
     import pickle
 
     obj = pickle.loads(raw)  # noqa: S301

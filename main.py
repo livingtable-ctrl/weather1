@@ -7016,24 +7016,44 @@ def _check_key_file_permissions(key_path: str) -> None:
         import subprocess
 
         try:
+            # PowerShell Get-Acl returns SDDL with well-known SID abbreviations —
+            # locale-agnostic unlike icacls which shows translated names on non-English Windows.
+            # WD = Everyone (S-1-1-0); BU = BUILTIN\Users (S-1-5-32-545)
             result = subprocess.run(
-                ["icacls", str(p)],
+                [
+                    "powershell",
+                    "-NoProfile",
+                    "-Command",
+                    "(Get-Acl -LiteralPath $env:_CHECKPATH).Sddl",
+                ],
                 capture_output=True,
                 text=True,
                 timeout=5,
+                env={**os.environ, "_CHECKPATH": str(p)},
             )
-            if "Everyone" in result.stdout or "BUILTIN\\Users" in result.stdout:
-                _log.warning(
-                    "SECURITY: %s may be readable by other users (icacls shows broad access). "
-                    "Run: icacls %s /inheritance:r /grant %s:F",
-                    p,
-                    p,
-                    os.getlogin(),
-                )
+            if result.returncode == 0:
+                sddl = result.stdout
+                if ";;;WD)" in sddl or ";;;BU)" in sddl:
+                    # os.environ.get avoids OSError that os.getlogin() raises under
+                    # services and scheduled tasks with no controlling terminal
+                    user = os.environ.get(
+                        "USERNAME", os.environ.get("USER", "<unknown>")
+                    )
+                    _log.warning(
+                        "SECURITY: %s may be readable by other users "
+                        "(ACL grants access to Everyone or Users). "
+                        "Run: icacls %s /inheritance:r /grant %s:F",
+                        p,
+                        p,
+                        user,
+                    )
         except Exception:
             pass
     else:
         mode = p.stat().st_mode & 0o777
+        # 0o077 checks all non-owner bits (read, write, execute) — intentionally stricter
+        # than kalshi_client._check_key_permissions which only checks read bits (0o044);
+        # a group-executable key is also a risk on some setups
         if mode & 0o077:
             _log.warning(
                 "SECURITY: %s has insecure permissions (%04o). Run: chmod 600 %s",
@@ -7044,7 +7064,9 @@ def _check_key_file_permissions(key_path: str) -> None:
 
 
 def _check_dotenv_permissions(dotenv_path: str = ".env") -> None:
-    # Warn if .env is world-readable — it contains API secrets
+    # Warn if .env is world-readable — it contains API secrets.
+    # Windows is intentionally skipped here; the key-file check in
+    # _check_key_file_permissions already covers Win32 via PowerShell Get-Acl.
     p = Path(dotenv_path)
     if not p.exists():
         return
@@ -7062,7 +7084,8 @@ def _check_dotenv_permissions(dotenv_path: str = ".env") -> None:
 
 def _validate_config() -> None:
     # Exit in prod if API credentials are absent; warn-only in demo
-    _check_dotenv_permissions(".env")
+    # Anchor to the script directory so the check works regardless of CWD at launch time
+    _check_dotenv_permissions(str(Path(__file__).parent / ".env"))
     if _kalshi_env() == "prod":
         missing = [
             v for v in ("KALSHI_KEY_ID", "KALSHI_PRIVATE_KEY_PATH") if not os.getenv(v)
