@@ -2158,3 +2158,22 @@ def test_health_endpoint_returns_ok(monkeypatch):
         assert data is not None
         assert "status" in data
         assert data["status"] == "ok"
+
+
+def test_composite_indexes_exist(tmp_path, monkeypatch):
+    import tracker
+
+    monkeypatch.setattr(tracker, "DB_PATH", tmp_path / "test.db")
+    monkeypatch.setattr(tracker, "_db_initialized", False)
+    tracker.init_db()
+    with tracker._conn() as con:
+        indexes = {
+            row[1]
+            for row in con.execute(
+                "SELECT * FROM sqlite_master WHERE type='index'"
+            ).fetchall()
+        }
+    assert "idx_predictions_ticker_settled" in indexes
+    assert "idx_predictions_city_days_created" in indexes
+    assert "idx_predictions_prob_settled" in indexes
+    assert "idx_outcomes_ticker_settled" in indexes
