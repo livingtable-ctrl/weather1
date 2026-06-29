@@ -7044,6 +7044,33 @@ def _check_cron_staleness() -> None:
         pass
 
 
+def _setup_logging(log_file: str = "bot.log") -> None:
+    # Attach rotating file handler (10 MB × 5 backups) so logs survive long runs
+    from logging.handlers import RotatingFileHandler
+
+    fmt = logging.Formatter(
+        "%(asctime)s %(levelname)-8s %(name)-20s %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
+    root = logging.getLogger()
+    root.setLevel(logging.INFO)
+
+    fh = RotatingFileHandler(
+        log_file, maxBytes=10 * 1024 * 1024, backupCount=5, encoding="utf-8"
+    )
+    fh.setFormatter(fmt)
+    fh.setLevel(logging.DEBUG)
+
+    ch = logging.StreamHandler()
+    ch.setFormatter(fmt)
+    ch.setLevel(logging.INFO)
+
+    for h in root.handlers[:]:
+        root.removeHandler(h)
+    root.addHandler(fh)
+    root.addHandler(ch)
+
+
 def main():
     args = sys.argv[1:]
 
@@ -7079,12 +7106,11 @@ def main():
     if cmd in ("loop", "cron", "scan", "analyze", "emos-train", "backfill-emos"):
         _validate_config()
 
+    _setup_logging()
+
     # --debug enables verbose logging of API errors and silent exceptions
     if "--debug" in args:
-        logging.basicConfig(
-            level=logging.DEBUG,
-            format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
-        )
+        logging.getLogger().setLevel(logging.DEBUG)
         args = [a for a in args if a != "--debug"]
     else:
         logging.disable(logging.DEBUG)
