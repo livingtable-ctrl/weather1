@@ -8,9 +8,9 @@ an optional push notification via ntfy.sh (set NTFY_TOPIC in .env).
 import logging
 import os
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
 
-HEARTBEAT_PATH = Path(__file__).parent / "data" / "last_heartbeat.txt"
+from paths import LAST_HEARTBEAT_PATH as HEARTBEAT_PATH
+
 _log = logging.getLogger("watchdog")
 
 

@@ -14,17 +14,17 @@ import sqlite3
 from collections import defaultdict
 from datetime import UTC, date, datetime, timedelta
 
+from paths import DB_PATH
 from safe_io import project_root as _project_root
 from utils import utc_today as _utc_today
 
 _log = logging.getLogger(__name__)
 
-DB_PATH = _project_root() / "data" / "predictions.db"
 DB_PATH.parent.mkdir(exist_ok=True)
 
 _db_initialized = False
 
-_SCHEMA_VERSION = 29  # increment when _MIGRATIONS list grows
+_SCHEMA_VERSION = 33  # increment when _MIGRATIONS list grows
 
 _MIGRATIONS = [
     # v1 → v2: add condition_type column (if not already added)
@@ -142,6 +142,18 @@ _MIGRATIONS = [
     # v27 → v28: EMOS training — ensemble variance at prediction time (degrees F squared).
     # Required for EMOS fit: sigma = sqrt(c + d*ens_var). Stored as variance, not std.
     "ALTER TABLE predictions ADD COLUMN ens_var REAL",
+    # v29 → v30: composite index for Brier/calibration JOIN queries on (ticker, our_prob).
+    # Speeds up the inner-loop join to outcomes by narrowing the predictions scan to rows
+    # that actually have a probability (our_prob NOT NULL).
+    "CREATE INDEX IF NOT EXISTS idx_predictions_ticker_settled ON predictions(ticker, our_prob) WHERE our_prob IS NOT NULL",
+    # v30 → v31: composite index for per-city stats queries on (city, days_out, predicted_at).
+    # Avoids a full table scan when filtering by city+horizon+date-range.
+    "CREATE INDEX IF NOT EXISTS idx_predictions_city_days_created ON predictions(city, days_out, predicted_at) WHERE city IS NOT NULL",
+    # v31 → v32: partial index on our_prob for calibration queries that filter our_prob IS NOT NULL.
+    "CREATE INDEX IF NOT EXISTS idx_predictions_prob_settled ON predictions(our_prob) WHERE our_prob IS NOT NULL",
+    # v32 → v33: composite index on outcomes(ticker, settled_at) scoped to rows with
+    # settled_temp_f, used by EMOS training queries that join on ticker and filter by date.
+    "CREATE INDEX IF NOT EXISTS idx_outcomes_ticker_settled ON outcomes(ticker, settled_at) WHERE settled_temp_f IS NOT NULL",
 ]
 
 
