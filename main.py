@@ -7048,6 +7048,12 @@ def _setup_logging(log_file: str = "bot.log") -> None:
     # Attach rotating file handler (10 MB × 5 backups) so logs survive long runs
     from logging.handlers import RotatingFileHandler
 
+    # Anchor a bare filename to the script directory so the log lands next to main.py
+    # regardless of the CWD at launch time (e.g. running from system32 or home dir)
+    _log_path = Path(log_file)
+    if not _log_path.is_absolute():
+        _log_path = Path(__file__).parent / _log_path
+
     fmt = logging.Formatter(
         "%(asctime)s %(levelname)-8s %(name)-20s %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
@@ -7056,7 +7062,7 @@ def _setup_logging(log_file: str = "bot.log") -> None:
     root.setLevel(logging.INFO)
 
     fh = RotatingFileHandler(
-        log_file, maxBytes=10 * 1024 * 1024, backupCount=5, encoding="utf-8"
+        str(_log_path), maxBytes=10 * 1024 * 1024, backupCount=5, encoding="utf-8"
     )
     fh.setFormatter(fmt)
     fh.setLevel(logging.DEBUG)
