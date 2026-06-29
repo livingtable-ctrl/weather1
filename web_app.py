@@ -1359,6 +1359,8 @@ setInterval(() => {{
                 "var_95": var_95,
                 "var_99": var_99,
                 "timestamp": datetime.now(UTC).isoformat(),
+                "kalshi_env": os.getenv("KALSHI_ENV", "demo"),
+                "is_live": os.getenv("KALSHI_ENV", "demo").lower() == "prod",
             }
             try:
                 from paper import get_portfolio_expected_value
@@ -1534,6 +1536,105 @@ setInterval(() => {{
             )
         except Exception as exc:
             return jsonify({"error": str(exc)}), 500
+
+    @app.route("/api/emos-status")
+    @_require_auth
+    def api_emos_status():
+        """Return EMOS parameter status — whether trained, params, and training date."""
+        from paths import EMOS_PARAMS_PATH
+
+        if not EMOS_PARAMS_PATH.exists():
+            return jsonify(
+                {
+                    "trained": False,
+                    "params": None,
+                    "message": "Not trained. Run: py main.py emos-train",
+                }
+            )
+        try:
+            _emos = json.loads(EMOS_PARAMS_PATH.read_text())
+            return jsonify(
+                {
+                    "trained": True,
+                    "params": {
+                        "a": round(_emos.get("a", 0), 4),
+                        "b": round(_emos.get("b", 0), 4),
+                        "c": round(_emos.get("c", 0), 4),
+                        "d": round(_emos.get("d", 0), 4),
+                        "n": _emos.get("n", 0),
+                        "mean_crps": _emos.get("mean_crps"),
+                    },
+                    "fitted_at": _emos.get("fitted_at"),
+                    "message": f"EMOS active (n={_emos.get('n', 0)} training rows)",
+                }
+            )
+        except Exception as _exc:
+            return jsonify(
+                {
+                    "trained": False,
+                    "error": str(_exc),
+                    "message": "Error reading emos_params.json",
+                }
+            )
+
+    @app.route("/api/weather-alerts")
+    @_require_auth
+    def api_weather_alerts():
+        """Fetch NWS active weather alerts for cities with open positions.
+
+        Calls the free NWS Alerts API (no API key required).
+        Returns list of {event, headline, city, severity} for Moderate+/Severe/Extreme alerts.
+        Swallows per-city errors so one bad city never blocks the others.
+        """
+        import requests
+
+        from paper import load_paper_trades
+        from weather_markets import CITY_COORDS
+
+        open_trades = [
+            t
+            for t in load_paper_trades()
+            if not t.get("settled") and t.get("won") is None
+        ]
+        cities = list({t.get("city", "") for t in open_trades if t.get("city")})
+        if not cities:
+            return jsonify({"alerts": []})
+
+        alerts: list[dict] = []
+        for city in cities[:8]:
+            coords = CITY_COORDS.get(city)
+            if not coords:
+                continue
+            lat, lon = coords[0], coords[1]
+            try:
+                resp = requests.get(
+                    "https://api.weather.gov/alerts/active",
+                    params={"point": f"{lat},{lon}"},
+                    headers={
+                        "User-Agent": "KalshiWeatherBot/1.0 (thesadcup@gmail.com)"
+                    },
+                    timeout=5,
+                )
+                resp.raise_for_status()
+                features = resp.json().get("features", [])
+                for feat in features[:2]:
+                    props = feat.get("properties", {})
+                    severity = props.get("severity", "Unknown")
+                    if severity in ("Minor", "Unknown"):
+                        continue
+                    alerts.append(
+                        {
+                            "city": city,
+                            "event": props.get("event", ""),
+                            "headline": props.get("headline", ""),
+                            "severity": severity,
+                            "expires": props.get("expires", ""),
+                        }
+                    )
+            except Exception:
+                continue
+
+        return jsonify({"alerts": alerts})
 
     @app.route("/api/halt", methods=["POST"])
     def api_halt():

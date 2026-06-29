@@ -3,6 +3,65 @@ import { DataContext } from '../DataContext.js';
 import { authHeader } from '../useData.js';
 import { normCity, kalshiMarketUrl } from '../shared.jsx';
 
+// ---------------------------------------------------------------------------
+// WeatherAlertBanner — NWS active alerts for cities with open positions
+// ---------------------------------------------------------------------------
+function WeatherAlertBanner({ alerts }) {
+  if (!alerts || alerts.length === 0) return null;
+  return (
+    <div style={{
+      background: 'rgba(239,68,68,0.08)', border: '1px solid #ef4444',
+      borderRadius: 8, padding: '8px 14px', marginBottom: 12, fontSize: 12,
+    }}>
+      <strong style={{ color: '#ef4444' }}>⚠ Active Weather Alerts</strong>
+      {alerts.map((a, i) => (
+        <div key={i} style={{ marginTop: 4, color: 'var(--text)' }}>
+          <strong>{a.city}</strong> — {a.event}
+          {a.headline && <span style={{ color: 'var(--text-muted)' }}> — {a.headline}</span>}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// PortfolioEvCard — aggregate expected value summary for all open positions
+// ---------------------------------------------------------------------------
+function PortfolioEvCard({ stats }) {
+  if (!stats || stats.portfolio_ev == null || stats.portfolio_cost == null) return null;
+  if (stats.portfolio_cost === 0) return null;
+  const ev = stats.portfolio_ev;
+  const roi = stats.portfolio_ev_roi_pct;
+  const cost = stats.portfolio_cost;
+  return (
+    <div style={{
+      display: 'flex', gap: 24, padding: '10px 16px', marginBottom: 12,
+      background: 'var(--bg-card)', borderRadius: 8, border: '1px solid var(--border)',
+    }}>
+      <div>
+        <div style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 2 }}>Expected Profit</div>
+        <div style={{ fontSize: 18, fontWeight: 700, fontFamily: 'ui-monospace, monospace', color: ev >= 0 ? '#16a34a' : '#ef4444' }}>
+          {ev >= 0 ? '+' : ''}{ev.toFixed(2)}
+        </div>
+      </div>
+      {roi != null && (
+        <div>
+          <div style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 2 }}>EV ROI</div>
+          <div style={{ fontSize: 18, fontWeight: 700, fontFamily: 'ui-monospace, monospace', color: roi >= 0 ? '#16a34a' : '#ef4444' }}>
+            {roi >= 0 ? '+' : ''}{roi.toFixed(1)}%
+          </div>
+        </div>
+      )}
+      <div>
+        <div style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 2 }}>Deployed</div>
+        <div style={{ fontSize: 18, fontWeight: 700, fontFamily: 'ui-monospace, monospace', color: 'var(--text)' }}>
+          ${cost.toFixed(2)}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function PositionsTab() {
   const M = useContext(DataContext);
   const [filter, setFilter] = useState('');
@@ -182,6 +241,9 @@ export default function PositionsTab() {
           {bulkActionMsg}
         </div>
       )}
+
+      <WeatherAlertBanner alerts={M.weatherAlerts?.alerts} />
+      <PortfolioEvCard stats={M.stats} />
 
       <section style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 14, overflow: 'hidden' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>

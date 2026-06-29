@@ -132,13 +132,19 @@ function Nav({ active, onNavigate, theme, onToggleTheme, connected, refreshCount
         </div>
         {/* Tab nav */}
         <nav style={{ display: 'flex', gap: 3, fontSize: 13 }}>
-          {TAB_NAMES.map(tab => (
+          {TAB_NAMES.map((tab, i) => (
             <button key={tab} onClick={() => onNavigate(tab)} style={{
               padding: '7px 13px', borderRadius: 7, border: 'none',
               color: active === tab ? 'var(--text)' : 'var(--text-muted)',
               background: active === tab ? 'var(--bg-muted)' : 'transparent',
               fontWeight: active === tab ? 600 : 500, cursor: 'pointer', fontFamily: 'inherit',
-            }}>{tab}</button>
+              display: 'inline-flex', alignItems: 'center', gap: 4,
+            }}>
+              {tab}
+              {i < 8 && (
+                <kbd style={{ fontSize: 9, opacity: 0.5, fontFamily: 'ui-monospace, monospace', lineHeight: 1 }}>{i + 1}</kbd>
+              )}
+            </button>
           ))}
         </nav>
       </div>
@@ -170,13 +176,25 @@ function Nav({ active, onNavigate, theme, onToggleTheme, connected, refreshCount
           {connected ? 'Live' : 'Offline'}
         </span>
 
-        {/* Env badge */}
+        {/* Env badge — reads kalshi_env/is_live from /api/status */}
         <span style={{
           display: 'inline-flex', alignItems: 'center',
           padding: '4px 10px', borderRadius: 999,
-          background: 'rgba(234,179,8,0.12)', color: '#ca8a04',
+          background: M.stats?.is_live ? 'rgba(239,68,68,0.12)' : 'rgba(34,197,94,0.12)',
+          color: M.stats?.is_live ? '#ef4444' : '#16a34a',
           fontSize: 11, fontWeight: 600,
-        }}>Demo · Paper</span>
+        }}>
+          {M.stats?.is_live ? '● LIVE' : '◌ PAPER'}
+        </span>
+        {/* H4: EMOS not-trained quick-glance indicator */}
+        {M.emosStatus && !M.emosStatus.trained && (
+          <span style={{
+            fontSize: 10, padding: '1px 5px', borderRadius: 3, fontWeight: 500,
+            background: 'rgba(107,114,128,0.2)', color: 'var(--text-muted)',
+          }} title="EMOS not trained — run py main.py emos-train">
+            EMOS ✗
+          </span>
+        )}
 
         {/* Override */}
         <button onClick={() => onNavigate('Settings')} style={{
