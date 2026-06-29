@@ -7055,8 +7055,8 @@ def _setup_logging(log_file: str = "bot.log") -> None:
         _log_path = Path(__file__).parent / _log_path
 
     fmt = logging.Formatter(
-        "%(asctime)s %(levelname)-8s %(name)-20s %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
+        "%(asctime)s %(levelname)-8s %(name)-15s %(message)s",
+        datefmt="%H:%M:%S",
     )
     root = logging.getLogger()
     root.setLevel(logging.INFO)
