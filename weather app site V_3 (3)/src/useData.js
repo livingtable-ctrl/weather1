@@ -91,6 +91,13 @@ function mapStats(status, grad, config, prevStats) {
     if (status.portfolio_ev       != null) base.portfolio_ev       = status.portfolio_ev;
     if (status.portfolio_ev_roi_pct != null) base.portfolio_ev_roi_pct = status.portfolio_ev_roi_pct;
     if (status.portfolio_cost     != null) base.portfolio_cost     = status.portfolio_cost;
+    // Backend omits EV fields when get_portfolio_expected_value() raises — clear
+    // stale values so the card hides instead of showing old deployed capital.
+    if (status.portfolio_ev == null && status.portfolio_cost == null) {
+      delete base.portfolio_ev;
+      delete base.portfolio_ev_roi_pct;
+      delete base.portfolio_cost;
+    }
   }
 
   // max_daily_spend lives in /api/config, not /api/status

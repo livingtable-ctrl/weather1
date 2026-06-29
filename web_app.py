@@ -1600,11 +1600,12 @@ setInterval(() => {{
         if not cities:
             return jsonify({"alerts": []})
 
-        alerts: list[dict] = []
-        for city in cities[:8]:
+        from concurrent.futures import ThreadPoolExecutor
+
+        def _fetch_city_alerts(city: str) -> list[dict]:
             coords = CITY_COORDS.get(city)
             if not coords:
-                continue
+                return []
             lat, lon = coords[0], coords[1]
             try:
                 resp = requests.get(
@@ -1616,13 +1617,13 @@ setInterval(() => {{
                     timeout=5,
                 )
                 resp.raise_for_status()
-                features = resp.json().get("features", [])
-                for feat in features[:2]:
+                out: list[dict] = []
+                for feat in resp.json().get("features", [])[:2]:
                     props = feat.get("properties", {})
                     severity = props.get("severity", "Unknown")
                     if severity in ("Minor", "Unknown"):
                         continue
-                    alerts.append(
+                    out.append(
                         {
                             "city": city,
                             "event": props.get("event", ""),
@@ -1631,8 +1632,13 @@ setInterval(() => {{
                             "expires": props.get("expires", ""),
                         }
                     )
+                return out
             except Exception:
-                continue
+                return []
+
+        with ThreadPoolExecutor(max_workers=8) as _pool:
+            _city_results = list(_pool.map(_fetch_city_alerts, cities[:8]))
+        alerts = [_a for _cr in _city_results for _a in _cr]
 
         return jsonify({"alerts": alerts})
 

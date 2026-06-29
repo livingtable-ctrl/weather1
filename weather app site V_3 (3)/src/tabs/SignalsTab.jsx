@@ -236,6 +236,18 @@ export default function SignalsTab() {
                     <div style={{ color: 'var(--text-faint)', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 3 }}>Model Prob</div>
                     <div style={{ fontWeight: 600, fontSize: 14, fontFamily: 'ui-monospace, monospace', color: '#16a34a' }}>{o.forecast_prob.toFixed(1)}%</div>
                   </div>
+                  <div>
+                    <div style={{ color: 'var(--text-faint)', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 3 }}>Edge</div>
+                    <div style={{ fontWeight: 700, fontSize: 14, fontFamily: 'ui-monospace, monospace', color: o.edge_pct >= 0 ? '#16a34a' : '#ef4444' }}>
+                      {o.edge_pct >= 0 ? '+' : ''}{o.edge_pct.toFixed(1)}%
+                    </div>
+                  </div>
+                  {o.kelly_dollars > 0 && (
+                    <div>
+                      <div style={{ color: 'var(--text-faint)', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 3 }}>Kelly $</div>
+                      <div style={{ fontWeight: 600, fontSize: 14, fontFamily: 'ui-monospace, monospace' }}>${o.kelly_dollars.toFixed(2)}</div>
+                    </div>
+                  )}
                   {o.forecast_temp != null && (
                     <div>
                       <div style={{ color: 'var(--text-faint)', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 3 }}>Forecast Temp</div>
@@ -266,10 +278,23 @@ export default function SignalsTab() {
                       <div style={{ fontSize: 13, fontFamily: 'ui-monospace, monospace' }}>{o.clim_prob.toFixed(0)}%</div>
                     </div>
                   )}
-                  <div>
-                    <div style={{ color: 'var(--text-faint)', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 3 }}>Method</div>
-                    <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{o.method || '—'}</div>
-                  </div>
+                  {(() => {
+                    const td = o.target_date || o.expiry;
+                    if (!td) return null;
+                    const days = Math.ceil((new Date(td) - new Date()) / 86400000);
+                    return (
+                      <div>
+                        <div style={{ color: 'var(--text-faint)', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 3 }}>Days Out</div>
+                        <div style={{ fontWeight: 600, fontSize: 14, fontFamily: 'ui-monospace, monospace' }}>{days}d</div>
+                      </div>
+                    );
+                  })()}
+                  {o.method && (
+                    <div>
+                      <div style={{ color: 'var(--text-faint)', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 3 }}>Method</div>
+                      <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{o.method}</div>
+                    </div>
+                  )}
                 </div>
                 <div style={{ padding: '10px 12px', background: 'var(--bg-card)', borderRadius: 7, border: '1px solid var(--border)', fontSize: 12, color: 'var(--text-muted)' }}>
                   <strong>Market:</strong> {o.ticker} · <strong>Side:</strong> {o.side.toUpperCase()} · <strong>Risk:</strong> {o.time_risk}
