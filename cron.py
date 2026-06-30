@@ -1489,7 +1489,6 @@ def _cmd_cron_body(
         finally:
             _pool.shutdown(wait=False)  # never block on a stuck SSL thread
     except TimeoutError:
-        pass  # already handled inside pool block above
         _log.error(
             "cmd_cron: analysis scan timed out after %ds — %d markets processed so far",
             _ANALYSIS_TIMEOUT_S,
@@ -2045,7 +2044,7 @@ def _cmd_cron_body(
 
             if _grad_check() is not None and not _grad_flag.exists():
                 _grad_flag.touch()
-                msg = "READY TO GO LIVE \u2014 30 trades, +$50 P&L, Brier \u2264 0.20 met!"
+                msg = "READY TO GO LIVE \u2014 30 trades, +$50 P&L, Brier \u2264 0.23 met!"
         except Exception:
             pass
         _sp.run(

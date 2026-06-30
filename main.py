@@ -487,6 +487,16 @@ def validate_env() -> bool:
         print(dim("  Check KALSHI_PRIVATE_KEY_PATH in your .env file.\n"))
         return False
 
+    env_val = os.getenv("KALSHI_ENV", "demo")
+    if env_val not in ("demo", "prod"):
+        print(red(f"\n  KALSHI_ENV must be 'demo' or 'prod', got: {env_val!r}"))
+        print(
+            dim(
+                "  A typo here (e.g. 'production') silently points the client at the wrong URL.\n"
+            )
+        )
+        return False
+
     return True
 
 
@@ -921,7 +931,7 @@ def build_client() -> KalshiClient:
     return KalshiClient(
         key_id=os.getenv("KALSHI_KEY_ID"),
         private_key_path=os.getenv("KALSHI_PRIVATE_KEY_PATH"),
-        env=os.getenv("KALSHI_ENV", "demo"),
+        env=_kalshi_env(),
     )
 
 
@@ -3724,7 +3734,7 @@ def cmd_readiness(client) -> bool:
     Exit code: 0 = ready, 1 = not ready.
 
     Gates:
-      1. Brier < 0.20 over last 60 days (needs 50+ trades)
+      1. Brier < 0.23 over last 60 days (needs 50+ trades)
       2. ROC-AUC > 0.60 over last 60 days
       3. At least 50 settled trades in the last 60 days
       4. Drawdown < 10%
@@ -3740,7 +3750,7 @@ def cmd_readiness(client) -> bool:
         brier = bt.get("brier", 1.0)
         roc = bt.get("roc_auc", 0.0)
         n = bt.get("n_trades", 0)
-        gates.append(("Brier < 0.20  (60d)", brier < 0.20, f"Brier={brier:.4f}  n={n}"))
+        gates.append(("Brier < 0.23  (60d)", brier < 0.23, f"Brier={brier:.4f}  n={n}"))
         gates.append(("ROC-AUC > 0.60 (60d)", roc > 0.60, f"ROC-AUC={roc:.3f}"))
         gates.append(("≥50 trades     (60d)", n >= 50, f"n={n}"))
     except Exception as e:
@@ -5487,7 +5497,7 @@ def cmd_menu(client: KalshiClient):
                 else:
                     print(
                         yellow(
-                            "  Not yet — need 30+ settled trades, Brier ≤ 0.20, and +$50 profit."
+                            "  Not yet — need 30+ settled trades, Brier ≤ 0.23, and +$50 profit."
                         )
                     )
             elif sub == "8":

@@ -265,7 +265,7 @@ def _poll_pending_orders(client, config: dict | None = None) -> None:
                             )
                         continue
                 except Exception as _exc:
-                    _log.debug(
+                    _log.warning(
                         "[LIVE] pre-close cancel check failed for %s: %s",
                         order.get("ticker", "?"),
                         _exc,
@@ -284,7 +284,9 @@ def _poll_pending_orders(client, config: dict | None = None) -> None:
                     )
                     continue
             except Exception as exc:
-                print(f"[LIVE] GTC cancel failed for order {order.get('id')}: {exc}")
+                _log.warning(
+                    "[LIVE] GTC cancel failed for order %s: %s", order.get("id"), exc
+                )
 
             result = client.get_order(order_id)
             api_status = result.get("status", "")
@@ -295,7 +297,7 @@ def _poll_pending_orders(client, config: dict | None = None) -> None:
                     fill_quantity=result.get("fill_quantity"),
                 )
         except Exception as exc:
-            print(f"[LIVE] poll order {order.get('id')} failed: {exc}")
+            _log.warning("[LIVE] poll order %s failed: %s", order.get("id"), exc)
 
     # ── Filled+unsettled orders: settlement check ─────────────────────────────
     for order in execution_log.get_filled_unsettled_live_orders():
@@ -339,7 +341,9 @@ def _poll_pending_orders(client, config: dict | None = None) -> None:
             execution_log.record_live_settlement(order["id"], outcome_yes, pnl)
             execution_log.add_live_loss(-pnl)  # negative pnl = loss adds to counter
         except Exception as exc:
-            print(f"[LIVE] settlement check failed for order {order.get('id')}: {exc}")
+            _log.warning(
+                "[LIVE] settlement check failed for order %s: %s", order.get("id"), exc
+            )
 
 
 def _place_live_order(
@@ -374,10 +378,9 @@ def _place_live_order(
         return False, 0.0
 
     # 2. Open position check
-    if _count_open_live_orders() >= config["max_open_positions"]:
-        print(
-            f"[LIVE] Max open positions {config['max_open_positions']} reached — skipping {ticker}"
-        )
+    _max_open = config.get("max_open_positions", 10)
+    if _count_open_live_orders() >= _max_open:
+        print(f"[LIVE] Max open positions {_max_open} reached — skipping {ticker}")
         return False, 0.0
 
     # 3. Size computation — Kelly quantity, capped by max_trade_dollars
@@ -1007,7 +1010,17 @@ def _auto_place_trades(
     opps = sorted(opps, key=_opp_sort_key, reverse=True)
     _skip_reasons: list[str] = []
 
+    from paths import KILL_SWITCH_PATH as _KILL_SWITCH_PATH
+
     for item in opps:
+        # Per-signal kill switch check — a mid-batch activation (user writes the file
+        # while orders 1-N are executing) stops remaining signals immediately.
+        if _KILL_SWITCH_PATH.exists():
+            _log.warning(
+                "_auto_place_trades: kill switch active — aborting %d remaining signal(s)",
+                len(opps) - placed,
+            )
+            break
         # Support both (market, analysis) tuple format and flat opp dict format
         if isinstance(item, tuple):
             m, a = item

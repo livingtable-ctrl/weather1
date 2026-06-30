@@ -2721,8 +2721,10 @@ def get_ensemble_temps(
             # Replicate members proportionally to apply weight.
             repeats = max(1, round(w * 2))
             all_temps.extend(temps * repeats)
-        except Exception:
-            pass
+        except Exception as _ens_exc:
+            _log.warning(
+                "get_ensemble_temps: model fetch failed for %s: %s", city, _ens_exc
+            )
 
     # L5-A: align TTL to next NWS model cycle, not a flat 4 h window
     _ensemble_cache.set_with_ttl(cache_key, all_temps, _ttl_until_next_cycle())
@@ -4740,72 +4742,9 @@ def _metar_lock_in(
             )
 
         elif _cond_type == "between":
-            # Extend METAR lock-in to "between" bucket markets.
-            # If temp is inside [lower, upper] after 2 PM → lock YES.
-            # If temp is >3°F outside the nearest bucket edge → lock NO.
-            _lo = float(condition.get("lower", 0))
-            _hi = float(condition.get("upper", 0))
-            _ct = _metar_obs["current_temp_f"]
-            try:
-                import zoneinfo as _zi
-
-                _obs_local = _metar_obs["obs_time"].astimezone(
-                    _zi.ZoneInfo(_CITY_TZ.get(city, "America/New_York"))
-                )
-                _lh = _obs_local.hour
-                _obs_local_date = _obs_local.date()
-            except Exception:
-                return False, 0.0, {}  # can't determine local hour — skip lock-in
-
-            # Midnight UTC = ~7 PM local CDT (prior calendar day). Comparing
-            # yesterday's evening temperature to today's 2°F between range is
-            # unreliable — the daily high hasn't occurred yet. Only fire when
-            # the METAR observation is from the same local date as target_date.
-            if _obs_local_date != target_date:
-                _lockout = {
-                    "locked": False,
-                    "outcome": None,
-                    "confidence": 0.0,
-                    "reason": (
-                        f"METAR obs from {_obs_local_date} != target {target_date}"
-                        " — prior-day temp cannot confirm today's high"
-                    ),
-                }
-            elif _lh >= 14:
-                if _lo <= _ct <= _hi:
-                    _clearance_yes = min(_ct - _lo, _hi - _ct)
-                    _lockout = {
-                        "locked": True,
-                        "outcome": "yes",
-                        "confidence": _metar._dynamic_lock_in_confidence(
-                            _clearance_yes, _lh
-                        ),
-                        "reason": f"METAR {_ct:.1f}°F inside bucket [{_lo},{_hi}]",
-                    }
-                elif _ct < _lo - 3.0 or _ct > _hi + 3.0:
-                    _clearance_no = _ct - _hi if _ct > _hi else _lo - _ct
-                    _lockout = {
-                        "locked": True,
-                        "outcome": "no",
-                        "confidence": _metar._dynamic_lock_in_confidence(
-                            _clearance_no, _lh
-                        ),
-                        "reason": f"METAR {_ct:.1f}°F outside bucket [{_lo},{_hi}] by >3°F",
-                    }
-                else:
-                    _lockout = {
-                        "locked": False,
-                        "outcome": None,
-                        "confidence": 0.0,
-                        "reason": "near bucket edge — uncertain",
-                    }
-            else:
-                _lockout = {
-                    "locked": False,
-                    "outcome": None,
-                    "confidence": 0.0,
-                    "reason": f"too early ({_lh}h < 14h local)",
-                }
+            # Between lock-in disabled: uses current_temp_f instead of daily_high.
+            # Re-enable once METAR observations track daily high.
+            return False, 0.0, {}
 
         else:
             _lockout = {"locked": False}

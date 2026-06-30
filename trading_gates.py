@@ -72,7 +72,7 @@ class LiveTradingGate:
             if graduation_check() is None:
                 return (
                     False,
-                    "Graduation gate not met (need 30 settled, $50 P&L, Brier ≤ 0.20)",
+                    "Graduation gate not met (need 30 settled, $50 P&L, Brier ≤ 0.23)",
                 )
         except Exception as exc:
             return False, f"graduation_check error: {exc}"

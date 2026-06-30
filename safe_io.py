@@ -39,8 +39,13 @@ def project_root() -> Path:
                     git_dir = (here / git_dir).resolve()
                 # git_dir is .git/worktrees/<name> → go up 3 levels to main project
                 return git_dir.parent.parent.parent
-        except Exception:
-            pass
+        except Exception as _e:
+            _log.warning(
+                "project_root: failed to parse .git worktree pointer: %s; "
+                "falling back to %s",
+                _e,
+                here,
+            )
     return here
 
 
@@ -136,23 +141,30 @@ def atomic_write_json_with_history(
     path = Path(path)
     history_dir = path.parent / ".history"
 
-    if path.exists():
-        history_dir.mkdir(exist_ok=True)
-        stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S")
-        history_file = history_dir / f"{path.stem}_{stamp}.json"
-        # Avoid collision if two writes happen within the same second
-        if history_file.exists():
-            history_file = (
-                history_dir
-                / f"{path.stem}_{stamp}_{int(_time.monotonic() * 1000) % 1000}.json"
-            )
-        history_file.write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
+    try:
+        if path.exists():
+            history_dir.mkdir(exist_ok=True)
+            stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S")
+            history_file = history_dir / f"{path.stem}_{stamp}.json"
+            # Avoid collision if two writes happen within the same second
+            if history_file.exists():
+                history_file = (
+                    history_dir
+                    / f"{path.stem}_{stamp}_{int(_time.monotonic() * 1000) % 1000}.json"
+                )
+            history_file.write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
 
-        # Prune oldest history files if over limit
-        existing = sorted(history_dir.glob(f"{path.stem}_*.json"))
-        while len(existing) > max_history:
-            existing[0].unlink(missing_ok=True)
-            existing = existing[1:]
+            # Prune oldest history files if over limit
+            existing = sorted(history_dir.glob(f"{path.stem}_*.json"))
+            while len(existing) > max_history:
+                existing[0].unlink(missing_ok=True)
+                existing = existing[1:]
+    except Exception as _hist_exc:
+        _log.warning(
+            "atomic_write_json_with_history: history backup failed for %s: %s",
+            path,
+            _hist_exc,
+        )
 
     # Write the new version atomically (call existing atomic_write_json, do NOT use json.dump)
     atomic_write_json(data, path)

@@ -509,7 +509,8 @@ def _dynamic_kelly_cap() -> float:
         if score <= 0.15:
             return 300.0
         return 200.0
-    except Exception:
+    except Exception as _e:
+        _log.warning("_dynamic_kelly_cap: falling back to $50 conservative cap: %s", _e)
         return 50.0
 
 
@@ -538,7 +539,10 @@ def _method_kelly_multiplier(method: str | None) -> float:
         if brier > 0.20:
             return 0.75
         return 1.0
-    except Exception:
+    except Exception as _e:
+        _log.warning(
+            "_method_kelly_multiplier: falling back to 1.0 (no penalty): %s", _e
+        )
         return 1.0
 
 
@@ -862,8 +866,8 @@ def place_paper_order(
                 variant = min(active, key=lambda v: _ab_state[v]["trades"])
                 _ticker_map[ticker] = variant
                 atomic_write_json(_ticker_map, _ab_ticker_map_path)
-    except Exception:
-        pass
+    except Exception as _e:
+        _log.warning("place_paper_order: A/B test update failed: %s", _e)
     return trade
 
 
@@ -1349,7 +1353,10 @@ def check_exit_targets(client=None) -> int:
                 )
                 close_paper_early(t["id"], round(_exit_price, 4))
                 exited += 1
-        except Exception:
+        except Exception as exc:
+            _log.warning(
+                "check_exit_targets: ticker %s failed: %s", t.get("ticker", "?"), exc
+            )
             continue
     return exited
 
@@ -1998,7 +2005,10 @@ def check_model_exits(client=None) -> list[dict]:
                         "market": market,
                     }
                 )
-        except Exception:
+        except Exception as exc:
+            _log.warning(
+                "check_model_exits: ticker %s failed: %s", t.get("ticker", "?"), exc
+            )
             continue
     return recommendations
 
@@ -2123,8 +2133,11 @@ def is_accuracy_halted() -> bool:
                 ACCURACY_MIN_WIN_RATE * 100,
             )
             return True
-    except Exception:
-        pass
+    except Exception as _e:
+        _log.warning(
+            "is_accuracy_halted: rolling win rate check failed — defaulting to not halted: %s",
+            _e,
+        )
 
     # SPRT check — detect model degradation faster than Brier accumulation
     try:
@@ -2138,8 +2151,10 @@ def is_accuracy_halted() -> bool:
                 sprt.get("n", 0),
             )
             return True
-    except Exception:
-        pass  # never block on SPRT failure
+    except Exception as _e:
+        _log.warning(
+            "is_accuracy_halted: SPRT check failed — defaulting to not halted: %s", _e
+        )
 
     return False
 
@@ -2161,8 +2176,8 @@ def get_accuracy_halt_reason() -> str:
                 f"rolling win rate {win_rate * 100:.1f}% over last {count} trades "
                 f"< {ACCURACY_MIN_WIN_RATE * 100:.0f}% threshold"
             )
-    except Exception:
-        pass
+    except Exception as _e:
+        _log.warning("get_accuracy_halt_reason: win rate check failed: %s", _e)
 
     try:
         import tracker
@@ -2170,8 +2185,8 @@ def get_accuracy_halt_reason() -> str:
         sprt = tracker.sprt_model_health()
         if sprt["status"] == "degraded":
             return f"SPRT model degradation: llr={sprt.get('llr', 0.0):.4f} n={sprt.get('n', 0)}"
-    except Exception:
-        pass
+    except Exception as _e:
+        _log.warning("get_accuracy_halt_reason: SPRT check failed: %s", _e)
 
     return ""
 
@@ -2554,53 +2569,55 @@ def undo_last_trade(max_minutes: int = 5) -> dict | None:
     within max_minutes ago. Refunds the cost to balance.
     Returns the removed trade dict, or None if nothing to undo.
     """
-    data = _load()
-    unsettled = [t for t in data["trades"] if not t["settled"]]
-    if not unsettled:
-        return None
-    # Sort by entered_at descending to get the most recent
-    unsettled.sort(key=lambda t: t.get("entered_at", ""), reverse=True)
-    last = unsettled[0]
-    entered_str = last.get("entered_at", "")
-    if not entered_str:
-        return None
-    try:
-        entered_dt = datetime.fromisoformat(entered_str.replace("Z", "+00:00"))
-    except (ValueError, TypeError):
-        return None
-    elapsed_minutes = (datetime.now(UTC) - entered_dt).total_seconds() / 60
-    if elapsed_minutes > max_minutes:
-        return None
-    # Refund cost and remove from trades
-    cost = last.get("cost", 0.0) or 0.0
-    data["balance"] += cost
-    data["trades"] = [t for t in data["trades"] if t["id"] != last["id"]]
-    # Recalculate peak_balance from remaining trades
-    peak = STARTING_BALANCE
-    running = STARTING_BALANCE
-    for t in sorted(data["trades"], key=lambda t: t.get("entered_at", "")):
-        running -= t.get("cost", 0.0) or 0.0
-        if t.get("settled") and t.get("pnl") is not None:
-            payout = (t.get("cost", 0.0) or 0.0) + t["pnl"]
-            running += payout
-            peak = max(peak, running)
-    data["peak_balance"] = max(peak, data["balance"])
-    _save(data)
-    return last
+    with _DATA_LOCK:
+        data = _load()
+        unsettled = [t for t in data["trades"] if not t["settled"]]
+        if not unsettled:
+            return None
+        # Sort by entered_at descending to get the most recent
+        unsettled.sort(key=lambda t: t.get("entered_at", ""), reverse=True)
+        last = unsettled[0]
+        entered_str = last.get("entered_at", "")
+        if not entered_str:
+            return None
+        try:
+            entered_dt = datetime.fromisoformat(entered_str.replace("Z", "+00:00"))
+        except (ValueError, TypeError):
+            return None
+        elapsed_minutes = (datetime.now(UTC) - entered_dt).total_seconds() / 60
+        if elapsed_minutes > max_minutes:
+            return None
+        # Refund cost and remove from trades
+        cost = last.get("cost", 0.0) or 0.0
+        data["balance"] += cost
+        data["trades"] = [t for t in data["trades"] if t["id"] != last["id"]]
+        # Recalculate peak_balance from remaining trades
+        peak = STARTING_BALANCE
+        running = STARTING_BALANCE
+        for t in sorted(data["trades"], key=lambda t: t.get("entered_at", "")):
+            running -= t.get("cost", 0.0) or 0.0
+            if t.get("settled") and t.get("pnl") is not None:
+                payout = (t.get("cost", 0.0) or 0.0) + t["pnl"]
+                running += payout
+                peak = max(peak, running)
+        data["peak_balance"] = max(peak, data["balance"])
+        _save(data)
+        return last
 
 
 def _mark_needs_manual_settle(trade_id: int) -> None:
     """Set needs_manual_settle=True on a trade so the dashboard can flag it."""
-    data = _load()
-    changed = False
-    for t in data["trades"]:
-        if t["id"] == trade_id and not t.get("settled"):
-            if not t.get("needs_manual_settle"):
-                t["needs_manual_settle"] = True
-                changed = True
-            break
-    if changed:
-        _save(data)
+    with _DATA_LOCK:
+        data = _load()
+        changed = False
+        for t in data["trades"]:
+            if t["id"] == trade_id and not t.get("settled"):
+                if not t.get("needs_manual_settle"):
+                    t["needs_manual_settle"] = True
+                    changed = True
+                break
+        if changed:
+            _save(data)
 
 
 def auto_settle_paper_trades(client=None) -> list[dict]:
@@ -2658,6 +2675,19 @@ def auto_settle_paper_trades(client=None) -> list[dict]:
                 # Other errors (network, auth): skip silently — will retry next run
 
         if outcome is not None:
+            # I4: 24h settlement gate — only settle once close_time + 24h has passed.
+            # Trades before 2026-05-28 have no close_time; they cannot be protected.
+            _close_time = t.get("close_time")
+            if _close_time:
+                try:
+                    from datetime import UTC, datetime
+                    from datetime import timedelta as _td
+
+                    _ct = datetime.fromisoformat(_close_time.replace("Z", "+00:00"))
+                    if datetime.now(UTC) < _ct + _td(hours=24):
+                        continue  # too soon — retry next cron cycle
+                except Exception:
+                    pass  # malformed close_time — proceed without the gate
             try:
                 settled = settle_paper_trade(t["id"], outcome)
                 settled_trades.append(settled)
@@ -2888,7 +2918,12 @@ def get_unrealized_pnl_paper(client) -> dict:
                     "current_price": round(current, 4),
                 }
             )
-        except Exception:
+        except Exception as exc:
+            _log.warning(
+                "get_unrealized_pnl_paper: ticker %s failed: %s",
+                t.get("ticker", "?"),
+                exc,
+            )
             continue
 
     return {

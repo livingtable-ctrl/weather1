@@ -12,7 +12,6 @@ import json
 import logging
 import sqlite3
 import threading as _el_threading
-import warnings
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -28,7 +27,7 @@ _append_lock = _el_threading.Lock()  # WA-9: serialize concurrent JSONL appends
 
 
 def _conn() -> sqlite3.Connection:
-    con = sqlite3.connect(DB_PATH)
+    con = sqlite3.connect(DB_PATH, timeout=30)
     con.row_factory = sqlite3.Row
     con.execute("PRAGMA journal_mode=WAL")
     con.execute("PRAGMA synchronous=FULL")
@@ -304,10 +303,11 @@ def add_live_loss(amount: float) -> float:
             ).fetchone()
         return row["total"] if row else amount
     except Exception as exc:
-        warnings.warn(f"add_live_loss DB write failed: {exc}")
+        _log.warning("add_live_loss DB write failed: %s", exc)
         try:
             return get_today_live_loss()
-        except Exception:
+        except Exception as _e:
+            _log.warning("add_live_loss fallback also failed: %s", _e)
             return 0.0
 
 
@@ -425,7 +425,7 @@ def get_live_pnl_summary() -> dict:
             """
             SELECT COALESCE(SUM(pnl), 0.0) AS today_pnl
             FROM orders
-            WHERE live = 1 AND settled_at LIKE ?
+            WHERE live = 1 AND settled_at LIKE ? AND pnl IS NOT NULL
             """,
             (f"{today}%",),
         ).fetchone()
@@ -474,7 +474,7 @@ def get_order_by_id(order_id: str) -> dict | None:
             if row:
                 return dict(row)
     except Exception as exc:
-        _log.debug("get_order_by_id: %s", exc)
+        _log.warning("get_order_by_id: %s", exc)
     return None
 
 

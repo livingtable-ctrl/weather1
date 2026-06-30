@@ -11,6 +11,7 @@ import random
 from datetime import UTC
 from pathlib import Path
 
+import safe_io
 from utils import utc_today as _utc_today
 
 _log = logging.getLogger(__name__)
@@ -104,8 +105,10 @@ def load_correlations_from_backtest() -> dict:
                         result[frozenset(parts)] = float(val)
                 if result:
                     return result
-    except Exception:
-        pass
+    except Exception as _e:
+        _log.warning(
+            "load_correlations_from_backtest: failed to read correlations.json: %s", _e
+        )
     return dict(_HARDCODED_CORR)
 
 
@@ -116,14 +119,12 @@ def save_correlations(city_pairs_dict: dict) -> None:
     Keys may be frozensets or strings; both are converted to "CityA|CityB"
     before serialisation so the JSON file is always valid.
     """
-    import json
-
     _CORR_PATH.parent.mkdir(parents=True, exist_ok=True)
     serialisable: dict[str, float] = {}
     for k, v in city_pairs_dict.items():
         key = "|".join(sorted(k)) if isinstance(k, frozenset) else str(k)
         serialisable[key] = float(v)
-    _CORR_PATH.write_text(json.dumps(serialisable, indent=2))
+    safe_io.atomic_write_json(serialisable, _CORR_PATH)
 
 
 def _load_dynamic_correlations() -> dict[frozenset, float] | None:
@@ -149,7 +150,11 @@ def _load_dynamic_correlations() -> dict[frozenset, float] | None:
             if len(parts) == 2 and isinstance(val, int | float):
                 result[frozenset(parts)] = float(val)
         return result if result else None
-    except Exception:
+    except Exception as _e:
+        _log.warning(
+            "_load_dynamic_correlations: failed to read learned_correlations.json: %s",
+            _e,
+        )
         return None
 
 
@@ -257,6 +262,7 @@ def simulate_portfolio(
             _log.debug("Monte Carlo: skipping past-date trade %s (%s)", ticker, _tdate)
             continue
         side = t.get("side", "yes")
+        days_out = t.get("days_out", 1)
         entry_price = t.get("entry_price", 0.5)
         cost = t.get("cost", 0.0)
         qty = t.get("quantity", 1)
@@ -275,8 +281,10 @@ def simulate_portfolio(
                 win_prob = 0.5
 
         win_prob = max(0.0, min(1.0, win_prob))
-        # #48: clamp to [0.05, 0.9] — extreme values likely stale or bad data
-        clamped = max(0.05, min(0.9, win_prob))
+        # #48: clamp extreme values — same-day positions (days_out=0) resolve in hours
+        # so allow a higher ceiling; multi-day positions cap at 0.90.
+        _max_win_prob = 0.95 if days_out == 0 else 0.90
+        clamped = max(0.05, min(_max_win_prob, win_prob))
         if clamped != win_prob:
             _log.debug(
                 "Monte Carlo: win_prob %.3f for %s clamped to %.3f",
