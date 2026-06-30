@@ -102,17 +102,43 @@ def place_paper_order(ticker, side, qty, entry_price, **kwargs):
 # ---------------------------------------------------------------------------
 
 
+def _coalesce_cents_or_dollars(market: dict, *keys: str) -> float:
+    """Return the first present field as a 0.0-1.0 decimal, trying each key in order.
+
+    The Kalshi API returns either legacy integer-cents fields (yes_bid, yes_ask, 0-100)
+    or current dollar-string fields (yes_bid_dollars, yes_ask_dollars, "0.00"-"1.00").
+    Mirrors weather_markets.parse_market_price's coalesce so callers agree on price
+    regardless of which API shape a given market dict came from.
+    """
+    for k in keys:
+        v = market.get(k)
+        if v is None:
+            continue
+        if isinstance(v, str):
+            v_f = float(v)
+            return v_f / 100.0 if v_f > 1.0 else v_f
+        if isinstance(v, int) and v >= 1:
+            return v / 100.0
+        if isinstance(v, float) and v > 1.0:
+            return v / 100.0
+        return float(v)
+    return 0.0
+
+
 def _midpoint_price(market: dict, side: str) -> float:
     """Return midpoint of current bid/ask for the given side, rounded to 2dp.
 
-    Kalshi bid/ask are integer cents (0-100). Returns a decimal probability (0.0-1.0).
+    Handles both legacy cents fields (yes_bid/yes_ask) and current dollar fields
+    (yes_bid_dollars/yes_ask_dollars) — see _coalesce_cents_or_dollars.
     """
+    yes_bid = _coalesce_cents_or_dollars(market, "yes_bid", "yes_bid_dollars")
+    yes_ask = _coalesce_cents_or_dollars(market, "yes_ask", "yes_ask_dollars")
+    if yes_ask == 0.0 and "yes_ask" not in market and "yes_ask_dollars" not in market:
+        yes_ask = 1.0  # preserve prior default (100¢) when ask is genuinely absent
     if side == "yes":
-        bid = market.get("yes_bid", 0) / 100
-        ask = market.get("yes_ask", 100) / 100
+        bid, ask = yes_bid, yes_ask
     else:  # "no"
-        bid = (100 - market.get("yes_ask", 100)) / 100
-        ask = (100 - market.get("yes_bid", 0)) / 100
+        bid, ask = 1.0 - yes_ask, 1.0 - yes_bid
     if bid > ask:
         bid, ask = ask, bid  # guard against inverted spread from API
     return round((bid + ask) / 2, 2)
@@ -387,9 +413,9 @@ def _place_live_order(
     market = analysis.get("market", {})
     # H-5: validate that at least one real price exists before computing midpoint.
     # A missing/empty market dict produces a fabricated 50¢ price via _midpoint_price defaults.
-    _yes_bid = market.get("yes_bid")
-    _yes_ask = market.get("yes_ask")
-    if not _yes_bid and not _yes_ask:
+    # Checks both legacy (yes_bid/yes_ask) and current (yes_bid_dollars/yes_ask_dollars)
+    # API field names via parse_market_price's has_quote flag.
+    if not parse_market_price(market)["has_quote"]:
         _log.warning(
             "[LIVE] %s: market dict has no bid or ask — cannot price order, skipping",
             ticker,

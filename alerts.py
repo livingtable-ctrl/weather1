@@ -153,19 +153,13 @@ def check_alerts(client) -> list[dict]:
     triggered = []
     for ticker, ticker_alerts in tickers.items():
         try:
+            from weather_markets import parse_market_price
+
             market = client.get_market(ticker)
-            yes_bid = market.get("yes_bid") or 0
-            yes_ask = market.get("yes_ask") or 0
-            # Convert cents to dollars if needed
-            if isinstance(yes_bid, int | float) and yes_bid > 1:
-                yes_bid = yes_bid / 100.0
-            if isinstance(yes_ask, int | float) and yes_ask > 1:
-                yes_ask = yes_ask / 100.0
+            parsed = parse_market_price(market)
             # Use mid-price as current YES price
-            if yes_ask > 0:
-                current = (float(yes_bid) + float(yes_ask)) / 2
-            elif yes_bid > 0:
-                current = float(yes_bid)
+            if parsed["has_quote"]:
+                current = parsed["mid"]
             else:
                 current = float(market.get("last_price") or 0)
             if current <= 0:

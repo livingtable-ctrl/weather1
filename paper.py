@@ -1333,11 +1333,15 @@ def check_exit_targets(client=None) -> int:
     exited = 0
     for t in open_trades:
         try:
+            from weather_markets import parse_market_price
+
             market = client.get_market(t["ticker"])
-            yes_bid = market.get("yes_bid") or 0
-            if isinstance(yes_bid, int) and yes_bid > 1:
-                yes_bid = yes_bid / 100.0
-            current_price = float(yes_bid)
+            parsed = parse_market_price(market)
+            if not parsed["has_quote"]:
+                # No real bid/ask available — skip rather than treat a missing
+                # quote as a 0¢ price, which would falsely trigger NO-side exits.
+                continue
+            current_price = parsed["yes_bid"]
             target = t["exit_target"]
             # Exit YES trade if current YES bid >= exit target
             # Exit NO trade if current YES bid <= (1 - exit_target)
@@ -2892,13 +2896,13 @@ def get_unrealized_pnl_paper(client) -> dict:
 
     for t in open_trades:
         try:
+            from weather_markets import parse_market_price
+
             market = client.get_market(t["ticker"])
-            yes_bid = market.get("yes_bid") or 0
-            if isinstance(yes_bid, int | float) and yes_bid > 1:
-                yes_bid = yes_bid / 100.0
-            current = float(yes_bid) if yes_bid else None
-            if current is None or current <= 0:
+            parsed = parse_market_price(market)
+            if not parsed["has_quote"]:
                 continue
+            current = parsed["yes_bid"]
 
             entry = t.get("entry_price", 0.5) or 0.5
             qty = t.get("quantity", 1) or 1
