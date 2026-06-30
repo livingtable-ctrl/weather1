@@ -7138,8 +7138,23 @@ def main():
         _check_cron_staleness()
 
     if _kalshi_env() == "prod":
+        # KALSHI_ENV=prod always means real market data + your real account balance.
+        # It does NOT mean this command can place live orders — cron/loop never pass
+        # live=True to _auto_place_trades, and ENABLE_MICRO_LIVE is hard-disabled in
+        # utils.py. Only `watch --auto --live` actually routes orders to the live API.
+        _live_orders_possible = cmd == "watch" and "--auto" in args and "--live" in args
         _log.warning("=" * 60)
-        _log.warning("RUNNING IN PRODUCTION MODE — REAL MONEY TRADES ENABLED")
+        if _live_orders_possible:
+            _log.warning(
+                "RUNNING IN PRODUCTION MODE — LIVE ORDERS ENABLED (watch --auto --live)"
+            )
+        else:
+            _log.warning(
+                "RUNNING IN PRODUCTION MODE — reading real market data and balance"
+            )
+            _log.warning(
+                "Live orders are NOT placed by this command — only `watch --auto --live` can"
+            )
         _log.warning(
             "KALSHI_ENV=prod | STARTING_BALANCE=$%.2f",
             float(os.getenv("STARTING_BALANCE", "1000")),
