@@ -40,13 +40,13 @@ class TestValidateMarketPriceRange:
 
     # ── price range validation ───────────────────────────────────────────────
 
-    def test_bid_zero_rejected(self):
-        """yes_bid=0 (0¢) is at boundary — reject."""
-        assert self._call(self._valid(yes_bid=0, yes_ask=60)) is False
+    def test_bid_zero_accepted(self):
+        """yes_bid=0 (0¢) means no resting buy order — a normal illiquid quote."""
+        assert self._call(self._valid(yes_bid=0, yes_ask=60)) is True
 
-    def test_ask_100_cents_rejected(self):
-        """yes_ask=100 (= 1.0) is at boundary — reject."""
-        assert self._call(self._valid(yes_bid=40, yes_ask=100)) is False
+    def test_ask_100_cents_accepted(self):
+        """yes_ask=100 (= 1.0) means no resting sell order below par — normal."""
+        assert self._call(self._valid(yes_bid=40, yes_ask=100)) is True
 
     def test_ask_above_100_cents_rejected(self):
         """yes_ask=150 normalizes to 1.5 — out of range."""
@@ -77,7 +77,7 @@ class TestValidateMarketPriceRange:
             self._call(
                 {
                     "ticker": "T",
-                    "yes_bid_dollars": 0.0,  # out of range
+                    "yes_bid_dollars": -0.10,  # genuinely out of range (negative)
                     "yes_ask_dollars": 0.60,
                     "volume_fp": 0.0,
                 }

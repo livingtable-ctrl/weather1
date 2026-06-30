@@ -69,17 +69,20 @@ def validate_market(data: dict, source: str = "kalshi") -> bool:
         bid = _price_to_decimal(raw_bid)
         ask = _price_to_decimal(raw_ask)
         ticker = data.get("ticker", "?")
-        if bid is None or not (0.0 < bid < 1.0):
+        # $0.00 bid (no resting buy order) and $1.00 ask (no resting sell order
+        # below par) are normal quotes for illiquid/extreme-strike markets, not
+        # malformed data — only flag genuinely invalid values (negative, >1, NaN).
+        if bid is None or not (0.0 <= bid <= 1.0):
             _log.warning(
-                "schema_validator[%s]: %s yes_bid %.4f out of range (0, 1)",
+                "schema_validator[%s]: %s yes_bid %.4f out of range [0, 1]",
                 source,
                 ticker,
                 bid if bid is not None else float("nan"),
             )
             ok = False
-        if ask is None or not (0.0 < ask < 1.0):
+        if ask is None or not (0.0 <= ask <= 1.0):
             _log.warning(
-                "schema_validator[%s]: %s yes_ask %.4f out of range (0, 1)",
+                "schema_validator[%s]: %s yes_ask %.4f out of range [0, 1]",
                 source,
                 ticker,
                 ask if ask is not None else float("nan"),
