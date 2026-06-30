@@ -330,12 +330,25 @@ class TestKalshiEnvLiveRead:
                 os.environ["KALSHI_ENV"] = original
 
     def test_build_client_reads_env_at_call_time(self):
-        """build_client uses os.getenv at call time, not the stale module constant."""
-        import inspect
+        """build_client reads the env fresh at call time, not the stale module
+        constant — it now delegates to _kalshi_env() (see test_kalshi_env_reads_fresh)
+        rather than inlining os.getenv, so verify the resulting client's base_url
+        instead of grepping the source for a literal os.getenv call."""
+        import os
 
         import main
 
-        src = inspect.getsource(main.build_client)
-        assert 'os.getenv("KALSHI_ENV"' in src or "os.getenv('KALSHI_ENV'" in src, (
-            "build_client must call os.getenv('KALSHI_ENV') directly"
-        )
+        original = os.environ.get("KALSHI_ENV")
+        try:
+            os.environ["KALSHI_ENV"] = "prod"
+            client = main.build_client()
+            assert "kalshi.com" in client.base_url and "demo" not in client.base_url
+
+            os.environ["KALSHI_ENV"] = "demo"
+            client = main.build_client()
+            assert "demo" in client.base_url
+        finally:
+            if original is None:
+                os.environ.pop("KALSHI_ENV", None)
+            else:
+                os.environ["KALSHI_ENV"] = original
