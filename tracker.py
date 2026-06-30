@@ -1860,11 +1860,26 @@ def _fetch_asos_daily_temp(
         "report_type": "3",  # METAR automated observations
     }
     try:
+        import time as _time
+
+        # audit_settlement() is called once per settling ticker in a tight loop
+        # (tracker.sync_outcomes) with no inter-call delay; IEM mesonet rate-limits
+        # rapid requests with HTTP 429, which used to look identical to "no data
+        # available" once raise_for_status() fed it to the blanket except below.
         resp = requests.get(
             "https://mesonet.agron.iastate.edu/cgi-bin/request/asos.py",
             params=params,
             timeout=15,
         )
+        for attempt in range(2):
+            if resp.status_code != 429:
+                break
+            _time.sleep(2 ** (attempt + 1))  # 2s, 4s backoff
+            resp = requests.get(
+                "https://mesonet.agron.iastate.edu/cgi-bin/request/asos.py",
+                params=params,
+                timeout=15,
+            )
         resp.raise_for_status()
         temps: list[float] = []
         for line in resp.text.splitlines():
