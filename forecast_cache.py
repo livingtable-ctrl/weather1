@@ -19,20 +19,17 @@ class ForecastCache[T]:
         self._store: dict = {}
         self._lock = threading.Lock()
 
+    def _effective_ttl(self, entry: tuple) -> float:
+        """Return the TTL for an entry: per-entry (3-tuple) or class default (2-tuple)."""
+        return entry[2] if len(entry) == 3 else self._ttl
+
     def get(self, key) -> T | None:
         with self._lock:
             entry = self._store.get(key)
             if entry is None:
                 return None
-            # L5-A: entries may carry a per-entry TTL (3-tuple) or use the class
-            # default (2-tuple). Per-entry TTL enables NWS-cycle-aligned expiry.
-            if len(entry) == 3:
-                value, ts, entry_ttl = entry
-                effective_ttl = entry_ttl
-            else:
-                value, ts = entry
-                effective_ttl = self._ttl
-            if time.monotonic() - ts > effective_ttl:
+            value, ts = entry[0], entry[1]
+            if time.monotonic() - ts > self._effective_ttl(entry):
                 del self._store[key]
                 return None
             return value
@@ -62,8 +59,13 @@ class ForecastCache[T]:
             self._store[key] = (value, time.monotonic(), ttl_secs)
 
     def set_at(self, key, value: T, ts: float) -> None:
-        """Store with an explicit monotonic timestamp (e.g. when restoring from disk)."""
+        """Store with an explicit monotonic timestamp (e.g. when restoring from disk).
+
+        ts must be a monotonic timestamp (time.monotonic()), not a wall-clock timestamp.
+        """
         with self._lock:
+            if key not in self._store and len(self._store) >= self._max_size:
+                self._evict_oldest()
             self._store[key] = (value, ts)
 
     def get_with_ts(self, key) -> tuple:
@@ -77,13 +79,8 @@ class ForecastCache[T]:
             entry = self._store.get(key)
             if entry is None:
                 return None, False, 0.0
-            if len(entry) == 3:
-                value, ts, entry_ttl = entry
-                effective_ttl = entry_ttl
-            else:
-                value, ts = entry
-                effective_ttl = self._ttl
-            if time.monotonic() - ts > effective_ttl:
+            value, ts = entry[0], entry[1]
+            if time.monotonic() - ts > self._effective_ttl(entry):
                 del self._store[key]
                 return None, False, 0.0
             age = time.monotonic() - ts
@@ -98,7 +95,7 @@ class ForecastCache[T]:
             expired = [
                 k
                 for k, entry in self._store.items()
-                if now - entry[1] > (entry[2] if len(entry) == 3 else self._ttl)
+                if now - entry[1] > self._effective_ttl(entry)
             ]
             for k in expired:
                 del self._store[k]

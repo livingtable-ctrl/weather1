@@ -39,6 +39,9 @@ def detect_regime(city: str, ensemble_stats: dict, days_out: int) -> dict:
             "description": "No ensemble data — standard confidence.",
         }
 
+    if days_out is None:
+        days_out = 0
+
     mean = ensemble_stats.get("mean", 60.0)
     std = ensemble_stats.get("std", 5.0)
 

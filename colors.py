@@ -5,6 +5,8 @@ Gracefully falls back to plain text if colorama is unavailable.
 
 from __future__ import annotations
 
+import math
+
 try:
     from colorama import Back, Fore, Style, init
 
@@ -62,10 +64,10 @@ def signal_color(signal: str) -> str:
 
 def edge_color(edge: float) -> str:
     """Color an edge value: green if strong positive, red if strong negative, yellow if weak."""
+    if not math.isfinite(edge):
+        return dim("—")
     text = f"{edge:+.1%}"
     if abs(edge) >= 0.25:
-        return green(text) if edge > 0 else red(text)
-    elif abs(edge) >= 0.10:
         return green(text) if edge > 0 else red(text)
     elif abs(edge) >= 0.05:
         return yellow(text)

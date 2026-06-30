@@ -147,6 +147,56 @@ def test_get_with_ts_per_entry_ttl_respected(monkeypatch):
     assert hit is False
 
 
+# ── prune_expired() tests ─────────────────────────────────────────────────────
+
+
+def test_prune_expired_removes_expired_returns_count(monkeypatch):
+    """prune_expired() removes all expired entries and returns the correct count."""
+    c = ForecastCache(ttl_secs=10)
+    c.set("a", 1)
+    c.set("b", 2)
+    c.set("c", 3)
+    original = time.monotonic
+    monkeypatch.setattr(time, "monotonic", lambda: original() + 20)
+    removed = c.prune_expired()
+    assert removed == 3
+    assert len(c) == 0
+
+
+def test_prune_expired_leaves_non_expired(monkeypatch):
+    """prune_expired() only removes expired entries — fresh entries survive."""
+    c = ForecastCache(ttl_secs=60)
+    c.set("fresh", "v")
+    original = time.monotonic
+
+    # Advance 30s — within 60s TTL, so "fresh" must survive
+    monkeypatch.setattr(time, "monotonic", lambda: original() + 30)
+    removed = c.prune_expired()
+    assert removed == 0
+    assert c.get("fresh") == "v"
+
+
+def test_prune_expired_respects_per_entry_ttl(monkeypatch):
+    """prune_expired() uses per-entry TTL for set_with_ttl() entries."""
+    c = ForecastCache(ttl_secs=3600)
+    c.set_with_ttl("short", "x", ttl_secs=5)
+    c.set("long", "y")  # class TTL 3600s
+    original = time.monotonic
+
+    # Advance 10s — past short's 5s TTL, well within long's 3600s TTL
+    monkeypatch.setattr(time, "monotonic", lambda: original() + 10)
+    removed = c.prune_expired()
+    assert removed == 1
+    assert c.get("short") is None
+    assert c.get("long") == "y"
+
+
+def test_prune_expired_empty_cache():
+    """prune_expired() on an empty cache returns 0 without error."""
+    c = ForecastCache(ttl_secs=60)
+    assert c.prune_expired() == 0
+
+
 def test_ttl_until_next_cycle_at_cycle_boundary():
     """L5-A: just before a model cycle, TTL is short; just after, TTL is long.
 
