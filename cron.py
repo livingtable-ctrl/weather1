@@ -1652,8 +1652,19 @@ def _cmd_cron_body(
             )
         )
 
+    _trading_paused = os.getenv("TRADING_PAUSED", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+
     placed_count = 0
-    if _consistency_skip:
+    if _trading_paused:
+        _log.warning(
+            "cmd_cron: TRADING_PAUSED is set — scan/data collection ran, trade placement skipped"
+        )
+    elif _consistency_skip:
         _log.warning(
             "cmd_cron: auto-trading skipped this cycle due to consistency violations"
         )

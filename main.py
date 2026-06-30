@@ -1764,6 +1764,14 @@ def _prompt_price() -> float | None:
 
 def _quick_paper_buy(client: KalshiClient) -> None:
     """Prompt to paper-buy a ticker directly after seeing analyze output."""
+    if os.getenv("TRADING_PAUSED", "").strip().lower() in ("1", "true", "yes", "on"):
+        print(
+            red(
+                "  TRADING_PAUSED is set in .env — order placement is disabled.\n"
+                "  Remove TRADING_PAUSED to resume trading."
+            )
+        )
+        return
     try:
         while True:
             raw = input(dim("\n  Quick paper buy — ticker (q to skip): ")).strip()
@@ -3141,6 +3149,14 @@ def cmd_export() -> None:
 
 
 def cmd_order(client: KalshiClient, action: str, args: list):
+    if os.getenv("TRADING_PAUSED", "").strip().lower() in ("1", "true", "yes", "on"):
+        print(
+            red(
+                "  TRADING_PAUSED is set in .env — manual order placement is disabled.\n"
+                "  Remove TRADING_PAUSED to resume trading."
+            )
+        )
+        return
     if len(args) < 4:
         print(f"Usage: py main.py {action} <ticker> <yes/no> <count> <price>")
         return

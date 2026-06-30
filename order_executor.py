@@ -903,6 +903,13 @@ def _auto_place_trades(
         spread_kelly_multiplier,
     )
 
+    if os.getenv("TRADING_PAUSED", "").strip().lower() in ("1", "true", "yes", "on"):
+        print(
+            yellow(
+                "  [Auto] TRADING_PAUSED is set — no auto-trades placed (paper or live)."
+            )
+        )
+        return 0
     if is_paused_drawdown():
         print(yellow("  [Auto] Drawdown guard active — no auto-trades placed."))
         return 0

@@ -8,6 +8,15 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+# Import main here, at collection time, so its module-level load_dotenv() call
+# (main.py:41) fires exactly once, before any fixture or test runs. Module code
+# only executes on first import — if we didn't force it here, whichever test
+# happens to `import main` first (most tests do this lazily, inside the test
+# body) would trigger that load_dotenv() call mid-test, AFTER that test's own
+# env-cleanup fixtures already ran, silently re-polluting os.environ for just
+# that one test (e.g. TRADING_PAUSED reappearing after being explicitly cleared).
+import main as _main  # noqa: F401
+
 
 @pytest.fixture(autouse=True)
 def isolate_retired_strategies(tmp_path, monkeypatch):
@@ -164,6 +173,14 @@ def _set_dashboard_unprotected(monkeypatch):
     """Set DASHBOARD_UNPROTECTED=true so web_app imports/builds don't require DASHBOARD_PASSWORD."""
     monkeypatch.setenv("DASHBOARD_UNPROTECTED", "true")
     monkeypatch.delenv("DASHBOARD_PASSWORD", raising=False)
+
+
+@pytest.fixture(autouse=True)
+def _clear_trading_paused(monkeypatch):
+    """Strip TRADING_PAUSED from the real .env so a developer's local pause
+    (e.g. while traveling somewhere Kalshi restricts) doesn't silently fail
+    every trade-placement test."""
+    monkeypatch.delenv("TRADING_PAUSED", raising=False)
 
 
 FIXTURES = Path(__file__).parent / "fixtures"
