@@ -327,7 +327,7 @@ def _load_obs() -> list[dict]:
         with _OBS_LOCK:
             return json.loads(_OBS_PATH.read_text(encoding="utf-8"))
     except Exception as exc:
-        _log.debug("metar: could not load observations: %s", exc)
+        _log.warning("metar: could not load observations: %s", exc)
         return []
 
 
@@ -338,7 +338,7 @@ def _load_obs_nolock() -> list[dict]:
     try:
         return json.loads(_OBS_PATH.read_text(encoding="utf-8"))
     except Exception as exc:
-        _log.debug("metar: could not load observations: %s", exc)
+        _log.warning("metar: could not load observations: %s", exc)
         return []
 
 
@@ -357,7 +357,7 @@ def _save_obs_nolock(records: list[dict]) -> None:
         tmp.write_text(payload, encoding="utf-8")
         _os.replace(tmp, _OBS_PATH)
     except Exception as exc:
-        _log.debug("metar: could not save observations: %s", exc)
+        _log.warning("metar: could not save observations: %s", exc)
 
 
 def _save_obs(records: list[dict]) -> None:
@@ -372,7 +372,7 @@ def _save_obs(records: list[dict]) -> None:
             tmp.write_text(payload, encoding="utf-8")
             _os.replace(tmp, _OBS_PATH)
     except Exception as exc:
-        _log.debug("metar: could not save observations: %s", exc)
+        _log.warning("metar: could not save observations: %s", exc)
 
 
 def record_observation(
@@ -454,7 +454,6 @@ def get_station_bias(city: str, month: int) -> float | None:
     if len(month_records) < 20:
         return None
 
-    raise NotImplementedError(
-        "get_station_bias() requires forecast_high stored alongside observations; "
-        "not yet implemented."
-    )
+    # TODO: implement per-station bias model once forecast_high is stored alongside
+    # observations. Until then, return None so callers skip this correction safely.
+    return None

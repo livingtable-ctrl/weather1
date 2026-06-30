@@ -121,8 +121,10 @@ def load_swept_min_edge(min_trades: int = 10) -> float | None:
         val = float(best["value"])
         if 0.03 <= val <= 0.15:
             return val
-    except Exception:
-        pass
+    except Exception as _e:
+        _log.warning(
+            "load_swept_min_edge: failed to read param_sweep_results.json: %s", _e
+        )
     return None
 
 

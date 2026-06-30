@@ -420,8 +420,12 @@ def calibrate_and_save(
                     and not _entry.get("_uncalibrated")
                 ):
                     condition[_ctype] = _entry
-        except Exception:
-            pass  # corrupt / missing — use freshly-calibrated values as-is
+        except Exception as exc:
+            _log.warning(
+                "calibrate_and_save: failed to preserve condition weights: %s "
+                "— freshly-calibrated values will overwrite hand-tuned weights",
+                exc,
+            )
 
     from safe_io import atomic_write_json_with_history
 

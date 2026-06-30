@@ -10,9 +10,18 @@ and ntfy.sh (NTFY_TOPIC env var).
 from __future__ import annotations
 
 import json
+import logging
 import os
 import time
 from pathlib import Path
+
+try:
+    import requests as _requests
+
+    _DISCORD_AVAILABLE = True
+except ImportError:
+    _requests = None  # type: ignore[assignment]
+    _DISCORD_AVAILABLE = False
 
 try:
     from plyer import notification as _notif
@@ -20,6 +29,8 @@ try:
     _ENABLED = True
 except Exception:
     _ENABLED = False
+
+_log = logging.getLogger(__name__)
 
 # #123: allow selective enable/disable of notification channels
 # Set NOTIFY_CHANNELS=discord,email to only use those two, etc.
@@ -35,8 +46,8 @@ _TEMPLATES_PATH = Path(__file__).parent / "data" / "notify_templates.json"
 try:
     if _TEMPLATES_PATH.exists():
         _TEMPLATES = json.loads(_TEMPLATES_PATH.read_text())
-except Exception:
-    pass
+except Exception as exc:
+    _log.warning("notify: failed to load notify_templates.json: %s", exc)
 
 # #95: per-ticker throttle — suppress repeat notifications within this window.
 _NOTIFY_COOLDOWN_SECS = int(os.getenv("NOTIFY_COOLDOWN_SECS", "300"))  # 5 min default
@@ -101,7 +112,8 @@ def _send_discord(title: str, message: str, color: int = 0x3FB950) -> bool:
     #92: Send to all configured Discord webhooks (comma-separated DISCORD_WEBHOOK_URLS
     or single DISCORD_WEBHOOK_URL). Returns True if at least one succeeded.
     """
-    import requests  # type: ignore[import-untyped]
+    if not _DISCORD_AVAILABLE:
+        return False
 
     # Support multiple webhooks via DISCORD_WEBHOOK_URLS (comma-separated)
     multi = os.getenv("DISCORD_WEBHOOK_URLS", "").strip()
@@ -118,11 +130,11 @@ def _send_discord(title: str, message: str, color: int = 0x3FB950) -> bool:
     any_ok = False
     for url in urls:
         try:
-            resp = requests.post(url, json=payload, timeout=10)
+            resp = _requests.post(url, json=payload, timeout=10)
             if resp.status_code in (200, 204):
                 any_ok = True
-        except Exception:
-            pass
+        except Exception as exc:
+            _log.warning("_send_discord: request to %s failed: %s", url, exc)
     return any_ok
 
 
@@ -156,8 +168,7 @@ def _send_email(title: str, message: str) -> bool:
             server.sendmail(user, [to_addr], msg.as_string())
         return True
     except Exception as exc:
-        # #93: log email failures so user knows notifications aren't reaching them
-        print(f"[notify] Email send failed: {exc}", flush=True)
+        _log.warning("Email send failed: %s", exc)
         return False
 
 
@@ -190,22 +201,21 @@ def alert_strong_signal(
         title = _TEMPLATES.get("strong_signal_title", "").format(**ctx) or (
             f"Kalshi Strong Signal — {ticker}"
         )
-    except Exception:
+    except Exception as exc:
+        _log.warning("alert_strong_signal: template title format failed: %s", exc)
         title = f"Kalshi Strong Signal — {ticker}"
     try:
         msg = _TEMPLATES.get("strong_signal_body", "").format(**ctx) or (
             f"BUY {side.upper()}  |  Net edge: {net_edge:+.1%}  |  "
             f"Kelly: {kelly:.1%} of bankroll\n{city}"
         )
-    except Exception:
+    except Exception as exc:
+        _log.warning("alert_strong_signal: template body format failed: %s", exc)
         msg = (
             f"BUY {side.upper()}  |  Net edge: {net_edge:+.1%}  |  "
             f"Kelly: {kelly:.1%} of bankroll\n{city}"
         )
 
-    import logging as _logging
-
-    _ch_log = _logging.getLogger(__name__)
     successes: list[bool] = []
 
     # Desktop notification (plyer)
@@ -218,7 +228,8 @@ def alert_strong_signal(
                 timeout=10,
             )
             successes.append(True)
-        except Exception:
+        except Exception as exc:
+            _log.warning("alert_strong_signal: desktop notify failed: %s", exc)
             successes.append(False)
     elif "desktop" in _CHANNELS:
         successes.append(False)
@@ -244,7 +255,7 @@ def alert_strong_signal(
 
     # G7: warn when every configured channel failed to deliver the alert
     if successes and not any(successes):
-        _ch_log.warning(
+        _log.warning(
             "alert_strong_signal: all %d channel(s) failed for %s — signal not delivered",
             len(successes),
             ticker,
@@ -266,9 +277,6 @@ def send_system_alert(title: str, message: str) -> None:
         return
     _last_notified["__system__"] = now
 
-    import logging as _logging
-
-    _sys_log = _logging.getLogger(__name__)
     successes: list[bool] = []
 
     # Desktop notification
@@ -281,7 +289,8 @@ def send_system_alert(title: str, message: str) -> None:
                 timeout=10,
             )
             successes.append(True)
-        except Exception:
+        except Exception as exc:
+            _log.warning("send_system_alert: desktop notify failed: %s", exc)
             successes.append(False)
     elif "desktop" in _CHANNELS:
         successes.append(False)
@@ -305,7 +314,7 @@ def send_system_alert(title: str, message: str) -> None:
         successes.append(_send_email(title, message))
 
     if successes and not any(successes):
-        _sys_log.warning(
+        _log.warning(
             "send_system_alert: all %d channel(s) failed — alert not delivered",
             len(successes),
         )

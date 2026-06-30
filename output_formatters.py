@@ -6,6 +6,8 @@ print() and formatting utilities — no side-effects beyond I/O.
 
 from __future__ import annotations
 
+import logging
+
 from tabulate import tabulate
 
 from colors import bold, dim, edge_color, green, prob_color, red, yellow
@@ -27,6 +29,8 @@ from tracker import (
     sync_outcomes,
 )
 from weather_markets import analyze_trade, enrich_with_forecast
+
+_log = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # History
@@ -252,8 +256,8 @@ def cmd_history(client: KalshiClient) -> None:  # noqa: PLR0912, PLR0915
                     tablefmt="rounded_outline",
                 )
             )
-    except Exception:
-        pass
+    except Exception as exc:
+        _log.warning("cmd_history: calibration analytics block failed: %s", exc)
 
     # ── Source reliability ────────────────────────────────────────────────────
     rel = get_source_reliability()
@@ -383,8 +387,8 @@ def cmd_history(client: KalshiClient) -> None:  # noqa: PLR0912, PLR0915
                     tablefmt="rounded_outline",
                 )
             )
-    except Exception:
-        pass
+    except Exception as exc:
+        _log.warning("cmd_history: model analytics block failed: %s", exc)
 
 
 # ---------------------------------------------------------------------------
@@ -405,7 +409,8 @@ def cmd_balance(client: KalshiClient) -> None:
     try:
         paper_val = paper_balance()
         paper_str = f"  {dim('Paper:')}  {bold(f'${paper_val:.2f}')}"
-    except Exception:
+    except Exception as exc:
+        _log.warning("cmd_balance: failed to fetch paper balance: %s", exc)
         paper_str = ""
     print(f"\n  {dim('Kalshi:')} {bold(f'${val:.2f}')}")
     if paper_str:
@@ -459,7 +464,10 @@ def cmd_positions(client: KalshiClient) -> None:
                 cur_prob_str = f"{cur_prob * 100:.0f}% / mkt {mkt_prob * 100:.0f}%"
             else:
                 cur_prob_str = dim("—")
-        except Exception:
+        except Exception as exc:
+            _log.warning(
+                "cmd_positions: forecast analysis failed for %s: %s", ticker, exc
+            )
             cur_prob_str = dim("—")
 
         rows.append(

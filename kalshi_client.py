@@ -389,8 +389,11 @@ class KalshiClient:
             for order in data.get("orders", []):
                 if order.get("client_order_id") == client_order_id:
                     return order
-        except Exception:
-            pass
+        except Exception as _e:
+            _log.warning(
+                "_find_order_by_client_id: resting lookup failed (%s) — assuming not landed",
+                _e,
+            )
         # Second pass: check filled orders only if resting lookup found nothing.
         try:
             data = self._get(
@@ -401,8 +404,11 @@ class KalshiClient:
                     # Return with status overridden to "placed" so the dedup guard stays
                     # active; the GTC poll loop will promote it to "filled" shortly.
                     return {**order, "status": "placed"}
-        except Exception:
-            pass
+        except Exception as _e:
+            _log.warning(
+                "_find_order_by_client_id: filled lookup failed (%s) — assuming not landed",
+                _e,
+            )
         return None
 
     def get_order(self, order_id: str) -> dict:

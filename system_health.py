@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import math
 import os
 from typing import NamedTuple
 
@@ -71,7 +72,7 @@ def _check_platt_sanity() -> HealthStatus:
 
         models = _load_platt_models()
         for city, (a, _b) in models.items():
-            if a <= 0:
+            if not math.isfinite(a) or a <= 0:
                 return HealthStatus(
                     False,
                     f"Platt model for {city} has A={a:.4f} (<=0) — signal inversion risk",

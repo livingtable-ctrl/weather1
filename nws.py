@@ -75,7 +75,7 @@ def _load_station_cache() -> None:
                 parts = k.split(",")
                 _station_cache[(float(parts[0]), float(parts[1]))] = v
     except Exception as exc:
-        _log.debug("nws: could not load station cache: %s", exc)
+        _log.warning("nws: could not load station cache: %s", exc)
 
 
 def _save_station_cache() -> None:
@@ -160,7 +160,13 @@ def _get_obs_station(lat: float, lon: float) -> str | None:
         _station_cache[key] = station_id
         _save_station_cache()  # persist so subsequent process starts skip this fetch
         return station_id
-    except Exception:
+    except Exception as exc:
+        _log.warning(
+            "NWS station lookup failed for (%.4f, %.4f): %s",
+            lat,
+            lon,
+            exc,
+        )
         return None
 
 
@@ -268,7 +274,11 @@ def nws_prob(
     if _nws_cb.is_open():
         _log.warning("NWS circuit open — skipping forecast prob for %s", city)
         return None
-    forecast = get_nws_daily_forecast(city, coords)
+    try:
+        forecast = get_nws_daily_forecast(city, coords)
+    except Exception as _exc:
+        _log.warning("nws_prob: get_nws_daily_forecast failed for %s: %s", city, _exc)
+        return None
     date_str = target_date.isoformat()
     day = forecast.get(date_str, {})
 

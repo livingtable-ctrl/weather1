@@ -110,7 +110,7 @@ class CircuitBreaker:
                 self._opened_at = None
                 self._wall_opened_at = None
         except Exception as exc:
-            _log.debug("CB state load failed (non-critical): %s", exc)
+            _log.warning("CB state load failed: %s", exc)
 
     def _save_state(self) -> None:
         if not self._persist:
@@ -136,7 +136,7 @@ class CircuitBreaker:
 
                 _atomic_write_json(state, _CB_STATE_PATH)
         except Exception as exc:
-            _log.debug("CB state save failed (non-critical): %s", exc)
+            _log.warning("CB state save failed: %s", exc)
 
     def suppress_probe(self) -> None:
         """Prevent automatic probing for the rest of this process lifetime.
@@ -320,7 +320,7 @@ class FlashCrashCB:
                         len(self._cooldowns),
                     )
         except Exception as exc:
-            _log.debug("FlashCrashCB: could not load cooldowns: %s", exc)
+            _log.warning("FlashCrashCB: could not load cooldowns: %s", exc)
 
     def _save_cooldowns(self) -> None:
         """Persist current (non-expired) cooldowns to disk atomically."""
@@ -330,7 +330,7 @@ class FlashCrashCB:
             active = {t: exp for t, exp in self._cooldowns.items() if exp > now}
             atomic_write_json(active, _FLASH_CRASH_COOLDOWN_PATH)
         except Exception as exc:
-            _log.debug("FlashCrashCB: could not save cooldowns: %s", exc)
+            _log.warning("FlashCrashCB: could not save cooldowns: %s", exc)
 
     def check(self, ticker: str, current_price: float) -> bool:
         """Record price and return True if this observation triggered a crash."""

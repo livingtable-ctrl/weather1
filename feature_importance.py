@@ -43,7 +43,7 @@ def record_feature_contribution(
         with open(_FEATURE_LOG_PATH, "a", encoding="utf-8") as f:
             f.write(json.dumps(entry) + "\n")
     except Exception as exc:
-        _log.debug("record_feature_contribution: %s", exc)
+        _log.warning("record_feature_contribution: %s", exc)
 
 
 def update_outcome(ticker: str, outcome: bool) -> None:
@@ -65,7 +65,7 @@ def update_outcome(ticker: str, outcome: bool) -> None:
         with open(_FEATURE_LOG_PATH, "a", encoding="utf-8") as f:
             f.write(json.dumps(record) + "\n")
     except Exception as exc:
-        _log.debug("update_outcome: %s", exc)
+        _log.warning("update_outcome: %s", exc)
 
 
 def prune_feature_log(max_lines: int = _MAX_LOG_LINES) -> int:
@@ -85,7 +85,7 @@ def prune_feature_log(max_lines: int = _MAX_LOG_LINES) -> int:
         _log.info("prune_feature_log: pruned %d lines (kept %d)", pruned, max_lines)
         return pruned
     except Exception as exc:
-        _log.debug("prune_feature_log: %s", exc)
+        _log.warning("prune_feature_log: %s", exc)
         return 0
 
 

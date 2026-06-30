@@ -125,7 +125,14 @@ def _load_models() -> dict:
         # HMAC verified — safe to deserialise
         _MODELS_CACHE = pickle.loads(raw)  # noqa: S301 (verified above)
         _LOAD_ATTEMPTED = True
-        return _MODELS_CACHE if isinstance(_MODELS_CACHE, dict) else {}
+        if not isinstance(_MODELS_CACHE, dict):
+            _log.warning(
+                "ml_bias: %s deserialised to %s, not dict — discarding",
+                _MODEL_PATH.name,
+                type(_MODELS_CACHE).__name__,
+            )
+            _MODELS_CACHE = {}
+        return _MODELS_CACHE
 
     except Exception as exc:
         _log.warning("ml_bias: load failed: %s — will retry on next call", exc)
@@ -372,7 +379,7 @@ def apply_ml_prob_correction(
             correction = max(-_max_corr, min(_max_corr, correction))
         return max(0.0, min(1.0, our_prob + correction))
     except Exception as exc:
-        _log.debug("apply_ml_prob_correction(%s): %s", city, exc)
+        _log.warning("apply_ml_prob_correction(%s): %s", city, exc)
         return our_prob
 
 
@@ -411,7 +418,8 @@ def _load_temperature_scale() -> dict | None:
                 if isinstance(v, dict) and "T" in v
             }
         return _TEMP_CACHE
-    except Exception:
+    except Exception as exc:
+        _log.warning("ml_bias: failed to parse temperature_scale.json: %s", exc)
         return None
 
 
@@ -576,7 +584,11 @@ def train_all_temperature_scaling(
                 existing = {
                     "global": {"T": existing["T"], "n": existing.get("n_samples", 0)}
                 }
-        except Exception:
+        except Exception as _e:
+            _log.warning(
+                "train_all_temperature_scaling: failed to read temperature_scale.json: %s",
+                _e,
+            )
             existing = {}
 
     trained: dict[str, float] = {}

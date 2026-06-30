@@ -408,7 +408,7 @@ def log_live_fill(
                 ),
             )
     except Exception as exc:
-        _log.debug("log_live_fill: %s", exc)
+        _log.warning("log_live_fill: %s", exc)
 
 
 def get_mean_slippage(days: int = 30) -> float | None:
@@ -511,8 +511,8 @@ def log_audit(
                     datetime.now(UTC).isoformat(),
                 ),
             )
-    except Exception:
-        pass
+    except Exception as exc:
+        _log.warning("log_audit failed: %s", exc)
 
 
 def log_prediction(
@@ -1020,8 +1020,8 @@ def brier_score(
         pairs = [(p, y) for _, p, y in dated]
         if pairs:
             return sum((p - y) ** 2 for p, y in pairs) / len(pairs)
-    except Exception:
-        pass
+    except Exception as _e:
+        _log.warning("brier_score: paper fallback failed: %s", _e)
 
     return None
 
@@ -3732,7 +3732,6 @@ def analyze_all_markets(enriched_list: list[dict]) -> None:
     """
     init_db()
     from datetime import UTC
-    from datetime import date as _date
 
     analyzed_at = datetime.now(UTC).isoformat()
 
@@ -3747,7 +3746,7 @@ def analyze_all_markets(enriched_list: list[dict]) -> None:
             condition = analysis.get("condition", {})
             condition_str = condition.get("type") if condition else None
             days_out = (
-                (target_date - _date.today()).days
+                (target_date - _utc_today()).days
                 if target_date is not None and hasattr(target_date, "today")
                 else None
             )

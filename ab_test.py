@@ -136,12 +136,15 @@ class ABTest:
 
         # Check if this variant should be auto-disabled
         if s["trades"] >= self.max_trades_per_variant:
-            best_win_rate = max(
-                (self._state[v]["wins"] / max(self._state[v]["trades"], 1))
-                for v in self.variants
-                if not self._state[v]["disabled"] and self._state[v]["trades"] > 0
-            )
             my_win_rate = s["wins"] / max(s["trades"], 1)
+            other_rates = [
+                self._state[v]["wins"] / max(self._state[v]["trades"], 1)
+                for v in self.variants
+                if not self._state[v]["disabled"]
+                and self._state[v]["trades"] > 0
+                and v != variant
+            ]
+            best_win_rate = max(other_rates) if other_rates else my_win_rate
             if my_win_rate < best_win_rate - self.disable_threshold:
                 s["disabled"] = True
                 _log.warning(
@@ -212,5 +215,5 @@ def get_active_variant(test_name: str) -> tuple[str, Any]:
                 # L4-A: return the persisted variant value, not None
                 return chosen, state[chosen].get("value")
     except Exception as exc:
-        _log.debug("get_active_variant: %s", exc)
+        _log.warning("get_active_variant: %s", exc)
     return "control", None

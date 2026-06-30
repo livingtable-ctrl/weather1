@@ -65,8 +65,10 @@ def _paper_min_edge_default() -> float:
                     val,
                 )
                 return val
-    except Exception:
-        pass
+    except Exception as _e:
+        _log.warning(
+            "_paper_min_edge_default: failed to read walk_forward_params.json: %s", _e
+        )
     # Soft override from param sweep results
     try:
         from param_sweep import load_swept_min_edge
@@ -79,8 +81,10 @@ def _paper_min_edge_default() -> float:
                 swept,
             )
             return swept
-    except Exception:
-        pass
+    except Exception as _e:
+        _log.warning(
+            "_paper_min_edge_default: failed to read param_sweep_results.json: %s", _e
+        )
     return 0.05
 
 
@@ -196,6 +200,26 @@ class BotConfig:
             )
         if self.max_days_out < 1 or self.max_days_out > 14:
             errors.append(f"MAX_DAYS_OUT ({self.max_days_out}) should be 1–14")
+        if not (0.0 < self.kelly_cap <= 1.0):
+            errors.append(
+                f"KELLY_CAP ({self.kelly_cap}) must be between 0 and 1 (exclusive/inclusive)"
+            )
+        if self.max_positions_per_date < 1:
+            errors.append(
+                f"MAX_POSITIONS_PER_DATE ({self.max_positions_per_date}) must be >= 1"
+            )
+        if self.max_same_day_positions < 1:
+            errors.append(
+                f"MAX_SAME_DAY_POSITIONS ({self.max_same_day_positions}) must be >= 1"
+            )
+        if not (0.0 < self.breakeven_trigger_pct < 1.0):
+            errors.append(
+                f"BREAKEVEN_TRIGGER_PCT ({self.breakeven_trigger_pct}) must be between 0 and 1"
+            )
+        if not (0.0 < self.partial_exit_pct < 1.0):
+            errors.append(
+                f"PARTIAL_EXIT_PCT ({self.partial_exit_pct}) must be between 0 and 1"
+            )
         if errors:
             raise ValueError(
                 "Invalid configuration:\n" + "\n".join(f"  - {e}" for e in errors)
@@ -204,7 +228,7 @@ class BotConfig:
 
 def load_and_validate() -> BotConfig:
     """Create a BotConfig, validate it, and return it. Call at startup."""
-    cfg = BotConfig()
+    cfg = BotConfig.from_env()
     cfg.validate()
     return cfg
 
@@ -214,7 +238,11 @@ _CONFIG: BotConfig | None = None
 
 
 def get_config() -> BotConfig:
-    """Return the global BotConfig singleton, loading from env on first call."""
+    """Return the global BotConfig singleton, loading from env on first call.
+
+    Must be called after dotenv is loaded — if called at import time (before .env
+    is read), the singleton is frozen with defaults for the process lifetime.
+    """
     global _CONFIG
     if _CONFIG is None:
         _CONFIG = BotConfig.from_env()

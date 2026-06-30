@@ -159,14 +159,15 @@ def update_orderbook_cache(ticker: str, data: dict) -> None:
             _CACHE_PATH.parent.mkdir(exist_ok=True)
             safe_io.atomic_write_json(cache, _CACHE_PATH)
         except Exception as exc:
-            _log.debug("update_orderbook_cache: %s", exc)
+            _log.warning("update_orderbook_cache: disk write failed: %s", exc)
 
 
 def read_orderbook_cache() -> dict:
     """Read the current order book cache from disk."""
     try:
         return json.loads(_CACHE_PATH.read_text(encoding="utf-8"))
-    except Exception:
+    except Exception as exc:
+        _log.warning("read_orderbook_cache: failed to read cache: %s", exc)
         return {}
 
 
@@ -303,7 +304,7 @@ async def _ws_listener(api_key: str, private_key_pem: str, tickers: list[str]) -
                                 update_orderbook_cache(parsed["ticker"], parsed)
                                 _record_ws_message()
                         except Exception as exc:
-                            _log.debug("kalshi_ws: parse error: %s", exc)
+                            _log.warning("kalshi_ws: parse error: %s", exc)
 
             except Exception as exc:
                 _log.warning(

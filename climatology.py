@@ -14,6 +14,7 @@ from pathlib import Path
 
 import requests
 
+import safe_io
 from circuit_breaker import CircuitBreaker as _CircuitBreaker
 
 _log = logging.getLogger(__name__)
@@ -88,24 +89,29 @@ def fetch_historical(city: str, coords: tuple, force: bool = False) -> dict | No
             "highs": daily.get("temperature_2m_max", []),
             "lows": daily.get("temperature_2m_min", []),
         }
-        with open(cache, "w") as f:
-            json.dump(data, f)
+        safe_io.atomic_write_json(data, cache)
         _MEM_CACHE[city] = data
         return data
-    except Exception:
+    except Exception as exc:
+        _log.warning("fetch_historical: API failed for %s: %s", city, exc)
         # #4: If download fails, return stale cache but warn if it's very old
         if cache.exists():
             cache_age_days = (time.time() - cache.stat().st_mtime) / 86400
             if cache_age_days > 365:
-                print(
-                    f"[warn] Climate cache for {city} is {cache_age_days:.0f} days old "
-                    f"(API unavailable); forecast accuracy may be reduced.",
-                    flush=True,
+                _log.warning(
+                    "fetch_historical: cache for %s is %.0f days old "
+                    "(API unavailable); forecast accuracy may be reduced.",
+                    city,
+                    cache_age_days,
                 )
             with open(cache) as f:
                 data = json.load(f)
             _MEM_CACHE[city] = data
             return data
+        _log.warning(
+            "fetch_historical: API failed for %s and no cache exists — returning None",
+            city,
+        )
         return None
 
 
@@ -208,6 +214,8 @@ def persistence_prob(
 
     Returns probability in [0, 1], or None if inputs are invalid.
     """
+    if current_value is None or threshold_lo is None:
+        return None
     if std_dev <= 0:
         return None
 

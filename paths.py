@@ -10,6 +10,10 @@ from safe_io import project_root as _project_root
 
 _ROOT = _project_root()
 _DATA = _ROOT / "data"
+if not _DATA.is_dir():
+    raise FileNotFoundError(
+        f"Data directory not found: {_DATA} — expected project_root()/data to exist."
+    )
 
 # Database
 DB_PATH = _DATA / "predictions.db"

@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
@@ -25,8 +26,10 @@ def _load() -> dict:
         try:
             with open(_DATA_PATH) as f:
                 return json.load(f)
-        except Exception:
-            pass
+        except Exception as exc:
+            _log.warning(
+                "alerts: failed to load %s, starting fresh: %s", _DATA_PATH, exc
+            )
     return {"alerts": [], "next_id": 1}
 
 
@@ -176,7 +179,8 @@ def check_alerts(client) -> list[dict]:
                 )
                 if fired:
                     triggered.append({"alert": alert, "current_price": current})
-        except Exception:
+        except Exception as exc:
+            _log.warning("check_alerts: ticker %s failed: %s", ticker, exc)
             continue
 
     return triggered
@@ -302,25 +306,20 @@ def _is_halt_level(alert_msg: str) -> bool:
     msg = alert_msg.upper()
     if "WIN_RATE_COLLAPSE" in msg or "WIN RATE COLLAPSE" in msg:
         # Extract the percentage from the message (e.g. "20%")
-        import re as _re
-
-        m = _re.search(r"(\d+)%", msg)
+        m = re.search(r"(\d+)%", msg)
         if m:
             rate = int(m.group(1)) / 100.0
             return rate < ALERT_HALT_THRESHOLDS["WIN_RATE_COLLAPSE"]
         return True  # can't parse → halt to be safe
     if "CONSECUTIVE LOSSES" in msg:
-        import re as _re
-
-        m = _re.search(r"(\d+)\s+LOSS", msg)
+        m = re.search(r"(\d+)\s+LOSS", msg)
         if m:
             return int(m.group(1)) >= ALERT_HALT_THRESHOLDS["CONSECUTIVE_LOSSES"]
         return True
     if "EDGE DECAY" in msg:
-        import re as _re
-
         # Message format: "EDGE DECAY: AVERAGE EDGE -5.2% IN LAST N TRADES" (uppercased by caller)
-        m = _re.search(r"AVERAGE EDGE ([-\d.]+)%", msg)
+        # Note: negative rate means edge has decayed below zero; threshold is -0.10 (negative).
+        m = re.search(r"AVERAGE EDGE ([-\d.]+)%", msg)
         if m:
             rate = float(m.group(1)) / 100.0
             return rate < ALERT_HALT_THRESHOLDS["EDGE_DECAY"]
@@ -412,12 +411,21 @@ def check_black_swan_conditions(
     # 2. Single-day loss > threshold of peak balance
     if balance is not None and peak_balance is not None and peak_balance > 0:
         today_str = datetime.now(UTC).date().isoformat()
-        # Try to find today's opening balance from trades
-        today_trades = [
-            t
-            for t in trades
-            if str(t.get("placed_at", t.get("ts", ""))).startswith(today_str)
-        ]
+        # placed_at is an int UNIX timestamp — str(1719619200).startswith("2026-06-29") is
+        # always False, so we must convert via datetime.fromtimestamp before comparing.
+        today_trades = []
+        for t in trades:
+            ts = t.get("placed_at", t.get("ts", 0))
+            try:
+                trade_date = (
+                    datetime.fromtimestamp(float(ts), tz=UTC).date().isoformat()
+                    if isinstance(ts, int | float)
+                    else str(ts)[:10]
+                )
+            except Exception:
+                trade_date = str(ts)[:10]
+            if trade_date == today_str:
+                today_trades.append(t)
         if today_trades:
             # Today's P&L from settled trades
             today_pnl = sum(
@@ -440,7 +448,7 @@ def check_black_swan_conditions(
         # Use multi-day count so same-day trades don't clear the gate prematurely.
         _n_settled = _count_settled()
         if _n_settled >= BLACK_SWAN_BRIER_MIN_SAMPLES:
-            bs = _brier_score()
+            bs = _brier_score(min_days_out=1)
             if bs is not None and bs > BLACK_SWAN_BRIER_THRESHOLD:
                 triggered.append(
                     f"BLACK SWAN — Brier score collapse: {bs:.4f} "
@@ -453,8 +461,8 @@ def check_black_swan_conditions(
                 _n_settled,
                 BLACK_SWAN_BRIER_MIN_SAMPLES,
             )
-    except Exception:
-        pass
+    except Exception as _bs_exc:
+        _log.warning("black_swan: Brier check skipped — %s", _bs_exc)
 
     return triggered
 
@@ -561,8 +569,10 @@ def run_black_swan_check(
                 snap = get_state_snapshot()
                 balance = snap.get("balance", balance)
                 peak_balance = snap.get("peak_balance", peak_balance)
-            except Exception:
-                pass
+            except Exception as _snap_exc:
+                _log.warning(
+                    "run_black_swan_check: failed to load state snapshot: %s", _snap_exc
+                )
         # Prefer real Kalshi API balance when client is available — paper balance
         # diverges from actual equity after fees, fills, and unrecorded positions.
         if client is not None:

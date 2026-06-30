@@ -45,8 +45,8 @@ def _find_google_drive() -> Path | None:
         p = Path(root).parent / "My Drive"
         if p.exists():
             return p
-    except Exception:
-        pass
+    except Exception as exc:
+        _log.debug("cloud_backup: HKLM Google Drive registry not found: %s", exc)
 
     # 3. Try the current user registry hive
     try:
@@ -65,8 +65,8 @@ def _find_google_drive() -> Path | None:
         p2 = Path(root)
         if p2.exists():
             return p2
-    except Exception:
-        pass
+    except Exception as exc:
+        _log.debug("cloud_backup: HKCU Google Drive registry not found: %s", exc)
 
     # 4. Scan all drive letters for a Google Drive virtual mount
     import string
@@ -229,9 +229,12 @@ def restore_data(data_dir: Path | None = None, confirm: bool = False) -> bool:
     for src_file in src.iterdir():
         if src_file.is_file() and src_file.suffix in _BACKUP_EXTENSIONS:
             dest_file = data_dir / src_file.name
-            shutil.copy2(src_file, dest_file)
-            copied += 1
-            print(f"  Restored {src_file.name}")
+            try:
+                shutil.copy2(src_file, dest_file)
+                copied += 1
+                print(f"  Restored {src_file.name}")
+            except Exception as exc:
+                _log.warning("restore_data: failed to copy %s: %s", src_file.name, exc)
 
     if copied == 0:
         print("Backup folder exists but contains no data files.")
