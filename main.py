@@ -65,6 +65,7 @@ from order_executor import (  # noqa: F401 — re-exports: tests + main code ref
     _count_open_live_orders,  # noqa: F401
     _current_forecast_cycle,
     _daily_paper_spend,
+    _log_shadow_predictions,
     _midpoint_price,
     _place_live_order,  # noqa: F401
     _poll_pending_orders,
@@ -87,7 +88,7 @@ from tracker import (
     log_prediction,
     sync_outcomes,
 )
-from utils import MIN_EDGE, STRONG_EDGE
+from utils import MIN_EDGE, STRONG_EDGE, is_trading_paused
 from weather_markets import (
     CITY_COORDS,
     _feels_like,
@@ -202,6 +203,7 @@ def _build_cron_context() -> _CronContext:
         fetch_temperature_weatherapi=fetch_temperature_weatherapi,
         analyze_trade=analyze_trade,
         auto_place_trades=_auto_place_trades,
+        log_shadow_predictions=_log_shadow_predictions,
         sync_outcomes=sync_outcomes,
         check_early_exits=_check_early_exits,
         acquire_cron_lock=_acquire_cron_lock,
@@ -1764,7 +1766,7 @@ def _prompt_price() -> float | None:
 
 def _quick_paper_buy(client: KalshiClient) -> None:
     """Prompt to paper-buy a ticker directly after seeing analyze output."""
-    if os.getenv("TRADING_PAUSED", "").strip().lower() in ("1", "true", "yes", "on"):
+    if is_trading_paused():
         print(
             red(
                 "  TRADING_PAUSED is set in .env — order placement is disabled.\n"
@@ -3149,7 +3151,7 @@ def cmd_export() -> None:
 
 
 def cmd_order(client: KalshiClient, action: str, args: list):
-    if os.getenv("TRADING_PAUSED", "").strip().lower() in ("1", "true", "yes", "on"):
+    if is_trading_paused():
         print(
             red(
                 "  TRADING_PAUSED is set in .env — manual order placement is disabled.\n"

@@ -2198,12 +2198,9 @@ setInterval(() => {{
 
         if _ksp.exists():
             return jsonify({"error": "kill switch active — trading paused"}), 503
-        if os.getenv("TRADING_PAUSED", "").strip().lower() in (
-            "1",
-            "true",
-            "yes",
-            "on",
-        ):
+        from utils import is_trading_paused as _is_trading_paused
+
+        if _is_trading_paused():
             return jsonify({"error": "TRADING_PAUSED is set — trading disabled"}), 503
 
         from paper import place_paper_order

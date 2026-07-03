@@ -31,6 +31,7 @@ from utils import (
     MIN_PROB_EDGE,
     PAPER_MIN_EDGE,
     STRONG_EDGE,
+    is_trading_paused,
     min_prob_edge_for_days_out,
 )
 
@@ -84,6 +85,7 @@ class CronContext:
 
     # Execution (from order_executor, re-exported via main)
     auto_place_trades: Callable
+    log_shadow_predictions: Callable
     check_early_exits: Callable
 
     # Outcome tracking (from tracker)
@@ -854,6 +856,13 @@ def _cmd_cron_body(
     # accuracy is still healthy. The pin prevents auto-retirement of a method whose
     # Brier is high due to stop-loss exits rather than bad direction. Without this,
     # the pin requires manual renewal every 7 days to keep the bot trading.
+    #
+    # NOTE: this covers a DIFFERENT failure mode than auto_retire_strategies()'s
+    # rolling-Brier guard — that guard only rescues a method whose Brier has
+    # genuinely recovered recently (rolling <= threshold). It does nothing when
+    # Brier stays chronically elevated because of stop-loss mechanics despite
+    # correct direction, since rolling Brier stays bad too in that case. Keep
+    # both mechanisms; they are not redundant.
     try:
         import json as _json_pin
         from datetime import timedelta as _td_pin
@@ -1652,18 +1661,21 @@ def _cmd_cron_body(
             )
         )
 
-    _trading_paused = os.getenv("TRADING_PAUSED", "").strip().lower() in (
-        "1",
-        "true",
-        "yes",
-        "on",
-    )
+    _trading_paused = is_trading_paused()
 
     placed_count = 0
     if _trading_paused:
         _log.warning(
             "cmd_cron: TRADING_PAUSED is set — scan/data collection ran, trade placement skipped"
         )
+        _n_shadow = ctx.log_shadow_predictions(strong_opps + med_opps)
+        if _n_shadow:
+            print(
+                dim(
+                    f"  [cron] Logged {_n_shadow} shadow prediction(s) while paused "
+                    "(scoring stays current; no trades placed)."
+                )
+            )
     elif _consistency_skip:
         _log.warning(
             "cmd_cron: auto-trading skipped this cycle due to consistency violations"

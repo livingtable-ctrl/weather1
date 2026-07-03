@@ -166,6 +166,13 @@ def read_orderbook_cache() -> dict:
     """Read the current order book cache from disk."""
     try:
         return json.loads(_CACHE_PATH.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        # Expected whenever no WebSocket connection has ever run (every cron
+        # scan, or the first call of a fresh `watch` session) — not an error,
+        # but still logged at debug so the file's absence doesn't just
+        # disappear with zero trace if it's ever worth checking.
+        _log.debug("read_orderbook_cache: cache file missing at %s", _CACHE_PATH)
+        return {}
     except Exception as exc:
         _log.warning("read_orderbook_cache: failed to read cache: %s", exc)
         return {}

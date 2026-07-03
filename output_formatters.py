@@ -503,11 +503,20 @@ def cmd_pnl_attribution() -> None:
         print("Not enough data per signal source (need 5+ settled per source).")
         return
 
-    print(f"\n{'Signal Source':<20} {'Brier':>8} {'Win%':>8} {'N':>6}")
-    print("-" * 46)
+    print(f"\n{'Signal Source':<20} {'Brier':>8} {'Win%':>8} {'N':>6} {'Shadow':>7}")
+    print("-" * 54)
     for src, d in sorted(data.items(), key=lambda x: x[1]["brier"]):
         brier = d["brier"]
         color_fn = green if brier < 0.20 else (yellow if brier < 0.25 else red)
+        n_shadow = d.get("n_shadow", 0)
+        shadow_str = dim(f"{n_shadow:>7}") if n_shadow else f"{n_shadow:>7}"
         print(
-            f"{src:<20} {color_fn(f'{brier:>8.4f}')} {d['win_rate']:>8.1%} {d['n']:>6}"
+            f"{src:<20} {color_fn(f'{brier:>8.4f}')} {d['win_rate']:>8.1%} "
+            f"{d['n']:>6} {shadow_str}"
+        )
+    if any(d.get("n_shadow") for d in data.values()):
+        print(
+            dim(
+                "  Shadow = never-traded signals logged while blocked (e.g. TRADING_PAUSED)."
+            )
         )

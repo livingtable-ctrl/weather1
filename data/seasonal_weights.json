@@ -6,9 +6,10 @@
     "_uncalibrated": true
   },
   "spring": {
-    "ensemble": 0.007823107152157949,
-    "climatology": 0.6461532105585747,
-    "nws": 0.3460236822892674
+    "ensemble": 0.3333333333333333,
+    "climatology": 0.3333333333333333,
+    "nws": 0.3333333333333333,
+    "_uncalibrated": true
   },
   "summer": {
     "ensemble": 0.3333333333333333,

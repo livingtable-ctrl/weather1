@@ -248,6 +248,48 @@ class TestStrategyRetirement:
         )
         assert "none_acc_method" in newly
 
+    def test_rolling_guard_blocks_retirement_when_recent_recovered(self, tmp_tracker):
+        """Lifetime Brier > threshold from old bad trades, but the last 20 settled
+        predictions have recovered — method must NOT be retired."""
+        for i in range(30):
+            _log_and_settle(tmp_tracker, f"OLD-{i}", "recovered_method", 0.9, False)
+        with tmp_tracker._conn() as con:
+            con.execute(
+                "UPDATE outcomes SET settled_at = datetime('now', '-5 days') "
+                "WHERE ticker LIKE 'OLD-%'"
+            )
+        for i in range(20):
+            _log_and_settle(tmp_tracker, f"NEW-{i}", "recovered_method", 0.9, True)
+
+        newly = tmp_tracker.auto_retire_strategies(min_samples=20, retire_threshold=0.25)
+        assert "recovered_method" not in newly
+        assert "recovered_method" not in tmp_tracker.get_retired_strategies()
+
+    def test_rolling_guard_allows_retirement_when_recent_still_bad(self, tmp_tracker):
+        """Both lifetime and rolling Brier are bad — method IS retired (guard doesn't
+        over-protect a method that hasn't actually recovered)."""
+        for i in range(40):
+            _log_and_settle(tmp_tracker, f"STILLBAD-{i}", "still_bad_method", 0.9, False)
+
+        newly = tmp_tracker.auto_retire_strategies(min_samples=20, retire_threshold=0.25)
+        assert "still_bad_method" in newly
+        assert "still_bad_method" in tmp_tracker.get_retired_strategies()
+
+    def test_brier_score_by_method_rolling_returns_last_n(self, tmp_tracker):
+        """brier_score_by_method_rolling only reflects the most recent `window` rows."""
+        for i in range(10):
+            _log_and_settle(tmp_tracker, f"ROLLOLD-{i}", "windowed_method", 0.9, False)
+        with tmp_tracker._conn() as con:
+            con.execute(
+                "UPDATE outcomes SET settled_at = datetime('now', '-5 days') "
+                "WHERE ticker LIKE 'ROLLOLD-%'"
+            )
+        for i in range(5):
+            _log_and_settle(tmp_tracker, f"ROLLNEW-{i}", "windowed_method", 0.9, True)
+
+        result = tmp_tracker.brier_score_by_method_rolling(window=5, min_samples=1)
+        assert result["windowed_method"] == pytest.approx(0.01, abs=1e-6)
+
 
 # ── P10.1: Drift detection ─────────────────────────────────────────────────────
 

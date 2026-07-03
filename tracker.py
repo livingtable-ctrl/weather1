@@ -24,7 +24,7 @@ DB_PATH.parent.mkdir(exist_ok=True)
 
 _db_initialized = False
 
-_SCHEMA_VERSION = 33  # increment when _MIGRATIONS list grows
+_SCHEMA_VERSION = 34  # increment when _MIGRATIONS list grows
 
 _MIGRATIONS = [
     # v1 → v2: add condition_type column (if not already added)
@@ -154,6 +154,11 @@ _MIGRATIONS = [
     # v32 → v33: composite index on outcomes(ticker, settled_at) scoped to rows with
     # settled_temp_f, used by EMOS training queries that join on ticker and filter by date.
     "CREATE INDEX IF NOT EXISTS idx_outcomes_ticker_settled ON outcomes(ticker, settled_at) WHERE settled_temp_f IS NOT NULL",
+    # v33 → v34: flag predictions logged for a signal that was never actually
+    # traded (e.g. TRADING_PAUSED, drawdown halt) so P&L-labeled displays can
+    # distinguish them from trade-backed rows. Brier/calibration queries
+    # deliberately do not filter on this — see log_prediction()'s docstring.
+    "ALTER TABLE predictions ADD COLUMN is_shadow INTEGER DEFAULT 0",
 ]
 
 
@@ -530,18 +535,30 @@ def log_prediction(
     model_consensus: bool | None = None,
     ens_mean: float | None = None,
     ens_var: float | None = None,
-) -> None:
+    is_shadow: bool = False,
+    conn: sqlite3.Connection | None = None,
+) -> bool:
     """Save a prediction to the database.
     Stores both the raw (pre-bias-correction) probability and the adjusted one (#53).
     #37: Optionally stores the NWP forecast cycle (00z/06z/12z/18z).
     #84: Optionally stores blend_sources dict (model weights) as JSON.
     P9.1: Optionally stores edge_calc_version for strategy version tracking.
+    is_shadow: True for a signal that was analyzed and would have traded but
+    never had a real order placed (e.g. logged during TRADING_PAUSED) — flags
+    the row so downstream P&L-labeled displays can distinguish it from a
+    trade-backed prediction. Brier/calibration queries intentionally do NOT
+    filter on this — shadow predictions are real forecasts and are meant to
+    keep those scores current.
+    conn: reuse a caller-provided connection (e.g. for batching many calls in
+    one transaction) instead of opening a new one per call.
+
+    Returns True if a row was written, False if skipped (e.g. city is None).
     """
     import json as _json
 
     # L4-B: null city pollutes cross-city bias queries — skip logging entirely
     if city is None:
-        return
+        return False
 
     init_db()
     cond = analysis.get("condition", {})
@@ -563,71 +580,76 @@ def log_prediction(
     # date(predicted_at) timezone ambiguity around UTC midnight).
     predicted_date = _utc_today().isoformat()
 
-    with _conn() as con:
-        # Atomic upsert — unique index on (ticker, predicted_date) prevents
-        # duplicate rows from concurrent calls (TOCTOU of old SELECT+INSERT pattern).
-        con.execute(
-            """
-            INSERT INTO predictions
-              (ticker, city, market_date, condition_type,
-               threshold_lo, threshold_hi, our_prob, raw_prob, market_prob,
-               edge, method, n_members, predicted_at, days_out, forecast_cycle,
-               blend_sources, ensemble_prob, nws_prob, clim_prob, edge_calc_version,
-               signal_source, predicted_date, obs_weight_used, local_hour,
-               forecast_temp_f, model_consensus, ens_mean, ens_var)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'),?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-            ON CONFLICT(ticker, predicted_date) DO UPDATE SET
-                our_prob         = excluded.our_prob,
-                raw_prob         = excluded.raw_prob,
-                market_prob      = excluded.market_prob,
-                edge             = excluded.edge,
-                method           = excluded.method,
-                n_members        = excluded.n_members,
-                days_out         = excluded.days_out,
-                forecast_cycle   = excluded.forecast_cycle,
-                blend_sources    = excluded.blend_sources,
-                ensemble_prob    = excluded.ensemble_prob,
-                nws_prob         = excluded.nws_prob,
-                clim_prob        = excluded.clim_prob,
-                edge_calc_version= excluded.edge_calc_version,
-                signal_source    = excluded.signal_source,
-                obs_weight_used  = excluded.obs_weight_used,
-                local_hour       = excluded.local_hour,
-                forecast_temp_f  = excluded.forecast_temp_f,
-                model_consensus  = excluded.model_consensus,
-                ens_mean         = excluded.ens_mean,
-                ens_var          = excluded.ens_var
-            """,
-            (
-                ticker,
-                city,
-                market_date.isoformat() if market_date else None,
-                cond.get("type"),
-                lo,
-                hi,
-                forecast_prob,
-                raw_prob,
-                analysis.get("market_prob"),
-                analysis.get("edge"),
-                analysis.get("method"),
-                analysis.get("n_members"),
-                days_out,
-                forecast_cycle,
-                blend_sources_json,
-                ensemble_prob,
-                nws_prob,
-                clim_prob,
-                edge_calc_version,
-                signal_source,
-                predicted_date,
-                analysis.get("obs_weight_used"),
-                analysis.get("local_hour"),
-                analysis.get("forecast_temp"),
-                int(model_consensus) if model_consensus is not None else None,
-                ens_mean,
-                ens_var,
-            ),
-        )
+    sql = """
+        INSERT INTO predictions
+          (ticker, city, market_date, condition_type,
+           threshold_lo, threshold_hi, our_prob, raw_prob, market_prob,
+           edge, method, n_members, predicted_at, days_out, forecast_cycle,
+           blend_sources, ensemble_prob, nws_prob, clim_prob, edge_calc_version,
+           signal_source, predicted_date, obs_weight_used, local_hour,
+           forecast_temp_f, model_consensus, ens_mean, ens_var, is_shadow)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'),?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        ON CONFLICT(ticker, predicted_date) DO UPDATE SET
+            our_prob         = excluded.our_prob,
+            raw_prob         = excluded.raw_prob,
+            market_prob      = excluded.market_prob,
+            edge             = excluded.edge,
+            method           = excluded.method,
+            n_members        = excluded.n_members,
+            days_out         = excluded.days_out,
+            forecast_cycle   = excluded.forecast_cycle,
+            blend_sources    = excluded.blend_sources,
+            ensemble_prob    = excluded.ensemble_prob,
+            nws_prob         = excluded.nws_prob,
+            clim_prob        = excluded.clim_prob,
+            edge_calc_version= excluded.edge_calc_version,
+            signal_source    = excluded.signal_source,
+            obs_weight_used  = excluded.obs_weight_used,
+            local_hour       = excluded.local_hour,
+            forecast_temp_f  = excluded.forecast_temp_f,
+            model_consensus  = excluded.model_consensus,
+            ens_mean         = excluded.ens_mean,
+            ens_var          = excluded.ens_var,
+            is_shadow        = excluded.is_shadow
+        """
+    params = (
+        ticker,
+        city,
+        market_date.isoformat() if market_date else None,
+        cond.get("type"),
+        lo,
+        hi,
+        forecast_prob,
+        raw_prob,
+        analysis.get("market_prob"),
+        analysis.get("edge"),
+        analysis.get("method"),
+        analysis.get("n_members"),
+        days_out,
+        forecast_cycle,
+        blend_sources_json,
+        ensemble_prob,
+        nws_prob,
+        clim_prob,
+        edge_calc_version,
+        signal_source,
+        predicted_date,
+        analysis.get("obs_weight_used"),
+        analysis.get("local_hour"),
+        analysis.get("forecast_temp"),
+        int(model_consensus) if model_consensus is not None else None,
+        ens_mean,
+        ens_var,
+        int(is_shadow),
+    )
+    # Atomic upsert — unique index on (ticker, predicted_date) prevents
+    # duplicate rows from concurrent calls (TOCTOU of old SELECT+INSERT pattern).
+    if conn is not None:
+        conn.execute(sql, params)
+    else:
+        with _conn() as con:
+            con.execute(sql, params)
+    return True
 
 
 def log_outcome(ticker: str, settled_yes: bool) -> bool:
@@ -878,6 +900,35 @@ def brier_score_by_method(min_samples: int = 20) -> dict[str, float]:
     return {
         m: sum(errs) / len(errs)
         for m, errs in by_method.items()
+        if len(errs) >= min_samples
+    }
+
+
+def brier_score_by_method_rolling(window: int = 20, min_samples: int = 1) -> dict[str, float]:
+    """Rolling Brier score per method over the last `window` settled predictions.
+
+    Count-based (not time-based) so cadence-uneven methods still get a stable
+    sample size — mirrors get_rolling_win_rate()'s windowing convention.
+    """
+    init_db()
+    with _conn() as con:
+        rows = con.execute("""
+            SELECT p.method, p.our_prob, o.settled_yes
+            FROM multiday_predictions p
+            JOIN outcomes o ON p.ticker = o.ticker
+            WHERE p.our_prob IS NOT NULL AND p.method IS NOT NULL
+            ORDER BY o.settled_at DESC
+        """).fetchall()
+
+    by_method_recent: dict[str, list] = {}
+    for r in rows:
+        errs = by_method_recent.setdefault(r["method"], [])
+        if len(errs) < window:
+            errs.append((r["our_prob"] - r["settled_yes"]) ** 2)
+
+    return {
+        m: sum(errs) / len(errs)
+        for m, errs in by_method_recent.items()
         if len(errs) >= min_samples
     }
 
@@ -3323,6 +3374,14 @@ def get_pnl_by_signal_source(min_samples: int = 10) -> dict[str, dict]:
     """
     Compute Brier score and win rate grouped by signal_source.
     Reveals which signal drives the most profitable trades.
+
+    Despite the name, this is a calibration hit-rate, not real trade P&L —
+    it has never joined against placed-trade data. Rows may include
+    is_shadow=1 predictions (analyzed and gate-passing, but never actually
+    traded, e.g. during TRADING_PAUSED); those are included in brier/win_rate
+    (so the score stays representative of forecast quality), but n_shadow is
+    reported separately so a caller can tell how many of the n samples had no
+    real money behind them.
     """
     init_db()
     with _conn() as con:
@@ -3331,27 +3390,31 @@ def get_pnl_by_signal_source(min_samples: int = 10) -> dict[str, dict]:
             SELECT
                 COALESCE(p.signal_source, 'unknown') AS source,
                 p.our_prob,
-                o.settled_yes
+                o.settled_yes,
+                p.is_shadow
             FROM multiday_predictions p
             JOIN outcomes o ON p.ticker = o.ticker
             WHERE p.our_prob IS NOT NULL
             """
         ).fetchall()
 
-    groups: dict[str, list[tuple[float, bool]]] = {}
-    for source, our_prob, settled_yes in rows:
-        groups.setdefault(source, []).append((float(our_prob), bool(settled_yes)))
+    groups: dict[str, list[tuple[float, bool, bool]]] = {}
+    for source, our_prob, settled_yes, is_shadow in rows:
+        groups.setdefault(source, []).append(
+            (float(our_prob), bool(settled_yes), bool(is_shadow))
+        )
 
     result = {}
     for source, samples in groups.items():
         if len(samples) < min_samples:
             continue
-        brier = sum((p - (1 if y else 0)) ** 2 for p, y in samples) / len(samples)
-        wins = sum(1 for p, y in samples if (y and p > 0.5) or (not y and p <= 0.5))
+        brier = sum((p - (1 if y else 0)) ** 2 for p, y, _ in samples) / len(samples)
+        wins = sum(1 for p, y, _ in samples if (y and p > 0.5) or (not y and p <= 0.5))
         result[source] = {
             "brier": round(brier, 4),
             "n": len(samples),
             "win_rate": round(wins / len(samples), 3),
+            "n_shadow": sum(1 for _, _, shadow in samples if shadow),
         }
     return result
 
@@ -3401,6 +3464,7 @@ def auto_retire_strategies(
     retire_threshold: float = 0.25,
     current_directional_accuracy: float | None = None,
     dir_accuracy_guard: float = 0.65,
+    rolling_window: int = 20,
 ) -> list[str]:
     """P9.5: Auto-retire forecasting methods whose Brier score exceeds retire_threshold.
 
@@ -3417,11 +3481,16 @@ def auto_retire_strategies(
             direction is not.
         dir_accuracy_guard: directional accuracy threshold below which the guard is
             inactive and Brier-based retirement proceeds normally. Default 0.65.
+        rolling_window: methods are NOT retired if their rolling Brier over the last
+            `rolling_window` settled predictions is already back at/under
+            retire_threshold — a lifetime average can stay elevated long after a
+            method has recovered, since old bad trades never roll off it.
 
     Returns list of newly retired method names.
     """
     now_str = datetime.now(UTC).isoformat()
     scores = brier_score_by_method(min_samples=min_samples)
+    rolling_scores = brier_score_by_method_rolling(window=rolling_window, min_samples=1)
     retired = get_retired_strategies()
     newly_retired: list[str] = []
 
@@ -3451,10 +3520,30 @@ def auto_retire_strategies(
                     dir_accuracy_guard,
                 )
                 continue
+            rolling_brier = rolling_scores.get(method)
+            if rolling_brier is not None and rolling_brier <= retire_threshold:
+                _log.info(
+                    "strategy_retirement: skipping method=%s (lifetime Brier %.4f > "
+                    "threshold %.4f but rolling last-%d Brier %.4f <= threshold — "
+                    "recent performance recovered)",
+                    method,
+                    brier,
+                    retire_threshold,
+                    rolling_window,
+                    rolling_brier,
+                )
+                continue
             retired[method] = {
                 "retired_at": now_str,
-                "reason": f"Brier {brier:.4f} > threshold {retire_threshold:.4f}",
+                "reason": (
+                    f"Brier {brier:.4f} (lifetime) / "
+                    f"{rolling_brier:.4f} (last {rolling_window}) "
+                    if rolling_brier is not None
+                    else f"Brier {brier:.4f} (lifetime) "
+                )
+                + f"> threshold {retire_threshold:.4f}",
                 "brier": brier,
+                "rolling_brier": rolling_brier,
             }
             newly_retired.append(method)
             _log.warning(

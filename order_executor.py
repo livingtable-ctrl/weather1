@@ -26,6 +26,7 @@ from utils import (
     MAX_VAR_DOLLARS,
     MIN_EDGE,
     PAPER_MIN_EDGE,
+    is_trading_paused,
 )
 from weather_markets import (
     analyze_trade,
@@ -875,6 +876,132 @@ def _validate_trade_opportunity(opp: dict, live: bool = False) -> tuple[bool, st
 # ---------------------------------------------------------------------------
 
 
+def _unpack_opp(item) -> tuple[str, str | None, date | None, dict]:
+    """Extract (ticker, city, target_date, analysis_dict) from an opp item.
+
+    Handles both (market_dict, analysis_dict) tuple format (legacy watch mode)
+    and flat opportunity dicts (new live path / tests) — the same two shapes
+    _auto_place_trades' main loop accepts.
+    """
+    if isinstance(item, tuple):
+        m, a = item
+    else:
+        m, a = item, item
+    ticker = m.get("ticker", "") or a.get("ticker", "")
+    city = m.get("_city") or a.get("city")
+    target_date_obj = m.get("_date")
+    if target_date_obj is None:
+        _raw_date = a.get("target_date")
+        if isinstance(_raw_date, str):
+            try:
+                target_date_obj = date.fromisoformat(_raw_date)
+            except ValueError:
+                target_date_obj = None
+        elif hasattr(_raw_date, "isoformat"):
+            target_date_obj = _raw_date
+    return ticker, city, target_date_obj, a
+
+
+def _prediction_kwargs_from_analysis(a: dict) -> dict:
+    """Build the tracker.log_prediction() keyword args shared by the real
+    post-placement call and shadow logging, so both derive ens_mean/ens_var
+    and the other blend metadata identically."""
+    from weather_markets import EDGE_CALC_VERSION as _ECV
+
+    _es = a.get("ensemble_stats") or {}
+    _std = _es.get("std")
+    return dict(
+        ensemble_prob=a.get("ensemble_prob"),
+        nws_prob=a.get("nws_prob"),
+        clim_prob=a.get("clim_prob"),
+        forecast_cycle=_current_forecast_cycle(),
+        edge_calc_version=_ECV,
+        signal_source=a.get("method"),
+        blend_sources=a.get("blend_sources"),
+        model_consensus=a.get("model_consensus"),
+        ens_mean=_es.get("mean"),
+        ens_var=(_std * _std if _std is not None else None),
+    )
+
+
+def _log_shadow_predictions(opps: list, live: bool = False) -> int:
+    """Log predictions for signals that passed analysis but were never placed
+    (TRADING_PAUSED, drawdown halt, daily-loss halt, or position/spend caps —
+    see the early-return branches below).
+
+    _auto_place_trades normally calls tracker.log_prediction() only after a
+    trade is actually placed, so brier_score_by_method() — and the strategy
+    auto-retirement logic that reads it — goes stale for as long as no trades
+    are placed. This mirrors that same log_prediction() call for opps that
+    would have been traded, so scoring keeps reflecting current forecast
+    quality instead of freezing.
+
+    Applies the same quality/dedup gates the real placement loop applies
+    (_validate_trade_opportunity, already-open, was_ordered_recently,
+    was_traded_today) before logging — otherwise a stale/negative-edge/
+    already-held signal that the real loop would silently reject gets written
+    into the same table that drives auto-retirement decisions, corrupting the
+    exact scoring this function exists to keep honest.
+
+    Writes are batched onto a single connection (mirrors
+    tracker.batch_log_analysis_attempts' approach to the same "log every
+    candidate" problem) rather than one connection open/close per opp.
+
+    Returns the number of predictions actually written (excludes opps that
+    failed validation/dedup, or that log_prediction itself skipped, e.g. for
+    a missing city).
+    """
+    from paper import get_open_trades
+    from tracker import _conn as _tracker_conn
+    from tracker import log_prediction as _log_pred
+
+    try:
+        open_tickers = {t["ticker"] for t in get_open_trades()}
+    except Exception as _e:
+        _log.warning("_log_shadow_predictions: get_open_trades failed: %s", _e)
+        open_tickers = set()
+
+    logged = 0
+    with _tracker_conn() as _con:
+        for item in opps:
+            try:
+                ticker, city, target_date_obj, a = _unpack_opp(item)
+            except Exception as _e:
+                _log.warning(
+                    "_log_shadow_predictions: failed to unpack opp %r: %s", item, _e
+                )
+                continue
+            if not ticker or ticker in open_tickers:
+                continue
+            rec_side = a.get("recommended_side", a.get("side", "yes"))
+            if execution_log.was_ordered_recently(
+                ticker, days=7
+            ) or execution_log.was_traded_today(ticker, rec_side):
+                continue
+            _ok, _reason = _validate_trade_opportunity({**a, "ticker": ticker}, live=live)
+            if not _ok:
+                _log.debug("_log_shadow_predictions: skip %s — %s", ticker, _reason)
+                continue
+            try:
+                if _log_pred(
+                    ticker,
+                    city,
+                    target_date_obj,
+                    a,
+                    is_shadow=True,
+                    conn=_con,
+                    **_prediction_kwargs_from_analysis(a),
+                ):
+                    logged += 1
+            except Exception as _e:
+                _log.warning(
+                    "_log_shadow_predictions: log_prediction failed for %s: %s",
+                    ticker,
+                    _e,
+                )
+    return logged
+
+
 def _auto_place_trades(
     opps: list,
     client=None,
@@ -903,15 +1030,29 @@ def _auto_place_trades(
         spread_kelly_multiplier,
     )
 
-    if os.getenv("TRADING_PAUSED", "").strip().lower() in ("1", "true", "yes", "on"):
+    def _shadow_suffix() -> str:
+        """Shadow-log opps blocked by a whole-batch guard below and return a
+        suffix describing how many were logged (empty if none)."""
+        _n = _log_shadow_predictions(opps, live=live)
+        return (
+            f" Logged {_n} shadow prediction(s) for scoring continuity." if _n else ""
+        )
+
+    if is_trading_paused():
         print(
             yellow(
                 "  [Auto] TRADING_PAUSED is set — no auto-trades placed (paper or live)."
+                + _shadow_suffix()
             )
         )
         return 0
     if is_paused_drawdown():
-        print(yellow("  [Auto] Drawdown guard active — no auto-trades placed."))
+        print(
+            yellow(
+                "  [Auto] Drawdown guard active — no auto-trades placed."
+                + _shadow_suffix()
+            )
+        )
         return 0
     if is_daily_loss_halted(client):
         from paper import get_daily_pnl
@@ -920,6 +1061,7 @@ def _auto_place_trades(
         print(
             yellow(
                 f"  [Auto] Daily loss limit reached (${daily_pnl:.2f} incl. MTM) — no auto-trades."
+                + _shadow_suffix()
             )
         )
         return 0
@@ -1005,6 +1147,7 @@ def _auto_place_trades(
         print(
             yellow(
                 f"  [Auto] Position cap reached ({len(_open_trades_list)}/{MAX_CONCURRENT_POSITIONS} open) — no auto-trades."
+                + _shadow_suffix()
             )
         )
         return 0
@@ -1019,6 +1162,7 @@ def _auto_place_trades(
             yellow(
                 f"  [Auto] All spend caps reached (multi-day ${daily_spent:.2f}/${MAX_DAILY_SPEND:.0f},"
                 f" same-day ${sameday_spent:.2f}/${MAX_SAME_DAY_SPEND:.0f}) — no auto-trades."
+                + _shadow_suffix()
             )
         )
         return 0
@@ -1504,7 +1648,6 @@ def _auto_place_trades(
                     import datetime as _dt3
 
                     from tracker import log_prediction as _log_pred
-                    from weather_markets import EDGE_CALC_VERSION as _ECV2
 
                     _pred_date_raw = trade.get("target_date")
                     _pred_date: date | None = None
@@ -1515,23 +1658,12 @@ def _auto_place_trades(
                             pass
                     elif hasattr(_pred_date_raw, "isoformat"):
                         _pred_date = _pred_date_raw
-                    _es2 = a.get("ensemble_stats") or {}
-                    _std2 = _es2.get("std")
                     _log_pred(
                         ticker,
                         city,
                         _pred_date,
                         a,
-                        ensemble_prob=a.get("ensemble_prob"),
-                        nws_prob=a.get("nws_prob"),
-                        clim_prob=a.get("clim_prob"),
-                        forecast_cycle=_current_forecast_cycle(),
-                        edge_calc_version=_ECV2,
-                        signal_source=a.get("method"),
-                        blend_sources=a.get("blend_sources"),
-                        model_consensus=a.get("model_consensus"),
-                        ens_mean=_es2.get("mean"),
-                        ens_var=(_std2 * _std2 if _std2 is not None else None),
+                        **_prediction_kwargs_from_analysis(a),
                     )
                 except Exception as _e2:
                     _log.warning(

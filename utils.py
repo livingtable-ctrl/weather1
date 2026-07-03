@@ -15,6 +15,21 @@ def utc_today() -> date:
     return datetime.now(UTC).date()
 
 
+def is_trading_paused() -> bool:
+    """Single source of truth for the TRADING_PAUSED kill-switch.
+
+    Was previously re-derived independently in cron.py, order_executor.py,
+    main.py (x2), and web_app.py — each parsing the same env var with its own
+    copy of the truthy-string tuple, which could silently drift out of sync.
+    """
+    return os.getenv("TRADING_PAUSED", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+
+
 # ── Kalshi platform constant ──────────────────────────────────────────────────
 
 # Fee Kalshi charges on winning trades. 7% is the default taker rate.
