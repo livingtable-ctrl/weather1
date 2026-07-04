@@ -930,9 +930,9 @@ def get_weather_forecast(city: str, target_date: date) -> dict | None:
         if target_str not in dates:
             return None
         idx = dates.index(target_str)
-        h = daily.get("temperature_2m_max", [None])[idx]
-        lo = daily.get("temperature_2m_min", [None])[idx]
-        p = daily.get("precipitation_sum", [None])[idx]
+        h = (daily.get("temperature_2m_max") or [None])[idx]
+        lo = (daily.get("temperature_2m_min") or [None])[idx]
+        p = (daily.get("precipitation_sum") or [None])[idx]
         return (h, lo, p, weight)
 
     # Manual pool management (no `with` block) so we can call shutdown(wait=False)
@@ -1192,9 +1192,9 @@ def batch_prewarm_forecasts(
             precips: list[tuple[float, float]] = []
             for model_name, mdata in model_data.items():
                 w = _weights.get(model_name, 1.0)
-                h = mdata.get("temperature_2m_max", [])
-                lo = mdata.get("temperature_2m_min", [])
-                p = mdata.get("precipitation_sum", [])
+                h = mdata.get("temperature_2m_max") or []
+                lo = mdata.get("temperature_2m_min") or []
+                p = mdata.get("precipitation_sum") or []
                 if j < len(h) and h[j] is not None:
                     highs.append((h[j], w))
                 if j < len(lo) and lo[j] is not None:
@@ -3124,12 +3124,12 @@ def check_series_drift(client: KalshiClient) -> None:
     """
     try:
         today = datetime.now(UTC).date().isoformat()
-        state: dict = {"date": None, "missing_days": {}}
+        missing_days: dict = {}
         if SERIES_DRIFT_PATH.exists():
             existing = json.loads(SERIES_DRIFT_PATH.read_text())
             if existing.get("date") == today:
                 return  # already ran today
-            state["missing_days"] = existing.get("missing_days", {})
+            missing_days = existing.get("missing_days", {})
 
         live = client.get_series_list(category="Climate and Weather")
         live_tickers = {s.get("ticker", "") for s in live}
@@ -3141,7 +3141,6 @@ def check_series_drift(client: KalshiClient) -> None:
         # KXSNOW are known-dead placeholders (confirmed 0 open markets, ever)
         # that never match the KXHIGH/KXLOW filter, so tracking them here
         # would produce a permanent, un-actionable "missing" warning forever.
-        missing_days = state["missing_days"]
         for ticker in KNOWN_WEATHER_SERIES:
             if not ticker.startswith(("KXHIGH", "KXLOW")):
                 continue
@@ -4398,7 +4397,9 @@ def _fetch_ensemble_precip(
                 return []
             idx = times.index(target_str)
             raw_member_values = [
-                vals[idx] for k, vals in daily.items() if k.startswith(prefix)
+                vals[idx]
+                for k, vals in daily.items()
+                if k.startswith(prefix) and idx < len(vals)
             ]
             if is_all_null(raw_member_values):
                 raise ValueError(
