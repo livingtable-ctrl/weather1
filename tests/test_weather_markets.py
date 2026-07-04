@@ -1263,8 +1263,16 @@ class TestCityDetection:
         assert self._city("KXHIGHLAX-26JUL04-T74") == "LA"
 
     def test_la_renamed_low_ticker(self):
-        """KXLOWLAX (renamed from KXLOWLA) → LA."""
+        """KXLOWLAX (renamed from KXLOWLA, itself later retired for
+        KXLOWTLAX — still checked so a third rename back would be caught)."""
         assert self._city("KXLOWLAX-26JUL04-T60") == "LA"
+
+    def test_la_low_ticker_t_variant(self):
+        """KXLOWTLAX (current live ticker as of 2026-07-05, renamed again
+        from KXLOWLAX) → LA. KNOWN_WEATHER_SERIES was found via
+        check_series_drift to still reference the retired KXLOWLAX, silently
+        dropping LA's low-temp market from get_weather_markets() entirely."""
+        assert self._city("KXLOWTLAX-26JUL05-T63") == "LA"
 
     def test_boston_renamed_high_ticker(self):
         """KXHIGHTBOS (renamed from KXHIGHBOS) → Boston."""

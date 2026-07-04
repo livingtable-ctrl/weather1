@@ -17,37 +17,53 @@ import time
 from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo
 
+import metar as _metar
 from safe_io import project_root as _project_root
+from weather_markets import _CITY_TZ
 
 _log = logging.getLogger(__name__)
 
 _SIGNALS_PATH = _project_root() / "data" / "settlement_signals.json"
 _SIGNALS_PATH.parent.mkdir(exist_ok=True)
 
-# Cities and their METAR stations + timezones
+# Short code (this module's convention) → full city name (metar.py's and
+# weather_markets.py's convention) — the only hand-maintained mapping needed
+# now; station/tz are derived below instead of duplicated a third time. A
+# stale/mismatched entry here raises KeyError at import time rather than
+# silently drifting (the exact failure mode that let a stale Kalshi ticker
+# and a short-code/full-name key mismatch both go unnoticed elsewhere this
+# same week — see mos.py and KNOWN_WEATHER_SERIES's KXLOWTLAX fix).
+_SHORT_CODE_TO_CITY: dict[str, str] = {
+    "NYC": "NYC",
+    "MIA": "Miami",
+    "CHI": "Chicago",
+    "LAX": "LA",
+    "DAL": "Dallas",
+    "BOS": "Boston",
+    "PHX": "Phoenix",
+    "SEA": "Seattle",
+    "DEN": "Denver",
+    "ATL": "Atlanta",
+    "AUS": "Austin",
+    "DC": "Washington",
+    "PHI": "Philadelphia",
+    "OKC": "OklahomaCity",
+    "SFO": "SanFrancisco",
+    "MSP": "Minneapolis",
+    "HOU": "Houston",
+    "SAT": "SanAntonio",
+    "LV": "LasVegas",
+    "NOLA": "NewOrleans",
+}
+
+# Cities and their METAR stations + timezones — derived from metar.py's and
+# weather_markets.py's canonical maps (single source of truth) instead of a
+# third hand-typed copy.
 # P3-8: expanded to all 18 traded cities (was 5); LV/NOLA added when the bot
 # started tracking those markets, bringing the total to 20.
 _MONITOR_CITIES = {
-    "NYC": {"station": "KNYC", "tz": "America/New_York"},
-    "MIA": {"station": "KMIA", "tz": "America/New_York"},
-    "CHI": {"station": "KMDW", "tz": "America/Chicago"},
-    "LAX": {"station": "KLAX", "tz": "America/Los_Angeles"},
-    "DAL": {"station": "KDFW", "tz": "America/Chicago"},
-    "BOS": {"station": "KBOS", "tz": "America/New_York"},
-    "PHX": {"station": "KPHX", "tz": "America/Phoenix"},
-    "SEA": {"station": "KSEA", "tz": "America/Los_Angeles"},
-    "DEN": {"station": "KDEN", "tz": "America/Denver"},
-    "ATL": {"station": "KATL", "tz": "America/New_York"},
-    "AUS": {"station": "KAUS", "tz": "America/Chicago"},
-    "DC": {"station": "KDCA", "tz": "America/New_York"},
-    "PHI": {"station": "KPHL", "tz": "America/New_York"},
-    "OKC": {"station": "KOKC", "tz": "America/Chicago"},
-    "SFO": {"station": "KSFO", "tz": "America/Los_Angeles"},
-    "MSP": {"station": "KMSP", "tz": "America/Chicago"},
-    "HOU": {"station": "KHOU", "tz": "America/Chicago"},
-    "SAT": {"station": "KSAT", "tz": "America/Chicago"},
-    "LV": {"station": "KLAS", "tz": "America/Los_Angeles"},
-    "NOLA": {"station": "KMSY", "tz": "America/Chicago"},
+    code: {"station": _metar.MARKET_STATION_MAP[city], "tz": _CITY_TZ[city]}
+    for code, city in _SHORT_CODE_TO_CITY.items()
 }
 
 # Kalshi series ticker prefix per city — NOT simply "KXHIGH" + city code

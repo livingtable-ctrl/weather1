@@ -3036,7 +3036,7 @@ KNOWN_WEATHER_SERIES = [
     "KXHIGHTNOLA",  # New Orleans — not previously tracked
     "KXLOWTNYC",  # was KXLOWNY — retired
     "KXLOWTCHI",  # was KXLOWCHI — retired
-    "KXLOWLAX",  # was KXLOWLA — retired
+    "KXLOWTLAX",  # was KXLOWLA, then KXLOWLAX — both retired; confirmed live 2026-07-05
     "KXLOWTBOS",  # was KXLOWBOS — retired
     "KXLOWTMIA",  # was KXLOWMIA — retired
     "KXLOWTDAL",
@@ -3202,9 +3202,12 @@ def _parse_city_from_ticker(ticker: str, title: str = "") -> str | None:
     if (
         # L5-B: "LA" is a substring of DALLAS, PHILADELPHIA, ATLANTA — use
         # specific series-prefix patterns or an exact hyphen-delimited segment
-        # instead of bare substring match.
+        # instead of bare substring match. "LOWTLA" covers the KXLOWTLAX
+        # ticker format (Kalshi added a "T" to the low-temp LA series after
+        # KXLOWLAX was retired) alongside the older "LOWLA" pattern.
         "HIGHLA" in ticker_up
         or "LOWLA" in ticker_up
+        or "LOWTLA" in ticker_up
         or any(seg == "LA" for seg in ticker_up.split("-"))
         or "los angeles" in title_lo
     ):

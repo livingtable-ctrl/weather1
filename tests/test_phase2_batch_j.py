@@ -267,18 +267,58 @@ class TestMetarStationForCityAllCities:
             )
 
     def test_settlement_monitor_stations_match_metar_module(self):
-        """settlement_monitor._MONITOR_CITIES (keyed by short code) hand-duplicates
-        metar.MARKET_STATION_MAP (keyed by full city name) — same drift risk this
-        class already guards against for weather_markets.py. Every station code
-        in _MONITOR_CITIES must exist somewhere in MARKET_STATION_MAP's values."""
+        """settlement_monitor._MONITOR_CITIES is now derived from
+        metar.MARKET_STATION_MAP + weather_markets._CITY_TZ via
+        _SHORT_CODE_TO_CITY (no longer a hand-typed third copy) — this test
+        guards the derivation itself: every metar.py city must be reachable
+        through _SHORT_CODE_TO_CITY, and the derived values must match
+        exactly (not just be present somewhere in the value set)."""
         import metar
         import settlement_monitor
+        import weather_markets
 
-        known_stations = set(metar.MARKET_STATION_MAP.values())
+        covered_cities = set(settlement_monitor._SHORT_CODE_TO_CITY.values())
+        missing = set(metar.MARKET_STATION_MAP) - covered_cities
+        assert not missing, (
+            f"_SHORT_CODE_TO_CITY missing entries for: {sorted(missing)}"
+        )
+
         for code, info in settlement_monitor._MONITOR_CITIES.items():
-            assert info["station"] in known_stations, (
-                f"settlement_monitor city {code!r} station {info['station']!r} "
-                f"not found in metar.MARKET_STATION_MAP"
+            city = settlement_monitor._SHORT_CODE_TO_CITY[code]
+            assert info["station"] == metar.MARKET_STATION_MAP[city], (
+                f"settlement_monitor city {code!r} ({city!r}) station "
+                f"{info['station']!r} != metar.MARKET_STATION_MAP[{city!r}]"
+                f"={metar.MARKET_STATION_MAP[city]!r}"
+            )
+            assert info["tz"] == weather_markets._CITY_TZ[city], (
+                f"settlement_monitor city {code!r} ({city!r}) tz "
+                f"{info['tz']!r} != weather_markets._CITY_TZ[{city!r}]"
+                f"={weather_markets._CITY_TZ[city]!r}"
+            )
+
+    def test_settlement_monitor_series_tickers_match_known_weather_series(self):
+        """_CITY_SERIES_TICKER is still a hand-maintained fourth copy of the
+        city→Kalshi-HIGH-ticker mapping (kept static rather than derived,
+        since deriving it via _parse_city_from_ticker at import time would
+        crash the whole module on any ticker-parsing edge case). This test
+        substitutes for that derivation: every entry must be a real, live
+        ticker in KNOWN_WEATHER_SERIES that _parse_city_from_ticker actually
+        resolves back to the same city — catching the exact stale-ticker
+        drift that silently dropped KNOWN_WEATHER_SERIES's LA low-temp
+        market this week (KXLOWLAX → KXLOWTLAX)."""
+        import settlement_monitor
+        import weather_markets
+
+        for code, ticker in settlement_monitor._CITY_SERIES_TICKER.items():
+            city = settlement_monitor._SHORT_CODE_TO_CITY[code]
+            assert ticker in weather_markets.KNOWN_WEATHER_SERIES, (
+                f"settlement_monitor ticker {ticker!r} for {code!r} not in "
+                f"KNOWN_WEATHER_SERIES — likely retired/renamed by Kalshi"
+            )
+            parsed = weather_markets._parse_city_from_ticker(ticker)
+            assert parsed == city, (
+                f"settlement_monitor ticker {ticker!r} for {code!r} parses "
+                f"to city {parsed!r}, expected {city!r}"
             )
 
     def test_every_city_coords_entry_has_tz_and_station(self):
