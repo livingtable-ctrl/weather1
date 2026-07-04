@@ -12,6 +12,7 @@ from datetime import date, timedelta
 import requests
 from requests.adapters import HTTPAdapter, Retry
 
+from metar import MARKET_STATION_MAP as _MARKET_STATION_MAP
 from utils import utc_today as _utc_today
 
 _log = logging.getLogger(__name__)
@@ -19,17 +20,16 @@ _log = logging.getLogger(__name__)
 # IEM MOS API endpoint
 _MOS_URL = "https://mesonet.agron.iastate.edu/api/1/mos.json"
 
-# ASOS station codes for each city (matches Kalshi settlement stations).
-# Keyed by full city name (matching CITY_COORDS / metar.MARKET_STATION_MAP),
-# not the 3-letter short codes this used before — callers always pass the
-# full name (e.g. "Chicago", not "CHI"), so the old keys never matched.
+# Cities with NOAA MOS coverage wired up (a deliberate subset — not all 20
+# traded cities; MOS post-processing adds the most value for these, Denver's
+# mountain terrain in particular). Station codes are derived from
+# metar.MARKET_STATION_MAP (single source of truth) instead of a second
+# hand-typed copy — that copy previously used short-code keys ("CHI", "LAX")
+# that never matched real callers' full city names, silently zeroing out MOS
+# signal for every city but NYC until fixed.
+_MOS_CITIES: list[str] = ["NYC", "Miami", "Chicago", "LA", "Dallas", "Denver"]
 _CITY_STATION: dict[str, str] = {
-    "NYC": "KNYC",
-    "Miami": "KMIA",
-    "Chicago": "KMDW",
-    "LA": "KLAX",
-    "Dallas": "KDFW",
-    "Denver": "KDEN",  # B3: Denver added — mountain terrain makes MOS post-processing especially valuable
+    city: _MARKET_STATION_MAP[city] for city in _MOS_CITIES
 }
 
 # MOS verified RMSE by days_out (°F). Used as sigma in probability calculations

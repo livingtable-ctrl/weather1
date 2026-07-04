@@ -238,8 +238,18 @@ class TestForecastModelWeights:
         summer_w = _forecast_model_weights(7)["ecmwf_ifs025"]
         assert winter_w > summer_w
 
-    def test_all_winter_months_use_high_ecmwf(self):
-        """All winter months (Oct-Mar) should use the elevated ECMWF weight."""
+    def test_all_winter_months_use_high_ecmwf(self, monkeypatch):
+        """All winter months (Oct-Mar) should use the elevated ECMWF weight.
+
+        _forecast_model_weights adds a live ENSO adjustment on top of the
+        static 2.5 winter base (+0.5 el_nino / +0.3 la_nina, weather_markets.py
+        :862-866) — without pinning the phase to neutral, this test is only
+        deterministic when the real world happens to be ENSO-neutral (it
+        failed with 3.0 during the 2026 El Niño instead of the expected 2.5).
+        """
+        import weather_markets as wm
+
+        monkeypatch.setattr(wm, "_get_enso_phase", lambda: "neutral")
         for month in self.WINTER_MONTHS:
             w = _forecast_model_weights(month)
             assert w["ecmwf_ifs025"] == pytest.approx(2.5), (

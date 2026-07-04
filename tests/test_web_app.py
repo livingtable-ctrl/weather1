@@ -4,18 +4,28 @@ from unittest.mock import patch
 
 import pytest
 
+import utils
+
 
 @pytest.fixture(autouse=True)
 def _force_demo_env(monkeypatch):
-    """Set DASHBOARD_UNPROTECTED=true so _build_app doesn't require DASHBOARD_PASSWORD."""
+    """Set DASHBOARD_UNPROTECTED=true so _build_app doesn't require DASHBOARD_PASSWORD.
+
+    utils.DASHBOARD_PASSWORD is cached at import time (conftest.py imports
+    main, transitively importing utils, before any test runs) — deleting the
+    env var doesn't reach that cached module attribute, so it must be patched
+    directly (matches test_web_auth.py's established convention). Without
+    this, .env's real DASHBOARD_PASSWORD leaks into every test's _check_auth
+    enforcement and every endpoint 401s.
+    """
     monkeypatch.setenv("DASHBOARD_UNPROTECTED", "true")
-    monkeypatch.delenv("DASHBOARD_PASSWORD", raising=False)
+    monkeypatch.setattr(utils, "DASHBOARD_PASSWORD", "")
 
 
 @pytest.fixture
 def client(monkeypatch):
     monkeypatch.setenv("DASHBOARD_UNPROTECTED", "true")
-    monkeypatch.delenv("DASHBOARD_PASSWORD", raising=False)
+    monkeypatch.setattr(utils, "DASHBOARD_PASSWORD", "")
     from web_app import _build_app
 
     app = _build_app(object())  # dummy client

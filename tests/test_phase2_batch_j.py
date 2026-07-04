@@ -297,15 +297,14 @@ class TestMetarStationForCityAllCities:
             )
 
     def test_settlement_monitor_series_tickers_match_known_weather_series(self):
-        """_CITY_SERIES_TICKER is still a hand-maintained fourth copy of the
-        city→Kalshi-HIGH-ticker mapping (kept static rather than derived,
-        since deriving it via _parse_city_from_ticker at import time would
-        crash the whole module on any ticker-parsing edge case). This test
-        substitutes for that derivation: every entry must be a real, live
-        ticker in KNOWN_WEATHER_SERIES that _parse_city_from_ticker actually
-        resolves back to the same city — catching the exact stale-ticker
-        drift that silently dropped KNOWN_WEATHER_SERIES's LA low-temp
-        market this week (KXLOWLAX → KXLOWTLAX)."""
+        """_CITY_SERIES_TICKER is now derived from KNOWN_WEATHER_SERIES +
+        _parse_city_from_ticker at import time (an AssertionError there would
+        already catch drift before this test ever runs) — this test is a
+        second, independent guard on the same invariant: every entry must be
+        a real, live ticker in KNOWN_WEATHER_SERIES that _parse_city_from_ticker
+        actually resolves back to the same city. Catches the same class of
+        stale-ticker drift that silently dropped KNOWN_WEATHER_SERIES's LA
+        low-temp market this week (KXLOWLAX → KXLOWTLAX)."""
         import settlement_monitor
         import weather_markets
 

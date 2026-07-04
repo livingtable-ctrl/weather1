@@ -12,6 +12,39 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 
+class TestCitySeriesTickerDerivation:
+    def test_stale_known_weather_series_raises_at_import(self, monkeypatch):
+        """_CITY_SERIES_TICKER is derived from KNOWN_WEATHER_SERIES at import
+        time (settlement_monitor.py) — if a city's KXHIGH* ticker is ever
+        renamed/retired without updating KNOWN_WEATHER_SERIES to match (the
+        exact class of bug that silently dropped KXLOWLAX this week), that
+        derivation must fail loudly with a clear AssertionError rather than
+        silently producing a stale ticker."""
+        import importlib
+
+        import settlement_monitor
+        import weather_markets as wm
+
+        # Establish a known-good baseline first: if this test runs before
+        # anything else has imported settlement_monitor, the module hasn't
+        # executed its derivation loop yet, and the plain `import` above
+        # would just cache it — reload here forces one clean execution
+        # against real (unpatched) data, regardless of test run order.
+        importlib.reload(settlement_monitor)
+
+        stale_series = [t for t in wm.KNOWN_WEATHER_SERIES if t != "KXHIGHNY"]
+        monkeypatch.setattr(wm, "KNOWN_WEATHER_SERIES", stale_series)
+
+        try:
+            with pytest.raises(AssertionError, match="NYC"):
+                importlib.reload(settlement_monitor)
+        finally:
+            # Restore real state so later tests in this process see a
+            # correctly-derived module regardless of this test's outcome.
+            monkeypatch.undo()
+            importlib.reload(settlement_monitor)
+
+
 class TestBuildSettlementSignal:
     def test_signal_structure(self):
         """build_settlement_signal returns dict with required keys."""

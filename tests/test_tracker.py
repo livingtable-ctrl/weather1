@@ -2106,8 +2106,15 @@ class TestSyncOutcomesDatetimeFix(unittest.TestCase):
 
 
 def test_api_reliability_returns_empty_for_unknown_city(monkeypatch):
+    import utils
+
     monkeypatch.setenv("DASHBOARD_UNPROTECTED", "true")
-    monkeypatch.delenv("DASHBOARD_PASSWORD", raising=False)
+    # utils.DASHBOARD_PASSWORD is cached at import time (conftest.py imports
+    # main, transitively importing utils, before any test runs) — deleting
+    # the env var here doesn't reach that cached module attribute, so the
+    # attribute itself must be patched directly (matches test_web_auth.py's
+    # established convention).
+    monkeypatch.setattr(utils, "DASHBOARD_PASSWORD", "")
     from web_app import _build_app
 
     app = _build_app(object())
@@ -2124,8 +2131,10 @@ def test_api_reliability_returns_empty_for_unknown_city(monkeypatch):
 
 
 def test_api_edge_realization_returns_list(monkeypatch):
+    import utils
+
     monkeypatch.setenv("DASHBOARD_UNPROTECTED", "true")
-    monkeypatch.delenv("DASHBOARD_PASSWORD", raising=False)
+    monkeypatch.setattr(utils, "DASHBOARD_PASSWORD", "")
     from web_app import _build_app
 
     app = _build_app(object())
@@ -2144,9 +2153,11 @@ def test_api_edge_realization_returns_list(monkeypatch):
 
 
 def test_health_endpoint_returns_ok(monkeypatch):
+    import utils
+
     # Health endpoint must be public (no auth) and return JSON status
     monkeypatch.setenv("DASHBOARD_UNPROTECTED", "true")
-    monkeypatch.delenv("DASHBOARD_PASSWORD", raising=False)
+    monkeypatch.setattr(utils, "DASHBOARD_PASSWORD", "")
     from web_app import _build_app
 
     app = _build_app(object())

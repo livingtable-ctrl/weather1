@@ -19,7 +19,7 @@ from zoneinfo import ZoneInfo
 
 import metar as _metar
 from safe_io import project_root as _project_root
-from weather_markets import _CITY_TZ
+from weather_markets import _CITY_TZ, KNOWN_WEATHER_SERIES, _parse_city_from_ticker
 
 _log = logging.getLogger(__name__)
 
@@ -66,29 +66,28 @@ _MONITOR_CITIES = {
     for code, city in _SHORT_CODE_TO_CITY.items()
 }
 
-# Kalshi series ticker prefix per city — NOT simply "KXHIGH" + city code
-_CITY_SERIES_TICKER = {
-    "NYC": "KXHIGHNY",
-    "MIA": "KXHIGHMIA",
-    "CHI": "KXHIGHCHI",
-    "LAX": "KXHIGHLAX",  # was KXHIGHLA — Kalshi retired that ticker
-    "DAL": "KXHIGHTDAL",
-    "BOS": "KXHIGHTBOS",  # was KXHIGHBOS — retired
-    "PHX": "KXHIGHTPHX",
-    "SEA": "KXHIGHTSEA",
-    "DEN": "KXHIGHDEN",
-    "ATL": "KXHIGHTATL",
-    "AUS": "KXHIGHAUS",
-    "DC": "KXHIGHTDC",
-    "PHI": "KXHIGHPHIL",  # was KXHIGHTPHIL — retired
-    "OKC": "KXHIGHTOKC",
-    "SFO": "KXHIGHTSFO",
-    "MSP": "KXHIGHTMIN",
-    "HOU": "KXHIGHTHOU",
-    "SAT": "KXHIGHTSATX",
-    "LV": "KXHIGHTLV",
-    "NOLA": "KXHIGHTNOLA",
-}
+# Kalshi series ticker prefix per city — NOT simply "KXHIGH" + city code.
+# Derived from KNOWN_WEATHER_SERIES + _parse_city_from_ticker (the same
+# source of truth get_weather_markets() itself uses) instead of a fourth
+# hand-typed copy — that copy went stale exactly once already this week
+# (KXLOWLAX → KXLOWTLAX) with no test catching it until a live audit found
+# it. Fails loudly at import time (clear AssertionError, not a cryptic
+# downstream 0-open-markets silence) if Kalshi renames a HIGH ticker again
+# and KNOWN_WEATHER_SERIES hasn't been updated to match.
+_CITY_SERIES_TICKER: dict[str, str] = {}
+for _code, _city in _SHORT_CODE_TO_CITY.items():
+    _matches = [
+        t
+        for t in KNOWN_WEATHER_SERIES
+        if t.startswith("KXHIGH") and _parse_city_from_ticker(t) == _city
+    ]
+    assert len(_matches) == 1, (
+        f"settlement_monitor: expected exactly one KXHIGH* ticker for "
+        f"{_city!r} in KNOWN_WEATHER_SERIES, found {_matches!r} — Kalshi may "
+        f"have renamed/retired the series again"
+    )
+    _CITY_SERIES_TICKER[_code] = _matches[0]
+del _code, _city, _matches
 
 # Settlement lag monitoring window: 5 PM – 7 PM local
 _MONITOR_START_HOUR = 17
