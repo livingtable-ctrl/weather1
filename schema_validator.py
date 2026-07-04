@@ -134,6 +134,19 @@ def validate_forecast(data: dict, source: str = "open_meteo") -> bool:
     return ok
 
 
+def is_all_null(values: list | None) -> bool:
+    """True if values is a non-empty list where every element is None.
+
+    This is the signature of a dead/retired Open-Meteo model: the API
+    returns HTTP 200 with a well-formed but entirely null payload, which
+    passes validate_forecast() (it only checks type, not content) and looks
+    identical to success to raise_for_status(). An empty list or None input
+    returns False — those mean "no data for this range yet", a normal and
+    distinct condition from "the model returned nothing but nulls".
+    """
+    return bool(values) and all(v is None for v in values)
+
+
 def validate_nws_response(data: dict) -> bool:
     """Validate NWS API point forecast response."""
     required: dict[str, type | tuple[type, ...]] = {

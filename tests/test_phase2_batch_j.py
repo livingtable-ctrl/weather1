@@ -266,6 +266,21 @@ class TestMetarStationForCityAllCities:
                 f"weather_markets.py={wm_station!r}"
             )
 
+    def test_settlement_monitor_stations_match_metar_module(self):
+        """settlement_monitor._MONITOR_CITIES (keyed by short code) hand-duplicates
+        metar.MARKET_STATION_MAP (keyed by full city name) — same drift risk this
+        class already guards against for weather_markets.py. Every station code
+        in _MONITOR_CITIES must exist somewhere in MARKET_STATION_MAP's values."""
+        import metar
+        import settlement_monitor
+
+        known_stations = set(metar.MARKET_STATION_MAP.values())
+        for code, info in settlement_monitor._MONITOR_CITIES.items():
+            assert info["station"] in known_stations, (
+                f"settlement_monitor city {code!r} station {info['station']!r} "
+                f"not found in metar.MARKET_STATION_MAP"
+            )
+
     def test_every_city_coords_entry_has_tz_and_station(self):
         """Every CITY_COORDS key must have a _CITY_TZ and metar.MARKET_STATION_MAP
         entry too — unlike test_all_cities_return_station above (which only checks

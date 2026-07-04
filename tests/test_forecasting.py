@@ -190,7 +190,7 @@ class TestEnsoPhase:
             patch("weather_markets._get_enso_phase", return_value="el_nino"),
         ):
             w = _forecast_model_weights(month=1, city=None)
-        assert w["ecmwf_aifs025_ensemble"] == pytest.approx(
+        assert w["ecmwf_ifs025"] == pytest.approx(
             3.0
         )  # 2.5 base + 0.5 el_nino
 
@@ -203,7 +203,7 @@ class TestEnsoPhase:
             patch("weather_markets._get_enso_phase", return_value="neutral"),
         ):
             w = _forecast_model_weights(month=1, city=None)
-        assert w["ecmwf_aifs025_ensemble"] == pytest.approx(2.5)
+        assert w["ecmwf_ifs025"] == pytest.approx(2.5)
 
 
 class TestFeelsLike:
@@ -629,7 +629,7 @@ class TestLearnedWeights:
         ):
             result = wm._forecast_model_weights(month=7, city="Denver")
         # Summer: ECMWF gets 1.5
-        assert result["ecmwf_aifs025_ensemble"] == pytest.approx(1.5)
+        assert result["ecmwf_ifs025"] == pytest.approx(1.5)
 
     def test_save_and_load_learned_weights(self, tmp_path, monkeypatch):
         """Round-trip: save then load returns identical dict."""
@@ -739,7 +739,7 @@ class TestForecastModelWeightsTrackerIntegration:
 
         tracker_weights = {
             "gfs_seamless": 0.25,
-            "ecmwf_aifs025_ensemble": 0.55,
+            "ecmwf_ifs025": 0.55,
             "icon_seamless": 0.20,
         }
         with patch("tracker.get_model_weights", return_value=tracker_weights):
@@ -756,7 +756,7 @@ class TestForecastModelWeightsTrackerIntegration:
         ):
             result = _forecast_model_weights(month=7, city="NYC")
         # seasonal summer: ecmwf_w = 1.5
-        assert result.get("ecmwf_aifs025_ensemble") == 1.5
+        assert result.get("ecmwf_ifs025") == 1.5
 
 
 class TestGaussianEnsembleBlend:

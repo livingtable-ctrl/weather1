@@ -69,14 +69,22 @@ class TestFetchMos:
         assert result is None
 
     def test_station_lookup(self):
-        """get_mos_station returns correct ASOS station for each city."""
+        """get_mos_station returns correct ASOS station for each city.
+
+        Keys are full city names (matching _parse_city_from_ticker's output,
+        the real call-site format) — not 3-letter short codes. The old short
+        codes ("CHI"/"LAX"/"DAL"/"DEN"/"MIA") never matched because every
+        real caller passes the full name, so MOS silently returned None for
+        5 of 6 covered cities until this was fixed.
+        """
         import mos
 
         assert mos.get_mos_station("NYC") == "KNYC"
-        assert mos.get_mos_station("MIA") == "KMIA"
-        assert mos.get_mos_station("CHI") == "KMDW"
-        assert mos.get_mos_station("LAX") == "KLAX"
-        assert mos.get_mos_station("DAL") == "KDFW"
+        assert mos.get_mos_station("Miami") == "KMIA"
+        assert mos.get_mos_station("Chicago") == "KMDW"
+        assert mos.get_mos_station("LA") == "KLAX"
+        assert mos.get_mos_station("Dallas") == "KDFW"
+        assert mos.get_mos_station("Denver") == "KDEN"
 
     def test_unknown_city_returns_none(self):
         import mos

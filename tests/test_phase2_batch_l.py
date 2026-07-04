@@ -352,3 +352,39 @@ class TestKalshiEnvLiveRead:
                 os.environ.pop("KALSHI_ENV", None)
             else:
                 os.environ["KALSHI_ENV"] = original
+
+
+# ── is_all_null: dead-model detection (200 OK + all-null payload) ────────────
+
+
+class TestIsAllNull:
+    """Detects the 'dead model' signature: Open-Meteo returns HTTP 200 with a
+    well-formed but entirely null array, which validate_forecast() and
+    raise_for_status() both treat as success."""
+
+    def test_all_none_is_true(self):
+        from schema_validator import is_all_null
+
+        assert is_all_null([None, None, None]) is True
+
+    def test_mixed_none_and_real_values_is_false(self):
+        from schema_validator import is_all_null
+
+        assert is_all_null([None, 72.0, None]) is False
+
+    def test_all_real_values_is_false(self):
+        from schema_validator import is_all_null
+
+        assert is_all_null([70.0, 71.0, 72.0]) is False
+
+    def test_empty_list_is_false(self):
+        """An empty list means 'no data for this range yet' — a normal
+        condition distinct from 'the model returned nothing but nulls'."""
+        from schema_validator import is_all_null
+
+        assert is_all_null([]) is False
+
+    def test_none_input_is_false(self):
+        from schema_validator import is_all_null
+
+        assert is_all_null(None) is False

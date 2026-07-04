@@ -509,6 +509,16 @@ def _cmd_cron_body(
     # 1-month prod reminder — fires once per day after _PROD_REMINDER_DATE in prod mode
     _check_prod_reminder()
 
+    # Kalshi series drift detection — once per day, observational only, never
+    # blocks trading (found the original stale-ticker bug via manual
+    # investigation; this catches the next one automatically).
+    try:
+        from weather_markets import check_series_drift as _check_series_drift
+
+        _check_series_drift(client)
+    except Exception as _drift_exc:
+        _log.debug("check_series_drift call failed: %s", _drift_exc)
+
     from datetime import UTC, datetime
 
     print(

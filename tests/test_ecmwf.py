@@ -33,6 +33,39 @@ class TestECMWFAIFS:
 
         assert result == pytest.approx(21.0, abs=0.01)
 
+    def test_fetch_temperature_ecmwf_all_null_treated_as_failure(self):
+        """A dead model returns HTTP 200 with every hourly value null — this
+        must be treated the same as a real fetch failure (record_failure(),
+        return None), not silently accepted as a valid empty result."""
+        from datetime import date
+        from unittest.mock import MagicMock
+
+        import weather_markets
+
+        mock_response = {
+            "hourly": {
+                "time": ["2026-04-17T12:00", "2026-04-17T18:00"],
+                "temperature_2m": [None, None],
+            }
+        }
+        with patch("weather_markets._ECMWF_CACHE", {}):
+            with patch("weather_markets._om_request") as mock_req:
+                mock_req.return_value.json.return_value = mock_response
+                mock_req.return_value.raise_for_status.return_value = None
+                with patch.object(
+                    weather_markets._ensemble_cb, "record_failure", MagicMock()
+                ) as mock_fail:
+                    with patch.object(
+                        weather_markets._ensemble_cb, "record_success", MagicMock()
+                    ) as mock_success:
+                        result = weather_markets.fetch_temperature_ecmwf(
+                            "NYC", date(2026, 4, 17)
+                        )
+
+        assert result is None
+        mock_fail.assert_called_once()
+        mock_success.assert_not_called()
+
     def test_fetch_temperature_ecmwf_none_on_failure(self):
         from datetime import date
 

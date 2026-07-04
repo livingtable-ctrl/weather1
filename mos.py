@@ -19,14 +19,17 @@ _log = logging.getLogger(__name__)
 # IEM MOS API endpoint
 _MOS_URL = "https://mesonet.agron.iastate.edu/api/1/mos.json"
 
-# ASOS station codes for each city (matches Kalshi settlement stations)
+# ASOS station codes for each city (matches Kalshi settlement stations).
+# Keyed by full city name (matching CITY_COORDS / metar.MARKET_STATION_MAP),
+# not the 3-letter short codes this used before — callers always pass the
+# full name (e.g. "Chicago", not "CHI"), so the old keys never matched.
 _CITY_STATION: dict[str, str] = {
     "NYC": "KNYC",
-    "MIA": "KMIA",
-    "CHI": "KMDW",
-    "LAX": "KLAX",
-    "DAL": "KDFW",
-    "DEN": "KDEN",  # B3: Denver added — mountain terrain makes MOS post-processing especially valuable
+    "Miami": "KMIA",
+    "Chicago": "KMDW",
+    "LA": "KLAX",
+    "Dallas": "KDFW",
+    "Denver": "KDEN",  # B3: Denver added — mountain terrain makes MOS post-processing especially valuable
 }
 
 # MOS verified RMSE by days_out (°F). Used as sigma in probability calculations
@@ -59,7 +62,7 @@ _MOS_CACHE_TTL = 3600  # 1 hour
 
 def get_mos_station(city: str) -> str | None:
     """Return the ASOS station code for a city, or None if unknown."""
-    return _CITY_STATION.get(city.upper())
+    return _CITY_STATION.get(city)
 
 
 def is_mos_cached(station: str, target_date: date | None) -> bool:

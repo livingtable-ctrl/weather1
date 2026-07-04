@@ -50,3 +50,27 @@ class TestApplyStationBias:
 
         assert isinstance(_STATION_BIAS, dict)
         assert "NYC" in _STATION_BIAS
+
+    def test_las_vegas_bias_matches_phoenix(self):
+        """Las Vegas has no settled-observation history yet — uses Phoenix's
+        desert-climate bias as an interim value (same GFS/ICON warm-bias artifact)."""
+        from weather_markets import apply_station_bias
+
+        assert apply_station_bias("LasVegas", 100.0) == pytest.approx(
+            apply_station_bias("Phoenix", 100.0)
+        )
+        assert apply_station_bias("LasVegas", 100.0, var="min") == pytest.approx(
+            apply_station_bias("Phoenix", 100.0, var="min")
+        )
+
+    def test_new_orleans_bias_matches_houston(self):
+        """New Orleans has no settled-observation history yet — uses Houston's
+        Gulf humid-subtropical bias as an interim value."""
+        from weather_markets import apply_station_bias
+
+        assert apply_station_bias("NewOrleans", 90.0) == pytest.approx(
+            apply_station_bias("Houston", 90.0)
+        )
+        assert apply_station_bias("NewOrleans", 90.0, var="min") == pytest.approx(
+            apply_station_bias("Houston", 90.0, var="min")
+        )

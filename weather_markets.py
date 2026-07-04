@@ -34,7 +34,8 @@ from climatology import climatological_prob
 from forecast_cache import ForecastCache
 from kalshi_client import KalshiClient, _request_with_retry
 from nws import fetch_nbm_forecast, get_live_observation, nws_prob, obs_prob
-from schema_validator import validate_forecast
+from paths import SERIES_DRIFT_PATH
+from schema_validator import is_all_null, validate_forecast
 from utils import KALSHI_FEE_RATE, KELLY_CAP, MAX_DAYS_OUT, normal_cdf
 
 _log = logging.getLogger(__name__)
@@ -227,12 +228,14 @@ _STATION_BIAS_HIGH: dict[str, float] = {
     "Miami": 3.0,  # KMIA: GFS southern warm bias, confirmed via field research
     "Atlanta": 1.0,  # KATL: Southeast warm bias
     "Houston": 2.0,  # KHOU: Humid subtropical, GFS runs hot
+    "NewOrleans": 2.0,  # KMSY: Gulf humid subtropical, same profile as Houston
     "Dallas": 0.5,  # KDFW: GFS southern warm bias (minor)
     "Austin": 1.5,  # KAUS: Similar to Dallas but higher elevation variation
     "SanAntonio": 1.5,  # KSAT: Southern Texas warm bias
     "OklahomaCity": 1.0,  # KOKC: Southern Plains warm bias
     # Southwest
     "Phoenix": 2.5,  # KPHX: Desert environment; GFS routinely overshoots high temps
+    "LasVegas": 2.5,  # KLAS: Desert climate, same GFS/ICON warm-bias artifact as Phoenix
     # Mountain
     "Denver": 2.0,  # KDEN: Mountain terrain uncertainty, conservative correction
     # Midwest
@@ -253,12 +256,14 @@ _STATION_BIAS_LOW: dict[str, float] = {
     "Miami": 1.5,  # KMIA overnight lows still warm-biased but less than highs
     "Atlanta": 0.5,  # KATL nights
     "Houston": 1.0,  # KHOU: Humid subtropical, nights stay warm
+    "NewOrleans": 1.0,  # KMSY nights: mirrors Houston
     "Dallas": 0.0,  # KDFW lows: no consistent bias observed
     "Austin": 0.5,  # KAUS nights
     "SanAntonio": 0.5,  # KSAT nights
     "OklahomaCity": 0.0,  # KOKC lows: no consistent bias
     # Southwest
     "Phoenix": 0.5,  # KPHX nights: desert cools rapidly, smaller bias than highs
+    "LasVegas": 0.5,  # KLAS nights: mirrors Phoenix
     # Mountain
     "Denver": 1.0,  # Denver nights: model still warm but less extreme
     # Midwest
@@ -352,29 +357,8 @@ _CITY_TZ: dict[str, str] = {
     "NewOrleans": "America/Chicago",
 }
 
-# City → primary ICAO observation station (mirrors metar.MARKET_STATION_MAP)
-_CITY_METAR_STATION: dict[str, str] = {
-    "NYC": "KNYC",
-    "Chicago": "KMDW",
-    "LA": "KLAX",
-    "Miami": "KMIA",
-    "Boston": "KBOS",
-    "Dallas": "KDFW",
-    "Phoenix": "KPHX",
-    "Seattle": "KSEA",
-    "Denver": "KDEN",
-    "Atlanta": "KATL",
-    "Austin": "KAUS",
-    "Washington": "KDCA",
-    "Philadelphia": "KPHL",
-    "OklahomaCity": "KOKC",
-    "SanFrancisco": "KSFO",
-    "Minneapolis": "KMSP",
-    "Houston": "KHOU",
-    "SanAntonio": "KSAT",
-    "LasVegas": "KLAS",
-    "NewOrleans": "KMSY",
-}
+# City → primary ICAO observation station (single source of truth: metar.MARKET_STATION_MAP)
+_CITY_METAR_STATION: dict[str, str] = _metar.MARKET_STATION_MAP
 
 
 def _metar_station_for_city(city: str) -> str | None:
@@ -932,14 +916,15 @@ def get_weather_forecast(city: str, target_date: date) -> dict | None:
         try:
             resp = _om_request("GET", FORECAST_BASE, params=params, timeout=10)
             resp.raise_for_status()
+            daily = resp.json().get("daily", {})
+            if is_all_null(daily.get("temperature_2m_max")):
+                raise ValueError(f"model {model} returned all-null daily data (dead model?)")
             _forecast_cb.record_success()
         except Exception as _exc:
             _forecast_cb.record_failure()
             _log.debug("open_meteo forecast fetch failed: %s", _exc)
             return None
-        data = resp.json()
-        validate_forecast(data.get("daily", {}), source="open_meteo")
-        daily = data.get("daily", {})
+        validate_forecast(daily, source="open_meteo")
         dates = daily.get("time", [])
         target_str = target_date.isoformat()
         if target_str not in dates:
@@ -1157,11 +1142,25 @@ def batch_prewarm_forecasts(
                 timeout=12,  # was 30 — with Retry(total=3) a 30s timeout meant 4×30+backoff≈123s/call
             )
             resp.raise_for_status()
-            _forecast_cb.record_success()
             results = resp.json()
             # Single location → dict; multiple → list of dicts
             if isinstance(results, dict):
                 results = [results]
+            # Check across ALL cities before deciding success/failure — a dead
+            # model returns HTTP 200 with every city's array null. Checking
+            # per-city after record_success() already fired would be too late
+            # (record_success() resets the failure counter, silently
+            # defeating the circuit breaker's ability to ever reach threshold).
+            _flat_check = [
+                v
+                for r in results
+                for v in (r.get("daily", {}).get("temperature_2m_max") or [])
+            ]
+            if is_all_null(_flat_check):
+                raise ValueError(
+                    f"model {model} returned all-null data across all cities (dead model?)"
+                )
+            _forecast_cb.record_success()
             for i, city in enumerate(city_names):
                 if i < len(results):
                     city_model_data[city][model] = results[i].get("daily", {})
@@ -1302,12 +1301,27 @@ def batch_prewarm_ensemble(
                     timeout=8,
                 )
                 resp.raise_for_status()
-                _ensemble_cb.record_success()
-                ok = True
-
                 data = resp.json()
                 if isinstance(data, dict):
                     data = [data]
+
+                # Check across ALL cities before deciding success/failure — see
+                # the identical comment in batch_prewarm_forecasts for why this
+                # must happen before record_success(), not after.
+                _flat_check = [
+                    v
+                    for city_resp in data
+                    if isinstance(city_resp, dict)
+                    for k, arr in city_resp.get("daily", {}).items()
+                    if k.startswith(f"{daily_key}_member") and isinstance(arr, list)
+                    for v in arr
+                ]
+                if is_all_null(_flat_check):
+                    raise ValueError(
+                        f"model {model} returned all-null {var_str} ensemble members across all cities (dead model?)"
+                    )
+                _ensemble_cb.record_success()
+                ok = True
 
                 for i, city_name in enumerate(city_names):
                     if i >= len(data):
@@ -1412,12 +1426,27 @@ def batch_prewarm_ensemble(
                 timeout=8,
             )
             resp.raise_for_status()
-            _ensemble_cb.record_success()
-            ok = True
-
             data = resp.json()
             if isinstance(data, dict):
                 data = [data]
+
+            # Check across ALL cities before deciding success/failure — see
+            # the identical comment in batch_prewarm_forecasts for why this
+            # must happen before record_success(), not after.
+            _flat_check = [
+                v
+                for city_resp in data
+                if isinstance(city_resp, dict)
+                for k, arr in city_resp.get("daily", {}).items()
+                if k.startswith("precipitation_sum_member") and isinstance(arr, list)
+                for v in arr
+            ]
+            if is_all_null(_flat_check):
+                raise ValueError(
+                    f"model {model} returned all-null precip ensemble members across all cities (dead model?)"
+                )
+            _ensemble_cb.record_success()
+            ok = True
 
             ecmwf_mult = (
                 3 if datetime.now(UTC).date().month in (10, 11, 12, 1, 2, 3) else 2
@@ -2107,9 +2136,11 @@ def fetch_temperature_ecmwf(
             timeout=5,  # reduced from 8s — matches NBM timeout; circuit opens fast on slow endpoints
         )
         resp.raise_for_status()
-        _ensemble_cb.record_success()
         data = resp.json()
         temps = data.get("hourly", {}).get("temperature_2m", [])
+        if is_all_null(temps):
+            raise ValueError("ecmwf_ifs025 returned all-null hourly data (dead model?)")
+        _ensemble_cb.record_success()
         valid = [t for t in temps if t is not None]
         # H-13: return min for LOW markets, max for HIGH markets
         result = float(min(valid) if var == "min" else max(valid)) if valid else None
@@ -2977,6 +3008,57 @@ def is_weather_market(market: dict) -> bool:
     return any(kw in text for kw in WEATHER_KEYWORDS)
 
 
+# Known weather series tickers, fetched directly via series_ticker= queries.
+# A global open-market scan was removed: client.get_markets() does not expose
+# the API cursor, making reliable pagination impossible. New Kalshi series
+# should be added here. Module-level (not just local to get_weather_markets)
+# so check_series_drift() can compare it against Kalshi's live series list.
+KNOWN_WEATHER_SERIES = [
+    "KXHIGHNY",
+    "KXHIGHCHI",
+    "KXHIGHLAX",  # was KXHIGHLA — Kalshi retired that ticker, 0 open markets
+    "KXHIGHTBOS",  # was KXHIGHBOS — retired
+    "KXHIGHMIA",
+    "KXHIGHTDAL",
+    "KXHIGHTPHX",
+    "KXHIGHTSEA",
+    "KXHIGHDEN",
+    "KXHIGHTATL",
+    "KXHIGHAUS",
+    "KXHIGHTDC",
+    "KXHIGHPHIL",  # was KXHIGHTPHIL — retired
+    "KXHIGHTOKC",
+    "KXHIGHTSFO",
+    "KXHIGHTMIN",
+    "KXHIGHTHOU",
+    "KXHIGHTSATX",
+    "KXHIGHTLV",  # Las Vegas — not previously tracked
+    "KXHIGHTNOLA",  # New Orleans — not previously tracked
+    "KXLOWTNYC",  # was KXLOWNY — retired
+    "KXLOWTCHI",  # was KXLOWCHI — retired
+    "KXLOWLAX",  # was KXLOWLA — retired
+    "KXLOWTBOS",  # was KXLOWBOS — retired
+    "KXLOWTMIA",  # was KXLOWMIA — retired
+    "KXLOWTDAL",
+    "KXLOWTPHX",
+    "KXLOWTSEA",
+    "KXLOWTDEN",  # was KXLOWDEN — retired
+    "KXLOWTATL",
+    "KXLOWTAUS",  # was KXLOWAUS — retired
+    "KXLOWTDC",
+    "KXLOWTPHIL",
+    "KXLOWTOKC",
+    "KXLOWTSFO",
+    "KXLOWTMIN",
+    "KXLOWTHOU",
+    "KXLOWTSATX",
+    "KXLOWTLV",  # Las Vegas — not previously tracked
+    "KXLOWTNOLA",  # New Orleans — not previously tracked
+    "KXRAIN",
+    "KXSNOW",
+]
+
+
 def get_weather_markets(
     client: KalshiClient, limit: int = 200, force: bool = False
 ) -> list[dict]:
@@ -2995,67 +3077,19 @@ def get_weather_markets(
     results = []
     seen = set()
 
-    # Strategy 2 below fetches all known series directly via series_ticker= queries.
-    # A global open-market scan (Strategy 1) was removed: client.get_markets() does not
-    # expose the API cursor, making reliable pagination impossible. New Kalshi series
-    # should be added to known_series below.
-    # Strategy 2: known weather series tickers — fetch in parallel (#127)
-    known_series = [
-        "KXHIGHNY",
-        "KXHIGHCHI",
-        "KXHIGHLAX",  # was KXHIGHLA — Kalshi retired that ticker, 0 open markets
-        "KXHIGHTBOS",  # was KXHIGHBOS — retired
-        "KXHIGHMIA",
-        "KXHIGHTDAL",
-        "KXHIGHTPHX",
-        "KXHIGHTSEA",
-        "KXHIGHDEN",
-        "KXHIGHTATL",
-        "KXHIGHAUS",
-        "KXHIGHTDC",
-        "KXHIGHPHIL",  # was KXHIGHTPHIL — retired
-        "KXHIGHTOKC",
-        "KXHIGHTSFO",
-        "KXHIGHTMIN",
-        "KXHIGHTHOU",
-        "KXHIGHTSATX",
-        "KXHIGHTLV",  # Las Vegas — not previously tracked
-        "KXHIGHTNOLA",  # New Orleans — not previously tracked
-        "KXLOWTNYC",  # was KXLOWNY — retired
-        "KXLOWTCHI",  # was KXLOWCHI — retired
-        "KXLOWLAX",  # was KXLOWLA — retired
-        "KXLOWTBOS",  # was KXLOWBOS — retired
-        "KXLOWTMIA",  # was KXLOWMIA — retired
-        "KXLOWTDAL",
-        "KXLOWTPHX",
-        "KXLOWTSEA",
-        "KXLOWTDEN",  # was KXLOWDEN — retired
-        "KXLOWTATL",
-        "KXLOWTAUS",  # was KXLOWAUS — retired
-        "KXLOWTDC",
-        "KXLOWTPHIL",
-        "KXLOWTOKC",
-        "KXLOWTSFO",
-        "KXLOWTMIN",
-        "KXLOWTHOU",
-        "KXLOWTSATX",
-        "KXLOWTLV",  # Las Vegas — not previously tracked
-        "KXLOWTNOLA",  # New Orleans — not previously tracked
-        "KXRAIN",
-        "KXSNOW",
-    ]
-
     def _fetch_series(series: str) -> list[dict]:
         try:
             return client.get_markets(series_ticker=series, status="open", limit=50)
         except Exception:
             return []
 
-    _mkt_pool = ThreadPoolExecutor(max_workers=4)
+    _mkt_pool = ThreadPoolExecutor(max_workers=6)
     try:
-        futures = {_mkt_pool.submit(_fetch_series, s): s for s in known_series}
+        futures = {
+            _mkt_pool.submit(_fetch_series, s): s for s in KNOWN_WEATHER_SERIES
+        }
         try:
-            for fut in as_completed(futures, timeout=30):
+            for fut in as_completed(futures, timeout=40):
                 try:
                     for m in fut.result():
                         if m.get("ticker") not in seen:
@@ -3065,7 +3099,7 @@ def get_weather_markets(
                     pass
         except TimeoutError:
             _log.warning(
-                "get_weather_markets: Kalshi API timed out after 30s — using %d partial results",
+                "get_weather_markets: Kalshi API timed out after 40s — using %d partial results",
                 len(results),
             )
     finally:
@@ -3073,6 +3107,69 @@ def get_weather_markets(
 
     _MARKETS_CACHE = (results, now)
     return results
+
+
+def check_series_drift(client: KalshiClient) -> None:
+    """Once per day: compare KNOWN_WEATHER_SERIES against Kalshi's live
+    Climate and Weather series list, and warn (never raise, never block
+    trading) if either side has drifted from the other.
+
+    This is the exact manual investigation that found KNOWN_WEATHER_SERIES
+    had 10 renamed tickers and was missing 2 new cities (Las Vegas, New
+    Orleans) — client.get_series_list() already existed for this but had
+    zero production callers before this function.
+
+    A ticker must be missing 3 consecutive days before it's warned about,
+    to avoid a false alarm from a one-off API hiccup.
+    """
+    try:
+        today = datetime.now(UTC).date().isoformat()
+        state: dict = {"date": None, "missing_days": {}}
+        if SERIES_DRIFT_PATH.exists():
+            existing = json.loads(SERIES_DRIFT_PATH.read_text())
+            if existing.get("date") == today:
+                return  # already ran today
+            state["missing_days"] = existing.get("missing_days", {})
+
+        live = client.get_series_list(category="Climate and Weather")
+        live_tickers = {s.get("ticker", "") for s in live}
+        live_weather = {
+            t for t in live_tickers if t.startswith(("KXHIGH", "KXLOW"))
+        }
+
+        # Only KXHIGH/KXLOW entries are checked against live_weather — KXRAIN/
+        # KXSNOW are known-dead placeholders (confirmed 0 open markets, ever)
+        # that never match the KXHIGH/KXLOW filter, so tracking them here
+        # would produce a permanent, un-actionable "missing" warning forever.
+        missing_days = state["missing_days"]
+        for ticker in KNOWN_WEATHER_SERIES:
+            if not ticker.startswith(("KXHIGH", "KXLOW")):
+                continue
+            if ticker in live_weather:
+                missing_days.pop(ticker, None)
+            else:
+                missing_days[ticker] = missing_days.get(ticker, 0) + 1
+                if missing_days[ticker] >= 3:
+                    _log.warning(
+                        "check_series_drift: %s missing from Kalshi's live series "
+                        "list for %d consecutive days — likely renamed/retired",
+                        ticker,
+                        missing_days[ticker],
+                    )
+
+        unknown = live_weather - set(KNOWN_WEATHER_SERIES)
+        if unknown:
+            _log.warning(
+                "check_series_drift: live KXHIGH/KXLOW series not in "
+                "KNOWN_WEATHER_SERIES: %s",
+                sorted(unknown),
+            )
+
+        _safe_io.atomic_write_json(
+            {"date": today, "missing_days": missing_days}, SERIES_DRIFT_PATH
+        )
+    except Exception as _exc:
+        _log.debug("check_series_drift failed (non-fatal): %s", _exc)
 
 
 MONTH_MAP = {
@@ -4145,6 +4242,15 @@ def _get_consensus_probs(
                     if not resp:
                         return None, None
                     resp.raise_for_status()
+                    data = resp.json()
+                    daily = data.get("daily", {})
+                    raw_member_values = [
+                        v[0] for k, v in daily.items() if k.startswith(var_field) and v
+                    ]
+                    if is_all_null(raw_member_values):
+                        raise ValueError(
+                            f"model {model_name} returned all-null ensemble members (dead model?)"
+                        )
                     _ensemble_cb.record_success()
                 except Exception as _exc:
                     _ensemble_cb.record_failure()
@@ -4155,8 +4261,6 @@ def _get_consensus_probs(
                         _exc,
                     )
                     return None, None
-                data = resp.json()
-                daily = data.get("daily", {})
                 members = [
                     float(v[0])
                     for k, v in daily.items()
@@ -4287,18 +4391,22 @@ def _fetch_ensemble_precip(
                 "GET", ENSEMBLE_BASE, params=params, timeout=12
             )  # was 20 — Retry(1)×20=40s/call; 12 caps at 24.5s
             resp.raise_for_status()
-            _ensemble_cb.record_success()
             daily = resp.json().get("daily", {})
             times = daily.get("time", [])
             if target_str not in times:
+                _ensemble_cb.record_success()
                 return []
-            date_in_range = True  # at least one model has this date
             idx = times.index(target_str)
-            return [
-                vals[idx]
-                for k, vals in daily.items()
-                if k.startswith(prefix) and vals[idx] is not None
+            raw_member_values = [
+                vals[idx] for k, vals in daily.items() if k.startswith(prefix)
             ]
+            if is_all_null(raw_member_values):
+                raise ValueError(
+                    f"model {model} returned all-null precip members for target date (dead model?)"
+                )
+            _ensemble_cb.record_success()
+            date_in_range = True  # at least one model has this date
+            return [v for v in raw_member_values if v is not None]
         except Exception as _exc:
             _ensemble_cb.record_failure()
             _log.debug(

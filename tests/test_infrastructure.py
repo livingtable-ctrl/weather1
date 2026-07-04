@@ -118,6 +118,30 @@ def test_market_fetch_uses_threadpool():
     assert elapsed < 10
 
 
+def test_market_fetch_partial_results_on_timeout(caplog):
+    """A timeout mid-fetch must return whatever partial results were already
+    collected (not crash/raise), and the warning must reflect the current
+    40s budget, not a stale hardcoded 30s from before the timeout was bumped."""
+    import logging
+    from unittest.mock import MagicMock, patch
+
+    import weather_markets
+
+    mock_client = MagicMock()
+    mock_client.get_markets.return_value = [{"ticker": "KXHIGHNY-26JUL04-T90"}]
+
+    with caplog.at_level(logging.WARNING):
+        with patch("weather_markets.as_completed", side_effect=TimeoutError):
+            result = weather_markets.get_weather_markets(mock_client, force=True)
+
+    assert isinstance(result, list)  # partial-results fallback, not a crash
+    assert any(
+        "timed out after 40s" in r.message
+        for r in caplog.records
+        if r.name == "weather_markets"
+    )
+
+
 # ── DB migrations (#99) ───────────────────────────────────────────────────────
 
 

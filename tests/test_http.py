@@ -124,6 +124,23 @@ class TestGetWeatherForecastMocked(unittest.TestCase):
         result = get_weather_forecast("NYC", date(2025, 4, 9))
         self.assertIsNone(result)
 
+    @resp.activate
+    def test_dead_model_all_null_response_treated_as_failure(self):
+        """A dead model returns HTTP 200 with every value null — this must be
+        treated identically to a real fetch failure (skipped, not counted as
+        a model that "responded"), not silently accepted as valid data."""
+        target = date(2025, 4, 9)
+        for _ in range(3):
+            resp.add(
+                resp.GET,
+                FORECAST_BASE,
+                json=_open_meteo_payload(target.isoformat(), None, None, None),
+                status=200,
+            )
+
+        result = get_weather_forecast("NYC", target)
+        self.assertIsNone(result)
+
     def test_unknown_city_returns_none(self):
         """Unknown city should return None without making any HTTP calls."""
         result = get_weather_forecast("Atlantis", date(2025, 4, 9))
