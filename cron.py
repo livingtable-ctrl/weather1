@@ -1063,7 +1063,7 @@ def _cmd_cron_body(
                 flush_ensemble_disk_cache,
             )
 
-            _om_models = ["gfs_seamless", "ecmwf_ifs04", "icon_seamless"]
+            _om_models = ["gfs_seamless", "ecmwf_ifs025", "icon_seamless"]
             _n_models = len(_om_models)
 
             def _om_progress(current: int, total: int, model: str, ok: bool) -> None:
@@ -1086,7 +1086,7 @@ def _cmd_cron_body(
 
             # Step 1b: batch ensemble prewarm (6 calls: 3 models × 2 vars)
             # Replaces ~90 individual calls during analysis (was ~270 s at 1.5 s/call).
-            _ens_models = [*_om_models]  # icon_seamless, ecmwf_ifs04, gfs_seamless
+            _ens_models = [*_om_models]  # icon_seamless, ecmwf_ifs025, gfs_seamless
             _ens_vars = 2
 
             def _ens_progress(current: int, total: int, label: str, ok: bool) -> None:

@@ -12,7 +12,7 @@ import responses as resp
 import weather_markets
 from weather_markets import FORECAST_BASE, get_weather_forecast
 
-_STATIC_3_MODELS = {"gfs_seamless": 1.0, "ecmwf_ifs04": 1.5, "icon_seamless": 1.0}
+_STATIC_3_MODELS = {"gfs_seamless": 1.0, "ecmwf_ifs025": 1.5, "icon_seamless": 1.0}
 
 
 def _open_meteo_payload(target: str, high: float, low: float, precip: float) -> dict:

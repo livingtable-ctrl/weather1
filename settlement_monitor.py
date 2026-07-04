@@ -25,7 +25,8 @@ _SIGNALS_PATH = _project_root() / "data" / "settlement_signals.json"
 _SIGNALS_PATH.parent.mkdir(exist_ok=True)
 
 # Cities and their METAR stations + timezones
-# P3-8: expanded to all 18 traded cities (was 5).
+# P3-8: expanded to all 18 traded cities (was 5); LV/NOLA added when the bot
+# started tracking those markets, bringing the total to 20.
 _MONITOR_CITIES = {
     "NYC": {"station": "KNYC", "tz": "America/New_York"},
     "MIA": {"station": "KMIA", "tz": "America/New_York"},
@@ -45,6 +46,8 @@ _MONITOR_CITIES = {
     "MSP": {"station": "KMSP", "tz": "America/Chicago"},
     "HOU": {"station": "KHOU", "tz": "America/Chicago"},
     "SAT": {"station": "KSAT", "tz": "America/Chicago"},
+    "LV": {"station": "KLAS", "tz": "America/Los_Angeles"},
+    "NOLA": {"station": "KMSY", "tz": "America/Chicago"},
 }
 
 # Kalshi series ticker prefix per city — NOT simply "KXHIGH" + city code
@@ -52,21 +55,23 @@ _CITY_SERIES_TICKER = {
     "NYC": "KXHIGHNY",
     "MIA": "KXHIGHMIA",
     "CHI": "KXHIGHCHI",
-    "LAX": "KXHIGHLA",
+    "LAX": "KXHIGHLAX",  # was KXHIGHLA — Kalshi retired that ticker
     "DAL": "KXHIGHTDAL",
-    "BOS": "KXHIGHBOS",
+    "BOS": "KXHIGHTBOS",  # was KXHIGHBOS — retired
     "PHX": "KXHIGHTPHX",
     "SEA": "KXHIGHTSEA",
     "DEN": "KXHIGHDEN",
     "ATL": "KXHIGHTATL",
     "AUS": "KXHIGHAUS",
     "DC": "KXHIGHTDC",
-    "PHI": "KXHIGHTPHIL",
+    "PHI": "KXHIGHPHIL",  # was KXHIGHTPHIL — retired
     "OKC": "KXHIGHTOKC",
     "SFO": "KXHIGHTSFO",
     "MSP": "KXHIGHTMIN",
     "HOU": "KXHIGHTHOU",
     "SAT": "KXHIGHTSATX",
+    "LV": "KXHIGHTLV",
+    "NOLA": "KXHIGHTNOLA",
 }
 
 # Settlement lag monitoring window: 5 PM – 7 PM local

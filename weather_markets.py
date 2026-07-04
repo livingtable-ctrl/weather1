@@ -203,6 +203,10 @@ def _load_city_coords() -> dict:
         "Minneapolis": (44.8848, -93.2223, "America/Chicago"),
         "Houston": (29.6454, -95.2789, "America/Chicago"),
         "SanAntonio": (29.5337, -98.4698, "America/Chicago"),
+        # KLAS / KMSY settlement stations — added for KXHIGHTLV/KXLOWTLV and
+        # KXHIGHTNOLA/KXLOWTNOLA, previously untracked entirely.
+        "LasVegas": (36.0840, -115.1537, "America/Los_Angeles"),
+        "NewOrleans": (29.9934, -90.2580, "America/Chicago"),
     }
 
 
@@ -344,6 +348,8 @@ _CITY_TZ: dict[str, str] = {
     "Minneapolis": "America/Chicago",
     "Houston": "America/Chicago",
     "SanAntonio": "America/Chicago",
+    "LasVegas": "America/Los_Angeles",
+    "NewOrleans": "America/Chicago",
 }
 
 # City → primary ICAO observation station (mirrors metar.MARKET_STATION_MAP)
@@ -366,6 +372,8 @@ _CITY_METAR_STATION: dict[str, str] = {
     "Minneapolis": "KMSP",
     "Houston": "KHOU",
     "SanAntonio": "KSAT",
+    "LasVegas": "KLAS",
+    "NewOrleans": "KMSY",
 }
 
 
@@ -875,7 +883,7 @@ def _forecast_model_weights(month: int, city: str | None = None) -> dict[str, fl
 
     return {
         "gfs_seamless": 1.0,
-        "ecmwf_aifs025_ensemble": ecmwf_w,
+        "ecmwf_ifs025": ecmwf_w,
         "icon_seamless": 1.0,
     }
 
@@ -1123,7 +1131,7 @@ def batch_prewarm_forecasts(
 
     # Fetch 3 models in sequence (sequential to respect rate limit; each call covers
     # all cities so total latency ≈ 3 × one city's latency, not 30 × 3).
-    batch_models = ["gfs_seamless", "ecmwf_ifs04", "icon_seamless"]
+    batch_models = ["gfs_seamless", "ecmwf_ifs025", "icon_seamless"]
     # city → model → daily dict
     city_model_data: dict[str, dict[str, dict]] = {c: {} for c in city_names}
 
@@ -1383,7 +1391,7 @@ def batch_prewarm_ensemble(
     # Precipitation: 3 models × 1 var = 3 more ENSEMBLE_BASE calls.
     # Populates _PRECIP_ENSEMBLE_CACHE keyed by (lat, lon, date_iso) so
     # _fetch_ensemble_precip skips the wire during analysis.
-    precip_models = [*ENSEMBLE_MODELS, "ecmwf_ifs04"]
+    precip_models = [*ENSEMBLE_MODELS, "ecmwf_ifs025"]
     for model in precip_models:
         if _ensemble_cb.is_open():
             break
@@ -1449,7 +1457,7 @@ def batch_prewarm_ensemble(
                         existing = cached_p[0]
                     else:
                         existing = []
-                    mult = ecmwf_mult if model == "ecmwf_ifs04" else 1
+                    mult = ecmwf_mult if model == "ecmwf_ifs025" else 1
                     combined = existing + members * mult
                     _PRECIP_ENSEMBLE_CACHE[cache_key_p] = (combined, time.monotonic())
                     written += 1
@@ -2055,9 +2063,12 @@ def fetch_temperature_ecmwf(
     city: str, target_date: date, var: str = "max"
 ) -> float | None:
     """
-    Fetch ECMWF AIFS ensemble max or min daily temperature for a city.
-    Uses Open-Meteo with models="ecmwf_aifs025".
-    Outperforms GFS by ~20% for days 1–3 (operational since July 2025).
+    Fetch ECMWF deterministic max or min daily temperature for a city.
+    Uses Open-Meteo with models="ecmwf_ifs025" — the deterministic IFS product.
+    "ecmwf_aifs025" was tried previously but returns HTTP 200 with null data
+    on the deterministic /v1/forecast endpoint (that AIFS ensemble model is
+    only served via the separate ensemble-api.open-meteo.com endpoint), so
+    this function silently returned None every call until this fix.
 
     var: "max" for daily high (default), "min" for daily low.
     H-13: LOW markets require min(temps), not max(temps).
@@ -2088,7 +2099,7 @@ def fetch_temperature_ecmwf(
                 "longitude": lon,
                 "hourly": "temperature_2m",
                 "temperature_unit": "fahrenheit",
-                "models": "ecmwf_aifs025",
+                "models": "ecmwf_ifs025",
                 "start_date": target_date.isoformat(),
                 "end_date": target_date.isoformat(),
                 "timezone": "auto",
@@ -2992,8 +3003,8 @@ def get_weather_markets(
     known_series = [
         "KXHIGHNY",
         "KXHIGHCHI",
-        "KXHIGHLA",
-        "KXHIGHBOS",
+        "KXHIGHLAX",  # was KXHIGHLA — Kalshi retired that ticker, 0 open markets
+        "KXHIGHTBOS",  # was KXHIGHBOS — retired
         "KXHIGHMIA",
         "KXHIGHTDAL",
         "KXHIGHTPHX",
@@ -3002,23 +3013,25 @@ def get_weather_markets(
         "KXHIGHTATL",
         "KXHIGHAUS",
         "KXHIGHTDC",
-        "KXHIGHTPHIL",
+        "KXHIGHPHIL",  # was KXHIGHTPHIL — retired
         "KXHIGHTOKC",
         "KXHIGHTSFO",
         "KXHIGHTMIN",
         "KXHIGHTHOU",
         "KXHIGHTSATX",
-        "KXLOWNY",
-        "KXLOWCHI",
-        "KXLOWLA",
-        "KXLOWBOS",
-        "KXLOWMIA",
+        "KXHIGHTLV",  # Las Vegas — not previously tracked
+        "KXHIGHTNOLA",  # New Orleans — not previously tracked
+        "KXLOWTNYC",  # was KXLOWNY — retired
+        "KXLOWTCHI",  # was KXLOWCHI — retired
+        "KXLOWLAX",  # was KXLOWLA — retired
+        "KXLOWTBOS",  # was KXLOWBOS — retired
+        "KXLOWTMIA",  # was KXLOWMIA — retired
         "KXLOWTDAL",
         "KXLOWTPHX",
         "KXLOWTSEA",
-        "KXLOWDEN",
+        "KXLOWTDEN",  # was KXLOWDEN — retired
         "KXLOWTATL",
-        "KXLOWAUS",
+        "KXLOWTAUS",  # was KXLOWAUS — retired
         "KXLOWTDC",
         "KXLOWTPHIL",
         "KXLOWTOKC",
@@ -3026,6 +3039,8 @@ def get_weather_markets(
         "KXLOWTMIN",
         "KXLOWTHOU",
         "KXLOWTSATX",
+        "KXLOWTLV",  # Las Vegas — not previously tracked
+        "KXLOWTNOLA",  # New Orleans — not previously tracked
         "KXRAIN",
         "KXSNOW",
     ]
@@ -3116,7 +3131,9 @@ def _parse_city_from_ticker(ticker: str, title: str = "") -> str | None:
         return "Austin"
     if "TDC" in ticker_up or "washington" in title_lo:
         return "Washington"
-    if "TPHIL" in ticker_up or "philadelphia" in title_lo:
+    if "PHIL" in ticker_up or "philadelphia" in title_lo:
+        # KXHIGHPHIL dropped the "T" that KXLOWTPHIL still has; "PHIL" alone
+        # covers both (it's a superset match, so the old "TPHIL" check was dead).
         return "Philadelphia"
     if "TOKC" in ticker_up or "oklahoma" in title_lo:
         return "OklahomaCity"
@@ -3128,6 +3145,10 @@ def _parse_city_from_ticker(ticker: str, title: str = "") -> str | None:
         return "Houston"
     if "TSATX" in ticker_up or "san antonio" in title_lo:
         return "SanAntonio"
+    if "TLV" in ticker_up or "las vegas" in title_lo:
+        return "LasVegas"
+    if "NOLA" in ticker_up or "new orleans" in title_lo:
+        return "NewOrleans"
     return None
 
 
@@ -4293,7 +4314,7 @@ def _fetch_ensemble_precip(
         results.extend(_fetch_model(model))
 
     # ECMWF weighted 3× in winter, 2× in summer (seasonal accuracy advantage)
-    ecmwf_members = _fetch_model("ecmwf_ifs04")
+    ecmwf_members = _fetch_model("ecmwf_ifs025")
     ecmwf_mult = 3 if target_date.month in (10, 11, 12, 1, 2, 3) else 2
     results.extend(ecmwf_members * ecmwf_mult)
 

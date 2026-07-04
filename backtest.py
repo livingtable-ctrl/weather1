@@ -305,8 +305,8 @@ def fetch_previous_run_ensemble(
 _WEATHER_SERIES = [
     "KXHIGHNY",
     "KXHIGHCHI",
-    "KXHIGHLA",
-    "KXHIGHBOS",
+    "KXHIGHLAX",  # was KXHIGHLA — Kalshi retired that ticker
+    "KXHIGHTBOS",  # was KXHIGHBOS — retired
     "KXHIGHMIA",
     "KXHIGHTDAL",
     "KXHIGHTPHX",
@@ -315,23 +315,25 @@ _WEATHER_SERIES = [
     "KXHIGHTATL",
     "KXHIGHAUS",
     "KXHIGHTDC",
-    "KXHIGHTPHIL",
+    "KXHIGHPHIL",  # was KXHIGHTPHIL — retired
     "KXHIGHTOKC",
     "KXHIGHTSFO",
     "KXHIGHTMIN",
     "KXHIGHTHOU",
     "KXHIGHTSATX",
-    "KXLOWNY",
-    "KXLOWCHI",
-    "KXLOWLA",
-    "KXLOWBOS",
-    "KXLOWMIA",
+    "KXHIGHTLV",  # Las Vegas — not previously tracked
+    "KXHIGHTNOLA",  # New Orleans — not previously tracked
+    "KXLOWTNYC",  # was KXLOWNY — retired
+    "KXLOWTCHI",  # was KXLOWCHI — retired
+    "KXLOWLAX",  # was KXLOWLA — retired
+    "KXLOWTBOS",  # was KXLOWBOS — retired
+    "KXLOWTMIA",  # was KXLOWMIA — retired
     "KXLOWTDAL",
     "KXLOWTPHX",
     "KXLOWTSEA",
-    "KXLOWDEN",
+    "KXLOWTDEN",  # was KXLOWDEN — retired
     "KXLOWTATL",
-    "KXLOWAUS",
+    "KXLOWTAUS",  # was KXLOWAUS — retired
     "KXLOWTDC",
     "KXLOWTPHIL",
     "KXLOWTOKC",
@@ -339,6 +341,8 @@ _WEATHER_SERIES = [
     "KXLOWTMIN",
     "KXLOWTHOU",
     "KXLOWTSATX",
+    "KXLOWTLV",  # Las Vegas — not previously tracked
+    "KXLOWTNOLA",  # New Orleans — not previously tracked
     "KXRAIN",
     "KXSNOW",
 ]

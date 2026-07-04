@@ -229,29 +229,29 @@ class TestForecastModelWeights:
     def test_returns_dict_with_expected_keys(self):
         weights = _forecast_model_weights(1)
         assert isinstance(weights, dict)
-        for key in ("gfs_seamless", "ecmwf_aifs025_ensemble", "icon_seamless"):
+        for key in ("gfs_seamless", "ecmwf_ifs025", "icon_seamless"):
             assert key in weights
 
     def test_winter_month_boosts_ecmwf_weight(self):
         """ECMWF weight should be higher in winter than summer."""
-        winter_w = _forecast_model_weights(1)["ecmwf_aifs025_ensemble"]
-        summer_w = _forecast_model_weights(7)["ecmwf_aifs025_ensemble"]
+        winter_w = _forecast_model_weights(1)["ecmwf_ifs025"]
+        summer_w = _forecast_model_weights(7)["ecmwf_ifs025"]
         assert winter_w > summer_w
 
     def test_all_winter_months_use_high_ecmwf(self):
         """All winter months (Oct-Mar) should use the elevated ECMWF weight."""
         for month in self.WINTER_MONTHS:
             w = _forecast_model_weights(month)
-            assert w["ecmwf_aifs025_ensemble"] == pytest.approx(2.5), (
-                f"Expected 2.5 for winter month {month}, got {w['ecmwf_aifs025_ensemble']}"
+            assert w["ecmwf_ifs025"] == pytest.approx(2.5), (
+                f"Expected 2.5 for winter month {month}, got {w['ecmwf_ifs025']}"
             )
 
     def test_all_summer_months_use_lower_ecmwf(self):
         """All summer months (Apr-Sep) should use the lower ECMWF weight."""
         for month in self.SUMMER_MONTHS:
             w = _forecast_model_weights(month)
-            assert w["ecmwf_aifs025_ensemble"] == pytest.approx(1.5), (
-                f"Expected 1.5 for summer month {month}, got {w['ecmwf_aifs025_ensemble']}"
+            assert w["ecmwf_ifs025"] == pytest.approx(1.5), (
+                f"Expected 1.5 for summer month {month}, got {w['ecmwf_ifs025']}"
             )
 
     def test_gfs_and_icon_weights_are_constant(self):
@@ -1247,6 +1247,57 @@ class TestCityDetection:
         city = self._city("KXRAIN-PHILADELPHIA-26APR25-2IN", "philadelphia rain")
         assert city == "Philadelphia", f"Expected 'Philadelphia', got {city!r}"
 
+    # ── Renamed/new tickers (Kalshi retired several *_LA/*_BOS/*_PHIL/*_NY/
+    # *_CHI/*_MIA/*_DEN/*_AUS series and added Las Vegas + New Orleans) ──────
+
+    def test_philadelphia_renamed_high_ticker_without_t(self):
+        """KXHIGHPHIL (renamed from KXHIGHTPHIL, dropped the 'T') → Philadelphia."""
+        assert self._city("KXHIGHPHIL-26JUL04-T99") == "Philadelphia"
+
+    def test_philadelphia_low_ticker_still_has_t(self):
+        """KXLOWTPHIL (unrenamed, still has 'T') → Philadelphia."""
+        assert self._city("KXLOWTPHIL-26JUL04-T70") == "Philadelphia"
+
+    def test_la_renamed_high_ticker(self):
+        """KXHIGHLAX (renamed from KXHIGHLA) → LA."""
+        assert self._city("KXHIGHLAX-26JUL04-T74") == "LA"
+
+    def test_la_renamed_low_ticker(self):
+        """KXLOWLAX (renamed from KXLOWLA) → LA."""
+        assert self._city("KXLOWLAX-26JUL04-T60") == "LA"
+
+    def test_boston_renamed_high_ticker(self):
+        """KXHIGHTBOS (renamed from KXHIGHBOS) → Boston."""
+        assert self._city("KXHIGHTBOS-26JUL04-T98") == "Boston"
+
+    def test_boston_renamed_low_ticker(self):
+        """KXLOWTBOS (renamed from KXLOWBOS) → Boston."""
+        assert self._city("KXLOWTBOS-26JUL04-T70") == "Boston"
+
+    def test_las_vegas_high_ticker_detected(self):
+        """KXHIGHTLV → LasVegas (previously untracked city)."""
+        assert self._city("KXHIGHTLV-26JUL04-T108") == "LasVegas"
+
+    def test_las_vegas_low_ticker_detected(self):
+        """KXLOWTLV → LasVegas."""
+        assert self._city("KXLOWTLV-26JUL04-T77") == "LasVegas"
+
+    def test_las_vegas_title_detected(self):
+        """'las vegas' in title → LasVegas even with a generic ticker."""
+        assert self._city("KXRAIN-26JUL04-2IN", "las vegas rain > 2 inches") == "LasVegas"
+
+    def test_new_orleans_high_ticker_detected(self):
+        """KXHIGHTNOLA → NewOrleans (previously untracked city)."""
+        assert self._city("KXHIGHTNOLA-26JUL04-T98") == "NewOrleans"
+
+    def test_new_orleans_low_ticker_detected(self):
+        """KXLOWTNOLA → NewOrleans."""
+        assert self._city("KXLOWTNOLA-26JUL04-T79") == "NewOrleans"
+
+    def test_new_orleans_title_detected(self):
+        """'new orleans' in title → NewOrleans even with a generic ticker."""
+        assert self._city("KXRAIN-26JUL04-2IN", "new orleans rain > 2 inches") == "NewOrleans"
+
 
 class TestLearnedWeightsTTL:
     """L4-D: load_learned_weights() must discard files older than 7 days."""
@@ -1259,7 +1310,7 @@ class TestLearnedWeightsTTL:
 
         import weather_markets as wm
 
-        fake_weights = {"Dallas": {"ecmwf_aifs025_ensemble": 2.0, "gfs_seamless": 1.0}}
+        fake_weights = {"Dallas": {"ecmwf_ifs025": 2.0, "gfs_seamless": 1.0}}
         weights_file = tmp_path / "learned_weights.json"
         weights_file.write_text(json.dumps(fake_weights))
         eight_days_ago = time.time() - 8 * 86400
@@ -1289,7 +1340,7 @@ class TestLearnedWeightsTTL:
 
         import weather_markets as wm
 
-        fake_weights = {"Dallas": {"ecmwf_aifs025_ensemble": 2.0, "gfs_seamless": 1.0}}
+        fake_weights = {"Dallas": {"ecmwf_ifs025": 2.0, "gfs_seamless": 1.0}}
         weights_file = tmp_path / "learned_weights.json"
         weights_file.write_text(json.dumps(fake_weights))
         one_day_ago = time.time() - 1 * 86400
@@ -1359,7 +1410,7 @@ class TestLearnedWeightsValidation:
             import unittest.mock as _mock
 
             with _mock.patch("os.replace", side_effect=fake_replace):
-                bad = {"NYC": {"gfs_seamless": 0.0, "ecmwf_aifs025_ensemble": 1.5}}
+                bad = {"NYC": {"gfs_seamless": 0.0, "ecmwf_ifs025": 1.5}}
                 wm.save_learned_weights(bad)
         finally:
             wm._LEARNED_WEIGHTS = orig_lw
@@ -1376,7 +1427,7 @@ class TestLearnedWeightsValidation:
         valid = {
             "NYC": {
                 "gfs_seamless": 1.2,
-                "ecmwf_aifs025_ensemble": 0.9,
+                "ecmwf_ifs025": 0.9,
                 "icon_seamless": 0.9,
             }
         }
@@ -1446,7 +1497,7 @@ class TestLearnedWeightsValidation:
 
         import weather_markets as wm
 
-        bad = {"NYC": {"gfs_seamless": 0.0, "ecmwf_aifs025_ensemble": 1.5}}
+        bad = {"NYC": {"gfs_seamless": 0.0, "ecmwf_ifs025": 1.5}}
         orig_lw = wm._LEARNED_WEIGHTS
         wm._LEARNED_WEIGHTS = {}
         try:

@@ -313,6 +313,8 @@ MARKET_STATION_MAP: dict[str, str] = {
     "Minneapolis": "KMSP",
     "Houston": "KHOU",
     "SanAntonio": "KSAT",
+    "LasVegas": "KLAS",
+    "NewOrleans": "KMSY",
 }
 
 _OBS_PATH = Path(__file__).parent / "data" / "metar_observations.json"

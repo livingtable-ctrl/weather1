@@ -265,3 +265,25 @@ class TestMetarStationForCityAllCities:
                 f"City {city!r}: metar.py={station!r}, "
                 f"weather_markets.py={wm_station!r}"
             )
+
+    def test_every_city_coords_entry_has_tz_and_station(self):
+        """Every CITY_COORDS key must have a _CITY_TZ and metar.MARKET_STATION_MAP
+        entry too — unlike test_all_cities_return_station above (which only checks
+        a fixed historical list), this compares against the live CITY_COORDS keys
+        so adding a new city without updating the sibling dicts fails here."""
+        import metar
+        import weather_markets
+
+        missing_tz = [
+            c for c in weather_markets.CITY_COORDS if c not in weather_markets._CITY_TZ
+        ]
+        assert not missing_tz, f"_CITY_TZ missing entries for: {missing_tz}"
+
+        missing_station = [
+            c
+            for c in weather_markets.CITY_COORDS
+            if c not in metar.MARKET_STATION_MAP
+        ]
+        assert not missing_station, (
+            f"metar.MARKET_STATION_MAP missing entries for: {missing_station}"
+        )
