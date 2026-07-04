@@ -2160,6 +2160,81 @@ def test_health_endpoint_returns_ok(monkeypatch):
         assert data["status"] == "ok"
 
 
+class TestFetchAsosDailyTemp(unittest.TestCase):
+    """R-42: _fetch_asos_daily_temp must use precise sts/ets timestamps, not
+    day1/day2 date params (which turned out to be exclusive of day2 on the
+    live IEM API and silently dropped the early-UTC-morning readings needed
+    to find a 'min' market's true overnight low)."""
+
+    def _mock_response(self, rows):
+        from unittest.mock import MagicMock
+
+        text = "station,valid,tmpf\n" + "\n".join(
+            f"KSEA,{ts},{temp}" for ts, temp in rows
+        )
+        resp = MagicMock()
+        resp.status_code = 200
+        resp.text = text
+        resp.raise_for_status.return_value = None
+        return resp
+
+    def test_request_uses_sts_ets_not_day_params(self):
+        """The HTTP request must use sts/ets, never day1/day2/year1/year2."""
+        from unittest.mock import patch
+
+        import tracker
+
+        mock_resp = self._mock_response([("2026-07-03 07:53", "58.0")])
+        with patch("requests.get", return_value=mock_resp) as mock_get:
+            tracker._fetch_asos_daily_temp(
+                "KSEA", date(2026, 7, 3), "min", city_tz="America/Los_Angeles"
+            )
+        params = mock_get.call_args.kwargs["params"]
+        assert "sts" in params and "ets" in params
+        for stale_key in ("day1", "day2", "year1", "year2", "month1", "month2"):
+            assert stale_key not in params, f"stale date param {stale_key!r} still sent"
+
+    def test_min_picks_up_overnight_low_past_local_midnight(self):
+        """The true daily low often lands after local midnight (early UTC hours
+        of the following day) — the fetch window must actually reach it."""
+        from unittest.mock import patch
+
+        import tracker
+
+        # Evening-of-July-3 readings run 58-72F; the true overnight low (56F)
+        # lands at 2026-07-04 12:53 UTC (05:53 local PDT) -- inside the window
+        # this fix restores, previously dropped by the day1/day2 truncation.
+        rows = [
+            ("2026-07-03 07:53", "60.0"),  # 2026-07-03 00:53 local
+            ("2026-07-03 20:53", "70.0"),  # 2026-07-03 13:53 local
+            ("2026-07-04 06:53", "57.0"),  # 2026-07-03 23:53 local
+            ("2026-07-04 12:53", "56.0"),  # 2026-07-04 05:53 local -- true low
+            ("2026-07-04 17:53", "60.0"),  # 2026-07-04 10:53 local -- outside window (excluded)
+        ]
+        with patch("requests.get", return_value=self._mock_response(rows)):
+            result = tracker._fetch_asos_daily_temp(
+                "KSEA", date(2026, 7, 3), "min", city_tz="America/Los_Angeles"
+            )
+        assert result == 56.0, f"expected true overnight low 56.0, got {result}"
+
+    def test_max_picks_same_day_peak(self):
+        """HIGH markets don't need the next-day extension; peak stays on target day."""
+        from unittest.mock import patch
+
+        import tracker
+
+        rows = [
+            ("2026-07-03 07:53", "60.0"),  # 2026-07-03 00:53 local
+            ("2026-07-03 20:53", "72.0"),  # 2026-07-03 13:53 local -- peak
+            ("2026-07-04 06:53", "57.0"),  # 2026-07-03 23:53 local
+        ]
+        with patch("requests.get", return_value=self._mock_response(rows)):
+            result = tracker._fetch_asos_daily_temp(
+                "KSEA", date(2026, 7, 3), "max", city_tz="America/Los_Angeles"
+            )
+        assert result == 72.0
+
+
 def test_composite_indexes_exist(tmp_path, monkeypatch):
     import tracker
 

@@ -1890,18 +1890,22 @@ def _fetch_asos_daily_temp(
             59,
             tzinfo=tz_obj,
         )
-    utc_start_date = local_start.astimezone(UTC).date()
-    utc_end_date = local_end.astimezone(UTC).date()
+    # R-42: use precise sts/ets UTC timestamps rather than day1/day2 date params.
+    # day1/day2 turned out to be exclusive of day2 (verified against the live
+    # API: day1=3/day2=4 returns data only through day1 23:53, never touching
+    # day2 at all), which silently truncated the window before it reached the
+    # early-UTC-morning hours needed for "min" markets whose true overnight low
+    # falls after local midnight — e.g. a Pacific-timezone city's 5 AM local low
+    # is ~12:53 UTC the next day, past where day1/day2 cut off. sts/ets take
+    # exact UTC instants, so there's no day-boundary ambiguity to get wrong.
+    utc_start = local_start.astimezone(UTC)
+    utc_end = local_end.astimezone(UTC)
 
-    params: dict[str, str | int] = {
+    params: dict[str, str] = {
         "station": station,
         "data": "tmpf",
-        "year1": utc_start_date.year,
-        "month1": utc_start_date.month,
-        "day1": utc_start_date.day,
-        "year2": utc_end_date.year,
-        "month2": utc_end_date.month,
-        "day2": utc_end_date.day,
+        "sts": utc_start.strftime("%Y-%m-%dT%H:%MZ"),
+        "ets": utc_end.strftime("%Y-%m-%dT%H:%MZ"),
         "tz": "UTC",
         "format": "onlycomma",
         "latlon": "no",
