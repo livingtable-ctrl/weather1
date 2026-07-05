@@ -1791,7 +1791,7 @@ def get_profit_factor() -> dict:
     }
 
 
-def get_edge_realization_rate() -> dict:
+def get_edge_realization_rate(window: int = 20, min_samples: int = 15) -> dict:
     """Measure how well the model's computed net_edge predicts actual outcomes.
 
     Reports two separate metrics because early_exit trades (stop losses) contaminate
@@ -1801,6 +1801,18 @@ def get_edge_realization_rate() -> dict:
     directional_accuracy: only naturally-settled trades (outcome in ('yes','no')).
         Win = outcome == side. Uncontaminated by stop-loss exits. Answers whether
         the model's predicted direction is correct.
+
+    multiday_directional_accuracy: same as above, restricted to multi-day trades with
+        a known settled_at, windowed to the last `window` settled predictions (by
+        settlement recency, not calendar time) — count-based so cadence-uneven trading
+        still gets a stable sample size, mirroring
+        tracker.brier_score_by_method_rolling()'s convention. Trades missing settled_at
+        are excluded rather than treated as "oldest," so they can never dilute the
+        window with unknown-recency data. Returns None (rather than a noisy
+        small-sample figure) when fewer than `min_samples` such trades are available —
+        callers (cron.py's pin-renewal, drift-tighten-skip, and retirement guards)
+        already treat None as "guard does not apply," which falls back to their
+        conservative default behavior.
 
     economic_win_rate: all settled trades, win = pnl > 0. Answers whether the system
         is making money net of stop losses and fees. This is what actually matters for
@@ -1833,15 +1845,32 @@ def get_edge_realization_rate() -> dict:
         directional_accuracy = None
 
     # Multi-day only directional accuracy — used for trading decisions (ensemble pin,
-    # Brier-drift suppression). Same-day METAR trades have near-100% directional accuracy
-    # by construction so mixing them inflates the metric above 0.70 even when the
-    # multi-day model has degraded.
+    # Brier-drift suppression, auto-retirement guard). Same-day METAR trades have
+    # near-100% directional accuracy by construction so mixing them inflates the
+    # metric above 0.70 even when the multi-day model has degraded.
+    #
+    # Rolling (last `window` by settlement recency), not lifetime — mirrors
+    # tracker.brier_score_by_method_rolling()'s convention. A lifetime average
+    # never rolls off old, uncalibrated trades, so a model that has genuinely
+    # recovered recently would stay dragged below a guard threshold indefinitely.
+    #
+    # Trades missing settled_at (a real historical data state — see the
+    # settled=True-but-no-settled_at check elsewhere in this file) are excluded
+    # entirely rather than sorted to the tail: an undated trade has no verified
+    # recency, so letting it fill out the window would dilute a genuine recent
+    # signal with unrelated, unknown-age data — exactly what this rolling window
+    # exists to prevent.
     multiday_natural = [
-        t for t in natural if (_dout := t.get("days_out")) is None or _dout >= 1
+        t
+        for t in natural
+        if ((_dout := t.get("days_out")) is None or _dout >= 1) and t.get("settled_at")
     ]
-    n_multiday_natural = len(multiday_natural)
-    if n_multiday_natural > 0:
-        md_dir_wins = sum(1 for t in multiday_natural if t["outcome"] == t["side"])
+    multiday_rolling = sorted(
+        multiday_natural, key=lambda t: t["settled_at"], reverse=True
+    )[:window]
+    n_multiday_natural = len(multiday_rolling)
+    if n_multiday_natural >= max(min_samples, 1):
+        md_dir_wins = sum(1 for t in multiday_rolling if t["outcome"] == t["side"])
         multiday_directional_accuracy: float | None = round(
             md_dir_wins / n_multiday_natural, 4
         )

@@ -947,9 +947,11 @@ def save_walk_forward_params(results: dict, path: Path | None = None) -> None:
         "saved_at": time.time(),
     }
     try:
-        p.write_text(json.dumps(out, indent=2))
-    except Exception:
-        pass
+        import safe_io
+
+        safe_io.atomic_write_json(out, p)
+    except Exception as _e:
+        _log.warning("save_walk_forward_params: could not save results: %s", _e)
 
 
 def walk_forward_split(

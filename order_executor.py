@@ -25,7 +25,7 @@ from utils import (
     MAX_SAME_DAY_SPEND,
     MAX_VAR_DOLLARS,
     MIN_EDGE,
-    PAPER_MIN_EDGE,
+    get_paper_min_edge,
     is_trading_paused,
 )
 from weather_markets import (
@@ -821,9 +821,9 @@ def _validate_trade_opportunity(opp: dict, live: bool = False) -> tuple[bool, st
                 float(_ens_spread), is_live=bool(live)
             )
         except Exception:
-            min_edge = PAPER_MIN_EDGE if not live else MIN_EDGE
+            min_edge = get_paper_min_edge() if not live else MIN_EDGE
     else:
-        min_edge = PAPER_MIN_EDGE if not live else MIN_EDGE
+        min_edge = get_paper_min_edge() if not live else MIN_EDGE
 
     # For paper mode, pick the A/B test variant and use its threshold.
     # Only override when no ensemble-spread confidence tiering was applied —

@@ -1,6 +1,47 @@
 """Tests for cmd_simulate status parameter."""
 
 
+class TestSaveWalkForwardParams:
+    def test_writes_via_atomic_helper(self, tmp_path, monkeypatch):
+        """save_walk_forward_params must use safe_io's atomic write, not a plain
+        write_text — a plain write leaves a window where a concurrent reader
+        (e.g. web_app.py, a separate process) can see a partially-written file
+        under the mtime config.py's cache keys on."""
+        import json
+        from unittest.mock import MagicMock
+
+        import backtest
+
+        mock_atomic_write = MagicMock()
+        monkeypatch.setattr("safe_io.atomic_write_json", mock_atomic_write)
+
+        out_path = tmp_path / "walk_forward_params.json"
+        backtest.save_walk_forward_params(
+            {"mean_brier": 0.2, "std_brier": 0.01, "n_folds": 5, "optimal_min_edge": 0.06},
+            path=out_path,
+        )
+
+        mock_atomic_write.assert_called_once()
+        written_data, written_path = mock_atomic_write.call_args[0]
+        assert written_path == out_path
+        assert written_data["optimal_min_edge"] == 0.06
+
+    def test_survives_write_failure(self, tmp_path, monkeypatch):
+        """A failed write (e.g. AtomicWriteError) must be caught, not propagate —
+        this runs from the weekly cron cycle and must not crash trade settlement."""
+        import backtest
+
+        def _raise(*a, **kw):
+            raise OSError("disk full")
+
+        monkeypatch.setattr("safe_io.atomic_write_json", _raise)
+
+        # Must not raise.
+        backtest.save_walk_forward_params(
+            {"optimal_min_edge": 0.06}, path=tmp_path / "walk_forward_params.json"
+        )
+
+
 class TestCmdSimulateStatusParam:
     def test_simulate_uses_series_fetch_not_get_markets(self, monkeypatch):
         """cmd_simulate must use _fetch_settled_markets (series-based), not get_markets."""

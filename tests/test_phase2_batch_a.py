@@ -212,6 +212,47 @@ class TestPaperMinEdgeWarning:
 
         assert 0.03 <= val <= 0.15
 
+    def test_fingerprint_survives_same_mtime_different_content(self, tmp_path):
+        """Two different file contents that happen to land on the same mtime
+        must NOT collide in the cache — the fingerprint must include size too,
+        not mtime alone, or a rapid rewrite could silently serve a stale value."""
+        import os
+
+        import config
+
+        wf = tmp_path / "walk_forward_params.json"
+        wf.write_text(json.dumps({"optimal_min_edge": 0.06}))
+        same_mtime = wf.stat().st_mtime
+
+        with patch.object(config, "_DATA_DIR", tmp_path):
+            val1 = config._paper_min_edge_default()
+            assert val1 == pytest.approx(0.06)
+
+            # Rewrite with different (longer) content, forced to the SAME mtime —
+            # simulates a filesystem-timer-tick collision between two rewrites.
+            wf.write_text(json.dumps({"optimal_min_edge": 0.0912345}))
+            os.utime(wf, (same_mtime, same_mtime))
+            assert wf.stat().st_mtime == same_mtime  # confirm the forced collision
+
+            val2 = config._paper_min_edge_default()
+            assert val2 == pytest.approx(0.0912345), (
+                "same mtime but different file size must produce a fresh read, "
+                "not the stale cached value from the first content"
+            )
+
+    def test_stat_race_does_not_crash(self, tmp_path):
+        """A file that disappears between the existence check and the stat call
+        must not raise an uncaught FileNotFoundError — this runs on cron's
+        per-market hot path and must not crash the whole watch/watch --auto
+        process."""
+        import config
+
+        missing = tmp_path / "walk_forward_params.json"  # never created
+        with patch.object(config, "_DATA_DIR", tmp_path):
+            # Must not raise, even though the file has never existed.
+            val = config._paper_min_edge_default()
+        assert val == pytest.approx(0.05)
+
 
 # ── P2-11: MOS _parse_temp handles special codes ─────────────────────────────
 

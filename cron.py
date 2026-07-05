@@ -29,8 +29,8 @@ from utils import (
     MIN_EDGE,
     MIN_MARKET_PROB_TO_BET_WITH,
     MIN_PROB_EDGE,
-    PAPER_MIN_EDGE,
     STRONG_EDGE,
+    get_paper_min_edge,
     is_trading_paused,
     min_prob_edge_for_days_out,
 )
@@ -889,20 +889,24 @@ def _cmd_cron_body(
         if not _ensemble_expiry_str:
             _should_renew = True
         if _should_renew:
-            _da = _directional_accuracy if _directional_accuracy is not None else 0.0
-            if _da >= 0.70:
+            if _directional_accuracy is not None and _directional_accuracy >= 0.70:
                 _pins["ensemble"] = (datetime.now(UTC) + _td_pin(hours=168)).isoformat()
                 _pins_path.write_text(_json_pin.dumps(_pins, indent=2))
                 _log.info(
                     "cmd_cron: auto-renewed ensemble pin for 168 h "
                     "(directional_accuracy=%.2f)",
-                    _da,
+                    _directional_accuracy,
+                )
+            elif _directional_accuracy is None:
+                _log.warning(
+                    "cmd_cron: ensemble pin expiring but not enough recent multi-day "
+                    "trades to evaluate directional accuracy — not auto-renewing"
                 )
             else:
                 _log.warning(
                     "cmd_cron: ensemble pin expiring but directional_accuracy=%.2f < 0.70 "
                     "— not auto-renewing; check model quality",
-                    _da,
+                    _directional_accuracy,
                 )
     except Exception as _e:
         _log.debug("cmd_cron: ensemble pin auto-renew failed: %s", _e)
@@ -1373,7 +1377,7 @@ def _cmd_cron_body(
                     # so the dashboard can show them; only candidates that pass are
                     # eligible for auto-trading (strong_opps / med_opps / log entry).
                     _passes_threshold = True
-                    if abs(adjusted_edge) < PAPER_MIN_EDGE:
+                    if abs(adjusted_edge) < get_paper_min_edge():
                         _dbg["net_edge"] += 1
                         _passes_threshold = False
 

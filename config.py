@@ -5,12 +5,13 @@ Import individual constants from here rather than from utils.py for new code.
 
 from __future__ import annotations
 
-import functools
 import json
 import logging
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
+
+from forecast_cache import ForecastCache
 
 _DATA_DIR = Path(__file__).parent / "data"
 _log = logging.getLogger(__name__)
@@ -40,20 +41,69 @@ def _env_int(name: str, default: str) -> int:
         ) from None
 
 
-@functools.cache
+def _file_fingerprint(path: Path) -> tuple[float, int] | None:
+    """(mtime, size) for a file, or None if it doesn't exist.
+
+    A single .stat() call — not .exists() then .stat() — avoids a TOCTOU race
+    where the file is deleted between the two checks (which would otherwise
+    raise an uncaught FileNotFoundError on this hot path). Including size
+    alongside mtime in the cache key below costs nothing extra (both come from
+    the same stat() call) and means two different rewrites that happen to land
+    on the same filesystem mtime tick — confirmed to occur on this NTFS
+    filesystem under rapid rewrites — still produce different cache keys
+    whenever the content differs enough to change the byte count.
+    """
+    try:
+        st = path.stat()
+        return (st.st_mtime, st.st_size)
+    except OSError:
+        return None
+
+
+# mtime+size-gated cache: {(wf_fingerprint, sweep_fingerprint): value}. Not a plain
+# @functools.cache — a long-running process (main.py's `loop`/`watch --auto`) can
+# live for weeks, during which the weekly cron-triggered walk-forward/param-sweep
+# jobs rewrite these files on disk; a permanent cache would freeze PAPER_MIN_EDGE at
+# whatever value existed at process start and never see that new data. Keying on
+# each file's fingerprint means this only re-reads/re-parses/re-logs when the
+# underlying data actually changed, not on every call. TTL is disabled (correctness
+# comes from the key, not from time-based expiry); max_size=32 bounds memory with
+# real single-oldest-entry LRU eviction rather than a clear-everything policy.
+_paper_min_edge_cache: ForecastCache[float] = ForecastCache(
+    ttl_secs=float("inf"), max_size=32
+)
+
+
 def _paper_min_edge_default() -> float:
     """D4/A5: Env var takes precedence; fall back to walk-forward optimal, then
     param-sweep optimal, then hardcoded 0.05 default.
 
-    lru_cache ensures the file is read and warning logged exactly once per process
-    even when BotConfig() is instantiated many times (e.g. in ThreadPoolExecutor).
+    Freshly reflects the on-disk files each call (see _paper_min_edge_cache comment
+    above) — safe to call from a long-running process without a restart.
     """
     env_val = os.getenv("PAPER_MIN_EDGE")
     if env_val is not None:
         return float(env_val)
+
+    wf_path = _DATA_DIR / "walk_forward_params.json"
+    sweep_path = _DATA_DIR / "param_sweep_results.json"
+    cache_key = (_file_fingerprint(wf_path), _file_fingerprint(sweep_path))
+    cached = _paper_min_edge_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    val = _compute_paper_min_edge_from_files(wf_path)
+    _paper_min_edge_cache.set(cache_key, val)
+    return val
+
+
+def _compute_paper_min_edge_from_files(p: Path) -> float:
+    """Soft-override chain for _paper_min_edge_default, given the walk-forward params
+    path (split out so the mtime-gated cache above only calls this when something on
+    disk actually changed). load_swept_min_edge() re-derives its own sweep-results
+    path internally; only the walk-forward path is needed here."""
     # Soft override from walk-forward backtest (highest data priority)
     try:
-        p = _DATA_DIR / "walk_forward_params.json"
         if p.exists():
             data = json.loads(p.read_text())
             opt = data.get("optimal_min_edge")
@@ -173,10 +223,11 @@ class BotConfig:
     def from_env(cls) -> BotConfig:
         """Create a BotConfig reading all env vars fresh.
 
-        Clears the paper_min_edge lru_cache so monkeypatched env vars in tests
-        are picked up even if a prior BotConfig() call cached the value.
+        Clears the mtime-gated paper_min_edge cache so a monkeypatched env var
+        in tests is picked up immediately — the cache is keyed on file mtimes,
+        which an env-var-only change wouldn't otherwise invalidate.
         """
-        _paper_min_edge_default.cache_clear()
+        _paper_min_edge_cache.clear()
         return cls()
 
     def validate(self) -> None:
@@ -253,4 +304,4 @@ def reset_config() -> None:
     """Reset the singleton and env-var cache — used in tests between runs."""
     global _CONFIG
     _CONFIG = None
-    _paper_min_edge_default.cache_clear()
+    _paper_min_edge_cache.clear()

@@ -9,6 +9,8 @@
 import os
 from unittest.mock import patch
 
+import pytest
+
 # ── #6: City-level Kelly from Brier ──────────────────────────────────────────
 
 
@@ -489,3 +491,108 @@ class TestEdgeRealizationRate:
         # Just verify the function runs and returns a dict — calibration may vary
         assert "calibrated" in result
         assert "correlation" in result
+
+    def _make_multiday_trade(self, outcome, side, settled_at, days_out=3):
+        return {
+            "ticker": "KXTEST",
+            "side": side,
+            "outcome": outcome,
+            "net_edge": 0.10,
+            "settled": True,
+            "pnl": 1.0 if outcome == side else -1.0,
+            "days_out": days_out,
+            "settled_at": settled_at,
+        }
+
+    def test_multiday_directional_accuracy_uses_only_recent_window(self):
+        """The last `window` trades (by settled_at) should win 100%; the older
+        trades outside the window all lose. Lifetime accuracy would be far
+        below 1.0 — only the windowed figure should show 1.0."""
+        from paper import get_edge_realization_rate
+
+        older_losers = [
+            self._make_multiday_trade(
+                "no", "yes", f"2026-01-{i + 1:02d}T00:00:00+00:00"
+            )
+            for i in range(30)
+        ]
+        recent_winners = [
+            self._make_multiday_trade(
+                "yes", "yes", f"2026-06-{i + 1:02d}T00:00:00+00:00"
+            )
+            for i in range(20)
+        ]
+        trades = older_losers + recent_winners
+        with patch("paper.get_all_trades", return_value=trades):
+            result = get_edge_realization_rate(window=20)
+        assert result["multiday_directional_accuracy"] == 1.0
+
+    def test_multiday_directional_accuracy_window_param_controls_size(self):
+        """A smaller window should be able to see a different (worse) recent
+        streak than a larger window that reaches back into older good trades."""
+        from paper import get_edge_realization_rate
+
+        good_old = [
+            self._make_multiday_trade(
+                "yes", "yes", f"2026-01-{i + 1:02d}T00:00:00+00:00"
+            )
+            for i in range(30)
+        ]
+        bad_recent = [
+            self._make_multiday_trade(
+                "no", "yes", f"2026-06-{i + 1:02d}T00:00:00+00:00"
+            )
+            for i in range(10)
+        ]
+        trades = good_old + bad_recent
+        with patch("paper.get_all_trades", return_value=trades):
+            narrow = get_edge_realization_rate(window=10, min_samples=10)
+            wide = get_edge_realization_rate(window=40)
+        assert narrow["multiday_directional_accuracy"] == 0.0
+        assert wide["multiday_directional_accuracy"] == pytest.approx(30 / 40)
+
+    def test_multiday_directional_accuracy_none_below_min_samples(self):
+        """Below min_samples, return None rather than a noisy small-sample
+        figure — cron.py's guards treat None as 'does not apply' (safe default)."""
+        from paper import get_edge_realization_rate
+
+        trades = [
+            self._make_multiday_trade(
+                "no", "yes", f"2026-06-{i + 1:02d}T00:00:00+00:00"
+            )
+            for i in range(10)
+        ]
+        with patch("paper.get_all_trades", return_value=trades):
+            result = get_edge_realization_rate(window=20, min_samples=15)
+        assert result["multiday_directional_accuracy"] is None
+
+    def test_multiday_directional_accuracy_excludes_undated_trades(self):
+        """Trades missing settled_at (a real historical data state) must be
+        excluded entirely, not sorted to the tail — otherwise they'd dilute a
+        genuine recent-performance signal with unrelated, unknown-age data."""
+        from paper import get_edge_realization_rate
+
+        recent_losses = [
+            self._make_multiday_trade(
+                "no", "yes", f"2026-06-{i + 1:02d}T00:00:00+00:00"
+            )
+            for i in range(10)
+        ]
+        undated_wins = [
+            self._make_multiday_trade("yes", "yes", None) for _ in range(8)
+        ]
+        trades = recent_losses + undated_wins
+        with patch("paper.get_all_trades", return_value=trades):
+            result = get_edge_realization_rate(window=20, min_samples=10)
+        # Only the 10 dated losses should count — undated wins must not dilute it.
+        assert result["multiday_directional_accuracy"] == 0.0
+
+    def test_multiday_directional_accuracy_no_zero_division_on_empty(self):
+        """min_samples=0 with zero trades must not raise ZeroDivisionError —
+        the old code's implicit `n > 0` guard must be preserved regardless of
+        what min_samples is set to."""
+        from paper import get_edge_realization_rate
+
+        with patch("paper.get_all_trades", return_value=[]):
+            result = get_edge_realization_rate(min_samples=0)
+        assert result["multiday_directional_accuracy"] is None

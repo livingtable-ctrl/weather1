@@ -32,6 +32,27 @@ def is_trading_paused() -> bool:
     )
 
 
+def get_paper_min_edge() -> float:
+    """Live-refreshed PAPER_MIN_EDGE — call this, not a frozen import, from any
+    long-running process (main.py's `loop`, `watch`/`watch --auto`/`watch --auto
+    --live`). Those hold this module in memory for their whole run (no re-import
+    between cron cycles), so a plain module constant computed once at process
+    start would never see a fresh walk-forward/param-sweep result the weekly
+    cron-triggered jobs write mid-run — this function re-checks on every call
+    (config._paper_min_edge_default's own cache is keyed on file mtime, not
+    process lifetime, so this stays cheap when nothing on disk has changed).
+
+    Must be <= 5% per system requirements (P1.3) — test_edge_threshold.py
+    enforces this on the return value. config.py's BotConfig.paper_min_edge
+    (dashboard display only) shows the raw, unclamped auto-tuned suggestion;
+    this is the safety-clamped value that actually gates trade placement (see
+    cron.py, order_executor.py), so the two can legitimately differ when tuning
+    suggests something above 5%. Override via PAPER_MIN_EDGE env var (also
+    honored inside _cfg_paper_min_edge_default, unclamped there).
+    """
+    return min(_cfg_paper_min_edge_default(), 0.05)
+
+
 # ── Kalshi platform constant ──────────────────────────────────────────────────
 
 # Fee Kalshi charges on winning trades. 7% is the default taker rate.
@@ -45,14 +66,8 @@ KELLY_CAP: float = 0.25
 # Edge thresholds — override via .env
 MIN_EDGE = float(os.getenv("MIN_EDGE", "0.07"))  # minimum edge to show in analyze
 # Paper trading uses a lower threshold to capture more signals for observation.
-# Must be <= 5% per system requirements (P1.3) — test_edge_threshold.py enforces
-# this on the value below. config.py's BotConfig.paper_min_edge (dashboard
-# display only) shows the raw, unclamped walk-forward/param-sweep auto-tuned
-# suggestion; this constant is the safety-clamped value that actually gates
-# trade placement (see cron.py, order_executor.py), so the two can legitimately
-# differ when tuning suggests something above 5%. Override via PAPER_MIN_EDGE
-# env var (also honored inside _cfg_paper_min_edge_default, unclamped there).
-PAPER_MIN_EDGE = min(_cfg_paper_min_edge_default(), 0.05)
+# See get_paper_min_edge() above — call that, not a module constant, so
+# long-running processes (loop, watch --auto) see fresh tuning data mid-run.
 # Minimum probability-delta edge (forecast_prob − market_prob) to place a trade.
 # Filters out signals where ROI edge exists but probability conviction is low.
 # 8pp = ~2× the 4pp ask/bid half-spread on a typical 50¢ Kalshi contract.
@@ -295,7 +310,7 @@ def get_config_fingerprint() -> dict:
     return {
         "KALSHI_FEE_RATE": KALSHI_FEE_RATE,
         "MIN_EDGE": MIN_EDGE,
-        "PAPER_MIN_EDGE": PAPER_MIN_EDGE,
+        "PAPER_MIN_EDGE": get_paper_min_edge(),
         "STRONG_EDGE": STRONG_EDGE,
         "MED_EDGE": MED_EDGE,
         "MAX_DAILY_SPEND": MAX_DAILY_SPEND,

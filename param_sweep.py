@@ -105,7 +105,9 @@ def load_swept_min_edge(min_trades: int = 10) -> float | None:
     Returns None when the file is absent or no threshold meets the sample floor.
     """
     try:
-        out_path = Path(__file__).parent / "data" / "param_sweep_results.json"
+        import config as _config
+
+        out_path = _config._DATA_DIR / "param_sweep_results.json"
         if not out_path.exists():
             return None
         data = json.loads(out_path.read_text())
