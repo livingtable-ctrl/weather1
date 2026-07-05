@@ -9,6 +9,8 @@ import math
 import os
 from datetime import UTC, date, datetime
 
+from config import _paper_min_edge_default as _cfg_paper_min_edge_default
+
 
 def utc_today() -> date:
     """Return the current UTC date. Use everywhere instead of date.today()."""
@@ -43,8 +45,14 @@ KELLY_CAP: float = 0.25
 # Edge thresholds — override via .env
 MIN_EDGE = float(os.getenv("MIN_EDGE", "0.07"))  # minimum edge to show in analyze
 # Paper trading uses a lower threshold to capture more signals for observation.
-# Must be <= 5% per system requirements (P1.3). Override via PAPER_MIN_EDGE env var.
-PAPER_MIN_EDGE = float(os.getenv("PAPER_MIN_EDGE", "0.05"))
+# Must be <= 5% per system requirements (P1.3) — test_edge_threshold.py enforces
+# this on the value below. config.py's BotConfig.paper_min_edge (dashboard
+# display only) shows the raw, unclamped walk-forward/param-sweep auto-tuned
+# suggestion; this constant is the safety-clamped value that actually gates
+# trade placement (see cron.py, order_executor.py), so the two can legitimately
+# differ when tuning suggests something above 5%. Override via PAPER_MIN_EDGE
+# env var (also honored inside _cfg_paper_min_edge_default, unclamped there).
+PAPER_MIN_EDGE = min(_cfg_paper_min_edge_default(), 0.05)
 # Minimum probability-delta edge (forecast_prob − market_prob) to place a trade.
 # Filters out signals where ROI edge exists but probability conviction is low.
 # 8pp = ~2× the 4pp ask/bid half-spread on a typical 50¢ Kalshi contract.

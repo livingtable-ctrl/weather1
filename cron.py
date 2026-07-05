@@ -2282,6 +2282,49 @@ def _cmd_cron_body(
     except Exception as _e:
         _log.debug("cmd_cron: weekly sweep check failed: %s", _e)
 
+    # G6: Weekly — re-run the walk-forward backtest so walk_forward_params.json's
+    # optimal_min_edge (config.py's highest-priority soft override for
+    # PAPER_MIN_EDGE, above the param sweep) doesn't go stale indefinitely.
+    # Previously this only updated when someone manually ran `py main.py
+    # walk-forward`/`wfbt` — found 2026-07-05 sitting 11 days stale with no
+    # automated refresh, unlike the param sweep above it in this same function.
+    # Same marker-file gate pattern as the sweep, same 7-day cadence.
+    _LAST_WF_PATH = Path(__file__).parent / "data" / ".last_walk_forward"
+    try:
+        import os as _os_wf
+
+        if not _os_wf.environ.get("PYTEST_CURRENT_TEST"):
+            _should_wf = True
+            if _LAST_WF_PATH.exists():
+                _wf_days_since = (
+                    datetime.now(UTC).timestamp() - _LAST_WF_PATH.stat().st_mtime
+                ) / 86400
+                _should_wf = _wf_days_since >= 7
+            if _should_wf:
+                _log.info(
+                    "cmd_cron: running weekly walk-forward backtest (>=7 days since last)"
+                )
+                from backtest import run_paper_walk_forward as _run_wf
+
+                try:
+                    _wf_result = _run_wf()
+                    if _wf_result:
+                        print(
+                            dim(
+                                "  [WalkForward] Weekly walk-forward complete — "
+                                f"optimal_min_edge={_wf_result.get('optimal_min_edge')}."
+                            )
+                        )
+                except Exception as _wf_err:
+                    _log.warning("cmd_cron: weekly walk-forward failed: %s", _wf_err)
+
+                # Always touch marker after attempting so the gate closes correctly
+                # even when there's not yet enough paper-trade history (<50 trades).
+                _LAST_WF_PATH.parent.mkdir(exist_ok=True)
+                _LAST_WF_PATH.touch()
+    except Exception as _e:
+        _log.debug("cmd_cron: weekly walk-forward check failed: %s", _e)
+
     # Flush ensemble disk cache before exit \u2014 daemon threads were killed before
     # writing; a single synchronous batch write here guarantees the next run
     # starts with a warm ensemble cache and avoids circuit breaker trips.

@@ -4624,35 +4624,12 @@ def cmd_walk_forward() -> None:
     import json
     from pathlib import Path
 
-    from backtest import walk_forward_backtest
-    from paper import load_paper_trades
+    from backtest import run_paper_walk_forward
 
-    trades_raw = load_paper_trades()
-    trades = [
-        {
-            "market_date": t.get("date", t.get("placed_at", ""))[:10],
-            "our_prob": t.get("our_prob", t.get("forecast_prob")),
-            "settled_yes": t.get("outcome") == "yes",
-            "city": t.get("city", ""),
-            "method": t.get("method", ""),
-            "edge": t.get("net_edge", t.get("edge", 0)),
-        }
-        for t in trades_raw
-        if t.get("outcome") in ("yes", "no")
-        and (t.get("our_prob") is not None or t.get("forecast_prob") is not None)
-    ]
-    # Drop trades with no parseable date — empty strings corrupt fold boundaries.
-    trades = [t for t in trades if len(t.get("market_date", "")) == 10]
-
-    if len(trades) < 50:
-        print(
-            f"Not enough settled trades for walk-forward (have {len(trades)}, need 50+)."
-        )
+    result = run_paper_walk_forward()
+    if result is None:
+        print("Not enough settled trades for walk-forward (need 50+).")
         return
-
-    # train_months=3: paper-trade history is short, so 3 months is more practical
-    # than the 6-month default.
-    result = walk_forward_backtest(trades, train_months=3, test_months=1)
 
     std_str = f"{result['std_brier']}" if result["std_brier"] is not None else "\u2014"
     print(f"\nWalk-Forward Backtest ({result['n_folds']} folds)")

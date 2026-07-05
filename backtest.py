@@ -1087,3 +1087,53 @@ def walk_forward_backtest(
     if len(fold_results) >= 2:
         save_walk_forward_params(result_out)
     return result_out
+
+
+def run_paper_walk_forward() -> dict | None:
+    """Load paper-trade history and run walk_forward_backtest against it.
+
+    Shared core of `py main.py walk-forward`/`wfbt` (which prints a full report
+    from the returned dict) and cron's automatic weekly re-run — needs no live
+    Kalshi client, only local paper-trade history, so it's safe/cheap to call
+    from cron. Returns None (no print, no side effect) if there aren't enough
+    settled trades yet; walk_forward_backtest itself only persists to
+    walk_forward_params.json (via save_walk_forward_params) once it has >=2
+    folds, so a too-small history is already a no-op beyond this point.
+    """
+    from paper import load_paper_trades
+
+    trades_raw = load_paper_trades()
+    # Paper trade records store the model's entry-time probability as
+    # "entry_prob" (confirmed 2026-07-05 against every current paper trade —
+    # none use "our_prob"/"forecast_prob", the field names this mapping
+    # actually checked). That silently zeroed out every walk-forward run
+    # through this path: the <50-trade gate below always saw 0 trades
+    # regardless of real history size, so walk_forward_params.json was never
+    # updated by this route. "our_prob"/"forecast_prob" kept as a fallback in
+    # case an older or differently-sourced trade record ever used them.
+    trades = [
+        {
+            "market_date": t.get("date", t.get("placed_at", ""))[:10],
+            "our_prob": t.get("entry_prob", t.get("our_prob", t.get("forecast_prob"))),
+            "settled_yes": t.get("outcome") == "yes",
+            "city": t.get("city", ""),
+            "method": t.get("method", ""),
+            "edge": t.get("net_edge", t.get("edge", 0)),
+        }
+        for t in trades_raw
+        if t.get("outcome") in ("yes", "no")
+        and (
+            t.get("entry_prob") is not None
+            or t.get("our_prob") is not None
+            or t.get("forecast_prob") is not None
+        )
+    ]
+    # Drop trades with no parseable date — empty strings corrupt fold boundaries.
+    trades = [t for t in trades if len(t.get("market_date", "")) == 10]
+
+    if len(trades) < 50:
+        return None
+
+    # train_months=3: paper-trade history is short, so 3 months is more practical
+    # than the 6-month default.
+    return walk_forward_backtest(trades, train_months=3, test_months=1)
