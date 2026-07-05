@@ -4957,24 +4957,30 @@ def _cmd_emos_train() -> None:
     )
 
 
-def cmd_backfill_emos() -> None:
+def cmd_backfill_emos(force: bool = False) -> None:
     """Backfill EMOS training columns for historical settled predictions.
 
     Part 1 — settled_temp_f: re-runs audit_settlement for any outcome that is
     missing the observed temperature (trades settled before that column existed).
+    With --force, re-runs it for EVERY settled outcome instead — needed after a
+    fix to audit_settlement()'s own fetch/threshold logic, since already-filled
+    rows otherwise keep whatever (possibly now-stale) value they had.
 
     Part 2 — ens_mean: fetches the deterministic forecast from the Previous Runs API
     (ICON + GFS + ECMWF AIFS single) at the correct lead time for each multi-day
     prediction missing ens_mean.  ens_var is left NULL for backfill rows.
     Required before running py main.py emos-train.
 
-    Safe to re-run — already-filled rows are skipped by the SQL WHERE clause.
+    Safe to re-run without --force — already-filled rows are skipped by the SQL
+    WHERE clause. --force is a deliberate, heavier re-verification pass, not the
+    default.
     """
     from tracker import backfill_emos_data
 
-    print("Running EMOS backfill (settled_temp_f + ens_mean/ens_var)…")
+    mode = "FORCE re-verify (all settled outcomes)" if force else "fill missing only"
+    print(f"Running EMOS backfill (settled_temp_f + ens_mean/ens_var) — mode: {mode}…")
     try:
-        temp_filled, ens_filled = backfill_emos_data()
+        temp_filled, ens_filled = backfill_emos_data(force=force)
         print(
             f"\nDone — settled_temp_f filled: {temp_filled}, ens_mean filled: {ens_filled}"
         )
@@ -7398,7 +7404,7 @@ def main():
     elif cmd in ("emos-train", "emos_train"):
         _cmd_emos_train()
     elif cmd in ("backfill-emos", "backfill_emos"):
-        cmd_backfill_emos()
+        cmd_backfill_emos(force="--force" in args)
     elif cmd in ("settings", "config-settings"):
         cmd_settings(client)
     elif cmd == "onboard":

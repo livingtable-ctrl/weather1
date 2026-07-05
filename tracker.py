@@ -1862,42 +1862,39 @@ def _fetch_asos_daily_temp(
     import requests
 
     tz_obj = ZoneInfo(city_tz)
-    from datetime import timedelta
 
     local_start = datetime(
         target_date.year, target_date.month, target_date.day, 0, 0, 0, tzinfo=tz_obj
     )
-    # For daily minimums the coldest reading almost always occurs between midnight
-    # and 9 AM local on the FOLLOWING calendar day (NWS climate days run ~7 AM to
-    # 7 AM, so "Jun 13's" official low is the coldest reading before 7 AM Jun 14).
-    # Extend the API fetch window to cover through 10 AM local next day for min,
-    # midnight local for max (daily maximum occurs in the afternoon, never next-day).
-    if var == "min":
-        local_end = (
-            datetime(
-                target_date.year, target_date.month, target_date.day, tzinfo=tz_obj
-            )
-            + timedelta(days=1)
-            + timedelta(hours=10)
-        )
-    else:
-        local_end = datetime(
-            target_date.year,
-            target_date.month,
-            target_date.day,
-            23,
-            59,
-            59,
-            tzinfo=tz_obj,
-        )
+    # NWS Daily Climatological Reports (the source Kalshi actually settles on)
+    # use a plain local midnight-to-midnight civil day for both max and min —
+    # confirmed 2026-07-05 against real CLI reports (Minneapolis: a 69F low at
+    # 6:16 AM was attributed to *that same date*; Phoenix: same pattern at
+    # 5:16 AM). A prior version of this function extended the "min" window
+    # through 10 AM local the *following* day on the theory that NWS climate
+    # days run ~7 AM to 7 AM — both examples above directly contradict that
+    # theory (a genuine 7am cutoff would have pushed those pre-7am readings
+    # into the *previous* day's report instead) and a live audit found the
+    # extension was silently misattributing the following morning's own low to
+    # the target date whenever that next morning happened to be colder.
+    local_end = datetime(
+        target_date.year,
+        target_date.month,
+        target_date.day,
+        23,
+        59,
+        59,
+        tzinfo=tz_obj,
+    )
     # R-42: use precise sts/ets UTC timestamps rather than day1/day2 date params.
     # day1/day2 turned out to be exclusive of day2 (verified against the live
     # API: day1=3/day2=4 returns data only through day1 23:53, never touching
-    # day2 at all), which silently truncated the window before it reached the
-    # early-UTC-morning hours needed for "min" markets whose true overnight low
-    # falls after local midnight — e.g. a Pacific-timezone city's 5 AM local low
-    # is ~12:53 UTC the next day, past where day1/day2 cut off. sts/ets take
-    # exact UTC instants, so there's no day-boundary ambiguity to get wrong.
+    # day2 at all) — a real problem on its own, since a US city's local
+    # midnight-to-midnight day straddles two *UTC* calendar dates (e.g. a
+    # Pacific-timezone city's late-evening local reading, still within the same
+    # local day, can land past midnight UTC). sts/ets take exact UTC instants,
+    # so there's no day-boundary ambiguity to get wrong regardless of how the
+    # local day maps onto UTC dates.
     utc_start = local_start.astimezone(UTC)
     utc_end = local_end.astimezone(UTC)
 
@@ -1941,27 +1938,16 @@ def _fetch_asos_daily_temp(
             parts = line.split(",")
             if len(parts) < 3:
                 continue
-            # For max: accept only readings on the target calendar day.
-            # For min: also accept readings before 10 AM local on the following
-            # day — NWS climate days run ~7 AM to 7 AM, so the overnight low
-            # recorded as "Jun 13's minimum" often occurs at 3–7 AM Jun 14 local.
+            # Accept only readings on the target local calendar day (both
+            # max and min — see the local_end comment above for why "min"
+            # no longer extends into the following day).
             try:
                 obs_utc = datetime.strptime(parts[1].strip(), "%Y-%m-%d %H:%M").replace(
                     tzinfo=UTC
                 )
                 obs_local = obs_utc.astimezone(tz_obj)
-                obs_date = obs_local.date()
-                next_date = target_date + timedelta(days=1)
-                if var == "min":
-                    if obs_date == target_date:
-                        pass  # always include target day
-                    elif obs_date == next_date and obs_local.hour < 10:
-                        pass  # include early-morning next-day (overnight low)
-                    else:
-                        continue
-                else:
-                    if obs_date != target_date:
-                        continue
+                if obs_local.date() != target_date:
+                    continue
             except ValueError:
                 continue  # Header row or unparseable timestamp
             raw = parts[2].strip()
@@ -2013,18 +1999,34 @@ def _fetch_actual_daily_temp(
     return None
 
 
-def audit_settlement(ticker: str, settled_yes: bool) -> None:
+def audit_settlement(ticker: str, settled_yes: bool) -> bool:
     """Cross-check Kalshi's settlement against ASOS station archive data.
 
-    Uses the same ICAO station Kalshi uses for settlement (via IEM ASOS archive)
-    so the comparison is apples-to-apples. Falls back to Open-Meteo gridded data
+    Uses the ICAO station nearest the city (via IEM ASOS raw hourly METAR
+    archive) as an approximate proxy. Falls back to Open-Meteo gridded data
     only when no station is mapped for the city.
 
+    NOTE: this is NOT the same source Kalshi actually settles on. Kalshi's
+    rules_primary text states settlement uses the NWS Daily Climatological
+    Report (CLI product), which is compiled/rounded differently and can
+    legitimately disagree with raw ASOS METAR extremes by ~1 degree near a
+    threshold (confirmed 2026-07-05 on KXLOWTMIN-26JUN28-T66: fresh ASOS
+    KMSP read 67.0F against a 66F "greater than" threshold — implying YES —
+    while Kalshi's real CLI-report-based settlement was NO). A MISMATCH
+    warning here means our proxy disagrees with Kalshi, not that Kalshi
+    settled incorrectly.
+
     Logs a WARNING when archive temperature contradicts Kalshi's YES/NO result,
-    which can indicate a data source lag or a rare Kalshi settlement mistake.
-    Skips silently if the ticker is unparseable, archive is unavailable, or the
-    condition type can't be verified with a single temperature value (e.g. between,
-    precipitation).
+    which can indicate a data source lag, this proxy/CLI-report divergence, or
+    (rarely) an actual Kalshi settlement mistake. Skips silently if the ticker
+    is unparseable, archive is unavailable, or the condition type can't be
+    verified with a single temperature value (e.g. between, precipitation).
+
+    Returns True if settled_temp_f was actually written, False if this call
+    skipped for any reason (unparseable ticker/city, no coords, no archive
+    data, etc.) — callers that loop over many tickers (e.g. a backfill) should
+    use this instead of re-reading the DB, since a False here means the row's
+    prior value (if any) was left completely untouched, not confirmed correct.
     """
     try:
         from weather_markets import CITY_COORDS as _coords
@@ -2034,11 +2036,11 @@ def audit_settlement(ticker: str, settled_yes: bool) -> None:
 
         city, target_date = _parse_city_date({"ticker": ticker, "title": ""})
         if not city or not target_date:
-            return
+            return False
 
         coords = _coords.get(city)
         if not coords:
-            return
+            return False
         lat, lon, tz = coords
 
         # Prefer condition stored in predictions DB — it was recorded with the real
@@ -2073,7 +2075,7 @@ def audit_settlement(ticker: str, settled_yes: bool) -> None:
             else _parse_cond({"ticker": ticker, "title": ""})
         )
         if not cond:
-            return
+            return False
 
         cond_type = cond.get("type", "")
 
@@ -2090,7 +2092,7 @@ def audit_settlement(ticker: str, settled_yes: bool) -> None:
         elif cond_type == "below":
             var = "min"
         else:
-            return  # precipitation or unknown — skip
+            return False  # precipitation or unknown — skip
 
         # Prefer ASOS station data (same source as Kalshi settlement).
         # Fall back to Open-Meteo gridded archive only when no station is mapped.
@@ -2102,7 +2104,7 @@ def audit_settlement(ticker: str, settled_yes: bool) -> None:
             actual = _fetch_actual_daily_temp(lat, lon, tz, target_date, var)
             source = "OpenMeteo"
         if actual is None:
-            return
+            return False
 
         # Store the observed temperature so we can compute empirical NWS forecast
         # error distributions per city — the foundation for data-driven sigma
@@ -2116,33 +2118,44 @@ def audit_settlement(ticker: str, settled_yes: bool) -> None:
 
         # Consistency check: only verifiable for above/below single-threshold markets.
         # between markets define a range — a single temp point confirms or denies
-        # the range membership, which we can check too.
+        # the range membership, which we can check too. settled_temp_f was already
+        # written above regardless of whether this check can run, so every return
+        # from here on is still True.
+        threshold_desc = ""
         if cond_type == "above":
             threshold = cond.get("threshold")
             if threshold is None:
-                return
+                return True
             archive_yes = actual > threshold
+            threshold_desc = f">{threshold:g}F"
         elif cond_type == "below":
             threshold = cond.get("threshold")
             if threshold is None:
-                return
+                return True
             archive_yes = actual < threshold
+            threshold_desc = f"<{threshold:g}F"
         elif cond_type == "between":
             lo = cond.get("lower")
             hi = cond.get("upper")
             if lo is None or hi is None:
-                return
+                return True
             archive_yes = lo < actual < hi
+            threshold_desc = f"{lo:g}-{hi:g}F"
         else:
-            return
+            return True
 
         if archive_yes != settled_yes:
+            # cond_type + threshold_desc together give a future reader enough to
+            # judge, at a glance, whether this looks like the small (~1F) accepted
+            # ASOS-vs-CLI-report proxy gap or something larger worth a fresh look —
+            # see this function's docstring for that known, deliberately-unfixed gap.
             _log.warning(
-                "settlement_audit MISMATCH %s — Kalshi=%s %s=%.1f°F (%s)",
+                "settlement_audit MISMATCH %s — Kalshi=%s %s=%.1f°F vs threshold %s (%s)",
                 ticker,
                 "YES" if settled_yes else "NO",
                 source,
                 actual,
+                threshold_desc,
                 cond_type,
             )
         else:
@@ -2153,8 +2166,10 @@ def audit_settlement(ticker: str, settled_yes: bool) -> None:
                 source,
                 actual,
             )
+        return True
     except Exception as exc:
         _log.debug("audit_settlement: skipped for %s: %s", ticker, exc)
+        return False
 
 
 def _fetch_ensemble_members_historical(
@@ -2278,11 +2293,17 @@ def _fetch_previous_run_daily(
     return max(vals) if var == "max" else min(vals)
 
 
-def backfill_emos_data() -> tuple[int, int]:
+def backfill_emos_data(force: bool = False) -> tuple[int, int]:
     """Backfill EMOS training data for all settled predictions.
 
     Part 1 — settled_temp_f: calls audit_settlement for every outcome row where the
     actual observed temperature was not stored (pre-dates the store-temp code).
+    With force=True, re-runs audit_settlement for EVERY settled outcome instead,
+    including rows that already have a settled_temp_f value — needed after a fix
+    to audit_settlement()'s own fetch/threshold logic (the normal NULL-only pass
+    can never touch already-populated rows, however stale their value now is;
+    see the 2026-07-05 ASOS-window-overreach fix, which needed a one-off script
+    for exactly this before this flag existed).
 
     Part 2 — ens_mean: fetches the deterministic control-run forecast from the
     Previous Runs API (ICON + GFS + ECMWF AIFS single) at the correct lead time
@@ -2297,23 +2318,24 @@ def backfill_emos_data() -> tuple[int, int]:
 
     # ── Part 1: settled_temp_f ────────────────────────────────────────────────
     with _conn() as con:
-        null_temp_rows = con.execute(
-            "SELECT o.ticker, o.settled_yes FROM outcomes o WHERE o.settled_temp_f IS NULL"
-        ).fetchall()
+        if force:
+            temp_rows = con.execute("SELECT o.ticker, o.settled_yes FROM outcomes o").fetchall()
+        else:
+            temp_rows = con.execute(
+                "SELECT o.ticker, o.settled_yes FROM outcomes o WHERE o.settled_temp_f IS NULL"
+            ).fetchall()
 
-    print(f"[backfill] Part 1: {len(null_temp_rows)} outcomes missing settled_temp_f")
+    label = "all settled outcomes (force)" if force else "outcomes missing settled_temp_f"
+    print(f"[backfill] Part 1: {len(temp_rows)} {label}")
     settled_temp_filled = 0
-    for row in null_temp_rows:
+    for row in temp_rows:
         try:
-            audit_settlement(row["ticker"], bool(row["settled_yes"]))
-            with _conn() as con:
-                chk = con.execute(
-                    "SELECT settled_temp_f FROM outcomes WHERE ticker = ?",
-                    (row["ticker"],),
-                ).fetchone()
-            if chk and chk["settled_temp_f"] is not None:
+            # audit_settlement()'s return value is the source of truth for whether
+            # it actually wrote a value — re-reading the DB afterward can't tell
+            # "recomputed and matched" apart from "skipped and left the old value".
+            if audit_settlement(row["ticker"], bool(row["settled_yes"])):
                 settled_temp_filled += 1
-                print(f"  temp OK {row['ticker']}: {chk['settled_temp_f']}°F")
+                print(f"  temp OK {row['ticker']}")
         except Exception as exc:
             print(f"  SKIP {row['ticker']}: {exc}")
 

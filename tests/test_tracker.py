@@ -2174,14 +2174,21 @@ def test_health_endpoint_returns_ok(monkeypatch):
 class TestFetchAsosDailyTemp(unittest.TestCase):
     """R-42: _fetch_asos_daily_temp must use precise sts/ets timestamps, not
     day1/day2 date params (which turned out to be exclusive of day2 on the
-    live IEM API and silently dropped the early-UTC-morning readings needed
-    to find a 'min' market's true overnight low)."""
+    live IEM API and silently truncated the window before it reached the full
+    local calendar day, since a US city's local day straddles two UTC dates).
 
-    def _mock_response(self, rows):
+    Also covers: 'min' must NOT reach into the following local day. An earlier
+    version extended the window through 10 AM local the next day on the theory
+    that NWS climate days run ~7 AM to 7 AM; real NWS Daily Climatological
+    Reports disprove that (pre-7am lows are attributed to the same date, not
+    the day before), and the extension was found to silently misattribute the
+    next morning's own low to the target date when that morning was colder."""
+
+    def _mock_response(self, rows, station="KSEA"):
         from unittest.mock import MagicMock
 
         text = "station,valid,tmpf\n" + "\n".join(
-            f"KSEA,{ts},{temp}" for ts, temp in rows
+            f"{station},{ts},{temp}" for ts, temp in rows
         )
         resp = MagicMock()
         resp.status_code = 200
@@ -2205,28 +2212,29 @@ class TestFetchAsosDailyTemp(unittest.TestCase):
         for stale_key in ("day1", "day2", "year1", "year2", "month1", "month2"):
             assert stale_key not in params, f"stale date param {stale_key!r} still sent"
 
-    def test_min_picks_up_overnight_low_past_local_midnight(self):
-        """The true daily low often lands after local midnight (early UTC hours
-        of the following day) — the fetch window must actually reach it."""
+    def test_min_excludes_next_day_readings(self):
+        """A colder reading on the following local day must NOT be picked up as
+        the target date's low — NWS attributes it to its own calendar day."""
         from unittest.mock import patch
 
         import tracker
 
-        # Evening-of-July-3 readings run 58-72F; the true overnight low (56F)
-        # lands at 2026-07-04 12:53 UTC (05:53 local PDT) -- inside the window
-        # this fix restores, previously dropped by the day1/day2 truncation.
+        # Readings during 2026-07-03 itself run 57-70F (coldest same-day: 57F
+        # at 23:53 local). The 56F reading at 2026-07-04 05:53 local belongs to
+        # July 4's own low, not July 3's, and must be excluded even though it's
+        # colder than anything actually observed on July 3.
         rows = [
             ("2026-07-03 07:53", "60.0"),  # 2026-07-03 00:53 local
             ("2026-07-03 20:53", "70.0"),  # 2026-07-03 13:53 local
-            ("2026-07-04 06:53", "57.0"),  # 2026-07-03 23:53 local
-            ("2026-07-04 12:53", "56.0"),  # 2026-07-04 05:53 local -- true low
-            ("2026-07-04 17:53", "60.0"),  # 2026-07-04 10:53 local -- outside window (excluded)
+            ("2026-07-04 06:53", "57.0"),  # 2026-07-03 23:53 local -- true low
+            ("2026-07-04 12:53", "56.0"),  # 2026-07-04 05:53 local -- excluded (next day)
+            ("2026-07-04 17:53", "60.0"),  # 2026-07-04 10:53 local -- excluded (next day)
         ]
         with patch("requests.get", return_value=self._mock_response(rows)):
             result = tracker._fetch_asos_daily_temp(
                 "KSEA", date(2026, 7, 3), "min", city_tz="America/Los_Angeles"
             )
-        assert result == 56.0, f"expected true overnight low 56.0, got {result}"
+        assert result == 57.0, f"expected same-day low 57.0, got {result}"
 
     def test_max_picks_same_day_peak(self):
         """HIGH markets don't need the next-day extension; peak stays on target day."""
@@ -2244,6 +2252,77 @@ class TestFetchAsosDailyTemp(unittest.TestCase):
                 "KSEA", date(2026, 7, 3), "max", city_tz="America/Los_Angeles"
             )
         assert result == 72.0
+
+    def test_min_excludes_next_day_readings_phoenix_no_dst(self):
+        """Same same-day-only rule, exercised on a station/timezone the fix's
+        own justifying comment cited (Phoenix, America/Phoenix — no DST ever,
+        so this also confirms the logic doesn't accidentally depend on DST
+        machinery being present)."""
+        from unittest.mock import patch
+
+        import tracker
+
+        # Phoenix is UTC-7 year-round. 2026-06-26 local 05:16 = 12:16 UTC same day.
+        rows = [
+            ("2026-06-26 07:00", "92.0"),  # 2026-06-26 00:00 local
+            ("2026-06-26 20:00", "112.0"),  # 2026-06-26 13:00 local -- afternoon peak
+            ("2026-06-27 06:00", "89.0"),  # 2026-06-26 23:00 local -- true low
+            ("2026-06-27 12:00", "84.0"),  # 2026-06-27 05:00 local -- excluded (next day)
+        ]
+        with patch(
+            "requests.get", return_value=self._mock_response(rows, station="KPHX")
+        ):
+            result = tracker._fetch_asos_daily_temp(
+                "KPHX", date(2026, 6, 26), "min", city_tz="America/Phoenix"
+            )
+        assert result == 89.0, f"expected same-day low 89.0, got {result}"
+
+    def test_min_excludes_next_day_readings_spring_forward(self):
+        """Same-day-only rule on a 23-hour local day (US DST spring-forward,
+        2026-03-08 — clocks skip 2:00-2:59 AM local) for a DST-observing zone."""
+        from unittest.mock import patch
+
+        import tracker
+
+        # America/Chicago: CST (UTC-6) before 2 AM local, CDT (UTC-5) after.
+        rows = [
+            ("2026-03-08 07:53", "28.0"),  # 2026-03-08 01:53 local (CST, UTC-6)
+            ("2026-03-08 13:53", "45.0"),  # 2026-03-08 08:53 local (CDT, UTC-5)
+            ("2026-03-09 04:53", "26.0"),  # 2026-03-08 23:53 local (CDT) -- true low
+            ("2026-03-09 10:53", "20.0"),  # 2026-03-09 05:53 local -- excluded (next day)
+        ]
+        with patch(
+            "requests.get", return_value=self._mock_response(rows, station="KMDW")
+        ):
+            result = tracker._fetch_asos_daily_temp(
+                "KMDW", date(2026, 3, 8), "min", city_tz="America/Chicago"
+            )
+        assert result == 26.0, f"expected same-day low 26.0, got {result}"
+
+    def test_min_excludes_next_day_readings_fall_back(self):
+        """Same-day-only rule on a 25-hour local day (US DST fall-back,
+        2026-11-01 — the 1:00-1:59 AM local hour occurs twice) for a
+        DST-observing zone. IEM's timestamps are UTC, so the repeated local
+        hour is unambiguous here regardless of the fold."""
+        from unittest.mock import patch
+
+        import tracker
+
+        # America/Chicago: CDT (UTC-5) before 2 AM local, CST (UTC-6) after.
+        rows = [
+            ("2026-11-01 05:53", "50.0"),  # 2026-11-01 00:53 local (CDT, UTC-5)
+            ("2026-11-01 06:53", "48.0"),  # 2026-11-01 01:53 local (CDT) -- 1st pass
+            ("2026-11-01 07:53", "47.0"),  # 2026-11-01 01:53 local (CST) -- 2nd pass
+            ("2026-11-02 05:53", "40.0"),  # 2026-11-01 23:53 local (CST) -- true low
+            ("2026-11-02 11:53", "35.0"),  # 2026-11-02 05:53 local -- excluded (next day)
+        ]
+        with patch(
+            "requests.get", return_value=self._mock_response(rows, station="KMDW")
+        ):
+            result = tracker._fetch_asos_daily_temp(
+                "KMDW", date(2026, 11, 1), "min", city_tz="America/Chicago"
+            )
+        assert result == 40.0, f"expected same-day low 40.0, got {result}"
 
 
 def test_composite_indexes_exist(tmp_path, monkeypatch):
