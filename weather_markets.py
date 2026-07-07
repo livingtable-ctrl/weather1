@@ -2333,9 +2333,10 @@ def load_learned_weights() -> dict:
             except OSError:
                 pass
             return {}
-        if any(v <= 0 for v in city_data.values()):
+        if any(not isinstance(v, (int, float)) or v <= 0 for v in city_data.values()):
             logging.warning(
-                "[ModelWeights] learned_weights.json corrupt: city %s has non-positive weight — deleting",
+                "[ModelWeights] learned_weights.json corrupt: city %s has a "
+                "non-numeric or non-positive weight — deleting",
                 city,
             )
             try:
@@ -2365,9 +2366,10 @@ def save_learned_weights(weights: dict) -> None:
                 type(city_data).__name__,
             )
             return
-        if any(v < 0.001 for v in city_data.values()):
+        if any(not isinstance(v, (int, float)) or v < 0.001 for v in city_data.values()):
             logging.error(
-                "[ModelWeights] city %s has near-zero weights — not persisting (corruption risk)",
+                "[ModelWeights] city %s has non-numeric or near-zero weights — "
+                "not persisting (corruption risk)",
                 city,
             )
             return

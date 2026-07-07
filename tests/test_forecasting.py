@@ -663,6 +663,53 @@ class TestLearnedWeights:
         result = wm.load_learned_weights()
         assert result == weights
 
+    def test_load_learned_weights_handles_non_numeric_value(self, tmp_path, monkeypatch):
+        """A manually-corrupted file with a non-numeric weight (e.g. a stray
+        string) must not crash load_learned_weights() with a TypeError -- it
+        should be treated as corruption, same as a non-positive weight."""
+        import json
+
+        import weather_markets as wm
+
+        monkeypatch.setattr(wm, "_LEARNED_WEIGHTS", {})
+        weights_path = tmp_path / "learned_weights.json"
+        weights_path.write_text(
+            json.dumps({"NYC": {"gfs_seamless": "high", "icon_seamless": 0.8}})
+        )
+
+        original_path_truediv = wm.Path.__truediv__
+
+        def fake_truediv(self, key):
+            if "learned_weights" in str(key):
+                return weights_path
+            return original_path_truediv(self, key)
+
+        monkeypatch.setattr(wm.Path, "__truediv__", fake_truediv)
+
+        result = wm.load_learned_weights()  # must not raise
+        assert result == {}
+        assert not weights_path.exists()  # corrupt file is deleted, same as other cases
+
+    def test_save_learned_weights_rejects_non_numeric_value(self, tmp_path, monkeypatch):
+        """A non-numeric weight passed to save_learned_weights() must not crash
+        with a TypeError -- it should be rejected the same as a near-zero weight."""
+        import weather_markets as wm
+
+        monkeypatch.setattr(wm, "_LEARNED_WEIGHTS", {})
+        weights_path = tmp_path / "learned_weights.json"
+
+        original_path_truediv = wm.Path.__truediv__
+
+        def fake_truediv(self, key):
+            if "learned_weights" in str(key):
+                return weights_path
+            return original_path_truediv(self, key)
+
+        monkeypatch.setattr(wm.Path, "__truediv__", fake_truediv)
+
+        wm.save_learned_weights({"NYC": {"gfs_seamless": "high"}})  # must not raise
+        assert not weights_path.exists()  # rejected before writing
+
 
 class TestDynamicCacheTTL:
     def test_ttl_until_next_cycle_minimum(self):
