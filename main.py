@@ -1883,6 +1883,19 @@ def _quick_paper_buy(client: KalshiClient) -> None:
 
             # Maker order (real order, not paper) — only if qty is specified
             if use_maker and maker_price is not None and qty and qty > 0:
+                # Use the frozen KALSHI_ENV constant, not _kalshi_env()'s fresh
+                # read — trading_gates.LiveTradingGate.check() itself reads the
+                # frozen main.KALSHI_ENV internally; using a different source
+                # here could let this outer check and the gate's own check
+                # disagree if KALSHI_ENV is ever mutated mid-process.
+                if KALSHI_ENV == "prod":
+                    from trading_gates import pre_live_trade_check
+
+                    try:
+                        pre_live_trade_check()
+                    except RuntimeError as _gate_err:
+                        print(red(f"  Live trading gate blocked: {_gate_err}"))
+                        return
                 try:
                     result = client.place_maker_order(ticker, side, maker_price, qty)
                     order = result.get("order", result)
@@ -3231,7 +3244,12 @@ def cmd_order(client: KalshiClient, action: str, args: list):
         print(dim("  Cancelled."))
         return
 
-    if _kalshi_env() == "prod":
+    # Use the frozen KALSHI_ENV constant, not _kalshi_env()'s fresh read --
+    # trading_gates.LiveTradingGate.check() itself reads the frozen
+    # main.KALSHI_ENV internally; using a different source here could let
+    # this outer check and the gate's own check disagree if KALSHI_ENV is
+    # ever mutated mid-process.
+    if KALSHI_ENV == "prod":
         from trading_gates import pre_live_trade_check
 
         try:

@@ -43,24 +43,26 @@ def _env_int(name: str, default: str) -> int:
 
 def _live_max_same_day_spend() -> float:
     """MAX_SAME_DAY_SPEND is actually enforced from utils.py, not this dataclass
-    (order_executor.py imports it directly) — read utils.py's live value here
-    instead of re-parsing the env var with a second, independently-drifting
-    default, so this field can never silently diverge from what real trading
-    logic uses."""
-    from utils import MAX_SAME_DAY_SPEND as _v
+    (order_executor.py imports it directly). Read the env var fresh here too
+    (matching from_env()'s "reads env vars fresh" contract and every other
+    field's _env_float() pattern), but fall back to utils.py's already-resolved
+    default rather than a second hardcoded copy — so an unset env var can never
+    silently diverge from what real trading logic uses."""
+    from utils import MAX_SAME_DAY_SPEND as _fallback
 
-    return _v
+    return _env_float("MAX_SAME_DAY_SPEND", str(_fallback))
 
 
 def _live_breakeven_trigger_pct() -> float:
     """BREAKEVEN_TRIGGER_PCT is actually enforced from utils.py, not this
-    dataclass (paper.py imports it directly) — read utils.py's live value here
-    instead of re-parsing the env var with a second, independently-drifting
-    default, so this field can never silently diverge from what real trading
-    logic uses."""
-    from utils import BREAKEVEN_TRIGGER_PCT as _v
+    dataclass (paper.py imports it directly). Read the env var fresh here too
+    (matching from_env()'s "reads env vars fresh" contract and every other
+    field's _env_float() pattern), but fall back to utils.py's already-resolved
+    default rather than a second hardcoded copy — so an unset env var can never
+    silently diverge from what real trading logic uses."""
+    from utils import BREAKEVEN_TRIGGER_PCT as _fallback
 
-    return _v
+    return _env_float("BREAKEVEN_TRIGGER_PCT", str(_fallback))
 
 
 def _file_fingerprint(path: Path) -> tuple[float, int] | None:

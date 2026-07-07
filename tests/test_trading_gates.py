@@ -183,7 +183,7 @@ class TestLiveTradingGate:
         monkeypatch.setattr("builtins.input", lambda _prompt="": "y")
 
         with (
-            patch("main._kalshi_env", return_value="prod"),
+            patch("main.KALSHI_ENV", "prod"),
             patch.dict(os.environ, {"LIVE_TRADING_ENABLED": "false"}),
         ):
             main.cmd_order(
@@ -201,3 +201,36 @@ class TestLiveTradingGate:
             patch("main.KALSHI_ENV", "demo"),  # any failing gate condition works here
         ):
             assert _micro_live_gate_ok() is False
+
+    def test_quick_paper_buy_maker_order_blocked_by_gate(self, monkeypatch, capsys):
+        """_quick_paper_buy's maker-order branch places a REAL order — despite the
+        function's name, it must not bypass the live trading gate."""
+        import main
+
+        mock_client = MagicMock()
+        mock_client.get_market.return_value = {}
+
+        monkeypatch.setattr(main, "is_trading_paused", lambda: False)
+        monkeypatch.setattr(main, "_resolve_price", lambda client, ticker, side: 0.45)
+        monkeypatch.setattr("paper.is_daily_loss_halted", lambda: False)
+        monkeypatch.setattr("paper.is_streak_paused", lambda: False)
+        _inputs = iter(
+            [
+                "KXTEST-25JUN01-T70",  # ticker
+                "yes",  # side
+                "2",  # order type: limit maker
+                "0.45",  # limit price
+                "5",  # qty
+                "",  # thesis
+            ]
+        )
+        monkeypatch.setattr("builtins.input", lambda *_a: next(_inputs))
+
+        with (
+            patch("main.KALSHI_ENV", "prod"),
+            patch.dict(os.environ, {"LIVE_TRADING_ENABLED": "false"}),
+        ):
+            main._quick_paper_buy(mock_client)
+
+        mock_client.place_maker_order.assert_not_called()
+        assert "gate blocked" in capsys.readouterr().out.lower()
