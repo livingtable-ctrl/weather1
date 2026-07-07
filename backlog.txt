@@ -30,3 +30,71 @@ When to revisit:
   - Brier consistently < 0.20 for 4+ weeks
   - Multi-day win rate stable and above Gate 2 threshold
   - Have spare bandwidth for a standalone pipeline build
+
+[TRACK ECMWF FORECAST ACCURACY]
+Priority: Low (ECMWF already gets a reasonable static/seasonal weight; this is
+  about making that weight data-driven like ICON/GFS already are)
+
+Problem:
+  ECMWF's per-model forecast accuracy is never captured anywhere, so it can
+  never earn a learned weight the way icon_seamless/gfs_seamless can.
+  paper.py's _score_ensemble_members() only ever logs icon_forecast_mean and
+  gfs_forecast_mean to tracker.ensemble_member_scores (see the comment left
+  in model_means there) -- no ecmwf_forecast_mean field exists anywhere in
+  the trade-entry -> settlement -> scoring pipeline. _forecast_model_weights()
+  and _model_weights() (weather_markets.py) both correctly fall back to a
+  static seasonal default for ECMWF forever, since the tracker data that
+  would let them do better structurally can't exist yet.
+
+  Note there are TWO separate ECMWF products in play, tracked independently:
+  ecmwf_ifs025 (deterministic, used by the daily 3-model blend in
+  get_weather_forecast()) and ecmwf_aifs025_ensemble (ML ensemble, used by
+  get_ensemble_temps()'s probability blend). Fixing one does NOT give the
+  other a learned weight -- they're unrelated model runs on different
+  Open-Meteo endpoints (FORECAST_BASE vs ENSEMBLE_BASE).
+
+What the fix looks like:
+  1. Decide which ECMWF product to instrument first. Recommend ecmwf_ifs025
+     (the daily-blend one) since that's the one that was actually silently
+     dropped from fetches until the 2026-07-07 fix (commit 5a3d80b) -- it's
+     the more consequential of the two for real trade decisions.
+  2. Add an ecmwf_forecast_mean field and thread it through the same path
+     icon_forecast_mean/gfs_forecast_mean already take: weather_markets.py's
+     analyze_trade() (near _get_consensus_probs(), ~line 4478) -> the analysis
+     dict returned to callers -> order_executor.py/main.py's calls into
+     paper.open_paper_trade(...) -> paper.py's trade schema -> finally added
+     to _score_ensemble_members()'s model_means dict (~paper.py:991).
+  3. _get_consensus_probs() (weather_markets.py ~line 4180) currently only
+     calls its generic, model-agnostic _model_prob_and_mean() helper for
+     "icon_seamless" and "gfs_seamless". Extending it for
+     ecmwf_aifs025_ensemble would be mechanically easy (same ENSEMBLE_BASE/
+     _ensemble_cache infrastructure already used there). Extending it for
+     ecmwf_ifs025 instead requires NEW plumbing mirroring this pattern
+     against FORECAST_BASE, since that's a different endpoint entirely --
+     don't assume this is a one-line change once ecmwf_ifs025 is picked.
+  4. Redesign the currently-binary model_consensus check
+     (abs(icon_p - gfs_p) > 0.12) for 3 models -- decide between an
+     all-pairwise-agreement check or a max-min-spread check. This is a real
+     design decision, not just plumbing -- don't rush it.
+  5. Once the field exists, add "ecmwf_ifs025": trade.get("ecmwf_forecast_mean")
+     to _score_ensemble_members()'s model_means dict.
+
+Why not now:
+  - The urgent bug (ECMWF silently excluded from live fetches) is already
+    fixed and does not depend on this -- ECMWF now always gets fetched with
+    a reasonable seasonal-default weight regardless.
+  - This is new instrumentation across ~4 files, not a bug fix -- meaningfully
+    more invasive than the fetch-list fix.
+  - Won't pay off for weeks even after shipping: needs 10+ fresh settled
+    trades per city (same MIN_OBSERVATIONS/min_n gates icon/gfs already use)
+    before the learned weight would ever activate.
+  - Requires a real design decision (which ECMWF product, how to redesign the
+    3-way consensus check) that deserves its own scoping pass, not a
+    rushed addition to an unrelated bug-fix session.
+
+When to revisit:
+  - Have bandwidth for a multi-file instrumentation change, not a quick fix.
+  - Decide up front whether ecmwf_ifs025 (daily blend, drives the probability
+    calc real trades actually use) or ecmwf_aifs025_ensemble (ensemble
+    consensus data) matters more before starting -- see note above, they are
+    not interchangeable.
