@@ -31,13 +31,19 @@ class TestDynamicModelWeights:
         assert result is None
 
     def test_used_as_first_priority_in_forecast_model_weights(self):
-        """_forecast_model_weights uses _dynamic_model_weights as first priority."""
+        """_forecast_model_weights uses _dynamic_model_weights as first priority,
+        falling back to the static seasonal default for any model dyn omits."""
         from weather_markets import _forecast_model_weights
 
         expected = {"icon_seamless": 1.5, "gfs_seamless": 0.5}
-        with patch("weather_markets._dynamic_model_weights", return_value=expected):
+        with (
+            patch("weather_markets._dynamic_model_weights", return_value=expected),
+            patch("weather_markets._get_enso_phase", return_value="neutral"),
+        ):
             result = _forecast_model_weights(month=1, city="NYC")
-        assert result == expected
+        assert result["icon_seamless"] == 1.5
+        assert result["gfs_seamless"] == 0.5
+        assert result["ecmwf_ifs025"] == pytest.approx(2.5)
 
 
 class TestPersistenceProb:
@@ -614,7 +620,9 @@ class TestLearnedWeights:
         )
         with patch("weather_markets._dynamic_model_weights", return_value=None):
             result = wm._forecast_model_weights(month=6, city="NYC")
-        assert result == {"gfs_seamless": 1.5, "icon_seamless": 0.5}
+        assert result["gfs_seamless"] == 1.5
+        assert result["icon_seamless"] == 0.5
+        assert result["ecmwf_ifs025"] == pytest.approx(1.5)
 
     def test_forecast_model_weights_falls_back_to_seasonal(self, monkeypatch):
         """Falls back to seasonal weights when no learned data for city."""
@@ -745,6 +753,24 @@ class TestForecastModelWeightsTrackerIntegration:
         with patch("tracker.get_model_weights", return_value=tracker_weights):
             result = _forecast_model_weights(month=1, city="NYC")
         assert result == tracker_weights
+
+    def test_partial_tracker_weights_backfilled_from_baseline(self):
+        """When tracker data covers only some models (e.g. ECMWF has zero rows
+        for this city/window), the missing model must be backfilled from the
+        static seasonal baseline, not silently dropped from the result."""
+        from unittest.mock import patch
+
+        from weather_markets import _forecast_model_weights
+
+        partial_tracker_weights = {"gfs_seamless": 0.25, "icon_seamless": 0.20}
+        with (
+            patch("tracker.get_model_weights", return_value=partial_tracker_weights),
+            patch("weather_markets._get_enso_phase", return_value="neutral"),
+        ):
+            result = _forecast_model_weights(month=1, city="NYC")  # winter
+        assert result["gfs_seamless"] == 0.25
+        assert result["icon_seamless"] == 0.20
+        assert result["ecmwf_ifs025"] == pytest.approx(2.5)  # backfilled, not missing
 
     def test_seasonal_fallback_when_no_tracker_rows(self):
         """When tracker has no rows (empty dict), _forecast_model_weights falls back to seasonal."""

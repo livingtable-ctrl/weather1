@@ -240,19 +240,22 @@ class TestTimeRisk(unittest.TestCase):
 
 class TestForecastModelWeights(unittest.TestCase):
     def test_ecmwf_weight_winter(self):
-        """ECMWF should have weight 2.5 in winter months (Oct–Mar)."""
-        for month in (10, 11, 12, 1, 2, 3):
-            weights = _forecast_model_weights(month)
-            self.assertAlmostEqual(
-                weights["ecmwf_aifs025_ensemble"], 2.5, msg=f"month={month}"
-            )
+        """ECMWF should have weight 2.5 in winter months (Oct–Mar), ENSO-neutral."""
+        from unittest.mock import patch
+
+        with patch("weather_markets._get_enso_phase", return_value="neutral"):
+            for month in (10, 11, 12, 1, 2, 3):
+                weights = _forecast_model_weights(month)
+                self.assertAlmostEqual(
+                    weights["ecmwf_ifs025"], 2.5, msg=f"month={month}"
+                )
 
     def test_ecmwf_weight_summer(self):
         """ECMWF should have weight 1.5 in summer months (Apr–Sep)."""
         for month in (4, 5, 6, 7, 8, 9):
             weights = _forecast_model_weights(month)
             self.assertAlmostEqual(
-                weights["ecmwf_aifs025_ensemble"], 1.5, msg=f"month={month}"
+                weights["ecmwf_ifs025"], 1.5, msg=f"month={month}"
             )
 
     def test_gfs_and_icon_constant(self):

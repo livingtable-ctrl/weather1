@@ -837,24 +837,14 @@ def _forecast_model_weights(month: int, city: str | None = None) -> dict[str, fl
     ECMWF is the most accurate global model in winter (Oct–Mar) for mid-latitudes.
     GFS is competitive in summer for the US. ICON adds value year-round.
 
-    Priority order (#122, #28):
+    Priority order (#122, #28), applied per-model so the result always contains
+    exactly the three real fetchable models (callers use these keys to decide which
+    Open-Meteo models to request):
       1. Dynamic from tracker MAE (city + season specific)
       2. Per-city learned weights from data/learned_weights.json
       3. Static seasonal weights + ENSO adjustment (original behaviour)
     """
-    # 1. Dynamic from tracker MAE
-    if city is not None:
-        dyn = _dynamic_model_weights(city=city, month=month)
-        if dyn:
-            return dyn
-
-    # 2. Per-city learned weights from last backtest
-    if city is not None:
-        lw = load_learned_weights()
-        if city in lw:
-            return dict(lw[city])
-
-    # 3. Static seasonal + ENSO fallback
+    # 3. Static seasonal + ENSO fallback — computed first as the baseline/floor
     is_winter = month in (10, 11, 12, 1, 2, 3)
     ecmwf_w = 2.5 if is_winter else 1.5
 
@@ -865,10 +855,34 @@ def _forecast_model_weights(month: int, city: str | None = None) -> dict[str, fl
         elif enso_phase == "la_nina":
             ecmwf_w += 0.3  # La Niña winters: moderate ECMWF boost
 
-    return {
+    baseline = {
         "gfs_seamless": 1.0,
         "ecmwf_ifs025": ecmwf_w,
         "icon_seamless": 1.0,
+    }
+
+    if city is None:
+        return baseline
+
+    # 2. Per-city learned weights from last backtest (per-model, only known keys)
+    lw = load_learned_weights()
+    city_data = lw.get(city)
+    if city_data is not None and not isinstance(city_data, dict):
+        _log.debug(
+            "[ModelWeights] %s: learned_weights.json has %s (expected dict) — "
+            "skipping, using seasonal defaults",
+            city,
+            type(city_data).__name__,
+        )
+        city_data = None
+    learned = city_data if isinstance(city_data, dict) else {}
+
+    # 1. Dynamic from tracker MAE (per-model, only known keys)
+    dyn = _dynamic_model_weights(city=city, month=month) or {}
+
+    return {
+        model: dyn.get(model, learned.get(model, default))
+        for model, default in baseline.items()
     }
 
 
@@ -2562,58 +2576,59 @@ def learn_seasonal_weights(city: str, min_n: int = 20) -> dict[str, float]:
 def _model_weights(city: str, month: int | None = None) -> dict[str, float]:
     """
     Return per-model weights for the ensemble blend.
-    Priority order:
-      1. Per-city inverse-MAE weights derived from tracker data (#25/#118)
-      2. Manually learned weights from data/learned_weights.json (from backtest)
+    Priority order — tier 1 is all-or-nothing against the seasonal baseline
+    (tier 3), NOT merged per-model with tier 2 (unlike _forecast_model_weights,
+    which does compose all three tiers per-model):
+      1. Per-city inverse-MAE weights derived from tracker data (#25/#118),
+         blended 70/30 against the seasonal prior directly — if this tier
+         fires, tier 2 is skipped entirely, even for models tier 1 lacks.
+      2. Manually learned weights from data/learned_weights.json (from
+         backtest), merged per-model onto the seasonal prior for any model
+         it omits.
       3. Seasonal ECMWF/GFS priors (original behaviour)
     """
-    # 1. Dynamic: derive from recent tracker MAE data
-    mae_weights = _weights_from_mae(city)
-    if mae_weights:
-        # Blend MAE-derived weights with seasonal prior at 70/30 so we don't
-        # completely abandon meteorological priors with limited data
-        is_winter = (month or 0) in (10, 11, 12, 1, 2, 3)
-        ecmwf_prior = 2.0 if is_winter else 1.5
-        prior = {
-            "icon_seamless": 1.0,
-            "gfs_seamless": 1.0,
-            "ecmwf_aifs025_ensemble": ecmwf_prior,
-        }
-        blended: dict[str, float] = {}
-        for m in set(mae_weights) | set(prior):
-            blended[m] = 0.7 * mae_weights.get(m, 1.0) + 0.3 * prior.get(m, 1.0)
-        return blended
-
-    # 2. Pre-saved learned weights from last backtest run
-    lw = load_learned_weights()
-    if city in lw:
-        city_data = lw[city]
-        if isinstance(city_data, dict):
-            return dict(city_data)
-        else:
-            # Guard: learned_weights.json sometimes gets written with raw win-rates
-            # (floats) instead of the expected {model: weight} dict — e.g. when a
-            # walk-forward backtest saves city_win_rates directly.  Fall through to
-            # seasonal defaults rather than crashing with "float is not iterable".
-            _log.debug(
-                "[ModelWeights] %s: learned_weights.json has %s (expected dict) — "
-                "skipping, using seasonal defaults",
-                city,
-                type(city_data).__name__,
-            )
-
-    # 3. Seasonal ECMWF weight: better in winter for mid-latitude US cities
+    # 3. Seasonal ECMWF weight: better in winter for mid-latitude US cities —
+    # computed first as the baseline/floor
     if month is not None:
         is_winter = month in (10, 11, 12, 1, 2, 3)
         ecmwf_w = 2.0 if is_winter else 1.5
     else:
         ecmwf_w = 1.5  # conservative default
 
-    return {
+    baseline = {
         "icon_seamless": 1.0,
         "gfs_seamless": 1.0,
         "ecmwf_aifs025_ensemble": ecmwf_w,
     }
+
+    # 1. Dynamic: derive from recent tracker MAE data. Blends against the
+    # seasonal baseline directly (not tier 2) — loop over baseline's keys only
+    # (not mae_weights' keys) so a stray tracked value (e.g. "blended", the
+    # bias-corrected prediction — not a real model) can never leak into the
+    # ensemble's model-weight set.
+    mae_weights = _weights_from_mae(city)
+    if mae_weights:
+        return {
+            m: 0.7 * mae_weights.get(m, 1.0) + 0.3 * baseline[m] for m in baseline
+        }
+
+    # 2. Pre-saved learned weights from last backtest run (per-model, only known keys)
+    lw = load_learned_weights()
+    city_data = lw.get(city)
+    if city_data is not None and not isinstance(city_data, dict):
+        # Guard: learned_weights.json sometimes gets written with raw win-rates
+        # (floats) instead of the expected {model: weight} dict — e.g. when a
+        # walk-forward backtest saves city_win_rates directly.  Fall through to
+        # seasonal defaults rather than crashing with "float is not iterable".
+        _log.debug(
+            "[ModelWeights] %s: learned_weights.json has %s (expected dict) — "
+            "skipping, using seasonal defaults",
+            city,
+            type(city_data).__name__,
+        )
+        city_data = None
+    learned = city_data if isinstance(city_data, dict) else {}
+    return {model: learned.get(model, default) for model, default in baseline.items()}
 
 
 def _ensemble_circuit_is_open() -> bool:

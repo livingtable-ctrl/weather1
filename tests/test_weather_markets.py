@@ -15,6 +15,7 @@ from weather_markets import (
     _bootstrap_ci,
     _feels_like,
     _forecast_model_weights,
+    _model_weights,
     ensemble_stats,
     is_liquid,
     kelly_fraction,
@@ -270,6 +271,98 @@ class TestForecastModelWeights:
             w = _forecast_model_weights(month)
             assert w["gfs_seamless"] == pytest.approx(1.0)
             assert w["icon_seamless"] == pytest.approx(1.0)
+
+
+# ── TestModelWeights (_model_weights, used by the ensemble blend) ─────────────
+
+
+class TestModelWeights:
+    def test_falls_back_to_seasonal_baseline(self, monkeypatch):
+        """No tracker MAE data, no learned weights → pure seasonal baseline."""
+        from unittest.mock import patch
+
+        with (
+            patch("weather_markets._weights_from_mae", return_value=None),
+            patch("weather_markets.load_learned_weights", return_value={}),
+        ):
+            w = _model_weights("NYC", month=1)  # winter
+        assert w == {
+            "icon_seamless": 1.0,
+            "gfs_seamless": 1.0,
+            "ecmwf_aifs025_ensemble": pytest.approx(2.0),
+        }
+
+    def test_learned_weights_backfill_missing_models_from_baseline(self):
+        """Priority-2 (learned_weights.json) is a partial dict — the model it
+        omits must be backfilled from the seasonal baseline, not dropped."""
+        from unittest.mock import patch
+
+        with (
+            patch("weather_markets._weights_from_mae", return_value=None),
+            patch(
+                "weather_markets.load_learned_weights",
+                return_value={"NYC": {"gfs_seamless": 5.0}},
+            ),
+        ):
+            w = _model_weights("NYC", month=7)  # summer
+        assert w["gfs_seamless"] == pytest.approx(5.0)
+        assert w["icon_seamless"] == pytest.approx(1.0)  # backfilled from baseline
+        assert w["ecmwf_aifs025_ensemble"] == pytest.approx(1.5)  # backfilled
+
+    def test_mae_data_overrides_and_skips_learned_weights_entirely(self):
+        """When tracker MAE data exists, it blends against the seasonal baseline
+        directly and priority-2 (learned_weights.json) is not consulted at all —
+        this is intentional, pre-existing behavior (see docstring), not a bug."""
+        from unittest.mock import patch
+
+        with (
+            patch(
+                "weather_markets._weights_from_mae",
+                return_value={"icon_seamless": 2.0},
+            ),
+            patch(
+                "weather_markets.load_learned_weights",
+                return_value={"NYC": {"gfs_seamless": 99.0}},
+            ),
+        ):
+            w = _model_weights("NYC", month=7)  # summer baseline: 1.0/1.0/1.5
+        # icon_seamless: 0.7*2.0 + 0.3*1.0 = 1.7
+        assert w["icon_seamless"] == pytest.approx(1.7)
+        # gfs_seamless: mae_weights lacks it, defaults to 1.0 -> 0.7*1.0+0.3*1.0=1.0
+        # NOT 99.0 -- confirms learned_weights.json is fully skipped, not merged.
+        assert w["gfs_seamless"] == pytest.approx(1.0)
+
+    def test_malformed_learned_weights_falls_back_safely(self):
+        """A corrupted (non-dict) learned_weights.json entry for a city must not
+        crash -- fall back to the seasonal baseline."""
+        from unittest.mock import patch
+
+        with (
+            patch("weather_markets._weights_from_mae", return_value=None),
+            patch(
+                "weather_markets.load_learned_weights",
+                return_value={"NYC": 0.5},  # corrupted: raw float, not a dict
+            ),
+        ):
+            w = _model_weights("NYC", month=7)
+        assert w == {
+            "icon_seamless": 1.0,
+            "gfs_seamless": 1.0,
+            "ecmwf_aifs025_ensemble": pytest.approx(1.5),
+        }
+
+    def test_stray_tracked_model_never_leaks_into_result(self):
+        """A stray tracked value (e.g. "blended", not a real model) in mae_weights
+        must never appear in the returned weights."""
+        from unittest.mock import patch
+
+        with patch(
+            "weather_markets._weights_from_mae",
+            return_value={"icon_seamless": 2.0, "blended": 99.0},
+        ):
+            w = _model_weights("NYC", month=7)
+        assert "blended" not in w
+        assert set(w.keys()) == {"icon_seamless", "gfs_seamless", "ecmwf_aifs025_ensemble"}
 
 
 # ── TestNormalCdf ─────────────────────────────────────────────────────────────

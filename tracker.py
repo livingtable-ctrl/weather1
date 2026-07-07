@@ -2568,6 +2568,7 @@ def get_member_accuracy(days_back: int = 60) -> dict:
             FROM ensemble_member_scores
             WHERE predicted_temp IS NOT NULL
               AND actual_temp IS NOT NULL
+              AND model != 'blended'
               AND logged_at >= datetime('now', ? || ' days')
             """,
             (f"-{days_back}",),
@@ -2619,6 +2620,7 @@ def get_model_brier_scores(days: int = 30) -> dict[str, float]:
             WHERE  logged_at >= ?
               AND  actual_temp IS NOT NULL
               AND  predicted_temp IS NOT NULL
+              AND  model != 'blended'
             GROUP  BY model
             HAVING COUNT(*) >= 10
             """,
@@ -2642,6 +2644,7 @@ def get_ensemble_member_accuracy(
             SELECT model, city, predicted_temp, actual_temp, target_date
             FROM ensemble_member_scores
             WHERE predicted_temp IS NOT NULL AND actual_temp IS NOT NULL
+              AND model != 'blended'
         """
         params: list = []
         if city:
@@ -2691,6 +2694,7 @@ def get_model_weights(city: str, window_days: int = 30) -> dict[str, float]:
             WHERE city = ?
               AND predicted_temp IS NOT NULL
               AND actual_temp IS NOT NULL
+              AND model != 'blended'
               AND logged_at >= datetime('now', ? || ' days')
             """,
             (city, f"-{window_days}"),
