@@ -3231,6 +3231,15 @@ def cmd_order(client: KalshiClient, action: str, args: list):
         print(dim("  Cancelled."))
         return
 
+    if _kalshi_env() == "prod":
+        from trading_gates import pre_live_trade_check
+
+        try:
+            pre_live_trade_check()
+        except RuntimeError as _gate_err:
+            print(red(f"  Live trading gate blocked: {_gate_err}"))
+            return
+
     row_id = log_order(ticker, side, int(count), price, order_type=action)
     _placed_order: dict | None = None
     try:

@@ -168,3 +168,36 @@ class TestLiveTradingGate:
         assert not placed
         assert cost == 0.0
         mock_client.place_order.assert_not_called()
+
+    def test_cmd_order_blocked_by_gate(self, monkeypatch, capsys):
+        """cmd_order (manual CLI order) must not bypass the live trading gate."""
+        import main
+
+        mock_client = MagicMock()
+        mock_client.get_market.return_value = None  # skip analysis branch
+
+        monkeypatch.setattr(main, "is_trading_paused", lambda: False)
+        monkeypatch.setattr(
+            "execution_log.was_recently_ordered", lambda ticker, side: False
+        )
+        monkeypatch.setattr("builtins.input", lambda _prompt="": "y")
+
+        with (
+            patch("main._kalshi_env", return_value="prod"),
+            patch.dict(os.environ, {"LIVE_TRADING_ENABLED": "false"}),
+        ):
+            main.cmd_order(
+                mock_client, "order", ["KXTEST-25JUN01-T70", "yes", "5", "0.50"]
+            )
+
+        mock_client.place_order.assert_not_called()
+        assert "gate blocked" in capsys.readouterr().out.lower()
+
+    def test_micro_live_blocked_by_gate(self, monkeypatch):
+        """_micro_live_gate_ok() must return False when the live trading gate blocks."""
+        from order_executor import _micro_live_gate_ok
+
+        with (
+            patch("main.KALSHI_ENV", "demo"),  # any failing gate condition works here
+        ):
+            assert _micro_live_gate_ok() is False

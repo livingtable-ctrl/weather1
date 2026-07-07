@@ -373,6 +373,19 @@ def _poll_pending_orders(client, config: dict | None = None) -> None:
             )
 
 
+def _micro_live_gate_ok() -> bool:
+    """Bool wrapper around trading_gates.pre_live_trade_check() for the
+    micro-live if/elif chain, which the full-live path in _place_live_order()
+    (below) enforces directly via its own try/except."""
+    from trading_gates import pre_live_trade_check
+
+    try:
+        pre_live_trade_check()
+        return True
+    except RuntimeError:
+        return False
+
+
 def _place_live_order(
     ticker: str,
     side: str,
@@ -978,7 +991,9 @@ def _log_shadow_predictions(opps: list, live: bool = False) -> int:
                 ticker, days=7
             ) or execution_log.was_traded_today(ticker, rec_side):
                 continue
-            _ok, _reason = _validate_trade_opportunity({**a, "ticker": ticker}, live=live)
+            _ok, _reason = _validate_trade_opportunity(
+                {**a, "ticker": ticker}, live=live
+            )
             if not _ok:
                 _log.debug("_log_shadow_predictions: skip %s — %s", ticker, _reason)
                 continue
@@ -1716,6 +1731,12 @@ def _auto_place_trades(
                         # self-block the micro-live placement (paper orders have live=0).
                         _log.warning(
                             "[MicroLive] dedup blocked %s/%s — already traded today (live)",
+                            ticker,
+                            rec_side,
+                        )
+                    elif not _micro_live_gate_ok():
+                        _log.warning(
+                            "[MicroLive] live trading gate blocked %s/%s",
                             ticker,
                             rec_side,
                         )
