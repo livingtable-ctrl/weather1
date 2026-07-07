@@ -2162,7 +2162,7 @@ def fetch_temperature_ecmwf(
         return result
     except Exception as exc:
         _ensemble_cb.record_failure()
-        _log.debug(
+        _log.info(
             "open_meteo_ensemble: failure #%d (ECMWF/%s) — %s: %s",
             _ensemble_cb.failure_count,
             city,
@@ -2213,7 +2213,7 @@ def _fetch_model_ensemble(
             _ensemble_cb.record_success()
         except Exception as _exc:
             _ensemble_cb.record_failure()
-            _log.debug(
+            _log.info(
                 "open_meteo_ensemble: failure #%d (hourly) — %s: %s",
                 _ensemble_cb.failure_count,
                 type(_exc).__name__,
@@ -2248,7 +2248,7 @@ def _fetch_model_ensemble(
             _ensemble_cb.record_success()
         except Exception as _exc:
             _ensemble_cb.record_failure()
-            _log.debug(
+            _log.info(
                 "open_meteo_ensemble: failure #%d (daily) — %s: %s",
                 _ensemble_cb.failure_count,
                 type(_exc).__name__,
@@ -4273,7 +4273,7 @@ def _get_consensus_probs(
                     _ensemble_cb.record_success()
                 except Exception as _exc:
                     _ensemble_cb.record_failure()
-                    _log.debug(
+                    _log.info(
                         "open_meteo_ensemble: failure #%d (consensus) — %s: %s",
                         _ensemble_cb.failure_count,
                         type(_exc).__name__,
@@ -4430,7 +4430,7 @@ def _fetch_ensemble_precip(
             return [v for v in raw_member_values if v is not None]
         except Exception as _exc:
             _ensemble_cb.record_failure()
-            _log.debug(
+            _log.info(
                 "open_meteo_ensemble: failure #%d (model=%s) — %s: %s",
                 _ensemble_cb.failure_count,
                 model,
