@@ -2277,12 +2277,12 @@ def _fetch_model_ensemble(
         ]
 
 
-_LEARNED_WEIGHTS: dict = {}  # cached after first load
+_LEARNED_WEIGHTS: dict[str, dict[str, float]] = {}  # cached after first load
 _LEARNED_WEIGHTS_TTL_DAYS = 7  # P3-7: single definition (duplicate removed)
 _LEARNED_WEIGHTS_TTL_WARNED = False  # log-once flag — prevents per-market spam
 
 
-def load_learned_weights() -> dict:
+def load_learned_weights() -> dict[str, dict[str, float]]:
     """
     Load per-city model weights previously saved by save_learned_weights().
     Format: {city: {model: weight, ...}, ...}
@@ -2516,7 +2516,7 @@ def _weights_from_mae(
 
 def _dynamic_model_weights(
     city: str | None = None, month: int | None = None, min_samples: int = 5
-) -> dict | None:
+) -> dict[str, float] | None:
     """
     Derive per-model blend weights from tracker softmax-MAE data via
     get_model_weights(). Returns None when city is None or tracker has no rows.
