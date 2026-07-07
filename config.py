@@ -41,6 +41,28 @@ def _env_int(name: str, default: str) -> int:
         ) from None
 
 
+def _live_max_same_day_spend() -> float:
+    """MAX_SAME_DAY_SPEND is actually enforced from utils.py, not this dataclass
+    (order_executor.py imports it directly) — read utils.py's live value here
+    instead of re-parsing the env var with a second, independently-drifting
+    default, so this field can never silently diverge from what real trading
+    logic uses."""
+    from utils import MAX_SAME_DAY_SPEND as _v
+
+    return _v
+
+
+def _live_breakeven_trigger_pct() -> float:
+    """BREAKEVEN_TRIGGER_PCT is actually enforced from utils.py, not this
+    dataclass (paper.py imports it directly) — read utils.py's live value here
+    instead of re-parsing the env var with a second, independently-drifting
+    default, so this field can never silently diverge from what real trading
+    logic uses."""
+    from utils import BREAKEVEN_TRIGGER_PCT as _v
+
+    return _v
+
+
 def _file_fingerprint(path: Path) -> tuple[float, int] | None:
     """(mtime, size) for a file, or None if it doesn't exist.
 
@@ -184,9 +206,7 @@ class BotConfig:
     max_same_day_positions: int = field(
         default_factory=lambda: _env_int("MAX_SAME_DAY_POSITIONS", "8")
     )
-    max_same_day_spend: float = field(
-        default_factory=lambda: _env_float("MAX_SAME_DAY_SPEND", "400.0")
-    )
+    max_same_day_spend: float = field(default_factory=_live_max_same_day_spend)
     # Settled-trade count gate before per-method Kelly multiplier activates (paper.py)
     method_kelly_gate: float = field(
         default_factory=lambda: _env_float("METHOD_KELLY_GATE", "50.0")
@@ -194,10 +214,7 @@ class BotConfig:
     max_city_date_exposure: float = field(
         default_factory=lambda: _env_float("MAX_CITY_DATE_EXPOSURE", "50.0")
     )
-    # Raised to 0.75 (was 0.30) per memory note Jun27
-    breakeven_trigger_pct: float = field(
-        default_factory=lambda: _env_float("BREAKEVEN_TRIGGER_PCT", "0.75")
-    )
+    breakeven_trigger_pct: float = field(default_factory=_live_breakeven_trigger_pct)
     partial_exit_pct: float = field(
         default_factory=lambda: _env_float("PARTIAL_EXIT_PCT", "0.50")
     )
