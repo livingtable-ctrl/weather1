@@ -7,7 +7,6 @@ class TestSaveWalkForwardParams:
         write_text — a plain write leaves a window where a concurrent reader
         (e.g. web_app.py, a separate process) can see a partially-written file
         under the mtime config.py's cache keys on."""
-        import json
         from unittest.mock import MagicMock
 
         import backtest
@@ -17,7 +16,12 @@ class TestSaveWalkForwardParams:
 
         out_path = tmp_path / "walk_forward_params.json"
         backtest.save_walk_forward_params(
-            {"mean_brier": 0.2, "std_brier": 0.01, "n_folds": 5, "optimal_min_edge": 0.06},
+            {
+                "mean_brier": 0.2,
+                "std_brier": 0.01,
+                "n_folds": 5,
+                "optimal_min_edge": 0.06,
+            },
             path=out_path,
         )
 

@@ -247,7 +247,7 @@ class TestPaperMinEdgeWarning:
         process."""
         import config
 
-        missing = tmp_path / "walk_forward_params.json"  # never created
+        # tmp_path is empty — walk_forward_params.json was never created here.
         with patch.object(config, "_DATA_DIR", tmp_path):
             # Must not raise, even though the file has never existed.
             val = config._paper_min_edge_default()
