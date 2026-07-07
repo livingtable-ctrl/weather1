@@ -932,7 +932,9 @@ def get_weather_forecast(city: str, target_date: date) -> dict | None:
             resp.raise_for_status()
             daily = resp.json().get("daily", {})
             if is_all_null(daily.get("temperature_2m_max")):
-                raise ValueError(f"model {model} returned all-null daily data (dead model?)")
+                raise ValueError(
+                    f"model {model} returned all-null daily data (dead model?)"
+                )
             _forecast_cb.record_success()
         except Exception as _exc:
             _forecast_cb.record_failure()
@@ -2333,7 +2335,7 @@ def load_learned_weights() -> dict:
             except OSError:
                 pass
             return {}
-        if any(not isinstance(v, (int, float)) or v <= 0 for v in city_data.values()):
+        if any(not isinstance(v, int | float) or v <= 0 for v in city_data.values()):
             logging.warning(
                 "[ModelWeights] learned_weights.json corrupt: city %s has a "
                 "non-numeric or non-positive weight — deleting",
@@ -2366,7 +2368,7 @@ def save_learned_weights(weights: dict) -> None:
                 type(city_data).__name__,
             )
             return
-        if any(not isinstance(v, (int, float)) or v < 0.001 for v in city_data.values()):
+        if any(not isinstance(v, int | float) or v < 0.001 for v in city_data.values()):
             logging.error(
                 "[ModelWeights] city %s has non-numeric or near-zero weights — "
                 "not persisting (corruption risk)",
@@ -2610,9 +2612,7 @@ def _model_weights(city: str, month: int | None = None) -> dict[str, float]:
     # ensemble's model-weight set.
     mae_weights = _weights_from_mae(city)
     if mae_weights:
-        return {
-            m: 0.7 * mae_weights.get(m, 1.0) + 0.3 * baseline[m] for m in baseline
-        }
+        return {m: 0.7 * mae_weights.get(m, 1.0) + 0.3 * baseline[m] for m in baseline}
 
     # 2. Pre-saved learned weights from last backtest run (per-model, only known keys)
     lw = load_learned_weights()
@@ -3102,9 +3102,7 @@ def get_weather_markets(
 
     _mkt_pool = ThreadPoolExecutor(max_workers=6)
     try:
-        futures = {
-            _mkt_pool.submit(_fetch_series, s): s for s in KNOWN_WEATHER_SERIES
-        }
+        futures = {_mkt_pool.submit(_fetch_series, s): s for s in KNOWN_WEATHER_SERIES}
         try:
             for fut in as_completed(futures, timeout=40):
                 try:
@@ -3150,9 +3148,7 @@ def check_series_drift(client: KalshiClient) -> None:
 
         live = client.get_series_list(category="Climate and Weather")
         live_tickers = {s.get("ticker", "") for s in live}
-        live_weather = {
-            t for t in live_tickers if t.startswith(("KXHIGH", "KXLOW"))
-        }
+        live_weather = {t for t in live_tickers if t.startswith(("KXHIGH", "KXLOW"))}
 
         # Only KXHIGH/KXLOW entries are checked against live_weather — KXRAIN/
         # KXSNOW are known-dead placeholders (confirmed 0 open markets, ever)

@@ -144,7 +144,9 @@ def is_all_null(values: list | None) -> bool:
     returns False — those mean "no data for this range yet", a normal and
     distinct condition from "the model returned nothing but nulls".
     """
-    return bool(values) and all(v is None for v in values)
+    if not values:
+        return False
+    return all(v is None for v in values)
 
 
 def validate_nws_response(data: dict) -> bool:
