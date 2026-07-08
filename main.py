@@ -3494,7 +3494,9 @@ def cmd_setup():
     print(bold("║   Kalshi Weather Setup Wizard    ║"))
     print(bold("╚══════════════════════════════════╝\n"))
 
-    env_path = Path(".env")
+    # Repo-relative, matching cmd_settings()'s convention -- not CWD-relative,
+    # which could target the wrong file entirely if run from elsewhere.
+    env_path = Path(__file__).parent / ".env"
 
     # ── Step 1: Credentials ───────────────────────────────────────────────────
     print(bold("Step 1 of 3 — Kalshi API credentials"))
@@ -3524,12 +3526,18 @@ def cmd_setup():
         print(yellow("\n  No Key ID entered — skipping credential setup."))
         print(dim("  You can still use market data without credentials."))
     else:
-        env_contents = (
-            f"KALSHI_KEY_ID={key_id}\n"
-            f"KALSHI_PRIVATE_KEY_PATH={pem_path}\n"
-            f"KALSHI_ENV={env_mode}\n"
-        )
-        env_path.write_text(env_contents)
+        # dotenv.set_key() updates one key in place, preserving every other
+        # line -- a plain write_text() of just these 3 keys previously
+        # silently destroyed every other .env setting (TRADING_PAUSED,
+        # BREAKEVEN_TRIGGER_PCT, risk limits, etc.) whenever setup was
+        # re-run on an already-configured .env (found via a deep code
+        # review, 2026-07-08).
+        from dotenv import set_key as _set_key_setup
+
+        env_path.touch(exist_ok=True)
+        _set_key_setup(str(env_path), "KALSHI_KEY_ID", key_id)
+        _set_key_setup(str(env_path), "KALSHI_PRIVATE_KEY_PATH", pem_path)
+        _set_key_setup(str(env_path), "KALSHI_ENV", env_mode)
         load_dotenv(override=True)
         print(green("  .env saved.\n"))
 
