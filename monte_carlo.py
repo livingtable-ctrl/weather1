@@ -231,6 +231,21 @@ def simulate_portfolio(
     _dynamic = _get_recent_corr(days=60)
     if len(_dynamic) >= 3:
         for (c1, c2), corr in _dynamic.items():
+            _prior = _DEFAULT_CORRELATIONS.get((c1, c2))
+            # Make drift observable: this can silently overwrite a hand-tuned
+            # seed with a small-sample (>=5 dates, per tracker.py's own
+            # min_pairs gate) live estimate -- log it rather than let a
+            # seed/live disagreement go unnoticed the way the stale seed
+            # values did before this was caught (2026-07-08 code review).
+            if _prior is not None and abs(_prior - corr) > 0.15:
+                _log.info(
+                    "simulate_portfolio: dynamic correlation for (%s, %s) is %.3f, "
+                    "overriding prior %.3f",
+                    c1,
+                    c2,
+                    corr,
+                    _prior,
+                )
             _DEFAULT_CORRELATIONS[(c1, c2)] = corr
             _DEFAULT_CORRELATIONS[(c2, c1)] = corr
 
@@ -353,9 +368,13 @@ def simulate_portfolio(
                 _cj = _tj.get("city") or ""
                 if not _ci or not _cj:
                     continue
-                _rho = _DEFAULT_CORRELATIONS.get(
-                    (_ci, _cj)
-                ) or _DEFAULT_CORRELATIONS.get((_cj, _ci))
+                _rho = _DEFAULT_CORRELATIONS.get((_ci, _cj))
+                if _rho is None:
+                    # `or` here would treat a legitimate 0.0 correlation as
+                    # falsy and skip straight to this fallback, silently
+                    # dropping the override — static seeds are only stored
+                    # in one direction, so this reverse lookup is still needed.
+                    _rho = _DEFAULT_CORRELATIONS.get((_cj, _ci))
                 if _rho is not None:
                     corr_mat[_ii][_jj] = _rho
                     corr_mat[_jj][_ii] = _rho

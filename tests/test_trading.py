@@ -135,6 +135,43 @@ class TestDynamicCorrelationMatrix:
         monte_carlo._dynamic_corr_cache = None
 
 
+class TestCorrelationTablesStayInSync:
+    """monte_carlo._DEFAULT_CORRELATIONS and _HARDCODED_CORR are hand-typed
+    seeds that must agree with paper._CITY_PAIR_CORR (the table
+    position_correlation_matrix() treats as authoritative) for any pair they
+    share. These two dicts silently disagreed with paper.py for an unknown
+    period (found via a deep code review, 2026-07-08) with nothing to catch
+    it -- this test closes that gap so a future edit to one without the
+    others can't ship unnoticed."""
+
+    def test_default_correlations_seed_matches_city_pair_corr(self):
+        import monte_carlo
+        import paper
+
+        for (city_a, city_b), seed_value in monte_carlo._DEFAULT_CORRELATIONS.items():
+            pair = frozenset({city_a, city_b})
+            assert pair in paper._CITY_PAIR_CORR, (
+                f"monte_carlo._DEFAULT_CORRELATIONS has {city_a}/{city_b} "
+                f"but paper._CITY_PAIR_CORR doesn't"
+            )
+            assert seed_value == pytest.approx(paper._CITY_PAIR_CORR[pair]), (
+                f"monte_carlo._DEFAULT_CORRELATIONS[{city_a},{city_b}]={seed_value} "
+                f"disagrees with paper._CITY_PAIR_CORR={paper._CITY_PAIR_CORR[pair]}"
+            )
+
+    def test_hardcoded_corr_matches_city_pair_corr_for_shared_pairs(self):
+        import monte_carlo
+        import paper
+
+        for pair, value in monte_carlo._HARDCODED_CORR.items():
+            if pair not in paper._CITY_PAIR_CORR:
+                continue  # _HARDCODED_CORR covers some pairs paper.py doesn't
+            assert value == pytest.approx(paper._CITY_PAIR_CORR[pair]), (
+                f"monte_carlo._HARDCODED_CORR[{sorted(pair)}]={value} "
+                f"disagrees with paper._CITY_PAIR_CORR={paper._CITY_PAIR_CORR[pair]}"
+            )
+
+
 # ── Task 3: estimate_slippage (#50) ───────────────────────────────────────────
 
 
