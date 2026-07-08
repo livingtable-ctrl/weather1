@@ -1975,19 +1975,20 @@ def _cmd_cron_body(
 
     # Portfolio VaR summary after placement
     try:
-        from monte_carlo import portfolio_var
+        from monte_carlo import simulate_portfolio as _sim
         from paper import get_open_trades as _get_open
 
         _open = _get_open()
         if _open:
-            _var = portfolio_var(_open)
-            _exp = None
-            try:
-                from monte_carlo import simulate_portfolio as _sim
-
-                _exp = _sim(_open)["median_pnl"]
-            except Exception:
-                pass
+            # One simulation run for both figures — VaR (5th percentile) and
+            # median P&L must come from the same sample, not two independent
+            # runs at different sample sizes (found via a deep code review,
+            # 2026-07-08: previously two separate calls could silently drift
+            # to different n_simulations and report numbers with no shared
+            # statistical basis).
+            _sim_result = _sim(_open)
+            _var = _sim_result["p5_pnl"]
+            _exp = _sim_result.get("median_pnl")
             _var_s = red(f"-${abs(_var):.2f}") if _var < 0 else green(f"+${_var:.2f}")
             _exp_s = (
                 (green(f"+${_exp:.2f}") if _exp >= 0 else red(f"-${abs(_exp):.2f}"))
