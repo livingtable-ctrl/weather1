@@ -13,6 +13,32 @@ class TestLiveTradingGate:
 
         return LiveTradingGate()
 
+    def test_blocks_when_kill_switch_active(self, tmp_path, monkeypatch):
+        """The kill switch must block every live-order path through this shared
+        gate, not just the automated cron/watch loops that check
+        KILL_SWITCH_PATH directly — before this check, cmd_order/the
+        maker-order flow bypassed it entirely (found via a deep code review,
+        2026-07-08)."""
+        import trading_gates
+
+        kill_path = tmp_path / ".kill_switch"
+        kill_path.touch()
+        monkeypatch.setattr(trading_gates, "KILL_SWITCH_PATH", kill_path)
+
+        gate = self._gate()
+        with (
+            patch("main.KALSHI_ENV", "prod"),
+            patch.dict(os.environ, _PROD_ENV),
+            patch("paper.graduation_check", return_value={"settled": 35}),
+            patch("paper.is_paused_drawdown", return_value=False),
+            patch("paper.is_daily_loss_halted", return_value=False),
+            patch("paper.is_accuracy_halted", return_value=False),
+            patch("paper.is_streak_paused", return_value=False),
+        ):
+            allowed, reason = gate.check()
+        assert not allowed
+        assert "kill switch" in reason.lower()
+
     def test_blocks_when_not_prod(self):
         gate = self._gate()
         with patch("main.KALSHI_ENV", "demo"):

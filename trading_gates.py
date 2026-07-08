@@ -5,6 +5,8 @@ from __future__ import annotations
 import logging
 import os
 
+from paths import KILL_SWITCH_PATH
+
 _log = logging.getLogger(__name__)
 
 
@@ -13,6 +15,15 @@ class LiveTradingGate:
 
     def check(self) -> tuple[bool, str]:
         """Return (allowed, reason). Fail-closed: any exception → blocked."""
+        # Kill switch first — it must block every live-order path, not just the
+        # automated cron/watch loops that already check KILL_SWITCH_PATH
+        # directly. Before this check, `python main.py kill` didn't actually
+        # stop manual `buy`/`sell` (cmd_order) or the maker-order prompt,
+        # since neither path checked KILL_SWITCH_PATH independently — only
+        # this shared gate.
+        if KILL_SWITCH_PATH.exists():
+            return False, "Kill switch active (data/.kill_switch)"
+
         # Lazy import avoids circular dependency (main imports trading_gates).
         # Fall back to env var if main is not yet importable (e.g. unit tests
         # that don't patch main.KALSHI_ENV).
