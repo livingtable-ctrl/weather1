@@ -318,3 +318,53 @@ class TestFetchPreviousRunEnsemble:
 
         sig = inspect.signature(run_backtest)
         assert "use_previous_runs" in sig.parameters
+
+
+class TestBetweenMarketProbabilityClamp:
+    """A narrow 'between' bracket scored against a small discrete archive sample
+    very often lands 0/N in-bracket — kelly_fraction() zeroes the stake whenever
+    probability is exactly 0 or 1, so an unclamped our_prob silently sizes these
+    trades to $0 regardless of whether the call was right or wrong. run_backtest()
+    must clamp our_prob to [0.01, 0.99] once, before Brier scoring AND Kelly
+    sizing, matching analyze_trade()'s live convention."""
+
+    def test_zero_in_bracket_probability_is_clamped_not_zero(self, monkeypatch):
+        from datetime import date
+        from unittest.mock import MagicMock
+
+        import backtest
+
+        market = {
+            "ticker": "KXHIGHNY-26JUN16-B75.5",
+            "title": "NYC high temp",
+            "result": "no",
+            "yes_bid": 4,
+            "yes_ask": 6,
+            "open_time": "2026-06-15T00:00:00Z",
+        }
+        monkeypatch.setattr(
+            "backtest._fetch_settled_markets", lambda *a, **kw: [market]
+        )
+        monkeypatch.setattr(
+            "weather_markets.enrich_with_forecast",
+            lambda m, **kw: {**m, "_city": "NYC", "_date": date(2026, 6, 16)},
+        )
+        # All samples well above the 74.5-76.5 bracket -> 0/N in-bracket, the
+        # exact scenario that used to produce our_prob == 0.0 unclamped.
+        monkeypatch.setattr(
+            "backtest.fetch_archive_temps", lambda *a, **kw: [85.0] * 10
+        )
+
+        result = backtest.run_backtest(MagicMock(), days_back=365, holdout_fraction=0)
+
+        assert result["n_markets"] == 1
+        row = result["rows"][0]
+        assert row["our_prob"] == 0.01, (
+            f"Expected our_prob clamped to 0.01 (not raw 0.0), got {row['our_prob']}"
+        )
+        # rec_side="no" (0.01 < market_prob), actual="no" -> won, real stake -> real pnl.
+        assert row["pnl"] != 0.0, (
+            "A won trade at a clamped probability must have a nonzero stake/pnl, "
+            "not the $0.00 that an unclamped our_prob==0.0 would have produced"
+        )
+        assert row["won"] is True

@@ -522,6 +522,20 @@ def run_backtest(
                 lo, hi = condition["lower"], condition["upper"]
                 our_prob = sum(1 for t in temps if lo <= t <= hi) / len(temps)
 
+        # Clamp once, here, before Brier scoring or Kelly sizing use it — matching
+        # analyze_trade()'s live convention (weather_markets.py clamps blended_prob
+        # to [0.01, 0.99] before both logging and Kelly). Narrow "between" brackets
+        # scored against only ~50 discrete archive samples very often produce an
+        # exact 0.0 or 1.0 (zero samples landing in a 2°F window is common, not a
+        # bug in the counting itself) — kelly_fraction() explicitly zeroes the stake
+        # whenever probability is exactly at 0 or 1, so without this clamp roughly
+        # two-thirds of trades (the "between" markets) silently sized to $0, making
+        # win rate look real while P&L stayed ~$0.00 regardless of whether calls
+        # were right or wrong. Clamping once here (not just before Kelly) keeps
+        # Brier/win-rate/P&L computed from the same value, consistent with each
+        # other and with what live's own Brier tracking would log for the same call.
+        our_prob = max(0.01, min(0.99, our_prob))
+
         diag["n_archive"] += 1
         prices = parse_market_price(m)
         market_prob = prices["implied_prob"]
