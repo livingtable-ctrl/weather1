@@ -1,36 +1,6 @@
 BACKLOG — future improvements to implement when ready
 ======================================================
 
-[SAME-DAY NOWCASTING]
-Priority: Medium (revisit once Brier is consistently < 0.20 on multi-day markets)
-
-Problem:
-  Same-day markets (days_out == 0) are currently skipped entirely because the
-  ensemble forecast has no skill vs real-time market information. Traders can
-  see current temperatures; we can't compete with a stale multi-day forecast.
-
-What the fix looks like:
-  Build a separate nowcasting pipeline for days_out == 0 that ignores the
-  ensemble and uses:
-    1. Current observed temperature from METAR (infrastructure already exists)
-    2. Observed high so far today (from METAR history)
-    3. Rate of warming trend (is temp still rising or peaked?)
-    4. NWS hourly forecast for remaining hours of the day
-
-  With those inputs you can estimate whether a temperature threshold will be
-  hit today with reasonable accuracy. The ensemble probability becomes irrelevant.
-
-Why not now:
-  - Same-day markets have lower liquidity and thinner edges
-  - Core 2-5 day calibration is still improving (Brier dropping toward 0.20)
-  - Nowcasting pipeline is ~2-3 weeks of work
-  - Would be competing against traders watching current conditions in real time
-
-When to revisit:
-  - Brier consistently < 0.20 for 4+ weeks
-  - Multi-day win rate stable and above Gate 2 threshold
-  - Have spare bandwidth for a standalone pipeline build
-
 [HOURLY-DIRECTIONAL TEMPERATURE MARKETS — KXTEMPxxxH]
 Priority: Low/Medium (one city has real live volume right now; the rest don't)
 
@@ -45,24 +15,29 @@ Problem:
   threshold, not a daily high/low). The other 6 cities are dormant right now.
 
 What the fix looks like:
-  This isn't a ticker-list fix -- it needs a genuinely different probability
-  model (per-hour threshold crossing, not the daily ensemble blend this bot
-  is built around). It overlaps heavily with the already-deferred
-  [SAME-DAY NOWCASTING] entry above: both need current-condition-aware
-  inputs (real-time METAR, NWS hourly forecast for remaining hours) rather
-  than the multi-day ensemble. Worth building together, not separately, if
-  ever picked up -- same infrastructure, same "traders can see current
-  conditions, multi-day forecast has no edge here" problem.
+  This isn't a ticker-list fix -- it needs a per-hour threshold-crossing
+  probability model instead of the daily high/low ensemble blend this bot
+  runs today. The good news: the same-day nowcasting infra this would lean
+  on (live METAR observation override, persistence baseline, HRRR same-day
+  fetch -- see analyze_trade()'s days_out==0 path in weather_markets.py, and
+  cron.py's "Same-day markets... re-enabled" same-day trading logic) already
+  exists and is live for daily markets, not still-deferred as an earlier
+  version of this backlog entry assumed. Still needs new work though: the
+  existing pipeline reasons about "will today's high/low cross X," not
+  "will the temp at hour H cross X" -- the per-hour target and the shorter
+  settlement window are a real design difference, not just reused as-is.
 
 Why not now:
-  - No existing model for finer-than-daily thresholds.
+  - No existing model for the hour-level target specifically (only daily).
   - Only 1 of 7 cities in this family is currently even active.
-  - Directly gated on the same nowcasting-infrastructure work that
-    [SAME-DAY NOWCASTING] above is already deferred on.
+  - Worth confirming KXTEMPxxxH volume is durable (not a one-off) before
+    investing in an hour-level model.
 
 When to revisit:
-  - After (or alongside) [SAME-DAY NOWCASTING], since they'd share infra.
-  - If KXTEMPxxxH activity broadens beyond just NYC.
+  - If KXTEMPxxxH activity broadens beyond just NYC, or NYC volume proves
+    durable over a few weeks.
+  - Given the reusable infra already exists, this is lower-effort than it
+    looked when first logged -- re-scope before deprioritizing further.
 
 [RAIN / SNOW / HURRICANE MARKETS — UNTOUCHED CATEGORY SURFACE]
 Priority: Low (net-new product line, not a gap in the existing one)
