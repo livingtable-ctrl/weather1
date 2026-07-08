@@ -3075,6 +3075,28 @@ KNOWN_WEATHER_SERIES = [
     "KXSNOW",
 ]
 
+# Legacy/placeholder KXHIGH/KXLOW series Kalshi's /series endpoint still lists
+# but which have zero open markets, ever (confirmed live 2026-07-05, re-verified
+# 2026-07-08) — either retired ticker names already superseded above (e.g.
+# KXLOWNY -> KXLOWTNYC) or series Kalshi lists but never activated. Suppressed
+# here so check_series_drift() doesn't re-warn about the same dead entries
+# every day forever; a real new/renamed series won't be in this set.
+KNOWN_DEAD_WEATHER_SERIES = {
+    "KXHIGHHOU",
+    "KXHIGHNYD",
+    "KXHIGHOU",
+    "KXHIGHTEMPDEN",
+    "KXHIGHUS",
+    "KXLOWAUS",
+    "KXLOWCHI",
+    "KXLOWDEN",
+    "KXLOWLAX",
+    "KXLOWMIA",
+    "KXLOWNY",
+    "KXLOWNYC",
+    "KXLOWPHIL",
+}
+
 
 def get_weather_markets(
     client: KalshiClient, limit: int = 200, force: bool = False
@@ -3169,7 +3191,7 @@ def check_series_drift(client: KalshiClient) -> None:
                         missing_days[ticker],
                     )
 
-        unknown = live_weather - set(KNOWN_WEATHER_SERIES)
+        unknown = live_weather - set(KNOWN_WEATHER_SERIES) - KNOWN_DEAD_WEATHER_SERIES
         if unknown:
             _log.warning(
                 "check_series_drift: live KXHIGH/KXLOW series not in "

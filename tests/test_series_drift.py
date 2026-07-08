@@ -58,7 +58,9 @@ def test_gated_to_run_once_per_day(tmp_path, monkeypatch):
     client.get_series_list.assert_not_called()
 
 
-def test_missing_ticker_counter_increments_and_warns_at_three(tmp_path, monkeypatch, caplog):
+def test_missing_ticker_counter_increments_and_warns_at_three(
+    tmp_path, monkeypatch, caplog
+):
     import logging
 
     import weather_markets as wm
@@ -126,6 +128,30 @@ def test_unknown_live_ticker_warns_immediately(tmp_path, monkeypatch, caplog):
         "KXHIGHTNEWCITY" in r.message and "not in KNOWN_WEATHER_SERIES" in r.message
         for r in caplog.records
     )
+
+
+def test_known_dead_series_suppressed(tmp_path, monkeypatch, caplog):
+    """Known-dead placeholder series (KNOWN_DEAD_WEATHER_SERIES) must not
+    trigger the 'not in KNOWN_WEATHER_SERIES' warning, even though they're
+    genuinely absent from KNOWN_WEATHER_SERIES — Kalshi's /series endpoint
+    lists them forever with zero open markets, and re-warning about the same
+    dead entries every day is exactly the noise this allowlist exists to cut.
+    """
+    import logging
+
+    import weather_markets as wm
+
+    drift_path = tmp_path / "series_drift_check.json"
+    monkeypatch.setattr(wm, "SERIES_DRIFT_PATH", drift_path)
+
+    dead_ticker = next(iter(wm.KNOWN_DEAD_WEATHER_SERIES))
+    live_with_dead = [*wm.KNOWN_WEATHER_SERIES, dead_ticker]
+
+    with caplog.at_level(logging.WARNING):
+        client = _mock_client(live_with_dead)
+        wm.check_series_drift(client)
+
+    assert not any("not in KNOWN_WEATHER_SERIES" in r.message for r in caplog.records)
 
 
 def test_never_raises_when_get_series_list_throws(tmp_path, monkeypatch):
