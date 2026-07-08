@@ -155,7 +155,7 @@ The bot places simulated trades using a virtual $1,000 starting balance. No real
 The bot will not switch to live trading automatically. It checks three criteria:
 - 30+ settled paper trades
 - Total PnL >= $50
-- Brier score <= 0.20 (well-calibrated — random guessing scores 0.25)
+- Brier score <= 0.23 over the last 50 settled predictions (the theoretical floor makes 0.20 physically unreachable; random guessing scores 0.25)
 
 When all three pass, the graduation check confirms you are ready. To actually go live, change `KALSHI_ENV=prod` in `.env`.
 
