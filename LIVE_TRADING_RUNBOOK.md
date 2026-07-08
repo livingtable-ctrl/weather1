@@ -12,14 +12,13 @@ Complete every item before setting `LIVE_TRADING_ENABLED=true`. Do **not** proce
 
 | Check | Command | Pass condition |
 |-------|---------|---------------|
-| Minimum settled trades | `python -c "import paper; print(paper.graduation_check())"` | `settled >= 30` |
-| Brier score valid | same output | `brier` key present and `brier <= 0.20` |
-| Win rate | same output | `win_rate >= 0.52` |
+| Graduation gate | `python -c "import paper; print(paper.graduation_check())"` | Returns a summary dict (not `None`) |
 | No active drawdown halt | `python -c "import paper; print(paper.is_paused_drawdown())"` | `False` |
+| No active loss-streak halt | `python -c "import paper; print(paper.is_streak_paused())"` | `False` |
 | No active daily-loss halt | `python -c "import paper; print(paper.is_daily_loss_halted())"` | `False` |
 | No accuracy halt | `python -c "import paper; print(paper.is_accuracy_halted())"` | `False` |
 
-If `graduation_check()` returns `None`, paper mode has not graduated. **Stop here.**
+`graduation_check()` requires all three of: `settled >= 30`, `total_pnl >= $50`, `brier(last 50) <= 0.23`. Returns `None` if any criterion isn't met — **stop here** if so. (Win rate is intentionally not a gate — see `paper.graduation_check()`'s own docstring: a bot buying NO at $0.03 can have a 97% win rate and still lose money on the rare adverse move; P&L + calibration is the real signal.)
 
 ### 1.2 Environment Variables
 
@@ -37,30 +36,37 @@ Both **must** be present. The gate blocks if either is missing or wrong.
 ### 1.3 API Credentials
 
 ```bash
-# Confirm the prod key file exists and is non-empty
-ls -la kalshi_prod.key   # or whatever KALSHI_KEY_PATH points to
+# Confirm the prod private key file exists and is non-empty
+grep KALSHI_PRIVATE_KEY_PATH .env   # default: ./kalshi_private_key.pem
+ls -la kalshi_private_key.pem       # or whatever KALSHI_PRIVATE_KEY_PATH points to
+
 python -c "
-import kalshi_api_client as k
-c = k.KalshiClient()
+from dotenv import load_dotenv
+load_dotenv()
+import main
+c = main.build_client()
 print('Balance:', c.get_balance())
 "
 ```
 
 - Balance should be > 0 and match your Kalshi account.
-- If an `AuthenticationError` is raised, the key is wrong — **stop here**.
+- If an auth error is raised, the key is wrong — **stop here**.
 
-### 1.4 Risk Limits (`.env`)
+### 1.4 Risk Limits
 
-Confirm conservative values are set for the first live week:
+Confirm conservative values are set for the first live week. Unlike a flat-dollar model, this bot's real risk controls scale with current balance:
 
-```
-DAILY_LOSS_LIMIT=25          # dollars — recommend ≤ $25 to start
-MAX_OPEN_POSITIONS=5         # total contracts — recommend ≤ 5
-MAX_TRADE_DOLLARS=10         # per-order cap — recommend ≤ $10
-MAX_POSITION_DOLLARS=20      # per-ticker cap
-```
+| Env var | Default | What it controls |
+|---------|---------|-------------------|
+| `MAX_DAILY_LOSS_PCT` | 0.03 (3% of current balance) | Drives `is_daily_loss_halted()` |
+| `MAX_VAR_DOLLARS` | 200.0 (flat dollars) | Pre-trade VaR gate — skips a candidate trade if it would push 5th-percentile portfolio loss past this |
+| `MAX_SINGLE_TICKER_EXPOSURE` | 0.10 (fraction of balance) | Per-ticker exposure cap |
+| `MAX_CORRELATED_EXPOSURE` | 0.35 (fraction of balance) | Combined cap across a correlated city group |
+| `KELLY_CAP` | 0.25 (hardcoded, not env-configurable) | Max Kelly fraction per position |
 
-Do **not** raise these during the first week.
+There is **no hard cap on the number of open positions** — risk is controlled via the VaR/Kelly/exposure limits above, not a position count. For the first live week, consider tightening `MAX_DAILY_LOSS_PCT` and `MAX_VAR_DOLLARS` below their defaults rather than raising them.
+
+Do **not** loosen these during the first week.
 
 ### 1.5 Circuit Breaker State
 
@@ -92,8 +98,10 @@ All tests must pass. A failure in `test_trading_gates.py` means the safety gate 
 ### 1.7 Dry Run
 
 ```bash
-# Run one cycle in dry-run mode to confirm no import errors, DB connectivity, API reachability
-LIVE_TRADING_ENABLED=false python main.py --once 2>&1 | tail -30
+# Run one real cron cycle to confirm no import errors, DB connectivity, API reachability.
+# cron never places live orders regardless of LIVE_TRADING_ENABLED — only
+# `watch --auto --live` does — so this is a safe dry run by design.
+python main.py cron 2>&1 | tail -30
 ```
 
 Confirm no `ERROR` or `CRITICAL` log lines.
@@ -116,14 +124,11 @@ print('Gate:', 'PASS' if allowed else 'BLOCKED', '—', reason)
 "
 # Expected: Gate: PASS — ok
 
-# 3. Start the bot (first cycle under observation)
-python main.py --once
+# 3. Start the live-order path
+python main.py watch --auto --live
 ```
 
-Watch the first cycle output carefully. Confirm:
-- "Live trading gate: PASS" appears in logs
-- An order is attempted (or "no edge found" — both are acceptable)
-- No `RuntimeError: gate blocked` exception
+`python main.py cron` never places live orders — only `watch --auto --live` does. Watch the first cycle's output carefully. If the gate blocks, the bot logs `Live trading gate blocked: <reason>` (in red) and raises `RuntimeError` rather than placing anything — confirm you see neither an unexpected block nor a silent placement with no log trace.
 
 ---
 
@@ -132,24 +137,26 @@ Watch the first cycle output carefully. Confirm:
 ### Daily checks (takes ~5 minutes)
 
 ```bash
-# P&L summary
+# P&L / graduation summary
 python -c "import paper; print(paper.graduation_check())"
 
-# Open positions
+# Open positions — real broker positions, not the paper ledger
 python -c "
-import json, pathlib
-p = pathlib.Path('data/positions.json')
-if p.exists():
-    pos = json.loads(p.read_text())
-    print(f'{len(pos)} open positions')
-    for t, v in pos.items(): print(f'  {t}: {v}')
+from dotenv import load_dotenv
+load_dotenv()
+import main
+c = main.build_client()
+positions = c.get_positions()
+print(f'{len(positions)} open position(s)')
+for p in positions: print(' ', p)
 "
 
-# Today's orders
+# Recent real (non-paper) orders
 python -c "
-import order_executor
-log = order_executor.execution_log
-print('Orders today:', len(log.today_orders()))
+import execution_log
+orders = [o for o in execution_log.get_recent_orders(limit=50) if o.get('live')]
+print(f'{len(orders)} live order(s) in the last 50 log entries')
+for o in orders: print(' ', o['ticker'], o['side'], o['status'], o['placed_at'])
 "
 ```
 
@@ -157,16 +164,16 @@ print('Orders today:', len(log.today_orders()))
 
 | Metric | Action threshold | Action |
 |--------|-----------------|--------|
-| Daily loss | ≥ 80% of `DAILY_LOSS_LIMIT` | Review positions; consider manual halt |
+| Daily loss | ≥ 80% of `MAX_DAILY_LOSS_PCT` × current balance | Review positions; consider manual halt |
 | Consecutive losses | ≥ 5 in a row | Review model accuracy; consider pause |
-| Open positions | ≥ `MAX_OPEN_POSITIONS` | Wait for settlements; do not raise limit |
+| Projected VaR | Repeatedly near `MAX_VAR_DOLLARS` | Portfolio risk is concentrating — review correlated exposure |
 | Any circuit breaker opens | Any source | Check data source; review any live orders touched by bad data |
 | Brier score (after 10+ trades) | > 0.25 | Pause and investigate |
 
 ### Weekly review
 
 - Compare live Brier score to paper Brier score — they should be within ±0.05.
-- Check Kelly fractions being assigned: confirm no single order is > 25% of liquid balance.
+- Check Kelly fractions being assigned: confirm no single order is > 25% of liquid balance (`KELLY_CAP`).
 - Review the settlement log for any unexpected outcomes on between-bucket markets.
 
 ---
@@ -177,23 +184,24 @@ print('Orders today:', len(log.today_orders()))
 
 ```bash
 # Option A: kill switch (fastest — no restart needed)
-touch data/kill_switch.flag
+python main.py kill
 
 # Option B: remove the env var
 # In .env: comment out or delete LIVE_TRADING_ENABLED=true
 # Then restart the bot process
 ```
 
-`kill_switch.flag` is checked at the start of every cycle. The bot will log `KILL SWITCH ACTIVE` and exit without placing orders.
+`python main.py kill` writes `data/.kill_switch`, which is checked at the start of every cycle (`cron.py`, `order_executor.py`). The bot will log `KILL SWITCH ACTIVE` and exit without placing orders. Re-enable with `python main.py resume` (this also clears black-swan halt state, which manually deleting the file would not).
 
 ### Canceling open orders
 
 ```bash
 python -c "
-import kalshi_api_client as k
-c = k.KalshiClient()
-orders = c.get_orders(status='resting')
-for o in orders:
+from dotenv import load_dotenv
+load_dotenv()
+import main
+c = main.build_client()
+for o in c.get_open_orders():
     print(f'Canceling {o[\"order_id\"]} — {o[\"ticker\"]}')
     c.cancel_order(o['order_id'])
 print('Done')
@@ -215,7 +223,7 @@ sed -i '/LIVE_TRADING_ENABLED/d' .env
 # Or set KALSHI_ENV=demo
 ```
 
-The paper trading loop runs automatically when `KALSHI_ENV != prod` or `LIVE_TRADING_ENABLED != true`.
+`LiveTradingGate.check()` blocks the live-order path whenever `KALSHI_ENV != "prod"` or `LIVE_TRADING_ENABLED != "true"` — with either unset, `watch --auto --live` falls back to paper trades.
 
 ---
 
@@ -225,10 +233,10 @@ The `LiveTradingGate.check()` method (in `trading_gates.py`) blocks live orders 
 
 1. `KALSHI_ENV != "prod"`
 2. `LIVE_TRADING_ENABLED != "true"` (env var)
-3. `paper.graduation_check()` returns `None`
-4. `paper.is_paused_drawdown()` returns `True`
+3. `paper.is_paused_drawdown()` returns `True`
+4. `paper.is_streak_paused()` returns `True`
 5. `paper.is_daily_loss_halted()` returns `True`
 6. `paper.is_accuracy_halted()` returns `True`
-7. `paper.is_streak_paused()` returns `True`
+7. `paper.graduation_check()` returns `None`
 
-All seven gates must pass simultaneously. There is no override short of modifying source code.
+All seven gates must pass simultaneously (checked cheapest-first, DB/Brier check last). There is no override short of modifying source code.
