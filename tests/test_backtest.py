@@ -159,6 +159,21 @@ class TestFetchSettledMarkets:
         assert result[0]["ticker"] == "KXLOWNY-25APR30-T40"
 
 
+class TestWeatherSeriesDerivation:
+    def test_derived_from_known_weather_series_not_a_second_copy(self):
+        """_WEATHER_SERIES must be weather_markets.KNOWN_WEATHER_SERIES itself,
+        not an independent hand-typed copy -- a second copy already went stale
+        once (KXLOWLAX -> KXLOWTLAX, confirmed live 2026-07-05), silently
+        excluding LA markets from every backtest run with no test catching it
+        until a live audit found it."""
+        import backtest
+        import weather_markets as wm
+
+        assert backtest._WEATHER_SERIES is wm.KNOWN_WEATHER_SERIES
+        assert "KXLOWTLAX" in backtest._WEATHER_SERIES
+        assert "KXLOWLAX" not in backtest._WEATHER_SERIES
+
+
 class TestCmdBacktestErrorHandling:
     def test_api_error_prints_message_not_traceback(self, monkeypatch, capsys):
         """cmd_backtest must catch API errors and print a readable message."""

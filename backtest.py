@@ -24,7 +24,7 @@ from pathlib import Path
 import requests
 
 from utils import KALSHI_FEE_RATE
-from weather_markets import CITY_COORDS
+from weather_markets import CITY_COORDS, KNOWN_WEATHER_SERIES
 
 _log = logging.getLogger(__name__)
 
@@ -302,50 +302,11 @@ def fetch_previous_run_ensemble(
 # ── Backtest runner ───────────────────────────────────────────────────────────
 
 
-_WEATHER_SERIES = [
-    "KXHIGHNY",
-    "KXHIGHCHI",
-    "KXHIGHLAX",  # was KXHIGHLA — Kalshi retired that ticker
-    "KXHIGHTBOS",  # was KXHIGHBOS — retired
-    "KXHIGHMIA",
-    "KXHIGHTDAL",
-    "KXHIGHTPHX",
-    "KXHIGHTSEA",
-    "KXHIGHDEN",
-    "KXHIGHTATL",
-    "KXHIGHAUS",
-    "KXHIGHTDC",
-    "KXHIGHPHIL",  # was KXHIGHTPHIL — retired
-    "KXHIGHTOKC",
-    "KXHIGHTSFO",
-    "KXHIGHTMIN",
-    "KXHIGHTHOU",
-    "KXHIGHTSATX",
-    "KXHIGHTLV",  # Las Vegas — not previously tracked
-    "KXHIGHTNOLA",  # New Orleans — not previously tracked
-    "KXLOWTNYC",  # was KXLOWNY — retired
-    "KXLOWTCHI",  # was KXLOWCHI — retired
-    "KXLOWLAX",  # was KXLOWLA — retired
-    "KXLOWTBOS",  # was KXLOWBOS — retired
-    "KXLOWTMIA",  # was KXLOWMIA — retired
-    "KXLOWTDAL",
-    "KXLOWTPHX",
-    "KXLOWTSEA",
-    "KXLOWTDEN",  # was KXLOWDEN — retired
-    "KXLOWTATL",
-    "KXLOWTAUS",  # was KXLOWAUS — retired
-    "KXLOWTDC",
-    "KXLOWTPHIL",
-    "KXLOWTOKC",
-    "KXLOWTSFO",
-    "KXLOWTMIN",
-    "KXLOWTHOU",
-    "KXLOWTSATX",
-    "KXLOWTLV",  # Las Vegas — not previously tracked
-    "KXLOWTNOLA",  # New Orleans — not previously tracked
-    "KXRAIN",
-    "KXSNOW",
-]
+# Derived from weather_markets.KNOWN_WEATHER_SERIES (single source of truth)
+# instead of a second hand-typed copy — that copy went stale once already
+# (KXLOWLAX -> KXLOWTLAX, confirmed live 2026-07-05) with no test catching it
+# until a live audit found LA markets silently missing from every backtest run.
+_WEATHER_SERIES = KNOWN_WEATHER_SERIES
 
 
 def _fetch_settled_markets(
