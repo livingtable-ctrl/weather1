@@ -56,11 +56,16 @@ def _repair_psd(mat: list[list[float]]) -> list[list[float]]:
 
 
 # Default pairwise correlation coefficients for cities with shared weather patterns.
+# Seed values must match paper._CITY_PAIR_CORR for the same pairs -- this dict
+# overrides position_correlation_matrix()'s already-correct base matrix in
+# simulate_portfolio() below, so a disagreeing seed here silently overwrote
+# correct values with worse ones (confirmed live 2026-07-08: 0.7/0.5/0.6/0.5
+# here vs paper.py's 0.85/0.45/0.55/0.55 for the same 4 pairs).
 _DEFAULT_CORRELATIONS: dict[tuple[str, str], float] = {
-    ("NYC", "Boston"): 0.7,
-    ("Chicago", "Denver"): 0.5,
-    ("LA", "Phoenix"): 0.6,
-    ("Dallas", "Atlanta"): 0.5,
+    ("NYC", "Boston"): 0.85,
+    ("Chicago", "Denver"): 0.45,
+    ("LA", "Phoenix"): 0.55,
+    ("Dallas", "Atlanta"): 0.55,
 }
 
 # #49: Hardcoded city-pair correlations used as fallback when
@@ -71,7 +76,9 @@ _HARDCODED_CORR: dict[frozenset, float] = {
     frozenset({"Chicago", "Denver"}): 0.45,
     frozenset({"Chicago", "Minneapolis"}): 0.60,
     frozenset({"LA", "Phoenix"}): 0.55,
-    frozenset({"LA", "San Francisco"}): 0.50,
+    frozenset(
+        {"LA", "SanFrancisco"}
+    ): 0.50,  # was "San Francisco" — didn't match CITY_COORDS
     frozenset({"Dallas", "Atlanta"}): 0.55,
     frozenset({"Dallas", "Houston"}): 0.70,
     frozenset({"Miami", "Atlanta"}): 0.50,
