@@ -61,7 +61,7 @@ Confirm conservative values are set for the first live week. Unlike a flat-dolla
 | `MAX_DAILY_LOSS_PCT` | 0.03 (3% of current balance) | Drives `is_daily_loss_halted()` |
 | `MAX_VAR_DOLLARS` | 200.0 (flat dollars) | Pre-trade VaR gate — skips a candidate trade if it would push 5th-percentile portfolio loss past this |
 | `MAX_SINGLE_TICKER_EXPOSURE` | 0.10 (fraction of balance) | Per-ticker exposure cap |
-| `MAX_CORRELATED_EXPOSURE` | 0.35 (fraction of balance) | Combined cap across a correlated city group |
+| `MAX_CORRELATED_EXPOSURE` | 0.35 (hardcoded, not env-configurable) | Combined cap across a correlated city group |
 | `KELLY_CAP` | 0.25 (hardcoded, not env-configurable) | Max Kelly fraction per position |
 
 There is **no hard cap on the number of open positions** — risk is controlled via the VaR/Kelly/exposure limits above, not a position count. For the first live week, consider tightening `MAX_DAILY_LOSS_PCT` and `MAX_VAR_DOLLARS` below their defaults rather than raising them.
