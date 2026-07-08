@@ -1454,9 +1454,7 @@ def _auto_place_trades(
                     "target_date": target_date_str,
                     "entry_prob": a.get("forecast_prob"),
                 }
-                projected_var = portfolio_var(
-                    _open_trades_list + [candidate], n_simulations=500
-                )
+                projected_var = portfolio_var(_open_trades_list + [candidate])
                 if abs(projected_var) > MAX_VAR_DOLLARS:
                     _log.warning(
                         "_auto_place_trades: skip %s — projected VaR $%.2f exceeds limit $%.2f",

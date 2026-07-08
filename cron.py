@@ -1980,12 +1980,12 @@ def _cmd_cron_body(
 
         _open = _get_open()
         if _open:
-            _var = portfolio_var(_open, n_simulations=500)
+            _var = portfolio_var(_open)
             _exp = None
             try:
                 from monte_carlo import simulate_portfolio as _sim
 
-                _exp = _sim(_open, n_simulations=500)["median_pnl"]
+                _exp = _sim(_open)["median_pnl"]
             except Exception:
                 pass
             _var_s = red(f"-${abs(_var):.2f}") if _var < 0 else green(f"+${_var:.2f}")
