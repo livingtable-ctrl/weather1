@@ -173,6 +173,34 @@ class TestWeatherSeriesDerivation:
         assert "KXLOWTLAX" in backtest._WEATHER_SERIES
         assert "KXLOWLAX" not in backtest._WEATHER_SERIES
 
+    def test_stale_known_weather_series_raises_at_import(self, monkeypatch):
+        """Aliasing to KNOWN_WEATHER_SERIES only fixed the one already-known
+        LA incident -- if a DIFFERENT city's ticker is ever renamed/retired
+        without KNOWN_WEATHER_SERIES being updated to match, backtest.py's
+        per-city import-time guard must fail loudly with a clear
+        AssertionError rather than silently reproducing the same
+        'city missing from every backtest run' bug for a new city (found via
+        a deep code review, 2026-07-08 -- mirrors settlement_monitor.py's
+        identical pattern for its own KXHIGH*-only guard)."""
+        import importlib
+
+        import pytest
+
+        import backtest
+        import weather_markets as wm
+
+        importlib.reload(backtest)  # clean baseline, regardless of run order
+
+        stale_series = [t for t in wm.KNOWN_WEATHER_SERIES if t != "KXHIGHNY"]
+        monkeypatch.setattr(wm, "KNOWN_WEATHER_SERIES", stale_series)
+
+        try:
+            with pytest.raises(AssertionError, match="NYC"):
+                importlib.reload(backtest)
+        finally:
+            monkeypatch.undo()
+            importlib.reload(backtest)
+
 
 class TestCmdBacktestErrorHandling:
     def test_api_error_prints_message_not_traceback(self, monkeypatch, capsys):

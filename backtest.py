@@ -24,7 +24,7 @@ from pathlib import Path
 import requests
 
 from utils import KALSHI_FEE_RATE
-from weather_markets import CITY_COORDS, KNOWN_WEATHER_SERIES
+from weather_markets import CITY_COORDS, KNOWN_WEATHER_SERIES, _parse_city_from_ticker
 
 _log = logging.getLogger(__name__)
 
@@ -307,6 +307,26 @@ def fetch_previous_run_ensemble(
 # (KXLOWLAX -> KXLOWTLAX, confirmed live 2026-07-05) with no test catching it
 # until a live audit found LA markets silently missing from every backtest run.
 _WEATHER_SERIES = KNOWN_WEATHER_SERIES
+
+# Fail loudly at import time (not a cryptic downstream "0 settled markets"
+# silence) if KNOWN_WEATHER_SERIES itself ever drops a city's HIGH or LOW
+# ticker again — mirrors settlement_monitor.py's per-city assertion pattern
+# for the identical bug class, since aliasing to KNOWN_WEATHER_SERIES above
+# only fixed the one already-known LA incident, not future drift for a
+# different city (found via a deep code review, 2026-07-08).
+for _city in CITY_COORDS:
+    for _prefix in ("KXHIGH", "KXLOW"):
+        _matches = [
+            t
+            for t in _WEATHER_SERIES
+            if t.startswith(_prefix) and _parse_city_from_ticker(t) == _city
+        ]
+        assert len(_matches) == 1, (
+            f"backtest: expected exactly one {_prefix}* ticker for {_city!r} "
+            f"in KNOWN_WEATHER_SERIES, found {_matches!r} — Kalshi may have "
+            f"renamed/retired the series again"
+        )
+del _city, _prefix, _matches
 
 
 def _fetch_settled_markets(
