@@ -3321,10 +3321,19 @@ def parse_city_date(market: dict) -> tuple[str | None, date | None]:
     return city, target_date
 
 
-def enrich_with_forecast(market: dict) -> dict:
+def enrich_with_forecast(market: dict, fetch_forecast: bool = True) -> dict:
     """
     Attach forecast data to a market dict.
     Parses city, date, and (for hourly markets) hour from the ticker.
+
+    fetch_forecast: set False to skip the get_weather_forecast() call and only
+    parse city/date/hour. Callers that score against archive/historical data
+    (e.g. backtest.py, which computes probability from fetch_archive_temps()
+    and never reads _forecast/_forecast_uncertain) don't need it — for a
+    historical target_date, Open-Meteo's forecast endpoint, NBM, and
+    weatherapi.com all miss, so the call falls all the way through to a slow
+    (~5s+) Pirate Weather time-machine request whose result would just be
+    discarded. _forecast/_forecast_uncertain are None when skipped.
     """
     ticker = market.get("ticker", "")
     title = market.get("title") or ""
@@ -3362,7 +3371,7 @@ def enrich_with_forecast(market: dict) -> dict:
                 pass
 
     forecast = None
-    if city and target_date:
+    if city and target_date and fetch_forecast:
         forecast = get_weather_forecast(city, target_date)
 
     # Wire Pirate Weather uncertainty signals into _forecast_uncertain.

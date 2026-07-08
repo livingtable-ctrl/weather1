@@ -196,9 +196,7 @@ class TestEnsoPhase:
             patch("weather_markets._get_enso_phase", return_value="el_nino"),
         ):
             w = _forecast_model_weights(month=1, city=None)
-        assert w["ecmwf_ifs025"] == pytest.approx(
-            3.0
-        )  # 2.5 base + 0.5 el_nino
+        assert w["ecmwf_ifs025"] == pytest.approx(3.0)  # 2.5 base + 0.5 el_nino
 
     def test_neutral_winter_ecmwf_weight(self):
         from weather_markets import _forecast_model_weights
@@ -663,7 +661,9 @@ class TestLearnedWeights:
         result = wm.load_learned_weights()
         assert result == weights
 
-    def test_load_learned_weights_handles_non_numeric_value(self, tmp_path, monkeypatch):
+    def test_load_learned_weights_handles_non_numeric_value(
+        self, tmp_path, monkeypatch
+    ):
         """A manually-corrupted file with a non-numeric weight (e.g. a stray
         string) must not crash load_learned_weights() with a TypeError -- it
         should be treated as corruption, same as a non-positive weight."""
@@ -690,7 +690,9 @@ class TestLearnedWeights:
         assert result == {}
         assert not weights_path.exists()  # corrupt file is deleted, same as other cases
 
-    def test_save_learned_weights_rejects_non_numeric_value(self, tmp_path, monkeypatch):
+    def test_save_learned_weights_rejects_non_numeric_value(
+        self, tmp_path, monkeypatch
+    ):
         """A non-numeric weight passed to save_learned_weights() must not crash
         with a TypeError -- it should be rejected the same as a near-zero weight."""
         import weather_markets as wm
@@ -1069,6 +1071,48 @@ class TestEnrichWithForecastCacheTimestamp:
             f"On cache miss, data_fetched_at should be current time, "
             f"got {result['data_fetched_at']:.0f} (window {before:.0f}â€“{after:.0f})"
         )
+
+
+class TestEnrichWithForecastSkipsFetch:
+    """fetch_forecast=False must skip get_weather_forecast() entirely (used by
+    backtest.py, which scores probability from archive data and never reads
+    _forecast/_forecast_uncertain — see enrich_with_forecast()'s docstring)."""
+
+    def test_fetch_forecast_false_skips_get_weather_forecast(self, monkeypatch):
+        import weather_markets as wm
+
+        def _boom(*args, **kwargs):
+            raise AssertionError("get_weather_forecast should not be called")
+
+        monkeypatch.setattr(wm, "get_weather_forecast", _boom)
+
+        market = {"ticker": "KXHIGHNY-26MAY10-T70", "title": "NYC high > 70Â°F"}
+        result = wm.enrich_with_forecast(market, fetch_forecast=False)
+
+        assert result["_city"] == "NYC"
+        assert result["_date"] is not None
+        assert result["_forecast"] is None
+        assert result["_forecast_uncertain"] is False
+
+    def test_fetch_forecast_default_true_still_calls_get_weather_forecast(
+        self, monkeypatch
+    ):
+        """Regression: default behavior (every other existing caller) is unchanged."""
+        import weather_markets as wm
+
+        called = {}
+
+        def _fake(city, target_date, **kwargs):
+            called["hit"] = True
+            return {"high_f": 70.0, "_source": "open_meteo"}
+
+        monkeypatch.setattr(wm, "get_weather_forecast", _fake)
+
+        market = {"ticker": "KXHIGHNY-26MAY10-T70", "title": "NYC high > 70Â°F"}
+        result = wm.enrich_with_forecast(market)
+
+        assert called.get("hit") is True
+        assert result["_forecast"] is not None
 
 
 class TestBimodalEnsemble:

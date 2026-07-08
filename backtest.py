@@ -443,7 +443,12 @@ def run_backtest(
             continue
         diag["n_result_ok"] += 1
 
-        enriched = enrich_with_forecast(m)
+        # fetch_forecast=False: backtest scores probability from archive data
+        # (fetch_archive_temps/fetch_archive_precip_prob below), never reads
+        # _forecast/_forecast_uncertain — the live forecast fetch would just
+        # burn ~5s+ per market falling through to Pirate Weather for nothing
+        # (Open-Meteo/NBM/weatherapi can't serve months-old historical dates).
+        enriched = enrich_with_forecast(m, fetch_forecast=False)
         city = enriched.get("_city")
         tdate = enriched.get("_date")
 

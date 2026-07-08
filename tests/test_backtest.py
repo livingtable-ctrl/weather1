@@ -244,7 +244,7 @@ def test_backtest_reports_funnel_breakdown_when_empty(monkeypatch, capsys):
     ]
     monkeypatch.setattr("backtest._fetch_settled_markets", lambda *a, **kw: markets)
     monkeypatch.setattr(
-        "weather_markets.enrich_with_forecast", lambda m: m
+        "weather_markets.enrich_with_forecast", lambda m, **kw: m
     )  # no _date key
 
     client = MagicMock()
