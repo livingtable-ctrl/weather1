@@ -904,7 +904,9 @@ def brier_score_by_method(min_samples: int = 20) -> dict[str, float]:
     }
 
 
-def brier_score_by_method_rolling(window: int = 20, min_samples: int = 1) -> dict[str, float]:
+def brier_score_by_method_rolling(
+    window: int = 20, min_samples: int = 1
+) -> dict[str, float]:
     """Rolling Brier score per method over the last `window` settled predictions.
 
     Count-based (not time-based) so cadence-uneven methods still get a stable
@@ -1636,71 +1638,36 @@ def get_calibration_by_type() -> dict[str, dict]:
     return result
 
 
-def get_sameday_calibration() -> dict:
-    """Calibration analytics for same-day (days_out=0) METAR-locked predictions.
+_CALIBRATION_GATE = 20
 
-    Completely isolated from multi-day calibration — only queries rows where
-    days_out=0 and never touches the multiday_predictions view.
 
-    Returns:
-      n           — total same-day settled predictions
-      gate        — minimum samples needed before T_sameday is trained (20)
-      gate_met    — True when n >= gate
-      brier       — overall Brier score across all same-day settled trades
-      t_sameday   — current T from temperature_scale.json (1.0 = identity / untrained)
-      calibration_buckets — [{bucket_low, bucket_high, predicted_mean, actual_rate, n}]
-                    5 equal-width bins from 0→1; bins with no data are omitted.
-                    METAR probs cluster near 0/1 so mid-range bins will often be empty.
-      by_time_of_day — {morning, afternoon, evening} each with
-                    {n, brier, mean_prob, mean_actual, bias}
-                    bias = mean_prob - mean_actual (positive = model overestimates)
+def _calibration_curve(
+    pairs: list[tuple[float, int]], gate: int = _CALIBRATION_GATE
+) -> dict:
+    """Bucket (predicted_prob, settled_yes) pairs into 5 equal-width calibration bins.
+
+    Shared by get_sameday_calibration() and the CLI-scoped *_cli() calibration
+    functions so the bucket-edge convention lives in exactly one place. `gate` is
+    the training-eligibility threshold (e.g. whether a T value should be trusted),
+    NOT a display threshold — callers deciding whether to print a table should use
+    their own n>=10 convention (see cmd_walkforward/cmd_backtest in main.py), not
+    gate_met.
+
+    Returns {n, gate, gate_met, brier, calibration_buckets}. calibration_buckets
+    omits empty bins.
     """
-    import json as _json
-
-    init_db()
-    with _conn() as con:
-        rows = con.execute(
-            """
-            SELECT p.our_prob, o.settled_yes, p.local_hour
-            FROM predictions p
-            JOIN outcomes o ON p.ticker = o.ticker
-            WHERE p.our_prob IS NOT NULL
-              AND o.settled_yes IS NOT NULL
-              AND p.days_out = 0
-            ORDER BY p.predicted_at ASC
-            """
-        ).fetchall()
-
-    # Read T_sameday from temperature_scale.json so the dashboard can show
-    # whether the calibration has been trained yet.
-    t_sameday: float | None = None
-    _ts_path = _project_root() / "data" / "temperature_scale.json"
-    if _ts_path.exists():
-        try:
-            ts = _json.loads(_ts_path.read_text())
-            sd = ts.get("sameday", {})
-            if isinstance(sd, dict) and "T" in sd:
-                t_sameday = float(sd["T"])
-        except Exception:
-            pass
-
-    _GATE = 20
-    n = len(rows)
-
+    n = len(pairs)
     if n == 0:
         return {
             "n": 0,
-            "gate": _GATE,
+            "gate": gate,
             "gate_met": False,
             "brier": None,
-            "t_sameday": t_sameday,
             "calibration_buckets": [],
-            "by_time_of_day": {},
         }
 
-    probs = [float(r["our_prob"]) for r in rows]
-    actuals = [int(r["settled_yes"]) for r in rows]
-
+    probs = [p for p, _ in pairs]
+    actuals = [a for _, a in pairs]
     brier = round(sum((p - a) ** 2 for p, a in zip(probs, actuals)) / n, 4)
 
     # Five equal-width probability bins from 0 to 1. METAR-locked probs live
@@ -1724,6 +1691,74 @@ def get_sameday_calibration() -> dict:
                 "n": len(members),
             }
         )
+
+    return {
+        "n": n,
+        "gate": gate,
+        "gate_met": n >= gate,
+        "brier": brier,
+        "calibration_buckets": cal_buckets,
+    }
+
+
+def _read_temperature_scale_key(key: str) -> float | None:
+    """Read a single T value from data/temperature_scale.json (None if missing/untrained)."""
+    import json as _json
+
+    _ts_path = _project_root() / "data" / "temperature_scale.json"
+    if not _ts_path.exists():
+        return None
+    try:
+        ts = _json.loads(_ts_path.read_text())
+        entry = ts.get(key, {})
+        if isinstance(entry, dict) and "T" in entry:
+            return float(entry["T"])
+    except Exception:
+        pass
+    return None
+
+
+def get_sameday_calibration() -> dict:
+    """Calibration analytics for same-day (days_out=0) METAR-locked predictions.
+
+    Completely isolated from multi-day calibration — only queries rows where
+    days_out=0 and never touches the multiday_predictions view. Includes ALL
+    condition types (does NOT exclude 'between') — this is the dashboard's view
+    (web_app.py's /api/sameday-calibration). See get_sameday_calibration_cli() for
+    the between-excluding variant the CLI (validate/backtest) uses — the two are
+    NOT interchangeable, they differ by 69 rows on this repo's live data (2026-07-08).
+
+    Returns:
+      n           — total same-day settled predictions
+      gate        — minimum samples needed before T_sameday is trained (20)
+      gate_met    — True when n >= gate
+      brier       — overall Brier score across all same-day settled trades
+      t_sameday   — current T from temperature_scale.json (1.0 = identity / untrained)
+      calibration_buckets — [{bucket_low, bucket_high, predicted_mean, actual_rate, n}]
+                    5 equal-width bins from 0→1; bins with no data are omitted.
+                    METAR probs cluster near 0/1 so mid-range bins will often be empty.
+      by_time_of_day — {morning, afternoon, evening} each with
+                    {n, brier, mean_prob, mean_actual, bias}
+                    bias = mean_prob - mean_actual (positive = model overestimates)
+    """
+    init_db()
+    with _conn() as con:
+        rows = con.execute(
+            """
+            SELECT p.our_prob, o.settled_yes, p.local_hour
+            FROM predictions p
+            JOIN outcomes o ON p.ticker = o.ticker
+            WHERE p.our_prob IS NOT NULL
+              AND o.settled_yes IS NOT NULL
+              AND p.days_out = 0
+            ORDER BY p.predicted_at ASC
+            """
+        ).fetchall()
+
+    t_sameday = _read_temperature_scale_key("sameday")
+    curve = _calibration_curve(
+        [(float(r["our_prob"]), int(r["settled_yes"])) for r in rows]
+    )
 
     # Time-of-day breakdown: morning/afternoon/evening based on local_hour
     # recorded at prediction time.  This is the key diagnostic for the
@@ -1763,14 +1798,75 @@ def get_sameday_calibration() -> dict:
         }
 
     return {
-        "n": n,
-        "gate": _GATE,
-        "gate_met": n >= _GATE,
-        "brier": brier,
+        **curve,
         "t_sameday": t_sameday,
-        "calibration_buckets": cal_buckets,
         "by_time_of_day": by_tod,
     }
+
+
+def get_multiday_calibration_cli() -> dict:
+    """Calibration analytics for multi-day (days_out IS NULL OR >=1) predictions,
+    scoped to match what the CLI (validate/backtest) has always shown: excludes
+    condition_type='between', matching train_all_temperature_scaling()'s own
+    exclusion (ml_bias.py) and both CLI blocks' pre-existing behavior.
+
+    Returns {n, gate, gate_met, brier, t_multiday, calibration_buckets} — same shape
+    as get_sameday_calibration() minus the sameday-only by_time_of_day breakdown.
+    t_multiday is read from temperature_scale.json's "global" key — confirmed via
+    apply_temperature_scaling() (ml_bias.py): days_out=0 uses "sameday" exclusively,
+    everything else falls back to condition_type then "global", so "global" IS the
+    multiday T, not a separate catch-all.
+    """
+    init_db()
+    with _conn() as con:
+        rows = con.execute(
+            """
+            SELECT p.our_prob, o.settled_yes
+            FROM multiday_predictions p
+            JOIN outcomes o ON p.ticker = o.ticker
+            WHERE p.our_prob IS NOT NULL
+              AND o.settled_yes IS NOT NULL
+              AND (p.condition_type IS NULL OR p.condition_type != 'between')
+            """
+        ).fetchall()
+
+    t_multiday = _read_temperature_scale_key("global")
+    curve = _calibration_curve(
+        [(float(r["our_prob"]), int(r["settled_yes"])) for r in rows]
+    )
+    return {**curve, "t_multiday": t_multiday}
+
+
+def get_sameday_calibration_cli() -> dict:
+    """Same population as get_sameday_calibration() but excludes
+    condition_type='between', matching the CLI's (validate/backtest) existing scope.
+    The dashboard-facing get_sameday_calibration() deliberately keeps 'between' rows —
+    the two differ by 69 rows on this repo's live data (2026-07-08) and are NOT
+    interchangeable.
+
+    Returns {n, gate, gate_met, brier, t_sameday, calibration_buckets} — no
+    by_time_of_day breakdown (the CLI doesn't currently surface it; dashboard's
+    get_sameday_calibration() remains the source for that).
+    """
+    init_db()
+    with _conn() as con:
+        rows = con.execute(
+            """
+            SELECT p.our_prob, o.settled_yes
+            FROM predictions p
+            JOIN outcomes o ON p.ticker = o.ticker
+            WHERE p.our_prob IS NOT NULL
+              AND o.settled_yes IS NOT NULL
+              AND p.days_out = 0
+              AND (p.condition_type IS NULL OR p.condition_type != 'between')
+            """
+        ).fetchall()
+
+    t_sameday = _read_temperature_scale_key("sameday")
+    curve = _calibration_curve(
+        [(float(r["our_prob"]), int(r["settled_yes"])) for r in rows]
+    )
+    return {**curve, "t_sameday": t_sameday}
 
 
 def export_predictions_csv(path: str) -> int:
@@ -2319,13 +2415,17 @@ def backfill_emos_data(force: bool = False) -> tuple[int, int]:
     # ── Part 1: settled_temp_f ────────────────────────────────────────────────
     with _conn() as con:
         if force:
-            temp_rows = con.execute("SELECT o.ticker, o.settled_yes FROM outcomes o").fetchall()
+            temp_rows = con.execute(
+                "SELECT o.ticker, o.settled_yes FROM outcomes o"
+            ).fetchall()
         else:
             temp_rows = con.execute(
                 "SELECT o.ticker, o.settled_yes FROM outcomes o WHERE o.settled_temp_f IS NULL"
             ).fetchall()
 
-    label = "all settled outcomes (force)" if force else "outcomes missing settled_temp_f"
+    label = (
+        "all settled outcomes (force)" if force else "outcomes missing settled_temp_f"
+    )
     print(f"[backfill] Part 1: {len(temp_rows)} {label}")
     settled_temp_filled = 0
     for row in temp_rows:

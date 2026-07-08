@@ -4512,6 +4512,75 @@ def cmd_walkforward(client: KalshiClient) -> None:
     # This shows WHERE the Brier score is coming from — which probability buckets
     # are miscalibrated and in which direction.  Unlike backtest (which replays
     # synthetic archive data), this uses the actual probabilities logged at trade time.
+    #
+    # Split multiday vs sameday: ml_bias.py trains separate temperature-scaling T
+    # values for each population, and a merged view can hide opposite-signed biases
+    # that cancel out in the mean (see tracker.get_multiday_calibration_cli() /
+    # get_sameday_calibration_cli()).
+    def _print_calibration_block(title: str, calib: dict) -> None:
+        if calib["n"] < 10:
+            return
+        print(bold(f"\n  ── {title} Calibration Curve (predicted vs actual) ──\n"))
+        print(dim("  Bucket    Predicted   Actual    N    Bias      Status"))
+        print(dim("  " + "─" * 56))
+        for _bucket in calib["calibration_buckets"]:
+            _avg_p = _bucket["predicted_mean"]
+            _avg_a = _bucket["actual_rate"]
+            _n = _bucket["n"]
+            _bias = _avg_p - _avg_a
+            _status = (
+                red(f"  LOW {abs(_bias):.0%}")
+                if _bias < -0.10
+                else yellow(f"  low {abs(_bias):.0%}")
+                if _bias < -0.05
+                else red(f"  HIGH {_bias:.0%}")
+                if _bias > 0.10
+                else yellow(f"  high {_bias:.0%}")
+                if _bias > 0.05
+                else green("  OK")
+            )
+            print(
+                f"  {_avg_p * 100:>5.0f}%     {_avg_p * 100:>6.1f}%   {_avg_a * 100:>6.1f}%  {_n:>3}  {_bias * 100:>+6.1f}%{_status}"
+            )
+
+        _mean_p = (
+            sum(b["predicted_mean"] * b["n"] for b in calib["calibration_buckets"])
+            / calib["n"]
+        )
+        _mean_a = (
+            sum(b["actual_rate"] * b["n"] for b in calib["calibration_buckets"])
+            / calib["n"]
+        )
+        _sys_bias = _mean_p - _mean_a
+        _sys_str = (
+            red(
+                f"  Model predicts {abs(_sys_bias):.1%} TOO LOW on average — buys NO on events that actually happen."
+            )
+            if _sys_bias < -0.08
+            else red(
+                f"  Model predicts {_sys_bias:.1%} TOO HIGH on average — buys YES on events that don't happen."
+            )
+            if _sys_bias > 0.08
+            else green("  No significant systematic bias detected.")
+        )
+        print(f"\n{_sys_str}")
+        print(
+            dim(
+                f"  Mean predicted: {_mean_p:.1%}  |  Mean actual: {_mean_a:.1%}  |  N={calib['n']}"
+            )
+        )
+
+    try:
+        from tracker import get_multiday_calibration_cli, get_sameday_calibration_cli
+
+        _print_calibration_block("Multiday", get_multiday_calibration_cli())
+        _print_calibration_block("Sameday", get_sameday_calibration_cli())
+    except Exception as _cal_exc:
+        _log.debug("cmd_walkforward: calibration curve failed: %s", _cal_exc)
+
+    # ── Per-condition breakdown ────────────────────────────────────────────────
+    # Separate axis from the split above (condition_type, not days_out) — kept on
+    # the original merged query since it isn't part of the multiday/sameday split.
     try:
         import sqlite3 as _sql
 
@@ -4534,58 +4603,6 @@ def cmd_walkforward(client: KalshiClient) -> None:
         if len(_calib_rows) >= 10:
             from collections import defaultdict
 
-            _buckets: dict = defaultdict(list)
-            for _p, _ct, _a in _calib_rows:
-                _b = int(float(_p) * 5) / 5  # round to nearest 0.20
-                _buckets[_b].append((float(_p), int(_a)))
-
-            print(bold("\n  ── Calibration Curve (predicted vs actual) ──\n"))
-            print(dim("  Bucket    Predicted   Actual    N    Bias      Status"))
-            print(dim("  " + "─" * 56))
-            for _b in sorted(_buckets):
-                _items = _buckets[_b]
-                _avg_p = sum(x[0] for x in _items) / len(_items)
-                _avg_a = sum(x[1] for x in _items) / len(_items)
-                _bias = _avg_p - _avg_a
-                _status = (
-                    red(f"  LOW {abs(_bias):.0%}")
-                    if _bias < -0.10
-                    else yellow(f"  low {abs(_bias):.0%}")
-                    if _bias < -0.05
-                    else red(f"  HIGH {_bias:.0%}")
-                    if _bias > 0.10
-                    else yellow(f"  high {_bias:.0%}")
-                    if _bias > 0.05
-                    else green("  OK")
-                )
-                print(
-                    f"  {_avg_p * 100:>5.0f}%     {_avg_p * 100:>6.1f}%   {_avg_a * 100:>6.1f}%  {len(_items):>3}  {_bias * 100:>+6.1f}%{_status}"
-                )
-
-            _all_p = [float(r[0]) for r in _calib_rows]
-            _all_a = [int(r[2]) for r in _calib_rows]
-            _mean_p = sum(_all_p) / len(_all_p)
-            _mean_a = sum(_all_a) / len(_all_a)
-            _sys_bias = _mean_p - _mean_a
-            _sys_str = (
-                red(
-                    f"  Model predicts {abs(_sys_bias):.1%} TOO LOW on average — buys NO on events that actually happen."
-                )
-                if _sys_bias < -0.08
-                else red(
-                    f"  Model predicts {_sys_bias:.1%} TOO HIGH on average — buys YES on events that don't happen."
-                )
-                if _sys_bias > 0.08
-                else green("  No significant systematic bias detected.")
-            )
-            print(f"\n{_sys_str}")
-            print(
-                dim(
-                    f"  Mean predicted: {_mean_p:.1%}  |  Mean actual: {_mean_a:.1%}  |  N={len(_calib_rows)}"
-                )
-            )
-
-            # Per-condition breakdown
             _cond: dict = defaultdict(list)
             for _p, _ct, _a in _calib_rows:
                 _cond[_ct or "unknown"].append((float(_p), int(_a)))
@@ -4608,8 +4625,8 @@ def cmd_walkforward(client: KalshiClient) -> None:
                     print(
                         f"    {_ct:10s}  Brier={_b_str}  pred={_avg_p_ct:.1%}  actual={_avg_a_ct:.1%}  N={len(_items)}"
                     )
-    except Exception as _cal_exc:
-        _log.debug("cmd_walkforward: calibration curve failed: %s", _cal_exc)
+    except Exception as _cal_exc2:
+        _log.debug("cmd_walkforward: per-condition breakdown failed: %s", _cal_exc2)
 
     # Offer to update learned weights from tracker MAE data (not win-rates — those
     # are a different format and must not overwrite {model: weight} dicts).
@@ -5858,76 +5875,68 @@ def cmd_backtest(client: KalshiClient, args: list):
     # This shows how well your LIVE model's probabilities predict outcomes —
     # separate from the synthetic archive replay above, which uses different
     # (fake) probabilities and can't diagnose the real model's bias.
-    try:
-        import sqlite3 as _btsql
-
-        from tracker import DB_PATH as _BT_DB_PATH
-
-        _bt_calib = (
-            _btsql.connect(str(_BT_DB_PATH))
-            .execute(
-                """
-            SELECT p.our_prob, p.condition_type, o.settled_yes
-            FROM predictions p
-            JOIN outcomes o ON p.ticker = o.ticker
-            WHERE p.our_prob IS NOT NULL AND o.settled_yes IS NOT NULL
-              AND (p.condition_type IS NULL OR p.condition_type != 'between')
-            """
+    #
+    # Split multiday vs sameday — see the matching note in cmd_walkforward();
+    # ml_bias.py fits separate T values for each population and a merged view can
+    # hide opposite-signed biases that cancel out in the mean.
+    def _print_live_calibration_block(title: str, calib: dict) -> None:
+        if calib["n"] < 10:
+            return
+        print(
+            bold(
+                f"\n  ── {title} Live Model Calibration (real predictions vs outcomes) ──\n"
             )
-            .fetchall()
         )
-        if len(_bt_calib) >= 10:
-            from collections import defaultdict as _dd
-
-            _bt_bkts: dict = _dd(list)
-            for _bp, _bct, _ba in _bt_calib:
-                _bb = int(float(_bp) * 5) / 5
-                _bt_bkts[_bb].append((float(_bp), int(_ba)))
-
+        print(dim("  Predicted   Actual    N    Bias"))
+        print(dim("  " + "─" * 36))
+        for _bucket in calib["calibration_buckets"]:
+            _bp_avg = _bucket["predicted_mean"]
+            _ba_avg = _bucket["actual_rate"]
+            _bb_bias = _bp_avg - _ba_avg
+            _bb_s = (
+                red(f"{_bb_bias * 100:>+6.1f}%  ← predictions TOO LOW")
+                if _bb_bias < -0.10
+                else green(f"{_bb_bias * 100:>+6.1f}%")
+                if abs(_bb_bias) < 0.05
+                else yellow(f"{_bb_bias * 100:>+6.1f}%")
+            )
             print(
-                bold(
-                    "\n  ── Live Model Calibration (real predictions vs outcomes) ──\n"
+                f"  {_bp_avg * 100:>6.1f}%   {_ba_avg * 100:>6.1f}%  {_bucket['n']:>3}   {_bb_s}"
+            )
+        _bt_mean_p = (
+            sum(b["predicted_mean"] * b["n"] for b in calib["calibration_buckets"])
+            / calib["n"]
+        )
+        _bt_mean_a = (
+            sum(b["actual_rate"] * b["n"] for b in calib["calibration_buckets"])
+            / calib["n"]
+        )
+        _bt_sys = _bt_mean_p - _bt_mean_a
+        print()
+        if _bt_sys < -0.08:
+            print(
+                red(
+                    f"  Systematic bias: {_bt_sys * 100:+.1f}% — model runs LOW. Run  py main.py calibrate  to train temperature scaling."
                 )
             )
-            print(dim("  Predicted   Actual    N    Bias"))
-            print(dim("  " + "─" * 36))
-            for _bb in sorted(_bt_bkts):
-                _bi = _bt_bkts[_bb]
-                _bp_avg = sum(x[0] for x in _bi) / len(_bi)
-                _ba_avg = sum(x[1] for x in _bi) / len(_bi)
-                _bb_bias = _bp_avg - _ba_avg
-                _bb_s = (
-                    red(f"{_bb_bias * 100:>+6.1f}%  ← predictions TOO LOW")
-                    if _bb_bias < -0.10
-                    else green(f"{_bb_bias * 100:>+6.1f}%")
-                    if abs(_bb_bias) < 0.05
-                    else yellow(f"{_bb_bias * 100:>+6.1f}%")
+        elif _bt_sys > 0.08:
+            print(
+                red(
+                    f"  Systematic bias: {_bt_sys * 100:+.1f}% — model runs HIGH. Run  py main.py calibrate  to train temperature scaling."
                 )
-                print(
-                    f"  {_bp_avg * 100:>6.1f}%   {_ba_avg * 100:>6.1f}%  {len(_bi):>3}   {_bb_s}"
+            )
+        else:
+            print(
+                green(
+                    f"  Systematic bias: {_bt_sys * 100:+.1f}% — no significant global bias."
                 )
-            _bt_mean_p = sum(float(r[0]) for r in _bt_calib) / len(_bt_calib)
-            _bt_mean_a = sum(int(r[2]) for r in _bt_calib) / len(_bt_calib)
-            _bt_sys = _bt_mean_p - _bt_mean_a
-            print()
-            if _bt_sys < -0.08:
-                print(
-                    red(
-                        f"  Systematic bias: {_bt_sys * 100:+.1f}% — model runs LOW. Run  py main.py calibrate  to train temperature scaling."
-                    )
-                )
-            elif _bt_sys > 0.08:
-                print(
-                    red(
-                        f"  Systematic bias: {_bt_sys * 100:+.1f}% — model runs HIGH. Run  py main.py calibrate  to train temperature scaling."
-                    )
-                )
-            else:
-                print(
-                    green(
-                        f"  Systematic bias: {_bt_sys * 100:+.1f}% — no significant global bias."
-                    )
-                )
+            )
+
+    try:
+        from tracker import get_multiday_calibration_cli, get_sameday_calibration_cli
+
+        _print_live_calibration_block("Multiday", get_multiday_calibration_cli())
+        _print_live_calibration_block("Sameday", get_sameday_calibration_cli())
     except Exception as _bt_cal_exc:
         _log.debug("cmd_backtest: calibration curve failed: %s", _bt_cal_exc)
 

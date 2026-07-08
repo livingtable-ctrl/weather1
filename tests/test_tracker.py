@@ -681,6 +681,146 @@ class TestGetBiasConditionType(_Phase3Base):
         self.assertEqual(result, 0.0)
 
 
+# ── CLI-scoped calibration split (multiday/sameday, between-excluded) ──────────
+
+
+class TestCliCalibrationSplit(_Phase3Base):
+    """Tests for get_multiday_calibration_cli() / get_sameday_calibration_cli()
+    and a regression check that get_sameday_calibration() (dashboard-facing,
+    includes 'between') did not change behavior during the refactor."""
+
+    def test_multiday_calibration_cli_empty(self):
+        result = tracker.get_multiday_calibration_cli()
+        self.assertEqual(result["n"], 0)
+        self.assertFalse(result["gate_met"])
+        self.assertIsNone(result["brier"])
+        self.assertEqual(result["calibration_buckets"], [])
+
+    def test_sameday_calibration_cli_empty(self):
+        result = tracker.get_sameday_calibration_cli()
+        self.assertEqual(result["n"], 0)
+        self.assertFalse(result["gate_met"])
+        self.assertIsNone(result["brier"])
+        self.assertEqual(result["calibration_buckets"], [])
+
+    def test_multiday_calibration_cli_excludes_sameday_rows(self):
+        """A days_out=0 row must not appear in the multiday population."""
+        self._add(
+            "TKCAL-MD-1", "NYC", 0.80, 0.50, True, condition_type="above", days_out=1
+        )
+        self._add(
+            "TKCAL-SD-1", "NYC", 0.20, 0.50, False, condition_type="above", days_out=0
+        )
+        multiday = tracker.get_multiday_calibration_cli()
+        self.assertEqual(multiday["n"], 1)
+        self.assertAlmostEqual(multiday["brier"], (0.80 - 1) ** 2, places=4)
+
+    def test_sameday_calibration_cli_excludes_multiday_rows(self):
+        """A days_out=1 row must not appear in the sameday population."""
+        self._add(
+            "TKCAL-MD-2", "NYC", 0.80, 0.50, True, condition_type="above", days_out=1
+        )
+        self._add(
+            "TKCAL-SD-2", "NYC", 0.20, 0.50, False, condition_type="above", days_out=0
+        )
+        sameday = tracker.get_sameday_calibration_cli()
+        self.assertEqual(sameday["n"], 1)
+        self.assertAlmostEqual(sameday["brier"], (0.20 - 0) ** 2, places=4)
+
+    def test_multiday_calibration_cli_excludes_between(self):
+        """condition_type='between' rows must not affect n/brier."""
+        self._add(
+            "TKCAL-MD-ABOVE",
+            "NYC",
+            0.70,
+            0.50,
+            True,
+            condition_type="above",
+            days_out=1,
+        )
+        for i in range(3):
+            self._add(
+                f"TKCAL-MD-BETWEEN-{i}",
+                "NYC",
+                0.90,
+                0.50,
+                False,
+                condition_type="between",
+                days_out=1,
+            )
+        multiday = tracker.get_multiday_calibration_cli()
+        self.assertEqual(multiday["n"], 1)
+        self.assertAlmostEqual(multiday["brier"], (0.70 - 1) ** 2, places=4)
+
+    def test_sameday_calibration_cli_excludes_between(self):
+        """Regression for the 69-row scenario found in production data: 'between'
+        sameday rows must not leak into the CLI-scoped sameday population."""
+        self._add(
+            "TKCAL-SD-ABOVE",
+            "NYC",
+            0.30,
+            0.50,
+            False,
+            condition_type="above",
+            days_out=0,
+        )
+        for i in range(3):
+            self._add(
+                f"TKCAL-SD-BETWEEN-{i}",
+                "NYC",
+                0.90,
+                0.50,
+                False,
+                condition_type="between",
+                days_out=0,
+            )
+        sameday = tracker.get_sameday_calibration_cli()
+        self.assertEqual(sameday["n"], 1)
+        self.assertAlmostEqual(sameday["brier"], (0.30 - 0) ** 2, places=4)
+
+    def test_get_sameday_calibration_still_includes_between(self):
+        """Dashboard-facing get_sameday_calibration() must NOT change behavior —
+        it still includes 'between' rows, unlike the CLI-scoped variant above."""
+        self._add(
+            "TKCAL-SDALL-ABOVE",
+            "NYC",
+            0.30,
+            0.50,
+            False,
+            condition_type="above",
+            days_out=0,
+        )
+        self._add(
+            "TKCAL-SDALL-BETWEEN",
+            "NYC",
+            0.90,
+            0.50,
+            False,
+            condition_type="between",
+            days_out=0,
+        )
+        dashboard = tracker.get_sameday_calibration()
+        self.assertEqual(dashboard["n"], 2)
+
+    def test_multiday_calibration_cli_bucket_grouping(self):
+        """Rows land in the correct 0.2-wide probability buckets."""
+        self._add(
+            "TKCAL-BKT-1", "NYC", 0.05, 0.50, False, condition_type="above", days_out=1
+        )
+        self._add(
+            "TKCAL-BKT-2", "NYC", 0.55, 0.50, True, condition_type="above", days_out=2
+        )
+        self._add(
+            "TKCAL-BKT-3", "NYC", 0.95, 0.50, True, condition_type="above", days_out=3
+        )
+        multiday = tracker.get_multiday_calibration_cli()
+        self.assertEqual(multiday["n"], 3)
+        lows = [b["bucket_low"] for b in multiday["calibration_buckets"]]
+        self.assertIn(0.0, lows)
+        self.assertIn(0.4, lows)
+        self.assertIn(0.8, lows)
+
+
 # ── Task 2: brier_skill_score() ───────────────────────────────────────────────
 
 
@@ -2227,8 +2367,14 @@ class TestFetchAsosDailyTemp(unittest.TestCase):
             ("2026-07-03 07:53", "60.0"),  # 2026-07-03 00:53 local
             ("2026-07-03 20:53", "70.0"),  # 2026-07-03 13:53 local
             ("2026-07-04 06:53", "57.0"),  # 2026-07-03 23:53 local -- true low
-            ("2026-07-04 12:53", "56.0"),  # 2026-07-04 05:53 local -- excluded (next day)
-            ("2026-07-04 17:53", "60.0"),  # 2026-07-04 10:53 local -- excluded (next day)
+            (
+                "2026-07-04 12:53",
+                "56.0",
+            ),  # 2026-07-04 05:53 local -- excluded (next day)
+            (
+                "2026-07-04 17:53",
+                "60.0",
+            ),  # 2026-07-04 10:53 local -- excluded (next day)
         ]
         with patch("requests.get", return_value=self._mock_response(rows)):
             result = tracker._fetch_asos_daily_temp(
@@ -2267,7 +2413,10 @@ class TestFetchAsosDailyTemp(unittest.TestCase):
             ("2026-06-26 07:00", "92.0"),  # 2026-06-26 00:00 local
             ("2026-06-26 20:00", "112.0"),  # 2026-06-26 13:00 local -- afternoon peak
             ("2026-06-27 06:00", "89.0"),  # 2026-06-26 23:00 local -- true low
-            ("2026-06-27 12:00", "84.0"),  # 2026-06-27 05:00 local -- excluded (next day)
+            (
+                "2026-06-27 12:00",
+                "84.0",
+            ),  # 2026-06-27 05:00 local -- excluded (next day)
         ]
         with patch(
             "requests.get", return_value=self._mock_response(rows, station="KPHX")
@@ -2289,7 +2438,10 @@ class TestFetchAsosDailyTemp(unittest.TestCase):
             ("2026-03-08 07:53", "28.0"),  # 2026-03-08 01:53 local (CST, UTC-6)
             ("2026-03-08 13:53", "45.0"),  # 2026-03-08 08:53 local (CDT, UTC-5)
             ("2026-03-09 04:53", "26.0"),  # 2026-03-08 23:53 local (CDT) -- true low
-            ("2026-03-09 10:53", "20.0"),  # 2026-03-09 05:53 local -- excluded (next day)
+            (
+                "2026-03-09 10:53",
+                "20.0",
+            ),  # 2026-03-09 05:53 local -- excluded (next day)
         ]
         with patch(
             "requests.get", return_value=self._mock_response(rows, station="KMDW")
@@ -2314,7 +2466,10 @@ class TestFetchAsosDailyTemp(unittest.TestCase):
             ("2026-11-01 06:53", "48.0"),  # 2026-11-01 01:53 local (CDT) -- 1st pass
             ("2026-11-01 07:53", "47.0"),  # 2026-11-01 01:53 local (CST) -- 2nd pass
             ("2026-11-02 05:53", "40.0"),  # 2026-11-01 23:53 local (CST) -- true low
-            ("2026-11-02 11:53", "35.0"),  # 2026-11-02 05:53 local -- excluded (next day)
+            (
+                "2026-11-02 11:53",
+                "35.0",
+            ),  # 2026-11-02 05:53 local -- excluded (next day)
         ]
         with patch(
             "requests.get", return_value=self._mock_response(rows, station="KMDW")
