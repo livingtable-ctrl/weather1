@@ -27,6 +27,17 @@ What the fix looks like:
   "will the temp at hour H cross X" -- the per-hour target and the shorter
   settlement window are a real design difference, not just reused as-is.
 
+  Calibration follows the same precedent already established for same-day
+  vs multi-day: ml_bias.train_all_temperature_scaling() fits a dedicated
+  'sameday' T from days_out=0 rows only, with apply_temperature_scaling()
+  enforcing zero fallback to the global/multi-day T (their probability
+  distributions are too different to share a scale -- see commit chain
+  c773474 -> 9f5bb40, 2026-06-02/05). An hour-level model needs the same
+  treatment: its own training pool and its own T, not folded into either
+  the daily same-day pool or the multi-day pool. Don't assume the existing
+  'sameday' calibration path could just absorb hourly rows -- it can't
+  without the same care taken to keep the pools separate.
+
 Why not now:
   - No existing model for the hour-level target specifically (only daily).
   - Only 1 of 7 cities in this family is currently even active.
