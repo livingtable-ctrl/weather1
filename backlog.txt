@@ -31,6 +31,75 @@ When to revisit:
   - Multi-day win rate stable and above Gate 2 threshold
   - Have spare bandwidth for a standalone pipeline build
 
+[HOURLY-DIRECTIONAL TEMPERATURE MARKETS — KXTEMPxxxH]
+Priority: Low/Medium (one city has real live volume right now; the rest don't)
+
+Problem:
+  Kalshi's "Climate and Weather" category also lists an "Hourly Directional
+  [City] Temperature" market family, structurally invisible to this bot:
+  check_series_drift() only ever diffs KXHIGH*/KXLOW* prefixed series, so
+  this family never surfaces as a gap no matter how much volume it gets.
+  Confirmed live 2026-07-08: KXTEMPMIAH, KXTEMPBOSH, KXTEMPLAXH, KXTEMPCHIH,
+  KXTEMPAUSH, KXTEMPDCH, KXTEMPNYCH all exist; only KXTEMPNYCH currently has
+  open markets (24 of them, e.g. KXTEMPNYCH-26JUL0804-T76.99 -- an hourly
+  threshold, not a daily high/low). The other 6 cities are dormant right now.
+
+What the fix looks like:
+  This isn't a ticker-list fix -- it needs a genuinely different probability
+  model (per-hour threshold crossing, not the daily ensemble blend this bot
+  is built around). It overlaps heavily with the already-deferred
+  [SAME-DAY NOWCASTING] entry above: both need current-condition-aware
+  inputs (real-time METAR, NWS hourly forecast for remaining hours) rather
+  than the multi-day ensemble. Worth building together, not separately, if
+  ever picked up -- same infrastructure, same "traders can see current
+  conditions, multi-day forecast has no edge here" problem.
+
+Why not now:
+  - No existing model for finer-than-daily thresholds.
+  - Only 1 of 7 cities in this family is currently even active.
+  - Directly gated on the same nowcasting-infrastructure work that
+    [SAME-DAY NOWCASTING] above is already deferred on.
+
+When to revisit:
+  - After (or alongside) [SAME-DAY NOWCASTING], since they'd share infra.
+  - If KXTEMPxxxH activity broadens beyond just NYC.
+
+[RAIN / SNOW / HURRICANE MARKETS — UNTOUCHED CATEGORY SURFACE]
+Priority: Low (net-new product line, not a gap in the existing one)
+
+Problem:
+  "Climate and Weather" has 287 series total; this bot only ever looks at
+  ~45 of them (KXHIGH*/KXLOW*, 20 tracked cities). Live-checked 2026-07-08:
+  16 KXRAIN* city series exist, 2 currently with real open volume
+  (KXRAINDENM -- Denver rain, 7 open markets; KXRAINSTPM, 7 open markets);
+  ~23 snow series and ~40 hurricane series (path/category/landfall by city)
+  exist but were all dormant/closed at check time. Separately, a handful of
+  real weather markets (RAINNYC, KXRAINMIA, KXRAINNOSB) live entirely
+  outside the "Climate and Weather" category (filed under "World"), so even
+  widening check_series_drift's prefix filter within that one category
+  wouldn't catch those.
+
+What the fix looks like:
+  Not a ticker-coverage fix -- each market type needs its own forecasting
+  model with no shared architecture with the temperature-ensemble blend
+  this bot runs today: precipitation-probability modeling for rain,
+  snowfall-total modeling for snow, storm-track/intensity modeling for
+  hurricanes. Treat as three separate potential product lines, not one
+  task. If ever prioritized, rain is the most promising starting point --
+  it already has real live volume (Denver/St. Paul) and precip-probability
+  modeling is a smaller lift than storm-tracking.
+
+Why not now:
+  - No existing model architecture for any of the three.
+  - Effort scales per market type, not incrementally with the current bot.
+  - check_series_drift()'s KXHIGH*/KXLOW*-only filter is a deliberate
+    simplification of an already-noisy check; widening it without picking
+    a market type to actually act on would just add more unactionable noise.
+
+When to revisit:
+  - If there's real appetite to add a new market type (not just "cover more
+    tickers") -- start with rain given current live volume.
+
 [TRACK ECMWF FORECAST ACCURACY]
 Priority: Low (ECMWF already gets a reasonable static/seasonal weight; this is
   about making that weight data-driven like ICON/GFS already are)
