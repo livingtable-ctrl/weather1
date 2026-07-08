@@ -5741,7 +5741,7 @@ def cmd_backtest(client: KalshiClient, args: list):
         )
         print(f"  Val win rate: {val_wr_str}")
     print(f"  Win rate:     {wr_str}   (picking better side vs market)")
-    print(f"  Sim P&L:      {pnl_str}   (half-Kelly sizing, 5% cap, 7% fees)")
+    print(f"  Sim P&L:      {pnl_str}   (quarter-Kelly sizing, 5% cap, 7% fees)")
 
     # Show worst 5 and best 5
     rows = summary["rows"]
