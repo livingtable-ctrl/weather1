@@ -1439,7 +1439,13 @@ def _auto_place_trades(
             continue
 
         # Pre-trade VaR gate: skip if adding this position would push 5th-percentile
-        # portfolio loss beyond MAX_VAR_DOLLARS
+        # portfolio loss beyond MAX_VAR_DOLLARS. Runs at portfolio_var()'s real
+        # default (5000 sims, not a cheaper override) since 1000 sims was
+        # confirmed too noisy against this gate — see monte_carlo.py's
+        # portfolio_var docstring. Benchmarked cost: ~2.5s cumulative across a
+        # realistic 15-candidate cron cycle (portfolio growing 5->20 positions)
+        # — negligible against this bot's multi-hour cron cadence, but real;
+        # don't assume this call is free if adding more per-candidate work here.
         if MAX_VAR_DOLLARS > 0:
             try:
                 from monte_carlo import portfolio_var
