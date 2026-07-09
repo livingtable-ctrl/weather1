@@ -86,7 +86,11 @@ class LiveTradingGate:
             return False, f"is_streak_paused error: {exc}"
 
         try:
-            if is_daily_loss_halted():
+            # Pass client so the daily-loss check includes unrealized MTM on
+            # open positions (paper.py's #46 feature) -- without it, this
+            # check only ever saw P&L from trades settled today, blind to
+            # positions currently underwater but not yet closed (2026-07-09).
+            if is_daily_loss_halted(client):
                 return False, "Daily loss limit reached"
         except Exception as exc:
             return False, f"is_daily_loss_halted error: {exc}"

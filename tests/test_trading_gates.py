@@ -116,6 +116,36 @@ class TestLiveTradingGate:
         assert not allowed
         assert "Daily loss" in reason
 
+    def test_daily_loss_check_receives_the_client(self):
+        """2026-07-09: check() previously called is_daily_loss_halted() with
+        no args, so the daily-loss halt could never include unrealized MTM
+        on open positions (paper.get_daily_pnl's client-optional #46
+        feature) even though check() has the client in scope. Confirm the
+        client is actually forwarded, not just that the check runs."""
+        from kalshi_client import PROD_BASE
+
+        gate = self._gate()
+        mock_client = MagicMock()
+        mock_client.base_url = PROD_BASE
+        received = {}
+
+        def _fake_halted(client=None):
+            received["client"] = client
+            return False
+
+        with (
+            patch.dict(os.environ, _PROD_ENV),
+            patch("paper.graduation_check", return_value={"settled": 35}),
+            patch("paper.is_paused_drawdown", return_value=False),
+            patch("paper.is_daily_loss_halted", _fake_halted),
+            patch("paper.is_accuracy_halted", return_value=False),
+            patch("paper.is_streak_paused", return_value=False),
+        ):
+            allowed, reason = gate.check(mock_client)
+
+        assert allowed
+        assert received["client"] is mock_client
+
     def test_blocks_when_accuracy_halted(self):
         gate = self._gate()
         with (
