@@ -156,6 +156,24 @@ def _count_open_live_orders() -> int:
 # ---------------------------------------------------------------------------
 
 
+def _kalshi_status_to_internal(api_status: str) -> str | None:
+    """Translate a Kalshi order status into this bot's own execution_log
+    status vocabulary, or None if it isn't a resolved terminal status.
+
+    Kalshi's real status enum is resting/canceled/executed (there is no
+    "filled" or "expired" -- confirmed against Kalshi's API docs 2026-07-09).
+    execution_log.get_filled_unsettled_live_orders() hardcodes a SQL literal
+    match on 'filled', so "executed" must be translated to "filled" here
+    rather than passed through as Kalshi's own term -- storing "executed"
+    directly would silently break that settlement-tracking query.
+    """
+    if api_status == "executed":
+        return "filled"
+    if api_status == "canceled":
+        return "canceled"
+    return None
+
+
 def _recover_pending_orders(client) -> None:
     """Reconcile 'pending' execution_log rows against the Kalshi API at startup.
 
@@ -208,10 +226,16 @@ def _recover_pending_orders(client) -> None:
             if api_status == "resting":
                 execution_log.log_order_result(row_id, status="placed")
                 _log.info("[Recovery] %s row %d: resting → placed", ticker, row_id)
-            elif api_status in ("filled", "canceled", "expired"):
-                execution_log.log_order_result(row_id, status=api_status)
+            elif (
+                _internal_status := _kalshi_status_to_internal(api_status)
+            ) is not None:
+                execution_log.log_order_result(row_id, status=_internal_status)
                 _log.info(
-                    "[Recovery] %s row %d: resolved to %s", ticker, row_id, api_status
+                    "[Recovery] %s row %d: resolved to %s (kalshi status=%s)",
+                    ticker,
+                    row_id,
+                    _internal_status,
+                    api_status,
                 )
             else:
                 _log.warning(
@@ -317,10 +341,11 @@ def _poll_pending_orders(client, config: dict | None = None) -> None:
 
             result = client.get_order(order_id)
             api_status = result.get("status", "")
-            if api_status in ("filled", "canceled", "expired"):
+            _internal_status = _kalshi_status_to_internal(api_status)
+            if _internal_status is not None:
                 execution_log.log_order_result(
                     row_id=order["id"],
-                    status=api_status,
+                    status=_internal_status,
                     fill_quantity=result.get("fill_quantity"),
                 )
         except Exception as exc:

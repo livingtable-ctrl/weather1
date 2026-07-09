@@ -379,8 +379,8 @@ class KalshiClient:
     def _find_order_by_client_id(self, client_order_id: str) -> dict | None:
         """Return the order matching client_order_id, or None if not found.
 
-        Checks resting orders first, then filled — covers the taker-fill case where an
-        order lands and fills immediately before the timeout retry fires.
+        Checks resting orders first, then executed — covers the taker-fill case
+        where an order lands and fills immediately before the timeout retry fires.
         """
         try:
             data = self._get(
@@ -394,19 +394,22 @@ class KalshiClient:
                 "_find_order_by_client_id: resting lookup failed (%s) — assuming not landed",
                 _e,
             )
-        # Second pass: check filled orders only if resting lookup found nothing.
+        # Second pass: check executed orders only if resting lookup found nothing.
+        # 2026-07-09: was "filled" -- not a real Kalshi status value (the enum is
+        # resting/canceled/executed), so this lookup silently matched nothing.
         try:
             data = self._get(
-                "/portfolio/orders", params={"status": "filled"}, auth=True
+                "/portfolio/orders", params={"status": "executed"}, auth=True
             )
             for order in data.get("orders", []):
                 if order.get("client_order_id") == client_order_id:
                     # Return with status overridden to "placed" so the dedup guard stays
-                    # active; the GTC poll loop will promote it to "filled" shortly.
+                    # active; the GTC poll loop will promote it to "filled" (this bot's
+                    # own internal term) shortly.
                     return {**order, "status": "placed"}
         except Exception as _e:
             _log.warning(
-                "_find_order_by_client_id: filled lookup failed (%s) — assuming not landed",
+                "_find_order_by_client_id: executed lookup failed (%s) — assuming not landed",
                 _e,
             )
         return None
@@ -414,7 +417,8 @@ class KalshiClient:
     def get_order(self, order_id: str) -> dict:
         """Fetch a single order by ID from the Kalshi portfolio API.
 
-        Returns the inner order dict with 'status' key: resting/filled/canceled/expired.
+        Returns the inner order dict with 'status' key: resting/canceled/executed
+        (Kalshi's real enum -- there is no "filled" or "expired" status).
         """
         data = self._get(f"/portfolio/orders/{order_id}", auth=True)
         return data.get("order", data)

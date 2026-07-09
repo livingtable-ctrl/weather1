@@ -170,6 +170,121 @@ class TestAutoPlaceTradesCycleCheck:
         mock_live.assert_not_called()
 
 
+class TestRecoverPendingOrders:
+    """2026-07-09: Kalshi's real order-status enum is resting/canceled/executed
+    -- there is no "filled" or "expired". _recover_pending_orders previously
+    checked api_status in ("filled", "canceled", "expired"), so a genuinely
+    executed order fell through to the "unknown API status -- leaving
+    pending" branch and was never resolved."""
+
+    def setup_method(self):
+        import tempfile
+        from pathlib import Path
+
+        import execution_log
+
+        self._tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+        execution_log.DB_PATH = Path(self._tmp.name)
+        execution_log._initialized = False
+
+    def teardown_method(self):
+        import gc
+        from pathlib import Path
+
+        import execution_log
+
+        execution_log._initialized = False
+        self._tmp.close()
+        gc.collect()
+        Path(self._tmp.name).unlink(missing_ok=True)
+
+    def test_executed_order_resolves_to_internal_filled_status(self):
+        """A pending row whose order actually executed must resolve to this
+        bot's internal 'filled' term, not be left stuck on 'pending'."""
+        from unittest.mock import MagicMock
+
+        import execution_log
+        from order_executor import _recover_pending_orders
+
+        row_id = execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=2,
+            price=0.55,
+            status="pending",
+            live=True,
+            response={"order": {"order_id": "ord_abc123"}},
+        )
+
+        mock_client = MagicMock()
+        mock_client.get_order.return_value = {
+            "order_id": "ord_abc123",
+            "status": "executed",
+        }
+
+        _recover_pending_orders(mock_client)
+
+        orders = execution_log.get_recent_orders(limit=10)
+        row = next(o for o in orders if o["id"] == row_id)
+        assert row["status"] == "filled"
+
+    def test_canceled_order_resolves_to_canceled(self):
+        from unittest.mock import MagicMock
+
+        import execution_log
+        from order_executor import _recover_pending_orders
+
+        row_id = execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=2,
+            price=0.55,
+            status="pending",
+            live=True,
+            response={"order": {"order_id": "ord_xyz"}},
+        )
+
+        mock_client = MagicMock()
+        mock_client.get_order.return_value = {
+            "order_id": "ord_xyz",
+            "status": "canceled",
+        }
+
+        _recover_pending_orders(mock_client)
+
+        orders = execution_log.get_recent_orders(limit=10)
+        row = next(o for o in orders if o["id"] == row_id)
+        assert row["status"] == "canceled"
+
+    def test_resting_order_resolves_to_placed(self):
+        from unittest.mock import MagicMock
+
+        import execution_log
+        from order_executor import _recover_pending_orders
+
+        row_id = execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=2,
+            price=0.55,
+            status="pending",
+            live=True,
+            response={"order": {"order_id": "ord_rest"}},
+        )
+
+        mock_client = MagicMock()
+        mock_client.get_order.return_value = {
+            "order_id": "ord_rest",
+            "status": "resting",
+        }
+
+        _recover_pending_orders(mock_client)
+
+        orders = execution_log.get_recent_orders(limit=10)
+        row = next(o for o in orders if o["id"] == row_id)
+        assert row["status"] == "placed"
+
+
 class TestPollPendingOrders:
     def test_filled_order_updates_status(self, monkeypatch):
         """_poll_pending_orders updates a pending live order to 'filled' when API returns filled."""
@@ -196,11 +311,14 @@ class TestPollPendingOrders:
             response={"order": {"order_id": "ord_abc123"}},
         )
 
-        # Mock client that returns filled status
+        # Mock client that returns Kalshi's real "executed" status (not "filled" --
+        # that's this bot's own internal term, translated by
+        # _kalshi_status_to_internal; Kalshi's actual enum is
+        # resting/canceled/executed).
         mock_client = MagicMock()
         mock_client.get_order.return_value = {
             "order_id": "ord_abc123",
-            "status": "filled",
+            "status": "executed",
             "fill_quantity": 2,
         }
 
