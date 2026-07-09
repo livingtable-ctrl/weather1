@@ -307,7 +307,7 @@ def test_run_backtest_reports_per_condition_type(monkeypatch):
     monkeypatch.setattr("backtest._fetch_settled_markets", lambda *a, **kw: markets)
     monkeypatch.setattr(
         "weather_markets.enrich_with_forecast",
-        lambda m: {
+        lambda m, **kw: {
             **m,
             "_city": "NYC",
             "_date": date(2026, 5, 1),
