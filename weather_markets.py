@@ -913,7 +913,7 @@ def get_weather_forecast(city: str, target_date: date) -> dict | None:
     def _fetch_one(model: str, weight: float) -> tuple | None:
         """Fetch one model's forecast; returns (high, low, precip, weight) or None."""
         if _forecast_cb.is_open():
-            _log.debug(
+            _log.info(
                 "[CircuitBreaker] open_meteo_forecast circuit open — skipping forecast fetch"
             )
             return None
@@ -938,7 +938,7 @@ def get_weather_forecast(city: str, target_date: date) -> dict | None:
             _forecast_cb.record_success()
         except Exception as _exc:
             _forecast_cb.record_failure()
-            _log.debug("open_meteo forecast fetch failed: %s", _exc)
+            _log.info("open_meteo forecast fetch failed: %s", _exc)
             return None
         validate_forecast(daily, source="open_meteo")
         dates = daily.get("time", [])
@@ -1138,7 +1138,7 @@ def batch_prewarm_forecasts(
 
     for idx, model in enumerate(batch_models, start=1):
         if _forecast_cb.is_open():
-            _log.debug("[batch_prewarm] circuit opened mid-batch — stopping")
+            _log.info("[batch_prewarm] circuit opened mid-batch — stopping")
             break
         ok = False
         try:
@@ -1183,7 +1183,7 @@ def batch_prewarm_forecasts(
             ok = True
         except Exception as exc:
             _forecast_cb.record_failure()
-            _log.debug("[batch_prewarm] model %s failed: %s", model, exc)
+            _log.info("[batch_prewarm] model %s failed: %s", model, exc)
         if progress_cb is not None:
             progress_cb(idx, len(batch_models), model, ok)
 
