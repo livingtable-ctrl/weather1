@@ -1888,9 +1888,12 @@ def _quick_paper_buy(client: KalshiClient) -> None:
                 # separate env-var read here could disagree with the gate's
                 # own notion of prod-ness if they came from different
                 # sources. Passing `client` through removes that entirely.
-                from kalshi_client import PROD_BASE
+                # `!= DEMO_BASE` (not `== PROD_BASE`) so a client missing
+                # base_url entirely defaults to requiring the gate rather
+                # than silently skipping it (2026-07-09 follow-up review).
+                from kalshi_client import DEMO_BASE
 
-                if getattr(client, "base_url", None) == PROD_BASE:
+                if getattr(client, "base_url", None) != DEMO_BASE:
                     from trading_gates import pre_live_trade_check
 
                     try:
@@ -3250,10 +3253,12 @@ def cmd_order(client: KalshiClient, action: str, args: list):
     # trading_gates.LiveTradingGate.check()'s docstring: a separate env-var
     # read here could disagree with the gate's own notion of prod-ness if
     # they came from different sources. Passing `client` through removes
-    # that entirely.
-    from kalshi_client import PROD_BASE
+    # that entirely. `!= DEMO_BASE` (not `== PROD_BASE`) so a client missing
+    # base_url entirely defaults to requiring the gate rather than silently
+    # skipping it (2026-07-09 follow-up review).
+    from kalshi_client import DEMO_BASE
 
-    if getattr(client, "base_url", None) == PROD_BASE:
+    if getattr(client, "base_url", None) != DEMO_BASE:
         from trading_gates import pre_live_trade_check
 
         try:

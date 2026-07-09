@@ -224,6 +224,31 @@ class TestLiveTradingGate:
         mock_client.place_order.assert_not_called()
         assert "gate blocked" in capsys.readouterr().out.lower()
 
+    def test_cmd_order_gates_client_missing_base_url(self, monkeypatch, capsys):
+        """2026-07-09 follow-up: the outer guard must REQUIRE the gate for a
+        client it can't positively identify as demo, not skip it. Before this
+        fix the outer guard was `== PROD_BASE`, so a client lacking base_url
+        entirely (None) would silently skip the gate and place unguarded --
+        the same fail-open shape as the bug this whole line of work started
+        from. `!= DEMO_BASE` closes it: unknown base_url now requires the
+        gate, which itself already fails closed on a non-prod base_url."""
+        import main
+
+        mock_client = MagicMock()
+        mock_client.get_market.return_value = None
+        del mock_client.base_url  # getattr(..., None) now returns None, not a Mock
+
+        monkeypatch.setattr(main, "is_trading_paused", lambda: False)
+        monkeypatch.setattr(
+            "execution_log.was_recently_ordered", lambda ticker, side: False
+        )
+        monkeypatch.setattr("builtins.input", lambda _prompt="": "y")
+
+        main.cmd_order(mock_client, "order", ["KXTEST-25JUN01-T70", "yes", "5", "0.50"])
+
+        mock_client.place_order.assert_not_called()
+        assert "gate blocked" in capsys.readouterr().out.lower()
+
     def test_micro_live_blocked_by_gate(self, monkeypatch):
         """_micro_live_gate_ok() must return False when the live trading gate blocks."""
         from order_executor import _micro_live_gate_ok
@@ -232,6 +257,26 @@ class TestLiveTradingGate:
             patch("main.KALSHI_ENV", "demo"),  # any failing gate condition works here
         ):
             assert _micro_live_gate_ok() is False
+
+    def test_micro_live_gate_ok_uses_the_client_it_is_passed(self):
+        """The real call site (order_executor.py:1741) passes its own client
+        through — exercise that path directly, not just the no-client env
+        fallback above, so a future regression in the threading itself would
+        be caught here."""
+        from kalshi_client import DEMO_BASE, PROD_BASE
+        from order_executor import _micro_live_gate_ok
+
+        demo_client = MagicMock()
+        demo_client.base_url = DEMO_BASE
+        assert _micro_live_gate_ok(demo_client) is False
+
+        prod_client = MagicMock()
+        prod_client.base_url = PROD_BASE
+        with patch.dict(os.environ, {"LIVE_TRADING_ENABLED": "false"}):
+            # Still blocked (LIVE_TRADING_ENABLED false) — proves the prod
+            # client actually reached the rest of the gate, not just that
+            # SOME check happened to fail.
+            assert _micro_live_gate_ok(prod_client) is False
 
     def test_quick_paper_buy_maker_order_blocked_by_gate(self, monkeypatch, capsys):
         """_quick_paper_buy's maker-order branch places a REAL order — despite the
@@ -266,6 +311,36 @@ class TestLiveTradingGate:
             patch.dict(os.environ, {"LIVE_TRADING_ENABLED": "false"}),
         ):
             main._quick_paper_buy(mock_client)
+
+        mock_client.place_maker_order.assert_not_called()
+        assert "gate blocked" in capsys.readouterr().out.lower()
+
+    def test_quick_paper_buy_gates_client_missing_base_url(self, monkeypatch, capsys):
+        """Mirror of test_cmd_order_gates_client_missing_base_url for the
+        maker-order flow's outer guard."""
+        import main
+
+        mock_client = MagicMock()
+        mock_client.get_market.return_value = {}
+        del mock_client.base_url
+
+        monkeypatch.setattr(main, "is_trading_paused", lambda: False)
+        monkeypatch.setattr(main, "_resolve_price", lambda client, ticker, side: 0.45)
+        monkeypatch.setattr("paper.is_daily_loss_halted", lambda: False)
+        monkeypatch.setattr("paper.is_streak_paused", lambda: False)
+        _inputs = iter(
+            [
+                "KXTEST-25JUN01-T70",  # ticker
+                "yes",  # side
+                "2",  # order type: limit maker
+                "0.45",  # limit price
+                "5",  # qty
+                "",  # thesis
+            ]
+        )
+        monkeypatch.setattr("builtins.input", lambda *_a: next(_inputs))
+
+        main._quick_paper_buy(mock_client)
 
         mock_client.place_maker_order.assert_not_called()
         assert "gate blocked" in capsys.readouterr().out.lower()
