@@ -1795,6 +1795,7 @@ def _auto_place_trades(
                                     count=_micro_qty,
                                     price=_micro_price,
                                     time_in_force="good_till_canceled",
+                                    cycle=cycle,
                                 )
                                 execution_log.log_order_result(
                                     _micro_log_id, status="placed", response=_micro_resp

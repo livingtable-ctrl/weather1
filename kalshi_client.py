@@ -432,6 +432,7 @@ class KalshiClient:
         side: str,
         price: float,
         quantity: float,
+        cycle: str | None = None,
     ) -> dict:
         """
         Place a passive limit (maker) order at the specified price.
@@ -442,6 +443,10 @@ class KalshiClient:
             side:     "yes" or "no"
             price:    Limit price in dollars (e.g. 0.45)
             quantity: Number of contracts
+            cycle:    Forecast cycle string for a deterministic idempotency
+                      key (see place_order) -- if omitted, every call gets a
+                      random UUID and a caller retry after a lost response
+                      can silently double-place (2026-07-09).
         """
         return self.place_order(
             ticker=ticker,
@@ -450,4 +455,5 @@ class KalshiClient:
             count=quantity,
             price=price,
             time_in_force="good_till_canceled",
+            cycle=cycle,
         )

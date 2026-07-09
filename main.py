@@ -1905,7 +1905,17 @@ def _quick_paper_buy(client: KalshiClient) -> None:
                         print(red(f"  Live trading gate blocked: {_gate_err}"))
                         return
                 try:
-                    result = client.place_maker_order(ticker, side, maker_price, qty)
+                    # Minute-bucketed pseudo-cycle so a quick manual retry
+                    # after a lost response dedups server-side instead of
+                    # generating a fresh random UUID (place_maker_order's
+                    # default) and silently double-placing (2026-07-09).
+                    # Deliberately NOT derived from ticker/side/price/qty
+                    # alone -- that would dedup across the market's whole
+                    # life and swallow a legitimate re-place after a cancel.
+                    _maker_cycle = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M")
+                    result = client.place_maker_order(
+                        ticker, side, maker_price, qty, cycle=_maker_cycle
+                    )
                     order = result.get("order", result)
                     print(
                         green(

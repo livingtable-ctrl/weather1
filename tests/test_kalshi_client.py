@@ -132,6 +132,54 @@ class TestPlaceOrderApiSemantics:
         )
 
 
+class TestPlaceMakerOrderIdempotency:
+    """2026-07-09: place_maker_order never forwarded a cycle to place_order,
+    so every call got a fresh random UUID baked into its idempotency key --
+    a caller retrying after a lost response (timeout, network blip) would
+    generate a different key than the original attempt even if it actually
+    landed, and Kalshi would accept it as a genuinely new, distinct order."""
+
+    def _make_client(self):
+        from unittest.mock import patch
+
+        with patch("kalshi_client.KalshiClient.__init__", return_value=None):
+            import kalshi_client
+
+            client = kalshi_client.KalshiClient.__new__(kalshi_client.KalshiClient)
+        return client
+
+    def test_same_cycle_produces_the_same_idempotency_key(self):
+        client = self._make_client()
+        mock_post = MagicMock(return_value={"order_id": "ord_test"})
+        client._post = mock_post
+
+        client.place_maker_order("KXHIGH-26APR25-T72", "yes", 0.45, 5, cycle="12z")
+        first_id = mock_post.call_args.args[1]["client_order_id"]
+
+        client.place_maker_order("KXHIGH-26APR25-T72", "yes", 0.45, 5, cycle="12z")
+        second_id = mock_post.call_args.args[1]["client_order_id"]
+
+        assert first_id == second_id, (
+            "Same ticker/side/price/qty/cycle must produce the same "
+            "client_order_id so a retry dedups server-side"
+        )
+
+    def test_without_cycle_each_call_gets_a_different_key(self):
+        """Documents the pre-existing (and still correct for a genuinely
+        distinct manual order) fallback behavior when no cycle is passed."""
+        client = self._make_client()
+        mock_post = MagicMock(return_value={"order_id": "ord_test"})
+        client._post = mock_post
+
+        client.place_maker_order("KXHIGH-26APR25-T72", "yes", 0.45, 5)
+        first_id = mock_post.call_args.args[1]["client_order_id"]
+
+        client.place_maker_order("KXHIGH-26APR25-T72", "yes", 0.45, 5)
+        second_id = mock_post.call_args.args[1]["client_order_id"]
+
+        assert first_id != second_id
+
+
 class TestKeyPermissions:
     def test_warns_on_world_readable_key(self, tmp_path, caplog):
         """Loading a key file with group/other read bits set emits a warning (Unix only)."""
