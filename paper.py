@@ -2174,10 +2174,16 @@ def is_accuracy_halted() -> bool:
             )
             return True
     except Exception as _e:
+        # 2026-07-09: previously defaulted to "not halted" here, which let a
+        # DB read failure (a Windows Defender lock on tracker.db has been
+        # observed in production) silently disable this halt entirely. Fail
+        # closed instead -- an infrastructure problem should stop new trades,
+        # not hide behind a false "all clear".
         _log.warning(
-            "is_accuracy_halted: rolling win rate check failed — defaulting to not halted: %s",
+            "is_accuracy_halted: rolling win rate check failed — halting as a precaution: %s",
             _e,
         )
+        return True
 
     # SPRT check — detect model degradation faster than Brier accumulation
     try:
@@ -2193,8 +2199,9 @@ def is_accuracy_halted() -> bool:
             return True
     except Exception as _e:
         _log.warning(
-            "is_accuracy_halted: SPRT check failed — defaulting to not halted: %s", _e
+            "is_accuracy_halted: SPRT check failed — halting as a precaution: %s", _e
         )
+        return True
 
     return False
 

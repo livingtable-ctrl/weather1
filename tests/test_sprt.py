@@ -152,8 +152,10 @@ class TestIsAccuracyHaltedSprt:
 
         assert result is False
 
-    def test_is_accuracy_halted_resilient_to_sprt_exception(self, monkeypatch):
-        """is_accuracy_halted returns False if sprt_model_health raises an exception."""
+    def test_is_accuracy_halted_fails_closed_on_sprt_exception(self, monkeypatch):
+        """2026-07-09: fail closed, not open -- sprt_model_health raising (a
+        Windows Defender DB lock has been observed in production) must halt
+        trading as a precaution, not silently let it continue."""
         import paper
         import tracker
         import utils
@@ -167,4 +169,4 @@ class TestIsAccuracyHaltedSprt:
         ):
             result = paper.is_accuracy_halted()
 
-        assert result is False
+        assert result is True

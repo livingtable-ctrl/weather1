@@ -346,15 +346,18 @@ class TestAccuracyCircuitBreaker:
         monkeypatch.setattr("tracker.get_rolling_win_rate", lambda window: (0.20, 5))
         assert paper.is_accuracy_halted() is False
 
-    def test_not_halted_when_tracker_raises(self, monkeypatch):
-        """is_accuracy_halted is safe — returns False on any tracker exception."""
+    def test_halted_when_tracker_raises(self, monkeypatch):
+        """2026-07-09: fail closed, not open, on an internal check failure --
+        a DB read exception (a Windows Defender lock on tracker.db has been
+        observed in production) must halt trading as a precaution rather
+        than silently letting it continue."""
         import paper
 
         def _raise(window):
             raise RuntimeError("db gone")
 
         monkeypatch.setattr("tracker.get_rolling_win_rate", _raise)
-        assert paper.is_accuracy_halted() is False
+        assert paper.is_accuracy_halted() is True
 
 
 class TestDrawdownHaltDefault:
