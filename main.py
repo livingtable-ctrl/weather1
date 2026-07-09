@@ -1528,7 +1528,7 @@ def _analyze_once(
             from trading_gates import LiveTradingGate as _LiveTradingGate
 
             _arb_gate = _LiveTradingGate()
-            _arb_allowed, _arb_gate_reason = _arb_gate.check()
+            _arb_allowed, _arb_gate_reason = _arb_gate.check(client)
             if not _arb_allowed:
                 _log.warning(
                     "consistency: skipping all corrective trades — gate blocked: %s",
@@ -1883,16 +1883,18 @@ def _quick_paper_buy(client: KalshiClient) -> None:
 
             # Maker order (real order, not paper) — only if qty is specified
             if use_maker and maker_price is not None and qty and qty > 0:
-                # Use the frozen KALSHI_ENV constant, not _kalshi_env()'s fresh
-                # read — trading_gates.LiveTradingGate.check() itself reads the
-                # frozen main.KALSHI_ENV internally; using a different source
-                # here could let this outer check and the gate's own check
-                # disagree if KALSHI_ENV is ever mutated mid-process.
-                if KALSHI_ENV == "prod":
+                # Gate on the client's own base_url, not a KALSHI_ENV read —
+                # see trading_gates.LiveTradingGate.check()'s docstring: a
+                # separate env-var read here could disagree with the gate's
+                # own notion of prod-ness if they came from different
+                # sources. Passing `client` through removes that entirely.
+                from kalshi_client import PROD_BASE
+
+                if getattr(client, "base_url", None) == PROD_BASE:
                     from trading_gates import pre_live_trade_check
 
                     try:
-                        pre_live_trade_check()
+                        pre_live_trade_check(client)
                     except RuntimeError as _gate_err:
                         print(red(f"  Live trading gate blocked: {_gate_err}"))
                         return
@@ -3244,16 +3246,18 @@ def cmd_order(client: KalshiClient, action: str, args: list):
         print(dim("  Cancelled."))
         return
 
-    # Use the frozen KALSHI_ENV constant, not _kalshi_env()'s fresh read --
-    # trading_gates.LiveTradingGate.check() itself reads the frozen
-    # main.KALSHI_ENV internally; using a different source here could let
-    # this outer check and the gate's own check disagree if KALSHI_ENV is
-    # ever mutated mid-process.
-    if KALSHI_ENV == "prod":
+    # Gate on the client's own base_url, not a KALSHI_ENV read — see
+    # trading_gates.LiveTradingGate.check()'s docstring: a separate env-var
+    # read here could disagree with the gate's own notion of prod-ness if
+    # they came from different sources. Passing `client` through removes
+    # that entirely.
+    from kalshi_client import PROD_BASE
+
+    if getattr(client, "base_url", None) == PROD_BASE:
         from trading_gates import pre_live_trade_check
 
         try:
-            pre_live_trade_check()
+            pre_live_trade_check(client)
         except RuntimeError as _gate_err:
             print(red(f"  Live trading gate blocked: {_gate_err}"))
             return

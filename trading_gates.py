@@ -13,8 +13,21 @@ _log = logging.getLogger(__name__)
 class LiveTradingGate:
     """Aggregates all pre-trade checks. Call check() before every live order."""
 
-    def check(self) -> tuple[bool, str]:
-        """Return (allowed, reason). Fail-closed: any exception → blocked."""
+    def check(self, client=None) -> tuple[bool, str]:
+        """Return (allowed, reason). Fail-closed: any exception → blocked.
+
+        `client` should be the KalshiClient instance that will actually place
+        the order — its own `base_url` is the ground truth for whether this
+        is a real prod order, and can't drift from what actually fires.
+        Previously this read `main.KALSHI_ENV` via `import main`, but since
+        main.py runs as `__main__`, that import creates a *second* module
+        object that re-executes main.py's top level and reads a fresh (not
+        frozen) env value — the opposite of what several call sites assumed
+        (found 2026-07-09). That never actually diverged in practice because
+        no code rebuilds the client mid-process, but it was safety-by-
+        coincidence, not by design. Falls back to the old env-var check only
+        when no client is passed (e.g. a caller/test not yet updated).
+        """
         # Kill switch first — it must block every live-order path, not just the
         # automated cron/watch loops that already check KILL_SWITCH_PATH
         # directly. Before this check, `python main.py kill` didn't actually
@@ -24,17 +37,23 @@ class LiveTradingGate:
         if KILL_SWITCH_PATH.exists():
             return False, "Kill switch active (data/.kill_switch)"
 
-        # Lazy import avoids circular dependency (main imports trading_gates).
-        # Fall back to env var if main is not yet importable (e.g. unit tests
-        # that don't patch main.KALSHI_ENV).
-        try:
-            import main as _main  # noqa: PLC0415
+        if client is not None:
+            from kalshi_client import PROD_BASE  # noqa: PLC0415
 
-            kalshi_env = _main.KALSHI_ENV
-        except Exception:
-            kalshi_env = os.getenv("KALSHI_ENV", "demo")
-        if kalshi_env != "prod":
-            return False, f"KALSHI_ENV={kalshi_env}, not prod"
+            client_base = getattr(client, "base_url", None)
+            if client_base != PROD_BASE:
+                return False, f"client not pointed at prod (base_url={client_base})"
+        else:
+            # No client passed — fall back to the old env-var check, unchanged,
+            # for callers/tests not yet updated to pass one.
+            try:
+                import main as _main  # noqa: PLC0415
+
+                kalshi_env = _main.KALSHI_ENV
+            except Exception:
+                kalshi_env = os.getenv("KALSHI_ENV", "demo")
+            if kalshi_env != "prod":
+                return False, f"KALSHI_ENV={kalshi_env}, not prod"
 
         # Secondary interlock: require an explicit opt-in flag so that a
         # misconfigured KALSHI_ENV=prod in a shadow/test run cannot fire
@@ -90,8 +109,8 @@ class LiveTradingGate:
 
         return True, "ok"
 
-    def check_or_raise(self) -> None:
-        allowed, reason = self.check()
+    def check_or_raise(self, client=None) -> None:
+        allowed, reason = self.check(client=client)
         if not allowed:
             raise RuntimeError(f"Live trading gate blocked: {reason}")
 
@@ -99,6 +118,11 @@ class LiveTradingGate:
 _GATE = LiveTradingGate()
 
 
-def pre_live_trade_check() -> None:
-    """Raise RuntimeError if any live trading gate is not satisfied."""
-    _GATE.check_or_raise()
+def pre_live_trade_check(client=None) -> None:
+    """Raise RuntimeError if any live trading gate is not satisfied.
+
+    Pass the `client` that will place the order so prod-ness is determined
+    from its own `base_url` rather than a separately-read env var — see
+    `LiveTradingGate.check()`'s docstring.
+    """
+    _GATE.check_or_raise(client=client)

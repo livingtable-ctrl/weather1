@@ -198,9 +198,14 @@ class TestLiveTradingGate:
     def test_cmd_order_blocked_by_gate(self, monkeypatch, capsys):
         """cmd_order (manual CLI order) must not bypass the live trading gate."""
         import main
+        from kalshi_client import PROD_BASE
 
         mock_client = MagicMock()
         mock_client.get_market.return_value = None  # skip analysis branch
+        mock_client.base_url = PROD_BASE  # so the outer client-base_url guard
+        # (which now decides whether to even call the gate) recognizes this
+        # as a prod client and proceeds to the gate, which then blocks on
+        # LIVE_TRADING_ENABLED as this test intends.
 
         monkeypatch.setattr(main, "is_trading_paused", lambda: False)
         monkeypatch.setattr(
@@ -232,9 +237,13 @@ class TestLiveTradingGate:
         """_quick_paper_buy's maker-order branch places a REAL order — despite the
         function's name, it must not bypass the live trading gate."""
         import main
+        from kalshi_client import PROD_BASE
 
         mock_client = MagicMock()
         mock_client.get_market.return_value = {}
+        mock_client.base_url = PROD_BASE  # so the outer client-base_url guard
+        # recognizes this as a prod client and proceeds to the gate, which
+        # then blocks on LIVE_TRADING_ENABLED as this test intends.
 
         monkeypatch.setattr(main, "is_trading_paused", lambda: False)
         monkeypatch.setattr(main, "_resolve_price", lambda client, ticker, side: 0.45)
@@ -260,3 +269,66 @@ class TestLiveTradingGate:
 
         mock_client.place_maker_order.assert_not_called()
         assert "gate blocked" in capsys.readouterr().out.lower()
+
+    def test_client_base_url_wins_over_stale_kalshi_env_demo_direction(self):
+        """2026-07-09: `import main` inside check() re-executes main.py as a
+        second module (main.py runs as __main__, so this is a fresh module
+        object, not a frozen one) — a call site's own separately-read
+        KALSHI_ENV could disagree with it. Passing `client` removes the env
+        read from the decision entirely: a demo client must block even if
+        some stale/mocked KALSHI_ENV elsewhere claims prod."""
+        from kalshi_client import DEMO_BASE
+
+        gate = self._gate()
+        mock_client = MagicMock()
+        mock_client.base_url = DEMO_BASE
+
+        with patch("main.KALSHI_ENV", "prod"):  # deliberately disagrees with client
+            allowed, reason = gate.check(mock_client)
+
+        assert not allowed
+        assert "not pointed at prod" in reason
+
+    def test_client_base_url_wins_over_stale_kalshi_env_prod_direction(self):
+        """Mirror of the above in the safety-critical direction: a prod
+        client must still be fully gated even if some stale/mocked
+        KALSHI_ENV elsewhere claims demo — fail-closed, not fail-open."""
+        from kalshi_client import PROD_BASE
+
+        gate = self._gate()
+        mock_client = MagicMock()
+        mock_client.base_url = PROD_BASE
+
+        with (
+            patch("main.KALSHI_ENV", "demo"),  # deliberately disagrees with client
+            patch.dict(os.environ, {"LIVE_TRADING_ENABLED": "false"}),
+        ):
+            allowed, reason = gate.check(mock_client)
+
+        assert not allowed
+        # Reached the LIVE_TRADING_ENABLED check (not blocked on "not prod"),
+        # proving the client's base_url — not the stale env var — governed
+        # whether the rest of the gate applies.
+        assert "LIVE_TRADING_ENABLED" in reason
+
+    def test_client_prod_base_url_reaches_full_gate(self):
+        """A genuine prod client with everything else passing is allowed —
+        confirms the client-based path isn't just fail-closed by accident."""
+        gate = self._gate()
+        mock_client = MagicMock()
+        from kalshi_client import PROD_BASE
+
+        mock_client.base_url = PROD_BASE
+
+        with (
+            patch.dict(os.environ, _PROD_ENV),
+            patch("paper.graduation_check", return_value={"settled": 35}),
+            patch("paper.is_paused_drawdown", return_value=False),
+            patch("paper.is_daily_loss_halted", return_value=False),
+            patch("paper.is_accuracy_halted", return_value=False),
+            patch("paper.is_streak_paused", return_value=False),
+        ):
+            allowed, reason = gate.check(mock_client)
+
+        assert allowed
+        assert reason == "ok"

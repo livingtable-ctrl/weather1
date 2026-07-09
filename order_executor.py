@@ -373,14 +373,14 @@ def _poll_pending_orders(client, config: dict | None = None) -> None:
             )
 
 
-def _micro_live_gate_ok() -> bool:
+def _micro_live_gate_ok(client=None) -> bool:
     """Bool wrapper around trading_gates.pre_live_trade_check() for the
     micro-live if/elif chain, which the full-live path in _place_live_order()
     (below) enforces directly via its own try/except."""
     from trading_gates import pre_live_trade_check
 
     try:
-        pre_live_trade_check()
+        pre_live_trade_check(client)
         return True
     except RuntimeError:
         return False
@@ -403,7 +403,7 @@ def _place_live_order(
     from trading_gates import pre_live_trade_check
 
     try:
-        pre_live_trade_check()
+        pre_live_trade_check(client)
     except RuntimeError as _gate_err:
         _log.warning("[LIVE] Gate blocked %s: %s", ticker, _gate_err)
         return False, 0.0
@@ -1738,7 +1738,7 @@ def _auto_place_trades(
                             ticker,
                             rec_side,
                         )
-                    elif not _micro_live_gate_ok():
+                    elif not _micro_live_gate_ok(client):
                         _log.warning(
                             "[MicroLive] live trading gate blocked %s/%s",
                             ticker,
