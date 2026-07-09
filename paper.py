@@ -174,9 +174,17 @@ class _CrossProcessDataLock:
             return
         try:
             fh.seek(0)
-            import msvcrt
+            # fh is only ever non-None on win32 (_acquire_file_lock returns
+            # before setting self._fh on any other platform) -- but that's a
+            # runtime-only guarantee via the `fh is None` check above, not
+            # something a platform-unaware type checker can see. Mirror
+            # _acquire_file_lock's explicit sys.platform guard so mypy run
+            # under a non-win32 platform doesn't flag msvcrt.locking/LK_UNLCK
+            # as missing attributes.
+            if sys.platform == "win32":
+                import msvcrt
 
-            msvcrt.locking(fh.fileno(), msvcrt.LK_UNLCK, 1)
+                msvcrt.locking(fh.fileno(), msvcrt.LK_UNLCK, 1)
         except Exception:
             pass
         finally:
