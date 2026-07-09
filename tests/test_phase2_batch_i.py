@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import sys
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, str(__file__[: __file__.rfind("tests")]))
 
@@ -359,3 +359,93 @@ class TestCheckPositionLimitsDenom:
         assert not result["ok"], (
             "49% existing + 10% new must breach global exposure cap"
         )
+
+
+class TestQuickPaperBuyRespectsPositionLimits:
+    """2026-07-09: main.py's two check_position_limits call sites checked
+    `.get("allowed", True)`, but the function returns key "ok", not
+    "allowed" -- so `.get(...)` always fell through to the True default and
+    the per-market/portfolio exposure caps were never actually enforced for
+    any manual buy, from the day this check was added. Exercise the real
+    call site end-to-end (not just the underlying function) to prove the
+    fix actually wires through."""
+
+    def test_breaching_order_is_blocked(self, monkeypatch, capsys, tmp_path):
+        import main
+
+        with patch("paper.DATA_PATH", tmp_path / "p.json"):
+            paper._save(
+                {
+                    "_version": paper._SCHEMA_VERSION,
+                    "balance": paper.STARTING_BALANCE,
+                    "peak_balance": paper.STARTING_BALANCE,
+                    "trades": [],
+                }
+            )
+
+            mock_client = MagicMock()
+            mock_client.get_market.return_value = {}
+
+            monkeypatch.setattr(main, "is_trading_paused", lambda: False)
+            monkeypatch.setattr(
+                main, "_resolve_price", lambda client, ticker, side: 0.50
+            )
+            monkeypatch.setattr("paper.is_daily_loss_halted", lambda client=None: False)
+            monkeypatch.setattr("paper.is_streak_paused", lambda: False)
+            # 600 contracts @ $0.50 = $300 > the $250 per-market cap.
+            _inputs = iter(
+                [
+                    "KXTEST-25JUN01-T70",  # ticker
+                    "yes",  # side
+                    "1",  # order type: market taker
+                    "600",  # qty
+                    "",  # thesis
+                ]
+            )
+            monkeypatch.setattr("builtins.input", lambda *_a: next(_inputs))
+
+            with patch("paper.place_paper_order") as mock_place:
+                main._quick_paper_buy(mock_client)
+
+            mock_place.assert_not_called()
+        assert "position limit" in capsys.readouterr().out.lower()
+
+    def test_within_limits_order_proceeds(self, monkeypatch, capsys, tmp_path):
+        import main
+
+        with patch("paper.DATA_PATH", tmp_path / "p.json"):
+            paper._save(
+                {
+                    "_version": paper._SCHEMA_VERSION,
+                    "balance": paper.STARTING_BALANCE,
+                    "peak_balance": paper.STARTING_BALANCE,
+                    "trades": [],
+                }
+            )
+
+            mock_client = MagicMock()
+            mock_client.get_market.return_value = {}
+
+            monkeypatch.setattr(main, "is_trading_paused", lambda: False)
+            monkeypatch.setattr(
+                main, "_resolve_price", lambda client, ticker, side: 0.50
+            )
+            monkeypatch.setattr("paper.is_daily_loss_halted", lambda client=None: False)
+            monkeypatch.setattr("paper.is_streak_paused", lambda: False)
+            # 10 contracts @ $0.50 = $5 -- well under any cap.
+            _inputs = iter(
+                [
+                    "KXTEST-25JUN01-T70",  # ticker
+                    "yes",  # side
+                    "1",  # order type: market taker
+                    "10",  # qty
+                    "",  # thesis
+                ]
+            )
+            monkeypatch.setattr("builtins.input", lambda *_a: next(_inputs))
+
+            with patch("paper.place_paper_order") as mock_place:
+                main._quick_paper_buy(mock_client)
+
+            mock_place.assert_called_once()
+        assert "position limit" not in capsys.readouterr().out.lower()

@@ -1840,10 +1840,13 @@ def _quick_paper_buy(client: KalshiClient) -> None:
         try:
             from paper import is_daily_loss_halted, is_streak_paused
 
-            if is_daily_loss_halted():
+            # Pass client so this includes unrealized MTM on open positions,
+            # matching trading_gates.py's check (2026-07-09) -- otherwise this
+            # halt is blind to positions currently underwater but not settled.
+            if is_daily_loss_halted(client):
                 from paper import get_daily_pnl
 
-                daily_pnl = get_daily_pnl()
+                daily_pnl = get_daily_pnl(client)
                 print(
                     red(
                         f"  Daily loss limit reached (${daily_pnl:.2f} today). Trading halted."
@@ -1925,7 +1928,7 @@ def _quick_paper_buy(client: KalshiClient) -> None:
                     from paper import check_position_limits as _cpl
 
                     _limit_check = _cpl(ticker, qty, price)
-                    if not _limit_check.get("allowed", True):
+                    if not _limit_check.get("ok", True):
                         print(
                             red(
                                 f"  Position limit check failed: {_limit_check.get('reason', 'limit exceeded')}"
@@ -2274,7 +2277,9 @@ def cmd_brief(client: KalshiClient, send_email: bool = False) -> None:
 
     # Balance + daily P&L + streak
     bal = get_balance()
-    daily_pnl = get_daily_pnl()
+    # client included so this reflects unrealized MTM on open positions, not
+    # just trades settled today (see trading_gates.py's 2026-07-09 fix).
+    daily_pnl = get_daily_pnl(client)
     pnl_s = (
         green(f"+${daily_pnl:.2f}")
         if daily_pnl >= 0
@@ -5427,7 +5432,7 @@ def cmd_menu(client: KalshiClient):
                                 from paper import check_position_limits as _cpl_sub
 
                                 _limit_sub = _cpl_sub(ticker, int(raw_qty), price)
-                                if not _limit_sub.get("allowed", True):
+                                if not _limit_sub.get("ok", True):
                                     print(
                                         red(
                                             f"  Position limit check failed: {_limit_sub.get('reason', 'limit exceeded')}"
