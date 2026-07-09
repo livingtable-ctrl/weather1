@@ -449,3 +449,62 @@ class TestQuickPaperBuyRespectsPositionLimits:
 
             mock_place.assert_called_once()
         assert "position limit" not in capsys.readouterr().out.lower()
+
+    def test_check_position_limits_failure_is_logged_not_silent(
+        self, monkeypatch, caplog, tmp_path
+    ):
+        """2026-07-09: the except-pass around check_position_limits() used to
+        swallow a failure with zero trace -- if the check itself raised, the
+        limit check silently no-opped and the order still proceeded (fail
+        open, unchanged), but nothing showed it had happened. Confirm it's
+        now at least logged."""
+        import logging
+
+        import main
+
+        with patch("paper.DATA_PATH", tmp_path / "p.json"):
+            paper._save(
+                {
+                    "_version": paper._SCHEMA_VERSION,
+                    "balance": paper.STARTING_BALANCE,
+                    "peak_balance": paper.STARTING_BALANCE,
+                    "trades": [],
+                }
+            )
+
+            mock_client = MagicMock()
+            mock_client.get_market.return_value = {}
+
+            monkeypatch.setattr(main, "is_trading_paused", lambda: False)
+            monkeypatch.setattr(
+                main, "_resolve_price", lambda client, ticker, side: 0.50
+            )
+            monkeypatch.setattr("paper.is_daily_loss_halted", lambda client=None: False)
+            monkeypatch.setattr("paper.is_streak_paused", lambda: False)
+            monkeypatch.setattr(
+                "paper.check_position_limits",
+                lambda *a, **kw: (_ for _ in ()).throw(RuntimeError("db locked")),
+            )
+            _inputs = iter(
+                [
+                    "KXTEST-25JUN01-T70",  # ticker
+                    "yes",  # side
+                    "1",  # order type: market taker
+                    "10",  # qty
+                    "",  # thesis
+                ]
+            )
+            monkeypatch.setattr("builtins.input", lambda *_a: next(_inputs))
+
+            with (
+                patch("paper.place_paper_order") as mock_place,
+                caplog.at_level(logging.WARNING, logger="main"),
+            ):
+                main._quick_paper_buy(mock_client)
+
+            # Fails open (order still proceeds), unchanged -- only the
+            # silence is what changed.
+            mock_place.assert_called_once()
+        assert any(
+            "check_position_limits failed" in r.message for r in caplog.records
+        ), f"Expected a warning log, got: {[r.message for r in caplog.records]}"

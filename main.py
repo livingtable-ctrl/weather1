@@ -1945,8 +1945,17 @@ def _quick_paper_buy(client: KalshiClient) -> None:
                             )
                         )
                         return
-                except Exception:
-                    pass
+                except Exception as _limit_exc:
+                    # Silent before 2026-07-09 -- if check_position_limits()
+                    # itself raised (e.g. a corrupt paper_trades.json), the
+                    # limit check silently no-opped with no trace. Still
+                    # allows the order through on error (fail open, matching
+                    # this call site's existing behavior), but now visible.
+                    _log.warning(
+                        "check_position_limits failed for %s, skipping limit check: %s",
+                        ticker,
+                        _limit_exc,
+                    )
 
                 from paper import get_balance as _gb_qpb
                 from paper import place_paper_order as _ppo_qpb  # noqa: F811
@@ -5449,8 +5458,12 @@ def cmd_menu(client: KalshiClient):
                                         )
                                     )
                                     break
-                            except Exception:
-                                pass
+                            except Exception as _limit_exc:
+                                _log.warning(
+                                    "check_position_limits failed for %s, skipping limit check: %s",
+                                    ticker,
+                                    _limit_exc,
+                                )
 
                         # Large bet confirmation for the submenu buy path
                         if raw_qty.isdigit() and int(raw_qty) > 0:
