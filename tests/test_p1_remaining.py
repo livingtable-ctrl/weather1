@@ -485,10 +485,12 @@ class TestConsistencyArbHaltGuards:
         from trading_gates import LiveTradingGate
 
         monkeypatch.setattr(
-            LiveTradingGate, "check", lambda self: (False, "Drawdown halt active")
+            LiveTradingGate,
+            "check",
+            lambda self, client=None: (False, "Drawdown halt active"),
         )
 
-        # Patch everything else so _cmd_scan_body can run
+        # Patch everything else so _analyze_once can run
         markets = [
             {
                 "ticker": "KXHIGH-26APR09-T60",
@@ -513,10 +515,7 @@ class TestConsistencyArbHaltGuards:
         monkeypatch.setattr(paper, "get_open_trades", lambda: [])
 
         client = MagicMock()
-        try:
-            main._cmd_scan_body(client, min_edge=0.05)
-        except Exception:
-            pass  # other scan errors are fine — we only care about place_paper_order
+        main._analyze_once(client, min_edge=0.05)
 
         assert placed == [], (
             "No arb orders should be placed when LiveTradingGate blocks"
@@ -540,17 +539,14 @@ class TestConsistencyArbHaltGuards:
         monkeypatch.setattr(
             LiveTradingGate,
             "check",
-            lambda self: (False, "Accuracy halt (SPRT) active"),
+            lambda self, client=None: (False, "Accuracy halt (SPRT) active"),
         )
 
         monkeypatch.setattr("main.get_weather_markets", lambda c: [])
         monkeypatch.setattr(paper, "get_open_trades", lambda: [])
 
         client = MagicMock()
-        try:
-            main._cmd_scan_body(client, min_edge=0.05)
-        except Exception:
-            pass
+        main._analyze_once(client, min_edge=0.05)
 
         assert placed == [], (
             "No arb orders should be placed when accuracy halt is active"
