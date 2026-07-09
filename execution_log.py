@@ -20,6 +20,19 @@ _log = logging.getLogger(__name__)
 DB_PATH = Path(__file__).parent / "data" / "execution_log.db"
 DB_PATH.parent.mkdir(exist_ok=True)
 
+
+# Date-keyed sentinel: set when add_live_loss() can't persist a cost/gain and
+# can't even re-read the last known total (DB genuinely stuck, not just a
+# transient lock — sqlite3.connect already retries internally for 30s).
+# While set for today, get_today_live_loss() fails closed (returns inf,
+# tripping every daily_loss_limit gate) instead of silently under-reporting.
+# Cleared automatically the next time a write succeeds.
+# NB: derived from DB_PATH at call time (not frozen at import) since tests
+# reassign execution_log.DB_PATH per-test to isolate against a temp DB.
+def _degraded_flag_path() -> Path:
+    return DB_PATH.parent / "execution_log_degraded.json"
+
+
 _initialized = False
 # L-7: protect the initialization flag against concurrent first-call races
 _init_lock = _el_threading.Lock()
@@ -265,15 +278,60 @@ def was_ordered_recently(ticker: str, days: int = 7) -> bool:
     return row is not None
 
 
+def _degraded_for_today() -> bool:
+    """True if a prior add_live_loss() failure left today's total untrustworthy."""
+    path = _degraded_flag_path()
+    try:
+        if not path.exists():
+            return False
+        flag = json.loads(path.read_text(encoding="utf-8"))
+        return flag.get("date") == datetime.now(UTC).strftime("%Y-%m-%d")
+    except Exception:
+        # Can't even read our own flag — treat as degraded rather than assume clean.
+        return True
+
+
+def _clear_degraded_flag() -> None:
+    try:
+        _degraded_flag_path().unlink(missing_ok=True)
+    except Exception:
+        pass  # best-effort; a stale flag only ever makes the gate stricter, never looser
+
+
+def _set_degraded_flag(reason: str) -> None:
+    try:
+        _degraded_flag_path().write_text(
+            json.dumps(
+                {"date": datetime.now(UTC).strftime("%Y-%m-%d"), "reason": reason}
+            ),
+            encoding="utf-8",
+        )
+    except Exception as exc:
+        _log.error("add_live_loss: could not even write degraded flag: %s", exc)
+
+
 def get_today_live_loss() -> float:
-    """Return today's accumulated live loss in dollars (UTC date). Returns 0.0 if no row."""
-    init_log()
+    """Return today's accumulated live loss in dollars (UTC date).
+
+    Fails closed: if a prior write left today's total untrustworthy (see
+    add_live_loss), or this read itself fails against a stuck DB, returns
+    inf so every `>= daily_loss_limit` gate trips rather than silently
+    under-reporting. Returns 0.0 only for the genuine "no orders yet today" case.
+    """
+    if _degraded_for_today():
+        return float("inf")
     today = datetime.now(UTC).strftime("%Y-%m-%d")
-    with _conn() as con:
-        row = con.execute(
-            "SELECT total FROM daily_live_loss WHERE date = ?", (today,)
-        ).fetchone()
-    return row["total"] if row else 0.0
+    try:
+        init_log()
+        with _conn() as con:
+            row = con.execute(
+                "SELECT total FROM daily_live_loss WHERE date = ?", (today,)
+            ).fetchone()
+        return row["total"] if row else 0.0
+    except Exception as exc:
+        _log.error("get_today_live_loss: DB read failed, failing closed: %s", exc)
+        _set_degraded_flag(f"read failed: {exc}")
+        return float("inf")
 
 
 def add_live_loss(amount: float) -> float:
@@ -282,11 +340,17 @@ def add_live_loss(amount: float) -> float:
     amount > 0 means a cost (order placed, loss settled).
     amount < 0 means a gain (winning settlement).
     Uses INSERT ... ON CONFLICT so concurrent calls are safe.
+
+    On total failure (can't write, can't even re-read the last known total),
+    fails closed: sets a same-day degraded flag that forces get_today_live_loss()
+    to report inf until a write succeeds again, instead of silently returning
+    0.0 (sqlite3.connect already retries internally for 30s, so reaching this
+    branch means the DB is genuinely stuck, not just momentarily locked).
     """
-    init_log()
     today = datetime.now(UTC).strftime("%Y-%m-%d")
     now_iso = datetime.now(UTC).isoformat()
     try:
+        init_log()
         with _conn() as con:
             con.execute(
                 """
@@ -301,14 +365,20 @@ def add_live_loss(amount: float) -> float:
             row = con.execute(
                 "SELECT total FROM daily_live_loss WHERE date = ?", (today,)
             ).fetchone()
+        _clear_degraded_flag()
         return row["total"] if row else amount
     except Exception as exc:
-        _log.warning("add_live_loss DB write failed: %s", exc)
+        _log.error("add_live_loss DB write failed: %s", exc)
+        _set_degraded_flag(f"write failed: {exc}")
         try:
-            return get_today_live_loss()
+            with _conn() as con:
+                row = con.execute(
+                    "SELECT total FROM daily_live_loss WHERE date = ?", (today,)
+                ).fetchone()
+            return row["total"] if row else float("inf")
         except Exception as _e:
-            _log.warning("add_live_loss fallback also failed: %s", _e)
-            return 0.0
+            _log.error("add_live_loss fallback read also failed: %s", _e)
+            return float("inf")
 
 
 def get_filled_unsettled_live_orders() -> list[dict]:

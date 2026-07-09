@@ -1,5 +1,7 @@
 """Tests for execution_log schema migration and cycle-aware deduplication."""
 
+import json
+import sqlite3
 import tempfile
 from pathlib import Path
 
@@ -100,11 +102,13 @@ class TestDailyLiveLoss:
         self._tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
         execution_log.DB_PATH = Path(self._tmp.name)
         execution_log._initialized = False
+        execution_log._degraded_flag_path().unlink(missing_ok=True)
 
     def teardown_method(self):
         import gc
 
         execution_log._initialized = False
+        execution_log._degraded_flag_path().unlink(missing_ok=True)
         self._tmp.close()
         gc.collect()
         Path(self._tmp.name).unlink(missing_ok=True)
@@ -132,6 +136,35 @@ class TestDailyLiveLoss:
         assert result1 == pytest.approx(10.0)
         result2 = execution_log.add_live_loss(5.0)
         assert result2 == pytest.approx(15.0)
+
+    def test_add_live_loss_write_failure_fails_closed(self, monkeypatch):
+        """A DB write that raises must not silently report 0.0 (the old bug) —
+        it should set the degraded flag and make get_today_live_loss() report inf."""
+
+        def _broken_conn():
+            raise sqlite3.OperationalError("database is locked")
+
+        monkeypatch.setattr(execution_log, "_conn", _broken_conn)
+        result = execution_log.add_live_loss(10.0)
+        assert result == float("inf")
+        assert execution_log.get_today_live_loss() == float("inf")
+
+    def test_degraded_flag_clears_on_next_successful_write(self):
+        """Once the DB recovers, a real write should clear the fail-closed flag."""
+        execution_log._set_degraded_flag("simulated prior failure")
+        assert execution_log.get_today_live_loss() == float("inf")
+        execution_log.add_live_loss(10.0)
+        assert execution_log.get_today_live_loss() == pytest.approx(10.0)
+
+    def test_degraded_flag_from_yesterday_does_not_affect_today(self):
+        """The flag is date-keyed and should not linger past the day it was set."""
+        from datetime import UTC, datetime, timedelta
+
+        yesterday = (datetime.now(UTC) - timedelta(days=1)).strftime("%Y-%m-%d")
+        execution_log._degraded_flag_path().write_text(
+            json.dumps({"date": yesterday, "reason": "stale"}), encoding="utf-8"
+        )
+        assert execution_log.get_today_live_loss() == pytest.approx(0.0)
 
 
 class TestLiveSettlement:
