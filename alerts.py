@@ -14,6 +14,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import safe_io
+from paths import BLACK_SWAN_PATH as _BLACK_SWAN_PATH
+from paths import KILL_SWITCH_PATH as _KILL_SWITCH_PATH
 
 _log = logging.getLogger(__name__)
 
@@ -213,12 +215,91 @@ def save_alerts(alerts_list: list[dict], path: Path | None = None) -> None:
 
 
 def _trade_won(trade: dict) -> bool:
-    """Return True if the trade was profitable regardless of which side was taken."""
+    """Return True if the trade was profitable (pnl > 0).
+
+    Matches paper.py's get_current_streak pnl-sign definition. Uses pnl rather
+    than outcome in ("yes","no") so early_exit (stop-loss) trades — a real
+    pnl-bearing outcome, not just win/loss — are counted instead of silently
+    excluded from every win-rate/streak computation in this file.
+    """
+    pnl = trade.get("pnl")
+    if pnl is not None:
+        return pnl > 0
+    # Fallback for older records with no pnl field recorded.
     side = trade.get("side", "yes")
     outcome = trade.get("outcome", "")
     if side == "yes":
         return outcome == "yes"
     return outcome == "no"
+
+
+def _trade_lost(trade: dict) -> bool:
+    """Return True if the trade was a net loss (pnl < 0). Breakeven (pnl == 0)
+    is neither a win nor a loss and does not count toward a losing streak —
+    mirrors paper.py's get_current_streak M-10 breakeven handling."""
+    pnl = trade.get("pnl")
+    if pnl is not None:
+        return pnl < 0
+    return not _trade_won(trade)
+
+
+def _recent_settled(trades: list[dict], limit: int | None = 10) -> list[dict]:
+    """Return the `limit` most recently *settled* trades, sorted by settled_at.
+    Pass limit=None for all settled trades (used by unbounded streak scans).
+
+    Selects from settled trades directly rather than taking the last N
+    *placed* trades and filtering to settled — active order placement would
+    otherwise push genuinely old (but still most-recent) settlements out of
+    the window, masking a real losing streak.
+    """
+    settled = [
+        t
+        for t in trades
+        if t.get("settled") and t.get("settled_at") and t.get("pnl") is not None
+    ]
+    settled.sort(key=lambda t: t.get("settled_at", ""), reverse=True)
+    return settled if limit is None else settled[:limit]
+
+
+def get_win_rate_window(trades: list[dict], limit: int = 10) -> dict:
+    """Return the exact win-rate window check_anomalies()'s WIN RATE
+    COLLAPSE gate evaluates.
+
+    Deep-review followup: web_app.py's /api/anomaly-status endpoint used to
+    independently rebuild this window with a different (stale) algorithm --
+    sorted by placed_at instead of settled_at, and filtered to
+    outcome in ("yes","no") which silently excludes early_exit trades --
+    so the dashboard could show a healthy window while a real halt fired
+    (or vice versa) on a genuinely different set of trades. Sharing this
+    helper is the single source of truth both readers must use so they
+    can't drift apart again.
+
+    decided excludes breakeven (pnl == 0) trades from the denominator,
+    matching _trade_lost()'s own definition of a decided outcome (see
+    check_anomalies).
+    """
+    settled = _recent_settled(trades, limit)
+    decided = [t for t in settled if _trade_won(t) or _trade_lost(t)]
+    wins = sum(1 for t in decided if _trade_won(t))
+    losses = len(decided) - wins
+    win_rate = round(wins / len(decided), 4) if decided else None
+    window_trades = [
+        {
+            "ticker": t.get("ticker", ""),
+            "won": _trade_won(t),
+            "pnl": t.get("pnl"),
+            "entered_at": t.get("entered_at", ""),
+            "settled_at": t.get("settled_at", ""),
+        }
+        for t in settled
+    ]
+    return {
+        "window_trades": window_trades,
+        "n": len(decided),
+        "wins": wins,
+        "losses": losses,
+        "win_rate": win_rate,
+    }
 
 
 def check_anomalies(trades: list[dict]) -> list[str]:
@@ -227,33 +308,35 @@ def check_anomalies(trades: list[dict]) -> list[str]:
     Returns a list of alert message strings (empty if no anomalies).
 
     Checks:
-    1. Win rate collapse: last 10 trades < 30% win rate
-    2. Edge decay: average realized edge of last 10 trades < 2%
-    3. Trade frequency spike: >5 trades in last hour
-    4. Consecutive losses: 5+ in a row
+    1. Win rate collapse: last 10 settled trades < 30% win rate
+    2. Edge decay: average realized edge of last 10 placed trades < 2%
+    3. Consecutive losses: 5+ in a row
     """
     alerts_out: list[str] = []
     if not trades:
         return alerts_out
 
-    recent = sorted(
-        trades, key=lambda t: t.get("placed_at", t.get("ts", 0)), reverse=True
-    )[:10]
-    settled = [t for t in recent if t.get("outcome") in ("yes", "no")]
+    settled = _recent_settled(trades)
 
-    # 1. Win rate collapse
-    if len(settled) >= 5:
-        wins = sum(1 for t in settled if _trade_won(t))
-        win_rate = wins / len(settled)
+    # 1. Win rate collapse — breakeven (pnl == 0) trades excluded from the
+    # denominator; see get_win_rate_window's docstring for why.
+    _wr = get_win_rate_window(trades)
+    if _wr["n"] >= 5:
+        win_rate = _wr["win_rate"]
         if win_rate < 0.30:
             alerts_out.append(
-                f"WIN RATE COLLAPSE: {win_rate:.0%} in last {len(settled)} settled trades "
+                f"WIN RATE COLLAPSE: {win_rate:.0%} in last {_wr['n']} settled trades "
                 f"(threshold: 30%)"
             )
 
-    # 2. Edge decay — use net_edge (current field) with legacy fallbacks.
-    # The filter must also accept net_edge; using only t.get("edge") would
-    # silently exclude all trades since paper.py writes "net_edge", not "edge".
+    # 2. Edge decay — measures the model's claimed edge at placement time, so
+    # this stays keyed on the last 10 *placed* trades (not settlement-windowed
+    # like the checks above). Uses net_edge (current field) with legacy
+    # fallbacks — using only t.get("edge") would silently exclude all trades
+    # since paper.py writes "net_edge", not "edge".
+    recent_placed = sorted(
+        trades, key=lambda t: t.get("placed_at", t.get("ts", 0)), reverse=True
+    )[:10]
     edges = [
         float(
             (
@@ -263,7 +346,7 @@ def check_anomalies(trades: list[dict]) -> list[str]:
             )
             or 0  # outer `or 0` strips any None before float() sees it
         )
-        for t in recent
+        for t in recent_placed
         if t.get("edge") is not None or t.get("net_edge") is not None
     ]
     if len(edges) >= 5:
@@ -276,8 +359,8 @@ def check_anomalies(trades: list[dict]) -> list[str]:
 
     # 3. Consecutive losses
     consec = 0
-    for t in [t for t in recent if t.get("outcome") in ("yes", "no")]:
-        if not _trade_won(t):
+    for t in settled:
+        if _trade_lost(t):
             consec += 1
         else:
             break
@@ -318,6 +401,16 @@ def _is_halt_level(alert_msg: str) -> bool:
             rate = float(m.group(1)) / 100.0
             return rate < ALERT_HALT_THRESHOLDS["EDGE_DECAY"]
         return True
+    # Contract mismatch risk: this function only recognizes the 3 message
+    # shapes above. A new anomaly type added to check_anomalies() without a
+    # matching branch here would silently never halt — log loudly so that's
+    # at least visible instead of a quiet gap.
+    _log.warning(
+        "_is_halt_level: unrecognized anomaly message shape, defaulting to "
+        "no-halt — check_anomalies() may have a type this function doesn't "
+        "handle yet: %r",
+        alert_msg,
+    )
     return False
 
 
@@ -354,9 +447,9 @@ def run_anomaly_check(log_results: bool = True) -> tuple[list[str], bool]:
 
 
 # ── P10.2: Black swan emergency shutdown ──────────────────────────────────────
-
-_BLACK_SWAN_PATH = Path(__file__).parent / "data" / ".black_swan_active"
-_KILL_SWITCH_PATH = Path(__file__).parent / "data" / ".kill_switch"
+# _BLACK_SWAN_PATH/_KILL_SWITCH_PATH are imported from paths.py at the top of
+# this file (worktree-safe, unlike the Path(__file__).parent construction
+# this module used to have as the one outlier writer of these paths).
 
 # Thresholds — configurable via env
 BLACK_SWAN_CONSEC_LOSSES = int(os.getenv("BLACK_SWAN_CONSEC_LOSSES", "10"))
@@ -380,19 +473,28 @@ def check_black_swan_conditions(
     Returns list of triggered condition strings (empty if all clear).
     """
     triggered: list[str] = []
-    if not trades:
-        return triggered
+    # Deep-review followup: this used to early-return `triggered` (empty)
+    # whenever trades was empty (e.g. a fresh or corrupt-recovered
+    # paper_trades.json) -- but condition 3 (Brier score collapse) reads
+    # tracker.db directly, entirely independent of `trades`, and its own
+    # fail-closed exception handling below is pointless if this early
+    # return skips it before it ever runs. Conditions 1 and 2 already
+    # degrade gracefully on an empty `trades` list on their own (empty
+    # consecutive-loss streak, zero daily P&L) without needing this guard.
 
     # 1. Extreme consecutive losses — multi-day only; same-day METAR-locked trades
     # must not count as model failures since they're near-certain outcomes, not predictions.
-    recent = sorted(
-        [t for t in trades if t.get("days_out", 1) >= 1],
-        key=lambda t: t.get("placed_at", t.get("ts", 0)),
-        reverse=True,
+    # days_out=None (key present, not absent) hits here on some manually-placed
+    # trades — `.get("days_out", 1) >= 1` would TypeError on None; the explicit
+    # `is None or` short-circuit (matching run_anomaly_check's identical guard)
+    # treats a missing days_out as multi-day rather than crashing.
+    _multiday_settled = _recent_settled(
+        [t for t in trades if t.get("days_out") is None or t.get("days_out", 1) >= 1],
+        limit=None,
     )
     consec = 0
-    for t in [t for t in recent if t.get("outcome") in ("yes", "no")]:
-        if not _trade_won(t):
+    for t in _multiday_settled:
+        if _trade_lost(t):
             consec += 1
         else:
             break
@@ -403,36 +505,39 @@ def check_black_swan_conditions(
         )
 
     # 2. Single-day loss > threshold of peak balance
-    if balance is not None and peak_balance is not None and peak_balance > 0:
-        today_str = datetime.now(UTC).date().isoformat()
-        # placed_at is an int UNIX timestamp — str(1719619200).startswith("2026-06-29") is
-        # always False, so we must convert via datetime.fromtimestamp before comparing.
-        today_trades = []
-        for t in trades:
-            ts = t.get("placed_at", t.get("ts", 0))
-            try:
-                trade_date = (
-                    datetime.fromtimestamp(float(ts), tz=UTC).date().isoformat()
-                    if isinstance(ts, int | float)
-                    else str(ts)[:10]
-                )
-            except Exception:
-                trade_date = str(ts)[:10]
-            if trade_date == today_str:
-                today_trades.append(t)
-        if today_trades:
-            # Today's P&L from settled trades
-            today_pnl = sum(
-                float(t.get("pnl", 0) or 0)
-                for t in today_trades
-                if t.get("outcome") in ("yes", "no")
+    # P0-2: key "today" by settled_at (settlement date), not placed_at (entry
+    # date) — mirrors paper.py's get_daily_pnl. A multi-day trade entered days
+    # ago but settling today must count against today's loss cap; a trade
+    # entered today but not yet settled contributes nothing either way.
+    # Only peak_balance is actually used below (the % is today_pnl/peak_balance) —
+    # `balance` isn't part of the math, just accepted for API symmetry with the
+    # caller's real-vs-paper balance resolution. Gating on peak_balance alone
+    # means a balance-fetch failure no longer blocks this condition too.
+    if peak_balance is not None and peak_balance > 0:
+        today_str = datetime.now(UTC).strftime("%Y-%m-%d")
+        today_pnl = sum(
+            t.get("pnl", 0.0) or 0.0
+            for t in trades
+            # Deep-review followup: t.get("settled_at", "") only covers a
+            # MISSING key -- a record with settled_at explicitly None (the
+            # settled-without-settled_at state paper.py documents as real)
+            # returns None, and None[:10] raised TypeError here, escaping
+            # to run_black_swan_check's catch-all and engaging the kill
+            # switch on every cycle until hand-fixed (a fail-closed DoS).
+            if t.get("settled")
+            and t.get("settled_at")
+            and t.get("settled_at", "")[:10] == today_str
+        )
+        daily_loss_pct = -today_pnl / peak_balance if today_pnl < 0 else 0.0
+        if daily_loss_pct >= BLACK_SWAN_DAILY_LOSS_PCT:
+            triggered.append(
+                f"BLACK SWAN — extreme daily loss: {daily_loss_pct:.1%} of peak balance "
+                f"(threshold: {BLACK_SWAN_DAILY_LOSS_PCT:.0%})"
             )
-            daily_loss_pct = -today_pnl / peak_balance if today_pnl < 0 else 0.0
-            if daily_loss_pct >= BLACK_SWAN_DAILY_LOSS_PCT:
-                triggered.append(
-                    f"BLACK SWAN — extreme daily loss: {daily_loss_pct:.1%} of peak balance "
-                    f"(threshold: {BLACK_SWAN_DAILY_LOSS_PCT:.0%})"
-                )
+    else:
+        _log.warning(
+            "black_swan: skipping daily-loss condition — no peak_balance available"
+        )
 
     # 3. Brier score collapse
     try:
@@ -456,7 +561,16 @@ def check_black_swan_conditions(
                 BLACK_SWAN_BRIER_MIN_SAMPLES,
             )
     except Exception as _bs_exc:
-        _log.warning("black_swan: Brier check skipped — %s", _bs_exc)
+        # Fail closed, not open — the observed trigger (a Windows Defender lock
+        # on tracker.db) is the identical failure mode already fixed for
+        # is_accuracy_halted() on 2026-07-09. A black-swan check that silently
+        # skips one of its three conditions on a DB hiccup can mask a genuine
+        # model-collapse event; the other two conditions still run independently.
+        _log.error(
+            "black_swan: Brier check failed — treating as triggered (fail closed): %s",
+            _bs_exc,
+        )
+        triggered.append(f"BLACK SWAN — Brier check error (failing closed): {_bs_exc}")
 
     return triggered
 
@@ -569,6 +683,9 @@ def run_black_swan_check(
                 )
         # Prefer real Kalshi API balance when client is available — paper balance
         # diverges from actual equity after fees, fills, and unrecorded positions.
+        # NB: check_black_swan_conditions' daily-loss math only uses peak_balance,
+        # not this value directly — `balance` is resolved here for API symmetry
+        # with callers that do want the real-vs-paper distinction (e.g. logging).
         if client is not None:
             try:
                 bal_data = client.get_balance()
@@ -576,10 +693,7 @@ def run_black_swan_check(
                 api_balance_cents = bal_data.get("balance", None)
                 if api_balance_cents is not None:
                     balance = float(api_balance_cents) / 100.0
-                    _log.debug(
-                        "black_swan: using real Kalshi balance $%.2f for daily loss check",
-                        balance,
-                    )
+                    _log.debug("black_swan: using real Kalshi balance $%.2f", balance)
             except Exception as _bal_exc:
                 _log.debug(
                     "black_swan: could not fetch Kalshi balance, using paper state: %s",

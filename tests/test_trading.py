@@ -702,6 +702,39 @@ class TestPortfolioKelly:
 
         assert portfolio_kelly([]) == []
 
+    def test_no_side_prices_the_no_contract_not_the_yes_contract(self):
+        """#7: kelly_fraction(win_prob, price) needs the price of the contract
+        actually bought. A NO position at market_prob=0.40 (YES price) pays
+        1-0.40=0.60 for the NO contract — passing 0.40 unchanged (the old bug)
+        priced it as if NO cost 40 cents, roughly doubling the computed edge."""
+        from paper import KELLY_CAP, portfolio_kelly
+        from weather_markets import kelly_fraction
+
+        our_prob = 0.30
+        market_prob = 0.40
+        positions = [
+            {
+                "city": "NYC",
+                "side": "no",
+                "our_prob": our_prob,
+                "market_prob": market_prob,
+                "quantity": 10,
+            }
+        ]
+        result = portfolio_kelly(positions)[0]
+
+        win_p = 1.0 - our_prob  # 0.70
+        correct_price = 1.0 - market_prob  # 0.60 — the NO contract's real price
+        expected_raw = max(0.0, min(KELLY_CAP, kelly_fraction(win_p, correct_price)))
+        buggy_price = market_prob  # 0.40 — the old bug's mispriced NO contract
+        buggy_raw = max(0.0, min(KELLY_CAP, kelly_fraction(win_p, buggy_price)))
+
+        assert buggy_raw != pytest.approx(expected_raw), (
+            "test sanity: the buggy and correct prices must actually diverge"
+        )
+        # Single uncorrelated position — scaled fraction equals raw_kelly.
+        assert result == pytest.approx(expected_raw, abs=1e-6)
+
 
 # ── Task 5: tiered auto-trade ─────────────────────────────────────────────────
 
@@ -759,7 +792,9 @@ def test_auto_place_trades_med_tier_uses_20_cap(monkeypatch):
 
     monkeypatch.setattr(_oe, "_daily_paper_spend", lambda: 0.0)
     monkeypatch.setattr(
-        _oe, "_validate_trade_opportunity", lambda opp, live=False: (True, "ok")
+        _oe,
+        "_validate_trade_opportunity",
+        lambda opp, live=False, market=None: (True, "ok"),
     )
     monkeypatch.setattr(
         _oe.execution_log, "was_traded_today", lambda ticker, side: False
@@ -1302,7 +1337,9 @@ def _l7b_common_patches(monkeypatch):
 
     monkeypatch.setattr(_oe, "_daily_paper_spend", lambda: 0.0)
     monkeypatch.setattr(
-        _oe, "_validate_trade_opportunity", lambda opp, live=False: (True, "ok")
+        _oe,
+        "_validate_trade_opportunity",
+        lambda opp, live=False, market=None: (True, "ok"),
     )
     monkeypatch.setattr(
         _oe.execution_log, "was_traded_today", lambda ticker, side: False

@@ -261,7 +261,9 @@ class TestStrategyRetirement:
         for i in range(20):
             _log_and_settle(tmp_tracker, f"NEW-{i}", "recovered_method", 0.9, True)
 
-        newly = tmp_tracker.auto_retire_strategies(min_samples=20, retire_threshold=0.25)
+        newly = tmp_tracker.auto_retire_strategies(
+            min_samples=20, retire_threshold=0.25
+        )
         assert "recovered_method" not in newly
         assert "recovered_method" not in tmp_tracker.get_retired_strategies()
 
@@ -269,9 +271,13 @@ class TestStrategyRetirement:
         """Both lifetime and rolling Brier are bad — method IS retired (guard doesn't
         over-protect a method that hasn't actually recovered)."""
         for i in range(40):
-            _log_and_settle(tmp_tracker, f"STILLBAD-{i}", "still_bad_method", 0.9, False)
+            _log_and_settle(
+                tmp_tracker, f"STILLBAD-{i}", "still_bad_method", 0.9, False
+            )
 
-        newly = tmp_tracker.auto_retire_strategies(min_samples=20, retire_threshold=0.25)
+        newly = tmp_tracker.auto_retire_strategies(
+            min_samples=20, retire_threshold=0.25
+        )
         assert "still_bad_method" in newly
         assert "still_bad_method" in tmp_tracker.get_retired_strategies()
 
@@ -359,7 +365,15 @@ class TestBlackSwanMode:
     def test_consecutive_loss_triggers(self):
         from alerts import check_black_swan_conditions
 
-        trades = [{"outcome": "no"} for _ in range(12)]
+        trades = [
+            {
+                "outcome": "no",
+                "settled": True,
+                "settled_at": f"2026-01-01T00:{i:02d}:00Z",
+                "pnl": -10.0,
+            }
+            for i in range(12)
+        ]
         result = check_black_swan_conditions(trades, balance=900, peak_balance=1000)
         assert any("consecutive" in c.lower() for c in result)
 
@@ -367,7 +381,15 @@ class TestBlackSwanMode:
         """9 consecutive losses should NOT trigger (default threshold=10)."""
         from alerts import check_black_swan_conditions
 
-        trades = [{"outcome": "no"} for _ in range(9)]
+        trades = [
+            {
+                "outcome": "no",
+                "settled": True,
+                "settled_at": f"2026-01-01T00:{i:02d}:00Z",
+                "pnl": -10.0,
+            }
+            for i in range(9)
+        ]
         result = check_black_swan_conditions(trades, balance=900, peak_balance=1000)
         # May trigger Brier check but not the consecutive losses check
         assert not any("consecutive" in c.lower() for c in result)
@@ -439,7 +461,15 @@ class TestBlackSwanMode:
         monkeypatch.setattr(alerts, "_BLACK_SWAN_PATH", bs_path)
         monkeypatch.setattr(alerts, "_KILL_SWITCH_PATH", ks_path)
 
-        trades = [{"outcome": "no"} for _ in range(12)]
+        trades = [
+            {
+                "outcome": "no",
+                "settled": True,
+                "settled_at": f"2026-01-01T00:{i:02d}:00Z",
+                "pnl": -10.0,
+            }
+            for i in range(12)
+        ]
         conditions = alerts.run_black_swan_check(
             trades=trades, balance=900, peak_balance=1000
         )

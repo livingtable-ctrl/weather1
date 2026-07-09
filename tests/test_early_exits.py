@@ -187,7 +187,7 @@ class TestBreakevenStops:
 
         # Price has now fallen back below entry (0.48 < 0.50)
         exits = paper.check_breakeven_stops(
-            [trade], current_yes_prices={"KXHIGH-T70": 0.48}
+            [trade], current_prices={"KXHIGH-T70": {"bid": 0.48, "ask": 0.48}}
         )
         assert "KXHIGH-T70" in exits, (
             f"check_breakeven_stops should fire when price falls below entry. Got: {exits}"
@@ -211,7 +211,7 @@ class TestBreakevenStops:
         }
 
         exits = paper.check_breakeven_stops(
-            [trade], current_yes_prices={"KXHIGH-T70": 0.40}
+            [trade], current_prices={"KXHIGH-T70": {"bid": 0.40, "ask": 0.40}}
         )
         assert exits == [], f"Should not fire when peak not yet met. Got: {exits}"
 
@@ -236,8 +236,10 @@ class TestBreakevenStops:
         saved = []
         monkeypatch.setattr(paper, "_save", lambda d: saved.append(d))
 
-        # yes_ask = 0.65 → unrealized_profit_pct = (0.65 - 0.50) * 10 / 5.00 = 0.30 (30%)
-        paper.update_peak_profits([trade], current_yes_prices={"KXHIGH-T70": 0.65})
+        # yes_bid = 0.65 → unrealized_profit_pct = (0.65 - 0.50) * 10 / 5.00 = 0.30 (30%)
+        paper.update_peak_profits(
+            [trade], current_prices={"KXHIGH-T70": {"bid": 0.65, "ask": 0.65}}
+        )
 
         assert saved, "update_peak_profits must call _save when a new peak is found"
         updated_trade = saved[0]["trades"][0]

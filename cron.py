@@ -12,6 +12,7 @@ import datetime as _dt
 import json
 import logging
 import os
+import threading
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC
@@ -20,13 +21,18 @@ from pathlib import Path
 import execution_log
 from colors import bold, cyan, dim, green, red, yellow
 from kalshi_client import KalshiClient
-from paths import KILL_SWITCH_PATH, LOCK_PATH, PROD_REMINDER_PATH, RUNNING_FLAG_PATH
+from paths import (
+    KILL_SWITCH_PATH,
+    LOCK_PATH,
+    MANUAL_OVERRIDE_PATH,
+    PROD_REMINDER_PATH,
+    RUNNING_FLAG_PATH,
+)
 from utils import (
     CITY_MIN_PROB_EDGE,
     DRIFT_TIGHTEN_EDGE,
     MAX_MARKET_DIVERGENCE_RATIO,
     MED_EDGE,
-    MIN_EDGE,
     MIN_MARKET_PROB_TO_BET_WITH,
     MIN_PROB_EDGE,
     STRONG_EDGE,
@@ -318,9 +324,12 @@ def _check_spend_cap_vs_balance() -> None:
     a config mistake.
     """
     import paper as _paper
+    from utils import MAX_DAILY_SPEND as _spend_cap  # F8: was a second env read
+    # defaulting to "0" instead of utils.py's real "500.0" default — an unset
+    # MAX_DAILY_SPEND made this cosmetic warn-only check silently inert instead
+    # of comparing against the actual enforced 500 cap.
 
     _bal = _paper.get_balance()
-    _spend_cap = float(os.getenv("MAX_DAILY_SPEND", "0"))
     if _spend_cap > 0 and _spend_cap > _bal:
         logging.getLogger(__name__).warning(
             "[cron] MAX_DAILY_SPEND=%.2f exceeds current balance=%.2f — cap will never trigger",
@@ -336,7 +345,7 @@ def _check_manual_override() -> bool:
     """
     import time as _time
 
-    override_path = Path(__file__).parent / "data" / ".manual_override.json"
+    override_path = MANUAL_OVERRIDE_PATH
     if not override_path.exists():
         return False
     try:
@@ -354,8 +363,18 @@ def _check_manual_override() -> bool:
         )
         return True
     except Exception as exc:
-        _log.debug("_check_manual_override: %s", exc)
-        return False
+        # Fail closed: the file's mere existence means the user deliberately
+        # started a pause at some point — a corrupt/unparseable file is far
+        # more likely to mean "the pause is still meant to be active but got
+        # corrupted" than "safe to resume trading." Previously this returned
+        # False (pause silently ignored) at DEBUG level.
+        _log.error(
+            "_check_manual_override: %s is corrupted (%s) — treating override "
+            "as still active (fail closed). Delete the file to clear it manually.",
+            override_path,
+            exc,
+        )
+        return True
 
 
 _ANOMALY_THRESHOLD = 0.12  # pp drift required to flag a market
@@ -441,10 +460,20 @@ def report_anomalies(anomalies: list[dict]) -> None:
 
 
 def _cmd_cron_body(
-    ctx: CronContext, client: KalshiClient, min_edge: float = MIN_EDGE
+    ctx: CronContext, client: KalshiClient, min_edge: float | None = None
 ) -> bool | None:
     """Core scan logic — extracted from cmd_cron so it can be wrapped in try/finally."""
-    # P8.3 — hard kill switch: touch data/.kill_switch to halt immediately
+    # Soft-halt reason (manual override, accuracy halt, graduation gate, anomaly
+    # halt). Unlike the kill switch below, these must NOT stop the whole cycle —
+    # settlement and stop-loss protection need to keep running (accuracy halt in
+    # particular is computed from settled trades, so skipping settlement while
+    # halted made the halt self-perpetuating). Only trade placement is skipped,
+    # mirroring the existing TRADING_PAUSED handling further down.
+    _cron_halted_reason: str | None = None
+
+    # P8.3 — hard kill switch: touch data/.kill_switch to halt immediately.
+    # Deliberately still a full stop — this is the one operator-engaged
+    # "stop absolutely everything now" mechanism, not one of the soft halts above.
     if KILL_SWITCH_PATH.exists():
         _log.critical(
             "KILL SWITCH ACTIVATED — halting cron execution immediately. Remove data/.kill_switch to resume."
@@ -458,8 +487,10 @@ def _cmd_cron_body(
 
     # P8.4 — manual override check (time-limited pause)
     if ctx.check_manual_override():
-        _log.warning("cmd_cron: manual override active — skipping this run")
-        return None
+        _log.warning(
+            "cmd_cron: manual override active — skipping trade placement this run"
+        )
+        _cron_halted_reason = "manual override active"
 
     from paper import get_accuracy_halt_reason as _get_accuracy_halt_reason
     from paper import is_accuracy_halted as _is_accuracy_halted
@@ -467,10 +498,13 @@ def _cmd_cron_body(
     if _is_accuracy_halted():
         _reason = _get_accuracy_halt_reason()
         _log.warning(
-            "ACCURACY HALT ACTIVE: %s — skipping all trades this cycle",
+            "ACCURACY HALT ACTIVE: %s — skipping trade placement this cycle "
+            "(settlement/stop-losses still run so the halt can clear)",
             _reason or "accuracy circuit breaker active",
         )
-        return None
+        _cron_halted_reason = _cron_halted_reason or (
+            _reason or "accuracy circuit breaker active"
+        )
 
     # Dead-man's-switch: if more than 48h have elapsed since the last cron run completed,
     # log a warning and fire a system notification so the user knows the bot went quiet.
@@ -500,11 +534,17 @@ def _cmd_cron_body(
     try:
         _check_graduation_gate()
     except RuntimeError as _gate_err:
-        _log.error("%s", _gate_err)
-        return None
+        _log.error("%s — skipping trade placement this cycle", _gate_err)
+        _cron_halted_reason = _cron_halted_reason or str(_gate_err)
 
-    # Spend cap validation — warn if MAX_DAILY_SPEND exceeds current balance
-    _check_spend_cap_vs_balance()
+    # Spend cap validation — warn if MAX_DAILY_SPEND exceeds current balance.
+    # This is a cosmetic config-mistake warning, not a safety gate — a
+    # paper.get_balance() failure here must not crash the whole cycle before
+    # settlement/stop-losses get a chance to run.
+    try:
+        _check_spend_cap_vs_balance()
+    except Exception as _spend_cap_exc:
+        _log.warning("cmd_cron: spend cap vs balance check failed: %s", _spend_cap_exc)
 
     # 1-month prod reminder — fires once per day after _PROD_REMINDER_DATE in prod mode
     _check_prod_reminder()
@@ -740,6 +780,23 @@ def _cmd_cron_body(
                     "cmd_cron: anomaly halt suppressed (kill-switch override active): %s",
                     _detected_anomalies,
                 )
+            elif _cron_halted_reason is not None:
+                # Deep-review followup: an earlier soft-halt (manual
+                # override, accuracy halt, graduation gate) already stopped
+                # placement this cycle — prompting "Override and run this
+                # cycle anyway?" here was misleading: answering "y" only
+                # ever suppressed THIS reason, but the combined gate further
+                # down (`if _trading_paused or _cron_halted_reason:`) still
+                # skips placement for the earlier reason regardless, so the
+                # operator believed they'd authorized trading and it
+                # silently didn't happen. No prompt needed — trading is
+                # already stopped for this cycle either way.
+                _log.error(
+                    "cmd_cron: anomaly halt also triggered (placement already "
+                    "stopped this cycle by: %s): %s",
+                    _cron_halted_reason,
+                    _detected_anomalies,
+                )
             elif not getattr(cmd_cron, "_called_from_loop", False):
                 # Interactive manual run — offer one-shot override inline.
                 print(yellow(f"\n  ⚠  Anomaly halt: {', '.join(_detected_anomalies)}"))
@@ -757,24 +814,35 @@ def _cmd_cron_body(
                         "cmd_cron: anomaly halt triggered — stopping trade placement this cycle: %s",
                         _detected_anomalies,
                     )
-                    return None
-                _log.warning(
-                    "cmd_cron: anomaly halt overridden by user for this cycle: %s",
-                    _detected_anomalies,
-                )
+                    _cron_halted_reason = _cron_halted_reason or (
+                        f"anomaly halt: {'; '.join(_detected_anomalies)}"
+                    )
+                else:
+                    _log.warning(
+                        "cmd_cron: anomaly halt overridden by user for this cycle: %s",
+                        _detected_anomalies,
+                    )
             else:
                 _log.error(
                     "cmd_cron: anomaly halt triggered — stopping trade placement this cycle: %s",
                     _detected_anomalies,
                 )
-                return None
+                _cron_halted_reason = _cron_halted_reason or (
+                    f"anomaly halt: {'; '.join(_detected_anomalies)}"
+                )
         elif _detected_anomalies:
             _log.warning(
                 "cmd_cron: soft anomaly warnings (below halt threshold), continuing: %s",
                 _detected_anomalies,
             )
     except Exception as _e:
-        _log.debug("cmd_cron: run_anomaly_check failed: %s", _e)
+        # run_anomaly_check is fail-closed internally (an exception inside it
+        # already returns should_halt=True) — reaching this handler means
+        # something more fundamental broke (e.g. an ImportError from a bad
+        # edit to alerts.py). Fail closed here too rather than silently
+        # continuing as if the check had passed.
+        _log.error("cmd_cron: run_anomaly_check call failed — failing closed: %s", _e)
+        _cron_halted_reason = _cron_halted_reason or f"anomaly check error: {_e}"
 
     # Black swan emergency shutdown check.  Always runs — even during a user
     # override — so conditions that arise MID-RUN (after trades are placed) are
@@ -793,7 +861,14 @@ def _cmd_cron_body(
             )
             return None
     except Exception as _e:
-        _log.debug("cmd_cron: run_black_swan_check failed: %s", _e)
+        # Same reasoning as the anomaly-check handler above: run_black_swan_check
+        # is fail-closed internally, so reaching here means something more
+        # fundamental broke (e.g. activate_black_swan_halt() itself raising
+        # while writing the halt files — precisely when the halt matters most).
+        _log.error(
+            "cmd_cron: run_black_swan_check call failed — failing closed: %s", _e
+        )
+        _cron_halted_reason = _cron_halted_reason or f"black swan check error: {_e}"
 
     # Snapshot directional accuracy once for use by drift detection and pin logic below.
     # Directional accuracy measures whether the model's predicted direction is correct
@@ -864,17 +939,18 @@ def _cmd_cron_body(
     # correct direction, since rolling Brier stays bad too in that case. Keep
     # both mechanisms; they are not redundant.
     try:
-        import json as _json_pin
         from datetime import timedelta as _td_pin
-        from pathlib import Path as _Path_pin
 
-        _pins_path = _Path_pin(__file__).parent / "data" / "strategy_pins.json"
-        _pins: dict = {}
-        if _pins_path.exists():
-            try:
-                _pins = _json_pin.loads(_pins_path.read_text())
-            except Exception:
-                pass
+        import tracker as _tracker_pin
+
+        # F7: use tracker's canonical pin accessors instead of a second raw
+        # json.loads/write_text implementation — that duplicate was non-atomic
+        # (plain write_text, not tempfile+os.replace) and, on a corrupt read,
+        # discarded ALL pins (not just the corrupted entry) before the renewal
+        # write below overwrote the file, silently wiping every other method's
+        # pin. tracker._get_strategy_pins() prunes per-entry and logs a warning
+        # on a whole-file read failure instead of returning {} for everything.
+        _pins = _tracker_pin._get_strategy_pins()
         _ensemble_expiry_str = _pins.get("ensemble")
         _should_renew = False
         if _ensemble_expiry_str:
@@ -891,7 +967,7 @@ def _cmd_cron_body(
         if _should_renew:
             if _directional_accuracy is not None and _directional_accuracy >= 0.70:
                 _pins["ensemble"] = (datetime.now(UTC) + _td_pin(hours=168)).isoformat()
-                _pins_path.write_text(_json_pin.dumps(_pins, indent=2))
+                _tracker_pin._save_strategy_pins(_pins)
                 _log.info(
                     "cmd_cron: auto-renewed ensemble pin for 168 h "
                     "(directional_accuracy=%.2f)",
@@ -909,7 +985,7 @@ def _cmd_cron_body(
                     _directional_accuracy,
                 )
     except Exception as _e:
-        _log.debug("cmd_cron: ensemble pin auto-renew failed: %s", _e)
+        _log.warning("cmd_cron: ensemble pin auto-renew failed: %s", _e)
 
     # Config integrity check (log warning if changed)
     try:
@@ -1377,7 +1453,27 @@ def _cmd_cron_body(
                     # so the dashboard can show them; only candidates that pass are
                     # eligible for auto-trading (strong_opps / med_opps / log entry).
                     _passes_threshold = True
-                    if abs(adjusted_edge) < get_paper_min_edge():
+                    # F4: min_edge (the --edge N CLI override, "tighten a
+                    # bad-model day") was accepted as a parameter but never
+                    # read anywhere — a user passing --edge silently got the
+                    # default thresholds with no indication their flag did
+                    # nothing. Applied as a floor so it can only tighten
+                    # (raise) the gate, never loosen it below the auto-tuned
+                    # get_paper_min_edge() value.
+                    # Deep-review followup: min_edge used to default to the
+                    # module-level MIN_EDGE constant (a display-oriented
+                    # threshold from .env, unrelated to trading) even when
+                    # --edge was never passed, so this floor was ALWAYS
+                    # active and could silently override the walk-forward-
+                    # tuned PAPER_MIN_EDGE on every cron cycle, not just when
+                    # a user explicitly asked to tighten the gate for the
+                    # day. None means "no explicit --edge override".
+                    _effective_min_edge = (
+                        get_paper_min_edge()
+                        if min_edge is None
+                        else max(min_edge, get_paper_min_edge())
+                    )
+                    if abs(adjusted_edge) < _effective_min_edge:
                         _dbg["net_edge"] += 1
                         _passes_threshold = False
 
@@ -1668,15 +1764,22 @@ def _cmd_cron_body(
     _trading_paused = is_trading_paused()
 
     placed_count = 0
-    if _trading_paused:
-        _log.warning(
-            "cmd_cron: TRADING_PAUSED is set — scan/data collection ran, trade placement skipped"
-        )
+    if _trading_paused or _cron_halted_reason:
+        if _cron_halted_reason:
+            _log.warning(
+                "cmd_cron: trade placement skipped this cycle — %s "
+                "(settlement/stop-losses above still ran)",
+                _cron_halted_reason,
+            )
+        else:
+            _log.warning(
+                "cmd_cron: TRADING_PAUSED is set — scan/data collection ran, trade placement skipped"
+            )
         _n_shadow = ctx.log_shadow_predictions(strong_opps + med_opps)
         if _n_shadow:
             print(
                 dim(
-                    f"  [cron] Logged {_n_shadow} shadow prediction(s) while paused "
+                    f"  [cron] Logged {_n_shadow} shadow prediction(s) while paused/halted "
                     "(scoring stays current; no trades placed)."
                 )
             )
@@ -1829,7 +1932,12 @@ def _cmd_cron_body(
 
         _open_for_sl = _paper_sl.get_open_trades()
         if _open_for_sl and client is not None:
-            _yes_prices: dict[str, float] = {}
+            # #3: carry both bid and ask (not just ask) so YES positions can be
+            # marked/closed at bid (what a holder can actually realize) instead
+            # of ask (what a buyer pays to open more) — using ask for YES
+            # understated unrealized loss (stops fired late) and overstated
+            # exit proceeds when a stop did fire.
+            _sl_prices: dict[str, dict[str, float]] = {}
             from weather_markets import parse_market_price as _parse_sl_price
 
             for _t in _open_for_sl:
@@ -1840,31 +1948,41 @@ def _cmd_cron_body(
                     # markets already returned in decimal (0-1) format, making
                     # every position look like a 99% instant loss and firing the
                     # stop on the same cron run the trade was placed.
-                    # M-2: use .get() so a missing yes_ask key doesn't raise KeyError
-                    _ask = _parse_sl_price(_mkt).get("yes_ask")
-                    if _ask is not None:
-                        _yes_prices[_t["ticker"]] = _ask
+                    _quote = _parse_sl_price(_mkt)
+                    # Deep-review followup: parse_market_price() coalesces a
+                    # missing side to 0.0, never None, so an `is not None`
+                    # check here never rejects anything -- a one-sided book
+                    # (only one of bid/ask populated) has_quote's real gate
+                    # is whether there's ANY usable price at all;
+                    # paper._liquidation_price() independently guards each
+                    # individual side (bid<=0 / ask<=0) against being
+                    # treated as a real quote.
+                    if _quote.get("has_quote"):
+                        _sl_prices[_t["ticker"]] = {
+                            "bid": _quote.get("yes_bid", 0.0),
+                            "ask": _quote.get("yes_ask", 0.0),
+                        }
                     else:
                         _log.debug(
-                            "[StopLoss] no yes_ask for %s — will fall back to entry_price",
+                            "[StopLoss] no bid/ask for %s — will fall back to entry_price",
                             _t["ticker"],
                         )
                 except Exception:
                     pass
             # Update peak profit highs before any stop checks
-            _paper_sl.update_peak_profits(_open_for_sl, _yes_prices)
+            _paper_sl.update_peak_profits(_open_for_sl, _sl_prices)
 
-            _sl_tickers = _paper_sl.check_stop_losses(_open_for_sl, _yes_prices)
+            _sl_tickers = _paper_sl.check_stop_losses(_open_for_sl, _sl_prices)
             for _sl_ticker in _sl_tickers:
                 _sl_trade = next(
                     (t for t in _open_for_sl if t["ticker"] == _sl_ticker), None
                 )
                 if _sl_trade:
-                    _sl_exit_price = _yes_prices.get(
-                        _sl_ticker, _sl_trade["entry_price"]
+                    _sl_exit_price = _paper_sl._liquidation_price(
+                        _sl_prices, _sl_ticker, _sl_trade.get("side", "yes")
                     )
-                    if _sl_trade.get("side") == "no":
-                        _sl_exit_price = 1.0 - _sl_exit_price
+                    if _sl_exit_price is None:
+                        _sl_exit_price = _sl_trade["entry_price"]
                     _paper_sl.close_paper_early(_sl_trade["id"], _sl_exit_price)
                     _log.info(
                         "[StopLoss] Closed %s \u2014 price breached stop threshold",
@@ -1879,17 +1997,17 @@ def _cmd_cron_body(
             # Break-even stop: if position was ever up >=30% of cost and has
             # since fallen back to entry, exit at scratch (no loss possible)
             _open_for_sl = _paper_sl.get_open_trades()  # reload after any stop exits
-            _be_tickers = _paper_sl.check_breakeven_stops(_open_for_sl, _yes_prices)
+            _be_tickers = _paper_sl.check_breakeven_stops(_open_for_sl, _sl_prices)
             for _be_ticker in _be_tickers:
                 _be_trade = next(
                     (t for t in _open_for_sl if t["ticker"] == _be_ticker), None
                 )
                 if _be_trade:
-                    _be_exit_price = _yes_prices.get(
-                        _be_ticker, _be_trade["entry_price"]
+                    _be_exit_price = _paper_sl._liquidation_price(
+                        _sl_prices, _be_ticker, _be_trade.get("side", "yes")
                     )
-                    if _be_trade.get("side") == "no":
-                        _be_exit_price = 1.0 - _be_exit_price
+                    if _be_exit_price is None:
+                        _be_exit_price = _be_trade["entry_price"]
                     _paper_sl.close_paper_early(_be_trade["id"], _be_exit_price)
                     _log.info(
                         "[BreakEven] Closed %s \u2014 fell back to entry after peaking %.0f%% profit",
@@ -2170,7 +2288,11 @@ def _cmd_cron_body(
                     )
                     print(dim(f"  [Calibrate] seasonal weights: {_seas_lines}"))
     except Exception as _e:
-        _log.debug("cmd_cron: ML bias retrain failed: %s", _e)
+        # Bumped from debug to warning: the marker is always touched below
+        # (deliberately, to avoid a tight retry loop), so a persistent failure
+        # here would otherwise silently stop retraining for good with zero
+        # visible trace — a DEBUG line 6 days apart is effectively invisible.
+        _log.warning("cmd_cron: ML bias retrain failed: %s", _e)
     finally:
         # Touch the marker whenever the retrain block ran — even on exception.
         # Without this, a crash in _train_bias()/_train_all_ts() leaves the marker
@@ -2328,7 +2450,12 @@ def _cmd_cron_body(
                 _LAST_WF_PATH.parent.mkdir(exist_ok=True)
                 _LAST_WF_PATH.touch()
     except Exception as _e:
-        _log.debug("cmd_cron: weekly walk-forward check failed: %s", _e)
+        # Bumped from debug to warning \u2014 an exception here (e.g. an import
+        # failure of the backtest module) hits this outer handler before the
+        # marker gets touched, so a persistent failure silently freezes
+        # optimal_min_edge (config.py's PAPER_MIN_EDGE override, which gates
+        # real trade placement) at its stale value with zero visible trace.
+        _log.warning("cmd_cron: weekly walk-forward check failed: %s", _e)
 
     # Flush ensemble disk cache before exit \u2014 daemon threads were killed before
     # writing; a single synchronous batch write here guarantees the next run
@@ -2343,15 +2470,18 @@ def _cmd_cron_body(
                 flush=True,
             )
     except Exception as _e:
-        _log.debug("ensemble cache flush failed: %s", _e)
+        _log.warning("ensemble cache flush failed: %s", _e)
 
     # Sync data/ to cloud (OneDrive / Google Drive / custom path) after every cron run
     try:
         from cloud_backup import backup_data as _backup
 
         _backup()
-    except Exception:
-        pass  # never crash the scheduler over a backup failure
+    except Exception as _backup_exc:
+        # Was a bare `except: pass` — a persistent backup failure could go
+        # unnoticed for months with zero trace anywhere. Never crash the
+        # scheduler over it, but at least log it.
+        _log.warning("cmd_cron: cloud backup failed: %s", _backup_exc)
 
     # Kalshi series drift detection — once per day, observational only. Placed
     # last (after settlement, scanning, and trade placement all complete) so a
@@ -2363,7 +2493,7 @@ def _cmd_cron_body(
 
         _check_series_drift(client)
     except Exception as _drift_exc:
-        _log.debug("check_series_drift call failed: %s", _drift_exc)
+        _log.warning("check_series_drift call failed: %s", _drift_exc)
 
     print(
         cyan(
@@ -2379,21 +2509,27 @@ def _cmd_cron_body(
 # ---------------------------------------------------------------------------
 
 
-def _install_cron_watchdog(timeout_secs: int = 720) -> None:
+def _install_cron_watchdog(timeout_secs: int = 720) -> threading.Event:
     """Start a daemon thread that hard-kills the process if cron hangs > timeout_secs.
 
     Used because signal.SIGALRM is unavailable on Windows.  The thread is
     daemonised so it dies automatically when the main thread exits normally.
     Adjust timeout_secs via env var CRON_WATCHDOG_SECS (default 8 min).
-    """
-    import threading as _threading
-    import time as _time_wdog
 
+    Returns a completion Event — the caller must .set() it once the cron cycle
+    finishes. Without this, main.py's `loop` command (which calls cmd_cron
+    in-process and then sleeps for hours between cycles) would have this
+    watchdog thread outlive the cycle it was guarding and force-kill the
+    whole idling process partway through the sleep.
+    """
     _wdog_secs = int(os.getenv("CRON_WATCHDOG_SECS", str(timeout_secs)))
+    _done_event = threading.Event()
 
     def _watchdog() -> None:
-        _time_wdog.sleep(_wdog_secs)
-        # If we're still alive here the cron body hung
+        # wait() returns True the moment the caller signals completion —
+        # only a genuine hang lets this fall through to the timeout.
+        if _done_event.wait(timeout=_wdog_secs):
+            return
         _log.critical(
             "CRON WATCHDOG: cron has been running for %ds — force-killing process to prevent infinite hang",
             _wdog_secs,
@@ -2406,15 +2542,14 @@ def _install_cron_watchdog(timeout_secs: int = 720) -> None:
             1
         )  # hard kill — no cleanup; preferred over sys.exit so finally blocks don't re-hang
 
-    _wdog_thread = _threading.Thread(
-        target=_watchdog, name="cron-watchdog", daemon=True
-    )
+    _wdog_thread = threading.Thread(target=_watchdog, name="cron-watchdog", daemon=True)
     _wdog_thread.start()
     _log.debug("cron watchdog armed: %ds", _wdog_secs)
+    return _done_event
 
 
 def cmd_cron(
-    ctx: CronContext, client: KalshiClient, min_edge: float = MIN_EDGE
+    ctx: CronContext, client: KalshiClient, min_edge: float | None = None
 ) -> None:
     """Silent background scan — writes to data/cron.log, auto-places strong paper trades."""
     import sys as _sys
@@ -2431,58 +2566,64 @@ def cmd_cron(
     # Arm a hard-kill watchdog.  If the network layer hangs past the socket
     # backstop (a known Windows/SSL edge case), the watchdog ensures cron never
     # blocks forever.  Default: 8 minutes; override via CRON_WATCHDOG_SECS env.
-    _install_cron_watchdog()
-
-    if not ctx.acquire_cron_lock():
-        _log.warning("cmd_cron: could not acquire lock — skipping this run")
-        if not getattr(cmd_cron, "_called_from_loop", False):
-            _sys.exit(1)
-        return
-
-    _full_scan = False
+    # The returned event MUST be set before this function returns via any path
+    # (including sys.exit()) — otherwise, in main.py's `loop` command, this
+    # watchdog thread outlives the cycle it was guarding and force-kills the
+    # whole process during the idle sleep between cycles.
+    _cron_done_event = _install_cron_watchdog()
     try:
-        _full_scan = bool(_cmd_cron_body(ctx, client, min_edge))
-    except KeyboardInterrupt:
-        print()
-        _log.warning("cmd_cron: interrupted by user")
-    finally:
-        ctx.clear_cron_running_flag()
+        if not ctx.acquire_cron_lock():
+            _log.warning("cmd_cron: could not acquire lock — skipping this run")
+            if not getattr(cmd_cron, "_called_from_loop", False):
+                _sys.exit(1)
+            return
+
+        _full_scan = False
         try:
-            _last_run_path = Path(__file__).parent / "data" / ".cron_last_run"
-            # L-1: write UTC timestamp — naive local time is inconsistent with all
-            # other system timestamps and produces wrong elapsed-time calculations.
-            _now_iso = (
-                __import__("datetime")
-                .datetime.now(__import__("datetime").timezone.utc)
-                .isoformat()
-            )
-            _last_run_path.write_text(_now_iso)
-        except Exception:
-            pass
-        try:
-            _hb_path = Path(__file__).parent / "data" / "cron_heartbeat.json"
+            _full_scan = bool(_cmd_cron_body(ctx, client, min_edge))
+        except KeyboardInterrupt:
+            print()
+            _log.warning("cmd_cron: interrupted by user")
+        finally:
+            ctx.clear_cron_running_flag()
             try:
-                _cycle = (
-                    json.loads(_hb_path.read_text()).get("cycle_count", 0) + 1
-                    if _hb_path.exists()
-                    else 1
+                _last_run_path = Path(__file__).parent / "data" / ".cron_last_run"
+                # L-1: write UTC timestamp — naive local time is inconsistent with all
+                # other system timestamps and produces wrong elapsed-time calculations.
+                _now_iso = (
+                    __import__("datetime")
+                    .datetime.now(__import__("datetime").timezone.utc)
+                    .isoformat()
+                )
+                _last_run_path.write_text(_now_iso)
+            except Exception:
+                pass
+            try:
+                _hb_path = Path(__file__).parent / "data" / "cron_heartbeat.json"
+                try:
+                    _cycle = (
+                        json.loads(_hb_path.read_text()).get("cycle_count", 0) + 1
+                        if _hb_path.exists()
+                        else 1
+                    )
+                except Exception:
+                    _cycle = 1
+                _hb_path.write_text(
+                    json.dumps({"last_run": _now_iso, "cycle_count": _cycle})
                 )
             except Exception:
-                _cycle = 1
-            _hb_path.write_text(
-                json.dumps({"last_run": _now_iso, "cycle_count": _cycle})
-            )
-        except Exception:
-            pass
-        try:
-            import sqlite3 as _sqlite3
+                pass
+            try:
+                import sqlite3 as _sqlite3
 
-            from tracker import DB_PATH as _TRACKER_DB
+                from tracker import DB_PATH as _TRACKER_DB
 
-            with _sqlite3.connect(_TRACKER_DB) as _wc:
-                _wc.execute("PRAGMA wal_checkpoint(PASSIVE)")
-        except Exception:
-            pass
-        ctx.release_cron_lock()
-    if _full_scan and not getattr(cmd_cron, "_called_from_loop", False):
-        _sys.exit(0)
+                with _sqlite3.connect(_TRACKER_DB) as _wc:
+                    _wc.execute("PRAGMA wal_checkpoint(PASSIVE)")
+            except Exception:
+                pass
+            ctx.release_cron_lock()
+        if _full_scan and not getattr(cmd_cron, "_called_from_loop", False):
+            _sys.exit(0)
+    finally:
+        _cron_done_event.set()

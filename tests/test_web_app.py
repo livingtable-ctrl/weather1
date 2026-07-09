@@ -1,5 +1,6 @@
 """Tests for web_app.py dashboard API endpoints."""
 
+from datetime import date
 from unittest.mock import patch
 
 import pytest
@@ -632,3 +633,133 @@ def test_status_includes_brier_drift(tmp_path, monkeypatch):
     data = resp.get_json()
     assert "brier_drift" in data
     assert data["brier_drift"]["drifting"] is True
+
+
+class TestPaperOrderCityDateServerDerived:
+    """Deep-review followup: /api/paper-order used to take city/target_date
+    straight from the client-supplied JSON body -- a request that omitted
+    them (or a buggy/malicious client) bypassed the city/date, directional,
+    and correlated exposure caps entirely, and the saved trade record got
+    whatever the client sent. Both must now come from the ticker via a
+    server-side market lookup instead."""
+
+    def test_exposure_cap_still_enforced_when_body_omits_city_and_date(self, client):
+        """Omitting city/target_date from the request body must NOT bypass
+        the exposure caps -- they're derived server-side regardless."""
+        with (
+            patch("cron.KILL_SWITCH_PATH") as mock_ksp,
+            patch("utils.is_trading_paused", return_value=False),
+            patch("kalshi_client.KalshiClient") as mock_kc_cls,
+            patch(
+                "weather_markets.enrich_with_forecast",
+                return_value={"_city": "NYC", "_date": date(2026, 6, 1)},
+            ),
+            patch("paper.check_position_limits") as mock_cpl,
+            patch("paper.place_paper_order") as mock_place,
+        ):
+            mock_ksp.exists.return_value = False
+            mock_kc_cls.return_value.get_market.return_value = {
+                "close_time": "2099-01-01T00:00:00Z"
+            }
+            mock_cpl.return_value = {"ok": False, "reason": "city/date cap exceeded"}
+
+            resp = client.post(
+                "/api/paper-order",
+                json={
+                    "ticker": "KXHIGH-25JUN01-T70",
+                    "side": "yes",
+                    "quantity": 10,
+                    "entry_price": 0.50,
+                    # city/target_date deliberately omitted
+                },
+            )
+
+        assert resp.status_code == 400
+        mock_place.assert_not_called()
+        assert mock_cpl.called, (
+            "check_position_limits must still run -- server-derived city/date "
+            "must not be skipped just because the request body omitted them"
+        )
+        _, cpl_kwargs = mock_cpl.call_args
+        assert cpl_kwargs["city"] == "NYC"
+
+    def test_client_supplied_city_is_ignored_server_value_used(self, client):
+        """A client-supplied city/target_date that disagrees with the
+        ticker's real city must be ignored, not trusted -- both the
+        exposure check and the saved trade record must use the
+        server-derived value."""
+        with (
+            patch("cron.KILL_SWITCH_PATH") as mock_ksp,
+            patch("utils.is_trading_paused", return_value=False),
+            patch("kalshi_client.KalshiClient") as mock_kc_cls,
+            patch(
+                "weather_markets.enrich_with_forecast",
+                return_value={"_city": "Chicago", "_date": date(2026, 6, 1)},
+            ),
+            patch("paper.check_position_limits", return_value={"ok": True}) as mock_cpl,
+            patch("paper.place_paper_order") as mock_place,
+        ):
+            mock_ksp.exists.return_value = False
+            mock_kc_cls.return_value.get_market.return_value = {
+                "close_time": "2099-01-01T00:00:00Z"
+            }
+            mock_place.return_value = {"id": 1}
+
+            resp = client.post(
+                "/api/paper-order",
+                json={
+                    "ticker": "KXHIGH-25JUN01-T70",
+                    "side": "yes",
+                    "quantity": 10,
+                    "entry_price": 0.50,
+                    "city": "NotARealCity",
+                    "target_date": "2099-12-31",
+                },
+            )
+
+        assert resp.status_code == 201
+        _, cpl_kwargs = mock_cpl.call_args
+        assert cpl_kwargs["city"] == "Chicago"
+        _, place_kwargs = mock_place.call_args
+        assert place_kwargs["city"] == "Chicago"
+
+
+class TestAnomalyStatusMatchesRealCheck:
+    """Deep-review followup: /api/anomaly-status used to independently
+    rebuild the win-rate window with a stale algorithm (sorted by
+    placed_at, filtered to outcome in ("yes","no") which silently excludes
+    early_exit trades) instead of sharing check_anomalies' own window --
+    so the dashboard could show a different trade set than what actually
+    drives a real halt."""
+
+    def _trade(self, i, pnl, outcome="early_exit"):
+        return {
+            "ticker": f"T{i}",
+            "settled": True,
+            "settled_at": f"2026-01-01T00:{i:02d}:00Z",
+            "entered_at": f"2026-01-01T00:{i:02d}:00Z",
+            "outcome": outcome,
+            "pnl": pnl,
+            "days_out": 1,
+        }
+
+    def test_early_exit_trades_are_counted_in_the_window(self, client):
+        """An early_exit trade (outcome not in yes/no) within the last-10-
+        settled window must be counted -- the old code's outcome-based
+        filter silently dropped it, undercounting n and mis-stating win_rate."""
+        trades = [self._trade(i, 10.0 if i < 6 else -10.0) for i in range(10)]
+
+        with (
+            patch("paper.load_paper_trades", return_value=trades),
+            patch("alerts.run_anomaly_check", return_value=([], False)),
+        ):
+            resp = client.get("/api/anomaly-status")
+
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data["n"] == 10, (
+            "all 10 early_exit trades must be counted, not silently "
+            f"excluded by an outcome in ('yes','no') filter: {data}"
+        )
+        assert data["wins"] == 6
+        assert data["losses"] == 4

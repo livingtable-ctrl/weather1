@@ -1391,64 +1391,55 @@ setInterval(() => {{
     def api_anomaly_status():
         """Current state of the win-rate anomaly detection window.
 
-        Exposes the same window of multi-day trades that run_anomaly_check()
-        evaluates, so the dashboard can show the current W/L list and how far
-        the win rate is from the halt threshold.
+        Exposes the exact same window run_anomaly_check() -> check_anomalies()'s
+        WIN RATE COLLAPSE gate evaluates, so the dashboard can show the
+        current W/L list and how far the win rate is from the halt
+        threshold.
+
+        Deep-review followup: this endpoint used to independently rebuild
+        the window with its own (stale) algorithm -- sorted by placed_at
+        instead of settled_at, and filtered to outcome in ("yes","no"),
+        which silently excludes early_exit trades that check_anomalies
+        (via _recent_settled/_trade_won) does count -- so the dashboard
+        could show a healthy window while a real halt fired on a genuinely
+        different set of trades, or vice versa. get_win_rate_window() is
+        the shared single source of truth both readers now call; the
+        multi-day filter below matches run_anomaly_check's own filter
+        (same-day METAR losses must not count toward this gate).
         """
         try:
             from alerts import (
                 ALERT_HALT_THRESHOLDS,
-                _trade_won,
+                get_win_rate_window,
                 run_anomaly_check,
             )
             from paper import load_paper_trades
 
-            # Same multi-day filter as run_anomaly_check
-            all_trades = [
+            _multiday_trades = [
                 t
                 for t in load_paper_trades()
                 if t.get("days_out") is None or t.get("days_out", 1) >= 1
             ]
-            recent = sorted(
-                all_trades,
-                key=lambda t: t.get("placed_at", t.get("ts", "")),
-                reverse=True,
-            )[:10]
-            settled = [t for t in recent if t.get("outcome") in ("yes", "no")]
-
-            n = len(settled)
-            wins = sum(1 for t in settled if _trade_won(t))
-            losses = n - wins
-            win_rate = round(wins / n, 4) if n > 0 else None
+            _wr = get_win_rate_window(_multiday_trades)
 
             halt_threshold = ALERT_HALT_THRESHOLDS["WIN_RATE_COLLAPSE"]  # 0.25
             min_samples = 5  # matches check_anomalies gate
 
             anomalies, should_halt = run_anomaly_check(log_results=False)
 
-            window_trades = [
-                {
-                    "ticker": t.get("ticker", ""),
-                    "won": _trade_won(t),
-                    "pnl": t.get("pnl"),
-                    "entered_at": t.get("entered_at", ""),
-                }
-                for t in settled
-            ]
-
             return jsonify(
                 {
-                    "window_trades": window_trades,
-                    "n": n,
-                    "wins": wins,
-                    "losses": losses,
-                    "win_rate": win_rate,
+                    "window_trades": _wr["window_trades"],
+                    "n": _wr["n"],
+                    "wins": _wr["wins"],
+                    "losses": _wr["losses"],
+                    "win_rate": _wr["win_rate"],
                     "halt_threshold": halt_threshold,
                     "min_samples": min_samples,
                     "anomaly_detected": bool(anomalies),
                     "should_halt": should_halt,
                     "anomaly_messages": anomalies,
-                    "active": n >= min_samples,
+                    "active": _wr["n"] >= min_samples,
                 }
             )
         except Exception as exc:
@@ -1934,7 +1925,8 @@ setInterval(() => {{
     @app.route("/api/override", methods=["GET"])
     def api_override_get():
         """Return current manual override state (or {active: false})."""
-        _ov_path = Path(__file__).parent / "data" / ".manual_override.json"
+        from paths import MANUAL_OVERRIDE_PATH as _ov_path
+
         if not _ov_path.exists():
             return jsonify({"active": False, "override_until": None})
         try:
@@ -1962,7 +1954,8 @@ setInterval(() => {{
             "expires_at": (now + timedelta(minutes=minutes)).isoformat(),
             "duration_minutes": minutes,
         }
-        _ov_path = Path(__file__).parent / "data" / ".manual_override.json"
+        from paths import MANUAL_OVERRIDE_PATH as _ov_path
+
         _ov_path.parent.mkdir(parents=True, exist_ok=True)
         _tmp = _ov_path.with_suffix(".tmp")
         _tmp.write_text(json.dumps(state, indent=2))
@@ -1972,7 +1965,8 @@ setInterval(() => {{
     @app.route("/api/override", methods=["DELETE"])
     def api_override_clear():
         """Remove the manual override file."""
-        _ov_path = Path(__file__).parent / "data" / ".manual_override.json"
+        from paths import MANUAL_OVERRIDE_PATH as _ov_path
+
         existed = _ov_path.exists()
         if existed:
             _ov_path.unlink()
@@ -2064,7 +2058,8 @@ setInterval(() => {{
                 pass
 
         # Manual override
-        _ov_path = Path(__file__).parent / "data" / ".manual_override.json"
+        from paths import MANUAL_OVERRIDE_PATH as _ov_path
+
         if _ov_path.exists():
             try:
                 ov = json.loads(_ov_path.read_text())
@@ -2192,8 +2187,10 @@ setInterval(() => {{
           entry_price  float (0, 1]  required
           entry_prob   float optional
           net_edge     float optional
-          city         str   optional
-          target_date  str   optional ISO date
+
+        city/target_date are derived server-side from the ticker (not read
+        from the request body) so the exposure caps and the saved trade
+        record can't be bypassed or corrupted by a client-supplied value.
         """
         from cron import KILL_SWITCH_PATH as _ksp
 
@@ -2233,32 +2230,91 @@ setInterval(() => {{
             _max_qty = _kq_cap(_kf_val, entry_price)
             if _max_qty > 0:
                 quantity = min(quantity, _max_qty)
-        except Exception:
-            pass
+        except Exception as _kelly_cap_exc:
+            # Was a bare except: pass — a failure here silently let the raw,
+            # unclamped user-submitted quantity through with no trace.
+            _log.warning(
+                "api/paper-order: Kelly cap computation failed for %s, "
+                "quantity unclamped: %s",
+                ticker,
+                _kelly_cap_exc,
+            )
         entry_prob = body.get("entry_prob")
         net_edge = body.get("net_edge")
-        city = body.get("city") or None
-        target_date = body.get("target_date") or None
-        # days_out from the signal (0 = same-day METAR, 1+ = multi-day forecast).
-        # Without this the trade record stores None, which the cap logic reads as
-        # multi-day (None != 0) and incorrectly consumes a multi-day date slot.
-        _days_out_raw = body.get("days_out")
-        # Fetch close_time from Kalshi so the 24h settlement gate works on manually
-        # placed trades the same way it does on bot-placed trades.
-        _close_time: str | None = None
+
+        # Deep-review followup: city/target_date used to come straight from
+        # the client-supplied JSON body -- a request that simply omitted
+        # them (or a buggy/malicious client) bypassed the city/date,
+        # directional, and correlated exposure caps entirely, AND the saved
+        # trade record itself got a client-controlled (possibly wrong or
+        # missing) city/date, corrupting future exposure sums that key off
+        # it too. Derive both server-side from the ticker via the market
+        # lookup, matching main.py's quick-buy fix, instead of trusting the
+        # request body. Reuses this same market fetch for close_time below
+        # rather than hitting the API twice.
+        city: str | None = None
+        target_date: str | None = None
+        _market_for_order: dict | None = None
         try:
             from kalshi_client import KalshiClient as _KC
+            from weather_markets import enrich_with_forecast as _ewf_dash
 
             _kc = _KC(
                 key_id=os.getenv("KALSHI_KEY_ID"),
                 private_key_path=os.getenv("KALSHI_PRIVATE_KEY_PATH"),
                 env=os.getenv("KALSHI_ENV", "demo"),
             )
-            _close_time = _kc.get_market(ticker).get("close_time")
-        except Exception as _e:
+            _market_for_order = _kc.get_market(ticker)
+            _enriched_dash = _ewf_dash(_market_for_order, fetch_forecast=False)
+            city = _enriched_dash.get("_city")
+            _tdate_dash = _enriched_dash.get("_date")
+            target_date = _tdate_dash.isoformat() if _tdate_dash else None
+        except Exception as _enrich_exc:
             _log.warning(
-                "api/paper-order: could not fetch close_time for %s: %s", ticker, _e
+                "api/paper-order: could not derive city/date for %s — "
+                "exposure caps and trade record will be missing them: %s",
+                ticker,
+                _enrich_exc,
             )
+
+        # #2: enforce the same city/date, directional, and correlated-group
+        # exposure caps the auto-sizing path already respects — this dashboard
+        # order path previously only capped Kelly quantity and per-market/
+        # total-portfolio exposure (via place_paper_order's own internal
+        # checks), never these three.
+        if city and target_date:
+            try:
+                from paper import check_position_limits as _cpl_dash
+
+                _limit_dash = _cpl_dash(
+                    ticker,
+                    quantity,
+                    entry_price,
+                    city=city,
+                    target_date_str=target_date,
+                    side=side,
+                )
+                if not _limit_dash.get("ok", True):
+                    return jsonify(
+                        {"error": _limit_dash.get("reason", "position limit exceeded")}
+                    ), 400
+            except Exception as _limit_exc:
+                _log.warning(
+                    "api/paper-order: check_position_limits failed for %s, "
+                    "skipping limit check: %s",
+                    ticker,
+                    _limit_exc,
+                )
+        # days_out from the signal (0 = same-day METAR, 1+ = multi-day forecast).
+        # Without this the trade record stores None, which the cap logic reads as
+        # multi-day (None != 0) and incorrectly consumes a multi-day date slot.
+        _days_out_raw = body.get("days_out")
+        # close_time so the 24h settlement gate works on manually placed
+        # trades the same way it does on bot-placed trades — reuses the
+        # market dict already fetched above for city/date derivation.
+        _close_time: str | None = (
+            _market_for_order.get("close_time") if _market_for_order else None
+        )
         try:
             trade = place_paper_order(
                 ticker=ticker,

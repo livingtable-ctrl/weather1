@@ -212,7 +212,7 @@ def _build_cron_context() -> _CronContext:
     )
 
 
-def cmd_cron(client: "KalshiClient", min_edge: float = MIN_EDGE) -> None:
+def cmd_cron(client: "KalshiClient", min_edge: float | None = None) -> None:
     """Wrapper that builds CronContext from the current namespace and delegates to cron.cmd_cron.
 
     Keeping this wrapper in main.py means call sites and integration tests
@@ -1860,23 +1860,50 @@ def _quick_paper_buy(client: KalshiClient) -> None:
         # Place order directly with thesis
         try:
             qty = int(qty_arg[0]) if qty_arg else None
+            # #2: resolve city/target_date unconditionally (not just on the
+            # auto-Kelly path) so check_position_limits below can enforce the
+            # city/date, directional, and correlated-group exposure caps on
+            # explicit-qty manual orders too — previously only the auto-sizing
+            # path (portfolio_kelly_fraction) ever saw these caps at all.
+            city: str | None = None
+            tdate_str: str | None = None
+            _enriched_for_limits: dict | None = None
+            _market_for_limits: dict | None = None
+            try:
+                from weather_markets import enrich_with_forecast as _ewf_limits
+
+                _market_for_limits = client.get_market(ticker)
+                _enriched_for_limits = _ewf_limits(
+                    _market_for_limits, fetch_forecast=False
+                )
+                city = _enriched_for_limits.get("_city")
+                _tdate_for_limits = _enriched_for_limits.get("_date")
+                tdate_str = _tdate_for_limits.isoformat() if _tdate_for_limits else None
+            except Exception:
+                pass  # best-effort — city/date-scoped caps just get skipped below
+
             if qty is None:
                 from paper import (
                     kelly_quantity,
                     portfolio_kelly_fraction,
                 )
-                from weather_markets import analyze_trade, enrich_with_forecast
+                from weather_markets import analyze_trade
+                from weather_markets import enrich_with_forecast as _ewf_kelly
 
                 try:
-                    market = client.get_market(ticker)
-                    enriched = enrich_with_forecast(market)
+                    if _market_for_limits is None:
+                        raise ValueError("market enrichment unavailable")
+                    # 2026-07-09 follow-up: analyze_trade() hard-gates on
+                    # _forecast being truthy (returns None otherwise). The
+                    # city/date enrichment above is fetch_forecast=False (a
+                    # cheap parse-only call for check_position_limits), so
+                    # it can't be reused here — that made this branch always
+                    # compute qty=0. Fetch a real forecast-bearing enrichment.
+                    enriched = _ewf_kelly(_market_for_limits)
                     analysis = analyze_trade(enriched)
                     fee_kelly = (
                         analysis.get("ci_adjusted_kelly", 0.0) if analysis else 0.0
                     )
-                    city = enriched.get("_city")
-                    tdate = enriched.get("_date")
-                    tdate_str = tdate.isoformat() if tdate else None
                     adj_kelly = portfolio_kelly_fraction(
                         fee_kelly, city, tdate_str, side=side
                     )
@@ -1937,7 +1964,14 @@ def _quick_paper_buy(client: KalshiClient) -> None:
                 try:
                     from paper import check_position_limits as _cpl
 
-                    _limit_check = _cpl(ticker, qty, price)
+                    _limit_check = _cpl(
+                        ticker,
+                        qty,
+                        price,
+                        city=city,
+                        target_date_str=tdate_str,
+                        side=side,
+                    )
                     if not _limit_check.get("ok", True):
                         print(
                             red(
@@ -2526,7 +2560,7 @@ def cmd_override(action: str, duration_minutes: int = 60) -> None:
       unpause          — remove pause override immediately
       status           — show current override status
     """
-    override_path = Path(__file__).parent / "data" / ".manual_override.json"
+    from paths import MANUAL_OVERRIDE_PATH as override_path
 
     if action == "unpause" or action == "status":
         if not override_path.exists():
@@ -5447,10 +5481,34 @@ def cmd_menu(client: KalshiClient):
                         )
                         # Check position limits before submenu buy
                         if raw_qty.isdigit() and int(raw_qty) > 0:
+                            _sub_city: str | None = None
+                            _sub_tdate_str: str | None = None
+                            try:
+                                from weather_markets import (
+                                    enrich_with_forecast as _ewf_sub,
+                                )
+
+                                _sub_enriched = _ewf_sub(
+                                    client.get_market(ticker), fetch_forecast=False
+                                )
+                                _sub_city = _sub_enriched.get("_city")
+                                _sub_tdate = _sub_enriched.get("_date")
+                                _sub_tdate_str = (
+                                    _sub_tdate.isoformat() if _sub_tdate else None
+                                )
+                            except Exception:
+                                pass  # best-effort — city/date caps just get skipped below
                             try:
                                 from paper import check_position_limits as _cpl_sub
 
-                                _limit_sub = _cpl_sub(ticker, int(raw_qty), price)
+                                _limit_sub = _cpl_sub(
+                                    ticker,
+                                    int(raw_qty),
+                                    price,
+                                    city=_sub_city,
+                                    target_date_str=_sub_tdate_str,
+                                    side=side,
+                                )
                                 if not _limit_sub.get("ok", True):
                                     print(
                                         red(
@@ -7278,7 +7336,13 @@ def main():
     elif cmd == "brief":
         cmd_brief(client, send_email="--email" in args)
     elif cmd == "cron":
-        _cron_edge = MIN_EDGE
+        # Deep-review followup: this used to default to MIN_EDGE (a display-
+        # oriented threshold from .env, not a trading gate) even when --edge
+        # was never passed, so cron.py's floor `max(min_edge,
+        # get_paper_min_edge())` silently overrode the walk-forward-tuned
+        # PAPER_MIN_EDGE on every run, not just when a user explicitly asked
+        # to tighten the gate. None means "no explicit override".
+        _cron_edge: float | None = None
         if "--edge" in args:
             try:
                 _cron_edge = float(args[args.index("--edge") + 1]) / 100

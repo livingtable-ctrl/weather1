@@ -310,3 +310,63 @@ class TestLiveSettlement:
         assert summary["total_pnl"] == pytest.approx(0.20)  # 0.50 - 0.30
         assert summary["open_count"] == 1
         assert summary["settled_count"] == 2
+
+
+class TestWasOrderedRecentlyCanceledSpelling:
+    """F8: was_ordered_recently() must exclude API-canceled orders.
+
+    _kalshi_status_to_internal() always writes status="canceled" (American
+    spelling). Before the fix, the exclusion list only had "cancelled"
+    (British, written by the GTC-timer paths), so an API-canceled order
+    stayed wrongly counted as a live duplicate for the full dedup window.
+    """
+
+    def setup_method(self):
+        self._tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+        execution_log.DB_PATH = Path(self._tmp.name)
+        execution_log._initialized = False
+
+    def teardown_method(self):
+        import gc
+
+        execution_log._initialized = False
+        self._tmp.close()
+        gc.collect()
+        Path(self._tmp.name).unlink(missing_ok=True)
+
+    def test_api_canceled_order_does_not_block_reentry(self):
+        execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=1,
+            price=0.55,
+            status="canceled",
+            live=True,
+        )
+        assert execution_log.was_ordered_recently("KXHIGH-25MAY15-T75") is False
+
+    def test_filled_order_still_blocks_reentry(self):
+        execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=1,
+            price=0.55,
+            status="filled",
+            live=True,
+        )
+        assert execution_log.was_ordered_recently("KXHIGH-25MAY15-T75") is True
+
+    def test_legacy_british_cancelled_spelling_does_not_block_reentry(self):
+        """Deep-review followup: rows written before the F8 spelling fix
+        deployed (with the old British "cancelled" spelling) must not be
+        wrongly treated as a live duplicate for their own leftover 7-day
+        window post-deploy -- the exclusion list must still recognize both
+        spellings, not just the now-canonical "canceled"."""
+        execution_log.init_log()
+        with execution_log._conn() as con:
+            con.execute(
+                "INSERT INTO orders (ticker, side, quantity, price, status, "
+                "placed_at, live) VALUES (?, ?, ?, ?, ?, datetime('now'), ?)",
+                ("KXHIGH-25MAY15-T75", "yes", 1, 0.55, "cancelled", 1),
+            )
+        assert execution_log.was_ordered_recently("KXHIGH-25MAY15-T75") is False

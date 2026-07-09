@@ -123,3 +123,55 @@ def test_validate_low_spread_tier_rejects_edge_below_threshold():
     assert not ok
     assert "edge" in reason.lower()
     assert "spread" in reason.lower()  # reason should mention spread info
+
+
+class TestFlashCrashPriceFeed:
+    """F3: the flash-crash circuit breaker read opp.get("yes_bid")/opp.get("yes_ask")
+    directly, but opp (analyze_trade's result) never carries those keys — it had
+    never once received a real price. Fixed by threading the real market dict
+    through as a separate `market` param."""
+
+    def test_market_dict_feeds_a_real_price_to_the_breaker(self):
+        from circuit_breaker import flash_crash_cb
+        from main import _validate_trade_opportunity
+
+        market = {"yes_bid": 40, "yes_ask": 44}  # cents; parse_market_price → 0.42
+        calls = []
+        with patch.object(
+            flash_crash_cb,
+            "check",
+            side_effect=lambda ticker, price: calls.append((ticker, price)) or False,
+        ):
+            _validate_trade_opportunity(_opp(), market=market)
+
+        assert calls, "flash_crash_cb.check must be called when a market dict is given"
+        ticker, price = calls[0]
+        assert price == pytest.approx(0.42), (
+            f"expected the real mid-price derived from the market dict, got {price}"
+        )
+
+    def test_ws_cached_price_is_preferred_over_market_dict(self):
+        """A fresher WebSocket-cached mid-price should win over the REST-derived one."""
+        from circuit_breaker import flash_crash_cb
+        from main import _validate_trade_opportunity
+
+        opp = _opp()
+        opp["_ws_mid_price"] = 0.61
+        market = {"yes_bid": 40, "yes_ask": 44}
+        calls = []
+        with patch.object(
+            flash_crash_cb,
+            "check",
+            side_effect=lambda ticker, price: calls.append((ticker, price)) or False,
+        ):
+            _validate_trade_opportunity(opp, market=market)
+
+        assert calls and calls[0][1] == pytest.approx(0.61)
+
+    def test_no_market_dict_does_not_crash(self):
+        """Callers that genuinely have no market dict (market=None, the default)
+        must not crash — just skip the breaker check, same as before this fix."""
+        from main import _validate_trade_opportunity
+
+        ok, _ = _validate_trade_opportunity(_opp())
+        assert ok

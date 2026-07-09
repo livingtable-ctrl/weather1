@@ -2,10 +2,11 @@
 Tests for paper.py — Kelly compounding, balance, order placement, settlement.
 """
 
+import json
 import shutil
 import tempfile
 import unittest
-from datetime import UTC
+from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import patch
 
@@ -898,6 +899,53 @@ class TestAutoSettlePaperTrades(unittest.TestCase):
         # P&L should reflect actual exit price: (0.85 - 0.50) * 10 = $3.50
         self.assertAlmostEqual(result["pnl"], 3.50, places=2)
 
+    def test_check_exit_targets_no_side_uses_no_bid_not_no_ask(self):
+        """#3 regression: a NO position's realizable exit value is
+        1 - yes_ask (no_bid), not 1 - yes_bid (no_ask) — the old code used
+        yes_bid for both the trigger check and the exit price, which fires
+        NO exits too early and overstates their proceeds.
+
+        yes_bid=0.25, yes_ask=0.35, exit_target=0.70 (NO-side units):
+        real no_bid = 1-0.35 = 0.65 < 0.70 -> must NOT exit yet.
+        Old buggy code checked (yes_bid <= 1-target) = (0.25 <= 0.30) = True
+        -> would have incorrectly exited here.
+        """
+        from unittest.mock import MagicMock
+
+        import paper
+
+        trade = paper.place_paper_order("TKNO1", "no", 10, 0.40, exit_target=0.70)
+        mock_client = MagicMock()
+        mock_client.get_market.return_value = {"yes_bid": 0.25, "yes_ask": 0.35}
+        paper.check_exit_targets(mock_client)
+        result = [t for t in paper._load()["trades"] if t["id"] == trade["id"]][0]
+        self.assertFalse(
+            result["settled"],
+            "NO exit target must not fire on the old (yes_bid-based) proxy "
+            "when the real no_bid (1-yes_ask) hasn't reached the target",
+        )
+
+    def test_check_exit_targets_no_side_fires_at_correct_price(self):
+        """Same setup, but the real no_bid (1-yes_ask) has now reached the
+        target — must fire, and must settle at the real no_bid, not no_ask."""
+        from unittest.mock import MagicMock
+
+        import paper
+
+        trade = paper.place_paper_order("TKNO2", "no", 10, 0.40, exit_target=0.70)
+        mock_client = MagicMock()
+        # no_bid = 1 - 0.28 = 0.72 >= target 0.70 -> fires
+        mock_client.get_market.return_value = {"yes_bid": 0.20, "yes_ask": 0.28}
+        paper.check_exit_targets(mock_client)
+        result = [t for t in paper._load()["trades"] if t["id"] == trade["id"]][0]
+        self.assertTrue(result["settled"])
+        self.assertAlmostEqual(
+            result["pnl"],
+            (0.72 - 0.40) * 10,
+            places=2,
+            msg="must settle at no_bid (1-yes_ask), not no_ask (1-yes_bid)",
+        )
+
     def test_get_outcome_for_ticker_returns_correct_value(self):
         import tracker
 
@@ -1486,6 +1534,88 @@ class TestMonteCarloCholesky:
         assert result["prob_ruin"] == 0.0
 
 
+def _flat_prices(prices: dict) -> dict:
+    """Convert {ticker: yes_price} to the {ticker: {"bid":..., "ask":...}}
+    shape check_stop_losses/update_peak_profits/check_breakeven_stops now
+    take (#3) — zero spread (bid==ask) preserves these tests' original
+    single-price semantics exactly."""
+    return {t: {"bid": p, "ask": p} for t, p in prices.items()}
+
+
+class TestLiquidationPriceZeroSide:
+    """Deep-review followup: parse_market_price() coalesces a missing side
+    to 0.0 (never None) -- a one-sided/thin book with no resting bids (or
+    no resting asks) is common overnight and legitimately produces bid=0.0
+    or ask=0.0 while the other side still has a real quote. Before this
+    fix, _liquidation_price() treated that 0.0 as a real price: a YES
+    position with bid=0.0 priced at $0.00 (phantom stop-loss/loss), and a
+    NO position with ask=0.0 priced at 1.0-0.0=$1.00 (phantom win)."""
+
+    def test_yes_zero_bid_returns_none_not_zero(self):
+        from paper import _liquidation_price
+
+        prices = {"T1": {"bid": 0.0, "ask": 0.35}}
+        assert _liquidation_price(prices, "T1", "yes") is None
+
+    def test_no_zero_ask_returns_none_not_one(self):
+        from paper import _liquidation_price
+
+        prices = {"T1": {"bid": 0.30, "ask": 0.0}}
+        assert _liquidation_price(prices, "T1", "no") is None
+
+    def test_yes_real_bid_still_prices_normally(self):
+        from paper import _liquidation_price
+
+        prices = {"T1": {"bid": 0.45, "ask": 0.50}}
+        assert _liquidation_price(prices, "T1", "yes") == 0.45
+
+    def test_no_real_ask_still_prices_normally(self):
+        from paper import _liquidation_price
+
+        prices = {"T1": {"bid": 0.45, "ask": 0.50}}
+        assert _liquidation_price(prices, "T1", "no") == pytest.approx(0.50)
+
+    def test_zero_bid_no_longer_fires_phantom_stop_loss(self):
+        """End-to-end: a YES position with a one-sided (bid=0) book must not
+        be treated as having crashed to $0 -- it must be skipped (fall back
+        to entry_price by the caller), not counted as a stop-loss breach."""
+        from paper import check_stop_losses
+
+        trade = {
+            "ticker": "T1",
+            "side": "yes",
+            "entry_price": 0.60,
+            "quantity": 10,
+            "cost": 6.0,
+            "settled": False,
+            "close_time": "2099-01-01T00:00:00Z",
+        }
+        # bid=0.0 (no resting bids), ask=0.35 -- a real, non-crashed market
+        # with a thin/one-sided book, not an actual price collapse to zero.
+        prices = {"T1": {"bid": 0.0, "ask": 0.35}}
+        assert check_stop_losses([trade], prices) == []
+
+    def test_zero_ask_no_longer_books_phantom_win(self):
+        """End-to-end: a NO position with a one-sided (ask=0) book must not
+        be treated as having appreciated to guaranteed-win $1.00."""
+        from paper import check_breakeven_stops
+
+        trade = {
+            "ticker": "T1",
+            "side": "no",
+            "entry_price": 0.40,
+            "quantity": 10,
+            "cost": 4.0,
+            "settled": False,
+            "close_time": "2099-01-01T00:00:00Z",
+            "peak_profit_pct": 0.5,  # already past BREAKEVEN_TRIGGER_PCT
+        }
+        # bid=0.65 (real), ask=0.0 (no resting asks) -- must be skipped, not
+        # priced at a phantom $1.00 that would trivially trigger the stop.
+        prices = {"T1": {"bid": 0.65, "ask": 0.0}}
+        assert check_breakeven_stops([trade], prices) == []
+
+
 class TestCheckStopLosses:
     def _trade(self, ticker, side, entry_price, qty, close_time="2099-01-01T00:00:00Z"):
         # close_time defaults to far-future so Fix 1's 24h gate doesn't skip the trade.
@@ -1508,7 +1638,7 @@ class TestCheckStopLosses:
         # current yes = 0.30 → loss = (0.30-0.60)*10 = -3.0; threshold = -cost/2 = -3.0
         # At exactly threshold it fires (strictly less would not, so use 0.29)
         prices = {"T1": 0.29}
-        assert check_stop_losses([trade], prices) == ["T1"]
+        assert check_stop_losses([trade], _flat_prices(prices)) == ["T1"]
 
     def test_stop_not_triggered_within_range(self):
         """YES trade: small adverse move → no stop."""
@@ -1516,7 +1646,7 @@ class TestCheckStopLosses:
 
         trade = self._trade("T1", "yes", 0.60, 10)
         prices = {"T1": 0.50}  # lost $1 of $6 — well within threshold
-        assert check_stop_losses([trade], prices) == []
+        assert check_stop_losses([trade], _flat_prices(prices)) == []
 
     def test_stop_triggers_for_no_trade(self):
         """NO trade: YES price rises sharply → NO value drops → stop fires."""
@@ -1527,7 +1657,7 @@ class TestCheckStopLosses:
         # current yes = 0.85 → current NO = 0.15; loss = (0.15-0.40)*10 = -2.5
         # threshold = -cost/2 = -2.0  →  -2.5 < -2.0 → fires
         prices = {"T1": 0.85}
-        assert check_stop_losses([trade], prices) == ["T1"]
+        assert check_stop_losses([trade], _flat_prices(prices)) == ["T1"]
 
     def test_stop_not_triggered_when_multiplier_zero(self):
         """STOP_LOSS_MULT=0 disables stop-losses entirely."""
@@ -1539,7 +1669,7 @@ class TestCheckStopLosses:
         trade = self._trade("T1", "yes", 0.60, 10)
         prices = {"T1": 0.01}  # extreme loss
         with patch.object(utils, "STOP_LOSS_MULT", 0.0):
-            assert check_stop_losses([trade], prices) == []
+            assert check_stop_losses([trade], _flat_prices(prices)) == []
 
     def test_missing_ticker_skipped(self):
         """Ticker not in current_yes_prices is skipped (no crash)."""
@@ -1555,7 +1685,7 @@ class TestCheckStopLosses:
         t1 = self._trade("T1", "yes", 0.60, 10)  # will breach
         t2 = self._trade("T2", "yes", 0.60, 10)  # will not breach
         prices = {"T1": 0.20, "T2": 0.55}
-        result = check_stop_losses([t1, t2], prices)
+        result = check_stop_losses([t1, t2], _flat_prices(prices))
         assert result == ["T1"]
 
     def test_stop_loss_result_wires_to_close_paper_early(self, tmp_path, monkeypatch):
@@ -1581,7 +1711,7 @@ class TestCheckStopLosses:
         # Price drops to 0.29 → unrealized PnL = (0.29 - 0.60) * 10 = -$3.10
         # stop_threshold = -(cost / MULT) = -(6.0 / 2) = -$3.00 → breach
         prices = {"T_INTEGRATION": 0.29}
-        tickers = paper.check_stop_losses(paper.get_open_trades(), prices)
+        tickers = paper.check_stop_losses(paper.get_open_trades(), _flat_prices(prices))
         assert "T_INTEGRATION" in tickers, (
             "Stop should fire when loss exceeds threshold"
         )
@@ -1630,3 +1760,164 @@ def test_portfolio_expected_value_positive_for_winning_trades(monkeypatch):
     assert abs(ev["expected_profit_dollars"] - expected_total_profit) < 0.01
     assert ev["open_position_count"] == 2
     assert ev["total_cost_dollars"] == pytest.approx(7.75, abs=0.01)
+
+
+def test_portfolio_expected_value_does_not_crash_on_explicit_none_net_edge(
+    monkeypatch,
+):
+    """#8: a trade with net_edge explicitly None (not absent) — e.g. a
+    dashboard order with no net_edge in the POST body — must not crash
+    get_portfolio_expected_value(). float(t.get("net_edge", 0.0)) only
+    applies its default when the key is missing, not when it's None."""
+    import paper
+
+    trades = [
+        {
+            "ticker": "T1",
+            "side": "yes",
+            "entry_price": 0.50,
+            "quantity": 10,
+            "cost": 5.00,
+            "net_edge": None,
+            "settled": False,
+            "won": None,
+        },
+        {
+            "ticker": "T2",
+            "side": "yes",
+            "entry_price": 0.55,
+            "quantity": 5,
+            "cost": 2.75,
+            "net_edge": 0.20,
+            "settled": False,
+            "won": None,
+        },
+    ]
+    monkeypatch.setattr(paper, "load_paper_trades", lambda: trades)
+
+    ev = paper.get_portfolio_expected_value()  # must not raise
+
+    # T1 contributes 0 EV (net_edge treated as 0.0), T2 contributes 2.75*0.20=0.55
+    assert ev["expected_profit_dollars"] == pytest.approx(0.55, abs=0.01)
+    assert ev["open_position_count"] == 2
+
+
+class TestUndoLastTradePeakBalance:
+    """#9: undo_last_trade's peak_balance recompute replayed each trade's
+    entry AND settlement together at the trade's entered_at, instead of at
+    their real, separate timestamps — misordering the replay relative to
+    other trades whenever a trade settled after some other trade's entry."""
+
+    def test_peak_recompute_uses_true_chronological_order(self, tmp_path, monkeypatch):
+        import paper
+
+        p = tmp_path / "paper_trades.json"
+        monkeypatch.setattr(paper, "DATA_PATH", p)
+
+        now = datetime.now(UTC)
+
+        def _iso(**delta):
+            from datetime import timedelta
+
+            return (now - timedelta(**delta)).isoformat()
+
+        # Trade A: entered 10 days ago, cost $100, settled 2 days ago with a
+        # big win (pnl=+200, payout $300). Trade C: entered 5 days ago
+        # (between A's entry and settlement), cost $50, still open. Trade B:
+        # entered just now (within undo's 5-min window), cost $30 — this is
+        # the one undone; it's removed before the recompute, so only A/C
+        # participate in the peak replay below.
+        #
+        # True chronological balance path (STARTING_BALANCE=$1000):
+        #   -10d A enters:  1000-100 = 900
+        #    -5d C enters:   900-50  = 850
+        #   -2d A settles:   850+300 = 1150
+        # True peak ever reached = max(1000, 900, 850, 1150) = 1150.
+        #
+        # The old code (sorted by entered_at, settlement applied AT entry)
+        # applied A's +300 payout immediately at -10d (before C's -5d entry
+        # cost is ever subtracted): 1000-100+300=1200 — a peak that never
+        # actually existed in the true timeline.
+        trade_a = {
+            "id": 1,
+            "ticker": "A",
+            "side": "yes",
+            "entry_price": 0.50,
+            "quantity": 200,
+            "cost": 100.0,
+            "settled": True,
+            "entered_at": _iso(days=10),
+            "settled_at": _iso(days=2),
+            "pnl": 200.0,
+        }
+        trade_c = {
+            "id": 3,
+            "ticker": "C",
+            "side": "yes",
+            "entry_price": 0.50,
+            "quantity": 100,
+            "cost": 50.0,
+            "settled": False,
+            "entered_at": _iso(days=5),
+        }
+        trade_b = {
+            "id": 2,
+            "ticker": "B",
+            "side": "yes",
+            "entry_price": 0.50,
+            "quantity": 60,
+            "cost": 30.0,
+            "settled": False,
+            "entered_at": now.isoformat(),  # within undo's 5-min window
+        }
+        data = {
+            "_version": paper._SCHEMA_VERSION,
+            "balance": 820.0,
+            "peak_balance": 1000.0,
+            "trades": [trade_a, trade_c, trade_b],
+        }
+        p.write_text(json.dumps(data))
+
+        undone = paper.undo_last_trade(max_minutes=5)
+
+        assert undone is not None and undone["id"] == 2
+        result = paper._load()
+        assert result["peak_balance"] == pytest.approx(1150.0), (
+            f"expected the true chronological peak (1150), got "
+            f"{result['peak_balance']} (1200 would indicate the old "
+            f"entry-time-only replay bug)"
+        )
+
+
+class TestGetDailyPnlNoneSettledAt:
+    """Deep-review followup: t.get("settled_at", "") only covers a MISSING
+    key -- a settled record with settled_at explicitly None (a real state;
+    see the M-9 comment above get_daily_pnl) returns None, and None[:10]
+    raised TypeError directly on is_daily_loss_halted()'s path -- an
+    uncaught exception on a safety gate."""
+
+    def test_none_settled_at_does_not_crash(self, tmp_path, monkeypatch):
+        import paper
+
+        p = tmp_path / "paper_trades.json"
+        monkeypatch.setattr(paper, "DATA_PATH", p)
+        data = {
+            "_version": paper._SCHEMA_VERSION,
+            "balance": 900.0,
+            "peak_balance": 1000.0,
+            "trades": [
+                {
+                    "id": 1,
+                    "ticker": "T1",
+                    "side": "yes",
+                    "settled": True,
+                    "settled_at": None,
+                    "pnl": -50.0,
+                }
+            ],
+        }
+        p.write_text(json.dumps(data))
+
+        # Must not raise.
+        result = paper.get_daily_pnl()
+        assert result == 0.0, "a None settled_at record must be excluded, not crash"

@@ -67,7 +67,7 @@ def init_log() -> None:
                 quantity       INTEGER NOT NULL,
                 price          REAL    NOT NULL,
                 order_type     TEXT,              -- "market" or "limit"
-                status         TEXT,              -- "sent", "pending", "filled", "failed", "cancelled"
+                status         TEXT,              -- "sent", "pending", "filled", "failed", "canceled"
                 response       TEXT,              -- JSON-encoded API response
                 error          TEXT,              -- error message if failed
                 placed_at      TEXT    NOT NULL,
@@ -267,11 +267,22 @@ def was_ordered_recently(ticker: str, days: int = 7) -> bool:
     """
     init_log()
     with _conn() as con:
-        # H-22: match any non-failed/cancelled status — orders stuck in 'sent'/'pending'
+        # H-22: match any non-failed/canceled status — orders stuck in 'sent'/'pending'
         # after a crash would be invisible with status='filled' only, allowing re-entry.
+        # F8: "canceled" (American) is the only spelling any writer uses now.
+        # _kalshi_status_to_internal() (translating Kalshi's real API status)
+        # always wrote "canceled", which this NOT IN list never matched (it
+        # only had the GTC-timer paths' "cancelled", British) — an
+        # API-canceled order stayed wrongly excluded from re-entry for the
+        # full 7-day dedup window instead of unblocking immediately, the way
+        # a GTC-timer cancel already correctly did. "cancelled" (British) is
+        # kept in this list too — deploying the F8 spelling fix doesn't
+        # retroactively rewrite rows already on disk from before the fix, so
+        # a pre-existing "cancelled" row would otherwise wrongly block
+        # re-entry for its own leftover 7-day window post-deploy.
         row = con.execute(
             "SELECT 1 FROM orders WHERE ticker=? "
-            "AND status NOT IN ('failed', 'cancelled') "
+            "AND status NOT IN ('failed', 'canceled', 'cancelled') "
             "AND placed_at >= datetime('now', ?) LIMIT 1",
             (ticker, f"-{days} days"),
         ).fetchone()
@@ -331,6 +342,38 @@ def get_today_live_loss() -> float:
     except Exception as exc:
         _log.error("get_today_live_loss: DB read failed, failing closed: %s", exc)
         _set_degraded_flag(f"read failed: {exc}")
+        return float("inf")
+
+
+def get_today_live_spend() -> float:
+    """Return today's cumulative live order spend in dollars (UTC date),
+    across every non-failed/canceled order regardless of settlement status.
+
+    F7 followup: placement-time add_live_loss(cost) was removed because it
+    double-counted with settlement-time add_live_loss(-pnl) -- correct, but
+    it had also been the only thing making a long-running `watch --auto
+    --live` session's MAX_DAILY_SPEND-style cap see PRIOR cycles' live
+    spend; _daily_paper_spend()/_daily_sameday_spend() only ever read
+    paper_trades.json and are blind to live orders entirely. This is a
+    dedicated spend counter (not the realized-loss counter), computed fresh
+    from execution_log each call so it reflects every live order placed
+    this UTC day across the whole process's lifetime, not just this call.
+
+    Fails closed (inf) on a DB read failure, matching get_today_live_loss().
+    """
+    today = datetime.now(UTC).strftime("%Y-%m-%d")
+    try:
+        init_log()
+        with _conn() as con:
+            row = con.execute(
+                "SELECT COALESCE(SUM(quantity * price), 0.0) AS total FROM orders "
+                "WHERE live = 1 AND status NOT IN ('failed', 'canceled', 'cancelled') "
+                "AND placed_at >= ?",
+                (today,),
+            ).fetchone()
+        return float(row["total"]) if row else 0.0
+    except Exception as exc:
+        _log.error("get_today_live_spend: DB read failed, failing closed: %s", exc)
         return float("inf")
 
 

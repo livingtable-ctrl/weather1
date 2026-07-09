@@ -59,8 +59,15 @@ class TestCmdCronGuards:
             "market scan should be skipped when kill switch is active"
         )
 
-    def test_accuracy_halt_blocks_market_scan(self, minimal_mocks, monkeypatch):
-        """cmd_cron exits early when the accuracy circuit breaker is active."""
+    def test_accuracy_halt_skips_placement_but_still_scans(
+        self, minimal_mocks, monkeypatch
+    ):
+        """An accuracy halt must still scan/settle — only placement is skipped.
+
+        Settlement is computed from settled trades, so skipping it while halted
+        would make the halt self-perpetuating (it could never accumulate the
+        settled trades needed to clear). Only kill-switch is a full stop.
+        """
         import main
         import paper
 
@@ -71,8 +78,11 @@ class TestCmdCronGuards:
             main, "get_weather_markets", lambda c: scan_called.append(1) or []
         )
         client = MagicMock()
-        main.cmd_cron(client)
-        assert scan_called == [], "market scan should be skipped on accuracy halt"
+        try:
+            main.cmd_cron(client)
+        except SystemExit:
+            pass  # halted cycles still complete the full scan and exit(0) cleanly
+        assert scan_called == [1], "market scan must still run during an accuracy halt"
 
     def test_empty_market_list_runs_cleanly(self, minimal_mocks):
         """cmd_cron with no markets returned completes without error."""

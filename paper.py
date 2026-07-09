@@ -13,7 +13,9 @@ import hmac as _hmac
 import json
 import logging
 import os
+import sys
 import threading
+import time
 import zlib as _zlib
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -77,15 +79,114 @@ def _validate_checksum(data: dict) -> None:
 DATA_PATH = _project_root() / "data" / "paper_trades.json"
 DATA_PATH.parent.mkdir(exist_ok=True)
 
+
+def _existed_marker_path() -> Path:
+    """#10: sentinel touched on every successful save, checked when DATA_PATH
+    is missing. Derived from DATA_PATH at call time (not a frozen constant)
+    since tests reassign paper.DATA_PATH per-test to isolate against a temp
+    file — same reasoning as execution_log.py's degraded-flag path.
+    """
+    return DATA_PATH.parent / f".{DATA_PATH.name}.existed"
+
+
 # Set to True by the kill switch override path in main.cmd_cron so that any
 # trades placed during an override run are tagged via_kill_switch_override=True
 # in the paper trades ledger.  Always reset in a finally block.
 KILL_SWITCH_OVERRIDE_ACTIVE: bool = False
 
-# Serialises concurrent read-modify-write cycles from Flask threads.
-_DATA_LOCK = (
-    threading.RLock()
-)  # RLock: get_open_trades/get_balance called inside locked sections
+
+class _CrossProcessDataLock:
+    """Serialises read-modify-write cycles on paper_trades.json across BOTH
+    threads within this process AND separate OS processes.
+
+    The bare threading.RLock this replaces only ever protected against
+    concurrent Flask threads inside one process — cron and the web dashboard
+    are separate long-lived processes with no shared lock, so a load in one
+    could straddle a save in the other and silently revert a settlement or
+    drop a manually-placed trade. Reentrant like the RLock it wraps (get_open_trades/
+    get_balance acquire this lock again from inside an already-locked section),
+    tracked via a thread-local depth counter so nested acquisitions in the same
+    thread don't try to re-take the OS file lock.
+    """
+
+    def __init__(self, lock_path_fn):
+        self._rlock = threading.RLock()
+        self._lock_path_fn = lock_path_fn  # called fresh each time — tests
+        # reassign paper.DATA_PATH, so the lock file path must follow it.
+        self._local = threading.local()
+        self._fh = None
+
+    def __enter__(self) -> _CrossProcessDataLock:
+        self.acquire()
+        return self
+
+    def __exit__(self, *exc_info) -> None:
+        self.release()
+
+    def acquire(self) -> None:
+        """Also usable directly (not just via `with`) — a couple of call sites
+        span multiple statements and can't use a single `with` block."""
+        self._rlock.acquire()
+        depth = getattr(self._local, "depth", 0)
+        self._local.depth = depth + 1
+        if depth == 0:
+            self._acquire_file_lock()
+
+    def release(self) -> None:
+        self._local.depth -= 1
+        if self._local.depth == 0:
+            self._release_file_lock()
+        self._rlock.release()
+
+    def _acquire_file_lock(self) -> None:
+        if sys.platform != "win32":
+            return  # in-process RLock only; no cross-process primitive wired up
+        try:
+            lock_path = self._lock_path_fn()
+            lock_path.parent.mkdir(exist_ok=True)
+            fh = open(lock_path, "a+b")
+            import msvcrt
+
+            deadline = time.monotonic() + 10.0
+            while True:
+                try:
+                    fh.seek(0)
+                    msvcrt.locking(fh.fileno(), msvcrt.LK_NBLCK, 1)
+                    break
+                except OSError:
+                    if time.monotonic() > deadline:
+                        _log.warning(
+                            "paper.py: cross-process ledger lock contended >10s — "
+                            "proceeding without it this call"
+                        )
+                        fh.close()
+                        return
+                    time.sleep(0.05)
+            self._fh = fh
+        except Exception as exc:
+            # Never let the locking mechanism itself take down trading —
+            # fall back to in-process-only protection, same as before this fix.
+            _log.warning("paper.py: could not acquire cross-process lock: %s", exc)
+
+    def _release_file_lock(self) -> None:
+        fh, self._fh = self._fh, None
+        if fh is None:
+            return
+        try:
+            fh.seek(0)
+            import msvcrt
+
+            msvcrt.locking(fh.fileno(), msvcrt.LK_UNLCK, 1)
+        except Exception:
+            pass
+        finally:
+            fh.close()
+
+
+# Serialises concurrent read-modify-write cycles on the trade ledger, both
+# within this process (Flask threads) and across processes (cron vs. the
+# web dashboard vs. manual CLI commands) — see _CrossProcessDataLock above.
+_DATA_LOCK = _CrossProcessDataLock(lambda: DATA_PATH.parent / "paper_trades.lock")
 
 # Loss-limit override flag — written by reset_daily_loss_limit(), checked by
 # is_daily_loss_halted().  Keyed to the UTC date so it auto-expires at midnight.
@@ -164,13 +265,18 @@ MAX_DIRECTIONAL_EXPOSURE = (
 )
 
 # Cities that tend to move together due to shared weather patterns.
-# Broader regional clusters so get_correlated_exposure covers all 18 traded cities.
+# Broader regional clusters so get_correlated_exposure covers all 20 traded cities.
 # Seattle is standalone — Pacific Maritime pattern is distinct from the West cluster.
+# #6: LasVegas and NewOrleans are real traded cities (weather_markets.py
+# CITY_COORDS/_STATION_BIAS_HIGH) that were missing from every group and pair
+# below — desert-Southwest LasVegas (same GFS/ICON warm-bias profile as
+# Phoenix) and Gulf-coast NewOrleans (same humid-subtropical profile as
+# Houston) got zero correlated-risk reduction and no group exposure cap.
 _CORRELATED_CITY_GROUPS = [
     {"NYC", "Boston", "Philadelphia", "Washington"},
     {"Chicago", "Minneapolis", "Denver"},
-    {"LA", "Phoenix", "SanFrancisco"},
-    {"Dallas", "Houston", "SanAntonio", "Austin", "OklahomaCity"},
+    {"LA", "Phoenix", "SanFrancisco", "LasVegas"},
+    {"Dallas", "Houston", "SanAntonio", "Austin", "OklahomaCity", "NewOrleans"},
     {"Atlanta", "Miami"},
 ]
 MAX_CORRELATED_EXPOSURE = 0.35  # max combined fraction across a correlated group
@@ -178,6 +284,11 @@ MAX_CORRELATED_EXPOSURE = 0.35  # max combined fraction across a correlated grou
 # #51: Pairwise city temperature correlations for portfolio Kelly covariance matrix.
 # Values are approximate correlations of daily high-temperature anomalies.
 # Symmetric; self-correlation = 1.0 (not listed).
+# #6: added LasVegas/NewOrleans pairs (see above), plus intra-group pairs that
+# were missing even for cities already covered — get_correlated_exposure (the
+# group-based exposure cap) treated these as correlated, but the Kelly
+# covariance layer (covariance_kelly_scale/position_correlation_matrix) saw
+# corr=0.0 or the generic 0.10 default for any pair not listed here.
 _CITY_PAIR_CORR: dict[frozenset, float] = {
     frozenset({"NYC", "Boston"}): 0.85,
     frozenset({"NYC", "Philadelphia"}): 0.80,
@@ -187,8 +298,13 @@ _CITY_PAIR_CORR: dict[frozenset, float] = {
     frozenset({"Philadelphia", "Washington"}): 0.80,
     frozenset({"Chicago", "Minneapolis"}): 0.60,
     frozenset({"Chicago", "Denver"}): 0.45,
+    frozenset({"Minneapolis", "Denver"}): 0.40,
     frozenset({"LA", "Phoenix"}): 0.55,
     frozenset({"LA", "SanFrancisco"}): 0.50,  # was "San Francisco" — name mismatch bug
+    frozenset({"Phoenix", "SanFrancisco"}): 0.35,
+    frozenset({"LasVegas", "Phoenix"}): 0.60,
+    frozenset({"LasVegas", "LA"}): 0.45,
+    frozenset({"LasVegas", "SanFrancisco"}): 0.35,
     frozenset({"Dallas", "Houston"}): 0.70,
     frozenset({"Dallas", "SanAntonio"}): 0.72,
     frozenset({"Dallas", "Austin"}): 0.68,
@@ -196,6 +312,16 @@ _CITY_PAIR_CORR: dict[frozenset, float] = {
     frozenset({"Houston", "SanAntonio"}): 0.75,
     frozenset({"Houston", "Austin"}): 0.70,
     frozenset({"Houston", "OklahomaCity"}): 0.58,
+    frozenset(
+        {"SanAntonio", "Austin"}
+    ): 0.80,  # ~75 miles apart — closest pair in the book
+    frozenset({"SanAntonio", "OklahomaCity"}): 0.50,
+    frozenset({"Austin", "OklahomaCity"}): 0.50,
+    frozenset({"NewOrleans", "Houston"}): 0.75,
+    frozenset({"NewOrleans", "Dallas"}): 0.55,
+    frozenset({"NewOrleans", "SanAntonio"}): 0.55,
+    frozenset({"NewOrleans", "Austin"}): 0.55,
+    frozenset({"NewOrleans", "OklahomaCity"}): 0.45,
     frozenset({"Dallas", "Atlanta"}): 0.55,
     frozenset({"Miami", "Atlanta"}): 0.50,
 }
@@ -217,6 +343,21 @@ def _load() -> dict:
         if "_version" not in data:
             data["_version"] = 1
         return data
+    # #10: DATA_PATH missing for ANY reason (not just a genuine fresh install —
+    # a transient permission error, a mispointed project root, or an
+    # accidental delete all look identical here) used to silently fabricate a
+    # fresh $1000 account, and the next _save() would write it over the real
+    # ledger's location with a *valid* checksum — corruption fails closed via
+    # CorruptionError above, but absence failed open into a full reset. The
+    # marker (touched on every successful save) distinguishes "never saved
+    # before" from "saved before, file is gone now."
+    if _existed_marker_path().exists():
+        raise CorruptionError(
+            f"{DATA_PATH} is missing, but {_existed_marker_path().name} shows "
+            "a real ledger was saved here before — refusing to silently reset "
+            "the account. If this is genuinely a fresh start (e.g. a new "
+            f"environment), delete {_existed_marker_path()} to proceed."
+        )
     return {
         "_version": _SCHEMA_VERSION,
         "balance": STARTING_BALANCE,
@@ -253,6 +394,12 @@ def _save(data: dict) -> None:
     except (AtomicWriteError, RuntimeError) as e:
         _log.error("CRITICAL: Could not save paper trades: %s", e)
         raise
+    # #10: mark that a real ledger now exists at this path — see _load()'s
+    # missing-file check. Best-effort; a failure here shouldn't fail the save.
+    try:
+        _existed_marker_path().touch(exist_ok=True)
+    except Exception:
+        pass
 
 
 def verify_backup(path) -> bool:
@@ -586,17 +733,24 @@ def spread_kelly_multiplier(yes_bid: float, yes_ask: float, net_edge: float) -> 
 
     Entering at ask (not mid) immediately costs spread/2 per contract. If that cost
     is a large share of net_edge, the real expected value is much lower than modelled.
-    The multiplier is: clamp(effective_edge / net_edge, 0.5, 1.0) where
+    The multiplier is: clamp(effective_edge / net_edge, 0.0, 1.0) where
     effective_edge = net_edge - spread/2.
 
     Returns 1.0 when spread data is unavailable or net_edge <= 0 (no penalty).
+
+    #5: was floored at 0.5, not 0.0 — when the spread eats MORE than the full
+    modelled edge (effective_edge < 0, i.e. the trade is negative-EV after
+    crossing the spread), the old floor still sized it at half-Kelly instead
+    of the near-zero size that reflects "this trade shouldn't really be
+    placed." Floor of 0.0 lets kelly_quantity naturally round such a trade
+    down to 0 contracts rather than half-Kelly-sizing a losing bet.
     """
     spread = yes_ask - yes_bid
     if spread <= 0 or net_edge <= 0:
         return 1.0
     effective_edge = net_edge - spread / 2.0
     mult = effective_edge / net_edge
-    return round(max(0.5, min(1.0, mult)), 3)
+    return round(max(0.0, min(1.0, mult)), 3)
 
 
 def kelly_bet_dollars(
@@ -1083,8 +1237,39 @@ def validate_paper_trades_integrity() -> list[str]:
     return errors
 
 
+def _liquidation_price(
+    prices: dict[str, dict[str, float]], ticker: str, side: str
+) -> float | None:
+    """Return what closing this position right now would actually realize.
+
+    #3: a YES holder can only sell at yes_bid (what a buyer will pay); a NO
+    holder can only sell at 1 - yes_ask (= no_bid). Using yes_ask for YES or
+    1 - yes_bid for NO instead prices the position at what a *buyer* would
+    pay to open more, not what a *holder* can realize by closing — overvaluing
+    the position by the bid-ask spread (understating loss, so stops fire late;
+    inflating take-profit/exit proceeds).
+    """
+    quote = prices.get(ticker)
+    if not quote:
+        return None
+    # Deep-review followup: parse_market_price() coalesces a missing side to
+    # 0.0 (never None) -- a one-sided/thin book with no resting bids (or no
+    # resting asks) is common overnight and legitimately produces bid=0.0 or
+    # ask=0.0 while the *other* side still has a real quote, so `has_quote`
+    # (mid > 0) can be True while one individual side is still 0. Treating a
+    # 0.0 side as a real price fires phantom $0 stop-losses (YES, bid=0) and
+    # books phantom $1.00 wins (NO, ask=0) -- both silently corrupt the real
+    # ledger. A price <= 0 is never a real tradeable quote, so treat it the
+    # same as "no quote" (None) here.
+    if side == "yes":
+        bid = quote.get("bid")
+        return bid if bid is not None and bid > 0 else None
+    ask = quote.get("ask")
+    return (1.0 - ask) if ask is not None and ask > 0 else None
+
+
 def check_stop_losses(
-    open_trades: list[dict], current_yes_prices: dict[str, float]
+    open_trades: list[dict], current_prices: dict[str, dict[str, float]]
 ) -> list[str]:
     """
     Return tickers whose unrealized loss has breached the stop-loss threshold.
@@ -1092,7 +1277,7 @@ def check_stop_losses(
     Stop fires when: unrealized_loss > cost / STOP_LOSS_MULT
     i.e. for default STOP_LOSS_MULT=2, exit when the position has lost >50% of cost.
 
-    current_yes_prices: {ticker: yes_ask (0–1 float)}
+    current_prices: {ticker: {"bid": yes_bid, "ask": yes_ask}} (0-1 floats)
     """
     from utils import STOP_LOSS_MULT
 
@@ -1135,15 +1320,9 @@ def check_stop_losses(
             )
             continue
 
-        current_yes = current_yes_prices.get(ticker)
-        if current_yes is None:
+        current_side_price = _liquidation_price(current_prices, ticker, side)
+        if current_side_price is None:
             continue
-
-        # Current value per contract for our side
-        if side == "yes":
-            current_side_price = current_yes
-        else:
-            current_side_price = 1.0 - current_yes
 
         unrealized_pnl = (current_side_price - entry_price) * qty
         stop_threshold = -(cost / STOP_LOSS_MULT)
@@ -1155,12 +1334,14 @@ def check_stop_losses(
 
 
 def update_peak_profits(
-    open_trades: list[dict], current_yes_prices: dict[str, float]
+    open_trades: list[dict], current_prices: dict[str, dict[str, float]]
 ) -> bool:
     """Update peak_profit_pct on open trades if current unrealized profit is a new high.
 
     Saves atomically only when at least one peak is updated. Returns True if any
     trade was updated. Called each cron run before check_breakeven_stops().
+
+    current_prices: {ticker: {"bid": yes_bid, "ask": yes_ask}} (0-1 floats)
     """
     with _DATA_LOCK:
         data = _load()
@@ -1169,16 +1350,15 @@ def update_peak_profits(
             if t.get("settled"):
                 continue
             ticker = t.get("ticker", "")
-            current_yes = current_yes_prices.get(ticker)
-            if current_yes is None:
-                continue
             entry_price = t.get("entry_price", 0.0)
             qty = t.get("quantity", 0)
             cost = t.get("cost") or entry_price * qty
             if cost <= 0 or qty <= 0:
                 continue
             side = t.get("side", "yes")
-            current_side_price = current_yes if side == "yes" else 1.0 - current_yes
+            current_side_price = _liquidation_price(current_prices, ticker, side)
+            if current_side_price is None:
+                continue
             unrealized_profit_pct = (current_side_price - entry_price) * qty / cost
             stored_peak = t.get("peak_profit_pct")
             if stored_peak is None or unrealized_profit_pct > stored_peak:
@@ -1190,13 +1370,15 @@ def update_peak_profits(
 
 
 def check_breakeven_stops(
-    open_trades: list[dict], current_yes_prices: dict[str, float]
+    open_trades: list[dict], current_prices: dict[str, dict[str, float]]
 ) -> list[str]:
     """Return tickers whose break-even stop has triggered.
 
     Fires when: peak_profit_pct >= BREAKEVEN_TRIGGER_PCT AND current unrealized
     pnl <= 0 (price has fallen back to entry or below). Requires update_peak_profits()
     to have been called first so peak_profit_pct is current.
+
+    current_prices: {ticker: {"bid": yes_bid, "ask": yes_ask}} (0-1 floats)
     """
     from utils import BREAKEVEN_TRIGGER_PCT
 
@@ -1230,13 +1412,12 @@ def check_breakeven_stops(
             )
             continue
 
-        current_yes = current_yes_prices.get(ticker)
-        if current_yes is None:
-            continue
         entry_price = t.get("entry_price", 0.0)
         qty = t.get("quantity", 0)
         side = t.get("side", "yes")
-        current_side_price = current_yes if side == "yes" else 1.0 - current_yes
+        current_side_price = _liquidation_price(current_prices, ticker, side)
+        if current_side_price is None:
+            continue
         unrealized_pnl = (current_side_price - entry_price) * qty
         if unrealized_pnl <= 0:
             exits.append(ticker)
@@ -1245,7 +1426,21 @@ def check_breakeven_stops(
 
 def _exposure_denom() -> float:
     """P0-4: exposure denominator scales with balance so caps stay proportional.
-    Floor at STARTING_BALANCE so drawdown never makes caps looser than intended."""
+
+    #4: floors at STARTING_BALANCE (max(STARTING_BALANCE, balance)), NOT the
+    reverse — during drawdown this keeps the denominator anchored to the
+    larger starting figure rather than shrinking it, which does widen the
+    computed fraction for the same absolute dollar exposure. This was flagged
+    as a possible bug (a prior docstring claimed the opposite), but changing
+    it turned out to be non-trivial: get_balance() also drops the moment
+    capital is committed to an open (not-yet-lost) position, and this
+    denominator is shared by every exposure cap, not just drawdown-driven
+    ones — see get_effective_balance()'s same-day-cost add-back for the
+    established pattern this codebase already uses to avoid exposure/drawdown
+    checks over-reacting to temporarily-spent (not lost) capital. Left as-is
+    pending a deliberate design decision on the right denominator, rather
+    than risk over-tightening ordinary position-sizing on a guess.
+    """
     return max(STARTING_BALANCE, get_balance())
 
 
@@ -1348,21 +1543,24 @@ def check_exit_targets(client=None) -> int:
                 # No real bid/ask available — skip rather than treat a missing
                 # quote as a 0¢ price, which would falsely trigger NO-side exits.
                 continue
-            current_price = parsed["yes_bid"]
-            target = t["exit_target"]
-            # Exit YES trade if current YES bid >= exit target
-            # Exit NO trade if current YES bid <= (1 - exit_target)
-            should_exit = (t["side"] == "yes" and current_price >= target) or (
-                t["side"] == "no" and current_price <= 1 - target
+            side = t["side"]
+            # #3: side-normalized liquidation price — yes_bid for YES, or
+            # 1 - yes_ask (= no_bid) for NO. exit_target is stored in the
+            # position's own side units, so a plain >= comparison now works
+            # for both sides. The old code always used yes_bid (even for NO,
+            # via 1 - yes_bid = no_ask), which is the price a NO *buyer* pays,
+            # not what a NO *holder* can realize — triggering NO exits early
+            # and overstating their proceeds.
+            current_price = _liquidation_price(
+                {t["ticker"]: {"bid": parsed["yes_bid"], "ask": parsed["yes_ask"]}},
+                t["ticker"],
+                side,
             )
-            if should_exit:
-                # Exit at the actual market price, not full-settlement $1.00 payout.
-                # For YES trades: exit at current YES bid.
-                # For NO trades: exit_price is in NO-contract units = 1 - yes_bid.
-                _exit_price = (
-                    current_price if t["side"] == "yes" else 1.0 - current_price
-                )
-                close_paper_early(t["id"], round(_exit_price, 4))
+            if current_price is None:
+                continue
+            target = t["exit_target"]
+            if current_price >= target:
+                close_paper_early(t["id"], round(current_price, 4))
                 exited += 1
         except Exception as exc:
             _log.warning(
@@ -1528,7 +1726,15 @@ def portfolio_kelly(positions: list[dict]) -> list[float]:
         side = pos.get("side", "yes")
         win_p = our_p if side == "yes" else 1.0 - our_p
         win_p = max(0.01, min(0.99, win_p))
-        rk = kelly_fraction(win_p, mkt_p)
+        # #7: kelly_fraction(win_prob, price) needs the price of the contract
+        # actually being bought — mkt_p is the YES price; a NO position pays
+        # 1-mkt_p. Passing mkt_p unchanged for NO priced the NO contract at
+        # the YES price, roughly doubling the computed edge/odds. Confirmed
+        # dead in production (portfolio_kelly has no real caller — the live
+        # path uses portfolio_kelly_fraction + corr_kelly_scale instead), but
+        # fixed rather than left as a landmine for a future caller.
+        side_price = mkt_p if side == "yes" else 1.0 - mkt_p
+        rk = kelly_fraction(win_p, side_price)
         raw_kelly.append(max(0.0, min(KELLY_CAP, rk)))
         sigmas.append((win_p * (1 - win_p)) ** 0.5)
 
@@ -1679,7 +1885,12 @@ def get_portfolio_expected_value() -> dict:
         entry = float(t.get("entry_price", 0.5))
         qty = int(t.get("quantity", 1))
         cost = float(t.get("cost") or (entry * qty))
-        edge = float(t.get("net_edge", 0.0))
+        # #8: .get("net_edge", 0.0)'s default only applies when the key is
+        # ABSENT — a trade with net_edge explicitly None (dashboard orders
+        # with no net_edge in the POST body) still reaches float(None) and
+        # raises. The sole caller wraps this whole function in a bare
+        # try/except, so the portfolio-EV dashboard tile silently disappeared.
+        edge = float(t.get("net_edge") or 0.0)
 
         total_cost += cost
         total_ev += cost * edge  # expected profit above cost
@@ -2253,6 +2464,14 @@ def get_daily_pnl(client=None) -> float:
         if t.get("settled")
         # M-9: require settled_at — falling back to entered_at mis-attributes
         # settlement-day losses to the entry date, under-reporting today's P&L.
+        # Deep-review followup: t.get("settled_at", "") only covers a
+        # MISSING key -- a record with settled_at explicitly None (a real,
+        # documented settled-without-settled_at state) returns None, and
+        # None[:10] raised TypeError here, on the direct path
+        # is_daily_loss_halted() uses -- an uncaught exception on a safety
+        # gate is exactly the failure mode this session has been fixing to
+        # fail closed elsewhere, not something to leave live here too.
+        and t.get("settled_at")
         and t.get("settled_at", "")[:10] == today_str
     )
     if client is None:
@@ -2310,6 +2529,15 @@ def is_daily_loss_halted(client=None) -> bool:
         pass  # never block trading on a flag-read failure
 
     _balance = get_balance()
+    # #4: max(_balance, STARTING_BALANCE) means the threshold is anchored to
+    # the larger starting figure during drawdown rather than shrinking with
+    # the account — flagged as a possible bug (this docstring's own claim of
+    # "based on the current balance" doesn't match), but get_balance() also
+    # dips the moment capital is committed to an open (not-yet-lost) same-day
+    # position, which get_effective_balance() exists specifically to correct
+    # for elsewhere in this file. Changing the threshold basis without
+    # resolving that interaction risked a premature halt from temporarily-
+    # spent, not lost, capital — left as-is pending a deliberate decision.
     _threshold = MAX_DAILY_LOSS_PCT * max(_balance, STARTING_BALANCE)
     return get_daily_pnl(client) < -_threshold
 
@@ -2638,15 +2866,28 @@ def undo_last_trade(max_minutes: int = 5) -> dict | None:
         cost = last.get("cost", 0.0) or 0.0
         data["balance"] += cost
         data["trades"] = [t for t in data["trades"] if t["id"] != last["id"]]
-        # Recalculate peak_balance from remaining trades
+        # #9: recalculate peak_balance by replaying entry (cost) and
+        # settlement (payout) as SEPARATE events in true chronological order —
+        # not both applied at the trade's entered_at. The old code visited
+        # trades sorted by entry time and applied a settled trade's payout
+        # immediately at ITS OWN entry, which is wrong whenever that trade
+        # settled after some OTHER, later-entered trade — the replay would
+        # visit intermediate running-balance values in a different order than
+        # history actually did, over- or under-stating the true peak.
+        events: list[tuple[str, float]] = []
+        for t in data["trades"]:
+            entered = t.get("entered_at", "")
+            cost = t.get("cost", 0.0) or 0.0
+            events.append((entered, -cost))
+            if t.get("settled") and t.get("pnl") is not None:
+                settled_at = t.get("settled_at") or entered
+                events.append((settled_at, cost + t["pnl"]))
+        events.sort(key=lambda e: e[0])
         peak = STARTING_BALANCE
         running = STARTING_BALANCE
-        for t in sorted(data["trades"], key=lambda t: t.get("entered_at", "")):
-            running -= t.get("cost", 0.0) or 0.0
-            if t.get("settled") and t.get("pnl") is not None:
-                payout = (t.get("cost", 0.0) or 0.0) + t["pnl"]
-                running += payout
-                peak = max(peak, running)
+        for _, delta in events:
+            running += delta
+            peak = max(peak, running)
         data["peak_balance"] = max(peak, data["balance"])
         _save(data)
         return last
@@ -2945,16 +3186,24 @@ def get_unrealized_pnl_paper(client) -> dict:
             parsed = parse_market_price(market)
             if not parsed["has_quote"]:
                 continue
-            current = parsed["yes_bid"]
 
             entry = t.get("entry_price", 0.5) or 0.5
             qty = t.get("quantity", 1) or 1
             side = t.get("side", "yes")
 
-            if side == "yes":
-                mark_pnl = (current - entry) * qty
-            else:
-                mark_pnl = ((1.0 - current) - entry) * qty
+            # #3: mark at bid for YES / (1 - ask) for NO — what a holder can
+            # actually realize by closing — not yes_bid for both sides, which
+            # overvalued every NO position by the full bid-ask spread (that
+            # value feeds get_daily_pnl -> is_daily_loss_halted, so NO-heavy
+            # books had their daily-loss halt trigger later than it should).
+            current = _liquidation_price(
+                {t["ticker"]: {"bid": parsed["yes_bid"], "ask": parsed["yes_ask"]}},
+                t["ticker"],
+                side,
+            )
+            if current is None:
+                continue
+            mark_pnl = (current - entry) * qty
 
             total += mark_pnl
             by_trade.append(
@@ -2985,10 +3234,21 @@ def check_position_limits(
     qty: int,
     price: float = 0.5,
     max_cost_per_market: float = 250.0,
+    city: str | None = None,
+    target_date_str: str | None = None,
+    side: str | None = None,
 ) -> dict:
     """
     Check whether adding qty contracts at price would breach position limits.
-    Checks per-market cost cap and global portfolio cap.
+    Checks per-market cost cap and global portfolio cap unconditionally; when
+    city/target_date_str (and side, for the directional check) are provided,
+    also checks city/date, directional, and correlated-group exposure caps.
+
+    #2: those three caps were previously enforced only inside
+    portfolio_kelly_fraction() (the auto-sizing path) — every manual order
+    path (dashboard, `main.py order`) could silently exceed them since this
+    function only ever checked the per-market and total-portfolio caps.
+
     Returns {ok, reason, existing_cost, limit}.
     """
     existing_cost = sum(
@@ -3014,6 +3274,40 @@ def check_position_limits(
             "existing_cost": round(existing_cost, 4),
             "limit": max_cost_per_market,
         }
+
+    if city and target_date_str:
+        _new_frac = new_cost / _exposure_denom()
+        if (
+            get_city_date_exposure(city, target_date_str) + _new_frac
+            >= MAX_CITY_DATE_EXPOSURE
+        ):
+            return {
+                "ok": False,
+                "reason": f"Would exceed city/date exposure cap ({MAX_CITY_DATE_EXPOSURE:.0%})",
+                "existing_cost": round(existing_cost, 4),
+                "limit": max_cost_per_market,
+            }
+        if (
+            side
+            and get_directional_exposure(city, target_date_str, side) + _new_frac
+            >= MAX_DIRECTIONAL_EXPOSURE
+        ):
+            return {
+                "ok": False,
+                "reason": f"Would exceed directional exposure cap ({MAX_DIRECTIONAL_EXPOSURE:.0%})",
+                "existing_cost": round(existing_cost, 4),
+                "limit": max_cost_per_market,
+            }
+        if (
+            get_correlated_exposure(city, target_date_str) + _new_frac
+            >= MAX_CORRELATED_EXPOSURE
+        ):
+            return {
+                "ok": False,
+                "reason": f"Would exceed correlated-city exposure cap ({MAX_CORRELATED_EXPOSURE:.0%})",
+                "existing_cost": round(existing_cost, 4),
+                "limit": max_cost_per_market,
+            }
 
     return {
         "ok": True,

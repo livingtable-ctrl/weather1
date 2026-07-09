@@ -28,6 +28,8 @@ CORRELATIONS_PATH = _DATA / "correlations.json"
 
 # System state — these live in data/ (verified against cron.py and watchdog.py)
 KILL_SWITCH_PATH = _DATA / ".kill_switch"
+BLACK_SWAN_PATH = _DATA / ".black_swan_active"
+MANUAL_OVERRIDE_PATH = _DATA / ".manual_override.json"
 LOCK_PATH = _DATA / ".cron.lock"
 RUNNING_FLAG_PATH = _DATA / ".cron_running"
 PEAK_BALANCE_PATH = _DATA / "peak_balance.json"

@@ -159,7 +159,9 @@ def test_no_trades_placed_when_drawdown_breached_mid_cycle(monkeypatch):
     )
     # Bypass the multi-guard validation to keep the test focused on the drawdown gate
     monkeypatch.setattr(
-        oe, "_validate_trade_opportunity", lambda opp, live=False: (True, "ok")
+        oe,
+        "_validate_trade_opportunity",
+        lambda opp, live=False, market=None: (True, "ok"),
     )
     # Bypass internal spend/cap helpers
     monkeypatch.setattr(oe, "_daily_paper_spend", lambda: 0.0)

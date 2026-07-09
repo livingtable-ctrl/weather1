@@ -151,12 +151,55 @@ def _count_open_live_orders() -> int:
     return sum(1 for o in orders if o.get("live") and o.get("status") == "pending")
 
 
+def _resolve_micro_live_config(live_config: dict | None) -> dict:
+    """Resolve the config micro-live enforces its daily-loss limit against.
+
+    F2: micro-live only ever runs from _auto_place_trades' paper (live=False)
+    branch — live_config is always None on every real call path (cron never
+    passes live=True; watch --auto --live's live_config is only populated on
+    the OTHER branch, which micro-live never reaches). Passing that None
+    straight to (live_config or {}).get("daily_loss_limit", 0.0) silently
+    resolved to 0.0, which the check treats as "no limit configured" and
+    never trips. Load the real live config directly instead.
+    """
+    if live_config is not None:
+        return live_config
+    from main import _load_live_config
+
+    return _load_live_config()
+
+
+def _resolve_live_balance(client) -> float:
+    """Fetch the real Kalshi balance (dollars) for live Kelly sizing.
+
+    F4: live_config never has a "balance" key (_LIVE_CONFIG_DEFAULT doesn't
+    define one), so a static config-based override was always inert — Kelly
+    sizing silently fell back to the paper balance for every live trade.
+    Returns 0.0 (meaning "use the paper balance") on any fetch failure,
+    matching the prior fallback behavior rather than blocking placement.
+    """
+    try:
+        bal_data = client.get_balance()
+        api_balance_cents = bal_data.get("balance")
+        if api_balance_cents is not None:
+            return float(api_balance_cents) / 100.0
+    except Exception as exc:
+        _log.warning(
+            "_resolve_live_balance: could not fetch live balance — "
+            "falling back to paper balance for sizing: %s",
+            exc,
+        )
+    return 0.0
+
+
 # ---------------------------------------------------------------------------
 # Startup crash recovery
 # ---------------------------------------------------------------------------
 
 
-def _kalshi_status_to_internal(api_status: str) -> str | None:
+def _kalshi_status_to_internal(
+    api_status: str, fill_count: float | None = None
+) -> str | None:
     """Translate a Kalshi order status into this bot's own execution_log
     status vocabulary, or None if it isn't a resolved terminal status.
 
@@ -166,12 +209,37 @@ def _kalshi_status_to_internal(api_status: str) -> str | None:
     match on 'filled', so "executed" must be translated to "filled" here
     rather than passed through as Kalshi's own term -- storing "executed"
     directly would silently break that settlement-tracking query.
+
+    F9: Kalshi has no distinct "partially filled" status -- a limit order
+    that fills some contracts and then gets canceled (for the remainder)
+    reports "canceled" with a nonzero fill count. Passed fill_count lets us
+    promote that case to "filled" so it still reaches the settlement loop;
+    otherwise a real, live exchange position is silently dropped and never
+    settled or counted toward P&L.
     """
     if api_status == "executed":
         return "filled"
     if api_status == "canceled":
-        return "canceled"
+        return "filled" if fill_count else "canceled"
     return None
+
+
+def _to_fill_count(raw: str | int | float | None) -> int | None:
+    """Parse Kalshi's fill_count_fp field (a fixed-point-formatted string,
+    e.g. "3.00") into an int contract count, or None if absent/unparseable.
+
+    F9: order_executor previously read a "fill_quantity" key that Kalshi's
+    API never returns -- the real field is "fill_count_fp" (confirmed
+    against the same "order" shape main.py already reads fill_count_fp
+    from). The old code always fell back to the full requested quantity,
+    silently overstating settled P&L on any partial fill.
+    """
+    if raw is None:
+        return None
+    try:
+        return int(float(raw))
+    except (TypeError, ValueError):
+        return None
 
 
 def _recover_pending_orders(client) -> None:
@@ -223,13 +291,27 @@ def _recover_pending_orders(client) -> None:
 
             result = client.get_order(order_id)
             api_status = result.get("status", "")
+            _fill_count = _to_fill_count(result.get("fill_count_fp"))
             if api_status == "resting":
-                execution_log.log_order_result(row_id, status="placed")
-                _log.info("[Recovery] %s row %d: resting → placed", ticker, row_id)
+                # "pending" (not "placed") — every downstream lifecycle consumer
+                # (fill polling, GTC cancel, max_open_positions, PnL summary)
+                # filters on status="pending"; "placed" was invisible to all of them.
+                # log_order_result() does an unconditional column UPDATE, so
+                # omitting response= here would overwrite it with NULL --
+                # _poll_pending_orders' own pending-row filter requires
+                # o.get("response") (it's where order_id lives), so that
+                # would silently re-orphan the very order this recovery
+                # path exists to reattach to the lifecycle.
+                execution_log.log_order_result(
+                    row_id, status="pending", response=response
+                )
+                _log.info("[Recovery] %s row %d: resting → pending", ticker, row_id)
             elif (
-                _internal_status := _kalshi_status_to_internal(api_status)
+                _internal_status := _kalshi_status_to_internal(api_status, _fill_count)
             ) is not None:
-                execution_log.log_order_result(row_id, status=_internal_status)
+                execution_log.log_order_result(
+                    row_id, status=_internal_status, fill_quantity=_fill_count
+                )
                 _log.info(
                     "[Recovery] %s row %d: resolved to %s (kalshi status=%s)",
                     ticker,
@@ -255,6 +337,42 @@ _GTC_PRECLOSE_CANCEL_MINUTES = 30
 # ---------------------------------------------------------------------------
 # Live order lifecycle
 # ---------------------------------------------------------------------------
+
+
+def _finalize_cancel(client, order_id: str, row_id: int) -> None:
+    """Record the outcome of a cancel_order() call this bot just initiated.
+
+    F9 followup: the pre-close and GTC-age cancel paths used to write
+    status="canceled" immediately after calling cancel_order(), without
+    ever checking whether the order had already partially filled. Kalshi
+    has no distinct "partially filled" status -- a limit order can fill
+    some contracts right before the cancel takes effect, and that fill
+    count is only knowable by querying get_order() afterward. Reuses the
+    exact same fill-count-aware promotion logic as the fill-polling loop
+    and _recover_pending_orders() so a partial fill here isn't silently
+    dropped from settlement either. Falls back to a plain "canceled" (the
+    prior behavior) if the follow-up query itself fails -- the cancel
+    already happened; the fill state is worth checking, not worth blocking
+    the cancel record on.
+    """
+    try:
+        result = client.get_order(order_id)
+        fill_count = _to_fill_count(result.get("fill_count_fp"))
+        status = (
+            _kalshi_status_to_internal(result.get("status", "canceled"), fill_count)
+            or "canceled"
+        )
+        execution_log.log_order_result(
+            row_id=row_id, status=status, fill_quantity=fill_count
+        )
+    except Exception as exc:
+        _log.warning(
+            "[LIVE] post-cancel fill check failed for order %s, recording plain "
+            "canceled: %s",
+            order_id,
+            exc,
+        )
+        execution_log.log_order_result(row_id=row_id, status="canceled")
 
 
 def _poll_pending_orders(client, config: dict | None = None) -> None:
@@ -299,9 +417,7 @@ def _poll_pending_orders(client, config: dict | None = None) -> None:
                     _mins_to_close = (_close_dt - now_utc).total_seconds() / 60
                     if _mins_to_close <= _GTC_PRECLOSE_CANCEL_MINUTES:
                         client.cancel_order(order_id)
-                        execution_log.log_order_result(
-                            row_id=order["id"], status="cancelled"
-                        )
+                        _finalize_cancel(client, order_id, order["id"])
                         if _mins_to_close <= 0:
                             _log.info(
                                 "[LIVE] pre-close GTC cancel: %s market already closed %.0f min ago",
@@ -330,9 +446,7 @@ def _poll_pending_orders(client, config: dict | None = None) -> None:
                 age_hours = (now_utc - placed_at).total_seconds() / 3600
                 if age_hours >= gtc_cancel_hours:
                     client.cancel_order(order_id)
-                    execution_log.log_order_result(
-                        row_id=order["id"], status="cancelled"
-                    )
+                    _finalize_cancel(client, order_id, order["id"])
                     continue
             except Exception as exc:
                 _log.warning(
@@ -341,12 +455,13 @@ def _poll_pending_orders(client, config: dict | None = None) -> None:
 
             result = client.get_order(order_id)
             api_status = result.get("status", "")
-            _internal_status = _kalshi_status_to_internal(api_status)
+            _fill_count = _to_fill_count(result.get("fill_count_fp"))
+            _internal_status = _kalshi_status_to_internal(api_status, _fill_count)
             if _internal_status is not None:
                 execution_log.log_order_result(
                     row_id=order["id"],
                     status=_internal_status,
-                    fill_quantity=result.get("fill_quantity"),
+                    fill_quantity=_fill_count,
                 )
         except Exception as exc:
             _log.warning("[LIVE] poll order %s failed: %s", order.get("id"), exc)
@@ -422,7 +537,9 @@ def _place_live_order(
 ) -> tuple[bool, float]:
     """Place a live Kalshi order with hard-stop guards.
 
-    Returns (placed, dollar_cost). Caller must add cost to the DB via add_live_loss().
+    Returns (placed, dollar_cost). F7: the daily live-loss counter
+    (execution_log.add_live_loss) is now updated ONLY at settlement, not by
+    the caller at placement time -- see the settlement loop below.
     """
     # 0. Graduation + safety gate — must pass before any live order
     from trading_gates import pre_live_trade_check
@@ -437,8 +554,32 @@ def _place_live_order(
     if execution_log.get_today_live_loss() >= config.get(
         "daily_loss_limit", float("inf")
     ):  # M-5: avoid KeyError
+        # F10: the comparison above already defaults via .get() (reachable
+        # with no default set when get_today_live_loss() fails closed to
+        # inf); the print used a bare config['daily_loss_limit'] on the same
+        # branch, which would raise an uncaught KeyError instead of skipping
+        # the trade cleanly.
         print(
-            f"[LIVE] Daily loss limit ${config['daily_loss_limit']} reached — skipping {ticker}"
+            f"[LIVE] Daily loss limit ${config.get('daily_loss_limit', 'inf')} "
+            f"reached — skipping {ticker}"
+        )
+        return False, 0.0
+
+    # 1b. Daily live spend cap — deep-review followup: F7 correctly removed
+    # placement-time add_live_loss(cost) (it double-counted with
+    # settlement-time add_live_loss(-pnl)), but that call had also been the
+    # only thing giving a long-running `watch --auto --live` session (5-min
+    # loop, cmd_watch) a cross-cycle brake on live spend: _daily_paper_spend
+    # /_daily_sameday_spend in _auto_place_trades only ever read
+    # paper_trades.json and are blind to live orders, so daily_spent resets
+    # to 0 for live activity every single cycle with nothing else bounding
+    # cumulative same-day live spend. get_today_live_spend() is a dedicated,
+    # persistent spend counter (not the realized-loss counter F7 fixed), so
+    # this doesn't reintroduce the double-count.
+    if execution_log.get_today_live_spend() >= MAX_DAILY_SPEND:
+        print(
+            f"[LIVE] Daily live spend cap ${MAX_DAILY_SPEND:.0f} reached — "
+            f"skipping {ticker}"
         )
         return False, 0.0
 
@@ -500,10 +641,13 @@ def _place_live_order(
             time_in_force="good_till_canceled",
             cycle=cycle,
         )
-        # Update the pre-logged row with the exchange response.
+        # Update the pre-logged row with the exchange response. "pending", not
+        # "placed" — every downstream lifecycle consumer (fill polling, GTC
+        # cancel, max_open_positions, PnL summary) filters on status="pending";
+        # "placed" was invisible to all of them and never transitioned further.
         execution_log.log_order_result(
             log_id,
-            status="placed",
+            status="pending",
             response=response,
         )
         return True, dollar_cost
@@ -781,10 +925,18 @@ def _check_early_exits(client=None) -> int:
 # ---------------------------------------------------------------------------
 
 
-def _validate_trade_opportunity(opp: dict, live: bool = False) -> tuple[bool, str]:
+def _validate_trade_opportunity(
+    opp: dict, live: bool = False, market: dict | None = None
+) -> tuple[bool, str]:
     """
     Pre-execution validation gate for auto-placed trades (P1.1+P1.2).
     Returns (ok, reason). All checks must pass before a trade is placed.
+
+    market: the raw market dict (bid/ask quotes), separate from opp (the
+    analysis dict) — used for the flash-crash price feed. F3: opp itself
+    never carries yes_bid/yes_ask (it's analyze_trade's result, which has
+    no price keys), so the flash-crash circuit breaker never received a
+    single real price until this parameter was added.
     """
     import time as _t
 
@@ -810,13 +962,21 @@ def _validate_trade_opportunity(opp: dict, live: bool = False) -> tuple[bool, st
     except Exception as _exc:
         _log.debug("WS cache lookup skipped: %s", _exc)
 
-    # Flash crash check — fail closed on any internal error
+    # Flash crash check — fail closed on any internal error. Prefer the
+    # fresher WebSocket-cached mid-price; otherwise derive it from the real
+    # market quote via the canonical parser. opp (analyze_trade's result) has
+    # no yes_bid/yes_ask of its own — reading opp.get("yes_bid") directly here
+    # (the old code) always returned 0, so this check never once fired.
     try:
         from circuit_breaker import flash_crash_cb
 
-        yes_bid = opp.get("yes_bid") or 0
-        yes_ask = opp.get("yes_ask") or 0
-        mid = (yes_bid + yes_ask) / 2 if yes_ask > 0 else yes_bid
+        _ws_mid = opp.get("_ws_mid_price")
+        if _ws_mid and _ws_mid > 0:
+            mid = float(_ws_mid)
+        elif market is not None:
+            mid = parse_market_price(market)["mid"]
+        else:
+            mid = 0.0
         if mid > 0:
             flash_crash_cb.check(opp["ticker"], float(mid))
         if flash_crash_cb.is_in_cooldown(opp["ticker"]):
@@ -914,12 +1074,15 @@ def _validate_trade_opportunity(opp: dict, live: bool = False) -> tuple[bool, st
 # ---------------------------------------------------------------------------
 
 
-def _unpack_opp(item) -> tuple[str, str | None, date | None, dict]:
-    """Extract (ticker, city, target_date, analysis_dict) from an opp item.
+def _unpack_opp(item) -> tuple[str, str | None, date | None, dict, dict]:
+    """Extract (ticker, city, target_date, analysis_dict, market_dict) from an
+    opp item.
 
     Handles both (market_dict, analysis_dict) tuple format (legacy watch mode)
     and flat opportunity dicts (new live path / tests) — the same two shapes
-    _auto_place_trades' main loop accepts.
+    _auto_place_trades' main loop accepts. market_dict is returned so callers
+    can pass real bid/ask quotes into _validate_trade_opportunity's flash-crash
+    check (F3) — the analysis_dict alone never carries price fields.
     """
     if isinstance(item, tuple):
         m, a = item
@@ -937,7 +1100,7 @@ def _unpack_opp(item) -> tuple[str, str | None, date | None, dict]:
                 target_date_obj = None
         elif hasattr(_raw_date, "isoformat"):
             target_date_obj = _raw_date
-    return ticker, city, target_date_obj, a
+    return ticker, city, target_date_obj, a, m
 
 
 def _prediction_kwargs_from_analysis(a: dict) -> dict:
@@ -1003,7 +1166,7 @@ def _log_shadow_predictions(opps: list, live: bool = False) -> int:
     with _tracker_conn() as _con:
         for item in opps:
             try:
-                ticker, city, target_date_obj, a = _unpack_opp(item)
+                ticker, city, target_date_obj, a, m = _unpack_opp(item)
             except Exception as _e:
                 _log.warning(
                     "_log_shadow_predictions: failed to unpack opp %r: %s", item, _e
@@ -1017,7 +1180,7 @@ def _log_shadow_predictions(opps: list, live: bool = False) -> int:
             ) or execution_log.was_traded_today(ticker, rec_side):
                 continue
             _ok, _reason = _validate_trade_opportunity(
-                {**a, "ticker": ticker}, live=live
+                {**a, "ticker": ticker}, live=live, market=m
             )
             if not _ok:
                 _log.debug("_log_shadow_predictions: skip %s — %s", ticker, _reason)
@@ -1248,7 +1411,7 @@ def _auto_place_trades(
 
         # Merge ticker from market dict so tuple-format callers aren't penalised.
         _ok, _reject_reason = _validate_trade_opportunity(
-            {**a, "ticker": ticker}, live=live
+            {**a, "ticker": ticker}, live=live, market=m
         )
         if not _ok:
             _log.debug(
@@ -1498,9 +1661,20 @@ def _auto_place_trades(
                     )
                     continue
             except Exception as _var_err:
-                _log.debug(
-                    "_auto_place_trades: VaR check failed for %s: %s", ticker, _var_err
+                # F5: was a bare debug-log-and-continue (fail open) — the
+                # flash-crash check earlier in this same function explicitly
+                # fails closed on any internal error; an operator who set
+                # MAX_VAR_DOLLARS clearly wants portfolio tail-risk enforced,
+                # so a computation failure should skip the trade, not
+                # silently place it as if the check had passed.
+                _log.warning(
+                    "_auto_place_trades: VaR check failed for %s — skipping "
+                    "(fail closed): %s",
+                    ticker,
+                    _var_err,
                 )
+                _skip_reasons.append(f"{ticker}: var_check_error({_var_err})")
+                continue
 
         # Cycle-aware deduplication — skip if already ordered on this forecast cycle
         cycle = _current_forecast_cycle()
@@ -1534,11 +1708,25 @@ def _auto_place_trades(
             continue
 
         if live and live_config:
-            _live_balance = live_config.get("balance", 0.0)
+            _live_balance = _resolve_live_balance(client)
+
+            # CR-4: pass live balance so Kelly sizing uses the live account denominator,
+            # not paper_trades.json balance (which diverges as live and paper accounts differ).
+            _live_kelly_qty = kelly_quantity(
+                adj_kelly_final,
+                entry_price,
+                cap=cap,
+                method=method,
+                balance_override=_live_balance if _live_balance > 0 else None,
+            )
+
             # Per-iteration daily cap check for live path — the initial check at the top
             # of this function is a single read and is never updated, so multiple live
-            # trades in one cycle can exceed MAX_DAILY_SPEND without this guard.
-            _live_cost_estimate = round(entry_price * qty, 2)
+            # trades in one cycle can exceed MAX_DAILY_SPEND without this guard. F4:
+            # priced off _live_kelly_qty (the quantity actually ordered below), not the
+            # paper-Kelly `qty` computed earlier in the loop — those can differ, letting
+            # a single trade blow through the cap undetected by the old precheck.
+            _live_cost_estimate = round(entry_price * _live_kelly_qty, 2)
             if _is_same_day:
                 if sameday_spent + _live_cost_estimate > MAX_SAME_DAY_SPEND:
                     _skip_reasons.append(
@@ -1550,15 +1738,6 @@ def _auto_place_trades(
                     f"{ticker}: daily_cap(${daily_spent:.0f}/${MAX_DAILY_SPEND:.0f})"
                 )
                 continue
-            # CR-4: pass live balance so Kelly sizing uses the live account denominator,
-            # not paper_trades.json balance (which diverges as live and paper accounts differ).
-            _live_kelly_qty = kelly_quantity(
-                adj_kelly_final,
-                entry_price,
-                cap=cap,
-                method=method,
-                balance_override=_live_balance if _live_balance > 0 else None,
-            )
             opp_placed, cost = _place_live_order(
                 ticker=ticker,
                 side=rec_side,
@@ -1569,13 +1748,39 @@ def _auto_place_trades(
                 kelly_qty=_live_kelly_qty,
             )
             if opp_placed:
-                execution_log.add_live_loss(cost)
+                # F7: do NOT also add_live_loss(cost) here — settlement
+                # (order_executor.py's settlement loop) already calls
+                # add_live_loss(-pnl), and pnl for a losing order is -cost, so
+                # calling both double-counted every loss and never properly
+                # credited a win (cost was added here but never refunded).
+                # get_today_live_loss() is a REALIZED-loss counter (matching
+                # its name) — spend-based pre-commit protection within a
+                # cycle is already handled by the separate, dedicated
+                # MAX_DAILY_SPEND/MAX_SAME_DAY_SPEND/max_trade_dollars/
+                # max_open_positions caps.
                 if _is_same_day:
                     sameday_spent += cost
                 else:
                     daily_spent += cost
                 open_tickers.add(ticker)
                 _open_trade_sides[ticker] = rec_side
+                # F6: mirror the paper branch's _open_trades_list.append(trade) —
+                # without this, later iterations in the SAME cycle compute VaR/
+                # correlation scaling against a list blind to live orders just
+                # placed, so several correlated live orders in one cycle each
+                # get checked as if they were the first.
+                _open_trades_list.append(
+                    {
+                        "ticker": ticker,
+                        "side": rec_side,
+                        "entry_price": entry_price,
+                        "cost": cost,
+                        "quantity": _live_kelly_qty,
+                        "city": city,
+                        "target_date": target_date_str,
+                        "entry_prob": a.get("forecast_prob"),
+                    }
+                )
                 if _is_same_day:
                     _same_day_open += 1
                 elif target_date_str:
@@ -1743,9 +1948,9 @@ def _auto_place_trades(
                     and client is not None
                     and not os.getenv("PYTEST_CURRENT_TEST")
                 ):
-                    # Safety guards — micro-live must respect the same limits as full live
+                    # Safety guards — micro-live must respect the same limits as full live.
                     _micro_daily_loss = execution_log.get_today_live_loss()
-                    _micro_daily_limit = (live_config or {}).get(
+                    _micro_daily_limit = _resolve_micro_live_config(live_config).get(
                         "daily_loss_limit", 0.0
                     )
                     if (
@@ -1797,12 +2002,17 @@ def _auto_place_trades(
                                     time_in_force="good_till_canceled",
                                     cycle=cycle,
                                 )
+                                # "pending", not "placed" — see the matching
+                                # comment in _place_live_order above.
                                 execution_log.log_order_result(
-                                    _micro_log_id, status="placed", response=_micro_resp
+                                    _micro_log_id,
+                                    status="pending",
+                                    response=_micro_resp,
                                 )
-                                # CR-3: register the cost against the daily loss limit so
-                                # subsequent micro-live trades respect the safety cap.
-                                execution_log.add_live_loss(_micro_cost)
+                                # F7: do NOT add_live_loss(_micro_cost) here — see the
+                                # matching comment on the main live path above; settlement
+                                # already accounts for this order's realized pnl, and
+                                # adding cost here too double-counted every loss.
                                 _micro_fill = (
                                     _micro_resp.get("order", {}).get("avg_price")
                                     or _micro_price

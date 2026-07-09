@@ -361,6 +361,123 @@ class TestCheckPositionLimitsDenom:
         )
 
 
+class TestCheckPositionLimitsExposureCaps:
+    """#2: city/date, directional, and correlated-group exposure caps were
+    previously enforced only on the auto-sizing path (portfolio_kelly_fraction)
+    — every manual order path could silently exceed them. check_position_limits
+    now enforces all three when city/target_date_str(/side) are provided."""
+
+    def _base_state(self, tmp_path):
+        paper._save(
+            {
+                "_version": paper._SCHEMA_VERSION,
+                "balance": paper.STARTING_BALANCE,
+                "peak_balance": paper.STARTING_BALANCE,
+                "trades": [],
+            }
+        )
+
+    def test_city_date_cap_blocks_when_no_city_date_given(self, tmp_path):
+        """Without city/target_date_str, the 3 new checks are skipped entirely
+        (backward compatible with callers that can't cheaply provide them)."""
+        with patch("paper.DATA_PATH", tmp_path / "p.json"):
+            self._base_state(tmp_path)
+            with (
+                patch("paper.get_open_trades", return_value=[]),
+                patch("paper.get_total_exposure", return_value=0.0),
+                patch("paper.get_city_date_exposure", return_value=0.90),
+                patch("paper._exposure_denom", return_value=1000.0),
+            ):
+                result = paper.check_position_limits("KXTEST", qty=10, price=0.50)
+        assert result["ok"], (
+            "no city/target_date_str given — the city/date cap must be skipped, "
+            "not evaluated against a mock that would otherwise fail it"
+        )
+
+    def test_city_date_cap_triggers_when_exceeded(self, tmp_path):
+        with patch("paper.DATA_PATH", tmp_path / "p.json"):
+            self._base_state(tmp_path)
+            with (
+                patch("paper.get_open_trades", return_value=[]),
+                patch("paper.get_total_exposure", return_value=0.0),
+                patch("paper.get_city_date_exposure", return_value=0.20),
+                patch("paper._exposure_denom", return_value=1000.0),
+            ):
+                result = paper.check_position_limits(
+                    "KXTEST",
+                    qty=200,
+                    price=0.50,  # $100 / $1000 = 10% new, +20% existing = 30% > 25% cap
+                    city="NYC",
+                    target_date_str="2026-08-01",
+                )
+        assert not result["ok"]
+        assert "city/date" in result["reason"].lower()
+
+    def test_directional_cap_triggers_when_exceeded(self, tmp_path):
+        with patch("paper.DATA_PATH", tmp_path / "p.json"):
+            self._base_state(tmp_path)
+            with (
+                patch("paper.get_open_trades", return_value=[]),
+                patch("paper.get_total_exposure", return_value=0.0),
+                patch("paper.get_city_date_exposure", return_value=0.0),
+                patch("paper.get_directional_exposure", return_value=0.10),
+                patch("paper._exposure_denom", return_value=1000.0),
+            ):
+                result = paper.check_position_limits(
+                    "KXTEST",
+                    qty=200,
+                    price=0.50,  # 10% new + 10% existing same-side = 20% > 15% cap
+                    city="NYC",
+                    target_date_str="2026-08-01",
+                    side="yes",
+                )
+        assert not result["ok"]
+        assert "directional" in result["reason"].lower()
+
+    def test_correlated_cap_triggers_when_exceeded(self, tmp_path):
+        with patch("paper.DATA_PATH", tmp_path / "p.json"):
+            self._base_state(tmp_path)
+            with (
+                patch("paper.get_open_trades", return_value=[]),
+                patch("paper.get_total_exposure", return_value=0.0),
+                patch("paper.get_city_date_exposure", return_value=0.0),
+                patch("paper.get_directional_exposure", return_value=0.0),
+                patch("paper.get_correlated_exposure", return_value=0.30),
+                patch("paper._exposure_denom", return_value=1000.0),
+            ):
+                result = paper.check_position_limits(
+                    "KXTEST",
+                    qty=200,
+                    price=0.50,  # 10% new + 30% existing correlated = 40% > 35% cap
+                    city="NYC",
+                    target_date_str="2026-08-01",
+                    side="yes",
+                )
+        assert not result["ok"]
+        assert "correlated" in result["reason"].lower()
+
+    def test_all_caps_pass_within_limits(self, tmp_path):
+        with patch("paper.DATA_PATH", tmp_path / "p.json"):
+            self._base_state(tmp_path)
+            with (
+                patch("paper.get_open_trades", return_value=[]),
+                patch("paper.get_total_exposure", return_value=0.0),
+                patch("paper.get_city_date_exposure", return_value=0.0),
+                patch("paper.get_directional_exposure", return_value=0.0),
+                patch("paper.get_correlated_exposure", return_value=0.0),
+                patch("paper._exposure_denom", return_value=1000.0),
+            ):
+                result = paper.check_position_limits(
+                    "KXTEST",
+                    qty=10,
+                    price=0.50,
+                    city="NYC",
+                    target_date_str="2026-08-01",
+                    side="yes",
+                )
+        assert result["ok"], f"a small, well-within-limits order must pass: {result}"
+
+
 class TestQuickPaperBuyRespectsPositionLimits:
     """2026-07-09: main.py's two check_position_limits call sites checked
     `.get("allowed", True)`, but the function returns key "ok", not
@@ -508,3 +625,85 @@ class TestQuickPaperBuyRespectsPositionLimits:
         assert any(
             "check_position_limits failed" in r.message for r in caplog.records
         ), f"Expected a warning log, got: {[r.message for r in caplog.records]}"
+
+
+class TestQuickPaperBuyAutoKellySizing:
+    """2026-07-09 deep-review followup: the #2 city/date-resolution change
+    made the auto-Kelly branch (qty left blank) reuse the cheap
+    fetch_forecast=False enrichment (built only for check_position_limits)
+    as analyze_trade's input. analyze_trade() hard-gates on _forecast being
+    truthy and returns None without it, so qty was unconditionally forced
+    to 0 -- silently routing every auto-sized quick-buy (including the
+    maker/live-order branch) through the cmd_paper(...) fallback instead of
+    sizing a real Kelly bet. Confirm the auto-Kelly path fetches a real,
+    forecast-bearing enrichment and can size a nonzero order."""
+
+    def test_auto_kelly_sizing_uses_forecast_bearing_enrichment(
+        self, monkeypatch, tmp_path
+    ):
+        import main
+
+        with patch("paper.DATA_PATH", tmp_path / "p.json"):
+            paper._save(
+                {
+                    "_version": paper._SCHEMA_VERSION,
+                    "balance": paper.STARTING_BALANCE,
+                    "peak_balance": paper.STARTING_BALANCE,
+                    "trades": [],
+                }
+            )
+
+            mock_client = MagicMock()
+            mock_client.get_market.return_value = {"ticker": "KXTEST-25JUN01-T70"}
+
+            monkeypatch.setattr(main, "is_trading_paused", lambda: False)
+            monkeypatch.setattr(
+                main, "_resolve_price", lambda client, ticker, side: 0.50
+            )
+            monkeypatch.setattr("paper.is_daily_loss_halted", lambda client=None: False)
+            monkeypatch.setattr("paper.is_streak_paused", lambda: False)
+
+            def _fake_enrich(market, fetch_forecast=True):
+                enriched = {"_city": "NYC", "_date": None}
+                if fetch_forecast:
+                    enriched["_forecast"] = {"prob": 0.7}
+                return enriched
+
+            monkeypatch.setattr("weather_markets.enrich_with_forecast", _fake_enrich)
+            monkeypatch.setattr(
+                "weather_markets.analyze_trade",
+                lambda enriched: (
+                    {"ci_adjusted_kelly": 0.2} if enriched.get("_forecast") else None
+                ),
+            )
+            # Echo fee_kelly/adj_kelly through rather than a fixed constant --
+            # a mock that ignores its input can't tell a real Kelly result
+            # apart from the bug's forced fee_kelly=0.0.
+            monkeypatch.setattr(
+                "paper.portfolio_kelly_fraction", lambda fee_kelly, *a, **kw: fee_kelly
+            )
+            monkeypatch.setattr(
+                "paper.kelly_quantity",
+                lambda adj_kelly, price, *a, **kw: (5 if adj_kelly > 0 else 0),
+            )
+
+            _inputs = iter(
+                [
+                    "KXTEST-25JUN01-T70",  # ticker
+                    "yes",  # side
+                    "1",  # order type: market taker
+                    "",  # qty -- blank, triggers Kelly auto-size
+                    "",  # thesis
+                ]
+            )
+            monkeypatch.setattr("builtins.input", lambda *_a: next(_inputs))
+
+            with patch("paper.place_paper_order") as mock_place:
+                main._quick_paper_buy(mock_client)
+
+            mock_place.assert_called_once()
+            _, placed_side, placed_qty, placed_price = mock_place.call_args.args
+            assert placed_qty == 5, (
+                "auto-Kelly qty must come from a real forecast-bearing "
+                f"analysis, not fall back to 0; got {placed_qty}"
+            )

@@ -39,7 +39,7 @@ def cron_env(tmp_path, monkeypatch):
     monkeypatch.setattr(main, "_check_startup_orders", lambda: None)
     monkeypatch.setattr(main, "sync_outcomes", lambda client: 0)
     monkeypatch.setattr(main, "_check_early_exits", lambda client=None: 0)
-    monkeypatch.setattr(alerts, "run_black_swan_check", lambda: [])
+    monkeypatch.setattr(alerts, "run_black_swan_check", lambda **kw: [])
     monkeypatch.setattr(
         alerts, "run_anomaly_check", lambda log_results=False: ([], False)
     )
@@ -402,10 +402,11 @@ def test_p1_15_anomaly_check_halts_cron(cron_env, caplog, monkeypatch):
     )
 
     with caplog.at_level(logging.ERROR):
-        main.cmd_cron(client)
-        result = None  # cmd_cron returns None; anomaly halt is verified via placed/logs
+        try:
+            main.cmd_cron(client)
+        except SystemExit:
+            pass  # halted cycles still complete the full scan and exit(0) cleanly
 
-    assert result is None, "cron body must return None when anomalies are detected"
     assert not placed, "no trades must be placed when anomalies halt the cycle"
     assert any("anomal" in r.message.lower() for r in caplog.records), (
         "anomaly halt must be logged at ERROR level"
@@ -424,6 +425,137 @@ def test_p1_15_empty_anomaly_list_does_not_halt(cron_env):
         main.cmd_cron(client)  # must not raise — no exception is the assertion
     except SystemExit:
         pass
+
+
+# ── Soft halts must not skip settlement/stop-losses (only placement) ─────────
+
+
+@pytest.mark.integration
+def test_accuracy_halt_still_runs_settlement(cron_env, monkeypatch):
+    """An accuracy halt must not skip settlement — the halt is computed from
+    settled trades, so skipping settlement while halted would make it
+    self-perpetuating (it could never accumulate what it needs to clear)."""
+    tmp_path, client, main, paper = cron_env
+
+    monkeypatch.setattr(paper, "is_accuracy_halted", lambda: True)
+
+    sync_calls = []
+    monkeypatch.setattr(main, "sync_outcomes", lambda client: sync_calls.append(1) or 0)
+    placed = []
+    monkeypatch.setattr(
+        main,
+        "_auto_place_trades",
+        lambda opps, client=None, cap=None, **kw: placed.extend(opps) or len(opps),
+    )
+
+    try:
+        main.cmd_cron(client)
+    except SystemExit:
+        pass
+
+    assert sync_calls, (
+        "settlement (sync_outcomes) must still run during an accuracy halt"
+    )
+    assert not placed, "no trades must be placed during an accuracy halt"
+
+
+@pytest.mark.integration
+def test_anomaly_halt_still_runs_settlement(cron_env, monkeypatch):
+    """An anomaly halt (declined in non-interactive/loop mode) must still settle."""
+    import alerts as _alerts
+
+    tmp_path, client, main, paper = cron_env
+
+    monkeypatch.setattr(
+        _alerts,
+        "run_anomaly_check",
+        lambda log_results=False: (["WIN RATE COLLAPSE: 20%"], True),
+    )
+    sync_calls = []
+    monkeypatch.setattr(main, "sync_outcomes", lambda client: sync_calls.append(1) or 0)
+    placed = []
+    monkeypatch.setattr(
+        main,
+        "_auto_place_trades",
+        lambda opps, client=None, cap=None, **kw: placed.extend(opps) or len(opps),
+    )
+
+    main.cmd_cron._called_from_loop = True  # avoid the interactive input() prompt
+    try:
+        main.cmd_cron(client)
+    finally:
+        main.cmd_cron._called_from_loop = False
+
+    assert sync_calls, (
+        "settlement (sync_outcomes) must still run during an anomaly halt"
+    )
+    assert not placed, "no trades must be placed during an anomaly halt"
+
+
+@pytest.mark.integration
+def test_anomaly_override_prompt_skipped_when_already_halted(cron_env, monkeypatch):
+    """Deep-review followup: when an earlier soft-halt (accuracy halt here)
+    already stopped placement this cycle, the interactive anomaly-override
+    prompt used to still ask "Override and run this cycle anyway?" --
+    answering "y" never actually un-blocked placement (the combined gate
+    downstream still skips it for the earlier reason), so an operator could
+    believe they'd authorized trading and it silently didn't happen. The
+    prompt must not even be reached in this case."""
+    import alerts as _alerts
+
+    tmp_path, client, main, paper = cron_env
+
+    monkeypatch.setattr(paper, "is_accuracy_halted", lambda: True)
+    monkeypatch.setattr(
+        _alerts,
+        "run_anomaly_check",
+        lambda log_results=False: (["WIN RATE COLLAPSE: 20%"], True),
+    )
+
+    # A raising mock gets silently swallowed by _cmd_cron_body's own
+    # try/except around the anomaly-check block (it's fail-closed by
+    # design), so track the call instead of asserting from inside it.
+    prompt_calls = []
+
+    def _record_prompt(*_a, **_kw):
+        prompt_calls.append(1)
+        return "n"
+
+    monkeypatch.setattr("builtins.input", _record_prompt)
+
+    # Interactive (not loop-mode) — this is the branch that used to prompt.
+    main.cmd_cron._called_from_loop = False
+    try:
+        main.cmd_cron(client)
+    except SystemExit:
+        pass
+
+    assert not prompt_calls, (
+        "the anomaly-override prompt is misleading once an earlier halt "
+        "already blocked this cycle — it must not be reached"
+    )
+
+
+@pytest.mark.integration
+def test_kill_switch_still_skips_settlement(cron_env, monkeypatch):
+    """Unlike the soft halts, the kill switch remains a full stop by design —
+    it's the one operator-engaged 'stop everything now' mechanism."""
+    tmp_path, client, main, paper = cron_env
+    import cron as _cron
+
+    ks_path = tmp_path / ".kill_switch"
+    ks_path.write_text('{"reason": "test"}')
+    monkeypatch.setattr(_cron, "KILL_SWITCH_PATH", ks_path, raising=False)
+
+    sync_calls = []
+    monkeypatch.setattr(main, "sync_outcomes", lambda client: sync_calls.append(1) or 0)
+
+    try:
+        main.cmd_cron(client)
+    except SystemExit:
+        pass
+
+    assert not sync_calls, "kill switch must still be a full stop (settlement skipped)"
 
 
 # ── P1-12: kill switch check inside per-market analysis loop ─────────────────
@@ -452,7 +584,7 @@ def test_p1_12_kill_switch_mid_scan_breaks_loop(monkeypatch, tmp_path, caplog):
     monkeypatch.setattr(main, "_check_startup_orders", lambda: None)
     monkeypatch.setattr(main, "check_ensemble_circuit_health", lambda: None)
     monkeypatch.setattr(main, "_check_early_exits", lambda client=None: 0)
-    monkeypatch.setattr(alerts, "run_black_swan_check", lambda: [])
+    monkeypatch.setattr(alerts, "run_black_swan_check", lambda **kw: [])
     monkeypatch.setattr(
         alerts, "run_anomaly_check", lambda log_results=False: ([], False)
     )

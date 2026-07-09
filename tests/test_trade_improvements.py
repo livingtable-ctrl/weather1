@@ -69,7 +69,7 @@ class TestMaxConcurrentPositions:
         monkeypatch.setattr(
             order_executor,
             "_validate_trade_opportunity",
-            lambda opp, live=False: (True, "ok"),
+            lambda opp, live=False, market=None: (True, "ok"),
         )
         monkeypatch.setattr(
             order_executor, "_current_forecast_cycle", lambda: "2026-04-25-06"
@@ -101,7 +101,7 @@ class TestMaxConcurrentPositions:
         monkeypatch.setattr(
             order_executor,
             "_validate_trade_opportunity",
-            lambda opp, live=False: (True, "ok"),
+            lambda opp, live=False, market=None: (True, "ok"),
         )
         monkeypatch.setattr(
             order_executor, "_current_forecast_cycle", lambda: "2026-04-25-06"
