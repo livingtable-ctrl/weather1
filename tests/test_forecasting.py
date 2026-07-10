@@ -35,14 +35,18 @@ class TestDynamicModelWeights:
         falling back to the static seasonal default for any model dyn omits."""
         from weather_markets import _forecast_model_weights
 
-        expected = {"icon_seamless": 1.5, "gfs_seamless": 0.5}
+        # tracker.get_model_weights() returns weights summing to 1.0 (softmax);
+        # _forecast_model_weights rescales by len() to the "average 1.0 per
+        # model" seasonal-baseline scale before merging, so 0.75/0.25 here
+        # becomes 1.5/0.5 in the result.
+        dynamic = {"icon_seamless": 0.75, "gfs_seamless": 0.25}
         with (
-            patch("weather_markets._dynamic_model_weights", return_value=expected),
+            patch("weather_markets._dynamic_model_weights", return_value=dynamic),
             patch("weather_markets._get_enso_phase", return_value="neutral"),
         ):
             result = _forecast_model_weights(month=1, city="NYC")
-        assert result["icon_seamless"] == 1.5
-        assert result["gfs_seamless"] == 0.5
+        assert result["icon_seamless"] == pytest.approx(1.5)
+        assert result["gfs_seamless"] == pytest.approx(0.5)
         assert result["ecmwf_ifs025"] == pytest.approx(2.5)
 
 
@@ -791,7 +795,10 @@ class TestDynamicCacheTTL:
 
 class TestForecastModelWeightsTrackerIntegration:
     def test_tracker_weights_used_when_available(self):
-        """When tracker has 10+ model rows, _forecast_model_weights returns tracker weights."""
+        """When tracker has 10+ model rows, _forecast_model_weights returns
+        tracker weights rescaled to the seasonal-baseline scale (tracker's
+        softmax weights sum to 1.0; the baseline/learned scale averages 1.0
+        per model, so the raw tracker dict is multiplied by len() first)."""
         from weather_markets import _forecast_model_weights
 
         tracker_weights = {
@@ -801,7 +808,9 @@ class TestForecastModelWeightsTrackerIntegration:
         }
         with patch("tracker.get_model_weights", return_value=tracker_weights):
             result = _forecast_model_weights(month=1, city="NYC")
-        assert result == tracker_weights
+        assert result["gfs_seamless"] == pytest.approx(0.75)
+        assert result["ecmwf_ifs025"] == pytest.approx(1.65)
+        assert result["icon_seamless"] == pytest.approx(0.60)
 
     def test_partial_tracker_weights_backfilled_from_baseline(self):
         """When tracker data covers only some models (e.g. ECMWF has zero rows
@@ -811,14 +820,16 @@ class TestForecastModelWeightsTrackerIntegration:
 
         from weather_markets import _forecast_model_weights
 
-        partial_tracker_weights = {"gfs_seamless": 0.25, "icon_seamless": 0.20}
+        # Sums to 1.0 across the 2 present models (realistic tracker output);
+        # rescaled by len()==2 to the seasonal-baseline scale below.
+        partial_tracker_weights = {"gfs_seamless": 0.6, "icon_seamless": 0.4}
         with (
             patch("tracker.get_model_weights", return_value=partial_tracker_weights),
             patch("weather_markets._get_enso_phase", return_value="neutral"),
         ):
             result = _forecast_model_weights(month=1, city="NYC")  # winter
-        assert result["gfs_seamless"] == 0.25
-        assert result["icon_seamless"] == 0.20
+        assert result["gfs_seamless"] == pytest.approx(1.2)
+        assert result["icon_seamless"] == pytest.approx(0.8)
         assert result["ecmwf_ifs025"] == pytest.approx(2.5)  # backfilled, not missing
 
     def test_seasonal_fallback_when_no_tracker_rows(self):

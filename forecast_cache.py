@@ -68,6 +68,19 @@ class ForecastCache[T]:
                 self._evict_oldest()
             self._store[key] = (value, ts)
 
+    def set_at_with_ttl(self, key, value: T, ts: float, ttl_secs: float) -> None:
+        """Store with both an explicit monotonic timestamp AND a per-entry TTL.
+
+        Use when restoring an entry from disk that was originally written with
+        set_with_ttl() — set_at() alone would silently widen a short,
+        cycle-aligned TTL back out to the class default, resurrecting data
+        that was already meant to have expired.
+        """
+        with self._lock:
+            if key not in self._store and len(self._store) >= self._max_size:
+                self._evict_oldest()
+            self._store[key] = (value, ts, ttl_secs)
+
     def get_with_ts(self, key) -> tuple:
         """Return (value, hit, wall_clock_fetch_ts).
 

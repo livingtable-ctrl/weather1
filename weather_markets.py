@@ -5,6 +5,7 @@ Compares market-implied probabilities with Open-Meteo forecast data.
 
 from __future__ import annotations
 
+import atexit
 import json
 import logging
 import os
@@ -90,6 +91,20 @@ _nbm_om_cb = CircuitBreaker(
     recovery_timeout=300,  # 300s: outlasts the gap between cron runs so circuit stays
     burst_window=2.0,  # open across runs — prevents re-burning 30 s of timeouts
 )  # each run when the endpoint is consistently down
+
+# Separate circuit breaker for the ECMWF deterministic fetch (FORECAST_BASE,
+# models="ecmwf_ifs025") — same rationale as _nbm_om_cb: this hits a
+# different host/endpoint than _ensemble_cb's ENSEMBLE_BASE traffic, so a
+# success here must not force-close (record_success() resets failure_count
+# and _opened_at) an _ensemble_cb that's genuinely tracking a down
+# ensemble-api.open-meteo.com, and a run of ECMWF-only failures must not trip
+# the breaker that gates unrelated ICON/GFS/AIFS ensemble fetches.
+_ecmwf_om_cb = CircuitBreaker(
+    name="ecmwf_openmeteo",
+    failure_threshold=3,
+    recovery_timeout=300,
+    burst_window=2.0,
+)
 
 # ── Trading filters ───────────────────────────────────────────────────────────
 # Only analyse markets expiring within this many days. Days 3-4 carry higher
@@ -555,36 +570,75 @@ def _load_forecast_disk_cache() -> None:
         _log.debug("forecast disk cache load failed (non-fatal): %s", exc)
 
 
+# Pending forecast entries accumulated during a run — flushed in one batch
+# write at process exit via flush_forecast_disk_cache(). Mirrors the ensemble
+# disk cache's pattern: per-entry daemon threads were unreliable (the analysis
+# scan is the last thing that runs, so daemon threads were killed before they
+# could write anything), losing entries from the last cities analyzed.
+_forecast_disk_pending: dict[str, dict] = {}
+
+
 def _save_forecast_disk_entry(cache_key: tuple, data: dict) -> None:
-    """Persist a single forecast cache entry to disk asynchronously."""
+    """Queue a forecast cache entry for the next batch flush."""
+    key_str = f"{cache_key[0]}|{cache_key[1]}"
+    with _FORECAST_DISK_LOCK:
+        _forecast_disk_pending[key_str] = {"data": data, "ts_posix": time.time()}
 
-    def _write() -> None:
-        try:
-            import json as _json
 
-            key_str = f"{cache_key[0]}|{cache_key[1]}"
-            now = time.time()
-            with _FORECAST_DISK_LOCK:
-                if _FORECAST_DISK_CACHE_PATH.exists():
-                    raw: dict = _json.loads(
-                        _FORECAST_DISK_CACHE_PATH.read_text(encoding="utf-8")
-                    )
-                else:
-                    raw = {}
-                raw[key_str] = {"data": data, "ts_posix": now}
-                # Prune expired entries so the file doesn't grow indefinitely
-                raw = {
-                    k: v
-                    for k, v in raw.items()
-                    if now - v.get("ts_posix", 0) < _FORECAST_CACHE_TTL
-                }
-                import safe_io as _safe_io
+def flush_forecast_disk_cache() -> int:
+    """Write all pending forecast entries to disk in one atomic operation.
 
-                _safe_io.atomic_write_json(raw, _FORECAST_DISK_CACHE_PATH)
-        except Exception as exc:
-            _log.debug("forecast disk cache write failed (non-fatal): %s", exc)
+    Call this at the end of a cron run (before process exit) so the entries
+    survive to warm the next run. Returns the number of entries written.
+    """
+    import json as _json
 
-    threading.Thread(target=_write, daemon=True).start()
+    with _FORECAST_DISK_LOCK:
+        if not _forecast_disk_pending:
+            return 0
+        pending = dict(_forecast_disk_pending)
+        _forecast_disk_pending.clear()
+
+    try:
+        now = time.time()
+        if _FORECAST_DISK_CACHE_PATH.exists():
+            raw: dict = _json.loads(
+                _FORECAST_DISK_CACHE_PATH.read_text(encoding="utf-8")
+            )
+        else:
+            raw = {}
+        raw.update(pending)
+        # Prune expired entries so the file doesn't grow indefinitely
+        raw = {
+            k: v
+            for k, v in raw.items()
+            if now - v.get("ts_posix", 0) < _FORECAST_CACHE_TTL
+        }
+        import safe_io as _safe_io
+
+        _safe_io.atomic_write_json(raw, _FORECAST_DISK_CACHE_PATH)
+        _log.debug("forecast disk cache: flushed %d entries to disk", len(pending))
+        return len(pending)
+    except Exception as exc:
+        _log.debug("forecast disk cache flush failed (non-fatal): %s", exc)
+        return 0
+
+
+# cron.py's _cmd_cron_body explicitly calls flush_forecast_disk_cache() (and its
+# ensemble-cache sibling) near the end of a `cron` run for early visibility/
+# logging — but that's the ONLY call site in the repo. Every other command that
+# populates these caches (cmd_forecast, cmd_analyze, cmd_today, cmd_brief, the
+# web dashboard, etc. — anything reaching get_weather_forecast/analyze_trade)
+# never called it, so under the old per-entry-daemon-thread design those
+# entries at least had a chance to write during the command's runtime; under
+# the accumulate-then-flush design they would otherwise NEVER reach disk for
+# any command except a fully-completed `cron` run. Register both flushes as
+# atexit hooks so a normal process exit persists pending entries regardless of
+# which command ran (cron.py's explicit calls become a harmless duplicate
+# flush of an already-empty pending dict). This does not cover a hard kill
+# (SIGKILL, the cron watchdog's forced termination, or os._exit) — same
+# unavoidable limitation the daemon-thread design had at process death.
+atexit.register(flush_forecast_disk_cache)
 
 
 # Populate in-memory cache from disk on import
@@ -609,9 +663,18 @@ def _load_ensemble_disk_cache() -> None:
         loaded = 0
         for key_str, entry in raw.items():
             age = max(0.0, now - entry.get("ts_posix", 0))
-            if age < _ENSEMBLE_CACHE_TTL:
+            # Entries are written with a cycle-aligned TTL (_ttl_until_next_cycle(),
+            # often well under the flat _ENSEMBLE_CACHE_TTL used here only as a
+            # backward-compat default for entries written before ttl_secs existed).
+            # Using the flat TTL for both the load gate AND the restored cache
+            # entry would resurrect ensemble data from a superseded model cycle
+            # as if it were still fresh — restore the real per-entry TTL instead.
+            ttl = entry.get("ttl_secs", _ENSEMBLE_CACHE_TTL)
+            if age < ttl:
                 mem_key = tuple(_json.loads(key_str))
-                _ensemble_cache.set_at(mem_key, entry["data"], time.monotonic() - age)
+                _ensemble_cache.set_at_with_ttl(
+                    mem_key, entry["data"], time.monotonic() - age, ttl
+                )
                 loaded += 1
         if loaded:
             _log.debug("ensemble disk cache: loaded %d entries", loaded)
@@ -626,13 +689,25 @@ def _load_ensemble_disk_cache() -> None:
 _ensemble_disk_pending: dict[str, dict] = {}
 
 
-def _save_ensemble_disk_entry(cache_key: tuple, data: list[float]) -> None:
-    """Queue an ensemble cache entry for the next batch flush."""
+def _save_ensemble_disk_entry(
+    cache_key: tuple, data: list[float], ttl_secs: float = _ENSEMBLE_CACHE_TTL
+) -> None:
+    """Queue an ensemble cache entry for the next batch flush.
+
+    ttl_secs should match whatever TTL was passed to the corresponding
+    _ensemble_cache.set_with_ttl() call, so a reload from disk (see
+    _load_ensemble_disk_cache) respects the same cycle-aligned expiry instead
+    of falling back to the flat _ENSEMBLE_CACHE_TTL default.
+    """
     import json as _json
 
     key_str = _json.dumps(list(cache_key))
     with _ENSEMBLE_DISK_LOCK:
-        _ensemble_disk_pending[key_str] = {"data": data, "ts_posix": time.time()}
+        _ensemble_disk_pending[key_str] = {
+            "data": data,
+            "ts_posix": time.time(),
+            "ttl_secs": ttl_secs,
+        }
 
 
 def flush_ensemble_disk_cache() -> int:
@@ -658,11 +733,12 @@ def flush_ensemble_disk_cache() -> int:
         else:
             raw = {}
         raw.update(pending)
-        # Prune expired entries so the file doesn't grow indefinitely
+        # Prune expired entries (per-entry ttl_secs when present) so the file
+        # doesn't grow indefinitely.
         raw = {
             k: v
             for k, v in raw.items()
-            if now - v.get("ts_posix", 0) < _ENSEMBLE_CACHE_TTL
+            if now - v.get("ts_posix", 0) < v.get("ttl_secs", _ENSEMBLE_CACHE_TTL)
         }
         import safe_io as _safe_io
 
@@ -674,16 +750,26 @@ def flush_ensemble_disk_cache() -> int:
         return 0
 
 
+# Same rationale as flush_forecast_disk_cache's atexit registration above —
+# cron.py's explicit calls are the only ones in the repo, so every other
+# command reaching get_ensemble_temps/analyze_trade never flushed this either.
+atexit.register(flush_ensemble_disk_cache)
+
+
 # Populate ensemble in-memory cache from disk on import
 _load_ensemble_disk_cache()
 
 
 # Maximum age of forecast data before analyze_trade rejects it.
-# Set higher than _FORECAST_CACHE_TTL so cache expiry happens first.
-# Override via FORECAST_MAX_AGE_SECS env var.
+# Set higher than _FORECAST_CACHE_TTL so cache expiry happens first — otherwise
+# a cache HIT (up to _FORECAST_CACHE_TTL old) could still fail this staleness
+# gate, and since a cache hit short-circuits before any refetch, the market
+# would silently produce no signal until the cache entry finally expires.
+# _FORECAST_CACHE_TTL is 8h; this must stay above that. Override via
+# FORECAST_MAX_AGE_SECS env var.
 FORECAST_MAX_AGE_SECS = int(
-    os.getenv("FORECAST_MAX_AGE_SECS", str(5 * 3600))
-)  # 5 hours — slightly above 4h cache TTL so disk cache is always accepted
+    os.getenv("FORECAST_MAX_AGE_SECS", str(9 * 3600))
+)  # 9 hours — above the 8h cache TTL so a cache hit is never rejected as stale
 
 # #66: Market listing cache to avoid hammering the API on every analyze call
 _MARKETS_CACHE: tuple[list, float] | None = None
@@ -711,7 +797,7 @@ def _below_gates_active() -> bool:
     """
     import os
 
-    if not os.getenv("BELOW_GATE_ENABLED"):
+    if os.getenv("BELOW_GATE_ENABLED", "").strip().lower() not in ("1", "true", "yes"):
         return False
     try:
         from tracker import count_settled_below_predictions
@@ -878,7 +964,12 @@ def _forecast_model_weights(month: int, city: str | None = None) -> dict[str, fl
     learned = city_data if isinstance(city_data, dict) else {}
 
     # 1. Dynamic from tracker MAE (per-model, only known keys)
-    dyn = _dynamic_model_weights(city=city, month=month) or {}
+    # tracker.get_model_weights() returns softmax weights that sum to 1.0, but
+    # `learned`/`baseline` are on an "average 1.0 per model" scale (see
+    # _weights_from_mae's matching normalisation) — rescale so merging doesn't
+    # silently over/under-weight a model purely from a units mismatch.
+    dyn_raw = _dynamic_model_weights(city=city, month=month) or {}
+    dyn = {m: v * len(dyn_raw) for m, v in dyn_raw.items()} if dyn_raw else {}
 
     return {
         model: dyn.get(model, learned.get(model, default))
@@ -1392,9 +1483,13 @@ def batch_prewarm_ensemble(
             weights = _model_weights(city_name, month=target_month)
             for var_str, _ in vars_to_fetch:
                 cache_key = (city_name, date_iso, None, var_str)
-                if _ensemble_cache.get(cache_key) is not None:
-                    continue  # already warm (e.g. loaded from disk)
+                # Overwrite even if a (possibly stale, disk-resurrected) entry
+                # already exists — the network cost of this fetch is already
+                # paid, so skipping the write here would discard freshly
+                # downloaded members in favor of data from a superseded model
+                # cycle.
                 all_temps: list[float] = []
+                _cycle_ttl = _ttl_until_next_cycle()
                 for model in ensemble_models:
                     member_temps = raw_by_model[model].get(
                         (city_name, date_iso, var_str), []
@@ -1406,22 +1501,28 @@ def batch_prewarm_ensemble(
                     # H-14: write per-model entry for _get_consensus_probs
                     if member_temps:
                         _model_key = (model, city_name, date_iso, var_str, None)
-                        if _ensemble_cache.get(_model_key) is None:
-                            _ensemble_cache.set_with_ttl(
-                                _model_key, member_temps, _ttl_until_next_cycle()
-                            )
-                            _save_ensemble_disk_entry(_model_key, member_temps)
+                        _ensemble_cache.set_with_ttl(
+                            _model_key, member_temps, _cycle_ttl
+                        )
+                        _save_ensemble_disk_entry(_model_key, member_temps, _cycle_ttl)
                 if all_temps:
-                    _ensemble_cache.set_with_ttl(
-                        cache_key, all_temps, _ttl_until_next_cycle()
-                    )
-                    _save_ensemble_disk_entry(cache_key, all_temps)
+                    _ensemble_cache.set_with_ttl(cache_key, all_temps, _cycle_ttl)
+                    _save_ensemble_disk_entry(cache_key, all_temps, _cycle_ttl)
                     written += 1
 
     # Precipitation: 3 models × 1 var = 3 more ENSEMBLE_BASE calls.
     # Populates _PRECIP_ENSEMBLE_CACHE keyed by (lat, lon, date_iso) so
     # _fetch_ensemble_precip skips the wire during analysis.
+    # Members are collected into a per-run local dict first (mirroring the
+    # temperature path's raw_by_model above) and the cache entry is fully
+    # overwritten once per run below — NOT appended onto the existing cache
+    # entry — since cron calls this function every scan cycle and appending
+    # would accumulate an ever-growing mix of stale + fresh member generations
+    # that never ages out (each append also refreshes the TTL timestamp).
     precip_models = [*ENSEMBLE_MODELS, "ecmwf_ifs025"]
+    precip_raw_by_model: dict[str, dict[tuple, list[float]]] = {
+        m: {} for m in precip_models
+    }
     for model in precip_models:
         if _ensemble_cb.is_open():
             break
@@ -1464,9 +1565,6 @@ def batch_prewarm_ensemble(
             _ensemble_cb.record_success()
             ok = True
 
-            ecmwf_mult = (
-                3 if datetime.now(UTC).date().month in (10, 11, 12, 1, 2, 3) else 2
-            )
             for i, city_name in enumerate(city_names):
                 if i >= len(data):
                     break
@@ -1491,21 +1589,8 @@ def batch_prewarm_ensemble(
                         and idx < len(daily[k])
                         and daily[k][idx] is not None
                     ]
-                    if not members:
-                        continue
-                    cache_key_p = (lat_i, lon_i, date_iso)
-                    cached_p = _PRECIP_ENSEMBLE_CACHE.get(cache_key_p)
-                    if (
-                        cached_p is not None
-                        and time.monotonic() - cached_p[1] < _MODEL_CACHE_TTL
-                    ):
-                        existing = cached_p[0]
-                    else:
-                        existing = []
-                    mult = ecmwf_mult if model == "ecmwf_ifs025" else 1
-                    combined = existing + members * mult
-                    _PRECIP_ENSEMBLE_CACHE[cache_key_p] = (combined, time.monotonic())
-                    written += 1
+                    if members:
+                        precip_raw_by_model[model][(lat_i, lon_i, date_iso)] = members
 
         except Exception as exc:
             _ensemble_cb.record_failure()
@@ -1515,6 +1600,32 @@ def batch_prewarm_ensemble(
                 type(exc).__name__,
                 exc,
             )
+
+    all_precip_keys: set[tuple] = {
+        key for by_key in precip_raw_by_model.values() for key in by_key
+    }
+    for cache_key_p in all_precip_keys:
+        # Only overwrite when every model contributed to THIS key this run — a
+        # partial run (one model's request failed, or the circuit breaker
+        # opened mid-loop) must not clobber a complete, still-fresh existing
+        # entry with a thinner one (e.g. dropping ECMWF's 2-3x seasonal
+        # weighting) just because the cache key happens to match.
+        if not all(precip_raw_by_model[m].get(cache_key_p) for m in precip_models):
+            continue
+        # Keyed by the market's TARGET date's month (matching
+        # _fetch_ensemble_precip's convention), not the current date at
+        # prewarm time — otherwise the same market gets a different ECMWF
+        # weight depending on which code path populated the cache, causing
+        # the blended probability to flap across season boundaries with no
+        # underlying data change.
+        _target_month = date.fromisoformat(cache_key_p[2]).month
+        ecmwf_mult = 3 if _target_month in (10, 11, 12, 1, 2, 3) else 2
+        combined = []
+        for model in precip_models:
+            mult = ecmwf_mult if model == "ecmwf_ifs025" else 1
+            combined.extend(precip_raw_by_model[model][cache_key_p] * mult)
+        _PRECIP_ENSEMBLE_CACHE[cache_key_p] = (combined, time.monotonic())
+        written += 1
 
     _log.info(
         "[batch_prewarm_ensemble] wrote %d cache entries (%d cities, %d dates)",
@@ -1547,7 +1658,7 @@ def fetch_temperature_nbm(
     H-13: LOW markets require min(temps), not max(temps).
     Returns temperature in °F for target_date, or None on failure.
     """
-    cache_key = (city, target_date.isoformat())
+    cache_key = (city, target_date.isoformat(), var)
     cached = _NBM_CACHE.get(cache_key)
     if cached is not None:
         val, ts = cached
@@ -1584,10 +1695,24 @@ def fetch_temperature_nbm(
         data = resp.json()
         temps = data.get("hourly", {}).get("temperature_2m", [])
         valid = [t for t in temps if t is not None]
-        # H-13: return min for LOW markets, max for HIGH markets
-        result = float(min(valid) if var == "min" else max(valid)) if valid else None
-        _NBM_CACHE[cache_key] = (result, time.monotonic())
-        return result
+        # H-13: return min for LOW markets, max for HIGH markets.
+        # The request is identical regardless of var (same hourly series), so
+        # populate BOTH var-keyed cache entries from this one response —
+        # otherwise a caller that warms both vars (e.g. cron's prewarm) would
+        # re-issue a byte-identical HTTP request for the second var every time.
+        now = time.monotonic()
+        if valid:
+            _NBM_CACHE[(city, target_date.isoformat(), "max")] = (
+                float(max(valid)),
+                now,
+            )
+            _NBM_CACHE[(city, target_date.isoformat(), "min")] = (
+                float(min(valid)),
+                now,
+            )
+        else:
+            _NBM_CACHE[cache_key] = (None, now)
+        return _NBM_CACHE[cache_key][0]
     except Exception as exc:
         _nbm_om_cb.record_failure()
         _log.debug(
@@ -1707,8 +1832,20 @@ def fetch_temperature_weatherapi(city: str, target_date: date) -> dict | None:
         _log.debug("[CircuitBreaker] weatherapi circuit open — skipping fetch")
         return None
 
-    today = datetime.now(UTC).date()
-    days_ahead = max(1, (target_date - today).days + 1)
+    # Compute against the city's LOCAL date, not UTC — WeatherAPI's forecastday
+    # list starts at the location's local today. From ~19:00 ET (00:00 UTC)
+    # until local midnight, UTC's date is already tomorrow-local; using it here
+    # would undercount days_ahead by 1 for a tomorrow-local target, causing the
+    # target-date match below to fail and negative-caching the miss for 4h —
+    # exactly during the evening window this source is most needed as an
+    # Open-Meteo-ensemble-circuit-open fallback.
+    try:
+        from zoneinfo import ZoneInfo as _ZI3
+
+        _today_local = datetime.now(_ZI3(_CITY_TZ.get(city, "America/New_York"))).date()
+    except Exception:
+        _today_local = datetime.now(UTC).date()
+    days_ahead = max(1, (target_date - _today_local).days + 1)
     if days_ahead > 14:
         _WEATHERAPI_CACHE[cache_key] = (None, time.monotonic())
         return None
@@ -1841,15 +1978,29 @@ def fetch_temperature_pirate_weather(city: str, target_date: date) -> dict | Non
                 None,
             )
             if entry is None:
+                # Fail closed: this is the last-resort fallback (Open-Meteo, NBM,
+                # and weatherapi all unavailable) — substituting daily_data[0]
+                # (today's block) would hand the pricing engine today's high
+                # labeled as target_date's high, with no distinguishing signal
+                # beyond a warning log. Better to return no forecast at all than
+                # a confidently-wrong one for the wrong day.
                 _log.warning(
-                    "fetch_temperature_pirate_weather(%s): no block matched %s — using first block",
+                    "fetch_temperature_pirate_weather(%s): no block matched %s "
+                    "(target date beyond Pirate Weather's daily block range) — "
+                    "returning no forecast rather than substituting the wrong day",
                     city,
                     target_date,
                 )
-                entry = daily_data[0]
+                return None
 
-        # temperatureMax is the absolute daily extreme; prefer over temperatureHigh (daytime only)
-        high = entry.get("temperatureMax") or entry.get("temperatureHigh")
+        # temperatureMax is the absolute daily extreme; prefer over temperatureHigh
+        # (daytime only). Explicit None-check — a legitimate 0.0°F temperatureMax
+        # (routine in winter for the cities this bot trades) is falsy and would
+        # otherwise silently fall through to temperatureHigh, which can differ
+        # by several degrees on exactly the days this matters most.
+        high = entry.get("temperatureMax")
+        if high is None:
+            high = entry.get("temperatureHigh")
         if high is None:
             return None
         high_f = float(high)
@@ -1884,25 +2035,30 @@ def fetch_temperature_pirate_weather(city: str, target_date: date) -> dict | Non
         if not is_historical:
             hourly_data = data.get("hourly", {}).get("data", [])
             if hourly_data:
-                # Build a date string for target_date to match against Unix timestamps
-                # Collect hours 6am–9pm local time for target_date by checking timestamps.
-                # Use UTC-based day boundaries and accept entries within a ±12h window
-                # around the target date since Pirate Weather uses local midnight timestamps.
+                # Collect hours 6am-9pm LOCAL time for target_date. Both the day
+                # boundary and the hour-of-day check must be anchored in the
+                # city's timezone (_city_tz, from the M-14 fix above) — anchoring
+                # in UTC instead gave e.g. 1am-4pm local for ET cities and
+                # 10pm(prev day)-1pm local for Pacific cities, silently missing
+                # the actual afternoon-high hours the window claims to cover.
                 target_ts_start_h = int(
                     datetime(
-                        target_date.year, target_date.month, target_date.day, tzinfo=UTC
+                        target_date.year,
+                        target_date.month,
+                        target_date.day,
+                        tzinfo=_city_tz,
                     ).timestamp()
                 )
                 target_ts_end_h = target_ts_start_h + 86400
                 window_temps = []
                 for h_entry in hourly_data:
                     h_ts = h_entry.get("time", 0)
-                    # Filter to the target calendar day (UTC-anchored)
+                    # Filter to the target calendar day (local-anchored)
                     if not (target_ts_start_h <= h_ts < target_ts_end_h):
                         continue
-                    # Hour-of-day within the day: 6am (6h) to 9pm (21h)
-                    hour_of_day = (h_ts - target_ts_start_h) // 3600
-                    if 6 <= hour_of_day <= 21:
+                    # Hour-of-day within the LOCAL day: 6am (6h) to 9pm (21h)
+                    _local_hour = datetime.fromtimestamp(h_ts, tz=_city_tz).hour
+                    if 6 <= _local_hour <= 21:
                         t_val = h_entry.get("temperature")
                         if t_val is not None:
                             window_temps.append(float(t_val))
@@ -1967,7 +2123,12 @@ def fetch_temperature_pirate_weather(city: str, target_date: date) -> dict | Non
             if hrrr_age is not None and hrrr_age > 6.0:
                 stale_forecast = True
 
-        low = entry.get("temperatureMin") or entry.get("temperatureLow")
+        # Explicit None-check — see the identical temperatureMax fix above;
+        # a legitimate 0.0°F temperatureMin must not fall through to
+        # temperatureLow (daytime-only, can differ by several degrees).
+        low = entry.get("temperatureMin")
+        if low is None:
+            low = entry.get("temperatureLow")
 
         return {
             # Core fields (must match what the caller expects)
@@ -2119,7 +2280,7 @@ def fetch_temperature_ecmwf(
     H-13: LOW markets require min(temps), not max(temps).
     Returns temperature in °F for target_date, or None on failure.
     """
-    cache_key = (city, target_date.isoformat())
+    cache_key = (city, target_date.isoformat(), var)
     cached = _ECMWF_CACHE.get(cache_key)
     if cached is not None:
         val, ts = cached
@@ -2131,8 +2292,10 @@ def fetch_temperature_ecmwf(
         return None
     lat, lon, _ = coords
 
-    if _ensemble_cb.is_open():
-        _log.debug("[CircuitBreaker] open_meteo circuit open — skipping ECMWF fetch")
+    if _ecmwf_om_cb.is_open():
+        _log.debug(
+            "[CircuitBreaker] ecmwf_openmeteo circuit open — skipping ECMWF fetch"
+        )
         return None
 
     try:
@@ -2156,17 +2319,31 @@ def fetch_temperature_ecmwf(
         temps = data.get("hourly", {}).get("temperature_2m", [])
         if is_all_null(temps):
             raise ValueError("ecmwf_ifs025 returned all-null hourly data (dead model?)")
-        _ensemble_cb.record_success()
+        _ecmwf_om_cb.record_success()
         valid = [t for t in temps if t is not None]
-        # H-13: return min for LOW markets, max for HIGH markets
-        result = float(min(valid) if var == "min" else max(valid)) if valid else None
-        _ECMWF_CACHE[cache_key] = (result, time.monotonic())
-        return result
+        # H-13: return min for LOW markets, max for HIGH markets.
+        # The request is identical regardless of var (same hourly series), so
+        # populate BOTH var-keyed cache entries from this one response —
+        # otherwise a caller that warms both vars (e.g. cron's prewarm) would
+        # re-issue a byte-identical HTTP request for the second var every time.
+        now = time.monotonic()
+        if valid:
+            _ECMWF_CACHE[(city, target_date.isoformat(), "max")] = (
+                float(max(valid)),
+                now,
+            )
+            _ECMWF_CACHE[(city, target_date.isoformat(), "min")] = (
+                float(min(valid)),
+                now,
+            )
+        else:
+            _ECMWF_CACHE[cache_key] = (None, now)
+        return _ECMWF_CACHE[cache_key][0]
     except Exception as exc:
-        _ensemble_cb.record_failure()
+        _ecmwf_om_cb.record_failure()
         _log.info(
-            "open_meteo_ensemble: failure #%d (ECMWF/%s) — %s: %s",
-            _ensemble_cb.failure_count,
+            "ecmwf_openmeteo: failure #%d (ECMWF/%s) — %s: %s",
+            _ecmwf_om_cb.failure_count,
             city,
             type(exc).__name__,
             exc,
@@ -2383,11 +2560,22 @@ def save_learned_weights(weights: dict) -> None:
         with _os.fdopen(fd, "w") as f:
             _json.dump(weights, f, indent=2)
         _os.replace(tmp, path)
-    except Exception:
+    except Exception as exc:
         try:
             _os.unlink(tmp)
         except OSError:
             pass
+        # Log (every other persistence failure in this file does) and skip the
+        # in-memory cache update — otherwise this process trades on the new
+        # weights while learned_weights.json still holds the old ones, so the
+        # next process/cron run silently reverts to different weights than
+        # tonight's, with zero trace in the logs to explain why.
+        _log.warning(
+            "[ModelWeights] save_learned_weights: write failed, keeping prior "
+            "on-disk weights (in-memory cache NOT updated): %s",
+            exc,
+        )
+        return
     global _LEARNED_WEIGHTS
     _LEARNED_WEIGHTS = weights
 
@@ -2785,9 +2973,17 @@ def get_ensemble_temps(
                 "get_ensemble_temps: model fetch failed for %s: %s", city, _ens_exc
             )
 
-    # L5-A: align TTL to next NWS model cycle, not a flat 4 h window
-    _ensemble_cache.set_with_ttl(cache_key, all_temps, _ttl_until_next_cycle())
-    _save_ensemble_disk_entry(cache_key, all_temps)
+    # L5-A: align TTL to next NWS model cycle, not a flat 4 h window.
+    # Don't cache/persist a total-failure empty result (all model fetches
+    # raised, e.g. circuit breaker open) — that would freeze the ensemble at
+    # zero members for up to the full cycle TTL (dropping ens_prob out of the
+    # blend and silently skipping the bimodal-Kelly risk guard, which checks
+    # `if temps`) instead of letting the next call retry once the endpoint
+    # recovers, which can be within seconds of a transient blip.
+    if all_temps:
+        _cycle_ttl = _ttl_until_next_cycle()
+        _ensemble_cache.set_with_ttl(cache_key, all_temps, _cycle_ttl)
+        _save_ensemble_disk_entry(cache_key, all_temps, _cycle_ttl)
     return all_temps
 
 
@@ -2843,7 +3039,8 @@ def get_ensemble_members(
     cache_file = cache_dir / f"{lat:.3f}_{lon:.3f}_{target_date_str}_{var}.json"
     if cache_file.exists():
         try:
-            return _json_em.loads(cache_file.read_text())
+            if time.time() - cache_file.stat().st_mtime < _ENSEMBLE_CACHE_TTL:
+                return _json_em.loads(cache_file.read_text())
         except Exception:
             pass
 
@@ -3116,25 +3313,52 @@ def get_weather_markets(
     results = []
     seen = set()
 
-    def _fetch_series(series: str) -> list[dict]:
+    def _fetch_series(series: str) -> list[dict] | None:
+        # None (not []) distinguishes "this series' API call failed" from "this
+        # series genuinely has zero open markets right now" — the caller needs
+        # that distinction to decide whether the aggregate result is degraded.
         try:
-            return client.get_markets(series_ticker=series, status="open", limit=50)
-        except Exception:
-            return []
+            return client.get_markets(series_ticker=series, status="open", limit=limit)
+        except Exception as exc:
+            _log.debug(
+                "get_weather_markets: series %s fetch failed: %s: %s",
+                series,
+                type(exc).__name__,
+                exc,
+            )
+            return None
 
+    degraded = False
     _mkt_pool = ThreadPoolExecutor(max_workers=6)
     try:
         futures = {_mkt_pool.submit(_fetch_series, s): s for s in KNOWN_WEATHER_SERIES}
         try:
             for fut in as_completed(futures, timeout=40):
                 try:
-                    for m in fut.result():
-                        if m.get("ticker") not in seen:
+                    _series_markets = fut.result()
+                    if _series_markets is None:
+                        # _fetch_series already caught and logged its own
+                        # exception — this call itself cannot raise, but a
+                        # failed series must still mark the aggregate result
+                        # as degraded so it isn't cached as if it were healthy.
+                        degraded = True
+                        continue
+                    for m in _series_markets:
+                        t = m.get("ticker")
+                        # A market missing 'ticker' must not abort the rest of
+                        # this series' batch — skip just that one record.
+                        if t and t not in seen:
                             results.append(m)
-                            seen.add(m["ticker"])
-                except Exception:
-                    pass
+                            seen.add(t)
+                except Exception as exc:
+                    degraded = True
+                    _log.debug(
+                        "get_weather_markets: a series batch was dropped: %s: %s",
+                        type(exc).__name__,
+                        exc,
+                    )
         except TimeoutError:
+            degraded = True
             _log.warning(
                 "get_weather_markets: Kalshi API timed out after 40s — using %d partial results",
                 len(results),
@@ -3142,7 +3366,13 @@ def get_weather_markets(
     finally:
         _mkt_pool.shutdown(wait=False)
 
-    _MARKETS_CACHE = (results, now)
+    # Don't cache a degraded (timed-out or partially-failed) result — a
+    # follow-up call within the same scan would otherwise silently see the
+    # incomplete list for the full 60s TTL with no way to know it's degraded.
+    # Leaving _MARKETS_CACHE untouched (rather than overwriting with a bad
+    # result) means the next call just refetches fully.
+    if not degraded:
+        _MARKETS_CACHE = (results, now)
     return results
 
 
@@ -3453,7 +3683,12 @@ def _time_risk(close_time_str: str, tz: str) -> tuple[str, float]:
         closes_today = local_close.date() == datetime.now(ZoneInfo(tz)).date()
         if hours_to_close <= 2:
             return ("LOW", 0.5)
-        elif local_hour >= 20:
+        elif closes_today and local_hour >= 20:
+            # "Weather station already read" is only true when the market's
+            # target day is TODAY — without the closes_today guard, any market
+            # whose close_time simply lands after 8pm local (regardless of
+            # being 2, 3, or 4 days out) got this same reduced-uncertainty
+            # multiplier, making the MEDIUM/HIGH tiers below unreachable for it.
             return ("LOW", 0.7)
         elif closes_today:
             return ("LOW", 0.8)
@@ -3564,29 +3799,31 @@ def _parse_market_condition(market: dict) -> dict | None:
         elif "<" in title or "below" in title or " be <" in title:
             return {"type": "below", "threshold": val}
         else:
-            # M-15: fall back to series ticker prefix before returning None —
-            # KXHIGH unambiguously means "above", KXLOW means "below".
-            # This survives Kalshi title rewording.
-            series_for_dir = (market.get("series_ticker") or ticker).upper()
-            if "KXHIGH" in series_for_dir or "HIGH" in series_for_dir:
-                _log.debug(
-                    "_parse_market_condition[%s]: inferred 'above' from series ticker (no title match)",
-                    ticker,
-                )
+            # Check subtitle/yes_sub_title — Kalshi puts the bucket text
+            # ("53° or below") there when the title itself has been reworded
+            # to something generic ("Highest temperature in NYC on Jan 5?").
+            subtitle = (
+                (market.get("subtitle") or "")
+                + " "
+                + (market.get("yes_sub_title") or "")
+            ).lower()
+            if ">" in subtitle or "above" in subtitle or " be >" in subtitle:
                 return {"type": "above", "threshold": val}
-            elif "KXLOW" in series_for_dir or (
-                "LOW" in series_for_dir and "BELOW" not in series_for_dir
-            ):
-                _log.debug(
-                    "_parse_market_condition[%s]: inferred 'below' from series ticker (no title match)",
-                    ticker,
-                )
+            elif "<" in subtitle or "below" in subtitle or " be <" in subtitle:
                 return {"type": "below", "threshold": val}
+            # M-15's old series-ticker-prefix guess (KXHIGH -> "above", KXLOW ->
+            # "below") is REMOVED: every daily temperature series has both a top
+            # T-bucket and a bottom T-bucket, distinguishable only by
+            # title/subtitle text, not by series name — guessing from the
+            # series prefix silently inverted the condition for the bottom
+            # bucket of a KXHIGH series (and the top bucket of a KXLOW series).
+            # Fail closed (skip the market) rather than guess wrong.
             _log.warning(
-                "_parse_market_condition[%s]: T-type but no direction keyword in title=%r "
-                "(has_lt=%s has_gt=%s has_below=%s has_above=%s)",
+                "_parse_market_condition[%s]: T-type but no direction keyword in "
+                "title=%r or subtitle=%r (has_lt=%s has_gt=%s has_below=%s has_above=%s)",
                 ticker,
                 title[:80],
+                subtitle[:80],
                 "<" in title,
                 ">" in title,
                 "below" in title,
@@ -3817,7 +4054,7 @@ def _blend_weights(
         return _nws_days_out_scale(w_ens, w_clim, w_nws, days_out)
 
     # 1. City-specific calibration weights
-    if city and city in _CITY_WEIGHTS:
+    if city and city in _CITY_WEIGHTS and not _CITY_WEIGHTS[city].get("_uncalibrated"):
         cal = _CITY_WEIGHTS[city]
         w_ens = cal["ensemble"]
         w_clim = cal["climatology"]
@@ -4060,12 +4297,16 @@ def bayesian_kelly(
 
     Returns 0.0 when the CI is trivially wide (full [0, 1] range).
     """
+    # Check "trivially wide" against the RAW inputs, before clamping — clamping
+    # (0.0, 1.0) to (0.01, 0.99) shrinks the width to 0.98, which would slip
+    # past a >= 0.99 check performed after the clamp and let a genuinely
+    # no-information (0, 1) posterior get integrated as if it were meaningful.
+    if ci_high - ci_low >= 0.99:
+        return 0.0  # no information — don't bet
     ci_low = max(0.01, ci_low)
     ci_high = min(0.99, ci_high)
     if ci_high <= ci_low:
         return kelly_fraction(ci_low, price, fee_rate)
-    if ci_high - ci_low >= 0.99:
-        return 0.0  # no information — don't bet
 
     step = (ci_high - ci_low) / n_steps
     total = 0.0
@@ -4219,6 +4460,12 @@ def edge_confidence(days_out: int, condition_type: str | None = None) -> float:
 
 _CONSENSUS_CACHE: dict[tuple, tuple] = {}
 _CONSENSUS_CACHE_TTL = 4 * 60 * 60  # 4 hours
+# Short TTL for a total-miss result (both models returned None — a transient
+# blip, not a real "models agree" or "models disagree" answer). Caching that
+# for the full 4h would freeze model_consensus's fail-open default (True) long
+# after the underlying circuit breaker itself would have recovered, defeating
+# the ICON-vs-GFS divergence safety gate for every market sharing that key.
+_CONSENSUS_MISS_TTL = 120
 
 
 def _get_consensus_probs(
@@ -4249,8 +4496,8 @@ def _get_consensus_probs(
     )
     _cached = _CONSENSUS_CACHE.get(_cons_key)
     if _cached is not None:
-        _result, _ts = _cached
-        if time.monotonic() - _ts < _CONSENSUS_CACHE_TTL:
+        _result, _ts, _ttl = _cached
+        if time.monotonic() - _ts < _ttl:
             return _result
 
     def _model_prob_and_mean(model_name: str) -> tuple[float | None, float | None]:
@@ -4314,8 +4561,9 @@ def _get_consensus_probs(
                 ]
                 temps = members
                 # L5-A: align TTL to next NWS model cycle
-                _ensemble_cache.set_with_ttl(cache_key, temps, _ttl_until_next_cycle())
-                _save_ensemble_disk_entry(cache_key, temps)
+                _consensus_cycle_ttl = _ttl_until_next_cycle()
+                _ensemble_cache.set_with_ttl(cache_key, temps, _consensus_cycle_ttl)
+                _save_ensemble_disk_entry(cache_key, temps, _consensus_cycle_ttl)
 
             if len(temps) < 5:
                 return None, None
@@ -4338,7 +4586,12 @@ def _get_consensus_probs(
     icon_prob, icon_mean = _model_prob_and_mean("icon_seamless")
     gfs_prob, gfs_mean = _model_prob_and_mean("gfs_seamless")
     _cons_result = (icon_prob, gfs_prob, icon_mean, gfs_mean)
-    _CONSENSUS_CACHE[_cons_key] = (_cons_result, time.monotonic())
+    _cons_ttl = (
+        _CONSENSUS_CACHE_TTL
+        if (icon_prob is not None or gfs_prob is not None)
+        else _CONSENSUS_MISS_TTL
+    )
+    _CONSENSUS_CACHE[_cons_key] = (_cons_result, time.monotonic(), _cons_ttl)
     return _cons_result
 
 
@@ -4489,7 +4742,15 @@ def _analyze_precip_trade(
     Uses ensemble precipitation members + climatological rain frequency.
     """
     lat, lon, tz = coords
-    days_out = max(0, (target_date - datetime.now(UTC).date()).days)
+    # Compare against the market's LOCAL calendar date, not UTC — from 00:00 UTC
+    # until local midnight (a 4-8h window every evening for US cities),
+    # datetime.now(UTC).date() is already local-tomorrow, which would silently
+    # treat a tomorrow-local market as days_out=0 (triggering the same-day
+    # live-observation override below on a day that hasn't started yet).
+    from zoneinfo import ZoneInfo as _ZoneInfo
+
+    local_today = datetime.now(_ZoneInfo(tz)).date()
+    days_out = max(0, (target_date - local_today).days)
 
     # ── Ensemble precipitation probability ───────────────────────────────────
     _raw_members = _fetch_ensemble_precip(lat, lon, tz, target_date)
@@ -4504,15 +4765,47 @@ def _analyze_precip_trade(
                 precip_members
             )
 
+    # ── Climatological prior (computed early: used both in the blend below
+    # and to bound the dry-forecast floor, since forecast.get("precip_in", 0.0)
+    # can't distinguish a genuinely-reported-dry forecast from a missing-data
+    # placeholder — get_weather_forecast's fallback paths all default the key
+    # to 0.0 when no precip model actually returned data) ────────────────────
+    city = enriched.get("_city", "")
+    try:
+        clim_prior = climatological_prob(city, coords, target_date, condition) or 0.30
+    except Exception:
+        clim_prior = 0.30
+
     # ── Forecast precip as fallback ───────────────────────────────────────────
     forecast_precip = forecast.get("precip_in", 0.0) or 0.0
     if ens_prob is None:
-        # Normal distribution around forecast precip
-        sigma = max(0.2, forecast_precip * 0.5)
-        if condition["type"] == "precip_any":
-            ens_prob = 1.0 - normal_cdf(0.01, forecast_precip, sigma)
+        # Only apply the dry-forecast floor for small thresholds (precip_any,
+        # or any condition threshold close to it) — a Normal centered at ~0
+        # puts roughly half its mass above a threshold that near, which would
+        # price a bone-dry forecast (0.00 in) at ~48% instead of near-zero.
+        # For materially larger thresholds (e.g. "more than 1 inch"), the
+        # symmetric-Normal CDF below already gives a good near-zero estimate
+        # (e.g. ~0.0003% at 1.0in) — flooring those to the same small-threshold
+        # value would OVERSTATE them by orders of magnitude.
+        _small_threshold = (
+            condition["type"] == "precip_any" or condition.get("threshold", 0.0) <= 0.05
+        )
+        if forecast_precip <= 0.01 and _small_threshold:
+            # forecast_precip==0.0 can mean "genuinely dry" or "no precip model
+            # actually ran" (both collapse to the same placeholder upstream) —
+            # bound the floor to a fraction of climatology rather than
+            # asserting a fixed near-zero value we can't actually back with
+            # real ensemble data either way.
+            ens_prob = min(0.03, clim_prior * 0.2)
         else:
-            ens_prob = 1.0 - normal_cdf(condition["threshold"], forecast_precip, sigma)
+            # Normal distribution around forecast precip
+            sigma = max(0.2, forecast_precip * 0.5)
+            if condition["type"] == "precip_any":
+                ens_prob = 1.0 - normal_cdf(0.01, forecast_precip, sigma)
+            else:
+                ens_prob = 1.0 - normal_cdf(
+                    condition["threshold"], forecast_precip, sigma
+                )
 
     # ── Same-day live precipitation observation override ─────────────────────
     obs_precip_val: float | None = None
@@ -4530,20 +4823,23 @@ def _analyze_precip_trade(
     w_ens, w_clim, _ = _blend_weights(
         days_out, has_nws=False, has_clim=True
     )  # calibration not yet wired for precip/snow path
-    city = enriched.get("_city", "")
-    try:
-        clim_prior = climatological_prob(city, coords, target_date, condition) or 0.30
-    except Exception:
-        clim_prior = 0.30
     blended_prob = ens_prob * w_ens + clim_prior * w_clim
 
-    # Same-day override: observation is near-certain (precip already fell or didn't)
+    # Same-day override: a positive observation means precip has definitely
+    # occurred today, so lock the probability toward 1.0. get_live_precip_obs
+    # returns precipitationLastHour (or a 6h-average fallback) — a short-window
+    # rate, not the day's cumulative total — so a zero/dry reading does NOT mean
+    # the day will settle dry (rain may have already fallen earlier, or may
+    # still fall later). Only the positive-observation side is safe to trust;
+    # never push toward 0 from a dry last-hour reading.
     if obs_precip_val is not None:
-        if condition["type"] == "precip_any":
-            obs_p = 1.0 if obs_precip_val > 0.01 else 0.0
-        else:
-            obs_p = 1.0 if obs_precip_val > condition.get("threshold", 0.0) else 0.0
-        blended_prob = 0.90 * obs_p + 0.10 * blended_prob
+        obs_threshold = (
+            0.01
+            if condition["type"] == "precip_any"
+            else condition.get("threshold", 0.0)
+        )
+        if obs_precip_val > obs_threshold:
+            blended_prob = 0.90 * 1.0 + 0.10 * blended_prob
 
     # ── Bias correction from tracker (same as temperature path) ──────────────
     bias = 0.0
@@ -4579,11 +4875,15 @@ def _analyze_precip_trade(
     net_ev = p_win * payout * (1 - KALSHI_FEE_RATE) - (1 - p_win) * entry_price
     net_edge = min(net_ev / entry_price if entry_price > 0 else 0.0, 3.0)
     edge = blended_prob - market_prob
-    # L8-A / L7-C: entry_side_edge vs actual fill price (ask), not mid
+    # L8-A / L7-C: entry_side_edge vs actual fill price (ask), not mid.
+    # NO-side fallback (empty bid book): the cost of NO is 1 - market_prob, not
+    # market_prob itself — market_prob is the YES price/probability, and using
+    # it directly for a NO reference price overstates the edge whenever
+    # market_prob < 0.5 and understates it when > 0.5.
     _esmp = (
         prices["yes_ask"]
         if rec_side == "yes"
-        else (1.0 - prices["yes_bid"] if prices["yes_bid"] > 0 else market_prob)
+        else (1.0 - prices["yes_bid"] if prices["yes_bid"] > 0 else 1.0 - market_prob)
     )
     # NO edge = P(NO wins) - cost_of_NO; the sign was previously inverted, which blocked all valid NO trades.
     if rec_side == "yes":
@@ -4665,6 +4965,7 @@ def _analyze_precip_trade(
         "model_consensus": True,
         "near_threshold": False,
         "days_out": days_out,
+        "city": city,  # needed by detect_hedge_opportunity's same-city+date match
         "target_date": target_date.isoformat()
         if hasattr(target_date, "isoformat")
         else str(target_date),
@@ -4681,7 +4982,13 @@ def _analyze_snow_trade(
     Falls back to a climatological base rate: 20% in winter (Dec-Feb), 5% otherwise.
     """
     lat, lon, tz = coords
-    days_out = max(0, (target_date - datetime.now(UTC).date()).days)
+    # See _analyze_precip_trade's identical fix: compare against the market's
+    # LOCAL calendar date, not UTC, to avoid treating a tomorrow-local market
+    # as days_out=0 during the evening UTC-date-rollover window.
+    from zoneinfo import ZoneInfo as _ZoneInfo
+
+    local_today = datetime.now(_ZoneInfo(tz)).date()
+    days_out = max(0, (target_date - local_today).days)
 
     # ── Ensemble precipitation as proxy ──────────────────────────────────────
     _raw_snow = _fetch_ensemble_precip(lat, lon, tz, target_date)
@@ -4771,11 +5078,13 @@ def _analyze_snow_trade(
     net_ev = p_win * payout * (1 - KALSHI_FEE_RATE) - (1 - p_win) * entry_price
     net_edge = min(net_ev / entry_price if entry_price > 0 else 0.0, 3.0)
     edge = blended_prob - market_prob
-    # L8-A / L7-C: entry_side_edge vs actual fill price (ask), not mid
+    # L8-A / L7-C: entry_side_edge vs actual fill price (ask), not mid.
+    # NO-side fallback (empty bid book): the cost of NO is 1 - market_prob, not
+    # market_prob itself (see _analyze_precip_trade's identical fix above).
     _esmp = (
         prices["yes_ask"]
         if rec_side == "yes"
-        else (1.0 - prices["yes_bid"] if prices["yes_bid"] > 0 else market_prob)
+        else (1.0 - prices["yes_bid"] if prices["yes_bid"] > 0 else 1.0 - market_prob)
     )
     # NO edge = P(NO wins) - cost_of_NO; the sign was previously inverted, which blocked all valid NO trades.
     if rec_side == "yes":
@@ -4787,7 +5096,25 @@ def _analyze_snow_trade(
 
     ci_low, ci_high = blended_prob, blended_prob
     if len(precip_members) >= 5:
-        ci_low, ci_high = _bootstrap_ci_precip(precip_members, condition)
+        # Match the ens_prob branching above: precip_members are liquid-equivalent,
+        # so the bootstrap must compare against the same liquid_thresh, not the raw
+        # snow-inches threshold — otherwise the CI is computed on the wrong units
+        # (e.g. counting members > 2.0" liquid for a 2.0" *snow* threshold, which
+        # at a typical 10:1 SLR is ~0.2" liquid, nearly never true) and comes back
+        # falsely narrow/near-0 or near-1 regardless of the real probability.
+        if threshold <= 0.0:
+            ci_low, ci_high = _bootstrap_ci_precip(precip_members, condition)
+        elif _slr == 0:
+            # No snow accumulates above freezing — same as the ens_prob=0.01
+            # special case above; there's no meaningful liquid threshold to
+            # bootstrap against, so don't fabricate a falsely-narrow CI.
+            ci_low, ci_high = 0.0, 1.0
+        else:
+            _liquid_condition = {
+                **condition,
+                "threshold": liquid_equiv_of_snow_threshold(threshold, _slr),
+            }
+            ci_low, ci_high = _bootstrap_ci_precip(precip_members, _liquid_condition)
 
     # #39: Bayesian Kelly — flip CI for NO bets so integration is over P(win)
     if rec_side == "no":
@@ -4843,6 +5170,9 @@ def _analyze_snow_trade(
         "model_consensus": True,
         "near_threshold": False,
         "days_out": days_out,
+        "city": enriched.get(
+            "_city", ""
+        ),  # needed by detect_hedge_opportunity's same-city+date match
         "target_date": target_date.isoformat()
         if hasattr(target_date, "isoformat")
         else str(target_date),
@@ -4917,10 +5247,40 @@ def _metar_lock_in(
                 obs_time=_metar_obs["obs_time"],
                 city_tz=_CITY_TZ.get(city, "America/New_York"),
             )
+            if _is_low_mkt and _lockout.get("locked"):
+                # A running daily-min-so-far can only DECREASE as the day
+                # progresses (radiational cooling / cold fronts routinely set
+                # a new low well after the 2pm gate check_metar_lockout uses).
+                # "min already fell below threshold - margin" is monotone-safe
+                # (it can only stay there or go lower); "min has stayed above
+                # threshold + margin" is NOT safe — evening cooling can still
+                # reverse it. Reject the unsafe direction regardless of which
+                # branch check_metar_lockout took to reach "locked".
+                _margin = 3.0  # matches check_metar_lockout's own default
+                if _comp_temp > float(condition["threshold"]) - _margin:
+                    _lockout = {
+                        "locked": False,
+                        "outcome": None,
+                        "confidence": 0.0,
+                        "reason": (
+                            f"LOW market: running min {_comp_temp:.1f}F not yet "
+                            "confirmed below threshold-margin — day not over"
+                        ),
+                    }
 
         elif _cond_type == "between":
-            # Between lock-in disabled: uses current_temp_f instead of daily_high.
-            # Re-enable once METAR observations track daily high.
+            # Between lock-in is DELIBERATELY disabled — not a stale TODO. This
+            # permanently skips analyze_trade's between-bucket gate (which
+            # requires metar_locked=True to trade any between market at all),
+            # fail-closed and by design: no money is lost, but it silently
+            # retires the entire between-bucket market class (Kalshi's most
+            # numerous temperature-market type) until real design+test work
+            # goes into a between-market lock-in scheme (check_metar_lockout
+            # only supports "above"/"below" directions; a correct between
+            # implementation needs its own confidence/margin/clearance logic,
+            # not a quick reuse of the above/below branch). See analyze_trade's
+            # "between_no_metar" gate counter, now logged at info level so this
+            # retirement stays visible rather than silent.
             return False, 0.0, {}
 
         else:
@@ -5182,9 +5542,14 @@ def analyze_trade(enriched: dict) -> dict | None:
     #      so they are inherently safe from station-gap reversals.
     if condition.get("type") == "between":
         if not metar_locked:
-            _log.debug(
+            # Between lock-in is unconditionally disabled in _metar_lock_in (see
+            # its docstring/comment there) — this branch therefore fires for
+            # EVERY between market, permanently. Logged at info (not debug) so
+            # this whole retired market class stays visible rather than silent.
+            _log.info(
                 "analyze_trade: skipping %s — between market, no METAR lock-in "
-                "(ensemble sigma too wide for 2°F band)",
+                "(ensemble sigma too wide for 2°F band; between lock-in is "
+                "deliberately disabled pending dedicated design work)",
                 enriched.get("ticker", "?"),
             )
             _count_gate("between_no_metar")
@@ -5295,6 +5660,23 @@ def analyze_trade(enriched: dict) -> dict | None:
         # (daily high is misleading for e.g. "temp at 9am" markets)
         if hour is not None and len(temps) >= 5:
             forecast_temp = statistics.mean(temps)
+        elif hour is not None:
+            # Degraded ensemble (circuit open / partial response) for an hourly
+            # market: forecast_temp is still the DAILY extreme from the earlier
+            # daily-forecast path, which structurally differs from an hourly
+            # value by 10-20°F. Evaluating the hourly threshold against it
+            # (both the raw-fraction blend below and the Gaussian source)
+            # would manufacture a large phantom edge on exactly the days the
+            # bot should be most conservative. Skip rather than guess.
+            _log.debug(
+                "analyze_trade: skipping %s — hourly market with only %d ensemble "
+                "members (need >=5), daily-extreme forecast_temp is not a valid "
+                "substitute for an hourly value",
+                enriched.get("ticker", "?"),
+                len(temps),
+            )
+            _count_gate("hourly_thin_ensemble")
+            return None
         ens_stats = ensemble_stats(temps) if len(temps) >= 10 else None
         if ens_stats and ens_stats.get("degenerate"):
             _log.warning(
@@ -5465,15 +5847,15 @@ def analyze_trade(enriched: dict) -> dict | None:
             p_win_gaussian = None
 
         # Blend Gaussian with ensemble fraction (fall back to ens_prob if temps available)
-        # Prefer tracker-derived model weights (live MAE per model); fall back to
-        # D1 hardcoded prior (ECMWF 2× NBM) when tracker returns nothing.
-        _model_weights_d1: dict[str, float] = {"nbm": 1.0, "ecmwf": 2.0}
-        _dyn_weights = _dynamic_model_weights(
-            city, month=target_date.month if target_date else None
-        )
-        _active_weights: dict[str, float] = (
-            _dyn_weights if _dyn_weights else _model_weights_d1
-        )
+        # D1 hardcoded prior (ECMWF 2× NBM). Note: _dynamic_model_weights() is NOT
+        # applicable here — it derives MAE from tracker's ensemble_member_scores,
+        # which only ever logs "icon_seamless"/"gfs_seamless"/"blended" (see
+        # paper._score_ensemble_members), never the "nbm" (best_match) / "ecmwf"
+        # (ecmwf_ifs025) models used in model_temps above. A prior version looked
+        # up _dynamic_model_weights() here anyway; since its keys never match
+        # "nbm"/"ecmwf", every lookup silently fell through to a flat 1.0 default
+        # for both, quietly discarding this D1 prior whenever tracker had any data.
+        _active_weights: dict[str, float] = {"nbm": 1.0, "ecmwf": 2.0}
         _weighted_valid = sum(
             _active_weights.get(m, 1.0) for m, t in model_temps.items() if t is not None
         )
@@ -5613,14 +5995,28 @@ def analyze_trade(enriched: dict) -> dict | None:
                     )
                 else:
                     _live_temp = _live.get("temp_f") if _live else None
-                _current_temp: float = (
-                    float(_live_temp) if _live_temp is not None else forecast_temp_raw
-                )
-                _tlo = condition.get("threshold", condition.get("lower", forecast_temp))
-                _thi = condition.get("upper")
-                persistence_p = _persistence_prob(
-                    condition["type"], _tlo, _thi, _current_temp
-                )
+                # Persistence ("today's observation persists into the target
+                # day") only means something when a REAL observation exists.
+                # The old fallback to forecast_temp_raw when no observation was
+                # available (always true at days_out==2, since _live is never
+                # even fetched there; also whenever get_live_observation fails
+                # or lacks a temp field) just re-blended the raw NWS forecast a
+                # second time at a fixed 15% weight — and did so using the
+                # UNCORRECTED forecast, bypassing the station-bias correction
+                # applied to forecast_temp/blended_prob elsewhere in the
+                # pipeline, re-injecting exactly the bias that correction exists
+                # to remove.
+                if _live_temp is None:
+                    persistence_p = None
+                else:
+                    _current_temp: float = float(_live_temp)
+                    _tlo = condition.get(
+                        "threshold", condition.get("lower", forecast_temp)
+                    )
+                    _thi = condition.get("upper")
+                    persistence_p = _persistence_prob(
+                        condition["type"], _tlo, _thi, _current_temp
+                    )
             except Exception:
                 pass
 
@@ -5814,11 +6210,15 @@ def analyze_trade(enriched: dict) -> dict | None:
             pass
 
         if _mos_data_pre is not None:
-            # Pick high vs low temp from MOS based on market type (B4 complement)
+            # Pick high vs low temp from MOS based on market type (B4 complement).
+            # Do NOT fall back across variables — mos.py documents min_temp_f as
+            # float | None, so a LOW market (var="min") with no MOS minimum would
+            # otherwise silently substitute the daily MAXIMUM, computing
+            # P(condition | daily-high-centered distribution) for a market about
+            # the daily low. Skip the MOS blend entirely when the var-appropriate
+            # temperature is absent rather than guess wrong.
             _mos_temp_field = "min_temp_f" if var == "min" else "max_temp_f"
-            _mos_temp_val = _mos_data_pre.get(_mos_temp_field) or _mos_data_pre.get(
-                "max_temp_f"
-            )
+            _mos_temp_val = _mos_data_pre.get(_mos_temp_field)
             if _mos_temp_val is not None:
                 try:
                     _mos_sigma_val = _mos_data_pre.get(
@@ -6018,7 +6418,14 @@ def analyze_trade(enriched: dict) -> dict | None:
         condition["var"] = var
         days_out = max(0, (target_date - datetime.now(UTC).date()).days)
         _fallback_temp = forecast["low_f"] if var == "min" else forecast["high_f"]
-        forecast_temp = metar_lockout.get("current_temp_f") or (_fallback_temp or 0.0)
+        # Explicit None-check — a legitimate 0.0°F METAR observation (routine
+        # deep-winter reading) is falsy and would otherwise be replaced by the
+        # model forecast. blended_prob itself is unaffected (it comes from the
+        # lockout confidence, not forecast_temp), but forecast_temp is
+        # persisted in the result/tracker and would corrupt downstream
+        # calibration data keyed on it.
+        _metar_ct = metar_lockout.get("current_temp_f")
+        forecast_temp = _metar_ct if _metar_ct is not None else (_fallback_temp or 0.0)
         forecast_temp_raw = forecast_temp
         temps = []
         ens_prob = None
@@ -6220,7 +6627,12 @@ def analyze_trade(enriched: dict) -> dict | None:
     # the Kelly breakeven and causing bayesian_kelly to return 0 despite real edge.
     # Preserve CI width (ensemble spread = uncertainty magnitude) but center on
     # blended_prob so the integration sees the corrected estimate.
-    if temps:
+    # Skip this when the CI is _bootstrap_ci's own "too few members, maximally
+    # uncertain" sentinel (0.0, 1.0) — re-centering it (e.g. to (0.30, 0.99) for
+    # blended_prob=0.80) would convert a deliberate no-information signal into a
+    # plausible-looking narrow interval that bayesian_kelly would then happily
+    # integrate over, defeating the exact guard #114 was written to provide.
+    if temps and (ci_high - ci_low) < 0.98:
         _ci_half = (ci_high - ci_low) / 2.0
         ci_low = max(0.01, blended_prob - _ci_half)
         ci_high = min(0.99, blended_prob + _ci_half)
@@ -6503,6 +6915,7 @@ def analyze_trade(enriched: dict) -> dict | None:
         "model_consensus": model_consensus,
         "near_threshold": near_threshold,
         "days_out": days_out,
+        "city": city,  # needed by detect_hedge_opportunity's same-city+date match
         "target_date": target_date.isoformat()
         if hasattr(target_date, "isoformat")
         else str(target_date),
@@ -6548,10 +6961,13 @@ def detect_hedge_opportunity(analysis: dict, open_trades: list[dict]) -> bool:
     city = analysis.get("city") or analysis.get("_city")
     if not city:
         return False
+    target_date = analysis.get("target_date")
     rec_side = analysis.get("recommended_side", "yes")
     opposite = "no" if rec_side == "yes" else "yes"
     return any(
-        t.get("city") == city and t.get("side") == opposite
+        t.get("city") == city
+        and t.get("target_date") == target_date
+        and t.get("side") == opposite
         for t in open_trades
         if not t.get("settled")
     )

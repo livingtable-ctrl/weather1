@@ -321,10 +321,13 @@ class TestPerCityLearnedWeights:
         """Dynamic tracker weights take priority over learned_weights.json."""
         from weather_markets import _forecast_model_weights
 
+        # Sums to 1.0 (realistic tracker softmax output); _forecast_model_weights
+        # rescales by len()==3 to the seasonal-baseline scale before comparing
+        # against `learned`, so 0.6 here becomes 1.8 in the result.
         dynamic = {
-            "gfs_seamless": 3.0,
-            "ecmwf_ifs025": 1.0,
-            "icon_seamless": 1.0,
+            "gfs_seamless": 0.6,
+            "ecmwf_ifs025": 0.2,
+            "icon_seamless": 0.2,
         }
         learned = {
             "NYC": {
@@ -338,7 +341,7 @@ class TestPerCityLearnedWeights:
             with patch("weather_markets.load_learned_weights", return_value=learned):
                 result = _forecast_model_weights(1, city="NYC")
 
-        assert result["gfs_seamless"] == pytest.approx(3.0)
+        assert result["gfs_seamless"] == pytest.approx(1.8)
 
 
 # ── Task 9: _current_forecast_cycle and log_prediction (#37) ─────────────────

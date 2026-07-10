@@ -1197,14 +1197,18 @@ def _cmd_cron_body(
                 _c, _d = city_date
                 _dt = __import__("datetime").date.fromisoformat(_d)
                 # ── Open-Meteo point models ──────────────────────────────────
-                try:
-                    ctx.fetch_temperature_nbm(_c, _dt)
-                except Exception:
-                    pass
-                try:
-                    ctx.fetch_temperature_ecmwf(_c, _dt)
-                except Exception:
-                    pass
+                # Warm both max/min var caches — each is keyed separately by
+                # var (fix H-13b) so a HIGH-market prewarm no longer poisons
+                # the cache a LOW-market analysis reads minutes later.
+                for _var in ("max", "min"):
+                    try:
+                        ctx.fetch_temperature_nbm(_c, _dt, var=_var)
+                    except Exception:
+                        pass
+                    try:
+                        ctx.fetch_temperature_ecmwf(_c, _dt, var=_var)
+                    except Exception:
+                        pass
                 try:
                     ctx.fetch_temperature_weatherapi(_c, _dt)
                 except Exception:
@@ -1308,9 +1312,9 @@ def _cmd_cron_body(
         # Suppress probing on any circuit that opened during prewarm.
         # Analysis should use fallback sources immediately, not stall every
         # recovery_timeout seconds waiting on a probe that may also fail.
-        from weather_markets import _ensemble_cb, _forecast_cb, _nbm_om_cb
+        from weather_markets import _ecmwf_om_cb, _ensemble_cb, _forecast_cb, _nbm_om_cb
 
-        for _cb in (_nbm_om_cb, _ensemble_cb, _forecast_cb):
+        for _cb in (_nbm_om_cb, _ensemble_cb, _forecast_cb, _ecmwf_om_cb):
             if _cb.seconds_open() > 0:
                 _cb.suppress_probe()
                 _log.warning(
@@ -2471,6 +2475,21 @@ def _cmd_cron_body(
             )
     except Exception as _e:
         _log.warning("ensemble cache flush failed: %s", _e)
+
+    # Same rationale as the ensemble flush above \u2014 the forecast disk cache
+    # used per-entry daemon threads (unreliable at process exit) until this
+    # was migrated to the same accumulate-then-batch-flush pattern.
+    try:
+        from weather_markets import flush_forecast_disk_cache as _flush_forecast
+
+        _flushed_fc = _flush_forecast()
+        if _flushed_fc:
+            print(
+                dim(f"  [cron] forecast cache: {_flushed_fc} entries saved to disk"),
+                flush=True,
+            )
+    except Exception as _e:
+        _log.warning("forecast cache flush failed: %s", _e)
 
     # Sync data/ to cloud (OneDrive / Google Drive / custom path) after every cron run
     try:

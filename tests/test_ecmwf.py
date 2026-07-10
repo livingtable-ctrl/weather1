@@ -53,10 +53,10 @@ class TestECMWFAIFS:
                 mock_req.return_value.json.return_value = mock_response
                 mock_req.return_value.raise_for_status.return_value = None
                 with patch.object(
-                    weather_markets._ensemble_cb, "record_failure", MagicMock()
+                    weather_markets._ecmwf_om_cb, "record_failure", MagicMock()
                 ) as mock_fail:
                     with patch.object(
-                        weather_markets._ensemble_cb, "record_success", MagicMock()
+                        weather_markets._ecmwf_om_cb, "record_success", MagicMock()
                     ) as mock_success:
                         result = weather_markets.fetch_temperature_ecmwf(
                             "NYC", date(2026, 4, 17)

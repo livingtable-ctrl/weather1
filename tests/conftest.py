@@ -140,15 +140,18 @@ def isolate_tracker_db(tmp_path, monkeypatch):
 def reset_open_meteo_circuit_breaker():
     """Reset all weather_markets circuit breakers before every test.
 
-    There are four CBs (_forecast_cb, _ensemble_cb, _weatherapi_cb, _pirate_cb),
-    all module-level singletons. Any test that trips one leaves it open for
-    subsequent tests, causing false failures (get_weather_forecast returns None).
+    There are six CBs (_forecast_cb, _ensemble_cb, _ecmwf_om_cb, _nbm_om_cb,
+    _weatherapi_cb, _pirate_cb), all module-level singletons. Any test that
+    trips one leaves it open for subsequent tests, causing false failures
+    (get_weather_forecast returns None).
     """
     import weather_markets
 
     for cb in (
         weather_markets._forecast_cb,
         weather_markets._ensemble_cb,
+        weather_markets._ecmwf_om_cb,
+        weather_markets._nbm_om_cb,
         weather_markets._weatherapi_cb,
         weather_markets._pirate_cb,
     ):

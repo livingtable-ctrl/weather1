@@ -118,8 +118,10 @@ What the fix looks like:
      analyze_trade() (near _get_consensus_probs(), ~line 4478) -> the analysis
      dict returned to callers -> order_executor.py/main.py's calls into
      paper.open_paper_trade(...) -> paper.py's trade schema -> finally added
-     to _score_ensemble_members()'s model_means dict (~paper.py:991).
-  3. _get_consensus_probs() (weather_markets.py ~line 4180) currently only
+     to _score_ensemble_members()'s model_means dict (~paper.py:1153 as of
+     2026-07-10).
+  3. _get_consensus_probs() (weather_markets.py ~line 4274 as of
+     2026-07-10) currently only
      calls its generic, model-agnostic _model_prob_and_mean() helper for
      "icon_seamless" and "gfs_seamless". Extending it for
      ecmwf_aifs025_ensemble would be mechanically easy (same ENSEMBLE_BASE/
@@ -154,56 +156,37 @@ When to revisit:
     consensus data) matters more before starting -- see note above, they are
     not interchangeable.
 
-[LAS VEGAS / NEW ORLEANS MISSING FROM OLDER PER-CITY TABLES]
+[LAS VEGAS / NEW ORLEANS MISSING FROM _HISTORICAL_SIGMA]
 Priority: Low-Medium (silently degraded signal quality for 2 of 20 cities,
   not a crash risk)
+UPDATED 2026-07-10: the correlation-groups half of this entry is DONE --
+  _CORRELATED_CITY_GROUPS (now paper.py:283-287) includes LasVegas (desert-
+  Southwest group) and NewOrleans (Gulf-Coast group), with explicit pair
+  correlations in _CITY_PAIR_CORR (paper.py:313-332). Only the sigma half
+  remains open.
 
-Problem:
-  Las Vegas and New Orleans were added to CITY_COORDS later than the
-  original 18 cities (weather_markets.py:187-211, comment at 207-208) and
-  several older per-city tables were never updated to include them:
-    - _HISTORICAL_SIGMA (weather_markets.py:2036-2055) has exactly 18 keys,
-      missing LasVegas/NewOrleans. get_historical_sigma()
-      (weather_markets.py:2066-2073) silently falls back to
-      _DEFAULT_SIGMA=3.5 for these two, feeding directly into
-      gaussian_probability() for every trade analyzed
-      (weather_markets.py:5438) -- i.e. every LV/NOLA trade uses a generic
-      sigma instead of a city-tuned one.
-    - paper.py's _CORRELATED_CITY_GROUPS (paper.py:169-176) groups 17
-      cities + calls out Seattle as standalone (18 total) -- its own
-      comment claims "all 18 traded cities," now stale. LasVegas/NewOrleans
-      are in neither a group nor called out as standalone.
-      get_correlated_exposure() (paper.py:1308-1327) returns 0.0 for a city
-      not found in any group, so MAX_CORRELATED_EXPOSURE silently never
-      applies to LV/NOLA trades, even though LV plausibly correlates with
-      the already-grouped Phoenix (desert Southwest) and NOLA with the
-      already-grouped Houston (Gulf Coast).
-  Both _STATION_BIAS_HIGH/_STATION_BIAS_LOW (weather_markets.py:221-276)
-  and MARKET_STATION_MAP (metar.py:296-318) WERE correctly kept in sync
-  when these 2 cities were added -- this is specifically the two tables
-  above that were missed.
+Problem (remaining):
+  _HISTORICAL_SIGMA (weather_markets.py:2067-2086) has exactly 18 keys,
+  missing LasVegas/NewOrleans. get_historical_sigma()
+  (weather_markets.py:2097-2104) silently falls back to _DEFAULT_SIGMA=3.5
+  for these two, feeding directly into gaussian_probability() for every
+  trade analyzed -- i.e. every LV/NOLA trade uses a generic sigma instead
+  of a city-tuned one.
 
 What the fix looks like:
   Add LasVegas/NewOrleans entries to _HISTORICAL_SIGMA (compute from
   historical data the same way the other 18 were derived, not just copy the
-  default). Add both cities to _CORRELATED_CITY_GROUPS -- LV with Phoenix's
-  desert-Southwest group, NOLA with Houston's Gulf-Coast group (or as their
-  own standalone entries if the correlation isn't actually there -- worth a
-  real historical-correlation check, not just a geographic guess, before
-  grouping).
+  default). Note the [DATA-DRIVEN SIGMA FROM SETTLED HISTORY] feature
+  candidate below solves this as a side effect -- if that gets built, this
+  entry closes with it.
 
 Why not now:
-  - Signal degradation, not a crash or a live-money-losing bug -- generic
-    sigma/no correlation cap are safe-side defaults, not obviously wrong
-    ones.
-  - The correlation-grouping decision deserves a real data check (do
-    LV/NOLA actually correlate with their geographic neighbors in this
-    bot's own settled-trade history?) rather than just copying the
-    geographic-proximity logic used for the other groups.
+  - Signal degradation, not a crash or a live-money-losing bug -- the
+    generic sigma is a safe-side default, not an obviously wrong one.
 
 When to revisit:
   - Once LV/NOLA have enough settled trade history to compute a real
-    historical sigma and check real correlation, rather than guessing.
+    historical sigma, or as part of the data-driven-sigma feature below.
 
 [CLIMATE INDEX TABLES (AO/NAO/ENSO) MISSING 10 OF 20 CITIES]
 Priority: Low (signal degradation, safe-side default fallback already in
@@ -266,13 +249,14 @@ Problem:
     - METHOD_KELLY_GATE (config.py:213-215) -- the real per-method Kelly
       gate is a hardcoded local _METHOD_MIN_SAMPLES=50 in paper.py:517-527,
       unrelated to this field/env var.
-    - MIN_ARB_EDGE (config.py:226-228) -- consistency.py's arb-violation
-      finder (consistency.py:191-195) only filters guaranteed_edge > 0,
-      never compares against a minimum threshold. A docs plan
-      (docs/superpowers/plans/2026-06-27-category-c-position-management.md)
-      describes using MIN_ARB_EDGE for auto-placement, but that
-      auto-placement was never built -- consistency.find_violations() is
-      alert-only (main.py:59, cron.py:1006), never used for trading.
+    - MIN_ARB_EDGE (config.py:226-228) -- STALE CLAIM CORRECTED 2026-07-10:
+      arb auto-placement HAS since been built (main.py's _analyze_once arb
+      block, ~main.py:1542-1660, paper-only, with volume gates + $25
+      per-city exposure cap + live-gate check) -- but it gates on a
+      HARDCODED `v.guaranteed_edge < 0.05` (main.py:1602), not the config
+      field. So MIN_ARB_EDGE (default 0.03) is still fully inert, and the
+      fix is now trivial: replace the hardcoded 0.05 with the config field
+      (deciding deliberately whether 0.03 or 0.05 is the right default).
     - min_kelly_fraction (config.py:202-204) -- no Kelly-sizing code
       anywhere references a minimum-fraction floor.
 
@@ -334,25 +318,29 @@ Priority: Low (cleanup / decide-and-close, not urgent)
 Problem:
   4 functions in core trading files are fully implemented but have zero
   callers anywhere in the codebase (including tests):
-    - paper.slippage_kelly_scale() (paper.py:1629-1647) -- complete 4-tier
+    - paper.slippage_kelly_scale() (now paper.py:1843) -- complete 4-tier
       volume/OI-based Kelly multiplier. Referenced only in a docs plan
       (docs/superpowers/plans/2026-04-14-p7-market-realism.md:8) as if it
-      reduces Kelly sizing, but paper.py's actual sizing path
-      (paper.py:600-650) never calls it. Not to be confused with
-      estimate_slippage/slippage_adjusted_price (fill-price slippage),
-      which ARE wired in -- this is a different, unused mechanism.
-    - paper.undo_last_trade() (paper.py:2606-2645) -- complete admin/undo
+      reduces Kelly sizing, but paper.py's actual sizing path never calls
+      it (re-verified 2026-07-10, still zero production callers). Not to be
+      confused with estimate_slippage/slippage_adjusted_price (fill-price
+      slippage), which ARE wired in -- this is a different, unused
+      mechanism. See also the [LIQUIDITY-AWARE SIZING] feature candidate
+      below, which would wire this in.
+    - paper.undo_last_trade() (now paper.py:2849) -- complete admin/undo
       implementation (refunds cost, recomputes peak_balance by replaying
-      remaining trades), but unreachable: no CLI command in main.py, no
-      dashboard route in web_app.py, no test.
-    - tracker.get_calibration_by_season() (tracker.py:1560) -- full
+      remaining trades). UPDATE 2026-07-10: now HAS tests
+      (tests/test_paper.py:1806+, added in the 2026-07-09/10 review
+      batches) but is still unreachable in production: no CLI command in
+      main.py, no dashboard route in web_app.py.
+    - tracker.get_calibration_by_season() (now tracker.py:1562) -- full
       seasonal Brier/bias breakdown, zero callers, no test, no dashboard
       endpoint (sibling get_calibration_by_city IS wired into the
-      dashboard).
-    - tracker._fetch_ensemble_members_historical() (tracker.py:2175) --
+      dashboard). Re-verified 2026-07-10.
+    - tracker._fetch_ensemble_members_historical() (now tracker.py:2271) --
       full Open-Meteo archive-ensemble fetcher mirroring
       _fetch_previous_run_daily (which IS called from
-      backfill_emos_data), zero callers.
+      backfill_emos_data), zero callers. Re-verified 2026-07-10.
 
 What the fix looks like:
   For each: either wire it into a real call site (CLI command / dashboard
@@ -429,10 +417,11 @@ Priority: Low (cosmetic / documentation only)
 Problem:
   Several small, low-impact items surfaced during the same sweep, not worth
   individual entries but worth tracking together:
-    - weather_markets.py:6032 assigns _confidence_boost = 1.0 inside the
-      METAR-lock branch, but it's unconditionally overwritten at line 6081
-      before ever being read (first real read is line 6421) -- dead
+    - weather_markets.py:6144 assigns _confidence_boost = 1.0 inside the
+      METAR-lock branch, but it's unconditionally overwritten at line 6193
+      before ever being read (first real read is line 6533) -- dead
       assignment, no functional effect, just confusing to read.
+      (Line numbers re-verified 2026-07-10; previously 6032/6081/6421.)
     - code_review_plan.md's "Phase 5" features (cross-market arbitrage
       auto-execution, an intraday METAR 2pm sweep, dynamic edge threshold
       by market liquidity) were planned but none were ever built -- worth
@@ -445,19 +434,25 @@ Problem:
       drifted yet, but the moment a city is added via that mechanism,
       CITY_COORDS picks it up automatically while _CITY_TZ (used in 5
       places including settlement_monitor.py:65) would not.
-    - Stale "18 traded cities" comments in paper.py:169 and
-      settlement_monitor.py:62 (both should say 20, per the LasVegas/
-      NewOrleans additions).
+    - RESOLVED 2026-07-10: the stale "18 traded cities" comments are gone
+      -- paper.py's was removed outright (the rewritten group comment at
+      paper.py:278-282 correctly describes LV/NOLA), and
+      settlement_monitor.py:62's was reworded to acknowledge the LV/NOLA
+      additions. Nothing left to do on this item.
     - metar.py's module docstring (metar.py:2) still says "(Phase 4 stub)"
       despite the module having grown real staleness/plausibility checks,
       dynamic lock-in confidence, and ensemble sanity checks since.
-    - cron.py:1070,1093 hardcodes a second copy of the 3-model list that
-      weather_markets.py:1135 already defines -- confirmed cosmetic only
-      (only affects a log line's model count, never passed into the actual
-      fetch functions).
-    - backtest.py:32 and tracker.py:2231-2235 each independently hardcode
-      the "Previous Runs API" model-name list -- values agree today, no
-      test protects them, no shared source.
+      (Re-verified still stale 2026-07-10.)
+    - cron.py:1146,1169 (was 1070,1093) hardcodes a second copy of the
+      3-model list that weather_markets.py already defines -- confirmed
+      cosmetic only (only affects a log line's model count, never passed
+      into the actual fetch functions).
+    - backtest.py:32 (_PREV_RUN_MODELS) and tracker.py:2327
+      (_PREVIOUS_RUN_MODEL_MAP) each independently hardcode the "Previous
+      Runs API" model names -- no test protects them, no shared source.
+      (Note 2026-07-10: tracker's copy is now a dict keyed by ensemble
+      model, backtest's is a flat list -- shapes differ, drift between
+      them would be even harder to spot now.)
 
 What the fix looks like:
   Batch these into a single small cleanup pass: delete the dead assignment,
@@ -475,3 +470,341 @@ When to revisit:
   - Whenever weather_markets.py/paper.py/metar.py is next touched for other
     reasons -- fold in as a drive-by cleanup rather than a dedicated
     session.
+
+======================================================
+FEATURE CANDIDATES — 2026-07-10 feature-scouting session.
+Every "currently absent" claim below was verified against the code that day
+(grep + reading the call sites), not assumed. Ordered roughly by expected
+payoff within each group.
+======================================================
+
+[RESTING EXIT ORDERS + OCO ORDER GROUPS]
+Priority: High (live risk-management hole, not just an optimization)
+
+Problem:
+  All exits are poll-based: check_exit_targets()/check_model_exits()/
+  stop-losses only run when a cron or watch cycle happens to execute. On a
+  manual-cron cadence (e.g. ~3 runs/day during the Belgium trip) an open
+  position can sit through its stop level for hours with zero protection.
+  Kalshi's API supports order_groups (OCO — linked orders where one fill
+  auto-cancels the others) and a WebSocket `fill` channel; the bot uses
+  neither (kalshi_ws.py:301 subscribes only to ticker + orderbook_delta,
+  fills are discovered by polling _poll_pending_orders()).
+
+What the fix looks like:
+  When a live position opens, immediately rest a GTC sell at the take-profit
+  price, OCO-linked with a stop exit via order_groups. Subscribe to the WS
+  fill channel to replace/(augment) _poll_pending_orders polling. Exits then
+  execute continuously regardless of scan cadence, and resting exits get
+  maker pricing instead of taker.
+
+Why not now:
+  - Live order placement has never been exercised in production yet
+    (ENABLE_MICRO_LIVE=False); paper mode gets no benefit since paper exits
+    are inherently poll-simulated anyway.
+  - Needs the order-group API surface added to kalshi_client.py + lifecycle
+    handling (partial fills across a group, group cancel on settlement).
+
+When to revisit:
+  - Before or at live/micro-live activation — this should arguably be a
+    prerequisite for unattended live trading, not a follow-up.
+
+[MAKER EXECUTION UPGRADES — REPRICING + MAKER-AWARE FEE MODEL]
+Priority: High (systematically understated edge on every trade analyzed)
+
+Problem:
+  The live path already places GTC limit orders at the midpoint
+  (order_executor.py:626-643) — i.e. maker execution exists. But:
+  1. No repricing/chase logic exists anywhere (verified: zero hits for
+     reprice/amend/requote) — an unfilled order sits 24h (gtc_cancel_hours)
+     then cancels. Midpoint resting orders suffer adverse selection: they
+     fill preferentially when the market moves against the model.
+  2. kelly_fraction() (weather_markets.py:4361-4377) charges the 7% taker
+     fee on every trade's EV/sizing, while utils.py:59's own comment notes
+     "Maker (limit) orders pay 0%." The bot understates its net edge and
+     skips trades it could profitably take at maker pricing.
+  3. Fee formula shape is also off (conservative direction): it models "7%
+     of winnings, on wins"; Kalshi's real taker fee is 0.07 x p x (1-p)
+     charged upfront win-or-lose. Compounds with (2).
+  4. No fill-rate / time-to-fill / adverse-selection tracking exists, so
+     none of the above can be tuned empirically yet.
+
+What the fix looks like:
+  Reprice-or-cancel logic driven by the existing kalshi_ws.py book feed
+  (improve toward the ask as edge allows; cross as taker only when edge
+  clears the taker fee); pass an execution-style-aware fee_rate into
+  kelly_fraction()/net_ev instead of flat KALSHI_FEE_RATE; log fill latency
+  and post-fill price drift per order to measure adverse selection.
+
+Why not now:
+  - Fee-model change touches every EV/sizing calc — needs its own careful
+    pass with tests (same blast-radius class as PAPER_MIN_EDGE work).
+  - Adverse-selection tuning needs the fill-quality data that doesn't exist
+    yet — instrument first, then tune.
+
+When to revisit:
+  - Instrumentation half can ship anytime; the fee-model half ideally lands
+    before live activation so live sizing is correct from day one.
+
+[HISTORICAL MARKET-PRICE CAPTURE VIA CANDLESTICKS ENDPOINT]
+Priority: Medium-High (unlocks execution research the two entries above need)
+
+Problem:
+  Zero references to Kalshi's /markets/{ticker}/candlesticks endpoint (or
+  any price-history capture) exist in the codebase. The bot cannot answer
+  "does my edge decay as the market converges to the forecast — when is the
+  optimal entry?", cannot benchmark against real price paths (the current
+  "Follow market" backtest benchmark uses scan-time prices only), and
+  cannot measure maker-fill adverse selection.
+
+What the fix looks like:
+  Log OHLC candles for tracked markets (fetch per cron cycle, or backfill
+  on settlement); store in a new price_history table keyed by
+  ticker/period. Then: entry-timing analysis (edge vs hours-to-close),
+  real-price benchmark replay, and post-fill drift measurement.
+
+Why not now:
+  - Pure new instrumentation + storage; payoff is analytical, arrives only
+    after weeks of accumulated candles.
+
+When to revisit:
+  - Ship the capture early (it's cheap and data accumulates only from when
+    it ships); do the analysis passes once maker-execution work is picked
+    up.
+
+[FORECAST RUN-TO-RUN TREND SIGNAL]
+Priority: Medium (new alpha source, mostly existing plumbing)
+
+Problem:
+  The Open-Meteo Previous Runs API is already integrated — but only in
+  tracker.py (~2231) / backtest.py for EMOS backfill. The live path never
+  compares the current model run against the previous run. Run-to-run
+  revision carries signal: a forecast trending warmer across consecutive
+  runs tends to keep trending while markets anchor to the older number, and
+  high run-to-run jumpiness is a principled reason to widen sigma.
+
+What the fix looks like:
+  At forecast time, also fetch the prior run's value for the same
+  target date (existing Previous Runs plumbing), compute delta and a
+  short revision-trend series; feed as (a) a small directional lean in the
+  blend and/or (b) a sigma-widening term when jumpiness is high. Gate
+  behind tracked accuracy like every other signal source.
+
+Why not now:
+  - New signal needs its own paper-trade evaluation period before earning
+    real weight; adds one more fetch per city/date to the cron budget.
+
+When to revisit:
+  - Good standalone medium-size project; no prerequisites.
+
+[RICHER ML CALIBRATION FEATURES]
+Priority: Medium (model architecture is fine; the feature vector is the
+  bottleneck)
+
+Problem:
+  The GradientBoosting bias model trains on exactly [our_prob, month,
+  days_out, 0.0] (ml_bias.py:204) — four features, the fourth literally
+  always zero. Ensemble spread, ICON/GFS disagreement, data_quality score,
+  condition_type, and sigma-used are all computed at trade time and
+  discarded before training.
+
+What the fix looks like:
+  Thread 2-3 of the highest-value candidates (ensemble spread and model
+  disagreement first) through the predictions table into the training rows;
+  let the existing `features` importance command arbitrate which earn their
+  place. Do NOT add many at once — the 200-samples-per-city training gate
+  means feature count must stay small relative to data.
+
+Why not now:
+  - Needs schema addition + weeks of newly-logged rows before retraining
+    can use them (existing rows lack the new fields).
+
+When to revisit:
+  - Ship the logging side early (same "data accumulates only from when it
+    ships" logic as candlesticks); retrain when enough enriched rows exist.
+
+[GENERALIZED PER-MODEL ACCURACY TRACKING + NEW AI MODEL SOURCES]
+Priority: Medium (supersedes-and-extends [TRACK ECMWF FORECAST ACCURACY]
+  above — read that entry first)
+
+Problem:
+  The existing entry covers instrumenting ECMWF specifically. The general
+  version: per-model accuracy is stored as one hardcoded column per model
+  (icon_forecast_mean/gfs_forecast_mean), so every new source requires the
+  same multi-file plumbing again. Meanwhile free, unconsumed sources exist:
+  GEM EPS and UKMO ensembles on the same Open-Meteo ensemble API already
+  called, and Google WeatherNext (GraphCast/GenCast lineage) via BigQuery.
+  (Verified 2026-07-10: zero code references to gem/ukmo/weathernext.)
+
+What the fix looks like:
+  Build the plumbing once as a generic model->forecast_mean mapping (new
+  table or JSON column) instead of per-model columns; then adding any
+  source is config + fetch only, and each self-calibrates via the existing
+  learned-weight machinery. Note the research caveat: pure-AI models
+  underperform physics models on record-breaking heat/cold — keep physics
+  models in the blend and let learned weights arbitrate.
+
+Why not now:
+  - Same reasons as the ECMWF entry (multi-file instrumentation, weeks
+    before learned weights activate) — plus a schema-design decision
+    (generic table vs columns) that should be made once, deliberately.
+
+When to revisit:
+  - When picking up the ECMWF entry — decide then whether to do the generic
+    version instead of the one-model version, since the marginal cost is
+    small and it prevents a third round of this plumbing.
+
+[LIQUIDITY-AWARE SIZING + DYNAMIC EDGE THRESHOLD]
+Priority: Medium (consolidates two existing loose ends into one feature)
+
+Problem:
+  Two already-tracked fragments make one coherent feature:
+  - paper.slippage_kelly_scale() (paper.py:1843) is a complete 4-tier
+    volume/OI Kelly multiplier with zero callers (see [ORPHANED FUNCTIONS]).
+  - "Dynamic edge threshold by market liquidity" was planned in
+    code_review_plan.md Phase 5, never built (see [MINOR CLEANUP]).
+  Net effect today: a signal in a 5-contract-deep book is sized and gated
+  identically to one in a 5000-contract book.
+
+What the fix looks like:
+  Wire slippage_kelly_scale() into the sizing path (paper.py ~600-650);
+  scale the effective min-edge requirement up as book depth/volume drops
+  (thin books = your own fill moves the price = need more edge). Synergizes
+  with maker-execution work: thin books are where maker fills are slowest
+  and adverse selection worst.
+
+Why not now:
+  - Sizing-path changes need the usual careful blast-radius pass; better
+    tuned once fill-quality instrumentation (above) exists.
+
+When to revisit:
+  - Alongside or after the maker-execution upgrades.
+
+[DATA-DRIVEN SIGMA FROM SETTLED HISTORY + CLI-REPORT SETTLEMENT FETCH]
+Priority: Medium (sharpens every probability the bot emits; unblocks a
+  recorded deferral)
+
+Problem:
+  _HISTORICAL_SIGMA is a static 18-city table (missing LasVegas/NewOrleans
+  -> generic 3.5 default; see the LV/NOLA entry above); sigma feeds
+  gaussian_probability() on every trade. outcomes.settled_temp_f now exists
+  with real history but its only consumer is EMOS training. Separately, a
+  CLI-report-based settlement fetch (IEM afos API, city->WFO/pil table) was
+  designed and proven feasible 2026-07-05 but deferred pending "a consumer
+  for settled_temp_f accuracy" — this is that consumer. sigma_audit.py is
+  diagnostic-only (its own docstring: "no behavior changes").
+
+What the fix looks like:
+  Compute per-city (and per-season, matching the existing table's shape)
+  forecast-error sigma from settled_temp_f vs forecast_temp history; fall
+  back to the static table below a sample-size floor. Build the CLI-report
+  fetch (or the cheaper reactive variant: only on ASOS MISMATCH) so the
+  training data uses Kalshi's real settlement source. Fixes the LV/NOLA
+  sigma gap as a side effect.
+
+Why not now:
+  - Needs enough settled history per city/season to beat the static values
+    (check counts before starting); CLI fetch carries the known per-city
+    hardcoded-table risk documented in the 2026-07-05 deferral.
+
+When to revisit:
+  - Check settled_temp_f row counts per city; start when the biggest cities
+    clear a reasonable floor (~30+ per season).
+
+[JOINT FULL-LADDER BRACKET SELECTION]
+Priority: Medium-Low (real EV improvement, real design work)
+
+Problem:
+  Market analysis is per-bracket independent; nothing chooses the optimal
+  COMBINATION of sibling brackets for one city/date against the model's
+  full temperature distribution. (The arb auto-trade block in main.py:1542+
+  only fires on sum-to-1 violations — different mechanism.) Sequential
+  per-market Kelly with position caps is not the same as jointly allocating
+  across mutually-exclusive outcomes of one event.
+
+What the fix looks like:
+  Group candidate signals by event (city/date/series) before sizing; solve
+  the joint Kelly allocation across the group (mutually-exclusive outcomes
+  make this a clean simplex problem) instead of greedy per-market sizing.
+  Smallest useful version: within an event group, cap total exposure and
+  allocate proportionally to per-bracket edge rather than first-come.
+
+Why not now:
+  - Real sizing-math design work + touches the same order-placement path as
+    several entries above; sequence it after the execution work stabilizes.
+
+When to revisit:
+  - After maker-execution + liquidity-aware sizing land, when the sizing
+    path is next open anyway.
+
+[PUBLIC TRADE-FLOW SIGNAL]
+Priority: Low-Medium (cheap to capture, speculative value)
+
+Problem:
+  kalshi_ws.py subscribes only to ticker + orderbook_delta (line 301);
+  Kalshi's public `trade` channel (executed trades feed) is unused. Signed
+  taker flow between scans would show when someone with a faster pipeline
+  moved first on a model run — useful as a caution flag (widen required
+  edge) or confirmation (market converging toward our stale signal).
+
+What the fix looks like:
+  Add the trade channel to the WS subscription, accumulate signed flow per
+  ticker between scans, expose to analyze_trade() as a small adjustment or
+  gate input. Evaluate on paper before giving it any weight.
+
+Why not now:
+  - Value unproven; WS client currently only runs during watch mode, so
+    coverage between manual cron runs is zero anyway — worth more once the
+    bot runs continuously.
+
+When to revisit:
+  - Once loop/watch runs continuously again post-Belgium.
+
+[NWS AFD (AREA FORECAST DISCUSSION) PARSING]
+Priority: Low (stretch/novel — highest differentiation, least proven)
+
+Problem:
+  Each WFO publishes an AFD where human forecasters state confidence and
+  explicit disagreement with model guidance ("models overmixing, expect
+  highs 2-3F below guidance") — exactly the correction the recurring
+  NWS-bias investigations hunt for statistically, published free per city
+  per day. Nothing consumes it.
+
+What the fix looks like:
+  Fetch AFDs via the same IEM afos API already scoped for the CLI-report
+  fetch (shared city->WFO table — build once for both). LLM-extract a
+  per-city confidence score + directional lean vs guidance; feed as a
+  small bounded blend adjustment, gated behind tracked accuracy like any
+  other source.
+
+Why not now:
+  - Adds an LLM dependency + per-day API cost to the pipeline; extraction
+    quality needs its own evaluation before the signal can be trusted;
+    depends on the same WFO table as the CLI-report fetch (build together).
+
+When to revisit:
+  - Alongside the CLI-report fetch (shared infrastructure), or as a fun
+    standalone experiment scored in shadow mode first.
+
+[CITY-LOCAL AFTERNOON SAME-DAY SWEEP]
+Priority: Low (mostly covered by loop/watch when they run)
+
+Problem:
+  By early afternoon a day's high is substantially determined and METAR
+  lock-in gets very sharp, but there is no scan timed to each city's local
+  ~2pm. loop (every 4h) and watch (every 5min) cover this incidentally when
+  running; the manual-cron cadence does not.
+
+What the fix looks like:
+  A lightweight `cron --sameday-only` mode (skip multi-day scan + batch
+  prewarm; METAR + same-day markets only) cheap enough to run at each
+  city's local afternoon window, or an extra loop-mode wake timed to the
+  2pm ET / 2pm PT bands.
+
+Why not now:
+  - Marginal over a continuously-running loop; only meaningfully valuable
+    during manual-cadence periods like the current trip.
+
+When to revisit:
+  - If manual cadence continues long-term, or as a small quality-of-life
+    flag next time cron.py is open.

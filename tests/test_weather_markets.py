@@ -362,7 +362,11 @@ class TestModelWeights:
         ):
             w = _model_weights("NYC", month=7)
         assert "blended" not in w
-        assert set(w.keys()) == {"icon_seamless", "gfs_seamless", "ecmwf_aifs025_ensemble"}
+        assert set(w.keys()) == {
+            "icon_seamless",
+            "gfs_seamless",
+            "ecmwf_aifs025_ensemble",
+        }
 
 
 # ── TestNormalCdf ─────────────────────────────────────────────────────────────
@@ -1395,7 +1399,9 @@ class TestCityDetection:
 
     def test_las_vegas_title_detected(self):
         """'las vegas' in title → LasVegas even with a generic ticker."""
-        assert self._city("KXRAIN-26JUL04-2IN", "las vegas rain > 2 inches") == "LasVegas"
+        assert (
+            self._city("KXRAIN-26JUL04-2IN", "las vegas rain > 2 inches") == "LasVegas"
+        )
 
     def test_new_orleans_high_ticker_detected(self):
         """KXHIGHTNOLA → NewOrleans (previously untracked city)."""
@@ -1407,7 +1413,10 @@ class TestCityDetection:
 
     def test_new_orleans_title_detected(self):
         """'new orleans' in title → NewOrleans even with a generic ticker."""
-        assert self._city("KXRAIN-26JUL04-2IN", "new orleans rain > 2 inches") == "NewOrleans"
+        assert (
+            self._city("KXRAIN-26JUL04-2IN", "new orleans rain > 2 inches")
+            == "NewOrleans"
+        )
 
 
 class TestLearnedWeightsTTL:
@@ -1988,8 +1997,16 @@ class TestConsensusCacheKeyBetween:
         assert key_b645 != key_b665, "Cache keys for distinct buckets must differ"
 
         # Seed the cache with different results for the two buckets.
-        wm._CONSENSUS_CACHE[key_b645] = ((0.20, 0.22, 64.0, 64.5), time.monotonic())
-        wm._CONSENSUS_CACHE[key_b665] = ((0.55, 0.58, 66.0, 66.5), time.monotonic())
+        wm._CONSENSUS_CACHE[key_b645] = (
+            (0.20, 0.22, 64.0, 64.5),
+            time.monotonic(),
+            wm._CONSENSUS_CACHE_TTL,
+        )
+        wm._CONSENSUS_CACHE[key_b665] = (
+            (0.55, 0.58, 66.0, 66.5),
+            time.monotonic(),
+            wm._CONSENSUS_CACHE_TTL,
+        )
 
         r645 = wm._get_consensus_probs("NYC", today, condition_b645)
         r665 = wm._get_consensus_probs("NYC", today, condition_b665)
@@ -2073,3 +2090,227 @@ def test_model_disagreement_computation():
     flag2 = bool(disagree_f2 > 8.0)
     assert disagree_f2 == 3.0
     assert flag2 is False
+
+
+# ── TestDetectHedgeOpportunity ───────────────────────────────────────────────
+
+
+class TestDetectHedgeOpportunity:
+    """analyze_trade must surface 'city' in its result (previously missing
+    entirely) and detect_hedge_opportunity must match on target_date too,
+    not just city — both were previously silently broken."""
+
+    def test_analyze_trade_result_includes_city(self):
+        """analyze_trade's returned dict must include a 'city' key so
+        detect_hedge_opportunity can actually find a match (it previously had
+        neither 'city' nor '_city', so city was always None)."""
+        from weather_markets import detect_hedge_opportunity
+
+        analysis = {"city": "Chicago", "target_date": "2026-07-11"}
+        assert detect_hedge_opportunity(analysis, []) is False  # no open trades yet
+
+    def test_same_city_same_date_opposite_side_is_a_hedge(self):
+        from weather_markets import detect_hedge_opportunity
+
+        analysis = {
+            "city": "Chicago",
+            "target_date": "2026-07-10",
+            "recommended_side": "yes",
+        }
+        open_trades = [{"city": "Chicago", "target_date": "2026-07-10", "side": "no"}]
+        assert detect_hedge_opportunity(analysis, open_trades) is True
+
+    def test_same_city_different_date_is_not_a_hedge(self):
+        """A NO on tomorrow's market must NOT be flagged as a hedge of a YES
+        on today's market for the same city — they don't offset exposure."""
+        from weather_markets import detect_hedge_opportunity
+
+        analysis = {
+            "city": "Chicago",
+            "target_date": "2026-07-11",
+            "recommended_side": "no",
+        }
+        open_trades = [{"city": "Chicago", "target_date": "2026-07-10", "side": "yes"}]
+        assert detect_hedge_opportunity(analysis, open_trades) is False
+
+    def test_different_city_is_not_a_hedge(self):
+        from weather_markets import detect_hedge_opportunity
+
+        analysis = {
+            "city": "Chicago",
+            "target_date": "2026-07-10",
+            "recommended_side": "yes",
+        }
+        open_trades = [{"city": "Denver", "target_date": "2026-07-10", "side": "no"}]
+        assert detect_hedge_opportunity(analysis, open_trades) is False
+
+    def test_missing_city_returns_false(self):
+        from weather_markets import detect_hedge_opportunity
+
+        assert detect_hedge_opportunity({}, [{"city": "Chicago"}]) is False
+
+
+# ── TestMetarLockInLowMarketAsymmetry ────────────────────────────────────────
+
+
+class TestMetarLockInLowMarketAsymmetry:
+    """A LOW market's running daily-min-so-far can only DECREASE as the day
+    progresses — 'min already fell below threshold-margin' is monotone-safe,
+    but 'min has stayed above threshold+margin' is not (evening cooling can
+    still reverse it). Only the unsafe direction should be rejected."""
+
+    def _call(self, min_temp_f, threshold, cond_type, local_hour=16):
+        from datetime import UTC, datetime
+        from unittest.mock import MagicMock, patch
+
+        import metar as _metar
+        import weather_markets as wm
+
+        today = datetime.now(UTC).date()
+        fake_obs_time = MagicMock()
+        fake_obs_local = MagicMock(hour=local_hour)
+        fake_obs_local.date.return_value = today
+        fake_obs_time.astimezone.return_value = fake_obs_local
+
+        with patch.object(wm, "_metar_station_for_city", return_value="KJFK"):
+            with patch.object(
+                _metar,
+                "fetch_metar",
+                return_value={
+                    "current_temp_f": min_temp_f,
+                    "min_temp_f": min_temp_f,
+                    "max_temp_f": min_temp_f + 20.0,
+                    "obs_time": fake_obs_time,
+                },
+            ):
+                return wm._metar_lock_in(
+                    city="NYC",
+                    target_date=today,
+                    condition={"type": cond_type, "threshold": threshold},
+                    ticker="KXLOWNY-26JUL10-T40",
+                )
+
+    def test_low_market_above_still_above_margin_is_not_locked(self):
+        """'low above 40', running min=45 (>= 40+3 margin): NOT monotone-safe
+        — the min could still fall below 40 later tonight. Must reject."""
+        locked, _prob, _details = self._call(
+            min_temp_f=45.0, threshold=40.0, cond_type="above"
+        )
+        assert locked is False
+
+    def test_low_market_above_already_below_margin_is_locked(self):
+        """'low above 40', running min=30 (<= 40-3 margin): monotone-safe —
+        the min can only stay at or below 30. Safe to lock NO."""
+        locked, _prob, details = self._call(
+            min_temp_f=30.0, threshold=40.0, cond_type="above"
+        )
+        assert locked is True
+        assert details.get("outcome") == "no"
+
+    def test_low_market_below_still_above_margin_is_not_locked(self):
+        """'low below 60', running min=65 (>= 60+3 margin): NOT monotone-safe
+        for the NO outcome — the min could still fall below 60 later. Reject."""
+        locked, _prob, _details = self._call(
+            min_temp_f=65.0, threshold=60.0, cond_type="below"
+        )
+        assert locked is False
+
+    def test_low_market_below_already_below_margin_is_locked(self):
+        """'low below 60', running min=50 (<= 60-3 margin): monotone-safe —
+        the min already fell below 60 and can only stay there or go lower."""
+        locked, _prob, details = self._call(
+            min_temp_f=50.0, threshold=60.0, cond_type="below"
+        )
+        assert locked is True
+        assert details.get("outcome") == "yes"
+
+
+# ── TestMosBlendNoCrossVariableFallback ──────────────────────────────────────
+
+
+class TestMosBlendNoCrossVariableFallback:
+    """A LOW market (var='min') with no MOS minimum must skip the MOS blend
+    entirely, not silently substitute the daily MAXIMUM."""
+
+    def _enriched_low_market(self):
+        from datetime import date, timedelta
+
+        target = date.today() + timedelta(days=1)
+        return {
+            "ticker": f"KXLOWCHI-{target.strftime('%d%b%y').upper()}-T60",
+            "title": "Chicago low above 60Â°F",
+            "_city": "Chicago",
+            "_date": target,
+            "_hour": None,
+            "_forecast": {
+                "high_f": 85.0,
+                "low_f": 62.0,
+                "precip_in": 0.0,
+                "date": target.isoformat(),
+                "city": "Chicago",
+                "models_used": 3,
+                "high_range": (83.0, 87.0),
+            },
+            "yes_bid": 0.45,
+            "yes_ask": 0.55,
+            "no_bid": 0.45,
+            "close_time": "",
+            "series_ticker": "KXLOWCHI",
+            "volume": 500,
+            "open_interest": 200,
+        }
+
+    def test_mos_missing_min_does_not_use_max_as_substitute(self):
+        """MOS returns max_temp_f=85 (daily high) but min_temp_f=None (no
+        overnight-min period available). blended_prob must NOT be pulled
+        toward P(condition | 85Â°F-centered distribution) for this low market
+        — that would be scoring the wrong variable entirely."""
+        from unittest.mock import MagicMock, patch
+
+        import weather_markets as wm
+
+        enriched = self._enriched_low_market()
+
+        _fake_mos = MagicMock()
+        _fake_mos.get_mos_station = lambda city: "KMDW"
+        _fake_mos.fetch_mos_best = lambda station, target_date=None: {
+            "max_temp_f": 85.0,
+            "min_temp_f": None,
+            "sigma": 3.5,
+        }
+
+        with (
+            patch.object(
+                wm,
+                "get_ensemble_temps",
+                return_value=[58.0, 59.0, 60.0, 61.0, 62.0] * 6,
+            ),
+            patch("weather_markets.fetch_temperature_nbm", return_value=60.0),
+            patch("weather_markets.fetch_temperature_ecmwf", return_value=60.0),
+            patch("weather_markets.get_ensemble_members", return_value=[]),
+            patch("weather_markets.climatological_prob", return_value=0.5),
+            patch("weather_markets.nws_prob", return_value=None),
+            patch("weather_markets.get_live_observation", return_value=None),
+            patch("weather_markets.temperature_adjustment", return_value=0.0),
+            patch.object(wm, "_SEASONAL_WEIGHTS", {}),
+            patch.object(wm, "_CONDITION_WEIGHTS", {}),
+            patch.object(wm, "_CITY_WEIGHTS", {}),
+            patch.object(
+                wm, "_get_consensus_probs", return_value=(None, None, None, None)
+            ),
+            patch.object(wm, "_metar_lock_in", return_value=(False, 0.0, {})),
+            patch("nws.get_live_observation", return_value=None),
+            patch("climatology.persistence_prob", return_value=0.3),
+            patch("mos.get_mos_station", _fake_mos.get_mos_station),
+            patch("mos.fetch_mos_best", _fake_mos.fetch_mos_best),
+        ):
+            result = wm.analyze_trade(enriched)
+
+        assert result is not None
+        # With min_temp_f=None the MOS blend must be skipped entirely, so
+        # "mos" must not appear as a nonzero blend source.
+        blend = result.get("blend_sources", {})
+        assert blend.get("mos", 0.0) == 0.0, (
+            f"MOS blend fired with a substituted max_temp_f instead of being "
+            f"skipped for missing min_temp_f: blend_sources={blend}"
+        )
