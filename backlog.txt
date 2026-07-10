@@ -1,6 +1,68 @@
 BACKLOG — future improvements to implement when ready
 ======================================================
 
+[URGENT -- VERIFY BEFORE LIVE ACTIVATION: KALSHI ORDER-WRITE ENDPOINTS MOVING TO /portfolio/events/orders]
+Priority: High -- verify before resuming live trading (~2026-07-30 return), not a
+  someday item. Found 2026-07-10 via Kalshi's own API changelog; refined
+  2026-07-10 via a second research pass (changelog re-fetch + independent
+  third-party SDK docs cross-check, both agree).
+
+Problem:
+  kalshi_client.py's live order-placement and order-cancellation code
+  targets endpoints Kalshi is migrating off of. The split is "reads stay,
+  writes move," not a wholesale change:
+    - GET /portfolio/orders (kalshi_client.py:313, list resting/executed
+      orders) and GET /portfolio/orders/{order_id} (kalshi_client.py:423,
+      get single order) are UNAFFECTED -- reads stay on this path
+      permanently per Kalshi's own docs.
+    - POST /portfolio/orders (kalshi_client.py:364, place_order) and
+      DELETE /portfolio/orders/{order_id} (kalshi_client.py:427,
+      cancel_order) are the legacy WRITE endpoints being deprecated. The
+      new V2 write endpoints are POST /portfolio/events/orders and
+      DELETE /portfolio/events/orders/{order_id} (confirmed via both
+      Kalshi's changelog and an independent third-party SDK
+      -- github.com/TexasCoding/kalshi-python-sdk -- whose docs describe
+      the identical old-path/new-path split).
+  This is NOT just a URL rename: Kalshi's changelog describes the new V2
+  write endpoints as using "a bid/ask single-book shape with fixed-point
+  dollar prices and lightweight responses" -- a different request/response
+  shape. The third-party SDK's docs show the new response includes
+  order_id, remaining_count, fill_count, reduced_by, ts_ms -- diff this
+  against what kalshi_client.py currently parses out of the old response
+  before assuming the migration is small.
+  Timeline: legacy write rate-limit costs escalated to 10x V2-equivalent by
+  2026-06-04; deprecation was announced for "sometime between June 18 and
+  June 25, 2026." No changelog entry confirms the deprecation was actually
+  enforced/completed -- legacy writes may still work today, just at 10x
+  rate-limit cost, with no confirmed grace period remaining. No real order
+  has ever been placed by this bot yet (ENABLE_MICRO_LIVE=False), so this
+  has not caused a live incident.
+
+What the fix looks like:
+  1. Quick check first: hit place_order/cancel_order against DEMO_BASE
+     (https://demo-api.kalshi.co/trade-api/v2) and see whether they still
+     succeed, return a deprecation error, or already 404/reject.
+  2. Migrate kalshi_client.py's place_order (line 364) and cancel_order
+     (line 427) to POST/DELETE /portfolio/events/orders[/{order_id}].
+     Read Kalshi's live API reference for the exact current request body
+     (fixed-point dollar prices, bid/ask single-book shape) and response
+     field names before writing the migration -- do not assume the old
+     request/response dict shape carries over unchanged.
+  3. Leave the two GET /portfolio/orders* call sites (line 313, 423) alone
+     -- they are not affected by this migration.
+  4. While in there, evaluate the new orderbook_delta WebSocket
+     get_snapshot action (see FEATURE CANDIDATES section below) since it's
+     adjacent surface area.
+
+Why not now (only reason to defer, not to skip):
+  - TRADING_PAUSED=true and ENABLE_MICRO_LIVE=False mean nothing is
+    currently broken in production -- but this should be resolved before
+    either flag flips, not discovered live when it does.
+
+When to revisit:
+  - Before the Belgium trip ends (~2026-07-30) and live trading is
+    considered for resumption. This is a hard prerequisite, not a nice-to-have.
+
 [HOURLY-DIRECTIONAL TEMPERATURE MARKETS — KXTEMPxxxH]
 Priority: Low/Medium (one city has real live volume right now; the rest don't)
 
@@ -188,6 +250,39 @@ When to revisit:
   - Once LV/NOLA have enough settled trade history to compute a real
     historical sigma, or as part of the data-driven-sigma feature below.
 
+[OPEN-METEO ENSEMBLE MEAN API -- SIMPLER/CHEAPER THAN CURRENT MEMBER-BY-MEMBER FETCH]
+Priority: Medium (efficiency + data-quality improvement, not a bug fix)
+
+Problem:
+  Open-Meteo launched an Ensemble Mean API in March 2026 that returns mean
+  and spread (standard deviation) directly per ensemble model, computed
+  server-side from individual members. This bot's current approach
+  (weather_markets.py's _model_prob_and_mean()/get_ensemble_temps(), used
+  for icon_seamless/gfs_seamless and, per the TRACK ECMWF entry above,
+  potentially ecmwf_aifs025_ensemble) fetches every individual ensemble
+  member and computes mean/spread itself. Found 2026-07-10 via web search,
+  not yet verified against the live Open-Meteo endpoint or this repo's
+  actual fetch code in detail.
+
+What the fix looks like:
+  Evaluate replacing the individual-member fetch + manual mean/spread
+  calculation with a direct call to the Ensemble Mean API for the models it
+  covers. Verify the returned spread/std-dev matches (or is compatible
+  with) what gaussian_probability()/_HISTORICAL_SIGMA expect before
+  switching -- this is a data-source change feeding live probability
+  calculations, not a cosmetic refactor.
+
+Why not now:
+  - Unverified: needs a direct comparison against the current member-fetch
+    approach (same city/date, both methods) before trusting it feeds
+    probability calculations correctly.
+  - Efficiency/simplification, not a bug fix -- no urgency.
+
+When to revisit:
+  - Next time the ensemble-fetch code in weather_markets.py is touched for
+    other reasons (e.g. the TRACK ECMWF / GENERALIZED PER-MODEL ACCURACY
+    entries), evaluate switching then rather than as a standalone change.
+
 [CLIMATE INDEX TABLES (AO/NAO/ENSO) MISSING 10 OF 20 CITIES]
 Priority: Low (signal degradation, safe-side default fallback already in
   place)
@@ -360,6 +455,85 @@ When to revisit:
   - Low priority housekeeping -- next general cleanup pass, or when
     picking up the docs plan that references slippage_kelly_scale.
 
+[MIXED-TIMESTAMP-FORMAT BUG CLASS -- RECURRING, NO ROOT-CAUSE FIX]
+Priority: Low-Medium (individually low-impact so far, but a well-established
+  recurring pattern -- fifth occurrence would not be surprising)
+
+Problem:
+  A 2026-07-10 Fable adversarial review of tracker.py found the *identical*
+  bug three separate times in one pass: get_brier_over_time,
+  get_model_brier_scores, and get_recent_city_correlations each built a
+  Python .isoformat() cutoff ('...T...+00:00') and compared it
+  lexicographically against a column written by SQLite's datetime('now')
+  ('YYYY-MM-DD HH:MM:SS') -- silently dropping the entire boundary day every
+  time, since ' ' (0x20) < 'T' (0x54) in a TEXT comparison. This is the exact
+  same bug class the v22 migration already fixed once for
+  outcomes.settled_at (see the migration's own comment: "Mixed formats
+  corrupt date-range queries that rely on lexicographic order"). Four
+  independent occurrences of one mistake in the same file means a fifth is
+  a when, not an if, absent a structural fix. (get_recent_city_correlations
+  and get_model_brier_scores were fixed in the same 2026-07-10 session;
+  get_brier_over_time's cutoff bug was found MEDIUM-confirmed and is queued
+  for its own fix pass.)
+
+What the fix looks like:
+  Either centralize all "N days/weeks ago" cutoffs through one helper
+  (e.g. _sql_cutoff(days) returning SQLite-format text, or pushing the
+  cutoff into SQL via datetime('now', ? || ' days') the way
+  get_member_accuracy/get_model_weights already do) instead of hand-rolling
+  (datetime.now(UTC) - timedelta(...)).isoformat() at each call site, or add
+  a cheap regression test that greps tracker.py for .isoformat() feeding a
+  SQL bind parameter and fails the build/pre-commit hook.
+
+Why not now:
+  - Each individual instance found so far has been LOW/MEDIUM severity, not
+    a live-trading-critical bug -- this is about stopping the pattern, not
+    an urgent fix.
+  - A real fix (the shared-helper version) touches every date-cutoff query
+    in the file -- worth its own careful pass with tests, not a drive-by.
+
+When to revisit:
+  - Next time tracker.py is opened for other reasons, or the next time this
+    exact bug shape is found a fifth time -- at that point the case for the
+    structural fix (not just another one-off patch) becomes hard to ignore.
+
+[NO AUTOMATED GUARD AGAINST CONFIG-DIVERGENCE / ORPHANED-RESOURCE DRIFT]
+Priority: Low-Medium (tooling investment; every instance so far has been
+  caught manually, after the fact)
+
+Problem:
+  Between the "MORE INERT config.py FIELDS" entry above (4 confirmed
+  config.py/utils.py divergence bugs: BREAKEVEN_TRIGGER_PCT,
+  MAX_SAME_DAY_SPEND, PAPER_MIN_EDGE, and the current round of 5 more) and
+  the duplicate-dict pattern documented across mos.py/settlement_monitor.py/
+  weather_markets.py (4 instances, some already consolidated), this project
+  has hit the same "one shared resource, many consumers, one gets missed"
+  bug class seven-plus times. Every single instance was caught by a manual
+  grep sweep during an unrelated session, never by CI or a standing test.
+
+What the fix looks like:
+  A small standalone test module that (a) walks every BotConfig field
+  (config.py) and asserts it has at least one real call site outside
+  config.py/utils.py/tests/ -- failing loudly (naming the field) the moment
+  a new field is added without being wired in, mirroring the manual grep
+  that has caught every instance so far; and (b) runs a dead-code scan
+  (e.g. vulture) scoped to the core trading files (paper.py, tracker.py,
+  weather_markets.py) as a CI/pre-commit check rather than a periodic
+  manual sweep, to catch the next orphaned-function instance automatically.
+
+Why not now:
+  - Tooling investment, not a bug fix -- no live behavior changes.
+  - Needs care to avoid false positives (some BotConfig fields are
+    legitimately read only by config.py's own validation, e.g. the "should
+    this be wired up or deleted" undecided fields from the round-4 entry
+    above) -- the test needs an explicit allowlist for those, not a blind
+    call-site count.
+
+When to revisit:
+  - Cheap relative to how many sessions this exact pattern has already
+    eaten -- a reasonable candidate for the next slow/low-stakes session,
+    not something to wait indefinitely on.
+
 [TEST COVERAGE GAPS -- alerts.py, PAPER.PY METRICS, calibration.py]
 Priority: Low-Medium (matches an already-recognized "shipped with zero
   correctness tests" pattern in this project)
@@ -497,6 +671,17 @@ What the fix looks like:
   fill channel to replace/(augment) _poll_pending_orders polling. Exits then
   execute continuously regardless of scan cadence, and resting exits get
   maker pricing instead of taker.
+
+  Note (found 2026-07-10 via web search, not yet verified in detail):
+  Kalshi's market-maker program pays rebates up to 1% (capped $7,000/week)
+  to accounts meeting defined quoting/volume requirements. Once this bot
+  rests limit orders instead of always taking, it may become MM-eligible --
+  worth evaluating the specific quoting/volume thresholds once this entry
+  ships, as a potential revenue angle on top of the risk-management benefit.
+  Also see the endpoint-deprecation entry at the top of this file: Kalshi's
+  order-mutation endpoints (used here for placing/canceling the resting
+  exit orders) are being deprecated -- confirm the migration there before
+  building new order-group logic on top of the old endpoints.
 
 Why not now:
   - Live order placement has never been exercised in production yet
@@ -736,6 +921,31 @@ Why not now:
 When to revisit:
   - After maker-execution + liquidity-aware sizing land, when the sizing
     path is next open anyway.
+
+[WEBSOCKET orderbook_delta get_snapshot -- SIMPLER BOOK INITIALIZATION]
+Priority: Low (nice-to-have simplification, not a bug)
+
+Problem:
+  Kalshi added a get_snapshot action to update_subscription on the
+  orderbook_delta WebSocket channel (April 2026): it returns a one-off
+  orderbook_snapshot response for requested markets without subscribing to
+  them or affecting the existing delta stream. Found 2026-07-10 via web
+  search, not yet checked against kalshi_ws.py's current book-init logic in
+  detail.
+
+What the fix looks like:
+  If kalshi_ws.py currently initializes book state via a separate REST call
+  before/alongside the WS delta subscription, evaluate replacing that with
+  get_snapshot -- one fewer request type to maintain, same data source as
+  the live delta stream.
+
+Why not now:
+  - Unverified against this repo's actual current book-init code path;
+    purely a simplification if it applies, no functional gap being closed.
+
+When to revisit:
+  - Alongside the RESTING EXIT ORDERS + OCO entry above (same file,
+    adjacent surface area) or whenever kalshi_ws.py is next touched.
 
 [PUBLIC TRADE-FLOW SIGNAL]
 Priority: Low-Medium (cheap to capture, speculative value)
