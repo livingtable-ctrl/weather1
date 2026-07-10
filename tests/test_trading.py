@@ -1594,7 +1594,12 @@ def test_cmd_readiness_fails_when_brier_above_threshold(monkeypatch, capsys):
 
     monkeypatch.setattr(
         "backtest.run_backtest",
-        lambda *a, **kw: {"brier": 0.28, "roc_auc": 0.65, "n_trades": 120},
+        lambda *a, **kw: {
+            "train_brier": 0.28,
+            "val_brier": 0.28,
+            "val_brier_unreliable": False,
+            "n_markets": 120,
+        },
     )
     monkeypatch.setattr("paper.get_max_drawdown_pct", lambda: 0.05)
     monkeypatch.setattr(circuit_breaker.flash_crash_cb, "_cooldowns", {})
@@ -1607,7 +1612,7 @@ def test_cmd_readiness_fails_when_brier_above_threshold(monkeypatch, capsys):
 
 
 def test_cmd_readiness_passes_when_all_gates_clear(monkeypatch, capsys):
-    """cmd_readiness returns True only when all 5 gates pass."""
+    """cmd_readiness returns True only when all 4 gates pass."""
     from unittest.mock import MagicMock
 
     import circuit_breaker
@@ -1615,7 +1620,12 @@ def test_cmd_readiness_passes_when_all_gates_clear(monkeypatch, capsys):
 
     monkeypatch.setattr(
         "backtest.run_backtest",
-        lambda *a, **kw: {"brier": 0.18, "roc_auc": 0.67, "n_trades": 120},
+        lambda *a, **kw: {
+            "train_brier": 0.18,
+            "val_brier": 0.18,
+            "val_brier_unreliable": False,
+            "n_markets": 120,
+        },
     )
     monkeypatch.setattr("paper.get_max_drawdown_pct", lambda: 0.05)
     monkeypatch.setattr(circuit_breaker.flash_crash_cb, "_cooldowns", {})

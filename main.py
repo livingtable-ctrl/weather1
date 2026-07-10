@@ -346,8 +346,6 @@ def _ascii_chart(
     min_v = min(values)
     max_v = max(values)
     span = max_v - min_v
-    if span == 0:
-        span = 1.0  # avoid division by zero
 
     # Downsample or upsample to fit width columns
     n = len(values)
@@ -359,11 +357,21 @@ def _ascii_chart(
 
     # Build the grid row by row (top = high value)
     lines: list[str] = []
+    mid_row = (height + 1) // 2
     for row in range(height, 0, -1):
-        threshold = min_v + (row / height) * span
-        row_str = ""
-        for val in cols:
-            row_str += "█" if val >= threshold else " "
+        if span == 0:
+            # Flat series — draw a single horizontal line at mid-height.
+            # The old span=1.0 substitution made every row's threshold
+            # exceed every value, so a flat series rendered as a fully
+            # blank grid despite the docstring's claim of "a flat line".
+            row_str = ("█" if row == mid_row else " ") * len(cols)
+        else:
+            # (row - 1), not row, so the bottom row's threshold equals
+            # min_v exactly — previously it was min_v + span/height,
+            # which meant the series minimum was never drawn on any
+            # chart (flat or not).
+            threshold = min_v + ((row - 1) / height) * span
+            row_str = "".join("█" if val >= threshold else " " for val in cols)
         # Y axis label on leftmost row and bottom row
         if row == height:
             label_str = f"${max_v:.0f} "
@@ -521,6 +529,10 @@ def validate_api_key(client: KalshiClient) -> bool:
         else:
             print(yellow(f"  ⚠ Could not verify credentials: {e}"))
             print(dim("  Continuing anyway — may fail on authenticated endpoints.\n"))
+            # Message says "continuing anyway" — return value must match, or
+            # the sole caller (cmd_balance) silently aborts on a transient
+            # network error while telling the user it's proceeding.
+            return True
         return False
 
 
@@ -538,6 +550,8 @@ _PERMANENT_DATA_FILES = {
     "learned_weights.json",
     "learned_correlations.json",
     "temperature_scale.json",
+    "emos_params.json",
+    "correlations.json",
 }
 
 
@@ -689,6 +703,11 @@ def auto_backup() -> None:
                         cloud_backup(dst)  # #105: optional S3 upload
                     except Exception:
                         pass
+                elif dst.suffix == ".db":
+                    # verify_db_backup() existed but was never wired in here —
+                    # predictions.db backups rotated through the 30-day
+                    # retention window with zero integrity checking.
+                    verify_db_backup(dst)
             except Exception:
                 pass
     # #103: Prune — keep only the 30 most recent backups per file stem
@@ -809,7 +828,7 @@ def cmd_watch_settle(client: KalshiClient, args: list[str] | None = None) -> Non
         sync_outcomes(client)
         settled = auto_settle_paper_trades(client)
         if settled:
-            print(green(f"[watch-settle] Settled {settled} trade(s)."))
+            print(green(f"[watch-settle] Settled {len(settled)} trade(s)."))
 
         remaining = _pending()
         if not remaining:
@@ -1555,6 +1574,17 @@ def _analyze_once(
 
             from paper import place_paper_order as _arb_ppo
 
+            # Tickers with an existing open position will hit
+            # place_paper_order's duplicate-open-position guard on whichever
+            # leg touches them — most persistently when the bot already
+            # holds a directional position on sell_ticker. Skip those
+            # violations up front instead of placing leg1, failing leg2,
+            # and unwinding leg1 again on every single watch/cron cycle
+            # for as long as the violation persists.
+            _arb_open_tickers = {
+                t["ticker"] for t in _open_trades if not t.get("settled")
+            }
+
             for v in violations:
                 print(
                     green(
@@ -1596,10 +1626,21 @@ def _analyze_once(
                         )
                     )
                     continue
+                if (
+                    v.buy_ticker in _arb_open_tickers
+                    or v.sell_ticker in _arb_open_tickers
+                ):
+                    print(
+                        dim(
+                            f"  [Arb] Skipped — {v.buy_ticker} or {v.sell_ticker} "
+                            "already has an open position"
+                        )
+                    )
+                    continue
                 try:
                     yes_price = max(0.01, min(0.99, v.buy_prob))
                     no_price = max(0.01, min(0.99, 1.0 - v.sell_prob))
-                    _arb_ppo(
+                    _arb_leg1 = _arb_ppo(
                         v.buy_ticker,
                         "yes",
                         1,
@@ -1607,14 +1648,53 @@ def _analyze_once(
                         thesis="consistency-arb",
                         city=_arb_city or None,
                     )
-                    _arb_ppo(
-                        v.sell_ticker,
-                        "no",
-                        1,
-                        no_price,
-                        thesis="consistency-arb",
-                        city=_arb_city or None,
-                    )
+                    try:
+                        _arb_ppo(
+                            v.sell_ticker,
+                            "no",
+                            1,
+                            no_price,
+                            thesis="consistency-arb",
+                            city=_arb_city or None,
+                        )
+                    except Exception as _arb_leg2_exc:
+                        # Second leg failed after the first succeeded — this
+                        # is no longer a hedged arb, it's a naked directional
+                        # bet mislabeled "consistency-arb". Unwind the first
+                        # leg immediately instead of leaving it open and
+                        # undercounting city exposure for later violations.
+                        _unwound = False
+                        try:
+                            import paper as _paper_arb
+
+                            _paper_arb.close_paper_early(_arb_leg1["id"], yes_price)
+                            _unwound = True
+                        except Exception as _unwind_exc:
+                            # Don't claim success when the unwind itself
+                            # failed — that leaves a naked leg open with the
+                            # console asserting the opposite of reality.
+                            _log.warning(
+                                "[Arb] Failed to unwind %s leg #%s after leg2 failure: %s",
+                                v.buy_ticker,
+                                _arb_leg1.get("id"),
+                                _unwind_exc,
+                            )
+                        if _unwound:
+                            print(
+                                red(
+                                    f"  [Arb] Second leg failed ({_arb_leg2_exc}) — "
+                                    f"unwound the {v.buy_ticker} YES leg to avoid a naked position."
+                                )
+                            )
+                        else:
+                            print(
+                                red(
+                                    f"  [Arb] Second leg failed ({_arb_leg2_exc}) — "
+                                    f"AND unwind of the {v.buy_ticker} YES leg also failed. "
+                                    "A naked position may remain open — check manually."
+                                )
+                            )
+                        continue
                     _arb_city_cost[_arb_city] = (
                         _arb_city_cost.get(_arb_city, 0.0) + yes_price + no_price
                     )
@@ -1733,7 +1813,14 @@ def _resolve_price(client: KalshiClient, ticker: str, side: str) -> float | None
     try:
         market = client.get_market(ticker)
         prices = parse_market_price(market)
-        p = prices["yes_ask"] if side == "yes" else prices["no_bid"]
+        # NO entry is at no_ask = 1 - yes_bid, not the raw API no_bid
+        # (= 1 - yes_ask, the price a NO *seller* receives) — same fix
+        # applied elsewhere in weather_markets.py (search "L8-A / L2-A").
+        p = (
+            prices["yes_ask"]
+            if side == "yes"
+            else (1.0 - prices["yes_bid"] if prices["yes_bid"] > 0 else 0.0)
+        )
         if p and p > 0:
             return p
         # Fall back to mid-price when no ask/bid is present
@@ -1911,6 +1998,66 @@ def _quick_paper_buy(client: KalshiClient) -> None:
                 except Exception:
                     qty = 0
 
+            # Shared pre-trade checks (position limits + large-bet confirm) —
+            # applies to BOTH the real-money maker path and the paper taker
+            # path below. Previously the maker branch placed its order and
+            # returned before either check ran, letting a live maker order
+            # bypass every city/date, directional, and correlated-group
+            # exposure cap despite the comment above claiming otherwise.
+            if qty and qty > 0:
+                _price_for_checks = (
+                    maker_price if (use_maker and maker_price is not None) else price
+                )
+                try:
+                    from paper import check_position_limits as _cpl
+
+                    _limit_check = _cpl(
+                        ticker,
+                        qty,
+                        _price_for_checks,
+                        city=city,
+                        target_date_str=tdate_str,
+                        side=side,
+                    )
+                    if not _limit_check.get("ok", True):
+                        print(
+                            red(
+                                f"  Position limit check failed: {_limit_check.get('reason', 'limit exceeded')}"
+                            )
+                        )
+                        return
+                except Exception as _limit_exc:
+                    # Silent before 2026-07-09 -- if check_position_limits()
+                    # itself raised (e.g. a corrupt paper_trades.json), the
+                    # limit check silently no-opped with no trace. Still
+                    # allows the order through on error (fail open, matching
+                    # this call site's existing behavior), but now visible.
+                    _log.warning(
+                        "check_position_limits failed for %s, skipping limit check: %s",
+                        ticker,
+                        _limit_exc,
+                    )
+
+                from paper import get_balance as _gb_qpb
+
+                _cost_qpb = qty * _price_for_checks
+                _balance_qpb = _gb_qpb()
+                if _balance_qpb > 0 and _cost_qpb > _balance_qpb * 0.03:
+                    _pct_qpb = _cost_qpb / _balance_qpb * 100
+                    _confirm_large = (
+                        input(
+                            yellow(
+                                f"  Heads up: this bet is ${_cost_qpb:.2f} ({_pct_qpb:.1f}% of your ${_balance_qpb:.2f} balance). "
+                                f"Continue? (y/N): "
+                            )
+                        )
+                        .strip()
+                        .lower()
+                    )
+                    if _confirm_large != "y":
+                        print(dim("  Cancelled."))
+                        return
+
             # Maker order (real order, not paper) — only if qty is specified
             if use_maker and maker_price is not None and qty and qty > 0:
                 # Gate on the client's own base_url, not a KALSHI_ENV read —
@@ -1960,57 +2107,8 @@ def _quick_paper_buy(client: KalshiClient) -> None:
                 return
 
             if qty and qty > 0:
-                # Check position limits before placing
-                try:
-                    from paper import check_position_limits as _cpl
-
-                    _limit_check = _cpl(
-                        ticker,
-                        qty,
-                        price,
-                        city=city,
-                        target_date_str=tdate_str,
-                        side=side,
-                    )
-                    if not _limit_check.get("ok", True):
-                        print(
-                            red(
-                                f"  Position limit check failed: {_limit_check.get('reason', 'limit exceeded')}"
-                            )
-                        )
-                        return
-                except Exception as _limit_exc:
-                    # Silent before 2026-07-09 -- if check_position_limits()
-                    # itself raised (e.g. a corrupt paper_trades.json), the
-                    # limit check silently no-opped with no trace. Still
-                    # allows the order through on error (fail open, matching
-                    # this call site's existing behavior), but now visible.
-                    _log.warning(
-                        "check_position_limits failed for %s, skipping limit check: %s",
-                        ticker,
-                        _limit_exc,
-                    )
-
-                from paper import get_balance as _gb_qpb
                 from paper import place_paper_order as _ppo_qpb  # noqa: F811
 
-                _cost_qpb = qty * price
-                _balance_qpb = _gb_qpb()
-                if _cost_qpb > _balance_qpb * 0.03:
-                    _pct_qpb = _cost_qpb / _balance_qpb * 100
-                    _confirm_large = (
-                        input(
-                            yellow(
-                                f"  Heads up: this bet is ${_cost_qpb:.2f} ({_pct_qpb:.1f}% of your ${_balance_qpb:.2f} balance). "
-                                f"Continue? (y/N): "
-                            )
-                        )
-                        .strip()
-                        .lower()
-                    )
-                    if _confirm_large != "y":
-                        print(dim("  Cancelled."))
-                        return
                 trade = _ppo_qpb(ticker, side, qty, price, thesis=thesis)
                 print(green(f"  Paper trade #{trade['id']} placed."))
                 # #110: audit trail — record every manual paper buy
@@ -2629,14 +2727,25 @@ def cmd_admin(action: str, reason: str = "manual admin override") -> None:
         return
 
     if action == "reset-peak":
-        from paper import get_balance, get_peak_balance, reset_peak_balance
+        from paper import (
+            MAX_DRAWDOWN_FRACTION,
+            get_balance,
+            get_peak_balance,
+            reset_peak_balance,
+        )
 
         old_peak = get_peak_balance()
         current = get_balance()
+        # Use the actual configured drawdown fraction (DRAWDOWN_HALT_PCT,
+        # default 0.20) rather than a hardcoded 80% — if the operator has
+        # customized it, the old hardcoded prompt showed the wrong floor for
+        # an irreversible reset.
+        _halt_frac = 1 - MAX_DRAWDOWN_FRACTION
         print(
             yellow(
                 f"  This will reset the peak from ${old_peak:.2f} → ${current:.2f}.\n"
-                f"  New halt floor: ${current * 0.80:.2f}  (80% of ${current:.2f}).\n"
+                f"  New halt floor: ${current * _halt_frac:.2f}  "
+                f"({_halt_frac:.0%} of ${current:.2f}).\n"
                 f"  This is irreversible. Type 'yes' to confirm: "
             ),
             end="",
@@ -2770,8 +2879,11 @@ def cmd_watch(
                         )
                     )
                     mark_triggered(a["id"])
-            except Exception:
-                pass
+            except Exception as _alert_exc:
+                # Was a silent `pass` — a corrupt ledger or API error here
+                # could permanently and invisibly stop price-alert checks
+                # for the rest of the watch loop with zero trace in bot.log.
+                _log.warning("cmd_watch: price-alert check failed: %s", _alert_exc)
 
             # Check take-profit exit targets
             try:
@@ -2784,8 +2896,10 @@ def cmd_watch(
                             f"  [Auto-exit] {n_exited} position(s) reached take-profit target and were settled."
                         )
                     )
-            except Exception:
-                pass
+            except Exception as _exit_target_exc:
+                _log.warning(
+                    "cmd_watch: check_exit_targets failed: %s", _exit_target_exc
+                )
 
             # Check open paper positions for exit signals
             try:
@@ -2840,8 +2954,15 @@ def cmd_watch(
                         f"  [Expiring] #{t['id']} {t['ticker']} "
                         f"{t['side'].upper()} — {label}"
                     )
-            except Exception:
-                pass
+            except Exception as _model_exit_exc:
+                # Was a silent `pass` — e.g. a corrupt paper_trades.json
+                # raising CorruptionError (get_open_trades' deliberate
+                # fail-closed) would silently and permanently kill model-exit
+                # / expiring-trade checks for the rest of the watch loop.
+                _log.warning(
+                    "cmd_watch: model-exit/expiring-trade check failed: %s",
+                    _model_exit_exc,
+                )
             opp_count = len(previous)
             opp_word = "opportunity" if opp_count == 1 else "opportunities"
             print(
@@ -2953,7 +3074,7 @@ def cmd_consistency(client: KalshiClient):
 # ── Dashboard ────────────────────────────────────────────────────────────────
 
 
-def cmd_dashboard(client: KalshiClient) -> None:  # noqa: ARG001
+def cmd_dashboard(client: KalshiClient) -> None:
     """Single-screen portfolio health view: balance, positions, calibration."""
     from paper import (
         get_all_trades,
@@ -3073,7 +3194,10 @@ def cmd_dashboard(client: KalshiClient) -> None:  # noqa: ARG001
         try:
             from paper import get_unrealized_pnl_paper
 
-            unreal = get_unrealized_pnl_paper(None)  # None = use cached prices
+            # get_unrealized_pnl_paper has no cached-price mode — passing
+            # None short-circuits it to n=0, so the mark-to-market section
+            # below could never print even with a live client in scope.
+            unreal = get_unrealized_pnl_paper(client)
             total_unreal = unreal.get("total_unrealized", 0.0)
             if unreal.get("n", 0) > 0:
                 unreal_s = (
@@ -3325,6 +3449,44 @@ def cmd_order(client: KalshiClient, action: str, args: list):
             print(red(f"  Live trading gate blocked: {_gate_err}"))
             return
 
+    # Position-limit check (city/date, directional, correlated-group caps) —
+    # previously enforced on the auto-trade and _quick_paper_buy manual paths
+    # but not here, letting the primary manual LIVE-order path stack
+    # unlimited exposure on an already-capped city/date. Only for "buy" —
+    # check_position_limits treats qty*price as ADDED exposure, so applying
+    # it to "sell" (which REDUCES a held position) would hard-block exits
+    # exactly when the account is already overexposed and most needs to exit.
+    if action == "buy":
+        try:
+            from paper import check_position_limits as _cpl_order
+
+            _city_ord = _enriched.get("_city") if _enriched else None
+            _date_ord = _enriched.get("_date") if _enriched else None
+            _tdate_str_ord = (
+                _date_ord.isoformat() if isinstance(_date_ord, date) else None
+            )
+            _limit_check_ord = _cpl_order(
+                ticker,
+                int(count),
+                price,
+                city=_city_ord,
+                target_date_str=_tdate_str_ord,
+                side=side,
+            )
+            if not _limit_check_ord.get("ok", True):
+                print(
+                    red(
+                        f"  Position limit check failed: {_limit_check_ord.get('reason', 'limit exceeded')}"
+                    )
+                )
+                return
+        except Exception as _limit_exc_ord:
+            _log.warning(
+                "cmd_order: check_position_limits failed for %s, skipping limit check: %s",
+                ticker,
+                _limit_exc_ord,
+            )
+
     row_id = log_order(ticker, side, int(count), price, order_type=action)
     _placed_order: dict | None = None
     try:
@@ -3349,6 +3511,28 @@ def cmd_order(client: KalshiClient, action: str, args: list):
         )
         return
 
+    # Only mirror what actually filled — a resting/partially-filled GTC limit
+    # order was previously recorded as `count` contracts fully filled,
+    # distorting paper P&L, exposure-cap accounting, and Brier tracking
+    # until the market settles (or forever, if it never fills).
+    # fill_count_fp is a fixed-point-formatted STRING (e.g. "2.00"), not an
+    # int — int("2.00") raises ValueError, which crashed cmd_order right
+    # here on every real order response (filled or resting) and skipped
+    # paper-trade recording entirely. Reuse order_executor's parser rather
+    # than reinventing it.
+    _filled_count = (
+        order_executor._to_fill_count((_placed_order or {}).get("fill_count_fp")) or 0
+    )
+    if _filled_count <= 0:
+        print(
+            yellow(
+                f"  Order {(_placed_order or {}).get('status', 'resting')} — "
+                "nothing filled yet, not recording as paper trade."
+            )
+        )
+        return
+    _record_count = min(_filled_count, int(count))
+
     if _analysis and _market and _enriched:
         try:
             _city = _enriched.get("_city")
@@ -3362,7 +3546,7 @@ def cmd_order(client: KalshiClient, action: str, args: list):
             _trade = place_paper_order(
                 ticker,
                 side,
-                int(count),
+                _record_count,
                 price,
                 entry_prob=_analysis.get("forecast_prob"),
                 net_edge=_analysis.get("net_edge"),
@@ -3663,7 +3847,13 @@ def cmd_setup():
 
 def cmd_kill() -> None:
     """Activate the kill switch — stops all automated trading immediately."""
-    kill_path = Path(__file__).parent / "data" / ".kill_switch"
+    # Use the shared KILL_SWITCH_PATH (paths.py, re-exported via cron), not a
+    # Path(__file__)-relative path — the latter resolves to the wrong data/
+    # dir when this command runs from a git worktree (see paths.py's module
+    # docstring), silently no-opping the kill switch since every enforcement
+    # point (cron.py, trading_gates.py, order_executor.py, alerts.py) reads
+    # KILL_SWITCH_PATH.
+    kill_path = KILL_SWITCH_PATH
     kill_path.parent.mkdir(exist_ok=True)
     kill_path.touch()
     print(
@@ -3674,7 +3864,7 @@ def cmd_kill() -> None:
 
 def cmd_resume() -> None:
     """Remove the kill switch — re-enables automated trading. Also clears black swan state."""
-    kill_path = Path(__file__).parent / "data" / ".kill_switch"
+    kill_path = KILL_SWITCH_PATH
     if kill_path.exists():
         kill_path.unlink()
         print(green("  Kill switch removed. Trading re-enabled."))
@@ -3855,10 +4045,9 @@ def cmd_readiness(client) -> bool:
 
     Gates:
       1. Brier < 0.23 over last 60 days (needs 50+ trades)
-      2. ROC-AUC > 0.60 over last 60 days
-      3. At least 50 settled trades in the last 60 days
-      4. Drawdown < 10%
-      5. No circuit breaker currently open
+      2. At least 50 settled trades in the last 60 days
+      3. Drawdown < 10%
+      4. No circuit breaker currently open
     """
     import backtest as _bt
 
@@ -3866,12 +4055,23 @@ def cmd_readiness(client) -> bool:
     gates: list[tuple[str, bool, str]] = []
 
     try:
+        # run_backtest() returns train_brier/val_brier/n_markets — it has
+        # never returned "brier"/"roc_auc"/"n_trades" (no ROC-AUC computation
+        # exists anywhere in this codebase). Those wrong keys made every gate
+        # below read fabricated 0.0/0 defaults and fail unconditionally.
+        # Prefer the held-out validation Brier when there's enough holdout
+        # sample (val_brier_unreliable is False below 10 rows); otherwise
+        # fall back to the training-set Brier. The ROC-AUC gate is dropped —
+        # there's nothing real to check it against.
         bt = _bt.run_backtest(client, days_back=60)
-        brier = bt.get("brier", 1.0)
-        roc = bt.get("roc_auc", 0.0)
-        n = bt.get("n_trades", 0)
+        n = bt.get("n_markets", 0)
+        brier = (
+            bt.get("val_brier")
+            if not bt.get("val_brier_unreliable", True)
+            else bt.get("train_brier")
+        )
+        brier = brier if brier is not None else 1.0
         gates.append(("Brier < 0.23  (60d)", brier < 0.23, f"Brier={brier:.4f}  n={n}"))
-        gates.append(("ROC-AUC > 0.60 (60d)", roc > 0.60, f"ROC-AUC={roc:.3f}"))
         gates.append(("≥50 trades     (60d)", n >= 50, f"n={n}"))
     except Exception as e:
         gates.append(("Backtest", False, f"Error: {e}"))
@@ -4403,6 +4603,14 @@ def cmd_settings(client: KalshiClient | None = None) -> None:  # noqa: ARG001
             import paper as _paper_mod
 
             importlib.reload(_paper_mod)
+            # reload() only rebinds utils' own module attributes — main.py
+            # value-imported MIN_EDGE/STRONG_EDGE at startup (`from utils
+            # import MIN_EDGE, STRONG_EDGE`), so without this the Settings
+            # screen would show the new value while cmd_today/cmd_brief kept
+            # filtering on the stale pre-edit threshold until process restart.
+            global MIN_EDGE, STRONG_EDGE
+            MIN_EDGE = _utils_mod.MIN_EDGE
+            STRONG_EDGE = _utils_mod.STRONG_EDGE
         except Exception:
             pass
 
@@ -5161,8 +5369,14 @@ def _cmd_settle_open(client: KalshiClient | None = None) -> None:  # noqa: ARG00
             print(bold("\n  ── Post-mortem ──"))
             pred_str = f"{entry_prob * 100:.0f}% YES" if entry_prob is not None else "?"
             actual_str = ("YES " + green("✓")) if outcome_yes else ("NO  " + red("✗"))
-            was_right = (entry_prob is not None and entry_prob > 0.5) == outcome_yes
-            result_mark = green("✓") if was_right else red("✗")
+            if entry_prob is None:
+                # No recorded prediction to grade — don't imply a verdict.
+                # The old `(False == outcome_yes)` collapse marked this
+                # "correct" (green check) whenever the outcome was NO.
+                result_mark = dim("—")
+            else:
+                was_right = (entry_prob > 0.5) == outcome_yes
+                result_mark = green("✓") if was_right else red("✗")
             print(f"  You predicted: {pred_str}   Actual: {actual_str}   {result_mark}")
             # Find closest source from tracker prediction record
             ticker = t.get("ticker", "")
@@ -5530,7 +5744,7 @@ def cmd_menu(client: KalshiClient):
                             _qty_sub = int(raw_qty)
                             _cost_sub = _qty_sub * price
                             _bal_sub = _gb_sub()
-                            if _cost_sub > _bal_sub * 0.03:
+                            if _bal_sub > 0 and _cost_sub > _bal_sub * 0.03:
                                 _pct_sub = _cost_sub / _bal_sub * 100
                                 _confirm_sub = (
                                     input(
@@ -5694,12 +5908,21 @@ def cmd_backtest(client: KalshiClient, args: list):
     city_filter = None
     days_back = 90
     use_previous_runs = False
+    _skip_next = False
     for i, a in enumerate(args):
+        if _skip_next:
+            _skip_next = False
+            continue
         if a == "--days" and i + 1 < len(args):
             try:
                 days_back = int(args[i + 1])
             except ValueError:
                 pass
+            # Consume the value token too — without this it fell through to
+            # the city_filter branch below on the next iteration, silently
+            # clobbering city_filter with the days number (or being clobbered
+            # by it, e.g. `backtest --days 180` set city_filter="180").
+            _skip_next = True
         elif a == "--previous-runs":
             use_previous_runs = True
         elif not a.startswith("--"):
@@ -5923,36 +6146,32 @@ def cmd_backtest(client: KalshiClient, args: list):
         return f"{wins / len(rows_list):.0%}"
 
     our_wr_str = f"{win_rate:.0%}" if win_rate else "—"
+    # These are bankroll-fraction returns (backtest.py stakes are Kelly
+    # fractions capped at 0.05), not dollar amounts — the same `pnl` prints
+    # correctly as "+35.00%" a few lines above this table; formatting it
+    # with a "$" here made an identical quantity read as ~$0.35.
     bench_rows_table = [
         [
             "Our model",
-            (green(f"+${pnl:.2f}") if pnl >= 0 else red(f"-${abs(pnl):.2f}")),
+            (green(f"+{pnl:.2%}") if pnl >= 0 else red(f"{pnl:.2%}")),
             our_wr_str,
         ],
         [
             "Always YES",
-            (
-                green(f"+${bench_yes:.2f}")
-                if bench_yes >= 0
-                else red(f"-${abs(bench_yes):.2f}")
-            ),
+            (green(f"+{bench_yes:.2%}") if bench_yes >= 0 else red(f"{bench_yes:.2%}")),
             _bench_wr(rows, "yes"),
         ],
         [
             "Follow market",
-            (
-                green(f"+${bench_mkt:.2f}")
-                if bench_mkt >= 0
-                else red(f"-${abs(bench_mkt):.2f}")
-            ),
+            (green(f"+{bench_mkt:.2%}") if bench_mkt >= 0 else red(f"{bench_mkt:.2%}")),
             _bench_wr(rows, "market"),
         ],
         [
             "Random",
             (
-                green(f"+${bench_rand:.2f}")
+                green(f"+{bench_rand:.2%}")
                 if bench_rand >= 0
-                else red(f"-${abs(bench_rand):.2f}")
+                else red(f"{bench_rand:.2%}")
             ),
             _bench_wr(rows, "random"),
         ],
@@ -6130,6 +6349,18 @@ def cmd_paper(args: list, client: KalshiClient | None = None):
     sub = args[0].lower() if args else "results"
 
     if sub == "buy":
+        # Sibling manual paths (_quick_paper_buy, cmd_order) both refuse to
+        # place while TRADING_PAUSED is set; this path never checked, so it
+        # could place trades through the exact flag currently relied on to
+        # keep the bot paper-only/paused.
+        if is_trading_paused():
+            print(
+                red(
+                    "  TRADING_PAUSED is set in .env — order placement is disabled.\n"
+                    "  Remove TRADING_PAUSED to resume trading."
+                )
+            )
+            return
         # qty is optional — omit to auto-size via Kelly compounding
         if len(args) < 4:
             print("Usage: py main.py paper buy <ticker> <yes/no> <price> [qty]")
@@ -6230,6 +6461,34 @@ def cmd_paper(args: list, client: KalshiClient | None = None):
         if confirm != "y":
             print(dim("  Cancelled."))
             return
+        # Position-limit check (city/date, directional, correlated-group
+        # caps) — the explicit-qty path here skipped it entirely; only the
+        # auto-size path got any exposure scaling (via portfolio_kelly_fraction,
+        # which softly scales down rather than hard-blocking).
+        try:
+            from paper import check_position_limits as _cpl_paper
+
+            _limit_check_paper = _cpl_paper(
+                ticker,
+                qty,
+                price,
+                city=city,
+                target_date_str=target_date_str,
+                side=side,
+            )
+            if not _limit_check_paper.get("ok", True):
+                print(
+                    red(
+                        f"  Position limit check failed: {_limit_check_paper.get('reason', 'limit exceeded')}"
+                    )
+                )
+                return
+        except Exception as _limit_exc_paper:
+            _log.warning(
+                "cmd_paper: check_position_limits failed for %s, skipping limit check: %s",
+                ticker,
+                _limit_exc_paper,
+            )
         try:
             trade = _ppo_paper_cmd(
                 ticker,
@@ -6898,13 +7157,20 @@ def cmd_schedule():
     script_path = Path(__file__).resolve()
     py_exe = sys.executable
 
+    def _esc_tr(cmd: str) -> str:
+        # schtasks /TR "<cmd>" requires any quotes already inside <cmd> to be
+        # backslash-escaped, or CommandLineToArgvW mis-tokenizes at the first
+        # inner quote (e.g. at a space in the script's own path) and the task
+        # silently fails to register — confirmed empirically with schtasks.
+        return cmd.replace('"', '\\"')
+
     task_name = "KalshiWeatherScan"
     task_cmd = f'"{py_exe}" "{script_path}" analyze'
 
     # Build the schtasks command
     create_cmd = (
         f'schtasks /Create /F /SC HOURLY /MO 3 /TN "{task_name}" '
-        f'/TR "{task_cmd}" /RL HIGHEST'
+        f'/TR "{_esc_tr(task_cmd)}" /RL HIGHEST'
     )
 
     print(bold(f"Registering scheduled task: {task_name}"))
@@ -6929,7 +7195,7 @@ def cmd_schedule():
     email_cmd = f'"{py_exe}" "{script_path}" brief --email'
     email_create = (
         f'schtasks /Create /F /SC DAILY /ST 07:00 /TN "{email_task}" '
-        f'/TR "{email_cmd}" /RL HIGHEST'
+        f'/TR "{_esc_tr(email_cmd)}" /RL HIGHEST'
     )
 
     print(bold(f"\nRegistering daily email task: {email_task}"))
@@ -6954,7 +7220,7 @@ def cmd_schedule():
     settle_cmd = f'"{py_exe}" "{script_path}" settle'
     settle_create = (
         f'schtasks /Create /F /SC DAILY /ST 21:00 /TN "{settle_task}" '
-        f'/TR "{settle_cmd}" /RL HIGHEST'
+        f'/TR "{_esc_tr(settle_cmd)}" /RL HIGHEST'
     )
 
     print(bold(f"\nRegistering daily settle task: {settle_task}"))
@@ -6984,7 +7250,13 @@ def cmd_schedule_cycles() -> None:
     NWP models initialize at 00/06/12/18 UTC; data becomes available ~2h later.
     Scanning immediately after availability captures maximum market inefficiency.
 
-    Run each printed command once in an elevated PowerShell to register the tasks.
+    Run each printed command once in an elevated Command Prompt (cmd.exe) to
+    register the tasks — NOT PowerShell. The printed /TR value uses
+    backslash-escaped quotes, which cmd.exe's CommandLineToArgvW parses
+    correctly (verified: this is the same convention cmd_schedule() already
+    uses successfully via subprocess shell=True); PowerShell's own argument
+    tokenization treats `\"` differently and shatters the /TR value at the
+    space in this repo's path, so pasting into PowerShell fails registration.
     """
     python_exe = sys.executable
     script_path = Path(__file__).resolve()
@@ -6996,7 +7268,12 @@ def cmd_schedule_cycles() -> None:
         local_tz = UTC
 
     print(bold("\nNWP Cycle-Aligned Scan Schedule"))
-    print(dim("Run these commands once in an elevated PowerShell:\n"))
+    print(
+        dim(
+            "Run these commands once in an elevated Command Prompt (cmd.exe) —\n"
+            "NOT PowerShell, which mis-parses the escaped quotes below:\n"
+        )
+    )
 
     for utc_hour in utc_times:
         utc_dt = datetime.now(UTC).replace(
@@ -7005,9 +7282,15 @@ def cmd_schedule_cycles() -> None:
         local_dt = utc_dt.astimezone(local_tz)
         local_time_str = local_dt.strftime("%H:%M")
         task_name = f"KalshiCron_{utc_hour:02d}UTC"
+        # Each path must be individually quoted (a space in the repo path,
+        # e.g. "C:\claude kalshi", otherwise splits the command line) and
+        # those inner quotes backslash-escaped for the outer /TR wrapper —
+        # previously entirely unquoted, so schtasks handed python.exe
+        # 'C:\claude' as argv[0] and every scheduled scan failed silently.
+        _tr_value = f'"{python_exe}" "{script_path}" cron'.replace('"', '\\"')
         cmd = (
             f'schtasks /Create /TN "{task_name}" /TR '
-            f'"{python_exe} {script_path} cron" '
+            f'"{_tr_value}" '
             f"/SC DAILY /ST {local_time_str} /F /RL HIGHEST"
         )
         print(f"# {utc_hour:02d}:15 UTC ({local_time_str} local)")
@@ -7092,10 +7375,17 @@ def cmd_shadow_compare(client: KalshiClient) -> None:
         print(dim("  No signals found."))
         return
 
+    # Gate on the same live-refreshed, walk-forward-tuned, safety-clamped
+    # value cron/order_executor actually use — not the raw env var, which
+    # can diverge (e.g. a tuned walk_forward_params.json exists but
+    # PAPER_MIN_EDGE isn't set) and make this "what would the bot do"
+    # preview show trades the real pipeline would block, or vice versa.
+    from utils import get_paper_min_edge as _gpme_shadow
+
     would_trade = [
         sig
         for sig in signals
-        if sig.get("edge", 0) >= float(os.getenv("PAPER_MIN_EDGE", "0.05"))
+        if sig.get("edge", 0) >= _gpme_shadow()
         and sig.get("kelly_fraction", 0) >= 0.002
     ]
 
@@ -7533,8 +7823,10 @@ def main():
         cmd_onboard()
     elif cmd == "browse":
         cmd_browse(client)
-    elif cmd in ("schedule", "schedule-cycles"):
+    elif cmd == "schedule":
         cmd_schedule()
+    elif cmd == "schedule-cycles":
+        cmd_schedule_cycles()
     else:
         print(red(f"Unknown command: {cmd}"))
         print(dim("Run  py main.py  for the interactive menu."))
