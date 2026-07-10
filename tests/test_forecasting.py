@@ -936,6 +936,13 @@ class TestGaussianEnsembleBlend:
                 wm, "_get_consensus_probs", return_value=(None, None, None, None)
             ),
             patch("ml_bias.apply_temperature_scaling", side_effect=lambda p, **kw: p),
+            # This test's fixture uses an 8.0°F high_range spread — not itself
+            # under test here, but MAX_MODEL_SPREAD_F is read from .env and can
+            # legitimately be configured below that (e.g. 5.5), which would
+            # trip the model-spread gate before any Gaussian-blend logic runs.
+            # Pin it to a permissive value so this test doesn't depend on
+            # whatever the live .env happens to have configured.
+            patch.object(wm, "MAX_MODEL_SPREAD_F", 100.0),
         ):
             result = wm.analyze_trade(enriched)
 
@@ -1004,6 +1011,10 @@ class TestGaussianEnsembleBlend:
             patch.object(wm, "_metar_lock_in", return_value=(False, 0.0, {})),
             patch("nws.get_live_observation", return_value=None),
             patch("climatology.persistence_prob", return_value=0.3),
+            # See the identical fix in test_gaussian_lifts_zero_ensemble_when_forecast_is_high
+            # above — pin the model-spread gate so this test doesn't depend on
+            # whatever MAX_MODEL_SPREAD_F the live .env happens to configure.
+            patch.object(wm, "MAX_MODEL_SPREAD_F", 100.0),
         ):
             result = wm.analyze_trade(enriched)
 
