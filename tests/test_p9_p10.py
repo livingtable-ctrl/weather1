@@ -797,9 +797,10 @@ def test_get_recent_city_correlations_computes_correlation(tmp_tracker):
     for i in range(6):
         settled_dt = (settled_base_dt + timedelta(days=i)).isoformat()
 
-        # NYC ticker
+        # NYC ticker (HIGH market -- get_recent_city_correlations only considers
+        # daily-HIGH tickers, to avoid mixing HIGH/LOW temps in one city series)
         tmp_tracker.log_prediction(
-            f"NYC-{i}",
+            f"KXHIGHNYC-{i}",
             "NYC",
             market_base + timedelta(days=i),
             {
@@ -811,16 +812,16 @@ def test_get_recent_city_correlations_computes_correlation(tmp_tracker):
             },
         )
         # Log outcome and then update with specific settled_at and settled_temp_f
-        tmp_tracker.log_outcome(f"NYC-{i}", True)
+        tmp_tracker.log_outcome(f"KXHIGHNYC-{i}", True)
         with t._conn() as con:
             con.execute(
                 "UPDATE outcomes SET settled_temp_f = ?, settled_at = ? WHERE ticker = ?",
-                (70.0 + i * 2.0, settled_dt, f"NYC-{i}"),
+                (70.0 + i * 2.0, settled_dt, f"KXHIGHNYC-{i}"),
             )
 
         # Boston ticker (same date, correlated)
         tmp_tracker.log_prediction(
-            f"BOS-{i}",
+            f"KXHIGHBOS-{i}",
             "Boston",
             market_base + timedelta(days=i),
             {
@@ -831,11 +832,11 @@ def test_get_recent_city_correlations_computes_correlation(tmp_tracker):
                 "condition": {"type": "above", "threshold": 70},
             },
         )
-        tmp_tracker.log_outcome(f"BOS-{i}", True)
+        tmp_tracker.log_outcome(f"KXHIGHBOS-{i}", True)
         with t._conn() as con:
             con.execute(
                 "UPDATE outcomes SET settled_temp_f = ?, settled_at = ? WHERE ticker = ?",
-                (68.0 + i * 2.0, settled_dt, f"BOS-{i}"),
+                (68.0 + i * 2.0, settled_dt, f"KXHIGHBOS-{i}"),
             )
 
     result = tmp_tracker.get_recent_city_correlations(days=60, min_pairs=5)

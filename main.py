@@ -1175,6 +1175,10 @@ def cmd_market(client: KalshiClient, ticker: str, verbose: bool = False):
                 blend_sources=analysis.get("blend_sources"),
                 ens_mean=_es.get("mean"),
                 ens_var=(_std * _std if _std is not None else None),
+                # cmd_market is a pure lookup/display command — it never places an
+                # order, so this row must not read as trade-backed (is_shadow=0)
+                # to callers like get_pnl_by_signal_source's n_shadow count.
+                is_shadow=True,
             )
         except Exception as _exc:
             logging.getLogger(__name__).warning(

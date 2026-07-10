@@ -1131,6 +1131,16 @@ def _score_ensemble_members(trade: dict, outcome_yes: bool) -> None:
     target_date = trade.get("target_date")
     if not city or not target_date:
         return
+    # Determine market variable from the ticker, matching analyze_trade's and
+    # tracker.backfill_emos_data's convention: KXHIGH markets measure the daily
+    # high, KXLOWT/KXLOW markets measure the daily low.
+    _ticker_upper = trade.get("ticker", "").upper()
+    if "HIGH" in _ticker_upper:
+        var = "max"
+    elif "LOWT" in _ticker_upper or "LOW" in _ticker_upper:
+        var = "min"
+    else:
+        var = "max"
     # Look up the official settled daily HIGH from the outcomes table (written by audit_settlement)
     try:
         from tracker import _conn, init_db
@@ -1169,7 +1179,7 @@ def _score_ensemble_members(trade: dict, outcome_yes: bool) -> None:
 
         for model, predicted_temp in model_means.items():
             if predicted_temp is not None:
-                _log_ms(city, model, predicted_temp, actual_temp, target_date)
+                _log_ms(city, model, predicted_temp, actual_temp, target_date, var=var)
     except Exception as exc:
         _log.debug("_score_ensemble_members: skipped tracker update: %s", exc)
 

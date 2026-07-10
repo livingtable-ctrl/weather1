@@ -8,6 +8,7 @@ After markets settle, records outcomes so we can:
 
 from __future__ import annotations
 
+import itertools
 import logging
 import math
 import sqlite3
@@ -24,7 +25,7 @@ DB_PATH.parent.mkdir(exist_ok=True)
 
 _db_initialized = False
 
-_SCHEMA_VERSION = 34  # increment when _MIGRATIONS list grows
+_SCHEMA_VERSION = 36  # increment when _MIGRATIONS list grows
 
 _MIGRATIONS = [
     # v1 → v2: add condition_type column (if not already added)
@@ -159,6 +160,22 @@ _MIGRATIONS = [
     # distinguish them from trade-backed rows. Brier/calibration queries
     # deliberately do not filter on this — see log_prediction()'s docstring.
     "ALTER TABLE predictions ADD COLUMN is_shadow INTEGER DEFAULT 0",
+    # v34 → v35: ensemble_member_scores had no variable column, so daily-HIGH
+    # forecast errors and daily-LOW forecast errors were pooled together in
+    # get_dynamic_station_bias() despite it accepting a var= parameter. Existing
+    # rows can't be reliably backfilled (no way to recover which market type
+    # produced them), so they're left NULL and excluded by var-filtered queries
+    # going forward rather than guessed.
+    "ALTER TABLE ensemble_member_scores ADD COLUMN var TEXT",
+    # v35 → v36: ensemble_member_scores had no dedup key, so multiple trades
+    # settling in the same city/date (e.g. two thresholds on the same market)
+    # each inserted an identical (city, model, target_date, var) row, silently
+    # over-weighting that day in get_model_weights/get_dynamic_station_bias
+    # and inflating their min-sample gates with far fewer distinct days than
+    # intended. NULLs in var (pre-v35 rows) are treated as distinct by SQLite's
+    # UNIQUE semantics, so this does not collide with historical rows.
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_ems_dedup "
+    "ON ensemble_member_scores(city, model, target_date, var)",
 ]
 
 
@@ -222,6 +239,7 @@ def init_db() -> None:
             predicted_temp REAL,
             actual_temp    REAL,
             target_date    TEXT,
+            var            TEXT,
             logged_at      TEXT NOT NULL
         );
         CREATE INDEX IF NOT EXISTS idx_ems_city_model
@@ -368,6 +386,15 @@ def purge_old_predictions(retention_days: int = 730) -> int:
             """,
             (cutoff,),
         )
+        # Voided/cancelled markets (sync_outcomes) never get an outcomes row, so
+        # the JOIN above can never reach them — purge by predicted_at instead.
+        voided_result = con.execute(
+            """
+            DELETE FROM predictions
+            WHERE status = 'voided' AND predicted_at < datetime('now', ?)
+            """,
+            (cutoff,),
+        )
         # Delete orphaned outcome rows for the tickers we just removed.
         con.execute(
             """
@@ -377,7 +404,7 @@ def purge_old_predictions(retention_days: int = 730) -> int:
             """,
             (cutoff,),
         )
-    deleted = result.rowcount
+    deleted = result.rowcount + voided_result.rowcount
     if deleted > 0:
         _log.info("purge_old_predictions: removed %d old prediction rows", deleted)
     return deleted
@@ -548,7 +575,15 @@ def log_prediction(
     the row so downstream P&L-labeled displays can distinguish it from a
     trade-backed prediction. Brier/calibration queries intentionally do NOT
     filter on this — shadow predictions are real forecasts and are meant to
-    keep those scores current.
+    keep those scores current. The UPSERT uses MIN(existing, new) so a
+    shadow/lookup write (e.g. cmd_market) can never un-flag an already
+    trade-backed row — but the reverse isn't automatic: the manual quick-buy
+    paths (_quick_paper_buy, cmd_paper buy) place real paper trades without
+    ever calling log_prediction, so a ticker looked up via cmd_market first
+    and then quick-bought keeps is_shadow=1 despite a real settled trade.
+    Cosmetic (only affects n_shadow in get_pnl_by_signal_source's display),
+    not fixed here — would need those two manual-buy paths to also call
+    log_prediction(is_shadow=False), which is trade-placement-flow scope.
     conn: reuse a caller-provided connection (e.g. for batching many calls in
     one transaction) instead of opening a new one per call.
 
@@ -564,7 +599,14 @@ def log_prediction(
     cond = analysis.get("condition", {})
     lo = cond.get("threshold", cond.get("lower"))
     hi = cond.get("threshold", cond.get("upper"))
-    days_out = (market_date - _utc_today()).days if market_date is not None else None
+    # max(0, ...) matches the clamp already used at weather_markets.py's
+    # days_out call sites: from 00:00 UTC until local midnight (a same-day
+    # evening window for US cities), _utc_today() is already local-tomorrow,
+    # which would otherwise store days_out=-1 and drop the row from both the
+    # same-day and multiday analytics buckets.
+    days_out = (
+        max(0, (market_date - _utc_today()).days) if market_date is not None else None
+    )
     # #53: raw_prob is pre-bias-correction; forecast_prob is the adjusted value.
     # M-12: arithmetic is correct — bias_correction stores the amount SUBTRACTED from
     # the blended prob to produce forecast_prob, so adding it back reconstructs the
@@ -610,7 +652,10 @@ def log_prediction(
             model_consensus  = excluded.model_consensus,
             ens_mean         = excluded.ens_mean,
             ens_var          = excluded.ens_var,
-            is_shadow        = excluded.is_shadow
+            -- MIN(): a real-trade write (is_shadow=0) still clears the flag, but
+            -- a shadow/lookup write (is_shadow=1, e.g. cmd_market) can never
+            -- un-flag an already trade-backed row for the same (ticker, date).
+            is_shadow        = MIN(predictions.is_shadow, excluded.is_shadow)
         """
     params = (
         ticker,
@@ -721,19 +766,27 @@ def get_bias(
     weighted_bias = 0.0
     total_weight = 0.0
     min_age_days = float("inf")
+    valid_count = 0
     for r in rows:
         try:
             predicted_at = datetime.fromisoformat(
                 r["predicted_at"].replace("Z", "+00:00")
             )
-            # Keep tzinfo intact so that (now - predicted_at) works without TypeError.
+            if predicted_at.tzinfo is None:
+                predicted_at = predicted_at.replace(tzinfo=UTC)
             age_days = max(0.0, (now - predicted_at).total_seconds() / 86400)
         except (ValueError, TypeError, AttributeError):
-            age_days = 0.0
+            continue
+        valid_count += 1
         min_age_days = min(min_age_days, age_days)
         weight = math.exp(-age_days / 30.0)
         weighted_bias += (r["our_prob"] - r["settled_yes"]) * weight
         total_weight += weight
+
+    # Re-check against min_samples using only rows that actually parsed —
+    # the len(rows) gate above admits the raw (possibly corrupt) row count.
+    if valid_count < min_samples:
+        return 0.0
 
     # B5: relaxed stale cutoff from 14 → 60 days.
     # The exponential decay (30-day half-life) already smoothly reduces the influence
@@ -752,7 +805,7 @@ def get_bias(
         return 0.0
     raw_bias = weighted_bias / total_weight
     # L4-C: shrink toward 0 — reduces variance when sample count is low
-    n = len(rows)
+    n = valid_count
     return raw_bias * n / (n + _BIAS_SHRINKAGE_PRIOR)
 
 
@@ -811,19 +864,29 @@ def get_quintile_bias(
     weighted_bias = 0.0
     total_weight = 0.0
     min_age_days = float("inf")
+    valid_count = 0
     for r in rows:
         try:
             predicted_at = datetime.fromisoformat(
                 r["predicted_at"].replace("Z", "+00:00")
             )
-            # Keep tzinfo intact so that (now - predicted_at) works without TypeError.
+            if predicted_at.tzinfo is None:
+                predicted_at = predicted_at.replace(tzinfo=UTC)
             age_days = max(0.0, (now - predicted_at).total_seconds() / 86400)
         except (ValueError, TypeError, AttributeError):
-            age_days = 0.0
+            continue
+        valid_count += 1
         min_age_days = min(min_age_days, age_days)
         weight = math.exp(-age_days / 30.0)
         weighted_bias += (r["our_prob"] - r["settled_yes"]) * weight
         total_weight += weight
+
+    # Re-check against min_samples using only rows that actually parsed —
+    # the len(rows) gate above admits the raw (possibly corrupt) row count.
+    if valid_count < min_samples:
+        return get_bias(
+            city, month, min_samples=min_samples, condition_type=condition_type
+        )
 
     if min_age_days > 60:
         return 0.0
@@ -831,7 +894,7 @@ def get_quintile_bias(
         return 0.0
     raw_bias = weighted_bias / total_weight
     # L4-C: shrink toward 0 — reduces variance when sample count is low
-    n = len(rows)
+    n = valid_count
     return raw_bias * n / (n + _BIAS_SHRINKAGE_PRIOR)
 
 
@@ -1014,6 +1077,12 @@ def brier_score(
         if city:
             query += " AND p.city = ?"
             params.append(city)
+        if min_days_out > 1:
+            # multiday_predictions only filters days_out >= 1 OR NULL — for a
+            # stricter horizon floor, filter explicitly instead of silently
+            # collapsing to the same >=1 population as min_days_out=1.
+            query += " AND (p.days_out IS NULL OR p.days_out >= ?)"
+            params.append(min_days_out)
         if cutoff_days is not None:
             query += f" AND o.settled_at >= datetime('now', '-{cutoff_days} days')"
         if last_n is not None:
@@ -1125,7 +1194,14 @@ def count_settled_predictions_rolling(weeks: int = 3) -> int:
 def get_rolling_win_rate(window: int = 20) -> tuple[float | None, int]:
     """Win rate over the last `window` settled predictions.
 
-    Returns (win_rate, count). Returns (None, count) if count < window.
+    Returns (win_rate, count). Returns (None, 0) only when there is no settled
+    data at all — a caller-supplied minimum-sample gate (e.g.
+    ACCURACY_MIN_SAMPLE) should be applied by the caller against `count`, not
+    inferred from this function returning None. Previously this returned
+    (None, count) whenever count < window, which created a dead zone: if a
+    caller's own minimum-sample threshold was set below `window`, the win
+    rate check silently never activated in that gap since win_rate was always
+    None there regardless of the caller's smaller threshold.
     """
     init_db()
     with _conn() as con:
@@ -1134,14 +1210,15 @@ def get_rolling_win_rate(window: int = 20) -> tuple[float | None, int]:
             SELECT o.settled_yes, p.our_prob
             FROM multiday_predictions p
             JOIN outcomes o ON p.ticker = o.ticker
+            WHERE p.our_prob IS NOT NULL
             ORDER BY o.settled_at DESC
             LIMIT ?
             """,
             (window,),
         ).fetchall()
     count = len(rows)
-    if count < window:
-        return None, count
+    if count == 0:
+        return None, 0
     wins = sum(
         1
         for r in rows
@@ -1179,7 +1256,10 @@ def count_settled_sameday_predictions() -> int:
 
 
 def count_emos_ready_predictions() -> int:
-    """Count multi-day predictions that have ens_mean populated (EMOS training rows).
+    """Count multi-day predictions that are actually trainable EMOS rows —
+    ens_mean AND settled_temp_f both populated, matching get_emos_training_data's
+    population exactly (a settlement whose temperature fetch failed leaves
+    settled_temp_f NULL and is not trainable even though ens_mean exists).
 
     ens_var may be NULL for rows backfilled from the Previous Runs API — only
     forward-fill rows (placed after EMOS steps 1-4, Jun 21 2026+) carry both
@@ -1191,7 +1271,7 @@ def count_emos_ready_predictions() -> int:
         row = con.execute(
             "SELECT COUNT(*) FROM multiday_predictions p "
             "JOIN outcomes o ON p.ticker = o.ticker "
-            "WHERE p.ens_mean IS NOT NULL"
+            "WHERE p.ens_mean IS NOT NULL AND o.settled_temp_f IS NOT NULL"
         ).fetchone()
     return row[0] if row else 0
 
@@ -1399,12 +1479,12 @@ def get_brier_over_time(weeks: int = 12, min_days_out: int = 1) -> list[dict]:
     Returns [{"week": "2025-W40", "brier": 0.21}, ...] sorted ascending.
     Returns an empty list if no settled predictions exist in the window.
     """
-    import datetime
-
     init_db()
-    cutoff = (
-        datetime.datetime.now(datetime.UTC) - datetime.timedelta(weeks=weeks)
-    ).isoformat()
+    # SQLite-format cutoff (not Python isoformat) -- predicted_at is written by
+    # SQLite's datetime('now') as 'YYYY-MM-DD HH:MM:SS'. A Python isoformat
+    # cutoff ('...T...+00:00') compares lexicographically below every row on
+    # the boundary date (' ' < 'T'), silently dropping the whole boundary day.
+    cutoff = (datetime.now(UTC) - timedelta(weeks=weeks)).strftime("%Y-%m-%d %H:%M:%S")
     table = "multiday_predictions" if min_days_out > 0 else "predictions"
     with _conn() as con:
         rows = con.execute(
@@ -1525,14 +1605,14 @@ def get_calibration_by_city(
     """
     Per-city Brier score and sample count (#54, #56).
     Returns {city: {brier, n, bias}} for cities with settled predictions.
-    Optionally filter by condition_type.
-    Monthly bias grouping uses market_date (not predicted_at) to avoid timezone skew.
+    Optionally filter by condition_type. bias is an all-time mean per city
+    (not month-weighted — see get_calibration_by_season for the seasonal
+    breakdown, which is what actually uses market_date's month).
     """
     init_db()
     with _conn() as con:
         query = """
-            SELECT p.city, p.our_prob, o.settled_yes,
-                   CAST(strftime('%m', p.market_date) AS INTEGER) AS month
+            SELECT p.city, p.our_prob, o.settled_yes
             FROM multiday_predictions p
             JOIN outcomes o ON p.ticker = o.ticker
             WHERE p.our_prob IS NOT NULL AND p.city IS NOT NULL
@@ -2541,8 +2621,9 @@ def backfill_emos_data(force: bool = False) -> tuple[int, int]:
 
         with _conn() as con:
             con.execute(
-                "UPDATE predictions SET ens_mean = ? WHERE ticker = ?",
-                (ens_mean_val, ticker),
+                "UPDATE predictions SET ens_mean = ? "
+                "WHERE ticker = ? AND ens_mean IS NULL AND days_out IS ?",
+                (ens_mean_val, ticker, row["days_out"]),
             )
         ens_filled += 1
         print(
@@ -2596,6 +2677,19 @@ def sync_outcomes(client) -> int:
                             continue  # too soon; wait for finalization to stabilize
                     except (ValueError, TypeError):
                         pass
+                if result not in ("yes", "no"):
+                    _log.warning(
+                        "sync_outcomes: %s voided/cancelled — unexpected result %r, "
+                        "stamping status='voided' so it's not retried every cycle",
+                        ticker,
+                        result,
+                    )
+                    with _conn() as con:
+                        con.execute(
+                            "UPDATE predictions SET status = 'voided' WHERE ticker = ?",
+                            (ticker,),
+                        )
+                    continue
                 settled_yes = result == "yes"
                 if log_outcome(ticker, settled_yes):
                     count += 1
@@ -2609,6 +2703,24 @@ def sync_outcomes(client) -> int:
                     # Cross-check Kalshi's outcome against Open-Meteo archive
                     try:
                         audit_settlement(ticker, settled_yes)
+                    except Exception:
+                        pass
+                    # #55: settle analysis_attempts for this ticker regardless of
+                    # was_traded — the outcome is a market fact, not a trade fact.
+                    # settle_analysis_attempt (called from paper.py) only ever fires
+                    # for TRADED markets, so untraded rows previously never got an
+                    # outcome and get_unselected_bias() always returned 0.0.
+                    try:
+                        with _conn() as con:
+                            pending_attempts = con.execute(
+                                "SELECT target_date FROM analysis_attempts "
+                                "WHERE ticker = ? AND outcome IS NULL",
+                                (ticker,),
+                            ).fetchall()
+                        for attempt_row in pending_attempts:
+                            settle_analysis_attempt(
+                                ticker, attempt_row["target_date"], int(settled_yes)
+                            )
                     except Exception:
                         pass
         except Exception as exc:
@@ -2641,17 +2753,28 @@ def log_member_score(
     predicted_temp: float,
     actual_temp: float,
     target_date_str: str,
+    var: str | None = None,
 ) -> None:
-    """Log an ensemble member's temperature prediction vs actuals for accuracy tracking."""
+    """Log an ensemble member's temperature prediction vs actuals for accuracy tracking.
+
+    var should be "max" for daily-HIGH markets or "min" for daily-LOW markets —
+    daily-high and daily-low forecast errors have different sign/magnitude and
+    must not be pooled (see get_dynamic_station_bias).
+
+    Deduplicates on (city, model, target_date, var) via idx_ems_dedup — multiple
+    trades settling in the same city/date (e.g. two thresholds on one market)
+    would otherwise each insert an identical row, over-weighting that day in
+    get_model_weights/get_dynamic_station_bias.
+    """
     init_db()
     with _conn() as con:
         con.execute(
             """
-            INSERT INTO ensemble_member_scores
-              (city, model, predicted_temp, actual_temp, target_date, logged_at)
-            VALUES (?, ?, ?, ?, ?, datetime('now'))
+            INSERT OR IGNORE INTO ensemble_member_scores
+              (city, model, predicted_temp, actual_temp, target_date, var, logged_at)
+            VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
             """,
-            (city, model, predicted_temp, actual_temp, target_date_str),
+            (city, model, predicted_temp, actual_temp, target_date_str, var),
         )
 
 
@@ -2709,7 +2832,6 @@ def get_model_brier_scores(days: int = 30) -> dict[str, float]:
     Lower MAE = better model. Returns empty dict when no data available.
     """
     init_db()
-    cutoff = (datetime.now(UTC) - timedelta(days=days)).isoformat()
     with _conn() as con:
         rows = con.execute(
             """
@@ -2717,14 +2839,14 @@ def get_model_brier_scores(days: int = 30) -> dict[str, float]:
                    AVG(ABS(predicted_temp - actual_temp)) AS mae,
                    COUNT(*) AS n
             FROM   ensemble_member_scores
-            WHERE  logged_at >= ?
+            WHERE  logged_at >= datetime('now', ? || ' days')
               AND  actual_temp IS NOT NULL
               AND  predicted_temp IS NOT NULL
               AND  model != 'blended'
             GROUP  BY model
             HAVING COUNT(*) >= 10
             """,
-            (cutoff,),
+            (f"-{days}",),
         ).fetchall()
     return {r[0]: float(r[1]) for r in rows}
 
@@ -2840,6 +2962,10 @@ def get_dynamic_station_bias(
     at trade entry) when available; falls back to icon_seamless + gfs_seamless
     averages when no blended rows exist yet.
 
+    Only rows tagged with the matching var ("max"/"min") are used — daily-high and
+    daily-low forecast errors have different sign/magnitude and must not be pooled.
+    Rows logged before the var column existed are NULL and are excluded.
+
     Returns (mean_signed_error, sample_count).  Returns (0.0, 0) when the city has
     fewer than min_samples observations — caller keeps the static bias table.
     """
@@ -2851,25 +2977,28 @@ def get_dynamic_station_bias(
                 """
                 SELECT predicted_temp, actual_temp
                 FROM ensemble_member_scores
-                WHERE city = ? AND model = 'blended'
+                WHERE city = ? AND model = 'blended' AND var = ?
                   AND predicted_temp IS NOT NULL AND actual_temp IS NOT NULL
                 """,
-                (city,),
+                (city, var),
             ).fetchall()
 
             if len(blended_rows) >= min_samples:
                 errors = [r["predicted_temp"] - r["actual_temp"] for r in blended_rows]
                 return round(sum(errors) / len(errors), 4), len(errors)
 
-            # Fall back to all models (icon + gfs approximation)
+            # Fall back to icon_seamless + gfs_seamless only (matches docstring;
+            # 'blended' rows are derived from these and would otherwise be
+            # triple-counted alongside their own components).
             all_rows = con.execute(
                 """
                 SELECT predicted_temp, actual_temp
                 FROM ensemble_member_scores
-                WHERE city = ?
+                WHERE city = ? AND var = ?
+                  AND model IN ('icon_seamless', 'gfs_seamless')
                   AND predicted_temp IS NOT NULL AND actual_temp IS NOT NULL
                 """,
-                (city,),
+                (city, var),
             ).fetchall()
 
             if len(all_rows) < min_samples:
@@ -3102,14 +3231,20 @@ def get_roc_auc() -> dict:
             "note": "no variance in predictions",
         }
 
-    # Walk threshold from high to low, accumulate TPR/FPR
+    # Walk threshold from high to low, accumulate TPR/FPR. Group tied
+    # probabilities into a single point per distinct threshold (the standard
+    # tie treatment) instead of one point per row -- per-row points within a
+    # tie group make AUC depend on arbitrary DB scan order (a tie group could
+    # score as a full-area or zero-area staircase depending on whether
+    # positives or negatives happen to come first in that scan).
     tp = fp = 0
     roc_full: list[tuple[float, float]] = [(0.0, 0.0)]
-    for r in sorted_rows:
-        if r["settled_yes"]:
-            tp += 1
-        else:
-            fp += 1
+    for _prob, group in itertools.groupby(sorted_rows, key=lambda r: r["our_prob"]):
+        for r in group:
+            if r["settled_yes"]:
+                tp += 1
+            else:
+                fp += 1
         roc_full.append((fp / total_neg, tp / total_pos))
     roc_full.append((1.0, 1.0))
 
@@ -3397,8 +3532,11 @@ _PINS_PATH = _project_root() / "data" / "strategy_pins.json"
 def _get_strategy_pins() -> dict[str, str]:
     """Return {method: pinned_until_iso} for currently active (non-expired) pins.
 
-    Expired and malformed entries are pruned on each read so the file stays tidy
-    and a single corrupted entry can never silently clear all pins.
+    Expired and malformed entries are pruned from the returned dict on every
+    read (a single corrupted entry can never silently clear all pins), but NOT
+    written back to disk here — see the comment below for why. The on-disk
+    file still gets pruned, just lazily, on the next real write (unretire_strategy
+    or the cron ensemble-pin auto-renew), not eagerly on every read.
     """
     if not _PINS_PATH.exists():
         return {}
@@ -3426,12 +3564,13 @@ def _get_strategy_pins() -> dict[str, str]:
                 active[method] = until_str
         except Exception:
             pass  # malformed entry — discard silently
-    if len(active) != len(raw):
-        # Prune the file so stale entries don't accumulate across many cycles.
-        try:
-            _save_strategy_pins(active)
-        except Exception as _prune_exc:
-            _log.debug("strategy_pins: could not prune expired entries: %s", _prune_exc)
+    # Prune in-memory only — do NOT write the pruned dict back here. This
+    # function runs from multiple processes (cron + CLI) with no lock around
+    # read-then-write; a write-on-read could race with unretire_strategy's own
+    # read-modify-write and silently erase a pin it just added. Real writers
+    # (unretire_strategy, auto-retire) already save a freshly-pruned dict via
+    # this same function, so expired entries still get dropped from disk the
+    # next time any real write happens — just not eagerly on every read.
     return active
 
 
@@ -3934,30 +4073,48 @@ def settle_analysis_attempt(ticker: str, target_date, outcome: int) -> None:
 
 
 def get_unselected_bias(city: str, condition_type: str | None = None) -> float:
-    """#55: Mean (forecast_prob - outcome) for untraded markets in this city."""
+    """#55: Mean (forecast_prob - outcome) for untraded markets in this city.
+
+    KNOWN LIMITATION: outcome is only populated for analysis_attempts rows
+    whose ticker also has a predictions row (settled via sync_outcomes' new
+    settlement block, see there) — this covers attempts that passed the edge
+    filter but weren't traded (e.g. TRADING_PAUSED shadow predictions), not
+    the majority of attempts logged via cron's batch_log_analysis_attempts
+    for markets that never passed the edge filter at all (no predictions row
+    is ever written for those). On the live DB as of 2026-07-10 that's ~98%
+    of the untraded population, so this function currently reflects a
+    selection-biased subset, not the full "markets we rejected" population
+    its docstring implies. Fixing this fully would need a separate
+    settlement sweep over analysis_attempts tickers lacking a predictions
+    row (~2,000 tickers on the live DB, i.e. ~2,000 extra Kalshi API calls
+    per cron cycle) — not done here since this function has zero production
+    callers today. Build that sweep before wiring this into anything real.
+    """
     init_db()
     try:
         with _conn() as con:
             if condition_type:
                 rows = con.execute(
                     """SELECT forecast_prob, outcome FROM analysis_attempts
-                       WHERE city=? AND condition=? AND was_traded=0 AND outcome IS NOT NULL""",
+                       WHERE city=? AND condition=? AND was_traded=0
+                         AND outcome IS NOT NULL AND forecast_prob IS NOT NULL""",
                     (city, condition_type),
                 ).fetchall()
             else:
                 rows = con.execute(
                     """SELECT forecast_prob, outcome FROM analysis_attempts
-                       WHERE city=? AND was_traded=0 AND outcome IS NOT NULL""",
+                       WHERE city=? AND was_traded=0
+                         AND outcome IS NOT NULL AND forecast_prob IS NOT NULL""",
                     (city,),
                 ).fetchall()
+
+            if not rows:
+                return 0.0
+            errors = [fp - o for fp, o in rows]
+            return round(sum(errors) / len(errors), 4)
     except Exception as exc:
         _log.warning("get_unselected_bias failed for %s: %s", city, exc)
         return 0.0
-
-    if not rows:
-        return 0.0
-    errors = [fp - o for fp, o in rows]
-    return round(sum(errors) / len(errors), 4)
 
 
 def analyze_all_markets(enriched_list: list[dict]) -> None:
@@ -3979,17 +4136,32 @@ def analyze_all_markets(enriched_list: list[dict]) -> None:
             market_prob = analysis.get("market_prob")
             condition = analysis.get("condition", {})
             condition_str = condition.get("type") if condition else None
-            days_out = (
-                (target_date - _utc_today()).days
-                if target_date is not None and hasattr(target_date, "today")
-                else None
-            )
+            # hasattr(target_date, "today") is true for both date and datetime
+            # (a datetime IS a date), but `datetime - date` raises TypeError —
+            # normalize a datetime to .date() instead of type-sniffing on an
+            # unrelated classmethod's presence.
+            if isinstance(target_date, datetime):
+                _td_date = target_date.date()
+            elif isinstance(target_date, date):
+                _td_date = target_date
+            else:
+                _td_date = None
+            days_out = (_td_date - _utc_today()).days if _td_date is not None else None
             if target_date is None:
                 target_str = None
             elif hasattr(target_date, "isoformat"):
                 target_str = target_date.isoformat()  # type: ignore[union-attr]
             else:
                 target_str = str(target_date)
+            if target_str is None:
+                # analysis_attempts' PRIMARY KEY is (ticker, target_date); SQLite
+                # treats NULLs as pairwise distinct, so a NULL target_date would
+                # defeat the ON CONFLICT upsert below and accumulate a duplicate
+                # row on every call for the same ticker instead of updating one.
+                _log.warning(
+                    "analyze_all_markets: skipping %s — no target_date", ticker
+                )
+                continue
             try:
                 with _conn() as con:
                     con.execute(
@@ -4098,24 +4270,30 @@ def get_recent_city_correlations(days: int = 60, min_pairs: int = 5) -> dict:
     Falls back to empty dict when insufficient data.
     """
     init_db()
-    cutoff = (datetime.now(UTC) - timedelta(days=days)).isoformat()
+    # Plain date cutoff (not a datetime isoformat) so it matches market_date's
+    # 'YYYY-MM-DD' format under lexicographic comparison.
+    cutoff = (datetime.now(UTC) - timedelta(days=days)).date().isoformat()
     with _conn() as con:
         rows = con.execute(
             """
-            SELECT p.city, o.settled_temp_f, o.settled_at
+            SELECT p.city, o.settled_temp_f, p.market_date
             FROM   predictions p
             JOIN   outcomes o ON o.ticker = p.ticker
             WHERE  (p.days_out IS NULL OR p.days_out >= 1)
-              AND  o.settled_at >= ?
+              AND  p.market_date >= ?
               AND  o.settled_temp_f IS NOT NULL
               AND  p.city IS NOT NULL
+              AND  UPPER(p.ticker) LIKE '%HIGH%'
             """,
             (cutoff,),
         ).fetchall()
 
+    # Restricted to daily-HIGH markets above — mixing HIGH and LOW temps in one
+    # per-city series would corrupt the correlation (a city's LOW and HIGH on
+    # the same day are ~20-30F apart and not the same physical quantity).
     by_date: dict[str, dict[str, float]] = defaultdict(dict)
-    for city, temp, settled_at in rows:
-        date_str = str(settled_at)[:10]
+    for city, temp, market_date in rows:
+        date_str = str(market_date)[:10]
         by_date[date_str][city] = float(temp)
 
     city_data: dict[str, list[float]] = defaultdict(list)
@@ -4148,14 +4326,19 @@ def get_recent_city_correlations(days: int = 60, min_pairs: int = 5) -> dict:
 
 
 def get_edge_realization_by_city() -> list[dict]:
-    # Compare declared edge at entry vs actual win rate to see which cities deliver on predicted edge
+    # Compare declared edge at entry vs actual win rate to see which cities deliver on predicted edge.
+    # edge is signed (blended_prob - market_prob): negative edge means the model
+    # recommended the NO side, for which settled_yes=0 is a WIN. win_rate must be
+    # side-adjusted, not the raw market YES-rate, or a city that's consistently
+    # correct on the NO side displays as a 0% "loser" with negative mean_edge.
     init_db()
     with _conn() as con:
         rows = con.execute(
             """
             SELECT sub.city,
-                   AVG(sub.edge) as mean_edge,
-                   AVG(CAST(o.settled_yes AS REAL)) as win_rate,
+                   AVG(ABS(sub.edge)) as mean_edge,
+                   AVG(CASE WHEN sub.edge >= 0 THEN CAST(o.settled_yes AS REAL)
+                            ELSE 1.0 - CAST(o.settled_yes AS REAL) END) as win_rate,
                    COUNT(*) as n
             FROM (
                 SELECT ticker, city, edge,
