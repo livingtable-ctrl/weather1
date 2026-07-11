@@ -60,8 +60,11 @@ def get_paper_min_edge() -> float:
 KALSHI_FEE_RATE = float(os.getenv("KALSHI_FEE_RATE", "0.07"))
 
 # Hard cap on Kelly fraction — applied in both weather_markets.py and paper.py.
-# Operative production cap is 0.25 (quarter-Kelly ceiling).
-KELLY_CAP: float = 0.25
+# Operative production cap is 0.25 (quarter-Kelly ceiling). Override via
+# KELLY_CAP env var — config.py's BotConfig.kelly_cap reads the same env var
+# (for validate()/dashboard display) but previously had no effect on real
+# sizing since this constant ignored the env var entirely.
+KELLY_CAP: float = float(os.getenv("KELLY_CAP", "0.25"))
 
 # Edge thresholds — override via .env
 MIN_EDGE = float(os.getenv("MIN_EDGE", "0.07"))  # minimum edge to show in analyze
@@ -246,7 +249,8 @@ WS_CACHE_TTL_SECS: float = float(os.getenv("WS_CACHE_TTL_SECS", "900"))
 def normal_cdf(x: float, mu: float, sigma: float) -> float:
     """
     Probability that a Normal(mu, sigma) random variable is ≤ x.
-    #30: Uses scipy.stats.norm.logcdf if available to avoid underflow at tails.
+    #30: Uses scipy.stats.norm.cdf if available (falls back to a plain
+    math.erfc computation, mathematically equivalent, if scipy is absent).
     """
     if sigma <= 0:
         return 1.0 if x >= mu else 0.0
@@ -306,15 +310,31 @@ def get_config_fingerprint() -> dict:
 
     This is the single source of truth for what config is currently active.
     Changes between runs can be detected by comparing fingerprints.
+
+    DASHBOARD_PASSWORD is deliberately excluded -- check_config_integrity()
+    writes this fingerprint to data/.config_hash in plaintext, and a secret
+    has no business living in a drift-detection file on disk.
     """
     return {
         "KALSHI_FEE_RATE": KALSHI_FEE_RATE,
+        "KELLY_CAP": KELLY_CAP,
         "MIN_EDGE": MIN_EDGE,
         "PAPER_MIN_EDGE": get_paper_min_edge(),
+        "MIN_PROB_EDGE": MIN_PROB_EDGE,
+        "CITY_MIN_PROB_EDGE": CITY_MIN_PROB_EDGE,
+        "MAX_MARKET_DIVERGENCE_RATIO": MAX_MARKET_DIVERGENCE_RATIO,
+        "MIN_MARKET_PROB_TO_BET_WITH": MIN_MARKET_PROB_TO_BET_WITH,
         "STRONG_EDGE": STRONG_EDGE,
+        "DRIFT_TIGHTEN_EDGE": DRIFT_TIGHTEN_EDGE,
         "MED_EDGE": MED_EDGE,
         "MAX_DAILY_SPEND": MAX_DAILY_SPEND,
         "MAX_SAME_DAY_SPEND": MAX_SAME_DAY_SPEND,
+        "SAME_DAY_RESERVE_SLOTS": SAME_DAY_RESERVE_SLOTS,
+        "SAME_DAY_RESERVE_AFTER_HOUR_UTC": SAME_DAY_RESERVE_AFTER_HOUR_UTC,
+        "SAME_DAY_RESERVE_MIN_SAMPLES": SAME_DAY_RESERVE_MIN_SAMPLES,
+        "SAME_DAY_DYNAMIC_SLOTS": SAME_DAY_DYNAMIC_SLOTS,
+        "SAME_DAY_DYNAMIC_K": SAME_DAY_DYNAMIC_K,
+        "SAME_DAY_DYNAMIC_BAND_HOURS": SAME_DAY_DYNAMIC_BAND_HOURS,
         "BREAKEVEN_TRIGGER_PCT": BREAKEVEN_TRIGGER_PCT,
         "MAX_DAILY_LOSS_PCT": MAX_DAILY_LOSS_PCT,
         "MAX_DAYS_OUT": MAX_DAYS_OUT,
@@ -324,11 +344,23 @@ def get_config_fingerprint() -> dict:
         "FIXED_BET_DOLLARS": FIXED_BET_DOLLARS,
         "DRAWDOWN_HALT_PCT": DRAWDOWN_HALT_PCT,
         "MAX_VAR_DOLLARS": MAX_VAR_DOLLARS,
+        "STARTING_BALANCE": STARTING_BALANCE,
         "STOP_LOSS_MULT": STOP_LOSS_MULT,
         "ENABLE_MICRO_LIVE": ENABLE_MICRO_LIVE,
         "MICRO_LIVE_FRACTION": MICRO_LIVE_FRACTION,
+        "MICRO_LIVE_MIN_DOLLARS": MICRO_LIVE_MIN_DOLLARS,
         "BRIER_ALERT_THRESHOLD": BRIER_ALERT_THRESHOLD,
+        "ACCURACY_WINDOW_TRADES": ACCURACY_WINDOW_TRADES,
+        "ACCURACY_MIN_WIN_RATE": ACCURACY_MIN_WIN_RATE,
+        "ACCURACY_MIN_SAMPLE": ACCURACY_MIN_SAMPLE,
+        "MIN_BRIER_SAMPLES": MIN_BRIER_SAMPLES,
+        "SPRT_P0": SPRT_P0,
+        "SPRT_P1": SPRT_P1,
+        "SPRT_ALPHA": SPRT_ALPHA,
+        "SPRT_BETA": SPRT_BETA,
+        "SPRT_MIN_TRADES": SPRT_MIN_TRADES,
         "SLIPPAGE_ALERT_CENTS": SLIPPAGE_ALERT_CENTS,
+        "WS_CACHE_TTL_SECS": WS_CACHE_TTL_SECS,
     }
 
 
@@ -366,8 +398,13 @@ def check_config_integrity() -> dict:
             stored = json.loads(_CONFIG_HASH_PATH.read_text())
             previous_hash = stored.get("hash")
             previous_fp = stored.get("fingerprint", {})
-        except Exception:
-            pass
+        except Exception as _exc:
+            logging.getLogger(__name__).warning(
+                "check_config_integrity: could not read %s (%s) — treating as "
+                "first run; drift for this cycle will be missed",
+                _CONFIG_HASH_PATH,
+                _exc,
+            )
 
     changed = previous_hash is not None and current_hash != previous_hash
     changed_keys = [k for k in fp if fp.get(k) != previous_fp.get(k)] if changed else []
@@ -377,8 +414,13 @@ def check_config_integrity() -> dict:
             _CONFIG_HASH_PATH.write_text(
                 json.dumps({"hash": current_hash, "fingerprint": fp}, indent=2)
             )
-        except Exception:
-            pass
+        except Exception as _exc:
+            logging.getLogger(__name__).warning(
+                "check_config_integrity: could not write %s (%s) — drift "
+                "detection will silently stop working until this is fixed",
+                _CONFIG_HASH_PATH,
+                _exc,
+            )
 
     if changed:
         logging.getLogger(__name__).warning(

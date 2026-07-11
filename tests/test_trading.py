@@ -742,6 +742,12 @@ class TestPortfolioKelly:
 def test_auto_place_trades_med_tier_uses_20_cap(monkeypatch):
     """_auto_place_trades with cap=20.0 should call kelly_quantity with cap=20.0."""
     import main
+    import order_executor as _oe
+
+    # Multi-day opp (default days_out=1) is gated by the real, wall-clock-
+    # dependent _in_gfs_update_window() -- not mocking this makes the test
+    # spuriously fail whenever it runs during that recurring UTC window.
+    monkeypatch.setattr(_oe, "_in_gfs_update_window", lambda now_utc=None: False)
 
     captured_caps = []
 
@@ -1062,7 +1068,13 @@ def test_auto_place_trades_logs_paper_order_to_execution_log(tmp_path, monkeypat
 
     import execution_log
     import main
+    import order_executor as _oe
     import paper
+
+    # Multi-day opp (days_out=1) is gated by the real, wall-clock-dependent
+    # _in_gfs_update_window() -- not mocking this makes the test spuriously
+    # fail whenever it runs during that recurring UTC window.
+    monkeypatch.setattr(_oe, "_in_gfs_update_window", lambda now_utc=None: False)
 
     # Isolate both storage files
     monkeypatch.setattr(paper, "DATA_PATH", tmp_path / "paper_trades.json")
@@ -1327,8 +1339,15 @@ def test_get_bias_near_full_strength_for_large_samples(tmp_path):
 def _l7b_common_patches(monkeypatch):
     """Apply the common monkeypatches needed for L7-B _auto_place_trades tests."""
     import main
+    import order_executor as _oe
     import paper
 
+    # These tests use multi-day opps (days_out >= 1), which real
+    # _in_gfs_update_window() gates during a real recurring UTC window --
+    # not mocking this makes the test spuriously fail whenever it happens to
+    # run during that window, same bug class as the 2026-07-09 GFS-lockout
+    # test flakiness already fixed elsewhere in this file.
+    monkeypatch.setattr(_oe, "_in_gfs_update_window", lambda now_utc=None: False)
     monkeypatch.setattr(paper, "is_paused_drawdown", lambda: False)
     monkeypatch.setattr(paper, "is_daily_loss_halted", lambda client=None: False)
     monkeypatch.setattr(paper, "is_streak_paused", lambda: False)
