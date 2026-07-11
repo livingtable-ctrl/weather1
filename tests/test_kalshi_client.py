@@ -5,13 +5,55 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 
-class TestPlaceOrderApiSemantics:
-    """L1-A: Verify side='no' action='buy' API semantics are correct.
-
-    Kalshi's REST API treats `side` and `action` as independent orthogonal fields.
-    Buying NO contracts requires side='no' action='buy' with no_price_dollars.
-    Using side='yes' action='sell' would close an existing YES position — NOT open NO.
+class TestToV2SidePrice:
+    """V2 order-endpoint migration: Kalshi's legacy POST /portfolio/orders
+    (side: yes/no + action: buy/sell + separate yes_price_dollars/
+    no_price_dollars) is deprecated in favor of POST /portfolio/events/orders
+    (side: bid/ask + a single price field, quoted from the YES side only).
+    _to_v2_side_price() maps the old model to the new one; L1-A's original
+    invariant (a NO buy must never be confused with a YES sell) now shows up
+    as: (no, buy) and (yes, sell) must map to DIFFERENT V2 (side, price)
+    pairs whenever the prices aren't complementary.
     """
+
+    def test_yes_buy_maps_to_bid_at_same_price(self):
+        from kalshi_client import _to_v2_side_price
+
+        assert _to_v2_side_price("yes", "buy", 0.65) == ("bid", 0.65)
+
+    def test_yes_sell_maps_to_ask_at_same_price(self):
+        from kalshi_client import _to_v2_side_price
+
+        assert _to_v2_side_price("yes", "sell", 0.65) == ("ask", 0.65)
+
+    def test_no_buy_maps_to_ask_at_complementary_price(self):
+        """Buying NO at $0.35 is economically equivalent to selling YES at
+        $0.65 (1 - 0.35) -- Kalshi's V2 docs state this explicitly."""
+        from kalshi_client import _to_v2_side_price
+
+        assert _to_v2_side_price("no", "buy", 0.35) == ("ask", pytest.approx(0.65))
+
+    def test_no_sell_maps_to_bid_at_complementary_price(self):
+        from kalshi_client import _to_v2_side_price
+
+        assert _to_v2_side_price("no", "sell", 0.35) == ("bid", pytest.approx(0.65))
+
+    def test_no_buy_and_yes_sell_are_never_confused(self):
+        """L1-A's original invariant, restated for the V2 mapping: a NO buy
+        and a YES sell at the same nominal price must produce DIFFERENT V2
+        orders (different price, since NO's price is complementary) -- they
+        must never collapse to the same (side, price) pair."""
+        from kalshi_client import _to_v2_side_price
+
+        no_buy = _to_v2_side_price("no", "buy", 0.35)
+        yes_sell = _to_v2_side_price("yes", "sell", 0.35)
+        assert no_buy != yes_sell
+
+
+class TestPlaceOrderApiSemantics:
+    """L1-A: Verify side='no' action='buy' API semantics are correct via the
+    full place_order() body construction (V2 shape: side=bid/ask, single
+    price field, no action field at all)."""
 
     def _make_client(self):
         """Return a KalshiClient with no auth (we only test body construction)."""
@@ -21,10 +63,14 @@ class TestPlaceOrderApiSemantics:
             import kalshi_client
 
             client = kalshi_client.KalshiClient.__new__(kalshi_client.KalshiClient)
+        # place_order()'s success path fetches the full order via get_order()
+        # afterward (V2's create-order response has no status field) -- mock
+        # it so these body-construction tests don't need a real network call.
+        client.get_order = lambda order_id: {"order_id": order_id, "status": "resting"}
         return client
 
-    def test_no_side_buy_sends_no_price_dollars(self):
-        """side='no' action='buy' must include no_price_dollars in the request body."""
+    def test_no_side_buy_maps_to_ask_at_complementary_price(self):
+        """side='no' action='buy' must send V2 side='ask' at price=1-price."""
         from unittest.mock import MagicMock
 
         client = self._make_client()
@@ -41,18 +87,15 @@ class TestPlaceOrderApiSemantics:
 
         assert mock_post.called, "place_order must call _post"
         _, body = mock_post.call_args.args
-        # L1-A invariant: NO buy must carry no_price_dollars, never yes_price_dollars
-        assert "no_price_dollars" in body, (
-            "side='no' order body must include no_price_dollars"
+        assert "action" not in body, "V2 body must not include the legacy action field"
+        assert "yes_price_dollars" not in body and "no_price_dollars" not in body, (
+            "V2 body must use a single price field, not yes/no_price_dollars"
         )
-        assert "yes_price_dollars" not in body, (
-            "side='no' order body must NOT include yes_price_dollars"
-        )
-        assert body["side"] == "no"
-        assert body["action"] == "buy"
+        assert body["side"] == "ask"
+        assert float(body["price"]) == pytest.approx(0.65)
 
-    def test_yes_side_buy_sends_yes_price_dollars(self):
-        """side='yes' action='buy' must include yes_price_dollars — not no_price_dollars."""
+    def test_yes_side_buy_maps_to_bid_at_same_price(self):
+        """side='yes' action='buy' must send V2 side='bid' at the same price."""
         from unittest.mock import MagicMock
 
         client = self._make_client()
@@ -68,10 +111,8 @@ class TestPlaceOrderApiSemantics:
         )
 
         _, body = mock_post.call_args.args
-        assert "yes_price_dollars" in body
-        assert "no_price_dollars" not in body
-        assert body["side"] == "yes"
-        assert body["action"] == "buy"
+        assert body["side"] == "bid"
+        assert float(body["price"]) == pytest.approx(0.65)
 
     def test_no_side_place_live_order_calls_buy_not_sell_yes(self):
         """_place_live_order with side='no' must call client.place_order(side='no', action='buy').
@@ -146,6 +187,10 @@ class TestPlaceMakerOrderIdempotency:
             import kalshi_client
 
             client = kalshi_client.KalshiClient.__new__(kalshi_client.KalshiClient)
+        # place_order()'s success path fetches the full order via get_order()
+        # afterward (V2's create-order response has no status field) -- mock
+        # it so these idempotency-key tests don't need a real network call.
+        client.get_order = lambda order_id: {"order_id": order_id, "status": "resting"}
         return client
 
     def test_same_cycle_produces_the_same_idempotency_key(self):

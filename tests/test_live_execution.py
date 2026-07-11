@@ -475,7 +475,7 @@ class TestRecoverPendingOrders:
             price=0.55,
             status="pending",
             live=True,
-            response={"order": {"order_id": "ord_abc123"}},
+            response={"order_id": "ord_abc123"},
         )
 
         mock_client = MagicMock()
@@ -503,7 +503,7 @@ class TestRecoverPendingOrders:
             price=0.55,
             status="pending",
             live=True,
-            response={"order": {"order_id": "ord_xyz"}},
+            response={"order_id": "ord_xyz"},
         )
 
         mock_client = MagicMock()
@@ -538,7 +538,7 @@ class TestRecoverPendingOrders:
             price=0.55,
             status="pending",
             live=True,
-            response={"order": {"order_id": "ord_partial"}},
+            response={"order_id": "ord_partial"},
         )
 
         mock_client = MagicMock()
@@ -572,7 +572,7 @@ class TestRecoverPendingOrders:
             price=0.55,
             status="pending",
             live=True,
-            response={"order": {"order_id": "ord_rest"}},
+            response={"order_id": "ord_rest"},
         )
 
         mock_client = MagicMock()
@@ -609,7 +609,7 @@ class TestRecoverPendingOrders:
             price=0.55,
             status="pending",
             live=True,
-            response={"order": {"order_id": "ord_rest2"}},
+            response={"order_id": "ord_rest2"},
         )
 
         mock_client = MagicMock()
@@ -775,7 +775,7 @@ class TestPollPendingOrders:
             price=0.55,
             status="pending",
             live=True,
-            response={"order": {"order_id": "ord_abc123"}},
+            response={"order_id": "ord_abc123"},
         )
 
         # Mock client that returns Kalshi's real "executed" status (not "filled" --
@@ -848,7 +848,7 @@ class TestPollPendingOrdersExtended:
             price=0.55,
             status="pending",
             live=True,
-            response={"order": {"order_id": "ord_abc"}},
+            response={"order_id": "ord_abc"},
         )
         # Backdate placed_at to 2 hours ago
         old_time = (datetime.now(UTC) - timedelta(hours=2)).isoformat()
@@ -890,7 +890,7 @@ class TestPollPendingOrdersExtended:
             price=0.55,
             status="pending",
             live=True,
-            response={"order": {"order_id": "ord_partial_gtc"}},
+            response={"order_id": "ord_partial_gtc"},
         )
         old_time = (datetime.now(UTC) - timedelta(hours=2)).isoformat()
         with execution_log._conn() as con:
@@ -929,7 +929,7 @@ class TestPollPendingOrdersExtended:
             price=0.55,
             status="pending",
             live=True,
-            response={"order": {"order_id": "ord_fresh"}},
+            response={"order_id": "ord_fresh"},
         )
 
         mock_client = MagicMock()

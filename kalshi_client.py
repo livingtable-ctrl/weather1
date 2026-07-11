@@ -187,6 +187,26 @@ PROD_BASE = "https://api.elections.kalshi.com/trade-api/v2"
 DEMO_BASE = "https://demo-api.kalshi.co/trade-api/v2"
 
 
+def _to_v2_side_price(side: str, action: str, price: float) -> tuple[str, float]:
+    """Map this codebase's (side: yes/no, action: buy/sell, price) model to
+    Kalshi's V2 order API (side: bid/ask, single price) model.
+
+    V2 quotes every order from the YES side: side="bid" means buy YES,
+    side="ask" means sell YES. Per Kalshi's own V2 docs: "Selling YES is
+    economically equivalent to buying NO at 1 - price, but this endpoint
+    quotes everything from the YES side." So a NO-side order is expressed as
+    the equivalent YES-side trade at the complementary price, with buy/sell
+    flipped accordingly:
+        (yes, buy,  P) -> (bid, P)
+        (yes, sell, P) -> (ask, P)
+        (no,  buy,  P) -> (ask, 1-P)
+        (no,  sell, P) -> (bid, 1-P)
+    """
+    if side == "yes":
+        return ("bid" if action == "buy" else "ask"), price
+    return ("ask" if action == "buy" else "bid"), 1.0 - price
+
+
 class KalshiClient:
     def __init__(
         self,
@@ -367,6 +387,15 @@ class KalshiClient:
         """
         Place a limit order with a deterministic idempotency key.
 
+        Uses Kalshi's V2 order-mutation endpoint (/portfolio/events/orders) --
+        the legacy POST /portfolio/orders is deprecated and returns errors as
+        of 2026-06-18. See _to_v2_side_price for the yes/no+buy/sell -> V2
+        bid/ask+price mapping. The V2 create-order response has no `status`
+        field (only order_id/fill_count/remaining_count/ts_ms), so this
+        fetches the full order via get_order() afterward -- unchanged since
+        GET /portfolio/orders/{id} is on the old, unaffected read path --
+        so callers keep seeing the same status/fill_count_fp shape as before.
+
         Args:
             ticker:        Market ticker, e.g. "KXHIGHNY-26APR09-T72"
             side:          "yes" or "no"
@@ -387,38 +416,39 @@ class KalshiClient:
         )
         client_order_id = hashlib.sha256(idempotency_input.encode()).hexdigest()[:32]
 
+        v2_side, v2_price = _to_v2_side_price(side, action, price)
         body = {
             "ticker": ticker,
-            "side": side,
-            "action": action,
-            "count_fp": f"{count:.2f}",
+            "side": v2_side,
+            "count": f"{count:.2f}",
+            "price": f"{v2_price:.4f}",
             "time_in_force": time_in_force,
             "client_order_id": client_order_id,
+            # No prior art in this codebase for this new-in-V2 required field
+            # (the legacy endpoint had no equivalent) -- "taker_at_cross" is
+            # the standard exchange-default convention: cancel the incoming
+            # order rather than risk executing against our own resting order.
+            "self_trade_prevention_type": "taker_at_cross",
         }
-        if side == "yes":
-            body["yes_price_dollars"] = f"{price:.4f}"
-        else:
-            body["no_price_dollars"] = f"{price:.4f}"
 
         try:
-            return self._post("/portfolio/orders", body)
+            resp = self._post("/portfolio/events/orders", body)
+            order_id = resp.get("order_id")
+            if not order_id:
+                raise ValueError(
+                    f"place_order: V2 response missing required order_id: {resp!r}"
+                )
+            return self.get_order(order_id)
         except Exception as exc:
             # POST was not retried automatically (see _build_session).
             # On any failure, check whether the order landed anyway before re-raising.
             existing = self._find_order_by_client_id(client_order_id)
             if existing:
-                import logging
-
-                logging.getLogger(__name__).warning(
+                _log.warning(
                     "place_order: order landed despite exception; returning existing %s",
                     existing.get("order_id"),
                 )
-                # Wrap to match the normal _post()/{"order": {...}} response shape --
-                # callers (order_executor._poll_pending_orders/_recover_pending_orders,
-                # the micro-live-order avg_price read) all do response["order"][...]
-                # with no fallback; an unwrapped dict here silently loses the
-                # order_id downstream, stranding this order in "pending" forever.
-                return {"order": existing}
+                return existing
             raise exc
 
     def _find_order_by_client_id(self, client_order_id: str) -> dict | None:
@@ -490,7 +520,13 @@ class KalshiClient:
         return data.get("order", data)
 
     def cancel_order(self, order_id: str) -> dict:
-        return self._delete(f"/portfolio/orders/{order_id}")
+        """Cancel a resting order via Kalshi's V2 endpoint -- the legacy
+        DELETE /portfolio/orders/{id} is deprecated (see place_order's
+        docstring). Returns the raw V2 cancel response (order_id/reduced_by/
+        ts_ms -- no status field); callers that need post-cancel status/fill
+        info already call get_order() separately (order_executor._finalize_cancel).
+        """
+        return self._delete(f"/portfolio/events/orders/{order_id}")
 
     def place_maker_order(
         self,

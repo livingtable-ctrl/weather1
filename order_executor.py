@@ -269,9 +269,10 @@ def _recover_pending_orders(client) -> None:
             if response:
                 if isinstance(response, str):
                     response = json.loads(response)
-                order_id = (
-                    response.get("order", {}).get("order_id") if response else None
-                )
+                # kalshi_client.place_order() now returns the flat
+                # get_order()-shaped dict directly (V2 order-endpoint
+                # migration -- no more {"order": {...}} wrapper).
+                order_id = response.get("order_id") if response else None
             else:
                 order_id = None
 
@@ -400,7 +401,10 @@ def _poll_pending_orders(client, config: dict | None = None) -> None:
                 if isinstance(order["response"], str)
                 else order["response"]
             )
-            order_id = response.get("order", {}).get("order_id") if response else None
+            # kalshi_client.place_order() now returns the flat get_order()-
+            # shaped dict directly (V2 order-endpoint migration -- no more
+            # {"order": {...}} wrapper).
+            order_id = response.get("order_id") if response else None
             if not order_id:
                 continue
 
@@ -2013,9 +2017,20 @@ def _auto_place_trades(
                                 # matching comment on the main live path above; settlement
                                 # already accounts for this order's realized pnl, and
                                 # adding cost here too double-counted every loss.
+                                # KNOWN GAP (pre-existing, not introduced by the V2
+                                # order-endpoint migration): "avg_price" has never
+                                # been a real field on either the legacy or V2 Order
+                                # schema (real fields are yes_price_dollars/
+                                # no_price_dollars, the resting limit price, plus
+                                # taker_fill_cost_dollars/maker_fill_cost_dollars,
+                                # the total $ cost of fills) -- this has always
+                                # silently fallen through to _micro_price for
+                                # slippage-tracking purposes. A real average fill
+                                # price would need fill-cost / fill_count_fp, split
+                                # by maker vs taker fills; not implemented here to
+                                # avoid guessing at unverified field semantics.
                                 _micro_fill = (
-                                    _micro_resp.get("order", {}).get("avg_price")
-                                    or _micro_price
+                                    _micro_resp.get("avg_price") or _micro_price
                                 )
                                 from tracker import log_live_fill as _log_fill
 

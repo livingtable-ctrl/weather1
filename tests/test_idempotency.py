@@ -29,7 +29,12 @@ class TestClientOrderId:
     def _make_client(self):
         from kalshi_client import KalshiClient
 
-        return KalshiClient.__new__(KalshiClient)
+        client = KalshiClient.__new__(KalshiClient)
+        # place_order()'s success path now fetches the full order via
+        # get_order() (V2's create-order response has no status field) --
+        # mock it so tests don't need a real network call.
+        client.get_order = lambda order_id: {"order_id": order_id, "status": "resting"}
+        return client
 
     def test_client_order_id_is_deterministic(self):
         """Same inputs + same cycle → same client_order_id."""
@@ -113,10 +118,11 @@ class TestPostFailureDedup:
     def test_returns_existing_order_when_post_fails_but_order_landed(self):
         """If _post raises but the order exists on exchange, return it without re-raising.
 
-        Wrapped in {"order": ...} to match the normal _post() success-response
-        shape -- order_executor.py's response["order"]["order_id"] reads (no
-        fallback) would otherwise silently lose the order_id for any order
-        recovered via this exception-then-lookup path.
+        Returned unwrapped, matching get_order()'s own convention -- the
+        success path now also returns get_order()'s flat shape (V2's
+        create-order response has no status field, so place_order() fetches
+        the full order via get_order() after a successful POST), so both
+        paths are consistent with no {"order": ...} wrapper either way.
         """
         client = self._make_client()
 
@@ -130,7 +136,7 @@ class TestPostFailureDedup:
 
         result = client.place_order("KXTEST", "yes", "buy", 1, 0.55, cycle="12z")
 
-        assert result == {"order": existing_order}
+        assert result == existing_order
         client._find_order_by_client_id.assert_called_once()
 
     def test_reraises_when_post_fails_and_order_not_found(self):
