@@ -140,10 +140,18 @@ def update_orderbook_cache(ticker: str, data: dict) -> None:
 
     with _cache_lock:
         if data.get("type") == "orderbook_delta":
-            # Merge delta into existing entry to preserve mid_price
+            # Store the raw delta for potential future use (no current
+            # consumer applies it to best_yes_bid/best_no_bid/mid_price --
+            # only a "ticker"-type message ever sets mid_price). Deliberately
+            # do NOT touch `ts` here: get_cached_mid_price()'s freshness
+            # check (_is_fresh) reads this entry's `ts` to gate mid_price
+            # staleness, and a delta doesn't actually refresh mid_price --
+            # bumping `ts` would make a frozen mid_price look "fresh"
+            # indefinitely as long as deltas keep arriving, defeating the
+            # staleness gate on a safety-critical input (get_cached_mid_price
+            # feeds order_executor.py's flash-crash circuit breaker check).
             existing = _orderbook.get(ticker, {})
             existing["last_delta"] = data["delta"]
-            existing["ts"] = data["ts"]
             _orderbook[ticker] = existing
             merged = existing
         else:
@@ -340,6 +348,7 @@ class KalshiWebSocket:
         self._tickers: list[str] = []
         self._thread: threading.Thread | None = None
         self._loop: asyncio.AbstractEventLoop | None = None
+        self._task: asyncio.Task | None = None
         self._running = False
 
     def subscribe(self, tickers: list[str]) -> None:
@@ -358,10 +367,24 @@ class KalshiWebSocket:
         _log.info("kalshi_ws: background thread started")
 
     def stop(self, timeout: float = 5.0) -> None:
-        """Stop the WebSocket listener."""
+        """Stop the WebSocket listener.
+
+        Cancels the running task (rather than just stopping the loop) so the
+        `async with websockets.connect(...)` context manager's cleanup
+        actually runs -- closing the connection with a proper close frame
+        instead of abruptly abandoning it -- and so _ws_listener's own
+        `finally: _set_ws_alive(False)` executes before the thread exits.
+        """
         self._running = False
         if self._loop and not self._loop.is_closed():
-            self._loop.call_soon_threadsafe(self._loop.stop)
+            if self._task is not None:
+                self._loop.call_soon_threadsafe(self._task.cancel)
+            else:
+                # Narrow window: stop() called between _run() setting
+                # self._loop and it creating self._task a few lines later.
+                # Fall back to stopping the loop directly so this doesn't
+                # regress to "stop() does nothing" for that edge case.
+                self._loop.call_soon_threadsafe(self._loop.stop)
         if self._thread:
             self._thread.join(timeout=timeout)
         _log.info("kalshi_ws: stopped")
@@ -370,9 +393,12 @@ class KalshiWebSocket:
         self._loop = asyncio.new_event_loop()
         asyncio.set_event_loop(self._loop)
         try:
-            self._loop.run_until_complete(
+            self._task = self._loop.create_task(
                 _ws_listener(self._api_key, self._private_key_pem, self._tickers)
             )
+            self._loop.run_until_complete(self._task)
+        except asyncio.CancelledError:
+            pass  # expected when stop() cancels the task
         except Exception as exc:
             _log.error("kalshi_ws: thread error: %s", exc)
         finally:

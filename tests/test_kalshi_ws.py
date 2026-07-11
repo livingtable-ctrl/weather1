@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -87,6 +88,45 @@ class TestOrderbookCache:
 
         assert read_orderbook_cache() == {}
 
+    def test_orderbook_delta_does_not_refresh_mid_price_timestamp(
+        self, tmp_path, monkeypatch
+    ):
+        """A delta message must not bump `ts` (or touch mid_price) -- only a
+        "ticker"-type message actually refreshes mid_price, and bumping `ts`
+        on every delta would make a frozen mid_price look "fresh" forever as
+        long as deltas keep arriving, defeating get_cached_mid_price()'s
+        staleness gate on this safety-critical input (feeds
+        order_executor.py's flash-crash circuit breaker check)."""
+        import kalshi_ws
+
+        monkeypatch.setattr(kalshi_ws, "_CACHE_PATH", tmp_path / "orderbook_cache.json")
+        monkeypatch.setattr(kalshi_ws, "_orderbook", {})
+
+        from kalshi_ws import update_orderbook_cache
+
+        update_orderbook_cache(
+            "TICKER-A",
+            {"type": "ticker", "mid_price": 0.65, "ts": "2020-01-01T00:00:00+00:00"},
+        )
+        original_entry = dict(kalshi_ws._orderbook["TICKER-A"])
+
+        update_orderbook_cache(
+            "TICKER-A",
+            {
+                "type": "orderbook_delta",
+                "delta": {"some": "delta"},
+                "ts": "2099-01-01T00:00:00+00:00",  # a much "fresher" ts
+            },
+        )
+        updated_entry = kalshi_ws._orderbook["TICKER-A"]
+
+        assert updated_entry["mid_price"] == original_entry["mid_price"]
+        assert updated_entry["ts"] == original_entry["ts"], (
+            "delta must not overwrite ts with a fresher timestamp -- mid_price "
+            "wasn't actually refreshed"
+        )
+        assert updated_entry["last_delta"] == {"some": "delta"}
+
 
 class TestBuildSubscribeMessage:
     def test_subscribe_message_structure(self):
@@ -159,6 +199,59 @@ class TestCacheStaleness:
             {"KXTEMP-25": {"mid_price": 0.65}},  # no "ts"
         )
         assert kalshi_ws.get_cached_mid_price("KXTEMP-25") is None
+
+
+class TestKalshiWebSocketLifecycle:
+    def test_stop_cancels_task_and_thread_exits_cleanly(self, monkeypatch):
+        """stop() must cancel the running task (not just stop the loop) so
+        the async-with-websockets-connect cleanup actually runs and the
+        background thread exits within the join timeout, instead of
+        abandoning the connection and leaving the thread's loop.close()
+        unconfirmed."""
+        import asyncio
+
+        import kalshi_ws
+
+        async def _fake_listener(api_key, private_key_pem, tickers):
+            kalshi_ws._set_ws_alive(True)
+            try:
+                await asyncio.sleep(100)
+            finally:
+                # Mirrors _ws_listener's real finally: _set_ws_alive(False) --
+                # only runs if the task is actually cancelled (propagating
+                # through this finally), not if the loop were merely stopped
+                # out from under an abandoned coroutine.
+                kalshi_ws._set_ws_alive(False)
+
+        monkeypatch.setattr(kalshi_ws, "_ws_listener", _fake_listener)
+
+        ws = kalshi_ws.KalshiWebSocket("key", "pem")
+        ws.start()
+        # Give the background thread a moment to create its event loop/task.
+        for _ in range(50):
+            if ws._task is not None:
+                break
+            time.sleep(0.02)
+        assert ws._task is not None, "background thread never created its task"
+        # Wait for _fake_listener to actually start running (sets alive=True)
+        # before stopping, so the post-stop check proves the finally ran.
+        for _ in range(50):
+            if kalshi_ws.get_ws_health()["alive"]:
+                break
+            time.sleep(0.02)
+        assert kalshi_ws.get_ws_health()["alive"] is True
+
+        ws.stop(timeout=2.0)
+
+        assert kalshi_ws.get_ws_health()["alive"] is False, (
+            "the task's finally block must run on cancellation, proving the "
+            "connection cleanup path executed rather than the coroutine "
+            "being abandoned mid-flight"
+        )
+
+        assert not ws._thread.is_alive(), (
+            "thread must exit promptly once its task is cancelled"
+        )
 
 
 class TestWsHealth:
