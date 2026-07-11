@@ -6,6 +6,8 @@ import sys
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 
@@ -32,6 +34,42 @@ class TestPortfolioVarSampleCount:
         assert _cholesky(mat) is None  # fails raw
         repaired = _repair_psd(mat)
         assert _cholesky(repaired) is not None  # succeeds after repair
+
+    def test_repair_psd_renormalizes_to_unit_diagonal(self):
+        """The ridge-loading repair must renormalize back to a unit-diagonal
+        correlation matrix -- an unnormalized shift alone would inflate
+        variance and dilute every off-diagonal correlation, silently
+        distorting the VaR figure this feeds into a live pre-trade gate
+        (order_executor.py's MAX_VAR_DOLLARS check)."""
+        from monte_carlo import _cholesky, _repair_psd
+
+        # Classic non-PSD 3x3: uniform pairwise rho=-0.9 is impossible for
+        # 3 variables (eigenvalues 1+2*(-0.9)=-0.8 and 1-(-0.9)=1.9,1.9 --
+        # one negative eigenvalue), needs a non-trivial shift to repair.
+        mat = [
+            [1.0, -0.9, -0.9],
+            [-0.9, 1.0, -0.9],
+            [-0.9, -0.9, 1.0],
+        ]
+        assert _cholesky(mat) is None  # fails raw
+        repaired = _repair_psd(mat)
+        assert _cholesky(repaired) is not None  # succeeds after repair
+
+        n = len(repaired)
+        for i in range(n):
+            assert repaired[i][i] == pytest.approx(1.0, abs=1e-9), (
+                f"diagonal[{i}] = {repaired[i][i]!r}, expected 1.0"
+            )
+        for i in range(n):
+            for j in range(n):
+                if i == j:
+                    continue
+                # Off-diagonal magnitude must shrink toward 0 (rho/(1+shift)
+                # for a positive shift), never grow past the original |rho|.
+                assert abs(repaired[i][j]) < abs(mat[i][j]), (
+                    f"repaired[{i}][{j}]={repaired[i][j]!r} did not shrink "
+                    f"from original {mat[i][j]!r}"
+                )
 
     def test_repair_psd_identity_unchanged(self):
         """Identity matrix is already PD — repair should return immediately."""

@@ -42,13 +42,27 @@ def _cholesky(mat: list[list[float]]) -> list[list[float]] | None:
 
 
 def _repair_psd(mat: list[list[float]]) -> list[list[float]]:
-    """Nearest-PSD repair via eigenvalue flooring: add minimal diagonal shift until Cholesky succeeds."""
+    """Nearest-PSD repair via diagonal (ridge) loading: add a minimal shift to
+    every diagonal entry until Cholesky succeeds, then renormalize back to a
+    unit-diagonal correlation matrix.
+
+    Renormalization matters: the ridge shift alone inflates each variable's
+    variance (Var(z_i) = 1+shift) and dilutes every pairwise correlation
+    (effective rho = orig_rho / (1+shift)) -- left unnormalized, the
+    "repaired" matrix would silently distort simulate_portfolio()'s
+    correlated draws in an unpredictable direction, which reaches a live
+    gate via portfolio_var() -> order_executor.py's pre-trade VaR check.
+    """
     n = len(mat)
     result = [row[:] for row in mat]
     eps = 1e-8
-    for _ in range(60):  # eps doubles each iter; 60 doublings = ~0.06 max shift
+    for _ in range(60):  # eps doubles each iter -- unbounded worst case, but
+        # correlation-bounded matrices converge within a handful of iterations
         if _cholesky(result) is not None:
-            return result
+            diag = [math.sqrt(result[i][i]) for i in range(n)]
+            return [
+                [result[i][j] / (diag[i] * diag[j]) for j in range(n)] for i in range(n)
+            ]
         for i in range(n):
             result[i][i] += eps
         eps *= 2.0
@@ -504,6 +518,22 @@ def run_stress_test(scenario: str = "heat_wave_failure") -> dict:
 
     Returns {scenario, description, positions_affected, loss_dollars, balance_after,
              pct_of_balance, below_halt, halt_floor}.
+
+    KNOWN LIMITATION: heat_wave_failure/cold_snap_failure's own descriptions
+    name a specific losing side ("NO-above bets", "NO-below bets"), but this
+    function's city filter below does not also filter by side/direction --
+    every position in an affected city is counted as a 100% loss regardless
+    of side, even one that would actually WIN in that scenario (e.g. a
+    YES-side "will exceed threshold" bet during a real heat wave). This
+    overstates loss_dollars/pct_of_balance for a mixed-side same-city
+    portfolio (which can genuinely occur -- the dedup guard only blocks a
+    second position on the *same* ticker, not the same city). Not fixed here:
+    a correct fix needs each trade's above/below condition direction, which
+    isn't currently stored on the trade record (only condition_threshold is;
+    see paper.py's log_trade). This function is display-only (the dashboard's
+    /api/stress-test endpoint), not a live trading gate, and the error is
+    conservative (overstates loss), so this is a documented gap, not a fix,
+    pending a future condition-direction field on trade records.
     """
     from paper import get_balance, get_peak_balance, load_paper_trades
     from utils import DRAWDOWN_HALT_PCT
@@ -525,7 +555,6 @@ def run_stress_test(scenario: str = "heat_wave_failure") -> dict:
 
     total_loss = 0.0
     for t in trades:
-        side = t.get("side", "yes")
         entry = float(t.get("entry_price", 0.5))
         qty = int(t.get("quantity", 1))
         loss_pct_raw = cfg.get("assumed_loss_per_position_pct")
@@ -533,7 +562,15 @@ def run_stress_test(scenario: str = "heat_wave_failure") -> dict:
             loss_pct = float(loss_pct_raw)
         else:
             loss_pct = 1.0
-        cost = float(t.get("cost") or ((entry if side == "yes" else 1.0 - entry) * qty))
+        # entry_price is already side-appropriate (paper.py stores the real
+        # NO-side price for a NO trade, not 1-yes_price) -- cost = entry*qty
+        # regardless of side, matching paper.py's own convention everywhere
+        # else. The previous (1.0 - entry) branch for the NO side computed
+        # the wrong fallback cost, though real trades always have a stored
+        # `cost` already (paper.py validates entry_price before setting it),
+        # so this fallback is currently unreachable in practice.
+        _raw_cost = t.get("cost")
+        cost = float(_raw_cost) if _raw_cost is not None else entry * qty
         total_loss += cost * loss_pct
 
     balance = get_balance()
