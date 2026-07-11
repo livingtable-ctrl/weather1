@@ -370,3 +370,59 @@ class TestWasOrderedRecentlyCanceledSpelling:
                 ("KXHIGH-25MAY15-T75", "yes", 1, 0.55, "cancelled", 1),
             )
         assert execution_log.was_ordered_recently("KXHIGH-25MAY15-T75") is False
+
+
+class TestWasOrderedRecentlyTimestampBoundary:
+    """H-21 followup: was_ordered_recently() compared raw ISO-T placed_at
+    against SQLite's space-separated datetime('now', ...) with no format
+    normalization -- 'T' (0x54) sorts higher than ' ' (0x20), which could
+    wrongly stretch the block window by up to ~24h on a same-calendar-day
+    boundary. Confirms the fix's normalized comparison gets a clearly-within-
+    window row, a clearly-outside-window row, and the actual boundary case
+    the T-vs-space bug affected all correct."""
+
+    def setup_method(self):
+        self._tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+        execution_log.DB_PATH = Path(self._tmp.name)
+        execution_log._initialized = False
+
+    def teardown_method(self):
+        import gc
+
+        execution_log._initialized = False
+        self._tmp.close()
+        gc.collect()
+        Path(self._tmp.name).unlink(missing_ok=True)
+
+    def _insert(self, ticker, placed_at_iso):
+        execution_log.init_log()
+        with execution_log._conn() as con:
+            con.execute(
+                "INSERT INTO orders (ticker, side, quantity, price, status, "
+                "placed_at, live) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (ticker, "yes", 1, 0.55, "filled", placed_at_iso, 1),
+            )
+
+    def test_row_within_7_days_blocks_reentry(self):
+        from datetime import UTC, datetime, timedelta
+
+        placed_at = (datetime.now(UTC) - timedelta(days=6)).isoformat()
+        self._insert("KXHIGH-25MAY15-T75", placed_at)
+        assert execution_log.was_ordered_recently("KXHIGH-25MAY15-T75") is True
+
+    def test_row_older_than_7_days_does_not_block_reentry(self):
+        from datetime import UTC, datetime, timedelta
+
+        placed_at = (datetime.now(UTC) - timedelta(days=8)).isoformat()
+        self._insert("KXHIGH-25MAY15-T75", placed_at)
+        assert execution_log.was_ordered_recently("KXHIGH-25MAY15-T75") is False
+
+    def test_row_1_hour_past_the_7_day_cutoff_does_not_block_reentry(self):
+        """The exact bug scenario: a row on the same calendar day as the
+        cutoff, but chronologically past it, must not be miscounted as
+        in-window just because 'T' sorts higher than ' '."""
+        from datetime import UTC, datetime, timedelta
+
+        placed_at = (datetime.now(UTC) - timedelta(days=7, hours=1)).isoformat()
+        self._insert("KXHIGH-25MAY15-T75", placed_at)
+        assert execution_log.was_ordered_recently("KXHIGH-25MAY15-T75") is False

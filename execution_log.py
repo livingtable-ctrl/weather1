@@ -224,7 +224,14 @@ def was_recently_ordered(ticker: str, side: str, within_minutes: int = 10) -> bo
 def was_traded_today(ticker: str, side: str, live: bool | None = None) -> bool:
     """
     Return True if this ticker+side was successfully ordered today (UTC).
-    Excludes failed orders so a timeout doesn't permanently blacklist the ticker.
+    Excludes failed and canceled orders so a timeout or a no-fill GTC cancel
+    doesn't permanently blacklist the ticker for the rest of the UTC day —
+    same reasoning as was_ordered_recently()'s canceled exclusion (F8): a
+    canceled order never established a position, so it shouldn't count as
+    "already traded" the way was_ordered_this_cycle()/was_recently_ordered()
+    deliberately still do (those are short anti-thrash windows where even a
+    just-canceled attempt should block an immediate retry; this is a
+    same-day window where that tradeoff no longer favors blocking).
 
     live: if True, only match live orders (live=1); if False, only paper; if None, match both.
     H-6: the live= filter lets the micro-live dedup check be scoped to live orders only,
@@ -236,7 +243,7 @@ def was_traded_today(ticker: str, side: str, live: bool | None = None) -> bool:
     with _conn() as con:
         row = con.execute(
             f"SELECT 1 FROM orders WHERE ticker=? AND side=? AND placed_at LIKE ? "
-            f"AND status != 'failed'{live_clause} LIMIT 1",
+            f"AND status NOT IN ('failed', 'canceled', 'cancelled'){live_clause} LIMIT 1",
             (ticker, side, f"{today}%"),
         ).fetchone()
     return row is not None
@@ -280,10 +287,22 @@ def was_ordered_recently(ticker: str, days: int = 7) -> bool:
         # retroactively rewrite rows already on disk from before the fix, so
         # a pre-existing "cancelled" row would otherwise wrongly block
         # re-entry for its own leftover 7-day window post-deploy.
+        # H-21: normalize placed_at to SQLite format before comparing — raw ISO-T
+        # timestamps ('T' separator, 0x54) sort lexicographically higher than
+        # SQLite's space-separated datetime('now', ...) format (0x20) at the
+        # position where they diverge, stretching the effective block window
+        # by up to ~24h on same-calendar-day boundary cases (always over-
+        # cautious, never under-blocking — same bug class already fixed in
+        # was_recently_ordered() above and repeatedly in tracker.py).
         row = con.execute(
-            "SELECT 1 FROM orders WHERE ticker=? "
-            "AND status NOT IN ('failed', 'canceled', 'cancelled') "
-            "AND placed_at >= datetime('now', ?) LIMIT 1",
+            """
+            SELECT 1 FROM orders WHERE ticker=?
+            AND status NOT IN ('failed', 'canceled', 'cancelled')
+            AND strftime('%Y-%m-%d %H:%M:%S',
+                  replace(replace(placed_at, 'T', ' '), 'Z', ''))
+                >= datetime('now', ?)
+            LIMIT 1
+            """,
             (ticker, f"-{days} days"),
         ).fetchone()
     return row is not None

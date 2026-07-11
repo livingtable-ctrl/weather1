@@ -96,6 +96,38 @@ def test_was_traded_today_true_for_non_failed_status(tmp_path, monkeypatch):
     assert was_traded_today("KXTEST", "yes")
 
 
+def test_was_traded_today_false_for_canceled_order(tmp_path, monkeypatch):
+    """A canceled (no-fill) order today must not block re-entry -- same reasoning
+    as was_ordered_recently()'s F8 fix: a canceled order never established a
+    real position, so it shouldn't count as "already traded" for the rest of
+    the UTC day."""
+    import execution_log
+
+    monkeypatch.setattr(execution_log, "DB_PATH", tmp_path / "exec.db")
+    execution_log._initialized = False
+    execution_log.init_log()
+    execution_log.log_order("KXTEST", "yes", 5, 0.60, "limit", "canceled", live=False)
+
+    from execution_log import was_traded_today
+
+    assert not was_traded_today("KXTEST", "yes")
+
+
+def test_was_traded_today_false_for_legacy_cancelled_spelling(tmp_path, monkeypatch):
+    """British "cancelled" spelling (written by older GTC-timer paths) must
+    also be excluded, not just the now-canonical American "canceled"."""
+    import execution_log
+
+    monkeypatch.setattr(execution_log, "DB_PATH", tmp_path / "exec.db")
+    execution_log._initialized = False
+    execution_log.init_log()
+    execution_log.log_order("KXTEST", "yes", 5, 0.60, "limit", "cancelled", live=False)
+
+    from execution_log import was_traded_today
+
+    assert not was_traded_today("KXTEST", "yes")
+
+
 def test_auto_place_trades_skips_already_traded_today(tmp_path, monkeypatch):
     """_auto_place_trades must skip an opp if was_traded_today returns True."""
     import execution_log
