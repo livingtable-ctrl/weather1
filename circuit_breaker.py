@@ -282,6 +282,7 @@ class CircuitBreaker:
 _FLASH_CRASH_COOLDOWN_PATH = (
     Path(__file__).parent / "data" / ".flash_crash_cooldowns.json"
 )
+_FLASH_CRASH_HISTORY_PATH = Path(__file__).parent / "data" / ".flash_crash_history.json"
 
 
 class FlashCrashCB:
@@ -290,6 +291,22 @@ class FlashCrashCB:
     Trips when price moves > threshold_pct within window_seconds.
     Blocks that ticker for cooldown_seconds.
     Cooldowns are persisted to disk so restarts don't lose active protection (R14).
+
+    KNOWN LIMITATION (not fixed here -- flagged as an urgent follow-up):
+    price history is now persisted to disk (like cooldowns already were), so
+    check() CAN compare across separate process invocations that happen to
+    land within window_seconds of each other. But window_seconds (300s
+    default) is still shorter than this bot's real scan cadence in both of
+    its actual usage modes -- one-shot `python main.py cron` runs are
+    typically hours apart, and `watch --auto`'s own cycle time (sleep +
+    full scan duration) is >= its own 300s refresh interval -- so two
+    observations still won't usually land inside the window, and this
+    remains structurally unable to detect a genuine sub-5-minute crash in
+    practice. A real fix needs either window_seconds widened to match real
+    scan cadence (redefining this as a between-scan price-swing detector,
+    not true flash-crash detection) or wiring check() into kalshi_ws.py's
+    live WebSocket feed so it runs on continuous real-time ticks independent
+    of scan cadence -- both are real design decisions, deliberately deferred.
     """
 
     def __init__(
@@ -304,6 +321,7 @@ class FlashCrashCB:
         self._history: dict[str, list[tuple[float, float]]] = {}
         self._cooldowns: dict[str, float] = {}
         self._load_cooldowns()
+        self._load_history()
 
     def _load_cooldowns(self) -> None:
         """Load persisted cooldowns from disk, discarding any that have already expired."""
@@ -332,6 +350,45 @@ class FlashCrashCB:
         except Exception as exc:
             _log.warning("FlashCrashCB: could not save cooldowns: %s", exc)
 
+    def _load_history(self) -> None:
+        """Load persisted price history from disk, discarding any observations
+        already outside window_seconds. Without this, history was in-memory
+        only, so a fresh process (the bot's actual one-shot `python main.py
+        cron` usage) could never accumulate the 2+ observations check()
+        needs, making crash detection impossible across process restarts.
+        """
+        try:
+            if _FLASH_CRASH_HISTORY_PATH.exists():
+                raw: dict[str, list] = json.loads(
+                    _FLASH_CRASH_HISTORY_PATH.read_text(encoding="utf-8")
+                )
+                now = time.time()
+                window_start = now - self.window_seconds
+                loaded = {
+                    ticker: [
+                        (float(ts), float(p)) for ts, p in entries if ts >= window_start
+                    ]
+                    for ticker, entries in raw.items()
+                }
+                self._history = {t: v for t, v in loaded.items() if v}
+        except Exception as exc:
+            _log.warning("FlashCrashCB: could not load history: %s", exc)
+
+    def _save_history(self) -> None:
+        """Persist current (non-expired) price history to disk atomically."""
+        try:
+            _FLASH_CRASH_HISTORY_PATH.parent.mkdir(parents=True, exist_ok=True)
+            now = time.time()
+            window_start = now - self.window_seconds
+            active = {
+                ticker: [(ts, p) for ts, p in entries if ts >= window_start]
+                for ticker, entries in self._history.items()
+            }
+            active = {t: v for t, v in active.items() if v}
+            atomic_write_json(active, _FLASH_CRASH_HISTORY_PATH)
+        except Exception as exc:
+            _log.warning("FlashCrashCB: could not save history: %s", exc)
+
     def check(self, ticker: str, current_price: float) -> bool:
         """Record price and return True if this observation triggered a crash."""
         now = time.time()
@@ -340,6 +397,7 @@ class FlashCrashCB:
         # Prune old observations
         self._history[ticker] = [(ts, p) for ts, p in history if ts >= window_start]
         self._history[ticker].append((now, current_price))
+        self._save_history()
         if len(self._history[ticker]) < 2:
             return False
         oldest_price = self._history[ticker][0][1]

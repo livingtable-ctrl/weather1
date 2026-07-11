@@ -32,10 +32,16 @@ class TestCircuitBreakerBasic:
         assert cb.failure_count == 0
 
     def test_half_open_after_timeout(self):
-        cb = CircuitBreaker("test", failure_threshold=1, recovery_timeout=0.01)
+        # A 10ms recovery_timeout raced the immediate `assert cb.is_open()`
+        # right after record_failure() -- under real test-suite load (many
+        # tests collected/running), that first assertion alone could take
+        # longer than 10ms, making the breaker already past its recovery
+        # window and flakily fail. Wider margin (0.5s timeout, 0.6s sleep)
+        # keeps the same behavior under test without a realistic race.
+        cb = CircuitBreaker("test", failure_threshold=1, recovery_timeout=0.5)
         cb.record_failure()
         assert cb.is_open()
-        time.sleep(0.05)
+        time.sleep(0.6)
         # After timeout elapses, is_open() transitions to half-open (returns False)
         assert not cb.is_open()
 

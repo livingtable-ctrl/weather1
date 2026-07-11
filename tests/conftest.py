@@ -46,6 +46,39 @@ def isolate_circuit_breaker_state(tmp_path, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def isolate_flash_crash_cb_state(tmp_path, monkeypatch):
+    """Redirect circuit_breaker's flash-crash history/cooldown paths to
+    per-test temp files, and reset the module-level flash_crash_cb
+    singleton's in-memory state.
+
+    flash_crash_cb is a module-level singleton constructed once at import
+    time (before this fixture ever runs), so its in-memory _history/
+    _cooldowns dicts must be reset directly, not just the path constants --
+    redirecting the path alone wouldn't undo whatever it already loaded from
+    the real data/ directory at import time. Any test exercising the real
+    _auto_place_trades/_validate_trade_opportunity code path calls
+    flash_crash_cb.check() on the singleton (not a locally-constructed
+    FlashCrashCB()), so without this, one test's price history/cooldowns for
+    a shared ticker (e.g. a fixture ticker reused across test files) leaks
+    into another test and pollutes the real on-disk .flash_crash_history.json.
+    """
+    import circuit_breaker
+
+    monkeypatch.setattr(
+        circuit_breaker,
+        "_FLASH_CRASH_HISTORY_PATH",
+        tmp_path / ".flash_crash_history.json",
+    )
+    monkeypatch.setattr(
+        circuit_breaker,
+        "_FLASH_CRASH_COOLDOWN_PATH",
+        tmp_path / ".flash_crash_cooldowns.json",
+    )
+    monkeypatch.setattr(circuit_breaker.flash_crash_cb, "_history", {})
+    monkeypatch.setattr(circuit_breaker.flash_crash_cb, "_cooldowns", {})
+
+
+@pytest.fixture(autouse=True)
 def clear_paper_min_edge_cache():
     """Clear config's mtime-gated PAPER_MIN_EDGE cache before every test.
 
