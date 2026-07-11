@@ -14,6 +14,20 @@ def _force_demo_env():
         yield
 
 
+@pytest.fixture(autouse=True)
+def _no_dashboard_password(monkeypatch):
+    """utils.DASHBOARD_PASSWORD is cached at import time (conftest.py imports
+    main, transitively importing utils, before any test runs) from the real
+    .env file's DASHBOARD_PASSWORD -- monkeypatch.delenv/setenv can't reach an
+    already-cached module attribute, so it must be patched directly (matches
+    test_web_auth.py's established convention). Without this, every request
+    in this file needs real Basic-auth credentials and gets 401.
+    """
+    import utils
+
+    monkeypatch.setattr(utils, "DASHBOARD_PASSWORD", "")
+
+
 def _make_analysis(net_edge: float, kelly: float = 0.10) -> dict:
     return {
         "forecast_prob": 0.70,

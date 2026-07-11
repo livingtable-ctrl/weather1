@@ -18,7 +18,10 @@ def _make_app():
 
 def _basic_auth(password: str) -> dict:
     encoded = base64.b64encode(f"user:{password}".encode()).decode()
-    return {"Authorization": f"Basic {encoded}"}
+    # X-Requested-With matches the bundled frontend's authHeader() helper --
+    # web_app.py's _check_auth now requires it on state-changing requests as a
+    # CSRF mitigation (a bare cross-site <form> POST can't set custom headers).
+    return {"Authorization": f"Basic {encoded}", "X-Requested-With": "XMLHttpRequest"}
 
 
 class TestMutationEndpointsRequireAuth:

@@ -28,7 +28,16 @@ function getStoredPwd() {
 
 export function authHeader() {
   const pwd = getStoredPwd();
-  return pwd ? { Authorization: 'Basic ' + btoa(':' + pwd) } : {};
+  // X-Requested-With is a CSRF mitigation: a plain cross-site <form> POST (the
+  // realistic vector against Basic Auth, since browsers re-attach cached Basic
+  // credentials to same-origin requests regardless of the initiating page) can't
+  // set custom headers, and a cross-origin fetch/XHR that tries to would trigger
+  // a CORS preflight this server doesn't answer with permissive CORS headers, so
+  // the browser blocks it. Every state-changing request in this app already
+  // spreads authHeader() into its headers, so adding it here covers all of them
+  // without touching each call site.
+  const csrf = { 'X-Requested-With': 'XMLHttpRequest' };
+  return pwd ? { ...csrf, Authorization: 'Basic ' + btoa(':' + pwd) } : csrf;
 }
 
 async function apiFetch(path) {

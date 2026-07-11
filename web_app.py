@@ -38,7 +38,13 @@ def _require_auth(f):
             try:
                 decoded = _base64.b64decode(auth[6:]).decode("utf-8")
                 _, password = decoded.split(":", 1)
-                if _hmac.compare_digest(password, pwd):
+                # WA-auth: compare_digest raises TypeError on non-ASCII str
+                # arguments; encoding to bytes first (its documented-safe usage)
+                # avoids a silent permanent lockout if DASHBOARD_PASSWORD ever
+                # contains a non-ASCII character — the bare except below would
+                # otherwise swallow the TypeError and always 401, even for the
+                # exactly-correct password, with no diagnostic anywhere.
+                if _hmac.compare_digest(password.encode(), pwd.encode()):
                     return f(*args, **kwargs)
             except Exception:
                 pass
@@ -101,7 +107,6 @@ def _build_app(client):
             Response,
             jsonify,
             render_template,
-            render_template_string,
             stream_with_context,
         )
     except ImportError:
@@ -137,14 +142,32 @@ def _build_app(client):
 
         pwd = _utils.DASHBOARD_PASSWORD
         if not pwd:
-            return None  # open access
+            return None  # open access (dev/test only mode — CSRF check below N/A)
         auth = _flask_request.headers.get("Authorization", "")
         if auth.startswith("Basic "):
             try:
                 decoded = _base64.b64decode(auth[6:]).decode("utf-8")
                 _, password = decoded.split(":", 1)
-                if _hmac.compare_digest(password, pwd):
-                    return None  # authenticated
+                # WA-auth: see _require_auth's identical fix above — encode to
+                # bytes so a non-ASCII DASHBOARD_PASSWORD can't silently lock out
+                # every request (including correct ones) via an unlogged TypeError.
+                if _hmac.compare_digest(password.encode(), pwd.encode()):
+                    # WA-csrf: Basic Auth alone doesn't stop CSRF — browsers
+                    # re-attach cached Basic credentials to same-origin requests
+                    # regardless of which page initiated them, so a malicious
+                    # cross-site page can drive a plain <form> POST at
+                    # /api/run_cron, /api/halt, /api/override, /api/paper-order,
+                    # etc. while the operator has the dashboard open elsewhere.
+                    # Require a header a bare <form> can't set (and that a
+                    # cross-origin fetch/XHR trying to set would trigger a CORS
+                    # preflight this server doesn't answer, so the browser blocks
+                    # it). The bundled frontend's authHeader() helper already
+                    # sends this on every state-changing request.
+                    if _flask_request.method in ("GET", "HEAD", "OPTIONS") or (
+                        _flask_request.headers.get("X-Requested-With")
+                        == "XMLHttpRequest"
+                    ):
+                        return None  # authenticated (+ CSRF check passed)
             except Exception:
                 pass
         return Response(
@@ -310,8 +333,16 @@ def _build_app(client):
                 try:
                     data = _build_stream_data()
                     yield f"data: {json.dumps(data)}\n\n"
-                except Exception:
-                    yield "data: {}\n\n"
+                except Exception as _stream_exc:
+                    # WA-observability: log and flag the payload instead of silently
+                    # emitting {} forever — a persistently broken data layer (corrupt
+                    # trades JSON, locked SQLite DB) was previously invisible to both
+                    # the operator and the frontend, which treats ANY message
+                    # (including {}) as "connection alive."
+                    _log.warning(
+                        "api/stream: _build_stream_data failed: %s", _stream_exc
+                    )
+                    yield f"data: {json.dumps({'error': str(_stream_exc)})}\n\n"
                 time.sleep(10)
 
         return Response(
@@ -333,8 +364,12 @@ def _build_app(client):
                         "ts": datetime.now(UTC).isoformat(),
                     }
                     yield f"data: {json.dumps(payload)}\n\n"
-                except Exception:
-                    yield "data: {}\n\n"
+                except Exception as _stream_exc:
+                    # WA-observability: see /api/stream's identical fix above.
+                    _log.warning(
+                        "api/stream/markets: snapshot build failed: %s", _stream_exc
+                    )
+                    yield f"data: {json.dumps({'error': str(_stream_exc)})}\n\n"
                 time.sleep(10)
 
         return Response(
@@ -437,8 +472,16 @@ def _build_app(client):
                     fn = getattr(_t, fn_name, None)
                     if fn:
                         result[fn_name.replace("get_", "")] = fn()
-                except Exception:
-                    pass
+                except Exception as _optional_exc:
+                    # WA-observability: was a bare except: pass with no logging —
+                    # a function that exists but raises (e.g. a corrupt/locked DB)
+                    # silently dropped its panel from the analytics page with no
+                    # trace anywhere.
+                    _log.warning(
+                        "api/analytics: optional metric %s failed: %s",
+                        fn_name,
+                        _optional_exc,
+                    )
             for fn_name in (
                 "get_rolling_sharpe",
                 "get_attribution",
@@ -450,10 +493,19 @@ def _build_app(client):
                     fn = getattr(_p, fn_name, None)
                     if fn:
                         result[fn_name.replace("get_", "")] = fn()
-                except Exception:
-                    pass
+                except Exception as _optional_exc:
+                    _log.warning(
+                        "api/analytics: optional metric %s failed: %s",
+                        fn_name,
+                        _optional_exc,
+                    )
         except Exception as e:
-            result = {"error": str(e)}
+            # WA-status-code: was returning 200 with {"error": ...} on total
+            # failure, unlike every sibling endpoint in this chunk (e.g.
+            # /api/sameday-calibration, /api/model-attribution, /api/live-pnl,
+            # /api/brier_history all return 500 for the same condition) — a
+            # response.ok-based frontend check would treat this as success.
+            return jsonify({"error": str(e)}), 500
         return jsonify(result)
 
     @app.route("/api/sameday-calibration")
@@ -567,7 +619,12 @@ def _build_app(client):
         try:
             markets = get_weather_markets(client)
         except Exception as e:
-            return render_template_string(
+            # WA-security: return the pre-rendered string directly rather than via
+            # render_template_string — the string is not a Jinja template, and passing
+            # it through render_template_string re-parses external data (exception text)
+            # as template source, which is an SSTI/TemplateSyntaxError risk since
+            # _html_escape() only neutralizes HTML metacharacters, not Jinja delimiters.
+            return (
                 f"<!DOCTYPE html><html><head>{VIEWPORT}{DARK_STYLE}</head><body>"
                 f"<h1>Analyze</h1>{NAV}"
                 f"<p class='neg'>Could not fetch markets: {_html_escape(str(e))}</p></body></html>"
@@ -575,6 +632,7 @@ def _build_app(client):
 
         rows_html = ""
         opps = []
+        _skipped = 0
         from utils import MIN_EDGE
 
         for m in markets:
@@ -586,7 +644,16 @@ def _build_app(client):
                     and abs(analysis.get("net_edge", analysis["edge"])) >= MIN_EDGE
                 ):
                     opps.append((enriched, analysis))
+                elif not analysis:
+                    # WA-observability: analyze_trade() itself returns None (rather
+                    # than raising) on a total forecast-provider outage, so this
+                    # counts toward the same "couldn't actually analyze" signal as
+                    # the except below — without it, a total outage rendered as the
+                    # exact same calm "No opportunities above threshold" message as
+                    # a genuine no-edge scan, with no way to tell them apart.
+                    _skipped += 1
             except Exception:
+                _skipped += 1
                 continue
 
         opps.sort(key=lambda x: abs(x[1].get("net_edge", x[1]["edge"])), reverse=True)
@@ -682,32 +749,20 @@ fetch('/api/suggested_bets?n=3')
 <h1>Kalshi Weather — Opportunities</h1>
 {NAV}
 {top_bets_card}
+<div id="analyze-content">
 <p class="refreshing" id="analyze-status">
   {
             len(opps)
         } opportunities found &mdash; refreshing in <span id="analyze-countdown">60</span>s
 </p>
-<script>
-// #90: auto-refresh analyze table every 60 seconds
-let _analyzeCountdown = 60;
-const _cdEl = document.getElementById('analyze-countdown');
-setInterval(() => {{
-  _analyzeCountdown--;
-  if (_cdEl) _cdEl.textContent = _analyzeCountdown;
-  if (_analyzeCountdown <= 0) {{
-    fetch('/analyze?fragment=1').then(r => r.text()).then(html => {{
-      const parser = new DOMParser();
-      const doc = parser.parseFromString(html, 'text/html');
-      const newTable = doc.querySelector('table');
-      const oldTable = document.querySelector('table');
-      if (newTable && oldTable) oldTable.replaceWith(newTable);
-      _analyzeCountdown = 60;
-    }}).catch(() => {{ _analyzeCountdown = 60; }});
-  }}
-}}, 1000);
-</script>
 {
-            "<p class='neu' style='margin-top:16px'>No opportunities above threshold right now.</p>"
+            (
+                f"<p class='neg' style='margin-top:16px'>"
+                f"&#9888; Could not analyze any of {len(markets)} market(s) — "
+                f"forecast/analysis pipeline may be down. Check logs.</p>"
+                if markets and _skipped == len(markets)
+                else "<p class='neu' style='margin-top:16px'>No opportunities above threshold right now.</p>"
+            )
             if not opps
             else f'''
 <table style="margin-top:16px">
@@ -719,8 +774,40 @@ setInterval(() => {{
 <p class="refreshing" style="margin-top:12px">Generated at {
             datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S")
         } UTC &mdash; <a href="/analyze">Refresh</a></p>
+</div>
+<script>
+// #90 / WA-regression-fix: auto-refresh analyze table every 60 seconds.
+// Swaps the whole #analyze-content wrapper (status line, table-or-empty-message,
+// and the "Generated at" timestamp together) instead of just <table> — swapping
+// only the table left stale opportunities on screen forever once opps went to
+// zero (no <table> in the fetched page to swap in), and never inserted a table
+// when the page first loaded with zero opportunities (no <table> to replace).
+// The countdown element is re-queried fresh each tick rather than cached, since
+// the cached node would otherwise be detached from the DOM after a swap.
+let _analyzeCountdown = 60;
+setInterval(() => {{
+  _analyzeCountdown--;
+  const _cdEl = document.getElementById('analyze-countdown');
+  if (_cdEl) _cdEl.textContent = _analyzeCountdown;
+  if (_analyzeCountdown <= 0) {{
+    fetch('/analyze?fragment=1').then(r => r.text()).then(html => {{
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(html, 'text/html');
+      const newContent = doc.querySelector('#analyze-content');
+      const oldContent = document.querySelector('#analyze-content');
+      if (newContent && oldContent) oldContent.replaceWith(newContent);
+      _analyzeCountdown = 60;
+    }}).catch(() => {{ _analyzeCountdown = 60; }});
+  }}
+}}, 1000);
+</script>
 </body></html>"""
-        return render_template_string(html)
+        # WA-security: return the string directly instead of render_template_string —
+        # html embeds Kalshi-controlled ticker/title/city (lines above); _html_escape()
+        # neutralizes HTML metacharacters but not Jinja delimiters ({{, {%, {#), so passing
+        # this through render_template_string re-parses external data as template source
+        # (SSTI/TemplateSyntaxError risk). No Jinja features are used, so this is a safe drop-in.
+        return html
 
     @app.route("/api/suggested_bets")
     def api_suggested_bets():
@@ -729,6 +816,7 @@ setInterval(() => {{
         from flask import request as freq
 
         from paper import get_balance
+        from paper import kelly_bet_dollars as _kbd_sb
         from utils import MIN_EDGE
         from weather_markets import (
             analyze_trade,
@@ -736,7 +824,14 @@ setInterval(() => {{
             get_weather_markets,
         )
 
-        n = max(1, min(int(freq.args.get("n", 3)), 20))
+        try:
+            n = max(1, min(int(freq.args.get("n", 3)), 20))
+        except (TypeError, ValueError):
+            # WA-input-validation: was outside any try — ?n=abc raised an
+            # unhandled ValueError, returning Flask's raw HTML 500 page instead
+            # of this route's usual JSON error shape (matching /history's
+            # existing try/except around the identical coercion).
+            n = 3
 
         try:
             markets = get_weather_markets(client)
@@ -759,13 +854,25 @@ setInterval(() => {{
                     "ci_adjusted_kelly",
                     analysis.get("fee_adjusted_kelly", analysis.get("kelly", 0)),
                 )
-                kelly_dollars = round(kelly * balance, 2)
+                # WA-drift: use the canonical paper.kelly_bet_dollars instead of a
+                # bare kelly*balance. The raw multiplication ignored the drawdown-
+                # scaling gate (including its 0.0 HALTED tier), half-Kelly/strategy
+                # scaling, streak pause, per-method Brier scaling, and the dynamic/
+                # tier Brier cap — so this endpoint could show a nonzero suggested
+                # bet (and roughly double a healthy-state bot's real sizing, since
+                # the raw kelly figure has no half-Kelly applied) while the bot's
+                # actual sizing chain would place $0 or far less on the same trade.
+                kelly_dollars = _kbd_sb(kelly)
                 ev_score = net_edge * kelly_dollars
                 candidates.append(
                     {
                         "ticker": m.get("ticker", ""),
                         "title": (m.get("title") or m.get("ticker", ""))[:60],
-                        "city": m.get("_city", "—"),
+                        # WA-drift: enrich_with_forecast() returns a NEW dict rather
+                        # than mutating `m` in place, so `_city` only ever lands on
+                        # `enriched`, never on `m` — reading it from `m` always fell
+                        # back to "—".
+                        "city": enriched.get("_city") or "—",
                         "recommended_side": analysis.get(
                             "recommended_side", "—"
                         ).upper(),
@@ -797,6 +904,7 @@ setInterval(() => {{
     _CRON_WEB_LOG = Path(__file__).parent / "data" / "cron_web.log"
 
     _CRON_RATE_LIMIT_S = 60.0  # minimum seconds between spawns
+    _run_cron_lock = threading.Lock()
 
     @app.route("/api/run_cron", methods=["POST"])
     def api_run_cron():
@@ -805,12 +913,25 @@ setInterval(() => {{
 
         from cron import _is_cron_running
 
-        if _is_cron_running():
-            return jsonify({"error": "cron already running"}), 409
+        # Flask serves requests threaded (threaded=True default) — without this lock,
+        # two near-simultaneous POSTs (e.g. a double-click) can both pass the
+        # _is_cron_running()/rate-limit checks before either writes _last_spawn,
+        # spawning two concurrent cron cycles (duplicate order placement once live).
+        with _run_cron_lock:
+            if _is_cron_running():
+                return jsonify({"error": "cron already running"}), 409
 
-        now = _time.monotonic()
-        if now - api_run_cron._last_spawn < _CRON_RATE_LIMIT_S:  # type: ignore[attr-defined]
-            return jsonify({"error": "rate limited — wait before spawning again"}), 429
+            now = _time.monotonic()
+            if (
+                now - api_run_cron._last_spawn  # type: ignore[attr-defined]
+                < _CRON_RATE_LIMIT_S
+            ):
+                return jsonify(
+                    {"error": "rate limited — wait before spawning again"}
+                ), 429
+
+            _prior_last_spawn = api_run_cron._last_spawn  # type: ignore[attr-defined]
+            api_run_cron._last_spawn = _time.monotonic()  # type: ignore[attr-defined]
 
         try:
             _CRON_WEB_LOG.parent.mkdir(exist_ok=True)
@@ -838,10 +959,17 @@ setInterval(() => {{
             )
             log_f.close()  # child holds its own duplicated handle
             # store on the function object so it survives across requests
+            # (_last_spawn was already reserved inside the lock above)
             api_run_cron._proc = proc  # type: ignore[attr-defined]
-            api_run_cron._last_spawn = _time.monotonic()  # type: ignore[attr-defined]
             return jsonify({"status": "started", "pid": proc.pid})
         except Exception as e:
+            # WA-regression: roll back the rate-limit reservation on a failed spawn —
+            # nothing actually started, so a transient failure (e.g. cron_web.log
+            # briefly locked by an AV scan) shouldn't cost the operator a 60s lockout
+            # on retry. Safe to write without re-acquiring the lock: the reservation
+            # above already excludes any concurrent spawner for this window.
+            with _run_cron_lock:
+                api_run_cron._last_spawn = _prior_last_spawn  # type: ignore[attr-defined]
             return jsonify({"status": "error", "message": str(e)}), 500
 
     api_run_cron._proc = None  # type: ignore[attr-defined]
@@ -852,15 +980,21 @@ setInterval(() => {{
         """Return running state and last N lines of cron_web.log."""
         import re as _re
 
+        from cron import _is_cron_running
+
         proc = api_run_cron._proc  # type: ignore[attr-defined]
         running = False
         exit_code = None
         if proc is not None:
             exit_code = proc.poll()
             running = exit_code is None
-        else:
-            from cron import _is_cron_running
-
+        # WA-drift: previously only fell back to _is_cron_running() when _proc was
+        # None. _proc is set once by /api/run_cron and never reset — once the
+        # first dashboard-spawned cron exits, this stayed on the stale exit_code
+        # forever, misreporting running=False for any LATER externally-launched
+        # (e.g. Windows Task Scheduler) cron cycle. Always fall back to the
+        # lock-file-based check when the dashboard-tracked process isn't running.
+        if not running:
             running = _is_cron_running()
 
         lines: list[str] = []
@@ -975,20 +1109,40 @@ setInterval(() => {{
         except Exception as e:
             return jsonify({"error": str(e), "signals": []}), 500
 
-        # Annotate already-held tickers and fill kelly_dollars + kelly_qty
-        try:
-            from paper import corr_kelly_scale as _cks
-            from paper import kelly_bet_dollars as _kbd
-            from paper import kelly_quantity as _kq
-            from paper import portfolio_kelly_fraction as _pkf
-            from paper import spread_kelly_multiplier as _skm
-            from utils import KALSHI_FEE_RATE as _fee_rate
-            from weather_markets import kelly_fraction as _kf_wm
+        # Annotate already-held tickers and fill kelly_dollars + kelly_qty.
+        # WA-observability: this used to be one big try/except around the whole
+        # block (imports, get_open_trades(), and the entire per-signal loop) with
+        # a bare `except: pass` — an early failure (e.g. a corrupt paper_trades.json)
+        # or a single malformed signal raising mid-loop silently left ALL signals
+        # (not just the failing one) at the cron defaults (already_held=False,
+        # kelly_dollars=0.0), with no log anywhere. On a live-trading dashboard that
+        # can read as "not held" for a position that is actually open. Now:
+        # get_open_trades() failures are logged and fail safe to "nothing held";
+        # each signal's Kelly computation is wrapped individually so one bad
+        # signal can't blank out annotation for the rest.
+        from paper import corr_kelly_scale as _cks
+        from paper import kelly_bet_dollars as _kbd
+        from paper import kelly_quantity as _kq
+        from paper import portfolio_kelly_fraction as _pkf
+        from paper import spread_kelly_multiplier as _skm
+        from utils import KALSHI_FEE_RATE as _fee_rate
+        from weather_markets import kelly_fraction as _kf_wm
 
+        try:
             _open_trades = get_open_trades()
             open_tickers = {t["ticker"] for t in _open_trades}
-            for s in data.get("signals", []):
-                s["already_held"] = s.get("ticker", "") in open_tickers
+        except Exception as _open_trades_exc:
+            _log.warning(
+                "api/live_signals: get_open_trades() failed, already_held will "
+                "default to False for all signals: %s",
+                _open_trades_exc,
+            )
+            _open_trades = []
+            open_tickers = set()
+
+        for s in data.get("signals", []):
+            s["already_held"] = s.get("ticker", "") in open_tickers
+            try:
                 # Mirror the bot's full Kelly sizing chain:
                 # kelly_fraction → portfolio_kelly_fraction → corr_kelly_scale
                 # → consensus_mult → spread_kelly_multiplier
@@ -997,12 +1151,37 @@ setInterval(() => {{
                 mp = (s.get("market_prob") or 0) / 100
                 side = (s.get("side") or "yes").lower()
                 if fp > 0 and 0 < mp < 1:
+                    # WA-drift: the bot fills at the ask (yes_ask for YES,
+                    # 1-yes_bid for NO — order_executor.py's own fill convention),
+                    # not the bid/ask mid that market_prob represents. Using the
+                    # mid here understated entry cost by ~half the spread, which
+                    # on a wide-spread market overstated the displayed kelly_qty
+                    # vs. what the bot would actually place. yes_bid/yes_ask are
+                    # already in the signals cache (cron.py), so prefer them and
+                    # only fall back to the mid-derived price when a real quote
+                    # isn't present.
+                    _yes_bid_raw = s.get("yes_bid")
+                    _yes_ask_raw = s.get("yes_ask")
+                    if _yes_bid_raw and _yes_ask_raw:
+                        _ask_side_price = (
+                            (1.0 - float(_yes_bid_raw))
+                            if side == "no"
+                            else float(_yes_ask_raw)
+                        )
+                    else:
+                        _ask_side_price = None
                     if side == "no":
                         _our_prob = max(0.01, min(0.99, 1.0 - fp))
-                        side_price = max(0.01, min(0.99, 1.0 - mp))
+                        side_price = max(
+                            0.01,
+                            min(0.99, _ask_side_price if _ask_side_price else 1.0 - mp),
+                        )
                     else:
                         _our_prob = max(0.01, min(0.99, fp))
-                        side_price = max(0.01, min(0.99, mp))
+                        side_price = max(
+                            0.01,
+                            min(0.99, _ask_side_price if _ask_side_price else mp),
+                        )
                     city = s.get("city") or None
                     target_date = s.get("target_date") or None
                     kf = _kf_wm(_our_prob, side_price, _fee_rate)
@@ -1016,10 +1195,25 @@ setInterval(() => {{
                     s["kelly_dollars"] = _kbd(kf)
                     s["kelly_qty"] = _kq(kf, side_price)
                 else:
+                    # WA-wrong-default: kelly_quantity() itself returns 0 (never 1)
+                    # for an unsizeable trade, so a signal with missing/invalid
+                    # probabilities should match that convention instead of
+                    # displaying a phantom "1 contract" suggestion alongside $0.
                     s["kelly_dollars"] = 0.0
-                    s["kelly_qty"] = 1
-        except Exception:
-            pass
+                    s["kelly_qty"] = 0
+            except Exception as _annotate_exc:
+                _log.warning(
+                    "api/live_signals: Kelly annotation failed for %s, "
+                    "leaving kelly_dollars=0.0: %s",
+                    s.get("ticker", "?"),
+                    _annotate_exc,
+                )
+                s["kelly_dollars"] = 0.0
+                # WA-wrong-default: match the unsizeable-signal branch's fix just
+                # above -- kelly_quantity() itself returns 0 (never 1), so this
+                # exception fallback shouldn't reintroduce the same phantom
+                # "1 contract for $0" display that fix was meant to eliminate.
+                s["kelly_qty"] = 0
 
         # Annotate brier state and cache age so the frontend can surface them
         try:
@@ -1052,12 +1246,20 @@ setInterval(() => {{
         except Exception:
             page = 1
 
+        _history_load_error: str | None = None
         try:
             from paper import get_all_trades
 
             all_settled = [t for t in get_all_trades() if t.get("settled")]
             all_settled.sort(key=lambda t: t.get("entered_at", ""), reverse=True)
-        except Exception:
+        except Exception as _hist_exc:
+            # WA-observability: was a bare except setting all_settled=[] with no
+            # logging — a corrupt/checksum-mismatched paper_trades.json rendered
+            # as "0 trades", indistinguishable from a genuinely empty history. An
+            # operator checking settled history after an incident would wrongly
+            # conclude nothing settled rather than that the data store is broken.
+            _log.warning("history_page: get_all_trades() failed: %s", _hist_exc)
+            _history_load_error = str(_hist_exc)
             all_settled = []
 
         per_page = 25
@@ -1096,6 +1298,12 @@ setInterval(() => {{
 <html><head><title>Trade History</title>{VIEWPORT}{DARK_STYLE}</head>
 <body>{NAV}
 <h1>Settled Trade History</h1>
+{
+            f"<p class='neg' style='margin-bottom:12px'>&#9888; Could not load trade "
+            f"history: {_html_escape(_history_load_error)}</p>"
+            if _history_load_error
+            else ""
+        }
 <p class="refreshing">{total} trades &mdash; Page {page} of {total_pages}</p>
 <table>
   <tr><th>#</th><th>Ticker</th><th>Side</th><th>Qty</th><th>Entry</th><th>Cost</th><th>P&amp;L</th><th>Date</th></tr>
@@ -1103,7 +1311,10 @@ setInterval(() => {{
 </table>
 <p style="margin-top:12px">{prev_link} &nbsp; {next_link}</p>
 </body></html>"""
-        return render_template_string(html)
+        # WA-security: return the string directly instead of render_template_string —
+        # see the /analyze route for why (SSTI/TemplateSyntaxError risk from re-parsing
+        # already-rendered HTML containing ticker/entered_at as a Jinja template).
+        return html
 
     @app.route("/api/export")
     def api_export():
@@ -1289,6 +1500,9 @@ setInterval(() => {{
             drawdown_tier: str | None = None
             try:
                 from paper import (
+                    MAX_DRAWDOWN_FRACTION as _max_dd_frac,
+                )
+                from paper import (
                     drawdown_scaling_factor as _dsf,
                 )
                 from paper import (
@@ -1312,7 +1526,12 @@ setInterval(() => {{
                 else:
                     _tier = "HALTED"
                 peak_balance = round(_peak, 2)
-                halt_floor = round(_peak * 0.80, 2)
+                # WA-drift: was hardcoded to peak*0.80, baking in the DEFAULT 20%
+                # drawdown halt. The real halt gate (paper.is_paused_drawdown) uses
+                # MAX_DRAWDOWN_FRACTION, configurable via DRAWDOWN_HALT_PCT — if an
+                # operator ever tightens/loosens it, this display drifts from where
+                # trading actually halts, overstating or understating headroom.
+                halt_floor = round(_peak * (1.0 - _max_dd_frac), 2)
                 kelly_factor = round(_kf, 4)
                 drawdown_pct = round(_dmax() * 100, 2)
                 drawdown_tier = _tier
@@ -1384,7 +1603,12 @@ setInterval(() => {{
                 _activations = {}
             data["feature_activations"] = _activations
         except Exception as e:
-            data = {"error": str(e)}
+            # WA-status-code: was returning 200 with only an error key on total
+            # failure — the frontend status poller and any uptime monitoring
+            # treating 2xx as healthy would read undefined for balance,
+            # kill_switch_active, drawdown_tier, etc. with no signal that this
+            # dashboard's primary status endpoint is broken.
+            return jsonify({"error": str(e)}), 500
         return jsonify(data)
 
     @app.route("/api/anomaly-status")
@@ -1447,18 +1671,54 @@ setInterval(() => {{
 
     @app.route("/api/calibration-status")
     def api_calibration_status():
-        """Multi-day temperature-scaling calibration gate status.
+        """Multi-day calibration gate status.
 
-        Shows when calibration last ran, current settled-trade count, and
-        when the next run is eligible (last_n + 25 new trades).
+        Shows the F3 blend-weight auto-calibration gate (seasonal/city/condition
+        weights — eligible at 50 settled trades, then every +25 thereafter) and,
+        separately, the weekly temperature-scaling retrain timer. These are two
+        distinct mechanisms on two distinct schedules (trade-count-gated vs a
+        >=6-day marker-file timer) — WA-drift: this endpoint previously computed
+        "next eligible" from temperature_scale.json's `global.n` (the temp-scaling
+        fit's training-row count) as if it were the F3 gate's own state, but F3
+        actually reads a different sentinel (data/.last_calibration_count) and
+        temperature_scale.json isn't even written by the F3 code path — so the
+        old eligibility figure matched neither real gate.
         """
         try:
             from tracker import count_settled_predictions
 
             current_n = count_settled_predictions()
 
-            ts_path = Path(__file__).parent / "data" / "temperature_scale.json"
+            # F3 blend-weight gate — mirrors cron.py's real check exactly:
+            # current_n >= 50 and current_n - last_cal_count >= 25.
+            _cal_sentinel = Path(__file__).parent / "data" / ".last_calibration_count"
             last_calibration_n: int | None = None
+            if _cal_sentinel.exists():
+                try:
+                    last_calibration_n = int(_cal_sentinel.read_text().strip())
+                except Exception:
+                    last_calibration_n = None
+            next_eligible_n = (
+                max(50, last_calibration_n + 25)
+                if last_calibration_n is not None
+                else 50
+            )
+            eligible = current_n >= next_eligible_n
+
+            # Weekly temperature-scaling retrain — its own >=6-day marker-file
+            # timer, independent of settled-trade count.
+            _ml_retrain_path = Path(__file__).parent / "data" / ".last_ml_retrain"
+            temp_scale_age_days: float | None = None
+            temp_scale_eligible = True
+            if _ml_retrain_path.exists():
+                temp_scale_age_days = round(
+                    (datetime.now(UTC).timestamp() - _ml_retrain_path.stat().st_mtime)
+                    / 86400,
+                    2,
+                )
+                temp_scale_eligible = temp_scale_age_days >= 6
+
+            ts_path = Path(__file__).parent / "data" / "temperature_scale.json"
             T_global: float | None = None
             T_between: float | None = None
             T_above: float | None = None
@@ -1472,7 +1732,6 @@ setInterval(() => {{
                     _above = _ts.get("above", {})
                     _below = _ts.get("below", {})
                     if isinstance(_global, dict):
-                        last_calibration_n = _global.get("n")
                         T_global = _global.get("T")
                     if isinstance(_between, dict):
                         T_between = _between.get("T")
@@ -1483,18 +1742,14 @@ setInterval(() => {{
                 except Exception:
                     pass
 
-            # If never calibrated, next eligible at the first-time gate (50 trades)
-            next_eligible_n = (
-                last_calibration_n + 25 if last_calibration_n is not None else 50
-            )
-            eligible = current_n >= next_eligible_n
-
             return jsonify(
                 {
                     "last_calibration_n": last_calibration_n,
                     "current_n": current_n,
                     "next_eligible_n": next_eligible_n,
                     "eligible": eligible,
+                    "temp_scale_age_days": temp_scale_age_days,
+                    "temp_scale_eligible": temp_scale_eligible,
                     "T_global": round(T_global, 4) if T_global is not None else None,
                     "T_between": round(T_between, 4) if T_between is not None else None,
                     "T_above": round(T_above, 4) if T_above is not None else None,
@@ -1609,11 +1864,19 @@ setInterval(() => {{
                 )
                 resp.raise_for_status()
                 out: list[dict] = []
-                for feat in resp.json().get("features", [])[:2]:
+                # WA-filter-order: NWS orders /alerts/active by sent time, not
+                # severity, so slicing to the first 2 BEFORE filtering out
+                # Minor/Unknown could drop a real Severe/Extreme alert sitting
+                # behind two minor advisories — defeating the whole point of this
+                # endpoint (surfacing weather risk to open positions). Filter first,
+                # then cap.
+                for feat in resp.json().get("features", []):
                     props = feat.get("properties", {})
                     severity = props.get("severity", "Unknown")
                     if severity in ("Minor", "Unknown"):
                         continue
+                    if len(out) >= 2:
+                        break
                     out.append(
                         {
                             "city": city,
@@ -1627,8 +1890,13 @@ setInterval(() => {{
             except Exception:
                 return []
 
+        # WA-silent-truncation: cities is built from a set (unordered), so a [:8]
+        # slice here would drop cities nondeterministically rather than by any
+        # meaningful priority, silently never fetching alerts for open positions
+        # in those cities. ThreadPoolExecutor(max_workers=8) already bounds
+        # concurrency, so the slice added nothing but data loss — removed.
         with ThreadPoolExecutor(max_workers=8) as _pool:
-            _city_results = list(_pool.map(_fetch_city_alerts, cities[:8]))
+            _city_results = list(_pool.map(_fetch_city_alerts, cities))
         alerts = [_a for _cr in _city_results for _a in _cr]
 
         return jsonify({"alerts": alerts})
@@ -1717,7 +1985,12 @@ setInterval(() => {{
                     if f:
                         results[label][city] = {
                             "high_f": round(f["high_f"], 1),
-                            "low_f": round(f["low_f"], 1) if f.get("low_f") else None,
+                            # WA-falsy-zero: `if f.get("low_f")` maps a legitimate
+                            # 0.0F low (routine for Chicago/Denver/Minneapolis winter
+                            # lows) to None, indistinguishable from "no forecast".
+                            "low_f": round(f["low_f"], 1)
+                            if f.get("low_f") is not None
+                            else None,
                             "precip_in": round(f.get("precip_in", 0), 2),
                             "models_used": f.get("models_used", 1),
                             "high_range": list(
@@ -1863,7 +2136,14 @@ setInterval(() => {{
         except Exception as exc:
             checks["cron_lock_error"] = str(exc)
 
-        return jsonify({"ok": True, "checks": checks, "timestamp": _time.time()})
+        # WA-misleading-success: was unconditionally {"ok": True}, even when a
+        # check recorded a *_error key or a non-empty paper_trades_integrity
+        # error list — the one route whose entire job is consistency checking
+        # could report green during detected data corruption.
+        _ok = not any(k.endswith("_error") for k in checks) and checks.get(
+            "paper_trades_integrity"
+        ) in ("ok", None)
+        return jsonify({"ok": _ok, "checks": checks, "timestamp": _time.time()})
 
     # ------------------------------------------------------------------ #
     #  NEW DASHBOARD ENDPOINTS  (wired in React frontend v2)              #
@@ -1933,27 +2213,53 @@ setInterval(() => {{
             return jsonify({"active": False, "override_until": None})
         try:
             state = json.loads(_ov_path.read_text())
-            return jsonify(
-                {"active": True, "override_until": state.get("expires_at"), **state}
-            )
+            # WA-stale-state: was reporting active:true from file existence alone,
+            # never checking expires_at against now — the real consumer
+            # (cron._check_manual_override) treats an expired override as
+            # inactive and auto-clears the file, so between expiry and the next
+            # cron cycle (unbounded if cron is stopped) this endpoint showed
+            # "Override active" for a pause that no longer takes effect.
+            _expires = state.get("expires_at")
+            _active = True
+            if isinstance(_expires, int | float):
+                _active = time.time() <= _expires
+            # else: legacy ISO-string format (pre-fix web-set override) — can't
+            # compare without parsing ambiguity, so fall back to file-existence.
+            return jsonify({"active": _active, "override_until": _expires, **state})
         except Exception as exc:
             return jsonify({"error": str(exc)}), 500
 
     @app.route("/api/override", methods=["POST"])
     def api_override_set():
         """Set a time-limited manual override. Body: {reason, duration_minutes}."""
-        from datetime import UTC, datetime, timedelta
-
         from flask import request as _req
 
         body = _req.get_json(silent=True) or {}
         reason = body.get("reason", "manual override via dashboard")
-        minutes = int(body.get("duration_minutes", 60))
-        now = datetime.now(UTC)
+        # WA-input-validation: was outside any try (unlike the sibling
+        # GET/POST/DELETE handlers in this route, which all return a JSON error
+        # shape) — a non-numeric duration_minutes raised an unhandled
+        # ValueError/TypeError, returning Flask's raw HTML 500 page. Also reject
+        # non-positive durations: previously accepted and silently produced an
+        # already-expired override while still responding {"set": True, ...}.
+        try:
+            minutes = int(body.get("duration_minutes", 60))
+        except (TypeError, ValueError):
+            return jsonify({"error": "duration_minutes must be an integer"}), 400
+        if minutes <= 0:
+            return jsonify({"error": "duration_minutes must be positive"}), 400
+        minutes = min(minutes, 24 * 60)  # sanity cap: 24h
+        # WA-format: created_at/expires_at must be Unix epoch floats, matching the
+        # canonical writer (main.py cmd_override) and both numeric-comparison readers
+        # (cron.py _check_manual_override, main.py cmd_override unpause/status). An
+        # ISO string here previously made those comparisons raise TypeError, which
+        # cron's fail-closed except treated as a permanently-active corrupted override
+        # (never auto-expires) and made `py main.py override unpause` unable to clear it.
+        now_epoch = time.time()
         state = {
             "reason": reason,
-            "created_at": now.isoformat(),
-            "expires_at": (now + timedelta(minutes=minutes)).isoformat(),
+            "created_at": now_epoch,
+            "expires_at": now_epoch + minutes * 60,
             "duration_minutes": minutes,
         }
         from paths import MANUAL_OVERRIDE_PATH as _ov_path
@@ -2046,6 +2352,13 @@ setInterval(() => {{
 
         # Kill switch
         if _KS_PATH.exists():
+            # WA-observability: /api/halt writes JSON, but the automatic black-swan
+            # halt (alerts.py) and the CLI `py main.py kill` both create the kill
+            # switch via a bare touch() — a zero-byte file. json.loads("") raised
+            # here and the bare except below silently dropped the event, so exactly
+            # the moment this feed matters most (an automatic emergency halt) it
+            # showed nothing. Fall back to an mtime-derived event instead of
+            # dropping it when the file can't be parsed as JSON.
             try:
                 ks = json.loads(_KS_PATH.read_text())
                 events.append(
@@ -2057,7 +2370,20 @@ setInterval(() => {{
                     }
                 )
             except Exception:
-                pass
+                try:
+                    _ks_mtime = datetime.fromtimestamp(
+                        _KS_PATH.stat().st_mtime, tz=UTC
+                    ).isoformat()
+                except Exception:
+                    _ks_mtime = ""
+                events.append(
+                    {
+                        "ts": _ks_mtime,
+                        "level": "warn",
+                        "text": "⛔ Kill switch active (no reason recorded)",
+                        "source": "kill_switch",
+                    }
+                )
 
         # Manual override
         from paths import MANUAL_OVERRIDE_PATH as _ov_path
@@ -2065,12 +2391,33 @@ setInterval(() => {{
         if _ov_path.exists():
             try:
                 ov = json.loads(_ov_path.read_text())
+                # WA-format-regression: created_at/expires_at are now Unix epoch
+                # floats (matching the canonical writer, see the /api/override POST
+                # handler) rather than the ISO strings this feed used to assume.
+                # Format both to ISO here: (a) so "ts" stays comparable against the
+                # kill-switch event's ISO "halted_at" in the sort below (a raw float
+                # vs. str comparison there raises TypeError and 500s the whole
+                # endpoint), and (b) so the displayed expiry doesn't crash on
+                # str-slicing a float (previously silently dropped this event
+                # entirely via the bare except below).
+                _ov_created = ov.get("created_at", "")
+                _ov_expires = ov.get("expires_at", "")
+                _ov_created_iso = (
+                    datetime.fromtimestamp(_ov_created, tz=UTC).isoformat()
+                    if isinstance(_ov_created, int | float)
+                    else str(_ov_created)
+                )
+                _ov_expires_iso = (
+                    datetime.fromtimestamp(_ov_expires, tz=UTC).isoformat()
+                    if isinstance(_ov_expires, int | float)
+                    else str(_ov_expires)
+                )
                 events.append(
                     {
-                        "ts": ov.get("created_at", ""),
+                        "ts": _ov_created_iso,
                         "level": "info",
                         "text": (
-                            f"Override active until {ov.get('expires_at', '?')[:16]}: "
+                            f"Override active until {_ov_expires_iso[:16]}: "
                             f"{ov.get('reason', '')}"
                         ),
                         "source": "override",
@@ -2224,14 +2571,51 @@ setInterval(() => {{
             from weather_markets import kelly_fraction as _kf_cap
 
             _ep_raw = body.get("entry_prob")
-            _ep_val = float(_ep_raw) if _ep_raw is not None else entry_price
-            _our_prob = max(
-                0.01, min(0.99, (1.0 - _ep_val) if side == "no" else _ep_val)
-            )
-            _kf_val = _kf_cap(_our_prob, entry_price, _fee_cap)
-            _max_qty = _kq_cap(_kf_val, entry_price)
-            if _max_qty > 0:
+            if _ep_raw is not None:
+                _our_prob = max(0.01, min(0.99, float(_ep_raw)))
+                _kf_val = _kf_cap(_our_prob, entry_price, _fee_cap)
+                _max_qty = _kq_cap(_kf_val, entry_price)
+                # WA-cap-skip: previously `if _max_qty > 0` skipped the clamp
+                # entirely when Kelly says stake should be ~0 (no/negative edge) —
+                # exactly the case the cap most needs to apply, since the raw
+                # client-submitted quantity then passed through completely
+                # unbounded. Always clamp, and reject outright when Kelly sizing
+                # says there's no edge to size at all (a 0-quantity trade record
+                # would be meaningless to place anyway).
                 quantity = min(quantity, _max_qty)
+                if quantity <= 0:
+                    # kelly_bet_dollars can return 0 for reasons besides "no edge"
+                    # (a drawdown-scaling halt, streak pause, or tiny balance), so
+                    # the message doesn't claim a specific cause.
+                    return jsonify(
+                        {
+                            "error": (
+                                "sizing at this price and quantity rounds to 0 "
+                                "contracts (no edge, drawdown halt, streak pause, "
+                                "or balance too low) — refusing to place the order"
+                            )
+                        }
+                    ), 400
+            else:
+                # WA-inversion: entry_price alone can't stand in for our
+                # probability estimate. entry_price is the price PAID for the
+                # requested side (the NO price for side="no", not a YES
+                # probability) — the previous fallback set our_prob = entry_price
+                # (or 1-entry_price for "no", inverting the side convention), which
+                # for side="yes" makes our_prob == price and mathematically
+                # guarantees ~zero modeled edge for ANY entry_prob-less request,
+                # not because the trade has no real edge but purely as an artifact
+                # of the fallback. Skip the Kelly cap in this case (matching the
+                # bot's own log_prediction fallback for the same missing field)
+                # rather than either computing a meaningless capped quantity or
+                # forcing a spurious reject — the per-market/portfolio caps in
+                # place_paper_order and check_position_limits below still bound
+                # the trade regardless.
+                _log.info(
+                    "api/paper-order: entry_prob omitted for %s, skipping Kelly "
+                    "cap (entry_price alone can't estimate edge)",
+                    ticker,
+                )
         except Exception as _kelly_cap_exc:
             # Was a bare except: pass — a failure here silently let the raw,
             # unclamped user-submitted quantity through with no trace.
@@ -2257,9 +2641,11 @@ setInterval(() => {{
         city: str | None = None
         target_date: str | None = None
         _market_for_order: dict | None = None
+        _mkt_prices_dash: dict | None = None
         try:
             from kalshi_client import KalshiClient as _KC
             from weather_markets import enrich_with_forecast as _ewf_dash
+            from weather_markets import parse_market_price as _pmp_dash
 
             _kc = _KC(
                 key_id=os.getenv("KALSHI_KEY_ID"),
@@ -2271,46 +2657,114 @@ setInterval(() => {{
             city = _enriched_dash.get("_city")
             _tdate_dash = _enriched_dash.get("_date")
             target_date = _tdate_dash.isoformat() if _tdate_dash else None
+            _mkt_prices_dash = _pmp_dash(_market_for_order)
         except Exception as _enrich_exc:
             _log.warning(
-                "api/paper-order: could not derive city/date for %s — "
-                "exposure caps and trade record will be missing them: %s",
+                "api/paper-order: could not derive city/date for %s: %s",
                 ticker,
                 _enrich_exc,
             )
+
+        # WA-security: fail CLOSED, not open, when server-side city/date derivation
+        # didn't succeed. This used to log a warning and place the order anyway:
+        # (a) exposure caps (city/date, directional, correlated) got skipped
+        # entirely, (b) the saved trade record got city=None/target_date=None,
+        # permanently invisible to all FUTURE exposure sums keyed on them, (c)
+        # close_time=None disabled the 24h settlement gate and stop-loss/breakeven
+        # exits, and (d) log_prediction (below) skips city=None rows so the trade
+        # never registers in tracker — the exact "stuck open forever" failure that
+        # call exists to prevent. A Kalshi API blip, a typo'd ticker, or (standalone
+        # `py web.py` runs, which never call load_dotenv) unloaded env keys would
+        # otherwise silently sail every order through this path.
+        if not (city and target_date):
+            return jsonify(
+                {
+                    "error": (
+                        f"could not verify market data for {ticker} — "
+                        "refusing to place order without exposure-cap checks"
+                    )
+                }
+            ), 503
+
+        # WA-security: entry_price is otherwise taken entirely from the client body.
+        # The real frontend Approve flow sends market_prob/100 (the YES-side implied
+        # probability) regardless of side, so approving a NO-side signal previously
+        # booked entry_price at the YES price — e.g. a fairly-priced NO at ~0.20 got
+        # recorded (and paid for) at ~0.80, a ~4x cost/exposure overstatement. Reject
+        # rather than silently accept when the client price deviates too far from the
+        # real market's side-appropriate price, computed from the same market dict
+        # already fetched above (mirrors order_executor.py's own fill convention:
+        # yes_ask for YES, 1 - yes_bid for NO).
+        if _mkt_prices_dash and _mkt_prices_dash.get("has_quote"):
+            _expected_side_price = (
+                _mkt_prices_dash["yes_ask"]
+                if side == "yes"
+                else max(0.0, round(1.0 - _mkt_prices_dash["yes_bid"], 4))
+            )
+            if (
+                _expected_side_price > 0
+                and abs(entry_price - _expected_side_price) > 0.15
+            ):
+                return jsonify(
+                    {
+                        "error": (
+                            f"entry_price {entry_price:.2f} deviates from the "
+                            f"current {side}-side market price "
+                            f"{_expected_side_price:.2f} by more than 0.15 — "
+                            "refusing to place (stale price or wrong-side price?)"
+                        )
+                    }
+                ), 400
 
         # #2: enforce the same city/date, directional, and correlated-group
         # exposure caps the auto-sizing path already respects — this dashboard
         # order path previously only capped Kelly quantity and per-market/
         # total-portfolio exposure (via place_paper_order's own internal
         # checks), never these three.
-        if city and target_date:
-            try:
-                from paper import check_position_limits as _cpl_dash
+        try:
+            from paper import check_position_limits as _cpl_dash
 
-                _limit_dash = _cpl_dash(
-                    ticker,
-                    quantity,
-                    entry_price,
-                    city=city,
-                    target_date_str=target_date,
-                    side=side,
-                )
-                if not _limit_dash.get("ok", True):
-                    return jsonify(
-                        {"error": _limit_dash.get("reason", "position limit exceeded")}
-                    ), 400
-            except Exception as _limit_exc:
-                _log.warning(
-                    "api/paper-order: check_position_limits failed for %s, "
-                    "skipping limit check: %s",
-                    ticker,
-                    _limit_exc,
-                )
-        # days_out from the signal (0 = same-day METAR, 1+ = multi-day forecast).
-        # Without this the trade record stores None, which the cap logic reads as
-        # multi-day (None != 0) and incorrectly consumes a multi-day date slot.
-        _days_out_raw = body.get("days_out")
+            _limit_dash = _cpl_dash(
+                ticker,
+                quantity,
+                entry_price,
+                city=city,
+                target_date_str=target_date,
+                side=side,
+            )
+            if not _limit_dash.get("ok", True):
+                return jsonify(
+                    {"error": _limit_dash.get("reason", "position limit exceeded")}
+                ), 400
+        except Exception as _limit_exc:
+            # WA-security: fail closed here too — this used to silently skip the
+            # limit check and let the order through unchecked on any
+            # check_position_limits error (e.g. a DB read failure), the same
+            # fail-open failure mode as the city/date derivation above.
+            _log.warning(
+                "api/paper-order: check_position_limits failed for %s: %s",
+                ticker,
+                _limit_exc,
+            )
+            return jsonify(
+                {"error": f"could not verify exposure limits for {ticker}"}
+            ), 503
+        # WA-trusted-client: days_out (0 = same-day METAR, 1+ = multi-day forecast)
+        # used to be read from the client body even though target_date is already
+        # derived server-side just above — the real frontend Approve payload never
+        # sends days_out at all, so every dashboard trade stored days_out=None,
+        # which order_executor's multi-day slot cap (`!= 0`) reads as multi-day,
+        # incorrectly consuming a MAX_POSITIONS_PER_DATE slot for same-day trades.
+        # A client that DID send it could also lie (days_out=0 on a multi-day
+        # trade) to dodge multi-day-slot accounting entirely. Derive it server-side
+        # from target_date instead, matching tracker.py's own convention.
+        from utils import utc_today as _utc_today_dash
+
+        _days_out = (
+            max(0, (_tdate_dash - _utc_today_dash()).days)
+            if _tdate_dash is not None
+            else None
+        )
         # close_time so the 24h settlement gate works on manually placed
         # trades the same way it does on bot-placed trades — reuses the
         # market dict already fetched above for city/date derivation.
@@ -2328,7 +2782,7 @@ setInterval(() => {{
                 city=city,
                 target_date=target_date,
                 thesis="manual approval via dashboard",
-                days_out=int(_days_out_raw) if _days_out_raw is not None else None,
+                days_out=_days_out,
                 close_time=_close_time,
             )
             # Register in tracker predictions so sync_outcomes / auto_settle
@@ -2340,9 +2794,17 @@ setInterval(() => {{
 
                 from tracker import log_prediction as _log_pred_wa
 
-                _ep = (
-                    float(entry_prob) if entry_prob is not None else float(entry_price)
-                )
+                # WA-inversion: forecast_prob/market_prob are scored against
+                # settled_yes as YES-side probabilities (tracker.py Brier/
+                # calibration), but entry_price is the price PAID for the
+                # requested SIDE (the NO price for side="no", per paper.py's
+                # convention — same as order_executor.py's own fill price).
+                # Storing entry_price verbatim as both fields previously recorded
+                # an inverted "forecast" for every NO-side trade (and a fake
+                # market_prob), silently polluting the rolling-Brier/calibration
+                # guards that gate live trading. Convert to YES-side for both.
+                _yes_side_price = (1.0 - entry_price) if side == "no" else entry_price
+                _ep = float(entry_prob) if entry_prob is not None else _yes_side_price
                 _td_wa: _dt_wa.date | None = None
                 if target_date:
                     try:
@@ -2355,7 +2817,7 @@ setInterval(() => {{
                     _td_wa,
                     {
                         "forecast_prob": _ep,
-                        "market_prob": float(entry_price),
+                        "market_prob": _yes_side_price,
                         "edge": float(net_edge) if net_edge is not None else 0.0,
                         "recommended_side": side,
                         "condition": {},
@@ -2387,6 +2849,14 @@ setInterval(() => {{
             exit_price = float(body["exit_price"])
         except (KeyError, TypeError, ValueError):
             return jsonify({"error": "exit_price required"}), 400
+        # WA-security: exit_price is client-supplied with no market cross-check.
+        # close_paper_early() does no validation of its own (unlike place_paper_order's
+        # entry_price, which enforces the same (0, 1] range), so an out-of-range value —
+        # including the real frontend's `pos.mark || 0` fallback when quote data is
+        # missing — would otherwise silently book a bogus/100%-loss P&L. Enforce the
+        # same (0, 1] contract this route's own docstring already promises.
+        if not (0.0 < exit_price <= 1.0):
+            return jsonify({"error": "exit_price must be in (0, 1]"}), 400
         try:
             trade = close_paper_early(trade_id, exit_price)
             return jsonify({"ok": True, "pnl": trade.get("pnl")}), 200
@@ -2405,6 +2875,7 @@ setInterval(() => {{
         from flask import request as _freq
 
         from paper import get_balance, get_open_trades
+        from paper import kelly_bet_dollars as _kbd_opp
         from utils import MIN_EDGE
         from weather_markets import (
             analyze_trade,
@@ -2440,7 +2911,12 @@ setInterval(() => {{
                     "ci_adjusted_kelly",
                     analysis.get("fee_adjusted_kelly", analysis.get("kelly", 0)),
                 )
-                kelly_dollars = round(float(kelly) * balance, 2)
+                # WA-drift: same fix as /api/suggested_bets — use the canonical
+                # paper.kelly_bet_dollars instead of a bare kelly*balance, which
+                # ignored the drawdown-scaling gate (incl. its 0.0 HALTED tier),
+                # half-Kelly/strategy scaling, streak pause, per-method Brier
+                # scaling, and the dynamic/tier Brier cap.
+                kelly_dollars = _kbd_opp(float(kelly))
                 edge_pct = round(net_edge * 100, 1)
                 if edge_pct >= 15:
                     stars = "★★★"
@@ -2452,7 +2928,11 @@ setInterval(() => {{
                     {
                         "ticker": m.get("ticker", ""),
                         "title": (m.get("title") or m.get("ticker", ""))[:60],
-                        "city": m.get("_city", "—"),
+                        # WA-drift: enrich_with_forecast() returns a NEW dict
+                        # rather than mutating `m` in place — `_city` only ever
+                        # lands on `enriched`, so reading it from `m` always fell
+                        # back to "—" for every opportunity.
+                        "city": enriched.get("_city") or "—",
                         "recommended_side": analysis.get("recommended_side", "yes"),
                         "edge_pct": edge_pct,
                         "kelly_fraction": round(float(kelly), 4),
@@ -2536,8 +3016,15 @@ setInterval(() => {{
                     }
                 )
             per_model.sort(key=lambda x: x["brier"])
-        except Exception:  # noqa: BLE001
-            pass
+        except Exception as _pm_exc:  # noqa: BLE001
+            # WA-observability: was a bare pass with no logging — a broken
+            # tracker DB (locked/corrupt/schema mismatch) returned 200 with
+            # per_model=[], indistinguishable from "no settled trades yet".
+            # Matches the precedent already set in this same route's Kelly-cap
+            # fix elsewhere in this file: log rather than silently swallow.
+            _log.warning(
+                "api/model-accuracy: get_component_attribution failed: %s", _pm_exc
+            )
 
         city_brier: dict = {}
         try:
@@ -2546,18 +3033,21 @@ setInterval(() => {{
             for city, d in (get_calibration_by_city() or {}).items():
                 if d.get("brier") is not None:
                     city_brier[city] = d["brier"]
-        except Exception:  # noqa: BLE001
-            pass
+        except Exception as _cb_exc:  # noqa: BLE001
+            _log.warning(
+                "api/model-accuracy: get_calibration_by_city failed: %s", _cb_exc
+            )
 
         return jsonify({"per_model": per_model, "city_brier": city_brier})
 
     @app.route("/api/forecast")
     def api_forecast():
         """Per-city ensemble forecast for day=0 (today) or day=1 (tomorrow)."""
-        from datetime import date, timedelta
+        from datetime import timedelta
 
         from flask import request as _freq
 
+        from utils import utc_today as _utc_today_fc
         from weather_markets import CITY_COORDS, get_weather_forecast
 
         try:
@@ -2568,7 +3058,12 @@ setInterval(() => {{
         if day not in (0, 1):
             return jsonify({"error": "day must be 0 or 1"}), 400
 
-        target = date.today() + timedelta(days=day)
+        # WA-timezone: was date.today() (server-local calendar), while the
+        # tracker/analytics side of this codebase standardizes on
+        # utils.utc_today() — around local midnight this dashboard's day=0
+        # forecast could label a different date than what the trading logic
+        # considers "today".
+        target = _utc_today_fc() + timedelta(days=day)
         cities: dict[str, dict] = {}
 
         for city in sorted(CITY_COORDS):
@@ -2577,15 +3072,26 @@ setInterval(() => {{
                 if f:
                     cities[city] = {
                         "high_f": round(f["high_f"], 1),
-                        "low_f": round(f["low_f"], 1) if f.get("low_f") else None,
+                        # WA-falsy-zero: see /api/today_forecasts' identical fix —
+                        # a legitimate 0.0F low must not be treated as missing.
+                        "low_f": round(f["low_f"], 1)
+                        if f.get("low_f") is not None
+                        else None,
                         "precip_in": round(f.get("precip_in", 0), 2),
                         "models_used": f.get("models_used", 1),
                         "high_range": list(
                             f.get("high_range", [f["high_f"], f["high_f"]])
                         ),
                     }
-            except Exception:  # noqa: BLE001
-                pass
+            except Exception as _fc_exc:  # noqa: BLE001
+                # WA-observability: was a bare pass with no logging — an upstream
+                # forecast-provider outage rendered as silently-missing cities
+                # with no way to tell "no data yet" from "the fetch is broken".
+                _log.warning(
+                    "api/forecast: get_weather_forecast(%s) failed: %s",
+                    city,
+                    _fc_exc,
+                )
 
         return jsonify({"day": day, "date": target.isoformat(), "cities": cities})
 
@@ -2593,7 +3099,14 @@ setInterval(() => {{
 
     @app.route("/api/reliability/<city>")
     def api_reliability(city: str):
-        from tracker import _conn, init_db
+        # WA-drift: was reimplementing 5-bin calibration bucketing with raw SQL
+        # instead of calling tracker._calibration_curve, the canonical helper
+        # that (per its own docstring) exists precisely so the bucket-edge
+        # convention lives in one place. The reimplementation's edges
+        # (0.0,0.2)...(0.8,1.0) with `lo <= p < hi` silently excluded
+        # our_prob==1.0 from every bin (while still counting it in the
+        # top-level n), unlike the canonical [0.0,...,1.001] edges.
+        from tracker import _calibration_curve, _conn, init_db
 
         init_db()
         with _conn() as con:
@@ -2611,23 +3124,17 @@ setInterval(() => {{
         if not rows:
             return jsonify({"bins": [], "city": city, "n": 0})
 
-        # Bin into 5 equal-width buckets from 0 to 1
-        bins = [(0.0, 0.2), (0.2, 0.4), (0.4, 0.6), (0.6, 0.8), (0.8, 1.0)]
-        result = []
-        for lo, hi in bins:
-            bucket = [(p, o) for p, o in rows if lo <= p < hi]
-            if bucket:
-                mean_pred = sum(p for p, _ in bucket) / len(bucket)
-                actual_rate = sum(o for _, o in bucket) / len(bucket)
-                result.append(
-                    {
-                        "bin_lo": lo,
-                        "bin_hi": hi,
-                        "mean_pred": round(mean_pred, 3),
-                        "actual_rate": round(actual_rate, 3),
-                        "n": len(bucket),
-                    }
-                )
+        curve = _calibration_curve([(p, o) for p, o in rows])
+        result = [
+            {
+                "bin_lo": b["bucket_low"],
+                "bin_hi": b["bucket_high"],
+                "mean_pred": b["predicted_mean"],
+                "actual_rate": b["actual_rate"],
+                "n": b["n"],
+            }
+            for b in curve["calibration_buckets"]
+        ]
         return jsonify({"bins": result, "city": city, "n": len(rows)})
 
     @app.route("/api/edge-realization")
