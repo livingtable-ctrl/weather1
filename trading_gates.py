@@ -6,6 +6,7 @@ import logging
 import os
 
 from paths import KILL_SWITCH_PATH
+from utils import is_trading_paused
 
 _log = logging.getLogger(__name__)
 
@@ -28,7 +29,17 @@ class LiveTradingGate:
         coincidence, not by design. Falls back to the old env-var check only
         when no client is passed (e.g. a caller/test not yet updated).
         """
-        # Kill switch first — it must block every live-order path, not just the
+        # TRADING_PAUSED first, as belt-and-suspenders: every current live-order
+        # call site already checks utils.is_trading_paused() itself before ever
+        # reaching this gate, but this project has a recurring bug class of a
+        # shared safety gate having exactly one caller forget its own copy of a
+        # check (see feedback_trace_all_call_sites in project memory — 4 prior
+        # instances). A future live-order path that calls this gate but forgets
+        # its own TRADING_PAUSED check should still be blocked here.
+        if is_trading_paused():
+            return False, "TRADING_PAUSED is set"
+
+        # Kill switch next — it must block every live-order path, not just the
         # automated cron/watch loops that already check KILL_SWITCH_PATH
         # directly. Before this check, `python main.py kill` didn't actually
         # stop manual `buy`/`sell` (cmd_order) or the maker-order prompt,
@@ -44,14 +55,11 @@ class LiveTradingGate:
             if client_base != PROD_BASE:
                 return False, f"client not pointed at prod (base_url={client_base})"
         else:
-            # No client passed — fall back to the old env-var check, unchanged,
-            # for callers/tests not yet updated to pass one.
-            try:
-                import main as _main  # noqa: PLC0415
-
-                kalshi_env = _main.KALSHI_ENV
-            except Exception:
-                kalshi_env = os.getenv("KALSHI_ENV", "demo")
+            # No client passed — fall back to a plain env-var check for
+            # callers/tests not yet updated to pass one. Reads os.getenv()
+            # directly (not `import main`) -- the docstring above explains why
+            # `import main` is unreliable for reading a live env value.
+            kalshi_env = os.getenv("KALSHI_ENV", "demo")
             if kalshi_env != "prod":
                 return False, f"KALSHI_ENV={kalshi_env}, not prod"
 

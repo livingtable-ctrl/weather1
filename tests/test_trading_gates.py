@@ -39,10 +39,13 @@ class TestLiveTradingGate:
         assert not allowed
         assert "kill switch" in reason.lower()
 
-    def test_blocks_when_not_prod(self):
+    def test_blocks_when_not_prod(self, monkeypatch):
+        """No-client fallback now reads os.getenv("KALSHI_ENV") directly (not
+        `import main`, per this file's own documented reason for avoiding that
+        pattern) -- patch the real env var, not main.KALSHI_ENV."""
         gate = self._gate()
-        with patch("main.KALSHI_ENV", "demo"):
-            allowed, reason = gate.check()
+        monkeypatch.setenv("KALSHI_ENV", "demo")
+        allowed, reason = gate.check()
         assert not allowed
         assert "not prod" in reason
 
