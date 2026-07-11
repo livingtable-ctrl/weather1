@@ -111,7 +111,13 @@ class TestPostFailureDedup:
         return KalshiClient.__new__(KalshiClient)
 
     def test_returns_existing_order_when_post_fails_but_order_landed(self):
-        """If _post raises but the order exists on exchange, return it without re-raising."""
+        """If _post raises but the order exists on exchange, return it without re-raising.
+
+        Wrapped in {"order": ...} to match the normal _post() success-response
+        shape -- order_executor.py's response["order"]["order_id"] reads (no
+        fallback) would otherwise silently lose the order_id for any order
+        recovered via this exception-then-lookup path.
+        """
         client = self._make_client()
 
         existing_order = {"order_id": "ord_landed", "client_order_id": "abc123"}
@@ -124,7 +130,7 @@ class TestPostFailureDedup:
 
         result = client.place_order("KXTEST", "yes", "buy", 1, 0.55, cycle="12z")
 
-        assert result == existing_order
+        assert result == {"order": existing_order}
         client._find_order_by_client_id.assert_called_once()
 
     def test_reraises_when_post_fails_and_order_not_found(self):

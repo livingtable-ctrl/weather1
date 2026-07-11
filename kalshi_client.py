@@ -41,13 +41,19 @@ def _check_key_permissions(key_path) -> None:
 
         try:
             # Remove inherited permissions, grant current user Full Control only.
+            # Bare username (no COMPUTERNAME\ prefix): icacls resolves an
+            # unqualified name against the running account correctly whether
+            # it's a local or domain account. A hardcoded computer-name prefix
+            # is wrong for a domain-joined machine (needs DOMAIN\user, not
+            # COMPUTERNAME\user) and would silently fail the grant after
+            # /inheritance:r has already stripped the inherited ACEs.
             subprocess.run(
                 [
                     "icacls",
                     str(key_path),
                     "/inheritance:r",  # remove inherited entries
                     "/grant:r",
-                    f"{platform.node()}\\{__import__('os').getlogin()}:(F)",
+                    f"{__import__('os').getlogin()}:(F)",
                 ],
                 check=True,
                 capture_output=True,
@@ -105,11 +111,24 @@ def _build_session() -> requests.Session:
 _SESSION = _build_session()
 
 
-def _request_with_retry(method: str, url: str, **kwargs) -> requests.Response:
+def _request_with_retry(
+    method: str, url: str, *, check_error_body: bool = False, **kwargs
+) -> requests.Response:
     """
     Call _SESSION.request with automatic retry via HTTPAdapter (#67).
     Falls back to latency logging for slow responses (#108).
     Guarded by per-type circuit breakers: read failures don't block writes.
+
+    check_error_body: if True, a 200 response whose JSON body is a dict with a
+    top-level "error" key counts as a circuit-breaker failure too (Kalshi's own
+    convention -- see KalshiClient._check_error_body). Must be decided here,
+    before record_success()/record_failure() runs -- record_success() zeroes
+    the failure count, so a caller that re-checks the body afterward and calls
+    record_failure() itself can never accumulate past 1 failure, and the
+    breaker would never trip on a persistent 200-with-error-body degradation.
+    Off by default so other callers of this shared helper (e.g.
+    weather_markets.py's Pirate Weather fetch, which has its own separate
+    breaker) are unaffected.
     """
     # Apply default timeout if caller didn't specify one
     kwargs.setdefault("timeout", DEFAULT_TIMEOUT)
@@ -130,7 +149,15 @@ def _request_with_retry(method: str, url: str, **kwargs) -> requests.Response:
         raise
     # 5xx = infrastructure failure → trip the breaker.
     # 4xx = client/auth error → not an infra failure, don't penalise the breaker.
-    if resp.status_code >= 500:
+    _is_failure = resp.status_code >= 500
+    if not _is_failure and check_error_body:
+        try:
+            _body = resp.json()
+        except ValueError:
+            _body = None
+        if isinstance(_body, dict) and "error" in _body:
+            _is_failure = True
+    if _is_failure:
         _cb.record_failure()
     else:
         _cb.record_success()
@@ -220,7 +247,7 @@ class KalshiClient:
         url = self.base_url + path
         headers = self._sign_headers("GET", self._full_path(path)) if auth else {}
         resp = _request_with_retry(
-            "GET", url, headers=headers, params=params, timeout=10
+            "GET", url, headers=headers, params=params, check_error_body=True
         )
         data = resp.json()
         self._check_error_body(data, path)
@@ -229,7 +256,9 @@ class KalshiClient:
     def _post(self, path: str, body: dict) -> dict:
         url = self.base_url + path
         headers = self._sign_headers("POST", self._full_path(path))
-        resp = _request_with_retry("POST", url, headers=headers, json=body, timeout=10)
+        resp = _request_with_retry(
+            "POST", url, headers=headers, json=body, check_error_body=True
+        )
         data = resp.json()
         self._check_error_body(data, path)
         return data
@@ -237,7 +266,9 @@ class KalshiClient:
     def _delete(self, path: str) -> dict:
         url = self.base_url + path
         headers = self._sign_headers("DELETE", self._full_path(path))
-        resp = _request_with_retry("DELETE", url, headers=headers, timeout=10)
+        resp = _request_with_retry(
+            "DELETE", url, headers=headers, check_error_body=True
+        )
         data = resp.json()
         self._check_error_body(data, path)
         return data
@@ -261,6 +292,7 @@ class KalshiClient:
     def get_markets(self, **params) -> list[dict]:
         all_markets: list[dict] = []
         cursor: str | None = None
+        seen_cursors: set[str] = set()
         while True:
             p = dict(params)
             if cursor:
@@ -274,6 +306,14 @@ class KalshiClient:
             cursor = data.get("cursor")
             if not cursor:
                 break
+            if cursor in seen_cursors:
+                _log.error(
+                    "get_markets: Kalshi returned a repeated cursor %r — stopping "
+                    "pagination early instead of looping forever",
+                    cursor,
+                )
+                break
+            seen_cursors.add(cursor)
         return all_markets
 
     def get_market(self, ticker: str) -> dict:
@@ -373,20 +413,24 @@ class KalshiClient:
                     "place_order: order landed despite exception; returning existing %s",
                     existing.get("order_id"),
                 )
-                return existing
+                # Wrap to match the normal _post()/{"order": {...}} response shape --
+                # callers (order_executor._poll_pending_orders/_recover_pending_orders,
+                # the micro-live-order avg_price read) all do response["order"][...]
+                # with no fallback; an unwrapped dict here silently loses the
+                # order_id downstream, stranding this order in "pending" forever.
+                return {"order": existing}
             raise exc
 
     def _find_order_by_client_id(self, client_order_id: str) -> dict | None:
         """Return the order matching client_order_id, or None if not found.
 
-        Checks resting orders first, then executed — covers the taker-fill case
-        where an order lands and fills immediately before the timeout retry fires.
+        Checks resting orders first, then executed, then canceled — covers the
+        taker-fill case where an order lands and fills immediately before the
+        timeout retry fires, and the IOC/FOK case where an unfilled order is
+        finalized as canceled rather than resting/executed.
         """
         try:
-            data = self._get(
-                "/portfolio/orders", params={"status": "resting"}, auth=True
-            )
-            for order in data.get("orders", []):
+            for order in self.get_open_orders():
                 if order.get("client_order_id") == client_order_id:
                     return order
         except Exception as _e:
@@ -403,13 +447,35 @@ class KalshiClient:
             )
             for order in data.get("orders", []):
                 if order.get("client_order_id") == client_order_id:
-                    # Return with status overridden to "placed" so the dedup guard stays
-                    # active; the GTC poll loop will promote it to "filled" (this bot's
-                    # own internal term) shortly.
-                    return {**order, "status": "placed"}
+                    return order
         except Exception as _e:
             _log.warning(
                 "_find_order_by_client_id: executed lookup failed (%s) — assuming not landed",
+                _e,
+            )
+        # Third pass: an IOC/FOK order with no fill is finalized as canceled, not
+        # resting/executed -- no live caller uses IOC/FOK today (all pass
+        # good_till_canceled), but this keeps the lookup correct if that changes.
+        # A canceled order with a nonzero fill still landed partially; a canceled
+        # order with zero fill genuinely never landed, so report not-found (None)
+        # so the caller can safely retry.
+        try:
+            data = self._get(
+                "/portfolio/orders", params={"status": "canceled"}, auth=True
+            )
+            for order in data.get("orders", []):
+                if order.get("client_order_id") == client_order_id:
+                    fill_count_fp = order.get("fill_count_fp")
+                    try:
+                        _filled = fill_count_fp is not None and float(fill_count_fp) > 0
+                    except (TypeError, ValueError):
+                        # Unparseable fill count -- treat as landed rather than
+                        # risk the caller retrying and double-placing a real order.
+                        _filled = True
+                    return order if _filled else None
+        except Exception as _e:
+            _log.warning(
+                "_find_order_by_client_id: canceled lookup failed (%s) — assuming not landed",
                 _e,
             )
         return None
