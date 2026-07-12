@@ -769,6 +769,71 @@ def get_disputed_count() -> int:
     return row[0] if row else 0
 
 
+def get_stop_loss_accuracy(stop_loss_trades: list[dict]) -> dict:
+    """
+    Audit stop-loss exits: did they save money vs. holding to actual settlement?
+
+    stop_loss_trades: paper trades already filtered to stop-loss-triggered early
+    exits (each needs ticker/entry_price/exit_price/quantity/side). The market
+    itself settles on Kalshi regardless of whether this bot's own position was
+    still open, so tracker.outcomes still has the real result to compare against
+    — this function just does that join. Disputed outcomes are excluded, same as
+    every other calibration/scoring consumer of settled_yes.
+
+    entry_price/exit_price are both already the price for OUR held side (see
+    close_paper_early / paper._liquidation_price), so no side-based repricing is
+    needed for the realized leg — only the hypothetical hold-to-settlement leg
+    needs a side check.
+
+    Returns {"total": n, "saved_money": n, "exited_winner": n, "avg_saving": float}.
+    "total" counts only rows with a synced settlement (unsynced/unsettled tickers
+    are skipped, not counted as zero).
+    """
+    init_db()
+    saved = 0
+    exited_winner = 0
+    savings: list[float] = []
+    with _conn() as con:
+        for t in stop_loss_trades:
+            ticker = t.get("ticker")
+            exit_price = t.get("exit_price")
+            if not ticker or exit_price is None:
+                continue
+            row = con.execute(
+                "SELECT settled_yes FROM outcomes WHERE ticker = ? "
+                "AND (disputed IS NULL OR disputed = 0)",
+                (ticker,),
+            ).fetchone()
+            if row is None:
+                continue
+            settled_yes = bool(row["settled_yes"])
+            entry_price = t.get("entry_price", 0.0)
+            qty = t.get("quantity", 0)
+            side = t.get("side", "yes")
+
+            sl_pnl = (exit_price - entry_price) * qty
+            settle_price = (
+                1.0
+                if (settled_yes and side == "yes") or (not settled_yes and side == "no")
+                else 0.0
+            )
+            hold_pnl = (settle_price - entry_price) * qty
+
+            saving = sl_pnl - hold_pnl  # positive = stop-loss saved us money
+            savings.append(saving)
+            if saving > 0:
+                saved += 1
+            elif hold_pnl > 0 and sl_pnl < hold_pnl:
+                exited_winner += 1
+
+    return {
+        "total": len(savings),
+        "saved_money": saved,
+        "exited_winner": exited_winner,
+        "avg_saving": round(sum(savings) / len(savings), 4) if savings else 0.0,
+    }
+
+
 def _candle_dollars(field: dict | None, key: str) -> float | None:
     """Parse a nullable fixed-point-dollar string (e.g. "0.55") from a
     candlestick sub-object (yes_bid/yes_ask/price) into a float."""

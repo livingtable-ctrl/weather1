@@ -71,7 +71,7 @@ When to revisit:
   - Before the Belgium trip ends (~2026-07-30) and live trading is
     considered for resumption. This is a hard prerequisite, not a nice-to-have.
 
-[PARTIALLY RESOLVED 2026-07-12] MYSTERY REVERT -- COMMIT 24559a7 SILENTLY
+[RESOLVED 2026-07-12] MYSTERY REVERT -- COMMIT 24559a7 SILENTLY
   WIPED ~10 COMMITS OF CALIBRATION/SAFETY WORK UNDER AN UNRELATED COMMIT
   MESSAGE
 Priority: Medium-High (a calibration-integrity safeguard has been silently
@@ -134,10 +134,66 @@ PARTIALLY RESOLVED 2026-07-12: piece 1 of the restoration priority list below,
   cached archives (not just mocked tests) to confirm the LV/NOLA payoff
   actually works, and confirmed no NBM-delta scope leaked in.
 
-  The remaining lower-priority pieces (piece 3: NBM-delta bias correction,
-  stop-loss accuracy tracking, BETWEEN_FLOOR/circuit-breaker env vars) are
-  still open -- see the priority list below, unchanged from the original
-  writeup.
+  Piece 3 (2026-07-12, same day) is now closed too -- all 4 of its
+  sub-pieces got a real per-piece disposition rather than a batch port:
+    - NBM-delta bias correction: CLOSED AS NOT NEEDED, not restored. Its
+      entire premise ("GFS forecast minus NOAA's professionally
+      bias-corrected NBM") is dead -- confirmed live against Open-Meteo
+      (models=nbm and models=nbm_conus both 400 with "invalid String
+      value") that NBM is no longer available there at all; the current
+      fetch_temperature_nbm() already silently substitutes model="best_match"
+      (an arbitrary, uncalibrated auto-selection), which would make the delta
+      noise, not a bias signal. More importantly, it's superseded: this piece
+      was built 2026-05-23, silently wiped 2026-05-26, and
+      _get_combined_station_bias() (weather_markets.py) was built
+      independently 2026-05-30 with no awareness NBM-delta had ever existed
+      -- it corrects the bot's forecast toward real settled outcomes (dynamic
+      METAR-learned bias, weight growing with sample count), a strictly
+      better-grounded signal than correcting toward another model's guess
+      ever was. User confirmed closing as not-needed rather than restoring.
+    - Stop-loss accuracy tracking: DONE, but rebuilt against the current
+      architecture, not ported mechanically. The original targeted
+      tracker.live_fills, which today is a narrow slippage-only table
+      (#P10.4) with zero rows ever, since no live order has been placed
+      (ENABLE_MICRO_LIVE=False) -- auditing it would find nothing. The real
+      settled stop-loss history lives in paper.py's trade ledger instead.
+      close_paper_early() gained an optional reason= param, stored as
+      exit_reason (separate from the existing outcome="early_exit" value so
+      current semantics/tests are unchanged); cron.py's stop-loss call site
+      (not its sibling breakeven-stop call site) now passes reason="stop_loss".
+      tracker.get_stop_loss_accuracy(stop_loss_trades) takes pre-filtered
+      paper trades and joins them against tracker.outcomes (excluding
+      disputed rows, same as every other calibration consumer) -- the
+      market still settles on Kalshi regardless of whether the bot's own
+      position was closed early, so the real outcome is still recoverable.
+      paper.get_stop_loss_accuracy() is a thin zero-arg wrapper (filters
+      get_all_trades() to exit_reason=="stop_loss", hands them to tracker's
+      join) wired into web_app.py's /api/analytics dispatch alongside its
+      paper-module siblings (get_rolling_sharpe etc.) -- same
+      wire-it-in-rather-than-leave-it-orphaned precedent as every other
+      reporting function this session.
+    - BETWEEN_FLOOR_MODEL_MAX env var: DONE. The 0.15 model-probability
+      threshold was still hardcoded in weather_markets.py's between_floor
+      gate; extracted to utils.BETWEEN_FLOOR_MODEL_MAX (default "0.15",
+      no behavior change) and added to get_config_fingerprint() alongside
+      every other env-configurable constant.
+    - BETWEEN_FLOOR_MARKET_MIN env var: CLOSED, not applicable -- nothing
+      left to extract. The gate's original "market > 0.30" condition (what
+      this env var would have configured) was found buggy and deliberately
+      redesigned away in a later fix, unrelated to this session (see the
+      comment at weather_markets.py's between_floor gate: "The old condition
+      (market > 0.30) was wrong... blocked profitable NO trades while never
+      catching the suspicious YES case it was meant for"). The gate now
+      compares against the live market price directly, not a hardcoded
+      floor -- there's no static "0.30" left to make configurable.
+    - Circuit-breaker threshold env-var overrides: CLOSED, not applicable --
+      traced against the actual 24559a7 diff and found circuit_breaker.py
+      was never one of the 9 files it touched at all. The only
+      circuit-breaker-adjacent content that WAS lost (recovery_timeout=300
+      settings on weather_markets.py's _ensemble_cb/_nbm_om_cb) is already
+      present in current code. This backlog sub-item doesn't correspond to
+      any real lost feature -- looks like a stale claim from the original
+      research pass, not a genuine gap.
 
 Problem:
   Found 2026-07-12 while investigating the LV/NOLA sigma backlog entry above.
@@ -157,7 +213,9 @@ Problem:
   of 2026-07-12) to separate what's genuinely still gone from what got
   independently rebuilt later:
 
-  STILL MISSING (confirmed zero trace at HEAD):
+  STILL MISSING AS OF THE ORIGINAL 2026-07-12 RESEARCH PASS (all resolved
+  since -- see the piece 1/2/3 resolution notes above; kept for historical
+  context on what was actually lost):
     - climatology.py's compute_sigma_from_climate()/load_all_sigmas() --
       derived per-city, per-month forecast sigma from a 30yr ERA5 reanalysis
       archive (clim std x 0.60 ~= NWS Day-3 RMSE), cached to
@@ -207,43 +265,20 @@ Problem:
   flat"/retirement-alert print statements, and a root-logger-to-module-logger
   cleanup in load/save_learned_weights.
 
-What the fix looks like:
-  NOT a simple `git revert 24559a7` -- that would conflict badly with 166
-  commits of intervening work on these files. Each missing piece needs to be
-  re-implemented against current code, individually, roughly in this
-  priority order:
-    1. Disputed-outcome tracking -- real calibration-integrity gap, cheapest
-       conceptually (one column + one filter clause in a few existing
-       queries), reference the original migration/functions via
-       `git show 31c7226:tracker.py` for the exact implementation to port.
-    2. Climate-derived sigma -- resolves the LV/NOLA sigma backlog entry as
-       a side effect; reference `git show ae86946:climatology.py` for the
-       original compute_sigma_from_climate()/load_all_sigmas() to port
-       forward against current climatology.py.
-    3. NBM-delta bias correction, stop-loss accuracy tracking, BETWEEN_FLOOR
-       env vars, circuit-breaker env vars -- lower urgency, port opportunistically.
-  Before porting anything, diff the "not re-verified" list above against
-  HEAD too, in case more of it was quietly reapplied than this pass checked.
+What the fix looked like: [DONE, see resolution notes above for all 3 pieces]
 
-Why not now:
-  - TRADING_PAUSED=true means the disputed-outcome and stop-loss-accuracy
-    gaps aren't actively corrupting a live decision today -- but they would
-    matter the moment paper/live trading generates enough volume for
-    calibration scoring to matter again.
-  - Multi-piece restoration against 166 commits of intervening code, not a
-    drive-by fix -- needs its own careful pass per piece, with tests,
-    similar in shape to the PAPER_MIN_EDGE and config-divergence backlog
-    threads.
+Why not now: N/A -- fully resolved.
 
 When to revisit:
-  - Disputed-outcome tracking and climate-derived sigma are the two pieces
-    worth prioritizing whenever this is picked up -- one for calibration
-    integrity, one for a concrete LV/NOLA payoff. The rest can follow
-    opportunistically.
+  - The "NOT re-verified" list above (horizon-dependent sigma multipliers,
+    between_floor warning-message wording, cron.py print statements, a
+    root-logger cleanup) was deliberately left out of scope across all three
+    restoration passes -- low-value/cosmetic per the original commit
+    message. Worth a quick check if ever idle, not a real gap.
   - Worth a `git log --oneline -- <file>` sanity check on any other
     core file (paper.py, main.py, web_app.py, utils.py were also touched by
     24559a7 but not individually re-verified here beyond the grep checks
-    above) if this pattern is suspected elsewhere.
+    above) if this revert pattern is ever suspected elsewhere.
 
 [HOURLY-DIRECTIONAL TEMPERATURE MARKETS — KXTEMPxxxH]
 Priority: Low/Medium (one city has real live volume right now; the rest don't)

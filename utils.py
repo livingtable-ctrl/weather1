@@ -274,6 +274,11 @@ STOP_LOSS_MULT = float(os.getenv("STOP_LOSS_MULT", "2.0"))
 # to entry or below triggers a scratch exit — the position can no longer lose money.
 BREAKEVEN_TRIGGER_PCT: float = float(os.getenv("BREAKEVEN_TRIGGER_PCT", "0.30"))
 
+# Between-market low-confidence YES guard: block a "between" trade when our blended
+# probability is below this and would still lead to a YES bet (see the between_floor
+# gate in weather_markets.analyze_trade). Lower to block more, raise to loosen.
+BETWEEN_FLOOR_MODEL_MAX: float = float(os.getenv("BETWEEN_FLOOR_MODEL_MAX", "0.15"))
+
 # Micro live trades — hard-disabled until re-implemented with pre_live_trade_check(),
 # execution_log writes, idempotency key, and add_live_loss() accounting (see P0-3/P0-4).
 ENABLE_MICRO_LIVE: bool = False
@@ -407,6 +412,7 @@ def get_config_fingerprint() -> dict:
         "SAME_DAY_DYNAMIC_K": SAME_DAY_DYNAMIC_K,
         "SAME_DAY_DYNAMIC_BAND_HOURS": SAME_DAY_DYNAMIC_BAND_HOURS,
         "BREAKEVEN_TRIGGER_PCT": BREAKEVEN_TRIGGER_PCT,
+        "BETWEEN_FLOOR_MODEL_MAX": BETWEEN_FLOOR_MODEL_MAX,
         "MAX_DAILY_LOSS_PCT": MAX_DAILY_LOSS_PCT,
         "MAX_DAYS_OUT": MAX_DAYS_OUT,
         "MAX_POSITION_AGE_DAYS": MAX_POSITION_AGE_DAYS,

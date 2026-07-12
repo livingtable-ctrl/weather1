@@ -38,6 +38,7 @@ from nws import fetch_nbm_forecast, get_live_observation, nws_prob, obs_prob
 from paths import SERIES_DRIFT_PATH
 from schema_validator import is_all_null, validate_forecast
 from utils import (
+    BETWEEN_FLOOR_MODEL_MAX,
     KALSHI_FEE_RATE,
     KALSHI_MAKER_FEE_RATE,
     KELLY_CAP,
@@ -6503,15 +6504,16 @@ def analyze_trade(enriched: dict) -> dict | None:
     # NO trades while never catching the suspicious YES case it was meant for.
     if (
         condition.get("type") == "between"
-        and blended_prob < 0.15
+        and blended_prob < BETWEEN_FLOOR_MODEL_MAX
         and blended_prob > _divergence_gate_market_prob
     ):
         _log.warning(
             "analyze_trade: skipping %s — low-confidence YES bet on between market "
-            "(our=%.3f > market=%.3f but model below 15%% threshold)",
+            "(our=%.3f > market=%.3f but model below %.0f%% threshold)",
             enriched.get("ticker", "?"),
             blended_prob,
             _divergence_gate_market_prob,
+            BETWEEN_FLOOR_MODEL_MAX * 100,
         )
         _count_gate("between_floor")
         return None

@@ -1195,7 +1195,9 @@ def _score_ensemble_members(trade: dict, outcome_yes: bool) -> None:
         _log.debug("_score_ensemble_members: skipped tracker update: %s", exc)
 
 
-def close_paper_early(trade_id: int, exit_price: float) -> dict:
+def close_paper_early(
+    trade_id: int, exit_price: float, reason: str | None = None
+) -> dict:
     """
     Close an open paper trade at current market price instead of waiting for settlement.
     Used when a model-cycle update shifts our probability against the position.
@@ -1203,6 +1205,10 @@ def close_paper_early(trade_id: int, exit_price: float) -> dict:
     P&L = (exit_price - entry_price) * quantity
     (entry_price is always the price paid per contract for our side.)
     Updates balance with proceeds (exit_price * quantity).
+
+    reason: optional cause tag (e.g. "stop_loss") stored separately from the
+    "early_exit" outcome value so specific exit causes can be audited later
+    (see get_stop_loss_accuracy()) without changing existing outcome semantics.
     """
     with _DATA_LOCK:
         data = _load()
@@ -1216,6 +1222,7 @@ def close_paper_early(trade_id: int, exit_price: float) -> dict:
                 t["settled_at"] = datetime.now(UTC).isoformat()
                 t["outcome"] = "early_exit"
                 t["exit_price"] = round(exit_price, 4)
+                t["exit_reason"] = reason
                 t["pnl"] = pnl
                 data["balance"] += proceeds
                 data["peak_balance"] = max(
@@ -1806,6 +1813,19 @@ def get_all_trades() -> list[dict]:
 def load_paper_trades() -> list[dict]:
     """Alias for get_all_trades — returns all paper trades (open and settled)."""
     return get_all_trades()
+
+
+def get_stop_loss_accuracy() -> dict:
+    """Audit whether stop-loss exits actually saved money vs. holding to
+    settlement. Thin wrapper: filters this module's own trade ledger down to
+    stop-loss-tagged early exits and hands them to tracker's scoring join
+    (tracker.py has no import of this module, so the join lives there and the
+    paper-side data is passed in rather than tracker reaching back into paper).
+    """
+    import tracker
+
+    sl_trades = [t for t in get_all_trades() if t.get("exit_reason") == "stop_loss"]
+    return tracker.get_stop_loss_accuracy(sl_trades)
 
 
 def get_portfolio_expected_value() -> dict:

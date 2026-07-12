@@ -2778,6 +2778,102 @@ class TestDisputedOutcomeTracking(unittest.TestCase):
         self.assertEqual(before, after)
 
 
+class TestStopLossAccuracy(unittest.TestCase):
+    """Restored backlog piece (mystery-revert 24559a7, piece 3): stop-loss exit
+    audit. Rebuilt against the current architecture -- the original targeted
+    tracker.live_fills (now a slippage-only table with zero live rows ever,
+    since no live order has been placed); this instead takes paper-trade rows
+    already filtered to stop-loss-tagged early exits and joins them against
+    tracker.outcomes, which has the real settlement regardless of whether the
+    bot's own position was still open when the market settled.
+    """
+
+    def setUp(self):
+        self._tmpdir = tempfile.mkdtemp()
+        self._orig = tracker.DB_PATH
+        tracker.DB_PATH = Path(self._tmpdir) / "test_predictions.db"
+        tracker._db_initialized = False
+
+    def tearDown(self):
+        tracker.DB_PATH = self._orig
+        tracker._db_initialized = False
+        shutil.rmtree(self._tmpdir, ignore_errors=True)
+
+    def _sl_trade(self, ticker, side, entry_price, exit_price, qty=10):
+        return {
+            "ticker": ticker,
+            "side": side,
+            "entry_price": entry_price,
+            "exit_price": exit_price,
+            "quantity": qty,
+        }
+
+    def test_no_trades_returns_zero_dict(self):
+        result = tracker.get_stop_loss_accuracy([])
+        self.assertEqual(
+            result,
+            {"total": 0, "saved_money": 0, "exited_winner": 0, "avg_saving": 0.0},
+        )
+
+    def test_yes_side_stop_loss_that_saved_money(self):
+        # Sold at 0.20 after entering at 0.40; NO won, so holding would have
+        # paid $0 -- the stop-loss avoided a larger loss.
+        tracker.log_outcome("SL-SAVE", False)
+        trade = self._sl_trade("SL-SAVE", "yes", 0.40, 0.20)
+        result = tracker.get_stop_loss_accuracy([trade])
+        self.assertEqual(result["total"], 1)
+        self.assertEqual(result["saved_money"], 1)
+        self.assertEqual(result["exited_winner"], 0)
+        self.assertAlmostEqual(result["avg_saving"], 2.0)  # -2.00 - (-4.00)
+
+    def test_yes_side_stop_loss_that_exited_a_winner(self):
+        # Sold at 0.20 after entering at 0.40; YES won, so holding would have
+        # paid $1 -- the stop-loss prematurely cut off a winner.
+        tracker.log_outcome("SL-WINNER", True)
+        trade = self._sl_trade("SL-WINNER", "yes", 0.40, 0.20)
+        result = tracker.get_stop_loss_accuracy([trade])
+        self.assertEqual(result["total"], 1)
+        self.assertEqual(result["saved_money"], 0)
+        self.assertEqual(result["exited_winner"], 1)
+        self.assertAlmostEqual(result["avg_saving"], -8.0)  # -2.00 - 6.00
+
+    def test_no_side_settlement_priced_correctly(self):
+        # NO position: entry 0.30, stopped out at 0.15, qty 5. YES won (NO
+        # loses), so holding a NO position would have paid $0 -- confirms the
+        # hold-to-settlement leg reprices correctly for the "no" side.
+        tracker.log_outcome("SL-NOSIDE", True)
+        trade = self._sl_trade("SL-NOSIDE", "no", 0.30, 0.15, qty=5)
+        result = tracker.get_stop_loss_accuracy([trade])
+        self.assertEqual(result["saved_money"], 1)
+        self.assertAlmostEqual(result["avg_saving"], 0.75)  # -0.75 - (-1.50)
+
+    def test_excludes_disputed_outcome(self):
+        tracker.log_outcome("SL-DISPUTED", True)
+        tracker.mark_outcome_disputed("SL-DISPUTED")
+        trade = self._sl_trade("SL-DISPUTED", "yes", 0.40, 0.20)
+        result = tracker.get_stop_loss_accuracy([trade])
+        self.assertEqual(result["total"], 0)
+
+    def test_skips_ticker_with_no_synced_outcome(self):
+        # No log_outcome call at all -- market hasn't settled/synced yet.
+        trade = self._sl_trade("SL-UNSYNCED", "yes", 0.40, 0.20)
+        result = tracker.get_stop_loss_accuracy([trade])
+        self.assertEqual(result["total"], 0)
+
+    def test_multiple_trades_averaged(self):
+        tracker.log_outcome("SL-A", False)
+        tracker.log_outcome("SL-B", True)
+        trades = [
+            self._sl_trade("SL-A", "yes", 0.40, 0.20),  # saving = +2.0
+            self._sl_trade("SL-B", "yes", 0.40, 0.20),  # saving = -8.0
+        ]
+        result = tracker.get_stop_loss_accuracy(trades)
+        self.assertEqual(result["total"], 2)
+        self.assertEqual(result["saved_money"], 1)
+        self.assertEqual(result["exited_winner"], 1)
+        self.assertAlmostEqual(result["avg_saving"], -3.0)  # (2.0 + -8.0) / 2
+
+
 class TestSyncOutcomesDatetimeFix(unittest.TestCase):
     """P0-13 — sync_outcomes must not crash on aware/naive datetime subtraction."""
 

@@ -1244,6 +1244,73 @@ def test_close_paper_early_raises_on_unknown_id(tmp_path, monkeypatch):
         paper_mod.close_paper_early(9999, exit_price=0.50)
 
 
+def test_close_paper_early_records_exit_reason(tmp_path, monkeypatch):
+    import importlib
+
+    import paper as paper_mod
+
+    monkeypatch.setattr(paper_mod, "DATA_PATH", tmp_path / "paper_trades.json")
+    importlib.reload(paper_mod)
+    monkeypatch.setattr(paper_mod, "DATA_PATH", tmp_path / "paper_trades.json")
+
+    paper_mod.place_paper_order("TEST-TICKER", "yes", 10, 0.40)
+    trade_id = paper_mod.get_open_trades()[0]["id"]
+    paper_mod.close_paper_early(trade_id, exit_price=0.20, reason="stop_loss")
+    t = [t for t in paper_mod._load()["trades"] if t["id"] == trade_id][0]
+    assert t["exit_reason"] == "stop_loss"
+    assert t["outcome"] == "early_exit"  # unchanged existing semantics
+
+
+def test_close_paper_early_exit_reason_defaults_to_none(tmp_path, monkeypatch):
+    """Callers that don't pass reason= (the majority) must not be miscounted
+    as stop-loss exits by get_stop_loss_accuracy()."""
+    import importlib
+
+    import paper as paper_mod
+
+    monkeypatch.setattr(paper_mod, "DATA_PATH", tmp_path / "paper_trades.json")
+    importlib.reload(paper_mod)
+    monkeypatch.setattr(paper_mod, "DATA_PATH", tmp_path / "paper_trades.json")
+
+    paper_mod.place_paper_order("TEST-TICKER", "yes", 10, 0.40)
+    trade_id = paper_mod.get_open_trades()[0]["id"]
+    paper_mod.close_paper_early(trade_id, exit_price=0.55)
+    t = [t for t in paper_mod._load()["trades"] if t["id"] == trade_id][0]
+    assert t.get("exit_reason") is None
+
+
+def test_get_stop_loss_accuracy_filters_to_stop_loss_reason(tmp_path, monkeypatch):
+    """paper.get_stop_loss_accuracy() must only pass stop_loss-tagged exits to
+    tracker's scoring join -- a breakeven or model-exit close must not count."""
+    import importlib
+
+    import paper as paper_mod
+
+    monkeypatch.setattr(paper_mod, "DATA_PATH", tmp_path / "paper_trades.json")
+    importlib.reload(paper_mod)
+    monkeypatch.setattr(paper_mod, "DATA_PATH", tmp_path / "paper_trades.json")
+
+    paper_mod.place_paper_order("SL-TICKER", "yes", 10, 0.40)
+    paper_mod.place_paper_order("BE-TICKER", "yes", 10, 0.40)
+    trades = paper_mod.get_open_trades()
+    sl_id = next(t["id"] for t in trades if t["ticker"] == "SL-TICKER")
+    be_id = next(t["id"] for t in trades if t["ticker"] == "BE-TICKER")
+    paper_mod.close_paper_early(sl_id, exit_price=0.20, reason="stop_loss")
+    paper_mod.close_paper_early(be_id, exit_price=0.40, reason="breakeven")
+
+    captured = {}
+
+    def fake_tracker_call(sl_trades):
+        captured["tickers"] = [t["ticker"] for t in sl_trades]
+        return {"total": 0, "saved_money": 0, "exited_winner": 0, "avg_saving": 0.0}
+
+    import tracker as tracker_mod
+
+    monkeypatch.setattr(tracker_mod, "get_stop_loss_accuracy", fake_tracker_call)
+    paper_mod.get_stop_loss_accuracy()
+    assert captured["tickers"] == ["SL-TICKER"]
+
+
 # ── Phase 5: Correlation-aware Kelly ─────────────────────────────────────────
 
 

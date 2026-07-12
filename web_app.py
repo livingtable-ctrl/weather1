@@ -494,6 +494,7 @@ def _build_app(client):
                 "get_rolling_sharpe",
                 "get_attribution",
                 "get_factor_exposure",
+                "get_stop_loss_accuracy",
             ):
                 try:
                     import paper as _p
