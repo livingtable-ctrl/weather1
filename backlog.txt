@@ -1,11 +1,19 @@
 BACKLOG — future improvements to implement when ready
 ======================================================
 
-[URGENT -- VERIFY BEFORE LIVE ACTIVATION: KALSHI ORDER-WRITE ENDPOINTS MOVING TO /portfolio/events/orders]
-Priority: High -- verify before resuming live trading (~2026-07-30 return), not a
+[CLOSED 2026-07-12 -- see below] KALSHI ORDER-WRITE ENDPOINTS MOVING TO /portfolio/events/orders
+Priority: was High -- verify before resuming live trading (~2026-07-30 return), not a
   someday item. Found 2026-07-10 via Kalshi's own API changelog; refined
   2026-07-10 via a second research pass (changelog re-fetch + independent
   third-party SDK docs cross-check, both agree).
+
+RESOLVED 2026-07-12: Migrated place_order()/cancel_order() to POST/DELETE
+  /portfolio/events/orders per the plan below (commit bc7e10c), then a
+  second-opinion review found and fixed one real HIGH bug -- a successful
+  POST followed by a failing get_order() follow-up could strand a live
+  order under status="failed" with no poller ever picking it up again
+  (commit 58a4e3b). 156+ tests pass, lint/mypy clean. This item is done;
+  kept below for historical context on the migration decisions.
 
 Problem:
   kalshi_client.py's live order-placement and order-cancellation code
@@ -346,9 +354,26 @@ When to revisit:
     reasons, or if a specific miscalibration in one of the 10 newer cities
     is traced back to this gap.
 
-[MORE INERT config.py FIELDS -- SAME DIVERGENCE PATTERN, ROUND 4]
+[STILL OPEN, NOW GUARDED -- see below] MORE INERT config.py FIELDS -- SAME DIVERGENCE PATTERN, ROUND 4
 Priority: Low-Medium (silent no-op env vars, same already-recognized bug
   class)
+
+UPDATE 2026-07-12 (documented + guarded, NOT wired/deleted): re-verified all
+  5 fields live while building tests/test_config_divergence_guard.py (see
+  the NO AUTOMATED GUARD entry above). One correction to the KELLY_CAP claim
+  below: it's stale -- utils.py's KELLY_CAP is now os.getenv-backed (fixed
+  in an earlier 2026-07-11 session, `float(os.getenv("KELLY_CAP", "0.25"))`)
+  -- so it's no longer "not even os.getenv-backed", it's just still a
+  SEPARATE env read from config.py's own kelly_cap field (same default,
+  coincidentally, so no live divergence -- but still two independently
+  hardcoded "0.25" literals that could diverge later). All 5 fields (plus a
+  6th found the same way: max_days_out, which WAS a live divergence --
+  "3" vs "5" -- fixed same session) are now individually documented with a
+  concrete reason in _DEAD_FIELD_ALLOWLIST, and the new guard test would
+  catch either field silently going MORE wrong (a value mismatch) even
+  though it doesn't fix the "config field lies about being configurable"
+  problem itself. The actual "wire up or delete" decision for all 5 is
+  still not made -- still needs the dedicated pass described below.
 
 Problem:
   Following the same config.py/utils.py divergence pattern already found
@@ -479,9 +504,27 @@ When to revisit:
   - Low priority housekeeping -- next general cleanup pass, or when
     picking up the docs plan that references slippage_kelly_scale.
 
-[MIXED-TIMESTAMP-FORMAT BUG CLASS -- RECURRING, NO ROOT-CAUSE FIX]
-Priority: Low-Medium (individually low-impact so far, but a well-established
+[MOSTLY RESOLVED 2026-07-12] MIXED-TIMESTAMP-FORMAT BUG CLASS -- RECURRING, NO ROOT-CAUSE FIX
+Priority: was Low-Medium (individually low-impact so far, but a well-established
   recurring pattern -- fifth occurrence would not be surprising)
+
+RESOLVED 2026-07-12 (mostly): get_brier_over_time (tracker.py:1471) already
+  uses the correct strftime('%Y-%m-%d %H:%M:%S') cutoff (not .isoformat()) --
+  fixed sometime before this date, this entry's "queued for its own fix
+  pass" note is stale. Separately, added utils.sql_normalize_iso_column()
+  as the shared "centralize all cutoffs through one helper" fix this entry
+  asked for, and used it to consolidate the 3 remaining hand-duplicated
+  instances of the underlying strftime/replace normalization expression
+  (execution_log.py's was_recently_ordered/was_ordered_recently, tracker.py's
+  v21->v22 settled_at migration) -- pure refactor, no behavior change,
+  pushed af39a67. A full audit at that time found no remaining unfixed
+  instances of the raw bug (mismatched-format comparison) anywhere in
+  tracker.py/execution_log.py. NOT built: the "cheap regression test that
+  greps for .isoformat() feeding a SQL bind parameter" lint-style guard --
+  the shared helper reduces the chance of a NEW instance (nothing left to
+  copy-paste wrong), but doesn't structurally prevent someone writing a
+  fresh ad-hoc .isoformat() cutoff by hand. Worth adding if a fifth instance
+  ever appears despite the helper existing.
 
 Problem:
   A 2026-07-10 Fable adversarial review of tracker.py found the *identical*
@@ -521,9 +564,32 @@ When to revisit:
     exact bug shape is found a fifth time -- at that point the case for the
     structural fix (not just another one-off patch) becomes hard to ignore.
 
-[NO AUTOMATED GUARD AGAINST CONFIG-DIVERGENCE / ORPHANED-RESOURCE DRIFT]
-Priority: Low-Medium (tooling investment; every instance so far has been
+[PART (a) DONE 2026-07-12, PART (b) STILL OPEN] NO AUTOMATED GUARD AGAINST CONFIG-DIVERGENCE / ORPHANED-RESOURCE DRIFT
+Priority: was Low-Medium (tooling investment; every instance so far has been
   caught manually, after the fact)
+
+RESOLVED 2026-07-12 (part a only): built tests/test_config_divergence_guard.py
+  -- exactly the two guards described below, plus a third (env-var
+  hardcoded-default-literal divergence scan, which immediately found a real,
+  live, previously-unknown instance: config.py's max_days_out defaulted to
+  "3" while utils.py's MAX_DAYS_OUT defaulted to "5", masked only because
+  .env sets it explicitly -- fixed via config._live_max_days_out(), commit
+  5245269). The BotConfig field call-site guard surfaced ~19 fields with no
+  real call site outside config.py -- categorized honestly into an
+  allowlist (13 enforced elsewhere via a matching value, 3 misleading/
+  shadowed by an unrelated hardcoded constant elsewhere -- see "MORE INERT
+  config.py FIELDS" below, which this pass also corrected -- and 2
+  genuinely unimplemented) rather than fixed/deleted; the guard's job is to
+  stop a NEW instance from landing silently, not retroactively resolve the
+  existing ones. Pushed 5245269 + 48016fa (a same-day correction after
+  cross-checking prior backlog.txt research this session had initially
+  missed).
+  NOT done: part (b), the vulture-style dead-code CI scan for orphaned
+  functions (paper.py/tracker.py/weather_markets.py) -- the [ORPHANED
+  FUNCTIONS] entry below (slippage_kelly_scale, undo_last_trade,
+  get_calibration_by_season, _fetch_ensemble_members_historical) is still
+  fully manual-detection-only. Genuinely separate, larger scope from the
+  config-field guard -- still open.
 
 Problem:
   Between the "MORE INERT config.py FIELDS" entry above (4 confirmed
