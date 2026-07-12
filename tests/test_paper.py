@@ -6,7 +6,7 @@ import json
 import shutil
 import tempfile
 import unittest
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import patch
 
@@ -1882,3 +1882,435 @@ class TestGetDailyPnlNoneSettledAt:
         # Must not raise.
         result = paper.get_daily_pnl()
         assert result == 0.0, "a None settled_at record must be excluded, not crash"
+
+
+# ── Correctness tests for previously-untested functions ─────────────────────
+# validate_paper_trades_integrity, get_rolling_sharpe, get_factor_exposure,
+# get_unrealized_pnl_paper had zero correctness coverage despite being live-used
+# (health-check endpoint, dashboard risk metrics, mark-to-market P&L).
+
+
+class TestValidatePaperTradesIntegrity:
+    def test_clean_state_reports_no_errors(self):
+        import paper
+
+        settled_pnl = 50.0
+        open_cost = 100.0
+        actual_balance = paper.STARTING_BALANCE + settled_pnl - open_cost
+        data = {
+            "_version": paper._SCHEMA_VERSION,
+            "balance": actual_balance,
+            "peak_balance": paper.STARTING_BALANCE,
+            "trades": [
+                {
+                    "id": 1,
+                    "ticker": "T1",
+                    "side": "yes",
+                    "settled": True,
+                    "settled_at": "2026-07-01T00:00:00Z",
+                    "pnl": settled_pnl,
+                    "cost": 40.0,
+                },
+                {
+                    "id": 2,
+                    "ticker": "T2",
+                    "side": "yes",
+                    "settled": False,
+                    "cost": open_cost,
+                },
+            ],
+        }
+        paper.DATA_PATH.write_text(json.dumps(data))
+
+        errors = paper.validate_paper_trades_integrity()
+        assert errors == []
+
+    def test_corrupted_balance_is_detected(self):
+        """A balance field that doesn't match computed
+        (start + settled_pnl - open_cost) must be flagged as balance drift."""
+        import paper
+
+        settled_pnl = 50.0
+        open_cost = 100.0
+        correct_balance = paper.STARTING_BALANCE + settled_pnl - open_cost
+        corrupted_balance = correct_balance + 999.0  # deliberately wrong
+        data = {
+            "_version": paper._SCHEMA_VERSION,
+            "balance": corrupted_balance,
+            "peak_balance": paper.STARTING_BALANCE,
+            "trades": [
+                {
+                    "id": 1,
+                    "ticker": "T1",
+                    "side": "yes",
+                    "settled": True,
+                    "settled_at": "2026-07-01T00:00:00Z",
+                    "pnl": settled_pnl,
+                    "cost": 40.0,
+                },
+                {
+                    "id": 2,
+                    "ticker": "T2",
+                    "side": "yes",
+                    "settled": False,
+                    "cost": open_cost,
+                },
+            ],
+        }
+        paper.DATA_PATH.write_text(json.dumps(data))
+
+        errors = paper.validate_paper_trades_integrity()
+        assert len(errors) == 1
+        assert "balance drift" in errors[0]
+
+
+class TestGetRollingSharpe:
+    def test_known_daily_pnl_produces_expected_sharpe(self):
+        """5 days of known P&L -> exact annualized Sharpe (sqrt(252))."""
+        import paper
+
+        now = datetime.now(UTC)
+        pnls = [10.0, -5.0, 20.0, -10.0, 15.0]
+        trades = []
+        for i, pnl in enumerate(pnls):
+            day = (now - timedelta(days=i + 1)).strftime("%Y-%m-%d")
+            trades.append(
+                {
+                    "id": i + 1,
+                    "ticker": f"T{i}",
+                    "settled": True,
+                    "entered_at": f"{day}T00:00:00Z",
+                    "settled_at": f"{day}T00:00:00Z",
+                    "pnl": pnl,
+                }
+            )
+        data = {
+            "_version": paper._SCHEMA_VERSION,
+            "balance": paper.STARTING_BALANCE,
+            "peak_balance": paper.STARTING_BALANCE,
+            "trades": trades,
+        }
+        paper.DATA_PATH.write_text(json.dumps(data))
+
+        result = paper.get_rolling_sharpe(window_days=30)
+        # mean=6.0, sample stdev=12.942179105544785 -> mean/stdev*sqrt(252)
+        assert result == pytest.approx(7.3594, abs=1e-4)
+
+    def test_fewer_than_five_days_returns_none(self):
+        import paper
+
+        now = datetime.now(UTC)
+        trades = []
+        for i, pnl in enumerate([10.0, -5.0, 20.0]):
+            day = (now - timedelta(days=i + 1)).strftime("%Y-%m-%d")
+            trades.append(
+                {
+                    "id": i + 1,
+                    "ticker": f"T{i}",
+                    "settled": True,
+                    "entered_at": f"{day}T00:00:00Z",
+                    "settled_at": f"{day}T00:00:00Z",
+                    "pnl": pnl,
+                }
+            )
+        data = {
+            "_version": paper._SCHEMA_VERSION,
+            "balance": paper.STARTING_BALANCE,
+            "peak_balance": paper.STARTING_BALANCE,
+            "trades": trades,
+        }
+        paper.DATA_PATH.write_text(json.dumps(data))
+
+        assert paper.get_rolling_sharpe(window_days=30) is None
+
+    def test_zero_variance_returns_none(self):
+        """Identical daily P&L -> stdev=0 -> must not divide by zero."""
+        import paper
+
+        now = datetime.now(UTC)
+        trades = []
+        for i in range(5):
+            day = (now - timedelta(days=i + 1)).strftime("%Y-%m-%d")
+            trades.append(
+                {
+                    "id": i + 1,
+                    "ticker": f"T{i}",
+                    "settled": True,
+                    "entered_at": f"{day}T00:00:00Z",
+                    "settled_at": f"{day}T00:00:00Z",
+                    "pnl": 5.0,
+                }
+            )
+        data = {
+            "_version": paper._SCHEMA_VERSION,
+            "balance": paper.STARTING_BALANCE,
+            "peak_balance": paper.STARTING_BALANCE,
+            "trades": trades,
+        }
+        paper.DATA_PATH.write_text(json.dumps(data))
+
+        assert paper.get_rolling_sharpe(window_days=30) is None
+
+
+class TestGetFactorExposure:
+    def _write_open_trades(self, trades):
+        import paper
+
+        data = {
+            "_version": paper._SCHEMA_VERSION,
+            "balance": paper.STARTING_BALANCE,
+            "peak_balance": paper.STARTING_BALANCE,
+            "trades": trades,
+        }
+        paper.DATA_PATH.write_text(json.dumps(data))
+
+    def test_yes_heavy_above_060(self):
+        import paper
+
+        self._write_open_trades(
+            [
+                {
+                    "id": 1,
+                    "ticker": "A",
+                    "side": "yes",
+                    "cost": 70.0,
+                    "city": "NYC",
+                    "settled": False,
+                },
+                {
+                    "id": 2,
+                    "ticker": "B",
+                    "side": "no",
+                    "cost": 30.0,
+                    "city": "LAX",
+                    "settled": False,
+                },
+            ]
+        )
+        result = paper.get_factor_exposure()
+        assert result["net_bias"] == "YES-heavy"
+        assert result["yes_count"] == 1
+        assert result["no_count"] == 1
+        assert result["yes_cost"] == 70.0
+        assert result["no_cost"] == 30.0
+        assert result["cities_long_yes"] == ["NYC"]
+        assert result["cities_long_no"] == ["LAX"]
+
+    def test_no_heavy_below_040(self):
+        import paper
+
+        self._write_open_trades(
+            [
+                {
+                    "id": 1,
+                    "ticker": "A",
+                    "side": "yes",
+                    "cost": 20.0,
+                    "city": "NYC",
+                    "settled": False,
+                },
+                {
+                    "id": 2,
+                    "ticker": "B",
+                    "side": "no",
+                    "cost": 80.0,
+                    "city": "LAX",
+                    "settled": False,
+                },
+            ]
+        )
+        result = paper.get_factor_exposure()
+        assert result["net_bias"] == "NO-heavy"
+
+    def test_exact_060_boundary_is_balanced(self):
+        """yes_frac == 0.6 exactly must NOT count as YES-heavy (strict >)."""
+        import paper
+
+        self._write_open_trades(
+            [
+                {
+                    "id": 1,
+                    "ticker": "A",
+                    "side": "yes",
+                    "cost": 60.0,
+                    "city": "NYC",
+                    "settled": False,
+                },
+                {
+                    "id": 2,
+                    "ticker": "B",
+                    "side": "no",
+                    "cost": 40.0,
+                    "city": "LAX",
+                    "settled": False,
+                },
+            ]
+        )
+        result = paper.get_factor_exposure()
+        assert result["net_bias"] == "Balanced"
+
+    def test_exact_040_boundary_is_balanced(self):
+        """yes_frac == 0.4 exactly must NOT count as NO-heavy (strict <)."""
+        import paper
+
+        self._write_open_trades(
+            [
+                {
+                    "id": 1,
+                    "ticker": "A",
+                    "side": "yes",
+                    "cost": 40.0,
+                    "city": "NYC",
+                    "settled": False,
+                },
+                {
+                    "id": 2,
+                    "ticker": "B",
+                    "side": "no",
+                    "cost": 60.0,
+                    "city": "LAX",
+                    "settled": False,
+                },
+            ]
+        )
+        result = paper.get_factor_exposure()
+        assert result["net_bias"] == "Balanced"
+
+    def test_no_open_trades_is_balanced_with_zero_costs(self):
+        import paper
+
+        self._write_open_trades([])
+        result = paper.get_factor_exposure()
+        assert result["net_bias"] == "Balanced"
+        assert result["yes_count"] == 0
+        assert result["no_count"] == 0
+
+
+class _FakeMarketClient:
+    """Minimal stub of the Kalshi client's get_market(ticker) surface."""
+
+    def __init__(self, markets: dict):
+        self._markets = markets
+
+    def get_market(self, ticker):
+        return self._markets[ticker]
+
+
+class TestGetUnrealizedPnlPaper:
+    def _write_open_trades(self, trades):
+        import paper
+
+        data = {
+            "_version": paper._SCHEMA_VERSION,
+            "balance": paper.STARTING_BALANCE,
+            "peak_balance": paper.STARTING_BALANCE,
+            "trades": trades,
+        }
+        paper.DATA_PATH.write_text(json.dumps(data))
+
+    def test_yes_side_marks_at_bid(self):
+        """YES holder can only realize the bid — mark_pnl = (bid - entry) * qty."""
+        import paper
+
+        self._write_open_trades(
+            [
+                {
+                    "id": 1,
+                    "ticker": "YES-TICK",
+                    "side": "yes",
+                    "entry_price": 0.40,
+                    "quantity": 10,
+                    "settled": False,
+                }
+            ]
+        )
+        client = _FakeMarketClient({"YES-TICK": {"yes_bid": 0.55, "yes_ask": 0.60}})
+        result = paper.get_unrealized_pnl_paper(client)
+        assert result["n"] == 1
+        assert result["by_trade"][0]["current_price"] == pytest.approx(0.55)
+        assert result["by_trade"][0]["mark_pnl"] == pytest.approx(1.50)
+        assert result["total_unrealized"] == pytest.approx(1.50)
+
+    def test_no_side_marks_at_one_minus_ask(self):
+        """NO holder can only realize (1 - yes_ask) — mark_pnl = ((1-ask) - entry) * qty."""
+        import paper
+
+        self._write_open_trades(
+            [
+                {
+                    "id": 2,
+                    "ticker": "NO-TICK",
+                    "side": "no",
+                    "entry_price": 0.30,
+                    "quantity": 10,
+                    "settled": False,
+                }
+            ]
+        )
+        client = _FakeMarketClient({"NO-TICK": {"yes_bid": 0.20, "yes_ask": 0.25}})
+        result = paper.get_unrealized_pnl_paper(client)
+        assert result["n"] == 1
+        assert result["by_trade"][0]["current_price"] == pytest.approx(0.75)  # 1 - 0.25
+        assert result["by_trade"][0]["mark_pnl"] == pytest.approx(
+            4.50
+        )  # (0.75-0.30)*10
+        assert result["total_unrealized"] == pytest.approx(4.50)
+
+    def test_mixed_yes_and_no_sides_sum_correctly(self):
+        import paper
+
+        self._write_open_trades(
+            [
+                {
+                    "id": 1,
+                    "ticker": "YES-TICK",
+                    "side": "yes",
+                    "entry_price": 0.40,
+                    "quantity": 10,
+                    "settled": False,
+                },
+                {
+                    "id": 2,
+                    "ticker": "NO-TICK",
+                    "side": "no",
+                    "entry_price": 0.30,
+                    "quantity": 10,
+                    "settled": False,
+                },
+            ]
+        )
+        client = _FakeMarketClient(
+            {
+                "YES-TICK": {"yes_bid": 0.55, "yes_ask": 0.60},
+                "NO-TICK": {"yes_bid": 0.20, "yes_ask": 0.25},
+            }
+        )
+        result = paper.get_unrealized_pnl_paper(client)
+        assert result["n"] == 2
+        assert result["total_unrealized"] == pytest.approx(6.00)  # 1.50 + 4.50
+
+    def test_no_open_trades_returns_zero(self):
+        import paper
+
+        self._write_open_trades([])
+        client = _FakeMarketClient({})
+        result = paper.get_unrealized_pnl_paper(client)
+        assert result == {"total_unrealized": 0.0, "by_trade": [], "n": 0}
+
+    def test_client_none_returns_zero_even_with_open_trades(self):
+        import paper
+
+        self._write_open_trades(
+            [
+                {
+                    "id": 1,
+                    "ticker": "YES-TICK",
+                    "side": "yes",
+                    "entry_price": 0.40,
+                    "quantity": 10,
+                    "settled": False,
+                }
+            ]
+        )
+        result = paper.get_unrealized_pnl_paper(None)
+        assert result == {"total_unrealized": 0.0, "by_trade": [], "n": 0}

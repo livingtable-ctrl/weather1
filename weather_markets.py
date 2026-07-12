@@ -329,29 +329,10 @@ def _get_combined_station_bias(city: str, var: str = "max") -> float:
     return static_bias * (1.0 - dynamic_weight) + dyn_bias * dynamic_weight
 
 
-# City → timezone (keys match CITY_COORDS / metar.MARKET_STATION_MAP)
-_CITY_TZ: dict[str, str] = {
-    "NYC": "America/New_York",
-    "Chicago": "America/Chicago",
-    "LA": "America/Los_Angeles",
-    "Miami": "America/New_York",
-    "Boston": "America/New_York",
-    "Dallas": "America/Chicago",
-    "Phoenix": "America/Phoenix",
-    "Seattle": "America/Los_Angeles",
-    "Denver": "America/Denver",
-    "Atlanta": "America/New_York",
-    "Austin": "America/Chicago",
-    "Washington": "America/New_York",
-    "Philadelphia": "America/New_York",
-    "OklahomaCity": "America/Chicago",
-    "SanFrancisco": "America/Los_Angeles",
-    "Minneapolis": "America/Chicago",
-    "Houston": "America/Chicago",
-    "SanAntonio": "America/Chicago",
-    "LasVegas": "America/Los_Angeles",
-    "NewOrleans": "America/Chicago",
-}
+# City → timezone (keys match CITY_COORDS / metar.MARKET_STATION_MAP).
+# Derived from CITY_COORDS (each tuple's 3rd element) so it can never drift,
+# including once CITY_COORDS starts loading dynamically from data/cities.json.
+_CITY_TZ: dict[str, str] = {city: coords[2] for city, coords in CITY_COORDS.items()}
 
 # City → primary ICAO observation station (single source of truth: metar.MARKET_STATION_MAP)
 _CITY_METAR_STATION: dict[str, str] = _metar.MARKET_STATION_MAP
@@ -6253,7 +6234,6 @@ def analyze_trade(enriched: dict) -> dict | None:
         icon_forecast_mean = None
         gfs_forecast_mean = None
         index_adj = 0.0
-        _confidence_boost = 1.0
         ci_low = blended_prob
         ci_high = blended_prob
         data_quality = 1.0

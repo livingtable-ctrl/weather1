@@ -368,3 +368,28 @@ class TestBetweenMarketProbabilityClamp:
             "not the $0.00 that an unclamped our_prob==0.0 would have produced"
         )
         assert row["won"] is True
+
+
+class TestPrevRunModelsMatchTracker:
+    def test_all_models_present_in_tracker_map_values(self):
+        """backtest._PREV_RUN_MODELS and tracker._PREVIOUS_RUN_MODEL_MAP both
+        hardcode Previous-Runs-API model names independently (flat list vs a
+        live-name -> deterministic-name dict), with no shared source. Guard
+        against them silently diverging (e.g. a model rename in one but not
+        the other) by asserting every name in the flat list is one of the
+        map's *values* (the deterministic Previous-Runs equivalents that
+        _PREV_RUN_MODELS itself lists)."""
+        import backtest
+        import tracker
+
+        prev_run_models = set(backtest._PREV_RUN_MODELS)
+        map_values = set(tracker._PREVIOUS_RUN_MODEL_MAP.values())
+
+        missing = prev_run_models - map_values
+        assert not missing, (
+            f"backtest._PREV_RUN_MODELS has model(s) not present as a value in "
+            f"tracker._PREVIOUS_RUN_MODEL_MAP: {missing}. These two structures "
+            f"encode the same Previous-Runs-API model names and must stay in "
+            f"sync — update tracker._PREVIOUS_RUN_MODEL_MAP (or backtest."
+            f"_PREV_RUN_MODELS) to match."
+        )

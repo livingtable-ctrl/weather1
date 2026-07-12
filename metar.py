@@ -1,7 +1,17 @@
 """
-METAR same-day lock-in strategy + station-level observation recording (Phase 4 stub).
-After ~2 PM local time, if the daily high has clearly already peaked above/below
-the Kalshi threshold, the outcome is near-certain.
+METAR same-day lock-in strategy + station-level observation recording.
+
+After ~2 PM local time, if the daily high/low has clearly already peaked
+above/below the Kalshi threshold, the outcome is near-certain. Beyond the
+core lock-in check, this module also:
+  - Validates raw METAR reads with plausibility (physically-sane temperature
+    range) and staleness (observation age) gates before they're trusted.
+  - Scales lock-in confidence dynamically from temperature clearance and time
+    of day (`_dynamic_lock_in_confidence`) instead of using a fixed constant.
+  - Records station-level observations over time and derives a dynamic
+    per-city/per-month bias correction from them for use elsewhere in the
+    pipeline.
+
 Reported win rate: 85-90%.
 """
 

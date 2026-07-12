@@ -213,6 +213,40 @@ class TestLoadWeights:
         result = load_city_weights(p)
         assert result == {"NYC": {"ensemble": 0.60, "climatology": 0.15, "nws": 0.25}}
 
+    def test_load_condition_missing_file_returns_empty(self):
+        from calibration import load_condition_weights
+
+        result = load_condition_weights(Path(self._tmpdir) / "nonexistent.json")
+        assert result == {}
+
+    def test_load_condition_valid_json_returns_dict(self):
+        from calibration import load_condition_weights
+
+        p = Path(self._tmpdir) / "condition.json"
+        p.write_text(
+            json.dumps(
+                {
+                    "above": {"ensemble": 0.50, "climatology": 0.20, "nws": 0.30},
+                    "below": {"ensemble": 0.45, "climatology": 0.25, "nws": 0.30},
+                    "between": {"ensemble": 1 / 3, "climatology": 1 / 3, "nws": 1 / 3},
+                }
+            )
+        )
+        result = load_condition_weights(p)
+        assert result == {
+            "above": {"ensemble": 0.50, "climatology": 0.20, "nws": 0.30},
+            "below": {"ensemble": 0.45, "climatology": 0.25, "nws": 0.30},
+            "between": {"ensemble": 1 / 3, "climatology": 1 / 3, "nws": 1 / 3},
+        }
+
+    def test_load_condition_corrupt_json_returns_empty(self):
+        from calibration import load_condition_weights
+
+        p = Path(self._tmpdir) / "corrupt.json"
+        p.write_text("not valid json {{")
+        result = load_condition_weights(p)
+        assert result == {}
+
 
 class TestCalibrateCLI:
     """cmd_calibrate writes JSON files to data/ when enough data exists."""

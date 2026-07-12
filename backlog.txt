@@ -71,6 +71,118 @@ When to revisit:
   - Before the Belgium trip ends (~2026-07-30) and live trading is
     considered for resumption. This is a hard prerequisite, not a nice-to-have.
 
+[MYSTERY REVERT -- COMMIT 24559a7 SILENTLY WIPED ~10 COMMITS OF CALIBRATION/
+  SAFETY WORK UNDER AN UNRELATED COMMIT MESSAGE]
+Priority: Medium-High (a calibration-integrity safeguard has been silently
+  missing for ~166 commits; not urgent since TRADING_PAUSED, but a real gap,
+  not cosmetic)
+
+Problem:
+  Found 2026-07-12 while investigating the LV/NOLA sigma backlog entry above.
+  Commit 24559a7 (2026-05-26, "fix: handle str _date in signals_cache append
+  (cron.py)") claims to be a 1-line cron.py fix. Its actual diff is
+  -780/+103 lines across 9 files. Confirmed via `git diff <old-sha>:file
+  24559a7:file`: weather_markets.py and climatology.py at 24559a7 are BYTE-
+  IDENTICAL to their state at c348100~1 -- i.e. before commit c348100 (the
+  "dynamic NBM-delta bias correction + climate-derived sigma" merge) and
+  before 9 more legitimate commits that landed between c348100 and 24559a7's
+  direct parent (cb14115). This has the signature of an accidental
+  `git checkout <old-sha> -- <files>` baked into what was meant to be a small
+  fix, not an intentional revert -- nothing in the commit message or history
+  suggests the sigma/bias work was being deliberately rolled back.
+
+  Checked each lost piece against current HEAD (166 commits past 24559a7, as
+  of 2026-07-12) to separate what's genuinely still gone from what got
+  independently rebuilt later:
+
+  STILL MISSING (confirmed zero trace at HEAD):
+    - climatology.py's compute_sigma_from_climate()/load_all_sigmas() --
+      derived per-city, per-month forecast sigma from a 30yr ERA5 reanalysis
+      archive (clim std x 0.60 ~= NWS Day-3 RMSE), cached to
+      data/forecast_sigma.json. Unlike a learned-from-settled-trades
+      approach, this is independent of this bot's own trade history --
+      it would cover LasVegas/NewOrleans immediately (see the LV/NOLA sigma
+      entry above, which is otherwise blocked on settled-trade counts of
+      2 and 0 respectively). Restoring this would resolve that entry as a
+      side effect, the same way the LV/NOLA entry already anticipated a
+      "data-driven sigma" fix might.
+    - NBM-delta bias correction (GFS-minus-NBM) replacing hand-coded
+      per-city degree offsets in weather_markets.py's bias-correction path.
+    - Disputed-outcome tracking (tracker.py) -- a `disputed` column +
+      mark_outcome_disputed(), with brier_score/brier_score_by_method/
+      get_brier_by_days_out all excluding disputed rows so a corrupted
+      settlement label can't silently pollute calibration scoring. This is
+      the one piece with real safety/integrity implications, not just
+      accuracy -- it's been absent with nobody aware it was ever built.
+    - Stop-loss accuracy tracking (tracker.py) -- was_stop_loss/
+      stop_loss_exit_price columns + get_stop_loss_accuracy(), an audit of
+      whether stop-losses actually save money vs. prematurely exit winners.
+    - BETWEEN_FLOOR_MODEL_MAX/BETWEEN_FLOOR_MARKET_MIN env-var
+      configurability for the 0.15/0.30 between-probability floor magic
+      numbers (back to hardcoded).
+    - Circuit-breaker threshold env-var overrides -- note circuit_breaker.py
+      was later fully rebuilt from scratch in a 2026-07-11 session (see
+      project memory), but that rebuild does not have env-var-configurable
+      thresholds either, so this specific piece is still absent even though
+      the file it belonged to has since been substantially rewritten.
+    - Sigma-cache validation (_validate_sigma_cache(), warns on values
+      outside [1.0, 20.0]F) -- moot on its own since the cache system it
+      validated is itself gone; would come back for free if the sigma cache
+      is rebuilt.
+
+  CONFIRMED INDEPENDENTLY REAPPLIED SINCE (false alarms, do not re-do):
+    - `unretire`/`unretire-strategy` CLI command (main.py) -- present.
+    - MIN_BIAS_CORRECTION_TRADES env var + learned-weights TTL-warning
+      suppression below that threshold -- present (weather_markets.py:172-173).
+    - Gaussian sigma 1.5F effective floor -- present (weather_markets.py:5599).
+
+  NOT re-verified in this pass (lower-value/cosmetic per the original
+  31c7226 commit message, worth a quick check before restoring the rest but
+  not independently investigated): exact horizon-dependent sigma multipliers
+  (Day-1 x0.50/Day-2 x0.70/Day-3+ x1.00 -- some horizon-discount concept
+  exists at weather_markets.py:5634 but wasn't diffed against the original
+  values), between_floor warning-message wording, cron.py's "portfolio is
+  flat"/retirement-alert print statements, and a root-logger-to-module-logger
+  cleanup in load/save_learned_weights.
+
+What the fix looks like:
+  NOT a simple `git revert 24559a7` -- that would conflict badly with 166
+  commits of intervening work on these files. Each missing piece needs to be
+  re-implemented against current code, individually, roughly in this
+  priority order:
+    1. Disputed-outcome tracking -- real calibration-integrity gap, cheapest
+       conceptually (one column + one filter clause in a few existing
+       queries), reference the original migration/functions via
+       `git show 31c7226:tracker.py` for the exact implementation to port.
+    2. Climate-derived sigma -- resolves the LV/NOLA sigma backlog entry as
+       a side effect; reference `git show ae86946:climatology.py` for the
+       original compute_sigma_from_climate()/load_all_sigmas() to port
+       forward against current climatology.py.
+    3. NBM-delta bias correction, stop-loss accuracy tracking, BETWEEN_FLOOR
+       env vars, circuit-breaker env vars -- lower urgency, port opportunistically.
+  Before porting anything, diff the "not re-verified" list above against
+  HEAD too, in case more of it was quietly reapplied than this pass checked.
+
+Why not now:
+  - TRADING_PAUSED=true means the disputed-outcome and stop-loss-accuracy
+    gaps aren't actively corrupting a live decision today -- but they would
+    matter the moment paper/live trading generates enough volume for
+    calibration scoring to matter again.
+  - Multi-piece restoration against 166 commits of intervening code, not a
+    drive-by fix -- needs its own careful pass per piece, with tests,
+    similar in shape to the PAPER_MIN_EDGE and config-divergence backlog
+    threads.
+
+When to revisit:
+  - Disputed-outcome tracking and climate-derived sigma are the two pieces
+    worth prioritizing whenever this is picked up -- one for calibration
+    integrity, one for a concrete LV/NOLA payoff. The rest can follow
+    opportunistically.
+  - Worth a `git log --oneline -- <file>` sanity check on any other
+    core file (paper.py, main.py, web_app.py, utils.py were also touched by
+    24559a7 but not individually re-verified here beyond the grep checks
+    above) if this pattern is suspected elsewhere.
+
 [HOURLY-DIRECTIONAL TEMPERATURE MARKETS — KXTEMPxxxH]
 Priority: Low/Medium (one city has real live volume right now; the rest don't)
 
@@ -254,12 +366,65 @@ Why not now:
   - Signal degradation, not a crash or a live-money-losing bug -- the
     generic sigma is a safe-side default, not an obviously wrong one.
 
-When to revisit:
-  - Once LV/NOLA have enough settled trade history to compute a real
-    historical sigma, or as part of the data-driven-sigma feature below.
+UPDATE 2026-07-12 (research pass, no code changed): queried data/predictions.db
+  directly (outcomes joined to predictions on settled_temp_f IS NOT NULL).
+  NewOrleans has 0 settled trades; LasVegas has 2. Codebase precedent for a
+  sample floor before trusting a per-city statistic (ACCURACY_MIN_SAMPLE=20,
+  SPRT_MIN_TRADES=20, MIN_BIAS_CORRECTION_TRADES=50) is nowhere close to
+  cleared -- not fixable with real settled-trade data right now regardless of
+  approach. Separately, and more importantly: found while investigating this
+  entry that a working, settled-trade-INDEPENDENT sigma source
+  (climatology.py's compute_sigma_from_climate()/load_all_sigmas(), derived
+  from a 30yr ERA5 archive per city/month) was built 2026-05-23 and then
+  silently deleted 3 days later by an apparently-accidental commit -- see the
+  new [MYSTERY REVERT -- COMMIT 24559a7] entry near the top of this file.
+  Restoring that mechanism would resolve this entry as a side effect,
+  immediately, without needing any settled-trade history for LV/NOLA at all
+  -- a stronger and faster fix path than either "wait for settled trades" or
+  the DATA-DRIVEN SIGMA FROM SETTLED HISTORY feature candidate below (which
+  IS settled-trade-dependent and would still be blocked). Prioritize the
+  24559a7 entry's restoration over either of those two paths when this is
+  next picked up.
 
-[OPEN-METEO ENSEMBLE MEAN API -- SIMPLER/CHEAPER THAN CURRENT MEMBER-BY-MEMBER FETCH]
-Priority: Medium (efficiency + data-quality improvement, not a bug fix)
+When to revisit:
+  - Restoring climatology.py's dynamic sigma (see 24559a7 entry) is now the
+    recommended path -- resolves this immediately for all 20 cities, not
+    just LV/NOLA. Fall back to "once LV/NOLA have enough settled trade
+    history" only if that restoration is deprioritized.
+
+[CLOSED 2026-07-12 -- evaluated live, not switching] OPEN-METEO ENSEMBLE MEAN
+  API -- SIMPLER/CHEAPER THAN CURRENT MEMBER-BY-MEMBER FETCH
+Priority: was Medium (efficiency + data-quality improvement, not a bug fix)
+
+CLOSED 2026-07-12: made live test calls to the actual endpoint (not just docs)
+  and found three real blockers, not one:
+  1. Daily spread does not exist as a variable at all -- requesting
+     temperature_2m_max_spread (or any daily _spread variant) 400s with
+     "Cannot initialize ForecastVariableDaily from invalid String value."
+     Spread is HOURLY-ONLY. Since this bot needs daily-high/low uncertainty,
+     using this API would mean fetching hourly spread and picking the value
+     near the forecast daily max/min hour -- reintroducing complexity, not
+     eliminating it. Not the "get uncertainty for free" win it looked like.
+  2. Spread comes back in Kelvin-degrees (hourly_units reports
+     "temperature_2m_spread":"K") even when temperature_unit=fahrenheit is
+     explicitly requested -- the mean value correctly converts to F, spread
+     does not. A Kelvin-degree spread is NOT numerically equal to a
+     Fahrenheit-degree spread; using it unconverted as sigma in
+     gaussian_probability() would silently understate uncertainty by ~44%
+     (missing x1.8 factor). Easy to get wrong silently.
+  3. ECMWF AIFS mean (ecmwf_aifs025_ensemble_mean) returned null for daily
+     max/min at the one live test point (NYC) -- same failure mode already
+     documented in this repo's fetch_temperature_ecmwf() comments for the
+     deterministic endpoint.
+  Also re-confirmed and corrected the model-name guess yet again on live
+  verification: ICON mean is dwd_icon_eps_ensemble_mean_seamless, GFS mean is
+  ncep_gefs_ensemble_mean_seamless (NOT gfs_ensemble_seamless_mean -- GFS's
+  ensemble is branded GEFS at Open-Meteo, guessing wrong 400s), ECMWF AIFS
+  mean is ecmwf_aifs025_ensemble_mean (NOT ecmwf_aifs_025_ensemble_mean).
+  Verdict: not a clean drop-in win as originally framed. Closing rather than
+  leaving open-ended -- if ever revisited, it needs to solve the
+  hourly-only-spread problem first, which is real added complexity, not a
+  simplification.
 
 Problem:
   Open-Meteo launched an Ensemble Mean API in March 2026 that returns mean
@@ -295,29 +460,45 @@ UPDATE 2026-07-12 (research pass, no code changed):
   writing any code, not from docs-summary text alone (same caution that
   mattered for the Kalshi V2 order-endpoint migration this session).
 
-What the fix looks like:
-  Evaluate replacing the individual-member fetch + manual mean/spread
-  calculation with a direct call to the Ensemble Mean API for the models it
-  covers, using the mean-API-specific model name strings noted above (verify
-  spelling with a live call first). Verify the returned spread/std-dev
-  matches (or is compatible with) what gaussian_probability()/
-  _HISTORICAL_SIGMA expect before switching -- this is a data-source change
-  feeding live probability calculations, not a cosmetic refactor.
+(Original "what the fix looks like" section removed 2026-07-12 -- superseded
+  by the CLOSED verdict above, which found 3 real blockers a simple
+  model-name fix wouldn't address.)
 
-Why not now:
-  - Unverified: needs a direct comparison against the current member-fetch
-    approach (same city/date, both methods) before trusting it feeds
-    probability calculations correctly.
-  - Efficiency/simplification, not a bug fix -- no urgency.
-
-When to revisit:
-  - Next time the ensemble-fetch code in weather_markets.py is touched for
-    other reasons (e.g. the TRACK ECMWF / GENERALIZED PER-MODEL ACCURACY
-    entries), evaluate switching then rather than as a standalone change.
-
-[CLIMATE INDEX TABLES (AO/NAO/ENSO) MISSING 10 OF 20 CITIES]
-Priority: Low (signal degradation, safe-side default fallback already in
+[CLOSED 2026-07-12 -- not currently achievable, see below] CLIMATE INDEX
+  TABLES (AO/NAO/ENSO) MISSING 10 OF 20 CITIES
+Priority: was Low (signal degradation, safe-side default fallback already in
   place)
+
+CLOSED 2026-07-12: two findings that together make this not a boundedly-
+  scoped task right now, not just a low-priority one.
+  First, git-archaeology on climate_indices.py (git log -p on the file, only
+  7 commits total) found the ao_sens/nao_sens/enso_sens dicts for the
+  ORIGINAL 10 cities appear once, in the very first commit, and have never
+  been modified since. No docstring, comment, docs/ file, or commit message
+  anywhere references a study, NOAA regression, or any data source -- unlike
+  _PDO_TEMP_COEFF/_PNA_TEMP_COEFF's explicit scoping comments nearby. These
+  read as plausible hand-authored estimates from initial repo creation, not
+  values derived from any real analysis -- so "follow whatever methodology
+  produced the first 10" (the fix this entry originally proposed) has no
+  methodology to follow.
+  Second, even if a real regression were attempted from scratch: queried
+  data/predictions.db's outcomes table for settled_temp_f coverage -- 231
+  total rows, spanning only 2026-05-19 to 2026-07-09 (under 8 weeks, one
+  season, ZERO winter data). AO/NAO effects are largest in winter, which is
+  exactly the regime this window can't see. Per-city counts are 3-14 rows
+  even for the best-covered cities. A regression against monthly AO/NAO/ONI
+  values with this little same-season data would be statistically
+  meaningless -- and wouldn't even be reproducible for the original 10
+  cities using this repo's own data, let alone extendable to 10 more.
+  Verdict: a real, data-backed fix needs decades of external per-city
+  historical daily temperature (NOAA GHCN/CLI archives) regressed against
+  NOAA CPC's public AO/NAO/ONI series -- genuine external research, not
+  something derivable from what's in this repo today. The only thing
+  achievable right now is extending the same unscientific hand-authored-
+  estimate pattern the original 10 already use, which would be internally
+  consistent with the file's actual origin but shouldn't be presented as a
+  data-driven fix. Closing rather than leaving open-ended; revisit only if
+  someone is willing to do the external research this actually requires.
 
 Problem:
   climate_indices.py's ao_sens/nao_sens/enso_sens dicts inside
@@ -336,23 +517,9 @@ Problem:
   climate_indices.py:253-255) for the 10 newer cities -- half the tracked
   roster gets untuned AO/NAO/ENSO adjustments.
 
-What the fix looks like:
-  Research and add AO/NAO/ENSO sensitivity coefficients for the 10 missing
-  cities, following whatever methodology originally produced the first 10
-  (climatological correlation study, likely -- check for that methodology
-  before guessing new values).
-
-Why not now:
-  - Lower-impact than the sigma/correlation gaps above -- this is one input
-    among several in the climatological adjustment, not the primary signal.
-  - Needs the same real-methodology research the original 10 values
-    presumably used, not just interpolated guesses -- a real research task,
-    not a quick code change.
-
-When to revisit:
-  - When climatology.py/climate_indices.py is next revisited for other
-    reasons, or if a specific miscalibration in one of the 10 newer cities
-    is traced back to this gap.
+(Original "what the fix looks like" section removed 2026-07-12 -- superseded
+  by the CLOSED verdict above, which found no real methodology exists to
+  follow and no data currently exists to build one from scratch.)
 
 [RESOLVED 2026-07-12] MORE INERT config.py FIELDS -- SAME DIVERGENCE PATTERN, ROUND 4
 Priority: Low-Medium (silent no-op env vars, same already-recognized bug
@@ -472,6 +639,24 @@ Why not now:
     returned) -- this is a missing feature, not a live bug.
   - Needs the forecast_high storage prerequisite before the real work can
     start.
+
+UPDATE 2026-07-12 (research pass, no code changed): re-verified still
+  correctly blocked. get_station_bias() (now metar.py:437-461) still ends in
+  an unconditional `return None` with the same TODO comment. Grepped the
+  whole codebase for "forecast_high" -- confirmed it does not exist as a
+  stored column/field anywhere (metar.py's own record_observation() only
+  writes station_id/date/high_f/low_f/proxy; tracker.py's predictions table
+  stores our_prob/market_prob/edge, not a forecast temperature, and has no
+  join key to METAR observations by station+date). The named prerequisite is
+  fully absent, not partially built. AUDIT_PLAN.md P4-5 and
+  docs/audit_findings.md C21 both still open with the same (now slightly
+  stale-worded, e.g. C21 cites old line numbers and says "returns 0.0" when
+  it's actually "returns None") but substantively correct finding. If ever
+  picked up: needs record_observation() to accept a new forecast_high
+  parameter, AND the harder part -- plumbing the forecast value from wherever
+  the trade decision is made through to wherever settlement recording calls
+  record_observation() (likely paper.py around its settlement path), which is
+  currently out of scope at that call site.
 
 When to revisit:
   - When forecast_high is stored alongside observations for some other

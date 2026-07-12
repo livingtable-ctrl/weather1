@@ -1163,6 +1163,11 @@ def _cmd_cron_body(
                 flush_ensemble_disk_cache,
             )
 
+            # Local to this log-count path only (never passed into a fetch call).
+            # Not imported from weather_markets.ENSEMBLE_MODELS because that list
+            # doesn't match (it's ["icon_seamless", "gfs_seamless"], missing
+            # ecmwf_ifs025) and ENSEMBLE_MODELS_EXTENDED adds nbm/ecmwf_aifs025
+            # instead — no single existing constant has this exact 3-model set.
             _om_models = ["gfs_seamless", "ecmwf_ifs025", "icon_seamless"]
             _n_models = len(_om_models)
 

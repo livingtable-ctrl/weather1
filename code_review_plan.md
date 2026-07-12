@@ -218,6 +218,10 @@ def _verify_pickle(path: Path) -> bool:
 
 ## Phase 5 — Features (ranked by ROI)
 
+**NOT BUILT — none of the 3 features below were ever implemented (verified 2026-07:
+no `_metar_sweep` function, no `_liquidity_edge_scale`/`gated_edge` anywhere in the
+code). Abandoned, not in progress. See backlog.txt.**
+
 ### Feature 1 · Cross-market arbitrage auto-execution
 **Files:** `cron.py`, minor addition to `consistency.py`  
 **Approach:**
