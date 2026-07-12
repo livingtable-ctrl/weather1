@@ -193,6 +193,40 @@ def reset_open_meteo_circuit_breaker():
 
 
 @pytest.fixture(autouse=True)
+def isolate_dynamic_sigma(tmp_path, monkeypatch):
+    """Redirect climatology's forecast-sigma cache to a per-test temp file and
+    short-circuit weather_markets._load_dynamic_sigma() to return {} for every
+    test by default.
+
+    get_historical_sigma() (weather_markets.py) lazily loads+memoizes
+    climatology.load_all_sigmas() into a module-level _dynamic_sigma dict on
+    first call, and load_all_sigmas() itself computes from the real 30yr
+    climate archive (data/climate_*.json, which exist on disk for all 20
+    cities) and writes data/forecast_sigma.json on first use. Without this
+    fixture: (a) tests would write to the real repo data/ directory as a side
+    effect, (b) get_historical_sigma() would return real climate-derived
+    values instead of the static _HISTORICAL_SIGMA table values most existing
+    tests assert exactly, and (c) whichever test runs first would permanently
+    memoize its result (real climate data) for the rest of the process.
+
+    Defaults to the dynamic path being unavailable so get_historical_sigma()
+    falls through to the static table for every test that doesn't explicitly
+    opt in (same pattern as neutral_temperature_scaling above). Tests that
+    want to exercise the dynamic path monkeypatch
+    weather_markets._load_dynamic_sigma themselves.
+    """
+    import climatology
+    import weather_markets
+
+    monkeypatch.setattr(
+        climatology, "_SIGMA_CACHE_PATH", tmp_path / "forecast_sigma.json"
+    )
+    monkeypatch.setattr(climatology, "_sigma_mem_cache", {})
+    monkeypatch.setattr(weather_markets, "_dynamic_sigma", {})
+    monkeypatch.setattr(weather_markets, "_load_dynamic_sigma", lambda: {})
+
+
+@pytest.fixture(autouse=True)
 def isolate_execution_log(tmp_path, monkeypatch):
     """Redirect execution_log.DB_PATH to a per-test temp file.
 

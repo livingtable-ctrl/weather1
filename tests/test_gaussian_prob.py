@@ -4,10 +4,20 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
+
+# Captured at collection time, before conftest's isolate_dynamic_sigma autouse
+# fixture (which runs per-test, before each test body) replaces
+# weather_markets._load_dynamic_sigma with a stub -- tests that want the real
+# implementation's own memoization/exception-handling behavior restore it via
+# this reference rather than the (by-then-already-patched) module attribute.
+import weather_markets as _wm_module  # noqa: E402
+
+_REAL_LOAD_DYNAMIC_SIGMA = _wm_module._load_dynamic_sigma
 
 
 class TestGaussianProbability:
@@ -134,6 +144,118 @@ class TestGaussianProbability:
         extreme_below = gaussian_probability(30.0, 65.0, 5.0, "above")
         assert 0.0 <= extreme_above <= 1.0
         assert 0.0 <= extreme_below <= 1.0
+
+
+class TestDynamicSigma:
+    """Climate-derived sigma restored 2026-07-12 (silently lost in the
+    24559a7 mystery-revert, see backlog.txt): get_historical_sigma() prefers
+    a per-city, per-month value computed from the 30yr climate archive over
+    the static _HISTORICAL_SIGMA table. The conftest.py isolate_dynamic_sigma
+    fixture makes the dynamic path unavailable by default (returns {}) so
+    these tests explicitly monkeypatch it to opt in.
+    """
+
+    def test_prefers_dynamic_value_when_available(self, monkeypatch):
+        import weather_markets
+
+        monkeypatch.setattr(
+            weather_markets,
+            "_load_dynamic_sigma",
+            lambda: {"NYC": {"max": {"4": 2.1}}},
+        )
+        sigma = weather_markets.get_historical_sigma("NYC", month=4, var="max")
+        assert sigma == pytest.approx(2.1)
+
+    def test_falls_back_when_dynamic_missing_for_month(self, monkeypatch):
+        import weather_markets
+
+        # Dynamic data exists for NYC but not April specifically.
+        monkeypatch.setattr(
+            weather_markets,
+            "_load_dynamic_sigma",
+            lambda: {"NYC": {"max": {"7": 2.1}}},
+        )
+        sigma = weather_markets.get_historical_sigma("NYC", month=4, var="max")
+        assert sigma == pytest.approx(3.5)  # static table value for NYC spring
+
+    def test_falls_back_when_dynamic_missing_for_city(self, monkeypatch):
+        import weather_markets
+
+        monkeypatch.setattr(weather_markets, "_load_dynamic_sigma", lambda: {})
+        sigma = weather_markets.get_historical_sigma("NYC", month=4, var="max")
+        assert sigma == pytest.approx(3.5)
+
+    def test_min_var_reads_min_key_not_max(self, monkeypatch):
+        import weather_markets
+
+        monkeypatch.setattr(
+            weather_markets,
+            "_load_dynamic_sigma",
+            lambda: {"NYC": {"max": {"4": 9.9}, "min": {"4": 2.2}}},
+        )
+        sigma = weather_markets.get_historical_sigma("NYC", month=4, var="min")
+        assert sigma == pytest.approx(2.2)
+
+    def test_lasvegas_gets_dynamic_sigma_not_default(self, monkeypatch):
+        """The actual backlog payoff: LasVegas/NewOrleans are absent from the
+        static _HISTORICAL_SIGMA table (see the LV/NOLA sigma backlog entry)
+        and would otherwise always fall through to _DEFAULT_SIGMA=3.5 -- the
+        dynamic path gives them a real, city-specific value instead."""
+        import weather_markets
+
+        monkeypatch.setattr(
+            weather_markets,
+            "_load_dynamic_sigma",
+            lambda: {"LasVegas": {"max": {"7": 2.8}}},
+        )
+        assert "LasVegas" not in weather_markets._HISTORICAL_SIGMA
+        sigma = weather_markets.get_historical_sigma("LasVegas", month=7, var="max")
+        assert sigma == pytest.approx(2.8)
+        assert sigma != weather_markets._DEFAULT_SIGMA
+
+    def test_lasvegas_falls_back_to_default_without_dynamic_data(self, monkeypatch):
+        """Confirms the pre-restoration behavior is still the fallback: no
+        dynamic data -> LasVegas (absent from the static table) gets
+        _DEFAULT_SIGMA, same as before this backlog item was restored."""
+        import weather_markets
+
+        monkeypatch.setattr(weather_markets, "_load_dynamic_sigma", lambda: {})
+        sigma = weather_markets.get_historical_sigma("LasVegas", month=7, var="max")
+        assert sigma == weather_markets._DEFAULT_SIGMA
+
+    def test_load_dynamic_sigma_memoizes_within_process(self, monkeypatch):
+        import weather_markets
+
+        # Restore the real implementation -- the autouse isolate_dynamic_sigma
+        # fixture stubs it to lambda: {} by default (see conftest.py).
+        monkeypatch.setattr(
+            weather_markets, "_load_dynamic_sigma", _REAL_LOAD_DYNAMIC_SIGMA
+        )
+        monkeypatch.setattr(weather_markets, "_dynamic_sigma", {})
+
+        calls = {"n": 0}
+
+        def _fake_load_all_sigmas(city_coords):
+            calls["n"] += 1
+            return {"NYC": {"max": {"4": 2.5}}}
+
+        with patch("climatology.load_all_sigmas", side_effect=_fake_load_all_sigmas):
+            weather_markets._load_dynamic_sigma()
+            weather_markets._load_dynamic_sigma()
+        assert calls["n"] == 1
+
+    def test_load_dynamic_sigma_swallows_exceptions(self, monkeypatch):
+        """A climate-archive fetch failure must degrade to the static table,
+        never crash analyze_trade's sigma lookup."""
+        import weather_markets
+
+        monkeypatch.setattr(
+            weather_markets, "_load_dynamic_sigma", _REAL_LOAD_DYNAMIC_SIGMA
+        )
+        monkeypatch.setattr(weather_markets, "_dynamic_sigma", {})
+        with patch("climatology.load_all_sigmas", side_effect=RuntimeError("boom")):
+            result = weather_markets._load_dynamic_sigma()
+        assert result == {}
 
 
 # ── L6-B regression: Gaussian blend must be a separate named source ──────────

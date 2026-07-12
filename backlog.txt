@@ -109,9 +109,35 @@ PARTIALLY RESOLVED 2026-07-12: piece 1 of the restoration priority list below,
   opus) -- came back clean; the reviewer additionally mutation-tested by
   stripping all 30 filter lines from a scratch copy and confirming exactly 30
   test failures, proving the tests genuinely catch a missing filter rather than
-  passing spuriously. Climate-derived sigma (piece 2) and the remaining lower-
-  priority pieces (piece 3) are still open -- see the priority list below,
-  unchanged from the original writeup.
+  passing spuriously.
+
+  Piece 2, climate-derived sigma, is also done (2026-07-12, same day).
+  Restored climatology.py's compute_sigma_from_climate()/load_all_sigmas()
+  against current code -- the original commit (ae86946) bundled this with an
+  unrelated NBM-delta bias-correction change (piece 3, still open below);
+  only the sigma half was ported this pass. get_historical_sigma() gained a
+  var= parameter and now prefers the dynamic per-city/per-month value (from
+  the already-cached 30yr climate archives) over the static _HISTORICAL_SIGMA
+  table, closing the LV/NOLA sigma gap entry below as a side effect exactly
+  as anticipated -- verified end-to-end against the real cached
+  data/climate_LasVegas.json/data/climate_NewOrleans.json archives (both
+  return sane per-month sigmas in the 1.5-5.5F range, no longer flat
+  _DEFAULT_SIGMA=3.5). New autouse conftest.py fixture
+  (isolate_dynamic_sigma) prevents the lazy module-global cache from writing
+  to the real data/ directory during tests or breaking ~7 existing tests that
+  assert exact static-table values -- defaults the dynamic path to
+  unavailable per-test, matching this project's existing isolation-fixture
+  pattern (neutral_temperature_scaling etc.). 22 new tests
+  (tests/test_climatology.py + a new TestDynamicSigma class in
+  test_gaussian_prob.py). Independently reviewed (Agent, opus) -- clean;
+  reviewer additionally ran the restored function live against the real
+  cached archives (not just mocked tests) to confirm the LV/NOLA payoff
+  actually works, and confirmed no NBM-delta scope leaked in.
+
+  The remaining lower-priority pieces (piece 3: NBM-delta bias correction,
+  stop-loss accuracy tracking, BETWEEN_FLOOR/circuit-breaker env vars) are
+  still open -- see the priority list below, unchanged from the original
+  writeup.
 
 Problem:
   Found 2026-07-12 while investigating the LV/NOLA sigma backlog entry above.
@@ -374,9 +400,26 @@ When to revisit:
     consensus data) matters more before starting -- see note above, they are
     not interchangeable.
 
-[LAS VEGAS / NEW ORLEANS MISSING FROM _HISTORICAL_SIGMA]
-Priority: Low-Medium (silently degraded signal quality for 2 of 20 cities,
+[RESOLVED 2026-07-12] LAS VEGAS / NEW ORLEANS MISSING FROM _HISTORICAL_SIGMA
+Priority: was Low-Medium (silently degraded signal quality for 2 of 20 cities,
   not a crash risk)
+
+RESOLVED 2026-07-12: resolved as a side effect of restoring climatology.py's
+  climate-derived sigma (see the [MYSTERY REVERT -- COMMIT 24559a7] entry's
+  piece 2, same day) exactly as this entry's 2026-07-12 update anticipated.
+  get_historical_sigma() now tries a per-city/per-month dynamic sigma (from
+  the already-cached 30yr climate archive) before falling back to the static
+  _HISTORICAL_SIGMA table -- LasVegas/NewOrleans get a real value from
+  data/climate_LasVegas.json/data/climate_NewOrleans.json (both already
+  cached on disk) without needing a _HISTORICAL_SIGMA table entry or any
+  settled-trade history at all. Verified against the real cached archives
+  (not just mocked): LasVegas max 3.19-5.44F, min 2.77-4.30F; NewOrleans max
+  1.94-5.54F, min 1.50-5.47F -- both sane, both no longer the flat
+  _DEFAULT_SIGMA=3.5 every LV/NOLA trade used before. Resolves for all 20
+  cities, not just these 2 (any city later added to CITY_COORDS without a
+  static table entry now gets a real sigma too, once its climate archive is
+  cached).
+
 UPDATED 2026-07-10: the correlation-groups half of this entry is DONE --
   _CORRELATED_CITY_GROUPS (now paper.py:283-287) includes LasVegas (desert-
   Southwest group) and NewOrleans (Gulf-Coast group), with explicit pair

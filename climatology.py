@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
+import statistics
 import time
 from datetime import date
 from pathlib import Path
@@ -234,6 +235,94 @@ def persistence_prob(
     return None
 
 
+# Restored 2026-07-12 -- silently lost in the 24559a7 mystery-revert (see
+# backlog.txt); ported forward against current climatology.py (safe_io's
+# atomic_write_json replaces the original's raw json.dump, matching this
+# file's current write convention). NWS Day-3 temperature RMSE is empirically
+# ~60% of climatological std. Applying this fraction converts raw variability
+# into a calibrated forecast sigma -- independent of this bot's own settled-
+# trade history, so it covers every city (including LasVegas/NewOrleans,
+# which have too few settled trades for a learned-from-history sigma) from
+# the moment the cache is built.
+FORECAST_RMSE_FRACTION = 0.60
+_SIGMA_FLOOR = 1.5  # never allow sigma < 1.5°F regardless of climate data
+
+_SIGMA_CACHE_PATH = DATA_DIR / "forecast_sigma.json"
+_SIGMA_CACHE_AGE = 30 * 24 * 3600  # refresh monthly
+_sigma_mem_cache: dict = {}
+
+
+def compute_sigma_from_climate(
+    city: str, coords: tuple, var: str = "max"
+) -> dict[int, float]:
+    """
+    Compute per-month forecast sigma (°F) from 30yr climate archive for one city.
+    Returns {month: sigma} for months 1-12 that have enough data (>= 30 points).
+    Empty dict on data error.
+    """
+    data = fetch_historical(city, coords)
+    if not data:
+        return {}
+
+    key = "highs" if var == "max" else "lows"
+    by_month: dict[int, list[float]] = {m: [] for m in range(1, 13)}
+
+    for date_str, val in zip(data["dates"], data[key]):
+        if val is None:
+            continue
+        try:
+            m = date.fromisoformat(date_str).month
+            by_month[m].append(val)
+        except ValueError:
+            continue
+
+    result: dict[int, float] = {}
+    for m, vals in by_month.items():
+        if len(vals) >= 30:
+            std = statistics.stdev(vals)
+            result[m] = round(max(_SIGMA_FLOOR, std * FORECAST_RMSE_FRACTION), 2)
+    return result
+
+
+def load_all_sigmas(city_coords: dict, force: bool = False) -> dict:
+    """
+    Return per-city, per-month forecast sigmas computed from 30yr climate archive.
+    Structure: {city: {"max": {month_str: sigma}, "min": {month_str: sigma}}}
+    Cached to data/forecast_sigma.json, refreshed monthly.
+    """
+    global _sigma_mem_cache
+    if _sigma_mem_cache and not force:
+        return _sigma_mem_cache
+
+    if not force and _SIGMA_CACHE_PATH.exists():
+        age = time.time() - _SIGMA_CACHE_PATH.stat().st_mtime
+        if age < _SIGMA_CACHE_AGE:
+            with open(_SIGMA_CACHE_PATH) as f:
+                _sigma_mem_cache = json.load(f)
+            return _sigma_mem_cache
+
+    result: dict = {}
+    for city, coords in city_coords.items():
+        result[city] = {
+            "max": {
+                str(k): v
+                for k, v in compute_sigma_from_climate(city, coords, var="max").items()
+            },
+            "min": {
+                str(k): v
+                for k, v in compute_sigma_from_climate(city, coords, var="min").items()
+            },
+        }
+
+    try:
+        safe_io.atomic_write_json(result, _SIGMA_CACHE_PATH)
+    except Exception as e:
+        _log.warning("Could not write forecast_sigma.json: %s", e)
+
+    _sigma_mem_cache = result
+    return result
+
+
 def preload_all(city_coords: dict) -> None:
     """Fetch and cache historical data for all cities. Refreshes stale caches."""
     for city, coords in city_coords.items():
@@ -244,3 +333,10 @@ def preload_all(city_coords: dict) -> None:
         elif _cache_is_stale(cache):
             print(f"  Refreshing climate history for {city} (>1yr old)...", flush=True)
             fetch_historical(city, coords, force=True)
+
+    # Recompute sigma cache if stale or missing (runs after climate data is fresh)
+    if not _SIGMA_CACHE_PATH.exists() or (
+        time.time() - _SIGMA_CACHE_PATH.stat().st_mtime > _SIGMA_CACHE_AGE
+    ):
+        print("  Computing per-city forecast sigma from climate archive...", flush=True)
+        load_all_sigmas(city_coords, force=True)

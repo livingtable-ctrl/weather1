@@ -2180,12 +2180,43 @@ def _month_to_season(month: int) -> int:
     ]
 
 
-def get_historical_sigma(city: str, month: int) -> float:
-    """Return NWS Day-3 forecast RMSE (sigma, °F) for a city.
+_dynamic_sigma: dict = {}
+
+
+def _load_dynamic_sigma() -> dict:
+    """Lazily load+memoize per-city, per-month sigma computed from the 30yr
+    climate archive (climatology.load_all_sigmas). Restored 2026-07-12 --
+    silently lost in the 24559a7 mystery-revert (see backlog.txt)."""
+    global _dynamic_sigma
+    if _dynamic_sigma:
+        return _dynamic_sigma
+    try:
+        from climatology import load_all_sigmas
+
+        _dynamic_sigma = load_all_sigmas(CITY_COORDS)
+    except Exception as _e:
+        _log.debug("Dynamic sigma unavailable: %s", _e)
+    return _dynamic_sigma
+
+
+def get_historical_sigma(city: str, month: int, var: str = "max") -> float:
+    """Return forecast RMSE sigma (°F) for a city/month.
+
+    Prefers dynamic values computed from the 30yr climate archive (per-month
+    resolution, covers every city in CITY_COORDS including cities absent from
+    the static _HISTORICAL_SIGMA table below). Falls back to the static
+    seasonal table, then _DEFAULT_SIGMA, if dynamic data is unavailable.
 
     City must match the name stored in the _city field by enrich_with_forecast()
-    (e.g. "NYC", "Chicago", "LA", "Miami").  Unknown cities return _DEFAULT_SIGMA.
+    (e.g. "NYC", "Chicago", "LA", "Miami").
     """
+    dynamic = _load_dynamic_sigma()
+    city_data = dynamic.get(city, {})
+    var_key = "min" if var == "min" else "max"
+    dyn_val = city_data.get(var_key, {}).get(str(month))
+    if dyn_val:
+        return float(dyn_val)
+    # Static fallback (seasonal granularity)
     season = _month_to_season(month)
     return _HISTORICAL_SIGMA.get(city, {}).get(season, _DEFAULT_SIGMA)
 
@@ -5615,7 +5646,7 @@ def analyze_trade(enriched: dict) -> dict | None:
         # Apply sigma_mult (time-of-day horizon discount) so near-term
         # markets get tighter Gaussian uncertainty — same discount applied to
         # the ensemble sigma at line 3401.
-        sigma_gauss = get_historical_sigma(city, target_month) * sigma_mult
+        sigma_gauss = get_historical_sigma(city, target_month, var=var) * sigma_mult
         cond_type = condition.get("type", "above")
         if cond_type in ("above", "below"):
             p_win_gaussian = gaussian_probability(
