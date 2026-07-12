@@ -264,13 +264,37 @@ Problem:
   not yet verified against the live Open-Meteo endpoint or this repo's
   actual fetch code in detail.
 
+UPDATE 2026-07-12 (research pass, no code changed):
+  Re-confirmed weather_markets.py's current fetch approach is still
+  accurate as described above -- get_ensemble_temps() (weather_markets.py:2933)
+  still calls _fetch_model_ensemble() per model and builds all_temps itself;
+  no change since 2026-07-10.
+  Confirmed via 2 independent fetches of open-meteo.com/en/docs/ensemble-mean-api
+  that the endpoint is real:
+  base URL https://ensemble-api.open-meteo.com/v1/ensemble, daily variables
+  temperature_2m_max/temperature_2m_min are supported, response shape is
+  {variable} for mean + {variable}_spread for std-dev, data retained since
+  March 2026 (individual members only kept 3 days, so the mean/spread
+  series is also the only way to get real historical ensemble data beyond
+  that window -- a second reason to care about this beyond raw efficiency).
+  IMPORTANT correction to the original note: the `models` parameter uses
+  DIFFERENT string values than the raw per-member API this bot calls today
+  -- e.g. `ecmwf_aifs_025_ensemble_mean` (mean API) vs this bot's
+  `ecmwf_aifs025_ensemble` (raw API, note both the underscore placement and
+  the "_mean" suffix differ), and `gfs_ensemble_seamless_mean` vs
+  `gfs_seamless`. This is not a drop-in endpoint swap with the same model
+  identifiers -- confirm the exact spelling with one live test call before
+  writing any code, not from docs-summary text alone (same caution that
+  mattered for the Kalshi V2 order-endpoint migration this session).
+
 What the fix looks like:
   Evaluate replacing the individual-member fetch + manual mean/spread
   calculation with a direct call to the Ensemble Mean API for the models it
-  covers. Verify the returned spread/std-dev matches (or is compatible
-  with) what gaussian_probability()/_HISTORICAL_SIGMA expect before
-  switching -- this is a data-source change feeding live probability
-  calculations, not a cosmetic refactor.
+  covers, using the mean-API-specific model name strings noted above (verify
+  spelling with a live call first). Verify the returned spread/std-dev
+  matches (or is compatible with) what gaussian_probability()/
+  _HISTORICAL_SIGMA expect before switching -- this is a data-source change
+  feeding live probability calculations, not a cosmetic refactor.
 
 Why not now:
   - Unverified: needs a direct comparison against the current member-fetch
@@ -665,23 +689,68 @@ Problem:
   neither (kalshi_ws.py:301 subscribes only to ticker + orderbook_delta,
   fills are discovered by polling _poll_pending_orders()).
 
+UPDATE 2026-07-12 (research pass, no code changed) -- IMPORTANT CORRECTION
+to the order_groups claim above:
+  Re-confirmed kalshi_ws.py still subscribes only to ticker + orderbook_delta
+  (kalshi_ws.py:329) and kalshi_client.py has no order_group/fill support at
+  all -- that part of the problem statement still holds.
+  But fetched docs.kalshi.com/api-reference/order-groups/create-order-group
+  directly and Kalshi's order_groups is NOT an OCO mechanism -- the original
+  "linked orders where one fill auto-cancels the others" claim is wrong.
+  It's actually a risk-management circuit breaker: contracts_limit sets a
+  max matched-contracts count over a rolling 15-SECOND window; once hit,
+  ALL orders in the group are cancelled and no new ones can be placed until
+  reset. There is no field or documented behavior for "one order filling
+  cancels the others" -- that's a self-built OCO concept this bot would
+  still have to implement client-side (rest both legs, watch for either to
+  fill via polling or the `fill` WS channel, cancel the other manually).
+  order_groups' real use case is closer to protecting a market maker's
+  resting quotes from a fast adverse-selection burst, not linking a
+  take-profit and a stop-loss together -- still possibly useful for THIS
+  bot's resting exits (cap how much can fill against a stale resting order
+  in a 15s window) but as an extra safety layer, not as the OCO primitive
+  the fix plan below assumed it would be.
+  The WebSocket `fill` channel IS real and confirmed subscribable via
+  `channels: ["fill"]` (docs.kalshi.com/websockets/websocket-connection) --
+  that half of the plan holds.
+  The market-maker rebate claim also needs correcting: Kalshi runs several
+  DIFFERENT incentive programs, not one. Fetched
+  help.kalshi.com/en/articles/13823851-liquidity-incentive-program directly:
+  it pays a $10-$1,000/day share of a reward pool (Score / Total Participants'
+  Scores * Reward Pool) for maintaining resting-order "Target Size" (100-
+  20,000 contracts), NOT a flat percentage-of-fees rebate -- doesn't match
+  the original "1%, capped $7,000/week" figure at all. Kalshi also has a
+  separate Volume Incentive Program, Liquidity Provider Program, Combo
+  Incentive Program, and a formal fee-rebate Market Maker Program referenced
+  in CFTC filings (which may be where the original 1%/$7,000 figure came
+  from, unconfirmed) -- these are genuinely different programs with
+  different mechanics and eligibility, not one program with one number.
+  Any real revenue-angle evaluation needs picking a specific program and
+  reading its actual terms once this bot is resting real exit orders, not
+  citing a single rebate percentage upfront.
+
 What the fix looks like:
   When a live position opens, immediately rest a GTC sell at the take-profit
-  price, OCO-linked with a stop exit via order_groups. Subscribe to the WS
-  fill channel to replace/(augment) _poll_pending_orders polling. Exits then
-  execute continuously regardless of scan cadence, and resting exits get
-  maker pricing instead of taker.
+  price; implement OCO linking CLIENT-SIDE (order_groups does not do this
+  for you -- see correction above): watch for either the take-profit or the
+  stop leg to fill (via the `fill` WS channel or polling) and cancel the
+  other manually. Subscribe to the WS fill channel to replace/(augment)
+  _poll_pending_orders polling. Exits then execute continuously regardless
+  of scan cadence, and resting exits get maker pricing instead of taker.
+  order_groups' contracts_limit could still be layered in as an extra
+  safety cap on a resting exit order's fill rate, separately from the OCO
+  logic above.
 
-  Note (found 2026-07-10 via web search, not yet verified in detail):
-  Kalshi's market-maker program pays rebates up to 1% (capped $7,000/week)
-  to accounts meeting defined quoting/volume requirements. Once this bot
-  rests limit orders instead of always taking, it may become MM-eligible --
-  worth evaluating the specific quoting/volume thresholds once this entry
-  ships, as a potential revenue angle on top of the risk-management benefit.
+  Note (revenue-angle, needs its own research pass once this ships -- see
+  the multiple-distinct-programs correction above): don't assume a single
+  rebate number; identify which Kalshi incentive program actually applies
+  to this bot's real resting-order pattern and read its current terms
+  directly before quoting a figure.
   Also see the endpoint-deprecation entry at the top of this file: Kalshi's
   order-mutation endpoints (used here for placing/canceling the resting
-  exit orders) are being deprecated -- confirm the migration there before
-  building new order-group logic on top of the old endpoints.
+  exit orders) were migrated to /portfolio/events/orders this session (see
+  kalshi_client.py's place_order/cancel_order) -- build any new order-group
+  logic on top of that V2 path, not the old deprecated one.
 
 Why not now:
   - Live order placement has never been exercised in production yet
@@ -933,15 +1002,43 @@ Problem:
   search, not yet checked against kalshi_ws.py's current book-init logic in
   detail.
 
+UPDATE 2026-07-12 (research pass, no code changed) -- premise doesn't apply
+as originally framed:
+  Checked kalshi_ws.py's actual book-init path: there is no separate REST
+  call for it at all. The only REST get_orderbook() call anywhere
+  (kalshi_client.py:346) is used once, in main.py's `analyze` CLI command
+  (main.py:1262), purely to print a human-readable orderbook table -- it has
+  nothing to do with the live WS trading pipeline. Confirmed via
+  docs.kalshi.com/websockets/orderbook-updates that subscribing to
+  orderbook_delta for a ticker already triggers Kalshi's own automatic
+  orderbook_snapshot message first, then incremental deltas -- and
+  kalshi_ws.py's parse_message() already handles that exact
+  "orderbook_snapshot" message type (kalshi_ws.py:88). So there's no
+  REST-call redundancy to remove; book init is already snapshot-via-WS with
+  zero REST involvement.
+  get_snapshot's real, narrower value for this bot: a one-off book peek for
+  a ticker that is NOT in the persistent per-cycle subscription list (e.g.
+  previewing a candidate market's current book before deciding whether to
+  add it to cron.py's per-cycle _ws.subscribe() call), without growing the
+  subscription list or opening a second connection. That's a smaller,
+  different use case than "simpler book initialization" as originally
+  framed -- there's no current call site that needs it (this bot always
+  subscribes up front to every scanned ticker), so it stays a nice-to-have
+  pending a concrete use case, not a simplification of existing code.
+
 What the fix looks like:
-  If kalshi_ws.py currently initializes book state via a separate REST call
-  before/alongside the WS delta subscription, evaluate replacing that with
-  get_snapshot -- one fewer request type to maintain, same data source as
-  the live delta stream.
+  No current call site needs this. If a future feature wants a one-off book
+  check for a ticker outside the active subscription list (rather than
+  simplifying anything that exists today), use update_subscription's
+  get_snapshot action for that instead of adding a new REST call or growing
+  the persistent subscription list.
 
 Why not now:
   - Unverified against this repo's actual current book-init code path;
     purely a simplification if it applies, no functional gap being closed.
+  - Re-verified 2026-07-12: it doesn't apply as a simplification (there's no
+    existing REST-call redundancy to remove) -- only relevant if/when a
+    concrete one-off-book-peek use case appears.
 
 When to revisit:
   - Alongside the RESTING EXIT ORDERS + OCO entry above (same file,
