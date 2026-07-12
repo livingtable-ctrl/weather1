@@ -28,11 +28,26 @@ guard's construction) -- surfacing it for a human to check beats asserting
 on a guess.
 
 This scan is deliberately simple (regex over source text, not a full static
-call-graph), matching test_config_divergence_guard.py's approach. It has one
-codebase-specific wrinkle: this project's dominant style for function-local
-cross-module imports is `from module import name as _name`, so a raw
-`\bname\s*\(` search alone would miss the overwhelming majority of real call
-sites — the alias-resolution step below handles that.
+call-graph), matching test_config_divergence_guard.py's approach. It has two
+codebase-specific wrinkles the implementation below handles:
+  1. This project's dominant style for function-local cross-module imports
+     is `from module import name as _name`, so a raw `\bname\s*\(` search
+     alone would miss the overwhelming majority of real call sites.
+  2. A full-line `#` comment that merely DISCUSSES a function -- e.g.
+     "# ...and get_unselected_bias() always returned 0.0" -- matches the
+     same call pattern as a real call, producing a false negative. Found
+     live: tracker.get_unselected_bias read as "has a caller" for exactly
+     this reason until comment-stripping was added.
+
+This scan's first run (2026-07-12) surfaced 20 functions with no real call
+site (the 4 originally-known candidates plus 16 more). All 20 got a real
+per-function wire-up-or-delete decision that same session (see backlog.txt)
+-- 3 were deliberately kept unwired (each has its own in-code comment citing
+a real, unmet prerequisite; see _DEAD_CODE_ALLOWLIST below), the rest were
+either wired into a real call site or deleted as superseded by a different
+approach that was already live. This allowlist is expected to stay small
+going forward -- a large allowlist growing back would mean this guard isn't
+doing its job.
 """
 
 from __future__ import annotations
@@ -64,9 +79,22 @@ def _strip_def_line(src: str, name: str) -> str:
     return pattern.sub("", src)
 
 
+def _strip_full_comment_lines(src: str) -> str:
+    """Remove lines that are entirely a `#` comment (leading whitespace then
+    `#`) before searching for calls. Without this, a full-line comment that
+    merely DISCUSSES a function -- e.g. "# ...and get_unselected_bias()
+    always returned 0.0" -- matches `\\bname\\s*\\(` exactly like a real call,
+    producing a false negative (a genuinely dead function reads as having a
+    caller). Only strips whole-comment lines, not trailing inline comments on
+    a code line, to avoid touching string literals on real code."""
+    pattern = re.compile(r"^\s*#.*$", re.MULTILINE)
+    return pattern.sub("", src)
+
+
 def _called_in(src: str, name: str) -> bool:
     """True if `name` -- or an import alias of it, e.g. `import name as
     _name` -- is directly called anywhere in src."""
+    src = _strip_full_comment_lines(src)
     call_pat = re.compile(rf"\b{re.escape(name)}\s*\(")
     if call_pat.search(src):
         return True
@@ -133,92 +161,33 @@ def _scan() -> tuple[
 # entry here is a signal worth a second look before merging, not something
 # to silently allowlist.
 _DEAD_CODE_ALLOWLIST: dict[tuple[str, str], str] = {
-    # -- Surfaced by this scan's initial run (2026-07-12), not yet
-    # individually triaged. Each needs the same wire-up-or-delete
-    # investigation the four originally-known candidates got (see
-    # backlog.txt) -- deferred as a follow-up, not silently fixed or hidden.
-    # All are TESTED BUT NO PRODUCTION CALL SITE (real test coverage, zero
-    # callers outside tests/).
-    (
-        "paper.py",
-        "portfolio_kelly",
-    ): "TESTED, NO PROD CALL SITE -- paper.py's own comment near its definition already notes it's dead in production (the live sizing path uses portfolio_kelly_fraction + corr_kelly_scale instead); needs a follow-up triage pass to confirm and delete",
-    (
-        "paper.py",
-        "simulate_fill",
-    ): "TESTED, NO PROD CALL SITE -- needs follow-up triage (wire into the real fill-simulation path, or delete)",
-    (
-        "paper.py",
-        "simulate_partial_fill",
-    ): "TESTED, NO PROD CALL SITE -- needs follow-up triage",
-    (
-        "paper.py",
-        "calc_trade_pnl",
-    ): "TESTED, NO PROD CALL SITE -- needs follow-up triage",
-    (
-        "tracker.py",
-        "get_brier_by_tier",
-    ): "TESTED, NO PROD CALL SITE -- needs follow-up triage (candidate for the web_app.py analytics dispatch loop, matching get_calibration_by_season's 2026-07-12 wiring)",
-    (
-        "tracker.py",
-        "brier_skill_score",
-    ): "TESTED, NO PROD CALL SITE -- needs follow-up triage",
-    (
-        "tracker.py",
-        "get_model_brier_scores",
-    ): "TESTED, NO PROD CALL SITE -- needs follow-up triage",
-    (
-        "tracker.py",
-        "get_optimal_threshold",
-    ): "TESTED, NO PROD CALL SITE -- needs follow-up triage",
-    (
-        "tracker.py",
-        "bayesian_confidence_interval",
-    ): "TESTED, NO PROD CALL SITE -- needs follow-up triage",
-    (
-        "tracker.py",
-        "analyze_all_markets",
-    ): "TESTED, NO PROD CALL SITE -- needs follow-up triage",
-    (
-        "tracker.py",
-        "get_analysis_bias",
-    ): "TESTED, NO PROD CALL SITE -- needs follow-up triage",
-    (
-        "weather_markets.py",
-        "apply_station_bias",
-    ): "TESTED, NO PROD CALL SITE -- station-bias correction, fully tested, never called from the real forecast pipeline; needs follow-up triage (this one especially -- if genuinely unwired, forecasts may be missing a real bias correction)",
-    (
-        "weather_markets.py",
-        "_fetch_hrrr_temp",
-    ): "TESTED, NO PROD CALL SITE -- needs follow-up triage",
-    (
-        "weather_markets.py",
-        "_compute_ensemble_mean",
-    ): "TESTED, NO PROD CALL SITE -- needs follow-up triage",
-    (
-        "weather_markets.py",
-        "_blend_with_circuit_fallback",
-    ): "TESTED, NO PROD CALL SITE -- needs follow-up triage",
-    (
-        "weather_markets.py",
-        "censoring_correction",
-    ): "TESTED, NO PROD CALL SITE -- needs follow-up triage",
-    (
-        "weather_markets.py",
-        "is_stale",
-    ): "TESTED, NO PROD CALL SITE -- needs follow-up triage",
-    (
-        "weather_markets.py",
-        "_blend_probabilities",
-    ): "TESTED, NO PROD CALL SITE -- needs follow-up triage",
-    (
-        "weather_markets.py",
-        "bayesian_kelly_fraction",
-    ): "TESTED, NO PROD CALL SITE -- production sizing uses kelly_fraction()/portfolio_kelly_fraction() directly, not the Bayesian-integrated variant; needs follow-up triage",
-    (
-        "weather_markets.py",
-        "analyze_markets_parallel",
-    ): "TESTED, NO PROD CALL SITE -- needs follow-up triage",
+    # -- All 3 entries below are TESTED, NO PROD CALL SITE, and deliberately
+    # left unwired: each has its own in-code comment (not this session's
+    # guess) explaining a real prerequisite that hasn't happened yet. Wiring
+    # any of these in without that prerequisite would be a live probability/
+    # forecast-behavior change with no way to validate it's actually correct
+    # -- re-verified 2026-07-12 while triaging the 20 functions this scan's
+    # first run surfaced (see backlog.txt); all other candidates from that
+    # run were individually wired up or deleted as superseded, not left here.
+    ("tracker.py", "get_unselected_bias"): (
+        "TESTED, NO PROD CALL SITE -- own docstring says it reflects a "
+        "selection-biased ~2% subset of the real untraded population and "
+        "explicitly says 'Build that sweep before wiring this into anything "
+        "real' (a ~2,000-extra-Kalshi-API-call settlement sweep, not built)"
+    ),
+    ("weather_markets.py", "_fetch_hrrr_temp"): (
+        "TESTED, NO PROD CALL SITE -- own comment says 'This is a standalone "
+        "utility; it is NOT wired into analyze_trade yet -- that happens "
+        "once HRRR data has been validated against settled same-day trades' "
+        "(that validation hasn't happened)"
+    ),
+    ("weather_markets.py", "censoring_correction"): (
+        "TESTED, NO PROD CALL SITE -- correctly implemented per its #23 spec "
+        "(shrink toward 0.5 when >1% of ensemble members are exactly 0/1), "
+        "but wiring it into the live forecast-probability pipeline is a real "
+        "behavior change needing backtesting to confirm it actually improves "
+        "calibration, not something to do blind"
+    ),
 }
 
 

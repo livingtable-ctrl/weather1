@@ -466,6 +466,12 @@ def _build_app(client):
                 "get_edge_decay_curve",
                 "get_model_calibration_buckets",
                 "get_calibration_by_season",
+                "get_brier_by_tier",
+                "brier_skill_score",
+                "get_model_brier_scores",
+                "get_optimal_threshold",
+                "get_analysis_bias",
+                "get_rolling_win_rate_ci",
             ):
                 try:
                     import tracker as _t

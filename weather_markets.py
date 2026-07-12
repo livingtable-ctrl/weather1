@@ -173,8 +173,8 @@ _MARKET_ANCHOR_BELOW: float = float(os.getenv("MARKET_ANCHOR_BELOW", "0.10"))
 _MIN_BIAS_CORRECTION_TRADES: int = int(os.getenv("MIN_BIAS_CORRECTION_TRADES", "50"))
 
 # Single source of truth for edge calculation logic version.
-# Increment whenever kelly_fraction, bayesian_kelly_fraction, edge_confidence,
-# or time_decay_edge logic changes, so outputs can be traced.
+# Increment whenever kelly_fraction, edge_confidence, or time_decay_edge logic
+# changes, so outputs can be traced.
 EDGE_CALC_VERSION = "v1.0"
 
 # ── Open-Meteo (free, no API key) ────────────────────────────────────────────
@@ -291,25 +291,6 @@ _STATION_BIAS_LOW: dict[str, float] = {
 }
 # Legacy alias — used by any callers that don't pass var
 _STATION_BIAS = _STATION_BIAS_HIGH
-
-
-def apply_station_bias(city: str, forecast_temp: float, var: str = "max") -> float:
-    """
-    Apply per-city static bias correction to a model forecast temperature.
-    Subtracts the known warm bias so probability calculations are centered
-    on the station's actual expected temperature.
-
-    Args:
-        city: City name matching CITY_COORDS keys (e.g. "NYC", "Miami", "Chicago")
-        forecast_temp: Raw model forecast in °F
-        var: "max" for daily high markets, "min" for daily low markets (B4)
-
-    Returns:
-        Bias-corrected temperature in °F (unchanged if city unknown)
-    """
-    table = _STATION_BIAS_LOW if var == "min" else _STATION_BIAS_HIGH
-    bias = table.get(city, 0.0)
-    return forecast_temp - bias
 
 
 def _get_combined_station_bias(city: str, var: str = "max") -> float:
@@ -2171,12 +2152,6 @@ def fetch_temperature_pirate_weather(city: str, target_date: date) -> dict | Non
         return None
 
 
-def _compute_ensemble_mean(temps: dict[str, float | None]) -> float | None:
-    """Compute mean of non-None values in a {model: temp} dict."""
-    values = [v for v in temps.values() if v is not None]
-    return sum(values) / len(values) if values else None
-
-
 def _compute_ensemble_spread(temps: dict[str, float | None]) -> float:
     """Compute std dev of non-None values. Returns 0.0 if fewer than 2 valid."""
     values = [v for v in temps.values() if v is not None]
@@ -2826,44 +2801,6 @@ def _ensemble_circuit_is_open() -> bool:
     return _ensemble_cb.is_open()
 
 
-def _blend_with_circuit_fallback(
-    ens_prob: float | None,
-    nws_prob: float | None,
-    clim_prob: float | None,
-    w_ens: float,
-    w_nws: float,
-    w_clim: float,
-) -> float:
-    """Blend source probabilities, zeroing ens weight when circuit is OPEN.
-
-    Redistributes w_ens proportionally to w_nws and w_clim when circuit is open.
-    Handles None probabilities by excluding them and renormalizing.
-    """
-    if _ensemble_circuit_is_open() and ens_prob is not None:
-        _log.warning(
-            "blend: ensemble circuit OPEN — excluding ens_prob from blend (was %.3f)",
-            ens_prob,
-        )
-        ens_prob = None
-
-    weights = []
-    probs = []
-    if ens_prob is not None:
-        weights.append(w_ens)
-        probs.append(ens_prob)
-    if nws_prob is not None:
-        weights.append(w_nws)
-        probs.append(nws_prob)
-    if clim_prob is not None:
-        weights.append(w_clim)
-        probs.append(clim_prob)
-
-    total_w = sum(weights)
-    if total_w <= 0:
-        return 0.5
-    return sum(w * p for w, p in zip(weights, probs)) / total_w
-
-
 def check_ensemble_circuit_health() -> None:
     """
     Log a warning if the open_meteo_ensemble circuit has been open for >24 hours.
@@ -3176,8 +3113,9 @@ def parse_market_price(market: dict) -> dict:
 
 def is_stale(market: dict) -> bool:
     """
-    Returns True if a market has no volume AND closes within 60 minutes.
-    Stale markets have meaningless edge calculations — skip them.
+    Returns True if a market has no volume AND no open interest AND closes
+    within 60 minutes. Stale markets have meaningless edge calculations —
+    skip them.
     """
     volume = market.get("volume") or 0
     open_interest = market.get("open_interest") or 0
@@ -4215,43 +4153,6 @@ def liquid_equiv_of_snow_threshold(snow_inches: float, slr: int) -> float:
     return snow_inches / slr
 
 
-def _blend_probabilities(
-    ensemble_prob: float | None,
-    nws_prob: float | None,
-    clim_prob: float | None,
-    days_out: int = 3,
-) -> float | None:
-    """
-    #33/#39: Blend ensemble, NWS, and climatological probabilities via _blend_weights().
-
-    Delegates to _blend_weights() so calibration weights (city/season/condition)
-    are respected. Handles None inputs by renormalizing weights among available sources.
-    Returns None only if all inputs are None.
-    """
-    if ensemble_prob is None and nws_prob is None and clim_prob is None:
-        return None
-
-    w_ens, w_clim, w_nws = _blend_weights(
-        days_out,
-        has_nws=nws_prob is not None,
-        has_clim=clim_prob is not None,
-    )
-
-    blended = 0.0
-    total_w = 0.0
-    if ensemble_prob is not None:
-        blended += ensemble_prob * w_ens
-        total_w += w_ens
-    if nws_prob is not None:
-        blended += nws_prob * w_nws
-        total_w += w_nws
-    if clim_prob is not None:
-        blended += clim_prob * w_clim
-        total_w += w_clim
-
-    return blended / total_w if total_w > 0 else None
-
-
 def bayesian_kelly(
     ci_low: float,
     ci_high: float,
@@ -4286,71 +4187,6 @@ def bayesian_kelly(
         p = ci_low + i * step
         total += kelly_fraction(p, price, fee_rate)
     return round(total / (n_steps + 1), 6)
-
-
-def bayesian_kelly_fraction(
-    our_prob: float,
-    market_prob: float,
-    n_predictions: int = 20,
-    confidence: float = 0.90,
-    fee_rate: float = KALSHI_FEE_RATE,
-) -> float:
-    """
-    #39: Bayesian Kelly with Beta posterior uncertainty shrinkage.
-
-    Builds a Beta(alpha, beta) posterior from n_predictions pseudo-observations
-    centred on our_prob, then uses the Wilson lower bound at `confidence` as a
-    conservative probability estimate before calling kelly_fraction.
-
-    Alpha = our_prob * n_predictions + 1
-    Beta  = (1 - our_prob) * n_predictions + 1
-
-    The Wilson lower bound at `confidence` is the (1-confidence)/2 quantile of
-    the Beta distribution, approximated via a normal approximation on the logit
-    scale (suitable for probabilities not near 0 or 1).
-
-    Returns kelly_fraction(conservative_p, market_prob), capped at 0.25.
-    Never returns a negative value.
-    """
-    import math
-
-    our_prob = max(0.01, min(0.99, our_prob))
-    market_prob = max(0.01, min(0.99, market_prob))
-
-    alpha = our_prob * n_predictions + 1.0
-    beta = (1.0 - our_prob) * n_predictions + 1.0
-    n_total = alpha + beta
-
-    # Beta mean and variance
-    mu = alpha / n_total
-    var = (alpha * beta) / (n_total**2 * (n_total + 1))
-    sigma = math.sqrt(var)
-
-    # Normal approximation: lower bound at (1 - confidence) / 2 tail
-    z = _normal_quantile((1.0 - confidence) / 2.0)  # negative value for lower tail
-    conservative_p = mu + z * sigma  # z is negative, so this shrinks toward 0
-
-    conservative_p = max(0.01, min(0.99, conservative_p))
-    result = kelly_fraction(conservative_p, market_prob, fee_rate=fee_rate)
-    return min(max(0.0, result), 0.25)
-
-
-def _normal_quantile(p: float) -> float:
-    """Approximate inverse CDF of the standard normal (rational approximation)."""
-    import math
-
-    if p <= 0.0:
-        return float("-inf")
-    if p >= 1.0:
-        return float("inf")
-    # Rational approximation (Abramowitz & Stegun 26.2.17)
-    c = [2.515517, 0.802853, 0.010328]
-    d = [1.432788, 0.189269, 0.001308]
-    t = math.sqrt(-2.0 * math.log(p if p < 0.5 else 1.0 - p))
-    num = c[0] + c[1] * t + c[2] * t**2
-    den = 1.0 + d[0] * t + d[1] * t**2 + d[2] * t**3
-    x = t - num / den
-    return -x if p < 0.5 else x
 
 
 def _bootstrap_ci(
@@ -6943,43 +6779,3 @@ def detect_hedge_opportunity(analysis: dict, open_trades: list[dict]) -> bool:
         for t in open_trades
         if not t.get("settled")
     )
-
-
-def analyze_markets_parallel(
-    markets: list[dict],
-    max_workers: int = 4,
-) -> list[dict | None]:
-    """
-    Run analyze_trade on each market concurrently (#127).
-    Returns list of result dicts (one per market, None on per-market error).
-    """
-    from concurrent.futures import ThreadPoolExecutor, as_completed
-
-    results: list[dict | None] = [None] * len(markets)
-
-    def _worker(idx: int, market: dict) -> tuple[int, dict | None]:
-        enriched = enrich_with_forecast(market)
-        return idx, analyze_trade(enriched)
-
-    _amc_pool = ThreadPoolExecutor(max_workers=max_workers)
-    try:
-        futures = {_amc_pool.submit(_worker, i, m): i for i, m in enumerate(markets)}
-        try:
-            for fut in as_completed(futures, timeout=300):
-                idx = futures[fut]
-                try:
-                    _, analysis = fut.result()
-                    results[idx] = analysis
-                except Exception as exc:
-                    _log.warning(
-                        "analyze_markets_parallel: market index %d failed: %s", idx, exc
-                    )
-                    results[idx] = None
-        except TimeoutError:
-            _log.warning(
-                "analyze_markets_parallel: timed out after 300s — returning partial results"
-            )
-    finally:
-        _amc_pool.shutdown(wait=False)
-
-    return results

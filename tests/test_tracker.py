@@ -1405,11 +1405,19 @@ class TestCalibrationTrendUsesMarketDate(unittest.TestCase):
             self.assertIn("n", trend[0])
 
 
-# ── Task 4: analyze_all_markets + get_analysis_bias (#55) ────────────────────
+# ── Task 4: get_analysis_bias (#55) ───────────────────────────────────────────
 
 
-class TestAnalyzeAllMarketsAndBias(unittest.TestCase):
-    """Tests for analyze_all_markets() and get_analysis_bias() (#55)."""
+class TestGetAnalysisBias(unittest.TestCase):
+    """Tests for get_analysis_bias() (#55).
+
+    Rewritten 2026-07-12: previously populated analysis_attempts via
+    analyze_all_markets(), which turned out to have zero production callers
+    -- batch_log_analysis_attempts() (called from cron.py) is the function
+    that actually populates this table live, so analyze_all_markets() was
+    deleted as a superseded/never-wired duplicate. These tests now populate
+    analysis_attempts the same way production does.
+    """
 
     def setUp(self):
         import tempfile
@@ -1427,30 +1435,26 @@ class TestAnalyzeAllMarketsAndBias(unittest.TestCase):
 
         shutil.rmtree(self._tmpdir, ignore_errors=True)
 
-    def _make_enriched(self, ticker, city, our_prob, market_prob, edge, target_date):
+    def _make_attempt(self, ticker, city, our_prob, market_prob, target_date):
         return {
             "ticker": ticker,
             "city": city,
             "target_date": target_date,
-            "analysis": {
-                "forecast_prob": our_prob,
-                "market_prob": market_prob,
-                "edge": edge,
-                "condition": {"type": "above", "threshold": 70.0},
-                "method": "ensemble",
-                "n_members": 20,
-            },
+            "condition": "above",
+            "forecast_prob": our_prob,
+            "market_prob": market_prob,
+            "days_out": 1,
         }
 
-    def test_analyze_all_markets_logs_all_items(self):
+    def test_batch_log_logs_all_items(self):
         from datetime import date
 
-        enriched = [
-            self._make_enriched("TK-AM-1", "NYC", 0.70, 0.50, 0.20, date(2026, 4, 9)),
-            self._make_enriched("TK-AM-2", "CHI", 0.60, 0.55, 0.05, date(2026, 4, 9)),
-            self._make_enriched("TK-AM-3", "LAX", 0.45, 0.50, -0.05, date(2026, 4, 9)),
+        attempts = [
+            self._make_attempt("TK-AM-1", "NYC", 0.70, 0.50, date(2026, 4, 9)),
+            self._make_attempt("TK-AM-2", "CHI", 0.60, 0.55, date(2026, 4, 9)),
+            self._make_attempt("TK-AM-3", "LAX", 0.45, 0.50, date(2026, 4, 9)),
         ]
-        tracker.analyze_all_markets(enriched)
+        tracker.batch_log_analysis_attempts(attempts)
 
         import sqlite3
 
@@ -1461,15 +1465,13 @@ class TestAnalyzeAllMarketsAndBias(unittest.TestCase):
         self.assertIn("TK-AM-2", tickers)
         self.assertIn("TK-AM-3", tickers)
 
-    def test_analyze_all_markets_stores_correct_probs(self):
+    def test_batch_log_stores_correct_probs(self):
         from datetime import date
 
-        enriched = [
-            self._make_enriched(
-                "TK-PROB-1", "NYC", 0.72, 0.48, 0.24, date(2026, 4, 10)
-            ),
+        attempts = [
+            self._make_attempt("TK-PROB-1", "NYC", 0.72, 0.48, date(2026, 4, 10)),
         ]
-        tracker.analyze_all_markets(enriched)
+        tracker.batch_log_analysis_attempts(attempts)
 
         import sqlite3
 
@@ -1485,29 +1487,29 @@ class TestAnalyzeAllMarketsAndBias(unittest.TestCase):
     def test_get_analysis_bias_returns_none_with_no_outcomes(self):
         from datetime import date
 
-        enriched = [
-            self._make_enriched("TK-BIAS-X", "NYC", 0.80, 0.50, 0.30, date(2026, 4, 9)),
+        attempts = [
+            self._make_attempt("TK-BIAS-X", "NYC", 0.80, 0.50, date(2026, 4, 9)),
         ]
-        tracker.analyze_all_markets(enriched)
+        tracker.batch_log_analysis_attempts(attempts)
         result = tracker.get_analysis_bias()
         self.assertIsNone(result)
 
     def test_get_analysis_bias_computes_mean_bias(self):
         from datetime import date
 
-        enriched = [
-            self._make_enriched("TK-BIAS-1", "NYC", 0.80, 0.50, 0.30, date(2026, 4, 1)),
-            self._make_enriched("TK-BIAS-2", "CHI", 0.60, 0.50, 0.10, date(2026, 4, 2)),
+        attempts = [
+            self._make_attempt("TK-BIAS-1", "NYC", 0.80, 0.50, date(2026, 4, 1)),
+            self._make_attempt("TK-BIAS-2", "CHI", 0.60, 0.50, date(2026, 4, 2)),
         ]
-        tracker.analyze_all_markets(enriched)
+        tracker.batch_log_analysis_attempts(attempts)
         tracker.log_outcome("TK-BIAS-1", True)
         tracker.log_outcome("TK-BIAS-2", False)
         result = tracker.get_analysis_bias()
         self.assertIsNotNone(result)
         self.assertAlmostEqual(result, 0.20, places=4)
 
-    def test_analyze_all_markets_empty_list_is_noop(self):
-        tracker.analyze_all_markets([])
+    def test_batch_log_empty_list_is_noop(self):
+        tracker.batch_log_analysis_attempts([])
         import sqlite3
 
         with sqlite3.connect(str(tracker.DB_PATH)) as con:
@@ -1547,6 +1549,53 @@ class TestOptimalThresholdGuard20(_Phase3Base):
         result = tracker.get_optimal_threshold()
         self.assertIsNone(
             result, "Expected None with 10 samples after guard raised to 20"
+        )
+
+
+class TestGetRollingWinRateCI(_Phase3Base):
+    """get_rolling_win_rate_ci() pairs get_rolling_win_rate's real
+    (win_rate, count) with bayesian_confidence_interval -- added 2026-07-12
+    to give bayesian_confidence_interval (a correct, tested, #57 utility with
+    no caller anywhere until now) a real call site."""
+
+    def test_returns_none_with_no_data(self):
+        result = tracker.get_rolling_win_rate_ci()
+        self.assertIsNone(result)
+
+    def test_returns_dict_with_settled_data(self):
+        for i in range(8):
+            self._add(f"TKWRCI-YES-{i}", "NYC", 0.8, 0.5, True)
+        for i in range(2):
+            self._add(f"TKWRCI-NO-{i}", "NYC", 0.7, 0.5, False)
+        result = tracker.get_rolling_win_rate_ci(window=20)
+        self.assertIsNotNone(result)
+        assert result is not None
+        self.assertEqual(result["n"], 10)
+        self.assertAlmostEqual(result["win_rate"], 0.8, places=4)
+        self.assertLess(result["ci_low"], result["win_rate"])
+        self.assertGreater(result["ci_high"], result["win_rate"])
+        self.assertGreaterEqual(result["ci_low"], 0.0)
+        self.assertLessEqual(result["ci_high"], 1.0)
+
+    def test_small_sample_has_wider_interval_than_large_sample(self):
+        from pathlib import Path
+
+        for i in range(4):
+            self._add(f"TKWRCI-SMALL-{i}", "NYC", 0.8, 0.5, True)
+        small = tracker.get_rolling_win_rate_ci(window=20)
+
+        tracker.DB_PATH = Path(self._tmpdir) / "test_p3_large.db"
+        tracker._db_initialized = False
+        tracker.init_db()
+        for i in range(40):
+            self._add(f"TKWRCI-LARGE-{i}", "NYC", 0.8, 0.5, True)
+        large = tracker.get_rolling_win_rate_ci(window=40)
+
+        assert small is not None and large is not None
+        small_width = small["ci_high"] - small["ci_low"]
+        large_width = large["ci_high"] - large["ci_low"]
+        self.assertGreater(
+            small_width, large_width, "Small-sample CI must be wider than large-sample"
         )
 
 

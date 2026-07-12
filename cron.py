@@ -1346,21 +1346,36 @@ def _cmd_cron_body(
             enriched = ctx.enrich_with_forecast(m)
             return m, enriched, ctx.analyze_trade(enriched)
 
+        from weather_markets import is_stale as _is_stale_market
+
         _analysis_batch: list[dict] = []  # #perf: collect for single bulk insert
         # Dedup by ticker before analysis — same market can appear twice when the
         # Kalshi API returns it under both the old series format (KXHIGH-NYC-…)
         # and the new format (KXHIGHNY-…) in the same batch.
         _seen_analysis_tickers: set[str] = set()
         _deduped_markets: list[dict] = []
+        _stale_skipped = 0
         for _dm in markets:
             _dm_ticker = _dm.get("ticker", "")
-            if _dm_ticker not in _seen_analysis_tickers:
-                _seen_analysis_tickers.add(_dm_ticker)
-                _deduped_markets.append(_dm)
-        if len(_deduped_markets) < len(markets):
+            if _dm_ticker in _seen_analysis_tickers:
+                continue
+            _seen_analysis_tickers.add(_dm_ticker)
+            # Zero volume/open-interest AND closing within 60 minutes → edge
+            # calculations on this market are meaningless (see is_stale's
+            # docstring) — skip before spending an enrich+analyze cycle on it.
+            if _is_stale_market(_dm):
+                _stale_skipped += 1
+                continue
+            _deduped_markets.append(_dm)
+        if len(_deduped_markets) < len(markets) - _stale_skipped:
             _log.debug(
                 "cmd_cron: deduped %d duplicate ticker(s) before analysis",
-                len(markets) - len(_deduped_markets),
+                len(markets) - _stale_skipped - len(_deduped_markets),
+            )
+        if _stale_skipped:
+            _log.debug(
+                "cmd_cron: skipped %d stale market(s) (no volume, closing within 60min)",
+                _stale_skipped,
             )
         scanned = len(_deduped_markets)  # L-2: report post-dedup count in summary
 

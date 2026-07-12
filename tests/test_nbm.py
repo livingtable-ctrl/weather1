@@ -58,22 +58,6 @@ class TestNBMFetch:
 
         assert result is None
 
-    def test_nbm_included_in_ensemble_average(self):
-        """When NBM returns a value, it is included in the ensemble average."""
-        from weather_markets import _compute_ensemble_mean
-
-        temps = {"gfs_seamless": 70.0, "icon_seamless": 72.0, "nbm": 71.0}
-        mean = _compute_ensemble_mean(temps)
-        assert mean == pytest.approx((70.0 + 72.0 + 71.0) / 3, abs=0.1)
-
-    def test_nbm_excluded_on_none(self):
-        """None values from NBM are excluded from ensemble average."""
-        from weather_markets import _compute_ensemble_mean
-
-        temps = {"gfs_seamless": 70.0, "icon_seamless": 72.0, "nbm": None}
-        mean = _compute_ensemble_mean(temps)
-        assert mean == pytest.approx((70.0 + 72.0) / 2, abs=0.1)
-
 
 class TestNBMQuantiles:
     def test_nws_prob_uses_quantiles_above(self):

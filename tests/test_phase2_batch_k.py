@@ -176,62 +176,6 @@ class TestEnsembleStatsDegenerate:
         assert "return None" in src
 
 
-# ── P2-39: _blend_probabilities delegates to _blend_weights ──────────────────
-
-
-class TestBlendProbabilitiesDelegatesToBlendWeights:
-    """_blend_probabilities must use _blend_weights, not hardcoded values."""
-
-    def test_source_delegates_to_blend_weights(self):
-        """_blend_probabilities must call _blend_weights."""
-        import inspect
-
-        import weather_markets
-
-        src = inspect.getsource(weather_markets._blend_probabilities)
-        assert "_blend_weights(" in src, (
-            "_blend_probabilities must delegate to _blend_weights()"
-        )
-        # Old hardcoded constants should be gone
-        assert "w_nws_base" not in src, (
-            "Hardcoded w_nws_base must be removed from _blend_probabilities"
-        )
-        assert "w_ens_base" not in src
-
-    def test_all_none_returns_none(self):
-        """All-None inputs must return None."""
-        from weather_markets import _blend_probabilities
-
-        assert _blend_probabilities(None, None, None) is None
-
-    def test_only_ensemble_prob(self):
-        """Single source returns that source's probability (renormalized)."""
-        from weather_markets import _blend_probabilities
-
-        result = _blend_probabilities(0.70, None, None)
-        assert result == 0.70
-
-    def test_all_sources(self):
-        """With all sources, result is a weighted blend (0 < result < 1)."""
-        from weather_markets import _blend_probabilities
-
-        result = _blend_probabilities(0.80, 0.70, 0.60, days_out=2)
-        assert result is not None
-        assert 0.60 < result < 0.80
-
-    def test_result_agrees_with_blend_weights(self):
-        """Result must match manual application of _blend_weights."""
-        from weather_markets import _blend_probabilities, _blend_weights
-
-        ens_p, nws_p, clim_p = 0.80, 0.70, 0.60
-        days_out = 2
-        w_ens, w_clim, w_nws = _blend_weights(days_out, has_nws=True, has_clim=True)
-        expected = ens_p * w_ens + nws_p * w_nws + clim_p * w_clim
-        result = _blend_probabilities(ens_p, nws_p, clim_p, days_out=days_out)
-        assert result is not None
-        assert abs(result - expected) < 1e-9
-
-
 # ── P2-45: GBM + Platt not both applied ───────────────────────────────────────
 
 

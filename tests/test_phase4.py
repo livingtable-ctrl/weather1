@@ -170,44 +170,6 @@ class TestFeelsLikeMoistCold:
         assert result > 95.0
 
 
-# ── Task 4: _blend_probabilities (#33) ───────────────────────────────────────
-
-
-class TestBlendProbabilities:
-    def test_blend_returns_between_min_and_max(self):
-        """blend(0.70, 0.50, 0.55, days_out=3) → result between 0.50 and 0.70."""
-        from weather_markets import _blend_probabilities
-
-        result = _blend_probabilities(0.70, 0.50, 0.55, days_out=3)
-        assert result is not None
-        assert 0.50 <= result <= 0.70
-
-    def test_handles_none_nws(self):
-        """None NWS prob → renormalize remaining weights."""
-        from weather_markets import _blend_probabilities
-
-        result = _blend_probabilities(0.70, None, 0.55, days_out=3)
-        assert result is not None
-        assert 0.0 < result < 1.0
-
-    def test_all_none_returns_none(self):
-        from weather_markets import _blend_probabilities
-
-        result = _blend_probabilities(None, None, None, days_out=3)
-        assert result is None
-
-    def test_nws_lower_weight_far_out(self):
-        """NWS gets less weight at days_out=10+ vs days_out=1."""
-        from weather_markets import _blend_probabilities
-
-        # With high NWS (0.9) and low ens+clim (0.3), near term should be closer to 0.9
-        r_near = _blend_probabilities(0.3, 0.9, 0.3, days_out=2)
-        r_far = _blend_probabilities(0.3, 0.9, 0.3, days_out=10)
-        assert r_near is not None and r_far is not None
-        # Near-term NWS weight is higher → result should be higher when NWS is high
-        assert r_near > r_far
-
-
 # ── Task 5: _dynamic_model_weights (#25) ──────────────────────────────────────
 
 

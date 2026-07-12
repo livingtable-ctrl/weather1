@@ -513,6 +513,104 @@ RESOLVED 2026-07-12: all 4 got a real per-function decision, not a batch
   unreachable functions beyond these 5 -- NOT fixed today, deliberately
   scoped out (see that entry for the list and reasoning).
 
+RESOLVED 2026-07-12 (follow-up session, same day): the ~19-function
+  follow-up triage backlog above was fully worked through (actually 20 --
+  one more, tracker.get_unselected_bias, was found independently while
+  fixing a real scan bug, see below). Every one got a real per-function
+  wire-up-or-delete decision:
+    DELETED as superseded by an already-live different approach (11, plus 2
+    cascading orphans created by these deletions): paper.portfolio_kelly
+    (self-documented dead), paper.simulate_fill + simulate_partial_fill
+    (abandoned early partial-fill design, superseded by the simpler
+    Gaussian-noise approach actually in place_paper_order), paper.
+    calc_trade_pnl (implemented the REJECTED settlement approach --
+    settle_paper_trade's own P1-8 comment explicitly says actual_fill_price
+    must NOT affect P&L, the opposite of what this function did),
+    paper.estimate_slippage (cascading orphan once simulate_fill was
+    deleted -- slippage_adjusted_price is the real, different-formula
+    function actually wired into place_paper_order), tracker.
+    analyze_all_markets (batch_log_analysis_attempts, called from cron.py,
+    already does this job), weather_markets.apply_station_bias
+    (_get_combined_station_bias is a strictly more complete version --
+    static table + dynamic METAR blend -- already live in the real
+    forecast pipeline), weather_markets._compute_ensemble_mean (an early
+    Phase-C plan's simple-mean approach, superseded by the much richer
+    live EMOS/ens_stats pipeline), weather_markets.
+    _blend_with_circuit_fallback (the same circuit-breaker-exclusion logic
+    is already inlined directly in analyze_trade), weather_markets.
+    _blend_probabilities (superseded wrapper -- the real blend uses
+    _confidence_scaled_blend_weights inline; _blend_weights itself, which
+    it wrapped, is still real and has 3 live callers), weather_markets.
+    bayesian_kelly_fraction + cascading _normal_quantile (production Kelly
+    sizing calls kelly_fraction()/portfolio_kelly_fraction() directly; the
+    live mechanism for "shrink Kelly under statistical uncertainty" is a
+    completely different, already-wired one -- paper.py's Brier-based
+    _method_kelly_multiplier/METHOD_KELLY_GATE -- wiring this in too would
+    have double-corrected sizing), weather_markets.analyze_markets_parallel
+    (cron.py's own _enrich_and_analyze + ThreadPoolExecutor is the real,
+    more complete parallel-analysis path, with timeout/dedup/circuit-probe
+    suppression this standalone version lacked).
+    WIRED UP (7): tracker.get_brier_by_tier, brier_skill_score,
+    get_model_brier_scores, get_optimal_threshold, and get_analysis_bias
+    were added to web_app.py's /api/analytics getattr-dispatch tuple
+    (read-only reporting, zero trading risk, same pattern as
+    get_calibration_by_season's earlier wiring). weather_markets.is_stale
+    (zero volume/OI + closing within 60 minutes -- "meaningless edge
+    calculations" per its own docstring) was wired into cron.py's REAL
+    live scan loop (_cmd_cron_body, the actual production path -- not
+    main.py's _analyze_once, which only backs the interactive analyze/watch
+    CLI display) as a pure risk-reducing exclusion filter, confirmed via a
+    new integration test that the WS ticker subscription (which feeds the
+    stop-loss path for any already-open position) still uses the
+    unfiltered market list, so nothing downstream is affected by the
+    exclusion. tracker.bayesian_confidence_interval (a correct, tested,
+    #57 utility with no natural single call site) got a purpose-built
+    minimal wrapper, tracker.get_rolling_win_rate_ci(), pairing it with
+    get_rolling_win_rate's real (win_rate, count) data and wired into the
+    same dashboard endpoint.
+    KEPT UNWIRED, documented accurately rather than guessed at (3): each
+    has its own in-code comment (not a guess made this session) citing a
+    real, unmet prerequisite -- weather_markets._fetch_hrrr_temp ("NOT
+    wired into analyze_trade yet -- that happens once HRRR data has been
+    validated against settled same-day trades", not done),
+    weather_markets.censoring_correction (correctly implements its #23
+    spec, but wiring an ensemble-consensus probability correction into the
+    live forecast pipeline needs backtesting to confirm it actually helps,
+    not something to do blind), and tracker.get_unselected_bias (found
+    independently this session -- see below -- whose own docstring says a
+    ~2,000-extra-Kalshi-API-call settlement sweep is a real prerequisite
+    that "has zero production callers today. Build that sweep before
+    wiring this into anything real").
+  Found and fixed a real bug in the scan itself while doing this triage:
+  a full-line `#` comment that merely DISCUSSES a function -- e.g.
+  "# ...and get_unselected_bias() always returned 0.0" -- matched the same
+  \bname\s*\( regex as a genuine call, producing a false negative (the scan
+  read get_unselected_bias as "has a caller" purely because of a comment
+  mentioning it). Fixed by stripping full-comment lines before matching;
+  re-running the corrected scan surfaced get_unselected_bias as newly
+  dead-but-real, handled above, and confirmed no other false negatives of
+  this shape existed. tests/test_dead_code_scan.py's _DEAD_CODE_ALLOWLIST
+  now holds only the 3 deliberately-kept entries (down from ~19) -- the
+  guard's docstring explicitly notes a large allowlist growing back would
+  mean the guard isn't doing its job.
+  Also added a `TestCmdUndo` test (main.py's cmd_undo CLI wrapper had no
+  direct test until a second-opinion review from the PRIOR session flagged
+  the gap) and a new cron.py integration test proving the is_stale wiring
+  actually excludes a stale market from the real enrich_with_forecast
+  call path (not just a unit test of is_stale in isolation).
+  Independently reviewed as two tiers: HIGH (Agent, opus) for the one
+  real live-trading-path change (is_stale into cron.py's scan loop) --
+  came back clean, traced every downstream use of the filtered vs.
+  unfiltered market list, confirmed no false-positive risk in is_stale's
+  edge-case handling, one cosmetic docstring nit fixed (didn't mention the
+  open-interest condition). MEDIUM (Agent) for the 11 deletions + 7
+  wirings + test rewrites -- came back clean, independently re-derived
+  each deletion's justification against current code (not just trusting
+  this session's claims) and ran all affected test files directly
+  (577 passed, 4 pre-existing skips, 0 failures). 677 tests pass across
+  the full combined touched scope; lint/mypy clean; TRADING_PAUSED
+  confirmed true throughout, never touched.
+
 Problem:
   4 functions in core trading files are fully implemented but have zero
   callers anywhere in the codebase (including tests):

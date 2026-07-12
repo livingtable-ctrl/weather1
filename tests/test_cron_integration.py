@@ -96,6 +96,80 @@ def test_cron_places_paper_trade_on_strong_signal(cron_env):
 
 
 @pytest.mark.integration
+def test_cron_skips_stale_markets_before_analysis(cron_env):
+    """A market with zero volume/open-interest closing within 60 minutes must
+    never reach enrich_with_forecast/analyze_trade -- wired 2026-07-12
+    (weather_markets.is_stale previously had zero callers anywhere)."""
+    tmp_path, client, main, paper = cron_env
+    from datetime import UTC, datetime, timedelta
+
+    from utils import STRONG_EDGE
+
+    stale_market = {
+        "ticker": "KXHIGH-NYC-26APR17-STALE",
+        "yes_bid": 40,
+        "yes_ask": 44,
+        "volume": 0,
+        "open_interest": 0,
+        "close_time": (datetime.now(UTC) + timedelta(minutes=10)).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        ),
+    }
+    live_market = {
+        "ticker": "KXHIGH-NYC-26APR17-LIVE",
+        "yes_bid": 40,
+        "yes_ask": 44,
+        "volume": 500,
+        "open_interest": 100,
+        "close_time": (datetime.now(UTC) + timedelta(hours=48)).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        ),
+    }
+    fake_enriched = dict(
+        live_market, _city="NYC", _date="2026-04-17", _target_date="2026-04-17"
+    )
+    fake_analysis = {
+        "edge": STRONG_EDGE + 0.05,
+        "net_edge": STRONG_EDGE + 0.05,
+        "signal": "STRONG BUY",
+        "net_signal": "STRONG BUY",
+        "recommended_side": "yes",
+        "time_risk": "LOW",
+        "forecast_prob": 0.75,
+        "market_prob": 0.40,
+        "days_out": 1,
+        "target_date": "2026-04-17",
+    }
+
+    enriched_tickers: list[str] = []
+
+    def _tracking_enrich(market):
+        enriched_tickers.append(market.get("ticker", ""))
+        return fake_enriched
+
+    with (
+        patch.object(
+            main, "get_weather_markets", return_value=[stale_market, live_market]
+        ),
+        patch.object(main, "enrich_with_forecast", side_effect=_tracking_enrich),
+        patch.object(main, "analyze_trade", return_value=fake_analysis),
+        patch.object(main, "_auto_place_trades", return_value=0),
+        patch("tracker.detect_brier_drift", return_value={"drifting": False}),
+    ):
+        try:
+            main.cmd_cron(client)
+        except SystemExit:
+            pass
+
+    assert "KXHIGH-NYC-26APR17-LIVE" in enriched_tickers, (
+        "Live market must still reach enrich_with_forecast"
+    )
+    assert "KXHIGH-NYC-26APR17-STALE" not in enriched_tickers, (
+        "Stale market (no volume, closing within 60min) must be skipped before analysis"
+    )
+
+
+@pytest.mark.integration
 def test_cron_drawdown_guard_blocks_auto_trades(cron_env):
     """When drawdown guard is active, _auto_place_trades returns 0 and places nothing."""
     tmp_path, client, main, paper = cron_env

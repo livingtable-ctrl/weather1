@@ -1684,44 +1684,47 @@ class TestStationBiasKeys:
     Previously used 3-letter codes (MIA, DEN, CHI, DAL, LAX) while city names
     passed at runtime are full names (Miami, Denver, Chicago, Dallas, LA).
     Only NYC accidentally matched, so all other corrections silently returned 0.
+
+    Rewritten 2026-07-12 to read _STATION_BIAS_HIGH directly (previously went
+    through apply_station_bias(), which turned out to have zero production
+    callers -- see test_station_bias.py's module docstring -- and was deleted
+    as superseded by _get_combined_station_bias()).
     """
 
     def test_miami_high_bias_applies(self):
-        from weather_markets import apply_station_bias
+        from weather_markets import _STATION_BIAS_HIGH
 
-        corrected = apply_station_bias("Miami", 90.0, var="max")
-        assert corrected == 87.0, (
-            f"Miami 3°F warm bias must be applied; got {corrected}"
+        assert "Miami" in _STATION_BIAS_HIGH, (
+            "Miami 3°F warm bias must be keyed by full name"
         )
+        assert _STATION_BIAS_HIGH["Miami"] == 3.0
 
     def test_denver_high_bias_applies(self):
-        from weather_markets import apply_station_bias
+        from weather_markets import _STATION_BIAS_HIGH
 
-        corrected = apply_station_bias("Denver", 75.0, var="max")
-        assert corrected == 73.0, (
-            f"Denver 2°F warm bias must be applied; got {corrected}"
+        assert "Denver" in _STATION_BIAS_HIGH, (
+            "Denver 2°F warm bias must be keyed by full name"
         )
+        assert _STATION_BIAS_HIGH["Denver"] == 2.0
 
     def test_chicago_high_bias_applies(self):
-        from weather_markets import apply_station_bias
+        from weather_markets import _STATION_BIAS_HIGH
 
-        corrected = apply_station_bias("Chicago", 80.0, var="max")
-        assert corrected == 79.5, (
-            f"Chicago 0.5°F warm bias must be applied; got {corrected}"
+        assert "Chicago" in _STATION_BIAS_HIGH, (
+            "Chicago 0.5°F warm bias must be keyed by full name"
         )
+        assert _STATION_BIAS_HIGH["Chicago"] == 0.5
 
     def test_nyc_still_works(self):
-        from weather_markets import apply_station_bias
+        from weather_markets import _STATION_BIAS_HIGH
 
-        corrected = apply_station_bias("NYC", 72.0, var="max")
-        assert corrected == 71.0, f"NYC 1°F warm bias must still apply; got {corrected}"
+        assert _STATION_BIAS_HIGH["NYC"] == 1.0, "NYC 1°F warm bias must still apply"
 
     def test_unknown_city_returns_unchanged(self):
-        from weather_markets import apply_station_bias
+        from weather_markets import _STATION_BIAS_HIGH
 
-        corrected = apply_station_bias("Tulsa", 65.0, var="max")
-        assert corrected == 65.0, (
-            f"Unknown city must return unchanged temp; got {corrected}"
+        assert _STATION_BIAS_HIGH.get("Tulsa", 0.0) == 0.0, (
+            "Unknown city must have no bias entry (callers fall back to 0.0)"
         )
 
 
@@ -1876,7 +1879,6 @@ class TestNoSideEntryEdgeSign:
         monkeypatch.setattr(wm, "fetch_temperature_nbm", lambda *a, **kw: None)
         monkeypatch.setattr(wm, "fetch_temperature_ecmwf", lambda *a, **kw: None)
         monkeypatch.setattr(wm, "get_ensemble_members", lambda *a, **kw: [])
-        monkeypatch.setattr(wm, "apply_station_bias", lambda c, t, var="max": t)
         monkeypatch.setattr(
             wm, "_get_consensus_probs", lambda *a, **kw: (None, None, None, None)
         )
@@ -1913,7 +1915,6 @@ class TestNoSideEntryEdgeSign:
         monkeypatch.setattr(wm, "fetch_temperature_nbm", lambda *a, **kw: None)
         monkeypatch.setattr(wm, "fetch_temperature_ecmwf", lambda *a, **kw: None)
         monkeypatch.setattr(wm, "get_ensemble_members", lambda *a, **kw: [])
-        monkeypatch.setattr(wm, "apply_station_bias", lambda c, t, var="max": t)
 
         enriched = self._make_enriched(yes_bid_cents=35, yes_ask_cents=40)
         enriched["_forecast"]["high_f"] = 95.0
@@ -1927,6 +1928,53 @@ class TestNoSideEntryEdgeSign:
             assert result["entry_side_edge"] > 0, (
                 f"entry_side_edge={result['entry_side_edge']} must be > 0 for YES trade"
             )
+
+    def test_ensemble_excluded_from_blend_when_circuit_open(self, monkeypatch, caplog):
+        """When the ensemble circuit breaker is OPEN, analyze_trade must exclude
+        ens_prob from the blend and renormalize over the remaining sources.
+
+        Rewritten 2026-07-12 from a standalone-function unit test
+        (test_circuit_breaker.py's test_blend_uses_nws_clim_only_when_ensemble_circuit_open,
+        against _blend_with_circuit_fallback()) after that function was deleted as a
+        superseded/never-wired duplicate of this exact exclusion logic, which is
+        implemented inline in analyze_trade itself (see the `_ensemble_circuit_is_open()`
+        check right before the source-renormalization block). Exercises the real
+        production code path instead of the orphaned standalone copy.
+        """
+        import logging
+
+        import weather_markets as wm
+
+        monkeypatch.setattr(wm, "_ensemble_circuit_is_open", lambda: True)
+        monkeypatch.setattr(wm, "nws_prob", lambda *a, **kw: None)
+        monkeypatch.setattr(wm, "climatological_prob", lambda *a, **kw: 0.30)
+        monkeypatch.setattr(wm, "temperature_adjustment", lambda *a, **kw: 0.0)
+        monkeypatch.setattr(wm, "_metar_lock_in", lambda *a, **kw: (False, 0.0, {}))
+        monkeypatch.setattr(
+            wm, "get_ensemble_temps", lambda *a, **kw: [65.0] * 14 + [67.0] * 6
+        )
+        monkeypatch.setattr(wm, "fetch_temperature_nbm", lambda *a, **kw: None)
+        monkeypatch.setattr(wm, "fetch_temperature_ecmwf", lambda *a, **kw: None)
+        monkeypatch.setattr(wm, "get_ensemble_members", lambda *a, **kw: [])
+        monkeypatch.setattr(
+            wm, "_get_consensus_probs", lambda *a, **kw: (None, None, None, None)
+        )
+
+        enriched = self._make_enriched(yes_bid_cents=22, yes_ask_cents=28)
+
+        with caplog.at_level(logging.WARNING, logger="weather_markets"):
+            result = wm.analyze_trade(enriched)
+
+        if result is None:
+            pytest.skip("analyze_trade returned None (edge or liquidity guard fired)")
+
+        assert any(
+            "ensemble circuit OPEN" in msg and "excluding ens_prob" in msg
+            for msg in caplog.messages
+        ), "analyze_trade must log that ens_prob was excluded when the circuit is open"
+        assert result.get("blend_sources", {}).get("ensemble", 0.0) == 0.0, (
+            "blend_sources must show zero ensemble weight when the circuit is open"
+        )
 
     def test_entry_side_edge_formula_arithmetic(self):
         """Unit test of the P0-14 arithmetic: verify corrected formula value."""

@@ -1229,6 +1229,30 @@ def get_rolling_win_rate(window: int = 20) -> tuple[float | None, int]:
     return wins / count, count
 
 
+def get_rolling_win_rate_ci(window: int = 20, confidence: float = 0.90) -> dict | None:
+    """Rolling win rate (see get_rolling_win_rate) with a Bayesian credible
+    interval, so a small sample's win rate isn't read with more confidence
+    than the data supports. Returns None when there is no settled data.
+
+    Pairs get_rolling_win_rate's real (win_rate, count) with
+    bayesian_confidence_interval -- the latter was a correctly-implemented,
+    fully-tested standalone utility (#57) with no caller anywhere in the
+    codebase until this wiring (2026-07-12).
+    """
+    win_rate, count = get_rolling_win_rate(window)
+    if win_rate is None:
+        return None
+    successes = round(win_rate * count)
+    ci_low, ci_high = bayesian_confidence_interval(successes, count, confidence)
+    return {
+        "win_rate": round(win_rate, 4),
+        "n": count,
+        "ci_low": round(ci_low, 4),
+        "ci_high": round(ci_high, 4),
+        "confidence": confidence,
+    }
+
+
 def count_settled_predictions() -> int:
     """Return the number of multi-day predictions with a known outcome.
 
@@ -4064,80 +4088,6 @@ def get_unselected_bias(city: str, condition_type: str | None = None) -> float:
     except Exception as exc:
         _log.warning("get_unselected_bias failed for %s: %s", city, exc)
         return 0.0
-
-
-def analyze_all_markets(enriched_list: list[dict]) -> None:
-    """
-    Log every analyzed market (traded or not) to analysis_attempts (#55).
-    """
-    init_db()
-    from datetime import UTC
-
-    analyzed_at = datetime.now(UTC).isoformat()
-
-    for item in enriched_list:
-        try:
-            ticker = item["ticker"]
-            city = item.get("city")
-            target_date = item.get("target_date")
-            analysis = item.get("analysis", {})
-            forecast_prob = analysis.get("forecast_prob")
-            market_prob = analysis.get("market_prob")
-            condition = analysis.get("condition", {})
-            condition_str = condition.get("type") if condition else None
-            # hasattr(target_date, "today") is true for both date and datetime
-            # (a datetime IS a date), but `datetime - date` raises TypeError —
-            # normalize a datetime to .date() instead of type-sniffing on an
-            # unrelated classmethod's presence.
-            if isinstance(target_date, datetime):
-                _td_date = target_date.date()
-            elif isinstance(target_date, date):
-                _td_date = target_date
-            else:
-                _td_date = None
-            days_out = (_td_date - _utc_today()).days if _td_date is not None else None
-            if target_date is None:
-                target_str = None
-            elif hasattr(target_date, "isoformat"):
-                target_str = target_date.isoformat()  # type: ignore[union-attr]
-            else:
-                target_str = str(target_date)
-            if target_str is None:
-                # analysis_attempts' PRIMARY KEY is (ticker, target_date); SQLite
-                # treats NULLs as pairwise distinct, so a NULL target_date would
-                # defeat the ON CONFLICT upsert below and accumulate a duplicate
-                # row on every call for the same ticker instead of updating one.
-                _log.warning(
-                    "analyze_all_markets: skipping %s — no target_date", ticker
-                )
-                continue
-            try:
-                with _conn() as con:
-                    con.execute(
-                        """INSERT INTO analysis_attempts
-                           (ticker, city, condition, target_date, analyzed_at,
-                            forecast_prob, market_prob, days_out, was_traded)
-                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)
-                           ON CONFLICT(ticker, target_date) DO UPDATE SET
-                               analyzed_at   = excluded.analyzed_at,
-                               forecast_prob = excluded.forecast_prob,
-                               market_prob   = excluded.market_prob,
-                               days_out      = excluded.days_out""",
-                        (
-                            ticker,
-                            city,
-                            condition_str,
-                            target_str,
-                            analyzed_at,
-                            forecast_prob,
-                            market_prob,
-                            days_out,
-                        ),
-                    )
-            except Exception as exc:
-                _log.warning("analyze_all_markets: failed to log %s: %s", ticker, exc)
-        except (KeyError, TypeError) as exc:
-            _log.warning("analyze_all_markets: skipping malformed item: %s", exc)
 
 
 def get_analysis_bias() -> float | None:
