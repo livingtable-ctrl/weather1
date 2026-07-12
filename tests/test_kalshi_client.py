@@ -173,6 +173,65 @@ class TestPlaceOrderApiSemantics:
         )
 
 
+class TestPlaceOrderSurvivesGetOrderFailure:
+    """A successful POST already confirms the order is live on the exchange --
+    if the get_order() follow-up (needed only to backfill the V2 response's
+    missing status field) then fails, place_order() must not lose the known
+    order_id by falling through to _find_order_by_client_id() and re-raising.
+    A lagged/failed read here previously caused a live order to be recorded
+    status='failed', orphaned from all downstream lifecycle handling."""
+
+    def _make_client(self):
+        from unittest.mock import MagicMock, patch
+
+        with patch("kalshi_client.KalshiClient.__init__", return_value=None):
+            import kalshi_client
+
+            client = kalshi_client.KalshiClient.__new__(kalshi_client.KalshiClient)
+        client._find_order_by_client_id = MagicMock(
+            return_value=None
+        )  # simulates a lagged read finding nothing
+        return client
+
+    def test_returns_raw_create_response_when_get_order_fails(self):
+        from unittest.mock import MagicMock
+
+        client = self._make_client()
+        client._post = MagicMock(
+            return_value={"order_id": "ord_landed", "fill_count": "0.00"}
+        )
+        client.get_order = MagicMock(side_effect=ConnectionError("read lag"))
+
+        result = client.place_order(
+            ticker="KXTEST", side="yes", action="buy", count=1, price=0.55, cycle="12z"
+        )
+
+        assert result == {"order_id": "ord_landed", "fill_count": "0.00"}
+        client._find_order_by_client_id.assert_not_called()
+
+    def test_raises_and_checks_recovery_only_when_post_itself_fails(self):
+        """The get_order-failure fallback must not mask a genuine POST failure --
+        that path still goes through _find_order_by_client_id as before."""
+        from unittest.mock import MagicMock
+
+        import pytest
+
+        client = self._make_client()
+        client._post = MagicMock(side_effect=ConnectionError("timeout"))
+
+        with pytest.raises(ConnectionError):
+            client.place_order(
+                ticker="KXTEST",
+                side="yes",
+                action="buy",
+                count=1,
+                price=0.55,
+                cycle="12z",
+            )
+
+        client._find_order_by_client_id.assert_called_once()
+
+
 class TestPlaceMakerOrderIdempotency:
     """2026-07-09: place_maker_order never forwarded a cycle to place_order,
     so every call got a fresh random UUID baked into its idempotency key --

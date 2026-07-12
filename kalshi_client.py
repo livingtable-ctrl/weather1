@@ -438,7 +438,6 @@ class KalshiClient:
                 raise ValueError(
                     f"place_order: V2 response missing required order_id: {resp!r}"
                 )
-            return self.get_order(order_id)
         except Exception as exc:
             # POST was not retried automatically (see _build_session).
             # On any failure, check whether the order landed anyway before re-raising.
@@ -450,6 +449,21 @@ class KalshiClient:
                 )
                 return existing
             raise exc
+
+        # order_id is now confirmed live on the exchange -- a failure in this
+        # follow-up GET must not make us lose track of it (and must not fall
+        # into the block above, which would re-run _find_order_by_client_id
+        # and, on a lagged/failed read, re-raise and strand a real order under
+        # status="failed" with no poller ever picking it up again).
+        try:
+            return self.get_order(order_id)
+        except Exception:
+            _log.warning(
+                "place_order: order %s created but get_order follow-up failed; "
+                "returning raw create response",
+                order_id,
+            )
+            return resp
 
     def _find_order_by_client_id(self, client_order_id: str) -> dict | None:
         """Return the order matching client_order_id, or None if not found.
