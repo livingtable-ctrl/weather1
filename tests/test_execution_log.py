@@ -426,3 +426,41 @@ class TestWasOrderedRecentlyTimestampBoundary:
         placed_at = (datetime.now(UTC) - timedelta(days=7, hours=1)).isoformat()
         self._insert("KXHIGH-25MAY15-T75", placed_at)
         assert execution_log.was_ordered_recently("KXHIGH-25MAY15-T75") is False
+
+
+class TestSqlNormalizeIsoColumn:
+    """utils.sql_normalize_iso_column() -- the shared helper both call sites
+    above (and tracker.py's v21->v22 migration) now use instead of each
+    hand-duplicating the same strftime/replace expression."""
+
+    def test_normalizes_iso_t_format_to_sqlite_format(self):
+        from utils import sql_normalize_iso_column
+
+        con = sqlite3.connect(":memory:")
+        expr = sql_normalize_iso_column("?")
+        result = con.execute(
+            f"SELECT {expr}", ("2026-07-05T12:30:00+00:00",)
+        ).fetchone()[0]
+        assert result == "2026-07-05 12:30:00"
+
+    def test_already_sqlite_format_passes_through_unchanged(self):
+        from utils import sql_normalize_iso_column
+
+        con = sqlite3.connect(":memory:")
+        expr = sql_normalize_iso_column("?")
+        result = con.execute(f"SELECT {expr}", ("2026-07-05 12:30:00",)).fetchone()[0]
+        assert result == "2026-07-05 12:30:00"
+
+    def test_normalized_value_compares_correctly_against_datetime_now(self):
+        """The actual bug this exists to prevent: an unnormalized ISO-T value
+        sorts higher than datetime('now', ...) at the 'T'-vs-' ' divergence
+        point, making a same-day comparison wrongly evaluate True/False."""
+        from utils import sql_normalize_iso_column
+
+        con = sqlite3.connect(":memory:")
+        expr = sql_normalize_iso_column("?")
+        # A timestamp clearly in the past must compare as "less than now".
+        row = con.execute(
+            f"SELECT {expr} < datetime('now')", ("2020-01-01T00:00:00+00:00",)
+        ).fetchone()[0]
+        assert row == 1

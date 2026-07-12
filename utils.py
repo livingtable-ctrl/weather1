@@ -17,6 +17,24 @@ def utc_today() -> date:
     return datetime.now(UTC).date()
 
 
+def sql_normalize_iso_column(column: str) -> str:
+    """Return a SQL expression normalizing a mixed-format timestamp column for comparison.
+
+    Some rows in this codebase were written with Python's `datetime.now(UTC).isoformat()`
+    ('T' separator, e.g. "2026-07-05T12:00:00+00:00"); others were written with SQLite's
+    `datetime('now')` (space separator, e.g. "2026-07-05 12:00:00"). Python's ISO-T format
+    sorts lexicographically *higher* than SQLite's at the position where they diverge, so
+    comparing a raw mixed-format column against `datetime('now', ...)` silently corrupts
+    date-range queries (H-20/H-21/H-22: this exact bug recurred independently in
+    execution_log.py and tracker.py). Wrap the column in this expression before comparing
+    it to a `datetime('now', ...)`-style cutoff, e.g.:
+        f"{sql_normalize_iso_column('placed_at')} >= datetime('now', ?)"
+    """
+    return (
+        f"strftime('%Y-%m-%d %H:%M:%S', replace(replace({column}, 'T', ' '), 'Z', ''))"
+    )
+
+
 def is_trading_paused() -> bool:
     """Single source of truth for the TRADING_PAUSED kill-switch.
 

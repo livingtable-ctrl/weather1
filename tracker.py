@@ -17,6 +17,7 @@ from datetime import UTC, date, datetime, timedelta
 
 from paths import DB_PATH
 from safe_io import project_root as _project_root
+from utils import sql_normalize_iso_column
 from utils import utc_today as _utc_today
 
 _log = logging.getLogger(__name__)
@@ -106,9 +107,9 @@ _MIGRATIONS = [
     # v21 → v22: H-20 — normalise settled_at to SQLite format (YYYY-MM-DD HH:MM:SS).
     # Python ISO-T format ('T' separator, '+00:00' suffix) was written by older code
     # paths.  Mixed formats corrupt date-range queries that rely on lexicographic order.
-    """UPDATE outcomes
-       SET settled_at = strftime('%Y-%m-%d %H:%M:%S',
-           replace(replace(settled_at, 'T', ' '), 'Z', ''))
+    # See sql_normalize_iso_column()'s docstring for the full bug-class writeup.
+    f"""UPDATE outcomes
+       SET settled_at = {sql_normalize_iso_column("settled_at")}
        WHERE settled_at LIKE '%T%'""",
     # v22 → v23: timestamp for 404-not-found marking so sync_outcomes can re-attempt
     # after 7 days instead of skipping the ticker permanently (WA-4).

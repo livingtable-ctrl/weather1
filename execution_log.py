@@ -15,6 +15,8 @@ import threading as _el_threading
 from datetime import UTC, datetime
 from pathlib import Path
 
+from utils import sql_normalize_iso_column
+
 _log = logging.getLogger(__name__)
 
 DB_PATH = Path(__file__).parent / "data" / "execution_log.db"
@@ -203,17 +205,14 @@ def was_recently_ordered(ticker: str, side: str, within_minutes: int = 10) -> bo
     """
     init_log()
     with _conn() as con:
-        # H-21: normalize placed_at to SQLite format before comparing — Python ISO-T
-        # timestamps ('T' separator) sort lexicographically later than SQLite space-format
-        # timestamps, causing all same-day ISO-T rows to always appear "within window"
-        # regardless of actual time.
+        # H-21: normalize placed_at to SQLite format before comparing — see
+        # sql_normalize_iso_column()'s docstring for why mixed ISO-T/SQLite
+        # timestamp formats otherwise corrupt this comparison.
         row = con.execute(
-            """
+            f"""
             SELECT 1 FROM orders
             WHERE ticker = ? AND side = ? AND status != 'failed'
-              AND strftime('%Y-%m-%d %H:%M:%S',
-                    replace(replace(placed_at, 'T', ' '), 'Z', ''))
-                  >= datetime('now', ?)
+              AND {sql_normalize_iso_column("placed_at")} >= datetime('now', ?)
             LIMIT 1
             """,
             (ticker, side, f"-{within_minutes} minutes"),
@@ -287,20 +286,16 @@ def was_ordered_recently(ticker: str, days: int = 7) -> bool:
         # retroactively rewrite rows already on disk from before the fix, so
         # a pre-existing "cancelled" row would otherwise wrongly block
         # re-entry for its own leftover 7-day window post-deploy.
-        # H-21: normalize placed_at to SQLite format before comparing — raw ISO-T
-        # timestamps ('T' separator, 0x54) sort lexicographically higher than
-        # SQLite's space-separated datetime('now', ...) format (0x20) at the
-        # position where they diverge, stretching the effective block window
-        # by up to ~24h on same-calendar-day boundary cases (always over-
-        # cautious, never under-blocking — same bug class already fixed in
-        # was_recently_ordered() above and repeatedly in tracker.py).
+        # H-21: normalize placed_at to SQLite format before comparing — see
+        # sql_normalize_iso_column()'s docstring for why mixed ISO-T/SQLite
+        # timestamp formats otherwise corrupt this comparison (same bug class
+        # already fixed in was_recently_ordered() above and repeatedly in
+        # tracker.py).
         row = con.execute(
-            """
+            f"""
             SELECT 1 FROM orders WHERE ticker=?
             AND status NOT IN ('failed', 'canceled', 'cancelled')
-            AND strftime('%Y-%m-%d %H:%M:%S',
-                  replace(replace(placed_at, 'T', ' '), 'Z', ''))
-                >= datetime('now', ?)
+            AND {sql_normalize_iso_column("placed_at")} >= datetime('now', ?)
             LIMIT 1
             """,
             (ticker, f"-{days} days"),
