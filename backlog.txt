@@ -1284,12 +1284,105 @@ When to revisit:
     reasons -- fold in as a drive-by cleanup rather than a dedicated
     session.
 
-======================================================
-FEATURE CANDIDATES — 2026-07-10 feature-scouting session.
-Every "currently absent" claim below was verified against the code that day
-(grep + reading the call sites), not assumed. Ordered roughly by expected
-payoff within each group.
-======================================================
+[MOVE OFF LOCAL CRON -- HOST ON A SMALL ALWAYS-ON VM]
+Priority: Medium (not a code bug, but the user's stated auto-run reliability
+  problem is real and this is the actual fix for it)
+
+Problem:
+  This bot's scheduled runs (cron.py, invoked via Windows Task Scheduler on
+  a laptop) have caused reliability issues per the user directly -- a
+  travel laptop closing its lid, losing wifi, or just not being on defeats
+  the whole point of unattended scheduled scanning. cron.py itself is a
+  genuine one-shot process (confirmed while building the [RESTING EXIT
+  ORDERS] entry above -- no `while True` loop, no persistent state between
+  invocations) that depends entirely on an external scheduler staying
+  alive, which a travel laptop structurally can't guarantee.
+
+  Original plan (per the user, "a long time ago") was AWS. Re-evaluated
+  from scratch 2026-07-13 rather than assuming that's still the best fit.
+
+What the fix looks like:
+  Move scheduling off the laptop onto a small always-on VM. This bot's
+  entire persistence model (SQLite DBs in tracker.py/execution_log.py,
+  JSON stores for paper trades/WS orderbook cache/sigma cache/config hash,
+  the Kalshi private key file) assumes durable local disk between runs --
+  that rules out pure serverless (Lambda-style, ephemeral filesystem) and
+  GitHub Actions (ephemeral runners; would need a git-commit-back or
+  Artifacts hack to fake persistence) without a real storage migration
+  first. A plain VPS keeps the current architecture untouched: just swap
+  Windows Task Scheduler for real Unix cron or a systemd timer running the
+  same `python cron.py` invocation.
+
+  11 hosting options researched and ranked 2026-07-13 (full comparison
+  with current pricing/reliability sources in that session's transcript,
+  not reproduced here in full):
+    - RECOMMENDED: Hetzner Cloud or DigitalOcean, ~$5-12/mo. Cheapest real
+      VPS tier with no vendor-reliability red flags. DO has free built-in
+      monitoring/alerting as a bonus; Hetzner is cheaper at equivalent
+      specs. Linode/Vultr are close seconds, no compelling reason to pick
+      them over Hetzner/DO specifically.
+    - AWS EC2 (t4g.micro) and Azure (B1s) both priced out higher than
+      Hetzner/DO with no functional benefit for a workload this small --
+      note for AWS specifically: t4g.micro is NOT covered by the standard
+      12-month free tier (that's t3.micro/t2.micro, or a t4g.small promo
+      through end of 2026 only) -- budget for cost from day one if AWS is
+      ever picked instead.
+    - AVOID despite being $0/mo, specifically because the user's problem is
+      unpredictable auto-run failures: Oracle Cloud "Always Free" (2026
+      reports of account-approval opacity, a June 2026 capacity halving --
+      4 OCPU/24GB -> 2 OCPU/12GB -- with zero notice, and "idle
+      reclamation" that can throttle/kill a low-traffic instance) and
+      GitHub Actions scheduled workflows (silently disables a workflow
+      after 60 days of repo inactivity, on top of the persistent-disk
+      mismatch above -- the same "silently stops working" failure category
+      the user is trying to escape, not a fix for it).
+    - Google Cloud e2-micro Always Free is a genuine $0/mo dark horse (no
+      Oracle-style complaints found), but has no SLA on free-tier
+      resources and only 1GB RAM -- tight if this box is also meant to run
+      continuously (see sizing note below).
+    - Render/Railway/Fly.io (PaaS with built-in cron+volumes) work
+      architecturally but cost more than a plain VPS for no benefit here;
+      Fly.io specifically has a reputation for surprise bills from
+      compounding metrics (volume storage, snapshots, inter-region
+      traffic all billed separately).
+    - Home Raspberry Pi + Tailscale is a legitimate $0/mo-recurring option
+      that sidesteps cloud-vendor risk entirely (stays online at home
+      while the user travels, which is the actual scenario being solved)
+      but shifts the single point of failure to home internet/power, with
+      the user as the only support line if hardware fails.
+
+  User's answers when asked (2026-07-13, via AskUserQuestion): pay ~$5/mo
+  and prioritize reliability over $0 (rules out Oracle/GCP free tier);
+  size the box for eventually running `watch --auto --live` continuously
+  plus the deferred always-on-watcher piece from the [RESTING EXIT ORDERS]
+  entry above, not just periodic cron.py -- pushes toward a 2GB-RAM tier
+  (Hetzner CX22-equivalent, or DigitalOcean's ~$12/mo droplet) rather than
+  the cheapest 1GB option; starting fresh, no existing cloud accounts to
+  factor into the decision.
+
+  Setup shape once started (not yet done): Ubuntu, SSH key-only access, a
+  free stateful firewall (Hetzner) or DO's built-in cloud firewall
+  (inbound SSH only from the user's IP, everything else outbound-only,
+  which this bot needs freely for Kalshi/Open-Meteo/NWS/notification
+  webhooks), clone via a read-only deploy key (not a personal SSH key),
+  scp over .env and the Kalshi private key file (never committed), real
+  cron/systemd timer for the schedule, drop "desktop" from NOTIFY_CHANNELS
+  (won't fire headless -- Pushover/Discord/email already work and need no
+  code changes, just env vars), periodic snapshot plus an independent
+  rsync/scp of the SQLite DBs back to the user's own storage (don't rely
+  solely on the provider's snapshot).
+
+Why not now:
+  - Explicitly parked by the user ("we are not doing anything now") --
+    the comparison and decision are done, nothing has been executed. No VM
+    created, no code changed.
+
+When to revisit:
+  - Whenever the user is ready to actually execute. Use the decision
+    above (Hetzner or DigitalOcean, ~$12/mo tier, sized for continuous
+    operation) rather than re-running the hosting comparison from scratch
+    unless something material has changed (a provider's pricing/free-tier
+    terms, or the user's requirements).
 
 [RESOLVED 2026-07-13] RESTING EXIT ORDERS + OCO ORDER GROUPS
 Priority: was High (live risk-management hole, not just an optimization)
@@ -1728,6 +1821,13 @@ When to revisit:
   - Ship the capture early (it's cheap and data accumulates only from when
     it ships); do the analysis passes once maker-execution work is picked
     up.
+
+======================================================
+FEATURE CANDIDATES — 2026-07-10 feature-scouting session.
+Every "currently absent" claim below was verified against the code that day
+(grep + reading the call sites), not assumed. Ordered roughly by expected
+payoff within each group.
+======================================================
 
 [FORECAST RUN-TO-RUN TREND SIGNAL]
 Priority: Medium (new alpha source, mostly existing plumbing)
