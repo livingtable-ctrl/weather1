@@ -130,6 +130,14 @@ def min_prob_edge_for_days_out(days_out: int) -> float:
     reprice against us before settlement, and ensemble accuracy degrades
     with horizon. Thresholds derived from calibrated competitor benchmarks.
 
+      days_out == 0 → 12pp  (same-day/METAR-locked: shares the day-1 floor —
+                             not because the same rationale applies (METAR
+                             probs don't degrade with repricing time), but
+                             because live Brier data shows same-day and 1-2d
+                             accuracy are statistically indistinguishable
+                             (0.270 n=138 vs 0.269 n=93, checked 2026-07-12).
+                             Revisit if get_brier_by_days_out()'s same_day
+                             and 1-2d buckets diverge.)
       days_out == 1 → 12pp  (next-day: model is reasonably accurate)
       days_out == 2 → 15pp  (2-day: meaningful ensemble spread)
       days_out >= 3 → 18pp  (3-5 day: high uncertainty, demand strong edge)
