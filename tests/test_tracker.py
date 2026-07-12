@@ -2394,6 +2394,390 @@ class TestPriceHistory(unittest.TestCase):
         self.assertEqual([r["end_period_ts"] for r in rows], [1700000100, 1700000200])
 
 
+class TestDisputedOutcomeTracking(unittest.TestCase):
+    """Restored backlog piece (mystery-revert 24559a7): disputed flag on outcomes,
+    set by audit_settlement() on an archive/Kalshi mismatch, excluded from every
+    Brier/calibration/bias query that uses settled_yes as ground truth — a
+    corrupted settlement label must never silently pollute calibration scoring.
+    """
+
+    _FUTURE = date(2099, 1, 1)  # clamps to a large positive days_out (multiday)
+    _PAST = date(2020, 1, 1)  # clamps to days_out=0 (same-day)
+
+    def setUp(self):
+        self._tmpdir = tempfile.mkdtemp()
+        self._orig = tracker.DB_PATH
+        tracker.DB_PATH = Path(self._tmpdir) / "test_predictions.db"
+        tracker._db_initialized = False
+
+    def tearDown(self):
+        tracker.DB_PATH = self._orig
+        tracker._db_initialized = False
+        shutil.rmtree(self._tmpdir, ignore_errors=True)
+
+    def _log_settled(
+        self,
+        ticker,
+        our_prob,
+        settled_yes,
+        market_date,
+        city="NYC",
+        market_prob=0.50,
+        method="ensemble",
+        edge=0.20,
+        condition_type="above",
+        edge_calc_version="v1",
+        signal_source="src",
+        blend_sources=None,
+        local_hour=None,
+    ):
+        analysis = {
+            "condition": {"type": condition_type, "threshold": 70.0},
+            "forecast_prob": our_prob,
+            "market_prob": market_prob,
+            "edge": edge,
+            "method": method,
+            "n_members": 82,
+            "local_hour": local_hour,
+        }
+        tracker.log_prediction(
+            ticker,
+            city,
+            market_date,
+            analysis,
+            edge_calc_version=edge_calc_version,
+            signal_source=signal_source,
+            blend_sources=blend_sources
+            if blend_sources is not None
+            else {"icon_seamless": 0.6, "gfs_seamless": 0.4},
+        )
+        tracker.log_outcome(ticker, settled_yes)
+
+    def _seed_baseline(
+        self, n=25, city="NYC", market_date=None, condition_type="above"
+    ):
+        """Log n diverse trusted (non-disputed) settled predictions — enough to
+        clear every min-sample gate in the calibration functions under test
+        (the largest is get_optimal_threshold's 20)."""
+        market_date = market_date or self._FUTURE
+        for i in range(n):
+            self._log_settled(
+                f"BASE-{i}",
+                round(0.30 + (i % 5) * 0.15, 2),
+                i % 2,
+                market_date,
+                city=city,
+                condition_type=condition_type,
+                edge=round(0.15 + (i % 3) * 0.10, 2),
+                local_hour=(i % 24),
+            )
+
+    def _add_disputed_outlier(self, ticker="DISPUTED", market_date=None, city="NYC"):
+        """Log one settled row with an extreme value that WOULD change any of
+        the tested aggregates if included, then mark it disputed."""
+        self._log_settled(
+            ticker, 1.0, 0, market_date or self._FUTURE, city=city, edge=0.99
+        )
+        tracker.mark_outcome_disputed(ticker)
+
+    # ── Core mechanism ──────────────────────────────────────────────────────
+
+    def test_mark_outcome_disputed_sets_flag(self):
+        tracker.log_outcome("TK-DISP", True)
+        tracker.mark_outcome_disputed("TK-DISP")
+        with sqlite3.connect(str(tracker.DB_PATH)) as con:
+            row = con.execute(
+                "SELECT disputed FROM outcomes WHERE ticker=?", ("TK-DISP",)
+            ).fetchone()
+        self.assertEqual(row[0], 1)
+
+    def test_mark_outcome_disputed_nonexistent_ticker_is_noop(self):
+        # Must not raise even though no matching row exists.
+        tracker.mark_outcome_disputed("NO-SUCH-TICKER")
+
+    def test_get_disputed_count(self):
+        tracker.log_outcome("TK1", True)
+        tracker.log_outcome("TK2", True)
+        tracker.log_outcome("TK3", True)
+        tracker.mark_outcome_disputed("TK1")
+        tracker.mark_outcome_disputed("TK2")
+        self.assertEqual(tracker.get_disputed_count(), 2)
+
+    def test_audit_settlement_marks_disputed_on_mismatch(self):
+        from unittest.mock import patch
+
+        import weather_markets
+
+        ticker = "KXHIGHNY-26APR09-T70"
+        self._log_settled(ticker, 0.70, False, date(2026, 4, 9))
+
+        with (
+            patch.object(weather_markets, "_metar_station_for_city", return_value=None),
+            patch.object(tracker, "_fetch_actual_daily_temp", return_value=75.0),
+        ):
+            # threshold=70, archive says 75°F (>70 => archive_yes=True), but
+            # Kalshi's real settlement was NO — a genuine mismatch.
+            result = tracker.audit_settlement(ticker, settled_yes=False)
+
+        self.assertTrue(result)
+        with sqlite3.connect(str(tracker.DB_PATH)) as con:
+            row = con.execute(
+                "SELECT disputed FROM outcomes WHERE ticker=?", (ticker,)
+            ).fetchone()
+        self.assertEqual(row[0], 1)
+
+    def test_audit_settlement_does_not_mark_disputed_when_matched(self):
+        from unittest.mock import patch
+
+        import weather_markets
+
+        ticker = "KXHIGHNY-26APR09-T71"
+        self._log_settled(ticker, 0.70, True, date(2026, 4, 9))
+
+        with (
+            patch.object(weather_markets, "_metar_station_for_city", return_value=None),
+            patch.object(tracker, "_fetch_actual_daily_temp", return_value=75.0),
+        ):
+            # threshold=70, archive says 75°F (>70 => archive_yes=True), Kalshi
+            # also settled YES — no mismatch.
+            result = tracker.audit_settlement(ticker, settled_yes=True)
+
+        self.assertTrue(result)
+        with sqlite3.connect(str(tracker.DB_PATH)) as con:
+            row = con.execute(
+                "SELECT disputed FROM outcomes WHERE ticker=?", (ticker,)
+            ).fetchone()
+        self.assertEqual(row[0], 0)
+
+    # ── Every calibration/Brier/bias query must exclude disputed rows ──────
+
+    def test_get_bias_excludes_disputed(self):
+        self._seed_baseline()
+        before = tracker.get_bias("NYC", None, min_samples=1)
+        self._add_disputed_outlier()
+        after = tracker.get_bias("NYC", None, min_samples=1)
+        # assertAlmostEqual: SQLite gives no row-order guarantee without ORDER
+        # BY, and adding a row can change unordered full-table-scan order —
+        # shifting float summation order by a last-ULP amount even when the
+        # same 25 rows are summed. Not a disputed-exclusion bug.
+        self.assertAlmostEqual(before, after, places=10)
+
+    def test_get_quintile_bias_excludes_disputed(self):
+        self._seed_baseline()
+        before = tracker.get_quintile_bias("NYC", None, 0.9, min_samples=1)
+        self._add_disputed_outlier()
+        after = tracker.get_quintile_bias("NYC", None, 0.9, min_samples=1)
+        self.assertAlmostEqual(before, after, places=10)
+
+    def test_get_brier_by_days_out_excludes_disputed(self):
+        self._seed_baseline()
+        before = tracker.get_brier_by_days_out()
+        self._add_disputed_outlier()
+        after = tracker.get_brier_by_days_out()
+        self.assertEqual(before, after)
+
+    def test_brier_score_by_method_excludes_disputed(self):
+        self._seed_baseline()
+        before = tracker.brier_score_by_method(min_samples=1)
+        self._add_disputed_outlier()
+        after = tracker.brier_score_by_method(min_samples=1)
+        self.assertEqual(before, after)
+
+    def test_brier_score_by_method_rolling_excludes_disputed(self):
+        self._seed_baseline()
+        before = tracker.brier_score_by_method_rolling(window=100, min_samples=1)
+        self._add_disputed_outlier()
+        after = tracker.brier_score_by_method_rolling(window=100, min_samples=1)
+        self.assertEqual(before, after)
+
+    def test_get_component_attribution_excludes_disputed(self):
+        self._seed_baseline()
+        before = tracker.get_component_attribution()
+        self._add_disputed_outlier()
+        after = tracker.get_component_attribution()
+        self.assertEqual(before, after)
+
+    def test_brier_score_excludes_disputed(self):
+        self._seed_baseline()
+        before = tracker.brier_score()
+        self._add_disputed_outlier()
+        after = tracker.brier_score()
+        self.assertEqual(before, after)
+
+    def test_brier_score_rolling_with_n_excludes_disputed(self):
+        self._seed_baseline()
+        before = tracker.brier_score_rolling_with_n(weeks=52)
+        self._add_disputed_outlier()
+        after = tracker.brier_score_rolling_with_n(weeks=52)
+        self.assertEqual(before, after)
+
+    def test_get_rolling_win_rate_excludes_disputed(self):
+        self._seed_baseline()
+        before = tracker.get_rolling_win_rate(window=100)
+        self._add_disputed_outlier()
+        after = tracker.get_rolling_win_rate(window=100)
+        self.assertEqual(before, after)
+
+    def test_get_recent_win_loss_excludes_disputed(self):
+        self._seed_baseline()
+        before = tracker._get_recent_win_loss(window=100)
+        self._add_disputed_outlier()
+        after = tracker._get_recent_win_loss(window=100)
+        self.assertEqual(before, after)
+
+    def test_get_brier_by_tier_excludes_disputed(self):
+        self._seed_baseline()
+        before = tracker.get_brier_by_tier()
+        self._add_disputed_outlier()
+        after = tracker.get_brier_by_tier()
+        self.assertEqual(before, after)
+
+    def test_get_brier_over_time_excludes_disputed(self):
+        self._seed_baseline()
+        before = tracker.get_brier_over_time(weeks=9999)
+        self._add_disputed_outlier()
+        after = tracker.get_brier_over_time(weeks=9999)
+        self.assertEqual(before, after)
+
+    def test_brier_skill_score_excludes_disputed(self):
+        self._seed_baseline()
+        before = tracker.brier_skill_score()
+        self._add_disputed_outlier()
+        after = tracker.brier_skill_score()
+        self.assertEqual(before, after)
+
+    def test_get_calibration_trend_excludes_disputed(self):
+        self._seed_baseline()
+        before = tracker.get_calibration_trend(weeks=9999)
+        self._add_disputed_outlier()
+        after = tracker.get_calibration_trend(weeks=9999)
+        self.assertEqual(before, after)
+
+    def test_get_calibration_by_city_excludes_disputed(self):
+        self._seed_baseline()
+        before = tracker.get_calibration_by_city()
+        self._add_disputed_outlier()
+        after = tracker.get_calibration_by_city()
+        self.assertEqual(before, after)
+
+    def test_get_calibration_by_season_excludes_disputed(self):
+        self._seed_baseline()
+        before = tracker.get_calibration_by_season()
+        self._add_disputed_outlier()
+        after = tracker.get_calibration_by_season()
+        self.assertEqual(before, after)
+
+    def test_get_calibration_by_type_excludes_disputed(self):
+        self._seed_baseline()
+        before = tracker.get_calibration_by_type()
+        self._add_disputed_outlier()
+        after = tracker.get_calibration_by_type()
+        self.assertEqual(before, after)
+
+    def test_get_sameday_calibration_excludes_disputed(self):
+        self._seed_baseline(market_date=self._PAST)
+        before = tracker.get_sameday_calibration()
+        self._add_disputed_outlier(market_date=self._PAST)
+        after = tracker.get_sameday_calibration()
+        self.assertEqual(before, after)
+
+    def test_get_multiday_calibration_cli_excludes_disputed(self):
+        self._seed_baseline()
+        before = tracker.get_multiday_calibration_cli()
+        self._add_disputed_outlier()
+        after = tracker.get_multiday_calibration_cli()
+        self.assertEqual(before, after)
+
+    def test_get_sameday_calibration_cli_excludes_disputed(self):
+        self._seed_baseline(market_date=self._PAST)
+        before = tracker.get_sameday_calibration_cli()
+        self._add_disputed_outlier(market_date=self._PAST)
+        after = tracker.get_sameday_calibration_cli()
+        self.assertEqual(before, after)
+
+    def test_get_market_calibration_excludes_disputed(self):
+        self._seed_baseline()
+        before = tracker.get_market_calibration()
+        self._add_disputed_outlier()
+        after = tracker.get_market_calibration()
+        self.assertEqual(before, after)
+
+    def test_get_confusion_matrix_excludes_disputed(self):
+        self._seed_baseline()
+        before = tracker.get_confusion_matrix()
+        self._add_disputed_outlier()
+        after = tracker.get_confusion_matrix()
+        self.assertEqual(before, after)
+
+    def test_get_optimal_threshold_excludes_disputed(self):
+        self._seed_baseline()
+        before = tracker.get_optimal_threshold()
+        self._add_disputed_outlier()
+        after = tracker.get_optimal_threshold()
+        self.assertEqual(before, after)
+
+    def test_get_roc_auc_excludes_disputed(self):
+        self._seed_baseline()
+        before = tracker.get_roc_auc()
+        self._add_disputed_outlier()
+        after = tracker.get_roc_auc()
+        self.assertEqual(before, after)
+
+    def test_get_edge_decay_curve_excludes_disputed(self):
+        self._seed_baseline()
+        before = tracker.get_edge_decay_curve()
+        self._add_disputed_outlier()
+        after = tracker.get_edge_decay_curve()
+        self.assertEqual(before, after)
+
+    def test_get_model_calibration_buckets_excludes_disputed(self):
+        self._seed_baseline()
+        before = tracker.get_model_calibration_buckets()
+        self._add_disputed_outlier()
+        after = tracker.get_model_calibration_buckets()
+        self.assertEqual(before, after)
+
+    def test_get_brier_by_version_excludes_disputed(self):
+        self._seed_baseline()
+        before = tracker.get_brier_by_version(min_samples=1)
+        self._add_disputed_outlier()
+        after = tracker.get_brier_by_version(min_samples=1)
+        self.assertEqual(before, after)
+
+    def test_get_pnl_by_signal_source_excludes_disputed(self):
+        self._seed_baseline()
+        before = tracker.get_pnl_by_signal_source(min_samples=1)
+        self._add_disputed_outlier()
+        after = tracker.get_pnl_by_signal_source(min_samples=1)
+        self.assertEqual(before, after)
+
+    def test_get_analysis_bias_excludes_disputed(self):
+        for i in range(3):
+            ticker = f"AA-{i}"
+            tracker.log_analysis_attempt(
+                ticker, "NYC", "above", self._FUTURE, 0.6, 0.5, 10
+            )
+            tracker.log_outcome(ticker, i % 2)
+        before = tracker.get_analysis_bias()
+
+        d_ticker = "AA-DISPUTED"
+        tracker.log_analysis_attempt(
+            d_ticker, "NYC", "above", self._FUTURE, 1.0, 0.5, 10
+        )
+        tracker.log_outcome(d_ticker, 0)
+        tracker.mark_outcome_disputed(d_ticker)
+        after = tracker.get_analysis_bias()
+
+        self.assertEqual(before, after)
+
+    def test_get_edge_realization_by_city_excludes_disputed(self):
+        self._seed_baseline(n=25)
+        before = tracker.get_edge_realization_by_city()
+        self._add_disputed_outlier()
+        after = tracker.get_edge_realization_by_city()
+        self.assertEqual(before, after)
+
+
 class TestSyncOutcomesDatetimeFix(unittest.TestCase):
     """P0-13 — sync_outcomes must not crash on aware/naive datetime subtraction."""
 

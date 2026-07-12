@@ -188,6 +188,14 @@ _DEAD_CODE_ALLOWLIST: dict[tuple[str, str], str] = {
         "behavior change needing backtesting to confirm it actually improves "
         "calibration, not something to do blind"
     ),
+    ("tracker.py", "get_price_history"): (
+        "TESTED, NO PROD CALL SITE -- read accessor for the price_history "
+        "table added 2026-07-12 (candlestick capture, see backlog.txt). The "
+        "capture side ships now; the entry-timing/adverse-selection analysis "
+        "that would call this is explicitly deferred until the maker-"
+        "execution backlog work is picked up (candles only accumulate from "
+        "when capture ships, so there's nothing to analyze yet regardless)"
+    ),
 }
 
 

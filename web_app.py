@@ -472,6 +472,7 @@ def _build_app(client):
                 "get_optimal_threshold",
                 "get_analysis_bias",
                 "get_rolling_win_rate_ci",
+                "get_disputed_count",
             ):
                 try:
                     import tracker as _t

@@ -26,7 +26,7 @@ DB_PATH.parent.mkdir(exist_ok=True)
 
 _db_initialized = False
 
-_SCHEMA_VERSION = 38  # increment when _MIGRATIONS list grows
+_SCHEMA_VERSION = 39  # increment when _MIGRATIONS list grows
 
 _MIGRATIONS = [
     # v1 → v2: add condition_type column (if not already added)
@@ -200,6 +200,13 @@ _MIGRATIONS = [
     )""",
     "CREATE UNIQUE INDEX IF NOT EXISTS idx_price_history_dedup "
     "ON price_history(ticker, period_interval, end_period_ts)",
+    # v38 -> v39: disputed flag on outcomes -- set when audit_settlement() detects
+    # a mismatch between Kalshi's settled result and our archive data. Disputed
+    # rows are excluded from Brier/calibration/bias queries so a corrupted
+    # ground-truth label can't silently pollute calibration scoring. Restores a
+    # piece silently lost in the 24559a7 mystery-revert (see backlog.txt) --
+    # ported forward against the many calibration functions added since.
+    "ALTER TABLE outcomes ADD COLUMN disputed INTEGER DEFAULT 0",
 ]
 
 
@@ -741,6 +748,27 @@ def log_outcome(ticker: str, settled_yes: bool) -> bool:
     return result.rowcount > 0  # True = newly inserted; False = already existed
 
 
+def mark_outcome_disputed(ticker: str) -> None:
+    """Mark an outcome row as disputed (archive/Kalshi settlement mismatch).
+    Disputed rows are excluded from Brier scores and calibration training so a
+    corrupted ground-truth label can't silently pollute calibration scoring.
+    """
+    init_db()
+    try:
+        with _conn() as con:
+            con.execute("UPDATE outcomes SET disputed = 1 WHERE ticker = ?", (ticker,))
+    except Exception as exc:
+        _log.debug("mark_outcome_disputed: failed for %s: %s", ticker, exc)
+
+
+def get_disputed_count() -> int:
+    """Return the number of outcomes flagged as disputed (settlement audit mismatch)."""
+    init_db()
+    with _conn() as con:
+        row = con.execute("SELECT COUNT(*) FROM outcomes WHERE disputed = 1").fetchone()
+    return row[0] if row else 0
+
+
 def _candle_dollars(field: dict | None, key: str) -> float | None:
     """Parse a nullable fixed-point-dollar string (e.g. "0.55") from a
     candlestick sub-object (yes_bid/yes_ask/price) into a float."""
@@ -857,6 +885,7 @@ def get_bias(
             FROM multiday_predictions p
             JOIN outcomes o ON p.ticker = o.ticker
             WHERE p.our_prob IS NOT NULL
+              AND (o.disputed IS NULL OR o.disputed = 0)
         """
         params: list = []
         if city:
@@ -951,6 +980,7 @@ def get_quintile_bias(
             FROM multiday_predictions p
             JOIN outcomes o ON p.ticker = o.ticker
             WHERE p.our_prob IS NOT NULL
+              AND (o.disputed IS NULL OR o.disputed = 0)
               AND p.city IS NOT NULL
               AND p.our_prob >= ? AND p.our_prob < ?
         """
@@ -1023,6 +1053,7 @@ def get_brier_by_days_out() -> dict[str, float]:
             FROM predictions p
             JOIN outcomes o ON p.ticker = o.ticker
             WHERE p.our_prob IS NOT NULL AND p.days_out IS NOT NULL
+              AND (o.disputed IS NULL OR o.disputed = 0)
         """).fetchall()
 
     buckets: dict[str, list[float]] = {
@@ -1065,6 +1096,7 @@ def brier_score_by_method(min_samples: int = 20) -> dict[str, float]:
             FROM multiday_predictions p
             JOIN outcomes o ON p.ticker = o.ticker
             WHERE p.our_prob IS NOT NULL AND p.method IS NOT NULL
+              AND (o.disputed IS NULL OR o.disputed = 0)
         """).fetchall()
 
     by_method: dict[str, list] = {}
@@ -1094,6 +1126,7 @@ def brier_score_by_method_rolling(
             FROM multiday_predictions p
             JOIN outcomes o ON p.ticker = o.ticker
             WHERE p.our_prob IS NOT NULL AND p.method IS NOT NULL
+              AND (o.disputed IS NULL OR o.disputed = 0)
             ORDER BY o.settled_at DESC
         """).fetchall()
 
@@ -1128,6 +1161,7 @@ def get_component_attribution() -> dict[str, dict]:
             WHERE p.our_prob IS NOT NULL
               AND p.blend_sources IS NOT NULL
               AND o.settled_yes IS NOT NULL
+              AND (o.disputed IS NULL OR o.disputed = 0)
         """).fetchall()
 
     by_source: dict[str, list[float]] = {}
@@ -1184,6 +1218,7 @@ def brier_score(
             FROM {table} p
             JOIN outcomes o ON p.ticker = o.ticker
             WHERE p.our_prob IS NOT NULL
+              AND (o.disputed IS NULL OR o.disputed = 0)
         """
         params: list = []
         if city:
@@ -1279,6 +1314,7 @@ def brier_score_rolling_with_n(weeks: int = 3) -> tuple[float | None, int]:
             FROM multiday_predictions p
             JOIN outcomes o ON p.ticker = o.ticker
             WHERE p.our_prob IS NOT NULL
+              AND (o.disputed IS NULL OR o.disputed = 0)
               AND o.settled_at >= datetime('now', '-{days} days')
             """
         ).fetchall()
@@ -1323,6 +1359,7 @@ def get_rolling_win_rate(window: int = 20) -> tuple[float | None, int]:
             FROM multiday_predictions p
             JOIN outcomes o ON p.ticker = o.ticker
             WHERE p.our_prob IS NOT NULL
+              AND (o.disputed IS NULL OR o.disputed = 0)
             ORDER BY o.settled_at DESC
             LIMIT ?
             """,
@@ -1495,6 +1532,7 @@ def _get_recent_win_loss(window: int) -> tuple[int, int]:
             FROM multiday_predictions p
             JOIN outcomes o ON p.ticker = o.ticker
             WHERE p.our_prob IS NOT NULL
+              AND (o.disputed IS NULL OR o.disputed = 0)
             ORDER BY o.settled_at DESC
             LIMIT ?
             """,
@@ -1580,6 +1618,7 @@ def get_brier_by_tier(
             FROM multiday_predictions p
             JOIN outcomes o ON p.ticker = o.ticker
             WHERE p.our_prob IS NOT NULL AND p.edge IS NOT NULL
+              AND (o.disputed IS NULL OR o.disputed = 0)
             """
         ).fetchall()
 
@@ -1634,6 +1673,7 @@ def get_brier_over_time(weeks: int = 12, min_days_out: int = 1) -> list[dict]:
             JOIN outcomes o ON o.ticker = p.ticker
             WHERE p.predicted_at >= ?
               AND p.our_prob IS NOT NULL
+              AND (o.disputed IS NULL OR o.disputed = 0)
             GROUP BY week
             ORDER BY week
             """,
@@ -1656,6 +1696,7 @@ def brier_skill_score(city: str | None = None) -> float | None:
             FROM multiday_predictions p
             JOIN outcomes o ON p.ticker = o.ticker
             WHERE p.our_prob IS NOT NULL AND p.market_prob IS NOT NULL
+              AND (o.disputed IS NULL OR o.disputed = 0)
         """
         params: list = []
         if city:
@@ -1714,6 +1755,7 @@ def get_calibration_trend(weeks: int = 8) -> list[dict]:
             JOIN outcomes o ON p.ticker = o.ticker
             WHERE p.our_prob IS NOT NULL
               AND p.market_date IS NOT NULL
+              AND (o.disputed IS NULL OR o.disputed = 0)
             ORDER BY week ASC
         """).fetchall()
 
@@ -1752,6 +1794,7 @@ def get_calibration_by_city(
             FROM multiday_predictions p
             JOIN outcomes o ON p.ticker = o.ticker
             WHERE p.our_prob IS NOT NULL AND p.city IS NOT NULL
+              AND (o.disputed IS NULL OR o.disputed = 0)
         """
         params: list = []
         if condition_type is not None:
@@ -1789,6 +1832,7 @@ def get_calibration_by_season() -> dict[str, dict]:
             FROM multiday_predictions p
             JOIN outcomes o ON p.ticker = o.ticker
             WHERE p.our_prob IS NOT NULL AND p.market_date IS NOT NULL
+              AND (o.disputed IS NULL OR o.disputed = 0)
         """).fetchall()
 
     def _season(month: int) -> str:
@@ -1832,6 +1876,7 @@ def get_calibration_by_type() -> dict[str, dict]:
             FROM multiday_predictions p
             JOIN outcomes o ON p.ticker = o.ticker
             WHERE p.our_prob IS NOT NULL AND p.condition_type IS NOT NULL
+              AND (o.disputed IS NULL OR o.disputed = 0)
         """).fetchall()
 
     by_type: dict[str, list] = {}
@@ -1966,6 +2011,7 @@ def get_sameday_calibration() -> dict:
             JOIN outcomes o ON p.ticker = o.ticker
             WHERE p.our_prob IS NOT NULL
               AND o.settled_yes IS NOT NULL
+              AND (o.disputed IS NULL OR o.disputed = 0)
               AND p.days_out = 0
             ORDER BY p.predicted_at ASC
             """
@@ -2042,6 +2088,7 @@ def get_multiday_calibration_cli() -> dict:
             JOIN outcomes o ON p.ticker = o.ticker
             WHERE p.our_prob IS NOT NULL
               AND o.settled_yes IS NOT NULL
+              AND (o.disputed IS NULL OR o.disputed = 0)
               AND (p.condition_type IS NULL OR p.condition_type != 'between')
             """
         ).fetchall()
@@ -2073,6 +2120,7 @@ def get_sameday_calibration_cli() -> dict:
             JOIN outcomes o ON p.ticker = o.ticker
             WHERE p.our_prob IS NOT NULL
               AND o.settled_yes IS NOT NULL
+              AND (o.disputed IS NULL OR o.disputed = 0)
               AND p.days_out = 0
               AND (p.condition_type IS NULL OR p.condition_type != 'between')
             """
@@ -2470,6 +2518,7 @@ def audit_settlement(ticker: str, settled_yes: bool) -> bool:
                 threshold_desc,
                 cond_type,
             )
+            mark_outcome_disputed(ticker)
         else:
             _log.debug(
                 "settlement_audit OK %s — Kalshi=%s %s=%.1f°F",
@@ -3154,6 +3203,7 @@ def get_market_calibration(n_buckets: int = 10) -> dict:
             FROM predictions p
             JOIN outcomes o ON p.ticker = o.ticker
             WHERE p.market_prob IS NOT NULL
+              AND (o.disputed IS NULL OR o.disputed = 0)
             ORDER BY p.market_prob ASC
         """).fetchall()
 
@@ -3225,6 +3275,7 @@ def get_confusion_matrix(threshold: float = 0.5) -> dict:
             FROM multiday_predictions p
             JOIN outcomes o ON p.ticker = o.ticker
             WHERE p.our_prob IS NOT NULL
+              AND (o.disputed IS NULL OR o.disputed = 0)
         """).fetchall()
 
     if not rows:
@@ -3286,6 +3337,7 @@ def get_optimal_threshold() -> dict | None:
             FROM multiday_predictions p
             JOIN outcomes o ON p.ticker = o.ticker
             WHERE p.our_prob IS NOT NULL
+              AND (o.disputed IS NULL OR o.disputed = 0)
         """).fetchall()
 
     if len(rows) < 20:
@@ -3334,6 +3386,7 @@ def get_roc_auc() -> dict:
             FROM multiday_predictions p
             JOIN outcomes o ON p.ticker = o.ticker
             WHERE p.our_prob IS NOT NULL
+              AND (o.disputed IS NULL OR o.disputed = 0)
         """).fetchall()
 
     if len(rows) < 10:
@@ -3408,6 +3461,7 @@ def get_edge_decay_curve(condition_type: str | None = None) -> list[dict]:
             JOIN outcomes o ON p.ticker = o.ticker
             WHERE p.our_prob IS NOT NULL AND p.market_prob IS NOT NULL
               AND p.days_out IS NOT NULL
+              AND (o.disputed IS NULL OR o.disputed = 0)
         """
         params: list = []
         if condition_type is not None:
@@ -3620,6 +3674,7 @@ def get_model_calibration_buckets() -> dict:
             FROM multiday_predictions p
             JOIN outcomes o ON p.ticker = o.ticker
             WHERE p.our_prob IS NOT NULL
+              AND (o.disputed IS NULL OR o.disputed = 0)
         """).fetchall()
 
     if not rows:
@@ -3750,6 +3805,7 @@ def get_brier_by_version(min_samples: int = 10) -> dict[str, dict]:
             JOIN outcomes o ON p.ticker = o.ticker
             WHERE p.our_prob IS NOT NULL
               AND p.edge_calc_version IS NOT NULL
+              AND (o.disputed IS NULL OR o.disputed = 0)
         """).fetchall()
 
     by_version: dict[str, list[float]] = {}
@@ -3790,6 +3846,7 @@ def get_pnl_by_signal_source(min_samples: int = 10) -> dict[str, dict]:
             FROM multiday_predictions p
             JOIN outcomes o ON p.ticker = o.ticker
             WHERE p.our_prob IS NOT NULL
+              AND (o.disputed IS NULL OR o.disputed = 0)
             """
         ).fetchall()
 
@@ -4258,6 +4315,7 @@ def get_analysis_bias() -> float | None:
                 JOIN outcomes o ON a.ticker = o.ticker
                 WHERE a.forecast_prob IS NOT NULL
                   AND o.settled_yes IS NOT NULL
+                  AND (o.disputed IS NULL OR o.disputed = 0)
                 """
             ).fetchall()
     except Exception as exc:
@@ -4400,6 +4458,7 @@ def get_edge_realization_by_city() -> list[dict]:
             ) sub
             JOIN   outcomes o ON o.ticker = sub.ticker
             WHERE  sub.rn = 1
+              AND  (o.disputed IS NULL OR o.disputed = 0)
             GROUP  BY sub.city
             HAVING COUNT(*) >= 5
             ORDER  BY mean_edge DESC

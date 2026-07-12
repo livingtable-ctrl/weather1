@@ -71,11 +71,47 @@ When to revisit:
   - Before the Belgium trip ends (~2026-07-30) and live trading is
     considered for resumption. This is a hard prerequisite, not a nice-to-have.
 
-[MYSTERY REVERT -- COMMIT 24559a7 SILENTLY WIPED ~10 COMMITS OF CALIBRATION/
-  SAFETY WORK UNDER AN UNRELATED COMMIT MESSAGE]
+[PARTIALLY RESOLVED 2026-07-12] MYSTERY REVERT -- COMMIT 24559a7 SILENTLY
+  WIPED ~10 COMMITS OF CALIBRATION/SAFETY WORK UNDER AN UNRELATED COMMIT
+  MESSAGE
 Priority: Medium-High (a calibration-integrity safeguard has been silently
   missing for ~166 commits; not urgent since TRADING_PAUSED, but a real gap,
   not cosmetic)
+
+PARTIALLY RESOLVED 2026-07-12: piece 1 of the restoration priority list below,
+  disputed-outcome tracking, is done. Ported forward against current tracker.py
+  (not a mechanical port of 31c7226's tracker.py diff -- the schema has grown
+  from v23 to v38 since, with ~27 new calibration/Brier/bias/win-rate functions
+  added that all needed the same treatment the original only gave to 3).
+  Migration v38->v39 adds outcomes.disputed; mark_outcome_disputed()/
+  get_disputed_count() added; audit_settlement() calls mark_outcome_disputed()
+  on a genuine archive/Kalshi mismatch (matching the original). Surfaced a real
+  scope question to the user first -- reproduce the original's 3-function scope
+  faithfully, or audit and fix every current settled_yes-consuming function --
+  user chose the full audit. Traced every JOIN outcomes / o.settled_yes site in
+  tracker.py (33 total) and added disputed-row exclusion to all 30 that use
+  settled_yes as a calibration/scoring ground truth; left unchanged (with
+  reasoning, independently verified by the review below): the count_settled_*
+  sample-size gates (matches the original's own unfiltered get_settled_count()
+  precedent), get_history/get_outcome_for_ticker (display/lookup, not
+  aggregate), backfill_emos_data/get_emos_training_data/
+  get_recent_city_correlations (these train on settled_temp_f, the archived
+  actual temperature -- the trusted value a dispute is raised AGAINST, not the
+  suspect one), get_unselected_bias (different table, no disputed column), and
+  the ensemble_member_scores-based model-accuracy functions (unrelated table).
+  Also fixed two incidental dead-code-guard failures surfaced while running the
+  full test sweep (unrelated to this piece but caught along the way): wired
+  get_disputed_count() into web_app.py's /api/analytics dispatch, and
+  allowlisted get_price_history() (from the prior candlesticks-capture session)
+  with its own accurate deferred-consumer reason. ~380 lines of new tests
+  (mechanism, audit_settlement wiring both paths, and a before/after
+  disputed-exclusion test per touched function). Independently reviewed (Agent,
+  opus) -- came back clean; the reviewer additionally mutation-tested by
+  stripping all 30 filter lines from a scratch copy and confirming exactly 30
+  test failures, proving the tests genuinely catch a missing filter rather than
+  passing spuriously. Climate-derived sigma (piece 2) and the remaining lower-
+  priority pieces (piece 3) are still open -- see the priority list below,
+  unchanged from the original writeup.
 
 Problem:
   Found 2026-07-12 while investigating the LV/NOLA sigma backlog entry above.
