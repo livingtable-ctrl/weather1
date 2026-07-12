@@ -311,6 +311,90 @@ class TestLiveSettlement:
         assert summary["open_count"] == 1
         assert summary["settled_count"] == 2
 
+    def test_update_live_peak_profit_writes_value(self):
+        row_id = execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=1,
+            price=0.55,
+            status="filled",
+            live=True,
+        )
+        execution_log.update_live_peak_profit(row_id, 0.42)
+        with execution_log._conn() as con:
+            row = con.execute(
+                "SELECT peak_profit_pct FROM orders WHERE id = ?", (row_id,)
+            ).fetchone()
+        assert row["peak_profit_pct"] == pytest.approx(0.42)
+
+    def test_record_live_early_exit_leaves_outcome_yes_null(self):
+        """An early exit closes the position (settled_at set, excluded from
+        get_filled_unsettled_live_orders) but must not fabricate a market
+        outcome that never actually happened."""
+        row_id = execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=2,
+            price=0.55,
+            status="filled",
+            live=True,
+        )
+        execution_log.record_live_early_exit(row_id, 0.30, "stop_loss", -0.52)
+        with execution_log._conn() as con:
+            row = con.execute(
+                "SELECT settled_at, outcome_yes, exit_price, exit_reason, pnl "
+                "FROM orders WHERE id = ?",
+                (row_id,),
+            ).fetchone()
+        assert row["settled_at"] is not None
+        assert row["outcome_yes"] is None
+        assert row["exit_price"] == pytest.approx(0.30)
+        assert row["exit_reason"] == "stop_loss"
+        assert row["pnl"] == pytest.approx(-0.52)
+        # Closed positions must not still show up as open.
+        assert row_id not in [
+            o["id"] for o in execution_log.get_filled_unsettled_live_orders()
+        ]
+
+    def test_log_order_persists_entry_prob(self):
+        row_id = execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=1,
+            price=0.55,
+            status="filled",
+            live=True,
+            entry_prob=0.68,
+        )
+        with execution_log._conn() as con:
+            row = con.execute(
+                "SELECT entry_prob FROM orders WHERE id = ?", (row_id,)
+            ).fetchone()
+        assert row["entry_prob"] == pytest.approx(0.68)
+
+    def test_export_live_tax_csv_labels_early_exit_not_no(self):
+        """Regression: `\"yes\" if row[\"outcome_yes\"] else \"no\"` silently
+        wrote \"no\" for a NULL outcome_yes (None is falsy) -- a real early
+        exit would be mislabeled as a fabricated NO settlement in a tax CSV."""
+        row_id = execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=2,
+            price=0.55,
+            status="filled",
+            live=True,
+        )
+        execution_log.record_live_early_exit(row_id, 0.30, "stop_loss", -0.52)
+        out_path = str(Path(self._tmp.name).parent / "early_exit_tax.csv")
+        count = execution_log.export_live_tax_csv(out_path)
+        assert count == 1
+        import csv
+
+        with open(out_path, newline="") as f:
+            rows = list(csv.DictReader(f))
+        assert rows[0]["outcome"] == "early_exit"
+        assert rows[0]["outcome"] != "no"
+
 
 class TestWasOrderedRecentlyCanceledSpelling:
     """F8: was_ordered_recently() must exclude API-canceled orders.

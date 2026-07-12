@@ -1291,10 +1291,150 @@ Every "currently absent" claim below was verified against the code that day
 payoff within each group.
 ======================================================
 
-[RESTING EXIT ORDERS + OCO ORDER GROUPS]
-Priority: High (live risk-management hole, not just an optimization)
+[RESOLVED 2026-07-13] RESTING EXIT ORDERS + OCO ORDER GROUPS
+Priority: was High (live risk-management hole, not just an optimization)
 
-Problem:
+RESOLVED 2026-07-13: resolved as "event-driven protective exits," a
+  materially different design than the "OCO with a resting take-profit +
+  resting stop-loss" plan below -- two research findings during design
+  invalidated that plan's core mechanics, surfaced to and confirmed with the
+  user before writing any code:
+    1. Kalshi has no stop/conditional order type at all (confirmed directly
+       against Kalshi's own V2 create-order API docs -- time_in_force is
+       only fill_or_kill/good_till_canceled/immediate_or_cancel). A resting
+       LIMIT sell fills when price RISES to meet it -- the opposite of what
+       protects a falling position. A "resting stop-loss order" cannot work
+       mechanically; a real stop-loss must cross the spread immediately the
+       instant it triggers, not rest passively.
+    2. Take-profit isn't a real concept in this bot today. paper.py's
+       exit_target field (the take-profit price this plan assumed existed)
+       was found to be fully dead -- threaded through place_paper_order's
+       signature and checked by check_exit_targets(), but grepping every
+       real call site in the repo, none of them ever actually sets it. This
+       bot's actual exit strategy is 100% signal-triggered (price
+       stop-loss, breakeven-stop, model-flip/edge-gone), not a fixed price
+       target -- there was nothing to "rest a GTC sell at."
+  User chose (via AskUserQuestion) to build event-driven protective exits
+  only, explicitly declining to also invent a take-profit mechanism from
+  scratch: doing so would risk cutting winning trades short before their
+  statistical edge fully resolves (this bot trades multi-day probabilistic
+  edge, not price momentum), with no settled-trade volume yet to calibrate
+  a target against.
+
+  What shipped: live positions previously had ZERO automated exit
+  management of any kind (not "poll-based," genuinely none -- verified by
+  exhaustive grep: execution_log.py's orders table only ever transitioned a
+  filled live order through to natural Kalshi settlement, no live-position
+  tracker existed, and paper.py's check_stop_losses/check_breakeven_stops/
+  check_model_exits only ever operated on paper.get_open_trades()).
+  execution_log.py gained 4 columns (peak_profit_pct, exit_reason,
+  exit_price, entry_prob) + record_live_early_exit()/
+  update_live_peak_profit(); order_executor.py gained
+  _get_live_open_positions() (adapts execution_log rows into
+  check-function-compatible dicts), _update_live_peak_profits() (peak math
+  replicated from paper.update_peak_profits rather than calling it -- that
+  function ignores its own parameter and re-reads paper's own JSON store
+  internally, confirmed by an independent review reading its body),
+  _check_live_position_exits() (reuses paper.check_stop_losses()/
+  check_breakeven_stops() completely unmodified -- both verified
+  storage-agnostic, operating purely on their passed-in list), and
+  _check_live_model_exits() (mirrors the existing paper-only
+  _check_early_exits()'s exact gates -- 12h minimum hold, 24h
+  pre-settlement skip, 25pp forecast-shift threshold -- against live
+  positions instead). Every triggered exit fires via _exit_live_position():
+  an immediate_or_cancel sell at the guaranteed-cross price
+  (paper._liquidation_price, traced against kalshi_client's V2 side/price
+  mapping to confirm it actually crosses for both yes and no), re-running
+  only the kill-switch/trading-paused gate (not daily-loss/spend/
+  max-open-position -- closing a position reduces exposure, matching the
+  same reasoning already applied to _replace_live_order and the manual sell
+  path in main.py's cmd_order). Wired into both main.py's cmd_watch --live
+  loop and cron.py's _cmd_cron_body (right after the existing
+  _recover_pending_orders crash-recovery call) -- cron.py itself still
+  never places a live order (unrelated, pre-existing: only watch --auto
+  --live does), so this wiring exists to protect a position opened during
+  an earlier watch session that's still open when a later cron run fires,
+  not because cron can create new live exposure.
+
+  Deliberately deferred, not part of this resolution:
+    - A truly always-on watcher that reacts between cron cycles (closing
+      the multi-hour manual-cron-cadence gap this entry was originally
+      about) -- these checks still only run once per cmd_watch/cron cycle.
+      Discussed explicitly with the user: this is more an ops/deployment
+      question (does a travel laptop even stay on? systemd service on a
+      persistent host?) than application code, and there's no live position
+      to protect yet anyway (ENABLE_MICRO_LIVE=False). Tie this to whatever
+      comes of the separate "stop relying on local cron entirely" discussion
+      -- a small always-on VM would double as the natural host for this
+      watcher too.
+    - WS `fill`-channel wiring for faster fill detection -- deferred
+      alongside the watcher above, since the existing REST-based
+      _poll_pending_orders poll already covers what a periodic-check design
+      needs; the fill channel's real payoff only shows up once something
+      is actually always-on. Confirmed via a live docs fetch that the
+      channel is real, account-wide (no market_tickers filter required),
+      with fields order_id/market_ticker/side/action/count_fp/
+      yes_price_dollars/is_taker/ts_ms.
+    - order_groups as a fill-rate safety cap -- still just the 15s
+      rolling-window circuit breaker it was already corrected to be in the
+      2026-07-12 update below, not used anywhere in this design.
+    - Take-profit (see above -- declined, not just postponed, unless a
+      future session has real settled-trade data to design one from).
+
+  Two independent opus reviews given this is the only backlog item this
+  session that adds NEW live order-placement code (not modifying existing
+  paths). Round 1 (adversarial) found one real HIGH bug: the exit-price
+  lookup read _get_current_book()'s REST-fallback shape (raw integer cents,
+  or *_dollars-only keys) as if it were already a normalized dollar float --
+  meaning stop-loss/breakeven protection would silently never fire on
+  exactly the cron path this feature was built for (a fresh process always
+  starts with an empty WS cache, so every cron run hits the REST fallback).
+  Fixed by routing through the same _coalesce_cents_or_dollars helper the
+  sibling model-exit check and pre-existing reprice code already used
+  correctly. Also caught and fixed a real fee-formula inconsistency:
+  the exit PnL calc applied the taker fee to gross proceeds unconditionally
+  including on a loss, diverging from the established convention (fee only
+  discounts a genuine WIN, verified across weather_markets.py/paper.py and
+  the pre-existing natural-settlement code) -- fixed to the win/loss
+  asymmetric form, independently re-derived as an exact generalization of
+  the existing settlement formula (substituting exit_price=1.0 or 0.0
+  reproduces the original win/loss branches exactly). Round 2 (verification)
+  confirmed both fixes correct and complete, added a regression test using
+  the genuine raw-cents shape (not another disguised dollar-float mock),
+  and found one new narrow LOW issue -- multiple live positions sharing one
+  ticker would collapse to one entry in a ticker-keyed dict, silently
+  leaving the other unprotected for a cycle -- inherited from paper.py's
+  own ticker-keyed check-function design (cron.py's paper stop-loss/
+  breakeven handling has the identical `next(t for t in trades if
+  t["ticker"]==ticker)` one-match pattern already live in production, so
+  this was fixed narrowly in order_executor.py only rather than touching
+  the shared, already-relied-upon paper.py functions): positions are now
+  grouped by ticker (list per ticker, not one dict slot), and every
+  position under a flagged ticker is exited, not just one -- erring toward
+  over-inclusive (a healthy same-ticker position exits a cycle earlier than
+  its own individual threshold required) rather than the failure mode this
+  whole entry exists to prevent (a position silently left unprotected).
+  118+ tests pass across the affected scope; ruff/mypy clean.
+
+  Also fixed the same day, found while running the broader regression
+  sweep (confirmed via git stash it failed identically on the prior commit
+  with none of this session's changes applied, so genuinely unrelated to
+  this backlog item): tests/test_paper.py's
+  TestMonteCarloCholesky::test_past_date_trade_excluded_from_simulation was
+  failing -- root cause was the TEST, not monte_carlo.py itself. It built
+  its "past"/"future" fixture dates from local machine date.today(), but
+  simulate_portfolio()'s actual skip logic compares against
+  utils.utc_today(). On a machine whose local date is already a day ahead
+  of UTC, "yesterday, local" lands on the same calendar day as "today,
+  UTC" -- the skip condition (`_tdate < utc_today()`) never fires, and the
+  trade wrongly falls through into the clamping path the test was trying
+  to prove it never reaches. Fixed both this test and its sibling
+  (test_past_date_only_portfolio_returns_empty_result, same pattern, not
+  yet failing only because its 2-day margin happened to still clear the
+  gap) to build fixture dates from utils.utc_today() instead, matching the
+  System Under Test's actual reference frame.
+
+Problem (original framing, superseded by the resolution above):
   All exits are poll-based: check_exit_targets()/check_model_exits()/
   stop-losses only run when a cron or watch cycle happens to execute. On a
   manual-cron cadence (e.g. ~3 runs/day during the Belgium trip) an open
@@ -1367,16 +1507,10 @@ What the fix looks like:
   kalshi_client.py's place_order/cancel_order) -- build any new order-group
   logic on top of that V2 path, not the old deprecated one.
 
-Why not now:
-  - Live order placement has never been exercised in production yet
-    (ENABLE_MICRO_LIVE=False); paper mode gets no benefit since paper exits
-    are inherently poll-simulated anyway.
-  - Needs the order-group API surface added to kalshi_client.py + lifecycle
-    handling (partial fills across a group, group cancel on settlement).
+Why not now: N/A -- resolved (as event-driven protective exits, see above).
 
-When to revisit:
-  - Before or at live/micro-live activation — this should arguably be a
-    prerequisite for unattended live trading, not a follow-up.
+When to revisit: N/A -- resolved. See the deliberately-deferred list above
+  (always-on watcher, WS fill channel, take-profit) for what's still open.
 
 [RESOLVED 2026-07-12] MAKER EXECUTION UPGRADES — REPRICING + MAKER-AWARE
   FEE MODEL

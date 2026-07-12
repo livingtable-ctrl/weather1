@@ -1500,12 +1500,19 @@ class TestMonteCarloCholesky:
 
     def test_past_date_trade_excluded_from_simulation(self):
         """Trades whose target_date is in the past are skipped — no forward risk."""
-        from datetime import date, timedelta
+        from datetime import timedelta
 
         from monte_carlo import simulate_portfolio
+        from utils import utc_today
 
-        past = (date.today() - timedelta(days=1)).isoformat()
-        future = (date.today() + timedelta(days=1)).isoformat()
+        # simulate_portfolio compares target_date against utils.utc_today(),
+        # not local wall-clock date — using local date.today() here can
+        # silently disagree with it (e.g. local date already a day ahead of
+        # UTC makes "yesterday, local" equal today in UTC, so the skip never
+        # fires and the trade wrongly falls through to the clamping path).
+        today = utc_today()
+        past = (today - timedelta(days=1)).isoformat()
+        future = (today + timedelta(days=1)).isoformat()
 
         stale_trade = {
             "ticker": "KXSTALE-PAST",
@@ -1540,11 +1547,14 @@ class TestMonteCarloCholesky:
 
     def test_past_date_only_portfolio_returns_empty_result(self):
         """All-stale portfolio skips every trade and returns the zero-position result."""
-        from datetime import date, timedelta
+        from datetime import timedelta
 
         from monte_carlo import simulate_portfolio
+        from utils import utc_today
 
-        past = (date.today() - timedelta(days=2)).isoformat()
+        # See test_past_date_trade_excluded_from_simulation's comment above —
+        # must compare against the same UTC reference simulate_portfolio uses.
+        past = (utc_today() - timedelta(days=2)).isoformat()
         stale = {
             "ticker": "KXSTALE",
             "side": "yes",

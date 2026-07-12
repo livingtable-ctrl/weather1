@@ -62,6 +62,8 @@ from notify import alert_strong_signal
 from order_executor import (  # noqa: F401 — re-exports: tests + main code reference these via main.*
     _auto_place_trades,
     _check_early_exits,
+    _check_live_model_exits,
+    _check_live_position_exits,
     _count_open_live_orders,  # noqa: F401
     _current_forecast_cycle,
     _daily_paper_spend,
@@ -2876,6 +2878,10 @@ def cmd_watch(
                 _reprice_or_cancel_pending_orders(
                     client, config=live_cfg, liquid_opps=liquid_opps
                 )
+                # Live position protection — must run after the two calls
+                # above so a just-filled order is already visible.
+                _check_live_position_exits(client, config=live_cfg)
+                _check_live_model_exits(client, config=live_cfg)
             # Check price alerts
             try:
                 from alerts import check_alerts, mark_triggered

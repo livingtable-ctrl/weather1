@@ -748,6 +748,25 @@ def _cmd_cron_body(
         except Exception as _rpo_exc:
             _log.warning("cmd_cron: _recover_pending_orders failed: %s", _rpo_exc)
 
+        # Protect any live position still open from an earlier watch/live
+        # session -- cron.py itself never places live orders (see
+        # backlog.txt's [RESTING EXIT ORDERS + OCO...] entry), but a
+        # position opened during a prior `watch --auto --live` run can still
+        # be open when a later cron run fires, and previously got zero
+        # automated exit management here.
+        try:
+            from order_executor import (
+                _check_live_model_exits,
+                _check_live_position_exits,
+            )
+
+            _check_live_position_exits(client)
+            _check_live_model_exits(client)
+        except Exception as _live_exit_exc:
+            _log.warning(
+                "cmd_cron: live position protection failed: %s", _live_exit_exc
+            )
+
     # Phase 1 — surface prolonged Open-Meteo outages immediately
     try:
         ctx.check_ensemble_circuit_health()

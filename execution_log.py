@@ -85,7 +85,11 @@ def init_log() -> None:
                 close_time     TEXT,              -- market close_time ISO string; used for pre-close GTC cancel
                 filled_at      TEXT,              -- ISO timestamp when a fill was first detected
                 market_mid_at_fill REAL,           -- market mid-price at the moment of that detection
-                replaces_order_id INTEGER          -- id of the order row this one cancel-replaced, if any
+                replaces_order_id INTEGER,         -- id of the order row this one cancel-replaced, if any
+                peak_profit_pct REAL,              -- running peak unrealized-profit fraction (breakeven-stop)
+                exit_reason    TEXT,               -- "stop_loss"/"breakeven"/"model_exit" if closed early; NULL for natural settlement
+                exit_price     REAL,               -- realized exit price if closed early (NULL for natural settlement)
+                entry_prob     REAL                -- analyze_trade()'s forecast_prob at placement time (model-exit shift detection)
             );
 
             CREATE INDEX IF NOT EXISTS idx_orders_ticker    ON orders(ticker, placed_at);
@@ -112,6 +116,10 @@ def init_log() -> None:
             "ALTER TABLE orders ADD COLUMN filled_at TEXT",
             "ALTER TABLE orders ADD COLUMN market_mid_at_fill REAL",
             "ALTER TABLE orders ADD COLUMN replaces_order_id INTEGER",
+            "ALTER TABLE orders ADD COLUMN peak_profit_pct REAL",
+            "ALTER TABLE orders ADD COLUMN exit_reason TEXT",
+            "ALTER TABLE orders ADD COLUMN exit_price REAL",
+            "ALTER TABLE orders ADD COLUMN entry_prob REAL",
         ]
         with _conn() as con:
             for stmt in migrations:
@@ -138,6 +146,7 @@ def log_order(
     live: bool = False,
     close_time: str | None = None,
     replaces_order_id: int | None = None,
+    entry_prob: float | None = None,
 ) -> int:
     """
     Record a live order attempt. Returns the new row ID.
@@ -146,6 +155,12 @@ def log_order(
     replaces_order_id: id of the order row this one cancel-replaced (reprice
     or taker-cross), if any — links the chain for fill-latency/price-drift
     analysis. None for a fresh (non-reprice) placement.
+
+    entry_prob: analyze_trade()'s forecast_prob at placement time, used by
+    the live model-exit check to detect a meaningful forecast reversal
+    against the held position (mirrors paper.py's place_paper_order
+    entry_prob field). None for a replacement/reprice order — the position's
+    entry_prob was already captured on the original placement it replaces.
     """
     init_log()
     with _conn() as con:
@@ -154,8 +169,8 @@ def log_order(
             INSERT INTO orders
               (ticker, side, quantity, price, order_type, status, response, error,
                placed_at, fill_quantity, error_code, error_type, forecast_cycle, live,
-               close_time, replaces_order_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+               close_time, replaces_order_id, entry_prob)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 ticker,
@@ -174,6 +189,7 @@ def log_order(
                 int(live),
                 close_time,
                 replaces_order_id,
+                entry_prob,
             ),
         )
         return cur.lastrowid or 0
@@ -493,6 +509,43 @@ def record_live_settlement(order_id: int, outcome_yes: bool, pnl: float) -> None
         )
 
 
+def update_live_peak_profit(order_id: int, peak_profit_pct: float) -> None:
+    """Record a new peak unrealized-profit fraction for an open live position
+    (mirrors paper.py's peak_profit_pct tracking, used by the breakeven-stop
+    check). Caller is responsible for only calling this when the new value is
+    actually higher than the stored one -- this just writes whatever it's given.
+    """
+    init_log()
+    with _conn() as con:
+        con.execute(
+            "UPDATE orders SET peak_profit_pct = ? WHERE id = ?",
+            (peak_profit_pct, order_id),
+        )
+
+
+def record_live_early_exit(
+    order_id: int, exit_price: float, exit_reason: str, pnl: float
+) -> None:
+    """Mark an open live position closed via an early protective exit
+    (stop-loss/breakeven/model-exit), as opposed to natural market
+    settlement. Sets settled_at (so get_filled_unsettled_live_orders() stops
+    treating this row as open) but deliberately leaves outcome_yes NULL --
+    the underlying market hasn't actually resolved yet, we just closed our
+    own position early; there is no real "yes won" / "no won" fact to record
+    here. pnl is the realized net P&L (already fee-adjusted) from this exit.
+    """
+    init_log()
+    with _conn() as con:
+        con.execute(
+            """
+            UPDATE orders
+            SET settled_at = ?, exit_price = ?, exit_reason = ?, pnl = ?
+            WHERE id = ?
+            """,
+            (datetime.now(UTC).isoformat(), exit_price, exit_reason, pnl, order_id),
+        )
+
+
 def export_live_tax_csv(path: str, tax_year: int | None = None) -> int:
     """Export settled live orders to CSV for tax reporting.
 
@@ -544,6 +597,16 @@ def export_live_tax_csv(path: str, tax_year: int | None = None) -> int:
             ]
         )
         for row in rows:
+            # outcome_yes is NULL for a row closed via an early protective
+            # exit (record_live_early_exit) -- the market never actually
+            # resolved, so "yes"/"no" would misreport a real outcome that
+            # doesn't exist. `if row["outcome_yes"] else "no"` would silently
+            # write "no" here (None is falsy), reporting a fabricated result
+            # on a real tax-relevant realized gain/loss.
+            if row["outcome_yes"] is None:
+                outcome = "early_exit"
+            else:
+                outcome = "yes" if row["outcome_yes"] else "no"
             writer.writerow(
                 [
                     row["placed_at"][:10],
@@ -551,7 +614,7 @@ def export_live_tax_csv(path: str, tax_year: int | None = None) -> int:
                     row["side"],
                     row["quantity"],
                     row["price"],
-                    "yes" if row["outcome_yes"] else "no",
+                    outcome,
                     row["pnl"],
                     row["settled_at"],
                 ]

@@ -931,6 +931,407 @@ def _reprice_or_cancel_pending_orders(
             )
 
 
+# ---------------------------------------------------------------------------
+# Live position protection — stop-loss / breakeven-stop / model-exit
+#
+# Kalshi has no stop or conditional order type (confirmed against the V2
+# create-order API docs -- time_in_force is only fill_or_kill/
+# good_till_canceled/immediate_or_cancel). A resting limit sell order fills
+# when price RISES to meet it, which is the opposite of what protects a
+# falling position -- so a triggered exit here always crosses the spread
+# immediately (immediate_or_cancel) to guarantee the fill rather than resting
+# passively at a price that would never be reached. See backlog.txt's
+# [RESTING EXIT ORDERS + OCO ORDER GROUPS] entry for the full reasoning.
+#
+# Scope of this pass: checks run once per cmd_watch/cron cycle (not
+# WS-tick-triggered) -- a genuinely always-on watcher that reacts between
+# cycles (closing the multi-hour manual-cron-cadence gap this backlog item
+# was originally about) is deliberately deferred as a separate follow-up;
+# this still closes the larger gap, which is that live positions had *zero*
+# automated exit management of any kind before this.
+# ---------------------------------------------------------------------------
+
+
+def _get_live_open_positions() -> list[dict]:
+    """Build check_stop_losses()/check_breakeven_stops()-compatible dicts
+    from execution_log's filled-unsettled live orders.
+
+    paper.check_stop_losses() and paper.check_breakeven_stops() both already
+    operate on a plain list[dict] parameter with no coupling to paper's own
+    JSON store (verified by reading both bodies), so they're reused
+    unmodified below -- only this adapter, the peak-profit persistence, and
+    the actual exit execution are new for live positions.
+    """
+    rows = execution_log.get_filled_unsettled_live_orders()
+    positions = []
+    for r in rows:
+        qty = r.get("fill_quantity") or r.get("quantity")
+        entry_price = r.get("price")
+        if not qty or entry_price is None:
+            continue
+        positions.append(
+            {
+                "id": r["id"],
+                "ticker": r["ticker"],
+                "side": r.get("side", "yes"),
+                "entry_price": entry_price,
+                "quantity": qty,
+                "cost": round(entry_price * qty, 4),
+                "close_time": r.get("close_time"),
+                "peak_profit_pct": r.get("peak_profit_pct"),
+                "entry_prob": r.get("entry_prob"),
+                # filled_at (when the position actually opened) is the correct
+                # analog of paper's entered_at for the 12h minimum-hold gates
+                # below -- a GTC entry order can rest a while before filling,
+                # so placed_at would understate how long the position itself
+                # has actually been held. Falls back to placed_at only for
+                # rows logged before filled_at existed.
+                "entered_at": r.get("filled_at") or r.get("placed_at"),
+                "settled": False,
+            }
+        )
+    return positions
+
+
+def _update_live_peak_profits(
+    positions: list[dict], current_prices: dict[str, dict[str, float]]
+) -> None:
+    """Live equivalent of paper.update_peak_profits(). That function ignores
+    its own open_trades parameter and re-reads paper's JSON store internally
+    (verified by reading its body), so it cannot be reused here directly --
+    this replicates just its peak-tracking math against execution_log-backed
+    positions instead, and updates each position dict in place so the
+    breakeven-stop check immediately below sees the fresh peak.
+    """
+    from paper import _liquidation_price
+
+    for pos in positions:
+        cost = pos.get("cost", 0)
+        qty = pos.get("quantity", 0)
+        if cost <= 0 or qty <= 0:
+            continue
+        current_price = _liquidation_price(current_prices, pos["ticker"], pos["side"])
+        if current_price is None:
+            continue
+        unrealized_profit_pct = (current_price - pos["entry_price"]) * qty / cost
+        stored_peak = pos.get("peak_profit_pct")
+        if stored_peak is None or unrealized_profit_pct > stored_peak:
+            rounded = round(unrealized_profit_pct, 4)
+            execution_log.update_live_peak_profit(pos["id"], rounded)
+            pos["peak_profit_pct"] = rounded
+
+
+def _exit_live_position(
+    client, position: dict, exit_price: float, reason: str, cycle: str
+) -> bool:
+    """Place an immediate taker-cross sell to close an open live position.
+
+    Re-runs only the kill-switch/trading-paused gate -- closing an existing
+    position reduces exposure, so this is deliberately NOT subject to the
+    daily-loss/spend/max-open-position gates (same reasoning already applied
+    to _replace_live_order and the manual sell path in main.py's cmd_order:
+    those gates size NEW exposure, and blocking an exit is exactly backwards
+    when the account already holds a position that needs to close).
+
+    Scope note on partial fills: an immediate_or_cancel order can legally
+    partial-fill (match what's immediately available, cancel the rest). This
+    function only treats the position as closed when the full requested
+    quantity fills. A genuine partial fill (0 < fill_count < quantity) is
+    logged at ERROR (not just retried silently) but NOT reconciled here --
+    handling it correctly requires reducing the original position's tracked
+    quantity by exactly the filled amount, which is real additional
+    bookkeeping deliberately left as a follow-up given ENABLE_MICRO_LIVE is
+    False today (no live position exists yet for this gap to affect).
+    """
+    from trading_gates import pre_live_trade_check
+
+    ticker = position["ticker"]
+    side = position["side"]
+    qty = position["quantity"]
+
+    try:
+        pre_live_trade_check(client)
+    except RuntimeError as _gate_err:
+        _log.warning("[LiveExit] Gate blocked exit for %s: %s", ticker, _gate_err)
+        return False
+
+    log_id = execution_log.log_order(
+        ticker=ticker,
+        side=side,
+        quantity=qty,
+        price=exit_price,
+        order_type="market",
+        status="pending",
+        forecast_cycle=cycle,
+        live=True,
+        close_time=position.get("close_time"),
+    )
+    try:
+        response = client.place_order(
+            ticker=ticker,
+            side=side,
+            action="sell",
+            count=qty,
+            price=exit_price,
+            time_in_force="immediate_or_cancel",
+            cycle=cycle,
+        )
+    except Exception as exc:
+        execution_log.log_order_result(log_id, status="failed", error=str(exc))
+        _log.warning("[LiveExit] Exit order failed for %s: %s", ticker, exc)
+        return False
+
+    # place_order()'s response is already the full get_order()-shaped dict
+    # (it internally calls get_order() as a follow-up -- see its docstring),
+    # and an IOC order's fate is final by the time that follow-up completes
+    # (it either matched immediately or the unmatched remainder was
+    # auto-canceled by the exchange) -- no separate poll needed here.
+    fill_count = _to_fill_count(response.get("fill_count_fp")) if response else 0
+
+    if not fill_count:
+        execution_log.log_order_result(log_id, status="canceled", response=response)
+        _log.warning(
+            "[LiveExit] %s: IOC exit order did not fill (illiquid market?) — "
+            "position remains open, will retry next cycle",
+            ticker,
+        )
+        return False
+
+    if fill_count < qty:
+        execution_log.log_order_result(
+            log_id, status="filled", response=response, fill_quantity=fill_count
+        )
+        _log.error(
+            "[LiveExit] %s: IOC exit PARTIALLY filled (%d/%d) — position "
+            "quantity not yet reconciled, see _exit_live_position's partial-"
+            "fill scope note. Manual review needed.",
+            ticker,
+            fill_count,
+            qty,
+        )
+        return False
+
+    execution_log.log_order_result(
+        log_id, status="filled", response=response, fill_quantity=fill_count
+    )
+
+    entry_price = position["entry_price"]
+    from utils import KALSHI_FEE_RATE
+
+    # This is a direct generalization of _poll_pending_orders' natural-
+    # settlement formula (settlement is just the exit_price=1 or 0 special
+    # case): fee only discounts a genuine GAIN (winnings), never applied to
+    # a loss -- matching the established convention verified across
+    # weather_markets.py/paper.py/order_executor.py (fee applies to
+    # (1-entry_price) winnings, not to gross proceeds unconditionally). A
+    # stop-loss/breakeven exit realizes a loss in the overwhelming common
+    # case, so this matters: a proceeds*(1-fee) formula would overcharge fee
+    # on every losing exit instead of correctly charging $0 fee on it. The
+    # entry side already paid $0 (always a resting maker order), so only
+    # this exit fill's fee applies.
+    gross_pnl = qty * (exit_price - entry_price)
+    pnl = round(gross_pnl * (1 - KALSHI_FEE_RATE) if gross_pnl > 0 else gross_pnl, 4)
+    execution_log.record_live_early_exit(position["id"], exit_price, reason, pnl)
+    execution_log.add_live_loss(-pnl)
+    _log.info(
+        "[LiveExit] %s: exited via %s @ %.2f (pnl=%.2f)",
+        ticker,
+        reason,
+        exit_price,
+        pnl,
+    )
+    return True
+
+
+def _check_live_position_exits(client, config: dict | None = None) -> None:
+    """Protect open live positions with stop-loss and breakeven-stop checks,
+    reusing paper.check_stop_losses()/check_breakeven_stops() unmodified.
+
+    Must run AFTER _poll_pending_orders in the same cycle so a just-filled
+    order is already visible via get_filled_unsettled_live_orders().
+    """
+    from paper import _liquidation_price, check_breakeven_stops, check_stop_losses
+
+    positions = _get_live_open_positions()
+    if not positions:
+        return
+
+    cycle = _current_forecast_cycle()
+    current_prices: dict[str, dict[str, float]] = {}
+    for pos in positions:
+        book = _get_current_book(client, pos["ticker"])
+        if book:
+            # _get_current_book's WS-cache hit is already dollar floats, but
+            # its REST fallback returns the raw client.get_market() dict
+            # unchanged (integer cents, or only *_dollars keys present) --
+            # _coalesce_cents_or_dollars normalizes either shape, matching
+            # how every other _get_current_book caller in this file already
+            # handles it (see _reprice_or_cancel_pending_orders below).
+            current_prices[pos["ticker"]] = {
+                "bid": _coalesce_cents_or_dollars(book, "yes_bid", "yes_bid_dollars"),
+                "ask": _coalesce_cents_or_dollars(book, "yes_ask", "yes_ask_dollars"),
+            }
+
+    _update_live_peak_profits(positions, current_prices)
+
+    # Grouped by ticker (a list per ticker, not one dict slot) -- two
+    # separate open live positions can legally share a ticker (two distinct
+    # fills before either settles). check_stop_losses()/check_breakeven_stops()
+    # only ever return ticker strings, not position identifiers, so a flagged
+    # ticker can't be resolved back to exactly which same-ticker position(s)
+    # individually breached. Erring toward exiting every position on a
+    # flagged ticker (rather than picking just one) is the safe direction for
+    # a protective mechanism -- the failure mode being guarded against is a
+    # position silently left with zero protection, not a position closing a
+    # cycle earlier than its own individual threshold strictly required.
+    by_ticker: dict[str, list[dict]] = {}
+    for pos in positions:
+        by_ticker.setdefault(pos["ticker"], []).append(pos)
+
+    sl_tickers = set(check_stop_losses(positions, current_prices))
+    for ticker in sl_tickers:
+        for target_pos in by_ticker.get(ticker, []):
+            exit_price = _liquidation_price(current_prices, ticker, target_pos["side"])
+            if exit_price is None:
+                exit_price = target_pos["entry_price"]
+            _exit_live_position(client, target_pos, exit_price, "stop_loss", cycle)
+
+    # Reload — a stop-loss exit above must not also be considered for a
+    # breakeven exit on the same cycle (already closed or exit attempted).
+    remaining = [p for p in positions if p["ticker"] not in sl_tickers]
+    be_tickers = set(check_breakeven_stops(remaining, current_prices))
+    for ticker in be_tickers:
+        # ticker-level exclusion above means a ticker can never appear in
+        # both sl_tickers and be_tickers -- every position by_ticker[ticker]
+        # returns here was genuinely part of `remaining`.
+        for target_pos in by_ticker.get(ticker, []):
+            exit_price = _liquidation_price(current_prices, ticker, target_pos["side"])
+            if exit_price is None:
+                exit_price = target_pos["entry_price"]
+            _exit_live_position(client, target_pos, exit_price, "breakeven", cycle)
+
+
+def _check_live_model_exits(client, config: dict | None = None) -> int:
+    """Live equivalent of _check_early_exits (paper-only, above): re-analyze
+    each open live position and close it if the model's probability has
+    shifted meaningfully against the entry direction. Mirrors that
+    function's exact gates (12h minimum hold, 24h pre-settlement skip, 25pp
+    shift threshold) for consistency. Kept as a separate function rather
+    than extending _check_early_exits itself, to avoid any risk of
+    regressing the existing, already-relied-on paper-only path.
+
+    Positions with entry_prob=None (placed before that field existed, or a
+    reprice/replacement row) are skipped, same as _check_early_exits does
+    for paper trades missing entry_prob.
+    """
+    if client is None:
+        return 0
+
+    positions = _get_live_open_positions()
+    if not positions:
+        return 0
+
+    markets = get_weather_markets(client)
+    markets_by_ticker = {m["ticker"]: m for m in markets}
+    cycle = _current_forecast_cycle()
+
+    from paper import _liquidation_price
+
+    closed = 0
+    for pos in positions:
+        ticker = pos["ticker"]
+        entry_prob = pos.get("entry_prob")
+        side = pos.get("side", "yes")
+        if entry_prob is None:
+            continue
+
+        try:
+            market = markets_by_ticker.get(ticker)
+            if not market:
+                continue  # market may have closed already
+            enriched = enrich_with_forecast(market)
+            analysis = analyze_trade(enriched)
+            if not analysis:
+                continue
+            current_prob = analysis.get("forecast_prob", entry_prob)
+
+            if side == "yes":
+                shift = entry_prob - current_prob
+            else:
+                shift = current_prob - entry_prob
+
+            entered_at_str = pos.get("entered_at", "")
+            if entered_at_str:
+                try:
+                    entered_dt = datetime.fromisoformat(
+                        entered_at_str.replace("Z", "+00:00")
+                    )
+                    if entered_dt.tzinfo is None:
+                        entered_dt = entered_dt.replace(tzinfo=UTC)
+                    hours_held = (datetime.now(UTC) - entered_dt).total_seconds() / 3600
+                    if hours_held < 12:
+                        continue
+                except (ValueError, TypeError):
+                    pass
+
+            close_time_str = pos.get("close_time")
+            if not close_time_str:
+                _log.warning(
+                    "[LiveModelExit] skipping %s — close_time missing, "
+                    "cannot apply 24h gate",
+                    ticker,
+                )
+                continue
+            try:
+                close_dt = datetime.fromisoformat(close_time_str.replace("Z", "+00:00"))
+                hours_to_settlement = (
+                    close_dt - datetime.now(UTC)
+                ).total_seconds() / 3600
+                if hours_to_settlement < 24:
+                    continue
+            except (ValueError, TypeError):
+                _log.warning(
+                    "[LiveModelExit] skipping %s — close_time unparseable: %s",
+                    ticker,
+                    close_time_str,
+                )
+                continue
+
+            if shift > 0.25:
+                book = _get_current_book(client, ticker) or market
+                current_prices = {
+                    ticker: {
+                        "bid": _coalesce_cents_or_dollars(
+                            book, "yes_bid", "yes_bid_dollars"
+                        ),
+                        "ask": _coalesce_cents_or_dollars(
+                            book, "yes_ask", "yes_ask_dollars"
+                        ),
+                    }
+                }
+                exit_price = _liquidation_price(current_prices, ticker, side)
+                if exit_price is None or exit_price <= 0:
+                    _log.debug(
+                        "[LiveModelExit] skip %s — could not compute exit price",
+                        ticker,
+                    )
+                    continue
+                if _exit_live_position(client, pos, exit_price, "model_exit", cycle):
+                    _log.info(
+                        "[LiveModelExit] %s %s closed: entry_prob=%.2f current=%.2f",
+                        ticker,
+                        side.upper(),
+                        entry_prob,
+                        current_prob,
+                    )
+                    closed += 1
+        except Exception as exc:
+            _log.warning("[LiveModelExit] Error checking %s: %s", ticker, exc)
+            continue
+
+    return closed
+
+
 def _micro_live_gate_ok(client=None) -> bool:
     """Bool wrapper around trading_gates.pre_live_trade_check() for the
     micro-live if/elif chain, which the full-live path in _place_live_order()
@@ -1046,6 +1447,7 @@ def _place_live_order(
         forecast_cycle=cycle,
         live=True,
         close_time=market.get("close_time") or market.get("expiration_time"),
+        entry_prob=analysis.get("forecast_prob"),
     )
 
     # 6. Place order

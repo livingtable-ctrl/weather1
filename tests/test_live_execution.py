@@ -2290,3 +2290,718 @@ class TestRepriceOrCancelPendingOrders:
         rows = execution_log.get_recent_orders(limit=10)
         assert rows[0]["status"] == "filled"
         assert rows[0]["fill_quantity"] == 5
+
+
+class _LiveDBTestBase:
+    """Shared execution_log DB isolation for the live-position-protection
+    test classes below, matching the pattern used by every other class in
+    this file."""
+
+    def setup_method(self):
+        import tempfile
+        from pathlib import Path
+
+        import execution_log
+
+        self._tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+        execution_log.DB_PATH = Path(self._tmp.name)
+        execution_log._initialized = False
+
+    def teardown_method(self):
+        import gc
+        from pathlib import Path
+
+        import execution_log
+
+        execution_log._initialized = False
+        self._tmp.close()
+        gc.collect()
+        Path(self._tmp.name).unlink(missing_ok=True)
+
+
+class TestGetLiveOpenPositions(_LiveDBTestBase):
+    def test_builds_check_function_compatible_dicts(self):
+        import execution_log
+        from order_executor import _get_live_open_positions
+
+        row_id = execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=10,
+            price=0.40,
+            status="filled",
+            live=True,
+            close_time="2026-05-16T12:00:00+00:00",
+            entry_prob=0.62,
+        )
+        execution_log.log_order_result(row_id, status="filled", fill_quantity=10)
+
+        positions = _get_live_open_positions()
+        assert len(positions) == 1
+        pos = positions[0]
+        assert pos["ticker"] == "KXHIGH-25MAY15-T75"
+        assert pos["side"] == "yes"
+        assert pos["entry_price"] == pytest.approx(0.40)
+        assert pos["quantity"] == 10
+        assert pos["cost"] == pytest.approx(4.0)
+        assert pos["entry_prob"] == pytest.approx(0.62)
+        assert pos["settled"] is False
+
+    def test_excludes_already_early_exited_positions(self):
+        import execution_log
+        from order_executor import _get_live_open_positions
+
+        row_id = execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=10,
+            price=0.40,
+            status="filled",
+            live=True,
+        )
+        execution_log.record_live_early_exit(row_id, 0.20, "stop_loss", -2.14)
+        assert _get_live_open_positions() == []
+
+    def test_prefers_filled_at_over_placed_at_for_entered_at(self):
+        import execution_log
+        from order_executor import _get_live_open_positions
+
+        row_id = execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=10,
+            price=0.40,
+            status="filled",
+            live=True,
+        )
+        execution_log.log_order_result(
+            row_id,
+            status="filled",
+            fill_quantity=10,
+            filled_at="2026-05-15T18:00:00+00:00",
+        )
+        positions = _get_live_open_positions()
+        assert positions[0]["entered_at"] == "2026-05-15T18:00:00+00:00"
+
+
+class TestUpdateLivePeakProfits(_LiveDBTestBase):
+    def test_records_new_peak_when_higher(self):
+        import execution_log
+        from order_executor import _update_live_peak_profits
+
+        row_id = execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=10,
+            price=0.40,
+            status="filled",
+            live=True,
+        )
+        position = {
+            "id": row_id,
+            "ticker": "KXHIGH-25MAY15-T75",
+            "side": "yes",
+            "entry_price": 0.40,
+            "quantity": 10,
+            "cost": 4.0,
+            "peak_profit_pct": None,
+        }
+        current_prices = {"KXHIGH-25MAY15-T75": {"bid": 0.55, "ask": 0.60}}
+        _update_live_peak_profits([position], current_prices)
+
+        # unrealized_profit_pct = (0.55 - 0.40) * 10 / 4.0 = 0.375
+        assert position["peak_profit_pct"] == pytest.approx(0.375)
+        with execution_log._conn() as con:
+            row = con.execute(
+                "SELECT peak_profit_pct FROM orders WHERE id = ?", (row_id,)
+            ).fetchone()
+        assert row["peak_profit_pct"] == pytest.approx(0.375)
+
+    def test_does_not_overwrite_a_higher_stored_peak(self):
+        import execution_log
+        from order_executor import _update_live_peak_profits
+
+        row_id = execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=10,
+            price=0.40,
+            status="filled",
+            live=True,
+        )
+        position = {
+            "id": row_id,
+            "ticker": "KXHIGH-25MAY15-T75",
+            "side": "yes",
+            "entry_price": 0.40,
+            "quantity": 10,
+            "cost": 4.0,
+            "peak_profit_pct": 0.50,  # already higher than the current tick
+        }
+        current_prices = {"KXHIGH-25MAY15-T75": {"bid": 0.45, "ask": 0.50}}
+        _update_live_peak_profits([position], current_prices)
+
+        assert position["peak_profit_pct"] == 0.50
+        with execution_log._conn() as con:
+            row = con.execute(
+                "SELECT peak_profit_pct FROM orders WHERE id = ?", (row_id,)
+            ).fetchone()
+        # Never written -- stayed NULL in the DB, not overwritten with a lower value.
+        assert row["peak_profit_pct"] is None
+
+
+class TestExitLivePosition(_LiveDBTestBase):
+    def _position(self, **overrides):
+        base = {
+            "id": 1,
+            "ticker": "KXHIGH-25MAY15-T75",
+            "side": "yes",
+            "entry_price": 0.40,
+            "quantity": 10,
+            "cost": 4.0,
+            "close_time": "2026-05-16T12:00:00+00:00",
+        }
+        base.update(overrides)
+        return base
+
+    def test_gate_blocked_returns_false_and_places_nothing(self):
+        from unittest.mock import MagicMock, patch
+
+        from order_executor import _exit_live_position
+
+        mock_client = MagicMock()
+        with patch(
+            "trading_gates.pre_live_trade_check",
+            side_effect=RuntimeError("TRADING_PAUSED"),
+        ):
+            result = _exit_live_position(
+                mock_client, self._position(), 0.20, "stop_loss", "2026-05-15_12z"
+            )
+
+        assert result is False
+        mock_client.place_order.assert_not_called()
+
+    def test_full_fill_records_fee_adjusted_pnl(self):
+        from unittest.mock import MagicMock, patch
+
+        import execution_log
+        from order_executor import _exit_live_position
+
+        mock_client = MagicMock()
+        mock_client.place_order.return_value = {
+            "order_id": "ord_exit",
+            "fill_count_fp": "10.00",
+        }
+        row_id = execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=10,
+            price=0.40,
+            status="filled",
+            live=True,
+        )
+        position = self._position(id=row_id)
+        with patch("trading_gates.pre_live_trade_check", return_value=None):
+            result = _exit_live_position(
+                mock_client, position, 0.20, "stop_loss", "2026-05-15_12z"
+            )
+
+        assert result is True
+        mock_client.place_order.assert_called_once()
+        _, kwargs = mock_client.place_order.call_args
+        assert kwargs["action"] == "sell"
+        assert kwargs["time_in_force"] == "immediate_or_cancel"
+        assert kwargs["price"] == pytest.approx(0.20)
+
+        with execution_log._conn() as con:
+            row = con.execute(
+                "SELECT settled_at, exit_price, exit_reason, pnl, outcome_yes "
+                "FROM orders WHERE id = ?",
+                (row_id,),
+            ).fetchone()
+        # Loss case -> no fee discount (matches the natural-settlement
+        # convention: fee only ever discounts a genuine gain).
+        # gross_pnl = 10 * (0.20 - 0.40) = -2.00
+        assert row["pnl"] == pytest.approx(-2.00)
+        assert row["exit_price"] == pytest.approx(0.20)
+        assert row["exit_reason"] == "stop_loss"
+        assert row["outcome_yes"] is None
+        assert row["settled_at"] is not None
+
+    def test_gain_case_applies_fee_discount(self):
+        """A genuine gain (exit_price > entry_price, e.g. a model-exit that
+        fires on a favorable move) DOES get the taker-fee discount -- only a
+        loss skips it, matching the natural-settlement win/loss asymmetry."""
+        from unittest.mock import MagicMock, patch
+
+        import execution_log
+        from order_executor import _exit_live_position
+
+        mock_client = MagicMock()
+        mock_client.place_order.return_value = {
+            "order_id": "ord_exit",
+            "fill_count_fp": "10.00",
+        }
+        row_id = execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=10,
+            price=0.40,
+            status="filled",
+            live=True,
+        )
+        position = self._position(id=row_id)
+        with patch("trading_gates.pre_live_trade_check", return_value=None):
+            result = _exit_live_position(
+                mock_client, position, 0.60, "model_exit", "2026-05-15_12z"
+            )
+
+        assert result is True
+        # gross_pnl = 10 * (0.60 - 0.40) = 2.00; gain -> fee applies:
+        # 2.00 * (1 - 0.07) = 1.86
+        with execution_log._conn() as con:
+            row = con.execute(
+                "SELECT pnl FROM orders WHERE id = ?", (row_id,)
+            ).fetchone()
+        assert row["pnl"] == pytest.approx(1.86)
+
+    def test_ioc_no_fill_leaves_position_open(self):
+        from unittest.mock import MagicMock, patch
+
+        import execution_log
+        from order_executor import _exit_live_position
+
+        mock_client = MagicMock()
+        mock_client.place_order.return_value = {
+            "order_id": "ord_exit",
+            "fill_count_fp": "0.00",
+        }
+        row_id = execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=10,
+            price=0.40,
+            status="filled",
+            live=True,
+        )
+        position = self._position(id=row_id)
+        with patch("trading_gates.pre_live_trade_check", return_value=None):
+            result = _exit_live_position(
+                mock_client, position, 0.20, "stop_loss", "2026-05-15_12z"
+            )
+
+        assert result is False
+        # Original position row must still read as open (settled_at untouched).
+        with execution_log._conn() as con:
+            row = con.execute(
+                "SELECT settled_at FROM orders WHERE id = ?", (row_id,)
+            ).fetchone()
+        assert row["settled_at"] is None
+
+    def test_partial_fill_logs_error_and_does_not_close_position(self):
+        from unittest.mock import MagicMock, patch
+
+        import execution_log
+        from order_executor import _exit_live_position
+
+        mock_client = MagicMock()
+        mock_client.place_order.return_value = {
+            "order_id": "ord_exit",
+            "fill_count_fp": "4.00",  # only 4 of 10 requested
+        }
+        row_id = execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=10,
+            price=0.40,
+            status="filled",
+            live=True,
+        )
+        position = self._position(id=row_id)
+        with patch("trading_gates.pre_live_trade_check", return_value=None):
+            result = _exit_live_position(
+                mock_client, position, 0.20, "stop_loss", "2026-05-15_12z"
+            )
+
+        assert result is False
+        # Deliberately not reconciled in this pass (see the function's
+        # docstring) -- but must not silently mark the position fully closed
+        # either, which would corrupt the ledger by claiming 10 contracts
+        # exited when only 4 actually did.
+        with execution_log._conn() as con:
+            row = con.execute(
+                "SELECT settled_at FROM orders WHERE id = ?", (row_id,)
+            ).fetchone()
+        assert row["settled_at"] is None
+
+    def test_place_order_exception_logs_failed_status(self):
+        from unittest.mock import MagicMock, patch
+
+        import execution_log
+        from order_executor import _exit_live_position
+
+        mock_client = MagicMock()
+        mock_client.place_order.side_effect = ConnectionError("down")
+        row_id = execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=10,
+            price=0.40,
+            status="filled",
+            live=True,
+        )
+        position = self._position(id=row_id)
+        with patch("trading_gates.pre_live_trade_check", return_value=None):
+            result = _exit_live_position(
+                mock_client, position, 0.20, "stop_loss", "2026-05-15_12z"
+            )
+
+        assert result is False
+        rows = execution_log.get_recent_orders(limit=10)
+        failed_row = next(r for r in rows if r["status"] == "failed")
+        assert failed_row is not None
+
+    def test_no_side_exit_pnl_uses_no_side_prices_directly(self):
+        """entry_price/exit_price are already side-normalized (see
+        _midpoint_price/_liquidation_price) -- the pnl formula must not
+        re-derive a yes-price conversion for the "no" side."""
+        from unittest.mock import MagicMock, patch
+
+        import execution_log
+        from order_executor import _exit_live_position
+
+        mock_client = MagicMock()
+        mock_client.place_order.return_value = {
+            "order_id": "ord_exit",
+            "fill_count_fp": "5.00",
+        }
+        row_id = execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="no",
+            quantity=5,
+            price=0.30,
+            status="filled",
+            live=True,
+        )
+        position = self._position(
+            id=row_id, side="no", entry_price=0.30, quantity=5, cost=1.5
+        )
+        with patch("trading_gates.pre_live_trade_check", return_value=None):
+            result = _exit_live_position(
+                mock_client, position, 0.15, "stop_loss", "2026-05-15_12z"
+            )
+
+        assert result is True
+        # Loss case -> no fee discount. gross_pnl = 5 * (0.15 - 0.30) = -0.75
+        with execution_log._conn() as con:
+            row = con.execute(
+                "SELECT pnl FROM orders WHERE id = ?", (row_id,)
+            ).fetchone()
+        assert row["pnl"] == pytest.approx(-0.75)
+
+
+class TestCheckLivePositionExits(_LiveDBTestBase):
+    def _open_position_row(self, ticker="KXHIGH-25MAY15-T75", **overrides):
+        from datetime import UTC, datetime, timedelta
+
+        import execution_log
+
+        defaults = dict(
+            ticker=ticker,
+            side="yes",
+            quantity=10,
+            price=0.50,
+            status="filled",
+            live=True,
+            # Well beyond the 24h pre-settlement gate check_stop_losses/
+            # check_breakeven_stops both apply.
+            close_time=(datetime.now(UTC) + timedelta(days=10)).isoformat(),
+        )
+        defaults.update(overrides)
+        row_id = execution_log.log_order(**defaults)
+        execution_log.log_order_result(
+            row_id, status="filled", fill_quantity=defaults["quantity"]
+        )
+        return row_id
+
+    def test_no_open_positions_is_a_no_op(self):
+        from unittest.mock import MagicMock
+
+        from order_executor import _check_live_position_exits
+
+        mock_client = MagicMock()
+        _check_live_position_exits(mock_client)  # must not raise
+        mock_client.place_order.assert_not_called()
+
+    def test_stop_loss_breach_triggers_immediate_exit(self):
+        from unittest.mock import MagicMock, patch
+
+        import execution_log
+        from order_executor import _check_live_position_exits
+
+        row_id = self._open_position_row(price=0.50, quantity=10)
+
+        mock_client = MagicMock()
+        mock_client.place_order.return_value = {
+            "order_id": "ord_exit",
+            "fill_count_fp": "10.00",
+        }
+        # Loss > cost / STOP_LOSS_MULT (default 2.0) -> unrealized loss > 50% of cost.
+        # cost = 5.0, bid=0.10 -> unrealized_pnl = (0.10-0.50)*10 = -4.0 < -2.5 -> fires.
+        with (
+            patch(
+                "order_executor._get_current_book",
+                return_value={"yes_bid": 0.10, "yes_ask": 0.15},
+            ),
+            patch("trading_gates.pre_live_trade_check", return_value=None),
+        ):
+            _check_live_position_exits(mock_client)
+
+        mock_client.place_order.assert_called_once()
+        with execution_log._conn() as con:
+            row = con.execute(
+                "SELECT exit_reason, settled_at FROM orders WHERE id = ?",
+                (row_id,),
+            ).fetchone()
+        assert row["exit_reason"] == "stop_loss"
+        assert row["settled_at"] is not None
+
+    def test_stop_loss_fires_on_rest_fallback_integer_cents_book(self):
+        """Regression: _get_current_book's REST fallback returns the raw
+        client.get_market() dict unchanged (integer cents, e.g. yes_bid=10,
+        not the dollar float 0.10 the WS-cache path returns) -- this is the
+        realistic shape for every cron run, since a fresh process starts
+        with an empty WS cache. Reading it without normalizing through
+        _coalesce_cents_or_dollars would treat 10 as a $10 price, making the
+        position look wildly profitable and never trigger the stop."""
+        from unittest.mock import MagicMock, patch
+
+        import execution_log
+        from order_executor import _check_live_position_exits
+
+        row_id = self._open_position_row(price=0.50, quantity=10)
+
+        mock_client = MagicMock()
+        mock_client.place_order.return_value = {
+            "order_id": "ord_exit",
+            "fill_count_fp": "10.00",
+        }
+        # Raw get_market()-shaped dict, integer cents -- the real REST-fallback
+        # shape, not the pre-normalized dollar floats the other tests mock.
+        with (
+            patch(
+                "order_executor._get_current_book",
+                return_value={"yes_bid": 10, "yes_ask": 15},
+            ),
+            patch("trading_gates.pre_live_trade_check", return_value=None),
+        ):
+            _check_live_position_exits(mock_client)
+
+        mock_client.place_order.assert_called_once()
+        with execution_log._conn() as con:
+            row = con.execute(
+                "SELECT exit_reason, settled_at FROM orders WHERE id = ?",
+                (row_id,),
+            ).fetchone()
+        assert row["exit_reason"] == "stop_loss"
+        assert row["settled_at"] is not None
+
+    def test_healthy_position_is_left_alone(self):
+        from unittest.mock import MagicMock, patch
+
+        from order_executor import _check_live_position_exits
+
+        self._open_position_row(price=0.50, quantity=10)
+
+        mock_client = MagicMock()
+        with patch(
+            "order_executor._get_current_book",
+            return_value={"yes_bid": 0.52, "yes_ask": 0.57},
+        ):
+            _check_live_position_exits(mock_client)
+
+        mock_client.place_order.assert_not_called()
+
+    def test_stop_loss_and_breakeven_are_mutually_exclusive_same_cycle(self):
+        """A ticker that stop-loss-exits must not also be evaluated for a
+        breakeven exit in the same call — it's already closed (or a real
+        exit attempt already happened)."""
+        from unittest.mock import MagicMock, patch
+
+        import execution_log
+        from order_executor import _check_live_position_exits
+
+        row_id = self._open_position_row(price=0.50, quantity=10)
+        # Simulate a pre-existing peak high enough to arm breakeven too.
+        execution_log.update_live_peak_profit(row_id, 0.50)
+
+        mock_client = MagicMock()
+        mock_client.place_order.return_value = {
+            "order_id": "ord_exit",
+            "fill_count_fp": "10.00",
+        }
+        with (
+            patch(
+                "order_executor._get_current_book",
+                return_value={"yes_bid": 0.10, "yes_ask": 0.15},
+            ),
+            patch("trading_gates.pre_live_trade_check", return_value=None),
+        ):
+            _check_live_position_exits(mock_client)
+
+        # Only the stop-loss exit should have fired, not a second breakeven exit.
+        assert mock_client.place_order.call_count == 1
+
+    def test_two_positions_on_same_ticker_both_get_exited(self):
+        """Regression: two separate open live positions sharing a ticker
+        (two distinct fills before either settles) must both be protected --
+        a naive ticker-keyed dict would collapse them and silently leave one
+        with zero protection."""
+        from unittest.mock import MagicMock, patch
+
+        import execution_log
+        from order_executor import _check_live_position_exits
+
+        row_id_a = self._open_position_row(price=0.50, quantity=10)
+        row_id_b = self._open_position_row(price=0.55, quantity=5)
+        assert row_id_a != row_id_b
+
+        mock_client = MagicMock()
+        mock_client.place_order.return_value = {
+            "order_id": "ord_exit",
+            "fill_count_fp": "10.00",
+        }
+        # bid=0.10 breaches stop-loss for both positions independently
+        # (well past 50% of either position's cost).
+        with (
+            patch(
+                "order_executor._get_current_book",
+                return_value={"yes_bid": 0.10, "yes_ask": 0.15},
+            ),
+            patch("trading_gates.pre_live_trade_check", return_value=None),
+        ):
+            _check_live_position_exits(mock_client)
+
+        assert mock_client.place_order.call_count == 2
+        with execution_log._conn() as con:
+            rows = con.execute(
+                "SELECT id, exit_reason, settled_at FROM orders WHERE id IN (?, ?)",
+                (row_id_a, row_id_b),
+            ).fetchall()
+        for row in rows:
+            assert row["exit_reason"] == "stop_loss"
+            assert row["settled_at"] is not None
+
+
+class TestCheckLiveModelExits(_LiveDBTestBase):
+    def _open_position_row(self, ticker="KXHIGH-25MAY15-T75", **overrides):
+        from datetime import UTC, datetime, timedelta
+
+        import execution_log
+
+        defaults = dict(
+            ticker=ticker,
+            side="yes",
+            quantity=10,
+            price=0.50,
+            status="filled",
+            live=True,
+            # Well beyond the 24h pre-settlement gate.
+            close_time=(datetime.now(UTC) + timedelta(days=10)).isoformat(),
+            entry_prob=0.65,
+        )
+        defaults.update(overrides)
+        row_id = execution_log.log_order(**defaults)
+        # Backdate the fill past the 12h minimum-hold gate -- log_order_result
+        # without an explicit filled_at leaves entered_at falling back to
+        # placed_at, which log_order stamps at "now" (this test run), always
+        # failing the 12h gate otherwise.
+        execution_log.log_order_result(
+            row_id,
+            status="filled",
+            fill_quantity=defaults["quantity"],
+            filled_at=(datetime.now(UTC) - timedelta(hours=48)).isoformat(),
+        )
+        return row_id
+
+    def test_no_client_returns_zero(self):
+        from order_executor import _check_live_model_exits
+
+        assert _check_live_model_exits(None) == 0
+
+    def test_missing_entry_prob_is_skipped(self):
+        from unittest.mock import MagicMock
+
+        from order_executor import _check_live_model_exits
+
+        self._open_position_row(entry_prob=None)
+        mock_client = MagicMock()
+        mock_client.get_markets.return_value = []
+        assert _check_live_model_exits(mock_client) == 0
+        mock_client.place_order.assert_not_called()
+
+    def test_model_flip_beyond_threshold_triggers_exit(self):
+        from unittest.mock import MagicMock, patch
+
+        import execution_log
+        from order_executor import _check_live_model_exits
+
+        row_id = self._open_position_row(entry_prob=0.65)
+
+        market = {
+            "ticker": "KXHIGH-25MAY15-T75",
+            "close_time": "2026-06-01T12:00:00+00:00",
+            "yes_bid": "0.30",
+            "yes_ask": "0.35",
+        }
+        mock_client = MagicMock()
+        mock_client.place_order.return_value = {
+            "order_id": "ord_exit",
+            "fill_count_fp": "10.00",
+        }
+        with (
+            patch("order_executor.get_weather_markets", return_value=[market]),
+            patch("order_executor.enrich_with_forecast", return_value={"_raw": market}),
+            # entry_prob=0.65, current=0.35 -> shift = 0.65-0.35 = 0.30 > 0.25
+            patch(
+                "order_executor.analyze_trade",
+                return_value={"forecast_prob": 0.35},
+            ),
+            patch("order_executor._get_current_book", return_value=None),
+            patch("trading_gates.pre_live_trade_check", return_value=None),
+        ):
+            closed = _check_live_model_exits(mock_client)
+
+        assert closed == 1
+        with execution_log._conn() as con:
+            row = con.execute(
+                "SELECT exit_reason FROM orders WHERE id = ?", (row_id,)
+            ).fetchone()
+        assert row["exit_reason"] == "model_exit"
+
+    def test_within_settlement_gate_skips_exit(self):
+        from datetime import UTC, datetime, timedelta
+        from unittest.mock import MagicMock, patch
+
+        from order_executor import _check_live_model_exits
+
+        # close_time only 1 hour away -- inside the 24h pre-settlement gate.
+        close_soon = (datetime.now(UTC) + timedelta(hours=1)).isoformat()
+        self._open_position_row(
+            entry_prob=0.65,
+            close_time=close_soon,
+        )
+        market = {"ticker": "KXHIGH-25MAY15-T75"}
+        mock_client = MagicMock()
+        with (
+            patch("order_executor.get_weather_markets", return_value=[market]),
+            patch("order_executor.enrich_with_forecast", return_value={"_raw": market}),
+            patch(
+                "order_executor.analyze_trade",
+                return_value={"forecast_prob": 0.35},
+            ),
+        ):
+            closed = _check_live_model_exits(mock_client)
+
+        assert closed == 0
+        mock_client.place_order.assert_not_called()
