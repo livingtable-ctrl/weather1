@@ -1003,9 +1003,33 @@ When to revisit:
     eaten -- a reasonable candidate for the next slow/low-stakes session,
     not something to wait indefinitely on.
 
-[TEST COVERAGE GAPS -- alerts.py, PAPER.PY METRICS, calibration.py]
-Priority: Low-Medium (matches an already-recognized "shipped with zero
+[RESOLVED 2026-07-12] TEST COVERAGE GAPS -- alerts.py, PAPER.PY METRICS,
+  calibration.py
+Priority: was Low-Medium (matches an already-recognized "shipped with zero
   correctness tests" pattern in this project)
+
+RESOLVED 2026-07-12: 37 new correctness tests added (not smoke tests --
+  construct known inputs, assert the actual computed value) across all 10
+  functions below. No bugs found -- every function behaved correctly against
+  real assertions.
+  calibration.load_condition_weights: 3 tests added to the existing
+  TestLoadWeights class in tests/test_calibration.py, mirroring its two
+  siblings' exact missing/valid/corrupt-file pattern.
+  alerts.py: new tests/test_alerts.py, 22 tests across 5 classes covering
+  add_alert (field construction, ticker uppercasing, persistence/ID
+  increment, invalid direction/target_price), remove_alert, get_alerts'
+  cooldown re-arm math (untriggered/within-cooldown/after-cooldown/
+  cooldown=0 cases), mark_triggered, and check_alerts' above/below direction
+  logic including the exact boundary at target price.
+  paper.py: 15 tests appended to tests/test_paper.py --
+  validate_paper_trades_integrity (clean state vs. a deliberately corrupted
+  balance), get_rolling_sharpe (known 5-day P&L fixture, exact value
+  verified independently, plus <5-day and zero-variance guard cases),
+  get_factor_exposure (YES-heavy/NO-heavy/both exact 0.6-0.4 boundary
+  cases), get_unrealized_pnl_paper (yes-side/no-side/mixed sign logic).
+  517 tests pass across the full combined touched scope (this entry plus
+  the MINOR CLEANUP entry below, fixed same session); lint/mypy clean.
+  Pushed together with the MINOR CLEANUP fixes as commit c97a71b.
 
 Problem:
   Three areas of real, live-used logic have zero tests asserting correct
@@ -1054,8 +1078,40 @@ When to revisit:
     refactored (tests should exist before the change, not after); or as a
     standalone test-coverage session.
 
-[MINOR CLEANUP -- DEAD ASSIGNMENT, STALE COMMENTS, UNBUILT PLANNED FEATURES]
-Priority: Low (cosmetic / documentation only)
+[RESOLVED 2026-07-12] MINOR CLEANUP -- DEAD ASSIGNMENT, STALE COMMENTS,
+  UNBUILT PLANNED FEATURES
+Priority: was Low (cosmetic / documentation only)
+
+RESOLVED 2026-07-12: 5 of 6 sub-items fixed, 1 deliberately left with an
+  explanatory comment instead of a forced fix.
+  Dead _confidence_boost assignment (weather_markets.py) -- deleted.
+  metar.py's "(Phase 4 stub)" docstring -- rewritten to describe actual
+  current functionality (plausibility/staleness gates, dynamic lock-in
+  confidence, station observation/bias recording); dropped the stub framing.
+  code_review_plan.md's Phase 5 -- annotated with a "NOT BUILT -- see
+  backlog.txt" note rather than left reading as planned/in-progress; the
+  feature specs themselves were left in place, not deleted.
+  _CITY_TZ (weather_markets.py) -- now derived from CITY_COORDS via a
+  one-line dict comprehension instead of hand-duplicated; verified all 5
+  call sites (weather_markets.py x4, settlement_monitor.py x1) still get the
+  same dict shape/keys. Can no longer drift even once dynamic city loading
+  is eventually added.
+  cron.py's duplicate 3-model list -- deliberately left as-is: no clean
+  existing constant in weather_markets.py exactly matches
+  (ENSEMBLE_MODELS is missing ecmwf_ifs025, ENSEMBLE_MODELS_EXTENDED swaps
+  in different models) -- forcing an import would have been an awkward fit
+  for a cosmetic, log-line-only duplication. Added a comment explaining why
+  and pointing at both near-miss constants instead.
+  backtest.py/tracker.py's duplicate Previous-Runs model-name structures --
+  added a regression test (TestPrevRunModelsMatchTracker in
+  tests/test_backtest.py) asserting backtest's flat list is a subset of
+  tracker's map values, after verifying that's the actual real relationship
+  between the two shapes. A future silent divergence now fails a test
+  instead of going unnoticed; the two structures themselves were not
+  unified (that would have been a bigger refactor than this pass's scope).
+  517 tests pass across the full combined touched scope (this entry plus
+  the TEST COVERAGE GAPS entry above, fixed same session); lint/mypy clean.
+  Pushed together as commit c97a71b.
 
 Problem:
   Several small, low-impact items surfaced during the same sweep, not worth
