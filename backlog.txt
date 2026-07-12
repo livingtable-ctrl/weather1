@@ -1301,8 +1301,30 @@ When to revisit:
   - Instrumentation half can ship anytime; the fee-model half ideally lands
     before live activation so live sizing is correct from day one.
 
-[HISTORICAL MARKET-PRICE CAPTURE VIA CANDLESTICKS ENDPOINT]
-Priority: Medium-High (unlocks execution research the two entries above need)
+[RESOLVED 2026-07-12] HISTORICAL MARKET-PRICE CAPTURE VIA CANDLESTICKS ENDPOINT
+Priority: was Medium-High (unlocks execution research the two entries above need)
+
+RESOLVED 2026-07-12: shipped the capture side (analysis passes deliberately
+  deferred, per "When to revisit" below). Added kalshi_client.get_candlesticks()
+  (GET /series/{series_ticker}/markets/{ticker}/candlesticks, verified against
+  live Kalshi docs -- fixed-point "_dollars"/"_fp" response shape, not the
+  legacy cents shape) and a new tracker.py price_history table (migration
+  v37->v38) with log_price_candles()/get_price_history() helpers. Wired into
+  sync_outcomes() as a backfill-on-settlement, not per-cron-cycle polling --
+  it fires exactly once per market, right when that market's outcome is first
+  recorded (pending query already excludes tickers with an existing outcome
+  row), fetching the market's full OHLC history in one call via its
+  open_time/close_time range. Backfill failure is isolated in its own
+  try/except so it can never block outcome recording. Independently reviewed
+  (Agent, opus): found and fixed one real MEDIUM issue before commit -- initial
+  1-minute candle resolution over a multi-day open window risked silently
+  under-capturing exactly the long-open weather markets this feature targets
+  (Kalshi's undocumented-but-plausible per-request period cap), logged only at
+  debug so the failure would have been invisible. Fixed by switching to hourly
+  resolution (still plenty for the deferred edge-decay/adverse-selection
+  analysis) and bumping the failure log to warning. 25 new tests, lint/mypy
+  clean. Pushed ba3527e. TRADING_PAUSED untouched; no order-placement/gate
+  code was touched.
 
 Problem:
   Zero references to Kalshi's /markets/{ticker}/candlesticks endpoint (or
