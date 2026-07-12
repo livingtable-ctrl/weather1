@@ -22,7 +22,15 @@ from pathlib import Path
 
 from safe_io import AtomicWriteError, atomic_write_json
 from safe_io import project_root as _project_root
-from utils import FIXED_BET_DOLLARS, FIXED_BET_PCT, KALSHI_FEE_RATE, KELLY_CAP, STRATEGY
+from utils import (
+    FIXED_BET_DOLLARS,
+    FIXED_BET_PCT,
+    KALSHI_FEE_RATE,
+    KELLY_CAP,
+    MAX_CITY_DATE_EXPOSURE,
+    METHOD_KELLY_GATE,
+    STRATEGY,
+)
 
 _log = logging.getLogger(__name__)
 
@@ -267,7 +275,6 @@ if abs(MAX_DRAWDOWN_FRACTION - _EXPECTED_HALT_PCT) > 1e-9:
 MAX_TOTAL_OPEN_EXPOSURE = (
     0.50  # max fraction of starting balance in open positions total
 )
-MAX_CITY_DATE_EXPOSURE = 0.25  # max fraction of starting balance on one city/date combo
 MAX_DIRECTIONAL_EXPOSURE = (
     0.15  # max fraction of starting balance on one city/date/side
 )
@@ -679,13 +686,12 @@ def _method_kelly_multiplier(method: str | None) -> float:
     """
     if not method:
         return 1.0
-    _METHOD_MIN_SAMPLES = 50  # separate from MIN_BRIER_SAMPLES (30) intentionally
 
     try:
         from tracker import brier_score_by_method as _by_method
         from tracker import count_settled_predictions as _count
 
-        if _count() < _METHOD_MIN_SAMPLES:
+        if _count() < METHOD_KELLY_GATE:
             return 1.0
         scores = _by_method(min_samples=5)
         if method not in scores:
@@ -1848,27 +1854,6 @@ def corr_kelly_scale(trade: dict, open_trades: list[dict]) -> float:
     last_row_excl_self = mat[-1][:-1]
     max_corr = max(abs(r) for r in last_row_excl_self) if last_row_excl_self else 0.0
     return max(0.25, 1.0 - max_corr)
-
-
-def slippage_kelly_scale(market: dict, quantity: int) -> float:
-    """
-    Return a 0.5–1.0 multiplier to reduce Kelly sizing based on market liquidity.
-    Thin markets (low volume/open interest) can't absorb large orders without
-    moving the price, making paper trade results overly optimistic.
-      volume/OI > 500  → 1.00 (liquid)
-      200–500          → 0.85
-      50–200           → 0.70
-      < 50             → 0.50 (illiquid)
-    """
-    volume = (market.get("volume") or 0) + (market.get("open_interest") or 0)
-    if volume > 500:
-        return 1.00
-    elif volume > 200:
-        return 0.85
-    elif volume > 50:
-        return 0.70
-    else:
-        return 0.50
 
 
 def get_all_trades() -> list[dict]:

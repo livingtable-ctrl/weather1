@@ -465,6 +465,7 @@ def _build_app(client):
                 "get_roc_auc",
                 "get_edge_decay_curve",
                 "get_model_calibration_buckets",
+                "get_calibration_by_season",
             ):
                 try:
                     import tracker as _t

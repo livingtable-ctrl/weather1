@@ -2349,58 +2349,6 @@ def audit_settlement(ticker: str, settled_yes: bool) -> bool:
         return False
 
 
-def _fetch_ensemble_members_historical(
-    lat: float, lon: float, tz: str, target_date: date, model: str, var: str
-) -> list[float]:
-    """Fetch historical ensemble member temps from Open-Meteo for a settled trade date.
-
-    Uses start_date/end_date so the archive is accessible (the live forecast endpoint
-    only covers the next 16 days, not past dates).  Returns [] if the model or date
-    has no available data.
-    """
-    import requests as _req
-
-    daily_var = "temperature_2m_max" if var == "max" else "temperature_2m_min"
-    date_str = target_date.isoformat()  # computed once; used four times below
-    try:
-        resp = _req.get(
-            "https://ensemble-api.open-meteo.com/v1/ensemble",
-            params={
-                "latitude": str(lat),
-                "longitude": str(lon),
-                "models": model,
-                "temperature_unit": "fahrenheit",
-                "timezone": tz,
-                "daily": daily_var,
-                "start_date": date_str,
-                "end_date": date_str,
-            },
-            timeout=15,
-        )
-        resp.raise_for_status()
-    except Exception:
-        return []
-
-    data = resp.json()
-    if not isinstance(data, dict):
-        return []
-    daily = data.get("daily", {})
-    times = daily.get("time", [])
-    if date_str not in times:
-        return []
-    idx = times.index(date_str)
-    prefix = f"{daily_var}_member"
-    try:
-        return [
-            daily[k][idx]
-            for k in daily
-            if k.startswith(prefix) and daily[k][idx] is not None
-        ]
-    except IndexError:
-        # Malformed response: a member key has fewer entries than expected.
-        return []
-
-
 # Maps our live ensemble model names to their deterministic equivalents in the
 # Previous Runs API.  Individual ensemble members are only archived for 3 days;
 # the Previous Runs API stores deterministic control-run forecasts at fixed lead

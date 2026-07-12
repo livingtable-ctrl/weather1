@@ -100,37 +100,19 @@ _DEAD_FIELD_ALLOWLIST = {
     "kalshi_env": "enforced via direct os.getenv('KALSHI_ENV') across cron.py/main.py/trading_gates.py/web_app.py",
     "kalshi_key_id": "enforced via direct os.getenv('KALSHI_KEY_ID') in main.py/web_app.py",
     "kalshi_private_key_path": "enforced via direct os.getenv('KALSHI_PRIVATE_KEY_PATH') in main.py/web_app.py",
-    "kelly_cap": "real trading enforcement is utils.KELLY_CAP (imported directly by weather_markets.py/paper.py); this field exists only for its own validate() range-check",
+    "kelly_cap": "real trading enforcement is utils.KELLY_CAP (imported directly by weather_markets.py/paper.py); this field exists only for its own validate() range-check -- default now derived from utils.KELLY_CAP via config._live_kelly_cap so the two literals can't silently diverge",
     "max_positions_per_date": "enforced via order_executor.py's own os.getenv('MAX_POSITIONS_PER_DATE')",
     "max_same_day_positions": "enforced via order_executor.py's own os.getenv('MAX_SAME_DAY_POSITIONS')",
     "max_same_day_spend": "enforced via utils.MAX_SAME_DAY_SPEND (order_executor.py imports it directly) -- see config._live_max_same_day_spend's docstring",
     "breakeven_trigger_pct": "enforced via utils.BREAKEVEN_TRIGGER_PCT (paper.py imports it directly) -- see config._live_breakeven_trigger_pct's docstring",
+    "method_kelly_gate": "enforced via utils.METHOD_KELLY_GATE (paper.py imports it directly) -- see config._live_method_kelly_gate's docstring. Wired up 2026-07-12: previously paper.py hardcoded its own _METHOD_MIN_SAMPLES = 50, ignoring this field/env var entirely",
+    "max_city_date_exposure": "enforced via utils.MAX_CITY_DATE_EXPOSURE (paper.py imports it directly) -- see config._live_max_city_date_exposure's docstring. Wired up 2026-07-12: previously paper.py hardcoded its own MAX_CITY_DATE_EXPOSURE = 0.25 at a different scale than this field's old default (50.0), ignoring the env var entirely",
+    "min_arb_edge": "enforced via utils.MIN_ARB_EDGE (main.py imports it directly) -- see config._live_min_arb_edge's docstring. Wired up 2026-07-12: previously main.py hardcoded `if v.guaranteed_edge < 0.05:`, ignoring this field/env var (old default 0.03) entirely",
     "gfs_lockout_mins": "enforced via order_executor.py's own os.getenv('GFS_LOCKOUT_MINS')",
     "below_gate_enabled": "enforced via weather_markets.py's own os.getenv('BELOW_GATE_ENABLED')",
     "same_day_reserve_slots": "enforced via utils.SAME_DAY_RESERVE_SLOTS",
     "same_day_reserve_after_hour_utc": "enforced via utils.SAME_DAY_RESERVE_AFTER_HOUR_UTC",
     "ntfy_topic": "enforced via notify.py's/watchdog.py's own os.getenv('NTFY_TOPIC')",
-    # -- MISLEADING, not just unused: a hardcoded module constant elsewhere
-    # is the REAL enforcement, completely disconnected from this field/env
-    # var -- worse than plain-unused, since setting the env var in .env
-    # looks like it should control real behavior and silently doesn't. All 3
-    # were identified in backlog.txt's "[MORE INERT config.py FIELDS -- SAME
-    # DIVERGENCE PATTERN, ROUND 4]" entry before this guard was written;
-    # re-verified live here. Flagged, not fixed: rewiring any of these real
-    # gates to read the field/env var instead of its hardcoded shadow would
-    # change live-tuned trading behavior and needs an explicit decision.
-    "max_city_date_exposure": "paper.py:270 hardcodes its own MAX_CITY_DATE_EXPOSURE = 0.25 (fraction of balance, no env var read at all) -- that's what actually gates city/date exposure (paper.py:1620/3300); this field (env default 50.0, different scale) does nothing",
-    "method_kelly_gate": "paper.py hardcodes its own _METHOD_MIN_SAMPLES = 50 (paper.py:682) -- that's what actually gates the per-method Kelly sample-count check (paper.py:688); this field/env var (METHOD_KELLY_GATE, default 50.0 -- same number, coincidentally) is never read",
-    "min_arb_edge": "main.py:1606 hardcodes `if v.guaranteed_edge < 0.05:` in the arb auto-placement block -- that's the real arb-edge gate; this field/env var (default 0.03) is never read there",
-    # -- Genuinely unimplemented as of 2026-07-12: no real consumer anywhere
-    # in the codebase, not even via a bypass os.getenv() or a hardcoded
-    # shadow constant. These look like real trading-safety knobs (a
-    # partial-exit percentage, a minimum Kelly fraction floor) but are
-    # currently pure no-ops -- flagged here rather than silently implemented
-    # with guessed thresholds/semantics, since that needs a real design
-    # decision.
-    "min_kelly_fraction": "UNIMPLEMENTED -- no consumer anywhere; flagged, not fixed (needs a design decision on intended semantics)",
-    "partial_exit_pct": "UNIMPLEMENTED -- no consumer anywhere; flagged, not fixed (needs a design decision on intended semantics)",
 }
 
 

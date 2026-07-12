@@ -511,7 +511,6 @@ class TestConsistencyArbHaltGuards:
         ]
         monkeypatch.setattr("main.get_weather_markets", lambda c: markets)
         monkeypatch.setattr("weather_markets.enrich_with_forecast", lambda m: m)
-        monkeypatch.setattr("weather_markets.is_weather_market", lambda m: False)
         monkeypatch.setattr(paper, "get_open_trades", lambda: [])
 
         client = MagicMock()

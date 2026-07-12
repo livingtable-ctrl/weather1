@@ -84,6 +84,30 @@ KALSHI_FEE_RATE = float(os.getenv("KALSHI_FEE_RATE", "0.07"))
 # sizing since this constant ignored the env var entirely.
 KELLY_CAP: float = float(os.getenv("KELLY_CAP", "0.25"))
 
+# Max fraction of starting balance allowed on one city/date combo — paper.py's
+# real city/date exposure gate. Override via MAX_CITY_DATE_EXPOSURE env var —
+# config.py's BotConfig.max_city_date_exposure reads the same env var (for
+# validate()/dashboard display) but previously had no effect on real sizing
+# since paper.py hardcoded its own copy of this value, ignoring the env var
+# entirely.
+MAX_CITY_DATE_EXPOSURE: float = float(os.getenv("MAX_CITY_DATE_EXPOSURE", "0.25"))
+
+# Settled-trade count gate before per-method Kelly multiplier activates
+# (paper.py._method_kelly_multiplier) — separate from MIN_BRIER_SAMPLES (30)
+# intentionally, since per-method Brier on small samples is noisier. Override
+# via METHOD_KELLY_GATE env var — config.py's BotConfig.method_kelly_gate
+# reads the same env var (for validate()/dashboard display) but previously
+# had no effect on real gating since paper.py hardcoded its own copy of this
+# value, ignoring the env var entirely.
+METHOD_KELLY_GATE: float = float(os.getenv("METHOD_KELLY_GATE", "50.0"))
+
+# Minimum guaranteed edge required before main.py auto-places an arbitrage
+# violation. Override via MIN_ARB_EDGE env var — config.py's BotConfig.min_arb_edge
+# reads the same env var (for validate()/dashboard display) but previously had
+# no effect on real gating since main.py hardcoded its own copy of this value
+# (0.05), ignoring both the env var and this field entirely.
+MIN_ARB_EDGE: float = float(os.getenv("MIN_ARB_EDGE", "0.05"))
+
 # Edge thresholds — override via .env
 MIN_EDGE = float(os.getenv("MIN_EDGE", "0.07"))  # minimum edge to show in analyze
 # Paper trading uses a lower threshold to capture more signals for observation.

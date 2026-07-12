@@ -88,7 +88,7 @@ from tracker import (
     log_prediction,
     sync_outcomes,
 )
-from utils import MIN_EDGE, STRONG_EDGE, is_trading_paused
+from utils import MIN_ARB_EDGE, MIN_EDGE, STRONG_EDGE, is_trading_paused
 from weather_markets import (
     CITY_COORDS,
     _feels_like,
@@ -1603,7 +1603,7 @@ def _analyze_once(
                 # A4: auto-place when gate open, edge, volume, and city-exposure all pass
                 if not _arb_allowed:
                     continue
-                if v.guaranteed_edge < 0.05:
+                if v.guaranteed_edge < MIN_ARB_EDGE:
                     continue
                 buy_vol = _arb_vol.get(v.buy_ticker, 0.0)
                 sell_vol = _arb_vol.get(v.sell_ticker, 0.0)
@@ -7343,6 +7343,31 @@ def cmd_replay(trade_id: str) -> None:
     print()
 
 
+def cmd_undo(max_minutes: int = 5) -> None:
+    """
+    Reverse the most recently placed (unsettled) paper trade if it was placed
+    within the last max_minutes minutes. Refunds the cost to balance.
+    Usage: py main.py undo [max_minutes]
+    """
+    from paper import undo_last_trade
+
+    removed = undo_last_trade(max_minutes=max_minutes)
+    if removed is None:
+        print(
+            dim(
+                f"  No unsettled trade placed within the last {max_minutes} "
+                "minute(s) to undo."
+            )
+        )
+        return
+    print(
+        green(
+            f"  Undone: {removed.get('ticker', '?')} — refunded "
+            f"${removed.get('cost', 0.0):.2f} to balance."
+        )
+    )
+
+
 def cmd_shadow_compare(client: KalshiClient) -> None:
     """
     Shadow mode: show what the bot would trade right now without executing.
@@ -7767,6 +7792,14 @@ def main():
             print("Usage: py main.py replay <trade_id>")
         else:
             cmd_replay(trade_id)
+    elif cmd == "undo":
+        try:
+            max_minutes = int(args[1]) if len(args) > 1 else 5
+        except ValueError:
+            print(f"Error: max_minutes must be a whole number, got {args[1]!r}")
+            print("Usage: py main.py undo [max_minutes]")
+            sys.exit(1)
+        cmd_undo(max_minutes)
     elif cmd == "shadow":
         cmd_shadow_compare(client)
     elif cmd == "ab-summary":

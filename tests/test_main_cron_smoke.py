@@ -97,6 +97,34 @@ class TestCmdCronGuards:
             main.cmd_cron._called_from_loop = False
 
 
+class TestCmdUndo:
+    """cmd_undo (main.py) wraps paper.undo_last_trade for the `undo` CLI
+    command -- was tested only indirectly via undo_last_trade itself
+    (tests/test_paper.py) until now; added when the command was first wired
+    up to a CLI entry point (2026-07-12)."""
+
+    def test_nothing_to_undo_prints_message(self, monkeypatch, capsys):
+        import main
+
+        monkeypatch.setattr("paper.undo_last_trade", lambda max_minutes: None)
+        main.cmd_undo(max_minutes=5)
+
+        out = capsys.readouterr().out
+        assert "No unsettled trade" in out
+        assert "5" in out
+
+    def test_undone_trade_prints_ticker_and_refund(self, monkeypatch, capsys):
+        import main
+
+        removed = {"id": 1, "ticker": "KXHIGHNY-26JUL12-T80", "cost": 42.5}
+        monkeypatch.setattr("paper.undo_last_trade", lambda max_minutes: removed)
+        main.cmd_undo(max_minutes=5)
+
+        out = capsys.readouterr().out
+        assert "KXHIGHNY-26JUL12-T80" in out
+        assert "42.50" in out
+
+
 class TestCmdBrief:
     def test_top_opportunities_shows_error_reason(self, monkeypatch, capsys):
         """When market fetch fails, brief prints a visible warning containing the error."""

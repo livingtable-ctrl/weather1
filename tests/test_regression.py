@@ -182,7 +182,6 @@ def test_simulate_uses_series_fetch_not_global_pagination(monkeypatch):
         return weather_markets_returned
 
     monkeypatch.setattr("backtest._fetch_settled_markets", _fake_fetch)
-    monkeypatch.setattr("weather_markets.is_weather_market", lambda m: True)
     monkeypatch.setattr("weather_markets.enrich_with_forecast", lambda m: m)
     monkeypatch.setattr(
         "weather_markets.parse_market_price",

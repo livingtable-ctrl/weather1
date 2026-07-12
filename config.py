@@ -80,6 +80,53 @@ def _live_breakeven_trigger_pct() -> float:
     return _env_float("BREAKEVEN_TRIGGER_PCT", str(_fallback))
 
 
+def _live_max_city_date_exposure() -> float:
+    """MAX_CITY_DATE_EXPOSURE is actually enforced from utils.py, not this
+    dataclass (paper.py imports it directly). Read the env var fresh here too,
+    but fall back to utils.py's already-resolved default rather than a second
+    hardcoded copy — this dataclass's own literal ("50.0") was a different
+    scale entirely from utils.py's fraction-of-balance ("0.25"), the exact
+    round-4 divergence bug documented in _DEAD_FIELD_ALLOWLIST before this
+    field was wired up."""
+    from utils import MAX_CITY_DATE_EXPOSURE as _fallback
+
+    return _env_float("MAX_CITY_DATE_EXPOSURE", str(_fallback))
+
+
+def _live_method_kelly_gate() -> float:
+    """METHOD_KELLY_GATE is actually enforced from utils.py, not this
+    dataclass (paper.py imports it directly). Read the env var fresh here too,
+    but fall back to utils.py's already-resolved default rather than a second
+    hardcoded copy — so an unset env var can never silently diverge from what
+    real trading logic uses."""
+    from utils import METHOD_KELLY_GATE as _fallback
+
+    return _env_float("METHOD_KELLY_GATE", str(_fallback))
+
+
+def _live_min_arb_edge() -> float:
+    """MIN_ARB_EDGE is actually enforced from utils.py, not this dataclass
+    (main.py imports it directly). Read the env var fresh here too, but fall
+    back to utils.py's already-resolved default rather than a second
+    hardcoded copy — this dataclass's own literal ("0.03") had silently
+    diverged from the real gate's ("0.05") before this field was wired up."""
+    from utils import MIN_ARB_EDGE as _fallback
+
+    return _env_float("MIN_ARB_EDGE", str(_fallback))
+
+
+def _live_kelly_cap() -> float:
+    """KELLY_CAP is actually enforced from utils.py, not this dataclass
+    (weather_markets.py/paper.py import it directly). Read the env var fresh
+    here too, but fall back to utils.py's already-resolved default rather
+    than a second hardcoded copy — both currently agree ("0.25"), but keeping
+    two independent literals in sync by hand is exactly how MAX_DAYS_OUT
+    diverged (3 vs 5) undetected."""
+    from utils import KELLY_CAP as _fallback
+
+    return _env_float("KELLY_CAP", str(_fallback))
+
+
 def _file_fingerprint(path: Path) -> tuple[float, int] | None:
     """(mtime, size) for a file, or None if it doesn't exist.
 
@@ -212,10 +259,7 @@ class BotConfig:
     kalshi_private_key_path: str = field(
         default_factory=lambda: os.getenv("KALSHI_PRIVATE_KEY_PATH", "")
     )
-    kelly_cap: float = field(default_factory=lambda: _env_float("KELLY_CAP", "0.25"))
-    min_kelly_fraction: float = field(
-        default_factory=lambda: _env_float("MIN_KELLY_FRACTION", "0.05")
-    )
+    kelly_cap: float = field(default_factory=_live_kelly_cap)
     max_positions_per_date: int = field(
         default_factory=lambda: _env_int("MAX_POSITIONS_PER_DATE", "4")
     )
@@ -224,22 +268,13 @@ class BotConfig:
     )
     max_same_day_spend: float = field(default_factory=_live_max_same_day_spend)
     # Settled-trade count gate before per-method Kelly multiplier activates (paper.py)
-    method_kelly_gate: float = field(
-        default_factory=lambda: _env_float("METHOD_KELLY_GATE", "50.0")
-    )
-    max_city_date_exposure: float = field(
-        default_factory=lambda: _env_float("MAX_CITY_DATE_EXPOSURE", "50.0")
-    )
+    method_kelly_gate: float = field(default_factory=_live_method_kelly_gate)
+    max_city_date_exposure: float = field(default_factory=_live_max_city_date_exposure)
     breakeven_trigger_pct: float = field(default_factory=_live_breakeven_trigger_pct)
-    partial_exit_pct: float = field(
-        default_factory=lambda: _env_float("PARTIAL_EXIT_PCT", "0.50")
-    )
     gfs_lockout_mins: int = field(
         default_factory=lambda: _env_int("GFS_LOCKOUT_MINS", "90")
     )
-    min_arb_edge: float = field(
-        default_factory=lambda: _env_float("MIN_ARB_EDGE", "0.03")
-    )
+    min_arb_edge: float = field(default_factory=_live_min_arb_edge)
     below_gate_enabled: bool = field(
         default_factory=lambda: os.getenv("BELOW_GATE_ENABLED", "").strip().lower()
         in ("1", "true", "yes", "on")
@@ -299,10 +334,6 @@ class BotConfig:
         if not (0.0 < self.breakeven_trigger_pct < 1.0):
             errors.append(
                 f"BREAKEVEN_TRIGGER_PCT ({self.breakeven_trigger_pct}) must be between 0 and 1"
-            )
-        if not (0.0 < self.partial_exit_pct < 1.0):
-            errors.append(
-                f"PARTIAL_EXIT_PCT ({self.partial_exit_pct}) must be between 0 and 1"
             )
         if errors:
             raise ValueError(

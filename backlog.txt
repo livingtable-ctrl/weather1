@@ -354,9 +354,31 @@ When to revisit:
     reasons, or if a specific miscalibration in one of the 10 newer cities
     is traced back to this gap.
 
-[STILL OPEN, NOW GUARDED -- see below] MORE INERT config.py FIELDS -- SAME DIVERGENCE PATTERN, ROUND 4
+[RESOLVED 2026-07-12] MORE INERT config.py FIELDS -- SAME DIVERGENCE PATTERN, ROUND 4
 Priority: Low-Medium (silent no-op env vars, same already-recognized bug
   class)
+
+RESOLVED 2026-07-12 (second pass, same day): all 6 fields now have a real
+  decision, not just documentation. max_city_date_exposure, method_kelly_gate,
+  and min_arb_edge were wired up for real -- the hardcoded shadow constants
+  in paper.py (MAX_CITY_DATE_EXPOSURE=0.25, _METHOD_MIN_SAMPLES=50) and
+  main.py (guaranteed_edge < 0.05) were moved into utils.py as real
+  os.getenv-backed constants (matching each's CURRENT live value exactly, so
+  no behavior change), paper.py/main.py now import and use them, and
+  config.py's fields derive their defaults from utils.py via new
+  _live_max_city_date_exposure()/_live_method_kelly_gate()/_live_min_arb_edge()
+  functions (same pattern as _live_max_days_out). kelly_cap was similarly
+  consolidated (_live_kelly_cap()) so its two independently-hardcoded "0.25"
+  literals can't diverge later, even though it was already safety-netted.
+  min_kelly_fraction and partial_exit_pct -- confirmed still zero consumers
+  anywhere -- were deleted from BotConfig entirely (plus partial_exit_pct's
+  validate() check), rather than inventing unspecified trading semantics.
+  _DEAD_FIELD_ALLOWLIST in tests/test_config_divergence_guard.py updated to
+  match: the 3 "misleading" entries became "enforced via utils.X" entries
+  (like breakeven_trigger_pct), and the 2 unimplemented entries were removed
+  along with their fields. Independently reviewed (Agent, opus) -- no bugs
+  found, all three live-value literals confirmed exact matches to prior
+  hardcoded behavior. Pushed together with the dead-code-scan work below.
 
 UPDATE 2026-07-12 (documented + guarded, NOT wired/deleted): re-verified all
   5 fields live while building tests/test_config_divergence_guard.py (see
@@ -456,8 +478,40 @@ When to revisit:
     reason, or if a specific city's METAR-based lock-in confidence looks
     wrong in a way this correction would address.
 
-[ORPHANED FUNCTIONS -- BUILT, NEVER WIRED IN OR CALLED]
+[RESOLVED 2026-07-12] ORPHANED FUNCTIONS -- BUILT, NEVER WIRED IN OR CALLED
 Priority: Low (cleanup / decide-and-close, not urgent)
+
+RESOLVED 2026-07-12: all 4 got a real per-function decision, not a batch
+  fix. slippage_kelly_scale was DELETED -- paper.py already has a wired-in,
+  actively-used slippage mechanism that adjusts entry PRICE instead
+  (estimate_slippage/slippage_adjusted_price, #50), making this a redundant/
+  superseded alternate approach to the same illiquidity problem, not a real
+  gap. _fetch_ensemble_members_historical was DELETED -- its only plausible
+  caller, backfill_emos_data(), has a docstring explicitly stating ens_var is
+  deliberately left NULL because "individual ensemble members are only
+  stored for 3 days and no consistent-scale proxy exists," confirming the
+  codebase already decided against the historical-members approach this
+  function supported. get_calibration_by_season was WIRED UP -- added to
+  web_app.py's /api/analytics getattr-dispatch tuple alongside its sibling
+  get_model_calibration_buckets (read-only reporting, zero trading risk).
+  undo_last_trade was WIRED UP -- new main.py cmd_undo() + `undo` CLI
+  dispatch entry, manually smoke-tested (`python main.py undo` runs clean).
+  A 5th orphaned function was found independently while building the
+  dead-code scan (see below): is_weather_market (+ its now-also-dead
+  WEATHER_KEYWORDS set) was DELETED -- a comment already in weather_markets.py
+  documents that the global open-market scan it supported was removed in
+  favor of KNOWN_WEATHER_SERIES direct queries, the same
+  "superseded-by-a-different-approach" shape as slippage_kelly_scale. Two
+  vestigial monkeypatch lines referencing it in tests/test_p1_remaining.py
+  and tests/test_regression.py were removed (patching a function nothing
+  calls is a no-op; confirmed via re-run that both tests' actual behavior is
+  unchanged). Independently reviewed (Agent) -- see the dead-code-scan
+  entry below for the combined review result. Pushed together with the
+  config-field work above.
+
+  The scan built for the guard (below) surfaced ~19 MORE tested-but-
+  unreachable functions beyond these 5 -- NOT fixed today, deliberately
+  scoped out (see that entry for the list and reasoning).
 
 Problem:
   4 functions in core trading files are fully implemented but have zero
@@ -564,9 +618,51 @@ When to revisit:
     exact bug shape is found a fifth time -- at that point the case for the
     structural fix (not just another one-off patch) becomes hard to ignore.
 
-[PART (a) DONE 2026-07-12, PART (b) STILL OPEN] NO AUTOMATED GUARD AGAINST CONFIG-DIVERGENCE / ORPHANED-RESOURCE DRIFT
+[RESOLVED 2026-07-12] NO AUTOMATED GUARD AGAINST CONFIG-DIVERGENCE / ORPHANED-RESOURCE DRIFT
 Priority: was Low-Medium (tooling investment; every instance so far has been
   caught manually, after the fact)
+
+RESOLVED 2026-07-12 (part b, same day as part a): built
+  tests/test_dead_code_scan.py -- a regex+AST scan over paper.py/tracker.py/
+  weather_markets.py (no vulture dependency added; a custom scan matches
+  test_config_divergence_guard.py's existing style and needs no new
+  requirements.txt entry). Two real wrinkles found and handled while
+  building it: (1) this codebase's dominant style for function-local
+  cross-module imports is `from module import name as _name` -- a naive
+  `\bname\s*\(` search alone missed the large majority of real call sites
+  until alias-resolution was added; (2) web_app.py's analytics endpoint
+  dispatches some functions dynamically via `getattr(tracker, fn_name)()`
+  over a tuple of string literals, which a pure call-pattern search can't
+  prove reachable or dead -- added a third "possible dynamic dispatch"
+  bucket (not asserted on, just excluded from the confident dead-code
+  lists) after this exact pattern produced one false positive
+  (get_model_calibration_buckets) during construction. The scan correctly
+  reproduced all 4 originally-known candidates (categorized right: 3 fully
+  dead, 1 tested-but-unreachable) plus found is_weather_market as a 5th
+  fully-dead instance (see the ORPHANED FUNCTIONS entry above) -- all 5 are
+  now fixed, not just documented. The scan also surfaced ~19 MORE
+  tested-but-unreachable functions beyond the original 4 (e.g.
+  paper.portfolio_kelly -- which paper.py's own nearby comment already
+  admits is "dead in production, the live path uses portfolio_kelly_fraction
+  instead" -- weather_markets.apply_station_bias, .bayesian_kelly_fraction,
+  tracker.analyze_all_markets, and 16 others) -- these are allowlisted with
+  a "needs follow-up triage" reason in _DEAD_CODE_ALLOWLIST, deliberately
+  NOT fixed today (investigating and deciding wire-up-vs-delete for 19
+  functions individually is out of scope for this pass -- exactly the same
+  judgment call the original config-divergence guard made for its own
+  first-pass findings). Two pytest tests wired in
+  (test_no_new_dead_code_outside_allowlist, mirroring the config guard's
+  pattern) so a NEW orphaned function can't land silently going forward,
+  even though the current backlog isn't fully cleared. Independently
+  reviewed (Agent) alongside the ORPHANED FUNCTIONS fixes above.
+
+  apply_station_bias is worth flagging specifically: it's a fully-tested
+  station-bias temperature correction that appears to have zero production
+  callers anywhere in the forecast pipeline -- unlike the others in the
+  allowlist, this one is plausibly a real gap (a forecast-accuracy
+  correction that was built and tested but never actually wired in), not
+  obviously-safe cleanup. Worth prioritizing first whenever the follow-up
+  triage pass happens.
 
 RESOLVED 2026-07-12 (part a only): built tests/test_config_divergence_guard.py
   -- exactly the two guards described below, plus a third (env-var

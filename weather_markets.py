@@ -3174,25 +3174,6 @@ def parse_market_price(market: dict) -> dict:
     }
 
 
-# ── Weather series detection ──────────────────────────────────────────────────
-
-WEATHER_KEYWORDS = {
-    "temp",
-    "high",
-    "low",
-    "rain",
-    "snow",
-    "precip",
-    "storm",
-    "hurricane",
-    "wind",
-    "frost",
-    "heat",
-    "cold",
-    "weather",
-}
-
-
 def is_stale(market: dict) -> bool:
     """
     Returns True if a market has no volume AND closes within 60 minutes.
@@ -3211,15 +3192,6 @@ def is_stale(market: dict) -> bool:
         return minutes_left < 60
     except (ValueError, TypeError):
         return False
-
-
-def is_weather_market(market: dict) -> bool:
-    title = (market.get("title") or "").lower()
-    subtitle = (market.get("subtitle") or "").lower()
-    ticker = (market.get("ticker") or "").lower()
-    series = (market.get("series_ticker") or "").lower()
-    text = f"{title} {subtitle} {ticker} {series}"
-    return any(kw in text for kw in WEATHER_KEYWORDS)
 
 
 # Known weather series tickers, fetched directly via series_ticker= queries.
