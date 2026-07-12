@@ -206,33 +206,66 @@ def read_orderbook_cache() -> dict:
         return {}
 
 
-def get_cached_mid_price(ticker: str) -> float | None:
-    """Return the cached mid-price for a ticker, or None if not cached or stale."""
+def _is_fresh(entry: dict) -> bool:
     from utils import WS_CACHE_TTL_SECS
 
-    def _is_fresh(entry: dict) -> bool:
-        ts_str = entry.get("ts")
-        if not ts_str:
-            return False
-        try:
-            ts = datetime.fromisoformat(ts_str)
-            age = (datetime.now(UTC) - ts).total_seconds()
-            return age < WS_CACHE_TTL_SECS
-        except (ValueError, TypeError):
-            return False
+    ts_str = entry.get("ts")
+    if not ts_str:
+        return False
+    try:
+        ts = datetime.fromisoformat(ts_str)
+        age = (datetime.now(UTC) - ts).total_seconds()
+        return age < WS_CACHE_TTL_SECS
+    except (ValueError, TypeError):
+        return False
 
+
+def _get_fresh_ticker_entry(ticker: str) -> dict | None:
+    """Return the cached "ticker"-type message for a ticker if fresh, else None.
+
+    Shared by get_cached_mid_price() and get_cached_book() — both read the
+    same underlying cache entry, just different fields off it. Only a
+    "ticker"-type message ever sets mid_price/yes_bid/yes_ask (see
+    parse_message()'s ticker branch); an "orderbook_delta" entry has neither.
+    """
     # Try in-memory first (faster than disk read)
     with _cache_lock:
         entry = _orderbook.get(ticker)
     if entry and _is_fresh(entry) and entry.get("mid_price") is not None:
-        return entry["mid_price"]
+        return entry
 
     # Fall back to disk cache
     cache = read_orderbook_cache()
     entry = cache.get(ticker)
-    if entry and _is_fresh(entry):
-        return entry.get("mid_price")
+    if entry and _is_fresh(entry) and entry.get("mid_price") is not None:
+        return entry
     return None
+
+
+def get_cached_mid_price(ticker: str) -> float | None:
+    """Return the cached mid-price for a ticker, or None if not cached or stale."""
+    entry = _get_fresh_ticker_entry(ticker)
+    return entry.get("mid_price") if entry else None
+
+
+def get_cached_book(ticker: str) -> dict | None:
+    """Return {"yes_bid", "yes_ask", "mid_price"} for a ticker from the live
+    WS ticker-tick cache, or None if not cached or stale (see WS_CACHE_TTL_SECS).
+
+    This is top-of-book only (best bid/ask from ticker ticks), not full
+    depth — orderbook_delta messages are stored but not applied to a usable
+    depth structure (see update_orderbook_cache's comment). Top-of-book is
+    what reprice/chase decisions need; this bot's order sizes don't require
+    walking multiple depth levels.
+    """
+    entry = _get_fresh_ticker_entry(ticker)
+    if not entry:
+        return None
+    return {
+        "yes_bid": entry.get("yes_bid"),
+        "yes_ask": entry.get("yes_ask"),
+        "mid_price": entry.get("mid_price"),
+    }
 
 
 # ── WebSocket subscription ────────────────────────────────────────────────────

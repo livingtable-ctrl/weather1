@@ -1343,8 +1343,8 @@ When to revisit:
   - Before or at live/micro-live activation — this should arguably be a
     prerequisite for unattended live trading, not a follow-up.
 
-[PARTIALLY RESOLVED 2026-07-12] MAKER EXECUTION UPGRADES — REPRICING +
-  MAKER-AWARE FEE MODEL
+[RESOLVED 2026-07-12] MAKER EXECUTION UPGRADES — REPRICING + MAKER-AWARE
+  FEE MODEL
 Priority: was High (systematically understated edge on every trade analyzed)
 
 PARTIALLY RESOLVED 2026-07-12: problem 2/3 (maker-aware fee model) is done;
@@ -1416,6 +1416,71 @@ PARTIALLY RESOLVED 2026-07-12: problem 2/3 (maker-aware fee model) is done;
   pass, lint/mypy clean -- this closes the fee-model half of this backlog
   item.
 
+RESOLVED 2026-07-12 (repricing half, separate later pass): problem 1
+  (reprice-or-cancel logic) and problem 4 (fill-latency/adverse-selection
+  instrumentation) are done, closing this backlog item in full. Scoped via
+  two AskUserQuestion checkpoints before writing code -- depth source for
+  reprice decisions (chose: WS ticker-tick cache, already streamed/proven
+  via the flash-crash gate, over fixing the separately-broken
+  orderbook_delta full-depth application, which top-of-book doesn't need
+  for this bot's order sizes) and reprice cadence (chose: reuse the
+  existing 5-min cmd_watch loop, not a new continuous watcher).
+
+  Policy per pending live order, once per ~5-min cycle (order_executor.py's
+  new _reprice_or_cancel_pending_orders, called from cmd_watch right after
+  the existing fill-status poll): ticker not in this cycle's fresh scan ->
+  leave alone; the existing _validate_trade_opportunity() gate no longer
+  passes -> cancel outright, no age minimum; younger than 2 minutes ->
+  leave alone; edge still clears the REAL taker fee (recomputed with
+  KALSHI_FEE_RATE, not the maker rate analyze_trade() actually used) and
+  rested >= 4 minutes -> cancel-verify-unfilled, replace as an
+  immediate-or-cancel taker order at the current opposing price; fresh
+  midpoint differs from the resting price by >= 1 cent -> cancel-verify-
+  unfilled, replace as a new resting GTC order at the fresh midpoint (still
+  $0 fee); otherwise leave resting. Every cancel-then-replace goes through
+  a hardened _cancel_and_verify_safe_to_replace() (reuses the existing
+  _finalize_cancel fill-check pattern) before ever placing a replacement --
+  never risks a duplicate position. execution_log.py gained filled_at/
+  market_mid_at_fill (captured once, at the moment a fill is first
+  detected) and replaces_order_id (links a reprice chain) for the
+  adverse-selection instrumentation ask.
+
+  Independently reviewed TWICE given this is the highest-risk change of the
+  whole backlog pass (Agent, opus both times) -- first pass found 2 MEDIUM
+  + 1 LOW real issues, all fixed same session: (1) the WS-book usability
+  check used `is not None`, but a one-sided book's missing side defaults to
+  0.0 not None in kalshi_ws.py's own ticker parser, so a one-sided book was
+  wrongly treated as usable -- fixed to require both sides > 0, and the
+  test that had asserted the old behavior was corrected to mock the real
+  0.0 sentinel instead of an unrealistic None; (2) a code comment claimed a
+  same-cycle-placed order couldn't reprice-churn because placement and the
+  reprice check read "the same scan data" -- traced and found that's false
+  (placement re-fetches a fresh market via client.get_market() right before
+  pricing; the reprice check reads the WS cache or older scan data --
+  genuinely different snapshots) -- fixed with a real blanket minimum-age
+  gate applied to both the reprice-improve and taker-cross branches, not
+  just relying on the (wrong) assumption; (3) the cancel-safe-to-replace
+  check only verified fill_count==0, not that the order was actually
+  confirmed off the book -- _finalize_cancel collapses an unrecognized/
+  in-flight status (e.g. "resting") to "canceled" for its two pre-existing
+  callers, which don't need the distinction, but that meant a still-
+  resting order could pass as "safe to replace" -- fixed by threading
+  Kalshi's raw unmodified status through as a third return value and
+  requiring that specifically. A second, narrower re-verification pass
+  after these fixes confirmed all three were implemented correctly, traced
+  every call site of the changed _finalize_cancel signature, and found two
+  minor test-coverage gaps (fixed: a test whose docstring credited the
+  wrong gate after fix #2, and a missing test for the age window between
+  the two gates) -- no new bugs. One informational finding (taker-cross
+  only fires for temperature markets today, since precip/snow analyze_trade
+  paths don't store entry_price) documented, not fixed -- fails safe
+  (reprice-improve still works for those markets). One pre-existing,
+  narrow settlement-integrity gap unrelated to this feature's core
+  correctness (an order that fills exactly as _finalize_cancel's post-
+  cancel verification query itself fails could escape settlement
+  reconciliation) was spawned as a separate follow-up task rather than
+  fixed inline in an already-large diff.
+
 Problem:
   The live path already places GTC limit orders at the midpoint
   (order_executor.py:626-643) — i.e. maker execution exists. But:
@@ -1434,20 +1499,18 @@ Problem:
      none of the above can be tuned empirically yet.
 
 What the fix looks like:
-  [DONE, see resolution note above] pass an execution-style-aware fee_rate
+  [DONE, see resolution notes above] pass an execution-style-aware fee_rate
     into kelly_fraction()/net_ev instead of flat KALSHI_FEE_RATE.
-  [Still open] Reprice-or-cancel logic driven by the existing kalshi_ws.py
-    book feed (improve toward the ask as edge allows; cross as taker only
-    when edge clears the taker fee); log fill latency and post-fill price
-    drift per order to measure adverse selection.
+  [DONE, see resolution notes above] Reprice-or-cancel logic driven by the
+    existing kalshi_ws.py book feed (improve toward the ask as edge allows;
+    cross as taker only when edge clears the taker fee); log fill latency
+    and post-fill price drift per order to measure adverse selection.
 
-Why not now:
-  - Adverse-selection tuning needs the fill-quality data that doesn't exist
-    yet — instrument first, then tune.
+Why not now: N/A -- fully resolved.
 
-When to revisit:
-  - Instrumentation half can ship anytime; the fee-model half ideally lands
-    before live activation so live sizing is correct from day one.
+When to revisit: N/A -- fully resolved. Adverse-selection TUNING (as
+  opposed to the instrumentation that now exists to support it) is a
+  natural follow-up once enough live fill data accumulates.
 
 [RESOLVED 2026-07-12] HISTORICAL MARKET-PRICE CAPTURE VIA CANDLESTICKS ENDPOINT
 Priority: was Medium-High (unlocks execution research the two entries above need)

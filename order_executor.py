@@ -145,6 +145,47 @@ def _midpoint_price(market: dict, side: str) -> float:
     return round((bid + ask) / 2, 2)
 
 
+def _get_current_book(client, ticker: str) -> dict | None:
+    """Return a market-price-shaped dict ({"yes_bid": ..., "yes_ask": ...}) with
+    the freshest available top-of-book for ticker, or None if unavailable.
+
+    Tries the WS ticker-tick cache first (fast, no API call — already proven
+    in production, feeds the flash-crash gate today); falls back to a fresh
+    REST get_market() call (the same source _midpoint_price/_place_live_order
+    already use for real order pricing) when the WS cache is missing/stale.
+    Deliberately does NOT use get_orderbook() -- get_market()'s yes_bid/
+    yes_ask are the authoritative top-of-book this bot already prices real
+    orders from; parsing raw orderbook levels would just be reinventing that
+    with more room for a sign/side error.
+    """
+    try:
+        from kalshi_ws import get_cached_book
+
+        cached = get_cached_book(ticker)
+        # kalshi_ws.parse_message's ticker branch defaults a missing side to
+        # 0.0, not None (yes_ask_str = inner.get("yes_ask") or "0") -- a
+        # one-sided book (no real ask) still passes an `is not None` check.
+        # Require both sides genuinely positive, matching how the rest of
+        # this codebase already treats 0.0 as "no real quote" (see
+        # _midpoint_price's own yes_ask==0.0 guard).
+        if (
+            cached
+            and (cached.get("yes_bid") or 0) > 0
+            and (cached.get("yes_ask") or 0) > 0
+        ):
+            return {"yes_bid": cached["yes_bid"], "yes_ask": cached["yes_ask"]}
+    except Exception as exc:
+        _log.debug("_get_current_book: WS cache lookup failed for %s: %s", ticker, exc)
+
+    try:
+        market = client.get_market(ticker)
+        if parse_market_price(market)["has_quote"]:
+            return market
+    except Exception as exc:
+        _log.debug("_get_current_book: REST get_market failed for %s: %s", ticker, exc)
+    return None
+
+
 def _count_open_live_orders() -> int:
     """Count live orders with status 'pending' — enforces max_open_positions limit."""
     orders = execution_log.get_recent_orders(limit=500)
@@ -340,7 +381,9 @@ _GTC_PRECLOSE_CANCEL_MINUTES = 30
 # ---------------------------------------------------------------------------
 
 
-def _finalize_cancel(client, order_id: str, row_id: int) -> None:
+def _finalize_cancel(
+    client, order_id: str, row_id: int
+) -> tuple[str, int | None, str | None]:
     """Record the outcome of a cancel_order() call this bot just initiated.
 
     F9 followup: the pre-close and GTC-age cancel paths used to write
@@ -355,17 +398,30 @@ def _finalize_cancel(client, order_id: str, row_id: int) -> None:
     prior behavior) if the follow-up query itself fails -- the cancel
     already happened; the fill state is worth checking, not worth blocking
     the cancel record on.
+
+    Returns (resolved_status, fill_count, raw_api_status). resolved_status
+    collapses any unrecognized/in-flight Kalshi status (e.g. "resting", if
+    the cancel hasn't propagated yet) to "canceled" -- fine for this
+    function's original callers (pre-close/GTC-age cancel, which don't
+    immediately act on the distinction), but NOT precise enough on its own
+    to prove an order is genuinely off the book before placing a
+    replacement. raw_api_status is Kalshi's own unmodified status string (or
+    None if the verification query itself failed) so
+    _cancel_and_verify_safe_to_replace can require raw_api_status ==
+    "canceled" specifically, rather than trusting the collapsed default.
     """
     try:
         result = client.get_order(order_id)
+        raw_api_status = result.get("status")
         fill_count = _to_fill_count(result.get("fill_count_fp"))
         status = (
-            _kalshi_status_to_internal(result.get("status", "canceled"), fill_count)
+            _kalshi_status_to_internal(raw_api_status or "canceled", fill_count)
             or "canceled"
         )
         execution_log.log_order_result(
             row_id=row_id, status=status, fill_quantity=fill_count
         )
+        return status, fill_count, raw_api_status
     except Exception as exc:
         _log.warning(
             "[LIVE] post-cancel fill check failed for order %s, recording plain "
@@ -374,6 +430,12 @@ def _finalize_cancel(client, order_id: str, row_id: int) -> None:
             exc,
         )
         execution_log.log_order_result(row_id=row_id, status="canceled")
+        # Fill state genuinely unknown here (the query that would tell us
+        # failed) -- treat as "don't know it's safe" rather than assuming
+        # fill_count=0, so callers deciding whether to place a replacement
+        # fail closed (skip replacing) instead of risking a duplicate
+        # position on an order whose true fill state we couldn't confirm.
+        return "canceled", -1, None
 
 
 def _poll_pending_orders(client, config: dict | None = None) -> None:
@@ -464,10 +526,32 @@ def _poll_pending_orders(client, config: dict | None = None) -> None:
             _fill_count = _to_fill_count(result.get("fill_count_fp"))
             _internal_status = _kalshi_status_to_internal(api_status, _fill_count)
             if _internal_status is not None:
+                _filled_at = None
+                _mid_at_fill = None
+                if _internal_status == "filled":
+                    # Fill-latency / adverse-selection instrumentation: capture
+                    # the moment we first observe the fill and the market's
+                    # price at that instant. This branch only fires once per
+                    # row (the `pending` list above only contains rows still
+                    # status="pending"), so this is genuinely "at fill", not a
+                    # later re-observation.
+                    _filled_at = now_utc.isoformat()
+                    try:
+                        _book = _get_current_book(client, order.get("ticker", ""))
+                        if _book:
+                            _mid_at_fill = parse_market_price(_book)["mid"]
+                    except Exception as _mid_exc:
+                        _log.debug(
+                            "[LIVE] market_mid_at_fill lookup failed for %s: %s",
+                            order.get("ticker", "?"),
+                            _mid_exc,
+                        )
                 execution_log.log_order_result(
                     row_id=order["id"],
                     status=_internal_status,
                     fill_quantity=_fill_count,
+                    filled_at=_filled_at,
+                    market_mid_at_fill=_mid_at_fill,
                 )
         except Exception as exc:
             _log.warning("[LIVE] poll order %s failed: %s", order.get("id"), exc)
@@ -516,6 +600,334 @@ def _poll_pending_orders(client, config: dict | None = None) -> None:
         except Exception as exc:
             _log.warning(
                 "[LIVE] settlement check failed for order %s: %s", order.get("id"), exc
+            )
+
+
+# ---------------------------------------------------------------------------
+# Reprice / cancel / taker-cross for still-resting live orders
+# ---------------------------------------------------------------------------
+
+# An unfilled order must have rested at least this long before EITHER a
+# reprice-improve or a taker-cross is considered at all. Originally this gate
+# was applied only to taker-cross, on the assumption that a same-cycle
+# placement is priced from the identical scan data this check also reads --
+# that assumption is false: _auto_place_trades re-fetches a FRESH market
+# (client.get_market()) just before pricing a new order
+# (_place_live_order's entry_price comes from that fresh fetch, not the
+# liquid_opps scan snapshot), while this check's fresh_mid comes from
+# _get_current_book (WS-cache-first) or the older scan-time market -- a
+# genuinely different snapshot. Without this gate, a just-placed order could
+# be canceled and re-placed in the same cycle purely because the WS tick
+# arrived a few seconds after the REST placement fetch, forfeiting queue
+# priority for no real reason. Applies to both branches below.
+_MIN_REST_MINUTES_BEFORE_REPRICE = 2
+
+# Taker-crossing (guaranteed fill, real fee) gets a stricter, longer bar than
+# reprice-improve (still maker, still $0 fee, fully reversible) -- paying a
+# real fee to guarantee a fill deserves more patience than adjusting a price.
+_MIN_REST_MINUTES_BEFORE_TAKER_CROSS = 4
+
+# Minimum price difference (dollars) worth canceling+replacing a resting
+# order over -- avoids cancel/replace churn over sub-cent noise.
+_MIN_REPRICE_TICK = 0.01
+
+
+def _live_min_edge(analysis: dict) -> float:
+    """Replicate _validate_trade_opportunity's live min-edge threshold
+    (confidence-tiered by ensemble_spread, else MIN_EDGE) -- shared here so
+    the taker-cross check below uses the exact same bar a fresh live
+    placement would.
+    """
+    from utils import get_min_edge_for_confidence
+
+    ens_spread = analysis.get("ensemble_spread")
+    if ens_spread is not None:
+        try:
+            return get_min_edge_for_confidence(float(ens_spread), is_live=True)
+        except Exception:
+            return MIN_EDGE
+    return MIN_EDGE
+
+
+def _clears_taker_fee(analysis: dict) -> bool:
+    """True if net_edge, recomputed with the REAL taker fee instead of the
+    maker fee analyze_trade() actually used, would still clear the live
+    min_edge threshold -- i.e. crossing as taker (guaranteed fill, real fee)
+    is worth it versus continuing to wait as an uncertain-fill $0-fee maker
+    order. Recomputes from analysis's own stored forecast_prob/entry_price/
+    recommended_side rather than re-deriving them, so this can never
+    disagree with what analyze_trade() itself already decided about this
+    specific trade.
+
+    Only the main temperature analyze_trade() path stores entry_price (see
+    weather_markets.py's return dict) -- the precip/snow paths don't, so
+    this always returns False (via the missing-field guard below) for those
+    markets today. Fails safe: no taker-cross for precip/snow, reprice-
+    improve still works. Worth threading entry_price through those paths
+    too if taker-crossing there ever matters.
+    """
+    from utils import KALSHI_FEE_RATE
+
+    entry_price = analysis.get("entry_price")
+    forecast_prob = analysis.get("forecast_prob")
+    side = analysis.get("recommended_side")
+    if not entry_price or forecast_prob is None or side not in ("yes", "no"):
+        return False
+    p_win = forecast_prob if side == "yes" else 1.0 - forecast_prob
+    payout = 1.0 - entry_price
+    net_ev_taker = p_win * payout * (1 - KALSHI_FEE_RATE) - (1 - p_win) * entry_price
+    net_edge_taker = net_ev_taker / entry_price if entry_price > 0 else 0.0
+    return net_edge_taker >= _live_min_edge(analysis)
+
+
+def _cancel_and_verify_safe_to_replace(client, order_id: str, row_id: int) -> bool:
+    """Cancel a resting order and return True only if verified both
+    genuinely unfilled (fill_count == 0) AND genuinely no longer resting
+    (Kalshi's own raw status == "canceled") -- i.e. safe to place a
+    replacement without risking a duplicate position or having a
+    taker-cross replacement silently no-op against Kalshi's
+    self_trade_prevention_type="taker_at_cross" (which cancels an incoming
+    order that would cross the bot's own still-resting order on the same
+    ticker/side).
+
+    Deliberately checks _finalize_cancel's raw_api_status, not its collapsed
+    resolved_status -- resolved_status defaults an unrecognized/in-flight
+    Kalshi status (e.g. "resting", meaning the cancel hasn't propagated yet)
+    to "canceled", which is fine for _finalize_cancel's other callers but
+    would make this check pass on an order that's still actually resting.
+
+    Any other outcome (partial/full fill, still resting per raw_api_status,
+    or the post-cancel verification query itself failing -- raw_api_status
+    is None in that case, see _finalize_cancel's -1 sentinel) fails closed
+    and returns False.
+    """
+    try:
+        client.cancel_order(order_id)
+    except Exception as exc:
+        _log.warning("[Reprice] cancel_order failed for order %s: %s", order_id, exc)
+        return False
+    _resolved_status, fill_count, raw_api_status = _finalize_cancel(
+        client, order_id, row_id
+    )
+    return raw_api_status == "canceled" and fill_count == 0
+
+
+def _replace_live_order(
+    ticker: str,
+    side: str,
+    quantity: int,
+    price: float,
+    time_in_force: str,
+    client,
+    cycle: str,
+    replaces_order_id: int,
+    close_time: str | None,
+) -> bool:
+    """Place a replacement order for a just-canceled resting order (reprice
+    or taker-cross). Caller must have already confirmed via
+    _cancel_and_verify_safe_to_replace() that the original genuinely did not
+    fill before calling this.
+
+    Re-runs the kill-switch/trading-paused safety gate (never skippable) but
+    deliberately NOT the daily-loss/spend/max-open-position gates
+    (_place_live_order's steps 1/1b/2) or edge/Kelly re-validation (step 3's
+    sizing) -- those already approved and sized this exact position once at
+    original placement; a reprice modifies an existing approved position's
+    resting order, it does not create a new one, and quantity is fixed at
+    the original (no resizing on reprice).
+    """
+    from trading_gates import pre_live_trade_check
+
+    try:
+        pre_live_trade_check(client)
+    except RuntimeError as _gate_err:
+        _log.warning(
+            "[Reprice] Gate blocked replacement order for %s: %s", ticker, _gate_err
+        )
+        return False
+
+    log_id = execution_log.log_order(
+        ticker=ticker,
+        side=side,
+        quantity=quantity,
+        price=price,
+        order_type="limit" if time_in_force == "good_till_canceled" else "market",
+        status="pending",
+        forecast_cycle=cycle,
+        live=True,
+        close_time=close_time,
+        replaces_order_id=replaces_order_id,
+    )
+    try:
+        response = client.place_order(
+            ticker=ticker,
+            side=side,
+            action="buy",
+            count=quantity,
+            price=price,
+            time_in_force=time_in_force,
+            cycle=cycle,
+        )
+        execution_log.log_order_result(log_id, status="pending", response=response)
+        return True
+    except Exception as exc:
+        execution_log.log_order_result(log_id, status="failed", error=str(exc))
+        _log.warning("[Reprice] Replacement order failed for %s: %s", ticker, exc)
+        return False
+
+
+def _reprice_or_cancel_pending_orders(
+    client, config: dict | None = None, liquid_opps: list | None = None
+) -> None:
+    """Reprice-or-cancel resting live orders based on this cycle's fresh
+    market analysis. Must run AFTER _poll_pending_orders in the same cycle,
+    so it only ever sees orders confirmed still resting (status='pending')
+    this cycle -- never one that just filled.
+
+    Policy per pending order:
+      - Ticker not in this cycle's fresh scan (liquid_opps) -> leave alone.
+      - _validate_trade_opportunity() no longer passes (edge decayed, gate
+        failure, flash-crash, etc.) -> cancel immediately, do not replace
+        (no minimum age -- a genuinely invalid order shouldn't keep resting
+        just because it's young).
+      - Younger than _MIN_REST_MINUTES_BEFORE_REPRICE -> leave resting
+        unchanged (give it a real chance to fill before touching it; also
+        avoids reprice churn from a same-cycle placement and this check
+        reading two different market snapshots -- see that constant's
+        comment).
+      - Edge still clears the REAL taker fee AND the order has rested at
+        least _MIN_REST_MINUTES_BEFORE_TAKER_CROSS -> cancel, verify no
+        fill, replace as an immediate-or-cancel taker order at the current
+        opposing price (guaranteed fill now).
+      - The fresh midpoint price differs from the order's current resting
+        price by >= _MIN_REPRICE_TICK -> cancel, verify no fill, replace as
+        a new resting GTC limit order at the fresh midpoint (still $0 fee).
+      - Otherwise -> leave resting unchanged.
+
+    liquid_opps: this cycle's (market, analysis) pairs from _analyze_once,
+    reused here instead of a separate re-scan -- the same fresh data already
+    computed once per cycle for opportunity discovery.
+    """
+    if not liquid_opps:
+        return
+    _by_ticker = {m.get("ticker"): (m, a) for m, a in liquid_opps if m.get("ticker")}
+
+    cycle = _current_forecast_cycle()
+    now_utc = datetime.now(UTC)
+
+    pending = [
+        o
+        for o in execution_log.get_recent_orders(limit=200)
+        if o.get("live") and o.get("status") == "pending" and o.get("response")
+    ]
+    for order in pending:
+        ticker = order.get("ticker", "")
+        side = order.get("side", "yes")
+        try:
+            response = (
+                json.loads(order["response"])
+                if isinstance(order["response"], str)
+                else order["response"]
+            )
+            order_id = response.get("order_id") if response else None
+            if not order_id:
+                continue
+
+            pair = _by_ticker.get(ticker)
+            if pair is None:
+                continue  # not in this cycle's fresh scan -- leave alone
+            market, analysis = pair
+
+            try:
+                ok, reason = _validate_trade_opportunity(
+                    analysis, live=True, market=market
+                )
+            except Exception as exc:
+                _log.debug("[Reprice] validation check failed for %s: %s", ticker, exc)
+                continue
+
+            if not ok:
+                client.cancel_order(order_id)
+                _finalize_cancel(client, order_id, order["id"])
+                _log.info(
+                    "[Reprice] %s: canceled — no longer valid (%s)", ticker, reason
+                )
+                continue
+
+            try:
+                placed_at = datetime.fromisoformat(
+                    order["placed_at"].replace("Z", "+00:00")
+                )
+                age_minutes = (now_utc - placed_at).total_seconds() / 60
+            except (ValueError, TypeError, KeyError):
+                continue  # can't determine age safely -- leave resting unchanged
+
+            if age_minutes < _MIN_REST_MINUTES_BEFORE_REPRICE:
+                continue  # too fresh to reprice/cross -- give it a real chance to fill first
+
+            book = _get_current_book(client, ticker) or market
+            fresh_mid = _midpoint_price(book, side)
+            quantity = order.get("quantity")
+            if not quantity:
+                continue  # malformed row -- nothing safe to replace with
+            close_time = order.get("close_time")
+
+            if (
+                _clears_taker_fee(analysis)
+                and age_minutes >= _MIN_REST_MINUTES_BEFORE_TAKER_CROSS
+            ):
+                yes_bid = _coalesce_cents_or_dollars(book, "yes_bid", "yes_bid_dollars")
+                yes_ask = _coalesce_cents_or_dollars(book, "yes_ask", "yes_ask_dollars")
+                taker_price = yes_ask if side == "yes" else round(1.0 - yes_bid, 2)
+                if taker_price <= 0:
+                    continue
+                if _cancel_and_verify_safe_to_replace(client, order_id, order["id"]):
+                    _replace_live_order(
+                        ticker,
+                        side,
+                        quantity,
+                        taker_price,
+                        "immediate_or_cancel",
+                        client,
+                        cycle,
+                        order["id"],
+                        close_time,
+                    )
+                    _log.info(
+                        "[Reprice] %s: canceled resting order, crossed as taker @ %.2f",
+                        ticker,
+                        taker_price,
+                    )
+                continue
+
+            current_price = order.get("price")
+            if (
+                current_price is not None
+                and abs(fresh_mid - current_price) >= _MIN_REPRICE_TICK
+            ):
+                if _cancel_and_verify_safe_to_replace(client, order_id, order["id"]):
+                    _replace_live_order(
+                        ticker,
+                        side,
+                        quantity,
+                        fresh_mid,
+                        "good_till_canceled",
+                        client,
+                        cycle,
+                        order["id"],
+                        close_time,
+                    )
+                    _log.info(
+                        "[Reprice] %s: repriced %.2f -> %.2f",
+                        ticker,
+                        current_price,
+                        fresh_mid,
+                    )
+        except Exception as exc:
+            _log.warning(
+                "[Reprice] reprice/cancel check failed for order %s: %s",
+                order.get("id"),
+                exc,
             )
 
 

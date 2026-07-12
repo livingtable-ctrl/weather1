@@ -82,7 +82,10 @@ def init_log() -> None:
                 settled_at     TEXT,              -- ISO timestamp when settlement outcome was recorded
                 outcome_yes    INTEGER,           -- 1 if YES side won, 0 if NO side won
                 pnl            REAL,              -- net P&L after Kalshi fee in dollars
-                close_time     TEXT               -- market close_time ISO string; used for pre-close GTC cancel
+                close_time     TEXT,              -- market close_time ISO string; used for pre-close GTC cancel
+                filled_at      TEXT,              -- ISO timestamp when a fill was first detected
+                market_mid_at_fill REAL,           -- market mid-price at the moment of that detection
+                replaces_order_id INTEGER          -- id of the order row this one cancel-replaced, if any
             );
 
             CREATE INDEX IF NOT EXISTS idx_orders_ticker    ON orders(ticker, placed_at);
@@ -106,6 +109,9 @@ def init_log() -> None:
             "ALTER TABLE orders ADD COLUMN outcome_yes INTEGER",
             "ALTER TABLE orders ADD COLUMN pnl REAL",
             "ALTER TABLE orders ADD COLUMN close_time TEXT",
+            "ALTER TABLE orders ADD COLUMN filled_at TEXT",
+            "ALTER TABLE orders ADD COLUMN market_mid_at_fill REAL",
+            "ALTER TABLE orders ADD COLUMN replaces_order_id INTEGER",
         ]
         with _conn() as con:
             for stmt in migrations:
@@ -131,10 +137,15 @@ def log_order(
     forecast_cycle: str | None = None,
     live: bool = False,
     close_time: str | None = None,
+    replaces_order_id: int | None = None,
 ) -> int:
     """
     Record a live order attempt. Returns the new row ID.
     Call with status='sent' before placing, then update with log_order_result().
+
+    replaces_order_id: id of the order row this one cancel-replaced (reprice
+    or taker-cross), if any — links the chain for fill-latency/price-drift
+    analysis. None for a fresh (non-reprice) placement.
     """
     init_log()
     with _conn() as con:
@@ -143,8 +154,8 @@ def log_order(
             INSERT INTO orders
               (ticker, side, quantity, price, order_type, status, response, error,
                placed_at, fill_quantity, error_code, error_type, forecast_cycle, live,
-               close_time)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+               close_time, replaces_order_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 ticker,
@@ -162,6 +173,7 @@ def log_order(
                 forecast_cycle,
                 int(live),
                 close_time,
+                replaces_order_id,
             ),
         )
         return cur.lastrowid or 0
@@ -175,16 +187,25 @@ def log_order_result(
     fill_quantity: int | None = None,
     error_code: str | None = None,
     error_type: str | None = None,
+    filled_at: str | None = None,
+    market_mid_at_fill: float | None = None,
 ) -> None:
     """Update an existing order log entry with the final status/response.
     Structured error fields allow querying failures without parsing JSON.
+
+    filled_at/market_mid_at_fill: only ever passed at the moment a fill is
+    first detected (see order_executor._poll_pending_orders) — used with
+    COALESCE so a later log_order_result() call on the same row (e.g. an
+    unrelated field update) can never accidentally null them back out.
     """
     init_log()
     with _conn() as con:
         con.execute(
             """UPDATE orders SET
                status=?, response=?, error=?,
-               fill_quantity=?, error_code=?, error_type=?
+               fill_quantity=?, error_code=?, error_type=?,
+               filled_at=COALESCE(?, filled_at),
+               market_mid_at_fill=COALESCE(?, market_mid_at_fill)
                WHERE id=?""",
             (
                 status,
@@ -193,6 +214,8 @@ def log_order_result(
                 fill_quantity,
                 error_code,
                 error_type,
+                filled_at,
+                market_mid_at_fill,
                 row_id,
             ),
         )

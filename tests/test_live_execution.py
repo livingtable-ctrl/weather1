@@ -1228,3 +1228,1065 @@ class TestPlaceLiveOrderDedup:
 
         assert placed is True
         mock_client.place_order.assert_called_once()
+
+
+class TestFinalizeCancelReturnValue:
+    """_finalize_cancel now returns (status, fill_count, raw_api_status) so
+    reprice/taker-cross logic can decide whether it's safe to place a
+    replacement order -- raw_api_status specifically so callers can tell a
+    genuine Kalshi-confirmed "canceled" apart from an unrecognized/in-flight
+    status (e.g. "resting") that resolved_status defaults to "canceled" too."""
+
+    def setup_method(self):
+        import tempfile
+        from pathlib import Path
+
+        import execution_log
+
+        self._tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+        execution_log.DB_PATH = Path(self._tmp.name)
+        execution_log._initialized = False
+
+    def teardown_method(self):
+        import gc
+        from pathlib import Path
+
+        import execution_log
+
+        execution_log._initialized = False
+        self._tmp.close()
+        gc.collect()
+        Path(self._tmp.name).unlink(missing_ok=True)
+
+    def test_returns_canceled_zero_on_clean_cancel(self):
+        from unittest.mock import MagicMock
+
+        import execution_log
+        from order_executor import _finalize_cancel
+
+        row_id = execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=5,
+            price=0.55,
+            status="pending",
+            live=True,
+        )
+        mock_client = MagicMock()
+        mock_client.get_order.return_value = {
+            "status": "canceled",
+            "fill_count_fp": "0.00",
+        }
+
+        status, fill_count, raw_api_status = _finalize_cancel(
+            mock_client, "ord_1", row_id
+        )
+        assert status == "canceled"
+        assert fill_count == 0
+        assert raw_api_status == "canceled"
+
+    def test_returns_filled_with_count_on_partial_fill(self):
+        from unittest.mock import MagicMock
+
+        import execution_log
+        from order_executor import _finalize_cancel
+
+        row_id = execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=5,
+            price=0.55,
+            status="pending",
+            live=True,
+        )
+        mock_client = MagicMock()
+        mock_client.get_order.return_value = {
+            "status": "canceled",
+            "fill_count_fp": "4.00",
+        }
+
+        status, fill_count, raw_api_status = _finalize_cancel(
+            mock_client, "ord_2", row_id
+        )
+        assert status == "filled"
+        assert fill_count == 4
+        assert raw_api_status == "canceled"
+
+    def test_returns_sentinel_negative_one_when_verification_query_fails(self):
+        """Fill state genuinely unknown here -- callers must fail closed
+        (never place a replacement) rather than assume fill_count=0."""
+        from unittest.mock import MagicMock
+
+        import execution_log
+        from order_executor import _finalize_cancel
+
+        row_id = execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=5,
+            price=0.55,
+            status="pending",
+            live=True,
+        )
+        mock_client = MagicMock()
+        mock_client.get_order.side_effect = ConnectionError("network blip")
+
+        status, fill_count, raw_api_status = _finalize_cancel(
+            mock_client, "ord_3", row_id
+        )
+        assert status == "canceled"
+        assert fill_count == -1
+        assert raw_api_status is None
+
+    def test_raw_api_status_preserved_when_still_resting(self):
+        """A cancel that hasn't propagated yet (Kalshi still reports
+        "resting") must surface that in raw_api_status even though
+        resolved_status collapses it to "canceled" for the pre-existing
+        GTC/pre-close callers that don't need this distinction."""
+        from unittest.mock import MagicMock
+
+        import execution_log
+        from order_executor import _finalize_cancel
+
+        row_id = execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=5,
+            price=0.55,
+            status="pending",
+            live=True,
+        )
+        mock_client = MagicMock()
+        mock_client.get_order.return_value = {
+            "status": "resting",
+            "fill_count_fp": "0.00",
+        }
+
+        status, fill_count, raw_api_status = _finalize_cancel(
+            mock_client, "ord_4", row_id
+        )
+        assert status == "canceled"  # collapsed default, for existing callers
+        assert raw_api_status == "resting"  # but the raw truth is preserved
+
+
+class TestGetCurrentBook:
+    def test_uses_ws_cache_when_fresh_and_complete(self):
+        from unittest.mock import MagicMock, patch
+
+        from order_executor import _get_current_book
+
+        mock_client = MagicMock()
+        with patch(
+            "kalshi_ws.get_cached_book",
+            return_value={"yes_bid": 0.40, "yes_ask": 0.45, "mid_price": 0.425},
+        ):
+            book = _get_current_book(mock_client, "KXHIGH-25MAY15-T75")
+
+        assert book == {"yes_bid": 0.40, "yes_ask": 0.45}
+        mock_client.get_market.assert_not_called()
+
+    def test_falls_back_to_rest_when_ws_cache_missing(self):
+        from unittest.mock import MagicMock, patch
+
+        from order_executor import _get_current_book
+
+        mock_client = MagicMock()
+        mock_client.get_market.return_value = {"yes_bid": 0.38, "yes_ask": 0.42}
+        with patch("kalshi_ws.get_cached_book", return_value=None):
+            book = _get_current_book(mock_client, "KXHIGH-25MAY15-T75")
+
+        assert book == {"yes_bid": 0.38, "yes_ask": 0.42}
+        mock_client.get_market.assert_called_once()
+
+    def test_falls_back_to_rest_when_ws_entry_one_sided(self):
+        """A one-sided WS book (no real ask) must not be treated as usable --
+        falls through to REST. kalshi_ws.parse_message's ticker branch
+        defaults a missing side to 0.0, not None
+        (yes_ask_str = inner.get("yes_ask") or "0") -- this is the real
+        sentinel production actually produces, not None."""
+        from unittest.mock import MagicMock, patch
+
+        from order_executor import _get_current_book
+
+        mock_client = MagicMock()
+        mock_client.get_market.return_value = {"yes_bid": 0.38, "yes_ask": 0.42}
+        with patch(
+            "kalshi_ws.get_cached_book",
+            return_value={"yes_bid": 0.40, "yes_ask": 0.0, "mid_price": 0.40},
+        ):
+            book = _get_current_book(mock_client, "KXHIGH-25MAY15-T75")
+
+        assert book == {"yes_bid": 0.38, "yes_ask": 0.42}
+
+    def test_returns_none_when_both_sources_unavailable(self):
+        from unittest.mock import MagicMock, patch
+
+        from order_executor import _get_current_book
+
+        mock_client = MagicMock()
+        mock_client.get_market.side_effect = ConnectionError("down")
+        with patch("kalshi_ws.get_cached_book", return_value=None):
+            book = _get_current_book(mock_client, "KXHIGH-25MAY15-T75")
+
+        assert book is None
+
+    def test_returns_none_when_rest_market_has_no_quote(self):
+        from unittest.mock import MagicMock, patch
+
+        from order_executor import _get_current_book
+
+        mock_client = MagicMock()
+        mock_client.get_market.return_value = {}
+        with patch("kalshi_ws.get_cached_book", return_value=None):
+            book = _get_current_book(mock_client, "KXHIGH-25MAY15-T75")
+
+        assert book is None
+
+
+class TestLiveMinEdge:
+    def test_defaults_to_min_edge_constant(self, monkeypatch):
+        import order_executor
+        from order_executor import _live_min_edge
+
+        monkeypatch.setattr(order_executor, "MIN_EDGE", 0.07)
+        assert _live_min_edge({}) == 0.07
+
+    def test_uses_confidence_tier_when_spread_present(self):
+        from unittest.mock import patch
+
+        from order_executor import _live_min_edge
+
+        with patch("utils.get_min_edge_for_confidence", return_value=0.20) as mock_tier:
+            result = _live_min_edge({"ensemble_spread": 3.5})
+
+        assert result == 0.20
+        mock_tier.assert_called_once_with(3.5, is_live=True)
+
+    def test_falls_back_to_min_edge_on_tier_exception(self, monkeypatch):
+        import order_executor
+        from order_executor import _live_min_edge
+
+        monkeypatch.setattr(order_executor, "MIN_EDGE", 0.07)
+        from unittest.mock import patch
+
+        with patch(
+            "utils.get_min_edge_for_confidence", side_effect=RuntimeError("boom")
+        ):
+            result = _live_min_edge({"ensemble_spread": 3.5})
+
+        assert result == 0.07
+
+
+class TestClearsTakerFee:
+    """_clears_taker_fee recomputes net_edge with the real taker fee instead
+    of the maker fee analyze_trade() actually used -- deciding whether
+    crossing as taker (guaranteed fill, real fee) beats continuing to wait."""
+
+    def test_true_for_strong_edge(self, monkeypatch):
+        import order_executor
+        from order_executor import _clears_taker_fee
+
+        monkeypatch.setattr(order_executor, "MIN_EDGE", 0.07)
+        analysis = {
+            "forecast_prob": 0.85,
+            "entry_price": 0.50,
+            "recommended_side": "yes",
+        }
+        # net_ev = 0.85*0.50*0.93 - 0.15*0.50 = 0.32025; /0.50 = 0.6405 >> 0.07
+        assert _clears_taker_fee(analysis) is True
+
+    def test_false_for_thin_edge(self, monkeypatch):
+        import order_executor
+        from order_executor import _clears_taker_fee
+
+        monkeypatch.setattr(order_executor, "MIN_EDGE", 0.07)
+        analysis = {
+            "forecast_prob": 0.53,
+            "entry_price": 0.50,
+            "recommended_side": "yes",
+        }
+        # net_ev = 0.53*0.50*0.93 - 0.47*0.50 = 0.01145; /0.50 = 0.0229 < 0.07
+        assert _clears_taker_fee(analysis) is False
+
+    def test_no_side_computed_correctly(self, monkeypatch):
+        import order_executor
+        from order_executor import _clears_taker_fee
+
+        monkeypatch.setattr(order_executor, "MIN_EDGE", 0.07)
+        analysis = {
+            "forecast_prob": 0.15,  # P(NO wins) = 0.85
+            "entry_price": 0.50,
+            "recommended_side": "no",
+        }
+        assert _clears_taker_fee(analysis) is True
+
+    def test_missing_entry_price_returns_false(self):
+        from order_executor import _clears_taker_fee
+
+        assert (
+            _clears_taker_fee({"forecast_prob": 0.8, "recommended_side": "yes"})
+            is False
+        )
+
+    def test_missing_forecast_prob_returns_false(self):
+        from order_executor import _clears_taker_fee
+
+        assert (
+            _clears_taker_fee({"entry_price": 0.5, "recommended_side": "yes"}) is False
+        )
+
+    def test_invalid_side_returns_false(self):
+        from order_executor import _clears_taker_fee
+
+        assert (
+            _clears_taker_fee(
+                {
+                    "forecast_prob": 0.8,
+                    "entry_price": 0.5,
+                    "recommended_side": "maybe",
+                }
+            )
+            is False
+        )
+
+
+class TestCancelAndVerifySafeToReplace:
+    def setup_method(self):
+        import tempfile
+        from pathlib import Path
+
+        import execution_log
+
+        self._tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+        execution_log.DB_PATH = Path(self._tmp.name)
+        execution_log._initialized = False
+
+    def teardown_method(self):
+        import gc
+        from pathlib import Path
+
+        import execution_log
+
+        execution_log._initialized = False
+        self._tmp.close()
+        gc.collect()
+        Path(self._tmp.name).unlink(missing_ok=True)
+
+    def _seed_row(self):
+        import execution_log
+
+        return execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=5,
+            price=0.55,
+            status="pending",
+            live=True,
+        )
+
+    def test_true_when_confirmed_unfilled(self):
+        from unittest.mock import MagicMock
+
+        from order_executor import _cancel_and_verify_safe_to_replace
+
+        row_id = self._seed_row()
+        mock_client = MagicMock()
+        mock_client.get_order.return_value = {
+            "status": "canceled",
+            "fill_count_fp": "0.00",
+        }
+
+        assert _cancel_and_verify_safe_to_replace(mock_client, "ord_1", row_id) is True
+        mock_client.cancel_order.assert_called_once_with("ord_1")
+
+    def test_false_when_partial_fill_detected(self):
+        from unittest.mock import MagicMock
+
+        from order_executor import _cancel_and_verify_safe_to_replace
+
+        row_id = self._seed_row()
+        mock_client = MagicMock()
+        mock_client.get_order.return_value = {
+            "status": "canceled",
+            "fill_count_fp": "3.00",
+        }
+
+        assert _cancel_and_verify_safe_to_replace(mock_client, "ord_2", row_id) is False
+
+    def test_false_when_cancel_call_itself_raises(self):
+        from unittest.mock import MagicMock
+
+        from order_executor import _cancel_and_verify_safe_to_replace
+
+        row_id = self._seed_row()
+        mock_client = MagicMock()
+        mock_client.cancel_order.side_effect = ConnectionError("down")
+
+        assert _cancel_and_verify_safe_to_replace(mock_client, "ord_3", row_id) is False
+
+    def test_false_when_post_cancel_verification_query_fails(self):
+        from unittest.mock import MagicMock
+
+        from order_executor import _cancel_and_verify_safe_to_replace
+
+        row_id = self._seed_row()
+        mock_client = MagicMock()
+        mock_client.get_order.side_effect = ConnectionError("network blip")
+
+        assert _cancel_and_verify_safe_to_replace(mock_client, "ord_4", row_id) is False
+
+    def test_false_when_order_still_resting_despite_zero_fill_count(self):
+        """A cancel that hasn't propagated yet (Kalshi still reports
+        "resting", zero fills so far) must NOT be treated as safe to
+        replace -- a taker-cross replacement placed while the original is
+        still genuinely resting would silently no-op against Kalshi's
+        self_trade_prevention_type="taker_at_cross" rather than fill.
+        fill_count==0 alone isn't proof the order is actually gone."""
+        from unittest.mock import MagicMock
+
+        from order_executor import _cancel_and_verify_safe_to_replace
+
+        row_id = self._seed_row()
+        mock_client = MagicMock()
+        mock_client.get_order.return_value = {
+            "status": "resting",
+            "fill_count_fp": "0.00",
+        }
+
+        assert _cancel_and_verify_safe_to_replace(mock_client, "ord_5", row_id) is False
+
+
+class TestReplaceLiveOrder:
+    def setup_method(self):
+        import tempfile
+        from pathlib import Path
+
+        import execution_log
+
+        self._tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+        execution_log.DB_PATH = Path(self._tmp.name)
+        execution_log._initialized = False
+
+    def teardown_method(self):
+        import gc
+        from pathlib import Path
+
+        import execution_log
+
+        execution_log._initialized = False
+        self._tmp.close()
+        gc.collect()
+        Path(self._tmp.name).unlink(missing_ok=True)
+
+    def test_gate_blocked_returns_false_and_places_nothing(self):
+        from unittest.mock import MagicMock, patch
+
+        from order_executor import _replace_live_order
+
+        mock_client = MagicMock()
+        with patch(
+            "trading_gates.pre_live_trade_check",
+            side_effect=RuntimeError("TRADING_PAUSED"),
+        ):
+            result = _replace_live_order(
+                "KXHIGH-25MAY15-T75",
+                "yes",
+                5,
+                0.52,
+                "good_till_canceled",
+                mock_client,
+                "2026-05-15_12z",
+                99,
+                None,
+            )
+
+        assert result is False
+        mock_client.place_order.assert_not_called()
+
+    def test_success_logs_replaces_order_id(self):
+        from unittest.mock import MagicMock, patch
+
+        import execution_log
+        from order_executor import _replace_live_order
+
+        mock_client = MagicMock()
+        mock_client.place_order.return_value = {"order_id": "ord_new"}
+        with patch("trading_gates.pre_live_trade_check", return_value=None):
+            result = _replace_live_order(
+                "KXHIGH-25MAY15-T75",
+                "yes",
+                5,
+                0.52,
+                "good_till_canceled",
+                mock_client,
+                "2026-05-15_12z",
+                99,
+                None,
+            )
+
+        assert result is True
+        rows = execution_log.get_recent_orders(limit=10)
+        new_row = next(r for r in rows if r["price"] == pytest.approx(0.52))
+        assert new_row["replaces_order_id"] == 99
+        assert new_row["status"] == "pending"
+        assert new_row["order_type"] == "limit"
+
+    def test_place_order_failure_logs_failed_status(self):
+        from unittest.mock import MagicMock, patch
+
+        import execution_log
+        from order_executor import _replace_live_order
+
+        mock_client = MagicMock()
+        mock_client.place_order.side_effect = ConnectionError("down")
+        with patch("trading_gates.pre_live_trade_check", return_value=None):
+            result = _replace_live_order(
+                "KXHIGH-25MAY15-T75",
+                "yes",
+                5,
+                0.52,
+                "good_till_canceled",
+                mock_client,
+                "2026-05-15_12z",
+                99,
+                None,
+            )
+
+        assert result is False
+        rows = execution_log.get_recent_orders(limit=10)
+        new_row = next(r for r in rows if r["replaces_order_id"] == 99)
+        assert new_row["status"] == "failed"
+
+    def test_taker_cross_logged_as_market_order_type(self):
+        from unittest.mock import MagicMock, patch
+
+        import execution_log
+        from order_executor import _replace_live_order
+
+        mock_client = MagicMock()
+        mock_client.place_order.return_value = {"order_id": "ord_taker"}
+        with patch("trading_gates.pre_live_trade_check", return_value=None):
+            _replace_live_order(
+                "KXHIGH-25MAY15-T75",
+                "yes",
+                5,
+                0.60,
+                "immediate_or_cancel",
+                mock_client,
+                "2026-05-15_12z",
+                99,
+                None,
+            )
+
+        rows = execution_log.get_recent_orders(limit=10)
+        new_row = next(r for r in rows if r["replaces_order_id"] == 99)
+        assert new_row["order_type"] == "market"
+
+
+class TestFillInstrumentation:
+    """_poll_pending_orders must capture filled_at/market_mid_at_fill the
+    moment a fill is first detected, for fill-latency/adverse-selection
+    analysis (backlog: 'log fill latency and post-fill price drift per
+    order')."""
+
+    def setup_method(self):
+        import tempfile
+        from pathlib import Path
+
+        import execution_log
+
+        self._tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+        execution_log.DB_PATH = Path(self._tmp.name)
+        execution_log._initialized = False
+
+    def teardown_method(self):
+        import gc
+        from pathlib import Path
+
+        import execution_log
+
+        execution_log._initialized = False
+        self._tmp.close()
+        gc.collect()
+        Path(self._tmp.name).unlink(missing_ok=True)
+
+    def test_fill_captures_latency_and_mid_price(self):
+        from unittest.mock import MagicMock, patch
+
+        import execution_log
+        import main
+
+        row_id = execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=2,
+            price=0.55,
+            status="pending",
+            live=True,
+            response={"order_id": "ord_fill"},
+        )
+
+        mock_client = MagicMock()
+        mock_client.get_order.return_value = {
+            "status": "executed",
+            "fill_count_fp": "2.00",
+        }
+
+        with patch(
+            "order_executor._get_current_book",
+            return_value={"yes_bid": 0.58, "yes_ask": 0.62},
+        ):
+            main._poll_pending_orders(mock_client, config={})
+
+        row = next(
+            o for o in execution_log.get_recent_orders(limit=10) if o["id"] == row_id
+        )
+        assert row["status"] == "filled"
+        assert row["filled_at"] is not None
+        assert row["market_mid_at_fill"] == pytest.approx(0.60)
+
+    def test_non_fill_status_leaves_instrumentation_null(self):
+        from unittest.mock import MagicMock
+
+        import execution_log
+        import main
+
+        row_id = execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=2,
+            price=0.55,
+            status="pending",
+            live=True,
+            response={"order_id": "ord_resting"},
+        )
+
+        mock_client = MagicMock()
+        mock_client.get_order.return_value = {"status": "resting"}
+
+        main._poll_pending_orders(mock_client, config={})
+
+        row = next(
+            o for o in execution_log.get_recent_orders(limit=10) if o["id"] == row_id
+        )
+        assert row["status"] == "pending"
+        assert row["filled_at"] is None
+        assert row["market_mid_at_fill"] is None
+
+    def test_log_order_result_coalesce_never_nulls_out_prior_fill_data(self):
+        """A later log_order_result() call on an already-instrumented row
+        (e.g. from an unrelated code path) must not wipe filled_at/
+        market_mid_at_fill back to NULL."""
+        import execution_log
+
+        row_id = execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=2,
+            price=0.55,
+            status="filled",
+            live=True,
+        )
+        execution_log.log_order_result(
+            row_id,
+            status="filled",
+            fill_quantity=2,
+            filled_at="2026-05-15T12:00:00+00:00",
+            market_mid_at_fill=0.60,
+        )
+
+        # Unrelated later update -- omits the instrumentation fields.
+        execution_log.log_order_result(row_id, status="filled", fill_quantity=2)
+
+        row = next(
+            o for o in execution_log.get_recent_orders(limit=10) if o["id"] == row_id
+        )
+        assert row["filled_at"] == "2026-05-15T12:00:00+00:00"
+        assert row["market_mid_at_fill"] == pytest.approx(0.60)
+
+
+class TestRepriceOrCancelPendingOrders:
+    """The core reprice-or-cancel policy: cancel on edge decay, cancel+
+    replace as taker when edge clears the real taker fee, cancel+replace as
+    an improved maker price when the market has moved, else leave resting."""
+
+    def setup_method(self):
+        import tempfile
+        from pathlib import Path
+
+        import execution_log
+
+        self._tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+        execution_log.DB_PATH = Path(self._tmp.name)
+        execution_log._initialized = False
+
+    def teardown_method(self):
+        import gc
+        from pathlib import Path
+
+        import execution_log
+
+        execution_log._initialized = False
+        self._tmp.close()
+        gc.collect()
+        Path(self._tmp.name).unlink(missing_ok=True)
+
+    def _seed_pending(self, ticker="KXHIGH-25MAY15-T75", price=0.50, age_minutes=10):
+        from datetime import UTC, datetime, timedelta
+
+        import execution_log
+
+        row_id = execution_log.log_order(
+            ticker=ticker,
+            side="yes",
+            quantity=5,
+            price=price,
+            status="pending",
+            live=True,
+            response={"order_id": "ord_orig"},
+        )
+        placed_at = (datetime.now(UTC) - timedelta(minutes=age_minutes)).isoformat()
+        with execution_log._conn() as con:
+            con.execute(
+                "UPDATE orders SET placed_at = ? WHERE id = ?", (placed_at, row_id)
+            )
+        return row_id
+
+    def test_ticker_not_in_scan_leaves_order_untouched(self):
+        from unittest.mock import MagicMock
+
+        import execution_log
+        from order_executor import _reprice_or_cancel_pending_orders
+
+        self._seed_pending()
+        mock_client = MagicMock()
+
+        _reprice_or_cancel_pending_orders(
+            mock_client, config={}, liquid_opps=[({"ticker": "OTHER"}, {})]
+        )
+
+        mock_client.cancel_order.assert_not_called()
+        rows = execution_log.get_recent_orders(limit=10)
+        assert rows[0]["status"] == "pending"
+
+    def test_empty_liquid_opps_is_a_noop(self):
+        from unittest.mock import MagicMock
+
+        from order_executor import _reprice_or_cancel_pending_orders
+
+        self._seed_pending()
+        mock_client = MagicMock()
+
+        _reprice_or_cancel_pending_orders(mock_client, config={}, liquid_opps=[])
+
+        mock_client.cancel_order.assert_not_called()
+
+    def test_validation_failure_cancels_without_replacing(self):
+        from unittest.mock import MagicMock, patch
+
+        import execution_log
+        from order_executor import _reprice_or_cancel_pending_orders
+
+        ticker = "KXHIGH-25MAY15-T75"
+        self._seed_pending(ticker=ticker)
+        market = {"ticker": ticker, "yes_bid": 0.48, "yes_ask": 0.52}
+        analysis = {
+            "forecast_prob": 0.53,
+            "entry_price": 0.50,
+            "recommended_side": "yes",
+        }
+        mock_client = MagicMock()
+        mock_client.cancel_order.return_value = {}
+        mock_client.get_order.return_value = {
+            "status": "canceled",
+            "fill_count_fp": "0.00",
+        }
+
+        with patch(
+            "order_executor._validate_trade_opportunity",
+            return_value=(False, "edge decayed"),
+        ):
+            _reprice_or_cancel_pending_orders(
+                mock_client, config={}, liquid_opps=[(market, analysis)]
+            )
+
+        mock_client.cancel_order.assert_called_once_with("ord_orig")
+        mock_client.place_order.assert_not_called()
+        rows = execution_log.get_recent_orders(limit=10)
+        assert rows[0]["status"] == "canceled"
+
+    def test_strong_edge_and_rested_crosses_as_taker(self):
+        from unittest.mock import MagicMock, patch
+
+        import order_executor
+        from order_executor import _reprice_or_cancel_pending_orders
+
+        ticker = "KXHIGH-25MAY15-T75"
+        self._seed_pending(ticker=ticker, price=0.50, age_minutes=10)
+        market = {"ticker": ticker, "yes_bid": 0.48, "yes_ask": 0.52}
+        # net_ev_taker = 0.85*0.50*0.93 - 0.15*0.50 = 0.32025; /0.50 = 0.64 >> MIN_EDGE
+        analysis = {
+            "forecast_prob": 0.85,
+            "entry_price": 0.50,
+            "recommended_side": "yes",
+        }
+        mock_client = MagicMock()
+        mock_client.cancel_order.return_value = {}
+        mock_client.get_order.return_value = {
+            "status": "canceled",
+            "fill_count_fp": "0.00",
+        }
+        mock_client.place_order.return_value = {"order_id": "ord_taker"}
+
+        with (
+            patch.object(order_executor, "MIN_EDGE", 0.07),
+            patch(
+                "order_executor._validate_trade_opportunity",
+                return_value=(True, "ok"),
+            ),
+            patch(
+                "order_executor._get_current_book",
+                return_value={"yes_bid": 0.48, "yes_ask": 0.52},
+            ),
+            patch("trading_gates.pre_live_trade_check", return_value=None),
+        ):
+            _reprice_or_cancel_pending_orders(
+                mock_client, config={}, liquid_opps=[(market, analysis)]
+            )
+
+        mock_client.cancel_order.assert_called_once_with("ord_orig")
+        mock_client.place_order.assert_called_once()
+        _, kwargs = mock_client.place_order.call_args
+        assert kwargs["time_in_force"] == "immediate_or_cancel"
+        assert kwargs["price"] == pytest.approx(0.52)  # crosses at current yes_ask
+
+    def test_order_younger_than_blanket_gate_is_untouched(self):
+        """Younger than _MIN_REST_MINUTES_BEFORE_REPRICE (2 min) -> left
+        resting regardless of edge strength or price movement -- blocked by
+        the blanket gate before either branch is even considered (not by
+        the taker-specific 4-min gate; see
+        test_rested_past_blanket_gate_but_not_taker_gate_reprices_not_crosses
+        for that narrower [2,4) window)."""
+        from unittest.mock import MagicMock, patch
+
+        import order_executor
+        from order_executor import _reprice_or_cancel_pending_orders
+
+        ticker = "KXHIGH-25MAY15-T75"
+        self._seed_pending(ticker=ticker, price=0.50, age_minutes=1)
+        market = {"ticker": ticker, "yes_bid": 0.48, "yes_ask": 0.52}
+        analysis = {
+            "forecast_prob": 0.85,
+            "entry_price": 0.50,
+            "recommended_side": "yes",
+        }
+        mock_client = MagicMock()
+        mock_client.cancel_order.return_value = {}
+        mock_client.get_order.return_value = {
+            "status": "canceled",
+            "fill_count_fp": "0.00",
+        }
+        mock_client.place_order.return_value = {"order_id": "ord_new"}
+
+        with (
+            patch.object(order_executor, "MIN_EDGE", 0.07),
+            patch(
+                "order_executor._validate_trade_opportunity",
+                return_value=(True, "ok"),
+            ),
+            # Fresh midpoint (0.55) differs from the resting price (0.50) --
+            # would trigger a reprice if the blanket age gate weren't
+            # blocking it first.
+            patch(
+                "order_executor._get_current_book",
+                return_value={"yes_bid": 0.53, "yes_ask": 0.57},
+            ),
+        ):
+            _reprice_or_cancel_pending_orders(
+                mock_client, config={}, liquid_opps=[(market, analysis)]
+            )
+
+        mock_client.cancel_order.assert_not_called()
+        mock_client.place_order.assert_not_called()
+
+    def test_rested_past_blanket_gate_but_not_taker_gate_reprices_not_crosses(self):
+        """The [_MIN_REST_MINUTES_BEFORE_REPRICE, _MIN_REST_MINUTES_BEFORE_TAKER_CROSS)
+        window: old enough to reprice-improve (cleared the 2-min blanket
+        gate) but not old enough to taker-cross (hasn't cleared the
+        stricter 4-min gate) -- even with a strong edge that would
+        otherwise clear the taker fee, this must reprice as a new maker
+        order, not cross as taker."""
+        from unittest.mock import MagicMock, patch
+
+        import order_executor
+        from order_executor import _reprice_or_cancel_pending_orders
+
+        ticker = "KXHIGH-25MAY15-T75"
+        self._seed_pending(ticker=ticker, price=0.50, age_minutes=3)
+        market = {"ticker": ticker, "yes_bid": 0.53, "yes_ask": 0.57}
+        # Strong edge -- would clear the taker fee if the order were old
+        # enough (see test_strong_edge_and_rested_crosses_as_taker).
+        analysis = {
+            "forecast_prob": 0.85,
+            "entry_price": 0.50,
+            "recommended_side": "yes",
+        }
+        mock_client = MagicMock()
+        mock_client.cancel_order.return_value = {}
+        mock_client.get_order.return_value = {
+            "status": "canceled",
+            "fill_count_fp": "0.00",
+        }
+        mock_client.place_order.return_value = {"order_id": "ord_repriced"}
+
+        with (
+            patch.object(order_executor, "MIN_EDGE", 0.07),
+            patch(
+                "order_executor._validate_trade_opportunity",
+                return_value=(True, "ok"),
+            ),
+            patch(
+                "order_executor._get_current_book",
+                return_value={"yes_bid": 0.53, "yes_ask": 0.57},
+            ),
+            patch("trading_gates.pre_live_trade_check", return_value=None),
+        ):
+            _reprice_or_cancel_pending_orders(
+                mock_client, config={}, liquid_opps=[(market, analysis)]
+            )
+
+        mock_client.cancel_order.assert_called_once_with("ord_orig")
+        mock_client.place_order.assert_called_once()
+        _, kwargs = mock_client.place_order.call_args
+        assert (
+            kwargs["time_in_force"] == "good_till_canceled"
+        )  # reprice, not taker-cross
+        assert kwargs["price"] == pytest.approx(0.55)  # fresh midpoint
+
+    def test_price_moved_reprices_as_new_maker_order(self):
+        from unittest.mock import MagicMock, patch
+
+        import order_executor
+        from order_executor import _reprice_or_cancel_pending_orders
+
+        ticker = "KXHIGH-25MAY15-T75"
+        self._seed_pending(ticker=ticker, price=0.50, age_minutes=10)
+        market = {"ticker": ticker, "yes_bid": 0.53, "yes_ask": 0.57}
+        # Thin edge -- must NOT clear the taker fee, so this exercises the
+        # reprice-improve branch, not the taker-cross branch.
+        analysis = {
+            "forecast_prob": 0.53,
+            "entry_price": 0.50,
+            "recommended_side": "yes",
+        }
+        mock_client = MagicMock()
+        mock_client.cancel_order.return_value = {}
+        mock_client.get_order.return_value = {
+            "status": "canceled",
+            "fill_count_fp": "0.00",
+        }
+        mock_client.place_order.return_value = {"order_id": "ord_repriced"}
+
+        with (
+            patch.object(order_executor, "MIN_EDGE", 0.07),
+            patch(
+                "order_executor._validate_trade_opportunity",
+                return_value=(True, "ok"),
+            ),
+            patch(
+                "order_executor._get_current_book",
+                return_value={"yes_bid": 0.53, "yes_ask": 0.57},
+            ),
+            patch("trading_gates.pre_live_trade_check", return_value=None),
+        ):
+            _reprice_or_cancel_pending_orders(
+                mock_client, config={}, liquid_opps=[(market, analysis)]
+            )
+
+        mock_client.cancel_order.assert_called_once_with("ord_orig")
+        mock_client.place_order.assert_called_once()
+        _, kwargs = mock_client.place_order.call_args
+        assert kwargs["time_in_force"] == "good_till_canceled"
+        assert kwargs["price"] == pytest.approx(0.55)  # fresh midpoint
+
+    def test_price_unchanged_leaves_order_resting(self):
+        from unittest.mock import MagicMock, patch
+
+        import order_executor
+        from order_executor import _reprice_or_cancel_pending_orders
+
+        ticker = "KXHIGH-25MAY15-T75"
+        self._seed_pending(ticker=ticker, price=0.50, age_minutes=10)
+        market = {"ticker": ticker, "yes_bid": 0.48, "yes_ask": 0.52}
+        analysis = {
+            "forecast_prob": 0.53,
+            "entry_price": 0.50,
+            "recommended_side": "yes",
+        }
+        mock_client = MagicMock()
+
+        with (
+            patch.object(order_executor, "MIN_EDGE", 0.07),
+            patch(
+                "order_executor._validate_trade_opportunity",
+                return_value=(True, "ok"),
+            ),
+            patch(
+                "order_executor._get_current_book",
+                # Midpoint (0.48+0.52)/2 = 0.50, identical to the resting price.
+                return_value={"yes_bid": 0.48, "yes_ask": 0.52},
+            ),
+        ):
+            _reprice_or_cancel_pending_orders(
+                mock_client, config={}, liquid_opps=[(market, analysis)]
+            )
+
+        mock_client.cancel_order.assert_not_called()
+        mock_client.place_order.assert_not_called()
+
+    def test_fill_race_during_cancel_skips_replacement(self):
+        """If the post-cancel verification shows the order actually filled
+        (raced the cancel), never place a replacement -- would risk a
+        duplicate position."""
+        from unittest.mock import MagicMock, patch
+
+        import execution_log
+        import order_executor
+        from order_executor import _reprice_or_cancel_pending_orders
+
+        ticker = "KXHIGH-25MAY15-T75"
+        self._seed_pending(ticker=ticker, price=0.50, age_minutes=10)
+        market = {"ticker": ticker, "yes_bid": 0.53, "yes_ask": 0.57}
+        analysis = {
+            "forecast_prob": 0.53,
+            "entry_price": 0.50,
+            "recommended_side": "yes",
+        }
+        mock_client = MagicMock()
+        mock_client.cancel_order.return_value = {}
+        # The order actually filled (5 contracts) right before our cancel landed.
+        mock_client.get_order.return_value = {
+            "status": "canceled",
+            "fill_count_fp": "5.00",
+        }
+
+        with (
+            patch.object(order_executor, "MIN_EDGE", 0.07),
+            patch(
+                "order_executor._validate_trade_opportunity",
+                return_value=(True, "ok"),
+            ),
+            patch(
+                "order_executor._get_current_book",
+                return_value={"yes_bid": 0.53, "yes_ask": 0.57},
+            ),
+        ):
+            _reprice_or_cancel_pending_orders(
+                mock_client, config={}, liquid_opps=[(market, analysis)]
+            )
+
+        mock_client.cancel_order.assert_called_once()
+        mock_client.place_order.assert_not_called()
+        rows = execution_log.get_recent_orders(limit=10)
+        assert rows[0]["status"] == "filled"
+        assert rows[0]["fill_quantity"] == 5

@@ -69,6 +69,7 @@ from order_executor import (  # noqa: F401 — re-exports: tests + main code ref
     _midpoint_price,
     _place_live_order,  # noqa: F401
     _poll_pending_orders,
+    _reprice_or_cancel_pending_orders,
     _validate_trade_opportunity,  # noqa: F401
     place_paper_order,  # noqa: F401
 )
@@ -2872,6 +2873,9 @@ def cmd_watch(
                 )
             if live:
                 _poll_pending_orders(client, config=live_cfg)
+                _reprice_or_cancel_pending_orders(
+                    client, config=live_cfg, liquid_opps=liquid_opps
+                )
             # Check price alerts
             try:
                 from alerts import check_alerts, mark_triggered
