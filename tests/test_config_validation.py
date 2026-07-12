@@ -65,12 +65,14 @@ def test_bot_config_loads_from_env(monkeypatch):
 
 
 def test_bot_config_defaults_are_sane(monkeypatch):
-    """breakeven_trigger_pct's field reads BREAKEVEN_TRIGGER_PCT fresh from
-    the environment by design (see config._live_breakeven_trigger_pct's
-    docstring) -- .env is gitignored and machine-specific, so this test
-    must not rely on it happening to be loaded (and set to 0.75) to pass.
-    Pin it explicitly to the known production value instead."""
+    """breakeven_trigger_pct and max_days_out both read their env var fresh
+    from the environment by design (see config._live_breakeven_trigger_pct
+    and config._live_max_days_out's docstrings, and utils.py's underlying
+    constants) -- .env is gitignored and machine-specific, so this test must
+    not rely on it happening to be loaded (and set to 0.75 / 3 respectively)
+    to pass. Pin both explicitly to the known production values instead."""
     monkeypatch.setenv("BREAKEVEN_TRIGGER_PCT", "0.75")
+    monkeypatch.setenv("MAX_DAYS_OUT", "3")
 
     from config import BotConfig, reset_config
 

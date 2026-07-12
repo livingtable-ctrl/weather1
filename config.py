@@ -41,6 +41,21 @@ def _env_int(name: str, default: str) -> int:
         ) from None
 
 
+def _live_max_days_out() -> int:
+    """MAX_DAYS_OUT is actually enforced from utils.py, not this dataclass
+    (weather_markets.py imports it directly for the real days-out trading
+    gate). Read the env var fresh here too, but fall back to utils.py's
+    already-resolved default rather than a second hardcoded copy -- this
+    dataclass's own literal ("3") had silently diverged from utils.py's ("5")
+    for an unknown period, only masked because .env has always set
+    MAX_DAYS_OUT explicitly in this deployment; an unset env var would have
+    made the dashboard display a different max-days-out than what real
+    trading actually enforced."""
+    from utils import MAX_DAYS_OUT as _fallback
+
+    return _env_int("MAX_DAYS_OUT", str(_fallback))
+
+
 def _live_max_same_day_spend() -> float:
     """MAX_SAME_DAY_SPEND is actually enforced from utils.py, not this dataclass
     (order_executor.py imports it directly). Read the env var fresh here too
@@ -177,8 +192,7 @@ class BotConfig:
     max_daily_spend: float = field(
         default_factory=lambda: _env_float("MAX_DAILY_SPEND", "500.0")
     )
-    # Default raised to 3 to match .env; was "5" in older code
-    max_days_out: int = field(default_factory=lambda: _env_int("MAX_DAYS_OUT", "3"))
+    max_days_out: int = field(default_factory=_live_max_days_out)
     drawdown_halt_pct: float = field(
         default_factory=lambda: _env_float("DRAWDOWN_HALT_PCT", "0.20")
     )
