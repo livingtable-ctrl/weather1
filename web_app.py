@@ -1133,7 +1133,12 @@ setInterval(() => {{
         from paper import kelly_quantity as _kq
         from paper import portfolio_kelly_fraction as _pkf
         from paper import spread_kelly_multiplier as _skm
-        from utils import KALSHI_FEE_RATE as _fee_rate
+
+        # Maker fee (not taker): live/paper entries are always resting midpoint
+        # GTC limit orders, which pay $0 on this bot's markets (see
+        # KALSHI_MAKER_FEE_RATE) -- this dashboard display must match what
+        # analyze_trade() actually computes for live sizing.
+        from utils import KALSHI_MAKER_FEE_RATE as _fee_rate
         from weather_markets import kelly_fraction as _kf_wm
 
         try:
@@ -2179,6 +2184,9 @@ setInterval(() => {{
                     "enable_micro_live": cfg.enable_micro_live,
                     "min_brier_samples": cfg.min_brier_samples,
                     "kalshi_fee_rate": cfg.kalshi_fee_rate,
+                    # The rate this bot's own trades actually pay — see
+                    # BotConfig.kalshi_maker_fee_rate's docstring.
+                    "kalshi_maker_fee_rate": cfg.kalshi_maker_fee_rate,
                     # Env-var-only settings (not in BotConfig dataclass)
                     "env": _os.getenv("KALSHI_ENV", "demo"),
                     "strategy": _os.getenv("SIZING_STRATEGY", "kelly"),
@@ -2575,7 +2583,11 @@ setInterval(() => {{
         # Cap quantity at Kelly limit so the dashboard cannot oversize a trade
         try:
             from paper import kelly_quantity as _kq_cap
-            from utils import KALSHI_FEE_RATE as _fee_cap
+
+            # Maker fee (not taker): manual quick-buy orders route through the
+            # same maker (resting midpoint GTC limit) execution as everything
+            # else -- see KALSHI_MAKER_FEE_RATE.
+            from utils import KALSHI_MAKER_FEE_RATE as _fee_cap
             from weather_markets import kelly_fraction as _kf_cap
 
             _ep_raw = body.get("entry_prob")

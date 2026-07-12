@@ -37,7 +37,13 @@ from kalshi_client import KalshiClient, _request_with_retry
 from nws import fetch_nbm_forecast, get_live_observation, nws_prob, obs_prob
 from paths import SERIES_DRIFT_PATH
 from schema_validator import is_all_null, validate_forecast
-from utils import KALSHI_FEE_RATE, KELLY_CAP, MAX_DAYS_OUT, normal_cdf
+from utils import (
+    KALSHI_FEE_RATE,
+    KALSHI_MAKER_FEE_RATE,
+    KELLY_CAP,
+    MAX_DAYS_OUT,
+    normal_cdf,
+)
 
 _log = logging.getLogger(__name__)
 
@@ -4692,7 +4698,9 @@ def _analyze_precip_trade(
 
     payout = 1 - entry_price
     p_win = blended_prob if rec_side == "yes" else 1 - blended_prob
-    net_ev = p_win * payout * (1 - KALSHI_FEE_RATE) - (1 - p_win) * entry_price
+    # Maker fee (not taker): live/paper entries are always resting midpoint GTC
+    # limit orders, which pay $0 on this bot's markets (see KALSHI_MAKER_FEE_RATE).
+    net_ev = p_win * payout * (1 - KALSHI_MAKER_FEE_RATE) - (1 - p_win) * entry_price
     net_edge = min(net_ev / entry_price if entry_price > 0 else 0.0, 3.0)
     edge = blended_prob - market_prob
     # L8-A / L7-C: entry_side_edge vs actual fill price (ask), not mid.
@@ -4711,7 +4719,7 @@ def _analyze_precip_trade(
     else:
         entry_side_edge = (1.0 - blended_prob) - _esmp
     # Always pass fee_rate so Kelly is fee-adjusted; fee-free Kelly overstates size.
-    fee_kel = kelly_fraction(p_win, entry_price, fee_rate=KALSHI_FEE_RATE)
+    fee_kel = kelly_fraction(p_win, entry_price, fee_rate=KALSHI_MAKER_FEE_RATE)
 
     # ── Bootstrap CI on precip ensemble ──────────────────────────────────────
     ci_low, ci_high = blended_prob, blended_prob
@@ -4732,11 +4740,11 @@ def _analyze_precip_trade(
     # For NO bets, flip CI to P(NO wins) space so kelly_fraction uses the right side.
     if rec_side == "no":
         ci_adj_kelly = bayesian_kelly(
-            1.0 - ci_high, 1.0 - ci_low, entry_price, fee_rate=KALSHI_FEE_RATE
+            1.0 - ci_high, 1.0 - ci_low, entry_price, fee_rate=KALSHI_MAKER_FEE_RATE
         )
     else:
         ci_adj_kelly = bayesian_kelly(
-            ci_low, ci_high, entry_price, fee_rate=KALSHI_FEE_RATE
+            ci_low, ci_high, entry_price, fee_rate=KALSHI_MAKER_FEE_RATE
         )
     # E3: discount Kelly proportionally to CI width (wider CI = more uncertainty)
     _ci_scale = max(0.25, 1.0 - (ci_high - ci_low) * 2.0)
@@ -4895,7 +4903,9 @@ def _analyze_snow_trade(
 
     payout = 1 - entry_price
     p_win = blended_prob if rec_side == "yes" else 1 - blended_prob
-    net_ev = p_win * payout * (1 - KALSHI_FEE_RATE) - (1 - p_win) * entry_price
+    # Maker fee (not taker): live/paper entries are always resting midpoint GTC
+    # limit orders, which pay $0 on this bot's markets (see KALSHI_MAKER_FEE_RATE).
+    net_ev = p_win * payout * (1 - KALSHI_MAKER_FEE_RATE) - (1 - p_win) * entry_price
     net_edge = min(net_ev / entry_price if entry_price > 0 else 0.0, 3.0)
     edge = blended_prob - market_prob
     # L8-A / L7-C: entry_side_edge vs actual fill price (ask), not mid.
@@ -4912,7 +4922,7 @@ def _analyze_snow_trade(
     else:
         entry_side_edge = (1.0 - blended_prob) - _esmp
     # Always pass fee_rate so Kelly is fee-adjusted; fee-free Kelly overstates size.
-    fee_kel = kelly_fraction(p_win, entry_price, fee_rate=KALSHI_FEE_RATE)
+    fee_kel = kelly_fraction(p_win, entry_price, fee_rate=KALSHI_MAKER_FEE_RATE)
 
     ci_low, ci_high = blended_prob, blended_prob
     if len(precip_members) >= 5:
@@ -4939,11 +4949,11 @@ def _analyze_snow_trade(
     # #39: Bayesian Kelly — flip CI for NO bets so integration is over P(win)
     if rec_side == "no":
         ci_adj_kelly = bayesian_kelly(
-            1.0 - ci_high, 1.0 - ci_low, entry_price, fee_rate=KALSHI_FEE_RATE
+            1.0 - ci_high, 1.0 - ci_low, entry_price, fee_rate=KALSHI_MAKER_FEE_RATE
         )
     else:
         ci_adj_kelly = bayesian_kelly(
-            ci_low, ci_high, entry_price, fee_rate=KALSHI_FEE_RATE
+            ci_low, ci_high, entry_price, fee_rate=KALSHI_MAKER_FEE_RATE
         )
     # E3: discount Kelly proportionally to CI width
     _ci_scale = max(0.25, 1.0 - (ci_high - ci_low) * 2.0)
@@ -6520,11 +6530,13 @@ def analyze_trade(enriched: dict) -> dict | None:
     )
     if entry_price == 0:
         entry_price = 1 - market_prob if rec_side == "no" else market_prob
+    # Maker fee (not taker): live/paper entries are always resting midpoint GTC
+    # limit orders, which pay $0 on this bot's markets (see KALSHI_MAKER_FEE_RATE).
     # Always pass fee_rate so Kelly is fee-adjusted; fee-free Kelly overstates size.
     kelly = kelly_fraction(
         blended_prob if rec_side == "yes" else 1 - blended_prob,
         entry_price,
-        fee_rate=KALSHI_FEE_RATE,
+        fee_rate=KALSHI_MAKER_FEE_RATE,
     )
 
     # ── 10a. Bid-ask spread cost ─────────────────────────────────────────────
@@ -6608,16 +6620,19 @@ def analyze_trade(enriched: dict) -> dict | None:
     illiquid = spread_cost > 0.05
 
     # ── 11. Fee-adjusted edge ────────────────────────────────────────────────
+    # Maker fee (not taker) — see KALSHI_MAKER_FEE_RATE.
     if rec_side == "yes":
         payout = 1 - entry_price
         net_ev = (
-            blended_prob * payout * (1 - KALSHI_FEE_RATE)
+            blended_prob * payout * (1 - KALSHI_MAKER_FEE_RATE)
             - (1 - blended_prob) * entry_price
         )
     else:
         payout = 1 - entry_price
         p_win = 1 - blended_prob
-        net_ev = p_win * payout * (1 - KALSHI_FEE_RATE) - blended_prob * entry_price
+        net_ev = (
+            p_win * payout * (1 - KALSHI_MAKER_FEE_RATE) - blended_prob * entry_price
+        )
 
     # L7-D: apply time-decay so adjusted_edge (= net_edge * edge_conf) also shrinks
     # near close — before this fix adjusted_edge used full net_edge for same-day markets
@@ -6630,7 +6645,7 @@ def analyze_trade(enriched: dict) -> dict | None:
     fee_adjusted_kelly = kelly_fraction(
         blended_prob if rec_side == "yes" else 1 - blended_prob,
         entry_price,
-        fee_rate=KALSHI_FEE_RATE,
+        fee_rate=KALSHI_MAKER_FEE_RATE,
     )
 
     # Scale Kelly down for low data quality and anomalous forecasts
@@ -6645,10 +6660,12 @@ def analyze_trade(enriched: dict) -> dict | None:
     # For NO bets, flip CI to P(win) space — CI is on P(YES), but Kelly needs P(win).
     if rec_side == "no":
         bk = bayesian_kelly(
-            1.0 - ci_high, 1.0 - ci_low, entry_price, fee_rate=KALSHI_FEE_RATE
+            1.0 - ci_high, 1.0 - ci_low, entry_price, fee_rate=KALSHI_MAKER_FEE_RATE
         )
     else:
-        bk = bayesian_kelly(ci_low, ci_high, entry_price, fee_rate=KALSHI_FEE_RATE)
+        bk = bayesian_kelly(
+            ci_low, ci_high, entry_price, fee_rate=KALSHI_MAKER_FEE_RATE
+        )
     condition_type_scale = _CONDITION_CONFIDENCE.get(condition["type"], 1.0)
     # E3: discount Kelly proportionally to CI width (wider CI = more uncertainty)
     _ci_scale = max(0.25, 1.0 - (ci_high - ci_low) * 2.0)

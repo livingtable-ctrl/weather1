@@ -69,6 +69,59 @@ class TestCmdSimulateStatusParam:
             "get_markets must NOT be called — use _fetch_settled_markets instead"
         )
 
+    def test_model_pnl_uses_maker_fee_not_taker_fee(self, monkeypatch, capsys):
+        """The 'Model:' P&L must match what analyze_trade() itself assumes
+        (maker fee, $0 on this bot's markets) -- not the taker rate. Before
+        this fix, the sandbox recomputed the model's hypothetical P&L with
+        KALSHI_FEE_RATE (0.07) even though analyze_trade()'s own Kelly/EV
+        math already used KALSHI_MAKER_FEE_RATE (0.0), silently understating
+        the displayed model edge by ~7%.
+        """
+        import builtins
+        from unittest.mock import MagicMock
+
+        import main
+
+        market = {
+            "ticker": "KXHIGHNY-26APR09-T70",
+            "title": "NYC high > 70F",
+            "result": "yes",
+            "close_time": "2026-04-09T23:00:00Z",
+            "yes_bid": 0.50,
+            "yes_ask": 0.50,
+        }
+
+        def _fake_fetch(client, **kw):
+            return [market]
+
+        monkeypatch.setattr("backtest._fetch_settled_markets", _fake_fetch)
+        monkeypatch.setattr("weather_markets.enrich_with_forecast", lambda m: m)
+        monkeypatch.setattr(
+            "weather_markets.analyze_trade",
+            lambda enriched: {
+                "recommended_side": "yes",
+                "forecast_prob": 0.70,
+            },
+        )
+
+        # "s" (skip) short-circuits past the model-evaluation block entirely
+        # (a bare `continue`), so the user must actually answer to reach it.
+        # The user's own P&L math is unrelated to this fix; any valid
+        # side+amount works here.
+        responses = iter(["n", "1"])
+        monkeypatch.setattr(builtins, "input", lambda *a: next(responses))
+
+        fake_client = MagicMock()
+        main.cmd_simulate(fake_client)
+
+        out = capsys.readouterr().out
+        # entry_price=0.50, model wins, $10 stake:
+        # mw = (1 - 0.50) * (1 - KALSHI_MAKER_FEE_RATE) = 0.50 * 1.0 = 0.50
+        # mpnl = 10 / 0.50 * 0.50 = 10.00 (not 9.30, which is the stale taker-fee value)
+        assert "Model: BUY YES" in out
+        assert "+$10.00" in out
+        assert "+$9.30" not in out
+
 
 class TestFetchSettledMarkets:
     def test_pagination_follows_cursor_within_series(self, monkeypatch):

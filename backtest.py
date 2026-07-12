@@ -23,7 +23,7 @@ from pathlib import Path
 
 import requests
 
-from utils import KALSHI_FEE_RATE
+from utils import KALSHI_FEE_RATE, KALSHI_MAKER_FEE_RATE
 from weather_markets import CITY_COORDS, KNOWN_WEATHER_SERIES, _parse_city_from_ticker
 
 _log = logging.getLogger(__name__)
@@ -551,17 +551,23 @@ def run_backtest(
         if entry_price <= 0:
             entry_price = market_prob if rec_side == "yes" else 1 - market_prob
 
-        # L2-B: always pass fee_rate so backtest Kelly matches live sizing
+        # L2-B: always pass fee_rate so backtest Kelly matches live sizing.
+        # Maker fee (not taker): this bot's own live/paper entries are always
+        # resting midpoint GTC limit orders, which pay $0 on this bot's
+        # markets (see KALSHI_MAKER_FEE_RATE) -- unlike the 3 comparison
+        # benchmarks below, which intentionally model a naive taker-style
+        # "just take the market price" strategy and correctly keep the
+        # taker rate.
         kelly = kelly_fraction(
             our_prob if rec_side == "yes" else 1 - our_prob,
             entry_price,
-            fee_rate=KALSHI_FEE_RATE,
+            fee_rate=KALSHI_MAKER_FEE_RATE,
         )
         stake = min(kelly, 0.05)  # cap at 5% per trade for backtest
         won = (rec_side == "yes" and actual == 1) or (rec_side == "no" and actual == 0)
-        # P&L: win case = net gain after 7% fee on winnings; lose case = lose the stake
+        # P&L: win case = net gain after maker fee on winnings; lose case = lose the stake
         if won:
-            pnl = stake * (1 - entry_price) / entry_price * (1 - KALSHI_FEE_RATE)
+            pnl = stake * (1 - entry_price) / entry_price * (1 - KALSHI_MAKER_FEE_RATE)
         else:
             pnl = -stake
 

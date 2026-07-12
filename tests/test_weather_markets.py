@@ -487,11 +487,21 @@ def test_snow_prob_uses_slr_not_1_to_10():
 
 
 class TestKellyFeeRate:
-    """L2-B: kelly_fraction must always be called with fee_rate=KALSHI_FEE_RATE.
+    """L2-B: kelly_fraction must always be called with an explicit fee_rate,
+    never left to a fee-free default.
 
-    Fee-free Kelly (fee_rate=0.0) overstates position size because it ignores
-    the 7% Kalshi fee on winnings. This inflates sizing by ~5–10% for typical
-    edges, leading to systematic over-betting and negative expected P&L.
+    These tests exercise kelly_fraction()'s own generic fee-sensitivity
+    behavior using KALSHI_FEE_RATE (0.07) as a representative nonzero rate —
+    they don't assert which specific rate analyze_trade()'s call sites pass.
+    As of 2026-07-12, analyze_trade()'s own call sites pass
+    KALSHI_MAKER_FEE_RATE (0.0), not KALSHI_FEE_RATE, because this bot's live/
+    paper entries are always resting midpoint GTC limit orders (maker fills),
+    which pay $0 on this bot's markets — see utils.KALSHI_MAKER_FEE_RATE's
+    docstring. Fee-free Kelly (fee_rate=0.0) still overstates position size
+    whenever the real fee is nonzero (e.g. a taker fill, or a maker fill on
+    one of the ~50 non-standard series where the maker multiplier isn't 0) —
+    that's the invariant under test here, independent of which rate applies
+    to any particular call site.
     """
 
     def test_fee_adjusted_kelly_less_than_fee_free(self):

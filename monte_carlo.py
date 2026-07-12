@@ -263,7 +263,9 @@ def simulate_portfolio(
             _DEFAULT_CORRELATIONS[(c1, c2)] = corr
             _DEFAULT_CORRELATIONS[(c2, c1)] = corr
 
-    from utils import KALSHI_FEE_RATE
+    # Maker fee (not taker): live/paper entries are always resting midpoint GTC
+    # limit orders, which pay $0 on this bot's markets (see KALSHI_MAKER_FEE_RATE).
+    from utils import KALSHI_MAKER_FEE_RATE
 
     # Build per-trade parameters including city for correlation lookup.
     # active_trades mirrors trade_params so position_correlation_matrix
@@ -333,7 +335,7 @@ def simulate_portfolio(
 
         # If we win: payout per contract = 1 - fee on winnings
         winnings_per = 1.0 - entry_price
-        net_payout_per = 1.0 - winnings_per * KALSHI_FEE_RATE
+        net_payout_per = 1.0 - winnings_per * KALSHI_MAKER_FEE_RATE
         win_pnl = qty * net_payout_per - cost
         loss_pnl = -cost
 

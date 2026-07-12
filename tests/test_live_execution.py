@@ -972,8 +972,10 @@ class TestPollPendingOrdersExtended:
         order = orders[0]
         assert order["outcome_yes"] == 1
         assert order["settled_at"] is not None
-        # pnl = 2 * (1 - 0.55) * (1 - 0.07) = 2 * 0.45 * 0.93 = 0.837
-        assert order["pnl"] == pytest.approx(0.837, rel=1e-3)
+        # pnl = 2 * (1 - 0.55) * (1 - fee); live fills are always maker
+        # (resting midpoint GTC limit), which pays $0 on this bot's markets —
+        # see utils.KALSHI_MAKER_FEE_RATE. pnl = 2 * 0.45 * 1.0 = 0.90
+        assert order["pnl"] == pytest.approx(0.90, rel=1e-3)
 
     def test_no_side_settlement_yes_wins(self):
         """NO bet loses when YES wins: pnl = -qty * price (NO contract cost)."""
@@ -1044,8 +1046,9 @@ class TestPollPendingOrdersExtended:
         order = orders[0]
         assert order["outcome_yes"] == 0
         assert order["settled_at"] is not None
-        # pnl = 3 * (1 - 0.60) * (1 - 0.07) = 3 * 0.40 * 0.93 = 1.116
-        assert order["pnl"] == pytest.approx(1.116, rel=1e-3)
+        # pnl = 3 * (1 - 0.60) * (1 - fee); maker fee is $0 on this bot's
+        # markets — see utils.KALSHI_MAKER_FEE_RATE. pnl = 3 * 0.40 * 1.0 = 1.20
+        assert order["pnl"] == pytest.approx(1.20, rel=1e-3)
 
     def test_settlement_loss_does_not_double_count(self):
         """F7: a losing settlement must add exactly the loss to the daily
@@ -1110,9 +1113,10 @@ class TestPollPendingOrdersExtended:
 
         main._poll_pending_orders(mock_client, config={})
 
-        # pnl = 2*(1-0.55)*(1-0.07) = 0.837 (profit) -> add_live_loss(-pnl)
-        # is a credit of -0.837, not a lingering positive "loss".
-        assert execution_log.get_today_live_loss() == pytest.approx(-0.837, rel=1e-3)
+        # pnl = 2*(1-0.55)*(1-fee) = 0.90 (profit; maker fee is $0 on this
+        # bot's markets — see utils.KALSHI_MAKER_FEE_RATE) -> add_live_loss(-pnl)
+        # is a credit of -0.90, not a lingering positive "loss".
+        assert execution_log.get_today_live_loss() == pytest.approx(-0.90, rel=1e-3)
 
 
 class TestPlaceLiveOrderDedup:

@@ -262,6 +262,19 @@ def test_api_risk_returns_correct_shape(client):
         assert d["directional"]["no"] == 0.0
 
 
+def test_api_config_includes_both_fee_rates(client):
+    """/api/config must surface both kalshi_fee_rate (taker, reference) and
+    kalshi_maker_fee_rate (the rate this bot's own trades actually pay) —
+    the Settings tab must not show only the stale taker-only rate.
+    """
+    r = client.get("/api/config")
+    assert r.status_code == 200
+    d = r.get_json()
+    assert "kalshi_fee_rate" in d
+    assert "kalshi_maker_fee_rate" in d
+    assert d["kalshi_maker_fee_rate"] == pytest.approx(0.0)
+
+
 def test_trades_route_returns_200_with_title(client):
     """Trades page returns 200 and contains 'Trades'."""
     r = client.get("/trades")

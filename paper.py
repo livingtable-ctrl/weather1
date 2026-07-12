@@ -25,7 +25,7 @@ from safe_io import project_root as _project_root
 from utils import (
     FIXED_BET_DOLLARS,
     FIXED_BET_PCT,
-    KALSHI_FEE_RATE,
+    KALSHI_MAKER_FEE_RATE,
     KELLY_CAP,
     MAX_CITY_DATE_EXPOSURE,
     METHOD_KELLY_GATE,
@@ -1061,8 +1061,13 @@ def settle_paper_trade(trade_id: int, outcome_yes: bool) -> dict:
                 )
                 # Fee is charged on winnings (profit) only, not the full $1 payout.
                 # net_payout_per_contract = 1.0 - winnings * fee_rate
+                # Maker fee (not taker): live/paper entries are always resting
+                # midpoint GTC limit orders, which pay $0 on this bot's markets
+                # (see KALSHI_MAKER_FEE_RATE).
                 winnings_per_contract = 1.0 - entry_price
-                net_payout_per_contract = 1.0 - winnings_per_contract * KALSHI_FEE_RATE
+                net_payout_per_contract = (
+                    1.0 - winnings_per_contract * KALSHI_MAKER_FEE_RATE
+                )
                 payout = qty * net_payout_per_contract if won else 0.0
                 pnl = payout - cost
 
@@ -3015,8 +3020,11 @@ def get_attribution() -> dict:
         winnings_per = 1.0 - entry_price
         # L-5: for NO trades win_prob = 1-ep (market prob), not ep (our prob of YES)
         win_prob = ep if t.get("side") == "yes" else (1.0 - ep)
-        # Expected P&L if we could repeat this bet infinitely at our model's probability
-        expected = win_prob * (qty * (1.0 - winnings_per * KALSHI_FEE_RATE)) - cost
+        # Expected P&L if we could repeat this bet infinitely at our model's
+        # probability. Maker fee (not taker) — see KALSHI_MAKER_FEE_RATE.
+        expected = (
+            win_prob * (qty * (1.0 - winnings_per * KALSHI_MAKER_FEE_RATE)) - cost
+        )
         actual = t["pnl"]
         pnl_from_edge += expected
         pnl_from_luck += actual - expected

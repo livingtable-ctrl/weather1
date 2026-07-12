@@ -369,7 +369,9 @@ class TestSettlementCostBasis:
         balance_after = paper.get_balance()
 
         # With entry_price=0.60: winnings = 1 - 0.60 = 0.40 per contract, fee applied
-        fee_rate = paper.KALSHI_FEE_RATE
+        # (maker fee — settle_paper_trade always models this bot's own maker
+        # execution, which pays $0 on this bot's markets).
+        fee_rate = paper.KALSHI_MAKER_FEE_RATE
         expected_winnings = 1.0 - entry_price
         expected_payout = qty * (1.0 - expected_winnings * fee_rate)
         expected_balance = balance_before + expected_payout
@@ -402,8 +404,8 @@ class TestSettlementCostBasis:
         settled = paper._load()["trades"][0]
         pnl = settled["pnl"]
 
-        # pnl = payout - cost, where cost = entry_price * qty
-        fee_rate = paper.KALSHI_FEE_RATE
+        # pnl = payout - cost, where cost = entry_price * qty (maker fee — see above)
+        fee_rate = paper.KALSHI_MAKER_FEE_RATE
         winnings = 1.0 - entry_price
         expected_pnl = qty * (winnings - winnings * fee_rate)
         assert pnl == pytest.approx(expected_pnl, abs=0.001), (

@@ -1343,8 +1343,78 @@ When to revisit:
   - Before or at live/micro-live activation — this should arguably be a
     prerequisite for unattended live trading, not a follow-up.
 
-[MAKER EXECUTION UPGRADES — REPRICING + MAKER-AWARE FEE MODEL]
-Priority: High (systematically understated edge on every trade analyzed)
+[PARTIALLY RESOLVED 2026-07-12] MAKER EXECUTION UPGRADES — REPRICING +
+  MAKER-AWARE FEE MODEL
+Priority: was High (systematically understated edge on every trade analyzed)
+
+PARTIALLY RESOLVED 2026-07-12: problem 2/3 (maker-aware fee model) is done;
+  problems 1/4 (repricing/chase logic, fill-quality instrumentation) are
+  still open. Verified Kalshi's real fee formula directly against the
+  primary source (kalshi.com/docs/kalshi-fee-schedule.pdf, effective July 7,
+  2026, obtained and read in full) rather than trusting third-party
+  summaries -- several independent secondary sources (pm.wiki, marketmath.io)
+  claimed maker fee is universally 25% of taker (0.0175 x P x (1-P)), which
+  is WRONG for this bot's markets specifically: the real schedule has a
+  maker multiplier M that defaults to 0 for the general event-contract
+  schedule, and is only nonzero (giving the 25%-of-taker rate) for ~50
+  explicitly-listed non-standard series (KXNFL*, KXNBA*, KXCPI, KXFED, etc.)
+  -- none of which are this bot's weather markets. So maker fee is genuinely
+  and exactly $0 here, confirming utils.py's original "Maker orders pay 0%"
+  comment was correct all along, and problem 3's formula-shape concern
+  (0.07 x p x (1-p) vs flat-fraction-of-winnings) turned out to be moot in
+  practice: 0 x anything = 0, so the shape mismatch doesn't matter while
+  every fill is a maker fill.
+  Added utils.KALSHI_MAKER_FEE_RATE (0.0, PDF-cited). Traced every
+  KALSHI_FEE_RATE call site across the repo (not just kelly_fraction()/
+  net_ev as originally scoped -- the same bug also lived in paper.py's
+  settle_paper_trade()/get_attribution(), order_executor.py's live-
+  settlement P&L feeding the daily-loss safety counter, and
+  monte_carlo.py's portfolio VaR risk gate; scope was surfaced to and
+  confirmed by the user before implementing) and switched every site that
+  models this bot's own maker-executed trades to the maker rate, while
+  deliberately leaving backtest.py's 3 naive-strategy comparison benchmarks
+  and kelly_fraction()/bayesian_kelly()'s own generic default parameters at
+  the taker rate. Independently reviewed (Agent, opus) -- traced the safety-
+  gate-adjacent sites specifically (daily-loss counter, VaR gate) and
+  confirmed the change doesn't remove a safety margin (loss-side P&L is
+  unchanged; only previously-phantom fee on wins was removed); found one
+  LOW gap (KALSHI_MAKER_FEE_RATE missing from get_config_fingerprint()'s
+  drift-detection snapshot), fixed same session. 665 tests pass across the
+  full affected scope (weather_markets.py, paper.py, order_executor.py,
+  monte_carlo.py, backtest.py, web_app.py, main.py), 3 tests had hardcoded
+  0.07-fee P&L expectations corrected to reflect the real $0 maker fee.
+
+  UPDATE (same session, user-flagged): two display sites were still showing
+  the stale taker-only fee after the first pass. Added BotConfig.
+  kalshi_maker_fee_rate (mirrors kalshi_fee_rate's pattern, own validation)
+  and wired it into /api/config (dashboard Settings tab) and the CLI
+  settings menu, which previously only showed KALSHI_FEE_RATE with no
+  visibility into the rate actually driving sizing. Separately, re-examined
+  cmd_simulate()'s "Simulation Sandbox" (main.py) -- originally called out
+  of scope as "a symmetric educational game" -- and found that framing was
+  wrong: its "Model:" P&L explicitly claims to show what analyze_trade()'s
+  own recommendation would have earned (it calls analyze_trade() directly),
+  so recomputing that P&L with the taker rate while analyze_trade() itself
+  now uses the maker rate was a real internal-consistency bug, not a
+  self-contained toy. Fixed by splitting into _user_fee (taker -- a human
+  manually taking the displayed price) and _model_fee (maker -- matches
+  analyze_trade()'s real assumption). Added a regression test
+  (tests/test_backtest.py) since none of the existing cmd_simulate tests
+  exercised the interactive P&L path. All tests pass, lint/mypy clean.
+
+  UPDATE (same session, requested full re-review): a second independent
+  opus review of the accumulated diff (all 3 rounds) found the math correct
+  everywhere but surfaced 3 more instances of the same underlying pattern --
+  user-facing display TEXT still hardcoding "~7% fee"/"7% fees", not
+  computation this time: main.py's cmd_market Edge line ("after ~7% fee"),
+  cmd_backtest's Sim P&L caption ("7% fees"), and cmd_analyze's table
+  legend ("after Kalshi's ~7% fee"). None affected sizing, P&L, or safety
+  gates -- purely stale captions describing numbers that were already
+  computed correctly. Fixed to generic "after fees"/"maker fees" wording
+  (not hardcoding a specific percentage, since KALSHI_MAKER_FEE_RATE is
+  itself env-overridable). No test pinned the stale strings. All tests
+  pass, lint/mypy clean -- this closes the fee-model half of this backlog
+  item.
 
 Problem:
   The live path already places GTC limit orders at the midpoint
@@ -1364,15 +1434,14 @@ Problem:
      none of the above can be tuned empirically yet.
 
 What the fix looks like:
-  Reprice-or-cancel logic driven by the existing kalshi_ws.py book feed
-  (improve toward the ask as edge allows; cross as taker only when edge
-  clears the taker fee); pass an execution-style-aware fee_rate into
-  kelly_fraction()/net_ev instead of flat KALSHI_FEE_RATE; log fill latency
-  and post-fill price drift per order to measure adverse selection.
+  [DONE, see resolution note above] pass an execution-style-aware fee_rate
+    into kelly_fraction()/net_ev instead of flat KALSHI_FEE_RATE.
+  [Still open] Reprice-or-cancel logic driven by the existing kalshi_ws.py
+    book feed (improve toward the ask as edge allows; cross as taker only
+    when edge clears the taker fee); log fill latency and post-fill price
+    drift per order to measure adverse selection.
 
 Why not now:
-  - Fee-model change touches every EV/sizing calc — needs its own careful
-    pass with tests (same blast-radius class as PAPER_MIN_EDGE work).
   - Adverse-selection tuning needs the fill-quality data that doesn't exist
     yet — instrument first, then tune.
 

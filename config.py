@@ -230,6 +230,15 @@ class BotConfig:
     kalshi_fee_rate: float = field(
         default_factory=lambda: _env_float("KALSHI_FEE_RATE", "0.07")
     )
+    # The rate actually applied to this bot's own live/paper sizing and P&L
+    # (utils.KALSHI_MAKER_FEE_RATE) — live/paper entries are always resting
+    # midpoint GTC limit orders (maker fills), which pay $0 on this bot's
+    # markets. kalshi_fee_rate above is the taker rate, shown for reference
+    # (e.g. what a naive market-order strategy would pay) but not what this
+    # bot's trades actually cost.
+    kalshi_maker_fee_rate: float = field(
+        default_factory=lambda: _env_float("KALSHI_MAKER_FEE_RATE", "0.0")
+    )
     min_edge: float = field(default_factory=lambda: _env_float("MIN_EDGE", "0.07"))
     paper_min_edge: float = field(default_factory=_paper_min_edge_default)
     strong_edge: float = field(
@@ -312,6 +321,12 @@ class BotConfig:
         if not (0.0 < self.kalshi_fee_rate < 1.0):
             errors.append(
                 f"KALSHI_FEE_RATE ({self.kalshi_fee_rate}) must be between 0 and 1"
+            )
+        # Inclusive of 0.0 (unlike the taker rate above) — $0 is the real,
+        # expected maker fee for this bot's markets, not an edge case.
+        if not (0.0 <= self.kalshi_maker_fee_rate < 1.0):
+            errors.append(
+                f"KALSHI_MAKER_FEE_RATE ({self.kalshi_maker_fee_rate}) must be between 0 and 1"
             )
         if not (0.0 < self.drawdown_halt_pct < 1.0):
             errors.append(

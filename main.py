@@ -1074,7 +1074,7 @@ def cmd_market(client: KalshiClient, ticker: str, verbose: bool = False):
         _kv("Mkt P:", f"{prices['implied_prob'] * 100:.1f}%")
         _kv(
             "Edge:",
-            f"{edge_color(edge)}  {dim('gross')}  →  {edge_color(net_edge)}  {dim('after ~7% fee')}",
+            f"{edge_color(edge)}  {dim('gross')}  →  {edge_color(net_edge)}  {dim('after fees')}",
         )
         if ci_kelly > 0.005:
             from paper import kelly_bet_dollars, kelly_quantity
@@ -1111,12 +1111,14 @@ def cmd_market(client: KalshiClient, ticker: str, verbose: bool = False):
         print(f"\n  {signal_color(analysis['signal'].strip())}")
         _kv("Action:", f"BUY {bold(side)} on {ticker}")
 
-        # Show assumed fee rate
-        from utils import KALSHI_FEE_RATE as _fee
+        # Show assumed fee rate — matches what analyze_trade() actually used
+        # (maker: live/paper entries are always resting midpoint GTC limit
+        # orders, which pay $0 on this bot's markets).
+        from utils import KALSHI_MAKER_FEE_RATE as _fee
 
         print(
             dim(
-                f"  [Fee: {_fee * 100:.0f}% of profit assumed (taker rate). Set KALSHI_FEE_RATE in .env to override]"
+                f"  [Fee: {_fee * 100:.1f}% of profit assumed (maker rate). Set KALSHI_MAKER_FEE_RATE in .env to override]"
             )
         )
 
@@ -1437,9 +1439,11 @@ def _analyze_once(
             if side == "yes"
             else 1 - analysis.get("market_prob", 0.5)
         )
-        # Compute what a $10 bet returns
+        # Compute what a $10 bet returns. Maker fee (not taker): live/paper
+        # entries are always resting midpoint GTC limit orders, which pay $0
+        # on this bot's markets (see KALSHI_MAKER_FEE_RATE).
         stake = 10.0
-        from utils import KALSHI_FEE_RATE as _fee
+        from utils import KALSHI_MAKER_FEE_RATE as _fee
 
         winnings = (1 - entry_price) * (1 - _fee)
         win_amount = round(stake / entry_price * winnings, 2)
@@ -2140,7 +2144,11 @@ def _quick_paper_buy(client: KalshiClient) -> None:
 def cmd_today(client: KalshiClient) -> None:
     """Show a plain-English 'what should I do today?' recommendation."""
     from paper import get_balance, kelly_bet_dollars
-    from utils import KALSHI_FEE_RATE as _fee
+
+    # Maker fee (not taker): live/paper entries are always resting midpoint
+    # GTC limit orders, which pay $0 on this bot's markets (see
+    # KALSHI_MAKER_FEE_RATE).
+    from utils import KALSHI_MAKER_FEE_RATE as _fee
 
     print(bold("\n  ── Today's Recommendation ──\n"))
     print(dim("  Scanning markets for the best opportunity...\n"))
@@ -2636,11 +2644,7 @@ def cmd_analyze(
             "  Mkt Says   what you'd pay to buy YES (e.g. 42% = pay $0.42 to win $1.00)"
         )
     )
-    print(
-        dim(
-            "  Your Edge  how much better our odds are vs the market, after Kalshi's ~7% fee"
-        )
-    )
+    print(dim("  Your Edge  how much better our odds are vs the market, after fees"))
     print(
         dim("  Risk       LOW = confident data  HIGH = market closes soon or thin data")
     )
@@ -4505,7 +4509,12 @@ def cmd_settings(client: KalshiClient | None = None) -> None:  # noqa: ARG001
             ("STRONG_EDGE", "threshold for STRONG BUY signal", "0-1"),
             ("MAX_DAILY_LOSS_PCT", "halt trading if down this % today", "0-1"),
             ("MAX_POSITION_AGE_DAYS", "warn on positions older than N days", "int"),
-            ("KALSHI_FEE_RATE", "fee on winnings", "0-1"),
+            ("KALSHI_FEE_RATE", "taker fee (reference only — see below)", "0-1"),
+            (
+                "KALSHI_MAKER_FEE_RATE",
+                "maker fee — the rate this bot's own trades actually pay",
+                "0-1",
+            ),
             ("KALSHI_ENV", "demo or prod", "demo/prod"),
         ]
 
@@ -6063,7 +6072,7 @@ def cmd_backtest(client: KalshiClient, args: list):
         )
         print(f"  Val win rate: {val_wr_str}")
     print(f"  Win rate:     {wr_str}   (picking better side vs market)")
-    print(f"  Sim P&L:      {pnl_str}   (quarter-Kelly sizing, 5% cap, 7% fees)")
+    print(f"  Sim P&L:      {pnl_str}   (quarter-Kelly sizing, 5% cap, maker fees)")
 
     # Show worst 5 and best 5
     rows = summary["rows"]
@@ -6912,7 +6921,14 @@ def cmd_simulate(client: KalshiClient) -> None:
     model_wins = 0
     total = 0
 
-    from utils import KALSHI_FEE_RATE as _fee
+    # _user_fee: a human manually taking the displayed price is modeled as a
+    # taker fill. _model_fee: the "Model:" P&L below claims to show what this
+    # bot's own strategy would have earned (it calls analyze_trade()
+    # directly) -- it must use the same maker-fee assumption analyze_trade()
+    # itself uses internally, or the two would silently disagree about the
+    # model's own edge.
+    from utils import KALSHI_FEE_RATE as _user_fee
+    from utils import KALSHI_MAKER_FEE_RATE as _model_fee
 
     print(
         dim(
@@ -6963,7 +6979,7 @@ def cmd_simulate(client: KalshiClient) -> None:
                 user_side == "no" and not actual_yes
             )
             if user_won:
-                winnings = (1 - user_entry) * (1 - _fee)
+                winnings = (1 - user_entry) * (1 - _user_fee)
                 pnl = amt / user_entry * winnings
                 user_pnl += pnl
                 user_wins += 1
@@ -6989,7 +7005,7 @@ def cmd_simulate(client: KalshiClient) -> None:
                     )
                     model_stake = 10.0
                     if model_won:
-                        mw = (1 - model_entry) * (1 - _fee)
+                        mw = (1 - model_entry) * (1 - _model_fee)
                         mpnl = model_stake / model_entry * mw
                         model_pnl += mpnl
                         model_wins += 1

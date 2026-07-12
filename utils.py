@@ -73,9 +73,29 @@ def get_paper_min_edge() -> float:
 
 # ── Kalshi platform constant ──────────────────────────────────────────────────
 
-# Fee Kalshi charges on winning trades. 7% is the default taker rate.
-# Maker (limit) orders pay 0%. Override via KALSHI_FEE_RATE in .env.
+# Fee Kalshi charges on a taker fill (an order that immediately crosses the
+# book): fee = round_up(0.07 * C * P * (1-P)) per contract. 7% is the
+# coefficient in that formula, not a flat 7% of winnings -- KALSHI_FEE_RATE is
+# used here as a flat-fraction-of-winnings approximation, which is exact only
+# when a real per-fill formula isn't being modeled directly. Override via
+# KALSHI_FEE_RATE in .env.
 KALSHI_FEE_RATE = float(os.getenv("KALSHI_FEE_RATE", "0.07"))
+
+# Fee Kalshi charges on a maker fill (a resting limit order that isn't
+# immediately matched): fee = round_up(M * 0.0175 * C * P * (1-P)) per
+# contract, where M (the maker multiplier) DEFAULTS TO 0 for the general
+# event-contract fee schedule -- verified 2026-07-12 directly against Kalshi's
+# own fee schedule PDF (kalshi.com/docs/kalshi-fee-schedule.pdf, effective
+# July 7, 2026). M is only nonzero (giving a real 25%-of-taker maker fee) for
+# a specific list of ~50 non-standard series (sports/politics/entertainment,
+# e.g. KXNFL*, KXNBA*, KXCPI, KXFED) -- this bot's weather markets
+# (KXHIGH*/KXLOW*/KXRAIN*) are not on that list, so maker fee is genuinely
+# $0 here, not an approximation. This bot's live/paper order placement is
+# always a resting midpoint GTC limit order (maker) -- see
+# order_executor.py's _place_live_order -- never a taker fill, so every
+# Kelly/EV/P&L computation modeling this bot's own trades should use this
+# rate, not KALSHI_FEE_RATE. Override via KALSHI_MAKER_FEE_RATE in .env.
+KALSHI_MAKER_FEE_RATE = float(os.getenv("KALSHI_MAKER_FEE_RATE", "0.0"))
 
 # Hard cap on Kelly fraction — applied in both weather_markets.py and paper.py.
 # Operative production cap is 0.25 (quarter-Kelly ceiling). Override via
@@ -367,6 +387,7 @@ def get_config_fingerprint() -> dict:
     """
     return {
         "KALSHI_FEE_RATE": KALSHI_FEE_RATE,
+        "KALSHI_MAKER_FEE_RATE": KALSHI_MAKER_FEE_RATE,
         "KELLY_CAP": KELLY_CAP,
         "MIN_EDGE": MIN_EDGE,
         "PAPER_MIN_EDGE": get_paper_min_edge(),

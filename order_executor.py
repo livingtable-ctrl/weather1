@@ -383,7 +383,9 @@ def _poll_pending_orders(client, config: dict | None = None) -> None:
     filled orders whose markets have finalized.
     Called each iteration of cmd_watch to close the GTC order lifecycle.
     """
-    from utils import KALSHI_FEE_RATE as _fee
+    # Maker fee (not taker): live orders are always resting midpoint GTC limit
+    # orders, which pay $0 on this bot's markets (see KALSHI_MAKER_FEE_RATE).
+    from utils import KALSHI_MAKER_FEE_RATE as _fee
 
     gtc_cancel_hours = (config or {}).get("gtc_cancel_hours", 24)
     now_utc = datetime.now(UTC)
