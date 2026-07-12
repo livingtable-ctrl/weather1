@@ -431,4 +431,60 @@ class TestGetMarketsPagination:
             result = client.get_markets()
 
         assert len(result) == 3
-        assert client._get.call_count == 3
+
+
+class TestGetCandlesticks:
+    """price_history backlog item — OHLC candlestick fetch."""
+
+    def _make_client(self):
+        with patch("kalshi_client.KalshiClient.__init__", return_value=None):
+            import kalshi_client
+
+            client = kalshi_client.KalshiClient.__new__(kalshi_client.KalshiClient)
+        return client
+
+    def test_calls_correct_path_and_params(self):
+        client = self._make_client()
+        client._get = MagicMock(return_value={"ticker": "TK", "candlesticks": []})
+        client._validate = MagicMock()
+
+        client.get_candlesticks("KXHIGHNY", "KXHIGHNY-26APR09-T70", 1000, 2000, 60)
+
+        client._get.assert_called_once()
+        path_arg = client._get.call_args[0][0]
+        assert path_arg == "/series/KXHIGHNY/markets/KXHIGHNY-26APR09-T70/candlesticks"
+        kwargs = client._get.call_args[1]
+        assert kwargs["params"] == {
+            "start_ts": 1000,
+            "end_ts": 2000,
+            "period_interval": 60,
+        }
+        assert kwargs["auth"] is True
+
+    def test_defaults_period_interval_to_one_minute(self):
+        client = self._make_client()
+        client._get = MagicMock(return_value={"ticker": "TK", "candlesticks": []})
+        client._validate = MagicMock()
+
+        client.get_candlesticks("KXHIGHNY", "TK", 1000, 2000)
+
+        assert client._get.call_args[1]["params"]["period_interval"] == 1
+
+    def test_returns_candlesticks_list(self):
+        client = self._make_client()
+        candles = [{"end_period_ts": 1500, "volume_fp": "10.00"}]
+        client._get = MagicMock(return_value={"ticker": "TK", "candlesticks": candles})
+        client._validate = MagicMock()
+
+        result = client.get_candlesticks("KXHIGHNY", "TK", 1000, 2000)
+
+        assert result == candles
+
+    def test_missing_candlesticks_key_returns_empty_list(self):
+        client = self._make_client()
+        client._get = MagicMock(return_value={"ticker": "TK"})
+        client._validate = MagicMock()
+
+        result = client.get_candlesticks("KXHIGHNY", "TK", 1000, 2000)
+
+        assert result == []

@@ -26,7 +26,7 @@ DB_PATH.parent.mkdir(exist_ok=True)
 
 _db_initialized = False
 
-_SCHEMA_VERSION = 36  # increment when _MIGRATIONS list grows
+_SCHEMA_VERSION = 38  # increment when _MIGRATIONS list grows
 
 _MIGRATIONS = [
     # v1 → v2: add condition_type column (if not already added)
@@ -177,6 +177,29 @@ _MIGRATIONS = [
     # UNIQUE semantics, so this does not collide with historical rows.
     "CREATE UNIQUE INDEX IF NOT EXISTS idx_ems_dedup "
     "ON ensemble_member_scores(city, model, target_date, var)",
+    # v36 -> v37: price_history — OHLC candlesticks captured per settled market
+    # (backfilled once, from sync_outcomes, via Kalshi's /candlesticks endpoint).
+    # Unlocks edge-decay timing, real-price backtest replay, and adverse-selection
+    # measurement — none of which are possible with only the scan-time price
+    # this bot already logs to `predictions`.
+    """CREATE TABLE IF NOT EXISTS price_history (
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        ticker          TEXT    NOT NULL,
+        series_ticker   TEXT,
+        period_interval INTEGER NOT NULL,
+        end_period_ts   INTEGER NOT NULL,
+        price_open      REAL,
+        price_high      REAL,
+        price_low       REAL,
+        price_close     REAL,
+        yes_bid_close   REAL,
+        yes_ask_close   REAL,
+        volume          REAL,
+        open_interest   REAL,
+        logged_at       TEXT    NOT NULL
+    )""",
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_price_history_dedup "
+    "ON price_history(ticker, period_interval, end_period_ts)",
 ]
 
 
@@ -716,6 +739,94 @@ def log_outcome(ticker: str, settled_yes: bool) -> bool:
             (ticker, 1 if settled_yes else 0),
         )
     return result.rowcount > 0  # True = newly inserted; False = already existed
+
+
+def _candle_dollars(field: dict | None, key: str) -> float | None:
+    """Parse a nullable fixed-point-dollar string (e.g. "0.55") from a
+    candlestick sub-object (yes_bid/yes_ask/price) into a float."""
+    if not field:
+        return None
+    val = field.get(key)
+    if val is None:
+        return None
+    try:
+        return float(val)
+    except (TypeError, ValueError):
+        return None
+
+
+def _fp_count(val: str | None) -> float | None:
+    """Parse a FixedPointCount string (e.g. "10.00" contracts) into a float."""
+    if val is None:
+        return None
+    try:
+        return float(val)
+    except (TypeError, ValueError):
+        return None
+
+
+def log_price_candles(
+    ticker: str,
+    series_ticker: str | None,
+    period_interval: int,
+    candlesticks: list[dict],
+) -> int:
+    """Bulk-insert OHLC candlesticks for a market. Idempotent — re-running for
+    the same ticker/period_interval/end_period_ts is a no-op (unique index).
+    Returns the number of newly-inserted rows.
+    """
+    if not candlesticks:
+        return 0
+    init_db()
+    rows = []
+    for c in candlesticks:
+        end_ts = c.get("end_period_ts")
+        if end_ts is None:
+            continue
+        price = c.get("price") or {}
+        yes_bid = c.get("yes_bid") or {}
+        yes_ask = c.get("yes_ask") or {}
+        rows.append(
+            (
+                ticker,
+                series_ticker,
+                period_interval,
+                end_ts,
+                _candle_dollars(price, "open_dollars"),
+                _candle_dollars(price, "high_dollars"),
+                _candle_dollars(price, "low_dollars"),
+                _candle_dollars(price, "close_dollars"),
+                _candle_dollars(yes_bid, "close_dollars"),
+                _candle_dollars(yes_ask, "close_dollars"),
+                _fp_count(c.get("volume_fp")),
+                _fp_count(c.get("open_interest_fp")),
+                datetime.now(UTC).isoformat(),
+            )
+        )
+    if not rows:
+        return 0
+    with _conn() as con:
+        cur = con.executemany(
+            """
+            INSERT OR IGNORE INTO price_history
+            (ticker, series_ticker, period_interval, end_period_ts,
+             price_open, price_high, price_low, price_close,
+             yes_bid_close, yes_ask_close, volume, open_interest, logged_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            rows,
+        )
+    return cur.rowcount if cur.rowcount and cur.rowcount > 0 else 0
+
+
+def get_price_history(ticker: str) -> list[sqlite3.Row]:
+    """Return all logged candlesticks for a ticker, oldest first."""
+    init_db()
+    with _conn() as con:
+        return con.execute(
+            "SELECT * FROM price_history WHERE ticker = ? ORDER BY end_period_ts",
+            (ticker,),
+        ).fetchall()
 
 
 # ── Bias correction ───────────────────────────────────────────────────────────
@@ -2678,6 +2789,48 @@ def sync_outcomes(client) -> int:
                         audit_settlement(ticker, settled_yes)
                     except Exception:
                         pass
+                    # Backfill full OHLC price history for this now-settled market
+                    # in one call (candlesticks endpoint takes a start/end range).
+                    # sync_outcomes only revisits a ticker while it has no outcome
+                    # row yet, so this fires exactly once per market — no per-cycle
+                    # polling. Unlocks entry-timing / adverse-selection analysis
+                    # (see backlog); failure here must never block outcome recording.
+                    # period_interval=60 (hourly, not 1-minute): weather markets can
+                    # stay open several days (see MAX_DAYS_OUT), and Kalshi's
+                    # candlesticks endpoint caps periods returned per request --
+                    # 1-minute resolution over a multi-day window risks silently
+                    # truncating/erroring on exactly the long-open markets this
+                    # feature targets. Hourly is still plenty for edge-decay/
+                    # adverse-selection timing analysis and stays comfortably
+                    # under any plausible per-request cap.
+                    try:
+                        _candle_series = market.get("series_ticker")
+                        _candle_open_str = market.get("open_time")
+                        if _candle_series and _candle_open_str:
+                            _candle_start = datetime.fromisoformat(
+                                _candle_open_str.replace("Z", "+00:00")
+                            )
+                            _candle_end = (
+                                datetime.fromisoformat(
+                                    close_time_str.replace("Z", "+00:00")
+                                )
+                                if close_time_str
+                                else now_utc
+                            )
+                            _candles = client.get_candlesticks(
+                                _candle_series,
+                                ticker,
+                                int(_candle_start.timestamp()),
+                                int(_candle_end.timestamp()),
+                                period_interval=60,
+                            )
+                            log_price_candles(ticker, _candle_series, 60, _candles)
+                    except Exception as _candle_exc:
+                        _log.warning(
+                            "sync_outcomes: price-history backfill failed for %s: %s",
+                            ticker,
+                            _candle_exc,
+                        )
                     # #55: settle analysis_attempts for this ticker regardless of
                     # was_traded — the outcome is a market fact, not a trade fact.
                     # settle_analysis_attempt (called from paper.py) only ever fires

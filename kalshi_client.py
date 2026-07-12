@@ -349,6 +349,30 @@ class KalshiClient:
             self._validate(data, "orderbook", f"/markets/{ticker}/orderbook")
         return data.get("orderbook_fp", data.get("orderbook", {}))
 
+    def get_candlesticks(
+        self,
+        series_ticker: str,
+        ticker: str,
+        start_ts: int,
+        end_ts: int,
+        period_interval: int = 1,
+    ) -> list[dict]:
+        """GET /series/{series_ticker}/markets/{ticker}/candlesticks -- OHLC price
+        history. period_interval is in minutes; Kalshi only accepts 1, 60, or 1440.
+        start_ts/end_ts are Unix timestamps (seconds)."""
+        path = f"/series/{series_ticker}/markets/{ticker}/candlesticks"
+        data = self._get(
+            path,
+            params={
+                "start_ts": start_ts,
+                "end_ts": end_ts,
+                "period_interval": period_interval,
+            },
+            auth=True,
+        )
+        self._validate(data, "candlesticks", path)
+        return data.get("candlesticks", [])
+
     def get_events(self, **params) -> list[dict]:
         data = self._get("/events", params=params or None, auth=True)
         self._validate(data, "events", "/events")

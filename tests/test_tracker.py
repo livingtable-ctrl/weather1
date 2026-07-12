@@ -192,6 +192,93 @@ class TestTracker(unittest.TestCase):
         self.assertEqual(count, 0)
         mock_client.get_market.assert_not_called()
 
+    def test_sync_outcomes_backfills_price_history_on_settlement(self):
+        """sync_outcomes should fetch and store full OHLC candlestick history
+        exactly once when a market's outcome is newly recorded."""
+        from unittest.mock import MagicMock
+
+        tracker.log_prediction(
+            "TKCANDLE", "NYC", date(2026, 4, 9), self._fake_analysis(0.70)
+        )
+
+        mock_client = MagicMock()
+        mock_client.get_market.return_value = {
+            "status": "finalized",
+            "result": "yes",
+            "series_ticker": "KXHIGHNY",
+            "open_time": "2026-04-06T00:00:00Z",
+            "close_time": "2026-04-09T23:00:00Z",
+        }
+        mock_client.get_candlesticks.return_value = [
+            {
+                "end_period_ts": 1700000000,
+                "price": {
+                    "open_dollars": "0.40",
+                    "high_dollars": "0.55",
+                    "low_dollars": "0.38",
+                    "close_dollars": "0.52",
+                },
+                "yes_bid": {"close_dollars": "0.51"},
+                "yes_ask": {"close_dollars": "0.53"},
+                "volume_fp": "12.00",
+                "open_interest_fp": "40.00",
+            }
+        ]
+
+        count = tracker.sync_outcomes(mock_client)
+        self.assertEqual(count, 1)
+
+        mock_client.get_candlesticks.assert_called_once()
+        call_args = mock_client.get_candlesticks.call_args[0]
+        self.assertEqual(call_args[0], "KXHIGHNY")  # series_ticker
+        self.assertEqual(call_args[1], "TKCANDLE")  # ticker
+
+        rows = tracker.get_price_history("TKCANDLE")
+        self.assertEqual(len(rows), 1)
+        self.assertAlmostEqual(rows[0]["price_close"], 0.52)
+        self.assertAlmostEqual(rows[0]["yes_bid_close"], 0.51)
+        self.assertAlmostEqual(rows[0]["volume"], 12.00)
+
+    def test_sync_outcomes_survives_candlestick_backfill_failure(self):
+        """A candlestick-fetch error must never block outcome recording."""
+        from unittest.mock import MagicMock
+
+        tracker.log_prediction(
+            "TKCANDLEFAIL", "NYC", date(2026, 4, 9), self._fake_analysis(0.70)
+        )
+
+        mock_client = MagicMock()
+        mock_client.get_market.return_value = {
+            "status": "finalized",
+            "result": "yes",
+            "series_ticker": "KXHIGHNY",
+            "open_time": "2026-04-06T00:00:00Z",
+            "close_time": "2026-04-09T23:00:00Z",
+        }
+        mock_client.get_candlesticks.side_effect = RuntimeError("boom")
+
+        count = tracker.sync_outcomes(mock_client)
+        self.assertEqual(count, 1)
+
+        history = tracker.get_history()
+        self.assertEqual(history[0]["settled_yes"], 1)
+
+    def test_sync_outcomes_skips_candlestick_fetch_without_series_ticker(self):
+        """No series_ticker/open_time on the market → skip the fetch cleanly
+        (older/malformed responses shouldn't crash outcome recording)."""
+        from unittest.mock import MagicMock
+
+        tracker.log_prediction(
+            "TKNOCANDLE", "NYC", date(2026, 4, 9), self._fake_analysis(0.70)
+        )
+
+        mock_client = MagicMock()
+        mock_client.get_market.return_value = {"status": "finalized", "result": "yes"}
+
+        count = tracker.sync_outcomes(mock_client)
+        self.assertEqual(count, 1)
+        mock_client.get_candlesticks.assert_not_called()
+
     def test_calibration_trend_empty(self):
         """get_calibration_trend returns empty list with no settled data."""
         trend = tracker.get_calibration_trend()
@@ -2212,6 +2299,99 @@ class TestSchemaVersionMatchesMigrations(unittest.TestCase):
 
 
 # ── P0-13: sync_outcomes aware/naive datetime fix ────────────────────────────
+
+
+class TestPriceHistory(unittest.TestCase):
+    """log_price_candles / get_price_history — OHLC candlestick storage."""
+
+    def setUp(self):
+        self._tmpdir = tempfile.mkdtemp()
+        self._orig = tracker.DB_PATH
+        tracker.DB_PATH = Path(self._tmpdir) / "test_predictions.db"
+        tracker._db_initialized = False
+
+    def tearDown(self):
+        tracker.DB_PATH = self._orig
+        tracker._db_initialized = False
+        shutil.rmtree(self._tmpdir, ignore_errors=True)
+
+    def test_logs_and_retrieves_candle(self):
+        candles = [
+            {
+                "end_period_ts": 1700000000,
+                "price": {
+                    "open_dollars": "0.40",
+                    "high_dollars": "0.55",
+                    "low_dollars": "0.38",
+                    "close_dollars": "0.52",
+                },
+                "yes_bid": {"close_dollars": "0.51"},
+                "yes_ask": {"close_dollars": "0.53"},
+                "volume_fp": "12.00",
+                "open_interest_fp": "40.00",
+            }
+        ]
+        n = tracker.log_price_candles("TK1", "KXHIGHNY", 1, candles)
+        self.assertEqual(n, 1)
+
+        rows = tracker.get_price_history("TK1")
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["series_ticker"], "KXHIGHNY")
+        self.assertEqual(rows[0]["period_interval"], 1)
+        self.assertEqual(rows[0]["end_period_ts"], 1700000000)
+        self.assertAlmostEqual(rows[0]["price_open"], 0.40)
+        self.assertAlmostEqual(rows[0]["price_high"], 0.55)
+        self.assertAlmostEqual(rows[0]["price_low"], 0.38)
+        self.assertAlmostEqual(rows[0]["price_close"], 0.52)
+        self.assertAlmostEqual(rows[0]["yes_bid_close"], 0.51)
+        self.assertAlmostEqual(rows[0]["yes_ask_close"], 0.53)
+        self.assertAlmostEqual(rows[0]["volume"], 12.00)
+        self.assertAlmostEqual(rows[0]["open_interest"], 40.00)
+
+    def test_null_price_field_stored_as_none(self):
+        """A candle with no trades in-period has price=None (only bid/ask quotes)."""
+        candles = [
+            {
+                "end_period_ts": 1700000060,
+                "price": None,
+                "yes_bid": {"close_dollars": "0.51"},
+                "yes_ask": {"close_dollars": "0.53"},
+                "volume_fp": "0.00",
+                "open_interest_fp": "40.00",
+            }
+        ]
+        tracker.log_price_candles("TK2", "KXHIGHNY", 1, candles)
+        rows = tracker.get_price_history("TK2")
+        self.assertIsNone(rows[0]["price_close"])
+        self.assertAlmostEqual(rows[0]["yes_bid_close"], 0.51)
+
+    def test_dedup_via_unique_index_is_idempotent(self):
+        """Re-inserting the same ticker/period/end_ts candle is a no-op."""
+        candles = [{"end_period_ts": 1700000000, "volume_fp": "5.00"}]
+        first = tracker.log_price_candles("TK3", "KXHIGHNY", 1, candles)
+        second = tracker.log_price_candles("TK3", "KXHIGHNY", 1, candles)
+        self.assertEqual(first, 1)
+        self.assertEqual(second, 0)
+        self.assertEqual(len(tracker.get_price_history("TK3")), 1)
+
+    def test_empty_candlesticks_list_is_noop(self):
+        n = tracker.log_price_candles("TK4", "KXHIGHNY", 1, [])
+        self.assertEqual(n, 0)
+        self.assertEqual(tracker.get_price_history("TK4"), [])
+
+    def test_candle_missing_end_period_ts_is_skipped(self):
+        candles = [{"volume_fp": "5.00"}]  # no end_period_ts
+        n = tracker.log_price_candles("TK5", "KXHIGHNY", 1, candles)
+        self.assertEqual(n, 0)
+
+    def test_get_price_history_orders_by_end_period_ts(self):
+        candles = [
+            {"end_period_ts": 1700000200, "volume_fp": "1.00"},
+            {"end_period_ts": 1700000100, "volume_fp": "1.00"},
+        ]
+        tracker.log_price_candles("TK6", "KXHIGHNY", 1, candles)
+        rows = tracker.get_price_history("TK6")
+        self.assertEqual([r["end_period_ts"] for r in rows], [1700000100, 1700000200])
 
 
 class TestSyncOutcomesDatetimeFix(unittest.TestCase):
