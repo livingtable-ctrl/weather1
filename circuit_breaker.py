@@ -292,21 +292,24 @@ class FlashCrashCB:
     Blocks that ticker for cooldown_seconds.
     Cooldowns are persisted to disk so restarts don't lose active protection (R14).
 
-    KNOWN LIMITATION (not fixed here -- flagged as an urgent follow-up):
-    price history is now persisted to disk (like cooldowns already were), so
-    check() CAN compare across separate process invocations that happen to
-    land within window_seconds of each other. But window_seconds (300s
-    default) is still shorter than this bot's real scan cadence in both of
-    its actual usage modes -- one-shot `python main.py cron` runs are
-    typically hours apart, and `watch --auto`'s own cycle time (sleep +
-    full scan duration) is >= its own 300s refresh interval -- so two
-    observations still won't usually land inside the window, and this
-    remains structurally unable to detect a genuine sub-5-minute crash in
-    practice. A real fix needs either window_seconds widened to match real
-    scan cadence (redefining this as a between-scan price-swing detector,
-    not true flash-crash detection) or wiring check() into kalshi_ws.py's
-    live WebSocket feed so it runs on continuous real-time ticks independent
-    of scan cadence -- both are real design decisions, deliberately deferred.
+    Two feeds call check() on the same singleton:
+    1. kalshi_ws.update_orderbook_cache() calls check() on every real-time
+       "ticker"-type WS message -- true sub-5-minute flash-crash detection,
+       independent of scan cadence. This is the primary detector as of
+       2026-07-12; it only runs while cron.py's per-cycle KalshiWebSocket
+       instance is connected and subscribed (true for the full duration of
+       market analysis/trading in both `cron` and `watch --auto`, since
+       cron.py starts one every cycle -- see cron.py's `_ws` block).
+    2. order_executor._validate_trade_opportunity() still also calls check()
+       once per opportunity per scan cycle, using the freshest available
+       price (WS cache if fresh, else the REST-derived mid) -- kept as a
+       fallback for when WS is unavailable/stale (e.g. no API key, or a
+       dropped connection mid-cycle), at the cost of only being able to
+       compare across scan-cycle-spaced observations in that degraded case.
+
+    Because check()/is_in_cooldown() are now called from both the WS
+    background thread and the main scan thread, both are guarded by
+    self._lock.
     """
 
     def __init__(
@@ -320,6 +323,8 @@ class FlashCrashCB:
         self.cooldown_seconds = cooldown_seconds
         self._history: dict[str, list[tuple[float, float]]] = {}
         self._cooldowns: dict[str, float] = {}
+        self._lock = threading.Lock()
+        self._last_history_save = 0.0
         self._load_cooldowns()
         self._load_history()
 
@@ -389,35 +394,55 @@ class FlashCrashCB:
         except Exception as exc:
             _log.warning("FlashCrashCB: could not save history: %s", exc)
 
+    # Since kalshi_ws.py started feeding check() on every live WS tick (as
+    # opposed to the old once-per-scan-cycle cadence), a full read-modify-
+    # write JSON persist on every single call -- while holding self._lock,
+    # which the main scan thread also needs -- would let disk I/O throttle
+    # real-time crash detection. In-memory _history is what check() actually
+    # compares against, so persistence only needs to be "eventually" fresh
+    # for the cross-restart-recovery case; throttling it doesn't weaken
+    # detection, which never depends on the on-disk copy while the process
+    # is alive.
+    _HISTORY_SAVE_INTERVAL_SECS = 5.0
+
     def check(self, ticker: str, current_price: float) -> bool:
-        """Record price and return True if this observation triggered a crash."""
-        now = time.time()
-        window_start = now - self.window_seconds
-        history = self._history.setdefault(ticker, [])
-        # Prune old observations
-        self._history[ticker] = [(ts, p) for ts, p in history if ts >= window_start]
-        self._history[ticker].append((now, current_price))
-        self._save_history()
-        if len(self._history[ticker]) < 2:
+        """Record price and return True if this observation triggered a crash.
+
+        Called from both the kalshi_ws background thread (live WS ticks) and
+        the main scan thread (order_executor's per-opportunity fallback
+        check) -- guarded by self._lock since both mutate _history/_cooldowns.
+        """
+        with self._lock:
+            now = time.time()
+            window_start = now - self.window_seconds
+            history = self._history.setdefault(ticker, [])
+            # Prune old observations
+            self._history[ticker] = [(ts, p) for ts, p in history if ts >= window_start]
+            self._history[ticker].append((now, current_price))
+            if now - self._last_history_save >= self._HISTORY_SAVE_INTERVAL_SECS:
+                self._save_history()
+                self._last_history_save = now
+            if len(self._history[ticker]) < 2:
+                return False
+            oldest_price = self._history[ticker][0][1]
+            if oldest_price <= 0:
+                return False
+            if abs(current_price - oldest_price) / oldest_price >= self.threshold_pct:
+                self._cooldowns[ticker] = now + self.cooldown_seconds
+                _log.warning(
+                    "FLASH CRASH CB: %s — %.1f%% move in %ds window. Cooldown %ds.",
+                    ticker,
+                    abs(current_price - oldest_price) / oldest_price * 100,
+                    self.window_seconds,
+                    self.cooldown_seconds,
+                )
+                self._save_cooldowns()
+                return True
             return False
-        oldest_price = self._history[ticker][0][1]
-        if oldest_price <= 0:
-            return False
-        if abs(current_price - oldest_price) / oldest_price >= self.threshold_pct:
-            self._cooldowns[ticker] = now + self.cooldown_seconds
-            _log.warning(
-                "FLASH CRASH CB: %s — %.1f%% move in %ds window. Cooldown %ds.",
-                ticker,
-                abs(current_price - oldest_price) / oldest_price * 100,
-                self.window_seconds,
-                self.cooldown_seconds,
-            )
-            self._save_cooldowns()
-            return True
-        return False
 
     def is_in_cooldown(self, ticker: str) -> bool:
-        return time.time() < self._cooldowns.get(ticker, 0)
+        with self._lock:
+            return time.time() < self._cooldowns.get(ticker, 0)
 
 
 # Module-level singleton

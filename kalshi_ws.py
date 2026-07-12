@@ -21,6 +21,8 @@ import time
 from datetime import UTC, datetime
 from pathlib import Path
 
+from circuit_breaker import flash_crash_cb
+
 _log = logging.getLogger(__name__)
 
 _WS_URL = "wss://api.elections.kalshi.com/trade-api/ws/v2"
@@ -168,6 +170,24 @@ def update_orderbook_cache(ticker: str, data: dict) -> None:
             safe_io.atomic_write_json(cache, _CACHE_PATH)
         except Exception as exc:
             _log.warning("update_orderbook_cache: disk write failed: %s", exc)
+
+    # Real-time flash-crash detection: only a "ticker"-type message carries a
+    # genuine mid_price (see the comment on the delta branch above) -- feed it
+    # to the breaker on every live tick, independent of scan cadence. This is
+    # what makes FlashCrashCB able to actually observe a sub-5-minute move;
+    # order_executor.py's own per-opportunity check() call remains as a
+    # fallback for when this WS feed is unavailable or stale. Deliberately
+    # outside the _cache_lock above -- flash_crash_cb guards its own state
+    # with its own lock and doesn't need this one.
+    if data.get("type") == "ticker":
+        mid = data.get("mid_price")
+        if mid and mid > 0:
+            try:
+                flash_crash_cb.check(ticker, float(mid))
+            except Exception as exc:
+                _log.warning(
+                    "update_orderbook_cache: flash-crash check failed: %s", exc
+                )
 
 
 def read_orderbook_cache() -> dict:

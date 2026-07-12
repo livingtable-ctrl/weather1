@@ -17,6 +17,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import execution_log
 from colors import bold, cyan, dim, green, red, yellow
@@ -41,9 +42,21 @@ from utils import (
     min_prob_edge_for_days_out,
 )
 
+if TYPE_CHECKING:
+    from kalshi_ws import KalshiWebSocket
+
 # Use the "main" logger name so that existing tests which capture
 # logging.getLogger("main") continue to see cron log output.
 _log = logging.getLogger("main")
+
+# Tracks the KalshiWebSocket instance _cmd_cron_body() created/started this
+# cycle (if any), so cmd_cron()'s outer finally block can stop it regardless
+# of how _cmd_cron_body() exits. Without this, a fresh KalshiWebSocket was
+# created and started every single cycle with no matching stop() anywhere --
+# harmless for one-shot `cron` (the process exits right after), but a real
+# thread/socket leak in main.py's `loop`/`watch --auto` in-process loops,
+# which call cmd_cron() repeatedly for the lifetime of the process.
+_active_ws: KalshiWebSocket | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -1109,6 +1122,13 @@ def _cmd_cron_body(
                 if _ws_tickers:
                     _ws.subscribe(_ws_tickers)
                 _ws.start()
+                # Register so cmd_cron()'s outer finally block stops it when
+                # this cycle ends, regardless of how _cmd_cron_body() exits
+                # (return, exception, KeyboardInterrupt) -- otherwise this
+                # thread/connection leaks on every cycle in main.py's `loop`/
+                # `watch --auto`, which call cmd_cron() repeatedly in-process.
+                global _active_ws
+                _active_ws = _ws
                 _log.info(
                     "WebSocket thread started with %d ticker(s)", len(_ws_tickers)
                 )
@@ -2604,6 +2624,13 @@ def cmd_cron(
             print()
             _log.warning("cmd_cron: interrupted by user")
         finally:
+            global _active_ws
+            if _active_ws is not None:
+                try:
+                    _active_ws.stop()
+                except Exception as _ws_stop_exc:
+                    _log.debug("cmd_cron: WS stop failed: %s", _ws_stop_exc)
+                _active_ws = None
             ctx.clear_cron_running_flag()
             try:
                 _last_run_path = Path(__file__).parent / "data" / ".cron_last_run"

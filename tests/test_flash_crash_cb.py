@@ -93,3 +93,47 @@ class TestFlashCrashCBHistoryPersistence:
 
         second = FlashCrashCB(threshold_pct=0.20, window_seconds=300)
         assert second.check("TICKER-CROSS-2", 0.62) is False  # +3%, no crash
+
+
+class TestFlashCrashCBHistorySaveThrottle:
+    """2026-07-12: check() now fires on every live WS tick (kalshi_ws.py's
+    update_orderbook_cache), not just once per scan cycle -- persisting the
+    full history JSON on every single call while holding self._lock would let
+    disk I/O throttle real-time crash detection for the main scan thread.
+    _save_history() is now rate-limited to once per _HISTORY_SAVE_INTERVAL_SECS;
+    in-memory comparison (what check()'s return value actually depends on) is
+    never throttled."""
+
+    def test_rapid_successive_calls_skip_disk_save_but_still_detect_crash(
+        self, monkeypatch
+    ):
+        from circuit_breaker import FlashCrashCB
+
+        cb = FlashCrashCB(threshold_pct=0.20, window_seconds=300)
+        save_calls = []
+        monkeypatch.setattr(cb, "_save_history", lambda: save_calls.append(1) or None)
+
+        cb.check("TICKER-THROTTLE", 0.60)  # first call always saves (0.0 baseline)
+        assert len(save_calls) == 1
+
+        # Several rapid calls within the throttle window must not save again...
+        cb.check("TICKER-THROTTLE", 0.59)
+        cb.check("TICKER-THROTTLE", 0.58)
+        assert len(save_calls) == 1
+
+        # ...but in-memory crash detection is completely unaffected by the throttle.
+        assert cb.check("TICKER-THROTTLE", 0.40) is True  # -33% from 0.60
+
+    def test_save_resumes_once_interval_elapses(self, monkeypatch):
+        from circuit_breaker import FlashCrashCB
+
+        cb = FlashCrashCB(threshold_pct=0.20, window_seconds=300)
+        save_calls = []
+        monkeypatch.setattr(cb, "_save_history", lambda: save_calls.append(1) or None)
+
+        cb.check("TICKER-THROTTLE-2", 0.60)
+        assert len(save_calls) == 1
+
+        cb._last_history_save -= cb._HISTORY_SAVE_INTERVAL_SECS + 1
+        cb.check("TICKER-THROTTLE-2", 0.59)
+        assert len(save_calls) == 2

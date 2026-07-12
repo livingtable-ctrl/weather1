@@ -615,3 +615,87 @@ def test_p1_12_kill_switch_mid_scan_breaks_loop(monkeypatch, tmp_path, caplog):
         "P1-12: kill switch activated mid-scan must be logged as WARNING.\n"
         f"Records: {[r.message for r in caplog.records]}"
     )
+
+
+@pytest.mark.integration
+def test_cmd_cron_stops_active_websocket_on_exit(cron_env):
+    """2026-07-12: a KalshiWebSocket started this cycle must be stopped before
+    cmd_cron() returns, regardless of how _cmd_cron_body() exits. Before this
+    fix, _cmd_cron_body created and started a fresh KalshiWebSocket every
+    single cycle with no matching stop() call anywhere -- harmless for
+    one-shot `cron` (the process exits right after), but a real thread/socket
+    leak in main.py's `loop`/`watch --auto`, which call cmd_cron() repeatedly
+    in-process for the process's whole lifetime."""
+    tmp_path, client, main, paper = cron_env
+    import cron as cron_module
+
+    fake_ws = MagicMock()
+
+    def _fake_cmd_cron_body(ctx, client, min_edge=None):
+        # Simulate what the real _cmd_cron_body does once it constructs and
+        # starts a KalshiWebSocket for this cycle.
+        cron_module._active_ws = fake_ws
+        return True
+
+    with patch.object(cron_module, "_cmd_cron_body", side_effect=_fake_cmd_cron_body):
+        try:
+            main.cmd_cron(client)
+        except SystemExit:
+            pass
+
+    fake_ws.stop.assert_called_once()
+    assert cron_module._active_ws is None, (
+        "cmd_cron() must reset _active_ws to None after stopping it, so a "
+        "later cycle that never starts a WS doesn't try to stop a stale "
+        "reference from a previous cycle"
+    )
+
+
+@pytest.mark.integration
+def test_cmd_cron_body_registers_real_websocket_before_cleanup(cron_env, monkeypatch):
+    """End-to-end version of the test above: exercises the REAL
+    _cmd_cron_body registration line (`_active_ws = _ws` right after
+    `_ws.start()` succeeds), not a stub that fakes the registration itself --
+    proving cmd_cron()'s cleanup has something real to act on, not just that
+    the cleanup code runs when told to."""
+    tmp_path, client, main, paper = cron_env
+    import cron as cron_module
+    import kalshi_ws
+
+    monkeypatch.setenv("KALSHI_API_KEY", "test-key")
+    monkeypatch.setenv("KALSHI_PRIVATE_KEY_PEM", "test-pem")
+
+    fake_ws_instance = MagicMock()
+    fake_ws_class = MagicMock(return_value=fake_ws_instance)
+    monkeypatch.setattr(kalshi_ws, "KalshiWebSocket", fake_ws_class)
+
+    try:
+        main.cmd_cron(client)
+    except SystemExit:
+        pass
+
+    fake_ws_class.assert_called_once_with("test-key", "test-pem")
+    fake_ws_instance.start.assert_called_once()
+    fake_ws_instance.stop.assert_called_once()
+    assert cron_module._active_ws is None
+
+
+@pytest.mark.integration
+def test_cmd_cron_stops_websocket_even_on_body_exception(cron_env):
+    """The WS cleanup must run via the existing finally block even when
+    _cmd_cron_body raises -- not just on the happy path."""
+    tmp_path, client, main, paper = cron_env
+    import cron as cron_module
+
+    fake_ws = MagicMock()
+
+    def _fake_cmd_cron_body(ctx, client, min_edge=None):
+        cron_module._active_ws = fake_ws
+        raise RuntimeError("simulated scan failure")
+
+    with patch.object(cron_module, "_cmd_cron_body", side_effect=_fake_cmd_cron_body):
+        with pytest.raises(RuntimeError):
+            main.cmd_cron(client)
+
+    fake_ws.stop.assert_called_once()
+    assert cron_module._active_ws is None

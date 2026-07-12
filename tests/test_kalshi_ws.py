@@ -127,6 +127,51 @@ class TestOrderbookCache:
         )
         assert updated_entry["last_delta"] == {"some": "delta"}
 
+    def test_ticker_message_feeds_flash_crash_breaker(self, tmp_path, monkeypatch):
+        """2026-07-12: a 'ticker'-type message must feed flash_crash_cb.check()
+        on every live tick -- this is what makes the breaker able to observe a
+        genuine sub-5-minute crash at all, since order_executor.py's own
+        per-scan-cycle check() call can't (see FlashCrashCB's docstring)."""
+        import kalshi_ws
+        from circuit_breaker import flash_crash_cb
+
+        monkeypatch.setattr(kalshi_ws, "_CACHE_PATH", tmp_path / "orderbook_cache.json")
+        monkeypatch.setattr(kalshi_ws, "_orderbook", {})
+
+        from kalshi_ws import update_orderbook_cache
+
+        update_orderbook_cache("KXTEST", {"type": "ticker", "mid_price": 0.60})
+        assert flash_crash_cb.is_in_cooldown("KXTEST") is False
+
+        # Same-ticker 40% drop, well past the 20% default threshold.
+        update_orderbook_cache("KXTEST", {"type": "ticker", "mid_price": 0.20})
+        assert flash_crash_cb.is_in_cooldown("KXTEST") is True
+
+    def test_delta_message_does_not_feed_flash_crash_breaker(
+        self, tmp_path, monkeypatch
+    ):
+        """An orderbook_delta carries no real mid_price -- it must not reach
+        flash_crash_cb.check() at all (a stale/zero price would either be a
+        no-op or, worse, a false reading)."""
+        import kalshi_ws
+        from circuit_breaker import flash_crash_cb
+
+        monkeypatch.setattr(kalshi_ws, "_CACHE_PATH", tmp_path / "orderbook_cache.json")
+        monkeypatch.setattr(kalshi_ws, "_orderbook", {})
+
+        from kalshi_ws import update_orderbook_cache
+
+        calls = []
+        monkeypatch.setattr(
+            flash_crash_cb, "check", lambda t, p: calls.append((t, p)) or False
+        )
+
+        update_orderbook_cache(
+            "KXTEST", {"type": "orderbook_delta", "delta": {"some": "delta"}}
+        )
+
+        assert calls == []
+
 
 class TestBuildSubscribeMessage:
     def test_subscribe_message_structure(self):
