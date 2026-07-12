@@ -110,28 +110,27 @@ _DEAD_FIELD_ALLOWLIST = {
     "same_day_reserve_slots": "enforced via utils.SAME_DAY_RESERVE_SLOTS",
     "same_day_reserve_after_hour_utc": "enforced via utils.SAME_DAY_RESERVE_AFTER_HOUR_UTC",
     "ntfy_topic": "enforced via notify.py's/watchdog.py's own os.getenv('NTFY_TOPIC')",
-    # NOT "enforced elsewhere via the same env var" like the entries above --
-    # paper.py:270 hardcodes its own MAX_CITY_DATE_EXPOSURE = 0.25 (a fraction
-    # of balance) with NO env var read at all, and that hardcoded 0.25 is what
-    # actually gates real trading (paper.py:1620/3300). This BotConfig field
-    # (env default "50.0", a completely different scale/meaning) is fully
-    # disconnected from it -- worse than the plain-unimplemented fields below,
-    # since MAX_CITY_DATE_EXPOSURE in .env looks like it should control the
-    # real cap and silently doesn't. Flagged, not fixed: rewiring paper.py's
-    # real gate to read this field/env var would change live-tuned trading
-    # behavior and needs an explicit decision, not a guard-writing side effect.
-    "max_city_date_exposure": "MISLEADING, not just unused -- paper.py has its own unrelated hardcoded 0.25 constant that's the real enforced cap; this field/env var does nothing",
+    # -- MISLEADING, not just unused: a hardcoded module constant elsewhere
+    # is the REAL enforcement, completely disconnected from this field/env
+    # var -- worse than plain-unused, since setting the env var in .env
+    # looks like it should control real behavior and silently doesn't. All 3
+    # were identified in backlog.txt's "[MORE INERT config.py FIELDS -- SAME
+    # DIVERGENCE PATTERN, ROUND 4]" entry before this guard was written;
+    # re-verified live here. Flagged, not fixed: rewiring any of these real
+    # gates to read the field/env var instead of its hardcoded shadow would
+    # change live-tuned trading behavior and needs an explicit decision.
+    "max_city_date_exposure": "paper.py:270 hardcodes its own MAX_CITY_DATE_EXPOSURE = 0.25 (fraction of balance, no env var read at all) -- that's what actually gates city/date exposure (paper.py:1620/3300); this field (env default 50.0, different scale) does nothing",
+    "method_kelly_gate": "paper.py hardcodes its own _METHOD_MIN_SAMPLES = 50 (paper.py:682) -- that's what actually gates the per-method Kelly sample-count check (paper.py:688); this field/env var (METHOD_KELLY_GATE, default 50.0 -- same number, coincidentally) is never read",
+    "min_arb_edge": "main.py:1606 hardcodes `if v.guaranteed_edge < 0.05:` in the arb auto-placement block -- that's the real arb-edge gate; this field/env var (default 0.03) is never read there",
     # -- Genuinely unimplemented as of 2026-07-12: no real consumer anywhere
-    # in the codebase, not even via a bypass os.getenv() elsewhere. These
-    # look like real trading-safety knobs (a per-method Kelly gate, a
-    # partial-exit percentage, a minimum arbitrage edge, a minimum Kelly
-    # fraction floor) but are currently pure no-ops -- flagged here rather
-    # than silently implemented with guessed thresholds/semantics, since that
-    # needs a real design decision.
+    # in the codebase, not even via a bypass os.getenv() or a hardcoded
+    # shadow constant. These look like real trading-safety knobs (a
+    # partial-exit percentage, a minimum Kelly fraction floor) but are
+    # currently pure no-ops -- flagged here rather than silently implemented
+    # with guessed thresholds/semantics, since that needs a real design
+    # decision.
     "min_kelly_fraction": "UNIMPLEMENTED -- no consumer anywhere; flagged, not fixed (needs a design decision on intended semantics)",
-    "method_kelly_gate": "UNIMPLEMENTED -- no consumer anywhere; flagged, not fixed (needs a design decision on intended semantics)",
     "partial_exit_pct": "UNIMPLEMENTED -- no consumer anywhere; flagged, not fixed (needs a design decision on intended semantics)",
-    "min_arb_edge": "UNIMPLEMENTED -- no consumer anywhere; flagged, not fixed (needs a design decision on intended semantics)",
 }
 
 
