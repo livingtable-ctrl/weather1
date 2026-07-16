@@ -8,7 +8,7 @@ import shutil
 import sqlite3
 import tempfile
 import unittest
-from datetime import UTC, date
+from datetime import UTC, date, timedelta
 from pathlib import Path
 
 import pytest
@@ -3206,3 +3206,386 @@ def test_composite_indexes_exist(tmp_path, monkeypatch):
     assert "idx_predictions_city_days_created" in indexes
     assert "idx_predictions_prob_settled" in indexes
     assert "idx_outcomes_ticker_settled" in indexes
+
+
+class TestFetchPreviousRunLeads(unittest.TestCase):
+    """backlog.txt "FORECAST RUN-TO-RUN TREND SIGNAL" -- _fetch_previous_run_leads
+    fetches several lead offsets for one model in a single Previous Runs API
+    call, unlike _fetch_previous_run_daily which only supports one lead and
+    only for already-past target dates."""
+
+    def _mock_response(self, hourly_values: dict, target_date, hour="12:00"):
+        from unittest.mock import MagicMock
+
+        time_str = f"{target_date.isoformat()}T{hour}"
+        hourly = {"time": [time_str]}
+        for var_name, value in hourly_values.items():
+            hourly[var_name] = [value]
+        resp = MagicMock()
+        resp.status_code = 200
+        resp.raise_for_status.return_value = None
+        resp.json.return_value = {"hourly": hourly}
+        return resp
+
+    def test_parses_multiple_leads_from_one_response(self):
+        """Requesting leads [3, 4] must return both, read from their own
+        temperature_2m_previous_dayN column -- not conflated with each other."""
+        from unittest.mock import patch
+
+        target = date(2026, 7, 20)
+        resp = self._mock_response(
+            {
+                "temperature_2m_previous_day3": 80.0,
+                "temperature_2m_previous_day4": 82.0,
+            },
+            target,
+        )
+        with patch("requests.get", return_value=resp) as mock_get:
+            result = tracker._fetch_previous_run_leads(
+                40.7, -74.0, "America/New_York", target, "gfs_seamless", [3, 4], "max"
+            )
+        assert result == {3: 80.0, 4: 82.0}
+        # Single HTTP call carries both leads as comma-separated hourly vars.
+        assert mock_get.call_count == 1
+        hourly_param = mock_get.call_args.kwargs["params"]["hourly"]
+        assert "temperature_2m_previous_day3" in hourly_param
+        assert "temperature_2m_previous_day4" in hourly_param
+
+    def test_uses_max_or_min_per_var_argument(self):
+        from unittest.mock import MagicMock, patch
+
+        target = date(2026, 7, 20)
+        time_a = f"{target.isoformat()}T06:00"
+        time_b = f"{target.isoformat()}T18:00"
+        resp = MagicMock()
+        resp.status_code = 200
+        resp.raise_for_status.return_value = None
+        resp.json.return_value = {
+            "hourly": {
+                "time": [time_a, time_b],
+                "temperature_2m_previous_day3": [70.0, 90.0],
+            }
+        }
+        with patch("requests.get", return_value=resp):
+            max_result = tracker._fetch_previous_run_leads(
+                40.7, -74.0, "America/New_York", target, "gfs_seamless", [3], "max"
+            )
+            min_result = tracker._fetch_previous_run_leads(
+                40.7, -74.0, "America/New_York", target, "gfs_seamless", [3], "min"
+            )
+        assert max_result == {3: 90.0}
+        assert min_result == {3: 70.0}
+
+    def test_lead_with_no_data_is_omitted_not_zero(self):
+        """A lead the API returns as all-null must be absent from the result,
+        never silently coerced to 0.0 (which would corrupt the weighted mean)."""
+        from unittest.mock import patch
+
+        target = date(2026, 7, 20)
+        resp = self._mock_response(
+            {
+                "temperature_2m_previous_day3": 80.0,
+                "temperature_2m_previous_day8": None,
+            },
+            target,
+        )
+        with patch("requests.get", return_value=resp):
+            result = tracker._fetch_previous_run_leads(
+                40.7, -74.0, "America/New_York", target, "gfs_seamless", [3, 8], "max"
+            )
+        assert result == {3: 80.0}
+        assert 8 not in result
+
+    def test_network_failure_returns_empty_dict_not_raise(self):
+        from unittest.mock import patch
+
+        target = date(2026, 7, 20)
+        with patch("requests.get", side_effect=ConnectionError("boom")):
+            result = tracker._fetch_previous_run_leads(
+                40.7, -74.0, "America/New_York", target, "gfs_seamless", [3, 4], "max"
+            )
+        assert result == {}
+
+    def test_malformed_json_returns_empty_dict_not_raise(self):
+        from unittest.mock import MagicMock, patch
+
+        target = date(2026, 7, 20)
+        resp = MagicMock()
+        resp.status_code = 200
+        resp.raise_for_status.return_value = None
+        resp.json.side_effect = ValueError("not json")
+        with patch("requests.get", return_value=resp):
+            result = tracker._fetch_previous_run_leads(
+                40.7, -74.0, "America/New_York", target, "gfs_seamless", [3, 4], "max"
+            )
+        assert result == {}
+
+
+class TestGetForecastRunTrend(unittest.TestCase):
+    """get_forecast_run_trend() combines all 3 _PREVIOUS_RUN_MODEL_MAP models,
+    weighted by _model_weights, into one apples-to-apples revision series."""
+
+    def setUp(self):
+        # Module-level cache persists across tests in the same process --
+        # clear it so one test's fetch can't be served from another's cache.
+        tracker._run_trend_cache.clear()
+
+    def _model_response(self, values_by_lead: dict, leads: list, target_date):
+        from unittest.mock import MagicMock
+
+        time_str = f"{target_date.isoformat()}T12:00"
+        hourly = {"time": [time_str]}
+        for lead in leads:
+            hourly[f"temperature_2m_previous_day{lead}"] = [values_by_lead.get(lead)]
+        resp = MagicMock()
+        resp.status_code = 200
+        resp.raise_for_status.return_value = None
+        resp.json.return_value = {"hourly": hourly}
+        return resp
+
+    def test_days_out_zero_returns_none_without_network_call(self):
+        """Same-day markets use the METAR pipeline, not this signal (matches
+        the existing days_out >= 1 gate on ens_mean backfill)."""
+        from unittest.mock import patch
+
+        target = date.today() + timedelta(days=3)
+        with patch("requests.get") as mock_get:
+            result = tracker.get_forecast_run_trend("NYC", target, 0, "max")
+        assert result is None
+        mock_get.assert_not_called()
+
+    def test_unknown_city_returns_none(self):
+        from unittest.mock import patch
+
+        target = date.today() + timedelta(days=3)
+        with patch("requests.get") as mock_get:
+            result = tracker.get_forecast_run_trend("Atlantis", target, 3, "max")
+        assert result is None
+        mock_get.assert_not_called()
+
+    def test_days_out_seven_has_only_one_valid_lead_returns_none(self):
+        """lead0 = min(days_out, 7) = 7; leads 8-10 are all clamped out by the
+        API's valid 1-7 range, leaving only 1 usable lead -- too few for a delta."""
+        from unittest.mock import patch
+
+        target = date.today() + timedelta(days=7)
+        with patch("requests.get") as mock_get:
+            result = tracker.get_forecast_run_trend("NYC", target, 7, "max")
+        assert result is None
+        mock_get.assert_not_called()
+
+    def test_computes_weighted_delta_and_jumpiness_exactly(self):
+        """Known per-model values at 4 leads, known (unequal) model weights --
+        assert the exact weighted mean, delta, and population-stdev jumpiness,
+        not just that a result was produced."""
+        from unittest.mock import patch
+
+        import weather_markets
+
+        target = date.today() + timedelta(days=3)
+        leads = [3, 4, 5, 6]
+        # icon weighted 2x gfs/ecmwf so the test proves real weighting, not a
+        # plain average across models.
+        weights = {
+            "icon_seamless": 2.0,
+            "gfs_seamless": 1.0,
+            "ecmwf_aifs025_ensemble": 1.0,
+        }
+        model_values = {
+            "icon_seamless": {3: 80.0, 4: 82.0, 5: 81.0, 6: 79.0},
+            "gfs_seamless": {3: 84.0, 4: 86.0, 5: 85.0, 6: 83.0},
+            "ecmwf_aifs025_single": {3: 82.0, 4: 84.0, 5: 83.0, 6: 81.0},
+        }
+
+        def _fake_get(url, params, timeout):
+            model = params["models"]
+            return self._model_response(model_values[model], leads, target)
+
+        with (
+            patch.object(weather_markets, "_model_weights", return_value=weights),
+            patch("requests.get", side_effect=_fake_get),
+        ):
+            result = tracker.get_forecast_run_trend("NYC", target, 3, "max")
+
+        assert result is not None
+        # weighted mean per lead = (2*icon + gfs + ecmwf) / 4
+        assert result["points"] == [
+            {"lead": 3, "value": 81.5},
+            {"lead": 4, "value": 83.5},
+            {"lead": 5, "value": 82.5},
+            {"lead": 6, "value": 80.5},
+        ]
+        assert result["delta"] == -2.0  # points[0].value - points[1].value
+        assert result["jumpy"] == 1.118  # population stdev of the 4 values
+
+    def test_second_call_hits_cache_not_network(self):
+        from unittest.mock import patch
+
+        import weather_markets
+
+        target = date.today() + timedelta(days=3)
+        leads = [3, 4, 5, 6]
+        weights = {
+            "icon_seamless": 1.0,
+            "gfs_seamless": 1.0,
+            "ecmwf_aifs025_ensemble": 1.0,
+        }
+        model_values = {
+            m: dict.fromkeys(leads, 80.0)
+            for m in ("icon_seamless", "gfs_seamless", "ecmwf_aifs025_single")
+        }
+
+        def _fake_get(url, params, timeout):
+            return self._model_response(model_values[params["models"]], leads, target)
+
+        with (
+            patch.object(weather_markets, "_model_weights", return_value=weights),
+            patch("requests.get", side_effect=_fake_get) as mock_get,
+        ):
+            first = tracker.get_forecast_run_trend("NYC", target, 3, "max")
+            second = tracker.get_forecast_run_trend("NYC", target, 3, "max")
+
+        assert first == second
+        assert mock_get.call_count == 3  # one per model, only on the FIRST call
+
+    def test_never_raises_on_total_network_failure(self):
+        from unittest.mock import patch
+
+        import weather_markets
+
+        target = date.today() + timedelta(days=3)
+        with (
+            patch.object(
+                weather_markets,
+                "_model_weights",
+                return_value={
+                    "icon_seamless": 1.0,
+                    "gfs_seamless": 1.0,
+                    "ecmwf_aifs025_ensemble": 1.0,
+                },
+            ),
+            patch("requests.get", side_effect=ConnectionError("boom")),
+        ):
+            result = tracker.get_forecast_run_trend("NYC", target, 3, "max")
+        assert result is None
+
+
+class TestGetForecastRunTrendFromAnalysis(unittest.TestCase):
+    """get_forecast_run_trend_from_analysis() extracts city/target_date/
+    days_out/var from an analyze_trade()-shaped dict and is the ONLY place
+    that calls get_forecast_run_trend live -- 2026-07-16 review found the
+    fetch must never run inside analyze_trade itself (order-placement
+    latency risk), so this extraction/dispatch boundary is what actually
+    keeps it off that path. Never calls the network directly; delegates to
+    get_forecast_run_trend, so these tests patch that instead."""
+
+    def test_extracts_fields_and_delegates(self):
+        from unittest.mock import patch
+
+        target = date.today() + timedelta(days=3)
+        analysis = {
+            "city": "NYC",
+            "days_out": 3,
+            "target_date": target.isoformat(),
+            "condition": {"type": "temp_above", "var": "min"},
+        }
+        sentinel = {"points": [], "delta": 0.0, "jumpy": 0.0}
+        with patch.object(
+            tracker, "get_forecast_run_trend", return_value=sentinel
+        ) as mock_fn:
+            result = tracker.get_forecast_run_trend_from_analysis(analysis)
+        assert result is sentinel
+        mock_fn.assert_called_once_with("NYC", target, 3, "min")
+
+    def test_var_defaults_to_max_when_condition_missing_var(self):
+        from unittest.mock import patch
+
+        target = date.today() + timedelta(days=3)
+        analysis = {
+            "city": "NYC",
+            "days_out": 3,
+            "target_date": target.isoformat(),
+            "condition": {"type": "temp_above"},  # no "var" key
+        }
+        with patch.object(
+            tracker, "get_forecast_run_trend", return_value=None
+        ) as mock_fn:
+            tracker.get_forecast_run_trend_from_analysis(analysis)
+        mock_fn.assert_called_once_with("NYC", target, 3, "max")
+
+    def test_missing_city_returns_none_without_calling_through(self):
+        from unittest.mock import patch
+
+        analysis = {"days_out": 3, "target_date": "2026-07-20", "condition": {}}
+        with patch.object(tracker, "get_forecast_run_trend") as mock_fn:
+            result = tracker.get_forecast_run_trend_from_analysis(analysis)
+        assert result is None
+        mock_fn.assert_not_called()
+
+    def test_malformed_target_date_returns_none_not_raise(self):
+        from unittest.mock import patch
+
+        analysis = {
+            "city": "NYC",
+            "days_out": 3,
+            "target_date": "not-a-date",
+            "condition": {},
+        }
+        with patch.object(tracker, "get_forecast_run_trend") as mock_fn:
+            result = tracker.get_forecast_run_trend_from_analysis(analysis)
+        assert result is None
+        mock_fn.assert_not_called()
+
+    def test_empty_dict_returns_none_not_raise(self):
+        result = tracker.get_forecast_run_trend_from_analysis({})
+        assert result is None
+
+
+class TestLogPredictionRunTrend(unittest.TestCase):
+    """log_prediction() must persist run_trend's points/delta/jumpy through
+    the UPSERT round-trip, and leave them NULL when no signal was computed."""
+
+    def test_run_trend_round_trips_through_upsert(self):
+        run_trend = {
+            "points": [{"lead": 3, "value": 81.5}, {"lead": 4, "value": 83.5}],
+            "delta": -2.0,
+            "jumpy": 1.118,
+        }
+        tracker.log_prediction(
+            "TEST-TICKER-1",
+            "NYC",
+            date(2099, 1, 1),
+            {"forecast_prob": 0.6, "market_prob": 0.5},
+            run_trend=run_trend,
+        )
+        with tracker._conn() as con:
+            row = con.execute(
+                "SELECT run_trend_points, run_trend_delta, run_trend_jumpy "
+                "FROM predictions WHERE ticker = ?",
+                ("TEST-TICKER-1",),
+            ).fetchone()
+        assert row is not None
+        import json
+
+        assert json.loads(row["run_trend_points"]) == run_trend["points"]
+        assert row["run_trend_delta"] == -2.0
+        assert row["run_trend_jumpy"] == 1.118
+
+    def test_run_trend_none_stores_null_columns(self):
+        tracker.log_prediction(
+            "TEST-TICKER-2",
+            "NYC",
+            date(2099, 1, 1),
+            {"forecast_prob": 0.6, "market_prob": 0.5},
+            run_trend=None,
+        )
+        with tracker._conn() as con:
+            row = con.execute(
+                "SELECT run_trend_points, run_trend_delta, run_trend_jumpy "
+                "FROM predictions WHERE ticker = ?",
+                ("TEST-TICKER-2",),
+            ).fetchone()
+        assert row is not None
+        assert row["run_trend_points"] is None
+        assert row["run_trend_delta"] is None
+        assert row["run_trend_jumpy"] is None

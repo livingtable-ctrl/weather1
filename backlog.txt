@@ -1383,6 +1383,11 @@ When to revisit:
     operation) rather than re-running the hosting comparison from scratch
     unless something material has changed (a provider's pricing/free-tier
     terms, or the user's requirements).
+  - UPDATE 2026-07-16 (user clarification, no code changed): the trigger
+    is live trading actually going live (or becoming concretely imminent),
+    not just the ~2026-07-30 Belgium-trip-end date passing. Don't resurface
+    this as ready-to-execute purely because the trip has ended -- confirm
+    live trading is genuinely about to start first.
 
 [RESOLVED 2026-07-13] RESTING EXIT ORDERS + OCO ORDER GROUPS
 Priority: was High (live risk-management hole, not just an optimization)
@@ -1821,6 +1826,14 @@ When to revisit:
   - Ship the capture early (it's cheap and data accumulates only from when
     it ships); do the analysis passes once maker-execution work is picked
     up.
+  - UPDATE 2026-07-16 (no code changed): concretizing this per the
+    ENABLEMENT TRIGGER pattern introduced in the FORECAST RUN-TO-RUN TREND
+    SIGNAL entry above -- check `SELECT COUNT(*) FROM price_history` (and
+    ideally distinct ticker count) periodically; the analysis passes
+    (entry-timing, real-price replay, drift measurement) are worth doing
+    once there's a real multi-week window of candles, not tied strictly to
+    maker-execution work being picked up if that stays deferred longer than
+    the data does.
 
 ======================================================
 FEATURE CANDIDATES — 2026-07-10 feature-scouting session.
@@ -1829,10 +1842,120 @@ Every "currently absent" claim below was verified against the code that day
 payoff within each group.
 ======================================================
 
-[FORECAST RUN-TO-RUN TREND SIGNAL]
-Priority: Medium (new alpha source, mostly existing plumbing)
+[PARTIALLY RESOLVED 2026-07-16] FORECAST RUN-TO-RUN TREND SIGNAL
+Priority: was Medium (new alpha source, mostly existing plumbing) -- now Low
+  until the enablement trigger below fires; this is a data-collection phase,
+  not an active development item.
 
-Problem:
+PARTIALLY RESOLVED 2026-07-16: the LOGGING half is shipped; the BLEND half
+  (directional lean and/or sigma-widening) is deliberately not built yet --
+  scoped via AskUserQuestion before coding (data-source symmetry, series
+  length, blend usage) and the user chose log-only for this pass, matching
+  every other new-signal entry in this file's own precedent (candlestick
+  capture, trade-flow signal, this entry's own original wording).
+  Live-verified against the real Previous Runs API (2026-07-16) before
+  writing code: a future target_date returns real non-null data when queried
+  with forecast_days instead of past_days (the pre-existing
+  _fetch_previous_run_daily, built only for backfilling PAST dates, returns
+  None for a future one); the existing lead clamp of 1-7 is correct (lead=8
+  confirmed all-null live); Open-Meteo accepts multiple previous_dayN
+  hourly variables in one request, so a 4-point lookback costs the same 3
+  HTTP calls (one per model) as a 2-point one would -- this is why 4 points
+  were shipped instead of 2, at no extra API cost, so jumpiness (needed for
+  the sigma-widening half, when it's built) doesn't require a second schema
+  migration later.
+  Shipped: tracker.get_forecast_run_trend(city, target_date, days_out, var) --
+  weights the same 3 models as backfill_emos_data's EMOS ens_mean
+  (_PREVIOUS_RUN_MODEL_MAP, via _model_weights) across leads N..N+3 (clamped
+  to 1-7), so every point in the series uses identical apples-to-apples
+  methodology, not a mismatch between a live ensemble mean and a single
+  deterministic control run. Returns {"points": [...], "delta": ...,
+  "jumpy": ...} or None (days_out<1 -- same-day markets use the METAR
+  pipeline instead; unknown city; fewer than 2 usable leads). Cached
+  (ForecastCache, 4h TTL, 30min TTL on a negative/failed result so a
+  transient API hiccup doesn't blank the signal out for a full 4h) keyed on
+  (city, target_date, days_out, var) -- var included because a HIGH and LOW
+  market on the same city/date need independently cached series. Wired into
+  tracker.log_prediction() as a new run_trend param (3 new columns:
+  run_trend_points JSON, run_trend_delta/run_trend_jumpy scalars, schema
+  v39->v42). 18 new tests (tests/test_tracker.py) -- fetch parsing/omission/
+  failure modes, weighted-delta/jumpy computed from known per-model values
+  with intentionally UNEQUAL weights (proves real weighting, not an average
+  disguised as one), cache-hit-avoids-second-network-call, log_prediction
+  round-trip, and the extraction-helper's field-mapping/malformed-input
+  cases (see below). Mutation-tested the weighted-mean line (swapped to a
+  plain average on a scratch edit, confirmed the delta/jumpy test fails with
+  the exact expected wrong numbers, reverted) -- confirmed the test genuinely
+  checks weighting rather than passing spuriously.
+
+  Independently reviewed (Agent, opus) -- found the log-only guarantee held
+  and the schema migration was safe, but ONE real MEDIUM issue: the initial
+  design called get_forecast_run_trend() directly inside
+  weather_markets.analyze_trade(), which put up to 3 sequential HTTP calls
+  (up to ~60s worst case on a cache miss) on the live order-placement
+  critical path -- analyze_trade's caller only places the order after it
+  returns, so a slow fetch would delay an already-fully-decided trade's
+  submission even though the fetch itself never touched blended_prob/kelly/
+  edge. Fixed by moving the call entirely out of analyze_trade: new
+  tracker.get_forecast_run_trend_from_analysis(analysis) extracts city/
+  target_date/days_out/var from an analyze_trade()-shaped dict and is now
+  the ONLY caller of get_forecast_run_trend, invoked from
+  order_executor._prediction_kwargs_from_analysis and main.py's two direct
+  log_prediction call sites (cmd_market, cmd_order) -- all of which run at
+  LOG time, which for real trades already happens AFTER order placement
+  (order_executor._auto_place_trades' own docstring), fully decoupling the
+  fetch from fill timing. Side benefit: markets that get analyzed but never
+  traded or shadow-logged now skip the fetch entirely, where the original
+  design would have fetched for every scanned market regardless of outcome.
+  Also fixed 2 LOW robustness gaps the same review surfaced:
+  _fetch_previous_run_leads now checks the `hourly` field is actually a
+  dict before indexing into it (a malformed API response could otherwise
+  raise AttributeError outside the function's own try/except), and
+  get_forecast_run_trend's model-weighting/statistics section is now
+  wrapped in its own try/except so the function's "never raises" docstring
+  claim is actually enforced by the function itself, not just inherited
+  from whatever happened to call it. A second finding -- the real
+  data/predictions.db had drifted to PRAGMA user_version=40 while already
+  having all 3 new columns (caused by this session's own now-fixed
+  _SCHEMA_VERSION=40 typo briefly existing while all 3 migration entries
+  were already in _MIGRATIONS, and something triggering init_db() against
+  the real DB during that window) -- confirmed harmless and self-healing
+  (duplicate-column guard), but corrected immediately anyway by calling
+  tracker._run_migrations() once by hand rather than leaving it for the
+  bot's next natural run.
+
+ENABLEMENT TRIGGER (the actual ask: when to turn this from log-only into a
+  real blend input) -- do NOT wire it into blended_prob/sigma/kelly until:
+  1. A meaningful number of settled trades have a non-NULL run_trend_delta/
+     run_trend_jumpy (check: predictions JOIN outcomes WHERE
+     run_trend_delta IS NOT NULL AND settled_temp_f IS NOT NULL). Apply the
+     same sample-floor precedent already used elsewhere in this file before
+     trusting a per-signal statistic (ACCURACY_MIN_SAMPLE=20,
+     SPRT_MIN_TRADES=20, MIN_BIAS_CORRECTION_TRADES=50) -- don't invent a
+     new, lower bar just because this signal is new.
+  2. A real accuracy check has been run against that data: does a positive
+     run_trend_delta (forecast trending warmer) actually correlate with the
+     forecast being LOW (i.e. the true value came in even higher), the
+     directional-persistence hypothesis this entry is built on? Does high
+     run_trend_jumpy actually correlate with larger forecast error (the
+     sigma-widening hypothesis)? Both are testable directly against
+     settled_temp_f once #1 is satisfied -- don't wire in blend/sigma
+     changes on the strength of the mechanism sounding plausible alone.
+  3. Only then: revisit the original "What the fix looks like" below for
+     the actual blend/sigma wiring, gated behind tracked accuracy like every
+     other signal source in this file (see the ENSEMBLE spread bias, NWS
+     weight decay, and dynamic bias-correction gates already live in
+     weather_markets.py for the established pattern to match).
+  This same trigger shape (accumulate -> check correlation against real
+  settlement data -> only then wire into the blend) applies to every other
+  log-only-shipped signal in this file -- see RICHER ML CALIBRATION
+  FEATURES and GENERALIZED PER-MODEL ACCURACY TRACKING below, and the
+  candlestick capture / public trade-flow signal entries, all of which have
+  the same "ship the logging, evaluate later" shape and the same risk of
+  being logged forever and never actually revisited without an explicit
+  check-back condition like this one.
+
+Problem (original framing, still accurate for the blend/sigma half):
   The Open-Meteo Previous Runs API is already integrated — but only in
   tracker.py (~2231) / backtest.py for EMOS backfill. The live path never
   compares the current model run against the previous run. Run-to-run
@@ -1840,19 +1963,23 @@ Problem:
   runs tends to keep trending while markets anchor to the older number, and
   high run-to-run jumpiness is a principled reason to widen sigma.
 
-What the fix looks like:
-  At forecast time, also fetch the prior run's value for the same
-  target date (existing Previous Runs plumbing), compute delta and a
-  short revision-trend series; feed as (a) a small directional lean in the
-  blend and/or (b) a sigma-widening term when jumpiness is high. Gate
-  behind tracked accuracy like every other signal source.
+What the fix looks like (still open -- logging half only is done above):
+  Feed the now-logged delta/jumpy series as (a) a small directional lean in
+  the blend and/or (b) a sigma-widening term when jumpiness is high, once
+  the ENABLEMENT TRIGGER above is satisfied.
 
 Why not now:
-  - New signal needs its own paper-trade evaluation period before earning
-    real weight; adds one more fetch per city/date to the cron budget.
+  - The enablement trigger above hasn't fired yet -- zero settled trades
+    have a run_trend_delta value as of 2026-07-16 (the column didn't exist
+    until today). Needs real elapsed time + trading activity, not more
+    engineering effort.
 
 When to revisit:
-  - Good standalone medium-size project; no prerequisites.
+  - Check the ENABLEMENT TRIGGER's sample-floor query periodically (e.g.
+    whenever this file is next open for other reasons, or paired with the
+    DATA-DRIVEN SIGMA FROM SETTLED HISTORY entry's own settled-count check
+    below, since both are gated on the same kind of settled-trade volume
+    growing over time).
 
 [RICHER ML CALIBRATION FEATURES]
 Priority: Medium (model architecture is fine; the feature vector is the

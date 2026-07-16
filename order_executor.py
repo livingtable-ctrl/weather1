@@ -1925,8 +1925,16 @@ def _unpack_opp(item) -> tuple[str, str | None, date | None, dict, dict]:
 
 def _prediction_kwargs_from_analysis(a: dict) -> dict:
     """Build the tracker.log_prediction() keyword args shared by the real
-    post-placement call and shadow logging, so both derive ens_mean/ens_var
-    and the other blend metadata identically."""
+    post-placement call and shadow logging, so both derive ens_mean/ens_var,
+    run_trend, and the other blend metadata identically.
+
+    run_trend is fetched HERE (log time) rather than read from `a`, since
+    analyze_trade() deliberately doesn't compute it -- see
+    tracker.get_forecast_run_trend_from_analysis's docstring for why (keeps
+    the up-to-3-HTTP-call fetch off the order-placement critical path). For
+    the real post-placement call this runs after the order is already
+    placed; for shadow logging there was never an order to delay."""
+    from tracker import get_forecast_run_trend_from_analysis as _get_run_trend
     from weather_markets import EDGE_CALC_VERSION as _ECV
 
     _es = a.get("ensemble_stats") or {}
@@ -1942,6 +1950,7 @@ def _prediction_kwargs_from_analysis(a: dict) -> dict:
         model_consensus=a.get("model_consensus"),
         ens_mean=_es.get("mean"),
         ens_var=(_std * _std if _std is not None else None),
+        run_trend=_get_run_trend(a),
     )
 
 

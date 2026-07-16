@@ -15,6 +15,7 @@ import sqlite3
 from collections import defaultdict
 from datetime import UTC, date, datetime, timedelta
 
+from forecast_cache import ForecastCache
 from paths import DB_PATH
 from safe_io import project_root as _project_root
 from utils import sql_normalize_iso_column
@@ -26,7 +27,7 @@ DB_PATH.parent.mkdir(exist_ok=True)
 
 _db_initialized = False
 
-_SCHEMA_VERSION = 39  # increment when _MIGRATIONS list grows
+_SCHEMA_VERSION = 42  # increment when _MIGRATIONS list grows
 
 _MIGRATIONS = [
     # v1 → v2: add condition_type column (if not already added)
@@ -207,6 +208,19 @@ _MIGRATIONS = [
     # piece silently lost in the 24559a7 mystery-revert (see backlog.txt) --
     # ported forward against the many calibration functions added since.
     "ALTER TABLE outcomes ADD COLUMN disputed INTEGER DEFAULT 0",
+    # v39 -> v42: forecast run-to-run trend signal (backlog.txt "FORECAST
+    # RUN-TO-RUN TREND SIGNAL"), 3 columns added as 3 separate migration steps
+    # (v40/v41/v42) matching this list's one-ALTER-per-entry convention.
+    # run_trend_points is the raw {lead, value} series from
+    # get_forecast_run_trend() as JSON (mirrors blend_sources'
+    # JSON-for-flexibility pattern); run_trend_delta/run_trend_jumpy are
+    # precomputed convenience scalars (mirrors ens_mean/ens_var) so simple
+    # queries don't need to parse JSON. Log-only for now -- not read by any
+    # blend/sizing code yet; gated behind a future tracked-accuracy pass per
+    # the backlog entry's own "why not now."
+    "ALTER TABLE predictions ADD COLUMN run_trend_points TEXT",  # v40
+    "ALTER TABLE predictions ADD COLUMN run_trend_delta REAL",  # v41
+    "ALTER TABLE predictions ADD COLUMN run_trend_jumpy REAL",  # v42
 ]
 
 
@@ -593,6 +607,7 @@ def log_prediction(
     model_consensus: bool | None = None,
     ens_mean: float | None = None,
     ens_var: float | None = None,
+    run_trend: dict | None = None,
     is_shadow: bool = False,
     conn: sqlite3.Connection | None = None,
 ) -> bool:
@@ -601,6 +616,11 @@ def log_prediction(
     #37: Optionally stores the NWP forecast cycle (00z/06z/12z/18z).
     #84: Optionally stores blend_sources dict (model weights) as JSON.
     P9.1: Optionally stores edge_calc_version for strategy version tracking.
+    run_trend: optional dict from weather_markets.get_forecast_run_trend's
+    caller-side result (see analyze_trade's "run_trend" key) -- shape
+    {"points": [{"lead": N, "value": V}, ...], "delta": ..., "jumpy": ...}.
+    Stored log-only (points as JSON, delta/jumpy as convenience scalar
+    columns); not consumed by any blend/sizing code yet.
     is_shadow: True for a signal that was analyzed and would have traded but
     never had a real order placed (e.g. logged during TRADING_PAUSED) — flags
     the row so downstream P&L-labeled displays can distinguish it from a
@@ -648,6 +668,13 @@ def log_prediction(
     blend_sources_json = (
         _json.dumps(blend_sources) if blend_sources is not None else None
     )
+    run_trend_points_json = (
+        _json.dumps(run_trend["points"])
+        if run_trend is not None and run_trend.get("points") is not None
+        else None
+    )
+    run_trend_delta = run_trend.get("delta") if run_trend is not None else None
+    run_trend_jumpy = run_trend.get("jumpy") if run_trend is not None else None
 
     # G4: use today's wall-clock date as explicit UPSERT key (avoids SQLite
     # date(predicted_at) timezone ambiguity around UTC midnight).
@@ -660,8 +687,9 @@ def log_prediction(
            edge, method, n_members, predicted_at, days_out, forecast_cycle,
            blend_sources, ensemble_prob, nws_prob, clim_prob, edge_calc_version,
            signal_source, predicted_date, obs_weight_used, local_hour,
-           forecast_temp_f, model_consensus, ens_mean, ens_var, is_shadow)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'),?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+           forecast_temp_f, model_consensus, ens_mean, ens_var, is_shadow,
+           run_trend_points, run_trend_delta, run_trend_jumpy)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'),?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         ON CONFLICT(ticker, predicted_date) DO UPDATE SET
             our_prob         = excluded.our_prob,
             raw_prob         = excluded.raw_prob,
@@ -683,6 +711,9 @@ def log_prediction(
             model_consensus  = excluded.model_consensus,
             ens_mean         = excluded.ens_mean,
             ens_var          = excluded.ens_var,
+            run_trend_points = excluded.run_trend_points,
+            run_trend_delta  = excluded.run_trend_delta,
+            run_trend_jumpy  = excluded.run_trend_jumpy,
             -- MIN(): a real-trade write (is_shadow=0) still clears the flag, but
             -- a shadow/lookup write (is_shadow=1, e.g. cmd_market) can never
             -- un-flag an already trade-backed row for the same (ticker, date).
@@ -717,6 +748,9 @@ def log_prediction(
         ens_mean,
         ens_var,
         int(is_shadow),
+        run_trend_points_json,
+        run_trend_delta,
+        run_trend_jumpy,
     )
     # Atomic upsert — unique index on (ticker, predicted_date) prevents
     # duplicate rows from concurrent calls (TOCTOU of old SELECT+INSERT pattern).
@@ -2665,6 +2699,218 @@ def _fetch_previous_run_daily(
     if not vals:
         return None
     return max(vals) if var == "max" else min(vals)
+
+
+# Forecast run-to-run trend signal (backlog.txt "FORECAST RUN-TO-RUN TREND
+# SIGNAL"). Reuses _PREVIOUS_RUN_MODEL_MAP / the Previous Runs API, but unlike
+# _fetch_previous_run_daily (built for backfilling PAST, already-settled
+# target dates) this is called live, at trade-analysis time, for target dates
+# that are usually still in the FUTURE. Live-verified 2026-07-16 against the
+# real endpoint: requesting forecast_days sized to reach a future target_date
+# (instead of relying on past_days, which _fetch_previous_run_daily hardcodes
+# and which returns None outright for a future date) returns real, non-null
+# data for all 3 models in _PREVIOUS_RUN_MODEL_MAP, and confirmed the lead
+# clamp of 1-7 is correct (lead=8 comes back all-null).
+_RUN_TREND_LOOKBACK = 4  # leads N..N+3 (clamped to the API's valid 1-7 range)
+_run_trend_cache: ForecastCache[dict | None] = ForecastCache(ttl_secs=4 * 60 * 60)
+_RUN_TREND_NEGATIVE_TTL = 30 * 60  # shorter TTL for a failed/empty fetch so a
+# transient API hiccup doesn't blank this signal out for the full 4h TTL.
+
+
+def _fetch_previous_run_leads(
+    lat: float,
+    lon: float,
+    tz: str,
+    target_date: date,
+    prev_model: str,
+    leads: list[int],
+    var: str,
+) -> dict[int, float]:
+    """Fetch several lead offsets for one model in a single Previous Runs API call.
+
+    Unlike _fetch_previous_run_daily, target_date may be in the future:
+    forecast_days is sized from today through target_date rather than using
+    past_days (which requires target_date <= today). Returns {lead: value}
+    for whichever leads had non-null data; missing leads are simply absent
+    from the result rather than raising.
+    """
+    import requests as _req
+
+    date_str = target_date.isoformat()
+    forecast_days = max(1, (target_date - date.today()).days + 1)
+    hourly_vars = [f"temperature_2m_previous_day{lead}" for lead in leads]
+
+    try:
+        resp = _req.get(
+            "https://previous-runs-api.open-meteo.com/v1/forecast",
+            params={
+                "latitude": str(lat),
+                "longitude": str(lon),
+                "models": prev_model,
+                "temperature_unit": "fahrenheit",
+                "timezone": tz,
+                "hourly": ",".join(hourly_vars),
+                "forecast_days": str(forecast_days),
+            },
+            timeout=20,
+        )
+        resp.raise_for_status()
+    except Exception:
+        return {}
+
+    try:
+        data = resp.json()
+    except Exception:
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    hourly = data.get("hourly", {})
+    if not isinstance(hourly, dict):
+        return {}
+    times = hourly.get("time", [])
+
+    out: dict[int, float] = {}
+    for lead, hourly_var in zip(leads, hourly_vars):
+        day_vals = [
+            v
+            for t, v in zip(times, hourly.get(hourly_var, []))
+            if date_str in t and v is not None
+        ]
+        if day_vals:
+            out[lead] = max(day_vals) if var == "max" else min(day_vals)
+    return out
+
+
+def get_forecast_run_trend(
+    city: str, target_date: date, days_out: int, var: str = "max"
+) -> dict | None:
+    """Compare today's forecast for target_date against the last few runs.
+
+    lead=N (N = max(1, min(days_out, 7))) is ~today's forecast for
+    target_date; lead=N+1 is ~yesterday's forecast for the same date,
+    lead=N+2 the day before that, etc. Reading points in that order gives a
+    "how has the forecast moved over the last few runs" series. Every point
+    is computed identically -- weighted across the same 3 models
+    (_PREVIOUS_RUN_MODEL_MAP) using the same _model_weights() weighting
+    backfill_emos_data already uses for ens_mean -- so the delta is a real
+    apples-to-apples revision signal, not a mismatch between a live ensemble
+    mean and a single deterministic control run.
+
+    Only applies to multi-day markets (days_out >= 1); same-day markets use
+    the METAR-driven pipeline instead, matching the existing days_out >= 1
+    gate on ens_mean backfill. Returns None if days_out < 1, the city has no
+    coords, or fewer than 2 leads produced data for any model (can't compute
+    a delta). Never raises -- this signal is log-only today (see backlog.txt)
+    and must never block a trade decision evaluated at the same time.
+
+    Result shape: {"points": [{"lead": N, "value": V}, ...] lead-ascending
+    (so points[0] is the most recent, points[1] the run before that, ...),
+    "delta": points[0]["value"] - points[1]["value"] (positive = trending
+    warmer/higher), "jumpy": population stdev across all available points}.
+    """
+    if days_out < 1:
+        return None
+
+    cache_key = (city, target_date.isoformat(), days_out, var)
+    cached, hit, _ = _run_trend_cache.get_with_ts(cache_key)
+    if hit:
+        return cached
+
+    try:
+        from weather_markets import CITY_COORDS as _coords
+        from weather_markets import _model_weights as _wm_weights
+    except Exception:
+        return None
+
+    coords = _coords.get(city)
+    if coords is None:
+        return None
+    lat, lon, tz = coords
+
+    lead0 = max(1, min(days_out, 7))
+    leads = [ld for ld in range(lead0, lead0 + _RUN_TREND_LOOKBACK) if ld <= 7]
+    if len(leads) < 2:
+        _run_trend_cache.set_with_ttl(cache_key, None, _RUN_TREND_NEGATIVE_TTL)
+        return None
+
+    # Wrapped so the function's own "never raises" contract holds without
+    # depending on a caller's try/except -- _model_weights()/statistics.pstdev
+    # aren't otherwise guarded here (2026-07-16 review finding).
+    try:
+        weights = _wm_weights(city, month=target_date.month)
+        per_lead_weighted: dict[int, list[tuple[float, float]]] = {
+            ld: [] for ld in leads
+        }
+        for ens_model, prev_model in _PREVIOUS_RUN_MODEL_MAP.items():
+            w = weights.get(ens_model, 1.0)
+            fetched = _fetch_previous_run_leads(
+                lat, lon, tz, target_date, prev_model, leads, var
+            )
+            for ld, val in fetched.items():
+                per_lead_weighted[ld].append((w, val))
+
+        points = []
+        for ld in leads:
+            entries = per_lead_weighted[ld]
+            if not entries:
+                continue
+            w_sum = sum(w for w, _v in entries)
+            if w_sum <= 0:
+                continue
+            w_mean = sum(w * v for w, v in entries) / w_sum
+            points.append({"lead": ld, "value": round(w_mean, 3)})
+
+        if len(points) < 2:
+            _run_trend_cache.set_with_ttl(cache_key, None, _RUN_TREND_NEGATIVE_TTL)
+            return None
+
+        import statistics as _stats
+
+        values = [p["value"] for p in points]
+        result = {
+            "points": points,
+            "delta": round(values[0] - values[1], 3),
+            "jumpy": round(_stats.pstdev(values), 3),
+        }
+    except Exception:
+        _run_trend_cache.set_with_ttl(cache_key, None, _RUN_TREND_NEGATIVE_TTL)
+        return None
+
+    _run_trend_cache.set(cache_key, result)
+    return result
+
+
+def get_forecast_run_trend_from_analysis(analysis: dict) -> dict | None:
+    """Compute the run-to-run trend signal from an analyze_trade() result dict.
+
+    Deliberately NOT called from inside analyze_trade() itself -- a 2026-07-16
+    independent review found that fetching this inline (up to 3 sequential
+    HTTP calls, up to ~60s worst case on a cache miss) sits on the live
+    order-placement critical path: analyze_trade's caller places the order
+    only after it returns, so a slow fetch would delay an already-decided
+    trade's submission even though the signal itself never affects the
+    decision. Call this instead at log_prediction time, which for real
+    trades already happens AFTER order placement (see
+    order_executor._auto_place_trades) -- fully decoupling the fetch from
+    fill timing, and as a side effect skipping the fetch entirely for
+    markets that get analyzed but never traded or shadow-logged.
+
+    Extracts city/target_date/days_out/var from the analysis dict (the same
+    shape analyze_trade() returns and log_prediction() receives). Returns
+    None on any missing/malformed field, matching get_forecast_run_trend's
+    own never-raises contract.
+    """
+    try:
+        city = analysis.get("city")
+        days_out = analysis.get("days_out")
+        var = (analysis.get("condition") or {}).get("var", "max")
+        target_date_raw = analysis.get("target_date")
+        if city is None or days_out is None or target_date_raw is None:
+            return None
+        target_date = date.fromisoformat(target_date_raw)
+        return get_forecast_run_trend(city, target_date, days_out, var)
+    except Exception:
+        return None
 
 
 def backfill_emos_data(force: bool = False) -> tuple[int, int]:

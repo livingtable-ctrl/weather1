@@ -1162,6 +1162,7 @@ def cmd_market(client: KalshiClient, ticker: str, verbose: bool = False):
 
         # Log to tracker
         try:
+            from tracker import get_forecast_run_trend_from_analysis as _get_run_trend
             from weather_markets import EDGE_CALC_VERSION as _ECV
 
             _es = analysis.get("ensemble_stats") or {}
@@ -1180,6 +1181,7 @@ def cmd_market(client: KalshiClient, ticker: str, verbose: bool = False):
                 blend_sources=analysis.get("blend_sources"),
                 ens_mean=_es.get("mean"),
                 ens_var=(_std * _std if _std is not None else None),
+                run_trend=_get_run_trend(analysis),
                 # cmd_market is a pure lookup/display command — it never places an
                 # order, so this row must not read as trade-backed (is_shadow=0)
                 # to callers like get_pnl_by_signal_source's n_shadow count.
@@ -3601,6 +3603,9 @@ def cmd_order(client: KalshiClient, action: str, args: list):
                 _log.warning("cmd_order: log_analysis_attempt failed: %s", _le)
 
             try:
+                from tracker import (
+                    get_forecast_run_trend_from_analysis as _get_run_trend,
+                )
                 from weather_markets import EDGE_CALC_VERSION as _ECV
 
                 _es = _analysis.get("ensemble_stats") or {}
@@ -3620,6 +3625,7 @@ def cmd_order(client: KalshiClient, action: str, args: list):
                     model_consensus=_analysis.get("model_consensus"),
                     ens_mean=_es.get("mean"),
                     ens_var=(_std * _std if _std is not None else None),
+                    run_trend=_get_run_trend(_analysis),
                 )
             except Exception as _pe:
                 _log.warning("cmd_order: log_prediction failed: %s", _pe)

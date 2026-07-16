@@ -6699,6 +6699,20 @@ def analyze_trade(enriched: dict) -> dict | None:
     if _bimodal_mult < 1.0:
         ci_adjusted_kelly = round(ci_adjusted_kelly * _bimodal_mult, 6)
 
+    # Forecast run-to-run trend signal (backlog.txt "FORECAST RUN-TO-RUN TREND
+    # SIGNAL") is deliberately NOT computed here. An independent review
+    # (2026-07-16) found that fetching it inline in analyze_trade -- up to 3
+    # sequential HTTP calls, up to ~60s worst case on a cache miss -- sits on
+    # the live order-placement critical path: analyze_trade's caller places
+    # the order only after this function returns, so a slow fetch delays an
+    # already-fully-decided trade's submission even though the fetch itself
+    # never touches blended_prob/kelly/edge. Moved to
+    # tracker.get_forecast_run_trend_from_analysis(), called only at
+    # log_prediction time (which for real trades already happens AFTER order
+    # placement -- see order_executor._auto_place_trades) so it can never
+    # affect fill timing. See order_executor._prediction_kwargs_from_analysis
+    # and main.py's two direct log_prediction call sites.
+
     _result = {
         # Core
         "forecast_prob": blended_prob,
