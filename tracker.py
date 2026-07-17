@@ -2737,7 +2737,13 @@ def _fetch_previous_run_leads(
     import requests as _req
 
     date_str = target_date.isoformat()
-    forecast_days = max(1, (target_date - date.today()).days + 1)
+    # utc_today(), not date.today(): target_date is UTC-anchored (see
+    # analyze_trade's own days_out computation against datetime.now(UTC)) --
+    # a server running ahead of UTC (e.g. Belgium, UTC+2) would otherwise
+    # under-count forecast_days by 1 and could miss the boundary day. Same
+    # bug class documented in utc_today()'s own docstring and already hit
+    # once in this project's test suite (2026-07-13, TestMonteCarloCholesky).
+    forecast_days = max(1, (target_date - _utc_today()).days + 1)
     hourly_vars = [f"temperature_2m_previous_day{lead}" for lead in leads]
 
     try:

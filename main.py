@@ -1179,6 +1179,7 @@ def cmd_market(client: KalshiClient, ticker: str, verbose: bool = False):
                 edge_calc_version=_ECV,
                 signal_source=analysis.get("method"),
                 blend_sources=analysis.get("blend_sources"),
+                model_consensus=analysis.get("model_consensus"),
                 ens_mean=_es.get("mean"),
                 ens_var=(_std * _std if _std is not None else None),
                 run_trend=_get_run_trend(analysis),

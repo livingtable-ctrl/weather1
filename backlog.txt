@@ -2245,3 +2245,1190 @@ Why not now:
 When to revisit:
   - If manual cadence continues long-term, or as a small quality-of-life
     flag next time cron.py is open.
+
+======================================================
+2026-07-16 WHOLE-PROGRAM SCOUTING SESSION (feature half) -- three parallel
+Fable 5 passes (feature/signal candidates, refactor/design-debt, architecture
+-level structural gaps), each reading backlog.txt in full first so nothing
+below duplicates an existing open/resolved/closed entry. This is the feature/
+signal half; the architecture-level and refactor/design-debt findings from
+the same session are in their own section further down (search "ARCHITECTURE
+& DESIGN-DEBT CANDIDATES"). Reviewed in an HTML triage artifact before
+filing; user approved merging into this file.
+======================================================
+
+[REAL NBM VIA IEM NBS STATION BULLETINS -- REPLACE THE SILENT best_match SUBSTITUTE]
+Priority: Medium-High -- the bot believes it has an "nbm" ensemble member; it
+  actually has an arbitrary auto-selected model, and the real thing is one
+  parameter away on an API already integrated.
+
+Problem:
+  fetch_temperature_nbm() (weather_markets.py:1617) no longer fetches NBM at
+  all -- Open-Meteo removed the model -- and the function now requests
+  models: "best_match" (weather_markets.py:1655, documented at :1623), an
+  uncalibrated auto-selection, yet still feeds model_temps["nbm"] in
+  analyze_trade's Phase-C extended ensemble (weather_markets.py:5642) and
+  _compute_ensemble_spread. The 2026-07-12 piece-3 closure rejected only the
+  NBM-delta bias-correction premise ("correcting toward another model's
+  guess"); it never addressed that the "nbm" blend member itself is now
+  mislabeled. Meanwhile mos.py already integrates IEM's MOS API
+  (mesonet.agron.iastate.edu/api/1/mos.json, mos.py:21) but only ever
+  requests GFS/NAM (mos.py:83, 215). Live-verified 2026-07-16: the same
+  endpoint with model=NBS returns current-day NBM station bulletins for
+  KNYC -- real rows, hourly tmp plus n_x (the NBM day-max/night-min field),
+  sky, gst, p12. That's genuine NBM at the exact ASOS settlement stations
+  (mos.py's own docstring: "same ASOS stations Kalshi settles on"), better-
+  targeted than the old Open-Meteo gridpoint NBM ever was.
+
+What it would look like:
+  Add model="NBS" support to mos.py's fetch (parse n_x for the daily
+  max/min rather than scanning hourly tmp), and point
+  fetch_temperature_nbm() at it (or add a sibling fetch_nbm_iem() and let
+  model_temps["nbm"] consume that), keeping best_match only as fallback.
+  Station map already exists (_MARKET_STATION_MAP, mos.py:32). Extend
+  beyond the 6-city _MOS_CITIES subset -- NBM covers all ASOS stations, so
+  all 20 cities work, unlike GFS/NAM MOS.
+
+Why not now:
+  - Needs a per-station parse of NBS's 12-hourly n_x semantics (which row
+    is the max for the local calendar day -- same timezone care as CLI
+    settlement); verify a few cities beyond KNYC return rows; decide
+    whether the restored member also feeds _compute_ensemble_spread
+    immediately or ships log-only first per house precedent.
+
+When to revisit:
+  - Pairs naturally with the NBM PROBABILISTIC QUANTILES entry below (same
+    IEM/NBM surface) -- scope both together.
+
+[DISCRETIZATION-CONSISTENT T-BUCKET THRESHOLDS -- HALF-DEGREE CONTINUITY]
+Priority: Medium-High -- systematic, direction-consistent probability skew
+  on every tail-bucket trade; borders a correctness issue, not just a
+  feature idea -- coordinate with the adversarial-review stream before
+  starting to avoid double work.
+
+Problem:
+  _parse_market_condition already reasons explicitly about integer
+  settlement for between-buckets -- B87.5 -> [86.5, 88.5], with a comment
+  that brackets "must tile without gaps" (weather_markets.py:3719-3723).
+  But T-buckets keep raw integer thresholds: T92 "92 degrees or above" ->
+  {"above", 92.0} (weather_markets.py:3724-3741), and
+  _forecast_probability computes P(T_cont > 92.0) (weather_markets.py:
+  3764-3774). Verified against real tickers in data/predictions.db:
+  T-strikes are integers (KXHIGHDEN-26JUL05-T94, KXHIGHNY-26JUN30-T90...),
+  B-strikes are x.5. So the ladder does NOT tile under the code's own
+  between-bucket convention: the top B-bucket ends at 91.5 but the
+  adjacent T92 starts at 92.0 -- the mass in (91.5, 92.0] (up to ~7-8pp
+  near the money at typical sigma) belongs to the T-bucket under integer
+  settlement and is dropped. Effect: systematic understatement of
+  tail-bucket YES probability -> phantom NO edge on above/below markets.
+  Same inconsistency propagates to every prob path taking condition raw:
+  ensemble_cdf_prob (:3026), EMOS interval/exceedance, nws_prob
+  (nws.py:313).
+
+What it would look like:
+  Shift T-thresholds by 0.5 at parse time (above: val-0.5; below:
+  val+0.5) in _parse_market_condition, so all downstream consumers
+  inherit it and the full ladder tiles exactly with the B-buckets. Then
+  check get_calibration_by_city / condition-type Brier before/after --
+  per-city Platt and temperature scaling (ml_bias.py:300, 426) have been
+  partially absorbing the average skew, so expect learned corrections to
+  shrink once this ships.
+
+Why not now:
+  - Confirm Kalshi's exact settlement convention for boundary values
+    first ("92 or above" with CLI high = 92 -> YES; whether CLI highs
+    round or truncate -- the CLI-report fetch already scoped 2026-07-05
+    would answer this authoritatively); recalibration interplay means it
+    should ship with a deliberate calibration-reset decision, not
+    silently.
+
+When to revisit:
+  - Coordinate with any adversarial-review pass before starting -- this
+    straddles the feature/bug boundary and shouldn't be filed twice.
+
+[AMEND ORDER (V2) -- REPLACE CANCEL-VERIFY-REPLACE IN THE REPRICE LOOP]
+Priority: Medium -- removes the exact client-side race window the reprice
+  feature needed hardened plumbing to work around, and halves write-call
+  count per reprice.
+
+Problem:
+  kalshi_client.py exposes only place/get/cancel (place_order :401,
+  get_order :551, cancel_order :560) -- no amend. So
+  _reprice_or_cancel_pending_orders (order_executor.py:779) does a
+  3-step cancel -> verify-unfilled -> replace via
+  _cancel_and_verify_safe_to_replace (order_executor.py:683), whose
+  fill-race handling required threading raw API status through
+  _finalize_cancel (the 2026-07-12 review's fix #3) and still leaves the
+  "fills exactly as the post-cancel verification query fails" settlement
+  gap that got spawned as its own follow-up. Verified via docs search
+  2026-07-16: Kalshi has Amend Order (V2) -- POST
+  /trade-api/v2/portfolio/events/orders/{order_id}/amend (same V2
+  events-orders family this repo migrated to on 2026-07-12), body
+  {ticker, side, price, count, client_order_id, updated_client_order_id},
+  response {order_id, remaining_count, fill_count, ts_ms}; plus a
+  separate Decrease Order endpoint. Amend is a single atomic exchange-side
+  operation -- no client-side window where the order is gone-but-not-
+  replaced or filled-mid-sequence.
+
+What it would look like:
+  Add amend_order() to kalshi_client.py (V2 fixed-point shape -- read the
+  live docs page for exact field encoding before coding, same caution as
+  the create/cancel migration); in _reprice_or_cancel_pending_orders, use
+  amend for the reprice-improve branch (same order, new price) and keep
+  cancel+IOC-replace only for the taker-cross branch (different order
+  type). Log replaces_order_id chains the same way (execution_log already
+  has the column).
+
+Why not now:
+  - Docs note queue position is preserved only on size decrease (price
+    amends go to the back -- no queue-priority win, "only" atomicity +
+    rate-limit savings); ENABLE_MICRO_LIVE=False means no live orders
+    exist to reprice yet, so this naturally batches with the next
+    order-path session. Verify amend's response/error shape against
+    DEMO_BASE first.
+
+When to revisit:
+  - Whenever the order-execution path is next open for other reasons, or
+    once live trading resumes and repricing actually runs.
+
+[MARKET-IMPLIED TEMPERATURE DISTRIBUTION FROM THE FULL LADDER]
+Priority: Medium -- turns data already fetched every scan into a per-event
+  consensus signal; cheap, log-only ship.
+
+Problem:
+  Every market comparison is per-bracket: parse_market_price mid
+  (weather_markets.py:3083-3128) vs model prob, with per-market anchors
+  _MARKET_ANCHOR_BETWEEN/ABOVE/BELOW (weather_markets.py:173-175).
+  Nothing ever inverts the full sibling ladder (all brackets of one
+  city/date, already fetched in the same scan) into a market-implied
+  temperature distribution -- implied mean/sigma from a monotone CDF fit
+  over cumulative bracket prices. The existing JOINT FULL-LADDER BRACKET
+  SELECTION entry is about *sizing* across brackets; this is about
+  *extracting the market's own forecast* as a signal. Uses: (a) a
+  self-consistent anchor (individual mids can be stale/one-sided -- the
+  fitted CDF pools the whole event book); (b) a scalar "market-implied
+  mean minus model mean, F" logged per prediction -- directly comparable
+  to run_trend_delta and testable against settled_temp_f with the same
+  enablement-trigger shape; (c) research into which bucket types
+  systematically misprice (favorite-longshot tilt on tails).
+
+What it would look like:
+  Helper that groups sibling markets by event (the parse machinery in
+  parse_city_date :3448 already extracts city/date), sorts brackets, fits
+  mean/sigma minimizing squared error to bracket mids weighted by
+  liquidity, returns {implied_mean, implied_sigma, fit_residual}. Log into
+  predictions (2-3 columns, same migration pattern as run_trend). Do NOT
+  wire into blend until settled-data correlation check passes (same
+  ENABLEMENT TRIGGER precedent as run_trend, above).
+
+Why not now:
+  - Needs thin-book handling (skip fit when fewer than ~3 two-sided
+    brackets -- is_liquid :3777 gives the gate); value is research-first,
+    so it competes with other log-only signals for the same "will anyone
+    ever check back" risk this file already flags.
+
+When to revisit:
+  - Alongside JOINT FULL-LADDER BRACKET SELECTION, since both read the
+    same sibling-ladder data -- worth scoping together rather than
+    separately.
+
+[PUBLIC TRADES REST BACKFILL -- GET /markets/trades AT SETTLEMENT]
+Priority: Medium -- closes the exact gap the PUBLIC TRADE-FLOW SIGNAL entry
+  admits ("coverage between manual cron runs is zero") without needing the
+  always-on host.
+
+Problem:
+  The PUBLIC TRADE-FLOW SIGNAL entry (above) is scoped to the WS `trade`
+  channel, which only helps while a watch session is running. Verified
+  2026-07-16 via docs search: GET /markets/trades is public,
+  unauthenticated, cursor-paginated (limit 1-1000), returns
+  taker_side/count/yes_price/no_price/created_time per fill.
+  kalshi_client.py has no trades endpoint (full method list read today:
+  markets/market/orderbook/candlesticks/events/series/balance/positions/
+  orders only). That means the complete signed-flow history of every
+  settled market is retrievable retroactively -- the same "data
+  accumulates regardless of process uptime" property that justified the
+  candlestick capture, but with direction (taker_side) that OHLC candles
+  lack.
+
+What it would look like:
+  kalshi_client.get_trades(ticker, min_ts, max_ts) + a trade_history
+  table, wired into tracker.sync_outcomes() (tracker.py:3081) right
+  beside the existing candlestick backfill (fires once per market at
+  outcome recording, isolated try/except, same pattern commit ba3527e
+  established). Analysis payoffs ride the already-deferred candlestick
+  analysis passes: adverse selection around our fill times (joins against
+  execution_log's filled_at/market_mid_at_fill), and "did informed flow
+  precede settlement-direction moves" -- the caution-flag hypothesis the
+  WS entry wants, testable on history before any live WS work.
+
+Why not now:
+  - Storage volume check first (trades per weather market are modest, but
+    confirm with one live call); shares the enablement-trigger risk with
+    the candlestick entry -- pair its analysis check-back with that
+    entry's existing 2026-07-16 trigger so they're evaluated together.
+
+When to revisit:
+  - Alongside the PUBLIC TRADE-FLOW SIGNAL entry above and the
+    candlestick capture entry's own check-back trigger.
+
+[NBM PROBABILISTIC QUANTILES -- ORPHANED CONVERTER, MISSING FETCHER]
+Priority: Low-Medium -- the consumer half already exists in-tree; only the
+  fetch half is missing, but the fetch half needs real research.
+
+Problem:
+  nws.nws_prob_from_quantiles() (nws.py:324-376) is a complete,
+  documented NBM-percentile->probability converter (linear ECDF over
+  {10,25,50,75,90} percentiles with tail extrapolation) with zero
+  production callers and zero code anywhere fetching NBM percentiles
+  (repo-wide grep 2026-07-16: only its own definition). nws.py is outside
+  tests/test_dead_code_scan.py's scope (paper/tracker/weather_markets
+  only), so the scan will never surface it. NBM's quantile output (QMD)
+  is a calibrated per-day, per-station uncertainty estimate -- a daily
+  dynamic sigma that would sharpen the current per-month climate sigma
+  (get_historical_sigma :2209) and capture skew a symmetric Gaussian
+  can't.
+
+What it would look like:
+  Research pass first -- NBM percentiles live in the QMD grib products on
+  NOMADS (not in the NBS text bulletins live-tested for the REAL NBM
+  entry above, and not exposed by api.weather.gov); check whether IEM or
+  another JSON-friendly mirror serves them before committing to grib
+  parsing. If a clean source exists: fetch per station/day, feed
+  nws_prob_from_quantiles as either the NWS-slot probability for tail
+  buckets or a sigma source, gated/log-only first.
+
+Why not now:
+  - No verified JSON source yet (grib parsing would add a heavy
+    dependency for one signal -- likely not worth it alone); do the
+    source-hunting as part of the REAL NBM entry's IEM work since it's
+    the same product family. If no clean source exists, decide
+    wire-up-or-delete for the orphan explicitly and extend the dead-code
+    scan to nws.py either way.
+
+When to revisit:
+  - Scoped together with REAL NBM VIA IEM NBS STATION BULLETINS above.
+
+[FORECAST-CONDITION COVARIATES FOR SIGMA -- INCLUDING FIELDS ALREADY FETCHED AND NEVER READ]
+Priority: Low-Medium -- sigma today conditions on city/month/horizon/spread
+  but never on what kind of weather day it is; several inputs are already
+  being paid for.
+
+Problem:
+  The daily forecast fetch requests only
+  temperature_2m_max,temperature_2m_min,precipitation_sum
+  (weather_markets.py:983); the temperature sigma path
+  (weather_markets.py:5620-5660) uses climate sigma x horizon x spread,
+  and regime.py conditions only on ensemble mean/std. No weather-type
+  conditioning exists anywhere -- yet precip/frontal days have
+  systematically larger high-temp errors and cloud-cover busts are the
+  classic daily-high miss. Concretely unused today: precipitation_sum is
+  fetched with every forecast and never consumed in the temperature path
+  (grep of analyze_trade's temp section: precip only routes precip-market
+  types at :5340-5350); Pirate Weather's wind_gust/_wind_gust_time_unix/
+  _hourly_window_high_f are fetched and stored into the forecast dict
+  (weather_markets.py:1097-1100, 2114-2119) with zero readers anywhere
+  (repo-wide grep). The NBS bulletins from the REAL NBM entry above would
+  add sky/gst/p12 in the same call.
+
+What it would look like:
+  Log 2-3 covariates (forecast precip_sum, sky/cloud, gust) into
+  predictions alongside the existing run_trend columns (same v-migration
+  pattern), correlate |settled_temp_f - forecast| against them once
+  sample floors clear, then a bounded sigma multiplier for high-precip-
+  probability days. Distinct from RICHER ML CALIBRATION FEATURES, which
+  proposes *internal* features (ensemble spread, model disagreement,
+  data_quality) -- this is external weather-type covariates; if the ML
+  entry ships first, these become additional candidate features for the
+  same GBM instead of a separate mechanism.
+
+Why not now:
+  - Same weeks-of-accumulation gate as every log-only signal; keep
+    feature count small vs the 200-samples-per-city training gate the ML
+    entry already flags. The dead wind_gust/_hourly_window_high_f fields
+    deserve a wire-up-or-delete decision regardless (dict fields are
+    invisible to the dead-code scan).
+
+When to revisit:
+  - Alongside RICHER ML CALIBRATION FEATURES -- decide then whether these
+    are separate covariates or additional features for the same model.
+
+[CROSS-CITY RECENT-ERROR POOLING -- SYNOPTIC-REGIME BIAS SHARE]
+Priority: Low-Medium -- the spatial correlation structure is already
+  learned and stored; it's only ever used to *penalize risk*, never to
+  *improve the forecast*.
+
+Problem:
+  Bias correction is strictly per-city and slow: _get_combined_station_bias
+  (weather_markets.py:303-337) blends a static table with
+  tracker.get_dynamic_station_bias (min 10 samples, weeks of
+  accumulation, 4h cache). Nothing uses the last 24-48h of realized
+  errors in *other* cities to nudge today's forecast -- even though
+  forecast errors are spatially correlated under a shared synoptic
+  regime, and the bot already quantifies exactly those correlations
+  (_CITY_PAIR_CORR paper.py:313-332; tracker.get_recent_city_correlations
+  refreshed into monte_carlo.simulate_portfolio at monte_carlo.py:
+  242-264) -- but solely for portfolio VaR. If the model ran 2F hot
+  across the whole Gulf Coast group yesterday, today's NOLA/Houston
+  forecasts are more likely hot too; the per-city dynamic bias can't see
+  that for weeks.
+
+What it would look like:
+  tracker.get_regional_recent_bias(city, var, hours=48) --
+  correlation-weighted mean of correlated cities' settled errors over the
+  last 1-2 days (data already in outcomes.settled_temp_f; the
+  correlated-group structure already in _CORRELATED_CITY_GROUPS
+  paper.py:283-287), returned with sample count. Ship log-only (a
+  regional_bias column beside run_trend), verify it actually correlates
+  with same-day own-city error at settlement, then a small bounded lean
+  capped well below _get_combined_station_bias's magnitude.
+
+Why not now:
+  - Settled-outcome latency (an error is only known after settlement +
+    sync -- check whether "yesterday's" errors are actually available by
+    today's scan time in practice); needs the same sample-floor and
+    enablement-trigger discipline; low per-city row counts today (3-14
+    per the 2026-07-12 audit) mean the pooled signal is the *point* but
+    also hard to validate initially.
+
+When to revisit:
+  - Once per-city settled counts grow past the same floor used elsewhere
+    (see DATA-DRIVEN SIGMA FROM SETTLED HISTORY's own count check).
+
+[MARKET_LIFECYCLE_V2 WS CHANNEL -- LISTING-TIME AWARENESS]
+Priority: Low -- real timing edge, but structurally blocked behind the
+  always-on host decision.
+
+Problem:
+  Confirmed by direct docs fetch 2026-07-16, Kalshi's WS channel list is
+  orderbook_delta, ticker, trade, fill, market_positions,
+  market_lifecycle_v2, multivariate_market_lifecycle, multivariate,
+  communications, order_group_updates, user_orders, cfbenchmarks_value,
+  pyth_value -- this bot subscribes to exactly two (kalshi_ws.py:362) and
+  the backlog covers trade/fill/order_groups, but market_lifecycle_v2
+  (and user_orders) appear nowhere in repo or backlog (grep: zero hits
+  for market_lifecycle). New daily temperature markets are discovered
+  only when the next REST scan happens (get_weather_markets + 60s
+  _MARKETS_CACHE_TTL :744-745, on cron cadence) -- hours after listing.
+  Freshly listed markets have the widest spreads and least-informed
+  quotes; the first maker quote at model fair value gets the best prices
+  of the market's life, and the deferred candlestick entry-timing
+  analysis can verify this from data already being captured (candles
+  cover the full open->close window, so "edge vs hours-since-open" is
+  computable today for settled markets).
+
+What it would look like:
+  Subscribe market_lifecycle_v2 in the (future) always-on watcher; on a
+  new KXHIGH*/KXLOW* listing, run analyze_trade for that market
+  immediately and post a resting maker order if gates pass. Cheap
+  precursor available now with zero new infra: use the existing candle
+  history (tracker.get_price_history) to measure whether early-window
+  prices were actually more mispriced vs settlement -- do that before
+  building anything live.
+
+Why not now:
+  - Meaningless without the always-on host (explicitly parked in the
+    MOVE OFF LOCAL CRON entry, trigger = live trading imminent); do the
+    candle-based "is early entry actually better" check first -- if edge
+    doesn't decay with market age, this whole candidate dies cheaply.
+
+When to revisit:
+  - Once the always-on host decision executes. Note user_orders as a
+    sibling channel to fold into the already-deferred fill-channel work
+    when that resumes.
+
+======================================================
+ARCHITECTURE & DESIGN-DEBT CANDIDATES -- 2026-07-16 whole-program scouting
+session (architecture + refactor halves; see the section above for the
+feature/signal half from the same session). Same three-Fable-pass sourcing
+and verification discipline as above.
+======================================================
+
+[THE ONLY LIVE-ORDER PATH IS THE INTERACTIVE WATCH CLI -- NO HEADLESS TRADE-CYCLE ENGINE]
+Priority: High -- a stated prerequisite for the already-decided VM move +
+  deferred always-on watcher; this is the refactor that determines whether
+  that work is a port or a rewrite.
+
+Problem:
+  There are two parallel scan pipelines, and the hardened one can't trade
+  live while the live one isn't hardened. cron pipeline (cron.py:475
+  _cmd_cron_body, ~2,100 lines): the production path -- kill-switch/
+  override/accuracy-halt/graduation gates, consistency-violation halt
+  (cron.py:1112-1136), batch cache prewarm, ThreadPoolExecutor scan via
+  _enrich_and_analyze (cron.py:1369), is_stale exclusion, gate counters,
+  shadow logging, tiered ctx.auto_place_trades(...) (cron.py:1886/1895)
+  -- paper only; cron never passes live=True. watch pipeline (main.py:
+  2822 cmd_watch): a `while True` terminal UI wrapping _analyze_once
+  (main.py:1294) -- a *sequential* scan with different gates (skips
+  days_out==0 at 1337, no is_stale, no consistency halt, no prewarm) --
+  and this is the *only* path that can place a live order
+  (_auto_place_trades(..., live=live) at 2875-2877, then poll/reprice/
+  exit-protection at 2878-2886). So when live trading starts, real money
+  runs through the interactive-display pipeline while the
+  production-hardened pipeline stays paper. And the deferred always-on
+  watcher ("reacts between cycles") has no home: it would be a *third*
+  hand-assembled sequence of scan->analyze->place->poll->reprice->
+  protect, because that sequence exists only as inline orchestration
+  inside two different functions, each with its own subset and ordering.
+  The exit-protection calls are already duplicated verbatim between them
+  (cron.py:757-768 vs main.py:2878-2886).
+
+What it would look like:
+  Extract a headless run_trade_cycle(client, mode: paper|live, triggers)
+  engine owning the canonical ordered sequence (recover-pending -> settle
+  -> scan -> analyze -> decide/place -> poll fills -> reprice -> position
+  protection -> log), with the CLI display and the cron wrapper both
+  becoming thin callers. The always-on watcher then becomes "call the
+  engine's protection stage on WS events + the full cycle on a timer"
+  instead of a third reimplementation. The CronContext injection seam
+  (cron.py:78, main.py:208) is already halfway there -- the engine is
+  mostly a matter of moving orchestration out of _cmd_cron_body/
+  cmd_watch into it. Smallest safe step available right now, independent
+  of the full engine: add cron's per-ticker dedup + is_stale filter to
+  _analyze_once's loop (~8 lines) -- closes the feature gap between the
+  two pipelines without the reshuffle.
+
+Why not now:
+  - Do it as the *first* step of the VM/always-on work (the trigger
+    already defined: live trading imminent), not before -- it's a large,
+    risky reshuffle of the two most safety-audited files, and doing it
+    while the process model is still "one-shot cron + occasional watch"
+    adds no immediate behavior. But do it *before* writing any watcher
+    code, or the watcher hardcodes pipeline #3.
+
+When to revisit:
+  - Same trigger as MOVE OFF LOCAL CRON -- HOST ON A SMALL ALWAYS-ON VM
+    (above): whenever the user is ready to actually execute that move,
+    this is the first engineering step, not the VM provisioning itself.
+    The smallest-version dedup/is_stale parity fix is safe to do sooner,
+    independent of that trigger.
+
+[NO MARKET-TYPE SEAM -- TEMPERATURE IS THE ARCHITECTURE, NOT A MARKET TYPE]
+Priority: Medium-High -- hourly-directional (KXTEMPxxxH) is the nearest
+  stated expansion and would hit every one of these walls; rain is second.
+
+Problem:
+  Market-type knowledge is not behind an interface; it's a set of
+  string-match conventions repeated independently across the pipeline,
+  and the deepest layer (ground truth/calibration) only has a concept of
+  temperature at all. Dispatch: analyze_trade() (weather_markets.py:5145)
+  is a ~1,660-line monolith whose market-type "routing" is two
+  early-return fast-paths keyed on parsed condition type (precip at
+  5340-5347, snow at 5350-5355); everything after line 5357 IS the
+  temperature model. There is no third place to plug in an hourly-
+  threshold model except a third inline fast-path. Variable derivation by
+  ticker substring is duplicated: `var = "min" if "LOW" in series else
+  "max"` exists independently at weather_markets.py:5414 and 6248,
+  tracker.py:2544-2554 (settlement audit), and paper.py:1148-1154
+  (_score_ensemble_members) -- four copies of the same convention, each
+  of which a new market type must extend or silently mis-handle
+  (paper.py's copy defaults unknown tickers to "max"). Ground truth is a
+  temperature column: outcomes stores settled_yes + settled_temp_f
+  (tracker.py:122, 310-314). The settlement-audit path explicitly bails
+  for anything else -- tracker.py:2554: `return False  # precipitation or
+  unknown -- skip`. Everything downstream of settlement -- EMOS training,
+  data-driven sigma, dynamic station bias, per-model accuracy, ml_bias
+  temperature scaling -- consumes settled_temp_f. A rain market can trade
+  today (the precip fast-path exists) but can never learn: no ground
+  truth is ever recorded for it, so it's permanently outside the
+  calibration loop that is this bot's actual moat. Degraded analysis
+  dicts already bite: the precip/snow fast-paths return reduced dicts
+  (hardcoded "time_risk": "HIGH" at 4792/4999, no entry_price), which
+  already silently disabled the reprice taker-cross for precip markets
+  (documented as an "informational finding" in the maker-execution
+  entry). check_series_drift() (weather_markets.py:3308) diffs only
+  KXHIGH*/KXLOW* (3332-3339) against the hardcoded KNOWN_WEATHER_SERIES
+  list -- already flagged in the hourly/rain entries, but note it's the
+  same missing seam, not a separate fix.
+
+What it would look like:
+  A MarketType protocol owning the five things currently keyed on string
+  conventions: (1) series-prefix set for discovery/drift, (2) condition
+  parsing, (3) probability model entry point (analyze(enriched,
+  condition) -> analysis), (4) ground-truth spec -- what observable
+  settles it and how to fetch it, (5) calibration-pool key (so hourly
+  rows never pollute the daily 'sameday' T-scaling pool -- the exact
+  separation the hourly backlog entry already demands). The outcomes
+  table needs a generic settled_value REAL + settled_var TEXT shape
+  instead of settled_temp_f. The temperature implementation would
+  initially just be the existing code behind the interface -- the win is
+  that hourly/rain get slots instead of fourth and fifth copies of the
+  "LOW" in ticker convention.
+
+Why not now:
+  - Worth doing the ground-truth generalization (settled_value/
+    settled_var) as a cheap early step the moment any second market type
+    is greenlit -- retrofitting calibration history is impossible (the
+    v35 migration comment at tracker.py:165-171 documents exactly this:
+    rows logged before var existed could never be backfilled). The full
+    MarketType protocol only pays when the hourly or rain entry is
+    actually picked up; don't build it speculatively.
+
+When to revisit:
+  - The moment HOURLY-DIRECTIONAL TEMPERATURE MARKETS or RAIN / SNOW /
+    HURRICANE MARKETS (above) is actually greenlit -- do the ground-truth
+    generalization first, before either.
+
+[PAPER AND LIVE POSITIONS ARE TWO LEDGERS WITH ADAPTER GLUE -- EVERY RISK FEATURE SHIPS TWICE]
+Priority: Medium -- cost compounds per feature once live trading is real;
+  currently only ~4 features deep. Includes a real, already-observed
+  drift: exit-gate thresholds duplicated as bare literals across both
+  files with a docstring/code mismatch already caught (see below).
+
+Problem:
+  A "position" exists in two unrelated persistence models -- paper's JSON
+  ledger (data/paper_trades.json, full read-modify-write under
+  _DATA_LOCK, paper.py:87/107) and live's execution_log SQLite rows --
+  and the live side reaches feature parity by adaptation and replication,
+  not sharing. order_executor._get_live_open_positions()
+  (order_executor.py:955) reshapes execution_log rows into "whatever keys
+  paper's check functions happen to read (verified by reading both
+  bodies)". _update_live_peak_profits() (order_executor.py:996)
+  *replicates* paper's peak math because paper.update_peak_profits
+  ignores its own parameter and re-reads paper's JSON internally --
+  i.e., paper's functions are storage-coupled in ways discovered
+  per-function. _check_live_model_exits() (order_executor.py:1214) is a
+  ~100-line near-clone of _check_early_exits (order_executor.py:1625),
+  built as a separate function "to avoid any risk of regressing the
+  existing paper-only path". The divergence already produced asymmetry:
+  the multiple-positions-per-ticker collapse bug was fixed on the live
+  side only, with paper's identical pattern left in production
+  (documented in the RESTING EXIT ORDERS resolution above). Beyond the
+  structural glue, gate constants are hand-copied as bare literals: the
+  24h settlement-convergence gate at four sites (paper.py:1339-1357,
+  1431-1449; order_executor.py:1693-1713, 1277-1298), the 12h
+  minimum-hold gate at three (paper.py:2185-2197; order_executor.py:
+  1671-1683, 1263-1275) -- none in get_config_fingerprint(). Drift has
+  already started at the doc level: _check_early_exits' docstring
+  (order_executor.py:1628) says "shifted >15 percentage points" while the
+  code gates on `shift > 0.25` (line 1715).
+
+What it would look like:
+  Two-tier fix. Now: named module constants (EXIT_MIN_HOLD_HOURS=12,
+  EXIT_SETTLEMENT_GATE_HOURS=24, MODEL_EXIT_SHIFT_PP=0.25) shared by both
+  files and added to get_config_fingerprint(), plus one extracted
+  _passes_exit_gates(entered_at, close_time, log_tag) -> bool used by all
+  5-6 sites. Later: a Position read-model -- one dataclass with the
+  fields the check functions actually consume (ticker, side, qty,
+  entry_price, entry_prob, cost, peak_profit_pct, close_time), two
+  PositionStore implementations (paper JSON, execution_log), and the
+  stop-loss/breakeven/model-exit/peak logic operating solely on
+  list[Position] + an injected exit(position, price, reason) callback.
+  Fix update_peak_profits to actually operate on its parameter (thin
+  paper wrapper keeps JSON persistence; live path calls the pure
+  function), collapsing _update_live_peak_profits to persistence-only.
+
+Why not now:
+  - The constants+helper extraction is low-risk and could ride along the
+    next time either file is open. The full read-model touches
+    paper.py's battle-tested check functions -- exactly what the
+    2026-07-13 session was avoiding -- so save it for when the next
+    live-position feature (partial-fill handling is the likeliest) needs
+    a third consumer to validate the interface against.
+
+When to revisit:
+  - Named constants + shared gate helper: next time either file is open
+    for any reason. Full Position read-model: when the next live-position
+    feature lands, using it as the third consumer that validates the
+    interface.
+
+[SIGNAL GRADUATION IS A CONVENTION, NOT A MECHANISM -- SIGNAL #3 REBUILDS RUN-TREND'S PLUMBING]
+Priority: Medium -- the log-only->trigger->blend pattern is now this
+  project's explicit strategy for all new alpha; its marginal cost is
+  currently ~6 touch points per signal.
+
+Problem:
+  Run-trend established the graduation *pattern* but implemented it as
+  bespoke wiring at every layer, so signals #3-#5 (trade-flow, AFD,
+  richer-ML features are all queued in this file) each repeat it.
+  Storage: one named migration per scalar (tracker.py:221-223, v40-v42)
+  plus dedicated columns per signal -- predictions is already at schema
+  v42 largely from this accretion. API: a new named parameter on
+  log_prediction() (tracker.py:610 run_trend: dict | None) -- the
+  signature grows one kwarg per signal, forever. Threading: every
+  log_prediction call site updated -- order_executor's shared helper
+  _prediction_kwargs_from_analysis (order_executor.py:1926) *plus*
+  main.py's two direct call sites, each re-importing
+  get_forecast_run_trend_from_analysis locally (see the LOG_PREDICTION
+  KWARGS ASSEMBLY TRIPLICATED entry below -- same root cause).
+  Enablement: run-trend's trigger (sample floor + correlation check)
+  exists only as backlog.txt prose that someone must remember to run by
+  hand. Meanwhile the codebase already *has* an in-code activation
+  mechanism -- sample-gated auto-activation with one-time notification
+  (_regime_blend_active() weather_markets.py:3887 +
+  _notify_feature_activation 3852, and siblings: PDO/PNA gate at 3912,
+  MIN_BIAS_CORRECTION_TRADES) -- but it's re-derived per feature and was
+  not used for run-trend. Blend entry (the eventual step): the core
+  blend is a *positional 3-tuple* -- _blend_weights() returns
+  (w_ensemble, w_climatology, w_nws) (weather_markets.py:3954-3962). Any
+  signal graduating to a real blend weight either changes that arity
+  everywhere or joins the growing chain of bespoke post-blend
+  adjustments, which is how analyze_trade got to 1,660 lines.
+
+What it would look like:
+  (a) log_prediction(..., signals: dict[str, float] | None) persisting to
+  a signal_values(prediction_id, name, value) table (or one JSON column,
+  matching the blend_sources/run_trend_points precedent) -- new signal =
+  new dict key, zero migrations, zero signature/call-site changes; (b) a
+  small signal registry (name, extract(analysis) -> value(s),
+  sample_floor, correlation_target) driving both a standing
+  graduation-report command (runs every pending signal's enablement query
+  against settled outcomes -- replaces the per-entry prose triggers) and
+  the auto-activation notification machinery that already exists for
+  regime/PDO; (c) leave blend *wiring* manual -- the deliberate human
+  step is the point of the pattern -- but let graduated signals enter as
+  named entries in a weights dict rather than tuple-position N+1.
+
+Why not now:
+  - Do (a)+(b) when the *next* log-only signal is built (trade-flow is
+    queued post-Belgium) -- that's when the second data point proves/
+    disproves the shape, and the cost is near-zero incremental to work
+    already planned. Not worth a standalone pass while run-trend's own
+    trigger hasn't fired.
+
+When to revisit:
+  - When PUBLIC TRADE-FLOW SIGNAL (or any other log-only signal above) is
+    next picked up -- build the registry then, not before.
+
+[THE ANALYSIS-DICT -> TRADE-RECORD BOUNDARY EXPLODES DICTS INTO NAMED SCALARS]
+Priority: Medium -- sharpens the existing GENERALIZED PER-MODEL ACCURACY
+  TRACKING entry with the structural root cause; read together.
+
+Problem:
+  The existing entry frames this as "per-model columns in tracker" -- but
+  the tracker column is the *last* link of a six-hop scalar chain, and
+  the chain's shape is the real cost. Per-model means travel: analyze_trade
+  locals (weather_markets.py:5731-5732) -> return-dict keys (6775-6776)
+  -> *named kwargs* at two independent placement call sites
+  (main.py:3576-3577, order_executor.py:2663-2664) -> place_paper_order's
+  signature (paper.py:853-854) -> trade JSON keys (957-958) ->
+  _score_ensemble_members's hardcoded dict (paper.py:1174-1187) ->
+  tracker.log_member_score. The comment at paper.py:1180-1186 states the
+  consequence: ECMWF "can never earn a data-driven weight... permanently
+  stuck at the static seasonal default" -- and the same is true for
+  GEM/UKMO/WeatherNext or any future source. place_paper_order's
+  signature is itself the pattern at scale: 19 named parameters, each a
+  field some analysis produced, meaning *every* new per-trade datum (not
+  just model means) pays the same multi-file kwarg-threading toll -- the
+  same disease as log_prediction's kwarg growth in the SIGNAL GRADUATION
+  entry above, at a different boundary.
+
+What it would look like:
+  One model_means: dict[str, float] key on the analysis dict (populated
+  by _get_consensus_probs, which is already model-agnostic via
+  _model_prob_and_mean -- the generic helper exists at the source end),
+  passed through as a single kwarg -> stored as one JSON field on the
+  trade record -> iterated by _score_ensemble_members (which already
+  loops a dict at paper.py:1191, so the consumer end is *also* ready --
+  only the transport is scalar). Keep icon_forecast_mean/gfs_forecast_mean
+  as legacy read-fallbacks for settling old trades. This converts "add a
+  model source" from a 6-file signature change into a fetch + one dict
+  entry, which is precisely what GENERALIZED PER-MODEL ACCURACY TRACKING
+  asks for -- that entry should be read together with this one when
+  picked up, since the endpoints are already generic and only the
+  transport chain needs replacing.
+
+Why not now:
+  - Same as GENERALIZED PER-MODEL ACCURACY TRACKING (weeks before learned
+    weights activate, needs the which-ECMWF-product decision) -- but when
+    picked up, do the dict transport *first*; instrumenting ECMWF through
+    the scalar chain and then generalizing would do the plumbing twice.
+
+When to revisit:
+  - Same trigger as GENERALIZED PER-MODEL ACCURACY TRACKING -- do the
+    dict-transport change as step one of that entry, not a separate pass.
+
+[ONE-SHOT PROCESS LIFECYCLE IS BAKED INTO MODULE STATE -- THE ALWAYS-ON WATCHER INHERITS STALE-STATE HAZARDS]
+Priority: Medium -- gated on the same trigger as the VM move; partially
+  live *today* via loop/watch, which already call cmd_cron repeatedly
+  in-process.
+
+Problem:
+  Correctness currently leans on process death as the cache-invalidation
+  and config-reload mechanism. Import-time snapshots that feed live
+  decisions: _CITY_WEIGHTS/_SEASONAL_WEIGHTS/_CONDITION_WEIGHTS load once
+  at module import (weather_markets.py:748-750); _CONDITION_WEIGHTS feeds
+  every trade's blend. In an always-on process, a recalibration writing
+  new weight files changes nothing until restart. _LEARNED_WEIGHTS
+  (2451-2453) is "cached after first load" with a log-*once* TTL warning
+  flag -- a once-per-process warning is a once-per-*months* warning on a
+  VM. Config frozen at import: utils.py alone has 41 module-level
+  os.getenv constants. The operational model "edit .env -> next cron run
+  picks it up" silently becomes "edit .env -> nothing happens" on a
+  long-lived process. Per-cycle resource lifecycles: the WS client is
+  constructed, subscribed, started, and torn down per cron cycle
+  (cron.py:1038-1156, stop at 2668-2674) -- every fresh cycle starts with
+  an empty book cache, which is exactly what caused the HIGH bug in the
+  exit-protection review (REST-fallback shape on "the exact path the
+  feature was built for"). An always-on design inverts this: the WS
+  becomes the persistent event source and the scan becomes the periodic
+  task -- none of the current orchestration is shaped for that
+  inversion. Filesystem liveness protocol: cron lock, heartbeat, dead-
+  man's-switch reading .cron_last_run mtime, _MONDAY_SWEEP_PATH touch-
+  file -- a signaling protocol between *invocations* of a dying process.
+
+What it would look like:
+  An explicit cycle-scoped context (fits the headless trade-cycle engine
+  entry above): weights/config refreshed at cycle start (or converting
+  the import-time trio to the TTL-checked read-through pattern the
+  forecast caches already use); log-once flags becoming log-once-per-
+  cycle; WS lifted out of the cycle to process scope with reconnect/
+  heartbeat ownership; an inventory pass over module globals in
+  weather_markets.py/paper.py classifying each as (a) true constant, (b)
+  TTL cache -- already safe, (c) load-once snapshot -- the hazard list.
+  The existing autouse-fixture machinery (isolate_dynamic_sigma etc.)
+  shows the project already knows which globals are dangerous -- that
+  list is roughly the (c) list.
+
+Why not now:
+  - Same trigger as the VM move. But the inventory pass (c-list) is cheap
+    and worth doing *before* the watcher design starts, because it sizes
+    the real work; and any *new* module-global cache added between now
+    and then should be TTL-checked rather than load-once, so the list
+    stops growing.
+
+When to revisit:
+  - Same trigger as MOVE OFF LOCAL CRON -- HOST ON A SMALL ALWAYS-ON VM.
+    The module-global inventory pass is cheap enough to do sooner, ahead
+    of the watcher design itself.
+
+[PER-CITY KNOWLEDGE IS SCATTERED ACROSS ~8 REGISTRIES WITH SILENT-DEFAULT FALLBACKS]
+Priority: Low-Medium -- the LV/NOLA history proves the failure mode is
+  real and slow-burning: months of silently degraded sigma; climate_indices
+  still half-covered.
+
+Problem:
+  CITY_COORDS is nominally data-driven (data/cities.json, weather_markets.py:
+  190-236, "#119: ...new cities can be added without modifying code") --
+  but a tradeable city actually requires coordinated entries in at least:
+  _parse_city_from_ticker's hardcoded if-chain (weather_markets.py:
+  3384-3445 -- city detection is *code*, including per-city substring
+  workarounds like the LA/LOWTLA disambiguation), KNOWN_WEATHER_SERIES
+  (3159-3199, plus KNOWN_DEAD_WEATHER_SERIES 3210), metar.
+  MARKET_STATION_MAP (metar.py:306, consumed by mos.py:32 and
+  settlement_monitor.py:65), _STATION_BIAS_HIGH/_LOW (weather_markets.py:
+  243-300), _HISTORICAL_SIGMA (2160-2180, static fallback tier),
+  climate_indices' ao/nao/enso dicts (climate_indices.py:212-251, still
+  10 of 20 cities), and paper.py's correlation groups/pair-corr
+  (283-332). Each consumer has a silent safe-side default for a missing
+  entry (_DEFAULT_SIGMA=3.5, .get(city, 0.5), Open-Meteo fallback instead
+  of ASOS) -- individually reasonable, collectively meaning an
+  incompletely-onboarded city trades with quietly degraded signal quality
+  and *nothing* reports the incompleteness. This is exactly how
+  LasVegas/NewOrleans ran on generic sigma and remain on generic
+  climate-index sensitivities. The planned city->WFO/pil table (CLI-
+  report fetch + AFD entries) will be registry #9.
+
+What it would look like:
+  Not necessarily one mega-table -- a *completeness manifest*: a
+  city_registry check (startup log + a test) that walks every per-city
+  consumer and reports, per CITY_COORDS city, which of the ~8 registries
+  has a real entry vs. a fallback, so "half-onboarded" becomes a visible
+  state instead of a silent one. Second step, only if city count actually
+  grows: fold the pure-data ones (station, tz, series tickers,
+  ticker-match patterns) into cities.json so _parse_city_from_ticker
+  becomes data-driven and #119's promise becomes true -- today adding a
+  city without code changes is not actually possible.
+
+Why not now:
+  - City count has been stable at 20 and Kalshi adds cities rarely; the
+    manifest/report is a small, self-contained piece worth folding into
+    whichever session next touches a per-city table (the climate-indices
+    or WFO-table work are natural hosts). The cities.json consolidation
+    only pays if Kalshi's roster actually starts moving.
+
+When to revisit:
+  - Whenever climate_indices.py or the CLI-report/WFO table work is next
+    picked up -- fold the manifest in as a drive-by rather than a
+    dedicated session.
+
+[LOG_PREDICTION KWARGS ASSEMBLY TRIPLICATED -- ONE COPY HAD ALREADY DRIFTED]
+Priority: Medium-High to fix (trivial), Medium as debt -- drift is not
+  hypothetical, it already happened once (main.py's cmd_market call site
+  silently dropped model_consensus, found and fixed 2026-07-16) and skews
+  the very analytics (per-signal-source scoring) shadow-logging exists to
+  keep honest.
+
+Problem:
+  order_executor._prediction_kwargs_from_analysis (order_executor.py:
+  1926-1954) was built 2026-07-16 explicitly so real placement and shadow
+  logging derive metadata identically -- but main.py's two direct
+  log_prediction call sites remained hand-copies of the same assembly
+  (main.py:1164-1189, main.py:3605-3629). The cmd_market copy was
+  missing model_consensus=analysis.get("model_consensus") until this
+  same 2026-07-16 session's Fable review caught and fixed it -- so
+  shadow rows logged via cmd_market had been silently recording
+  model_consensus=NULL while rows from every other path recorded a real
+  value. Each copy also re-derives _std * _std and re-imports
+  EDGE_CALC_VERSION/get_forecast_run_trend_from_analysis independently,
+  so the next new prediction column (schema grew v39->v42 this week
+  alone) must still be added in three places by hand.
+
+What it would look like:
+  Move _prediction_kwargs_from_analysis to tracker.py, next to
+  log_prediction (its natural home -- it already only builds tracker
+  kwargs) or export it from order_executor; replace both main.py
+  hand-copies with a call plus their per-site extras (is_shadow=True for
+  the display path).
+
+Why not now:
+  - No real blocker -- this is small enough to ride along with any
+    main.py session. Only care point: log_prediction fires post-
+    placement for real trades, so keep the helper's run_trend fetch out
+    of any pre-placement path (2026-07-16's own review finding on the
+    signal itself).
+
+When to revisit:
+  - Next time main.py is open for any reason -- the model_consensus
+    instance is already fixed; this entry is about preventing the next
+    one structurally.
+
+[DISPUTED-ROW EXCLUSION PREDICATE HAND-COPIED ~40 TIMES IN tracker.py]
+Priority: Medium -- same "one shared rule, many consumers, one gets
+  missed" shape this project has hit 7+ times; the existing mutation
+  tests protect the 30 *existing* filters but nothing forces a *new*
+  query to add one.
+
+Problem:
+  The 2026-07-12 disputed-outcome restoration added the literal predicate
+  `AND (o.disputed IS NULL OR o.disputed = 0)` as a hand-copied string to
+  every calibration query: tracker.py:838, 987, 1082, 1155, 1198, 1228,
+  1263, 1320, 1416, 1461, 1634, 1720, 1775, 1798, 1857, 1896, 1934, 1978,
+  2113, 2190, 2222, 3517, 3589, 3651, 3700, 3775, 3988, 4119, 4160, 4629,
+  4772 -- ~40 occurrences. The 30-filter mutation test proves existing
+  filters work, but the failure mode that matters going forward is a NEW
+  function joining outcomes on settled_yes and simply not knowing the
+  rule exists -- exactly how the original 3-function scope grew to 30 in
+  the first place. tracker.py already has a CREATE VIEW precedent
+  (multiday_predictions, tracker.py:372), so a view is in-style, and
+  there is no outcomes_valid view or shared SQL-fragment constant
+  anywhere (grep confirmed).
+
+What it would look like:
+  Either (a) a `CREATE VIEW IF NOT EXISTS outcomes_valid AS SELECT * FROM
+  outcomes WHERE disputed IS NULL OR disputed = 0` in init_db(), migrate
+  the 40 queries to join the view (audited consumers like count_settled_*
+  keep joining raw outcomes deliberately); or cheaper (b) a module
+  constant `_NOT_DISPUTED = "AND (o.disputed IS NULL OR o.disputed = 0)"`
+  interpolated into each query, plus a guard test in the
+  test_config_divergence_guard.py style: regex tracker.py for `JOIN
+  outcomes` / `FROM outcomes` and assert every hit either uses the
+  view/constant or is on a named allowlist (the deliberate raw consumers
+  from the 07-12 audit).
+
+Why not now:
+  - 40 query rewrites in the calibration-scoring core deserve their own
+    pass with the existing 30-filter test suite as the safety net (it
+    will fail loudly if a view/constant swap changes semantics). No
+    behavior change intended, so it can wait for a slow session -- but
+    should land before the next tracker.py analytics function is written
+    by someone unaware of the rule.
+
+When to revisit:
+  - Next time tracker.py is opened for analytics work, or the next time
+    a new settled_yes-consuming function is added without the filter
+    (repeat of the original discovery pattern).
+
+[ANALYZE-TRADE PRICING/EV/KELLY TAIL TRIPLICATED ACROSS TEMP/PRECIP/SNOW PATHS]
+Priority: Medium -- this block has already needed the same fix applied to
+  every copy at least three times (the NO-sign inversion, the maker-fee
+  migration), and it contains a fresh instance of the shadow-constant bug
+  class the config guard can't see.
+
+Problem:
+  The ~60-line tail (entry-price selection with the yes_ask / 1-yes_bid
+  fallback chain -> net_ev -> net_edge cap 3.0 -> entry_side_edge NO-side
+  fallback -> fee-adjusted kelly -> bayesian_kelly with NO-side CI flip
+  -> CI-width scale `max(0.25, 1 - width*2)` -> condition_type scale ->
+  cap) exists three times in weather_markets.py: precip path 4688-4757,
+  snow path 4893-4964 (its own comment says "see _analyze_precip_trade's
+  identical fix above" -- the copies are acknowledged in-source), and a
+  divergent temperature variant 6521-6691 (adds time-decay, quality/
+  anomaly/spread/bimodal scales the other two lack). Every historical fix
+  to this logic had to be applied per-copy. Separately: the final Kelly
+  cap is a naked `min(ci_adj_kelly, 0.25)` at 4757, 4964, and 6691 (0.33
+  consensus variant at 6689) -- utils.KELLY_CAP (utils.py:105) is
+  env-configurable, so setting KELLY_CAP in .env changes kelly_fraction's
+  cap elsewhere but NOT these three ci_adjusted_kelly caps. That's a new
+  instance of the MORE INERT config.py FIELDS divergence class in a spot
+  test_config_divergence_guard.py doesn't scan (it compares env-default
+  literals between config.py/utils.py, not naked literals in
+  weather_markets.py).
+
+What it would look like:
+  Extract a `_price_and_size(blended_prob, prices, condition, days_out,
+  *, extra_kelly_scales=(), ci=(lo,hi), time_decay=1.0) -> dict` helper
+  returning the shared keys (entry_price, rec_side, net_ev, net_edge,
+  edge, entry_side_edge, fee_kel, ci_adj_kelly, adjusted_edge); precip/
+  snow call it plainly, the temperature path passes its extra scale
+  factors and decay. Replace the three 0.25 literals with utils.KELLY_CAP
+  (current value identical -> no behavior change), and decide
+  deliberately whether 0.33-consensus should be KELLY_CAP*1.33 or stay
+  independent.
+
+Why not now:
+  - This is the EV/sizing core of every trade -- needs the full
+    blast-radius treatment (the PAPER_MIN_EDGE precedent), golden-value
+    regression tests pinning current outputs for all three paths before
+    extraction, and an opus review per the 8-point checklist. Not a
+    drive-by.
+
+When to revisit:
+  - Worth its own dedicated session given the blast radius -- not a
+    drive-by addition to unrelated work.
+
+[KALSHI CENTS/DOLLARS PRICE NORMALIZATION IMPLEMENTED INDEPENDENTLY 3+ TIMES]
+Priority: Medium -- this exact normalization has already produced two real
+  bugs fixed one-copy-at-a-time (the zero-bid falsy bug in
+  parse_market_price; the 2026-07-13 HIGH bug where the REST-fallback raw
+  shape was read as dollar floats), and Kalshi is actively migrating
+  shapes, so every new API shape must be taught to each copy separately.
+
+Problem:
+  order_executor._coalesce_cents_or_dollars (order_executor.py:106-126)
+  and the nested _coalesce + to_float pair inside
+  weather_markets.parse_market_price (weather_markets.py:3089-3113)
+  implement identical logic (None-skipping coalesce; str->float/100 if
+  >1; int>=1 -> /100; float>1.0 -> /100), with the order_executor
+  docstring admitting "Mirrors weather_markets.parse_market_price's
+  coalesce so callers agree" -- a mirror enforced by nothing. The
+  weather_markets copy is nested inside the function so it *can't* be
+  imported, which is why the duplicate exists. schema_validator.py:34-61
+  carries a third partial variant of the same legacy/current key-pair
+  knowledge, tracker.py:926's _candle_dollars handles the candlestick
+  flavor ("_dollars"/"_fp"), and kalshi_ws.py's ticker parser normalizes
+  to dollars independently (its 0.0-missing-side sentinel caused the
+  2026-07-12 one-sided-book review finding).
+
+What it would look like:
+  One `coalesce_market_price(d, *keys) -> float` in market_types.py (or
+  utils.py), used by parse_market_price (un-nest), order_executor
+  (delete its copy), and schema_validator's range check; consolidate the
+  key-pair lists ("yes_bid"/"yes_bid_dollars" etc.) as constants next to
+  it. Existing tests become tests of the one helper. kalshi_ws's
+  parse-time normalization can stay (different input shape) but should
+  reference the same constants.
+
+Why not now:
+  - Touches live order pricing -- same review bar as the reprice work.
+    Best done adjacent to the next Kalshi-API-shape change (e.g. if the
+    V2 order-endpoint response migration surfaces more _fp fields), when
+    the copies would otherwise all need editing anyway.
+
+When to revisit:
+  - The next time any Kalshi API response shape changes -- do the
+    consolidation then, since the copies need editing anyway.
+
+[TWO FUNCTIONS NAMED _current_forecast_cycle -- ONE IS DEAD AND HIDES FROM THE DEAD-CODE GUARD VIA NAME COLLISION]
+Priority: Low-Medium -- small cleanup, but it exposes a systematic blind
+  spot in tests/test_dead_code_scan.py worth closing while it's cheap.
+
+Problem:
+  order_executor.py:78-87 defines _current_forecast_cycle -> 2 cycles/day,
+  date-prefixed ("2025-05-15_12z"), used everywhere real (order dedup,
+  execution_log rows, all log_prediction forecast_cycle values via
+  main.py:68's import). weather_markets.py:819-832 defines a *different*
+  _current_forecast_cycle -> 4 cycles/day, bare "12z". The
+  weather_markets one has zero production callers (grep: only
+  tests/test_forecasting.py:398,414 import it; its neighbor
+  _ttl_until_next_cycle is the one weather_markets actually uses). Two
+  functions with the same name and the same conceptual job but
+  incompatible formats is exactly the "same concept represented
+  differently" trap -- and worse, the dead-code guard can't see it: the
+  scan is regex-over-source (\bname\s*\(, per its own docstring), so
+  order_executor's five call sites of its *own* _current_forecast_cycle
+  make the weather_markets one look called. Any future dead function that
+  happens to share a name with a live one in another scanned file gets
+  the same free pass.
+
+What it would look like:
+  Delete weather_markets._current_forecast_cycle (or, if the 4-cycle
+  granularity is genuinely wanted someday for cache keys, rename to
+  _current_nwp_cycle and leave a comment distinguishing it from
+  order_executor's dedup cycle); move/retarget its two tests. Then teach
+  the scan to resolve calls per-module (attribute the call to the
+  defining module of the name in scope -- the scan already does
+  alias-resolution for `from module import name as _name`, so plain
+  same-file definitions are the remaining gap).
+
+Why not now:
+  - None substantive -- candidate for the next housekeeping session. The
+    scan improvement is the part worth doing carefully (avoid regressing
+    the existing alias-resolution).
+
+When to revisit:
+  - Next general housekeeping/cleanup session.
+
+[ForecastCache EXISTS, BUT ~14 HAND-ROLLED TTL DICTS DO THE SAME JOB]
+Priority: Low-Medium -- consistency/tooling debt, not a live bug; each
+  hand-rolled cache re-implements expiry slightly differently and each
+  needs its own test-isolation hook.
+
+Problem:
+  forecast_cache.py's ForecastCache is the purpose-built abstraction
+  (TTL, per-entry set_with_ttl, used by weather_markets._ensemble_cache:398,
+  _forecast_cache:505, tracker._run_trend_cache:2715 (new 2026-07-16),
+  config._paper_min_edge_cache:158). But the majority of caches hand-roll
+  the dict[key, (value, ts)] + `time.monotonic() - ts < TTL` idiom:
+  weather_markets._NBM_CACHE/_ECMWF_CACHE/_PRECIP_ENSEMBLE_CACHE
+  (1610-1613), _HRRR_CACHE (1705), _WEATHERAPI_CACHE (1775),
+  _MAE_WEIGHTS_CACHE (2644), _CONSENSUS_CACHE (4288), _DYNAMIC_BIAS_CACHE
+  (166); mos.py:59 _MOS_CACHE; metar.py:79 _METAR_CACHE; nws.py:44-49
+  (five separate dicts); climate_indices.py:29; climatology.py:52,252;
+  ml_bias.py:29-31. Variations that already exist between copies:
+  monotonic vs wall-clock timestamps, negative-result caching (the new
+  _run_trend_cache added its own separate 30-min negative TTL -- a
+  feature every fetch cache arguably wants, implementable once in the
+  class), and per-cache clear() fixtures in tests (conftest.py:108 clears
+  _METAR_CACHE by hand; the climatology isolation fixture is another
+  one-off).
+
+What it would look like:
+  Migrate hand-rolled caches to ForecastCache opportunistically (whichever
+  file is open anyway), starting with weather_markets' five model caches
+  since they share one TTL constant already (_MODEL_CACHE_TTL, 1614). Add
+  optional negative-TTL support to ForecastCache once (generalizing the
+  run-trend pattern). A single clear_all_forecast_caches() registry would
+  collapse the per-cache conftest fixtures.
+
+Why not now:
+  - Zero functional urgency; purely a convention to adopt going forward
+    plus opportunistic migration. Worth stating the convention in-code
+    (forecast_cache.py docstring: "new TTL caches use this class") so the
+    count stops growing.
+
+When to revisit:
+  - Opportunistically, whenever any of the listed files is next open for
+    other reasons.
+
+[execution_log.py's SWALLOWED-ALTER MIGRATIONS vs tracker.py's VERSIONED IDIOM]
+Priority: Low-Medium -- worked fine so far, but the live-execution feature
+  stream (7 new columns across 07-12/07-13 alone) is growing the weaker
+  idiom fastest, and its failure mode is silent.
+
+Problem:
+  tracker.py migrations are versioned (_MIGRATIONS list + PRAGMA
+  user_version cursor, tracker.py:30-255) with guard tests asserting
+  _SCHEMA_VERSION == len(_MIGRATIONS) -- and this exact machinery just
+  caught and self-healed a real drift on 2026-07-16 (see the FORECAST
+  RUN-TO-RUN TREND SIGNAL entry above). execution_log.py instead
+  re-attempts a flat list of 16 ALTER statements on every process init
+  inside `except sqlite3.OperationalError: pass` (execution_log.py:
+  106-129). Structural problems: (a) a genuine OperationalError (locked
+  DB, disk error) on a *needed* ALTER is indistinguishable from
+  "duplicate column" and is silently swallowed -- the column just doesn't
+  exist and the first INSERT referencing it fails later, far from the
+  cause; (b) no version cursor means no way to write a data-backfill
+  migration (only additive ALTERs are expressible); (c) every new
+  live-execution feature grows the list, so the two files' migration
+  styles diverge further with each shipped entry.
+
+What it would look like:
+  Port execution_log to the tracker pattern: freeze the current 16
+  ALTERs + CREATE TABLEs as migrations 1..N, set user_version, add the
+  same len==version guard test. Or extract tracker's ~25-line runner
+  (_run_migrations) into a shared helper both files use.
+
+Why not now:
+  - The current code works and live=1 rows are precious-few (no live
+    orders yet) -- ideal time to do it is actually now-ish, before live
+    data exists to migrate carefully, but it's not urgent by impact.
+    Needs care around the double-checked-locking init
+    (execution_log.py:52-62).
+
+When to revisit:
+  - Sooner rather than later, specifically because live=1 rows are still
+    empty -- this is the easiest this migration will ever be.
+
+[utils.utc_today() SAYS "USE EVERYWHERE INSTEAD OF date.today()" -- 17 SITES STILL DON'T]
+Priority: Low-Medium -- a recognized, already-bitten bug class with a
+  stated convention and zero enforcement. One instance (this session's own
+  new code) was found and fixed 2026-07-16; the remaining 17 are
+  unaudited.
+
+Problem:
+  utils.py:15-17 defines utc_today() with the docstring "Use everywhere
+  instead of date.today()", and the codebase has two documented scars
+  from ignoring it: web_app.py:3082's WA-timezone comment ("was
+  date.today() (server-local calendar)...") and the 07-13 test failures
+  where fixtures built from local date.today() disagreed with
+  simulate_portfolio's utils.utc_today() frame. tracker.py:2740 (the
+  run-trend fetcher shipped 2026-07-16) was the same bug -- confirmed and
+  fixed same-session, since forecast_days arithmetic against a
+  UTC-anchored target_date was computed from the server-local calendar.
+  Production date.today() survives at 17 more sites: tracker.py:2663
+  (the sibling _fetch_previous_run_daily, pre-existing, not touched this
+  session); backtest.py:156, 402, 407, 749, 794; main.py:688, 809, 2373,
+  3013, 5578; cron.py:425-442; web_app.py:1992; climate_indices.py:128;
+  climatology.py:72; cloud_backup.py:165. Some are plausibly fine
+  (cloud_backup's 30-day retention doesn't care), but nothing
+  distinguishes "audited, local is fine" from "nobody looked."
+
+What it would look like:
+  A guard test in the established style: grep production modules for
+  date.today()/_date.today(), fail on any hit not in an allowlist with a
+  per-site reason (mirroring _DEAD_FIELD_ALLOWLIST's honest-
+  categorization approach). Audit the 17 sites once to populate it --
+  tracker.py:2663 should probably just switch to utc_today() too, given
+  its sibling function just proved the mismatch is real on this exact
+  machine (Belgium, UTC+2).
+
+Why not now:
+  - The audit is a half-session of judgment calls, not mechanical. Worth
+    pairing with any tracker.py or backtest.py session.
+
+When to revisit:
+  - Next tracker.py or backtest.py session -- pair the audit with
+    whatever else brings that file open.
+
+Related micro-item, same new code: _fetch_previous_run_daily (tracker.py:
+  2646-2701) is now the single-lead, past-date special case of
+  _fetch_previous_run_leads (2720-2781) -- same endpoint, same parse loop,
+  differing only in past_days vs forecast_days param. Reimplementing the
+  former as a thin wrapper over the latter would remove ~40 duplicated
+  lines and make the past/future asymmetry live in exactly one place;
+  the leads variant already has the stricter malformed-response guards,
+  so the wrapper direction is safe. Fold into whichever of the two
+  entries above (utc_today audit, or a standalone drive-by) touches this
+  function next.
+[DEAD TAKE-PROFIT PLUMBING STILL RUNS EVERY WATCH CYCLE AFTER THE FEATURE WAS DECLINED]
+Priority: Low -- vacuous no-op, but it's a decided-against feature whose
+  machinery still executes, prints user-facing messaging, and carries
+  tests; the dead-code guard can't flag it because it *is* called.
+
+Problem:
+  The 2026-07-13 resting-exits research established that nothing in the
+  repo ever sets exit_target ("fully dead -- threaded through
+  place_paper_order's signature and checked by check_exit_targets(), but
+  ... none of them ever actually sets it") and the user explicitly
+  declined building take-profit. The plumbing was left in place:
+  paper.py:849 (parameter), 866 (docstring), 955 (stored on every trade
+  as None), check_exit_targets (paper.py:1561-1603, filters to
+  exit_target is not None -> always empty), and main.py:2908-2922 calls
+  it every cmd_watch cycle with a green "[Auto-exit] ... reached
+  take-profit target" print that can never fire. Four test classes
+  (tests/test_paper.py:880-1039) keep the dead path green. Invisible to
+  test_dead_code_scan.py because the function has a real caller -- the
+  deadness is in the data (no producer of the field), a shape the guard
+  doesn't model.
+
+What it would look like:
+  Per this repo's wire-up-or-delete convention: delete the exit_target
+  param from place_paper_order, the stored field (leave old JSON rows'
+  key harmlessly present), check_exit_targets, the main.py call site, and
+  the four tests -- OR keep it with a one-line comment at
+  check_exit_targets stating "no producer sets exit_target by design
+  (take-profit declined 2026-07-13, see RESTING EXIT ORDERS entry
+  above); retained for manual/dashboard use" if a manual-set path is
+  actually wanted (the web_app manual-close route at web_app.py:2862 is
+  the closer fit for that use case, so probably: delete).
+
+Why not now:
+  - None -- pure cleanup, candidate for any small session. Only decision
+    needed is delete vs. document, which the user should make (matches
+    the "ask before scope decisions" checklist item).
+
+When to revisit:
+  - Any small housekeeping session; needs a one-time user decision
+    (delete vs document) before touching code.
+
