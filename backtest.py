@@ -24,6 +24,7 @@ from pathlib import Path
 import requests
 
 from utils import KALSHI_FEE_RATE, KALSHI_MAKER_FEE_RATE
+from utils import prob_threshold as _prob_threshold
 from weather_markets import CITY_COORDS, KNOWN_WEATHER_SERIES, _parse_city_from_ticker
 
 _log = logging.getLogger(__name__)
@@ -511,13 +512,13 @@ def run_backtest(
                 continue
 
             if condition["type"] == "above":
-                our_prob = sum(1 for t in temps if t > condition["threshold"]) / len(
-                    temps
-                )
+                our_prob = sum(
+                    1 for t in temps if t > _prob_threshold(condition)
+                ) / len(temps)
             elif condition["type"] == "below":
-                our_prob = sum(1 for t in temps if t < condition["threshold"]) / len(
-                    temps
-                )
+                our_prob = sum(
+                    1 for t in temps if t < _prob_threshold(condition)
+                ) / len(temps)
             else:
                 lo, hi = condition["lower"], condition["upper"]
                 our_prob = sum(1 for t in temps if lo <= t <= hi) / len(temps)

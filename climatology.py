@@ -17,6 +17,7 @@ import requests
 
 import safe_io
 from circuit_breaker import CircuitBreaker as _CircuitBreaker
+from utils import prob_threshold as _prob_threshold
 
 _log = logging.getLogger(__name__)
 _clim_cb = _CircuitBreaker("climatology", failure_threshold=5, recovery_timeout=300)
@@ -187,9 +188,9 @@ def _climatological_prob_inner(
         return None
 
     if condition["type"] == "above":
-        return sum(1 for t in temps if t > condition["threshold"]) / len(temps)
+        return sum(1 for t in temps if t > _prob_threshold(condition)) / len(temps)
     elif condition["type"] == "below":
-        return sum(1 for t in temps if t < condition["threshold"]) / len(temps)
+        return sum(1 for t in temps if t < _prob_threshold(condition)) / len(temps)
     elif condition["type"] == "between":
         lo, hi = condition["lower"], condition["upper"]
         return sum(1 for t in temps if lo <= t <= hi) / len(temps)

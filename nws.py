@@ -22,6 +22,7 @@ import requests
 from circuit_breaker import CircuitBreaker
 from schema_validator import validate_nws_response
 from utils import normal_cdf
+from utils import prob_threshold as _prob_threshold
 from utils import utc_today as _utc_today
 
 _log = logging.getLogger(__name__)
@@ -311,9 +312,9 @@ def nws_prob(
         sigma = 4.0
 
     if condition["type"] == "above":
-        return 1.0 - normal_cdf(condition["threshold"], temp, sigma)
+        return 1.0 - normal_cdf(_prob_threshold(condition), temp, sigma)
     elif condition["type"] == "below":
-        return normal_cdf(condition["threshold"], temp, sigma)
+        return normal_cdf(_prob_threshold(condition), temp, sigma)
     elif condition["type"] == "between":
         return normal_cdf(condition["upper"], temp, sigma) - normal_cdf(
             condition["lower"], temp, sigma
@@ -502,9 +503,9 @@ def obs_prob(obs: dict, condition: dict) -> float:
     sigma = 3.5
 
     if condition["type"] == "above":
-        return 1.0 - normal_cdf(condition["threshold"], temp, sigma)
+        return 1.0 - normal_cdf(_prob_threshold(condition), temp, sigma)
     elif condition["type"] == "below":
-        return normal_cdf(condition["threshold"], temp, sigma)
+        return normal_cdf(_prob_threshold(condition), temp, sigma)
     elif condition["type"] == "between":
         lower = condition["lower"]
         upper = condition["upper"]

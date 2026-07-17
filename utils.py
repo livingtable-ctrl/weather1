@@ -337,6 +337,33 @@ def normal_cdf(x: float, mu: float, sigma: float) -> float:
         return 0.5 * math.erfc((mu - x) / (sigma * math.sqrt(2)))
 
 
+def prob_threshold(condition: dict, default: float = 0.0) -> float:
+    """Continuous-space decision boundary for probability math (Gaussian CDF,
+    ensemble exceedance fraction, etc.) on an above/below temperature condition.
+
+    NOT the same as condition["threshold"] (the literal ticker/rule value,
+    e.g. T86 -> 86.0) -- that raw value is kept as-is for audit_settlement,
+    METAR lockout, and DB bookkeeping, which compare against Kalshi's literal
+    rule text ("greater than 86"). Live-verified 2026-07-17 against real
+    rules_primary text across 4 cities: a "T{val} above" ticker's actual rule
+    is "greater than {val}", i.e. integer settlement must be val+1 or higher,
+    so the continuous boundary that tiles with the adjacent between-bucket
+    (which ends at val+0.5) is val+0.5, not val. Symmetric for below: val-0.5.
+    _parse_market_condition sets "prob_threshold" accordingly; this getter
+    falls back to raw "threshold" for "between"/precip conditions (which
+    don't have "prob_threshold") and hand-built dicts in tests. Returns
+    `default` (matching this codebase's existing convention for "not
+    applicable in this branch", e.g. condition.get("threshold", 0.0)
+    elsewhere) rather than None when neither key is present -- real
+    above/below callers always have one of the two keys set, so this only
+    fires for conditions where the caller's own type check would already
+    make the result unused (e.g. an unconditionally-computed but
+    type-gated-before-use raw fraction).
+    """
+    value = condition.get("prob_threshold", condition.get("threshold"))
+    return float(value) if value is not None else default
+
+
 # ── Logging ───────────────────────────────────────────────────────────────────
 
 

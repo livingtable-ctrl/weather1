@@ -2300,51 +2300,106 @@ When to revisit:
   - Pairs naturally with the NBM PROBABILISTIC QUANTILES entry below (same
     IEM/NBM surface) -- scope both together.
 
-[DISCRETIZATION-CONSISTENT T-BUCKET THRESHOLDS -- HALF-DEGREE CONTINUITY]
-Priority: Medium-High -- systematic, direction-consistent probability skew
-  on every tail-bucket trade; borders a correctness issue, not just a
-  feature idea -- coordinate with the adversarial-review stream before
-  starting to avoid double work.
+[RESOLVED 2026-07-17] DISCRETIZATION-CONSISTENT T-BUCKET THRESHOLDS -- HALF-DEGREE CONTINUITY
+Priority: was Medium-High -- systematic, direction-consistent probability
+  skew on every tail-bucket trade; bordered a correctness issue, not just a
+  feature idea.
 
-Problem:
+Problem (as originally scoped):
   _parse_market_condition already reasons explicitly about integer
   settlement for between-buckets -- B87.5 -> [86.5, 88.5], with a comment
   that brackets "must tile without gaps" (weather_markets.py:3719-3723).
-  But T-buckets keep raw integer thresholds: T92 "92 degrees or above" ->
-  {"above", 92.0} (weather_markets.py:3724-3741), and
-  _forecast_probability computes P(T_cont > 92.0) (weather_markets.py:
-  3764-3774). Verified against real tickers in data/predictions.db:
-  T-strikes are integers (KXHIGHDEN-26JUL05-T94, KXHIGHNY-26JUN30-T90...),
-  B-strikes are x.5. So the ladder does NOT tile under the code's own
-  between-bucket convention: the top B-bucket ends at 91.5 but the
-  adjacent T92 starts at 92.0 -- the mass in (91.5, 92.0] (up to ~7-8pp
-  near the money at typical sigma) belongs to the T-bucket under integer
-  settlement and is dropped. Effect: systematic understatement of
-  tail-bucket YES probability -> phantom NO edge on above/below markets.
-  Same inconsistency propagates to every prob path taking condition raw:
-  ensemble_cdf_prob (:3026), EMOS interval/exceedance, nws_prob
-  (nws.py:313).
+  But T-buckets kept raw integer thresholds: T92 -> {"above", 92.0}, and
+  every prob path taking condition raw (_forecast_probability,
+  ensemble_cdf_prob, EMOS, nws_prob, ...) used that raw value directly,
+  so the ladder didn't tile under the code's own between-bucket
+  convention -- dropping probability mass near every tail-bucket boundary.
 
-What it would look like:
-  Shift T-thresholds by 0.5 at parse time (above: val-0.5; below:
-  val+0.5) in _parse_market_condition, so all downstream consumers
-  inherit it and the full ladder tiles exactly with the B-buckets. Then
-  check get_calibration_by_city / condition-type Brier before/after --
-  per-city Platt and temperature scaling (ml_bias.py:300, 426) have been
-  partially absorbing the average skew, so expect learned corrections to
-  shrink once this ships.
+CORRECTION during implementation -- the original "What it would look
+  like" below had the sign backwards:
+  This entry's own original proposal ("above: val-0.5; below: val+0.5")
+  was never live-verified and turned out to be wrong. Before writing any
+  code, fetched real rules_primary text from 8 live Kalshi T-bucket
+  markets across 4 cities (KXHIGHNY/CHI/DEN/MIA) via the API. Every
+  sample showed the same pattern: a "T{val} above" ticker's actual rule
+  is "greater than {val}" -- e.g. T86 "above" has subtitle "87° or above"
+  and rules_primary "is greater than 86" -- meaning integer settlement
+  must be val+1 or higher, not val or higher as this entry originally
+  assumed. Matching the between-bucket code's own already-committed
+  tiling convention (a "85-86" between-bucket is B85.5 -> [84.5, 86.5]),
+  the correct continuous boundary is val+0.5 for above and val-0.5 for
+  below -- the OPPOSITE sign from the original proposal. Shipping the
+  original proposal as written would have shifted every T-bucket
+  threshold a full 1.0°F in the wrong direction (turning a 0.5°F bug into
+  a 1.0°F bug on the other side), not fixed it. Full ladder check around
+  a boundary: T67-below (wins <=66) -> 66.5; B67.5 -> {67,68}; T68-above
+  (wins >=69) -> 68.5. Integer 68 lands in exactly B67.5 and not in
+  T68-above (68 > 68.5 is false) -- tiles with no gap or overlap.
 
-Why not now:
-  - Confirm Kalshi's exact settlement convention for boundary values
-    first ("92 or above" with CLI high = 92 -> YES; whether CLI highs
-    round or truncate -- the CLI-report fetch already scoped 2026-07-05
-    would answer this authoritatively); recalibration interplay means it
-    should ship with a deliberate calibration-reset decision, not
-    silently.
+What shipped:
+  _parse_market_condition (weather_markets.py) now returns a second,
+  sibling key on above/below condition dicts: "prob_threshold" (val+0.5 /
+  val-0.5), alongside the existing "threshold" (raw ticker/rule value,
+  UNCHANGED). Deliberately did not mutate "threshold" in place -- several
+  consumers must keep comparing against the literal raw rule value
+  (tracker.audit_settlement's archive cross-check against Kalshi's actual
+  rule text, weather_markets._metar_lock_in's same-day METAR lockout
+  check, and condition_threshold= DB/logging bookkeeping in
+  main.py/order_executor.py) and mutating threshold would have silently
+  corrupted all three. A single shared helper, utils.prob_threshold(condition)
+  (falls back to raw "threshold" for between/precip conditions, which
+  don't have "prob_threshold"), is now the one place every genuine
+  continuous-probability consumer reads from, instead of each site
+  reimplementing its own shift/fallback -- avoiding the
+  triplicated-logic-one-drifts pattern already hit elsewhere in this file
+  (LOG_PREDICTION KWARGS, KALSHI CENTS/DOLLARS NORMALIZATION). Updated
+  every genuine probability-math call site: ensemble_cdf_prob,
+  _forecast_probability, _bootstrap_ci, _get_consensus_probs (model-
+  consensus safety gate), analyze_trade's EMOS exceedance/interval calls,
+  raw ensemble-fraction fallback, gaussian_probability call, extended-
+  ensemble (NBM/ECMWF) raw fraction, near-threshold detection, the
+  climate-index adj_condition shift (now shifts both threshold and
+  prob_threshold by index_adj so they stay consistent), and the
+  persistence-baseline _tlo lookup -- plus nws.py's nws_prob and
+  obs_prob, climatology.py's _climatological_prob_inner, and backtest.py
+  (so backtest results keep matching live behavior). Confirmed
+  audit_settlement, _metar_lock_in, settlement_monitor.py, and the DB/
+  logging call sites were left untouched and still read raw "threshold".
+  Tests (tests/test_weather.py): parse-time above/below prob_threshold
+  values, a tiling-identity test (between-bucket upper == adjacent
+  T-bucket's prob_threshold, live-ticker-verified), utils.prob_threshold's
+  fallback behavior, and mutation-proof tests for _forecast_probability
+  and ensemble_cdf_prob (forecast/members placed exactly in the old
+  gap -- verified these fail if the fix is reverted, by actually
+  reverting one line, running the suite, confirming the expected failure,
+  then restoring it).
 
-When to revisit:
-  - Coordinate with any adversarial-review pass before starting -- this
-    straddles the feature/bug boundary and shouldn't be filed twice.
+  Independently reviewed (Agent, opus) before commit: re-derived the
+  sign/magnitude from the tiling argument independently (confirmed
+  correct), audited every touched call site (confirmed each is a genuine
+  probability computation, not a should-stay-raw site), searched for
+  missed consumers, and checked the None-handling `or 0` idiom used at
+  two sites for a silent-remap-of-a-real-0.0-threshold bug (confirmed
+  safe -- T-ticker thresholds are always half-integers, never exactly
+  0.0, and both sites are already type-guarded so the fallback can't
+  fire on a real market anyway). No bugs found.
+
+Known residual (not fixed here, correctly out of scope):
+  - sigma_audit.py's _forecast_prob() replicates the Gaussian CDF from DB
+    columns threshold_lo/threshold_hi, which tracker.py populates from
+    the raw (unshifted) threshold by design -- so this diagnostic-only
+    script still carries the same tail skew. Revisit if/when sigma_audit
+    output is used for more than diagnostics.
+  - nws.py's nws_prob_from_quantiles() is dead code (only referenced by
+    tests/docs/backlog, not wired into analyze_trade or any live path,
+    confirmed via the existing NBM PROBABILISTIC QUANTILES entry above).
+    If it's ever wired in, its caller must pass prob_threshold, not raw
+    threshold.
+  - Calibration-reset interplay (per-city Platt/temperature scaling may
+    have been partially absorbing the average skew this fixes) not
+    separately audited post-ship -- watch get_calibration_by_city /
+    condition-type Brier over the next batch of settled trades per this
+    entry's original note.
 
 [AMEND ORDER (V2) -- REPLACE CANCEL-VERIFY-REPLACE IN THE REPRICE LOOP]
 Priority: Medium -- removes the exact client-side race window the reprice

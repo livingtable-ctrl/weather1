@@ -45,6 +45,7 @@ from utils import (
     MAX_DAYS_OUT,
     normal_cdf,
 )
+from utils import prob_threshold as _prob_threshold
 
 _log = logging.getLogger(__name__)
 
@@ -3039,9 +3040,9 @@ def ensemble_cdf_prob(members: list[float], condition: dict) -> float:
     ctype = condition.get("type", "above")
 
     if ctype == "above":
-        return sum(1 for m in members if m > condition["threshold"]) / n
+        return sum(1 for m in members if m > _prob_threshold(condition)) / n
     if ctype == "below":
-        return sum(1 for m in members if m < condition["threshold"]) / n
+        return sum(1 for m in members if m < _prob_threshold(condition)) / n
     if ctype == "between":
         lo, hi = condition["lower"], condition["upper"]
         return sum(1 for m in members if lo <= m <= hi) / n
@@ -3722,11 +3723,21 @@ def _parse_market_condition(market: dict) -> dict | None:
         # B66.5) and must tile without gaps, so the half-width is 1.0°F, not 0.5°F.
         return {"type": "between", "lower": val - 1.0, "upper": val + 1.0}
     else:
-        # T: determine above or below from title
+        # T: determine above or below from title.  "threshold" stays the raw
+        # ticker value (literal Kalshi rule text, e.g. T86 -> 86.0) -- kept
+        # unchanged for audit_settlement/METAR-lockout/DB bookkeeping, which
+        # compare against Kalshi's literal rule ("greater than 86"). A second
+        # key, "prob_threshold", is the continuous decision boundary for
+        # probability math: live-verified 2026-07-17 against real
+        # rules_primary text across 4 cities, a "T{val} above" ticker's rule
+        # is "greater than {val}", i.e. integer settlement must be val+1 or
+        # higher, so the boundary that tiles with the adjacent between-bucket
+        # (which ends at val+0.5) is val+0.5, not val. Symmetric below:
+        # val-0.5. See utils.prob_threshold's docstring for the full reasoning.
         if ">" in title or "above" in title or " be >" in title:
-            return {"type": "above", "threshold": val}
+            return {"type": "above", "threshold": val, "prob_threshold": val + 0.5}
         elif "<" in title or "below" in title or " be <" in title:
-            return {"type": "below", "threshold": val}
+            return {"type": "below", "threshold": val, "prob_threshold": val - 0.5}
         else:
             # Check subtitle/yes_sub_title — Kalshi puts the bucket text
             # ("53° or below") there when the title itself has been reworded
@@ -3737,9 +3748,9 @@ def _parse_market_condition(market: dict) -> dict | None:
                 + (market.get("yes_sub_title") or "")
             ).lower()
             if ">" in subtitle or "above" in subtitle or " be >" in subtitle:
-                return {"type": "above", "threshold": val}
+                return {"type": "above", "threshold": val, "prob_threshold": val + 0.5}
             elif "<" in subtitle or "below" in subtitle or " be <" in subtitle:
-                return {"type": "below", "threshold": val}
+                return {"type": "below", "threshold": val, "prob_threshold": val - 0.5}
             # M-15's old series-ticker-prefix guess (KXHIGH -> "above", KXLOW ->
             # "below") is REMOVED: every daily temperature series has both a top
             # T-bucket and a bottom T-bucket, distinguishable only by
@@ -3764,9 +3775,9 @@ def _parse_market_condition(market: dict) -> dict | None:
 def _forecast_probability(condition: dict, forecast_temp: float, sigma: float) -> float:
     """Estimate probability of the market condition given a forecast temperature."""
     if condition["type"] == "above":
-        return 1.0 - normal_cdf(condition["threshold"], forecast_temp, sigma)
+        return 1.0 - normal_cdf(_prob_threshold(condition), forecast_temp, sigma)
     elif condition["type"] == "below":
-        return normal_cdf(condition["threshold"], forecast_temp, sigma)
+        return normal_cdf(_prob_threshold(condition), forecast_temp, sigma)
     elif condition["type"] == "between":
         p_upper = normal_cdf(condition["upper"], forecast_temp, sigma)
         p_lower = normal_cdf(condition["lower"], forecast_temp, sigma)
@@ -4228,9 +4239,13 @@ def _bootstrap_ci(
 
     def prob_from(sample):
         if condition["type"] == "above":
-            return sum(1 for t in sample if t > condition["threshold"]) / len(sample)
+            return sum(1 for t in sample if t > _prob_threshold(condition)) / len(
+                sample
+            )
         elif condition["type"] == "below":
-            return sum(1 for t in sample if t < condition["threshold"]) / len(sample)
+            return sum(1 for t in sample if t < _prob_threshold(condition)) / len(
+                sample
+            )
         else:
             lo, hi = condition["lower"], condition["upper"]
             return sum(1 for t in sample if lo <= t <= hi) / len(sample)
@@ -4396,7 +4411,7 @@ def _get_consensus_probs(
                 return None, None
 
             mean_temp = round(sum(temps) / len(temps), 2)
-            thresh = condition.get("threshold")
+            thresh = _prob_threshold(condition)
             ctype = condition.get("type", "")
             if ctype == "above" and thresh is not None:
                 return sum(1 for t in temps if t > thresh) / len(temps), mean_temp
@@ -5554,14 +5569,14 @@ def analyze_trade(enriched: dict) -> dict | None:
                         _emos_params,
                         ens_stats["mean"],
                         _ens_var_live,
-                        condition["threshold"],
+                        _prob_threshold(condition),
                     )
                 elif condition["type"] == "below":
                     ens_prob = 1.0 - emos_exceedance_prob(
                         _emos_params,
                         ens_stats["mean"],
                         _ens_var_live,
-                        condition["threshold"],
+                        _prob_threshold(condition),
                     )
                 else:
                     lo, hi = condition["lower"], condition["upper"]
@@ -5573,11 +5588,11 @@ def analyze_trade(enriched: dict) -> dict | None:
                 # Fallback: raw exceedance fraction
                 if condition["type"] == "above":
                     ens_prob = sum(
-                        1 for t in temps if t > condition["threshold"]
+                        1 for t in temps if t > _prob_threshold(condition)
                     ) / len(temps)
                 elif condition["type"] == "below":
                     ens_prob = sum(
-                        1 for t in temps if t < condition["threshold"]
+                        1 for t in temps if t < _prob_threshold(condition)
                     ) / len(temps)
                 else:
                     lo, hi = condition["lower"], condition["upper"]
@@ -5662,7 +5677,7 @@ def analyze_trade(enriched: dict) -> dict | None:
         if cond_type in ("above", "below"):
             p_win_gaussian = gaussian_probability(
                 forecast_mean=forecast_temp,
-                threshold=float(condition.get("threshold", 0)),
+                threshold=_prob_threshold(condition),
                 sigma=sigma_gauss,
                 direction=cond_type,
             )
@@ -5691,14 +5706,15 @@ def analyze_trade(enriched: dict) -> dict | None:
             _active_weights.get(m, 1.0) for m, t in model_temps.items() if t is not None
         )
         n_valid = len([t for t in model_temps.values() if t is not None])
+        _prob_thresh_val = _prob_threshold(condition)
         raw_fraction = sum(
             _active_weights.get(m, 1.0)
             for m, t in model_temps.items()
             if t is not None
             and (
-                t > condition.get("threshold", 0)
+                t > _prob_thresh_val
                 if condition.get("type") == "above"
-                else t < condition.get("threshold", 0)
+                else t < _prob_thresh_val
             )
         ) / max(1.0, _weighted_valid)
 
@@ -5748,7 +5764,7 @@ def analyze_trade(enriched: dict) -> dict | None:
                 )
 
         # ── Near-threshold detection ─────────────────────────────────────────────
-        threshold_val = condition.get("threshold")
+        threshold_val = _prob_threshold(condition)
         near_threshold = (
             threshold_val is not None and abs(forecast_temp - threshold_val) <= 3.0
         )
@@ -5784,6 +5800,10 @@ def analyze_trade(enriched: dict) -> dict | None:
             adj_condition = dict(condition)
             if condition["type"] in ("above", "below"):
                 adj_condition["threshold"] = condition["threshold"] - index_adj
+                if "prob_threshold" in condition:
+                    adj_condition["prob_threshold"] = (
+                        condition["prob_threshold"] - index_adj
+                    )
             elif condition["type"] == "between":
                 adj_condition["lower"] = condition["lower"] - index_adj
                 adj_condition["upper"] = condition["upper"] - index_adj
@@ -5842,7 +5862,10 @@ def analyze_trade(enriched: dict) -> dict | None:
                 else:
                     _current_temp: float = float(_live_temp)
                     _tlo = condition.get(
-                        "threshold", condition.get("lower", forecast_temp)
+                        "prob_threshold",
+                        condition.get(
+                            "threshold", condition.get("lower", forecast_temp)
+                        ),
                     )
                     _thi = condition.get("upper")
                     persistence_p = _persistence_prob(

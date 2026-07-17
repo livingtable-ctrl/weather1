@@ -7,12 +7,14 @@ import unittest
 from datetime import UTC, datetime, timedelta
 
 from utils import normal_cdf as _normal_cdf
+from utils import prob_threshold as _prob_threshold_of
 from weather_markets import (
     _bootstrap_ci_precip,
     _forecast_model_weights,
     _forecast_probability,
     _parse_market_condition,
     _time_risk,
+    ensemble_cdf_prob,
     ensemble_stats,
     kelly_fraction,
 )
@@ -93,6 +95,62 @@ class TestForecastProbability(unittest.TestCase):
         p = _forecast_probability(cond, 70.0, 5.0)
         self.assertGreater(p, 0.95)
 
+    def test_above_uses_prob_threshold_not_raw_threshold(self):
+        # Mutation-proof: forecast sits exactly in the (threshold, prob_threshold]
+        # gap with a tiny sigma. If the code regressed to reading "threshold"
+        # (92.0) directly, P(above) would be ~1.0 (forecast is above it). Reading
+        # "prob_threshold" (92.5) correctly gives ~0.0 (forecast is below it).
+        cond = {"type": "above", "threshold": 92.0, "prob_threshold": 92.5}
+        p = _forecast_probability(cond, forecast_temp=92.2, sigma=0.1)
+        self.assertLess(p, 0.05)
+
+    def test_below_uses_prob_threshold_not_raw_threshold(self):
+        # Symmetric mutation-proof for "below": forecast=91.8 is below the raw
+        # threshold (92.0) but above the correct prob_threshold (91.5), so a
+        # correct implementation gives P(below) ~ 0.0, not ~1.0.
+        cond = {"type": "below", "threshold": 92.0, "prob_threshold": 91.5}
+        p = _forecast_probability(cond, forecast_temp=91.8, sigma=0.1)
+        self.assertLess(p, 0.05)
+
+
+class TestEnsembleCdfProbThresholdShift(unittest.TestCase):
+    def test_above_uses_prob_threshold(self):
+        cond = {"type": "above", "threshold": 92.0, "prob_threshold": 92.5}
+        members = [92.2, 92.3, 92.1, 92.4] * 5  # all in the (92.0, 92.5] gap
+        p = ensemble_cdf_prob(members, cond)
+        self.assertEqual(p, 0.0)  # none exceed 92.5
+
+    def test_below_uses_prob_threshold(self):
+        cond = {"type": "below", "threshold": 92.0, "prob_threshold": 91.5}
+        members = [91.6, 91.7, 91.8, 91.9] * 5  # all in the [91.5, 92.0) gap
+        p = ensemble_cdf_prob(members, cond)
+        self.assertEqual(p, 0.0)  # none are below 91.5
+
+
+class TestProbThresholdHelper(unittest.TestCase):
+    def test_prefers_prob_threshold_when_present(self):
+        self.assertEqual(
+            _prob_threshold_of(
+                {"type": "above", "threshold": 92.0, "prob_threshold": 92.5}
+            ),
+            92.5,
+        )
+
+    def test_falls_back_to_default_for_between_and_precip(self):
+        # "between" conditions never have "prob_threshold" or "threshold" —
+        # falls back to the explicit default (0.0) rather than None, so
+        # callers that compute this unconditionally (before a type check
+        # decides whether to use it) get a plain float, not an Optional.
+        self.assertEqual(
+            _prob_threshold_of({"type": "between", "lower": 1.0, "upper": 2.0}), 0.0
+        )
+        # precip conditions have "threshold" but no "prob_threshold" — the
+        # integer-settlement rounding fix is temperature-only, so precip must
+        # fall back to the raw value unchanged.
+        self.assertEqual(
+            _prob_threshold_of({"type": "precip_above", "threshold": 0.25}), 0.25
+        )
+
 
 class TestEnsembleStats(unittest.TestCase):
     def test_basic(self):
@@ -121,7 +179,15 @@ class TestParseMarketCondition(unittest.TestCase):
         self.assertIsNotNone(c)
         assert c is not None
         self.assertEqual(c["type"], "above")
+        # "threshold" stays the raw literal-rule value (used by audit_settlement/
+        # METAR-lockout/DB bookkeeping, which compare against Kalshi's literal
+        # rule text "greater than 72").
         self.assertAlmostEqual(c["threshold"], 72.0)
+        # "prob_threshold" is the continuous decision boundary for probability
+        # math. Live-verified 2026-07-17 against real Kalshi rules_primary text:
+        # a "T72 above" ticker's actual rule is "greater than 72" -> integer
+        # settlement must be 73+, so the continuous boundary is 72.5, not 72.0.
+        self.assertAlmostEqual(c["prob_threshold"], 72.5)
 
     def test_below_temp(self):
         m = self._market("KXLOWCHI-26APR09-T45", "Will Chicago low be < 45°F?")
@@ -130,6 +196,9 @@ class TestParseMarketCondition(unittest.TestCase):
         assert c is not None
         self.assertEqual(c["type"], "below")
         self.assertAlmostEqual(c["threshold"], 45.0)
+        # Symmetric to the above case: "less than 45" -> settlement must be
+        # 44 or lower -> continuous boundary 44.5, not 45.0.
+        self.assertAlmostEqual(c["prob_threshold"], 44.5)
 
     def test_bucket(self):
         # B67.5 is a 2-degree-wide bucket centered at 67.5 → [66.5, 68.5].
@@ -142,6 +211,22 @@ class TestParseMarketCondition(unittest.TestCase):
         self.assertEqual(c["type"], "between")
         self.assertAlmostEqual(c["lower"], 66.5)
         self.assertAlmostEqual(c["upper"], 68.5)
+
+    def test_t_bucket_tiles_with_adjacent_between_bucket(self):
+        # The actual bug this fixes: the ladder must tile without gaps. A
+        # between-bucket "67-68" is B67.5 -> [66.5, 68.5]. The next T-bucket up
+        # (T68, "above") must pick up exactly where B67.5's upper bound ends —
+        # 68.5 — for probability mass to neither double-count nor drop the
+        # (68.0, 68.5] sliver. Verified against real Kalshi tickers 2026-07-17
+        # (e.g. KXHIGHNY-26JUL18-T86 / adjacent B85.5).
+        between = _parse_market_condition(
+            self._market("KXHIGHNY-26APR09-B67.5", "NYC high between 66.5-68.5°F?")
+        )
+        above = _parse_market_condition(
+            self._market("KXHIGHNY-26APR09-T68", "Will NYC high be > 68°F?")
+        )
+        assert between is not None and above is not None
+        self.assertAlmostEqual(between["upper"], above["prob_threshold"])
 
     def test_precip_any(self):
         m = self._market("KXRAIN-NY-26APR09", "Will there be any rain in NYC?")
@@ -254,9 +339,7 @@ class TestForecastModelWeights(unittest.TestCase):
         """ECMWF should have weight 1.5 in summer months (Apr–Sep)."""
         for month in (4, 5, 6, 7, 8, 9):
             weights = _forecast_model_weights(month)
-            self.assertAlmostEqual(
-                weights["ecmwf_ifs025"], 1.5, msg=f"month={month}"
-            )
+            self.assertAlmostEqual(weights["ecmwf_ifs025"], 1.5, msg=f"month={month}")
 
     def test_gfs_and_icon_constant(self):
         """GFS and ICON weights should be 1.0 year-round."""
