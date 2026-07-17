@@ -65,12 +65,12 @@ from order_executor import (  # noqa: F401 — re-exports: tests + main code ref
     _check_live_model_exits,
     _check_live_position_exits,
     _count_open_live_orders,  # noqa: F401
-    _current_forecast_cycle,
     _daily_paper_spend,
     _log_shadow_predictions,
     _midpoint_price,
     _place_live_order,  # noqa: F401
     _poll_pending_orders,
+    _prediction_kwargs_from_analysis,
     _reprice_or_cancel_pending_orders,
     _validate_trade_opportunity,  # noqa: F401
     place_paper_order,  # noqa: F401
@@ -1162,27 +1162,12 @@ def cmd_market(client: KalshiClient, ticker: str, verbose: bool = False):
 
         # Log to tracker
         try:
-            from tracker import get_forecast_run_trend_from_analysis as _get_run_trend
-            from weather_markets import EDGE_CALC_VERSION as _ECV
-
-            _es = analysis.get("ensemble_stats") or {}
-            _std = _es.get("std")
             log_prediction(
                 ticker,
                 enriched.get("_city"),
                 enriched.get("_date"),
                 analysis,
-                ensemble_prob=analysis.get("ensemble_prob"),
-                nws_prob=analysis.get("nws_prob"),
-                clim_prob=analysis.get("clim_prob"),
-                forecast_cycle=_current_forecast_cycle(),
-                edge_calc_version=_ECV,
-                signal_source=analysis.get("method"),
-                blend_sources=analysis.get("blend_sources"),
-                model_consensus=analysis.get("model_consensus"),
-                ens_mean=_es.get("mean"),
-                ens_var=(_std * _std if _std is not None else None),
-                run_trend=_get_run_trend(analysis),
+                **_prediction_kwargs_from_analysis(analysis),
                 # cmd_market is a pure lookup/display command — it never places an
                 # order, so this row must not read as trade-backed (is_shadow=0)
                 # to callers like get_pnl_by_signal_source's n_shadow count.
@@ -3604,29 +3589,12 @@ def cmd_order(client: KalshiClient, action: str, args: list):
                 _log.warning("cmd_order: log_analysis_attempt failed: %s", _le)
 
             try:
-                from tracker import (
-                    get_forecast_run_trend_from_analysis as _get_run_trend,
-                )
-                from weather_markets import EDGE_CALC_VERSION as _ECV
-
-                _es = _analysis.get("ensemble_stats") or {}
-                _std = _es.get("std")
                 log_prediction(
                     ticker,
                     _city,
                     _target_date,
                     _analysis,
-                    ensemble_prob=_analysis.get("ensemble_prob"),
-                    nws_prob=_analysis.get("nws_prob"),
-                    clim_prob=_analysis.get("clim_prob"),
-                    forecast_cycle=_current_forecast_cycle(),
-                    edge_calc_version=_ECV,
-                    signal_source=_analysis.get("method"),
-                    blend_sources=_analysis.get("blend_sources"),
-                    model_consensus=_analysis.get("model_consensus"),
-                    ens_mean=_es.get("mean"),
-                    ens_var=(_std * _std if _std is not None else None),
-                    run_trend=_get_run_trend(_analysis),
+                    **_prediction_kwargs_from_analysis(_analysis),
                 )
             except Exception as _pe:
                 _log.warning("cmd_order: log_prediction failed: %s", _pe)

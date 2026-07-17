@@ -3097,14 +3097,14 @@ When to revisit:
     picked up -- fold the manifest in as a drive-by rather than a
     dedicated session.
 
-[LOG_PREDICTION KWARGS ASSEMBLY TRIPLICATED -- ONE COPY HAD ALREADY DRIFTED]
-Priority: Medium-High to fix (trivial), Medium as debt -- drift is not
+[RESOLVED 2026-07-17] LOG_PREDICTION KWARGS ASSEMBLY TRIPLICATED -- ONE COPY HAD ALREADY DRIFTED
+Priority: was Medium-High to fix (trivial), Medium as debt -- drift is not
   hypothetical, it already happened once (main.py's cmd_market call site
   silently dropped model_consensus, found and fixed 2026-07-16) and skews
   the very analytics (per-signal-source scoring) shadow-logging exists to
   keep honest.
 
-Problem:
+Problem (as originally scoped):
   order_executor._prediction_kwargs_from_analysis (order_executor.py:
   1926-1954) was built 2026-07-16 explicitly so real placement and shadow
   logging derive metadata identically -- but main.py's two direct
@@ -3119,24 +3119,48 @@ Problem:
   so the next new prediction column (schema grew v39->v42 this week
   alone) must still be added in three places by hand.
 
-What it would look like:
-  Move _prediction_kwargs_from_analysis to tracker.py, next to
-  log_prediction (its natural home -- it already only builds tracker
-  kwargs) or export it from order_executor; replace both main.py
-  hand-copies with a call plus their per-site extras (is_shadow=True for
-  the display path).
+What shipped:
+  Took the "export it from order_executor" branch of the two options
+  originally proposed here, not the "move to tracker.py" branch --
+  moving it would have required picking which of order_executor.py's and
+  weather_markets.py's two same-named _current_forecast_cycle functions
+  to import into tracker.py (see the still-open TWO FUNCTIONS NAMED
+  _current_forecast_cycle entry below), and this entry's own scope is
+  de-duplicating the kwargs assembly, not resolving that separate name
+  collision. Confirmed first that both main.py copies already used
+  order_executor._current_forecast_cycle (same one _prediction_kwargs_
+  from_analysis itself uses) via main.py's existing `from order_executor
+  import (..., _current_forecast_cycle, ...)` block, so no behavior
+  change there. Verified field-by-field that both main.py hand-copies
+  matched _prediction_kwargs_from_analysis's output exactly (same 11
+  keys, same derivations) before replacing them, per this project's
+  no-behavior-change-disguised-as-refactor convention. Both call sites
+  (main.py cmd_market ~1164, cmd_order ~3591) now do
+  `log_prediction(ticker, city, date, analysis,
+  **_prediction_kwargs_from_analysis(analysis), <site-specific extras>)`,
+  matching the pattern order_executor.py's own two call sites
+  (_log_shadow_predictions, _auto_place_trades) already used. Removed
+  the now-dead `_current_forecast_cycle` import from main.py's import
+  list (no longer called directly anywhere in the file).
 
-Why not now:
-  - No real blocker -- this is small enough to ride along with any
-    main.py session. Only care point: log_prediction fires post-
-    placement for real trades, so keep the helper's run_trend fetch out
-    of any pre-placement path (2026-07-16's own review finding on the
-    signal itself).
+  New tests (tests/test_prediction_kwargs.py, none existed for this
+  function before despite three real call sites depending on it): all
+  11 fields derived from a known analysis dict, a mutation-proof check
+  that ens_var is std**2 and not std directly (matches the same
+  CRITICAL warning already documented on ml_bias.emos_exceedance_prob --
+  verified by actually reverting the line, confirming the test fails,
+  then restoring it), None-handling for missing ensemble_stats/std, and
+  a wiring check that main.py imports the real order_executor function
+  object rather than a stale copy.
+
+Why not now (resolved):
+  - No real blocker existed -- shipped in the next main.py session per
+    this entry's own "ride along" note.
 
 When to revisit:
-  - Next time main.py is open for any reason -- the model_consensus
-    instance is already fixed; this entry is about preventing the next
-    one structurally.
+  - N/A, closed. See TWO FUNCTIONS NAMED _current_forecast_cycle below
+    for the adjacent name-collision issue this entry deliberately did
+    not fix (still open).
 
 [DISPUTED-ROW EXCLUSION PREDICATE HAND-COPIED ~40 TIMES IN tracker.py]
 Priority: Medium -- same "one shared rule, many consumers, one gets
