@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import logging
 import time
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 import requests
 from requests.adapters import HTTPAdapter, Retry
@@ -129,8 +129,6 @@ def fetch_mos(
         or None on any failure.
     """
     if target_date is None:
-        from datetime import UTC, datetime
-
         target_date = datetime.now(UTC).date() + timedelta(days=1)
 
     date_str = target_date.isoformat()
@@ -204,8 +202,6 @@ def fetch_mos_best(
     Returns the result dict from fetch_mos(), or None if all models fail.
     """
     if target_date is None:
-        from datetime import UTC, datetime
-
         target_date = datetime.now(UTC).date() + timedelta(days=1)
 
     days_out = max(0, (target_date - _utc_today()).days)
@@ -218,3 +214,148 @@ def fetch_mos_best(
 
     # GFS fallback (or primary for days_out >= 2)
     return fetch_mos(station, target_date, model="GFS")
+
+
+# ── NBS (National Blend of Models MOS-style bulletin) ───────────────────────
+# Covers every ASOS station (unlike GFS/NAM MOS's 6-city _MOS_CITIES subset),
+# so this deliberately does NOT go through _MARKET_STATION_MAP/_MOS_CITIES --
+# callers pass any station code directly (see weather_markets.fetch_temperature_nbm,
+# which resolves it via _metar_station_for_city for all 20 traded cities).
+#
+# NBS's raw feed does not carry a per-hour running daily max/min the way
+# fetch_mos()'s naive scan-all-hourly-tmp approach assumes. The field that
+# once seemed like the right one (Open-Meteo/IEM's renamed "n_x", the old
+# raw-text "x_n" column) is empty on every live-checked NBS row. The field
+# that actually carries the daily extreme is "txn", and it is populated only
+# on rows whose forecast-valid time (ftime) lands exactly on a 00Z or 12Z
+# boundary -- a single alternating "X/N" column matching the raw NWS MOS
+# bulletin convention, not a dedicated always-present field.
+#
+# Live-verified 2026-07-17 across all four CONUS timezones (KNYC/Eastern,
+# KMDW/Central, KDEN/Mountain, KLAX/Pacific): the 00Z-ending 12h period is
+# ALWAYS the higher (daytime max) value and the 12Z-ending period is ALWAYS
+# the lower (nighttime min) value, station-timezone-independent. This isn't
+# a coincidence -- CONUS UTC offsets are always whole hours, so a station's
+# ~12h local daytime window (roughly 6am-6pm) always falls entirely inside
+# either the 00Z-ending or the 12Z-ending UTC period, never split across
+# both, for every mainland US timezone.
+_NBS_CACHE: dict[tuple, tuple[dict | None, float]] = {}
+_NBS_CACHE_TTL = 3600  # 1 hour, matches _MOS_CACHE_TTL
+
+
+def _fetch_nbs_daily_extremes(station: str, city_tz: str) -> dict[tuple, float] | None:
+    """Fetch and parse every available NBS txn value for a station into
+    {(local_date, "max"|"min"): temp_f}. One API call returns the station's
+    full available NBS horizon (~3 days), so this is cached per (station,
+    city_tz) rather than per target date.
+
+    Returns None on any fetch failure or if the station has zero txn rows
+    (some stations/cycles have none -- see fetch_nbm_iem's docstring).
+    """
+    from zoneinfo import ZoneInfo
+
+    cache_key = (station.upper(), city_tz)
+    cached = _NBS_CACHE.get(cache_key)
+    if cached is not None:
+        result, ts = cached
+        if time.monotonic() - ts < _NBS_CACHE_TTL:
+            return result
+
+    try:
+        resp = _session.get(
+            _MOS_URL,
+            params={"station": station.upper(), "model": "NBS"},
+            timeout=(5, 10),
+        )
+        resp.raise_for_status()
+        payload = resp.json()
+    except Exception as exc:
+        _log.debug("_fetch_nbs_daily_extremes(%s): %s", station, exc)
+        _NBS_CACHE[cache_key] = (None, time.monotonic())
+        return None
+
+    try:
+        tz = ZoneInfo(city_tz)
+    except Exception:
+        _log.warning("_fetch_nbs_daily_extremes: bad tz %r for %s", city_tz, station)
+        _NBS_CACHE[cache_key] = (None, time.monotonic())
+        return None
+
+    rows = payload.get("data", [])
+    extremes: dict[tuple, float] = {}
+    _txn_rows_seen = 0
+    _ftime_parse_failures = 0
+    for r in rows:
+        txn = _parse_temp(r.get("txn"))
+        if txn is None:
+            continue
+        _txn_rows_seen += 1
+        ftime_raw = r.get("ftime")
+        if not ftime_raw:
+            continue
+        try:
+            # Live-verified 2026-07-17 against real IEM payloads: "%Y-%m-%d
+            # %H:%M", no seconds, space separator (e.g. "2026-07-18 00:00").
+            ftime_utc = datetime.strptime(str(ftime_raw), "%Y-%m-%d %H:%M").replace(
+                tzinfo=UTC
+            )
+        except ValueError:
+            _ftime_parse_failures += 1
+            continue
+        if ftime_utc.hour == 0:
+            extreme_kind = "max"
+        elif ftime_utc.hour == 12:
+            extreme_kind = "min"
+        else:
+            # Defensive: NBS's own docs only promise txn on 00Z/12Z rows, but
+            # don't assume that holds forever -- skip anything else rather
+            # than guess which extreme an off-cycle value represents.
+            continue
+        # The 12h period never crosses local midnight for any CONUS timezone
+        # (worst case Pacific-in-winter still lands the window within
+        # [~04:00, ~16:00) or its complement), so subtracting a token minute
+        # before taking .date() safely lands inside the period's actual local
+        # calendar day without needing to special-case the boundary.
+        local_date = (ftime_utc.astimezone(tz) - timedelta(minutes=1)).date()
+        extremes[(local_date, extreme_kind)] = txn
+
+    if _txn_rows_seen and _ftime_parse_failures == _txn_rows_seen:
+        # Every row with a real txn value failed to parse its ftime -- much
+        # more likely IEM changed the timestamp format than that this
+        # station/cycle genuinely has zero usable rows. Without this, that
+        # looks identical to "no coverage" and the feature silently reverts
+        # to the Open-Meteo best_match fallback forever. Flagged by
+        # independent review 2026-07-17 (backlog.txt: REAL NBM VIA IEM NBS
+        # STATION BULLETINS).
+        _log.warning(
+            "_fetch_nbs_daily_extremes(%s): all %d txn rows failed to parse "
+            "ftime %r-style timestamps -- IEM may have changed the format",
+            station,
+            _ftime_parse_failures,
+            rows[0].get("ftime") if rows else None,
+        )
+
+    _NBS_CACHE[cache_key] = (extremes if extremes else None, time.monotonic())
+    return extremes if extremes else None
+
+
+def fetch_nbm_iem(
+    station: str,
+    target_date: date,
+    city_tz: str,
+    var: str = "max",
+) -> float | None:
+    """Fetch the real NBM daily max/min for target_date from IEM's NBS
+    bulletin -- replaces the old Open-Meteo model="nbm", which Open-Meteo
+    removed (see backlog.txt: REAL NBM VIA IEM NBS STATION BULLETINS).
+
+    var: "max" for daily high, "min" for daily low.
+    Returns None if the station/date isn't covered -- NBS's own forecast
+    horizon is short (~3 days) and same-day markets typically have zero
+    same-day rows in the current cycle; callers should fall back to another
+    source (e.g. Open-Meteo best_match) rather than treat None as an error.
+    """
+    extremes = _fetch_nbs_daily_extremes(station, city_tz)
+    if extremes is None:
+        return None
+    return extremes.get((target_date, "max" if var == "max" else "min"))

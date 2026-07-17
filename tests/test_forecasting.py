@@ -432,7 +432,12 @@ class TestForecastCycle:
             assert result == expected, f"Hour {hour}: expected {expected}, got {result}"
 
     def test_log_prediction_called_with_forecast_cycle(self):
-        """main.py passes forecast_cycle to log_prediction."""
+        """main.py's log_prediction calls must carry forecast_cycle metadata,
+        either as a literal keyword or (2026-07-17 consolidation, see
+        backlog.txt LOG_PREDICTION KWARGS ASSEMBLY TRIPLICATED) via
+        **_prediction_kwargs_from_analysis(...), which itself sets
+        forecast_cycle -- see tests/test_prediction_kwargs.py for that
+        function's own direct correctness coverage."""
         import ast
         import pathlib
 
@@ -441,17 +446,34 @@ class TestForecastCycle:
         src = main_path.read_text(encoding="utf-8")
         tree = ast.parse(src)
 
+        def _unpacked_call_name(value: ast.expr) -> str | None:
+            """For a **expr keyword, return the called function's name if
+            expr is a call (e.g. **f(x)), else the bare name (e.g. **d)."""
+            target = value.func if isinstance(value, ast.Call) else value
+            return getattr(target, "id", None)
+
         found = False
         for node in ast.walk(tree):
-            if isinstance(node, ast.Call):
-                func = getattr(node, "func", None)
-                func_name = getattr(func, "attr", None) or getattr(func, "id", None)
-                if func_name == "log_prediction":
-                    kw_names = {k.arg for k in node.keywords}
-                    if "forecast_cycle" in kw_names:
-                        found = True
-                        break
-        assert found, "log_prediction call in main.py must pass forecast_cycle= keyword"
+            if not isinstance(node, ast.Call):
+                continue
+            func = getattr(node, "func", None)
+            func_name = getattr(func, "attr", None) or getattr(func, "id", None)
+            if func_name != "log_prediction":
+                continue
+            for kw in node.keywords:
+                if kw.arg == "forecast_cycle" or (
+                    kw.arg is None
+                    and _unpacked_call_name(kw.value)
+                    == "_prediction_kwargs_from_analysis"
+                ):
+                    found = True
+                    break
+            if found:
+                break
+        assert found, (
+            "log_prediction call in main.py must pass forecast_cycle= "
+            "(directly or via **_prediction_kwargs_from_analysis(...))"
+        )
 
 
 class TestTimeDecayEdge:

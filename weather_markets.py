@@ -1619,10 +1619,15 @@ def fetch_temperature_nbm(
     city: str, target_date: date, var: str = "max"
 ) -> float | None:
     """
-    Fetch best-available Open-Meteo max or min daily temperature for a city.
-    Previously used model="nbm" (NOAA National Blend of Models), but Open-Meteo
-    removed that model name in 2026.  Now uses model="best_match" — Open-Meteo's
-    auto-selected optimal model per location (covers days 1–4, full 24 h/day).
+    Fetch the real NBM (National Blend of Models) daily max/min for a city,
+    via IEM's NBS station bulletin (mos.fetch_nbm_iem) -- the actual NBM,
+    at the exact ASOS station Kalshi settles on (see backlog.txt: REAL NBM
+    VIA IEM NBS STATION BULLETINS). Falls back to Open-Meteo model="best_match"
+    (an uncalibrated auto-selection, NOT real NBM -- Open-Meteo dropped the
+    "nbm" model name in 2026) when NBS has no coverage for this station/date,
+    e.g. same-day markets, where NBS's own forecast horizon typically has
+    zero rows -- use the METAR pipeline for those instead, as the rest of
+    this codebase already does.
 
     var: "max" for daily high (default), "min" for daily low.
     H-13: LOW markets require min(temps), not max(temps).
@@ -1634,6 +1639,27 @@ def fetch_temperature_nbm(
         val, ts = cached
         if time.monotonic() - ts < _MODEL_CACHE_TTL:
             return val
+
+    station = _metar_station_for_city(city)
+    if station:
+        try:
+            import mos as _mos_mod
+
+            _iem_val = _mos_mod.fetch_nbm_iem(
+                station,
+                target_date,
+                _CITY_TZ.get(city, "America/New_York"),
+                var=var,
+            )
+        except Exception as exc:
+            _log.debug(
+                "fetch_temperature_nbm: IEM NBS fetch failed for %s: %s", city, exc
+            )
+            _iem_val = None
+        if _iem_val is not None:
+            now = time.monotonic()
+            _NBM_CACHE[cache_key] = (_iem_val, now)
+            return _iem_val
 
     coords = CITY_COORDS.get(city)
     if not coords:
@@ -1667,19 +1693,30 @@ def fetch_temperature_nbm(
         valid = [t for t in temps if t is not None]
         # H-13: return min for LOW markets, max for HIGH markets.
         # The request is identical regardless of var (same hourly series), so
-        # populate BOTH var-keyed cache entries from this one response —
-        # otherwise a caller that warms both vars (e.g. cron's prewarm) would
-        # re-issue a byte-identical HTTP request for the second var every time.
+        # opportunistically populate the OTHER var-keyed cache entry too from
+        # this one response — otherwise a caller that warms both vars (e.g.
+        # cron's prewarm) would re-issue a byte-identical HTTP request for the
+        # second var every time. But never clobber an OTHER-var entry that's
+        # still fresh: it may hold a real IEM NBM value (fetch_nbm_iem above
+        # has per-var coverage gaps at NBS's ~3-day horizon edge -- a date can
+        # have a 00Z max row but no 12Z min row yet, or vice versa), and this
+        # Open-Meteo best_match fallback is exactly the uncalibrated
+        # substitute that value exists to replace. Confirmed via independent
+        # review 2026-07-17 (backlog.txt: REAL NBM VIA IEM NBS STATION
+        # BULLETINS) that the unconditional dual-write silently and
+        # order-dependently reintroduced the placeholder this fix removes.
         now = time.monotonic()
         if valid:
-            _NBM_CACHE[(city, target_date.isoformat(), "max")] = (
-                float(max(valid)),
-                now,
-            )
-            _NBM_CACHE[(city, target_date.isoformat(), "min")] = (
-                float(min(valid)),
-                now,
-            )
+            _extremes = {"max": float(max(valid)), "min": float(min(valid))}
+            _NBM_CACHE[(city, target_date.isoformat(), var)] = (_extremes[var], now)
+            _other_var = "min" if var == "max" else "max"
+            _other_key = (city, target_date.isoformat(), _other_var)
+            _other_existing = _NBM_CACHE.get(_other_key)
+            if (
+                _other_existing is None
+                or (now - _other_existing[1]) >= _MODEL_CACHE_TTL
+            ):
+                _NBM_CACHE[_other_key] = (_extremes[_other_var], now)
         else:
             _NBM_CACHE[cache_key] = (None, now)
         return _NBM_CACHE[cache_key][0]

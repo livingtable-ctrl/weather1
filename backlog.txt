@@ -2257,48 +2257,131 @@ the same session are in their own section further down (search "ARCHITECTURE
 filing; user approved merging into this file.
 ======================================================
 
-[REAL NBM VIA IEM NBS STATION BULLETINS -- REPLACE THE SILENT best_match SUBSTITUTE]
-Priority: Medium-High -- the bot believes it has an "nbm" ensemble member; it
-  actually has an arbitrary auto-selected model, and the real thing is one
-  parameter away on an API already integrated.
+[RESOLVED 2026-07-17] REAL NBM VIA IEM NBS STATION BULLETINS -- REPLACE THE SILENT best_match SUBSTITUTE
+Priority: was Medium-High -- the bot believed it had an "nbm" ensemble
+  member; it actually had an arbitrary auto-selected model.
 
-Problem:
-  fetch_temperature_nbm() (weather_markets.py:1617) no longer fetches NBM at
-  all -- Open-Meteo removed the model -- and the function now requests
-  models: "best_match" (weather_markets.py:1655, documented at :1623), an
-  uncalibrated auto-selection, yet still feeds model_temps["nbm"] in
-  analyze_trade's Phase-C extended ensemble (weather_markets.py:5642) and
-  _compute_ensemble_spread. The 2026-07-12 piece-3 closure rejected only the
-  NBM-delta bias-correction premise ("correcting toward another model's
-  guess"); it never addressed that the "nbm" blend member itself is now
-  mislabeled. Meanwhile mos.py already integrates IEM's MOS API
-  (mesonet.agron.iastate.edu/api/1/mos.json, mos.py:21) but only ever
-  requests GFS/NAM (mos.py:83, 215). Live-verified 2026-07-16: the same
-  endpoint with model=NBS returns current-day NBM station bulletins for
-  KNYC -- real rows, hourly tmp plus n_x (the NBM day-max/night-min field),
-  sky, gst, p12. That's genuine NBM at the exact ASOS settlement stations
-  (mos.py's own docstring: "same ASOS stations Kalshi settles on"), better-
-  targeted than the old Open-Meteo gridpoint NBM ever was.
+Problem (as originally scoped):
+  fetch_temperature_nbm() no longer fetched NBM at all -- Open-Meteo removed
+  the model -- and requested models: "best_match" instead, an uncalibrated
+  auto-selection, yet still fed model_temps["nbm"] in analyze_trade's
+  Phase-C extended ensemble and _compute_ensemble_spread. mos.py already
+  integrated IEM's MOS API but only ever requested GFS/NAM.
 
-What it would look like:
-  Add model="NBS" support to mos.py's fetch (parse n_x for the daily
-  max/min rather than scanning hourly tmp), and point
-  fetch_temperature_nbm() at it (or add a sibling fetch_nbm_iem() and let
-  model_temps["nbm"] consume that), keeping best_match only as fallback.
-  Station map already exists (_MARKET_STATION_MAP, mos.py:32). Extend
-  beyond the 6-city _MOS_CITIES subset -- NBM covers all ASOS stations, so
-  all 20 cities work, unlike GFS/NAM MOS.
+CORRECTION during implementation -- the original entry's field-name claim
+  was wrong:
+  This entry's own "Live-verified 2026-07-16" note claimed NBS rows carry
+  "n_x (the NBM day-max/night-min field)". Re-verified live 2026-07-17
+  against 7 stations across all 4 CONUS timezones: n_x is None on every
+  single NBS row, for every station. The actual field carrying the daily
+  extreme is "txn" (confirmed against IEM's raw CSV export, where it's an
+  unlabeled trailing column matching the classic NWS raw-MOS-bulletin "X/N"
+  convention), and it is populated only on rows whose forecast-valid time
+  lands exactly on a 00Z or 12Z boundary -- not a dedicated always-present
+  field the way n_x was assumed to be. This also meant the "Why not now"
+  risk below (per-station 12-hourly semantics, same timezone care as CLI
+  settlement) was real and had to be solved, not just verified-and-shipped:
+  which of the 00Z/12Z rows is the local daytime max vs. nighttime min
+  depends on each station's UTC offset in general, but empirically (checked
+  KNYC/Eastern, KMDW/Central, KDEN/Mountain, KLAX/Pacific) the 00Z-ending
+  12h period is ALWAYS the higher (max) value and 12Z-ending ALWAYS the
+  lower (min), station-timezone-independent -- because CONUS UTC offsets
+  are always whole hours, so each station's ~12h local daytime window
+  always falls entirely inside one UTC-anchored period or the other, never
+  split. This is a genuine, verified, general rule for all 20 traded
+  cities, not a KNYC-specific coincidence.
 
-Why not now:
-  - Needs a per-station parse of NBS's 12-hourly n_x semantics (which row
-    is the max for the local calendar day -- same timezone care as CLI
-    settlement); verify a few cities beyond KNYC return rows; decide
-    whether the restored member also feeds _compute_ensemble_spread
-    immediately or ships log-only first per house precedent.
+What shipped:
+  mos.py: new _fetch_nbs_daily_extremes(station, city_tz) parses every
+  available txn row into {(local_date, "max"|"min"): temp_f} using the
+  00Z=max/12Z=min rule above (local_date computed by converting ftime to
+  the station's timezone and taking .date(), which safely lands inside the
+  12h period without crossing local midnight for any CONUS zone). Cached
+  per (station, city_tz), 1h TTL, matching _MOS_CACHE_TTL. New public
+  fetch_nbm_iem(station, target_date, city_tz, var) wraps it. Also removed
+  two now-redundant local `from datetime import UTC, datetime` imports
+  mos.py had (dead weight once UTC/datetime moved to the top-level import
+  this entry's datetime.strptime parsing needed anyway).
 
-When to revisit:
+  weather_markets.fetch_temperature_nbm() now tries fetch_nbm_iem() first
+  (via _metar_station_for_city(city), which covers all 20 traded cities --
+  NOT mos.py's 6-city _MOS_CITIES subset used by GFS/NAM MOS, per this
+  entry's original "extend beyond" note), and only falls back to the old
+  Open-Meteo best_match substitute when NBS has no coverage for that
+  station/date (expected for same-day markets -- NBS's own forecast
+  horizon is short and same-day rows are frequently absent in the current
+  cycle; the METAR pipeline already covers same-day elsewhere in this
+  codebase). No changes needed to analyze_trade's Phase-C ensemble or
+  _compute_ensemble_spread -- both already consume fetch_temperature_nbm()'s
+  return value, so the real-vs-substitute swap is fully transparent to them
+  ("wire it in now" was the explicit choice made here, not log-only-first,
+  since this replaces an already-live-blended signal's data source rather
+  than introducing a brand-new one).
+
+  Tests: tests/test_mos_nbs.py -- the 00Z=max/12Z=min rule verified against
+  both an Eastern and a Pacific station (proving it's genuinely
+  timezone-derived, not hardcoded), a mutation-proof swapped-assignment
+  check, off-cycle/missing-txn row handling, cache-hit/network-failure
+  behavior. tests/test_nbm.py updated (the IEM path is tried first, so its
+  two pre-existing Open-Meteo-mock tests needed mos.fetch_nbm_iem patched
+  to return None to keep exercising the fallback path they were written
+  for) plus two new tests for the IEM-first preference and the
+  no-station-mapped skip path. Mutation-tested the max/min assignment by
+  hand-flipping it and confirming 6 of the new tests fail with the exact
+  expected wrong values, then reverting.
+
+  Drive-by fix: tests/test_forecasting.py's
+  test_log_prediction_called_with_forecast_cycle (an AST-based check that
+  main.py's log_prediction call passes forecast_cycle=) was stale --
+  broken by the 2026-07-17 LOG_PREDICTION KWARGS ASSEMBLY TRIPLICATED
+  consolidation (main.py now passes it via
+  **_prediction_kwargs_from_analysis(...), not a literal keyword) but not
+  caught at the time because that session's test run didn't include this
+  file. Updated the AST check to accept either form; mutation-tested by
+  stripping the unpack from main.py and confirming the test fails, then
+  reverting via git checkout.
+
+  Independently reviewed (Agent, opus) before commit, matching this
+  project's standard for anything touching a live probability-blend input.
+  Confirmed the core claims sound (00Z=max/12Z=min holds for every CONUS
+  offset including Phoenix's no-DST America/Phoenix, no off-by-one-day in
+  the local-date attribution, tests genuinely correct not just plausible)
+  and caught one real bug fixed before commit: fetch_temperature_nbm's
+  Open-Meteo fallback opportunistically dual-writes both max and min
+  _NBM_CACHE entries from one HTTP response (an existing optimization,
+  pre-dating this entry) -- but NBS has per-var coverage gaps at its ~3-day
+  horizon edge (a date can have a real IEM max with no IEM min yet, or vice
+  versa), so the unconditional dual-write could silently clobber a real,
+  already-cached IEM value with the Open-Meteo best_match placeholder,
+  order-dependently, with no error raised -- reintroducing the exact bug
+  this entry exists to fix. Fixed: the fallback now only opportunistically
+  writes the OTHER var's cache slot when it isn't already fresh. Added
+  tests/test_nbm.py::test_openmeteo_fallback_does_not_clobber_iem_value_for_other_var,
+  mutation-tested by restoring the old unconditional-dual-write and
+  confirming it fails (60.0 instead of the real 81.0), then reverting.
+  Also hardened mos.py's ftime parsing per the review's second finding: if
+  IEM ever changes the timestamp format, every txn row would silently fail
+  to parse and the feature would permanently no-op to the Open-Meteo
+  fallback with no signal -- now logs a warning when every txn-bearing row
+  fails to parse, rather than looking identical to genuine no-coverage.
+
+Known residual (not fixed here, correctly out of scope):
   - Pairs naturally with the NBM PROBABILISTIC QUANTILES entry below (same
-    IEM/NBM surface) -- scope both together.
+    IEM/NBM surface, still open) -- scope together if picked up next.
+  - fetch_mos()'s existing GFS/NAM path filters rows by
+    `ftime.startswith(date_str)` where ftime is UTC and date_str is
+    typically a local target date -- a latent timezone bug distinct from
+    this entry's txn/n_x issue, not touched here. Worth its own backlog
+    entry if revisited.
+  - A pre-existing, unrelated flaky test was discovered and fixed in a
+    separate commit: tests/test_data_freshness.py::
+    test_enrich_with_forecast_stamps_data_fetched_at was failing when run
+    in the same session after tests/test_forecasting.py (two tests in
+    TestDynamicCacheTTL wrote directly into weather_markets' shared
+    _forecast_cache/_ensemble_cache singletons without cleanup, leaking a
+    stale cached timestamp into any later test hitting the same
+    ("NYC","2026-04-15") key). Fixed via an autouse fixture that
+    snapshots/restores both caches around that test class.
 
 [RESOLVED 2026-07-17] DISCRETIZATION-CONSISTENT T-BUCKET THRESHOLDS -- HALF-DEGREE CONTINUITY
 Priority: was Medium-High -- systematic, direction-consistent probability
