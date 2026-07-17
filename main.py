@@ -1169,13 +1169,14 @@ def cmd_market(client: KalshiClient, ticker: str, verbose: bool = False):
                 analysis,
                 **_prediction_kwargs_from_analysis(analysis),
                 # cmd_market is a pure lookup/display command — it never places an
-                # order, so this row must not read as trade-backed (is_shadow=0)
-                # to callers like get_pnl_by_signal_source's n_shadow count.
+                # order, so this row must be flagged as shadow (is_shadow=True),
+                # not read as a real trade, by callers like
+                # get_pnl_by_signal_source's n_shadow count.
                 is_shadow=True,
             )
         except Exception as _exc:
             logging.getLogger(__name__).warning(
-                "cmd_analyze: log_prediction failed for %s: %s", ticker, _exc
+                "cmd_market: log_prediction failed for %s: %s", ticker, _exc
             )
     else:
         print(
