@@ -718,6 +718,32 @@ class TestLearnedWeights:
 
 
 class TestDynamicCacheTTL:
+    @pytest.fixture(autouse=True)
+    def _restore_module_caches(self):
+        """test_cache_hit_returns_forecast_without_fetch and
+        test_cache_hit_returns_ensemble_without_fetch below write directly
+        into weather_markets' shared, long-TTL (8h) module-level singletons
+        (_forecast_cache, _ensemble_cache) to exercise cache-hit behavior.
+        Those are real mutations of the actual object, not covered by
+        monkeypatch's auto-revert, so without this fixture they leak into any
+        later test in the same pytest session that happens to hit the same
+        (city, date) key -- confirmed 2026-07-17 via git-stash bisection as
+        the root cause of tests/test_data_freshness.py::
+        test_enrich_with_forecast_stamps_data_fetched_at failing
+        intermittently (only when run in the same session after this file,
+        never in isolation) because both write/read the ("NYC", "2026-04-15")
+        forecast-cache key.
+        """
+        import weather_markets as wm
+
+        _forecast_snapshot = dict(wm._forecast_cache._store)
+        _ensemble_snapshot = dict(wm._ensemble_cache._store)
+        yield
+        wm._forecast_cache._store.clear()
+        wm._forecast_cache._store.update(_forecast_snapshot)
+        wm._ensemble_cache._store.clear()
+        wm._ensemble_cache._store.update(_ensemble_snapshot)
+
     def test_ttl_until_next_cycle_minimum(self):
         """TTL is at least 1800 seconds."""
         from datetime import datetime
