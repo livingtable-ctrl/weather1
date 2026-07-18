@@ -42,6 +42,7 @@ from utils import (
     KALSHI_FEE_RATE,
     KALSHI_MAKER_FEE_RATE,
     KELLY_CAP,
+    KELLY_CAP_CONSENSUS_MULT,
     MAX_DAYS_OUT,
     normal_cdf,
 )
@@ -4501,6 +4502,117 @@ def kelly_fraction(
     return min(quarter_kelly, KELLY_CAP)
 
 
+def _price_and_size(
+    blended_prob: float,
+    prices: dict,
+    condition: dict,
+    rec_side: str,
+    *,
+    ci: tuple[float, float],
+    consensus: bool = False,
+    extra_kelly_scales: tuple[float, ...] = (),
+    time_decay: float = 1.0,
+    yes_side_ask_fallback: bool = False,
+) -> dict:
+    """
+    Shared entry-price / EV / Kelly tail for precip, snow, and temperature
+    trade analysis (backlog.txt "ANALYZE-TRADE PRICING/EV/KELLY TAIL
+    TRIPLICATED ACROSS TEMP/PRECIP/SNOW PATHS").
+
+    `consensus` gates the ×1.25 ci_adjusted_kelly bonus and raises its cap
+    from KELLY_CAP to KELLY_CAP * KELLY_CAP_CONSENSUS_MULT — pass the
+    caller's own consensus signal (temperature's 3-source agreement and
+    precip's ensemble/climatology/blend agreement are different computations
+    that happen to share a name). Snow has no consensus signal of its own
+    and must be called with consensus=False (the default) to preserve its
+    existing behavior — see backlog.txt "SNOW PATH IS MISSING THE
+    PRECIP-CONSENSUS KELLY BONUS" for why that isn't unified here.
+    `extra_kelly_scales` lets the temperature path fold in its
+    quality/anomaly/spread/time/regime scales that precip and snow don't have.
+    `yes_side_ask_fallback` restores temperature's original empty-ask-book
+    fallback (entry_side_edge reference price falls back to market_prob when
+    yes_ask==0 on a YES-side signal) — precip/snow never had this guard and
+    must be called with the default False to preserve their exact behavior.
+    """
+    market_prob = prices["implied_prob"]
+    # NO entry is at no_ask = 1 - yes_bid (what we pay to buy NO),
+    # NOT no_bid = 1 - yes_ask (what market makers pay us to sell NO back).
+    entry_price = (
+        prices["yes_ask"]
+        if rec_side == "yes"
+        else (1.0 - prices["yes_bid"] if prices["yes_bid"] > 0 else 0.0)
+    )
+    if entry_price == 0:
+        entry_price = 1 - market_prob if rec_side == "no" else market_prob
+
+    payout = 1 - entry_price
+    p_win = blended_prob if rec_side == "yes" else 1 - blended_prob
+    # Maker fee (not taker): live/paper entries are always resting midpoint GTC
+    # limit orders, which pay $0 on this bot's markets (see KALSHI_MAKER_FEE_RATE).
+    net_ev = p_win * payout * (1 - KALSHI_MAKER_FEE_RATE) - (1 - p_win) * entry_price
+    net_edge = min((net_ev / entry_price if entry_price > 0 else 0.0) * time_decay, 3.0)
+    edge = (blended_prob - market_prob) * time_decay
+
+    # entry_side_edge vs actual fill price (ask), not mid. NO-side fallback
+    # (empty bid book): the cost of NO is 1 - market_prob, not market_prob.
+    # YES-side fallback (empty ask book) only applies for the temperature
+    # path (yes_side_ask_fallback=True) — precip/snow never had this guard,
+    # preserved as-is; see backlog.txt divergence notes.
+    _esmp_yes = prices["yes_ask"]
+    if _esmp_yes <= 0 and yes_side_ask_fallback:
+        _esmp_yes = market_prob
+    _esmp = (
+        _esmp_yes
+        if rec_side == "yes"
+        else (1.0 - prices["yes_bid"] if prices["yes_bid"] > 0 else 1.0 - market_prob)
+    )
+    if rec_side == "yes":
+        entry_side_edge = (blended_prob - _esmp) * time_decay
+    else:
+        entry_side_edge = ((1.0 - blended_prob) - _esmp) * time_decay
+
+    # Always pass fee_rate so Kelly is fee-adjusted; fee-free Kelly overstates size.
+    fee_kel = kelly_fraction(p_win, entry_price, fee_rate=KALSHI_MAKER_FEE_RATE)
+
+    # Bayesian Kelly — integrate over uniform posterior on CI range. For NO
+    # bets, flip CI to P(NO wins) space so kelly_fraction uses the right side.
+    ci_low, ci_high = ci
+    if rec_side == "no":
+        ci_adj_kelly = bayesian_kelly(
+            1.0 - ci_high, 1.0 - ci_low, entry_price, fee_rate=KALSHI_MAKER_FEE_RATE
+        )
+    else:
+        ci_adj_kelly = bayesian_kelly(
+            ci_low, ci_high, entry_price, fee_rate=KALSHI_MAKER_FEE_RATE
+        )
+    # Discount Kelly proportionally to CI width (wider CI = more uncertainty)
+    ci_scale = max(0.25, 1.0 - (ci_high - ci_low) * 2.0)
+    ci_adj_kelly = ci_adj_kelly * ci_scale
+    for _scale in extra_kelly_scales:
+        ci_adj_kelly = ci_adj_kelly * _scale
+    condition_type_scale = _CONDITION_CONFIDENCE.get(condition["type"], 1.0)
+    ci_adj_kelly = ci_adj_kelly * condition_type_scale
+    if consensus:
+        ci_adj_kelly = ci_adj_kelly * 1.25
+        cap = KELLY_CAP * KELLY_CAP_CONSENSUS_MULT
+    else:
+        cap = KELLY_CAP
+    ci_adj_kelly = round(min(ci_adj_kelly, cap), 6)
+
+    return {
+        "market_prob": market_prob,
+        "entry_price": entry_price,
+        "payout": payout,
+        "net_ev": net_ev,
+        "net_edge": net_edge,
+        "edge": edge,
+        "entry_side_edge": entry_side_edge,
+        "fee_kel": fee_kel,
+        "ci_scale": ci_scale,
+        "ci_adjusted_kelly": ci_adj_kelly,
+    }
+
+
 def time_decay_edge(
     raw_edge: float,
     close_time: datetime,
@@ -4740,39 +4852,6 @@ def _analyze_precip_trade(
     prices = parse_market_price(enriched)
     market_prob = prices["implied_prob"]
     rec_side = "yes" if blended_prob > market_prob else "no"
-    # L8-A / L2-A: NO entry is at no_ask = 1 - yes_bid (not no_bid = 1 - yes_ask)
-    entry_price = (
-        prices["yes_ask"]
-        if rec_side == "yes"
-        else (1.0 - prices["yes_bid"] if prices["yes_bid"] > 0 else 0.0)
-    )
-    if entry_price == 0:
-        entry_price = 1 - market_prob if rec_side == "no" else market_prob
-
-    payout = 1 - entry_price
-    p_win = blended_prob if rec_side == "yes" else 1 - blended_prob
-    # Maker fee (not taker): live/paper entries are always resting midpoint GTC
-    # limit orders, which pay $0 on this bot's markets (see KALSHI_MAKER_FEE_RATE).
-    net_ev = p_win * payout * (1 - KALSHI_MAKER_FEE_RATE) - (1 - p_win) * entry_price
-    net_edge = min(net_ev / entry_price if entry_price > 0 else 0.0, 3.0)
-    edge = blended_prob - market_prob
-    # L8-A / L7-C: entry_side_edge vs actual fill price (ask), not mid.
-    # NO-side fallback (empty bid book): the cost of NO is 1 - market_prob, not
-    # market_prob itself — market_prob is the YES price/probability, and using
-    # it directly for a NO reference price overstates the edge whenever
-    # market_prob < 0.5 and understates it when > 0.5.
-    _esmp = (
-        prices["yes_ask"]
-        if rec_side == "yes"
-        else (1.0 - prices["yes_bid"] if prices["yes_bid"] > 0 else 1.0 - market_prob)
-    )
-    # NO edge = P(NO wins) - cost_of_NO; the sign was previously inverted, which blocked all valid NO trades.
-    if rec_side == "yes":
-        entry_side_edge = blended_prob - _esmp
-    else:
-        entry_side_edge = (1.0 - blended_prob) - _esmp
-    # Always pass fee_rate so Kelly is fee-adjusted; fee-free Kelly overstates size.
-    fee_kel = kelly_fraction(p_win, entry_price, fee_rate=KALSHI_MAKER_FEE_RATE)
 
     # ── Bootstrap CI on precip ensemble ──────────────────────────────────────
     ci_low, ci_high = blended_prob, blended_prob
@@ -4789,24 +4868,19 @@ def _analyze_precip_trade(
         else False
     )
 
-    # #39: Bayesian Kelly — integrate over uniform posterior on CI range
-    # For NO bets, flip CI to P(NO wins) space so kelly_fraction uses the right side.
-    if rec_side == "no":
-        ci_adj_kelly = bayesian_kelly(
-            1.0 - ci_high, 1.0 - ci_low, entry_price, fee_rate=KALSHI_MAKER_FEE_RATE
-        )
-    else:
-        ci_adj_kelly = bayesian_kelly(
-            ci_low, ci_high, entry_price, fee_rate=KALSHI_MAKER_FEE_RATE
-        )
-    # E3: discount Kelly proportionally to CI width (wider CI = more uncertainty)
-    _ci_scale = max(0.25, 1.0 - (ci_high - ci_low) * 2.0)
-    ci_adj_kelly = round(ci_adj_kelly * _ci_scale, 6)
-    if precip_consensus:
-        ci_adj_kelly = round(ci_adj_kelly * 1.25, 6)
-    condition_type_scale = _CONDITION_CONFIDENCE.get(condition["type"], 1.0)
-    ci_adj_kelly = round(ci_adj_kelly * condition_type_scale, 6)
-    ci_adj_kelly = min(ci_adj_kelly, 0.25)
+    _priced = _price_and_size(
+        blended_prob,
+        prices,
+        condition,
+        rec_side,
+        ci=(ci_low, ci_high),
+        consensus=precip_consensus,
+    )
+    net_edge = _priced["net_edge"]
+    edge = _priced["edge"]
+    entry_side_edge = _priced["entry_side_edge"]
+    fee_kel = _priced["fee_kel"]
+    ci_adj_kelly = _priced["ci_adjusted_kelly"]
 
     _edge_conf = edge_confidence(days_out, condition_type=condition["type"])
     adjusted_edge = net_edge * _edge_conf
@@ -4945,37 +5019,6 @@ def _analyze_snow_trade(
     prices = parse_market_price(enriched)
     market_prob = prices["implied_prob"]
     rec_side = "yes" if blended_prob > market_prob else "no"
-    # L8-A / L2-A: NO entry is at no_ask = 1 - yes_bid (not no_bid = 1 - yes_ask)
-    entry_price = (
-        prices["yes_ask"]
-        if rec_side == "yes"
-        else (1.0 - prices["yes_bid"] if prices["yes_bid"] > 0 else 0.0)
-    )
-    if entry_price == 0:
-        entry_price = 1 - market_prob if rec_side == "no" else market_prob
-
-    payout = 1 - entry_price
-    p_win = blended_prob if rec_side == "yes" else 1 - blended_prob
-    # Maker fee (not taker): live/paper entries are always resting midpoint GTC
-    # limit orders, which pay $0 on this bot's markets (see KALSHI_MAKER_FEE_RATE).
-    net_ev = p_win * payout * (1 - KALSHI_MAKER_FEE_RATE) - (1 - p_win) * entry_price
-    net_edge = min(net_ev / entry_price if entry_price > 0 else 0.0, 3.0)
-    edge = blended_prob - market_prob
-    # L8-A / L7-C: entry_side_edge vs actual fill price (ask), not mid.
-    # NO-side fallback (empty bid book): the cost of NO is 1 - market_prob, not
-    # market_prob itself (see _analyze_precip_trade's identical fix above).
-    _esmp = (
-        prices["yes_ask"]
-        if rec_side == "yes"
-        else (1.0 - prices["yes_bid"] if prices["yes_bid"] > 0 else 1.0 - market_prob)
-    )
-    # NO edge = P(NO wins) - cost_of_NO; the sign was previously inverted, which blocked all valid NO trades.
-    if rec_side == "yes":
-        entry_side_edge = blended_prob - _esmp
-    else:
-        entry_side_edge = (1.0 - blended_prob) - _esmp
-    # Always pass fee_rate so Kelly is fee-adjusted; fee-free Kelly overstates size.
-    fee_kel = kelly_fraction(p_win, entry_price, fee_rate=KALSHI_MAKER_FEE_RATE)
 
     ci_low, ci_high = blended_prob, blended_prob
     if len(precip_members) >= 5:
@@ -4999,21 +5042,21 @@ def _analyze_snow_trade(
             }
             ci_low, ci_high = _bootstrap_ci_precip(precip_members, _liquid_condition)
 
-    # #39: Bayesian Kelly — flip CI for NO bets so integration is over P(win)
-    if rec_side == "no":
-        ci_adj_kelly = bayesian_kelly(
-            1.0 - ci_high, 1.0 - ci_low, entry_price, fee_rate=KALSHI_MAKER_FEE_RATE
-        )
-    else:
-        ci_adj_kelly = bayesian_kelly(
-            ci_low, ci_high, entry_price, fee_rate=KALSHI_MAKER_FEE_RATE
-        )
-    # E3: discount Kelly proportionally to CI width
-    _ci_scale = max(0.25, 1.0 - (ci_high - ci_low) * 2.0)
-    ci_adj_kelly = round(ci_adj_kelly * _ci_scale, 6)
-    condition_type_scale = _CONDITION_CONFIDENCE.get(condition["type"], 1.0)
-    ci_adj_kelly = round(ci_adj_kelly * condition_type_scale, 6)
-    ci_adj_kelly = min(ci_adj_kelly, 0.25)
+    # Snow has no consensus signal of its own (unlike precip's precip_consensus) —
+    # consensus stays False, matching this path's existing (bonus-less) behavior.
+    # See backlog.txt "SNOW PATH IS MISSING THE PRECIP-CONSENSUS KELLY BONUS".
+    _priced = _price_and_size(
+        blended_prob,
+        prices,
+        condition,
+        rec_side,
+        ci=(ci_low, ci_high),
+    )
+    net_edge = _priced["net_edge"]
+    edge = _priced["edge"]
+    entry_side_edge = _priced["entry_side_edge"]
+    fee_kel = _priced["fee_kel"]
+    ci_adj_kelly = _priced["ci_adjusted_kelly"]
 
     _edge_conf = edge_confidence(days_out, condition_type=condition["type"])
     adjusted_edge = net_edge * _edge_conf
@@ -6580,26 +6623,6 @@ def analyze_trade(enriched: dict) -> dict | None:
 
     # ── 10. Kelly fraction ───────────────────────────────────────────────────
     prices = parse_market_price(enriched)
-    market_prob = prices["implied_prob"]
-    rec_side = "yes" if blended_prob > market_prob else "no"
-    # NO entry is at no_ask = 1 - yes_bid (what we pay to buy NO),
-    # NOT no_bid = 1 - yes_ask (what market makers pay us to sell NO back).
-    # Using no_bid understates entry cost and overstates NO-side edge/Kelly.
-    entry_price = (
-        prices["yes_ask"]
-        if rec_side == "yes"
-        else (1.0 - prices["yes_bid"] if prices["yes_bid"] > 0 else 0.0)
-    )
-    if entry_price == 0:
-        entry_price = 1 - market_prob if rec_side == "no" else market_prob
-    # Maker fee (not taker): live/paper entries are always resting midpoint GTC
-    # limit orders, which pay $0 on this bot's markets (see KALSHI_MAKER_FEE_RATE).
-    # Always pass fee_rate so Kelly is fee-adjusted; fee-free Kelly overstates size.
-    kelly = kelly_fraction(
-        blended_prob if rec_side == "yes" else 1 - blended_prob,
-        entry_price,
-        fee_rate=KALSHI_MAKER_FEE_RATE,
-    )
 
     # ── 10a. Bid-ask spread cost ─────────────────────────────────────────────
     # Wide spreads mean real slippage beyond the Kalshi fee.
@@ -6616,6 +6639,9 @@ def analyze_trade(enriched: dict) -> dict | None:
 
     # mos_data alias for return dict compatibility
     mos_data = _mos_data_pre if not metar_locked else None
+
+    market_prob = prices["implied_prob"]
+    rec_side = "yes" if blended_prob > market_prob else "no"
 
     # Market divergence gate: if the market is highly confident (>70%) AND our
     # model is on the opposite side (<25%), the crowd has information we lack.
@@ -6635,14 +6661,10 @@ def analyze_trade(enriched: dict) -> dict | None:
             _count_gate("analysis_diverge")
             return None
 
-    edge = blended_prob - market_prob
-
     # #63 / L7-D: Time-decay edge — scale linearly to zero as market approaches close.
-    # Compute _time_decay_factor once and apply to all edge metrics (edge,
-    # entry_side_edge, net_edge) so the gate (adjusted_edge) and sort key
-    # reflect intra-day time risk — not only the display 'edge'.
-    # Before L7-D, only 'edge' was decayed; net_edge → adjusted_edge remained at
-    # full strength so same-day near-close markets passed the gate unchecked.
+    # Applied (via _price_and_size's time_decay) to edge, entry_side_edge, and
+    # net_edge so the gate (adjusted_edge) and sort key reflect intra-day time
+    # risk — not only the display 'edge'.
     _time_decay_factor = 1.0
     _close_str = enriched.get("close_time", "")
     if _close_str:
@@ -6652,63 +6674,8 @@ def analyze_trade(enriched: dict) -> dict | None:
         except (ValueError, TypeError):
             pass
 
-    edge = edge * _time_decay_factor
-    signal = _edge_label(edge)
-
-    # #61 / L7-C: entry-side edge uses the actual fill price, not mid.
-    # YES entry is at yes_ask. NO entry is at no_ask = 1 - yes_bid.
-    # Using mid understates real spread cost: a 7% apparent edge may be only 4–5%
-    # real after a 3–6% spread. The gate (line ~1047 in main.py) uses entry_side_edge.
-    if rec_side == "yes":
-        entry_side_market_prob = (
-            prices["yes_ask"] if prices["yes_ask"] > 0 else market_prob
-        )
-    else:
-        # no_ask = 1 - yes_bid (what we actually pay to acquire NO contracts)
-        # (note: no_bid returned by API = 1 - yes_ask, NOT the NO buy price)
-        entry_side_market_prob = (
-            (1.0 - prices["yes_bid"]) if prices["yes_bid"] > 0 else market_prob
-        )
-    # L7-D: apply same time-decay factor so gate uses time-adjusted entry_side_edge
-    # NO edge = P(NO wins) - cost_of_NO; the sign was previously inverted, which blocked all valid NO trades.
-    if rec_side == "yes":
-        entry_side_edge = (blended_prob - entry_side_market_prob) * _time_decay_factor
-    else:
-        entry_side_edge = (
-            1.0 - blended_prob - entry_side_market_prob
-        ) * _time_decay_factor
-
     # #62: explicit illiquid flag (spread > 5%)
     illiquid = spread_cost > 0.05
-
-    # ── 11. Fee-adjusted edge ────────────────────────────────────────────────
-    # Maker fee (not taker) — see KALSHI_MAKER_FEE_RATE.
-    if rec_side == "yes":
-        payout = 1 - entry_price
-        net_ev = (
-            blended_prob * payout * (1 - KALSHI_MAKER_FEE_RATE)
-            - (1 - blended_prob) * entry_price
-        )
-    else:
-        payout = 1 - entry_price
-        p_win = 1 - blended_prob
-        net_ev = (
-            p_win * payout * (1 - KALSHI_MAKER_FEE_RATE) - blended_prob * entry_price
-        )
-
-    # L7-D: apply time-decay so adjusted_edge (= net_edge * edge_conf) also shrinks
-    # near close — before this fix adjusted_edge used full net_edge for same-day markets
-    net_edge = min(
-        (net_ev / entry_price if entry_price > 0 else 0.0) * _time_decay_factor, 3.0
-    )
-    _edge_conf = edge_confidence(days_out, condition_type=condition["type"])
-    adjusted_edge = net_edge * _edge_conf
-    net_signal = _edge_label(adjusted_edge)
-    fee_adjusted_kelly = kelly_fraction(
-        blended_prob if rec_side == "yes" else 1 - blended_prob,
-        entry_price,
-        fee_rate=KALSHI_MAKER_FEE_RATE,
-    )
 
     # Scale Kelly down for low data quality and anomalous forecasts
     quality_scale = 0.5 + 0.5 * data_quality  # 0.5 at quality=0, 1.0 at quality=1
@@ -6718,37 +6685,38 @@ def analyze_trade(enriched: dict) -> dict | None:
     # Scale: 1.0 at 0-1 days → 0.5 at ≥14 days. Intermediate values are linear.
     time_kelly_scale = max(0.35, 1.0 - (days_out / 14.0) * 0.50)
 
-    # #39: Bayesian Kelly — integrate over uniform posterior on [ci_low, ci_high]
-    # For NO bets, flip CI to P(win) space — CI is on P(YES), but Kelly needs P(win).
-    if rec_side == "no":
-        bk = bayesian_kelly(
-            1.0 - ci_high, 1.0 - ci_low, entry_price, fee_rate=KALSHI_MAKER_FEE_RATE
-        )
-    else:
-        bk = bayesian_kelly(
-            ci_low, ci_high, entry_price, fee_rate=KALSHI_MAKER_FEE_RATE
-        )
-    condition_type_scale = _CONDITION_CONFIDENCE.get(condition["type"], 1.0)
-    # E3: discount Kelly proportionally to CI width (wider CI = more uncertainty)
-    _ci_scale = max(0.25, 1.0 - (ci_high - ci_low) * 2.0)
-    ci_adjusted_kelly = round(
-        bk
-        * quality_scale
-        * anomaly_scale
-        * spread_scale
-        * time_kelly_scale
-        * _confidence_boost
-        * condition_type_scale  # #39: scale down Kelly for harder-to-forecast conditions
-        * _ci_scale,  # E3: CI-width uncertainty discount
-        6,
+    # F2: consensus bonus applied BEFORE the cap so it actually takes effect —
+    # consensus trades get a higher ceiling (KELLY_CAP * KELLY_CAP_CONSENSUS_MULT,
+    # 0.33 at defaults) to reward highest-conviction signals.
+    _priced = _price_and_size(
+        blended_prob,
+        prices,
+        condition,
+        rec_side,
+        ci=(ci_low, ci_high),
+        consensus=consensus,
+        extra_kelly_scales=(
+            quality_scale,
+            anomaly_scale,
+            spread_scale,
+            time_kelly_scale,
+            _confidence_boost,
+        ),
+        time_decay=_time_decay_factor,
+        yes_side_ask_fallback=True,
     )
-    # F2: apply consensus bonus BEFORE the cap so it actually takes effect.
-    # Consensus trades get a higher ceiling (0.33) to reward highest-conviction signals.
-    if consensus:
-        ci_adjusted_kelly = round(ci_adjusted_kelly * 1.25, 6)
-        ci_adjusted_kelly = min(ci_adjusted_kelly, 0.33)
-    else:
-        ci_adjusted_kelly = min(ci_adjusted_kelly, 0.25)
+    entry_price = _priced["entry_price"]
+    edge = _priced["edge"]
+    signal = _edge_label(edge)
+    entry_side_edge = _priced["entry_side_edge"]
+    net_edge = _priced["net_edge"]
+    _edge_conf = edge_confidence(days_out, condition_type=condition["type"])
+    adjusted_edge = net_edge * _edge_conf
+    net_signal = _edge_label(adjusted_edge)
+    kelly = _priced["fee_kel"]
+    fee_adjusted_kelly = _priced["fee_kel"]
+    ci_adjusted_kelly = _priced["ci_adjusted_kelly"]
+    _ci_scale = _priced["ci_scale"]
 
     # Near-threshold penalty: forecast is within ±3°F of threshold → high flip risk
     if near_threshold:

@@ -104,6 +104,14 @@ KALSHI_MAKER_FEE_RATE = float(os.getenv("KALSHI_MAKER_FEE_RATE", "0.0"))
 # sizing since this constant ignored the env var entirely.
 KELLY_CAP: float = float(os.getenv("KELLY_CAP", "0.25"))
 
+# Multiplier applied to KELLY_CAP for the higher ci_adjusted_kelly ceiling
+# granted to consensus trades (weather_markets.py's temperature path: 0.33 at
+# the current KELLY_CAP=0.25 default). Previously a bare 0.33 literal
+# independent of KELLY_CAP, so tuning KELLY_CAP via .env silently left the
+# consensus ceiling behind at the old value. Override via
+# KELLY_CAP_CONSENSUS_MULT env var.
+KELLY_CAP_CONSENSUS_MULT: float = float(os.getenv("KELLY_CAP_CONSENSUS_MULT", "1.32"))
+
 # Max fraction of starting balance allowed on one city/date combo — paper.py's
 # real city/date exposure gate. Override via MAX_CITY_DATE_EXPOSURE env var —
 # config.py's BotConfig.max_city_date_exposure reads the same env var (for
