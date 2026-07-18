@@ -2777,6 +2777,121 @@ class TestDisputedOutcomeTracking(unittest.TestCase):
         after = tracker.get_edge_realization_by_city()
         self.assertEqual(before, after)
 
+    # ── Sample-size gates and training-data selectors that joined raw
+    # outcomes without the disputed-row exclusion 30+ near-identical siblings
+    # above already had (backlog.txt "DISPUTED-ROW EXCLUSION PREDICATE
+    # HAND-COPIED ~40 TIMES IN tracker.py" -- found while consolidating that
+    # predicate into the outcomes_valid view). No live impact when these were
+    # found (0 disputed rows in production), but each is a real sample-size
+    # gate or training-data selector that must not count/train on a disputed
+    # settlement, same rationale as every test above.
+
+    def test_count_settled_predictions_excludes_disputed(self):
+        self._seed_baseline()
+        before = tracker.count_settled_predictions()
+        self._add_disputed_outlier()
+        after = tracker.count_settled_predictions()
+        self.assertEqual(before, after)
+
+    def test_count_settled_predictions_rolling_excludes_disputed(self):
+        self._seed_baseline()
+        before = tracker.count_settled_predictions_rolling()
+        self._add_disputed_outlier()
+        after = tracker.count_settled_predictions_rolling()
+        self.assertEqual(before, after)
+
+    def test_count_settled_sameday_predictions_excludes_disputed(self):
+        # _seed_baseline logs multiday (days_out>=1) rows only, so the
+        # same-day count starts at 0 regardless -- the outlier itself must be
+        # same-day (market_date=_PAST clamps to days_out=0) to actually
+        # exercise this function's WHERE clause.
+        before = tracker.count_settled_sameday_predictions()
+        self._add_disputed_outlier(market_date=self._PAST)
+        after = tracker.count_settled_sameday_predictions()
+        self.assertEqual(before, after)
+
+    def test_count_settled_below_predictions_excludes_disputed(self):
+        # _add_disputed_outlier always logs condition_type="above" -- this
+        # gate filters on condition_type='below', so build the outlier
+        # directly with the matching condition_type instead.
+        self._seed_baseline(condition_type="below")
+        before = tracker.count_settled_below_predictions()
+        self._log_settled(
+            "DISPUTED-BELOW", 1.0, 0, self._FUTURE, condition_type="below", edge=0.99
+        )
+        tracker.mark_outcome_disputed("DISPUTED-BELOW")
+        after = tracker.count_settled_below_predictions()
+        self.assertEqual(before, after)
+
+    def test_count_settled_west_coast_multiday_excludes_disputed(self):
+        # This gate filters on o.settled_temp_f IS NOT NULL, which
+        # _log_settled never populates -- without setting it explicitly,
+        # before/after are both {} regardless of the join table, making the
+        # assertEqual below pass vacuously. Set it via raw SQL, matching the
+        # pattern _add_disputed_emos_outlier already uses for the same column.
+        self._seed_baseline(city="LA")
+        with tracker._conn() as con:
+            con.execute(
+                "UPDATE outcomes SET settled_temp_f = 75.0 WHERE ticker LIKE 'BASE-%'"
+            )
+        before = tracker.count_settled_west_coast_multiday()
+        self.assertEqual(
+            before.get("LA", 0),
+            25,
+            "fixture sanity check — test would be vacuous otherwise",
+        )
+
+        self._add_disputed_outlier(city="LA")
+        with tracker._conn() as con:
+            con.execute(
+                "UPDATE outcomes SET settled_temp_f = ? WHERE ticker = ?",
+                (999.0, "DISPUTED"),
+            )
+        after = tracker.count_settled_west_coast_multiday()
+        self.assertEqual(before, after)
+
+    def _add_disputed_emos_outlier(self, ticker="DISPUTED-EMOS"):
+        """Log an EMOS-trainable disputed row: needs ens_mean (predictions)
+        and settled_temp_f (outcomes) both populated, neither of which
+        _log_settled's analysis dict sets -- mirrors the raw-SQL-UPDATE
+        pattern tests/test_p9_p10.py already uses for the same columns."""
+        tracker.log_prediction(
+            ticker,
+            "NYC",
+            self._FUTURE,
+            {
+                "condition": {"type": "above", "threshold": 70.0},
+                "forecast_prob": 1.0,
+                "market_prob": 0.50,
+                "edge": 0.99,
+                "method": "ensemble",
+                "n_members": 82,
+            },
+            ens_mean=999.0,  # extreme value: would visibly skew EMOS training if included
+        )
+        tracker.log_outcome(ticker, False)
+        with tracker._conn() as con:
+            con.execute(
+                "UPDATE outcomes SET settled_temp_f = ? WHERE ticker = ?",
+                (999.0, ticker),
+            )
+        tracker.mark_outcome_disputed(ticker)
+
+    def test_count_emos_ready_predictions_excludes_disputed(self):
+        self._seed_baseline()
+        before = tracker.count_emos_ready_predictions()
+        self._add_disputed_emos_outlier()
+        after = tracker.count_emos_ready_predictions()
+        self.assertEqual(before, after)
+
+    def test_get_emos_training_data_excludes_disputed(self):
+        self._seed_baseline()
+        before = tracker.get_emos_training_data()
+        self._add_disputed_emos_outlier()
+        after = tracker.get_emos_training_data()
+        self.assertEqual(len(before), len(after))
+        self.assertNotIn(999.0, [row["ens_mean"] for row in after])
+
 
 class TestStopLossAccuracy(unittest.TestCase):
     """Restored backlog piece (mystery-revert 24559a7, piece 3): stop-loss exit

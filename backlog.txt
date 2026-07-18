@@ -3245,51 +3245,106 @@ When to revisit:
     for the adjacent name-collision issue this entry deliberately did
     not fix (still open).
 
-[DISPUTED-ROW EXCLUSION PREDICATE HAND-COPIED ~40 TIMES IN tracker.py]
-Priority: Medium -- same "one shared rule, many consumers, one gets
+[RESOLVED 2026-07-18] DISPUTED-ROW EXCLUSION PREDICATE HAND-COPIED ~40 TIMES IN tracker.py
+Priority: was Medium -- same "one shared rule, many consumers, one gets
   missed" shape this project has hit 7+ times; the existing mutation
-  tests protect the 30 *existing* filters but nothing forces a *new*
+  tests protected the 30 *existing* filters but nothing forced a *new*
   query to add one.
 
-Problem:
+Problem (as originally scoped):
   The 2026-07-12 disputed-outcome restoration added the literal predicate
   `AND (o.disputed IS NULL OR o.disputed = 0)` as a hand-copied string to
-  every calibration query: tracker.py:838, 987, 1082, 1155, 1198, 1228,
-  1263, 1320, 1416, 1461, 1634, 1720, 1775, 1798, 1857, 1896, 1934, 1978,
-  2113, 2190, 2222, 3517, 3589, 3651, 3700, 3775, 3988, 4119, 4160, 4629,
-  4772 -- ~40 occurrences. The 30-filter mutation test proves existing
-  filters work, but the failure mode that matters going forward is a NEW
-  function joining outcomes on settled_yes and simply not knowing the
-  rule exists -- exactly how the original 3-function scope grew to 30 in
-  the first place. tracker.py already has a CREATE VIEW precedent
-  (multiday_predictions, tracker.py:372), so a view is in-style, and
-  there is no outcomes_valid view or shared SQL-fragment constant
-  anywhere (grep confirmed).
+  every calibration query -- ~40 occurrences by the original estimate.
+  The 30-filter mutation test proved existing filters worked, but the
+  failure mode that mattered going forward was a NEW function joining
+  outcomes on settled_yes and simply not knowing the rule exists -- exactly
+  how the original 3-function scope grew to 30 in the first place.
 
-What it would look like:
-  Either (a) a `CREATE VIEW IF NOT EXISTS outcomes_valid AS SELECT * FROM
-  outcomes WHERE disputed IS NULL OR disputed = 0` in init_db(), migrate
-  the 40 queries to join the view (audited consumers like count_settled_*
-  keep joining raw outcomes deliberately); or cheaper (b) a module
-  constant `_NOT_DISPUTED = "AND (o.disputed IS NULL OR o.disputed = 0)"`
-  interpolated into each query, plus a guard test in the
-  test_config_divergence_guard.py style: regex tracker.py for `JOIN
-  outcomes` / `FROM outcomes` and assert every hit either uses the
-  view/constant or is on a named allowlist (the deliberate raw consumers
-  from the 07-12 audit).
+What shipped:
+  Took option (a) from this entry's own "what it would look like": a
+  `CREATE VIEW IF NOT EXISTS outcomes_valid AS SELECT * FROM outcomes
+  WHERE disputed IS NULL OR disputed = 0` in init_db() (right after the
+  existing multiday_predictions view precedent), and migrated every
+  consumer that should exclude disputed rows to join outcomes_valid
+  instead of outcomes -- the view approach over the constant approach
+  because it makes the correctness guarantee structural (join the right
+  table) rather than "remember to paste the right string," and makes the
+  guard test purely mechanical (flag any JOIN/FROM on the raw table
+  outside a documented allowlist).
 
-Why not now:
-  - 40 query rewrites in the calibration-scoring core deserve their own
-    pass with the existing 30-filter test suite as the safety net (it
-    will fail loudly if a view/constant swap changes semantics). No
-    behavior change intended, so it can wait for a slow session -- but
-    should land before the next tracker.py analytics function is written
-    by someone unaware of the rule.
+  Live re-count (2026-07-18) found the real number of JOIN/FROM outcomes
+  sites was 49, not ~40 -- and a naive single-space regex only found 45 of
+  those; 4 more (including get_emos_training_data and
+  count_settled_west_coast_multiday) only surfaced after switching to a
+  whitespace-tolerant `JOIN\s+outcomes` pattern, since tracker.py's SQL
+  formatting inconsistently uses multiple spaces for column alignment
+  (`JOIN   outcomes` vs `JOIN outcomes`). Of the 49: 31 already had the
+  disputed filter (migrated to the view, predicate line removed -- pure
+  refactor, no behavior change); 8 had NO filter and no comment explaining
+  why, unlike the 9 legitimately-raw sites (purge_old_predictions:
+  deletion by age; sync_outcomes: pre-outcome existence check;
+  get_outcome_for_ticker: real position-resolution lookup that needs the
+  actual current settlement regardless of dispute status; backfill_emos_
+  data: data-repair, not a calibration consumer; get_disputed_count:
+  definitionally counts the disputed rows; get_history: intentional raw
+  audit listing).
+
+  Those 8 -- count_settled_predictions, count_settled_predictions_rolling,
+  count_settled_sameday_predictions, count_emos_ready_predictions,
+  count_settled_below_predictions, count_settled_west_coast_multiday,
+  get_emos_training_data, get_recent_city_correlations -- read as
+  unaudited gaps, not deliberate choices, and were fixed in this same pass
+  per explicit user sign-off (0 disputed rows existed in production at the
+  time, so zero live impact when found, but get_emos_training_data
+  directly trains the EMOS bias-correction model on settled_temp_f, and
+  the other 6 feed sample-size gates that auto-activate live signals --
+  e.g. weather_markets.py:776's _BELOW_GATE_MIN_SAMPLES check). Unlike the
+  ANALYZE-TRADE EV/Kelly TAIL entry's divergences (where preserving
+  precip/snow's different-but-plausible behavior was the right call), none
+  of these 8 had any comment or rationale for the omission -- deferring a
+  probably-just-missed filter to "someday" is exactly how the original
+  3-function scope grew to 30.
+
+  New tests: tests/test_tracker.py's TestDisputedOutcomeTracking class
+  gained 7 new `_excludes_disputed` tests (before/after-equal on a
+  synthetic disputed outlier row built to actually qualify for each
+  function's other WHERE conditions -- e.g. the below-gate test needed
+  condition_type='below', the EMOS tests needed ens_mean/settled_temp_f
+  set via raw SQL since _log_settled doesn't expose them), joining the 31
+  pre-existing ones (30-filter class plus TestStopLossAccuracy's own).
+  tests/test_p9_p10.py gained a get_recent_city_correlations disputed-
+  exclusion test using its existing multi-city correlation fixture, plus
+  an extreme-value disputed pair that would flip the correlation from 1.0
+  to -0.989 if not excluded. All 8 new tests mutation-tested (temporarily
+  reverted each fix, confirmed the corresponding test fails with the
+  correct real value, restored) before this shipped.
+
+  New guard: tests/test_disputed_row_guard.py, matching test_dead_code_
+  scan.py's allowlist-scan style -- regexes tracker.py for any JOIN/FROM
+  on the raw outcomes table, asserts every hit is on a documented
+  6-function allowlist (the legitimately-raw consumers above, plus
+  init_db itself since the view's own definition must reference the raw
+  table). Mutation-tested by adding a fake new unallowlisted query and
+  confirming the guard fails, then reverting.
+
+  Also fixed a transformation bug this same session caught before it
+  shipped: the mechanical script used to migrate the 31 already-filtered
+  queries had an off-by-N line-indexing bug (inserting the new view as one
+  list element before computing deletion indices, rather than after) that
+  deleted the wrong line at one site -- caught by running the existing
+  tracker.py test suite immediately after the transformation, which failed
+  loudly rather than silently. A second, narrower bug (a dropped trailing
+  comma in get_stop_loss_accuracy's now-single-line SQL string, left over
+  from deleting a two-string-literal concatenation) was caught the same
+  way. Full tracker-adjacent test suite (912 tests across every file
+  importing tracker.py) green before push.
+
+Why not now (resolved):
+  - Was gated on its own dedicated pass with the existing filter-test
+    suite as the safety net -- done; see tests above.
 
 When to revisit:
-  - Next time tracker.py is opened for analytics work, or the next time
-    a new settled_yes-consuming function is added without the filter
-    (repeat of the original discovery pattern).
+  - N/A, closed.
 
 [RESOLVED 2026-07-18] ANALYZE-TRADE PRICING/EV/KELLY TAIL TRIPLICATED ACROSS TEMP/PRECIP/SNOW PATHS
 Priority: was Medium -- this block had already needed the same fix applied

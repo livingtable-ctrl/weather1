@@ -850,6 +850,111 @@ def test_get_recent_city_correlations_computes_correlation(tmp_tracker):
     )
 
 
+def test_get_recent_city_correlations_excludes_disputed(tmp_tracker):
+    """A disputed settlement must not pollute the correlation computation
+    (backlog.txt "DISPUTED-ROW EXCLUSION PREDICATE HAND-COPIED ~40 TIMES IN
+    tracker.py" -- found missing here while consolidating that predicate into
+    the outcomes_valid view; no live impact when found since 0 disputed rows
+    existed in production, but a disputed settled_temp_f is exactly the kind
+    of corrupted ground truth this exclusion exists to keep out of scoring)."""
+    from datetime import date as _date
+    from datetime import datetime, timedelta
+
+    import tracker as t
+
+    settled_base_dt = datetime.now(UTC) - timedelta(days=50)
+    market_base = _date.today() + timedelta(days=10)
+
+    for i in range(6):
+        settled_dt = (settled_base_dt + timedelta(days=i)).isoformat()
+        tmp_tracker.log_prediction(
+            f"KXHIGHNYC-{i}",
+            "NYC",
+            market_base + timedelta(days=i),
+            {
+                "forecast_prob": 0.5,
+                "market_prob": 0.50,
+                "edge": 0.0,
+                "method": "test",
+                "condition": {"type": "above", "threshold": 70},
+            },
+        )
+        tmp_tracker.log_outcome(f"KXHIGHNYC-{i}", True)
+        with t._conn() as con:
+            con.execute(
+                "UPDATE outcomes SET settled_temp_f = ?, settled_at = ? WHERE ticker = ?",
+                (70.0 + i * 2.0, settled_dt, f"KXHIGHNYC-{i}"),
+            )
+
+        tmp_tracker.log_prediction(
+            f"KXHIGHBOS-{i}",
+            "Boston",
+            market_base + timedelta(days=i),
+            {
+                "forecast_prob": 0.5,
+                "market_prob": 0.50,
+                "edge": 0.0,
+                "method": "test",
+                "condition": {"type": "above", "threshold": 70},
+            },
+        )
+        tmp_tracker.log_outcome(f"KXHIGHBOS-{i}", True)
+        with t._conn() as con:
+            con.execute(
+                "UPDATE outcomes SET settled_temp_f = ?, settled_at = ? WHERE ticker = ?",
+                (68.0 + i * 2.0, settled_dt, f"KXHIGHBOS-{i}"),
+            )
+
+    before = tmp_tracker.get_recent_city_correlations(days=60, min_pairs=5)
+
+    # Disputed outlier: a wildly off-trend NYC/Boston pair on a NEW shared
+    # date -- if not excluded, this would visibly drag the near-1.0
+    # correlation down (NYC spikes to 200F while Boston drops to -50F).
+    settled_dt = (settled_base_dt + timedelta(days=6)).isoformat()
+    tmp_tracker.log_prediction(
+        "KXHIGHNYC-DISPUTED",
+        "NYC",
+        market_base + timedelta(days=6),
+        {
+            "forecast_prob": 0.5,
+            "market_prob": 0.50,
+            "edge": 0.0,
+            "method": "test",
+            "condition": {"type": "above", "threshold": 70},
+        },
+    )
+    tmp_tracker.log_outcome("KXHIGHNYC-DISPUTED", True)
+    tmp_tracker.log_prediction(
+        "KXHIGHBOS-DISPUTED",
+        "Boston",
+        market_base + timedelta(days=6),
+        {
+            "forecast_prob": 0.5,
+            "market_prob": 0.50,
+            "edge": 0.0,
+            "method": "test",
+            "condition": {"type": "above", "threshold": 70},
+        },
+    )
+    tmp_tracker.log_outcome("KXHIGHBOS-DISPUTED", True)
+    with t._conn() as con:
+        con.execute(
+            "UPDATE outcomes SET settled_temp_f = ?, settled_at = ? WHERE ticker = ?",
+            (200.0, settled_dt, "KXHIGHNYC-DISPUTED"),
+        )
+        con.execute(
+            "UPDATE outcomes SET settled_temp_f = ?, settled_at = ? WHERE ticker = ?",
+            (-50.0, settled_dt, "KXHIGHBOS-DISPUTED"),
+        )
+    t.mark_outcome_disputed("KXHIGHNYC-DISPUTED")
+    t.mark_outcome_disputed("KXHIGHBOS-DISPUTED")
+
+    after = tmp_tracker.get_recent_city_correlations(days=60, min_pairs=5)
+    assert after == before, (
+        f"Disputed outlier changed the correlation: before={before} after={after}"
+    )
+
+
 def test_get_recent_city_correlations_skips_below_min_pairs(tmp_tracker):
     """get_recent_city_correlations skips pairs with fewer than min_pairs common dates."""
     from datetime import date as _date
