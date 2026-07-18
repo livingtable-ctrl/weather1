@@ -3207,8 +3207,10 @@ What shipped:
   originally proposed here, not the "move to tracker.py" branch --
   moving it would have required picking which of order_executor.py's and
   weather_markets.py's two same-named _current_forecast_cycle functions
-  to import into tracker.py (see the still-open TWO FUNCTIONS NAMED
-  _current_forecast_cycle entry below), and this entry's own scope is
+  to import into tracker.py (see the TWO FUNCTIONS NAMED
+  _current_forecast_cycle entry below -- open at the time this was
+  written, resolved 2026-07-18 by deleting weather_markets' copy), and
+  this entry's own scope is
   de-duplicating the kwargs assembly, not resolving that separate name
   collision. Confirmed first that both main.py copies already used
   order_executor._current_forecast_cycle (same one _prediction_kwargs_
@@ -3243,7 +3245,7 @@ Why not now (resolved):
 When to revisit:
   - N/A, closed. See TWO FUNCTIONS NAMED _current_forecast_cycle below
     for the adjacent name-collision issue this entry deliberately did
-    not fix (still open).
+    not fix (open at the time this was written; resolved 2026-07-18).
 
 [RESOLVED 2026-07-18] DISPUTED-ROW EXCLUSION PREDICATE HAND-COPIED ~40 TIMES IN tracker.py
 Priority: was Medium -- same "one shared rule, many consumers, one gets
@@ -3547,11 +3549,61 @@ When to revisit:
   - The next time any Kalshi API response shape changes -- do the
     consolidation then, since the copies need editing anyway.
 
-[TWO FUNCTIONS NAMED _current_forecast_cycle -- ONE IS DEAD AND HIDES FROM THE DEAD-CODE GUARD VIA NAME COLLISION]
-Priority: Low-Medium -- small cleanup, but it exposes a systematic blind
+[RESOLVED 2026-07-18] TWO FUNCTIONS NAMED _current_forecast_cycle -- ONE IS DEAD AND HIDES FROM THE DEAD-CODE GUARD VIA NAME COLLISION
+Priority: was Low-Medium -- small cleanup, but it exposes a systematic blind
   spot in tests/test_dead_code_scan.py worth closing while it's cheap.
 
-Problem:
+RESOLVED 2026-07-18: took the delete option (not the rename-to-
+  _current_nwp_cycle alternative -- the 4-cycle granularity had no real
+  consumer to preserve it for). Deleted weather_markets._current_forecast_cycle
+  entirely; confirmed via grep zero remaining production references anywhere.
+  Retargeted its two tests (tests/test_forecasting.py's TestForecastCycle)
+  from the dead 4-cycle bare-string function onto order_executor.
+  _current_forecast_cycle -- the real, live-used function, which had never
+  had a direct correctness test of its own value logic before (every other
+  test site only ever monkeypatches it away). Rewrote the boundary
+  assertions for its actual 2-cycle (00z/12z), date-prefixed format.
+  Deleted the now-duplicate dead tests in tests/test_phase4.py's
+  TestCurrentForecastCycle (renamed to TestLogPredictionForecastCycle once
+  only its unrelated log_prediction test remained).
+
+  Fixed the actual guard blind spot in tests/test_dead_code_scan.py per
+  this entry's own suggestion: split _called_in() into _bare_called_in()/
+  _alias_called_in(), and added _resolve_prod_evidence() which, when
+  checking whether a candidate function has a real caller in another file,
+  first checks whether that other file independently defines its own
+  module-level function of the same name (precomputed once via a
+  funcs_by_file dict, not re-parsed per candidate). If it does, only an
+  explicit alias-import call still counts as evidence -- a bare same-name
+  call in that file is its own self-reference, never the candidate's,
+  matching how Python name resolution actually works. 4 new synthetic-
+  source tests (TestSameNameCollisionResolution) exercise this directly:
+  the collision-not-counted case (the actual bug this closes -- confirmed
+  by hand that it fails under the old logic if reverted), two no-collision
+  baseline cases proving normal alias/bare cross-file calls still count,
+  and a mutation-proof case proving an explicit alias import still counts
+  even when the other file also defines its own colliding name (rules out
+  the fix over-suppressing real evidence). 127 tests pass across
+  tests/test_dead_code_scan.py + test_forecasting.py + test_phase4.py, plus
+  every test file touching order_executor._current_forecast_cycle
+  (test_execution_proof.py, test_p0_10_paper_prelog.py,
+  test_prediction_kwargs.py, test_shadow_predictions.py,
+  test_trade_improvements.py -- 32 passed). Lint/mypy clean.
+
+  Independently reviewed (Agent, opus) -- clean, no HIGH/MEDIUM issues.
+  Verified by hand that the collision logic matches real Python name
+  resolution (a bare call in a file that defines its own same-named
+  function can only ever resolve to that file's own definition, never
+  another file's), that the fix only ever makes the guard MORE aggressive
+  (can't introduce a false "live code flagged dead"), and that the
+  synthetic tests are genuine regressions rather than passing vacuously.
+  Two LOW cosmetic notes, both applied: renamed the now-misleadingly-named
+  test_phase4.py class, and removed a harmless-but-confusing no-op
+  _strip_def_line call in the collision branch (the only checks that run
+  there -- alias-call and string-reference matching -- can't match a `def
+  name(` line either way, so stripping it changed nothing).
+
+Problem (original framing, resolved above):
   order_executor.py:78-87 defines _current_forecast_cycle -> 2 cycles/day,
   date-prefixed ("2025-05-15_12z"), used everywhere real (order dedup,
   execution_log rows, all log_prediction forecast_cycle values via
@@ -3569,23 +3621,14 @@ Problem:
   happens to share a name with a live one in another scanned file gets
   the same free pass.
 
-What it would look like:
-  Delete weather_markets._current_forecast_cycle (or, if the 4-cycle
-  granularity is genuinely wanted someday for cache keys, rename to
-  _current_nwp_cycle and leave a comment distinguishing it from
-  order_executor's dedup cycle); move/retarget its two tests. Then teach
-  the scan to resolve calls per-module (attribute the call to the
-  defining module of the name in scope -- the scan already does
-  alias-resolution for `from module import name as _name`, so plain
-  same-file definitions are the remaining gap).
+What it would look like: [DONE, see resolution notes above]
 
-Why not now:
-  - None substantive -- candidate for the next housekeeping session. The
-    scan improvement is the part worth doing carefully (avoid regressing
-    the existing alias-resolution).
+Why not now (resolved):
+  - Was gated on doing the scan improvement carefully (avoid regressing
+    the existing alias-resolution) -- done, see the 4 new tests above.
 
 When to revisit:
-  - Next general housekeeping/cleanup session.
+  - N/A, closed.
 
 [ForecastCache EXISTS, BUT ~14 HAND-ROLLED TTL DICTS DO THE SAME JOB]
 Priority: Low-Medium -- consistency/tooling debt, not a live bug; each

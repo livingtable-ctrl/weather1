@@ -818,22 +818,6 @@ def _load_platt_models() -> dict[str, tuple[float, float]]:
     return _PLATT_MODELS
 
 
-def _current_forecast_cycle() -> str:
-    """
-    #37: Return the current NWP forecast cycle label based on UTC hour.
-    Cycles: 00z (00-05 UTC), 06z (06-11 UTC), 12z (12-17 UTC), 18z (18-23 UTC).
-    """
-    hour = datetime.now(UTC).hour
-    if hour < 6:
-        return "00z"
-    elif hour < 12:
-        return "06z"
-    elif hour < 18:
-        return "12z"
-    else:
-        return "18z"
-
-
 def _ttl_until_next_cycle(now: datetime | None = None) -> int:
     """
     #126: Return seconds until the next NWP model cycle data becomes available.

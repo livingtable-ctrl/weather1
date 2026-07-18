@@ -306,29 +306,14 @@ class TestPerCityLearnedWeights:
         assert result["gfs_seamless"] == pytest.approx(1.8)
 
 
-# ── Task 9: _current_forecast_cycle and log_prediction (#37) ─────────────────
+# ── Task 9: log_prediction forecast_cycle field (#37) ─────────────────────────
+# _current_forecast_cycle's own unit tests moved to tests/test_forecasting.py's
+# TestForecastCycle, retargeted from the now-deleted weather_markets copy onto
+# the real order_executor one (backlog.txt "TWO FUNCTIONS NAMED
+# _current_forecast_cycle").
 
 
-class TestCurrentForecastCycle:
-    def test_valid_cycle_values(self):
-        """_current_forecast_cycle returns one of the 4 valid cycle strings."""
-        from weather_markets import _current_forecast_cycle
-
-        valid = {"00z", "06z", "12z", "18z"}
-        result = _current_forecast_cycle()
-        assert result in valid
-
-    def test_00z_before_06_utc(self):
-        """At 03:00 UTC → cycle should be 00z."""
-        from weather_markets import _current_forecast_cycle
-
-        fake_now = datetime(2024, 1, 15, 3, 0, 0, tzinfo=UTC)
-        with patch("weather_markets.datetime") as mock_dt:
-            mock_dt.now.return_value = fake_now
-            result = _current_forecast_cycle()
-
-        assert result == "00z"
-
+class TestLogPredictionForecastCycle:
     def test_log_prediction_accepts_forecast_cycle(self):
         """log_prediction should accept forecast_cycle parameter without error."""
         import tracker as _tracker

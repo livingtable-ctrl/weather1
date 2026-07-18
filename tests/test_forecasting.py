@@ -390,44 +390,48 @@ class TestSnowLiquidRatio:
 
 
 class TestForecastCycle:
+    """Retargeted 2026-07-18 (backlog.txt "TWO FUNCTIONS NAMED
+    _current_forecast_cycle") from weather_markets._current_forecast_cycle
+    (deleted -- a 4-cycle bare-"12z" variant with zero production callers)
+    onto order_executor._current_forecast_cycle, the real dedup-key
+    function every live/paper order-placement call site actually uses.
+    Its 2-cycle (00z/12z), date-prefixed format had no direct correctness
+    test of its own before this -- every other test site only ever
+    monkeypatches it away."""
+
     def test_cycle_labels_cover_all_hours(self):
-        """Every UTC hour maps to a valid cycle label."""
+        """Every UTC hour maps to a valid, date-prefixed cycle label."""
         from datetime import datetime
         from unittest.mock import patch
 
-        from weather_markets import _current_forecast_cycle
+        from order_executor import _current_forecast_cycle
 
-        valid = {"00z", "06z", "12z", "18z"}
         for h in range(24):
             fake_now = datetime(2026, 1, 1, h, 0, 0, tzinfo=UTC)
-            with patch("weather_markets.datetime") as mock_dt:
+            with patch("order_executor.datetime") as mock_dt:
                 mock_dt.now.return_value = fake_now
-                mock_dt.side_effect = lambda *a, **kw: datetime(*a, **kw)
                 result = _current_forecast_cycle()
-            assert result in valid, f"Hour {h} returned invalid label {result!r}"
+            assert result in {"2026-01-01_00z", "2026-01-01_12z"}, (
+                f"Hour {h} returned invalid label {result!r}"
+            )
 
     def test_cycle_boundaries(self):
-        """Boundary hours map to correct cycles."""
+        """Boundary hours map to the correct cycle, including the date prefix."""
         from datetime import datetime
         from unittest.mock import patch
 
-        from weather_markets import _current_forecast_cycle
+        from order_executor import _current_forecast_cycle
 
         cases = [
-            (0, "00z"),
-            (5, "00z"),
-            (6, "06z"),
-            (11, "06z"),
-            (12, "12z"),
-            (17, "12z"),
-            (18, "18z"),
-            (23, "18z"),
+            (0, "2026-01-01_00z"),
+            (11, "2026-01-01_00z"),
+            (12, "2026-01-01_12z"),
+            (23, "2026-01-01_12z"),
         ]
         for hour, expected in cases:
             fake_now = datetime(2026, 1, 1, hour, 0, 0, tzinfo=UTC)
-            with patch("weather_markets.datetime") as mock_dt:
+            with patch("order_executor.datetime") as mock_dt:
                 mock_dt.now.return_value = fake_now
-                mock_dt.side_effect = lambda *a, **kw: datetime(*a, **kw)
                 result = _current_forecast_cycle()
             assert result == expected, f"Hour {hour}: expected {expected}, got {result}"
 

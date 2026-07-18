@@ -91,17 +91,26 @@ def _strip_full_comment_lines(src: str) -> str:
     return pattern.sub("", src)
 
 
-def _called_in(src: str, name: str) -> bool:
-    """True if `name` -- or an import alias of it, e.g. `import name as
-    _name` -- is directly called anywhere in src."""
+def _bare_called_in(src: str, name: str) -> bool:
+    """True if the bare, unaliased `name(` is directly called in src."""
     src = _strip_full_comment_lines(src)
-    call_pat = re.compile(rf"\b{re.escape(name)}\s*\(")
-    if call_pat.search(src):
-        return True
+    return bool(re.search(rf"\b{re.escape(name)}\s*\(", src))
+
+
+def _alias_called_in(src: str, name: str) -> bool:
+    """True if an import alias of `name` (`from module import name as
+    alias`) is called in src."""
+    src = _strip_full_comment_lines(src)
     for alias in re.findall(rf"\b{re.escape(name)}\s+as\s+(\w+)", src):
         if re.search(rf"\b{re.escape(alias)}\s*\(", src):
             return True
     return False
+
+
+def _called_in(src: str, name: str) -> bool:
+    """True if `name` -- or an import alias of it, e.g. `import name as
+    _name` -- is directly called anywhere in src."""
+    return _bare_called_in(src, name) or _alias_called_in(src, name)
 
 
 def _string_referenced_in(src: str, name: str) -> bool:
@@ -110,6 +119,52 @@ def _string_referenced_in(src: str, name: str) -> bool:
     call: doesn't prove reachability, but rules out confidently calling the
     function dead without a human checking the dispatch site."""
     return bool(re.search(rf'["\']{re.escape(name)}["\']', src))
+
+
+def _resolve_prod_evidence(
+    name: str,
+    defining_path: Path,
+    prod_src: dict[Path, str],
+    funcs_by_file: dict[Path, set[str]],
+) -> tuple[bool, bool]:
+    """Return (has_real_call, has_string_reference) for `name` (a module-level
+    function defined in defining_path) across every file in prod_src.
+
+    Resolves a same-name collision across files: if another file `p`
+    independently defines its own module-level function also called `name`
+    (e.g. order_executor._current_forecast_cycle vs
+    weather_markets._current_forecast_cycle -- see backlog.txt "TWO
+    FUNCTIONS NAMED _current_forecast_cycle"), a bare `name(` call inside
+    `p` resolves to p's OWN definition at runtime, not defining_path's --
+    counting it as evidence gives a dead function in defining_path a false
+    "has a caller" reading. Only an explicit alias import of `name` FROM
+    defining_path's module (`from module import name as alias`, then
+    `alias(...)`) still proves a real cross-file call in that case; a plain
+    call in a file that doesn't define its own colliding `name` is
+    unambiguous and still counted as before.
+    """
+    prod_call = False
+    prod_string = False
+    for p, src in prod_src.items():
+        if p == defining_path:
+            search_src = _strip_def_line(src, name)
+            called = _called_in(search_src, name)
+        elif name in funcs_by_file.get(p, set()):
+            # p's own bare `name(` calls are self-references (see docstring
+            # above) -- no need to strip p's def line, since only the alias
+            # check runs here and a `def name(` line can't match it.
+            search_src = src
+            called = _alias_called_in(search_src, name)
+        else:
+            search_src = src
+            called = _called_in(search_src, name)
+
+        if called:
+            prod_call = True
+            break
+        if _string_referenced_in(search_src, name):
+            prod_string = True
+    return prod_call, prod_string
 
 
 def _scan() -> tuple[
@@ -121,6 +176,9 @@ def _scan() -> tuple[
     test_files = sorted((_REPO_ROOT / "tests").glob("*.py"))
     prod_src = {p: p.read_text(encoding="utf-8") for p in prod_files}
     test_src = {p: p.read_text(encoding="utf-8") for p in test_files}
+    # Precomputed once so per-name collision checks don't re-parse every
+    # production file's AST for every candidate function.
+    funcs_by_file = {p: set(_module_level_funcs(p)) for p in prod_files}
 
     fully_dead = []
     tested_unreachable = []
@@ -129,15 +187,9 @@ def _scan() -> tuple[
     for tf in _TARGET_FILES:
         path = _REPO_ROOT / tf
         for name in _module_level_funcs(path):
-            prod_call = False
-            prod_string = False
-            for p, src in prod_src.items():
-                search_src = _strip_def_line(src, name) if p == path else src
-                if _called_in(search_src, name):
-                    prod_call = True
-                    break
-                if _string_referenced_in(search_src, name):
-                    prod_string = True
+            prod_call, prod_string = _resolve_prod_evidence(
+                name, path, prod_src, funcs_by_file
+            )
 
             if prod_call:
                 continue
@@ -235,3 +287,116 @@ def test_dead_code_allowlist_has_no_stale_entries():
     assert not stale, (
         f"Stale dead-code allowlist entries, function no longer exists: {stale}"
     )
+
+
+class TestSameNameCollisionResolution:
+    """backlog.txt "TWO FUNCTIONS NAMED _current_forecast_cycle" -- this scan
+    used to attribute a same-named function's bare calls in one file to a
+    completely different function of the same name defined in another file
+    (order_executor.py's own 5 calls to its own _current_forecast_cycle made
+    weather_markets.py's dead, same-named copy look reachable). Synthetic
+    in-memory sources so these stay meaningful regardless of real repo
+    content -- same pattern as test_date_today_guard.py's guard tests."""
+
+    def test_same_name_collision_in_another_file_is_not_counted_as_a_call(self):
+        defining_path = Path("weather_markets.py")
+        other_path = Path("order_executor.py")
+        prod_src = {
+            defining_path: "def _current_forecast_cycle():\n    return '12z'\n",
+            other_path: (
+                "def _current_forecast_cycle():\n"
+                "    return '2026-01-01_00z'\n"
+                "\n"
+                "def foo():\n"
+                "    return _current_forecast_cycle()\n"
+                "\n"
+                "def bar():\n"
+                "    return _current_forecast_cycle()\n"
+            ),
+        }
+        funcs_by_file = {
+            defining_path: {"_current_forecast_cycle"},
+            other_path: {"_current_forecast_cycle", "foo", "bar"},
+        }
+        prod_call, prod_string = _resolve_prod_evidence(
+            "_current_forecast_cycle", defining_path, prod_src, funcs_by_file
+        )
+        assert prod_call is False, (
+            "a same-named function's own self-calls in another file must "
+            "not count as evidence that defining_path's function is called"
+        )
+        assert prod_string is False
+
+    def test_real_cross_file_alias_call_is_still_counted(self):
+        """Baseline sanity check: the normal (no collision) alias-import
+        cross-file call path must still work after the collision fix."""
+        defining_path = Path("module_a.py")
+        other_path = Path("module_b.py")
+        prod_src = {
+            defining_path: "def helper():\n    return 1\n",
+            other_path: (
+                "from module_a import helper as _helper\n"
+                "\n"
+                "def use_it():\n"
+                "    return _helper()\n"
+            ),
+        }
+        funcs_by_file = {
+            defining_path: {"helper"},
+            other_path: {"use_it"},
+        }
+        prod_call, _ = _resolve_prod_evidence(
+            "helper", defining_path, prod_src, funcs_by_file
+        )
+        assert prod_call is True
+
+    def test_real_cross_file_bare_call_with_no_collision_is_still_counted(self):
+        """No collision (module_c doesn't define its own `helper`) -- a
+        plain, unaliased import-and-call must still count, exactly as
+        before the collision fix."""
+        defining_path = Path("module_a.py")
+        other_path = Path("module_c.py")
+        prod_src = {
+            defining_path: "def helper():\n    return 1\n",
+            other_path: ("from module_a import helper\n\n\nhelper()\n"),
+        }
+        funcs_by_file = {
+            defining_path: {"helper"},
+            other_path: set(),
+        }
+        prod_call, _ = _resolve_prod_evidence(
+            "helper", defining_path, prod_src, funcs_by_file
+        )
+        assert prod_call is True
+
+    def test_collision_with_explicit_alias_import_still_counts(self):
+        """Mutation-proof pair to the first test: even when another file
+        defines its OWN colliding `name`, an explicit alias import of the
+        real target function must still be detected as a genuine call --
+        proving the collision branch only suppresses the ambiguous bare
+        call, not real cross-file evidence."""
+        defining_path = Path("weather_markets.py")
+        other_path = Path("order_executor.py")
+        prod_src = {
+            defining_path: "def _current_forecast_cycle():\n    return '12z'\n",
+            other_path: (
+                "from weather_markets import _current_forecast_cycle as _wm_cycle\n"
+                "\n"
+                "def _current_forecast_cycle():\n"
+                "    return '2026-01-01_00z'\n"
+                "\n"
+                "def foo():\n"
+                "    return _current_forecast_cycle()\n"
+                "\n"
+                "def bar():\n"
+                "    return _wm_cycle()\n"
+            ),
+        }
+        funcs_by_file = {
+            defining_path: {"_current_forecast_cycle"},
+            other_path: {"_current_forecast_cycle", "foo", "bar"},
+        }
+        prod_call, _ = _resolve_prod_evidence(
+            "_current_forecast_cycle", defining_path, prod_src, funcs_by_file
+        )
+        assert prod_call is True
