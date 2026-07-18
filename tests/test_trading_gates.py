@@ -50,26 +50,37 @@ class TestLiveTradingGate:
         assert "not prod" in reason
 
     def test_blocks_when_live_trading_not_enabled(self):
-        """LIVE_TRADING_ENABLED must be explicitly 'true' — KALSHI_ENV=prod alone is not enough."""
+        """LIVE_TRADING_ENABLED must be explicitly 'true' — KALSHI_ENV=prod alone is not enough.
+
+        No-client fallback reads os.getenv("KALSHI_ENV") directly (see
+        test_blocks_when_not_prod's docstring) -- patch the real env var,
+        not main.KALSHI_ENV, which this code path never reads. The prior
+        `patch("main.KALSHI_ENV", "prod")` here was a no-op that happened
+        to pass locally only because a real (gitignored) .env sets
+        KALSHI_ENV=prod for this dev machine -- CI has no .env, so
+        os.getenv("KALSHI_ENV", "demo") fell through to "demo" there and
+        the gate blocked on "not prod" before ever reaching the
+        LIVE_TRADING_ENABLED check this test is actually about."""
         gate = self._gate()
-        with (
-            patch("main.KALSHI_ENV", "prod"),
-            patch.dict(os.environ, {"LIVE_TRADING_ENABLED": "false"}),
+        with patch.dict(
+            os.environ, {"KALSHI_ENV": "prod", "LIVE_TRADING_ENABLED": "false"}
         ):
             allowed, reason = gate.check()
         assert not allowed
         assert "LIVE_TRADING_ENABLED" in reason
 
     def test_blocks_when_live_trading_env_absent(self):
-        """Gate must block when LIVE_TRADING_ENABLED is not set at all."""
+        """Gate must block when LIVE_TRADING_ENABLED is not set at all.
+
+        See test_blocks_when_live_trading_not_enabled's docstring -- same
+        real-env-var fix, needed here too since gate.check() is called
+        with no client."""
         gate = self._gate()
         env_without_flag = {
             k: v for k, v in os.environ.items() if k != "LIVE_TRADING_ENABLED"
         }
-        with (
-            patch("main.KALSHI_ENV", "prod"),
-            patch.dict(os.environ, env_without_flag, clear=True),
-        ):
+        env_without_flag["KALSHI_ENV"] = "prod"
+        with patch.dict(os.environ, env_without_flag, clear=True):
             allowed, reason = gate.check()
         assert not allowed
         assert "LIVE_TRADING_ENABLED" in reason

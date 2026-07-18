@@ -401,16 +401,23 @@ class TestGfsUpdateWindow:
             )
 
     def test_gfs_window_disabled_with_zero_lockout(self, monkeypatch):
-        """When GFS_LOCKOUT_MINS=0, _in_gfs_update_window should always return False."""
+        """When GFS_LOCKOUT_MINS=0, _in_gfs_update_window should always return False.
+
+        Patches the derived module constant directly (matching this test
+        suite's own dominant convention, e.g. test_live_execution.py's
+        `monkeypatch.setattr(order_executor, "MIN_EDGE", ...)`) instead of
+        reloading order_executor -- a prior version of this test did
+        `importlib.reload(order_executor)` to pick up the env var, which
+        rebinds every function in the module to a NEW function object.
+        main.py imports _prediction_kwargs_from_analysis from order_executor
+        once at process start; a reload anywhere later leaves main.py
+        holding a stale reference that no longer `is` the live one,
+        breaking tests/test_prediction_kwargs.py's identity check whenever
+        this test happened to run first in the same session."""
+        import order_executor
         from order_executor import _in_gfs_update_window
 
-        monkeypatch.setenv("GFS_LOCKOUT_MINS", "0")
-        # Re-import to pick up the new env var
-        import importlib
-
-        import order_executor
-
-        importlib.reload(order_executor)
+        monkeypatch.setattr(order_executor, "_GFS_UPDATE_LOCKOUT_MINS", 0)
         t_blocked = datetime(2026, 7, 1, 0, 30, tzinfo=UTC)
         assert _in_gfs_update_window(now_utc=t_blocked) is False
 

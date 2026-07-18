@@ -3914,3 +3914,120 @@ When to revisit:
   - Any small housekeeping session; needs a one-time user decision
     (delete vs document) before touching code.
 
+[RESOLVED 2026-07-18] TEST-ORDER-DEPENDENT importlib.reload(order_executor) BROKE main.py's FROZEN-IMPORT IDENTITY CHECK
+Priority: was Medium (CI-breaking, safety-adjacent test coverage) -- now Low
+  (fixed; only a cousin risk remains, see below)
+
+RESOLVED 2026-07-18: found via real GitHub Actions CI failure output (not a
+  local repro -- this repo's local .env masked half of it, see below) after
+  pushing the execution_log migration and _current_forecast_cycle cleanup
+  commits. Two independent pre-existing bugs, neither caused by those two
+  commits, both exposed by the same CI run:
+    1. tests/test_execution_stability.py::test_gfs_window_disabled_with_
+       zero_lockout did `importlib.reload(order_executor)` to pick up a
+       monkeypatched GFS_LOCKOUT_MINS env var. Reloading a module rebinds
+       EVERY function in it to a new object -- including
+       _prediction_kwargs_from_analysis, which main.py had already imported
+       once at process-import time and never re-imports. Since
+       test_execution_stability.py sorts alphabetically before
+       test_prediction_kwargs.py, this reload made main.py's frozen
+       reference permanently diverge from order_executor's live one for the
+       rest of the session, breaking test_prediction_kwargs.py's
+       `main._prediction_kwargs_from_analysis is
+       order_executor._prediction_kwargs_from_analysis` identity check (the
+       actual regression guard the LOG_PREDICTION KWARGS ASSEMBLY entry
+       shipped). Confirmed by hand via git stash/pop: reverting the fix and
+       running both files together reproduces the exact CI failure;
+       restoring it removes it. Fixed by replacing the reload with
+       `monkeypatch.setattr(order_executor, "_GFS_UPDATE_LOCKOUT_MINS", 0)`
+       -- the function only reads that one env-derived constant (its
+       sibling _GFS_UPDATE_HOURS_UTC is a hardcoded literal, not
+       env-derived, so no coverage was lost), matching this suite's own
+       dominant convention elsewhere (test_live_execution.py's
+       `monkeypatch.setattr(order_executor, "MIN_EDGE", ...)`).
+    2. tests/test_trading_gates.py's test_blocks_when_live_trading_not_
+       enabled and test_blocks_when_live_trading_env_absent both called
+       gate.check() with no client and patched `main.KALSHI_ENV` -- but
+       LiveTradingGate.check()'s no-client fallback reads
+       os.getenv("KALSHI_ENV") directly (a 2026-07-09 fix, documented in
+       the method's own docstring), never touching main.KALSHI_ENV. The
+       patch was a pure no-op in this code path. It passed locally only
+       because this dev machine's real, gitignored .env sets
+       KALSHI_ENV=prod, loaded into the real os.environ via load_dotenv()
+       at import time -- GitHub Actions has no .env, so
+       os.getenv("KALSHI_ENV", "demo") returned "demo" there, blocking on
+       "not prod" before ever reaching the LIVE_TRADING_ENABLED check these
+       two tests actually exist to verify. Read all 16 uses of
+       patch("main.KALSHI_ENV", ...) in the file before scoping the fix --
+       the other 14 either also set the real env var via
+       patch.dict(os.environ, _PROD_ENV) (redundant but harmless), pass an
+       explicit client (bypassing the os.getenv fallback entirely), or
+       deliberately prove a client's base_url overrides a stale env value
+       (test_client_base_url_wins_over_stale_kalshi_env_*). Two more
+       (test_check_or_raise_raises_when_blocked,
+       test_micro_live_blocked_by_gate) are the same no-op pattern but
+       happen to still pass on CI because os.getenv's "demo" default
+       coincides with the blocked outcome they assert -- fragile but not
+       currently broken, left alone. Fixed the two genuinely broken tests
+       by moving KALSHI_ENV into their existing patch.dict(os.environ, ...)
+       calls, matching the sibling test_blocks_when_not_prod (already
+       fixed for this exact reason in an earlier session).
+  Independently reviewed (Agent, opus) -- clean. Verified the setattr fix
+  loses no coverage (only env-derived constant the function reads), the
+  patch.dict `clear=True` site restores every real env var except the one
+  intentionally-removed flag (no PATH-clearing risk, and the gate returns
+  before ever importing paper.py in that branch), and no pytest-xdist
+  parallelism concern (not installed; os.environ mutation wouldn't cross
+  worker processes even if it were). Checked every OTHER cross-module
+  identity assertion in the suite for the same reload-vs-frozen-import
+  vector -- only one structural cousin exists
+  (test_backtest.py's backtest._WEATHER_SERIES is wm.KNOWN_WEATHER_SERIES),
+  and it self-heals since weather_markets is never reloaded anywhere.
+
+Problem (original framing): N/A -- found and fixed in the same investigation,
+  not a pre-logged backlog item.
+
+Why not now: N/A -- fully resolved.
+
+When to revisit:
+  - N/A for the two fixed bugs. See the follow-up cousin-risk note below for
+    something worth a future look, not an active bug.
+
+[main.py's FROZEN `from utils import ...` COULD REPEAT THE SAME IDENTITY-DIVERGENCE BUG -- utils IS RELOADED BY ~6 TESTS]
+Priority: Low -- latent structural risk, not a current bug; nothing today
+  asserts an identity check that would catch it firing.
+
+Problem:
+  main.py:94 does `from utils import MIN_ARB_EDGE, MIN_EDGE, STRONG_EDGE,
+  is_trading_paused` once at process-import time -- the exact same frozen-
+  import shape that caused the order_executor bug above. utils.py is
+  reloaded by ~6 tests (test_kalshi_ws.py:234, test_p9_p10.py:620/629,
+  test_risk_control.py:371, test_sameday_reserve.py:17/123,
+  test_starting_balance.py:36), each to pick up an env-var-driven constant
+  the same way test_execution_stability.py's now-fixed reload did for
+  order_executor. No test today asserts `main.<symbol> is
+  utils.<symbol>` the way test_prediction_kwargs.py does for
+  order_executor, so nothing currently fails -- but if such a test is ever
+  added (a very plausible next step, since it's the same defensive pattern
+  that caught the order_executor bug), or if any of those 6 reloads is ever
+  reordered to run before a test relying on main.py's frozen utils symbols
+  behaving identically to utils' live ones, the same bug class recurs.
+
+What it would look like:
+  Either audit whether any of the 6 reload sites could instead monkeypatch
+  the specific derived constant directly (same fix pattern as the
+  order_executor case above -- likely possible for most/all of them,
+  removing the reload's side effect at the source), or, if reload is kept,
+  document the frozen-import hazard directly in main.py's import block so
+  a future contributor adding an identity check knows to check for this.
+
+Why not now:
+  - Not a live bug -- no identity assertion exists yet to trip it. Cheap to
+    fix opportunistically whenever one of those 6 test files is next open
+    for other reasons; not worth a dedicated pass on its own.
+
+When to revisit:
+  - Whenever test_kalshi_ws.py, test_p9_p10.py, test_risk_control.py,
+    test_sameday_reserve.py, or test_starting_balance.py is next touched,
+    or if a new main.py <-> utils identity-check test is ever added.
+
