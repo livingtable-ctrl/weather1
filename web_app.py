@@ -1985,11 +1985,12 @@ setInterval(() => {{
 
     @app.route("/api/today_forecasts")
     def api_today_forecasts():
-        from datetime import date, timedelta
+        from datetime import timedelta
 
+        from utils import utc_today as _utc_today_tf
         from weather_markets import CITY_COORDS, get_weather_forecast
 
-        today = date.today()
+        today = _utc_today_tf()
         tomorrow = today + timedelta(days=1)
         results: dict[str, dict] = {"today": {}, "tomorrow": {}}
         for city in sorted(CITY_COORDS):

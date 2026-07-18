@@ -683,9 +683,11 @@ def auto_backup() -> None:
     """
     import shutil
 
+    from utils import utc_today as _utc_today
+
     backup_dir = Path(__file__).parent / "data" / "backups"
     backup_dir.mkdir(exist_ok=True)
-    today = date.today().isoformat()
+    today = _utc_today().isoformat()
     files = [
         Path(__file__).parent / "data" / "predictions.db",
         Path(__file__).parent / "data" / "paper_trades.json",
@@ -795,9 +797,9 @@ def cmd_watch_settle(client: KalshiClient, args: list[str] | None = None) -> Non
     Exits automatically when nothing remains to settle.
     """
     import time as _time
-    from datetime import date
 
     from paper import auto_settle_paper_trades, get_open_trades
+    from utils import utc_today as _utc_today
 
     interval = 5
     if args:
@@ -806,7 +808,10 @@ def cmd_watch_settle(client: KalshiClient, args: list[str] | None = None) -> Non
         except ValueError:
             pass
 
-    today_str = date.today().isoformat()
+    # utc_today(), not date.today(): target_date (compared below) is
+    # UTC-anchored (backlog.txt "utils.utc_today() SAYS 'USE EVERYWHERE
+    # INSTEAD OF date.today()' -- 17 SITES STILL DON'T").
+    today_str = _utc_today().isoformat()
 
     def _pending() -> list:
         return [
@@ -2133,6 +2138,28 @@ def _quick_paper_buy(client: KalshiClient) -> None:
         print()
 
 
+def _feature_importance_days_out(target_date_str: str | None) -> int:
+    """How many days out a trade was placed, for feature-importance logging.
+
+    target_date_str is an ISO date string (weather_markets.py's analyze_trade
+    return dict stores target_date.isoformat(), not a date object) -- must be
+    parsed before arithmetic, not subtracted directly. Returns 0 if absent or
+    unparseable. Uses utc_today(), not date.today(): target_date is
+    UTC-anchored (backlog.txt "utils.utc_today() SAYS 'USE EVERYWHERE
+    INSTEAD OF date.today()' -- 17 SITES STILL DON'T").
+    """
+    if not target_date_str:
+        return 0
+    from datetime import date as _date_fi
+
+    from utils import utc_today as _utc_today_fi
+
+    try:
+        return (_date_fi.fromisoformat(target_date_str) - _utc_today_fi()).days
+    except (ValueError, TypeError):
+        return 0
+
+
 def cmd_today(client: KalshiClient) -> None:
     """Show a plain-English 'what should I do today?' recommendation."""
     from paper import get_balance, kelly_bet_dollars
@@ -2354,13 +2381,13 @@ def cmd_today(client: KalshiClient) -> None:
                 try:
                     from feature_importance import record_feature_contribution
 
-                    _days_out_fi = (
-                        (
-                            best_a.get("target_date")
-                            - __import__("datetime").date.today()
-                        ).days
-                        if best_a.get("target_date")
-                        else 0
+                    # best_a["target_date"] is an ISO string (weather_markets.py's
+                    # analyze_trade return dict stores target_date.isoformat()) --
+                    # the previous `str - date.today()` here always raised
+                    # TypeError, silently swallowed by the except below, so this
+                    # call has likely never actually recorded a contribution.
+                    _days_out_fi = _feature_importance_days_out(
+                        best_a.get("target_date")
                     )
                     record_feature_contribution(
                         _ticker1,
@@ -2996,8 +3023,10 @@ def cmd_forecast(city: str):
             red(f"Unknown city '{city}'.  Available: {', '.join(CITY_COORDS.keys())}")
         )
         return
+    from utils import utc_today as _utc_today
+
     print(bold(f"\n7-day forecast for {city}:\n"))
-    rows, today = [], date.today()
+    rows, today = [], _utc_today()
     for i in range(7):
         d = today + timedelta(days=i)
         f = get_weather_forecast(city, d)
@@ -5524,7 +5553,8 @@ def cmd_menu(client: KalshiClient):
         # ── Reminder banners ──────────────────────────────────────────────────
         try:
             import time as _t
-            from datetime import date as _date
+
+            from utils import utc_today as _utc_today_menu
 
             _last_run_path = Path(__file__).parent / "data" / ".cron_last_run"
             if not _last_run_path.exists():
@@ -5545,7 +5575,7 @@ def cmd_menu(client: KalshiClient):
             # Unsettled due trades
             from paper import get_open_trades as _got
 
-            _today = _date.today().isoformat()
+            _today = _utc_today_menu().isoformat()
             _due = [t for t in _got() if (t.get("target_date") or "") <= _today]
             if _due:
                 print(

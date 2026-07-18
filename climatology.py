@@ -69,8 +69,10 @@ def fetch_historical(city: str, coords: tuple, force: bool = False) -> dict | No
         _MEM_CACHE[city] = data
         return data
 
+    from utils import utc_today as _utc_today
+
     lat, lon, tz = coords
-    end_year = date.today().year - 1
+    end_year = _utc_today().year - 1
     start_year = end_year - HISTORY_YEARS
 
     params = {

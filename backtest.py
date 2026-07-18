@@ -132,70 +132,6 @@ def fetch_archive_temps(
 # ── Archive precipitation fetch ──────────────────────────────────────────────
 
 
-def fetch_archive_precip(
-    lat: float, lon: float, tz: str, target_date: date
-) -> tuple[float | None, str]:
-    """
-    Fetch historical daily precipitation (inches) from Open-Meteo archive.
-    #72: Returns (value, reason) where reason is one of:
-      "value"          — data fetched/cached successfully
-      "unsupported_date" — date outside archive range (too recent or too old)
-      "api_error"      — network or HTTP error
-      "no_data"        — API returned null/empty for this date
-    """
-    cache_key = f"{round(lat, 4)}_{round(lon, 4)}_{target_date.isoformat()}_precip"
-    cache_file = ARCHIVE_CACHE_DIR / f"{cache_key}.json"
-    if cache_file.exists():
-        try:
-            return (json.loads(cache_file.read_text()), "value")
-        except Exception:
-            pass
-
-    # Dates within last 5 days are typically not in the archive yet
-    from datetime import date as _date
-
-    days_old = (_date.today() - target_date).days
-    if days_old < 5:
-        return (None, "unsupported_date")
-
-    params = {
-        "latitude": lat,
-        "longitude": lon,
-        "start_date": target_date.isoformat(),
-        "end_date": target_date.isoformat(),
-        "daily": "precipitation_sum",
-        "precipitation_unit": "inch",
-        "timezone": tz,
-    }
-    try:
-        import time as _time_bt2
-
-        resp = None
-        for _attempt in range(3):
-            resp = requests.get(ARCHIVE_ENS_BASE, params=params, timeout=30)  # type: ignore[arg-type]
-            if resp.status_code == 429:
-                _time_bt2.sleep(2**_attempt)
-                continue
-            resp.raise_for_status()
-            break
-        else:
-            return (None, "api_error")
-        if resp is None:
-            return (None, "api_error")
-        daily = resp.json().get("daily", {})
-        vals = daily.get("precipitation_sum", [])
-        if not vals or vals[0] is None:
-            return (None, "no_data")
-        result = float(vals[0])
-        try:
-            cache_file.write_text(json.dumps(result))
-        except Exception:
-            pass
-        return (result, "value")
-    except Exception:
-        return (None, "api_error")
-
-
 def fetch_archive_precip_prob(
     lat: float, lon: float, tz: str, target_date: date, window_days: int = 30
 ) -> float | None:
@@ -392,6 +328,7 @@ def run_backtest(
     Returns summary dict: {brier, win_rate, total_pnl, n_markets, rows,
                            val_brier, val_n, val_win_rate}
     """
+    from utils import utc_today as _utc_today
     from weather_markets import (
         CITY_COORDS,
         _parse_market_condition,
@@ -400,12 +337,17 @@ def run_backtest(
         parse_market_price,
     )
 
-    cutoff = date.today() - timedelta(days=days_back)
+    # utc_today(), not date.today(): this cutoff feeds min_close_time below
+    # (a UTC timestamp filter against Kalshi's API), so a local-vs-UTC
+    # mismatch shifts the whole backtest window by up to a day near the
+    # boundary (backlog.txt "utils.utc_today() SAYS 'USE EVERYWHERE INSTEAD
+    # OF date.today()' -- 17 SITES STILL DON'T").
+    cutoff = _utc_today() - timedelta(days=days_back)
     holdout_days_count = (
         max(1, int(days_back * holdout_fraction)) if holdout_fraction > 0 else 0
     )
     holdout_cutoff = (
-        date.today() - timedelta(days=holdout_days_count)
+        _utc_today() - timedelta(days=holdout_days_count)
         if holdout_days_count > 0
         else None
     )
@@ -467,7 +409,7 @@ def run_backtest(
             except Exception:
                 pass
 
-        # Backtest uses archive data (fetch_archive_temps / fetch_archive_precip) for
+        # Backtest uses archive data (fetch_archive_temps / fetch_archive_precip_prob) for
         # probability, NOT the live forecast.  Forecast is None for past dates, so do
         # NOT gate on it here — only require city and tdate.
         if not city or not tdate:
@@ -737,6 +679,7 @@ def run_walk_forward(
     # (forecast_prob + outcome + city + market_date). Zero API calls required.
     # client and on_progress are kept as parameters for API compatibility but unused.
     from tracker import DB_PATH as _TRACKER_DB
+    from utils import utc_today as _utc_today
 
     _empty: dict = {
         "windows": [],
@@ -747,7 +690,9 @@ def run_walk_forward(
         "city_win_rates": {},
     }
 
-    cutoff = (date.today() - timedelta(days=days_total)).isoformat()
+    # utc_today(), not date.today(): cutoff feeds a market_date >= ? filter
+    # (UTC-anchored), same reasoning as run_backtest above.
+    cutoff = (_utc_today() - timedelta(days=days_total)).isoformat()
     try:
         _con = sqlite3.connect(_TRACKER_DB)
         _con.row_factory = sqlite3.Row
@@ -792,7 +737,7 @@ def run_walk_forward(
             }
         )
 
-    today = date.today()
+    today = _utc_today()
     windows = []
     for offset in range(0, days_total - window_size + 1, step_size):
         start_days = days_total - offset

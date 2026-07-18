@@ -3436,6 +3436,72 @@ class TestFetchPreviousRunLeads(unittest.TestCase):
         assert result == {}
 
 
+class TestFetchPreviousRunDailyUsesUtcToday(unittest.TestCase):
+    """backlog.txt "utils.utc_today() SAYS 'USE EVERYWHERE INSTEAD OF
+    date.today()' -- 17 SITES STILL DON'T": _fetch_previous_run_daily's
+    past_days computation used date.today() (server-local calendar) while
+    its sibling _fetch_previous_run_leads already used utc_today() with an
+    in-code comment explaining why -- a real, if narrow, mismatch risk on a
+    server running ahead of or behind UTC."""
+
+    def test_past_days_computed_from_utc_today_not_local_date(self):
+        """Mock utc_today() to a date BEFORE target_date, so the fixed
+        function's own past_days<0 guard should fire and return None
+        WITHOUT calling the network. If this regressed back to
+        date.today(), the guard would use the real system date instead
+        (well after target_date in this test), and the function would
+        proceed past the guard and attempt a live HTTP call despite the
+        mock. Assert on requests.get's call_count directly rather than the
+        return value -- the function's own broad `except Exception: return
+        None` around the HTTP call means a bad mutation and a correct
+        early-return are otherwise indistinguishable by return value alone
+        (both give None; one silently swallows a real network attempt)."""
+        from unittest.mock import patch
+
+        target = date(2026, 7, 10)
+        mocked_utc_today = date(2026, 7, 5)  # before target -> past_days < 0
+
+        with (
+            patch.object(tracker, "_utc_today", return_value=mocked_utc_today),
+            patch("requests.get") as mock_get,
+        ):
+            result = tracker._fetch_previous_run_daily(
+                40.7, -74.0, "America/New_York", target, "gfs_seamless", 3, "max"
+            )
+        assert result is None
+        assert mock_get.call_count == 0, (
+            "guard should have early-returned via the utc_today()-based "
+            "past_days check before making any HTTP call"
+        )
+
+    def test_past_days_ge_5_proceeds_past_the_guard(self):
+        """Sanity check the guard's positive case still works: when
+        utc_today() is well after target_date, past_days is not negative
+        and the function proceeds to the network call."""
+        from unittest.mock import MagicMock, patch
+
+        target = date(2026, 7, 1)
+        mocked_utc_today = date(2026, 7, 20)  # 19 days after target
+
+        resp = MagicMock()
+        resp.status_code = 200
+        resp.raise_for_status.return_value = None
+        resp.json.return_value = {
+            "hourly": {
+                "time": [f"{target.isoformat()}T12:00"],
+                "temperature_2m_previous_day3": [75.0],
+            }
+        }
+        with (
+            patch.object(tracker, "_utc_today", return_value=mocked_utc_today),
+            patch("requests.get", return_value=resp) as mock_get,
+        ):
+            tracker._fetch_previous_run_daily(
+                40.7, -74.0, "America/New_York", target, "gfs_seamless", 3, "max"
+            )
+        assert mock_get.call_count == 1
+
+
 class TestGetForecastRunTrend(unittest.TestCase):
     """get_forecast_run_trend() combines all 3 _PREVIOUS_RUN_MODEL_MAP models,
     weighted by _model_weights, into one apples-to-apples revision series."""

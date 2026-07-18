@@ -125,7 +125,9 @@ def get_indices(
         ):
             return _indices_cache.get("latest", {})
 
-        now = date.today()
+        from utils import utc_today as _utc_today
+
+        now = _utc_today()
         year = target_year or now.year
         month = target_month or now.month
 

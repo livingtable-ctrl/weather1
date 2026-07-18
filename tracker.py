@@ -2649,7 +2649,12 @@ def _fetch_previous_run_daily(
     """
     import requests as _req
 
-    past_days = (date.today() - target_date).days
+    # utc_today(), not date.today(): target_date is UTC-anchored (see
+    # _fetch_previous_run_leads's identical fix, tracker.py above) -- a
+    # server running ahead of UTC would otherwise miscount past_days near
+    # the day boundary (backlog.txt "utils.utc_today() SAYS 'USE EVERYWHERE
+    # INSTEAD OF date.today()' -- 17 SITES STILL DON'T").
+    past_days = (_utc_today() - target_date).days
     if past_days < 0:
         return None
     lead = max(1, min(days_out, 7))

@@ -3668,57 +3668,119 @@ When to revisit:
   - Sooner rather than later, specifically because live=1 rows are still
     empty -- this is the easiest this migration will ever be.
 
-[utils.utc_today() SAYS "USE EVERYWHERE INSTEAD OF date.today()" -- 17 SITES STILL DON'T]
-Priority: Low-Medium -- a recognized, already-bitten bug class with a
-  stated convention and zero enforcement. One instance (this session's own
-  new code) was found and fixed 2026-07-16; the remaining 17 are
+[RESOLVED 2026-07-18] utils.utc_today() SAYS "USE EVERYWHERE INSTEAD OF date.today()" -- 17 SITES STILL DON'T
+Priority: was Low-Medium -- a recognized, already-bitten bug class with a
+  stated convention and zero enforcement. One instance (2026-07-16's own
+  new code) was found and fixed that session; the remaining sites were
   unaudited.
 
-Problem:
-  utils.py:15-17 defines utc_today() with the docstring "Use everywhere
-  instead of date.today()", and the codebase has two documented scars
-  from ignoring it: web_app.py:3082's WA-timezone comment ("was
-  date.today() (server-local calendar)...") and the 07-13 test failures
-  where fixtures built from local date.today() disagreed with
-  simulate_portfolio's utils.utc_today() frame. tracker.py:2740 (the
-  run-trend fetcher shipped 2026-07-16) was the same bug -- confirmed and
-  fixed same-session, since forecast_days arithmetic against a
-  UTC-anchored target_date was computed from the server-local calendar.
-  Production date.today() survives at 17 more sites: tracker.py:2663
-  (the sibling _fetch_previous_run_daily, pre-existing, not touched this
-  session); backtest.py:156, 402, 407, 749, 794; main.py:688, 809, 2373,
-  3013, 5578; cron.py:425-442; web_app.py:1992; climate_indices.py:128;
-  climatology.py:72; cloud_backup.py:165. Some are plausibly fine
-  (cloud_backup's 30-day retention doesn't care), but nothing
-  distinguishes "audited, local is fine" from "nobody looked."
+Problem (as originally scoped):
+  utils.py defines utc_today() with the docstring "Use everywhere instead
+  of date.today()", and the codebase had two documented scars from
+  ignoring it: web_app.py's WA-timezone comment and the 07-13 test
+  failures where fixtures built from local date.today() disagreed with
+  simulate_portfolio's utc_today() frame. tracker.py's run-trend fetcher
+  was the same bug, confirmed and fixed 2026-07-16. ~17 more sites were
+  listed as unaudited, with no guard test to catch a new one.
 
-What it would look like:
-  A guard test in the established style: grep production modules for
-  date.today()/_date.today(), fail on any hit not in an allowlist with a
-  per-site reason (mirroring _DEAD_FIELD_ALLOWLIST's honest-
-  categorization approach). Audit the 17 sites once to populate it --
-  tracker.py:2663 should probably just switch to utc_today() too, given
-  its sibling function just proved the mismatch is real on this exact
-  machine (Belgium, UTC+2).
+What shipped:
+  Live re-scan (2026-07-18) found 19 real call sites (line numbers had
+  drifted from the original list), individually read for actual
+  materiality before touching anything:
+  - 10 were genuine UTC/local-calendar mismatch risk and got the
+    utc_today() swap: tracker.py's _fetch_previous_run_daily (the
+    sibling this entry explicitly flagged -- its own sibling
+    _fetch_previous_run_leads already proved the mismatch is real on
+    this machine); main.py's cmd_watch_settle and the interactive-menu
+    "due trades" warning (both gate paper-trade settlement on
+    target_date <= today -- live-relevant, traced target_date's actual
+    runtime provenance back through order_executor.py to confirm it's
+    genuinely the UTC-anchored market date, not assumed); backtest.py's
+    run_backtest and run_walk_forward (cutoffs feed a UTC min_close_time
+    filter against Kalshi's API and a market_date >= ? SQL filter);
+    climate_indices.py and climatology.py (month/year-boundary only,
+    negligible materiality, but same convention, free fix); main.py's
+    backup-filename timestamp and cmd_forecast CLI display; web_app.py's
+    today_forecasts dashboard API (display-only, but visible to a human).
+  - 2 were left exactly as-is with documented reasons, added to the new
+    guard test's allowlist: cloud_backup.py's 30-day-retention prune
+    (this entry's own original text already pre-judged this correctly)
+    and cron.py's once-a-day prod reminder (has its own idempotency
+    check, a few hours of drift is harmless).
+  - 1 site (backtest.py's fetch_archive_precip) turned out to have ZERO
+    callers anywhere in real code (verified: only referenced in generated
+    doc artifacts, not even in tests/) -- its sibling
+    fetch_archive_precip_prob is the one actually wired into
+    run_backtest and makes its own independent API call. Deleted the
+    dead function entirely per user sign-off rather than fixing a
+    timezone bug in unreachable code; it was also invisible to
+    test_dead_code_scan.py's existing guard, which only scans
+    paper.py/tracker.py/weather_markets.py, not backtest.py.
+  - 1 site (main.py:2360, cmd_today's manual-trade feature-importance
+    logging) was NOT actually a timezone bug at all, found by re-checking
+    the analysis (user explicitly asked for a second pass on the initial
+    categorization, which caught this): best_a.get("target_date") is an
+    ISO STRING (weather_markets.py's analyze_trade return dict stores
+    target_date.isoformat(), not a date object), and the code did
+    `str_value - date.today()` -- always raising TypeError, silently
+    swallowed by an enclosing `except Exception: pass`. record_feature_
+    contribution is called from nowhere else in the entire codebase, so
+    this had likely never successfully recorded a contribution since it
+    was written. Fixed by extracting the computation into a new
+    main._feature_importance_days_out(target_date_str) helper (parses
+    the string properly, uses utc_today(), returns 0 on any parse
+    failure) -- extracted specifically so it's unit-testable in isolation
+    from cmd_today's large, untested interactive CLI flow.
 
-Why not now:
-  - The audit is a half-session of judgment calls, not mechanical. Worth
-    pairing with any tracker.py or backtest.py session.
+  New guard: tests/test_date_today_guard.py, matching test_dead_code_
+  scan.py's / test_disputed_row_guard.py's allowlist style, but scanning
+  every top-level production .py file (not a fixed list -- real sites
+  turned up in 6 different files, so hardcoding a file list would
+  reproduce the exact "one gets missed" shape this guard exists to
+  prevent). Uses Python's tokenize module to mask out STRING/COMMENT
+  token spans before pattern-matching, not a per-line "#"/'"""'-prefix
+  check -- the first version of this guard false-positived on its own
+  new _feature_importance_days_out docstring, which mentions
+  "date.today()" as explanatory prose on an interior line that starts
+  with neither marker (a multi-line-docstring blind spot the simpler
+  per-line check couldn't see). Locked in as its own regression test
+  using a synthetic in-memory source string. Mutation-tested (injected a
+  fake unallowlisted date.today() call, confirmed the guard fails, then
+  reverted).
+
+  New tests: tests/test_tracker.py's TestFetchPreviousRunDailyUsesUtcToday
+  (mutation-tested against requests.get's call_count directly, not just
+  the return value -- the function's own broad `except Exception: return
+  None` around the HTTP call means a correct early-return and a bad
+  mutation that proceeds to a live call are otherwise indistinguishable
+  by return value alone, both give None); tests/
+  test_feature_importance_days_out.py (6 tests covering the extracted
+  helper; mutation-tested two ways -- reverting the helper to the raw
+  str-minus-date expression (no try/except) reproduces the exact
+  TypeError that was previously silently swallowed by cmd_today's own
+  except clause; reverting only the subtraction while keeping the
+  helper's own try/except (a subtler, more realistic mutation) still
+  fails 2 of 6 tests via a value mismatch (0 instead of the correct
+  days_out) rather than a raised exception, since that except clause
+  catches the TypeError internally -- an opus review caught that the
+  original draft of this note overstated this second case as "4 of 6
+  fail with the exact TypeError," corrected here).
+
+Why not now (resolved):
+  - Was gated on a half-session of per-site judgment calls -- done; see
+    the categorization above.
 
 When to revisit:
-  - Next tracker.py or backtest.py session -- pair the audit with
-    whatever else brings that file open.
+  - N/A, closed.
 
-Related micro-item, same new code: _fetch_previous_run_daily (tracker.py:
-  2646-2701) is now the single-lead, past-date special case of
-  _fetch_previous_run_leads (2720-2781) -- same endpoint, same parse loop,
-  differing only in past_days vs forecast_days param. Reimplementing the
-  former as a thin wrapper over the latter would remove ~40 duplicated
-  lines and make the past/future asymmetry live in exactly one place;
-  the leads variant already has the stricter malformed-response guards,
-  so the wrapper direction is safe. Fold into whichever of the two
-  entries above (utc_today audit, or a standalone drive-by) touches this
-  function next.
+Related micro-item, NOT done this pass (still open, deliberately
+  deferred): _fetch_previous_run_daily is still the single-lead,
+  past-date special case of _fetch_previous_run_leads -- same endpoint,
+  same parse loop, differing only in past_days vs forecast_days param.
+  Reimplementing the former as a thin wrapper over the latter would
+  remove ~40 duplicated lines. Only the utc_today() bug in
+  _fetch_previous_run_daily was fixed this pass, not this consolidation
+  -- fold into whichever session next touches this function.
 [DEAD TAKE-PROFIT PLUMBING STILL RUNS EVERY WATCH CYCLE AFTER THE FEATURE WAS DECLINED]
 Priority: Low -- vacuous no-op, but it's a decided-against feature whose
   machinery still executes, prints user-facing messaging, and carries
