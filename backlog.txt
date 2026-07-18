@@ -2039,18 +2039,42 @@ When to revisit:
     small and it prevents a third round of this plumbing.
 
 [LIQUIDITY-AWARE SIZING + DYNAMIC EDGE THRESHOLD]
-Priority: Medium (consolidates two existing loose ends into one feature)
+Priority: Medium (consolidates two existing loose ends into one feature) --
+  its own stated blocker is now satisfied (see UPDATE below), but the
+  originally-planned mechanism no longer exists in the codebase, so this
+  needs re-scoping before it's actually pickup-ready.
 
-Problem:
+UPDATE 2026-07-18 (no code changed, backlog text corrected against live
+  source): checked this entry's own "why not now" precondition directly
+  rather than trusting the text -- fill-quality instrumentation DOES now
+  exist (tracker.price_improvement has 319 real rows from paper trading,
+  populated by the 2026-07-12 maker-execution repricing work). But the
+  Problem section's first fragment is stale: paper.slippage_kelly_scale()
+  no longer exists -- it was deleted 2026-07-12 as part of the dead-code
+  cleanup (tests/test_dead_code_scan.py's own module docstring lists it
+  under "2026-07-12 removals: ... were all replaced by a different
+  approach elsewhere, leaving the old implementation orphaned but never
+  deleted [until then]"). So "wire slippage_kelly_scale() into the sizing
+  path" is no longer a valid plan -- there's nothing left to wire. The
+  fill-quality data (price_improvement) is real and available as a fresh
+  basis for a liquidity-aware sizing scale, but the actual design (what
+  function of price_improvement/volume/OI to build, whether it revives
+  the old 4-tier shape or something new informed by 319 real fills) has
+  not been done and needs its own pass, not a straight port of dead code.
+
+Problem (as originally scoped, first fragment now stale -- see UPDATE):
   Two already-tracked fragments make one coherent feature:
   - paper.slippage_kelly_scale() (paper.py:1843) is a complete 4-tier
-    volume/OI Kelly multiplier with zero callers (see [ORPHANED FUNCTIONS]).
+    volume/OI Kelly multiplier with zero callers (see [ORPHANED FUNCTIONS])
+    -- DELETED 2026-07-12, no longer exists; see UPDATE above.
   - "Dynamic edge threshold by market liquidity" was planned in
-    code_review_plan.md Phase 5, never built (see [MINOR CLEANUP]).
+    code_review_plan.md Phase 5, never built (see [MINOR CLEANUP]) --
+    still true as of 2026-07-18.
   Net effect today: a signal in a 5-contract-deep book is sized and gated
   identically to one in a 5000-contract book.
 
-What the fix looks like:
+What the fix looks like (needs re-scoping, see UPDATE -- this is the
+original, now-invalid plan, kept for context):
   Wire slippage_kelly_scale() into the sizing path (paper.py ~600-650);
   scale the effective min-edge requirement up as book depth/volume drops
   (thin books = your own fill moves the price = need more edge). Synergizes
@@ -2058,11 +2082,18 @@ What the fix looks like:
   and adverse selection worst.
 
 Why not now:
-  - Sizing-path changes need the usual careful blast-radius pass; better
-    tuned once fill-quality instrumentation (above) exists.
+  - The original reason (wait for fill-quality instrumentation) no longer
+    applies -- that data exists now. The real blocker is that the intended
+    mechanism was deleted out from under this entry; a fresh design pass
+    against price_improvement's actual 319 rows is needed before writing
+    code, same "surface real scope before coding" discipline as any other
+    sizing-path change.
 
 When to revisit:
-  - Alongside or after the maker-execution upgrades.
+  - Next time the sizing path is open for other reasons, or whenever
+    someone picks this up deliberately -- start with a fresh look at what
+    price_improvement/volume/OI data actually shows before designing the
+    scale function, rather than assuming the old 4-tier shape still fits.
 
 [DATA-DRIVEN SIGMA FROM SETTLED HISTORY + CLI-REPORT SETTLEMENT FETCH]
 Priority: Medium (sharpens every probability the bot emits; unblocks a
@@ -2561,14 +2592,26 @@ What it would look like:
 
 Why not now:
   - Needs thin-book handling (skip fit when fewer than ~3 two-sided
-    brackets -- is_liquid :3777 gives the gate); value is research-first,
-    so it competes with other log-only signals for the same "will anyone
-    ever check back" risk this file already flags.
+    brackets -- is_liquid gives the gate); value is research-first, so it
+    competes with other log-only signals for the same "will anyone ever
+    check back" risk this file already flags.
+  - UPDATE 2026-07-18 (no code changed, precondition checked against live
+    source): the thin-book gate this entry names as a blocker already
+    exists -- is_liquid() is a real, shipped function (weather_markets.py,
+    currently at line 3810; the :3777 line ref above has drifted from
+    intervening edits but the function itself is unchanged in shape).
+    There is no missing infrastructure and no data-accumulation wait here
+    -- unlike the other log-only signal entries in this file (run_trend,
+    candlestick capture, richer ML features), this one was never blocked
+    on anything external. It's simply unstarted design/build work that
+    lost out to higher-priority items every time priority was assigned.
+    Genuinely ready to pick up whenever someone chooses to prioritize it
+    over the other log-only candidates it competes with.
 
 When to revisit:
-  - Alongside JOINT FULL-LADDER BRACKET SELECTION, since both read the
-    same sibling-ladder data -- worth scoping together rather than
-    separately.
+  - No longer gated -- ready now. Still worth scoping alongside JOINT
+    FULL-LADDER BRACKET SELECTION since both read the same sibling-ladder
+    data, but that's a sequencing preference, not a precondition.
 
 [PUBLIC TRADES REST BACKFILL -- GET /markets/trades AT SETTLEMENT]
 Priority: Medium -- closes the exact gap the PUBLIC TRADE-FLOW SIGNAL entry
