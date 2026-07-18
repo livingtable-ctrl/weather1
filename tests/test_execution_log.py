@@ -95,6 +95,107 @@ class TestExecutionLogMigration:
         assert row["live"] == 1
 
 
+class TestSchemaVersionMatchesMigrations:
+    """backlog.txt "execution_log.py's SWALLOWED-ALTER MIGRATIONS vs
+    tracker.py's VERSIONED IDIOM" -- mirrors tracker.py's own
+    TestSchemaVersionMatchesMigrations guard (tests/test_tracker.py)."""
+
+    def setup_method(self):
+        self._tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+        execution_log.DB_PATH = Path(self._tmp.name)
+        execution_log._initialized = False
+
+    def teardown_method(self):
+        import gc
+
+        execution_log._initialized = False
+        self._tmp.close()
+        gc.collect()
+        Path(self._tmp.name).unlink(missing_ok=True)
+
+    def test_schema_version_equals_migration_count(self):
+        """_SCHEMA_VERSION must equal len(_MIGRATIONS) -- off-by-one leaves
+        the last migration unapplied."""
+        assert execution_log._SCHEMA_VERSION == len(execution_log._MIGRATIONS), (
+            f"_SCHEMA_VERSION={execution_log._SCHEMA_VERSION} but there are "
+            f"{len(execution_log._MIGRATIONS)} migrations -- mismatch causes "
+            "the last migration to be skipped or re-run every time"
+        )
+
+    def test_user_version_equals_schema_version_after_init(self):
+        """After init_log(), PRAGMA user_version must equal _SCHEMA_VERSION."""
+        execution_log.init_log()
+        with execution_log._conn() as con:
+            user_ver = con.execute("PRAGMA user_version").fetchone()[0]
+        assert user_ver == execution_log._SCHEMA_VERSION
+
+    def test_all_migrated_columns_present_on_fresh_db(self):
+        """A brand-new DB (no legacy columns baked into CREATE TABLE) must
+        still end up with every migrated column after init_log() runs the
+        full migration chain for real."""
+        execution_log.init_log()
+        with execution_log._conn() as con:
+            cols = {row[1] for row in con.execute("PRAGMA table_info(orders)")}
+        expected = {
+            "fill_quantity",
+            "error_code",
+            "error_type",
+            "forecast_cycle",
+            "live",
+            "settled_at",
+            "outcome_yes",
+            "pnl",
+            "close_time",
+            "filled_at",
+            "market_mid_at_fill",
+            "replaces_order_id",
+            "peak_profit_pct",
+            "exit_reason",
+            "exit_price",
+            "entry_prob",
+        }
+        assert expected <= cols
+
+    def test_genuine_operational_error_is_not_swallowed(self, monkeypatch):
+        """Mutation-proof check for the actual bug this migration style
+        fixes: a real OperationalError whose message is neither "duplicate
+        column" nor "already exists" (e.g. a typo'd table name) must
+        propagate instead of being silently treated as "already applied" --
+        the old bare `except sqlite3.OperationalError: pass` could not tell
+        the two apart."""
+        broken_migrations = list(execution_log._MIGRATIONS)
+        broken_migrations[1] = "ALTER TABLE no_such_table ADD COLUMN foo TEXT"
+        monkeypatch.setattr(execution_log, "_MIGRATIONS", broken_migrations)
+        with pytest.raises(sqlite3.OperationalError, match="no such table"):
+            execution_log.init_log()
+
+    def test_legacy_db_with_all_columns_but_no_version_self_heals(self):
+        """A pre-versioning DB already has every column (the old CREATE TABLE
+        included them all) but PRAGMA user_version is still 0. init_log()
+        must not raise -- each ALTER hits "duplicate column", gets caught,
+        and the version cursor catches up to _SCHEMA_VERSION."""
+        with sqlite3.connect(self._tmp.name) as con:
+            con.execute("""
+                CREATE TABLE orders (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    ticker TEXT NOT NULL, side TEXT NOT NULL,
+                    quantity INTEGER NOT NULL, price REAL NOT NULL,
+                    order_type TEXT, status TEXT, response TEXT, error TEXT,
+                    placed_at TEXT NOT NULL,
+                    fill_quantity INTEGER, error_code TEXT, error_type TEXT,
+                    forecast_cycle TEXT, live INTEGER DEFAULT 0,
+                    settled_at TEXT, outcome_yes INTEGER, pnl REAL,
+                    close_time TEXT, filled_at TEXT, market_mid_at_fill REAL,
+                    replaces_order_id INTEGER, peak_profit_pct REAL,
+                    exit_reason TEXT, exit_price REAL, entry_prob REAL
+                )
+            """)
+        execution_log.init_log()
+        with execution_log._conn() as con:
+            user_ver = con.execute("PRAGMA user_version").fetchone()[0]
+        assert user_ver == execution_log._SCHEMA_VERSION
+
+
 class TestDailyLiveLoss:
     def setup_method(self):
         import tempfile

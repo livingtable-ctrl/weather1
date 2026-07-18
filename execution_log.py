@@ -40,6 +40,68 @@ _initialized = False
 _init_lock = _el_threading.Lock()
 _append_lock = _el_threading.Lock()  # WA-9: serialize concurrent JSONL appends
 
+# backlog.txt "execution_log.py's SWALLOWED-ALTER MIGRATIONS vs tracker.py's
+# VERSIONED IDIOM" -- ported to tracker.py's PRAGMA user_version cursor
+# instead of re-attempting a flat ALTER list on every init inside a bare
+# `except sqlite3.OperationalError: pass`. The base CREATE TABLE below now
+# only has the columns that predate this list; every column added since is
+# expressed as its own migration, matching tracker.py's convention of never
+# touching the base CREATE TABLE again once versioning exists.
+_SCHEMA_VERSION = 16  # increment when _MIGRATIONS list grows
+
+_MIGRATIONS = [
+    "ALTER TABLE orders ADD COLUMN fill_quantity INTEGER",  # v1
+    "ALTER TABLE orders ADD COLUMN error_code TEXT",  # v2
+    "ALTER TABLE orders ADD COLUMN error_type TEXT",  # v3
+    "ALTER TABLE orders ADD COLUMN forecast_cycle TEXT",  # v4
+    "ALTER TABLE orders ADD COLUMN live INTEGER DEFAULT 0",  # v5
+    "ALTER TABLE orders ADD COLUMN settled_at TEXT",  # v6
+    "ALTER TABLE orders ADD COLUMN outcome_yes INTEGER",  # v7
+    "ALTER TABLE orders ADD COLUMN pnl REAL",  # v8
+    "ALTER TABLE orders ADD COLUMN close_time TEXT",  # v9
+    "ALTER TABLE orders ADD COLUMN filled_at TEXT",  # v10
+    "ALTER TABLE orders ADD COLUMN market_mid_at_fill REAL",  # v11
+    "ALTER TABLE orders ADD COLUMN replaces_order_id INTEGER",  # v12
+    "ALTER TABLE orders ADD COLUMN peak_profit_pct REAL",  # v13
+    "ALTER TABLE orders ADD COLUMN exit_reason TEXT",  # v14
+    "ALTER TABLE orders ADD COLUMN exit_price REAL",  # v15
+    "ALTER TABLE orders ADD COLUMN entry_prob REAL",  # v16
+]
+
+
+def _run_migrations(con: sqlite3.Connection) -> None:
+    """Apply any pending schema migrations and advance PRAGMA user_version.
+
+    Mirrors tracker.py's _run_migrations: a genuine OperationalError (locked
+    DB, disk error) on a needed ALTER is distinguished from "column already
+    exists" by inspecting the error message, instead of swallowing both
+    alike -- the former now propagates instead of silently leaving the
+    column missing.
+    """
+    current = con.execute("PRAGMA user_version").fetchone()[0]
+    for i, sql in enumerate(_MIGRATIONS):
+        version = i + 1
+        if version <= current:
+            continue
+        try:
+            con.execute(sql)
+            # Write user_version immediately after each migration so a crash
+            # between steps leaves the version accurate rather than at v0.
+            con.execute(f"PRAGMA user_version={version}")
+            _log.info("execution_log: applied migration v%d", version)
+        except sqlite3.OperationalError as e:
+            err_str = str(e).lower()
+            if "duplicate column" in err_str or "already exists" in err_str:
+                # Migration already applied (e.g. a pre-versioning DB that
+                # already has every column) -- still advance the cursor.
+                con.execute(f"PRAGMA user_version={version}")
+                _log.debug(
+                    "execution_log: migration v%d already applied: %s", version, e
+                )
+            else:
+                raise
+    con.execute(f"PRAGMA user_version={_SCHEMA_VERSION}")
+
 
 def _conn() -> sqlite3.Connection:
     con = sqlite3.connect(DB_PATH, timeout=30)
@@ -72,24 +134,7 @@ def init_log() -> None:
                 status         TEXT,              -- "sent", "pending", "filled", "failed", "canceled"
                 response       TEXT,              -- JSON-encoded API response
                 error          TEXT,              -- error message if failed
-                placed_at      TEXT    NOT NULL,
-                -- #75: structured columns for querying failures without JSON parsing
-                fill_quantity  INTEGER,           -- contracts actually filled
-                error_code     TEXT,              -- HTTP status or error type
-                error_type     TEXT,              -- exception class name
-                forecast_cycle TEXT,              -- forecast cycle for cycle-aware dedup
-                live           INTEGER DEFAULT 0, -- 1 if this is a live order
-                settled_at     TEXT,              -- ISO timestamp when settlement outcome was recorded
-                outcome_yes    INTEGER,           -- 1 if YES side won, 0 if NO side won
-                pnl            REAL,              -- net P&L after Kalshi fee in dollars
-                close_time     TEXT,              -- market close_time ISO string; used for pre-close GTC cancel
-                filled_at      TEXT,              -- ISO timestamp when a fill was first detected
-                market_mid_at_fill REAL,           -- market mid-price at the moment of that detection
-                replaces_order_id INTEGER,         -- id of the order row this one cancel-replaced, if any
-                peak_profit_pct REAL,              -- running peak unrealized-profit fraction (breakeven-stop)
-                exit_reason    TEXT,               -- "stop_loss"/"breakeven"/"model_exit" if closed early; NULL for natural settlement
-                exit_price     REAL,               -- realized exit price if closed early (NULL for natural settlement)
-                entry_prob     REAL                -- analyze_trade()'s forecast_prob at placement time (model-exit shift detection)
+                placed_at      TEXT    NOT NULL
             );
 
             CREATE INDEX IF NOT EXISTS idx_orders_ticker    ON orders(ticker, placed_at);
@@ -102,31 +147,8 @@ def init_log() -> None:
                 updated_at TEXT NOT NULL
             );
             """)
-        # Migration: add structured error columns for older DBs
-        migrations = [
-            "ALTER TABLE orders ADD COLUMN fill_quantity INTEGER",
-            "ALTER TABLE orders ADD COLUMN error_code TEXT",
-            "ALTER TABLE orders ADD COLUMN error_type TEXT",
-            "ALTER TABLE orders ADD COLUMN forecast_cycle TEXT",
-            "ALTER TABLE orders ADD COLUMN live INTEGER DEFAULT 0",
-            "ALTER TABLE orders ADD COLUMN settled_at TEXT",
-            "ALTER TABLE orders ADD COLUMN outcome_yes INTEGER",
-            "ALTER TABLE orders ADD COLUMN pnl REAL",
-            "ALTER TABLE orders ADD COLUMN close_time TEXT",
-            "ALTER TABLE orders ADD COLUMN filled_at TEXT",
-            "ALTER TABLE orders ADD COLUMN market_mid_at_fill REAL",
-            "ALTER TABLE orders ADD COLUMN replaces_order_id INTEGER",
-            "ALTER TABLE orders ADD COLUMN peak_profit_pct REAL",
-            "ALTER TABLE orders ADD COLUMN exit_reason TEXT",
-            "ALTER TABLE orders ADD COLUMN exit_price REAL",
-            "ALTER TABLE orders ADD COLUMN entry_prob REAL",
-        ]
         with _conn() as con:
-            for stmt in migrations:
-                try:
-                    con.execute(stmt)
-                except sqlite3.OperationalError:
-                    pass
+            _run_migrations(con)
         _initialized = True
 
 

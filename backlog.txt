@@ -3629,12 +3629,68 @@ When to revisit:
   - Opportunistically, whenever any of the listed files is next open for
     other reasons.
 
-[execution_log.py's SWALLOWED-ALTER MIGRATIONS vs tracker.py's VERSIONED IDIOM]
-Priority: Low-Medium -- worked fine so far, but the live-execution feature
+[RESOLVED 2026-07-18] execution_log.py's SWALLOWED-ALTER MIGRATIONS vs tracker.py's VERSIONED IDIOM
+Priority: was Low-Medium -- worked fine so far, but the live-execution feature
   stream (7 new columns across 07-12/07-13 alone) is growing the weaker
   idiom fastest, and its failure mode is silent.
 
-Problem:
+RESOLVED 2026-07-18: ported to tracker.py's PRAGMA user_version cursor,
+  taking the "freeze current 16 ALTERs + CREATE TABLEs as migrations 1..N"
+  option from this entry's own "what it would look like" (not the shared-
+  helper option -- kept the ~25-line runner duplicated per-file rather than
+  touching tracker.py's already-tested version, matching this project's
+  minimal-blast-radius convention). Base `CREATE TABLE orders` now holds
+  only the 10 columns that predate this migration list (id, ticker, side,
+  quantity, price, order_type, status, response, error, placed_at); all 16
+  previously-migrated columns (fill_quantity through entry_prob) now exist
+  ONLY as _MIGRATIONS entries -- matching tracker.py's own convention of
+  never touching the base CREATE TABLE again once versioning exists, and
+  eliminating the prior duplication where a column was declared in both the
+  CREATE TABLE and a swallowed ALTER. _run_migrations() mirrors tracker.py's
+  version exactly: PRAGMA user_version as cursor, writes it after each
+  applied step (crash-safety), and distinguishes "duplicate column"/"already
+  exists" (case-insensitive message match) from a genuine OperationalError,
+  which now propagates instead of being silently swallowed -- the actual bug
+  this entry existed to fix. Traced by hand and confirmed via a new test:
+  a real pre-existing on-disk DB (already has all 16 columns from the old
+  CREATE TABLE, PRAGMA user_version still 0 since it was never set) self-
+  heals cleanly -- every ALTER hits "duplicate column", gets caught, cursor
+  catches up to 16, no crash, no data loss.
+
+  5 new tests (tests/test_execution_log.py::TestSchemaVersionMatchesMigrations,
+  mirroring tracker.py's own guard class): _SCHEMA_VERSION==len(_MIGRATIONS),
+  PRAGMA user_version==_SCHEMA_VERSION after init_log(), all 16 migrated
+  columns present on a genuinely fresh DB (proving the migrations run for
+  real, not just no-op against a CREATE TABLE that already had them), a
+  mutation-style test proving a genuine OperationalError (bad-table-name
+  ALTER, not a duplicate-column message) actually propagates through
+  init_log() -- the direct regression test for the original swallowed-error
+  bug -- and the legacy-DB self-heal scenario built as a real pre-versioning
+  table, not simulated. 33/33 tests in the file pass; also ran every test
+  file elsewhere in the repo that imports execution_log (dedup, live
+  execution, paper, trading gates, trade improvements, risk control,
+  prelog, phase2/phase3 batches, infrastructure, kalshi_client) -- 562
+  passed, 2 pre-existing skips, 0 failures. Lint/mypy clean.
+
+  Independently reviewed (Agent, opus) per this project's mandatory-review
+  convention -- came back clean. Specifically traced: no column present in
+  both the base CREATE TABLE and a migration (which would make that
+  migration a guaranteed permanent no-op masking whether the cursor
+  advances correctly); every column any function in the file reads/writes
+  resolves to either the base table or a migration; the pre-existing-DB
+  self-heal scenario by hand; thread-safety of _run_migrations running
+  inside the existing double-checked _init_lock (no new issue -- only one
+  thread ever runs migrations, flag flips true only after they complete);
+  and that the new tests genuinely exercise real code paths rather than
+  passing vacuously. One LOW note, not a bug: execution_log's
+  _run_migrations catches `sqlite3.OperationalError` specifically where
+  tracker.py's catches bare `Exception` -- correct and actually tighter for
+  a list that's 100% ALTER TABLE ADD COLUMN today; worth revisiting only if
+  a future migration here is a CREATE UNIQUE INDEX over dirty data (would
+  raise IntegrityError, which should propagate anyway, so still desired
+  behavior).
+
+Problem (original framing, resolved above):
   tracker.py migrations are versioned (_MIGRATIONS list + PRAGMA
   user_version cursor, tracker.py:30-255) with guard tests asserting
   _SCHEMA_VERSION == len(_MIGRATIONS) -- and this exact machinery just
@@ -3651,22 +3707,15 @@ Problem:
   live-execution feature grows the list, so the two files' migration
   styles diverge further with each shipped entry.
 
-What it would look like:
-  Port execution_log to the tracker pattern: freeze the current 16
-  ALTERs + CREATE TABLEs as migrations 1..N, set user_version, add the
-  same len==version guard test. Or extract tracker's ~25-line runner
-  (_run_migrations) into a shared helper both files use.
+What it would look like: [DONE, see resolution notes above]
 
-Why not now:
-  - The current code works and live=1 rows are precious-few (no live
-    orders yet) -- ideal time to do it is actually now-ish, before live
-    data exists to migrate carefully, but it's not urgent by impact.
-    Needs care around the double-checked-locking init
-    (execution_log.py:52-62).
+Why not now (resolved):
+  - Was gated on doing it while live=1 rows were still empty (the easiest
+    this migration would ever be) -- done while that was still true;
+    ENABLE_MICRO_LIVE remained False throughout, untouched by this change.
 
 When to revisit:
-  - Sooner rather than later, specifically because live=1 rows are still
-    empty -- this is the easiest this migration will ever be.
+  - N/A, closed.
 
 [RESOLVED 2026-07-18] utils.utc_today() SAYS "USE EVERYWHERE INSTEAD OF date.today()" -- 17 SITES STILL DON'T
 Priority: was Low-Medium -- a recognized, already-bitten bug class with a
