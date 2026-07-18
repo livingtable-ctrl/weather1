@@ -1432,6 +1432,104 @@ class TestCorrKellyScale:
         assert result >= 0.25
 
 
+class TestLiquidityKellyScale:
+    """backlog.txt "LIQUIDITY-AWARE SIZING + DYNAMIC EDGE THRESHOLD" -- revives
+    the 2026-07-12-deleted paper.slippage_kelly_scale's exact tier shape."""
+
+    def test_liquid_market_returns_1_0(self):
+        from paper import liquidity_kelly_scale
+
+        assert liquidity_kelly_scale(
+            {"volume": 400, "open_interest": 200}
+        ) == pytest.approx(1.00)
+
+    def test_medium_liquidity_returns_0_85(self):
+        from paper import liquidity_kelly_scale
+
+        assert liquidity_kelly_scale(
+            {"volume": 250, "open_interest": 100}
+        ) == pytest.approx(0.85)
+
+    def test_low_liquidity_returns_0_70(self):
+        from paper import liquidity_kelly_scale
+
+        assert liquidity_kelly_scale(
+            {"volume": 60, "open_interest": 20}
+        ) == pytest.approx(0.70)
+
+    def test_illiquid_market_returns_0_50(self):
+        from paper import liquidity_kelly_scale
+
+        assert liquidity_kelly_scale(
+            {"volume": 10, "open_interest": 5}
+        ) == pytest.approx(0.50)
+
+    def test_zero_liquidity_returns_0_50(self):
+        from paper import liquidity_kelly_scale
+
+        assert liquidity_kelly_scale(
+            {"volume": 0, "open_interest": 0}
+        ) == pytest.approx(0.50)
+
+    def test_missing_fields_treated_as_zero_not_typeerror(self):
+        from paper import liquidity_kelly_scale
+
+        assert liquidity_kelly_scale({}) == pytest.approx(0.50)
+
+    def test_volume_and_open_interest_are_summed_not_maxed(self):
+        # 300 volume alone (below the 500 floor) plus 300 OI alone (also
+        # below) sum to 600 -- must land in the liquid tier, proving the two
+        # fields are summed together, not compared/maxed independently.
+        from paper import liquidity_kelly_scale
+
+        assert liquidity_kelly_scale(
+            {"volume": 300, "open_interest": 300}
+        ) == pytest.approx(1.00)
+
+    def test_tier_boundaries_are_strict_greater_than(self):
+        # Exactly at a boundary falls into the LOWER tier (> not >=), matching
+        # the deleted original's exact comparison operators.
+        from paper import liquidity_kelly_scale
+
+        assert liquidity_kelly_scale(
+            {"volume": 500, "open_interest": 0}
+        ) == pytest.approx(0.85)
+        assert liquidity_kelly_scale(
+            {"volume": 200, "open_interest": 0}
+        ) == pytest.approx(0.70)
+        assert liquidity_kelly_scale(
+            {"volume": 50, "open_interest": 0}
+        ) == pytest.approx(0.50)
+
+    def test_current_api_fp_field_names_are_read(self):
+        # Real bug caught by opus review before this shipped: the current
+        # Kalshi API returns volume_fp/open_interest_fp, not the legacy
+        # volume/open_interest -- a market carrying ONLY the _fp names must
+        # not silently fall through to the worst-case 0.50 tier the way a
+        # plain-names-only read would.
+        from paper import liquidity_kelly_scale
+
+        assert liquidity_kelly_scale(
+            {"volume_fp": 2000, "open_interest_fp": 3000}
+        ) == pytest.approx(1.00)
+
+    def test_fp_field_names_preferred_over_legacy_when_both_present(self):
+        from paper import liquidity_kelly_scale
+
+        # Legacy fields alone would give liq=600 (liquid tier); _fp fields
+        # alone would give liq=20 (illiquid tier). Confirms _fp takes
+        # priority when both keys exist on the same dict, matching
+        # analyze_trade()'s own liquidity gate precedence.
+        assert liquidity_kelly_scale(
+            {
+                "volume": 300,
+                "open_interest": 300,
+                "volume_fp": 10,
+                "open_interest_fp": 10,
+            }
+        ) == pytest.approx(0.50)
+
+
 class TestMonteCarloCholesky:
     def test_cholesky_identity(self):
         from monte_carlo import _cholesky

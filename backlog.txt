@@ -2038,31 +2038,111 @@ When to revisit:
     version instead of the one-model version, since the marginal cost is
     small and it prevents a third round of this plumbing.
 
-[LIQUIDITY-AWARE SIZING + DYNAMIC EDGE THRESHOLD]
-Priority: Medium (consolidates two existing loose ends into one feature) --
-  its own stated blocker is now satisfied (see UPDATE below), but the
-  originally-planned mechanism no longer exists in the codebase, so this
-  needs re-scoping before it's actually pickup-ready.
+[RESOLVED 2026-07-19] LIQUIDITY-AWARE SIZING + DYNAMIC EDGE THRESHOLD
+Priority: was Medium (consolidates two existing loose ends into one
+  feature).
 
-UPDATE 2026-07-18 (no code changed, backlog text corrected against live
-  source): checked this entry's own "why not now" precondition directly
-  rather than trusting the text -- fill-quality instrumentation DOES now
-  exist (tracker.price_improvement has 319 real rows from paper trading,
-  populated by the 2026-07-12 maker-execution repricing work). But the
-  Problem section's first fragment is stale: paper.slippage_kelly_scale()
-  no longer exists -- it was deleted 2026-07-12 as part of the dead-code
-  cleanup (tests/test_dead_code_scan.py's own module docstring lists it
-  under "2026-07-12 removals: ... were all replaced by a different
-  approach elsewhere, leaving the old implementation orphaned but never
-  deleted [until then]"). So "wire slippage_kelly_scale() into the sizing
-  path" is no longer a valid plan -- there's nothing left to wire. The
-  fill-quality data (price_improvement) is real and available as a fresh
-  basis for a liquidity-aware sizing scale, but the actual design (what
-  function of price_improvement/volume/OI to build, whether it revives
-  the old 4-tier shape or something new informed by 319 real fills) has
-  not been done and needs its own pass, not a straight port of dead code.
+RESOLVED 2026-07-19: split the two original mechanisms by risk profile
+  rather than shipping both live, after a scoping pass that found the
+  2026-07-18 UPDATE's "319 real fills" framing overstated what that data
+  could actually do -- tracker.price_improvement has no volume/open_interest
+  column and no join key back to book depth at fill time (price_history,
+  which would let you reconstruct that, still has 0 rows); even the weak
+  proxy check (does the bot's own order quantity correlate with fill
+  slippage magnitude?) showed no relationship (corr ~= -0.03 to -0.07,
+  n=319). So neither original mechanism could be empirically calibrated --
+  both are reasoned defaults, same as the 2026-07-12 originals were.
+  Given that, the two pieces were deliberately NOT shipped with equal
+  confidence:
+  1. paper.liquidity_kelly_scale(market) -- LIVE. Revives the deleted
+     slippage_kelly_scale's exact tier shape (volume+open_interest summed;
+     500/200/50 -> 1.00/0.85/0.70/0.50), wired into order_executor.py's
+     _auto_place_trades sizing math (line ~2352, multiplied into adj_kelly
+     right alongside corr_kelly_scale -- same call site, same pattern).
+     Chosen to ship live because it fails safe: a wrong multiplier only
+     ever produces a smaller (or zero) bet, never a wrong-direction one,
+     and every existing position-size guardrail (MAX_TOTAL_OPEN_EXPOSURE,
+     KELLY_CAP, corr_kelly_scale's own floor, daily-loss/drawdown halts)
+     still sits downstream of it as a safety net.
+  2. weather_markets._liquidity_edge_scale(volume, open_interest) --
+     LOG-ONLY. Matches code_review_plan.md's Phase 5 Feature 3 design
+     exactly (confirmed via git archaeology -- never built there). Computed
+     as gated_edge = adjusted_edge / liquidity_edge_scale at the scan-loop
+     level (cron.py's cmd_cron, main.py's _analyze_once) -- deliberately
+     NOT inside analyze_trade() itself (mirrors run_trend's/market_implied's
+     precedent of keeping unvalidated signals out of the live trade-decision
+     function) and NEVER used for STRONG/MED/MIN classification. Kept
+     log-only because a wrong multiplier here is a correctness risk, not
+     just a sizing one -- it sits upstream of every existing safety net,
+     and could in principle inflate a weak signal into STRONG rather than
+     just under-sizing a good one (the same failure class as this project's
+     own past T-bucket sign-inversion and net_edge cap-ordering bugs). See
+     ENABLEMENT TRIGGER below for what's required before this changes.
+  Logged into 2 new predictions columns (liquidity_edge_scale, gated_edge --
+  migration v46/v47) via order_executor._prediction_kwargs_from_analysis,
+  reading a.get("liquidity_edge_scale")/a.get("gated_edge") (same
+  scan-paths-only pattern as market_implied -- cmd_market/cmd_order log
+  NULL for both).
+  8 new tests for liquidity_kelly_scale (tests/test_paper.py), 8 for
+  _liquidity_edge_scale (tests/test_weather_markets.py), plus extensions to
+  test_prediction_kwargs.py (2 tests) and test_tracker.py (2 tests). A real
+  bug caught mid-build (not by review): main.py's first-draft wiring
+  computed gated_edge from raw `edge` while cron.py's used `adjusted_edge`
+  -- would have made the two scan paths log incomparable values, silently
+  corrupting the future correlation check below. Caught by re-reading the
+  two call sites side by side before moving on, fixed to derive both from
+  adjusted_edge consistently.
+  Independent opus review caught one real, live-money bug before push:
+  paper.liquidity_kelly_scale (and both log-only call sites) read only the
+  legacy market.get("volume")/market.get("open_interest") field names --
+  but the current Kalshi API returns volume_fp/open_interest_fp, and
+  nothing normalizes one to the other. Every other volume/OI consumer in
+  this codebase (analyze_trade()'s own liquidity gate, is_liquid() partly,
+  parse_market_price, schema_validator.py) already coalesces
+  X_fp or X or 0 -- this new code was the one exception, and would have
+  silently applied the worst-case 0.50 Kelly multiplier to every live
+  trade on a market that only carries the _fp fields (which is the live,
+  current-API case), halving position sizes with no error and no log.
+  Confirmed via the reviewer's own repro (a genuinely deep book,
+  volume_fp=2000/open_interest_fp=3000, correctly liquid but returned 0.50
+  pre-fix instead of the correct 1.00). Fixed all 3 call sites
+  (paper.liquidity_kelly_scale; cron.py/main.py's
+  log-only _liquidity_edge_scale call sites) to match analyze_trade()'s
+  exact coalescing pattern. Added 2 new tests proving the _fp names are
+  read and take precedence over legacy names when both are present --
+  the review's own note: the original tests only exercised plain field
+  names, "exactly why they pass while live behavior breaks," so green
+  tests alone hadn't caught this. Also surfaced, not fixed here (separate,
+  lower-severity, pre-existing): is_liquid() (weather_markets.py) has the
+  same plain-names-only gap, masked in practice by its own OR-fallback on
+  real bid/ask quote presence -- worth a future look, filed as its own
+  consideration rather than silently patched as a drive-by here.
+  696 tests pass across the full scoped run (test_tracker.py, test_paper.py,
+  test_weather_markets.py, the cron/shadow-prediction cluster,
+  test_trade_improvements.py, test_live_execution.py), lint clean.
 
-Problem (as originally scoped, first fragment now stale -- see UPDATE):
+ENABLEMENT TRIGGER (the actual ask: when to wire gated_edge into
+  STRONG/MED/MIN classification instead of adjusted_edge) -- do NOT change
+  the classification threshold until:
+  1. A meaningful number of settled trades exist with non-NULL gated_edge
+     (same sample-floor precedent as every other signal in this file --
+     ACCURACY_MIN_SAMPLE=20 / SPRT_MIN_TRADES=20 -- don't invent a lower bar
+     just because this signal is new).
+  2. A real check has been run against that data: among trades gated_edge
+     would have downgraded a tier (STRONG under adjusted_edge but only MED
+     or below under gated_edge), did those trades actually perform worse
+     (win rate, Brier score) than trades that stayed at the same tier under
+     both? If thin-book downgrades really did underperform, that's the
+     evidence to wire gated_edge in. If not, close this as not-applicable
+     rather than activating it on the mechanism sounding plausible alone --
+     same discipline as every other log-only signal's enablement trigger.
+  3. liquidity_kelly_scale's own tiers (500/200/50 -> 1.00/0.85/0.70/0.50)
+     are equally uncalibrated and worth the same settled-outcome check once
+     enough live/paper fills exist under this scale specifically -- not
+     blocking since it already fails safe, but worth revisiting.
+
+Problem (as originally scoped, first fragment now stale -- see resolution
+above):
   Two already-tracked fragments make one coherent feature:
   - paper.slippage_kelly_scale() (paper.py:1843) is a complete 4-tier
     volume/OI Kelly multiplier with zero callers (see [ORPHANED FUNCTIONS])
@@ -2081,19 +2161,50 @@ original, now-invalid plan, kept for context):
   with maker-execution work: thin books are where maker fills are slowest
   and adverse selection worst.
 
+Why not now (original, superseded -- see resolution above): N/A, resolved.
+
+When to revisit: N/A for the Kelly-size scale (shipped live). See the
+  ENABLEMENT TRIGGER above for the edge-threshold divisor (log-only today).
+
+[is_liquid() ONLY READS LEGACY volume/open_interest FIELD NAMES, NOT THE CURRENT API's _fp VARIANTS]
+Priority: Low -- masked in practice, not a live incident, but a real gap
+  found by adjacency during the 2026-07-19 liquidity-aware-sizing review.
+
+Problem:
+  Found 2026-07-19 while an opus review of the LIQUIDITY-AWARE SIZING
+  feature (entry above) caught a real bug: new code that read only
+  market.get("volume")/market.get("open_interest") silently broke on the
+  current Kalshi API, which returns volume_fp/open_interest_fp instead.
+  Every other volume/OI consumer in this codebase already coalesces
+  X_fp or X or 0 (analyze_trade()'s own liquidity gate, parse_market_price,
+  schema_validator.py) -- except is_liquid() (weather_markets.py:3810),
+  which does `volume = market.get("volume", 0) or 0`, plain-names-only,
+  same gap class as the bug just fixed. It hasn't caused a visible
+  incident because is_liquid() ORs volume against real bid/ask quote
+  presence (`has_yes or has_no or volume > 0`) -- a market with only _fp
+  volume but real quotes still returns True via the quote check, masking
+  the gap for any market that actually has live prices. The gap only bites
+  a market with real _fp volume/OI but genuinely empty bid/ask (a
+  first-to-post scenario) -- is_liquid() would incorrectly call it
+  illiquid there, even though it may have meaningful open interest.
+
+What it would look like:
+  One-line fix: `market.get("volume_fp") or market.get("volume", 0) or 0`,
+  matching the exact coalescing pattern already used everywhere else.
+  Worth grepping for any other bare `market.get("volume"` /
+  `market.get("open_interest"` reads while in there, in case this class of
+  gap exists elsewhere too.
+
 Why not now:
-  - The original reason (wait for fill-quality instrumentation) no longer
-    applies -- that data exists now. The real blocker is that the intended
-    mechanism was deleted out from under this entry; a fresh design pass
-    against price_improvement's actual 319 rows is needed before writing
-    code, same "surface real scope before coding" discipline as any other
-    sizing-path change.
+  - Masked today (the quote-presence OR covers the common case); not
+    causing a live incident. Cheap enough to fix opportunistically next
+    time is_liquid() or its test file is open for other reasons, not
+    worth a dedicated pass on its own.
 
 When to revisit:
-  - Next time the sizing path is open for other reasons, or whenever
-    someone picks this up deliberately -- start with a fresh look at what
-    price_improvement/volume/OI data actually shows before designing the
-    scale function, rather than assuming the old 4-tier shape still fits.
+  - Whenever weather_markets.py's liquidity-related code is next open, or
+    if a real case of "is_liquid() said illiquid but the market clearly
+    had volume" ever gets reported/observed.
 
 [DATA-DRIVEN SIGMA FROM SETTLED HISTORY + CLI-REPORT SETTLEMENT FETCH]
 Priority: Medium (sharpens every probability the bot emits; unblocks a

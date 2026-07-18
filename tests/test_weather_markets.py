@@ -15,6 +15,7 @@ from weather_markets import (
     _bootstrap_ci,
     _feels_like,
     _forecast_model_weights,
+    _liquidity_edge_scale,
     _model_weights,
     ensemble_stats,
     is_liquid,
@@ -218,6 +219,41 @@ class TestIsLiquid:
     def test_illiquid_market_empty_dict(self):
         """Empty market dict has no liquidity."""
         assert is_liquid({}) is False
+
+
+class TestLiquidityEdgeScale:
+    """backlog.txt "LIQUIDITY-AWARE SIZING + DYNAMIC EDGE THRESHOLD" -- the
+    log-only edge-threshold divisor (never wired into analyze_trade()'s
+    STRONG/MED/MIN classification; matches code_review_plan.md's Phase 5
+    Feature 3 design, which was never built)."""
+
+    def test_liquid_market_returns_1_0(self):
+        assert _liquidity_edge_scale(1000, 0) == pytest.approx(1.0)
+
+    def test_at_liquid_floor_returns_1_0(self):
+        assert _liquidity_edge_scale(500, 0) == pytest.approx(1.0)
+
+    def test_illiquid_market_returns_1_5(self):
+        assert _liquidity_edge_scale(0, 0) == pytest.approx(1.5)
+
+    def test_at_illiquid_ceiling_returns_1_5(self):
+        assert _liquidity_edge_scale(50, 0) == pytest.approx(1.5)
+
+    def test_midpoint_interpolates_linearly(self):
+        # liq=275 is exactly midway between 50 and 500 -> scale midway
+        # between 1.5 and 1.0.
+        assert _liquidity_edge_scale(275, 0) == pytest.approx(1.25)
+
+    def test_volume_and_open_interest_are_summed(self):
+        assert _liquidity_edge_scale(400, 100) == pytest.approx(1.0)
+
+    def test_never_returns_below_1_0(self):
+        # Scale must never REDUCE the effective edge bar, only raise it.
+        for liq in (0, 10, 50, 100, 275, 400, 500, 1000, 100000):
+            assert _liquidity_edge_scale(liq, 0) >= 1.0
+
+    def test_none_inputs_treated_as_zero_not_typeerror(self):
+        assert _liquidity_edge_scale(None, None) == pytest.approx(1.5)
 
 
 # ── TestForecastModelWeights ──────────────────────────────────────────────────

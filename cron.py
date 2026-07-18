@@ -1484,6 +1484,28 @@ def _cmd_cron_body(
                         "net_edge", analysis.get("edge", 0.0)
                     )  # H-2: avoid KeyError
                     adjusted_edge = analysis.get("adjusted_edge", net_edge)
+                    # Log-only edge-threshold divisor (backlog.txt "LIQUIDITY-
+                    # AWARE SIZING + DYNAMIC EDGE THRESHOLD"): raises the
+                    # effective edge bar in thin books. Computed and logged
+                    # here, at the scan-loop level (never inside analyze_trade
+                    # itself), and deliberately NOT used for the STRONG/MED
+                    # classification below -- adjusted_edge (not gated_edge)
+                    # still drives that. See the backlog entry's ENABLEMENT
+                    # TRIGGER for what's required before that would change.
+                    from weather_markets import _liquidity_edge_scale as _liq_scale
+
+                    # Accept both legacy (volume/open_interest) and current API
+                    # names (volume_fp/open_interest_fp) -- matches analyze_
+                    # trade()'s own liquidity gate and paper.liquidity_kelly_
+                    # scale exactly; a plain-names-only read would silently
+                    # log the worst-case 1.5x scale for markets that only
+                    # carry the _fp fields.
+                    _liq_edge_scale = _liq_scale(
+                        m.get("volume_fp") or m.get("volume") or 0,
+                        m.get("open_interest_fp") or m.get("open_interest") or 0,
+                    )
+                    analysis["liquidity_edge_scale"] = _liq_edge_scale
+                    analysis["gated_edge"] = adjusted_edge / _liq_edge_scale
                     # Collect analysis attempt for bulk DB insert after loop.
                     try:
                         import datetime as _dt

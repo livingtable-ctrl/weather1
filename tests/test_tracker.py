@@ -3842,3 +3842,46 @@ class TestLogPredictionMarketImplied(unittest.TestCase):
         assert row["implied_mean"] == 72.0
         assert row["implied_sigma"] == 4.0
         assert row["fit_residual"] == 0.02
+
+
+class TestLogPredictionLiquidityEdgeScale(unittest.TestCase):
+    """log_prediction() must persist liquidity_edge_scale/gated_edge
+    (backlog.txt "LIQUIDITY-AWARE SIZING + DYNAMIC EDGE THRESHOLD") through
+    the UPSERT round-trip, and leave them NULL when absent (e.g.
+    cmd_market/cmd_order, which never compute this scan-loop-only signal)."""
+
+    def test_liquidity_edge_scale_round_trips_through_upsert(self):
+        tracker.log_prediction(
+            "TEST-TICKER-LES-1",
+            "NYC",
+            date(2099, 1, 1),
+            {"forecast_prob": 0.6, "market_prob": 0.5},
+            liquidity_edge_scale=1.25,
+            gated_edge=0.08,
+        )
+        with tracker._conn() as con:
+            row = con.execute(
+                "SELECT liquidity_edge_scale, gated_edge "
+                "FROM predictions WHERE ticker = ?",
+                ("TEST-TICKER-LES-1",),
+            ).fetchone()
+        assert row is not None
+        assert row["liquidity_edge_scale"] == 1.25
+        assert row["gated_edge"] == 0.08
+
+    def test_liquidity_edge_scale_absent_stores_null_columns(self):
+        tracker.log_prediction(
+            "TEST-TICKER-LES-2",
+            "NYC",
+            date(2099, 1, 1),
+            {"forecast_prob": 0.6, "market_prob": 0.5},
+        )
+        with tracker._conn() as con:
+            row = con.execute(
+                "SELECT liquidity_edge_scale, gated_edge "
+                "FROM predictions WHERE ticker = ?",
+                ("TEST-TICKER-LES-2",),
+            ).fetchone()
+        assert row is not None
+        assert row["liquidity_edge_scale"] is None
+        assert row["gated_edge"] is None

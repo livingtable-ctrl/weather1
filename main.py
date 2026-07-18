@@ -1348,6 +1348,27 @@ def _analyze_once(
             analysis["market_implied"] = _market_implied_by_event.get(
                 (_ev_city, _ev_date_iso)
             )
+        # Log-only edge-threshold divisor (backlog.txt "LIQUIDITY-AWARE
+        # SIZING + DYNAMIC EDGE THRESHOLD"): mirrors cron.py's wiring --
+        # computed at the scan-loop level, never inside analyze_trade
+        # itself, and never used for signal classification here either.
+        from weather_markets import _liquidity_edge_scale as _liq_scale
+
+        # Accept both legacy (volume/open_interest) and current API names
+        # (volume_fp/open_interest_fp) -- matches analyze_trade()'s own
+        # liquidity gate and paper.liquidity_kelly_scale exactly.
+        _liq_edge_scale = _liq_scale(
+            m.get("volume_fp") or m.get("volume") or 0,
+            m.get("open_interest_fp") or m.get("open_interest") or 0,
+        )
+        analysis["liquidity_edge_scale"] = _liq_edge_scale
+        # adjusted_edge (not raw edge) matches cron.py's wiring -- both scan
+        # paths must derive gated_edge from the same base value so a future
+        # correlation check compares like with like regardless of which path
+        # logged the row.
+        analysis["gated_edge"] = (
+            analysis.get("adjusted_edge", analysis.get("edge", 0.0)) / _liq_edge_scale
+        )
         if int(analysis.get("days_out", 1)) == 0:
             continue
         # Tag whether this market passes the edge threshold so make_rows can dim it,

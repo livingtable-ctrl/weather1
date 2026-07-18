@@ -3820,6 +3820,33 @@ def is_liquid(market: dict) -> bool:
     return has_yes or has_no or volume > 0
 
 
+def _liquidity_edge_scale(volume: int, open_interest: int) -> float:
+    """
+    Dynamic edge-threshold divisor by market liquidity (backlog.txt
+    "LIQUIDITY-AWARE SIZING + DYNAMIC EDGE THRESHOLD"; design matches
+    code_review_plan.md's Phase 5 Feature 3 exactly -- never built there).
+
+    Returns a multiplier >= 1.0: 1.0 (no penalty) at volume+open_interest >=
+    500, rising linearly to 1.5 at <= 50 (thin books need MORE raw edge to
+    clear the same effective bar, since your own fill moves the price more
+    in a thin book). Callers divide adjusted_edge by this to get gated_edge.
+
+    LOG-ONLY today -- gated_edge is computed and stored (cron.py's cmd_cron,
+    main.py's _analyze_once) but NEVER used for STRONG/MED/MIN signal
+    classification. See backlog.txt's ENABLEMENT TRIGGER for what would be
+    required before that changes: this function is deliberately NOT called
+    from analyze_trade() itself, to keep the live trade-decision function
+    untouched by an unvalidated mechanism.
+    """
+    liq = (volume or 0) + (open_interest or 0)
+    if liq >= 500:
+        return 1.0
+    if liq <= 50:
+        return 1.5
+    # Linear interpolation: liq=500 -> 1.0, liq=50 -> 1.5.
+    return 1.5 - (liq - 50) / (500 - 50) * 0.5
+
+
 def fit_market_implied_distribution(siblings: list[dict]) -> dict | None:
     """
     Fit a Normal(mean, sigma) to one city/date event's full sibling bracket

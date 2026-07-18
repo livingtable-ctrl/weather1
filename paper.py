@@ -1806,6 +1806,42 @@ def corr_kelly_scale(trade: dict, open_trades: list[dict]) -> float:
     return max(0.25, 1.0 - max_corr)
 
 
+def liquidity_kelly_scale(market: dict) -> float:
+    """
+    Return a 0.50-1.00 multiplier to reduce Kelly sizing based on market
+    liquidity (backlog.txt "LIQUIDITY-AWARE SIZING + DYNAMIC EDGE
+    THRESHOLD"). Thin markets (low volume/open interest) can't absorb a
+    large order without moving the price, making paper trade results overly
+    optimistic. Revives the 2026-07-12-deleted slippage_kelly_scale's exact
+    tiers/shape (volume + open_interest, summed -- matches both the deleted
+    function and the never-built code_review_plan.md Phase 5 edge-threshold
+    feature, so this isn't a fresh judgment call, just reviving what two
+    independent past designs already agreed on):
+      volume+OI > 500  -> 1.00 (liquid)
+      200-500          -> 0.85
+      50-200           -> 0.70
+      < 50              -> 0.50 (illiquid)
+
+    Accepts both legacy (volume/open_interest) and current API field names
+    (volume_fp/open_interest_fp) -- matches analyze_trade()'s own liquidity
+    gate exactly (weather_markets.py's "Liquidity gate" comment). A plain-
+    names-only read here would silently apply the worst-case 0.50 multiplier
+    to every live market that only carries the _fp fields -- caught by
+    opus review before this shipped.
+    """
+    liq = float(market.get("volume_fp") or market.get("volume") or 0) + float(
+        market.get("open_interest_fp") or market.get("open_interest") or 0
+    )
+    if liq > 500:
+        return 1.00
+    elif liq > 200:
+        return 0.85
+    elif liq > 50:
+        return 0.70
+    else:
+        return 0.50
+
+
 def get_all_trades() -> list[dict]:
     return _load()["trades"]
 

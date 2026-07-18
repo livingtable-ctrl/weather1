@@ -27,7 +27,7 @@ DB_PATH.parent.mkdir(exist_ok=True)
 
 _db_initialized = False
 
-_SCHEMA_VERSION = 45  # increment when _MIGRATIONS list grows
+_SCHEMA_VERSION = 47  # increment when _MIGRATIONS list grows
 
 _MIGRATIONS = [
     # v1 → v2: add condition_type column (if not already added)
@@ -237,6 +237,19 @@ _MIGRATIONS = [
     "ALTER TABLE predictions ADD COLUMN implied_mean REAL",  # v43
     "ALTER TABLE predictions ADD COLUMN implied_sigma REAL",  # v44
     "ALTER TABLE predictions ADD COLUMN fit_residual REAL",  # v45
+    # v45 -> v47: liquidity-aware dynamic edge threshold (backlog.txt
+    # "LIQUIDITY-AWARE SIZING + DYNAMIC EDGE THRESHOLD"), 2 columns added as
+    # 2 separate migration steps (v46/v47). liquidity_edge_scale is
+    # weather_markets._liquidity_edge_scale()'s multiplier (>=1.0, raised in
+    # thin books); gated_edge = adjusted_edge / liquidity_edge_scale.
+    # Log-only -- NEVER used for STRONG/MED/MIN signal classification
+    # (deliberately computed at the scan-loop level, not inside
+    # analyze_trade()). See the backlog entry's ENABLEMENT TRIGGER: revisit
+    # once enough settled trades exist to check whether trades gated_edge
+    # would have downgraded a tier actually underperformed trades that
+    # stayed at the same tier under both.
+    "ALTER TABLE predictions ADD COLUMN liquidity_edge_scale REAL",  # v46
+    "ALTER TABLE predictions ADD COLUMN gated_edge REAL",  # v47
 ]
 
 
@@ -637,6 +650,8 @@ def log_prediction(
     implied_mean: float | None = None,
     implied_sigma: float | None = None,
     fit_residual: float | None = None,
+    liquidity_edge_scale: float | None = None,
+    gated_edge: float | None = None,
     is_shadow: bool = False,
     conn: sqlite3.Connection | None = None,
 ) -> bool:
@@ -655,6 +670,10 @@ def log_prediction(
     full sibling bracket ladder (backlog.txt "MARKET-IMPLIED TEMPERATURE
     DISTRIBUTION FROM THE FULL LADDER"). Stored log-only; not consumed by
     any blend/sizing code yet.
+    liquidity_edge_scale/gated_edge: optional scalars from
+    weather_markets._liquidity_edge_scale() (backlog.txt "LIQUIDITY-AWARE
+    SIZING + DYNAMIC EDGE THRESHOLD"). Stored log-only; NEVER used for
+    STRONG/MED/MIN signal classification anywhere in this codebase.
     is_shadow: True for a signal that was analyzed and would have traded but
     never had a real order placed (e.g. logged during TRADING_PAUSED) — flags
     the row so downstream P&L-labeled displays can distinguish it from a
@@ -712,6 +731,10 @@ def log_prediction(
     implied_mean = round(implied_mean, 4) if implied_mean is not None else None
     implied_sigma = round(implied_sigma, 4) if implied_sigma is not None else None
     fit_residual = round(fit_residual, 6) if fit_residual is not None else None
+    liquidity_edge_scale = (
+        round(liquidity_edge_scale, 4) if liquidity_edge_scale is not None else None
+    )
+    gated_edge = round(gated_edge, 6) if gated_edge is not None else None
 
     # G4: use today's wall-clock date as explicit UPSERT key (avoids SQLite
     # date(predicted_at) timezone ambiguity around UTC midnight).
@@ -726,8 +749,9 @@ def log_prediction(
            signal_source, predicted_date, obs_weight_used, local_hour,
            forecast_temp_f, model_consensus, ens_mean, ens_var, is_shadow,
            run_trend_points, run_trend_delta, run_trend_jumpy,
-           implied_mean, implied_sigma, fit_residual)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'),?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+           implied_mean, implied_sigma, fit_residual,
+           liquidity_edge_scale, gated_edge)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'),?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         ON CONFLICT(ticker, predicted_date) DO UPDATE SET
             our_prob         = excluded.our_prob,
             raw_prob         = excluded.raw_prob,
@@ -755,6 +779,8 @@ def log_prediction(
             implied_mean     = excluded.implied_mean,
             implied_sigma    = excluded.implied_sigma,
             fit_residual     = excluded.fit_residual,
+            liquidity_edge_scale = excluded.liquidity_edge_scale,
+            gated_edge       = excluded.gated_edge,
             -- MIN(): a real-trade write (is_shadow=0) still clears the flag, but
             -- a shadow/lookup write (is_shadow=1, e.g. cmd_market) can never
             -- un-flag an already trade-backed row for the same (ticker, date).
@@ -795,6 +821,8 @@ def log_prediction(
         implied_mean,
         implied_sigma,
         fit_residual,
+        liquidity_edge_scale,
+        gated_edge,
     )
     # Atomic upsert — unique index on (ticker, predicted_date) prevents
     # duplicate rows from concurrent calls (TOCTOU of old SELECT+INSERT pattern).

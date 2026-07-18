@@ -1946,7 +1946,16 @@ def _prediction_kwargs_from_analysis(a: dict) -> dict:
     THE FULL LADDER". Deliberately scan-paths-only: cmd_market/cmd_order's
     single-market analysis dicts never have this key set, so those calls
     naturally log NULL for these 3 columns rather than triggering an extra
-    live get_weather_markets() fetch just to service a manual lookup."""
+    live get_weather_markets() fetch just to service a manual lookup.
+
+    liquidity_edge_scale/gated_edge (backlog.txt "LIQUIDITY-AWARE SIZING +
+    DYNAMIC EDGE THRESHOLD") are also read from `a`, same reasoning as
+    market_implied -- attached by cron.py's/main.py's scan loops, scan-
+    paths-only. gated_edge is LOG-ONLY: it is never used anywhere to
+    reclassify a signal's STRONG/MED/MIN tier -- only the real-time Kelly-
+    size scale half of that backlog item (paper.liquidity_kelly_scale,
+    wired directly into this function's own caller's sizing math) has a
+    live effect today."""
     from tracker import get_forecast_run_trend_from_analysis as _get_run_trend
     from weather_markets import EDGE_CALC_VERSION as _ECV
 
@@ -1968,6 +1977,8 @@ def _prediction_kwargs_from_analysis(a: dict) -> dict:
         implied_mean=_mi.get("implied_mean"),
         implied_sigma=_mi.get("implied_sigma"),
         fit_residual=_mi.get("fit_residual"),
+        liquidity_edge_scale=a.get("liquidity_edge_scale"),
+        gated_edge=a.get("gated_edge"),
     )
 
 
@@ -2075,6 +2086,7 @@ def _auto_place_trades(
         is_paused_drawdown,
         is_streak_paused,
         kelly_quantity,
+        liquidity_kelly_scale,
         portfolio_kelly_fraction,
         spread_kelly_multiplier,
     )
@@ -2349,6 +2361,7 @@ def _auto_place_trades(
         adj_kelly *= corr_kelly_scale(
             {"city": city, "target_date": target_date_str}, _open_trades_list
         )
+        adj_kelly *= liquidity_kelly_scale(m)
         if adj_kelly < 0.002:
             _skip_reasons.append(f"{ticker}: kelly_too_small({adj_kelly:.4f})")
             continue

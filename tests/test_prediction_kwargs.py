@@ -110,6 +110,25 @@ class TestPredictionKwargsFromAnalysis:
         assert kwargs["implied_sigma"] is None
         assert kwargs["fit_residual"] is None
 
+    def test_liquidity_edge_fields_derived_when_present(self):
+        # liquidity_edge_scale/gated_edge are read from `a` (not computed
+        # here) -- cron.py's/main.py's scan loops attach them before this
+        # function runs. See backlog.txt "LIQUIDITY-AWARE SIZING + DYNAMIC
+        # EDGE THRESHOLD".
+        analysis = _make_analysis(liquidity_edge_scale=1.25, gated_edge=0.08)
+        kwargs = order_executor._prediction_kwargs_from_analysis(analysis)
+        assert kwargs["liquidity_edge_scale"] == 1.25
+        assert kwargs["gated_edge"] == 0.08
+
+    def test_liquidity_edge_fields_absent_gives_none_not_keyerror(self):
+        # cmd_market/cmd_order's single-market analysis dicts never have
+        # these keys set at all (deliberately scan-paths-only) -- must not
+        # raise.
+        analysis = _make_analysis()
+        kwargs = order_executor._prediction_kwargs_from_analysis(analysis)
+        assert kwargs["liquidity_edge_scale"] is None
+        assert kwargs["gated_edge"] is None
+
 
 class TestMainPyUsesSharedHelper:
     """2026-07-17: main.py's cmd_market and cmd_order log_prediction call
