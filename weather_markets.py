@@ -3820,6 +3820,135 @@ def is_liquid(market: dict) -> bool:
     return has_yes or has_no or volume > 0
 
 
+def fit_market_implied_distribution(siblings: list[dict]) -> dict | None:
+    """
+    Fit a Normal(mean, sigma) to one city/date event's full sibling bracket
+    ladder (backlog.txt "MARKET-IMPLIED TEMPERATURE DISTRIBUTION FROM THE
+    FULL LADDER") by weighted least squares: each liquid bracket's mid-price
+    is treated as the market's implied probability mass for its threshold
+    (above/below/threshold or between/interval) -- the same above/below/
+    between mass definition _forecast_probability uses on the model side,
+    reimplemented here as a vectorized numpy expression rather than calling
+    _forecast_probability per point per optimizer iteration: profiling
+    showed scipy.stats.norm.cdf's per-call overhead (~0.1ms) dominates when
+    called individually inside a Nelder-Mead loop (~200ms for a 6-bracket
+    event, mostly overhead not computation) -- one vectorized call per
+    optimizer iteration instead of one call per (point, iteration) pair
+    drops that to single-digit ms. Weighted by real traded volume, matching
+    is_liquid()'s own definition of liquidity rather than introducing a
+    second one (open_interest is deliberately not used here).
+
+    Temperature brackets only (above/below/between) -- precip/snow markets
+    are excluded, matching this signal's own scope.
+
+    Returns {"implied_mean": float, "implied_sigma": float,
+    "fit_residual": float}, or None if fewer than 3 liquid, volume-weighted,
+    temperature-typed siblings exist (thin-book gate — see backlog.txt's own
+    "is_liquid gives the gate" framing) or the fit doesn't converge to a
+    sane sigma.
+
+    Log-only. NEVER wired into blended_prob/sigma/kelly anywhere in this
+    file -- see the backlog entry's ENABLEMENT TRIGGER for the settled-data
+    correlation check required before that would ever be considered.
+    """
+    points: list[tuple[float, float, float, float]] = []
+    for m in siblings:
+        if not is_liquid(m):
+            continue
+        cond = _parse_market_condition(m)
+        if cond is None or cond["type"] not in ("above", "below", "between"):
+            continue
+        prices = parse_market_price(m)
+        if not prices["has_quote"]:
+            continue
+        # is_liquid() alone can pass on bid/ask presence with zero volume;
+        # since the fit is volume-weighted, a zero-volume point contributes
+        # nothing to the objective anyway -- exclude it from the thin-book
+        # count too, so "3 liquid brackets" means 3 that actually influence
+        # the fit, not 3 that merely pass the looser is_liquid() check.
+        weight = float(m.get("volume", 0) or 0)
+        if weight <= 0:
+            continue
+        # (lo, hi) boundary in raw temperature units -- +-inf for the open
+        # side of above/below, mirroring _forecast_probability's formula:
+        # above -> 1 - CDF(prob_threshold); below -> CDF(prob_threshold);
+        # between -> CDF(upper) - CDF(lower).
+        if cond["type"] == "above":
+            lo, hi = _prob_threshold(cond), float("inf")
+        elif cond["type"] == "below":
+            lo, hi = float("-inf"), _prob_threshold(cond)
+        else:
+            lo, hi = cond["lower"], cond["upper"]
+        points.append((lo, hi, prices["mid"], weight))
+
+    if len(points) < 3:
+        return None
+
+    import numpy as _np
+    from scipy.optimize import minimize as _minimize
+    from scipy.stats import norm as _norm
+
+    lo_arr = _np.array([p[0] for p in points])
+    hi_arr = _np.array([p[1] for p in points])
+    masses = _np.array([p[2] for p in points])
+    weights = _np.array([p[3] for p in points])
+    weights = weights / weights.sum()
+
+    finite_boundaries = _np.concatenate(
+        [lo_arr[_np.isfinite(lo_arr)], hi_arr[_np.isfinite(hi_arr)]]
+    )
+    mean0 = float(_np.mean(finite_boundaries))
+    sigma0 = max(3.0, float(_np.std(finite_boundaries)))
+
+    def _objective(params: list) -> float:
+        mean, log_sigma = params
+        sigma = float(_np.exp(log_sigma))
+        # scipy's norm.cdf natively returns 1.0/0.0 for +-inf z-scores, so
+        # the open sides of above/below need no special-casing here.
+        model = _norm.cdf((hi_arr - mean) / sigma) - _norm.cdf((lo_arr - mean) / sigma)
+        return float(_np.sum(weights * (masses - model) ** 2))
+
+    result = _minimize(_objective, x0=[mean0, _np.log(sigma0)], method="Nelder-Mead")
+    fitted_mean, fitted_log_sigma = result.x
+    fitted_sigma = float(_np.exp(fitted_log_sigma))
+
+    if not (_np.isfinite(fitted_mean) and _np.isfinite(fitted_sigma)):
+        return None
+    if not (0.1 <= fitted_sigma <= 50.0):
+        return None  # degenerate fit -- don't log garbage
+
+    return {
+        "implied_mean": round(float(fitted_mean), 4),
+        "implied_sigma": round(fitted_sigma, 4),
+        "fit_residual": round(float(result.fun), 6),
+    }
+
+
+def compute_market_implied_distributions(
+    markets: list[dict],
+) -> dict[tuple[str, str], dict | None]:
+    """
+    Group `markets` (a full flat scan result, already fetched — no new
+    network calls) by (city, target_date) and fit a market-implied Normal
+    distribution per event via fit_market_implied_distribution.
+
+    Computed once per scan; callers attach the per-event result onto each
+    market's own analysis dict during the per-market analysis loop rather
+    than recomputing per-market. Returns {(city, date_iso): result_or_None}.
+    """
+    by_event: dict[tuple[str, str], list[dict]] = {}
+    for m in markets:
+        city, target_date = parse_city_date(m)
+        if city is None or target_date is None:
+            continue
+        by_event.setdefault((city, target_date.isoformat()), []).append(m)
+
+    return {
+        key: fit_market_implied_distribution(siblings)
+        for key, siblings in by_event.items()
+    }
+
+
 def _edge_label(edge: float) -> str:
     """Convert a probability edge to a human-readable signal."""
     abs_edge = abs(edge)

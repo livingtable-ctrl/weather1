@@ -1933,12 +1933,26 @@ def _prediction_kwargs_from_analysis(a: dict) -> dict:
     tracker.get_forecast_run_trend_from_analysis's docstring for why (keeps
     the up-to-3-HTTP-call fetch off the order-placement critical path). For
     the real post-placement call this runs after the order is already
-    placed; for shadow logging there was never an order to delay."""
+    placed; for shadow logging there was never an order to delay.
+
+    market_implied (implied_mean/implied_sigma/fit_residual), by contrast,
+    IS read from `a` rather than computed here: it's a per-EVENT fit over
+    the full sibling bracket ladder (weather_markets.
+    fit_market_implied_distribution), not derivable from this one market's
+    analysis dict alone. cron.py's/main.py's scan loops compute it once per
+    scan (CPU-only, no network calls, cheap) and attach it onto each
+    market's own `analysis["market_implied"]` before this function ever
+    runs -- see backlog.txt "MARKET-IMPLIED TEMPERATURE DISTRIBUTION FROM
+    THE FULL LADDER". Deliberately scan-paths-only: cmd_market/cmd_order's
+    single-market analysis dicts never have this key set, so those calls
+    naturally log NULL for these 3 columns rather than triggering an extra
+    live get_weather_markets() fetch just to service a manual lookup."""
     from tracker import get_forecast_run_trend_from_analysis as _get_run_trend
     from weather_markets import EDGE_CALC_VERSION as _ECV
 
     _es = a.get("ensemble_stats") or {}
     _std = _es.get("std")
+    _mi = a.get("market_implied") or {}
     return dict(
         ensemble_prob=a.get("ensemble_prob"),
         nws_prob=a.get("nws_prob"),
@@ -1951,6 +1965,9 @@ def _prediction_kwargs_from_analysis(a: dict) -> dict:
         ens_mean=_es.get("mean"),
         ens_var=(_std * _std if _std is not None else None),
         run_trend=_get_run_trend(a),
+        implied_mean=_mi.get("implied_mean"),
+        implied_sigma=_mi.get("implied_sigma"),
+        fit_residual=_mi.get("fit_residual"),
     )
 
 

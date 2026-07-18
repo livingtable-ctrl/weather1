@@ -2560,11 +2560,115 @@ When to revisit:
   - Whenever the order-execution path is next open for other reasons, or
     once live trading resumes and repricing actually runs.
 
-[MARKET-IMPLIED TEMPERATURE DISTRIBUTION FROM THE FULL LADDER]
-Priority: Medium -- turns data already fetched every scan into a per-event
-  consensus signal; cheap, log-only ship.
+[RESOLVED 2026-07-18] MARKET-IMPLIED TEMPERATURE DISTRIBUTION FROM THE FULL LADDER
+Priority: was Medium -- turns data already fetched every scan into a
+  per-event consensus signal; cheap, log-only ship.
 
-Problem:
+RESOLVED 2026-07-18: shipped as scoped in "What it would look like" below,
+  with two design decisions surfaced to and confirmed by the user via
+  AskUserQuestion first (call-site scope; liquidity-weight field), plus one
+  reversal caught by re-deriving rather than restating a first-pass
+  recommendation (the delta column -- see below).
+  weather_markets.fit_market_implied_distribution(siblings) fits a Normal
+  (mean, sigma) by weighted least squares: each liquid bracket's mid-price
+  is the implied probability mass over its threshold (above/below/between),
+  weighted by volume (chosen over open_interest because is_liquid() -- the
+  same function gating the thin-book floor -- only ever checks volume,
+  keeping one definition of liquidity instead of introducing a second).
+  Reuses _forecast_probability's exact above/below/between mass formula
+  conceptually, but reimplements it as a vectorized numpy expression rather
+  than calling it per-point per-optimizer-iteration: profiling showed scipy.
+  stats.norm.cdf's per-call overhead dominates (~200ms/fit via the
+  non-vectorized version vs ~29ms vectorized, for a 6-bracket event) --
+  documented inline so a future reader doesn't "simplify" it back to the
+  slow, more-obviously-DRY version. weather_markets.
+  compute_market_implied_distributions(markets) groups a scan's full market
+  list by (city, date) via parse_city_date and fits each event once.
+  Verified against a synthetic ladder built from a known Normal(70,5) (and
+  separately an all-"between" ladder, since real weather markets are
+  commonly all-between with no above/below siblings at all): fit recovered
+  (70.0009, 5.0013) -- essentially exact.
+  Wired into predictions via 3 new columns (implied_mean, implied_sigma,
+  fit_residual -- migration v43/v44/v45, tracker.log_prediction()) and
+  order_executor._prediction_kwargs_from_analysis (reads a.get(
+  "market_implied"), doesn't compute it -- can't, since a single-market
+  analysis dict has no sibling visibility).
+  Scope decision (confirmed via AskUserQuestion): computed only in the two
+  full-scan paths, cron.py's cmd_cron and main.py's _analyze_once (the
+  cmd_watch path) -- each already holds the full sibling ladder for free
+  from one get_weather_markets() call, computed once before the per-market
+  loop/ThreadPoolExecutor starts and attached onto each market's own
+  analysis["market_implied"] during the loop. Deliberately NOT wired into
+  cmd_market/cmd_order's single-market lookups -- those never see siblings
+  and forcing an extra live fetch to backfill a log-only research signal
+  onto an interactive/order-placement path wasn't worth it; their rows
+  simply log NULL for these 3 columns, matching the entry's own "every
+  scan" framing.
+  Liquidity-weight and delta-column decisions were reviewed a second time
+  at the user's request ("review your recommendations") rather than just
+  restated: the liquidity-weight choice (volume) held up, strengthened by
+  tracing is_liquid()'s actual logic (see above). The delta-column
+  decision reversed: tracing forecast_temp_f's real source (analysis.get(
+  "forecast_temp"), a plain temperature for above/below/between markets --
+  precip's own path reuses the same key for inches, but that's out of
+  scope here) showed implied_mean - forecast_temp_f is a trivial
+  single-column subtraction between two already-stored scalars, unlike
+  run_trend_delta's genuinely-computed multi-point statistic -- storing it
+  as a 4th column would buy no real query simplification, so it was
+  dropped from the plan; compute it on demand when the correlation check
+  eventually runs.
+  A live-fetch attempt to verify the volume-vs-open_interest choice
+  empirically against real current market data failed cleanly (this
+  environment has no KALSHI_API_KEY configured) -- documented as a real
+  gap rather than silently treated as verified; the code-precedent
+  argument (is_liquid() consistency) stood in for it.
+  Real bug caught by the scoped test run, not by review: cron.py's/main.py's
+  new `enriched.get("_date").isoformat()` lookup crashed with AttributeError
+  on a live test (test_cron_integration.py::test_cron_gate_allows_when_
+  adjusted_edge_above_threshold) whose hand-built enriched fixture used a
+  plain ISO string for _date instead of a real date object --
+  enrich_with_forecast() itself always sets a real date object, but nothing
+  guarantees every "enriched"-shaped dict a test hands to this code does.
+  Fixed by tolerating both (hasattr(_ev_date, "isoformat")) at both call
+  sites rather than "fixing" the test to match an assumption the code
+  shouldn't have made in the first place.
+  New tests/test_market_implied_distribution.py (13 tests: known-distribution
+  recovery for a mixed and an all-between ladder, thin-book gate, zero-
+  volume/illiquid/non-temperature exclusion, a mutation check that volume
+  actually weights the fit not just reads it, degenerate-fit rejection, and
+  event grouping). Extended tests/test_prediction_kwargs.py (3 tests) and
+  tests/test_tracker.py (3 tests, mirroring TestLogPredictionRunTrend).
+  Scoped test run: the new file plus test_prediction_kwargs.py,
+  test_tracker.py (full, 219 tests), the cron/shadow-prediction cluster
+  (test_cron_integration.py, test_cron_group_c.py, test_cron_trade_updates.py,
+  test_main_cron_smoke.py, test_shadow_predictions.py, test_dedup.py,
+  test_cron_lock.py, test_prelog.py, test_p0_16_cron_endpoint.py),
+  test_p1_remaining.py (_analyze_once coverage), and test_weather_markets.py/
+  test_price_and_size.py for regression -- all pass except the one
+  pre-existing, unrelated TestTemperatureTradeWiring failure already known
+  from earlier in this session (confirmed via git stash before this work
+  started).
+  Log-only -- never wired into blended_prob/sigma/kelly. See ENABLEMENT
+  TRIGGER below (unchanged from the original scoping) for what's required
+  before that would ever be considered.
+  Independent opus review (Agent) came back clean -- verified the fit's
+  above/below/between sign conventions match _forecast_probability exactly,
+  the +-inf handling in the vectorized norm.cdf call produces no NaN
+  (checked under -W error::RuntimeWarning), the liquidity/volume gating
+  composition has no off-by-one, the _ev_date_iso fix produces no dict-key
+  mismatch between the real-date and test-double-string cases, the shared
+  _market_implied_by_event dict is genuinely read-only from the
+  ThreadPoolExecutor workers' perspective, the migration is balanced (35
+  INSERT columns, 34 placeholders, 1 via datetime('now')), no code path
+  serializes/iterates the full analysis dict in a way the new nested
+  "market_implied" key could break, and the new tests are real inversions
+  (not tautological). One minor, deliberately-left-as-is note: only
+  implied_sigma is range-validated before a fit is accepted (0.1-50.0);
+  implied_mean isn't -- fine per the reviewer's own assessment since this
+  column is strictly log-only today, but worth a mental note if this
+  signal is ever wired into anything that reads implied_mean directly.
+
+Problem (as originally scoped):
   Every market comparison is per-bracket: parse_market_price mid
   (weather_markets.py:3083-3128) vs model prob, with per-market anchors
   _MARKET_ANCHOR_BETWEEN/ABOVE/BELOW (weather_markets.py:173-175).
@@ -2608,10 +2712,10 @@ Why not now:
     Genuinely ready to pick up whenever someone chooses to prioritize it
     over the other log-only candidates it competes with.
 
-When to revisit:
-  - No longer gated -- ready now. Still worth scoping alongside JOINT
-    FULL-LADDER BRACKET SELECTION since both read the same sibling-ladder
-    data, but that's a sequencing preference, not a precondition.
+When to revisit: N/A, resolved. See the ENABLEMENT TRIGGER note (unchanged
+  from original scoping) for when a future session should check whether
+  enough settled-data correlation exists to consider wiring this into the
+  blend -- not before then.
 
 [PUBLIC TRADES REST BACKFILL -- GET /markets/trades AT SETTLEMENT]
 Priority: Medium -- closes the exact gap the PUBLIC TRADE-FLOW SIGNAL entry

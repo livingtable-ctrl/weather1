@@ -1298,6 +1298,16 @@ def _analyze_once(
     no_quote_opps: list = []
     total = len(markets)
 
+    # Market-implied temperature distribution (backlog.txt "MARKET-IMPLIED
+    # TEMPERATURE DISTRIBUTION FROM THE FULL LADDER"): computed once per scan
+    # from the already-fetched sibling ladder (pure CPU, no network calls),
+    # mirroring cron.py's cmd_cron wiring of the same signal.
+    from weather_markets import (
+        compute_market_implied_distributions as _compute_market_implied,
+    )
+
+    _market_implied_by_event = _compute_market_implied(markets)
+
     # #64: load open trades once so we can flag hedge opportunities below
     try:
         from paper import get_open_trades as _got
@@ -1326,6 +1336,18 @@ def _analyze_once(
         _arb_ticker_city[m.get("ticker", "")] = enriched.get("_city", "")
         if not analysis:
             continue
+        _ev_city = enriched.get("_city")
+        _ev_date = enriched.get("_date")
+        if _ev_city and _ev_date:
+            # enrich_with_forecast() always sets a real date object here, but
+            # a few tests hand-build an "enriched"-shaped dict with a plain
+            # ISO string instead -- tolerate both rather than assuming.
+            _ev_date_iso = (
+                _ev_date.isoformat() if hasattr(_ev_date, "isoformat") else _ev_date
+            )
+            analysis["market_implied"] = _market_implied_by_event.get(
+                (_ev_city, _ev_date_iso)
+            )
         if int(analysis.get("days_out", 1)) == 0:
             continue
         # Tag whether this market passes the edge threshold so make_rows can dim it,

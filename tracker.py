@@ -27,7 +27,7 @@ DB_PATH.parent.mkdir(exist_ok=True)
 
 _db_initialized = False
 
-_SCHEMA_VERSION = 42  # increment when _MIGRATIONS list grows
+_SCHEMA_VERSION = 45  # increment when _MIGRATIONS list grows
 
 _MIGRATIONS = [
     # v1 → v2: add condition_type column (if not already added)
@@ -221,6 +221,22 @@ _MIGRATIONS = [
     "ALTER TABLE predictions ADD COLUMN run_trend_points TEXT",  # v40
     "ALTER TABLE predictions ADD COLUMN run_trend_delta REAL",  # v41
     "ALTER TABLE predictions ADD COLUMN run_trend_jumpy REAL",  # v42
+    # v42 -> v45: market-implied temperature distribution signal (backlog.txt
+    # "MARKET-IMPLIED TEMPERATURE DISTRIBUTION FROM THE FULL LADDER"), 3
+    # columns added as 3 separate migration steps (v43/v44/v45) matching this
+    # list's one-ALTER-per-entry convention. implied_mean/implied_sigma are
+    # weather_markets.fit_market_implied_distribution()'s fitted Normal
+    # parameters from the full sibling bracket ladder; fit_residual is the
+    # fit's weighted SSE (a fit-quality diagnostic, not a probability). No
+    # delta-vs-model column: unlike run_trend_delta (a genuinely computed
+    # multi-point statistic), implied_mean - forecast_temp_f is a trivial
+    # single-column subtraction against an already-stored column, not worth
+    # a redundant fourth column. Log-only -- not read by any blend/sizing
+    # code yet; gated behind a future tracked-accuracy pass per the backlog
+    # entry's own ENABLEMENT TRIGGER.
+    "ALTER TABLE predictions ADD COLUMN implied_mean REAL",  # v43
+    "ALTER TABLE predictions ADD COLUMN implied_sigma REAL",  # v44
+    "ALTER TABLE predictions ADD COLUMN fit_residual REAL",  # v45
 ]
 
 
@@ -618,6 +634,9 @@ def log_prediction(
     ens_mean: float | None = None,
     ens_var: float | None = None,
     run_trend: dict | None = None,
+    implied_mean: float | None = None,
+    implied_sigma: float | None = None,
+    fit_residual: float | None = None,
     is_shadow: bool = False,
     conn: sqlite3.Connection | None = None,
 ) -> bool:
@@ -631,6 +650,11 @@ def log_prediction(
     {"points": [{"lead": N, "value": V}, ...], "delta": ..., "jumpy": ...}.
     Stored log-only (points as JSON, delta/jumpy as convenience scalar
     columns); not consumed by any blend/sizing code yet.
+    implied_mean/implied_sigma/fit_residual: optional scalars from
+    weather_markets.fit_market_implied_distribution()'s fit over an event's
+    full sibling bracket ladder (backlog.txt "MARKET-IMPLIED TEMPERATURE
+    DISTRIBUTION FROM THE FULL LADDER"). Stored log-only; not consumed by
+    any blend/sizing code yet.
     is_shadow: True for a signal that was analyzed and would have traded but
     never had a real order placed (e.g. logged during TRADING_PAUSED) — flags
     the row so downstream P&L-labeled displays can distinguish it from a
@@ -685,6 +709,9 @@ def log_prediction(
     )
     run_trend_delta = run_trend.get("delta") if run_trend is not None else None
     run_trend_jumpy = run_trend.get("jumpy") if run_trend is not None else None
+    implied_mean = round(implied_mean, 4) if implied_mean is not None else None
+    implied_sigma = round(implied_sigma, 4) if implied_sigma is not None else None
+    fit_residual = round(fit_residual, 6) if fit_residual is not None else None
 
     # G4: use today's wall-clock date as explicit UPSERT key (avoids SQLite
     # date(predicted_at) timezone ambiguity around UTC midnight).
@@ -698,8 +725,9 @@ def log_prediction(
            blend_sources, ensemble_prob, nws_prob, clim_prob, edge_calc_version,
            signal_source, predicted_date, obs_weight_used, local_hour,
            forecast_temp_f, model_consensus, ens_mean, ens_var, is_shadow,
-           run_trend_points, run_trend_delta, run_trend_jumpy)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'),?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+           run_trend_points, run_trend_delta, run_trend_jumpy,
+           implied_mean, implied_sigma, fit_residual)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'),?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         ON CONFLICT(ticker, predicted_date) DO UPDATE SET
             our_prob         = excluded.our_prob,
             raw_prob         = excluded.raw_prob,
@@ -724,6 +752,9 @@ def log_prediction(
             run_trend_points = excluded.run_trend_points,
             run_trend_delta  = excluded.run_trend_delta,
             run_trend_jumpy  = excluded.run_trend_jumpy,
+            implied_mean     = excluded.implied_mean,
+            implied_sigma    = excluded.implied_sigma,
+            fit_residual     = excluded.fit_residual,
             -- MIN(): a real-trade write (is_shadow=0) still clears the flag, but
             -- a shadow/lookup write (is_shadow=1, e.g. cmd_market) can never
             -- un-flag an already trade-backed row for the same (ticker, date).
@@ -761,6 +792,9 @@ def log_prediction(
         run_trend_points_json,
         run_trend_delta,
         run_trend_jumpy,
+        implied_mean,
+        implied_sigma,
+        fit_residual,
     )
     # Atomic upsert — unique index on (ticker, predicted_date) prevents
     # duplicate rows from concurrent calls (TOCTOU of old SELECT+INSERT pattern).

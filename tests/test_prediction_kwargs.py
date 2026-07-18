@@ -73,6 +73,43 @@ class TestPredictionKwargsFromAnalysis:
         assert kwargs["ens_mean"] == 70.0
         assert kwargs["ens_var"] is None
 
+    def test_market_implied_fields_derived_when_present(self):
+        # market_implied is read from `a` (not fetched here) -- cron.py's/
+        # main.py's scan loops attach it before this function runs. See
+        # backlog.txt "MARKET-IMPLIED TEMPERATURE DISTRIBUTION FROM THE
+        # FULL LADDER".
+        analysis = _make_analysis(
+            market_implied={
+                "implied_mean": 70.5,
+                "implied_sigma": 4.2,
+                "fit_residual": 0.002,
+            }
+        )
+        kwargs = order_executor._prediction_kwargs_from_analysis(analysis)
+        assert kwargs["implied_mean"] == 70.5
+        assert kwargs["implied_sigma"] == 4.2
+        assert kwargs["fit_residual"] == 0.002
+
+    def test_market_implied_absent_gives_none_not_keyerror(self):
+        # cmd_market/cmd_order's single-market analysis dicts never have
+        # market_implied set at all (deliberately scan-paths-only) -- must
+        # not raise.
+        analysis = _make_analysis()
+        kwargs = order_executor._prediction_kwargs_from_analysis(analysis)
+        assert kwargs["implied_mean"] is None
+        assert kwargs["implied_sigma"] is None
+        assert kwargs["fit_residual"] is None
+
+    def test_market_implied_none_gives_none_not_attributeerror(self):
+        # A thin-book event (fit_market_implied_distribution returned None)
+        # attaches market_implied=None onto the analysis dict rather than
+        # omitting the key -- .get() on None must not raise.
+        analysis = _make_analysis(market_implied=None)
+        kwargs = order_executor._prediction_kwargs_from_analysis(analysis)
+        assert kwargs["implied_mean"] is None
+        assert kwargs["implied_sigma"] is None
+        assert kwargs["fit_residual"] is None
+
 
 class TestMainPyUsesSharedHelper:
     """2026-07-17: main.py's cmd_market and cmd_order log_prediction call

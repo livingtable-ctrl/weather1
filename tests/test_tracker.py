@@ -3770,3 +3770,75 @@ class TestLogPredictionRunTrend(unittest.TestCase):
         assert row["run_trend_points"] is None
         assert row["run_trend_delta"] is None
         assert row["run_trend_jumpy"] is None
+
+
+class TestLogPredictionMarketImplied(unittest.TestCase):
+    """log_prediction() must persist implied_mean/implied_sigma/fit_residual
+    (backlog.txt "MARKET-IMPLIED TEMPERATURE DISTRIBUTION FROM THE FULL
+    LADDER") through the UPSERT round-trip, and leave them NULL when no fit
+    was computed (thin book, or a scan path that doesn't compute this
+    signal at all -- e.g. cmd_market/cmd_order)."""
+
+    def test_market_implied_round_trips_through_upsert(self):
+        tracker.log_prediction(
+            "TEST-TICKER-MI-1",
+            "NYC",
+            date(2099, 1, 1),
+            {"forecast_prob": 0.6, "market_prob": 0.5},
+            implied_mean=71.2345,
+            implied_sigma=4.5678,
+            fit_residual=0.001234,
+        )
+        with tracker._conn() as con:
+            row = con.execute(
+                "SELECT implied_mean, implied_sigma, fit_residual "
+                "FROM predictions WHERE ticker = ?",
+                ("TEST-TICKER-MI-1",),
+            ).fetchone()
+        assert row is not None
+        assert row["implied_mean"] == 71.2345
+        assert row["implied_sigma"] == 4.5678
+        assert row["fit_residual"] == 0.001234
+
+    def test_market_implied_absent_stores_null_columns(self):
+        tracker.log_prediction(
+            "TEST-TICKER-MI-2",
+            "NYC",
+            date(2099, 1, 1),
+            {"forecast_prob": 0.6, "market_prob": 0.5},
+        )
+        with tracker._conn() as con:
+            row = con.execute(
+                "SELECT implied_mean, implied_sigma, fit_residual "
+                "FROM predictions WHERE ticker = ?",
+                ("TEST-TICKER-MI-2",),
+            ).fetchone()
+        assert row is not None
+        assert row["implied_mean"] is None
+        assert row["implied_sigma"] is None
+        assert row["fit_residual"] is None
+
+    def test_upsert_updates_market_implied_on_conflict(self):
+        # Same (ticker, predicted_date) written twice -- the second write's
+        # values must win, matching every other UPSERT'd column.
+        common = (
+            "TEST-TICKER-MI-3",
+            "NYC",
+            date(2099, 1, 1),
+            {"forecast_prob": 0.6, "market_prob": 0.5},
+        )
+        tracker.log_prediction(
+            *common, implied_mean=70.0, implied_sigma=5.0, fit_residual=0.01
+        )
+        tracker.log_prediction(
+            *common, implied_mean=72.0, implied_sigma=4.0, fit_residual=0.02
+        )
+        with tracker._conn() as con:
+            row = con.execute(
+                "SELECT implied_mean, implied_sigma, fit_residual "
+                "FROM predictions WHERE ticker = ?",
+                ("TEST-TICKER-MI-3",),
+            ).fetchone()
+        assert row["implied_mean"] == 72.0
+        assert row["implied_sigma"] == 4.0
+        assert row["fit_residual"] == 0.02
