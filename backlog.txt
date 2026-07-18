@@ -3432,12 +3432,59 @@ When to revisit:
   - N/A, closed. See the two divergence entries below (still open) for
     the behavior differences found but deliberately not fixed here.
 
-[SNOW PATH IS MISSING THE PRECIP-CONSENSUS KELLY BONUS]
-Priority: Low-Medium -- narrow, single-path sizing question; not a
+[RESOLVED 2026-07-18] SNOW PATH IS MISSING THE PRECIP-CONSENSUS KELLY BONUS
+Priority: was Low-Medium -- narrow, single-path sizing question; not a
   correctness bug the way the entry_side_edge fix above was, since there's
   no in-source comment establishing which behavior is "correct."
 
-Problem:
+RESOLVED 2026-07-18: computed `snow_consensus` in _analyze_snow_trade
+  (weather_markets.py), same formula as precip_consensus (ens_prob,
+  clim_prior, and blended_prob all agreeing on direction), and passed
+  consensus=snow_consensus into the shared _price_and_size() call --
+  matching the "What it would look like" plan below exactly. Snow's
+  return dict "consensus" field now reports the real bool instead of the
+  hardcoded "" placeholder, per user decision (both were confirmed via
+  AskUserQuestion before implementing, not assumed). _price_and_size's
+  docstring updated to drop the now-stale "snow has no consensus signal"
+  note. New test: TestSnowTradeWiring.test_consensus_bonus_actually_
+  raises_ci_adjusted_kelly -- a mutation-style check (identical fixture,
+  only clim_prior differs to flip snow_consensus True/False) proving the
+  wiring actually reaches _price_and_size's bonus, not just that the
+  field is set; required a members list straddling the liquid-equivalent
+  threshold since an all-agree members list degenerates the bootstrap CI
+  to a point (ci_low==ci_high==1.0), which zeroes bayesian_kelly and would
+  have masked the effect being tested. Existing TestSnowTradeWiring
+  fixtures' "consensus" assertions updated from the stale "" to their
+  real computed bool (False and True respectively) -- kelly/edge/
+  entry_side_edge fields are untouched by this change since those are
+  computed before the consensus branch in _price_and_size.
+  Scoped test run (tests/test_price_and_size.py, test_phase2_batch_k.py,
+  test_integration.py -- the only files exercising _analyze_snow_trade/
+  _analyze_precip_trade/_price_and_size) passes except one pre-existing,
+  unrelated failure in TestTemperatureTradeWiring.test_yes_side_
+  normal_book, confirmed present on unmodified master via git stash (not
+  caused by this change) -- see the new backlog entry below.
+  Independent opus review (Agent) caught one real bug before push: the
+  new mutation test drew its bootstrap CI from _bootstrap_ci_precip's
+  unseeded random.choices, so the two consensus/no-consensus calls got
+  independent random CIs and the test was flaky (~2.5% false-fail,
+  confirmed by the reviewer running it 400x) -- and, worse, weak (still
+  passed ~50% of the time with the consensus wiring itself reverted, so
+  it wasn't reliably proving what it claimed to prove). Fixed by pinning
+  _bootstrap_ci_precip to a fixed CI via mock.patch.object so the two
+  calls differ only in the consensus signal; reran 5x locally with no
+  failures. Everything else the review checked came back clean: the
+  snow_consensus formula is an exact mirror of precip_consensus,
+  consensus only touches ci_adjusted_kelly (verified entry_price/net_edge/
+  edge/entry_side_edge/kelly are all computed before the consensus branch
+  in _price_and_size), the existing TestSnowTradeWiring consensus
+  assertions are deterministic and correct (not tautological), and no
+  code outside weather_markets.py reads snow's "consensus" field in a way
+  that would behave differently now that it's a real bool instead of ""
+  (main.py's only consumer is guarded by isinstance(str), so a bool is
+  skipped identically to the old falsy "").
+
+Problem (as originally scoped):
   Found 2026-07-18 while consolidating the ANALYZE-TRADE PRICING/EV/KELLY
   TAIL (entry above). _analyze_precip_trade computes a `precip_consensus`
   signal (ensemble, climatology, and blended probability all agreeing on
@@ -3459,53 +3506,71 @@ What it would look like:
   triplication cluster note) should also start reporting the real bool,
   matching precip's return dict.
 
-Why not now:
+Why not now (original, superseded by resolution above):
   - Real live-sizing behavior change (raises snow's Kelly sizing on
     consensus trades) -- deliberately kept out of the pure-refactor
     consolidation above per the no-behavior-change-disguised-as-refactor
     convention. Low urgency: snow markets are a small fraction of current
     live volume relative to temperature.
 
-When to revisit:
-  - Next time the snow/precip paths are open for other reasons, or if
-    snow market volume grows enough to make the missing bonus worth
-    quantifying against settled outcomes first.
+When to revisit: N/A, resolved.
 
-[PRECIP CONSENSUS BONUS MUTED BY ITS OWN CAP -- NEVER REACHES TEMPERATURE'S HIGHER CONSENSUS CEILING]
-Priority: Low-Medium -- same shape as the entry above, found in the same
+[RESOLVED 2026-07-18, discovered already-resolved] PRECIP CONSENSUS BONUS MUTED BY ITS OWN CAP -- NEVER REACHES TEMPERATURE'S HIGHER CONSENSUS CEILING
+Priority: was Low-Medium -- same shape as the entry above, found in the same
   pass; a sizing-ceiling asymmetry, not a correctness bug.
 
-Problem:
-  Found 2026-07-18 alongside the entry above. Temperature's consensus
-  bonus raises the ci_adjusted_kelly cap itself (KELLY_CAP *
-  KELLY_CAP_CONSENSUS_MULT, 0.33 at defaults) when consensus holds, so a
-  strong consensus trade can size up to 0.33. Precip's consensus bonus
-  multiplies ci_adjusted_kelly by 1.25 but keeps the cap at plain
-  KELLY_CAP (0.25) regardless -- so the x1.25 only ever changes the
-  outcome when the pre-multiply value is already below ~0.20; above that,
-  precip_consensus trades are capped identically to non-consensus ones.
-  Unclear whether this is intentional (precip's higher irreducible
+RESOLVED 2026-07-18: while picking up this entry (in the same session as
+  the SNOW entry above), live-verified the current shipped _price_and_size
+  against this entry's own claim before touching anything -- confirmed the
+  "muted cap" bug this entry describes NO LONGER EXISTS in the code the
+  2026-07-18 consolidation actually shipped, even though this entry's own
+  "what shipped" narrative says the divergence was "deliberately preserved
+  as-is." _price_and_size's `if consensus:` branch applies the x1.25
+  multiply AND the cap raise (KELLY_CAP -> KELLY_CAP*KELLY_CAP_CONSENSUS_
+  MULT) together, unconditionally, for any caller that passes
+  consensus=True -- it has no per-condition-type branching. Since
+  _analyze_precip_trade already calls _price_and_size(consensus=
+  precip_consensus), it already gets the cap raise today. Verified
+  empirically, not just by code-reading: called _price_and_size directly
+  with a precip-typed condition and a fixture engineered to cross the old
+  0.25 cap (consensus=True result 0.264288, uncapped at 0.25, consistent
+  with the 0.33 raised cap and inconsistent with the old muted one).
+  Root cause: the consolidation's A/B safety net (see backlog.txt "ANALYZE-
+  TRADE PRICING/EV/KELLY TAIL TRIPLICATED", point 11 of the implementation-
+  style memory) never constructed a precip fixture whose pre-multiply
+  ci_adjusted_kelly actually crossed the 0.25/0.33 boundary while
+  consensus was also True -- the exact same cap-boundary blind spot class
+  that entry's own net_edge bug came from, one level up. Surfaced this
+  discrepancy to the user via AskUserQuestion before doing anything (per
+  the "surface real scope/design decisions" convention) rather than
+  silently either reverting or leaving it -- user chose to keep the
+  current (already-shipped) behavior: precip consensus trades size up to
+  0.33 same as temperature. No code change was needed for this entry;
+  only this backlog description (which was describing pre-consolidation
+  behavior, not what actually shipped) needed correcting.
+
+Problem (as originally scoped, now confirmed already resolved by the
+consolidation itself):
+  Temperature's consensus bonus raises the ci_adjusted_kelly cap itself
+  (KELLY_CAP * KELLY_CAP_CONSENSUS_MULT, 0.33 at defaults) when consensus
+  holds, so a strong consensus trade can size up to 0.33. Precip's
+  consensus bonus multiplies ci_adjusted_kelly by 1.25 but keeps the cap
+  at plain KELLY_CAP (0.25) regardless -- so the x1.25 only ever changes
+  the outcome when the pre-multiply value is already below ~0.20; above
+  that, precip_consensus trades are capped identically to non-consensus
+  ones. Unclear whether this is intentional (precip's higher irreducible
   uncertainty per _CONDITION_CONFIDENCE, 0.85-0.90 vs temperature's 1.00,
   already discounts precip sizing elsewhere) or an oversight from
   temperature's consensus-cap-raise never being ported to precip.
 
-What it would look like:
-  A deliberate decision, then a one-line change at the precip call site:
-  pass the same consensus-cap-raise behavior _price_and_size already
-  implements (it's condition-agnostic -- precip's call site would just
-  stop being the one path that doesn't benefit from the cap raise it
-  already supports).
-
-Why not now:
+Why not now (original, superseded -- already resolved, see above):
   - Behavior-preserving refactor discipline again: this is a sizing
     judgment call (is precip's extra discount deliberate risk management
     or drift?), not something to decide as a side effect of a
     consolidation pass.
 
-When to revisit:
-  - Alongside the entry above, or whenever precip market volume/settlement
-    history is enough to check empirically whether precip consensus trades
-    are currently under-sized relative to their real hit rate.
+When to revisit: N/A, resolved (confirmed already-shipped behavior kept
+  deliberately, per user decision 2026-07-18).
 
 [KALSHI CENTS/DOLLARS PRICE NORMALIZATION IMPLEMENTED INDEPENDENTLY 3+ TIMES]
 Priority: Medium -- this exact normalization has already produced two real

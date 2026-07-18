@@ -327,9 +327,9 @@ class TestSnowTradeWiring:
         assert r["recommended_side"] == "yes"
         assert r["edge"] == pytest.approx(0.6568, abs=1e-4)
         assert r["kelly"] == pytest.approx(0.20226666666666668, abs=1e-6)
-        # Snow has no consensus-bonus signal of its own — preserved as-is
-        # (see backlog.txt "SNOW PATH IS MISSING THE PRECIP-CONSENSUS KELLY BONUS").
-        assert r["consensus"] == ""
+        # ens_prob (0.3-members path), clim_prior (0.20), and blended_prob don't
+        # all agree on direction here, so snow_consensus is False for this fixture.
+        assert r["consensus"] is False
 
     def test_no_side_empty_bid_book(self):
         with (
@@ -355,6 +355,53 @@ class TestSnowTradeWiring:
         assert r["recommended_side"] == "no"
         assert r["entry_side_edge"] == pytest.approx(0.3892, abs=1e-4)
         assert r["kelly"] == pytest.approx(0.2289411764705882, abs=1e-6)
+        # Dry ensemble (0.001 members -> ens_prob near 0), clim_prior (0.20) and
+        # blended_prob both land below 0.5 here, so all three agree -> True.
+        assert r["consensus"] is True
+
+    def test_consensus_bonus_actually_raises_ci_adjusted_kelly(self):
+        # Mutation check: an ens_prob/clim_prior/blended_prob agreement fixture
+        # must produce a strictly higher ci_adjusted_kelly than an otherwise-
+        # identical fixture where clim_prior disagrees with the ensemble
+        # (snow_consensus=False) -- proves the wiring actually reaches
+        # _price_and_size's consensus bonus, not just that the field is set.
+        # _bootstrap_ci_precip is pinned (not just given a spread-inducing
+        # members list) because it draws from unseeded random.choices --
+        # without pinning it, the two calls below get independent random CIs
+        # and the assertion is flaky (~2.5% false-fail; see backlog.txt's
+        # implementation-style memory item 11 on unseeded-RNG test traps).
+        members = [0.05, 0.08, 0.1, 0.12, 0.15, 0.18, 0.2, 0.22, 0.25, 0.28, 0.3, 0.35]
+        common = dict(
+            enriched={
+                "_city": "NYC",
+                "ticker": "KXSNOWNY-26JAN20",
+                "yes_ask": 0.20,
+                "yes_bid": 0.10,
+            },
+            forecast={"high_f": 25.0, "low_f": 15.0, "humidity_pct": 85.0},
+            condition={"type": "precip_snow", "threshold": 2.0},
+            target_date=date(2026, 1, 20),
+            coords=(40.7, -74.0, "America/New_York"),
+        )
+        with (
+            mock.patch.object(wm, "_fetch_ensemble_precip", lambda *a, **kw: members),
+            mock.patch.object(wm, "climatological_prob", lambda *a, **kw: 0.90),
+            mock.patch.object(
+                wm, "_bootstrap_ci_precip", lambda *a, **kw: (0.4167, 0.9167)
+            ),
+        ):
+            r_consensus = wm._analyze_snow_trade(**common)
+        with (
+            mock.patch.object(wm, "_fetch_ensemble_precip", lambda *a, **kw: members),
+            mock.patch.object(wm, "climatological_prob", lambda *a, **kw: 0.05),
+            mock.patch.object(
+                wm, "_bootstrap_ci_precip", lambda *a, **kw: (0.4167, 0.9167)
+            ),
+        ):
+            r_no_consensus = wm._analyze_snow_trade(**common)
+        assert r_consensus["consensus"] is True
+        assert r_no_consensus["consensus"] is False
+        assert r_consensus["ci_adjusted_kelly"] > r_no_consensus["ci_adjusted_kelly"]
 
 
 def _metar_locked_temp_result(yes_ask, yes_bid, blended_prob, current_temp_f):

@@ -4505,12 +4505,10 @@ def _price_and_size(
 
     `consensus` gates the ×1.25 ci_adjusted_kelly bonus and raises its cap
     from KELLY_CAP to KELLY_CAP * KELLY_CAP_CONSENSUS_MULT — pass the
-    caller's own consensus signal (temperature's 3-source agreement and
-    precip's ensemble/climatology/blend agreement are different computations
-    that happen to share a name). Snow has no consensus signal of its own
-    and must be called with consensus=False (the default) to preserve its
-    existing behavior — see backlog.txt "SNOW PATH IS MISSING THE
-    PRECIP-CONSENSUS KELLY BONUS" for why that isn't unified here.
+    caller's own consensus signal (temperature's 3-source agreement, and
+    precip's/snow's ensemble/climatology/blend agreement, are different
+    computations that happen to share a name and both get the same
+    multiply+cap-raise treatment here).
     `extra_kelly_scales` lets the temperature path fold in its
     quality/anomaly/spread/time/regime scales that precip and snow don't have.
     `yes_side_ask_fallback` restores temperature's original empty-ask-book
@@ -5026,15 +5024,24 @@ def _analyze_snow_trade(
             }
             ci_low, ci_high = _bootstrap_ci_precip(precip_members, _liquid_condition)
 
-    # Snow has no consensus signal of its own (unlike precip's precip_consensus) —
-    # consensus stays False, matching this path's existing (bonus-less) behavior.
-    # See backlog.txt "SNOW PATH IS MISSING THE PRECIP-CONSENSUS KELLY BONUS".
+    # ── Consensus signal for snow: ensemble and clim_prior agree with blend ──
+    # Same formula as precip's precip_consensus (see _analyze_precip_trade).
+    snow_consensus = (
+        (
+            (ens_prob > 0.5 and clim_prior > 0.5 and blended_prob > 0.5)
+            or (ens_prob < 0.5 and clim_prior < 0.5 and blended_prob < 0.5)
+        )
+        if ens_prob is not None
+        else False
+    )
+
     _priced = _price_and_size(
         blended_prob,
         prices,
         condition,
         rec_side,
         ci=(ci_low, ci_high),
+        consensus=snow_consensus,
     )
     net_edge = _priced["net_edge"]
     edge = _priced["edge"]
@@ -5076,7 +5083,7 @@ def _analyze_snow_trade(
         "fee_adjusted_kelly": fee_kel,
         "ci_adjusted_kelly": ci_adj_kelly,
         "time_risk": "HIGH",
-        "consensus": "",
+        "consensus": snow_consensus,
         "model_consensus": True,
         "near_threshold": False,
         "days_out": days_out,
