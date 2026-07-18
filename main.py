@@ -988,7 +988,7 @@ def cmd_markets(client: KalshiClient):
                 (m.get("title") or "")[:45],
                 prob_color(prices["implied_prob"]),
                 signal_color(f"{sig} ({edge:+.0%})") if analysis else dim("—"),
-                m.get("volume", 0),
+                m.get("volume_fp") or m.get("volume", 0) or 0,
                 cyan(f"{_market_base_url()}/markets/{ticker}"),
             ]
         )
@@ -1053,8 +1053,10 @@ def cmd_market(client: KalshiClient, ticker: str, verbose: bool = False):
             pass
 
     # Whale detection
-    volume = market.get("volume", 0) or 0
-    open_interest = market.get("open_interest", 0) or 0
+    volume = market.get("volume_fp") or market.get("volume", 0) or 0
+    open_interest = (
+        market.get("open_interest_fp") or market.get("open_interest", 0) or 0
+    )
     if volume > 5000 or open_interest > 2000:
         print(
             yellow(

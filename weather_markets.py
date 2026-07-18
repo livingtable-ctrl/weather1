@@ -3158,9 +3158,19 @@ def is_stale(market: dict) -> bool:
     Returns True if a market has no volume AND no open interest AND closes
     within 60 minutes. Stale markets have meaningless edge calculations —
     skip them.
+
+    Accepts both legacy (volume/open_interest) and current API field names
+    (volume_fp/open_interest_fp) -- matches analyze_trade()'s own liquidity
+    gate. Real bug found 2026-07-19 (backlog.txt "is_liquid() ONLY READS
+    LEGACY volume/open_interest FIELD NAMES" -- same gap class, found by
+    adjacency while fixing that entry): plain-names-only meant this
+    function read 0/0 for every market on the current live API, so ANY
+    market scanned within 60 minutes of close was silently treated as
+    stale and skipped by cron.py's scan loop (imported there as
+    _is_stale_market), regardless of its real liquidity.
     """
-    volume = market.get("volume") or 0
-    open_interest = market.get("open_interest") or 0
+    volume = market.get("volume_fp") or market.get("volume") or 0
+    open_interest = market.get("open_interest_fp") or market.get("open_interest") or 0
     if volume > 0 or open_interest > 0:
         return False
     close_time_str = market.get("close_time", "")
@@ -3812,11 +3822,18 @@ def is_liquid(market: dict) -> bool:
     True if the market has real two-sided quotes (not just 0/0).
     A market with no quotes can still be traded — you'd be the first to post —
     but the implied probability of 0% is misleading for edge calculations.
+
+    Accepts both legacy (volume) and current API field names (volume_fp) --
+    matches analyze_trade()'s own liquidity gate. Previously plain-names-only
+    (backlog.txt "is_liquid() ONLY READS LEGACY volume/open_interest FIELD
+    NAMES"), masked in practice by the bid/ask-quote OR below covering the
+    common case, but a market with real _fp volume and no quotes yet (a
+    first-to-post scenario) was incorrectly called illiquid.
     """
     prices = parse_market_price(market)
     has_yes = prices["yes_bid"] > 0 or prices["yes_ask"] > 0
     has_no = prices["no_bid"] > 0
-    volume = market.get("volume", 0) or 0
+    volume = market.get("volume_fp") or market.get("volume", 0) or 0
     return has_yes or has_no or volume > 0
 
 
@@ -3893,7 +3910,13 @@ def fit_market_implied_distribution(siblings: list[dict]) -> dict | None:
         # nothing to the objective anyway -- exclude it from the thin-book
         # count too, so "3 liquid brackets" means 3 that actually influence
         # the fit, not 3 that merely pass the looser is_liquid() check.
-        weight = float(m.get("volume", 0) or 0)
+        # Real regression found 2026-07-19: a plain-names-only read here
+        # meant weight was always 0 on the current live API (volume_fp, not
+        # volume), so this fit almost certainly returned None on every real
+        # scan since it shipped -- caught by the same field-name audit that
+        # found is_stale()'s and is_liquid()'s gaps, not by the original
+        # (synthetic-data-only) test suite.
+        weight = float(m.get("volume_fp") or m.get("volume", 0) or 0)
         if weight <= 0:
             continue
         # (lo, hi) boundary in raw temperature units -- +-inf for the open

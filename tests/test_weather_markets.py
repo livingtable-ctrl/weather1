@@ -220,6 +220,38 @@ class TestIsLiquid:
         """Empty market dict has no liquidity."""
         assert is_liquid({}) is False
 
+    def test_liquid_market_with_volume_fp_only(self):
+        # Real bug found 2026-07-19 (backlog.txt "is_liquid() ONLY READS
+        # LEGACY volume/open_interest FIELD NAMES"): a market with real
+        # current-API volume_fp but no quotes yet (first-to-post) must
+        # still count as liquid, matching analyze_trade()'s own gate.
+        market = {"yes_bid": 0, "yes_ask": 0, "no_bid": 0, "volume_fp": 100}
+        assert is_liquid(market) is True
+
+    def test_falls_back_to_legacy_volume_when_volume_fp_is_zero(self):
+        # volume_fp present but 0 (falsy) must still fall back to legacy
+        # volume, matching `volume_fp or volume or 0` precedence exactly.
+        market = {
+            "yes_bid": 0,
+            "yes_ask": 0,
+            "no_bid": 0,
+            "volume_fp": 0,
+            "volume": 100,
+        }
+        assert is_liquid(market) is True
+
+    def test_volume_fp_takes_precedence_over_legacy_when_both_nonzero(self):
+        # A truthy volume_fp wins even if legacy volume alone would also
+        # pass -- proves _fp is checked first, not just as a fallback.
+        market = {
+            "yes_bid": 0,
+            "yes_ask": 0,
+            "no_bid": 0,
+            "volume_fp": 5,
+            "volume": 100,
+        }
+        assert is_liquid(market) is True
+
 
 class TestLiquidityEdgeScale:
     """backlog.txt "LIQUIDITY-AWARE SIZING + DYNAMIC EDGE THRESHOLD" -- the

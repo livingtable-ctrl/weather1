@@ -87,6 +87,22 @@ class TestFitMarketImpliedDistribution:
         assert result["implied_mean"] == pytest.approx(62.0, abs=0.1)
         assert result["implied_sigma"] == pytest.approx(6.0, abs=0.1)
 
+    def test_recovers_known_normal_distribution_using_current_api_volume_fp(self):
+        # Real regression found 2026-07-19: the weighting line read plain
+        # "volume" only. The current live Kalshi API returns volume_fp, not
+        # volume -- so on real data this fit almost certainly returned None
+        # every time (every point's weight computed as 0) since it shipped.
+        # This test builds the ladder with ONLY volume_fp set (no "volume"
+        # key at all), matching real live-API market dict shape, and
+        # confirms a real fit still comes back.
+        siblings = [dict(m) for m in _normal_ladder(70.0, 5.0, _MIXED_LADDER)]
+        for m in siblings:
+            m["volume_fp"] = m.pop("volume")
+        result = wm.fit_market_implied_distribution(siblings)
+        assert result is not None
+        assert result["implied_mean"] == pytest.approx(70.0, abs=0.05)
+        assert result["implied_sigma"] == pytest.approx(5.0, abs=0.05)
+
     def test_returns_none_below_three_liquid_brackets(self):
         siblings = _normal_ladder(70.0, 5.0, _MIXED_LADDER[:2])
         assert wm.fit_market_implied_distribution(siblings) is None

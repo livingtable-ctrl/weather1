@@ -207,6 +207,35 @@ class TestIsStale(unittest.TestCase):
         market = {"volume": 0, "open_interest": 0, "close_time": ""}
         self.assertFalse(is_stale(market))
 
+    def test_current_api_volume_fp_prevents_false_stale(self):
+        # Real bug found 2026-07-19 (backlog.txt "is_liquid() ONLY READS
+        # LEGACY volume/open_interest FIELD NAMES" -- same gap found by
+        # adjacency in is_stale()): a market closing soon with real
+        # volume_fp but no legacy volume/open_interest must NOT be called
+        # stale -- a plain-names-only read would have silently skipped
+        # every near-close market on the live API regardless of real
+        # liquidity.
+        from datetime import datetime, timedelta
+
+        from weather_markets import is_stale
+
+        close = (datetime.now(UTC) + timedelta(minutes=30)).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        )
+        market = {"volume_fp": 500, "close_time": close}
+        self.assertFalse(is_stale(market))
+
+    def test_current_api_open_interest_fp_prevents_false_stale(self):
+        from datetime import datetime, timedelta
+
+        from weather_markets import is_stale
+
+        close = (datetime.now(UTC) + timedelta(minutes=30)).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        )
+        market = {"open_interest_fp": 500, "close_time": close}
+        self.assertFalse(is_stale(market))
+
 
 class TestMaxDrawdown(unittest.TestCase):
     def setUp(self):

@@ -2166,11 +2166,76 @@ Why not now (original, superseded -- see resolution above): N/A, resolved.
 When to revisit: N/A for the Kelly-size scale (shipped live). See the
   ENABLEMENT TRIGGER above for the edge-threshold divisor (log-only today).
 
-[is_liquid() ONLY READS LEGACY volume/open_interest FIELD NAMES, NOT THE CURRENT API's _fp VARIANTS]
-Priority: Low -- masked in practice, not a live incident, but a real gap
-  found by adjacency during the 2026-07-19 liquidity-aware-sizing review.
+[RESOLVED 2026-07-19] is_liquid() (AND 4 MORE SITES) ONLY READ LEGACY volume/open_interest FIELD NAMES, NOT THE CURRENT API's _fp VARIANTS
+Priority: was Low for is_liquid() itself, but the scope grew significantly
+  once actually grepped -- see RESOLVED note. One of the 4 additional sites
+  (is_stale(), used in cron.py's real scan loop) had live-trading impact,
+  not just a masked/cosmetic gap.
 
-Problem:
+RESOLVED 2026-07-19: started as the one-line is_liquid() fix scoped below
+  (`market.get("volume_fp") or market.get("volume", 0) or 0`, matching
+  analyze_trade()'s own liquidity-gate coalescing). Before committing,
+  ran the "worth grepping for other bare market.get('volume'/'open_
+  interest' reads" check this entry itself called for -- and found 4 more
+  real sites, contradicting an earlier, unverified draft of this same
+  resolution that had claimed "none found." Caught by actually running
+  the grep rather than trusting the earlier claim:
+  1. weather_markets.is_stale() (imported into cron.py as
+     _is_stale_market) -- gates whether a market is analyzed AT ALL in
+     the real scan loop. Plain-names-only meant it read 0/0 for every
+     market's liquidity on the current live API, so ANY market scanned
+     within 60 minutes of close was silently treated as stale and skipped
+     from analysis entirely, regardless of real liquidity -- live-trading
+     impact, not just masked/cosmetic. No incident (TRADING_PAUSED=true
+     throughout), but a real functional gap that's likely existed since
+     the API moved to _fp field names.
+  2. weather_markets.fit_market_implied_distribution()'s own weighting
+     line (backlog.txt "MARKET-IMPLIED TEMPERATURE DISTRIBUTION FROM THE
+     FULL LADDER", resolved 2026-07-18) -- a self-inflicted regression in
+     a feature shipped the day before this fix. Plain-names-only meant
+     every sibling bracket's weight computed as 0 on real data, so the
+     fit almost certainly returned None on every live scan since it
+     shipped -- the feature's "verified... essentially exact" claim from
+     that resolution was true of the math (tested only against synthetic
+     fixtures using plain "volume"), never checked against real API field
+     shape. Confirmed the regression and the fix with a test built from
+     live-API-shaped fixtures (volume_fp only, no "volume" key at all).
+  3-4. main.py's market-table "Vol" display column and the "whale alert"
+     print in cmd_market -- both cosmetic/display-only, always showed
+     0/never fired respectively. No dedicated tests added (pure print-
+     statement output inside larger CLI display functions, not proportio-
+     nate to unit-test in isolation for a display-only fix) -- covered by
+     the existing cmd_market smoke tests continuing to pass.
+  All 4 fixed with the same `X_fp or X or 0` coalescing pattern.
+  5 new tests total (2 for is_stale()'s _fp fields in tests/test_paper.py,
+  1 live-API-shaped regression test in tests/test_market_implied_
+  distribution.py, plus the 3 is_liquid() tests already counted). Scoped
+  test run (test_weather_markets.py, test_paper.py, test_market_implied_
+  distribution.py, the cron-integration cluster, test_p1_remaining.py,
+  test_menu_ux.py -- 395 tests) all pass, lint clean.
+  Checked all of is_liquid()'s 4 real call sites (main.py:1032 cmd_market
+  display flag, main.py:1380 liquid_opps/no_quote_opps split, main.py:1786
+  tradeable-liquid summary count, main.py:2249 top-picks filter) -- none
+  gate live order placement, so is_liquid()'s own fix is a genuine (if
+  small) behavior change in the correct direction: a market with real _fp
+  volume and no quotes yet (first-to-post) now correctly counts as liquid.
+  Independent opus review clean, given the extra scrutiny warranted by
+  is_stale() touching cron.py's real scan loop: confirmed the coalescing
+  precedence exactly matches analyze_trade()'s reference gate, confirmed
+  no case exists where real liquidity (either field-name convention) gets
+  misclassified as stale, confirmed the newly-un-skipped near-close-market
+  set has no timeout/rate-limit interaction (cache-warm, CPU-bound,
+  already-budgeted analysis pool), re-derived the regression test's
+  fixture by hand to confirm it genuinely has no "volume" key left (not
+  just an unused extra key), and ran a broader sweep (holder variables
+  beyond "market.get", bracket-subscript access) confirming nothing else
+  was missed. One cosmetic, non-blocking note: is_stale() omits the
+  explicit `, 0` default on its plain-volume fallback that is_liquid()
+  includes -- functionally identical (the trailing `or 0` covers it
+  either way), not worth a follow-up on its own.
+
+Problem (as originally scoped, is_liquid()-only -- scope grew, see
+RESOLVED note above):
   Found 2026-07-19 while an opus review of the LIQUIDITY-AWARE SIZING
   feature (entry above) caught a real bug: new code that read only
   market.get("volume")/market.get("open_interest") silently broke on the
@@ -2674,6 +2739,26 @@ When to revisit:
 [RESOLVED 2026-07-18] MARKET-IMPLIED TEMPERATURE DISTRIBUTION FROM THE FULL LADDER
 Priority: was Medium -- turns data already fetched every scan into a
   per-event consensus signal; cheap, log-only ship.
+
+POST-RESOLUTION REGRESSION, FIXED 2026-07-19 (see the "is_liquid() (AND 4
+  MORE SITES)..." entry for the full narrative): fit_market_implied_
+  distribution()'s weighting line read plain market.get("volume") only,
+  never the current API's volume_fp -- so on real live data every sibling
+  bracket's weight computed as 0, and the fit almost certainly returned
+  None on every real scan since it shipped below. The "verified...
+  essentially exact" claim in the original resolution was true of the fit
+  math (checked against synthetic fixtures using plain "volume"), but
+  those fixtures never matched real API field-name shape, so the bug was
+  invisible to the test suite that shipped with this feature. Fixed with
+  the same `volume_fp or volume or 0` coalescing used everywhere else in
+  this codebase, plus a new regression test built from live-API-shaped
+  fixtures (volume_fp only, no "volume" key) confirming a real fit comes
+  back. Lesson for future signals in this codebase: a synthetic-fixture
+  test proving the MATH is correct is not the same as proving the
+  function works against real API data shape -- verify field names
+  against a real live payload (or at least against analyze_trade()'s own
+  known-correct coalescing pattern) before calling a new market-data
+  consumer "verified."
 
 RESOLVED 2026-07-18: shipped as scoped in "What it would look like" below,
   with two design decisions surfaced to and confirmed by the user via
