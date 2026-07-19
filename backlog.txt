@@ -4381,6 +4381,41 @@ RESOLVED 2026-07-19: took the delete option (user decision, after
   test_backlog_batch.py, test_live_execution.py; ruff + ruff format +
   mypy clean on all 3 changed files.
 
+FOLLOW-UP, same day, pushed separately: the independent Agent(opus) review
+  of the deletion above surfaced one adjacency note -- paper.export_
+  trades_csv() (paper.py:2120) derives its csv.DictWriter fieldnames from
+  trades[0].keys() alone (trades are append-ordered, so trades[0] is the
+  OLDEST record) with DictWriter's default extrasaction="raise" -- any
+  later trade with a key the oldest one lacks crashes the export. This is
+  pre-existing (not introduced by the exit_target deletion, and already
+  catalogued as a LOW finding in docs/audit_findings.md) -- caused by
+  schema GROWTH (a field added to place_paper_order after the oldest
+  on-disk trade was placed), not shrinkage: the review's own follow-up
+  check confirmed exit_target's removal is actually the safe direction
+  (old trades keep the key, new ones lack it, which trades[0]-keyed code
+  handles fine either way) -- corrected a first-draft code comment that
+  had this backwards. User asked to fix it regardless, since the growth
+  direction is a real, live, already-reachable crash. Checked the other 2
+  csv.DictWriter sites in
+  the repo (tracker.py:2294, web_app.py:1347) first -- both derive
+  fieldnames from tracker.get_history()'s SQL rows, which are uniform per
+  query regardless of age (unlike paper.py's independently-evolved JSON
+  records), so neither is actually vulnerable to this bug class; scope
+  confirmed narrow to paper.py alone. Fixed by unioning every trade's keys
+  (first-seen order) into fieldnames instead of reading only trades[0],
+  with restval="" so any trade missing a given key renders an empty cell
+  instead of raising -- handles both schema growth (a newer trade has a
+  field older ones lack) and schema shrinkage (an older trade has a field,
+  like exit_target, that newer ones no longer do) correctly. New
+  regression test (test_export_trades_csv_handles_heterogeneous_schema)
+  builds two trades then directly mutates the on-disk JSON to strip a
+  field from the oldest and add a field only the newest has, asserting the
+  export doesn't raise and both fields get their own column; mutation-
+  tested via git stash (confirmed it fails with the exact predicted
+  `ValueError: dict contains fields not in fieldnames` against the
+  reverted code, then restored). 152 tests pass in tests/test_paper.py
+  (172 including test_debug_fixes.py); ruff + ruff format + mypy clean.
+
 Problem (original framing, resolved above):
   The 2026-07-13 resting-exits research established that nothing in the
   repo ever sets exit_target ("fully dead -- threaded through

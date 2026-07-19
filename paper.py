@@ -2122,8 +2122,27 @@ def export_trades_csv(path: str) -> int:
     trades = get_all_trades()
     if not trades:
         return 0
+    # Trade schema has grown over the bot's lifetime (new place_paper_order
+    # params added over many months), so an old on-disk trade can lack a key
+    # a newer one has. Deriving fieldnames from trades[0] alone (the oldest
+    # record, since trades are appended) crashes csv.DictWriter's default
+    # extrasaction="raise" the moment any later trade carries a key the
+    # oldest one lacks -- a field being *removed* later (e.g. exit_target's
+    # 2026-07-19 deletion) is the safe direction and wouldn't have crashed
+    # trades[0]-based code either way, but the growth direction genuinely
+    # does. Union the keys across every trade instead, preserving
+    # first-seen order, so every field any trade ever had gets a column and
+    # no trade's extra keys can raise; restval fills any trade missing a
+    # given key with an empty cell rather than KeyError.
+    fieldnames: list[str] = []
+    _seen_fields: set[str] = set()
+    for t in trades:
+        for k in t:
+            if k not in _seen_fields:
+                _seen_fields.add(k)
+                fieldnames.append(k)
     with open(path, "w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=list(trades[0].keys()))
+        writer = csv.DictWriter(f, fieldnames=fieldnames, restval="")
         writer.writeheader()
         writer.writerows(trades)
     return len(trades)

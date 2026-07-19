@@ -749,6 +749,60 @@ class TestExportTrades(unittest.TestCase):
         n = paper.export_trades_csv(out_path)
         self.assertEqual(n, 0)
 
+    def test_export_trades_csv_handles_heterogeneous_schema(self):
+        """An older trade record (fewer keys, simulating a pre-field JSON row)
+        must not crash the export when a later trade has extra keys, and no
+        trade's fields may be silently dropped from the CSV (backlog.txt
+        review-adjacency note on the 2026-07-19 exit_target deletion:
+        trades[0].keys() alone crashes DictWriter's default
+        extrasaction='raise' the moment trades[0] is missing a key a later
+        trade has)."""
+        import csv
+
+        import paper
+
+        paper.place_paper_order(
+            "TKOLD", "yes", 10, 0.50, city="NYC", target_date="2026-04-09"
+        )
+        paper.place_paper_order(
+            "TKNEW", "no", 5, 0.60, city="CHI", target_date="2026-04-10"
+        )
+        # Simulate schema drift directly on disk: strip a field from the
+        # oldest trade (as a real pre-field JSON row would lack it) and add
+        # a field only the newest trade has (as a future schema addition
+        # would look before every old row is ever touched again).
+        data = paper._load()
+        del data["trades"][0]["thesis"]
+        data["trades"][1]["brand_new_future_field"] = "only on the newest trade"
+        paper._save(data)
+
+        out_path = str(Path(self._tmpdir) / "trades.csv")
+        n = paper.export_trades_csv(out_path)  # must not raise
+        self.assertEqual(n, 2)
+
+        with open(out_path, newline="", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            fieldnames = reader.fieldnames
+            rows = list(reader)
+
+        self.assertIn(
+            "brand_new_future_field",
+            fieldnames,
+            "a field only the newest trade has must still get its own column",
+        )
+        self.assertIn(
+            "thesis",
+            fieldnames,
+            "a field missing from the oldest trade must still get a column "
+            "(from a later trade that has it), not be dropped entirely",
+        )
+        self.assertEqual(
+            rows[0]["thesis"],
+            "",
+            "the oldest trade's missing field must render as an empty cell, not crash",
+        )
+        self.assertEqual(rows[1]["brand_new_future_field"], "only on the newest trade")
+
 
 class TestDrawdownScaling(unittest.TestCase):
     """Tests for the gradual drawdown recovery sizing feature."""
