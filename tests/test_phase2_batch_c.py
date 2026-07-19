@@ -174,8 +174,9 @@ class TestClimateIndicesTTL:
             return _non_zero_data
 
         # Reset cache state
-        climate_indices._indices_cache = {}
-        climate_indices._indices_loaded_at = 0.0
+        from forecast_cache import ForecastCache as _FC
+
+        climate_indices._indices_cache = _FC(ttl_secs=climate_indices._INDICES_TTL_SECS)
 
         with patch.object(climate_indices, "_fetch_monthly_index", counting_fetch):
             with patch.object(climate_indices, "_fetch_enso", return_value={}):
@@ -191,6 +192,7 @@ class TestClimateIndicesTTL:
     def test_cache_refreshes_after_ttl(self):
         """After TTL expires, the next call must re-fetch."""
         import climate_indices
+        from utils import utc_today
 
         call_count = [0]
 
@@ -198,12 +200,21 @@ class TestClimateIndicesTTL:
             call_count[0] += 1
             return {}
 
-        # Pre-populate cache but mark it as expired
-        climate_indices._indices_cache = {
-            "latest": {"ao": 0.0, "nao": 0.0, "enso": 0.0}
-        }
-        climate_indices._indices_loaded_at = (
-            time.monotonic() - climate_indices._INDICES_TTL_SECS - 1
+        # Pre-populate cache but mark it as expired. get_indices() with no
+        # args resolves to the current (year, month) key -- seed the same
+        # key get_indices() will actually look up, matching 2026-07-19's
+        # (year, month) keying fix (a stale "latest" string key here would
+        # never be found by the real lookup, making this test pass for the
+        # wrong reason: an always-empty cache, not a correctly-detected
+        # expired one).
+        _today = utc_today()
+        from forecast_cache import ForecastCache as _FC
+
+        climate_indices._indices_cache = _FC(ttl_secs=climate_indices._INDICES_TTL_SECS)
+        climate_indices._indices_cache.set_at(
+            (_today.year, _today.month),
+            {"ao": 0.0, "nao": 0.0, "enso": 0.0},
+            time.monotonic() - climate_indices._INDICES_TTL_SECS - 1,
         )
 
         with patch.object(climate_indices, "_fetch_monthly_index", counting_fetch):
@@ -215,9 +226,9 @@ class TestClimateIndicesTTL:
     def test_cache_is_thread_safe(self):
         """Concurrent calls must not raise and must each return a dict."""
         import climate_indices
+        from forecast_cache import ForecastCache as _FC
 
-        climate_indices._indices_cache = {}
-        climate_indices._indices_loaded_at = 0.0
+        climate_indices._indices_cache = _FC(ttl_secs=climate_indices._INDICES_TTL_SECS)
 
         results = []
         errors = []
@@ -246,6 +257,45 @@ class TestClimateIndicesTTL:
         import climate_indices
 
         assert climate_indices._INDICES_TTL_SECS == pytest.approx(86400.0)
+
+    def test_different_target_months_do_not_clobber_each_other(self):
+        """2026-07-19 fix: get_indices() must key its cache by (year, month),
+        not a single shared "latest" slot. Before this fix, calling
+        get_indices() for one target month then a DIFFERENT target month
+        (exactly what temperature_adjustment() does once per scanned market,
+        using that market's own target_date) would silently answer the
+        second call with the first month's cached result -- corrupting the
+        climate-index adjustment for any market whose target_date crossed a
+        month boundary from another market analyzed earlier in the same scan
+        cycle."""
+        import climate_indices
+        from forecast_cache import ForecastCache as _FC
+
+        climate_indices._indices_cache = _FC(ttl_secs=climate_indices._INDICES_TTL_SECS)
+
+        monthly_data = {(2026, 3): 1.0, (2026, 4): 2.0}
+        enso_data = {(2026, 3): 0.5, (2026, 4): 0.6}
+
+        with patch.object(
+            climate_indices, "_fetch_monthly_index", return_value=monthly_data
+        ):
+            with patch.object(climate_indices, "_fetch_enso", return_value=enso_data):
+                march_result = climate_indices.get_indices(
+                    target_month=3, target_year=2026
+                )
+                april_result = climate_indices.get_indices(
+                    target_month=4, target_year=2026
+                )
+
+        assert march_result["month"] == 3
+        assert march_result["ao"] == pytest.approx(1.0)
+        assert march_result["enso"] == pytest.approx(0.5)
+        assert april_result["month"] == 4
+        assert april_result["ao"] == pytest.approx(2.0)
+        assert april_result["enso"] == pytest.approx(0.6)
+        assert march_result != april_result, (
+            "different target months must not share a cache slot"
+        )
 
 
 # ── P2-13: api_requests table pruning ────────────────────────────────────────

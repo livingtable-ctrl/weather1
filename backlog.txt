@@ -4186,6 +4186,129 @@ PARTIALLY RESOLVED 2026-07-19: before touching anything, did a full survey
   code (twice -- once on discovering the wrinkled caches, once again after
   the full survey), not assumed.
 
+FURTHER RESOLVED 2026-07-19 (same day, second pass): user asked to "migrate
+  the rest." Before touching anything, re-derived the "still open" list
+  above from source rather than re-asserting it (user explicitly asked to
+  review the recommendation) -- this caught that the first pass's own
+  characterization had OVERSTATED the risk on 5 of the 10 remaining
+  non-ml_bias.py caches:
+  - `_MAE_WEIGHTS_CACHE`: confirmed tiny real key-space ((city, days_back),
+    ~20-40 entries), no disk persistence, "session cache" by its own
+    comment -- genuinely safe to migrate permanent-by-design.
+  - nws.py's `_gridpoint_cache`: turned out simpler than described -- no
+    timestamp tuple at all today (bare key->value), tiny key-space, no
+    disk persistence. Safe.
+  - nws.py's `_forecast_cache`/`_obs_cache`/`_precip_cache`: the "wall-clock
+    vs monotonic is a real semantic change" framing from the first survey
+    didn't hold up on direct inspection -- none of the 3 ever negative-
+    cache (every write site stores a real result; every failure path
+    returns without writing), none persist to disk, and nothing anywhere
+    reads the stored timestamp for any purpose besides "how long ago" --
+    switching to ForecastCache's monotonic clock is a pure robustness
+    improvement (immune to system clock adjustments), not a risky change.
+  - climate_indices.py's `_indices_cache`: also overstated -- it already
+    used `time.monotonic()` via the sibling `_indices_loaded_at` variable
+    (the first survey conflated it with nws.py's wall-clock group), and its
+    single-slot shape maps directly onto `.set_with_ttl("latest", result,
+    ttl)`. Its "don't cache an all-zero failure" logic (H-17) just means
+    skipping the `.set()` call on that path -- exactly current behavior.
+  Confirmed genuinely hard on re-check (this part of the first survey held
+  up): `_station_cache` (nws.py) really does need a whole-dict dump/load
+  that ForecastCache has no enumeration API for; climatology.py's
+  `_MEM_CACHE`/`_sigma_mem_cache` really are a different architecture
+  (load-once-per-process, gated by disk-file mtime on first load only, not
+  an in-memory TTL at all -- forcing a ForecastCache TTL onto this would
+  either no-op or introduce new re-fetch behavior mid-process).
+  User confirmed (via AskUserQuestion, presented with the corrected
+  breakdown): migrate the 7 confirmed-safe caches now, leave the 3
+  genuinely-hard ones + ml_bias.py's 3 documented as out-of-scope (see
+  below, updated from the first pass's list).
+  Migrated 7 more: weather_markets.py's `_MAE_WEIGHTS_CACHE` (permanent,
+  `ttl_secs=float("inf")`) and `_DYNAMIC_BIAS_CACHE` (count folded into the
+  stored value, `(dyn_bias, count)` instead of `(dyn_bias, count, ts)`);
+  nws.py's `_gridpoint_cache` (permanent), `_forecast_cache`, `_obs_cache`,
+  `_precip_cache`; climate_indices.py's `_indices_cache` (the
+  `_indices_loaded_at` sibling global deleted entirely, no longer needed).
+  None of these 7 ever negative-cache a bare `None`, so all use the simpler
+  `.get()` pattern (no `get_with_ts()` needed, unlike 6 of the first 8).
+  Updated 4 more test files with raw-dict/stale-global references
+  (test_forecasting.py's `_MAE_WEIGHTS_CACHE` patch, test_phase2_batch_c.py's
+  3 direct `_indices_cache`/`_indices_loaded_at` reassignments -- rewritten
+  to construct/patch a real ForecastCache and use `.set_at()` to simulate an
+  already-expired entry instead of hand-setting a fake timestamp global,
+  test_phase2_batch_d.py's raw `_precip_cache["NYC"] = (...)` seed rewritten
+  to `.set_at()` and its `isinstance(nws._precip_cache, dict)` assertion
+  corrected to `isinstance(..., ForecastCache)`).
+  Mutation-tested the riskiest of the 7 (climate_indices.py's restructuring,
+  since it's the only one that changed the actual freshness mechanism, not
+  just the storage): temporarily disabled the cache-read in `get_indices()`,
+  confirmed the existing `test_cache_served_within_ttl` test failed with the
+  predicted symptom (4 fetch calls instead of 2), restored the fix. The
+  other 6 didn't need a fresh mutation test -- the existing TTL-expiry tests
+  (already updated to use `.set_at()` for expired-entry simulation) exercise
+  the same real property directly.
+  319 tests pass across every affected file (test_forecasting.py,
+  test_http.py, test_phase2_batch_c.py, test_phase2_batch_d.py,
+  test_weather_markets.py, test_phase4.py) plus the full first-pass
+  regression set re-run clean; ruff + ruff format + mypy clean on all 3
+  changed source files (weather_markets.py, nws.py, climate_indices.py).
+  Independent opus review: clean, 2 non-blocking observations initially --
+  (1) `get_indices()` caches under one single "latest" key regardless of
+  `target_month`/`target_year` params; (2) test_forecasting.py's
+  `_MAE_WEIGHTS_CACHE` test mock uses a plain `ForecastCache()` (4h default
+  TTL) rather than mirroring production's `ttl_secs=float("inf")` --
+  harmless for a synchronous test that never waits 4+ hours, left alone.
+
+  FOLLOW-UP, same day -- (1) upgraded from "non-blocking, pre-existing" to
+  a real fix after re-checking the actual blast radius rather than taking
+  the "pre-existing, low-impact" framing at face value: `get_indices()`'s
+  sole real caller passing explicit args is `temperature_adjustment(city,
+  target_date)` (weather_markets.py), called from `analyze_trade()` --
+  weather_markets.py:6057 -- once per scanned market, using THAT market's
+  own `target_date`. cron.py/`_analyze_once` scan many markets per cycle;
+  any two markets whose `target_date`s fall in different calendar months
+  (routine for multi-day-out markets near a month boundary) would share the
+  single "latest" cache slot -- whichever market's (year, month) got cached
+  first would silently answer for every other market's climate-index
+  adjustment for the rest of that cache's 24h TTL, corrupting the real
+  climatological-probability blend `analyze_trade()` uses for live
+  trade decisions. Not hypothetical, not pre-existing-and-therefore-fine --
+  a real, currently-reachable bug in the live pipeline (this migration
+  didn't introduce it, the single-slot key already existed before, but it
+  deserved fixing rather than leaving alone once the actual reach was
+  traced). Fixed: cache now keyed by `(year, month)` instead of a fixed
+  "latest" string -- `year`/`month` computation moved before the cache
+  lookup (previously computed only in the fetch-miss branch, after the
+  lookup). H-17's "don't cache an all-zero failure" behavior, thread safety
+  (`_indices_lock` still wraps the full read-check-fetch-write sequence),
+  and the negative-caching-never-happens property are all unchanged.
+  New regression test (`test_different_target_months_do_not_clobber_each_
+  other`) calls get_indices() for two different (target_month, target_year)
+  pairs against mocked fetch data with distinct values per month, asserting
+  each call gets its own correct result rather than the second clobbering
+  into the first's cache slot. Also fixed 3 test_phase2_batch_c.py sites
+  that hand-seeded the cache under the old hardcoded "latest" string (which
+  would now silently never be found by the real (year,month)-keyed lookup,
+  making those tests pass for the wrong reason -- an always-empty cache,
+  not a correctly-detected-expired one) to seed under the real current
+  (year, month) key instead. Mutation-tested the new test directly:
+  reverted to the shared "latest" key, confirmed it failed with the exact
+  predicted symptom (April's call returning March's cached month), restored
+  the fix. (2) left as-is, per the original assessment -- still correctly
+  harmless.
+  301 tests pass (test_phase2_batch_c.py, test_weather_markets.py,
+  test_phase4.py, test_forecasting.py); ruff + ruff format + mypy clean.
+  Independent opus review: clean, and surfaced one bonus finding beyond
+  what this fix set out to address -- under the old shared "latest" key,
+  `get_enso_index()` (always current month, zero args) and
+  `temperature_adjustment()` (target month, which can differ from current
+  month for any multi-day-out market) also clobbered EACH OTHER's cache
+  slot, not just different markets' `temperature_adjustment()` calls
+  clobbering each other. The `(year, month)` keying fix resolves this
+  cross-contamination too, at no extra cost -- noted here since it wasn't
+  part of the original bug report but is a real, strictly-better side
+  effect of the same fix.
+
 Problem (original framing, migrated caches now resolved above -- remaining
 scope unchanged):
   forecast_cache.py's ForecastCache is the purpose-built abstraction
@@ -4206,50 +4329,57 @@ scope unchanged):
   _METAR_CACHE by hand; the climatology isolation fixture is another
   one-off).
 
-What it would look like (the 8-cache clean group): [DONE, see resolution
-notes above]
+What it would look like (the 15-cache clean group -- the original 5 +
+_CONSENSUS_CACHE/_MOS_CACHE/_METAR_CACHE from the first pass, plus
+_MAE_WEIGHTS_CACHE/_DYNAMIC_BIAS_CACHE/_gridpoint_cache/_forecast_cache/
+_obs_cache/_precip_cache/_indices_cache from the second): [DONE, see
+resolution notes above]
 
-What's still open (deliberately excluded 2026-07-19, see the survey above
-for the specific reason per cache):
-  - `_MAE_WEIGHTS_CACHE`/nws.py's `_gridpoint_cache`/`_station_cache`: need
-    an explicit decision (from the user, not assumed) on whether to add TTL
-    expiry for the first time, or leave them permanent by design.
-  - `_DYNAMIC_BIAS_CACHE`: needs the count folded into the stored value
-    before it fits ForecastCache's (value, ts[, ttl]) shape.
-  - nws.py's `_forecast_cache`/`_obs_cache`/`_precip_cache`: migrating off
-    wall-clock `time.time()` onto ForecastCache's monotonic timestamps is a
-    real semantic change (survives process restarts differently), not a
-    mechanical swap -- and `_station_cache`'s disk persistence has no
-    ForecastCache equivalent to port to.
-  - climate_indices.py's `_indices_cache` and climatology.py's `_MEM_CACHE`/
-    `_sigma_mem_cache`: freshness lives in a sibling variable or disk-file
-    mtime, not the cache entry itself -- needs restructuring the freshness
-    mechanism, not a declaration swap.
+What's still open (confirmed genuinely hard on the second pass's re-check,
+not just first-pass caution -- see the survey above for why each one
+resisted the corrected, more thorough re-derivation):
+  - `_station_cache` (nws.py): persists via a whole-dict dump/load
+    (`_save_station_cache`/`_load_station_cache`), a pattern ForecastCache
+    has no enumeration API for. Needs either extending the shared
+    ForecastCache class with a new capability (touches every already-
+    migrated cache, including live-trading-adjacent `_ensemble_cache`) or
+    staying a plain dict permanently.
+  - climatology.py's `_MEM_CACHE`/`_sigma_mem_cache`: a genuinely different
+    architecture -- load-once-per-process, freshness gated by disk-file
+    mtime checked only on first load, not an in-memory TTL at all. Forcing
+    a ForecastCache TTL onto this would either no-op or introduce new
+    re-fetch behavior mid-process that doesn't exist today.
   - ml_bias.py's 3 caches: not TTL'd keyed dicts at all (pickle/HMAC/JSON-
-    backed load-once singletons) -- recommend excluding from this refactor
-    permanently, not just deferring.
+    backed load-once singletons, one isn't even a dict) -- excluded from
+    this refactor permanently, not just deferred.
   - Add optional negative-TTL support to ForecastCache once (generalizing
-    the run-trend pattern) -- not needed by anything migrated this pass
-    (none of the 8 needed a shorter miss-TTL than their hit-TTL except
-    _CONSENSUS_CACHE, which already had per-entry TTL support before this
-    migration).
+    the run-trend pattern) -- not needed by anything migrated across either
+    pass (none of the 15 needed a shorter miss-TTL than their hit-TTL
+    except _CONSENSUS_CACHE, which already had per-entry TTL support before
+    any of this).
   - A single clear_all_forecast_caches() registry to collapse the per-cache
-    conftest fixtures -- still just 1 real fixture (METAR's) plus a few
-    inline .clear() calls in test files; not enough of them yet to clearly
-    pay for a registry.
+    conftest fixtures -- still just 1 real fixture (METAR's) plus a handful
+    of inline .clear() calls in test files; not enough of them yet to
+    clearly pay for a registry.
 
-Why not now (for the remaining wrinkled caches):
-  - Each one needs either a real behavior-change decision (add TTL to a
-    permanent cache) or actual restructuring work (fold in a count field,
-    move off wall-clock time, port disk persistence, relocate an
-    external timestamp) -- none of that is "opportunistic swap the
-    declaration" work, and none of it is a live bug today.
+Why not now (for the remaining 3 genuinely-hard caches):
+  - `_station_cache` needs a real API-design decision (extend the shared
+    ForecastCache class, or don't) that affects every other cache using it,
+    not just this one -- worth its own scoped look, not a drive-by.
+  - climatology.py's 2 need a real architectural call (does this become a
+    ForecastCache-backed design, keep the disk-mtime-gated load-once
+    pattern, or something else) -- not a live bug, and forcing a decision
+    here risks getting it wrong for the sake of closing out a backlog item.
 
 When to revisit:
-  - Opportunistically, whenever nws.py/climate_indices.py/climatology.py/
-    ml_bias.py is next open for other reasons -- and only with an explicit
-    per-cache decision (matching this pass's own discipline), not a batch
-    assumption that they're all safe to swap.
+  - `_station_cache`: whenever nws.py is next open AND someone wants to
+    make the ForecastCache-enumeration-API call deliberately, not as a
+    side effect of something else.
+  - climatology.py's 2: whenever climatology.py is next open for other
+    reasons, with the same discipline -- re-derive from source, don't
+    batch-assume they're now safe just because most of the rest turned
+    out to be.
+  - ml_bias.py's 3: not applicable -- permanently excluded.
 
 [RESOLVED 2026-07-18] execution_log.py's SWALLOWED-ALTER MIGRATIONS vs tracker.py's VERSIONED IDIOM
 Priority: was Low-Medium -- worked fine so far, but the live-execution feature

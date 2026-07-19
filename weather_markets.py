@@ -163,10 +163,17 @@ _SIGMA_2DAY_CAP: float = float(os.getenv("SIGMA_2DAY_CAP", "4.0"))
 _BETWEEN_SIGMA_1DAY_CAP: float = float(os.getenv("BETWEEN_SIGMA_1DAY_CAP", "1.8"))
 _BETWEEN_SIGMA_2DAY_CAP: float = float(os.getenv("BETWEEN_SIGMA_2DAY_CAP", "2.5"))
 
-# Dynamic temperature bias cache: (city, var) → (signed_error_f, sample_count, monotonic_ts)
-# Populated lazily from tracker.get_dynamic_station_bias(). TTL matches model cache.
-_DYNAMIC_BIAS_CACHE: dict[tuple, tuple[float, int, float]] = {}
+# Dynamic temperature bias cache: (city, var) → (signed_error_f, sample_count).
+# Populated lazily from tracker.get_dynamic_station_bias(). TTL matches model
+# cache. Migrated to ForecastCache 2026-07-19 (backlog.txt "ForecastCache
+# EXISTS, BUT ~14 HAND-ROLLED TTL DICTS...") -- the count field is folded
+# into the stored value since ForecastCache owns the timestamp itself. Never
+# negative-cached (the exception fallback stores a real (0.0, 0) tuple, not
+# bare None), so plain .get() is unambiguous.
 _DYNAMIC_BIAS_CACHE_TTL: float = 4 * 60 * 60  # 4 hours
+_DYNAMIC_BIAS_CACHE: ForecastCache[tuple[float, int]] = ForecastCache(
+    ttl_secs=_DYNAMIC_BIAS_CACHE_TTL
+)
 
 # Market price credibility anchor weights by condition type.
 # Between markets have a ~23% systematic cold bias vs market ~46%; anchor more heavily.
@@ -317,8 +324,8 @@ def _get_combined_station_bias(city: str, var: str = "max") -> float:
     )
 
     cached = _DYNAMIC_BIAS_CACHE.get((city, var))
-    if cached is not None and time.monotonic() - cached[2] < _DYNAMIC_BIAS_CACHE_TTL:
-        dyn_bias, count = cached[0], cached[1]
+    if cached is not None:
+        dyn_bias, count = cached
     else:
         try:
             from tracker import get_dynamic_station_bias as _gdbs
@@ -326,7 +333,7 @@ def _get_combined_station_bias(city: str, var: str = "max") -> float:
             dyn_bias, count = _gdbs(city, var, min_samples=10)
         except Exception:
             dyn_bias, count = 0.0, 0
-        _DYNAMIC_BIAS_CACHE[(city, var)] = (dyn_bias, count, time.monotonic())
+        _DYNAMIC_BIAS_CACHE.set((city, var), (dyn_bias, count))
 
     if count < 10:
         return static_bias
@@ -2671,9 +2678,15 @@ def _feels_like(
     return temp_f
 
 
-_MAE_WEIGHTS_CACHE: dict[
-    tuple[str, int], dict[str, float]
-] = {}  # (city, days_back) -> weights, session cache
+# (city, days_back) -> weights, session cache (permanent per-process by
+# design -- never expires, matching the plain dict's original semantics
+# exactly; migrated to ForecastCache 2026-07-19, backlog.txt "ForecastCache
+# EXISTS, BUT ~14 HAND-ROLLED TTL DICTS..."). Never negative-cached (every
+# early-return path returns None WITHOUT writing to cache), so plain .get()
+# is unambiguous.
+_MAE_WEIGHTS_CACHE: ForecastCache[dict[str, float]] = ForecastCache(
+    ttl_secs=float("inf")
+)
 
 
 def _weights_from_mae(
@@ -2687,8 +2700,9 @@ def _weights_from_mae(
     City-specific data is preferred; falls back to global MAE if city data is thin.
     """
     cache_key = (city, days_back)
-    if cache_key in _MAE_WEIGHTS_CACHE:
-        return _MAE_WEIGHTS_CACHE[cache_key]
+    _cached_weights = _MAE_WEIGHTS_CACHE.get(cache_key)
+    if _cached_weights is not None:
+        return _cached_weights
     try:
         from tracker import get_member_accuracy
 
@@ -2722,7 +2736,7 @@ def _weights_from_mae(
     total = sum(weights.values())
     n_models = len(weights)
     normalised = {m: v / total * n_models for m, v in weights.items()}
-    _MAE_WEIGHTS_CACHE[cache_key] = normalised
+    _MAE_WEIGHTS_CACHE.set(cache_key, normalised)
     return normalised
 
 

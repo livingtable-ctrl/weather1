@@ -210,7 +210,7 @@ class TestGetLivePrecipObs:
         with patch.object(nws, "_get", fake_get):
             with patch.object(nws, "_get_obs_station", return_value="KJFK"):
                 nws.get_live_precip_obs("NYC", (40.7, -74.0, 10))
-                nws._precip_cache["NYC"] = (time.time() - nws.OBS_TTL - 1, 0.2)
+                nws._precip_cache.set_at("NYC", 0.2, time.monotonic() - nws.OBS_TTL - 1)
                 nws.get_live_precip_obs("NYC", (40.7, -74.0, 10))
                 assert call_count[0] == 2, "Expired cache must trigger a re-fetch"
 
@@ -292,8 +292,9 @@ class TestGetLivePrecipObs:
         )
 
     def test_precip_cache_exported(self):
-        """_precip_cache must exist as a module-level dict in nws."""
+        """_precip_cache must exist as a module-level ForecastCache in nws."""
         import nws
+        from forecast_cache import ForecastCache
 
         assert hasattr(nws, "_precip_cache")
-        assert isinstance(nws._precip_cache, dict)
+        assert isinstance(nws._precip_cache, ForecastCache)

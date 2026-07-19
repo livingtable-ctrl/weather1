@@ -17,18 +17,27 @@ from __future__ import annotations
 
 import json
 import threading
-import time
 from datetime import UTC, date, datetime
 from pathlib import Path
 
 import requests
 
+from forecast_cache import ForecastCache
+
 CPC_BASE = "https://www.cpc.ncep.noaa.gov"
 
-# In-memory cache with 24-hour TTL so long-running processes refresh daily
-_indices_cache: dict = {}
-_indices_loaded_at: float = 0.0
+# In-memory cache with 24-hour TTL so long-running processes refresh daily.
+# Keyed by (year, month) -- was a single "latest" slot until 2026-07-19,
+# which let one target month's cached result silently answer for a
+# different one (see get_indices' docstring for the real bug this caused).
+# Migrated to ForecastCache 2026-07-19 (backlog.txt "ForecastCache EXISTS,
+# BUT ~14 HAND-ROLLED TTL DICTS..."); already used monotonic time via the
+# old _indices_loaded_at sibling variable, now owned by ForecastCache
+# itself instead. Never negative-cached (an all-zero failure result is
+# returned but deliberately NOT written to cache -- see the H-17 comment in
+# get_indices -- so plain .get() is unambiguous).
 _INDICES_TTL_SECS: float = 86400.0
+_indices_cache: ForecastCache[dict] = ForecastCache(ttl_secs=_INDICES_TTL_SECS)
 _indices_lock = threading.Lock()
 
 
@@ -113,23 +122,26 @@ def get_indices(
 ) -> dict:
     """
     Return current (or specified) AO, NAO, ENSO values.
-    Results are cached with a 24-hour TTL so long-running processes refresh daily.
-    Thread-safe.
+    Results are cached with a 24-hour TTL, keyed by (year, month) -- 2026-07-19
+    fix: a single shared "latest" slot let one target month's cached result
+    silently answer for a DIFFERENT target month, which temperature_adjustment()
+    (called once per scanned market with that market's own target_date) could
+    hit for real: a scan cycle spanning a month boundary (any multi-day-out
+    market near month-end) would apply the wrong city-wide climate-index
+    adjustment to whichever markets were analyzed after the first one cached a
+    different month's result. Thread-safe.
     """
-    global _indices_cache, _indices_loaded_at
+    from utils import utc_today as _utc_today
+
+    now = _utc_today()
+    year = target_year or now.year
+    month = target_month or now.month
+    cache_key = (year, month)
 
     with _indices_lock:
-        if (
-            _indices_cache
-            and (time.monotonic() - _indices_loaded_at) < _INDICES_TTL_SECS
-        ):
-            return _indices_cache.get("latest", {})
-
-        from utils import utc_today as _utc_today
-
-        now = _utc_today()
-        year = target_year or now.year
-        month = target_month or now.month
+        _cached_indices = _indices_cache.get(cache_key)
+        if _cached_indices is not None:
+            return _cached_indices
 
         ao_url = f"{CPC_BASE}/products/precip/CWlink/daily_ao_index/monthly.ao.index.b50.current.ascii.table"
         nao_url = f"{CPC_BASE}/products/precip/CWlink/pna/norm.nao.monthly.b5001.current.ascii.table"
@@ -158,8 +170,8 @@ def get_indices(
         }
         # H-17: only cache when at least one index was successfully fetched.
         # A full-zero result from a network outage must not lock in zero adjustments
-        # for the next 24 hours — leave _indices_loaded_at unchanged so the next
-        # call retries immediately.
+        # for the next 24 hours — skip the _indices_cache.set() call below so the
+        # next call retries immediately instead of hitting a frozen zero result.
         if result["ao"] == 0.0 and result["nao"] == 0.0 and result["enso"] == 0.0:
             import logging as _ci_log
 
@@ -169,8 +181,7 @@ def get_indices(
             )
             return result  # return zeros for this call but don't update the timestamp
 
-        _indices_cache["latest"] = result
-        _indices_loaded_at = time.monotonic()
+        _indices_cache.set(cache_key, result)
         return result
 
 

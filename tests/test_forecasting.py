@@ -617,8 +617,9 @@ class TestLearnedWeights:
         from unittest.mock import patch
 
         import weather_markets as wm
+        from forecast_cache import ForecastCache
 
-        monkeypatch.setattr(wm, "_MAE_WEIGHTS_CACHE", {})
+        monkeypatch.setattr(wm, "_MAE_WEIGHTS_CACHE", ForecastCache())
         monkeypatch.setattr(wm, "_LEARNED_WEIGHTS", {})
 
         fake_acc = {

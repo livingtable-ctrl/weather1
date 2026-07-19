@@ -20,6 +20,7 @@ from pathlib import Path
 import requests
 
 from circuit_breaker import CircuitBreaker
+from forecast_cache import ForecastCache
 from schema_validator import validate_nws_response
 from utils import normal_cdf
 from utils import prob_threshold as _prob_threshold
@@ -41,13 +42,28 @@ OBS_TTL = (
 _session = requests.Session()
 _session.headers.update(UA_HEADER)
 
-# In-memory caches
-_gridpoint_cache: dict = {}
+# In-memory caches. 2026-07-19 (backlog.txt "ForecastCache EXISTS, BUT ~14
+# HAND-ROLLED TTL DICTS..."): _gridpoint_cache/_forecast_cache/_obs_cache/
+# _precip_cache migrated to the shared ForecastCache class -- none of the 4
+# ever negative-cache (every write site stores a real result; every failure
+# path returns without writing), none persist to disk, so plain .get() is
+# unambiguous and switching from time.time() (wall-clock) to ForecastCache's
+# internal time.monotonic() is a pure robustness improvement here (nothing
+# reads the stored timestamp itself, only "how long ago" -- monotonic is
+# immune to system clock adjustments that wall-clock isn't). _station_cache
+# stays a plain dict -- it round-trips its ENTIRE contents to disk via
+# _load_station_cache()/_save_station_cache() below, a whole-dict dump/load
+# pattern ForecastCache has no enumeration API for; migrating it would mean
+# extending the shared class itself, deliberately left out of this pass (see
+# backlog.txt for the full reasoning).
+_gridpoint_cache: ForecastCache[tuple[str, int, int]] = ForecastCache(
+    ttl_secs=float("inf")
+)
 _station_cache: dict = {}
-_forecast_cache: dict = {}  # city -> (fetched_at_epoch, data)
 _FORECAST_CACHE_TTL = 3600  # seconds
-_obs_cache: dict = {}  # city -> (timestamp, observation_dict)
-_precip_cache: dict = {}  # city -> (timestamp, precip_inches | None)
+_forecast_cache: ForecastCache[dict] = ForecastCache(ttl_secs=_FORECAST_CACHE_TTL)
+_obs_cache: ForecastCache[dict] = ForecastCache(ttl_secs=OBS_TTL)
+_precip_cache: ForecastCache[float] = ForecastCache(ttl_secs=OBS_TTL)
 
 # Per-city lock prevents concurrent threads from fetching the same city observation
 # simultaneously (thread-race fix: 4 workers × 5 cities = 20 fetches → 5 fetches)
@@ -133,12 +149,13 @@ def _get_obs(url: str) -> dict:
 
 def _get_gridpoint(lat: float, lon: float) -> tuple[str, int, int]:
     key = (round(lat, 4), round(lon, 4))
-    if key in _gridpoint_cache:
-        return _gridpoint_cache[key]
+    _cached = _gridpoint_cache.get(key)
+    if _cached is not None:
+        return _cached
     data = _get(f"{NWS_BASE}/points/{lat},{lon}")
     props = data["properties"]
     result = (props["gridId"], props["gridX"], props["gridY"])
-    _gridpoint_cache[key] = result
+    _gridpoint_cache.set(key, result)
     return result
 
 
@@ -184,8 +201,8 @@ def get_nws_daily_forecast(city: str, coords: tuple) -> dict[str, dict]:
     outperform raw model output especially at 1-5 day range.
     """
     cached = _forecast_cache.get(city)
-    if cached is not None and time.time() - cached[0] < _FORECAST_CACHE_TTL:
-        return cached[1]
+    if cached is not None:
+        return cached
 
     if _nws_cb.is_open():
         _log.warning("NWS circuit open — skipping daily forecast for %s", city)
@@ -232,7 +249,7 @@ def get_nws_daily_forecast(city: str, coords: tuple) -> dict[str, dict]:
         except Exception:
             continue
 
-    _forecast_cache[city] = (time.time(), result)
+    _forecast_cache.set(city, result)
     return result
 
 
@@ -391,22 +408,18 @@ def get_live_observation(city: str, coords: tuple) -> dict | None:
         return None
 
     # Fast path: check cache before acquiring lock
-    now = time.time()
-    if city in _obs_cache:
-        cached_at, obs = _obs_cache[city]
-        if now - cached_at < OBS_TTL:
-            return obs
+    _cached_obs = _obs_cache.get(city)
+    if _cached_obs is not None:
+        return _cached_obs
 
     # Per-city lock: only one thread fetches NWS for a given city at a time.
     # Other threads for the same city wait here, then return from cache.
     with _get_obs_lock(city):
         try:
             # Double-check inside lock — another thread may have just populated cache
-            now = time.time()
-            if city in _obs_cache:
-                cached_at, obs = _obs_cache[city]
-                if now - cached_at < OBS_TTL:
-                    return obs
+            _cached_obs = _obs_cache.get(city)
+            if _cached_obs is not None:
+                return _cached_obs
 
             lat, lon = coords[0], coords[1]
             station_id = _get_obs_station(lat, lon)
@@ -430,7 +443,7 @@ def get_live_observation(city: str, coords: tuple) -> dict | None:
                 "timestamp": props.get("timestamp", ""),
                 "description": props.get("textDescription", ""),
             }
-            _obs_cache[city] = (time.time(), obs)
+            _obs_cache.set(city, obs)
             _nws_cb.record_success()
             return obs
         except Exception as exc:
@@ -450,19 +463,15 @@ def get_live_precip_obs(city: str, coords: tuple) -> float | None:
         _log.warning("NWS circuit open — skipping precip obs for %s", city)
         return None
 
-    now = time.time()
-    if city in _precip_cache:
-        cached_at, val = _precip_cache[city]
-        if now - cached_at < OBS_TTL:
-            return val
+    _cached_precip = _precip_cache.get(city)
+    if _cached_precip is not None:
+        return _cached_precip
 
     with _get_obs_lock(city):
         try:
-            now = time.time()
-            if city in _precip_cache:
-                cached_at, val = _precip_cache[city]
-                if now - cached_at < OBS_TTL:
-                    return val
+            _cached_precip = _precip_cache.get(city)
+            if _cached_precip is not None:
+                return _cached_precip
 
             lat, lon, _ = coords
             station_id = _get_obs_station(lat, lon)
@@ -474,13 +483,13 @@ def get_live_precip_obs(city: str, coords: tuple) -> float | None:
             p1h = (props.get("precipitationLastHour") or {}).get("value")
             if p1h is not None:
                 result = round(float(p1h) / 25.4, 4)
-                _precip_cache[city] = (time.time(), result)
+                _precip_cache.set(city, result)
                 _nws_cb.record_success()
                 return result
             p6h = (props.get("precipitationLast6Hours") or {}).get("value")
             if p6h is not None:
                 result = round(float(p6h) / 6 / 25.4, 4)
-                _precip_cache[city] = (time.time(), result)
+                _precip_cache.set(city, result)
                 _nws_cb.record_success()
                 return result
             _nws_cb.record_success()
