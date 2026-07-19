@@ -27,7 +27,7 @@ DB_PATH.parent.mkdir(exist_ok=True)
 
 _db_initialized = False
 
-_SCHEMA_VERSION = 47  # increment when _MIGRATIONS list grows
+_SCHEMA_VERSION = 49  # increment when _MIGRATIONS list grows
 
 _MIGRATIONS = [
     # v1 → v2: add condition_type column (if not already added)
@@ -250,6 +250,36 @@ _MIGRATIONS = [
     # stayed at the same tier under both.
     "ALTER TABLE predictions ADD COLUMN liquidity_edge_scale REAL",  # v46
     "ALTER TABLE predictions ADD COLUMN gated_edge REAL",  # v47
+    # v47 -> v49: trade_history — public trade-flow history captured per
+    # settled market (backfilled once, from sync_outcomes, via Kalshi's
+    # public GET /markets/trades endpoint), table + index as 2 separate
+    # migration steps (v48/v49) matching this list's one-ALTER/CREATE-per-
+    # entry convention (same shape as price_history's own table+index pair).
+    # Same "data accumulates regardless of process uptime" property that
+    # justified price_history's candlestick capture (backlog.txt "HISTORICAL
+    # MARKET-PRICE CAPTURE"), but with direction (taker_outcome_side) that
+    # OHLC candles lack -- unlocks adverse-selection analysis (informed flow
+    # vs. our own fill times, joined against execution_log's filled_at/
+    # market_mid_at_fill) and "did informed flow precede settlement-
+    # direction moves" (backlog.txt "PUBLIC TRADES REST BACKFILL"). trade_id
+    # is Kalshi's own globally unique identifier per trade, so it's the
+    # natural dedup key (unlike price_history, which needed a composite key
+    # since candlesticks have no natural single-field ID).
+    """CREATE TABLE IF NOT EXISTS trade_history (
+        id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+        trade_id           TEXT    NOT NULL UNIQUE,
+        ticker             TEXT    NOT NULL,
+        count              REAL,
+        yes_price          REAL,
+        no_price           REAL,
+        taker_outcome_side TEXT,
+        taker_book_side    TEXT,
+        is_block_trade     INTEGER,
+        created_time       TEXT,
+        logged_at          TEXT    NOT NULL
+    )""",
+    "CREATE INDEX IF NOT EXISTS idx_trade_history_ticker "
+    "ON trade_history(ticker, created_time)",
 ]
 
 
@@ -1023,6 +1053,60 @@ def get_price_history(ticker: str) -> list[sqlite3.Row]:
     with _conn() as con:
         return con.execute(
             "SELECT * FROM price_history WHERE ticker = ? ORDER BY end_period_ts",
+            (ticker,),
+        ).fetchall()
+
+
+def log_trades(ticker: str, trades: list[dict]) -> int:
+    """Bulk-insert public trade-flow history for a market. Idempotent --
+    re-running for the same trade_id is a no-op (Kalshi's trade_id is
+    globally unique, so it's the dedup key -- see trade_history's UNIQUE
+    constraint). Returns the number of newly-inserted rows.
+    """
+    if not trades:
+        return 0
+    init_db()
+    rows = []
+    for t in trades:
+        trade_id = t.get("trade_id")
+        if not trade_id:
+            continue
+        rows.append(
+            (
+                trade_id,
+                ticker,
+                _fp_count(t.get("count_fp")),
+                _candle_dollars(t, "yes_price_dollars"),
+                _candle_dollars(t, "no_price_dollars"),
+                t.get("taker_outcome_side"),
+                t.get("taker_book_side"),
+                int(bool(t.get("is_block_trade"))),
+                t.get("created_time"),
+                datetime.now(UTC).isoformat(),
+            )
+        )
+    if not rows:
+        return 0
+    with _conn() as con:
+        cur = con.executemany(
+            """
+            INSERT OR IGNORE INTO trade_history
+            (trade_id, ticker, count, yes_price, no_price,
+             taker_outcome_side, taker_book_side, is_block_trade,
+             created_time, logged_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            rows,
+        )
+    return cur.rowcount if cur.rowcount and cur.rowcount > 0 else 0
+
+
+def get_trade_history(ticker: str) -> list[sqlite3.Row]:
+    """Return all logged public trades for a ticker, oldest first."""
+    init_db()
+    with _conn() as con:
+        return con.execute(
+            "SELECT * FROM trade_history WHERE ticker = ? ORDER BY created_time",
             (ticker,),
         ).fetchall()
 
@@ -3252,6 +3336,37 @@ def sync_outcomes(client) -> int:
                             "sync_outcomes: price-history backfill failed for %s: %s",
                             ticker,
                             _candle_exc,
+                        )
+                    # Backfill public trade-flow history (direction/taker info
+                    # that OHLC candles above lack) for this now-settled market
+                    # in one call -- same "fires exactly once per market, never
+                    # blocks outcome recording" pattern as the candlestick
+                    # backfill immediately above (backlog.txt "PUBLIC TRADES
+                    # REST BACKFILL").
+                    try:
+                        _trade_open_str = market.get("open_time")
+                        if _trade_open_str:
+                            _trade_start = datetime.fromisoformat(
+                                _trade_open_str.replace("Z", "+00:00")
+                            )
+                            _trade_end = (
+                                datetime.fromisoformat(
+                                    close_time_str.replace("Z", "+00:00")
+                                )
+                                if close_time_str
+                                else now_utc
+                            )
+                            _trades = client.get_trades(
+                                ticker,
+                                int(_trade_start.timestamp()),
+                                int(_trade_end.timestamp()),
+                            )
+                            log_trades(ticker, _trades)
+                    except Exception as _trade_exc:
+                        _log.warning(
+                            "sync_outcomes: trade-history backfill failed for %s: %s",
+                            ticker,
+                            _trade_exc,
                         )
                     # #55: settle analysis_attempts for this ticker regardless of
                     # was_traded — the outcome is a market fact, not a trade fact.

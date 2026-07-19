@@ -680,3 +680,141 @@ class TestGetCandlesticks:
         result = client.get_candlesticks("KXHIGHNY", "TK", 1000, 2000)
 
         assert result == []
+
+
+class TestGetTrades:
+    """PUBLIC TRADES REST BACKFILL backlog item -- GET /markets/trades fetch."""
+
+    def _make_client(self):
+        with patch("kalshi_client.KalshiClient.__init__", return_value=None):
+            import kalshi_client
+
+            client = kalshi_client.KalshiClient.__new__(kalshi_client.KalshiClient)
+        return client
+
+    def test_calls_correct_path_and_params(self):
+        client = self._make_client()
+        client._get = MagicMock(return_value={"trades": []})
+        client._validate = MagicMock()
+
+        client.get_trades("KXHIGHNY-26APR09-T70", min_ts=1000, max_ts=2000)
+
+        client._get.assert_called_once()
+        path_arg = client._get.call_args[0][0]
+        assert path_arg == "/markets/trades"
+        kwargs = client._get.call_args[1]
+        assert kwargs["params"] == {
+            "ticker": "KXHIGHNY-26APR09-T70",
+            "limit": 1000,
+            "min_ts": 1000,
+            "max_ts": 2000,
+        }
+        assert kwargs["auth"] is True
+
+    def test_min_ts_max_ts_omitted_when_not_provided(self):
+        client = self._make_client()
+        client._get = MagicMock(return_value={"trades": []})
+        client._validate = MagicMock()
+
+        client.get_trades("TK")
+
+        params = client._get.call_args[1]["params"]
+        assert "min_ts" not in params
+        assert "max_ts" not in params
+
+    def test_single_page_returns_all_trades_no_cursor(self):
+        """No cursor in response -> single call, all trades returned."""
+        client = self._make_client()
+        trades = [{"trade_id": f"t{i}", "ticker": "TK"} for i in range(3)]
+        client._get = MagicMock(return_value={"trades": trades})
+        client._validate = MagicMock()
+
+        result = client.get_trades("TK")
+
+        assert result == trades
+        assert client._get.call_count == 1
+
+    def test_cursor_present_but_next_page_empty_stops_pagination(self):
+        """Live-verified real Kalshi behavior (2026-07-19): a non-empty
+        cursor can be returned even on what turns out to be the LAST page
+        -- the next call returning an empty trades list is what actually
+        signals "done", not cursor absence alone. Must check both.
+
+        Uses a DIFFERENT cursor on the empty final page (not "abc123" again)
+        so this test isolates the `not page` check from the separate
+        repeated-cursor guard (test_repeated_cursor_stops_pagination) -- a
+        mutation dropping `or not page` from the break condition would
+        otherwise still accidentally pass this test via the repeated-cursor
+        path if both pages happened to reuse the same cursor string."""
+        client = self._make_client()
+        page1 = [{"trade_id": "t1", "ticker": "TK"}]
+        client._get = MagicMock(
+            side_effect=[
+                {"trades": page1, "cursor": "abc123"},
+                {"trades": [], "cursor": "different-cursor"},  # empty, new cursor
+            ]
+        )
+        client._validate = MagicMock()
+
+        result = client.get_trades("TK")
+
+        assert result == page1
+        assert client._get.call_count == 2
+
+    def test_two_page_pagination_combines_results(self):
+        client = self._make_client()
+        page1 = [{"trade_id": "t1", "ticker": "TK"}]
+        page2 = [{"trade_id": "t2", "ticker": "TK"}]
+        client._get = MagicMock(
+            side_effect=[
+                {"trades": page1, "cursor": "c1"},
+                {"trades": page2},
+            ]
+        )
+        client._validate = MagicMock()
+
+        result = client.get_trades("TK")
+
+        assert len(result) == 2
+        assert result[0]["trade_id"] == "t1"
+        assert result[1]["trade_id"] == "t2"
+
+    def test_cursor_passed_on_second_call(self):
+        client = self._make_client()
+        client._get = MagicMock(
+            side_effect=[
+                {"trades": [{"trade_id": "t1"}], "cursor": "cur42"},
+                {"trades": []},
+            ]
+        )
+        client._validate = MagicMock()
+
+        client.get_trades("TK")
+
+        second_call_params = client._get.call_args_list[1][1]["params"]
+        assert second_call_params.get("cursor") == "cur42"
+
+    def test_repeated_cursor_stops_pagination(self):
+        """A cursor identical to one already seen must stop the loop rather
+        than spin forever -- same runaway-loop guard as get_markets."""
+        client = self._make_client()
+        client._get = MagicMock(
+            return_value={"trades": [{"trade_id": "t1"}], "cursor": "same-cursor"}
+        )
+        client._validate = MagicMock()
+
+        result = client.get_trades("TK")
+
+        # First call returns page + "same-cursor"; second call (using that
+        # cursor) returns the SAME cursor again -> must stop, not loop.
+        assert client._get.call_count == 2
+        assert len(result) == 2  # both pages' single trade each, still collected
+
+    def test_missing_trades_key_returns_empty_list(self):
+        client = self._make_client()
+        client._get = MagicMock(return_value={})
+        client._validate = MagicMock()
+
+        result = client.get_trades("TK")
+
+        assert result == []

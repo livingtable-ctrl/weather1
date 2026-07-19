@@ -248,6 +248,16 @@ _DEAD_CODE_ALLOWLIST: dict[tuple[str, str], str] = {
         "execution backlog work is picked up (candles only accumulate from "
         "when capture ships, so there's nothing to analyze yet regardless)"
     ),
+    ("tracker.py", "get_trade_history"): (
+        "TESTED, NO PROD CALL SITE -- read accessor for the trade_history "
+        "table added 2026-07-19 (PUBLIC TRADES REST BACKFILL, see "
+        "backlog.txt). Same shape as get_price_history above: the capture "
+        "side (log_trades, wired into sync_outcomes) ships now; the "
+        "adverse-selection/informed-flow analysis that would call this is "
+        "explicitly deferred, paired with get_price_history's own "
+        "enablement trigger -- both tables start empty and only accumulate "
+        "from markets settling after this ships"
+    ),
 }
 
 

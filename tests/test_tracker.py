@@ -279,6 +279,97 @@ class TestTracker(unittest.TestCase):
         self.assertEqual(count, 1)
         mock_client.get_candlesticks.assert_not_called()
 
+    def test_sync_outcomes_backfills_trade_history_on_settlement(self):
+        """PUBLIC TRADES REST BACKFILL: sync_outcomes should fetch and store
+        the full public trade-flow history exactly once when a market's
+        outcome is newly recorded, same pattern as the candlestick backfill."""
+        from unittest.mock import MagicMock
+
+        tracker.log_prediction(
+            "TKTRADES", "NYC", date(2026, 4, 9), self._fake_analysis(0.70)
+        )
+
+        mock_client = MagicMock()
+        mock_client.get_market.return_value = {
+            "status": "finalized",
+            "result": "yes",
+            "series_ticker": "KXHIGHNY",
+            "open_time": "2026-04-06T00:00:00Z",
+            "close_time": "2026-04-09T23:00:00Z",
+        }
+        mock_client.get_candlesticks.return_value = []
+        mock_client.get_trades.return_value = [
+            {
+                "trade_id": "tr-1",
+                "ticker": "TKTRADES",
+                "count_fp": "5.00",
+                "yes_price_dollars": "0.5200",
+                "no_price_dollars": "0.4800",
+                "taker_outcome_side": "yes",
+                "taker_book_side": "bid",
+                "is_block_trade": False,
+                "created_time": "2026-04-08T12:00:00Z",
+            }
+        ]
+
+        count = tracker.sync_outcomes(mock_client)
+        self.assertEqual(count, 1)
+
+        mock_client.get_trades.assert_called_once()
+        call_args = mock_client.get_trades.call_args[0]
+        self.assertEqual(call_args[0], "TKTRADES")  # ticker
+
+        rows = tracker.get_trade_history("TKTRADES")
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["trade_id"], "tr-1")
+        self.assertAlmostEqual(rows[0]["count"], 5.00)
+        self.assertAlmostEqual(rows[0]["yes_price"], 0.52)
+        self.assertAlmostEqual(rows[0]["no_price"], 0.48)
+        self.assertEqual(rows[0]["taker_outcome_side"], "yes")
+        self.assertEqual(rows[0]["taker_book_side"], "bid")
+        self.assertEqual(rows[0]["is_block_trade"], 0)
+
+    def test_sync_outcomes_survives_trade_history_backfill_failure(self):
+        """A trade-history-fetch error must never block outcome recording."""
+        from unittest.mock import MagicMock
+
+        tracker.log_prediction(
+            "TKTRADESFAIL", "NYC", date(2026, 4, 9), self._fake_analysis(0.70)
+        )
+
+        mock_client = MagicMock()
+        mock_client.get_market.return_value = {
+            "status": "finalized",
+            "result": "yes",
+            "series_ticker": "KXHIGHNY",
+            "open_time": "2026-04-06T00:00:00Z",
+            "close_time": "2026-04-09T23:00:00Z",
+        }
+        mock_client.get_candlesticks.return_value = []
+        mock_client.get_trades.side_effect = RuntimeError("boom")
+
+        count = tracker.sync_outcomes(mock_client)
+        self.assertEqual(count, 1)
+
+        history = tracker.get_history()
+        self.assertEqual(history[0]["settled_yes"], 1)
+
+    def test_sync_outcomes_skips_trade_fetch_without_open_time(self):
+        """No open_time on the market → skip the trade-history fetch cleanly
+        (same guard shape as the candlestick fetch's series_ticker check)."""
+        from unittest.mock import MagicMock
+
+        tracker.log_prediction(
+            "TKNOTRADES", "NYC", date(2026, 4, 9), self._fake_analysis(0.70)
+        )
+
+        mock_client = MagicMock()
+        mock_client.get_market.return_value = {"status": "finalized", "result": "yes"}
+
+        count = tracker.sync_outcomes(mock_client)
+        self.assertEqual(count, 1)
+        mock_client.get_trades.assert_not_called()
+
     def test_calibration_trend_empty(self):
         """get_calibration_trend returns empty list with no settled data."""
         trend = tracker.get_calibration_trend()
@@ -2392,6 +2483,106 @@ class TestPriceHistory(unittest.TestCase):
         tracker.log_price_candles("TK6", "KXHIGHNY", 1, candles)
         rows = tracker.get_price_history("TK6")
         self.assertEqual([r["end_period_ts"] for r in rows], [1700000100, 1700000200])
+
+
+class TestTradeHistory(unittest.TestCase):
+    """log_trades / get_trade_history -- PUBLIC TRADES REST BACKFILL storage."""
+
+    def setUp(self):
+        self._tmpdir = tempfile.mkdtemp()
+        self._orig = tracker.DB_PATH
+        tracker.DB_PATH = Path(self._tmpdir) / "test_predictions.db"
+        tracker._db_initialized = False
+
+    def tearDown(self):
+        tracker.DB_PATH = self._orig
+        tracker._db_initialized = False
+        shutil.rmtree(self._tmpdir, ignore_errors=True)
+
+    def _trade(self, **overrides):
+        base = {
+            "trade_id": "tr-1",
+            "ticker": "TK1",
+            "count_fp": "5.00",
+            "yes_price_dollars": "0.5200",
+            "no_price_dollars": "0.4800",
+            "taker_outcome_side": "yes",
+            "taker_book_side": "bid",
+            "is_block_trade": False,
+            "created_time": "2026-04-08T12:00:00Z",
+        }
+        base.update(overrides)
+        return base
+
+    def test_logs_and_retrieves_trade(self):
+        n = tracker.log_trades("TK1", [self._trade()])
+        self.assertEqual(n, 1)
+
+        rows = tracker.get_trade_history("TK1")
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["trade_id"], "tr-1")
+        self.assertEqual(rows[0]["ticker"], "TK1")
+        self.assertAlmostEqual(rows[0]["count"], 5.00)
+        self.assertAlmostEqual(rows[0]["yes_price"], 0.52)
+        self.assertAlmostEqual(rows[0]["no_price"], 0.48)
+        self.assertEqual(rows[0]["taker_outcome_side"], "yes")
+        self.assertEqual(rows[0]["taker_book_side"], "bid")
+        self.assertEqual(rows[0]["is_block_trade"], 0)
+        self.assertEqual(rows[0]["created_time"], "2026-04-08T12:00:00Z")
+
+    def test_block_trade_flag_stored_as_one(self):
+        tracker.log_trades("TK1B", [self._trade(trade_id="tr-b", is_block_trade=True)])
+        rows = tracker.get_trade_history("TK1B")
+        self.assertEqual(rows[0]["is_block_trade"], 1)
+
+    def test_dedup_via_unique_trade_id_is_idempotent(self):
+        """Re-inserting the same trade_id is a no-op -- Kalshi's trade_id is
+        globally unique, so re-fetching an overlapping time window (or the
+        same market twice) can never duplicate a row."""
+        first = tracker.log_trades("TK2", [self._trade()])
+        second = tracker.log_trades("TK2", [self._trade()])
+        self.assertEqual(first, 1)
+        self.assertEqual(second, 0)
+        self.assertEqual(len(tracker.get_trade_history("TK2")), 1)
+
+    def test_different_trade_ids_both_stored(self):
+        n = tracker.log_trades(
+            "TK3",
+            [self._trade(trade_id="tr-a"), self._trade(trade_id="tr-b")],
+        )
+        self.assertEqual(n, 2)
+        self.assertEqual(len(tracker.get_trade_history("TK3")), 2)
+
+    def test_empty_trades_list_is_noop(self):
+        n = tracker.log_trades("TK4", [])
+        self.assertEqual(n, 0)
+        self.assertEqual(tracker.get_trade_history("TK4"), [])
+
+    def test_trade_missing_trade_id_is_skipped(self):
+        trade = self._trade()
+        del trade["trade_id"]
+        n = tracker.log_trades("TK5", [trade])
+        self.assertEqual(n, 0)
+
+    def test_get_trade_history_orders_by_created_time(self):
+        tracker.log_trades(
+            "TK6",
+            [
+                self._trade(trade_id="tr-late", created_time="2026-04-08T14:00:00Z"),
+                self._trade(trade_id="tr-early", created_time="2026-04-08T10:00:00Z"),
+            ],
+        )
+        rows = tracker.get_trade_history("TK6")
+        self.assertEqual([r["trade_id"] for r in rows], ["tr-early", "tr-late"])
+
+    def test_unparseable_price_stored_as_none(self):
+        """A malformed price string must not crash the bulk insert -- fail
+        soft on that one field, same as _candle_dollars' contract elsewhere."""
+        tracker.log_trades(
+            "TK7", [self._trade(trade_id="tr-bad", yes_price_dollars="garbage")]
+        )
+        rows = tracker.get_trade_history("TK7")
+        self.assertIsNone(rows[0]["yes_price"])
 
 
 class TestDisputedOutcomeTracking(unittest.TestCase):

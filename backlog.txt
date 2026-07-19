@@ -3030,12 +3030,81 @@ When to revisit: N/A, resolved. See the ENABLEMENT TRIGGER note (unchanged
   enough settled-data correlation exists to consider wiring this into the
   blend -- not before then.
 
-[PUBLIC TRADES REST BACKFILL -- GET /markets/trades AT SETTLEMENT]
-Priority: Medium -- closes the exact gap the PUBLIC TRADE-FLOW SIGNAL entry
-  admits ("coverage between manual cron runs is zero") without needing the
-  always-on host.
+[RESOLVED 2026-07-19] PUBLIC TRADES REST BACKFILL -- GET /markets/trades AT SETTLEMENT
+Priority: was Medium -- closes the exact gap the PUBLIC TRADE-FLOW SIGNAL
+  entry admits ("coverage between manual cron runs is zero") without
+  needing the always-on host.
 
-Problem:
+RESOLVED 2026-07-19 (the CAPTURE side only, matching the candlestick
+  precedent's own "ship the capture early, data accumulates" pattern --
+  the ANALYSIS passes this entry's own "What it would look like" describes
+  are still deliberately deferred, same as candlestick's own analysis
+  passes):
+  Did the "storage volume check first" this entry's own "Why not now"
+  called for, live, before writing any code: an unauthenticated GET
+  against 5 real settled weather tickers (confirming the endpoint really
+  is public -- no signing needed, though get_trades signs anyway for
+  consistency with every other call in this client) returned 148-940
+  trades per market, comfortably inside one page (limit=1000) for a real
+  weather market. Also re-verified the entry's own field-name claims
+  against Kalshi's live docs (docs.kalshi.com/api-reference/market/
+  get-trades) rather than trusting the 2026-07-16 summary: the response
+  fields are actually count_fp/yes_price_dollars/no_price_dollars/
+  taker_outcome_side/taker_book_side (fixed-point/dollar-suffixed, matching
+  the rest of the V2 API), not the plain count/yes_price/no_price/
+  taker_side the entry described -- taker_side still exists but Kalshi's
+  docs mark it deprecated in favor of taker_outcome_side/taker_book_side,
+  so the new code was written against the current, non-deprecated shape.
+  Also found min_ts/max_ts ARE real, documented query params (a first
+  WebSearch summary claimed they weren't; re-fetching the actual docs page
+  directly, not trusting the search summary, showed they are -- another
+  instance of [[feedback_reverify_on_pushback]]'s pattern).
+  Shipped kalshi_client.get_trades(ticker, min_ts, max_ts) -- cursor-
+  paginated exactly like get_markets, but with one real behavioral
+  difference found live-testing: Kalshi can return a non-empty cursor on
+  what turns out to be the LAST page (an empty trades list on the next
+  call is what actually signals "done"), so the pagination loop checks
+  `not cursor or not page`, not cursor-truthiness alone like get_markets
+  does -- mutation-tested this exact difference (a test using a distinct
+  cursor value on the terminal empty page, specifically to isolate this
+  check from the separate repeated-cursor guard, which would otherwise
+  mask the mutation).
+  Added tracker.py's trade_history table (migration v48/v49 -- table +
+  index as 2 separate steps, matching price_history's own precedent) +
+  log_trades()/get_trade_history(), reusing the existing _fp_count/
+  _candle_dollars parsing helpers unchanged (both are already generic
+  dict+key fail-soft parsers, not candlestick-specific, despite their
+  names). trade_id (Kalshi's own globally-unique per-trade ID) is the
+  dedup key -- simpler than price_history's composite-key dedup, which
+  existed only because candlesticks have no natural single-field ID.
+  Wired into sync_outcomes() immediately after the candlestick backfill,
+  identical isolated-try/except/fires-once-per-market shape.
+  27 new tests: kalshi_client.get_trades pagination (8, incl. the
+  mutation-proof empty-page-with-cursor test and the pre-existing
+  repeated-cursor guard reused unchanged); tracker.log_trades/
+  get_trade_history (8, incl. dedup-via-unique-trade_id, unparseable-price
+  fails soft); sync_outcomes wiring (3, mirroring the 3 existing
+  candlestick-backfill tests: backfills-on-settlement, survives-fetch-
+  failure, skips-without-open_time). Confirmed on a fresh DB that
+  init_db() creates trade_history correctly and PRAGMA user_version lands
+  on the new _SCHEMA_VERSION=49. Added get_trade_history to tests/
+  test_dead_code_scan.py's allowlist, exact same reasoning as
+  get_price_history's existing entry (a tested read accessor with no prod
+  call site yet -- the deferred analysis pass is its only future consumer).
+  354 tests pass across the full regression sweep; ruff + ruff format +
+  mypy clean.
+  Not yet wired into anything live -- this is pure capture, matching the
+  candlestick precedent exactly. The ENABLEMENT TRIGGER for the deferred
+  analysis passes (adverse selection, "did informed flow precede
+  settlement moves") is explicitly paired with the candlestick entry's own
+  trigger per this entry's original "Why not now" -- check
+  `SELECT COUNT(*) FROM trade_history` / `SELECT COUNT(*) FROM
+  price_history` (and distinct ticker counts) periodically; both start
+  from zero as of this push and only grow from markets settling from now
+  on, so there's a real multi-week wait before either analysis pass is
+  worth doing.
+
+Problem (as originally scoped, still accurate for historical context):
   The PUBLIC TRADE-FLOW SIGNAL entry (above) is scoped to the WS `trade`
   channel, which only helps while a watch session is running. Verified
   2026-07-16 via docs search: GET /markets/trades is public,
@@ -3049,26 +3118,30 @@ Problem:
   candlestick capture, but with direction (taker_side) that OHLC candles
   lack.
 
-What it would look like:
+What it would look like: [DONE 2026-07-19 -- capture side only, see
+  resolution above; the analysis payoffs below are still deferred]
   kalshi_client.get_trades(ticker, min_ts, max_ts) + a trade_history
-  table, wired into tracker.sync_outcomes() (tracker.py:3081) right
-  beside the existing candlestick backfill (fires once per market at
-  outcome recording, isolated try/except, same pattern commit ba3527e
-  established). Analysis payoffs ride the already-deferred candlestick
-  analysis passes: adverse selection around our fill times (joins against
-  execution_log's filled_at/market_mid_at_fill), and "did informed flow
-  precede settlement-direction moves" -- the caution-flag hypothesis the
-  WS entry wants, testable on history before any live WS work.
+  table, wired into tracker.sync_outcomes() right beside the existing
+  candlestick backfill (fires once per market at outcome recording,
+  isolated try/except, same pattern commit ba3527e established). Analysis
+  payoffs ride the already-deferred candlestick analysis passes: adverse
+  selection around our fill times (joins against execution_log's
+  filled_at/market_mid_at_fill), and "did informed flow precede
+  settlement-direction moves" -- the caution-flag hypothesis the WS entry
+  wants, testable on history before any live WS work.
 
-Why not now:
-  - Storage volume check first (trades per weather market are modest, but
-    confirm with one live call); shares the enablement-trigger risk with
-    the candlestick entry -- pair its analysis check-back with that
-    entry's existing 2026-07-16 trigger so they're evaluated together.
+Why not now (capture side resolved; analysis passes still apply):
+  - Storage volume check first (DONE live 2026-07-19, see resolution --
+    148-940 trades/market, well within one page); shares the enablement-
+    trigger risk with the candlestick entry -- pair its analysis check-back
+    with that entry's existing 2026-07-16 trigger so they're evaluated
+    together (both start from zero rows as of this push).
 
 When to revisit:
-  - Alongside the PUBLIC TRADE-FLOW SIGNAL entry above and the
-    candlestick capture entry's own check-back trigger.
+  - Capture side: N/A, closed. Analysis passes: alongside the PUBLIC
+    TRADE-FLOW SIGNAL entry above and the candlestick capture entry's own
+    check-back trigger, once both trade_history and price_history have a
+    real multi-week window of data.
 
 [NBM PROBABILISTIC QUANTILES -- ORPHANED CONVERTER, MISSING FETCHER]
 Priority: Low-Medium -- the consumer half already exists in-tree; only the

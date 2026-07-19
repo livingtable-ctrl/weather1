@@ -373,6 +373,65 @@ class KalshiClient:
         self._validate(data, "candlesticks", path)
         return data.get("candlesticks", [])
 
+    def get_trades(
+        self, ticker: str, min_ts: int | None = None, max_ts: int | None = None
+    ) -> list[dict]:
+        """GET /markets/trades -- public trade-flow history for a single market
+        (public/unauthenticated endpoint per Kalshi's own docs, verified live
+        2026-07-19; signed like every other call here anyway for consistency,
+        same as get_markets/get_candlesticks). min_ts/max_ts are optional
+        Unix-timestamp (seconds) bounds. Paginates via cursor until exhausted,
+        same repeated-cursor guard as get_markets -- verified live that a
+        non-empty cursor can still be returned on what turns out to be the
+        last page (an empty `trades` list on the next call is what actually
+        signals "done"), so this checks both conditions, not just cursor
+        truthiness.
+
+        Response fields per trade (current, non-deprecated shape -- Kalshi's
+        docs mark `taker_side` deprecated in favor of `taker_outcome_side`/
+        `taker_book_side`, verified live 2026-07-19): trade_id, ticker,
+        count_fp, yes_price_dollars, no_price_dollars, taker_outcome_side
+        ("yes"/"no"), taker_book_side ("bid"/"ask"), created_time,
+        is_block_trade.
+        """
+        all_trades: list[dict] = []
+        cursor: str | None = None
+        seen_cursors: set[str] = set()
+        page_count = 0
+        while True:
+            params: dict = {"ticker": ticker, "limit": 1000}
+            if min_ts is not None:
+                params["min_ts"] = min_ts
+            if max_ts is not None:
+                params["max_ts"] = max_ts
+            if cursor:
+                params["cursor"] = cursor
+            data = self._get("/markets/trades", params=params, auth=True)
+            self._validate(data, "trades", "/markets/trades")
+            page = data.get("trades", [])
+            all_trades.extend(page)
+            page_count += 1
+            cursor = data.get("cursor")
+            if not cursor or not page:
+                break
+            if cursor in seen_cursors:
+                _log.error(
+                    "get_trades: Kalshi returned a repeated cursor %r for %s -- "
+                    "stopping pagination early instead of looping forever",
+                    cursor,
+                    ticker,
+                )
+                break
+            seen_cursors.add(cursor)
+            if page_count >= 50:
+                _log.error(
+                    "get_trades: %s exceeded 50 pages (50,000+ trades) -- "
+                    "stopping pagination early as a runaway-loop backstop",
+                    ticker,
+                )
+                break
+        return all_trades
+
     def get_events(self, **params) -> list[dict]:
         data = self._get("/events", params=params or None, auth=True)
         self._validate(data, "events", "/events")
