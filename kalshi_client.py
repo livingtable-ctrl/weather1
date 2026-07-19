@@ -566,6 +566,77 @@ class KalshiClient:
         """
         return self._delete(f"/portfolio/events/orders/{order_id}")
 
+    def amend_order(
+        self,
+        order_id: str,
+        ticker: str,
+        side: str,
+        action: str,
+        count: float,
+        price: float,
+        client_order_id: str | None = None,
+        cycle: str | None = None,
+    ) -> dict:
+        """
+        Amend a resting order's price and/or size atomically via Kalshi's V2
+        amend endpoint (POST /portfolio/events/orders/{order_id}/amend) --
+        a single exchange-side operation with no client-side window where
+        the order is gone-but-not-replaced or fills mid-sequence, unlike
+        cancel + verify + place_order.
+
+        Args:
+            order_id: The exchange order_id being amended (unchanged by the
+                       amend -- Kalshi mutates the existing order in place).
+            ticker, side, action, price: same meaning as place_order.
+            count: the order's TOTAL desired fillable count -- already-filled
+                   contracts plus desired remaining resting count, matching
+                   create-order's own count semantics, NOT just "how many
+                   more to add." For a pure reprice at the same target
+                   quantity, pass the same count used at original placement;
+                   Kalshi computes the correct already-filled/still-resting
+                   split internally.
+            client_order_id: the ORIGINAL order's client_order_id, if known.
+                              Optional per Kalshi's docs (order_id in the URL
+                              already identifies the order); omitted from the
+                              request body entirely when not supplied.
+            cycle: forecast cycle string, used only to build a deterministic
+                   updated_client_order_id (mirrors place_order's idempotency
+                   pattern) so a retry with identical params dedupes
+                   server-side rather than double-amending.
+
+        Per Kalshi's docs: amending a resting order preserves queue position
+        only when the amendment decreases size -- a price-only reprice (this
+        bot's only caller today) always forfeits queue position and goes to
+        the back of the book, same as a fresh cancel+replace would.
+
+        Returns the raw V2 amend response: order_id, client_order_id,
+        remaining_count (resting contracts post-amend, only present if a
+        fill or size change occurred), fill_count (contracts filled by this
+        amend crossing the book), average_fill_price, average_fee_paid,
+        ts_ms. No `status` field -- same shape convention as cancel_order.
+        """
+        import hashlib
+        import uuid
+
+        v2_side, v2_price = _to_v2_side_price(side, action, price)
+
+        idempotency_input = f"amend:{order_id}:{v2_side}:{count:.2f}:{v2_price:.4f}:{cycle or uuid.uuid4()}"
+        updated_client_order_id = hashlib.sha256(
+            idempotency_input.encode()
+        ).hexdigest()[:32]
+
+        body = {
+            "ticker": ticker,
+            "side": v2_side,
+            "count": f"{count:.2f}",
+            "price": f"{v2_price:.4f}",
+            "updated_client_order_id": updated_client_order_id,
+        }
+        if client_order_id:
+            body["client_order_id"] = client_order_id
+
+        return self._post(f"/portfolio/events/orders/{order_id}/amend", body)
+
     def place_maker_order(
         self,
         ticker: str,

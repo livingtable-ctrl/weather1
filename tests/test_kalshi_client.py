@@ -173,6 +173,198 @@ class TestPlaceOrderApiSemantics:
         )
 
 
+class TestAmendOrder:
+    """AMEND ORDER (V2): kalshi_client.amend_order() -- POST
+    /portfolio/events/orders/{order_id}/amend, replacing cancel+verify+
+    place_order in the reprice loop's price-only branch."""
+
+    def _make_client(self):
+        from unittest.mock import patch
+
+        with patch("kalshi_client.KalshiClient.__init__", return_value=None):
+            import kalshi_client
+
+            client = kalshi_client.KalshiClient.__new__(kalshi_client.KalshiClient)
+        return client
+
+    def test_posts_to_amend_path_with_order_id(self):
+        from unittest.mock import MagicMock
+
+        client = self._make_client()
+        mock_post = MagicMock(return_value={"order_id": "ord_1"})
+        client._post = mock_post
+
+        client.amend_order(
+            order_id="ord_1",
+            ticker="KXHIGH-26APR25-T72",
+            side="yes",
+            action="buy",
+            count=5,
+            price=0.55,
+        )
+
+        assert mock_post.called
+        path, body = mock_post.call_args.args
+        assert path == "/portfolio/events/orders/ord_1/amend"
+        assert body["ticker"] == "KXHIGH-26APR25-T72"
+        assert body["side"] == "bid"
+        assert float(body["price"]) == pytest.approx(0.55)
+        assert float(body["count"]) == pytest.approx(5.00)
+
+    def test_no_side_buy_maps_to_ask_at_complementary_price(self):
+        """Same V2 side/price mapping as place_order -- a NO buy amend must
+        be expressed as an ask at 1-price, never confused with a YES sell."""
+        from unittest.mock import MagicMock
+
+        client = self._make_client()
+        mock_post = MagicMock(return_value={"order_id": "ord_1"})
+        client._post = mock_post
+
+        client.amend_order(
+            order_id="ord_1",
+            ticker="KXHIGH-26APR25-T72",
+            side="no",
+            action="buy",
+            count=5,
+            price=0.35,
+        )
+
+        _, body = mock_post.call_args.args
+        assert body["side"] == "ask"
+        assert float(body["price"]) == pytest.approx(0.65)
+
+    def test_client_order_id_omitted_when_not_provided(self):
+        from unittest.mock import MagicMock
+
+        client = self._make_client()
+        mock_post = MagicMock(return_value={"order_id": "ord_1"})
+        client._post = mock_post
+
+        client.amend_order(
+            order_id="ord_1",
+            ticker="KXHIGH-26APR25-T72",
+            side="yes",
+            action="buy",
+            count=5,
+            price=0.55,
+        )
+
+        _, body = mock_post.call_args.args
+        assert "client_order_id" not in body
+
+    def test_client_order_id_included_when_provided(self):
+        from unittest.mock import MagicMock
+
+        client = self._make_client()
+        mock_post = MagicMock(return_value={"order_id": "ord_1"})
+        client._post = mock_post
+
+        client.amend_order(
+            order_id="ord_1",
+            ticker="KXHIGH-26APR25-T72",
+            side="yes",
+            action="buy",
+            count=5,
+            price=0.55,
+            client_order_id="orig_coid_123",
+        )
+
+        _, body = mock_post.call_args.args
+        assert body["client_order_id"] == "orig_coid_123"
+
+    def test_updated_client_order_id_always_present_and_deterministic(self):
+        """Same (order_id, side, count, price, cycle) -> same
+        updated_client_order_id, so a retry dedups server-side rather than
+        double-amending -- mirrors place_order's idempotency pattern."""
+        from unittest.mock import MagicMock
+
+        client = self._make_client()
+        client._post = MagicMock(return_value={"order_id": "ord_1"})
+
+        client.amend_order(
+            order_id="ord_1",
+            ticker="KXHIGH-26APR25-T72",
+            side="yes",
+            action="buy",
+            count=5,
+            price=0.55,
+            cycle="12z",
+        )
+        first_id = client._post.call_args.args[1]["updated_client_order_id"]
+
+        client.amend_order(
+            order_id="ord_1",
+            ticker="KXHIGH-26APR25-T72",
+            side="yes",
+            action="buy",
+            count=5,
+            price=0.55,
+            cycle="12z",
+        )
+        second_id = client._post.call_args.args[1]["updated_client_order_id"]
+
+        assert first_id == second_id
+        assert first_id  # non-empty
+
+    def test_updated_client_order_id_differs_for_different_price(self):
+        from unittest.mock import MagicMock
+
+        client = self._make_client()
+        client._post = MagicMock(return_value={"order_id": "ord_1"})
+
+        client.amend_order(
+            order_id="ord_1",
+            ticker="KXHIGH-26APR25-T72",
+            side="yes",
+            action="buy",
+            count=5,
+            price=0.55,
+            cycle="12z",
+        )
+        first_id = client._post.call_args.args[1]["updated_client_order_id"]
+
+        client.amend_order(
+            order_id="ord_1",
+            ticker="KXHIGH-26APR25-T72",
+            side="yes",
+            action="buy",
+            count=5,
+            price=0.60,
+            cycle="12z",
+        )
+        second_id = client._post.call_args.args[1]["updated_client_order_id"]
+
+        assert first_id != second_id
+
+    def test_returns_raw_post_response_unchanged(self):
+        """No get_order() follow-up (unlike place_order) -- the amend
+        response already carries everything callers need (remaining_count/
+        fill_count/average_fill_price/ts_ms), same minimal-processing
+        convention as cancel_order()."""
+        from unittest.mock import MagicMock
+
+        client = self._make_client()
+        raw_response = {
+            "order_id": "ord_1",
+            "remaining_count": "3.00",
+            "fill_count": "2.00",
+            "average_fill_price": "0.5500",
+            "ts_ms": 1234567890,
+        }
+        client._post = MagicMock(return_value=raw_response)
+
+        result = client.amend_order(
+            order_id="ord_1",
+            ticker="KXHIGH-26APR25-T72",
+            side="yes",
+            action="buy",
+            count=5,
+            price=0.55,
+        )
+
+        assert result == raw_response
+
+
 class TestPlaceOrderSurvivesGetOrderFailure:
     """A successful POST already confirms the order is live on the exchange --
     if the get_order() follow-up (needed only to backfill the V2 response's

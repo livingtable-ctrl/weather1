@@ -422,7 +422,8 @@ def get_today_live_loss() -> float:
 
 def get_today_live_spend() -> float:
     """Return today's cumulative live order spend in dollars (UTC date),
-    across every non-failed/canceled order regardless of settlement status.
+    across every non-failed/canceled/amended order regardless of settlement
+    status.
 
     F7 followup: placement-time add_live_loss(cost) was removed because it
     double-counted with settlement-time add_live_loss(-pnl) -- correct, but
@@ -434,6 +435,13 @@ def get_today_live_spend() -> float:
     from execution_log each call so it reflects every live order placed
     this UTC day across the whole process's lifetime, not just this call.
 
+    'amended' is excluded for the same reason 'canceled' is: an amended
+    order's original row represents capital that was never actually
+    released (unlike a genuine cancel), but its commitment now lives on in
+    the new row the amend chain logged via replaces_order_id -- counting
+    both would double-count the same resting position's capital every time
+    it gets repriced (see order_executor._amend_live_order).
+
     Fails closed (inf) on a DB read failure, matching get_today_live_loss().
     """
     today = datetime.now(UTC).strftime("%Y-%m-%d")
@@ -442,7 +450,8 @@ def get_today_live_spend() -> float:
         with _conn() as con:
             row = con.execute(
                 "SELECT COALESCE(SUM(quantity * price), 0.0) AS total FROM orders "
-                "WHERE live = 1 AND status NOT IN ('failed', 'canceled', 'cancelled') "
+                "WHERE live = 1 "
+                "AND status NOT IN ('failed', 'canceled', 'cancelled', 'amended') "
                 "AND placed_at >= ?",
                 (today,),
             ).fetchone()

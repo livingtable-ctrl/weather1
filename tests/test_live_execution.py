@@ -1905,6 +1905,149 @@ class TestFillInstrumentation:
         assert row["market_mid_at_fill"] == pytest.approx(0.60)
 
 
+class TestResolveAmendStatus:
+    """order_executor._resolve_amend_status -- translates an amend_order()
+    response into this bot's internal status vocabulary."""
+
+    def test_no_remaining_count_means_pure_price_change_pending(self):
+        """remaining_count/fill_count absent (both None) -- Kalshi's docs say
+        these are 'only present if a fill or size change occurred', so their
+        absence means a pure price reprice with no immediate cross."""
+        from order_executor import _resolve_amend_status
+
+        status, fill_count = _resolve_amend_status(
+            {"order_id": "ord_1", "remaining_count": None, "fill_count": None}
+        )
+        assert status == "pending"
+        assert fill_count is None
+
+    def test_remaining_count_zero_means_filled(self):
+        from order_executor import _resolve_amend_status
+
+        status, fill_count = _resolve_amend_status(
+            {"remaining_count": "0.00", "fill_count": "5.00"}
+        )
+        assert status == "filled"
+        assert fill_count == 5
+
+    def test_remaining_count_positive_means_still_pending(self):
+        """Amend caused a partial fill (2 of 5) but 3 are still resting --
+        must stay 'pending', not 'filled'."""
+        from order_executor import _resolve_amend_status
+
+        status, fill_count = _resolve_amend_status(
+            {"remaining_count": "3.00", "fill_count": "2.00"}
+        )
+        assert status == "pending"
+        assert fill_count == 2
+
+    def test_unparseable_remaining_count_fails_to_pending(self):
+        """Fail toward the safer assumption (still resting, will be
+        re-verified by the next cycle's poll) rather than crashing or
+        guessing 'filled' on a malformed response."""
+        from order_executor import _resolve_amend_status
+
+        status, fill_count = _resolve_amend_status(
+            {"remaining_count": "not-a-number", "fill_count": None}
+        )
+        assert status == "pending"
+
+
+class TestGetTodayLiveSpendExcludesAmended:
+    """AMEND ORDER (V2): get_today_live_spend() must exclude 'amended' rows
+    the same way it excludes 'canceled' -- otherwise a repriced order's
+    capital is counted twice (once under its old row, once under the new
+    row the amend chain logged), inflating the MAX_DAILY_SPEND check."""
+
+    def setup_method(self):
+        import tempfile
+        from pathlib import Path
+
+        import execution_log
+
+        self._tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+        execution_log.DB_PATH = Path(self._tmp.name)
+        execution_log._initialized = False
+
+    def teardown_method(self):
+        import gc
+        from pathlib import Path
+
+        import execution_log
+
+        execution_log._initialized = False
+        self._tmp.close()
+        gc.collect()
+        Path(self._tmp.name).unlink(missing_ok=True)
+
+    def test_amended_row_excluded_new_row_counted_once(self):
+        import execution_log
+
+        old_id = execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=10,
+            price=0.50,
+            status="pending",
+            live=True,
+        )
+        execution_log.log_order_result(old_id, status="amended")
+        execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=10,
+            price=0.55,
+            status="pending",
+            live=True,
+            replaces_order_id=old_id,
+        )
+
+        # If 'amended' weren't excluded: 10*0.50 + 10*0.55 = $10.50 (double-counted).
+        # Correct: only the live new row, 10*0.55 = $5.50.
+        assert execution_log.get_today_live_spend() == pytest.approx(5.50)
+
+    def test_mutation_amended_included_would_double_count(self):
+        """Direct proof the exclusion is load-bearing: temporarily querying
+        with 'amended' NOT excluded reproduces the double-counted total,
+        confirming the fix addresses a real (not hypothetical) miscount."""
+        from datetime import UTC, datetime
+
+        import execution_log
+
+        old_id = execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=10,
+            price=0.50,
+            status="pending",
+            live=True,
+        )
+        execution_log.log_order_result(old_id, status="amended")
+        execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=10,
+            price=0.55,
+            status="pending",
+            live=True,
+            replaces_order_id=old_id,
+        )
+
+        execution_log.init_log()
+        today = datetime.now(UTC).strftime("%Y-%m-%d")
+        with execution_log._conn() as con:
+            row = con.execute(
+                "SELECT COALESCE(SUM(quantity * price), 0.0) AS total FROM orders "
+                "WHERE live = 1 AND status NOT IN ('failed', 'canceled', 'cancelled') "
+                "AND placed_at >= ?",
+                (today,),
+            ).fetchone()
+        naive_total = float(row["total"])
+
+        assert naive_total == pytest.approx(10.50)  # the bug this fix prevents
+        assert execution_log.get_today_live_spend() == pytest.approx(5.50)  # the fix
+
+
 class TestRepriceOrCancelPendingOrders:
     """The core reprice-or-cancel policy: cancel on edge decay, cancel+
     replace as taker when edge clears the real taker fee, cancel+replace as
@@ -2114,8 +2257,13 @@ class TestRepriceOrCancelPendingOrders:
         window: old enough to reprice-improve (cleared the 2-min blanket
         gate) but not old enough to taker-cross (hasn't cleared the
         stricter 4-min gate) -- even with a strong edge that would
-        otherwise clear the taker fee, this must reprice as a new maker
-        order, not cross as taker."""
+        otherwise clear the taker fee, this must amend to a new maker
+        price, not cross as taker.
+
+        AMEND ORDER (V2): the reprice-improve branch now amends the resting
+        order in place (same order_id, new price) instead of cancel+
+        verify+place_order -- see order_executor._amend_live_order.
+        """
         from unittest.mock import MagicMock, patch
 
         import order_executor
@@ -2132,12 +2280,12 @@ class TestRepriceOrCancelPendingOrders:
             "recommended_side": "yes",
         }
         mock_client = MagicMock()
-        mock_client.cancel_order.return_value = {}
-        mock_client.get_order.return_value = {
-            "status": "canceled",
-            "fill_count_fp": "0.00",
+        mock_client.amend_order.return_value = {
+            "order_id": "ord_orig",
+            "remaining_count": None,
+            "fill_count": None,
+            "ts_ms": 123,
         }
-        mock_client.place_order.return_value = {"order_id": "ord_repriced"}
 
         with (
             patch.object(order_executor, "MIN_EDGE", 0.07),
@@ -2155,15 +2303,17 @@ class TestRepriceOrCancelPendingOrders:
                 mock_client, config={}, liquid_opps=[(market, analysis)]
             )
 
-        mock_client.cancel_order.assert_called_once_with("ord_orig")
-        mock_client.place_order.assert_called_once()
-        _, kwargs = mock_client.place_order.call_args
-        assert (
-            kwargs["time_in_force"] == "good_till_canceled"
-        )  # reprice, not taker-cross
+        mock_client.cancel_order.assert_not_called()  # amend, not cancel+replace
+        mock_client.place_order.assert_not_called()
+        mock_client.amend_order.assert_called_once()
+        _, kwargs = mock_client.amend_order.call_args
+        assert kwargs["order_id"] == "ord_orig"
         assert kwargs["price"] == pytest.approx(0.55)  # fresh midpoint
+        assert kwargs["count"] == 5  # unchanged quantity
 
     def test_price_moved_reprices_as_new_maker_order(self):
+        """AMEND ORDER (V2): reprice-improve amends in place -- see
+        order_executor._amend_live_order."""
         from unittest.mock import MagicMock, patch
 
         import order_executor
@@ -2180,12 +2330,12 @@ class TestRepriceOrCancelPendingOrders:
             "recommended_side": "yes",
         }
         mock_client = MagicMock()
-        mock_client.cancel_order.return_value = {}
-        mock_client.get_order.return_value = {
-            "status": "canceled",
-            "fill_count_fp": "0.00",
+        mock_client.amend_order.return_value = {
+            "order_id": "ord_orig",
+            "remaining_count": None,
+            "fill_count": None,
+            "ts_ms": 123,
         }
-        mock_client.place_order.return_value = {"order_id": "ord_repriced"}
 
         with (
             patch.object(order_executor, "MIN_EDGE", 0.07),
@@ -2203,11 +2353,154 @@ class TestRepriceOrCancelPendingOrders:
                 mock_client, config={}, liquid_opps=[(market, analysis)]
             )
 
-        mock_client.cancel_order.assert_called_once_with("ord_orig")
-        mock_client.place_order.assert_called_once()
-        _, kwargs = mock_client.place_order.call_args
-        assert kwargs["time_in_force"] == "good_till_canceled"
+        mock_client.cancel_order.assert_not_called()
+        mock_client.place_order.assert_not_called()
+        mock_client.amend_order.assert_called_once()
+        _, kwargs = mock_client.amend_order.call_args
         assert kwargs["price"] == pytest.approx(0.55)  # fresh midpoint
+
+    def test_amend_success_logs_new_row_and_marks_old_row_amended(self):
+        """execution_log bookkeeping for a successful amend: a NEW row is
+        logged (chained via replaces_order_id, same convention as cancel+
+        replace), and the OLD row's status becomes 'amended' -- distinct
+        from 'canceled', since the original order was never actually
+        canceled, just repriced in place."""
+        from unittest.mock import MagicMock, patch
+
+        import execution_log
+        import order_executor
+        from order_executor import _reprice_or_cancel_pending_orders
+
+        ticker = "KXHIGH-25MAY15-T75"
+        old_row_id = self._seed_pending(ticker=ticker, price=0.50, age_minutes=10)
+        market = {"ticker": ticker, "yes_bid": 0.53, "yes_ask": 0.57}
+        analysis = {
+            "forecast_prob": 0.53,
+            "entry_price": 0.50,
+            "recommended_side": "yes",
+        }
+        mock_client = MagicMock()
+        mock_client.amend_order.return_value = {
+            "order_id": "ord_orig",
+            "remaining_count": None,
+            "fill_count": None,
+            "ts_ms": 123,
+        }
+
+        with (
+            patch.object(order_executor, "MIN_EDGE", 0.07),
+            patch(
+                "order_executor._validate_trade_opportunity",
+                return_value=(True, "ok"),
+            ),
+            patch(
+                "order_executor._get_current_book",
+                return_value={"yes_bid": 0.53, "yes_ask": 0.57},
+            ),
+            patch("trading_gates.pre_live_trade_check", return_value=None),
+        ):
+            _reprice_or_cancel_pending_orders(
+                mock_client, config={}, liquid_opps=[(market, analysis)]
+            )
+
+        rows = {r["id"]: r for r in execution_log.get_recent_orders(limit=10)}
+        assert rows[old_row_id]["status"] == "amended"
+        new_rows = [r for r in rows.values() if r["id"] != old_row_id]
+        assert len(new_rows) == 1
+        assert new_rows[0]["status"] == "pending"
+        assert new_rows[0]["price"] == pytest.approx(0.55)
+        assert new_rows[0]["replaces_order_id"] == old_row_id
+
+    def test_amend_failure_leaves_old_row_pending_not_amended(self):
+        """If amend_order() raises, the old row must NOT be marked
+        'amended' -- the original order genuinely is still resting
+        unchanged at its old price, so a future cycle must be able to
+        retry it (a stale 'amended' status would make _reprice_or_cancel_
+        pending_orders' status='pending' filter skip it forever)."""
+        from unittest.mock import MagicMock, patch
+
+        import execution_log
+        import order_executor
+        from order_executor import _reprice_or_cancel_pending_orders
+
+        ticker = "KXHIGH-25MAY15-T75"
+        old_row_id = self._seed_pending(ticker=ticker, price=0.50, age_minutes=10)
+        market = {"ticker": ticker, "yes_bid": 0.53, "yes_ask": 0.57}
+        analysis = {
+            "forecast_prob": 0.53,
+            "entry_price": 0.50,
+            "recommended_side": "yes",
+        }
+        mock_client = MagicMock()
+        mock_client.amend_order.side_effect = RuntimeError("amend rejected")
+
+        with (
+            patch.object(order_executor, "MIN_EDGE", 0.07),
+            patch(
+                "order_executor._validate_trade_opportunity",
+                return_value=(True, "ok"),
+            ),
+            patch(
+                "order_executor._get_current_book",
+                return_value={"yes_bid": 0.53, "yes_ask": 0.57},
+            ),
+            patch("trading_gates.pre_live_trade_check", return_value=None),
+        ):
+            _reprice_or_cancel_pending_orders(
+                mock_client, config={}, liquid_opps=[(market, analysis)]
+            )
+
+        rows = {r["id"]: r for r in execution_log.get_recent_orders(limit=10)}
+        assert rows[old_row_id]["status"] == "pending"  # untouched, not "amended"
+
+    def test_amend_exchange_success_survives_bookkeeping_failure(self):
+        """If the exchange call succeeds but a SUBSEQUENT execution_log
+        write raises (e.g. a DB lock), _amend_live_order must still return
+        True -- the order genuinely repriced live on the exchange, and
+        misclassifying it as failed would orphan a real live order (never
+        picked up again by _poll_pending_orders' status='pending' filter).
+        Second-opinion-review-caught regression test: an earlier version
+        wrapped the bookkeeping writes in the SAME try/except as the
+        amend_order() call itself, which this test would have failed."""
+        from unittest.mock import MagicMock, patch
+
+        from order_executor import _amend_live_order
+
+        ticker = "KXHIGH-25MAY15-T75"
+        old_row_id = self._seed_pending(ticker=ticker, price=0.50, age_minutes=10)
+        mock_client = MagicMock()
+        mock_client.amend_order.return_value = {
+            "order_id": "ord_orig",
+            "remaining_count": None,
+            "fill_count": None,
+            "ts_ms": 123,
+        }
+
+        with (
+            patch("trading_gates.pre_live_trade_check", return_value=None),
+            patch(
+                "execution_log.log_order_result",
+                side_effect=RuntimeError("database is locked"),
+            ),
+        ):
+            result = _amend_live_order(
+                "ord_orig",
+                ticker,
+                "yes",
+                5,
+                0.55,
+                mock_client,
+                "12z",
+                old_row_id,
+                None,
+                None,
+            )
+
+        assert result is True, (
+            "amend succeeded on the exchange -- must return True even if "
+            "bookkeeping afterward fails, not misreport it as a failed amend"
+        )
+        mock_client.amend_order.assert_called_once()
 
     def test_price_unchanged_leaves_order_resting(self):
         from unittest.mock import MagicMock, patch
@@ -2244,10 +2537,15 @@ class TestRepriceOrCancelPendingOrders:
         mock_client.cancel_order.assert_not_called()
         mock_client.place_order.assert_not_called()
 
-    def test_fill_race_during_cancel_skips_replacement(self):
-        """If the post-cancel verification shows the order actually filled
-        (raced the cancel), never place a replacement -- would risk a
-        duplicate position."""
+    def test_amend_that_crosses_the_book_is_logged_as_filled(self):
+        """AMEND ORDER (V2) superseded the old cancel+verify-then-replace
+        fill-race protection for this branch: amend is a single atomic
+        exchange-side operation, so there is no client-side window where a
+        fill could race a separate cancel call (see order_executor.
+        _amend_live_order's docstring). If the amend's own price change
+        immediately crosses the book, Kalshi reports that in the SAME
+        response (remaining_count<=0) -- _resolve_amend_status must read
+        that and log the new row as 'filled', not 'pending'."""
         from unittest.mock import MagicMock, patch
 
         import execution_log
@@ -2263,11 +2561,13 @@ class TestRepriceOrCancelPendingOrders:
             "recommended_side": "yes",
         }
         mock_client = MagicMock()
-        mock_client.cancel_order.return_value = {}
-        # The order actually filled (5 contracts) right before our cancel landed.
-        mock_client.get_order.return_value = {
-            "status": "canceled",
-            "fill_count_fp": "5.00",
+        # The new (higher) price immediately crosses the book -- all 5
+        # contracts filled as a direct result of the amend itself.
+        mock_client.amend_order.return_value = {
+            "order_id": "ord_orig",
+            "remaining_count": "0.00",
+            "fill_count": "5.00",
+            "ts_ms": 123,
         }
 
         with (
@@ -2280,15 +2580,18 @@ class TestRepriceOrCancelPendingOrders:
                 "order_executor._get_current_book",
                 return_value={"yes_bid": 0.53, "yes_ask": 0.57},
             ),
+            patch("trading_gates.pre_live_trade_check", return_value=None),
         ):
             _reprice_or_cancel_pending_orders(
                 mock_client, config={}, liquid_opps=[(market, analysis)]
             )
 
-        mock_client.cancel_order.assert_called_once()
+        mock_client.cancel_order.assert_not_called()
         mock_client.place_order.assert_not_called()
+        mock_client.amend_order.assert_called_once()
         rows = execution_log.get_recent_orders(limit=10)
-        assert rows[0]["status"] == "filled"
+        new_row = next(r for r in rows if r["status"] == "filled")
+        assert new_row["fill_quantity"] == 5
         assert rows[0]["fill_quantity"] == 5
 
 

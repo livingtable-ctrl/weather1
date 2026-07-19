@@ -779,6 +779,135 @@ def _replace_live_order(
         return False
 
 
+def _resolve_amend_status(response: dict) -> tuple[str, int | None]:
+    """Translate an amend_order() response into this bot's internal status
+    vocabulary + fill_quantity.
+
+    remaining_count/fill_count are only present in the response "if a fill
+    or size change occurred" per Kalshi's docs -- absent (both None) means
+    the amend was a pure price change with no immediate cross, so the order
+    is still fully resting, unchanged in fill state. remaining_count<=0
+    means the amend's price change immediately crossed the book and used up
+    every remaining contract -- "filled". Otherwise "pending" (still
+    resting, possibly with a partial fill from this amend).
+
+    This is a best-effort immediate read of the amend response only --
+    _poll_pending_orders' next-cycle get_order() re-check remains the
+    decisive source of truth for the new row's final status, same as every
+    other pending row (including a fresh place_order placement).
+    """
+    fill_count = _to_fill_count(response.get("fill_count"))
+    remaining_raw = response.get("remaining_count")
+    if remaining_raw is not None:
+        try:
+            if float(remaining_raw) <= 0:
+                return "filled", fill_count
+        except (TypeError, ValueError):
+            pass
+    return "pending", fill_count
+
+
+def _amend_live_order(
+    order_id: str,
+    ticker: str,
+    side: str,
+    quantity: int,
+    price: float,
+    client,
+    cycle: str,
+    replaces_order_id: int,
+    close_time: str | None,
+    original_client_order_id: str | None,
+) -> bool:
+    """Reprice a resting live order in place via Kalshi's atomic amend
+    endpoint, instead of cancel + verify + replace. The exchange-side
+    order_id is unchanged by an amend (unlike cancel+replace, which creates
+    a genuinely new order) -- but execution_log still gets a NEW row here,
+    chained via replaces_order_id, matching the same convention already
+    used for cancel+replace reprices/taker-crosses, so price-history/
+    fill-latency analysis keeps working unchanged. The OLD row is marked
+    status="amended" (deliberately distinct from "canceled" -- the original
+    order was never actually canceled, just repriced) once the amend
+    succeeds; execution_log.get_today_live_spend() excludes "amended" the
+    same way it excludes "canceled", so the two rows' capital is never
+    double-counted as the order gets repriced across a cycle. If the amend
+    fails, the old row is left untouched (still "pending" at its prior
+    price) -- next cycle's normal flow will re-evaluate and retry.
+
+    Re-runs the kill-switch/trading-paused safety gate (never skippable,
+    same as _replace_live_order) but deliberately NOT the daily-loss/spend/
+    max-open-position gates or edge/Kelly re-validation -- same reasoning as
+    _replace_live_order: this reprices an already-approved, already-sized
+    position's resting order, it does not create a new one.
+    """
+    from trading_gates import pre_live_trade_check
+
+    try:
+        pre_live_trade_check(client)
+    except RuntimeError as _gate_err:
+        _log.warning("[Reprice] Gate blocked amend for %s: %s", ticker, _gate_err)
+        return False
+
+    log_id = execution_log.log_order(
+        ticker=ticker,
+        side=side,
+        quantity=quantity,
+        price=price,
+        order_type="limit",
+        status="pending",
+        forecast_cycle=cycle,
+        live=True,
+        close_time=close_time,
+        replaces_order_id=replaces_order_id,
+    )
+    try:
+        response = client.amend_order(
+            order_id=order_id,
+            ticker=ticker,
+            side=side,
+            action="buy",
+            count=quantity,
+            price=price,
+            client_order_id=original_client_order_id,
+            cycle=cycle,
+        )
+    except Exception as exc:
+        # The exchange call itself failed -- nothing changed on the
+        # exchange, so the original order genuinely is still resting
+        # unchanged at its old price; the old row correctly stays
+        # "pending" (untouched) for a future cycle to retry.
+        execution_log.log_order_result(log_id, status="failed", error=str(exc))
+        _log.warning("[Reprice] Amend failed for %s: %s", ticker, exc)
+        return False
+
+    # The exchange call succeeded -- the order is now genuinely repriced
+    # live, regardless of what happens below. A bookkeeping failure past
+    # this point (e.g. a DB lock) must NOT get this reclassified as
+    # "failed" -- that would silently stop _poll_pending_orders (which
+    # filters on status='pending') from ever tracking a real live order
+    # again, orphaning it.
+    resolved_status, fill_count = _resolve_amend_status(response)
+    try:
+        execution_log.log_order_result(
+            log_id, status=resolved_status, response=response, fill_quantity=fill_count
+        )
+        # Old row: mark amended only after the amend itself is confirmed to
+        # have succeeded -- if it failed, the original order genuinely is
+        # still resting unchanged at its old price, so its row must stay
+        # "pending", not "amended".
+        execution_log.log_order_result(row_id=replaces_order_id, status="amended")
+    except Exception as exc:
+        _log.error(
+            "[Reprice] Amend for %s succeeded on the exchange (order_id=%s) "
+            "but execution_log bookkeeping failed -- this order may be "
+            "under-tracked: %s",
+            ticker,
+            response.get("order_id"),
+            exc,
+        )
+    return True
+
+
 def _reprice_or_cancel_pending_orders(
     client, config: dict | None = None, liquid_opps: list | None = None
 ) -> None:
@@ -908,20 +1037,28 @@ def _reprice_or_cancel_pending_orders(
                 current_price is not None
                 and abs(fresh_mid - current_price) >= _MIN_REPRICE_TICK
             ):
-                if _cancel_and_verify_safe_to_replace(client, order_id, order["id"]):
-                    _replace_live_order(
-                        ticker,
-                        side,
-                        quantity,
-                        fresh_mid,
-                        "good_till_canceled",
-                        client,
-                        cycle,
-                        order["id"],
-                        close_time,
-                    )
+                # Same order, new price -- Kalshi's amend endpoint (a single
+                # atomic exchange-side operation) instead of cancel + verify
+                # + place_order, closing the client-side window where a fill
+                # could land exactly as the post-cancel verification query
+                # runs. The taker-cross branch above stays on cancel+replace
+                # deliberately -- it changes time_in_force to
+                # immediate_or_cancel, a different order type amend cannot
+                # express.
+                if _amend_live_order(
+                    order_id,
+                    ticker,
+                    side,
+                    quantity,
+                    fresh_mid,
+                    client,
+                    cycle,
+                    order["id"],
+                    close_time,
+                    response.get("client_order_id"),
+                ):
                     _log.info(
-                        "[Reprice] %s: repriced %.2f -> %.2f",
+                        "[Reprice] %s: amended %.2f -> %.2f",
                         ticker,
                         current_price,
                         fresh_mid,

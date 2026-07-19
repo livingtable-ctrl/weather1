@@ -2691,12 +2691,127 @@ Known residual (not fixed here, correctly out of scope):
     condition-type Brier over the next batch of settled trades per this
     entry's original note.
 
-[AMEND ORDER (V2) -- REPLACE CANCEL-VERIFY-REPLACE IN THE REPRICE LOOP]
-Priority: Medium -- removes the exact client-side race window the reprice
-  feature needed hardened plumbing to work around, and halves write-call
-  count per reprice.
+[RESOLVED 2026-07-19] AMEND ORDER (V2) -- REPLACE CANCEL-VERIFY-REPLACE IN THE REPRICE LOOP
+Priority: was Medium -- removes the exact client-side race window the
+  reprice feature needed hardened plumbing to work around, and halves
+  write-call count per reprice.
 
-Problem:
+RESOLVED 2026-07-19:
+  Re-verified the endpoint shape against Kalshi's live docs before coding
+  (https://docs.kalshi.com/api-reference/orders/amend-order-v2) rather than
+  trusting this entry's 2026-07-16 summary alone -- confirmed POST
+  /portfolio/events/orders/{order_id}/amend, request {ticker, side, price,
+  count, client_order_id?, updated_client_order_id?, exchange_index?},
+  response {order_id, client_order_id, remaining_count?, fill_count?,
+  average_fill_price?, average_fee_paid?, ts_ms}. One clarification the
+  original entry didn't capture: count is NOT "how many more to add" --
+  it's the order's TOTAL desired fillable count (already-filled +
+  desired-remaining-resting), the same semantics as create-order's count.
+  For this bot's only use (reprice at an unchanged quantity), that means
+  passing the same count used at original placement, unchanged -- Kalshi
+  computes the filled/still-resting split internally.
+  Shipped kalshi_client.amend_order() (V2 fixed-point body via the existing
+  _to_v2_side_price mapping, deterministic updated_client_order_id via the
+  same hash-based idempotency pattern as place_order, client_order_id
+  included only when the caller has it) and order_executor._amend_live_order
+  (mirrors _replace_live_order's gate-recheck + execution_log bookkeeping
+  shape). Wired into _reprice_or_cancel_pending_orders's reprice-improve
+  branch only (same order, new price) -- the taker-cross branch stays on
+  cancel+replace exactly as before, since it changes time_in_force to
+  immediate_or_cancel, a different order type amend cannot express, matching
+  this entry's own original scoping.
+  Execution_log design decision (surfaced via AskUserQuestion -- amend keeps
+  the SAME exchange order_id, unlike cancel+replace's genuinely-new one, so
+  this needed a real call): user chose the "new row, chained via
+  replaces_order_id" option over "update the row in place", matching this
+  entry's own "Log replaces_order_id chains the same way" plan. The old
+  row gets a new status="amended" (deliberately distinct from "canceled" --
+  the original order was never actually canceled, just repriced).
+  Found and fixed a real live-money correctness gap this design choice
+  would otherwise have introduced, caught by tracing every consumer of
+  orders.status before finalizing the new status string (per
+  [[feedback_trace_all_call_sites]]): execution_log.get_today_live_spend()
+  (the MAX_DAILY_SPEND gate's data source) sums quantity*price across every
+  row NOT IN ('failed','canceled','cancelled') -- 'amended' wasn't in that
+  exclusion list, so an amended order's old row AND its new row would both
+  count, double-counting the same resting position's capital on every
+  reprice and inflating the live spend cap toward premature (fail-safe-
+  direction, not fail-unsafe, but still a real bug) halts. Fixed by adding
+  'amended' to that query's exclusion list. Checked every other
+  orders.status consumer in execution_log.py (was_recently_ordered,
+  was_traded_today, was_ordered_this_cycle: harmless either way, since the
+  new row already signals "traded" regardless of the old row's status;
+  get_open_live_positions's exact status='pending' match and
+  order_executor._count_open_live_orders's exact status='pending' match:
+  both naturally exclude 'amended' already, no change needed) -- only
+  get_today_live_spend needed the fix.
+  Adjacency note, NOT fixed (flagging per this project's convention rather
+  than silently folding it in): execution_log.log_order_result() always
+  overwrites response/error/error_code/error_type (not COALESCEd) even when
+  the caller only means to update status -- _amend_live_order's mark-old-
+  row-as-"amended" call inherits this same pre-existing behavior already
+  present in _finalize_cancel's cancel-marking call (nulls out the old
+  row's response JSON on every cancel too, not something this change
+  introduced). Worth a real fix if execution_log.py is next open for
+  other reasons.
+  Not verified against DEMO_BASE (no live/demo order was actually placed) --
+  ENABLE_MICRO_LIVE=False and TRADING_PAUSED throughout this session, same
+  as every other live-order-path change to date; implemented and tested
+  against the documented shape (live docs fetch above), matching how the
+  original V2 create/cancel migration was done. Worth a real demo-order
+  smoke test whenever live trading is actually being prepared to resume.
+  20 new tests: kalshi_client.amend_order() body construction (V2 side/price
+  mapping reused correctly, client_order_id included/omitted correctly,
+  updated_client_order_id deterministic+idempotent, raw response passthrough
+  -- tests/test_kalshi_client.py::TestAmendOrder, 7 tests);
+  order_executor._resolve_amend_status's fill/no-fill/partial-fill/
+  unparseable boundary cases (4 tests, mutation-tested by flipping the
+  remaining_count<=0 comparison and confirming the boundary test fails for
+  the right reason, then restoring); get_today_live_spend's 'amended'
+  exclusion (2 tests, one directly proving the double-count bug by running
+  the pre-fix query alongside the real one and asserting they diverge);
+  updated 2 existing reprice-branch tests
+  (test_rested_past_blanket_gate_but_not_taker_gate_reprices_not_crosses,
+  test_price_moved_reprices_as_new_maker_order) from asserting cancel_order/
+  place_order calls to asserting amend_order calls, since those tests were
+  exercising an implementation detail (the mechanism) that genuinely
+  changed by design, not just an outcome; replaced
+  test_fill_race_during_cancel_skips_replacement (which tested the
+  cancel+verify fill-race protection this change makes moot for the
+  reprice-improve branch -- amend's atomicity closes that race window by
+  construction) with test_amend_that_crosses_the_book_is_logged_as_filled,
+  proving the analogous scenario (amend's own price change immediately
+  crosses the book) is read correctly from the SAME atomic response instead
+  of a separate verification call; added 2 new execution_log bookkeeping
+  tests for the amend success/failure paths (old row -> "amended" only on
+  success, left "pending" on failure so a future cycle can retry).
+  602 tests pass across the full scoped regression sweep (every test file
+  touching order_executor.py/kalshi_client.py/execution_log.py); ruff +
+  ruff format + mypy clean.
+  Independent second-opinion review (Agent, opus) caught one real issue
+  before push: _amend_live_order's try/except wrapped BOTH the exchange
+  amend_order() call AND the two subsequent execution_log bookkeeping
+  writes in one block -- if the exchange call succeeded but a bookkeeping
+  write then raised (e.g. a genuine SQLite "database is locked", plausible
+  given web_app.py's dashboard and the WS thread can touch the same DB
+  concurrently), the new row got marked "failed" even though the order had
+  genuinely repriced live on the exchange, orphaning it (never picked up
+  again by _poll_pending_orders' status='pending' filter). Fixed by
+  splitting into two try/except blocks: only the amend_order() call itself
+  can produce a "failed" classification and a False return; once a
+  response is in hand, a bookkeeping failure is logged loudly (error, not
+  warning) but the function still returns True, since the exchange-side
+  reality is what matters for whether a future cycle should retry.
+  New regression test (test_amend_exchange_success_survives_bookkeeping_
+  failure) mocks execution_log.log_order_result to raise after a
+  successful amend_order() call and asserts True is still returned --
+  mutation-tested by reverting to the single-try-block shape and
+  confirming the test fails with the exact predicted symptom (an
+  unhandled RuntimeError instead of a clean True), then restoring. 126
+  tests pass in the two most directly affected files after the fix; ruff/
+  ruff format/mypy clean.
+
+Problem (as originally scoped, still accurate for historical context):
   kalshi_client.py exposes only place/get/cancel (place_order :401,
   get_order :551, cancel_order :560) -- no amend. So
   _reprice_or_cancel_pending_orders (order_executor.py:779) does a
@@ -2715,7 +2830,7 @@ Problem:
   operation -- no client-side window where the order is gone-but-not-
   replaced or filled-mid-sequence.
 
-What it would look like:
+What it would look like (DONE 2026-07-19, see resolution above):
   Add amend_order() to kalshi_client.py (V2 fixed-point shape -- read the
   live docs page for exact field encoding before coding, same caution as
   the create/cancel migration); in _reprice_or_cancel_pending_orders, use
@@ -2724,17 +2839,19 @@ What it would look like:
   type). Log replaces_order_id chains the same way (execution_log already
   has the column).
 
-Why not now:
+Why not now (resolved):
   - Docs note queue position is preserved only on size decrease (price
     amends go to the back -- no queue-priority win, "only" atomicity +
     rate-limit savings); ENABLE_MICRO_LIVE=False means no live orders
-    exist to reprice yet, so this naturally batches with the next
-    order-path session. Verify amend's response/error shape against
-    DEMO_BASE first.
+    exist to reprice yet, so this naturally batched with the next
+    order-path session (this one). Not verified against DEMO_BASE (no
+    live/demo order was actually placed this session) -- worth a real
+    demo-order smoke test whenever live trading is actually being
+    prepared to resume; see resolution above.
 
 When to revisit:
-  - Whenever the order-execution path is next open for other reasons, or
-    once live trading resumes and repricing actually runs.
+  - N/A, closed. If DEMO_BASE verification is wanted before live trading
+    resumes, that's the one remaining piece -- see resolution above.
 
 [RESOLVED 2026-07-18] MARKET-IMPLIED TEMPERATURE DISTRIBUTION FROM THE FULL LADDER
 Priority: was Medium -- turns data already fetched every scan into a
