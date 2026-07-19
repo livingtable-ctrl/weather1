@@ -3774,12 +3774,96 @@ When to revisit:
     The module-global inventory pass is cheap enough to do sooner, ahead
     of the watcher design itself.
 
-[PER-CITY KNOWLEDGE IS SCATTERED ACROSS ~8 REGISTRIES WITH SILENT-DEFAULT FALLBACKS]
-Priority: Low-Medium -- the LV/NOLA history proves the failure mode is
+[RESOLVED 2026-07-19] PER-CITY KNOWLEDGE IS SCATTERED ACROSS ~8 REGISTRIES WITH SILENT-DEFAULT FALLBACKS
+Priority: was Low-Medium -- the LV/NOLA history proves the failure mode is
   real and slow-burning: months of silently degraded sigma; climate_indices
   still half-covered.
 
-Problem:
+RESOLVED 2026-07-19 (as its own session, per explicit user request, rather
+  than waiting for "whichever session next touches a per-city table" as
+  this entry's own "Why not now" originally suggested):
+  Re-mapped every registry against the CURRENT code first rather than
+  trusting this entry's line numbers (all stale -- the file has grown
+  since 2026-07-16/17) or its "still 10 of 20" climate_indices claim
+  blindly (re-verified: still true). Confirmed CITY_COORDS is NOT actually
+  data-driven despite the #119 comment's promise -- data/cities.json
+  doesn't exist in the repo, so the "fallback" hardcoded 20-city dict is
+  what's actually live; that consolidation (fold pure-data registries into
+  cities.json) is this entry's own explicitly-deferred "second step, only
+  if city count actually grows" and stays deferred -- city count is still
+  stable at 20.
+  Shipped weather_markets.city_registry_report() -- walks all 20
+  CITY_COORDS cities against 6 currently-checkable registries (series
+  ticker/metar station/station bias/historical sigma/climate indices/
+  correlation group; the planned city->WFO/pil table, registry #9, still
+  doesn't exist, so it's not included) and returns {city: {registry:
+  bool}}. The series-ticker check reuses _parse_city_from_ticker directly
+  rather than re-deriving ticker-parsing logic a second time (settlement_
+  monitor.py already proves this exact check via its own import-time
+  assert; this just makes the same guarantee inspectable from
+  weather_markets.py too, without adding a new cross-module dependency on
+  settlement_monitor).
+  Prerequisite fix, done first since it blocked the manifest from checking
+  climate_indices coverage at all: climate_indices.py's ao_sens/nao_sens/
+  enso_sens were rebuilt as 3 fresh dict literals INSIDE
+  temperature_adjustment() on every call (not module constants), with
+  values depending on the target month's season via inline ternaries --
+  simply hoisting them as-is would have frozen the seasonal variation, a
+  real bug, not a refactor. Restructured into module-level AO_SENS/
+  NAO_SENS/ENSO_SENS (city -> season -> value, season via new
+  _season_bucket() helper) with DEFAULT_AO_SENS/NAO_SENS/ENSO_SENS
+  constants replacing the inline `.get(city, 0.5)`-style fallbacks.
+  Verified equivalence exhaustively before treating it as done, not by
+  eyeballing the diff: ran the OLD (git HEAD) and NEW temperature_
+  adjustment() side by side across all 20 cities x 12 months x 4 index-
+  value combinations (960 cases) with indices mocked to isolate the
+  lookup -- 0 mismatches. No prior test in the suite locked in this
+  function's real computed values (every other test file mocks it out
+  entirely) -- closed that gap with tests/test_climate_indices.py (17
+  tests: season-bucket boundaries, table-coverage invariants incl. all 3
+  tables sharing the identical city set, hand-computed adjustment values
+  per season, the uncovered-city flat-default case, ±6°F clamping,
+  mutation-tested).
+  Added log_city_registry_report() (weather_markets.py) -- once-per-day
+  gated the same SERIES_DRIFT_PATH-style way as the existing
+  check_series_drift(), wired into cron.py right beside it (same
+  placement/isolation rationale: placed last, isolated try/except, never
+  blocks anything trading-critical). New CITY_REGISTRY_REPORT_PATH added
+  to paths.py alongside SERIES_DRIFT_PATH. 4 new tests (tests/
+  test_city_registry_report_logging.py): first-run creates the state
+  file with real (non-empty) gaps, gated to no-op the same day, re-runs on
+  a new day, never raises on a corrupted state file.
+  The "test" half of this entry's own "startup log + a test" ask: tests/
+  test_city_registry_manifest.py, matching the exact allowlist convention
+  already established by test_config_divergence_guard.py's
+  _DEAD_FIELD_ALLOWLIST and test_dead_code_scan.py's
+  _DEAD_CODE_ALLOWLIST -- a _KNOWN_GAPS dict of (city, registry) pairs
+  with a concrete reason each, checked BOTH directions: a gap with no
+  allowlist entry fails the build (forces a real decision on any new
+  drift), AND an allowlisted gap that no longer reproduces also fails
+  (catches a stale "accepted debt" note left behind after someone
+  actually fixed the underlying registry). Mutation-tested both
+  directions for real: introduced a fake station_bias gap and confirmed
+  the guard caught it; simulated "fixing" LasVegas's historical_sigma gap
+  without updating the allowlist and confirmed the staleness check caught
+  that too. 3 additional zero-tolerance tests (series_ticker/metar_
+  station/station_bias have no allowlist entries at all -- these 3
+  registries are fully covered today and any regression should fail
+  loudly, not need an allowlist entry to explain it away).
+  Documented, not silently "fixed," the existing gaps this pass
+  discovered/confirmed: LasVegas/NewOrleans missing from the static
+  historical_sigma fallback tier (masked today by the dynamic
+  climatology-based sigma, which does cover them); Seattle's deliberate,
+  already-documented exclusion from paper.py's correlation groups; 10
+  cities (Austin, Washington, Philadelphia, OklahomaCity, SanFrancisco,
+  Minneapolis, Houston, SanAntonio, LasVegas, NewOrleans) still on the
+  flat climate_indices default, unresearched -- same "still 10 of 20" gap
+  this entry itself flagged, now visible via the manifest/log instead of
+  requiring a manual code read to notice.
+  199+ tests pass across the full regression sweep touching weather_
+  markets.py/climate_indices.py/cron.py; ruff + ruff format + mypy clean.
+
+Problem (as originally scoped, still accurate for historical context):
   CITY_COORDS is nominally data-driven (data/cities.json, weather_markets.py:
   190-236, "#119: ...new cities can be added without modifying code") --
   but a tradeable city actually requires coordinated entries in at least:
@@ -3801,7 +3885,8 @@ Problem:
   climate-index sensitivities. The planned city->WFO/pil table (CLI-
   report fetch + AFD entries) will be registry #9.
 
-What it would look like:
+What it would look like: [DONE 2026-07-19 -- the manifest/log/test, see
+  resolution above; the cities.json consolidation below stays deferred]
   Not necessarily one mega-table -- a *completeness manifest*: a
   city_registry check (startup log + a test) that walks every per-city
   consumer and reports, per CITY_COORDS city, which of the ~8 registries
@@ -3812,17 +3897,21 @@ What it would look like:
   becomes data-driven and #119's promise becomes true -- today adding a
   city without code changes is not actually possible.
 
-Why not now:
-  - City count has been stable at 20 and Kalshi adds cities rarely; the
-    manifest/report is a small, self-contained piece worth folding into
-    whichever session next touches a per-city table (the climate-indices
-    or WFO-table work are natural hosts). The cities.json consolidation
-    only pays if Kalshi's roster actually starts moving.
+Why not now (manifest/log/test resolved; cities.json consolidation still
+applies):
+  - City count has been stable at 20 and Kalshi adds cities rarely -- the
+    manifest/report shipped as its own session per explicit user request
+    rather than waiting for a natural host session. The cities.json
+    consolidation only pays if Kalshi's roster actually starts moving --
+    still true, still deferred; data/cities.json still doesn't exist
+    (confirmed live this session), so CITY_COORDS is still 100% the
+    hardcoded fallback, not actually data-driven despite #119's comment.
 
 When to revisit:
-  - Whenever climate_indices.py or the CLI-report/WFO table work is next
-    picked up -- fold the manifest in as a drive-by rather than a
-    dedicated session.
+  - Manifest/log/test: N/A, closed. cities.json consolidation: whenever
+    Kalshi's city roster actually starts moving, or whenever
+    _parse_city_from_ticker's hardcoded if-chain is next open for other
+    reasons.
 
 [RESOLVED 2026-07-17] LOG_PREDICTION KWARGS ASSEMBLY TRIPLICATED -- ONE COPY HAD ALREADY DRIFTED
 Priority: was Medium-High to fix (trivial), Medium as debt -- drift is not

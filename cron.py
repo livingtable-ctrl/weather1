@@ -2627,6 +2627,18 @@ def _cmd_cron_body(
     except Exception as _drift_exc:
         _log.warning("check_series_drift call failed: %s", _drift_exc)
 
+    # Per-city registry completeness manifest — once per day, observational
+    # only, same placement/isolation rationale as check_series_drift above
+    # (backlog.txt "PER-CITY KNOWLEDGE SCATTERED ACROSS ~8 REGISTRIES").
+    # No API call involved (pure local data comparison), but self-gated to
+    # once per day the same way anyway to avoid log noise every cycle.
+    try:
+        from weather_markets import log_city_registry_report as _log_city_registry
+
+        _log_city_registry()
+    except Exception as _registry_exc:
+        _log.warning("log_city_registry_report call failed: %s", _registry_exc)
+
     print(
         cyan(
             f"  [cron] scan complete \u2014 {datetime.now(UTC).strftime('%Y-%m-%d %H:%M:%S')} UTC"

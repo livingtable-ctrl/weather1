@@ -35,7 +35,7 @@ from climatology import climatological_prob
 from forecast_cache import ForecastCache
 from kalshi_client import KalshiClient, _request_with_retry
 from nws import fetch_nbm_forecast, get_live_observation, nws_prob, obs_prob
-from paths import SERIES_DRIFT_PATH
+from paths import CITY_REGISTRY_REPORT_PATH, SERIES_DRIFT_PATH
 from schema_validator import is_all_null, validate_forecast
 from utils import (
     BETWEEN_FLOOR_MODEL_MAX,
@@ -3479,6 +3479,98 @@ def _parse_city_from_ticker(ticker: str, title: str = "") -> str | None:
     if "NOLA" in ticker_up or "new orleans" in title_lo:
         return "NewOrleans"
     return None
+
+
+def city_registry_report() -> dict[str, dict[str, bool]]:
+    """Per-city completeness manifest across the per-city registries a
+    tradeable city actually needs coordinated entries in (backlog.txt
+    "PER-CITY KNOWLEDGE SCATTERED ACROSS ~8 REGISTRIES"). Returns
+    {city: {registry_name: has_real_entry}} for every city in CITY_COORDS.
+
+    Registries checked (of the ~8 the backlog entry names -- CITY_COORDS
+    itself is the enumeration base, not a thing to check against itself;
+    the planned city->WFO/pil table doesn't exist yet, so it's not
+    included here):
+      - series_ticker: at least one KXHIGH* ticker in KNOWN_WEATHER_SERIES
+        parses back to this city via _parse_city_from_ticker -- covers
+        both the ticker if-chain and the series-ticker registry in one
+        check, since settlement_monitor._CITY_SERIES_TICKER already
+        proves (at its own import time, via an assert-or-crash) that this
+        must hold for get_weather_markets() to work at all.
+      - metar_station: city in metar.MARKET_STATION_MAP.
+      - station_bias: city in both _STATION_BIAS_HIGH and _STATION_BIAS_LOW.
+      - historical_sigma: city in _HISTORICAL_SIGMA (the static fallback
+        tier -- False here does NOT mean the city trades with no sigma at
+        all, since get_historical_sigma() prefers a dynamic per-city
+        sigma from climatology.load_all_sigmas() first; it means this
+        city has no second-tier fallback if the dynamic value is ever
+        unavailable).
+      - climate_indices: city in climate_indices.AO_SENS (NAO_SENS/
+        ENSO_SENS are guaranteed to cover the identical city set --
+        enforced by tests/test_climate_indices.py, not re-checked here).
+      - correlation_group: city appears in at least one of paper.py's
+        _CORRELATED_CITY_GROUPS sets. Seattle is a documented, deliberate
+        exception ("Pacific Maritime pattern is distinct" -- see paper.py)
+        -- a manifest consumer should treat that one as accepted, not a
+        bug; see tests/test_city_registry_manifest.py's allowlist.
+    """
+    from paper import _CORRELATED_CITY_GROUPS
+
+    high_tickers = [t for t in KNOWN_WEATHER_SERIES if t.startswith("KXHIGH")]
+    report: dict[str, dict[str, bool]] = {}
+    for city in CITY_COORDS:
+        has_series_ticker = any(
+            _parse_city_from_ticker(t) == city for t in high_tickers
+        )
+        report[city] = {
+            "series_ticker": has_series_ticker,
+            "metar_station": city in _metar.MARKET_STATION_MAP,
+            "station_bias": city in _STATION_BIAS_HIGH and city in _STATION_BIAS_LOW,
+            "historical_sigma": city in _HISTORICAL_SIGMA,
+            "climate_indices": city in _ci.AO_SENS,
+            "correlation_group": any(
+                city in group for group in _CORRELATED_CITY_GROUPS
+            ),
+        }
+    return report
+
+
+def log_city_registry_report() -> None:
+    """Once per day: log a summary of per-city registry completeness gaps
+    so a half-onboarded city is a visible diagnostic instead of a silent
+    state (backlog.txt "PER-CITY KNOWLEDGE SCATTERED"). Never raises --
+    this is purely informational and must never affect scanning/trading,
+    same isolation contract as check_series_drift() above.
+    """
+    try:
+        today = datetime.now(UTC).date().isoformat()
+        if CITY_REGISTRY_REPORT_PATH.exists():
+            existing = json.loads(CITY_REGISTRY_REPORT_PATH.read_text())
+            if existing.get("date") == today:
+                return  # already ran today
+
+        report = city_registry_report()
+        gaps = {
+            city: sorted(name for name, ok in checks.items() if not ok)
+            for city, checks in report.items()
+        }
+        gaps = {city: missing for city, missing in gaps.items() if missing}
+
+        if gaps:
+            _log.warning(
+                "city_registry: %d of %d cities have incomplete registry coverage: %s",
+                len(gaps),
+                len(report),
+                gaps,
+            )
+        else:
+            _log.info("city_registry: all cities fully covered across all registries")
+
+        _safe_io.atomic_write_json(
+            {"date": today, "gaps": gaps}, CITY_REGISTRY_REPORT_PATH
+        )
+    except Exception as _exc:
+        _log.debug("log_city_registry_report failed (non-fatal): %s", _exc)
 
 
 def parse_city_date(market: dict) -> tuple[str | None, date | None]:

@@ -200,6 +200,75 @@ def get_enso_index(
         return None
 
 
+# City-specific atmospheric-index sensitivity coefficients (°F per unit index
+# value), by season. Moved to module level 2026-07-19 (previously 3 dict
+# literals rebuilt from scratch inside temperature_adjustment() on every
+# call) so per-city coverage is inspectable for the completeness manifest
+# (backlog.txt "PER-CITY KNOWLEDGE SCATTERED ACROSS ~8 REGISTRIES") without
+# needing to execute or parse the function body. Values unchanged from the
+# original inline dicts -- "other" is the original ternary's trailing
+# else-branch (June-November, where AO/NAO influence is weak and wasn't
+# split further). Only 10 of 20 traded cities have real entries here; a
+# missing city falls through to DEFAULT_AO_SENS/DEFAULT_NAO_SENS/
+# DEFAULT_ENSO_SENS regardless of season, same as the original code's
+# `.get(city, 0.5)`-style fallback.
+AO_SENS: dict[str, dict[str, float]] = {
+    "NYC": {"winter": 2.0, "spring": 1.2, "other": 0.4},
+    "Boston": {"winter": 2.0, "spring": 1.2, "other": 0.4},
+    "Chicago": {"winter": 2.2, "spring": 1.3, "other": 0.5},
+    "Miami": {"winter": 0.6, "spring": 0.3, "other": 0.1},
+    "LA": {"winter": 0.3, "spring": 0.3, "other": 0.3},
+    "Dallas": {"winter": 1.2, "spring": 0.7, "other": 0.3},
+    "Phoenix": {"winter": 0.5, "spring": 0.3, "other": 0.1},
+    "Seattle": {"winter": 1.0, "spring": 0.8, "other": 0.3},
+    "Denver": {"winter": 1.8, "spring": 1.0, "other": 0.4},
+    "Atlanta": {"winter": 1.0, "spring": 0.6, "other": 0.2},
+}
+
+NAO_SENS: dict[str, dict[str, float]] = {
+    "NYC": {"winter": 1.2, "spring": 0.7, "other": 0.2},
+    "Boston": {"winter": 1.3, "spring": 0.8, "other": 0.2},
+    "Chicago": {"winter": 0.8, "spring": 0.5, "other": 0.2},
+    "Miami": {"winter": 0.4, "spring": 0.2, "other": 0.1},
+    "LA": {"winter": 0.2, "spring": 0.2, "other": 0.2},
+    "Dallas": {"winter": 0.5, "spring": 0.3, "other": 0.1},
+    "Phoenix": {"winter": 0.2, "spring": 0.1, "other": 0.1},
+    "Seattle": {"winter": 0.6, "spring": 0.4, "other": 0.2},
+    "Denver": {"winter": 0.7, "spring": 0.4, "other": 0.2},
+    "Atlanta": {"winter": 0.6, "spring": 0.3, "other": 0.1},
+}
+
+# ENSO's original ternary only ever had 2 branches (winter vs everything
+# else) -- preserved as 2 buckets here rather than inventing a spring-
+# specific value that was never there. temperature_adjustment() collapses
+# "spring"/"other" to the same "other" lookup key for this table only.
+ENSO_SENS: dict[str, dict[str, float]] = {
+    "NYC": {"winter": 1.0, "other": 0.3},
+    "Boston": {"winter": 1.0, "other": 0.3},
+    "Chicago": {"winter": 0.8, "other": 0.3},
+    "Miami": {"winter": 0.5, "other": 0.2},
+    "LA": {"winter": 0.8, "other": 0.4},
+    "Dallas": {"winter": 1.0, "other": 0.4},
+    "Phoenix": {"winter": 1.2, "other": 0.5},
+    "Seattle": {"winter": 0.9, "other": 0.5},
+    "Denver": {"winter": 0.9, "other": 0.3},
+    "Atlanta": {"winter": 0.7, "other": 0.3},
+}
+
+DEFAULT_AO_SENS = 0.5
+DEFAULT_NAO_SENS = 0.4
+DEFAULT_ENSO_SENS = 0.4
+
+
+def _season_bucket(month: int) -> str:
+    """Northern Hemisphere season category used to key AO_SENS/NAO_SENS."""
+    if month in (12, 1, 2):
+        return "winter"
+    if month in (3, 4, 5):
+        return "spring"
+    return "other"
+
+
 def temperature_adjustment(city: str, target_date: date) -> float:
     """
     Estimate temperature adjustment (°F) to apply to the climatological baseline
@@ -216,56 +285,12 @@ def temperature_adjustment(city: str, target_date: date) -> float:
     nao = indices.get("nao", 0.0)
     enso = indices.get("enso", 0.0)
 
-    month = target_date.month
+    season = _season_bucket(target_date.month)
+    enso_season = season if season == "winter" else "other"  # ENSO has only 2 buckets
 
-    # Season categories (Northern Hemisphere)
-    is_winter = month in (12, 1, 2)
-    is_spring = month in (3, 4, 5)
-    # AO sensitivity (°F per unit AO) — stronger in winter/spring on East Coast
-    ao_sens = {
-        "NYC": 2.0 if is_winter else 1.2 if is_spring else 0.4,
-        "Boston": 2.0 if is_winter else 1.2 if is_spring else 0.4,
-        "Chicago": 2.2 if is_winter else 1.3 if is_spring else 0.5,
-        "Miami": 0.6 if is_winter else 0.3 if is_spring else 0.1,
-        "LA": 0.3,
-        "Dallas": 1.2 if is_winter else 0.7 if is_spring else 0.3,
-        "Phoenix": 0.5 if is_winter else 0.3 if is_spring else 0.1,
-        "Seattle": 1.0 if is_winter else 0.8 if is_spring else 0.3,
-        "Denver": 1.8 if is_winter else 1.0 if is_spring else 0.4,
-        "Atlanta": 1.0 if is_winter else 0.6 if is_spring else 0.2,
-    }
-
-    # NAO sensitivity (°F per unit NAO)
-    nao_sens = {
-        "NYC": 1.2 if is_winter else 0.7 if is_spring else 0.2,
-        "Boston": 1.3 if is_winter else 0.8 if is_spring else 0.2,
-        "Chicago": 0.8 if is_winter else 0.5 if is_spring else 0.2,
-        "Miami": 0.4 if is_winter else 0.2 if is_spring else 0.1,
-        "LA": 0.2,
-        "Dallas": 0.5 if is_winter else 0.3 if is_spring else 0.1,
-        "Phoenix": 0.2 if is_winter else 0.1 if is_spring else 0.1,
-        "Seattle": 0.6 if is_winter else 0.4 if is_spring else 0.2,
-        "Denver": 0.7 if is_winter else 0.4 if is_spring else 0.2,
-        "Atlanta": 0.6 if is_winter else 0.3 if is_spring else 0.1,
-    }
-
-    # ENSO sensitivity (°F per unit ONI)
-    enso_sens = {
-        "NYC": 1.0 if is_winter else 0.3,
-        "Boston": 1.0 if is_winter else 0.3,
-        "Chicago": 0.8 if is_winter else 0.3,
-        "Miami": 0.5 if is_winter else 0.2,
-        "LA": 0.8 if is_winter else 0.4,
-        "Dallas": 1.0 if is_winter else 0.4,
-        "Phoenix": 1.2 if is_winter else 0.5,
-        "Seattle": 0.9 if is_winter else 0.5,
-        "Denver": 0.9 if is_winter else 0.3,
-        "Atlanta": 0.7 if is_winter else 0.3,
-    }
-
-    ao_adj = ao * ao_sens.get(city, 0.5)
-    nao_adj = nao * nao_sens.get(city, 0.4)
-    enso_adj = enso * enso_sens.get(city, 0.4)
+    ao_adj = ao * AO_SENS.get(city, {}).get(season, DEFAULT_AO_SENS)
+    nao_adj = nao * NAO_SENS.get(city, {}).get(season, DEFAULT_NAO_SENS)
+    enso_adj = enso * ENSO_SENS.get(city, {}).get(enso_season, DEFAULT_ENSO_SENS)
 
     # Cap total adjustment at ±6°F to avoid over-correction
     total = ao_adj + nao_adj + enso_adj
