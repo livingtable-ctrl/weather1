@@ -214,7 +214,11 @@ class TestIsStale(unittest.TestCase):
         # volume_fp but no legacy volume/open_interest must NOT be called
         # stale -- a plain-names-only read would have silently skipped
         # every near-close market on the live API regardless of real
-        # liquidity.
+        # liquidity. Uses a STRING value ("500.00"), matching Kalshi's real
+        # FixedPointCount shape -- an earlier version of this test used a
+        # plain int (500), which is exactly why it didn't catch the
+        # second, more severe bug below (a bare int never triggers a
+        # str/int comparison error, only a real API response does).
         from datetime import datetime, timedelta
 
         from weather_markets import is_stale
@@ -222,7 +226,7 @@ class TestIsStale(unittest.TestCase):
         close = (datetime.now(UTC) + timedelta(minutes=30)).strftime(
             "%Y-%m-%dT%H:%M:%SZ"
         )
-        market = {"volume_fp": 500, "close_time": close}
+        market = {"volume_fp": "500.00", "close_time": close}
         self.assertFalse(is_stale(market))
 
     def test_current_api_open_interest_fp_prevents_false_stale(self):
@@ -233,8 +237,52 @@ class TestIsStale(unittest.TestCase):
         close = (datetime.now(UTC) + timedelta(minutes=30)).strftime(
             "%Y-%m-%dT%H:%M:%SZ"
         )
-        market = {"open_interest_fp": 500, "close_time": close}
+        market = {"open_interest_fp": "500.00", "close_time": close}
         self.assertFalse(is_stale(market))
+
+    def test_string_volume_fp_does_not_crash(self):
+        # Real bug found live 2026-07-19: volume_fp/open_interest_fp are
+        # FixedPointCount STRINGS on the real API (e.g. "10.00"), not
+        # numbers -- `market.get("volume_fp") or ... or 0` returns that
+        # string as-is, and comparing a string with `> 0` raises TypeError
+        # in Python 3 (no implicit str/int ordering). This crashed
+        # cron.py's entire scan loop in production the moment any market
+        # had real volume (caught via a live `python main.py cron` run:
+        # "TypeError: '>' not supported between instances of 'str' and
+        # 'int'", 480 markets scanned, 0 actually analyzed). Must not
+        # raise, and must correctly report not-stale.
+        from datetime import datetime, timedelta
+
+        from weather_markets import is_stale
+
+        close = (datetime.now(UTC) + timedelta(minutes=30)).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        )
+        market = {
+            "volume_fp": "10.00",
+            "open_interest_fp": "5.00",
+            "close_time": close,
+        }
+        result = is_stale(market)  # must not raise TypeError
+        self.assertFalse(result)
+
+    def test_string_zero_volume_fp_still_stale_when_closing_soon(self):
+        """A genuinely-zero string volume_fp ("0.00") must still correctly
+        report stale -- proves the float() wrapping didn't accidentally
+        make every string value look non-zero."""
+        from datetime import datetime, timedelta
+
+        from weather_markets import is_stale
+
+        close = (datetime.now(UTC) + timedelta(minutes=30)).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        )
+        market = {
+            "volume_fp": "0.00",
+            "open_interest_fp": "0.00",
+            "close_time": close,
+        }
+        self.assertTrue(is_stale(market))
 
 
 class TestMaxDrawdown(unittest.TestCase):

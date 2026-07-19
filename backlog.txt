@@ -71,6 +71,66 @@ When to revisit:
   - Before the Belgium trip ends (~2026-07-30) and live trading is
     considered for resumption. This is a hard prerequisite, not a nice-to-have.
 
+[DEMO_BASE SMOKE TEST -- LIVE ORDER-EXECUTION PATH HAS NEVER BEEN FIRED AT A REAL EXCHANGE]
+Priority: High -- hard prerequisite before ENABLE_MICRO_LIVE is ever flipped
+  on. User confirmed Belgium return date 2026-07-31; TRADING_PAUSED=true
+  lifting on that date is necessary but NOT sufficient for live trading --
+  this is the actual remaining gate.
+
+Problem:
+  As of 2026-07-19, no order of any kind (real or demo) has ever been
+  placed by this bot -- ENABLE_MICRO_LIVE=False and TRADING_PAUSED=true
+  have been set for the entire time the live order-execution code has
+  existed. Every session that touched kalshi_client.py's order-mutation
+  methods (the V2 create/cancel migration, AMEND ORDER V2) explicitly
+  flagged the same residual gap in its own resolution notes: implemented
+  and unit-tested against Kalshi's documented request/response shapes
+  (verified via live docs fetches), never verified against a real
+  request/response round-trip. Kalshi's docs can describe a shape
+  slightly wrong, or a real error response can have a shape the code
+  doesn't handle the way a mocked test assumes -- the exact failure mode
+  a smoke test exists to catch before it's a live-money incident. No
+  demo API credentials are even configured in this environment currently
+  (checked 2026-07-19: KALSHI_API_KEY_ID is blank; KALSHI_PRIVATE_KEY_PATH
+  is set).
+
+What it would look like:
+  1. Provision/confirm demo API credentials (Kalshi's DEMO_BASE --
+     https://demo-api.kalshi.co/trade-api/v2 -- is a separate account
+     from prod, needs its own key pair).
+  2. Against DEMO_BASE only, exercise the real round-trip for each
+     order-mutation method that's never been live-tested:
+     place_order() (a small resting GTC limit order on a real but
+     inconsequential demo market), get_order() (confirm the response
+     shape matches what place_order's follow-up call assumes),
+     amend_order() (reprice the resting order, confirm remaining_count/
+     fill_count/average_fill_price parse as expected),
+     cancel_order() (confirm the resting order actually clears).
+  3. Cross-check each real response against what kalshi_client.py/
+     order_executor.py currently assume (field names, fixed-point
+     dollar-string format, the count semantics AMEND ORDER V2's own
+     resolution flagged -- "total desired fillable count," not "how
+     many more").
+  4. Only after this passes: consider flipping ENABLE_MICRO_LIVE for a
+     real (small-stakes) live order, still gated behind TRADING_PAUSED
+     being lifted and every other existing live-money gate
+     (MAX_DAILY_SPEND, position limits, kill switch, etc.) untouched.
+
+Why not now:
+  - Requires the user physically present with demo credentials and
+    deliberate attention on a real (if inconsequential) account action --
+    not something to do unattended or as a background task. Also
+    naturally batches with the Belgium-return timeline rather than being
+    useful earlier (TRADING_PAUSED blocks live trading regardless of
+    whether this passes).
+
+When to revisit:
+  - After 2026-07-31 (confirmed Belgium return), before ENABLE_MICRO_LIVE
+    is ever flipped on. This is the literal next concrete step in the
+    live-trading-resumption sequence: lift TRADING_PAUSED -> this smoke
+    test -> ENABLE_MICRO_LIVE -> (separately, VM migration + headless
+    trade-cycle engine work before any always-on continuous live watcher).
+
 [RESOLVED 2026-07-12] MYSTERY REVERT -- COMMIT 24559a7 SILENTLY
   WIPED ~10 COMMITS OF CALIBRATION/SAFETY WORK UNDER AN UNRELATED COMMIT
   MESSAGE
@@ -2233,6 +2293,98 @@ RESOLVED 2026-07-19: started as the one-line is_liquid() fix scoped below
   explicit `, 0` default on its plain-volume fallback that is_liquid()
   includes -- functionally identical (the trailing `or 0` covers it
   either way), not worth a follow-up on its own.
+
+FOLLOW-UP BUG, FOUND AND FIXED 2026-07-19 (same day, later -- caught live
+via `python main.py cron`, not via review): the fix above corrected the
+field NAME (read volume_fp/open_interest_fp, not just legacy volume/
+open_interest) but not its TYPE. volume_fp/open_interest_fp are
+FixedPointCount strings on the real API (e.g. "10.00"), not numbers --
+`market.get("volume_fp") or market.get("volume") or 0` returns that
+string as-is when present, and `volume > 0` raises TypeError comparing a
+str to an int (no implicit str/int ordering in Python 3). This crashed
+cron.py's entire scan loop in production the moment any market actually
+had real volume: a live `python main.py cron` run scanned 480 markets,
+crashed via is_stale() on the first market with nonzero volume_fp, and
+reported "no actionable signals found" -- not because there were none,
+but because analysis never got a chance to run for the cycle.
+is_liquid() has the identical bug but never crashed in practice --
+`has_yes or has_no or volume > 0` short-circuits before reaching
+`volume > 0` for any market with real bid/ask quotes, masking it the
+same way the original field-name gap was masked.
+Root cause of why the original fix's own regression tests didn't catch
+this: both new tests added for the fix above used plain Python ints for
+volume_fp/open_interest_fp (`"volume_fp": 500`), not strings matching the
+real API's FixedPointCount shape -- an int never triggers a str/int
+comparison error, only a real API response (or a correctly-typed test
+fixture) does. Same lesson as this entry's own "matches Kalshi's real
+field names, not just any truthy value" discipline, one level deeper:
+matching the field name isn't enough, the fixture's VALUE TYPE has to
+match too.
+Fixed by wrapping both reads in float(...), matching every other
+volume_fp/open_interest_fp reader in this file (analyze_trade's own
+liquidity gate, market-implied-distribution weighting). Fixed the 2
+existing under-typed tests to use real string fixtures ("500.00" not
+500), and added 3 new regression tests reproducing the exact crash
+(string volume_fp present and nonzero; string volume_fp present and
+genuinely zero, confirming the fix didn't break the zero case;
+is_liquid()'s masked equivalent with no quotes so the short-circuit
+can't hide it). Mutation-tested both fixes independently by reverting
+each float() wrapping and confirming the new tests reproduce the exact
+live TypeError, then restoring. Verified end-to-end against the real
+crash scenario twice more via actual `python main.py cron` runs (prod
+API, TRADING_PAUSED=true so no order-placement risk) -- no crash, and
+the resulting gate breakdown (between_no_metar/extreme_price/liquidity/
+min_volume/model_mkt_gap/model_spread/retired_method/spread summing to
+exactly 480) confirmed every market was legitimately filtered by
+pre-existing gates, not silently mis-handled by a lingering bug.
+367 tests pass across the full regression sweep (every file touching
+is_stale/is_liquid); ruff/ruff format/mypy clean.
+
+Independent second-opinion review (Agent, opus), requested given this
+touches the real production scan loop: found the fix above was NOT the
+full extent of this bug class -- grepped every .py file (not just
+weather_markets.py) for volume_fp/open_interest_fp reads and surfaced 3
+more unguarded sites with the identical root cause, none caught by this
+session's own earlier review:
+  1. weather_markets._liquidity_edge_scale (HIGH) -- both real callers
+     (cron.py's cmd_cron, main.py's _analyze_once) pass the raw coalesced
+     string straight in; the function's own body does
+     `(volume or 0) + (open_interest or 0)`, which on two strings is
+     STRING CONCATENATION (no error at that line), then crashes one line
+     later at `liq >= 500`. Worse than is_stale()'s bug: a non-empty
+     string is always truthy, so this fires even for a genuinely-zero
+     "0.00", not just a real nonzero value. This call sits INSIDE the
+     exact same cmd_cron scan loop already fixed above, reached only for
+     markets that clear every analyze_trade-internal gate -- the day's
+     480-market verification run happened to hit zero such markets (hence
+     "no crash" was observed), which is exactly why this was missed by
+     re-running cron rather than reading the code: the next actionable
+     market would have reproduced the identical scan-loop-crashing
+     failure this whole entry exists to fix.
+  2. main.py's cmd_market whale-alert print (MEDIUM) -- same
+     volume/open_interest > threshold comparison, interactive-CLI-only
+     (not the live scan loop), but still a real crash on the normal live
+     shape.
+  3. main.py's cmd_market Vol table column (LOW, cosmetic only) -- no
+     crash (tabulate just str()s whatever's in the cell), but displayed
+     the raw fixed-point string unconverted instead of a clean number.
+  Fixed all 3: _liquidity_edge_scale now converts volume/open_interest to
+  float() internally (at the function itself, not each call site, so
+  both current callers are fixed by one change and any future caller is
+  protected too) -- also dropped its now-inaccurate `: int` type hints,
+  since real callers were never passing ints. Whale-alert wrapped in
+  float() to match. Vol column wrapped in float() for display
+  consistency. 2 new tests for _liquidity_edge_scale (string-input
+  addition proven not concatenation; string "0.00" proven not truthy-
+  masking a real zero), mutation-tested (reverted the float() wrapping,
+  confirmed the exact TypeError reproduces, restored). No dedicated test
+  added for the whale-alert/Vol-column fixes (pure CLI display output,
+  matching this same code's own prior "not proportionate to unit-test in
+  isolation" precedent from the original field-name fix) -- verified
+  manually instead against the real API shape.
+  416 tests pass across a wider regression sweep (cron/market-implied-
+  distribution/p1-remaining/paper/weather_markets/menu-ux/trading test
+  files); ruff/ruff format/mypy clean.
 
 Problem (as originally scoped, is_liquid()-only -- scope grew, see
 RESOLVED note above):

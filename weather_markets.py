@@ -3171,9 +3171,23 @@ def is_stale(market: dict) -> bool:
     market scanned within 60 minutes of close was silently treated as
     stale and skipped by cron.py's scan loop (imported there as
     _is_stale_market), regardless of its real liquidity.
+
+    Second real bug, found 2026-07-19 (same day, later): that fix picked up
+    the right field NAME but not its TYPE -- volume_fp/open_interest_fp are
+    FixedPointCount strings (e.g. "10.00"), not numbers, on the current live
+    API. Comparing a string directly with `> 0` raises TypeError in Python 3
+    (no implicit str/int ordering) -- this crashed cron.py's entire scan
+    loop in production the moment any market actually had real volume
+    (caught live via `python main.py cron`: "TypeError: '>' not supported
+    between instances of 'str' and 'int'", 480 markets scanned, 0 analyzed).
+    Wrapped in float(...) to match every other volume_fp/open_interest_fp
+    reader in this file (e.g. analyze_trade's own liquidity gate at line
+    ~5603, market-implied-distribution weighting at line ~4014).
     """
-    volume = market.get("volume_fp") or market.get("volume") or 0
-    open_interest = market.get("open_interest_fp") or market.get("open_interest") or 0
+    volume = float(market.get("volume_fp") or market.get("volume") or 0)
+    open_interest = float(
+        market.get("open_interest_fp") or market.get("open_interest") or 0
+    )
     if volume > 0 or open_interest > 0:
         return False
     close_time_str = market.get("close_time", "")
@@ -3924,15 +3938,25 @@ def is_liquid(market: dict) -> bool:
     NAMES"), masked in practice by the bid/ask-quote OR below covering the
     common case, but a market with real _fp volume and no quotes yet (a
     first-to-post scenario) was incorrectly called illiquid.
+
+    Second real bug, found 2026-07-19 (same day is_stale() below was found
+    crashing live cron in production with the identical root cause): volume
+    was never wrapped in float(), so a market that reached the `volume > 0`
+    check with a real volume_fp string (a first-to-post market with no
+    quotes AND real volume_fp) would raise TypeError, not just misclassify
+    -- `has_yes or has_no` protected the common case via short-circuit
+    (masking this from ever firing so far, unlike is_stale()'s unguarded
+    version), but the underlying bug is identical. Wrapped in float(...) to
+    match every other volume_fp reader in this file.
     """
     prices = parse_market_price(market)
     has_yes = prices["yes_bid"] > 0 or prices["yes_ask"] > 0
     has_no = prices["no_bid"] > 0
-    volume = market.get("volume_fp") or market.get("volume", 0) or 0
+    volume = float(market.get("volume_fp") or market.get("volume", 0) or 0)
     return has_yes or has_no or volume > 0
 
 
-def _liquidity_edge_scale(volume: int, open_interest: int) -> float:
+def _liquidity_edge_scale(volume, open_interest) -> float:
     """
     Dynamic edge-threshold divisor by market liquidity (backlog.txt
     "LIQUIDITY-AWARE SIZING + DYNAMIC EDGE THRESHOLD"; design matches
@@ -3949,8 +3973,27 @@ def _liquidity_edge_scale(volume: int, open_interest: int) -> float:
     required before that changes: this function is deliberately NOT called
     from analyze_trade() itself, to keep the live trade-decision function
     untouched by an unvalidated mechanism.
+
+    volume/open_interest accept the same coalesced-but-unconverted shape
+    both real call sites (cron.py's cmd_cron, main.py's _analyze_once) pass
+    -- `market.get("volume_fp") or market.get("volume") or 0` -- which on
+    Kalshi's current live API is a FixedPointCount STRING (e.g. "10.00"),
+    not a number. Real bug found live 2026-07-19 (same day and same root
+    cause as the is_stale()/is_liquid() TypeError that crashed cron.py's
+    scan loop): without float() here, `(volume or 0) + (open_interest or
+    0)` on two strings silently does STRING CONCATENATION (not addition --
+    no error at that line), then `liq >= 500` raises TypeError comparing a
+    str to an int -- inside the SAME cron.py scan loop that was just fixed
+    for the sibling bug, so the next actionable market (one that clears
+    every analyze_trade gate and reaches this call) would have reproduced
+    the identical crash. Worse than is_stale()'s bug: a non-empty string
+    is always truthy, so this fires even for a genuinely-zero "0.00".
+    Converting here (not at each call site) closes it for both current
+    callers and any future one.
     """
-    liq = (volume or 0) + (open_interest or 0)
+    volume = float(volume or 0)
+    open_interest = float(open_interest or 0)
+    liq = volume + open_interest
     if liq >= 500:
         return 1.0
     if liq <= 50:

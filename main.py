@@ -1004,7 +1004,11 @@ def cmd_markets(client: KalshiClient):
                 (m.get("title") or "")[:45],
                 prob_color(prices["implied_prob"]),
                 signal_color(f"{sig} ({edge:+.0%})") if analysis else dim("—"),
-                m.get("volume_fp") or m.get("volume", 0) or 0,
+                # float() wrap: volume_fp is a FixedPointCount string
+                # ("10.00") on the current live API, not a number -- was
+                # displaying the raw string unconverted (cosmetic-only,
+                # never crashed here since tabulate just str()s the cell).
+                float(m.get("volume_fp") or m.get("volume", 0) or 0),
                 cyan(f"{_market_base_url()}/markets/{ticker}"),
             ]
         )
@@ -1069,8 +1073,13 @@ def cmd_market(client: KalshiClient, ticker: str, verbose: bool = False):
             pass
 
     # Whale detection
-    volume = market.get("volume_fp") or market.get("volume", 0) or 0
-    open_interest = (
+    # volume_fp/open_interest_fp are FixedPointCount strings on the current
+    # live API (e.g. "10.00"), not numbers -- float() wrap needed or `> ` /
+    # the "{:,}" comma-format spec below both raise on a str. Real bug found
+    # live 2026-07-19, same root cause as the is_stale()/is_liquid()/
+    # _liquidity_edge_scale TypeErrors fixed the same day.
+    volume = float(market.get("volume_fp") or market.get("volume", 0) or 0)
+    open_interest = float(
         market.get("open_interest_fp") or market.get("open_interest", 0) or 0
     )
     if volume > 5000 or open_interest > 2000:

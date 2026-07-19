@@ -225,8 +225,24 @@ class TestIsLiquid:
         # LEGACY volume/open_interest FIELD NAMES"): a market with real
         # current-API volume_fp but no quotes yet (first-to-post) must
         # still count as liquid, matching analyze_trade()'s own gate.
-        market = {"yes_bid": 0, "yes_ask": 0, "no_bid": 0, "volume_fp": 100}
+        # Uses a STRING value ("100.00"), matching Kalshi's real
+        # FixedPointCount shape -- a plain int here would not have caught
+        # the second bug below (missing float() wrapping).
+        market = {"yes_bid": 0, "yes_ask": 0, "no_bid": 0, "volume_fp": "100.00"}
         assert is_liquid(market) is True
+
+    def test_string_volume_fp_with_no_quotes_does_not_crash(self):
+        # Real bug found 2026-07-19 (same day, same root cause as is_stale's
+        # live crash): volume_fp is a FixedPointCount STRING on the real
+        # API, not a number. `market.get("volume_fp") or ... or 0` returns
+        # the string as-is, and `volume > 0` raises TypeError comparing a
+        # str to an int -- masked here (unlike is_stale) only because
+        # `has_yes or has_no` short-circuits before reaching `volume > 0`
+        # for any market with real quotes; a first-to-post market with no
+        # quotes yet would have hit the crash for real.
+        market = {"yes_bid": 0, "yes_ask": 0, "no_bid": 0, "volume_fp": "10.00"}
+        result = is_liquid(market)  # must not raise TypeError
+        assert result is True
 
     def test_falls_back_to_legacy_volume_when_volume_fp_is_zero(self):
         # volume_fp present but 0 (falsy) must still fall back to legacy
@@ -286,6 +302,26 @@ class TestLiquidityEdgeScale:
 
     def test_none_inputs_treated_as_zero_not_typeerror(self):
         assert _liquidity_edge_scale(None, None) == pytest.approx(1.5)
+
+    def test_string_inputs_do_not_crash_via_concatenation(self):
+        """Real bug found live 2026-07-19, same day and root cause as the
+        is_stale()/is_liquid() TypeError that crashed cron.py's scan loop:
+        both real call sites (cron.py's cmd_cron, main.py's _analyze_once)
+        pass raw `market.get("volume_fp") or market.get("volume") or 0`,
+        which on Kalshi's current API is a FixedPointCount STRING
+        ("400.00"), not a number. Without float() conversion,
+        `(volume or 0) + (open_interest or 0)` on two strings silently does
+        STRING CONCATENATION (no error at that line -- the crash was one
+        line later, at the `>=` comparison), so this test also proves
+        addition, not concatenation, actually happened."""
+        assert _liquidity_edge_scale("400.00", "100.00") == pytest.approx(1.0)
+
+    def test_string_zero_still_illiquid_not_truthy_string(self):
+        """A non-empty string "0.00" is truthy in Python -- proves the
+        float() conversion actually parses the value rather than just
+        checking truthiness (which would have wrongly treated "0.00" as
+        real liquidity)."""
+        assert _liquidity_edge_scale("0.00", "0.00") == pytest.approx(1.5)
 
 
 # ── TestForecastModelWeights ──────────────────────────────────────────────────
