@@ -44,6 +44,10 @@ from utils import (
     KELLY_CAP,
     KELLY_CAP_CONSENSUS_MULT,
     MAX_DAYS_OUT,
+    NO_BID_KEYS,
+    YES_ASK_KEYS,
+    YES_BID_KEYS,
+    coalesce_market_price,
     normal_cdf,
 )
 from utils import prob_threshold as _prob_threshold
@@ -3125,40 +3129,18 @@ def censoring_correction(
 
 
 def parse_market_price(market: dict) -> dict:
-    """Extract yes/no bid prices and implied probability from a market."""
+    """Extract yes/no bid prices and implied probability from a market.
 
-    # API returns either yes_bid/yes_ask (legacy) or yes_bid_dollars/yes_ask_dollars (current)
-    # L2-D: use None-check coalesce so a valid 0-valued field (0¢ bid) is not
-    # bypassed by the falsy `or` operator.
-    def _coalesce(market: dict, *keys: str) -> object:
-        """Return first non-None value for any of keys, or 0."""
-        for k in keys:
-            v = market.get(k)
-            if v is not None:
-                return v
-        return 0
-
-    yes_bid = _coalesce(market, "yes_bid", "yes_bid_dollars")
-    yes_ask = _coalesce(market, "yes_ask", "yes_ask_dollars")
-    no_bid = _coalesce(market, "no_bid", "no_bid_dollars")
-
-    # Prices may be cents (int) or dollar strings depending on API version
-    def to_float(v) -> float:
-        if isinstance(v, str):
-            v_f = float(v)
-            # String prices > 1.0 are in the legacy cents-as-string format
-            return v_f / 100.0 if v_f > 1.0 else v_f
-        # L2-D: split int vs float so integer 1 (= 1¢) is correctly divided by
-        # 100.  The old `v > 1` test returned float(1) = 1.0 for a 1¢ market.
-        if isinstance(v, int) and v >= 1:
-            return v / 100.0  # integer cents format (e.g. 55 → 0.55)
-        if isinstance(v, float) and v > 1.0:
-            return v / 100.0  # float >1.0 also indicates cents (some API variants)
-        return float(v)
-
-    yes_bid_f = to_float(yes_bid)
-    yes_ask_f = to_float(yes_ask)
-    no_bid_f = to_float(no_bid)
+    API returns either yes_bid/yes_ask (legacy cents) or yes_bid_dollars/
+    yes_ask_dollars (current dollar-string) -- coalesce_market_price (utils.py)
+    handles the None-check coalesce (a valid 0-valued field, i.e. a 0¢ bid,
+    must not be bypassed) and the cents-vs-dollars normalization. Consolidated
+    2026-07-19 from this function's own previously-local _coalesce/to_float
+    pair (see backlog.txt's KALSHI CENTS/DOLLARS PRICE NORMALIZATION entry).
+    """
+    yes_bid_f = coalesce_market_price(market, *YES_BID_KEYS)
+    yes_ask_f = coalesce_market_price(market, *YES_ASK_KEYS)
+    no_bid_f = coalesce_market_price(market, *NO_BID_KEYS)
     mid = (yes_bid_f + yes_ask_f) / 2 if yes_ask_f > 0 else yes_bid_f
 
     # Skip markets where both bid and ask are zero (no real quote).

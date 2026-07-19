@@ -3075,7 +3075,7 @@ class TestCheckLivePositionExits(_LiveDBTestBase):
         not the dollar float 0.10 the WS-cache path returns) -- this is the
         realistic shape for every cron run, since a fresh process starts
         with an empty WS cache. Reading it without normalizing through
-        _coalesce_cents_or_dollars would treat 10 as a $10 price, making the
+        utils.coalesce_market_price would treat 10 as a $10 price, making the
         position look wildly profitable and never trigger the stop."""
         from unittest.mock import MagicMock, patch
 

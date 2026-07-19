@@ -8,14 +8,27 @@ from __future__ import annotations
 
 import logging
 
+from utils import YES_ASK_KEYS, YES_BID_KEYS, coalesce_market_price
+
 _log = logging.getLogger(__name__)
 
 
-def _price_to_decimal(v: object) -> float | None:
-    """Normalize a price value to decimal (0–1). Returns None if unparseable."""
+def _safe_price(data: dict, *keys: str) -> float | None:
+    """Normalize a price value to decimal (0-1) via utils.coalesce_market_price,
+    returning None if unparseable rather than raising.
+
+    coalesce_market_price itself is deliberately unguarded for its other
+    callers (order_executor.py's live reprice loop, weather_markets.
+    parse_market_price), which already run inside a per-order/per-market
+    try/except and are meant to raise on genuinely malformed input so it
+    gets skipped, not silently treated as $0. schema_validator.py is a
+    defensive layer whose whole job is to never crash the caller on bad
+    API data -- this wrapper is the one place that needs fail-soft
+    behavior, so it lives here rather than weakening the shared function
+    for everyone.
+    """
     try:
-        f = float(v)  # type: ignore[arg-type]
-        return f / 100.0 if f > 1.0 else f
+        return coalesce_market_price(data, *keys)
     except (TypeError, ValueError):
         return None
 
@@ -55,19 +68,15 @@ def validate_market(data: dict, source: str = "kalshi") -> bool:
             ok = False
 
     # Price range validation — only when both bid and ask are present
-    raw_bid = (
-        data.get("yes_bid")
-        if data.get("yes_bid") is not None
-        else data.get("yes_bid_dollars")
+    raw_bid_present = (
+        data.get("yes_bid") is not None or data.get("yes_bid_dollars") is not None
     )
-    raw_ask = (
-        data.get("yes_ask")
-        if data.get("yes_ask") is not None
-        else data.get("yes_ask_dollars")
+    raw_ask_present = (
+        data.get("yes_ask") is not None or data.get("yes_ask_dollars") is not None
     )
-    if raw_bid is not None and raw_ask is not None:
-        bid = _price_to_decimal(raw_bid)
-        ask = _price_to_decimal(raw_ask)
+    if raw_bid_present and raw_ask_present:
+        bid = _safe_price(data, *YES_BID_KEYS)
+        ask = _safe_price(data, *YES_ASK_KEYS)
         ticker = data.get("ticker", "?")
         # $0.00 bid (no resting buy order) and $1.00 ask (no resting sell order
         # below par) are normal quotes for illiquid/extreme-strike markets, not

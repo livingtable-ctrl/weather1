@@ -563,3 +563,49 @@ def check_config_integrity() -> dict:
         "previous_hash": previous_hash,
         "changed_keys": changed_keys,
     }
+
+
+# ── Kalshi cents/dollars price normalization ──────────────────────────────────
+
+# The Kalshi API returns either legacy integer-cents fields (yes_bid, 0-100)
+# or current dollar-string fields (yes_bid_dollars, "0.00"-"1.00"); consumers
+# coalesce across both, trying the legacy name first.
+YES_BID_KEYS = ("yes_bid", "yes_bid_dollars")
+YES_ASK_KEYS = ("yes_ask", "yes_ask_dollars")
+NO_BID_KEYS = ("no_bid", "no_bid_dollars")
+
+
+def coalesce_market_price(market: dict, *keys: str) -> float:
+    """Return the first present field as a 0.0-1.0 decimal, trying each key in order.
+
+    Consolidated 2026-07-19 from 3 independently-implemented copies
+    (weather_markets.parse_market_price's nested _coalesce+to_float,
+    order_executor._coalesce_cents_or_dollars, schema_validator.
+    _price_to_decimal) after this exact duplication had already produced 2
+    real bugs fixed one-copy-at-a-time (a falsy-0 coalesce bug and a
+    REST-fallback shape misread). This is the order_executor/parse_market_price
+    body verbatim -- proven, tested, unchanged behavior for those two callers.
+
+    Raises ValueError if a matched field is a non-numeric string -- same as
+    both of those originals, which were already unguarded; their call sites
+    (order_executor's live reprice loop, weather_markets.parse_market_price)
+    already run inside a per-order/per-market try/except upstream, so
+    malformed data is skipped rather than silently treated as $0 -- keep it
+    that way, don't make this function permissive just because a THIRD
+    caller (schema_validator.py, a defensive layer that must never crash on
+    bad input) wants fail-soft behavior. schema_validator wraps its own call
+    in try/except instead -- see schema_validator.validate_market.
+    """
+    for k in keys:
+        v = market.get(k)
+        if v is None:
+            continue
+        if isinstance(v, str):
+            v_f = float(v)
+            return v_f / 100.0 if v_f > 1.0 else v_f
+        if isinstance(v, int) and v >= 1:
+            return v / 100.0
+        if isinstance(v, float) and v > 1.0:
+            return v / 100.0
+        return float(v)
+    return 0.0

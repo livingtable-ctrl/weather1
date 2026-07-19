@@ -4143,14 +4143,112 @@ Why not now (original, superseded -- already resolved, see above):
 When to revisit: N/A, resolved (confirmed already-shipped behavior kept
   deliberately, per user decision 2026-07-18).
 
-[KALSHI CENTS/DOLLARS PRICE NORMALIZATION IMPLEMENTED INDEPENDENTLY 3+ TIMES]
-Priority: Medium -- this exact normalization has already produced two real
-  bugs fixed one-copy-at-a-time (the zero-bid falsy bug in
+[RESOLVED 2026-07-19] KALSHI CENTS/DOLLARS PRICE NORMALIZATION IMPLEMENTED INDEPENDENTLY 3+ TIMES
+Priority: was Medium -- this exact normalization has already produced two
+  real bugs fixed one-copy-at-a-time (the zero-bid falsy bug in
   parse_market_price; the 2026-07-13 HIGH bug where the REST-fallback raw
   shape was read as dollar floats), and Kalshi is actively migrating
   shapes, so every new API shape must be taught to each copy separately.
 
-Problem:
+RESOLVED 2026-07-19:
+  Shipped utils.coalesce_market_price(market, *keys) -> float (order_
+  executor's version verbatim, proven equivalent to weather_markets.
+  parse_market_price's split _coalesce+to_float pair by tracing both
+  bodies field-by-field before replacing either) plus 3 named key-pair
+  constants (YES_BID_KEYS, YES_ASK_KEYS, NO_BID_KEYS) next to it, matching
+  this entry's own plan almost exactly -- one deviation: placed in
+  utils.py, not market_types.py, since market_types.py turned out (checked
+  before deciding) to be a pure TypedDict-only module with zero runtime
+  logic today, and utils.py is already the established home for shared
+  runtime helpers both weather_markets.py and order_executor.py import
+  from (no circular-import risk either way).
+  order_executor._coalesce_cents_or_dollars deleted, all 7 call sites
+  (6 call sites + 1 stale docstring reference) switched to the shared
+  function + key constants. weather_markets.parse_market_price's nested
+  _coalesce/to_float pair removed, un-nested to call the shared function
+  directly -- the existing TestParseMarketPrice suite (incl. the L2-D
+  integer-1/zero-bid-not-bypassed regression tests) needed zero changes
+  and now doubles as regression coverage for the shared function.
+  schema_validator.py's third, independently-drifted copy
+  (_price_to_decimal) is where this consolidation found a REAL, live bug
+  beyond the two the entry cites: unlike the other two copies,
+  _price_to_decimal used a uniform `f > 1.0` check for every input type,
+  so an integer value of exactly 1 (a genuine 1-cent bid/ask) was
+  misclassified as already-decimal and returned as $1.00 instead of $0.01
+  -- a 100x error, though low-severity in practice since this function
+  only feeds a diagnostic range-check warning, never a live trading
+  decision, and 1.0 still happens to pass the [0,1] range check so it
+  never even triggered a false alarm. Independently corroborated by a
+  pre-existing point-in-time audit doc (docs/grade_audit/outputs/
+  schema_validator.py.md, graded 2026-06-29, found by this same session
+  rather than trusted blind) that had already flagged the identical `f ==
+  1.0` edge case as "theoretical... Kalshi bids are never exactly 1.00 in
+  practice" -- the audit correctly identified the mechanism but
+  under-stated it as purely theoretical without checking it against the
+  other two (correct) copies' int-vs-float branching, which is exactly
+  what this consolidation surfaces. Checked that audit doc's other two
+  findings (validate_market's DEBUG-not-WARNING logging,
+  validate_nws_response's missing ok=False) while in the file -- both
+  already fixed in a prior session, stale claims, not re-flagged.
+  A real design nuance this call site needed and the other two didn't:
+  _price_to_decimal fails SOFT (returns None on unparseable input) since
+  schema_validator.py's whole job is to never crash the caller on bad API
+  data, while coalesce_market_price is deliberately left unguarded
+  (matching order_executor.py's/weather_markets.py's original,
+  already-accepted behavior -- both run inside a per-order/per-market
+  try/except upstream and are meant to raise on genuinely malformed data
+  so it's skipped, not silently treated as $0, which would be MORE
+  dangerous for live trading than crashing that one iteration). Rather
+  than weaken the shared function for its live-money callers, added a
+  local `_safe_price()` wrapper in schema_validator.py (try/except around
+  the shared call) that preserves _price_to_decimal's exact fail-soft
+  contract. _price_to_decimal deleted; the presence-gate logic ("only
+  validate range when both bid and ask are actually present") was
+  preserved exactly (same None-check semantics as the original raw_bid/
+  raw_ask computation, just restructured as a boolean instead of
+  reconstructing the coalesced value twice).
+  kalshi_ws.py's ticker-message parser and tracker.py's _candle_dollars
+  left untouched, per this entry's own plan -- both are genuinely
+  different input shapes (WS ticker messages are always already-dollar-
+  format with no cents-int variant ever observed; candlestick sub-fields
+  are always "_dollars"-suffixed, no ambiguity to resolve), not the same
+  duplication class.
+  20 new tests: utils.coalesce_market_price direct coverage (11 tests --
+  cents-int, 1-cent boundary, dollar-float, dollar-string, cents-string,
+  zero-bid-not-bypassed, first-key-wins, fallback-to-second-key,
+  no-keys-defaults-to-zero, unparseable-raises, key-constants-match,
+  order_executor-uses-the-shared-helper-not-a-local-copy -- the last one
+  deliberately NOT an `is`-identity check against utils.
+  coalesce_market_price, since this test file runs in the same pytest
+  session as tests that call importlib.reload(utils) for unrelated
+  reasons (see the main.py frozen-import entry above), which would make
+  an identity check order-dependent/flaky); schema_validator's _safe_price
+  + the fixed 1-cent bug + the fail-soft-on-garbage-input contract (4
+  tests, tests/test_phase2_batch_l.py, replacing the deleted
+  _price_to_decimal's own direct test). Mutation-tested the core int-vs-
+  float boundary fix by flipping `v >= 1` to `v > 1` in the shared
+  function and confirming it broke the new coalesce_market_price test, the
+  new schema_validator tests, AND the pre-existing weather_markets L2-D
+  regression test simultaneously (proving all 3 consumers now genuinely
+  share one code path, not just three independently-passing copies), then
+  restored.
+  678 tests pass across the full regression sweep (every test file
+  touching price parsing across weather_markets.py/order_executor.py/
+  schema_validator.py/kalshi_client.py/paper.py); ruff + ruff format +
+  mypy clean.
+  Independent second-opinion review (Agent, opus) came back clean, and
+  flagged one adjacency note (not fixed, pre-existing in all 3 original
+  copies, not introduced by this consolidation): a STRING price of "1"
+  (as opposed to int 1) hits coalesce_market_price's `isinstance(v, str)`
+  branch, computes `float("1")=1.0`, and `1.0 > 1.0` is False, so it's
+  returned as 1.0 ($1.00) instead of 0.01 -- the same bug class as the
+  int-1 fix above, but for the string-cents path, which none of the 3
+  original implementations ever handled correctly either. Extremely rare
+  in practice (a bare cents-formatted string "1" rather than a dollar
+  string like "0.01"); worth a real fix if coalesce_market_price is next
+  open for other reasons, not urgent enough for a dedicated pass.
+
+Problem (as originally scoped, still accurate for historical context):
   order_executor._coalesce_cents_or_dollars (order_executor.py:106-126)
   and the nested _coalesce + to_float pair inside
   weather_markets.parse_market_price (weather_markets.py:3089-3113)
@@ -4166,24 +4264,24 @@ Problem:
   to dollars independently (its 0.0-missing-side sentinel caused the
   2026-07-12 one-sided-book review finding).
 
-What it would look like:
+What it would look like: [DONE 2026-07-19, see resolution above]
   One `coalesce_market_price(d, *keys) -> float` in market_types.py (or
-  utils.py), used by parse_market_price (un-nest), order_executor
-  (delete its copy), and schema_validator's range check; consolidate the
-  key-pair lists ("yes_bid"/"yes_bid_dollars" etc.) as constants next to
-  it. Existing tests become tests of the one helper. kalshi_ws's
-  parse-time normalization can stay (different input shape) but should
-  reference the same constants.
+  utils.py -- shipped in utils.py, see resolution), used by
+  parse_market_price (un-nest), order_executor (delete its copy), and
+  schema_validator's range check; consolidate the key-pair lists
+  ("yes_bid"/"yes_bid_dollars" etc.) as constants next to it. Existing
+  tests become tests of the one helper. kalshi_ws's parse-time
+  normalization can stay (different input shape) but should reference the
+  same constants (left as-is, genuinely a different shape -- see
+  resolution).
 
-Why not now:
+Why not now (resolved):
   - Touches live order pricing -- same review bar as the reprice work.
-    Best done adjacent to the next Kalshi-API-shape change (e.g. if the
-    V2 order-endpoint response migration surfaces more _fp fields), when
-    the copies would otherwise all need editing anyway.
+    Done as its own session rather than waiting for a Kalshi-API-shape
+    change to force it, per explicit user request.
 
 When to revisit:
-  - The next time any Kalshi API response shape changes -- do the
-    consolidation then, since the copies need editing anyway.
+  - N/A, closed.
 
 [RESOLVED 2026-07-18] TWO FUNCTIONS NAMED _current_forecast_cycle -- ONE IS DEAD AND HIDES FROM THE DEAD-CODE GUARD VIA NAME COLLISION
 Priority: was Low-Medium -- small cleanup, but it exposes a systematic blind

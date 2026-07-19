@@ -86,14 +86,52 @@ class TestValidateMarketPriceRange:
         )
 
     def test_price_to_decimal_helper(self):
-        """_price_to_decimal normalises int cents and float dollars correctly."""
-        from schema_validator import _price_to_decimal
+        """_safe_price (utils.coalesce_market_price, wrapped fail-soft)
+        normalises int cents and float dollars correctly.
 
-        assert _price_to_decimal(40) == 0.40
-        assert _price_to_decimal(0.40) == 0.40
-        assert _price_to_decimal("0.55") == 0.55
-        assert _price_to_decimal("bad") is None
-        assert _price_to_decimal(None) is None
+        KALSHI CENTS/DOLLARS PRICE NORMALIZATION consolidation (2026-07-19):
+        schema_validator._price_to_decimal was deleted in favor of the
+        shared utils.coalesce_market_price, wrapped locally as _safe_price
+        so this validator keeps its fail-soft-on-bad-input contract."""
+        from schema_validator import _safe_price
+
+        assert _safe_price({"p": 40}, "p") == 0.40
+        assert _safe_price({"p": 0.40}, "p") == 0.40
+        assert _safe_price({"p": "0.55"}, "p") == 0.55
+        assert _safe_price({"p": "bad"}, "p") is None
+        assert _safe_price({}, "p") == 0.0  # no key present -- coalesce default
+
+    def test_price_to_decimal_one_cent_bug_fixed(self):
+        """KALSHI CENTS/DOLLARS PRICE NORMALIZATION consolidation bug fix: the
+        old _price_to_decimal used a uniform `f > 1.0` check for every type,
+        so an integer value of exactly 1 (1 cent) was misread as $1.00
+        instead of $0.01 (f == 1.0 is not > 1.0, so no /100 division ever
+        happened) -- independently confirmed by docs/grade_audit/outputs/
+        schema_validator.py.md's prior audit. The shared utils.
+        coalesce_market_price fixes this by special-casing int values
+        (isinstance(v, int) and v >= 1 -> always /100), matching
+        weather_markets.parse_market_price's own L2-D regression test."""
+        import pytest
+
+        from schema_validator import _safe_price
+
+        assert _safe_price({"p": 1}, "p") == pytest.approx(0.01)
+
+    def test_validate_market_accepts_one_cent_bid(self):
+        """End-to-end: a market with yes_bid=1 (1 cent) must now be VALID
+        (0.01 is within [0,1]), not incorrectly read as $1.00 -- which
+        would also have been valid on its own, so this specifically checks
+        the fixed decimal value is what actually got range-checked."""
+        assert self._call(self._valid(yes_bid=1, yes_ask=2)) is True
+
+    def test_validate_market_survives_unparseable_price_without_crashing(self):
+        """A genuinely malformed price string must be caught and rejected
+        (ok=False), not raise -- schema_validator's whole purpose is to
+        never crash the caller on bad API data."""
+        result = self._call(
+            {"ticker": "T", "yes_bid": "not-a-number", "yes_ask": 60, "volume": 0}
+        )
+        assert result is False
 
 
 # ── P2-19: run_anomaly_check returns (alerts, should_halt) ───────────────────

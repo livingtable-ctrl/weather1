@@ -1088,3 +1088,108 @@ def test_run_stress_test_unknown_scenario_returns_error():
 
     result = mc.run_stress_test("nonexistent_scenario")
     assert "error" in result, f"Expected error key, got: {result}"
+
+
+# ── KALSHI CENTS/DOLLARS PRICE NORMALIZATION consolidation ─────────────────────
+# utils.coalesce_market_price, consolidated 2026-07-19 from 3 independent
+# copies (order_executor._coalesce_cents_or_dollars, weather_markets.
+# parse_market_price's nested _coalesce+to_float, schema_validator.
+# _price_to_decimal) after the duplication had already produced 2 real bugs.
+
+
+class TestCoalesceMarketPrice:
+    def test_legacy_cents_int_normalized(self):
+        from utils import coalesce_market_price
+
+        assert coalesce_market_price({"yes_bid": 55}, "yes_bid") == pytest.approx(0.55)
+
+    def test_one_cent_int_normalized_not_misread_as_one_dollar(self):
+        """The exact edge case that diverged across the 3 original copies:
+        an integer value of 1 must be read as 1 cent (0.01), not $1.00."""
+        from utils import coalesce_market_price
+
+        assert coalesce_market_price({"p": 1}, "p") == pytest.approx(0.01)
+
+    def test_dollar_float_passed_through(self):
+        from utils import coalesce_market_price
+
+        assert coalesce_market_price({"p": 0.55}, "p") == pytest.approx(0.55)
+
+    def test_dollar_string_passed_through(self):
+        from utils import coalesce_market_price
+
+        assert coalesce_market_price({"p": "0.55"}, "p") == pytest.approx(0.55)
+
+    def test_cents_string_normalized(self):
+        """A string price > 1.0 is the legacy cents-as-string format."""
+        from utils import coalesce_market_price
+
+        assert coalesce_market_price({"p": "55"}, "p") == pytest.approx(0.55)
+
+    def test_zero_bid_not_bypassed_by_falsy_check(self):
+        """A genuine 0-valued field (0¢ bid) must not be skipped in favor of
+        a later fallback key -- coalesce on None, not on falsiness."""
+        from utils import coalesce_market_price
+
+        assert coalesce_market_price(
+            {"yes_bid": 0, "yes_bid_dollars": 0.55}, "yes_bid", "yes_bid_dollars"
+        ) == pytest.approx(0.0)
+
+    def test_first_key_wins_when_both_present(self):
+        from utils import coalesce_market_price
+
+        assert coalesce_market_price(
+            {"yes_bid": 40, "yes_bid_dollars": 0.99}, "yes_bid", "yes_bid_dollars"
+        ) == pytest.approx(0.40)
+
+    def test_falls_back_to_second_key_when_first_absent(self):
+        from utils import coalesce_market_price
+
+        assert coalesce_market_price(
+            {"yes_bid_dollars": 0.42}, "yes_bid", "yes_bid_dollars"
+        ) == pytest.approx(0.42)
+
+    def test_no_keys_present_defaults_to_zero(self):
+        from utils import coalesce_market_price
+
+        assert coalesce_market_price({}, "yes_bid", "yes_bid_dollars") == pytest.approx(
+            0.0
+        )
+
+    def test_unparseable_string_raises(self):
+        """Deliberately unguarded -- order_executor.py's live reprice loop
+        and weather_markets.parse_market_price both run inside a per-order/
+        per-market try/except upstream and rely on this raising so
+        malformed data is skipped, not silently treated as $0. (schema_
+        validator.py wraps its own call in try/except for its different,
+        fail-soft contract -- see tests/test_phase2_batch_l.py.)"""
+        from utils import coalesce_market_price
+
+        with pytest.raises(ValueError):
+            coalesce_market_price({"p": "not-a-number"}, "p")
+
+    def test_key_constants_match_expected_field_names(self):
+        from utils import NO_BID_KEYS, YES_ASK_KEYS, YES_BID_KEYS
+
+        assert YES_BID_KEYS == ("yes_bid", "yes_bid_dollars")
+        assert YES_ASK_KEYS == ("yes_ask", "yes_ask_dollars")
+        assert NO_BID_KEYS == ("no_bid", "no_bid_dollars")
+
+    def test_order_executor_uses_the_shared_helper_not_a_local_copy(self):
+        """Regression guard for the consolidation itself: order_executor.py
+        must no longer define its own _coalesce_cents_or_dollars, and must
+        import the shared coalesce_market_price instead.
+
+        Deliberately NOT an `is` identity check against utils.
+        coalesce_market_price -- this file runs in the same pytest session
+        as tests that call importlib.reload(utils) for unrelated reasons
+        (see backlog.txt's frozen-import entry), which would make an
+        identity check order-dependent/flaky rather than a reliable
+        regression guard."""
+        import order_executor
+
+        assert not hasattr(order_executor, "_coalesce_cents_or_dollars")
+        assert callable(order_executor.coalesce_market_price)
+        assert order_executor.coalesce_market_price(
+            {"yes_bid": 55}, "yes_bid"
+        ) == pytest.approx(0.55)

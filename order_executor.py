@@ -28,6 +28,9 @@ from utils import (
     MAX_VAR_DOLLARS,
     MIN_EDGE,
     MODEL_EXIT_SHIFT_PP,
+    YES_ASK_KEYS,
+    YES_BID_KEYS,
+    coalesce_market_price,
     get_paper_min_edge,
     is_trading_paused,
 )
@@ -104,39 +107,21 @@ def place_paper_order(ticker, side, qty, entry_price, **kwargs):
 # ---------------------------------------------------------------------------
 # Price helpers
 # ---------------------------------------------------------------------------
-
-
-def _coalesce_cents_or_dollars(market: dict, *keys: str) -> float:
-    """Return the first present field as a 0.0-1.0 decimal, trying each key in order.
-
-    The Kalshi API returns either legacy integer-cents fields (yes_bid, yes_ask, 0-100)
-    or current dollar-string fields (yes_bid_dollars, yes_ask_dollars, "0.00"-"1.00").
-    Mirrors weather_markets.parse_market_price's coalesce so callers agree on price
-    regardless of which API shape a given market dict came from.
-    """
-    for k in keys:
-        v = market.get(k)
-        if v is None:
-            continue
-        if isinstance(v, str):
-            v_f = float(v)
-            return v_f / 100.0 if v_f > 1.0 else v_f
-        if isinstance(v, int) and v >= 1:
-            return v / 100.0
-        if isinstance(v, float) and v > 1.0:
-            return v / 100.0
-        return float(v)
-    return 0.0
+#
+# Price coalescing (cents-int vs dollar-string field names) lives in
+# utils.coalesce_market_price -- consolidated 2026-07-19 from what used to be
+# a local copy here (see backlog.txt's KALSHI CENTS/DOLLARS PRICE
+# NORMALIZATION entry).
 
 
 def _midpoint_price(market: dict, side: str) -> float:
     """Return midpoint of current bid/ask for the given side, rounded to 2dp.
 
     Handles both legacy cents fields (yes_bid/yes_ask) and current dollar fields
-    (yes_bid_dollars/yes_ask_dollars) — see _coalesce_cents_or_dollars.
+    (yes_bid_dollars/yes_ask_dollars) — see utils.coalesce_market_price.
     """
-    yes_bid = _coalesce_cents_or_dollars(market, "yes_bid", "yes_bid_dollars")
-    yes_ask = _coalesce_cents_or_dollars(market, "yes_ask", "yes_ask_dollars")
+    yes_bid = coalesce_market_price(market, *YES_BID_KEYS)
+    yes_ask = coalesce_market_price(market, *YES_ASK_KEYS)
     if yes_ask == 0.0 and "yes_ask" not in market and "yes_ask_dollars" not in market:
         yes_ask = 1.0  # preserve prior default (100¢) when ask is genuinely absent
     if side == "yes":
@@ -1008,8 +993,8 @@ def _reprice_or_cancel_pending_orders(
                 _clears_taker_fee(analysis)
                 and age_minutes >= _MIN_REST_MINUTES_BEFORE_TAKER_CROSS
             ):
-                yes_bid = _coalesce_cents_or_dollars(book, "yes_bid", "yes_bid_dollars")
-                yes_ask = _coalesce_cents_or_dollars(book, "yes_ask", "yes_ask_dollars")
+                yes_bid = coalesce_market_price(book, *YES_BID_KEYS)
+                yes_ask = coalesce_market_price(book, *YES_ASK_KEYS)
                 taker_price = yes_ask if side == "yes" else round(1.0 - yes_bid, 2)
                 if taker_price <= 0:
                     continue
@@ -1304,12 +1289,12 @@ def _check_live_position_exits(client, config: dict | None = None) -> None:
             # _get_current_book's WS-cache hit is already dollar floats, but
             # its REST fallback returns the raw client.get_market() dict
             # unchanged (integer cents, or only *_dollars keys present) --
-            # _coalesce_cents_or_dollars normalizes either shape, matching
+            # coalesce_market_price normalizes either shape, matching
             # how every other _get_current_book caller in this file already
             # handles it (see _reprice_or_cancel_pending_orders below).
             current_prices[pos["ticker"]] = {
-                "bid": _coalesce_cents_or_dollars(book, "yes_bid", "yes_bid_dollars"),
-                "ask": _coalesce_cents_or_dollars(book, "yes_ask", "yes_ask_dollars"),
+                "bid": coalesce_market_price(book, *YES_BID_KEYS),
+                "ask": coalesce_market_price(book, *YES_ASK_KEYS),
             }
 
     _update_live_peak_profits(positions, current_prices)
@@ -1415,12 +1400,8 @@ def _check_live_model_exits(client, config: dict | None = None) -> int:
                 book = _get_current_book(client, ticker) or market
                 current_prices = {
                     ticker: {
-                        "bid": _coalesce_cents_or_dollars(
-                            book, "yes_bid", "yes_bid_dollars"
-                        ),
-                        "ask": _coalesce_cents_or_dollars(
-                            book, "yes_ask", "yes_ask_dollars"
-                        ),
+                        "bid": coalesce_market_price(book, *YES_BID_KEYS),
+                        "ask": coalesce_market_price(book, *YES_ASK_KEYS),
                     }
                 }
                 exit_price = _liquidation_price(current_prices, ticker, side)
