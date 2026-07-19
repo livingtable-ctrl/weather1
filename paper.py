@@ -846,8 +846,6 @@ def place_paper_order(
     net_edge: float | None = None,
     city: str | None = None,
     target_date: str | None = None,  # ISO format "2026-04-09"
-    exit_target: float
-    | None = None,  # take-profit price (0–1); exit if market reaches this
     thesis: str | None = None,
     method: str | None = None,  # analysis method ('ensemble', 'normal_dist', etc.)
     icon_forecast_mean: float | None = None,  # per-model means for ensemble scoring
@@ -863,8 +861,6 @@ def place_paper_order(
 ) -> dict:
     """
     Place a paper trade. Deducts quantity * entry_price from balance.
-    exit_target: optional take-profit price — if set, check_exit_targets() will
-    settle this trade early when the market price reaches the target.
     thesis: optional free-text rationale for the trade.
     Returns the trade record.
     """
@@ -952,7 +948,6 @@ def place_paper_order(
             "settled": False,
             "outcome": None,
             "pnl": None,
-            "exit_target": exit_target,
             "thesis": thesis,
             "icon_forecast_mean": icon_forecast_mean,
             "gfs_forecast_mean": gfs_forecast_mean,
@@ -1556,54 +1551,6 @@ def get_correlated_exposure(city: str, target_date_str: str) -> float:
         )
         / _exposure_denom()
     )
-
-
-def check_exit_targets(client=None) -> int:
-    """
-    Scan open paper trades with exit_target set. If the current market price
-    has reached or exceeded the target, settle the trade as a win.
-    Requires a Kalshi client to fetch current prices; skips if not provided.
-    Returns number of trades exited.
-    """
-    if client is None:
-        return 0
-    open_trades = [t for t in get_open_trades() if t.get("exit_target") is not None]
-    exited = 0
-    for t in open_trades:
-        try:
-            from weather_markets import parse_market_price
-
-            market = client.get_market(t["ticker"])
-            parsed = parse_market_price(market)
-            if not parsed["has_quote"]:
-                # No real bid/ask available — skip rather than treat a missing
-                # quote as a 0¢ price, which would falsely trigger NO-side exits.
-                continue
-            side = t["side"]
-            # #3: side-normalized liquidation price — yes_bid for YES, or
-            # 1 - yes_ask (= no_bid) for NO. exit_target is stored in the
-            # position's own side units, so a plain >= comparison now works
-            # for both sides. The old code always used yes_bid (even for NO,
-            # via 1 - yes_bid = no_ask), which is the price a NO *buyer* pays,
-            # not what a NO *holder* can realize — triggering NO exits early
-            # and overstating their proceeds.
-            current_price = _liquidation_price(
-                {t["ticker"]: {"bid": parsed["yes_bid"], "ask": parsed["yes_ask"]}},
-                t["ticker"],
-                side,
-            )
-            if current_price is None:
-                continue
-            target = t["exit_target"]
-            if current_price >= target:
-                close_paper_early(t["id"], round(current_price, 4))
-                exited += 1
-        except Exception as exc:
-            _log.warning(
-                "check_exit_targets: ticker %s failed: %s", t.get("ticker", "?"), exc
-            )
-            continue
-    return exited
 
 
 def portfolio_kelly_fraction(

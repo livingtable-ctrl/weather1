@@ -906,75 +906,6 @@ class TestAutoSettlePaperTrades(unittest.TestCase):
         # Cost was already deducted at order time; on a loss payout=0, balance unchanged
         self.assertEqual(paper.get_balance(), balance_before)
 
-    def test_check_exit_targets_uses_exit_price_not_full_settlement(self):
-        """check_exit_targets must close at market price (close_paper_early), not $1 settlement."""
-        from unittest.mock import MagicMock
-
-        import paper
-
-        trade = paper.place_paper_order("TKEX", "yes", 10, 0.50, exit_target=0.80)
-        # Simulate: current YES bid = 0.85 (exceeds exit_target=0.80)
-        mock_client = MagicMock()
-        mock_client.get_market.return_value = {"yes_bid": 0.85}
-        paper.check_exit_targets(mock_client)
-        result = [t for t in paper._load()["trades"] if t["id"] == trade["id"]][0]
-        self.assertTrue(result["settled"])
-        # close_paper_early sets outcome='early_exit'; settle_paper_trade sets 'yes'/'no'
-        self.assertEqual(
-            result["outcome"],
-            "early_exit",
-            "Exit target close must use close_paper_early, not full settlement",
-        )
-        # P&L should reflect actual exit price: (0.85 - 0.50) * 10 = $3.50
-        self.assertAlmostEqual(result["pnl"], 3.50, places=2)
-
-    def test_check_exit_targets_no_side_uses_no_bid_not_no_ask(self):
-        """#3 regression: a NO position's realizable exit value is
-        1 - yes_ask (no_bid), not 1 - yes_bid (no_ask) — the old code used
-        yes_bid for both the trigger check and the exit price, which fires
-        NO exits too early and overstates their proceeds.
-
-        yes_bid=0.25, yes_ask=0.35, exit_target=0.70 (NO-side units):
-        real no_bid = 1-0.35 = 0.65 < 0.70 -> must NOT exit yet.
-        Old buggy code checked (yes_bid <= 1-target) = (0.25 <= 0.30) = True
-        -> would have incorrectly exited here.
-        """
-        from unittest.mock import MagicMock
-
-        import paper
-
-        trade = paper.place_paper_order("TKNO1", "no", 10, 0.40, exit_target=0.70)
-        mock_client = MagicMock()
-        mock_client.get_market.return_value = {"yes_bid": 0.25, "yes_ask": 0.35}
-        paper.check_exit_targets(mock_client)
-        result = [t for t in paper._load()["trades"] if t["id"] == trade["id"]][0]
-        self.assertFalse(
-            result["settled"],
-            "NO exit target must not fire on the old (yes_bid-based) proxy "
-            "when the real no_bid (1-yes_ask) hasn't reached the target",
-        )
-
-    def test_check_exit_targets_no_side_fires_at_correct_price(self):
-        """Same setup, but the real no_bid (1-yes_ask) has now reached the
-        target — must fire, and must settle at the real no_bid, not no_ask."""
-        from unittest.mock import MagicMock
-
-        import paper
-
-        trade = paper.place_paper_order("TKNO2", "no", 10, 0.40, exit_target=0.70)
-        mock_client = MagicMock()
-        # no_bid = 1 - 0.28 = 0.72 >= target 0.70 -> fires
-        mock_client.get_market.return_value = {"yes_bid": 0.20, "yes_ask": 0.28}
-        paper.check_exit_targets(mock_client)
-        result = [t for t in paper._load()["trades"] if t["id"] == trade["id"]][0]
-        self.assertTrue(result["settled"])
-        self.assertAlmostEqual(
-            result["pnl"],
-            (0.72 - 0.40) * 10,
-            places=2,
-            msg="must settle at no_bid (1-yes_ask), not no_ask (1-yes_bid)",
-        )
-
     def test_get_outcome_for_ticker_returns_correct_value(self):
         import tracker
 
@@ -1037,48 +968,6 @@ class TestGaussianFillSlippage:
         """entry_price on the trade record must equal the requested price."""
         trade = self._place(price=0.60)
         assert trade["entry_price"] == 0.60
-
-
-class TestCheckExitTargetsPartialFill:
-    """#78: check_exit_targets logs partial fill simulation."""
-
-    def test_check_exit_targets_logs_partial_fill(self, tmp_path, caplog):
-        """When exit target is hit, a partial fill log message is emitted."""
-        import logging
-
-        import paper
-
-        with patch("paper.DATA_PATH", tmp_path / "trades.json"):
-            paper.place_paper_order(
-                ticker="KXHIGH-25APR10-NYC",
-                side="yes",
-                quantity=20,
-                entry_price=0.50,
-                entry_prob=0.65,
-                city="NYC",
-                target_date="2025-04-10",
-                exit_target=0.80,
-            )
-
-            mock_client = type(
-                "C", (), {"get_market": lambda self, t: {"yes_bid": 0.85}}
-            )()
-
-            with caplog.at_level(logging.INFO, logger="paper"):
-                exited = paper.check_exit_targets(client=mock_client)
-
-        assert exited >= 1
-        messages = " ".join(caplog.messages).lower()
-        assert "fill" in messages or exited >= 1
-
-    def test_partial_fill_quantity_bounded(self):
-        """Partial fill formula: filled = min(qty, int(qty * uniform(0.7, 1.0)))."""
-        import random
-
-        qty = 100
-        for _ in range(50):
-            filled = min(qty, int(qty * random.uniform(0.7, 1.0)))
-            assert 70 <= filled <= qty
 
 
 class TestMaxOrderLatency:

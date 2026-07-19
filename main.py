@@ -2994,22 +2994,6 @@ def cmd_watch(
                 # for the rest of the watch loop with zero trace in bot.log.
                 _log.warning("cmd_watch: price-alert check failed: %s", _alert_exc)
 
-            # Check take-profit exit targets
-            try:
-                from paper import check_exit_targets
-
-                n_exited = check_exit_targets(client)
-                if n_exited:
-                    print(
-                        green(
-                            f"  [Auto-exit] {n_exited} position(s) reached take-profit target and were settled."
-                        )
-                    )
-            except Exception as _exit_target_exc:
-                _log.warning(
-                    "cmd_watch: check_exit_targets failed: %s", _exit_target_exc
-                )
-
             # Check open paper positions for exit signals
             try:
                 from paper import check_expiring_trades, check_model_exits

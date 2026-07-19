@@ -3141,8 +3141,9 @@ Problem:
   -- paper only; cron never passes live=True. watch pipeline (main.py:
   2822 cmd_watch): a `while True` terminal UI wrapping _analyze_once
   (main.py:1294) -- a *sequential* scan with different gates (skips
-  days_out==0 at 1337, no is_stale, no consistency halt, no prewarm) --
-  and this is the *only* path that can place a live order
+  days_out==0 at 1337, no consistency halt, no prewarm -- dedup/is_stale
+  parity was added 2026-07-19, see the RESOLVED note below) -- and this
+  is the *only* path that can place a live order
   (_auto_place_trades(..., live=live) at 2875-2877, then poll/reprice/
   exit-protection at 2878-2886). So when live trading starts, real money
   runs through the interactive-display pipeline while the
@@ -4327,12 +4328,60 @@ Related micro-item, NOT done this pass (still open, deliberately
   remove ~40 duplicated lines. Only the utc_today() bug in
   _fetch_previous_run_daily was fixed this pass, not this consolidation
   -- fold into whichever session next touches this function.
-[DEAD TAKE-PROFIT PLUMBING STILL RUNS EVERY WATCH CYCLE AFTER THE FEATURE WAS DECLINED]
-Priority: Low -- vacuous no-op, but it's a decided-against feature whose
+[RESOLVED 2026-07-19] DEAD TAKE-PROFIT PLUMBING STILL RUNS EVERY WATCH CYCLE AFTER THE FEATURE WAS DECLINED
+Priority: was Low -- vacuous no-op, but it's a decided-against feature whose
   machinery still executes, prints user-facing messaging, and carries
   tests; the dead-code guard can't flag it because it *is* called.
 
-Problem:
+RESOLVED 2026-07-19: took the delete option (user decision, after
+  re-verifying -- see below -- rather than the document-and-keep
+  alternative). Re-checked the entry's own claims live before touching
+  anything: confirmed via a whole-repo grep (not just paper.py) that
+  every `exit_target=` call site anywhere in the codebase was inside
+  tests/test_paper.py -- zero production callers, exactly as claimed.
+  Also checked a stale-audit-finding risk before trusting it as extra
+  evidence: docs/audit_findings.md claims check_exit_targets() has "a
+  bare except Exception: continue -- silent double-settlement risk," but
+  the actual current code already does `_log.warning(...)` before the
+  continue -- that claim is stale/inaccurate and was NOT used as
+  supporting justification (a lesson in not repeating an old audit note
+  without checking it against current code first). Also checked a 2026-
+  06-27 planning doc proposing a take-profit *ladder* built on top of
+  exit_target -- superseded by the later, more authoritative 2026-07-13
+  decision to decline take-profit outright (the ladder proposal's
+  reasoning gap -- an automatic price target risks cutting a winning
+  trade short before its statistical edge resolves -- applies to a ladder
+  identically).
+  Deleted: the exit_target param + docstring line + stored trade-record
+  field from paper.place_paper_order (paper.py:849/866/955 pre-deletion
+  line numbers); check_exit_targets() entirely (paper.py:1556-1601);
+  the main.py cmd_watch call site (main.py:2997-3011 pre-deletion,
+  the "Check take-profit exit targets" block). tests/test_paper.py: 3
+  dead-path methods removed from TestAutoSettlePaperTrades
+  (test_check_exit_targets_uses_exit_price_not_full_settlement,
+  test_check_exit_targets_no_side_uses_no_bid_not_no_ask,
+  test_check_exit_targets_no_side_fires_at_correct_price -- the class's
+  other unrelated tests, e.g. auto-settle/no-side-win-loss/get_outcome_
+  for_ticker, were left untouched) plus the entire TestCheckExitTargets
+  PartialFill class (2 methods) -- the original entry's "four test
+  classes" framing was imprecise on re-read: it's actually 3 methods
+  inside one otherwise-unrelated class plus 1 dedicated class, not four
+  standalone classes; corrected here for accuracy.
+  Left alone, harmless: 2 test fixture files (tests/test_backlog_batch.py,
+  tests/test_debug_fixes.py) that build literal trade-record dicts
+  including an inert `"exit_target": None` key -- unrelated to the
+  deleted function/param, Python dicts tolerate the extra key fine, not
+  worth the unrelated diff churn to strip it out.
+  Traced all 3 real (non-test) place_paper_order callers (main.py:3641,
+  order_executor.py:2683, web_app.py:2797) to confirm none pass
+  exit_target and all use keyword args exclusively past the first 4
+  positional params, so removing the parameter changes nothing for them.
+  353 tests pass across tests/test_paper.py, test_trading.py,
+  test_menu_ux.py, test_debug_fixes.py, test_p1_remaining.py,
+  test_backlog_batch.py, test_live_execution.py; ruff + ruff format +
+  mypy clean on all 3 changed files.
+
+Problem (original framing, resolved above):
   The 2026-07-13 resting-exits research established that nothing in the
   repo ever sets exit_target ("fully dead -- threaded through
   place_paper_order's signature and checked by check_exit_targets(), but
@@ -4348,25 +4397,14 @@ Problem:
   deadness is in the data (no producer of the field), a shape the guard
   doesn't model.
 
-What it would look like:
-  Per this repo's wire-up-or-delete convention: delete the exit_target
-  param from place_paper_order, the stored field (leave old JSON rows'
-  key harmlessly present), check_exit_targets, the main.py call site, and
-  the four tests -- OR keep it with a one-line comment at
-  check_exit_targets stating "no producer sets exit_target by design
-  (take-profit declined 2026-07-13, see RESTING EXIT ORDERS entry
-  above); retained for manual/dashboard use" if a manual-set path is
-  actually wanted (the web_app manual-close route at web_app.py:2862 is
-  the closer fit for that use case, so probably: delete).
+What it would look like: [DONE, see resolution notes above]
 
-Why not now:
-  - None -- pure cleanup, candidate for any small session. Only decision
-    needed is delete vs. document, which the user should make (matches
-    the "ask before scope decisions" checklist item).
+Why not now (resolved):
+  - Was gated on a one-time user decision (delete vs. document) -- user
+    chose delete 2026-07-19.
 
 When to revisit:
-  - Any small housekeeping session; needs a one-time user decision
-    (delete vs document) before touching code.
+  - N/A, closed.
 
 [RESOLVED 2026-07-18] TEST-ORDER-DEPENDENT importlib.reload(order_executor) BROKE main.py's FROZEN-IMPORT IDENTITY CHECK
 Priority: was Medium (CI-breaking, safety-adjacent test coverage) -- now Low
