@@ -3681,7 +3681,8 @@ def get_dynamic_station_bias(
     min_samples: int = 10,
 ) -> tuple[float, int]:
     """Return mean signed temperature error (predicted - actual) per city from
-    real METAR observations logged at settlement.
+    the official Kalshi settlement temperature (outcomes.settled_temp_f), not a
+    live METAR read.
 
     Positive return value means the models run warm for this city (they over-predict
     temperature); negative means models run cold (they under-predict).  The caller

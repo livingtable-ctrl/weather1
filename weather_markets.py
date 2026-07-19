@@ -321,8 +321,9 @@ def _get_combined_station_bias(city: str, var: str = "max") -> float:
     """Return the best available temperature bias correction for a city.
 
     Blends the static hand-coded bias table with a dynamic correction derived from
-    real METAR observations logged at settlement.  As sample count grows, the dynamic
-    correction takes over — at 10 samples it contributes 20%, at 50+ samples 100%.
+    the official Kalshi settlement temperature (outcomes.settled_temp_f), not a live
+    METAR read.  As sample count grows, the dynamic correction takes over — at 10
+    samples it contributes 20%, at 50+ samples 100%.
 
     This means the static table is the reliable fallback for new cities while the
     dynamic correction gradually dominates once the data is trustworthy.

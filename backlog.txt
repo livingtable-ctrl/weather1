@@ -790,10 +790,62 @@ When to revisit:
     .env and is confused why it has no effect -- that's the actual trigger
     that surfaced the first 3 instances of this pattern too.
 
-[metar.get_station_bias() IS A PERMANENT NO-OP STUB]
-Priority: Low (safe no-op today, real feature never finished)
+[RESOLVED 2026-07-19, resolved as DELETION not implementation] metar.get_station_bias() IS A PERMANENT NO-OP STUB
+Priority: was Low (safe no-op today, real feature never finished)
 
-Problem:
+RESOLVED 2026-07-19: Picked up expecting to implement it per the plan below;
+  re-verification before writing code flipped the diagnosis entirely. Three
+  independent findings, each checked directly against live code/data rather
+  than trusted from this entry's prior wording:
+  (1) record_observation() has ZERO production callers anywhere in the
+  codebase (confirmed via repo-wide grep for the function name and for every
+  `import metar`/`from metar import` site) and no data/metar_observations.json
+  file exists on disk -- it was never actually exercised in production, not
+  just missing forecast_high as this entry assumed.
+  (2) git history shows it WAS wired in once: commit a023bb2 (Apr 17, "Phase
+  4") hooked record_observation() into paper.py's settle_paper_trade() with
+  FABRICATED proxy temperatures (threshold +/-3F, not real METAR reads).
+  Commit 39e08a6 (May 16, "fix: implement all P0/P1/R1-R21 audit findings")
+  deliberately REMOVED that hook ("paper: remove proxy METAR injection") --
+  matching docs/audit_findings.md's C20 finding that fabricated temperatures
+  feeding a real bias model is a corrupting feedback loop. The current
+  all-None state is the result of a considered fix killing a bad
+  implementation, not an oversight.
+  (3) The job this function was meant to do is already live elsewhere, done
+  correctly: weather_markets._get_combined_station_bias() (weather_markets.py
+  :320, called at :5971 on every forecast) already blends a static per-city
+  bias table with tracker.get_dynamic_station_bias() -- a dynamic correction
+  computed from REAL settled temperatures (ensemble_member_scores.
+  predicted_temp vs actual_temp, sourced from outcomes.settled_temp_f, the
+  official Kalshi settlement value) with a smooth 10-to-50-sample blend
+  ramp. This is the same "superseded by an already-live different approach"
+  shape as apply_station_bias and 10 other functions deleted in the
+  2026-07-12 dead-code sweep -- except metar.py was never covered by that
+  scan (scoped only to paper.py/tracker.py/weather_markets.py), so this
+  sibling instance sat undiscovered. get_station_bias() itself also had zero
+  production callers even if it worked.
+  Note: the live dynamic mechanism isn't contributing correction yet either
+  -- var-tagging (needed to separate max/min bias) shipped 2026-07-10
+  (commit bd63c5f) but every row in ensemble_member_scores today (269 rows)
+  predates that, so it's 100% on the static-table fallback right now. Same
+  "waiting on the trading pause to end" gap as every other log-only signal
+  in this file, not a design flaw -- activates automatically once >=10
+  var-tagged settlements/city accumulate post-Belgium.
+  Fix applied: deleted get_station_bias(), record_observation(),
+  get_obs_count(), and the _load_obs/_save_obs/_OBS_PATH/_OBS_LOCK/
+  _MIN_OBS_FOR_MODEL JSON-store machinery from metar.py (now dead `json`/
+  `threading`/`Path` imports removed too), updated the module docstring
+  (dropped the "station-level observation recording" bullet), and removed
+  the two now-empty test classes (TestRecordObservation, TestGetStationBias)
+  from tests/test_phase4.py. Building a second, differently-shaped bias
+  correction (monthly granularity, separate JSON store) alongside the
+  already-live tracker-based one would risk double-correcting the same
+  forecast -- the same reasoning that killed bayesian_kelly_fraction in the
+  2026-07-12 sweep. 66+169 = 235 tests pass across
+  test_phase4/test_metar/test_settlement_monitor/test_weather_markets/
+  test_station_bias; ruff+mypy clean.
+
+Original problem (superseded, kept for history):
   metar.py:437-461 get_station_bias() does real filtering/threshold work
   (station lookup, proxy-observation exclusion, _MIN_OBS_FOR_MODEL/
   20-per-month gates) and then unconditionally returns None
@@ -832,10 +884,11 @@ UPDATE 2026-07-12 (research pass, no code changed): re-verified still
   record_observation() (likely paper.py around its settlement path), which is
   currently out of scope at that call site.
 
-When to revisit:
-  - When forecast_high is stored alongside observations for some other
-    reason, or if a specific city's METAR-based lock-in confidence looks
-    wrong in a way this correction would address.
+When to revisit: N/A -- resolved as deletion. If per-station/per-month
+  (rather than per-city, max/min-only) bias granularity is ever wanted,
+  build it as a refinement of tracker.get_dynamic_station_bias() using its
+  existing real settled-temp data, not as a revival of this JSON-store
+  approach.
 
 [RESOLVED 2026-07-12] ORPHANED FUNCTIONS -- BUILT, NEVER WIRED IN OR CALLED
 Priority: Low (cleanup / decide-and-close, not urgent)
@@ -5465,7 +5518,7 @@ When to revisit:
     test_starting_balance.py is next open for other reasons.
 
 ======================================================
-[AUTO UN-RETIREMENT -- RETIRED FORECASTING METHODS COULD NEVER GENERATE FRESH RECOVERY EVIDENCE]
+[RESOLVED 2026-07-19] AUTO UN-RETIREMENT -- RETIRED FORECASTING METHODS COULD NEVER GENERATE FRESH RECOVERY EVIDENCE
 Priority: Medium -- surfaced by manually un-retiring 'ensemble' on
   2026-07-19 (justified by the letter of the existing rolling-Brier-
   recovery rule) and then investigating, unprompted, why the "recovery"
