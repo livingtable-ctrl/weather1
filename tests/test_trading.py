@@ -1099,6 +1099,159 @@ def test_auto_place_uses_no_ask_not_mid_for_no_trades(monkeypatch):
     )
 
 
+# ── JOINT FULL-LADDER BRACKET SELECTION: sibling brackets split exposure room
+# by relative edge instead of whichever sorts first claiming it all ──────────
+
+
+def _sibling_opp(ticker, edge, ci_kelly, target_date="2026-04-30"):
+    market = {
+        "ticker": ticker,
+        "yes_bid": 38,
+        "yes_ask": 42,
+        "_city": "NYC",
+        "_date": None,
+    }
+    analysis = {
+        "edge": edge,
+        "net_edge": edge,
+        "signal": "STRONG BUY",
+        "net_signal": "STRONG BUY",
+        "recommended_side": "yes",
+        "time_risk": "LOW",
+        "forecast_prob": 0.40 + edge,
+        "market_prob": 0.40,
+        "days_out": 2,
+        "target_date": target_date,
+        "fee_adjusted_kelly": ci_kelly,
+        "ci_adjusted_kelly": ci_kelly,
+        "model_consensus": True,
+        "near_threshold": False,
+        "method": "ensemble",
+    }
+    return market, analysis
+
+
+def _run_with_captured_kelly(monkeypatch, opps):
+    """Run _auto_place_trades with portfolio_kelly_fraction mocked to a
+    pass-through recorder, so the ci_kelly this test's change computes is
+    directly observable, independent of the real function's own exposure-
+    room math."""
+    main, paper = _l7b_common_patches(monkeypatch)
+
+    captured: list[float] = []
+
+    def fake_portfolio_kelly_fraction(ci_kelly, city, target_date, side=None):
+        captured.append(ci_kelly)
+        return ci_kelly
+
+    def fake_kelly_quantity(kf, price, min_dollars=1.0, cap=None, method=None):
+        return 10
+
+    def fake_place_paper_order(*args, **kwargs):
+        return {"id": 1}
+
+    monkeypatch.setattr(
+        paper, "portfolio_kelly_fraction", fake_portfolio_kelly_fraction
+    )
+    monkeypatch.setattr(paper, "kelly_quantity", fake_kelly_quantity)
+    monkeypatch.setattr("order_executor.place_paper_order", fake_place_paper_order)
+
+    placed = main._auto_place_trades(opps, client=None)
+    return placed, captured
+
+
+def test_sibling_brackets_split_room_by_edge_share(monkeypatch):
+    """Two same-city/date/HIGH-series brackets with a 3:1 edge ratio (0.18 vs
+    0.06) must split a shared ci_adjusted_kelly of 0.12 each proportionally:
+    0.12*0.75=0.09 and 0.12*0.25=0.03 -- not each claiming the full 0.12."""
+    strong = _sibling_opp("KXHIGHNYC-26APR30-T70", edge=0.18, ci_kelly=0.12)
+    weak = _sibling_opp("KXHIGHNYC-26APR30-T75", edge=0.06, ci_kelly=0.12)
+
+    placed, captured = _run_with_captured_kelly(monkeypatch, [strong, weak])
+
+    assert placed == 2
+    assert len(captured) == 2
+    # _opp_sort_key = edge*kelly ranks the higher-edge sibling first.
+    assert captured[0] == pytest.approx(0.09), (
+        f"higher-edge sibling: expected 0.12*0.75=0.09, got {captured[0]}"
+    )
+    assert captured[1] == pytest.approx(0.03), (
+        f"lower-edge sibling: expected 0.12*0.25=0.03, got {captured[1]}"
+    )
+
+
+def test_singleton_opp_kelly_unscaled(monkeypatch):
+    """A single opportunity with no same-event siblings must pass its
+    ci_adjusted_kelly through unscaled (backward-compatible with the
+    pre-existing, single-opp-per-event common case)."""
+    solo = _sibling_opp("KXHIGHNYC-26APR30-T70", edge=0.18, ci_kelly=0.12)
+
+    placed, captured = _run_with_captured_kelly(monkeypatch, [solo])
+
+    assert placed == 1
+    assert captured == [pytest.approx(0.12)]
+
+
+def test_high_and_low_siblings_not_grouped(monkeypatch):
+    """A HIGH bracket and a LOW bracket for the same city/date are NOT
+    mutually exclusive (both can independently resolve YES or NO) and must
+    each keep their full ci_adjusted_kelly, not share room."""
+    high = _sibling_opp("KXHIGHNYC-26APR30-T70", edge=0.18, ci_kelly=0.12)
+    low = _sibling_opp("KXLOWTNYC-26APR30-T40", edge=0.06, ci_kelly=0.12)
+
+    placed, captured = _run_with_captured_kelly(monkeypatch, [high, low])
+
+    assert placed == 2
+    assert sorted(captured) == [pytest.approx(0.12), pytest.approx(0.12)]
+
+
+def test_zero_edge_group_splits_equally(monkeypatch):
+    """Same-event siblings with zero recorded edge (division-by-zero guard)
+    must fall back to an equal split rather than crashing or zeroing out.
+
+    Built directly rather than via _sibling_opp: the "edge"/"net_edge"
+    analysis fields (what this change's grouping code reads) are set to 0.0,
+    but forecast_prob is kept above market_prob so the loop's own separate
+    "edge_gone after price refresh" gate doesn't skip the trade before this
+    change's logic is ever reached.
+    """
+
+    def _opp(ticker):
+        market = {
+            "ticker": ticker,
+            "yes_bid": 38,
+            "yes_ask": 42,
+            "_city": "NYC",
+            "_date": None,
+        }
+        analysis = {
+            "edge": 0.0,
+            "net_edge": 0.0,
+            "signal": "STRONG BUY",
+            "net_signal": "STRONG BUY",
+            "recommended_side": "yes",
+            "time_risk": "LOW",
+            "forecast_prob": 0.55,
+            "market_prob": 0.40,
+            "days_out": 2,
+            "target_date": "2026-04-30",
+            "fee_adjusted_kelly": 0.08,
+            "ci_adjusted_kelly": 0.08,
+            "model_consensus": True,
+            "near_threshold": False,
+            "method": "ensemble",
+        }
+        return market, analysis
+
+    a = _opp("KXHIGHNYC-26APR30-T70")
+    b = _opp("KXHIGHNYC-26APR30-T75")
+
+    placed, captured = _run_with_captured_kelly(monkeypatch, [a, b])
+
+    assert placed == 2
+    assert sorted(captured) == [pytest.approx(0.04), pytest.approx(0.04)]
+
+
 # ── L7-D regression: net_edge and adjusted_edge must decay near close ─────────
 
 

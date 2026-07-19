@@ -2312,6 +2312,82 @@ def _auto_place_trades(
         return edge * kelly
 
     opps = sorted(opps, key=_opp_sort_key, reverse=True)
+
+    def _opp_event_key(item: object) -> tuple[str, str, str] | None:
+        """Return (city, target_date_str, var) identifying which event this
+        opportunity's bracket belongs to, or None if city/date can't be
+        determined. var mirrors _score_ensemble_members' HIGH->max /
+        LOW(T)->min ticker convention — HIGH and LOW markets settle
+        independently (not mutually exclusive) and must not be grouped
+        together.
+        """
+        m_ = item[0] if isinstance(item, tuple) else item
+        a_ = item[1] if isinstance(item, tuple) else item
+        if not isinstance(m_, dict) or not isinstance(a_, dict):
+            return None
+        city_ = m_.get("_city") or a_.get("city")
+        date_obj = m_.get("_date")
+        if date_obj is None:
+            raw_date = a_.get("target_date")
+            if isinstance(raw_date, str):
+                try:
+                    import datetime as _dt_ek
+
+                    date_obj = _dt_ek.date.fromisoformat(raw_date)
+                except ValueError:
+                    date_obj = None
+            elif hasattr(raw_date, "isoformat"):
+                date_obj = raw_date
+        date_str = date_obj.isoformat() if date_obj else None
+        if not city_ or not date_str:
+            return None
+        ticker_upper = (m_.get("ticker", "") or a_.get("ticker", "")).upper()
+        var_ = (
+            "max"
+            if "HIGH" in ticker_upper
+            else ("min" if ("LOWT" in ticker_upper or "LOW" in ticker_upper) else "max")
+        )
+        return (city_, date_str, var_)
+
+    # JOINT FULL-LADDER BRACKET SELECTION (backlog.txt, smallest useful
+    # version): pre-partition each event's exposure room by relative edge
+    # across same-cycle sibling brackets, before the greedy sort above lets
+    # whichever sibling happens to sort first claim the whole room. Singleton
+    # events (the common case) are unaffected (no entry -> scale 1.0).
+    _event_groups: dict[tuple[str, str, str], list] = {}
+    for _item in opps:
+        _key = _opp_event_key(_item)
+        if _key is not None:
+            _event_groups.setdefault(_key, []).append(_item)
+
+    _ticker_edge_share: dict[str, float] = {}
+    for _members in _event_groups.values():
+        if len(_members) < 2:
+            continue
+        _edges = []
+        for _mem in _members:
+            _mm = _mem[0] if isinstance(_mem, tuple) else _mem
+            _aa = _mem[1] if isinstance(_mem, tuple) else _mem
+            _edges.append(
+                abs(
+                    float(
+                        _aa.get(
+                            "edge", _aa.get("net_edge", _aa.get("expected_value", 0))
+                        )
+                        or 0
+                    )
+                )
+            )
+        _total_edge = sum(_edges)
+        for _mem, _e in zip(_members, _edges):
+            _mm = _mem[0] if isinstance(_mem, tuple) else _mem
+            _aa = _mem[1] if isinstance(_mem, tuple) else _mem
+            _t = _mm.get("ticker", "") or _aa.get("ticker", "")
+            if _t:
+                _ticker_edge_share[_t] = (
+                    (_e / _total_edge) if _total_edge > 0 else (1.0 / len(_members))
+                )
+
     _skip_reasons: list[str] = []
 
     from paths import KILL_SWITCH_PATH as _KILL_SWITCH_PATH
@@ -2421,6 +2497,10 @@ def _auto_place_trades(
             continue
 
         ci_kelly = a.get("ci_adjusted_kelly", a.get("fee_adjusted_kelly", 0.0))
+        # Redistributes room WITHIN the existing MAX_CITY_DATE_EXPOSURE cap
+        # (still enforced below, unchanged) -- never raises it. Share is
+        # always <=1.0, so this only ever shrinks or holds ci_kelly.
+        ci_kelly *= _ticker_edge_share.get(ticker, 1.0)
         adj_kelly = portfolio_kelly_fraction(
             ci_kelly, city, target_date_str, side=rec_side
         )

@@ -2507,10 +2507,58 @@ When to revisit:
   - Check settled_temp_f row counts per city; start when the biggest cities
     clear a reasonable floor (~30+ per season).
 
-[JOINT FULL-LADDER BRACKET SELECTION]
-Priority: Medium-Low (real EV improvement, real design work)
+[RESOLVED 2026-07-20, smallest useful version] JOINT FULL-LADDER BRACKET SELECTION
+Priority: was Medium-Low (real EV improvement, real design work)
 
-Problem:
+RESOLVED 2026-07-20: Re-verified before designing anything -- the "Why not
+  now" blocker ("sequence after maker-execution + liquidity-aware sizing
+  land") was checked directly and confirmed cleared: both landed since
+  (2026-07-12 and 2026-07-19 respectively). Also checked how often the
+  Problem statement's scenario actually occurs against real trading data
+  (predictions.db, ~3 months of live paper trading, 200 real non-shadow
+  rows): grouping by (city, target_date, ~10-min scan-cycle bucket) and
+  excluding HIGH+LOW pairs (which are NOT mutually exclusive -- a city's
+  HIGH and LOW markets settle independently, so per-market-independent
+  Kelly is already correct for those, not a gap this entry is about) found
+  genuine same-series sibling co-occurrence only 5 times in 3 months
+  (Seattle, Houston, Dallas, San Francisco, Phoenix) -- roughly once every
+  2-3 weeks, not a frequent problem. Given that low trigger rate, user chose
+  the "smallest useful version" this entry's own "What the fix looks like"
+  section already named, over the full joint-Kelly/simplex solve (real new
+  optimization machinery on a live-money sizing path, for something firing
+  ~5x/quarter -- not proportionate).
+  Also found the Problem section overstated the gap: paper.
+  portfolio_kelly_fraction() already enforces a real per-event capacity
+  constraint (MAX_CITY_DATE_EXPOSURE cap, proportional room-scaling,
+  directional-concentration penalty, correlated-city penalty), and
+  correctly reflects trades placed earlier in the SAME cron cycle (its
+  get_city_date_exposure() re-reads live state each call, and
+  place_paper_order() writes synchronously before the next opp is
+  processed) -- it's greedy/sequential, not jointly optimal, but not "blind"
+  to same-cycle siblings either.
+  Fix shipped: order_executor._auto_place_trades() now groups opps by
+  (city, target_date, var) right after the existing edge*kelly sort (var
+  mirrors _score_ensemble_members' HIGH->max/LOW(T)->min ticker convention,
+  keeping HIGH/LOW ungrouped). For any group with >1 member, each sibling's
+  ci_adjusted_kelly is pre-scaled by its share of the group's total edge
+  (equal split if total edge is 0) before being passed into the existing,
+  untouched portfolio_kelly_fraction() call -- a bounded, local change (one
+  new grouping pass + one multiplication) rather than a new solver or any
+  change to portfolio_kelly_fraction()'s own signature/callers.
+  4 new tests (tests/test_trading.py): proportional 3:1 edge-ratio split
+  hand-computed (0.12*0.75=0.09, 0.12*0.25=0.03), singleton-opp
+  backward-compatibility (scale=1.0, unaffected), HIGH+LOW siblings
+  confirmed NOT grouped (both keep full room), zero-total-edge equal-split
+  fallback. Mutation-tested: reverting the one-line scale multiplication
+  was confirmed to break exactly the 2 tests that depend on it (proportional
+  split, equal split) while leaving the other 2 (singleton, HIGH/LOW)
+  passing, confirming the tests are load-bearing rather than tautological.
+  229 tests pass across the wider order_executor/trading regression sweep
+  (test_trading, test_shadow_predictions, test_dedup, test_risk_control,
+  test_drawdown_tiers, test_execution_proof, test_backlog_batch,
+  test_live_execution, test_p0_10_paper_prelog); ruff+mypy clean.
+
+Original problem (kept for history):
   Market analysis is per-bracket independent; nothing chooses the optimal
   COMBINATION of sibling brackets for one city/date against the model's
   full temperature distribution. (The arb auto-trade block in main.py:1542+
@@ -2529,9 +2577,12 @@ Why not now:
   - Real sizing-math design work + touches the same order-placement path as
     several entries above; sequence it after the execution work stabilizes.
 
-When to revisit:
-  - After maker-execution + liquidity-aware sizing land, when the sizing
-    path is next open anyway.
+When to revisit: N/A -- resolved (smallest useful version shipped). If the
+  same-series sibling co-occurrence rate ever climbs materially above the
+  observed ~5x/quarter (e.g. once the bot trades more cities/markets
+  concurrently), the full joint-Kelly/simplex solve becomes worth
+  reconsidering -- re-check the trigger rate against real data rather than
+  assuming it changed.
 
 [WEBSOCKET orderbook_delta get_snapshot -- SIMPLER BOOK INITIALIZATION]
 Priority: Low (nice-to-have simplification, not a bug)
