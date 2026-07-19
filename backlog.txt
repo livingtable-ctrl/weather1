@@ -3164,10 +3164,56 @@ What it would look like:
   instead of a third reimplementation. The CronContext injection seam
   (cron.py:78, main.py:208) is already halfway there -- the engine is
   mostly a matter of moving orchestration out of _cmd_cron_body/
-  cmd_watch into it. Smallest safe step available right now, independent
-  of the full engine: add cron's per-ticker dedup + is_stale filter to
-  _analyze_once's loop (~8 lines) -- closes the feature gap between the
-  two pipelines without the reshuffle.
+  cmd_watch into it.
+
+RESOLVED 2026-07-19 (smallest-safe-step piece only -- the full headless
+  engine below is still open, unstarted): ported cron.py's per-ticker dedup
+  + is_stale skip into main.py's _analyze_once, closing the feature-gap
+  slice of this entry without the full reshuffle. main.py:1298-1327
+  (immediately after `markets = get_weather_markets(client)`, before
+  `total = len(markets)`) now builds a deduped/stale-filtered markets list
+  via the identical loop shape cron.py's _cmd_cron_body already uses
+  (dedup-by-ticker first via a _seen_tickers set, then weather_markets.
+  is_stale() skip, with the same _log.debug counters for dedup/stale
+  counts) -- `_analyze_once` and `_cmd_cron_body` now apply the same
+  pre-analysis filtering to the same raw get_weather_markets() response.
+  Traced both real callers of _analyze_once (cmd_analyze at main.py:2702,
+  cmd_watch's loop at main.py:2924) and confirmed neither depends on
+  duplicate-ticker or stale markets reaching enrich_with_forecast/
+  analyze_trade -- `markets` is function-local and not read again after
+  the loop except via `total`/`compute_market_implied_distributions`,
+  both of which now correctly see the deduped count (matches cron.py's own
+  "report post-dedup count in summary" comment). Checked the one test file
+  that calls _analyze_once directly (tests/test_p1_remaining.py) plus
+  cmd_watch/cmd_analyze's test files (test_trading.py, test_menu_ux.py,
+  test_debug_fixes.py) -- none of their fixtures rely on duplicate tickers
+  or on a stale (zero-volume, closing-soon) market being processed, so no
+  existing test needed updating.
+  New tests (tests/test_p1_remaining.py, TestAnalyzeOnceDedupAndStaleParity):
+  a stale-market-skipped test mirroring test_cron_integration.py's
+  test_cron_skips_stale_markets_before_analysis exactly (same fixture
+  shape, same assertion), and a duplicate-ticker-dedup test. Both
+  mutation-tested by reverting the main.py fix (git stash) and confirming
+  both tests fail for the right reason (dedup count 2 instead of 1; the
+  stale market reaching enrich_with_forecast), then restoring the fix and
+  confirming they pass again.
+  107 tests pass across tests/test_p1_remaining.py, test_trading.py,
+  test_menu_ux.py, test_debug_fixes.py, test_cron_integration.py; ruff +
+  ruff format + mypy clean on both changed files.
+  Independent second-opinion review (Agent, opus): clean, no findings.
+  Confirmed the ordering (dedup-add-to-seen before is_stale check) matches
+  cron.py exactly, the debug-log duplicate-count math can't false-trigger,
+  both real callers (cmd_analyze, cmd_watch) are safe against the `markets`
+  reassignment (stale markets could only ever land in no_quote_opps since
+  is_liquid() requires volume, so liquid_opps/auto-trading is unaffected;
+  find_violations() now runs on the deduped set too, a benign side benefit
+  removing spurious self-arb between a ticker and its own duplicate), and
+  the new tests patch the correct targets given main.py's mixed
+  top-of-file-import vs. function-local-import style (verified against
+  main.py:95-107 vs. the local imports at ~1337/1345).
+  Still open, unstarted: the full headless run_trade_cycle() engine
+  extraction itself (see "What it would look like" above and the "Why not
+  now"/"When to revisit" below, both still accurate for that larger piece).
 
 Why not now:
   - Do it as the *first* step of the VM/always-on work (the trigger

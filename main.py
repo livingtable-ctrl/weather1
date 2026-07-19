@@ -1296,6 +1296,36 @@ def _analyze_once(
         min_edge = MIN_EDGE
     """Run one analysis pass. Returns set of opportunity tickers found."""
     markets = get_weather_markets(client)
+    # Dedup by ticker + skip stale markets before analysis, matching cron.py's
+    # cmd_cron parity (backlog.txt "THE ONLY LIVE-ORDER PATH..." smallest-safe
+    # step) -- same market can appear twice under Kalshi's old/new
+    # series-ticker formats, and a zero-volume market closing within 60min has
+    # no meaningful edge (see weather_markets.is_stale's docstring).
+    from weather_markets import is_stale as _is_stale_market
+
+    _seen_tickers: set[str] = set()
+    _deduped_markets: list[dict] = []
+    _stale_skipped = 0
+    for _m in markets:
+        _m_ticker = _m.get("ticker", "")
+        if _m_ticker in _seen_tickers:
+            continue
+        _seen_tickers.add(_m_ticker)
+        if _is_stale_market(_m):
+            _stale_skipped += 1
+            continue
+        _deduped_markets.append(_m)
+    if len(_deduped_markets) < len(markets) - _stale_skipped:
+        _log.debug(
+            "_analyze_once: deduped %d duplicate ticker(s) before analysis",
+            len(markets) - _stale_skipped - len(_deduped_markets),
+        )
+    if _stale_skipped:
+        _log.debug(
+            "_analyze_once: skipped %d stale market(s) (no volume, closing within 60min)",
+            _stale_skipped,
+        )
+    markets = _deduped_markets
     liquid_opps: list = []
     no_quote_opps: list = []
     total = len(markets)

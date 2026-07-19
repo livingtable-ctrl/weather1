@@ -552,3 +552,99 @@ class TestConsistencyArbHaltGuards:
         assert placed == [], (
             "No arb orders should be placed when accuracy halt is active"
         )
+
+
+# ── main.py _analyze_once dedup/is_stale parity with cron.py's cmd_cron ──────
+# (backlog.txt "THE ONLY LIVE-ORDER PATH..." smallest-safe-step: cron.py's
+# per-ticker dedup + is_stale skip, ported into _analyze_once so the two scan
+# pipelines apply the same pre-analysis filtering to the same raw market list.)
+
+
+class TestAnalyzeOnceDedupAndStaleParity:
+    def test_skips_stale_markets_before_analysis(self, monkeypatch):
+        """A zero-volume market closing within 60 minutes must never reach
+        enrich_with_forecast -- mirrors test_cron_integration.py's identical
+        cron.py assertion (test_cron_skips_stale_markets_before_analysis)."""
+        from datetime import UTC, datetime, timedelta
+
+        import main
+
+        stale_market = {
+            "ticker": "KXHIGH-NYC-26APR17-STALE",
+            "yes_bid": 40,
+            "yes_ask": 44,
+            "volume": 0,
+            "open_interest": 0,
+            "close_time": (datetime.now(UTC) + timedelta(minutes=10)).strftime(
+                "%Y-%m-%dT%H:%M:%SZ"
+            ),
+        }
+        live_market = {
+            "ticker": "KXHIGH-NYC-26APR17-LIVE",
+            "yes_bid": 40,
+            "yes_ask": 44,
+            "volume": 500,
+            "open_interest": 100,
+            "close_time": (datetime.now(UTC) + timedelta(hours=48)).strftime(
+                "%Y-%m-%dT%H:%M:%SZ"
+            ),
+        }
+
+        enriched_tickers: list[str] = []
+
+        def _tracking_enrich(market):
+            enriched_tickers.append(market.get("ticker", ""))
+            return {"ticker": market.get("ticker", "")}
+
+        monkeypatch.setattr(
+            "main.get_weather_markets", lambda c: [stale_market, live_market]
+        )
+        monkeypatch.setattr("main.enrich_with_forecast", _tracking_enrich)
+        monkeypatch.setattr("main.analyze_trade", lambda enriched: None)
+        monkeypatch.setattr(
+            "weather_markets.compute_market_implied_distributions", lambda m: {}
+        )
+        monkeypatch.setattr("paper.get_open_trades", lambda: [])
+
+        main._analyze_once(MagicMock())
+
+        assert "KXHIGH-NYC-26APR17-LIVE" in enriched_tickers, (
+            "Live market must still reach enrich_with_forecast"
+        )
+        assert "KXHIGH-NYC-26APR17-STALE" not in enriched_tickers, (
+            "Stale market (no volume, closing within 60min) must be skipped before analysis"
+        )
+
+    def test_dedupes_by_ticker_before_analysis(self, monkeypatch):
+        """The same ticker appearing twice in one scan (old/new Kalshi series
+        format collision) must only reach enrich_with_forecast once."""
+        import main
+
+        dup_a = {
+            "ticker": "KXHIGH-NYC-26APR17-DUP",
+            "yes_bid": 40,
+            "yes_ask": 44,
+            "volume": 500,
+            "open_interest": 100,
+        }
+        dup_b = dict(dup_a)  # same ticker, distinct dict instance
+
+        enriched_tickers: list[str] = []
+
+        def _tracking_enrich(market):
+            enriched_tickers.append(market.get("ticker", ""))
+            return {"ticker": market.get("ticker", "")}
+
+        monkeypatch.setattr("main.get_weather_markets", lambda c: [dup_a, dup_b])
+        monkeypatch.setattr("main.enrich_with_forecast", _tracking_enrich)
+        monkeypatch.setattr("main.analyze_trade", lambda enriched: None)
+        monkeypatch.setattr(
+            "weather_markets.compute_market_implied_distributions", lambda m: {}
+        )
+        monkeypatch.setattr("paper.get_open_trades", lambda: [])
+
+        main._analyze_once(MagicMock())
+
+        assert enriched_tickers.count("KXHIGH-NYC-26APR17-DUP") == 1, (
+            "Duplicate ticker must only be enriched/analyzed once per scan"
+        )
