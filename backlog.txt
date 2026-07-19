@@ -4838,11 +4838,66 @@ When to revisit:
   - N/A for the two fixed bugs. See the follow-up cousin-risk note below for
     something worth a future look, not an active bug.
 
-[main.py's FROZEN `from utils import ...` COULD REPEAT THE SAME IDENTITY-DIVERGENCE BUG -- utils IS RELOADED BY ~6 TESTS]
+[PARTIALLY RESOLVED 2026-07-19] main.py's FROZEN `from utils import ...` COULD REPEAT THE SAME IDENTITY-DIVERGENCE BUG -- utils IS RELOADED BY ~6 TESTS
 Priority: Low -- latent structural risk, not a current bug; nothing today
   asserts an identity check that would catch it firing.
 
-Problem:
+RESOLVED 2026-07-19 (partially -- the audit below found the entry's own
+  "likely possible for most/all of them" framing overstated; only 2 of the
+  7 real reload(utils) call sites could actually be converted):
+  Audited all 7 call sites individually (the entry said "~6 tests" but
+  test_p9_p10.py and test_sameday_reserve.py each reload twice, for 7
+  total) rather than trusting the "likely possible for most/all" claim at
+  face value. Found two genuinely different shapes:
+  (a) 3 reload(utils) call sites across 2 files (test_kalshi_ws.py's
+  test_stale_entry_returns_none; test_sameday_reserve.py's _patch_env and
+  _patch_dynamic_env helpers, used by 10 tests) use reload(utils) purely as
+  a means to get a downstream
+  function (kalshi_ws.get_cached_mid_price, order_executor.
+  _sameday_effective_cap) to observe a new constant value -- exactly the
+  order_executor._prediction_kwargs_from_analysis shape this entry was
+  modeled on. Confirmed both downstream functions do a function-local
+  `from utils import X` fresh on every call (not a frozen copy), so
+  monkeypatch.setattr(utils, "X", value) reproduces the exact same
+  observable effect with none of the whole-module rebind risk. Converted
+  both -- reload(utils) is now gone from these 2 files entirely.
+  (b) The other 4 sites (test_p9_p10.py's test_enable_micro_live_defaults_
+  false / test_brier_alert_threshold_default, test_risk_control.py's
+  test_drawdown_halt_default_is_20pct, test_starting_balance.py's
+  test_utils_exports_starting_balance) assert directly on utils.<CONST>
+  itself -- the test SUBJECT is utils' own `float(os.getenv(...))`
+  module-level parsing logic. Converting these to monkeypatch.setattr
+  would make them tautological (assert a value you just set equals
+  itself), testing nothing about production code. Left these as
+  reload(utils) -- genuinely the correct tool for what they verify, not
+  an oversight.
+  Since 4 reload(utils) sites remain and genuinely can't be eliminated,
+  the underlying hazard for main.py's frozen `from utils import (...)`
+  (line 94) is only reduced, not closed -- any of those 4 tests can still
+  cause main.is_trading_paused/MIN_ARB_EDGE/MIN_EDGE/STRONG_EDGE to
+  diverge from utils' live copies for the rest of a pytest session if a
+  future identity-check test is ever added and happens to run after one
+  of them. Took this entry's own second option for the remaining risk:
+  documented the hazard directly in main.py's import block (a comment
+  above the `from utils import ...` line explaining the mechanism,
+  naming is_trading_paused as the highest-risk symbol since it's a
+  function object, and pointing at this backlog entry) rather than adding
+  a new test that would itself demonstrate/cause the exact divergence
+  it's warning about -- that would be introducing the failure mode to
+  prove it exists, not fixing anything.
+  27 tests pass in the 2 converted files; scoped as low-risk since the
+  conversions only change *how* a constant is set for a test, not what's
+  asserted. No new tests needed -- the existing tests already
+  differentiate outcomes by the patched values (e.g. slots=0 vs slots=2
+  producing different expected caps across the existing test suite),
+  which is itself adequate coverage that the monkeypatched attribute
+  really flows through to the function under test (spot-verified by hand:
+  temporarily setting utils.WS_CACHE_TTL_SECS to a huge value flips
+  get_cached_mid_price's result from None to a real price, confirming the
+  attribute is what's actually read).
+
+Problem (as originally scoped, still accurate for the un-converted 4 sites
+and the remaining latent main.py risk):
   main.py:94 does `from utils import MIN_ARB_EDGE, MIN_EDGE, STRONG_EDGE,
   is_trading_paused` once at process-import time -- the exact same frozen-
   import shape that caused the order_executor bug above. utils.py is
@@ -4859,20 +4914,24 @@ Problem:
   behaving identically to utils' live ones, the same bug class recurs.
 
 What it would look like:
-  Either audit whether any of the 6 reload sites could instead monkeypatch
-  the specific derived constant directly (same fix pattern as the
-  order_executor case above -- likely possible for most/all of them,
-  removing the reload's side effect at the source), or, if reload is kept,
-  document the frozen-import hazard directly in main.py's import block so
-  a future contributor adding an identity check knows to check for this.
+  Either audit whether any of the reload sites could instead monkeypatch
+  the specific derived constant directly (DONE 2026-07-19 for 3 of 7 --
+  see resolution above; the other 4 genuinely can't, they test utils' own
+  parsing), or document the frozen-import hazard directly in main.py's
+  import block so a future contributor adding an identity check knows to
+  check for this (DONE 2026-07-19, see resolution above).
 
-Why not now:
-  - Not a live bug -- no identity assertion exists yet to trip it. Cheap to
-    fix opportunistically whenever one of those 6 test files is next open
-    for other reasons; not worth a dedicated pass on its own.
+Why not now (for the remaining 4-site latent risk):
+  - Not a live bug -- no identity assertion exists yet to trip it, and the
+    4 remaining reload(utils) sites are the correct tool for what they
+    test (utils' own env-var parsing), not something to work around.
+    Genuinely closable only by a larger restructuring (e.g. an autouse
+    fixture that reasserts main.py's frozen symbols after any utils
+    reload) that isn't worth it for a risk with no current trigger.
 
 When to revisit:
-  - Whenever test_kalshi_ws.py, test_p9_p10.py, test_risk_control.py,
-    test_sameday_reserve.py, or test_starting_balance.py is next touched,
-    or if a new main.py <-> utils identity-check test is ever added.
+  - If a new main.py <-> utils identity-check test is ever added (it would
+    immediately surface whether the remaining 4 sites actually cause
+    trouble in practice), or test_p9_p10.py/test_risk_control.py/
+    test_starting_balance.py is next open for other reasons.
 

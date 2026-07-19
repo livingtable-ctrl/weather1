@@ -226,12 +226,15 @@ class TestCacheStaleness:
                 }
             },
         )
-        monkeypatch.setenv("WS_CACHE_TTL_SECS", "900")
-        import importlib
-
+        # get_cached_mid_price re-imports WS_CACHE_TTL_SECS from utils fresh on
+        # every call (function-local import), so monkeypatching the attribute
+        # directly is enough -- no need to reload the whole utils module (which
+        # would rebind every other symbol in it, including is_trading_paused,
+        # and diverge from main.py's frozen `from utils import ...` for the
+        # rest of the test session; see backlog.txt's frozen-import entry).
         import utils
 
-        importlib.reload(utils)
+        monkeypatch.setattr(utils, "WS_CACHE_TTL_SECS", 900)
         assert kalshi_ws.get_cached_mid_price("KXTEMP-25") is None
 
     def test_missing_ts_returns_none(self, monkeypatch):

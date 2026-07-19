@@ -91,6 +91,22 @@ from tracker import (
     log_prediction,
     sync_outcomes,
 )
+
+# NOTE: these are frozen at process-import time -- if any test ever calls
+# importlib.reload(utils) (several do, to re-read an env-var-driven constant
+# for a test of utils' own parsing logic), main.<symbol> here permanently
+# diverges from the live utils.<symbol> for the rest of that pytest session,
+# since reload() rebinds every name in the module but nothing re-imports
+# main's copies. is_trading_paused is the highest-risk symbol here (a
+# function object, not a plain constant) -- this is the exact bug class
+# already hit once for order_executor._prediction_kwargs_from_analysis (see
+# backlog.txt's LOG_PREDICTION KWARGS entry) and audited but left latent
+# here since no test currently asserts `main.<symbol> is utils.<symbol>`
+# identity (see backlog.txt's frozen-import entry for the full audit: 3 of
+# the 7 current reload(utils) call sites were converted to
+# monkeypatch.setattr(utils, ...) instead, since the functions they feed
+# re-import from utils fresh per call; the remaining 4 genuinely need to
+# reload utils because they test utils' own env-parsing directly).
 from utils import MIN_ARB_EDGE, MIN_EDGE, STRONG_EDGE, is_trading_paused
 from weather_markets import (
     CITY_COORDS,

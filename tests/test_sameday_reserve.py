@@ -6,15 +6,17 @@ MAX = 8  # MAX_SAME_DAY_POSITIONS used across all tests
 
 
 def _patch_env(monkeypatch, slots=0, after_hour=12, min_samples=40):
-    monkeypatch.setenv("SAME_DAY_RESERVE_SLOTS", str(slots))
-    monkeypatch.setenv("SAME_DAY_RESERVE_AFTER_HOUR_UTC", str(after_hour))
-    monkeypatch.setenv("SAME_DAY_RESERVE_MIN_SAMPLES", str(min_samples))
-    # Force utils module to re-read env vars on next import
-    import importlib
-
+    # _sameday_effective_cap re-imports these constants from utils fresh on
+    # every call (function-local import), so monkeypatching the attributes
+    # directly is enough -- no need to reload the whole utils module (which
+    # would rebind every other symbol in it, including is_trading_paused,
+    # and diverge from main.py's frozen `from utils import ...` for the rest
+    # of the test session; see backlog.txt's frozen-import entry).
     import utils
 
-    importlib.reload(utils)
+    monkeypatch.setattr(utils, "SAME_DAY_RESERVE_SLOTS", slots)
+    monkeypatch.setattr(utils, "SAME_DAY_RESERVE_AFTER_HOUR_UTC", after_hour)
+    monkeypatch.setattr(utils, "SAME_DAY_RESERVE_MIN_SAMPLES", min_samples)
 
 
 def test_feature_disabled_returns_max(monkeypatch):
@@ -111,16 +113,17 @@ def test_db_error_fails_open(monkeypatch):
 
 
 def _patch_dynamic_env(monkeypatch, k=5, band_hours=6, min_samples=150):
-    monkeypatch.setenv("SAME_DAY_DYNAMIC_SLOTS", "1")
-    monkeypatch.setenv("SAME_DAY_DYNAMIC_K", str(k))
-    monkeypatch.setenv("SAME_DAY_DYNAMIC_BAND_HOURS", str(band_hours))
-    monkeypatch.setenv("SAME_DAY_RESERVE_MIN_SAMPLES", str(min_samples))
-    monkeypatch.setenv("SAME_DAY_RESERVE_SLOTS", "0")
-    import importlib
-
+    # Same rationale as _patch_env above: monkeypatch the parsed attributes
+    # directly rather than reload(utils), which would rebind every other
+    # symbol in the module (including is_trading_paused) and diverge from
+    # main.py's frozen import for the rest of the test session.
     import utils
 
-    importlib.reload(utils)
+    monkeypatch.setattr(utils, "SAME_DAY_DYNAMIC_SLOTS", True)
+    monkeypatch.setattr(utils, "SAME_DAY_DYNAMIC_K", k)
+    monkeypatch.setattr(utils, "SAME_DAY_DYNAMIC_BAND_HOURS", band_hours)
+    monkeypatch.setattr(utils, "SAME_DAY_RESERVE_MIN_SAMPLES", min_samples)
+    monkeypatch.setattr(utils, "SAME_DAY_RESERVE_SLOTS", 0)
 
 
 def _fake_dt(hour: int):
