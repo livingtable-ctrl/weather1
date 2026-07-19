@@ -1299,6 +1299,66 @@ def _liquidation_price(
     return (1.0 - ask) if ask is not None and ask > 0 else None
 
 
+def _passes_exit_gates(
+    *,
+    ticker: str,
+    log_tag: str,
+    entered_at: str | None = None,
+    close_time: str | None = None,
+    min_hold_hours: float | None = None,
+    settlement_gate_hours: float | None = None,
+) -> bool:
+    """Shared timing gates for early-exit checks (stop-loss/breakeven/model-exit),
+    used by paper.py's and order_executor.py's exit-check functions.
+
+    Pass min_hold_hours to enforce the minimum-hold gate, settlement_gate_hours to
+    enforce the pre-settlement gate; leave either None to skip that gate entirely
+    (matches which gates each call site already applied before this was extracted —
+    no site should start applying a gate it didn't before).
+
+    The two gates fail differently by design, preserved from the original inline
+    checks: a missing/unparseable entered_at fails OPEN (hold gate treated as
+    passed — we cannot assess hold time, so don't block on it), while a missing/
+    unparseable close_time fails CLOSED (settlement gate treated as failed, with a
+    warning — silently skipping it risks closing at settlement-convergence prices).
+    """
+    if min_hold_hours is not None and entered_at:
+        try:
+            entered_dt = datetime.fromisoformat(entered_at.replace("Z", "+00:00"))
+            if entered_dt.tzinfo is None:
+                entered_dt = entered_dt.replace(tzinfo=UTC)
+            hours_held = (datetime.now(UTC) - entered_dt).total_seconds() / 3600
+            if hours_held < min_hold_hours:
+                return False
+        except (ValueError, TypeError):
+            pass  # fail open — same as the original inline `except: pass`
+
+    if settlement_gate_hours is not None:
+        if not close_time:
+            _log.warning(
+                "%s skipping exit for %s — close_time missing, cannot apply %gh gate",
+                log_tag,
+                ticker,
+                settlement_gate_hours,
+            )
+            return False
+        try:
+            close_dt = datetime.fromisoformat(close_time.replace("Z", "+00:00"))
+            hours_to_settlement = (close_dt - datetime.now(UTC)).total_seconds() / 3600
+            if hours_to_settlement < settlement_gate_hours:
+                return False
+        except (ValueError, TypeError):
+            _log.warning(
+                "%s skipping exit for %s — close_time unparseable: %s",
+                log_tag,
+                ticker,
+                close_time,
+            )
+            return False
+
+    return True
+
+
 def check_stop_losses(
     open_trades: list[dict], current_prices: dict[str, dict[str, float]]
 ) -> list[str]:
@@ -1310,7 +1370,7 @@ def check_stop_losses(
 
     current_prices: {ticker: {"bid": yes_bid, "ask": yes_ask}} (0-1 floats)
     """
-    from utils import STOP_LOSS_MULT
+    from utils import EXIT_SETTLEMENT_GATE_HOURS, STOP_LOSS_MULT
 
     if STOP_LOSS_MULT <= 0:
         return []
@@ -1326,29 +1386,17 @@ def check_stop_losses(
         if not ticker or qty <= 0 or cost <= 0:
             continue
 
-        # In the final 24h before settlement, binary markets converge to the actual
-        # temperature outcome. GFS/ensemble-driven intraday price swings in this window
-        # are noise — let the market settle naturally rather than locking in a loss.
-        # Hard-skip trades with no close_time — we cannot apply the gate, and
-        # silently bypassing it risks closing positions at settlement-convergence prices.
+        # In the final EXIT_SETTLEMENT_GATE_HOURS before settlement, binary markets
+        # converge to the actual temperature outcome. GFS/ensemble-driven intraday
+        # price swings in this window are noise — let the market settle naturally
+        # rather than locking in a loss.
         close_time_str = t.get("close_time") or t.get("expires_at")
-        if not close_time_str:
-            _log.warning(
-                "[StopLoss] skipping exit for %s — close_time missing, cannot apply 24h gate",
-                ticker,
-            )
-            continue
-        try:
-            close_dt = datetime.fromisoformat(close_time_str.replace("Z", "+00:00"))
-            hours_to_settlement = (close_dt - datetime.now(UTC)).total_seconds() / 3600
-            if hours_to_settlement < 24:
-                continue
-        except (ValueError, TypeError):
-            _log.warning(
-                "[StopLoss] skipping exit for %s — close_time unparseable: %s",
-                ticker,
-                close_time_str,
-            )
+        if not _passes_exit_gates(
+            ticker=ticker,
+            log_tag="[StopLoss]",
+            close_time=close_time_str,
+            settlement_gate_hours=EXIT_SETTLEMENT_GATE_HOURS,
+        ):
             continue
 
         current_side_price = _liquidation_price(current_prices, ticker, side)
@@ -1411,7 +1459,7 @@ def check_breakeven_stops(
 
     current_prices: {ticker: {"bid": yes_bid, "ask": yes_ask}} (0-1 floats)
     """
-    from utils import BREAKEVEN_TRIGGER_PCT
+    from utils import BREAKEVEN_TRIGGER_PCT, EXIT_SETTLEMENT_GATE_HOURS
 
     exits: list[str] = []
     for t in open_trades:
@@ -1420,27 +1468,16 @@ def check_breakeven_stops(
             continue
         ticker = t.get("ticker", "")
 
-        # Same 24h time-gate as check_stop_losses: in the final day before settlement
-        # price swings are outcome-convergence noise, not a signal to exit.
-        # Hard-skip trades with no close_time — same reasoning as check_stop_losses.
+        # Same settlement-convergence gate as check_stop_losses: in the final
+        # EXIT_SETTLEMENT_GATE_HOURS before settlement, price swings are
+        # outcome-convergence noise, not a signal to exit.
         close_time_str = t.get("close_time") or t.get("expires_at")
-        if not close_time_str:
-            _log.warning(
-                "[BreakevenStop] skipping exit for %s — close_time missing, cannot apply 24h gate",
-                ticker,
-            )
-            continue
-        try:
-            close_dt = datetime.fromisoformat(close_time_str.replace("Z", "+00:00"))
-            hours_to_settlement = (close_dt - datetime.now(UTC)).total_seconds() / 3600
-            if hours_to_settlement < 24:
-                continue
-        except (ValueError, TypeError):
-            _log.warning(
-                "[BreakevenStop] skipping exit for %s — close_time unparseable: %s",
-                ticker,
-                close_time_str,
-            )
+        if not _passes_exit_gates(
+            ticker=ticker,
+            log_tag="[BreakevenStop]",
+            close_time=close_time_str,
+            settlement_gate_hours=EXIT_SETTLEMENT_GATE_HOURS,
+        ):
             continue
 
         entry_price = t.get("entry_price", 0.0)
@@ -2168,6 +2205,7 @@ def check_model_exits(client=None) -> list[dict]:
     if not open_trades:
         return []
 
+    from utils import EXIT_MIN_HOLD_HOURS
     from weather_markets import analyze_trade, enrich_with_forecast
 
     recommendations = []
@@ -2181,22 +2219,16 @@ def check_model_exits(client=None) -> list[dict]:
             held_side = t["side"]
             net_edge = analysis.get("net_edge", analysis["edge"])
 
-            # Minimum hold time: do not exit positions entered within the last 12 hours.
-            # New forecast data stabilises after 6–12h; early exits on noisy first-cycle
-            # updates are almost always spurious.
-            entered_at_str = t.get("entered_at", "")
-            if entered_at_str:
-                try:
-                    entered_dt = datetime.fromisoformat(
-                        entered_at_str.replace("Z", "+00:00")
-                    )
-                    if entered_dt.tzinfo is None:
-                        entered_dt = entered_dt.replace(tzinfo=UTC)
-                    hours_held = (datetime.now(UTC) - entered_dt).total_seconds() / 3600
-                    if hours_held < 12:
-                        continue  # too soon — let the position breathe
-                except (ValueError, TypeError):
-                    pass
+            # Minimum hold time: do not exit positions entered within the last
+            # EXIT_MIN_HOLD_HOURS. New forecast data stabilises after 6-12h; early
+            # exits on noisy first-cycle updates are almost always spurious.
+            if not _passes_exit_gates(
+                ticker=t.get("ticker", "?"),
+                log_tag="[ModelExit]",
+                entered_at=t.get("entered_at", ""),
+                min_hold_hours=EXIT_MIN_HOLD_HOURS,
+            ):
+                continue  # too soon — let the position breathe
 
             # Model flipped: requires a meaningful reversal (10pp threshold)
             flipped = (held_side == "yes" and net_edge < -0.10) or (

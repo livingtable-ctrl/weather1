@@ -491,6 +491,12 @@ class TestConfigIntegrity:
         assert "MIN_EDGE" in fp
         assert "PAPER_MIN_EDGE" in fp
         assert "MAX_DAILY_LOSS_PCT" in fp
+        # Exit-gate constants shared by paper.py/order_executor.py's stop-loss,
+        # breakeven, and model-exit checks (paper._passes_exit_gates) must be
+        # visible in the fingerprint so a drift in them is detectable.
+        assert "EXIT_MIN_HOLD_HOURS" in fp
+        assert "EXIT_SETTLEMENT_GATE_HOURS" in fp
+        assert "MODEL_EXIT_SHIFT_PP" in fp
 
     def test_check_config_integrity_first_run(self, tmp_path, monkeypatch):
         """First run: no previous hash → changed=False, writes hash file."""

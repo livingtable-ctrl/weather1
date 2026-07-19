@@ -167,6 +167,246 @@ class TestCheckEarlyExitsHoldTime:
         )
 
 
+class TestPassesExitGates:
+    """Tests for paper._passes_exit_gates, the shared timing-gate helper
+    extracted from check_stop_losses/check_breakeven_stops/check_model_exits
+    (paper.py) and _check_early_exits/_check_live_model_exits (order_executor.py).
+    """
+
+    def test_no_gates_requested_passes(self):
+        from paper import _passes_exit_gates
+
+        assert _passes_exit_gates(ticker="X", log_tag="[T]") is True
+
+    def test_hold_gate_blocks_when_too_soon(self):
+        from paper import _passes_exit_gates
+
+        entered_at = (datetime.now(UTC) - timedelta(hours=6)).isoformat()
+        assert (
+            _passes_exit_gates(
+                ticker="X",
+                log_tag="[T]",
+                entered_at=entered_at,
+                min_hold_hours=12,
+            )
+            is False
+        )
+
+    def test_hold_gate_passes_when_past_threshold(self):
+        from paper import _passes_exit_gates
+
+        entered_at = (datetime.now(UTC) - timedelta(hours=13)).isoformat()
+        assert (
+            _passes_exit_gates(
+                ticker="X",
+                log_tag="[T]",
+                entered_at=entered_at,
+                min_hold_hours=12,
+            )
+            is True
+        )
+
+    def test_hold_gate_fails_open_on_missing_entered_at(self):
+        """Preserves the original inline behavior: a missing entered_at does NOT
+        block the exit (fail-open — we cannot assess hold time)."""
+        from paper import _passes_exit_gates
+
+        assert (
+            _passes_exit_gates(
+                ticker="X", log_tag="[T]", entered_at="", min_hold_hours=12
+            )
+            is True
+        )
+
+    def test_hold_gate_fails_open_on_unparseable_entered_at(self):
+        from paper import _passes_exit_gates
+
+        assert (
+            _passes_exit_gates(
+                ticker="X",
+                log_tag="[T]",
+                entered_at="not-a-date",
+                min_hold_hours=12,
+            )
+            is True
+        )
+
+    def test_settlement_gate_blocks_within_window(self):
+        from paper import _passes_exit_gates
+
+        close_time = (datetime.now(UTC) + timedelta(hours=1)).isoformat()
+        assert (
+            _passes_exit_gates(
+                ticker="X",
+                log_tag="[T]",
+                close_time=close_time,
+                settlement_gate_hours=24,
+            )
+            is False
+        )
+
+    def test_settlement_gate_passes_outside_window(self):
+        from paper import _passes_exit_gates
+
+        close_time = (datetime.now(UTC) + timedelta(hours=48)).isoformat()
+        assert (
+            _passes_exit_gates(
+                ticker="X",
+                log_tag="[T]",
+                close_time=close_time,
+                settlement_gate_hours=24,
+            )
+            is True
+        )
+
+    def test_settlement_gate_fails_closed_on_missing_close_time(self, caplog):
+        """Preserves the original inline behavior: a missing close_time DOES block
+        the exit (fail-closed — silently bypassing risks a settlement-convergence
+        price), and logs a warning tagged with the caller's log_tag."""
+        from paper import _passes_exit_gates
+
+        with caplog.at_level("WARNING"):
+            result = _passes_exit_gates(
+                ticker="KXTEST-1",
+                log_tag="[StopLoss]",
+                close_time=None,
+                settlement_gate_hours=24,
+            )
+        assert result is False
+        assert "[StopLoss]" in caplog.text
+        assert "KXTEST-1" in caplog.text
+
+    def test_settlement_gate_fails_closed_on_unparseable_close_time(self):
+        from paper import _passes_exit_gates
+
+        assert (
+            _passes_exit_gates(
+                ticker="X",
+                log_tag="[T]",
+                close_time="not-a-date",
+                settlement_gate_hours=24,
+            )
+            is False
+        )
+
+    def test_both_gates_hold_blocks_even_if_settlement_would_pass(self):
+        from paper import _passes_exit_gates
+
+        entered_at = (datetime.now(UTC) - timedelta(hours=6)).isoformat()
+        close_time = (datetime.now(UTC) + timedelta(hours=48)).isoformat()
+        assert (
+            _passes_exit_gates(
+                ticker="X",
+                log_tag="[T]",
+                entered_at=entered_at,
+                close_time=close_time,
+                min_hold_hours=12,
+                settlement_gate_hours=24,
+            )
+            is False
+        )
+
+    def test_both_gates_settlement_blocks_even_if_hold_would_pass(self):
+        from paper import _passes_exit_gates
+
+        entered_at = (datetime.now(UTC) - timedelta(hours=48)).isoformat()
+        close_time = (datetime.now(UTC) + timedelta(hours=1)).isoformat()
+        assert (
+            _passes_exit_gates(
+                ticker="X",
+                log_tag="[T]",
+                entered_at=entered_at,
+                close_time=close_time,
+                min_hold_hours=12,
+                settlement_gate_hours=24,
+            )
+            is False
+        )
+
+    def test_both_gates_pass_together(self):
+        from paper import _passes_exit_gates
+
+        entered_at = (datetime.now(UTC) - timedelta(hours=48)).isoformat()
+        close_time = (datetime.now(UTC) + timedelta(hours=48)).isoformat()
+        assert (
+            _passes_exit_gates(
+                ticker="X",
+                log_tag="[T]",
+                entered_at=entered_at,
+                close_time=close_time,
+                min_hold_hours=12,
+                settlement_gate_hours=24,
+            )
+            is True
+        )
+
+
+class TestModelExitShiftPpIsConfigurable:
+    """MODEL_EXIT_SHIFT_PP replaced a hardcoded 0.25 literal in both
+    _check_early_exits and _check_live_model_exits — prove the constant is
+    actually read (not a dead import) by overriding it and checking a shift
+    that was previously below threshold now triggers, and vice versa."""
+
+    def test_lowering_threshold_triggers_previously_subthreshold_shift(
+        self, monkeypatch
+    ):
+        import order_executor
+
+        monkeypatch.setattr(order_executor, "MODEL_EXIT_SHIFT_PP", 0.20)
+
+        new_trade = _make_trade(entered_hours_ago=24, side="yes")
+        far_future = (datetime.now(UTC) + timedelta(days=10)).isoformat()
+        new_trade["close_time"] = far_future
+
+        mock_market = {"ticker": "KXWT-24-T50-B3", "yes_bid": 30}
+        # entry_prob=0.65, forecast_prob=0.42 -> shift=0.23: above the lowered
+        # 0.20 threshold but below the original 0.25 default.
+        mock_analysis = {"forecast_prob": 0.42, "net_edge": -0.10}
+        mock_client = MagicMock()
+        mock_client.get_market.return_value = mock_market
+
+        with (
+            patch("order_executor.get_weather_markets", return_value=[mock_market]),
+            patch("order_executor.enrich_with_forecast", return_value=mock_market),
+            patch("order_executor.analyze_trade", return_value=mock_analysis),
+            patch("paper.get_open_trades", return_value=[new_trade]),
+            patch("paper.close_paper_early", return_value={"pnl": -1.0}),
+        ):
+            closed = order_executor._check_early_exits(mock_client)
+
+        assert closed == 1, (
+            "shift=0.23 must trigger an exit once MODEL_EXIT_SHIFT_PP is "
+            "lowered to 0.20 — proves the constant is read live, not hardcoded"
+        )
+
+    def test_default_threshold_does_not_trigger_same_shift(self):
+        """Sanity companion to the above: the same 0.23 shift must NOT exit
+        under the real default (0.25) — proves the prior test's trigger really
+        came from the lowered threshold, not from something else."""
+        import order_executor
+
+        assert order_executor.MODEL_EXIT_SHIFT_PP == pytest.approx(0.25)
+
+        new_trade = _make_trade(entered_hours_ago=24, side="yes")
+        far_future = (datetime.now(UTC) + timedelta(days=10)).isoformat()
+        new_trade["close_time"] = far_future
+
+        mock_market = {"ticker": "KXWT-24-T50-B3", "yes_bid": 30}
+        mock_analysis = {"forecast_prob": 0.42, "net_edge": -0.10}
+        mock_client = MagicMock()
+        mock_client.get_market.return_value = mock_market
+
+        with (
+            patch("order_executor.get_weather_markets", return_value=[mock_market]),
+            patch("order_executor.enrich_with_forecast", return_value=mock_market),
+            patch("order_executor.analyze_trade", return_value=mock_analysis),
+            patch("paper.get_open_trades", return_value=[new_trade]),
+        ):
+            closed = order_executor._check_early_exits(mock_client)
+
+        assert closed == 0
+
+
 class TestBreakevenStops:
     def test_check_breakeven_stops_fires_when_peak_met_and_price_falls(self):
         """check_breakeven_stops must return the ticker when peak was met and price fell back."""

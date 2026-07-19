@@ -282,6 +282,20 @@ STOP_LOSS_MULT = float(os.getenv("STOP_LOSS_MULT", "2.0"))
 # to entry or below triggers a scratch exit — the position can no longer lose money.
 BREAKEVEN_TRIGGER_PCT: float = float(os.getenv("BREAKEVEN_TRIGGER_PCT", "0.30"))
 
+# Shared exit-gate timing thresholds, used by paper.py's and order_executor.py's
+# stop-loss/breakeven/model-exit checks (paper._passes_exit_gates and callers).
+# Minimum hold time before a position is eligible for an early model-driven exit —
+# new forecast data stabilises after 6-12h, so early exits on noisy first-cycle
+# updates are almost always spurious.
+EXIT_MIN_HOLD_HOURS: float = float(os.getenv("EXIT_MIN_HOLD_HOURS", "12"))
+# Pre-settlement window during which stop-loss/breakeven/model exits are skipped —
+# binary markets converge to the actual outcome in the final hours before close,
+# and intraday model/price swings in this window are convergence noise, not signal.
+EXIT_SETTLEMENT_GATE_HOURS: float = float(os.getenv("EXIT_SETTLEMENT_GATE_HOURS", "24"))
+# Model-exit probability-shift threshold: close a position early when the updated
+# model probability has moved this many percentage points against the entry side.
+MODEL_EXIT_SHIFT_PP: float = float(os.getenv("MODEL_EXIT_SHIFT_PP", "0.25"))
+
 # Between-market low-confidence YES guard: block a "between" trade when our blended
 # probability is below this and would still lead to a YES bet (see the between_floor
 # gate in weather_markets.analyze_trade). Lower to block more, raise to loosen.
@@ -447,6 +461,9 @@ def get_config_fingerprint() -> dict:
         "SAME_DAY_DYNAMIC_K": SAME_DAY_DYNAMIC_K,
         "SAME_DAY_DYNAMIC_BAND_HOURS": SAME_DAY_DYNAMIC_BAND_HOURS,
         "BREAKEVEN_TRIGGER_PCT": BREAKEVEN_TRIGGER_PCT,
+        "EXIT_MIN_HOLD_HOURS": EXIT_MIN_HOLD_HOURS,
+        "EXIT_SETTLEMENT_GATE_HOURS": EXIT_SETTLEMENT_GATE_HOURS,
+        "MODEL_EXIT_SHIFT_PP": MODEL_EXIT_SHIFT_PP,
         "BETWEEN_FLOOR_MODEL_MAX": BETWEEN_FLOOR_MODEL_MAX,
         "MAX_DAILY_LOSS_PCT": MAX_DAILY_LOSS_PCT,
         "MAX_DAYS_OUT": MAX_DAYS_OUT,

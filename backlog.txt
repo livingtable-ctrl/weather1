@@ -3297,13 +3297,78 @@ When to revisit:
     HURRICANE MARKETS (above) is actually greenlit -- do the ground-truth
     generalization first, before either.
 
-[PAPER AND LIVE POSITIONS ARE TWO LEDGERS WITH ADAPTER GLUE -- EVERY RISK FEATURE SHIPS TWICE]
+[PARTIALLY RESOLVED 2026-07-19] PAPER AND LIVE POSITIONS ARE TWO LEDGERS WITH ADAPTER GLUE -- EVERY RISK FEATURE SHIPS TWICE
 Priority: Medium -- cost compounds per feature once live trading is real;
   currently only ~4 features deep. Includes a real, already-observed
   drift: exit-gate thresholds duplicated as bare literals across both
   files with a docstring/code mismatch already caught (see below).
 
-Problem:
+RESOLVED 2026-07-19 (the "Now" tier only -- the full Position read-model
+  below is still open, unstarted, deliberately deferred to the next
+  live-position feature per this entry's own "When to revisit"):
+  Shipped named module constants (EXIT_MIN_HOLD_HOURS=12,
+  EXIT_SETTLEMENT_GATE_HOURS=24, MODEL_EXIT_SHIFT_PP=0.25, all
+  env-overridable via os.getenv, matching every other utils.py constant's
+  convention) plus one extracted paper._passes_exit_gates(entered_at,
+  close_time, log_tag=..., ticker=..., min_hold_hours=None,
+  settlement_gate_hours=None) -> bool helper, used by all 5 real call
+  sites (paper.check_stop_losses, paper.check_breakeven_stops,
+  paper.check_model_exits, order_executor._check_early_exits,
+  order_executor._check_live_model_exits) in place of 7 hand-copied
+  datetime-parsing blocks (4 settlement-gate copies, 3 hold-gate copies).
+  All 3 constants added to utils.get_config_fingerprint().
+  Also fixed the docstring/code drift this entry's own priority note
+  flagged: _check_early_exits' docstring claimed a ">15 percentage
+  points" shift threshold while the code (and its own inline comment two
+  lines below the docstring) already correctly gated on 0.25 --
+  docstring corrected to reference MODEL_EXIT_SHIFT_PP.
+  Scope decision (asked via AskUserQuestion before implementing, since 3
+  of the 5 call sites only ever applied one of the two gates -- e.g.
+  check_model_exits has never had a settlement gate, check_stop_losses/
+  check_breakeven_stops have never had a hold gate): user asked to review
+  the actual diff rather than decide the scope question abstractly, so
+  this shipped as a pure refactor with zero behavior change -- the helper
+  takes each gate as an optional param, and every call site passes
+  exactly the gate(s) it already applied before extraction, no more.
+  Whether to also harmonize (e.g. give check_model_exits the settlement
+  gate too) is a separate, not-yet-made decision -- flag it as its own
+  follow-up if picked up later, don't fold it into a future "cleanup"
+  pass silently.
+  Also preserved two behavior asymmetries verified against the original
+  inline code rather than assumed: (1) the hold gate fails OPEN on a
+  missing/unparseable entered_at (proceeds, does not block), while the
+  settlement gate fails CLOSED on a missing/unparseable close_time
+  (blocks, with a warning) -- these were already inconsistent with each
+  other in the original code and this refactor keeps that inconsistency
+  intact rather than "fixing" it as an uninvited behavior change; (2)
+  _check_live_model_exits reads only pos.get("close_time") (no
+  expires_at fallback), unlike the other 4 sites which read
+  t.get("close_time") or t.get("expires_at") -- kept as-is, not unified.
+  New tests (tests/test_early_exits.py): TestPassesExitGates (12 tests
+  covering each gate's block/pass boundary, both fail-open/fail-closed
+  missing-field behaviors, and both-gates-combined interaction) and
+  TestModelExitShiftPpIsConfigurable (2 tests proving MODEL_EXIT_SHIFT_PP
+  is actually read live, not a dead import -- monkeypatches the constant
+  to 0.20 and confirms a shift of 0.23, which the real 0.25 default would
+  NOT exit on, now does; a companion test confirms the real default
+  still does not exit on that same shift). Mutation-tested the threshold
+  wiring directly: reverted `if shift > MODEL_EXIT_SHIFT_PP` to the old
+  literal `if shift > 0.25` and confirmed the new configurability test
+  fails for the right reason (closed=0 instead of 1), then restored the
+  fix and confirmed it passes again. Added the 3 new fingerprint keys to
+  tests/test_p9_p10.py's existing fingerprint-shape test.
+  438 tests pass across every file that references these 5 call sites
+  (test_early_exits.py, test_paper.py, test_live_execution.py,
+  test_p9_p10.py, test_trading.py, test_cron_integration.py,
+  test_menu_ux.py, test_paper_metrics.py, test_spend_validation.py,
+  test_cron_group_c.py, test_main_cron_smoke.py). ruff + ruff format +
+  mypy clean on all changed files (verified under the project's real
+  py -3.12 interpreter, not the system `python` which resolves to 3.14
+  on this machine and lacks ruff/mypy -- worth noting for future
+  sessions on this machine).
+
+Problem (as originally scoped, still accurate for the still-open full
+Position read-model below):
   A "position" exists in two unrelated persistence models -- paper's JSON
   ledger (data/paper_trades.json, full read-modify-write under
   _DATA_LOCK, paper.py:87/107) and live's execution_log SQLite rows --
@@ -3332,33 +3397,32 @@ Problem:
   code gates on `shift > 0.25` (line 1715).
 
 What it would look like:
-  Two-tier fix. Now: named module constants (EXIT_MIN_HOLD_HOURS=12,
-  EXIT_SETTLEMENT_GATE_HOURS=24, MODEL_EXIT_SHIFT_PP=0.25) shared by both
-  files and added to get_config_fingerprint(), plus one extracted
-  _passes_exit_gates(entered_at, close_time, log_tag) -> bool used by all
-  5-6 sites. Later: a Position read-model -- one dataclass with the
-  fields the check functions actually consume (ticker, side, qty,
-  entry_price, entry_prob, cost, peak_profit_pct, close_time), two
-  PositionStore implementations (paper JSON, execution_log), and the
-  stop-loss/breakeven/model-exit/peak logic operating solely on
-  list[Position] + an injected exit(position, price, reason) callback.
-  Fix update_peak_profits to actually operate on its parameter (thin
-  paper wrapper keeps JSON persistence; live path calls the pure
-  function), collapsing _update_live_peak_profits to persistence-only.
+  Two-tier fix. Now (DONE 2026-07-19, see resolution above): named module
+  constants (EXIT_MIN_HOLD_HOURS=12, EXIT_SETTLEMENT_GATE_HOURS=24,
+  MODEL_EXIT_SHIFT_PP=0.25) shared by both files and added to
+  get_config_fingerprint(), plus one extracted _passes_exit_gates(...)
+  -> bool used by all 5 sites. Later (still open): a Position read-model
+  -- one dataclass with the fields the check functions actually consume
+  (ticker, side, qty, entry_price, entry_prob, cost, peak_profit_pct,
+  close_time), two PositionStore implementations (paper JSON,
+  execution_log), and the stop-loss/breakeven/model-exit/peak logic
+  operating solely on list[Position] + an injected exit(position, price,
+  reason) callback. Fix update_peak_profits to actually operate on its
+  parameter (thin paper wrapper keeps JSON persistence; live path calls
+  the pure function), collapsing _update_live_peak_profits to
+  persistence-only.
 
-Why not now:
-  - The constants+helper extraction is low-risk and could ride along the
-    next time either file is open. The full read-model touches
-    paper.py's battle-tested check functions -- exactly what the
-    2026-07-13 session was avoiding -- so save it for when the next
-    live-position feature (partial-fill handling is the likeliest) needs
+Why not now (for the remaining full read-model piece):
+  - The full read-model touches paper.py's battle-tested check functions
+    -- exactly what the 2026-07-13 session was avoiding -- so save it for
+    when the next live-position feature (partial-fill handling is the
+    likeliest) needs
     a third consumer to validate the interface against.
 
 When to revisit:
-  - Named constants + shared gate helper: next time either file is open
-    for any reason. Full Position read-model: when the next live-position
-    feature lands, using it as the third consumer that validates the
-    interface.
+  - Named constants + shared gate helper: DONE 2026-07-19, see resolution
+    above. Full Position read-model: when the next live-position feature
+    lands, using it as the third consumer that validates the interface.
 
 [SIGNAL GRADUATION IS A CONVENTION, NOT A MECHANISM -- SIGNAL #3 REBUILDS RUN-TREND'S PLUMBING]
 Priority: Medium -- the log-only->trigger->blend pattern is now this

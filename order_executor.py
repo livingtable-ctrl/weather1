@@ -21,10 +21,13 @@ import execution_log
 from ab_test import ABTest as _ABTest
 from colors import dim, green, red, yellow
 from utils import (
+    EXIT_MIN_HOLD_HOURS,
+    EXIT_SETTLEMENT_GATE_HOURS,
     MAX_DAILY_SPEND,
     MAX_SAME_DAY_SPEND,
     MAX_VAR_DOLLARS,
     MIN_EDGE,
+    MODEL_EXIT_SHIFT_PP,
     get_paper_min_edge,
     is_trading_paused,
 )
@@ -1215,8 +1218,9 @@ def _check_live_model_exits(client, config: dict | None = None) -> int:
     """Live equivalent of _check_early_exits (paper-only, above): re-analyze
     each open live position and close it if the model's probability has
     shifted meaningfully against the entry direction. Mirrors that
-    function's exact gates (12h minimum hold, 24h pre-settlement skip, 25pp
-    shift threshold) for consistency. Kept as a separate function rather
+    function's exact gates (EXIT_MIN_HOLD_HOURS minimum hold,
+    EXIT_SETTLEMENT_GATE_HOURS pre-settlement skip, MODEL_EXIT_SHIFT_PP shift
+    threshold) for consistency. Kept as a separate function rather
     than extending _check_early_exits itself, to avoid any risk of
     regressing the existing, already-relied-on paper-only path.
 
@@ -1235,7 +1239,7 @@ def _check_live_model_exits(client, config: dict | None = None) -> int:
     markets_by_ticker = {m["ticker"]: m for m in markets}
     cycle = _current_forecast_cycle()
 
-    from paper import _liquidation_price
+    from paper import _liquidation_price, _passes_exit_gates
 
     closed = 0
     for pos in positions:
@@ -1260,44 +1264,17 @@ def _check_live_model_exits(client, config: dict | None = None) -> int:
             else:
                 shift = current_prob - entry_prob
 
-            entered_at_str = pos.get("entered_at", "")
-            if entered_at_str:
-                try:
-                    entered_dt = datetime.fromisoformat(
-                        entered_at_str.replace("Z", "+00:00")
-                    )
-                    if entered_dt.tzinfo is None:
-                        entered_dt = entered_dt.replace(tzinfo=UTC)
-                    hours_held = (datetime.now(UTC) - entered_dt).total_seconds() / 3600
-                    if hours_held < 12:
-                        continue
-                except (ValueError, TypeError):
-                    pass
-
-            close_time_str = pos.get("close_time")
-            if not close_time_str:
-                _log.warning(
-                    "[LiveModelExit] skipping %s — close_time missing, "
-                    "cannot apply 24h gate",
-                    ticker,
-                )
-                continue
-            try:
-                close_dt = datetime.fromisoformat(close_time_str.replace("Z", "+00:00"))
-                hours_to_settlement = (
-                    close_dt - datetime.now(UTC)
-                ).total_seconds() / 3600
-                if hours_to_settlement < 24:
-                    continue
-            except (ValueError, TypeError):
-                _log.warning(
-                    "[LiveModelExit] skipping %s — close_time unparseable: %s",
-                    ticker,
-                    close_time_str,
-                )
+            if not _passes_exit_gates(
+                ticker=ticker,
+                log_tag="[LiveModelExit]",
+                entered_at=pos.get("entered_at", ""),
+                close_time=pos.get("close_time"),
+                min_hold_hours=EXIT_MIN_HOLD_HOURS,
+                settlement_gate_hours=EXIT_SETTLEMENT_GATE_HOURS,
+            ):
                 continue
 
-            if shift > 0.25:
+            if shift > MODEL_EXIT_SHIFT_PP:
                 book = _get_current_book(client, ticker) or market
                 current_prices = {
                     ticker: {
@@ -1625,13 +1602,13 @@ def _sameday_effective_cap(max_positions: int) -> int:
 def _check_early_exits(client=None) -> int:
     """
     Re-analyze all open paper positions. If the updated model probability has
-    shifted >15 percentage points against the entry direction, close the position
-    early at the current market mid-price.
+    shifted more than MODEL_EXIT_SHIFT_PP (default 25 percentage points) against
+    the entry direction, close the position early at the current market mid-price.
 
     Returns the number of positions closed.
     """
     import paper as _paper
-    from paper import get_open_trades
+    from paper import _passes_exit_gates, get_open_trades
 
     if client is None:
         return 0  # cannot fetch live market prices without a client
@@ -1667,52 +1644,23 @@ def _check_early_exits(client=None) -> int:
             else:
                 shift = current_prob - entry_prob  # positive = prob rose against NO
 
-            # Minimum hold time — skip exits for trades placed within 12 hours
-            entered_at_str = trade.get("entered_at", "")
-            if entered_at_str:
-                try:
-                    entered_dt = datetime.fromisoformat(
-                        entered_at_str.replace("Z", "+00:00")
-                    )
-                    if entered_dt.tzinfo is None:
-                        entered_dt = entered_dt.replace(tzinfo=UTC)
-                    hours_held = (datetime.now(UTC) - entered_dt).total_seconds() / 3600
-                    if hours_held < 12:
-                        continue
-                except (ValueError, TypeError):
-                    pass
-
-            # Settlement gate — same rationale as the stop-loss 24h gate in paper.py.
-            # GFS intraday updates can shift forecast_prob by >25pp in the final hours
-            # before settlement without the temperature outcome actually changing.
-            # Let the market converge naturally rather than closing a winning position
-            # on a transient model revision.
-            # Hard-skip trades with no close_time — same reasoning as paper.py
-            # check_stop_losses: silently bypassing the 24h gate risks closing
-            # positions at settlement-convergence prices.
+            # Minimum hold time, then the settlement-convergence gate — same
+            # rationale as paper.py's check_stop_losses: GFS intraday updates can
+            # shift forecast_prob sharply in the final hours before settlement
+            # without the temperature outcome actually changing, so let the market
+            # converge naturally rather than closing on a transient model revision.
             close_time_str = trade.get("close_time") or trade.get("expires_at")
-            if not close_time_str:
-                _log.warning(
-                    "[EarlyExit] skipping exit for %s — close_time missing, cannot apply 24h gate",
-                    trade.get("ticker", "?"),
-                )
-                continue
-            try:
-                close_dt = datetime.fromisoformat(close_time_str.replace("Z", "+00:00"))
-                hours_to_settlement = (
-                    close_dt - datetime.now(UTC)
-                ).total_seconds() / 3600
-                if hours_to_settlement < 24:
-                    continue
-            except (ValueError, TypeError):
-                _log.warning(
-                    "[EarlyExit] skipping exit for %s — close_time unparseable: %s",
-                    trade.get("ticker", "?"),
-                    close_time_str,
-                )
+            if not _passes_exit_gates(
+                ticker=trade.get("ticker", "?"),
+                log_tag="[EarlyExit]",
+                entered_at=trade.get("entered_at", ""),
+                close_time=close_time_str,
+                min_hold_hours=EXIT_MIN_HOLD_HOURS,
+                settlement_gate_hours=EXIT_SETTLEMENT_GATE_HOURS,
+            ):
                 continue
 
-            if shift > 0.25:
+            if shift > MODEL_EXIT_SHIFT_PP:
                 exit_price = _midpoint_price(market, side)
                 # H-4: never close at zero — missing market data returns 0.0 which
                 # records maximum loss even if the trade was profitable.
