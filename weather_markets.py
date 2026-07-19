@@ -35,7 +35,11 @@ from climatology import climatological_prob
 from forecast_cache import ForecastCache
 from kalshi_client import KalshiClient, _request_with_retry
 from nws import fetch_nbm_forecast, get_live_observation, nws_prob, obs_prob
-from paths import CITY_REGISTRY_REPORT_PATH, SERIES_DRIFT_PATH
+from paths import (
+    CITY_REGISTRY_REPORT_PATH,
+    RETIREMENT_PROBATION_PATH,
+    SERIES_DRIFT_PATH,
+)
 from schema_validator import is_all_null, validate_forecast
 from utils import (
     BETWEEN_FLOOR_MODEL_MAX,
@@ -3587,6 +3591,118 @@ def log_city_registry_report() -> None:
         _log.debug("log_city_registry_report failed (non-fatal): %s", _exc)
 
 
+# Bounded sample per probation run — a diagnostic side-check, not the live
+# scan, so it deliberately doesn't run analyze_trade() over every open
+# market. get_weather_markets() is 60s-cached, so calling it again here
+# right after cron's main scan is normally a cache hit (no extra API cost);
+# the per-market analyze_trade(bypass=True) calls are the real cost, and
+# most of their underlying forecast fetches are ForecastCache-warm from the
+# main scan moments earlier too.
+_PROBATION_SAMPLE_SIZE = 25
+# Same threshold auto_retire_strategies() uses to retire a method in the
+# first place (tracker.py's retire_threshold default) — un-retirement uses
+# the identical bar rather than a stricter one because unretire_strategy()
+# already writes a 72h re-retirement-immunity pin, which is what actually
+# protects against flapping.
+_PROBATION_UNRETIRE_THRESHOLD = 0.25
+
+
+def check_retirement_probation(client: KalshiClient) -> None:
+    """Once per day: for each currently-retired forecasting method, sample a
+    handful of live markets and compute what that method WOULD predict via
+    analyze_trade(bypass_retirement_check=True), purely to generate fresh
+    post-retirement evidence. Auto-unretires a method once its probation-only
+    rolling Brier (tracker.brier_score_probation_rolling) clears the
+    threshold. Never raises, never affects the live scan/trading path — own
+    market fetch and own try/except, same isolation contract as
+    check_series_drift()/log_city_registry_report() above (backlog.txt
+    "AUTO UN-RETIREMENT").
+
+    Why this exists: analyze_trade()'s retired-method gate returns None
+    before any prediction is logged, so a retired method could never
+    generate fresh evidence of recovery on its own. auto_retire_strategies()'s
+    existing rolling-Brier "recovery" check (which un-blocks *new*
+    retirement, not un-retirement) was consequently only ever measuring old
+    pre-retirement predictions rolling through the window over time, not
+    genuine recent performance.
+    """
+    try:
+        from tracker import get_retired_strategies as _get_retired
+
+        retired = _get_retired()
+        if not retired:
+            return
+
+        today = datetime.now(UTC).date().isoformat()
+        if RETIREMENT_PROBATION_PATH.exists():
+            existing = json.loads(RETIREMENT_PROBATION_PATH.read_text())
+            if existing.get("date") == today:
+                return  # already ran today
+
+        import random
+
+        import tracker as _tracker
+
+        markets = get_weather_markets(client)
+        sample = random.sample(markets, min(len(markets), _PROBATION_SAMPLE_SIZE))
+
+        logged = 0
+        for m in sample:
+            try:
+                if is_stale(m):
+                    continue
+                enriched = enrich_with_forecast(m)
+                analysis = analyze_trade(enriched, bypass_retirement_check=True)
+            except Exception as _analysis_exc:
+                _log.debug(
+                    "check_retirement_probation: analysis failed for %s: %s",
+                    m.get("ticker", "?"),
+                    _analysis_exc,
+                )
+                continue
+            if not analysis:
+                continue
+            method = analysis.get("method")
+            if method not in retired:
+                continue  # this market's method isn't currently retired
+            city = enriched.get("_city")
+            market_date = enriched.get("_date")
+            if _tracker.log_prediction(
+                m.get("ticker", ""),
+                city,
+                market_date,
+                analysis,
+                is_shadow=True,
+                is_probation=True,
+            ):
+                logged += 1
+
+        _safe_io.atomic_write_json(
+            {"date": today, "logged": logged}, RETIREMENT_PROBATION_PATH
+        )
+        if logged:
+            _log.info(
+                "retirement_probation: logged %d fresh probation prediction(s) "
+                "across %d retired method(s)",
+                logged,
+                len(retired),
+            )
+
+        for method in list(retired):
+            score = _tracker.brier_score_probation_rolling(method)
+            if score is not None and score <= _PROBATION_UNRETIRE_THRESHOLD:
+                if _tracker.unretire_strategy(method):
+                    _log.warning(
+                        "retirement_probation: auto-un-retired method=%s "
+                        "(probation rolling Brier %.4f <= threshold %.4f)",
+                        method,
+                        score,
+                        _PROBATION_UNRETIRE_THRESHOLD,
+                    )
+    except Exception as _exc:
+        _log.debug("check_retirement_probation failed (non-fatal): %s", _exc)
+
+
 def parse_city_date(market: dict) -> tuple[str | None, date | None]:
     """
     Extract (city, target_date) from a market dict without any network calls.
@@ -5543,7 +5659,9 @@ def _metar_lock_in(
         return False, 0.0, {}
 
 
-def analyze_trade(enriched: dict) -> dict | None:
+def analyze_trade(
+    enriched: dict, *, bypass_retirement_check: bool = False
+) -> dict | None:
     """
     Full multi-source trade analysis pipeline:
       1. Ensemble probability (80+ members, ICON + GFS)
@@ -5555,6 +5673,15 @@ def analyze_trade(enriched: dict) -> dict | None:
       7. Bias correction from tracker (if data available)
       8. Bootstrap confidence interval
       9. Kelly fraction
+
+    bypass_retirement_check: skips the retired-strategy gate below so the
+    full analysis (including the resolved "method") still runs even when
+    that method is currently retired. False for every real call site
+    (~19, all positional -- this is keyword-only specifically so it can
+    never be passed positionally by accident). Used exclusively by
+    check_retirement_probation() to generate fresh, post-retirement
+    evidence for a retired method without ever affecting a live trade
+    decision (backlog.txt "AUTO UN-RETIREMENT").
     """
     if not isinstance(enriched, dict):
         raise ValueError(
@@ -6891,7 +7018,7 @@ def analyze_trade(enriched: dict) -> dict | None:
         from tracker import get_retired_strategies as _get_retired
 
         _retired = _get_retired()
-        if method in _retired:
+        if method in _retired and not bypass_retirement_check:
             _log.info(
                 "analyze_trade: skipping %s — method '%s' is retired (Brier %.4f)",
                 enriched.get("ticker", "?"),

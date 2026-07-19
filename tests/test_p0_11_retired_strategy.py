@@ -15,14 +15,19 @@ def _make_enriched(ticker="KXHIGH-26MAY10-T75", city="NYC"):
     return {
         "ticker": ticker,
         "series_ticker": "KXHIGH",
+        "title": "Will the high temperature be above 75°F?",
         "_city": city,
         "_date": tomorrow,
         "_hour": None,
         "_forecast": {
             "high_f": 78.0,
             "low_f": 60.0,
-            "high_range": [74.0, 82.0],
-            "low_range": [57.0, 63.0],
+            # Narrow enough to clear MAX_MODEL_SPREAD_F (default 8.0°F, but
+            # some environments override it lower via env var) with margin,
+            # so bypass-path tests that need a real (non-None) result aren't
+            # blocked by an unrelated gate.
+            "high_range": [77.0, 79.0],
+            "low_range": [59.0, 61.0],
         },
         "volume_fp": 5000,
         "open_interest_fp": 1000,
@@ -37,7 +42,23 @@ def _stub_heavy_deps(monkeypatch):
     """Stub network/disk calls so analyze_trade reaches the Kelly section."""
     monkeypatch.setattr(
         "weather_markets.get_ensemble_temps",
-        lambda city, date, hour=None, var="max": [75.0] * 12,
+        # Non-degenerate spread (not all-identical) so the ensemble isn't
+        # rejected by the degenerate-ensemble gate -- centered near the
+        # fixture's threshold=75 so downstream Kelly/edge math stays sane.
+        lambda city, date, hour=None, var="max": [
+            73.0,
+            74.0,
+            74.5,
+            75.0,
+            75.0,
+            75.5,
+            76.0,
+            76.5,
+            77.0,
+            74.0,
+            76.0,
+            75.5,
+        ],
     )
     monkeypatch.setattr(
         "weather_markets._metar_lock_in",
@@ -169,3 +190,68 @@ class TestRetiredStrategyGate:
         assert not kelly_called, (
             "kelly_fraction must not be called when the method is retired"
         )
+
+
+class TestRetirementProbationBypass:
+    """bypass_retirement_check=True is check_retirement_probation()'s only
+    caller — it must let a retired method's analysis complete normally
+    (including reaching Kelly) so a genuine probation prediction can be
+    logged, while every other (positional-only) call site is unaffected."""
+
+    def test_bypass_true_proceeds_past_retired_gate(self, monkeypatch):
+        """With bypass_retirement_check=True, a retired method must not be
+        blocked — the full analysis dict comes back with method='ensemble'."""
+        _stub_heavy_deps(monkeypatch)
+
+        retired = {"ensemble": {"brier": 0.27}}
+        with patch("tracker.get_retired_strategies", return_value=retired):
+            import weather_markets
+
+            result = weather_markets.analyze_trade(
+                _make_enriched(), bypass_retirement_check=True
+            )
+
+        assert result is not None, (
+            "bypass_retirement_check=True must not be blocked by a retired method"
+        )
+        assert result["method"] == "ensemble"
+
+    def test_bypass_false_default_still_blocks(self, monkeypatch):
+        """Confirms the keyword-only default is False -- every real (positional)
+        call site keeps today's blocking behavior unchanged."""
+        _stub_heavy_deps(monkeypatch)
+
+        retired = {"ensemble": {"brier": 0.27}}
+        with patch("tracker.get_retired_strategies", return_value=retired):
+            import weather_markets
+
+            result = weather_markets.analyze_trade(_make_enriched())
+
+        assert result is None
+
+    def test_bypass_reaches_kelly_for_retired_method(self, monkeypatch):
+        """Mirrors test_retired_gate_fires_before_kelly's spy, but inverted:
+        with bypass=True, Kelly sizing must actually run for a retired
+        method (needed so the returned analysis dict is complete enough for
+        check_retirement_probation() to log a real prediction)."""
+        _stub_heavy_deps(monkeypatch)
+
+        kelly_called = []
+        original_kelly = __import__("weather_markets").kelly_fraction
+
+        def spy_kelly(*args, **kwargs):
+            kelly_called.append(True)
+            return original_kelly(*args, **kwargs)
+
+        monkeypatch.setattr("weather_markets.kelly_fraction", spy_kelly)
+
+        retired = {"ensemble": {"brier": 0.27}}
+        with patch("tracker.get_retired_strategies", return_value=retired):
+            import weather_markets
+
+            result = weather_markets.analyze_trade(
+                _make_enriched(), bypass_retirement_check=True
+            )
+
+        assert result is not None
+        assert kelly_called, "kelly_fraction must run when the gate is bypassed"

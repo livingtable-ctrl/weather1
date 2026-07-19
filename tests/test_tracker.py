@@ -2118,6 +2118,139 @@ class TestPerSourceProbColumns(unittest.TestCase):
         self.assertAlmostEqual(row[2], 0.55, places=4)
 
 
+# ── TestIsProbationColumn ─────────────────────────────────────────────────────
+
+
+class TestIsProbationColumn(unittest.TestCase):
+    """Schema v50 must add is_probation to predictions, and
+    brier_score_probation_rolling() must isolate it from every other row
+    (backlog.txt "AUTO UN-RETIREMENT"). Committed regression coverage for
+    what was otherwise only manually mutation-tested during development."""
+
+    def setUp(self):
+        self._tmpdir = tempfile.mkdtemp()
+        self._orig = tracker.DB_PATH
+        tracker.DB_PATH = Path(self._tmpdir) / "test_v50.db"
+        tracker._db_initialized = False
+
+    def tearDown(self):
+        tracker.DB_PATH = self._orig
+        tracker._db_initialized = False
+        shutil.rmtree(self._tmpdir, ignore_errors=True)
+
+    def _log_and_settle(self, ticker, our_prob, settled_yes, days_out=2, **kwargs):
+        from datetime import date as _date
+        from datetime import timedelta as _td
+
+        tracker.log_prediction(
+            ticker,
+            "NYC",
+            _date.today() + _td(days=days_out),
+            {
+                "forecast_prob": our_prob,
+                "market_prob": 0.5,
+                "edge": 0.1,
+                "method": "ensemble",
+                "n_members": 12,
+                "condition": {"type": "above", "threshold": 75.0},
+            },
+            **kwargs,
+        )
+        tracker.log_outcome(ticker, settled_yes)
+
+    def test_column_exists_after_init(self):
+        import sqlite3
+
+        tracker.init_db()
+        with sqlite3.connect(str(tracker.DB_PATH)) as con:
+            cols = {row[1] for row in con.execute("PRAGMA table_info(predictions)")}
+        self.assertIn("is_probation", cols)
+
+    def test_probation_rolling_isolates_from_non_probation_rows(self):
+        """A wildly-wrong non-probation row for the same method must not
+        pollute the probation-only rolling Brier."""
+        tracker.init_db()
+        for i in range(15):
+            self._log_and_settle(f"PROB-{i}", 0.9, True, is_probation=True)
+        # Same method, real (non-probation) row, way off -- must be excluded.
+        self._log_and_settle("REAL-POLLUTER", 0.99, False, is_probation=False)
+
+        score = tracker.brier_score_probation_rolling(
+            "ensemble", window=20, min_samples=15
+        )
+        self.assertIsNotNone(score)
+        self.assertAlmostEqual(score, 0.01, places=4)
+
+    def test_probation_rolling_none_below_min_samples(self):
+        tracker.init_db()
+        for i in range(5):
+            self._log_and_settle(f"PROB-{i}", 0.9, True, is_probation=True)
+
+        score = tracker.brier_score_probation_rolling(
+            "ensemble", window=20, min_samples=15
+        )
+        self.assertIsNone(score)
+
+    def test_upsert_min_merge_real_write_clears_probation_flag(self):
+        """A later real (is_probation=0) write for the same (ticker, date)
+        must clear an earlier probation flag -- mirrors is_shadow's MIN()
+        merge contract exactly."""
+        import sqlite3
+        from datetime import date as _date
+
+        tracker.init_db()
+        analysis = {
+            "forecast_prob": 0.6,
+            "market_prob": 0.5,
+            "edge": 0.1,
+            "method": "ensemble",
+            "n_members": 12,
+            "condition": {"type": "above", "threshold": 75.0},
+        }
+        market_date = _date.today() + __import__("datetime").timedelta(days=3)
+        tracker.log_prediction(
+            "UPSERT-TEST", "NYC", market_date, analysis, is_probation=True
+        )
+        tracker.log_prediction(
+            "UPSERT-TEST", "NYC", market_date, analysis, is_probation=False
+        )
+        with sqlite3.connect(str(tracker.DB_PATH)) as con:
+            row = con.execute(
+                "SELECT is_probation FROM predictions WHERE ticker=?",
+                ("UPSERT-TEST",),
+            ).fetchone()
+        self.assertEqual(row[0], 0)
+
+    def test_upsert_min_merge_probation_write_cannot_reflag_real_row(self):
+        """The reverse must not happen: a probation write after a real write
+        can never re-set the flag back to 1."""
+        import sqlite3
+        from datetime import date as _date
+
+        tracker.init_db()
+        analysis = {
+            "forecast_prob": 0.6,
+            "market_prob": 0.5,
+            "edge": 0.1,
+            "method": "ensemble",
+            "n_members": 12,
+            "condition": {"type": "above", "threshold": 75.0},
+        }
+        market_date = _date.today() + __import__("datetime").timedelta(days=3)
+        tracker.log_prediction(
+            "UPSERT-TEST-2", "NYC", market_date, analysis, is_probation=False
+        )
+        tracker.log_prediction(
+            "UPSERT-TEST-2", "NYC", market_date, analysis, is_probation=True
+        )
+        with sqlite3.connect(str(tracker.DB_PATH)) as con:
+            row = con.execute(
+                "SELECT is_probation FROM predictions WHERE ticker=?",
+                ("UPSERT-TEST-2",),
+            ).fetchone()
+        self.assertEqual(row[0], 0)
+
+
 # ── TestSourceProbsPassthrough ────────────────────────────────────────────────
 
 

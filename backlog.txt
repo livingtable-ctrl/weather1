@@ -5464,3 +5464,132 @@ When to revisit:
     trouble in practice), or test_p9_p10.py/test_risk_control.py/
     test_starting_balance.py is next open for other reasons.
 
+======================================================
+[AUTO UN-RETIREMENT -- RETIRED FORECASTING METHODS COULD NEVER GENERATE FRESH RECOVERY EVIDENCE]
+Priority: Medium -- surfaced by manually un-retiring 'ensemble' on
+  2026-07-19 (justified by the letter of the existing rolling-Brier-
+  recovery rule) and then investigating, unprompted, why the "recovery"
+  looked thin: a direct DB query showed only 1 ensemble prediction logged
+  since its 2026-07-10 retirement (an unsettled shadow row from 07-11) --
+  the manual un-retirement was real by the rule as written, but the rule
+  itself was measuring stale evidence, not genuine recovery.
+======================================================
+
+Problem:
+  analyze_trade()'s retired-method gate (weather_markets.py, "Retired
+  strategy gate" comment) returns None immediately once `method` resolves
+  to a currently-retired value -- before log_prediction() or shadow-
+  logging (order_executor._log_shadow_predictions, which only ever
+  operates on markets that already produced a real analysis dict) can run.
+  So a retired method can structurally never generate a new prediction,
+  ever, while retired. auto_retire_strategies()'s rolling-Brier "recovery"
+  guard (rolling_brier <= threshold skips re-retirement) was built to stop
+  a stale lifetime average from masking real improvement, but with zero
+  fresh rows possible, "rolling last-20" for a retired method is just
+  whatever pre-retirement predictions haven't yet rolled off -- it
+  necessarily converges toward "looks recovered" over time regardless of
+  whether the method's forecasts have actually gotten any better, purely
+  because old bad predictions age out of the window with nothing behind
+  them. There was no automatic path back to trading at all -- only the
+  manual `python main.py retire-strategies` / unretire_strategy() CLI path
+  existed, and even that had no fresh-evidence signal to act on.
+
+What it would look like (built and shipped 2026-07-19):
+  An isolated "probation" checker, structurally unable to affect the live
+  scan/trading path, that gives a retired method a controlled way to prove
+  itself:
+  - analyze_trade(enriched, *, bypass_retirement_check=False) --
+    weather_markets.py:5546. New keyword-only param (all ~19 real call
+    sites are positional, so this is a zero-behavior-change default for
+    every one of them); when True, the retired-method gate no longer
+    short-circuits, so the full analysis (including Kelly) runs and
+    returns a complete dict even for a retired method.
+  - is_probation column (tracker.py predictions table, migration v50,
+    _SCHEMA_VERSION 49->50) + is_probation param on log_prediction(),
+    mirroring is_shadow's exact shape (including the MIN()-based UPSERT
+    merge semantics: a later real write always clears it, a probation
+    write can never re-flag an already-real row). Kept as its own column
+    rather than folded into is_shadow so the probation query stays a
+    clean is_probation=1 filter without needing to also exclude ordinary
+    shadow rows for other (non-retired) methods.
+  - tracker.brier_score_probation_rolling(method, window=20,
+    min_samples=15) -- deliberately separate from
+    brier_score_by_method_rolling() (which intentionally does NOT filter
+    is_probation, since a probation row is a real forecast and should
+    feed the live retirement-decision Brier too). The auto-unretirement
+    decision specifically needs a signal that's *exclusively* fresh,
+    deliberately-generated post-retirement evidence -- otherwise a rolling
+    window still mostly full of old pre-retirement rows would look
+    "recovered" long before any genuine new evidence exists, which is the
+    exact gap this entry is about. Same days_out=0 exclusion via
+    multiday_predictions as every other method-level Brier query.
+  - weather_markets.check_retirement_probation(client) -- once per day
+    (RETIREMENT_PROBATION_PATH state file, same gate shape as
+    check_series_drift()/log_city_registry_report()), own try/except,
+    never raises, no-ops immediately if nothing is currently retired.
+    Samples up to 25 markets (random.sample) via get_weather_markets(client)
+    -- 60s-cached, so calling it again right after cron's main scan is
+    normally a cache hit -- runs analyze_trade(bypass_retirement_check=True)
+    on each, and logs a probation prediction (is_shadow=True,
+    is_probation=True) only for markets whose *resolved* method (dynamic
+    per-market, not knowable in advance) is currently retired. Then checks
+    brier_score_probation_rolling() for every retired method and calls the
+    existing tracker.unretire_strategy() the moment it clears
+    _PROBATION_UNRETIRE_THRESHOLD=0.25 -- the same bar
+    auto_retire_strategies() uses to retire in the first place, not a
+    stricter one, because unretire_strategy() already writes a 72h
+    re-retirement-immunity pin, which is what actually protects against
+    flapping (no separate hysteresis buffer needed).
+  - Wired into cron.py right after log_city_registry_report()'s call site,
+    same isolation contract (own try/except at the call site too).
+
+  Design decision surfaced to the user rather than guessed: presented 3
+  initial auto-unretirement approaches (all rejected -- "rethink these
+  options"), then a 4th ("isolated probation checker, completely outside
+  the live scan/trading path") was proposed and explicitly approved
+  ("yes, that sounds right -- build it") before any code was written.
+
+  Verified end-to-end with real (non-mock-everything) tests: hand-computed
+  Brier arithmetic against a seeded temp DB (15 correct probation
+  predictions -> Brier exactly 0.01), mutation-tested to confirm the
+  is_probation=1 filter and the days_out=0 / non-probation-row exclusions
+  are load-bearing (removing the filter measurably polluted the score:
+  0.01 -> 0.0706), and 9 new behavioral tests for
+  check_retirement_probation() itself (no-op when nothing retired, once-
+  per-day gate, never-raises, logs only for markets whose bypass-resolved
+  method is retired, auto-unretires only when probation Brier clears
+  threshold and not when it's still bad or still None/insufficient-
+  samples) -- each mutation-tested by temporarily breaking the guard being
+  tested and confirming the corresponding test fails with the predicted
+  symptom, then restoring. Also found and fixed a real pre-existing gap in
+  tests/test_p0_11_retired_strategy.py's own fixture while writing the new
+  bypass tests: _make_enriched() had no title (direction-keyword parsing
+  requires one) and an all-identical 12-member ensemble (trips the
+  degenerate-ensemble gate) -- both invisible before because none of that
+  file's 4 original tests ever needed a non-None result, only new bypass
+  tests that actually need Kelly to run exposed them. Full scoped
+  regression (test_retirement_probation.py, test_p0_11_retired_strategy.py,
+  test_p9_p10.py, test_shadow_predictions.py, test_series_drift.py,
+  test_city_registry_report_logging.py, test_tracker.py, plus all 5 cron
+  test files) -- 391 passed. ruff + mypy clean on every changed file.
+
+  Independent opus second-opinion review (before push, per standing
+  workflow) found no real bugs -- independently re-derived the migration's
+  column/placeholder/param counts, independently re-ran
+  brier_score_probation_rolling against its own real temp DB, traced all
+  ~19 analyze_trade call sites to confirm bypass_retirement_check is inert
+  everywhere except check_retirement_probation's own call, and confirmed
+  the 72h re-retirement-immunity pin (is_strategy_pinned gate inside
+  auto_retire_strategies) is actually wired up to protect against
+  flapping. Two low-severity notes, both addressed: (1) is_stale(m) moved
+  inside the per-market try/except (weather_markets.py) so a crash there
+  (is_stale has a documented history of TypeError on malformed
+  volume_fp/open_interest_fp) skips just that one market instead of
+  aborting the whole day's probation run; (2) added 5 committed,
+  non-mocked integration tests (tests/test_tracker.py
+  TestIsProbationColumn) covering the is_probation column round-trip,
+  probation-vs-real-row isolation, the min_samples gate, and both
+  directions of the MIN() upsert merge -- previously only manually
+  mutation-tested during development, not committed as regression
+  coverage.
+

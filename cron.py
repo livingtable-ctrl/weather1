@@ -2639,6 +2639,20 @@ def _cmd_cron_body(
     except Exception as _registry_exc:
         _log.warning("log_city_registry_report call failed: %s", _registry_exc)
 
+    # Auto-unretirement probation check — once per day, observational only,
+    # same placement/isolation rationale as check_series_drift/
+    # log_city_registry_report above (backlog.txt "AUTO UN-RETIREMENT").
+    # Generates fresh post-retirement evidence for any currently-retired
+    # forecasting method via analyze_trade(bypass_retirement_check=True), and
+    # auto-unretires once that evidence clears the threshold. No-ops
+    # immediately if nothing is currently retired.
+    try:
+        from weather_markets import check_retirement_probation as _check_probation
+
+        _check_probation(client)
+    except Exception as _probation_exc:
+        _log.warning("check_retirement_probation call failed: %s", _probation_exc)
+
     print(
         cyan(
             f"  [cron] scan complete \u2014 {datetime.now(UTC).strftime('%Y-%m-%d %H:%M:%S')} UTC"
