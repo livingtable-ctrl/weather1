@@ -1251,6 +1251,36 @@ class TestFetchTemperatureWeatherapi:
         result = wm.fetch_temperature_weatherapi("NYC", date(2026, 5, 1))
         assert result is None
 
+    def test_negative_caches_failure(self, monkeypatch):
+        """A failed fetch must be negative-cached -- a second call within the
+        TTL must not re-invoke requests.get (2026-07-19 ForecastCache
+        migration: get_with_ts() must distinguish a real cached None from
+        no-entry-at-all)."""
+        from datetime import date
+
+        import weather_markets as wm
+
+        call_count = {"n": 0}
+
+        def _raise(*a, **kw):
+            call_count["n"] += 1
+            raise OSError("timeout")
+
+        monkeypatch.setattr(wm, "WEATHERAPI_KEY", "test-key")
+        monkeypatch.setattr("requests.get", _raise)
+        wm._WEATHERAPI_CACHE.clear()
+        wm._weatherapi_cb.record_success()  # ensure circuit closed
+
+        target = date(2026, 5, 1)
+        first = wm.fetch_temperature_weatherapi("NYC", target)
+        assert first is None
+        assert call_count["n"] == 1
+
+        second = wm.fetch_temperature_weatherapi("NYC", target)
+        assert second is None
+        assert call_count["n"] == 1, "negative-cached hit must not re-call requests.get"
+        wm._weatherapi_cb.record_success()  # restore for later tests
+
     def test_circuit_breaker_skips_when_open(self, monkeypatch):
         from datetime import date
 
@@ -2083,8 +2113,6 @@ class TestConsensusCacheKeyBetween:
 
     def test_different_buckets_get_separate_cache_entries(self, monkeypatch):
         """Two between-markets with different lower/upper produce distinct keys."""
-        import time
-
         import weather_markets as wm
 
         # Clear cache before test to avoid cross-test contamination.
@@ -2123,15 +2151,11 @@ class TestConsensusCacheKeyBetween:
         assert key_b645 != key_b665, "Cache keys for distinct buckets must differ"
 
         # Seed the cache with different results for the two buckets.
-        wm._CONSENSUS_CACHE[key_b645] = (
-            (0.20, 0.22, 64.0, 64.5),
-            time.monotonic(),
-            wm._CONSENSUS_CACHE_TTL,
+        wm._CONSENSUS_CACHE.set_with_ttl(
+            key_b645, (0.20, 0.22, 64.0, 64.5), wm._CONSENSUS_CACHE_TTL
         )
-        wm._CONSENSUS_CACHE[key_b665] = (
-            (0.55, 0.58, 66.0, 66.5),
-            time.monotonic(),
-            wm._CONSENSUS_CACHE_TTL,
+        wm._CONSENSUS_CACHE.set_with_ttl(
+            key_b665, (0.55, 0.58, 66.0, 66.5), wm._CONSENSUS_CACHE_TTL
         )
 
         r645 = wm._get_consensus_probs("NYC", today, condition_b645)

@@ -8,6 +8,8 @@ from unittest.mock import patch
 
 import pytest
 
+from forecast_cache import ForecastCache
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 
@@ -24,7 +26,7 @@ class TestECMWFAIFS:
                 "temperature_2m": [18.5, 21.0],
             }
         }
-        with patch("weather_markets._ECMWF_CACHE", {}):
+        with patch("weather_markets._ECMWF_CACHE", ForecastCache()):
             with patch("weather_markets._om_request") as mock_req:
                 mock_req.return_value.json.return_value = mock_response
                 mock_req.return_value.raise_for_status.return_value = None
@@ -48,7 +50,7 @@ class TestECMWFAIFS:
                 "temperature_2m": [None, None],
             }
         }
-        with patch("weather_markets._ECMWF_CACHE", {}):
+        with patch("weather_markets._ECMWF_CACHE", ForecastCache()):
             with patch("weather_markets._om_request") as mock_req:
                 mock_req.return_value.json.return_value = mock_response
                 mock_req.return_value.raise_for_status.return_value = None
@@ -73,12 +75,39 @@ class TestECMWFAIFS:
 
         import weather_markets
 
-        with patch("weather_markets._ECMWF_CACHE", {}):
+        with patch("weather_markets._ECMWF_CACHE", ForecastCache()):
             with patch("weather_markets._om_request") as mock_req:
                 mock_req.side_effect = requests.RequestException("timeout")
                 assert (
                     weather_markets.fetch_temperature_ecmwf("NYC", date(2026, 4, 17))
                     is None
+                )
+
+    def test_fetch_temperature_ecmwf_negative_caches_failure(self):
+        """A failed fetch must be negative-cached -- a second call within the
+        TTL must not re-invoke the fetch (2026-07-19 ForecastCache migration:
+        get_with_ts() must distinguish a real cached None from no-entry)."""
+        from datetime import date
+
+        import requests
+
+        import weather_markets
+
+        with patch("weather_markets._ECMWF_CACHE", ForecastCache()):
+            with patch("weather_markets._om_request") as mock_req:
+                mock_req.side_effect = requests.RequestException("timeout")
+                first = weather_markets.fetch_temperature_ecmwf(
+                    "NYC", date(2026, 4, 17)
+                )
+                assert first is None
+                assert mock_req.call_count == 1
+
+                second = weather_markets.fetch_temperature_ecmwf(
+                    "NYC", date(2026, 4, 17)
+                )
+                assert second is None
+                assert mock_req.call_count == 1, (
+                    "negative-cached hit must not re-call Open-Meteo"
                 )
 
     def test_ecmwf_in_extended_ensemble(self):

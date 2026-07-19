@@ -8,6 +8,8 @@ from unittest.mock import patch
 
 import pytest
 
+from forecast_cache import ForecastCache
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 
@@ -35,7 +37,7 @@ class TestNBMFetch:
             }
         }
         with (
-            patch("weather_markets._NBM_CACHE", {}),
+            patch("weather_markets._NBM_CACHE", ForecastCache()),
             patch("mos.fetch_nbm_iem", return_value=None),
             patch("weather_markets._om_request") as mock_req,
         ):
@@ -47,6 +49,37 @@ class TestNBMFetch:
         # Should return the max daily temp in °F
         assert result == pytest.approx(20.5, abs=0.01)
 
+    def test_fetch_temperature_nbm_negative_caches_failure(self):
+        """A failed fetch (both IEM and Open-Meteo unavailable) must be
+        negative-cached -- a second call within the TTL must not re-invoke
+        either fetch path (2026-07-19 ForecastCache migration: get_with_ts()
+        must distinguish a real cached None from no-entry-at-all, or every
+        call to a known-dead endpoint would re-fetch instead of respecting
+        the TTL)."""
+        from datetime import date
+
+        import requests
+
+        from weather_markets import fetch_temperature_nbm
+
+        with (
+            patch("weather_markets._NBM_CACHE", ForecastCache()),
+            patch("mos.fetch_nbm_iem", return_value=None) as mock_iem,
+            patch("weather_markets._om_request") as mock_req,
+        ):
+            mock_req.side_effect = requests.RequestException("timeout")
+            first = fetch_temperature_nbm("NYC", date(2026, 4, 17))
+            assert first is None
+            assert mock_iem.call_count == 1
+            assert mock_req.call_count == 1
+
+            second = fetch_temperature_nbm("NYC", date(2026, 4, 17))
+            assert second is None
+            assert mock_iem.call_count == 1, "negative-cached hit must not re-call IEM"
+            assert mock_req.call_count == 1, (
+                "negative-cached hit must not re-call Open-Meteo"
+            )
+
     def test_fetch_temperature_nbm_returns_none_on_error(self):
         """Returns None gracefully when both the IEM and Open-Meteo paths fail."""
         from datetime import date
@@ -56,7 +89,7 @@ class TestNBMFetch:
         from weather_markets import fetch_temperature_nbm
 
         with (
-            patch("weather_markets._NBM_CACHE", {}),
+            patch("weather_markets._NBM_CACHE", ForecastCache()),
             patch("mos.fetch_nbm_iem", return_value=None),
             patch("weather_markets._om_request") as mock_req,
         ):
@@ -74,7 +107,7 @@ class TestNBMFetch:
         from weather_markets import fetch_temperature_nbm
 
         with (
-            patch("weather_markets._NBM_CACHE", {}),
+            patch("weather_markets._NBM_CACHE", ForecastCache()),
             patch("mos.fetch_nbm_iem", return_value=77.0) as mock_iem,
             patch("weather_markets._om_request") as mock_om,
         ):
@@ -96,7 +129,7 @@ class TestNBMFetch:
             "hourly": {"time": ["2026-04-17T15:00"], "temperature_2m": [50.0]}
         }
         with (
-            patch("weather_markets._NBM_CACHE", {}),
+            patch("weather_markets._NBM_CACHE", ForecastCache()),
             patch("weather_markets._metar_station_for_city", return_value=None),
             patch("weather_markets._om_request") as mock_req,
         ):
@@ -119,7 +152,7 @@ class TestNBMFetch:
         from weather_markets import fetch_temperature_nbm
 
         target = date(2026, 4, 17)
-        shared_cache: dict = {}
+        shared_cache = ForecastCache()
         # Open-Meteo response for the "min" lookup -- deliberately different
         # values from the real IEM max, so a clobber is unmistakable.
         om_response = {

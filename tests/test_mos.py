@@ -68,6 +68,27 @@ class TestFetchMos:
 
         assert result is None
 
+    def test_negative_caches_failure(self):
+        """A failed fetch must be negative-cached -- a second call within the
+        TTL must not re-invoke the session (2026-07-19 ForecastCache
+        migration: get_with_ts() must distinguish a real cached None from
+        no-entry-at-all)."""
+        import requests
+
+        import mos
+
+        with patch.object(mos, "_session") as mock_sess:
+            mock_sess.get.side_effect = requests.RequestException("timeout")
+            first = mos.fetch_mos("KNYC", target_date=date(2026, 4, 17))
+            assert first is None
+            assert mock_sess.get.call_count == 1
+
+            second = mos.fetch_mos("KNYC", target_date=date(2026, 4, 17))
+            assert second is None
+            assert mock_sess.get.call_count == 1, (
+                "negative-cached hit must not re-call the session"
+            )
+
     def test_station_lookup(self):
         """get_mos_station returns correct ASOS station for each city.
 

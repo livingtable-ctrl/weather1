@@ -1352,6 +1352,34 @@ class TestHRRR:
         result = _fetch_hrrr_temp("UNKNOWN_CITY_XYZ", date(2026, 7, 1), var="max")
         assert result is None
 
+    def test_fetch_hrrr_temp_negative_caches_failure(self, monkeypatch):
+        """A failed fetch must be negative-cached -- a second call within the
+        TTL must not re-invoke requests.get (2026-07-19 ForecastCache
+        migration: get_with_ts() must distinguish a real cached None from
+        no-entry-at-all)."""
+        from datetime import date
+
+        import requests
+
+        from weather_markets import _HRRR_CACHE, _fetch_hrrr_temp
+
+        _HRRR_CACHE.clear()
+
+        call_count = {"n": 0}
+
+        def _raise(*a, **k):
+            call_count["n"] += 1
+            raise requests.RequestException("timeout")
+
+        monkeypatch.setattr(requests, "get", _raise)
+        first = _fetch_hrrr_temp("NYC", date(2026, 7, 1), var="max")
+        assert first is None
+        assert call_count["n"] == 1
+
+        second = _fetch_hrrr_temp("NYC", date(2026, 7, 1), var="max")
+        assert second is None
+        assert call_count["n"] == 1, "negative-cached hit must not re-call requests.get"
+
 
 class TestModelBrierScores:
     def test_get_model_brier_scores_returns_dict(self, monkeypatch, tmp_path):

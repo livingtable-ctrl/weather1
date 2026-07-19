@@ -9,6 +9,8 @@ from unittest.mock import patch
 
 import pytest
 
+from forecast_cache import ForecastCache
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 
@@ -74,6 +76,27 @@ class TestFetchMetar:
             result = metar.fetch_metar("KNYC")
 
         assert result is None
+
+    def test_negative_caches_failure(self):
+        """A failed fetch must be negative-cached -- a second call within the
+        TTL must not re-invoke the session (2026-07-19 ForecastCache
+        migration: get_with_ts() must distinguish a real cached None from
+        no-entry-at-all)."""
+        import requests
+
+        import metar
+
+        with patch.object(metar, "_session") as mock:
+            mock.get.side_effect = requests.RequestException("timeout")
+            first = metar.fetch_metar("KNYC")
+            assert first is None
+            assert mock.get.call_count == 1
+
+            second = metar.fetch_metar("KNYC")
+            assert second is None
+            assert mock.get.call_count == 1, (
+                "negative-cached hit must not re-call the session"
+            )
 
     def test_returns_none_on_empty_response(self):
         import metar
@@ -439,7 +462,7 @@ class TestDewPointCorrection:
         mock_resp.json.return_value = mock_data
         mock_resp.raise_for_status.return_value = None
 
-        with patch("metar._METAR_CACHE", {}):
+        with patch("metar._METAR_CACHE", ForecastCache()):
             with patch("metar._session") as mock_session:
                 mock_session.get.return_value = mock_resp
                 result = fetch_metar("KMIA")

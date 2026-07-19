@@ -26,6 +26,8 @@ from pathlib import Path
 import requests
 from requests.adapters import HTTPAdapter, Retry
 
+from forecast_cache import ForecastCache
+
 _log = logging.getLogger(__name__)
 
 _METAR_URL = "https://aviationweather.gov/api/data/metar"
@@ -73,13 +75,18 @@ _session.mount(
     ),
 )
 
-# In-process cache: station → (result, monotonic_time).
-# METAR stations update every 20–30 min; 5-min TTL eliminates redundant HTTP
-# calls when cmd_today / cmd_scan loop over many markets for the same cities.
-_METAR_CACHE: dict[str, tuple[dict | None, float]] = {}
+# In-process cache: station → result (negative-cached as None on fetch
+# failure). METAR stations update every 20–30 min; 5-min TTL eliminates
+# redundant HTTP calls when cmd_today / cmd_scan loop over many markets for
+# the same cities. Migrated to the shared ForecastCache 2026-07-19
+# (backlog.txt "ForecastCache EXISTS, BUT ~14 HAND-ROLLED TTL DICTS..."). A
+# real (negative-cached) None value is indistinguishable from "no entry" via
+# plain .get() alone, so the read site below uses get_with_ts()'s explicit
+# hit flag instead.
 _METAR_CACHE_TTL = (
     900  # 15 minutes — extended so pre-warm survives the full analysis window
 )
+_METAR_CACHE: ForecastCache[dict | None] = ForecastCache(ttl_secs=_METAR_CACHE_TTL)
 
 
 def fetch_metar(station: str) -> dict | None:
@@ -90,14 +97,10 @@ def fetch_metar(station: str) -> dict | None:
         dict with keys: current_temp_f, station, obs_time (datetime UTC)
         or None on failure
     """
-    import time as _time
-
     key = station.upper()
-    cached = _METAR_CACHE.get(key)
-    if cached is not None:
-        result, ts = cached
-        if _time.monotonic() - ts < _METAR_CACHE_TTL:
-            return result
+    _cached_result, _cache_hit, _ = _METAR_CACHE.get_with_ts(key)
+    if _cache_hit:
+        return _cached_result
 
     try:
         resp = _session.get(
@@ -109,11 +112,11 @@ def fetch_metar(station: str) -> dict | None:
         data = resp.json()
     except Exception as exc:
         _log.debug("fetch_metar(%s): %s", station, exc)
-        _METAR_CACHE[key] = (None, _time.monotonic())
+        _METAR_CACHE.set(key, None)
         return None
 
     if not data:
-        _METAR_CACHE[key] = (None, _time.monotonic())
+        _METAR_CACHE.set(key, None)
         return None
 
     obs = data[0]
@@ -166,7 +169,7 @@ def fetch_metar(station: str) -> dict | None:
             "%s: METAR obsTime missing or unparseable — refusing to use stale data",
             station,
         )
-        _METAR_CACHE[key] = (None, _time.monotonic())
+        _METAR_CACHE.set(key, None)
         return None
     age_minutes = (datetime.now(UTC) - obs_time).total_seconds() / 60
     if age_minutes > 90:
@@ -175,7 +178,7 @@ def fetch_metar(station: str) -> dict | None:
             station,
             int(age_minutes),
         )
-        _METAR_CACHE[key] = (None, _time.monotonic())
+        _METAR_CACHE.set(key, None)
         return None
 
     def _safe_extreme(field: str) -> float | None:
@@ -212,7 +215,7 @@ def fetch_metar(station: str) -> dict | None:
         "station": obs.get("icaoId", station),
         "obs_time": obs_time,
     }
-    _METAR_CACHE[key] = (result, _time.monotonic())
+    _METAR_CACHE.set(key, result)
     return result
 
 

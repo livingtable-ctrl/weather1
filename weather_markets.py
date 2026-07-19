@@ -1579,7 +1579,7 @@ def batch_prewarm_ensemble(
         for model in precip_models:
             mult = ecmwf_mult if model == "ecmwf_ifs025" else 1
             combined.extend(precip_raw_by_model[model][cache_key_p] * mult)
-        _PRECIP_ENSEMBLE_CACHE[cache_key_p] = (combined, time.monotonic())
+        _PRECIP_ENSEMBLE_CACHE.set(cache_key_p, combined)
         written += 1
 
     _log.info(
@@ -1593,11 +1593,24 @@ def batch_prewarm_ensemble(
 
 # ── NBM (National Blend of Models) ──────────────────────────────────────────
 
-_NBM_CACHE: dict[tuple, tuple[float | None, float]] = {}
-_ECMWF_CACHE: dict[tuple, tuple[float | None, float]] = {}
-# Keyed by (lat, lon, date_iso) — shared across all _fetch_ensemble_precip callers.
-_PRECIP_ENSEMBLE_CACHE: dict[tuple, tuple[list[float], float]] = {}
 _MODEL_CACHE_TTL = 4 * 60 * 60  # 4 hours
+# backlog.txt "ForecastCache EXISTS, BUT ~14 HAND-ROLLED TTL DICTS DO THE SAME
+# JOB": these 3 (plus _HRRR_CACHE/_WEATHERAPI_CACHE below and _CONSENSUS_CACHE
+# further down) migrated from hand-rolled dict[key, (value, ts)] to the shared
+# ForecastCache class, 2026-07-19. _NBM_CACHE/_ECMWF_CACHE negative-cache a
+# real None result (a known-failed fetch) to avoid hammering a dead endpoint
+# within the TTL window — ForecastCache.get() alone can't distinguish "no
+# entry" from "entry present with value None", so their read sites use
+# get_with_ts() instead (see fetch_temperature_nbm/fetch_temperature_ecmwf).
+# _PRECIP_ENSEMBLE_CACHE never stores None (only real, possibly-empty lists),
+# so its read site uses the simpler get() pattern already established by
+# _ensemble_cache/_forecast_cache above.
+_NBM_CACHE: ForecastCache[float | None] = ForecastCache(ttl_secs=_MODEL_CACHE_TTL)
+_ECMWF_CACHE: ForecastCache[float | None] = ForecastCache(ttl_secs=_MODEL_CACHE_TTL)
+# Keyed by (lat, lon, date_iso) — shared across all _fetch_ensemble_precip callers.
+_PRECIP_ENSEMBLE_CACHE: ForecastCache[list[float]] = ForecastCache(
+    ttl_secs=_MODEL_CACHE_TTL
+)
 
 
 def fetch_temperature_nbm(
@@ -1619,11 +1632,9 @@ def fetch_temperature_nbm(
     Returns temperature in °F for target_date, or None on failure.
     """
     cache_key = (city, target_date.isoformat(), var)
-    cached = _NBM_CACHE.get(cache_key)
-    if cached is not None:
-        val, ts = cached
-        if time.monotonic() - ts < _MODEL_CACHE_TTL:
-            return val
+    _cached_val, _cache_hit, _ = _NBM_CACHE.get_with_ts(cache_key)
+    if _cache_hit:
+        return _cached_val
 
     station = _metar_station_for_city(city)
     if station:
@@ -1642,8 +1653,7 @@ def fetch_temperature_nbm(
             )
             _iem_val = None
         if _iem_val is not None:
-            now = time.monotonic()
-            _NBM_CACHE[cache_key] = (_iem_val, now)
+            _NBM_CACHE.set(cache_key, _iem_val)
             return _iem_val
 
     coords = CITY_COORDS.get(city)
@@ -1690,21 +1700,29 @@ def fetch_temperature_nbm(
         # review 2026-07-17 (backlog.txt: REAL NBM VIA IEM NBS STATION
         # BULLETINS) that the unconditional dual-write silently and
         # order-dependently reintroduced the placeholder this fix removes.
-        now = time.monotonic()
         if valid:
             _extremes = {"max": float(max(valid)), "min": float(min(valid))}
-            _NBM_CACHE[(city, target_date.isoformat(), var)] = (_extremes[var], now)
+            _NBM_CACHE.set(cache_key, _extremes[var])
             _other_var = "min" if var == "max" else "max"
             _other_key = (city, target_date.isoformat(), _other_var)
-            _other_existing = _NBM_CACHE.get(_other_key)
-            if (
-                _other_existing is None
-                or (now - _other_existing[1]) >= _MODEL_CACHE_TTL
-            ):
-                _NBM_CACHE[_other_key] = (_extremes[_other_var], now)
-        else:
-            _NBM_CACHE[cache_key] = (None, now)
-        return _NBM_CACHE[cache_key][0]
+            # Never clobber a still-fresh OTHER-var entry -- ForecastCache.get()
+            # already returns None for both "no entry" and "expired", exactly
+            # the "missing or stale" condition the old raw-timestamp check
+            # computed by hand. One narrow, deliberately-accepted difference
+            # (opus review, 2026-07-19): if the OTHER-var slot holds a fresh
+            # negative-cached None (a prior failed fetch), .get() can't tell
+            # that apart from "no entry" either -- so this now overwrites a
+            # fresh-but-failed entry with real data from THIS successful
+            # fetch, where the old raw-timestamp check would have preserved
+            # the stale failure. Always a data-quality improvement (the
+            # replacement is a genuine max/min from the same successful
+            # response), never a wrong value, so left as-is rather than
+            # reintroducing the manual timestamp check to avoid it.
+            if _NBM_CACHE.get(_other_key) is None:
+                _NBM_CACHE.set(_other_key, _extremes[_other_var])
+            return _extremes[var]
+        _NBM_CACHE.set(cache_key, None)
+        return None
     except Exception as exc:
         _nbm_om_cb.record_failure()
         _log.debug(
@@ -1714,7 +1732,7 @@ def fetch_temperature_nbm(
             type(exc).__name__,
             exc,
         )
-        _NBM_CACHE[cache_key] = (None, time.monotonic())
+        _NBM_CACHE.set(cache_key, None)
         return None
 
 
@@ -1725,7 +1743,7 @@ def fetch_temperature_nbm(
 # This is a standalone utility; it is NOT wired into analyze_trade yet — that
 # happens once HRRR data has been validated against settled same-day trades.
 
-_HRRR_CACHE: dict[str, tuple[float | None, float]] = {}
+_HRRR_CACHE: ForecastCache[float | None] = ForecastCache(ttl_secs=_MODEL_CACHE_TTL)
 
 
 def _fetch_hrrr_temp(city: str, target_date: date, var: str = "max") -> float | None:
@@ -1742,11 +1760,9 @@ def _fetch_hrrr_temp(city: str, target_date: date, var: str = "max") -> float | 
     import requests as _req
 
     cache_key = f"{city}_{target_date.isoformat()}_{var}"
-    cached = _HRRR_CACHE.get(cache_key)
-    if cached is not None:
-        val, ts = cached
-        if time.monotonic() - ts < _MODEL_CACHE_TTL:
-            return val
+    _cached_val, _cache_hit, _ = _HRRR_CACHE.get_with_ts(cache_key)
+    if _cache_hit:
+        return _cached_val
 
     city_info = CITY_COORDS.get(city)
     if not city_info:
@@ -1777,14 +1793,14 @@ def _fetch_hrrr_temp(city: str, target_date: date, var: str = "max") -> float | 
         temps = data.get("hourly", {}).get("temperature_2m", [])
         valid = [t for t in temps if t is not None]
         if not valid:
-            _HRRR_CACHE[cache_key] = (None, time.monotonic())
+            _HRRR_CACHE.set(cache_key, None)
             return None
         result = float(max(valid) if var == "max" else min(valid))
-        _HRRR_CACHE[cache_key] = (result, time.monotonic())
+        _HRRR_CACHE.set(cache_key, result)
         return result
     except Exception as exc:
         _log.debug("_fetch_hrrr_temp: %s %s failed: %s", city, date_str, exc)
-        _HRRR_CACHE[cache_key] = (None, time.monotonic())
+        _HRRR_CACHE.set(cache_key, None)
         return None
 
 
@@ -1795,7 +1811,7 @@ _WEATHERAPI_BASE = "https://api.weatherapi.com/v1/forecast.json"
 _weatherapi_cb = CircuitBreaker(
     name="weatherapi", failure_threshold=3, recovery_timeout=3600
 )
-_WEATHERAPI_CACHE: dict[tuple, tuple[dict | None, float]] = {}
+_WEATHERAPI_CACHE: ForecastCache[dict | None] = ForecastCache(ttl_secs=_MODEL_CACHE_TTL)
 
 
 def fetch_temperature_weatherapi(city: str, target_date: date) -> dict | None:
@@ -1809,11 +1825,9 @@ def fetch_temperature_weatherapi(city: str, target_date: date) -> dict | None:
         return None
 
     cache_key = (city, target_date.isoformat())
-    cached = _WEATHERAPI_CACHE.get(cache_key)
-    if cached is not None:
-        val, ts = cached
-        if time.monotonic() - ts < _MODEL_CACHE_TTL:
-            return val
+    _cached_val, _cache_hit, _ = _WEATHERAPI_CACHE.get_with_ts(cache_key)
+    if _cache_hit:
+        return _cached_val
 
     coords = CITY_COORDS.get(city)
     if not coords:
@@ -1839,7 +1853,7 @@ def fetch_temperature_weatherapi(city: str, target_date: date) -> dict | None:
         _today_local = datetime.now(UTC).date()
     days_ahead = max(1, (target_date - _today_local).days + 1)
     if days_ahead > 14:
-        _WEATHERAPI_CACHE[cache_key] = (None, time.monotonic())
+        _WEATHERAPI_CACHE.set(cache_key, None)
         return None
 
     try:
@@ -1861,7 +1875,7 @@ def fetch_temperature_weatherapi(city: str, target_date: date) -> dict | None:
         forecast_days = data.get("forecast", {}).get("forecastday", [])
         day_data = next((d for d in forecast_days if d.get("date") == target_str), None)
         if day_data is None:
-            _WEATHERAPI_CACHE[cache_key] = (None, time.monotonic())
+            _WEATHERAPI_CACHE.set(cache_key, None)
             return None
         day = day_data.get("day", {})
         high = day.get("maxtemp_f")
@@ -1871,14 +1885,14 @@ def fetch_temperature_weatherapi(city: str, target_date: date) -> dict | None:
             if high is not None and low is not None
             else None
         )
-        _WEATHERAPI_CACHE[cache_key] = (result, time.monotonic())
+        _WEATHERAPI_CACHE.set(cache_key, result)
         return result
     except Exception as exc:
         _weatherapi_cb.record_failure()
         _log.debug(
             "fetch_temperature_weatherapi(%s): %s: %s", city, type(exc).__name__, exc
         )
-        _WEATHERAPI_CACHE[cache_key] = (None, time.monotonic())
+        _WEATHERAPI_CACHE.set(cache_key, None)
         return None
 
 
@@ -2298,11 +2312,9 @@ def fetch_temperature_ecmwf(
     Returns temperature in °F for target_date, or None on failure.
     """
     cache_key = (city, target_date.isoformat(), var)
-    cached = _ECMWF_CACHE.get(cache_key)
-    if cached is not None:
-        val, ts = cached
-        if time.monotonic() - ts < _MODEL_CACHE_TTL:
-            return val
+    _cached_val, _cache_hit, _ = _ECMWF_CACHE.get_with_ts(cache_key)
+    if _cache_hit:
+        return _cached_val
 
     coords = CITY_COORDS.get(city)
     if not coords:
@@ -2343,19 +2355,14 @@ def fetch_temperature_ecmwf(
         # populate BOTH var-keyed cache entries from this one response —
         # otherwise a caller that warms both vars (e.g. cron's prewarm) would
         # re-issue a byte-identical HTTP request for the second var every time.
-        now = time.monotonic()
         if valid:
-            _ECMWF_CACHE[(city, target_date.isoformat(), "max")] = (
-                float(max(valid)),
-                now,
-            )
-            _ECMWF_CACHE[(city, target_date.isoformat(), "min")] = (
-                float(min(valid)),
-                now,
-            )
-        else:
-            _ECMWF_CACHE[cache_key] = (None, now)
-        return _ECMWF_CACHE[cache_key][0]
+            _max_val = float(max(valid))
+            _min_val = float(min(valid))
+            _ECMWF_CACHE.set((city, target_date.isoformat(), "max"), _max_val)
+            _ECMWF_CACHE.set((city, target_date.isoformat(), "min"), _min_val)
+            return _max_val if var == "max" else _min_val
+        _ECMWF_CACHE.set(cache_key, None)
+        return None
     except Exception as exc:
         _ecmwf_om_cb.record_failure()
         _log.info(
@@ -2365,7 +2372,7 @@ def fetch_temperature_ecmwf(
             type(exc).__name__,
             exc,
         )
-        _ECMWF_CACHE[cache_key] = (None, time.monotonic())
+        _ECMWF_CACHE.set(cache_key, None)
         return None
 
 
@@ -4501,7 +4508,6 @@ def edge_confidence(days_out: int, condition_type: str | None = None) -> float:
     return round(horizon * cond, 4)
 
 
-_CONSENSUS_CACHE: dict[tuple, tuple] = {}
 _CONSENSUS_CACHE_TTL = 4 * 60 * 60  # 4 hours
 # Short TTL for a total-miss result (both models returned None — a transient
 # blip, not a real "models agree" or "models disagree" answer). Caching that
@@ -4509,6 +4515,9 @@ _CONSENSUS_CACHE_TTL = 4 * 60 * 60  # 4 hours
 # after the underlying circuit breaker itself would have recovered, defeating
 # the ICON-vs-GFS divergence safety gate for every market sharing that key.
 _CONSENSUS_MISS_TTL = 120
+# Always stores a real tuple (never bare None), so the simple .get() pattern
+# (like _ensemble_cache/_forecast_cache above) is safe here.
+_CONSENSUS_CACHE: ForecastCache[tuple] = ForecastCache(ttl_secs=_CONSENSUS_CACHE_TTL)
 
 
 def _get_consensus_probs(
@@ -4539,9 +4548,7 @@ def _get_consensus_probs(
     )
     _cached = _CONSENSUS_CACHE.get(_cons_key)
     if _cached is not None:
-        _result, _ts, _ttl = _cached
-        if time.monotonic() - _ts < _ttl:
-            return _result
+        return _cached
 
     def _model_prob_and_mean(model_name: str) -> tuple[float | None, float | None]:
         """Return (prob, mean_temp) for model_name. Either may be None."""
@@ -4634,7 +4641,7 @@ def _get_consensus_probs(
         if (icon_prob is not None or gfs_prob is not None)
         else _CONSENSUS_MISS_TTL
     )
-    _CONSENSUS_CACHE[_cons_key] = (_cons_result, time.monotonic(), _cons_ttl)
+    _CONSENSUS_CACHE.set_with_ttl(_cons_key, _cons_result, _cons_ttl)
     return _cons_result
 
 
@@ -4812,9 +4819,7 @@ def _fetch_ensemble_precip(
     _precip_cache_key = (lat, lon, target_date.isoformat())
     _cached_precip = _PRECIP_ENSEMBLE_CACHE.get(_precip_cache_key)
     if _cached_precip is not None:
-        _vals, _ts = _cached_precip
-        if time.monotonic() - _ts < _MODEL_CACHE_TTL:
-            return _vals
+        return _cached_precip
 
     results = []
     target_str = target_date.isoformat()
@@ -4882,7 +4887,7 @@ def _fetch_ensemble_precip(
     # #70: return None instead of [] when no members fetched (caller can distinguish)
     if not results and not date_in_range:
         return None  # type: ignore[return-value]  # date outside forecast range
-    _PRECIP_ENSEMBLE_CACHE[_precip_cache_key] = (results, time.monotonic())
+    _PRECIP_ENSEMBLE_CACHE.set(_precip_cache_key, results)
     return results
 
 

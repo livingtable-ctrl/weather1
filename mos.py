@@ -12,6 +12,7 @@ from datetime import UTC, date, datetime, timedelta
 import requests
 from requests.adapters import HTTPAdapter, Retry
 
+from forecast_cache import ForecastCache
 from metar import MARKET_STATION_MAP as _MARKET_STATION_MAP
 from utils import utc_today as _utc_today
 
@@ -53,11 +54,16 @@ _session.mount(
 )
 
 
-# In-process cache: (station, date_iso, model) → (result, monotonic_time).
-# MOS updates every ~6 h; 1-hour TTL prevents redundant HTTP calls when
-# cmd_cron / analyze_trade loop over many markets for the same cities.
-_MOS_CACHE: dict[tuple, tuple[dict | None, float]] = {}
+# In-process cache: (station, date_iso, model) → result (negative-cached as
+# None on fetch failure). MOS updates every ~6 h; 1-hour TTL prevents
+# redundant HTTP calls when cmd_cron / analyze_trade loop over many markets
+# for the same cities. Migrated to the shared ForecastCache 2026-07-19
+# (backlog.txt "ForecastCache EXISTS, BUT ~14 HAND-ROLLED TTL DICTS..."). A
+# real (negative-cached) None value is indistinguishable from "no entry" via
+# plain .get() alone, so both read sites below use get_with_ts()'s explicit
+# hit flag instead.
 _MOS_CACHE_TTL = 3600  # 1 hour
+_MOS_CACHE: ForecastCache[dict | None] = ForecastCache(ttl_secs=_MOS_CACHE_TTL)
 
 
 def get_mos_station(city: str) -> str | None:
@@ -79,11 +85,10 @@ def is_mos_cached(station: str, target_date: date | None) -> bool:
         if hasattr(target_date, "isoformat")
         else str(target_date)
     )
-    now = time.monotonic()
     for model in ("NAM", "GFS"):
         key = (station.upper(), date_str, model)
-        cached = _MOS_CACHE.get(key)
-        if cached is not None and (now - cached[1]) < _MOS_CACHE_TTL:
+        _, hit, _ = _MOS_CACHE.get_with_ts(key)
+        if hit:
             return True
     return False
 
@@ -135,11 +140,9 @@ def fetch_mos(
 
     # Check cache before hitting the network.
     _cache_key = (station.upper(), date_str, model.upper())
-    _cached = _MOS_CACHE.get(_cache_key)
-    if _cached is not None:
-        _result, _ts = _cached
-        if time.monotonic() - _ts < _MOS_CACHE_TTL:
-            return _result
+    _cached_result, _cache_hit, _ = _MOS_CACHE.get_with_ts(_cache_key)
+    if _cache_hit:
+        return _cached_result
 
     try:
         resp = _session.get(
@@ -151,25 +154,25 @@ def fetch_mos(
         payload = resp.json()
     except Exception as exc:
         _log.debug("fetch_mos(%s): %s", station, exc)
-        _MOS_CACHE[_cache_key] = (None, time.monotonic())
+        _MOS_CACHE.set(_cache_key, None)
         return None
 
     rows = payload.get("data", [])
     if not rows:
-        _MOS_CACHE[_cache_key] = (None, time.monotonic())
+        _MOS_CACHE.set(_cache_key, None)
         return None
 
     # Filter to rows on the target date (ftime starts with date_str)
     day_rows = [r for r in rows if str(r.get("ftime", "")).startswith(date_str)]
     if not day_rows:
-        _MOS_CACHE[_cache_key] = (None, time.monotonic())
+        _MOS_CACHE.set(_cache_key, None)
         return None
 
     temps: list[float] = [
         t for r in day_rows if (t := _parse_temp(r.get("tmp"))) is not None
     ]
     if not temps:
-        _MOS_CACHE[_cache_key] = (None, time.monotonic())
+        _MOS_CACHE.set(_cache_key, None)
         return None
 
     # B1: compute days_out and look up MOS-specific RMSE as sigma
@@ -186,7 +189,7 @@ def fetch_mos(
         "model": model,
         "sigma": sigma,
     }
-    _MOS_CACHE[_cache_key] = (result, time.monotonic())
+    _MOS_CACHE.set(_cache_key, result)
     return result
 
 
