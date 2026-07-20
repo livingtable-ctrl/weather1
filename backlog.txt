@@ -2584,10 +2584,23 @@ When to revisit: N/A -- resolved (smallest useful version shipped). If the
   reconsidering -- re-check the trigger rate against real data rather than
   assuming it changed.
 
-[WEBSOCKET orderbook_delta get_snapshot -- SIMPLER BOOK INITIALIZATION]
-Priority: Low (nice-to-have simplification, not a bug)
+[CLOSED 2026-07-20 -- not a simplification, no concrete use case] WEBSOCKET orderbook_delta get_snapshot -- SIMPLER BOOK INITIALIZATION
+Priority: was Low (nice-to-have simplification, not a bug)
 
-Problem:
+CLOSED 2026-07-20: Re-confirmed the 2026-07-12 research finding still
+  holds -- there is no REST-call redundancy in kalshi_ws.py's book-init
+  path to simplify (it's already snapshot-via-WS, zero REST involvement),
+  and this bot still always subscribes up front to every scanned ticker, so
+  get_snapshot's narrower "one-off book peek for a ticker outside the
+  active subscription list" use case still has no concrete call site.
+  Closing outright rather than leaving open with nothing to act on --
+  get_snapshot itself isn't going anywhere (it's a standing Kalshi WS
+  feature, not a deprecating one), so if a real one-off-peek use case shows
+  up later this can be re-opened as a fresh entry with that use case named,
+  rather than carried forward indefinitely as a "someday" line with no
+  actionable next step.
+
+Original problem (kept for history):
   Kalshi added a get_snapshot action to update_subscription on the
   orderbook_delta WebSocket channel (April 2026): it returns a one-off
   orderbook_snapshot response for requested markets without subscribing to
@@ -2633,9 +2646,9 @@ Why not now:
     existing REST-call redundancy to remove) -- only relevant if/when a
     concrete one-off-book-peek use case appears.
 
-When to revisit:
-  - Alongside the RESTING EXIT ORDERS + OCO entry above (same file,
-    adjacent surface area) or whenever kalshi_ws.py is next touched.
+When to revisit: N/A -- closed. Re-open as a new entry if a concrete
+  one-off-book-peek use case (outside the active subscription list) ever
+  actually appears.
 
 [PUBLIC TRADE-FLOW SIGNAL]
 Priority: Low-Medium (cheap to capture, speculative value)
@@ -2705,9 +2718,37 @@ Why not now:
   - Marginal over a continuously-running loop; only meaningfully valuable
     during manual-cadence periods like the current trip.
 
+UPDATE 2026-07-20 (research pass, no code changed) -- premise checked
+  against live state and found weaker than "valuable during manual-cadence
+  periods like the current trip" implies:
+  - Confirmed TRADING_PAUSED=true right now (.env), and is_trading_paused()
+    gates _auto_place_trades() entirely -- no paper or live trade is placed
+    regardless of when cron runs, until Belgium return (2026-07-31). This
+    feature's actual point (catch the same-day lock-in signal before it's
+    missed so a trade can be placed on it) is inactive for the whole
+    remaining window it would otherwise help with. The only live value
+    today is shadow-prediction logging continuity (still logged while
+    paused, for Brier/calibration tracking) -- much less timing-sensitive,
+    since a later same-day scan produces an equally or more confident
+    lock-in read, just with less time to act on it.
+  - Likely superseded, not just delayed: this entry's own "why not now"
+    already scopes the value to manual-cadence gaps specifically -- and the
+    already-decided fix for manual-cadence unreliability is the MOVE OFF
+    LOCAL CRON entry (VM running `watch --auto --live` continuously).
+    Once that lands, watch's 5-minute cadence covers every city's local
+    afternoon window for free and this feature has no remaining job.
+    Building it now risks throwaway work for the gap between today and
+    whichever of (Belgium return, VM move) happens first.
+  - Recommendation if picked up again: re-check both triggers (has
+    TRADING_PAUSED cleared? has the VM move executed?) before building --
+    if the VM move has landed, close this as superseded rather than
+    implementing it.
+
 When to revisit:
-  - If manual cadence continues long-term, or as a small quality-of-life
-    flag next time cron.py is open.
+  - Not before 2026-07-31 (Belgium return), and only if manual cron cadence
+    is still the operating mode at that point (i.e. the VM move hasn't
+    landed yet) -- check both conditions fresh rather than assuming either
+    still holds.
 
 ======================================================
 2026-07-16 WHOLE-PROGRAM SCOUTING SESSION (feature half) -- three parallel
