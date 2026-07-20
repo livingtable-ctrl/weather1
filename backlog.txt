@@ -340,7 +340,7 @@ When to revisit:
     24559a7 but not individually re-verified here beyond the grep checks
     above) if this revert pattern is ever suspected elsewhere.
 
-[PARTIALLY RESOLVED 2026-07-20 -- Step 1 of 2 shipped] HOURLY-DIRECTIONAL TEMPERATURE MARKETS — KXTEMPxxxH
+[RESOLVED 2026-07-20 -- Step 1 and Step 2 both shipped] HOURLY-DIRECTIONAL TEMPERATURE MARKETS — KXTEMPxxxH
 Priority: was Low/Medium -- now Medium-High. Corrected volume data below
   changes the picture substantially from "one city has real live volume."
 
@@ -496,6 +496,155 @@ RESOLVED 2026-07-20 (Step 1 -- schema + safe discovery only, zero
      version (conservative, real correlated risk) -- revisit only once
      real hourly paper-trading data exists.
 
+RESOLVED 2026-07-20 (Step 2 -- real probability model, own settlement, own
+  calibration pool, shadow-only rollout; all 7 handoff items above closed):
+  Re-verified every handoff claim against live state before writing code:
+  fresh determine_hourly_target_hours() (not the stale Step 1 snapshot) gave
+  NYC max=14/min=6, Austin max=17/min=7, Chicago max=16/min=6, LA max=12/min=6,
+  Washington max=15/min=6 -- confirmed the var-derivation bug still present
+  at all 4 named sites plus a 5th related one (tracker.audit_settlement
+  derives var from cond_type as a fallback, a different wrong-shape bug, not
+  just a dangerous default). Root cause: no trade/prediction record stored
+  `var` at all -- place_paper_order() had no var parameter -- so all 5 sites
+  independently re-derived it from ticker text, which never matches
+  KXTEMPxxxH tickers. User picked the root-cause fix (thread var end-to-end)
+  over a narrow per-site patch, and cached-periodic (not per-scan) target-
+  hour refresh over live-every-scan, given a full per-city history fetch is
+  30k+ markets for NYC alone.
+
+  Plan reviewed critically across 2 rounds (10 then 5 more passes) before any
+  code was written -- each pass found real, substantive gaps: (1) the Step 1
+  guard sat before EVERY other gate, so narrowing it in place and letting
+  target-hour tickers "fall through" would skip liquidity/spread/price gates
+  entirely for hourly markets -- fixed by keeping those gates in the path and
+  adding the hourly branch point only after them; (2) tracing further found
+  an UNCONDITIONAL call to _metar_lock_in() sitting between the extreme-price
+  gate and the var-assignment point -- exactly the daily-running-max/min
+  function item 7 warns must never touch an hourly ticker -- the branch point
+  had to move to before that call, not after; (3) a second and third
+  contamination risk found the same way: Phase C's NBM/ECMWF blend and
+  get_historical_sigma(), neither hour-aware, sitting further down the same
+  daily path -- confirmed the hourly model must be a genuinely separate
+  function, not a patched-in-place daily fall-through; (4) discovered the
+  daily path already had partial, never-finished hour-aware ensemble/EMOS
+  logic (including an existing but unreachable "hourly_thin_ensemble" gate)
+  worth extracting and reusing rather than reimplementing.
+
+  Shipped:
+  - predictions.var TEXT column (migration v53), populated once by
+    log_prediction() from analysis["condition"]["var"] (both the INSERT and
+    the ON CONFLICT...DO UPDATE clause -- a same-day re-scan must update var,
+    not silently keep the first-ever value), read by all 5 buggy sites
+    instead of re-deriving, with a legacy-row fallback to the old
+    substring/cond_type derivation.
+  - data/hourly_target_hours.json cache + weather_markets.
+    refresh_hourly_target_hours()/get_hourly_target_hour_role(), mirroring
+    check_series_drift()'s once-per-city-per-day gating, wired into cron.py.
+    Live testing caught a real bug here: a transient fetch/parse hiccup
+    could produce {"max_hour": None, "min_hour": None}, which the once-per-
+    day gate would then lock in as "done for today" until tomorrow --
+    fixed to skip caching (and thus skip the done-for-today gate) on a
+    None/None result, since every city in this family is confirmed active
+    and None/None is never a legitimate steady state.
+  - analyze_trade()'s hourly branch: reuses the Step 1 ticker-prefix check,
+    looks up the cached target-hour role, gates out immediately if not a
+    target hour (new "hourly_not_target_hour" gate replacing Step 1's
+    blanket "hourly_not_yet_supported"), otherwise falls through the full
+    existing universal gate sequence (liquidity/spread/price/etc.) and
+    branches to the new _analyze_hourly_trade() only after the extreme-price
+    gate and before _metar_lock_in().
+  - _analyze_hourly_trade(): hour+tz-aware ensemble fetch, per-city station-
+    bias correction, persistence baseline (reused exactly as-is, item 7's
+    hour-proximity gap deliberately still open), _price_and_size() for the
+    shared entry-price/edge/Kelly tail (its 4th real caller). Two shared
+    helpers -- _compute_ensemble_prob() and _compute_persistence_prob() --
+    extracted from the daily path's own EMOS/Gaussian and persistence logic
+    so daily and hourly can't independently drift on the numerically subtle
+    parts; the daily path itself now calls these same functions, verified
+    byte-for-byte behavior-preserving against the full daily regression
+    suite. climatological_prob(), _metar_lock_in(), the Phase C NBM/ECMWF
+    blend, get_historical_sigma(), and the model-consensus check are all
+    deliberately never called from the hourly path (item 7's gaps, plus a
+    newly-found one: _get_consensus_probs()'s hour= parameter is a cache-key-
+    only no-op, the real fetch always requests daily data).
+  - Hourly settlement: tracker._fetch_asos_observations() extracted from
+    _fetch_asos_daily_temp() as a shared fetch/parse/local-day-filter core
+    (confirmed byte-for-byte identical against the existing DST-edge-case
+    test suite); new _fetch_asos_hour_temp() picks the METAR reading nearest
+    the target local hour. audit_settlement() branches on the KXTEMPxxxH
+    prefix before any daily-specific logic, writes settled_value/settled_var,
+    leaves settled_temp_f NULL.
+  - Separate 'hourly' pool in ml_bias.train_all_temperature_scaling() --
+    own query (ticker-prefix filtered, days_out=0, correctly parenthesized:
+    "AND (ticker LIKE ? OR ticker LIKE ? OR ...)" -- the missing-parens
+    version would let SQL's AND-binds-tighter-than-OR silently leak
+    non-days_out=0 rows in), own 20-sample gate, excluded from the existing
+    'sameday' pool by ticker prefix (also correctly parenthesized).
+    apply_temperature_scaling() gained a pool="hourly" parameter with the
+    same no-fallback-to-other-pools shape as 'sameday'; existing callers
+    (no pool arg) are unaffected.
+  - Shadow-only rollout: weather_markets._hourly_gates_active() mirrors
+    _below_gates_active() exactly (HOURLY_TRADING_ENABLED env var AND >=20
+    settled hourly predictions, new tracker.count_settled_hourly_
+    predictions()). Routing needed a genuinely new mechanism, not reuse of
+    an existing one: today's shadow-vs-real decision is a whole-batch,
+    whole-cycle choice keyed only on TRADING_PAUSED -- hourly markets must
+    stay shadow-only independent of that flag (including after Belgium
+    return lifts it) while daily markets in the same batch place normally,
+    so order_executor._auto_place_trades() gained a new per-opportunity
+    branch (inside the main loop, `continue`s past just that one
+    opportunity) rather than a whole-batch early return.
+
+  ~65 new tests across 6 files (schema/UPSERT round-trip, target-hour cache
+  gating including the None/None-not-cached-as-done regression, the real
+  hourly model's gate-ordering and _metar_lock_in-never-called safety checks
+  with real mock spies, var-preference with real precedence proofs, ASOS
+  hour-fetch, hourly calibration pool including a dedicated SQL-paren
+  regression test, shadow-gate per-ticker routing with a mixed-batch daily+
+  hourly proof), plus dedicated before/after unit tests for both extracted
+  shared helpers at their >=5/>=10 member-count boundaries and EMOS-vs-raw-
+  fraction fallback. 1171 tests pass across the full scoped regression
+  sweep; ruff+mypy clean throughout.
+
+  Live sanity check against Kalshi's real API (TRADING_PAUSED=true
+  throughout): real fetch produced 3 real hourly analyses for LA markets at
+  its live target hour (var=max, method=hourly_ensemble, plausible
+  probabilities and side recommendations against real market prices), 40
+  correctly gated out as non-target-hour, the universal gates (liquidity/
+  spread/extreme_price) fired for real markets exactly as they would for
+  daily ones, a real daily HIGH market was completely unaffected, and
+  _hourly_gates_active() correctly read False (shadow-only, as expected pre-
+  launch). This same live run is what caught the target-hour cache bug above.
+
+  Independent review used 3 parallel opus (effort=high) agents, each scoped
+  to a different third of the change, specifically to re-derive correctness
+  from the actual code rather than trust this narrative. Two came back
+  clean (one cosmetic stale test comment, fixed; one test-depth gap in the
+  SQL-paren coverage, closed with a dedicated regression test proven to
+  catch the exact mutation). The third found one real, substantive issue
+  before the gate ever opens: _analyze_hourly_trade()'s consensus flag was
+  computed as ensemble_prob-vs-blended_prob agreement, but blended_prob is
+  85% ensemble_prob + 15% persistence -- so it would agree almost always,
+  granting _price_and_size()'s consensus Kelly bonus (x1.25, raised cap) to
+  the least-validated model on a near-tautological basis. Fixed to
+  hardcoded False until a genuinely independent second source (NWS/
+  climatology) supports hourly markets -- unlike precip/snow's consensus
+  check, which genuinely compares 3 independent sources. Also flagged
+  (accepted, matches item 7's already-documented deferred scope): persistence
+  reuses the observed daily max for var="max" hourly markets, not an
+  hour-H-specific reading -- a real semantic gap, but explicitly deferred by
+  design, not a regression.
+
+  When to revisit: this entry is now fully closed. Item 7's gaps remain
+  intentionally open (metar-lock-in hour-analog, persistence hour-proximity
+  weighting, hourly climatology, is_stale() threshold tuning) -- revisit
+  once real hourly paper-trading data exists to judge them against, per
+  item 7's own guidance. HOURLY_TRADING_ENABLED stays unset (shadow-only)
+  until >=20 settled hourly predictions accumulate -- watch --auto's 5-
+  minute cadence is far more likely to catch Kalshi's ~1-hour hourly-ladder
+  window than the periodic cron/loop cadence (item 6); confirm actual
+  catch-rate from real logs before judging how long that takes.
+
 Original problem (kept for history):
   Kalshi's "Climate and Weather" category also lists an "Hourly Directional
   [City] Temperature" market family, structurally invisible to this bot:
@@ -537,8 +686,9 @@ Why not now (superseded -- both conditions below have since fired, see
   - Worth confirming KXTEMPxxxH volume is durable (not a one-off) before
     investing in an hour-level model.
 
-When to revisit: N/A for Step 1 -- resolved. See "STEP 2 HANDOFF" in the
-  RESOLVED note above for what's next and its own prerequisites.
+When to revisit: N/A -- both Step 1 and Step 2 resolved. See the Step 2
+  RESOLVED note above's "When to revisit" for the remaining intentionally-
+  deferred gaps (item 7) and the shadow-gate sample-floor condition.
 
 [RAIN / SNOW / HURRICANE MARKETS — UNTOUCHED CATEGORY SURFACE]
 Priority: Low (net-new product line, not a gap in the existing one)

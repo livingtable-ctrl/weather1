@@ -35,6 +35,8 @@ from utils import (
     is_trading_paused,
 )
 from weather_markets import (
+    _KXTEMP_HOURLY_CITY,
+    _hourly_gates_active,
     analyze_trade,
     enrich_with_forecast,
     get_weather_markets,
@@ -2712,6 +2714,26 @@ def _auto_place_trades(
             )
             continue
 
+        # Hourly shadow-only rollout (backlog.txt "HOURLY-DIRECTIONAL
+        # TEMPERATURE MARKETS" Step 2 handoff item 5). Unlike TRADING_PAUSED
+        # (a whole-cycle, whole-batch decision made once at the top of this
+        # function), hourly markets must stay shadow-only independent of
+        # that flag -- including after Belgium return lifts the pause,
+        # until their own settled-sample floor is met -- while every other
+        # opportunity in the same batch (daily markets, or hourly ones once
+        # their own gate fires) places normally. Per-ticker, not per-batch:
+        # reuses _log_shadow_predictions on a single-item list so the exact
+        # same validation/dedup/is_shadow=True logging path applies.
+        if (
+            any(ticker.upper().startswith(p) for p in _KXTEMP_HOURLY_CITY)
+            and not _hourly_gates_active()
+        ):
+            _n_shadow = _log_shadow_predictions([item], live=live)
+            _skip_reasons.append(
+                f"{ticker}: hourly_shadow_only(logged={bool(_n_shadow)})"
+            )
+            continue
+
         if live and live_config:
             _live_balance = _resolve_live_balance(client)
 
@@ -2845,6 +2867,7 @@ def _auto_place_trades(
                         "close_time"
                     ),  # needed for 24h settlement gate in stop loss checks
                     days_out=int(a.get("days_out", 1)),
+                    var=a.get("condition", {}).get("var"),
                 )
                 print(
                     green(

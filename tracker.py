@@ -27,7 +27,7 @@ DB_PATH.parent.mkdir(exist_ok=True)
 
 _db_initialized = False
 
-_SCHEMA_VERSION = 52  # increment when _MIGRATIONS list grows
+_SCHEMA_VERSION = 53  # increment when _MIGRATIONS list grows
 
 _MIGRATIONS = [
     # v1 → v2: add condition_type column (if not already added)
@@ -303,6 +303,19 @@ _MIGRATIONS = [
     # migration's own documented gap.
     "ALTER TABLE outcomes ADD COLUMN settled_value REAL",
     "ALTER TABLE outcomes ADD COLUMN settled_var TEXT",
+    # v52 -> v53: single source of truth for which physical quantity ("max"
+    # daily/hourly-high-role or "min" daily/hourly-low-role) a prediction is
+    # about (backlog.txt "HOURLY-DIRECTIONAL TEMPERATURE MARKETS" Step 2
+    # handoff item 2 -- the var-derivation duplicate-and-dangerous-default
+    # bug). Previously derived independently at 5 separate call sites from
+    # ticker substrings, which never match KXTEMPxxxH tickers ("HIGH"/"LOW"/
+    # "LOWT" don't appear in them) and silently defaulted to "max". Populated
+    # once by log_prediction() from analysis["condition"]["var"]; all other
+    # sites now prefer this stored value, falling back to the old substring
+    # derivation only for rows logged before this column existed. No
+    # backfill -- pre-migration rows can't be recovered, same reasoning as
+    # the v34->v35 ensemble_member_scores.var migration.
+    "ALTER TABLE predictions ADD COLUMN var TEXT",
 ]
 
 
@@ -812,8 +825,8 @@ def log_prediction(
            forecast_temp_f, model_consensus, ens_mean, ens_var, is_shadow,
            run_trend_points, run_trend_delta, run_trend_jumpy,
            implied_mean, implied_sigma, fit_residual,
-           liquidity_edge_scale, gated_edge, is_probation)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'),?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+           liquidity_edge_scale, gated_edge, is_probation, var)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'),?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         ON CONFLICT(ticker, predicted_date) DO UPDATE SET
             our_prob         = excluded.our_prob,
             raw_prob         = excluded.raw_prob,
@@ -850,7 +863,12 @@ def log_prediction(
             -- Same MIN() reasoning as is_shadow: a later real write always
             -- clears is_probation, but a probation write can never re-flag a
             -- row that already has a real (or shadow) prediction on it.
-            is_probation     = MIN(predictions.is_probation, excluded.is_probation)
+            is_probation     = MIN(predictions.is_probation, excluded.is_probation),
+            -- Plain overwrite (no MIN()/coalesce): a same-day re-analysis of
+            -- the same ticker must update var if it changed, not silently
+            -- keep the first-ever value forever (backlog.txt "HOURLY-
+            -- DIRECTIONAL TEMPERATURE MARKETS" Step 2 handoff item 2).
+            var              = excluded.var
         """
     params = (
         ticker,
@@ -890,6 +908,7 @@ def log_prediction(
         liquidity_edge_scale,
         gated_edge,
         int(is_probation),
+        cond.get("var"),
     )
     # Atomic upsert — unique index on (ticker, predicted_date) prevents
     # duplicate rows from concurrent calls (TOCTOU of old SELECT+INSERT pattern).
@@ -1749,6 +1768,35 @@ def count_settled_sameday_predictions() -> int:
     return row[0] if row else 0
 
 
+def count_settled_hourly_predictions() -> int:
+    """Count settled KXTEMPxxxH hourly predictions (backlog.txt "HOURLY-
+    DIRECTIONAL TEMPERATURE MARKETS" Step 2 handoff item 5, the shadow-only
+    rollout gate). Mirrors count_settled_sameday_predictions()/count_
+    settled_below_predictions()'s exact shape. Ticker prefix set imported
+    from weather_markets (same single-source-of-truth dict Step 1
+    established) rather than hardcoded, so this can't independently drift.
+    """
+    init_db()
+    try:
+        from weather_markets import _KXTEMP_HOURLY_CITY
+
+        prefixes = list(_KXTEMP_HOURLY_CITY)
+    except Exception:
+        return 0
+    if not prefixes:
+        return 0
+    where_sql = " OR ".join(["p.ticker LIKE ?"] * len(prefixes))
+    params = tuple(f"{p}%" for p in prefixes)
+    with _conn() as con:
+        row = con.execute(
+            "SELECT COUNT(*) FROM predictions p "
+            "JOIN outcomes_valid o ON p.ticker = o.ticker "
+            f"WHERE ({where_sql})",
+            params,
+        ).fetchone()
+    return row[0] if row else 0
+
+
 def count_emos_ready_predictions() -> int:
     """Count multi-day predictions that are actually trainable EMOS rows —
     ens_mean AND settled_temp_f both populated, matching get_emos_training_data's
@@ -2511,21 +2559,22 @@ def get_source_reliability(city: str | None = None, days: int = 30) -> dict:
     return result
 
 
-def _fetch_asos_daily_temp(
-    station: str, target_date: date, var: str, city_tz: str = "UTC"
-) -> float | None:
-    """Fetch daily high (var='max') or low (var='min') from IEM ASOS archive.
+def _fetch_asos_observations(
+    station: str, target_date: date, city_tz: str = "UTC"
+) -> list[tuple[datetime, float]]:
+    """Fetch every IEM ASOS METAR reading on `target_date`'s LOCAL calendar
+    day for `station`, as (local_datetime, temp_f) pairs.
 
-    Uses Iowa Environmental Mesonet hourly ASOS observations for the exact
-    ICAO station Kalshi uses for settlement — a point reading, not a grid cell.
+    Extracted from _fetch_asos_daily_temp() (backlog.txt "HOURLY-DIRECTIONAL
+    TEMPERATURE MARKETS" Step 2) so the daily max/min reduction and the new
+    hour-specific "nearest reading" reduction (_fetch_asos_hour_temp) share
+    the identical fetch/parse/local-day-filter logic rather than risk two
+    independently-drifting copies of it. See the original function's
+    docstring for why the UTC sts/ets window and local-day filter are built
+    the way they are (US cities' local midnight straddles two UTC dates).
 
-    Fetches the UTC window that covers the LOCAL calendar day for city_tz (US
-    cities are UTC-4 to UTC-8, so local midnight falls at 04:00–08:00 UTC,
-    spanning two UTC calendar dates). Only readings whose local timestamp falls
-    on target_date are included, which prevents the previous evening's readings
-    from inflating the daily max/min.
-
-    Falls back to None on any fetch or parse error.
+    Returns [] on any fetch or parse error, or if no readings fall on the
+    target local day.
     """
     from zoneinfo import ZoneInfo
 
@@ -2603,7 +2652,7 @@ def _fetch_asos_daily_temp(
                 timeout=15,
             )
         resp.raise_for_status()
-        temps: list[float] = []
+        observations: list[tuple[datetime, float]] = []
         for line in resp.text.splitlines():
             parts = line.split(",")
             if len(parts) < 3:
@@ -2622,14 +2671,67 @@ def _fetch_asos_daily_temp(
                 continue  # Header row or unparseable timestamp
             raw = parts[2].strip()
             try:
-                temps.append(float(raw))
+                observations.append((obs_local, float(raw)))
             except ValueError:
                 continue  # 'M' (missing)
-        if not temps:
-            return None
-        return max(temps) if var == "max" else min(temps)
+        return observations
     except Exception:
+        return []
+
+
+def _fetch_asos_daily_temp(
+    station: str, target_date: date, var: str, city_tz: str = "UTC"
+) -> float | None:
+    """Fetch daily high (var='max') or low (var='min') from IEM ASOS archive.
+
+    Uses Iowa Environmental Mesonet hourly ASOS observations for the exact
+    ICAO station Kalshi uses for settlement — a point reading, not a grid cell.
+    See _fetch_asos_observations() for the fetch/parse/local-day-filter logic.
+
+    Falls back to None on any fetch or parse error.
+    """
+    observations = _fetch_asos_observations(station, target_date, city_tz)
+    if not observations:
         return None
+    temps = [t for _, t in observations]
+    return max(temps) if var == "max" else min(temps)
+
+
+def _fetch_asos_hour_temp(
+    station: str, target_date: date, hour: int, city_tz: str = "UTC"
+) -> float | None:
+    """Fetch the ASOS reading nearest local `hour` on `target_date`, for
+    KXTEMPxxxH hourly settlement (backlog.txt "HOURLY-DIRECTIONAL TEMPERATURE
+    MARKETS" Step 2 handoff item 3). Reduction change, not a new data source
+    -- the raw METAR feed already has hourly-resolution readings; this picks
+    the observation closest to the target hour instead of the whole day's
+    max()/min() (_fetch_asos_daily_temp above).
+
+    METAR observations aren't always exactly on the hour (routine reports
+    commonly land at :51-:56 past) -- "nearest" is measured in wall-clock
+    minutes from target_date at hour:00 local, not an exact-hour match.
+
+    Falls back to None on any fetch/parse error or if no readings exist for
+    the target local day.
+    """
+    from zoneinfo import ZoneInfo
+
+    observations = _fetch_asos_observations(station, target_date, city_tz)
+    if not observations:
+        return None
+    target_dt = datetime(
+        target_date.year,
+        target_date.month,
+        target_date.day,
+        hour,
+        0,
+        0,
+        tzinfo=ZoneInfo(city_tz),
+    )
+    _, nearest_temp = min(
+        observations, key=lambda obs: abs((obs[0] - target_dt).total_seconds())
+    )
+    return nearest_temp
 
 
 def _fetch_actual_daily_temp(
@@ -2713,6 +2815,43 @@ def audit_settlement(ticker: str, settled_yes: bool) -> bool:
             return False
         lat, lon, tz = coords
 
+        # ── Hourly settlement (backlog.txt "HOURLY-DIRECTIONAL TEMPERATURE
+        # MARKETS" Step 2 handoff item 3) ────────────────────────────────────
+        # KXTEMPxxxH tickers settle into settled_value/settled_var, not
+        # settled_temp_f -- an entirely different write target, so this
+        # branches off before any of the daily-specific var/condition-type
+        # logic below (which assumes the market is about the day's high/low,
+        # not one specific hour).
+        from weather_markets import _KXTEMP_HOURLY_CITY
+        from weather_markets import parse_ticker_hour as _parse_ticker_hour
+
+        if any(ticker.upper().startswith(p) for p in _KXTEMP_HOURLY_CITY):
+            hour = _parse_ticker_hour(ticker)
+            if hour is None:
+                return False
+            hourly_var: str | None = None
+            try:
+                with _conn() as _con:
+                    _hv_row = _con.execute(
+                        "SELECT var FROM predictions WHERE ticker = ?", (ticker,)
+                    ).fetchone()
+                if _hv_row and _hv_row[0]:
+                    hourly_var = _hv_row[0]
+            except Exception:
+                pass
+            station = _station_for_city(city)
+            if not station:
+                return False
+            actual_value = _fetch_asos_hour_temp(station, target_date, hour, city_tz=tz)
+            if actual_value is None:
+                return False
+            with _conn() as con:
+                con.execute(
+                    "UPDATE outcomes SET settled_value = ?, settled_var = ? WHERE ticker = ?",
+                    (round(actual_value, 1), hourly_var, ticker),
+                )
+            return True
+
         # Prefer condition stored in predictions DB — it was recorded with the real
         # Kalshi market title, so direction (above vs below) is correct. Parsing
         # with an empty title falls back to series-ticker heuristics that map
@@ -2749,20 +2888,38 @@ def audit_settlement(ticker: str, settled_yes: bool) -> bool:
 
         cond_type = cond.get("type", "")
 
-        # Determine which daily temperature variable to fetch.
-        # HIGH temp markets (KXHIGH...) need the daily max; LOW temp markets need min.
-        # between markets use the same logic — the range is on a specific var.
-        ticker_upper = ticker.upper()
-        if "HIGH" in ticker_upper:
-            var = "max"
-        elif "LOWT" in ticker_upper or "LOW" in ticker_upper:
-            var = "min"
-        elif cond_type == "above":
-            var = "max"
-        elif cond_type == "below":
-            var = "min"
-        else:
-            return False  # precipitation or unknown — skip
+        # Prefer the var stored on the prediction itself (backlog.txt
+        # "HOURLY-DIRECTIONAL TEMPERATURE MARKETS" Step 2 handoff item 2, the
+        # var-derivation root-cause fix) -- avoids the cond_type-based
+        # fallback below, which is a different, wrong-shape bug for hourly
+        # tickers: "will the temp at hour H exceed X" doesn't imply hour H is
+        # the day's max-hour just because the condition direction is "above".
+        var: str | None = None
+        try:
+            with _conn() as _con:
+                _var_row = _con.execute(
+                    "SELECT var FROM predictions WHERE ticker = ?", (ticker,)
+                ).fetchone()
+            if _var_row and _var_row[0]:
+                var = _var_row[0]
+        except Exception:
+            pass
+
+        if var is None:
+            # Determine which daily temperature variable to fetch.
+            # HIGH temp markets (KXHIGH...) need the daily max; LOW temp markets need min.
+            # between markets use the same logic — the range is on a specific var.
+            ticker_upper = ticker.upper()
+            if "HIGH" in ticker_upper:
+                var = "max"
+            elif "LOWT" in ticker_upper or "LOW" in ticker_upper:
+                var = "min"
+            elif cond_type == "above":
+                var = "max"
+            elif cond_type == "below":
+                var = "min"
+            else:
+                return False  # precipitation or unknown — skip
 
         # Prefer ASOS station data (same source as Kalshi settlement).
         # Fall back to Open-Meteo gridded archive only when no station is mapped.
@@ -3197,7 +3354,7 @@ def backfill_emos_data(force: bool = False) -> tuple[int, int]:
         # consecutive-skip circuit breaker aborts on old no-archive rows.
         null_ens_rows = con.execute(
             """
-            SELECT DISTINCT p.ticker, p.city, p.market_date, p.condition_type, p.days_out
+            SELECT DISTINCT p.ticker, p.city, p.market_date, p.condition_type, p.days_out, p.var
             FROM predictions p
             JOIN outcomes o ON p.ticker = o.ticker
             WHERE p.ens_mean IS NULL
@@ -3232,18 +3389,26 @@ def backfill_emos_data(force: bool = False) -> tuple[int, int]:
 
         lat, lon, tz = _coords[city]
 
-        # Determine which temperature variable from the MARKET TYPE, not the
-        # condition (above/below/between).  KXHIGH markets measure the daily
-        # high; KXLOWT markets measure the daily low.  Condition type only says
-        # which side of the threshold the bet is on — it must not override this.
-        # Matches analyze_trade's own logic: var = "min" if "LOW" in series else "max".
-        ticker_upper = ticker.upper()
-        if "HIGH" in ticker_upper:
-            var = "max"
-        elif "LOWT" in ticker_upper or "LOW" in ticker_upper:
-            var = "min"
-        else:
-            var = "max"  # between markets default to high temperature
+        # Prefer the var stored on the prediction itself (backlog.txt
+        # "HOURLY-DIRECTIONAL TEMPERATURE MARKETS" Step 2 handoff item 2, the
+        # var-derivation root-cause fix). This loop is filtered to days_out
+        # >= 1 above, so it can never actually reach an hourly (always
+        # days_out=0) row today -- fixed anyway so this site can't
+        # independently drift from the others if that filter ever changes.
+        var = row["var"]
+        if var is None:
+            # Determine which temperature variable from the MARKET TYPE, not the
+            # condition (above/below/between).  KXHIGH markets measure the daily
+            # high; KXLOWT markets measure the daily low.  Condition type only says
+            # which side of the threshold the bet is on — it must not override this.
+            # Matches analyze_trade's own logic: var = "min" if "LOW" in series else "max".
+            ticker_upper = ticker.upper()
+            if "HIGH" in ticker_upper:
+                var = "max"
+            elif "LOWT" in ticker_upper or "LOW" in ticker_upper:
+                var = "min"
+            else:
+                var = "max"  # between markets default to high temperature
 
         try:
             target_date = date.fromisoformat(market_date_str)

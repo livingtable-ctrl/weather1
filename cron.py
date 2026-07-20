@@ -2627,6 +2627,20 @@ def _cmd_cron_body(
     except Exception as _drift_exc:
         _log.warning("check_series_drift call failed: %s", _drift_exc)
 
+    # Hourly-directional target-hour cache refresh — once per city per day,
+    # same placement/isolation rationale as check_series_drift above
+    # (backlog.txt "HOURLY-DIRECTIONAL TEMPERATURE MARKETS" Step 2). Feeds
+    # weather_markets.get_hourly_target_hour_role(), which gates the real
+    # hourly probability model in analyze_trade().
+    try:
+        from weather_markets import (
+            refresh_hourly_target_hours as _refresh_hourly_target_hours,
+        )
+
+        _refresh_hourly_target_hours(client)
+    except Exception as _hourly_target_exc:
+        _log.warning("refresh_hourly_target_hours call failed: %s", _hourly_target_exc)
+
     # Per-city registry completeness manifest — once per day, observational
     # only, same placement/isolation rationale as check_series_drift above
     # (backlog.txt "PER-CITY KNOWLEDGE SCATTERED ACROSS ~8 REGISTRIES").

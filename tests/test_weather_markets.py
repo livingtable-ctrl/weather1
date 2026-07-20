@@ -2542,3 +2542,276 @@ class TestMosBlendNoCrossVariableFallback:
             f"MOS blend fired with a substituted max_temp_f instead of being "
             f"skipped for missing min_temp_f: blend_sources={blend}"
         )
+
+
+class TestComputeEnsembleProbRefactorSafetyNet:
+    """Dedicated unit tests for _compute_ensemble_prob(), extracted from
+    analyze_trade()'s daily path so it and the new hourly path share the
+    numerically-subtle EMOS/Gaussian core (backlog.txt "HOURLY-DIRECTIONAL
+    TEMPERATURE MARKETS" Step 2). The Step 2 plan committed to a dedicated
+    before/after regression test for this extraction at the >=5/>=10
+    member-count boundaries and the EMOS-vs-raw-fraction fallback -- this
+    class is that test, called directly rather than only indirectly via the
+    full analyze_trade() daily-path regression suite."""
+
+    def _condition(self, threshold=70.0, ctype="above"):
+        return {"type": ctype, "threshold": threshold}
+
+    def test_below_ten_members_uses_gaussian_not_emos(self, monkeypatch):
+        """<10 members must take the Gaussian branch (_forecast_probability),
+        never EMOS -- hand-verified against a manual computation."""
+        import weather_markets as wm
+
+        temps = [68.0, 69.0, 70.0, 71.0, 72.0, 73.0, 74.0]  # 7 members
+        ens_stats = wm.ensemble_stats(temps)
+        method, ens_prob = wm._compute_ensemble_prob(
+            temps,
+            ens_stats,
+            self._condition(threshold=71.0),
+            forecast_temp=71.0,
+            target_date=__import__("datetime").date(2026, 7, 20),
+            days_out=0,
+            sigma_mult=1.0,
+        )
+        assert method == "normal_dist"
+        # Manual check: sigma = min(ens_std, _SIGMA_1DAY_CAP) * 1.0, forecast=71,
+        # threshold=71 -> P(above) should be ~0.5 (forecast sits exactly on
+        # the threshold, symmetric Gaussian).
+        assert ens_prob == pytest.approx(0.5, abs=0.05)
+
+    def test_exactly_ten_members_uses_emos_or_ensemble_not_gaussian(self, monkeypatch):
+        """The >=10 boundary is inclusive -- exactly 10 members must take the
+        EMOS/raw-fraction branch (method label changes), not Gaussian."""
+        import weather_markets as wm
+
+        temps = [65.0, 66.0, 67.0, 68.0, 69.0, 70.0, 71.0, 72.0, 73.0, 74.0]  # 10
+        ens_stats = wm.ensemble_stats(temps)
+        monkeypatch.setattr("ml_bias._load_emos_params", lambda: None)
+        method, ens_prob = wm._compute_ensemble_prob(
+            temps,
+            ens_stats,
+            self._condition(threshold=70.0),
+            forecast_temp=69.5,
+            target_date=__import__("datetime").date(2026, 7, 20),
+            days_out=0,
+            sigma_mult=1.0,
+        )
+        assert method == "ensemble", "exactly 10 members must not fall back to Gaussian"
+        # Raw exceedance fraction hand-computed: 4 of 10 members (71,72,73,74) > 70.
+        assert ens_prob == pytest.approx(0.4, abs=1e-9)
+
+    def test_nine_members_uses_gaussian(self, monkeypatch):
+        """One below the boundary must still take the Gaussian branch."""
+        import weather_markets as wm
+
+        temps = [65.0, 66.0, 67.0, 68.0, 69.0, 70.0, 71.0, 72.0, 73.0]  # 9
+        ens_stats = wm.ensemble_stats(temps)
+        method, _ = wm._compute_ensemble_prob(
+            temps,
+            ens_stats,
+            self._condition(threshold=70.0),
+            forecast_temp=69.0,
+            target_date=__import__("datetime").date(2026, 7, 20),
+            days_out=0,
+            sigma_mult=1.0,
+        )
+        assert method == "normal_dist"
+
+    def test_emos_used_when_params_trained(self, monkeypatch):
+        """>=10 members with EMOS params available must use method='emos',
+        not the raw-fraction fallback -- and must square std (variance),
+        never pass std directly (a documented CRITICAL invariant)."""
+        import weather_markets as wm
+
+        temps = [float(65 + i) for i in range(12)]  # 12 members, mean~70.5
+        ens_stats = wm.ensemble_stats(temps)
+        captured = {}
+
+        def _fake_exceedance(params, mean, ens_var, threshold):
+            captured["ens_var"] = ens_var
+            captured["mean"] = mean
+            return 0.42
+
+        monkeypatch.setattr("ml_bias._load_emos_params", lambda: (0.0, 1.0, 0.0, 1.0))
+        monkeypatch.setattr("ml_bias.emos_exceedance_prob", _fake_exceedance)
+        method, ens_prob = wm._compute_ensemble_prob(
+            temps,
+            ens_stats,
+            self._condition(threshold=70.0, ctype="above"),
+            forecast_temp=70.5,
+            target_date=__import__("datetime").date(2026, 7, 20),
+            days_out=0,
+            sigma_mult=1.0,
+        )
+        assert method == "emos"
+        assert ens_prob == pytest.approx(0.42)
+        # variance, not std -- must be std**2, and std > 0 for non-degenerate input.
+        assert captured["ens_var"] == pytest.approx(ens_stats["std"] ** 2)
+        assert captured["ens_var"] != pytest.approx(ens_stats["std"]), (
+            "must square std into variance, not pass std directly (CRITICAL invariant)"
+        )
+
+    def test_emos_falls_back_to_raw_fraction_when_untrained(self, monkeypatch):
+        """>=10 members with no EMOS params must use the raw exceedance
+        fraction fallback, method='ensemble' (not 'emos')."""
+        import weather_markets as wm
+
+        temps = [60.0, 61.0, 62.0, 68.0, 69.0, 71.0, 72.0, 78.0, 79.0, 80.0]  # 10
+        ens_stats = wm.ensemble_stats(temps)
+        monkeypatch.setattr("ml_bias._load_emos_params", lambda: None)
+        method, ens_prob = wm._compute_ensemble_prob(
+            temps,
+            ens_stats,
+            self._condition(threshold=70.0),
+            forecast_temp=70.0,
+            target_date=__import__("datetime").date(2026, 7, 20),
+            days_out=0,
+            sigma_mult=1.0,
+        )
+        assert method == "ensemble"
+        # Hand-computed: members strictly above 70.0 are 71,72,78,79,80 -> 5 of 10.
+        expected = sum(1 for t in temps if t > 70.0) / len(temps)
+        assert expected == pytest.approx(0.5)
+        assert ens_prob == pytest.approx(expected)
+
+    def test_below_condition_widens_sigma_in_gaussian_branch(self, monkeypatch):
+        """'below' condition type widens sigma by 1.5x in the Gaussian
+        branch (empirical MAE ~2x ensemble std for below markets) -- confirm
+        this still fires post-extraction by comparing against 'above' at the
+        same inputs."""
+        import weather_markets as wm
+
+        temps = [68.0, 69.0, 70.0, 71.0, 72.0]  # 5 members, forces Gaussian
+        ens_stats = wm.ensemble_stats(temps)
+        _, prob_above = wm._compute_ensemble_prob(
+            temps,
+            ens_stats,
+            self._condition(threshold=65.0, ctype="above"),
+            forecast_temp=70.0,
+            target_date=__import__("datetime").date(2026, 7, 20),
+            days_out=0,
+            sigma_mult=1.0,
+        )
+        _, prob_below = wm._compute_ensemble_prob(
+            temps,
+            ens_stats,
+            self._condition(threshold=65.0, ctype="below"),
+            forecast_temp=70.0,
+            target_date=__import__("datetime").date(2026, 7, 20),
+            days_out=0,
+            sigma_mult=1.0,
+        )
+        # Wider sigma (below) -> less extreme probability than the narrow-sigma
+        # complement of the above case for the same forecast/threshold gap.
+        assert prob_below > (1.0 - prob_above), (
+            "below's sigma widening must make the tail probability less "
+            "extreme than the above case's complement"
+        )
+
+
+class TestComputePersistenceProbRefactorSafetyNet:
+    """Dedicated unit tests for _compute_persistence_prob(), the second
+    function extracted for the hourly path to share with daily (see
+    TestComputeEnsembleProbRefactorSafetyNet's docstring for why)."""
+
+    def test_days_out_above_two_returns_none(self):
+        import weather_markets as wm
+
+        result = wm._compute_persistence_prob(
+            "NYC",
+            (40.0, -74.0, "America/New_York"),
+            {"type": "above", "threshold": 70.0},
+            "max",
+            70.0,
+            days_out=3,
+        )
+        assert result is None
+
+    def test_no_live_observation_returns_none(self, monkeypatch):
+        import weather_markets as wm
+
+        monkeypatch.setattr("nws.get_live_observation", lambda *a, **kw: None)
+        result = wm._compute_persistence_prob(
+            "NYC",
+            (40.0, -74.0, "America/New_York"),
+            {"type": "above", "threshold": 70.0},
+            "max",
+            70.0,
+            days_out=0,
+        )
+        assert result is None
+
+    def test_uses_daily_max_for_max_var_at_days_out_zero(self, monkeypatch):
+        """var='max' at days_out=0 must prefer the observed running daily
+        max over the instantaneous current temp (the high may have already
+        occurred and be higher than 'right now')."""
+        import weather_markets as wm
+
+        monkeypatch.setattr(
+            "nws.get_live_observation",
+            lambda *a, **kw: {"max_temp_f": 82.0, "temp_f": 75.0},
+        )
+        captured = {}
+
+        def _fake_persistence(cond_type, lo, hi, current_temp):
+            captured["current_temp"] = current_temp
+            return 0.77
+
+        monkeypatch.setattr("climatology.persistence_prob", _fake_persistence)
+        result = wm._compute_persistence_prob(
+            "NYC",
+            (40.0, -74.0, "America/New_York"),
+            {"type": "above", "threshold": 70.0},
+            "max",
+            70.0,
+            days_out=0,
+        )
+        assert result == pytest.approx(0.77)
+        assert captured["current_temp"] == pytest.approx(82.0), (
+            "must use the observed daily max (82.0), not the instantaneous "
+            "current temp (75.0), for a var='max' days_out=0 lookup"
+        )
+
+    def test_uses_instantaneous_temp_for_min_var(self, monkeypatch):
+        """var='min' must use the instantaneous current temp, not max_temp_f
+        (the daily-max special case only applies to var='max')."""
+        import weather_markets as wm
+
+        monkeypatch.setattr(
+            "nws.get_live_observation",
+            lambda *a, **kw: {"max_temp_f": 82.0, "temp_f": 61.0},
+        )
+        captured = {}
+
+        def _fake_persistence(cond_type, lo, hi, current_temp):
+            captured["current_temp"] = current_temp
+            return 0.33
+
+        monkeypatch.setattr("climatology.persistence_prob", _fake_persistence)
+        result = wm._compute_persistence_prob(
+            "NYC",
+            (40.0, -74.0, "America/New_York"),
+            {"type": "below", "threshold": 65.0},
+            "min",
+            61.0,
+            days_out=0,
+        )
+        assert result == pytest.approx(0.33)
+        assert captured["current_temp"] == pytest.approx(61.0)
+
+    def test_exception_in_lookup_returns_none_not_raises(self, monkeypatch):
+        import weather_markets as wm
+
+        def _boom(*a, **kw):
+            raise RuntimeError("network down")
+
+        monkeypatch.setattr("nws.get_live_observation", _boom)
+        result = wm._compute_persistence_prob(
+            "NYC",
+            (40.0, -74.0, "America/New_York"),
+            {"type": "above", "threshold": 70.0},
+            "max",
+            70.0,
+            days_out=0,
+        )
+        assert result is None

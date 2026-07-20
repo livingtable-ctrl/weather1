@@ -266,6 +266,279 @@ class TestApplyTemperatureScaling:
             f"days_out=1 should use global T=3.0 (compression), got {result}"
         )
 
+    # ── backlog.txt "HOURLY-DIRECTIONAL TEMPERATURE MARKETS" Step 2 handoff
+    # item 4: pool="hourly" -- days_out=0 alone can't distinguish an hourly
+    # trade from an ordinary sameday one, so callers must pass pool="hourly"
+    # explicitly, and it must behave with the same "no fallback" shape as
+    # 'sameday'. ──────────────────────────────────────────────────────────
+
+    def test_hourly_pool_uses_hourly_T(self, tmp_path, monkeypatch):
+        self._load_table(
+            tmp_path,
+            monkeypatch,
+            {
+                "global": {"T": 3.0, "n": 51},
+                "sameday": {"T": 1.5, "n": 25},
+                "hourly": {"T": 2.0, "n": 20},
+            },
+        )
+        import ml_bias
+
+        result_hourly = ml_bias.apply_temperature_scaling(0.90, pool="hourly")
+        result_sameday = ml_bias.apply_temperature_scaling(0.90, days_out=0)
+        ml_bias._TEMP_CACHE = None
+
+        assert result_hourly != result_sameday, (
+            "pool='hourly' must use its own T (2.0), not silently reuse sameday's (1.5)"
+        )
+
+    def test_hourly_pool_no_fallback_to_sameday_or_global(self, tmp_path, monkeypatch):
+        """No 'hourly' key yet (fewer than 20 settled hourly predictions) must
+        return prob unchanged -- never fall back to sameday's or global's T,
+        which are fitted on structurally different probability distributions."""
+        self._load_table(
+            tmp_path,
+            monkeypatch,
+            {"global": {"T": 3.0, "n": 51}, "sameday": {"T": 1.5, "n": 25}},
+        )
+        import ml_bias
+
+        result = ml_bias.apply_temperature_scaling(0.85, pool="hourly")
+        ml_bias._TEMP_CACHE = None
+
+        assert result == pytest.approx(0.85), (
+            f"pool='hourly' with no hourly T should return prob unchanged, got {result}"
+        )
+
+    def test_hourly_pool_ignored_when_days_out_passed_alongside(
+        self, tmp_path, monkeypatch
+    ):
+        """pool='hourly' must win over days_out=0's sameday branch -- callers
+        pass both, and pool is the more specific signal."""
+        self._load_table(
+            tmp_path,
+            monkeypatch,
+            {"sameday": {"T": 1.5, "n": 25}, "hourly": {"T": 4.0, "n": 20}},
+        )
+        import ml_bias
+
+        result = ml_bias.apply_temperature_scaling(0.90, days_out=0, pool="hourly")
+        ml_bias._TEMP_CACHE = None
+
+        # T=4.0 compresses much harder than T=1.5 -- confirms hourly's T was
+        # actually used, not sameday's.
+        assert result < 0.75, (
+            f"expected strong T=4.0 compression (hourly), got {result} "
+            "-- looks like sameday's T=1.5 was used instead"
+        )
+
+    def test_ordinary_sameday_call_unaffected_by_hourly_key_presence(
+        self, tmp_path, monkeypatch
+    ):
+        """Existing callers (no pool arg) must be completely unaffected by an
+        'hourly' key existing in the table -- confirms the two pools are
+        genuinely independent, not accidentally cross-wired."""
+        self._load_table(
+            tmp_path,
+            monkeypatch,
+            {"sameday": {"T": 1.5, "n": 25}, "hourly": {"T": 4.0, "n": 20}},
+        )
+        import ml_bias
+
+        result_with_hourly = ml_bias.apply_temperature_scaling(0.90, days_out=0)
+        ml_bias._TEMP_CACHE = None
+        self._load_table(tmp_path, monkeypatch, {"sameday": {"T": 1.5, "n": 25}})
+        result_without_hourly = ml_bias.apply_temperature_scaling(0.90, days_out=0)
+        ml_bias._TEMP_CACHE = None
+
+        assert result_with_hourly == pytest.approx(result_without_hourly)
+
+
+class TestTrainAllTemperatureScalingHourlyPool:
+    """backlog.txt "HOURLY-DIRECTIONAL TEMPERATURE MARKETS" Step 2 handoff
+    item 4: train_all_temperature_scaling() must isolate hourly (KXTEMPxxxH,
+    days_out=0) rows into their own 'hourly' pool -- separate from 'sameday'
+    (ordinary days_out=0 daily trades) even though both share days_out=0,
+    since only the ticker prefix distinguishes them."""
+
+    def _seed(self, tracker, ticker, city, market_date, our_prob, settled_yes):
+        analysis = {
+            "condition": {"type": "above", "threshold": 70.0},
+            "forecast_prob": our_prob,
+            "market_prob": 0.5,
+            "edge": 0.1,
+            "method": "ensemble",
+        }
+        tracker.log_prediction(ticker, city, market_date, analysis)
+        tracker.log_outcome(ticker, settled_yes)
+        # Force days_out=0 regardless of market_date's relation to "today"
+        # (log_prediction derives it from market_date - utc_today()).
+        with tracker._conn() as con:
+            con.execute(
+                "UPDATE predictions SET days_out = 0 WHERE ticker = ?", (ticker,)
+            )
+
+    def test_hourly_rows_excluded_from_sameday_pool(self, tmp_path, monkeypatch):
+        from datetime import date
+
+        import ml_bias
+        import tracker
+
+        monkeypatch.setattr(tracker, "DB_PATH", tmp_path / "predictions.db")
+        monkeypatch.setattr(tracker, "_db_initialized", False)
+        monkeypatch.setattr(ml_bias, "_TEMP_PATH", tmp_path / "temperature_scale.json")
+        tracker.init_db()
+
+        # Genuinely overconfident (fixable by T-scaling) synthetic pattern:
+        # predicts sharp 90/10, actual rate is a milder 70/30 in each group.
+        # mean_pred == mean_actual == 0.5 by symmetry, so this is a confidence
+        # problem (T > 1 helps), not a directional-bias one (which _fit_T
+        # correctly refuses to "fix" via T-scaling and returns None for).
+        probs = [0.9] * 10 + [0.1] * 10
+        labels = [1] * 7 + [0] * 3 + [0] * 7 + [1] * 3
+        for i in range(20):
+            self._seed(
+                tracker,
+                f"KXTEMPNYCH-26JUL20{i:02d}-T75.99",
+                "NYC",
+                date(2026, 7, 20),
+                probs[i],
+                labels[i],
+            )
+        for i in range(20):
+            self._seed(
+                tracker,
+                f"KXHIGHNY-26JUL{i:02d}-T75",
+                "NYC",
+                date(2026, 7, 20),
+                probs[i],
+                labels[i],
+            )
+
+        ml_bias.train_all_temperature_scaling(
+            min_samples_global=1, min_samples_condition=1
+        )
+
+        with open(tmp_path / "temperature_scale.json") as f:
+            import json
+
+            saved = json.load(f)
+
+        assert "hourly" in saved, "hourly pool must be trained once >=20 samples exist"
+        assert saved["hourly"]["n"] == 20, (
+            f"hourly pool should have exactly the 20 hourly rows, got n={saved['hourly']['n']}"
+        )
+        assert saved.get("sameday", {}).get("n", 0) == 20, (
+            "sameday pool should have exactly the 20 daily rows, not include hourly ones"
+        )
+
+    def test_sql_paren_regression_multiday_hourly_row_excluded_from_sameday(
+        self, tmp_path, monkeypatch
+    ):
+        """Targets the exact SQL operator-precedence risk directly: SQL's AND
+        binds tighter than OR, so "days_out=0 AND NOT (ticker LIKE p1 OR
+        ticker LIKE p2 OR ...)" without the parens would collapse to "NOT
+        ticker LIKE p1 OR ticker LIKE p2 OR ..." -- a *multi-day* (days_out=1)
+        row whose ticker matches a NON-FIRST prefix (KXTEMPDCH, last in
+        _KXTEMP_HOURLY_CITY's iteration order) would then satisfy the
+        standalone "OR ticker LIKE p_last" disjunct regardless of days_out,
+        silently leaking into the 'sameday' pool. The other regression test
+        above only seeds days_out=0 rows on a single (first) prefix, which a
+        missing-parens mutation would NOT actually fail on -- this test
+        specifically would.
+        """
+        import json
+        from datetime import date
+
+        import ml_bias
+        import tracker
+
+        monkeypatch.setattr(tracker, "DB_PATH", tmp_path / "predictions.db")
+        monkeypatch.setattr(tracker, "_db_initialized", False)
+        monkeypatch.setattr(ml_bias, "_TEMP_PATH", tmp_path / "temperature_scale.json")
+        tracker.init_db()
+
+        from weather_markets import _KXTEMP_HOURLY_CITY
+
+        last_prefix = list(_KXTEMP_HOURLY_CITY)[-1]  # "KXTEMPDCH"
+
+        probs = [0.9] * 10 + [0.1] * 10
+        labels = [1] * 7 + [0] * 3 + [0] * 7 + [1] * 3
+        # 20 genuine sameday (non-hourly) rows.
+        for i in range(20):
+            self._seed(
+                tracker,
+                f"KXHIGHNY-26JUL{i:02d}-T75",
+                "NYC",
+                date(2026, 7, 20),
+                probs[i],
+                labels[i],
+            )
+        # One multi-day (days_out=1) row on the LAST hourly prefix -- must
+        # never be counted in 'sameday', regardless of SQL paren correctness.
+        multiday_ticker = f"{last_prefix}-26JUL2114-T75.99"
+        analysis = {
+            "condition": {"type": "above", "threshold": 70.0},
+            "forecast_prob": 0.9,
+            "market_prob": 0.5,
+            "edge": 0.1,
+            "method": "ensemble",
+        }
+        tracker.log_prediction(
+            multiday_ticker, "Washington", date(2026, 7, 21), analysis
+        )
+        tracker.log_outcome(multiday_ticker, True)
+        with tracker._conn() as con:
+            con.execute(
+                "UPDATE predictions SET days_out = 1 WHERE ticker = ?",
+                (multiday_ticker,),
+            )
+
+        ml_bias.train_all_temperature_scaling(
+            min_samples_global=1, min_samples_condition=1
+        )
+
+        saved = json.loads((tmp_path / "temperature_scale.json").read_text())
+        assert saved.get("sameday", {}).get("n", 0) == 20, (
+            f"sameday pool must be exactly the 20 genuine sameday rows -- a "
+            f"missing-parens SQL bug would leak the multi-day hourly row in, "
+            f"got n={saved.get('sameday', {}).get('n')}"
+        )
+
+    def test_hourly_pool_below_min_samples_not_trained(self, tmp_path, monkeypatch):
+        from datetime import date
+
+        import ml_bias
+        import tracker
+
+        monkeypatch.setattr(tracker, "DB_PATH", tmp_path / "predictions.db")
+        monkeypatch.setattr(tracker, "_db_initialized", False)
+        monkeypatch.setattr(ml_bias, "_TEMP_PATH", tmp_path / "temperature_scale.json")
+        tracker.init_db()
+
+        for i in range(10):  # below the 20-sample gate
+            self._seed(
+                tracker,
+                f"KXTEMPNYCH-26JUL20{i:02d}-T75.99",
+                "NYC",
+                date(2026, 7, 20),
+                0.6,
+                i % 2,
+            )
+
+        ml_bias.train_all_temperature_scaling(
+            min_samples_global=1, min_samples_condition=1
+        )
+
+        temp_path = tmp_path / "temperature_scale.json"
+        if temp_path.exists():
+            import json
+
+            saved = json.loads(temp_path.read_text())
+            assert "hourly" not in saved, (
+                "hourly pool must not be trained below its 20-sample gate"
+            )
+
 
 class TestEmos:
     def test_fit_emos_returns_four_floats(self):

@@ -199,4 +199,105 @@ def test_real_placement_logs_is_shadow_false(monkeypatch):
 
     rows = _fetch("KXREALPLACED")
     assert len(rows) == 1
+
+
+# ── backlog.txt "HOURLY-DIRECTIONAL TEMPERATURE MARKETS" Step 2 handoff item
+# 5: hourly markets stay shadow-only independent of TRADING_PAUSED, per-
+# ticker rather than per-batch, until _hourly_gates_active() fires. ─────────
+
+
+def _place_everything_setup(monkeypatch):
+    """Mirrors test_real_placement_logs_is_shadow_false's full mock setup so
+    a real placement can reach the finish line for any opp that clears the
+    hourly gate check."""
+    monkeypatch.delenv("TRADING_PAUSED", raising=False)
+    monkeypatch.setattr(
+        "order_executor._in_gfs_update_window", lambda now_utc=None: False
+    )
+    monkeypatch.setattr("paper.is_paused_drawdown", lambda: False)
+    monkeypatch.setattr("paper.is_daily_loss_halted", lambda c: False)
+    monkeypatch.setattr("paper.is_streak_paused", lambda: False)
+    monkeypatch.setattr("paper.get_open_trades", lambda: [])
+    monkeypatch.setattr("paper.kelly_quantity", lambda kf, p, cap=None, method=None: 5)
+    monkeypatch.setattr(
+        "paper.portfolio_kelly_fraction", lambda kf, c, d, side=None: kf
+    )
+    monkeypatch.setattr("order_executor._daily_paper_spend", lambda: 0.0)
+    monkeypatch.setattr("order_executor._current_forecast_cycle", lambda: "12z")
+    monkeypatch.setattr(
+        "order_executor.execution_log.was_ordered_this_cycle", lambda t, s, c: False
+    )
+
+
+def test_hourly_ticker_shadow_only_when_gate_inactive(monkeypatch):
+    """An hourly (KXTEMPxxxH) opp must be shadow-logged, not placed, when
+    _hourly_gates_active() is False -- independent of TRADING_PAUSED (which
+    is explicitly cleared here)."""
+    _place_everything_setup(monkeypatch)
+    monkeypatch.setattr("order_executor._hourly_gates_active", lambda: False)
+    placed_calls = []
+    monkeypatch.setattr(
+        "order_executor.place_paper_order",
+        lambda *a, **k: placed_calls.append((a, k))
+        or {"id": 1, "status": "open", "cost": 1.0},
+    )
+    opp = _make_flat_opp("KXTEMPNYCH-26JUL2014-T75.99")
+
+    result = order_executor._auto_place_trades([opp], client=None)
+
+    assert result == 0
+    assert placed_calls == [], "must never place a real order for a gated hourly ticker"
+    rows = _fetch("KXTEMPNYCH-26JUL2014-T75.99")
+    assert len(rows) == 1
+    assert rows[0]["is_shadow"] == 1
+
+
+def test_hourly_ticker_places_normally_when_gate_active(monkeypatch):
+    """Once _hourly_gates_active() is True, an hourly opp places exactly
+    like any other ticker -- no special-casing beyond the gate check."""
+    _place_everything_setup(monkeypatch)
+    monkeypatch.setattr("order_executor._hourly_gates_active", lambda: True)
+    monkeypatch.setattr(
+        "order_executor.place_paper_order",
+        lambda ticker, side, qty, price, **kwargs: {
+            "id": 1,
+            "status": "open",
+            "cost": price * qty,
+        },
+    )
+    opp = _make_flat_opp("KXTEMPNYCH-26JUL2015-T75.99")
+
+    order_executor._auto_place_trades([opp], client=None)
+
+    rows = _fetch("KXTEMPNYCH-26JUL2015-T75.99")
+    assert len(rows) == 1
     assert rows[0]["is_shadow"] == 0
+
+
+def test_mixed_batch_hourly_shadow_daily_places_normally(monkeypatch):
+    """The core routing guarantee: in one batch, an hourly opp (gate
+    inactive) is shadow-logged while a daily opp in the SAME batch places
+    normally -- confirms the new per-ticker branch doesn't regress the
+    existing whole-batch behavior for non-hourly opportunities."""
+    _place_everything_setup(monkeypatch)
+    monkeypatch.setattr("order_executor._hourly_gates_active", lambda: False)
+    placed_calls = []
+    monkeypatch.setattr(
+        "order_executor.place_paper_order",
+        lambda ticker, side, qty, price, **kwargs: (
+            placed_calls.append(ticker),
+            {"id": 1, "status": "open", "cost": price * qty},
+        )[1],
+    )
+    hourly_opp = _make_flat_opp("KXTEMPNYCH-26JUL2016-T75.99")
+    daily_opp = _make_flat_opp("KXHIGHNY-26JUL20-T80")
+
+    order_executor._auto_place_trades([hourly_opp, daily_opp], client=None)
+
+    assert placed_calls == ["KXHIGHNY-26JUL20-T80"], (
+        "only the daily ticker should have gone through place_paper_order"
+    )
+    hourly_rows = _fetch("KXTEMPNYCH-26JUL2016-T75.99")
+    assert len(hourly_rows) == 1 and hourly_rows[0]["is_shadow"] == 1
+    daily_rows = _fetch("KXHIGHNY-26JUL20-T80")
+    assert len(daily_rows) == 1 and daily_rows[0]["is_shadow"] == 0

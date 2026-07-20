@@ -2320,6 +2320,98 @@ class TestSettledValueVarColumns(unittest.TestCase):
         self.assertIsNone(row[2])
 
 
+class TestPredictionsVarColumn(unittest.TestCase):
+    """Schema v53 must add predictions.var, purely additive (backlog.txt
+    "HOURLY-DIRECTIONAL TEMPERATURE MARKETS" Step 2 handoff item 2 — the
+    var-derivation root-cause fix). Populated from analysis["condition"]["var"]
+    via log_prediction(), including on same-day UPSERT re-scans."""
+
+    def setUp(self):
+        self._tmpdir = tempfile.mkdtemp()
+        self._orig = tracker.DB_PATH
+        tracker.DB_PATH = Path(self._tmpdir) / "test_v53.db"
+        tracker._db_initialized = False
+
+    def tearDown(self):
+        tracker.DB_PATH = self._orig
+        tracker._db_initialized = False
+        shutil.rmtree(self._tmpdir, ignore_errors=True)
+
+    def test_column_exists_after_init(self):
+        tracker.init_db()
+        with sqlite3.connect(str(tracker.DB_PATH)) as con:
+            cols = {row[1] for row in con.execute("PRAGMA table_info(predictions)")}
+        self.assertIn("var", cols)
+
+    def _analysis(self, var):
+        return {
+            "condition": {"type": "above", "threshold": 70.0, "var": var},
+            "forecast_prob": 0.65,
+            "market_prob": 0.50,
+            "edge": 0.15,
+            "method": "ensemble",
+        }
+
+    def test_log_prediction_stores_var(self):
+        tracker.init_db()
+        tracker.log_prediction(
+            "KXTEMPNYCH-26JUL2014-T75.99",
+            "NYC",
+            date(2026, 7, 20),
+            self._analysis("max"),
+        )
+        with sqlite3.connect(str(tracker.DB_PATH)) as con:
+            row = con.execute(
+                "SELECT var FROM predictions WHERE ticker = ?",
+                ("KXTEMPNYCH-26JUL2014-T75.99",),
+            ).fetchone()
+        self.assertEqual(row[0], "max")
+
+    def test_upsert_on_same_day_rescan_updates_var(self):
+        """A same-day re-analysis (UPSERT conflict on ticker+predicted_date)
+        must overwrite a stale var, not silently keep the first value forever —
+        this is the exact ON CONFLICT DO UPDATE gap caught during plan review."""
+        tracker.init_db()
+        ticker = "KXTEMPNYCH-26JUL2014-T75.99"
+        tracker.log_prediction(
+            "KXTEMPNYCH-26JUL2014-T75.99",
+            "NYC",
+            date(2026, 7, 20),
+            self._analysis("max"),
+        )
+        tracker.log_prediction(
+            "KXTEMPNYCH-26JUL2014-T75.99",
+            "NYC",
+            date(2026, 7, 20),
+            self._analysis("min"),
+        )
+        with sqlite3.connect(str(tracker.DB_PATH)) as con:
+            rows = con.execute(
+                "SELECT var FROM predictions WHERE ticker = ?", (ticker,)
+            ).fetchall()
+        self.assertEqual(len(rows), 1, "UPSERT should not create a second row")
+        self.assertEqual(
+            rows[0][0], "min", "re-scan must update var, not keep the stale value"
+        )
+
+    def test_no_var_in_condition_stores_null(self):
+        """A daily HIGH/LOW market's condition dict may not carry a var key
+        (var lives on the trade/analysis path differently pre-Step-2) — must
+        store NULL, not raise."""
+        tracker.init_db()
+        analysis = self._analysis("max")
+        del analysis["condition"]["var"]
+        tracker.log_prediction(
+            "KXHIGHNY-26JUL20-T80", "NYC", date(2026, 7, 20), analysis
+        )
+        with sqlite3.connect(str(tracker.DB_PATH)) as con:
+            row = con.execute(
+                "SELECT var FROM predictions WHERE ticker = ?",
+                ("KXHIGHNY-26JUL20-T80",),
+            ).fetchone()
+        self.assertIsNone(row[0])
+
+
 # ── TestSourceProbsPassthrough ────────────────────────────────────────────────
 
 
@@ -2942,6 +3034,253 @@ class TestDisputedOutcomeTracking(unittest.TestCase):
             ).fetchone()
         self.assertEqual(row[0], 0)
 
+    def test_audit_settlement_prefers_stored_var_over_substring_fallback(self):
+        """backlog.txt "HOURLY-DIRECTIONAL TEMPERATURE MARKETS" Step 2 handoff
+        item 2 (var-derivation root-cause fix): the stored predictions.var
+        must win even when it *disagrees* with what the ticker-substring
+        fallback would derive -- proves real precedence, not just "happens
+        to agree." Ticker text says HIGH (-> fallback would say "max"); the
+        stored var says "min"; the fetch must use "min"."""
+        from unittest.mock import patch
+
+        import weather_markets
+
+        ticker = "KXHIGHNY-26APR09-T60"
+        analysis = {
+            "condition": {"type": "above", "threshold": 60.0, "var": "min"},
+            "forecast_prob": 0.5,
+            "market_prob": 0.5,
+            "edge": 0.1,
+            "method": "ensemble",
+        }
+        tracker.log_prediction(ticker, "NYC", date(2026, 4, 9), analysis)
+        tracker.log_outcome(ticker, True)
+
+        captured_var = {}
+
+        def _fake_fetch(station, target_date, var, city_tz):
+            captured_var["var"] = var
+            return 65.0
+
+        with (
+            patch.object(
+                weather_markets, "_metar_station_for_city", return_value="KNYC"
+            ),
+            patch.object(tracker, "_fetch_asos_daily_temp", side_effect=_fake_fetch),
+        ):
+            tracker.audit_settlement(ticker, settled_yes=True)
+
+        self.assertEqual(
+            captured_var.get("var"),
+            "min",
+            "must use the stored predictions.var ('min'), not derive 'max' from "
+            "cond_type=='above' via the substring-fallback path",
+        )
+
+    def test_audit_settlement_falls_back_when_no_stored_var(self):
+        """A ticker with no predictions row at all (var can't be looked up)
+        must still fall back to the old ticker-substring/cond_type
+        derivation, not silently skip settlement."""
+        from unittest.mock import patch
+
+        import weather_markets
+
+        ticker = "KXHIGHNY-26APR09-T70"
+        self._log_settled(ticker, 0.70, True, date(2026, 4, 9))
+        # Blank out the stored var to simulate a pre-migration row.
+        with sqlite3.connect(str(tracker.DB_PATH)) as con:
+            con.execute("UPDATE predictions SET var = NULL WHERE ticker = ?", (ticker,))
+            con.commit()
+
+        captured_var = {}
+
+        def _fake_fetch(station, target_date, var, city_tz):
+            captured_var["var"] = var
+            return 75.0
+
+        with (
+            patch.object(
+                weather_markets, "_metar_station_for_city", return_value="KNYC"
+            ),
+            patch.object(tracker, "_fetch_asos_daily_temp", side_effect=_fake_fetch),
+        ):
+            result = tracker.audit_settlement(ticker, settled_yes=True)
+
+        self.assertTrue(result)
+        self.assertEqual(
+            captured_var.get("var"),
+            "max",
+            "must fall back to ticker-substring derivation ('max' for KXHIGH) "
+            "when no stored var exists",
+        )
+
+    def test_audit_settlement_hourly_writes_settled_value_not_temp_f(self):
+        """backlog.txt "HOURLY-DIRECTIONAL TEMPERATURE MARKETS" Step 2 handoff
+        item 3: a KXTEMPxxxH ticker must settle into settled_value/
+        settled_var, with settled_temp_f left NULL (that column stays
+        daily-HIGH/LOW-specific per Step 1's design)."""
+        from unittest.mock import patch
+
+        import weather_markets
+
+        ticker = "KXTEMPNYCH-26JUL2014-T75.99"
+        analysis = {
+            "condition": {"type": "above", "threshold": 75.99, "var": "max"},
+            "forecast_prob": 0.5,
+            "market_prob": 0.5,
+            "edge": 0.1,
+            "method": "hourly_ensemble",
+        }
+        tracker.log_prediction(ticker, "NYC", date(2026, 7, 20), analysis)
+        tracker.log_outcome(ticker, True)
+
+        with (
+            patch.object(
+                weather_markets, "_metar_station_for_city", return_value="KNYC"
+            ),
+            patch.object(tracker, "_fetch_asos_hour_temp", return_value=76.4),
+        ):
+            result = tracker.audit_settlement(ticker, settled_yes=True)
+
+        self.assertTrue(result)
+        with sqlite3.connect(str(tracker.DB_PATH)) as con:
+            row = con.execute(
+                "SELECT settled_temp_f, settled_value, settled_var "
+                "FROM outcomes WHERE ticker = ?",
+                (ticker,),
+            ).fetchone()
+        self.assertIsNone(row[0], "settled_temp_f must stay NULL for hourly tickers")
+        self.assertAlmostEqual(row[1], 76.4)
+        self.assertEqual(row[2], "max")
+
+    def test_audit_settlement_hourly_passes_correct_hour_and_uses_hour_fetch(self):
+        """Must call the hour-specific fetch (_fetch_asos_hour_temp) with the
+        ticker's parsed hour, never the daily max/min fetch."""
+        from unittest.mock import patch
+
+        import weather_markets
+
+        ticker = "KXTEMPNYCH-26JUL2006-T60.99"
+        analysis = {
+            "condition": {"type": "above", "threshold": 60.99, "var": "min"},
+            "forecast_prob": 0.5,
+            "market_prob": 0.5,
+            "edge": 0.1,
+            "method": "hourly_ensemble",
+        }
+        tracker.log_prediction(ticker, "NYC", date(2026, 7, 20), analysis)
+        tracker.log_outcome(ticker, True)
+
+        captured = {}
+
+        def _fake_hour_fetch(station, target_date, hour, city_tz):
+            captured["hour"] = hour
+            return 61.0
+
+        with (
+            patch.object(
+                weather_markets, "_metar_station_for_city", return_value="KNYC"
+            ),
+            patch.object(
+                tracker, "_fetch_asos_hour_temp", side_effect=_fake_hour_fetch
+            ),
+            patch.object(tracker, "_fetch_asos_daily_temp") as _daily_fetch,
+        ):
+            tracker.audit_settlement(ticker, settled_yes=True)
+
+        self.assertEqual(captured.get("hour"), 6)
+        _daily_fetch.assert_not_called()
+
+    def test_audit_settlement_hourly_no_station_skips_settlement(self):
+        """No station mapped for the city -- must return False, not crash or
+        fall through to the Open-Meteo daily-gridded fallback (which has no
+        hour-specific equivalent)."""
+        from unittest.mock import patch
+
+        import weather_markets
+
+        ticker = "KXTEMPNYCH-26JUL2014-T75.99"
+        analysis = {
+            "condition": {"type": "above", "threshold": 75.99, "var": "max"},
+            "forecast_prob": 0.5,
+            "market_prob": 0.5,
+            "edge": 0.1,
+            "method": "hourly_ensemble",
+        }
+        tracker.log_prediction(ticker, "NYC", date(2026, 7, 20), analysis)
+        tracker.log_outcome(ticker, True)
+
+        with patch.object(
+            weather_markets, "_metar_station_for_city", return_value=None
+        ):
+            result = tracker.audit_settlement(ticker, settled_yes=True)
+
+        self.assertFalse(result)
+
+    def test_audit_settlement_hourly_no_fetch_result_leaves_row_untouched(self):
+        from unittest.mock import patch
+
+        import weather_markets
+
+        ticker = "KXTEMPNYCH-26JUL2014-T75.99"
+        analysis = {
+            "condition": {"type": "above", "threshold": 75.99, "var": "max"},
+            "forecast_prob": 0.5,
+            "market_prob": 0.5,
+            "edge": 0.1,
+            "method": "hourly_ensemble",
+        }
+        tracker.log_prediction(ticker, "NYC", date(2026, 7, 20), analysis)
+        tracker.log_outcome(ticker, True)
+
+        with (
+            patch.object(
+                weather_markets, "_metar_station_for_city", return_value="KNYC"
+            ),
+            patch.object(tracker, "_fetch_asos_hour_temp", return_value=None),
+        ):
+            result = tracker.audit_settlement(ticker, settled_yes=True)
+
+        self.assertFalse(result)
+        with sqlite3.connect(str(tracker.DB_PATH)) as con:
+            row = con.execute(
+                "SELECT settled_value FROM outcomes WHERE ticker = ?", (ticker,)
+            ).fetchone()
+        self.assertIsNone(row[0])
+
+    def test_audit_settlement_daily_ticker_still_uses_daily_path(self):
+        """Companion regression: an ordinary daily ticker must not be routed
+        through the hourly branch -- confirms the prefix check is specific,
+        not an accidental blanket capture."""
+        from unittest.mock import patch
+
+        import weather_markets
+
+        ticker = "KXHIGHNY-26JUL20-T80"
+        self._log_settled(ticker, 0.70, True, date(2026, 7, 20))
+
+        with (
+            patch.object(
+                weather_markets, "_metar_station_for_city", return_value="KNYC"
+            ),
+            patch.object(
+                tracker, "_fetch_asos_daily_temp", return_value=82.0
+            ) as _daily,
+            patch.object(tracker, "_fetch_asos_hour_temp") as _hourly,
+        ):
+            result = tracker.audit_settlement(ticker, settled_yes=True)
+
+        self.assertTrue(result)
+        _daily.assert_called_once()
+        _hourly.assert_not_called()
+        with sqlite3.connect(str(tracker.DB_PATH)) as con:
+            row = con.execute(
+                "SELECT settled_temp_f, settled_value FROM outcomes WHERE ticker = ?",
+                (ticker,),
+            ).fetchone()
+        self.assertAlmostEqual(row[0], 82.0)
+        self.assertIsNone(row[1])
+
     # ── Every calibration/Brier/bias query must exclude disputed rows ──────
 
     def test_get_bias_excludes_disputed(self):
@@ -3214,6 +3553,28 @@ class TestDisputedOutcomeTracking(unittest.TestCase):
         )
         tracker.mark_outcome_disputed("DISPUTED-BELOW")
         after = tracker.count_settled_below_predictions()
+        self.assertEqual(before, after)
+
+    def test_count_settled_hourly_predictions_counts_only_hourly_tickers(self):
+        """backlog.txt "HOURLY-DIRECTIONAL TEMPERATURE MARKETS" Step 2 handoff
+        item 5: must count KXTEMPxxxH rows, not ordinary daily ones."""
+        before = tracker.count_settled_hourly_predictions()
+        self._log_settled(
+            "KXTEMPNYCH-26JUL2014-T75.99", 0.6, True, self._FUTURE, city="NYC"
+        )
+        self._log_settled("KXHIGHNY-26JUL20-T75", 0.6, True, self._FUTURE, city="NYC")
+        after = tracker.count_settled_hourly_predictions()
+        self.assertEqual(
+            after, before + 1, "must count only the hourly ticker, not KXHIGHNY too"
+        )
+
+    def test_count_settled_hourly_predictions_excludes_disputed(self):
+        before = tracker.count_settled_hourly_predictions()
+        self._log_settled(
+            "KXTEMPNYCH-26JUL2015-T75.99", 1.0, 0, self._FUTURE, edge=0.99
+        )
+        tracker.mark_outcome_disputed("KXTEMPNYCH-26JUL2015-T75.99")
+        after = tracker.count_settled_hourly_predictions()
         self.assertEqual(before, after)
 
     def test_count_settled_west_coast_multiday_excludes_disputed(self):
@@ -3695,6 +4056,104 @@ class TestFetchAsosDailyTemp(unittest.TestCase):
                 "KMDW", date(2026, 11, 1), "min", city_tz="America/Chicago"
             )
         assert result == 40.0, f"expected same-day low 40.0, got {result}"
+
+
+class TestFetchAsosHourTemp(unittest.TestCase):
+    """backlog.txt "HOURLY-DIRECTIONAL TEMPERATURE MARKETS" Step 2 handoff
+    item 3: _fetch_asos_hour_temp() picks the reading nearest a target LOCAL
+    hour, not the whole day's max/min. Reuses _fetch_asos_observations()
+    (shared with _fetch_asos_daily_temp, see TestFetchAsosDailyTemp above for
+    that shared fetch/parse/local-day-filter coverage) -- these tests only
+    need to cover the new "nearest reading" reduction."""
+
+    def _mock_response(self, rows, station="KSEA"):
+        from unittest.mock import MagicMock
+
+        text = "station,valid,tmpf\n" + "\n".join(
+            f"{station},{ts},{temp}" for ts, temp in rows
+        )
+        resp = MagicMock()
+        resp.status_code = 200
+        resp.text = text
+        resp.raise_for_status.return_value = None
+        return resp
+
+    def test_picks_reading_nearest_target_hour(self):
+        """Real METAR reports rarely land exactly on the hour (commonly
+        :51-:56 past) -- must pick the closest one, not require an exact
+        match."""
+        from unittest.mock import patch
+
+        import tracker
+
+        rows = [
+            ("2026-07-03 17:53", "70.0"),  # 2026-07-03 10:53 local
+            ("2026-07-03 18:56", "75.0"),  # 2026-07-03 11:56 local -- nearest to 12:00
+            ("2026-07-03 20:53", "80.0"),  # 2026-07-03 13:53 local
+        ]
+        with patch("requests.get", return_value=self._mock_response(rows)):
+            result = tracker._fetch_asos_hour_temp(
+                "KSEA", date(2026, 7, 3), 12, city_tz="America/Los_Angeles"
+            )
+        assert result == 75.0, f"expected nearest-to-noon reading 75.0, got {result}"
+
+    def test_picks_reading_at_exact_hour_when_available(self):
+        from unittest.mock import patch
+
+        import tracker
+
+        rows = [
+            ("2026-07-03 19:00", "77.0"),  # 2026-07-03 12:00 local -- exact match
+            ("2026-07-03 20:53", "80.0"),  # 2026-07-03 13:53 local
+        ]
+        with patch("requests.get", return_value=self._mock_response(rows)):
+            result = tracker._fetch_asos_hour_temp(
+                "KSEA", date(2026, 7, 3), 12, city_tz="America/Los_Angeles"
+            )
+        assert result == 77.0
+
+    def test_ignores_readings_from_other_days_even_if_closer_in_wall_clock(self):
+        """A reading from an adjacent local day must never be selected, even
+        if it happens to be temporally closer than any same-day reading --
+        _fetch_asos_observations already filters to the target local date."""
+        from unittest.mock import patch
+
+        import tracker
+
+        rows = [
+            ("2026-07-04 06:53", "50.0"),  # 2026-07-03 23:53 local -- target day, late
+            (
+                "2026-07-04 12:53",
+                "40.0",
+            ),  # 2026-07-04 05:53 local -- next day, excluded despite being "closer" to hour=23
+        ]
+        with patch("requests.get", return_value=self._mock_response(rows)):
+            result = tracker._fetch_asos_hour_temp(
+                "KSEA", date(2026, 7, 3), 23, city_tz="America/Los_Angeles"
+            )
+        assert result == 50.0, "must not pick the next local day's reading"
+
+    def test_returns_none_when_no_readings_for_target_day(self):
+        from unittest.mock import patch
+
+        import tracker
+
+        with patch("requests.get", return_value=self._mock_response([])):
+            result = tracker._fetch_asos_hour_temp(
+                "KSEA", date(2026, 7, 3), 12, city_tz="America/Los_Angeles"
+            )
+        assert result is None
+
+    def test_returns_none_on_fetch_error(self):
+        from unittest.mock import patch
+
+        import tracker
+
+        with patch("requests.get", side_effect=RuntimeError("network down")):
+            result = tracker._fetch_asos_hour_temp(
+                "KSEA", date(2026, 7, 3), 12, city_tz="America/Los_Angeles"
+            )
+        assert result is None
 
 
 def test_composite_indexes_exist(tmp_path, monkeypatch):

@@ -427,6 +427,7 @@ def apply_temperature_scaling(
     prob: float,
     condition_type: str | None = None,
     days_out: int | None = None,
+    pool: str | None = None,
 ) -> float:
     """Apply temperature calibration; returns prob unchanged if no model is trained.
 
@@ -437,11 +438,29 @@ def apply_temperature_scaling(
     If T_sameday is not yet trained (gate: 20 settled same-day trades), prob is
     returned unchanged rather than applying the wrong multi-day T.
 
+    pool: explicit pool override for callers that are days_out=0 but NOT
+    ordinary same-day daily trades (backlog.txt "HOURLY-DIRECTIONAL
+    TEMPERATURE MARKETS" Step 2 handoff item 4). Pass pool="hourly" for
+    KXTEMPxxxH predictions — days_out=0 alone can't distinguish an hourly
+    trade from an ordinary sameday one, since hourly trades are inherently
+    days_out=0 too. Existing callers (no pool arg) are completely unaffected.
+    Same "no fallback to global/multi-day T" shape as 'sameday'.
+
     Multi-day lookup order: per-condition T → global T → no-op.
     """
     table = _load_temperature_scale()
     T = None
-    if days_out is not None and days_out == 0:
+    if pool == "hourly":
+        # Hourly path: hourly T only — no fallback to sameday/global/condition
+        # (its calibration pool and target distribution are both distinct
+        # from ordinary sameday trades; see train_all_temperature_scaling's
+        # own hourly query for what feeds this pool).
+        if table is None:
+            return prob
+        T = table.get("hourly")
+        if T is None:
+            return prob
+    elif days_out is not None and days_out == 0:
         # Same-day path: sameday T only — no fallback to global/condition.
         if table is None:
             return prob
@@ -542,9 +561,33 @@ def train_all_temperature_scaling(
             return None
         return T
 
+    # Hourly trades (backlog.txt "HOURLY-DIRECTIONAL TEMPERATURE MARKETS" Step
+    # 2 handoff item 4) are ALSO days_out=0, so the sameday query above can't
+    # be used to isolate them -- must exclude by ticker prefix instead. The
+    # prefix set is imported from weather_markets (the same single-source-of-
+    # truth dict Step 1 established) rather than hardcoded here, so this
+    # query can't independently drift from the one place that actually knows
+    # which series are hourly.
+    try:
+        from weather_markets import _KXTEMP_HOURLY_CITY
+
+        _hourly_prefixes = list(_KXTEMP_HOURLY_CITY)
+    except Exception:
+        _hourly_prefixes = []
+    # Parens around the OR group are load-bearing: SQL's AND binds tighter
+    # than OR, so "days_out=0 AND ticker LIKE a OR ticker LIKE b OR ..."
+    # would silently match ticker LIKE b regardless of days_out.
+    _hourly_exclude_sql = (
+        " AND NOT (" + " OR ".join(["p.ticker LIKE ?"] * len(_hourly_prefixes)) + ")"
+        if _hourly_prefixes
+        else ""
+    )
+    _hourly_exclude_params = tuple(f"{p}%" for p in _hourly_prefixes)
+
     # Fetch settled rows split by days_out:
     # - Multi-day (days_out >= 1 or NULL) are ensemble-derived — use for global + per-condition T
     # - Same-day (days_out = 0) are METAR-derived — different distribution, need their own T
+    #   (hourly trades explicitly excluded -- they get their own pool below)
     try:
         with tracker._conn() as con:
             rows = con.execute(
@@ -566,7 +609,25 @@ def train_all_temperature_scaling(
                   AND p.days_out = 0
                   AND (p.condition_type IS NULL OR p.condition_type != 'between')
                 """
+                + _hourly_exclude_sql,
+                _hourly_exclude_params,
             ).fetchall()
+            hourly_rows = (
+                con.execute(
+                    """
+                    SELECT p.our_prob, o.settled_yes
+                    FROM predictions p
+                    JOIN outcomes o ON p.ticker = o.ticker
+                    WHERE p.our_prob IS NOT NULL AND o.settled_yes IS NOT NULL
+                      AND p.days_out = 0
+                      AND ("""
+                    + " OR ".join(["p.ticker LIKE ?"] * len(_hourly_prefixes))
+                    + ")",
+                    _hourly_exclude_params,
+                ).fetchall()
+                if _hourly_prefixes
+                else []
+            )
     except Exception as exc:
         _log.warning("train_all_temperature_scaling: DB query failed: %s", exc)
         return {}
@@ -676,6 +737,35 @@ def train_all_temperature_scaling(
             "train_all_temperature_scaling: only %d same-day settled samples, need %d — skipping",
             len(sd_probs),
             _SAMEDAY_MIN,
+        )
+
+    # Hourly T — a third, fully separate pool (backlog.txt "HOURLY-
+    # DIRECTIONAL TEMPERATURE MARKETS" Step 2 handoff item 4), never folded
+    # into 'sameday' or the multi-day pools. Mirrors the sameday block above
+    # exactly (own gate, own fit, own existing[] write) since 'sameday' isn't
+    # a generic loop either -- it's a hardcoded pool, same as this one.
+    _HOURLY_MIN = 20
+    hr_probs = [float(r[0]) for r in hourly_rows]
+    hr_labels = [float(r[1]) for r in hourly_rows]
+    if len(hr_probs) >= _HOURLY_MIN:
+        T_hourly = _fit_T(hr_probs, hr_labels)
+        if T_hourly is not None:
+            existing["hourly"] = {"T": T_hourly, "n": len(hr_probs)}
+            trained["hourly"] = T_hourly
+            _log.info(
+                "train_all_temperature_scaling: hourly T=%.4f on %d samples",
+                T_hourly,
+                len(hr_probs),
+            )
+        else:
+            _log.info(
+                "train_all_temperature_scaling: hourly T fit no better than T=1.0 — skipping"
+            )
+    else:
+        _log.info(
+            "train_all_temperature_scaling: only %d hourly settled samples, need %d — skipping",
+            len(hr_probs),
+            _HOURLY_MIN,
         )
 
     if existing:

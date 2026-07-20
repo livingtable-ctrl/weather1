@@ -858,6 +858,12 @@ def place_paper_order(
     | None = None,  # ISO datetime when market closes — used by 24h settlement gate
     days_out: int
     | None = None,  # forecast horizon at placement time; 0 = same-day METAR trade
+    var: str | None = None,  # "max"/"min" -- which physical quantity this trade is
+    # about (backlog.txt "HOURLY-DIRECTIONAL TEMPERATURE MARKETS" Step 2 handoff
+    # item 2, the var-derivation root-cause fix). Single source of truth: set
+    # once by analyze_trade()'s condition["var"], stored here so downstream
+    # consumers (_score_ensemble_members below) read it instead of re-deriving
+    # it from ticker text, which never matches KXTEMPxxxH tickers.
 ) -> dict:
     """
     Place a paper trade. Deducts quantity * entry_price from balance.
@@ -956,6 +962,7 @@ def place_paper_order(
             "ab_variant": ab_variant,
             "close_time": close_time,
             "days_out": days_out,
+            "var": var,
             # Flagged when placed during a kill-switch override run so these
             # trades can be isolated for analysis after settlement.
             "via_kill_switch_override": KILL_SWITCH_OVERRIDE_ACTIVE,
@@ -1137,16 +1144,22 @@ def _score_ensemble_members(trade: dict, outcome_yes: bool) -> None:
     target_date = trade.get("target_date")
     if not city or not target_date:
         return
-    # Determine market variable from the ticker, matching analyze_trade's and
-    # tracker.backfill_emos_data's convention: KXHIGH markets measure the daily
-    # high, KXLOWT/KXLOW markets measure the daily low.
-    _ticker_upper = trade.get("ticker", "").upper()
-    if "HIGH" in _ticker_upper:
-        var = "max"
-    elif "LOWT" in _ticker_upper or "LOW" in _ticker_upper:
-        var = "min"
-    else:
-        var = "max"
+    # Prefer the var stored on the trade record itself (backlog.txt "HOURLY-
+    # DIRECTIONAL TEMPERATURE MARKETS" Step 2 handoff item 2, the var-
+    # derivation root-cause fix) -- set once by analyze_trade()'s
+    # condition["var"] and threaded through place_paper_order(). Only trades
+    # placed before this field existed fall back to the old ticker-substring
+    # derivation, which never matches KXTEMPxxxH tickers (no "HIGH"/"LOW"/
+    # "LOWT" substring) and silently defaulted to "max" for them.
+    var = trade.get("var")
+    if var is None:
+        _ticker_upper = trade.get("ticker", "").upper()
+        if "HIGH" in _ticker_upper:
+            var = "max"
+        elif "LOWT" in _ticker_upper or "LOW" in _ticker_upper:
+            var = "min"
+        else:
+            var = "max"
     # Look up the official settled daily HIGH from the outcomes table (written by audit_settlement)
     try:
         from tracker import _conn, init_db

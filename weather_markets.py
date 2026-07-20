@@ -37,6 +37,7 @@ from kalshi_client import KalshiClient, _request_with_retry
 from nws import fetch_nbm_forecast, get_live_observation, nws_prob, obs_prob
 from paths import (
     CITY_REGISTRY_REPORT_PATH,
+    HOURLY_TARGET_HOURS_PATH,
     RETIREMENT_PROBATION_PATH,
     SERIES_DRIFT_PATH,
 )
@@ -790,6 +791,37 @@ def _below_gates_active() -> bool:
         from tracker import count_settled_below_predictions
 
         return count_settled_below_predictions() >= _BELOW_GATE_MIN_SAMPLES
+    except Exception:
+        return False
+
+
+# Minimum settled hourly predictions required before HOURLY_TRADING_ENABLED=1
+# can actually let real orders place (backlog.txt "HOURLY-DIRECTIONAL
+# TEMPERATURE MARKETS" Step 2 handoff item 5, shadow-only rollout).
+_HOURLY_GATE_MIN_SAMPLES: int = 20
+
+
+def _hourly_gates_active() -> bool:
+    """Return True only when HOURLY_TRADING_ENABLED=1 AND >= 20 settled
+    hourly predictions -- mirrors _below_gates_active()'s exact shape.
+
+    Until both hold, hourly opportunities are still fully analyzed and
+    logged (is_shadow=True, order_executor._auto_place_trades' per-
+    opportunity routing) so real calibration data accumulates risk-free;
+    no real order is ever placed for an hourly ticker before this is True.
+    """
+    import os
+
+    if os.getenv("HOURLY_TRADING_ENABLED", "").strip().lower() not in (
+        "1",
+        "true",
+        "yes",
+    ):
+        return False
+    try:
+        from tracker import count_settled_hourly_predictions
+
+        return count_settled_hourly_predictions() >= _HOURLY_GATE_MIN_SAMPLES
     except Exception:
         return False
 
@@ -3436,6 +3468,101 @@ def check_series_drift(client: KalshiClient) -> None:
         _log.debug("check_series_drift failed (non-fatal): %s", _exc)
 
 
+def refresh_hourly_target_hours(client: KalshiClient) -> None:
+    """Once per city per day: recompute determine_hourly_target_hours() from
+    a fresh full market-history fetch and cache the result to
+    HOURLY_TARGET_HOURS_PATH (backlog.txt "HOURLY-DIRECTIONAL TEMPERATURE
+    MARKETS" Step 2 handoff item 6 -- the target-hour caching decision).
+
+    Mirrors check_series_drift()'s exact once-per-day JSON-state-file gating
+    pattern. Deliberately NOT recomputed on every scan: the underlying fetch
+    is a full unfiltered client.get_markets(series_ticker=...) per city (30k+
+    markets for NYC as of 2026-07-20) for a value determine_hourly_target_
+    hours()'s own docstring already warns is a slow-moving seasonal snapshot,
+    not something that needs per-scan freshness.
+
+    Never raises, never blocks trading -- get_hourly_target_hour_role() below
+    treats a missing/stale-but-present cache entry the same way (falls back
+    to "not a target hour," the fail-safe direction).
+    """
+    try:
+        today = datetime.now(UTC).date().isoformat()
+        existing: dict = {}
+        if HOURLY_TARGET_HOURS_PATH.exists():
+            existing = json.loads(HOURLY_TARGET_HOURS_PATH.read_text())
+
+        for series, city in _KXTEMP_HOURLY_CITY.items():
+            if existing.get(city, {}).get("date") == today:
+                continue  # already refreshed today
+            try:
+                markets = client.get_markets(series_ticker=series)
+            except Exception as _fetch_exc:
+                _log.debug(
+                    "refresh_hourly_target_hours: %s fetch failed (non-fatal): %s",
+                    series,
+                    _fetch_exc,
+                )
+                continue
+            tz = _CITY_TZ.get(city, "America/New_York")
+            result = determine_hourly_target_hours(markets, tz)
+            # Confirmed live 2026-07-20: a transient fetch/parse hiccup can
+            # return markets with no usable finalized-ladder data even for a
+            # genuinely active city, producing {"max_hour": None, "min_hour":
+            # None}. Caching that as "done for today" would permanently lock
+            # in the failure until tomorrow (the once-per-day gate above),
+            # wasting a full day of otherwise-real hourly coverage on a blip
+            # -- every city in _KXTEMP_HOURLY_CITY is confirmed active
+            # (Step 1), so None/None here is never a legitimate steady state
+            # worth caching. Skip writing (and thus skip the "done today"
+            # gate) so the next cron cycle retries instead.
+            if result["max_hour"] is None or result["min_hour"] is None:
+                _log.warning(
+                    "refresh_hourly_target_hours: %s (%s) returned no usable "
+                    "target hours (%d markets fetched) -- not caching as "
+                    "done-for-today, will retry next cycle",
+                    series,
+                    city,
+                    len(markets),
+                )
+                continue
+            existing[city] = {
+                "date": today,
+                "max_hour": result["max_hour"],
+                "min_hour": result["min_hour"],
+            }
+
+        _safe_io.atomic_write_json(existing, HOURLY_TARGET_HOURS_PATH)
+    except Exception as _exc:
+        _log.debug("refresh_hourly_target_hours failed (non-fatal): %s", _exc)
+
+
+def get_hourly_target_hour_role(city: str | None, hour: int | None) -> str | None:
+    """Return "max" if `hour` is city's cached max_hour, "min" if it's the
+    cached min_hour, else None (parse failure, city not yet cached, or hour
+    isn't a target hour -- the vast majority, ~22 of 24 hours/city).
+
+    Pure JSON read, no I/O side effect -- refresh_hourly_target_hours() above
+    is the only writer. If a city's max_hour and min_hour ever coincide
+    (degenerate data), max_hour wins for determinism.
+    """
+    if hour is None:
+        return None
+    try:
+        if not HOURLY_TARGET_HOURS_PATH.exists():
+            return None
+        cached = json.loads(HOURLY_TARGET_HOURS_PATH.read_text()).get(city)
+    except Exception as _exc:
+        _log.debug("get_hourly_target_hour_role: cache read failed: %s", _exc)
+        return None
+    if not cached:
+        return None
+    if hour == cached.get("max_hour"):
+        return "max"
+    if hour == cached.get("min_hour"):
+        return "min"
+    return None
+
+
 MONTH_MAP = {
     "JAN": 1,
     "FEB": 2,
@@ -3775,6 +3902,25 @@ def parse_city_date(market: dict) -> tuple[str | None, date | None]:
     return city, target_date
 
 
+def parse_ticker_hour(ticker: str) -> int | None:
+    """Extract the local hour from a KXTEMPxxxH hourly ticker (e.g.
+    "KXTEMPNYCH-26APR0908-T45.99" -> 8), or None for a daily ticker / parse
+    failure. Standalone, network-free -- mirrors the same hourly_match regex
+    parse_city_date()/enrich_with_forecast() already use, but those two
+    discard/require a full enriched dict respectively; this is for callers
+    (tracker.audit_settlement's hourly settlement path, backlog.txt "HOURLY-
+    DIRECTIONAL TEMPERATURE MARKETS" Step 2 handoff item 3) that need just
+    the hour, without pulling in a forecast fetch.
+    """
+    hourly_match = re.search(r"(\d{2})([A-Z]{3})(\d{2})(\d{2})", ticker.upper())
+    if not hourly_match:
+        return None
+    try:
+        return int(hourly_match.group(4))
+    except ValueError:
+        return None
+
+
 def enrich_with_forecast(market: dict, fetch_forecast: bool = True) -> dict:
     """
     Attach forecast data to a market dict.
@@ -4077,6 +4223,187 @@ def _forecast_probability(condition: dict, forecast_temp: float, sigma: float) -
         p_lower = normal_cdf(condition["lower"], forecast_temp, sigma)
         return p_upper - p_lower
     return 0.0
+
+
+def _compute_ensemble_prob(
+    temps: list[float],
+    ens_stats: dict | None,
+    condition: dict,
+    forecast_temp: float,
+    target_date: date,
+    days_out: int,
+    sigma_mult: float,
+    city: str = "?",
+) -> tuple[str, float | None]:
+    """Shared ensemble-to-probability core, extracted from analyze_trade()'s
+    non-metar-locked daily path (backlog.txt "HOURLY-DIRECTIONAL TEMPERATURE
+    MARKETS" Step 2) so the daily and hourly paths can't independently drift
+    on the numerically-subtle part (EMOS param handling, variance-not-std,
+    sigma capping) -- unlike the simpler mean-of-temps/gate orchestration
+    around it, which each caller still does natively since it differs
+    (daily forecast_temp comes from the bias-corrected blend above this
+    point; the hourly path's forecast_temp is the raw ensemble mean).
+
+    Returns (method, ens_prob) -- exactly the daily path's pre-extraction
+    behavior: EMOS (falling back to raw exceedance fraction) when
+    len(temps) >= 10, else a capped-sigma Gaussian via _forecast_probability.
+    ens_prob is None only if condition["type"] is unrecognized (mirrors
+    _forecast_probability's own fallback).
+    """
+    method = "normal_dist"
+    ens_prob: float | None = None
+
+    if len(temps) >= 10:
+        method = "ensemble"
+        # EMOS path: use fitted Gaussian distribution if params are available.
+        # Falls back to raw exceedance fraction when EMOS not yet trained.
+        # CRITICAL: pass ens_var = std**2 (must square std, NOT pass std directly).
+        from ml_bias import _load_emos_params, emos_exceedance_prob, emos_interval_prob
+
+        _emos_params = _load_emos_params()
+        _use_emos = (
+            _emos_params is not None
+            and ens_stats is not None
+            and ens_stats.get("std") is not None
+        )
+        if _use_emos:
+            assert _emos_params is not None  # guaranteed by _use_emos check above
+            assert ens_stats is not None  # guaranteed by _use_emos check above
+            _ens_var_live = ens_stats["std"] ** 2  # variance, not std
+            if condition["type"] == "above":
+                ens_prob = emos_exceedance_prob(
+                    _emos_params,
+                    ens_stats["mean"],
+                    _ens_var_live,
+                    _prob_threshold(condition),
+                )
+            elif condition["type"] == "below":
+                ens_prob = 1.0 - emos_exceedance_prob(
+                    _emos_params,
+                    ens_stats["mean"],
+                    _ens_var_live,
+                    _prob_threshold(condition),
+                )
+            else:
+                lo, hi = condition["lower"], condition["upper"]
+                ens_prob = emos_interval_prob(
+                    _emos_params, ens_stats["mean"], _ens_var_live, lo, hi
+                )
+            method = "emos"
+        else:
+            # Fallback: raw exceedance fraction
+            if condition["type"] == "above":
+                ens_prob = sum(
+                    1 for t in temps if t > _prob_threshold(condition)
+                ) / len(temps)
+            elif condition["type"] == "below":
+                ens_prob = sum(
+                    1 for t in temps if t < _prob_threshold(condition)
+                ) / len(temps)
+            else:
+                lo, hi = condition["lower"], condition["upper"]
+                ens_prob = sum(1 for t in temps if lo <= t <= hi) / len(temps)
+    else:
+        # Prefer ens_stats["std"] when available — actual model disagreement
+        # is more informative than the generic days-out lookup table.
+        _ens_std = ens_stats.get("std") if ens_stats else None
+        _raw_sigma = (
+            _ens_std
+            if _ens_std and _ens_std > 0
+            else _forecast_uncertainty(target_date)
+        )
+        # Cap raw sigma before applying sigma_mult so the time-of-day
+        # reduction from _time_risk() still applies proportionally.
+        # "between" markets use a tighter cap — their 2°F bracket width means
+        # larger sigma collapses probability (σ=3 → max 26.6%; σ=1.8 → max 44.3%).
+        # above/below markets use the looser cap since sigma affects the tail
+        # probability differently for direction bets.
+        _is_between = condition.get("type") == "between"
+        _prob_sigma_cap = (
+            (_BETWEEN_SIGMA_1DAY_CAP if _is_between else _SIGMA_1DAY_CAP)
+            if days_out <= 1
+            else (_BETWEEN_SIGMA_2DAY_CAP if _is_between else _SIGMA_2DAY_CAP)
+            if days_out <= 2
+            else _raw_sigma
+        )
+        if _raw_sigma > _prob_sigma_cap:
+            _log.debug(
+                "analyze_trade: capping ensemble sigma %.2f→%.2f (city=%s days_out=%d)",
+                _raw_sigma,
+                _prob_sigma_cap,
+                city,
+                days_out,
+            )
+        sigma = min(_raw_sigma, _prob_sigma_cap) * sigma_mult
+        # Below markets: ensemble members share physics so their spread underestimates
+        # true forecast error — empirical MAE is ~2x the ensemble std.  Widen sigma
+        # so extreme outputs (0%/99%) are suppressed before the blend.
+        if condition.get("type") == "below":
+            sigma *= 1.5
+        ens_prob = _forecast_probability(condition, forecast_temp, sigma)
+        if condition.get("type") == "between":
+            _log.info(
+                "analyze_trade between sigma: raw=%.2f cap=%.2f "
+                "final=%.2f → ens_prob=%.3f forecast=%.1f bracket=[%.1f,%.1f] (city=%s)",
+                _raw_sigma,
+                _prob_sigma_cap,
+                sigma,
+                ens_prob,
+                forecast_temp,
+                condition.get("lower", 0.0),
+                condition.get("upper", 0.0),
+                city,
+            )
+
+    return method, ens_prob
+
+
+def _compute_persistence_prob(
+    city: str,
+    coords: tuple,
+    condition: dict,
+    var: str,
+    forecast_temp: float,
+    days_out: int,
+) -> float | None:
+    """Same-day/near-term persistence baseline, extracted from analyze_
+    trade()'s non-metar-locked daily path (backlog.txt "HOURLY-DIRECTIONAL
+    TEMPERATURE MARKETS" Step 2) for the same single-source-of-truth reason
+    as _compute_ensemble_prob. Reused EXACTLY as-is by the hourly path --
+    still gated on days_out <= 2 only, no hour-proximity weighting (a known,
+    accepted gap carried forward, not fixed here; see the Step 2 plan's
+    "Explicitly deferred" section).
+
+    Returns None if days_out > 2 or no live observation is available.
+    """
+    if days_out > 2:
+        return None
+    try:
+        from climatology import persistence_prob as _persistence_prob
+        from nws import get_live_observation as _get_live_obs
+
+        _live = _get_live_obs(city, coords) if days_out <= 1 else None
+        # For HIGH/max-role markets at days_out=0 the instantaneous current
+        # temp is misleading after noon (the high has already occurred and
+        # is higher). Prefer today's observed max when the observation
+        # includes it.
+        if var == "max" and days_out == 0 and _live:
+            _live_temp = (
+                _live.get("max_temp_f") or _live.get("high_f") or _live.get("temp_f")
+            )
+        else:
+            _live_temp = _live.get("temp_f") if _live else None
+        if _live_temp is None:
+            return None
+        _current_temp: float = float(_live_temp)
+        _tlo = condition.get(
+            "prob_threshold",
+            condition.get("threshold", condition.get("lower", forecast_temp)),
+        )
+        _thi = condition.get("upper")
+        return _persistence_prob(condition["type"], _tlo, _thi, _current_temp)
+    except Exception:
+        return None
 
 
 def is_liquid(market: dict) -> bool:
@@ -5654,6 +5981,180 @@ def _analyze_snow_trade(
     }
 
 
+def _analyze_hourly_trade(
+    enriched: dict,
+    condition: dict,
+    city: str,
+    target_date: date,
+    hour: int,
+    var: str,
+    coords: tuple,
+) -> dict | None:
+    """
+    Real per-hour threshold-crossing probability model for KXTEMPxxxH markets
+    (backlog.txt "HOURLY-DIRECTIONAL TEMPERATURE MARKETS" Step 2). Reached
+    from analyze_trade() only for the ~2 empirically-determined target
+    hours/city (var is "max" or "min", already resolved by the caller via
+    get_hourly_target_hour_role() -- the hour nearest that city's daily
+    max/min, where existing same-day forecasting strength most plausibly
+    transfers).
+
+    Deliberately a simpler model than the daily blend, not a full port --
+    reuses only the pieces confirmed genuinely hour-aware or hour-agnostic-
+    safe-to-reuse: the hour+tz-aware ensemble fetch, the shared ensemble/EMOS
+    probability core (_compute_ensemble_prob), per-city station-bias
+    correction, the persistence baseline (reused exactly as-is), and the
+    shared entry-price/edge/Kelly tail (_price_and_size). Deliberately never
+    calls _metar_lock_in() (daily running-max/min shape -- wrong for "is the
+    temp at hour H above X"), the Phase C NBM/ECMWF blend or
+    get_historical_sigma() (neither has an hour parameter), the model-
+    consensus check (_get_consensus_probs's hour= is a cache-key-only no-op),
+    or NWS/climatology (climatological_prob() has no hour parameter either)
+    -- seeing the plan's "Explicitly deferred" list for what's intentionally
+    not here yet.
+    """
+    temps = get_ensemble_temps(city, target_date, hour=hour, var=var)
+    if len(temps) < 5:
+        _log.debug(
+            "analyze_trade: skipping %s — hourly market with only %d ensemble "
+            "members (need >=5), no valid substitute for an hourly value",
+            enriched.get("ticker", "?"),
+            len(temps),
+        )
+        _count_gate("hourly_thin_ensemble")
+        return None
+
+    forecast_temp = statistics.mean(temps) - _get_combined_station_bias(city, var=var)
+    ens_stats = ensemble_stats(temps) if len(temps) >= 10 else None
+    if ens_stats and ens_stats.get("degenerate"):
+        _log.warning(
+            "analyze_trade: skipping %s — degenerate ensemble (all %d members identical)",
+            enriched.get("ticker", "?"),
+            ens_stats["n"],
+        )
+        _count_gate("degenerate_ens")
+        return None
+
+    days_out = max(0, (target_date - datetime.now(UTC).date()).days)
+    _tz = coords[2] if len(coords) > 2 else "UTC"
+    _, sigma_mult = _time_risk(enriched.get("close_time", ""), _tz)
+
+    method, ens_prob = _compute_ensemble_prob(
+        temps,
+        ens_stats,
+        condition,
+        forecast_temp,
+        target_date,
+        days_out,
+        sigma_mult,
+        city,
+    )
+    if ens_prob is None:
+        # Unrecognized condition["type"] -- shouldn't happen for a KXTEMP*H
+        # above/below ladder, but fail safe rather than crash downstream.
+        return None
+
+    persistence_p = _compute_persistence_prob(
+        city, coords, condition, var, forecast_temp, days_out
+    )
+    # Simple two-source blend (no weighted multi-source system like the daily
+    # path's regime/NWS/climatology blend -- deliberately not built for v1,
+    # see module docstring above). Same 0.15 persistence weight the daily
+    # path uses when persistence is available.
+    if persistence_p is not None:
+        blended_prob = 0.85 * ens_prob + 0.15 * persistence_p
+    else:
+        blended_prob = ens_prob
+    blended_prob = max(0.01, min(0.99, blended_prob))
+
+    prices = parse_market_price(enriched)
+    market_prob = prices["implied_prob"]
+    rec_side = "yes" if blended_prob > market_prob else "no"
+
+    ci_low, ci_high = blended_prob, blended_prob
+    if len(temps) >= 5:
+        ci_low, ci_high = _bootstrap_ci(temps, condition)
+
+    # Consensus is deliberately hardcoded False, NOT computed as ens_prob vs
+    # blended_prob agreement (caught in independent review): unlike precip/
+    # snow's precip_consensus (a genuine 3-way check across ensemble,
+    # climatology, and the blend -- three independent sources), blended_prob
+    # here is 85% ens_prob + 15% persistence, so an ens-vs-blended agreement
+    # check is near-tautological and would grant _price_and_size()'s
+    # consensus bonus (×1.25 Kelly, raised cap) to almost every hourly
+    # signal regardless of real independent confirmation. No genuinely
+    # independent second source exists for the hourly model yet (NWS/
+    # climatology don't support hourly -- see "Explicitly deferred" in the
+    # Step 2 plan); revisit once one does.
+    consensus = False
+
+    _priced = _price_and_size(
+        blended_prob,
+        prices,
+        condition,
+        rec_side,
+        ci=(ci_low, ci_high),
+        consensus=consensus,
+    )
+    net_edge = _priced["net_edge"]
+    edge = _priced["edge"]
+    entry_side_edge = _priced["entry_side_edge"]
+    fee_kel = _priced["fee_kel"]
+    ci_adj_kelly = _priced["ci_adjusted_kelly"]
+
+    _edge_conf = edge_confidence(days_out, condition_type=condition["type"])
+    adjusted_edge = net_edge * _edge_conf
+
+    return {
+        "forecast_prob": blended_prob,
+        "market_prob": market_prob,
+        "edge": edge,
+        "signal": _edge_label(edge),
+        "net_edge": net_edge,
+        "adjusted_edge": round(adjusted_edge, 6),
+        "edge_confidence_factor": _edge_conf,
+        "net_signal": _edge_label(adjusted_edge),
+        "recommended_side": rec_side,
+        "condition": condition,
+        "forecast_temp": forecast_temp,
+        "ensemble_prob": ens_prob,
+        "nws_prob": None,
+        "clim_prob": None,
+        "clim_adj_prob": None,
+        "obs_prob": persistence_p,
+        "live_obs": None,
+        "index_adj": 0.0,
+        "bias_correction": _get_combined_station_bias(city, var=var),
+        "blend_sources": {
+            "ensemble": 1.0 if persistence_p is None else 0.85,
+            "persistence": 0.0 if persistence_p is None else 0.15,
+        },
+        "method": f"hourly_{method}",
+        "ensemble_stats": ens_stats,
+        "n_members": len(temps),
+        "ci_low": ci_low,
+        "ci_high": ci_high,
+        "ci_width": round(ci_high - ci_low, 4),
+        "kelly": fee_kel,
+        "fee_adjusted_kelly": fee_kel,
+        "ci_adjusted_kelly": ci_adj_kelly,
+        "consensus": consensus,
+        "model_consensus": True,
+        "near_threshold": (
+            abs(forecast_temp - _prob_threshold(condition)) <= 3.0
+            if _prob_threshold(condition) is not None
+            else False
+        ),
+        "days_out": days_out,
+        "city": city,
+        "target_date": target_date.isoformat()
+        if hasattr(target_date, "isoformat")
+        else str(target_date),
+        "entry_side_edge": round(entry_side_edge, 4),
+        "hour": hour,
+    }
+
+
 def _metar_lock_in(
     city: str,
     target_date: date,
@@ -5819,19 +6320,27 @@ def analyze_trade(
     hour = enriched.get("_hour")
 
     _tkr = enriched.get("ticker", "?")
-    # backlog.txt "HOURLY-DIRECTIONAL TEMPERATURE MARKETS" Step 1: KXTEMPxxxH
-    # tickers are fetched (KNOWN_WEATHER_SERIES) for discovery/schema-testing
-    # purposes only -- no probability model exists for them yet (Step 2).
-    # Checked by ticker prefix, before condition parsing, deliberately not
-    # relying on how _parse_market_condition happens to classify these
-    # titles today -- an hourly market's "above X at 8am EDT" title could
-    # otherwise parse as an ordinary "above" condition and silently fall
-    # through into the full daily-max/min temperature model, which assumes
-    # the target is the day's high/low, not one specific hour.
+    # backlog.txt "HOURLY-DIRECTIONAL TEMPERATURE MARKETS" Step 2: a real
+    # per-hour model now exists (_analyze_hourly_trade(), branched to further
+    # below, after the universal liquidity/spread/price gates but *before*
+    # _metar_lock_in() -- that function's daily running-max/min shape would
+    # silently mis-fire for an hourly ticker; see the branch point below for
+    # why it can't just "fall through" unmodified). But only for the ~2
+    # empirically-determined target hours/city (nearest each city's daily
+    # max/min, cached in HOURLY_TARGET_HOURS_PATH by refresh_hourly_target_
+    # hours()) -- every other hour (~22/24) still gates out here, exactly as
+    # Step 1's blanket guard did, and for the same reason: an hourly market's
+    # "above X at 8am EDT" title could otherwise parse as an ordinary "above"
+    # condition and silently fall through into the full daily-max/min model,
+    # which assumes the target is the day's high/low, not one specific hour.
     _tkr_up = _tkr.upper()
-    if any(_tkr_up.startswith(_p) for _p in _KXTEMP_HOURLY_CITY):
-        _count_gate("hourly_not_yet_supported")
-        return None
+    _is_hourly = any(_tkr_up.startswith(_p) for _p in _KXTEMP_HOURLY_CITY)
+    _hourly_var_role: str | None = None
+    if _is_hourly:
+        _hourly_var_role = get_hourly_target_hour_role(city, hour)
+        if _hourly_var_role is None:
+            _count_gate("hourly_not_target_hour")
+            return None
     # Initialize early so blend weight calls can read regime even before detection runs.
     # Overwritten by the actual regime detection block further below.
     _regime_info: dict = {}
@@ -6002,6 +6511,32 @@ def analyze_trade(
     # ── Time-of-day risk assessment ──────────────────────────────────────────
     _tz = coords[2] if len(coords) > 2 else "UTC"
     time_risk_label, sigma_mult = _time_risk(enriched.get("close_time", ""), _tz)
+
+    # ── Hourly-directional fast-path (backlog.txt "HOURLY-DIRECTIONAL
+    # TEMPERATURE MARKETS" Step 2) ───────────────────────────────────────────
+    # Must sit here -- after every universal liquidity/spread/price gate
+    # above (so an illiquid/stale/mispriced hourly market is still rejected
+    # the same as a daily one), but BEFORE _metar_lock_in() below, whose
+    # daily running-max/min shape would silently mis-fire for an hourly
+    # ticker (found during planning -- see the plan's "Critical ordering
+    # constraint" note). condition["var"] is set here, once, as the single
+    # source of truth the var-derivation-bug fix (backlog.txt Step 2 handoff
+    # item 2) threads downstream -- daily tickers are untouched (_is_hourly
+    # is False for them, condition["var"] keeps its existing per-site
+    # substring-derived value further below).
+    if _is_hourly:
+        condition["var"] = _hourly_var_role
+        assert (
+            hour is not None
+        )  # guaranteed: get_hourly_target_hour_role returned non-None above
+        assert _hourly_var_role is not None
+        result = _analyze_hourly_trade(
+            enriched, condition, city, target_date, hour, _hourly_var_role, coords
+        )
+        if result is not None:
+            result["time_risk"] = time_risk_label
+            result["edge_calc_version"] = EDGE_CALC_VERSION
+        return result
 
     # ── Precipitation market fast-path ───────────────────────────────────────
     if condition["type"] in ("precip_above", "precip_any"):
@@ -6191,116 +6726,22 @@ def analyze_trade(
         if ens_stats is not None and hour is None:
             disagree_f = round(abs(forecast_temp_raw - ens_stats["mean"]), 1)
 
-        method = "normal_dist"
-        ens_prob: float | None = None
         gauss_prob: float | None = None  # Gaussian as separate named source
 
-        if len(temps) >= 10:
-            method = "ensemble"
-            # EMOS path: use fitted Gaussian distribution if params are available.
-            # Falls back to raw exceedance fraction when EMOS not yet trained.
-            # CRITICAL: pass ens_var = std**2 (must square std, NOT pass std directly).
-            from ml_bias import (
-                _load_emos_params,
-                emos_exceedance_prob,
-                emos_interval_prob,
-            )
-
-            _emos_params = _load_emos_params()
-            _use_emos = (
-                _emos_params is not None
-                and ens_stats is not None
-                and ens_stats.get("std") is not None
-            )
-            if _use_emos:
-                assert _emos_params is not None  # guaranteed by _use_emos check above
-                assert ens_stats is not None  # guaranteed by _use_emos check above
-                _ens_var_live = ens_stats["std"] ** 2  # variance, not std
-                if condition["type"] == "above":
-                    ens_prob = emos_exceedance_prob(
-                        _emos_params,
-                        ens_stats["mean"],
-                        _ens_var_live,
-                        _prob_threshold(condition),
-                    )
-                elif condition["type"] == "below":
-                    ens_prob = 1.0 - emos_exceedance_prob(
-                        _emos_params,
-                        ens_stats["mean"],
-                        _ens_var_live,
-                        _prob_threshold(condition),
-                    )
-                else:
-                    lo, hi = condition["lower"], condition["upper"]
-                    ens_prob = emos_interval_prob(
-                        _emos_params, ens_stats["mean"], _ens_var_live, lo, hi
-                    )
-                method = "emos"
-            else:
-                # Fallback: raw exceedance fraction
-                if condition["type"] == "above":
-                    ens_prob = sum(
-                        1 for t in temps if t > _prob_threshold(condition)
-                    ) / len(temps)
-                elif condition["type"] == "below":
-                    ens_prob = sum(
-                        1 for t in temps if t < _prob_threshold(condition)
-                    ) / len(temps)
-                else:
-                    lo, hi = condition["lower"], condition["upper"]
-                    ens_prob = sum(1 for t in temps if lo <= t <= hi) / len(temps)
-        else:
-            # Prefer ens_stats["std"] when available — actual model disagreement
-            # is more informative than the generic days-out lookup table.
-            _ens_std = ens_stats.get("std") if ens_stats else None
-            _raw_sigma = (
-                _ens_std
-                if _ens_std and _ens_std > 0
-                else _forecast_uncertainty(target_date)
-            )
-            # Cap raw sigma before applying sigma_mult so the time-of-day
-            # reduction from _time_risk() still applies proportionally.
-            # "between" markets use a tighter cap — their 2°F bracket width means
-            # larger sigma collapses probability (σ=3 → max 26.6%; σ=1.8 → max 44.3%).
-            # above/below markets use the looser cap since sigma affects the tail
-            # probability differently for direction bets.
-            _is_between = condition.get("type") == "between"
-            _prob_sigma_cap = (
-                (_BETWEEN_SIGMA_1DAY_CAP if _is_between else _SIGMA_1DAY_CAP)
-                if days_out <= 1
-                else (_BETWEEN_SIGMA_2DAY_CAP if _is_between else _SIGMA_2DAY_CAP)
-                if days_out <= 2
-                else _raw_sigma
-            )
-            if _raw_sigma > _prob_sigma_cap:
-                _log.debug(
-                    "analyze_trade: capping ensemble sigma %.2f→%.2f "
-                    "(city=%s days_out=%d)",
-                    _raw_sigma,
-                    _prob_sigma_cap,
-                    city,
-                    days_out,
-                )
-            sigma = min(_raw_sigma, _prob_sigma_cap) * sigma_mult
-            # Below markets: ensemble members share physics so their spread underestimates
-            # true forecast error — empirical MAE is ~2x the ensemble std.  Widen sigma
-            # so extreme outputs (0%/99%) are suppressed before the blend.
-            if condition.get("type") == "below":
-                sigma *= 1.5
-            ens_prob = _forecast_probability(condition, forecast_temp, sigma)
-            if condition.get("type") == "between":
-                _log.info(
-                    "analyze_trade between sigma: raw=%.2f cap=%.2f "
-                    "final=%.2f → ens_prob=%.3f forecast=%.1f bracket=[%.1f,%.1f] (city=%s)",
-                    _raw_sigma,
-                    _prob_sigma_cap,
-                    sigma,
-                    ens_prob,
-                    forecast_temp,
-                    condition.get("lower", 0.0),
-                    condition.get("upper", 0.0),
-                    city,
-                )
+        # Shared ensemble-to-probability core (backlog.txt "HOURLY-DIRECTIONAL
+        # TEMPERATURE MARKETS" Step 2) -- see _compute_ensemble_prob's own
+        # docstring for why this piece specifically is extracted while the
+        # mean-of-temps/gate orchestration above stays inline per-caller.
+        method, ens_prob = _compute_ensemble_prob(
+            temps,
+            ens_stats,
+            condition,
+            forecast_temp,
+            target_date,
+            days_out,
+            sigma_mult,
+            city,
+        )
 
         # ── Phase C: extended ensemble members (NBM + ECMWF AIFS) ───────────────
         model_temps: dict[str, float | None] = {}
@@ -6480,51 +6921,12 @@ def analyze_trade(
                 pass
 
         # ── 5b. Persistence baseline (days_out <= 2 only) ────────────────────────
-        persistence_p: float | None = None
-        if days_out <= 2:
-            try:
-                from climatology import persistence_prob as _persistence_prob
-                from nws import get_live_observation as _get_live_obs
-
-                _live = _get_live_obs(city, coords) if days_out <= 1 else None
-                # For HIGH markets at days_out=0 the instantaneous current temp
-                # is misleading after noon (the high has already occurred and is higher).
-                # Prefer today's observed max when the observation includes it.
-                if var == "max" and days_out == 0 and _live:
-                    _live_temp = (
-                        _live.get("max_temp_f")
-                        or _live.get("high_f")
-                        or _live.get("temp_f")
-                    )
-                else:
-                    _live_temp = _live.get("temp_f") if _live else None
-                # Persistence ("today's observation persists into the target
-                # day") only means something when a REAL observation exists.
-                # The old fallback to forecast_temp_raw when no observation was
-                # available (always true at days_out==2, since _live is never
-                # even fetched there; also whenever get_live_observation fails
-                # or lacks a temp field) just re-blended the raw NWS forecast a
-                # second time at a fixed 15% weight — and did so using the
-                # UNCORRECTED forecast, bypassing the station-bias correction
-                # applied to forecast_temp/blended_prob elsewhere in the
-                # pipeline, re-injecting exactly the bias that correction exists
-                # to remove.
-                if _live_temp is None:
-                    persistence_p = None
-                else:
-                    _current_temp: float = float(_live_temp)
-                    _tlo = condition.get(
-                        "prob_threshold",
-                        condition.get(
-                            "threshold", condition.get("lower", forecast_temp)
-                        ),
-                    )
-                    _thi = condition.get("upper")
-                    persistence_p = _persistence_prob(
-                        condition["type"], _tlo, _thi, _current_temp
-                    )
-            except Exception:
-                pass
+        # Shared with the hourly path (backlog.txt "HOURLY-DIRECTIONAL
+        # TEMPERATURE MARKETS" Step 2) via _compute_persistence_prob -- see
+        # its own docstring for the exact reuse rationale.
+        persistence_p = _compute_persistence_prob(
+            city, coords, condition, var, forecast_temp, days_out
+        )
 
         # ── 6a. Regime detection — must run before blend weights so the regime
         # override in _blend_weights/_confidence_scaled_blend_weights fires.
