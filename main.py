@@ -1355,6 +1355,8 @@ def _analyze_once(
     no_quote_opps: list = []
     total = len(markets)
     _same_day_seen = 0
+    _mkt_prob_skipped = 0
+    _divergence_skipped = 0
 
     # Market-implied temperature distribution (backlog.txt "MARKET-IMPLIED
     # TEMPERATURE DISTRIBUTION FROM THE FULL LADDER"): computed once per scan
@@ -1433,17 +1435,38 @@ def _analyze_once(
         # above/below markets, which gives tight CI width -> larger
         # ci_adjusted_kelly. Between markets at days_out == 0 skip the obs
         # override in analyze_trade so they fall back to ensemble and are
-        # covered by the between_floor gate. analyze_trade's own model-market
-        # gap gate (weather_markets.py "7d") and the liquidity gate still
-        # apply here same as any other market -- but unlike cron.py, this
-        # pipeline does NOT apply cron.py's additional loop-level
-        # MIN_MARKET_PROB_TO_BET_WITH / MAX_MARKET_DIVERGENCE_RATIO checks,
-        # for same-day or any other days_out (pre-existing gap, tracked in
-        # backlog.txt "WATCH/_analyze_once IS MISSING cron.py's
-        # MIN_MARKET_PROB_TO_BET_WITH DIRECTIONAL-CONSENSUS GATE").
+        # covered by the between_floor gate.
         if int(analysis.get("days_out", 1)) == 0:
             _same_day_seen += 1
             # fall through — do not skip
+        # Market divergence gates (matches cron.py's cmd_cron parity,
+        # backlog.txt "WATCH/_analyze_once IS MISSING cron.py's
+        # MIN_MARKET_PROB_TO_BET_WITH / MAX_MARKET_DIVERGENCE_RATIO
+        # DIRECTIONAL-CONSENSUS GATES"): analyze_trade's own model-market gap
+        # gate (weather_markets.py "7d") compares the RAW pre-anchor model
+        # probability against the market symmetrically; these two gates
+        # additionally check the market's own probability in the direction
+        # we'd actually bet -- skip when the market gives our side <25%
+        # (MIN_MARKET_PROB_TO_BET_WITH) or when we disagree by more than
+        # MAX_MARKET_DIVERGENCE_RATIO -- "the market is right nearly every
+        # time" at that level of disagreement.
+        from utils import MAX_MARKET_DIVERGENCE_RATIO, MIN_MARKET_PROB_TO_BET_WITH
+
+        _side = analysis.get("recommended_side", "yes")
+        _our_p = analysis.get("forecast_prob", 0.5)
+        _mkt_p = analysis.get("market_prob", 0.5)
+        if _side == "yes":
+            _mkt_dir = _mkt_p
+            _our_dir = _our_p
+        else:
+            _mkt_dir = 1.0 - _mkt_p
+            _our_dir = 1.0 - _our_p
+        if _mkt_dir < MIN_MARKET_PROB_TO_BET_WITH:
+            _mkt_prob_skipped += 1
+            continue
+        if _mkt_dir > 0 and _our_dir / _mkt_dir > MAX_MARKET_DIVERGENCE_RATIO:
+            _divergence_skipped += 1
+            continue
         # Tag whether this market passes the edge threshold so make_rows can dim it,
         # but do NOT drop it — analyse always shows top 50 regardless of edge.
         _gate_edge = analysis.get("entry_side_edge", analysis["edge"])
@@ -1473,6 +1496,18 @@ def _analyze_once(
         _log.debug(
             "_analyze_once: %d same-day (days_out == 0) market(s) analyzed",
             _same_day_seen,
+        )
+    if _mkt_prob_skipped:
+        _log.debug(
+            "_analyze_once: skipped %d market(s) — market gives our side "
+            "< min_market_prob_to_bet_with",
+            _mkt_prob_skipped,
+        )
+    if _divergence_skipped:
+        _log.debug(
+            "_analyze_once: skipped %d market(s) — model/market divergence "
+            "> max_market_divergence_ratio",
+            _divergence_skipped,
         )
 
     def _rating(net_edge: float, risk: str) -> str:
@@ -2329,6 +2364,26 @@ def cmd_today(client: KalshiClient) -> None:
         if analysis.get("time_risk") == "HIGH":
             continue
         if int(analysis.get("days_out", 1)) == 0:
+            continue
+        # Market divergence gates (matches cron.py's cmd_cron parity,
+        # backlog.txt "WATCH/_analyze_once IS MISSING cron.py's
+        # MIN_MARKET_PROB_TO_BET_WITH / MAX_MARKET_DIVERGENCE_RATIO
+        # DIRECTIONAL-CONSENSUS GATES") -- see _analyze_once's identical
+        # block for the full rationale.
+        from utils import MAX_MARKET_DIVERGENCE_RATIO, MIN_MARKET_PROB_TO_BET_WITH
+
+        _side = analysis.get("recommended_side", "yes")
+        _our_p = analysis.get("forecast_prob", 0.5)
+        _mkt_p = analysis.get("market_prob", 0.5)
+        if _side == "yes":
+            _mkt_dir = _mkt_p
+            _our_dir = _our_p
+        else:
+            _mkt_dir = 1.0 - _mkt_p
+            _our_dir = 1.0 - _our_p
+        if _mkt_dir < MIN_MARKET_PROB_TO_BET_WITH:
+            continue
+        if _mkt_dir > 0 and _our_dir / _mkt_dir > MAX_MARKET_DIVERGENCE_RATIO:
             continue
         top_picks.append((enriched, analysis))
         top_picks.sort(

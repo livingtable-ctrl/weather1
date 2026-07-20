@@ -4132,8 +4132,8 @@ RESOLVED 2026-07-20 (second smallest-safe-step piece -- the full headless
   Still open, unstarted: the full headless run_trade_cycle() engine
   extraction, gated as above.
 
-[WATCH/_analyze_once IS MISSING cron.py's MIN_MARKET_PROB_TO_BET_WITH /
-MAX_MARKET_DIVERGENCE_RATIO DIRECTIONAL-CONSENSUS GATES]
+[RESOLVED 2026-07-20] WATCH/_analyze_once IS MISSING cron.py's MIN_MARKET_PROB_TO_BET_WITH /
+MAX_MARKET_DIVERGENCE_RATIO DIRECTIONAL-CONSENSUS GATES
 Priority: Medium -- a real, live-order-path gap, but narrower than it first
   looks (see "Why this is smaller than it sounds" below); no known incident,
   TRADING_PAUSED=true throughout.
@@ -4202,6 +4202,67 @@ When to revisit:
     entry above. Reasonable to pick up any time; not urgent given
     TRADING_PAUSED=true and analyze_trade()'s 7d gate already covering the
     large-gap cases.
+
+RESOLVED 2026-07-20: Re-verified both constants' absence in main.py/
+  order_executor.py fresh against current HEAD (post the same-day fix's
+  commit 38d18e4) before starting -- unchanged. All 3 of this entry's own
+  open scope questions resolved: (1) uses `analysis.get("market_prob"/
+  "forecast_prob")` exactly matching cron.py, since both pipelines share
+  analyze_trade()'s output shape -- not a real design choice, just a direct
+  port; (2) new local counters (`_mkt_prob_skipped`/`_divergence_skipped`)
+  matching main.py's own existing dedup/stale/same-day counter convention
+  (`_analyze_once` has no `_dbg` dict like cron.py, so that shape was not
+  imported in); (3) surfaced via `AskUserQuestion` (twice -- first pass
+  challenged, re-derived from source rather than restated: cmd_today
+  already diverges from _analyze_once in BOTH directions independent of
+  this fix, e.g. cmd_today hard-skips time_risk=="HIGH" while _analyze_once
+  never does -- the two functions have never been kept in lockstep). User
+  chose to widen scope to both anyway, accepting that as a deliberate
+  decision rather than the entry's original narrower framing.
+  Ported cron.py:1546-1565's exact `_mkt_dir`/`_our_dir` computation and
+  both threshold checks into both `_analyze_once` (main.py, after the
+  days_out==0 fall-through) and `cmd_today` (main.py, after its own
+  days_out==0 skip, left untouched/out of scope per the prior session's
+  decision). Both new utils.py constants imported function-locally (not
+  added to main.py's frozen top-of-file `from utils import (...)` block)
+  matching this exact function's own established convention for
+  `_liquidity_edge_scale`/`is_stale`/etc., and consistent with that block's
+  own documented frozen-import risk (backlog.txt's "main.py's FROZEN..."
+  entry) -- deliberately did not grow that risk surface with 2 more names.
+  7 new tests: 4 for `_analyze_once` (min-prob skip, divergence-ratio skip,
+  passes-both-gates control, and a dedicated "no" side test proving the
+  1-p flip is applied before the threshold check -- cron.py's own logic
+  branches on side and this was the one part of the port not a literal
+  copy-paste), 3 for `cmd_today` (same three cases, black-box via `capsys`
+  checking for the "No strong opportunities today" message / ticker
+  presence, since cmd_today is interactive and has no return value to
+  assert on directly). Mutation-tested via `git stash` on main.py only
+  (isolated from the already-committed same-day fix) -- confirmed all 5
+  skip-assertions fail with the exact predicted symptom (ticker appears
+  where it should have been gated out) and the 2 passes-both-gates
+  controls correctly still pass either way, then restored.
+  236 tests pass across the full regression sweep (same file list as the
+  days_out==0 fix); ruff + ruff format + mypy clean.
+  Independent `Agent(opus, effort=high)` review found one real, confirmed
+  (not fixed -- accepted as intended) behavior-visible finding: `cmd_analyze`
+  (main.py, the `analyse` CLI table) shares `_analyze_once` and calls it
+  without `_liquid_opps_out` -- since the new gates `continue` rather than
+  tag, a divergent market now vanishes from the `analyse` table entirely
+  (not shown dimmed, not in no-quote), where it was previously visible.
+  Re-derived rather than accepted the review's own framing at face value:
+  confirmed cron.py's own live dashboard (`signals_cache`) has the identical
+  blind spot -- it's written AFTER these two gates (cron.py:1566-1568), so a
+  divergent candidate never reaches it either, even though cron.py separately
+  bulk-inserts every candidate to predictions.db BEFORE the gates
+  (cron.py:1509-1534, for backtesting/tracking, not live display) --
+  `_analyze_once` has no equivalent DB-insert step at all (pre-existing,
+  unrelated to this fix), so the comparison holds at the level that matters:
+  what a human actually watches live. Surfaced via `AskUserQuestion`; user
+  confirmed keep continue/hide (matches what cron's own dashboard already
+  does) over switching to a non-dropping tag. No code change from this
+  finding; documented here per the standing "if review finds something,
+  document what was caught" step even when the resolution is "confirmed
+  intended, no fix needed."
 
 [PARTIALLY RESOLVED 2026-07-20] NO MARKET-TYPE SEAM -- TEMPERATURE IS THE ARCHITECTURE, NOT A MARKET TYPE
 Priority: was Medium-High -- now Low-Medium. hourly-directional (KXTEMPxxxH)

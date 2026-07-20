@@ -733,3 +733,181 @@ class TestAnalyzeOnceSameDayParity:
         assert "KXHIGH-NYC-26APR17-MULTIDAY" in out_tickers, (
             "multi-day market must still reach _liquid_opps_out (regression control)"
         )
+
+
+class TestAnalyzeOnceDirectionalConsensusGates:
+    """(backlog.txt "WATCH/_analyze_once IS MISSING cron.py's
+    MIN_MARKET_PROB_TO_BET_WITH / MAX_MARKET_DIVERGENCE_RATIO
+    DIRECTIONAL-CONSENSUS GATES"): cron.py's loop skips a candidate when the
+    market gives our recommended side < 25% (MIN_MARKET_PROB_TO_BET_WITH) or
+    when our probability in that direction exceeds the market's by more than
+    2.0x (MAX_MARKET_DIVERGENCE_RATIO). _analyze_once had neither -- ported
+    both, mirroring cron.py's exact _mkt_dir/_our_dir computation."""
+
+    def _analysis(self, ticker, market_prob, forecast_prob, side="yes", edge=0.30):
+        return {
+            "ticker": ticker,
+            "days_out": 2,
+            "edge": edge,
+            "entry_side_edge": edge,
+            "net_edge": edge,
+            "recommended_side": side,
+            "market_prob": market_prob,
+            "forecast_prob": forecast_prob,
+            "net_signal": "",
+            "time_risk": "LOW",
+        }
+
+    def _run(self, monkeypatch, market, analysis):
+        import main
+
+        monkeypatch.setattr("main.get_weather_markets", lambda c: [market])
+        monkeypatch.setattr(
+            "main.enrich_with_forecast",
+            lambda m: {"ticker": m.get("ticker", ""), "_city": "NYC", "_date": None},
+        )
+        monkeypatch.setattr("main.analyze_trade", lambda enriched: dict(analysis))
+        monkeypatch.setattr(
+            "weather_markets.compute_market_implied_distributions", lambda m: {}
+        )
+        monkeypatch.setattr("paper.get_open_trades", lambda: [])
+        monkeypatch.setattr("main.is_liquid", lambda m: True)
+        monkeypatch.setattr(
+            "main.detect_hedge_opportunity", lambda analysis, open_trades: False
+        )
+
+        liquid_opps_out: list = []
+        main._analyze_once(MagicMock(), _liquid_opps_out=liquid_opps_out, min_edge=0.05)
+        return {m.get("ticker") for m, _ in liquid_opps_out}
+
+    def _market(self, ticker):
+        return {
+            "ticker": ticker,
+            "yes_bid": 40,
+            "yes_ask": 44,
+            "volume": 500,
+            "open_interest": 100,
+        }
+
+    def test_skips_when_market_gives_our_side_below_min_prob(self, monkeypatch):
+        """recommended_side=yes, market_prob=0.20 -> _mkt_dir=0.20 < 0.25:
+        the market is confidently against our chosen side -- must be
+        skipped even though the raw model-market gap (0.20) is well under
+        analyze_trade's own 0.25 "7d" threshold."""
+        ticker = "KXHIGH-NYC-26APR17-LOWMKTPROB"
+        analysis = self._analysis(ticker, market_prob=0.20, forecast_prob=0.35)
+        out = self._run(monkeypatch, self._market(ticker), analysis)
+        assert ticker not in out, (
+            "market giving our recommended side < MIN_MARKET_PROB_TO_BET_WITH "
+            "(0.25) must be skipped"
+        )
+
+    def test_skips_when_divergence_ratio_exceeded(self, monkeypatch):
+        """recommended_side=yes, market_prob=0.30, forecast_prob=0.70 ->
+        _mkt_dir=0.30, _our_dir=0.70, ratio=2.33 > MAX_MARKET_DIVERGENCE_RATIO
+        (2.0) -- must be skipped even though _mkt_dir=0.30 clears the min-prob
+        floor on its own."""
+        ticker = "KXHIGH-NYC-26APR17-DIVERGE"
+        analysis = self._analysis(ticker, market_prob=0.30, forecast_prob=0.70)
+        out = self._run(monkeypatch, self._market(ticker), analysis)
+        assert ticker not in out, (
+            "our_dir/mkt_dir ratio > MAX_MARKET_DIVERGENCE_RATIO (2.0) must be skipped"
+        )
+
+    def test_allows_market_within_both_thresholds(self, monkeypatch):
+        """market_prob=0.35, forecast_prob=0.65 -> _mkt_dir=0.35 (>= 0.25),
+        ratio=0.65/0.35=1.86 (<= 2.0): passes both gates, must reach
+        _liquid_opps_out."""
+        ticker = "KXHIGH-NYC-26APR17-PASSES"
+        analysis = self._analysis(ticker, market_prob=0.35, forecast_prob=0.65)
+        out = self._run(monkeypatch, self._market(ticker), analysis)
+        assert ticker in out, (
+            "a market passing both MIN_MARKET_PROB_TO_BET_WITH and "
+            "MAX_MARKET_DIVERGENCE_RATIO must still reach _liquid_opps_out"
+        )
+
+    def test_no_side_uses_flipped_probabilities(self, monkeypatch):
+        """recommended_side=no, market_prob=0.85 -> _mkt_dir=1-0.85=0.15 < 0.25:
+        the flip must be applied before the threshold check, matching cron.py's
+        exact _mkt_dir/_our_dir derivation for the 'no' side."""
+        ticker = "KXHIGH-NYC-26APR17-NOSIDE"
+        analysis = self._analysis(
+            ticker, market_prob=0.85, forecast_prob=0.55, side="no"
+        )
+        out = self._run(monkeypatch, self._market(ticker), analysis)
+        assert ticker not in out, (
+            "recommended_side='no' must flip market_prob/forecast_prob to "
+            "1-p before comparing against MIN_MARKET_PROB_TO_BET_WITH"
+        )
+
+
+class TestCmdTodayDirectionalConsensusGates:
+    """Same gates ported into cmd_today (main.py, display-only "what should
+    I do today" recommender) for UI-recommendation parity, per explicit user
+    decision to widen this fix's scope beyond just the live-order path."""
+
+    def _analysis(self, ticker, market_prob, forecast_prob, side="yes", edge=0.30):
+        return {
+            "ticker": ticker,
+            "days_out": 2,
+            "edge": edge,
+            "net_edge": edge,
+            "recommended_side": side,
+            "market_prob": market_prob,
+            "forecast_prob": forecast_prob,
+            "time_risk": "LOW",
+            "ci_adjusted_kelly": 0.0,
+            "consensus": "",
+            "regime_description": "",
+            "n_members": 3,
+        }
+
+    def _market(self, ticker):
+        return {
+            "ticker": ticker,
+            "yes_bid": 40,
+            "yes_ask": 44,
+            "volume": 500,
+            "open_interest": 100,
+        }
+
+    def _run(self, monkeypatch, market, analysis, capsys):
+        import main
+
+        monkeypatch.setattr("main.get_weather_markets", lambda c: [market])
+        monkeypatch.setattr("main.parse_city_date", lambda m: ("NYC", "2026-04-17"))
+        monkeypatch.setattr("main.batch_prewarm_forecasts", lambda city_dates: None)
+        monkeypatch.setattr("climatology.preload_all", lambda coords: None)
+        monkeypatch.setattr(
+            "main.enrich_with_forecast",
+            lambda m: {"ticker": m.get("ticker", ""), "_city": "NYC"},
+        )
+        monkeypatch.setattr("main.analyze_trade", lambda enriched: dict(analysis))
+        monkeypatch.setattr("main.is_liquid", lambda m: True)
+        monkeypatch.setattr("paper.get_balance", lambda: 1000.0)
+        monkeypatch.setattr("paper.kelly_bet_dollars", lambda *a, **k: 0.0)
+        monkeypatch.setattr("builtins.input", lambda *a, **k: "")
+
+        main.cmd_today(MagicMock())
+        return capsys.readouterr().out
+
+    def test_skips_when_market_gives_our_side_below_min_prob(self, monkeypatch, capsys):
+        ticker = "KXHIGH-NYC-26APR17-LOWMKTPROB"
+        analysis = self._analysis(ticker, market_prob=0.20, forecast_prob=0.35)
+        out = self._run(monkeypatch, self._market(ticker), analysis, capsys)
+        assert "No strong opportunities today" in out
+        assert ticker not in out
+
+    def test_skips_when_divergence_ratio_exceeded(self, monkeypatch, capsys):
+        ticker = "KXHIGH-NYC-26APR17-DIVERGE"
+        analysis = self._analysis(ticker, market_prob=0.30, forecast_prob=0.70)
+        out = self._run(monkeypatch, self._market(ticker), analysis, capsys)
+        assert "No strong opportunities today" in out
+        assert ticker not in out
+
+    def test_allows_market_within_both_thresholds(self, monkeypatch, capsys):
+        ticker = "KXHIGH-NYC-26APR17-PASSES"
+        analysis = self._analysis(ticker, market_prob=0.35, forecast_prob=0.65)
+        out = self._run(monkeypatch, self._market(ticker), analysis, capsys)
+        assert "No strong opportunities today" not in out
+        assert ticker in out
