@@ -728,6 +728,94 @@ When to revisit:
   - If there's real appetite to add a new market type (not just "cover more
     tickers") -- start with rain given current live volume.
 
+  STEP 2 HANDOFF (separate future session, own plan + review -- do not
+  build speculatively without re-checking these first):
+  1. Real monthly-accumulation probability model in analyze_trade(),
+     replacing today's unconditional None-return guard for KXRAIN*M
+     tickers. No data provider gives monthly exceedance probability
+     directly (confirmed this session against every provider this bot
+     already uses) -- the model is a synthesis job, not a fetch. Recommended
+     combo, researched and partly live-verified this session: NOAA ACIS
+     StnData (`http://data.rcc-acis.org/StnData`, POST JSON, `elems:
+     [{"name":"pcpn","interval":"dly"/"mly","duration":"dly"/"mly",
+     "reduce":"sum"}]`, unauthenticated public API, this bot has never
+     touched it) for (a) real month-to-date actual precip and (b) 30yr daily
+     history to build an empirical per-city-month distribution of
+     "remaining-days-of-month total" (bootstrap from historical years' D-to-
+     month-end sums, not a parametric fit -- precip totals are right-skewed
+     and bounded at 0), combined with the known actual-to-date value.
+     Optionally tilt with Open-Meteo's Seasonal API (`seasonal-api.
+     open-meteo.com/v1/seasonal`, `monthly=precipitation_mean`, ECMWF SEAS5,
+     live-tested this session and confirmed working) as a directional nudge
+     -- mean-only, no per-member spread, so it can adjust central tendency
+     but can't itself supply distribution shape. NOAA CPC's monthly precip
+     outlook (`mapservices.weather.noaa.gov/.../cpc_mthly_precip_outlk`) is
+     categorical/tercile only, not a numeric CDF -- secondary signal at most,
+     don't plan around it as a primary source. `_fetch_ensemble_precip`
+     (existing single-day fetcher) is only practical for the final ~2 weeks
+     of a month (16-day forecast cap) -- not a monthly solution on its own.
+  2. Fix `_parse_market_condition()`'s real, currently-deferred bug: for
+     KXRAIN*M tickers it silently collapses all 7 (or 4, NYC) ladder rungs
+     into one identical `{"type": "precip_any"}`, discarding the real
+     per-bracket threshold -- which lives in Kalshi's own `floor_strike`/
+     `yes_sub_title`/`strike_type` market fields (confirmed via live raw
+     JSON dump this session), NOT in a `-P<n>` ticker suffix or "inch" text
+     in the title (real title is just "Rain in Denver in Jul 2026?"). Must
+     be fixed before or alongside item 1 -- the model needs the real
+     threshold to compare against.
+  3. MANDATORY before any monthly-rain prediction/trade is ever logged: the
+     position-sizing fail-open gap found this session. `MAX_CITY_DATE_
+     EXPOSURE`/correlated-city penalties (paper.portfolio_kelly_fraction,
+     order_executor.py's per-date cap) both key off `target_date_str` being
+     a single-day string and silently skip when it's None -- which it
+     always is for these tickers (no day component to parse). Once Step 2
+     gives these tickers a real (non-None) grouping key, decide deliberately
+     how monthly rain positions should be capped (extend the exposure system
+     to accept a month-string key, treat the bracket's month as a synthetic
+     date, or something else) -- don't let this silently start bypassing the
+     caps just because target_date_str stops being None.
+  4. Ladder/sibling grouping: `compute_market_implied_distributions()`'s
+     current blanket exclusion needs to become real (city, month) grouping.
+     `fit_market_implied_distribution()`'s weighted-least-squares machinery
+     was confirmed this session to be structurally reusable (works off
+     generic (lo, hi, mid_price, weight) tuples) but needs new sigma sanity
+     bounds for an inches scale -- current bounds (0.1-50.0) are tuned for
+     °F. NYC's ladder has only 4 brackets (not 7, a Kalshi listing choice,
+     confirmed via settled history) -- handle variable ladder sizes.
+  5. Settlement: `outcomes.settled_value` (float) is reusable for the
+     monthly cumulative total, but `settled_var`'s existing semantic (a
+     max/min-hour discriminator, from the hourly work) doesn't map cleanly
+     onto "this is a monthly total" -- needs a new sentinel value or its own
+     column, a real design decision, not a free reuse. `tracker.
+     audit_settlement()` currently bails via `_parse_city_date()` returning
+     None before reaching any settlement logic -- monthly rain needs its own
+     settlement path triggered at month-end, not the "call once near a known
+     instant" shape used for daily/hourly (a month's total is only final
+     after the month ends, not observable at one point in time the way a
+     daily high or an hourly reading is).
+  6. Consensus-bonus precedent to follow, not rediscover: hourly Step 2's
+     independent review caught that `_analyze_hourly_trade()`'s `consensus`
+     flag was near-tautological (its two inputs weren't independent enough
+     to justify `_price_and_size()`'s Kelly bonus) and had to be hardcoded
+     `False` with a documented reason. A monthly-rain model will face the
+     identical question the moment it has more than one signal (e.g. the
+     ACIS-empirical estimate vs. the Seasonal-API-tilted one) -- verify real
+     independence before wiring any consensus bonus, don't assume it.
+  7. Shadow-only rollout: same `_gates_active()` pattern as every other new
+     signal in this file (env var + sample-count floor via a new tracker
+     count function) -- do not enable real sizing until enough settled
+     monthly-rain predictions exist to validate real edge.
+  8. Open question, not yet resolved: which NWS station does each city's
+     rain market actually settle against. The pattern observed this session
+     (Seattle=CLISEA, Denver implied CLIDEN, St. Petersburg=CLISPG) looks
+     like the same per-city station this bot's temperature markets already
+     use, but verify against each market's real `rules_secondary` text
+     before assuming `metar.MARKET_STATION_MAP` transfers as-is -- don't
+     guess.
+  9. Snow and hurricane are separate, still fully open items (see this
+     entry's own "Why not now" above) -- re-scout snow Nov-Mar, hurricane's
+     per-city landfall markets Aug-Oct, before assuming either is ready.
+
 RESOLVED 2026-07-20 (Rain Step 1 -- discovery/schema/safety only, no
   probability model; snow, hurricane, and rain's own Step 2 all still
   fully open, see below): re-verified this entry's own volume claim live
