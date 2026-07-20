@@ -1605,6 +1605,79 @@ class TestHourlyDirectionalCityDetection:
         assert self._city("KXTEMPDCH-26JUL2008-T82.99") == "Washington"
 
 
+class TestMonthlyRainCityDetection:
+    """backlog.txt "RAIN / SNOW / HURRICANE MARKETS" Step 1: KXRAIN*M monthly
+    rain-total ladder tickers must resolve to the correct city. 5 of the 10
+    real series (Seattle, LA, Houston, SF, Dallas) fail the pre-existing
+    substring fallback chain entirely -- e.g. "TSEA"/"THOU"/"TSFO"/"TDAL"
+    require a "T" immediately before the city code, not present in
+    "KXRAIN<CITY>M"; the LA block requires "HIGHLA"/"LOWLA"/"LOWTLA"/an exact
+    "LA" hyphen segment, none present in "KXRAINLAXM" -- and would silently
+    return None without the explicit _KXRAIN_MONTHLY_CITY prefix map. The
+    other 5 (Miami, Chicago, NYC, Denver, Austin) happen to match the
+    existing chain by substring luck; tested here too so a future edit to
+    that chain can't silently break them."""
+
+    def _city(self, ticker: str) -> str | None:
+        from unittest.mock import patch
+
+        import weather_markets as wm
+
+        market = {"ticker": ticker, "title": ""}
+        with patch.object(wm, "get_weather_forecast", return_value=None):
+            result = wm.enrich_with_forecast(market)
+        return result.get("_city")
+
+    def test_seattle_rain_ticker_detected(self):
+        """Real ticker shape pulled live 2026-07-20. Would return None
+        without the explicit _KXRAIN_MONTHLY_CITY fix -- "KXRAINSEAM"
+        doesn't contain "TSEA"."""
+        assert self._city("KXRAINSEAM-26JUL-1") == "Seattle"
+
+    def test_la_rain_ticker_detected(self):
+        """Would return None without the explicit fix -- "KXRAINLAXM" has no
+        "HIGHLA"/"LOWLA"/"LOWTLA" substring and no exact "LA" hyphen segment."""
+        assert self._city("KXRAINLAXM-26JUL-7") == "LA"
+
+    def test_houston_rain_ticker_detected(self):
+        """Would return None without the explicit fix -- "KXRAINHOUM"
+        doesn't contain "THOU"."""
+        assert self._city("KXRAINHOUM-26JUL-3") == "Houston"
+
+    def test_san_francisco_rain_ticker_detected(self):
+        """Would return None without the explicit fix -- "KXRAINSFOM"
+        doesn't contain "TSFO"."""
+        assert self._city("KXRAINSFOM-26JUL-4") == "SanFrancisco"
+
+    def test_dallas_rain_ticker_detected(self):
+        """Would return None without the explicit fix -- "KXRAINDALM"
+        doesn't contain "TDAL"."""
+        assert self._city("KXRAINDALM-26JUL-2") == "Dallas"
+
+    def test_miami_rain_ticker_detected(self):
+        """Passes the existing substring chain by luck ("MIA") -- tested so
+        a future edit to that chain can't silently break it."""
+        assert self._city("KXRAINMIAM-26JUL-5") == "Miami"
+
+    def test_chicago_rain_ticker_detected(self):
+        """Passes the existing substring chain by luck ("CHI")."""
+        assert self._city("KXRAINCHIM-26JUL-6") == "Chicago"
+
+    def test_nyc_rain_ticker_detected(self):
+        """Passes the existing substring chain by luck ("NY"). Real NYC
+        ladder only has 4 brackets (1-4in), not 7 -- a Kalshi listing
+        choice, unrelated to city detection."""
+        assert self._city("KXRAINNYCM-26JUL-4") == "NYC"
+
+    def test_denver_rain_ticker_detected(self):
+        """Passes the existing substring chain by luck ("DEN")."""
+        assert self._city("KXRAINDENM-26JUL-7") == "Denver"
+
+    def test_austin_rain_ticker_detected(self):
+        """Passes the existing substring chain by luck ("AUS")."""
+        assert self._city("KXRAINAUSM-26JUL-1") == "Austin"
+
+
 class TestLearnedWeightsTTL:
     """L4-D: load_learned_weights() must discard files older than 7 days."""
 

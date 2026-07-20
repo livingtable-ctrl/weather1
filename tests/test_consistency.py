@@ -141,6 +141,56 @@ class TestConsistency(unittest.TestCase):
         ]
         self.assertEqual(find_violations(markets), [])
 
+    def test_monthly_rain_markets_excluded(self):
+        """backlog.txt "RAIN / SNOW / HURRICANE MARKETS" Step 1: KXRAIN*M
+        monthly rain-total ladder brackets must never reach _group_markets.
+        Without the exclusion, this doesn't produce a false violation
+        (date_match already fails to match these tickers, so they'd be
+        dropped via the "not series or not date_str" skip regardless -- this
+        assertion alone would NOT catch a removed exclusion, confirmed by
+        mutation-testing it), but it WOULD log a spurious L-8 warning every
+        scan (series resolves truthy from the ticker prefix while
+        date_match stays None) -- see the companion log-noise assertion
+        below, which IS the real regression guard."""
+        markets = [
+            _market(
+                "KXRAINSEAM-26JUL-1",
+                yes_bid=0.80,
+                yes_ask=0.85,
+                series="KXRAINSEAM",
+                title="Rain in Seattle in Jul 2026?",
+            ),
+            _market(
+                "KXRAINSEAM-26JUL-7",
+                yes_bid=0.10,
+                yes_ask=0.15,
+                series="KXRAINSEAM",
+                title="Rain in Seattle in Jul 2026?",
+            ),
+        ]
+        self.assertEqual(find_violations(markets), [])
+
+    def test_monthly_rain_markets_do_not_log_date_extraction_warning(self):
+        """The actual regression guard for the exclusion above: mutation-
+        tested by temporarily removing consistency.py's KXRAIN*M exclusion
+        and confirming this assertion fails (the L-8 warning fires) before
+        restoring it. find_violations() returning [] alone (previous test)
+        does NOT catch a removed exclusion -- only this log-absence check
+        does."""
+        import logging
+
+        markets = [
+            _market(
+                "KXRAINSEAM-26JUL-1",
+                yes_bid=0.80,
+                yes_ask=0.85,
+                series="KXRAINSEAM",
+                title="Rain in Seattle in Jul 2026?",
+            ),
+        ]
+        with self.assertNoLogs(level=logging.WARNING):
+            find_violations(markets)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

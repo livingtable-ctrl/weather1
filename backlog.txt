@@ -690,8 +690,10 @@ When to revisit: N/A -- both Step 1 and Step 2 resolved. See the Step 2
   RESOLVED note above's "When to revisit" for the remaining intentionally-
   deferred gaps (item 7) and the shadow-gate sample-floor condition.
 
-[RAIN / SNOW / HURRICANE MARKETS — UNTOUCHED CATEGORY SURFACE]
-Priority: Low (net-new product line, not a gap in the existing one)
+[PARTIALLY RESOLVED 2026-07-20 — Rain Step 1 shipped] RAIN / SNOW / HURRICANE MARKETS — UNTOUCHED CATEGORY SURFACE
+Priority: was Low -- rain is now Medium-High (real, currently-liquid product
+  the bot was silently blind to); snow/hurricane/rain's own probability
+  model (Step 2) remain Low, unchanged.
 
 Problem:
   "Climate and Weather" has 287 series total; this bot only ever looks at
@@ -725,6 +727,178 @@ Why not now:
 When to revisit:
   - If there's real appetite to add a new market type (not just "cover more
     tickers") -- start with rain given current live volume.
+
+RESOLVED 2026-07-20 (Rain Step 1 -- discovery/schema/safety only, no
+  probability model; snow, hurricane, and rain's own Step 2 all still
+  fully open, see below): re-verified this entry's own volume claim live
+  before starting and found it badly stale, same pattern as the
+  hourly-directional session's own re-verification catch. The 2026-07-08
+  snapshot said "16 KXRAIN* series, 2 with real volume." Live query found
+  17 real KXRAIN* series in "Climate and Weather" (not 16), and -- far more
+  consequentially -- discovered `_analyze_precip_trade()`/
+  `_analyze_snow_trade()` already exist, fully built, wired into
+  analyze_trade() (this entry's "no existing model architecture for any of
+  the three" claim was wrong) -- they've essentially never run against a
+  real market, because KNOWN_WEATHER_SERIES listed the literal dead
+  placeholder "KXRAIN", while `client.get_markets(series_ticker=...)` is an
+  exact-match filter and the real per-city series live under different
+  literal names (KXRAINSEAM, KXRAINDENM, etc.) that were simply never
+  fetched.
+  Live-verified 10 of those series are currently liquid, comparable
+  monthly rain-TOTAL ladder brackets (Seattle highest at 203K volume down
+  to Austin ~32K -- NOT "2 with real volume"; St. Petersburg/KXRAINSTPM is
+  an 11th, real and live, but a genuinely new city and deliberately
+  excluded, see below) -- a structurally different product from daily
+  HIGH/LOW: one city-month event has 7 sibling ">N inches" brackets (NYC
+  only 4, a Kalshi listing choice), all sharing one month-end close, the
+  underlying quantity accruing over ~30 days rather than being a single
+  point-in-time value. Snow: real series exist (33, all in "Climate and
+  Weather") but 0 open markets anywhere as of 2026-07-20 -- pure July
+  seasonality, not abandonment; re-scout Nov-Mar. Hurricane: per-city
+  landfall markets (closest analog to HIGH/LOW) are dormant now, historically
+  waking up mid-August through October; named-storm/category/count markets
+  already have real pre-season volume but are a different product shape
+  entirely.
+  Confirmed the real monthly-accumulation probability model (Step 2) is
+  genuinely new, unvalidated work, not a wiring fix: no data provider gives
+  monthly exceedance probability directly (live-checked all of this bot's
+  existing providers -- Open-Meteo forecast/ensemble, NWS, IEM/MOS,
+  WeatherAPI, Pirate Weather -- none monthly-shaped). The real approach
+  would blend NOAA ACIS StnData (month-to-date actual + 30yr daily history,
+  a brand-new unauthenticated public API this bot has never touched) with
+  Open-Meteo's Seasonal API (`seasonal-api.open-meteo.com`, ECMWF SEAS5
+  monthly-mean forecast, mean-only, no per-member spread) -- a genuine
+  synthesis job. Deliberately out of scope for this pass, same Step 1/Step 2
+  split as HOURLY-DIRECTIONAL TEMPERATURE MARKETS above (commits
+  `1acb308`/`06269b4`).
+  St. Petersburg (KXRAINSTPM) deliberately excluded from Step 1: confirmed
+  live it's a genuinely new city (none of CITY_COORDS's 20 keys), needing
+  coordinated edits across ~8 separate scattered registries (CITY_COORDS,
+  `_parse_city_from_ticker`, KNOWN_WEATHER_SERIES, metar.MARKET_STATION_MAP,
+  `_STATION_BIAS_HIGH`/`_STATION_BIAS_LOW`, `_HISTORICAL_SIGMA`,
+  climate_indices.py's AO/NAO/ENSO tables, `paper._CORRELATED_CITY_GROUPS`)
+  -- the per-city registry consolidation this backlog already flagged
+  (PER-CITY KNOWLEDGE IS SCATTERED, resolved 2026-07-19 as an auditor only,
+  not a fix) is still not done, confirmed live (`data/cities.json` still
+  doesn't exist). St. Petersburg is also the lowest-volume of the 11 rain
+  series anyway.
+  Shipped (weather_markets.py, consistency.py, paper.py, order_executor.py):
+  `KNOWN_WEATHER_SERIES` now lists the 10 real per-city monthly rain series
+  instead of the dead "KXRAIN" placeholder; new `_KXRAIN_MONTHLY_CITY`
+  single-source-of-truth dict wired into `_parse_city_from_ticker()` (hand-
+  verified against the substring fallback chain: 5 of 10 cities resolve by
+  luck today, 5 -- Seattle, LA, Houston, SF, Dallas -- genuinely fail without
+  the explicit fix, same "some pass by luck" shape as the hourly-directional
+  LA/DC finding); a new unconditional `analyze_trade()` guard returns `None`
+  for every monthly-rain ticker before any other gate (unlike the hourly
+  guard, Step 1 has zero model for rain at all, so no target-hour-style
+  partial pass-through); `compute_market_implied_distributions()` and
+  `consistency._group_markets()` both get the same explicit exclusion
+  (redundant for their final outcomes -- day-based date-parsing already
+  fails these tickers -- but real for `_group_markets()`'s own L-8 warning,
+  which would otherwise log a spurious "could not extract date from ticker"
+  WARNING for all 10 rain markets on every single scan without it, caught
+  and mutation-tested via `self.assertNoLogs`).
+  Real, reachable safety gap found and closed, not just defense-in-depth:
+  `paper.check_position_limits()` now blocks any qty/price for a monthly-
+  rain ticker outright. Traced live: `main.py`'s manual "place order with
+  explicit ticker+qty" command resolves city/target_date_str via a
+  forecast-free enrichment *before and independently of* `analyze_trade()`,
+  and when qty is given explicitly, `analyze_trade()` is never called at
+  all -- it calls `check_position_limits()` directly with a real qty. Since
+  `target_date_str` stays `None` for rain tickers, the existing city/date/
+  directional/correlated-group caps were already silently skipped there --
+  only the flat $250 per-market and 50% portfolio caps would still apply.
+  Nothing could trade these tickers before this session (they weren't even
+  fetched), so blocking manual orders too isn't a regression from any prior
+  working state. `portfolio_kelly_fraction()` (paper.py) and
+  `_auto_place_trades()`'s per-date cap (order_executor.py) got comment-only
+  documentation of why they're provably unreachable instead of redundant
+  code guards -- both are hot, general-purpose paths used by every market
+  type; touching them for a provably-unreachable case would add regression
+  risk without closing a real gap (explicit user decision, asked via
+  `AskUserQuestion`).
+  `check_series_drift()` extended to watch `KXRAIN*` alongside `KXHIGH*`/
+  `KXLOW*` (explicit user decision, not a generalization to "any
+  KNOWN_WEATHER_SERIES prefix" -- KXTEMPxxxH stays deliberately excluded,
+  matching this same session's earlier standing decision for that market
+  family). Real subtlety found during a mandatory 10-pass plan review (user
+  asked for it explicitly, matching the hourly-directional precedent): once
+  `live_weather` includes `KXRAIN*`, `get_series_list()` returns ALL 17 real
+  rain series, including ~7 this bot deliberately doesn't track (dormant
+  daily/one-off variants, and KXRAINSTPM) -- without accounting for those,
+  the drift-check would warn about them as "missing" every single day
+  forever, recreating one level down the exact permanent-noise problem the
+  function's own docstring already warns against. Fixed with a new
+  `KNOWN_UNTRACKED_RAIN_SERIES` set (deliberately not reusing
+  `KNOWN_DEAD_WEATHER_SERIES` -- these are real/live series, not retired
+  tickers), built from a fresh live query at implementation time (not
+  copied from the session's own research-summary text, which had some
+  noisy substring false-positives), each entry commented with why
+  (dormant/0-open-markets vs. deferred-real-city). Verified both directions
+  with dedicated tests, not just the flagging case.
+  `_parse_market_condition()`'s real bug (would silently collapse all 7
+  ladder rungs into one identical `{"type": "precip_any"}`, discarding the
+  real `floor_strike` threshold, since Kalshi carries the threshold as a
+  first-class field/`yes_sub_title` rather than title text or a `-P<n>`
+  ticker suffix) is documented in-code but deliberately NOT fixed --
+  confirmed unreachable today via all 3 real call paths (analyze_trade's
+  new guard, compute_market_implied_distributions's exclusion,
+  backtest.py's target_date-is-None skip); real fix is Step 2 work.
+  37 new tests (tests/test_rain_markets.py new; additions to
+  test_weather_markets.py, test_consistency.py, test_series_drift.py),
+  every guard/exclusion/gate mutation-tested via `git stash` -- one weak
+  test caught and fixed during mutation-testing itself: the first version
+  of the `_group_markets()` exclusion test only asserted `find_violations()
+  == []`, which stayed green even with the exclusion reverted (the outcome
+  doesn't change, only log noise does) -- strengthened to assert log
+  absence directly (`self.assertNoLogs`), confirmed THAT assertion fails
+  with the exact predicted warning when reverted. 376 tests pass across the
+  full regression sweep (test_weather_markets.py, test_consistency.py,
+  test_series_drift.py, test_rain_markets.py, test_dead_code_scan.py,
+  test_market_implied_distribution.py, test_hourly_markets.py,
+  test_phase2_batch_i.py, test_paper_metrics.py, test_trading.py,
+  test_cron_integration.py); ruff + ruff format + mypy clean.
+  Followed the same process as HOURLY-DIRECTIONAL TEMPERATURE MARKETS: 3
+  parallel Explore-agent research passes feeding a Plan-agent-drafted plan,
+  `EnterPlanMode`, and a mandatory 10-pass (this session went further, ~20)
+  self-review before presenting -- which caught the `KNOWN_UNTRACKED_RAIN_
+  SERIES` noise problem and a real scoping-creep risk (a first draft said
+  "generalize check_series_drift to any KNOWN_WEATHER_SERIES prefix," which
+  would have silently pulled KXTEMPxxxH back into drift-checking against
+  this session's own earlier decision) before any code was written.
+  Given the size, independently reviewed with 3 parallel `Agent(opus,
+  effort=high)` passes scoped by subsystem (discovery/parsing/analyze_trade
+  guard; grouping/drift-check noise-prevention; the safety-critical
+  check_position_limits guard), matching this session's own earlier
+  precedent for large multi-subsystem changes. All 3 came back clean on
+  correctness (no live-money-relevant bug in any of the 4 source files),
+  but 2 caught real test weaknesses -- fixed before push, not just noted:
+  (1) `test_rain_only_list_produces_no_distributions` was vacuous --
+  `parse_city_date()` already returns `None` for rain tickers regardless of
+  the new explicit exclusion, so the test stayed green even with the
+  exclusion deleted (confirmed by mutation-testing it). Added
+  `test_exclusion_holds_even_if_a_date_were_parseable`, which patches
+  `parse_city_date()` to return a real (city, date) for a rain ticker --
+  simulating the exact forward-guard scenario the exclusion's own docstring
+  describes -- and confirmed THAT test fails correctly when the exclusion is
+  removed. (2) `check_position_limits()`'s guard test suite never covered
+  the case where `city`/`target_date_str` are both non-None (they always
+  are None today, but the review flagged this as the one behaviorally
+  meaningful untested case, since it would lock in the guard's
+  before-everything ordering against a future refactor). Added
+  `test_blocks_even_when_city_and_date_are_present`, mutation-tested by
+  temporarily weakening the guard to skip when city/date are present and
+  confirming the new test catches it.
+  39 tests total (up from 37), full regression sweep re-run after the
+  fixes (262 tests across test_weather_markets.py/test_consistency.py/
+  test_series_drift.py/test_rain_markets.py/test_phase2_batch_i.py/
+  test_paper_metrics.py); ruff/mypy clean.
+  Still fully open: snow (re-scout Nov-Mar), hurricane (re-scout Aug-Oct for
+  per-city landfall markets), St. Petersburg onboarding, and rain's own Step
+  2 (the real ACIS+Seasonal-API monthly-accumulation probability model,
+  shadow-gated per the established `_gates_active()` pattern before ever
+  live-trading).
 
 [TRACK ECMWF FORECAST ACCURACY]
 Priority: Low (ECMWF already gets a reasonable static/seasonal weight; this is

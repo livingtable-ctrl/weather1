@@ -2482,6 +2482,14 @@ def _auto_place_trades(
         target_date_str = target_date_obj.isoformat() if target_date_obj else None
 
         # Per-date concentration cap: same-day and multi-day use separate limits.
+        # backlog.txt "RAIN / SNOW / HURRICANE MARKETS" Step 1: this block is
+        # provably unreachable for monthly rain-total tickers -- this loop
+        # only ever iterates opportunities `a` that already survived
+        # analyze_trade() (called upstream in the scan loop), whose new
+        # monthly-rain guard returns None for these tickers immediately, so
+        # they never reach _auto_place_trades() at all. No code guard added
+        # here on purpose -- see portfolio_kelly_fraction()'s matching
+        # comment in paper.py for the full reachability analysis.
         _is_same_day = int(a.get("days_out", 1)) == 0
         if _is_same_day:
             if _same_day_open >= _eff_sameday_cap:

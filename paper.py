@@ -1620,6 +1620,18 @@ def portfolio_kelly_fraction(
 
     If existing city/date exposure >= MAX_CITY_DATE_EXPOSURE, returns 0.0.
     """
+    # backlog.txt "RAIN / SNOW / HURRICANE MARKETS" Step 1: unreachable with
+    # nonzero effect for monthly rain-total tickers today, provably --
+    # confirmed by reviewing every real call site. main.py's auto-Kelly path
+    # only reaches this after analyze_trade() (whose new monthly-rain guard
+    # returns None first, forcing fee_kelly=0.0 upstream); order_executor.py's
+    # _auto_place_trades() only ever iterates opportunities that already
+    # survived that same analyze_trade() call. No code guard added here on
+    # purpose -- this is a hot, general-purpose path used by every market
+    # type, and touching it for a provably-unreachable case would add
+    # regression risk without closing a real gap (the real gap, main.py's
+    # manual explicit-qty order path, is closed at its actual choke point,
+    # paper.check_position_limits(), instead).
     # Global cap: halt new positions if total open exposure >= 50% of starting balance
     # Capture total_exp once so we can clamp the final result to remaining room.
     total_exp = get_total_exposure()
@@ -3267,6 +3279,27 @@ def check_position_limits(
 
     Returns {ok, reason, existing_cost, limit}.
     """
+    # backlog.txt "RAIN / SNOW / HURRICANE MARKETS" Step 1: monthly rain-total
+    # ladder markets have no probability model yet -- analyze_trade() already
+    # refuses to score them, but this function is the one call path that can
+    # still be reached WITHOUT going through analyze_trade() first: main.py's
+    # manual "place order with explicit ticker+qty" command resolves
+    # city/target_date_str via a forecast-free enrichment and calls this
+    # function directly, bypassing analyze_trade() entirely when qty is given
+    # explicitly. Since target_date_str stays None for these tickers, the
+    # city/date/directional/correlated-group caps below would already be
+    # skipped -- only the flat per-market/portfolio caps would still apply --
+    # so block outright here rather than rely on partial protection.
+    from weather_markets import _KXRAIN_MONTHLY_CITY
+
+    if ticker.upper().startswith(tuple(_KXRAIN_MONTHLY_CITY)):
+        return {
+            "ok": False,
+            "reason": "monthly rain markets: no probability model yet (Step 1 discovery-only)",
+            "existing_cost": 0.0,
+            "limit": max_cost_per_market,
+        }
+
     existing_cost = sum(
         t.get("cost", 0.0) or 0.0
         for t in get_open_trades()

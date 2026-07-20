@@ -182,3 +182,51 @@ def test_recovered_ticker_resets_counter(tmp_path, monkeypatch):
 
     state = json.loads(drift_path.read_text())
     assert ticker not in state["missing_days"]
+
+
+def test_unknown_rain_ticker_warns_immediately(tmp_path, monkeypatch, caplog):
+    """backlog.txt "RAIN / SNOW / HURRICANE MARKETS" Step 1: a genuinely
+    novel/unknown KXRAIN* series (e.g. an 11th rain city Kalshi adds later)
+    must be flagged, now that the drift-check watches KXRAIN* too."""
+    import logging
+
+    import weather_markets as wm
+
+    drift_path = tmp_path / "series_drift_check.json"
+    monkeypatch.setattr(wm, "SERIES_DRIFT_PATH", drift_path)
+
+    live_with_extra = [*wm.KNOWN_WEATHER_SERIES, "KXRAINNEWCITYM"]
+
+    with caplog.at_level(logging.WARNING):
+        client = _mock_client(live_with_extra)
+        wm.check_series_drift(client)
+
+    assert any(
+        "KXRAINNEWCITYM" in r.message and "not in KNOWN_WEATHER_SERIES" in r.message
+        for r in caplog.records
+    )
+
+
+def test_known_untracked_rain_series_suppressed(tmp_path, monkeypatch, caplog):
+    """The real subtlety found on plan review: client.get_series_list()
+    returns ALL real KXRAIN* series, including ~7 this bot deliberately
+    doesn't track (dormant daily/one-off variants, and KXRAINSTPM -- real
+    and live but deferred). Every one of KNOWN_UNTRACKED_RAIN_SERIES must be
+    suppressed, not just the genuinely-unknown case above -- a test that
+    only checked the unknown case would pass even if this suppression were
+    broken and the drift-check spammed a warning for all 7 every single day.
+    """
+    import logging
+
+    import weather_markets as wm
+
+    drift_path = tmp_path / "series_drift_check.json"
+    monkeypatch.setattr(wm, "SERIES_DRIFT_PATH", drift_path)
+
+    live_with_untracked = [*wm.KNOWN_WEATHER_SERIES, *wm.KNOWN_UNTRACKED_RAIN_SERIES]
+
+    with caplog.at_level(logging.WARNING):
+        client = _mock_client(live_with_untracked)
+        wm.check_series_drift(client)
+
+    assert not any("not in KNOWN_WEATHER_SERIES" in r.message for r in caplog.records)
