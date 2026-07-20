@@ -4073,6 +4073,136 @@ When to revisit:
     The smallest-version dedup/is_stale parity fix is safe to do sooner,
     independent of that trigger.
 
+RESOLVED 2026-07-20 (second smallest-safe-step piece -- the full headless
+  engine above is still open, unstarted; re-confirmed still gated on "live
+  trading imminent," not started early): closed the days_out==0 divergence
+  the 2026-07-20 re-verification above flagged as newly WORSE. main.py:1439
+  (_analyze_once, inside the per-market loop after the gated_edge computation)
+  now falls through for days_out == 0 markets instead of `continue`-ing past
+  them, mirroring cron.py:1543-1545's exact same-day re-enablement (same
+  rationale comment ported: METAR-locked probabilities give tight CI width ->
+  larger ci_adjusted_kelly; between markets skip the obs override and fall
+  back to ensemble/between_floor gate). A local `_same_day_seen` counter +
+  one `_log.debug` after the scan loop mirrors main.py's own existing
+  dedup/stale-counter convention (this function has no `_dbg` dict like
+  cron.py -- did not import that shape in from a different file).
+  Traced the full downstream flow before shipping: _analyze_once's
+  `liquid_opps` list feeds `_liquid_opps_out` (only entries with
+  `_passes_edge`, main.py:1885-1888), which cmd_watch passes straight into
+  `_auto_place_trades(liquid_opps, ..., live=live, ...)` -- confirmed this is
+  precisely the live-order-placing consumer the backlog entry is about, not
+  a display-only list. Also confirmed the horizon-aware min-edge gate
+  (`get_min_edge_for_confidence`, utils.py:211) lives inside order_executor.py
+  (order_executor.py:631-636, 1904-1906) -- shared by both cron and watch's
+  call into _auto_place_trades -- so same-day markets get the correct 12pp
+  floor (utils.py:161) regardless of which pipeline scanned them; no
+  additional watch-specific gap there.
+  New test (tests/test_p1_remaining.py::TestAnalyzeOnceSameDayParity::
+  test_same_day_market_reaches_liquid_opps_out): asserts a days_out==0
+  market with a qualifying edge reaches `_liquid_opps_out` alongside a
+  multi-day regression control. Mutation-tested via `git stash` on main.py
+  only -- confirmed the test fails with the exact predicted symptom (same-day
+  ticker missing from the out-set, multi-day still present), then restored.
+  229 tests pass across the full regression sweep (tests/test_p1_remaining.py,
+  test_trading.py, test_menu_ux.py, test_debug_fixes.py,
+  test_cron_integration.py, test_live_execution.py, test_confidence_tiers.py,
+  test_sameday_reserve.py); ruff + ruff format + mypy clean.
+  Adjacency finding, verified and deliberately NOT folded into this change
+  (per the "don't silently fold unrelated findings" step) -- filed as its own
+  entry below: cron.py also applies two narrower loop-level gates
+  (MIN_MARKET_PROB_TO_BET_WITH AND MAX_MARKET_DIVERGENCE_RATIO, cron.py:
+  1546-1565) beyond the shared analyze_trade() model-market-gap gate, and
+  main.py/watch has no equivalent for either, for any days_out. See
+  "WATCH/_analyze_once IS MISSING cron.py's MIN_MARKET_PROB_TO_BET_WITH /
+  MAX_MARKET_DIVERGENCE_RATIO DIRECTIONAL-CONSENSUS GATES" below.
+  Independent Agent(opus, effort=high) review of this diff caught a real
+  documentation-accuracy bug before push: the same-day fall-through comment
+  (ported near-verbatim from cron.py:1541, where it's accurate) originally
+  claimed "the same divergence, gap, liquidity, and min_prob_edge gates
+  still apply to all same-day candidates" -- true in cron.py, false in
+  main.py, where two of those four gates (divergence, min_prob_edge) simply
+  don't exist. The review's own adjacency search is what surfaced
+  MAX_MARKET_DIVERGENCE_RATIO as a second missing gate this session's
+  original adjacency pass (which only found MIN_MARKET_PROB_TO_BET_WITH)
+  had missed. Fixed the main.py comment to name only the gates that
+  genuinely apply in this pipeline (analyze_trade's 7d model-market gap +
+  liquidity) and to point at this backlog entry for the two that don't;
+  updated this entry and the one below to cover both missing constants,
+  not just one.
+  Still open, unstarted: the full headless run_trade_cycle() engine
+  extraction, gated as above.
+
+[WATCH/_analyze_once IS MISSING cron.py's MIN_MARKET_PROB_TO_BET_WITH /
+MAX_MARKET_DIVERGENCE_RATIO DIRECTIONAL-CONSENSUS GATES]
+Priority: Medium -- a real, live-order-path gap, but narrower than it first
+  looks (see "Why this is smaller than it sounds" below); no known incident,
+  TRADING_PAUSED=true throughout.
+
+Found: 2026-07-20, as an adjacency finding while shipping the days_out==0
+  parity fix above (backlog.txt "THE ONLY LIVE-ORDER PATH... -- NO HEADLESS
+  TRADE-CYCLE ENGINE"). Deliberately not folded into that change. Widened
+  same day from one missing gate to two after an independent Agent(opus,
+  effort=high) review of that fix's diff caught the same-day comment
+  overclaiming both gates applied in main.py and, chasing that down, found
+  MAX_MARKET_DIVERGENCE_RATIO was ALSO cron.py-only -- this session's first
+  adjacency pass had only found MIN_MARKET_PROB_TO_BET_WITH.
+
+Problem:
+  cron.py's scan loop (cron.py:1546-1565) applies two gates beyond
+  analyze_trade()'s own internal gates, both keyed on `_mkt_dir` (the
+  market's own probability in the direction of `recommended_side` --
+  market_prob if betting yes, 1-market_prob if betting no):
+  1. `MIN_MARKET_PROB_TO_BET_WITH` (utils.py:189, 0.25): skip if the market
+     gives our chosen side less than a 25% chance -- "the market is right
+     nearly every time" at that level of disagreement (cron.py:1557-1559).
+  2. `MAX_MARKET_DIVERGENCE_RATIO` (utils.py:183): skip if `_our_dir /
+     _mkt_dir` (our probability in our chosen direction, divided by the
+     market's) exceeds the ratio cap -- a second, ratio-shaped framing of
+     "we disagree with the market too much" (cron.py:1560-1565).
+  Grepped the whole repo for both constants: each appears only in cron.py
+  and its own definition/fingerprint entry in utils.py -- zero occurrences
+  in main.py or order_executor.py. watch/_analyze_once (the only pipeline
+  that can place a live order) has never applied either check, for any
+  market, not just same-day ones.
+
+Why this is smaller than it sounds:
+  analyze_trade() itself (weather_markets.py:7254-7272, "7d. Model-market gap
+  gate") already rejects (returns None) any trade -- shared by both
+  pipelines, since both call analyze_trade() -- when the RAW model
+  probability and market probability disagree by more than 0.25, regardless
+  of direction. So the bulk of what cron's two directional checks would
+  catch is already caught upstream, for both pipelines equally.
+  What 7d does NOT catch and cron's checks do: cases where the raw
+  disagreement is under 0.25 but the market is still confidently against
+  our chosen side -- e.g. market YES-price 20%, our forecast 35% YES: gap is
+  15pp (passes 7d) but the market gives our side only a 20% chance (would
+  fail cron's `_mkt_dir < 0.25` check, and likely the ratio check too). This
+  can happen because 7d compares against the PRE-anchor raw model
+  probability while cron's `_mkt_dir`/`_our_dir` read `analysis.get(
+  "market_prob"/"forecast_prob")` (potentially blended/anchored) -- the
+  gates are measuring related but distinct things, not one subsuming the
+  others.
+
+What it would look like:
+  Port cron.py:1546-1565's exact `_mkt_dir`/`_our_dir` computation + both
+  checks into main.py's `_analyze_once`, after the days_out==0 fall-through
+  (same site as this entry's sibling fix above). Needs its own
+  AskUserQuestion pass first though -- open scope questions not yet answered:
+  (1) should it use `analysis.get("market_prob"/"forecast_prob")`
+  (post-anchor, matching cron.py exactly) or something else; (2) does it
+  need its own debug counters matching `_dbg["mkt_prob"]`/`_dbg[
+  "divergence"]`'s style; (3) whether cmd_today (main.py:2298-2316, a
+  separate display-only "what should I do today" command, NOT the
+  live-order path) should get the same treatment for UI-recommendation
+  parity, or is out of scope since it never places an order.
+
+When to revisit:
+  - No hard trigger -- this is a real, self-contained gap independent of the
+    VM-move/live-trading-imminent trigger that gates the full headless-engine
+    entry above. Reasonable to pick up any time; not urgent given
+    TRADING_PAUSED=true and analyze_trade()'s 7d gate already covering the
+    large-gap cases.
+
 [PARTIALLY RESOLVED 2026-07-20] NO MARKET-TYPE SEAM -- TEMPERATURE IS THE ARCHITECTURE, NOT A MARKET TYPE
 Priority: was Medium-High -- now Low-Medium. hourly-directional (KXTEMPxxxH)
   was the nearest stated expansion and did hit every one of these walls;

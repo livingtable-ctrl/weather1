@@ -648,3 +648,88 @@ class TestAnalyzeOnceDedupAndStaleParity:
         assert enriched_tickers.count("KXHIGH-NYC-26APR17-DUP") == 1, (
             "Duplicate ticker must only be enriched/analyzed once per scan"
         )
+
+
+class TestAnalyzeOnceSameDayParity:
+    """(backlog.txt "THE ONLY LIVE-ORDER PATH..."): cron.py trades days_out==0
+    markets (re-enabled 2026-07-xx), but _analyze_once -- the only pipeline
+    that can place a live order -- was still silently `continue`-ing past
+    them. Mirrors cron.py's fall-through: same-day markets must still reach
+    the live-order-feeding _liquid_opps_out list, same as any other market."""
+
+    def _base_analysis(self, ticker, days_out, edge=0.30):
+        return {
+            "ticker": ticker,
+            "days_out": days_out,
+            "edge": edge,
+            "entry_side_edge": edge,
+            "net_edge": edge,
+            "recommended_side": "yes",
+            "market_prob": 0.40,
+            "forecast_prob": 0.70,
+            "net_signal": "",
+            "time_risk": "LOW",
+        }
+
+    def test_same_day_market_reaches_liquid_opps_out(self, monkeypatch):
+        """A days_out == 0 market with a real qualifying edge must reach
+        _liquid_opps_out -- the exact list watch's auto-trade path
+        (_auto_place_trades) consumes -- not be silently dropped."""
+        import main
+
+        same_day_market = {
+            "ticker": "KXHIGH-NYC-26APR17-SAMEDAY",
+            "yes_bid": 40,
+            "yes_ask": 44,
+            "volume": 500,
+            "open_interest": 100,
+        }
+        multi_day_market = {
+            "ticker": "KXHIGH-NYC-26APR17-MULTIDAY",
+            "yes_bid": 40,
+            "yes_ask": 44,
+            "volume": 500,
+            "open_interest": 100,
+        }
+
+        analyses = {
+            "KXHIGH-NYC-26APR17-SAMEDAY": self._base_analysis(
+                "KXHIGH-NYC-26APR17-SAMEDAY", days_out=0
+            ),
+            "KXHIGH-NYC-26APR17-MULTIDAY": self._base_analysis(
+                "KXHIGH-NYC-26APR17-MULTIDAY", days_out=2
+            ),
+        }
+
+        monkeypatch.setattr(
+            "main.get_weather_markets",
+            lambda c: [same_day_market, multi_day_market],
+        )
+        monkeypatch.setattr(
+            "main.enrich_with_forecast",
+            lambda m: {"ticker": m.get("ticker", ""), "_city": "NYC", "_date": None},
+        )
+        monkeypatch.setattr(
+            "main.analyze_trade",
+            lambda enriched: dict(analyses[enriched["ticker"]]),
+        )
+        monkeypatch.setattr(
+            "weather_markets.compute_market_implied_distributions", lambda m: {}
+        )
+        monkeypatch.setattr("paper.get_open_trades", lambda: [])
+        monkeypatch.setattr("main.is_liquid", lambda m: True)
+        monkeypatch.setattr(
+            "main.detect_hedge_opportunity", lambda analysis, open_trades: False
+        )
+
+        liquid_opps_out: list = []
+        main._analyze_once(MagicMock(), _liquid_opps_out=liquid_opps_out, min_edge=0.05)
+
+        out_tickers = {m.get("ticker") for m, _ in liquid_opps_out}
+        assert "KXHIGH-NYC-26APR17-SAMEDAY" in out_tickers, (
+            "days_out == 0 market must reach the live-order-feeding "
+            "_liquid_opps_out list, matching cron.py's re-enabled same-day trading"
+        )
+        assert "KXHIGH-NYC-26APR17-MULTIDAY" in out_tickers, (
+            "multi-day market must still reach _liquid_opps_out (regression control)"
+        )

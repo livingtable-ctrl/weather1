@@ -1354,6 +1354,7 @@ def _analyze_once(
     liquid_opps: list = []
     no_quote_opps: list = []
     total = len(markets)
+    _same_day_seen = 0
 
     # Market-implied temperature distribution (backlog.txt "MARKET-IMPLIED
     # TEMPERATURE DISTRIBUTION FROM THE FULL LADDER"): computed once per scan
@@ -1426,8 +1427,23 @@ def _analyze_once(
         analysis["gated_edge"] = (
             analysis.get("adjusted_edge", analysis.get("edge", 0.0)) / _liq_edge_scale
         )
+        # Same-day markets (days_out == 0) are re-enabled (matches cron.py's
+        # cmd_cron parity, backlog.txt "THE ONLY LIVE-ORDER PATH..."):
+        # analyze_trade uses METAR-locked probabilities for same-day
+        # above/below markets, which gives tight CI width -> larger
+        # ci_adjusted_kelly. Between markets at days_out == 0 skip the obs
+        # override in analyze_trade so they fall back to ensemble and are
+        # covered by the between_floor gate. analyze_trade's own model-market
+        # gap gate (weather_markets.py "7d") and the liquidity gate still
+        # apply here same as any other market -- but unlike cron.py, this
+        # pipeline does NOT apply cron.py's additional loop-level
+        # MIN_MARKET_PROB_TO_BET_WITH / MAX_MARKET_DIVERGENCE_RATIO checks,
+        # for same-day or any other days_out (pre-existing gap, tracked in
+        # backlog.txt "WATCH/_analyze_once IS MISSING cron.py's
+        # MIN_MARKET_PROB_TO_BET_WITH DIRECTIONAL-CONSENSUS GATE").
         if int(analysis.get("days_out", 1)) == 0:
-            continue
+            _same_day_seen += 1
+            # fall through — do not skip
         # Tag whether this market passes the edge threshold so make_rows can dim it,
         # but do NOT drop it — analyse always shows top 50 regardless of edge.
         _gate_edge = analysis.get("entry_side_edge", analysis["edge"])
@@ -1453,6 +1469,11 @@ def _analyze_once(
 
     if total > 5:
         print(f"\r  Scanned {total} markets.          ")  # clear progress line
+    if _same_day_seen:
+        _log.debug(
+            "_analyze_once: %d same-day (days_out == 0) market(s) analyzed",
+            _same_day_seen,
+        )
 
     def _rating(net_edge: float, risk: str) -> str:
         """★★★ = strong edge + low risk, ★★ = good edge, ★ = fair edge."""
