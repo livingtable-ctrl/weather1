@@ -1802,6 +1802,17 @@ When to revisit:
     not just the ~2026-07-30 Belgium-trip-end date passing. Don't resurface
     this as ready-to-execute purely because the trip has ended -- confirm
     live trading is genuinely about to start first.
+  - RE-VERIFIED 2026-07-20: still parked, zero infra progress (no
+    Dockerfile/compose/systemd/Task-Scheduler config anywhere in the repo),
+    cron.py still has no `while True` (one-shot, confirmed). Its real
+    prerequisite (THE ONLY LIVE-ORDER PATH IS THE INTERACTIVE WATCH CLI --
+    NO HEADLESS TRADE-CYCLE ENGINE, above) is still unshipped beyond a small
+    dedup/is_stale slice -- don't start the VM move before that engine
+    exists. Note for future sessions: the dead-man's-switch heartbeat
+    (>48h-gap push notification, shipped 2026-06-28, predates this entry)
+    is a detection/alerting mechanism only -- it does NOT fix the underlying
+    laptop-lid/wifi/scheduler reliability problem this entry exists to
+    solve; don't mistake it for "already fixed another way."
 
 [RESOLVED 2026-07-13] RESTING EXIT ORDERS + OCO ORDER GROUPS
 Priority: was High (live risk-management hole, not just an optimization)
@@ -2416,6 +2427,9 @@ What the fix looks like:
 Why not now:
   - Needs schema addition + weeks of newly-logged rows before retraining
     can use them (existing rows lack the new fields).
+  - RE-VERIFIED 2026-07-20: still exactly [our_prob, month, days_out, 0.0]
+    (ml_bias.py:204); no ensemble_spread/model_disagreement/data_quality/
+    sigma_used columns exist yet on multiday_predictions. Nothing unblocked.
 
 When to revisit:
   - Ship the logging side early (same "data accumulates only from when it
@@ -2446,6 +2460,12 @@ Why not now:
   - Same reasons as the ECMWF entry (multi-file instrumentation, weeks
     before learned weights activate) — plus a schema-design decision
     (generic table vs columns) that should be made once, deliberately.
+  - RE-VERIFIED 2026-07-20: still exactly icon_forecast_mean/
+    gfs_forecast_mean, no generic mapping. Repo-wide grep for gem/ukmo/
+    weathernext/graphcast/gencast: zero hits, confirming the free-source
+    claim still holds. Its own prerequisite, TRACK ECMWF FORECAST ACCURACY
+    above, is still open/unresolved — the "when picking up ECMWF" trigger
+    hasn't fired.
 
 When to revisit:
   - When picking up the ECMWF entry — decide then whether to do the generic
@@ -2782,14 +2802,22 @@ Priority: Medium (sharpens every probability the bot emits; unblocks a
   recorded deferral)
 
 Problem:
-  _HISTORICAL_SIGMA is a static 18-city table (missing LasVegas/NewOrleans
-  -> generic 3.5 default; see the LV/NOLA entry above); sigma feeds
-  gaussian_probability() on every trade. outcomes.settled_temp_f now exists
-  with real history but its only consumer is EMOS training. Separately, a
-  CLI-report-based settlement fetch (IEM afos API, city->WFO/pil table) was
-  designed and proven feasible 2026-07-05 but deferred pending "a consumer
-  for settled_temp_f accuracy" — this is that consumer. sigma_audit.py is
+  _HISTORICAL_SIGMA is a static city table; sigma feeds gaussian_probability()
+  on every trade. outcomes.settled_temp_f now exists with real history but
+  its only consumer is EMOS training. Separately, a CLI-report-based
+  settlement fetch (IEM afos API, city->WFO/pil table) was designed and
+  proven feasible 2026-07-05 but deferred pending "a consumer for
+  settled_temp_f accuracy" — this is that consumer. sigma_audit.py is
   diagnostic-only (its own docstring: "no behavior changes").
+  CORRECTION 2026-07-20: the original LasVegas/NewOrleans framing above is
+  stale — that gap is [RESOLVED 2026-07-12] separately, and
+  get_historical_sigma() (weather_markets.py:2294-2313) now tries a dynamic
+  per-city/per-month sigma from the 30yr climatology archive before falling
+  back to the static table, so LV/NOLA already get real values that way.
+  Doesn't invalidate this entry's actual ask (climatology-derived sigma
+  reflects climate variability, not actual forecast error vs. settled_temp_f
+  — a genuinely different quantity), just the specific example used to
+  motivate it.
 
 What the fix looks like:
   Compute per-city (and per-season, matching the existing table's shape)
@@ -2803,10 +2831,18 @@ Why not now:
   - Needs enough settled history per city/season to beat the static values
     (check counts before starting); CLI fetch carries the known per-city
     hardcoded-table risk documented in the 2026-07-05 deferral.
+  - RE-VERIFIED 2026-07-20: queried predictions.db directly (join
+    predictions/outcomes on settled_temp_f IS NOT NULL, grouped by
+    city/season) — max per-city-per-season count is 21 (Seattle, summer),
+    every other cell lower, 234 settled_temp_f rows total across all
+    cities/seasons. Still below this entry's own ~30/season floor. For
+    context: tracker.count_settled_predictions() = 130,
+    count_emos_ready_predictions() = 94. Not ready yet.
 
 When to revisit:
   - Check settled_temp_f row counts per city; start when the biggest cities
-    clear a reasonable floor (~30+ per season).
+    clear a reasonable floor (~30+ per season) — as of 2026-07-20, still not
+    crossed (21 max).
 
 [RESOLVED 2026-07-20, smallest useful version] JOINT FULL-LADDER BRACKET SELECTION
 Priority: was Medium-Low (real EV improvement, real design work)
@@ -4004,6 +4040,24 @@ RESOLVED 2026-07-19 (smallest-safe-step piece only -- the full headless
   extraction itself (see "What it would look like" above and the "Why not
   now"/"When to revisit" below, both still accurate for that larger piece).
 
+RE-VERIFIED 2026-07-20: structural claim still fully holds (line numbers have
+  drifted ~90-115 lines from intervening commits but point at the same
+  functions) -- cron.py still never passes live=True to _auto_place_trades
+  (grepped all call sites), watch/_analyze_once is still the only path that
+  can (main.py now self-documents this explicitly: "Only `watch --auto
+  --live` actually routes orders to the live API", plus "cron/loop never
+  pass live=True... and ENABLE_MICRO_LIVE is hard-disabled"), no
+  run_trade_cycle()-shaped engine exists anywhere (grepped, zero hits).
+  One thing has gotten WORSE, not better, since this was written: cron.py
+  now explicitly re-enables trading same-day (days_out==0) markets ("Same-
+  day markets... re-enabled... fall through -- do not skip"), but watch/
+  _analyze_once still silently `continue`s past them -- the two pipelines'
+  days_out==0 behavior was merely "different" when this entry was written;
+  it is now actively diverging further, on the one and only pipeline that
+  can place a real order. Also confirmed cron.py's _consistency_skip halt
+  and its batch_prewarm_forecasts call both still have zero equivalent in
+  main.py's watch path.
+
 Why not now:
   - Do it as the *first* step of the VM/always-on work (the trigger
     already defined: live trading imminent), not before -- it's a large,
@@ -4019,9 +4073,14 @@ When to revisit:
     The smallest-version dedup/is_stale parity fix is safe to do sooner,
     independent of that trigger.
 
-[NO MARKET-TYPE SEAM -- TEMPERATURE IS THE ARCHITECTURE, NOT A MARKET TYPE]
-Priority: Medium-High -- hourly-directional (KXTEMPxxxH) is the nearest
-  stated expansion and would hit every one of these walls; rain is second.
+[PARTIALLY RESOLVED 2026-07-20] NO MARKET-TYPE SEAM -- TEMPERATURE IS THE ARCHITECTURE, NOT A MARKET TYPE
+Priority: was Medium-High -- now Low-Medium. hourly-directional (KXTEMPxxxH)
+  was the nearest stated expansion and did hit every one of these walls;
+  shipping it (2026-07-20, commit 06269b4) closed the concrete complaints
+  below via pragmatic single-source-of-truth fixes, not a formal interface.
+  What's left (no MarketType protocol, check_series_drift() still KXHIGH/
+  KXLOW-only) only pays off if rain/snow gets picked up next -- see the
+  RESOLVED note below.
 
 Problem:
   Market-type knowledge is not behind an interface; it's a set of
@@ -4057,6 +4116,48 @@ Problem:
   list -- already flagged in the hourly/rain entries, but note it's the
   same missing seam, not a separate fix.
 
+RESOLVED 2026-07-20 (the concrete complaints above, via pragmatic fixes --
+  NOT via the formal MarketType protocol this entry's "What it would look
+  like" section describes; that part is still open, see below): shipping
+  HOURLY-DIRECTIONAL TEMPERATURE MARKETS Step 2 (commit 06269b4) closed
+  every specific verification point in this Problem section:
+  - Third dispatch slot: `_analyze_hourly_trade()` (weather_markets.py) is
+    now a genuine third branch in analyze_trade(), positioned before the
+    precip/snow fast-paths -- "no third place to plug in" is no longer true.
+  - Var-convention duplication: a `predictions.var` column (migration v53)
+    is now the single source of truth. `paper._score_ensemble_members()`
+    and `tracker.audit_settlement()` both prefer the stored value, falling
+    back to ticker-substring derivation only for legacy pre-migration rows.
+    The two remaining literal `var = "min" if "LOW" in series else "max"`
+    copies in weather_markets.py are now purely internal to the daily
+    model -- hourly bypasses them entirely.
+  - Temperature-only ground truth: `outcomes.settled_value REAL`/
+    `settled_var TEXT` (migration v50-v52, shipped in Step 1) are now
+    actually populated -- `audit_settlement()` has a dedicated hourly
+    branch that writes them before ever reaching the old `return False #
+    precipitation or unknown -- skip` line.
+  - No calibration-pool separation: `ml_bias.train_all_temperature_
+    scaling()` now has a third `'hourly'` pool, explicitly excluded from
+    `'sameday'`, with its own no-fallback `apply_temperature_scaling(pool=
+    "hourly")` path.
+  Of the 5-item MarketType protocol wishlist below, items 1 (series-prefix
+  set), 2 (condition parsing), 3 (probability entry point), and 5
+  (calibration-pool key) all now exist as concrete, market-type-specific
+  implementations (item 4, ground-truth spec, shipped too). But there is
+  still NO formal `MarketType` protocol/interface (grepped for `Protocol`/
+  `class MarketType` across weather_markets.py and tracker.py -- zero hits)
+  -- each of the 5 things is still a separate, hand-wired branch keyed on
+  `_is_hourly`/ticker-prefix checks, not slots on a shared interface a third
+  market type (rain/snow) could plug into without writing its own parallel
+  branches from scratch. Also still true: `check_series_drift()` was NOT
+  extended to cover KXTEMPxxxH -- a parallel mechanism
+  (`refresh_hourly_target_hours()`) was added alongside it instead, doing
+  target-hour recomputation rather than the same live-series-list-diff
+  drift check. The precip/snow fast-paths' degraded analysis dicts
+  (hardcoded time_risk, no entry_price) were also untouched by this
+  commit -- re-verify those are still exactly as described if this entry
+  is picked up again, since that part wasn't re-checked this session.
+
 What it would look like:
   A MarketType protocol owning the five things currently keyed on string
   conventions: (1) series-prefix set for discovery/drift, (2) condition
@@ -4072,18 +4173,24 @@ What it would look like:
   "LOW" in ticker convention.
 
 Why not now:
-  - Worth doing the ground-truth generalization (settled_value/
-    settled_var) as a cheap early step the moment any second market type
-    is greenlit -- retrofitting calibration history is impossible (the
-    v35 migration comment at tracker.py:165-171 documents exactly this:
-    rows logged before var existed could never be backfilled). The full
-    MarketType protocol only pays when the hourly or rain entry is
-    actually picked up; don't build it speculatively.
+  - The ground-truth generalization (settled_value/settled_var) is done --
+    see RESOLVED note above. The remaining formal MarketType protocol only
+    pays off if RAIN / SNOW / HURRICANE MARKETS (below) is actually picked
+    up next -- don't build the abstraction speculatively for a third market
+    type that doesn't exist yet; the concrete/pragmatic pattern hourly used
+    (a dedicated function + a shared prefix dict + a stored var column) is
+    proven now and can be repeated a second time for rain/snow just as
+    cheaply as building the interface, unless a third type after that makes
+    the interface's payoff clear.
 
 When to revisit:
-  - The moment HOURLY-DIRECTIONAL TEMPERATURE MARKETS or RAIN / SNOW /
-    HURRICANE MARKETS (above) is actually greenlit -- do the ground-truth
-    generalization first, before either.
+  - The moment RAIN / SNOW / HURRICANE MARKETS is actually greenlit -- at
+    that point, decide whether a third repetition of the concrete pattern
+    is still cheaper than building the formal protocol (it likely still is
+    for a second repetition; the protocol pays off more clearly on a
+    fourth+ market type). Also revisit check_series_drift() then -- it
+    still needs the same KXTEMPxxxH-style parallel-mechanism treatment (or
+    a real generalization) for whatever new series rain/snow adds.
 
 [PARTIALLY RESOLVED 2026-07-19] PAPER AND LIVE POSITIONS ARE TWO LEDGERS WITH ADAPTER GLUE -- EVERY RISK FEATURE SHIPS TWICE
 Priority: Medium -- cost compounds per feature once live trading is real;
@@ -4222,15 +4329,20 @@ Problem:
   bespoke wiring at every layer, so signals #3-#5 (trade-flow, AFD,
   richer-ML features are all queued in this file) each repeat it.
   Storage: one named migration per scalar (tracker.py:221-223, v40-v42)
-  plus dedicated columns per signal -- predictions is already at schema
-  v42 largely from this accretion. API: a new named parameter on
+  plus dedicated columns per signal -- predictions is now at schema v53
+  largely from this accretion (was v42 when this entry was written; the
+  hourly-directional work added var TEXT, one more accretion of the exact
+  same shape this entry describes). API: a new named parameter on
   log_prediction() (tracker.py:610 run_trend: dict | None) -- the
   signature grows one kwarg per signal, forever. Threading: every
-  log_prediction call site updated -- order_executor's shared helper
-  _prediction_kwargs_from_analysis (order_executor.py:1926) *plus*
-  main.py's two direct call sites, each re-importing
-  get_forecast_run_trend_from_analysis locally (see the LOG_PREDICTION
-  KWARGS ASSEMBLY TRIPLICATED entry below -- same root cause).
+  log_prediction call site updated through order_executor's shared helper
+  _prediction_kwargs_from_analysis (order_executor.py:1926) -- CORRECTION
+  2026-07-20: main.py's two direct call sites no longer re-import
+  get_forecast_run_trend_from_analysis locally; that specific duplication
+  was fixed by [RESOLVED 2026-07-17] LOG_PREDICTION KWARGS ASSEMBLY
+  TRIPLICATED (below) -- both call sites now route through the same shared
+  helper. The core thesis (kwarg-growth-per-signal, no generic mechanism)
+  is otherwise unaffected by that fix and still fully holds.
   Enablement: run-trend's trigger (sample floor + correlation check)
   exists only as backlog.txt prose that someone must remember to run by
   hand. Meanwhile the codebase already *has* an in-code activation
