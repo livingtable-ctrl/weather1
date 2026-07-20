@@ -340,10 +340,163 @@ When to revisit:
     24559a7 but not individually re-verified here beyond the grep checks
     above) if this revert pattern is ever suspected elsewhere.
 
-[HOURLY-DIRECTIONAL TEMPERATURE MARKETS — KXTEMPxxxH]
-Priority: Low/Medium (one city has real live volume right now; the rest don't)
+[PARTIALLY RESOLVED 2026-07-20 -- Step 1 of 2 shipped] HOURLY-DIRECTIONAL TEMPERATURE MARKETS — KXTEMPxxxH
+Priority: was Low/Medium -- now Medium-High. Corrected volume data below
+  changes the picture substantially from "one city has real live volume."
 
-Problem:
+RESOLVED 2026-07-20 (Step 1 -- schema + safe discovery only, zero
+  live-trading behavior change; Step 2, the real probability model, is
+  scoped and deliberately deferred to its own future session -- see handoff
+  at the end of this entry):
+  Re-verified every claim in this entry against live state before touching
+  anything, rather than trusting the 2026-07-08 snapshot. The volume
+  picture had changed completely: querying Kalshi's API directly (not
+  status=open snapshots, full history per series) found 5 of 7 cities
+  (NYC, Austin, Chicago, LA, Washington DC) have run continuously and
+  liquidly for ~60 days -- 93-99% of all listed hours have real volume,
+  averaging 3,400-7,700 contracts/hour, comparable to or exceeding this
+  bot's existing daily markets. Only Miami and Boston are genuinely
+  unlaunched (near-zero markets ever listed). Volume is broad across the
+  day in every city (peak/trough ratio only 4-8x), so no small subset of
+  hours captures most of it by volume alone -- scoped instead to the ~2
+  hours/city nearest the daily max/min, where existing same-day forecasting
+  strength (proven on daily HIGH/LOW) most plausibly transfers, rather than
+  all 24 hours (up to ~1,200 markets/day vs ~10-40 for the scoped version).
+
+  Also found real hourly-aware scaffolding already existed and was unused:
+  parse_city_date()/enrich_with_forecast() already parsed hourly tickers
+  and extracted the hour; get_ensemble_temps()/_fetch_model_ensemble()/
+  _get_consensus_probs() already accepted an hour= parameter with local-
+  timezone awareness. Smaller build in places than this entry's "What the
+  fix looks like" implied. One overclaim corrected: HRRR same-day fetch
+  (_fetch_hrrr_temp) is NOT actually live for daily markets either --
+  still zero production callers, deliberately left unwired per the
+  2026-07-12 dead-code triage pending validation. Only METAR lock-in and
+  the live persistence-probability override are genuinely live/reusable.
+
+  Full implementation plan reviewed critically across several passes
+  before any code was written (per explicit request) -- caught real gaps
+  each pass, not just polish:
+  - Wiring market discovery into the scan loop without also gating
+    analyze_trade() would let an hourly market's title parse as an
+    ordinary "above" condition and fall through into the full daily
+    max/min model -- a live-money risk from what should be an inert first
+    step.
+  - A second, separate contamination path: compute_market_implied_
+    distributions() groups by (city, target_date) independently of and
+    before analyze_trade() -- an hourly bracket would get silently pooled
+    into a daily market's event group and corrupt its distribution fit.
+  - A third, found during implementation's own "quick check, not a
+    blocking redesign" of find_violations()/the arb-check block: its
+    (series, date_str) grouping key is day-level only (no hour), so two
+    DIFFERENT hours' ladders for the same city/day would get compared for
+    monotonicity as if they were one ladder. Mutation-tested and confirmed
+    real -- produced a fabricated "IMPOSSIBLE" arbitrage violation with
+    realistic inverted prices. Worse than the other two: find_violations()
+    feeds directly into automatic corrective trading, not just a log-only
+    signal.
+
+  Shipped, all three fixed at the single-source-of-truth level (a new
+  weather_markets._KXTEMP_HOURLY_CITY prefix->city dict, reused by all
+  four sites below so they can't independently drift):
+  - tracker.py: additive schema migrations v51/v52 (outcomes.settled_value
+    REAL, outcomes.settled_var TEXT) -- the "NO MARKET-TYPE SEAM" entry's
+    own prerequisite, now justified since a second market type is actually
+    being greenlit. settled_temp_f untouched, no backfill (pre-migration
+    rows can't be recovered, same reasoning as the v35 ensemble_member_
+    scores.var precedent).
+  - weather_markets.KNOWN_WEATHER_SERIES: added the 5 active KXTEMP*H
+    series (Miami/Boston excluded -- re-check before adding, nothing will
+    auto-alert if they activate since check_series_drift()'s KXHIGH/KXLOW
+    -only filter doesn't cover this family, same blind spot it already
+    accepts for KXRAIN/KXSNOW).
+  - weather_markets._parse_city_from_ticker(): explicit KXTEMP*H prefix
+    check ahead of the fragile substring chain -- LA and DC genuinely fail
+    that chain entirely (LA needs "HIGHLA"/"LOWLA"/"LOWTLA"/an exact "LA"
+    hyphen segment, none present in "KXTEMPLAXH"; DC needs "TDC", absent
+    from "KXTEMPDCH"); NYC/Austin/Chicago pass today by substring luck.
+  - weather_markets.analyze_trade(): returns None immediately for any
+    KXTEMP*H ticker, checked by prefix before condition parsing, before
+    every other existing gate. Counted via the existing _count_gate()
+    mechanism, not a silent no-op.
+  - weather_markets.compute_market_implied_distributions(): excludes
+    KXTEMP*H before event-grouping, fixed inside the function itself so
+    both real callers (cron.py, main.py) are covered.
+  - consistency._group_markets(): same exclusion, protecting all 3 real
+    find_violations() callers.
+  - weather_markets.compute_hourly_temperature_proxy()/
+    determine_hourly_target_hours(): new standalone, tested utility --
+    infers each historical hour's true temperature from where a finalized
+    ladder's result flips yes->no among strikes, averages per local hour
+    across history, returns the empirical max/min-hour estimate. Not wired
+    to gate anything yet (Step 2's job). Seasonal caveat noted in its own
+    docstring: the ~60 days of history available today is all summer, so
+    the derived hours are a summer-specific estimate, not permanent --
+    re-derive periodically as more history accumulates across seasons.
+
+  ~35 new tests (schema round-trip, city-parsing for all 5 real live
+  tickers, all three guards including regression that existing daily/
+  precip/snow behavior is unaffected, the target-hour utility hand-
+  verified against a real ladder pulled live this session), each guard
+  and the utility's core logic mutation-tested (temporarily reverted,
+  confirmed the corresponding test fails with the predicted symptom, then
+  restored) -- the find_violations fix in particular was caught exactly
+  this way, not by inspection. 522 tests pass across the full scoped
+  regression sweep; ruff+mypy clean. Live sanity check against Kalshi's
+  real API (TRADING_PAUSED=true throughout): real fetch pulled 50 hourly
+  markets across the 5 cities, all parsed to the correct city, all
+  returned None from analyze_trade(), zero hourly contamination in either
+  the market-implied fit or the arb-violation list. Independent opus
+  review (effort=high) came back clean -- independently re-derived every
+  guard's call-site coverage, hand-verified the test arithmetic (UTC/local
+  hour conversions, ladder-flip midpoints), reproduced the find_violations
+  mutation test itself, and confirmed no fourth shared aggregation
+  function was missed.
+
+  STEP 2 HANDOFF (separate future session, own plan + review -- do not
+  build speculatively without re-checking these first):
+  1. Real per-hour probability model in analyze_trade(), replacing
+     today's None-return guard, gated to only the empirically-determined
+     target hours (run determine_hourly_target_hours() fresh against
+     current history, don't reuse a stale hardcoded result).
+  2. MANDATORY before any hourly prediction/trade is ever logged: fix the
+     var-derivation duplicate-and-dangerous-default bug at all 4 sites
+     (paper._score_ensemble_members's `else: var="max"`, tracker.
+     audit_settlement, weather_markets.py x2) -- unreachable today because
+     of the Step 1 guard, but a real live-money-calibration-pollution risk
+     the moment Step 2 removes it.
+  3. Hourly ground-truth settlement: METAR fetch keyed to the target hour
+     specifically (not the whole day), writing to settled_value/
+     settled_var (shipped in Step 1).
+  4. Separate hourly calibration pool in ml_bias.py -- own training query,
+     own T, never folded into either the daily 'sameday' or multi-day
+     pools (days_out alone can't isolate it: hourly trades are inherently
+     days_out=0 and would otherwise collide with the existing METAR-
+     specific 'sameday' pool). User confirmed this explicitly.
+  5. Shadow-only rollout (no real sizing) until enough settled hourly
+     predictions exist to validate real edge -- same ENABLEMENT TRIGGER
+     convention already used for every other new signal in this file.
+  6. Operational-timing dependency to keep in mind, not rediscover:
+     Kalshi keeps only one hour's ladder active at a time per series (next
+     hour sits initialized/queued behind it) -- confirmed live this
+     session. Catching a target hour at all requires cron to run during
+     that ~1-hour window; today's periodic/manual cron cadence may miss it
+     most days -- the same structural problem as CITY-LOCAL AFTERNOON
+     SAME-DAY SWEEP above, just narrower. Confirm actual catch-rate from
+     real cron logs before judging the eventual signal's data quality.
+  7. Other known gaps, not yet fixed: _metar_lock_in() checks the day's
+     running max/min so far (wrong shape for "is hour H above X");
+     persistence override is a good structural fit but needs an hour-
+     proximity gate, currently days-out-gated only; climatological_prob()
+     has no hour parameter, falls back to daily climatology; is_stale()'s
+     60-minute threshold may over-suppress thin hourly strikes given the
+     much shorter (~1hr) trading window -- review against real cron logs,
+     don't tune blind. Position/exposure caps deliberately left sharing
+     the (city, target_date) budget with daily markets for the first live
+     version (conservative, real correlated risk) -- revisit only once
+     real hourly paper-trading data exists.
+
+Original problem (kept for history):
   Kalshi's "Climate and Weather" category also lists an "Hourly Directional
   [City] Temperature" market family, structurally invisible to this bot:
   check_series_drift() only ever diffs KXHIGH*/KXLOW* prefixed series, so
@@ -377,17 +530,15 @@ What the fix looks like:
   'sameday' calibration path could just absorb hourly rows -- it can't
   without the same care taken to keep the pools separate.
 
-Why not now:
+Why not now (superseded -- both conditions below have since fired, see
+  RESOLVED note above):
   - No existing model for the hour-level target specifically (only daily).
   - Only 1 of 7 cities in this family is currently even active.
   - Worth confirming KXTEMPxxxH volume is durable (not a one-off) before
     investing in an hour-level model.
 
-When to revisit:
-  - If KXTEMPxxxH activity broadens beyond just NYC, or NYC volume proves
-    durable over a few weeks.
-  - Given the reusable infra already exists, this is lower-effort than it
-    looked when first logged -- re-scope before deprioritizing further.
+When to revisit: N/A for Step 1 -- resolved. See "STEP 2 HANDOFF" in the
+  RESOLVED note above for what's next and its own prerequisites.
 
 [RAIN / SNOW / HURRICANE MARKETS — UNTOUCHED CATEGORY SURFACE]
 Priority: Low (net-new product line, not a gap in the existing one)

@@ -3254,6 +3254,22 @@ KNOWN_WEATHER_SERIES = [
     "KXLOWTNOLA",  # New Orleans — not previously tracked
     "KXRAIN",
     "KXSNOW",
+    # KXTEMPxxxH — hourly-directional temperature markets (backlog.txt
+    # "HOURLY-DIRECTIONAL TEMPERATURE MARKETS"). Only the 5 cities confirmed
+    # live/liquid for ~60 days as of 2026-07-20 are listed; KXTEMPMIAH/
+    # KXTEMPBOSH exist as series names but have near-zero markets ever
+    # listed (genuinely unlaunched, not just quiet) -- re-check before
+    # adding. analyze_trade() returns None for all of these today (Step 1
+    # of the backlog item — discovery/schema only, no probability model
+    # yet); they are also excluded from compute_market_implied_distributions
+    # (cron.py) since that groups by (city, target_date) independently of
+    # analyze_trade() and would otherwise silently pool hourly brackets
+    # into a daily market's distribution fit.
+    "KXTEMPNYCH",
+    "KXTEMPAUSH",
+    "KXTEMPCHIH",
+    "KXTEMPLAXH",
+    "KXTEMPDCH",
 ]
 
 # Legacy/placeholder KXHIGH/KXLOW series Kalshi's /series endpoint still lists
@@ -3436,6 +3452,23 @@ MONTH_MAP = {
 }
 
 
+# KXTEMPxxxH hourly-directional series -> city, matched by explicit ticker
+# prefix rather than the substring fallback chain below: KXTEMPLAXH and
+# KXTEMPDCH don't satisfy any of that chain's LA/Washington patterns (LA's
+# checks require "HIGHLA"/"LOWLA"/"LOWTLA"/an exact "LA" hyphen segment, none
+# present in "KXTEMPLAXH"; Washington's check requires "TDC", not present in
+# "KXTEMPDCH") and would silently return None. NYC/Austin/Chicago happen to
+# match the existing substring checks today, but relying on that would be
+# fragile and inconsistent with LA/DC needing an explicit fix anyway.
+_KXTEMP_HOURLY_CITY = {
+    "KXTEMPNYCH": "NYC",
+    "KXTEMPAUSH": "Austin",
+    "KXTEMPCHIH": "Chicago",
+    "KXTEMPLAXH": "LA",
+    "KXTEMPDCH": "Washington",
+}
+
+
 def _parse_city_from_ticker(ticker: str, title: str = "") -> str | None:
     """
     R24: Single source of truth for city detection from a market ticker + title.
@@ -3444,6 +3477,9 @@ def _parse_city_from_ticker(ticker: str, title: str = "") -> str | None:
     """
     ticker_up = ticker.upper()
     title_lo = title.lower()
+    for _series_prefix, _city in _KXTEMP_HOURLY_CITY.items():
+        if ticker_up.startswith(_series_prefix):
+            return _city
     if "NY" in ticker_up or "new york" in title_lo:
         return "NYC"
     if "CHI" in ticker_up or "chicago" in title_lo:
@@ -4240,9 +4276,19 @@ def compute_market_implied_distributions(
     Computed once per scan; callers attach the per-event result onto each
     market's own analysis dict during the per-market analysis loop rather
     than recomputing per-market. Returns {(city, date_iso): result_or_None}.
+
+    Excludes KXTEMPxxxH hourly-directional brackets: this groups purely by
+    (city, target_date), so an hourly bracket for the same city/day as a
+    daily HIGH/LOW market would otherwise be silently pooled into that
+    market's event group and corrupt its distribution fit with a different
+    question's strike ladder entirely (backlog.txt "HOURLY-DIRECTIONAL
+    TEMPERATURE MARKETS" Step 1 -- no probability model exists yet for these,
+    same reasoning as analyze_trade()'s own hourly guard).
     """
     by_event: dict[tuple[str, str], list[dict]] = {}
     for m in markets:
+        if m.get("ticker", "").upper().startswith(tuple(_KXTEMP_HOURLY_CITY)):
+            continue
         city, target_date = parse_city_date(m)
         if city is None or target_date is None:
             continue
@@ -4251,6 +4297,85 @@ def compute_market_implied_distributions(
     return {
         key: fit_market_implied_distribution(siblings)
         for key, siblings in by_event.items()
+    }
+
+
+def compute_hourly_temperature_proxy(
+    markets: list[dict], city_tz: str
+) -> dict[int, list[float]]:
+    """
+    For a city's KXTEMPxxxH markets (already fetched, any status -- pass an
+    unfiltered client.get_markets(series_ticker=...) result to cover
+    history, not just currently-open ones), infer each finalized hour's true
+    temperature from where its ladder's `result` flips from "yes" to "no"
+    among strikes sorted by floor_strike, and group the resulting proxy
+    values by LOCAL close hour (per city_tz).
+
+    backlog.txt "HOURLY-DIRECTIONAL TEMPERATURE MARKETS" Step 1: used to
+    empirically determine, from real settlement history, which local hour is
+    typically closest to a city's daily temperature max/min -- not wired to
+    gate or filter anything yet (Step 2's job, once a real per-hour
+    probability model exists). Seasonal caveat: only as reliable as the
+    history available -- a city's true diurnal peak/trough clock-hour shifts
+    across the year with day length, so this is a snapshot for whatever
+    period the input covers, not a permanent constant; re-derive
+    periodically rather than hardcoding a stale result forever.
+
+    Returns {local_hour: [proxy_temp, ...]} -- one value per (day, hour)
+    where a clean yes-to-no flip was found among adjacent strikes. Hour-days
+    with no flip at all (the true reading fell outside every listed strike,
+    or the ladder had fewer than 2 usable strikes) are silently skipped, not
+    guessed at -- callers wanting a data-quality signal can compare
+    len(markets) grouped by close_time against the total count returned here.
+    """
+    from zoneinfo import ZoneInfo
+
+    tz = ZoneInfo(city_tz)
+    by_close_time: dict[str, list[dict]] = {}
+    for m in markets:
+        if m.get("status") != "finalized":
+            continue
+        if m.get("floor_strike") is None or m.get("result") not in ("yes", "no"):
+            continue
+        ct = m.get("close_time")
+        if not ct:
+            continue
+        by_close_time.setdefault(ct, []).append(m)
+
+    proxy_by_hour: dict[int, list[float]] = {}
+    for ct, ladder in by_close_time.items():
+        ladder_sorted = sorted(ladder, key=lambda x: x["floor_strike"])
+        proxy = None
+        for lo, hi in zip(ladder_sorted, ladder_sorted[1:]):
+            if lo["result"] == "yes" and hi["result"] == "no":
+                proxy = (lo["floor_strike"] + hi["floor_strike"]) / 2.0
+                break
+        if proxy is None:
+            continue
+        dt_utc = datetime.fromisoformat(ct.replace("Z", "+00:00"))
+        local_hour = dt_utc.astimezone(tz).hour
+        proxy_by_hour.setdefault(local_hour, []).append(proxy)
+
+    return proxy_by_hour
+
+
+def determine_hourly_target_hours(
+    markets: list[dict], city_tz: str
+) -> dict[str, int | None]:
+    """
+    Return {"max_hour": local_hour, "min_hour": local_hour} -- the local
+    hour with the highest / lowest AVERAGE temperature proxy across all
+    available history (see compute_hourly_temperature_proxy), i.e. the hour
+    empirically closest to this city's daily max/min. {"max_hour": None,
+    "min_hour": None} if no hour had any usable data.
+    """
+    proxy_by_hour = compute_hourly_temperature_proxy(markets, city_tz)
+    if not proxy_by_hour:
+        return {"max_hour": None, "min_hour": None}
+    avg_by_hour = {hour: sum(vals) / len(vals) for hour, vals in proxy_by_hour.items()}
+    return {
+        "max_hour": max(avg_by_hour, key=lambda h: avg_by_hour[h]),
+        "min_hour": min(avg_by_hour, key=lambda h: avg_by_hour[h]),
     }
 
 
@@ -5694,6 +5819,19 @@ def analyze_trade(
     hour = enriched.get("_hour")
 
     _tkr = enriched.get("ticker", "?")
+    # backlog.txt "HOURLY-DIRECTIONAL TEMPERATURE MARKETS" Step 1: KXTEMPxxxH
+    # tickers are fetched (KNOWN_WEATHER_SERIES) for discovery/schema-testing
+    # purposes only -- no probability model exists for them yet (Step 2).
+    # Checked by ticker prefix, before condition parsing, deliberately not
+    # relying on how _parse_market_condition happens to classify these
+    # titles today -- an hourly market's "above X at 8am EDT" title could
+    # otherwise parse as an ordinary "above" condition and silently fall
+    # through into the full daily-max/min temperature model, which assumes
+    # the target is the day's high/low, not one specific hour.
+    _tkr_up = _tkr.upper()
+    if any(_tkr_up.startswith(_p) for _p in _KXTEMP_HOURLY_CITY):
+        _count_gate("hourly_not_yet_supported")
+        return None
     # Initialize early so blend weight calls can read regime even before detection runs.
     # Overwritten by the actual regime detection block further below.
     _regime_info: dict = {}

@@ -27,7 +27,7 @@ DB_PATH.parent.mkdir(exist_ok=True)
 
 _db_initialized = False
 
-_SCHEMA_VERSION = 50  # increment when _MIGRATIONS list grows
+_SCHEMA_VERSION = 52  # increment when _MIGRATIONS list grows
 
 _MIGRATIONS = [
     # v1 → v2: add condition_type column (if not already added)
@@ -293,6 +293,16 @@ _MIGRATIONS = [
     # query stays a clean, auditable is_probation=1 filter instead of also
     # needing to exclude ordinary shadow rows for other (non-retired) methods.
     "ALTER TABLE predictions ADD COLUMN is_probation INTEGER DEFAULT 0",
+    # v50 -> v51, v51 -> v52: generic ground-truth columns for market types
+    # other than daily temperature (backlog.txt "NO MARKET-TYPE SEAM").
+    # settled_temp_f stays as the daily-HIGH/LOW column, untouched, with every
+    # existing read/write site unmodified -- these are purely additive, for
+    # new market types (starting with KXTEMPxxxH hourly-directional) going
+    # forward. No backfill: rows logged before these columns existed can't be
+    # recovered, same reasoning as the v34->v35 ensemble_member_scores.var
+    # migration's own documented gap.
+    "ALTER TABLE outcomes ADD COLUMN settled_value REAL",
+    "ALTER TABLE outcomes ADD COLUMN settled_var TEXT",
 ]
 
 

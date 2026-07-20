@@ -2251,6 +2251,75 @@ class TestIsProbationColumn(unittest.TestCase):
         self.assertEqual(row[0], 0)
 
 
+# ── TestSettledValueVarColumns ────────────────────────────────────────────────
+
+
+class TestSettledValueVarColumns(unittest.TestCase):
+    """Schema v51/v52 must add settled_value/settled_var to outcomes, purely
+    additive alongside settled_temp_f (backlog.txt "NO MARKET-TYPE SEAM" ->
+    "HOURLY-DIRECTIONAL TEMPERATURE MARKETS" Step 1 prerequisite)."""
+
+    def setUp(self):
+        self._tmpdir = tempfile.mkdtemp()
+        self._orig = tracker.DB_PATH
+        tracker.DB_PATH = Path(self._tmpdir) / "test_v52.db"
+        tracker._db_initialized = False
+
+    def tearDown(self):
+        tracker.DB_PATH = self._orig
+        tracker._db_initialized = False
+        shutil.rmtree(self._tmpdir, ignore_errors=True)
+
+    def test_columns_exist_after_init(self):
+        import sqlite3
+
+        tracker.init_db()
+        with sqlite3.connect(str(tracker.DB_PATH)) as con:
+            cols = {row[1] for row in con.execute("PRAGMA table_info(outcomes)")}
+        self.assertIn("settled_value", cols)
+        self.assertIn("settled_var", cols)
+        # settled_temp_f must still exist, untouched by this migration.
+        self.assertIn("settled_temp_f", cols)
+
+    def test_round_trip_write_and_read(self):
+        import sqlite3
+
+        tracker.init_db()
+        tracker.log_outcome("KXTEMPNYCH-26JUL2008-T71.99", True)
+        with sqlite3.connect(str(tracker.DB_PATH)) as con:
+            con.execute(
+                "UPDATE outcomes SET settled_value = ?, settled_var = ? WHERE ticker = ?",
+                (71.5, "hourly", "KXTEMPNYCH-26JUL2008-T71.99"),
+            )
+            row = con.execute(
+                "SELECT settled_value, settled_var FROM outcomes WHERE ticker = ?",
+                ("KXTEMPNYCH-26JUL2008-T71.99",),
+            ).fetchone()
+        self.assertAlmostEqual(row[0], 71.5)
+        self.assertEqual(row[1], "hourly")
+
+    def test_settled_temp_f_write_path_unaffected(self):
+        """A pre-existing daily-market row using settled_temp_f only must be
+        unaffected -- settled_value/settled_var stay NULL for it."""
+        import sqlite3
+
+        tracker.init_db()
+        tracker.log_outcome("KXHIGHNY-26JUL20-T80", True)
+        with sqlite3.connect(str(tracker.DB_PATH)) as con:
+            con.execute(
+                "UPDATE outcomes SET settled_temp_f = ? WHERE ticker = ?",
+                (81.2, "KXHIGHNY-26JUL20-T80"),
+            )
+            row = con.execute(
+                "SELECT settled_temp_f, settled_value, settled_var "
+                "FROM outcomes WHERE ticker = ?",
+                ("KXHIGHNY-26JUL20-T80",),
+            ).fetchone()
+        self.assertAlmostEqual(row[0], 81.2)
+        self.assertIsNone(row[1])
+        self.assertIsNone(row[2])
+
+
 # ── TestSourceProbsPassthrough ────────────────────────────────────────────────
 
 

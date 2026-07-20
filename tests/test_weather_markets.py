@@ -1563,6 +1563,48 @@ class TestCityDetection:
         )
 
 
+class TestHourlyDirectionalCityDetection:
+    """backlog.txt "HOURLY-DIRECTIONAL TEMPERATURE MARKETS" Step 1: KXTEMPxxxH
+    tickers must resolve to the correct city. LA and DC fail the pre-existing
+    substring fallback chain entirely (LA needs "HIGHLA"/"LOWLA"/"LOWTLA"/an
+    exact "LA" hyphen segment, none present in "KXTEMPLAXH"; Washington needs
+    "TDC", not present in "KXTEMPDCH") -- both would silently return None
+    without the explicit _KXTEMP_HOURLY_CITY prefix map. NYC/Austin/Chicago
+    happen to match the existing chain by substring luck; tested here too so
+    a future edit to that chain can't silently break them."""
+
+    def _city(self, ticker: str) -> str | None:
+        from unittest.mock import patch
+
+        import weather_markets as wm
+
+        market = {"ticker": ticker, "title": ""}
+        with patch.object(wm, "get_weather_forecast", return_value=None):
+            result = wm.enrich_with_forecast(market)
+        return result.get("_city")
+
+    def test_nyc_hourly_ticker_detected(self):
+        """Real ticker pulled live 2026-07-20."""
+        assert self._city("KXTEMPNYCH-26JUL2008-T71.99") == "NYC"
+
+    def test_austin_hourly_ticker_detected(self):
+        """Real ticker pulled live 2026-07-20."""
+        assert self._city("KXTEMPAUSH-26JUL2008-T78.99") == "Austin"
+
+    def test_chicago_hourly_ticker_detected(self):
+        assert self._city("KXTEMPCHIH-26JUL2008-T85.99") == "Chicago"
+
+    def test_la_hourly_ticker_detected(self):
+        """Would return None without the explicit _KXTEMP_HOURLY_CITY fix --
+        none of the existing LA substring checks match "KXTEMPLAXH"."""
+        assert self._city("KXTEMPLAXH-26JUL2008-T77.99") == "LA"
+
+    def test_washington_dc_hourly_ticker_detected(self):
+        """Would return None without the explicit _KXTEMP_HOURLY_CITY fix --
+        "KXTEMPDCH" doesn't contain "TDC"."""
+        assert self._city("KXTEMPDCH-26JUL2008-T82.99") == "Washington"
+
+
 class TestLearnedWeightsTTL:
     """L4-D: load_learned_weights() must discard files older than 7 days."""
 

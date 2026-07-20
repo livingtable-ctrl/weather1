@@ -14,7 +14,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from weather_markets import parse_market_price
+from weather_markets import _KXTEMP_HOURLY_CITY, parse_market_price
 
 
 @dataclass
@@ -69,11 +69,22 @@ def _group_markets(markets: list[dict]) -> dict:
     """
     Group markets by (series_ticker, date_str).
     Returns dict: key -> list of (market, condition_type, threshold, implied_prob).
+
+    Excludes KXTEMPxxxH hourly-directional brackets: date_str is day-level
+    only (no hour component), so multiple different hours' ladders for the
+    same city/day would otherwise be silently pooled into one group here and
+    compared for monotonicity as if they were one ladder -- a real risk,
+    unlike the log-only market-implied-distribution signal, since
+    find_violations()'s output feeds directly into automatic corrective
+    trading (backlog.txt "HOURLY-DIRECTIONAL TEMPERATURE MARKETS" Step 1 --
+    no probability model exists yet for these).
     """
     groups: dict = {}
 
     for m in markets:
         ticker = m.get("ticker", "")
+        if ticker.upper().startswith(tuple(_KXTEMP_HOURLY_CITY)):
+            continue
 
         # Extract series and date from ticker
         series = m.get("series_ticker", "")

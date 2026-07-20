@@ -112,6 +112,35 @@ class TestConsistency(unittest.TestCase):
         ]
         self.assertEqual(find_violations(markets), [])
 
+    def test_hourly_directional_markets_excluded(self):
+        """backlog.txt "HOURLY-DIRECTIONAL TEMPERATURE MARKETS" Step 1:
+        KXTEMPxxxH brackets must never reach _group_markets. Without the
+        exclusion, two DIFFERENT hours' ladders for the same city/day would
+        share the identical (series, date_str) grouping key (date_str is
+        day-level only, no hour) and get compared for monotonicity as if
+        they were one ladder -- these prices genuinely would trip the
+        monotonicity check (mirrors test_violation_detected's inverted-price
+        shape exactly) if not excluded, and find_violations() feeds directly
+        into automatic corrective trading, unlike the log-only
+        market-implied-distribution signal."""
+        markets = [
+            _market(
+                "KXTEMPNYCH-26JUL2008-T65",
+                yes_bid=0.40,
+                yes_ask=0.45,
+                series="KXTEMPNYCH",
+                title="NYC temp > 65 at 8am",
+            ),
+            _market(
+                "KXTEMPNYCH-26JUL2015-T70",
+                yes_bid=0.55,
+                yes_ask=0.60,
+                series="KXTEMPNYCH",
+                title="NYC temp > 70 at 3pm",
+            ),
+        ]
+        self.assertEqual(find_violations(markets), [])
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
