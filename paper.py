@@ -1620,18 +1620,16 @@ def portfolio_kelly_fraction(
 
     If existing city/date exposure >= MAX_CITY_DATE_EXPOSURE, returns 0.0.
     """
-    # backlog.txt "RAIN / SNOW / HURRICANE MARKETS" Step 1: unreachable with
-    # nonzero effect for monthly rain-total tickers today, provably --
-    # confirmed by reviewing every real call site. main.py's auto-Kelly path
-    # only reaches this after analyze_trade() (whose new monthly-rain guard
-    # returns None first, forcing fee_kelly=0.0 upstream); order_executor.py's
-    # _auto_place_trades() only ever iterates opportunities that already
-    # survived that same analyze_trade() call. No code guard added here on
-    # purpose -- this is a hot, general-purpose path used by every market
-    # type, and touching it for a provably-unreachable case would add
-    # regression risk without closing a real gap (the real gap, main.py's
-    # manual explicit-qty order path, is closed at its actual choke point,
-    # paper.check_position_limits(), instead).
+    # backlog.txt "RAIN / SNOW / HURRICANE MARKETS" Step 2: monthly rain-
+    # total tickers now flow through this function normally -- target_date_
+    # str is the market's real close_time date once analyze_trade() has
+    # scored one (Step 1's "provably unreachable" note above no longer
+    # holds; city/date/directional/correlated-group caps all apply exactly
+    # as for any other market type). 9 of the 10 rain cities (all but
+    # Seattle) already sit in existing _CORRELATED_CITY_GROUPS entries
+    # (NYC, Denver+Chicago, Dallas/Houston/Austin, Miami, LA+SanFrancisco),
+    # so correlated-city protection applies automatically with no further
+    # change here.
     # Global cap: halt new positions if total open exposure >= 50% of starting balance
     # Capture total_exp once so we can clamp the final result to remaining room.
     total_exp = get_total_exposure()
@@ -3279,23 +3277,33 @@ def check_position_limits(
 
     Returns {ok, reason, existing_cost, limit}.
     """
-    # backlog.txt "RAIN / SNOW / HURRICANE MARKETS" Step 1: monthly rain-total
-    # ladder markets have no probability model yet -- analyze_trade() already
-    # refuses to score them, but this function is the one call path that can
-    # still be reached WITHOUT going through analyze_trade() first: main.py's
-    # manual "place order with explicit ticker+qty" command resolves
-    # city/target_date_str via a forecast-free enrichment and calls this
-    # function directly, bypassing analyze_trade() entirely when qty is given
-    # explicitly. Since target_date_str stays None for these tickers, the
-    # city/date/directional/correlated-group caps below would already be
-    # skipped -- only the flat per-market/portfolio caps would still apply --
-    # so block outright here rather than rely on partial protection.
-    from weather_markets import _KXRAIN_MONTHLY_CITY
+    # backlog.txt "RAIN / SNOW / HURRICANE MARKETS" Step 2: a real
+    # probability model now exists for monthly rain-total ladder markets,
+    # and target_date_str is now a real value (the market's close_time
+    # date) once analyze_trade() has scored one, so the city/date/
+    # directional/correlated-group caps below are no longer provably
+    # skipped for this ticker family the way Step 1 found them to be.
+    # This function is still the one call path that can be reached WITHOUT
+    # going through analyze_trade() first (main.py's manual "place order
+    # with explicit ticker+qty" command resolves city/target_date_str via
+    # a forecast-free enrichment and calls this function directly) -- so
+    # this block stays, but now conditional on the same shadow-only gate
+    # order_executor._auto_place_trades() already enforces for the
+    # automatic path, rather than an unconditional "no model exists" block.
+    # Matches that automatic path's stricter stance exactly: shadow-only
+    # means no paper order either, not just no live order.
+    from weather_markets import _KXRAIN_MONTHLY_CITY, _rain_gates_active
 
-    if ticker.upper().startswith(tuple(_KXRAIN_MONTHLY_CITY)):
+    if (
+        ticker.upper().startswith(tuple(_KXRAIN_MONTHLY_CITY))
+        and not _rain_gates_active()
+    ):
         return {
             "ok": False,
-            "reason": "monthly rain markets: no probability model yet (Step 1 discovery-only)",
+            "reason": (
+                "monthly rain markets: shadow-only until RAIN_TRADING_ENABLED=1 "
+                "and >=20 settled rain predictions exist"
+            ),
             "existing_cost": 0.0,
             "limit": max_cost_per_market,
         }

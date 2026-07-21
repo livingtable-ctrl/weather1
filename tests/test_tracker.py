@@ -1424,6 +1424,78 @@ def tmp_db(monkeypatch):
     shutil.rmtree(tmpdir, ignore_errors=True)
 
 
+def test_settlement_client_rebuilds_on_env_change(monkeypatch):
+    """backlog.txt "RAIN / SNOW / HURRICANE MARKETS" Step 2 (review-caught):
+    the cached settlement client must rebuild if KALSHI_ENV changes since
+    it was built, mirroring main.py's build_client() -- otherwise a
+    runtime env flip (e.g. via cmd_settings reload) would keep the
+    settlement path fetching from the stale environment indefinitely."""
+    import tracker
+
+    tracker._settlement_client = None
+    tracker._settlement_client_env = None
+
+    built_envs = []
+
+    class _FakeKalshiClient:
+        def __init__(self, key_id, private_key_path, env):
+            built_envs.append(env)
+            self.env = env
+
+    monkeypatch.setattr("kalshi_client.KalshiClient", _FakeKalshiClient)
+    monkeypatch.setenv("KALSHI_ENV", "demo")
+
+    client1 = tracker._get_settlement_kalshi_client()
+    client2 = tracker._get_settlement_kalshi_client()
+    assert client1 is client2, "same env -- must reuse the cached client, not rebuild"
+    assert built_envs == ["demo"]
+
+    monkeypatch.setenv("KALSHI_ENV", "prod")
+    client3 = tracker._get_settlement_kalshi_client()
+    assert client3 is not client1, (
+        "env changed -- must rebuild, not reuse the stale client"
+    )
+    assert built_envs == ["demo", "prod"]
+
+    tracker._settlement_client = None
+    tracker._settlement_client_env = None
+
+
+def test_backfill_emos_data_excludes_rain_from_non_force_part1(tmp_db, monkeypatch):
+    """backlog.txt "RAIN / SNOW / HURRICANE MARKETS" Step 2 (review-caught):
+    KXRAIN*M outcomes never write settled_temp_f (they write settled_value
+    instead), so without an explicit exclusion they'd permanently satisfy
+    "settled_temp_f IS NULL" and get re-selected/re-fetched from Kalshi on
+    every non-force backfill run forever. Confirms audit_settlement() is
+    never called for a rain ticker in the non-force path, while an
+    ordinary daily ticker with the same NULL settled_temp_f still is."""
+    from tracker import _conn, backfill_emos_data, init_db
+
+    init_db()
+    with _conn() as con:
+        con.execute(
+            "INSERT OR IGNORE INTO outcomes (ticker, settled_yes, settled_at) "
+            "VALUES (?, ?, datetime('now'))",
+            ("KXRAINDENM-26JUL-7", 1),
+        )
+        con.execute(
+            "INSERT OR IGNORE INTO outcomes (ticker, settled_yes, settled_at) "
+            "VALUES (?, ?, datetime('now'))",
+            ("KXHIGHNY-26JUL20-T70", 1),
+        )
+
+    called_tickers = []
+    monkeypatch.setattr(
+        "tracker.audit_settlement",
+        lambda ticker, settled_yes: called_tickers.append(ticker) or False,
+    )
+
+    backfill_emos_data(force=False)
+
+    assert "KXHIGHNY-26JUL20-T70" in called_tickers
+    assert "KXRAINDENM-26JUL-7" not in called_tickers
+
+
 def test_log_analysis_attempt_stores_all_markets(tmp_db):
     from tracker import _conn, log_analysis_attempt
 
@@ -1445,6 +1517,82 @@ def test_log_analysis_attempt_stores_all_markets(tmp_db):
     assert row is not None
     assert row[0] == pytest.approx(0.52)
     assert row[2] == 0
+
+
+def test_log_analysis_attempt_none_target_date_writes_null_not_string(tmp_db):
+    """Bug C fix (backlog.txt "RAIN / SNOW / HURRICANE MARKETS" Step 2):
+    target_date=None must write real SQL NULL, not the literal 4-character
+    string "None" -- mutation-tested by checking IS NULL, not == "None"."""
+    from tracker import _conn, log_analysis_attempt
+
+    log_analysis_attempt(
+        ticker="KXNODATE",
+        city="NYC",
+        condition="HIGH_ABOVE_70",
+        target_date=None,
+        forecast_prob=0.50,
+        market_prob=0.50,
+        days_out=0,
+        was_traded=False,
+    )
+    with _conn() as con:
+        row = con.execute(
+            "SELECT target_date FROM analysis_attempts WHERE ticker='KXNODATE' "
+            "AND target_date IS NULL"
+        ).fetchone()
+    assert row is not None, (
+        "target_date column must be real NULL, not the string 'None'"
+    )
+
+
+def test_batch_log_analysis_attempts_none_target_date_writes_null(tmp_db):
+    from tracker import _conn, batch_log_analysis_attempts
+
+    batch_log_analysis_attempts(
+        [
+            {
+                "ticker": "KXBATCHNODATE",
+                "city": "NYC",
+                "condition": "HIGH_ABOVE_70",
+                "target_date": None,
+                "forecast_prob": 0.50,
+                "market_prob": 0.50,
+                "days_out": 0,
+                "was_traded": False,
+            }
+        ]
+    )
+    with _conn() as con:
+        row = con.execute(
+            "SELECT target_date FROM analysis_attempts WHERE ticker='KXBATCHNODATE' "
+            "AND target_date IS NULL"
+        ).fetchone()
+    assert row is not None
+
+
+def test_settle_analysis_attempt_matches_null_target_date_via_is_null(tmp_db):
+    """SQL "= NULL" never matches, even a NULL column -- settle_analysis_
+    attempt must use "IS NULL" for the None case, or a None-dated attempt
+    logged via the Bug C fix above could never be settled."""
+    from tracker import _conn, log_analysis_attempt, settle_analysis_attempt
+
+    log_analysis_attempt(
+        ticker="KXNODATESETTLE",
+        city="NYC",
+        condition="HIGH_ABOVE_70",
+        target_date=None,
+        forecast_prob=0.50,
+        market_prob=0.50,
+        days_out=0,
+        was_traded=False,
+    )
+    settle_analysis_attempt("KXNODATESETTLE", None, outcome=1)
+    with _conn() as con:
+        row = con.execute(
+            "SELECT outcome FROM analysis_attempts WHERE ticker='KXNODATESETTLE'"
+        ).fetchone()
+    assert row is not None
+    assert row[0] == 1
 
 
 def test_get_unselected_bias_excludes_traded_markets(tmp_db):
@@ -3427,6 +3575,51 @@ class TestDisputedOutcomeTracking(unittest.TestCase):
         after = tracker.get_sameday_calibration_cli()
         self.assertEqual(before, after)
 
+    def test_get_multiday_calibration_cli_excludes_rain(self):
+        """backlog.txt "RAIN / SNOW / HURRICANE MARKETS" Step 2 (review-
+        caught gap): must exclude condition_type='precip_month_total' the
+        same way train_all_temperature_scaling() does -- its own docstring
+        claims this match, so a leak here contradicts its documented
+        contract, not just a generic hygiene concern."""
+        self._seed_baseline()
+        before = tracker.get_multiday_calibration_cli()
+        self._log_settled(
+            "KXRAINDENM-26AUG-7",
+            0.99,
+            0,
+            self._FUTURE,
+            condition_type="precip_month_total",
+            edge=0.99,
+        )
+        after = tracker.get_multiday_calibration_cli()
+        self.assertEqual(
+            before["n"],
+            after["n"],
+            "a rain row must not change the multiday calibration row count",
+        )
+
+    def test_get_sameday_calibration_cli_excludes_rain(self):
+        self._seed_baseline(market_date=self._PAST)
+        before = tracker.get_sameday_calibration_cli()
+        self._log_settled(
+            "KXRAINDENM-26AUG-6",
+            0.99,
+            0,
+            self._PAST,
+            condition_type="precip_month_total",
+            edge=0.99,
+        )
+        with tracker._conn() as con:
+            con.execute(
+                "UPDATE predictions SET days_out = 0 WHERE ticker = 'KXRAINDENM-26AUG-6'"
+            )
+        after = tracker.get_sameday_calibration_cli()
+        self.assertEqual(
+            before["n"],
+            after["n"],
+            "a rain row must not change the sameday calibration row count",
+        )
+
     def test_get_market_calibration_excludes_disputed(self):
         self._seed_baseline()
         before = tracker.get_market_calibration()
@@ -3575,6 +3768,39 @@ class TestDisputedOutcomeTracking(unittest.TestCase):
         )
         tracker.mark_outcome_disputed("KXTEMPNYCH-26JUL2015-T75.99")
         after = tracker.count_settled_hourly_predictions()
+        self.assertEqual(before, after)
+
+    def test_count_settled_rain_predictions_counts_only_rain_tickers(self):
+        """backlog.txt "RAIN / SNOW / HURRICANE MARKETS" Step 2 handoff
+        item 7: must count KXRAIN*M rows, not ordinary daily ones."""
+        before = tracker.count_settled_rain_predictions()
+        self._log_settled(
+            "KXRAINDENM-26JUL-7",
+            0.6,
+            True,
+            self._FUTURE,
+            city="Denver",
+            condition_type="precip_month_total",
+        )
+        self._log_settled("KXHIGHNY-26JUL20-T75", 0.6, True, self._FUTURE, city="NYC")
+        after = tracker.count_settled_rain_predictions()
+        self.assertEqual(
+            after, before + 1, "must count only the rain ticker, not KXHIGHNY too"
+        )
+
+    def test_count_settled_rain_predictions_excludes_disputed(self):
+        before = tracker.count_settled_rain_predictions()
+        self._log_settled(
+            "KXRAINDENM-26JUL-6",
+            1.0,
+            0,
+            self._FUTURE,
+            city="Denver",
+            condition_type="precip_month_total",
+            edge=0.99,
+        )
+        tracker.mark_outcome_disputed("KXRAINDENM-26JUL-6")
+        after = tracker.count_settled_rain_predictions()
         self.assertEqual(before, after)
 
     def test_count_settled_west_coast_multiday_excludes_disputed(self):

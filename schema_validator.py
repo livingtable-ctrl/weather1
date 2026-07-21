@@ -97,7 +97,19 @@ def validate_market(data: dict, source: str = "kalshi") -> bool:
                 ask if ask is not None else float("nan"),
             )
             ok = False
-        if bid is not None and ask is not None and bid >= ask:
+        # bid=0.00 AND ask=0.00 together means no resting quote at all (an
+        # illiquid/dormant market, e.g. a far-future contract with zero
+        # volume) -- not a crossed/inverted book. Matches weather_markets.
+        # parse_market_price()'s has_quote = mid > 0 convention: this exact
+        # (0.0, 0.0) pair is the one case that convention already treats as
+        # "no real quote," not "malformed." A genuine inversion (bid >= ask
+        # with either side actually nonzero) still gets flagged.
+        if (
+            bid is not None
+            and ask is not None
+            and bid >= ask
+            and not (bid == 0.0 and ask == 0.0)
+        ):
             _log.warning(
                 "schema_validator[%s]: %s inverted spread bid %.4f >= ask %.4f",
                 source,

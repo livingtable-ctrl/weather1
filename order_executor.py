@@ -35,8 +35,10 @@ from utils import (
     is_trading_paused,
 )
 from weather_markets import (
+    _KXRAIN_MONTHLY_CITY,
     _KXTEMP_HOURLY_CITY,
     _hourly_gates_active,
+    _rain_gates_active,
     analyze_trade,
     enrich_with_forecast,
     get_weather_markets,
@@ -1985,6 +1987,12 @@ def _unpack_opp(item) -> tuple[str, str | None, date | None, dict, dict]:
             try:
                 target_date_obj = date.fromisoformat(_raw_date)
             except ValueError:
+                _log.warning(
+                    "_unpack_opp: unparseable target_date %r for ticker %s — "
+                    "treating as None (grouping/cap keys will miss this trade)",
+                    _raw_date,
+                    ticker,
+                )
                 target_date_obj = None
         elif hasattr(_raw_date, "isoformat"):
             target_date_obj = _raw_date
@@ -2337,6 +2345,12 @@ def _auto_place_trades(
 
                     date_obj = _dt_ek.date.fromisoformat(raw_date)
                 except ValueError:
+                    _log.warning(
+                        "_opp_event_key: unparseable target_date %r for ticker %s — "
+                        "treating as None (opportunity won't be joint-bracket-grouped)",
+                        raw_date,
+                        m_.get("ticker", "") or a_.get("ticker", ""),
+                    )
                     date_obj = None
             elif hasattr(raw_date, "isoformat"):
                 date_obj = raw_date
@@ -2476,20 +2490,27 @@ def _auto_place_trades(
 
                     target_date_obj = _dt_m6.date.fromisoformat(_raw_date)
                 except ValueError:
-                    pass
+                    _log.warning(
+                        "_auto_place_trades: unparseable target_date %r for "
+                        "ticker %s — treating as None (cap/portfolio-Kelly/"
+                        "correlation checks will miss this trade)",
+                        _raw_date,
+                        ticker,
+                    )
             elif hasattr(_raw_date, "isoformat"):
                 target_date_obj = _raw_date
         target_date_str = target_date_obj.isoformat() if target_date_obj else None
 
         # Per-date concentration cap: same-day and multi-day use separate limits.
-        # backlog.txt "RAIN / SNOW / HURRICANE MARKETS" Step 1: this block is
-        # provably unreachable for monthly rain-total tickers -- this loop
-        # only ever iterates opportunities `a` that already survived
-        # analyze_trade() (called upstream in the scan loop), whose new
-        # monthly-rain guard returns None for these tickers immediately, so
-        # they never reach _auto_place_trades() at all. No code guard added
-        # here on purpose -- see portfolio_kelly_fraction()'s matching
-        # comment in paper.py for the full reachability analysis.
+        # backlog.txt "RAIN / SNOW / HURRICANE MARKETS" Step 2: monthly rain
+        # trades now group under their close_time-derived date here, same as
+        # any other multi-day market (days_out is essentially never 0 for
+        # this ticker family, so this always routes to the multi-day branch,
+        # not the same-day one). 9 of the 10 rain cities (all but Seattle)
+        # already sit in existing _CORRELATED_CITY_GROUPS entries, so two
+        # sibling brackets for the same city+month correctly count against
+        # the same per-date cap and correlated-group exposure -- see
+        # portfolio_kelly_fraction()'s matching comment in paper.py.
         _is_same_day = int(a.get("days_out", 1)) == 0
         if _is_same_day:
             if _same_day_open >= _eff_sameday_cap:
@@ -2739,6 +2760,20 @@ def _auto_place_trades(
             _n_shadow = _log_shadow_predictions([item], live=live)
             _skip_reasons.append(
                 f"{ticker}: hourly_shadow_only(logged={bool(_n_shadow)})"
+            )
+            continue
+
+        # Monthly-rain shadow-only rollout (backlog.txt "RAIN / SNOW /
+        # HURRICANE MARKETS" Step 2 handoff item 7). Same per-ticker (not
+        # per-batch) shape as hourly's branch just above -- other
+        # opportunities in the same scan continue placing normally.
+        if (
+            any(ticker.upper().startswith(p) for p in _KXRAIN_MONTHLY_CITY)
+            and not _rain_gates_active()
+        ):
+            _n_shadow = _log_shadow_predictions([item], live=live)
+            _skip_reasons.append(
+                f"{ticker}: rain_shadow_only(logged={bool(_n_shadow)})"
             )
             continue
 

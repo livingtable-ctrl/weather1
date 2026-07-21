@@ -295,10 +295,31 @@ def simulate_portfolio(
                     )
                     continue
             except Exception:
-                pass  # unparseable close_time — fall through to target_date check
-        elif _tdate and _tdate < _utc_today().isoformat():
-            _log.debug("Monte Carlo: skipping past-date trade %s (%s)", ticker, _tdate)
-            continue
+                # unparseable close_time -- does NOT fall through to the
+                # target_date check below (that's an elif on `if _close_str`,
+                # only reached when close_time is absent entirely); the
+                # trade is simply kept in the sim, the safe/conservative
+                # direction (review-caught stale comment, pre-existing,
+                # not introduced by the Bug A fix below).
+                pass
+        elif _tdate:
+            # Parse both sides as real dates rather than comparing raw strings —
+            # a non-day-granular ISO string (e.g. a month-only value) would
+            # otherwise compare as a string prefix and could sort incorrectly
+            # against a full "YYYY-MM-DD" value. Falls back to the original
+            # string compare if either side isn't a valid ISO date, matching
+            # this function's existing "don't crash, best-effort skip" stance.
+            try:
+                from datetime import date as _date_mc
+
+                _is_past = _date_mc.fromisoformat(_tdate) < _utc_today()
+            except (ValueError, TypeError):
+                _is_past = _tdate < _utc_today().isoformat()
+            if _is_past:
+                _log.debug(
+                    "Monte Carlo: skipping past-date trade %s (%s)", ticker, _tdate
+                )
+                continue
         side = t.get("side", "yes")
         days_out = t.get("days_out", 1)
         entry_price = t.get("entry_price", 0.5)

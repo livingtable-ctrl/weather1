@@ -1689,6 +1689,29 @@ class TestMonteCarloCholesky:
         assert result["median_pnl"] == 0.0
         assert result["prob_ruin"] == 0.0
 
+    def test_unparseable_target_date_falls_back_to_string_compare_no_crash(self):
+        """Bug A fix (backlog.txt "RAIN / SNOW / HURRICANE MARKETS" Step 2):
+        a genuinely malformed target_date must not crash date.fromisoformat
+        -- confirms the try/except fallback path is real and exercised, not
+        just present but dead code. A full valid ISO date (the only kind
+        any real market ever has) isn't a live bug either way; this proves
+        the fallback itself works for a value that IS malformed."""
+        from monte_carlo import simulate_portfolio
+
+        malformed_trade = {
+            "ticker": "KXMALFORMED",
+            "side": "yes",
+            "entry_price": 0.50,
+            "cost": 5.00,
+            "quantity": 10,
+            "city": "Phoenix",
+            "target_date": "not-a-date",
+            "entry_prob": 0.55,
+        }
+        # Must not raise -- the whole point of the fix's try/except.
+        result = simulate_portfolio([malformed_trade], n_simulations=50)
+        assert "median_pnl" in result
+
 
 def _flat_prices(prices: dict) -> dict:
     """Convert {ticker: yes_price} to the {ticker: {"bid":..., "ask":...}}

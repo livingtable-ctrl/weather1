@@ -50,6 +50,7 @@ from utils import (
     KELLY_CAP_CONSENSUS_MULT,
     MAX_DAYS_OUT,
     NO_BID_KEYS,
+    RAIN_MAX_DAYS_OUT,
     YES_ASK_KEYS,
     YES_BID_KEYS,
     coalesce_market_price,
@@ -822,6 +823,37 @@ def _hourly_gates_active() -> bool:
         from tracker import count_settled_hourly_predictions
 
         return count_settled_hourly_predictions() >= _HOURLY_GATE_MIN_SAMPLES
+    except Exception:
+        return False
+
+
+# backlog.txt "RAIN / SNOW / HURRICANE MARKETS" Step 2 handoff item 7,
+# shadow-only rollout. Expect this floor to take roughly 2 months to clear
+# (~10 cities x 1 settlement/city/month =~ 10/month) -- much slower than
+# hourly's cadence, not a design flaw.
+_RAIN_GATE_MIN_SAMPLES: int = 20
+
+
+def _rain_gates_active() -> bool:
+    """Return True only when RAIN_TRADING_ENABLED=1 AND >= 20 settled
+    monthly-rain predictions -- mirrors _hourly_gates_active()'s exact
+    shape. Until both hold, rain opportunities are still fully analyzed
+    and logged (is_shadow=True, order_executor._auto_place_trades' per-
+    opportunity routing) so real calibration data accumulates risk-free;
+    no real order (paper or live) is ever placed for a rain ticker before
+    this is True."""
+    import os
+
+    if os.getenv("RAIN_TRADING_ENABLED", "").strip().lower() not in (
+        "1",
+        "true",
+        "yes",
+    ):
+        return False
+    try:
+        from tracker import count_settled_rain_predictions
+
+        return count_settled_rain_predictions() >= _RAIN_GATE_MIN_SAMPLES
     except Exception:
         return False
 
@@ -4126,6 +4158,30 @@ def _forecast_uncertainty(target_date: date) -> float:
         return 7.5
 
 
+def _safe_parse_close_time(close_time_str: str) -> datetime | None:
+    """Parse an ISO close_time string ('...Z' or offset-aware) into an aware
+    UTC datetime, or None on any parse failure/empty string. Factored out so
+    both _time_risk() and the monthly-rain gate/model (backlog.txt "RAIN /
+    SNOW / HURRICANE MARKETS" Step 2) share one parser instead of
+    independently re-deriving datetime.fromisoformat(...replace("Z", ...))
+    (a second ad-hoc copy of this exact snippet also exists in tracker.py's
+    sync_outcomes -- this doesn't touch that one, just avoids adding a third)."""
+    if not close_time_str:
+        return None
+    try:
+        return datetime.fromisoformat(close_time_str.replace("Z", "+00:00"))
+    except (ValueError, TypeError):
+        return None
+
+
+def _days_out_from_close_time(close_dt: datetime) -> int:
+    """max(0, (close_dt.date() - today).days) -- the monthly-rain analog of
+    the daily path's target_date-based days_out calc (backlog.txt "RAIN /
+    SNOW / HURRICANE MARKETS" Step 2), computed from close_time since
+    target_date stays None for these tickers by design."""
+    return max(0, (close_dt.date() - datetime.now(UTC).date()).days)
+
+
 def _time_risk(close_time_str: str, tz: str) -> tuple[str, float]:
     """
     Determine time-of-day risk level and forecast sigma multiplier.
@@ -4139,12 +4195,12 @@ def _time_risk(close_time_str: str, tz: str) -> tuple[str, float]:
 
     sigma_multiplier < 1.0 means reduce forecast uncertainty (we know more).
     """
-    if not close_time_str:
+    close_dt = _safe_parse_close_time(close_time_str)
+    if close_dt is None:
         return ("HIGH", 1.0)
     try:
         from zoneinfo import ZoneInfo
 
-        close_dt = datetime.fromisoformat(close_time_str.replace("Z", "+00:00"))
         hours_to_close = (close_dt - datetime.now(UTC)).total_seconds() / 3600
         local_close = close_dt.astimezone(ZoneInfo(tz))
         local_hour = local_close.hour
@@ -4177,11 +4233,54 @@ def _parse_market_condition(market: dict) -> dict | None:
       {"type": "between", "lower": 66.5, "upper": 68.5}  — B67.5 ticker (2°F wide)
       {"type": "precip_above", "threshold": 0.10}  — precip > 0.10 in
       {"type": "precip_any"}                        — any measurable precip (>0.01 in)
+      {"type": "precip_month_total", "threshold": 7.0}  — monthly total > 7 in
+                                                       (KXRAIN*M ladder markets)
     Returns None if unparseable.
     """
     ticker = market.get("ticker", "")
     title = (market.get("title") or "").lower()
     ticker_up = ticker.upper()
+
+    # ── Monthly rain-total ladder markets (KXRAIN*M) ────────────────────────
+    # Must run before the generic precip branch below: these tickers also
+    # match PRECIP_SERIES ("KXRAIN" is a substring of the series name), which
+    # would otherwise collapse every ladder rung to {"type": "precip_any"},
+    # discarding the real per-bracket threshold (backlog.txt "RAIN / SNOW /
+    # HURRICANE MARKETS" Step 2 handoff item 2). The real threshold lives in
+    # Kalshi's own floor_strike/strike_type market fields, not in ticker/
+    # title text -- confirmed live this session across all 10 tracked series.
+    if ticker_up.startswith(tuple(_KXRAIN_MONTHLY_CITY)):
+        floor_strike = market.get("floor_strike")
+        strike_type = market.get("strike_type")
+        if floor_strike is None:
+            _log.warning(
+                "_parse_market_condition[%s]: KXRAIN*M missing floor_strike",
+                ticker,
+            )
+            return None
+        if strike_type != "greater":
+            # Confirmed live this session: always "greater" for every
+            # bracket checked across all 10 series. Don't guess a direction
+            # for anything else -- fail closed and log so a real listing
+            # change (e.g. a "less than" bracket) surfaces immediately
+            # instead of silently mis-scoring a threshold.
+            _log.warning(
+                "_parse_market_condition[%s]: unexpected strike_type=%r "
+                "(expected 'greater') — refusing to guess direction",
+                ticker,
+                strike_type,
+            )
+            return None
+        try:
+            threshold = float(floor_strike)
+        except (TypeError, ValueError):
+            _log.warning(
+                "_parse_market_condition[%s]: non-numeric floor_strike=%r",
+                ticker,
+                floor_strike,
+            )
+            return None
+        return {"type": "precip_month_total", "threshold": threshold}
 
     # ── Precipitation markets ─────────────────────────────────────────────────
     # Whitelist known precipitation series to avoid false positives from
@@ -4238,23 +4337,18 @@ def _parse_market_condition(market: dict) -> dict | None:
                 return {"type": "precip_above", "threshold": threshold}
         # Binary any-precip (only if series is a known precip series)
         #
-        # KNOWN GAP, deliberately deferred (backlog.txt "RAIN / SNOW /
-        # HURRICANE MARKETS" Step 1): for KXRAIN*M monthly rain-total ladder
-        # tickers (e.g. "KXRAINDENM-26JUL-7"), the real threshold lives in
-        # Kalshi's own floor_strike/yes_sub_title/strike_type market fields
-        # ("Above 7 inches"), not in a "-P<n>" ticker suffix or "inch" text
-        # in the title (real title is just "Rain in Denver in Jul 2026?") --
-        # neither branch above matches, so this falls through here and
-        # silently collapses ALL 7 ladder rungs into one identical
-        # {"type": "precip_any"}, discarding the real per-bracket threshold.
-        # Confirmed unreachable today: analyze_trade()'s monthly-rain guard
-        # returns None before this function's result would ever be used for
-        # a live trade decision, compute_market_implied_distributions()
-        # excludes these tickers by prefix before condition type matters,
-        # and backtest.py skips on target_date is None. Real fix (reading
-        # floor_strike/yes_sub_title/strike_type from the raw market dict)
-        # is Step 2 work, once a real monthly-accumulation model exists to
-        # consume a correct per-bracket threshold.
+        # KXRAIN*M monthly rain-total ladder tickers (e.g.
+        # "KXRAINDENM-26JUL-7") would otherwise fall through to here and
+        # silently collapse ALL 7 ladder rungs into one identical
+        # {"type": "precip_any"} -- their real per-bracket threshold lives
+        # in Kalshi's own floor_strike/strike_type fields, not a "-P<n>"
+        # ticker suffix or "inch" text in the title (real title is just
+        # "Rain in Denver in Jul 2026?"). Fixed properly in backlog.txt
+        # "RAIN / SNOW / HURRICANE MARKETS" Step 2: the dedicated
+        # precip_month_total branch earlier in this function (checked
+        # before the PRECIP_SERIES block above) returns first for every
+        # KXRAIN*M ticker, so this fallback path is unreachable for that
+        # reason now, not because analyze_trade() refuses to score them.
         if is_precip_series or "measurable" in title or "any" in title:
             return {"type": "precip_any"}
         return None
@@ -5143,6 +5237,12 @@ _CONDITION_CONFIDENCE: dict[str, float] = {
     "precip_any": 0.90,
     "precip_above": 0.85,
     "precip_snow": 0.80,
+    # backlog.txt "RAIN / SNOW / HURRICANE MARKETS" Step 2: lower than
+    # precip_above -- ~15-30 historical analog years (the ACIS-empirical
+    # bootstrap's evidence base) is materially weaker evidence than a
+    # single-day ensemble+climatology blend. A judgment call, not derived
+    # from data yet -- revisit once real shadow Brier scores exist.
+    "precip_month_total": 0.70,
 }
 
 
@@ -6110,6 +6210,271 @@ def _analyze_snow_trade(
     }
 
 
+_RAIN_TICKER_MONTH_RE = re.compile(r"-(\d{2})([A-Z]{3})-")
+
+
+def _parse_monthly_rain_ticker_month(ticker: str) -> tuple[int, int] | None:
+    """Parse the accrual (year, month) out of a KXRAIN*M ticker, e.g.
+    'KXRAINDENM-26JUL-7' -> (2026, 7). Deliberately a separate regex from
+    parse_city_date()'s daily_match/hourly_match -- this never touches that
+    function, preserving its documented target_date=None behavior for these
+    tickers (backlog.txt "RAIN / SNOW / HURRICANE MARKETS" Step 2)."""
+    m = _RAIN_TICKER_MONTH_RE.search(ticker.upper())
+    if not m:
+        return None
+    yy, mon_str = m.groups()
+    month = MONTH_MAP.get(mon_str)
+    if not month:
+        return None
+    return (2000 + int(yy), month)
+
+
+def _analyze_monthly_rain_trade(
+    enriched: dict,
+    condition: dict,
+    city: str,
+    coords: tuple,
+    close_dt: datetime,
+    days_out: int,
+) -> dict | None:
+    """
+    Probability analysis for KXRAIN*M monthly rain-total ladder markets
+    (backlog.txt "RAIN / SNOW / HURRICANE MARKETS" Step 2). No existing
+    daily-forecast model generalizes to a whole-month accumulation total --
+    this is a genuine synthesis: an empirical bootstrap of "remaining-days-
+    of-month total" built from ~30 years of NOAA ACIS StnData history for
+    the market's own settlement station, combined with the known real
+    month-to-date actual, optionally tilted by Open-Meteo Seasonal's
+    ECMWF SEAS5 monthly-mean forecast (a directional nudge only -- mean-only,
+    no per-member spread of its own).
+
+    close_dt/days_out are pre-resolved by the caller (analyze_trade's rain
+    gate), matching _analyze_hourly_trade's "caller resolves once, passes
+    down" shape.
+    """
+    import calendar
+
+    import acis_precip
+
+    ticker = enriched.get("ticker", "?")
+    parsed_month = _parse_monthly_rain_ticker_month(ticker)
+    if parsed_month is None:
+        _log.warning(
+            "_analyze_monthly_rain_trade[%s]: could not parse accrual month from ticker",
+            ticker,
+        )
+        return None
+    year, month = parsed_month
+    days_in_month = calendar.monthrange(year, month)[1]
+
+    sid = acis_precip._station_sid_for_city(city)
+    if sid is None:
+        _log.warning(
+            "_analyze_monthly_rain_trade[%s]: no ACIS station for city=%s",
+            ticker,
+            city,
+        )
+        return None
+
+    lat, lon, tz = coords
+    from zoneinfo import ZoneInfo as _ZoneInfo
+
+    today_local = datetime.now(_ZoneInfo(tz)).date()
+
+    # Three cases based on today's position relative to the accrual month.
+    # The "before month starts"/"after month ends but not finalized" cases
+    # are defensive only -- days_out (from close_time) combined with
+    # RAIN_MAX_DAYS_OUT already excludes far-future contracts, and the
+    # caller's past-close gate already excludes anything whose close_time
+    # is behind us, before this function is ever reached.
+    # fetch_month_to_date_actual() returns (None, 0) for two genuinely
+    # different reasons: through_day < 1 (nothing has accrued yet -- 0.0 is
+    # the correct value) or a real fetch failure (through_day >= 1, but the
+    # ACIS call errored -- 0.0 would be a fabricated value, silently
+    # underestimating a real accrued total by however much rain actually
+    # fell this month so far). Only the first case is a legitimate 0.0;
+    # the second must fail closed (return None, no trade) rather than
+    # coerce -- a review-caught gap, since history is independently disk-
+    # cached (30-day TTL) while month-to-date is fetched fresh every call,
+    # so "history present, fresh fetch fails" is a realistic mid-month
+    # scenario, not a hypothetical one.
+    month_to_date_actual: float
+    if today_local < date(year, month, 1):
+        month_to_date_actual = 0.0
+        remaining_start_day = 1
+    elif today_local > date(year, month, days_in_month):
+        _mtd_raw, _n_missing = acis_precip.fetch_month_to_date_actual(
+            sid, year, month, days_in_month
+        )
+        if _mtd_raw is None:
+            _log.warning(
+                "_analyze_monthly_rain_trade[%s]: month-to-date ACIS fetch "
+                "failed (through_day=%d) -- refusing to coerce to 0.0",
+                ticker,
+                days_in_month,
+            )
+            return None
+        month_to_date_actual = _mtd_raw
+        remaining_start_day = days_in_month + 1
+    else:
+        through_day = today_local.day - 1 if today_local.month == month else 0
+        _mtd_raw, _n_missing = acis_precip.fetch_month_to_date_actual(
+            sid, year, month, through_day
+        )
+        if _mtd_raw is None and through_day >= 1:
+            _log.warning(
+                "_analyze_monthly_rain_trade[%s]: month-to-date ACIS fetch "
+                "failed (through_day=%d) -- refusing to coerce to 0.0",
+                ticker,
+                through_day,
+            )
+            return None
+        month_to_date_actual = _mtd_raw or 0.0
+        remaining_start_day = through_day + 1
+
+    history = acis_precip.fetch_historical_daily(sid)
+    if history is None:
+        _log.warning(
+            "_analyze_monthly_rain_trade[%s]: no ACIS historical data for sid=%s",
+            ticker,
+            sid,
+        )
+        return None
+
+    remaining_sums, full_month_sums = (
+        acis_precip.historical_remaining_and_full_month_sums(
+            history, month, remaining_start_day, days_in_month
+        )
+    )
+    if len(remaining_sums) < 15:
+        _log.warning(
+            "_analyze_monthly_rain_trade[%s]: only %d usable historical years "
+            "(need >= 15)",
+            ticker,
+            len(remaining_sums),
+        )
+        return None
+
+    seasonal_mean_mm = acis_precip.fetch_seasonal_precip_mean_mm(
+        lat, lon, tz, year, month
+    )
+    remaining_sums_tilted, tilt_applied = acis_precip.apply_seasonal_tilt(
+        remaining_sums, full_month_sums, seasonal_mean_mm
+    )
+
+    threshold = condition["threshold"]
+    totals = [month_to_date_actual + s for s in remaining_sums_tilted]
+    ens_prob = sum(1 for t in totals if t > threshold) / len(totals)
+    blended_prob = max(0.01, min(0.99, ens_prob))
+
+    # Bias correction keyed on close_dt.month, NOT the accrual month -- this
+    # must match whatever month value ends up stored in predictions.
+    # market_date (close_dt.date(), per the resolved exposure-cap decision),
+    # since get_quintile_bias/get_bias filter historical rows by
+    # strftime('%m', market_date). Passing the accrual month here would
+    # permanently mismatch what's stored and silently return 0.0 bias
+    # forever, even with years of real settled data.
+    bias = 0.0
+    try:
+        from tracker import get_quintile_bias
+
+        bias = get_quintile_bias(
+            city, close_dt.month, blended_prob, condition_type=condition["type"]
+        )
+        blended_prob = max(0.01, min(0.99, blended_prob - bias))
+    except Exception as _exc:
+        _log.debug(
+            "_analyze_monthly_rain_trade[%s]: bias correction skipped: %s",
+            ticker,
+            _exc,
+        )
+
+    prices = parse_market_price(enriched)
+    market_prob = prices["implied_prob"]
+    rec_side = "yes" if blended_prob > market_prob else "no"
+
+    ci_low, ci_high = acis_precip.bootstrap_ci_month_total(
+        remaining_sums_tilted, month_to_date_actual, threshold
+    )
+
+    # backlog.txt Step 2 handoff item 6 (consensus-bonus caution): ACIS-
+    # empirical and Open-Meteo-tilted are NOT independent sources -- the
+    # tilt is a nudge applied on top of the same physical baseline the
+    # empirical estimate already reflects, not a second independent
+    # estimate. Same non-independence failure mode hourly Step 2's
+    # independent review caught (a near-tautological consensus flag
+    # granting an unwarranted Kelly bonus) -- hardcoded False here, not
+    # computed, until a genuinely independent second source exists.
+    consensus = False
+
+    _priced = _price_and_size(
+        blended_prob,
+        prices,
+        condition,
+        rec_side,
+        ci=(ci_low, ci_high),
+        consensus=consensus,
+    )
+    net_edge = _priced["net_edge"]
+    edge = _priced["edge"]
+    entry_side_edge = _priced["entry_side_edge"]
+    fee_kel = _priced["fee_kel"]
+    ci_adj_kelly = _priced["ci_adjusted_kelly"]
+
+    _edge_conf = edge_confidence(days_out, condition_type=condition["type"])
+    adjusted_edge = net_edge * _edge_conf
+
+    return {
+        "forecast_prob": blended_prob,
+        "market_prob": market_prob,
+        "edge": edge,
+        "signal": _edge_label(edge),
+        "net_edge": net_edge,
+        "adjusted_edge": round(adjusted_edge, 6),
+        "edge_confidence_factor": _edge_conf,
+        "net_signal": _edge_label(adjusted_edge),
+        "recommended_side": rec_side,
+        "condition": condition,
+        "ensemble_prob": ens_prob,
+        "nws_prob": None,
+        "clim_prob": None,
+        "clim_adj_prob": None,
+        "obs_prob": None,
+        "live_obs": None,
+        "index_adj": 0.0,
+        "bias_correction": bias,
+        "blend_sources": {"acis_empirical": 1.0},
+        "method": "monthly_rain_bootstrap_tilted"
+        if tilt_applied
+        else "monthly_rain_bootstrap",
+        "ensemble_stats": None,
+        "n_members": len(remaining_sums),
+        "ci_low": ci_low,
+        "ci_high": ci_high,
+        "ci_width": round(ci_high - ci_low, 4),
+        "kelly": fee_kel,
+        "fee_adjusted_kelly": fee_kel,
+        "ci_adjusted_kelly": ci_adj_kelly,
+        "consensus": consensus,
+        "model_consensus": True,
+        "near_threshold": False,
+        "days_out": days_out,
+        "city": city,
+        # Resolved exposure-cap decision (backlog.txt Step 2): the market's
+        # real close_time date, not a synthetic/accrual-month value -- the
+        # same field every other market type already uses for target_date,
+        # so existing exposure-cap/correlation infra treats this correctly
+        # without any parallel bookkeeping.
+        "target_date": close_dt.date().isoformat(),
+        "entry_side_edge": round(entry_side_edge, 4),
+        # Rain-specific diagnostics, not read by any shared consumer.
+        "accrual_month": f"{year:04d}-{month:02d}",
+        "month_to_date_actual": round(month_to_date_actual, 3),
+        "n_historical_years": len(remaining_sums),
+        "seasonal_tilt_applied": tilt_applied,
+    }
+
+
 def _analyze_hourly_trade(
     enriched: dict,
     condition: dict,
@@ -6470,22 +6835,22 @@ def analyze_trade(
         if _hourly_var_role is None:
             _count_gate("hourly_not_target_hour")
             return None
-    # backlog.txt "RAIN / SNOW / HURRICANE MARKETS" Step 1: monthly rain-total
-    # ladder markets are discovered/deduped/parsed but have no probability
-    # model yet -- without this guard, a title like "Rain in Denver in Jul
-    # 2026?" could silently fall through into the full daily-max/min
-    # temperature model below, which assumes the target is one specific
-    # day's high/low, not a whole month's cumulative rainfall. Unconditional
-    # (unlike the hourly guard above, which only blocks non-target hours) --
-    # Step 1 has zero model for rain at all.
+    # backlog.txt "RAIN / SNOW / HURRICANE MARKETS" Step 2: monthly rain-total
+    # ladder markets have no day-of-month component in their ticker, so
+    # parse_city_date() deliberately keeps returning target_date=None for
+    # them (see that function's own docstring) -- forecast/target_date stay
+    # unset. That's why no_forecast/no_date/past_date/days_out below each
+    # need a rain-specific branch rather than being skipped in place: this
+    # ticker family reaches _analyze_monthly_rain_trade() further below
+    # (Step 1's own unconditional-return guard is gone), gated instead on
+    # close_time (which Kalshi provides directly on every market) rather
+    # than target_date.
     _is_monthly_rain = any(_tkr_up.startswith(_p) for _p in _KXRAIN_MONTHLY_CITY)
-    if _is_monthly_rain:
-        _count_gate("monthly_rain_not_yet_supported")
-        return None
     # Initialize early so blend weight calls can read regime even before detection runs.
     # Overwritten by the actual regime detection block further below.
     _regime_info: dict = {}
-    if not forecast:
+    _rain_close_dt: datetime | None = None
+    if not _is_monthly_rain and not forecast:
         _log.warning(
             "analyze_trade[%s]: gate=no_forecast city=%s date=%s",
             _tkr,
@@ -6494,7 +6859,7 @@ def analyze_trade(
         )
         _count_gate("no_forecast")
         return None  # no forecast data available for this market
-    if not target_date:
+    if not _is_monthly_rain and not target_date:
         _log.warning("analyze_trade[%s]: gate=no_date city=%s", _tkr, city)
         _count_gate("no_date")
         return None  # could not parse target date from ticker
@@ -6502,15 +6867,36 @@ def analyze_trade(
         _log.warning("analyze_trade[%s]: gate=no_city date=%s", _tkr, target_date)
         _count_gate("no_city")
         return None  # unrecognized city in ticker
-    if target_date < datetime.now(UTC).date():
-        _log.debug(
-            "analyze_trade[%s]: gate=past_date target=%s today=%s",
-            _tkr,
-            target_date,
-            datetime.now(UTC).date(),
-        )
-        _count_gate("past_date")
-        return None  # market target date already passed — Kalshi hasn't settled yet but no edge
+    if _is_monthly_rain:
+        # target_date is None for these tickers by design (see the comment
+        # above) -- a plain `target_date < today` comparison below would
+        # TypeError on None, so this must be its own branch, not a skipped
+        # daily check. close_time is the real, Kalshi-provided settlement
+        # instant for this contract.
+        _rain_close_dt = _safe_parse_close_time(enriched.get("close_time", ""))
+        if _rain_close_dt is None or _rain_close_dt < datetime.now(UTC):
+            _log.debug(
+                "analyze_trade[%s]: gate=monthly_rain_past_close close_time=%s",
+                _tkr,
+                enriched.get("close_time"),
+            )
+            _count_gate("monthly_rain_past_close")
+            return None
+    else:
+        # Narrowing for mypy: the no_date gate above only returns None when
+        # `not _is_monthly_rain and not target_date` -- since we're in the
+        # `else` of `if _is_monthly_rain`, that gate already guarantees
+        # target_date is truthy here.
+        assert target_date is not None
+        if target_date < datetime.now(UTC).date():
+            _log.debug(
+                "analyze_trade[%s]: gate=past_date target=%s today=%s",
+                _tkr,
+                target_date,
+                datetime.now(UTC).date(),
+            )
+            _count_gate("past_date")
+            return None  # market target date already passed — Kalshi hasn't settled yet but no edge
 
     # P0.3: Reject stale enriched data. Absence of timestamp → treat as fresh.
     import time as _time_wm
@@ -6546,16 +6932,32 @@ def analyze_trade(
         return None
 
     # ── Days-out gate: only trade markets expiring within MAX_DAYS_OUT days ──
-    _days_out_check = max(0, (target_date - datetime.now(UTC).date()).days)
-    if _days_out_check > MAX_DAYS_OUT:
-        _log.debug(
-            "analyze_trade[%s]: gate=days_out days=%d max=%d",
-            _tkr,
-            _days_out_check,
-            MAX_DAYS_OUT,
-        )
-        _count_gate("days_out")
-        return None
+    if _is_monthly_rain:
+        # _rain_close_dt was already resolved (non-None) by the past-close
+        # check above -- reuse it rather than re-parsing close_time again.
+        assert _rain_close_dt is not None
+        _days_out_check = _days_out_from_close_time(_rain_close_dt)
+        if _days_out_check > RAIN_MAX_DAYS_OUT:
+            _log.debug(
+                "analyze_trade[%s]: gate=days_out days=%d max=%d (rain)",
+                _tkr,
+                _days_out_check,
+                RAIN_MAX_DAYS_OUT,
+            )
+            _count_gate("days_out")
+            return None
+    else:
+        assert target_date is not None
+        _days_out_check = max(0, (target_date - datetime.now(UTC).date()).days)
+        if _days_out_check > MAX_DAYS_OUT:
+            _log.debug(
+                "analyze_trade[%s]: gate=days_out days=%d max=%d",
+                _tkr,
+                _days_out_check,
+                MAX_DAYS_OUT,
+            )
+            _count_gate("days_out")
+            return None
 
     # ── Liquidity gate: skip markets with no real open interest ──────────────
     # Accept both legacy (volume/open_interest) and current API names (volume_fp/open_interest_fp)
@@ -6666,6 +7068,14 @@ def analyze_trade(
     # is False for them, condition["var"] keeps its existing per-site
     # substring-derived value further below).
     if _is_hourly:
+        # Narrowing for mypy: _is_hourly and _is_monthly_rain are mutually
+        # exclusive (disjoint ticker-prefix sets) -- an hourly ticker always
+        # has _is_monthly_rain=False, so the no_forecast/no_date gates above
+        # already guarantee both are real for it. Safe unconditionally: this
+        # block never executes for a rain ticker (whose forecast/target_date
+        # genuinely are None), since _is_hourly is False for those.
+        assert forecast is not None
+        assert target_date is not None
         condition["var"] = _hourly_var_role
         assert (
             hour is not None
@@ -6681,6 +7091,12 @@ def analyze_trade(
 
     # ── Precipitation market fast-path ───────────────────────────────────────
     if condition["type"] in ("precip_above", "precip_any"):
+        # Same mutual-exclusion reasoning as the hourly block above: this
+        # condition type is never produced for a KXRAIN*M ticker (see the
+        # precip_month_total branch in _parse_market_condition()), so
+        # forecast/target_date are guaranteed real here too.
+        assert forecast is not None
+        assert target_date is not None
         result = _analyze_precip_trade(
             enriched, forecast, condition, target_date, coords
         )
@@ -6691,11 +7107,38 @@ def analyze_trade(
 
     # ── Snow/ice market fast-path ─────────────────────────────────────────────
     if condition["type"] == "precip_snow":
+        assert forecast is not None
+        assert target_date is not None
         result = _analyze_snow_trade(enriched, forecast, condition, target_date, coords)
         if result is not None:
             result["time_risk"] = time_risk_label
             result["edge_calc_version"] = EDGE_CALC_VERSION
         return result
+
+    # ── Monthly rain-total fast-path (backlog.txt "RAIN / SNOW / HURRICANE
+    # MARKETS" Step 2) ────────────────────────────────────────────────────────
+    # Must sit here -- after every universal gate above (the rain-specific
+    # past-close/days_out substitutions already ran; liquidity/spread/
+    # extreme_price ran completely unmodified) -- but BEFORE _metar_lock_in()
+    # below, whose daily running-max/min shape has no meaning for a monthly
+    # accumulation total (same ordering hazard hourly Step 2 already found).
+    if condition["type"] == "precip_month_total":
+        assert _rain_close_dt is not None  # guaranteed by the past-close gate above
+        result = _analyze_monthly_rain_trade(
+            enriched, condition, city, coords, _rain_close_dt, _days_out_check
+        )
+        if result is not None:
+            result["time_risk"] = time_risk_label
+            result["edge_calc_version"] = EDGE_CALC_VERSION
+        return result
+
+    # Narrowing for mypy: every branch that could leave target_date/forecast
+    # falsy (_is_monthly_rain=True) has already returned above (hourly/
+    # precip/snow/rain fast-paths); everything from here to the end of this
+    # function is the daily-only pipeline, where the no_date/no_forecast
+    # gates already guarantee both are truthy. Never reassigned below.
+    assert target_date is not None
+    assert forecast is not None
 
     # ── METAR same-day lock-in check ─────────────────────────────────────────
     # After 2 PM local time, if METAR confirms the outcome, skip slow ensemble.

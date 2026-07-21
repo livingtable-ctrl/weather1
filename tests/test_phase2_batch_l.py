@@ -60,6 +60,23 @@ class TestValidateMarketPriceRange:
         """bid == ask is an inverted spread."""
         assert self._call(self._valid(yes_bid=50, yes_ask=50)) is False
 
+    def test_zero_bid_zero_ask_accepted(self):
+        """bid=0.00 AND ask=0.00 together means no resting quote at all (an
+        illiquid/dormant market, e.g. a far-future contract with zero
+        volume) -- not a crossed book. Must not be flagged as inverted
+        (real bug found live: schema_validator was logging this exact
+        pair as 'inverted spread' for genuinely quote-less KXRAIN*M/
+        KXTEMPxxxH markets, contradicting its own bid=0/ask=100 comment
+        one line above the check)."""
+        assert self._call(self._valid(yes_bid=0, yes_ask=0)) is True
+
+    def test_tiny_nonzero_equal_bid_ask_still_rejected(self):
+        """Only the exact (0.0, 0.0) pair is exempt -- any other equal or
+        crossed pair (even a tiny nonzero one) must still be rejected.
+        Sanity check that the fix didn't loosen the general inverted-
+        spread check beyond the one legitimate no-quote case."""
+        assert self._call(self._valid(yes_bid=1, yes_ask=1)) is False
+
     def test_decimal_prices_valid(self):
         """Prices already in decimal (0–1) must pass."""
         assert (

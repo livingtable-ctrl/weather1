@@ -45,7 +45,7 @@ def _seed_db(db_path: Path, rows: list[dict]) -> None:
                     r["ticker"],
                     r["city"],
                     r["market_date"],
-                    "above",
+                    r.get("condition_type", "above"),
                     r["our_prob"],
                     0.5,
                     0.1,
@@ -129,6 +129,39 @@ class TestCalibrateSeasonalWeights:
         _seed_db(self._db, rows)
         result = calibrate_seasonal_weights(self._db)
         # 15 valid rows < _SEASONAL_MIN=20 → neutral defaults, not data-derived weights
+        assert "winter" in result
+        assert result["winter"].get("_uncalibrated") is True
+
+    def test_monthly_rain_rows_not_counted(self):
+        """backlog.txt "RAIN / SNOW / HURRICANE MARKETS" Step 2 (review-
+        caught, defense-in-depth): condition_type='precip_month_total' rows
+        must not count toward the seasonal calibration threshold even if
+        (hypothetically -- the real rain model never populates these
+        columns today) ensemble_prob/nws_prob/clim_prob were all set.
+
+        60 total rows (30 real 'above' + 30 rain) rather than the smaller
+        counts used elsewhere in this class: _best_weights' own internal
+        80/20 validation-row floor (needs >=10 val rows) means a 30-row
+        total (as in test_rows_without_source_probs_not_counted's sibling
+        pattern) stays "uncalibrated" via THAT floor regardless of whether
+        the condition_type exclusion works, making a 30-row version of
+        this test vacuous -- confirmed by mutation-testing it first, which
+        is why 60 is used here: enough real rows to clear _SEASONAL_MIN=20
+        but its own 24-train/6-val split still trips the val-row floor,
+        while 60-total (if the rain rows leaked in) would give a real
+        48-train/12-val split that clears it and returns calibrated
+        (non-neutral) weights."""
+        from calibration import calibrate_seasonal_weights
+
+        rows = _make_winter_rows(60)
+        for r in rows[:30]:
+            r["condition_type"] = "precip_month_total"
+        _seed_db(self._db, rows)
+        result = calibrate_seasonal_weights(self._db)
+        # Only the 30 real "above" rows remain visible -- their own 80/20
+        # split (24/6) trips the val-row floor -> neutral defaults. If the
+        # 30 rain rows leaked in (60 total, 48/12 split), this would
+        # instead return real calibrated (non-"_uncalibrated") weights.
         assert "winter" in result
         assert result["winter"].get("_uncalibrated") is True
 
@@ -318,6 +351,66 @@ class TestCalibrateCLI:
         main.cmd_calibrate()
 
         assert called, "cmd_calibrate() must call update_learned_weights_from_tracker()"
+
+    def test_calibrate_platt_excludes_rain_only_city(self, monkeypatch):
+        """backlog.txt "RAIN / SNOW / HURRICANE MARKETS" Step 2 (review-
+        caught, MEDIUM finding): cmd_calibrate()'s inline Platt-scaling
+        query must exclude condition_type='precip_month_total' the same
+        way the seasonal/city calibration queries do. A city with only
+        rain rows (60, well above the 50 min_samples cmd_calibrate passes)
+        must never be trained -- if the exclusion were missing, this city
+        would clear the threshold and get a real (spurious) Platt model."""
+        import main
+        import ml_bias
+        import tracker
+
+        # Enough winter rows so cmd_calibrate's earlier seasonal-weights
+        # step doesn't bail out before ever reaching the Platt block.
+        rows = _make_winter_rows(60)
+        # Randomized (not a deterministic alternating pattern) so _fit_platt
+        # actually converges to a valid coefficient when this data IS
+        # included -- a first version of this test used a perfectly
+        # alternating 0.7/0.3 pattern, which made _fit_platt itself reject
+        # the fit (A far outside the accepted range) regardless of whether
+        # the condition_type exclusion worked, making the test vacuous
+        # (caught by mutation-testing before landing this version).
+        import random as _random
+
+        _rng = _random.Random(42)
+        rain_rows = []
+        for i in range(60):
+            p = _rng.uniform(0.3, 0.8)
+            settled = 1 if _rng.random() < p else 0
+            rain_rows.append(
+                {
+                    "ticker": f"RAINCITY-{i}",
+                    "city": "RainOnlyCity",
+                    "market_date": f"2026-01-{(i % 28) + 1:02d}",
+                    "our_prob": p,
+                    "ensemble_prob": 0.72,
+                    "nws_prob": 0.65,
+                    "clim_prob": 0.60,
+                    "settled_yes": settled,
+                    "condition_type": "precip_month_total",
+                }
+            )
+        _seed_db(self._db, rows + rain_rows)
+
+        monkeypatch.setattr(tracker, "DB_PATH", self._db)
+        monkeypatch.setattr(main, "_CALIBRATE_DATA_DIR", self._data_dir)
+        monkeypatch.setattr(
+            ml_bias, "_TEMP_PATH", self._data_dir / "temperature_scale.json"
+        )
+
+        main.cmd_calibrate()
+
+        platt_path = self._data_dir / "platt_models.json"
+        if platt_path.exists():
+            trained = json.loads(platt_path.read_text())
+            assert "RainOnlyCity" not in trained, (
+                "a city with only rain rows must never get a Platt model -- "
+                "the 60 rain rows leaked past the condition_type exclusion"
+            )
 
 
 # ── Phase 5.1: brier_by_condition in backtest ─────────────────────────────────

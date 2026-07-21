@@ -301,3 +301,81 @@ def test_mixed_batch_hourly_shadow_daily_places_normally(monkeypatch):
     assert len(hourly_rows) == 1 and hourly_rows[0]["is_shadow"] == 1
     daily_rows = _fetch("KXHIGHNY-26JUL20-T80")
     assert len(daily_rows) == 1 and daily_rows[0]["is_shadow"] == 0
+
+
+# ── backlog.txt "RAIN / SNOW / HURRICANE MARKETS" Step 2 handoff item 7:
+# monthly-rain markets stay shadow-only independent of TRADING_PAUSED,
+# per-ticker rather than per-batch, until _rain_gates_active() fires. Same
+# shape as the hourly tests above. ──────────────────────────────────────────
+
+
+def test_rain_ticker_shadow_only_when_gate_inactive(monkeypatch):
+    """A monthly-rain (KXRAIN*M) opp must be shadow-logged, not placed, when
+    _rain_gates_active() is False -- independent of TRADING_PAUSED (which is
+    explicitly cleared here)."""
+    _place_everything_setup(monkeypatch)
+    monkeypatch.setattr("order_executor._rain_gates_active", lambda: False)
+    placed_calls = []
+    monkeypatch.setattr(
+        "order_executor.place_paper_order",
+        lambda *a, **k: placed_calls.append((a, k))
+        or {"id": 1, "status": "open", "cost": 1.0},
+    )
+    opp = _make_flat_opp("KXRAINDENM-26JUL-7", city="Denver")
+
+    result = order_executor._auto_place_trades([opp], client=None)
+
+    assert result == 0
+    assert placed_calls == [], "must never place a real order for a gated rain ticker"
+    rows = _fetch("KXRAINDENM-26JUL-7")
+    assert len(rows) == 1
+    assert rows[0]["is_shadow"] == 1
+
+
+def test_rain_ticker_places_normally_when_gate_active(monkeypatch):
+    """Once _rain_gates_active() is True, a rain opp places exactly like
+    any other ticker -- no special-casing beyond the gate check."""
+    _place_everything_setup(monkeypatch)
+    monkeypatch.setattr("order_executor._rain_gates_active", lambda: True)
+    monkeypatch.setattr(
+        "order_executor.place_paper_order",
+        lambda ticker, side, qty, price, **kwargs: {
+            "id": 1,
+            "status": "open",
+            "cost": price * qty,
+        },
+    )
+    opp = _make_flat_opp("KXRAINDENM-26AUG-7", city="Denver")
+
+    order_executor._auto_place_trades([opp], client=None)
+
+    rows = _fetch("KXRAINDENM-26AUG-7")
+    assert len(rows) == 1
+    assert rows[0]["is_shadow"] == 0
+
+
+def test_mixed_batch_rain_shadow_daily_places_normally(monkeypatch):
+    """The core routing guarantee: in one batch, a rain opp (gate inactive)
+    is shadow-logged while a daily opp in the SAME batch places normally."""
+    _place_everything_setup(monkeypatch)
+    monkeypatch.setattr("order_executor._rain_gates_active", lambda: False)
+    placed_calls = []
+    monkeypatch.setattr(
+        "order_executor.place_paper_order",
+        lambda ticker, side, qty, price, **kwargs: (
+            placed_calls.append(ticker),
+            {"id": 1, "status": "open", "cost": price * qty},
+        )[1],
+    )
+    rain_opp = _make_flat_opp("KXRAINSEAM-26SEP-1", city="Seattle")
+    daily_opp = _make_flat_opp("KXHIGHNY-26JUL21-T80")
+
+    order_executor._auto_place_trades([rain_opp, daily_opp], client=None)
+
+    assert placed_calls == ["KXHIGHNY-26JUL21-T80"], (
+        "only the daily ticker should have gone through place_paper_order"
+    )
+    rain_rows = _fetch("KXRAINSEAM-26SEP-1")
+    assert len(rain_rows) == 1 and rain_rows[0]["is_shadow"] == 1
+    daily_rows = _fetch("KXHIGHNY-26JUL21-T80")
+    assert len(daily_rows) == 1 and daily_rows[0]["is_shadow"] == 0

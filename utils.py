@@ -249,6 +249,16 @@ SAME_DAY_DYNAMIC_BAND_HOURS = int(os.getenv("SAME_DAY_DYNAMIC_BAND_HOURS", "6"))
 # Hours per time band (6 → 4 bands). Tighten to 3 or 2 once 200+ above/below trades settled.
 MAX_DAILY_LOSS_PCT = float(os.getenv("MAX_DAILY_LOSS_PCT", "0.03"))
 MAX_DAYS_OUT = int(os.getenv("MAX_DAYS_OUT", "5"))  # scan markets up to N days out
+# backlog.txt "RAIN / SNOW / HURRICANE MARKETS" Step 2: monthly rain-total
+# ladder markets use their own days-out cap, computed from close_time (not
+# target_date, which stays None for these tickers by design) -- deliberately
+# NOT MAX_DAYS_OUT, which is tuned for daily point-in-time forecasts where
+# skill degrades fast with lead time (validated to a much narrower range
+# elsewhere). A rain contract's close_time can be up to ~31 days out at the
+# start of its accrual month, and the bootstrap-with-known-month-to-date-
+# actual approach is designed to degrade gracefully over that whole window,
+# not require a short horizon -- user-confirmed whole-month trading window.
+RAIN_MAX_DAYS_OUT = int(os.getenv("RAIN_MAX_DAYS_OUT", "31"))
 MAX_POSITION_AGE_DAYS = int(os.getenv("MAX_POSITION_AGE_DAYS", "7"))
 
 # #120: Betting strategy — kelly | fixed_pct | fixed_dollars

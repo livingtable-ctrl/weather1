@@ -172,7 +172,8 @@ def train_bias_model(min_samples: int = 200) -> dict:
                 FROM multiday_predictions p
                 JOIN outcomes o ON p.ticker = o.ticker
                 WHERE p.city IS NOT NULL AND p.our_prob IS NOT NULL
-                  AND (p.condition_type IS NULL OR p.condition_type != 'between')
+                  AND (p.condition_type IS NULL
+                       OR p.condition_type NOT IN ('between', 'precip_month_total'))
                 ORDER BY p.predicted_at ASC
                 """
             ).fetchall()
@@ -597,8 +598,19 @@ def train_all_temperature_scaling(
                 JOIN outcomes o ON p.ticker = o.ticker
                 WHERE p.our_prob IS NOT NULL AND o.settled_yes IS NOT NULL
                   AND (p.days_out IS NULL OR p.days_out >= 1)
-                  AND (p.condition_type IS NULL OR p.condition_type != 'between')
+                  AND (p.condition_type IS NULL
+                       OR p.condition_type NOT IN ('between', 'precip_month_total'))
                 """
+                # backlog.txt "RAIN / SNOW / HURRICANE MARKETS" Step 2: monthly
+                # rain trades log with a real (large, ~0-31) days_out once
+                # placed, so they'd otherwise land in this multi-day pool and
+                # get pooled into a temperature-scaling calibration tuned for
+                # °F-shaped probabilities. condition_type is already the exact
+                # mechanism this query uses to exclude 'between' rows -- rain's
+                # condition_type ("precip_month_total") is a new, unique
+                # string, unlike hourly's ("above"/"below", indistinguishable
+                # from ordinary daily rows by string alone, which is why
+                # hourly needs ticker-prefix exclusion instead, below).
             ).fetchall()
             sameday_rows = con.execute(
                 """
@@ -607,7 +619,8 @@ def train_all_temperature_scaling(
                 JOIN outcomes o ON p.ticker = o.ticker
                 WHERE p.our_prob IS NOT NULL AND o.settled_yes IS NOT NULL
                   AND p.days_out = 0
-                  AND (p.condition_type IS NULL OR p.condition_type != 'between')
+                  AND (p.condition_type IS NULL
+                       OR p.condition_type NOT IN ('between', 'precip_month_total'))
                 """
                 + _hourly_exclude_sql,
                 _hourly_exclude_params,

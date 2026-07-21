@@ -144,7 +144,8 @@ def _load_rows(db_path: Path) -> list[sqlite3.Row]:
               AND p.nws_prob IS NOT NULL
               AND p.clim_prob IS NOT NULL
               AND o.settled_yes IS NOT NULL
-              AND (p.condition_type IS NULL OR p.condition_type != 'between')
+              AND (p.condition_type IS NULL
+                   OR p.condition_type NOT IN ('between', 'precip_month_total'))
             """
         ).fetchall()
 

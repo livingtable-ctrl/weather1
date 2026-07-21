@@ -354,6 +354,171 @@ class TestApplyTemperatureScaling:
         assert result_with_hourly == pytest.approx(result_without_hourly)
 
 
+class TestTrainAllTemperatureScalingRainExclusion:
+    """backlog.txt "RAIN / SNOW / HURRICANE MARKETS" Step 2 handoff item
+    (ml_bias.py defensive exclusion): monthly-rain rows (condition_type=
+    'precip_month_total', days_out typically >=1) must not leak into the
+    main multi-day 'global' pool, which is tuned for °F-shaped
+    temperature probabilities. No dedicated rain pool is created this
+    pass -- this is purely a leak-prevention check."""
+
+    def _seed(
+        self, tracker, ticker, city, market_date, our_prob, settled_yes, condition_type
+    ):
+        analysis = {
+            "condition": {"type": condition_type, "threshold": 7.0},
+            "forecast_prob": our_prob,
+            "market_prob": 0.5,
+            "edge": 0.1,
+            "method": "ensemble",
+        }
+        tracker.log_prediction(ticker, city, market_date, analysis)
+        tracker.log_outcome(ticker, settled_yes)
+
+    def test_rain_rows_excluded_from_global_pool(self, tmp_path, monkeypatch):
+        from datetime import date
+
+        import ml_bias
+        import tracker
+
+        monkeypatch.setattr(tracker, "DB_PATH", tmp_path / "predictions.db")
+        monkeypatch.setattr(tracker, "_db_initialized", False)
+        monkeypatch.setattr(ml_bias, "_TEMP_PATH", tmp_path / "temperature_scale.json")
+        tracker.init_db()
+
+        probs = [0.9] * 10 + [0.1] * 10
+        labels = [1] * 7 + [0] * 3 + [0] * 7 + [1] * 3
+        # 20 ordinary daily (multi-day, days_out=~11 from log_prediction's
+        # own market_date-vs-today derivation) temperature rows.
+        for i in range(20):
+            self._seed(
+                tracker,
+                f"KXHIGHNY-26AUG{i:02d}-T75",
+                "NYC",
+                date.today() + __import__("datetime").timedelta(days=11),
+                probs[i],
+                labels[i],
+                "above",
+            )
+        # 20 monthly-rain rows -- close_time-derived target_date, real
+        # days_out, condition_type="precip_month_total".
+        for i in range(20):
+            self._seed(
+                tracker,
+                f"KXRAINDENM-26AUG-{i % 7 + 1}",
+                "Denver",
+                date.today() + __import__("datetime").timedelta(days=11),
+                probs[i],
+                labels[i],
+                "precip_month_total",
+            )
+
+        ml_bias.train_all_temperature_scaling(
+            min_samples_global=1, min_samples_condition=1
+        )
+
+        with open(tmp_path / "temperature_scale.json") as f:
+            import json
+
+            saved = json.load(f)
+
+        assert saved["global"]["n"] == 20, (
+            f"global pool must contain only the 20 daily rows, not the rain "
+            f"ones too, got n={saved['global']['n']}"
+        )
+        assert "precip_month_total" not in saved
+
+
+class TestTrainBiasModelRainExclusion:
+    """backlog.txt "RAIN / SNOW / HURRICANE MARKETS" Step 2 (review-caught
+    gap): train_bias_model() reads the same multiday_predictions view via
+    its own separate query -- must exclude 'precip_month_total' the same
+    way train_all_temperature_scaling() does, or a city's per-city
+    GradientBoosting bias-correction model gets trained partly on
+    inches-scale rain residuals."""
+
+    def _seed(
+        self, tracker, ticker, city, market_date, our_prob, settled_yes, condition_type
+    ):
+        analysis = {
+            "condition": {"type": condition_type, "threshold": 7.0},
+            "forecast_prob": our_prob,
+            "market_prob": 0.5,
+            "edge": 0.1,
+            "method": "ensemble",
+        }
+        tracker.log_prediction(ticker, city, market_date, analysis)
+        tracker.log_outcome(ticker, settled_yes)
+
+    def test_only_daily_rows_reach_the_fit_call(self, tmp_path, monkeypatch):
+        """Directly inspects what train_bias_model() actually fits on --
+        decoupled from whether GradientBoostingRegressor's own holdout
+        check happens to accept or reject the city, which made an earlier
+        version of this test pass vacuously even against the unfixed query
+        (10 synthetic rain rows didn't beat the MSE-vs-baseline check
+        either way, so "no model produced" wasn't proof the exclusion
+        worked). Seeds 8 daily rows (city_data should end up with exactly
+        8 samples) plus 10 rain rows for the SAME city -- the fit() call's
+        training-set size directly proves whether the rain rows leaked in."""
+        from datetime import date, timedelta
+        from unittest.mock import MagicMock, patch
+
+        import ml_bias
+        import tracker
+
+        monkeypatch.setattr(tracker, "DB_PATH", tmp_path / "predictions.db")
+        monkeypatch.setattr(tracker, "_db_initialized", False)
+        tracker.init_db()
+
+        for i in range(8):
+            self._seed(
+                tracker,
+                f"KXHIGHNY-26AUG{i:02d}-T75",
+                "MixedCity",
+                date.today() + timedelta(days=i % 20 + 1),
+                0.5 + (i % 2) * 0.3,
+                i % 2,
+                "above",
+            )
+        for i in range(10):
+            self._seed(
+                tracker,
+                f"KXRAINDENM-26AUG-{i % 7 + 1}-{i}",
+                "MixedCity",
+                date.today() + timedelta(days=i % 20 + 1),
+                0.5 + (i % 2) * 0.3,
+                i % 2,
+                "precip_month_total",
+            )
+
+        fit_calls = []
+
+        def _fake_regressor(*a, **k):
+            m = MagicMock()
+
+            def _fit(X, y):
+                fit_calls.append(len(X))
+
+            m.fit.side_effect = _fit
+            m.predict.return_value = [0.0] * 100  # oversized, sliced by zip anyway
+            return m
+
+        with patch(
+            "sklearn.ensemble.GradientBoostingRegressor", side_effect=_fake_regressor
+        ):
+            ml_bias.train_bias_model(min_samples=5)
+
+        assert fit_calls, "MixedCity should have reached the fit() call at all"
+        # 8 daily rows, 80/20 split -> X_train has int(8*0.8)=6 rows.
+        # If the 10 rain rows leaked in (18 total), X_train would be
+        # int(18*0.8)=14 instead.
+        assert fit_calls[0] == 6, (
+            f"expected fit() on exactly the 6 daily training rows "
+            f"(8 daily * 0.8 split), got {fit_calls[0]} -- rain rows leaked in "
+            f"if this is higher"
+        )
+
+
 class TestTrainAllTemperatureScalingHourlyPool:
     """backlog.txt "HOURLY-DIRECTIONAL TEMPERATURE MARKETS" Step 2 handoff
     item 4: train_all_temperature_scaling() must isolate hourly (KXTEMPxxxH,

@@ -1797,6 +1797,34 @@ def count_settled_hourly_predictions() -> int:
     return row[0] if row else 0
 
 
+def count_settled_rain_predictions() -> int:
+    """Count settled KXRAIN*M monthly-rain predictions (backlog.txt "RAIN /
+    SNOW / HURRICANE MARKETS" Step 2 handoff item 7, the shadow-only
+    rollout gate). Mirrors count_settled_hourly_predictions()'s exact
+    shape. Ticker prefix set imported from weather_markets (same single-
+    source-of-truth dict Step 1 established) rather than hardcoded, so
+    this can't independently drift."""
+    init_db()
+    try:
+        from weather_markets import _KXRAIN_MONTHLY_CITY
+
+        prefixes = list(_KXRAIN_MONTHLY_CITY)
+    except Exception:
+        return 0
+    if not prefixes:
+        return 0
+    where_sql = " OR ".join(["p.ticker LIKE ?"] * len(prefixes))
+    params = tuple(f"{p}%" for p in prefixes)
+    with _conn() as con:
+        row = con.execute(
+            "SELECT COUNT(*) FROM predictions p "
+            "JOIN outcomes_valid o ON p.ticker = o.ticker "
+            f"WHERE ({where_sql})",
+            params,
+        ).fetchone()
+    return row[0] if row else 0
+
+
 def count_emos_ready_predictions() -> int:
     """Count multi-day predictions that are actually trainable EMOS rows —
     ens_mean AND settled_temp_f both populated, matching get_emos_training_data's
@@ -2430,7 +2458,10 @@ def get_multiday_calibration_cli() -> dict:
     """Calibration analytics for multi-day (days_out IS NULL OR >=1) predictions,
     scoped to match what the CLI (validate/backtest) has always shown: excludes
     condition_type='between', matching train_all_temperature_scaling()'s own
-    exclusion (ml_bias.py) and both CLI blocks' pre-existing behavior.
+    exclusion (ml_bias.py) and both CLI blocks' pre-existing behavior. Also
+    excludes 'precip_month_total' (backlog.txt "RAIN / SNOW / HURRICANE
+    MARKETS" Step 2) for the same reason -- an inches-scale probability
+    doesn't belong in a °F-tuned multiday calibration curve.
 
     Returns {n, gate, gate_met, brier, t_multiday, calibration_buckets} — same shape
     as get_sameday_calibration() minus the sameday-only by_time_of_day breakdown.
@@ -2448,7 +2479,8 @@ def get_multiday_calibration_cli() -> dict:
             JOIN outcomes_valid o ON p.ticker = o.ticker
             WHERE p.our_prob IS NOT NULL
               AND o.settled_yes IS NOT NULL
-              AND (p.condition_type IS NULL OR p.condition_type != 'between')
+              AND (p.condition_type IS NULL
+                   OR p.condition_type NOT IN ('between', 'precip_month_total'))
             """
         ).fetchall()
 
@@ -2480,7 +2512,8 @@ def get_sameday_calibration_cli() -> dict:
             WHERE p.our_prob IS NOT NULL
               AND o.settled_yes IS NOT NULL
               AND p.days_out = 0
-              AND (p.condition_type IS NULL OR p.condition_type != 'between')
+              AND (p.condition_type IS NULL
+                   OR p.condition_type NOT IN ('between', 'precip_month_total'))
             """
         ).fetchall()
 
@@ -2771,6 +2804,45 @@ def _fetch_actual_daily_temp(
     return None
 
 
+_settlement_client = None
+_settlement_client_env: str | None = None
+
+
+def _get_settlement_kalshi_client():
+    """Lazily build a KalshiClient from env vars, mirroring main.py's
+    build_client() shape, so audit_settlement() (and its other 2 callers,
+    backfill_emos_data() and the manual-recompute site, neither of which
+    has a client of its own) can fetch a single rain market's raw data on
+    demand without threading a client parameter through every call site.
+    Cached at module level so repeated audit_settlement() calls in a
+    sync_outcomes loop don't rebuild it. Deliberately re-fetches rather
+    than reusing sync_outcomes' own already-fetched `market` dict (that
+    call site is the only one of the 3 that has it handy) -- trades one
+    redundant API call per settling rain ticker (~10/month, negligible)
+    for keeping this function's signature unchanged for its other 2
+    callers.
+
+    Rebuilds if KALSHI_ENV changes since the cached client was built
+    (review-caught: main.py's build_client() re-reads it fresh every call
+    specifically to survive a cmd_settings runtime reload -- this cache
+    would otherwise keep fetching from the old environment after a live
+    env flip)."""
+    global _settlement_client, _settlement_client_env
+    import os
+
+    _current_env = os.getenv("KALSHI_ENV", "demo")
+    if _settlement_client is None or _settlement_client_env != _current_env:
+        from kalshi_client import KalshiClient
+
+        _settlement_client = KalshiClient(
+            key_id=os.getenv("KALSHI_KEY_ID"),
+            private_key_path=os.getenv("KALSHI_PRIVATE_KEY_PATH"),
+            env=_current_env,
+        )
+        _settlement_client_env = _current_env
+    return _settlement_client
+
+
 def audit_settlement(ticker: str, settled_yes: bool) -> bool:
     """Cross-check Kalshi's settlement against ASOS station archive data.
 
@@ -2801,10 +2873,59 @@ def audit_settlement(ticker: str, settled_yes: bool) -> bool:
     prior value (if any) was left completely untouched, not confirmed correct.
     """
     try:
+        from weather_markets import _KXRAIN_MONTHLY_CITY
         from weather_markets import CITY_COORDS as _coords
         from weather_markets import _metar_station_for_city as _station_for_city
         from weather_markets import _parse_market_condition as _parse_cond
         from weather_markets import parse_city_date as _parse_city_date
+
+        # ── Monthly rain settlement (backlog.txt "RAIN / SNOW / HURRICANE
+        # MARKETS" Step 2 handoff item 5) ─────────────────────────────────────
+        # Checked FIRST, before the city/target_date early-return below --
+        # parse_city_date() always returns target_date=None for KXRAIN*M
+        # tickers (no day component, by design), so that early return would
+        # otherwise always fire before this ticker-prefix check is ever
+        # reached (unlike the hourly branch further below, which works
+        # precisely because hourly tickers DO have a real target_date).
+        # Settlement is simpler than the hourly/daily paths: Kalshi's own
+        # market data carries the literal settled monthly total
+        # (expiration_value) once status="finalized" -- no independent
+        # ground-truth re-derivation needed here, just read it. settled_var
+        # deliberately left untouched (NULL) -- resolved this session: it's
+        # a max/min-hour discriminator with no analog for a monthly total,
+        # and has zero production readers today.
+        if ticker.upper().startswith(tuple(_KXRAIN_MONTHLY_CITY)):
+            try:
+                client = _get_settlement_kalshi_client()
+                market = client.get_market(ticker)
+            except Exception as exc:
+                _log.warning(
+                    "audit_settlement[%s]: rain market fetch failed: %s", ticker, exc
+                )
+                return False
+            if market.get("status") != "finalized":
+                return False
+            exp_val = market.get("expiration_value")
+            if exp_val is None:
+                _log.warning(
+                    "audit_settlement[%s]: finalized but no expiration_value", ticker
+                )
+                return False
+            try:
+                settled_value = float(exp_val)
+            except (TypeError, ValueError):
+                _log.warning(
+                    "audit_settlement[%s]: non-numeric expiration_value=%r",
+                    ticker,
+                    exp_val,
+                )
+                return False
+            with _conn() as con:
+                con.execute(
+                    "UPDATE outcomes SET settled_value = ? WHERE ticker = ?",
+                    (settled_value, ticker),
+                )
+            return True
 
         city, target_date = _parse_city_date({"ticker": ticker, "title": ""})
         if not city or not target_date:
@@ -3316,14 +3437,28 @@ def backfill_emos_data(force: bool = False) -> tuple[int, int]:
     init_db()
 
     # ── Part 1: settled_temp_f ────────────────────────────────────────────────
+    # backlog.txt "RAIN / SNOW / HURRICANE MARKETS" Step 2 (review-caught):
+    # KXRAIN*M rows never write settled_temp_f (they write settled_value
+    # instead) -- without this exclusion, every rain outcome permanently
+    # satisfies "settled_temp_f IS NULL" and gets re-selected/re-fetched
+    # from Kalshi on every non-force backfill run forever, growing with
+    # rain-history size. Idempotent (not a correctness bug), just wasted
+    # API calls and an inflated settled_temp_filled count that never
+    # actually filled anything.
+    from weather_markets import _KXRAIN_MONTHLY_CITY
+
     with _conn() as con:
         if force:
             temp_rows = con.execute(
                 "SELECT o.ticker, o.settled_yes FROM outcomes o"
             ).fetchall()
         else:
+            _rain_prefixes = tuple(_KXRAIN_MONTHLY_CITY)
+            _exclude_sql = " AND ".join(["o.ticker NOT LIKE ?"] * len(_rain_prefixes))
             temp_rows = con.execute(
-                "SELECT o.ticker, o.settled_yes FROM outcomes o WHERE o.settled_temp_f IS NULL"
+                "SELECT o.ticker, o.settled_yes FROM outcomes o "
+                f"WHERE o.settled_temp_f IS NULL AND ({_exclude_sql})",
+                tuple(f"{p}%" for p in _rain_prefixes),
             ).fetchall()
 
     label = (
@@ -4868,10 +5003,15 @@ def log_analysis_attempt(
     from datetime import UTC
 
     analyzed_at = datetime.now(UTC).isoformat()
+    # Bug C fix (backlog.txt "RAIN / SNOW / HURRICANE MARKETS" Step 2): store
+    # real SQL NULL, not the literal 4-character string "None", when
+    # target_date is None -- the old str(target_date) fallback wrote "None"
+    # into the DB, which the ON CONFLICT(ticker, target_date) upsert key
+    # would then treat as a real (colliding) value.
     target_str = (
         target_date.isoformat()
         if hasattr(target_date, "isoformat")
-        else str(target_date)
+        else (str(target_date) if target_date is not None else None)
     )
     try:
         with _conn() as con:
@@ -4915,8 +5055,12 @@ def batch_log_analysis_attempts(attempts: list[dict]) -> None:
     rows = []
     for a in attempts:
         td = a.get("target_date")
+        # Bug C fix (see log_analysis_attempt's matching comment): real NULL,
+        # not the literal string "None", when td is None.
         target_str = (
-            td.isoformat() if td is not None and hasattr(td, "isoformat") else str(td)
+            td.isoformat()
+            if td is not None and hasattr(td, "isoformat")
+            else (str(td) if td is not None else None)
         )
         rows.append(
             (
@@ -4954,17 +5098,26 @@ def batch_log_analysis_attempts(attempts: list[dict]) -> None:
 def settle_analysis_attempt(ticker: str, target_date, outcome: int) -> None:
     """#55: Record the outcome for a previously logged analysis attempt."""
     init_db()
+    # Bug C fix (see log_analysis_attempt's matching comment): real NULL,
+    # not the literal string "None", when target_date is None. SQL "= NULL"
+    # never matches (even a NULL column) -- use "IS NULL" for that case.
     target_str = (
         target_date.isoformat()
         if hasattr(target_date, "isoformat")
-        else str(target_date)
+        else (str(target_date) if target_date is not None else None)
     )
     try:
         with _conn() as con:
-            cursor = con.execute(
-                "UPDATE analysis_attempts SET outcome=? WHERE ticker=? AND target_date=?",
-                (outcome, ticker, target_str),
-            )
+            if target_str is None:
+                cursor = con.execute(
+                    "UPDATE analysis_attempts SET outcome=? WHERE ticker=? AND target_date IS NULL",
+                    (outcome, ticker),
+                )
+            else:
+                cursor = con.execute(
+                    "UPDATE analysis_attempts SET outcome=? WHERE ticker=? AND target_date=?",
+                    (outcome, ticker, target_str),
+                )
             if cursor.rowcount == 0:
                 import logging as _logging
 

@@ -430,6 +430,25 @@ def _save_watch_state(tickers: set) -> None:
 KALSHI_ENV = os.getenv("KALSHI_ENV", "demo")
 
 
+def _target_date_due(target_date_str: str | None, today_date) -> bool:
+    """Return True if target_date_str is on or before today_date. Parses
+    both sides as real dates rather than comparing raw strings -- a non-
+    day-granular ISO value (Bug A, backlog.txt "RAIN / SNOW / HURRICANE
+    MARKETS" Step 2) would otherwise compare as a string prefix and could
+    sort incorrectly against a full "YYYY-MM-DD" value. Falls back to the
+    string compare on any unparseable value, matching this codebase's
+    prior behavior at both call sites (cmd_watch_settle's _pending(), the
+    main-menu "due today" banner)."""
+    if not target_date_str:
+        return False
+    from datetime import date as _date_due
+
+    try:
+        return _date_due.fromisoformat(target_date_str) <= today_date
+    except (ValueError, TypeError):
+        return target_date_str <= today_date.isoformat()
+
+
 def _kalshi_env() -> str:
     """Read KALSHI_ENV fresh from the environment each call (survives cmd_settings reload)."""
     return os.getenv("KALSHI_ENV", "demo")
@@ -827,11 +846,13 @@ def cmd_watch_settle(client: KalshiClient, args: list[str] | None = None) -> Non
     # utc_today(), not date.today(): target_date (compared below) is
     # UTC-anchored (backlog.txt "utils.utc_today() SAYS 'USE EVERYWHERE
     # INSTEAD OF date.today()' -- 17 SITES STILL DON'T").
-    today_str = _utc_today().isoformat()
+    today_date = _utc_today()
 
     def _pending() -> list:
         return [
-            t for t in get_open_trades() if (t.get("target_date") or "") <= today_str
+            t
+            for t in get_open_trades()
+            if _target_date_due(t.get("target_date"), today_date)
         ]
 
     print(
@@ -1194,10 +1215,24 @@ def cmd_market(client: KalshiClient, ticker: str, verbose: bool = False):
 
         # Log to tracker
         try:
+            # backlog.txt "RAIN / SNOW / HURRICANE MARKETS" Step 2 (review-
+            # caught): enriched["_date"] is always None for KXRAIN*M tickers
+            # by design (parse_city_date() never resolves one) -- fall back
+            # to analysis["target_date"] (the close_time-derived date
+            # _analyze_monthly_rain_trade() sets) so a manual lookup still
+            # logs a real market_date, consistent with the automated path,
+            # instead of a NULL row that get_quintile_bias/get_bias can
+            # never match against.
+            _log_market_date = enriched.get("_date")
+            if _log_market_date is None and analysis.get("target_date"):
+                try:
+                    _log_market_date = date.fromisoformat(analysis["target_date"])
+                except (ValueError, TypeError):
+                    pass
             log_prediction(
                 ticker,
                 enriched.get("_city"),
-                enriched.get("_date"),
+                _log_market_date,
                 analysis,
                 **_prediction_kwargs_from_analysis(analysis),
                 # cmd_market is a pure lookup/display command — it never places an
@@ -3736,6 +3771,19 @@ def cmd_order(client: KalshiClient, action: str, args: list):
             _target_date: date | None = (
                 _date_raw if isinstance(_date_raw, date) else None
             )
+            if _target_date is None and _analysis.get("target_date"):
+                # backlog.txt "RAIN / SNOW / HURRICANE MARKETS" Step 2
+                # (review-caught): _enriched["_date"] is always None for
+                # KXRAIN*M tickers by design -- fall back to the close_
+                # time-derived date _analyze_monthly_rain_trade() sets on
+                # analysis["target_date"], so a manual live order (once
+                # the shadow gate opens) gets the same real exposure-cap/
+                # correlation grouping key the automated path already has,
+                # not a silent None.
+                try:
+                    _target_date = date.fromisoformat(_analysis["target_date"])
+                except (ValueError, TypeError):
+                    pass
             _target_date_str = _target_date.isoformat() if _target_date else None
             _days_out = int(_analysis.get("days_out", 1))
 
@@ -5270,7 +5318,8 @@ def cmd_calibrate() -> None:
                     "SELECT p.city, p.our_prob, o.settled_yes "
                     "FROM multiday_predictions p JOIN outcomes o ON p.ticker = o.ticker "
                     "WHERE o.settled_yes IS NOT NULL AND p.our_prob IS NOT NULL"
-                    "  AND (p.condition_type IS NULL OR p.condition_type != 'between')"
+                    "  AND (p.condition_type IS NULL"
+                    "       OR p.condition_type NOT IN ('between', 'precip_month_total'))"
                 ).fetchall()
             ]
         platt = _train_platt(_platt_rows, min_samples=50)
@@ -5735,8 +5784,12 @@ def cmd_menu(client: KalshiClient):
             # Unsettled due trades
             from paper import get_open_trades as _got
 
-            _today = _utc_today_menu().isoformat()
-            _due = [t for t in _got() if (t.get("target_date") or "") <= _today]
+            _today_date_menu = _utc_today_menu()
+            _due = [
+                t
+                for t in _got()
+                if _target_date_due(t.get("target_date"), _today_date_menu)
+            ]
             if _due:
                 print(
                     yellow(
