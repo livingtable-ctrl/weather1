@@ -690,7 +690,7 @@ When to revisit: N/A -- both Step 1 and Step 2 resolved. See the Step 2
   RESOLVED note above's "When to revisit" for the remaining intentionally-
   deferred gaps (item 7) and the shadow-gate sample-floor condition.
 
-[PARTIALLY RESOLVED 2026-07-20 — Rain Step 1 shipped] RAIN / SNOW / HURRICANE MARKETS — UNTOUCHED CATEGORY SURFACE
+[PARTIALLY RESOLVED 2026-07-21 — Rain Step 1+2 shipped, snow/hurricane/St. Petersburg still open] RAIN / SNOW / HURRICANE MARKETS — UNTOUCHED CATEGORY SURFACE
 Priority: was Low -- rain is now Medium-High (real, currently-liquid product
   the bot was silently blind to); snow/hurricane/rain's own probability
   model (Step 2) remain Low, unchanged.
@@ -987,6 +987,138 @@ RESOLVED 2026-07-20 (Rain Step 1 -- discovery/schema/safety only, no
   2 (the real ACIS+Seasonal-API monthly-accumulation probability model,
   shadow-gated per the established `_gates_active()` pattern before ever
   live-trading).
+
+RESOLVED 2026-07-21 (Rain Step 2 -- the real monthly-accumulation
+  probability model, own settlement, shadow-only rollout; all 9 handoff
+  items above closed; snow, hurricane, and St. Petersburg onboarding still
+  fully open): pushed `1839d76`.
+  Re-verified every handoff claim against live state before writing code,
+  rather than trusting the Step 1 snapshot. Two claims turned out
+  substantially simpler/more-resolved than scoped: (5) settlement --
+  Kalshi's own market data carries the literal settled monthly total
+  (`expiration_value`) once `status="finalized"`, confirmed live across
+  Denver (7 brackets, 2 months) and NYC (4 brackets) -- no independent ACIS
+  re-derivation needed for settlement itself, only for the forecast model's
+  own inputs. (8) which station -- fully resolved, not just re-verified: all
+  10 cities settle at `"CLI" + metar.MARKET_STATION_MAP[city]` minus the
+  leading `K`, zero exceptions including NYC (whose `KNYC` already meant
+  Central Park for daily temperature, and ACIS `sid="NYC"` independently
+  resolves to "NY CITY CENTRAL PARK" -- consistent, not a coincidence).
+  Two genuine design decisions (item 3's exposure-cap keying, item 5's
+  settlement schema) surfaced via `AskUserQuestion` and resolved only after
+  two rounds of user pushback ("are you sure") that each caught something
+  real the first pass missed -- see [[project_weather1_kalshi_bot]]'s dated
+  session entry for the full re-derivation trail. Landed: settlement schema
+  leaves `outcomes.settled_var` NULL for rain rows (ticker prefix already
+  disambiguates everywhere else in this codebase, `settled_var` had zero
+  production readers); exposure-cap keying uses the market's real
+  `close_time` date -- the same field every other market type already uses
+  for `target_date`, not a parallel bookkeeping system or a synthetic
+  accrual-month value -- so item 3's MANDATORY position-sizing fail-open
+  gap closes for free via the existing `portfolio_kelly_fraction()`/
+  per-date-cap machinery once these tickers carry a real value, with
+  `parse_city_date()` itself deliberately left untouched (still returns
+  `None` for KXRAIN*M, walling off `analyze_trade()`'s ~1500 lines of daily-
+  only date arithmetic from a monthly-accrual product).
+  Tracing every consumer of `target_date` (40+ call sites, not a sample)
+  before committing to the exposure-cap design surfaced 3 real, previously-
+  dormant bugs that had to be fixed alongside the feature, since they'd
+  start firing silently the moment `target_date` carried a real value for
+  this ticker family: a string-prefix date comparison mistaken for a parsed-
+  date comparison (`monte_carlo.py`, `main.py` x2 -- new shared
+  `main._target_date_due()` helper); silent exception-swallowing on an
+  unparseable grouping key (`order_executor.py`, 3 sites -- now logs a
+  warning, fallback behavior unchanged); and a literal `"None"` string
+  written to the DB instead of real SQL `NULL` (`tracker.py`, 3 sites, plus
+  a related `column IS NULL` vs `column=?` SQL-semantics fix in
+  `settle_analysis_attempt` -- SQL `= NULL` never matches, even a NULL
+  column).
+  Shipped: new `acis_precip.py` module (NOAA ACIS StnData month-to-date
+  actual + ~30yr historical daily precip, handling `"T"`/`"M"`/`"S"` ACIS
+  sentinels; Open-Meteo Seasonal `monthly=precipitation_mean` -- NOT
+  `precipitation_sum`, confirmed live that 400s -- as an optional
+  directional tilt) feeding a bootstrap resample of "remaining-days-of-month
+  total" against the market's `floor_strike` threshold, wired into new
+  `_analyze_monthly_rain_trade()`; `_parse_market_condition()` fixed at its
+  root (item 2 -- reads `floor_strike`/`strike_type` directly, no longer
+  falls through to the `precip_any` collapse); `tracker.audit_settlement()`
+  new branch (checked before the generic city/date early-return, since that
+  always fires first for these tickers); shadow-only rollout
+  (`RAIN_TRADING_ENABLED` + `>=20` settled predictions) mirroring
+  `_hourly_gates_active()` exactly, including `check_position_limits()`'s
+  "shadow-only means no paper order either" stance (not just no live
+  order). Item 6's consensus-bonus caution followed exactly as flagged:
+  ACIS-empirical and Open-Meteo-tilted are not independent sources (the tilt
+  is a nudge on the same physical baseline, not a second estimate) --
+  `consensus=False` is hardcoded, never computed, matching hourly Step 2's
+  own caught bug. Item 4 (real (city, month) ladder grouping for
+  `compute_market_implied_distributions()`/`consistency._group_markets()`)
+  deliberately deferred -- confirmed log-only, never gates a trading
+  decision for any market type today, user-approved scope cut.
+  Given the size, used `EnterPlanMode` and a mandatory multi-pass self-
+  review (same pattern as every prior Step-2-scale change) -- caught a real
+  mypy-narrowing hazard before it shipped (the gate restructuring's
+  conditional guards break mypy's ability to prove `target_date`/`forecast`
+  non-`None` for the rest of `analyze_trade()`; fixed with targeted
+  `assert`s at points where the narrowing is structurally guaranteed, not
+  blanket suppressions -- caught mid-implementation via an isolated `git
+  worktree` diff after an earlier same-directory-copy baseline comparison
+  gave a false "pre-existing" read, itself only caught by re-verifying after
+  a direct user request to fix lint findings too).
+  Independent review scaled to 3 parallel `Agent(opus, effort=high)` passes
+  by subsystem (model/gating/condition-parsing; settlement/shadow-gate/
+  exposure-cap; the 3 pre-existing date-bugs + calibration-pool leak +
+  an unrelated live `schema_validator.py` bug found via a real cron-run
+  report mid-session). No HIGH findings, but real MEDIUM ones fixed: a
+  month-to-date ACIS fetch failure was silently coerced to 0.0 (could badly
+  underestimate real accrued rain if the fresh fetch fails mid-month while
+  cached history stays available -- now fails closed, no trade); the
+  calibration-pool leak-prevention fix was incomplete, covering only 2 of 6
+  live mechanisms reading the same predictions data -- extended to
+  `train_bias_model`, `train_platt_per_city`, both `get_*_calibration_cli`
+  functions, and `calibration.py`'s `calibrate_seasonal_weights`.
+  Per two new standing-process rules the user set this session (now in
+  [[feedback_implementation_workflow]] steps 15/16: real bugs found via
+  adjacency must be fixed in-scope unless massively out of scope, and every
+  reviewer finding must be explicitly addressed regardless of how soft its
+  wording sounds), every remaining LOW/informational finding was closed
+  too, not left as "the reviewer said it wasn't a bug": manual CLI paths
+  (`cmd_market`/`cmd_order`) now fall back to the model's close-derived date
+  instead of logging NULL; `backfill_emos_data()` no longer re-fetches every
+  historical rain ticker from Kalshi on every non-force run forever; the
+  settlement client cache now rebuilds on a `KALSHI_ENV` runtime flip; two
+  stale comments fixed (a city-grouping count that said "8 of 10" but was
+  actually 9 -- only Seattle is ungrouped -- and a misleading `elif`-vs-
+  fallthrough comment in `monte_carlo.py`).
+  Separately, the same session's cron-run report surfaced (not caused by
+  this change) a genuinely unrelated pre-existing bug: `schema_validator.py`
+  was flagging `bid=0.00/ask=0.00` (a market with no resting quotes at all)
+  as an "inverted spread," contradicting its own stated intent -- fixed to
+  match `parse_market_price()`'s existing `has_quote = mid > 0` convention.
+  Also cleaned up a real self-inflicted incident from this session's own
+  debugging (not a code bug): an ad-hoc `python -c` script tracing one of
+  the date-bug fixes called `_auto_place_trades()` directly against the
+  live production databases without sandboxing `execution_log`'s/
+  `tracker`'s DB paths, leaving one contaminated ticker (`KXBADDATE3`,
+  paper not live) across 3 rows in 2 DB files -- traced exhaustively (every
+  table in both files) and deleted by exact primary key, verified via
+  before/after row counts.
+  Three tests were caught as vacuous only by mutation-testing after they
+  first passed for reasons unrelated to the fix under test -- an unrelated
+  ML-fit holdout-MSE gate (`train_bias_model`'s test rewritten to inspect
+  the actual `fit()` call's training-set size), an unrelated validation-row
+  floor (`calibrate_seasonal_weights`'s test rewritten with a correctly-
+  sized row count), and a deterministic alternating-probability pattern that
+  made the underlying Platt fit itself reject regardless of the exclusion
+  (`train_platt_per_city`'s test rewritten with a randomized pattern
+  matching this file's own existing passing-test convention). All three now
+  genuinely mutation-proof. 984 tests pass across the full scoped regression
+  sweep; ruff/mypy clean (0 errors, not "pre-existing" as first miscounted
+  -- see above).
+  `RAIN_TRADING_ENABLED` stays unset until real shadow data accumulates --
+  expect the 20-settled-prediction floor to take roughly 2 months given
+  monthly settlement cadence (~10 cities x 1 settlement/city/month), much
+  slower than hourly's.
 
 [TRACK ECMWF FORECAST ACCURACY]
 Priority: Low (ECMWF already gets a reasonable static/seasonal weight; this is
