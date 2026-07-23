@@ -4963,3 +4963,56 @@ class TestLogPredictionLiquidityEdgeScale(unittest.TestCase):
         assert row is not None
         assert row["liquidity_edge_scale"] is None
         assert row["gated_edge"] is None
+
+
+class TestGetModelWeightsExcludesTrackingOnlyModels:
+    """Opus review finding on the GENERALIZED PER-MODEL ACCURACY TRACKING
+    Pass 2 diff: get_model_weights()'s softmax summed EVERY model with
+    enough observations into its `total` denominator, including
+    gem_global/ukmo_global_ensemble_20km (backlog.txt's deliberately
+    track-only models) -- so once one of them crossed MIN_OBSERVATIONS, its
+    tracked accuracy would silently shift every OTHER model's softmax share
+    even though gem/ukmo's own weight is never read out by any live blend.
+    Fixed by excluding weather_markets.TRACKING_ONLY_MODEL_NAMES from the
+    softmax input entirely."""
+
+    def _log_n(self, city, model, predicted, actual, n, start="2026-01-01"):
+        from datetime import date, timedelta
+
+        start_date = date.fromisoformat(start)
+        for i in range(n):
+            tracker.log_member_score(
+                city,
+                model,
+                predicted,
+                actual,
+                (start_date + timedelta(days=i)).isoformat(),
+            )
+
+    def test_gem_presence_does_not_change_baseline_models_softmax(self):
+        # icon: perfect (err=0), gfs: err=2 -- distinct enough that a
+        # denominator shift would be visible in the resulting percentages.
+        self._log_n("NYC", "icon_seamless", 70.0, 70.0, 10)
+        self._log_n("NYC", "gfs_seamless", 72.0, 70.0, 10)
+        baseline = tracker.get_model_weights("NYC", window_days=30)
+
+        # Highly "accurate" (err=0) tracking-only model, well past the
+        # observation floor -- if it leaked into the softmax denominator,
+        # icon/gfs's shares below would shrink from the baseline above.
+        self._log_n("NYC", "gem_global", 70.0, 70.0, 10, start="2026-02-01")
+        with_gem = tracker.get_model_weights("NYC", window_days=30)
+
+        assert "gem_global" not in with_gem, (
+            f"tracking-only model must never appear in the result, got: {with_gem}"
+        )
+        assert with_gem["icon_seamless"] == pytest.approx(baseline["icon_seamless"]), (
+            f"gem_global's presence changed icon_seamless's softmax share: "
+            f"{with_gem['icon_seamless']} vs baseline {baseline['icon_seamless']} "
+            f"-- it leaked into the softmax denominator"
+        )
+        assert with_gem["gfs_seamless"] == pytest.approx(baseline["gfs_seamless"]), (
+            f"gem_global's presence changed gfs_seamless's softmax share: "
+            f"{with_gem['gfs_seamless']} vs baseline {baseline['gfs_seamless']}"
+        )
+        # Sanity: icon (perfect) must outweigh gfs (err=2) in the baseline.
+        assert baseline["icon_seamless"] > baseline["gfs_seamless"]

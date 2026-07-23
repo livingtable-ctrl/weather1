@@ -3972,8 +3972,21 @@ def get_model_weights(city: str, window_days: int = 30) -> dict[str, float]:
     if not rows:
         return {}
 
+    # backlog.txt "GENERALIZED PER-MODEL ACCURACY TRACKING" Pass 2: models
+    # tracked for accuracy but deliberately excluded from every live blend
+    # weight computation (currently gem_global/ukmo_global_ensemble_20km)
+    # must not enter the softmax below at all — including them would still
+    # shift every OTHER model's normalized weight via the shared `total`
+    # denominator even though their own weight is never directly consumed by
+    # a blend. Also makes this function's only display consumer (main.py's
+    # "Active model weights" line) honest — showing a weight for a model
+    # that has zero real influence on the forecast would be misleading.
+    from weather_markets import TRACKING_ONLY_MODEL_NAMES as _tracking_only
+
     by_model: dict[str, list[float]] = {}
     for r in rows:
+        if r["model"] in _tracking_only:
+            continue
         by_model.setdefault(r["model"], []).append(
             abs(r["predicted_temp"] - r["actual_temp"])
         )

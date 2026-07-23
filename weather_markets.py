@@ -424,8 +424,27 @@ KNOWN_FORECAST_MODEL_NAMES = frozenset(
         "gfs_seamless",
         "ecmwf_aifs025_ensemble",
         "ecmwf_ifs025",
+        "gem_global",
+        "ukmo_global_ensemble_20km",
     }
 )
+
+# backlog.txt "GENERALIZED PER-MODEL ACCURACY TRACKING" Pass 2: models tracked
+# for accuracy (model_forecast_means / KNOWN_FORECAST_MODEL_NAMES) but
+# deliberately excluded from every live-trading blend weight computation --
+# batch_prewarm_ensemble()'s all_temps accumulation, _weights_from_mae()'s
+# normalization (weather_markets.py), and tracker.get_model_weights()'s
+# softmax. Single source of truth so a future track-only source only needs
+# updating here, not independently in all three call sites (an opus review
+# of this Pass caught that _weights_from_mae()/get_model_weights() summing
+# and normalizing/softmaxing over ALL tracked models -- not just the ones
+# whose own weight gets read out -- meant a track-only model's tracked
+# accuracy still numerically perturbed every OTHER model's normalized
+# weight the moment it crossed the observation floor, even though its own
+# weight value was never directly selected. That's a real leak into live
+# trade decisions the batch_prewarm_ensemble blend-exclusion alone doesn't
+# stop).
+TRACKING_ONLY_MODEL_NAMES = frozenset({"gem_global", "ukmo_global_ensemble_20km"})
 
 
 def _validate_forecast_model_keys(
@@ -1419,10 +1438,14 @@ def batch_prewarm_ensemble(
 ) -> int:
     """Pre-warm _ensemble_cache with batched ENSEMBLE_BASE requests.
 
-    Instead of one request per city per model (30 cities × 3 models × 2 vars = 180
+    Instead of one request per city per model (30 cities × 5 models × 2 vars = 300
     calls), sends ONE request per (model, var) with all city lat/lons comma-separated.
-    Total cost: 6 calls. At 1.5 s/call this cuts ensemble prewarm from ~270 s to
-    ~30 s (rate overhead + HTTP latency).
+    Temperature cost: 10 calls (5 fetch_models × 2 vars — 3 blend_models that feed
+    the live forecast blend, plus 2 tracking_only_models fetched/cached for
+    accuracy tracking only, backlog.txt "GENERALIZED PER-MODEL ACCURACY
+    TRACKING" Pass 2). At 1.5 s/call this cuts ensemble prewarm from a much
+    larger unbatched cost down to the low tens of seconds (rate overhead + HTTP
+    latency).
 
     Returns the number of _ensemble_cache entries written.
     """
@@ -1447,18 +1470,34 @@ def batch_prewarm_ensemble(
     lats = [c[1][0] for c in coords_list]
     lons = [c[1][1] for c in coords_list]
 
-    ensemble_models = [*ENSEMBLE_MODELS, "ecmwf_aifs025_ensemble"]
+    blend_models = [*ENSEMBLE_MODELS, "ecmwf_aifs025_ensemble"]
+    # backlog.txt "GENERALIZED PER-MODEL ACCURACY TRACKING" Pass 2:
+    # TRACKING_ONLY_MODEL_NAMES models are fetched and cached here too (so
+    # _get_gem_ukmo_means hits warm cache like every other tracked model,
+    # instead of paying an unbatched per-market live call for every city on
+    # every scan) but deliberately excluded from blend_models — neither
+    # _model_weights() nor _forecast_model_weights() has a baseline entry for
+    # them, so folding their members into all_temps below would give them a
+    # silent, uncalibrated 1.0 weight in the live trading blend with zero
+    # tracked accuracy behind it. Track-only until real accuracy data
+    # justifies picking a starting weight and wiring them into both weight
+    # functions as a deliberate, separate step. Sourced from the shared
+    # TRACKING_ONLY_MODEL_NAMES constant (not a second hardcoded list) so
+    # this stays in sync with _weights_from_mae()'s/get_model_weights()'s
+    # own exclusion of the same models from weight normalization.
+    tracking_only_models = sorted(TRACKING_ONLY_MODEL_NAMES)
+    fetch_models = [*blend_models, *tracking_only_models]
     vars_to_fetch = [("max", "temperature_2m_max"), ("min", "temperature_2m_min")]
-    total_calls = len(ensemble_models) * len(vars_to_fetch)
+    total_calls = len(fetch_models) * len(vars_to_fetch)
     call_num = 0
 
     # raw_members[(city, date_iso, var_str)] accumulates members across models
     # before weighting; keyed by model for per-model weight application.
     raw_by_model: dict[str, dict[tuple[str, str, str], list[float]]] = {
-        m: {} for m in ensemble_models
+        m: {} for m in fetch_models
     }
 
-    for model in ensemble_models:
+    for model in fetch_models:
         if _ensemble_cb.is_open():
             break
         for var_str, daily_key in vars_to_fetch:
@@ -1562,21 +1601,26 @@ def batch_prewarm_ensemble(
                 # cycle.
                 all_temps: list[float] = []
                 _cycle_ttl = _ttl_until_next_cycle()
-                for model in ensemble_models:
+                for model in fetch_models:
                     member_temps = raw_by_model[model].get(
                         (city_name, date_iso, var_str), []
                     )
+                    if not member_temps:
+                        continue
+                    # H-14: write per-model entry for _get_consensus_probs /
+                    # _get_gem_ukmo_means — for every fetched model, blend or
+                    # tracking-only, so both consumers hit warm cache.
+                    _model_key = (model, city_name, date_iso, var_str, None)
+                    _ensemble_cache.set_with_ttl(_model_key, member_temps, _cycle_ttl)
+                    _save_ensemble_disk_entry(_model_key, member_temps, _cycle_ttl)
+                    if model not in blend_models:
+                        # Tracking-only: cached above for accuracy scoring,
+                        # must NOT enter the live trading blend below.
+                        continue
                     base_w = weights.get(model, 1.0)
                     w = 1.0 + (base_w - 1.0) * 1.0  # decay=1.0 for fresh data
                     repeats = max(1, round(w * 2))
                     all_temps.extend(member_temps * repeats)
-                    # H-14: write per-model entry for _get_consensus_probs
-                    if member_temps:
-                        _model_key = (model, city_name, date_iso, var_str, None)
-                        _ensemble_cache.set_with_ttl(
-                            _model_key, member_temps, _cycle_ttl
-                        )
-                        _save_ensemble_disk_entry(_model_key, member_temps, _cycle_ttl)
                 if all_temps:
                     _ensemble_cache.set_with_ttl(cache_key, all_temps, _cycle_ttl)
                     _save_ensemble_disk_entry(cache_key, all_temps, _cycle_ttl)
@@ -2835,6 +2879,14 @@ def _weights_from_mae(
 
     weights: dict[str, float] = {}
     for model, stats in acc.items():
+        if model in TRACKING_ONLY_MODEL_NAMES:
+            # backlog.txt "GENERALIZED PER-MODEL ACCURACY TRACKING" Pass 2:
+            # a track-only model's tracked accuracy must not perturb any
+            # OTHER model's normalized weight via the total/n_models
+            # denominator below — skip it entirely, not just from being
+            # directly selected downstream (that alone doesn't stop the
+            # leak; see TRACKING_ONLY_MODEL_NAMES's own docstring).
+            continue
         city_bd = stats.get("city_breakdown", {})
         city_n_bd = stats.get("city_n_breakdown", {})
         # R25: use per-city observation count (not number of distinct cities) to
@@ -5501,6 +5553,105 @@ _CONSENSUS_MISS_TTL = 120
 _CONSENSUS_CACHE: ForecastCache[tuple] = ForecastCache(ttl_secs=_CONSENSUS_CACHE_TTL)
 
 
+def _model_prob_and_mean(
+    model_name: str,
+    city: str,
+    target_date,
+    condition: dict,
+    hour: int | None = None,
+    var: str = "max",
+) -> tuple[float | None, float | None]:
+    """Return (prob, mean_temp) for model_name via ENSEMBLE_BASE. Either may be None.
+
+    Module-level rather than a _get_consensus_probs closure (it was extracted
+    from there, same body) so backlog.txt "GENERALIZED PER-MODEL ACCURACY
+    TRACKING" Pass 2's _get_gem_ukmo_means can reuse the identical cache/
+    circuit-breaker/fetch logic for gem_global/ukmo_global_ensemble_20km
+    without duplicating it. _get_consensus_probs's own signature/return shape
+    is unchanged by this extraction.
+    """
+    try:
+        coords = CITY_COORDS.get(city)
+        if not coords:
+            return None, None
+        lat, lon = coords[0], coords[1]
+        tz = coords[2] if len(coords) > 2 else "UTC"
+        var_field = f"temperature_2m_{'max' if var == 'max' else 'min'}"
+        cache_key = (model_name, city, target_date.isoformat(), var, hour)
+        temps = _ensemble_cache.get(cache_key)
+
+        if temps is None:
+            if _ensemble_cb.is_open():
+                _log.debug(
+                    "[CircuitBreaker] open_meteo circuit open — skipping ensemble fetch"
+                )
+                return None, None
+            params = {
+                "latitude": lat,
+                "longitude": lon,
+                "timezone": tz,
+                "daily": [var_field],
+                "temperature_unit": "fahrenheit",
+                "models": model_name,
+                "start_date": target_date.isoformat(),
+                "end_date": target_date.isoformat(),
+            }
+            try:
+                resp = _om_request(
+                    "GET", ENSEMBLE_BASE, params=params, timeout=12
+                )  # was 20 — Retry(1)×20=40s/call; 12 caps at 24.5s
+                if not resp:
+                    return None, None
+                resp.raise_for_status()
+                data = resp.json()
+                daily = data.get("daily", {})
+                raw_member_values = [
+                    v[0] for k, v in daily.items() if k.startswith(var_field) and v
+                ]
+                if is_all_null(raw_member_values):
+                    raise ValueError(
+                        f"model {model_name} returned all-null ensemble members (dead model?)"
+                    )
+                _ensemble_cb.record_success()
+            except Exception as _exc:
+                _ensemble_cb.record_failure()
+                _log.info(
+                    "open_meteo_ensemble: failure #%d (consensus) — %s: %s",
+                    _ensemble_cb.failure_count,
+                    type(_exc).__name__,
+                    _exc,
+                )
+                return None, None
+            members = [
+                float(v[0])
+                for k, v in daily.items()
+                if k.startswith(var_field) and v and v[0] is not None
+            ]
+            temps = members
+            # L5-A: align TTL to next NWS model cycle
+            _consensus_cycle_ttl = _ttl_until_next_cycle()
+            _ensemble_cache.set_with_ttl(cache_key, temps, _consensus_cycle_ttl)
+            _save_ensemble_disk_entry(cache_key, temps, _consensus_cycle_ttl)
+
+        if len(temps) < 5:
+            return None, None
+
+        mean_temp = round(sum(temps) / len(temps), 2)
+        thresh = _prob_threshold(condition)
+        ctype = condition.get("type", "")
+        if ctype == "above" and thresh is not None:
+            return sum(1 for t in temps if t > thresh) / len(temps), mean_temp
+        elif ctype == "below" and thresh is not None:
+            return sum(1 for t in temps if t < thresh) / len(temps), mean_temp
+        elif ctype in ("between", "range"):
+            lo = condition.get("lower", 0)
+            hi = condition.get("upper", 999)
+            return sum(1 for t in temps if lo <= t <= hi) / len(temps), mean_temp
+        return None, mean_temp
+    except Exception:
+        return None, None
+
+
 def _get_consensus_probs(
     city: str,
     target_date,
@@ -5537,92 +5688,15 @@ def _get_consensus_probs(
     if _cached is not None:
         return _cached
 
-    def _model_prob_and_mean(model_name: str) -> tuple[float | None, float | None]:
-        """Return (prob, mean_temp) for model_name. Either may be None."""
-        try:
-            coords = CITY_COORDS.get(city)
-            if not coords:
-                return None, None
-            lat, lon = coords[0], coords[1]
-            tz = coords[2] if len(coords) > 2 else "UTC"
-            var_field = f"temperature_2m_{'max' if var == 'max' else 'min'}"
-            cache_key = (model_name, city, target_date.isoformat(), var, hour)
-            temps = _ensemble_cache.get(cache_key)
-
-            if temps is None:
-                if _ensemble_cb.is_open():
-                    _log.debug(
-                        "[CircuitBreaker] open_meteo circuit open — skipping ensemble fetch"
-                    )
-                    return None, None
-                params = {
-                    "latitude": lat,
-                    "longitude": lon,
-                    "timezone": tz,
-                    "daily": [var_field],
-                    "temperature_unit": "fahrenheit",
-                    "models": model_name,
-                    "start_date": target_date.isoformat(),
-                    "end_date": target_date.isoformat(),
-                }
-                try:
-                    resp = _om_request(
-                        "GET", ENSEMBLE_BASE, params=params, timeout=12
-                    )  # was 20 — Retry(1)×20=40s/call; 12 caps at 24.5s
-                    if not resp:
-                        return None, None
-                    resp.raise_for_status()
-                    data = resp.json()
-                    daily = data.get("daily", {})
-                    raw_member_values = [
-                        v[0] for k, v in daily.items() if k.startswith(var_field) and v
-                    ]
-                    if is_all_null(raw_member_values):
-                        raise ValueError(
-                            f"model {model_name} returned all-null ensemble members (dead model?)"
-                        )
-                    _ensemble_cb.record_success()
-                except Exception as _exc:
-                    _ensemble_cb.record_failure()
-                    _log.info(
-                        "open_meteo_ensemble: failure #%d (consensus) — %s: %s",
-                        _ensemble_cb.failure_count,
-                        type(_exc).__name__,
-                        _exc,
-                    )
-                    return None, None
-                members = [
-                    float(v[0])
-                    for k, v in daily.items()
-                    if k.startswith(var_field) and v and v[0] is not None
-                ]
-                temps = members
-                # L5-A: align TTL to next NWS model cycle
-                _consensus_cycle_ttl = _ttl_until_next_cycle()
-                _ensemble_cache.set_with_ttl(cache_key, temps, _consensus_cycle_ttl)
-                _save_ensemble_disk_entry(cache_key, temps, _consensus_cycle_ttl)
-
-            if len(temps) < 5:
-                return None, None
-
-            mean_temp = round(sum(temps) / len(temps), 2)
-            thresh = _prob_threshold(condition)
-            ctype = condition.get("type", "")
-            if ctype == "above" and thresh is not None:
-                return sum(1 for t in temps if t > thresh) / len(temps), mean_temp
-            elif ctype == "below" and thresh is not None:
-                return sum(1 for t in temps if t < thresh) / len(temps), mean_temp
-            elif ctype in ("between", "range"):
-                lo = condition.get("lower", 0)
-                hi = condition.get("upper", 999)
-                return sum(1 for t in temps if lo <= t <= hi) / len(temps), mean_temp
-            return None, mean_temp
-        except Exception:
-            return None, None
-
-    icon_prob, icon_mean = _model_prob_and_mean("icon_seamless")
-    gfs_prob, gfs_mean = _model_prob_and_mean("gfs_seamless")
-    _, ecmwf_mean = _model_prob_and_mean("ecmwf_aifs025_ensemble")
+    icon_prob, icon_mean = _model_prob_and_mean(
+        "icon_seamless", city, target_date, condition, hour, var
+    )
+    gfs_prob, gfs_mean = _model_prob_and_mean(
+        "gfs_seamless", city, target_date, condition, hour, var
+    )
+    _, ecmwf_mean = _model_prob_and_mean(
+        "ecmwf_aifs025_ensemble", city, target_date, condition, hour, var
+    )
     _cons_result = (icon_prob, gfs_prob, icon_mean, gfs_mean, ecmwf_mean)
     _cons_ttl = (
         _CONSENSUS_CACHE_TTL
@@ -5631,6 +5705,39 @@ def _get_consensus_probs(
     )
     _CONSENSUS_CACHE.set_with_ttl(_cons_key, _cons_result, _cons_ttl)
     return _cons_result
+
+
+def _get_gem_ukmo_means(
+    city: str,
+    target_date,
+    condition: dict,
+    hour: int | None = None,
+    var: str = "max",
+) -> tuple[float | None, float | None]:
+    """Return (gem_mean, ukmo_mean) via the same ENSEMBLE_BASE/_model_prob_and_mean
+    infra as _get_consensus_probs's icon/gfs/ecmwf fetches.
+
+    Kept as a separate function rather than folded into _get_consensus_probs's
+    fixed 5-tuple — that shape is depended on by ~20 existing call sites across
+    the test suite that mock/unpack it positionally; adding two more elements
+    there would force updating all of them for no behavioral gain.
+
+    backlog.txt "GENERALIZED PER-MODEL ACCURACY TRACKING" Pass 2: track-only
+    for now. Neither mean feeds model_consensus or the forecast_temp blend —
+    only model_forecast_means, for accuracy tracking. Deliberately NOT wired
+    into _model_weights()/_forecast_model_weights() (both hardcoded to a fixed
+    3-key baseline dict with no generic pass-through) — that's a separate,
+    later step once real tracked accuracy justifies picking a starting weight.
+    ukmo_mean legitimately goes None past UKMO's real ~9-10-day horizon (that
+    day's fetch fails _model_prob_and_mean's own <5-member floor) — not a bug.
+    """
+    _, gem_mean = _model_prob_and_mean(
+        "gem_global", city, target_date, condition, hour, var
+    )
+    _, ukmo_mean = _model_prob_and_mean(
+        "ukmo_global_ensemble_20km", city, target_date, condition, hour, var
+    )
+    return gem_mean, ukmo_mean
 
 
 def kelly_fraction(
@@ -7503,6 +7610,13 @@ def analyze_trade(
         # different endpoint-call shape), so it's a faithful value to log for
         # MAE-based weight learning, not just a rough proxy.
         ecmwf_ifs_forecast_mean: float | None = model_temps.get("ecmwf")
+        # gem_forecast_mean/ukmo_forecast_mean (backlog.txt "GENERALIZED
+        # PER-MODEL ACCURACY TRACKING" Pass 2): track-only, see
+        # _get_gem_ukmo_means's docstring for why they're fetched separately
+        # from _get_consensus_probs and don't participate in model_consensus
+        # or the forecast_temp blend.
+        gem_forecast_mean: float | None = None
+        ukmo_forecast_mean: float | None = None
         if ens_prob is not None and len(temps) >= 2:
             try:
                 (
@@ -7523,22 +7637,36 @@ def analyze_trade(
                     enriched.get("ticker", "?"),
                     _e,
                 )
+            try:
+                gem_forecast_mean, ukmo_forecast_mean = _get_gem_ukmo_means(
+                    city, target_date, condition, hour=hour, var=var
+                )
+            except Exception as _e:
+                _log.warning(
+                    "analyze_trade: _get_gem_ukmo_means failed for %s — leaving both means None: %s",
+                    enriched.get("ticker", "?"),
+                    _e,
+                )
 
         # backlog.txt "GENERALIZED PER-MODEL ACCURACY TRACKING": generic
         # model->forecast_mean mapping (2026-07-23), replacing 4 hardcoded
         # per-model result-dict fields — paper._score_ensemble_members() now
         # iterates this dict's keys directly instead of listing each model by
-        # name, so a future new source (GEM, UKMO, ...) needs one line here
-        # and zero changes to place_paper_order()'s signature or the trade
-        # schema. Keys are real model-name strings (the same ones
-        # tracker.ensemble_member_scores.model stores), validated against
-        # KNOWN_FORECAST_MODEL_NAMES to fail loudly on a typo rather than
-        # silently creating a permanently-thin new "model" in tracker data.
+        # name, so a future new source needs one line here and zero changes
+        # to place_paper_order()'s signature or the trade schema. gem_global/
+        # ukmo_global_ensemble_20km added here Pass 2 (2026-07-23) as the
+        # mechanism's first real new-source consumers. Keys are real
+        # model-name strings (the same ones tracker.ensemble_member_scores.model
+        # stores), validated against KNOWN_FORECAST_MODEL_NAMES to fail loudly
+        # on a typo rather than silently creating a permanently-thin new
+        # "model" in tracker data.
         model_forecast_means: dict[str, float | None] = {
             "icon_seamless": icon_forecast_mean,
             "gfs_seamless": gfs_forecast_mean,
             "ecmwf_aifs025_ensemble": ecmwf_aifs_forecast_mean,
             "ecmwf_ifs025": ecmwf_ifs_forecast_mean,
+            "gem_global": gem_forecast_mean,
+            "ukmo_global_ensemble_20km": ukmo_forecast_mean,
         }
         _validate_forecast_model_keys(model_forecast_means)
 

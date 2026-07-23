@@ -228,6 +228,27 @@ def isolate_dynamic_sigma(tmp_path, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def default_gem_ukmo_means_none(monkeypatch):
+    """Default weather_markets._get_gem_ukmo_means to (None, None) for every test.
+
+    backlog.txt "GENERALIZED PER-MODEL ACCURACY TRACKING" Pass 2: analyze_trade
+    now calls this (gem_global/ukmo_global_ensemble_20km, track-only) under the
+    same ens_prob/temps gate as _get_consensus_probs. Without this default,
+    every existing analyze_trade test that reaches that gate (which mocking
+    _get_consensus_probs already implies, since that mock only matters once
+    ens_prob/temps are populated) would fire a REAL network call to Open-Meteo
+    for gem/ukmo instead of hitting a mock. Tests that want to exercise the
+    real implementation restore it via a pre-patch module reference (same
+    opt-in pattern as isolate_dynamic_sigma / _REAL_LOAD_DYNAMIC_SIGMA above).
+    """
+    import weather_markets
+
+    monkeypatch.setattr(
+        weather_markets, "_get_gem_ukmo_means", lambda *a, **kw: (None, None)
+    )
+
+
+@pytest.fixture(autouse=True)
 def isolate_execution_log(tmp_path, monkeypatch):
     """Redirect execution_log.DB_PATH to a per-test temp file.
 

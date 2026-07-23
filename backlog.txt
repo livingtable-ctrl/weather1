@@ -82,6 +82,89 @@ When to revisit:
     or a habit of always pointing ad-hoc investigative scripts at a copied
     DB) before a third occurrence.
 
+[DISPUTED-ROW GUARD (test_disputed_row_guard.py) IS SCOPED TO tracker.py ONLY -- 9 REAL SCORING/CALIBRATION CONSUMERS IN 5 OTHER FILES ARE UNGUARDED]
+Priority: Medium -- no live impact found today (the one contaminated case
+  that reached these paths, PROB*/BAD*, happened to be excluded by an
+  accidental NULL market_date, not by any real protection), but a more
+  careful future contamination would sail straight through every one of
+  these 9 sites even after being marked disputed. Same "one shared rule,
+  many consumers, one gets missed" shape this project has hit 7+ times
+  (see backlog's own DISPUTED-ROW EXCLUSION PREDICATE entry, and
+  [[feedback_trace_all_call_sites]]).
+
+Problem:
+  Found while answering a direct question about whether `py main.py
+  validate` (routes to `cmd_walkforward` -> `backtest.run_walk_forward()`)
+  includes shadow predictions. It does (no `is_shadow` filter exists), but
+  checking that surfaced a bigger issue: `run_walk_forward()` opens its own
+  raw `sqlite3.connect()` and joins the raw `outcomes` table
+  (`backtest.py:703`), not `outcomes_valid` -- completely bypassing the
+  disputed-row exclusion mechanism from the 2026-07-23 Brier-contamination
+  fix (see that entry above). Confirmed directly: all 36 disputed
+  `PROB*`/`BAD*` rows are still visible to this exact query; they only fail
+  to appear in `validate`'s actual output today because their
+  `market_date` happens to be NULL (a SQLite `NULL >= ?` comparison is
+  false), which is a coincidence of how that specific fabrication was
+  built, not real protection. The P10.3 alert's own first suggested
+  recovery step is "Run: py main.py validate" -- so the bot's self-
+  recommended remediation path isn't guarded by the mechanism built
+  specifically to keep corrupted ground truth out of scoring.
+  A full repo-wide grep for `(FROM|JOIN) outcomes` (not `outcomes_valid`)
+  found the gap is much wider than just this one function:
+  `test_disputed_row_guard.py` (built 2026-07-18) hardcodes
+  `_TRACKER_PY = _REPO_ROOT / "tracker.py"` -- it only ever scans that one
+  file. Nine more real, unguarded scoring/calibration sites exist outside
+  it:
+    - backtest.py:703 -- run_walk_forward() (the `validate` command)
+    - calibration.py:142, 311 -- two calibration-training queries
+    - ml_bias.py:173, 598, 619, 633 -- four EMOS/temperature-scaling
+      training queries (condition-type, same-day, and hourly pools)
+    - main.py:5105 -- a CLI calibration-display query
+    - main.py:5318 -- train_platt_per_city's training query
+    - web_app.py:3139 -- _calibration_curve, the dashboard's calibration
+      chart
+  One more raw hit, paper.py:1171 (`SELECT settled_temp_f FROM outcomes
+  WHERE ticker = ?`), is a real position-settlement lookup -- same
+  legitimate shape as tracker.py's own allowlisted get_outcome_for_ticker
+  (a position resolves on the actual current settlement regardless of
+  dispute status) -- not a scoring consumer, correctly raw, just needs a
+  documented allowlist entry rather than a fix.
+
+What it would look like:
+  1. Fix the 9 real sites to join `outcomes_valid` instead of raw
+     `outcomes` -- mechanical, same pattern as the original 2026-07-18
+     31-site tracker.py migration. Each of these files already imports or
+     can trivially import tracker's connection helper / the view is
+     already defined in the same DB `init_db()` creates, so no new schema
+     work, just changing the JOIN target and re-verifying each function's
+     other WHERE conditions still make sense against the view (same
+     shape/columns as the raw table, `SELECT *`).
+  2. Widen `test_disputed_row_guard.py` from a single hardcoded
+     `_TRACKER_PY` path to scanning every production `.py` file in the
+     repo (excluding `tests/`, which have their own legitimate reasons to
+     touch raw tables via fixtures) -- this is the actual root-cause fix:
+     it makes sure a *future* new raw-outcomes query anywhere in the
+     codebase gets caught automatically by CI, instead of requiring
+     another manual repo-wide grep like the one that found this.
+  3. Add paper.py's settled_temp_f lookup to the (now repo-wide) allowlist
+     with its documented reason, matching get_outcome_for_ticker's
+     existing entry.
+  4. Mutation-test the widened guard (temporarily add a fake new
+     unallowlisted raw-outcomes query in a non-tracker.py file, confirm
+     the guard fails, revert) -- same methodology the original guard used
+     on itself.
+
+Why not now:
+  - Sized as its own pass (9 fix sites across 5 files plus a guard
+    rewrite plus mutation tests), not a one-line addition -- user asked
+    to file it and confirm the approach before touching code rather than
+    implementing inline while answering the original validate/shadow-
+    predictions question.
+
+When to revisit:
+  - Next available session slot; no external gate (not blocked on Belgium
+    return, VM move, or a data floor) -- purely a matter of scheduling.
+
 [CLOSED 2026-07-12 -- see below] KALSHI ORDER-WRITE ENDPOINTS MOVING TO /portfolio/events/orders
 Priority: was High -- verify before resuming live trading (~2026-07-30 return), not a
   someday item. Found 2026-07-10 via Kalshi's own API changelog; refined
@@ -3153,7 +3236,7 @@ When to revisit:
   - Ship the logging side early (same "data accumulates only from when it
     ships" logic as candlesticks); retrain when enough enriched rows exist.
 
-[PARTIALLY RESOLVED 2026-07-23 -- generic mapping shipped (Pass 1); GEM+UKMO wiring is a separate follow-up (Pass 2)] GENERALIZED PER-MODEL ACCURACY TRACKING + NEW AI MODEL SOURCES
+[RESOLVED 2026-07-23 -- Pass 1 (generic mapping) and Pass 2 (GEM/UKMO wiring) both shipped] GENERALIZED PER-MODEL ACCURACY TRACKING + NEW AI MODEL SOURCES
 Priority: Medium (supersedes-and-extends [TRACK ECMWF FORECAST ACCURACY]
   above — read that entry first)
 
@@ -3270,7 +3353,185 @@ RESOLVED 2026-07-23 (Pass 1 -- the generic mapping itself; new sources not
   Pass 2 (wire up GEM+UKMO as the new mechanism's first real consumers) is
   intentionally NOT part of this resolution -- separate task, not started.
 
-Original problem (Pass 1 resolved; Pass 2/new-sources still open):
+RESOLVED 2026-07-23 (Pass 2 -- GEM/UKMO wired up as the mechanism's first
+  real new-source consumers, same session as Pass 1):
+  Re-verified GEM/UKMO's live facts fresh before trusting Pass 1's own notes
+  (per the standing "re-verify claims live" step): gem_global still 200/real
+  (20 members this check, vs 21 in Pass 1 -- normal member-count variance by
+  city/date, not a regression) with full 16-day horizon; ukmo_global_
+  ensemble_20km still 200/real (17 members vs 18, 10 of 16 days non-null vs
+  ~9 -- same variance, confirms the "real, shorter horizon" finding rather
+  than contradicting it); gem_seamless/ukmo_seamless both still dead
+  (HTTP 200, all-null). Confirmed live, not just via mocked unit tests, with
+  an end-to-end script exercising the real new code paths against Open-Meteo
+  post-implementation: NYC 3-day-out gem_mean=79.85/ukmo_mean=81.63 via
+  _get_gem_ukmo_means, batch_prewarm_ensemble wrote real per-model cache
+  entries for both (20 and 17 members respectively, means 79.79/81.54 --
+  consistent with the direct fetch), and the live blended cache entry's
+  range (69.0-89.9F) showed no trace of gem/ukmo's values leaking in.
+  Research (step 2) surfaced a structural fact this entry's own "What the
+  fix looks like" text got wrong: "each self-calibrates via the existing
+  learned-weight machinery" is false today. TWO separate hardcoded-baseline
+  weight functions gate the live blend -- _model_weights() (ensemble path,
+  used by batch_prewarm_ensemble) AND _forecast_model_weights() (the
+  separate daily point-forecast path used by get_weather_forecast()) --
+  and BOTH iterate a fixed 3-key baseline dict (`for model, default in
+  baseline.items()`), meaning neither can ever apply a learned weight to a
+  model outside that dict no matter how much tracked accuracy exists for
+  it. Surfaced this as a real AskUserQuestion design decision (asked twice;
+  first pass answered "review these options and ask again," triggering a
+  from-source re-derivation per [[feedback_reverify_on_pushback]] that
+  found the second, previously-missed weight function): should GEM/UKMO
+  (a) join the live blend now at a default/uncalibrated weight, (b) be
+  fetched live per-market without batch caching, or (c) be tracked-only
+  with batched cache-warming decoupled from blend membership. User picked
+  (c) (Recommended), matching this file's own established "log first, wire
+  into the blend only once proven" pattern used everywhere else (see the
+  ENABLEMENT TRIGGER note above RICHER ML CALIBRATION FEATURES).
+  Shipped:
+  - Extracted _model_prob_and_mean() out of _get_consensus_probs() to
+    module level (parameterized on city/target_date/condition/hour/var
+    instead of closing over them) so a second caller could reuse the exact
+    same cache/circuit-breaker/fetch logic without duplicating it.
+    _get_consensus_probs()'s own signature and 5-tuple return shape are
+    byte-for-byte unchanged by this refactor -- deliberately, since ~20
+    existing test call sites across 9 files mock/unpack that exact shape
+    positionally; extending it to 7 elements would have forced touching
+    all of them for no behavioral gain.
+  - Added _get_gem_ukmo_means(city, target_date, condition, hour, var) ->
+    (gem_mean, ukmo_mean) as a new, separate function built on the
+    extracted helper. Called from analyze_trade() under the same
+    `ens_prob is not None and len(temps) >= 2` gate as
+    _get_consensus_probs(), in its own try/except (a gem/ukmo fetch
+    failure must not suppress icon/gfs/ecmwf's already-fetched means, and
+    vice versa -- verified via a dedicated exception-injection test).
+    Both means added to model_forecast_means under their real model-name
+    keys ("gem_global", "ukmo_global_ensemble_20km"), which
+    _score_ensemble_members() already consumed generically as of Pass 1 --
+    zero changes needed there, confirming Pass 1's own design promise.
+  - Added both names to KNOWN_FORECAST_MODEL_NAMES.
+  - batch_prewarm_ensemble(): split the single `ensemble_models` list into
+    `blend_models` (unchanged: icon_seamless/gfs_seamless/
+    ecmwf_aifs025_ensemble -- these fold into `all_temps`, the live
+    trading blend) and `tracking_only_models` (gem_global/
+    ukmo_global_ensemble_20km). Both groups are fetched together
+    (`fetch_models`, still one batched request per model/var covering all
+    cities) and both get their per-model H-14 cache entry written (so
+    _get_gem_ukmo_means hits warm cache like every other tracked model,
+    avoiding an unbatched live call per city per scan) -- but only
+    blend_models' members are extended into `all_temps`. This is the load-
+    bearing line the whole design decision rests on; mutation-tested by
+    temporarily disabling the `if model not in blend_models: continue`
+    guard and confirming the blend test fails with gem/ukmo's (deliberately
+    absurd-valued, e.g. 200-204F) fixture members bleeding into the blend,
+    then restoring and confirming it passes again.
+  - cron.py's `_ens_models` (a display-only list for a progress log line,
+    already a hand-maintained approximation per its own comment -- not
+    wired to any real fetch call) updated from a stale 3-model guess to
+    the real 5-model fetch_models list, and its "6 calls" comment corrected
+    to 10, so the console output stays roughly honest about what the batch
+    prewarm is actually doing now.
+  Every existing analyze_trade test that mocks _get_consensus_probs (and
+  therefore has ens_prob/temps populated, satisfying the gate) would have
+  started firing a REAL network call to Open-Meteo for gem/ukmo the moment
+  this landed, since none of those ~20 call sites across 9 files mock the
+  new _get_gem_ukmo_means. Caught this before it became a live-test-suite
+  regression (not after a flaky-CI report) by tracing the gate rather than
+  assuming per-test isolation. Fixed with a new conftest.py autouse fixture
+  (default_gem_ukmo_means_none, mirroring the existing isolate_dynamic_sigma
+  / _load_dynamic_sigma precedent exactly) that stubs
+  weather_markets._get_gem_ukmo_means to (None, None) for every test by
+  default; tests that need the real fetch behavior restore it via a
+  module-import-time-captured reference (_REAL_GET_GEM_UKMO_MEANS in
+  test_weather_markets.py), same opt-in pattern as
+  test_gaussian_prob.py's _REAL_LOAD_DYNAMIC_SIGMA.
+  New tests: _get_gem_ukmo_means fetch/mean correctness (hand-computed,
+  distinct-per-model values) and its <5-member floor (also exercises
+  UKMO's real shorter horizon scenario); analyze_trade surfaces both new
+  keys in model_forecast_means (mutation-tested: hardcoding gem_global to
+  None makes the test fail); a gem/ukmo-fetch-exception-tolerance test
+  (icon/gfs/ecmwf's own means must survive untouched); KNOWN_FORECAST_
+  MODEL_NAMES accepts the 2 new names; and the batch_prewarm_ensemble
+  blend-exclusion test described above. 211 tests pass in
+  test_weather_markets.py (202 before this pass); a widened regression
+  sweep across every test file touching weather_markets/batch_prewarm/
+  analyze_trade/ensemble/paper (2000+ tests across ~85 files) all pass;
+  ruff+mypy clean. Also live-smoke-tested end-to-end against the real
+  Open-Meteo API post-implementation (see re-verification note above) --
+  not just the mocked unit tests.
+  Independent Agent(opus, effort=high) review before push found one real
+  finding (re-verified from source before accepting, not just restated):
+  the direct blend-list exclusion (batch_prewarm_ensemble's `if model not
+  in blend_models: continue`) is correct and could not be broken, but a
+  SECOND, indirect channel let gem/ukmo perturb live trade decisions
+  anyway. Once gem/ukmo's tracked accuracy is scored into
+  ensemble_member_scores (which Pass 1's generic _score_ensemble_members
+  already does automatically for any key in model_forecast_means -- exactly
+  as designed, not a bug in that path), TWO weight functions that DO feed
+  live blends sum/softmax over EVERY tracked model, not just the ones whose
+  own weight gets read out: _weights_from_mae() (weather_markets.py, feeds
+  _model_weights(), the ensemble path) normalises `v/total*n_models` over
+  all models in tracker's get_member_accuracy() with no whitelist, and
+  tracker.get_model_weights() (feeds _forecast_model_weights(), the daily
+  point-forecast path) softmaxes over every model with >=10 observations,
+  again no whitelist. Baseline-key selection downstream (`for m in
+  baseline`) correctly stops gem/ukmo's OWN weight from ever being read --
+  but does nothing to stop their MAE from shifting the shared denominator,
+  which rescales icon/gfs/ecmwf's own normalized weights the moment gem or
+  ukmo crosses the observation floor (10-20 obs, roughly 2-3 weeks of
+  paper trading). This directly contradicts the user-confirmed design goal
+  ("track-only... must NOT participate in the live trading probability
+  blend") and would have gone live silently once enough gem/ukmo data
+  accumulated.
+  Fixed: added TRACKING_ONLY_MODEL_NAMES (weather_markets.py, next to
+  KNOWN_FORECAST_MODEL_NAMES) as the single source of truth for which
+  tracked models are blend-excluded, currently {gem_global,
+  ukmo_global_ensemble_20km}. batch_prewarm_ensemble's tracking_only_models
+  list now derives from it (sorted()) instead of being a 3rd independent
+  hardcoded copy of the same 2 strings -- the exact "one shared rule, many
+  consumers, one gets missed" shape this file's own DISPUTED-ROW GUARD
+  entry warns about, caught before it recurred a 3rd time here.
+  _weights_from_mae() now skips any TRACKING_ONLY_MODEL_NAMES model before
+  it ever enters the weights-being-normalised dict (fixes both
+  _model_weights()'s live tier-1 path AND the persisted
+  data/learned_weights.json file update_learned_weights_from_tracker()
+  writes from the same function, which feeds both blend functions' tier-2
+  fallback). tracker.get_model_weights() now excludes the same set before
+  its softmax -- deliberately unconditional (no opt-out parameter), which
+  also fixes a second, independent problem: main.py's only other consumer
+  of get_model_weights() ("Active model weights" CLI display) was about to
+  start showing a nonzero-looking percentage for a model with zero actual
+  influence on the forecast, which would have been misleading regardless of
+  the live-blend question.
+  New tests (hand-computed, mutation-tested): both fixes verified by
+  computing the SAME baseline models' normalized weights with and without a
+  well-observed, deliberately-mispriced tracking-only model present in the
+  input data, asserting the baseline models' numbers are byte-for-byte
+  identical either way (not just that gem/ukmo's own key is absent from the
+  result, which the pre-fix code already satisfied and would have made a
+  weaker test pass vacuously). Reverting either `continue` guard was
+  confirmed to make its test fail with a concrete, visible number (e.g.
+  icon_seamless's softmax share collapsing from a higher baseline down to
+  tied with gem_global), then restored.
+  Caught and immediately fixed a real self-inflicted mistake made while
+  live-verifying this fix outside the test suite: a throwaway
+  verification script imported `main`/`tracker` directly (not through
+  pytest, so none of conftest.py's DB-isolation fixtures applied) and wrote
+  20 synthetic ensemble_member_scores rows straight into the real
+  data/tracker.db. Caught immediately (before this write-up), deleted by
+  exact row id, verified 0 remaining -- same incident shape as the
+  2026-07-19 PROB*/BAD* synthetic-row contamination this file already
+  documents elsewhere, avoided reaching the same severity only because it
+  was caught within the same session rather than surviving to contaminate
+  a live Brier alert.
+  Re-ran the full widened regression sweep after these fixes: 655 tests
+  across weather_markets/tracker/paper, plus 2000+ across every other test
+  file touching weather_markets/batch_prewarm/analyze_trade/ensemble/paper
+  (three parallel batches, 595 + 348 + 457) -- all pass. ruff+mypy clean on
+  every touched file (weather_markets.py, tracker.py, cron.py,
+  tests/conftest.py, tests/test_weather_markets.py, tests/test_tracker.py).
+
+Original problem (Pass 1 and Pass 2 both resolved):
   The existing entry covers instrumenting ECMWF specifically. The general
   version: per-model accuracy is stored as one hardcoded column per model
   (icon_forecast_mean/gfs_forecast_mean), so every new source requires the
@@ -3298,8 +3559,8 @@ Why not now:
     above, is still open/unresolved — the "when picking up ECMWF" trigger
     hasn't fired.
 
-When to revisit (Pass 2 -- wiring up real new sources onto the now-generic
-  mechanism):
+When to revisit (Pass 2 plan, kept for history -- SUPERSEDED, see the
+  RESOLVED 2026-07-23 Pass 2 section above for what actually shipped):
   - GEM: use model="gem_global" (NOT "gem_seamless", confirmed dead/null),
     same _model_prob_and_mean/ENSEMBLE_BASE infra as icon/gfs/
     ecmwf_aifs025_ensemble. Full 16-day horizon.
@@ -3309,13 +3570,26 @@ When to revisit (Pass 2 -- wiring up real new sources onto the now-generic
     assuming full 16-day coverage like GEM.
   - Add both to batch_prewarm_ensemble()'s model list (mirrors how
     ecmwf_aifs025_ensemble was already added there) so real scans hit warm
-    cache instead of a new per-call fetch.
+    cache instead of a new per-call fetch. THIS PART OF THE PLAN WAS
+    DELIBERATELY NOT FOLLOWED LITERALLY: doing so would have folded GEM/
+    UKMO's members straight into `all_temps`, the live trading blend, at a
+    silent default 1.0 weight -- because _model_weights() (and the separate
+    _forecast_model_weights(), a second hardcoded-baseline function this
+    plan didn't know about) can't apply a learned weight to any model
+    outside its fixed 3-key baseline dict, "self-calibrates via the
+    existing learned-weight machinery" (below) was never actually true.
+    Shipped instead: fetch+cache both (same batching benefit this bullet
+    wanted) but keep them out of `all_temps` specifically -- see Pass 2's
+    resolution above for the full mechanism (blend_models vs
+    tracking_only_models).
   - Add both to KNOWN_FORECAST_MODEL_NAMES when wired up, or
-    _validate_forecast_model_keys() will correctly reject them.
+    _validate_forecast_model_keys() will correctly reject them. (This part
+    shipped as planned.)
   - WeatherNext (GraphCast/GenCast) is a separate, much bigger, lower-
     priority thread -- gatekept access (Data Request form approval),
     GCP billing, new zarr/xarray/gcsfs dependencies. Don't bundle with
-    GEM/UKMO; scope and prioritize independently if ever picked up.
+    GEM/UKMO; scope and prioritize independently if ever picked up. Still
+    open -- not part of Pass 2.
 
 [RESOLVED 2026-07-19] LIQUIDITY-AWARE SIZING + DYNAMIC EDGE THRESHOLD
 Priority: was Medium (consolidates two existing loose ends into one
@@ -5418,9 +5692,25 @@ When to revisit:
   - When PUBLIC TRADE-FLOW SIGNAL (or any other log-only signal above) is
     next picked up -- build the registry then, not before.
 
-[THE ANALYSIS-DICT -> TRADE-RECORD BOUNDARY EXPLODES DICTS INTO NAMED SCALARS]
-Priority: Medium -- sharpens the existing GENERALIZED PER-MODEL ACCURACY
+[RESOLVED 2026-07-23 -- as a side effect of GENERALIZED PER-MODEL ACCURACY TRACKING Pass 1, see that entry] THE ANALYSIS-DICT -> TRADE-RECORD BOUNDARY EXPLODES DICTS INTO NAMED SCALARS
+Priority: was Medium -- sharpened the GENERALIZED PER-MODEL ACCURACY
   TRACKING entry with the structural root cause; read together.
+
+RESOLVED 2026-07-23: caught while updating that entry's own backlog text
+  for its Pass 2 (GEM/UKMO) resolution -- re-reading this entry's "What it
+  would look like" against the code found it already fully describes what
+  Pass 1 shipped the same day: a single model_forecast_means: dict[str,
+  float | None] kwarg replaced the 4 named scalar params end-to-end
+  (analyze_trade locals -> result dict -> place_paper_order's signature,
+  now one kwarg not four -> trade JSON -> _score_ensemble_members, which
+  already iterates the dict generically). Confirmed directly against
+  current code, not just inferred from the other entry's text: paper.py's
+  place_paper_order takes model_forecast_means as its one kwarg (no
+  icon_forecast_mean/gfs_forecast_mean/etc. params survive), and both real
+  call sites (main.py, order_executor.py) pass it as a single dict, not
+  named scalars. No separate work was needed -- this entry's "when picked
+  up, do the dict transport first" instruction was followed without either
+  session having explicitly cross-referenced the other by name.
 
 Problem:
   The existing entry frames this as "per-model columns in tracker" -- but

@@ -1208,9 +1208,21 @@ def _cmd_cron_body(
                 flush=True,
             )
 
-            # Step 1b: batch ensemble prewarm (6 calls: 3 models × 2 vars)
-            # Replaces ~90 individual calls during analysis (was ~270 s at 1.5 s/call).
-            _ens_models = [*_om_models]  # icon_seamless, ecmwf_ifs025, gfs_seamless
+            # Step 1b: batch ensemble prewarm (10 calls: 5 models × 2 vars —
+            # icon_seamless/gfs_seamless/ecmwf_aifs025_ensemble feed the live
+            # blend; gem_global/ukmo_global_ensemble_20km are tracking-only,
+            # backlog.txt "GENERALIZED PER-MODEL ACCURACY TRACKING" Pass 2).
+            # Replaces ~150 individual calls during analysis (was ~270 s at 1.5 s/call).
+            # Display-only list, matching weather_markets.batch_prewarm_ensemble's
+            # actual fetch_models — not imported directly since that name is
+            # module-local to that function.
+            _ens_models = [
+                "icon_seamless",
+                "gfs_seamless",
+                "ecmwf_aifs025_ensemble",
+                "gem_global",
+                "ukmo_global_ensemble_20km",
+            ]
             _ens_vars = 2
 
             def _ens_progress(current: int, total: int, label: str, ok: bool) -> None:

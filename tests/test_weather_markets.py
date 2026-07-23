@@ -10,6 +10,13 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from datetime import UTC
 
+# Captured at collection time, before conftest's default_gem_ukmo_means_none
+# autouse fixture (which runs per-test, before each test body) replaces
+# weather_markets._get_gem_ukmo_means with a (None, None) stub -- tests that
+# want the real fetch behavior restore it via this reference rather than the
+# (by-then-already-patched) module attribute. Same pattern as
+# test_gaussian_prob.py's _REAL_LOAD_DYNAMIC_SIGMA.
+import weather_markets as _wm_module  # noqa: E402
 from utils import normal_cdf
 from weather_markets import (
     _bootstrap_ci,
@@ -22,6 +29,8 @@ from weather_markets import (
     kelly_fraction,
     parse_market_price,
 )
+
+_REAL_GET_GEM_UKMO_MEANS = _wm_module._get_gem_ukmo_means
 
 # ── TestFeelsLike ─────────────────────────────────────────────────────────────
 
@@ -1220,6 +1229,156 @@ def test_analyze_trade_captures_ecmwf_forecast_means(monkeypatch):
         f"expected ecmwf_ifs025=79.5 from the mocked fetch_temperature_ecmwf "
         f"(model_temps['ecmwf']), got {means.get('ecmwf_ifs025')!r}"
     )
+    # backlog.txt "GENERALIZED PER-MODEL ACCURACY TRACKING" Pass 2: the keys
+    # must exist even when conftest's default_gem_ukmo_means_none autouse
+    # fixture (not overridden in this test) leaves both means None -- a
+    # missing key here would still fail _validate_forecast_model_keys'
+    # sibling concern (dict shape), just silently rather than loudly.
+    assert "gem_global" in means and means["gem_global"] is None
+    assert (
+        "ukmo_global_ensemble_20km" in means
+        and means["ukmo_global_ensemble_20km"] is None
+    )
+
+
+def test_analyze_trade_captures_gem_ukmo_forecast_means(monkeypatch):
+    """backlog.txt 'GENERALIZED PER-MODEL ACCURACY TRACKING' Pass 2: analyze_trade
+    must surface GEM/UKMO's own means in model_forecast_means, via
+    _get_gem_ukmo_means, fetched separately from _get_consensus_probs's 5-tuple
+    under the same ens_prob/temps gate."""
+    import weather_markets as wm
+    from weather_markets import analyze_trade
+
+    monkeypatch.setattr(
+        wm, "get_ensemble_temps", lambda *a, **kw: [70.0, 71.0, 72.0, 73.0, 74.0] * 4
+    )
+    monkeypatch.setattr(wm, "get_ensemble_members", lambda *a, **kw: None)
+    monkeypatch.setattr(
+        wm,
+        "_get_consensus_probs",
+        lambda *a, **kw: (0.73, 0.75, 74.0, 74.5, 76.25),
+    )
+    # Distinct from every other mocked model mean so a mix-up would fail.
+    monkeypatch.setattr(wm, "_get_gem_ukmo_means", lambda *a, **kw: (81.5, 83.25))
+    monkeypatch.setattr(wm, "fetch_temperature_nbm", lambda *a, **kw: 74.0)
+    monkeypatch.setattr(wm, "fetch_temperature_ecmwf", lambda *a, **kw: 79.5)
+    monkeypatch.setattr(wm, "_metar_lock_in", lambda *a, **kw: (False, 0.0, {}))
+    monkeypatch.setattr(wm, "_SEASONAL_WEIGHTS", {})
+    monkeypatch.setattr(wm, "_CONDITION_WEIGHTS", {})
+    monkeypatch.setattr(wm, "_CITY_WEIGHTS", {})
+    monkeypatch.setattr(
+        wm,
+        "get_weather_forecast",
+        lambda *a, **kw: {
+            "high_f": 75.0,
+            "low_f": 55.0,
+            "precip_in": 0.0,
+            "wind_mph": 5.0,
+        },
+    )
+
+    from datetime import date, timedelta
+
+    tomorrow = date.today() + timedelta(days=1)
+    enriched = {
+        "_forecast": {"high_f": 75.0, "low_f": 55.0, "precip_in": 0.0, "wind_mph": 5.0},
+        "_date": tomorrow,
+        "_city": "NYC",
+        "_hour": None,
+        "ticker": "KXHIGHNY-26APR09-T72",
+        "title": "Will NYC high temperature be above 72°F?",
+        "series_ticker": "KXHIGH-23-NYC",
+        "yes_ask": 0.72,
+        "yes_bid": 0.62,
+        "volume": 500,
+        "open_interest": 200,
+        "close_time": (
+            __import__("datetime").datetime.now(__import__("datetime").timezone.utc)
+            + __import__("datetime").timedelta(hours=20)
+        ).isoformat(),
+    }
+    result = analyze_trade(enriched)
+    assert result is not None, "analyze_trade returned None — fix the enriched dict"
+    means = result["model_forecast_means"]
+    assert means["gem_global"] == pytest.approx(81.5), (
+        f"expected gem_global=81.5 from the mocked _get_gem_ukmo_means, "
+        f"got {means.get('gem_global')!r}"
+    )
+    assert means["ukmo_global_ensemble_20km"] == pytest.approx(83.25), (
+        f"expected ukmo_global_ensemble_20km=83.25 from the mocked "
+        f"_get_gem_ukmo_means, got {means.get('ukmo_global_ensemble_20km')!r}"
+    )
+    # icon/gfs/ecmwf must be unaffected by gem/ukmo's addition.
+    assert means["icon_seamless"] == pytest.approx(74.0)
+    assert means["gfs_seamless"] == pytest.approx(74.5)
+
+
+def test_analyze_trade_survives_gem_ukmo_fetch_exception(monkeypatch):
+    """_get_gem_ukmo_means failing must not abort the trade -- mirrors the
+    existing _get_consensus_probs exception-tolerance behavior, and must not
+    regress icon/gfs/ecmwf's own means (separate try/except blocks)."""
+    import weather_markets as wm
+    from weather_markets import analyze_trade
+
+    monkeypatch.setattr(
+        wm, "get_ensemble_temps", lambda *a, **kw: [70.0, 71.0, 72.0, 73.0, 74.0] * 4
+    )
+    monkeypatch.setattr(wm, "get_ensemble_members", lambda *a, **kw: None)
+    monkeypatch.setattr(
+        wm,
+        "_get_consensus_probs",
+        lambda *a, **kw: (0.73, 0.75, 74.0, 74.5, 76.25),
+    )
+
+    def _raise_gem_ukmo(*a, **kw):
+        raise RuntimeError("simulated gem/ukmo fetch failure")
+
+    monkeypatch.setattr(wm, "_get_gem_ukmo_means", _raise_gem_ukmo)
+    monkeypatch.setattr(wm, "fetch_temperature_nbm", lambda *a, **kw: 74.0)
+    monkeypatch.setattr(wm, "fetch_temperature_ecmwf", lambda *a, **kw: 79.5)
+    monkeypatch.setattr(wm, "_metar_lock_in", lambda *a, **kw: (False, 0.0, {}))
+    monkeypatch.setattr(wm, "_SEASONAL_WEIGHTS", {})
+    monkeypatch.setattr(wm, "_CONDITION_WEIGHTS", {})
+    monkeypatch.setattr(wm, "_CITY_WEIGHTS", {})
+    monkeypatch.setattr(
+        wm,
+        "get_weather_forecast",
+        lambda *a, **kw: {
+            "high_f": 75.0,
+            "low_f": 55.0,
+            "precip_in": 0.0,
+            "wind_mph": 5.0,
+        },
+    )
+
+    from datetime import date, timedelta
+
+    tomorrow = date.today() + timedelta(days=1)
+    enriched = {
+        "_forecast": {"high_f": 75.0, "low_f": 55.0, "precip_in": 0.0, "wind_mph": 5.0},
+        "_date": tomorrow,
+        "_city": "NYC",
+        "_hour": None,
+        "ticker": "KXHIGHNY-26APR09-T72",
+        "title": "Will NYC high temperature be above 72°F?",
+        "series_ticker": "KXHIGH-23-NYC",
+        "yes_ask": 0.72,
+        "yes_bid": 0.62,
+        "volume": 500,
+        "open_interest": 200,
+        "close_time": (
+            __import__("datetime").datetime.now(__import__("datetime").timezone.utc)
+            + __import__("datetime").timedelta(hours=20)
+        ).isoformat(),
+    }
+    result = analyze_trade(enriched)
+    assert result is not None, "a gem/ukmo fetch exception must not abort the trade"
+    means = result["model_forecast_means"]
+    assert means["gem_global"] is None
+    assert means["ukmo_global_ensemble_20km"] is None
+    # icon/gfs/ecmwf means must survive the gem/ukmo exception untouched.
+    assert means["icon_seamless"] == pytest.approx(74.0)
+    assert means["ecmwf_aifs025_ensemble"] == pytest.approx(76.25)
 
 
 def test_metar_locked_trade_has_ecmwf_forecast_mean_keys(monkeypatch):
@@ -2453,6 +2612,15 @@ class TestValidateForecastModelKeys:
             }
         )  # must not raise
 
+    def test_gem_ukmo_keys_pass(self):
+        """backlog.txt 'GENERALIZED PER-MODEL ACCURACY TRACKING' Pass 2: GEM/UKMO
+        added as the mechanism's first real new-source consumers."""
+        import weather_markets as wm
+
+        wm._validate_forecast_model_keys(
+            {"gem_global": 73.0, "ukmo_global_ensemble_20km": None}
+        )  # must not raise
+
     def test_empty_dict_passes(self):
         import weather_markets as wm
 
@@ -2569,6 +2737,205 @@ class TestGetConsensusProbsEcmwf:
         wm._ensemble_cache.clear()
 
 
+class TestGetGemUkmoMeans:
+    """backlog.txt 'GENERALIZED PER-MODEL ACCURACY TRACKING' Pass 2:
+    _get_gem_ukmo_means must fetch gem_global/ukmo_global_ensemble_20km's own
+    means via the same ENSEMBLE_BASE/_model_prob_and_mean infra as
+    _get_consensus_probs's icon/gfs/ecmwf fetches — kept as a separate
+    function/return shape so ~20 existing call sites that mock/unpack
+    _get_consensus_probs's fixed 5-tuple don't need touching. Calls the
+    module-import-time-captured real function (_REAL_GET_GEM_UKMO_MEANS)
+    since conftest's default_gem_ukmo_means_none autouse fixture stubs
+    weather_markets._get_gem_ukmo_means to (None, None) by default."""
+
+    def test_fetches_and_averages_gem_ukmo_members(self, monkeypatch):
+        from unittest.mock import MagicMock
+
+        import weather_markets as wm
+
+        wm._ensemble_cache.clear()
+        wm._ensemble_cb.record_success()  # ensure circuit closed
+
+        # Hand-computed means: gem=80.0, ukmo=85.0 — distinct from each other
+        # and from every icon/gfs/ecmwf fixture value elsewhere in this file,
+        # so a mix-up (e.g. ukmo reading gem's members) would fail.
+        members_by_model = {
+            "gem_global": [78.0, 79.0, 80.0, 81.0, 82.0],
+            "ukmo_global_ensemble_20km": [83.0, 84.0, 85.0, 86.0, 87.0],
+        }
+
+        def _fake_om_request(method, url, **kwargs):
+            model = kwargs.get("params", {}).get("models")
+            members = members_by_model.get(model, [])
+            resp = MagicMock()
+            resp.raise_for_status.return_value = None
+            resp.json.return_value = {
+                "daily": {
+                    f"temperature_2m_max_member{i + 1:02d}": [v]
+                    for i, v in enumerate(members)
+                }
+            }
+            return resp
+
+        monkeypatch.setattr(wm, "_om_request", _fake_om_request)
+
+        from datetime import date, timedelta
+
+        target = date.today() + timedelta(days=3)
+        condition = {"type": "above", "threshold": 70.0}
+
+        gem_mean, ukmo_mean = _REAL_GET_GEM_UKMO_MEANS("NYC", target, condition)
+
+        assert gem_mean == pytest.approx(80.0), f"gem mean wrong: {gem_mean}"
+        assert ukmo_mean == pytest.approx(85.0), f"ukmo mean wrong: {ukmo_mean}"
+
+        wm._ensemble_cache.clear()
+
+    def test_returns_none_when_fewer_than_five_members(self, monkeypatch):
+        """_model_prob_and_mean's own >=5-member floor must also gate GEM/UKMO —
+        matching icon/gfs/ecmwf's existing behavior. Also exercises UKMO's real
+        shorter horizon: a date beyond its ~9-10-day real coverage returns
+        fewer than 5 non-null members and must go None, not crash."""
+        from unittest.mock import MagicMock
+
+        import weather_markets as wm
+
+        wm._ensemble_cache.clear()
+        wm._ensemble_cb.record_success()
+
+        def _fake_om_request(method, url, **kwargs):
+            model = kwargs.get("params", {}).get("models")
+            resp = MagicMock()
+            resp.raise_for_status.return_value = None
+            if model == "ukmo_global_ensemble_20km":
+                # Only 3 members — below the 5-member floor (simulates a date
+                # past UKMO's real ~9-10-day horizon).
+                daily = {
+                    "temperature_2m_max_member01": [83.0],
+                    "temperature_2m_max_member02": [84.0],
+                    "temperature_2m_max_member03": [85.0],
+                }
+            else:
+                daily = {
+                    f"temperature_2m_max_member{i + 1:02d}": [78.0 + i]
+                    for i in range(5)
+                }
+            resp.json.return_value = {"daily": daily}
+            return resp
+
+        monkeypatch.setattr(wm, "_om_request", _fake_om_request)
+
+        from datetime import date, timedelta
+
+        target = date.today() + timedelta(days=3)
+        condition = {"type": "above", "threshold": 70.0}
+
+        gem_mean, ukmo_mean = _REAL_GET_GEM_UKMO_MEANS("NYC", target, condition)
+        assert gem_mean == pytest.approx(80.0), f"gem mean wrong: {gem_mean}"
+        assert ukmo_mean is None, (
+            f"expected None below the 5-member floor, got {ukmo_mean}"
+        )
+
+        wm._ensemble_cache.clear()
+
+
+class TestBatchPrewarmEnsembleTrackingOnlyModels:
+    """backlog.txt 'GENERALIZED PER-MODEL ACCURACY TRACKING' Pass 2:
+    batch_prewarm_ensemble must cache gem_global/ukmo_global_ensemble_20km's
+    per-model members (so _get_gem_ukmo_means hits warm cache instead of an
+    unbatched live call) but must NOT fold them into the blended
+    (city, date, None, var) cache entry that feeds the live trading forecast
+    -- neither _model_weights() nor _forecast_model_weights() has a baseline
+    entry for them, so blending would give them a silent, uncalibrated 1.0
+    weight with zero tracked accuracy behind it."""
+
+    def test_gem_ukmo_cached_but_excluded_from_blend(self, monkeypatch):
+        from unittest.mock import MagicMock
+
+        import weather_markets as wm
+
+        wm._ensemble_cache.clear()
+        wm._ensemble_disk_pending.clear()
+        wm._ensemble_cb.record_success()
+
+        from datetime import date, timedelta
+
+        target = date.today() + timedelta(days=3)
+        date_iso = target.isoformat()
+
+        # Distinct, absurd-magnitude members for gem/ukmo so a leak into the
+        # blend (or a missing per-model cache write) fails loudly rather than
+        # blending in unnoticed among realistic temperatures.
+        members_by_model = {
+            "icon_seamless": [70.0, 71.0, 72.0, 73.0, 74.0],
+            "gfs_seamless": [68.0, 69.0, 70.0, 71.0, 72.0],
+            "ecmwf_aifs025_ensemble": [74.0, 75.0, 76.0, 77.0, 78.0],
+            "gem_global": [200.0, 201.0, 202.0, 203.0, 204.0],
+            "ukmo_global_ensemble_20km": [-200.0, -201.0, -202.0, -203.0, -204.0],
+        }
+
+        def _fake_om_request(method, url, **kwargs):
+            params = kwargs.get("params", {})
+            resp = MagicMock()
+            resp.raise_for_status.return_value = None
+            daily_key = params.get("daily")
+            if daily_key == "precipitation_sum":
+                # Precip section is untouched by this change — return an
+                # empty-but-valid response so it no-ops without erroring.
+                resp.json.return_value = {"daily": {"time": [date_iso]}}
+                return resp
+            model = params.get("models")
+            members = members_by_model.get(model, [])
+            resp.json.return_value = {
+                "daily": {
+                    "time": [date_iso],
+                    **{
+                        f"{daily_key}_member{i + 1:02d}": [v]
+                        for i, v in enumerate(members)
+                    },
+                }
+            }
+            return resp
+
+        monkeypatch.setattr(wm, "_om_request", _fake_om_request)
+
+        written = wm.batch_prewarm_ensemble({("NYC", date_iso)})
+        assert written > 0, "batch_prewarm_ensemble wrote no cache entries"
+
+        # Per-model cache entries (H-14) must exist for BOTH blend models and
+        # tracking-only models — this is what lets _get_consensus_probs and
+        # _get_gem_ukmo_means hit warm cache instead of a live per-market call.
+        for model in [
+            "icon_seamless",
+            "gfs_seamless",
+            "ecmwf_aifs025_ensemble",
+            "gem_global",
+            "ukmo_global_ensemble_20km",
+        ]:
+            key = (model, "NYC", date_iso, "max", None)
+            cached = wm._ensemble_cache.get(key)
+            assert cached is not None, f"{model} per-model cache entry missing"
+            assert cached == pytest.approx(members_by_model[model]), (
+                f"{model} cached members wrong: {cached}"
+            )
+
+        # The blended entry (what get_ensemble_temps/analyze_trade's live
+        # forecast_temp actually reads) must NOT contain gem/ukmo's members.
+        blended = wm._ensemble_cache.get(("NYC", date_iso, None, "max"))
+        assert blended is not None
+        assert all(-100.0 < t < 100.0 for t in blended), (
+            f"gem/ukmo's tracking-only members leaked into the live trading "
+            f"blend: {blended}"
+        )
+        # Sanity: the blend must still contain the real blend models' values.
+        assert any(t == pytest.approx(72.0) for t in blended), (
+            "icon_seamless's real member is missing from the blend"
+        )
+
+        wm._ensemble_cache.clear()
+        wm._ensemble_disk_pending.clear()
+
+
 class TestWeightsFromMaeThinModelIsolation:
     """Adjacency finding from the 2026-07-23 opus review of the ECMWF
     instrumentation change: _weights_from_mae() previously `return None`'d
@@ -2654,6 +3021,89 @@ class TestWeightsFromMaeThinModelIsolation:
         assert result is None
 
         wm._MAE_WEIGHTS_CACHE.clear()
+
+
+class TestWeightsFromMaeExcludesTrackingOnlyModels:
+    """Opus review finding on the GENERALIZED PER-MODEL ACCURACY TRACKING
+    Pass 2 diff: _weights_from_mae() summed EVERY tracked model (including
+    gem_global/ukmo_global_ensemble_20km) into its total/n_models
+    normalization denominator, even though only baseline models' own
+    weights are ever read out downstream. That meant a track-only model's
+    tracked accuracy still numerically shifted icon/gfs/ecmwf's normalized
+    weight the moment it crossed the observation floor -- a real leak into
+    live trade decisions the batch_prewarm_ensemble blend-exclusion alone
+    didn't stop. Fixed by skipping TRACKING_ONLY_MODEL_NAMES entirely
+    before they ever enter the weights dict being normalized."""
+
+    def _fake_acc(self, *, with_gem: bool) -> dict:
+        acc = {
+            "icon_seamless": {
+                "mae": 2.0,
+                "n": 50,
+                "city_breakdown": {},
+                "city_n_breakdown": {},
+            },
+            "gfs_seamless": {
+                "mae": 4.0,
+                "n": 50,
+                "city_breakdown": {},
+                "city_n_breakdown": {},
+            },
+        }
+        if with_gem:
+            # Deliberately very low MAE (highly "accurate") and well past
+            # the observation floor -- if this leaks into the normalization
+            # denominator at all, icon/gfs's weights below will visibly
+            # shrink relative to the gem-absent baseline.
+            acc["gem_global"] = {
+                "mae": 0.5,
+                "n": 50,
+                "city_breakdown": {},
+                "city_n_breakdown": {},
+            }
+        return acc
+
+    def test_gem_presence_does_not_change_baseline_models_weights(self, monkeypatch):
+        import weather_markets as wm
+
+        wm._MAE_WEIGHTS_CACHE.clear()
+        monkeypatch.setattr(
+            "tracker.get_member_accuracy",
+            lambda days_back=60: self._fake_acc(with_gem=False),
+        )
+        baseline_result = wm._weights_from_mae("NYC", min_n=20)
+        wm._MAE_WEIGHTS_CACHE.clear()
+
+        monkeypatch.setattr(
+            "tracker.get_member_accuracy",
+            lambda days_back=60: self._fake_acc(with_gem=True),
+        )
+        with_gem_result = wm._weights_from_mae("NYC", min_n=20)
+        wm._MAE_WEIGHTS_CACHE.clear()
+
+        assert "gem_global" not in with_gem_result, (
+            f"tracking-only model must never appear in the returned weights, "
+            f"got: {with_gem_result}"
+        )
+        assert with_gem_result["icon_seamless"] == pytest.approx(
+            baseline_result["icon_seamless"]
+        ), (
+            f"gem_global's presence changed icon_seamless's normalized weight: "
+            f"{with_gem_result['icon_seamless']} vs baseline "
+            f"{baseline_result['icon_seamless']} -- it leaked into the "
+            f"normalization denominator"
+        )
+        assert with_gem_result["gfs_seamless"] == pytest.approx(
+            baseline_result["gfs_seamless"]
+        ), (
+            f"gem_global's presence changed gfs_seamless's normalized weight: "
+            f"{with_gem_result['gfs_seamless']} vs baseline "
+            f"{baseline_result['gfs_seamless']}"
+        )
+        # Hand-computed sanity check on the baseline itself: icon mae=2.0,
+        # gfs mae=4.0 -> weights 0.5/0.25, normalised to sum-to-2.
+        assert baseline_result["icon_seamless"] == pytest.approx(4 / 3)
+        assert baseline_result["gfs_seamless"] == pytest.approx(2 / 3)
 
 
 # ── TestBetweenFloorGate ──────────────────────────────────────────────────────
