@@ -1035,9 +1035,9 @@ def test_analyze_trade_result_has_model_consensus_field(monkeypatch):
         wm, "get_ensemble_temps", lambda *a, **kw: [70.0, 71.0, 72.0, 73.0, 74.0] * 4
     )
     monkeypatch.setattr(wm, "get_ensemble_members", lambda *a, **kw: None)
-    # Patch _get_consensus_probs to return agreeing models (consensus True) — 4-tuple
+    # Patch _get_consensus_probs to return agreeing models (consensus True) — 5-tuple
     monkeypatch.setattr(
-        wm, "_get_consensus_probs", lambda *a, **kw: (0.73, 0.75, 74.0, 74.0)
+        wm, "_get_consensus_probs", lambda *a, **kw: (0.73, 0.75, 74.0, 74.0, None)
     )
     monkeypatch.setattr(wm, "fetch_temperature_nbm", lambda *a, **kw: 74.0)
     monkeypatch.setattr(wm, "fetch_temperature_ecmwf", lambda *a, **kw: 74.0)
@@ -1096,7 +1096,7 @@ def test_model_consensus_false_when_models_disagree(monkeypatch):
     monkeypatch.setattr(wm, "get_ensemble_members", lambda *a, **kw: None)
     # Models disagree by 15pp
     monkeypatch.setattr(
-        wm, "_get_consensus_probs", lambda *a, **kw: (0.75, 0.60, 74.0, 68.0)
+        wm, "_get_consensus_probs", lambda *a, **kw: (0.75, 0.60, 74.0, 68.0, None)
     )
     monkeypatch.setattr(
         wm,
@@ -1147,6 +1147,111 @@ def test_model_consensus_false_when_models_disagree(monkeypatch):
     result = analyze_trade(enriched)
     assert result is not None, "analyze_trade returned None — fix the enriched dict"
     assert result["model_consensus"] is False
+
+
+def test_analyze_trade_captures_ecmwf_forecast_mean(monkeypatch):
+    """backlog.txt 'TRACK ECMWF FORECAST ACCURACY': analyze_trade must surface
+    ecmwf_aifs025_ensemble's own mean (5th _get_consensus_probs element) in the
+    result dict, alongside icon/gfs — not just consume it for model_consensus."""
+    import weather_markets as wm
+    from weather_markets import analyze_trade
+
+    monkeypatch.setattr(
+        wm, "get_ensemble_temps", lambda *a, **kw: [70.0, 71.0, 72.0, 73.0, 74.0] * 4
+    )
+    monkeypatch.setattr(wm, "get_ensemble_members", lambda *a, **kw: None)
+    # Distinct means per model so a mix-up (e.g. ecmwf_forecast_mean silently
+    # getting icon's value) would fail the assertions below.
+    monkeypatch.setattr(
+        wm,
+        "_get_consensus_probs",
+        lambda *a, **kw: (0.73, 0.75, 74.0, 74.5, 76.25),
+    )
+    monkeypatch.setattr(wm, "fetch_temperature_nbm", lambda *a, **kw: 74.0)
+    monkeypatch.setattr(wm, "fetch_temperature_ecmwf", lambda *a, **kw: 74.0)
+    monkeypatch.setattr(wm, "_metar_lock_in", lambda *a, **kw: (False, 0.0, {}))
+    monkeypatch.setattr(wm, "_SEASONAL_WEIGHTS", {})
+    monkeypatch.setattr(wm, "_CONDITION_WEIGHTS", {})
+    monkeypatch.setattr(wm, "_CITY_WEIGHTS", {})
+    monkeypatch.setattr(
+        wm,
+        "get_weather_forecast",
+        lambda *a, **kw: {
+            "high_f": 75.0,
+            "low_f": 55.0,
+            "precip_in": 0.0,
+            "wind_mph": 5.0,
+        },
+    )
+
+    from datetime import date, timedelta
+
+    tomorrow = date.today() + timedelta(days=1)
+    enriched = {
+        "_forecast": {"high_f": 75.0, "low_f": 55.0, "precip_in": 0.0, "wind_mph": 5.0},
+        "_date": tomorrow,
+        "_city": "NYC",
+        "_hour": None,
+        "ticker": "KXHIGHNY-26APR09-T72",
+        "title": "Will NYC high temperature be above 72°F?",
+        "series_ticker": "KXHIGH-23-NYC",
+        "yes_ask": 0.72,
+        "yes_bid": 0.62,
+        "volume": 500,
+        "open_interest": 200,
+        "close_time": (
+            __import__("datetime").datetime.now(__import__("datetime").timezone.utc)
+            + __import__("datetime").timedelta(hours=20)
+        ).isoformat(),
+    }
+    result = analyze_trade(enriched)
+    assert result is not None, "analyze_trade returned None — fix the enriched dict"
+    assert result["icon_forecast_mean"] == pytest.approx(74.0)
+    assert result["gfs_forecast_mean"] == pytest.approx(74.5)
+    assert result["ecmwf_forecast_mean"] == pytest.approx(76.25), (
+        f"expected ecmwf_forecast_mean=76.25 from the 5th _get_consensus_probs "
+        f"element, got {result.get('ecmwf_forecast_mean')!r}"
+    )
+
+
+def test_metar_locked_trade_has_ecmwf_forecast_mean_key(monkeypatch):
+    """The METAR-locked branch (same-day observation override) skips the model
+    path entirely and must still define ecmwf_forecast_mean (as None) before the
+    shared result dict is built — mirrors icon/gfs's existing None default.
+    Regression test for a real UnboundLocalError this session's own diff would
+    have introduced (analyze_trade's METAR-locked branch pre-assigns icon/gfs
+    forecast means but initially missed ecmwf_forecast_mean)."""
+    import weather_markets as wm
+    from weather_markets import analyze_trade
+
+    monkeypatch.setattr(
+        wm, "_metar_lock_in", lambda *a, **kw: (True, 0.85, {"current_temp_f": 76.0})
+    )
+
+    from datetime import date
+
+    today = date.today()
+    enriched = {
+        "_forecast": {"high_f": 75.0, "low_f": 55.0, "precip_in": 0.0, "wind_mph": 5.0},
+        "_date": today,
+        "_city": "NYC",
+        "_hour": None,
+        "ticker": "KXHIGHNY-26APR09-T72",
+        "title": "Will NYC high temperature be above 72°F?",
+        "series_ticker": "KXHIGH-23-NYC",
+        "yes_ask": 0.72,
+        "yes_bid": 0.62,
+        "volume": 500,
+        "open_interest": 200,
+        "close_time": (
+            __import__("datetime").datetime.now(__import__("datetime").timezone.utc)
+            + __import__("datetime").timedelta(hours=2)
+        ).isoformat(),
+    }
+    result = analyze_trade(enriched)
+    assert result is not None, "analyze_trade returned None — fix the enriched dict"
+    assert result["method"] == "metar_lockout"
+    assert result["ecmwf_forecast_mean"] is None
 
 
 def test_om_rate_limit_enforces_interval(monkeypatch):
@@ -2139,7 +2244,7 @@ class TestNoSideEntryEdgeSign:
         monkeypatch.setattr(wm, "fetch_temperature_ecmwf", lambda *a, **kw: None)
         monkeypatch.setattr(wm, "get_ensemble_members", lambda *a, **kw: [])
         monkeypatch.setattr(
-            wm, "_get_consensus_probs", lambda *a, **kw: (None, None, None, None)
+            wm, "_get_consensus_probs", lambda *a, **kw: (None, None, None, None, None)
         )
 
         # Market says 25% YES; model says ~5% YES (ens=0, gauss≈0, clim=0.30 at
@@ -2216,7 +2321,7 @@ class TestNoSideEntryEdgeSign:
         monkeypatch.setattr(wm, "fetch_temperature_ecmwf", lambda *a, **kw: None)
         monkeypatch.setattr(wm, "get_ensemble_members", lambda *a, **kw: [])
         monkeypatch.setattr(
-            wm, "_get_consensus_probs", lambda *a, **kw: (None, None, None, None)
+            wm, "_get_consensus_probs", lambda *a, **kw: (None, None, None, None, None)
         )
 
         enriched = self._make_enriched(yes_bid_cents=22, yes_ask_cents=28)
@@ -2303,10 +2408,10 @@ class TestConsensusCacheKeyBetween:
 
         # Seed the cache with different results for the two buckets.
         wm._CONSENSUS_CACHE.set_with_ttl(
-            key_b645, (0.20, 0.22, 64.0, 64.5), wm._CONSENSUS_CACHE_TTL
+            key_b645, (0.20, 0.22, 64.0, 64.5, None), wm._CONSENSUS_CACHE_TTL
         )
         wm._CONSENSUS_CACHE.set_with_ttl(
-            key_b665, (0.55, 0.58, 66.0, 66.5), wm._CONSENSUS_CACHE_TTL
+            key_b665, (0.55, 0.58, 66.0, 66.5, None), wm._CONSENSUS_CACHE_TTL
         )
 
         r645 = wm._get_consensus_probs("NYC", today, condition_b645)
@@ -2321,6 +2426,195 @@ class TestConsensusCacheKeyBetween:
         )
 
         wm._CONSENSUS_CACHE.clear()
+
+
+class TestGetConsensusProbsEcmwf:
+    """backlog.txt 'TRACK ECMWF FORECAST ACCURACY': _get_consensus_probs must also
+    fetch ecmwf_aifs025_ensemble's own mean via the same ENSEMBLE_BASE/
+    _model_prob_and_mean infra already used for icon/gfs, returned as the 5th
+    tuple element."""
+
+    def test_fetches_and_averages_ecmwf_aifs_members(self, monkeypatch):
+        from unittest.mock import MagicMock
+
+        import weather_markets as wm
+
+        wm._CONSENSUS_CACHE.clear()
+        wm._ensemble_cache.clear()
+        wm._ensemble_cb.record_success()  # ensure circuit closed
+
+        # Hand-computed means: icon=72.0, gfs=70.0, ecmwf=76.0 — distinct per
+        # model so a mix-up (e.g. ecmwf reading icon's members) would fail.
+        members_by_model = {
+            "icon_seamless": [70.0, 71.0, 72.0, 73.0, 74.0],
+            "gfs_seamless": [68.0, 69.0, 70.0, 71.0, 72.0],
+            "ecmwf_aifs025_ensemble": [74.0, 75.0, 76.0, 77.0, 78.0],
+        }
+
+        def _fake_om_request(method, url, **kwargs):
+            model = kwargs.get("params", {}).get("models")
+            members = members_by_model.get(model, [])
+            resp = MagicMock()
+            resp.raise_for_status.return_value = None
+            resp.json.return_value = {
+                "daily": {
+                    f"temperature_2m_max_member{i + 1:02d}": [v]
+                    for i, v in enumerate(members)
+                }
+            }
+            return resp
+
+        monkeypatch.setattr(wm, "_om_request", _fake_om_request)
+
+        from datetime import date, timedelta
+
+        target = date.today() + timedelta(days=3)
+        condition = {"type": "above", "threshold": 70.0}
+
+        icon_p, gfs_p, icon_mean, gfs_mean, ecmwf_mean = wm._get_consensus_probs(
+            "NYC", target, condition
+        )
+
+        assert icon_mean == pytest.approx(72.0), f"icon mean wrong: {icon_mean}"
+        assert gfs_mean == pytest.approx(70.0), f"gfs mean wrong: {gfs_mean}"
+        assert ecmwf_mean == pytest.approx(76.0), (
+            f"expected mean of [74,75,76,77,78]=76.0, got {ecmwf_mean}"
+        )
+
+        wm._CONSENSUS_CACHE.clear()
+        wm._ensemble_cache.clear()
+
+    def test_returns_none_when_fewer_than_five_ecmwf_members(self, monkeypatch):
+        """_model_prob_and_mean's own >=5-member floor must also gate ECMWF —
+        matching icon/gfs's existing behavior, not a separate/looser threshold."""
+        from unittest.mock import MagicMock
+
+        import weather_markets as wm
+
+        wm._CONSENSUS_CACHE.clear()
+        wm._ensemble_cache.clear()
+        wm._ensemble_cb.record_success()
+
+        def _fake_om_request(method, url, **kwargs):
+            model = kwargs.get("params", {}).get("models")
+            resp = MagicMock()
+            resp.raise_for_status.return_value = None
+            if model == "ecmwf_aifs025_ensemble":
+                # Only 3 members — below the 5-member floor.
+                daily = {
+                    "temperature_2m_max_member01": [74.0],
+                    "temperature_2m_max_member02": [75.0],
+                    "temperature_2m_max_member03": [76.0],
+                }
+            else:
+                daily = {
+                    f"temperature_2m_max_member{i + 1:02d}": [70.0 + i]
+                    for i in range(5)
+                }
+            resp.json.return_value = {"daily": daily}
+            return resp
+
+        monkeypatch.setattr(wm, "_om_request", _fake_om_request)
+
+        from datetime import date, timedelta
+
+        target = date.today() + timedelta(days=3)
+        condition = {"type": "above", "threshold": 70.0}
+
+        _, _, _, _, ecmwf_mean = wm._get_consensus_probs("NYC", target, condition)
+        assert ecmwf_mean is None, (
+            f"expected None below the 5-member floor, got {ecmwf_mean}"
+        )
+
+        wm._CONSENSUS_CACHE.clear()
+        wm._ensemble_cache.clear()
+
+
+class TestWeightsFromMaeThinModelIsolation:
+    """Adjacency finding from the 2026-07-23 opus review of the ECMWF
+    instrumentation change: _weights_from_mae() previously `return None`'d
+    (aborting for EVERY model) the moment ANY tracked model was globally thin
+    (`n = stats["n"]` has no per-city floor) — meaning onboarding a new,
+    freshly-instrumented model (ecmwf_aifs025_ensemble) would have silently
+    disabled MAE-based weighting for icon/gfs everywhere until ECMWF alone
+    crossed min_n. Fixed to skip only the thin model."""
+
+    def test_thin_model_excluded_not_blocking(self, monkeypatch):
+        import weather_markets as wm
+
+        wm._MAE_WEIGHTS_CACHE.clear()
+
+        def _fake_get_member_accuracy(days_back=60):
+            return {
+                # Well-observed — must still get a real weight.
+                "icon_seamless": {
+                    "mae": 2.0,
+                    "n": 50,
+                    "city_breakdown": {"NYC": 2.0},
+                    "city_n_breakdown": {"NYC": 50},
+                },
+                "gfs_seamless": {
+                    "mae": 4.0,
+                    "n": 50,
+                    "city_breakdown": {"NYC": 4.0},
+                    "city_n_breakdown": {"NYC": 50},
+                },
+                # Freshly instrumented, globally thin — must be excluded, not
+                # block icon/gfs.
+                "ecmwf_aifs025_ensemble": {
+                    "mae": 3.0,
+                    "n": 2,
+                    "city_breakdown": {"NYC": 3.0},
+                    "city_n_breakdown": {"NYC": 2},
+                },
+            }
+
+        monkeypatch.setattr("tracker.get_member_accuracy", _fake_get_member_accuracy)
+
+        result = wm._weights_from_mae("NYC", min_n=20)
+
+        assert result is not None, (
+            "a single thin model must not block icon/gfs's own weights"
+        )
+        assert "ecmwf_aifs025_ensemble" not in result, (
+            f"thin model must be excluded from the result, got: {result}"
+        )
+        assert "icon_seamless" in result and "gfs_seamless" in result
+        # icon has lower MAE (2.0 vs 4.0) so must get the higher weight.
+        assert result["icon_seamless"] > result["gfs_seamless"], (
+            f"lower-MAE model must get a higher weight: {result}"
+        )
+
+        wm._MAE_WEIGHTS_CACHE.clear()
+
+    def test_all_models_thin_returns_none(self, monkeypatch):
+        """Unchanged behavior: if every tracked model is thin, still None."""
+        import weather_markets as wm
+
+        wm._MAE_WEIGHTS_CACHE.clear()
+
+        def _fake_get_member_accuracy(days_back=60):
+            return {
+                "icon_seamless": {
+                    "mae": 2.0,
+                    "n": 2,
+                    "city_breakdown": {},
+                    "city_n_breakdown": {},
+                },
+                "gfs_seamless": {
+                    "mae": 4.0,
+                    "n": 3,
+                    "city_breakdown": {},
+                    "city_n_breakdown": {},
+                },
+            }
+
+        monkeypatch.setattr("tracker.get_member_accuracy", _fake_get_member_accuracy)
+
+        result = wm._weights_from_mae("NYC", min_n=20)
+        assert result is None
+
+        wm._MAE_WEIGHTS_CACHE.clear()
 
 
 # ── TestBetweenFloorGate ──────────────────────────────────────────────────────
@@ -2597,7 +2891,7 @@ class TestMosBlendNoCrossVariableFallback:
             patch.object(wm, "_CONDITION_WEIGHTS", {}),
             patch.object(wm, "_CITY_WEIGHTS", {}),
             patch.object(
-                wm, "_get_consensus_probs", return_value=(None, None, None, None)
+                wm, "_get_consensus_probs", return_value=(None, None, None, None, None)
             ),
             patch.object(wm, "_metar_lock_in", return_value=(False, 0.0, {})),
             patch("nws.get_live_observation", return_value=None),

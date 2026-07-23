@@ -94,7 +94,7 @@ def _stub_heavy_deps(monkeypatch):
     )
     monkeypatch.setattr(
         "weather_markets._get_consensus_probs",
-        lambda city, date, cond, hour=None, var="max": (0.60, 0.58, 78.0, 77.0),
+        lambda city, date, cond, hour=None, var="max": (0.60, 0.58, 78.0, 77.0, None),
     )
 
 

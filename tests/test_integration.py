@@ -82,7 +82,7 @@ class TestAnalyzePipeline:
     @patch("weather_markets.get_live_observation", return_value=None)
     @patch(
         "weather_markets._get_consensus_probs",
-        return_value=(None, None, None, None),
+        return_value=(None, None, None, None, None),
     )
     @patch("weather_markets.fetch_temperature_nbm", return_value=69.0)
     @patch("weather_markets.fetch_temperature_ecmwf", return_value=69.0)
@@ -209,7 +209,7 @@ class TestAnalyzePipeline:
             patch.object(wm, "_CONDITION_WEIGHTS", {}),
             patch.object(wm, "_CITY_WEIGHTS", {}),
             patch.object(
-                wm, "_get_consensus_probs", return_value=(None, None, None, None)
+                wm, "_get_consensus_probs", return_value=(None, None, None, None, None)
             ),
         ):
             result = analyze_trade(enriched)
@@ -339,7 +339,7 @@ class TestAnalyzePipelineExtra:
     @patch("weather_markets.get_live_observation", return_value=None)
     @patch(
         "weather_markets._get_consensus_probs",
-        return_value=(None, None, None, None),
+        return_value=(None, None, None, None, None),
     )
     @patch("weather_markets.fetch_temperature_nbm", return_value=69.0)
     @patch("weather_markets.fetch_temperature_ecmwf", return_value=69.0)

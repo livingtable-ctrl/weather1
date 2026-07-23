@@ -1319,7 +1319,7 @@ class TestTimeDecayEdgeScope:
             patch.object(wm, "_CONDITION_WEIGHTS", {}),
             patch.object(wm, "_CITY_WEIGHTS", {}),
             patch.object(
-                wm, "_get_consensus_probs", return_value=(None, None, None, None)
+                wm, "_get_consensus_probs", return_value=(None, None, None, None, None)
             ),
         ):
             return wm.analyze_trade(enriched)

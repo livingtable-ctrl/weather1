@@ -325,7 +325,7 @@ class TestGaussianBlendSeparateSource:
             patch.object(wm, "_CONDITION_WEIGHTS", {}),
             patch.object(wm, "_CITY_WEIGHTS", {}),
             patch.object(
-                wm, "_get_consensus_probs", return_value=(None, None, None, None)
+                wm, "_get_consensus_probs", return_value=(None, None, None, None, None)
             ),
         ):
             result = wm.analyze_trade(enriched)
@@ -370,7 +370,7 @@ class TestGaussianBlendSeparateSource:
             patch.object(wm, "_CONDITION_WEIGHTS", {}),
             patch.object(wm, "_CITY_WEIGHTS", {}),
             patch.object(
-                wm, "_get_consensus_probs", return_value=(None, None, None, None)
+                wm, "_get_consensus_probs", return_value=(None, None, None, None, None)
             ),
         ):
             result = wm.analyze_trade(enriched)
@@ -468,7 +468,7 @@ class TestBetweenMarketGaussian:
             patch.object(wm, "_CONDITION_WEIGHTS", {}),
             patch.object(wm, "_CITY_WEIGHTS", {}),
             patch.object(
-                wm, "_get_consensus_probs", return_value=(None, None, None, None)
+                wm, "_get_consensus_probs", return_value=(None, None, None, None, None)
             ),
             # Between markets require METAR lock-in; without it the between-bucket
             # gate returns None before reaching the Gaussian path.
@@ -532,7 +532,7 @@ class TestBetweenMarketGaussian:
             patch.object(wm, "_CONDITION_WEIGHTS", {}),
             patch.object(wm, "_CITY_WEIGHTS", {}),
             patch.object(
-                wm, "_get_consensus_probs", return_value=(None, None, None, None)
+                wm, "_get_consensus_probs", return_value=(None, None, None, None, None)
             ),
             # Between markets require METAR lock-in; the METAR fast-path is then
             # taken, so blend_sources will be {"metar_lockout": 1.0} rather than
@@ -712,7 +712,7 @@ class TestBlendSourcesNormalisation:
             patch.object(wm, "_CONDITION_WEIGHTS", {}),
             patch.object(wm, "_CITY_WEIGHTS", {}),
             patch.object(
-                wm, "_get_consensus_probs", return_value=(None, None, None, None)
+                wm, "_get_consensus_probs", return_value=(None, None, None, None, None)
             ),
             patch.object(wm, "_metar_lock_in", return_value=(False, 0.0, {})),
         ):
@@ -836,7 +836,7 @@ class TestBetweenObsDisabled:
             patch.object(wm, "_CONDITION_WEIGHTS", {}),
             patch.object(wm, "_CITY_WEIGHTS", {}),
             patch.object(
-                wm, "_get_consensus_probs", return_value=(None, None, None, None)
+                wm, "_get_consensus_probs", return_value=(None, None, None, None, None)
             ),
         ):
             result = wm.analyze_trade(enriched)
@@ -894,7 +894,7 @@ class TestBetweenObsDisabled:
             patch.object(wm, "_CONDITION_WEIGHTS", {}),
             patch.object(wm, "_CITY_WEIGHTS", {}),
             patch.object(
-                wm, "_get_consensus_probs", return_value=(None, None, None, None)
+                wm, "_get_consensus_probs", return_value=(None, None, None, None, None)
             ),
         ):
             result = wm.analyze_trade(enriched)

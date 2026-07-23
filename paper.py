@@ -850,6 +850,7 @@ def place_paper_order(
     method: str | None = None,  # analysis method ('ensemble', 'normal_dist', etc.)
     icon_forecast_mean: float | None = None,  # per-model means for ensemble scoring
     gfs_forecast_mean: float | None = None,
+    ecmwf_forecast_mean: float | None = None,  # ecmwf_aifs025_ensemble's own mean
     forecast_temp: float
     | None = None,  # blended forecast temp used for probability (exact bias baseline)
     condition_threshold: float | None = None,  # market threshold (e.g. 70°F)
@@ -957,6 +958,7 @@ def place_paper_order(
             "thesis": thesis,
             "icon_forecast_mean": icon_forecast_mean,
             "gfs_forecast_mean": gfs_forecast_mean,
+            "ecmwf_forecast_mean": ecmwf_forecast_mean,
             "forecast_temp": forecast_temp,
             "condition_threshold": condition_threshold,
             "ab_variant": ab_variant,
@@ -1185,13 +1187,13 @@ def _score_ensemble_members(trade: dict, outcome_yes: bool) -> None:
         # "blended" is the exact bias-corrected forecast_temp used for probability
         # calculation — preferred by get_dynamic_station_bias() over the per-model means.
         "blended": trade.get("forecast_temp"),
-        # No "ecmwf_ifs025"/"ecmwf_aifs025_ensemble" entry: no per-model ECMWF mean
-        # is ever captured anywhere in the trade-entry path (no ecmwf_forecast_mean
-        # field exists on the trade dict, unlike icon/gfs above). This means ECMWF
-        # can never earn a data-driven weight in _forecast_model_weights()/
-        # _model_weights() — it's permanently stuck at the static seasonal default.
-        # Fixing that requires new plumbing upstream in weather_markets.py to surface
-        # an ECMWF-specific forecast mean before it could be logged here.
+        # backlog.txt "TRACK ECMWF FORECAST ACCURACY" (2026-07-23): ecmwf_aifs025_ensemble
+        # now captured the same way as icon/gfs above, so it can earn a data-driven
+        # weight in _model_weights() once >=10 settled observations accumulate per
+        # city. ecmwf_ifs025 (the OTHER ECMWF product, feeding _forecast_model_weights'
+        # daily blend instead) still has no per-model mean captured — that's a
+        # separate, not-yet-scoped instrumentation (see the backlog entry).
+        "ecmwf_aifs025_ensemble": trade.get("ecmwf_forecast_mean"),
     }
     try:
         from tracker import log_member_score as _log_ms

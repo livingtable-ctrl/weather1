@@ -165,7 +165,9 @@ def test_analyze_trade_accepts_fresh_data():
         patch.object(wm, "_SEASONAL_WEIGHTS", {}),
         patch.object(wm, "_CONDITION_WEIGHTS", {}),
         patch.object(wm, "_CITY_WEIGHTS", {}),
-        patch.object(wm, "_get_consensus_probs", return_value=(None, None, None, None)),
+        patch.object(
+            wm, "_get_consensus_probs", return_value=(None, None, None, None, None)
+        ),
         patch.object(wm, "_metar_lock_in", return_value=(False, 0.0, {})),
         patch("nws.get_live_observation", return_value=None),
         patch("climatology.persistence_prob", return_value=0.3),
@@ -217,7 +219,9 @@ def test_analyze_trade_no_fetched_at_is_treated_as_fresh():
         patch.object(wm, "_SEASONAL_WEIGHTS", {}),
         patch.object(wm, "_CONDITION_WEIGHTS", {}),
         patch.object(wm, "_CITY_WEIGHTS", {}),
-        patch.object(wm, "_get_consensus_probs", return_value=(None, None, None, None)),
+        patch.object(
+            wm, "_get_consensus_probs", return_value=(None, None, None, None, None)
+        ),
         patch.object(wm, "_metar_lock_in", return_value=(False, 0.0, {})),
         patch("nws.get_live_observation", return_value=None),
         patch("climatology.persistence_prob", return_value=0.3),

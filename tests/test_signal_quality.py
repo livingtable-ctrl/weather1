@@ -387,17 +387,37 @@ class TestGetModelWeights:
         assert weights
         assert weights["gfs"] > weights["nbm"]
 
-    def test_insufficient_observations_returns_equal_weights(self):
+    def test_insufficient_observations_for_all_returns_empty_dict(self):
+        """2026-07-23 (TRACK ECMWF FORECAST ACCURACY adjacency fix): when every
+        tracked model is below the observation floor, get_model_weights must
+        return {} (no usable signal) rather than fabricating an equal split
+        between two equally-unproven models — matches _weights_from_mae's
+        analogous 'all thin' behavior in weather_markets.py."""
         # Only 5 obs per model — below MIN_OBSERVATIONS threshold of 10
         for i in range(5):
             self._seed("NYC", "gfs", 71.0, 71.0)
             self._seed("NYC", "nbm", 72.0, 71.0)
 
         weights = tracker.get_model_weights("NYC", window_days=30)
-        assert weights
-        # Equal weights: each = 0.5 for 2 models
-        assert weights["gfs"] == pytest.approx(0.5)
-        assert weights["nbm"] == pytest.approx(0.5)
+        assert weights == {}
+
+    def test_one_thin_model_excluded_not_blocking_the_other(self):
+        """2026-07-23 (TRACK ECMWF FORECAST ACCURACY adjacency fix): a model
+        below the observation floor must be excluded from the result, not
+        flatten an already-well-observed model's real weight to an equal
+        split. Regression test for the bug an opus review caught: onboarding
+        a new, freshly-instrumented model (ecmwf_aifs025_ensemble) would
+        otherwise have silently disabled gfs's earned differentiation."""
+        for i in range(15):
+            self._seed("NYC", "gfs", 71.0, 71.0)  # 15 obs — clears the floor
+        for i in range(5):
+            self._seed("NYC", "nbm", 72.0, 71.0)  # 5 obs — below the floor
+
+        weights = tracker.get_model_weights("NYC", window_days=30)
+        assert weights == {"gfs": 1.0}, (
+            f"gfs (well-observed) must get full weight; nbm (thin) must be "
+            f"excluded entirely, got: {weights}"
+        )
 
     def test_window_days_excludes_old_data(self):
         # Seed old data (40 days ago) — should be excluded by window_days=30

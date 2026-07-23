@@ -154,7 +154,7 @@ class TestPersistenceProb:
             patch.object(wm, "_CONDITION_WEIGHTS", {}),
             patch.object(wm, "_CITY_WEIGHTS", {}),
             patch.object(
-                wm, "_get_consensus_probs", return_value=(None, None, None, None)
+                wm, "_get_consensus_probs", return_value=(None, None, None, None, None)
             ),
             patch("ml_bias.apply_temperature_scaling", side_effect=lambda p, **kw: p),
         ):
@@ -594,7 +594,7 @@ class TestTimeDecayEdge:
             patch.object(wm, "_CONDITION_WEIGHTS", {}),
             patch.object(wm, "_CITY_WEIGHTS", {}),
             patch.object(
-                wm, "_get_consensus_probs", return_value=(None, None, None, None)
+                wm, "_get_consensus_probs", return_value=(None, None, None, None, None)
             ),
             patch.object(wm, "_metar_lock_in", return_value=(False, 0.0, {})),
             patch("nws.get_live_observation", return_value=None),
@@ -986,7 +986,7 @@ class TestGaussianEnsembleBlend:
             patch.object(wm, "_CONDITION_WEIGHTS", {}),
             patch.object(wm, "_CITY_WEIGHTS", {}),
             patch.object(
-                wm, "_get_consensus_probs", return_value=(None, None, None, None)
+                wm, "_get_consensus_probs", return_value=(None, None, None, None, None)
             ),
             patch("ml_bias.apply_temperature_scaling", side_effect=lambda p, **kw: p),
             # This test's fixture uses an 8.0°F high_range spread — not itself
@@ -1059,7 +1059,7 @@ class TestGaussianEnsembleBlend:
             patch.object(wm, "_CONDITION_WEIGHTS", {}),
             patch.object(wm, "_CITY_WEIGHTS", {}),
             patch.object(
-                wm, "_get_consensus_probs", return_value=(None, None, None, None)
+                wm, "_get_consensus_probs", return_value=(None, None, None, None, None)
             ),
             patch.object(wm, "_metar_lock_in", return_value=(False, 0.0, {})),
             patch("nws.get_live_observation", return_value=None),
@@ -1264,7 +1264,7 @@ class TestBimodalEnsemble:
                 wm, "get_ensemble_temps", return_value=[65.0] * 14 + [67.0] * 6
             ),
             patch.object(
-                wm, "_get_consensus_probs", return_value=(None, None, None, None)
+                wm, "_get_consensus_probs", return_value=(None, None, None, None, None)
             ),
             patch("weather_markets.climatological_prob", return_value=0.25),
             patch("weather_markets.nws_prob", return_value=None),

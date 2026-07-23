@@ -82,7 +82,9 @@ def test_analyze_trade_returns_edge_version():
         patch.object(wm, "_SEASONAL_WEIGHTS", {}),
         patch.object(wm, "_CONDITION_WEIGHTS", {}),
         patch.object(wm, "_CITY_WEIGHTS", {}),
-        patch.object(wm, "_get_consensus_probs", return_value=(None, None, None, None)),
+        patch.object(
+            wm, "_get_consensus_probs", return_value=(None, None, None, None, None)
+        ),
         patch.object(wm, "_metar_lock_in", return_value=(False, 0.0, {})),
         patch("nws.get_live_observation", return_value=None),
         patch("climatology.persistence_prob", return_value=0.3),

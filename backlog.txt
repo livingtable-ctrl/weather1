@@ -1120,11 +1120,121 @@ RESOLVED 2026-07-21 (Rain Step 2 -- the real monthly-accumulation
   monthly settlement cadence (~10 cities x 1 settlement/city/month), much
   slower than hourly's.
 
-[TRACK ECMWF FORECAST ACCURACY]
+[PARTIALLY RESOLVED 2026-07-23 -- ecmwf_aifs025_ensemble instrumented; ecmwf_ifs025 (the other product) still not] TRACK ECMWF FORECAST ACCURACY
 Priority: Low (ECMWF already gets a reasonable static/seasonal weight; this is
   about making that weight data-driven like ICON/GFS already are)
 
-Problem:
+RESOLVED 2026-07-23 (ecmwf_aifs025_ensemble only): Re-verification before
+  designing overturned this entry's own "requires new plumbing" framing for
+  ecmwf_ifs025 -- analyze_trade() already fetches that product's value
+  unconditionally (model_temps["ecmwf"] via fetch_temperature_ecmwf(), for an
+  unrelated Phase-C purpose) two lines above where icon/gfs means are
+  captured, so it would have been the cheaper of the two products to wire up.
+  Asked the user which product to instrument anyway, since ecmwf_ifs025 is a
+  single deterministic value (no ensemble members, so no probability of its
+  own -- can't support a real 3-way model_consensus check later) while
+  ecmwf_aifs025_ensemble has real members via the same ENSEMBLE_BASE/
+  _model_prob_and_mean infra _get_consensus_probs() already uses for icon/gfs.
+  User picked ecmwf_aifs025_ensemble for that future-proofing reason over the
+  cheaper option -- explicitly flagging that my first-pass "Recommended" tag
+  had been optimizing for least-effort-now rather than best long-term fit
+  (saved as a standing feedback-memory correction).
+  Shipped: _get_consensus_probs() now also calls
+  _model_prob_and_mean("ecmwf_aifs025_ensemble") (3rd model, same >=5-member
+  floor, same ENSEMBLE_BASE cache/circuit-breaker as icon/gfs -- and already
+  covered by batch_prewarm_ensemble's existing ecmwf_aifs025_ensemble
+  prewarm, so real scans should hit warm cache the same way icon/gfs do, not
+  pay a new per-call network cost most of the time), returning a 5-tuple
+  (icon_prob, gfs_prob, icon_mean, gfs_mean, ecmwf_mean) -- the new
+  ecmwf_prob is deliberately NOT computed into the return value beyond what
+  _model_prob_and_mean gives for free; the 3-way consensus check itself is
+  out of scope here, see the new backlog entry below. ecmwf_forecast_mean is
+  threaded through analyze_trade()'s result dict -> place_paper_order() ->
+  the trade record -> paper._score_ensemble_members()'s model_means dict
+  (new "ecmwf_aifs025_ensemble" key, logged to tracker.ensemble_member_scores
+  exactly like icon_seamless/gfs_seamless already are) -> tracker.
+  get_model_weights()/_weights_from_mae() (both fully model-name-agnostic
+  already -- no changes needed there) -> _model_weights()'s existing
+  "ecmwf_aifs025_ensemble" baseline key in weather_markets.py, which was
+  already present but could never receive a learned value before this.
+  Real bug found via adjacency (step 15) and fixed in-scope: analyze_trade()'s
+  METAR-locked branch (same-day observation override, skips the whole model
+  path) pre-assigns icon_forecast_mean/gfs_forecast_mean = None before the
+  shared result dict is built, but had no matching line for
+  ecmwf_forecast_mean -- would have been a live UnboundLocalError the first
+  time a same-day METAR-locked trade was analyzed. Caught before it shipped,
+  confirmed via mutation test (reverted the one-line fix, the new regression
+  test failed with exactly that UnboundLocalError, restored).
+  9 real (non-test) call sites traced end to end (weather_markets.py x3,
+  paper.py x3, order_executor.py, main.py, web_app.py -- the last one
+  confirmed to already omit icon/gfs too for its manual-approval path, so
+  omitting ecmwf there is consistent, not a new gap). 22 existing tests
+  across 9 files mocked _get_consensus_probs with a 4-element return value;
+  since the real unpack site wraps the call in try/except, a stale 4-tuple
+  mock would have silently swallowed a ValueError and left model_consensus/
+  icon_forecast_mean at their pre-loop defaults instead of exercising what
+  each test claims to test (confirmed live: the model-disagreement test
+  started failing loudly, not silently, once the real signature changed --
+  fixed all 22 to 5-tuples). 7 new tests added (weather_markets.py: a real
+  _om_request-mocked fetch test hand-computing the averaged mean from 5
+  synthetic members, a >=5-member-floor boundary test, an analyze_trade()
+  result-dict test with 3 distinct per-model values to catch a mix-up, the
+  METAR-locked-branch regression test; paper.py: place_paper_order storage,
+  _score_ensemble_members logs the new row when present, skips it when
+  absent/legacy). 783 tests pass across the full scoped sweep
+  (weather_markets/paper/order_executor/main + every file mocking
+  _get_consensus_probs); ruff+mypy clean.
+  Independent Agent(opus, effort=high) review before push found one real
+  MEDIUM adjacency bug, contradicting this entry's own "no changes needed,
+  fully model-name-agnostic" framing for the two aggregate weight functions:
+  introducing a brand-new, initially-thin model name into
+  ensemble_member_scores perturbs BOTH downstream weight-learning aggregates,
+  which treat "whatever model names are present" generically but gate on
+  ALL of them together, not per-model. (1) weather_markets._weights_from_mae()
+  (feeds _model_weights()'s ensemble-blend tier 1) used a GLOBAL (not
+  per-city) all-or-nothing `return None` the moment ANY tracked model
+  anywhere had fewer than min_n observations -- worse than the reviewer
+  first described (per-city), confirmed by re-reading get_member_accuracy():
+  `n = stats["n"]` is a global row count. This meant onboarding
+  ecmwf_aifs025_ensemble would have silently disabled icon/gfs's MAE-based
+  weighting for EVERY city until ECMWF alone crossed 20 global observations.
+  Fixed: skip the thin model, keep computing real weights for the rest
+  (strictly improving, no pre-existing-behavior change -- previously ANY
+  thin model already fully blocked everything, so this only ever unblocks
+  cases that were already broken). Mutation-tested (reverted to `return
+  None`, confirmed the new regression test fails with exactly the predicted
+  symptom, restored). (2) tracker.get_model_weights() (feeds
+  _forecast_model_weights()'s daily-blend tier 1) had a documented "any thin
+  model -> equal weight for all" fallback -- a genuine design call, not just
+  a bug, since fixing it changes pre-existing 2-model semantics too (e.g.
+  today's rare case of one of icon/gfs being thin while the other isn't).
+  Presented 3 options via AskUserQuestion (exclude thin models from the
+  softmax entirely / grandfather icon+gfs and gate only over legacy models /
+  leave as-is and just document); user picked excluding thin models
+  (rejected grandfathering as permanent hardcoded-model-list debt matching a
+  pattern this codebase has been burned by before -- mos.py's city list,
+  the metar.py duplicate dict; rejected leave-as-is since the bug is
+  directly caused by this diff and well-scoped to fix, not "massively out
+  of scope"). Fixed the same way as (1): a model below MIN_OBSERVATIONS=10
+  is excluded from the softmax, not equal-weighted alongside proven models.
+  Updated tests/test_signal_quality.py's test_insufficient_observations_
+  returns_equal_weights (renamed, rewritten for the new "all thin -> {}"
+  behavior) and added a new one-thin-one-not test proving the well-observed
+  model gets full weight, not a diluted split. Mutation-tested the same way.
+  946 tests pass across the widened sweep (adds test_signal_quality.py,
+  test_phase4.py, test_tracker.py to the file list above); ruff+mypy clean
+  after this follow-up too.
+  ecmwf_ifs025 (the daily-blend product, still unconsequential-to-instrument
+  per this entry's original "more consequential" framing) remains
+  un-instrumented -- if picked up later, model_temps["ecmwf"] in
+  analyze_trade() is already the value to capture, no new fetch needed.
+  Won't pay off in an actual learned weight for weeks: needs >=10 fresh
+  settled observations per city in tracker.get_model_weights()'s 30-day
+  window (same MIN_OBSERVATIONS gate icon/gfs already use), and TRADING_PAUSED
+  is still true as of this session (Belgium return 2026-07-31) so real
+  paper-trade volume needed to fill that window hasn't been accruing.
+
+Original problem (still open for ecmwf_ifs025 specifically):
   ECMWF's per-model forecast accuracy is never captured anywhere, so it can
   never earn a learned weight the way icon_seamless/gfs_seamless can.
   paper.py's _score_ensemble_members() only ever logs icon_forecast_mean and
@@ -1183,12 +1293,60 @@ Why not now:
     3-way consensus check) that deserves its own scoping pass, not a
     rushed addition to an unrelated bug-fix session.
 
+When to revisit (ecmwf_ifs025 only -- ecmwf_aifs025_ensemble is done, see
+  above):
+  - Have bandwidth for a multi-file instrumentation change, not a quick fix
+    (though smaller than this note originally implied -- model_temps["ecmwf"]
+    in analyze_trade() is already the fetched value, no new plumbing needed).
+  - Feeds _forecast_model_weights()'s daily blend, a different/more
+    consequential consumer than ecmwf_aifs025_ensemble's _model_weights()
+    (get_ensemble_temps() pipeline), so still worth doing even though the
+    aifs025 product is now covered.
+
+[3-WAY MODEL_CONSENSUS CHECK -- ECMWF_AIFS025_ENSEMBLE'S PROBABILITY ISN'T WIRED IN YET]
+Priority: Low (the underlying weight-learning field is done; this is a
+  trade-quality-gate refinement, not a correctness bug)
+
+Problem:
+  analyze_trade()'s model_consensus check (weather_markets.py, the
+  "Model consensus check" block) is still the original binary
+  abs(icon_p - gfs_p) > 0.12 comparison -- it does not consider
+  ecmwf_aifs025_ensemble at all, even though _get_consensus_probs() now
+  fetches that model's mean via the same _model_prob_and_mean() helper used
+  for icon/gfs (2026-07-23, see the resolved TRACK ECMWF FORECAST ACCURACY
+  entry above). _model_prob_and_mean() computes a real member-vote-fraction
+  probability for ecmwf_aifs025_ensemble as a side effect of computing its
+  mean -- _get_consensus_probs() just doesn't return it yet (deliberately
+  scoped out of the 2026-07-23 session, at the user's explicit choice, to
+  keep that session to "ship the weight-learning field only").
+
+What the fix looks like:
+  1. Extend _get_consensus_probs()'s return tuple with ecmwf_prob (cheap --
+     _model_prob_and_mean("ecmwf_aifs025_ensemble") already computes it,
+     currently discarded via `_, ecmwf_mean = ...`).
+  2. Decide how to fold a 3rd probability into model_consensus. Note this is
+     NOT purely mechanical: icon_p/gfs_p are real member-vote-fraction
+     probabilities from live multi-member ensembles (same methodology,
+     directly comparable). ecmwf_aifs025_ensemble's probability, once wired
+     in, WOULD also be a genuine member-vote-fraction probability from the
+     same ENSEMBLE_BASE infrastructure -- so unlike the ecmwf_ifs025
+     alternative (which has no members at all, only a single deterministic
+     point value), a 3-way check here IS apples-to-apples methodologically.
+     Still a real design decision: all-pairwise-agreement (max spread across
+     all 3 pairs) vs. a simpler max-min-spread check across all 3 probs.
+
+Why not now:
+  - Deliberately deferred by explicit user decision on 2026-07-23 to keep
+    that session scoped to the weight-learning field alone.
+  - Changes live trade-gating behavior (model_consensus feeds
+    "near_threshold"/downstream Kelly-adjacent signals) -- deserves its own
+    scoping pass, not a rider on an unrelated instrumentation change.
+
 When to revisit:
-  - Have bandwidth for a multi-file instrumentation change, not a quick fix.
-  - Decide up front whether ecmwf_ifs025 (daily blend, drives the probability
-    calc real trades actually use) or ecmwf_aifs025_ensemble (ensemble
-    consensus data) matters more before starting -- see note above, they are
-    not interchangeable.
+  - Whenever model_consensus's trade-quality signal is next being tuned, or
+    once enough settled ecmwf_aifs025_ensemble observations exist to know
+    whether its member-vote probability actually disagrees with icon/gfs in
+    a way worth gating on (rather than guessing at the 3-way threshold blind).
 
 [RESOLVED 2026-07-12] LAS VEGAS / NEW ORLEANS MISSING FROM _HISTORICAL_SIGMA
 Priority: was Low-Medium (silently degraded signal quality for 2 of 20 cities,

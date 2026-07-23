@@ -2799,7 +2799,14 @@ def _weights_from_mae(
         mae = city_mae if (city_mae is not None and city_n >= min_n) else stats["mae"]
         n = stats["n"]
         if n < min_n or mae <= 0:
-            return None  # too little data — don't trust yet
+            # A single thin/freshly-instrumented model (e.g. ecmwf_aifs025_ensemble
+            # right after 2026-07-23's TRACK ECMWF FORECAST ACCURACY change) must
+            # not block already-well-observed models from getting their real
+            # learned weight — `n` here is GLOBAL (get_member_accuracy has no
+            # per-city floor), so a `return None` here previously disabled MAE
+            # weighting for EVERY city the moment ANY tracked model anywhere was
+            # thin. Skip just this model instead.
+            continue
         weights[model] = 1.0 / mae
 
     if not weights:
@@ -5455,11 +5462,17 @@ def _get_consensus_probs(
     condition: dict,
     hour: int | None = None,
     var: str = "max",
-) -> tuple[float | None, float | None, float | None, float | None]:
-    """Fetch per-model ensemble probabilities for ICON and GFS separately.
+) -> tuple[float | None, float | None, float | None, float | None, float | None]:
+    """Fetch per-model ensemble probabilities/means for ICON, GFS, and ECMWF AIFS.
 
-    Returns (icon_prob, gfs_prob). Either may be None if that model returned
-    fewer than 5 members. Used for model_consensus check in analyze_trade().
+    Returns (icon_prob, gfs_prob, icon_mean, gfs_mean, ecmwf_mean). Any may be
+    None if that model returned fewer than 5 members. icon_prob/gfs_prob feed
+    the model_consensus check in analyze_trade(); ecmwf_mean feeds ECMWF's own
+    learned-weight instrumentation (backlog.txt "TRACK ECMWF FORECAST
+    ACCURACY") — ecmwf_aifs025_ensemble's own probability is deliberately not
+    returned yet (a 3-way consensus check mixing its Gaussian/vote-fraction
+    methodologies is a separate, not-yet-scoped backlog item; _model_prob_and_mean
+    already computes it cheaply here whenever that item is picked up).
     Only supports temperature conditions (above/below/range).
     """
     _cons_key = (
@@ -5564,10 +5577,11 @@ def _get_consensus_probs(
 
     icon_prob, icon_mean = _model_prob_and_mean("icon_seamless")
     gfs_prob, gfs_mean = _model_prob_and_mean("gfs_seamless")
-    _cons_result = (icon_prob, gfs_prob, icon_mean, gfs_mean)
+    _, ecmwf_mean = _model_prob_and_mean("ecmwf_aifs025_ensemble")
+    _cons_result = (icon_prob, gfs_prob, icon_mean, gfs_mean, ecmwf_mean)
     _cons_ttl = (
         _CONSENSUS_CACHE_TTL
-        if (icon_prob is not None or gfs_prob is not None)
+        if (icon_prob is not None or gfs_prob is not None or ecmwf_mean is not None)
         else _CONSENSUS_MISS_TTL
     )
     _CONSENSUS_CACHE.set_with_ttl(_cons_key, _cons_result, _cons_ttl)
@@ -7423,12 +7437,24 @@ def analyze_trade(
         model_consensus = True
         icon_forecast_mean: float | None = None
         gfs_forecast_mean: float | None = None
+        # ecmwf_forecast_mean (ecmwf_aifs025_ensemble) feeds ECMWF's own
+        # learned-weight instrumentation (backlog.txt "TRACK ECMWF FORECAST
+        # ACCURACY") via _score_ensemble_members — it does NOT participate in
+        # model_consensus below; that stays icon-vs-gfs only (a 3-way version
+        # is a separate, not-yet-scoped backlog item, since ecmwf_aifs025_ensemble's
+        # own probability would need mixing with a materially different
+        # methodology than icon/gfs's member-vote-fraction probabilities).
+        ecmwf_forecast_mean: float | None = None
         if ens_prob is not None and len(temps) >= 2:
             try:
-                icon_p, gfs_p, icon_forecast_mean, gfs_forecast_mean = (
-                    _get_consensus_probs(
-                        city, target_date, condition, hour=hour, var=var
-                    )
+                (
+                    icon_p,
+                    gfs_p,
+                    icon_forecast_mean,
+                    gfs_forecast_mean,
+                    ecmwf_forecast_mean,
+                ) = _get_consensus_probs(
+                    city, target_date, condition, hour=hour, var=var
                 )
                 if icon_p is not None and gfs_p is not None:
                     if abs(icon_p - gfs_p) > 0.12:
@@ -7936,6 +7962,7 @@ def analyze_trade(
         near_threshold = False
         icon_forecast_mean = None
         gfs_forecast_mean = None
+        ecmwf_forecast_mean = None
         index_adj = 0.0
         ci_low = blended_prob
         ci_high = blended_prob
@@ -8360,6 +8387,7 @@ def analyze_trade(
         # Per-model forecast means for ensemble scoring
         "icon_forecast_mean": icon_forecast_mean,
         "gfs_forecast_mean": gfs_forecast_mean,
+        "ecmwf_forecast_mean": ecmwf_forecast_mean,
         # Phase C: extended ensemble spread + Gaussian probability
         "ensemble_spread": ensemble_spread_prob,
         "ensemble_spread_f": ensemble_spread_f,

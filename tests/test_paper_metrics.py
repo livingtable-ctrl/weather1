@@ -404,3 +404,118 @@ def test_place_paper_order_stores_var_on_trade(tmp_path, monkeypatch):
         var="min",
     )
     assert trade["var"] == "min"
+
+
+# ---------------------------------------------------------------------------
+# backlog.txt "TRACK ECMWF FORECAST ACCURACY": ecmwf_forecast_mean must be
+# stored on the trade record (mirroring icon/gfs) and logged by
+# _score_ensemble_members under model="ecmwf_aifs025_ensemble".
+# ---------------------------------------------------------------------------
+
+
+def test_place_paper_order_stores_ecmwf_forecast_mean(tmp_path, monkeypatch):
+    import paper
+
+    monkeypatch.setattr(paper, "DATA_PATH", tmp_path / "paper_trades.json")
+
+    trade = paper.place_paper_order(
+        "KXHIGHNY-26JUL04-T85",
+        "yes",
+        10,
+        0.5,
+        city="NYC",
+        target_date="2026-07-04",
+        icon_forecast_mean=84.0,
+        gfs_forecast_mean=83.5,
+        ecmwf_forecast_mean=85.2,
+    )
+    assert abs(trade["ecmwf_forecast_mean"] - 85.2) < 0.001
+
+
+def test_score_ensemble_members_logs_ecmwf_row(tmp_path, monkeypatch):
+    """A trade with ecmwf_forecast_mean set must produce a row in
+    ensemble_member_scores under model='ecmwf_aifs025_ensemble'."""
+    import paper
+    import tracker
+
+    monkeypatch.setattr(tracker, "DB_PATH", tmp_path / "test.db")
+    tracker._db_initialized = False
+    tracker.init_db()
+
+    ticker = "KXHIGHNY-26JUL04-T85"
+    with tracker._conn() as con:
+        con.execute(
+            "INSERT OR IGNORE INTO outcomes (ticker, settled_yes) VALUES (?,1)",
+            (ticker,),
+        )
+        con.execute("UPDATE outcomes SET settled_temp_f=88.0 WHERE ticker=?", (ticker,))
+
+    trade = {
+        "ticker": ticker,
+        "city": "NYC",
+        "target_date": "2026-07-04",
+        "icon_forecast_mean": 84.0,
+        "gfs_forecast_mean": 83.5,
+        "ecmwf_forecast_mean": 85.2,
+        "forecast_temp": 84.2,
+    }
+    paper._score_ensemble_members(trade, outcome_yes=True)
+
+    with tracker._conn() as con:
+        rows = con.execute(
+            "SELECT predicted_temp, actual_temp FROM ensemble_member_scores "
+            "WHERE city='NYC' AND model='ecmwf_aifs025_ensemble'"
+        ).fetchall()
+    assert rows, (
+        "_score_ensemble_members must insert an 'ecmwf_aifs025_ensemble' row "
+        "when trade['ecmwf_forecast_mean'] is set"
+    )
+    assert abs(rows[0][0] - 85.2) < 0.001
+    assert abs(rows[0][1] - 88.0) < 0.001
+
+
+def test_score_ensemble_members_skips_ecmwf_row_when_mean_absent(tmp_path, monkeypatch):
+    """A legacy trade with no ecmwf_forecast_mean key must NOT produce a
+    'ecmwf_aifs025_ensemble' row — mirrors icon/gfs's existing None-skip
+    behavior (model_means.items() only logs non-None predicted_temp)."""
+    import paper
+    import tracker
+
+    monkeypatch.setattr(tracker, "DB_PATH", tmp_path / "test.db")
+    tracker._db_initialized = False
+    tracker.init_db()
+
+    ticker = "KXHIGHNY-26JUL04-T85"
+    with tracker._conn() as con:
+        con.execute(
+            "INSERT OR IGNORE INTO outcomes (ticker, settled_yes) VALUES (?,1)",
+            (ticker,),
+        )
+        con.execute("UPDATE outcomes SET settled_temp_f=88.0 WHERE ticker=?", (ticker,))
+
+    trade = {
+        "ticker": ticker,
+        "city": "NYC",
+        "target_date": "2026-07-04",
+        "icon_forecast_mean": 84.0,
+        "gfs_forecast_mean": 83.5,
+        "forecast_temp": 84.2,
+        # no "ecmwf_forecast_mean" key -- legacy trade, predates this feature
+    }
+    paper._score_ensemble_members(trade, outcome_yes=True)
+
+    with tracker._conn() as con:
+        rows = con.execute(
+            "SELECT predicted_temp FROM ensemble_member_scores "
+            "WHERE city='NYC' AND model='ecmwf_aifs025_ensemble'"
+        ).fetchall()
+    assert not rows, (
+        f"expected no ecmwf_aifs025_ensemble row for a legacy trade, got: {rows}"
+    )
+    # icon/gfs rows must still be logged normally.
+    with tracker._conn() as con:
+        icon_rows = con.execute(
+            "SELECT predicted_temp FROM ensemble_member_scores "
+            "WHERE city='NYC' AND model='icon_seamless'"
+        ).fetchall()
+    assert icon_rows and abs(icon_rows[0][0] - 84.0) < 0.001

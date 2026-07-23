@@ -3938,10 +3938,18 @@ def get_model_weights(city: str, window_days: int = 30) -> dict[str, float]:
 
     Uses ensemble_member_scores for `city` over the last `window_days`.
     Softmax is applied over negative-MAE so lower error → higher weight.
-    Falls back to equal weights (each = 1/n) when fewer than 10 observations
-    exist for any model.
+    A model with fewer than 10 observations is excluded entirely (it has no
+    trustworthy per-model error estimate yet) rather than flattening every
+    OTHER model's already-earned differentiation to equal weight — fixed
+    2026-07-23 (TRACK ECMWF FORECAST ACCURACY adjacency finding): the old
+    "any thin model → equal weight for all" fallback meant onboarding a new,
+    freshly-instrumented model (ecmwf_aifs025_ensemble) would have silently
+    disabled icon/gfs's real learned differentiation for every city until
+    ECMWF alone crossed the floor. A model that individually clears the
+    floor keeps its real weight regardless of what other models are doing.
 
-    Returns a dict summing to 1.0, e.g. {'gfs': 0.42, 'ecmwf': 0.35, 'nbm': 0.23}.
+    Returns a dict summing to 1.0 over models that clear the floor, e.g.
+    {'gfs': 0.42, 'ecmwf': 0.35, 'nbm': 0.23} — or {} if none do.
     """
     import math
 
@@ -3970,10 +3978,13 @@ def get_model_weights(city: str, window_days: int = 30) -> dict[str, float]:
             abs(r["predicted_temp"] - r["actual_temp"])
         )
 
-    # Require minimum observations per model; fall back to equal weights otherwise
-    if any(len(errs) < MIN_OBSERVATIONS for errs in by_model.values()):
-        n = len(by_model)
-        return {m: round(1.0 / n, 6) for m in by_model} if n else {}
+    # Exclude any model below the observation floor — it has no vote, but
+    # doesn't block the models that do.
+    by_model = {
+        m: errs for m, errs in by_model.items() if len(errs) >= MIN_OBSERVATIONS
+    }
+    if not by_model:
+        return {}
 
     mae_per_model = {m: sum(errs) / len(errs) for m, errs in by_model.items()}
 

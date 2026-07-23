@@ -138,7 +138,7 @@ def test_analyze_trade_logs_nws_prob_failure(caplog):
                 ):
                     with patch(
                         "weather_markets._get_consensus_probs",
-                        return_value=(None, None, None, None),
+                        return_value=(None, None, None, None, None),
                     ):
                         with patch(
                             "weather_markets.climatological_prob", return_value=None
@@ -201,7 +201,7 @@ def test_analyze_trade_logs_climatological_failure(caplog):
                 with patch("weather_markets.nws_prob", return_value=None):
                     with patch(
                         "weather_markets._get_consensus_probs",
-                        return_value=(None, None, None, None),
+                        return_value=(None, None, None, None, None),
                     ):
                         with patch(
                             "weather_markets.climatological_prob",
