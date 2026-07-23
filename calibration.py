@@ -139,7 +139,7 @@ def _load_rows(db_path: Path) -> list[sqlite3.Row]:
                    p.ensemble_prob, p.nws_prob, p.clim_prob,
                    o.settled_yes
             FROM multiday_predictions p
-            JOIN outcomes o ON p.ticker = o.ticker
+            JOIN outcomes_valid o ON p.ticker = o.ticker
             WHERE p.ensemble_prob IS NOT NULL
               AND p.nws_prob IS NOT NULL
               AND p.clim_prob IS NOT NULL
@@ -308,7 +308,7 @@ def calibrate_condition_weights(
                    p.ensemble_prob, p.clim_prob, p.nws_prob,
                    o.settled_yes
             FROM predictions p
-            JOIN outcomes o ON p.ticker = o.ticker
+            JOIN outcomes_valid o ON p.ticker = o.ticker
             WHERE p.ensemble_prob IS NOT NULL
               AND p.clim_prob IS NOT NULL
               AND p.nws_prob IS NOT NULL

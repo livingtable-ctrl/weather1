@@ -5102,7 +5102,7 @@ def cmd_walkforward(client: KalshiClient) -> None:
                 """
             SELECT p.our_prob, p.condition_type, o.settled_yes
             FROM predictions p
-            JOIN outcomes o ON p.ticker = o.ticker
+            JOIN outcomes_valid o ON p.ticker = o.ticker
             WHERE p.our_prob IS NOT NULL AND o.settled_yes IS NOT NULL
               AND (p.condition_type IS NULL OR p.condition_type != 'between')
             """
@@ -5315,7 +5315,7 @@ def cmd_calibrate() -> None:
                 dict(r)
                 for r in _con.execute(
                     "SELECT p.city, p.our_prob, o.settled_yes "
-                    "FROM multiday_predictions p JOIN outcomes o ON p.ticker = o.ticker "
+                    "FROM multiday_predictions p JOIN outcomes_valid o ON p.ticker = o.ticker "
                     "WHERE o.settled_yes IS NOT NULL AND p.our_prob IS NOT NULL"
                     "  AND (p.condition_type IS NULL"
                     "       OR p.condition_type NOT IN ('between', 'precip_month_total'))"

@@ -3136,7 +3136,7 @@ setInterval(() => {{
                 """
                 SELECT p.our_prob, o.settled_yes
                 FROM   multiday_predictions p
-                JOIN   outcomes o ON o.ticker = p.ticker
+                JOIN   outcomes_valid o ON o.ticker = p.ticker
                 WHERE  p.city = ? AND p.our_prob IS NOT NULL
                 ORDER  BY p.our_prob
                 """,

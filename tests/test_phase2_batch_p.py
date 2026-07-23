@@ -39,8 +39,13 @@ def _make_db(
     con.execute(
         """CREATE TABLE outcomes (
             ticker TEXT PRIMARY KEY,
-            settled_yes INTEGER
+            settled_yes INTEGER,
+            disputed INTEGER DEFAULT 0
         )"""
+    )
+    con.execute(
+        """CREATE VIEW outcomes_valid AS
+            SELECT * FROM outcomes WHERE disputed IS NULL OR disputed = 0"""
     )
     for ctype, n in (("above", n_above), ("below", n_below), ("between", n_between)):
         for i in range(n):
@@ -49,7 +54,10 @@ def _make_db(
                 "INSERT INTO predictions VALUES (?,?,?,?,?,?,?)",
                 (ticker, ctype, "2026-06-01", 0.45, 0.55, 0.40, 1),
             )
-            con.execute("INSERT INTO outcomes VALUES (?,?)", (ticker, i % 2))
+            con.execute(
+                "INSERT INTO outcomes (ticker, settled_yes) VALUES (?,?)",
+                (ticker, i % 2),
+            )
     con.commit()
     con.close()
 

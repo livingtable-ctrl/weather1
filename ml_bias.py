@@ -170,7 +170,7 @@ def train_bias_model(min_samples: int = 200) -> dict:
                     CAST(julianday(date(p.market_date)) - julianday(date(p.predicted_at)) AS INTEGER) AS days_out,
                     o.settled_yes
                 FROM multiday_predictions p
-                JOIN outcomes o ON p.ticker = o.ticker
+                JOIN outcomes_valid o ON p.ticker = o.ticker
                 WHERE p.city IS NOT NULL AND p.our_prob IS NOT NULL
                   AND (p.condition_type IS NULL
                        OR p.condition_type NOT IN ('between', 'precip_month_total'))
@@ -595,7 +595,7 @@ def train_all_temperature_scaling(
                 """
                 SELECT p.our_prob, o.settled_yes, p.condition_type
                 FROM predictions p
-                JOIN outcomes o ON p.ticker = o.ticker
+                JOIN outcomes_valid o ON p.ticker = o.ticker
                 WHERE p.our_prob IS NOT NULL AND o.settled_yes IS NOT NULL
                   AND (p.days_out IS NULL OR p.days_out >= 1)
                   AND (p.condition_type IS NULL
@@ -616,7 +616,7 @@ def train_all_temperature_scaling(
                 """
                 SELECT p.our_prob, o.settled_yes
                 FROM predictions p
-                JOIN outcomes o ON p.ticker = o.ticker
+                JOIN outcomes_valid o ON p.ticker = o.ticker
                 WHERE p.our_prob IS NOT NULL AND o.settled_yes IS NOT NULL
                   AND p.days_out = 0
                   AND (p.condition_type IS NULL
@@ -630,7 +630,7 @@ def train_all_temperature_scaling(
                     """
                     SELECT p.our_prob, o.settled_yes
                     FROM predictions p
-                    JOIN outcomes o ON p.ticker = o.ticker
+                    JOIN outcomes_valid o ON p.ticker = o.ticker
                     WHERE p.our_prob IS NOT NULL AND o.settled_yes IS NOT NULL
                       AND p.days_out = 0
                       AND ("""

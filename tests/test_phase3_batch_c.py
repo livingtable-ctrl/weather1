@@ -25,9 +25,13 @@ def _make_db(tmp_path: Path, rows: list[dict]) -> Path:
                 ensemble_prob REAL, nws_prob REAL, clim_prob REAL,
                 days_out INTEGER
             );
-            CREATE TABLE outcomes (ticker TEXT PRIMARY KEY, settled_yes INTEGER);
+            CREATE TABLE outcomes (
+                ticker TEXT PRIMARY KEY, settled_yes INTEGER, disputed INTEGER DEFAULT 0
+            );
             CREATE VIEW multiday_predictions AS
                 SELECT * FROM predictions WHERE days_out IS NULL OR days_out >= 1;
+            CREATE VIEW outcomes_valid AS
+                SELECT * FROM outcomes WHERE disputed IS NULL OR disputed = 0;
         """)
         for r in rows:
             con.execute(
@@ -44,7 +48,7 @@ def _make_db(tmp_path: Path, rows: list[dict]) -> Path:
                 ),
             )
             con.execute(
-                "INSERT OR REPLACE INTO outcomes VALUES (?,?)",
+                "INSERT OR REPLACE INTO outcomes (ticker, settled_yes) VALUES (?,?)",
                 (r["ticker"], int(r["settled_yes"])),
             )
     return db

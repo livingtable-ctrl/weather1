@@ -700,7 +700,7 @@ def run_walk_forward(
         _q = """
             SELECT p.our_prob, p.city, p.market_date, o.settled_yes
             FROM multiday_predictions p
-            JOIN outcomes o ON p.ticker = o.ticker
+            JOIN outcomes_valid o ON p.ticker = o.ticker
             WHERE p.market_date >= ?
               AND p.our_prob IS NOT NULL
               AND o.settled_yes IS NOT NULL

@@ -1161,14 +1161,21 @@ def _score_ensemble_members(trade: dict, outcome_yes: bool) -> None:
             var = "min"
         else:
             var = "max"
-    # Look up the official settled daily HIGH from the outcomes table (written by audit_settlement)
+    # Look up the official settled daily HIGH from the outcomes table (written by
+    # audit_settlement). Joins outcomes_valid, not the raw table: audit_settlement
+    # sets settled_temp_f and disputed in the same pass on a Kalshi-vs-archive
+    # mismatch, so by the time settled_temp_f is non-NULL a dispute may already be
+    # flagged -- and this value feeds live per-model accuracy scoring
+    # (_dynamic_model_weights() via log_member_score() below), exactly the
+    # "corrupted ground-truth label pollutes model weighting" case outcomes_valid
+    # exists to block (backlog.txt "DISPUTED-ROW GUARD" entry, opus review finding).
     try:
         from tracker import _conn, init_db
 
         init_db()
         with _conn() as con:
             row = con.execute(
-                "SELECT settled_temp_f FROM outcomes WHERE ticker = ?",
+                "SELECT settled_temp_f FROM outcomes_valid WHERE ticker = ?",
                 (trade.get("ticker", ""),),
             ).fetchone()
             actual_temp = row[0] if row else None

@@ -27,12 +27,17 @@ def _seed_db(db_path: Path, rows: list[dict]) -> None:
             CREATE TABLE IF NOT EXISTS outcomes (
                 ticker TEXT PRIMARY KEY,
                 settled_yes INTEGER,
-                settled_at TEXT
+                settled_at TEXT,
+                disputed INTEGER DEFAULT 0
             )
         """)
         con.execute("""
             CREATE VIEW IF NOT EXISTS multiday_predictions AS
                 SELECT * FROM predictions WHERE days_out IS NULL OR days_out >= 1
+        """)
+        con.execute("""
+            CREATE VIEW IF NOT EXISTS outcomes_valid AS
+                SELECT * FROM outcomes WHERE disputed IS NULL OR disputed = 0
         """)
         for r in rows:
             con.execute(
@@ -472,7 +477,11 @@ def test_calibrate_condition_weights_returns_per_type_dict():
                 ensemble_prob REAL, clim_prob REAL, nws_prob REAL,
                 days_out INTEGER
             );
-            CREATE TABLE outcomes (ticker TEXT, settled_yes INTEGER);
+            CREATE TABLE outcomes (
+                ticker TEXT, settled_yes INTEGER, disputed INTEGER DEFAULT 0
+            );
+            CREATE VIEW outcomes_valid AS
+                SELECT * FROM outcomes WHERE disputed IS NULL OR disputed = 0;
         """)
         for ctype in ("above", "below", "between"):
             for i in range(120):
@@ -487,7 +496,9 @@ def test_calibrate_condition_weights_returns_per_type_dict():
                     "INSERT INTO predictions VALUES (?,?,?,?,?,?,?)",
                     (t, ctype, date_str, ep, cp, np_, 1),
                 )
-                con.execute("INSERT INTO outcomes VALUES (?,?)", (t, y))
+                con.execute(
+                    "INSERT INTO outcomes (ticker, settled_yes) VALUES (?,?)", (t, y)
+                )
         con.commit()
         con.close()
 
