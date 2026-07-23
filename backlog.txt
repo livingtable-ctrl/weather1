@@ -82,8 +82,8 @@ When to revisit:
     or a habit of always pointing ad-hoc investigative scripts at a copied
     DB) before a third occurrence.
 
-[DISPUTED-ROW GUARD (test_disputed_row_guard.py) IS SCOPED TO tracker.py ONLY -- 9 REAL SCORING/CALIBRATION CONSUMERS IN 5 OTHER FILES ARE UNGUARDED]
-Priority: Medium -- no live impact found today (the one contaminated case
+[RESOLVED 2026-07-23] DISPUTED-ROW GUARD (test_disputed_row_guard.py) IS SCOPED TO tracker.py ONLY -- 9 REAL SCORING/CALIBRATION CONSUMERS IN 5 OTHER FILES ARE UNGUARDED
+Priority: was Medium -- no live impact found today (the one contaminated case
   that reached these paths, PROB*/BAD*, happened to be excluded by an
   accidental NULL market_date, not by any real protection), but a more
   careful future contamination would sail straight through every one of
@@ -154,16 +154,57 @@ What it would look like:
      the guard fails, revert) -- same methodology the original guard used
      on itself.
 
-Why not now:
-  - Sized as its own pass (9 fix sites across 5 files plus a guard
-    rewrite plus mutation tests), not a one-line addition -- user asked
-    to file it and confirm the approach before touching code rather than
-    implementing inline while answering the original validate/shadow-
-    predictions question.
+RESOLVED 2026-07-23, pushed `5f94910`: implemented as scoped above, with one
+  correction and two hardening fixes found by an opus review before commit.
+  Fixed all 9 sites to join `outcomes_valid` (backtest.py, calibration.py x2,
+  ml_bias.py x4, main.py x2, web_app.py) -- pure JOIN-target swaps, `SELECT
+  *`-equivalent view, no other query-shape changes needed. Widened
+  `test_disputed_row_guard.py` from tracker.py-only to every production
+  `.py` file (directory-name blocklist for tests/, caches, static assets,
+  etc., not a path allowlist, so a future new production subdirectory is
+  covered automatically).
+  Review correction: `paper.py`'s `_score_ensemble_members` was going to be
+  allowlisted (settled_temp_f lookup for the ticker just settled) using the
+  same reasoning as `sync_outcomes` ("can't be disputed before it has a
+  settlement") -- the reviewer traced the real call graph and found this
+  doesn't hold: `audit_settlement()` sets `settled_temp_f` and `disputed` in
+  the *same pass* on a Kalshi-vs-archive mismatch, and `_score_ensemble_members`
+  requires `settled_temp_f` non-NULL before it runs -- so it only ever
+  executes after a row could already be disputed, and it feeds live
+  `_dynamic_model_weights()`. Fixed as a 10th real site (joins
+  `outcomes_valid`) instead of allowlisted.
+  Review-caught guard hardening (both latent, no live exploit, but the exact
+  "one caller gets missed" shape this guard exists to prevent, just
+  relocated): (1) the original line-scan used a column-0 `^def` regex for
+  function attribution, invisible to methods and nested functions -- a
+  second unsafe query added inside an already-allowlisted function's body
+  would have passed silently; fixed with a real `ast.FunctionDef`/
+  `AsyncFunctionDef` walk producing a true innermost qualified name
+  (`Outer.inner`, `Class.method`). (2) the scan matched line-by-line, so a
+  `JOIN`/table-name split across two lines could never match even though
+  the regex pattern itself is newline-tolerant (`\s` matches `\n`); fixed by
+  scanning each file's full text in one pass instead of splitting into
+  lines first. Both hardening fixes mutation-tested (injected a nested-
+  function violation and a multi-line-split violation in a scratch function
+  in backtest.py, confirmed the guard caught each with the correct
+  attribution, reverted via `git checkout` after a manual string-replace
+  revert attempt silently failed to match).
+  Three hand-rolled test fixtures (`test_calibration.py` x2,
+  `test_phase2_batch_p.py`, `test_phase3_batch_c.py`) needed a `disputed`
+  column + `outcomes_valid` view added to match production schema; one of
+  those edits initially broke an `INSERT` (column count mismatch from adding
+  `disputed` without updating the VALUES list), which surfaced as a
+  confusing Windows "file in use" error on tempdir cleanup (the mismatch
+  exception left the writer connection unclosed) before being isolated and
+  fixed with an explicit column list.
+  Final state: 599 tests pass across every touched module, `ruff`/
+  `ruff format`/`mypy` clean. User confirmed the approach via AskUserQuestion
+  before implementation (join outcomes_valid on all 9/10 sites, widen guard
+  repo-wide excluding tests/), then confirmed commit+push after the review
+  findings were fixed.
 
 When to revisit:
-  - Next available session slot; no external gate (not blocked on Belgium
-    return, VM move, or a data floor) -- purely a matter of scheduling.
+  - N/A, closed.
 
 [CLOSED 2026-07-12 -- see below] KALSHI ORDER-WRITE ENDPOINTS MOVING TO /portfolio/events/orders
 Priority: was High -- verify before resuming live trading (~2026-07-30 return), not a
