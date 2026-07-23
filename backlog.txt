@@ -1,6 +1,87 @@
 BACKLOG — future improvements to implement when ready
 ======================================================
 
+[RESOLVED 2026-07-23] SYNTHETIC TEST DATA (PROB*/BAD* OUTCOME ROWS) CORRUPTED THE LIVE P10.3 BRIER ALERT FOR 4+ DAYS
+Priority: was High -- silently corrupted a live model-quality safety signal
+  (P10.3 Brier alert) undetected since 2026-07-19; same root-cause class as
+  the already-resolved 2026-07-21 KXBADDATE3 incident (see MYSTERY REVERT-
+  adjacent entry / project memory), second occurrence of the same failure
+  pattern.
+
+Problem:
+  Found while reviewing routine `python main.py cron` output: the P10.3
+  Brier alert fired "Brier score has exceeded 0.22 for two consecutive
+  weeks (0.2687, 0.4525)" on back-to-back cron runs two days apart with
+  byte-identical figures despite new settlements happening in between --
+  the tell that something was frozen/fake, not a live-recomputed signal
+  (`get_brier_over_time()` is in fact a live, uncached SQL query every
+  call, so "frozen" pointed at contaminated inputs, not stale caching).
+  Root cause: 36 synthetic rows (`PROB0`-`PROB17`, `BAD0`-`BAD17`, all
+  `city=None`, `method='ensemble'`) sitting in `predictions.db`'s
+  `predictions`/`outcomes` tables, all inserted in a single batch at the
+  exact same `predicted_at` timestamp (2026-07-19 21:04:58), with
+  fabricated `settled_at` values in Jan/Feb 2026 -- physically before their
+  own `predicted_at`, an impossible sequence for a real trade. Almost
+  certainly an ad-hoc `python -c` test of the Brier-alert/disputed-row path
+  run directly against the live production DB (same failure shape as the
+  2026-07-21 KXBADDATE3 incident: `_auto_place_trades()` called ad-hoc
+  against real DB paths instead of pytest's auto-sandboxed temp DB), never
+  cleaned up. The fabricated pair (0.95-prob "PROB" rows all settling YES,
+  0.05-prob "BAD" rows also all settling YES) averages to exactly 0.4525 --
+  matching the alert's reported figure to 4 decimal places. Real W27
+  (0.2687, 3 genuine multi-day predictions) was legitimate; W28 had ZERO
+  real multi-day settlements until this was found -- the alert's "second
+  consecutive bad week" was 100% synthetic.
+  This wasn't limited to the alert: `brier_score_by_method()` (drives the
+  "lifetime Brier 0.3200, ensemble pin not auto-renewing" warning logged on
+  every single cron run) joins the same `multiday_predictions JOIN
+  outcomes_valid` shape, filtered to `method='ensemble'` -- exactly what
+  all 36 fake rows were tagged as. A narrower fix scoped only to the alert
+  function would have left the strategy-retirement/pin-expiry path (a
+  real live-trading-relevant decision) still corrupted.
+
+What shipped:
+  Verified full scope via 3 independent sweeps before touching anything:
+  (1) `settled_at < predicted_at` across the whole DB (not just multi-day)
+  -- found exactly these 36 rows, nothing else; (2) non-`KX`-prefixed
+  ticker scan across `predictions`/`multiday_predictions`/`outcomes_valid`
+  -- same 36, no other city affected; (3) batch-identical-`predicted_at`
+  scan (>5 rows sharing one exact timestamp) across all cities -- the only
+  match besides legitimate same-cron-cycle multi-city batches (6-7 rows,
+  multiple real distinct cities each) was this one 36-row, single-city=None
+  batch. Confirmed isolated to one incident, no other city/table affected.
+  Used the existing `tracker.mark_outcome_disputed()` function (built
+  2026-07-18, see DISPUTED-ROW EXCLUSION PREDICATE entry below) instead of
+  deleting rows or writing a new bespoke filter -- one call per ticker sets
+  `disputed=1`, which every one of the 43 `outcomes_valid`-joined consumers
+  (`get_brier_over_time`, `brier_score_by_method`,
+  `brier_score_by_method_rolling`, `brier_skill_score`, calibration
+  training, etc.) already excludes automatically, with zero new code.
+  Non-destructive and reversible -- rows remain as a forensic record,
+  simply excluded from scoring. Verified the fix: W28 (100% synthetic)
+  disappeared entirely from `get_brier_over_time()`'s output; `ensemble`
+  method Brier dropped from the contaminated 0.3200 lifetime figure to a
+  real 0.2681. Data-only fix -- no code changed, no commit.
+  Note: W26/W27's real Brier (0.2678/0.2687) are both still above the 0.22
+  threshold on genuine data, so the P10.3 alert may legitimately fire again
+  next run -- that would be a real signal worth investigating on its own
+  merits, not more contamination.
+
+Why not now (resolved):
+  - The specific contamination found is fully cleaned up. The general risk
+    class -- ad-hoc debugging sessions writing directly to production DB
+    files instead of an isolated/temp DB -- is NOT fixed by this entry and
+    remains open; see note below.
+
+When to revisit:
+  - If a similar contamination is found a third time, especially one using
+    a valid-looking ticker AND a plausible (non-impossible) settled_at --
+    the impossible-timestamp signature that caught both this incident and
+    KXBADDATE3 would NOT catch a more careful fabrication. Worth
+    considering a lighter-weight guard (e.g. a `test_data` marker column,
+    or a habit of always pointing ad-hoc investigative scripts at a copied
+    DB) before a third occurrence.
+
 [CLOSED 2026-07-12 -- see below] KALSHI ORDER-WRITE ENDPOINTS MOVING TO /portfolio/events/orders
 Priority: was High -- verify before resuming live trading (~2026-07-30 return), not a
   someday item. Found 2026-07-10 via Kalshi's own API changelog; refined
@@ -1120,7 +1201,7 @@ RESOLVED 2026-07-21 (Rain Step 2 -- the real monthly-accumulation
   monthly settlement cadence (~10 cities x 1 settlement/city/month), much
   slower than hourly's.
 
-[PARTIALLY RESOLVED 2026-07-23 -- ecmwf_aifs025_ensemble instrumented; ecmwf_ifs025 (the other product) still not] TRACK ECMWF FORECAST ACCURACY
+[RESOLVED 2026-07-23 -- both real ECMWF products now instrumented] TRACK ECMWF FORECAST ACCURACY
 Priority: Low (ECMWF already gets a reasonable static/seasonal weight; this is
   about making that weight data-driven like ICON/GFS already are)
 
@@ -1225,16 +1306,101 @@ RESOLVED 2026-07-23 (ecmwf_aifs025_ensemble only): Re-verification before
   test_phase4.py, test_tracker.py to the file list above); ruff+mypy clean
   after this follow-up too.
   ecmwf_ifs025 (the daily-blend product, still unconsequential-to-instrument
-  per this entry's original "more consequential" framing) remains
-  un-instrumented -- if picked up later, model_temps["ecmwf"] in
-  analyze_trade() is already the value to capture, no new fetch needed.
+  per this entry's original "more consequential" framing) remained
+  un-instrumented as of this point in the session.
   Won't pay off in an actual learned weight for weeks: needs >=10 fresh
   settled observations per city in tracker.get_model_weights()'s 30-day
   window (same MIN_OBSERVATIONS gate icon/gfs already use), and TRADING_PAUSED
   is still true as of this session (Belgium return 2026-07-31) so real
   paper-trade volume needed to fill that window hasn't been accruing.
 
-Original problem (still open for ecmwf_ifs025 specifically):
+RESOLVED 2026-07-23 (later, new session, ecmwf_ifs025 -- the entry closes):
+  User picked this back up off "what's next in the backlog." Re-verified
+  live before designing: model_temps["ecmwf"] in analyze_trade() (Phase C,
+  via fetch_temperature_ecmwf()) confirmed still fetched exactly where
+  expected, still the cheap-capture path the prior session's own resolution
+  note pointed to.
+  Two real design questions surfaced via AskUserQuestion, each re-derived
+  (not just re-presented) on the user's "review these options" request:
+  (1) Naming -- the field name "ecmwf_forecast_mean" was already taken by
+  the just-shipped aifs025_ensemble field. Considered leaving it alone
+  (zero churn) vs. renaming both for symmetry. Re-derived: renaming now is
+  cheap (small, fully-mapped ~9-call-site footprint from the session that
+  just finished, zero real production data under the old name yet given
+  TRADING_PAUSED) versus permanently-worse later (a 3rd model addition
+  would inherit an asymmetric "first one got the generic name" pattern --
+  the same naming-drift class that already bit this codebase in mos.py's
+  short-code keys and the config/utils divergence). User picked the rename.
+  Renamed ecmwf_forecast_mean -> ecmwf_aifs_forecast_mean (aifs025_ensemble)
+  and added the new ecmwf_ifs_forecast_mean (ifs025) as a parallel field,
+  both following the exact same thread-through shape (analyze_trade result
+  dict -> place_paper_order -> trade record -> _score_ensemble_members'
+  model_means dict, new "ecmwf_ifs025" key).
+  (2) Value fidelity -- model_temps["ecmwf"] (fetch_temperature_ecmwf(),
+  manual max/min from hourly data, timezone="auto") vs. what
+  get_weather_forecast()'s actual daily blend uses for ecmwf_ifs025 (Open-
+  Meteo's own server-side daily aggregation, explicit tz, different endpoint
+  call) -- not verified identical, just assumed close. Considered proceeding
+  on the assumption vs. a live parity check. Re-derived: this project's own
+  established pattern is investigate-then-accept, not assume-then-hope (the
+  settled_temp_f ASOS-vs-CLI-report gap was accepted only after a live check
+  confirmed it was small) -- misapplying that precedent to justify skipping
+  verification was the wrong reading of it. User picked verifying live.
+  Live check: pulled both fetch paths for NYC/Chicago/LasVegas, max and min,
+  2 days out (6 data points) -- bit-for-bit identical across all 6, not just
+  close. The proxy is a faithful value, not a rough approximation, confirmed
+  rather than assumed.
+  Fixed a stale comment while in the area (the D1 hardcoded Phase-C blend
+  prior's own comment, near where model_temps["ecmwf"] is used) that claimed
+  ensemble_member_scores "never logs... 'ecmwf'" -- true of the short local
+  key this block uses, but now stale about the underlying model itself given
+  ecmwf_ifs025 is tracked under its own key. Corrected without changing the
+  Phase-C blend's actual (unrelated, unchanged) logic.
+  Renamed/added tests across test_weather_markets.py and test_paper_metrics.py
+  covering the same shape as the aifs025_ensemble session (place_paper_order
+  storage, _score_ensemble_members logs-when-present/skips-when-absent for
+  BOTH ecmwf fields independently, analyze_trade result-dict population with
+  distinct per-model values, the METAR-locked-branch None-default for both
+  fields) -- all mutation-tested (reverted each fix, confirmed the exact
+  predicted failure -- including a second real UnboundLocalError caught the
+  same way as the aifs session's, since the METAR-locked branch needed a
+  second new line this time -- restored).
+  Read-side (_forecast_model_weights(), _dynamic_model_weights(),
+  tracker.get_model_weights()) needed zero changes to pick up the new
+  "ecmwf_ifs025" key -- confirmed this really does hold this time (unlike
+  the aifs025_ensemble session's own "no changes needed" claim, which an
+  opus review found was wrong for two aggregate functions) BECAUSE those two
+  functions were already fixed generically (exclude-thin-not-block-others)
+  during that same prior session -- the fix wasn't ecmwf_aifs025_ensemble-
+  specific, so onboarding this second new model name doesn't reopen the same
+  bug class. Independent Agent(opus, effort=high) review before push
+  specifically re-checked this claim rather than trusting the prior
+  session's fix by name -- came back clean, no HIGH/MEDIUM findings; every
+  claim above (rename completeness, no double-fetch, both METAR-locked
+  fields present, downstream consumers genuinely unaffected, the parity
+  claim's structural soundness -- max/min-of-hourly-series is monotonic
+  under rounding, so bit-for-bit equality is guaranteed given identical
+  day-windowing, not just luck) was independently re-derived, not trusted.
+  2 LOW findings, both fixed: (1) the model_means comment overstated how
+  cleanly the two ECMWF products' weight pipelines separate -- corrected
+  to note tracker.get_model_weights() actually softmaxes every logged model
+  together before _dynamic_model_weights() splits by baseline key, harmless
+  but worth being accurate about; (2) fetch_temperature_ecmwf() uses
+  timezone="auto" (discards CITY_COORDS' own explicit tz) -- confirmed
+  agreeing for every current city, but would silently diverge for a future
+  city whose configured tz disagrees with Open-Meteo's auto-resolved one;
+  documented as a comment flagging re-verification on future city onboarding
+  rather than changed (changing which tz wins is its own decision, not
+  reachable today, no current city triggers it).
+  1066 tests pass across the widened sweep; ruff+mypy clean. Both real
+  ECMWF products (ecmwf_aifs025_ensemble, ecmwf_ifs025) are now fully
+  instrumented -- this entry is closed. The only remaining related open
+  items are the separately-filed [3-WAY MODEL_CONSENSUS CHECK] entry and
+  the general fact that neither model's learned weight will actually
+  activate until TRADING_PAUSED lifts (2026-07-31) and >=10 settled
+  observations per city accumulate afterward.
+
+Original problem (resolved, kept for history):
   ECMWF's per-model forecast accuracy is never captured anywhere, so it can
   never earn a learned weight the way icon_seamless/gfs_seamless can.
   paper.py's _score_ensemble_members() only ever logs icon_forecast_mean and

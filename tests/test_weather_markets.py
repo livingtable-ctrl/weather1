@@ -1149,10 +1149,13 @@ def test_model_consensus_false_when_models_disagree(monkeypatch):
     assert result["model_consensus"] is False
 
 
-def test_analyze_trade_captures_ecmwf_forecast_mean(monkeypatch):
+def test_analyze_trade_captures_ecmwf_forecast_means(monkeypatch):
     """backlog.txt 'TRACK ECMWF FORECAST ACCURACY': analyze_trade must surface
-    ecmwf_aifs025_ensemble's own mean (5th _get_consensus_probs element) in the
-    result dict, alongside icon/gfs — not just consume it for model_consensus."""
+    BOTH real ECMWF products' own means in the result dict, alongside icon/gfs
+    — ecmwf_aifs025_ensemble's mean (5th _get_consensus_probs element, only
+    consumed for model_consensus before) and ecmwf_ifs025's mean
+    (model_temps["ecmwf"] via fetch_temperature_ecmwf(), already fetched for
+    an unrelated Phase-C purpose)."""
     import weather_markets as wm
     from weather_markets import analyze_trade
 
@@ -1160,15 +1163,15 @@ def test_analyze_trade_captures_ecmwf_forecast_mean(monkeypatch):
         wm, "get_ensemble_temps", lambda *a, **kw: [70.0, 71.0, 72.0, 73.0, 74.0] * 4
     )
     monkeypatch.setattr(wm, "get_ensemble_members", lambda *a, **kw: None)
-    # Distinct means per model so a mix-up (e.g. ecmwf_forecast_mean silently
-    # getting icon's value) would fail the assertions below.
+    # Distinct means per model so a mix-up (e.g. one ecmwf field silently
+    # getting the other's value) would fail the assertions below.
     monkeypatch.setattr(
         wm,
         "_get_consensus_probs",
         lambda *a, **kw: (0.73, 0.75, 74.0, 74.5, 76.25),
     )
     monkeypatch.setattr(wm, "fetch_temperature_nbm", lambda *a, **kw: 74.0)
-    monkeypatch.setattr(wm, "fetch_temperature_ecmwf", lambda *a, **kw: 74.0)
+    monkeypatch.setattr(wm, "fetch_temperature_ecmwf", lambda *a, **kw: 79.5)
     monkeypatch.setattr(wm, "_metar_lock_in", lambda *a, **kw: (False, 0.0, {}))
     monkeypatch.setattr(wm, "_SEASONAL_WEIGHTS", {})
     monkeypatch.setattr(wm, "_CONDITION_WEIGHTS", {})
@@ -1208,19 +1211,25 @@ def test_analyze_trade_captures_ecmwf_forecast_mean(monkeypatch):
     assert result is not None, "analyze_trade returned None — fix the enriched dict"
     assert result["icon_forecast_mean"] == pytest.approx(74.0)
     assert result["gfs_forecast_mean"] == pytest.approx(74.5)
-    assert result["ecmwf_forecast_mean"] == pytest.approx(76.25), (
-        f"expected ecmwf_forecast_mean=76.25 from the 5th _get_consensus_probs "
-        f"element, got {result.get('ecmwf_forecast_mean')!r}"
+    assert result["ecmwf_aifs_forecast_mean"] == pytest.approx(76.25), (
+        f"expected ecmwf_aifs_forecast_mean=76.25 from the 5th "
+        f"_get_consensus_probs element, got "
+        f"{result.get('ecmwf_aifs_forecast_mean')!r}"
+    )
+    assert result["ecmwf_ifs_forecast_mean"] == pytest.approx(79.5), (
+        f"expected ecmwf_ifs_forecast_mean=79.5 from the mocked "
+        f"fetch_temperature_ecmwf (model_temps['ecmwf']), got "
+        f"{result.get('ecmwf_ifs_forecast_mean')!r}"
     )
 
 
-def test_metar_locked_trade_has_ecmwf_forecast_mean_key(monkeypatch):
+def test_metar_locked_trade_has_ecmwf_forecast_mean_keys(monkeypatch):
     """The METAR-locked branch (same-day observation override) skips the model
-    path entirely and must still define ecmwf_forecast_mean (as None) before the
-    shared result dict is built — mirrors icon/gfs's existing None default.
-    Regression test for a real UnboundLocalError this session's own diff would
-    have introduced (analyze_trade's METAR-locked branch pre-assigns icon/gfs
-    forecast means but initially missed ecmwf_forecast_mean)."""
+    path entirely and must still define BOTH ecmwf_aifs_forecast_mean and
+    ecmwf_ifs_forecast_mean (as None) before the shared result dict is built —
+    mirrors icon/gfs's existing None default. Regression test for a real
+    UnboundLocalError a diff introduced (analyze_trade's METAR-locked branch
+    pre-assigns icon/gfs forecast means but initially missed the ecmwf ones)."""
     import weather_markets as wm
     from weather_markets import analyze_trade
 
@@ -1251,7 +1260,8 @@ def test_metar_locked_trade_has_ecmwf_forecast_mean_key(monkeypatch):
     result = analyze_trade(enriched)
     assert result is not None, "analyze_trade returned None — fix the enriched dict"
     assert result["method"] == "metar_lockout"
-    assert result["ecmwf_forecast_mean"] is None
+    assert result["ecmwf_aifs_forecast_mean"] is None
+    assert result["ecmwf_ifs_forecast_mean"] is None
 
 
 def test_om_rate_limit_enforces_interval(monkeypatch):

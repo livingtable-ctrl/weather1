@@ -2419,6 +2419,14 @@ def fetch_temperature_ecmwf(
                 "models": "ecmwf_ifs025",
                 "start_date": target_date.isoformat(),
                 "end_date": target_date.isoformat(),
+                # "auto" (Open-Meteo infers tz from lat/lon) rather than this
+                # city's own CITY_COORDS tz (discarded above, `lat, lon, _ =
+                # coords`) -- confirmed live 2026-07-23 these agree for every
+                # currently-tracked city (this value matches
+                # get_weather_forecast()'s explicit-tz fetch of the same
+                # model bit-for-bit). Would silently diverge for a future
+                # city whose configured tz disagrees with Open-Meteo's
+                # auto-resolved one -- re-verify parity when onboarding one.
                 "timezone": "auto",
             },
             timeout=5,  # reduced from 8s — matches NBM timeout; circuit opens fast on slow endpoints
@@ -7386,12 +7394,15 @@ def analyze_trade(
         # Blend Gaussian with ensemble fraction (fall back to ens_prob if temps available)
         # D1 hardcoded prior (ECMWF 2× NBM). Note: _dynamic_model_weights() is NOT
         # applicable here — it derives MAE from tracker's ensemble_member_scores,
-        # which only ever logs "icon_seamless"/"gfs_seamless"/"blended" (see
-        # paper._score_ensemble_members), never the "nbm" (best_match) / "ecmwf"
-        # (ecmwf_ifs025) models used in model_temps above. A prior version looked
-        # up _dynamic_model_weights() here anyway; since its keys never match
-        # "nbm"/"ecmwf", every lookup silently fell through to a flat 1.0 default
-        # for both, quietly discarding this D1 prior whenever tracker had any data.
+        # which as of 2026-07-23 logs "icon_seamless"/"gfs_seamless"/"blended"/
+        # "ecmwf_aifs025_ensemble"/"ecmwf_ifs025" (see
+        # paper._score_ensemble_members), never the short local keys "nbm"
+        # (best_match) / "ecmwf" this dict uses. A prior version looked up
+        # _dynamic_model_weights() here anyway; since its keys never matched
+        # "nbm"/"ecmwf" (even now that ecmwf_ifs025 itself IS tracked, under a
+        # different key string), every lookup silently fell through to a flat
+        # 1.0 default for both, quietly discarding this D1 prior whenever
+        # tracker had any data.
         _active_weights: dict[str, float] = {"nbm": 1.0, "ecmwf": 2.0}
         _weighted_valid = sum(
             _active_weights.get(m, 1.0) for m, t in model_temps.items() if t is not None
@@ -7437,14 +7448,24 @@ def analyze_trade(
         model_consensus = True
         icon_forecast_mean: float | None = None
         gfs_forecast_mean: float | None = None
-        # ecmwf_forecast_mean (ecmwf_aifs025_ensemble) feeds ECMWF's own
+        # ecmwf_aifs_forecast_mean (ecmwf_aifs025_ensemble) and
+        # ecmwf_ifs_forecast_mean (ecmwf_ifs025) feed ECMWF's own
         # learned-weight instrumentation (backlog.txt "TRACK ECMWF FORECAST
-        # ACCURACY") via _score_ensemble_members — it does NOT participate in
+        # ACCURACY") via _score_ensemble_members — neither participates in
         # model_consensus below; that stays icon-vs-gfs only (a 3-way version
         # is a separate, not-yet-scoped backlog item, since ecmwf_aifs025_ensemble's
         # own probability would need mixing with a materially different
-        # methodology than icon/gfs's member-vote-fraction probabilities).
-        ecmwf_forecast_mean: float | None = None
+        # methodology than icon/gfs's member-vote-fraction probabilities, and
+        # ecmwf_ifs025 has no probability of its own at all — a single
+        # deterministic point value, no ensemble members).
+        ecmwf_aifs_forecast_mean: float | None = None
+        # ecmwf_ifs025's deterministic value: already fetched unconditionally
+        # above (model_temps["ecmwf"], Phase C) — confirmed live 2026-07-23
+        # bit-for-bit identical to get_weather_forecast()'s own daily-blend
+        # fetch of the same model (same underlying Open-Meteo max/min, just a
+        # different endpoint-call shape), so it's a faithful value to log for
+        # MAE-based weight learning, not just a rough proxy.
+        ecmwf_ifs_forecast_mean: float | None = model_temps.get("ecmwf")
         if ens_prob is not None and len(temps) >= 2:
             try:
                 (
@@ -7452,7 +7473,7 @@ def analyze_trade(
                     gfs_p,
                     icon_forecast_mean,
                     gfs_forecast_mean,
-                    ecmwf_forecast_mean,
+                    ecmwf_aifs_forecast_mean,
                 ) = _get_consensus_probs(
                     city, target_date, condition, hour=hour, var=var
                 )
@@ -7962,7 +7983,8 @@ def analyze_trade(
         near_threshold = False
         icon_forecast_mean = None
         gfs_forecast_mean = None
-        ecmwf_forecast_mean = None
+        ecmwf_aifs_forecast_mean = None
+        ecmwf_ifs_forecast_mean = None
         index_adj = 0.0
         ci_low = blended_prob
         ci_high = blended_prob
@@ -8387,7 +8409,8 @@ def analyze_trade(
         # Per-model forecast means for ensemble scoring
         "icon_forecast_mean": icon_forecast_mean,
         "gfs_forecast_mean": gfs_forecast_mean,
-        "ecmwf_forecast_mean": ecmwf_forecast_mean,
+        "ecmwf_aifs_forecast_mean": ecmwf_aifs_forecast_mean,
+        "ecmwf_ifs_forecast_mean": ecmwf_ifs_forecast_mean,
         # Phase C: extended ensemble spread + Gaussian probability
         "ensemble_spread": ensemble_spread_prob,
         "ensemble_spread_f": ensemble_spread_f,
