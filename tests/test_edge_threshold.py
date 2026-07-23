@@ -43,3 +43,28 @@ def test_old_min_edge_would_have_blocked_5pct():
     assert abs(net_edge) < MIN_EDGE, (
         f"5.5% edge should be below MIN_EDGE={MIN_EDGE} — proves the thresholds differ"
     )
+
+
+def test_city_min_prob_edge_miami_override():
+    """Miami requires 20pp probability-edge conviction (vs 8pp default), per
+    the 2026-07-23 investigation: Miami's static station-bias correction
+    (weather_markets._STATION_BIAS_HIGH["Miami"]) looks miscalibrated
+    (forecast ~4.6F cold vs settled temp, worst Brier/bias of any tracked
+    city) but the settled sample (n=7) is too thin to safely retune it, and
+    no per-city model exists yet to override it dynamically. This gate is
+    the guardrail until one does."""
+    from utils import CITY_MIN_PROB_EDGE, MIN_PROB_EDGE
+
+    assert CITY_MIN_PROB_EDGE["Miami"] == 0.20
+    assert CITY_MIN_PROB_EDGE["Miami"] > MIN_PROB_EDGE
+
+
+def test_city_min_prob_edge_gate_mirrors_cron_lookup():
+    """Mirrors cron.py's `_city_min = CITY_MIN_PROB_EDGE.get(_city_key, MIN_PROB_EDGE)`
+    lookup: a city with no override falls back to the global default, a city
+    with an override uses it."""
+    from utils import CITY_MIN_PROB_EDGE, MIN_PROB_EDGE
+
+    assert CITY_MIN_PROB_EDGE.get("Miami", MIN_PROB_EDGE) == 0.20
+    assert CITY_MIN_PROB_EDGE.get("Dallas", MIN_PROB_EDGE) == 0.15
+    assert CITY_MIN_PROB_EDGE.get("Chicago", MIN_PROB_EDGE) == MIN_PROB_EDGE

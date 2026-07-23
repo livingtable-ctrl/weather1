@@ -148,7 +148,16 @@ MIN_PROB_EDGE = float(os.getenv("MIN_PROB_EDGE", "0.08"))
 
 # Per-city probability-edge overrides for high-variance markets.
 # Dallas Brier (0.33) is worse than the naive baseline — requires stronger conviction.
-CITY_MIN_PROB_EDGE: dict[str, float] = {"Dallas": 0.15}
+# Miami Brier (0.51, bias -0.71, worst of any tracked city as of 2026-07-23) —
+# forecast_temp_f runs ~4.6F cold vs settled_temp_f on average (6/7 samples).
+# Root cause is likely _STATION_BIAS_HIGH["Miami"] = 3.0 in weather_markets.py
+# overcorrecting, but the settled-trade sample (n=7) is too thin to safely
+# retune that constant. No per-city GBM/Platt model exists yet to override it
+# (needs its own city-specific training volume, separate from the global
+# _MIN_BIAS_CORRECTION_TRADES gate). This raises the conviction bar until
+# Miami earns enough data for a real per-city correction — remove once that
+# lands, not before.
+CITY_MIN_PROB_EDGE: dict[str, float] = {"Dallas": 0.15, "Miami": 0.20}
 
 
 def min_prob_edge_for_days_out(days_out: int) -> float:
