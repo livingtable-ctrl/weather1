@@ -3591,6 +3591,136 @@ When to revisit (Pass 2 plan, kept for history -- SUPERSEDED, see the
     GEM/UKMO; scope and prioritize independently if ever picked up. Still
     open -- not part of Pass 2.
 
+[GRADUATE GEM/UKMO (AND FUTURE TRACKING-ONLY MODELS) FROM TRACK-ONLY INTO THE LIVE BLEND]
+Priority: Medium -- read together with GENERALIZED PER-MODEL ACCURACY
+  TRACKING above (Pass 3, conceptually: that entry generalized the
+  tracking mechanism, this one generalizes the weighting mechanism the
+  same way).
+
+Problem:
+  As of Pass 2, gem_global/ukmo_global_ensemble_20km are tracked for
+  accuracy (model_forecast_means, ensemble_member_scores) but structurally
+  barred from the live blend via TRACKING_ONLY_MODEL_NAMES
+  (weather_markets.py). The reason they're barred isn't a policy choice
+  about GEM/UKMO specifically -- it's that _model_weights() (the ensemble
+  blend, feeds batch_prewarm_ensemble) and _forecast_model_weights() (the
+  daily point-forecast blend, feeds get_weather_forecast()) each hardcode
+  a fixed 3-key baseline dict (`for model, default in baseline.items()`)
+  and normalise/softmax over it -- there is no code path today by which
+  ANY model outside that dict could ever earn live weight, no matter how
+  much tracked accuracy it accumulates. Hardcoding GEM/UKMO in as a 4th
+  and 5th baseline key would work, but repeats the exact "one more model,
+  one more hand-edit in N places" pattern GENERALIZED PER-MODEL ACCURACY
+  TRACKING was built to end -- and would need doing AGAIN for the next
+  source (a future WeatherNext, or whatever comes after).
+
+What the fix looks like:
+  1. Generalize _model_weights() and _forecast_model_weights() to iterate
+     whatever models clear their EXISTING accuracy floor (the same min_n
+     that already gates _weights_from_mae's tier-1 / get_model_weights's
+     MIN_OBSERVATIONS=10 softmax inclusion) minus TRACKING_ONLY_MODEL_NAMES,
+     instead of a fixed baseline dict -- mirroring exactly how Pass 1
+     turned 4 named scalar fields into one generic dict. A model with no
+     seasonal/meteorological-skill prior (unlike ECMWF's reasoned ecmwf_w)
+     gets a neutral 1.0 default, same as icon/gfs today, until its own
+     learned weight overrides it.
+  2. Once that mechanism exists, "graduating" a specific model is a
+     ONE-LINE change: remove it from TRACKING_ONLY_MODEL_NAMES. No other
+     code change needed -- same design promise as Pass 1's "add a source
+     needs one line in analyze_trade()."
+  3. Do NOT gate this one-line removal on a new, elevated sample floor.
+     Re-derived from source (first pass here wrongly proposed a new 50-obs
+     floor "because graduation is a bigger decision") and corrected: once
+     the mechanism in #1 exists, the EXISTING per-model floor (min_n=20,
+     matching ACCURACY_MIN_SAMPLE/SPRT_MIN_TRADES precedent, already used
+     to decide whether ANY model's learned weight is trusted) is what
+     already answers "is there enough data on this specific model" --
+     inventing a separate, higher, GEM/UKMO-specific bar would be exactly
+     the kind of new-signal special-casing the RUN-TO-RUN TREND entry's own
+     ENABLEMENT TRIGGER text warns against ("don't invent a new... bar just
+     because this signal is new").
+  4. DO add a concrete, written pre-check before #2 (revised after user
+     pushback on the first-pass "no formal bar, just eyeball it" proposal
+     -- correctly: the inverse-MAE formula's self-regulation has a lag.
+     weight = 1/mae is normalised over a ROLLING window (60 days in
+     _weights_from_mae, 30 in get_model_weights), so a genuinely bad model
+     only gets down-weighted gradually as its window-average MAE catches
+     up -- meaning it could measurably drag on real trade probability for
+     weeks after graduation before the formula discounts it. A pre-check
+     run BEFORE the code change ships, not an after-the-fact hope the
+     formula self-corrects, is the actual fix for that lag). The concrete
+     check: at graduation time, query get_member_accuracy()/
+     get_model_weights() for the SAME city and rolling window the live
+     blend itself uses, and require:
+       gem_or_ukmo_mae <= worst-performing current baseline model's mae
+     (i.e. icon_seamless/gfs_seamless/ecmwf_aifs025_ensemble/ecmwf_ifs025's
+     own MAE over that identical window/city, whichever is highest/worst
+     today) -- not "must beat the average," just "must not be worse than
+     the worst model already blended," so graduating GEM/UKMO can't make
+     the blend's own worst-case per-model error picture worse than what's
+     already live. Compute this per-city (accuracy can vary a lot by
+     region -- a model competitive in NYC could be bad in Phoenix), but
+     since TRACKING_ONLY_MODEL_NAMES is a single global flag per model
+     (see the mechanical note under "When to revisit" below), the actual
+     go/no-go is the WORST city's result across all cities with enough
+     data, not any single city's -- don't flip the global switch on a
+     good NYC number while some other city is quietly bad. If a model
+     fails this check, leave it in TRACKING_ONLY_MODEL_NAMES and re-check
+     again after more data accumulates, rather than graduating it anyway
+     on the theory the formula will fix it. This is a documented, defined
+     criterion to apply at the time -- not vague "eyeball it" -- while
+     still keeping the actual code change (#1/#2) itself a deliberate,
+     reviewed, separately-confirmed merge, matching this file's own
+     stated philosophy for this shape of decision (see the SIGNAL
+     GRADUATION entry: "leave blend wiring manual -- the deliberate human
+     step is the point of the pattern").
+
+Why not now:
+  - #1/#2 are real, live-trading-critical code changes (both blend weight
+    functions) that deserve their own dedicated pass, review, and test
+    coverage -- not a rider on Pass 2.
+  - There is no real tracked data yet: gem_global/ukmo_global_ensemble_20km
+    were only wired into model_forecast_means as of Pass 2 (2026-07-23),
+    so ensemble_member_scores has zero rows for either. The floor in #3
+    (min_n=20, per-city or global matching _weights_from_mae's own
+    fallback logic) hasn't remotely been reached and needs real elapsed
+    paper-trading time, not more engineering effort right now.
+
+When to revisit:
+  - Check settled-observation counts for gem_global/ukmo_global_ensemble_20km
+    in ensemble_member_scores periodically (e.g. whenever this file is next
+    open for other reasons, same cadence as the RUN-TO-RUN TREND and
+    DATA-DRIVEN SIGMA FROM SETTLED HISTORY entries' own settled-count
+    checks -- all three are gated on the same kind of settled-trade volume
+    growing over time).
+  - Once min_n=20 is cleared (per-city preferred, global fallback,
+    mirroring _weights_from_mae's existing tier-1 logic exactly): build #1
+    (generalize both weight functions), then run #4's concrete MAE
+    pre-check per-city against icon/gfs/ecmwf_aifs025_ensemble/
+    ecmwf_ifs025's own numbers over the same window. Important mechanical
+    note (caught while writing this up): TRACKING_ONLY_MODEL_NAMES is a
+    single global on/off per model, not per-city -- there is no way to
+    graduate a model in NYC but leave it track-only in Phoenix without a
+    bigger change (e.g. turning the set into a city-scoped structure,
+    itself a separate design decision, not assumed here). So #4's
+    per-city results feed one aggregate go/no-go per model: look at the
+    WORST city's result across all cities with enough data, not just any
+    single city's -- don't flip the global switch on the strength of a
+    good NYC number while some other city is quietly bad. (Per-city
+    weight variation still happens correctly AFTER graduation, via the
+    existing city-preferred-else-global MAE logic already in
+    _weights_from_mae -- what the pre-check gates is only the one-time
+    global on/off decision, not ongoing per-city weighting.) Then do #2
+    (remove from TRACKING_ONLY_MODEL_NAMES) as an explicit, reviewed,
+    separately-confirmed change -- not an automatic flip the moment the
+    floor is crossed.
+  - GEM and UKMO should graduate independently, not as a pair -- no reason
+    to hold one back for the other, and UKMO's shorter real forecast
+    horizon (~9-10 of 16 days, see Pass 2's resolution above) may mean it
+    never earns a competitive learned weight even with plenty of data,
+    which is fine -- that's exactly what the inverse-MAE weighting is
+    supposed to discover on its own.
+
 [RESOLVED 2026-07-19] LIQUIDITY-AWARE SIZING + DYNAMIC EDGE THRESHOLD
 Priority: was Medium (consolidates two existing loose ends into one
   feature).
