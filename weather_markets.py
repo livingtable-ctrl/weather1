@@ -2993,6 +2993,63 @@ def _model_weights(city: str, month: int | None = None) -> dict[str, float]:
          backtest), merged per-model onto the seasonal prior for any model
          it omits.
       3. Seasonal ECMWF/GFS priors (original behaviour)
+
+    Tiers 1 and 2 admit any model _weights_from_mae()/learned_weights.json
+    carries data for AND that is a genuine candidate for THIS (ensemble)
+    blend — i.e. in `baseline` already, or in TRACKING_ONLY_MODEL_NAMES
+    (tracked-for-accuracy models explicitly awaiting graduation into this
+    exact blend) — not just the 3 fixed baseline/seasonal-prior models below
+    (backlog.txt "GRADUATE GEM/UKMO..."). This is scaffolding for a future
+    graduation, not active in production today: a model in
+    TRACKING_ONLY_MODEL_NAMES is, BY DEFINITION, skipped inside
+    _weights_from_mae() itself (see its own `continue` on this same
+    constant) before it could ever reach `mae_weights`/get persisted to
+    learned_weights.json — so today, nothing actually exercises this
+    admission path outside tests that inject a value directly.
+    IMPORTANT — graduating a model needs BOTH steps, not just one: (1)
+    remove it from TRACKING_ONLY_MODEL_NAMES (so _weights_from_mae() stops
+    skipping it and it starts accumulating real mae_weights/learned data),
+    AND (2) add it to the `baseline` dict below (even a plain 1.0, if it has
+    no seasonal prior) — because once removed from TRACKING_ONLY_MODEL_NAMES,
+    it's also no longer in `ensemble_candidate_models` (which is
+    baseline | TRACKING_ONLY_MODEL_NAMES) unless it's in `baseline`, and
+    would silently fall back OUT of this function's output again. Also add
+    it to the live-blend fetch lists in
+    get_ensemble_temps()/batch_prewarm_ensemble() so its weight is actually
+    consumed. Skipping step (2) reproduces the exact silent-exclusion bug
+    this generalization exists to fix, just one step later.
+
+    ensemble_candidate_models (below) treats "in TRACKING_ONLY_MODEL_NAMES"
+    as synonymous with "candidate for THIS blend" — true today (its only two
+    members, gem_global/ukmo_global_ensemble_20km, are both real ensemble
+    products), but not a structural guarantee: if a future track-only model
+    destined for a DIFFERENT blend (e.g. another _forecast_model_weights()-
+    only deterministic product, the ecmwf_ifs025 shape) were ever added to
+    TRACKING_ONLY_MODEL_NAMES instead of its own dedicated set, this union
+    would wrongly treat it as an ensemble candidate too. Not a current bug —
+    just don't assume this coupling stays valid without re-checking it if
+    TRACKING_ONLY_MODEL_NAMES's membership ever changes for a non-ensemble
+    reason.
+
+    A model outside the baseline dict gets a neutral 1.0 prior (no seasonal/
+    climatological reasoning is coded for it) instead of a KeyError.
+
+    Deliberately NOT "any model with tracked accuracy data" — ecmwf_ifs025 is
+    tracked (model_forecast_means, ensemble_member_scores) for a DIFFERENT
+    blend entirely (_forecast_model_weights()'s daily deterministic blend;
+    ecmwf_ifs025 has no ensemble members and was never a candidate for this
+    one). It isn't in TRACKING_ONLY_MODEL_NAMES either, since that constant
+    means "excluded from every live blend" and ecmwf_ifs025 genuinely has
+    real live weight elsewhere — so restricting admission to
+    baseline | TRACKING_ONLY_MODEL_NAMES (this blend's only two ways to be a
+    known candidate) is what correctly keeps it out of THIS function's output
+    without mislabeling it, rather than a blanket admit-anything-tracked rule.
+
+    Tier 3 deliberately stays baseline-only: with no tracked accuracy data at
+    all, a non-baseline model has nothing to compute a weight from, and
+    consumers' own `weights.get(model, 1.0)` fallback already produces the
+    identical 1.0 a baseline entry would — adding it here would be a purely
+    cosmetic no-op.
     """
     # 3. Seasonal ECMWF weight: better in winter for mid-latitude US cities —
     # computed first as the baseline/floor
@@ -3008,14 +3065,34 @@ def _model_weights(city: str, month: int | None = None) -> dict[str, float]:
         "ecmwf_aifs025_ensemble": ecmwf_w,
     }
 
+    # A model outside `baseline` is only a genuine candidate for THIS blend if
+    # it's in TRACKING_ONLY_MODEL_NAMES (tracked-for-accuracy, awaiting
+    # graduation into this exact blend) — NOT any tracked model whatsoever.
+    # ecmwf_ifs025 is tracked (for _forecast_model_weights()'s separate daily
+    # blend) but has no ensemble members and was never a candidate here; it
+    # must not ride in just because it happens to have MAE data. See the
+    # docstring above for the full reasoning.
+    ensemble_candidate_models = set(baseline) | TRACKING_ONLY_MODEL_NAMES
+
     # 1. Dynamic: derive from recent tracker MAE data. Blends against the
-    # seasonal baseline directly (not tier 2) — loop over baseline's keys only
-    # (not mae_weights' keys) so a stray tracked value (e.g. "blended", the
-    # bias-corrected prediction — not a real model) can never leak into the
-    # ensemble's model-weight set.
+    # seasonal baseline directly (not tier 2). Iterates baseline plus any
+    # ensemble-candidate model mae_weights carries real data for, so a model
+    # that has cleared its own accuracy floor can earn a real learned weight
+    # here too, instead of being silently dropped. "blended" (the final
+    # bias-corrected prediction, not a real model) gets an explicit belt-and-
+    # suspenders exclusion below, matching the existing defensive test for it
+    # (test_stray_tracked_model_never_leaks_into_result) — cheap to keep even
+    # though get_member_accuracy()'s own SQL already filters it out today and
+    # it isn't in ensemble_candidate_models anyway.
     mae_weights = _weights_from_mae(city)
     if mae_weights:
-        return {m: 0.7 * mae_weights.get(m, 1.0) + 0.3 * baseline[m] for m in baseline}
+        admissible = (
+            set(baseline) | (set(mae_weights) & ensemble_candidate_models)
+        ) - {"blended"}
+        return {
+            m: 0.7 * mae_weights.get(m, 1.0) + 0.3 * baseline.get(m, 1.0)
+            for m in admissible
+        }
 
     # 2. Pre-saved learned weights from last backtest run (per-model, only known keys)
     lw = load_learned_weights()
@@ -3033,7 +3110,23 @@ def _model_weights(city: str, month: int | None = None) -> dict[str, float]:
         )
         city_data = None
     learned = city_data if isinstance(city_data, dict) else {}
-    return {model: learned.get(model, default) for model, default in baseline.items()}
+    # Include any ensemble-candidate model learned.json carries beyond the
+    # fixed baseline too (same restriction as tier 1, see
+    # ensemble_candidate_models above) — update_learned_weights_from_tracker()
+    # already writes whatever _weights_from_mae() returns (which can include
+    # ecmwf_ifs025's real MAE weight, a DIFFERENT blend's model — see
+    # docstring), so a previously-graduated ensemble model's persisted weight
+    # must survive a tier-1 data gap (not silently discarded, unlike baseline
+    # models never facing that gap) while ecmwf_ifs025 still must not ride in.
+    extra_learned = {
+        m: v
+        for m, v in learned.items()
+        if m not in baseline and m in ensemble_candidate_models
+    }
+    return {
+        **{model: learned.get(model, default) for model, default in baseline.items()},
+        **extra_learned,
+    }
 
 
 def _ensemble_circuit_is_open() -> bool:

@@ -481,6 +481,108 @@ class TestModelWeights:
             "ecmwf_aifs025_ensemble",
         }
 
+    def test_tier1_admits_a_model_outside_the_fixed_baseline(self):
+        """GRADUATE GEM/UKMO generalization: a model _weights_from_mae() reports
+        (i.e. it already cleared its own accuracy floor and isn't
+        TRACKING_ONLY_MODEL_NAMES) gets a real learned weight here too, blended
+        against a neutral 1.0 prior since it has no seasonal baseline entry --
+        not silently dropped the way it was before this generalization."""
+        from unittest.mock import patch
+
+        with patch(
+            "weather_markets._weights_from_mae",
+            return_value={"icon_seamless": 2.0, "gem_global": 3.0},
+        ):
+            w = _model_weights("NYC", month=7)  # summer baseline: 1.0/1.0/1.5
+        # icon_seamless: 0.7*2.0 + 0.3*1.0 = 1.7 (unchanged baseline behavior)
+        assert w["icon_seamless"] == pytest.approx(1.7)
+        # gem_global: 0.7*3.0 + 0.3*1.0 (neutral prior, no baseline entry) = 2.4
+        assert w["gem_global"] == pytest.approx(2.4)
+        # gfs_seamless: mae_weights lacks it -> 0.7*1.0 + 0.3*1.0 = 1.0, still present
+        assert w["gfs_seamless"] == pytest.approx(1.0)
+        # ecmwf_aifs025_ensemble: mae_weights lacks it -> 0.7*1.0 + 0.3*1.5 (its real
+        # summer baseline, not a flat 1.0) = 1.15, still present and unaffected
+        assert w["ecmwf_aifs025_ensemble"] == pytest.approx(1.15)
+
+    def test_tier2_admits_a_model_outside_the_fixed_baseline(self):
+        """Same generalization for tier 2 (learned_weights.json): a previously
+        learned weight for a graduated model must survive a tier-1 data gap,
+        not get silently discarded back to a neutral default the way baseline
+        models never do for the identical gap."""
+        from unittest.mock import patch
+
+        with (
+            patch("weather_markets._weights_from_mae", return_value=None),
+            patch(
+                "weather_markets.load_learned_weights",
+                return_value={"NYC": {"gfs_seamless": 5.0, "gem_global": 7.0}},
+            ),
+        ):
+            w = _model_weights("NYC", month=7)  # summer
+        assert w["gfs_seamless"] == pytest.approx(5.0)
+        assert w["gem_global"] == pytest.approx(7.0)
+        assert w["icon_seamless"] == pytest.approx(1.0)  # backfilled from baseline
+        assert w["ecmwf_aifs025_ensemble"] == pytest.approx(1.5)  # backfilled
+
+    def test_tracked_but_non_ensemble_model_never_leaks_in(self):
+        """ecmwf_ifs025 is real, currently-tracked data (feeds
+        _forecast_model_weights()'s SEPARATE daily deterministic blend) that
+        can genuinely appear in _weights_from_mae()'s output and
+        learned_weights.json once it clears its own accuracy floor -- unlike
+        gem_global/ukmo_global_ensemble_20km (TRACKING_ONLY_MODEL_NAMES),
+        nothing stops it reaching mae_weights/learned today. It must still
+        never appear in _model_weights()'s (the ENSEMBLE blend's) output,
+        since it has no ensemble members and was never a candidate for this
+        blend -- admission here is restricted to baseline |
+        TRACKING_ONLY_MODEL_NAMES, not "any tracked model with data"."""
+        from unittest.mock import patch
+
+        with patch(
+            "weather_markets._weights_from_mae",
+            return_value={"icon_seamless": 2.0, "ecmwf_ifs025": 4.0},
+        ):
+            w_tier1 = _model_weights("NYC", month=7)
+        assert "ecmwf_ifs025" not in w_tier1
+        assert set(w_tier1.keys()) == {
+            "icon_seamless",
+            "gfs_seamless",
+            "ecmwf_aifs025_ensemble",
+        }
+
+        with (
+            patch("weather_markets._weights_from_mae", return_value=None),
+            patch(
+                "weather_markets.load_learned_weights",
+                return_value={"NYC": {"gfs_seamless": 5.0, "ecmwf_ifs025": 9.0}},
+            ),
+        ):
+            w_tier2 = _model_weights("NYC", month=7)
+        assert "ecmwf_ifs025" not in w_tier2
+        assert set(w_tier2.keys()) == {
+            "icon_seamless",
+            "gfs_seamless",
+            "ecmwf_aifs025_ensemble",
+        }
+
+    def test_tier3_seasonal_baseline_stays_fixed_to_3_models(self):
+        """Tier 3 (pure seasonal fallback, no tracker/learned data at all) must
+        stay exactly the 3 baseline models -- a graduated model has no coded
+        seasonal/climatological prior, so there's nothing informative to add
+        here (consumers' own `weights.get(model, 1.0)` default already
+        produces the identical neutral value for an absent key)."""
+        from unittest.mock import patch
+
+        with (
+            patch("weather_markets._weights_from_mae", return_value=None),
+            patch("weather_markets.load_learned_weights", return_value={}),
+        ):
+            w = _model_weights("NYC", month=1)  # winter
+        assert set(w.keys()) == {
+            "icon_seamless",
+            "gfs_seamless",
+            "ecmwf_aifs025_ensemble",
+        }
+
 
 # ── TestNormalCdf ─────────────────────────────────────────────────────────────
 

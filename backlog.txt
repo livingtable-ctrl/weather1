@@ -3694,11 +3694,79 @@ When to revisit (Pass 2 plan, kept for history -- SUPERSEDED, see the
     GEM/UKMO; scope and prioritize independently if ever picked up. Still
     open -- not part of Pass 2.
 
-[GRADUATE GEM/UKMO (AND FUTURE TRACKING-ONLY MODELS) FROM TRACK-ONLY INTO THE LIVE BLEND]
+[PARTIALLY RESOLVED 2026-07-23 -- item #1 (generalize _model_weights()) shipped; #2/#3/#4 (the actual graduation decision) still gated on real data, unchanged] GRADUATE GEM/UKMO (AND FUTURE TRACKING-ONLY MODELS) FROM TRACK-ONLY INTO THE LIVE BLEND
 Priority: Medium -- read together with GENERALIZED PER-MODEL ACCURACY
   TRACKING above (Pass 3, conceptually: that entry generalized the
   tracking mechanism, this one generalizes the weighting mechanism the
   same way).
+
+RESOLVED 2026-07-23 (item #1 only -- _model_weights() generalized, zero live
+  behavior change today, pushed pending commit): tiers 1 (MAE-derived) and 2
+  (learned_weights.json) of _model_weights() now admit any model beyond the
+  fixed 3-key baseline that is a genuine candidate for the ensemble blend --
+  i.e. in `baseline` or in TRACKING_ONLY_MODEL_NAMES -- instead of only ever
+  iterating the hardcoded 3 keys. Tier 3 (pure seasonal, no data at all)
+  deliberately stays baseline-only, since a non-baseline model has no coded
+  seasonal/climatological prior and consumers' own `weights.get(model, 1.0)`
+  fallback already produces the identical neutral value either way.
+  A real, non-obvious bug was caught by an opus review before this could ship
+  as originally scoped: a naive "admit any model with tracked data" version
+  (the first attempt) would have let `ecmwf_ifs025` leak into this function's
+  output -- it's real, currently-tracked data (feeds
+  _forecast_model_weights()'s SEPARATE daily deterministic blend, has no
+  ensemble members, was never a candidate for THIS blend) that, unlike
+  gem_global/ukmo_global_ensemble_20km, is NOT blocked by
+  TRACKING_ONLY_MODEL_NAMES from reaching mae_weights/learned_weights.json.
+  The reviewer's own suggested fix (add ecmwf_ifs025 to
+  TRACKING_ONLY_MODEL_NAMES) was rejected as semantically wrong -- that
+  constant means "excluded from EVERY live blend," and ecmwf_ifs025 genuinely
+  has real live weight elsewhere. Fixed instead by restricting admission to
+  `ensemble_candidate_models = set(baseline) | TRACKING_ONLY_MODEL_NAMES`
+  specifically (both tiers), which correctly excludes ecmwf_ifs025 without
+  mislabeling it. A second opus review confirmed this correction is sound and
+  complete (enumerated every model that can ever reach
+  get_member_accuracy()'s output -- only ecmwf_ifs025 needed excluding, and
+  is now the only one that was) and caught one more real gap: this entry's
+  own item #2 text below (and this function's docstring) claimed graduation
+  is a clean "one-line change: remove it from TRACKING_ONLY_MODEL_NAMES, no
+  other code change needed" -- that is WRONG given the fix above. Removing a
+  model from TRACKING_ONLY_MODEL_NAMES alone would also remove it from
+  `ensemble_candidate_models` unless it's separately added to `baseline` too
+  -- skipping that second step would silently re-exclude it, reproducing the
+  exact bug this generalization exists to fix, just one step later.
+  **Corrected graduation recipe (supersedes item #2 below): (1) remove from
+  TRACKING_ONLY_MODEL_NAMES, (2) add to `baseline` in _model_weights() (a
+  plain 1.0 if no seasonal prior is warranted), (3) add to the live-blend
+  fetch lists in get_ensemble_temps()/batch_prewarm_ensemble().** Item #3's
+  MAE pre-check and item #4's per-city/global-floor reasoning below are
+  otherwise unaffected and still the real remaining gate.
+  Also documented (not fixed, correctly left as-is): `ensemble_candidate_models`
+  treats "in TRACKING_ONLY_MODEL_NAMES" as synonymous with "ensemble-blend
+  candidate" -- true today (both current members are real ensemble products)
+  but not a structural guarantee; flagged directly in the function's own
+  docstring so a future addition to TRACKING_ONLY_MODEL_NAMES for a
+  non-ensemble reason doesn't silently get swept into this blend too.
+  Both generalizations are confirmed INERT in production today (verified by
+  both review passes): TRACKING_ONLY_MODEL_NAMES models are skipped inside
+  _weights_from_mae() itself before ever reaching mae_weights, so nothing
+  currently exercises the new admission branches outside tests that inject a
+  value directly via mock. 3 new regression tests added
+  (tests/test_weather_markets.py: tier-1 admits a non-baseline model, tier-2
+  admits one, a real-model-that-must-NOT-leak-in test using ecmwf_ifs025
+  specifically -- not the untestable-in-practice gem_global/ukmo shape),
+  each mutation-tested against a reverted version of the fix. 665 tests pass
+  (up from the pre-existing 661) across the full scoped sweep
+  (test_tracker.py/test_weather_markets.py/test_signal_quality.py/
+  test_forecasting.py/test_phase4.py/test_weather.py); ruff/ruff-format/mypy
+  clean.
+  Item #1 (generalize _forecast_model_weights() too) from the original plan
+  below was found NOT NEEDED after tracing the actual code: gem_global/
+  ukmo_global_ensemble_20km only ever appear via the ensemble-side
+  _get_gem_ukmo_means() (ENSEMBLE_BASE), never anywhere near
+  _forecast_model_weights() or get_weather_forecast()'s deterministic daily
+  fetch loop -- they are exclusively ensemble-shaped models. Touching that
+  second live-trading-critical function would have been unnecessary surface
+  area for zero benefit.
 
 Problem:
   As of Pass 2, gem_global/ukmo_global_ensemble_20km are tracked for
