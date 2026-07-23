@@ -3153,11 +3153,124 @@ When to revisit:
   - Ship the logging side early (same "data accumulates only from when it
     ships" logic as candlesticks); retrain when enough enriched rows exist.
 
-[GENERALIZED PER-MODEL ACCURACY TRACKING + NEW AI MODEL SOURCES]
+[PARTIALLY RESOLVED 2026-07-23 -- generic mapping shipped (Pass 1); GEM+UKMO wiring is a separate follow-up (Pass 2)] GENERALIZED PER-MODEL ACCURACY TRACKING + NEW AI MODEL SOURCES
 Priority: Medium (supersedes-and-extends [TRACK ECMWF FORECAST ACCURACY]
   above — read that entry first)
 
-Problem:
+RESOLVED 2026-07-23 (Pass 1 -- the generic mapping itself; new sources not
+  yet wired):
+  Re-verification before picking this up caught something this entry's own
+  text had already predicted and then missed: "When to revisit: when picking
+  up the ECMWF entry -- decide then whether to do the generic version."
+  TRACK ECMWF FORECAST ACCURACY was picked up and fully shipped THAT SAME
+  DAY, twice (ecmwf_aifs025_ensemble then ecmwf_ifs025) -- and the generic-
+  vs-columns decision was never actually made either time; the one-model
+  per-column pattern was just repeated twice more (4 total columns:
+  icon_forecast_mean/gfs_forecast_mean/ecmwf_aifs_forecast_mean/
+  ecmwf_ifs_forecast_mean), exactly the "third round of this plumbing" this
+  entry exists to prevent. Caught this via my own re-verification, not user
+  pushback.
+  Re-verified the free-source claim fresh rather than trusting the
+  2026-07-20 note: still zero code references to gem/ukmo/weathernext/
+  graphcast/gencast. Went further than the entry asked (live-checked GEM and
+  UKMO's actual availability, not just their absence from the code) since
+  "free, unconsumed" was itself unverified: both are real and free via the
+  SAME ENSEMBLE_BASE infra already used for icon/gfs/ecmwf_aifs025_ensemble
+  -- but neither uses the "_seamless" naming this codebase's icon/gfs
+  convention would suggest (gem_seamless/ukmo_seamless both return HTTP 200
+  with all-null data, the same class of dead-model trap ecmwf_aifs025 hit
+  before). The working IDs are gem_global (21 real members, full 16-day
+  horizon, confirmed NYC/LasVegas/Chicago) and ukmo_global_ensemble_20km (18
+  real members, but only ~9 of 16 requested days come back non-null before
+  going null -- a real, shorter horizon, not a bug). Google WeatherNext
+  (GraphCast/GenCast) turned out NOT to be a same-tier "free API call" like
+  the entry's "via BigQuery" phrasing implied: it requires an approved,
+  gatekept Data Request form, a GCP billing-enabled project, and either
+  BigQuery (undisclosed query cost) or GCS+Zarr (needs zarr/xarray/gcsfs --
+  new heavy dependencies this codebase has none of today). Kept as its own,
+  separately-scoped, lower-priority thread -- not bundled with GEM/UKMO,
+  which are genuinely the same tier of effort as everything already built
+  today.
+  Scoping decision, surfaced via AskUserQuestion after two "review these
+  options" re-derivation rounds: bundling "migrate the 4 existing columns" +
+  "wire up GEM" + "wire up UKMO" into one pass would have been bigger than
+  either ECMWF session (each of which was itself split into two separately-
+  reviewed passes) -- split into Pass 1 (migrate only, this entry) and Pass
+  2 (wire up GEM+UKMO as the new mechanism's first real consumers, separate
+  task, not yet started).
+  Shipped (Pass 1): a single model_forecast_means: dict[str, float | None]
+  field replaces the 4 hardcoded per-model result-dict fields, threaded
+  through analyze_trade()'s result dict -> place_paper_order() (one kwarg
+  replacing 4) -> the trade record -> paper._score_ensemble_members() (now
+  iterates the dict's keys generically instead of listing each model by
+  name -- adding a future source needs one line in analyze_trade() and ZERO
+  changes to place_paper_order()'s signature, the trade schema, or
+  _score_ensemble_members()). "blended" (the bias-corrected forecast_temp,
+  not a competing model) stays merged in separately, as before. Added
+  KNOWN_FORECAST_MODEL_NAMES + a _validate_forecast_model_keys() helper
+  (extracted as its own directly-testable function, not an inline assert)
+  per explicit user request for a known-model-name check -- fails loudly on
+  a future typo (e.g. "ecmwf_aifs_ensemble" instead of
+  "ecmwf_aifs025_ensemble") instead of silently creating a new,
+  permanently-thin tracked "model." Validated once at construction time
+  (analyze_trade(), the sole current producer) rather than also at
+  _score_ensemble_members() -- redundant defense-in-depth for a risk already
+  closed at the fail-fast, close-to-source location.
+  Real migration-safety check before touching anything: queried
+  data/paper_trades.json directly rather than assuming -- 99 of 198 total
+  real trades carry the old flat-key schema, and ALL 99 are already settled
+  -- in fact all 198 trades in the file are settled (0 unsettled, any
+  schema), an even stronger version of the same safety argument confirmed
+  independently by the opus review below. So _score_ensemble_members() will
+  never re-read any of them under the new schema (it only runs once, at
+  settlement time, and its sole caller raises before a second invocation on
+  an already-settled trade could ever happen) -- no backward-
+  compatibility shim needed, confirmed rather than assumed. Repo-wide grep
+  confirmed _score_ensemble_members() is the ONLY reader of the 4 old fields
+  anywhere (no CSV export, dashboard, or backtest path touches them).
+  Rewrote/added tests across test_weather_markets.py and test_paper_metrics.py
+  for the new shape, including 3 pre-existing tests (icon/gfs-focused,
+  unrelated to ECMWF) that were quietly still using the old flat-key trade
+  dicts and had gone vacuous after the field rename -- their loose "assert
+  rows" assertions were being satisfied by the unrelated "blended" row alone,
+  no longer actually proving icon/gfs got scored. Caught by inspection, not
+  by a failing test (they still passed, just for the wrong reason) -- first
+  fix pass only updated their fixture data to the new model_forecast_means
+  key, NOT the assertions themselves, so they stayed vacuous (blended alone
+  still satisfied the loose checks) -- an incomplete fix the opus review
+  below caught. Mutation-tested the core migration point (reverted the
+  dict(trade.get(...) or {}) unpack, confirmed predicted failures, restored)
+  plus the new validation helper (which needed its own direct unit tests
+  since analyze_trade()'s only call site always builds a fixed, always-valid
+  literal dict -- unreachable via analyze_trade() alone). One real mypy
+  catch: model_forecast_means had 2 explicitly-annotated definitions (main
+  path + METAR-locked branch) in one function -- a no-redef error even
+  though the branches are mutually exclusive at runtime; fixed by dropping
+  the redundant annotation on the second one.
+  Independent Agent(opus, effort=high) review before push came back clean on
+  everything else (migration completeness across all 3 real place_paper_order
+  call sites incl. web_app.py, the METAR-locked branch + mypy fix, the
+  settlement-safety argument re-derived independently -- confirmed
+  _score_ensemble_members has exactly one live caller which raises before any
+  re-invocation on an already-settled trade could happen, confirmed live that
+  all 198 trades in paper_trades.json are settled, an even stronger version
+  of the same safety claim) -- but caught the incomplete first fix above: the
+  3 "de-vacuoused" tests still didn't actually assert a model-named row
+  existed, so they'd have kept passing even with model_forecast_means
+  completely broken. Fixed for real this time (assert {"icon_seamless",
+  "gfs_seamless", "blended"} <= models_seen instead of a loose "assert
+  rows"), mutation-tested (reverted the same unpack, confirmed all 3 now
+  correctly fail, restored) -- confirming they'd been silently non-guarding
+  since the fix attempt, not just theoretically weak. Also corrected this
+  entry's own "99 real trades" phrasing (99 of 198 total trades carry the
+  old schema specifically; the review's broader "all 198 are settled" check
+  is the stronger, now-cited safety claim).
+  1069 tests pass across the widened sweep; ruff+mypy clean throughout,
+  including after the post-review test fixes.
+  Pass 2 (wire up GEM+UKMO as the new mechanism's first real consumers) is
+  intentionally NOT part of this resolution -- separate task, not started.
+
+Original problem (Pass 1 resolved; Pass 2/new-sources still open):
   The existing entry covers instrumenting ECMWF specifically. The general
   version: per-model accuracy is stored as one hardcoded column per model
   (icon_forecast_mean/gfs_forecast_mean), so every new source requires the
@@ -3185,10 +3298,24 @@ Why not now:
     above, is still open/unresolved — the "when picking up ECMWF" trigger
     hasn't fired.
 
-When to revisit:
-  - When picking up the ECMWF entry — decide then whether to do the generic
-    version instead of the one-model version, since the marginal cost is
-    small and it prevents a third round of this plumbing.
+When to revisit (Pass 2 -- wiring up real new sources onto the now-generic
+  mechanism):
+  - GEM: use model="gem_global" (NOT "gem_seamless", confirmed dead/null),
+    same _model_prob_and_mean/ENSEMBLE_BASE infra as icon/gfs/
+    ecmwf_aifs025_ensemble. Full 16-day horizon.
+  - UKMO: use model="ukmo_global_ensemble_20km" (NOT "ukmo_seamless",
+    confirmed dead/null). Real horizon is shorter than requested -- only
+    ~9 of 16 days come back non-null; account for this rather than
+    assuming full 16-day coverage like GEM.
+  - Add both to batch_prewarm_ensemble()'s model list (mirrors how
+    ecmwf_aifs025_ensemble was already added there) so real scans hit warm
+    cache instead of a new per-call fetch.
+  - Add both to KNOWN_FORECAST_MODEL_NAMES when wired up, or
+    _validate_forecast_model_keys() will correctly reject them.
+  - WeatherNext (GraphCast/GenCast) is a separate, much bigger, lower-
+    priority thread -- gatekept access (Data Request form approval),
+    GCP billing, new zarr/xarray/gcsfs dependencies. Don't bundle with
+    GEM/UKMO; scope and prioritize independently if ever picked up.
 
 [RESOLVED 2026-07-19] LIQUIDITY-AWARE SIZING + DYNAMIC EDGE THRESHOLD
 Priority: was Medium (consolidates two existing loose ends into one

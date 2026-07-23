@@ -1209,17 +1209,16 @@ def test_analyze_trade_captures_ecmwf_forecast_means(monkeypatch):
     }
     result = analyze_trade(enriched)
     assert result is not None, "analyze_trade returned None — fix the enriched dict"
-    assert result["icon_forecast_mean"] == pytest.approx(74.0)
-    assert result["gfs_forecast_mean"] == pytest.approx(74.5)
-    assert result["ecmwf_aifs_forecast_mean"] == pytest.approx(76.25), (
-        f"expected ecmwf_aifs_forecast_mean=76.25 from the 5th "
-        f"_get_consensus_probs element, got "
-        f"{result.get('ecmwf_aifs_forecast_mean')!r}"
+    means = result["model_forecast_means"]
+    assert means["icon_seamless"] == pytest.approx(74.0)
+    assert means["gfs_seamless"] == pytest.approx(74.5)
+    assert means["ecmwf_aifs025_ensemble"] == pytest.approx(76.25), (
+        f"expected ecmwf_aifs025_ensemble=76.25 from the 5th "
+        f"_get_consensus_probs element, got {means.get('ecmwf_aifs025_ensemble')!r}"
     )
-    assert result["ecmwf_ifs_forecast_mean"] == pytest.approx(79.5), (
-        f"expected ecmwf_ifs_forecast_mean=79.5 from the mocked "
-        f"fetch_temperature_ecmwf (model_temps['ecmwf']), got "
-        f"{result.get('ecmwf_ifs_forecast_mean')!r}"
+    assert means["ecmwf_ifs025"] == pytest.approx(79.5), (
+        f"expected ecmwf_ifs025=79.5 from the mocked fetch_temperature_ecmwf "
+        f"(model_temps['ecmwf']), got {means.get('ecmwf_ifs025')!r}"
     )
 
 
@@ -1260,8 +1259,7 @@ def test_metar_locked_trade_has_ecmwf_forecast_mean_keys(monkeypatch):
     result = analyze_trade(enriched)
     assert result is not None, "analyze_trade returned None — fix the enriched dict"
     assert result["method"] == "metar_lockout"
-    assert result["ecmwf_aifs_forecast_mean"] is None
-    assert result["ecmwf_ifs_forecast_mean"] is None
+    assert result["model_forecast_means"] == {}
 
 
 def test_om_rate_limit_enforces_interval(monkeypatch):
@@ -2436,6 +2434,37 @@ class TestConsensusCacheKeyBetween:
         )
 
         wm._CONSENSUS_CACHE.clear()
+
+
+class TestValidateForecastModelKeys:
+    """backlog.txt 'GENERALIZED PER-MODEL ACCURACY TRACKING': a typo'd model
+    name in model_forecast_means must fail loudly, not silently create a new,
+    permanently-thin tracked "model" in tracker.ensemble_member_scores."""
+
+    def test_known_keys_pass(self):
+        import weather_markets as wm
+
+        wm._validate_forecast_model_keys(
+            {
+                "icon_seamless": 70.0,
+                "gfs_seamless": None,
+                "ecmwf_aifs025_ensemble": 71.0,
+                "ecmwf_ifs025": 72.0,
+            }
+        )  # must not raise
+
+    def test_empty_dict_passes(self):
+        import weather_markets as wm
+
+        wm._validate_forecast_model_keys({})  # must not raise
+
+    def test_unknown_key_raises(self):
+        import weather_markets as wm
+
+        with pytest.raises(AssertionError, match="ecmwf_aifs_ensemble"):
+            wm._validate_forecast_model_keys(
+                {"icon_seamless": 70.0, "ecmwf_aifs_ensemble": 71.0}
+            )
 
 
 class TestGetConsensusProbsEcmwf:

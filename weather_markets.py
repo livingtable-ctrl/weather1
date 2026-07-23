@@ -409,6 +409,43 @@ ENSEMBLE_MODELS_EXTENDED = [
     "ecmwf_aifs025",
 ]  # Phase C: adds NBM + ECMWF AIFS
 
+# backlog.txt "GENERALIZED PER-MODEL ACCURACY TRACKING": every real model name
+# analyze_trade() is allowed to write into a trade's model_forecast_means dict
+# (paper._score_ensemble_members() logs each key here to
+# tracker.ensemble_member_scores). A KeyError-raising typo here (e.g. a future
+# copy-paste of "ecmwf_aifs_ensemble" instead of "ecmwf_aifs025_ensemble")
+# would otherwise silently create a new, permanently-thin, never-actually-
+# fetched "model" in the tracker data instead of failing loudly — this is a
+# deliberate one-line update whenever a new source (GEM, UKMO, ...) is added,
+# not a speculative guard against a bug class that's already happened here.
+KNOWN_FORECAST_MODEL_NAMES = frozenset(
+    {
+        "icon_seamless",
+        "gfs_seamless",
+        "ecmwf_aifs025_ensemble",
+        "ecmwf_ifs025",
+    }
+)
+
+
+def _validate_forecast_model_keys(
+    model_forecast_means: dict[str, float | None],
+) -> None:
+    """Raise if model_forecast_means has a key outside KNOWN_FORECAST_MODEL_NAMES.
+
+    Extracted as its own function (rather than an inline assert) so it's
+    directly unit-testable — the real call site in analyze_trade() always
+    builds this dict from a fixed set of literal keys, so the failure mode
+    this guards against (a future typo/copy-paste when adding a new source)
+    can't be reached by any test that only calls analyze_trade() itself.
+    """
+    unknown = set(model_forecast_means) - KNOWN_FORECAST_MODEL_NAMES
+    assert not unknown, (
+        f"model_forecast_means has unknown key(s): {unknown} — add to "
+        f"KNOWN_FORECAST_MODEL_NAMES if this is a real new source"
+    )
+
+
 # Dedicated session for NBM / Open-Meteo forecast calls (mockable in tests)
 _om_session: requests.Session = requests.Session()
 
@@ -7487,6 +7524,24 @@ def analyze_trade(
                     _e,
                 )
 
+        # backlog.txt "GENERALIZED PER-MODEL ACCURACY TRACKING": generic
+        # model->forecast_mean mapping (2026-07-23), replacing 4 hardcoded
+        # per-model result-dict fields — paper._score_ensemble_members() now
+        # iterates this dict's keys directly instead of listing each model by
+        # name, so a future new source (GEM, UKMO, ...) needs one line here
+        # and zero changes to place_paper_order()'s signature or the trade
+        # schema. Keys are real model-name strings (the same ones
+        # tracker.ensemble_member_scores.model stores), validated against
+        # KNOWN_FORECAST_MODEL_NAMES to fail loudly on a typo rather than
+        # silently creating a permanently-thin new "model" in tracker data.
+        model_forecast_means: dict[str, float | None] = {
+            "icon_seamless": icon_forecast_mean,
+            "gfs_seamless": gfs_forecast_mean,
+            "ecmwf_aifs025_ensemble": ecmwf_aifs_forecast_mean,
+            "ecmwf_ifs025": ecmwf_ifs_forecast_mean,
+        }
+        _validate_forecast_model_keys(model_forecast_means)
+
         # ── Near-threshold detection ─────────────────────────────────────────────
         threshold_val = _prob_threshold(condition)
         near_threshold = (
@@ -7981,10 +8036,10 @@ def analyze_trade(
         consensus = True
         model_consensus = True
         near_threshold = False
-        icon_forecast_mean = None
-        gfs_forecast_mean = None
-        ecmwf_aifs_forecast_mean = None
-        ecmwf_ifs_forecast_mean = None
+        # METAR-locked trades skip the whole model-fetch path -- no per-model
+        # means to report (mirrors icon/gfs/ecmwf's individual None defaults
+        # before the 2026-07-23 generic-mapping migration).
+        model_forecast_means = {}
         index_adj = 0.0
         ci_low = blended_prob
         ci_high = blended_prob
@@ -8406,11 +8461,9 @@ def analyze_trade(
         "target_date": target_date.isoformat()
         if hasattr(target_date, "isoformat")
         else str(target_date),
-        # Per-model forecast means for ensemble scoring
-        "icon_forecast_mean": icon_forecast_mean,
-        "gfs_forecast_mean": gfs_forecast_mean,
-        "ecmwf_aifs_forecast_mean": ecmwf_aifs_forecast_mean,
-        "ecmwf_ifs_forecast_mean": ecmwf_ifs_forecast_mean,
+        # Per-model forecast means for ensemble scoring (generic mapping,
+        # backlog.txt "GENERALIZED PER-MODEL ACCURACY TRACKING")
+        "model_forecast_means": model_forecast_means,
         # Phase C: extended ensemble spread + Gaussian probability
         "ensemble_spread": ensemble_spread_prob,
         "ensemble_spread_f": ensemble_spread_f,

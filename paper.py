@@ -848,10 +848,10 @@ def place_paper_order(
     target_date: str | None = None,  # ISO format "2026-04-09"
     thesis: str | None = None,
     method: str | None = None,  # analysis method ('ensemble', 'normal_dist', etc.)
-    icon_forecast_mean: float | None = None,  # per-model means for ensemble scoring
-    gfs_forecast_mean: float | None = None,
-    ecmwf_aifs_forecast_mean: float | None = None,  # ecmwf_aifs025_ensemble's own mean
-    ecmwf_ifs_forecast_mean: float | None = None,  # ecmwf_ifs025's own mean
+    # Per-model forecast means for ensemble scoring (backlog.txt "GENERALIZED
+    # PER-MODEL ACCURACY TRACKING"): generic model-name -> mean mapping,
+    # replacing the old icon_forecast_mean/gfs_forecast_mean/... flat fields.
+    model_forecast_means: dict[str, float | None] | None = None,
     forecast_temp: float
     | None = None,  # blended forecast temp used for probability (exact bias baseline)
     condition_threshold: float | None = None,  # market threshold (e.g. 70°F)
@@ -957,10 +957,7 @@ def place_paper_order(
             "outcome": None,
             "pnl": None,
             "thesis": thesis,
-            "icon_forecast_mean": icon_forecast_mean,
-            "gfs_forecast_mean": gfs_forecast_mean,
-            "ecmwf_aifs_forecast_mean": ecmwf_aifs_forecast_mean,
-            "ecmwf_ifs_forecast_mean": ecmwf_ifs_forecast_mean,
+            "model_forecast_means": model_forecast_means or {},
             "forecast_temp": forecast_temp,
             "condition_threshold": condition_threshold,
             "ab_variant": ab_variant,
@@ -1183,28 +1180,25 @@ def _score_ensemble_members(trade: dict, outcome_yes: bool) -> None:
             trade.get("ticker", "?"),
         )
         return
-    model_means: dict[str, float | None] = {
-        "icon_seamless": trade.get("icon_forecast_mean"),
-        "gfs_seamless": trade.get("gfs_forecast_mean"),
-        # "blended" is the exact bias-corrected forecast_temp used for probability
-        # calculation — preferred by get_dynamic_station_bias() over the per-model means.
-        "blended": trade.get("forecast_temp"),
-        # backlog.txt "TRACK ECMWF FORECAST ACCURACY": both real ECMWF products
-        # are now captured the same way as icon/gfs above, so each can earn its
-        # own data-driven weight once >=10 settled observations accumulate per
-        # city (ecmwf_aifs025_ensemble ultimately feeds _model_weights()'s
-        # ensemble blend; ecmwf_ifs025 feeds _forecast_model_weights()'s daily
-        # blend). Not a fully clean split, though: tracker.get_model_weights()
-        # softmaxes every logged model together before _dynamic_model_weights()
-        # hands the result to _forecast_model_weights(), so ecmwf_aifs025_ensemble's
-        # MAE sits in the same softmax that produces icon/gfs/ecmwf_ifs025's
-        # daily-blend weights too — harmless (the daily blend's own merge only
-        # ever reads keys in its baseline, so a stray aifs025_ensemble key is
-        # ignored there), just not the fully independent pipelines this
-        # sounds like at a glance.
-        "ecmwf_aifs025_ensemble": trade.get("ecmwf_aifs_forecast_mean"),
-        "ecmwf_ifs025": trade.get("ecmwf_ifs_forecast_mean"),
-    }
+    # backlog.txt "GENERALIZED PER-MODEL ACCURACY TRACKING" (2026-07-23):
+    # generic model->forecast_mean mapping, replacing the old hardcoded
+    # icon_forecast_mean/gfs_forecast_mean/ecmwf_*_forecast_mean fields — any
+    # model analyze_trade() puts in trade["model_forecast_means"] gets scored
+    # here automatically, no code change needed here to add a future source
+    # (GEM, UKMO, ...). "blended" (the exact bias-corrected forecast_temp used
+    # for probability calculation, preferred by get_dynamic_station_bias()
+    # over the per-model means) is not a competing model, so it's merged in
+    # separately rather than living in model_forecast_means itself.
+    # Not a fully clean pipeline split, worth noting: tracker.get_model_weights()
+    # softmaxes every logged model together before _dynamic_model_weights()
+    # hands the result to _forecast_model_weights(), so e.g. ecmwf_aifs025_ensemble's
+    # MAE sits in the same softmax that produces icon/gfs/ecmwf_ifs025's
+    # daily-blend weights too — harmless (the daily blend's own merge only
+    # ever reads keys in its own baseline, so a stray key from a model it
+    # doesn't consume is ignored there), just not the fully independent
+    # pipelines this might suggest at a glance.
+    model_means: dict[str, float | None] = dict(trade.get("model_forecast_means") or {})
+    model_means["blended"] = trade.get("forecast_temp")
     try:
         from tracker import log_member_score as _log_ms
 

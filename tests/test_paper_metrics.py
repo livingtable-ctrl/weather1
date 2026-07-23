@@ -278,8 +278,7 @@ def test_score_ensemble_members_uses_db_settled_temp(tmp_path, monkeypatch):
         "ticker": "KXHIGHNY-26JUL04-T85",
         "city": "NYC",
         "target_date": "2026-07-04",
-        "icon_forecast_mean": 84.0,
-        "gfs_forecast_mean": 83.5,
+        "model_forecast_means": {"icon_seamless": 84.0, "gfs_seamless": 83.5},
         "forecast_temp": 84.2,
     }
 
@@ -287,13 +286,18 @@ def test_score_ensemble_members_uses_db_settled_temp(tmp_path, monkeypatch):
 
     with tracker._conn() as con:
         rows = con.execute(
-            "SELECT actual_temp FROM ensemble_member_scores WHERE city='NYC'"
+            "SELECT model, actual_temp FROM ensemble_member_scores WHERE city='NYC'"
         ).fetchall()
 
-    assert rows, (
-        "_score_ensemble_members must insert at least one row into ensemble_member_scores"
+    # Opus-review finding (2026-07-23): a loose "assert rows" here is
+    # satisfied by the unrelated "blended" row alone and never proves
+    # model_forecast_means's icon/gfs entries actually got scored. Assert
+    # the specific models by name to close that gap for real.
+    models_seen = {r[0] for r in rows}
+    assert {"icon_seamless", "gfs_seamless", "blended"} <= models_seen, (
+        f"expected icon_seamless/gfs_seamless/blended rows, got: {models_seen}"
     )
-    actual_temps = [r[0] for r in rows]
+    actual_temps = [r[1] for r in rows]
     assert all(abs(t - 88.0) < 0.1 for t in actual_temps), (
         f"Expected actual_temp=88.0 (DB settled_temp_f), got: {actual_temps}"
     )
@@ -331,8 +335,7 @@ def test_score_ensemble_members_prefers_stored_var(tmp_path, monkeypatch):
         "ticker": ticker,
         "city": "NYC",
         "target_date": "2026-07-20",
-        "icon_forecast_mean": 60.0,
-        "gfs_forecast_mean": 59.5,
+        "model_forecast_means": {"icon_seamless": 60.0, "gfs_seamless": 59.5},
         "forecast_temp": 60.2,
         "var": "min",
     }
@@ -340,11 +343,16 @@ def test_score_ensemble_members_prefers_stored_var(tmp_path, monkeypatch):
 
     with tracker._conn() as con:
         rows = con.execute(
-            "SELECT var FROM ensemble_member_scores WHERE city='NYC'"
+            "SELECT model, var FROM ensemble_member_scores WHERE city='NYC'"
         ).fetchall()
-    assert rows, "_score_ensemble_members must insert at least one row"
-    assert all(r[0] == "min" for r in rows), (
-        f"Expected var='min' (from trade['var']), got: {[r[0] for r in rows]}"
+    # Opus-review finding (2026-07-23): assert the specific icon/gfs models
+    # are present, not just "some row exists" (which "blended" alone satisfies).
+    models_seen = {r[0] for r in rows}
+    assert {"icon_seamless", "gfs_seamless", "blended"} <= models_seen, (
+        f"expected icon_seamless/gfs_seamless/blended rows, got: {models_seen}"
+    )
+    assert all(r[1] == "min" for r in rows), (
+        f"Expected var='min' (from trade['var']), got: {[r[1] for r in rows]}"
     )
 
 
@@ -372,8 +380,7 @@ def test_score_ensemble_members_falls_back_for_legacy_trade_without_var(
         "ticker": ticker,
         "city": "NYC",
         "target_date": "2026-07-04",
-        "icon_forecast_mean": 84.0,
-        "gfs_forecast_mean": 83.5,
+        "model_forecast_means": {"icon_seamless": 84.0, "gfs_seamless": 83.5},
         "forecast_temp": 84.2,
         # no "var" key -- legacy trade
     }
@@ -381,11 +388,16 @@ def test_score_ensemble_members_falls_back_for_legacy_trade_without_var(
 
     with tracker._conn() as con:
         rows = con.execute(
-            "SELECT var FROM ensemble_member_scores WHERE city='NYC'"
+            "SELECT model, var FROM ensemble_member_scores WHERE city='NYC'"
         ).fetchall()
-    assert rows
-    assert all(r[0] == "max" for r in rows), (
-        f"Expected var='max' (ticker-substring fallback for KXHIGH), got: {[r[0] for r in rows]}"
+    # Opus-review finding (2026-07-23): assert the specific icon/gfs models
+    # are present, not just "some row exists" (which "blended" alone satisfies).
+    models_seen = {r[0] for r in rows}
+    assert {"icon_seamless", "gfs_seamless", "blended"} <= models_seen, (
+        f"expected icon_seamless/gfs_seamless/blended rows, got: {models_seen}"
+    )
+    assert all(r[1] == "max" for r in rows), (
+        f"Expected var='max' (ticker-substring fallback for KXHIGH), got: {[r[1] for r in rows]}"
     )
 
 
@@ -407,15 +419,16 @@ def test_place_paper_order_stores_var_on_trade(tmp_path, monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# backlog.txt "TRACK ECMWF FORECAST ACCURACY": ecmwf_aifs_forecast_mean and
-# ecmwf_ifs_forecast_mean must be stored on the trade record (mirroring
-# icon/gfs) and logged by _score_ensemble_members under model=
-# "ecmwf_aifs025_ensemble" / "ecmwf_ifs025" respectively (2 real, independent
-# ECMWF products — fixing one does not give the other a learned weight).
+# backlog.txt "GENERALIZED PER-MODEL ACCURACY TRACKING" (2026-07-23): the old
+# 4 hardcoded fields (icon_forecast_mean, gfs_forecast_mean,
+# ecmwf_aifs_forecast_mean, ecmwf_ifs_forecast_mean) are replaced by one
+# generic model_forecast_means dict, stored on the trade record and iterated
+# generically by _score_ensemble_members — any model present gets a row, no
+# code change needed here to add a future source (GEM, UKMO, ...).
 # ---------------------------------------------------------------------------
 
 
-def test_place_paper_order_stores_ecmwf_forecast_means(tmp_path, monkeypatch):
+def test_place_paper_order_stores_model_forecast_means(tmp_path, monkeypatch):
     import paper
 
     monkeypatch.setattr(paper, "DATA_PATH", tmp_path / "paper_trades.json")
@@ -427,107 +440,42 @@ def test_place_paper_order_stores_ecmwf_forecast_means(tmp_path, monkeypatch):
         0.5,
         city="NYC",
         target_date="2026-07-04",
-        icon_forecast_mean=84.0,
-        gfs_forecast_mean=83.5,
-        ecmwf_aifs_forecast_mean=85.2,
-        ecmwf_ifs_forecast_mean=83.9,
+        model_forecast_means={
+            "icon_seamless": 84.0,
+            "gfs_seamless": 83.5,
+            "ecmwf_aifs025_ensemble": 85.2,
+            "ecmwf_ifs025": 83.9,
+        },
     )
-    assert abs(trade["ecmwf_aifs_forecast_mean"] - 85.2) < 0.001
-    assert abs(trade["ecmwf_ifs_forecast_mean"] - 83.9) < 0.001
+    means = trade["model_forecast_means"]
+    assert abs(means["icon_seamless"] - 84.0) < 0.001
+    assert abs(means["gfs_seamless"] - 83.5) < 0.001
+    assert abs(means["ecmwf_aifs025_ensemble"] - 85.2) < 0.001
+    assert abs(means["ecmwf_ifs025"] - 83.9) < 0.001
 
 
-def test_score_ensemble_members_logs_ecmwf_aifs_row(tmp_path, monkeypatch):
-    """A trade with ecmwf_aifs_forecast_mean set must produce a row in
-    ensemble_member_scores under model='ecmwf_aifs025_ensemble'."""
-    import paper
-    import tracker
-
-    monkeypatch.setattr(tracker, "DB_PATH", tmp_path / "test.db")
-    tracker._db_initialized = False
-    tracker.init_db()
-
-    ticker = "KXHIGHNY-26JUL04-T85"
-    with tracker._conn() as con:
-        con.execute(
-            "INSERT OR IGNORE INTO outcomes (ticker, settled_yes) VALUES (?,1)",
-            (ticker,),
-        )
-        con.execute("UPDATE outcomes SET settled_temp_f=88.0 WHERE ticker=?", (ticker,))
-
-    trade = {
-        "ticker": ticker,
-        "city": "NYC",
-        "target_date": "2026-07-04",
-        "icon_forecast_mean": 84.0,
-        "gfs_forecast_mean": 83.5,
-        "ecmwf_aifs_forecast_mean": 85.2,
-        "forecast_temp": 84.2,
-    }
-    paper._score_ensemble_members(trade, outcome_yes=True)
-
-    with tracker._conn() as con:
-        rows = con.execute(
-            "SELECT predicted_temp, actual_temp FROM ensemble_member_scores "
-            "WHERE city='NYC' AND model='ecmwf_aifs025_ensemble'"
-        ).fetchall()
-    assert rows, (
-        "_score_ensemble_members must insert an 'ecmwf_aifs025_ensemble' row "
-        "when trade['ecmwf_aifs_forecast_mean'] is set"
-    )
-    assert abs(rows[0][0] - 85.2) < 0.001
-    assert abs(rows[0][1] - 88.0) < 0.001
-
-
-def test_score_ensemble_members_logs_ecmwf_ifs_row(tmp_path, monkeypatch):
-    """A trade with ecmwf_ifs_forecast_mean set must produce a row in
-    ensemble_member_scores under model='ecmwf_ifs025' — independent of the
-    aifs025_ensemble row above (2 distinct real ECMWF products)."""
-    import paper
-    import tracker
-
-    monkeypatch.setattr(tracker, "DB_PATH", tmp_path / "test.db")
-    tracker._db_initialized = False
-    tracker.init_db()
-
-    ticker = "KXHIGHNY-26JUL04-T85"
-    with tracker._conn() as con:
-        con.execute(
-            "INSERT OR IGNORE INTO outcomes (ticker, settled_yes) VALUES (?,1)",
-            (ticker,),
-        )
-        con.execute("UPDATE outcomes SET settled_temp_f=88.0 WHERE ticker=?", (ticker,))
-
-    trade = {
-        "ticker": ticker,
-        "city": "NYC",
-        "target_date": "2026-07-04",
-        "icon_forecast_mean": 84.0,
-        "gfs_forecast_mean": 83.5,
-        "ecmwf_ifs_forecast_mean": 83.9,
-        "forecast_temp": 84.2,
-    }
-    paper._score_ensemble_members(trade, outcome_yes=True)
-
-    with tracker._conn() as con:
-        rows = con.execute(
-            "SELECT predicted_temp, actual_temp FROM ensemble_member_scores "
-            "WHERE city='NYC' AND model='ecmwf_ifs025'"
-        ).fetchall()
-    assert rows, (
-        "_score_ensemble_members must insert an 'ecmwf_ifs025' row "
-        "when trade['ecmwf_ifs_forecast_mean'] is set"
-    )
-    assert abs(rows[0][0] - 83.9) < 0.001
-    assert abs(rows[0][1] - 88.0) < 0.001
-
-
-def test_score_ensemble_members_skips_ecmwf_rows_when_means_absent(
+def test_place_paper_order_defaults_model_forecast_means_to_empty_dict(
     tmp_path, monkeypatch
 ):
-    """A legacy trade with neither ecmwf_aifs_forecast_mean nor
-    ecmwf_ifs_forecast_mean must NOT produce either ECMWF row — mirrors
-    icon/gfs's existing None-skip behavior (model_means.items() only logs
-    non-None predicted_temp)."""
+    """Omitting model_forecast_means entirely (e.g. a manual dashboard order,
+    see web_app.py's place_paper_order call) must store {}, not None — so
+    _score_ensemble_members's dict(trade.get(...) or {}) never has to guess."""
+    import paper
+
+    monkeypatch.setattr(paper, "DATA_PATH", tmp_path / "paper_trades.json")
+
+    trade = paper.place_paper_order(
+        "KXHIGHNY-26JUL04-T85", "yes", 10, 0.5, city="NYC", target_date="2026-07-04"
+    )
+    assert trade["model_forecast_means"] == {}
+
+
+def test_score_ensemble_members_logs_every_model_in_the_generic_dict(
+    tmp_path, monkeypatch
+):
+    """Every model present in trade['model_forecast_means'] must produce its
+    own row, independently — proves the generic iteration actually replaces
+    the old per-model-named-field logic, not just for one model."""
     import paper
     import tracker
 
@@ -547,23 +495,63 @@ def test_score_ensemble_members_skips_ecmwf_rows_when_means_absent(
         "ticker": ticker,
         "city": "NYC",
         "target_date": "2026-07-04",
-        "icon_forecast_mean": 84.0,
-        "gfs_forecast_mean": 83.5,
+        "model_forecast_means": {
+            "icon_seamless": 84.0,
+            "gfs_seamless": 83.5,
+            "ecmwf_aifs025_ensemble": 85.2,
+            "ecmwf_ifs025": 83.9,
+        },
         "forecast_temp": 84.2,
-        # no ecmwf_aifs_forecast_mean/ecmwf_ifs_forecast_mean keys -- legacy trade
     }
     paper._score_ensemble_members(trade, outcome_yes=True)
 
     with tracker._conn() as con:
-        rows = con.execute(
-            "SELECT predicted_temp, model FROM ensemble_member_scores "
-            "WHERE city='NYC' AND model IN ('ecmwf_aifs025_ensemble', 'ecmwf_ifs025')"
-        ).fetchall()
-    assert not rows, f"expected no ECMWF rows for a legacy trade, got: {rows}"
-    # icon/gfs rows must still be logged normally.
+        rows = dict(
+            con.execute(
+                "SELECT model, predicted_temp FROM ensemble_member_scores WHERE city='NYC'"
+            ).fetchall()
+        )
+    assert abs(rows["icon_seamless"] - 84.0) < 0.001
+    assert abs(rows["gfs_seamless"] - 83.5) < 0.001
+    assert abs(rows["ecmwf_aifs025_ensemble"] - 85.2) < 0.001
+    assert abs(rows["ecmwf_ifs025"] - 83.9) < 0.001
+    assert abs(rows["blended"] - 84.2) < 0.001
+
+
+def test_score_ensemble_members_skips_absent_models(tmp_path, monkeypatch):
+    """A legacy trade with an empty/missing model_forecast_means must produce
+    no per-model rows (only "blended", from forecast_temp separately) — mirrors
+    the old None-skip behavior (model_means.items() only logs non-None
+    predicted_temp)."""
+    import paper
+    import tracker
+
+    monkeypatch.setattr(tracker, "DB_PATH", tmp_path / "test.db")
+    tracker._db_initialized = False
+    tracker.init_db()
+
+    ticker = "KXHIGHNY-26JUL04-T85"
     with tracker._conn() as con:
-        icon_rows = con.execute(
-            "SELECT predicted_temp FROM ensemble_member_scores "
-            "WHERE city='NYC' AND model='icon_seamless'"
-        ).fetchall()
-    assert icon_rows and abs(icon_rows[0][0] - 84.0) < 0.001
+        con.execute(
+            "INSERT OR IGNORE INTO outcomes (ticker, settled_yes) VALUES (?,1)",
+            (ticker,),
+        )
+        con.execute("UPDATE outcomes SET settled_temp_f=88.0 WHERE ticker=?", (ticker,))
+
+    trade = {
+        "ticker": ticker,
+        "city": "NYC",
+        "target_date": "2026-07-04",
+        "forecast_temp": 84.2,
+        # no "model_forecast_means" key at all -- legacy/pre-migration trade
+    }
+    paper._score_ensemble_members(trade, outcome_yes=True)
+
+    with tracker._conn() as con:
+        rows = [
+            tuple(r)
+            for r in con.execute(
+                "SELECT model, predicted_temp FROM ensemble_member_scores WHERE city='NYC'"
+            ).fetchall()
+        ]
+    assert rows == [("blended", 84.2)], f"expected only a 'blended' row, got: {rows}"
