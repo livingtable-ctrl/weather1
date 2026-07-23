@@ -1,6 +1,68 @@
 BACKLOG — future improvements to implement when ready
 ======================================================
 
+[OPEN-METEO FREE TIER IS RATE-LIMITING CIRCUIT BREAKERS -- NEEDS A PAID API KEY]
+Priority: Medium -- not currently blocking anything (TRADING_PAUSED means no
+  trade placement is affected either way), but degrades signal quality on
+  every cron run that trips: excluded models mean a thinner blend, and a
+  tripped seasonal circuit means rain markets lose their Open-Meteo
+  directional tilt for that cycle (falls back to ACIS-only, which is by
+  design but is a real quality loss, not free).
+
+Problem:
+  User confirmed (2026-07-23, from prior context not otherwise captured in
+  this file or project memory) that circuit-breaker trips on Open-Meteo
+  endpoints are a known, already-diagnosed root cause: this bot runs on
+  Open-Meteo's free/anonymous tier (confirmed live -- no `OPEN_METEO`/
+  `OPENMETEO` API key anywhere in `.env`, and no API-key parameter in any
+  Open-Meteo fetch call across weather_markets.py/backtest.py), and the
+  free tier's request-rate ceiling is the actual cause of the 429s, not a
+  code bug. A paid tier (Open-Meteo sells an API-key tier with a materially
+  higher rate limit) would raise that ceiling and should stop the trips.
+  Concrete evidence from the same day: the 2026-07-23 ~17:29 UTC cron run
+  tripped `open_meteo_ensemble` (gem_global/min + both
+  ukmo_global_ensemble_20km/max+min failed -- 3 failures, 300s cooldown)
+  right after GEM/UKMO wiring (`94f8c55`) roughly doubled the per-cycle
+  ensemble-model fetch volume (3 models -> 5), and separately tripped
+  `open_meteo_seasonal` (5 straight 429s fetching Houston/Miami/Dallas
+  monthly precip for rain markets, 600s cooldown) -- plausibly the same
+  cause: more total request volume per cron cycle than the free tier's
+  rate ceiling allows, now that GEM/UKMO and the 2-day scan window
+  (40 city/date pairs prewarmed vs 20 previously) are both live.
+  Not yet confirmed: the exact free-tier rate limit number, whether it's
+  per-endpoint or account-wide, and whether a paid tier is priced/sized
+  for this bot's actual request volume (would need checking Open-Meteo's
+  current pricing page before purchasing anything).
+
+What it would look like:
+  1. Check open-meteo.com's current API pricing/tier page for the actual
+     free-tier rate limit and paid-tier pricing/limits -- don't assume
+     without checking, since pricing pages change.
+  2. Estimate this bot's real per-cycle request volume post-GEM/UKMO (5
+     ensemble models x 2 vars x N city/date pairs, plus the seasonal-API
+     rain-market fetches, plus NBM/MOS/METAR/forecast-base calls) to size
+     which paid tier (if any) actually covers it with headroom, not just
+     the cheapest one that nominally clears today's trip threshold.
+  3. Sign up for the paid tier, get an API key, wire it into every
+     Open-Meteo fetch call (weather_markets.py, backtest.py, acis_precip.py
+     -- grep for `open-meteo.com` to find the full call-site list) via a
+     new `.env` var, matching the existing pattern for other API keys in
+     this codebase.
+  4. Re-verify via a live cron run (or several, across a few cycles) that
+     the circuit breakers no longer trip under real load.
+
+Why not now:
+  - Requires an external purchasing decision (which paid tier, ongoing
+    cost) the user needs to make, not something to implement unilaterally
+    -- filed for tracking per explicit user request, not picked up this
+    session.
+
+When to revisit:
+  - Whenever the user is ready to evaluate/purchase a tier, or sooner if
+    circuit-breaker trips start recurring on most/every cron run rather
+    than occasionally (worth checking a few more cron runs to see how
+    often this is actually happening before spending money on it).
+
 [RESOLVED 2026-07-23] SYNTHETIC TEST DATA (PROB*/BAD* OUTCOME ROWS) CORRUPTED THE LIVE P10.3 BRIER ALERT FOR 4+ DAYS
 Priority: was High -- silently corrupted a live model-quality safety signal
   (P10.3 Brier alert) undetected since 2026-07-19; same root-cause class as
