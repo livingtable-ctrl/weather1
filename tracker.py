@@ -5333,6 +5333,123 @@ def get_recent_city_correlations(days: int = 60, min_pairs: int = 5) -> dict:
     return correlations
 
 
+def get_regional_recent_bias(
+    city: str,
+    var: str = "max",
+    hours: int = 48,
+    as_of: str | None = None,
+) -> tuple[float, int]:
+    """Correlation-weighted mean forecast error of CORRELATED cities' recent
+    settlements (backlog.txt "CROSS-CITY RECENT-ERROR POOLING").
+
+    Same sign convention as get_dynamic_station_bias: positive means those
+    cities' models ran warm (forecast_temp_f - settled_temp_f > 0); caller
+    would subtract this from the raw forecast the same way.
+
+    Only considers cities in `city`'s paper._CORRELATED_CITY_GROUPS entry
+    (paper.py holds the group/pair-correlation tables since they're also
+    used for portfolio exposure caps; imported lazily here to avoid a
+    module-load-order cycle, matching this file's existing lazy `from paper
+    import ...` pattern). Each correlated city's rows are weighted by
+    paper._CITY_PAIR_CORR (falling back to the same 0.10 default
+    monte_carlo's Kelly covariance layer uses for an unlisted pair).
+
+    var selects daily-HIGH ("max") vs daily-LOW ("min") markets via ticker
+    substring, not the mostly-NULL predictions.var column (same reasoning as
+    get_recent_city_correlations's own ticker-based split -- mixing HIGH and
+    LOW temps in one error series would corrupt the mean by ~20-30F).
+
+    hours: lookback window, applied to outcomes.settled_at (when the
+    settlement was recorded), not the market's event date -- settlement
+    lag is real (median ~1 day per live audit) and this is what "recent" as
+    of scan time actually means for a caller.
+
+    as_of: SQLite datetime()-compatible string (same 'YYYY-MM-DD HH:MM:SS'
+    format predicted_at/settled_at are stored in -- NOT a Python
+    isoformat(), which emits a 'T' separator that would silently break the
+    string-lexicographic comparison SQLite's own datetime() performs
+    internally against these columns). Defaults to 'now'. Lets a caller
+    reconstruct a specific historical point in time without look-ahead
+    (e.g. a backtest asking "what would this have returned right before
+    city X's own prediction was logged"). Both settled_at and predicted_at
+    are bounded by as_of -- the settled_at bound alone is sufficient today
+    (a ticker is never re-predicted after it settles, so the latest
+    predicted_at row is transitively capped by its own settlement time),
+    but predicted_at is bounded explicitly too as defense-in-depth against
+    a future backfill re-logging a prediction row post-settlement (opus
+    review finding, 2026-07-23).
+
+    Excludes disputed settlements via outcomes_valid, and only uses the
+    latest-logged prediction row per ticker (a ticker can have one
+    predictions row per day it was scanned) -- same ROW_NUMBER dedup
+    pattern as get_edge_realization_by_city.
+
+    Returns (weighted_mean_error, sample_count). (0.0, 0) when city has no
+    correlated-group entry (e.g. Seattle, deliberately standalone) or no
+    qualifying rows in the window.
+    """
+    from paper import _CITY_PAIR_CORR, _CORRELATED_CITY_GROUPS
+
+    group = next((g for g in _CORRELATED_CITY_GROUPS if city in g), None)
+    if not group:
+        return 0.0, 0
+    correlated_cities = sorted(group - {city})
+    if not correlated_cities:
+        return 0.0, 0
+
+    init_db()
+    as_of_expr = as_of if as_of else "now"
+    ticker_pattern = "%HIGH%" if var == "max" else "%LOW%"
+    placeholders = ",".join("?" for _ in correlated_cities)
+
+    with _conn() as con:
+        rows = con.execute(
+            f"""
+            SELECT sub.city, sub.forecast_temp_f, o.settled_temp_f
+            FROM (
+                SELECT ticker, city, forecast_temp_f,
+                       ROW_NUMBER() OVER (
+                           PARTITION BY ticker ORDER BY predicted_at DESC
+                       ) as rn
+                FROM predictions
+                WHERE city IN ({placeholders})
+                  AND forecast_temp_f IS NOT NULL
+                  AND UPPER(ticker) LIKE ?
+                  AND predicted_at <= datetime(?)
+            ) sub
+            JOIN outcomes_valid o ON o.ticker = sub.ticker
+            WHERE sub.rn = 1
+              AND o.settled_temp_f IS NOT NULL
+              AND o.settled_at >= datetime(?, ?)
+              AND o.settled_at <= datetime(?)
+            """,
+            (
+                *correlated_cities,
+                ticker_pattern,
+                as_of_expr,
+                as_of_expr,
+                f"-{hours} hours",
+                as_of_expr,
+            ),
+        ).fetchall()
+
+    if not rows:
+        return 0.0, 0
+
+    weighted_sum = 0.0
+    weight_total = 0.0
+    for row_city, forecast_temp_f, settled_temp_f in rows:
+        error = float(forecast_temp_f) - float(settled_temp_f)
+        weight = _CITY_PAIR_CORR.get(frozenset({city, row_city}), 0.10)
+        weighted_sum += error * weight
+        weight_total += weight
+
+    if weight_total <= 0:
+        return 0.0, len(rows)
+
+    return round(weighted_sum / weight_total, 4), len(rows)
+
+
 def get_edge_realization_by_city() -> list[dict]:
     # Compare declared edge at entry vs actual win rate to see which cities deliver on predicted edge.
     # edge is signed (blended_prob - market_prob): negative edge means the model

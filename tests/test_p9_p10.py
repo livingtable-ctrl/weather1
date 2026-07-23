@@ -998,6 +998,261 @@ def test_get_recent_city_correlations_skips_below_min_pairs(tmp_tracker):
     assert result == {}, f"Should skip pair with only 1 common date. Got: {result}"
 
 
+# ── CROSS-CITY RECENT-ERROR POOLING (backlog.txt) ───────────────────────────────
+
+
+def _log_settled(
+    t,
+    ticker,
+    city,
+    market_date,
+    forecast_temp_f,
+    settled_temp_f,
+    settled_at=None,
+    predicted_at=None,
+    disputed=False,
+):
+    """Helper: log a prediction with forecast_temp_f + a matching settled outcome,
+    with direct control over predicted_at/settled_at (log_prediction hardcodes
+    predicted_at to datetime('now') and can't take an explicit value)."""
+    t.log_prediction(
+        ticker,
+        city,
+        market_date,
+        {
+            "forecast_prob": 0.5,
+            "market_prob": 0.5,
+            "edge": 0.0,
+            "method": "test",
+            "forecast_temp": forecast_temp_f,
+            "condition": {"type": "above", "threshold": 70},
+        },
+    )
+    t.log_outcome(ticker, True)
+    with t._conn() as con:
+        if predicted_at is not None:
+            con.execute(
+                "UPDATE predictions SET predicted_at = ? WHERE ticker = ?",
+                (predicted_at, ticker),
+            )
+        if settled_at is None:
+            con.execute(
+                "UPDATE outcomes SET settled_temp_f = ?, settled_at = datetime('now'), "
+                "disputed = ? WHERE ticker = ?",
+                (settled_temp_f, 1 if disputed else 0, ticker),
+            )
+        else:
+            con.execute(
+                "UPDATE outcomes SET settled_temp_f = ?, settled_at = ?, disputed = ? "
+                "WHERE ticker = ?",
+                (settled_temp_f, settled_at, 1 if disputed else 0, ticker),
+            )
+
+
+def test_get_regional_recent_bias_no_correlated_group(tmp_tracker):
+    """Seattle has no _CORRELATED_CITY_GROUPS entry (deliberately standalone) —
+    must return (0.0, 0) rather than erroring."""
+    result = tmp_tracker.get_regional_recent_bias("Seattle", var="max")
+    assert result == (0.0, 0)
+
+
+def test_get_regional_recent_bias_no_data(tmp_tracker):
+    """NYC has a correlated group but the DB is empty — (0.0, 0)."""
+    result = tmp_tracker.get_regional_recent_bias("NYC", var="max")
+    assert result == (0.0, 0)
+
+
+def test_get_regional_recent_bias_computes_weighted_mean(tmp_tracker):
+    """Boston (corr 0.85) and Washington (corr 0.75) both ran 2F warm on NYC's
+    HIGH markets -> weighted mean should be 2.0 (both cities agree exactly)."""
+    market_date = date.today()
+    _log_settled(
+        tmp_tracker,
+        "KXHIGHBOS-T70",
+        "Boston",
+        market_date,
+        forecast_temp_f=72.0,
+        settled_temp_f=70.0,
+    )
+    _log_settled(
+        tmp_tracker,
+        "KXHIGHDC-T70",
+        "Washington",
+        market_date,
+        forecast_temp_f=72.0,
+        settled_temp_f=70.0,
+    )
+    bias, n = tmp_tracker.get_regional_recent_bias("NYC", var="max", hours=48)
+    assert n == 2
+    assert abs(bias - 2.0) < 0.01
+
+
+def test_get_regional_recent_bias_weights_by_pair_correlation(tmp_tracker):
+    """Boston (corr 0.85, error +4F) and Philadelphia (corr 0.80, error -2F)
+    disagree -> the higher-correlation city should dominate the weighted mean,
+    which must land strictly between the two raw errors."""
+    market_date = date.today()
+    _log_settled(
+        tmp_tracker,
+        "KXHIGHBOS-T70",
+        "Boston",
+        market_date,
+        forecast_temp_f=74.0,
+        settled_temp_f=70.0,  # error = +4
+    )
+    _log_settled(
+        tmp_tracker,
+        "KXHIGHPHIL-T70",
+        "Philadelphia",
+        market_date,
+        forecast_temp_f=68.0,
+        settled_temp_f=70.0,  # error = -2
+    )
+    bias, n = tmp_tracker.get_regional_recent_bias("NYC", var="max", hours=48)
+    assert n == 2
+    # Manually: (4*0.85 + -2*0.80) / (0.85+0.80) = (3.4-1.6)/1.65 = 1.0909
+    expected = (4.0 * 0.85 + -2.0 * 0.80) / (0.85 + 0.80)
+    assert abs(bias - expected) < 0.01
+    assert -2.0 < bias < 4.0
+
+
+def test_get_regional_recent_bias_var_filters_high_low(tmp_tracker):
+    """A LOW-market ticker from a correlated city must not leak into a
+    var='max' query, and vice versa — HIGH/LOW temp errors aren't the same
+    physical quantity (same reasoning as get_recent_city_correlations)."""
+    market_date = date.today()
+    _log_settled(
+        tmp_tracker,
+        "KXLOWTBOS-T50",
+        "Boston",
+        market_date,
+        forecast_temp_f=52.0,
+        settled_temp_f=50.0,
+    )
+    bias, n = tmp_tracker.get_regional_recent_bias("NYC", var="max", hours=48)
+    assert (bias, n) == (0.0, 0)
+
+    bias, n = tmp_tracker.get_regional_recent_bias("NYC", var="min", hours=48)
+    assert n == 1
+    assert abs(bias - 2.0) < 0.01
+
+
+def test_get_regional_recent_bias_respects_hours_window(tmp_tracker):
+    """A correlated city's settlement outside the lookback window is excluded."""
+    market_date = date.today()
+    _log_settled(
+        tmp_tracker,
+        "KXHIGHBOS-OLD",
+        "Boston",
+        market_date,
+        forecast_temp_f=80.0,
+        settled_temp_f=70.0,
+        settled_at="2020-01-01 00:00:00",
+    )
+    bias, n = tmp_tracker.get_regional_recent_bias("NYC", var="max", hours=48)
+    assert (bias, n) == (0.0, 0)
+
+
+def test_get_regional_recent_bias_excludes_disputed(tmp_tracker):
+    """A disputed correlated-city settlement must not pollute the pooled bias
+    (same outcomes_valid exclusion as every other scoring consumer)."""
+    market_date = date.today()
+    _log_settled(
+        tmp_tracker,
+        "KXHIGHBOS-BAD",
+        "Boston",
+        market_date,
+        forecast_temp_f=200.0,
+        settled_temp_f=0.0,  # wildly off, would dominate if counted
+        disputed=True,
+    )
+    bias, n = tmp_tracker.get_regional_recent_bias("NYC", var="max", hours=48)
+    assert (bias, n) == (0.0, 0)
+
+
+def test_get_regional_recent_bias_dedups_to_latest_prediction_per_ticker(tmp_tracker):
+    """A ticker re-logged across multiple cron cycles (one predictions row per
+    day scanned) must only contribute its LATEST forecast_temp_f, not every
+    historical one."""
+    market_date = date.today()
+    ticker = "KXHIGHBOS-DEDUP"
+    with tmp_tracker._conn() as con:
+        con.execute(
+            """
+            INSERT INTO predictions
+              (ticker, city, market_date, our_prob, market_prob, edge, method,
+               predicted_at, predicted_date, forecast_temp_f)
+            VALUES (?, 'Boston', ?, 0.5, 0.5, 0.0, 'test', ?, ?, ?)
+            """,
+            (
+                ticker,
+                market_date.isoformat(),
+                "2026-01-01 00:00:00",
+                "2026-01-01",
+                90.0,
+            ),
+        )
+        con.execute(
+            """
+            INSERT INTO predictions
+              (ticker, city, market_date, our_prob, market_prob, edge, method,
+               predicted_at, predicted_date, forecast_temp_f)
+            VALUES (?, 'Boston', ?, 0.5, 0.5, 0.0, 'test', ?, ?, ?)
+            """,
+            (
+                ticker,
+                market_date.isoformat(),
+                "2026-01-02 00:00:00",
+                "2026-01-02",
+                72.0,
+            ),
+        )
+    tmp_tracker.log_outcome(ticker, True)
+    with tmp_tracker._conn() as con:
+        con.execute(
+            "UPDATE outcomes SET settled_temp_f = 70.0, settled_at = datetime('now') "
+            "WHERE ticker = ?",
+            (ticker,),
+        )
+    bias, n = tmp_tracker.get_regional_recent_bias("NYC", var="max", hours=48)
+    assert n == 1
+    # Latest row (forecast_temp_f=72.0) - 70.0 = 2.0, NOT the stale 90.0 row's 20.0
+    assert abs(bias - 2.0) < 0.01
+
+
+def test_get_regional_recent_bias_as_of_avoids_lookahead(tmp_tracker):
+    """as_of lets a caller ask 'what would this have returned at time T' without
+    a later settlement leaking in — the backtest use case this exists for."""
+    market_date = date.today()
+    _log_settled(
+        tmp_tracker,
+        "KXHIGHBOS-FUTURE",
+        "Boston",
+        market_date,
+        forecast_temp_f=75.0,
+        settled_temp_f=70.0,
+        settled_at="2026-06-15 12:00:00",
+        # Must predate settled_at -- a ticker is never re-predicted after it
+        # settles, and get_regional_recent_bias now bounds predicted_at by
+        # as_of too (opus review hardening). Without this, log_prediction's
+        # real-wall-clock predicted_at ("now") would sit AFTER this backdated
+        # settled_at, an inversion that can't happen with real data and would
+        # be (correctly) filtered out by that bound.
+        predicted_at="2026-06-14 12:00:00",
+    )
+    # Asking as of a point before that settlement existed -> must not see it.
+    bias, n = tmp_tracker.get_regional_recent_bias(
+        "NYC", var="max", hours=48, as_of="2026-06-14 00:00:00"
+    )
+    assert (bias, n) == (0.0, 0)
+    # Asking as of shortly after -> sees it.
+    bias, n = tmp_tracker.get_regional_recent_bias(
+        "NYC", var="max", hours=48, as_of="2026-06-15 18:00:00"
+    )
+    assert n == 1
+    assert abs(bias - 5.0) < 0.01
+
+
 # ── B6: Tail-Risk Stress Testing ────────────────────────────────────────────────
 
 
