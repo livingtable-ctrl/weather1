@@ -1429,6 +1429,26 @@ def batch_prewarm_forecasts(
     return written
 
 
+# Open-Meteo's free ensemble-api endpoint enforces an undocumented, strict
+# rolling-~60s request budget that is far tighter than the documented
+# 600 calls/min (that figure applies to the paid/API-key customer endpoint,
+# not this shared anonymous one) -- confirmed empirically 2026-07-24 by
+# replaying cron's exact 20-city call pattern: it 429s ("Minutely API
+# request limit exceeded") after roughly 7-8 sequential 20-city calls,
+# regardless of how those calls are packaged (combining multiple models
+# into one request does not raise the ceiling -- verified separately).
+# cron needs 13 ensemble-api calls per cycle (10 temp + 3 precip), so a
+# single cycle cannot fit under this budget. Rather than risk losing
+# blend-critical data to whichever call happens to land last, the fetch
+# below is split into two tiers with a real pause between them: blend
+# models + precip (both feed the live trading blend) go first and get the
+# fresh budget; GEM/UKMO (tracking-only, backlog.txt "GENERALIZED PER-MODEL
+# ACCURACY TRACKING" Pass 2) wait for the budget to reset before their
+# turn, so a rate-limit trip only ever costs a delayed accuracy sample,
+# never live-trading data.
+_ENSEMBLE_TRACKING_TIER_DELAY_SECS = 65.0
+
+
 def batch_prewarm_ensemble(
     city_dates: set[tuple[str, str]],
     progress_cb: Callable[[int, int, str, bool], None] | None = None,
@@ -1494,9 +1514,16 @@ def batch_prewarm_ensemble(
         m: {} for m in fetch_models
     }
 
-    for model in fetch_models:
-        if _ensemble_cb.is_open():
-            break
+    written = 0
+
+    def _fetch_temp_model(model: str) -> None:
+        """Fetch both vars for one ensemble model into raw_by_model.
+
+        Factored out so the blend-critical and tracking-only tiers below can
+        share this body while running at different times (see
+        _ENSEMBLE_TRACKING_TIER_DELAY_SECS).
+        """
+        nonlocal call_num
         for var_str, daily_key in vars_to_fetch:
             call_num += 1
             ok = False
@@ -1579,49 +1606,12 @@ def batch_prewarm_ensemble(
             if progress_cb:
                 progress_cb(call_num, total_calls, f"{model}/{var_str}", ok)
 
-    # Combine raw members across models with the same weighting as get_ensemble_temps,
-    # then populate _ensemble_cache for each (city, date, None, var).
-    # H-14: also write per-model entries so _get_consensus_probs hits cache instead
-    # of going to the network for every market.  _get_consensus_probs reads keys of
-    # the form (model_name, city, date_iso, var, hour); daily markets use hour=None.
-    written = 0
-    for city_name in city_names:
-        for date_iso in unique_dates:
-            target_month = date.fromisoformat(date_iso).month
-            weights = _model_weights(city_name, month=target_month)
-            for var_str, _ in vars_to_fetch:
-                cache_key = (city_name, date_iso, None, var_str)
-                # Overwrite even if a (possibly stale, disk-resurrected) entry
-                # already exists — the network cost of this fetch is already
-                # paid, so skipping the write here would discard freshly
-                # downloaded members in favor of data from a superseded model
-                # cycle.
-                all_temps: list[float] = []
-                _cycle_ttl = _ttl_until_next_cycle()
-                for model in fetch_models:
-                    member_temps = raw_by_model[model].get(
-                        (city_name, date_iso, var_str), []
-                    )
-                    if not member_temps:
-                        continue
-                    # H-14: write per-model entry for _get_consensus_probs /
-                    # _get_gem_ukmo_means — for every fetched model, blend or
-                    # tracking-only, so both consumers hit warm cache.
-                    _model_key = (model, city_name, date_iso, var_str, None)
-                    _ensemble_cache.set_with_ttl(_model_key, member_temps, _cycle_ttl)
-                    _save_ensemble_disk_entry(_model_key, member_temps, _cycle_ttl)
-                    if model not in blend_models:
-                        # Tracking-only: cached above for accuracy scoring,
-                        # must NOT enter the live trading blend below.
-                        continue
-                    base_w = weights.get(model, 1.0)
-                    w = 1.0 + (base_w - 1.0) * 1.0  # decay=1.0 for fresh data
-                    repeats = max(1, round(w * 2))
-                    all_temps.extend(member_temps * repeats)
-                if all_temps:
-                    _ensemble_cache.set_with_ttl(cache_key, all_temps, _cycle_ttl)
-                    _save_ensemble_disk_entry(cache_key, all_temps, _cycle_ttl)
-                    written += 1
+    # Tier 1: blend-critical temp models. These feed the live trading blend
+    # directly, so they get first claim on the rate budget.
+    for model in blend_models:
+        if _ensemble_cb.is_open():
+            break
+        _fetch_temp_model(model)
 
     # Precipitation: 3 models × 1 var = 3 more ENSEMBLE_BASE calls.
     # Populates _PRECIP_ENSEMBLE_CACHE keyed by (lat, lon, date_iso) so
@@ -1639,7 +1629,6 @@ def batch_prewarm_ensemble(
     for model in precip_models:
         if _ensemble_cb.is_open():
             break
-        ok = False
         try:
             resp = _om_request(
                 "GET",
@@ -1676,7 +1665,6 @@ def batch_prewarm_ensemble(
                     f"model {model} returned all-null precip ensemble members across all cities (dead model?)"
                 )
             _ensemble_cb.record_success()
-            ok = True
 
             for i, city_name in enumerate(city_names):
                 if i >= len(data):
@@ -1739,6 +1727,64 @@ def batch_prewarm_ensemble(
             combined.extend(precip_raw_by_model[model][cache_key_p] * mult)
         _PRECIP_ENSEMBLE_CACHE.set(cache_key_p, combined)
         written += 1
+
+    # Tier 2: GEM/UKMO (tracking-only). Give Open-Meteo's rate window a full
+    # reset before spending more of it on data that only feeds accuracy
+    # tracking, not the live blend — see _ENSEMBLE_TRACKING_TIER_DELAY_SECS.
+    # Skipped entirely if tier 1 already tripped the breaker (no point
+    # waiting out the window just to find it closed again).
+    if tracking_only_models and not _ensemble_cb.is_open():
+        time.sleep(_ENSEMBLE_TRACKING_TIER_DELAY_SECS)
+        for model in tracking_only_models:
+            if _ensemble_cb.is_open():
+                break
+            _fetch_temp_model(model)
+
+    # Combine raw members across models with the same weighting as get_ensemble_temps,
+    # then populate _ensemble_cache for each (city, date, None, var).
+    # H-14: also write per-model entries so _get_consensus_probs hits cache instead
+    # of going to the network for every market.  _get_consensus_probs reads keys of
+    # the form (model_name, city, date_iso, var, hour); daily markets use hour=None.
+    # Runs after BOTH tiers so it sees whatever data each tier managed to
+    # fetch — a tier-2 miss just leaves raw_by_model[gem/ukmo] empty, which
+    # the inner loop below already skips via `if not member_temps: continue`.
+    for city_name in city_names:
+        for date_iso in unique_dates:
+            target_month = date.fromisoformat(date_iso).month
+            weights = _model_weights(city_name, month=target_month)
+            for var_str, _ in vars_to_fetch:
+                cache_key = (city_name, date_iso, None, var_str)
+                # Overwrite even if a (possibly stale, disk-resurrected) entry
+                # already exists — the network cost of this fetch is already
+                # paid, so skipping the write here would discard freshly
+                # downloaded members in favor of data from a superseded model
+                # cycle.
+                all_temps: list[float] = []
+                _cycle_ttl = _ttl_until_next_cycle()
+                for model in fetch_models:
+                    member_temps = raw_by_model[model].get(
+                        (city_name, date_iso, var_str), []
+                    )
+                    if not member_temps:
+                        continue
+                    # H-14: write per-model entry for _get_consensus_probs /
+                    # _get_gem_ukmo_means — for every fetched model, blend or
+                    # tracking-only, so both consumers hit warm cache.
+                    _model_key = (model, city_name, date_iso, var_str, None)
+                    _ensemble_cache.set_with_ttl(_model_key, member_temps, _cycle_ttl)
+                    _save_ensemble_disk_entry(_model_key, member_temps, _cycle_ttl)
+                    if model not in blend_models:
+                        # Tracking-only: cached above for accuracy scoring,
+                        # must NOT enter the live trading blend below.
+                        continue
+                    base_w = weights.get(model, 1.0)
+                    w = 1.0 + (base_w - 1.0) * 1.0  # decay=1.0 for fresh data
+                    repeats = max(1, round(w * 2))
+                    all_temps.extend(member_temps * repeats)
+                if all_temps:
+                    _ensemble_cache.set_with_ttl(cache_key, all_temps, _cycle_ttl)
+                    _save_ensemble_disk_entry(cache_key, all_temps, _cycle_ttl)
+                    written += 1
 
     _log.info(
         "[batch_prewarm_ensemble] wrote %d cache entries (%d cities, %d dates)",

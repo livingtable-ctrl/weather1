@@ -3079,6 +3079,11 @@ class TestBatchPrewarmEnsembleTrackingOnlyModels:
         wm._ensemble_cache.clear()
         wm._ensemble_disk_pending.clear()
         wm._ensemble_cb.record_success()
+        # batch_prewarm_ensemble now sleeps _ENSEMBLE_TRACKING_TIER_DELAY_SECS
+        # (65s) between the blend-critical and tracking-only tiers (see
+        # TestBatchPrewarmEnsembleRateLimitTiering below) -- stub it out here
+        # so this test still runs in well under a second.
+        monkeypatch.setattr(wm.time, "sleep", lambda _seconds: None)
 
         from datetime import date, timedelta
 
@@ -3152,6 +3157,132 @@ class TestBatchPrewarmEnsembleTrackingOnlyModels:
         # Sanity: the blend must still contain the real blend models' values.
         assert any(t == pytest.approx(72.0) for t in blended), (
             "icon_seamless's real member is missing from the blend"
+        )
+
+        wm._ensemble_cache.clear()
+        wm._ensemble_disk_pending.clear()
+
+
+class TestBatchPrewarmEnsembleRateLimitTiering:
+    """Open-Meteo's free ensemble-api endpoint enforces an undocumented
+    rolling-~60s request budget too tight for cron's 13 calls/cycle
+    (confirmed empirically 2026-07-24). batch_prewarm_ensemble now fetches
+    blend-critical models + precip (tier 1) before GEM/UKMO tracking-only
+    models (tier 2), with a real _ENSEMBLE_TRACKING_TIER_DELAY_SECS pause
+    between tiers so a rate-limit trip only ever costs tracking data, never
+    the live trading blend."""
+
+    def test_tier1_before_sleep_tier2_after(self, monkeypatch):
+        from datetime import date, timedelta
+        from unittest.mock import MagicMock
+
+        import weather_markets as wm
+
+        wm._ensemble_cache.clear()
+        wm._ensemble_disk_pending.clear()
+        wm._ensemble_cb.record_success()
+
+        target = date.today() + timedelta(days=3)
+        date_iso = target.isoformat()
+
+        events: list[tuple] = []
+
+        def _fake_om_request(method, url, **kwargs):
+            params = kwargs.get("params", {})
+            resp = MagicMock()
+            resp.raise_for_status.return_value = None
+            daily_key = params.get("daily")
+            if daily_key == "precipitation_sum":
+                events.append(("request", "precip", params.get("models")))
+                resp.json.return_value = {"daily": {"time": [date_iso]}}
+                return resp
+            model = params.get("models")
+            events.append(("request", "temp", model))
+            resp.json.return_value = {
+                "daily": {
+                    "time": [date_iso],
+                    f"{daily_key}_member01": [70.0],
+                }
+            }
+            return resp
+
+        def _fake_sleep(seconds):
+            events.append(("sleep", seconds))
+
+        monkeypatch.setattr(wm, "_om_request", _fake_om_request)
+        monkeypatch.setattr(wm.time, "sleep", _fake_sleep)
+
+        written = wm.batch_prewarm_ensemble({("NYC", date_iso)})
+        assert written > 0
+
+        sleep_indices = [i for i, e in enumerate(events) if e[0] == "sleep"]
+        assert len(sleep_indices) == 1, (
+            f"expected exactly one tier-transition sleep, got {events}"
+        )
+        sleep_idx = sleep_indices[0]
+        assert events[sleep_idx][1] == wm._ENSEMBLE_TRACKING_TIER_DELAY_SECS
+
+        before = {e[2] for e in events[:sleep_idx] if e[0] == "request"}
+        after = {e[2] for e in events[sleep_idx + 1 :] if e[0] == "request"}
+
+        tracking_only = set(wm.TRACKING_ONLY_MODEL_NAMES)
+        assert before & tracking_only == set(), (
+            f"tracking-only model fetched before the tier sleep: {before}"
+        )
+        assert before >= {"icon_seamless", "gfs_seamless", "ecmwf_aifs025_ensemble"}, (
+            f"blend-critical temp models missing from tier 1: {before}"
+        )
+        assert "ecmwf_ifs025" in before, "precip fetch did not run in tier 1"
+        assert after == tracking_only, (
+            f"tier 2 should be exactly the tracking-only models, got {after}"
+        )
+
+        wm._ensemble_cache.clear()
+        wm._ensemble_disk_pending.clear()
+
+    def test_tier2_skipped_when_circuit_trips_during_tier1(self, monkeypatch):
+        from datetime import date, timedelta
+
+        import weather_markets as wm
+
+        wm._ensemble_cache.clear()
+        wm._ensemble_disk_pending.clear()
+        wm._ensemble_cb.record_success()
+
+        target = date.today() + timedelta(days=3)
+        date_iso = target.isoformat()
+
+        tripped = {"value": False}
+        requested_models: list[str] = []
+
+        def _fake_om_request(method, url, **kwargs):
+            params = kwargs.get("params", {})
+            daily_key = params.get("daily")
+            model = (
+                params.get("models") if daily_key != "precipitation_sum" else "precip"
+            )
+            requested_models.append(model)
+            # Simulate the circuit tripping partway through tier 1 -- from
+            # this point on is_open() (mocked below) reports OPEN.
+            tripped["value"] = True
+            raise ConnectionError("simulated Open-Meteo 429")
+
+        sleep_calls: list[float] = []
+        monkeypatch.setattr(wm, "_om_request", _fake_om_request)
+        monkeypatch.setattr(wm.time, "sleep", lambda s: sleep_calls.append(s))
+        monkeypatch.setattr(wm._ensemble_cb, "is_open", lambda: tripped["value"])
+
+        written = wm.batch_prewarm_ensemble({("NYC", date_iso)})
+        assert written == 0
+
+        tracking_only = set(wm.TRACKING_ONLY_MODEL_NAMES)
+        assert not (set(requested_models) & tracking_only), (
+            f"tier 2 (tracking-only) must not be attempted once the circuit "
+            f"is open: {requested_models}"
+        )
+        assert sleep_calls == [], (
+            "must not sleep out the tier-transition delay when tier 1 "
+            "already tripped the circuit -- tier 2 will just be skipped anyway"
         )
 
         wm._ensemble_cache.clear()
