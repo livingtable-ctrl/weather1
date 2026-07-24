@@ -1,6 +1,111 @@
 BACKLOG — future improvements to implement when ready
 ======================================================
 
+[TEST SUITE: date.today() VS PRODUCTION-TIMEZONE MISMATCH -- 13 FILES, ONLY 3 INSTANCES FIXED]
+Priority: Low-Medium -- not a live-trading bug (test-only), but a real
+  correctness gap in test coverage: an affected test can silently pass or
+  fail depending purely on the sandbox's local timezone/wall-clock moment
+  when it happens to run, independent of any real code change.
+
+Problem:
+  Found 2026-07-24/25 while investigating 4 reported test failures (see
+  [RESOLVED 2026-07-25] entry below for the fixed instances). Root cause:
+  weather_markets.py computes "today"/days_out from a real, timezone-aware
+  clock at multiple sites -- datetime.now(UTC).date() (temperature/
+  forecasting paths, e.g. weather_markets.py's METAR-locked branch and
+  days_out gates) or datetime.now(ZoneInfo(city_tz)).date() (precip path,
+  _analyze_precip_trade). Several tests instead build their fixture dates
+  via plain date.today() + timedelta(...), which resolves in the TEST
+  RUNNER's system-local timezone -- a different, uncontrolled value. When
+  the sandbox's local timezone diverges from whichever timezone the
+  exercised code path actually uses (true for a meaningful fraction of
+  every real day), the test's date and production's internally-computed
+  date disagree by one calendar day, shifting days_out and silently
+  changing blend weights, dampening windows, or gate outcomes -- occasionally
+  enough to flip an assertion or a None-return gate, as it did for the 3
+  fixed instances.
+  A repo-wide grep (`grep -rl "date\.today() + timedelta" tests/*.py`) found
+  this exact pattern in 13 files: conftest.py, test_data_freshness.py,
+  test_edge_version.py, test_forecasting.py, test_gaussian_prob.py,
+  test_integration.py, test_ml_bias.py, test_p9_p10.py, test_paper.py,
+  test_price_and_size.py, test_signal_quality.py, test_tracker.py,
+  test_weather_markets.py. Only the 3 specific call sites that were
+  ACTUALLY observed failing (one in test_price_and_size.py, one in
+  test_forecasting.py -- see the RESOLVED entry) were fixed; test_forecasting.py
+  and test_price_and_size.py both still have OTHER, unaudited
+  date.today()-based fixtures beyond the ones fixed, and none of the other
+  9 files were even opened. Not every occurrence is necessarily a live bug
+  -- many tests' assertions may be loose/relative enough not to care about a
+  ±1-day shift (e.g. TestSnowTradeWiring in test_price_and_size.py uses a
+  fully fixed date and was never exposed at all) -- this hasn't been
+  triaged file-by-file to separate real exposure from harmless usage.
+
+What the fix looks like:
+  Per-file/per-test triage: for each date.today()-based fixture, determine
+  (a) which timezone the exercised production code path actually uses for
+  its own "today" (grep the target function for datetime.now(...) call
+  sites -- this session found at least two different answers, UTC and
+  city-local ZoneInfo, don't assume one convention holds everywhere), and
+  (b) whether the test's assertions are actually sensitive to a ±1-day
+  days_out shift (many aren't). Fix only the ones that are, using the same
+  pattern the 3 already-fixed instances established: derive the test's date
+  from the SAME timezone-aware "now" the code under test uses, not
+  date.today(). A shared test helper (e.g. in conftest.py) for "today in
+  timezone X" might be worth extracting once 2-3 more instances are fixed
+  this way, rather than hand-rolling the zoneinfo call at each site (per
+  backlog.txt's own general aversion to premature abstraction from a single
+  data point -- 3 instances already exist, so this may already be past
+  that threshold if picked up).
+
+Why not now:
+  - Discovered as a byproduct of fixing 4 specific, currently-failing tests,
+    not as its own planned session -- auditing 10+ more files for a
+    currently-invisible (right now, all suites pass) latent flakiness class
+    is a real, multi-hour task, not an adjacent one-line fix.
+
+When to revisit:
+  - Whenever a test in one of the other 10 files starts failing with no
+    apparent code change (the same symptom shape as the 3 already fixed) --
+    check this entry first before re-deriving the diagnosis from scratch.
+  - Or as a dedicated hardening pass if test-suite flakiness becomes a
+    recurring complaint.
+
+[RESOLVED 2026-07-25] PRE-EXISTING DEAD-CODE ALLOWLIST GAP + 3 TIMEZONE-FLAKY TESTS
+Priority: was unplanned -- surfaced by the user reporting 2 test failures
+  from a broader local run; investigation found 2 more of the same class.
+
+RESOLVED 2026-07-25: tracker.get_regional_recent_bias (CROSS-CITY
+  RECENT-ERROR POOLING, shipped 2026-07-23) was missing from
+  tests/test_dead_code_scan.py's _DEAD_CODE_ALLOWLIST -- added, matching
+  the existing 4 entries' format (backlog.txt-cited deferral reasoning).
+  The other 3 failures were all instances of the date.today()-vs-production-
+  timezone mismatch described in the entry immediately above this one --
+  see that entry for the general pattern; this entry covers only the 3
+  specific instances actually fixed: TestTemperatureTradeWiring::
+  test_yes_side_normal_book and TestPrecipTradeWiring's two tests (both in
+  test_price_and_size.py), and test_forecasting.py's
+  TestTimeDecayEdge::test_analyze_trade_applies_time_decay. All 3 fixed by
+  deriving the test's date from the same timezone-aware "now" the exercised
+  production code path actually uses (UTC for the METAR/forecasting paths,
+  city-local ZoneInfo for the precip path) instead of system-local
+  date.today(). Confirmed all 4 issues pre-existed this session's other,
+  unrelated work via isolated git-worktree checks against prior commits.
+  Independent Agent(opus, effort=high) review caught two real mistakes in
+  the first-pass fix, both corrected: (1) the METAR test's fix still used
+  date.today() for a DIFFERENT date field (tomorrow), leaving it flaky in a
+  narrower window instead of eliminating it -- fixed to use
+  datetime.now(UTC).date(), matching what weather_markets.py's METAR-locked
+  branch actually reads; (2) two test classes' _CITY_WEIGHTS/
+  _CONDITION_WEIGHTS/_SEASONAL_WEIGHTS neutralization mocks (added on an
+  earlier, wrong theory that live weight-table drift was the root cause)
+  were structurally inert dead code -- the precip/snow call paths never
+  pass city/season/condition_type at all, so those globals can never affect
+  the result -- removed rather than left as false-comfort padding that
+  could mask a real future call-site bug.
+  199 tests pass across the final regression sweep; ruff/ruff format/mypy
+  clean on all 3 changed files. User confirmed commit+push explicitly.
+  Pushed `44851a2`.
+
 [RESOLVED 2026-07-24] OPEN-METEO ENSEMBLE-API FREE TIER WAS RATE-LIMITING batch_prewarm_ensemble
 Priority: was Medium -- not blocking trade placement (TRADING_PAUSED covers
   that), but degraded signal quality on every cron run that tripped: GEM/UKMO
