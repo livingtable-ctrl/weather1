@@ -513,13 +513,20 @@ class TestTimeDecayEdge:
 
     def test_analyze_trade_applies_time_decay(self):
         """analyze_trade edge is time-decay scaled (not raw blended - market)."""
-        from datetime import date, datetime, timedelta
+        from datetime import datetime, timedelta
         from unittest.mock import patch
 
         import weather_markets as wm
 
-        today = date.today()
-        target = today + timedelta(days=3)
+        # analyze_trade computes days_out from datetime.now(UTC).date(), not
+        # the test-runner's system-local date.today() (opus review corrected
+        # an earlier, wrong claim here that this was NY-timezone-based --
+        # every days_out site in weather_markets.py uses UTC). When the
+        # sandbox's local timezone is ahead of UTC, system date.today() can
+        # already be UTC-tomorrow, turning the intended days_out=3 into 4 and
+        # pushing this ticket's target date into a gate that makes
+        # analyze_trade return None entirely (confirmed live).
+        target = datetime.now(UTC).date() + timedelta(days=3)
         close_dt = datetime.now(UTC) + timedelta(hours=10)
 
         enriched = {

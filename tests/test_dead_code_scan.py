@@ -213,11 +213,12 @@ def _scan() -> tuple[
 # entry here is a signal worth a second look before merging, not something
 # to silently allowlist.
 _DEAD_CODE_ALLOWLIST: dict[tuple[str, str], str] = {
-    # -- All 3 entries below are TESTED, NO PROD CALL SITE, and deliberately
-    # left unwired: each has its own in-code comment (not this session's
-    # guess) explaining a real prerequisite that hasn't happened yet. Wiring
-    # any of these in without that prerequisite would be a live probability/
-    # forecast-behavior change with no way to validate it's actually correct
+    # -- Every entry below is TESTED, NO PROD CALL SITE, and deliberately
+    # left unwired: each cites either its own docstring/in-code comment or
+    # the relevant backlog.txt entry (not this session's guess) explaining a
+    # real prerequisite that hasn't happened yet. Wiring any of these in
+    # without that prerequisite would be a live probability/forecast-
+    # behavior change with no way to validate it's actually correct
     # -- re-verified 2026-07-12 while triaging the 20 functions this scan's
     # first run surfaced (see backlog.txt); all other candidates from that
     # run were individually wired up or deleted as superseded, not left here.
@@ -257,6 +258,17 @@ _DEAD_CODE_ALLOWLIST: dict[tuple[str, str], str] = {
         "explicitly deferred, paired with get_price_history's own "
         "enablement trigger -- both tables start empty and only accumulate "
         "from markets settling after this ships"
+    ),
+    ("tracker.py", "get_regional_recent_bias"): (
+        "TESTED, NO PROD CALL SITE -- correlation-weighted mean forecast "
+        "error of correlated cities' recent settlements (backlog.txt "
+        "CROSS-CITY RECENT-ERROR POOLING, function itself shipped 2026-07-23; "
+        "not called from any production path yet, log-only in the sense that "
+        "the backlog entry frames this as the log/measurement step before a "
+        "forecast-lean consumer exists). Wiring the result into an actual "
+        "forecast lean is explicitly deferred until more settled data exists "
+        "to validate it against, same shape as get_unselected_bias/"
+        "censoring_correction above -- not something to wire in blind"
     ),
 }
 

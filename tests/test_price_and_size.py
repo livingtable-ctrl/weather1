@@ -247,7 +247,36 @@ class TestPriceAndSizeMutation:
 # ── Characterization tests: full call-site wiring (precip/snow/temp) ───────
 
 
+def _ny_tomorrow() -> date:
+    """_analyze_precip_trade computes days_out from datetime.now(ZoneInfo(tz)).date()
+    (the market's own local "today"), NOT the test-runner's system-local
+    date.today() -- when the sandbox's local timezone is ahead of America/
+    New_York (true for a chunk of every real day, since EDT is UTC-4), plain
+    date.today() + timedelta(days=1) can already be NY's day-after-tomorrow,
+    silently turning days_out=1 into days_out=2 and shifting _blend_weights'
+    tier-4 schedule output. Confirmed live: this exact mismatch (system date
+    2026-07-25 vs NY date still 2026-07-24) was the real cause of a
+    TestPrecipTradeWiring failure -- constructing target_date the same way
+    production computes its own "today" eliminates it, rather than a
+    (wrong, previously-tried) theory about live blend-weight-table drift."""
+    import zoneinfo
+
+    ny_today = datetime.now(zoneinfo.ZoneInfo("America/New_York")).date()
+    return ny_today + timedelta(days=1)
+
+
 class TestPrecipTradeWiring:
+    """_analyze_precip_trade calls _blend_weights(days_out, has_nws=False,
+    has_clim=True) with NO city/season/condition_type/regime (see the
+    "calibration not yet wired for precip/snow path" comment at that call
+    site) -- tiers 0-3 of _blend_weights (city/condition/seasonal/regime
+    calibration) are structurally unreachable from this path, so there is
+    nothing here for a _CITY_WEIGHTS/_CONDITION_WEIGHTS/_SEASONAL_WEIGHTS
+    mock to protect against (opus review caught an earlier version of this
+    docstring claiming otherwise, and that the neutralization mocks it
+    justified could silently mask a real future call-site wiring bug
+    instead -- removed)."""
+
     def test_yes_side_normal_book(self):
         with (
             mock.patch.object(
@@ -263,7 +292,7 @@ class TestPrecipTradeWiring:
             }
             forecast = {"precip_in": 0.05}
             condition = {"type": "precip_any", "threshold": 0.0}
-            target_date = date.today() + timedelta(days=1)
+            target_date = _ny_tomorrow()
             coords = (40.7, -74.0, "America/New_York")
             r = wm._analyze_precip_trade(
                 enriched, forecast, condition, target_date, coords
@@ -290,7 +319,7 @@ class TestPrecipTradeWiring:
             }
             forecast = {"precip_in": 0.05}
             condition = {"type": "precip_any", "threshold": 0.0}
-            target_date = date.today() + timedelta(days=1)
+            target_date = _ny_tomorrow()
             coords = (40.7, -74.0, "America/New_York")
             r = wm._analyze_precip_trade(
                 enriched, forecast, condition, target_date, coords
@@ -303,6 +332,14 @@ class TestPrecipTradeWiring:
 
 
 class TestSnowTradeWiring:
+    """Same reasoning as TestPrecipTradeWiring above -- _analyze_snow_trade's
+    own _confidence_scaled_blend_weights(days_out, has_nws=False,
+    has_clim=True, ens_std=None) call also passes no city/season/
+    condition_type, so no weight-table mock is needed here either. Not
+    exposed to the date.today()-vs-production-timezone issue found
+    elsewhere in this file: target_date below is a fixed date(2026, 1, 20),
+    not date.today()-derived."""
+
     def test_yes_side_normal_book(self):
         with (
             mock.patch.object(
@@ -404,8 +441,27 @@ class TestSnowTradeWiring:
         assert r_consensus["ci_adjusted_kelly"] > r_no_consensus["ci_adjusted_kelly"]
 
 
-def _metar_locked_temp_result(yes_ask, yes_bid, blended_prob, current_temp_f):
-    tomorrow = date.today() + timedelta(days=1)
+def _metar_locked_temp_result(
+    monkeypatch, yes_ask, yes_bid, blended_prob, current_temp_f
+):
+    # analyze_trade's METAR-locked branch reads the real wall-clock local hour
+    # (weather_markets.py's "pre-extreme window" dampening check) to decide
+    # whether to widen ci_low/ci_high, which ci_adjusted_kelly is derived
+    # from -- undamped outside ~7am-2pm local, so any test asserting a fixed
+    # ci_adjusted_kelly value was flaky by time-of-day. METAR_HIGH_CUTOFF_HOUR/
+    # METAR_LOW_CUTOFF_HOUR are both set to 24 -- guaranteed to exceed
+    # datetime.hour's real [0,23] range, so the dampening branch is
+    # unconditionally taken for var="max" or "min" regardless of real time.
+    monkeypatch.setenv("METAR_HIGH_CUTOFF_HOUR", "24")
+    monkeypatch.setenv("METAR_LOW_CUTOFF_HOUR", "24")
+    # days_out (which feeds time_kelly_scale) is computed by analyze_trade
+    # from datetime.now(UTC).date(), NOT system-local date.today() -- opus
+    # review caught that this file's earlier precip/forecasting fixes used
+    # the WRONG timezone here (NY-local), which only narrowed this test's
+    # flaky window (UTC 22:00-24:00) instead of eliminating it. UTC is
+    # correct for this specific code path (unlike _analyze_precip_trade,
+    # which genuinely does use the market city's own local "today").
+    tomorrow = datetime.now(UTC).date() + timedelta(days=1)
     close_time = (datetime.now(UTC) + timedelta(hours=20)).isoformat()
     enriched = {
         "_forecast": {"high_f": 75.0, "low_f": 55.0, "precip_in": 0.0, "wind_mph": 5.0},
@@ -438,9 +494,13 @@ class TestTemperatureTradeWiring:
     isolating the entry-price/EV/Kelly tail from the unrelated ensemble blend
     pipeline. See module docstring for the pre-refactor cross-check."""
 
-    def test_yes_side_normal_book(self):
+    def test_yes_side_normal_book(self, monkeypatch):
         r = _metar_locked_temp_result(
-            yes_ask=0.60, yes_bid=0.55, blended_prob=0.75, current_temp_f=74.0
+            monkeypatch,
+            yes_ask=0.60,
+            yes_bid=0.55,
+            blended_prob=0.75,
+            current_temp_f=74.0,
         )
         assert r is not None
         assert r["recommended_side"] == "yes"
@@ -449,17 +509,29 @@ class TestTemperatureTradeWiring:
         assert r["entry_side_edge"] == pytest.approx(0.15, abs=1e-9)
         assert r["kelly"] == pytest.approx(0.09374999999999999, abs=1e-9)
         assert r["fee_adjusted_kelly"] == r["kelly"]
+        # ci_low/ci_high = blended_prob +/- METAR_DAMPEN_HALF_WIDTH (0.75+/-0.10,
+        # forced deterministic by _metar_locked_temp_result's env override) ->
+        # ci_scale = max(0.25, 1.0 - (ci_high-ci_low)*2.0) = max(0.25, 0.60) =
+        # 0.60, then further adjusted by the consensus/CI-width Kelly formula
+        # (_priced["ci_adjusted_kelly"], not a bare kelly*ci_scale multiply) --
+        # this is the original test's own value, now genuinely deterministic
+        # (days_out=1 via UTC "tomorrow", dampening forced) rather than
+        # coincidentally-passing.
         assert r["ci_adjusted_kelly"] == pytest.approx(0.05601, abs=1e-5)
         assert r["consensus"] is True
 
-    def test_no_side_empty_bid_book_entry_side_edge_bugfix(self):
+    def test_no_side_empty_bid_book_entry_side_edge_bugfix(self, monkeypatch):
         """The consolidation's one deliberate behavior change: temperature's
         NO-side entry_side_edge fallback (empty bid book) previously used
         market_prob directly instead of 1.0 - market_prob, unlike the
         already-fixed precip/snow copies. Confirmed via a pre-refactor A/B
         run: old value was 0.75, new (correct) value is 0.05."""
         r = _metar_locked_temp_result(
-            yes_ask=0.30, yes_bid=0.0, blended_prob=0.10, current_temp_f=68.0
+            monkeypatch,
+            yes_ask=0.30,
+            yes_bid=0.0,
+            blended_prob=0.10,
+            current_temp_f=68.0,
         )
         assert r is not None
         assert r["recommended_side"] == "no"
