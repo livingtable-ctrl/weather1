@@ -2501,7 +2501,7 @@ When to revisit:
   - Low priority housekeeping -- next general cleanup pass, or when
     picking up the docs plan that references slippage_kelly_scale.
 
-[MOSTLY RESOLVED 2026-07-12] MIXED-TIMESTAMP-FORMAT BUG CLASS -- RECURRING, NO ROOT-CAUSE FIX
+[RESOLVED 2026-07-24 -- the lint-style guard this entry itself asked for is now built] MIXED-TIMESTAMP-FORMAT BUG CLASS -- RECURRING, NO ROOT-CAUSE FIX
 Priority: was Low-Medium (individually low-impact so far, but a well-established
   recurring pattern -- fifth occurrence would not be surprising)
 
@@ -2522,6 +2522,58 @@ RESOLVED 2026-07-12 (mostly): get_brier_over_time (tracker.py:1471) already
   copy-paste wrong), but doesn't structurally prevent someone writing a
   fresh ad-hoc .isoformat() cutoff by hand. Worth adding if a fifth instance
   ever appears despite the helper existing.
+
+RESOLVED 2026-07-24: built tests/test_isoformat_cutoff_guard.py, the "cheap
+  regression test" this entry itself asked for and flagged as NOT built
+  above. Modeled directly on tests/test_disputed_row_guard.py's hardened
+  shape (AST-based function-span/qualname attribution, full-file-text regex
+  scan so a match split across lines is still found, allowlist-by-
+  (file, qualname)-with-reason plus a stale-entry inverse check) rather than
+  the simpler `^def `-regex shape of test_date_today_guard.py's first
+  version, since that shape was already found to under-attribute nested
+  functions/methods in a 2026-07-23 opus review of the disputed-row guard.
+  Regex targets the specific bug shape only (a Python-side relative-time
+  cutoff via `.now(...) - timedelta(...)).isoformat()`, optionally with a
+  `.date()` suffix) -- not every `.isoformat()` call, of which tracker.py
+  alone has 30+ legitimate ones (INSERT timestamps, external API params,
+  etc.) that would be pure noise if flagged.
+  Found 5 sites repo-wide matching the shape (all in tracker.py/backtest.py),
+  individually re-verified against every INSERT/UPDATE touching each
+  compared column before allowlisting: get_mean_slippage (live_fills.
+  logged_at), prune_api_requests (api_requests.logged_at),
+  prune_old_analysis_attempts (analysis_attempts.analyzed_at) -- all three
+  write AND compare via the same .isoformat() format, no datetime('now')
+  writer touches any of them, confirmed safe; get_recent_city_correlations
+  and backtest.run_walk_forward use a deliberate `.date().isoformat()`
+  cutoff against predictions.market_date/multiday_predictions.market_date
+  (written as a plain date.isoformat(), 'YYYY-MM-DD', no 'T') -- also
+  confirmed safe, and the latter two weren't part of this entry's original
+  3-site scope, only surfaced by the guard's own repo-wide scan.
+  Independent opus review of the first version found the regex narrower
+  than its own docstring claimed: missed a black-wrapped multi-line cutoff
+  (long variable name pushes the expression across 3 lines), the
+  `.date().isoformat()` suffix variant, the `_utc_today()`/`utc_today()`
+  base (only `datetime.now(...)` was covered), and 2-level-nested call
+  arguments (e.g. `timedelta(days=int(cfg("N")))`) -- the last of which is
+  exactly why get_recent_city_correlations/run_walk_forward weren't caught
+  by the guard's own first run despite being real, already-safe instances
+  of the same general shape. All fixed (widened regex, both new sites
+  allowlisted); the two-statement form (cutoff computed in one statement,
+  `.isoformat()` called in a separate one) is a documented, accepted blind
+  spot -- closing it needs real dataflow analysis, not a text/regex scan,
+  matching test_disputed_row_guard.py's own documented false-positive/
+  false-negative tradeoff.
+  9 tests (2 real guard tests + 7 regression/false-positive tests, one per
+  fixed gap). Mutation-tested each of the 4 review-found gaps directly:
+  confirmed the pre-fix regex (`[^()]*` args, no whitespace tolerance
+  before the outer closing paren, `datetime\.now` only, no `.date()`
+  suffix) matches 0 of the 4 new regression sources, proving each new test
+  would have failed against the original version. Also mutation-tested the
+  allowlist mechanism itself: removing a real entry fails the "no new
+  cutoff" test with the expected message; adding a fake stale entry fails
+  the "no stale entries" test with the expected message.
+  ruff + ruff format + mypy clean. 319 tests pass across the guard file
+  plus every sibling guard test and tracker.py/backtest.py's own suites.
 
 Problem:
   A 2026-07-10 Fable adversarial review of tracker.py found the *identical*
