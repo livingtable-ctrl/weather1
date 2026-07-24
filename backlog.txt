@@ -1,67 +1,85 @@
 BACKLOG — future improvements to implement when ready
 ======================================================
 
-[OPEN-METEO FREE TIER IS RATE-LIMITING CIRCUIT BREAKERS -- NEEDS A PAID API KEY]
-Priority: Medium -- not currently blocking anything (TRADING_PAUSED means no
-  trade placement is affected either way), but degrades signal quality on
-  every cron run that trips: excluded models mean a thinner blend, and a
-  tripped seasonal circuit means rain markets lose their Open-Meteo
-  directional tilt for that cycle (falls back to ACIS-only, which is by
-  design but is a real quality loss, not free).
+[RESOLVED 2026-07-24] OPEN-METEO ENSEMBLE-API FREE TIER WAS RATE-LIMITING batch_prewarm_ensemble
+Priority: was Medium -- not blocking trade placement (TRADING_PAUSED covers
+  that), but degraded signal quality on every cron run that tripped: GEM/UKMO
+  accuracy tracking never got data, and -- the worse part -- precip (icon/
+  gfs/ecmwf_ifs025, feeds the live blend) silently lost every cycle too,
+  since it was fetched AFTER GEM/UKMO and requires all 3 of its models to
+  succeed or it writes nothing.
 
 Problem:
-  User confirmed (2026-07-23, from prior context not otherwise captured in
-  this file or project memory) that circuit-breaker trips on Open-Meteo
-  endpoints are a known, already-diagnosed root cause: this bot runs on
-  Open-Meteo's free/anonymous tier (confirmed live -- no `OPEN_METEO`/
-  `OPENMETEO` API key anywhere in `.env`, and no API-key parameter in any
-  Open-Meteo fetch call across weather_markets.py/backtest.py), and the
-  free tier's request-rate ceiling is the actual cause of the 429s, not a
-  code bug. A paid tier (Open-Meteo sells an API-key tier with a materially
-  higher rate limit) would raise that ceiling and should stop the trips.
-  Concrete evidence from the same day: the 2026-07-23 ~17:29 UTC cron run
-  tripped `open_meteo_ensemble` (gem_global/min + both
-  ukmo_global_ensemble_20km/max+min failed -- 3 failures, 300s cooldown)
-  right after GEM/UKMO wiring (`94f8c55`) roughly doubled the per-cycle
-  ensemble-model fetch volume (3 models -> 5), and separately tripped
-  `open_meteo_seasonal` (5 straight 429s fetching Houston/Miami/Dallas
-  monthly precip for rain markets, 600s cooldown) -- plausibly the same
-  cause: more total request volume per cron cycle than the free tier's
-  rate ceiling allows, now that GEM/UKMO and the 2-day scan window
-  (40 city/date pairs prewarmed vs 20 previously) are both live.
-  Not yet confirmed: the exact free-tier rate limit number, whether it's
-  per-endpoint or account-wide, and whether a paid tier is priced/sized
-  for this bot's actual request volume (would need checking Open-Meteo's
-  current pricing page before purchasing anything).
+  Root cause confirmed empirically 2026-07-24 (not just inferred from prior
+  context): replayed cron's exact 20-city call pattern against the live
+  `ensemble-api.open-meteo.com` endpoint and reproduced the identical 429
+  ("Minutely API request limit exceeded") after ~7-8 sequential 20-city
+  calls. This is an undocumented, strict rolling-~60s per-IP request budget
+  on the free/anonymous ensemble endpoint -- far tighter than Open-Meteo's
+  documented 600 calls/min (that figure applies to the paid/API-key
+  customer endpoint, not this shared one). `batch_prewarm_ensemble()` was
+  making 13 sequential calls/cycle (10 temp + 3 precip), always exceeding
+  the ~7-8 budget, tripping `open_meteo_ensemble` every run.
+  Tested and ruled out combining multiple models into fewer HTTP requests
+  as a fix -- the throttle scales with total requested locations x models
+  (data volume), not literal request count, so packaging doesn't help
+  (confirmed: 3 combined-model requests still hit the same wall as 8
+  single-model ones). Also ruled out splitting the 20-city batch into
+  smaller location chunks -- the budget is a fixed ~140 city-units/minute
+  regardless of chunk size (confirmed via a 5/10/15/20-city sweep, product
+  constant across all four).
+  Separately, the same 2026-07-23 evidence that first surfaced this also
+  showed `open_meteo_seasonal` (a different endpoint/circuit breaker, in
+  acis_precip.py, feeding rain-market ACIS tilt) tripping the same day --
+  NOT covered by this fix, split out to its own entry below since it's a
+  separate code path never investigated here.
+
+What shipped:
+  `batch_prewarm_ensemble()` (weather_markets.py) now fetches in two tiers:
+  blend-critical models + precip (9 calls, feed the live trading blend) go
+  first; then a real 65s pause (`_ENSEMBLE_TRACKING_TIER_DELAY_SECS`) lets
+  Open-Meteo's rate window reset before GEM/UKMO (tracking-only, 4 calls)
+  go last. No request-combining, no new response-parsing logic -- same
+  single-model-per-request code as before, just reordered with a pause
+  inserted, so a rate-limit trip now only ever costs a delayed accuracy
+  sample, never live-trading data. Also protects precip, which was
+  previously guaranteed to lose every cycle regardless of tier ordering
+  since it ran after GEM/UKMO.
+  Verified live: `python main.py cron` completed all 10/10 ensemble
+  model/var calls with zero 429s and zero circuit-breaker trips.
+  Shipped in `6a3809a`.
+
+[OPEN-METEO SEASONAL API MAY ALSO BE RATE-LIMITING -- UNCONFIRMED, UNADDRESSED]
+Priority: Low -- only affects rain-market directional tilt on a trip
+  (falls back to ACIS-only, a real quality loss but not a trading-safety
+  issue), and hasn't been reproduced with the same rigor as the now-fixed
+  ensemble-api case.
+
+Problem:
+  The 2026-07-23 ~17:29 UTC cron run that first surfaced the ensemble-api
+  rate-limiting also tripped `open_meteo_seasonal` (5 straight 429s
+  fetching Houston/Miami/Dallas monthly precip, 600s cooldown) around the
+  same time. This is a SEPARATE circuit breaker hitting a SEPARATE
+  endpoint (`seasonal-api.open-meteo.com`, acis_precip.py's `_om_seasonal_cb`,
+  failure_threshold=5) from `open_meteo_ensemble` -- plausibly the same
+  class of undocumented free-tier throttling confirmed for the ensemble
+  endpoint, but this has NOT been independently reproduced or measured.
+  The ensemble-api fix (tiered fetch + a real pause) does not automatically
+  carry over: the seasonal endpoint's request volume/pattern and its actual
+  rate budget (if any) are unconfirmed.
 
 What it would look like:
-  1. Check open-meteo.com's current API pricing/tier page for the actual
-     free-tier rate limit and paid-tier pricing/limits -- don't assume
-     without checking, since pricing pages change.
-  2. Estimate this bot's real per-cycle request volume post-GEM/UKMO (5
-     ensemble models x 2 vars x N city/date pairs, plus the seasonal-API
-     rain-market fetches, plus NBM/MOS/METAR/forecast-base calls) to size
-     which paid tier (if any) actually covers it with headroom, not just
-     the cheapest one that nominally clears today's trip threshold.
-  3. Sign up for the paid tier, get an API key, wire it into every
-     Open-Meteo fetch call (weather_markets.py, backtest.py, acis_precip.py
-     -- grep for `open-meteo.com` to find the full call-site list) via a
-     new `.env` var, matching the existing pattern for other API keys in
-     this codebase.
-  4. Re-verify via a live cron run (or several, across a few cycles) that
-     the circuit breakers no longer trip under real load.
-
-Why not now:
-  - Requires an external purchasing decision (which paid tier, ongoing
-    cost) the user needs to make, not something to implement unilaterally
-    -- filed for tracking per explicit user request, not picked up this
-    session.
+  Same empirical approach used for the ensemble-api fix: reproduce the 429
+  live by replaying acis_precip.py's actual seasonal-API call pattern,
+  determine the real rate budget for that endpoint specifically, then
+  design a fix sized to what's actually needed (could be as simple as a
+  short delay if seasonal calls are infrequent enough, or may need no
+  change at all if this doesn't reproduce under current call volume).
 
 When to revisit:
-  - Whenever the user is ready to evaluate/purchase a tier, or sooner if
-    circuit-breaker trips start recurring on most/every cron run rather
-    than occasionally (worth checking a few more cron runs to see how
-    often this is actually happening before spending money on it).
+  - If `open_meteo_seasonal` circuit-breaker trips recur in cron output, or
+    as part of a broader Open-Meteo rate-limit pass if one is scheduled
+    later for other reasons.
 
 [RESOLVED 2026-07-23] SYNTHETIC TEST DATA (PROB*/BAD* OUTCOME ROWS) CORRUPTED THE LIVE P10.3 BRIER ALERT FOR 4+ DAYS
 Priority: was High -- silently corrupted a live model-quality safety signal
