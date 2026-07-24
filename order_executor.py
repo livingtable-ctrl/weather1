@@ -2061,6 +2061,9 @@ def _prediction_kwargs_from_analysis(a: dict) -> dict:
         ensemble_spread_f=a.get("ensemble_spread_f"),
         model_disagreement_f=a.get("model_disagreement_f"),
         precip_sum_in=a.get("precip_sum_in"),
+        # backlog.txt "NBM PROBABILISTIC QUANTILES" -- log-only, already
+        # computed onto `a` by analyze_trade(), not derived here.
+        nbm_quantile_prob=a.get("nbm_quantile_prob"),
     )
 
 

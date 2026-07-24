@@ -5045,6 +5045,66 @@ class TestLogPredictionCalibrationCovariateFields(unittest.TestCase):
         assert row["precip_sum_in"] == 0.42
 
 
+class TestLogPredictionNbmQuantileProb(unittest.TestCase):
+    """log_prediction() must persist nbm_quantile_prob (backlog.txt "NBM
+    PROBABILISTIC QUANTILES"), log-only -- never blended into
+    forecast_prob/our_prob or any sizing decision."""
+
+    def test_nbm_quantile_prob_round_trips_through_upsert(self):
+        tracker.log_prediction(
+            "TEST-TICKER-NBP-1",
+            "NYC",
+            date(2099, 1, 1),
+            {"forecast_prob": 0.6, "market_prob": 0.5},
+            nbm_quantile_prob=0.734,
+        )
+        with tracker._conn() as con:
+            row = con.execute(
+                "SELECT nbm_quantile_prob FROM predictions WHERE ticker = ?",
+                ("TEST-TICKER-NBP-1",),
+            ).fetchone()
+        assert row is not None
+        assert row["nbm_quantile_prob"] == 0.734
+
+    def test_nbm_quantile_prob_absent_stores_null(self):
+        tracker.log_prediction(
+            "TEST-TICKER-NBP-2",
+            "NYC",
+            date(2099, 1, 1),
+            {"forecast_prob": 0.6, "market_prob": 0.5},
+        )
+        with tracker._conn() as con:
+            row = con.execute(
+                "SELECT nbm_quantile_prob FROM predictions WHERE ticker = ?",
+                ("TEST-TICKER-NBP-2",),
+            ).fetchone()
+        assert row is not None
+        assert row["nbm_quantile_prob"] is None
+
+    def test_nbm_quantile_prob_updates_on_reupsert(self):
+        tracker.log_prediction(
+            "TEST-TICKER-NBP-3",
+            "NYC",
+            date(2099, 1, 1),
+            {"forecast_prob": 0.6, "market_prob": 0.5},
+            nbm_quantile_prob=0.2,
+        )
+        tracker.log_prediction(
+            "TEST-TICKER-NBP-3",
+            "NYC",
+            date(2099, 1, 1),
+            {"forecast_prob": 0.65, "market_prob": 0.5},
+            nbm_quantile_prob=0.9,
+        )
+        with tracker._conn() as con:
+            row = con.execute(
+                "SELECT nbm_quantile_prob FROM predictions WHERE ticker = ?",
+                ("TEST-TICKER-NBP-3",),
+            ).fetchone()
+        assert row is not None
+        assert row["nbm_quantile_prob"] == 0.9
+
+
 class TestGetModelWeightsExcludesTrackingOnlyModels:
     """Opus review finding on the GENERALIZED PER-MODEL ACCURACY TRACKING
     Pass 2 diff: get_model_weights()'s softmax summed EVERY model with

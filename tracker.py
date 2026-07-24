@@ -27,7 +27,7 @@ DB_PATH.parent.mkdir(exist_ok=True)
 
 _db_initialized = False
 
-_SCHEMA_VERSION = 56  # increment when _MIGRATIONS list grows
+_SCHEMA_VERSION = 57  # increment when _MIGRATIONS list grows
 
 _MIGRATIONS = [
     # v1 → v2: add condition_type column (if not already added)
@@ -329,6 +329,14 @@ _MIGRATIONS = [
     "ALTER TABLE predictions ADD COLUMN ensemble_spread_f REAL",
     "ALTER TABLE predictions ADD COLUMN model_disagreement_f REAL",
     "ALTER TABLE predictions ADD COLUMN precip_sum_in REAL",
+    # v56 -> v57: log-only NBM-native quantile probability (backlog.txt "NBM
+    # PROBABILISTIC QUANTILES"). Computed by analyze_trade() via the new
+    # mos.fetch_nbm_quantiles() + nws.nws_prob_from_quantiles() pair but NOT
+    # blended into forecast_prob/our_prob or any live sizing decision --
+    # ship log-only first, verify correlation with settlement before ever
+    # wiring it in. No backfill, same reasoning as every other column added
+    # this way in this list.
+    "ALTER TABLE predictions ADD COLUMN nbm_quantile_prob REAL",
 ]
 
 
@@ -736,6 +744,7 @@ def log_prediction(
     ensemble_spread_f: float | None = None,
     model_disagreement_f: float | None = None,
     precip_sum_in: float | None = None,
+    nbm_quantile_prob: float | None = None,
     conn: sqlite3.Connection | None = None,
 ) -> bool:
     """Save a prediction to the database.
@@ -750,6 +759,11 @@ def log_prediction(
     training feature vector or get_historical_sigma yet -- this only starts
     the accumulation clock those entries require before retraining/covariate
     use can happen.
+    nbm_quantile_prob: optional scalar from analyze_trade()'s NBM-native
+    quantile probability (backlog.txt "NBM PROBABILISTIC QUANTILES"), via
+    mos.fetch_nbm_quantiles() + nws.nws_prob_from_quantiles(). Stored
+    log-only; never blended into forecast_prob/our_prob or any sizing
+    decision.
     run_trend: optional dict from weather_markets.get_forecast_run_trend's
     caller-side result (see analyze_trade's "run_trend" key) -- shape
     {"points": [{"lead": N, "value": V}, ...], "delta": ..., "jumpy": ...}.
@@ -849,8 +863,9 @@ def log_prediction(
            run_trend_points, run_trend_delta, run_trend_jumpy,
            implied_mean, implied_sigma, fit_residual,
            liquidity_edge_scale, gated_edge, is_probation, var,
-           ensemble_spread_f, model_disagreement_f, precip_sum_in)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'),?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+           ensemble_spread_f, model_disagreement_f, precip_sum_in,
+           nbm_quantile_prob)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'),?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         ON CONFLICT(ticker, predicted_date) DO UPDATE SET
             our_prob         = excluded.our_prob,
             raw_prob         = excluded.raw_prob,
@@ -895,7 +910,8 @@ def log_prediction(
             var              = excluded.var,
             ensemble_spread_f    = excluded.ensemble_spread_f,
             model_disagreement_f = excluded.model_disagreement_f,
-            precip_sum_in         = excluded.precip_sum_in
+            precip_sum_in         = excluded.precip_sum_in,
+            nbm_quantile_prob     = excluded.nbm_quantile_prob
         """
     params = (
         ticker,
@@ -939,6 +955,7 @@ def log_prediction(
         ensemble_spread_f,
         model_disagreement_f,
         precip_sum_in,
+        nbm_quantile_prob,
     )
     # Atomic upsert — unique index on (ticker, predicted_date) prevents
     # duplicate rows from concurrent calls (TOCTOU of old SELECT+INSERT pattern).

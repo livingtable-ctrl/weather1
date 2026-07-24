@@ -151,6 +151,19 @@ class TestPredictionKwargsFromAnalysis:
         assert kwargs["model_disagreement_f"] is None
         assert kwargs["precip_sum_in"] is None
 
+    def test_nbm_quantile_prob_derived_when_present(self):
+        # nbm_quantile_prob is read from `a` (already computed by
+        # analyze_trade()'s result dict), not derived here. See
+        # backlog.txt "NBM PROBABILISTIC QUANTILES".
+        analysis = _make_analysis(nbm_quantile_prob=0.71)
+        kwargs = order_executor._prediction_kwargs_from_analysis(analysis)
+        assert kwargs["nbm_quantile_prob"] == 0.71
+
+    def test_nbm_quantile_prob_absent_gives_none_not_keyerror(self):
+        analysis = _make_analysis()
+        kwargs = order_executor._prediction_kwargs_from_analysis(analysis)
+        assert kwargs["nbm_quantile_prob"] is None
+
 
 class TestMainPyUsesSharedHelper:
     """2026-07-17: main.py's cmd_market and cmd_order log_prediction call

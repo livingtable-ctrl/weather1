@@ -7609,6 +7609,38 @@ def analyze_trade(
         # the ensemble sigma at line 3401.
         sigma_gauss = get_historical_sigma(city, target_month, var=var) * sigma_mult
         cond_type = condition.get("type", "above")
+
+        # backlog.txt "NBM PROBABILISTIC QUANTILES": log-only NBM-native
+        # quantile probability, computed but NOT blended into forecast_prob
+        # or any live sizing decision -- ship log-only first, verify it
+        # correlates with settlement before ever wiring it into the blend
+        # (same discipline as every other log-only signal in this file).
+        # "between" markets are skipped -- nws_prob_from_quantiles only
+        # supports above/below and returns a meaningless 0.5 stub for
+        # "between", which would look like a real neutral signal if logged.
+        nbm_quantile_prob: float | None = None
+        if cond_type in ("above", "below"):
+            try:
+                import mos as _mos_mod
+                from nws import nws_prob_from_quantiles as _nbm_prob_from_q
+
+                _nbp_station = _metar_station_for_city(city)
+                if _nbp_station:
+                    _nbp_quantiles = _mos_mod.fetch_nbm_quantiles(
+                        _nbp_station,
+                        target_date,
+                        _CITY_TZ.get(city, "America/New_York"),
+                        var=var,
+                    )
+                    if _nbp_quantiles:
+                        nbm_quantile_prob = _nbm_prob_from_q(
+                            _nbp_quantiles,
+                            threshold=_prob_threshold(condition),
+                            condition_type=cond_type,
+                        )
+            except Exception as _nbp_exc:
+                _log.debug("NBM quantile fetch failed for %s: %s", city, _nbp_exc)
+
         if cond_type in ("above", "below"):
             p_win_gaussian = gaussian_probability(
                 forecast_mean=forecast_temp,
@@ -8268,6 +8300,7 @@ def analyze_trade(
         model_temps = {}
         ensemble_spread_f = 0.0
         ensemble_spread_prob = 0.0
+        nbm_quantile_prob = None  # No NBM-quantile fetch in the METAR-locked path.
         p_win_gaussian = None
         sigma_gauss = None
         gauss_prob = None  # No Gaussian in METAR-locked path
@@ -8714,6 +8747,9 @@ def analyze_trade(
         # call) but was never threaded past the precip-market routing path —
         # surfaced here log-only for the temperature path too.
         "precip_sum_in": forecast.get("precip_in") if forecast else None,
+        # backlog.txt "NBM PROBABILISTIC QUANTILES" -- log-only, see the
+        # nbm_quantile_prob computation above for why it's never blended.
+        "nbm_quantile_prob": nbm_quantile_prob,
     }
     save_forecast_snapshot(enriched.get("ticker", "unknown"), forecast)
     return _result

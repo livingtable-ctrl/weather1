@@ -1316,6 +1316,136 @@ def test_analyze_trade_result_precip_sum_in_none_when_key_missing(monkeypatch):
     assert result["precip_sum_in"] is None
 
 
+def _analyze_trade_base_mocks(monkeypatch, wm):
+    """Shared mocks for the nbm_quantile_prob tests below -- same baseline
+    as the other analyze_trade fixture tests in this file."""
+    monkeypatch.setattr(
+        wm, "get_ensemble_temps", lambda *a, **kw: [70.0, 71.0, 72.0, 73.0, 74.0] * 4
+    )
+    monkeypatch.setattr(wm, "get_ensemble_members", lambda *a, **kw: None)
+    monkeypatch.setattr(
+        wm, "_get_consensus_probs", lambda *a, **kw: (0.73, 0.75, 74.0, 74.0, None)
+    )
+    monkeypatch.setattr(wm, "fetch_temperature_nbm", lambda *a, **kw: 74.0)
+    monkeypatch.setattr(wm, "fetch_temperature_ecmwf", lambda *a, **kw: 74.0)
+    monkeypatch.setattr(wm, "_metar_lock_in", lambda *a, **kw: (False, 0.0, {}))
+    monkeypatch.setattr(wm, "_SEASONAL_WEIGHTS", {})
+    monkeypatch.setattr(wm, "_CONDITION_WEIGHTS", {})
+    monkeypatch.setattr(wm, "_CITY_WEIGHTS", {})
+    monkeypatch.setattr(
+        wm,
+        "get_weather_forecast",
+        lambda *a, **kw: {
+            "high_f": 75.0,
+            "low_f": 55.0,
+            "precip_in": 0.0,
+            "wind_mph": 5.0,
+        },
+    )
+
+
+def _analyze_trade_enriched_fixture():
+    from datetime import date, timedelta
+
+    tomorrow = date.today() + timedelta(days=1)
+    return {
+        "_forecast": {"high_f": 75.0, "low_f": 55.0, "precip_in": 0.0, "wind_mph": 5.0},
+        "_date": tomorrow,
+        "_city": "NYC",
+        "_hour": None,
+        "ticker": "KXHIGHNY-26APR09-T72",
+        "title": "Will NYC high temperature be above 72°F?",
+        "series_ticker": "KXHIGH-23-NYC",
+        "yes_ask": 0.72,
+        "yes_bid": 0.62,
+        "volume": 500,
+        "open_interest": 200,
+        "close_time": (
+            __import__("datetime").datetime.now(__import__("datetime").timezone.utc)
+            + __import__("datetime").timedelta(hours=20)
+        ).isoformat(),
+    }
+
+
+def test_analyze_trade_result_surfaces_nbm_quantile_prob(monkeypatch):
+    """backlog.txt "NBM PROBABILISTIC QUANTILES": when mos.fetch_nbm_quantiles
+    returns real quantiles, analyze_trade must convert them via
+    nws_prob_from_quantiles and surface the result log-only -- giving that
+    converter its first real caller."""
+    import mos
+    import weather_markets as wm
+    from weather_markets import analyze_trade
+
+    _analyze_trade_base_mocks(monkeypatch, wm)
+    monkeypatch.setattr(
+        mos,
+        "fetch_nbm_quantiles",
+        lambda *a, **kw: {10: 65.0, 25: 68.0, 50: 71.0, 75: 74.0, 90: 77.0},
+    )
+
+    result = analyze_trade(_analyze_trade_enriched_fixture())
+    assert result is not None, "analyze_trade returned None — fix the enriched dict"
+    assert result["nbm_quantile_prob"] is not None
+    from nws import nws_prob_from_quantiles
+
+    # Derive the expected value via the SAME threshold analyze_trade itself
+    # uses (_prob_threshold applies Kalshi's bracket-settlement offset, e.g.
+    # 72.5 for an "above 72" market -- not the raw 72.0 condition threshold)
+    # rather than hardcoding a number that would silently drift if that
+    # convention ever changes.
+    condition = wm._parse_market_condition(
+        {
+            "ticker": "KXHIGHNY-26APR09-T72",
+            "title": "Will NYC high temperature be above 72°F?",
+        }
+    )
+    expected = nws_prob_from_quantiles(
+        {10: 65.0, 25: 68.0, 50: 71.0, 75: 74.0, 90: 77.0},
+        threshold=wm._prob_threshold(condition),
+        condition_type="above",
+    )
+    assert result["nbm_quantile_prob"] == expected
+
+
+def test_analyze_trade_result_nbm_quantile_prob_none_when_no_coverage(monkeypatch):
+    """No NBP coverage for this station/date (mos.fetch_nbm_quantiles
+    returns None) must yield nbm_quantile_prob=None, not a crash or a fake
+    neutral 0.5 (nws_prob_from_quantiles' own empty-dict stub value, which
+    would be indistinguishable from a genuine coin-flip signal if logged)."""
+    import mos
+    import weather_markets as wm
+    from weather_markets import analyze_trade
+
+    _analyze_trade_base_mocks(monkeypatch, wm)
+    monkeypatch.setattr(mos, "fetch_nbm_quantiles", lambda *a, **kw: None)
+
+    result = analyze_trade(_analyze_trade_enriched_fixture())
+    assert result is not None, "analyze_trade returned None — fix the enriched dict"
+    assert result["nbm_quantile_prob"] is None
+
+
+def test_analyze_trade_nbm_quantile_fetch_exception_does_not_break_analysis(
+    monkeypatch,
+):
+    """A live-network exception inside the NBM-quantile fetch must not take
+    down the rest of analyze_trade -- log-only signals must fail closed,
+    not fail loud."""
+    import mos
+    import weather_markets as wm
+    from weather_markets import analyze_trade
+
+    _analyze_trade_base_mocks(monkeypatch, wm)
+
+    def _boom(*a, **kw):
+        raise OSError("network boom")
+
+    monkeypatch.setattr(mos, "fetch_nbm_quantiles", _boom)
+
+    result = analyze_trade(_analyze_trade_enriched_fixture())
+    assert result is not None, "a log-only fetch failure must not break analyze_trade"
+    assert result["nbm_quantile_prob"] is None
+
+
 def test_model_consensus_false_when_models_disagree(monkeypatch):
     """model_consensus is False when ICON and GFS differ by more than 8pp."""
     import weather_markets as wm
@@ -1641,6 +1771,47 @@ def test_metar_locked_trade_has_ecmwf_forecast_mean_keys(monkeypatch):
     assert result is not None, "analyze_trade returned None — fix the enriched dict"
     assert result["method"] == "metar_lockout"
     assert result["model_forecast_means"] == {}
+
+
+def test_metar_locked_trade_has_nbm_quantile_prob_key(monkeypatch):
+    """Same bug class as test_metar_locked_trade_has_ecmwf_forecast_mean_keys
+    above, caught live while building backlog.txt "NBM PROBABILISTIC
+    QUANTILES": the METAR-locked branch skips the Phase C section entirely
+    (where nbm_quantile_prob is normally computed), so it must pre-assign
+    nbm_quantile_prob = None itself or the shared result dict construction
+    raises UnboundLocalError. Regression test -- this exact scenario failed
+    with UnboundLocalError before the fix."""
+    import weather_markets as wm
+    from weather_markets import analyze_trade
+
+    monkeypatch.setattr(
+        wm, "_metar_lock_in", lambda *a, **kw: (True, 0.85, {"current_temp_f": 76.0})
+    )
+
+    from datetime import date
+
+    today = date.today()
+    enriched = {
+        "_forecast": {"high_f": 75.0, "low_f": 55.0, "precip_in": 0.0, "wind_mph": 5.0},
+        "_date": today,
+        "_city": "NYC",
+        "_hour": None,
+        "ticker": "KXHIGHNY-26APR09-T72",
+        "title": "Will NYC high temperature be above 72°F?",
+        "series_ticker": "KXHIGH-23-NYC",
+        "yes_ask": 0.72,
+        "yes_bid": 0.62,
+        "volume": 500,
+        "open_interest": 200,
+        "close_time": (
+            __import__("datetime").datetime.now(__import__("datetime").timezone.utc)
+            + __import__("datetime").timedelta(hours=2)
+        ).isoformat(),
+    }
+    result = analyze_trade(enriched)
+    assert result is not None, "analyze_trade returned None — fix the enriched dict"
+    assert result["method"] == "metar_lockout"
+    assert result["nbm_quantile_prob"] is None
 
 
 def test_om_rate_limit_enforces_interval(monkeypatch):

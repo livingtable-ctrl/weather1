@@ -5,7 +5,9 @@ Station-specific post-processed forecasts — same ASOS stations Kalshi settles 
 
 from __future__ import annotations
 
+import html as _html
 import logging
+import re
 import time
 from datetime import UTC, date, datetime, timedelta
 
@@ -362,3 +364,247 @@ def fetch_nbm_iem(
     if extremes is None:
         return None
     return extremes.get((target_date, "max" if var == "max" else "min"))
+
+
+# ── NBM probabilistic quantiles (NBP bulletin) ───────────────────────────────
+# backlog.txt "NBM PROBABILISTIC QUANTILES -- ORPHANED CONVERTER, MISSING
+# FETCHER": nws.nws_prob_from_quantiles() (a complete, tested NBM-percentile
+# -> probability converter) had zero production callers because nothing
+# fetched NBM's percentile output. Research (2026-07-24) confirmed a real,
+# live, JSON-free source: IEM mirrors NBP ("NBM V5.0 NBP GUIDANCE") AFOS
+# text bulletins the same way it mirrors NBS (this file's fetch_nbm_iem
+# above) -- but NOT via the same JSON API. IEM's api/1/mos.json `model`
+# parameter is hard-restricted server-side to
+# ^(AVN|GFS|ETA|NAM|NBS|NBE|ECM|LAV|MEX)$ (confirmed live via a direct
+# request -- NBP returns HTTP 422 with that exact pattern in the error
+# body), so this parses the raw AFOS text product instead of a clean JSON
+# response, unlike NBS.
+
+_NBP_URL = "https://mesonet.agron.iastate.edu/wx/afos/p.php"
+_NBP_CACHE: dict[tuple, tuple[dict | None, float]] = {}
+_NBP_CACHE_TTL = 3600  # 1 hour, matches _NBS_CACHE_TTL
+
+_NBP_PRE_RE = re.compile(r'<pre class="afos-pre">(.*?)</pre>', re.S)
+# "KMDW    NBM V5.0 NBP GUIDANCE    7/24/2026  0700 UTC" -- the bulletin's
+# own run-time header, live-verified against a real current bulletin.
+_NBP_HEADER_RE = re.compile(
+    r"NBP GUIDANCE\s+(\d{1,2})/(\d{1,2})/(\d{4})\s+(\d{4})\s+UTC"
+)
+# TXNP1/2/5/7/9 = QMD 10th/25th/50th/75th/90th percentile max/min
+# temperature -- confirmed against NOAA's own NBM text-card documentation
+# (nbm-textcard-v5.0), not inferred from the row-label pattern alone.
+_NBP_PERCENTILE_ROWS: dict[str, int] = {
+    "TXNP1": 10,
+    "TXNP2": 25,
+    "TXNP5": 50,
+    "TXNP7": 75,
+    "TXNP9": 90,
+}
+
+
+def _split_nbp_row(line: str) -> list[float | None]:
+    """Split an NBP data row's pipe-delimited day-groups into a flat list of
+    values, two per group (00Z-ending slot then 12Z-ending slot), in column
+    order -- so index parity alone tells max (even index) from min (odd)
+    without tracking group boundaries separately.
+
+    A group that doesn't split into exactly 2 numeric tokens (missing data,
+    an "M" code, or unexpected format drift) contributes (None, None)
+    rather than a guess -- silently misaligning every later column would be
+    worse than a documented gap here.
+    """
+    body = line[5:]  # strip the fixed 5-char row label (e.g. "TXNP1", "FHR  ")
+    values: list[float | None] = []
+    for group in body.split("|"):
+        toks = group.split()
+        if len(toks) == 2:
+            values.extend(_parse_temp(t) for t in toks)
+        else:
+            values.extend([None, None])
+    return values
+
+
+def _parse_nbp_bulletin(
+    text: str, city_tz: str
+) -> dict[tuple, dict[int, float]] | None:
+    """Parse a raw NBP (NBM Probabilistic) AFOS text bulletin into
+    {(local_date, "max"|"min"): {10: v, 25: v, 50: v, 75: v, 90: v}}.
+
+    Column dates are NOT parsed from the bulletin's own human-readable
+    day-of-week/day-of-month header row ("SAT 25| SUN 26|...") -- that's
+    ambiguous across a month/year rollover without extra context. Instead,
+    computed from the bulletin's own run-time header plus each column's FHR
+    (forecast-hour) offset -- an unambiguous absolute timestamp, the same
+    approach _fetch_nbs_daily_extremes uses for NBS's ftime field. Applies
+    the identical 00Z=max/12Z=min + "subtract a token minute before
+    .astimezone(tz).date()" local-date derivation already verified (2026-07-17
+    review) to hold for every CONUS timezone.
+    """
+    from zoneinfo import ZoneInfo
+
+    header_match = _NBP_HEADER_RE.search(text)
+    if not header_match:
+        # A caller only ever passes real <pre class="afos-pre"> content here
+        # (see _fetch_nbp_percentiles) -- a header-pattern miss on genuine
+        # bulletin text means IEM changed the format, not "no coverage".
+        # Silent None here would be indistinguishable from a routine gap
+        # (same class of bug _fetch_nbs_daily_extremes's own "all txn rows
+        # failed to parse" warning exists to prevent -- 2026-07-17 review).
+        _log.warning(
+            "_parse_nbp_bulletin: run-time header pattern not found -- "
+            "IEM may have changed the NBP bulletin format"
+        )
+        return None
+    month_s, day_s, year_s, hhmm_s = header_match.groups()
+    try:
+        run_time = datetime(
+            int(year_s),
+            int(month_s),
+            int(day_s),
+            int(hhmm_s[:2]),
+            int(hhmm_s[2:]),
+            tzinfo=UTC,
+        )
+    except ValueError:
+        return None
+
+    try:
+        tz = ZoneInfo(city_tz)
+    except Exception:
+        _log.warning("_parse_nbp_bulletin: bad tz %r", city_tz)
+        return None
+
+    lines = text.splitlines()
+    fhr_line = next((ln for ln in lines if ln.startswith("FHR")), None)
+    if fhr_line is None:
+        _log.warning(
+            "_parse_nbp_bulletin: no FHR row found in an otherwise-valid "
+            "bulletin -- IEM may have changed the NBP bulletin format"
+        )
+        return None
+    fhrs = _split_nbp_row(fhr_line)
+    if not fhrs:
+        return None
+
+    percentile_rows: dict[int, list[float | None]] = {}
+    for label, pct in _NBP_PERCENTILE_ROWS.items():
+        row_line = next((ln for ln in lines if ln.startswith(label)), None)
+        if row_line is None:
+            # Require all 5 percentiles present -- a partial ladder can't
+            # feed nws_prob_from_quantiles' expected {10,25,50,75,90} shape
+            # reliably, and this product's temperature percentiles are core
+            # NBM output that shouldn't legitimately be missing as a row
+            # (unlike e.g. QPF, which can be a real, present "0").
+            return None
+        percentile_rows[pct] = _split_nbp_row(row_line)
+
+    result: dict[tuple, dict[int, float]] = {}
+    for idx, fhr in enumerate(fhrs):
+        if fhr is None:
+            continue
+        extreme_kind = "max" if idx % 2 == 0 else "min"
+        expected_hour = 0 if extreme_kind == "max" else 12
+        valid_utc = run_time + timedelta(hours=fhr)
+        if valid_utc.hour != expected_hour:
+            # Defensive: doesn't match the documented 00Z/12Z convention --
+            # skip rather than guess which extreme it represents.
+            continue
+        local_date = (valid_utc.astimezone(tz) - timedelta(minutes=1)).date()
+        quantiles: dict[int, float] = {}
+        for pct, values in percentile_rows.items():
+            v = values[idx] if idx < len(values) else None
+            if v is not None:
+                quantiles[pct] = v
+        if len(quantiles) == 5:
+            result[(local_date, extreme_kind)] = quantiles
+
+    if not result and any(f is not None for f in fhrs):
+        # Header, FHR row, and all 5 percentile rows were present, AND at
+        # least one real (non-None) FHR value was parsed -- but every
+        # single column failed the 00Z/12Z hour check or ran short on
+        # quantiles. A row with zero real FHR values (all None, e.g. a
+        # blank/malformed FHR row) is a different, already-warned-about
+        # case (see the FHR-row warning above) -- this branch is
+        # specifically "the numbers parsed fine but none of them fit the
+        # documented convention", most likely IEM shifted the FHR base away
+        # from the run-time header's own issuance time. Flagged so this
+        # doesn't look identical to routine "no coverage" forever (same
+        # reasoning as the two warnings above).
+        _log.warning(
+            "_parse_nbp_bulletin: header/FHR/percentile rows all present "
+            "but zero columns passed the 00Z/12Z hour check -- IEM may "
+            "have changed the NBP bulletin format"
+        )
+    return result if result else None
+
+
+def _fetch_nbp_percentiles(
+    station: str, city_tz: str
+) -> dict[tuple, dict[int, float]] | None:
+    """Fetch and parse the station's current NBP bulletin into
+    {(local_date, "max"|"min"): {10: v, 25: v, 50: v, 75: v, 90: v}}. One
+    request returns the station's full available NBP horizon (~9 days), so
+    this is cached per (station, city_tz) rather than per target date --
+    same shape as _fetch_nbs_daily_extremes.
+
+    Returns None on any fetch/parse failure, or if the station has no NBP
+    bulletin at all (some stations/cycles have none, mirroring NBS's own
+    documented coverage gaps).
+    """
+    station_suffix = station.upper().removeprefix("K")
+    if len(station_suffix) != 3:
+        # Every station this bot uses is a CONUS 4-letter ICAO code (K +
+        # 3 letters, metar.MARKET_STATION_MAP); fail closed on anything
+        # else rather than guess a PIL that won't resolve to real data.
+        return None
+    pil = f"NBP{station_suffix}"
+
+    cache_key = (station.upper(), city_tz)
+    cached = _NBP_CACHE.get(cache_key)
+    if cached is not None:
+        result, ts = cached
+        if time.monotonic() - ts < _NBP_CACHE_TTL:
+            return result
+
+    try:
+        resp = _session.get(_NBP_URL, params={"pil": pil}, timeout=(5, 10))
+        resp.raise_for_status()
+        page_html = resp.text
+    except Exception as exc:
+        _log.debug("_fetch_nbp_percentiles(%s): %s", station, exc)
+        _NBP_CACHE[cache_key] = (None, time.monotonic())
+        return None
+
+    pre_match = _NBP_PRE_RE.search(page_html)
+    if not pre_match:
+        # No <pre class="afos-pre"> block == IEM's "Service Notice" error
+        # page (unknown PIL / no product found), not a real bulletin.
+        _NBP_CACHE[cache_key] = (None, time.monotonic())
+        return None
+
+    text = _html.unescape(pre_match.group(1))
+    result = _parse_nbp_bulletin(text, city_tz)
+    _NBP_CACHE[cache_key] = (result, time.monotonic())
+    return result
+
+
+def fetch_nbm_quantiles(
+    station: str,
+    target_date: date,
+    city_tz: str,
+    var: str = "max",
+) -> dict[int, float] | None:
+    """Fetch NBM's native probabilistic quantiles ({10,25,50,75,90}: temp_f)
+    for a station/date from IEM's NBP bulletin (backlog.txt "NBM
+    PROBABILISTIC QUANTILES"). Feeds nws.nws_prob_from_quantiles() -- a
+    complete, already-tested converter that had zero production callers
+    before this.
+
+    var: "max" for daily high, "min" for daily low.
+    Returns None if the station/date isn't covered -- callers should treat
+    None as "no signal" (log NULL), not fall back to a guess.
+    """
+    percentiles = _fetch_nbp_percentiles(station, city_tz)
+    if percentiles is None:
+        return None
+    return percentiles.get((target_date, "max" if var == "max" else "min"))
