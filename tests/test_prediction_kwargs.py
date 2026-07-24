@@ -177,6 +177,21 @@ class TestPredictionKwargsFromAnalysis:
         kwargs = order_executor._prediction_kwargs_from_analysis(analysis)
         assert kwargs["ecmwf_consensus_gap_prob"] is None
 
+    def test_signals_derived_when_present(self):
+        # signals is read from `a` (a future analyze_trade() would set this
+        # key directly), not derived here. See backlog.txt "SIGNAL
+        # GRADUATION IS A CONVENTION, NOT A MECHANISM".
+        analysis = _make_analysis(signals={"trade_flow_imbalance": 0.31})
+        kwargs = order_executor._prediction_kwargs_from_analysis(analysis)
+        assert kwargs["signals"] == {"trade_flow_imbalance": 0.31}
+
+    def test_signals_absent_gives_none_not_keyerror(self):
+        # No signal uses this mechanism yet -- every existing analyze_trade
+        # result dict omits "signals" entirely, so this must not raise.
+        analysis = _make_analysis()
+        kwargs = order_executor._prediction_kwargs_from_analysis(analysis)
+        assert kwargs["signals"] is None
+
 
 class TestMainPyUsesSharedHelper:
     """2026-07-17: main.py's cmd_market and cmd_order log_prediction call

@@ -4,6 +4,7 @@ Uses an in-memory database so tests don't touch production data.
 """
 
 # Patch the DB path to an in-memory database before importing tracker
+import json
 import shutil
 import sqlite3
 import tempfile
@@ -5164,6 +5165,92 @@ class TestLogPredictionEcmwfConsensusGap(unittest.TestCase):
             ).fetchone()
         assert row is not None
         assert row["ecmwf_consensus_gap_prob"] == 0.22
+
+
+class TestLogPredictionSignalValues(unittest.TestCase):
+    """log_prediction() must persist `signals` (backlog.txt "SIGNAL
+    GRADUATION IS A CONVENTION, NOT A MECHANISM") as JSON in a single
+    signal_values column -- the generic path any FUTURE log-only signal can
+    use instead of its own named migration/kwarg/SQL-edit set. Existing
+    named columns (ensemble_spread_f, nbm_quantile_prob, etc.) are untouched
+    by this mechanism."""
+
+    def test_signal_values_round_trip_through_upsert(self):
+        tracker.log_prediction(
+            "TEST-TICKER-SIG-1",
+            "NYC",
+            date(2099, 1, 1),
+            {"forecast_prob": 0.6, "market_prob": 0.5},
+            signals={"trade_flow_imbalance": 0.31, "afd_confidence": 0.8},
+        )
+        with tracker._conn() as con:
+            row = con.execute(
+                "SELECT signal_values FROM predictions WHERE ticker = ?",
+                ("TEST-TICKER-SIG-1",),
+            ).fetchone()
+        assert row is not None
+        assert json.loads(row["signal_values"]) == {
+            "trade_flow_imbalance": 0.31,
+            "afd_confidence": 0.8,
+        }
+
+    def test_signal_values_absent_stores_null(self):
+        tracker.log_prediction(
+            "TEST-TICKER-SIG-2",
+            "NYC",
+            date(2099, 1, 1),
+            {"forecast_prob": 0.6, "market_prob": 0.5},
+        )
+        with tracker._conn() as con:
+            row = con.execute(
+                "SELECT signal_values FROM predictions WHERE ticker = ?",
+                ("TEST-TICKER-SIG-2",),
+            ).fetchone()
+        assert row is not None
+        assert row["signal_values"] is None
+
+    def test_signal_values_updates_on_reupsert(self):
+        tracker.log_prediction(
+            "TEST-TICKER-SIG-3",
+            "NYC",
+            date(2099, 1, 1),
+            {"forecast_prob": 0.6, "market_prob": 0.5},
+            signals={"trade_flow_imbalance": 0.1},
+        )
+        tracker.log_prediction(
+            "TEST-TICKER-SIG-3",
+            "NYC",
+            date(2099, 1, 1),
+            {"forecast_prob": 0.65, "market_prob": 0.5},
+            signals={"trade_flow_imbalance": 0.9},
+        )
+        with tracker._conn() as con:
+            row = con.execute(
+                "SELECT signal_values FROM predictions WHERE ticker = ?",
+                ("TEST-TICKER-SIG-3",),
+            ).fetchone()
+        assert row is not None
+        assert json.loads(row["signal_values"]) == {"trade_flow_imbalance": 0.9}
+
+    def test_signal_values_empty_dict_stores_valid_empty_json_not_null(self):
+        # signals={} is a real (if unusual) caller choice -- must be distinct
+        # from omitting the argument (None -> NULL). `is not None` in the
+        # source, not truthiness, is what gates the json.dumps() call.
+        tracker.log_prediction(
+            "TEST-TICKER-SIG-4",
+            "NYC",
+            date(2099, 1, 1),
+            {"forecast_prob": 0.6, "market_prob": 0.5},
+            signals={},
+        )
+        with tracker._conn() as con:
+            row = con.execute(
+                "SELECT signal_values FROM predictions WHERE ticker = ?",
+                ("TEST-TICKER-SIG-4",),
+            ).fetchone()
+        assert row is not None
+        assert row["signal_values"] is not None
+        assert json.loads(row["signal_values"]) == {}
 
 
 class TestGetModelWeightsExcludesTrackingOnlyModels:

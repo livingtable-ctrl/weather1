@@ -6078,7 +6078,9 @@ When to revisit:
     above. Full Position read-model: when the next live-position feature
     lands, using it as the third consumer that validates the interface.
 
-[SIGNAL GRADUATION IS A CONVENTION, NOT A MECHANISM -- SIGNAL #3 REBUILDS RUN-TREND'S PLUMBING]
+[PARTIALLY RESOLVED 2026-07-24 -- part (a), storage only, shipped; parts (b)
+  and (c) still open, unstarted]
+  SIGNAL GRADUATION IS A CONVENTION, NOT A MECHANISM -- SIGNAL #3 REBUILDS RUN-TREND'S PLUMBING
 Priority: Medium -- the log-only->trigger->blend pattern is now this
   project's explicit strategy for all new alpha; its marginal cost is
   currently ~6 touch points per signal.
@@ -6140,6 +6142,89 @@ Why not now:
 When to revisit:
   - When PUBLIC TRADE-FLOW SIGNAL (or any other log-only signal above) is
     next picked up -- build the registry then, not before.
+
+RESOLVED 2026-07-24 (part (a) only -- storage mechanism; parts (b)/(c)
+  still open, unstarted): picked up out of the literal "when to revisit"
+  order -- re-read the entry live before starting and found its own gate is
+  "build this when the next log-only signal is picked up, not before," but
+  the 3-WAY MODEL_CONSENSUS CHECK entry (shipped earlier the same session,
+  see above) had *just* added a 6th hand-wired signal
+  (ecmwf_consensus_gap_prob) without this mechanism -- the gate had already
+  fired and been missed, with no new signal currently queued to validate a
+  design against. Talked this through explicitly with the user rather than
+  deferring outright (as two other entries were deferred earlier this same
+  session for genuinely still-unmet gates) or silently proceeding with the
+  full (a)+(b)+(c) scope: the storage piece (a) is low-blast-radius (one
+  new nullable column, nothing existing touched or migrated) and has 6 real
+  historical signals' worth of shape to design against, unlike (b)'s
+  registry/report-command tier which is more genuinely speculative without
+  a concrete next signal driving its requirements. User chose to ship (a)
+  only and explicitly skip the registry.
+  Shipped: tracker.log_prediction(..., signals: dict[str, float] | None)
+  persisting to a single new signal_values TEXT column as JSON (schema
+  v58->v59) -- mirrors the existing blend_sources/run_trend_points
+  JSON-column precedent exactly, rather than a separate
+  signal_values(prediction_id, name, value) table. order_executor.py's
+  _prediction_kwargs_from_analysis now unconditionally reads
+  a.get("signals") and passes it through -- a FUTURE new log-only signal
+  needs zero new migration, zero new log_prediction parameter, and zero new
+  order_executor.py wiring; it only needs to create a `signals` dict inside
+  analyze_trade()'s result (there is no such dict there yet -- this ships
+  the pipe, nothing flows through it today) and, on the read side, its own
+  json_extract()-based query (no consumer/registry/report exists yet
+  either, deliberately -- that's the still-open (b)).
+  The existing 6 named columns (run_trend, ensemble_spread_f,
+  model_disagreement_f, precip_sum_in, nbm_quantile_prob,
+  ecmwf_consensus_gap_prob) are deliberately NOT retrofitted onto this --
+  would need a backfill/consumer-migration pass per column, explicitly out
+  of scope.
+  New tests: tracker round-trip/absent-null/reupsert-overwrite (mirrors the
+  established pattern for every prior log-only column) plus one this
+  mechanism specifically needed that scalar columns didn't --
+  signals={} (empty dict, falsy but not None) must still serialize to
+  non-NULL "{}", distinct from omitting the argument entirely (NULL); and
+  order_executor kwargs-passthrough (derived-when-present /
+  absent-gives-None-not-KeyError, mirrors nbm_quantile_prob's tests).
+  Mutation-tested (stashed tracker.py+order_executor.py -> all 6 new tests
+  failed with the exact predicted TypeError/KeyError; restored and
+  re-verified green). 519 tests pass across this session's own scoped sweep
+  (test_tracker.py/test_prediction_kwargs.py/test_weather_markets.py) plus
+  a separate 466-test background pass this session also ran (same
+  p9_p10/ml_bias/paper/phase4/retirement_probation/regression/
+  pnl_attribution/phase2_batch_h/cron_integration/live_execution/
+  confidence_tiers/sameday_reserve sweep as the earlier 3-WAY session);
+  ruff/ruff format/mypy clean on all 4 changed files.
+  Independent Agent(opus, effort=high) review (its own separate isolated
+  verification, not this session's own numbers above): confirmed schema/
+  SQL/params counts internally consistent (45 columns = 44 placeholders +
+  datetime('now'), new column appended last everywhere so no existing
+  column shifted), JSON-encoding pattern matches blend_sources exactly,
+  zero live-behavior change (grepped weather_markets.py -- "signals" is set
+  nowhere, so every real call site resolves to None today), its own 4
+  mutation tests genuinely killed real mutants
+  (is_not_None-vs-truthiness, dropped ON-CONFLICT-SET clause, wrong .get()
+  key), and its own broader 424-test pass (test_tracker.py/
+  test_prediction_kwargs.py plus test_infrastructure/test_phase2_batch_g/
+  test_execution_log/test_trading). Findings, all fixed:
+  (1) a migration comment spliced two different backlog-entry quotes
+  together as if one verbatim quote -- corrected to cite both accurately;
+  (2) the same comment's "add one key to analyze_trade()'s signals dict,
+  done" overclaimed completeness (no signals dict exists there yet, and
+  there is no reader either) -- reworded to say so explicitly; (3) the new
+  `signals` param name can be confused with this codebase's unrelated
+  existing use of "signal(s)" for a scanned trade candidate (cron.py's
+  signals_cache, "no qualifying signals" elsewhere in order_executor.py) --
+  added a comment distinguishing them, since `a` is an untyped dict so
+  nothing else catches the mix-up; (4) signal_values_json's assignment was
+  the only new-value-in-this-diff not appended last among its siblings --
+  moved for consistency (cosmetic, zero functional effect). User confirmed
+  commit+push explicitly.
+  Still open, unstarted: part (b) (the signal registry + standing
+  graduation-report command + auto-activation-notification reuse) and part
+  (c) (graduated signals joining a named blend-weights dict instead of
+  _blend_weights()'s positional tuple) -- same "when to revisit" trigger as
+  above, now genuinely available for the actual next new log-only signal to
+  prove or disprove the shape against.
 
 [RESOLVED 2026-07-23 -- as a side effect of GENERALIZED PER-MODEL ACCURACY TRACKING Pass 1, see that entry] THE ANALYSIS-DICT -> TRADE-RECORD BOUNDARY EXPLODES DICTS INTO NAMED SCALARS
 Priority: was Medium -- sharpened the GENERALIZED PER-MODEL ACCURACY

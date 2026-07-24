@@ -2067,6 +2067,19 @@ def _prediction_kwargs_from_analysis(a: dict) -> dict:
         # backlog.txt "3-WAY MODEL_CONSENSUS CHECK" -- log-only, already
         # computed onto `a` by analyze_trade(), not derived here.
         ecmwf_consensus_gap_prob=a.get("ecmwf_consensus_gap_prob"),
+        # backlog.txt "SIGNAL GRADUATION IS A CONVENTION, NOT A MECHANISM" --
+        # the generic path for any FUTURE log-only signal: analyze_trade()
+        # sets `a["signals"]` (a dict[str, float]) and it flows through here
+        # with zero further wiring, unlike every named field above. No
+        # signal uses this yet -- a.get() naturally gives None until one
+        # does. NOTE: "signals" here means this dict specifically -- unlike
+        # this codebase's other, unrelated use of "signal(s)" for a scanned
+        # trade candidate (cron.py's signals_cache, "no qualifying signals"
+        # elsewhere in this file) -- don't confuse the two. `a` is untyped
+        # (a plain dict), so nothing stops a future caller from accidentally
+        # attaching that other kind of "signals" here; tracker.log_prediction
+        # would silently json.dumps whatever it is into signal_values.
+        signals=a.get("signals"),
     )
 
 

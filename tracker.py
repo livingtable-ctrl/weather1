@@ -27,7 +27,7 @@ DB_PATH.parent.mkdir(exist_ok=True)
 
 _db_initialized = False
 
-_SCHEMA_VERSION = 58  # increment when _MIGRATIONS list grows
+_SCHEMA_VERSION = 59  # increment when _MIGRATIONS list grows
 
 _MIGRATIONS = [
     # v1 → v2: add condition_type column (if not already added)
@@ -345,6 +345,30 @@ _MIGRATIONS = [
     # log-only first and let this start the accumulation clock. No backfill,
     # same reasoning as every other column added this way in this list.
     "ALTER TABLE predictions ADD COLUMN ecmwf_consensus_gap_prob REAL",
+    # v58 -> v59: generic log-only signal storage (backlog.txt "SIGNAL
+    # GRADUATION IS A CONVENTION, NOT A MECHANISM"). Every prior log-only
+    # signal (run_trend, ensemble_spread_f, model_disagreement_f,
+    # precip_sum_in, nbm_quantile_prob, ecmwf_consensus_gap_prob above) cost
+    # its own named migration + log_prediction() kwarg + 4 SQL edits --
+    # per the entry, "its marginal cost is currently ~6 touch points per
+    # signal" and "the signature grows one kwarg per signal, forever".
+    # signal_values is a single JSON dict column (mirrors the
+    # blend_sources/run_trend_points JSON-column precedent already
+    # established above) that a FUTURE new log-only signal can use instead:
+    # zero new migration, zero new log_prediction parameter, zero new
+    # order_executor.py wiring -- _prediction_kwargs_from_analysis already
+    # reads a.get("signals") unconditionally. Storage-only, deliberately
+    # scoped down from the entry's full (a)+(b)+(c) proposal: no signal
+    # registry, no auto-population from analyze_trade() (there is no
+    # `signals` dict there yet -- a first consumer must create it, add it to
+    # analyze_trade()'s result dict, AND read it back via json_extract() or
+    # equivalent, since nothing queries this column yet either), no
+    # graduation-report command, no auto-activation-notification reuse, and
+    # the existing named columns are NOT retrofitted onto this (would need a
+    # backfill/consumer-migration pass for each, out of scope here). No
+    # backfill for this column itself, same reasoning as every other column
+    # added this way.
+    "ALTER TABLE predictions ADD COLUMN signal_values TEXT",
 ]
 
 
@@ -754,6 +778,7 @@ def log_prediction(
     precip_sum_in: float | None = None,
     nbm_quantile_prob: float | None = None,
     ecmwf_consensus_gap_prob: float | None = None,
+    signals: dict[str, float] | None = None,
     conn: sqlite3.Connection | None = None,
 ) -> bool:
     """Save a prediction to the database.
@@ -778,6 +803,13 @@ def log_prediction(
     (backlog.txt "3-WAY MODEL_CONSENSUS CHECK"). Stored log-only; does not
     feed model_consensus (still icon-vs-gfs only) until enough settled
     ecmwf_aifs025_ensemble observations exist to pick a defensible threshold.
+    signals: optional generic dict of {name: value} for any FUTURE log-only
+    signal (backlog.txt "SIGNAL GRADUATION IS A CONVENTION, NOT A
+    MECHANISM"), stored as JSON in a single column. This is the graduation
+    path going forward -- a new signal adds a key here instead of its own
+    migration/kwarg/SQL-edit set. The existing named scalars above
+    (ensemble_spread_f, nbm_quantile_prob, etc.) predate this mechanism and
+    are NOT retrofitted onto it.
     run_trend: optional dict from weather_markets.get_forecast_run_trend's
     caller-side result (see analyze_trade's "run_trend" key) -- shape
     {"points": [{"lead": N, "value": V}, ...], "delta": ..., "jumpy": ...}.
@@ -861,6 +893,7 @@ def log_prediction(
         round(liquidity_edge_scale, 4) if liquidity_edge_scale is not None else None
     )
     gated_edge = round(gated_edge, 6) if gated_edge is not None else None
+    signal_values_json = _json.dumps(signals) if signals is not None else None
 
     # G4: use today's wall-clock date as explicit UPSERT key (avoids SQLite
     # date(predicted_at) timezone ambiguity around UTC midnight).
@@ -878,8 +911,8 @@ def log_prediction(
            implied_mean, implied_sigma, fit_residual,
            liquidity_edge_scale, gated_edge, is_probation, var,
            ensemble_spread_f, model_disagreement_f, precip_sum_in,
-           nbm_quantile_prob, ecmwf_consensus_gap_prob)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'),?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+           nbm_quantile_prob, ecmwf_consensus_gap_prob, signal_values)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'),?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         ON CONFLICT(ticker, predicted_date) DO UPDATE SET
             our_prob         = excluded.our_prob,
             raw_prob         = excluded.raw_prob,
@@ -926,7 +959,8 @@ def log_prediction(
             model_disagreement_f = excluded.model_disagreement_f,
             precip_sum_in         = excluded.precip_sum_in,
             nbm_quantile_prob     = excluded.nbm_quantile_prob,
-            ecmwf_consensus_gap_prob = excluded.ecmwf_consensus_gap_prob
+            ecmwf_consensus_gap_prob = excluded.ecmwf_consensus_gap_prob,
+            signal_values         = excluded.signal_values
         """
     params = (
         ticker,
@@ -972,6 +1006,7 @@ def log_prediction(
         precip_sum_in,
         nbm_quantile_prob,
         ecmwf_consensus_gap_prob,
+        signal_values_json,
     )
     # Atomic upsert — unique index on (ticker, predicted_date) prevents
     # duplicate rows from concurrent calls (TOCTOU of old SELECT+INSERT pattern).
