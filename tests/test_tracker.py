@@ -5105,6 +5105,67 @@ class TestLogPredictionNbmQuantileProb(unittest.TestCase):
         assert row["nbm_quantile_prob"] == 0.9
 
 
+class TestLogPredictionEcmwfConsensusGap(unittest.TestCase):
+    """log_prediction() must persist ecmwf_consensus_gap_prob (backlog.txt
+    "3-WAY MODEL_CONSENSUS CHECK"), log-only -- does not feed model_consensus
+    (still icon-vs-gfs only) until enough settled ecmwf_aifs025_ensemble
+    observations exist to pick a defensible threshold."""
+
+    def test_ecmwf_consensus_gap_prob_round_trips_through_upsert(self):
+        tracker.log_prediction(
+            "TEST-TICKER-ECG-1",
+            "NYC",
+            date(2099, 1, 1),
+            {"forecast_prob": 0.6, "market_prob": 0.5},
+            ecmwf_consensus_gap_prob=0.15,
+        )
+        with tracker._conn() as con:
+            row = con.execute(
+                "SELECT ecmwf_consensus_gap_prob FROM predictions WHERE ticker = ?",
+                ("TEST-TICKER-ECG-1",),
+            ).fetchone()
+        assert row is not None
+        assert row["ecmwf_consensus_gap_prob"] == 0.15
+
+    def test_ecmwf_consensus_gap_prob_absent_stores_null(self):
+        tracker.log_prediction(
+            "TEST-TICKER-ECG-2",
+            "NYC",
+            date(2099, 1, 1),
+            {"forecast_prob": 0.6, "market_prob": 0.5},
+        )
+        with tracker._conn() as con:
+            row = con.execute(
+                "SELECT ecmwf_consensus_gap_prob FROM predictions WHERE ticker = ?",
+                ("TEST-TICKER-ECG-2",),
+            ).fetchone()
+        assert row is not None
+        assert row["ecmwf_consensus_gap_prob"] is None
+
+    def test_ecmwf_consensus_gap_prob_updates_on_reupsert(self):
+        tracker.log_prediction(
+            "TEST-TICKER-ECG-3",
+            "NYC",
+            date(2099, 1, 1),
+            {"forecast_prob": 0.6, "market_prob": 0.5},
+            ecmwf_consensus_gap_prob=0.05,
+        )
+        tracker.log_prediction(
+            "TEST-TICKER-ECG-3",
+            "NYC",
+            date(2099, 1, 1),
+            {"forecast_prob": 0.65, "market_prob": 0.5},
+            ecmwf_consensus_gap_prob=0.22,
+        )
+        with tracker._conn() as con:
+            row = con.execute(
+                "SELECT ecmwf_consensus_gap_prob FROM predictions WHERE ticker = ?",
+                ("TEST-TICKER-ECG-3",),
+            ).fetchone()
+        assert row is not None
+        assert row["ecmwf_consensus_gap_prob"] == 0.22
+
+
 class TestGetModelWeightsExcludesTrackingOnlyModels:
     """Opus review finding on the GENERALIZED PER-MODEL ACCURACY TRACKING
     Pass 2 diff: get_model_weights()'s softmax summed EVERY model with

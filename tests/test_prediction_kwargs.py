@@ -164,6 +164,19 @@ class TestPredictionKwargsFromAnalysis:
         kwargs = order_executor._prediction_kwargs_from_analysis(analysis)
         assert kwargs["nbm_quantile_prob"] is None
 
+    def test_ecmwf_consensus_gap_prob_derived_when_present(self):
+        # ecmwf_consensus_gap_prob is read from `a` (already computed by
+        # analyze_trade()'s result dict), not derived here. See
+        # backlog.txt "3-WAY MODEL_CONSENSUS CHECK".
+        analysis = _make_analysis(ecmwf_consensus_gap_prob=0.15)
+        kwargs = order_executor._prediction_kwargs_from_analysis(analysis)
+        assert kwargs["ecmwf_consensus_gap_prob"] == 0.15
+
+    def test_ecmwf_consensus_gap_prob_absent_gives_none_not_keyerror(self):
+        analysis = _make_analysis()
+        kwargs = order_executor._prediction_kwargs_from_analysis(analysis)
+        assert kwargs["ecmwf_consensus_gap_prob"] is None
+
 
 class TestMainPyUsesSharedHelper:
     """2026-07-17: main.py's cmd_market and cmd_order log_prediction call

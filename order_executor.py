@@ -2064,6 +2064,9 @@ def _prediction_kwargs_from_analysis(a: dict) -> dict:
         # backlog.txt "NBM PROBABILISTIC QUANTILES" -- log-only, already
         # computed onto `a` by analyze_trade(), not derived here.
         nbm_quantile_prob=a.get("nbm_quantile_prob"),
+        # backlog.txt "3-WAY MODEL_CONSENSUS CHECK" -- log-only, already
+        # computed onto `a` by analyze_trade(), not derived here.
+        ecmwf_consensus_gap_prob=a.get("ecmwf_consensus_gap_prob"),
     )
 
 

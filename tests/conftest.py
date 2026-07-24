@@ -249,6 +249,21 @@ def default_gem_ukmo_means_none(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def default_ecmwf_aifs_prob_none(monkeypatch):
+    """Default weather_markets._get_ecmwf_aifs_prob to None for every test.
+
+    backlog.txt "3-WAY MODEL_CONSENSUS CHECK": analyze_trade now calls this
+    (track-only) under the same ens_prob/temps gate as _get_consensus_probs,
+    same reasoning as default_gem_ukmo_means_none above -- without this
+    default, every existing analyze_trade test that reaches that gate would
+    fire a REAL network call to Open-Meteo instead of hitting a mock.
+    """
+    import weather_markets
+
+    monkeypatch.setattr(weather_markets, "_get_ecmwf_aifs_prob", lambda *a, **kw: None)
+
+
+@pytest.fixture(autouse=True)
 def isolate_execution_log(tmp_path, monkeypatch):
     """Redirect execution_log.DB_PATH to a per-test temp file.
 

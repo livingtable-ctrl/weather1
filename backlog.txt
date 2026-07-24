@@ -1702,7 +1702,9 @@ When to revisit (ecmwf_ifs025 only -- ecmwf_aifs025_ensemble is done, see
     (get_ensemble_temps() pipeline), so still worth doing even though the
     aifs025 product is now covered.
 
-[3-WAY MODEL_CONSENSUS CHECK -- ECMWF_AIFS025_ENSEMBLE'S PROBABILITY ISN'T WIRED IN YET]
+[PARTIALLY RESOLVED 2026-07-24 -- track-only plumbing shipped; the actual
+  3-way gating decision (item 2 below) still gated on real data, unchanged]
+  3-WAY MODEL_CONSENSUS CHECK -- ECMWF_AIFS025_ENSEMBLE'S PROBABILITY ISN'T WIRED IN YET
 Priority: Low (the underlying weight-learning field is done; this is a
   trade-quality-gate refinement, not a correctness bug)
 
@@ -1746,6 +1748,73 @@ When to revisit:
     once enough settled ecmwf_aifs025_ensemble observations exist to know
     whether its member-vote probability actually disagrees with icon/gfs in
     a way worth gating on (rather than guessing at the 3-way threshold blind).
+
+RESOLVED 2026-07-24 (item 1 only -- the plumbing; item 2, the actual 3-way
+  gating decision, is still open and deliberately unstarted, see below):
+  before picking this up, re-verified live that ensemble_member_scores
+  (tracker.db) had zero settled ecmwf_aifs025_ensemble rows (vs 67 each for
+  icon_seamless/gfs_seamless) -- the tracking only started the day before
+  (2026-07-23), so any 3-way threshold chosen today would be exactly the
+  "guessing blind" scenario this entry's own "when to revisit" warns
+  against. Surfaced this to the user via AskUserQuestion before implementing
+  anything; user chose track-only scope explicitly.
+  Shipped: a new weather_markets._get_ecmwf_aifs_prob(city, target_date,
+  condition, hour, var) helper (kept separate from _get_consensus_probs's
+  5-tuple, same reasoning as _get_gem_ukmo_means's docstring -- ~20 existing
+  call sites mock/unpack that tuple positionally) that reuses
+  _model_prob_and_mean("ecmwf_aifs025_ensemble", ...) -- same cache key as
+  _get_consensus_probs's own ecmwf fetch, so it's a cache hit, not a second
+  network call, whenever both run in the same analyze_trade pass. analyze_trade
+  now calls it under the same ens_prob/temps gate as _get_gem_ukmo_means, and
+  computes ecmwf_consensus_gap_prob = max(|icon_p - ecmwf_p|, |gfs_p - ecmwf_p|)
+  (None unless all three are non-None) -- log-only, threaded through
+  tracker.log_prediction (new nullable column, schema v57->v58) via
+  order_executor._prediction_kwargs_from_analysis, mirroring the exact
+  established pattern for nbm_quantile_prob/gem_forecast_mean/ukmo_forecast_mean.
+  model_consensus itself is UNCHANGED -- still exactly
+  abs(icon_p - gfs_p) > 0.12, icon-vs-gfs only; ecmwf_aifs_prob never feeds it,
+  directly or indirectly.
+  New tests: weather_markets fetch-level (TestGetEcmwfAifsProb, mirrors
+  TestGetGemUkmoMeans), analyze_trade-level (gap computed correctly, None when
+  ecmwf_prob missing, survives a fetch exception, model_consensus provably
+  unaffected -- the gap in the passing test (0.15) exceeds the 0.12 threshold
+  on purpose, so a regression that folded it into the gate would flip
+  model_consensus and fail the test), order_executor kwargs-passthrough
+  (mirrors nbm_quantile_prob's tests), tracker round-trip/null/reupsert
+  (mirrors nbm_quantile_prob's tests). New conftest.py autouse fixture
+  (default_ecmwf_aifs_prob_none) stubs the new helper to None for every
+  other test, same pattern as default_gem_ukmo_means_none, to avoid real
+  network calls leaking into unrelated tests.
+  Mutation-tested twice: (1) reverted the whole weather_markets.py diff via
+  git stash -- collection failed with AttributeError as expected (the new
+  tests import _get_ecmwf_aifs_prob at module level); (2) narrower mutation
+  changing the max(...) formula to a single term -- the gap-value test failed
+  with the exact predicted symptom (0.13 instead of 0.15), then both were
+  restored and re-verified green.
+  Regression sweep while building this (weather_markets/tracker/
+  prediction_kwargs/trading/p1_remaining/debug_fixes plus a broader second
+  pass across p9_p10/ml_bias/paper/phase4/retirement_probation/regression/
+  pnl_attribution/phase2_batch_h/cron_integration/live_execution/
+  confidence_tiers/sameday_reserve): 1071 passed, 6 skipped, 0 failures.
+  ruff + ruff format + mypy clean on all 7 changed files.
+  Independent Agent(opus, effort=high) review of the diff: confirmed the
+  gate is unchanged, the helper/cache-key reasoning is correct, the gap
+  formula and None-guards are correct, schema/INSERT/params are internally
+  consistent (44 columns = 43 placeholders + datetime('now'), new column
+  appended at the end everywhere so no existing column shifted), and zero
+  live-trading-behavior change beyond the new log-only column/key. One real
+  finding: the field was originally named ecmwf_consensus_gap_f, but the
+  `_f` suffix means degrees-Fahrenheit everywhere else in this file
+  (ensemble_spread_f, model_disagreement_f, forecast_temp_f) while this
+  value is a probability-space gap in [0,1] -- renamed to
+  ecmwf_consensus_gap_prob across all 6 touched files (mechanical, caught
+  before any data existed under the old name, so no migration/backfill
+  concern) and re-verified lint/mypy/tests green after the rename.
+  Still open, unstarted: item 2, the actual 3-way gating decision
+  (all-pairwise-agreement vs max-min-spread threshold) -- same "when to
+  revisit" trigger as above, now with ecmwf_consensus_gap_prob's own
+  accumulation clock started to eventually inform that threshold choice
+  with real data instead of a guess.
 
 [RESOLVED 2026-07-12] LAS VEGAS / NEW ORLEANS MISSING FROM _HISTORICAL_SIGMA
 Priority: was Low-Medium (silently degraded signal quality for 2 of 20 cities,

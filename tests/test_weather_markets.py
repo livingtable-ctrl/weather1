@@ -31,6 +31,9 @@ from weather_markets import (
 )
 
 _REAL_GET_GEM_UKMO_MEANS = _wm_module._get_gem_ukmo_means
+# Same reasoning as _REAL_GET_GEM_UKMO_MEANS above, for conftest's
+# default_ecmwf_aifs_prob_none autouse fixture.
+_REAL_GET_ECMWF_AIFS_PROB = _wm_module._get_ecmwf_aifs_prob
 
 # ── TestFeelsLike ─────────────────────────────────────────────────────────────
 
@@ -1733,6 +1736,134 @@ def test_analyze_trade_survives_gem_ukmo_fetch_exception(monkeypatch):
     assert means["ecmwf_aifs025_ensemble"] == pytest.approx(76.25)
 
 
+def _ecmwf_gap_test_enriched():
+    """Shared enriched-market fixture for the ecmwf_consensus_gap_prob tests
+    below -- same shape as test_analyze_trade_captures_gem_ukmo_forecast_means's."""
+    from datetime import date, timedelta
+
+    tomorrow = date.today() + timedelta(days=1)
+    return {
+        "_forecast": {"high_f": 75.0, "low_f": 55.0, "precip_in": 0.0, "wind_mph": 5.0},
+        "_date": tomorrow,
+        "_city": "NYC",
+        "_hour": None,
+        "ticker": "KXHIGHNY-26APR09-T72",
+        "title": "Will NYC high temperature be above 72°F?",
+        "series_ticker": "KXHIGH-23-NYC",
+        "yes_ask": 0.72,
+        "yes_bid": 0.62,
+        "volume": 500,
+        "open_interest": 200,
+        "close_time": (
+            __import__("datetime").datetime.now(__import__("datetime").timezone.utc)
+            + __import__("datetime").timedelta(hours=20)
+        ).isoformat(),
+    }
+
+
+def _stub_ecmwf_gap_common(monkeypatch, wm):
+    monkeypatch.setattr(
+        wm, "get_ensemble_temps", lambda *a, **kw: [70.0, 71.0, 72.0, 73.0, 74.0] * 4
+    )
+    monkeypatch.setattr(wm, "get_ensemble_members", lambda *a, **kw: None)
+    monkeypatch.setattr(wm, "fetch_temperature_nbm", lambda *a, **kw: 74.0)
+    monkeypatch.setattr(wm, "fetch_temperature_ecmwf", lambda *a, **kw: 79.5)
+    monkeypatch.setattr(wm, "_metar_lock_in", lambda *a, **kw: (False, 0.0, {}))
+    monkeypatch.setattr(wm, "_SEASONAL_WEIGHTS", {})
+    monkeypatch.setattr(wm, "_CONDITION_WEIGHTS", {})
+    monkeypatch.setattr(wm, "_CITY_WEIGHTS", {})
+    monkeypatch.setattr(
+        wm,
+        "get_weather_forecast",
+        lambda *a, **kw: {
+            "high_f": 75.0,
+            "low_f": 55.0,
+            "precip_in": 0.0,
+            "wind_mph": 5.0,
+        },
+    )
+
+
+def test_analyze_trade_computes_ecmwf_consensus_gap_prob(monkeypatch):
+    """backlog.txt '3-WAY MODEL_CONSENSUS CHECK': analyze_trade must compute
+    ecmwf_consensus_gap_prob as the max pairwise gap between
+    ecmwf_aifs025_ensemble's probability and icon/gfs's, log-only -- and
+    model_consensus must stay exactly icon-vs-gfs (unaffected by ecmwf's
+    probability, even though |icon_p - gfs_p| = 0.02 is well within the
+    existing 0.12 threshold and ecmwf's own gap is much larger)."""
+    import weather_markets as wm
+    from weather_markets import analyze_trade
+
+    _stub_ecmwf_gap_common(monkeypatch, wm)
+    monkeypatch.setattr(
+        wm,
+        "_get_consensus_probs",
+        lambda *a, **kw: (0.73, 0.75, 74.0, 74.5, 76.25),
+    )
+    monkeypatch.setattr(wm, "_get_ecmwf_aifs_prob", lambda *a, **kw: 0.60)
+
+    result = analyze_trade(_ecmwf_gap_test_enriched())
+    assert result is not None, "analyze_trade returned None — fix the enriched dict"
+    # max(|0.73-0.60|, |0.75-0.60|) = max(0.13, 0.15) = 0.15
+    assert result["ecmwf_consensus_gap_prob"] == pytest.approx(0.15), (
+        f"expected max-pairwise-gap 0.15, got {result['ecmwf_consensus_gap_prob']!r}"
+    )
+    assert result["model_consensus"] is True, (
+        "ecmwf_aifs_prob must NOT feed model_consensus -- still icon-vs-gfs only"
+    )
+
+
+def test_analyze_trade_ecmwf_consensus_gap_prob_none_when_ecmwf_prob_missing(
+    monkeypatch,
+):
+    """ecmwf_aifs_prob going None (e.g. below the 5-member floor) must leave
+    ecmwf_consensus_gap_prob None rather than crashing or comparing against
+    None."""
+    import weather_markets as wm
+    from weather_markets import analyze_trade
+
+    _stub_ecmwf_gap_common(monkeypatch, wm)
+    monkeypatch.setattr(
+        wm,
+        "_get_consensus_probs",
+        lambda *a, **kw: (0.73, 0.75, 74.0, 74.5, 76.25),
+    )
+    monkeypatch.setattr(wm, "_get_ecmwf_aifs_prob", lambda *a, **kw: None)
+
+    result = analyze_trade(_ecmwf_gap_test_enriched())
+    assert result is not None
+    assert result["ecmwf_consensus_gap_prob"] is None
+
+
+def test_analyze_trade_survives_ecmwf_aifs_prob_fetch_exception(monkeypatch):
+    """_get_ecmwf_aifs_prob failing must not abort the trade -- mirrors the
+    existing _get_gem_ukmo_means/_get_consensus_probs exception-tolerance
+    behavior, and must not regress model_consensus or the other forecast
+    means (separate try/except block)."""
+    import weather_markets as wm
+    from weather_markets import analyze_trade
+
+    _stub_ecmwf_gap_common(monkeypatch, wm)
+    monkeypatch.setattr(
+        wm,
+        "_get_consensus_probs",
+        lambda *a, **kw: (0.73, 0.75, 74.0, 74.5, 76.25),
+    )
+
+    def _raise_ecmwf_aifs_prob(*a, **kw):
+        raise RuntimeError("simulated ecmwf_aifs_prob fetch failure")
+
+    monkeypatch.setattr(wm, "_get_ecmwf_aifs_prob", _raise_ecmwf_aifs_prob)
+
+    result = analyze_trade(_ecmwf_gap_test_enriched())
+    assert result is not None, (
+        "an ecmwf_aifs_prob fetch exception must not abort the trade"
+    )
+    assert result["ecmwf_consensus_gap_prob"] is None
+    assert result["model_consensus"] is True
+    assert result["model_forecast_means"]["icon_seamless"] == pytest.approx(74.0)
+
+
 def test_metar_locked_trade_has_ecmwf_forecast_mean_keys(monkeypatch):
     """The METAR-locked branch (same-day observation override) skips the model
     path entirely and must still define BOTH ecmwf_aifs_forecast_mean and
@@ -3228,6 +3359,83 @@ class TestGetGemUkmoMeans:
         assert ukmo_mean is None, (
             f"expected None below the 5-member floor, got {ukmo_mean}"
         )
+
+        wm._ensemble_cache.clear()
+
+
+class TestGetEcmwfAifsProb:
+    """backlog.txt '3-WAY MODEL_CONSENSUS CHECK': _get_ecmwf_aifs_prob must
+    return ecmwf_aifs025_ensemble's own member-vote-fraction probability via
+    the same _model_prob_and_mean infra _get_consensus_probs's ecmwf_mean
+    fetch already uses (same cache key, so no second network call on a
+    warm cache). Calls the module-import-time-captured real function
+    (_REAL_GET_ECMWF_AIFS_PROB) since conftest's default_ecmwf_aifs_prob_none
+    autouse fixture stubs weather_markets._get_ecmwf_aifs_prob to None by
+    default."""
+
+    def test_fetches_member_vote_fraction_probability(self, monkeypatch):
+        from unittest.mock import MagicMock
+
+        import weather_markets as wm
+
+        wm._ensemble_cache.clear()
+        wm._ensemble_cb.record_success()  # ensure circuit closed
+
+        # 5 members, 3 above the 70.0 threshold -> prob = 0.6.
+        members = [65.0, 68.0, 71.0, 72.0, 73.0]
+
+        def _fake_om_request(method, url, **kwargs):
+            resp = MagicMock()
+            resp.raise_for_status.return_value = None
+            resp.json.return_value = {
+                "daily": {
+                    f"temperature_2m_max_member{i + 1:02d}": [v]
+                    for i, v in enumerate(members)
+                }
+            }
+            return resp
+
+        monkeypatch.setattr(wm, "_om_request", _fake_om_request)
+
+        from datetime import date, timedelta
+
+        target = date.today() + timedelta(days=3)
+        condition = {"type": "above", "threshold": 70.0}
+
+        prob = _REAL_GET_ECMWF_AIFS_PROB("NYC", target, condition)
+        assert prob == pytest.approx(0.6), f"expected 3/5=0.6, got {prob}"
+
+        wm._ensemble_cache.clear()
+
+    def test_returns_none_when_fewer_than_five_members(self, monkeypatch):
+        from unittest.mock import MagicMock
+
+        import weather_markets as wm
+
+        wm._ensemble_cache.clear()
+        wm._ensemble_cb.record_success()
+
+        def _fake_om_request(method, url, **kwargs):
+            resp = MagicMock()
+            resp.raise_for_status.return_value = None
+            resp.json.return_value = {
+                "daily": {
+                    "temperature_2m_max_member01": [70.0],
+                    "temperature_2m_max_member02": [71.0],
+                    "temperature_2m_max_member03": [72.0],
+                }
+            }
+            return resp
+
+        monkeypatch.setattr(wm, "_om_request", _fake_om_request)
+
+        from datetime import date, timedelta
+
+        target = date.today() + timedelta(days=3)
+        condition = {"type": "above", "threshold": 70.0}
+
+        prob = _REAL_GET_ECMWF_AIFS_PROB("NYC", target, condition)
+        assert prob is None, f"expected None below the 5-member floor, got {prob}"
 
         wm._ensemble_cache.clear()
 

@@ -5832,6 +5832,37 @@ def _get_gem_ukmo_means(
     return gem_mean, ukmo_mean
 
 
+def _get_ecmwf_aifs_prob(
+    city: str,
+    target_date,
+    condition: dict,
+    hour: int | None = None,
+    var: str = "max",
+) -> float | None:
+    """Return ecmwf_aifs025_ensemble's own member-vote-fraction probability.
+
+    backlog.txt "3-WAY MODEL_CONSENSUS CHECK": _get_consensus_probs already
+    fetches ecmwf_aifs025_ensemble (for ecmwf_mean, via the same
+    _model_prob_and_mean call) but discards its probability half. Kept as a
+    separate function rather than widening _get_consensus_probs's 5-tuple --
+    same reasoning as _get_gem_ukmo_means's docstring above: ~20 existing
+    call sites mock/unpack that tuple positionally. This hits the same
+    _ensemble_cache entry _get_consensus_probs's own ecmwf_mean fetch just
+    populated (same cache_key), so it's a cache hit, not a second network
+    call, whenever both are called in the same analyze_trade pass.
+
+    Track-only for now (per the backlog entry's own "when to revisit" note):
+    zero settled ecmwf_aifs025_ensemble observations exist yet to know
+    whether this probability disagrees with icon/gfs in a way worth gating
+    on, so analyze_trade logs the pairwise gap but does NOT fold it into
+    model_consensus.
+    """
+    prob, _ = _model_prob_and_mean(
+        "ecmwf_aifs025_ensemble", city, target_date, condition, hour, var
+    )
+    return prob
+
+
 def kelly_fraction(
     our_prob: float, price: float, fee_rate: float = KALSHI_FEE_RATE
 ) -> float:
@@ -7716,17 +7747,23 @@ def analyze_trade(
         model_consensus = True
         icon_forecast_mean: float | None = None
         gfs_forecast_mean: float | None = None
+        icon_p: float | None = None
+        gfs_p: float | None = None
         # ecmwf_aifs_forecast_mean (ecmwf_aifs025_ensemble) and
         # ecmwf_ifs_forecast_mean (ecmwf_ifs025) feed ECMWF's own
         # learned-weight instrumentation (backlog.txt "TRACK ECMWF FORECAST
-        # ACCURACY") via _score_ensemble_members — neither participates in
-        # model_consensus below; that stays icon-vs-gfs only (a 3-way version
-        # is a separate, not-yet-scoped backlog item, since ecmwf_aifs025_ensemble's
-        # own probability would need mixing with a materially different
-        # methodology than icon/gfs's member-vote-fraction probabilities, and
+        # ACCURACY") via _score_ensemble_members. ecmwf_aifs_prob (below,
+        # backlog.txt "3-WAY MODEL_CONSENSUS CHECK") is now also fetched and
+        # its pairwise gap vs icon_p/gfs_p logged as ecmwf_consensus_gap_prob,
+        # but neither participates in model_consensus below; that stays
+        # icon-vs-gfs only until enough settled ecmwf_aifs025_ensemble
+        # observations exist to pick a defensible 3-way threshold rather
+        # than guessing blind (see the backlog entry's "when to revisit").
         # ecmwf_ifs025 has no probability of its own at all — a single
-        # deterministic point value, no ensemble members).
+        # deterministic point value, no ensemble members — so it still
+        # can't participate either way.
         ecmwf_aifs_forecast_mean: float | None = None
+        ecmwf_aifs_prob: float | None = None
         # ecmwf_ifs025's deterministic value: already fetched unconditionally
         # above (model_temps["ecmwf"], Phase C) — confirmed live 2026-07-23
         # bit-for-bit identical to get_weather_forecast()'s own daily-blend
@@ -7771,6 +7808,28 @@ def analyze_trade(
                     enriched.get("ticker", "?"),
                     _e,
                 )
+            try:
+                ecmwf_aifs_prob = _get_ecmwf_aifs_prob(
+                    city, target_date, condition, hour=hour, var=var
+                )
+            except Exception as _e:
+                _log.warning(
+                    "analyze_trade: _get_ecmwf_aifs_prob failed for %s — leaving None: %s",
+                    enriched.get("ticker", "?"),
+                    _e,
+                )
+
+        # backlog.txt "3-WAY MODEL_CONSENSUS CHECK": log-only max pairwise gap
+        # between ecmwf_aifs025_ensemble's probability and icon/gfs's — does
+        # NOT feed model_consensus above (see the hoisted-var comment block
+        # for why). Starts the accumulation clock needed to pick a defensible
+        # 3-way threshold once enough settled ecmwf_aifs025_ensemble
+        # observations exist.
+        ecmwf_consensus_gap_prob: float | None = None
+        if icon_p is not None and gfs_p is not None and ecmwf_aifs_prob is not None:
+            ecmwf_consensus_gap_prob = round(
+                max(abs(icon_p - ecmwf_aifs_prob), abs(gfs_p - ecmwf_aifs_prob)), 4
+            )
 
         # backlog.txt "GENERALIZED PER-MODEL ACCURACY TRACKING": generic
         # model->forecast_mean mapping (2026-07-23), replacing 4 hardcoded
@@ -8301,6 +8360,9 @@ def analyze_trade(
         ensemble_spread_f = 0.0
         ensemble_spread_prob = 0.0
         nbm_quantile_prob = None  # No NBM-quantile fetch in the METAR-locked path.
+        ecmwf_consensus_gap_prob = (
+            None  # No model-consensus fetch in the METAR-locked path.
+        )
         p_win_gaussian = None
         sigma_gauss = None
         gauss_prob = None  # No Gaussian in METAR-locked path
@@ -8742,6 +8804,9 @@ def analyze_trade(
         "model_disagreement_flag": bool(
             ens_stats and disagree_f is not None and disagree_f > 8.0
         ),
+        # backlog.txt "3-WAY MODEL_CONSENSUS CHECK": log-only, does not gate
+        # model_consensus above.
+        "ecmwf_consensus_gap_prob": ecmwf_consensus_gap_prob,
         # backlog.txt "FORECAST-CONDITION COVARIATES FOR SIGMA": precip_in is
         # already fetched with every forecast (get_weather_forecast's daily
         # call) but was never threaded past the precip-market routing path —
