@@ -49,7 +49,10 @@ What shipped:
   model/var calls with zero 429s and zero circuit-breaker trips.
   Shipped in `6a3809a`.
 
-[OPEN-METEO SEASONAL API MAY ALSO BE RATE-LIMITING -- UNCONFIRMED, UNADDRESSED]
+[RESOLVED 2026-07-24 -- reproduced/ruled out empirically; the entry's own
+  anticipated "may need no fix at all" outcome, plus a proactive caching
+  hygiene fix shipped alongside it]
+  OPEN-METEO SEASONAL API MAY ALSO BE RATE-LIMITING -- UNCONFIRMED, UNADDRESSED
 Priority: Low -- only affects rain-market directional tilt on a trip
   (falls back to ACIS-only, a real quality loss but not a trading-safety
   issue), and hasn't been reproduced with the same rigor as the now-fixed
@@ -109,6 +112,115 @@ When to revisit:
     as part of a broader Open-Meteo rate-limit pass if one is scheduled
     later for other reasons. When picked up, start from the weighted-call
     formula above rather than re-deriving it from scratch.
+
+RESOLVED 2026-07-24: re-verified live before starting -- grepped
+  bot.log/cron.log for every `open_meteo_seasonal` circuit trip in the
+  bot's full retained history (spans 2026-04-09 through today). Exactly
+  ONE trip exists, at 2026-07-23 17:30:05 -- the same incident this entry
+  already describes, not a new one. It occurred 37 seconds after that same
+  cron cycle's SEPARATE `open_meteo_ensemble` circuit also tripped
+  (17:29:28) -- genuinely concurrent, confirmed from the log's own
+  timestamps. `open_meteo_ensemble` has tripped 4 more times since (checked
+  the full log) with zero corresponding `open_meteo_seasonal` trip each
+  time -- weak evidence the seasonal 429 was collateral from that one
+  unusually heavy overlapping burst, not the seasonal endpoint's own volume
+  being over budget on its own.
+  Confirmed the weighted-call formula's real shape for THIS endpoint's
+  actual call shape (not just the ensemble-api's, which the "RESEARCH
+  2026-07-24" note above only confirmed for the ensemble endpoint): a live
+  test request to seasonal-api.open-meteo.com with this bot's exact
+  monthly=precipitation_mean params returns exactly ONE time series (the
+  aggregate mean, ~6 monthly values) -- not 51 SEAS5 member series -- so
+  per the maintainer's own stated formula basis ("the API result includes
+  N individual time-series," not internal computation cost), this call
+  shape's weight is trivial regardless of SEAS5's real 51-member count.
+  Empirically reproduced (not just theorized): replayed
+  acis_precip.py's exact call shape live -- 20 rapid single-location calls
+  covering this bot's full 20-city roster, ~3 seconds -- against the real
+  API. All 20 succeeded, zero 429s, no rate-limit response headers present
+  either. This matches the entry's own explicitly anticipated "may need no
+  change at all if this doesn't reproduce under current call volume"
+  outcome from "What it would look like" above.
+  Conclusion: no fix required for the seasonal endpoint's own request
+  volume. Confirmed this reasoning with the user (AskUserQuestion) before
+  closing the entry, rather than unilaterally deciding "no fix needed" was
+  sufficient to just close it silently.
+  Shipped alongside anyway, at the user's explicit choice (a cheap
+  proactive hygiene improvement, not required by the evidence above):
+  acis_precip.fetch_seasonal_precip_mean_mm had ZERO caching before this --
+  unlike every other forecast fetch in this codebase, every
+  _analyze_monthly_rain_trade() call re-fetched live even within the same
+  scan cycle. Added a ForecastCache-backed cache (_SEASONAL_CACHE_TTL = 4h,
+  matching SEAS5's ~monthly real update cadence), keyed on
+  (lat, lon, tz, year, month), via get_with_ts()'s explicit hit flag so
+  BOTH a successful result AND a None result (fetch failure, or the target
+  month absent from the response) are cached -- same pattern
+  metar.fetch_metar/weather_markets's NBM/ECMWF caches already use. One
+  response also covers ~6 months of data; every (year, month) actually
+  present gets cached from that single fetch, not just the one requested
+  (mirrors weather_markets.py's _ECMWF_CACHE filling both its max/min keys
+  from one response) -- so a market ladder spanning a month boundary in one
+  scan cycle costs 1 live call, not 2+.
+  New tests (tests/test_acis_precip.py, TestFetchSeasonalPrecipMeanMm):
+  successful-result cache hit skips a 2nd HTTP call, different params are
+  genuinely distinct cache entries (not a collision), one response fills
+  every month it contains, a None result (both the exception path and the
+  target-month-absent-from-response path, which are two SEPARATE code
+  paths) is also cached and skips a 2nd HTTP call, and a circuit-open call
+  still serves a cache hit instead of unconditionally returning None. New
+  autouse fixture (_clear_seasonal_cache) isolates the module-level cache
+  between tests.
+  Independent Agent(opus, effort=high) review of the first-pass diff (cache
+  added, only successful results cached) found zero functional defects in
+  the cache-key/JSON logic itself, but 7 real findings, ALL addressed:
+  (1) the "different params" test only varied lat/lon/tz, never (year,
+  month) -- mutation-confirmed vacuous (a cache key missing year/month
+  still passed all 38 tests); fixed by adding a same-coords-different-month
+  call, which while fixing ALSO caught a second, embarrassing bug in that
+  same new test: the added call was accidentally indented OUTSIDE the
+  `with patch.object(...)` mock context, meaning it would have silently hit
+  the REAL live network on every test run instead of the mock -- caught by
+  re-running the mutation test and getting a nonsensical "3 network calls
+  but the value still matched" result, not by inspection. (2) acis_precip's
+  two circuit breakers (_acis_cb, _om_seasonal_cb) were never included in
+  conftest.py's existing reset_open_meteo_circuit_breaker autouse fixture
+  (which only ever covered weather_markets.py's six) -- a pre-existing,
+  repo-wide gap this diff's new tests made meaningfully worse exposure to;
+  fixed by extending that shared fixture rather than a local patch, since
+  the gap affects the whole acis_precip module, not just the new tests.
+  Mutation-tested by manually tripping the real _om_seasonal_cb singleton
+  (5 real failures) and confirming an existing test failed exactly as
+  predicted without the fix, then restoring -- this incidentally wrote to
+  the real data/.cb_state.json (trip_count 1->2) since the manual repro ran
+  outside pytest's path-redirection fixture; caught and corrected the
+  historical counter back to 1 by hand (the blocking state --
+  failure_count/opened_at -- was already correctly healthy from the
+  restoring .record_success() call; only the informational trip_count
+  needed the manual correction). (3)+(5) the original "only cache
+  successful results" design (matching _ensemble_cache's simpler behavior)
+  was upgraded to the codebase's actual DOMINANT None-caching pattern
+  (get_with_ts()'s hit flag, already used by metar.fetch_metar and two
+  weather_markets.py caches) instead of just fixing the comment that
+  undersold it -- this also fixes the reviewer's separately-flagged gap
+  that the target-month-absent-from-response None path (reached after
+  record_success(), a genuinely different code path than the exception
+  path) had neither caching nor circuit-breaker backoff, so a multi-market
+  ladder hitting a known-empty month could still fire one live call per
+  market in a single cycle. (4) switched from the ForecastCache class
+  default TTL to an explicit _SEASONAL_CACHE_TTL constant, matching every
+  other of the 19 other ForecastCache instantiations in this codebase,
+  which all pass an explicit ttl_secs. (6) documented the two behavior
+  changes caching introduces (circuit-open now serves a cache hit instead
+  of unconditional None; a cache hit does not call record_success()) in the
+  function's own docstring. (7) added the multi-key cache-fill (described
+  above) instead of leaving it as a missed optimization.
+  86 tests pass across the scoped sweep (test_acis_precip.py -- 41,
+  including the 6 new/rewritten ones --, test_rain_markets.py), plus 695
+  across a broader regression pass (test_weather_markets.py/test_tracker.py/
+  test_trading.py/test_p1_remaining.py/test_debug_fixes.py/
+  test_forecasting.py/test_prediction_kwargs.py) since conftest.py itself
+  was touched; ruff/ruff format/mypy clean on all 3 changed files
+  (acis_precip.py, tests/test_acis_precip.py, tests/conftest.py).
 
 [RESOLVED 2026-07-23] SYNTHETIC TEST DATA (PROB*/BAD* OUTCOME ROWS) CORRUPTED THE LIVE P10.3 BRIER ALERT FOR 4+ DAYS
 Priority: was High -- silently corrupted a live model-quality safety signal

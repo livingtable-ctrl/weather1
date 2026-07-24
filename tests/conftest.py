@@ -172,13 +172,26 @@ def isolate_tracker_db(tmp_path, monkeypatch):
 
 @pytest.fixture(autouse=True)
 def reset_open_meteo_circuit_breaker():
-    """Reset all weather_markets circuit breakers before every test.
+    """Reset all weather_markets AND acis_precip circuit breakers before
+    every test.
 
-    There are six CBs (_forecast_cb, _ensemble_cb, _ecmwf_om_cb, _nbm_om_cb,
-    _weatherapi_cb, _pirate_cb), all module-level singletons. Any test that
-    trips one leaves it open for subsequent tests, causing false failures
-    (get_weather_forecast returns None).
+    There are six weather_markets CBs (_forecast_cb, _ensemble_cb,
+    _ecmwf_om_cb, _nbm_om_cb, _weatherapi_cb, _pirate_cb) plus acis_precip's
+    two (_acis_cb, _om_seasonal_cb) -- all module-level singletons
+    constructed once at import time, which load their persisted state from
+    the real data/.cb_state.json on disk at that point (isolate_circuit_
+    breaker_state above only redirects _CB_STATE_PATH for future saves, not
+    the state a singleton already loaded before this fixture ever runs).
+    Any test that trips one leaves it open (or with a nonzero failure
+    count) for subsequent tests, causing false failures. acis_precip's two
+    were missed when this fixture was first written for weather_markets
+    only -- found while adding seasonal-API caching (backlog.txt "OPEN-
+    METEO SEASONAL API..."): the real open_meteo_seasonal breaker has a
+    genuine nonzero trip_count on disk (from the actual production incident
+    that entry is about), so any acis_precip test exercising the real fetch
+    function was already exposed to this gap before this fix.
     """
+    import acis_precip
     import weather_markets
 
     for cb in (
@@ -188,6 +201,8 @@ def reset_open_meteo_circuit_breaker():
         weather_markets._nbm_om_cb,
         weather_markets._weatherapi_cb,
         weather_markets._pirate_cb,
+        acis_precip._acis_cb,
+        acis_precip._om_seasonal_cb,
     ):
         cb.record_success()  # clears _failure_count and _opened_at
     yield

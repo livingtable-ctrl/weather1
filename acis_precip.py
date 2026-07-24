@@ -23,6 +23,7 @@ import requests
 
 import safe_io
 from circuit_breaker import CircuitBreaker
+from forecast_cache import ForecastCache
 
 _log = logging.getLogger(__name__)
 
@@ -31,6 +32,22 @@ _acis_cb = CircuitBreaker(
 )
 _om_seasonal_cb = CircuitBreaker(
     name="open_meteo_seasonal", failure_threshold=5, recovery_timeout=600
+)
+
+# backlog.txt "OPEN-METEO SEASONAL API MAY ALSO BE RATE-LIMITING": unlike
+# every other forecast fetch in this codebase (e.g. weather_markets.py's
+# _ensemble_cache), fetch_seasonal_precip_mean_mm had zero caching -- every
+# _analyze_monthly_rain_trade() call re-fetched live, even within the same
+# scan cycle. SEAS5 monthly data only updates ~monthly server-side, so this
+# TTL is far more than fresh enough. Both successes AND None results are
+# cached, via ForecastCache.get_with_ts()'s explicit hit flag -- the same
+# pattern metar.fetch_metar/weather_markets's NBM/ECMWF caches already use
+# to safely cache None without the "stored None is indistinguishable from
+# a cache miss" gotcha a bare .get() would have (see fetch_seasonal_precip_
+# mean_mm's own docstring for why caching None matters here specifically).
+_SEASONAL_CACHE_TTL = 4 * 3600
+_seasonal_cache: ForecastCache[float | None] = ForecastCache(
+    ttl_secs=_SEASONAL_CACHE_TTL
 )
 
 DATA_DIR = Path(__file__).parent / "data"
@@ -260,7 +277,35 @@ def fetch_seasonal_precip_mean_mm(
     precipitation_sum, which 400s, confirmed live). Returns the ECMWF SEAS5
     monthly-mean precip in mm for (year, month), or None on any failure or
     if the target month is outside the API's ~6-month forecast window.
-    Best-effort: never fatal to the caller if unavailable."""
+    Best-effort: never fatal to the caller if unavailable.
+
+    Cached in _seasonal_cache (_SEASONAL_CACHE_TTL) via get_with_ts()'s
+    explicit hit flag -- same pattern as metar.fetch_metar/weather_markets's
+    NBM/ECMWF caches, so a None result (fetch failure OR the target month
+    being outside the response window) is cached too, not just a success.
+    This is deliberate: a single ladder of markets across a month boundary
+    can call this several times per scan cycle for the same (lat, lon, tz)
+    with different (year, month) -- caching None as readily as a real value
+    stops a known-empty lookup from re-hitting the network every time within
+    the TTL, the same protection a real value already got. One response
+    also covers ~6 months; every (year, month) actually present is cached
+    from a single fetch, not just the one requested (mirrors
+    weather_markets.py's _ECMWF_CACHE filling both its max/min keys from one
+    response) -- so a caller stepping through 2 adjacent months in the same
+    cycle only ever pays for 1 live call, not 2.
+
+    Two side effects of caching worth knowing: while the circuit is open,
+    a cache hit still returns its (possibly several-hours-old) cached value
+    instead of unconditionally going straight to None (matches
+    get_ensemble_temps's existing circuit-vs-cache precedence); and a cache
+    hit does not call record_success(), so it does not clear any
+    accumulated circuit-breaker failure count the way a fresh successful
+    fetch would."""
+    cache_key = (lat, lon, tz, year, month)
+    cached, hit, _ = _seasonal_cache.get_with_ts(cache_key)
+    if hit:
+        return cached
+
     if _om_seasonal_cb.is_open():
         _log.info(
             "[CircuitBreaker] open_meteo_seasonal circuit open — skipping seasonal fetch"
@@ -280,15 +325,29 @@ def fetch_seasonal_precip_mean_mm(
     except Exception as exc:
         _om_seasonal_cb.record_failure()
         _log.info("fetch_seasonal_precip_mean_mm: fetch failed: %s", exc)
+        _seasonal_cache.set(cache_key, None)
         return None
 
     times = monthly.get("time", [])
     values = monthly.get("precipitation_mean", [])
-    target = f"{year:04d}-{month:02d}"
+    result: float | None = None
     for t, v in zip(times, values):
-        if isinstance(t, str) and t.startswith(target) and v is not None:
-            return float(v)
-    return None
+        if not (isinstance(t, str) and v is not None):
+            continue
+        try:
+            t_year, t_month = int(t[:4]), int(t[5:7])
+        except (ValueError, IndexError):
+            continue
+        entry_val = float(v)
+        _seasonal_cache.set((lat, lon, tz, t_year, t_month), entry_val)
+        if t_year == year and t_month == month:
+            result = entry_val
+    if result is None:
+        # Target month genuinely absent from this response (outside the
+        # ~6-month window) -- the loop above never wrote this exact
+        # cache_key, so cache the miss explicitly here.
+        _seasonal_cache.set(cache_key, None)
+    return result
 
 
 def historical_remaining_and_full_month_sums(
