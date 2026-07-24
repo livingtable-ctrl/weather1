@@ -2055,6 +2055,12 @@ def _prediction_kwargs_from_analysis(a: dict) -> dict:
         fit_residual=_mi.get("fit_residual"),
         liquidity_edge_scale=a.get("liquidity_edge_scale"),
         gated_edge=a.get("gated_edge"),
+        # backlog.txt "RICHER ML CALIBRATION FEATURES" + "FORECAST-CONDITION
+        # COVARIATES FOR SIGMA" -- log-only, both already computed onto `a`
+        # by analyze_trade(), not derived here.
+        ensemble_spread_f=a.get("ensemble_spread_f"),
+        model_disagreement_f=a.get("model_disagreement_f"),
+        precip_sum_in=a.get("precip_sum_in"),
     )
 
 

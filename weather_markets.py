@@ -1216,10 +1216,7 @@ def get_weather_forecast(city: str, target_date: date) -> dict | None:
                 "precip_type": pw_data.get("precip_type"),
                 "dew_point_f": pw_data.get("dew_point_f"),
                 "humidity": pw_data.get("humidity"),
-                "wind_gust": pw_data.get("wind_gust"),
-                "_wind_gust_time_unix": pw_data.get("_wind_gust_time_unix"),
                 "_temp_max_time_unix": pw_data.get("_temp_max_time_unix"),
-                "_hourly_window_high_f": pw_data.get("_hourly_window_high_f"),
                 "_active_alerts": pw_data.get("_active_alerts", []),
                 "_has_severe_alert": pw_data.get("_has_severe_alert", False),
                 "_source_freshness_hours": pw_data.get("_source_freshness_hours", {}),
@@ -2190,47 +2187,8 @@ def fetch_temperature_pirate_weather(city: str, target_date: date) -> dict | Non
         dew_point_f = entry.get("dewPoint")
         humidity = entry.get("humidity")
 
-        # ── Item 11: windGust, windGustTime ───────────────────────────────────
-        wind_gust = entry.get("windGust")
-        wind_gust_time_unix = entry.get("windGustTime")
-
         # ── Item 8: elevation (top-level field) ───────────────────────────────
         elevation_m = data.get("elevation")
-
-        # ── Item 3: hourly settlement-window high (forecast only) ─────────────
-        hourly_window_high_f: float | None = None
-        if not is_historical:
-            hourly_data = data.get("hourly", {}).get("data", [])
-            if hourly_data:
-                # Collect hours 6am-9pm LOCAL time for target_date. Both the day
-                # boundary and the hour-of-day check must be anchored in the
-                # city's timezone (_city_tz, from the M-14 fix above) — anchoring
-                # in UTC instead gave e.g. 1am-4pm local for ET cities and
-                # 10pm(prev day)-1pm local for Pacific cities, silently missing
-                # the actual afternoon-high hours the window claims to cover.
-                target_ts_start_h = int(
-                    datetime(
-                        target_date.year,
-                        target_date.month,
-                        target_date.day,
-                        tzinfo=_city_tz,
-                    ).timestamp()
-                )
-                target_ts_end_h = target_ts_start_h + 86400
-                window_temps = []
-                for h_entry in hourly_data:
-                    h_ts = h_entry.get("time", 0)
-                    # Filter to the target calendar day (local-anchored)
-                    if not (target_ts_start_h <= h_ts < target_ts_end_h):
-                        continue
-                    # Hour-of-day within the LOCAL day: 6am (6h) to 9pm (21h)
-                    _local_hour = datetime.fromtimestamp(h_ts, tz=_city_tz).hour
-                    if 6 <= _local_hour <= 21:
-                        t_val = h_entry.get("temperature")
-                        if t_val is not None:
-                            window_temps.append(float(t_val))
-                if window_temps:
-                    hourly_window_high_f = max(window_temps)
 
         # ── Item 7: precipIntensityError — average over hourly data for target_date ─
         precip_intensity_error: float | None = None
@@ -2308,13 +2266,8 @@ def fetch_temperature_pirate_weather(city: str, target_date: date) -> dict | Non
             # Item 10
             "dew_point_f": float(dew_point_f) if dew_point_f is not None else None,
             "humidity": float(humidity) if humidity is not None else None,
-            # Item 11
-            "wind_gust": float(wind_gust) if wind_gust is not None else None,
-            "_wind_gust_time_unix": wind_gust_time_unix,
             # Item 5
             "_temp_max_time_unix": temp_max_time_unix,
-            # Item 3
-            "_hourly_window_high_f": hourly_window_high_f,
             # Item 4
             "_active_alerts": active_alerts,
             "_has_severe_alert": has_severe_alert,
@@ -8710,6 +8663,11 @@ def analyze_trade(
         "model_disagreement_flag": bool(
             ens_stats and disagree_f is not None and disagree_f > 8.0
         ),
+        # backlog.txt "FORECAST-CONDITION COVARIATES FOR SIGMA": precip_in is
+        # already fetched with every forecast (get_weather_forecast's daily
+        # call) but was never threaded past the precip-market routing path —
+        # surfaced here log-only for the temperature path too.
+        "precip_sum_in": forecast.get("precip_in") if forecast else None,
     }
     save_forecast_snapshot(enriched.get("ticker", "unknown"), forecast)
     return _result

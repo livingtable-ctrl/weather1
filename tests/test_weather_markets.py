@@ -1196,6 +1196,126 @@ def test_analyze_trade_result_has_model_consensus_field(monkeypatch):
     assert isinstance(result["near_threshold"], bool)
 
 
+def test_analyze_trade_result_surfaces_precip_sum_in(monkeypatch):
+    """backlog.txt "FORECAST-CONDITION COVARIATES FOR SIGMA": precip_in is
+    already fetched with every forecast (get_weather_forecast's daily call)
+    but was never threaded past precip-market routing into the temperature-
+    path result dict -- analyze_trade must surface it log-only as
+    precip_sum_in, read straight from enriched["_forecast"]."""
+    import weather_markets as wm
+    from weather_markets import analyze_trade
+
+    monkeypatch.setattr(
+        wm, "get_ensemble_temps", lambda *a, **kw: [70.0, 71.0, 72.0, 73.0, 74.0] * 4
+    )
+    monkeypatch.setattr(wm, "get_ensemble_members", lambda *a, **kw: None)
+    monkeypatch.setattr(
+        wm, "_get_consensus_probs", lambda *a, **kw: (0.73, 0.75, 74.0, 74.0, None)
+    )
+    monkeypatch.setattr(wm, "fetch_temperature_nbm", lambda *a, **kw: 74.0)
+    monkeypatch.setattr(wm, "fetch_temperature_ecmwf", lambda *a, **kw: 74.0)
+    monkeypatch.setattr(wm, "_metar_lock_in", lambda *a, **kw: (False, 0.0, {}))
+    monkeypatch.setattr(wm, "_SEASONAL_WEIGHTS", {})
+    monkeypatch.setattr(wm, "_CONDITION_WEIGHTS", {})
+    monkeypatch.setattr(wm, "_CITY_WEIGHTS", {})
+    monkeypatch.setattr(
+        wm,
+        "get_weather_forecast",
+        lambda *a, **kw: {
+            "high_f": 75.0,
+            "low_f": 55.0,
+            "precip_in": 0.37,
+            "wind_mph": 5.0,
+        },
+    )
+
+    from datetime import date, timedelta
+
+    tomorrow = date.today() + timedelta(days=1)
+    enriched = {
+        "_forecast": {
+            "high_f": 75.0,
+            "low_f": 55.0,
+            "precip_in": 0.37,
+            "wind_mph": 5.0,
+        },
+        "_date": tomorrow,
+        "_city": "NYC",
+        "_hour": None,
+        "ticker": "KXHIGHNY-26APR09-T72",
+        "title": "Will NYC high temperature be above 72°F?",
+        "series_ticker": "KXHIGH-23-NYC",
+        "yes_ask": 0.72,
+        "yes_bid": 0.62,
+        "volume": 500,
+        "open_interest": 200,
+        "close_time": (
+            __import__("datetime").datetime.now(__import__("datetime").timezone.utc)
+            + __import__("datetime").timedelta(hours=20)
+        ).isoformat(),
+    }
+    result = analyze_trade(enriched)
+    assert result is not None, "analyze_trade returned None — fix the enriched dict"
+    assert result["precip_sum_in"] == 0.37
+
+
+def test_analyze_trade_result_precip_sum_in_none_when_key_missing(monkeypatch):
+    """A forecast dict without a "precip_in" key (e.g. an older cache entry,
+    or a source that doesn't populate it) must yield precip_sum_in=None via
+    .get()'s default, not a KeyError.
+
+    Note: enriched["_forecast"] = None makes analyze_trade bail out early at
+    its own "no_forecast" gate (verified directly -- returns None before
+    reaching the result dict at all), so that case can't exercise this
+    ternary's False branch meaningfully. This uses a present-but-incomplete
+    forecast dict instead, which analyze_trade processes normally."""
+    import weather_markets as wm
+    from weather_markets import analyze_trade
+
+    monkeypatch.setattr(
+        wm, "get_ensemble_temps", lambda *a, **kw: [70.0, 71.0, 72.0, 73.0, 74.0] * 4
+    )
+    monkeypatch.setattr(wm, "get_ensemble_members", lambda *a, **kw: None)
+    monkeypatch.setattr(
+        wm, "_get_consensus_probs", lambda *a, **kw: (0.73, 0.75, 74.0, 74.0, None)
+    )
+    monkeypatch.setattr(wm, "fetch_temperature_nbm", lambda *a, **kw: 74.0)
+    monkeypatch.setattr(wm, "fetch_temperature_ecmwf", lambda *a, **kw: 74.0)
+    monkeypatch.setattr(wm, "_metar_lock_in", lambda *a, **kw: (False, 0.0, {}))
+    monkeypatch.setattr(wm, "_SEASONAL_WEIGHTS", {})
+    monkeypatch.setattr(wm, "_CONDITION_WEIGHTS", {})
+    monkeypatch.setattr(wm, "_CITY_WEIGHTS", {})
+    monkeypatch.setattr(
+        wm,
+        "get_weather_forecast",
+        lambda *a, **kw: {"high_f": 75.0, "low_f": 55.0, "wind_mph": 5.0},
+    )
+
+    from datetime import date, timedelta
+
+    tomorrow = date.today() + timedelta(days=1)
+    enriched = {
+        "_forecast": {"high_f": 75.0, "low_f": 55.0, "wind_mph": 5.0},
+        "_date": tomorrow,
+        "_city": "NYC",
+        "_hour": None,
+        "ticker": "KXHIGHNY-26APR09-T72",
+        "title": "Will NYC high temperature be above 72°F?",
+        "series_ticker": "KXHIGH-23-NYC",
+        "yes_ask": 0.72,
+        "yes_bid": 0.62,
+        "volume": 500,
+        "open_interest": 200,
+        "close_time": (
+            __import__("datetime").datetime.now(__import__("datetime").timezone.utc)
+            + __import__("datetime").timedelta(hours=20)
+        ).isoformat(),
+    }
+    result = analyze_trade(enriched)
+    assert result is not None, "analyze_trade returned None — fix the enriched dict"
+    assert result["precip_sum_in"] is None
+
+
 def test_model_consensus_false_when_models_disagree(monkeypatch):
     """model_consensus is False when ICON and GFS differ by more than 8pp."""
     import weather_markets as wm

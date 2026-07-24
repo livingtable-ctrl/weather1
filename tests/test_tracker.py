@@ -4965,6 +4965,86 @@ class TestLogPredictionLiquidityEdgeScale(unittest.TestCase):
         assert row["gated_edge"] is None
 
 
+class TestLogPredictionCalibrationCovariateFields(unittest.TestCase):
+    """log_prediction() must persist ensemble_spread_f/model_disagreement_f/
+    precip_sum_in (backlog.txt "RICHER ML CALIBRATION FEATURES" +
+    "FORECAST-CONDITION COVARIATES FOR SIGMA") through the UPSERT round-trip,
+    log-only -- not consumed by ml_bias.py's training vector or
+    get_historical_sigma, this only starts the accumulation clock."""
+
+    def test_calibration_covariate_fields_round_trip_through_upsert(self):
+        tracker.log_prediction(
+            "TEST-TICKER-CCF-1",
+            "NYC",
+            date(2099, 1, 1),
+            {"forecast_prob": 0.6, "market_prob": 0.5},
+            ensemble_spread_f=3.4,
+            model_disagreement_f=1.2,
+            precip_sum_in=0.15,
+        )
+        with tracker._conn() as con:
+            row = con.execute(
+                "SELECT ensemble_spread_f, model_disagreement_f, precip_sum_in "
+                "FROM predictions WHERE ticker = ?",
+                ("TEST-TICKER-CCF-1",),
+            ).fetchone()
+        assert row is not None
+        assert row["ensemble_spread_f"] == 3.4
+        assert row["model_disagreement_f"] == 1.2
+        assert row["precip_sum_in"] == 0.15
+
+    def test_calibration_covariate_fields_absent_stores_null_columns(self):
+        tracker.log_prediction(
+            "TEST-TICKER-CCF-2",
+            "NYC",
+            date(2099, 1, 1),
+            {"forecast_prob": 0.6, "market_prob": 0.5},
+        )
+        with tracker._conn() as con:
+            row = con.execute(
+                "SELECT ensemble_spread_f, model_disagreement_f, precip_sum_in "
+                "FROM predictions WHERE ticker = ?",
+                ("TEST-TICKER-CCF-2",),
+            ).fetchone()
+        assert row is not None
+        assert row["ensemble_spread_f"] is None
+        assert row["model_disagreement_f"] is None
+        assert row["precip_sum_in"] is None
+
+    def test_calibration_covariate_fields_update_on_reupsert(self):
+        # Same (ticker, predicted_date) re-logged same day -- new values must
+        # overwrite (plain excluded.* SET, no MIN()/coalesce -- these aren't
+        # monotonic flags like is_shadow/is_probation).
+        tracker.log_prediction(
+            "TEST-TICKER-CCF-3",
+            "NYC",
+            date(2099, 1, 1),
+            {"forecast_prob": 0.6, "market_prob": 0.5},
+            ensemble_spread_f=2.0,
+            model_disagreement_f=0.5,
+            precip_sum_in=0.0,
+        )
+        tracker.log_prediction(
+            "TEST-TICKER-CCF-3",
+            "NYC",
+            date(2099, 1, 1),
+            {"forecast_prob": 0.65, "market_prob": 0.5},
+            ensemble_spread_f=5.5,
+            model_disagreement_f=2.1,
+            precip_sum_in=0.42,
+        )
+        with tracker._conn() as con:
+            row = con.execute(
+                "SELECT ensemble_spread_f, model_disagreement_f, precip_sum_in "
+                "FROM predictions WHERE ticker = ?",
+                ("TEST-TICKER-CCF-3",),
+            ).fetchone()
+        assert row is not None
+        assert row["ensemble_spread_f"] == 5.5
+        assert row["model_disagreement_f"] == 2.1
+        assert row["precip_sum_in"] == 0.42
+
+
 class TestGetModelWeightsExcludesTrackingOnlyModels:
     """Opus review finding on the GENERALIZED PER-MODEL ACCURACY TRACKING
     Pass 2 diff: get_model_weights()'s softmax summed EVERY model with

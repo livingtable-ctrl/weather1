@@ -27,7 +27,7 @@ DB_PATH.parent.mkdir(exist_ok=True)
 
 _db_initialized = False
 
-_SCHEMA_VERSION = 53  # increment when _MIGRATIONS list grows
+_SCHEMA_VERSION = 56  # increment when _MIGRATIONS list grows
 
 _MIGRATIONS = [
     # v1 → v2: add condition_type column (if not already added)
@@ -316,6 +316,19 @@ _MIGRATIONS = [
     # backfill -- pre-migration rows can't be recovered, same reasoning as
     # the v34->v35 ensemble_member_scores.var migration.
     "ALTER TABLE predictions ADD COLUMN var TEXT",
+    # v53 -> v56: log-only calibration/covariate columns (backlog.txt "RICHER
+    # ML CALIBRATION FEATURES" + "FORECAST-CONDITION COVARIATES FOR SIGMA").
+    # All three are already computed at trade time (weather_markets.py's
+    # analyze_trade result dict / forecast dict) and were being discarded
+    # before this -- threading them through here only starts the
+    # accumulation clock; ml_bias.py's feature vector and get_historical_sigma
+    # are NOT changed by this migration, retraining/covariate use is a
+    # separate future step once enough rows exist. No backfill -- pre-
+    # migration rows can't be recovered, same reasoning as every other
+    # column added this way in this list.
+    "ALTER TABLE predictions ADD COLUMN ensemble_spread_f REAL",
+    "ALTER TABLE predictions ADD COLUMN model_disagreement_f REAL",
+    "ALTER TABLE predictions ADD COLUMN precip_sum_in REAL",
 ]
 
 
@@ -720,6 +733,9 @@ def log_prediction(
     gated_edge: float | None = None,
     is_shadow: bool = False,
     is_probation: bool = False,
+    ensemble_spread_f: float | None = None,
+    model_disagreement_f: float | None = None,
+    precip_sum_in: float | None = None,
     conn: sqlite3.Connection | None = None,
 ) -> bool:
     """Save a prediction to the database.
@@ -727,6 +743,13 @@ def log_prediction(
     #37: Optionally stores the NWP forecast cycle (00z/06z/12z/18z).
     #84: Optionally stores blend_sources dict (model weights) as JSON.
     P9.1: Optionally stores edge_calc_version for strategy version tracking.
+    ensemble_spread_f/model_disagreement_f/precip_sum_in: optional scalars
+    from weather_markets.analyze_trade()'s result dict / forecast dict
+    (backlog.txt "RICHER ML CALIBRATION FEATURES" + "FORECAST-CONDITION
+    COVARIATES FOR SIGMA"). Stored log-only; not consumed by ml_bias.py's
+    training feature vector or get_historical_sigma yet -- this only starts
+    the accumulation clock those entries require before retraining/covariate
+    use can happen.
     run_trend: optional dict from weather_markets.get_forecast_run_trend's
     caller-side result (see analyze_trade's "run_trend" key) -- shape
     {"points": [{"lead": N, "value": V}, ...], "delta": ..., "jumpy": ...}.
@@ -825,8 +848,9 @@ def log_prediction(
            forecast_temp_f, model_consensus, ens_mean, ens_var, is_shadow,
            run_trend_points, run_trend_delta, run_trend_jumpy,
            implied_mean, implied_sigma, fit_residual,
-           liquidity_edge_scale, gated_edge, is_probation, var)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'),?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+           liquidity_edge_scale, gated_edge, is_probation, var,
+           ensemble_spread_f, model_disagreement_f, precip_sum_in)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'),?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         ON CONFLICT(ticker, predicted_date) DO UPDATE SET
             our_prob         = excluded.our_prob,
             raw_prob         = excluded.raw_prob,
@@ -868,7 +892,10 @@ def log_prediction(
             -- the same ticker must update var if it changed, not silently
             -- keep the first-ever value forever (backlog.txt "HOURLY-
             -- DIRECTIONAL TEMPERATURE MARKETS" Step 2 handoff item 2).
-            var              = excluded.var
+            var              = excluded.var,
+            ensemble_spread_f    = excluded.ensemble_spread_f,
+            model_disagreement_f = excluded.model_disagreement_f,
+            precip_sum_in         = excluded.precip_sum_in
         """
     params = (
         ticker,
@@ -909,6 +936,9 @@ def log_prediction(
         gated_edge,
         int(is_probation),
         cond.get("var"),
+        ensemble_spread_f,
+        model_disagreement_f,
+        precip_sum_in,
     )
     # Atomic upsert — unique index on (ticker, predicted_date) prevents
     # duplicate rows from concurrent calls (TOCTOU of old SELECT+INSERT pattern).
