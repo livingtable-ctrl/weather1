@@ -76,10 +76,39 @@ What it would look like:
   short delay if seasonal calls are infrequent enough, or may need no
   change at all if this doesn't reproduce under current call volume).
 
+RESEARCH 2026-07-24 (mechanism confirmed, not yet applied to this specific
+  endpoint): found the actual rate-limiting mechanism behind the now-fixed
+  ensemble-api case, straight from Open-Meteo's maintainer (Patrick
+  Zippenfenig, github.com/open-meteo/open-meteo issue #439, and confirmed
+  independently on the pricing page's own "How is one API call defined?"
+  section): free-tier limits are 600 calls/min, 5,000/hr, 10,000/day, but
+  a "call" is NOT one HTTP request -- it's weighted as
+  (ensemble members x variables / 10) PER LOCATION, summed across every
+  location in a batched request. This is exactly why combining models
+  into fewer HTTP requests didn't help the ensemble-api fix -- the throttle
+  scales with data volume, not request count. Live-verified ensemble member
+  counts (2026-07-24, via a direct ensemble-api query) for this bot's 5
+  models: icon_seamless=40, gfs_seamless=31, ecmwf_aifs025_ensemble=51,
+  gem_global=21, ukmo_global_ensemble_20km=18, across this bot's 20 cities.
+  Working the same formula for acis_precip.py's seasonal-API calls (monthly
+  precip, ECMWF SEAS5 ensemble) would follow the identical method -- just
+  needs that endpoint's own member count and call pattern plugged in,
+  which this pass didn't do (out of scope -- was researching the ensemble-
+  api mechanism for a different, now-resolved question, not this entry).
+  Paid tiers remove the per-minute/hour/day ceiling entirely (dedicated
+  instance, monthly call budget only) but likely still apply the same
+  weighted-call counting toward that budget -- unconfirmed whether paid
+  tier changes anything for THIS specific endpoint's behavior, since the
+  free-tier ensemble-api problem was fully resolved via the code-level
+  tiered-fetch fix instead of a purchase. No purchase currently justified
+  for this entry either -- same reasoning, try the free reproduce-and-fix
+  approach first.
+
 When to revisit:
   - If `open_meteo_seasonal` circuit-breaker trips recur in cron output, or
     as part of a broader Open-Meteo rate-limit pass if one is scheduled
-    later for other reasons.
+    later for other reasons. When picked up, start from the weighted-call
+    formula above rather than re-deriving it from scratch.
 
 [RESOLVED 2026-07-23] SYNTHETIC TEST DATA (PROB*/BAD* OUTCOME ROWS) CORRUPTED THE LIVE P10.3 BRIER ALERT FOR 4+ DAYS
 Priority: was High -- silently corrupted a live model-quality safety signal
@@ -3328,34 +3357,39 @@ When to revisit:
     below, since both are gated on the same kind of settled-trade volume
     growing over time).
 
-[RICHER ML CALIBRATION FEATURES]
+[PARTIALLY RESOLVED 2026-07-24 -- logging side shipped; retraining/feature-
+  vector wiring still gated on accumulation, as this entry's own "when to
+  revisit" always said] RICHER ML CALIBRATION FEATURES
 Priority: Medium (model architecture is fine; the feature vector is the
   bottleneck)
 
-Problem:
+Problem (as originally scoped):
   The GradientBoosting bias model trains on exactly [our_prob, month,
   days_out, 0.0] (ml_bias.py:204) — four features, the fourth literally
   always zero. Ensemble spread, ICON/GFS disagreement, data_quality score,
   condition_type, and sigma-used are all computed at trade time and
   discarded before training.
 
-What the fix looks like:
-  Thread 2-3 of the highest-value candidates (ensemble spread and model
-  disagreement first) through the predictions table into the training rows;
-  let the existing `features` importance command arbitrate which earn their
-  place. Do NOT add many at once — the 200-samples-per-city training gate
-  means feature count must stay small relative to data.
+What shipped (2026-07-24, combined with FORECAST-CONDITION COVARIATES FOR
+  SIGMA above in one logging pass):
+  ensemble_spread_f and model_disagreement_f (both already computed at
+  trade time in analyze_trade()'s result dict, just never persisted)
+  threaded through log_prediction()/tracker.predictions (schema v56) and
+  the shared _prediction_kwargs_from_analysis() helper, log-only. 6 new
+  tests, opus review clean, pushed `9f2ad91`.
 
-Why not now:
-  - Needs schema addition + weeks of newly-logged rows before retraining
-    can use them (existing rows lack the new fields).
-  - RE-VERIFIED 2026-07-20: still exactly [our_prob, month, days_out, 0.0]
-    (ml_bias.py:204); no ensemble_spread/model_disagreement/data_quality/
-    sigma_used columns exist yet on multiday_predictions. Nothing unblocked.
+Still open (unchanged from original scoping):
+  - ml_bias.py:204's training feature vector itself is UNTOUCHED -- still
+    exactly [our_prob, month, days_out, 0.0]. This was deliberate: the
+    200-samples-per-city training gate means retraining needs weeks of
+    newly-logged rows with the new columns before it can use them
+    (existing rows lack them, no backfill possible). data_quality/
+    condition_type/sigma_used are also still not logged.
 
 When to revisit:
-  - Ship the logging side early (same "data accumulates only from when it
-    ships" logic as candlesticks); retrain when enough enriched rows exist.
+  - Once enough ensemble_spread_f/model_disagreement_f rows accumulate,
+    let the existing `features` importance command arbitrate whether they
+    actually earn a place in ml_bias.py's training vector.
 
 [RESOLVED 2026-07-23 -- Pass 1 (generic mapping) and Pass 2 (GEM/UKMO wiring) both shipped] GENERALIZED PER-MODEL ACCURACY TRACKING + NEW AI MODEL SOURCES
 Priority: Medium (supersedes-and-extends [TRACK ECMWF FORECAST ACCURACY]
@@ -5215,49 +5249,63 @@ When to revisit:
     check-back trigger, once both trade_history and price_history have a
     real multi-week window of data.
 
-[NBM PROBABILISTIC QUANTILES -- ORPHANED CONVERTER, MISSING FETCHER]
-Priority: Low-Medium -- the consumer half already exists in-tree; only the
-  fetch half is missing, but the fetch half needs real research.
+[RESOLVED 2026-07-24] NBM PROBABILISTIC QUANTILES -- ORPHANED CONVERTER, MISSING FETCHER
+Priority: was Low-Medium -- the consumer half already existed in-tree; only
+  the fetch half was missing, and the fetch half needed real research.
 
-Problem:
-  nws.nws_prob_from_quantiles() (nws.py:324-376) is a complete,
+Problem (as originally scoped):
+  nws.nws_prob_from_quantiles() (nws.py, then :324-376) was a complete,
   documented NBM-percentile->probability converter (linear ECDF over
   {10,25,50,75,90} percentiles with tail extrapolation) with zero
-  production callers and zero code anywhere fetching NBM percentiles
-  (repo-wide grep 2026-07-16: only its own definition). nws.py is outside
-  tests/test_dead_code_scan.py's scope (paper/tracker/weather_markets
-  only), so the scan will never surface it. NBM's quantile output (QMD)
-  is a calibrated per-day, per-station uncertainty estimate -- a daily
-  dynamic sigma that would sharpen the current per-month climate sigma
-  (get_historical_sigma :2209) and capture skew a symmetric Gaussian
-  can't.
+  production callers and zero code anywhere fetching NBM percentiles.
 
-What it would look like:
-  Research pass first -- NBM percentiles live in the QMD grib products on
-  NOMADS (not in the NBS text bulletins live-tested for the REAL NBM
-  entry above, and not exposed by api.weather.gov); check whether IEM or
-  another JSON-friendly mirror serves them before committing to grib
-  parsing. If a clean source exists: fetch per station/day, feed
-  nws_prob_from_quantiles as either the NWS-slot probability for tail
-  buckets or a sigma source, gated/log-only first.
+Research (2026-07-24): the originally-assumed source (QMD grib on NOMADS)
+  turned out unnecessary -- IEM mirrors a second NBM text-bulletin product,
+  NBP ("NBM V5.0 NBP GUIDANCE"), via the SAME AFOS-PIL mechanism already
+  used for the REAL NBM entry's NBS bulletins (mesonet.agron.iastate.edu/
+  wx/afos/p.php?pil=NBP<station>), live-verified for KMDW/KSSF/KLAX with
+  real TXNP1/2/5/7/9 rows matching NOAA's own NBM text-card docs exactly
+  (10th/25th/50th/75th/90th percentile max/min temp). One real correction
+  mid-research: IEM's clean JSON MOS API (api/1/mos.json, what NBS already
+  uses) does NOT serve this product -- confirmed live via a direct request,
+  `model=NBP` returns HTTP 422 with the exact validation pattern
+  `^(AVN|GFS|ETA|NAM|NBS|NBE|ECM|LAV|MEX)$` excluding it -- so this needed
+  a new raw-AFOS-text parser, not a JSON-mirror reuse as first assumed;
+  surfaced via AskUserQuestion, user said build it anyway.
 
-Why not now:
-  - No verified JSON source yet (grib parsing would add a heavy
-    dependency for one signal -- likely not worth it alone); do the
-    source-hunting as part of the REAL NBM entry's IEM work since it's
-    the same product family. If no clean source exists, decide
-    wire-up-or-delete for the orphan explicitly and extend the dead-code
-    scan to nws.py either way.
+What shipped:
+  mos.py: _parse_nbp_bulletin()/_fetch_nbp_percentiles()/
+  fetch_nbm_quantiles(), mirroring fetch_nbm_iem()'s shape. Dates computed
+  from the bulletin's own run-time header + each column's FHR offset (not
+  the ambiguous human day-labels), reusing NBS's already-reviewed
+  00Z=max/12Z=min + local-date derivation byte-for-byte.
+  weather_markets.py: analyze_trade() computes nbm_quantile_prob log-only
+  (gated to above/below markets, try/except-wrapped so a fetch failure
+  can't break analysis) -- giving nws_prob_from_quantiles() its first real
+  caller, NOT blended into forecast_prob or any sizing decision. Self-
+  caught a real UnboundLocalError in the METAR-locked branch (same bug
+  class as a prior documented regression in this function) before the
+  opus review; the review itself found one real gap (parser silently
+  returned None on 3 format-drift modes with no operator warning, unlike
+  NBS's sibling) fixed with warnings + 4 regression tests.
+  tracker.py/order_executor.py: nbm_quantile_prob threaded through
+  log_prediction()'s schema/UPSERT and the shared kwargs helper.
+  25 new tests, 546 total passing, ruff+mypy clean, pushed `0b7b74e`.
 
 When to revisit:
-  - Scoped together with REAL NBM VIA IEM NBS STATION BULLETINS above.
+  - Once enough nbm_quantile_prob rows accumulate, verify it correlates
+    with settlement (same log-only-then-verify discipline as CROSS-CITY
+    RECENT-ERROR POOLING below) before ever wiring it into forecast_prob
+    or get_historical_sigma.
 
-[FORECAST-CONDITION COVARIATES FOR SIGMA -- INCLUDING FIELDS ALREADY FETCHED AND NEVER READ]
+[PARTIALLY RESOLVED 2026-07-24 -- precip_sum_in logging + the wind_gust/
+  _hourly_window_high_f wire-up-or-delete call both shipped; sky/cloud
+  covariate still needs the not-yet-built NBS sky/gst/p12 fields] FORECAST-CONDITION COVARIATES FOR SIGMA -- INCLUDING FIELDS ALREADY FETCHED AND NEVER READ
 Priority: Low-Medium -- sigma today conditions on city/month/horizon/spread
   but never on what kind of weather day it is; several inputs are already
   being paid for.
 
-Problem:
+Problem (as originally scoped):
   The daily forecast fetch requests only
   temperature_2m_max,temperature_2m_min,precipitation_sum
   (weather_markets.py:983); the temperature sigma path
@@ -5274,69 +5322,82 @@ Problem:
   (repo-wide grep). The NBS bulletins from the REAL NBM entry above would
   add sky/gst/p12 in the same call.
 
-What it would look like:
-  Log 2-3 covariates (forecast precip_sum, sky/cloud, gust) into
-  predictions alongside the existing run_trend columns (same v-migration
-  pattern), correlate |settled_temp_f - forecast| against them once
-  sample floors clear, then a bounded sigma multiplier for high-precip-
-  probability days. Distinct from RICHER ML CALIBRATION FEATURES, which
-  proposes *internal* features (ensemble spread, model disagreement,
-  data_quality) -- this is external weather-type covariates; if the ML
-  entry ships first, these become additional candidate features for the
-  same GBM instead of a separate mechanism.
+What shipped (2026-07-24, same pass as RICHER ML CALIBRATION FEATURES
+  below -- one combined logging pass, per this entry's own "additional
+  candidate features for the same GBM" note):
+  analyze_trade()'s result dict now surfaces precip_sum_in (forecast.get
+  ("precip_in")), threaded through log_prediction()/tracker.predictions
+  (schema v56) log-only, same discipline as ensemble_spread_f/
+  model_disagreement_f below.
+  The wind_gust/_wind_gust_time_unix/_hourly_window_high_f wire-up-or-
+  delete call was resolved as DELETE, not wire-up: live-traced that these
+  fields are only ever populated via fetch_temperature_pirate_weather()'s
+  RARE last-resort fallback path (Open-Meteo AND NBM AND WeatherAPI all
+  unavailable) -- wiring them up would have logged mostly NULLs given
+  Open-Meteo is the dominant path and doesn't carry them at all. Deleted
+  the dead computation blocks and dict keys entirely (confirmed zero test
+  coverage existed for them, confirmed high_f's own derivation is fully
+  independent of the deleted hourly-window computation). Pushed `9f2ad91`.
 
-Why not now:
-  - Same weeks-of-accumulation gate as every log-only signal; keep
-    feature count small vs the 200-samples-per-city training gate the ML
-    entry already flags. The dead wind_gust/_hourly_window_high_f fields
-    deserve a wire-up-or-delete decision regardless (dict fields are
-    invisible to the dead-code scan).
+Still open:
+  - Sky/cloud-cover covariate: NOT built -- would need the REAL NBM
+    entry's NBS sky/gst/p12 fields, which this pass didn't touch. Gust is
+    now moot (the only real gust field was the just-deleted dead one).
 
 When to revisit:
-  - Alongside RICHER ML CALIBRATION FEATURES -- decide then whether these
-    are separate covariates or additional features for the same model.
+  - If the REAL NBM entry's NBS sky/gst/p12 fields ever get pulled in for
+    another reason, log them alongside precip_sum_in the same way.
 
-[CROSS-CITY RECENT-ERROR POOLING -- SYNOPTIC-REGIME BIAS SHARE]
+[PARTIALLY RESOLVED 2026-07-23 -- tracker.get_regional_recent_bias() shipped
+  log-only; wiring into an actual forecast lean still gated on more data]
+  CROSS-CITY RECENT-ERROR POOLING -- SYNOPTIC-REGIME BIAS SHARE
 Priority: Low-Medium -- the spatial correlation structure is already
   learned and stored; it's only ever used to *penalize risk*, never to
   *improve the forecast*.
 
-Problem:
+Problem (as originally scoped):
   Bias correction is strictly per-city and slow: _get_combined_station_bias
   (weather_markets.py:303-337) blends a static table with
   tracker.get_dynamic_station_bias (min 10 samples, weeks of
-  accumulation, 4h cache). Nothing uses the last 24-48h of realized
+  accumulation, 4h cache). Nothing used the last 24-48h of realized
   errors in *other* cities to nudge today's forecast -- even though
   forecast errors are spatially correlated under a shared synoptic
   regime, and the bot already quantifies exactly those correlations
   (_CITY_PAIR_CORR paper.py:313-332; tracker.get_recent_city_correlations
-  refreshed into monte_carlo.simulate_portfolio at monte_carlo.py:
-  242-264) -- but solely for portfolio VaR. If the model ran 2F hot
-  across the whole Gulf Coast group yesterday, today's NOLA/Houston
-  forecasts are more likely hot too; the per-city dynamic bias can't see
-  that for weeks.
+  refreshed into monte_carlo.simulate_portfolio) -- but solely for
+  portfolio VaR.
 
-What it would look like:
-  tracker.get_regional_recent_bias(city, var, hours=48) --
-  correlation-weighted mean of correlated cities' settled errors over the
-  last 1-2 days (data already in outcomes.settled_temp_f; the
-  correlated-group structure already in _CORRELATED_CITY_GROUPS
-  paper.py:283-287), returned with sample count. Ship log-only (a
-  regional_bias column beside run_trend), verify it actually correlates
-  with same-day own-city error at settlement, then a small bounded lean
-  capped well below _get_combined_station_bias's magnitude.
+RE-VERIFIED 2026-07-23 before picking this up: the "3-14 per-city" count
+  cited above was stale (2026-07-12 audit) -- live counts were actually
+  1-28 per city, and the settlement-latency question was resolved
+  affirmatively (median lag ~1 day across 237 recent settlements, so
+  yesterday's correlated-city errors ARE typically available by today's
+  scan).
 
-Why not now:
-  - Settled-outcome latency (an error is only known after settlement +
-    sync -- check whether "yesterday's" errors are actually available by
-    today's scan time in practice); needs the same sample-floor and
-    enablement-trigger discipline; low per-city row counts today (3-14
-    per the 2026-07-12 audit) mean the pooled signal is the *point* but
-    also hard to validate initially.
+What shipped:
+  tracker.get_regional_recent_bias(city, var, hours=48, as_of=None) --
+  correlation-weighted mean of correlated cities' settled errors, using
+  the exact _CORRELATED_CITY_GROUPS/_CITY_PAIR_CORR tables named above,
+  with a ROW_NUMBER dedup to each ticker's latest logged prediction and
+  outcomes_valid's disputed-row exclusion. `as_of` (SQLite datetime()
+  string) lets a caller reconstruct a specific historical point in time
+  without lookahead -- used to retrospectively validate against real
+  settled data: Pearson r ~= 0.35 between pooled regional bias and same-
+  city same-day error, but thin per-estimate coverage (85/229 candidate
+  rows had any signal, averaging 1.67 correlated-city samples each). 9
+  new tests, opus review clean (one defense-in-depth hardening applied:
+  bound predicted_at by as_of too). Pushed `fd94bf7`.
+
+Still open:
+  - NOT wired into any live forecast lean or blend weight -- the r~0.35
+    result is real but too sparse to trust yet, correctly shipped as a
+    log-only/ad-hoc utility per this entry's own sequencing.
 
 When to revisit:
-  - Once per-city settled counts grow past the same floor used elsewhere
-    (see DATA-DRIVEN SIGMA FROM SETTLED HISTORY's own count check).
+  - Re-run the retrospective validation once more settled data has
+    accumulated; if correlation holds up with denser per-estimate
+    coverage, size a bounded lean capped well below
+    _get_combined_station_bias's magnitude.
 
 [MARKET_LIFECYCLE_V2 WS CHANNEL -- LISTING-TIME AWARENESS]
 Priority: Low -- real timing edge, but structurally blocked behind the
