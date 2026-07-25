@@ -192,5 +192,57 @@ class TestConsistency(unittest.TestCase):
             find_violations(markets)
 
 
+class TestParseThresholdRealApiShape(unittest.TestCase):
+    """_parse_threshold() with market.get("series_ticker") absent -- the
+    real Kalshi response shape (confirmed live 2026-07-25 while fixing
+    tracker.py's unrelated candlestick-backfill bug). Deliberately does NOT
+    use the module's shared _market() helper above, since that helper
+    always synthesizes a fake series_ticker and so the whole rest of this
+    file exercises R26's series-prefix branch, which is dead in production.
+    """
+
+    def test_above_condition_derived_from_title_with_no_series_ticker(self):
+        from consistency import _parse_threshold
+
+        market = {
+            "ticker": "KXLOWTPHX-26JUL26-T96",
+            "title": "Will the minimum temperature in Phoenix be above 96°F?",
+        }
+        self.assertEqual(_parse_threshold(market), ("above", 96.0))
+
+    def test_below_condition_derived_from_title_with_no_series_ticker(self):
+        from consistency import _parse_threshold
+
+        market = {
+            "ticker": "KXHIGHCHI-26JUL26-T89",
+            "title": "Will the high temp in Chicago be below 89°F?",
+        }
+        self.assertEqual(_parse_threshold(market), ("below", 89.0))
+
+    def test_series_prefix_would_invert_these_two_real_ladders(self):
+        """Regression guard for the exact bug an independent review found:
+        if a ticker.split("-")[0]-style fallback were ever added to
+        _parse_threshold (mirroring tracker.py's unrelated
+        _derive_series_ticker fix), these two real market shapes would flip
+        to the WRONG direction (KXLOWTPHX's "HIGH" substring absent, but a
+        naive "series prefix decides direction" reading of KXHIGHCHI would
+        say "above" when the real condition is "below"). This test locks in
+        the CORRECT (title-derived) answer so that mistake would fail here
+        immediately, not just get caught by a future live-arbitrage
+        false-positive."""
+        from consistency import _parse_threshold
+
+        above_market = {
+            "ticker": "KXLOWTPHX-26JUL26-T96",
+            "title": "Will the minimum temperature in Phoenix be above 96°F?",
+        }
+        below_market = {
+            "ticker": "KXHIGHCHI-26JUL26-T89",
+            "title": "Will the high temp in Chicago be below 89°F?",
+        }
+        self.assertEqual(_parse_threshold(above_market)[0], "above")
+        self.assertEqual(_parse_threshold(below_market)[0], "below")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

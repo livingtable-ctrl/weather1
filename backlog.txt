@@ -1,6 +1,177 @@
 BACKLOG — future improvements to implement when ready
 ======================================================
 
+[RESOLVED 2026-07-25] CANDLESTICK CAPTURE (price_history) SILENTLY BROKEN SINCE IT SHIPPED -- series_ticker FIELD NEVER EXISTED ON THE REAL API
+Priority: was High -- a shipped, believed-working data-collection feature had
+  been a complete no-op since 2026-07-12 (13+ days), with zero trace in logs.
+
+Problem:
+  Found while checking on the deferred candlestick-analysis entries (backlog's
+  own HISTORICAL MARKET-PRICE CAPTURE / MARKET_LIFECYCLE_V2 "check
+  `SELECT COUNT(*) FROM price_history`" notes) as part of a routine "what's
+  next" status check. Live query: `price_history` had exactly 0 rows across
+  0 tickers, while its sibling `trade_history` (same trigger, same
+  sync_outcomes() call, wired the identical "fires once per market on
+  settlement, isolated try/except" way, shipped one week later on
+  2026-07-19) had 23,218 real rows across 13 tickers. That asymmetry, on two
+  structurally-identical backfills, was the tell.
+  Root cause, confirmed via a live `client.get_market()` call against a real
+  settled ticker: the response has NO `series_ticker` field at all -- the
+  real key set is `event_ticker`/`ticker`/`open_time`/`close_time`/etc.,
+  never `series_ticker`. `sync_outcomes()`'s candlestick-backfill block reads
+  `market.get("series_ticker")` and skips the fetch entirely (silently, no
+  exception, hence no warning log either) whenever it's falsy -- which was
+  always. Confirmed via `bot.log`: zero candlestick-related lines in the
+  bot's full retained history, not even the failure-path warning the block's
+  own try/except would have logged had `get_candlesticks()` ever actually
+  been reached and errored. The sibling trade-history backfill never needed
+  `series_ticker` at all (`get_trades(ticker, ...)` -- no series param),
+  which is exactly why it worked from day one while candlestick capture
+  never worked at all.
+  The existing test suite never caught this because its mock `market` dict
+  included a fabricated `"series_ticker": "KXHIGHNY"` key that doesn't exist
+  on any real response -- the same "synthetic fixture proves the math, not
+  real API shape" bug class already documented twice in this file (the
+  `is_stale`/`gated_edge`/`_liquidity_edge_scale` volume_fp string bug, and
+  `fit_market_implied_distribution`'s identical volume_fp gap) -- now a third
+  confirmed instance.
+  A real derivation for the missing value already existed in this codebase,
+  unnoticed by this feature: `consistency.py`'s `_group_markets()` already
+  falls back to `ticker.split("-")[0]` when `series_ticker` is absent (with
+  its own "Derive from ticker prefix" comment) -- confirmed live this is
+  exactly a market's real series ticker (e.g. `KXHIGHDEN-26JUL09-T91` ->
+  `KXHIGHDEN`, a real member of `KNOWN_WEATHER_SERIES`).
+
+What shipped:
+  1. `tracker.py`'s `sync_outcomes()` candlestick block now reads
+     `market.get("series_ticker") or ticker.split("-")[0]`, mirroring
+     `consistency.py`'s own established fallback for the identical gap
+     (kept `market.get("series_ticker")` as the first-preference source, in
+     case a future/different API response ever does carry a real value).
+  2. New `tracker.backfill_price_history(client) -> int`, mirroring
+     `backfill_emos_data()`'s shape: `sync_outcomes()` only ever backfills a
+     ticker's candlesticks the FIRST time it settles (an existing `outcomes`
+     row means it's never revisited), so the code fix alone could not
+     recover the 241 tickers that already settled under the broken guard --
+     this is the one-off recovery pass, reusing the exact same
+     `get_market()`/`get_candlesticks()`/`log_price_candles()` sequence.
+     Safe to re-run (already-filled tickers, keyed by a real price_history
+     row existing, are skipped by the query) -- no `--force` flag needed,
+     unlike `backfill_emos_data`, since a market's OHLC history never
+     changes once the market has closed.
+  3. New `py main.py backfill-price-history` CLI command + README entry.
+  Ran live against the real production DB after shipping: 241/241 settled
+  tickers backfilled cleanly (9,105 real candle rows recovered), a second
+  run confirmed idempotent (0 backfilled). This also fixes candlestick
+  capture going forward -- confirmed via a mutation test on the fallback
+  expression itself (reverted to the bare `market.get("series_ticker")`,
+  confirmed the exact predicted `get_candlesticks` never-called symptom,
+  restored) rather than only trusting the retroactive backfill's success.
+  14 new/updated tests (first pass, before the independent review below):
+  2 existing sync_outcomes candlestick tests (which had been the exact
+  tests masking this bug) fixed to use a real API-shaped mock market dict
+  (no fabricated `series_ticker` key), 1 new test proving a real
+  `series_ticker` field (if one is ever actually present) still wins over
+  the fallback, 1 renamed/narrowed test isolating the real skip condition
+  (missing `open_time`, not missing `series_ticker`) from the now-fixed
+  one; 8 new tests for `backfill_price_history` itself (fills missing
+  rows, skips already-filled/disputed tickers, uses the real series_ticker
+  when present, skips a ticker with no open_time, a single ticker's
+  `get_market`/`get_candlesticks` failure doesn't abort the whole pass);
+  2 for the CLI command.
+
+  Independent Agent(opus, effort=high) review before push independently
+  re-verified the live production data 6 ways (row/ticker counts,
+  series-ticker-matches-ticker-prefix for all 241 rows, candle-close-vs-
+  settled_yes agreement for all 241, per-ticker candle windows landing
+  inside the ticker's own date, a live re-fetch of one real ticker
+  byte-matching the DB, and independently re-running the CLI command
+  itself) -- confirmed no CRITICAL data-corruption risk, but found 7 real
+  findings, all fixed: (1) MEDIUM -- `consistency.py`'s `_parse_threshold()`
+  has its OWN unrelated `market.get("series_ticker")` read (R26, an
+  above/below direction signal) that this fix's own doc comment held up as
+  "the established precedent" for the fallback -- but copying that exact
+  fallback there would be WRONG: live-verified real KXHIGH*/KXLOW* series
+  can contain BOTH above- and below-condition markets (a real KXLOWTPHX
+  ladder asks "will the minimum be >N", a real KXHIGHCHI ladder asks "will
+  the high be <N"), so a ticker-prefix HIGH/LOW substring is not a safe
+  direction signal there the way it is for candlestick backfill's own
+  series-identification use -- adding it would silently invert above/below
+  for real ladders and feed a fabricated arbitrage violation into
+  `find_violations()`, which drives automatic corrective trading. Added an
+  explicit "DO NOT copy this fallback here" comment at `_parse_threshold()`
+  plus 3 new tests (`TestParseThresholdRealApiShape`) proving the correct
+  title-derived answer with `series_ticker` genuinely absent, including a
+  direct regression guard using the exact inverting KXLOWTPHX/KXHIGHCHI
+  case the review found -- deliberately NOT using the file's existing
+  shared `_market()` test helper, which always synthesizes a fake
+  `series_ticker` and so the whole rest of that test file exercises R26's
+  dead-in-production branch, never the real title-fallback path. (2)
+  MEDIUM -- `backfill_price_history` joined `outcomes_valid` (excluding
+  disputed tickers), inconsistent with `sync_outcomes()`'s own candlestick
+  block, which has no disputed check at all -- a disputed label means the
+  SETTLEMENT is contested, not that the raw PRICE data is untrustworthy,
+  and `price_history` is never joined into any Brier/calibration query, so
+  there's no scoring-pollution risk the disputed-row guard exists to
+  prevent. Switched to raw `outcomes` (added the allowlist entry in
+  `test_disputed_row_guard.py`), inverted the test asserting exclusion
+  into one asserting inclusion, and re-ran the live backfill -- recovered
+  exactly the 3 previously-skipped disputed tickers the review found
+  (`KXHIGHTPHX-26JUL23-T113`/`KXHIGHTDAL-26JUL24-T95`/
+  `KXLOWTMIN-26JUL24-T66`, 112 more real candle rows), confirmed idempotent
+  again after. (3) LOW -- `filled` counted every successful API round-trip,
+  not rows actually written -- a ticker whose candles are genuinely
+  unavailable (past the endpoint's retention window) calls cleanly,
+  returns an empty list, and was being marked "filled" while writing
+  nothing, which would have silently stopped it from ever being retried;
+  fixed to only count when `log_price_candles()` reports >0 rows written,
+  new mutation-tested regression test. (4) LOW -- a total failure (bad
+  credentials, an API outage) was indistinguishable from "nothing left to
+  do" -- both read `0 ticker(s) backfilled`; `backfill_price_history` now
+  returns `(filled, failed)` instead of a bare int, and
+  `cmd_backfill_price_history` prints the failed count when nonzero. (5)
+  LOW -- two review-found mutation survivors in the new tests, both fixed:
+  the no-open-time skip test didn't distinguish a clean skip from a masked
+  exception (both leave `get_candlesticks` uncalled) -- added an
+  `assertNoLogs` check (and the same gap existed in the sync_outcomes-side
+  sibling test, fixed identically); and `period_interval` was a magic
+  number duplicated at 2 call sites with nothing pinning them together --
+  extracted a shared `_CANDLE_PERIOD_MINUTES` constant, new test asserts
+  the actual kwarg value. (6) LOW -- the series-ticker-derivation fallback
+  was hand-duplicated verbatim in `sync_outcomes()` and
+  `backfill_price_history()` with no shared helper -- extracted
+  `_derive_series_ticker(market, ticker)`, used by both (this is also
+  where finding (1)'s warning comment now lives, so it's visible at the
+  exact point a future reader would consider reusing the pattern). (7) LOW
+  -- 2 leftover fabricated `"series_ticker"` keys in the trade-history-only
+  sibling tests (harmless -- `get_trades()` never reads that field -- but
+  the identical smell this whole fix exists to eradicate) -- removed; plus
+  a stale test comment and a docstring self-reference typo, both corrected.
+  Mutation-tested both new fixes directly (reverted the `written > 0`
+  guard, confirmed the exact predicted false-positive; reverted
+  `_CANDLE_PERIOD_MINUTES` to a mismatched literal at one call site,
+  confirmed the new kwarg assertion catches it; both restored and
+  re-verified).
+  28 tests total across the 3 files (22 tracker.py sync_outcomes/backfill,
+  3 CLI, 3 consistency.py) after the review pass. Full regression sweep
+  (355 tests: test_tracker.py/test_p1_remaining.py/test_consistency.py/
+  test_disputed_row_guard.py/test_dead_code_scan.py) + ruff/ruff
+  format/mypy clean on all 7 changed files
+  (tracker.py/main.py/consistency.py/README.md plus the 3 test files).
+  This closes the "check `SELECT COUNT(*) FROM price_history`" precondition
+  the HISTORICAL MARKET-PRICE CAPTURE and MARKET_LIFECYCLE_V2 entries
+  (below) both name as their own trigger -- real data now accumulates from
+  every future settlement, and 244 tickers' worth of history (9,217 real
+  candle rows) already exists to start the deferred entry-timing/adverse-
+  selection analysis passes on, well ahead of the "multi-week window"
+  those entries expected to need to wait for from a cold start.
+
+Why not now: N/A -- fully resolved.
+
+When to revisit: N/A, closed. See HISTORICAL MARKET-PRICE CAPTURE / the
+  candlestick-capture "when to revisit" notes below for the still-deferred
+  analysis passes this unblocks.
+
 [FORECAST_SIGMA.JSON ATOMIC WRITE CONTENTION -- INTERMITTENT, SELF-RECOVERING, WATCHING]
 Priority: Low -- no data loss observed (safe_io's emergency-copy fallback
   succeeded every time), flagged to watch for recurrence rather than
@@ -3709,6 +3880,17 @@ When to revisit:
     once there's a real multi-week window of candles, not tied strictly to
     maker-execution work being picked up if that stays deferred longer than
     the data does.
+  - UPDATE 2026-07-25: `SELECT COUNT(*) FROM price_history` had actually
+    been 0 this entire time -- the capture never worked at all, a real bug
+    (market.get("series_ticker") reading a field that never exists on a
+    real get_market() response), not just "not enough weeks elapsed yet."
+    Fixed and retroactively backfilled (244 tickers, 9,217 real candle
+    rows) -- see the new "[RESOLVED 2026-07-25] CANDLESTICK CAPTURE..."
+    entry at the top of this file. The analysis passes below are now
+    meaningfully closer to viable than a cold start would suggest (244
+    tickers' worth of history already exists), though still worth waiting
+    for further real-time accumulation before trusting entry-timing
+    conclusions drawn from it.
 
 ======================================================
 FEATURE CANDIDATES — 2026-07-10 feature-scouting session.

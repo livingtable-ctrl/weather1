@@ -3774,6 +3774,45 @@ def backfill_emos_data(force: bool = False) -> tuple[int, int]:
     return settled_temp_filled, ens_filled
 
 
+# Kalshi's candlesticks endpoint accepts 1/60/1440 (minutes). Hourly, not
+# 1-minute: weather markets can stay open several days (see MAX_DAYS_OUT),
+# and 1-minute resolution over a multi-day window risks silently truncating
+# on the candlesticks endpoint's per-request period cap (see the original
+# HISTORICAL MARKET-PRICE CAPTURE backlog entry). Named once here — passed
+# to both client.get_candlesticks() and log_price_candles() in both
+# sync_outcomes() and backfill_price_history() — so it can't silently drift
+# between the fetch call and the stored value (which would corrupt the
+# (ticker, period_interval, end_period_ts) dedup index).
+_CANDLE_PERIOD_MINUTES = 60
+
+
+def _derive_series_ticker(market: dict, ticker: str) -> str:
+    """A real client.get_market() response has no "series_ticker" field at
+    all (confirmed live 2026-07-25 — the real keys are event_ticker/ticker/
+    etc., never series_ticker) — so this always falls back to the ticker's
+    own prefix in practice today. Kept market.get("series_ticker") as the
+    first-preference source only in case a future/different response shape
+    ever does carry a real value. The fallback mirrors consistency.py's
+    _group_markets() own established derivation for this identical gap
+    (confirmed a market's real series ticker is always
+    ticker.split("-")[0] and a member of KNOWN_WEATHER_SERIES).
+
+    DO NOT copy this same fallback into consistency.py's _parse_threshold()
+    (its own separate, unrelated market.get("series_ticker") read) — that
+    function uses the string "HIGH"/"LOW" substring of series_ticker as an
+    above/below direction signal, and since it's currently always empty in
+    practice (the same reason this function exists), adding this fallback
+    there would make it start firing on the wrong branch: some real ladders
+    put a LOW-condition market under a KXHIGH*-prefixed series and vice
+    versa (e.g. "will the minimum temp be >N" can live in a series whose
+    ticker prefix reads HIGH), confirmed live — that function's existing
+    title-text fallback (used exactly because the field is always empty
+    today) is correct as-is and must stay the primary path there, not this
+    one, which is only safe for candlestick backfill's own use.
+    """
+    return market.get("series_ticker") or ticker.split("-")[0]
+
+
 def sync_outcomes(client) -> int:
     """
     Check settled markets in the DB against Kalshi and record outcomes.
@@ -3860,7 +3899,18 @@ def sync_outcomes(client) -> int:
                     # adverse-selection timing analysis and stays comfortably
                     # under any plausible per-request cap.
                     try:
-                        _candle_series = market.get("series_ticker")
+                        # See _derive_series_ticker's own docstring for why
+                        # this always falls back to the ticker prefix in
+                        # practice — this guard silently no-op'd (no
+                        # exception, so no warning either) for every
+                        # settlement since this backfill shipped 2026-07-12
+                        # until that fallback was added 2026-07-25, confirmed
+                        # via bot.log having zero candlestick-related lines
+                        # ever and price_history being completely empty while
+                        # the sibling trade-history backfill right below
+                        # (which never needed series_ticker) has 20,000+
+                        # real rows.
+                        _candle_series = _derive_series_ticker(market, ticker)
                         _candle_open_str = market.get("open_time")
                         if _candle_series and _candle_open_str:
                             _candle_start = datetime.fromisoformat(
@@ -3878,9 +3928,14 @@ def sync_outcomes(client) -> int:
                                 ticker,
                                 int(_candle_start.timestamp()),
                                 int(_candle_end.timestamp()),
-                                period_interval=60,
+                                period_interval=_CANDLE_PERIOD_MINUTES,
                             )
-                            log_price_candles(ticker, _candle_series, 60, _candles)
+                            log_price_candles(
+                                ticker,
+                                _candle_series,
+                                _CANDLE_PERIOD_MINUTES,
+                                _candles,
+                            )
                     except Exception as _candle_exc:
                         _log.warning(
                             "sync_outcomes: price-history backfill failed for %s: %s",
@@ -3958,6 +4013,105 @@ def sync_outcomes(client) -> int:
                 )
             continue
     return count
+
+
+def backfill_price_history(client) -> tuple[int, int]:
+    """One-off recovery pass for price_history rows lost to the real
+    series_ticker bug (see sync_outcomes' candlestick-backfill block,
+    fixed 2026-07-25): sync_outcomes only ever backfills candlesticks for a
+    ticker the FIRST time it settles (once an outcomes row exists, that
+    ticker is never revisited), so the code fix alone does not recover data
+    for tickers that already settled under the broken guard — confirmed
+    live 2026-07-25 that price_history had 0 rows total (vs 20,000+ in the
+    sibling trade_history table, which never needed series_ticker and so
+    was never affected).
+
+    Finds every settled ticker with zero price_history rows and re-runs the
+    exact same client.get_market()/get_candlesticks()/log_price_candles()
+    sequence sync_outcomes' own (now-fixed) block uses. Safe to re-run —
+    already-filled tickers are skipped by the query, no force flag needed
+    (unlike backfill_emos_data, there's no "re-verify even already-filled
+    rows" use case here: a market's OHLC history never changes once the
+    market has closed).
+
+    Deliberately joins the raw outcomes table, not outcomes_valid — matches
+    sync_outcomes' own candlestick block, which never checked `disputed`
+    either (audit_settlement, the only writer of that flag, runs before the
+    candlestick block but the block itself has no disputed check). A
+    disputed label means the SETTLEMENT is contested, not that the raw
+    market PRICE data is untrustworthy — price_history is microstructure,
+    never joined into any Brier/calibration query, so there's no scoring
+    risk from including a disputed ticker's candles the way there would be
+    for a settled_yes-derived signal. See tests/test_disputed_row_guard.py's
+    allowlist entry for this function.
+
+    Returns (filled, failed) — filled counts a ticker where at least one
+    real candle row was actually written (not just "the API call didn't
+    raise" — a ticker whose candles are genuinely unavailable, e.g. past
+    the endpoint's retention window, calls cleanly and returns an empty
+    list, which must NOT count as filled or it would silently stop being
+    retried on a future run despite writing nothing). failed counts a
+    genuine per-ticker exception (get_market/get_candlesticks erroring) —
+    logged and skipped, matching sync_outcomes' own isolated-per-ticker-
+    failure discipline so one bad ticker can't abort the whole pass, but
+    tracked separately so a systemic failure (bad credentials, an API
+    outage) is visibly distinguishable from "nothing left to do" rather
+    than both reading as "0 filled".
+    """
+    init_db()
+    with _conn() as con:
+        rows = con.execute(
+            """
+            SELECT o.ticker
+            FROM outcomes o
+            LEFT JOIN (SELECT DISTINCT ticker FROM price_history) ph
+              ON ph.ticker = o.ticker
+            WHERE ph.ticker IS NULL
+            """
+        ).fetchall()
+
+    filled = 0
+    failed = 0
+    for row in rows:
+        ticker = row["ticker"]
+        try:
+            market = client.get_market(ticker)
+        except Exception as exc:
+            _log.warning(
+                "backfill_price_history: get_market failed for %s: %s", ticker, exc
+            )
+            failed += 1
+            continue
+        open_str = market.get("open_time")
+        if not open_str:
+            continue
+        close_str = market.get("close_time")
+        series = _derive_series_ticker(market, ticker)
+        try:
+            start = datetime.fromisoformat(open_str.replace("Z", "+00:00"))
+            end = (
+                datetime.fromisoformat(close_str.replace("Z", "+00:00"))
+                if close_str
+                else datetime.now(UTC)
+            )
+            candles = client.get_candlesticks(
+                series,
+                ticker,
+                int(start.timestamp()),
+                int(end.timestamp()),
+                period_interval=_CANDLE_PERIOD_MINUTES,
+            )
+            written = log_price_candles(ticker, series, _CANDLE_PERIOD_MINUTES, candles)
+            if written > 0:
+                filled += 1
+        except Exception as exc:
+            _log.warning(
+                "backfill_price_history: candlestick backfill failed for %s: %s",
+                ticker,
+                exc,
+            )
+            failed += 1
+    return filled, failed
 
 
 def log_member_score(

@@ -39,6 +39,25 @@ def _parse_threshold(market: dict) -> tuple[str, float] | None:
     R26: condition direction is derived from the series ticker prefix first
     (KXHIGH* → above, KXLOW* → below) and only falls back to title text so
     that None/empty titles don't silently drop valid markets.
+
+    market.get("series_ticker") is ALWAYS empty on a real Kalshi response
+    (confirmed live 2026-07-25 while fixing tracker.py's candlestick-backfill
+    bug — see _derive_series_ticker there) — so in practice this function
+    ALWAYS falls through to the title-text fallback below, never the R26
+    series-prefix branch. DO NOT "fix" that by adding a
+    ticker.split("-")[0]-style fallback the way tracker.py's candlestick
+    backfill does for its own, unrelated series_ticker gap: confirmed live
+    that real KXHIGH*/KXLOW* series can each contain BOTH above- and
+    below-condition markets (e.g. a real KXLOWTPHX ladder asking "will the
+    minimum be >N", a real KXHIGHCHI ladder asking "will the high be <N") —
+    a ticker-prefix-derived HIGH/LOW substring is not a reliable direction
+    signal the way it is for city/series identification elsewhere in this
+    codebase. Adding that fallback here would silently INVERT above/below
+    for real ladders and feed a fabricated arbitrage "violation" into
+    find_violations(), which drives automatic corrective trading — this was
+    only caught before shipping by an independent review specifically
+    warning that the tracker.py fix's own doc comment holds this function
+    up as its "established precedent," which it is not safe to copy.
     """
     ticker = market.get("ticker", "")
     series = (market.get("series_ticker") or "").upper()

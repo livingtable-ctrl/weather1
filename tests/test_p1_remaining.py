@@ -979,3 +979,41 @@ class TestCmdSignals:
         main.cmd_signals()  # must not raise
         out = capsys.readouterr().out
         assert "count unavailable" in out
+
+
+class TestCmdBackfillPriceHistory:
+    """main.cmd_backfill_price_history -- the `backfill-price-history` CLI
+    command, recovering price_history rows lost to the real series_ticker
+    bug (see tests/test_tracker.py's TestBackfillPriceHistory for the
+    underlying tracker.backfill_price_history mechanism)."""
+
+    def test_prints_filled_count(self, monkeypatch, capsys):
+        import main
+
+        monkeypatch.setattr("tracker.backfill_price_history", lambda client: (7, 0))
+        main.cmd_backfill_price_history(MagicMock())
+        out = capsys.readouterr().out
+        assert "7" in out
+        assert "failed" not in out.lower()
+
+    def test_prints_failed_count_when_nonzero(self, monkeypatch, capsys):
+        import main
+
+        monkeypatch.setattr("tracker.backfill_price_history", lambda client: (5, 3))
+        main.cmd_backfill_price_history(MagicMock())
+        out = capsys.readouterr().out
+        assert "5" in out
+        assert "3" in out
+        assert "failed" in out.lower()
+
+    def test_prints_error_and_reraises_on_failure(self, monkeypatch, capsys):
+        import main
+
+        def _boom(client):
+            raise RuntimeError("Kalshi API down")
+
+        monkeypatch.setattr("tracker.backfill_price_history", _boom)
+        with pytest.raises(RuntimeError, match="Kalshi API down"):
+            main.cmd_backfill_price_history(MagicMock())
+        out = capsys.readouterr().out
+        assert "Backfill failed" in out

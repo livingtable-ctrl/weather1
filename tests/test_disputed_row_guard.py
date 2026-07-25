@@ -146,6 +146,14 @@ _RAW_OUTCOMES_ALLOWLIST: dict[tuple[str, str], str] = {
         "dispute status; a position resolves on the recorded outcome, not "
         "on whether it's later contested."
     ),
+    ("tracker.py", "backfill_price_history"): (
+        "Finds settled tickers missing OHLC candlestick history -- matches "
+        "sync_outcomes' own candlestick block, which has no disputed check "
+        "either. A disputed label means the SETTLEMENT is contested, not "
+        "that the raw market price series is untrustworthy; price_history "
+        "is never joined into any Brier/calibration query, so there's no "
+        "scoring-pollution risk the disputed-row guard exists to prevent."
+    ),
 }
 
 

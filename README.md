@@ -113,6 +113,7 @@ Opens a numbered menu with every feature. Good starting point.
 | `python main.py shadow` | Shadow-compare two model versions |
 | `python main.py ab-summary` | Show A/B experiment results |
 | `python main.py backfill-emos` | Backfill historical ensemble mean/variance for EMOS calibration |
+| `python main.py backfill-price-history` | Backfill OHLC candlestick history for settled tickers missing it |
 | `python main.py override <set\|clear\|status> [mins]` | Temporarily pause auto-trading without activating the kill switch |
 | `python main.py kill` | Activate kill switch to halt all trading |
 | `python main.py resume` | Resume trading after kill switch or black swan halt |

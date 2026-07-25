@@ -11,6 +11,7 @@ import tempfile
 import unittest
 from datetime import UTC, date, timedelta
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -195,18 +196,24 @@ class TestTracker(unittest.TestCase):
 
     def test_sync_outcomes_backfills_price_history_on_settlement(self):
         """sync_outcomes should fetch and store full OHLC candlestick history
-        exactly once when a market's outcome is newly recorded."""
+        exactly once when a market's outcome is newly recorded. Mock market
+        dict deliberately has NO series_ticker key — a real get_market()
+        response never has one (confirmed live 2026-07-25); the series
+        ticker must be derived from the ticker's own prefix instead. A
+        version of this test with a fake "series_ticker" key present had
+        been silently masking this exact bug since the feature shipped
+        2026-07-12 — the mock's shape didn't match reality, so the test
+        stayed green while the real code path was completely dead."""
         from unittest.mock import MagicMock
 
         tracker.log_prediction(
-            "TKCANDLE", "NYC", date(2026, 4, 9), self._fake_analysis(0.70)
+            "KXHIGHNY-26APR09-T75", "NYC", date(2026, 4, 9), self._fake_analysis(0.70)
         )
 
         mock_client = MagicMock()
         mock_client.get_market.return_value = {
             "status": "finalized",
             "result": "yes",
-            "series_ticker": "KXHIGHNY",
             "open_time": "2026-04-06T00:00:00Z",
             "close_time": "2026-04-09T23:00:00Z",
         }
@@ -231,14 +238,38 @@ class TestTracker(unittest.TestCase):
 
         mock_client.get_candlesticks.assert_called_once()
         call_args = mock_client.get_candlesticks.call_args[0]
-        self.assertEqual(call_args[0], "KXHIGHNY")  # series_ticker
-        self.assertEqual(call_args[1], "TKCANDLE")  # ticker
+        self.assertEqual(call_args[0], "KXHIGHNY")  # derived from ticker prefix
+        self.assertEqual(call_args[1], "KXHIGHNY-26APR09-T75")  # ticker
 
-        rows = tracker.get_price_history("TKCANDLE")
+        rows = tracker.get_price_history("KXHIGHNY-26APR09-T75")
         self.assertEqual(len(rows), 1)
         self.assertAlmostEqual(rows[0]["price_close"], 0.52)
         self.assertAlmostEqual(rows[0]["yes_bid_close"], 0.51)
         self.assertAlmostEqual(rows[0]["volume"], 12.00)
+
+    def test_sync_outcomes_prefers_real_series_ticker_when_present(self):
+        """If a future/different API response ever DOES carry a real
+        series_ticker field, it must win over the derived-from-ticker
+        fallback (the `or` short-circuits correctly either way)."""
+        from unittest.mock import MagicMock
+
+        tracker.log_prediction(
+            "KXHIGHNY-26APR10-T75", "NYC", date(2026, 4, 10), self._fake_analysis(0.70)
+        )
+
+        mock_client = MagicMock()
+        mock_client.get_market.return_value = {
+            "status": "finalized",
+            "result": "yes",
+            "series_ticker": "REAL-SERIES",
+            "open_time": "2026-04-07T00:00:00Z",
+            "close_time": "2026-04-10T23:00:00Z",
+        }
+        mock_client.get_candlesticks.return_value = []
+
+        tracker.sync_outcomes(mock_client)
+        call_args = mock_client.get_candlesticks.call_args[0]
+        self.assertEqual(call_args[0], "REAL-SERIES")
 
     def test_sync_outcomes_survives_candlestick_backfill_failure(self):
         """A candlestick-fetch error must never block outcome recording."""
@@ -252,7 +283,6 @@ class TestTracker(unittest.TestCase):
         mock_client.get_market.return_value = {
             "status": "finalized",
             "result": "yes",
-            "series_ticker": "KXHIGHNY",
             "open_time": "2026-04-06T00:00:00Z",
             "close_time": "2026-04-09T23:00:00Z",
         }
@@ -264,9 +294,17 @@ class TestTracker(unittest.TestCase):
         history = tracker.get_history()
         self.assertEqual(history[0]["settled_yes"], 1)
 
-    def test_sync_outcomes_skips_candlestick_fetch_without_series_ticker(self):
-        """No series_ticker/open_time on the market → skip the fetch cleanly
-        (older/malformed responses shouldn't crash outcome recording)."""
+    def test_sync_outcomes_skips_candlestick_fetch_without_open_time(self):
+        """No open_time on the market → skip the fetch cleanly (older/
+        malformed responses shouldn't crash outcome recording). Missing
+        series_ticker ALONE must NOT skip — see the fallback tests above;
+        only a genuinely missing open_time (needed to bound the candle
+        request range) is a real skip condition now. Asserts no WARNING is
+        logged, not just that get_candlesticks wasn't called — a masked
+        exception in the candlestick block would ALSO leave
+        get_candlesticks uncalled (the price-history-backfill try/except
+        wraps the whole block) but would log a warning, which this
+        distinguishes from a genuinely clean skip."""
         from unittest.mock import MagicMock
 
         tracker.log_prediction(
@@ -276,7 +314,8 @@ class TestTracker(unittest.TestCase):
         mock_client = MagicMock()
         mock_client.get_market.return_value = {"status": "finalized", "result": "yes"}
 
-        count = tracker.sync_outcomes(mock_client)
+        with self.assertNoLogs("tracker", level="WARNING"):
+            count = tracker.sync_outcomes(mock_client)
         self.assertEqual(count, 1)
         mock_client.get_candlesticks.assert_not_called()
 
@@ -294,7 +333,6 @@ class TestTracker(unittest.TestCase):
         mock_client.get_market.return_value = {
             "status": "finalized",
             "result": "yes",
-            "series_ticker": "KXHIGHNY",
             "open_time": "2026-04-06T00:00:00Z",
             "close_time": "2026-04-09T23:00:00Z",
         }
@@ -342,7 +380,6 @@ class TestTracker(unittest.TestCase):
         mock_client.get_market.return_value = {
             "status": "finalized",
             "result": "yes",
-            "series_ticker": "KXHIGHNY",
             "open_time": "2026-04-06T00:00:00Z",
             "close_time": "2026-04-09T23:00:00Z",
         }
@@ -357,7 +394,7 @@ class TestTracker(unittest.TestCase):
 
     def test_sync_outcomes_skips_trade_fetch_without_open_time(self):
         """No open_time on the market → skip the trade-history fetch cleanly
-        (same guard shape as the candlestick fetch's series_ticker check)."""
+        (same guard shape as the candlestick fetch's own open_time check)."""
         from unittest.mock import MagicMock
 
         tracker.log_prediction(
@@ -5449,3 +5486,209 @@ class TestSignalGraduationCounters(unittest.TestCase):
     def test_count_model_observations_zero_for_unknown_model(self):
         tracker.log_member_score("NYC", "gem_global", 70.0, 70.0, "2099-01-01")
         self.assertEqual(tracker.count_model_observations("nonexistent_model"), 0)
+
+
+class TestBackfillPriceHistory(unittest.TestCase):
+    """tracker.backfill_price_history(client) -- the one-off recovery pass
+    for price_history rows lost to the real series_ticker bug (see
+    TestTracker's sibling sync_outcomes candlestick tests above for the
+    bug itself)."""
+
+    def setUp(self):
+        self._tmpdir = tempfile.mkdtemp()
+        self._orig = tracker.DB_PATH
+        tracker.DB_PATH = Path(self._tmpdir) / "test_predictions.db"
+        tracker._db_initialized = False
+
+    def tearDown(self):
+        tracker.DB_PATH = self._orig
+        tracker._db_initialized = False
+        shutil.rmtree(self._tmpdir, ignore_errors=True)
+
+    def _settle(self, ticker, *, settled_temp_f=75.0):
+        analysis = {
+            "condition": {"type": "above", "threshold": 70.0},
+            "forecast_prob": 0.6,
+            "market_prob": 0.5,
+            "edge": 0.1,
+            "method": "ensemble",
+            "n_members": 82,
+        }
+        tracker.log_prediction(ticker, "NYC", date(2099, 1, 1), analysis)
+        tracker.log_outcome(ticker, True)
+        if settled_temp_f is not None:
+            with sqlite3.connect(str(tracker.DB_PATH)) as con:
+                con.execute(
+                    "UPDATE outcomes SET settled_temp_f = ? WHERE ticker = ?",
+                    (settled_temp_f, ticker),
+                )
+
+    def _candles(self):
+        return [
+            {
+                "end_period_ts": 1700000000,
+                "price": {"close_dollars": "0.50"},
+                "yes_bid": {"close_dollars": "0.49"},
+                "yes_ask": {"close_dollars": "0.51"},
+                "volume_fp": "10.00",
+                "open_interest_fp": "20.00",
+            }
+        ]
+
+    def test_backfills_settled_tickers_missing_price_history(self):
+        self._settle("KXHIGHNY-26APR09-T75")
+        mock_client = MagicMock()
+        mock_client.get_market.return_value = {
+            "open_time": "2026-04-06T00:00:00Z",
+            "close_time": "2026-04-09T23:00:00Z",
+        }
+        mock_client.get_candlesticks.return_value = self._candles()
+
+        filled, failed = tracker.backfill_price_history(mock_client)
+
+        self.assertEqual((filled, failed), (1, 0))
+        call_args = mock_client.get_candlesticks.call_args
+        self.assertEqual(call_args[0][0], "KXHIGHNY")  # derived series
+        self.assertEqual(call_args[0][1], "KXHIGHNY-26APR09-T75")
+        self.assertEqual(
+            call_args.kwargs["period_interval"], tracker._CANDLE_PERIOD_MINUTES
+        )
+        rows = tracker.get_price_history("KXHIGHNY-26APR09-T75")
+        self.assertEqual(len(rows), 1)
+
+    def test_empty_candle_list_does_not_count_as_filled(self):
+        """A ticker whose candles are genuinely unavailable (e.g. past the
+        endpoint's retention window) calls cleanly and returns an empty
+        list -- must NOT count as filled, or it would silently stop being
+        retried on a future run despite writing nothing. Regression test
+        for an opus-review-caught bug: the first version counted every
+        successful API call as filled regardless of whether any row was
+        actually written."""
+        self._settle("KXHIGHNY-26APR09-T75")
+        mock_client = MagicMock()
+        mock_client.get_market.return_value = {
+            "open_time": "2026-04-06T00:00:00Z",
+            "close_time": "2026-04-09T23:00:00Z",
+        }
+        mock_client.get_candlesticks.return_value = []
+
+        filled, failed = tracker.backfill_price_history(mock_client)
+
+        self.assertEqual((filled, failed), (0, 0))
+        self.assertEqual(tracker.get_price_history("KXHIGHNY-26APR09-T75"), [])
+
+    def test_skips_tickers_that_already_have_price_history(self):
+        self._settle("KXHIGHNY-26APR09-T75")
+        tracker.log_price_candles(
+            "KXHIGHNY-26APR09-T75", "KXHIGHNY", 60, self._candles()
+        )
+        mock_client = MagicMock()
+
+        filled, failed = tracker.backfill_price_history(mock_client)
+
+        self.assertEqual((filled, failed), (0, 0))
+        mock_client.get_market.assert_not_called()
+
+    def test_uses_real_series_ticker_when_get_market_provides_one(self):
+        self._settle("KXHIGHNY-26APR09-T75")
+        mock_client = MagicMock()
+        mock_client.get_market.return_value = {
+            "series_ticker": "REAL-SERIES",
+            "open_time": "2026-04-06T00:00:00Z",
+            "close_time": "2026-04-09T23:00:00Z",
+        }
+        mock_client.get_candlesticks.return_value = self._candles()
+
+        tracker.backfill_price_history(mock_client)
+
+        call_args = mock_client.get_candlesticks.call_args[0]
+        self.assertEqual(call_args[0], "REAL-SERIES")
+
+    def test_skips_ticker_with_no_open_time_cleanly_no_warning(self):
+        """Missing open_time is a genuine, expected skip condition (not an
+        error) -- must not log a warning, unlike a real get_market/
+        get_candlesticks exception. A prior version of this test only
+        checked filled==0 and get_candlesticks not called, which also
+        holds if the code raised and the exception got silently swallowed
+        by the surrounding try/except -- this distinguishes a clean skip
+        from a masked failure."""
+        self._settle("KXHIGHNY-26APR09-T75")
+        mock_client = MagicMock()
+        mock_client.get_market.return_value = {"close_time": "2026-04-09T23:00:00Z"}
+
+        with self.assertNoLogs("tracker", level="WARNING"):
+            filled, failed = tracker.backfill_price_history(mock_client)
+
+        self.assertEqual((filled, failed), (0, 0))
+        mock_client.get_candlesticks.assert_not_called()
+
+    def test_one_get_market_failure_does_not_abort_the_whole_pass(self):
+        self._settle("KXHIGHNY-26APR09-T75")
+        self._settle("KXLOWDEN-26APR09-T30")
+        mock_client = MagicMock()
+
+        def _get_market(ticker):
+            if ticker == "KXHIGHNY-26APR09-T75":
+                raise RuntimeError("API down")
+            return {
+                "open_time": "2026-04-06T00:00:00Z",
+                "close_time": "2026-04-09T23:00:00Z",
+            }
+
+        mock_client.get_market.side_effect = _get_market
+        mock_client.get_candlesticks.return_value = self._candles()
+
+        filled, failed = tracker.backfill_price_history(mock_client)
+
+        self.assertEqual((filled, failed), (1, 1))
+        self.assertEqual(len(tracker.get_price_history("KXLOWDEN-26APR09-T30")), 1)
+        self.assertEqual(tracker.get_price_history("KXHIGHNY-26APR09-T75"), [])
+
+    def test_candlestick_fetch_failure_for_one_ticker_does_not_abort_the_pass(self):
+        self._settle("KXHIGHNY-26APR09-T75")
+        self._settle("KXLOWDEN-26APR09-T30")
+        mock_client = MagicMock()
+        mock_client.get_market.return_value = {
+            "open_time": "2026-04-06T00:00:00Z",
+            "close_time": "2026-04-09T23:00:00Z",
+        }
+
+        def _get_candlesticks(series, ticker, *a, **kw):
+            if ticker == "KXHIGHNY-26APR09-T75":
+                raise RuntimeError("candlesticks API down")
+            return self._candles()
+
+        mock_client.get_candlesticks.side_effect = _get_candlesticks
+
+        filled, failed = tracker.backfill_price_history(mock_client)
+
+        self.assertEqual((filled, failed), (1, 1))
+
+    def test_disputed_settled_tickers_are_included(self):
+        """Deliberately the OPPOSITE of a first-draft version of this test
+        (which asserted disputed tickers are excluded) -- an opus review
+        caught that joining outcomes_valid here was inconsistent with
+        sync_outcomes' own candlestick block, which has no disputed check
+        at all. price_history is raw market microstructure, never joined
+        into any Brier/calibration query, so a disputed SETTLEMENT label
+        doesn't make the raw PRICE data untrustworthy the way it would for
+        a settled_yes-derived signal. See test_disputed_row_guard.py's
+        allowlist entry for the full reasoning."""
+        self._settle("KXHIGHNY-26APR09-T75")
+        tracker.mark_outcome_disputed("KXHIGHNY-26APR09-T75")
+        mock_client = MagicMock()
+        mock_client.get_market.return_value = {
+            "open_time": "2026-04-06T00:00:00Z",
+            "close_time": "2026-04-09T23:00:00Z",
+        }
+        mock_client.get_candlesticks.return_value = self._candles()
+
+        filled, failed = tracker.backfill_price_history(mock_client)
+
+        self.assertEqual((filled, failed), (1, 0))
+        self.assertEqual(len(tracker.get_price_history("KXHIGHNY-26APR09-T75")), 1)
+
+    def test_zero_when_nothing_settled(self):
+        mock_client = MagicMock()
+        self.assertEqual(tracker.backfill_price_history(mock_client), (0, 0))
+        mock_client.get_market.assert_not_called()

@@ -5572,6 +5572,34 @@ def cmd_backfill_emos(force: bool = False) -> None:
         raise
 
 
+def cmd_backfill_price_history(client: KalshiClient) -> None:
+    """One-off recovery for price_history rows lost to a real bug: sync_outcomes'
+    candlestick backfill read market.get("series_ticker"), a field that never
+    exists on a real get_market() response — silently no-op'd (no exception, no
+    log) for every settlement since the feature shipped, confirmed via
+    price_history being fully empty. Fixed at the source (sync_outcomes now falls
+    back to the ticker's own prefix); this command recovers the already-settled
+    tickers sync_outcomes will never revisit on its own (it only backfills a
+    ticker the first time it settles). Safe to re-run — already-filled tickers
+    are skipped."""
+    from tracker import backfill_price_history
+
+    print("Backfilling price_history for settled tickers missing candlestick data…")
+    try:
+        filled, failed = backfill_price_history(client)
+        print(f"\nDone — price_history backfilled for {filled} ticker(s).")
+        if failed:
+            print(
+                yellow(
+                    f"  {failed} ticker(s) failed (see log) — will be retried on "
+                    "the next run."
+                )
+            )
+    except Exception as exc:
+        print(red(f"Backfill failed: {exc}"))
+        raise
+
+
 # ── Interactive menu ──────────────────────────────────────────────────────────
 
 
@@ -7860,7 +7888,15 @@ def main():
         sys.exit(1)
 
     cmd = args[0].lower() if args else ""
-    if cmd in ("loop", "cron", "scan", "analyze", "emos-train", "backfill-emos"):
+    if cmd in (
+        "loop",
+        "cron",
+        "scan",
+        "analyze",
+        "emos-train",
+        "backfill-emos",
+        "backfill-price-history",
+    ):
         _validate_config()
 
     _setup_logging()
@@ -8136,6 +8172,8 @@ def main():
         _cmd_emos_train()
     elif cmd in ("backfill-emos", "backfill_emos"):
         cmd_backfill_emos(force="--force" in args)
+    elif cmd in ("backfill-price-history", "backfill_price_history"):
+        cmd_backfill_price_history(client)
     elif cmd in ("settings", "config-settings"):
         cmd_settings(client)
     elif cmd == "onboard":
