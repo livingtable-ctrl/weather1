@@ -7338,7 +7338,7 @@ When to revisit:
     _parse_city_from_ticker's hardcoded if-chain is next open for other
     reasons.
 
-Follow-up (2026-07-25): a live `python main.py cron` run's
+Follow-up (2026-07-25) [RESOLVED same day]: a live `python main.py cron` run's
   log_city_registry_report() output (11/20 cities, matching _KNOWN_GAPS
   exactly -- no drift) prompted scoping what actually closing the
   remaining climate_indices gap (10 cities: Austin, Washington,
@@ -7371,9 +7371,151 @@ Follow-up (2026-07-25): a live `python main.py cron` run's
   tests/test_city_registry_manifest.py's _KNOWN_GAPS allowlist to drop
   the fixed cities in the same change -- that test's own bidirectional
   staleness check will fail the build otherwise.
-  Not started. Still gated on the same "worth doing before cities trade
-  at full signal quality" motivation as the rest of this entry -- no
-  forcing deadline while TRADING_PAUSED holds.
+  RESOLVED (same session, REVISED same day after an independent opus review
+  caught a real methodological gap in the first pass -- see below):
+  First pass fetched real NOAA CPC AO/NAO/ONI monthly tables (918/918/917
+  months) and joined against each of the 20 cities' already-cached 30yr
+  Open-Meteo archive (data/climate_{city}.json, no new fetches needed --
+  all 20 already existed locally from the sigma pipeline). Monthly mean
+  temp = daily (high+low)/2 averaged per (year, month); anomaly = that
+  minus the city's own per-calendar-month climatological normal; linearly
+  detrended by year BEFORE regressing against AO/NAO/ENSO (guards against a
+  31-year secular-warming trend producing a spurious correlation with an
+  index that has its own drift -- checked directly: detrending barely
+  moved any slope or p-value, ruling this confound out rather than assuming
+  it away). Regressed at LAG 0 (index value for the same month as the temp
+  anomaly) per city/season bucket via scipy.stats.linregress, p<0.05 floor,
+  fell back to DEFAULT_AO_SENS/NAO_SENS/ENSO_SENS otherwise.
+  Independent opus review (before push, per standing workflow) found this
+  first pass had a real, live-consequential bug: get_indices() can only
+  ever return an ALREADY-PUBLISHED index value -- verified live,
+  get_indices(7, 2026) run 2026-07-25 returns JUNE AO/NAO and MAY ONI, not
+  July's, because CPC hasn't published the current month's numbers yet by
+  the time a near-term market for that month is actually being scanned.
+  The first pass's lag-0 fit was testing a relationship the live code can
+  never actually exploit. The reviewer independently re-derived the entire
+  regression from scratch (own script, live NOAA fetch, own anomaly/
+  detrend/bucketing code) both to confirm the first pass's arithmetic (all
+  80 cells reproduced exactly -- clean) and to show what refitting at the
+  lag get_indices() actually returns does to the results: AO/NAO's lag-1
+  autocorrelation is only ~0.3, so most of the fitted AO/NAO signal
+  disappeared; ENSO's lag-1 autocorrelation is ~0.97 (El Nino/La Nina
+  states persist for months), so ENSO mostly survived. The reviewer also
+  flagged that testing 80 cells at a raw p<0.05 threshold, with no
+  multiple-comparisons correction, would produce ~4 false positives by
+  chance alone, and that the first pass had adopted several cells that
+  were only raw-significant.
+  Refit at lag 1 (anomaly for month M vs. the PRIOR month's real AO/NAO/
+  ONI value) with a Benjamini-Hochberg FDR correction at 5% across the 80
+  gap-city cells tested (10 cities x 8 cells: AOx3 + NAOx3 + ENSOx2).
+  Result: only 4 cells across all 10 researched cities survive both bars --
+  all in ENSO's "other" (Jun-Nov) season: Austin (-0.7, n=279, p=0.001),
+  OklahomaCity (-0.7, p=0.003), SanAntonio (-0.6, p=0.002), and
+  SanFrancisco (+0.6, p<0.001, positive -- the real West Coast ENSO
+  teleconnection, opposite sign from the 3 Gulf Coast cities). Every AO and
+  NAO cell for all 10 researched cities, and every ENSO-winter cell, stays
+  on the flat default -- for 6 of the 10 cities (Washington, Philadelphia,
+  Minneapolis, Houston, LasVegas, NewOrleans), NOTHING survived either bar,
+  so their table entries are 100% default values. Still worth recording
+  explicitly (vs. leaving them out of the dict, which behaves identically)
+  because it converts "not yet researched" into "researched, no real
+  signal at a usable lag" in the completeness manifest -- a genuine,
+  evidenced null result, not an unresearched gap.
+  Separately, re-running the identical (lag-1, detrended) methodology
+  against the 10 ALREADY-covered cities (informational only, not adopted --
+  see the follow-up entry below, whose numbers were also corrected by this
+  same review) confirms the disagreement with the hand-set values is, if
+  anything, MORE widespread than the first pass's lag-0 sanity check
+  suggested: almost none of the hand-set AO/NAO coefficients survive raw
+  significance at lag 1 either.
+  The 3-Gulf-Coast-city negative ENSO finding (Austin/OklahomaCity/
+  SanAntonio) survived the correction and is now, if anything, on firmer
+  ground: it's 3 of the only 4 cells that clear the strictest bar applied
+  this pass. Per explicit user confirmation (reaffirmed after the
+  correction changed which specific cells qualify): adopted as-is, and did
+  NOT revise the existing 10 (filed as its own follow-up below).
+  Shipped: AO_SENS/NAO_SENS/ENSO_SENS extended to all 20 cities
+  (climate_indices.py) -- 6 of the 10 researched cities are all-default,
+  4 have exactly one real (ENSO-other) cell. tests/test_climate_indices.py
+  updated (_COVERED_CITIES now 20, the "uncovered city" test switched from
+  Austin -- now covered -- to a synthetic city name so it keeps testing the
+  fallback mechanism itself rather than a real city's now-closed gap; 6 new
+  regression-locking tests, including a spring-month case and the
+  negative/positive ENSO-other split), tests/test_city_registry_
+  manifest.py's _KNOWN_GAPS with the 10 now-stale climate_indices entries
+  removed (that test's own bidirectional staleness check would otherwise
+  fail the build), tests/test_city_registry_report_logging.py's stale
+  "10 cities missing climate_indices" comment corrected. 27 tests pass in
+  the scoped climate_indices + city_registry_manifest sweep (plus the 4 in
+  test_city_registry_report_logging.py); ruff+mypy clean.
+
+[NEW 2026-07-25] EXISTING 10 climate_indices CITIES' HAND-SET AO/NAO/ENSO VALUES DISAGREE WITH THE REAL 31-YEAR REGRESSION
+Priority: Low-Medium -- these values are live in the paper-trading blend
+  today (temperature_adjustment() has exactly one production call site,
+  weather_markets.py's analyze_trade(), which shifts the climatological
+  baseline's effective threshold), but TRADING_PAUSED holds and no forcing
+  deadline exists.
+
+Problem:
+  Surfaced as a byproduct of filling the 10-gap-city climate_indices
+  follow-up above. Numbers below are from the SAME lag-1 (regress against
+  the PRIOR month's index value, matching what get_indices() actually
+  returns in production -- see the resolved entry above for why lag-0 was
+  wrong) and detrended methodology finally used for the gap cities --
+  an earlier version of this entry used lag-0 numbers before that
+  correction existed, which UNDERSTATED how widespread the disagreement
+  is. At lag 1, almost none of the hand-set 10's AO/NAO coefficients
+  survive even raw p<0.05, let alone a multiple-comparisons correction:
+  - AO: only Miami-spring (fitted +0.63, p<0.001) is significant, of all
+    30 AO cells (10 cities x 3 seasons) across the entire hand-set table.
+    Denver's hand-set AO (winter=1.8/spring=1.0/other=0.4) is insignificant
+    at all 3 seasons (fitted -0.09 p=0.81, -0.05 p=0.88, +0.13 p=0.72).
+    Seattle's is also insignificant/mostly wrong-signed at all 3 seasons
+    (hand-set winter=1.0/spring=0.8/other=0.3; fitted -0.33 p=0.06, -0.26
+    p=0.14, +0.14 p=0.53) -- same physical reason gap-city SanFrancisco
+    also came back all-default for AO/NAO: these are Atlantic-sector
+    patterns with a weak, statistically-absent Pacific coast signal at a
+    1-month lag in the real record.
+  - NAO: only Miami-winter (fitted +0.58, p=0.027), Miami-spring (+0.60,
+    p=0.002), and Atlanta-spring (+0.72, p=0.024) are significant, of all
+    30 NAO cells.
+  - ENSO: winter is insignificant everywhere except Seattle (+0.57,
+    p=0.003); "other" is significant for Seattle (+0.66), Denver (-0.96),
+    Dallas (-0.60), Phoenix (-0.46) -- Denver/Dallas/Phoenix all
+    WRONG-SIGNED vs. their positive hand-set ENSO values (0.9/1.0/1.2).
+  In short: at the lag the live code actually uses, the hand-set 10's
+  AO/NAO table has essentially no statistical support left (1 of 30 AO
+  cells, 3 of 30 NAO cells survive raw p<0.05 -- fewer than chance alone
+  would produce at that threshold), and ENSO's "other" season has a real,
+  currently-mismodeled sign flip for 3 of 10 cities.
+
+What it would look like:
+  Re-run the identical regression this session already built (fetch AO/NAO/
+  ENSO from CPC, join per-city 30yr Open-Meteo archive, detrend by year,
+  regress at lag 1 against the prior month's index value, apply
+  Benjamini-Hochberg FDR control across whatever cell count is tested, not
+  just a raw p<0.05 floor) against these specific 10 cities and decide
+  cell-by-cell whether to replace the hand-set value: agree -> no change;
+  fitted disagrees on sign/significance -> revise or fall back to
+  DEFAULT_AO_SENS/NAO_SENS/ENSO_SENS. Given how few cells hold up at all,
+  the realistic outcome of doing this properly is that most of the
+  hand-set 10 collapses toward the flat default too, not a like-for-like
+  swap of 30 hand-set numbers for 30 fitted ones. This is a live-blend
+  change for cities already trading, not a "gap" fill -- treat it with the
+  weight that implies (real tests before/after, likely worth an opus
+  review given it touches analyze_trade()'s live threshold-shift path for
+  10 established cities simultaneously).
+
+Why not now:
+  Explicitly deferred by user decision this session rather than assumed --
+  the ask was "do the climate_indices 10-city regression" (the gap-fill),
+  not a revision of cities already live in the blend. TRADING_PAUSED holds
+  with no forcing deadline.
+
+When to revisit:
+  Whenever climate_indices.py is next open for other reasons, or before
+  live trading resumes (Belgium return 2026-07-31) if a fuller pre-live
+  signal-quality pass is done at that point.
 
 [RESOLVED 2026-07-17] LOG_PREDICTION KWARGS ASSEMBLY TRIPLICATED -- ONE COPY HAD ALREADY DRIFTED
 Priority: was Medium-High to fix (trivial), Medium as debt -- drift is not

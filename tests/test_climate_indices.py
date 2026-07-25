@@ -39,6 +39,9 @@ class TestSensitivityTablesCoverage:
     """Which cities have real (non-default) sensitivity entries -- the exact
     fact the completeness manifest reports on."""
 
+    # Original 10 (hand-set, hardcoded 2026-07-19) + the 10 filled 2026-07-25
+    # via real AO/NAO/ENSO regression against each city's 30yr temp record
+    # (backlog.txt "PER-CITY KNOWLEDGE SCATTERED" follow-up).
     _COVERED_CITIES = {
         "NYC",
         "Boston",
@@ -50,15 +53,25 @@ class TestSensitivityTablesCoverage:
         "Seattle",
         "Denver",
         "Atlanta",
+        "Austin",
+        "Washington",
+        "Philadelphia",
+        "OklahomaCity",
+        "SanFrancisco",
+        "Minneapolis",
+        "Houston",
+        "SanAntonio",
+        "LasVegas",
+        "NewOrleans",
     }
 
-    def test_ao_sens_covers_exactly_ten_cities(self):
+    def test_ao_sens_covers_exactly_twenty_cities(self):
         assert set(ci.AO_SENS.keys()) == self._COVERED_CITIES
 
-    def test_nao_sens_covers_exactly_ten_cities(self):
+    def test_nao_sens_covers_exactly_twenty_cities(self):
         assert set(ci.NAO_SENS.keys()) == self._COVERED_CITIES
 
-    def test_enso_sens_covers_exactly_ten_cities(self):
+    def test_enso_sens_covers_exactly_twenty_cities(self):
         assert set(ci.ENSO_SENS.keys()) == self._COVERED_CITIES
 
     def test_all_three_tables_cover_the_same_city_set(self):
@@ -103,12 +116,15 @@ class TestTemperatureAdjustmentComputedValues:
         assert self._adjustment("NYC", month=7) == pytest.approx(0.9)
 
     def test_uncovered_city_uses_flat_default_regardless_of_season(self):
-        """Austin has no entry in any of the 3 tables -- must fall through
-        to DEFAULT_AO_SENS/DEFAULT_NAO_SENS/DEFAULT_ENSO_SENS (0.5+0.4+0.4
-        = 1.3) the SAME way in every season, unlike a covered city."""
-        winter = self._adjustment("Austin", month=1)
-        spring = self._adjustment("Austin", month=4)
-        other = self._adjustment("Austin", month=7)
+        """A city with no entry in any of the 3 tables (all 20 real traded
+        cities are covered as of 2026-07-25 -- use a synthetic name so this
+        keeps testing the fallback mechanism itself, not a real city's
+        temporary gap) must fall through to DEFAULT_AO_SENS/
+        DEFAULT_NAO_SENS/DEFAULT_ENSO_SENS (0.5+0.4+0.4 = 1.3) the SAME way
+        in every season, unlike a covered city."""
+        winter = self._adjustment("Nonexistent", month=1)
+        spring = self._adjustment("Nonexistent", month=4)
+        other = self._adjustment("Nonexistent", month=7)
         assert winter == pytest.approx(1.3)
         assert spring == pytest.approx(1.3)
         assert other == pytest.approx(1.3)
@@ -138,3 +154,74 @@ class TestTemperatureAdjustmentComputedValues:
         assert before == pytest.approx(2.0)
         assert after == pytest.approx(6.0)  # 99.0 * 1.0 clamped to +6.0
         assert before != after
+
+
+class TestRegressionFittedGapCities:
+    """Hand-computed regression-locking tests for the 10 cities researched
+    2026-07-25 (backlog.txt "PER-CITY KNOWLEDGE SCATTERED" follow-up) --
+    pins the actual fitted-vs-default values so a future accidental edit to
+    AO_SENS/NAO_SENS/ENSO_SENS is caught the same way TestTemperatureAdjustmentComputedValues
+    already pins the original 10.
+
+    Revised same day after an independent review found the first pass fit
+    AO/NAO/ENSO at lag 0, but get_indices() only ever returns an
+    already-published (lagged) value in production -- refitting at the lag
+    actually used, plus a Benjamini-Hochberg FDR correction across the 80
+    cells tested, collapsed almost everything to the flat default. Only 4
+    of the 10 researched cities ended up with any real (non-default) cell
+    at all, all in ENSO's "other" season."""
+
+    def _adjustment(self, city, month, ao=1.0, nao=1.0, enso=1.0):
+        with patch.object(
+            ci, "get_indices", return_value={"ao": ao, "nao": nao, "enso": enso}
+        ):
+            return ci.temperature_adjustment(city, date(2026, month, 15))
+
+    def test_six_of_ten_researched_cities_are_entirely_default(self):
+        """Washington/Philadelphia/Minneapolis/Houston/LasVegas/NewOrleans:
+        nothing survived lag-1 + BH-FDR in any of the 8 cells -- confirm
+        each behaves numerically identically to an uncovered city in every
+        season (0.5+0.4+0.4=1.3 winter/spring, same for "other")."""
+        for city in (
+            "Washington",
+            "Philadelphia",
+            "Minneapolis",
+            "Houston",
+            "LasVegas",
+            "NewOrleans",
+        ):
+            assert self._adjustment(city, month=1) == pytest.approx(1.3), city
+            assert self._adjustment(city, month=4) == pytest.approx(1.3), city
+            assert self._adjustment(city, month=7) == pytest.approx(1.3), city
+
+    def test_austin_winter_is_entirely_default_despite_being_a_covered_city(self):
+        """Austin has a real fitted cell (ENSO-other), but winter is 100%
+        default -- a covered city is not the same guarantee as "every
+        season has a real fitted signal"."""
+        assert self._adjustment("Austin", month=1) == pytest.approx(1.3)
+
+    def test_gulf_coast_negative_enso_other_reduces_total_adjustment(self):
+        """The 3 cities with a fitted negative ENSO "other" coefficient --
+        confirm it actually SUBTRACTS from the total rather than being
+        silently clamped to the table's usual positive convention. Also
+        confirms the spring bucket (which collapses to ENSO's "other" key)
+        picks up the same fitted value, not the winter one."""
+        # Austin other: ao=0.5 (default) + nao=0.4 (default) + enso=-0.7 (fitted, negative) = 0.2
+        assert self._adjustment("Austin", month=7) == pytest.approx(0.2)
+        assert self._adjustment("Austin", month=4) == pytest.approx(0.2)  # spring
+        # OklahomaCity other: ao=0.5 (default) + nao=0.4 (default) + enso=-0.7 (fitted, negative) = 0.2
+        assert self._adjustment("OklahomaCity", month=7) == pytest.approx(0.2)
+        # SanAntonio other: ao=0.5 (default) + nao=0.4 (default) + enso=-0.6 (fitted, negative) = 0.3
+        assert self._adjustment("SanAntonio", month=7) == pytest.approx(0.3)
+
+    def test_san_francisco_ao_nao_and_enso_winter_default_but_enso_other_fitted(self):
+        """West Coast city: no significant AO/NAO relationship at any
+        season (same reason Seattle's hand-set AO doesn't hold up under
+        this regression -- both are Atlantic-sector patterns), and ENSO-
+        winter didn't survive BH-FDR either -- but ENSO-"other" is real and
+        POSITIVE (a real West Coast ENSO teleconnection, opposite sign from
+        the Gulf Coast cities' negative "other" coefficient)."""
+        # winter: ao=0.5 (default) + nao=0.4 (default) + enso=0.4 (default) = 1.3 -- same as uncovered
+        assert self._adjustment("SanFrancisco", month=1) == pytest.approx(1.3)
+        # other: ao=0.5 (default) + nao=0.4 (default) + enso=0.6 (fitted, positive) = 1.5
+        assert self._adjustment("SanFrancisco", month=7) == pytest.approx(1.5)

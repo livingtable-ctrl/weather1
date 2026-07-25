@@ -30,9 +30,10 @@ def test_first_run_creates_state_file(tmp_path, monkeypatch):
     state = json.loads(report_path.read_text())
     assert "date" in state
     assert "gaps" in state
-    # Real, current gaps (LasVegas/NewOrleans historical_sigma, 10 cities
-    # missing climate_indices, Seattle correlation_group) must show up --
-    # this isn't asserting zero gaps, it's asserting the report ran for real.
+    # Real, current gaps (LasVegas/NewOrleans historical_sigma, Seattle
+    # correlation_group -- climate_indices closed 2026-07-25, all 20 cities
+    # now covered) must show up -- this isn't asserting zero gaps, it's
+    # asserting the report ran for real.
     assert state["gaps"], (
         "Expected real known gaps to be reported (see tests/"
         "test_city_registry_manifest.py's _KNOWN_GAPS) -- got none, which "

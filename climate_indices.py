@@ -205,13 +205,63 @@ def get_enso_index(
 # literals rebuilt from scratch inside temperature_adjustment() on every
 # call) so per-city coverage is inspectable for the completeness manifest
 # (backlog.txt "PER-CITY KNOWLEDGE SCATTERED ACROSS ~8 REGISTRIES") without
-# needing to execute or parse the function body. Values unchanged from the
-# original inline dicts -- "other" is the original ternary's trailing
-# else-branch (June-November, where AO/NAO influence is weak and wasn't
-# split further). Only 10 of 20 traded cities have real entries here; a
-# missing city falls through to DEFAULT_AO_SENS/DEFAULT_NAO_SENS/
-# DEFAULT_ENSO_SENS regardless of season, same as the original code's
-# `.get(city, 0.5)`-style fallback.
+# needing to execute or parse the function body. The original 10 cities'
+# values below (NYC through Atlanta) are unchanged hand-set domain-knowledge
+# estimates -- "other" is the original ternary's trailing else-branch
+# (June-November, where AO/NAO influence is weak and wasn't split further).
+#
+# The remaining 10 (Austin through NewOrleans) were researched 2026-07-25
+# (backlog.txt "PER-CITY KNOWLEDGE" follow-up) via real regression -- REVISED
+# same day after an independent review caught a real methodological gap in
+# the first pass (see git history for the superseded, more optimistic first
+# version). Methodology: monthly mean temp anomaly (city's 30yr Open-Meteo
+# archive, vs. that city's own per-month climatological normal, linearly
+# detrended by year to rule out a secular-warming confound) regressed
+# against the PRIOR month's real NOAA CPC AO/NAO/ONI value -- lag 1, not
+# lag 0 -- because get_indices() can only ever return an already-published
+# index value, and CPC hasn't published the current month's AO/NAO/ONI by
+# the time a near-term market for that same month is actually being scanned
+# (verified live: get_indices(7, 2026), run 2026-07-25, returns JUNE
+# AO/NAO and MAY ONI, not July's). The first pass fit lag-0 and looked much
+# stronger than what the live code can actually use; refitting at the lag
+# `get_indices()` actually returns collapses almost all of the AO/NAO
+# signal (AO/NAO lag-1 autocorrelation is only ~0.3), while ENSO mostly
+# survives (ONI lag-1 autocorrelation ~0.97, since El Nino/La Nina states
+# persist for months). Bucketed by the same 3 (2 for ENSO) seasons as this
+# table, n=93-279 per cell (scipy.stats.linregress). A cell only gets the
+# fitted slope if it clears BOTH p<0.05 AND Benjamini-Hochberg FDR control
+# at 5% across the 80 cells tested this pass (10 cities x 8 cells) -- the
+# BH step matters here specifically because testing 80 cells at a raw 0.05
+# threshold would produce ~4 false positives by chance alone, and the first
+# pass had adopted several cells that were only raw-significant, not
+# FDR-significant. Anything short of both bars keeps the flat
+# DEFAULT_AO_SENS/NAO_SENS/ENSO_SENS value (per-city notes below record
+# which cells are real vs. default-filled) -- for 6 of the 10 researched
+# cities (Washington/Philadelphia/Minneapolis/Houston/LasVegas/NewOrleans),
+# NOTHING survived this bar, so their entries below are 100% default
+# values: still worth recording explicitly (vs. leaving the city out of the
+# dict entirely, which would behave identically) because it turns "not yet
+# researched" into "researched, no real signal found at a usable lag" in
+# the completeness manifest -- a genuine, evidenced null result, not an
+# unresearched gap.
+# Known simplification carried over from the original 10 (not introduced
+# here): the regression's temperature series is the daily (high+low)/2
+# mean, but temperature_adjustment()'s single index_adj is applied
+# identically to both KXHIGH (max) and KXLOW (min) markets. A city whose
+# AO/NAO/ENSO response is asymmetric between max and min (physically
+# plausible -- these indices shift cloud cover and dewpoint, which tend to
+# move overnight lows more than daytime highs) would have a coefficient
+# that's some kind of average of two different true effects, not exactly
+# right for either market type. Splitting by max vs. min would double the
+# regression's cell count and require rethinking the "one adjustment per
+# city" shape of AO_SENS/NAO_SENS/ENSO_SENS -- out of scope for this pass.
+# Deliberately did NOT re-derive the original 10's hand-set values even
+# though the same regression disagrees with several of them (e.g. Denver's
+# AO is insignificant/wrong-signed at every season in the real 31yr record,
+# same for Seattle) -- revising values already live in the paper-trading
+# blend is separate, larger-blast-radius scope than filling the 10 gaps
+# that were asked for; the specific disagreeing cells are filed as their
+# own backlog.txt follow-up instead of silently left unlisted.
 AO_SENS: dict[str, dict[str, float]] = {
     "NYC": {"winter": 2.0, "spring": 1.2, "other": 0.4},
     "Boston": {"winter": 2.0, "spring": 1.2, "other": 0.4},
@@ -223,6 +273,18 @@ AO_SENS: dict[str, dict[str, float]] = {
     "Seattle": {"winter": 1.0, "spring": 0.8, "other": 0.3},
     "Denver": {"winter": 1.8, "spring": 1.0, "other": 0.4},
     "Atlanta": {"winter": 1.0, "spring": 0.6, "other": 0.2},
+    # None of the 10 researched cities' AO cells survived lag-1 + BH-FDR --
+    # all-default across the board (see module comment above).
+    "Austin": {"winter": 0.5, "spring": 0.5, "other": 0.5},
+    "Washington": {"winter": 0.5, "spring": 0.5, "other": 0.5},
+    "Philadelphia": {"winter": 0.5, "spring": 0.5, "other": 0.5},
+    "OklahomaCity": {"winter": 0.5, "spring": 0.5, "other": 0.5},
+    "SanFrancisco": {"winter": 0.5, "spring": 0.5, "other": 0.5},
+    "Minneapolis": {"winter": 0.5, "spring": 0.5, "other": 0.5},
+    "Houston": {"winter": 0.5, "spring": 0.5, "other": 0.5},
+    "SanAntonio": {"winter": 0.5, "spring": 0.5, "other": 0.5},
+    "LasVegas": {"winter": 0.5, "spring": 0.5, "other": 0.5},
+    "NewOrleans": {"winter": 0.5, "spring": 0.5, "other": 0.5},
 }
 
 NAO_SENS: dict[str, dict[str, float]] = {
@@ -236,12 +298,36 @@ NAO_SENS: dict[str, dict[str, float]] = {
     "Seattle": {"winter": 0.6, "spring": 0.4, "other": 0.2},
     "Denver": {"winter": 0.7, "spring": 0.4, "other": 0.2},
     "Atlanta": {"winter": 0.6, "spring": 0.3, "other": 0.1},
+    # None of the 10 researched cities' NAO cells survived lag-1 + BH-FDR
+    # either -- all-default (closest raw-significant miss was OklahomaCity
+    # NAO-other, p=0.042 raw but not FDR-significant across the 80 cells).
+    "Austin": {"winter": 0.4, "spring": 0.4, "other": 0.4},
+    "Washington": {"winter": 0.4, "spring": 0.4, "other": 0.4},
+    "Philadelphia": {"winter": 0.4, "spring": 0.4, "other": 0.4},
+    "OklahomaCity": {"winter": 0.4, "spring": 0.4, "other": 0.4},
+    "SanFrancisco": {"winter": 0.4, "spring": 0.4, "other": 0.4},
+    "Minneapolis": {"winter": 0.4, "spring": 0.4, "other": 0.4},
+    "Houston": {"winter": 0.4, "spring": 0.4, "other": 0.4},
+    "SanAntonio": {"winter": 0.4, "spring": 0.4, "other": 0.4},
+    "LasVegas": {"winter": 0.4, "spring": 0.4, "other": 0.4},
+    "NewOrleans": {"winter": 0.4, "spring": 0.4, "other": 0.4},
 }
 
 # ENSO's original ternary only ever had 2 branches (winter vs everything
 # else) -- preserved as 2 buckets here rather than inventing a spring-
 # specific value that was never there. temperature_adjustment() collapses
 # "spring"/"other" to the same "other" lookup key for this table only.
+#
+# 4 of the 10 researched cities cleared lag-1 + BH-FDR, all in the "other"
+# season, and 3 of the 4 (Austin/OklahomaCity/SanAntonio) are NEGATIVE --
+# every other cell in this table, old and new, is positive. Adopted as-is
+# (2026-07-25, explicit user confirmation, reaffirmed after the lag/FDR
+# correction made these 4 cells the ONLY ones surviving the strictest test
+# applied this pass): physically plausible (Gulf Coast ENSO teleconnection
+# during Jun-Nov, which includes hurricane season, is a documented
+# different pattern than the East Coast winter relationship the hand-set 10
+# were tuned on) -- excluding it only because the sign is novel would mean
+# the significance floor wasn't the actual rule being applied.
 ENSO_SENS: dict[str, dict[str, float]] = {
     "NYC": {"winter": 1.0, "other": 0.3},
     "Boston": {"winter": 1.0, "other": 0.3},
@@ -253,6 +339,22 @@ ENSO_SENS: dict[str, dict[str, float]] = {
     "Seattle": {"winter": 0.9, "other": 0.5},
     "Denver": {"winter": 0.9, "other": 0.3},
     "Atlanta": {"winter": 0.7, "other": 0.3},
+    # other: fitted, negative, n=279, p=0.001, survives BH-FDR
+    "Austin": {"winter": 0.4, "other": -0.7},
+    "Washington": {"winter": 0.4, "other": 0.4},  # none significant
+    "Philadelphia": {"winter": 0.4, "other": 0.4},  # none significant
+    # other: fitted, negative, n=279, p=0.003, survives BH-FDR
+    "OklahomaCity": {"winter": 0.4, "other": -0.7},
+    # other: fitted, POSITIVE (real West Coast ENSO teleconnection,
+    # opposite sign from the Gulf Coast cities above), n=279, p<0.001,
+    # survives BH-FDR. winter: not significant, stays default.
+    "SanFrancisco": {"winter": 0.4, "other": 0.6},
+    "Minneapolis": {"winter": 0.4, "other": 0.4},  # winter raw p=0.008 but not FDR-sig
+    "Houston": {"winter": 0.4, "other": 0.4},  # winter/other raw-sig but not FDR-sig
+    # other: fitted, negative, n=279, p=0.002, survives BH-FDR
+    "SanAntonio": {"winter": 0.4, "other": -0.6},
+    "LasVegas": {"winter": 0.4, "other": 0.4},  # none significant
+    "NewOrleans": {"winter": 0.4, "other": 0.4},  # none significant
 }
 
 DEFAULT_AO_SENS = 0.5

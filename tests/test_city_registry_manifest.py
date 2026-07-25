@@ -42,23 +42,10 @@ _KNOWN_GAPS: dict[tuple[str, str], str] = {
         "Seattle's Pacific Maritime pattern is distinct from every other "
         "correlated group, not an oversight"
     ),
-    # climate_indices (AO/NAO/ENSO sensitivity) -- 10 of 20 cities covered.
-    # Building real per-city sensitivity coefficients requires the same
-    # kind of historical-correlation analysis the original 10 got; a
-    # missing city falls through to a flat generic default
-    # (climate_indices.DEFAULT_AO_SENS/DEFAULT_NAO_SENS/DEFAULT_ENSO_SENS)
-    # rather than crashing or silently using a wrong city's value, so this
-    # is accepted debt, not a live bug.
-    ("Austin", "climate_indices"): "not yet researched -- flat default in use",
-    ("Washington", "climate_indices"): "not yet researched -- flat default in use",
-    ("Philadelphia", "climate_indices"): "not yet researched -- flat default in use",
-    ("OklahomaCity", "climate_indices"): "not yet researched -- flat default in use",
-    ("SanFrancisco", "climate_indices"): "not yet researched -- flat default in use",
-    ("Minneapolis", "climate_indices"): "not yet researched -- flat default in use",
-    ("Houston", "climate_indices"): "not yet researched -- flat default in use",
-    ("SanAntonio", "climate_indices"): "not yet researched -- flat default in use",
-    ("LasVegas", "climate_indices"): "not yet researched -- flat default in use",
-    ("NewOrleans", "climate_indices"): "not yet researched -- flat default in use",
+    # climate_indices (AO/NAO/ENSO sensitivity): all 20 cities now covered
+    # (2026-07-25, real AO/NAO/ENSO regression against each city's 30yr
+    # temp record -- see climate_indices.py's AO_SENS/NAO_SENS/ENSO_SENS
+    # module comment). No allowlist entries needed here anymore.
 }
 
 
