@@ -16,6 +16,7 @@ import threading
 import time
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from pathlib import Path
 
@@ -5287,6 +5288,254 @@ def _pdopna_blend_active() -> bool:
             {"counts": counts},
         )
     return active
+
+
+# ── Signal graduation registry ──────────────────────────────────────────────
+# backlog.txt "SIGNAL GRADUATION IS A CONVENTION, NOT A MECHANISM" part (b):
+# one entry per shipped log-only signal, replacing having to remember each
+# signal's own scattered backlog.txt prose "ENABLEMENT TRIGGER" text and
+# re-derive its sample-floor query by hand. Automates ONLY the sample-floor
+# check — the correlation/graduation judgment itself stays a documented
+# manual step (`correlation_note`), since it varies too much between signals
+# (a Pearson correlation, an MAE-vs-baseline comparison, "let the features
+# command arbitrate") to be one generic query, and per this project's stated
+# philosophy blend *wiring* is a deliberate human decision the registry
+# should never automate away — only the "is there enough data to even look"
+# part.
+
+
+@dataclass(frozen=True)
+class _SignalRegistryEntry:
+    key: str  # stable id — also the _notify_feature_activation dedup key
+    name: str  # short human label
+    sample_floor: int | None  # None = no fixed count-based floor (see count_fn)
+    count_fn: Callable[[], int] | None  # current settled-sample count, or None
+    correlation_note: str  # what "graduation-worthy" means; still a human call
+    backlog_ref: str  # the backlog.txt entry this maps to, for cross-reference
+
+
+def _count_signal_column(column: str, *, multiday: bool = False) -> Callable[[], int]:
+    """Thin closure factory so each registry entry's count_fn is late-bound
+    to tracker.count_settled_signal_rows — keeps the import function-local
+    (matching _regime_blend_settled_count's/_pdopna_settled_counts' existing
+    avoid-module-level-cross-import convention) without repeating the same
+    3-line wrapper 5 times. multiday=True restricts the count to
+    multiday_predictions (days_out >= 1) — pass it only for a signal whose
+    own production logic genuinely never populates on a same-day row (see
+    count_settled_signal_rows' own docstring for which)."""
+
+    def _count() -> int:
+        from tracker import count_settled_signal_rows
+
+        return count_settled_signal_rows(column, multiday=multiday)
+
+    return _count
+
+
+def _count_model_obs(model: str) -> Callable[[], int]:
+    """Same late-bound-closure shape as _count_signal_column, for the two
+    registry entries whose sample floor lives in ensemble_member_scores
+    (a tracked model) rather than a predictions-row column.
+
+    Validates `model` against KNOWN_FORECAST_MODEL_NAMES at registry-build
+    time (module import), not just inside the closure at call time — a
+    typo'd/renamed model name here would otherwise fail silently forever
+    (count_model_observations returns 0 for an unknown model, indistinguishable
+    from "not yet tracked"), the exact bug class KNOWN_FORECAST_MODEL_NAMES/
+    _validate_forecast_model_keys already exists to catch for the write side.
+    """
+    if model not in KNOWN_FORECAST_MODEL_NAMES:
+        raise ValueError(
+            f"_count_model_obs: {model!r} not in KNOWN_FORECAST_MODEL_NAMES "
+            "— typo, or a real new source that needs adding there first"
+        )
+
+    def _count() -> int:
+        from tracker import count_model_observations
+
+        return count_model_observations(model)
+
+    return _count
+
+
+SIGNAL_REGISTRY: tuple[_SignalRegistryEntry, ...] = (
+    _SignalRegistryEntry(
+        key="run_trend",
+        name="Forecast run-to-run trend (delta/jumpy)",
+        sample_floor=20,
+        count_fn=_count_signal_column("run_trend_delta", multiday=True),
+        correlation_note=(
+            "Does positive run_trend_delta correlate with the forecast being "
+            "LOW vs settled_temp_f (the true value came in even higher)? Does "
+            "high run_trend_jumpy correlate with larger forecast error? Both "
+            "testable directly against settled_temp_f."
+        ),
+        backlog_ref="FORECAST RUN-TO-RUN TREND SIGNAL",
+    ),
+    _SignalRegistryEntry(
+        key="market_implied",
+        name="Market-implied temperature distribution (mean/sigma)",
+        sample_floor=20,
+        count_fn=_count_signal_column("implied_mean"),
+        correlation_note=(
+            "Same ENABLEMENT TRIGGER precedent as run_trend — check whether "
+            "implied_mean minus forecast_temp_f correlates with real "
+            "settlement error before ever wiring this into the blend."
+        ),
+        backlog_ref="MARKET-IMPLIED TEMPERATURE DISTRIBUTION FROM THE FULL LADDER",
+    ),
+    _SignalRegistryEntry(
+        key="gated_edge",
+        name="Liquidity-gated edge divisor",
+        sample_floor=20,
+        count_fn=_count_signal_column("gated_edge"),
+        correlation_note=(
+            "Among trades gated_edge would have downgraded a tier (STRONG "
+            "under adjusted_edge, MED-or-below under gated_edge), did those "
+            "trades actually underperform (win rate, Brier) vs trades that "
+            "stayed at the same tier under both?"
+        ),
+        backlog_ref="LIQUIDITY-AWARE SIZING + DYNAMIC EDGE THRESHOLD",
+    ),
+    _SignalRegistryEntry(
+        key="richer_ml_features",
+        name="Richer ML calibration features (ensemble_spread_f/model_disagreement_f)",
+        sample_floor=None,
+        count_fn=_count_signal_column("ensemble_spread_f"),
+        correlation_note=(
+            "No fixed floor named — once enough rows accumulate, let the "
+            "existing `py main.py features` importance command arbitrate "
+            "whether these earn a place in ml_bias.py's training vector."
+        ),
+        backlog_ref="RICHER ML CALIBRATION FEATURES",
+    ),
+    _SignalRegistryEntry(
+        key="nbm_quantile_prob",
+        name="NBM percentile-quantile probability",
+        sample_floor=20,
+        count_fn=_count_signal_column("nbm_quantile_prob"),
+        correlation_note=(
+            "Verify nbm_quantile_prob correlates with real settlement (same "
+            "log-only-then-verify discipline as cross-city pooling) before "
+            "ever wiring into forecast_prob or get_historical_sigma."
+        ),
+        backlog_ref="NBM PROBABILISTIC QUANTILES",
+    ),
+    _SignalRegistryEntry(
+        key="ecmwf_consensus_gap",
+        name="3-way ECMWF-AIFS consensus gap",
+        sample_floor=20,
+        # Counts settled ecmwf_consensus_gap_prob rows directly (its own
+        # "accumulation clock", per its 2026-07-24 resolution note) rather
+        # than raw ecmwf_aifs025_ensemble observations in
+        # ensemble_member_scores -- the latter accrues much faster (every
+        # tracked scan, not just when all 3 of icon/gfs/ecmwf successfully
+        # resolve together) and would let the floor clear, and the one-time
+        # notify fire, while the actual correlation-checkable signal still
+        # has almost no usable samples.
+        count_fn=_count_signal_column("ecmwf_consensus_gap_prob"),
+        correlation_note=(
+            "Once enough settled ecmwf_consensus_gap_prob rows exist, check "
+            "whether ecmwf_aifs025_ensemble's member-vote probability "
+            "actually disagrees with icon/gfs in a way worth gating on — "
+            "don't guess at the 3-way threshold blind."
+        ),
+        backlog_ref="3-WAY MODEL_CONSENSUS CHECK",
+    ),
+    _SignalRegistryEntry(
+        key="gem_graduation",
+        name="GEM (gem_global) graduation from track-only",
+        sample_floor=20,
+        count_fn=_count_model_obs("gem_global"),
+        correlation_note=(
+            "Per-city MAE pre-check: gem_global's MAE must not exceed the "
+            "WORST currently-blended baseline model's MAE for the same "
+            "city/window (icon_seamless/gfs_seamless/ecmwf_aifs025_ensemble/"
+            "ecmwf_ifs025) — gate on the worst city's result across all "
+            "cities with enough data, not any single city's. Graduate "
+            "independently of UKMO."
+        ),
+        backlog_ref="GRADUATE GEM/UKMO",
+    ),
+    _SignalRegistryEntry(
+        key="ukmo_graduation",
+        name="UKMO (ukmo_global_ensemble_20km) graduation from track-only",
+        sample_floor=20,
+        count_fn=_count_model_obs("ukmo_global_ensemble_20km"),
+        correlation_note=(
+            "Same MAE pre-check as GEM, computed independently — UKMO's "
+            "shorter real forecast horizon (~9-10 of 16 days) may mean it "
+            "never earns a competitive weight even with plenty of data; "
+            "that's a legitimate outcome, not a bug."
+        ),
+        backlog_ref="GRADUATE GEM/UKMO",
+    ),
+    _SignalRegistryEntry(
+        key="cross_city_pooling",
+        name="Cross-city recent-error pooling (regional bias lean)",
+        sample_floor=None,
+        count_fn=None,
+        correlation_note=(
+            "No fixed floor or count query — re-run the retrospective "
+            "validation (tracker.get_regional_recent_bias vs settled_temp_f) "
+            "once more settled data accumulates. Last check (2026-07-23): "
+            "Pearson r~=0.35, but thin per-estimate coverage (85/229 "
+            "candidate rows had any signal, averaging 1.67 correlated-city "
+            "samples each) — too sparse to trust yet."
+        ),
+        backlog_ref="CROSS-CITY RECENT-ERROR POOLING",
+    ),
+)
+
+
+def get_signal_graduation_report() -> list[dict]:
+    """Standing report replacing backlog.txt's per-entry prose ENABLEMENT
+    TRIGGER text — for every registered log-only signal, the real current
+    sample count against its floor.
+
+    Read-only, no live-behavior effect: does NOT compute the correlation
+    check itself (see SIGNAL_REGISTRY's module docstring for why) and never
+    wires anything into a blend. Calls _notify_feature_activation once per
+    signal the first time its floor clears, reusing the same one-time-alert
+    mechanism _regime_blend_active/_pdopna_blend_active already use — so
+    crossing a floor surfaces the same way any other auto-activation does,
+    without this function itself deciding the signal is "active."
+    """
+    report = []
+    for entry in SIGNAL_REGISTRY:
+        count: int | None = None
+        floor_cleared: bool | None = None
+        if entry.count_fn is not None:
+            try:
+                count = entry.count_fn()
+            except Exception as exc:
+                _log.warning(
+                    "get_signal_graduation_report: %s count_fn failed: %s",
+                    entry.key,
+                    exc,
+                )
+            if count is not None and entry.sample_floor is not None:
+                floor_cleared = count >= entry.sample_floor
+                if floor_cleared:
+                    _notify_feature_activation(
+                        f"signal_{entry.key}_floor",
+                        f"{entry.name} has {count} settled samples "
+                        f"(floor {entry.sample_floor}) — ready for the "
+                        "correlation check before considering graduation.",
+                        {"n_settled": count, "sample_floor": entry.sample_floor},
+                    )
+        report.append(
+            {
+                "key": entry.key,
+                "name": entry.name,
+                "sample_floor": entry.sample_floor,
+                "count": count,
+                "floor_cleared": floor_cleared,
+                "correlation_note": entry.correlation_note,
+                "backlog_ref": entry.backlog_ref,
+            }
+        )
+    return report
 
 
 def _blend_weights(

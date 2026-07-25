@@ -5304,3 +5304,148 @@ class TestGetModelWeightsExcludesTrackingOnlyModels:
         )
         # Sanity: icon (perfect) must outweigh gfs (err=2) in the baseline.
         assert baseline["icon_seamless"] > baseline["gfs_seamless"]
+
+
+class TestSignalGraduationCounters(unittest.TestCase):
+    """New generic counters backing backlog.txt's "SIGNAL GRADUATION IS A
+    CONVENTION" part (b) registry (weather_markets.SIGNAL_REGISTRY):
+    count_settled_signal_rows (a predictions column or a signal_values JSON
+    key) and count_model_observations (ensemble_member_scores, per model)."""
+
+    _DATE = date(2099, 1, 1)  # clamps to a large positive days_out (multiday)
+
+    def setUp(self):
+        self._tmpdir = tempfile.mkdtemp()
+        self._orig = tracker.DB_PATH
+        tracker.DB_PATH = Path(self._tmpdir) / "test_predictions.db"
+        tracker._db_initialized = False
+
+    def tearDown(self):
+        tracker.DB_PATH = self._orig
+        tracker._db_initialized = False
+        shutil.rmtree(self._tmpdir, ignore_errors=True)
+
+    def _analysis(self):
+        return {
+            "condition": {"type": "above", "threshold": 70.0},
+            "forecast_prob": 0.6,
+            "market_prob": 0.5,
+            "edge": 0.1,
+            "method": "ensemble",
+            "n_members": 82,
+        }
+
+    def _log_settled(self, ticker, *, settled_temp_f=75.0, **log_prediction_kwargs):
+        tracker.log_prediction(
+            ticker, "NYC", self._DATE, self._analysis(), **log_prediction_kwargs
+        )
+        tracker.log_outcome(ticker, True)
+        if settled_temp_f is not None:
+            with sqlite3.connect(str(tracker.DB_PATH)) as con:
+                con.execute(
+                    "UPDATE outcomes SET settled_temp_f = ? WHERE ticker = ?",
+                    (settled_temp_f, ticker),
+                )
+
+    # ── count_settled_signal_rows: named column ─────────────────────────────
+
+    def test_count_settled_signal_rows_column_counts_non_null_only(self):
+        self._log_settled("A", run_trend={"delta": 1.5, "jumpy": False, "points": []})
+        self._log_settled("B", run_trend=None)  # no run_trend logged for this trade
+        self._log_settled("C", run_trend={"delta": -2.0, "jumpy": True, "points": []})
+        self.assertEqual(tracker.count_settled_signal_rows("run_trend_delta"), 2)
+
+    def test_count_settled_signal_rows_requires_settled_temp_f(self):
+        # A real settled_yes row whose temperature fetch failed (settled_temp_f
+        # NULL) must not count — matches count_emos_ready_predictions' own
+        # settled_temp_f-required semantics and backlog.txt's own run_trend
+        # ENABLEMENT TRIGGER literal condition.
+        self._log_settled(
+            "A",
+            run_trend={"delta": 1.0, "jumpy": False, "points": []},
+            settled_temp_f=None,
+        )
+        self.assertEqual(tracker.count_settled_signal_rows("run_trend_delta"), 0)
+
+    def test_count_settled_signal_rows_excludes_disputed(self):
+        self._log_settled("A", run_trend={"delta": 1.0, "jumpy": False, "points": []})
+        self._log_settled("B", run_trend={"delta": 1.0, "jumpy": False, "points": []})
+        tracker.mark_outcome_disputed("B")
+        self.assertEqual(tracker.count_settled_signal_rows("run_trend_delta"), 1)
+
+    def test_count_settled_signal_rows_zero_when_nothing_logged(self):
+        self.assertEqual(tracker.count_settled_signal_rows("run_trend_delta"), 0)
+
+    # ── count_settled_signal_rows: generic signal_values JSON key ──────────
+
+    def test_count_settled_signal_rows_json_key_counts_present_key_only(self):
+        self._log_settled("A", signals={"foo": 1.0})
+        self._log_settled("B", signals={"bar": 2.0})  # different key present
+        self._log_settled("C", signals=None)  # no signals dict at all
+        self.assertEqual(tracker.count_settled_signal_rows(json_key="foo"), 1)
+
+    def test_count_settled_signal_rows_requires_exactly_one_of_column_json_key(self):
+        with self.assertRaises(ValueError):
+            tracker.count_settled_signal_rows()
+        with self.assertRaises(ValueError):
+            tracker.count_settled_signal_rows("run_trend_delta", json_key="foo")
+
+    def test_count_settled_signal_rows_multiday_excludes_sameday_rows(self):
+        # A same-day row can't actually carry run_trend_delta in production
+        # (get_forecast_run_trend never runs for days_out<1), but the
+        # multiday=True view restriction must hold even for a hand-built
+        # test row that violates that invariant -- proves the exclusion is
+        # structural (via multiday_predictions), not just incidentally true
+        # because nothing populates same-day run_trend_delta today.
+        # days_out is derived by log_prediction from (market_date - today),
+        # not read from the analysis dict -- use today's real date to land
+        # on days_out=0, matching tracker.utc_today()'s own convention.
+        from utils import utc_today
+
+        tracker.log_prediction(
+            "SAMEDAY",
+            "NYC",
+            utc_today(),
+            self._analysis(),
+            run_trend={"delta": 1.0, "jumpy": False, "points": []},
+        )
+        tracker.log_outcome("SAMEDAY", True)
+        with sqlite3.connect(str(tracker.DB_PATH)) as con:
+            con.execute(
+                "UPDATE outcomes SET settled_temp_f = 75.0 WHERE ticker = 'SAMEDAY'"
+            )
+        self.assertEqual(
+            tracker.count_settled_signal_rows("run_trend_delta", multiday=True), 0
+        )
+        self.assertEqual(
+            tracker.count_settled_signal_rows("run_trend_delta", multiday=False), 1
+        )
+
+    # ── count_model_observations ────────────────────────────────────────────
+
+    def test_count_model_observations_counts_settled_rows_for_model_only(self):
+        tracker.log_member_score("NYC", "gem_global", 70.0, 71.0, "2099-01-01")
+        tracker.log_member_score("NYC", "gem_global", 72.0, 70.0, "2099-01-02")
+        tracker.log_member_score(
+            "NYC", "ukmo_global_ensemble_20km", 65.0, 66.0, "2099-01-01"
+        )
+        self.assertEqual(tracker.count_model_observations("gem_global"), 2)
+        self.assertEqual(
+            tracker.count_model_observations("ukmo_global_ensemble_20km"), 1
+        )
+
+    def test_count_model_observations_excludes_unsettled_rows(self):
+        # actual_temp NULL — a logged-but-not-yet-settled member score, must
+        # not count (mirrors get_member_accuracy's own filter).
+        tracker.log_member_score("NYC", "gem_global", 70.0, 70.0, "2099-01-01")
+        with sqlite3.connect(str(tracker.DB_PATH)) as con:
+            con.execute(
+                "INSERT INTO ensemble_member_scores "
+                "(city, model, predicted_temp, actual_temp, target_date, logged_at) "
+                "VALUES ('NYC', 'gem_global', 71.0, NULL, '2099-01-02', datetime('now'))"
+            )
+        self.assertEqual(tracker.count_model_observations("gem_global"), 1)
+
+    def test_count_model_observations_zero_for_unknown_model(self):
+        tracker.log_member_score("NYC", "gem_global", 70.0, 70.0, "2099-01-01")
+        self.assertEqual(tracker.count_model_observations("nonexistent_model"), 0)

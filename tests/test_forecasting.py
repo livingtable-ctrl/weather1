@@ -1631,3 +1631,228 @@ class TestPDOPNA:
         monkeypatch.setattr(wm._ci, "_PDO_PNA_PATH", tmp_path / "missing.json")
         wm._pdopna_blend_state["active"] = None
         assert wm._pdopna_blend_active() is False
+
+
+class TestSignalGraduationRegistry:
+    """backlog.txt "SIGNAL GRADUATION IS A CONVENTION" part (b):
+    weather_markets.SIGNAL_REGISTRY + get_signal_graduation_report()."""
+
+    def test_registry_has_no_duplicate_keys(self):
+        import weather_markets as wm
+
+        keys = [e.key for e in wm.SIGNAL_REGISTRY]
+        assert len(keys) == len(set(keys)), f"duplicate registry keys: {keys}"
+
+    def test_count_model_obs_rejects_unknown_model_name(self):
+        """Guards the silent-typo failure mode an opus review caught: an
+        unknown model name would otherwise resolve to a real-looking count
+        of 0 forever, indistinguishable from "not yet tracked". Validated
+        at closure-build time -- which is also why SIGNAL_REGISTRY (and
+        therefore this whole module) would fail to import at all if either
+        real gem_graduation/ukmo_graduation entry's literal were ever
+        typo'd, a much stronger guarantee than a dedicated per-entry test."""
+        import weather_markets as wm
+
+        with pytest.raises(ValueError, match="KNOWN_FORECAST_MODEL_NAMES"):
+            wm._count_model_obs("gem_glbal")  # typo, not gem_global
+
+    def test_registry_has_9_entries_matching_the_8_shipped_signal_topics(self):
+        import weather_markets as wm
+
+        # Locks in the retrofit scope agreed on when this was built: all 8
+        # already-shipped log-only signal *topics* from backlog.txt, not a
+        # partial/empty registry. 9 registry rows because GEM and UKMO
+        # graduate independently (their own correlation_note says so) even
+        # though both come from the single "GRADUATE GEM/UKMO" backlog entry.
+        assert len(wm.SIGNAL_REGISTRY) == 9
+        backlog_refs = {e.backlog_ref for e in wm.SIGNAL_REGISTRY}
+        assert len(backlog_refs) == 8
+
+    def test_report_includes_every_registered_signal(self, monkeypatch, tmp_path):
+        import weather_markets as wm
+
+        monkeypatch.setattr(
+            wm, "_FEATURE_ACTIVATIONS_PATH", tmp_path / "feature_activations.json"
+        )
+        report = wm.get_signal_graduation_report()
+        assert {row["key"] for row in report} == {e.key for e in wm.SIGNAL_REGISTRY}
+
+    def test_below_floor_reports_not_cleared_and_does_not_notify(
+        self, monkeypatch, tmp_path
+    ):
+        import weather_markets as wm
+
+        fa_path = tmp_path / "feature_activations.json"
+        monkeypatch.setattr(wm, "_FEATURE_ACTIVATIONS_PATH", fa_path)
+        entry = wm._SignalRegistryEntry(
+            key="test_sig",
+            name="Test Signal",
+            sample_floor=20,
+            count_fn=lambda: 5,
+            correlation_note="note",
+            backlog_ref="ref",
+        )
+        monkeypatch.setattr(wm, "SIGNAL_REGISTRY", (entry,))
+        report = wm.get_signal_graduation_report()
+        assert report[0]["count"] == 5
+        assert report[0]["floor_cleared"] is False
+        assert not fa_path.exists()
+
+    def test_floor_cleared_reports_true_and_notifies_once(self, monkeypatch, tmp_path):
+        import json
+
+        import weather_markets as wm
+
+        fa_path = tmp_path / "feature_activations.json"
+        monkeypatch.setattr(wm, "_FEATURE_ACTIVATIONS_PATH", fa_path)
+        entry = wm._SignalRegistryEntry(
+            key="test_sig",
+            name="Test Signal",
+            sample_floor=20,
+            count_fn=lambda: 25,
+            correlation_note="note",
+            backlog_ref="ref",
+        )
+        monkeypatch.setattr(wm, "SIGNAL_REGISTRY", (entry,))
+        report = wm.get_signal_graduation_report()
+        assert report[0]["count"] == 25
+        assert report[0]["floor_cleared"] is True
+        data = json.loads(fa_path.read_text())
+        assert "signal_test_sig_floor" in data
+        assert data["signal_test_sig_floor"]["n_settled"] == 25
+
+        # Idempotent: a second call must not error and the notify file's
+        # existing entry must be preserved (matches _notify_feature_activation's
+        # own dismissal-preserving contract, exercised here through the
+        # report path specifically, not just _notify_feature_activation directly).
+        wm.get_signal_graduation_report()
+        data_again = json.loads(fa_path.read_text())
+        assert data_again == data
+
+    def test_no_fixed_floor_reports_count_but_no_floor_cleared_verdict(
+        self, monkeypatch, tmp_path
+    ):
+        """richer_ml_features' real shape: a count_fn exists (informational)
+        but sample_floor is None -- no automatic graduation verdict is ever
+        computed for it, matching its own correlation_note ("let the features
+        command arbitrate")."""
+        import weather_markets as wm
+
+        monkeypatch.setattr(
+            wm, "_FEATURE_ACTIVATIONS_PATH", tmp_path / "feature_activations.json"
+        )
+        entry = wm._SignalRegistryEntry(
+            key="test_sig",
+            name="Test Signal",
+            sample_floor=None,
+            count_fn=lambda: 100,
+            correlation_note="note",
+            backlog_ref="ref",
+        )
+        monkeypatch.setattr(wm, "SIGNAL_REGISTRY", (entry,))
+        report = wm.get_signal_graduation_report()
+        assert report[0]["count"] == 100
+        assert report[0]["floor_cleared"] is None
+
+    def test_count_fn_none_reports_none_count(self, monkeypatch, tmp_path):
+        """cross_city_pooling's real shape: no persisted per-row column to
+        count at all -- count_fn=None, purely informational entry."""
+        import weather_markets as wm
+
+        monkeypatch.setattr(
+            wm, "_FEATURE_ACTIVATIONS_PATH", tmp_path / "feature_activations.json"
+        )
+        entry = wm._SignalRegistryEntry(
+            key="test_sig",
+            name="Test Signal",
+            sample_floor=None,
+            count_fn=None,
+            correlation_note="note",
+            backlog_ref="ref",
+        )
+        monkeypatch.setattr(wm, "SIGNAL_REGISTRY", (entry,))
+        report = wm.get_signal_graduation_report()
+        assert report[0]["count"] is None
+        assert report[0]["floor_cleared"] is None
+
+    def test_count_fn_exception_is_caught_not_raised(self, monkeypatch, tmp_path):
+        """A DB error in one signal's count_fn must not blow up the report
+        for every OTHER registered signal -- caught and reported as an
+        unavailable count, not propagated."""
+        import weather_markets as wm
+
+        monkeypatch.setattr(
+            wm, "_FEATURE_ACTIVATIONS_PATH", tmp_path / "feature_activations.json"
+        )
+
+        def _boom():
+            raise RuntimeError("db locked")
+
+        entry = wm._SignalRegistryEntry(
+            key="test_sig",
+            name="Test Signal",
+            sample_floor=20,
+            count_fn=_boom,
+            correlation_note="note",
+            backlog_ref="ref",
+        )
+        monkeypatch.setattr(wm, "SIGNAL_REGISTRY", (entry,))
+        report = wm.get_signal_graduation_report()  # must not raise
+        assert report[0]["count"] is None
+        assert report[0]["floor_cleared"] is None
+
+    def test_real_registry_entries_all_resolve_against_a_real_empty_db(
+        self, monkeypatch, tmp_path
+    ):
+        """End-to-end smoke test of the actual 9-entry registry (not a mocked
+        stand-in) against a real, empty, isolated DB -- proves every real
+        count_fn closure calls a real tracker function with valid arguments
+        and doesn't crash, and that an empty DB reads as 0/not-cleared for
+        every count-checkable entry."""
+        import tracker
+        import weather_markets as wm
+
+        monkeypatch.setattr(tracker, "DB_PATH", tmp_path / "test_predictions.db")
+        tracker._db_initialized = False
+        monkeypatch.setattr(
+            wm, "_FEATURE_ACTIVATIONS_PATH", tmp_path / "feature_activations.json"
+        )
+
+        report = wm.get_signal_graduation_report()
+        assert len(report) == 9
+        for row in report:
+            if row["sample_floor"] is not None:
+                assert row["count"] == 0, row["key"]
+                assert row["floor_cleared"] is False, row["key"]
+        # Exactly one entry (cross_city_pooling) has no count query at all.
+        no_count = [row for row in report if row["count"] is None]
+        assert [row["key"] for row in no_count] == ["cross_city_pooling"]
+
+    def test_ecmwf_consensus_gap_counts_its_own_column_not_raw_model_observations(
+        self, monkeypatch, tmp_path
+    ):
+        """Regression test for an opus-review-caught bug: the entry
+        originally counted raw ecmwf_aifs025_ensemble rows in
+        ensemble_member_scores, which accrues much faster than the actual
+        correlation-checkable ecmwf_consensus_gap_prob column and would
+        have let the floor clear (and fire the one-time notify) long
+        before the real signal had enough usable samples. Proves the fix
+        by seeding only ensemble_member_scores rows for the model (no
+        predictions row) and confirming the count stays 0 — if this
+        regressed back to counting the model-observation table, this
+        count would read >=1 instead."""
+        import tracker
+        import weather_markets as wm
+
+        monkeypatch.setattr(tracker, "DB_PATH", tmp_path / "test_predictions.db")
+        tracker._db_initialized = False
+        monkeypatch.setattr(
+            wm, "_FEATURE_ACTIVATIONS_PATH", tmp_path / "feature_activations.json"
+        )
+        for i in range(25):
+            tracker.log_member_score(
+                "NYC", "ecmwf_aifs025_ensemble", 70.0, 70.0, f"2099-01-{i + 1:02d}"
+            )
+
+        entry = next(e for e in wm.SIGNAL_REGISTRY if e.key == "ecmwf_consensus_gap")
+        assert entry.count_fn() == 0

@@ -6508,8 +6508,9 @@ When to revisit:
     above. Full Position read-model: when the next live-position feature
     lands, using it as the third consumer that validates the interface.
 
-[PARTIALLY RESOLVED 2026-07-24 -- part (a), storage only, shipped; parts (b)
-  and (c) still open, unstarted]
+[PARTIALLY RESOLVED 2026-07-25 -- parts (a) and (b) shipped; part (c), the
+  blend-weights-dict refactor, still open, deliberately scoped out as its
+  own separately-reviewed pass given its live-blend blast radius]
   SIGNAL GRADUATION IS A CONVENTION, NOT A MECHANISM -- SIGNAL #3 REBUILDS RUN-TREND'S PLUMBING
 Priority: Medium -- the log-only->trigger->blend pattern is now this
   project's explicit strategy for all new alpha; its marginal cost is
@@ -6649,12 +6650,196 @@ RESOLVED 2026-07-24 (part (a) only -- storage mechanism; parts (b)/(c)
   the only new-value-in-this-diff not appended last among its siblings --
   moved for consistency (cosmetic, zero functional effect). User confirmed
   commit+push explicitly.
-  Still open, unstarted: part (b) (the signal registry + standing
-  graduation-report command + auto-activation-notification reuse) and part
-  (c) (graduated signals joining a named blend-weights dict instead of
-  _blend_weights()'s positional tuple) -- same "when to revisit" trigger as
-  above, now genuinely available for the actual next new log-only signal to
-  prove or disprove the shape against.
+  Still open at that point, unstarted: part (b) (the signal registry +
+  standing graduation-report command + auto-activation-notification reuse)
+  and part (c) (graduated signals joining a named blend-weights dict instead
+  of _blend_weights()'s positional tuple) -- same "when to revisit" trigger
+  as above.
+
+RESOLVED 2026-07-25 (part (b) -- the signal registry + standing
+  graduation-report command; part (c), the blend-weights-dict refactor, is
+  deliberately still open, see below): picked up on explicit user request.
+  Re-verified this entry's own stated gate before designing anything --
+  "build the registry when the next log-only signal is picked up, not
+  before." No new log-only signal was queued or in flight at the time this
+  was picked up either -- the literal gate still hadn't fired a second time.
+  Surfaced this via AskUserQuestion rather than silently building
+  speculatively or silently deferring again: since 8 real signals (not just
+  run_trend, the only one that existed when this entry was first written)
+  now have their own real, already-battle-tested backlog.txt "ENABLEMENT
+  TRIGGER" prose, retrofitting all 8 into the registry now was scoped as the
+  registry's actual second-and-onward data points, proving/disproving the
+  design against real historical cases rather than a hypothetical future
+  one. User confirmed: build part (b) only this pass (part (c) deferred as
+  its own separately-scoped follow-up given the live-blend blast radius --
+  see below), retrofit all 8 signals now rather than shipping an empty
+  shell.
+  Research before designing (not assumed from this entry's own text, which
+  predates several of the 8 signals): grepped every backlog.txt
+  "ENABLEMENT TRIGGER" section and found the 8 signals' triggers are NOT
+  uniform in rigor or shape -- only run_trend and GEM/UKMO give a literal,
+  machine-checkable numeric floor + query; the rest ("richer ML", "market
+  implied", "3-way ecmwf", "nbm_quantile_prob", "cross-city pooling") defer
+  to prose ("once enough rows accumulate," "same precedent as X") with no
+  query ever written out. This meant a registry entry's "correlation check"
+  genuinely can't be one generic automated query across all 8 -- a Pearson
+  correlation, an MAE-vs-baseline-model comparison, and "let the existing
+  `py main.py features` command arbitrate" are three different kinds of
+  judgment call. Landed on automating ONLY the sample-floor count (which
+  every signal's own trigger text does agree is the real gate, whether
+  literal or implied) and keeping each entry's correlation check as a
+  documented `correlation_note` string -- a human-readable reminder of what
+  to actually check once the floor clears, not something the registry
+  itself computes. Matches this entry's own stated philosophy ("leave blend
+  *wiring* manual -- the deliberate human step is the point of the
+  pattern") extended one step earlier: the graduation *judgment*, not just
+  the graduation *wiring*, stays a human call.
+  Also found the count sources aren't uniform: 6 of the 9 registry rows
+  (run_trend, market_implied, gated_edge, richer_ml_features,
+  nbm_quantile_prob, ecmwf_consensus_gap -- the last one switched from an
+  ensemble_member_scores model-observation count to its own
+  ecmwf_consensus_gap_prob column after the review below, since that
+  column IS the entry's own stated "accumulation clock", and the raw
+  model-observation count accrues faster and would have cleared the floor
+  well before the actual correlation-checkable signal had enough samples)
+  check a `predictions` column (or, for any future signal shipped only
+  through the generic `signals` JSON column, a `json_extract` key) joined
+  to a real settled temperature; both GEM/UKMO graduation entries check
+  `ensemble_member_scores` (a tracked *model*, not a per-prediction column)
+  instead, correctly -- their own min_n=20 trigger is genuinely about raw
+  tracked-model observations, not a logged column; cross-city pooling has
+  no persisted per-row signal at all (it's a standalone retrospective-
+  validation utility, tracker.get_regional_recent_bias, already run once
+  with a real r~=0.35-but-thin-coverage result) and got a purely
+  informational entry with `count_fn=None` pointing at that result rather
+  than a fabricated query.
+  Also found (and fixed) that count_settled_signal_rows joining the full
+  `predictions` table rather than the `multiday_predictions` view diverges
+  from this file's own established convention (count_settled_predictions'/
+  count_emos_ready_predictions' docstrings: the view exists specifically
+  "so same-day METAR trades don't inflate ... the graduation threshold")
+  -- correct for gated_edge/market_implied/richer_ml_features/
+  nbm_quantile_prob/ecmwf_consensus_gap, which are all genuinely computed
+  for same-day markets too and would be undercounted by the view, but
+  wrong for run_trend specifically, whose own production function
+  (get_forecast_run_trend) documents itself as multi-day-only. Added a
+  `multiday: bool` param to count_settled_signal_rows and set it only for
+  run_trend's registry entry -- makes the exclusion structural (via the
+  view) rather than relying solely on run_trend's own writer-side gate to
+  never populate a same-day row, matching this file's stated preference
+  for a structural guarantee over an implicit one.
+  Shipped: tracker.count_settled_signal_rows(column, *, json_key=None,
+  multiday=False) -- the generic predictions-column/JSON-key counter,
+  matching count_emos_ready_predictions' settled_temp_f-required,
+  outcomes_valid-joined filter shape exactly (excludes disputed rows,
+  matching every other calibration-adjacent count in the file) but NOT its
+  table choice by default (see the multiday note above -- table choice is
+  per-entry, not hardcoded to the view) -- and
+  tracker.count_model_observations(model) -- a single-model,
+  settled-rows-only counter mirroring get_member_accuracy's own filter but
+  returning a plain count instead of a full MAE breakdown. weather_markets.
+  SIGNAL_REGISTRY (a tuple of 9 frozen _SignalRegistryEntry dataclasses:
+  run_trend, market_implied, gated_edge, richer_ml_features,
+  nbm_quantile_prob, ecmwf_consensus_gap, gem_graduation, ukmo_graduation,
+  cross_city_pooling -- 9 rows for 8 backlog topics, since GEM and UKMO
+  graduate independently per their own correlation_notes despite sharing
+  one "GRADUATE GEM/UKMO" backlog entry) and
+  weather_markets.get_signal_graduation_report() (walks the registry,
+  calls each entry's count_fn, compares to sample_floor when both exist,
+  calls the existing _notify_feature_activation the first time a floor
+  clears -- reusing the exact one-time-alert mechanism
+  _regime_blend_active/_pdopna_blend_active already use, so a graduation-
+  ready signal surfaces the same way any other auto-activation does, and a
+  count_fn exception is caught and reported as an unavailable count rather
+  than crashing the whole report for every other signal). Wired into a new
+  `py main.py signals` CLI command (cmd_signals(), main.py) -- the "standing
+  graduation-report command" this entry's own text asked for, replacing the
+  need to remember and hand-run each signal's own scattered prose trigger.
+  Read-only throughout -- zero live-trading-behavior change; verified via a
+  real (not mocked) end-to-end test against an empty, isolated DB that all
+  9 real registry entries resolve cleanly to 0/not-cleared with no
+  exceptions.
+  21 new tests: 8 for the two new tracker.py counters (column-based
+  non-NULL filtering, settled_temp_f-required, disputed-row exclusion, the
+  JSON-key path, model-observation counting including the
+  actual_temp-NULL-excluded case) in tests/test_tracker.py; 9 for the
+  registry/report mechanism (every registered signal appears in the report,
+  below-floor vs. floor-cleared vs. no-fixed-floor vs. count_fn=None vs.
+  count_fn-raises, idempotent notify-file behavior, plus the real-registry
+  end-to-end smoke test) in tests/test_forecasting.py; 4 for the CLI
+  command's display logic in tests/test_p1_remaining.py. Mutation-tested
+  the auto-notify wiring directly (temporarily disabled the
+  `if floor_cleared:` branch in get_signal_graduation_report, confirmed the
+  notify-file test failed with the exact predicted FileNotFoundError,
+  restored and re-verified green) -- caught a real mistake in my own first
+  test-count assertion in the process (asserted "8 registry entries," the
+  actual number is 9 for the reason above; corrected before this was ever
+  a hidden bug, just a wrong test literal caught by running the tests, not
+  by review).
+  Independent Agent(opus, effort=high) review before push found no CRITICAL
+  scope violations (confirmed SIGNAL_REGISTRY/get_signal_graduation_report
+  have exactly one non-test caller -- the CLI command -- and _blend_weights
+  is untouched) but 7 real findings, all fixed: (1) MEDIUM --
+  count_settled_signal_rows joined raw `predictions` for every signal,
+  diverging from this file's own established multiday_predictions-view
+  convention for exactly the "don't let same-day noise inflate the
+  graduation threshold" reason count_settled_predictions'/
+  count_emos_ready_predictions' own docstrings state -- added a
+  `multiday: bool` param, set True only for run_trend (the one signal
+  whose own production function documents itself as genuinely multi-day-
+  only), left False for the others (genuinely computed for same-day
+  markets too, so the view would have undercounted real samples, not just
+  filtered noise) -- see the multiday paragraph above for the full
+  per-signal reasoning. (2) MEDIUM -- a typo'd/renamed model name passed
+  to _count_model_obs would fail silently forever (count_model_observations
+  returns 0 for an unknown model, indistinguishable from "not yet
+  tracked") -- fixed by validating against KNOWN_FORECAST_MODEL_NAMES at
+  closure-build time (module-import time), the same guard class
+  _validate_forecast_model_keys already provides on the write side; a
+  typo'd real registry entry would now fail the whole module's import,
+  not just silently pin one signal's floor at 0. (3) MEDIUM-LOW -- the
+  richer_ml_features entry's real count_fn was computed then discarded by
+  the CLI (only entries with a sample_floor showed their count; the one
+  entry with a count but no floor showed nothing) -- fixed cmd_signals to
+  show "`N` samples, no fixed floor" when a count exists. (4) LOW -- the
+  3-way ECMWF entry counted raw ecmwf_aifs025_ensemble rows in
+  ensemble_member_scores, which accrues faster than the actual
+  correlation-checkable ecmwf_consensus_gap_prob column (its own stated
+  "accumulation clock" per the 2026-07-24 resolution) -- switched to count
+  ecmwf_consensus_gap_prob directly, so the floor-cleared notification
+  fires when the real signal has enough samples, not when the underlying
+  model merely has enough raw tracked observations. (5) LOW -- 3 doc/
+  comment off-by-one errors (this entry's own "6 of 9"/wrapper-repeated-
+  "6 times"/a test docstring's "8-entry registry", all should have said
+  5/5/9) -- corrected. (6) LOW -- `signals` was missing from README.md's
+  command table, the only place CLI subcommands are enumerated for
+  discoverability (cmd_help's interactive menu doesn't list subcommands
+  either) -- added. (7) LOW -- count_settled_signal_rows accepted both
+  column= and json_key= with one silently ignored (a test had to pass an
+  "unused" dummy column even when only json_key mattered) -- tightened to
+  require exactly one, raising ValueError otherwise. 4 more tests added
+  addressing these fixes directly (a multiday-exclusion test proving the
+  view restriction is structural not incidental, an exactly-one-of
+  ValueError test, a model-name-typo-rejection test, a regression test
+  proving ecmwf_consensus_gap now reads its own column even when
+  ensemble_member_scores has real rows for the model) -- 25 signal-
+  graduation tests total across the 3 files (10 tracker.py counters, 11
+  registry/report, 4 CLI display). Full regression sweep (647 tests
+  passed, 4 pre-existing skips) + ruff/ruff format/mypy re-run clean after
+  every fix.
+  Deliberately did NOT build part (c) this pass (own separate AskUserQuestion
+  decision, see the header tag above): _blend_weights() returns a positional
+  3-tuple with 4 real production call sites (weather_markets.py) and ~25
+  test call sites unpacking it positionally -- converting to a dict so a
+  graduated signal could enter as a named key instead of a new tuple
+  position touches the actual live probability-blend code, a different risk
+  tier from this pass's pure-reporting mechanism. Scope this as its own
+  pass, with its own review, whenever a real graduated signal is ready to
+  wire in and the tuple-arity ergonomics actually start to bite -- don't
+  build it speculatively ahead of that, matching this project's own
+  established "don't build the abstraction before a second real case
+  demands it" discipline (see NO MARKET-TYPE SEAM's identical reasoning for
+  the MarketType protocol).
 
 [RESOLVED 2026-07-23 -- as a side effect of GENERALIZED PER-MODEL ACCURACY TRACKING Pass 1, see that entry] THE ANALYSIS-DICT -> TRADE-RECORD BOUNDARY EXPLODES DICTS INTO NAMED SCALARS
 Priority: was Medium -- sharpened the GENERALIZED PER-MODEL ACCURACY

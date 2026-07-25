@@ -4403,6 +4403,42 @@ def cmd_code_audit() -> None:
     print()
 
 
+def cmd_signals() -> None:
+    """Show the log-only-signal graduation report (backlog.txt "SIGNAL
+    GRADUATION IS A CONVENTION" part b) -- real settled-sample counts for
+    every registered log-only signal against its sample floor, replacing
+    the need to remember and hand-run each signal's own scattered backlog.txt
+    prose trigger. Read-only; never wires anything into the live blend."""
+    from weather_markets import get_signal_graduation_report
+
+    report = get_signal_graduation_report()
+    print(bold("\n  Signal Graduation Report"))
+    print(
+        dim(
+            "  Sample-floor status only -- the correlation check for each "
+            "signal is still a manual judgment call (see notes below)."
+        )
+    )
+    print()
+    for row in report:
+        if row["sample_floor"] is None:
+            status = (
+                dim(f"{row['count']} samples, no fixed floor")
+                if row["count"] is not None
+                else dim("no fixed floor")
+            )
+        elif row["count"] is None:
+            status = yellow("count unavailable")
+        elif row["floor_cleared"]:
+            status = green(f"{row['count']}/{row['sample_floor']} -- floor cleared")
+        else:
+            status = dim(f"{row['count']}/{row['sample_floor']}")
+        print(f"  {bold(row['name'])}")
+        print(f"    status: {status}   backlog: {row['backlog_ref']}")
+        print(f"    {dim(row['correlation_note'])}")
+        print()
+
+
 def cmd_features() -> None:
     """Show feature importance summary from historical trades."""
     from feature_importance import get_feature_summary
@@ -8015,6 +8051,8 @@ def main():
         cmd_resume()
     elif cmd == "features":
         cmd_features()
+    elif cmd == "signals":
+        cmd_signals()
     elif cmd == "override":
         action = args[1] if len(args) > 1 else "status"
         # CR-6: non-integer minutes arg raises ValueError before cmd_override is called,

@@ -911,3 +911,71 @@ class TestCmdTodayDirectionalConsensusGates:
         out = self._run(monkeypatch, self._market(ticker), analysis, capsys)
         assert "No strong opportunities today" not in out
         assert ticker in out
+
+
+class TestCmdSignals:
+    """backlog.txt "SIGNAL GRADUATION IS A CONVENTION" part (b): the
+    `py main.py signals` CLI command displaying get_signal_graduation_report()."""
+
+    def _row(self, **overrides):
+        row = {
+            "key": "test_sig",
+            "name": "Test Signal",
+            "sample_floor": 20,
+            "count": 5,
+            "floor_cleared": False,
+            "correlation_note": "check the thing",
+            "backlog_ref": "SOME BACKLOG ENTRY",
+        }
+        row.update(overrides)
+        return row
+
+    def test_prints_signal_name_and_backlog_ref(self, monkeypatch, capsys):
+        import main
+
+        monkeypatch.setattr(
+            "weather_markets.get_signal_graduation_report",
+            lambda: [self._row()],
+        )
+        main.cmd_signals()
+        out = capsys.readouterr().out
+        assert "Test Signal" in out
+        assert "SOME BACKLOG ENTRY" in out
+        assert "check the thing" in out
+
+    def test_floor_cleared_shows_cleared_status(self, monkeypatch, capsys):
+        import main
+
+        monkeypatch.setattr(
+            "weather_markets.get_signal_graduation_report",
+            lambda: [self._row(count=25, floor_cleared=True)],
+        )
+        main.cmd_signals()
+        out = capsys.readouterr().out
+        assert "25/20" in out
+        assert "floor cleared" in out
+
+    def test_no_fixed_floor_shows_no_floor_status_not_a_ratio(
+        self, monkeypatch, capsys
+    ):
+        import main
+
+        monkeypatch.setattr(
+            "weather_markets.get_signal_graduation_report",
+            lambda: [self._row(sample_floor=None, count=100, floor_cleared=None)],
+        )
+        main.cmd_signals()
+        out = capsys.readouterr().out
+        assert "no fixed floor" in out
+        assert "100/" not in out  # must not fabricate a ratio against nothing
+
+    def test_count_unavailable_does_not_crash(self, monkeypatch, capsys):
+        import main
+
+        monkeypatch.setattr(
+            "weather_markets.get_signal_graduation_report",
+            lambda: [self._row(sample_floor=20, count=None, floor_cleared=None)],
+        )
+        main.cmd_signals()  # must not raise
+        out = capsys.readouterr().out
+        assert "count unavailable" in out

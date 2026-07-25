@@ -1956,6 +1956,82 @@ def count_settled_below_predictions() -> int:
     return row[0] if row else 0
 
 
+def count_settled_signal_rows(
+    column: str | None = None, *, json_key: str | None = None, multiday: bool = False
+) -> int:
+    """Count settled predictions with a non-NULL value for a logged signal.
+
+    Generic sample-floor counter for backlog.txt's "SIGNAL GRADUATION IS A
+    CONVENTION" registry (weather_markets.SIGNAL_REGISTRY) — covers both a
+    signal with its own dedicated column on `predictions` (column=, e.g.
+    "run_trend_delta") and a key inside the generic `signal_values` JSON
+    column (json_key=, for any future signal shipped only through
+    log_prediction(signals=...) with no dedicated migration). Exactly one
+    of column/json_key must be given — raises ValueError otherwise, rather
+    than silently ignoring whichever one wasn't meant. `column`/`json_key`
+    are always registry-defined literals, never external input — same
+    trust boundary as count_settled_hourly_predictions'/
+    count_settled_rain_predictions' own dynamic WHERE-clause construction.
+
+    Joins outcomes_valid (excludes disputed rows, matching every other
+    calibration-adjacent count in this file) and requires a real settled
+    temperature, not just any settled-outcome row — matches the literal
+    condition backlog.txt's own run_trend ENABLEMENT TRIGGER text specifies
+    (`run_trend_delta IS NOT NULL AND settled_temp_f IS NOT NULL`).
+
+    multiday=True switches from `predictions` to the `multiday_predictions`
+    view (days_out >= 1 or NULL) — pass this for a signal whose own
+    production logic is genuinely restricted to multi-day markets (e.g.
+    run_trend: get_forecast_run_trend's own docstring says "Only applies to
+    multi-day markets", same-day uses the METAR pipeline instead), matching
+    count_settled_predictions'/count_emos_ready_predictions' own precedent
+    of using that view specifically "so same-day METAR trades don't inflate
+    ... the graduation threshold." Leave False (the default) for a signal
+    that's genuinely computed for same-day markets too (e.g. gated_edge, a
+    liquidity gate with no days_out restriction) — using the multiday view
+    there would silently undercount real same-day samples, not just guard
+    against noise.
+    """
+    if (column is None) == (json_key is None):
+        raise ValueError(
+            "count_settled_signal_rows: pass exactly one of column= or json_key="
+        )
+    init_db()
+    if json_key:
+        where = f"json_extract(p.signal_values, '$.{json_key}') IS NOT NULL"
+    else:
+        where = f"p.{column} IS NOT NULL"
+    table = "multiday_predictions" if multiday else "predictions"
+    with _conn() as con:
+        row = con.execute(
+            f"SELECT COUNT(*) FROM {table} p "
+            "JOIN outcomes_valid o ON p.ticker = o.ticker "
+            f"WHERE {where} AND o.settled_temp_f IS NOT NULL"
+        ).fetchone()
+    return row[0] if row else 0
+
+
+def count_model_observations(model: str) -> int:
+    """Count settled (predicted_temp AND actual_temp populated) rows in
+    ensemble_member_scores for one model.
+
+    Used by the signal-graduation registry's sample-floor check for tracked
+    ensemble models that aren't per-prediction columns (GEM/UKMO graduation,
+    3-way ECMWF consensus) — mirrors get_member_accuracy()'s own filter
+    (predicted_temp/actual_temp both non-NULL, model != 'blended' is
+    irrelevant here since callers always pass a real model name) but scoped
+    to one model and returning a plain count instead of a full MAE breakdown.
+    """
+    init_db()
+    with _conn() as con:
+        row = con.execute(
+            "SELECT COUNT(*) FROM ensemble_member_scores "
+            "WHERE model = ? AND predicted_temp IS NOT NULL AND actual_temp IS NOT NULL",
+            (model,),
+        ).fetchone()
+    return row[0] if row else 0
+
+
 _WEST_COAST_CITIES = {"LA", "SanFrancisco", "Seattle"}
 
 

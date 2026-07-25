@@ -105,6 +105,7 @@ Opens a numbered menu with every feature. Good starting point.
 | `python main.py consistency` | Cross-market consistency check |
 | `python main.py pnl-attribution` | P&L broken down by signal source (alias: `pnl`) |
 | `python main.py features` | Feature importance analysis |
+| `python main.py signals` | Signal graduation report — sample-floor status for every log-only signal against its backlog.txt trigger |
 | `python main.py sweep` | Parameter sweep / optimization |
 | `python main.py train-bias` | Train ML calibration models from tracker DB |
 | `python main.py calibrate` | Recalibrate forecast weights and temperature scaling |
