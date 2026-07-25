@@ -1,6 +1,53 @@
 BACKLOG — future improvements to implement when ready
 ======================================================
 
+[FORECAST_SIGMA.JSON ATOMIC WRITE CONTENTION -- INTERMITTENT, SELF-RECOVERING, WATCHING]
+Priority: Low -- no data loss observed (safe_io's emergency-copy fallback
+  succeeded every time), flagged to watch for recurrence rather than
+  chase from a single data point. Worth a real look if it keeps
+  happening, especially once live trading is active and other files in
+  the same data/ tree matter more than the climatology sigma cache.
+
+Problem:
+  2026-07-25 15:04:35-15:07:05 UTC cron run: safe_io.atomic_write_json
+  failed all 3 retry attempts writing data/forecast_sigma.json on 3
+  separate mid-scan writes (climatology.py's per-city sigma save), each
+  with WinError 32 "used by another process" on the rename step (the
+  final attempt of the 3rd write also hit WinError 2, file not found --
+  the lock and then the tmp file itself both vanished mid-retry). Each
+  of the 3 fell through to the existing emergency-copy fallback and
+  wrote successfully that way -- no data loss, just not via the intended
+  atomic temp-file+rename path.
+  Did NOT reproduce on the same day's earlier 02:20:39-02:24:32 UTC run
+  (clean). No other python/py process was running at either time
+  (checked live via Get-Process) and no Windows Task Scheduler job
+  exists for this bot (checked), ruling out a second concurrent cron/
+  watch instance as the cause. Likely culprit, UNCONFIRMED: OneDrive's
+  background sync of the data/ folder (cloud_backup syncs 55-57 files
+  there at the end of every cron run) or some other Windows-side file-
+  indexing/AV process taking a transient lock -- this is a guess, not
+  verified against OneDrive's own sync activity/logs.
+
+What the fix looks like:
+  Not clear yet without more data points -- one occurrence isn't enough
+  to diagnose. If it recurs: (a) check whether it correlates with
+  OneDrive's own sync activity (Get-Process OneDrive, or OneDrive's sync
+  log, at the time of failure) to confirm/rule out that theory; (b) if
+  confirmed, consider lengthening safe_io's retry count/backoff for this
+  file specifically, or moving forecast_sigma.json outside the OneDrive-
+  synced data/ tree; (c) if it does NOT correlate with OneDrive, look
+  for a different lock source (AV real-time scan, Search Indexer).
+
+Why not now:
+  Single occurrence, self-recovered via the existing fallback, zero data
+  loss. Not worth chasing a root cause from one data point.
+
+When to revisit:
+  Next time `python main.py cron` is run -- check the output for the
+  same WARNING pattern (`atomic_write_json attempt.*failed`). If it
+  recurs, start the OneDrive-correlation check above; if it stays a
+  one-off, close this entry.
+
 [TEST SUITE: date.today() VS PRODUCTION-TIMEZONE MISMATCH -- 13 FILES, ONLY 3 INSTANCES FIXED]
 Priority: Low-Medium -- not a live-trading bug (test-only), but a real
   correctness gap in test coverage: an affected test can silently pass or
