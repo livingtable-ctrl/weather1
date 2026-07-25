@@ -218,6 +218,129 @@ def test_nws_cb_records_failure_on_exception(monkeypatch):
     assert cb._failure_count >= 1
 
 
+# ── _get_obs_station cache (backlog.txt "ForecastCache EXISTS, BUT ~14
+# HAND-ROLLED TTL DICTS" -- _station_cache migrated to PersistentForecastCache
+# 2026-07-25) ─────────────────────────────────────────────────────────────────
+
+
+def test_get_obs_station_cache_hit_skips_network_call(monkeypatch):
+    """A cached (lat, lon) -> station_id lookup must not hit the network."""
+    import nws
+
+    # ttl_secs/max_size match the real nws.py construction site exactly, not
+    # PersistentForecastCache's own defaults -- this test should exercise the
+    # production config, not an incidental default.
+    monkeypatch.setattr(
+        nws,
+        "_station_cache",
+        nws.PersistentForecastCache(ttl_secs=float("inf"), max_size=100_000),
+    )
+    nws._station_cache.set((round(40.0, 4), round(-75.0, 4)), "KPHL")
+
+    def _boom(*a, **kw):
+        raise AssertionError("network should not be called on a cache hit")
+
+    monkeypatch.setattr(nws, "_get", _boom)
+    assert nws._get_obs_station(40.0, -75.0) == "KPHL"
+
+
+def test_get_obs_station_cache_miss_fetches_and_persists(monkeypatch, tmp_path):
+    """A cache miss fetches from the network, stores the result in
+    _station_cache, and persists the whole cache to disk (matching the
+    plain-dict version's exact behavior before this migration)."""
+    import nws
+
+    monkeypatch.setattr(
+        nws,
+        "_station_cache",
+        nws.PersistentForecastCache(ttl_secs=float("inf"), max_size=100_000),
+    )
+    monkeypatch.setattr(nws, "_STATION_CACHE_PATH", tmp_path / "station_cache.json")
+
+    calls = []
+
+    def _fake_get(url, params=None):
+        calls.append(url)
+        if "/points/" in url:
+            return {"properties": {"observationStations": "https://x/stations"}}
+        return {"features": [{"properties": {"stationIdentifier": "KORD"}}]}
+
+    monkeypatch.setattr(nws, "_get", _fake_get)
+
+    result = nws._get_obs_station(41.8781, -87.6298)
+    assert result == "KORD"
+    assert len(calls) == 2  # /points then /observationStations
+    assert nws._station_cache.get((round(41.8781, 4), round(-87.6298, 4))) == "KORD"
+
+    # Persisted to disk -- a fresh cache instance loading the same path gets it back
+    fresh = nws.PersistentForecastCache(ttl_secs=float("inf"), max_size=100_000)
+    fresh.load_from_disk(nws._STATION_CACHE_PATH, nws._station_str_to_key)
+    assert fresh.get((round(41.8781, 4), round(-87.6298, 4))) == "KORD"
+
+    # Second call for the same coords must be a pure cache hit -- no new network calls
+    result2 = nws._get_obs_station(41.8781, -87.6298)
+    assert result2 == "KORD"
+    assert len(calls) == 2
+
+
+def test_station_cache_loads_pre_migration_flat_format(tmp_path):
+    """Regression: the real data/.nws_station_cache.json file on disk was
+    written by the pre-migration plain-dict _save_station_cache (a flat
+    "lat,lon" -> station_id JSON object) before this session's
+    PersistentForecastCache migration existed. This pins that nws.py's real
+    _station_str_to_key helper -- not a test-local copy -- still parses that
+    exact legacy format on load, so existing on-disk caches aren't silently
+    discarded on the next process start. (_station_key_to_str, the write
+    side, is exercised separately by
+    test_get_obs_station_cache_miss_fetches_and_persists.)"""
+    import json
+
+    import nws
+
+    legacy_path = tmp_path / "legacy_station_cache.json"
+    legacy_path.write_text(
+        json.dumps({"40.7789,-73.9692": "KNYC", "41.995,-87.9336": "KORD"})
+    )
+
+    fresh = nws.PersistentForecastCache(ttl_secs=float("inf"), max_size=100_000)
+    fresh.load_from_disk(legacy_path, nws._station_str_to_key)
+    assert fresh.get((40.7789, -73.9692)) == "KNYC"
+    assert fresh.get((41.995, -87.9336)) == "KORD"
+
+
+def test_get_obs_station_does_not_cache_a_falsy_station_id(monkeypatch, tmp_path):
+    """Regression: if NWS ever returns a null/empty stationIdentifier, it
+    must not be cached -- with ttl_secs=inf, caching a bad result would mean
+    NEVER retrying that coordinate again for the life of the process. The
+    plain-dict version had the same theoretical exposure (it cached
+    unconditionally too), but .get()'s inability to distinguish "cached
+    None" from "no entry" makes guarding against it here the correct fix
+    rather than an incidental behavior change."""
+    import nws
+
+    monkeypatch.setattr(
+        nws,
+        "_station_cache",
+        nws.PersistentForecastCache(ttl_secs=float("inf"), max_size=100_000),
+    )
+    monkeypatch.setattr(nws, "_STATION_CACHE_PATH", tmp_path / "station_cache.json")
+
+    def _fake_get(url, params=None):
+        if "/points/" in url:
+            return {"properties": {"observationStations": "https://x/stations"}}
+        return {"features": [{"properties": {"stationIdentifier": None}}]}
+
+    monkeypatch.setattr(nws, "_get", _fake_get)
+
+    result = nws._get_obs_station(1.0, 2.0)
+    assert result is None
+    assert nws._station_cache.get((1.0, 2.0)) is None
+    assert len(nws._station_cache) == 0
+    assert not nws._STATION_CACHE_PATH.exists(), (
+        "a falsy station_id must not trigger a disk persist either"
+    )
+
+
 # ── Disk-write resilience (#8) ────────────────────────────────────────────────
 
 

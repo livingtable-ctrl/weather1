@@ -7365,7 +7365,7 @@ Why not now (resolved):
 When to revisit:
   - N/A, closed.
 
-[PARTIALLY RESOLVED 2026-07-19] ForecastCache EXISTS, BUT ~14 HAND-ROLLED TTL DICTS DO THE SAME JOB
+[PARTIALLY RESOLVED 2026-07-25 -- _station_cache done via a new subclass; climatology.py's 2 caches deliberately left untouched] ForecastCache EXISTS, BUT ~14 HAND-ROLLED TTL DICTS DO THE SAME JOB
 Priority: was Low-Medium -- consistency/tooling debt, not a live bug; each
   hand-rolled cache re-implements expiry slightly differently and each
   needs its own test-isolation hook.
@@ -7652,14 +7652,106 @@ Why not now (for the remaining 3 genuinely-hard caches):
     here risks getting it wrong for the sake of closing out a backlog item.
 
 When to revisit:
-  - `_station_cache`: whenever nws.py is next open AND someone wants to
-    make the ForecastCache-enumeration-API call deliberately, not as a
-    side effect of something else.
+  - `_station_cache`: DONE 2026-07-25, see below.
   - climatology.py's 2: whenever climatology.py is next open for other
     reasons, with the same discipline -- re-derive from source, don't
     batch-assume they're now safe just because most of the rest turned
     out to be.
   - ml_bias.py's 3: not applicable -- permanently excluded.
+
+RESOLVED 2026-07-25 (_station_cache only -- climatology.py's 2 caches
+  re-verified live and left deliberately untouched, still exactly as
+  described above): re-read this entry's own full text before acting
+  (per standing practice) and re-verified both remaining pieces directly
+  against current code rather than trusting the 2026-07-19 characterization
+  -- both held up exactly: _station_cache (nws.py) is still a permanent,
+  disk-round-tripped map with no TTL semantics; climatology.py's
+  _MEM_CACHE/_sigma_mem_cache are still load-once-per-process singletons
+  gated by disk-file mtime, not an in-memory TTL. Presented 3 options via
+  AskUserQuestion (leave both permanently as-is; extend the shared
+  ForecastCache class directly; or a third option found only by digging
+  further -- a new subclass that adds dump/load without touching the base
+  class at all). User picked the subclass option after asking for the
+  analysis to be double-checked first.
+  Also found while re-verifying: _station_cache was a bare, unlocked plain
+  dict -- _save_station_cache()'s dict comprehension over .items() racing
+  a concurrent _station_cache[key]=... write from a different city's
+  lookup was a latent (confirmed currently unreachable -- cron.py's scan
+  loop is single-threaded, no ThreadPoolExecutor/threading.Thread touches
+  this path anywhere in the repo) RuntimeError risk. The subclass approach
+  closes this for free as a side effect, which the plain "extend the
+  shared class" option would not have made any cleaner.
+  Shipped: `PersistentForecastCache` (forecast_cache.py), a subclass adding
+  `dump_to_disk()`/`load_from_disk()` on top of ForecastCache without
+  modifying any of its existing methods -- confirmed zero blast radius to
+  the other ~14 consumers (AST-hashed all 12 base-class methods pre/post
+  diff via an opus review: byte-identical). _station_cache migrated onto
+  it (ttl_secs=inf, max_size=100_000 -- "effectively unbounded", matching
+  the old never-evicting dict); `_load_station_cache`/`_save_station_cache`
+  now thin wrappers calling the new methods, preserving the exact "lat,lon"
+  string key format of the existing on-disk file.
+  Two rounds of independent Agent(opus) review, all findings fixed (not
+  just the obvious one):
+  round 1 -- (1) HIGH: the thread-safety regression test didn't actually
+  detect a missing lock (default max_size=500 meant the writer thread
+  evicted-then-inserted, keeping dict *size* stable, and CPython's
+  iteration guard fires on a size change, not a content change -- passed
+  identically with or without the lock). Fixed by tuning to a store large
+  enough (30,000 pre-seeded + 30,000 written during the race, max_size
+  raised so it never evicts) that the race is reliably reproducible --
+  mutation-tested 30/30 detection on an unlocked scratch subclass, 0/30
+  false positives on the real locked version, both directions fast
+  (<1s). (2) MEDIUM: load_from_disk silently truncated a restore to
+  max_size (routed through set(), which evicts) -- fixed by writing
+  directly into _store under the lock, bypassing eviction on load only.
+  (3) MEDIUM: dump_to_disk's file write was non-atomic (plain
+  path.write_text, same as the pre-migration code) -- switched to the
+  existing safe_io.atomic_write_json (temp file + fsync + rename), which
+  cron.py's own comments already cite as the correct pattern for exactly
+  this failure mode. (4) MEDIUM: dump/load's docstring pointed at the
+  wrong remedy (set_at()) for round-tripping a per-entry-TTL (3-tuple)
+  entry, which set_at() can't actually do (needs a wall-clock timestamp
+  and recomputed remaining-TTL, not a monotonic one) -- fixed by having
+  dump_to_disk raise ValueError on a 3-tuple entry instead of silently
+  dropping the TTL, since nothing today needs both per-entry TTL and disk
+  persistence. (5) LOW: .get() can't distinguish "no entry" from "cached
+  None", so a falsy stationIdentifier would refetch every call instead of
+  respecting a cached negative result (a real, if extremely rare, behavior
+  difference from the old plain dict, which cached it) -- fixed by simply
+  never caching a falsy station_id (worse to permanently cache a bad
+  result forever under ttl_secs=inf than to occasionally re-fetch).
+  (6)-(9): tests corrected to use production's real ttl_secs=inf config
+  instead of the class default, an overclaiming test docstring fixed, a
+  legacy on-disk-format compatibility test added using the REAL nws.py
+  helpers (not a test-local copy), type annotations added.
+  round 2 (verifying round 1's fixes, not re-reviewing from scratch) --
+  found 2 more: (a) the new deadlock-risk docstring misattributed which
+  code ran under the lock (said "the file write", but the write was
+  actually outside it) -- fixed by moving the file write inside the lock
+  for real (see next point) rather than just correcting the sentence;
+  (b) concurrent dump_to_disk calls for the same path could collide on
+  safe_io.atomic_write_json's shared temp filename, since the lock was
+  only held for the in-memory snapshot, not the write itself -- reachable
+  in principle since _get_obs_station's per-city lock only serializes
+  same-city calls, not cross-city ones. Fixed by holding the lock for
+  dump_to_disk's entire duration including the write, which closes both
+  (a) and (b) at once (blocks set()/get() during the write too -- accepted,
+  this cache is written a handful of times per scan cycle, not a hot
+  path). Also fixed 2 minor test nits from the same pass (an unused
+  fixture arg, a docstring overclaiming which of 2 helper functions a test
+  actually exercises).
+  60 tests pass (test_forecast_cache.py + test_infrastructure.py); ruff +
+  ruff format + mypy clean on both changed source files. Broader regression
+  sweep (240 tests across nws/forecast_cache/weather_markets-adjacent
+  suites) clean except 2 pre-existing failures in
+  TestMetarLockInLowMarketAsymmetry, confirmed via git stash to predate
+  this session entirely (unrelated -- unaudited instances of the same
+  date.today()-vs-timezone class another concurrent session filed as its
+  own backlog entry the same day). User confirmed commit+push explicitly.
+  No concurrent-session collision (git status clean before starting;
+  caught and correctly held off on a genuinely-concurrent other session's
+  in-flight edit earlier the same session, re-checked clean before
+  resuming).
 
 [RESOLVED 2026-07-18] execution_log.py's SWALLOWED-ALTER MIGRATIONS vs tracker.py's VERSIONED IDIOM
 Priority: was Low-Medium -- worked fine so far, but the live-execution feature

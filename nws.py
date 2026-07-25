@@ -7,7 +7,6 @@ Provides:
 
 from __future__ import annotations
 
-import json
 import logging
 import os
 import threading
@@ -20,7 +19,7 @@ from pathlib import Path
 import requests
 
 from circuit_breaker import CircuitBreaker
-from forecast_cache import ForecastCache
+from forecast_cache import ForecastCache, PersistentForecastCache
 from schema_validator import validate_nws_response
 from utils import normal_cdf
 from utils import prob_threshold as _prob_threshold
@@ -50,16 +49,23 @@ _session.headers.update(UA_HEADER)
 # unambiguous and switching from time.time() (wall-clock) to ForecastCache's
 # internal time.monotonic() is a pure robustness improvement here (nothing
 # reads the stored timestamp itself, only "how long ago" -- monotonic is
-# immune to system clock adjustments that wall-clock isn't). _station_cache
-# stays a plain dict -- it round-trips its ENTIRE contents to disk via
-# _load_station_cache()/_save_station_cache() below, a whole-dict dump/load
-# pattern ForecastCache has no enumeration API for; migrating it would mean
-# extending the shared class itself, deliberately left out of this pass (see
-# backlog.txt for the full reasoning).
+# immune to system clock adjustments that wall-clock isn't).
+# 2026-07-25: _station_cache migrated onto PersistentForecastCache (a
+# subclass adding whole-dict dump/load, see forecast_cache.py) instead of
+# staying a plain dict -- gets ForecastCache's thread-safety (the old plain
+# dict had no lock; _save_station_cache's dict comprehension over
+# .items() while another lookup wrote a new key was a latent, currently
+# unreachable-in-production RuntimeError risk, since nothing today calls
+# _get_obs_station concurrently for different cities) at zero risk to the
+# other ForecastCache consumers, since the subclass adds methods rather
+# than modifying the shared base class.
 _gridpoint_cache: ForecastCache[tuple[str, int, int]] = ForecastCache(
     ttl_secs=float("inf")
 )
-_station_cache: dict = {}
+_station_cache: PersistentForecastCache[str] = PersistentForecastCache(
+    ttl_secs=float("inf"),
+    max_size=100_000,  # effectively unbounded -- was a plain, never-evicting dict
+)
 _FORECAST_CACHE_TTL = 3600  # seconds
 _forecast_cache: ForecastCache[dict] = ForecastCache(ttl_secs=_FORECAST_CACHE_TTL)
 _obs_cache: ForecastCache[dict] = ForecastCache(ttl_secs=OBS_TTL)
@@ -82,15 +88,19 @@ _STATION_CACHE_PATH = (
 )
 
 
+def _station_key_to_str(key: tuple[float, float]) -> str:
+    return f"{key[0]},{key[1]}"
+
+
+def _station_str_to_key(key_str: str) -> tuple[float, float]:
+    lat_str, lon_str = key_str.split(",")
+    return (float(lat_str), float(lon_str))
+
+
 def _load_station_cache() -> None:
-    """Load persisted station cache from disk into _station_cache."""
+    """Load persisted station cache from disk into _station_cache (best-effort)."""
     try:
-        if _STATION_CACHE_PATH.exists():
-            raw = json.loads(_STATION_CACHE_PATH.read_text())
-            # Keys are stored as "lat,lon" strings; convert back to tuples
-            for k, v in raw.items():
-                parts = k.split(",")
-                _station_cache[(float(parts[0]), float(parts[1]))] = v
+        _station_cache.load_from_disk(_STATION_CACHE_PATH, _station_str_to_key)
     except Exception as exc:
         _log.warning("nws: could not load station cache: %s", exc)
 
@@ -98,9 +108,7 @@ def _load_station_cache() -> None:
 def _save_station_cache() -> None:
     """Persist station cache to disk (best-effort, never raises)."""
     try:
-        _STATION_CACHE_PATH.parent.mkdir(exist_ok=True)
-        serializable = {f"{k[0]},{k[1]}": v for k, v in _station_cache.items()}
-        _STATION_CACHE_PATH.write_text(json.dumps(serializable))
+        _station_cache.dump_to_disk(_STATION_CACHE_PATH, _station_key_to_str)
     except Exception as exc:
         _log.debug("nws: could not save station cache: %s", exc)
 
@@ -161,8 +169,9 @@ def _get_gridpoint(lat: float, lon: float) -> tuple[str, int, int]:
 
 def _get_obs_station(lat: float, lon: float) -> str | None:
     key = (round(lat, 4), round(lon, 4))
-    if key in _station_cache:
-        return _station_cache[key]
+    cached = _station_cache.get(key)
+    if cached is not None:
+        return cached
     try:
         # NWS API: get observationStations URL from /points response (direct sub-resource
         # path was removed in a later API version)
@@ -175,8 +184,16 @@ def _get_obs_station(lat: float, lon: float) -> str | None:
         if not features:
             return None
         station_id = features[0]["properties"]["stationIdentifier"]
-        _station_cache[key] = station_id
-        _save_station_cache()  # persist so subsequent process starts skip this fetch
+        if station_id:
+            # Guard against ever caching a falsy station_id: .get() can't tell
+            # "no entry" from "entry present with a falsy value" apart, so a
+            # cached None/"" would be indistinguishable from a miss on the next
+            # call anyway (same net effect as the plain-dict version, which DID
+            # cache it) -- but with ttl_secs=inf, caching a bad result here
+            # would mean NEVER retrying this coordinate again, which is worse
+            # than the extra refetch a real miss costs.
+            _station_cache.set(key, station_id)
+            _save_station_cache()  # persist so subsequent process starts skip this fetch
         return station_id
     except Exception as exc:
         _log.warning(

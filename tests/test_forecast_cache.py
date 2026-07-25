@@ -1,6 +1,7 @@
+import threading
 import time
 
-from forecast_cache import ForecastCache
+from forecast_cache import ForecastCache, PersistentForecastCache
 
 
 def test_get_returns_none_for_missing_key():
@@ -221,3 +222,203 @@ def test_ttl_until_next_cycle_at_cycle_boundary():
         f"At 08:02 UTC (2 min after cycle), TTL should be ~6h, got {ttl_after}s"
     )
     assert ttl_after <= 6 * 3600, f"At 08:02 UTC, TTL should be <= 6h, got {ttl_after}s"
+
+
+# ── PersistentForecastCache (backlog.txt "ForecastCache EXISTS, BUT ~14
+# HAND-ROLLED TTL DICTS" -- nws.py's _station_cache, 2026-07-25) ────────────
+
+
+def _tuple_key_to_str(key: tuple[float, float]) -> str:
+    return f"{key[0]},{key[1]}"
+
+
+def _tuple_str_to_key(key_str: str) -> tuple[float, float]:
+    lat_str, lon_str = key_str.split(",")
+    return (float(lat_str), float(lon_str))
+
+
+def test_persistent_cache_is_a_forecast_cache():
+    """PersistentForecastCache must still behave as a normal ForecastCache
+    for get/set -- it only adds dump/load, it doesn't change base behavior."""
+    c = PersistentForecastCache(ttl_secs=float("inf"))
+    assert isinstance(c, ForecastCache)
+    c.set((40.0, -75.0), "KPHL")
+    assert c.get((40.0, -75.0)) == "KPHL"
+    assert c.get((1.0, 1.0)) is None
+
+
+def test_dump_then_load_round_trips_values(tmp_path):
+    """The exact property nws.py's station cache depends on: dump the
+    current cache to disk, load it into a fresh instance, get back the same
+    values under the same keys."""
+    path = tmp_path / "cache.json"
+    c1 = PersistentForecastCache(ttl_secs=float("inf"))
+    c1.set((40.7128, -74.006), "KNYC")
+    c1.set((41.8781, -87.6298), "KORD")
+    c1.dump_to_disk(path, _tuple_key_to_str)
+
+    c2 = PersistentForecastCache(ttl_secs=float("inf"))
+    assert c2.get((40.7128, -74.006)) is None  # sanity: fresh instance is empty
+    c2.load_from_disk(path, _tuple_str_to_key)
+    assert c2.get((40.7128, -74.006)) == "KNYC"
+    assert c2.get((41.8781, -87.6298)) == "KORD"
+
+
+def test_load_from_disk_is_a_noop_when_file_does_not_exist(tmp_path):
+    """First-ever process start (no prior dump) must not raise -- matches
+    nws.py's _load_station_cache try/except-and-log convention expecting a
+    plain no-op, not an exception, on a missing file."""
+    c = PersistentForecastCache(ttl_secs=float("inf"))
+    c.load_from_disk(tmp_path / "does_not_exist.json", _tuple_str_to_key)
+    assert len(c) == 0
+
+
+def test_dump_creates_missing_parent_directories(tmp_path):
+    """nws.py's real cache path is data/.nws_station_cache.json -- the
+    parent directory may not exist yet on a fresh checkout."""
+    path = tmp_path / "nested" / "dir" / "cache.json"
+    c = PersistentForecastCache(ttl_secs=float("inf"))
+    c.set((1.0, 2.0), "KTEST")
+    c.dump_to_disk(path, _tuple_key_to_str)
+    assert path.exists()
+
+
+def test_dump_only_persists_values_not_internal_timestamps(tmp_path):
+    """Regression: dump_to_disk must write v[0] (the value), not the raw
+    (value, ts) tuple -- a naive dump would corrupt the persisted format
+    and break every consumer expecting a bare value back from load."""
+    path = tmp_path / "cache.json"
+    c = PersistentForecastCache(ttl_secs=float("inf"))
+    c.set((1.0, 2.0), "KTEST")
+    c.dump_to_disk(path, _tuple_key_to_str)
+    import json
+
+    on_disk = json.loads(path.read_text())
+    assert on_disk == {"1.0,2.0": "KTEST"}
+
+
+def test_persistent_cache_get_set_is_thread_safe():
+    """Concurrent set() calls for DIFFERENT keys from multiple threads must
+    not corrupt the store or raise -- base ForecastCache-level thread
+    safety (already provided by the shared lock), re-verified here since
+    PersistentForecastCache is meant to be used exactly this way. The
+    dict-comprehension-over-.items()-racing-a-concurrent-write hazard this
+    subclass specifically closes is covered by
+    test_persistent_cache_dump_is_thread_safe_against_concurrent_writes
+    below, not this test -- this one never iterates the store at all."""
+    c = PersistentForecastCache(ttl_secs=float("inf"))
+    errors: list[Exception] = []
+
+    def _writer(i: int) -> None:
+        try:
+            for j in range(50):
+                c.set((float(i), float(j)), f"STATION_{i}_{j}")
+        except Exception as exc:  # pragma: no cover - failure path
+            errors.append(exc)
+
+    threads = [threading.Thread(target=_writer, args=(i,)) for i in range(8)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert errors == []
+    assert len(c) == 8 * 50
+    assert c.get((3.0, 10.0)) == "STATION_3_10"
+
+
+def test_persistent_cache_dump_is_thread_safe_against_concurrent_writes():
+    """Regression for the specific bug this migration fixes: dump_to_disk
+    (iterates the store) running concurrently with set() (writes a new key)
+    on the plain-dict version could raise 'dictionary changed size during
+    iteration'. PersistentForecastCache's dump_to_disk holds the same lock
+    set() does, so this must complete without error regardless of
+    interleaving.
+
+    max_size is raised above the total entries this test ever writes
+    (60,000) deliberately: with the default max_size=500, the writer thread
+    evicts-then-inserts once past 500 entries, which keeps the store's
+    *size* stable -- and CPython's iteration guard fires on a size change,
+    not a content change, so a size-stable store never trips it even with
+    the lock removed.
+
+    The store must actually be large (30,000 pre-seeded + 30,000 written
+    during the race) for the race to be reliably reproducible at all: a
+    small dict's comprehension completes in far too few bytecode steps for
+    the writer thread's inserts to have a realistic chance of landing
+    mid-iteration, so a version of this test with only ~5000 entries and 30
+    dump attempts passed identically whether or not dump_to_disk's lock was
+    present (false confidence, caught only by deliberately mutating a
+    scratch copy of the class and re-running this exact test body). At
+    these tuned sizes, mutation-testing an unlocked dump_to_disk (via a
+    standalone subclass, not editing the real source) reproduced
+    RuntimeError 20/20 times across repeated runs, and the real (locked)
+    implementation produced zero false positives across 20 runs -- both
+    complete in well under a second, since only 5 dump_to_disk calls are
+    needed once the store is this size."""
+    c = PersistentForecastCache(ttl_secs=float("inf"), max_size=500_000)
+    for i in range(30_000):
+        c.set((float(i), 0.0), f"STATION_{i}")
+    errors: list[Exception] = []
+
+    def _writer() -> None:
+        for i in range(1_000_000, 1_030_000):
+            c.set((float(i), 0.0), f"STATION_{i}")
+
+    def _dumper(path) -> None:
+        try:
+            for _ in range(5):
+                c.dump_to_disk(path, _tuple_key_to_str)
+        except Exception as exc:  # pragma: no cover - failure path
+            errors.append(exc)
+
+    import tempfile
+    from pathlib import Path
+
+    with tempfile.TemporaryDirectory() as d:
+        path = Path(d) / "cache.json"
+        writer = threading.Thread(target=_writer)
+        dumper = threading.Thread(target=_dumper, args=(path,))
+        writer.start()
+        dumper.start()
+        writer.join()
+        dumper.join()
+
+    assert errors == []
+    assert len(c) == 30_000 + 30_000
+
+
+def test_dump_to_disk_raises_on_per_entry_ttl_entry(tmp_path):
+    """dump_to_disk must refuse (not silently drop the TTL) when the cache
+    holds an entry written via set_with_ttl -- a per-entry TTL is a
+    *remaining* duration, meaningless once the timestamp it's relative to
+    is gone across a dump/load round-trip. Silently dropping it would
+    resurrect an entry that should already have expired."""
+    import pytest
+
+    c = PersistentForecastCache(ttl_secs=float("inf"))
+    c.set_with_ttl((1.0, 2.0), "KTEST", ttl_secs=30)
+    with pytest.raises(ValueError, match="per-entry TTL"):
+        c.dump_to_disk(tmp_path / "cache.json", _tuple_key_to_str)
+
+
+def test_load_from_disk_does_not_evict_beyond_max_size(tmp_path):
+    """Regression: load_from_disk must restore the ENTIRE persisted
+    snapshot even if it exceeds max_size -- routing restoration through the
+    normal set() (which evicts at max_size) would silently truncate a
+    dump/load round-trip, and the very next dump_to_disk() call would then
+    make that data loss permanent on disk."""
+    path = tmp_path / "cache.json"
+    c1 = PersistentForecastCache(ttl_secs=float("inf"), max_size=10_000_000)
+    for i in range(600):
+        c1.set((float(i), 0.0), f"STATION_{i}")
+    c1.dump_to_disk(path, _tuple_key_to_str)
+
+    c2 = PersistentForecastCache(ttl_secs=float("inf"), max_size=500)
+    c2.load_from_disk(path, _tuple_str_to_key)
+    assert len(c2) == 600, (
+        "load_from_disk truncated the restore to max_size instead of "
+        "restoring the full persisted snapshot"
+    )
+    assert c2.get((0.0, 0.0)) == "STATION_0"
+    assert c2.get((599.0, 0.0)) == "STATION_599"
