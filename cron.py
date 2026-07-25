@@ -444,6 +444,49 @@ def _check_prod_reminder() -> None:
         _log.debug("_check_prod_reminder failed: %s", _exc)
 
 
+def _log_near_settlement_trades(near: list[dict], db_path: Path) -> tuple[int, int]:
+    """Write near-settlement snapshot rows for future calibration analysis.
+
+    `near` is check_expiring_trades()'s output — each entry wraps a stored
+    paper-trade record ("trade", see paper.place_paper_order/get_open_trades)
+    plus "hours_left". A stored trade record uses "side"/"entry_prob", not
+    "recommended_side"/"forecast_prob" (those are analysis-dict field names,
+    see order_executor.py) — reading the wrong names here previously left
+    trade_side NULL, violating the table's NOT NULL constraint; INSERT OR
+    IGNORE silently drops NOT NULL violations instead of raising, so this ran
+    "successfully" for over a month while writing zero rows.
+
+    Cannot be back-filled — this is a point-in-time snapshot, so a write is
+    attempted every cron cycle a trade is in the 0-2h window; the unique
+    index on (ticker, hour) dedupes repeat attempts within the same hour.
+    Returns (attempted, written) — written < attempted means some rows were
+    silently dropped (NOT NULL violation or dedup conflict).
+    """
+    import sqlite3
+    from datetime import UTC, datetime
+
+    written = 0
+    with sqlite3.connect(db_path) as con:
+        for nt in near:
+            tr = nt["trade"]
+            cur = con.execute(
+                "INSERT OR IGNORE INTO near_settlement_log "
+                "(ticker, our_model_prob, market_yes_price, hours_to_close, "
+                " trade_side, days_out, recorded_at) VALUES (?,?,?,?,?,?,?)",
+                (
+                    tr.get("ticker"),
+                    tr.get("entry_prob"),
+                    None,  # market_yes_price: Phase 2 — requires live market fetch
+                    nt["hours_left"],
+                    tr.get("side"),
+                    tr.get("days_out", 0),
+                    datetime.now(UTC).isoformat(),
+                ),
+            )
+            written += cur.rowcount
+    return len(near), written
+
+
 def check_market_anomalies(signals: list[dict]) -> list[dict]:
     """Return signals where |blended_prob − market_price| > _ANOMALY_THRESHOLD."""
     return [
@@ -595,31 +638,21 @@ def _cmd_cron_body(
     # Log trades within 0–2h of close for future calibration analysis.
     # Data cannot be back-filled — write every cycle, deduplicate via unique index.
     try:
-        import sqlite3 as _nsl_sqlite
-
         from paper import check_expiring_trades as _check_expiring
         from tracker import DB_PATH as _NSL_DB
 
         _near = [t for t in _check_expiring(warn_hours=2) if t["hours_left"] >= 0]
         if _near:
-            with _nsl_sqlite.connect(_NSL_DB) as _nsl_con:
-                for _nt in _near:
-                    _tr = _nt["trade"]
-                    _nsl_con.execute(
-                        "INSERT OR IGNORE INTO near_settlement_log "
-                        "(ticker, our_model_prob, market_yes_price, hours_to_close, "
-                        " trade_side, days_out, recorded_at) VALUES (?,?,?,?,?,?,?)",
-                        (
-                            _tr.get("ticker"),
-                            _tr.get("forecast_prob"),
-                            None,  # market_yes_price: Phase 2 — requires live market fetch
-                            _nt["hours_left"],
-                            _tr.get("recommended_side"),
-                            _tr.get("days_out", 0),
-                            datetime.now(UTC).isoformat(),
-                        ),
-                    )
-            _log.info("near_settlement_log: logged %d trade(s)", len(_near))
+            _attempted, _written = _log_near_settlement_trades(_near, _NSL_DB)
+            if _written < _attempted:
+                _log.warning(
+                    "near_settlement_log: %d/%d trade(s) written — some rows were "
+                    "silently dropped (NOT NULL or dedup conflict)",
+                    _written,
+                    _attempted,
+                )
+            else:
+                _log.info("near_settlement_log: logged %d trade(s)", _written)
     except Exception as _nsl_err:
         _log.warning("near_settlement_log: write failed: %s", _nsl_err)
 

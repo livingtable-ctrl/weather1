@@ -1,7 +1,65 @@
 BACKLOG — future improvements to implement when ready
 ======================================================
 
-[RESOLVED 2026-07-25] CANDLESTICK CAPTURE (price_history) SILENTLY BROKEN SINCE IT SHIPPED -- series_ticker FIELD NEVER EXISTED ON THE REAL API
+[RESOLVED 2026-07-25] NEAR-SETTLEMENT LOG (near_settlement_log) SILENTLY BROKEN SINCE IT SHIPPED -- WRONG FIELD NAMES ON THE TRADE-RECORD DICT
+Priority: was Medium -- a shipped calibration-data feature had been a
+  complete no-op since it shipped (2026-06-14), with a "success" log line
+  every time it ran and zero rows to show for it.
+
+Problem:
+  Found via the same "what's next" live-data check that surfaced this
+  session's other candlestick-capture bug: `near_settlement_log` had exactly
+  0 rows in the live DB. Checked every daily predictions.db backup from
+  2026-06-29 through 2026-07-25 (11 backups) -- all 0. bot.log showed 3
+  "near_settlement_log: logged 1 trade(s)" INFO lines (all from the very
+  start of the retained log, ~2026-06-30), so the code path WAS running and
+  believed it succeeded; the DB simply never got the rows.
+  Root cause: cron.py's near-settlement block read
+  `_tr.get("forecast_prob")` / `_tr.get("recommended_side")` on `_tr`, which
+  is a stored paper-trade record (paper.place_paper_order/get_open_trades)
+  -- but those two field names belong to the ANALYSIS dict shape
+  (order_executor.py's `analysis.get("forecast_prob")` /
+  `analysis.get("recommended_side")`), not the trade-record shape, which
+  uses "entry_prob"/"side" instead (confirmed against all 198 real trades in
+  paper_trades.json: 198/198 have "side" and "entry_prob", 0 have
+  "recommended_side" or "forecast_prob" anywhere in the codebase on a trade
+  record). This is the same "confused the analysis-dict boundary with the
+  trade-record boundary" bug class backtest.py already hit and fixed on
+  2026-07-05 (that fix's own comment documents the exact same field-name
+  confusion) -- this cron.py call site was a second, still-broken instance
+  nobody had re-checked.
+  The `trade_side` column is `TEXT NOT NULL`; `_tr.get("recommended_side")`
+  always returned None, so every INSERT violated that constraint --
+  reproduced live in a standalone SQLite check. The statement was
+  `INSERT OR IGNORE`, and SQLite's IGNORE conflict resolution silently drops
+  NOT NULL violations (not just UNIQUE/PK ones) without raising -- so the
+  code's own success log fired every cycle while writing nothing, for over a
+  month, with zero test coverage on this feature to catch it.
+
+What shipped:
+  Fixed the two field names (`entry_prob`/`side`). Extracted the insert loop
+  into a new `_log_near_settlement_trades(near, db_path) -> (attempted,
+  written)` helper (matching the extraction precedent from this session's
+  other fix) so it's directly unit-testable and so the caller can tell a
+  real write apart from a silently-dropped one: `cmd_cron` now logs a
+  WARNING (not the old blanket INFO) whenever written < attempted, closing
+  the exact visibility gap that let this run silently for a month.
+  Data is not backfillable -- this is a point-in-time snapshot (the
+  migration's own comment already said so) -- so the ~40 days of missing
+  snapshots are gone; this only fixes collection going forward.
+  6 new tests: 5 unit tests on the extracted helper (correct write with real
+  field names; a mutation-style regression reproducing the exact original
+  silent-failure shape -- a trade dict using "recommended_side"/
+  "forecast_prob" instead of "side"/"entry_prob" -- asserting written=0,
+  attempted=1, not an exception; dedup via the existing unique index;
+  multiple trades all written; days_out defaulting to 0 for pre-days_out
+  trade records); 1 new end-to-end test through the real cmd_cron path
+  (places a real open paper trade via paper.place_paper_order closing
+  within the 0-2h window, runs cmd_cron, asserts the real row lands with
+  correct ticker/our_model_prob/trade_side values). Full scoped regression
+  (test_near_settlement_log.py + test_cron_integration.py) -- 26 passed.
+  ruff + mypy clean. No opus review for this one -- small, single-cause,
+  two-field-name fix plus a rowcount hardening, not a multi-subsystem change.
 Priority: was High -- a shipped, believed-working data-collection feature had
   been a complete no-op since 2026-07-12 (13+ days), with zero trace in logs.
 

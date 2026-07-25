@@ -773,3 +773,47 @@ def test_cmd_cron_stops_websocket_even_on_body_exception(cron_env):
 
     fake_ws.stop.assert_called_once()
     assert cron_module._active_ws is None
+
+
+@pytest.mark.integration
+def test_cron_logs_near_settlement_row_with_real_trade_fields(cron_env):
+    """End-to-end regression for near_settlement_log being silently broken
+    since it shipped: the snapshot code previously read "recommended_side"/
+    "forecast_prob" (analysis-dict field names) off a stored paper-trade
+    record, which actually uses "side"/"entry_prob" -- trade_side ended up
+    NULL, violating the table's NOT NULL constraint, and INSERT OR IGNORE
+    silently dropped every row for over a month with no exception and no
+    warning. Places a real open paper trade closing within the 0-2h window
+    and asserts a real row lands with the correct values, through the actual
+    cmd_cron path (not just the extracted helper)."""
+    tmp_path, client, main, paper = cron_env
+    import sqlite3
+    from datetime import UTC, datetime, timedelta
+
+    import tracker
+
+    close_time = (datetime.now(UTC) + timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    paper.place_paper_order(
+        ticker="KXHIGH-NYC-26APR17-B70",
+        side="yes",
+        quantity=10,
+        entry_price=0.5,
+        entry_prob=0.65,
+        close_time=close_time,
+        days_out=1,
+    )
+
+    with (
+        patch("tracker.detect_brier_drift", return_value={"drifting": False}),
+        patch("paper.is_paused_drawdown", return_value=False),
+    ):
+        try:
+            main.cmd_cron(client)
+        except SystemExit:
+            pass
+
+    con = sqlite3.connect(tracker.DB_PATH)
+    row = con.execute(
+        "SELECT ticker, our_model_prob, trade_side FROM near_settlement_log"
+    ).fetchone()
+    assert row == ("KXHIGH-NYC-26APR17-B70", 0.65, "yes")
