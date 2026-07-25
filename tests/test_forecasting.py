@@ -985,9 +985,9 @@ class TestGaussianEnsembleBlend:
             patch("weather_markets.get_live_observation", return_value=None),
             patch("weather_markets.obs_prob", return_value=None),
             patch("weather_markets.temperature_adjustment", return_value=0.0),
-            # Disable METAR lock-in: when local "tomorrow" == UTC today (US
-            # timezones after ~20:00 local), METAR fires and bypasses the
-            # ensemble/Gaussian path this test exercises.
+            # Disable METAR lock-in: it gates on city-local (NY) date, not
+            # UTC -- when target_date == NY-local-today, it fires and
+            # bypasses the ensemble/Gaussian path this test exercises.
             patch.object(wm, "_metar_lock_in", return_value=(False, 0.0, {})),
             patch.object(wm, "_SEASONAL_WEIGHTS", {}),
             patch.object(wm, "_CONDITION_WEIGHTS", {}),
@@ -1284,6 +1284,11 @@ class TestBimodalEnsemble:
             patch.object(wm, "_CONDITION_WEIGHTS", {}),
             patch.object(wm, "_CITY_WEIGHTS", {}),
             patch("ml_bias.apply_temperature_scaling", side_effect=lambda p, **kw: p),
+            # Disable METAR lock-in (same pattern as the sibling Gaussian-blend
+            # tests above): it gates on city-local (NY) date, not system-local
+            # date.today() -- when target_date == NY-local-today, it fires and
+            # skips the bimodal-detection block this test exercises entirely.
+            patch.object(wm, "_metar_lock_in", return_value=(False, 0.0, {})),
         ):
             result = wm.analyze_trade(enriched)
 

@@ -48,11 +48,11 @@ When to revisit:
   recurs, start the OneDrive-correlation check above; if it stays a
   one-off, close this entry.
 
-[TEST SUITE: date.today() VS PRODUCTION-TIMEZONE MISMATCH -- 13 FILES, ONLY 3 INSTANCES FIXED]
-Priority: Low-Medium -- not a live-trading bug (test-only), but a real
-  correctness gap in test coverage: an affected test can silently pass or
+[RESOLVED 2026-07-25] TEST SUITE: date.today() VS PRODUCTION-TIMEZONE MISMATCH -- FULL AUDIT
+Priority: was Low-Medium -- not a live-trading bug (test-only), but was a real
+  correctness gap in test coverage: an affected test could silently pass or
   fail depending purely on the sandbox's local timezone/wall-clock moment
-  when it happens to run, independent of any real code change.
+  when it happened to run, independent of any real code change.
 
 Problem:
   Found 2026-07-24/25 while investigating 4 reported test failures (see
@@ -110,12 +110,53 @@ Why not now:
     currently-invisible (right now, all suites pass) latent flakiness class
     is a real, multi-hour task, not an adjacent one-line fix.
 
+RESOLVED 2026-07-25: Full audit completed, scope larger than originally
+  estimated. The 13-file estimate came from a narrow grep pattern
+  (`date\.today() + timedelta`, exact spacing); a broader sweep for any
+  `date.today()`/`datetime.date.today()`/aliased-import form found ~90
+  real call sites across ~25 files (also test_dedup.py, test_hourly_markets.py,
+  test_p9_p10.py, test_trading.py, test_walk_forward.py,
+  test_phase2_batch_c.py, test_shadow_predictions.py, test_infrastructure.py,
+  test_execution_proof.py, test_p0_10_paper_prelog.py,
+  test_p0_11_retired_strategy.py, test_trade_validation.py,
+  test_silent_failures.py, test_target_date_due.py). Triaged every site in
+  parallel (6 Explore-agent batches) against the actual production
+  convention: nearly everything routes through `utils.utc_today()` =
+  `datetime.now(UTC).date()` (see tests/test_date_today_guard.py), with
+  three known city-local-ZoneInfo exceptions -- `_analyze_precip_trade`,
+  `_analyze_snow_trade`, and `_metar_lock_in` (the last already fixed
+  separately, see the RESOLVED entry below).
+  Result: only 9 of ~90 sites were actually assertion-sensitive to a
+  ±1-day shift (most either don't depend on the exact date value, or have
+  enough numeric buffer/margin to absorb any single-day skew, or the
+  exercised function computes its own internal "now" independent of what
+  the test passes in). Fixed, across 6 files:
+  test_weather_markets.py (test_analyze_trade_returns_adjusted_edge_key --
+  hardcoded edge_confidence(10) exact match; test_analyze_trade_returns_none_for_past_date_market
+  and 2 metar-locked-branch tests -- all hit the UTC past-date gate,
+  weather_markets.py:7180, which runs BEFORE _metar_lock_in is even called
+  at line 7434, so mocking _metar_lock_in does NOT shield a test from this
+  gate -- an independent Agent(opus, effort=high) review caught these last
+  2 sites after the first-pass triage incorrectly reasoned the metar-locked
+  branch made the date inert); test_hourly_markets.py (_enriched() helper,
+  shared by 12 test methods -- highest blast radius of the 9); test_ml_bias.py
+  (shared seeding loop, tracker.log_prediction's internal days_out via
+  utc_today()); test_phase2_batch_c.py (get_indices() cache keyed by
+  (utc_today().year, .month)); test_forecasting.py (added the same
+  _metar_lock_in mock already used by 2 sibling tests in the same file,
+  plus corrected a stale comment wrongly claiming the metar gate uses UTC).
+  Verified via mutation-style arithmetic against the exact production gate
+  expressions (both skew directions: local-behind-UTC and local-ahead-of-UTC),
+  proving each OLD fixture breaks in its vulnerable direction and each NEW
+  one holds in both. 389 tests pass across the 6 changed files;
+  ruff/ruff format/mypy clean. User confirmed commit explicitly.
+
 When to revisit:
-  - Whenever a test in one of the other 10 files starts failing with no
-    apparent code change (the same symptom shape as the 3 already fixed) --
-    check this entry first before re-deriving the diagnosis from scratch.
-  - Or as a dedicated hardening pass if test-suite flakiness becomes a
-    recurring complaint.
+  - N/A -- fully resolved. If a similar timezone-convention mismatch
+    surfaces again: verify each code path's own datetime.now() convention
+    by grepping it directly, don't assume one convention holds file-wide
+    (this session found 3 different conventions -- UTC, and two distinct
+    city-local ZoneInfo call sites -- coexisting in the same module).
 
 [RESOLVED 2026-07-25] TestMetarLockInLowMarketAsymmetry -- UTC-VS-CITY-LOCAL-TIMEZONE MISMATCH, A DIFFERENT SHAPE THAN THE date.today() ENTRY ABOVE
 Priority: was Low-Medium -- test-only, but was currently live and reproducible

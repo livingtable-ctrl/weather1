@@ -1047,11 +1047,14 @@ class TestAdjustedEdgeInAnalyzeTrade:
 
     def test_analyze_trade_returns_adjusted_edge_key(self, monkeypatch):
         """Result dict must contain adjusted_edge and edge_confidence_factor."""
-        from datetime import date, timedelta
+        from datetime import UTC, datetime, timedelta
 
         import weather_markets as wm
 
-        target = date.today() + timedelta(days=10)
+        # analyze_trade computes days_out via datetime.now(UTC).date() -- must
+        # match here or the hardcoded edge_confidence(10) assertion below can
+        # flip to edge_confidence(9)/(11) on a local/UTC date mismatch.
+        target = datetime.now(UTC).date() + timedelta(days=10)
         ticker = f"KXHIGHNYC-{target.strftime('%y%b%d').upper()}-T70"
 
         enriched = {
@@ -1880,9 +1883,13 @@ def test_metar_locked_trade_has_ecmwf_forecast_mean_keys(monkeypatch):
         wm, "_metar_lock_in", lambda *a, **kw: (True, 0.85, {"current_temp_f": 76.0})
     )
 
-    from datetime import date
+    from datetime import UTC, datetime
 
-    today = date.today()
+    # analyze_trade's past-date gate (target_date < datetime.now(UTC).date())
+    # runs unconditionally before _metar_lock_in is even called (line 7434),
+    # so mocking _metar_lock_in doesn't shield a system-local-behind-UTC
+    # sandbox from this gate returning None instead of reaching the mock.
+    today = datetime.now(UTC).date()
     enriched = {
         "_forecast": {"high_f": 75.0, "low_f": 55.0, "precip_in": 0.0, "wind_mph": 5.0},
         "_date": today,
@@ -1921,9 +1928,13 @@ def test_metar_locked_trade_has_nbm_quantile_prob_key(monkeypatch):
         wm, "_metar_lock_in", lambda *a, **kw: (True, 0.85, {"current_temp_f": 76.0})
     )
 
-    from datetime import date
+    from datetime import UTC, datetime
 
-    today = date.today()
+    # analyze_trade's past-date gate (target_date < datetime.now(UTC).date())
+    # runs unconditionally before _metar_lock_in is even called (line 7434),
+    # so mocking _metar_lock_in doesn't shield a system-local-behind-UTC
+    # sandbox from this gate returning None instead of reaching the mock.
+    today = datetime.now(UTC).date()
     enriched = {
         "_forecast": {"high_f": 75.0, "low_f": 55.0, "precip_in": 0.0, "wind_mph": 5.0},
         "_date": today,
@@ -2795,11 +2806,14 @@ def test_analyze_trade_returns_none_for_past_date_market(monkeypatch):
     has passed. Without this filter, cron generates spurious signals (and very
     high fake edges) for already-resolved markets.
     """
-    from datetime import date, timedelta
+    from datetime import UTC, datetime, timedelta
 
     from weather_markets import analyze_trade
 
-    past = date.today() - timedelta(days=1)
+    # analyze_trade's past-date gate compares against datetime.now(UTC).date()
+    # -- must match here or a local-ahead-of-UTC sandbox timezone can put
+    # "yesterday" on the wrong side of the gate, silently passing the check.
+    past = datetime.now(UTC).date() - timedelta(days=1)
     enriched = {
         "_city": "NYC",
         "_date": past,

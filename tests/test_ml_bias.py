@@ -460,22 +460,27 @@ class TestTrainBiasModelRainExclusion:
         worked). Seeds 8 daily rows (city_data should end up with exactly
         8 samples) plus 10 rain rows for the SAME city -- the fit() call's
         training-set size directly proves whether the rain rows leaked in."""
-        from datetime import date, timedelta
+        from datetime import timedelta
         from unittest.mock import MagicMock, patch
 
         import ml_bias
         import tracker
+        from utils import utc_today
 
         monkeypatch.setattr(tracker, "DB_PATH", tmp_path / "predictions.db")
         monkeypatch.setattr(tracker, "_db_initialized", False)
         tracker.init_db()
 
+        # log_prediction computes days_out via utils.utc_today() -- i=0 gives
+        # a +1-day market_date, and a local-behind-UTC sandbox timezone would
+        # collapse that to days_out=0, silently dropping the row from the
+        # "daily" (days_out>=1) pool this test's fit_calls assertion counts.
         for i in range(8):
             self._seed(
                 tracker,
                 f"KXHIGHNY-26AUG{i:02d}-T75",
                 "MixedCity",
-                date.today() + timedelta(days=i % 20 + 1),
+                utc_today() + timedelta(days=i % 20 + 1),
                 0.5 + (i % 2) * 0.3,
                 i % 2,
                 "above",
@@ -485,7 +490,7 @@ class TestTrainBiasModelRainExclusion:
                 tracker,
                 f"KXRAINDENM-26AUG-{i % 7 + 1}-{i}",
                 "MixedCity",
-                date.today() + timedelta(days=i % 20 + 1),
+                utc_today() + timedelta(days=i % 20 + 1),
                 0.5 + (i % 2) * 0.3,
                 i % 2,
                 "precip_month_total",
