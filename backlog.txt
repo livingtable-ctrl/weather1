@@ -6808,6 +6808,43 @@ When to revisit:
     _parse_city_from_ticker's hardcoded if-chain is next open for other
     reasons.
 
+Follow-up (2026-07-25): a live `python main.py cron` run's
+  log_city_registry_report() output (11/20 cities, matching _KNOWN_GAPS
+  exactly -- no drift) prompted scoping what actually closing the
+  remaining climate_indices gap (10 cities: Austin, Washington,
+  Philadelphia, OklahomaCity, SanFrancisco, Minneapolis, Houston,
+  SanAntonio, LasVegas, NewOrleans) would take. Confirmed both required
+  data sources already exist in-repo -- climatology.fetch_historical()
+  (per-city historical daily temps, already used for sigma) and
+  climate_indices._fetch_monthly_index()/_fetch_enso() (decades of
+  monthly AO/NAO/ONI from NOAA CPC, already used for the current-state
+  lookup) -- so this is a regression/analysis task, not new fetch
+  infrastructure.
+  Scoped path: (1) per gap city, join monthly temp anomaly (vs
+  climatological normal) against the matching month's AO/NAO/ENSO index
+  value; (2) regress by the existing 3 season buckets (winter/spring/
+  other, climate_indices.py:263 _season_bucket) to get a °F/unit slope,
+  same units as the 10 existing hand-set AO_SENS/NAO_SENS/ENSO_SENS
+  entries; (3) sanity-check the identical regression against the 10
+  ALREADY-covered cities first -- their current values read as hand-set
+  domain-knowledge estimates (e.g. NYC/Chicago/Denver high AO/NAO winter
+  sensitivity, Miami/LA/Phoenix low), not fitted numbers, so this step
+  also tells us whether regression agrees with the existing table or
+  would revise it too, which would change scope from "fill 10 gaps" to
+  "re-derive all 20" -- worth deciding explicitly before committing, not
+  assuming; (4) decide a per-cell significance/sample-size floor so a
+  city/season/index combo with no real signal stays on
+  DEFAULT_AO_SENS/NAO_SENS/ENSO_SENS instead of getting a noisy fitted
+  number; (5) wire into AO_SENS/NAO_SENS/ENSO_SENS + new regression-
+  locking tests (mirrors tests/test_climate_indices.py's per-season
+  hand-computed-value tests); (6) update
+  tests/test_city_registry_manifest.py's _KNOWN_GAPS allowlist to drop
+  the fixed cities in the same change -- that test's own bidirectional
+  staleness check will fail the build otherwise.
+  Not started. Still gated on the same "worth doing before cities trade
+  at full signal quality" motivation as the rest of this entry -- no
+  forcing deadline while TRADING_PAUSED holds.
+
 [RESOLVED 2026-07-17] LOG_PREDICTION KWARGS ASSEMBLY TRIPLICATED -- ONE COPY HAD ALREADY DRIFTED
 Priority: was Medium-High to fix (trivial), Medium as debt -- drift is not
   hypothetical, it already happened once (main.py's cmd_market call site
