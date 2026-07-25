@@ -70,6 +70,62 @@ When to revisit:
   - Or as a dedicated hardening pass if test-suite flakiness becomes a
     recurring complaint.
 
+[TestMetarLockInLowMarketAsymmetry -- UTC-VS-CITY-LOCAL-TIMEZONE MISMATCH, A DIFFERENT SHAPE THAN THE date.today() ENTRY ABOVE]
+Priority: Low-Medium -- test-only, but currently live and reproducible for
+  part of every real day (not hypothetical, not a sandbox-only artifact).
+
+Problem:
+  Found 2026-07-25 while re-verifying backlog state for the user (not part
+  of a planned session) -- both tests in
+  tests/test_weather_markets.py::TestMetarLockInLowMarketAsymmetry
+  (test_low_market_above_already_below_margin_is_locked,
+  test_low_market_below_already_below_margin_is_locked) currently FAIL,
+  live, right now. Root cause is NOT the date.today()-vs-timezone entry
+  above's pattern (that one's repo-wide grep for `date\.today() + timedelta`
+  would not catch this -- this test doesn't use date.today() at all).
+  The test's `_call()` helper (test_weather_markets.py:3985) builds
+  target_date via `datetime.now(UTC).date()`. The production function it
+  exercises, weather_markets.py's `_metar_lock_in` (line 6941), computes
+  its own "is this actually today" gate via
+  `datetime.now(ZoneInfo(_city_tz_str)).date()` -- city-local time (NYC ->
+  America/New_York), NOT UTC (weather_markets.py:6972, guard at line 6979:
+  `if not (_metar_sta and target_date == _local_today): return False, 0.0,
+  {}`). UTC's calendar date and US-Eastern's calendar date genuinely
+  disagree for ~4 hours every day (20:00 EDT through local midnight, since
+  UTC has already rolled to the next day) -- confirmed live 2026-07-25
+  00:21 UTC (date 2026-07-25) vs. 20:21 EDT same instant (date 2026-07-24).
+  During that window, target_date != _local_today, the guard fires, and
+  the function returns locked=False regardless of the test's actual
+  intent -- exactly the observed `assert False is True` failures.
+  This is real, time-of-day-flaky (not permanently broken -- it passes
+  outside the ~4h window), and would recur identically on every future run
+  that happens to land in that window, on any machine, regardless of the
+  machine's own local timezone (since neither side of the comparison uses
+  system-local time -- this is a UTC-vs-city-local mismatch, a third
+  timezone-convention-mismatch shape distinct from both the date.today()
+  entry above and the "3 timezone-flaky tests" already fixed in the
+  RESOLVED entry below).
+
+What the fix looks like:
+  Same principle as the date.today() entry above (derive the test's date
+  from the SAME timezone convention the exercised code path actually
+  uses), applied here specifically: build `target_date` in `_call()` via
+  `datetime.now(ZoneInfo("America/New_York")).date()` (matching NYC, the
+  hardcoded city in this test class) instead of `datetime.now(UTC).date()`.
+  Small, single-file, single-class fix -- narrower in scope than the
+  date.today() entry's multi-file audit.
+
+Why not now:
+  - Found while re-verifying backlog state for a "what's next" question,
+    not while actively working in this file -- user asked to file it
+    separately rather than fix inline.
+
+When to revisit:
+  - Next session, as a small standalone fix (or bundled with the
+    date.today() entry above's audit pass, since both are testing-
+    infrastructure timezone-convention bugs in the same broad family, even
+    though their concrete patterns and grep signatures differ).
+
 [RESOLVED 2026-07-25] PRE-EXISTING DEAD-CODE ALLOWLIST GAP + 3 TIMEZONE-FLAKY TESTS
 Priority: was unplanned -- surfaced by the user reporting 2 test failures
   from a broader local run; investigation found 2 more of the same class.
