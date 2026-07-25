@@ -5,8 +5,9 @@ from __future__ import annotations
 import sys
 import threading
 import time
-from datetime import UTC, datetime
+from datetime import datetime
 from unittest.mock import MagicMock, patch
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -24,7 +25,10 @@ class TestBetweenLockInDynamicConfidence:
         import metar as _metar
         import weather_markets as wm
 
-        today = datetime.now(UTC).date()
+        # _metar_lock_in gates on city-local ("America/New_York" for NYC)
+        # calendar date, not UTC -- matches the ZoneInfo convention already
+        # used by test_between_lock_in_disabled below in this same file.
+        today = datetime.now(ZoneInfo("America/New_York")).date()
         fake_obs_time = MagicMock()
         fake_obs_local = MagicMock(hour=local_hour)
         fake_obs_local.date.return_value = today  # date guard: same day as target_date

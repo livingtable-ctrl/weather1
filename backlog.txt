@@ -117,9 +117,9 @@ When to revisit:
   - Or as a dedicated hardening pass if test-suite flakiness becomes a
     recurring complaint.
 
-[TestMetarLockInLowMarketAsymmetry -- UTC-VS-CITY-LOCAL-TIMEZONE MISMATCH, A DIFFERENT SHAPE THAN THE date.today() ENTRY ABOVE]
-Priority: Low-Medium -- test-only, but currently live and reproducible for
-  part of every real day (not hypothetical, not a sandbox-only artifact).
+[RESOLVED 2026-07-25] TestMetarLockInLowMarketAsymmetry -- UTC-VS-CITY-LOCAL-TIMEZONE MISMATCH, A DIFFERENT SHAPE THAN THE date.today() ENTRY ABOVE
+Priority: was Low-Medium -- test-only, but was currently live and reproducible
+  for part of every real day (not hypothetical, not a sandbox-only artifact).
 
 Problem:
   Found 2026-07-25 while re-verifying backlog state for the user (not part
@@ -162,16 +162,33 @@ What the fix looks like:
   Small, single-file, single-class fix -- narrower in scope than the
   date.today() entry's multi-file audit.
 
-Why not now:
-  - Found while re-verifying backlog state for a "what's next" question,
-    not while actively working in this file -- user asked to file it
-    separately rather than fix inline.
-
-When to revisit:
-  - Next session, as a small standalone fix (or bundled with the
-    date.today() entry above's audit pass, since both are testing-
-    infrastructure timezone-convention bugs in the same broad family, even
-    though their concrete patterns and grep signatures differ).
+RESOLVED 2026-07-25: Fixed test_weather_markets.py::TestMetarLockInLowMarketAsymmetry's
+  `_call()` helper (line 3985) to build `today` via
+  `datetime.now(ZoneInfo("America/New_York")).date()` instead of
+  `datetime.now(UTC).date()`, matching `_metar_lock_in`'s own city-local gate.
+  Mutation-style verification (simulated the exact 2026-07-25 00:30 UTC /
+  20:30 EDT instant confirmed live above): the OLD UTC-based helper is
+  short-circuited by the tz-mismatch guard (empty `{}` lockout details);
+  the NEW NY-based helper passes the guard and reaches real lock-in logic.
+  Independent Agent(opus, effort=high) review found the fix itself correct
+  and complete (confirmed `_CITY_TZ["NYC"]` is indeed "America/New_York",
+  no other caller of `_call()` depends on the old UTC value) but surfaced
+  3 adjacent issues, all fixed in the same commit: (1) two OTHER comments
+  (test_weather_markets.py:1475-1479, test_silent_failures.py:65-68)
+  asserting the same wrong "_metar_lock_in uses UTC" claim this commit
+  disproves -- corrected to describe the real city-local ZoneInfo gate;
+  (2) test_phase2_batch_d.py's `_call_metar_lock_in` helper (line 27) had
+  the identical UTC-vs-city-local anti-pattern for the same NYC city --
+  not currently flaky (its "between" branch's assertions are `if locked
+  and ...`-guarded, so the bug silently no-ops test coverage during the
+  mismatch window rather than hard-failing) but fixed to match the
+  ZoneInfo convention already used elsewhere in that same file
+  (test_between_lock_in_disabled, line ~128). A 4th finding (a
+  millisecond-wide race between the test's and production's two separate
+  `datetime.now()` samples, shrunk from ~4h to ~ms by this fix) was judged
+  acceptable residual risk, not worth the added complexity of freezing
+  time in these tests. 238 tests pass across the 3 changed files;
+  ruff/ruff format/mypy clean. User confirmed commit explicitly.
 
 [RESOLVED 2026-07-25] PRE-EXISTING DEAD-CODE ALLOWLIST GAP + 3 TIMEZONE-FLAKY TESTS
 Priority: was unplanned -- surfaced by the user reporting 2 test failures

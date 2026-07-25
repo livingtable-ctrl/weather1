@@ -63,9 +63,10 @@ def _patch_analyze_prereqs():
         patch("weather_markets.get_live_observation", return_value=None),
         patch("weather_markets.obs_prob", return_value=None),
         # Disable METAR lock-in: _metar_lock_in compares target_date against
-        # datetime.now(UTC).date().  When the local "tomorrow" equals the UTC
-        # date (possible in US timezones after ~20:00 local / 00:00 UTC), the
-        # check fires and bypasses the entire ensemble path these tests exercise.
+        # datetime.now(ZoneInfo(city_tz)).date() (city-local). When the local
+        # "tomorrow" equals that city-local date (target_date set to tomorrow
+        # but the clock has already rolled), the check fires and bypasses the
+        # entire ensemble path these tests exercise.
         patch("weather_markets._metar_lock_in", return_value=(False, 0.0, {})),
     ]
 

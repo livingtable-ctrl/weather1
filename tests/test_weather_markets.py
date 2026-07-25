@@ -1473,8 +1473,10 @@ def test_model_consensus_false_when_models_disagree(monkeypatch):
         },
     )
     # Disable METAR lock-in: _metar_lock_in compares target_date against
-    # datetime.now(UTC).date(). When the local "tomorrow" equals the UTC date
-    # (US timezones after ~20:00 local), it fires and skips the consensus block.
+    # datetime.now(ZoneInfo(city_tz)).date() (city-local, e.g. America/New_York
+    # for NYC). When the local "tomorrow" equals that city-local date (i.e.
+    # target_date was set to tomorrow but the clock has already rolled), it
+    # fires and skips the consensus block.
     monkeypatch.setattr(wm, "_metar_lock_in", lambda *a, **kw: (False, 0.0, {}))
     # Patch live API calls so the test is deterministic — without these,
     # fetch_temperature_nbm/ecmwf make real network requests and the resulting
@@ -3976,13 +3978,19 @@ class TestMetarLockInLowMarketAsymmetry:
     still reverse it). Only the unsafe direction should be rejected."""
 
     def _call(self, min_temp_f, threshold, cond_type, local_hour=16):
-        from datetime import UTC, datetime
+        from datetime import datetime
         from unittest.mock import MagicMock, patch
+        from zoneinfo import ZoneInfo
 
         import metar as _metar
         import weather_markets as wm
 
-        today = datetime.now(UTC).date()
+        # _metar_lock_in gates on city-local ("America/New_York" for NYC)
+        # calendar date, not UTC -- match that clock or this test flips false
+        # for part of every day (UTC rolls to the next calendar date before
+        # NY local time does: ~19:00-20:00 local through midnight, depending
+        # on DST).
+        today = datetime.now(ZoneInfo("America/New_York")).date()
         fake_obs_time = MagicMock()
         fake_obs_local = MagicMock(hour=local_hour)
         fake_obs_local.date.return_value = today
