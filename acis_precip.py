@@ -77,7 +77,9 @@ def _station_sid_for_city(city: str) -> str | None:
     Confirmed live this session: ACIS accepts these stripped codes directly
     for all 10 rain cities, zero exceptions -- including NYC, which fits the
     same rule because ACIS's sid="NYC" happens to resolve to "NY CITY
-    CENTRAL PARK", matching Kalshi's own settlement text for that city."""
+    CENTRAL PARK", matching Kalshi's own settlement text for that city.
+    StPetersburg (KSPG -> sid="SPG") confirmed the same way on onboarding,
+    2026-07-26 -- 30 complete years of real ACIS history under that sid."""
     from metar import MARKET_STATION_MAP
 
     icao = MARKET_STATION_MAP.get(city)

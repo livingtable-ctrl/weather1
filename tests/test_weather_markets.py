@@ -2486,6 +2486,11 @@ class TestMonthlyRainCityDetection:
         """Passes the existing substring chain by luck ("AUS")."""
         assert self._city("KXRAINAUSM-26JUL-1") == "Austin"
 
+    def test_st_petersburg_rain_ticker_detected(self):
+        """Onboarded 2026-07-26. Would return None without the explicit fix
+        -- "KXRAINSTPM" doesn't match any existing substring check either."""
+        assert self._city("KXRAINSTPM-26JUL-7") == "StPetersburg"
+
 
 class TestLearnedWeightsTTL:
     """L4-D: load_learned_weights() must discard files older than 7 days."""

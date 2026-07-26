@@ -1611,7 +1611,7 @@ When to revisit: N/A -- both Step 1 and Step 2 resolved. See the Step 2
   RESOLVED note above's "When to revisit" for the remaining intentionally-
   deferred gaps (item 7) and the shadow-gate sample-floor condition.
 
-[PARTIALLY RESOLVED 2026-07-21 — Rain Step 1+2 shipped, snow/hurricane/St. Petersburg still open] RAIN / SNOW / HURRICANE MARKETS — UNTOUCHED CATEGORY SURFACE
+[PARTIALLY RESOLVED 2026-07-26 — Rain Step 1+2+St. Petersburg onboarding shipped, snow/hurricane still open] RAIN / SNOW / HURRICANE MARKETS — UNTOUCHED CATEGORY SURFACE
 Priority: was Low -- rain is now Medium-High (real, currently-liquid product
   the bot was silently blind to); snow/hurricane/rain's own probability
   model (Step 2) remain Low, unchanged.
@@ -2040,6 +2040,108 @@ RESOLVED 2026-07-21 (Rain Step 2 -- the real monthly-accumulation
   expect the 20-settled-prediction floor to take roughly 2 months given
   monthly settlement cadence (~10 cities x 1 settlement/city/month), much
   slower than hourly's.
+
+RESOLVED 2026-07-26 (St. Petersburg onboarding -- the 11th rain city; snow
+  and hurricane remain the only fully open items in this entry): picked up
+  as the "smallest/most contained" of 3 ready candidates surfaced at session
+  start, after re-verifying live that the other two (SIGNAL GRADUATION part
+  (c) -- no signal has cleared its sample floor yet, best still 6/20; snow/
+  hurricane onboarding -- both still seasonally dormant, confirmed live via
+  a fresh Kalshi API check) were genuinely not ready, per this project's own
+  "don't build ahead of a real need" discipline.
+  Re-verified live before writing code: KXRAINSTPM has 10 real open brackets
+  (1-10in, closing 2026-08-01), settlement station confirmed via the
+  market's own `rules_secondary` text as CLISPG/"Albert Whitted" (not
+  assumed from the old backlog snapshot), lifetime volume ~14,880 (smaller
+  than the other 10 but genuinely live, not a placeholder). KSPG coordinates
+  (27.7651, -82.6269) confirmed via live web search against the airport's
+  own published position.
+  Research pass (Explore agent) found the "~8 registries" framing in this
+  entry's old text was imprecise: only 4 of the 8 (CITY_COORDS,
+  `_KXRAIN_MONTHLY_CITY`, `KNOWN_WEATHER_SERIES`, `metar.MARKET_STATION_MAP`)
+  are actually reachable by `_analyze_monthly_rain_trade()` (the function
+  that runs for rain tickers) -- `_STATION_BIAS_HIGH`/`_STATION_BIAS_LOW`,
+  `_HISTORICAL_SIGMA`, and `climate_indices.py`'s AO/NAO/ENSO tables are all
+  temperature-analysis-path-only and functionally inert for a rain-only
+  city; `paper._CORRELATED_CITY_GROUPS` is reachable (rain tickers carry a
+  real `target_date_str` since Step 2) but safe to leave unset, matching the
+  existing Seattle-standalone precedent.
+  One real design decision, resolved via `AskUserQuestion`:
+  `city_registry_report()`'s `series_ticker` check hardcoded "at least one
+  KXHIGH* ticker" -- would have permanently reported StPetersburg as missing
+  regardless of how correctly KXRAINSTPM was wired, since it never checked
+  rain tickers at all. User chose to generalize the check (any
+  KNOWN_WEATHER_SERIES ticker, any prefix) over allowlisting the gap,
+  verified safe against `settlement_monitor.py`'s own separate, stricter
+  per-temperature-city assert (keyed off its own fixed 20-city short-code
+  map, unaffected).
+  Shipped: `CITY_COORDS`, `_KXRAIN_MONTHLY_CITY`, `KNOWN_WEATHER_SERIES`
+  (moved off `KNOWN_UNTRACKED_RAIN_SERIES`), and `metar.MARKET_STATION_MAP`
+  all gained a real `StPetersburg`/`KSPG` entry; `_STATION_BIAS_HIGH`/
+  `_STATION_BIAS_LOW` got an explicit `0.0` placeholder (functionally inert,
+  present only to satisfy `test_station_bias_fully_covered()`);
+  `_HISTORICAL_SIGMA`/`climate_indices`/`_CORRELATED_CITY_GROUPS` left
+  genuinely unset, each with a documented `_KNOWN_GAPS` entry in
+  `tests/test_city_registry_manifest.py` (historical_sigma: dynamic
+  climatology sigma covers it via CITY_COORDS anyway, matching the existing
+  LasVegas/NewOrleans precedent; climate_indices: no temperature record to
+  regress against; correlation_group: no correlation study done against
+  Tampa Bay, standalone like Seattle rather than guessing a fold-in).
+  Verified end-to-end against live data, not just unit tests: with a
+  market's volume/open_interest patched up to clear the generic liquidity
+  gate, a real `analyze_trade()` call against a real KXRAINSTPM-26JUL-10
+  market produced a real result (`method="monthly_rain_bootstrap_tilted"`,
+  `forecast_prob=0.107` vs `market_prob=0.145`) -- confirming the full
+  ACIS-fetch + bootstrap + Seasonal-API-tilt chain works for this city, not
+  just that city detection resolves. Every new registry entry was mutation-
+  tested (temporarily removed, confirmed the corresponding test fails,
+  restored).
+  Opus review (single agent, scoped to this contained change) caught one
+  CRITICAL bug this session's own scoped test run missed: `backtest.py` had
+  a second copy of settlement_monitor.py's "exactly one KXHIGH* ticker per
+  city" import-time assert, but keyed off iterating `CITY_COORDS` directly
+  rather than its own fixed city set -- crashed `import backtest` the
+  moment a rain-only city landed in CITY_COORDS (silent at bot startup
+  since all importers are lazy, but broke the `backtest` CLI command, the
+  live-trading-readiness check, and would have made the weekly walk-forward
+  cron job fail every single run, freezing `PAPER_MIN_EDGE`'s highest-
+  priority override at a stale value). Fixed by introducing
+  `weather_markets.TEMPERATURE_MARKET_CITIES` (derived from
+  KNOWN_WEATHER_SERIES, not hand-typed) as the correct set for this class of
+  per-city temperature-ticker invariant, and repointing backtest.py's assert
+  at it. Also caught one HIGH: an existing test
+  (`test_phase2_batch_j.py::test_settlement_monitor_stations_match_metar_module`)
+  asserted every `metar.MARKET_STATION_MAP` city is reachable through
+  settlement_monitor's 20-city short-code map, which is now false by design
+  for a rain-only city -- narrowed the test to only require this for
+  `TEMPERATURE_MARKET_CITIES` members. Both findings are exactly this
+  project's recurring "trace all call sites" failure mode: the initial
+  verification pass ran the test suite for the two files actually touched,
+  which was too narrow for a change mutating `CITY_COORDS`/
+  `MARKET_STATION_MAP` -- two of the most widely-derived-from registries in
+  the repo. A regression test
+  (`test_temperature_market_cities_excludes_rain_only_cities`) now pins the
+  CITY_COORDS/TEMPERATURE_MARKET_CITIES relationship and directly imports
+  both `backtest` and `settlement_monitor` so this class of bug fails loudly
+  in the manifest test file itself next time, not just incidentally via
+  whichever test files happen to get run. Remaining review findings (stale
+  "10"/"20"-city counts in several comments now off-by-one, a docstring that
+  under-enumerated which ticker prefixes the generalized series_ticker check
+  covers) all fixed; two were left as-is with reasoning (a historical
+  "confirmed live this session" comment describing the original 2026-07-20/
+  07-21 sessions, left untouched as accurate history rather than rewritten;
+  a `_KNOWN_GAPS` wording nuance the reviewer itself called "moot in
+  practice," left consistent with the existing LasVegas/NewOrleans phrasing).
+  Full regression sweep (368+ tests across every touched file) passes
+  except one confirmed pre-existing, unrelated, date-dependent failure
+  (`TestAnalyzeMonthlyRainTradeEndToEnd::test_full_pipeline_produces_real_result`
+  -- fails today because the model bootstraps only *remaining* days of the
+  month and today's date leaves too few days for the test's fixture to
+  clear its own assertion; reproduced identically on a clean stash of this
+  session's diff, so not caused by this change); ruff/mypy clean.
+  St. Petersburg is shadow-only like the other 10 rain cities (same
+  `RAIN_TRADING_ENABLED` + 20-settled-prediction gate) -- not expected to
+  affect live trading behavior until that gate clears.
 
 [RESOLVED 2026-07-23 -- both real ECMWF products now instrumented] TRACK ECMWF FORECAST ACCURACY
 Priority: Low (ECMWF already gets a reasonable static/seasonal weight; this is

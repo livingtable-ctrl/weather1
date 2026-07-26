@@ -270,15 +270,24 @@ class TestMetarStationForCityAllCities:
         """settlement_monitor._MONITOR_CITIES is now derived from
         metar.MARKET_STATION_MAP + weather_markets._CITY_TZ via
         _SHORT_CODE_TO_CITY (no longer a hand-typed third copy) — this test
-        guards the derivation itself: every metar.py city must be reachable
-        through _SHORT_CODE_TO_CITY, and the derived values must match
-        exactly (not just be present somewhere in the value set)."""
+        guards the derivation itself: every metar.py city with a real
+        temperature market must be reachable through _SHORT_CODE_TO_CITY,
+        and the derived values must match exactly (not just be present
+        somewhere in the value set). Restricted to
+        weather_markets.TEMPERATURE_MARKET_CITIES (was: all of
+        metar.MARKET_STATION_MAP) since 2026-07-26 -- a rain-only city (e.g.
+        StPetersburg) legitimately has a METAR station entry but no HIGH/LOW
+        market, so it's not, and never was meant to be, one of
+        settlement_monitor's 20 monitored cities."""
         import metar
         import settlement_monitor
         import weather_markets
 
         covered_cities = set(settlement_monitor._SHORT_CODE_TO_CITY.values())
-        missing = set(metar.MARKET_STATION_MAP) - covered_cities
+        temp_market_stations = (
+            set(metar.MARKET_STATION_MAP) & weather_markets.TEMPERATURE_MARKET_CITIES
+        )
+        missing = temp_market_stations - covered_cities
         assert not missing, (
             f"_SHORT_CODE_TO_CITY missing entries for: {sorted(missing)}"
         )
@@ -334,9 +343,7 @@ class TestMetarStationForCityAllCities:
         assert not missing_tz, f"_CITY_TZ missing entries for: {missing_tz}"
 
         missing_station = [
-            c
-            for c in weather_markets.CITY_COORDS
-            if c not in metar.MARKET_STATION_MAP
+            c for c in weather_markets.CITY_COORDS if c not in metar.MARKET_STATION_MAP
         ]
         assert not missing_station, (
             f"metar.MARKET_STATION_MAP missing entries for: {missing_station}"

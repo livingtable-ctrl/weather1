@@ -209,12 +209,14 @@ def test_unknown_rain_ticker_warns_immediately(tmp_path, monkeypatch, caplog):
 
 def test_known_untracked_rain_series_suppressed(tmp_path, monkeypatch, caplog):
     """The real subtlety found on plan review: client.get_series_list()
-    returns ALL real KXRAIN* series, including ~7 this bot deliberately
-    doesn't track (dormant daily/one-off variants, and KXRAINSTPM -- real
-    and live but deferred). Every one of KNOWN_UNTRACKED_RAIN_SERIES must be
-    suppressed, not just the genuinely-unknown case above -- a test that
-    only checked the unknown case would pass even if this suppression were
-    broken and the drift-check spammed a warning for all 7 every single day.
+    returns ALL real KXRAIN* series, including a handful this bot
+    deliberately doesn't track (dormant daily/one-off variants -- 6 as of
+    2026-07-26, was 7 before KXRAINSTPM/St. Petersburg moved to
+    KNOWN_WEATHER_SERIES that day). Every one of KNOWN_UNTRACKED_RAIN_SERIES
+    must be suppressed, not just the genuinely-unknown case above -- a test
+    that only checked the unknown case would pass even if this suppression
+    were broken and the drift-check spammed a warning for all of them every
+    single day.
     """
     import logging
 

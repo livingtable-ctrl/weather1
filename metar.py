@@ -322,4 +322,7 @@ MARKET_STATION_MAP: dict[str, str] = {
     "SanAntonio": "KSAT",
     "LasVegas": "KLAS",
     "NewOrleans": "KMSY",
+    # Rain-only city (KXRAINSTPM) -- settlement station confirmed live via the
+    # market's own rules_secondary text ("CLISPG" / "Albert Whitted").
+    "StPetersburg": "KSPG",
 }

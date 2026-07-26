@@ -250,6 +250,9 @@ def _load_city_coords() -> dict:
         # KXHIGHTNOLA/KXLOWTNOLA, previously untracked entirely.
         "LasVegas": (36.0840, -115.1537, "America/Los_Angeles"),
         "NewOrleans": (29.9934, -90.2580, "America/Chicago"),
+        # KSPG / Albert Whitted — St. Petersburg, FL. Rain-only city (KXRAINSTPM):
+        # no KXHIGH/KXLOW market exists to trade or derive station bias/sigma from.
+        "StPetersburg": (27.7651, -82.6269, "America/New_York"),
     }
 
 
@@ -287,6 +290,10 @@ _STATION_BIAS_HIGH: dict[str, float] = {
     "LA": 0.0,  # KLAX: Marine influence largely corrects GFS bias
     "SanFrancisco": 0.0,  # KSFO: Strong marine layer, GFS frequently cold — no correction
     "Seattle": -0.5,  # KSEA: GFS tends cold for Pacific Northwest marine climate
+    # Rain-only cities — no HIGH market exists to observe a real bias against;
+    # 0.0 placeholder only, functionally unused (_analyze_monthly_rain_trade
+    # never reads this dict).
+    "StPetersburg": 0.0,  # KSPG
 }
 _STATION_BIAS_LOW: dict[str, float] = {
     # East Coast
@@ -315,6 +322,10 @@ _STATION_BIAS_LOW: dict[str, float] = {
     "LA": 0.0,  # KLAX: No known systematic bias
     "SanFrancisco": 0.0,  # KSFO: No correction
     "Seattle": 0.0,  # KSEA nights: no consistent bias
+    # Rain-only cities — no LOW market exists to observe a real bias against;
+    # 0.0 placeholder only, functionally unused (_analyze_monthly_rain_trade
+    # never reads this dict).
+    "StPetersburg": 0.0,  # KSPG
 }
 # Legacy alias — used by any callers that don't pass var
 _STATION_BIAS = _STATION_BIAS_HIGH
@@ -3520,14 +3531,17 @@ KNOWN_WEATHER_SERIES = [
     # / SNOW / HURRICANE MARKETS" Step 1: these 10 series are the currently-
     # liquid ones, all in cities already in CITY_COORDS (live-verified
     # 2026-07-20, Seattle highest at 203K volume down to Austin ~32K).
-    # St. Petersburg (KXRAINSTPM, real/live but a genuinely new city needing
-    # edits across ~8 separate registries) and snow (KXSNOW*, real series
-    # exist but 0 open markets anywhere right now -- pure July seasonality,
-    # re-scout Nov-Mar) are deliberately excluded from this pass. Like
-    # KXTEMPxxxH below, analyze_trade() returns None for all of these today
-    # (Step 1 — discovery/schema only, no probability model yet); also
-    # excluded from compute_market_implied_distributions() and
-    # consistency._group_markets() for the same reason as the hourly guard.
+    # Snow (KXSNOW*, real series exist but 0 open markets right now -- pure
+    # July seasonality, re-scout Nov-Mar) remains deliberately excluded.
+    # St. Petersburg (KXRAINSTPM, genuinely new city needing edits across ~8
+    # separate registries) was onboarded 2026-07-26 -- see _KXRAIN_MONTHLY_CITY
+    # below. Step 2 (backlog.txt "RAIN / SNOW / HURRICANE MARKETS") shipped a
+    # real monthly-accumulation probability model for all of these
+    # (_analyze_monthly_rain_trade, dispatched from analyze_trade() on
+    # condition["type"] == "precip_month_total") -- these are live-tradeable,
+    # not Step-1 discovery-only like KXTEMPxxxH below. All still excluded from
+    # compute_market_implied_distributions() and consistency._group_markets()
+    # (no day component to group by; same reason as the hourly guard).
     "KXRAINSEAM",
     "KXRAINLAXM",
     "KXRAINHOUM",
@@ -3538,6 +3552,7 @@ KNOWN_WEATHER_SERIES = [
     "KXRAINNYCM",  # only 4 brackets (1-4in), not 7 -- a Kalshi listing choice
     "KXRAINDENM",
     "KXRAINAUSM",
+    "KXRAINSTPM",  # St. Petersburg — onboarded as a new city; 10 brackets (1-10in)
     "KXSNOW",
     # KXTEMPxxxH — hourly-directional temperature markets (backlog.txt
     # "HOURLY-DIRECTIONAL TEMPERATURE MARKETS"). Only the 5 cities confirmed
@@ -3593,13 +3608,8 @@ KNOWN_UNTRACKED_RAIN_SERIES = {
     "KXRAINHOLIDAY",  # "Where will it rain on holidays?" -- 0 open markets
     "KXRAINNYC",  # "NYC rain" (distinct from tracked KXRAINNYCM) -- 0 open markets
     "KXRAINSEA",  # "Seattle rain" (distinct from tracked KXRAINSEAM) -- 0 open markets
-    "KXRAINSTPM",  # St. Petersburg, FL -- REAL, 7 open markets, real volume;
-    # deferred (not dead) -- a genuinely new city needing edits across ~8
-    # separate registries (CITY_COORDS, _parse_city_from_ticker,
-    # metar.MARKET_STATION_MAP, _STATION_BIAS_HIGH/_STATION_BIAS_LOW,
-    # _HISTORICAL_SIGMA, climate_indices.py's AO/NAO/ENSO tables,
-    # paper._CORRELATED_CITY_GROUPS), and the lowest-volume of the 11 rain
-    # series anyway. Revisit if St. Petersburg is ever onboarded as a city.
+    # KXRAINSTPM (St. Petersburg) moved to KNOWN_WEATHER_SERIES 2026-07-26 --
+    # no longer untracked, see _KXRAIN_MONTHLY_CITY below.
 }
 
 
@@ -3917,6 +3927,7 @@ _KXRAIN_MONTHLY_CITY = {
     "KXRAINNYCM": "NYC",
     "KXRAINDENM": "Denver",
     "KXRAINAUSM": "Austin",
+    "KXRAINSTPM": "StPetersburg",  # doesn't match any substring fallback either
 }
 
 
@@ -4000,12 +4011,24 @@ def city_registry_report() -> dict[str, dict[str, bool]]:
     itself is the enumeration base, not a thing to check against itself;
     the planned city->WFO/pil table doesn't exist yet, so it's not
     included here):
-      - series_ticker: at least one KXHIGH* ticker in KNOWN_WEATHER_SERIES
-        parses back to this city via _parse_city_from_ticker -- covers
-        both the ticker if-chain and the series-ticker registry in one
-        check, since settlement_monitor._CITY_SERIES_TICKER already
-        proves (at its own import time, via an assert-or-crash) that this
-        must hold for get_weather_markets() to work at all.
+      - series_ticker: at least one ticker in KNOWN_WEATHER_SERIES, of ANY
+        prefix (KXHIGH/KXLOW, KXRAIN*M, or KXTEMPxxxH -- whichever this
+        city actually trades), parses back to this city via
+        _parse_city_from_ticker, i.e. get_weather_markets() actually
+        fetches at least one live market for this city. Generalized
+        2026-07-26 (was KXHIGH-only) to cover rain-only cities like
+        StPetersburg, which have no KXHIGH ticker at all -- the KXHIGH-only
+        version would have permanently reported StPetersburg as missing
+        regardless of how correctly KXRAINSTPM is wired.
+        TEMPERATURE_MARKET_CITIES (below) is the narrower, KXHIGH-specific
+        set some callers need instead -- e.g. backtest.py's own per-city
+        assert iterates that, not CITY_COORDS, precisely because CITY_COORDS
+        now includes rain-only cities with no KXHIGH ticker by design.
+        settlement_monitor._CITY_SERIES_TICKER separately proves (at its
+        own import time, via an assert-or-crash) the stricter "every one of
+        the 20 fixed temperature cities has a working KXHIGH ticker"
+        invariant -- that check is keyed off its own fixed short-code map,
+        not CITY_COORDS, so it is unaffected by this generalization.
       - metar_station: city in metar.MARKET_STATION_MAP.
       - station_bias: city in both _STATION_BIAS_HIGH and _STATION_BIAS_LOW.
       - historical_sigma: city in _HISTORICAL_SIGMA (the static fallback
@@ -4034,11 +4057,10 @@ def city_registry_report() -> dict[str, dict[str, bool]]:
     """
     from paper import _CORRELATED_CITY_GROUPS
 
-    high_tickers = [t for t in KNOWN_WEATHER_SERIES if t.startswith("KXHIGH")]
     report: dict[str, dict[str, bool]] = {}
     for city in CITY_COORDS:
         has_series_ticker = any(
-            _parse_city_from_ticker(t) == city for t in high_tickers
+            _parse_city_from_ticker(t) == city for t in KNOWN_WEATHER_SERIES
         )
         report[city] = {
             "series_ticker": has_series_ticker,
@@ -4201,6 +4223,26 @@ def check_retirement_probation(client: KalshiClient) -> None:
                     )
     except Exception as _exc:
         _log.debug("check_retirement_probation failed (non-fatal): %s", _exc)
+
+
+# Cities with a real KXHIGH*/KXLOW* temperature market -- derived from
+# KNOWN_WEATHER_SERIES (single source of truth) rather than hand-typed, so it
+# can never itself drift out of sync the way a fourth hand-typed copy would.
+# NOT the same set as CITY_COORDS.keys(): CITY_COORDS also includes rain-only
+# cities (e.g. StPetersburg, onboarded 2026-07-26) that intentionally have no
+# temperature market at all. Any per-city invariant that only holds for
+# temperature-market cities (e.g. "exactly one KXHIGH ticker exists") must be
+# checked against this set, not CITY_COORDS -- iterating CITY_COORDS directly
+# for such a check is exactly the bug backtest.py's own import-time assert
+# had until this constant was added (a rain-only city has zero KXHIGH
+# tickers by design, which isn't a drift/renaming bug).
+TEMPERATURE_MARKET_CITIES = frozenset(
+    _city
+    for _t in KNOWN_WEATHER_SERIES
+    if _t.startswith("KXHIGH")
+    for _city in [_parse_city_from_ticker(_t)]
+    if _city
+)
 
 
 def parse_city_date(market: dict) -> tuple[str | None, date | None]:

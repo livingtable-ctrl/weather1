@@ -280,8 +280,13 @@ MAX_DIRECTIONAL_EXPOSURE = (
 )
 
 # Cities that tend to move together due to shared weather patterns.
-# Broader regional clusters so get_correlated_exposure covers all 20 traded cities.
-# Seattle is standalone — Pacific Maritime pattern is distinct from the West cluster.
+# Broader regional clusters so get_correlated_exposure covers all 20 traded
+# temperature cities (weather_markets.TEMPERATURE_MARKET_CITIES). Seattle is
+# standalone — Pacific Maritime pattern is distinct from the West cluster.
+# StPetersburg (rain-only, onboarded 2026-07-26) is deliberately NOT in any
+# group here either -- no correlation study has been done against Miami/
+# Atlanta or any other group; see tests/test_city_registry_manifest.py's
+# _KNOWN_GAPS entry for the same reasoning applied to Seattle.
 # #6: LasVegas and NewOrleans are real traded cities (weather_markets.py
 # CITY_COORDS/_STATION_BIAS_HIGH) that were missing from every group and pair
 # below — desert-Southwest LasVegas (same GFS/ICON warm-bias profile as

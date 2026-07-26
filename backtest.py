@@ -25,7 +25,12 @@ import requests
 
 from utils import KALSHI_FEE_RATE, KALSHI_MAKER_FEE_RATE
 from utils import prob_threshold as _prob_threshold
-from weather_markets import CITY_COORDS, KNOWN_WEATHER_SERIES, _parse_city_from_ticker
+from weather_markets import (
+    CITY_COORDS,
+    KNOWN_WEATHER_SERIES,
+    TEMPERATURE_MARKET_CITIES,
+    _parse_city_from_ticker,
+)
 
 _log = logging.getLogger(__name__)
 
@@ -250,8 +255,12 @@ _WEATHER_SERIES = KNOWN_WEATHER_SERIES
 # ticker again — mirrors settlement_monitor.py's per-city assertion pattern
 # for the identical bug class, since aliasing to KNOWN_WEATHER_SERIES above
 # only fixed the one already-known LA incident, not future drift for a
-# different city (found via a deep code review, 2026-07-08).
-for _city in CITY_COORDS:
+# different city (found via a deep code review, 2026-07-08). Iterates
+# TEMPERATURE_MARKET_CITIES, NOT CITY_COORDS -- CITY_COORDS also includes
+# rain-only cities (e.g. StPetersburg, onboarded 2026-07-26) with zero
+# KXHIGH/KXLOW tickers by design, which crashed this loop under the original
+# CITY_COORDS iteration (found by opus review, 2026-07-26).
+for _city in TEMPERATURE_MARKET_CITIES:
     for _prefix in ("KXHIGH", "KXLOW"):
         _matches = [
             t
