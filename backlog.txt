@@ -60,6 +60,8 @@ What shipped:
   (test_near_settlement_log.py + test_cron_integration.py) -- 26 passed.
   ruff + mypy clean. No opus review for this one -- small, single-cause,
   two-field-name fix plus a rowcount hardening, not a multi-subsystem change.
+
+[RESOLVED 2026-07-25] CANDLESTICK CAPTURE (price_history) SILENTLY BROKEN SINCE IT SHIPPED -- market.get("series_ticker") READS A FIELD THAT NEVER EXISTED ON THE REAL API
 Priority: was High -- a shipped, believed-working data-collection feature had
   been a complete no-op since 2026-07-12 (13+ days), with zero trace in logs.
 
@@ -2668,8 +2670,8 @@ UPDATE 2026-07-12 (research pass, no code changed):
   by the CLOSED verdict above, which found 3 real blockers a simple
   model-name fix wouldn't address.)
 
-[CLOSED 2026-07-12 -- not currently achievable, see below] CLIMATE INDEX
-  TABLES (AO/NAO/ENSO) MISSING 10 OF 20 CITIES
+[CLOSED 2026-07-12 as not-currently-achievable -- SUPERSEDED 2026-07-25, see
+  UPDATE below] CLIMATE INDEX TABLES (AO/NAO/ENSO) MISSING 10 OF 20 CITIES
 Priority: was Low (signal degradation, safe-side default fallback already in
   place)
 
@@ -2724,6 +2726,23 @@ Problem:
 (Original "what the fix looks like" section removed 2026-07-12 -- superseded
   by the CLOSED verdict above, which found no real methodology exists to
   follow and no data currently exists to build one from scratch.)
+
+UPDATE 2026-07-25 -- this CLOSED verdict is now superseded, not still
+  current: by this date enough settled history had accumulated across all
+  20 cities that a real external regression became possible (this entry's
+  own stated blocker -- "needs decades of external per-city historical
+  daily temperature regressed against NOAA CPC's public AO/NAO/ONI series
+  -- genuine external research" -- was exactly what got built). See the
+  PER-CITY KNOWLEDGE IS SCATTERED entry below for the full session (real
+  NOAA CPC AO/NAO/ONI fetch, lag-1 regression against each city's 30yr
+  Open-Meteo archive, BH-FDR multiple-comparisons correction) that filled
+  the gap for these 10 cities, then a same-week follow-up
+  ([RESOLVED 2026-07-25] EXISTING 10 climate_indices CITIES' HAND-SET
+  AO/NAO/ENSO VALUES DISAGREE WITH THE REAL REGRESSION) that re-derived the
+  original 10 cities' hand-set values the same way. Net result across all
+  20: only 4 of 80 cells survived BH-FDR overall, so most cities ended up
+  numerically on the flat default anyway -- a genuine, evidenced null
+  result, not the "unresearched gap" this entry closed as unfixable.
 
 [RESOLVED 2026-07-12] MORE INERT config.py FIELDS -- SAME DIVERGENCE PATTERN, ROUND 4
 Priority: Low-Medium (silent no-op env vars, same already-recognized bug
