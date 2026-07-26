@@ -4017,6 +4017,15 @@ def city_registry_report() -> dict[str, dict[str, bool]]:
       - climate_indices: city in climate_indices.AO_SENS (NAO_SENS/
         ENSO_SENS are guaranteed to cover the identical city set --
         enforced by tests/test_climate_indices.py, not re-checked here).
+        True here means "has a table entry," NOT "has a real, non-default
+        AO/NAO/ENSO coefficient" -- as of 2026-07-25 (both the original 10
+        and the 10 gap cities went through the same lag-1 + BH-FDR
+        regression) most covered cities are numerically identical to an
+        uncovered one in most or all seasons; only 7 of 20 cities (Miami,
+        Seattle, Denver, Austin, OklahomaCity, SanFrancisco, SanAntonio)
+        have any non-default cell at all. See climate_indices.py's
+        AO_SENS/NAO_SENS/ENSO_SENS module comments for which specific
+        cells are real.
       - correlation_group: city appears in at least one of paper.py's
         _CORRELATED_CITY_GROUPS sets. Seattle is a documented, deliberate
         exception ("Pacific Maritime pattern is distinct" -- see paper.py)

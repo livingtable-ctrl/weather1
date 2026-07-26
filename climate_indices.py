@@ -8,9 +8,15 @@ short-range ensemble models can capture — especially for the climatological
 baseline probability.
 
 Temperature adjustment logic (applied to climatological baseline only):
-  AO:  Each +1 unit on East Coast → ~+1.5°F in spring, +2°F in winter
-  NAO: Each +1 unit on East Coast → ~+1.0°F
-  ENSO: El Niño winter → East Coast warmer; La Niña → cooler
+  Per-city, per-season °F-per-unit-index coefficients, in AO_SENS/NAO_SENS/
+  ENSO_SENS below. As of 2026-07-25 (re-derived via real lag-1 regression
+  against each city's 31yr temp record, replacing the original hand-set
+  East Coast estimates this docstring used to describe) only a handful of
+  cells across all 20 cities clear a Benjamini-Hochberg FDR significance
+  bar -- most cities are flat DEFAULT_AO_SENS/NAO_SENS/ENSO_SENS in every
+  season. See the module comment directly above each table for the current
+  per-city breakdown; do not hand-restate specific numbers here, they will
+  drift the next time a city's fit changes.
 """
 
 from __future__ import annotations
@@ -205,10 +211,9 @@ def get_enso_index(
 # literals rebuilt from scratch inside temperature_adjustment() on every
 # call) so per-city coverage is inspectable for the completeness manifest
 # (backlog.txt "PER-CITY KNOWLEDGE SCATTERED ACROSS ~8 REGISTRIES") without
-# needing to execute or parse the function body. The original 10 cities'
-# values below (NYC through Atlanta) are unchanged hand-set domain-knowledge
-# estimates -- "other" is the original ternary's trailing else-branch
-# (June-November, where AO/NAO influence is weak and wasn't split further).
+# needing to execute or parse the function body. "other" is the original
+# ternary's trailing else-branch (June-November, where AO/NAO influence is
+# weak and wasn't split further).
 #
 # The remaining 10 (Austin through NewOrleans) were researched 2026-07-25
 # (backlog.txt "PER-CITY KNOWLEDGE" follow-up) via real regression -- REVISED
@@ -255,24 +260,41 @@ def get_enso_index(
 # right for either market type. Splitting by max vs. min would double the
 # regression's cell count and require rethinking the "one adjustment per
 # city" shape of AO_SENS/NAO_SENS/ENSO_SENS -- out of scope for this pass.
-# Deliberately did NOT re-derive the original 10's hand-set values even
-# though the same regression disagrees with several of them (e.g. Denver's
-# AO is insignificant/wrong-signed at every season in the real 31yr record,
-# same for Seattle) -- revising values already live in the paper-trading
-# blend is separate, larger-blast-radius scope than filling the 10 gaps
-# that were asked for; the specific disagreeing cells are filed as their
-# own backlog.txt follow-up instead of silently left unlisted.
+#
+# RE-DERIVED 2026-07-25 (later same session, backlog.txt "EXISTING 10
+# climate_indices CITIES' HAND-SET AO/NAO/ENSO VALUES DISAGREE WITH THE REAL
+# 31-YEAR REGRESSION", explicit user confirmation): the original 10's
+# hand-set values below were replaced by applying the IDENTICAL lag-1 +
+# BH-FDR regression used for the 10 gap cities above, at the same evidenced-
+# only bar -- a cell keeps a non-default value only if it clears BOTH
+# p<0.05 AND Benjamini-Hochberg FDR control at 5% across the 80 cells tested
+# this pass (10 cities x 8 cells, same shape/count as the gap-fill pass, so
+# the two 80-cell BH corrections are independent of each other). Only 4 of
+# 80 cells survive: Miami AO-spring, Miami NAO-spring, Seattle ENSO-other,
+# Denver ENSO-other -- every other cell for these 10 cities reverts to the
+# flat DEFAULT_AO_SENS/NAO_SENS/ENSO_SENS value, replacing the previous
+# hand-set domain-knowledge numbers entirely (not a magnitude tweak -- e.g.
+# Denver's ENSO-"other" flips sign from hand-set +0.3 to fitted -1.0).
+# Non-significance here isn't proof the removed values were wrong, only
+# that the real 31yr record at the lag get_indices() actually returns gives
+# no usable evidence for or against them -- same evidenced-only standard
+# already applied to the gap cities, not a stricter one invented for this
+# pass. Re-verified live before adopting: re-running this regression from
+# scratch reproduced the backlog entry's own numbers to 2-3 decimals.
 AO_SENS: dict[str, dict[str, float]] = {
-    "NYC": {"winter": 2.0, "spring": 1.2, "other": 0.4},
-    "Boston": {"winter": 2.0, "spring": 1.2, "other": 0.4},
-    "Chicago": {"winter": 2.2, "spring": 1.3, "other": 0.5},
-    "Miami": {"winter": 0.6, "spring": 0.3, "other": 0.1},
-    "LA": {"winter": 0.3, "spring": 0.3, "other": 0.3},
-    "Dallas": {"winter": 1.2, "spring": 0.7, "other": 0.3},
-    "Phoenix": {"winter": 0.5, "spring": 0.3, "other": 0.1},
-    "Seattle": {"winter": 1.0, "spring": 0.8, "other": 0.3},
-    "Denver": {"winter": 1.8, "spring": 1.0, "other": 0.4},
-    "Atlanta": {"winter": 1.0, "spring": 0.6, "other": 0.2},
+    # Re-derived 2026-07-25 -- only Miami-spring survives lag-1 + BH-FDR of
+    # all 30 AO cells across these 10 cities; see module comment above.
+    "NYC": {"winter": 0.5, "spring": 0.5, "other": 0.5},
+    "Boston": {"winter": 0.5, "spring": 0.5, "other": 0.5},
+    "Chicago": {"winter": 0.5, "spring": 0.5, "other": 0.5},
+    # spring: fitted, positive, n=93, p<0.001, survives BH-FDR
+    "Miami": {"winter": 0.5, "spring": 0.6, "other": 0.5},
+    "LA": {"winter": 0.5, "spring": 0.5, "other": 0.5},
+    "Dallas": {"winter": 0.5, "spring": 0.5, "other": 0.5},
+    "Phoenix": {"winter": 0.5, "spring": 0.5, "other": 0.5},
+    "Seattle": {"winter": 0.5, "spring": 0.5, "other": 0.5},
+    "Denver": {"winter": 0.5, "spring": 0.5, "other": 0.5},
+    "Atlanta": {"winter": 0.5, "spring": 0.5, "other": 0.5},
     # None of the 10 researched cities' AO cells survived lag-1 + BH-FDR --
     # all-default across the board (see module comment above).
     "Austin": {"winter": 0.5, "spring": 0.5, "other": 0.5},
@@ -288,19 +310,29 @@ AO_SENS: dict[str, dict[str, float]] = {
 }
 
 NAO_SENS: dict[str, dict[str, float]] = {
-    "NYC": {"winter": 1.2, "spring": 0.7, "other": 0.2},
-    "Boston": {"winter": 1.3, "spring": 0.8, "other": 0.2},
-    "Chicago": {"winter": 0.8, "spring": 0.5, "other": 0.2},
-    "Miami": {"winter": 0.4, "spring": 0.2, "other": 0.1},
-    "LA": {"winter": 0.2, "spring": 0.2, "other": 0.2},
-    "Dallas": {"winter": 0.5, "spring": 0.3, "other": 0.1},
-    "Phoenix": {"winter": 0.2, "spring": 0.1, "other": 0.1},
-    "Seattle": {"winter": 0.6, "spring": 0.4, "other": 0.2},
-    "Denver": {"winter": 0.7, "spring": 0.4, "other": 0.2},
-    "Atlanta": {"winter": 0.6, "spring": 0.3, "other": 0.1},
+    # Re-derived 2026-07-25 (see AO_SENS module comment above for the full
+    # methodology/rationale). 3 of 30 NAO cells clear raw p<0.05 (Miami-
+    # winter p=0.027, Miami-spring p=0.002, Atlanta-spring p=0.024) but only
+    # Miami-spring also survives BH-FDR across the 80 cells tested -- Miami-
+    # winter and Atlanta-spring revert to default rather than being kept on
+    # a looser bar than the gap cities got.
+    "NYC": {"winter": 0.4, "spring": 0.4, "other": 0.4},
+    "Boston": {"winter": 0.4, "spring": 0.4, "other": 0.4},
+    "Chicago": {"winter": 0.4, "spring": 0.4, "other": 0.4},
+    # winter: raw-sig p=0.027 but not FDR-sig -- stays default
+    # spring: fitted, positive, n=93, p=0.002, survives BH-FDR
+    "Miami": {"winter": 0.4, "spring": 0.6, "other": 0.4},
+    "LA": {"winter": 0.4, "spring": 0.4, "other": 0.4},
+    "Dallas": {"winter": 0.4, "spring": 0.4, "other": 0.4},
+    "Phoenix": {"winter": 0.4, "spring": 0.4, "other": 0.4},
+    "Seattle": {"winter": 0.4, "spring": 0.4, "other": 0.4},
+    "Denver": {"winter": 0.4, "spring": 0.4, "other": 0.4},
+    # spring: raw-sig p=0.024 but not FDR-sig -- stays default
+    "Atlanta": {"winter": 0.4, "spring": 0.4, "other": 0.4},
     # None of the 10 researched cities' NAO cells survived lag-1 + BH-FDR
-    # either -- all-default (closest raw-significant miss was OklahomaCity
-    # NAO-other, p=0.042 raw but not FDR-significant across the 80 cells).
+    # either -- all-default (closest raw-significant miss across these 10
+    # is NewOrleans NAO-winter, p=0.030 raw but not FDR-significant across
+    # the 80 cells; OklahomaCity NAO-other is the next-closest at p=0.042).
     "Austin": {"winter": 0.4, "spring": 0.4, "other": 0.4},
     "Washington": {"winter": 0.4, "spring": 0.4, "other": 0.4},
     "Philadelphia": {"winter": 0.4, "spring": 0.4, "other": 0.4},
@@ -319,31 +351,54 @@ NAO_SENS: dict[str, dict[str, float]] = {
 # "spring"/"other" to the same "other" lookup key for this table only.
 #
 # 4 of the 10 researched cities cleared lag-1 + BH-FDR, all in the "other"
-# season, and 3 of the 4 (Austin/OklahomaCity/SanAntonio) are NEGATIVE --
-# every other cell in this table, old and new, is positive. Adopted as-is
-# (2026-07-25, explicit user confirmation, reaffirmed after the lag/FDR
-# correction made these 4 cells the ONLY ones surviving the strictest test
-# applied this pass): physically plausible (Gulf Coast ENSO teleconnection
-# during Jun-Nov, which includes hurricane season, is a documented
-# different pattern than the East Coast winter relationship the hand-set 10
-# were tuned on) -- excluding it only because the sign is novel would mean
-# the significance floor wasn't the actual rule being applied.
+# season: Austin/OklahomaCity/SanAntonio negative, SanFrancisco positive
+# (a real West Coast ENSO teleconnection, opposite sign from the Gulf Coast
+# cities). Adopted as-is (2026-07-25, explicit user confirmation,
+# reaffirmed after the lag/FDR correction made these 4 cells the ONLY ones
+# surviving the strictest test applied this pass): physically plausible
+# (Gulf Coast ENSO teleconnection during Jun-Nov, which includes hurricane
+# season, is a documented different pattern than the East Coast winter
+# relationship the original 10's since-replaced hand-set values were tuned
+# on -- see AO_SENS module comment above) -- excluding a cell only because
+# its sign is novel would mean the significance floor wasn't the actual
+# rule being applied. 2 more of the 10 (Dallas/Phoenix ENSO-other) are also
+# negative and raw-significant but don't survive BH-FDR, so they stay
+# default rather than being adopted on a looser bar.
+#
+# RE-DERIVED 2026-07-25 (later same session, see AO_SENS module comment
+# above for the full methodology): the original 10's since-replaced
+# hand-set ENSO values below went through the identical lag-1 + BH-FDR
+# regression. 5 of 20 ENSO cells clear raw p<0.05 (Seattle-winter, Seattle-
+# other, Denver-other, Dallas-other, Phoenix-other) but only Seattle-other
+# and Denver-other survive BH-FDR. Denver's fitted ENSO-other is NEGATIVE
+# (-1.0) -- the opposite sign from its removed hand-set value (+0.3), and
+# the table's 4th negative cell overall alongside the 3 gap-city negatives
+# above (Austin/OklahomaCity/SanAntonio).
 ENSO_SENS: dict[str, dict[str, float]] = {
-    "NYC": {"winter": 1.0, "other": 0.3},
-    "Boston": {"winter": 1.0, "other": 0.3},
-    "Chicago": {"winter": 0.8, "other": 0.3},
-    "Miami": {"winter": 0.5, "other": 0.2},
-    "LA": {"winter": 0.8, "other": 0.4},
-    "Dallas": {"winter": 1.0, "other": 0.4},
-    "Phoenix": {"winter": 1.2, "other": 0.5},
-    "Seattle": {"winter": 0.9, "other": 0.5},
-    "Denver": {"winter": 0.9, "other": 0.3},
-    "Atlanta": {"winter": 0.7, "other": 0.3},
+    "NYC": {"winter": 0.4, "other": 0.4},
+    "Boston": {"winter": 0.4, "other": 0.4},
+    "Chicago": {"winter": 0.4, "other": 0.4},
+    "Miami": {"winter": 0.4, "other": 0.4},
+    "LA": {"winter": 0.4, "other": 0.4},
+    # other: raw-sig p=0.005 and NEGATIVE (wrong-signed vs. removed hand-set
+    # +0.4) but not FDR-sig -- stays default
+    "Dallas": {"winter": 0.4, "other": 0.4},
+    # other: raw-sig p=0.021 and NEGATIVE (wrong-signed vs. removed hand-set
+    # +0.5) but not FDR-sig -- stays default
+    "Phoenix": {"winter": 0.4, "other": 0.4},
+    # other: fitted, positive, n=279, p<0.001, survives BH-FDR. winter:
+    # raw-sig p=0.003 but not FDR-sig, stays default.
+    "Seattle": {"winter": 0.4, "other": 0.7},
+    # other: fitted, NEGATIVE (opposite sign from hand-set +0.3), n=279,
+    # p<0.001, survives BH-FDR
+    "Denver": {"winter": 0.4, "other": -1.0},
+    "Atlanta": {"winter": 0.4, "other": 0.4},
     # other: fitted, negative, n=279, p=0.001, survives BH-FDR
     "Austin": {"winter": 0.4, "other": -0.7},
     "Washington": {"winter": 0.4, "other": 0.4},  # none significant
     "Philadelphia": {"winter": 0.4, "other": 0.4},  # none significant
-    # other: fitted, negative, n=279, p=0.003, survives BH-FDR
+    # other: fitted, negative, n=279, p=0.002, survives BH-FDR (the
+    # tightest BH-FDR cutoff cell of the 4 gap-city survivors)
     "OklahomaCity": {"winter": 0.4, "other": -0.7},
     # other: fitted, POSITIVE (real West Coast ENSO teleconnection,
     # opposite sign from the Gulf Coast cities above), n=279, p<0.001,

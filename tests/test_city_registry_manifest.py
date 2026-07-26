@@ -42,10 +42,14 @@ _KNOWN_GAPS: dict[tuple[str, str], str] = {
         "Seattle's Pacific Maritime pattern is distinct from every other "
         "correlated group, not an oversight"
     ),
-    # climate_indices (AO/NAO/ENSO sensitivity): all 20 cities now covered
-    # (2026-07-25, real AO/NAO/ENSO regression against each city's 30yr
-    # temp record -- see climate_indices.py's AO_SENS/NAO_SENS/ENSO_SENS
-    # module comment). No allowlist entries needed here anymore.
+    # climate_indices (AO/NAO/ENSO sensitivity): all 20 cities have a table
+    # entry (2026-07-25, real AO/NAO/ENSO regression against each city's
+    # 31yr temp record -- see climate_indices.py's AO_SENS/NAO_SENS/
+    # ENSO_SENS module comment). "Covered" here means key membership only
+    # -- most entries are numerically flat-default in most/all seasons; a
+    # non-default coefficient is a much narrower, evidenced subset (see
+    # weather_markets.py's city_registry_report() docstring). No allowlist
+    # entries needed here regardless, since this test only checks presence.
 }
 
 

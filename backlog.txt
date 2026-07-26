@@ -7449,7 +7449,7 @@ Follow-up (2026-07-25) [RESOLVED same day]: a live `python main.py cron` run's
   the scoped climate_indices + city_registry_manifest sweep (plus the 4 in
   test_city_registry_report_logging.py); ruff+mypy clean.
 
-[NEW 2026-07-25] EXISTING 10 climate_indices CITIES' HAND-SET AO/NAO/ENSO VALUES DISAGREE WITH THE REAL 31-YEAR REGRESSION
+[RESOLVED 2026-07-25] EXISTING 10 climate_indices CITIES' HAND-SET AO/NAO/ENSO VALUES DISAGREE WITH THE REAL 31-YEAR REGRESSION
 Priority: Low-Medium -- these values are live in the paper-trading blend
   today (temperature_adjustment() has exactly one production call site,
   weather_markets.py's analyze_trade(), which shifts the climatological
@@ -7516,6 +7516,71 @@ When to revisit:
   Whenever climate_indices.py is next open for other reasons, or before
   live trading resumes (Belgium return 2026-07-31) if a fuller pre-live
   signal-quality pass is done at that point.
+
+RESOLVED 2026-07-25 (later same session): picked up per explicit user
+  request. Re-verified this entry's own numbers from scratch before trusting
+  them -- re-ran the identical lag-1 + BH-FDR regression independently and
+  reproduced every cited slope/p-value to 2-3 decimals, confirming the
+  disagreement documented above was real and not stale. Surfaced the actual
+  design decision via AskUserQuestion (apply the BH-FDR rule strictly, same
+  as the gap cities; a looser raw-p<0.05 bar; or leave the hand-set 10
+  untouched) rather than assuming -- user chose to apply the rule strictly
+  after a short discussion (first "review and ask again" round) on whether
+  non-significance is sufficient reason to remove a hand-set physical-
+  domain-knowledge value; landed on yes, consistent with the evidenced-only
+  standard already applied to the gap cities and this project's recurring
+  pattern of hand-set/hardcoded tables silently drifting from reality.
+  Only 4 of 80 cells survive: Miami AO-spring (+0.6, n=93, p<0.001), Miami
+  NAO-spring (+0.6, n=93, p=0.002), Seattle ENSO-other (+0.7, n=279,
+  p<0.001), Denver ENSO-other (-1.0, n=279, p<0.001, opposite sign from its
+  removed hand-set +0.3). Every other cell for these 10 cities (7 of the 10
+  -- NYC/Boston/Chicago/LA/Dallas/Phoenix/Atlanta -- end up 100% default in
+  every season) reverts to DEFAULT_AO_SENS/NAO_SENS/ENSO_SENS, replacing the
+  previous hand-set domain-knowledge numbers entirely.
+  Shipped: AO_SENS/NAO_SENS/ENSO_SENS's original-10 entries replaced in
+  climate_indices.py; module docstring and the AO_SENS/NAO_SENS/ENSO_SENS
+  block comments rewritten to describe the new state instead of the removed
+  hand-set numbers. tests/test_climate_indices.py: the 3 "covered city"
+  computed-value tests switched from NYC (now fully default, no longer a
+  useful example) to Miami; new TestRegressionFittedOriginalTen class
+  pinning the 7-all-default-cities case plus Seattle's and Denver's single
+  real cells; mutation test switched from NYC to Miami-spring (a real
+  fitted cell) since a now-fully-default city can't actually prove the
+  table is being read, only that a key exists.
+  Independent opus review (before push, per standing workflow) found 17
+  issues, all addressed: 1 HIGH (climate_indices.py's module docstring
+  still described the removed hand-set East Coast numbers as if live --
+  rewritten to point at the tables instead of hardcoding numbers that will
+  drift again), 2 MEDIUM (this entry itself not yet marked resolved; an
+  ENSO_SENS comment claiming Denver was the "second" real negative cell
+  when it's actually the 4th), 14 LOW covering: stale
+  "hand-set"/"non-default"-implying test docstrings and comments in both
+  climate_indices.py and tests/test_climate_indices.py; a genuine test-
+  isolation gap where Miami's two fitted cells (AO-spring and NAO-spring,
+  both 0.6) could each be individually wrong yet still sum to the correct
+  total (fixed with isolating single-index assertions); missing wrong-sign
+  call-outs for Dallas/Phoenix's raw-significant-but-not-FDR-significant
+  ENSO-other cells (both negative, vs. their removed positive hand-set
+  values -- now noted inline, matching Denver's treatment); a
+  weather_markets.py city_registry_report() docstring and a
+  tests/test_city_registry_manifest.py comment that both implied
+  "climate_indices: True" means "has a real coefficient" when it now only
+  means "has a table entry" for 13 of 20 cities; and 3 pre-existing
+  (already-committed in the sibling gap-fill commit, found only because the
+  reviewer independently re-derived and cross-checked every number) minor
+  p-value rounding/citation corrections in climate_indices.py and
+  tests/test_climate_indices.py. One LOW finding (the cap tests using
+  Denver, now a fully-default city for that test's purposes) was reviewed
+  and left as-is with reasoning stated explicitly: the clamp test's purpose
+  is proving the +-6 clamp fires regardless of coefficient value, which
+  holds for any city -- the city choice being "less interesting" than
+  before isn't a defect. Scoped regression (test_climate_indices.py +
+  test_weather_markets.py + test_city_registry_manifest.py +
+  test_city_registry_report_logging.py) -- 254 passed, 4 skipped;
+  ruff/ruff format/mypy clean. Mutation-tested all 4 newly-pinned fitted
+  cells (Denver, Seattle, Miami AO, Miami NAO) by temporarily reverting each
+  to its old/default value and confirming the corresponding test fails,
+  then restored and re-verified green.
 
 [RESOLVED 2026-07-17] LOG_PREDICTION KWARGS ASSEMBLY TRIPLICATED -- ONE COPY HAD ALREADY DRIFTED
 Priority: was Medium-High to fix (trivial), Medium as debt -- drift is not
