@@ -3301,16 +3301,27 @@ def check_position_limits(
     # date) once analyze_trade() has scored one, so the city/date/
     # directional/correlated-group caps below are no longer provably
     # skipped for this ticker family the way Step 1 found them to be.
-    # This function is still the one call path that can be reached WITHOUT
-    # going through analyze_trade() first (main.py's manual "place order
-    # with explicit ticker+qty" command resolves city/target_date_str via
-    # a forecast-free enrichment and calls this function directly) -- so
-    # this block stays, but now conditional on the same shadow-only gate
+    # This function is one of several call paths that can be reached WITHOUT
+    # going through analyze_trade() first -- main.py's manual "place order
+    # with explicit ticker+qty" command (cmd_order) resolves city/
+    # target_date_str via a forecast-free enrichment and calls this
+    # function directly; main.cmd_paper and web_app's /api/paper-order do
+    # the same (2026-07-26 review correction: an earlier comment here
+    # claimed this was "the one" such path, which was wrong -- see
+    # [[feedback_trace_all_call_sites]]-shaped finding in backlog.txt
+    # "HURRICANE MARKETS"). This function is still the single shared
+    # enforcement point for all of them, so this block stays, but now
+    # conditional on the same shadow-only gate
     # order_executor._auto_place_trades() already enforces for the
     # automatic path, rather than an unconditional "no model exists" block.
     # Matches that automatic path's stricter stance exactly: shadow-only
     # means no paper order either, not just no live order.
-    from weather_markets import _KXRAIN_MONTHLY_CITY, _rain_gates_active
+    from weather_markets import (
+        _KXRAIN_MONTHLY_CITY,
+        _KXSNOW_MONTHLY_CITY,
+        _rain_gates_active,
+        is_hurricane_ticker,
+    )
 
     if (
         ticker.upper().startswith(tuple(_KXRAIN_MONTHLY_CITY))
@@ -3322,6 +3333,32 @@ def check_position_limits(
                 "monthly rain markets: shadow-only until RAIN_TRADING_ENABLED=1 "
                 "and >=20 settled rain predictions exist"
             ),
+            "existing_cost": 0.0,
+            "limit": max_cost_per_market,
+        }
+
+    # backlog.txt "HURRICANE MARKETS": no supported model exists for
+    # hurricane/tropical-storm tickers (see is_hurricane_ticker()'s own
+    # comment for why this covers several unrelated real prefixes, not just
+    # "KXHUR"). Block unconditionally here too, not just in
+    # analyze_trade()'s own guard and cmd_order's own direct check.
+    if is_hurricane_ticker(ticker):
+        return {
+            "ok": False,
+            "reason": "hurricane markets are not supported yet",
+            "existing_cost": 0.0,
+            "limit": max_cost_per_market,
+        }
+
+    # backlog.txt "RAIN / SNOW / HURRICANE MARKETS" -- SNOW Step 1: no
+    # probability model exists yet (unlike rain, which reached Step 2), so
+    # this is unconditional -- no _gates_active()-style check, since there's
+    # no shadow signal to gate on. Same reachable-without-analyze_trade()
+    # reasoning as the rain/hurricane blocks above.
+    if ticker.upper().startswith(tuple(_KXSNOW_MONTHLY_CITY)):
+        return {
+            "ok": False,
+            "reason": "monthly snow markets: discovery-only, no probability model yet",
             "existing_cost": 0.0,
             "limit": max_cost_per_market,
         }

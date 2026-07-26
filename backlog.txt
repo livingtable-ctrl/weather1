@@ -1,6 +1,130 @@
 BACKLOG — future improvements to implement when ready
 ======================================================
 
+[RESOLVED 2026-07-26 -- explicit guard shipped; the real count/category
+  probability model is still unbuilt, see "When to revisit" below]
+  HURRICANE MARKETS -- EXPLICIT GUARD ADDED AFTER A CONFIRMED LIVE GAP
+Priority: was believed Low/inert (see the parent RAIN / SNOW / HURRICANE
+  MARKETS entry) -- reclassified High for the guard fix itself once live
+  testing found the "safe by coincidence" story was actually wrong.
+
+Problem:
+  Split out of the combined RAIN / SNOW / HURRICANE MARKETS entry because
+  hurricane isn't the same shape as rain/snow's per-city monthly ladder:
+  Kalshi's real hurricane series are season-aggregate count/category
+  markets keyed by storm name (`KXHURCAT-26FAUSTO-T5`, "Will Fausto become
+  a Category 5 hurricane?") or by season (`KXHURCTOT-26DEC01-T9`, "more
+  than 9 Atlantic hurricanes in 2026?"), plus a separate family of per-city
+  landfall series (`KXHURMIA`, `KXHURTB`, `KXHURNYC`, ...) that show 0 open
+  markets as of 2026-07-26 (confirmed live, pre-season -- hurricane season
+  peaks Aug-Oct). Neither shape is city-keyed the way a `_KXHUR_MONTHLY_
+  CITY`-style dict would assume, so this was never going to get the same
+  Step-1 treatment as snow.
+  A first-pass plan assumed hurricane tickers were already safe by
+  coincidence -- `_parse_city_from_ticker()` returns `None` for count/
+  category tickers and `_parse_market_condition()` returns `None` for
+  landfall tickers, so `analyze_trade()`'s existing `no_city`/
+  `no_condition` gates would catch both. An adversarial re-check against
+  real, currently-open Kalshi tickers found this was WRONG: `KXHURCAT-
+  26FAUSTO-T5` defeats BOTH gates simultaneously -- `_parse_city_from_
+  ticker()` matches `"Austin"` off a substring inside `"FAUSTO"`, and
+  `_parse_market_condition()` parses the `-T5` suffix + `yes_sub_title:
+  "Category 5 or above"` into a real `{"type": "above", "threshold": 5.0}`
+  condition. It was blocked today only by an unrelated, fragile accident --
+  `KXHURCAT-26FAUSTO` has no ticker-embedded date, so `analyze_trade()`'s
+  earlier `no_date` gate fires first -- and this exact codebase already has
+  precedent (`KXRAIN*M`'s `close_time`-derived dating) for removing that
+  kind of date dependency on a future pass, which would have silently
+  reactivated the misclassification. Separately, `main.py`'s manual
+  `cmd_order` path was confirmed to place a real order against ANY ticker,
+  including a hurricane one, without `analyze_trade()`'s gates passing at
+  all (`paper.py`'s own `check_position_limits()` docstring already
+  documented this as "the one call path that can be reached WITHOUT going
+  through analyze_trade() first").
+
+What was fixed:
+  An explicit `if ticker_up.startswith("KXHUR"): return None` guard, added
+  in the three places that matter rather than relying on incidental gate
+  ordering: `analyze_trade()` (first check in the function, before every
+  other gate), `main.py cmd_order` (refuses the order outright, not just a
+  warning), and `paper.check_position_limits()` (one of several call paths
+  reachable without `analyze_trade()` -- see the correction below). 11 new
+  regression tests (`tests/test_hurricane_gating.py`) pin the new explicit
+  guard directly, including the concrete `KXHURCAT-26FAUSTO-T5` ticker that
+  proved the old assumption wrong, plus controls confirming ordinary
+  daily/rain tickers are unaffected and that `cmd_order` still refuses
+  without even fetching the market. `order_executor.py` was deliberately
+  NOT touched -- that loop only ever processes opportunities that already
+  survived `analyze_trade()`, whose new guard makes it unreachable for this
+  ticker family, same reachability shape as rain's own original Step 1
+  found for that file (commit `b2171ba`).
+
+  CORRECTION (same-day second opus review, before this ever got committed):
+  the first-pass guard used a bare `ticker.startswith("KXHUR")` check in
+  all three places. A live series-list scan (291 real "Climate and
+  Weather" series) found this missed a large real, currently-open surface:
+  `KXTROPSTORM` (8 open markets), `KXFIRSTHURRICANE` (53 open markets),
+  `KXNAMEDSTORM`, `KXNEXTHURDATE`/`KXNEXTCAT5HURDATE`, and an entire
+  *unprefixed* legacy `HUR*` namespace (`HURCAT`, `HURMIA`, `HURNYC`, ... --
+  23 series, registered separately from their `KXHUR*` counterparts, both
+  real) -- confirmed live that `HURCAT-26FAUSTO-T5` (no "KX") reproduces
+  the exact same `_parse_city_from_ticker`/`_parse_market_condition`
+  double-defeat as the original finding, and that `py main.py buy
+  KXTROPSTORM-... yes 5 0.50` would have placed a real order under the
+  first-pass guard. Fixed by replacing the prefix check with a single
+  shared `weather_markets.is_hurricane_ticker()` (substring match on
+  `("HUR", "TROPSTORM", "NAMEDSTORM")`, live-verified zero false positives
+  against every tracked/known series -- in particular `KXSNOWSTORM`, a
+  real but unrelated national snow-event series, does NOT match, which a
+  naive `"STORM"`-only check would have wrongly caught) used by all three
+  guard sites instead of three independent hardcoded literals. Also added
+  the same explicit guard directly in `cmd_order` for monthly-snow tickers
+  (previously relied solely on `check_position_limits`, which fails open
+  on an unhandled exception in that call site) and corrected the "the one
+  call path reachable without analyze_trade()" comments in `paper.py`/
+  `order_executor.py` -- `main.cmd_paper` and `web_app`'s `/api/paper-order`
+  are two more such paths (both still funnel through `check_position_limits`,
+  so no live hole resulted, but the claim was wrong -- the same untraced-
+  call-sites shape flagged before in this project, see
+  [[feedback_trace_all_call_sites]]). A separately-flagged vacuous test
+  (`KXDENSNOWM`'s city resolution passed even with the new dict deleted,
+  since the pre-existing "DEN" substring fallback coincidentally agrees)
+  was fixed with a mutation-style test pointing the dict at a fake city.
+  8 more regression tests added for the broadened marker set (`KXTROPSTORM`,
+  `KXFIRSTHURRICANE`, `KXNAMEDSTORM`, legacy `HURCAT`, `KXSNOWSTORM`-must-
+  NOT-match, plus the new `cmd_order` snow guard) -- 19 hurricane +
+  20 snow tests total, full scoped sweep (504 tests) passing, ruff/mypy/
+  ruff-format clean.
+
+What the fix does NOT do:
+  No probability model exists for either hurricane market shape. This is a
+  safety tightening only -- discovery, a real count/category model, and
+  the per-city landfall series (still 0 open markets) all remain
+  completely unbuilt. `KNOWN_WEATHER_SERIES`/`check_series_drift()` still
+  don't watch any hurricane series at all (deliberately -- adding one
+  there without a matching parser branch would just reproduce this same
+  bug class for a series check_series_drift would then be actively
+  prompting someone to add).
+
+Why not now (for the real model):
+  - Count/category markets aren't city-keyed at all -- they need their own
+    data model (storm-name or season-keyed), not a per-city dict like
+    rain/snow. The per-city landfall series ARE city-keyed but have 0 open
+    markets today, so there's nothing live to build against yet.
+  - Effort scales as its own product line, same reasoning the parent
+    RAIN / SNOW / HURRICANE MARKETS entry already gives for snow/hurricane
+    generally.
+
+When to revisit:
+  - Once real per-city landfall markets actually open (re-check once
+    hurricane season is underway, Aug-Oct 2026) AND there's real appetite
+    to design the count/category model separately.
+  - Independent of that: if `KXRAIN*M`'s close_time-derived dating pattern
+    is ever extended to other market families, re-verify this guard still
+    covers `KXHURCAT`-style tickers -- the fragile `no_date` accident this
+    entry documents would stop being a backstop at that point, though the
+    explicit `KXHUR` guard added here does not depend on it.
+
 [RESOLVED 2026-07-25] NEAR-SETTLEMENT LOG (near_settlement_log) SILENTLY BROKEN SINCE IT SHIPPED -- WRONG FIELD NAMES ON THE TRADE-RECORD DICT
 Priority: was Medium -- a shipped calibration-data feature had been a
   complete no-op since it shipped (2026-06-14), with a "success" log line
@@ -1613,7 +1737,7 @@ When to revisit: N/A -- both Step 1 and Step 2 resolved. See the Step 2
   RESOLVED note above's "When to revisit" for the remaining intentionally-
   deferred gaps (item 7) and the shadow-gate sample-floor condition.
 
-[PARTIALLY RESOLVED 2026-07-26 — Rain Step 1+2+St. Petersburg onboarding shipped, snow/hurricane still open] RAIN / SNOW / HURRICANE MARKETS — UNTOUCHED CATEGORY SURFACE
+[PARTIALLY RESOLVED 2026-07-26 — Rain Step 1+2+St. Petersburg onboarding shipped; SNOW Step 1 (Denver only) shipped same day, see resolution note near the end of this entry; hurricane split out to its own entry, see "HURRICANE MARKETS — EXPLICIT GUARD ADDED AFTER A CONFIRMED LIVE GAP" near the top of this file] RAIN / SNOW / HURRICANE MARKETS — UNTOUCHED CATEGORY SURFACE
 Priority: was Low -- rain is now Medium-High (real, currently-liquid product
   the bot was silently blind to); snow/hurricane/rain's own probability
   model (Step 2) remain Low, unchanged.
@@ -2144,6 +2268,69 @@ RESOLVED 2026-07-26 (St. Petersburg onboarding -- the 11th rain city; snow
   St. Petersburg is shadow-only like the other 10 rain cities (same
   `RAIN_TRADING_ENABLED` + 20-settled-prediction gate) -- not expected to
   affect live trading behavior until that gate clears.
+
+RESOLVED 2026-07-26 (SNOW Step 1 -- discovery/schema/safety only, no
+  probability model, mirrors rain's own original Step 1; hurricane split
+  out to its own entry instead of getting the same treatment, see below):
+  a backlog/memory review the same day picked up snow and hurricane
+  together, then live-verified both far more thoroughly than this entry's
+  own text (last updated 2026-07-20) before writing any code -- both
+  original assumptions turned out wrong.
+  Snow: of 33 real Kalshi series containing "SNOW", only `KXDENSNOWM`
+  (Denver) has ever had a real market among this bot's 21 tracked cities (7
+  markets, Dec 2025, now closed -- pure seasonality, re-check before next
+  winter). Every other tracked city's snow series (NYC, Chicago, Boston,
+  Houston, SF, Austin, Dallas, Philly, LA, DC, Seattle) is a registered-
+  but-never-launched shell, 0 markets ever. One ticker, `KXMIASNOWM`, is a
+  Kalshi registration error (series title reads "Chicago Snowfall Monthly"
+  despite the MIA prefix, `frequency: "one_off"` unlike every real
+  `"monthly"` ladder -- confirmed not a usable Miami product). Scope
+  narrowed from an originally-assumed ~15-city build to Denver only,
+  structured so adding a city later (if/when its series actually lists a
+  market) is a one-line dict addition, not a redesign. Shipped:
+  `_KXSNOW_MONTHLY_CITY = {"KXDENSNOWM": "Denver"}` (mirrors
+  `_KXRAIN_MONTHLY_CITY`), wired into `_parse_city_from_ticker()`;
+  `KNOWN_UNTRACKED_SNOW_SERIES` (32 entries, each commented with why --
+  duplicate re-registrations, Christmas-window variants, untracked cities,
+  the broken KXMIASNOWM registration); `check_series_drift()` extended to
+  watch snow via substring match (`"SNOW" in ticker`, since unlike KXRAIN
+  these tickers share no common prefix); a dedicated `snow_month_total`
+  condition branch in `_parse_market_condition()` reading `floor_strike`/
+  `strike_type` directly (checked before the existing generic
+  SNOW_SERIES/is_snow_ticker branch, same misclassification trap rain's
+  Step 2 already had to fix for itself); an unconditional `analyze_trade()`
+  guard (`monthly_snow_not_yet_supported`, true Step 1 shape -- rain's
+  current code is Step-2-shaped and no longer a direct copy source for
+  this); unconditional blocks in `paper.check_position_limits()` (a call
+  path reachable without `analyze_trade()` first) and `cmd_order` directly
+  (added after opus review -- see the CORRECTION in the sibling
+  HURRICANE MARKETS entry for why relying on `check_position_limits`
+  alone isn't enough), and a documentation-only comment (not a runtime
+  guard) in `order_executor.py`'s
+  `_auto_place_trades()`, since re-checking rain's actual Step-1-era commit
+  (`b2171ba`) found that function never needed a real code guard --
+  `analyze_trade()`'s own guard already makes this loop unreachable for
+  the ticker family, and a runtime check there would have been genuinely
+  dead code; exclusions in `compute_market_implied_distributions()` and
+  `consistency._group_markets()`, including the same mutation-style
+  "exclusion holds even if a date were parseable" test rain added. 20 new
+  tests (`tests/test_snow_markets.py`, one added after opus review --
+  the original city-resolution test passed even with the new dict
+  deleted, since the pre-existing generic "DEN" substring fallback
+  coincidentally agrees; fixed with a mutation-style test pointing the
+  dict at a fake city), full scoped regression sweep (504 tests total
+  across this and the sibling hurricane change) passing, ruff/mypy/
+  ruff-format clean.
+  STEP 2 HANDOFF NOTE (opus review, not fixed this pass -- unreachable
+  today since analyze_trade()'s guard means no prediction row can ever
+  carry this condition type): `"snow_month_total"` is absent from
+  `_CONDITION_CONFIDENCE` (weather_markets.py) and from the
+  `condition_type NOT IN (...)` exclusion lists in `calibration.py`,
+  `ml_bias.py` (3 sites), `tracker.py` (2 sites), and `main.py` -- the
+  identical landmine `"precip_month_total"` was for rain before its own
+  Step 2 had to wire it in everywhere. If snow ever gets a real
+  probability model, audit every one of those sites the same way rain's
+  Step 2 did, don't assume the new type is automatically covered.
 
 [RESOLVED 2026-07-23 -- both real ECMWF products now instrumented] TRACK ECMWF FORECAST ACCURACY
 Priority: Low (ECMWF already gets a reasonable static/seasonal weight; this is

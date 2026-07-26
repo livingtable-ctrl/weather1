@@ -109,6 +109,7 @@ from tracker import (
 # reload utils because they test utils' own env-parsing directly).
 from utils import MIN_ARB_EDGE, MIN_EDGE, STRONG_EDGE, is_trading_paused
 from weather_markets import (
+    _KXSNOW_MONTHLY_CITY,
     CITY_COORDS,
     _feels_like,
     analyze_trade,
@@ -123,6 +124,7 @@ from weather_markets import (
     flush_forecast_disk_cache,
     get_weather_forecast,
     get_weather_markets,
+    is_hurricane_ticker,
     is_liquid,
     parse_city_date,
     parse_market_price,
@@ -3624,6 +3626,38 @@ def cmd_order(client: KalshiClient, action: str, args: list):
         return
     if count != int(count) or int(count) < 1:
         print(red(f"count must be a whole number ≥ 1 (got {count_str})"))
+        return
+
+    # backlog.txt "HURRICANE MARKETS": no supported model exists for
+    # hurricane/tropical-storm tickers (see is_hurricane_ticker()'s own
+    # comment for why this covers several unrelated real prefixes, not just
+    # "KXHUR"). analyze_trade()'s own guard only prevents Brier/P&L tracking
+    # here, not the order itself -- this path places a real order
+    # unconditionally even when analysis fails (see the try/except below).
+    # Refuse outright rather than warn-and-continue. This function is one of
+    # several manual paths that don't go through analyze_trade() first
+    # (main.cmd_paper and web_app's /api/paper-order are two more -- all
+    # funnel through paper.check_position_limits(), which carries the same
+    # guard, but this direct check keeps cmd_order fail-closed even if that
+    # call raises rather than returning ok=False).
+    if is_hurricane_ticker(ticker):
+        print(
+            red(
+                f"  {ticker}: hurricane markets are not supported yet — refusing to place this order."
+            )
+        )
+        return
+
+    # backlog.txt "RAIN / SNOW / HURRICANE MARKETS" -- SNOW Step 1: same
+    # reasoning as the hurricane guard just above -- no probability model
+    # exists yet, refuse outright rather than relying solely on
+    # check_position_limits() further down.
+    if ticker.upper().startswith(tuple(_KXSNOW_MONTHLY_CITY)):
+        print(
+            red(
+                f"  {ticker}: monthly snow markets are discovery-only (no probability model yet) — refusing to place this order."
+            )
+        )
         return
 
     from execution_log import log_order, log_order_result, was_recently_ordered

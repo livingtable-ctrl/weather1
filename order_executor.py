@@ -2802,6 +2802,19 @@ def _auto_place_trades(
             )
             continue
 
+        # backlog.txt "RAIN / SNOW / HURRICANE MARKETS" -- SNOW Step 1: no
+        # code guard added here on purpose, same reasoning as rain's own
+        # original Step 1 (see commit b2171ba's comment, since replaced by
+        # the shadow-branch above once rain reached Step 2). This loop only
+        # ever iterates opportunities that already survived analyze_trade()
+        # upstream, whose unconditional monthly-snow guard returns None for
+        # KXDENSNOWM* immediately -- they never reach this loop at all. The
+        # real, reachable guards for this ticker family are cmd_order's own
+        # direct check and paper.check_position_limits() (the shared
+        # enforcement point for the several manual paths NOT gated by
+        # analyze_trade() -- main.py's cmd_order/cmd_paper, web_app's
+        # /api/paper-order).
+
         if live and live_config:
             _live_balance = _resolve_live_balance(client)
 

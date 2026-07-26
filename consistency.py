@@ -16,6 +16,7 @@ from dataclasses import dataclass
 
 from weather_markets import (
     _KXRAIN_MONTHLY_CITY,
+    _KXSNOW_MONTHLY_CITY,
     _KXTEMP_HOURLY_CITY,
     parse_market_price,
 )
@@ -102,17 +103,18 @@ def _group_markets(markets: list[dict]) -> dict:
     trading (backlog.txt "HOURLY-DIRECTIONAL TEMPERATURE MARKETS" Step 1 --
     no probability model exists yet for these).
 
-    Also excludes KXRAIN*M monthly rain-total ladders (backlog.txt "RAIN /
-    SNOW / HURRICANE MARKETS" Step 1). Redundant with the final grouping
-    outcome -- these tickers' date_match regex already fails (no day digits
-    after the month), so they'd be dropped via the "not series or not
-    date_str" skip below regardless -- but NOT redundant for the L-8
-    warning just below that skip: series resolves truthy (derived from the
-    ticker prefix, e.g. "KXRAINDENM") while date_match stays None, which
-    without this exclusion would log a real WARNING for every rain market
-    on every single scan. Kept explicit for that reason, plus the same
-    single-source-of-truth reasoning as the hourly exclusion, since this
-    feeds find_violations() too.
+    Also excludes KXRAIN*M monthly rain-total ladders and KXDENSNOWM monthly
+    snow-total ladders (backlog.txt "RAIN / SNOW / HURRICANE MARKETS" Step
+    1). Redundant with the final grouping outcome -- these tickers' date_match
+    regex already fails (no day digits after the month), so they'd be
+    dropped via the "not series or not date_str" skip below regardless --
+    but NOT redundant for the L-8 warning just below that skip: series
+    resolves truthy (derived from the ticker prefix, e.g. "KXRAINDENM" or
+    "KXDENSNOWM") while date_match stays None, which without this exclusion
+    would log a real WARNING for every rain/snow market on every single
+    scan. Kept explicit for that reason, plus the same single-source-of-
+    truth reasoning as the hourly exclusion, since this feeds
+    find_violations() too.
     """
     groups: dict = {}
 
@@ -121,6 +123,8 @@ def _group_markets(markets: list[dict]) -> dict:
         if ticker.upper().startswith(tuple(_KXTEMP_HOURLY_CITY)):
             continue
         if ticker.upper().startswith(tuple(_KXRAIN_MONTHLY_CITY)):
+            continue
+        if ticker.upper().startswith(tuple(_KXSNOW_MONTHLY_CITY)):
             continue
 
         # Extract series and date from ticker

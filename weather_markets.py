@@ -3743,7 +3743,19 @@ KNOWN_WEATHER_SERIES = [
     "KXRAINDENM",
     "KXRAINAUSM",
     "KXRAINSTPM",  # St. Petersburg — onboarded as a new city; 10 brackets (1-10in)
-    "KXSNOW",
+    # backlog.txt "RAIN / SNOW / HURRICANE MARKETS" -- SNOW Step 1
+    # (discovery/schema/safety only, no probability model, mirrors rain's
+    # original Step 1): live-verified 2026-07-26 that of 33 real Kalshi
+    # series containing "SNOW", only KXDENSNOWM (Denver) has ever had a real
+    # market among this bot's tracked cities (7 markets, Dec 2025, now all
+    # closed -- pure seasonality, re-check before next winter). Every other
+    # tracked city's snow series is a registered-but-never-launched shell (0
+    # markets, ever) -- see KNOWN_UNTRACKED_SNOW_SERIES below for the full
+    # list and why each is excluded. analyze_trade() returns None for
+    # KXDENSNOWM* today (no model exists); also excluded from
+    # compute_market_implied_distributions() and consistency._group_markets(),
+    # same reason as monthly rain (no day component to group by).
+    "KXDENSNOWM",
     # KXTEMPxxxH — hourly-directional temperature markets (backlog.txt
     # "HOURLY-DIRECTIONAL TEMPERATURE MARKETS"). Only the 5 cities confirmed
     # live/liquid for ~60 days as of 2026-07-20 are listed; KXTEMPMIAH/
@@ -3800,6 +3812,63 @@ KNOWN_UNTRACKED_RAIN_SERIES = {
     "KXRAINSEA",  # "Seattle rain" (distinct from tracked KXRAINSEAM) -- 0 open markets
     # KXRAINSTPM (St. Petersburg) moved to KNOWN_WEATHER_SERIES 2026-07-26 --
     # no longer untracked, see _KXRAIN_MONTHLY_CITY below.
+}
+
+# Real KXSNOW* series (like KNOWN_UNTRACKED_RAIN_SERIES above, these are NOT
+# retired/dead tickers in Kalshi's own bookkeeping sense -- they're live
+# series registrations that have simply never had a market created) that
+# this bot deliberately does not track in KNOWN_WEATHER_SERIES, so
+# check_series_drift() doesn't re-warn about them every day forever.
+# Live-verified 2026-07-26 via client.get_series_list(category="Climate and
+# Weather") + client.get_markets(series_ticker=...) per entry (raw API,
+# bypassing any client-side filtering) -- every one below returned zero
+# markets ever, except KXASPSNOWM (2 real closed Dec-2025 markets, but
+# Aspen is not a tracked city). Worth a live re-check before next winter
+# (~Nov 2026) in case Kalshi lists real markets for any of these.
+KNOWN_UNTRACKED_SNOW_SERIES = {
+    # Duplicate/re-registration clusters for already-tracked cities -- same
+    # city, never-launched competing ticker, not a distinct product:
+    "SNOWNYM",  # NYC dead duplicate
+    "KXSNOWNY",  # NYC dead duplicate
+    "SNOWNY",  # NYC dead duplicate
+    "KXSNOWNYM",  # NYC dead duplicate
+    "KXSNOWNYC",  # NYC dead duplicate, frequency=custom
+    "SNOWCHIM",  # Chicago dead duplicate
+    "KXSNOWCHIM",  # Chicago dead duplicate
+    "KXDENSNOWMB",  # Denver dead duplicate/versioning artifact of KXDENSNOWM
+    # Genuine monthly-ladder series for tracked cities, never launched:
+    "KXPHILSNOWM",  # Philadelphia
+    "KXLAXSNOWM",  # LA
+    "KXBOSSNOWM",  # Boston
+    "KXDCSNOWM",  # Washington DC
+    "KXNYCSNOWM",  # NYC
+    "KXHOUSNOWM",  # Houston
+    "KXSFOSNOWM",  # SanFrancisco
+    "KXAUSSNOWM",  # Austin
+    "KXSEASNOWM",  # Seattle
+    "KXDALSNOWM",  # Dallas
+    "KXCHISNOWM",  # Chicago
+    "KXSNOWAZ",  # Phoenix ("Snow in Phoenix"), frequency=custom
+    # Christmas-window markets -- a genuinely different product (holiday-
+    # window snow total, not a full-month total), never launched:
+    "KXCHISNOWXMAS",
+    "KXDENSNOWXMAS",
+    "KXNYCSNOWXMAS",
+    "KXBOSSNOWXMAS",
+    # National (not city-scoped) event markets, never launched:
+    "KXSNOWSTORM",  # "Snowstorms"
+    "KXSNOWS",  # "White Christmas", frequency=annual
+    "SNOW",  # bare "Snow totals" placeholder, no settlement source at all
+    # Untracked cities -- real series, but the city isn't in CITY_COORDS:
+    "KXSLCSNOWM",  # Salt Lake City
+    "KXASPSNOWM",  # Aspen -- the only OTHER series with real markets (2, closed)
+    "KXJACWSNOWM",  # Jackson, WY
+    "KXDETSNOWM",  # Detroit -- not a tracked city (CITY_COORDS has no Detroit)
+    # Broken/mislabeled Kalshi registration -- confirmed live: series title
+    # is "Chicago Snowfall Monthly" despite the MIA ticker prefix,
+    # frequency=one_off unlike every real "monthly" ladder above. Not a
+    # usable Miami product either way.
+    "KXMIASNOWM",
 }
 
 
@@ -3889,9 +3958,10 @@ def check_series_drift(client: KalshiClient) -> None:
     """Once per day: compare KNOWN_WEATHER_SERIES against Kalshi's live
     Climate and Weather series list, and warn (never raise, never block
     trading) if either side has drifted from the other. Covers KXHIGH*,
-    KXLOW*, and (as of backlog.txt "RAIN / SNOW / HURRICANE MARKETS" Step 1)
-    KXRAIN* -- NOT KXTEMP*H (hourly) or KXSNOW* (see the in-function comment
-    for why each is excluded).
+    KXLOW*, KXRAIN* (backlog.txt "RAIN / SNOW / HURRICANE MARKETS" Step 1),
+    and (as of the same entry's SNOW Step 1) any live series containing
+    "SNOW" -- NOT KXTEMP*H (hourly, see the in-function comment for why it's
+    excluded).
 
     This is the exact manual investigation that found KNOWN_WEATHER_SERIES
     had 10 renamed tickers and was missing 2 new cities (Las Vegas, New
@@ -3913,26 +3983,32 @@ def check_series_drift(client: KalshiClient) -> None:
         live = client.get_series_list(category="Climate and Weather")
         live_tickers = {s.get("ticker", "") for s in live}
         live_weather = {
-            t for t in live_tickers if t.startswith(("KXHIGH", "KXLOW", "KXRAIN"))
+            t
+            for t in live_tickers
+            if t.startswith(("KXHIGH", "KXLOW", "KXRAIN")) or "SNOW" in t
         }
 
-        # KXHIGH/KXLOW/KXRAIN entries are checked against live_weather.
-        # KXTEMPxxxH (hourly-directional) is deliberately NOT included here --
-        # left as an accepted blind spot, same call made for that market
-        # family in this same session (see KNOWN_WEATHER_SERIES's own
-        # comment above). KXSNOW remains fully excluded too: real series
-        # exist but 0 open markets anywhere as of 2026-07-20 (pure
-        # seasonality, not dead) -- revisit alongside a future snow feature.
-        # KXRAIN itself was extended to the filter above (previously
-        # KXHIGH/KXLOW only) once real per-city KXRAIN*M series were wired
-        # into KNOWN_WEATHER_SERIES (backlog.txt "RAIN / SNOW / HURRICANE
-        # MARKETS" Step 1) -- the real, live series were never being
-        # watched here, which is exactly how the original KXRAIN wiring gap
-        # went unnoticed for so long. See KNOWN_UNTRACKED_RAIN_SERIES for
-        # the real-but-deliberately-excluded rain series this now needs to
-        # not re-flag as noise.
+        # KXHIGH/KXLOW/KXRAIN entries are checked against live_weather via
+        # startswith; SNOW series don't share one clean prefix (KXDENSNOWM,
+        # SNOWNYM, KXSNOWNY, ... -- see KNOWN_UNTRACKED_SNOW_SERIES's own
+        # comment), so they're matched by substring instead, same test
+        # `"SNOW" in ticker_up` already used elsewhere in this file
+        # (_parse_market_condition's SNOW_SERIES check). KXTEMPxxxH
+        # (hourly-directional) is deliberately NOT included here -- left as
+        # an accepted blind spot, same call made for that market family in
+        # an earlier session (see KNOWN_WEATHER_SERIES's own comment above).
+        # KXRAIN was extended to the filter above once real per-city
+        # KXRAIN*M series were wired into KNOWN_WEATHER_SERIES (backlog.txt
+        # "RAIN / SNOW / HURRICANE MARKETS" Step 1) -- the real, live series
+        # were never being watched here, which is exactly how the original
+        # KXRAIN wiring gap went unnoticed for so long. See
+        # KNOWN_UNTRACKED_RAIN_SERIES / KNOWN_UNTRACKED_SNOW_SERIES for the
+        # real-but-deliberately-excluded series this now needs to not
+        # re-flag as noise.
         for ticker in KNOWN_WEATHER_SERIES:
-            if not ticker.startswith(("KXHIGH", "KXLOW", "KXRAIN")):
+            if not (
+                ticker.startswith(("KXHIGH", "KXLOW", "KXRAIN")) or "SNOW" in ticker
+            ):
                 continue
             if ticker in live_weather:
                 missing_days.pop(ticker, None)
@@ -3951,10 +4027,11 @@ def check_series_drift(client: KalshiClient) -> None:
             - set(KNOWN_WEATHER_SERIES)
             - KNOWN_DEAD_WEATHER_SERIES
             - KNOWN_UNTRACKED_RAIN_SERIES
+            - KNOWN_UNTRACKED_SNOW_SERIES
         )
         if unknown:
             _log.warning(
-                "check_series_drift: live KXHIGH/KXLOW/KXRAIN series not in "
+                "check_series_drift: live KXHIGH/KXLOW/KXRAIN/*SNOW* series not in "
                 "KNOWN_WEATHER_SERIES: %s",
                 sorted(unknown),
             )
@@ -4121,6 +4198,45 @@ _KXRAIN_MONTHLY_CITY = {
     "KXRAINSTPM": "StPetersburg",  # doesn't match any substring fallback either
 }
 
+# backlog.txt "HURRICANE MARKETS": no single prefix covers Kalshi's real
+# hurricane/tropical-storm namespace -- live-verified 2026-07-26 (291-series
+# category scan): `KXHUR*` (33 series) and the *unprefixed* legacy `HUR*`
+# (23 series, e.g. HURCAT/HURMIA/HURNYC -- registered separately from their
+# KXHUR* counterparts, both real) don't cover `KXFIRSTHURRICANE`,
+# `KXNAMEDSTORM`, `KXNEXTHURDATE`, `KXNEXTCAT5HURDATE`, `KXTROPSTORM`, or
+# unprefixed `TROPSTORM` -- an earlier prefix-only guard (`"KXHUR"` alone)
+# missed all of these, including `KXTROPSTORM` (8 real open markets) and
+# `KXFIRSTHURRICANE` (53 real open markets) at the time of this check.
+# Substring match, not prefix, since these don't share one prefix. Verified
+# live against every entry in KNOWN_WEATHER_SERIES/KNOWN_DEAD_WEATHER_SERIES/
+# KNOWN_UNTRACKED_RAIN_SERIES/KNOWN_UNTRACKED_SNOW_SERIES: zero false
+# positives (in particular, "STORM" alone would have wrongly matched
+# KXSNOWSTORM, a real but unrelated national snow-event series already
+# excluded above -- "HUR"/"TROPSTORM"/"NAMEDSTORM" do not).
+_HURRICANE_TICKER_MARKERS = ("HUR", "TROPSTORM", "NAMEDSTORM")
+
+
+def is_hurricane_ticker(ticker: str) -> bool:
+    """True for any real Kalshi hurricane/tropical-storm ticker family --
+    see _HURRICANE_TICKER_MARKERS above for why this is substring-based.
+    Single source of truth so analyze_trade(), cmd_order, and
+    check_position_limits can't drift out of sync with each other again."""
+    ticker_up = ticker.upper()
+    return any(marker in ticker_up for marker in _HURRICANE_TICKER_MARKERS)
+
+
+# backlog.txt "RAIN / SNOW / HURRICANE MARKETS" -- SNOW Step 1. Deliberately
+# narrow (one city): see KNOWN_WEATHER_SERIES's comment above for why the
+# other 32 live snow series aren't here. "DEN" also happens to hit the
+# generic substring fallback further below, so this entry doesn't change
+# what city KXDENSNOWM* resolves to -- it exists so analyze_trade() and the
+# exposure-cap guards can positively identify this ticker family by dict
+# membership, the same way rain does, rather than relying on that
+# coincidence.
+_KXSNOW_MONTHLY_CITY = {
+    "KXDENSNOWM": "Denver",
+}
+
 
 def _parse_city_from_ticker(ticker: str, title: str = "") -> str | None:
     """
@@ -4134,6 +4250,9 @@ def _parse_city_from_ticker(ticker: str, title: str = "") -> str | None:
         if ticker_up.startswith(_series_prefix):
             return _city
     for _series_prefix, _city in _KXRAIN_MONTHLY_CITY.items():
+        if ticker_up.startswith(_series_prefix):
+            return _city
+    for _series_prefix, _city in _KXSNOW_MONTHLY_CITY.items():
         if ticker_up.startswith(_series_prefix):
             return _city
     if "NY" in ticker_up or "new york" in title_lo:
@@ -4674,6 +4793,10 @@ def _parse_market_condition(market: dict) -> dict | None:
       {"type": "precip_any"}                        — any measurable precip (>0.01 in)
       {"type": "precip_month_total", "threshold": 7.0}  — monthly total > 7 in
                                                        (KXRAIN*M ladder markets)
+      {"type": "snow_month_total", "threshold": 5.0}  — monthly snow total > 5 in
+                                                       (KXDENSNOWM ladder market;
+                                                       Step 1 discovery only, no
+                                                       model dispatches on this type)
     Returns None if unparseable.
     """
     ticker = market.get("ticker", "")
@@ -4720,6 +4843,47 @@ def _parse_market_condition(market: dict) -> dict | None:
             )
             return None
         return {"type": "precip_month_total", "threshold": threshold}
+
+    # ── Monthly snow-total ladder market (KXDENSNOWM) ───────────────────────
+    # Same reasoning as the monthly-rain branch above: must run before the
+    # generic snow branch below, or a "-<threshold>" ticker suffix like
+    # KXDENSNOWM-26DEC-5.0 would fall into that branch's title/ticker regex
+    # parsing instead of reading the real floor_strike field directly (live-
+    # confirmed shape this session: strike_type="greater",
+    # yes_sub_title="Above N inches", identical to rain's ladder shape).
+    # Distinct type name ("snow_month_total", not "precip_month_total") so
+    # this can never accidentally dispatch into _analyze_monthly_rain_trade()
+    # -- moot today since analyze_trade()'s own unconditional guard for this
+    # ticker family returns None before any condition-based dispatch (Step 1:
+    # no probability model exists yet), but kept explicit rather than relying
+    # on that guard alone.
+    if ticker_up.startswith(tuple(_KXSNOW_MONTHLY_CITY)):
+        floor_strike = market.get("floor_strike")
+        strike_type = market.get("strike_type")
+        if floor_strike is None:
+            _log.warning(
+                "_parse_market_condition[%s]: KXDENSNOWM missing floor_strike",
+                ticker,
+            )
+            return None
+        if strike_type != "greater":
+            _log.warning(
+                "_parse_market_condition[%s]: unexpected strike_type=%r "
+                "(expected 'greater') — refusing to guess direction",
+                ticker,
+                strike_type,
+            )
+            return None
+        try:
+            threshold = float(floor_strike)
+        except (TypeError, ValueError):
+            _log.warning(
+                "_parse_market_condition[%s]: non-numeric floor_strike=%r",
+                ticker,
+                floor_strike,
+            )
+            return None
+        return {"type": "snow_month_total", "threshold": threshold}
 
     # ── Precipitation markets ─────────────────────────────────────────────────
     # Whitelist known precipitation series to avoid false positives from
@@ -5261,14 +5425,15 @@ def compute_market_implied_distributions(
     TEMPERATURE MARKETS" Step 1 -- no probability model exists yet for these,
     same reasoning as analyze_trade()'s own hourly guard).
 
-    Also excludes KXRAIN*M monthly rain-total ladders (backlog.txt "RAIN /
-    SNOW / HURRICANE MARKETS" Step 1). Currently redundant with the
-    (city, target_date) grouping itself -- these tickers have no day
-    component, so parse_city_date() already returns target_date=None for
-    them and the loop below skips them regardless -- but kept explicit for
-    the same single-source-of-truth/forward-guard reasons as the hourly
-    exclusion (protects against Kalshi ever changing the ticker format to
-    include a day, and against _KXRAIN_MONTHLY_CITY diverging from what
+    Also excludes KXRAIN*M monthly rain-total ladders and KXDENSNOWM monthly
+    snow-total ladders (backlog.txt "RAIN / SNOW / HURRICANE MARKETS" Step
+    1). Currently redundant with the (city, target_date) grouping itself --
+    these tickers have no day component, so parse_city_date() already
+    returns target_date=None for them and the loop below skips them
+    regardless -- but kept explicit for the same single-source-of-truth/
+    forward-guard reasons as the hourly exclusion (protects against Kalshi
+    ever changing the ticker format to include a day, and against
+    _KXRAIN_MONTHLY_CITY/_KXSNOW_MONTHLY_CITY diverging from what
     parse_city_date() actually parses).
     """
     by_event: dict[tuple[str, str], list[dict]] = {}
@@ -5277,6 +5442,8 @@ def compute_market_implied_distributions(
         if _m_tkr_up.startswith(tuple(_KXTEMP_HOURLY_CITY)):
             continue
         if _m_tkr_up.startswith(tuple(_KXRAIN_MONTHLY_CITY)):
+            continue
+        if _m_tkr_up.startswith(tuple(_KXSNOW_MONTHLY_CITY)):
             continue
         city, target_date = parse_city_date(m)
         if city is None or target_date is None:
@@ -7643,6 +7810,18 @@ def analyze_trade(
     # condition and silently fall through into the full daily-max/min model,
     # which assumes the target is the day's high/low, not one specific hour.
     _tkr_up = _tkr.upper()
+    # backlog.txt "HURRICANE MARKETS": hurricane/tropical-storm tickers
+    # (category/count/landfall -- see is_hurricane_ticker()'s own comment for
+    # why this is substring-based across several unrelated prefixes, not
+    # just "KXHUR") have no supported model. Gated first, explicitly, rather
+    # than relying on the ordinary city/condition parsers to fail -- they
+    # don't always: a storm-name ticker like KXHURCAT-26FAUSTO-T5 substring-
+    # matches "Austin" (from "FAUSTO") and its "-T5" suffix parses as a real
+    # threshold condition, and unlike monthly rain there's no date-embedded
+    # fallback to catch it if this guard weren't here.
+    if is_hurricane_ticker(_tkr_up):
+        _count_gate("hurricane_not_supported")
+        return None
     _is_hourly = any(_tkr_up.startswith(_p) for _p in _KXTEMP_HOURLY_CITY)
     _hourly_var_role: str | None = None
     if _is_hourly:
@@ -7650,6 +7829,13 @@ def analyze_trade(
         if _hourly_var_role is None:
             _count_gate("hourly_not_target_hour")
             return None
+    # backlog.txt "RAIN / SNOW / HURRICANE MARKETS" -- SNOW Step 1: discovery/
+    # schema/safety only, no probability model (unlike rain, which progressed
+    # to Step 2). True unconditional guard, mirroring rain's own original
+    # Step 1 shape before Step 2 replaced it.
+    if any(_tkr_up.startswith(_p) for _p in _KXSNOW_MONTHLY_CITY):
+        _count_gate("monthly_snow_not_yet_supported")
+        return None
     # backlog.txt "RAIN / SNOW / HURRICANE MARKETS" Step 2: monthly rain-total
     # ladder markets have no day-of-month component in their ticker, so
     # parse_city_date() deliberately keeps returning target_date=None for
