@@ -119,11 +119,14 @@ from weather_markets import (
     fetch_temperature_ecmwf,  # noqa: F401 — used via main.* in cron.py
     fetch_temperature_nbm,  # noqa: F401 — used via main.* in cron.py
     fetch_temperature_weatherapi,  # noqa: F401 — used via main.* in cron.py
+    flush_ensemble_disk_cache,
+    flush_forecast_disk_cache,
     get_weather_forecast,
     get_weather_markets,
     is_liquid,
     parse_city_date,
     parse_market_price,
+    reset_gate_counts,
 )
 
 _bot_config = _load_config()
@@ -3062,6 +3065,15 @@ def cmd_watch(
     _price_history: dict[str, float] = {}
     try:
         while True:
+            # cron.py's own cmd_cron already resets gate counts every cycle --
+            # watch mode called neither this nor cron's disk-cache flushes
+            # (confirmed via grep: zero references before this fix), since it
+            # relies on neither cron.py's call path nor process exit, being
+            # meant to run indefinitely (backlog.txt "ONE-SHOT PROCESS
+            # LIFECYCLE IS BAKED INTO MODULE STATE"). Reset here, at the start
+            # of the cycle whose gate-check outcomes it's about to track --
+            # matches cron.py's own placement.
+            reset_gate_counts()
             os.system("cls" if sys.platform == "win32" else "clear")
             now = time.strftime("%H:%M:%S")
             print(bold(f"Kalshi Weather Markets — {now}"))
@@ -3204,6 +3216,14 @@ def cmd_watch(
                     f"Next refresh in {REFRESH_SECS // 60} min — {time.strftime('%H:%M:%S', time.localtime(time.time() + REFRESH_SECS))}"
                 )
             )
+            # Flush this cycle's own pending disk-cache entries at the end of
+            # the cycle that created them (matching where cron.py's
+            # _cmd_cron_body flushes -- near the end of its body, not the
+            # start of the next one) -- otherwise a SIGKILL/OOM/crash between
+            # cycles loses this cycle's warm-up contribution entirely, since
+            # only a clean shutdown's atexit handler would have flushed it.
+            flush_forecast_disk_cache()
+            flush_ensemble_disk_cache()
             time.sleep(REFRESH_SECS)
     except KeyboardInterrupt:
         print(f"\n{dim('Watch mode stopped.')}")

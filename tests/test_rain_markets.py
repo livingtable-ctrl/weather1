@@ -438,7 +438,37 @@ class TestAnalyzeMonthlyRainTradeEndToEnd:
         m["_city"] = "Denver"
 
         # 20 years, every year totalling 1.0*31=31.0in for the full month --
-        # a market with a 7in threshold should come back near-certain YES.
+        # a market with a 7in threshold should come back near-certain YES,
+        # PROVIDED enough days remain in the accrual month for that rate to
+        # clear the threshold. _analyze_monthly_rain_trade sums only the
+        # REMAINING days (today_local.day onward) against real history, so
+        # this test must pin "today" to early in the accrual month --
+        # otherwise it silently depends on which day of the month the suite
+        # happens to run on (e.g. 6 remaining days * 1.0in/day = 6.0in, which
+        # does NOT clear a 7in threshold, even though the full-month total
+        # does), and fails only in the back half of the month.
+        # Subclass (not a bare stub) so analyze_trade's other datetime.* calls
+        # (e.g. _safe_parse_close_time's datetime.fromisoformat) keep working --
+        # a bare stub class only exposing now() breaks the first fromisoformat
+        # call with AttributeError.
+        class _FakeDT(datetime):
+            @classmethod
+            def now(cls, tz=None):
+                # Honor the requested tz (opus review caught the earlier
+                # version silently returning UTC regardless of tz) so this
+                # fixture can't mask a genuine local-date bug in the
+                # datetime.now(_ZoneInfo(tz)).date() call under test -- it's
+                # coincidentally harmless for Denver specifically (2026-07-02
+                # 12:00 UTC is still day 2 there), but would not be for every
+                # city/instant combination.
+                return (
+                    datetime(2026, 7, 2, 12, 0, tzinfo=tz)
+                    if tz
+                    else datetime(2026, 7, 2, 12, 0, tzinfo=UTC)
+                )
+
+        monkeypatch.setattr("weather_markets.datetime", _FakeDT)
+
         history = self._history_all_years_value(1.0, years=20)
 
         monkeypatch.setattr("acis_precip._station_sid_for_city", lambda city: "DEN")

@@ -7320,6 +7320,237 @@ When to revisit:
     The module-global inventory pass is cheap enough to do sooner, ahead
     of the watcher design itself.
 
+PARTIALLY RESOLVED 2026-07-26 (the module-global inventory pass, plus fixing
+  every (c)-list item it found that didn't need the full watcher redesign;
+  utils.py's 41 frozen os.getenv constants and the per-cycle WS/filesystem-
+  liveness-protocol items below are still open, unchanged):
+  Did the inventory pass this entry itself flagged as cheap and worth doing
+  now. Classified every module-level global in weather_markets.py/paper.py:
+  paper.py had zero load-once snapshots (matches its "always reads fresh
+  from JSON/DB" design, already documented in the paper/live-ledger entry
+  above). weather_markets.py's (a) constants and (b) TTL caches (including
+  _MARKETS_CACHE, verified live via time.monotonic(), and every ForecastCache
+  instance) were already safe. Six real (c) load-once hazards confirmed and
+  fixed:
+  1. _CITY_WEIGHTS/_SEASONAL_WEIGHTS/_CONDITION_WEIGHTS -- correction to this
+     entry's own framing: these are NOT unconditionally frozen. cron.py's F3
+     auto-calibration and weekly ML-bias-retrain blocks already push fresh
+     values into these same dicts in-process (one via .clear()+.update(),
+     one via reassignment -- both work, since weather_markets.py's own reads
+     always resolve the current module-namespace binding regardless of which
+     idiom the writer used). The real gap: that refresh only happens along
+     the cron.py call path (cmd_cron/loop). watch mode (main.py's cmd_watch/
+     _analyze_once) never runs any cron.py code at all, so on an always-on
+     watch process a recalibration written by a separate cron run would
+     never be picked up without a restart. Fixed with a new
+     _maybe_refresh_calibration_weights() that mtime-checks all 3 JSON files
+     and reloads in place (same .clear()+.update() idiom) when changed,
+     throttled to once per 300s and called from get_weather_markets() (which
+     cron/loop/watch all already call once per scan) -- fixes staleness for
+     every caller uniformly without touching cron.py's calibration-triggering
+     logic or main.py at all.
+  2. _LEARNED_WEIGHTS -- docstring literally said "cached for the session";
+     worse, its own 7-day TTL check only ever fired on the very first load,
+     so a file that aged past staleness mid-session (without being
+     rewritten) stayed served from cache forever, past its own documented
+     TTL. Fixed: load_learned_weights() now re-checks the TTL on every call
+     (cheap -- one os.path.getmtime() stat) before the mtime-unchanged fast
+     path, and reloads whenever the file's mtime changes. save_learned_
+     weights() now also records the mtime it just wrote, so the process that
+     saves fresh weights doesn't immediately re-read its own write.
+  3. _PLATT_MODELS -- docstring literally said "load once per process."
+     Fixed: _load_platt_models() now mtime-gates the same way.
+  4. _MAE_WEIGHTS_CACHE -- ForecastCache(ttl_secs=float("inf")), a
+     deliberate 2026-07-19 design decision (see ForecastCache entry above)
+     to preserve the plain dict it replaced. Per-model MAE genuinely drifts
+     as new trades settle, so "permanent for the life of the process" meant
+     an always-on watch process would trade on day-1 accuracy forever.
+     Fixed: reuses _MODEL_CACHE_TTL (4h), the same cadence already used for
+     every other model-accuracy cache in this file.
+  5/6. _regime_blend_state / _pdopna_blend_state ({"active": None}) --
+     "checks once per process, then caches" is an asymmetric hazard: once
+     True it's correctly permanent (sample counts only grow), but a still-
+     False result was latched forever too, meaning an always-on process
+     would silently never notice the graduation moment if the settled-trade
+     threshold crossed mid-run -- the same "silently never revisited" bug
+     class as the run-trend/GEM-UKMO entries above. Fixed: added a
+     "checked_at" timestamp: a False result is now rechecked every
+     _REGIME_BLEND_RECHECK_SECS (6h) instead of never; True stays sticky.
+     Existing tests reset state via `wm._regime_blend_state["active"] =
+     None` (the pre-existing convention) -- kept that working by treating
+     active=None as "force a fresh check" regardless of checked_at, not
+     requiring every caller to also know about the new field.
+  New finding, not in this entry's original text: main.py's cmd_watch --
+  THE ONLY LIVE-ORDER PATH per the still-open headless-engine entry above --
+  never calls reset_gate_counts() or flush_forecast_disk_cache()/
+  flush_ensemble_disk_cache(), even though cron.py's own _cmd_cron_body calls
+  all three every cycle. Confirmed via grep: zero references to any of the
+  three in main.py before this fix. Consequence for any watch/watch --auto/
+  watch --auto --live session: _gate_counts grows for the life of the
+  process (low severity -- diagnostic-only, bounded by a small number of
+  distinct gate-name keys); _forecast_disk_pending/_ensemble_disk_pending
+  accumulate in memory unboundedly, with the disk-cache warm-up they exist
+  to persist never actually written except via the atexit handler on a clean
+  shutdown -- a crash/kill/OOM would previously have lost the *entire*
+  session's warm-cache contribution, not just "until next restart." Fixed:
+  cmd_watch's loop now calls flush_forecast_disk_cache() /
+  flush_ensemble_disk_cache() / reset_gate_counts() once per iteration
+  (flush before reset, so this cycle's own counts are still readable in
+  between), bounding the exposure to at most one cycle's worth instead of
+  the whole session.
+  Explicitly NOT touched (same scope this entry's own text drew): utils.py's
+  41 frozen os.getenv constants, the per-cron-cycle WS client lifecycle, and
+  the filesystem liveness protocol (cron lock/heartbeat/dead-man's-switch) --
+  all still gated on the actual watcher redesign / VM move trigger, since
+  each needs the explicit cycle-scoped context this entry's "What it would
+  look like" describes, not a mechanical mtime-gate.
+  Verification: ruff + ruff format + mypy clean on both changed files
+  (weather_markets.py, main.py). Full scoped regression across every test
+  file touching the changed functions -- test_forecasting.py (2 tests
+  initially failed on the regime/pdopna recheck-gating change; root cause
+  was the fix requiring both "active is not None" AND a fresh checked_at to
+  skip re-checking, but existing tests only reset "active" to None per the
+  pre-existing convention -- fixed by treating active=None as force-recheck
+  regardless of checked_at, then both tests passed), test_weather_markets.py,
+  test_signal_quality.py, test_phase4.py, test_phase2_batch_k.py,
+  test_http.py, test_trading.py, test_calibration.py, test_hourly_markets.py,
+  test_hourly_target_hours.py, test_rain_markets.py, test_cron_integration.py,
+  test_main_cron_smoke.py -- 1 pre-existing failure found
+  (TestAnalyzeMonthlyRainTradeEndToEnd::test_full_pipeline_produces_real_result,
+  confirmed unrelated to this session's changes via git stash reproducing it
+  identically against the pre-change code) and fixed separately, see next
+  entry. Zero new failures from this entry's own changes.
+
+  Opus review (Agent, effort=high, one isolated worktree pass over the full
+  diff) before commit -- found 7 real issues, all fixed:
+  1. MEDIUM -- load_learned_weights()'s new mtime-gating broke the
+     pre-existing "monkeypatch wm._LEARNED_WEIGHTS directly" test-injection
+     convention whenever this function hadn't yet performed a real load in
+     the current process: the injected dict would get silently overwritten
+     by whatever's actually on disk the instant mtime failed to match.
+     Reviewer proved it empirically -- test_forecast_model_weights_uses_
+     learned_per_city failed in TRUE isolation on the new code (passed on
+     old code), passed only as part of the full class because an earlier
+     test happened to populate _LEARNED_WEIGHTS_MTIME first. Fixed: a truthy
+     _LEARNED_WEIGHTS with _LEARNED_WEIGHTS_MTIME still None is now honored
+     as an external injection and returned immediately, no disk touched --
+     re-verified the exact isolated repro now passes.
+  2. MEDIUM -- the reload path (both _maybe_refresh_calibration_weights and
+     _load_platt_models) unconditionally overwrote a currently-loaded, good
+     value the instant a reload attempt came back empty/failed. calibration
+     .py's load_*_weights() swallow their own JSON errors internally and
+     return {} rather than raising, so a transient/corrupt read (a manual
+     edit, a cloud-sync partial write, disk-full truncation) would silently
+     wipe live blend-weight or Platt-scaling calibration for the rest of the
+     process, with the recorded mtime then blocking any retry. Pre-change,
+     a successful import-time load was immune to this -- the always-on
+     periodic reload this session added is what introduced the exposure.
+     Fixed both: skip the overwrite (and don't record the mtime, so the next
+     throttled check retries) whenever a reload comes back empty/fails while
+     real data is already loaded; only coerce to {} on a genuine first-ever
+     load, matching the pre-existing "no models/weights yet" contract.
+  3. LOW -- moving the TTL check ahead of the "not loaded" check meant an
+     empty ({}) file older than 7 days now logged the staleness warning,
+     contradicting the function's own documented contract ("an empty file is
+     silently ignored regardless of age"). Fixed by re-ordering: emptiness is
+     checked before staleness again, while still re-checking the TTL on
+     every call (not just the first) rather than only at initial load.
+  4. LOW -- _CAL_WEIGHTS_MTIMES's import-time seeding stat()'d the 3
+     calibration files AFTER already loading their content, a real TOCTOU: a
+     write landing in that window would record the new mtime against the OLD
+     values, staying stuck until the NEXT write. Fixed by stat-ing before
+     loading -- now the recorded mtime can only be as-old-or-older than what
+     was actually loaded, which just forces one harmless extra reload
+     instead of silently missing one.
+  5. LOW -- _maybe_refresh_calibration_weights' .clear()+.update() in-place
+     reload is not atomic; web_app.py runs Flask threaded=True and calls
+     both get_weather_markets() and analyze_trade() from request threads, so
+     a concurrent reader could observe _CITY_WEIGHTS between the clear() and
+     the update() and raise KeyError on a plain dict lookup. (This exact
+     .clear()+.update() shape already exists in cron.py's F3 auto-calibration
+     block too, at a much lower trigger frequency -- this session's new
+     periodic reload made an existing narrow race meaningfully more
+     frequent, not introduced a wholly new one.) Fixed for this session's new
+     code by reassigning each dict wholesale via globals()[key] = fresh (an
+     atomic name rebind) instead of mutating in place -- every existing read
+     site keeps working since weather_markets.py's own functions always
+     resolve the current module-namespace binding on each access.
+  6. LOW -- load_learned_weights() stats the file on every call (2 call
+     sites, per-market, across up to 8 pool threads); reviewer suggested a
+     throttle given data/ is OneDrive-synced in this environment (per the
+     open FORECAST_SIGMA.JSON write-contention entry above). Tried a 60s
+     monotonic throttle, then REVERTED it after empirically proving it broke
+     TestLearnedWeightsTTL.test_fresh_weights_file_is_loaded (the throttle
+     window persists across tests in the same process; that test doesn't,
+     and per its own "reload on file change" premise correctly shouldn't
+     have to, reset it). Left un-throttled, documented in-code as a
+     deliberate call: the actual per-call cost is one exists()+one
+     getmtime(), which the reviewer's own finding called "cheap on local
+     disk" -- not worth a proven test-fragility regression for an
+     unconfirmed, speculative perf concern.
+  7. LOW -- (a) main.py's original comment claimed "_gate_counts grows for
+     the life of the process," which is false (all 31 _count_gate() call
+     sites use static string literals, so the dict is key-bounded; only the
+     int values grow) -- corrected the comment. (b) cron.py flushes the two
+     disk-pending caches near the END of _cmd_cron_body, but this session's
+     fix had placed the equivalent calls at the TOP of cmd_watch's loop --
+     meaning a cycle's own newly-created entries would only get flushed at
+     the START of the NEXT cycle, so a SIGKILL/OOM between cycles would lose
+     an extra cycle's worth of warm-up versus cron's own timing. Fixed by
+     moving the two flush calls to the bottom of the loop (just before
+     time.sleep), matching cron.py's placement; reset_gate_counts() stays at
+     the top, which is where cron.py itself resets it.
+  Also applied one reviewer-flagged rain-market-test caveat below (not a
+  finding in this entry's own diff, but touched by the same review pass):
+  _FakeDT.now() was silently ignoring its tz argument and always returning
+  UTC -- harmless for this specific fixture (2026-07-02 12:00 UTC is still
+  day 2 in Denver too) but would have masked a genuine local-date bug in the
+  very datetime.now(_ZoneInfo(tz)).date() call under test. Fixed to honor tz.
+  Full regression re-run after all 7 fixes: 551 passed / 4 skipped across
+  the same 10 quick-running files, plus test_cron_integration.py/
+  test_main_cron_smoke.py (both green, ~7-8 min). ruff + ruff format + mypy
+  clean on all 3 changed files.
+
+[RESOLVED 2026-07-26] TestAnalyzeMonthlyRainTradeEndToEnd -- DATE-DEPENDENT TEST, FAILED WHENEVER RUN LATE IN A MONTH
+Priority: was Medium -- a real, currently-failing test in the suite (found
+  while regression-testing the entry above), not a live-trading bug.
+
+Problem:
+  tests/test_rain_markets.py::TestAnalyzeMonthlyRainTradeEndToEnd::
+  test_full_pipeline_produces_real_result builds 20 years of history at a
+  flat 1.0in/day (31.0in for the full month) and asserts a 7in-threshold
+  market comes back near-certain YES. But _analyze_monthly_rain_trade
+  (weather_markets.py) sums only the REMAINING days of the accrual month
+  (today_local.day onward, via datetime.now(_ZoneInfo(tz)).date()) against
+  history, not the full month -- the test never pinned "today," so it
+  silently depended on which day of the month the suite happened to run on.
+  Run today (2026-07-26, day 26 of the July-2026 accrual month the test's
+  own ticker targets): only 6 days remain (26-31) -> 6.0in expected ->
+  correctly does NOT clear the 7in threshold -> ens_prob=0.0 ->
+  blended_prob clamped to 0.01 -> `0.01 > 0.9` fails. Confirmed via git
+  stash that this reproduces identically against the pre-existing code (not
+  a regression from this session's other changes) -- the test has been
+  silently broken since whichever day of July it stopped having >=7
+  remaining days (around 2026-07-24), and would have equally failed on the
+  24th/25th/26th/... of any month with a 7in threshold at this fixture's
+  1.0in/day rate.
+
+What shipped:
+  Pinned "today" to 2026-07-02 (early in the ticker's July-2026 accrual
+  month) via a datetime subclass overriding only .now() (monkeypatch.setattr
+  ("weather_markets.datetime", _FakeDT)) -- subclassing rather than a bare
+  stub, since analyze_trade's other datetime.* calls (_safe_parse_close_
+  time's datetime.fromisoformat) need to keep working; a bare stub broke on
+  the first fromisoformat call with AttributeError, caught by actually
+  running the test rather than assuming the stub was complete. 39/39 tests
+  pass in test_rain_markets.py after the fix. ruff + ruff format clean.
+  Production behavior is unaffected -- the shrinking-remaining-days
+  computation is correct; only the test's own missing date-pin was wrong.
+  This is the same test-bug class as the ENSO-phase and days_out/UTC-vs-
+  local-date test fixtures already fixed in this file's history (tests
+  asserting real, unmocked wall-clock-dependent behavior instead of pinning
+  it) -- not a new failure mode for this codebase.
+
 [RESOLVED 2026-07-19] PER-CITY KNOWLEDGE IS SCATTERED ACROSS ~8 REGISTRIES WITH SILENT-DEFAULT FALLBACKS
 Priority: was Low-Medium -- the LV/NOLA history proves the failure mode is
   real and slow-burning: months of silently degraded sigma; climate_indices

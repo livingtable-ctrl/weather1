@@ -832,13 +832,116 @@ FORECAST_MAX_AGE_SECS = int(
 _MARKETS_CACHE: tuple[list, float] | None = None
 _MARKETS_CACHE_TTL = 60  # 60 seconds
 
-# ── Calibration data (loaded once at import; empty dicts = use hardcoded weights) ──
+
+def _cal_weights_mtime(name: str) -> float | None:
+    p = Path(__file__).parent / "data" / name
+    try:
+        return p.stat().st_mtime if p.exists() else None
+    except OSError:
+        return None
+
+
+# Snapshot the mtimes BEFORE loading the actual values below, so the first
+# _maybe_refresh_calibration_weights() call doesn't immediately re-load
+# everything it just loaded a moment ago. Deliberately stat-then-load (not
+# load-then-stat, which opus review caught as a real TOCTOU: a write landing
+# in that narrow window would have recorded the new mtime against the OLD
+# values, permanently stale until the next write) -- stat-then-load means the
+# recorded mtime can only be as-old-or-older than what's actually loaded,
+# which just forces one harmless extra reload rather than silently missing one.
+_CAL_WEIGHTS_MTIMES: dict[str, float | None] = {
+    "city_weights.json": _cal_weights_mtime("city_weights.json"),
+    "seasonal_weights.json": _cal_weights_mtime("seasonal_weights.json"),
+    "condition_weights.json": _cal_weights_mtime("condition_weights.json"),
+}
+
+# ── Calibration data (loaded at import; refreshed from disk periodically --
+# see _maybe_refresh_calibration_weights below; empty dicts = use hardcoded
+# weights) ──
 _CITY_WEIGHTS: dict[str, dict[str, float]] = _load_city_weights()
 _SEASONAL_WEIGHTS: dict[str, dict[str, float]] = _load_seasonal_weights()
 _CONDITION_WEIGHTS: dict[str, dict[str, float]] = _load_condition_weights()
 
-# ── Per-city Platt scaling models (loaded once; None = not yet loaded) ────────
+_CAL_WEIGHTS_CHECK_INTERVAL = 300  # throttle: at most one stat() sweep per 5 min
+_CAL_WEIGHTS_LAST_CHECKED = 0.0
+
+
+def _maybe_refresh_calibration_weights() -> None:
+    """Reload _CITY_WEIGHTS/_SEASONAL_WEIGHTS/_CONDITION_WEIGHTS if their JSON
+    files changed on disk since the last check.
+
+    backlog.txt "ONE-SHOT PROCESS LIFECYCLE IS BAKED INTO MODULE STATE": these
+    three dicts load once at import. cron.py's F3 auto-calibration and weekly
+    ML-bias-retrain blocks already push fresh values into these same dicts
+    in-process -- but only along the cron.py call path (cmd_cron/loop). watch
+    mode (main.py's cmd_watch/_analyze_once) never runs any cron.py code, so on
+    an always-on watch process a recalibration written by a separate cron run
+    would otherwise never be picked up without a restart. Throttled to
+    _CAL_WEIGHTS_CHECK_INTERVAL so this doesn't add 3 stat() calls to every
+    single analyze_trade() invocation -- called from get_weather_markets(),
+    which cron/loop/watch all already call once per scan.
+
+    Reassigns each module-level dict wholesale (via globals()[key] = fresh)
+    rather than .clear()+.update() in place -- opus review caught that
+    .clear()+.update() is not atomic: web_app.py's Flask app runs
+    threaded=True and calls both get_weather_markets() and analyze_trade()
+    from request threads, so a concurrent reader could observe the dict
+    between the clear() and the update() and raise KeyError on a plain
+    `_CITY_WEIGHTS[city]` lookup. A straight name rebind is a single atomic
+    operation; every existing read site (weather_markets.py's own functions,
+    which always resolve the current module-namespace binding on each access)
+    keeps working unchanged.
+    """
+    global _CAL_WEIGHTS_LAST_CHECKED
+    now = time.monotonic()
+    if now - _CAL_WEIGHTS_LAST_CHECKED < _CAL_WEIGHTS_CHECK_INTERVAL:
+        return
+    _CAL_WEIGHTS_LAST_CHECKED = now
+
+    for name, key, loader in (
+        ("city_weights.json", "_CITY_WEIGHTS", _load_city_weights),
+        ("seasonal_weights.json", "_SEASONAL_WEIGHTS", _load_seasonal_weights),
+        ("condition_weights.json", "_CONDITION_WEIGHTS", _load_condition_weights),
+    ):
+        mtime = _cal_weights_mtime(name)
+        if mtime == _CAL_WEIGHTS_MTIMES.get(name):
+            continue
+        if mtime is None:
+            _CAL_WEIGHTS_MTIMES[name] = mtime
+            continue  # file no longer exists -- keep whatever is already loaded
+        try:
+            fresh = loader()
+        except Exception as exc:
+            _log.warning(
+                "_maybe_refresh_calibration_weights: reload of %s failed: %s",
+                name,
+                exc,
+            )
+            continue
+        current = globals()[key]
+        if not fresh and current:
+            # loader() "succeeded" (no exception) but came back empty while
+            # real data is already loaded. calibration.py's load_*_weights()
+            # swallow their own JSON errors internally and return {} rather
+            # than raising (opus review caught this) -- so this is almost
+            # certainly a transient/corrupt read, not a deliberate reset to
+            # hardcoded defaults. Keep the existing weights and don't record
+            # the mtime, so the next throttled check retries instead of
+            # permanently ignoring a real future fix to the file.
+            _log.warning(
+                "_maybe_refresh_calibration_weights: %s parsed empty while "
+                "%d existing entries are loaded -- keeping existing weights",
+                name,
+                len(current),
+            )
+            continue
+        _CAL_WEIGHTS_MTIMES[name] = mtime
+        globals()[key] = fresh
+
+
+# ── Per-city Platt scaling models (mtime-gated; None = not yet loaded) ────────
 _PLATT_MODELS: dict[str, tuple[float, float]] | None = None
+_PLATT_MODELS_MTIME: float | None = None  # mtime of the file behind the cache above
 
 # Minimum settled below predictions required before the two data-sparse below-market
 # gates can be manually activated (BELOW_GATE_ENABLED=1 in .env).
@@ -927,42 +1030,70 @@ def _rain_gates_active() -> bool:
 
 
 def _load_platt_models() -> dict[str, tuple[float, float]]:
-    """Load platt_models.json once per process; return empty dict when absent."""
-    global _PLATT_MODELS
-    if _PLATT_MODELS is None:
-        import json
+    """Load platt_models.json, reloading whenever the file's mtime changes.
 
-        path = Path(__file__).parent / "data" / "platt_models.json"
-        try:
-            raw = (
-                {k: tuple(v) for k, v in json.loads(path.read_text()).items()}
-                if path.exists()
-                else {}
-            )
-            validated: dict[str, tuple[float, float]] = {}
-            for city, (a, b) in raw.items():
-                if a <= 0:
-                    _log.error(
-                        "Platt model for %s has A=%s (<=0) — signal would be inverted; skipping",
-                        city,
-                        a,
-                    )
-                    continue
-                # H-16: re-validate coefficient bounds at load time — training enforces
-                # |A|≤5 and |B|≤5 but a corrupted/manually edited file bypasses that.
-                if abs(a) > 5 or abs(b) > 5:
-                    _log.warning(
-                        "Platt model for %s has out-of-bounds coefficients "
-                        "(A=%.2f B=%.2f) — skipping to prevent extreme miscalibration",
-                        city,
-                        a,
-                        b,
-                    )
-                    continue
-                validated[city] = (float(a), float(b))
-            _PLATT_MODELS = validated
-        except Exception:
+    mtime-gated rather than "load once per process" -- backlog.txt "ONE-SHOT
+    PROCESS LIFECYCLE IS BAKED INTO MODULE STATE" flagged the old load-once
+    behavior as a hazard for an always-on watch process: a fresh training run
+    writing this file would otherwise never be picked up without a restart.
+    """
+    global _PLATT_MODELS, _PLATT_MODELS_MTIME
+    path = Path(__file__).parent / "data" / "platt_models.json"
+    try:
+        mtime = path.stat().st_mtime if path.exists() else None
+    except OSError:
+        mtime = None
+    if _PLATT_MODELS is not None and mtime == _PLATT_MODELS_MTIME:
+        return _PLATT_MODELS
+    import json
+
+    try:
+        raw = (
+            {k: tuple(v) for k, v in json.loads(path.read_text()).items()}
+            if path.exists()
+            else {}
+        )
+        validated: dict[str, tuple[float, float]] = {}
+        for city, (a, b) in raw.items():
+            if a <= 0:
+                _log.error(
+                    "Platt model for %s has A=%s (<=0) — signal would be inverted; skipping",
+                    city,
+                    a,
+                )
+                continue
+            # H-16: re-validate coefficient bounds at load time — training enforces
+            # |A|≤5 and |B|≤5 but a corrupted/manually edited file bypasses that.
+            if abs(a) > 5 or abs(b) > 5:
+                _log.warning(
+                    "Platt model for %s has out-of-bounds coefficients "
+                    "(A=%.2f B=%.2f) — skipping to prevent extreme miscalibration",
+                    city,
+                    a,
+                    b,
+                )
+                continue
+            validated[city] = (float(a), float(b))
+        _PLATT_MODELS = validated
+        _PLATT_MODELS_MTIME = mtime
+    except Exception as exc:
+        # opus review caught this: the old unconditional "_PLATT_MODELS = {}"
+        # here meant a transient/corrupt read (e.g. a torn write) would
+        # silently wipe a previously-good, working set of Platt models for
+        # the rest of the process, since the mtime got recorded either way
+        # and this function never retries until the file changes again. Only
+        # coerce to {} on a genuine first-ever load; otherwise keep whatever
+        # is already loaded and don't record the mtime, so the next call
+        # retries instead of permanently discarding live calibration data.
+        if _PLATT_MODELS is None:
             _PLATT_MODELS = {}
+            _PLATT_MODELS_MTIME = mtime
+        else:
+            _log.warning(
+                "_load_platt_models: reload failed, keeping %d existing entries: %s",
+                len(_PLATT_MODELS),
+                exc,
+            )
     return _PLATT_MODELS
 
 
@@ -2658,9 +2789,23 @@ def _fetch_model_ensemble(
         ]
 
 
-_LEARNED_WEIGHTS: dict[str, dict[str, float]] = {}  # cached after first load
+_LEARNED_WEIGHTS: dict[
+    str, dict[str, float]
+] = {}  # reloaded when the file's mtime changes
+_LEARNED_WEIGHTS_MTIME: float | None = None  # mtime of the file behind the cache above
 _LEARNED_WEIGHTS_TTL_DAYS = 7  # P3-7: single definition (duplicate removed)
-_LEARNED_WEIGHTS_TTL_WARNED = False  # log-once flag — prevents per-market spam
+_LEARNED_WEIGHTS_TTL_WARNED = (
+    False  # log-once-per-mtime flag — reset when the file changes
+)
+# NOTE (opus review flagged, deliberately not throttled): this stats the file
+# on every call, called per-market from 2 sites across up to 8 pool threads. A
+# monotonic throttle was tried and reverted -- it broke
+# TestLearnedWeightsTTL.test_fresh_weights_file_is_loaded, since the throttle
+# window persists across tests in the same process and that test doesn't (and
+# per its own "reload on file change" premise, correctly shouldn't have to)
+# reset it. The actual per-call cost is one exists()+one getmtime() -- cheap
+# on local disk; revisit only if this becomes a measured problem on
+# OneDrive-backed storage.
 
 
 def load_learned_weights() -> dict[str, dict[str, float]]:
@@ -2669,16 +2814,50 @@ def load_learned_weights() -> dict[str, dict[str, float]]:
     Format: {city: {model: weight, ...}, ...}
     Returns empty dict if file missing, malformed, empty, or has real content older than 7 days.
     An empty file ({}) is silently ignored regardless of age — nothing to go stale.
-    Cached for the session.
+    Reloads whenever the file's mtime changes, and re-checks the TTL on every
+    call (not just the first) -- backlog.txt "ONE-SHOT PROCESS LIFECYCLE IS
+    BAKED INTO MODULE STATE" flagged the old "cached for the session" behavior
+    as a hazard: a file that ages past the 7-day TTL mid-session would
+    previously stay served from cache forever, and a fresh
+    save_learned_weights() write from another process would never be picked
+    up without a restart.
     """
-    global _LEARNED_WEIGHTS
-    if _LEARNED_WEIGHTS:
+    global _LEARNED_WEIGHTS, _LEARNED_WEIGHTS_MTIME, _LEARNED_WEIGHTS_TTL_WARNED
+
+    # A truthy _LEARNED_WEIGHTS with no recorded mtime means something (a test)
+    # injected it directly rather than through this function's own load path --
+    # honor it as-is without touching disk, matching every existing
+    # "monkeypatch _LEARNED_WEIGHTS directly" test convention (opus review
+    # caught this: the mtime-gating below broke that convention whenever this
+    # function hadn't yet performed a real load in the current process, since
+    # the injected dict would otherwise get silently overwritten by whatever's
+    # actually on disk the moment mtime failed to match).
+    if _LEARNED_WEIGHTS and _LEARNED_WEIGHTS_MTIME is None:
         return _LEARNED_WEIGHTS
+
     path = Path(__file__).parent / "data" / "learned_weights.json"
     if not path.exists():
         return {}
     mtime = os.path.getmtime(path)
-    age_secs = time.time() - mtime
+
+    if _LEARNED_WEIGHTS and mtime == _LEARNED_WEIGHTS_MTIME:
+        # Unchanged since the last successful load -- still re-check the TTL
+        # every time this throttle window opens (not just on load), so a file
+        # that simply ages past staleness without being rewritten doesn't
+        # stay served from cache forever.
+        age_secs = time.time() - mtime
+        if age_secs > _LEARNED_WEIGHTS_TTL_DAYS * 86400:
+            if not _LEARNED_WEIGHTS_TTL_WARNED:
+                logging.warning(
+                    "[ModelWeights] learned_weights.json is %.1f days old (> %d-day TTL) — "
+                    "falling back to default weights",
+                    age_secs / 86400,
+                    _LEARNED_WEIGHTS_TTL_DAYS,
+                )
+                _LEARNED_WEIGHTS_TTL_WARNED = True
+            return {}
+        return _LEARNED_WEIGHTS
+
     try:
         import json as _json
 
@@ -2688,12 +2867,13 @@ def load_learned_weights() -> dict[str, dict[str, float]]:
     # If the file has no actual city weights, age doesn't matter — there is nothing
     # to go stale. Return {} silently so we don't spam warnings when the file exists
     # but hasn't been populated yet (e.g. before enough per-city tracker data exists).
+    # Checked before the TTL below (opus review caught this: checking TTL first made
+    # an empty-but-old file trigger the staleness warning, contradicting this exact
+    # comment's own contract).
     if not loaded:
         return {}
-    # File has real content: enforce TTL so stale learned weights don't mislead the
-    # ensemble. Warn once per session then return {} so the bot uses neutral defaults.
+    age_secs = time.time() - mtime
     if age_secs > _LEARNED_WEIGHTS_TTL_DAYS * 86400:
-        global _LEARNED_WEIGHTS_TTL_WARNED
         if not _LEARNED_WEIGHTS_TTL_WARNED:
             logging.warning(
                 "[ModelWeights] learned_weights.json is %.1f days old (> %d-day TTL) — "
@@ -2703,6 +2883,7 @@ def load_learned_weights() -> dict[str, dict[str, float]]:
             )
             _LEARNED_WEIGHTS_TTL_WARNED = True
         return {}
+    _LEARNED_WEIGHTS_TTL_WARNED = False
     # P1-9: reject corrupt files where city values are floats (win-rates) not dicts
     for city, city_data in loaded.items():
         if not isinstance(city_data, dict):
@@ -2728,6 +2909,7 @@ def load_learned_weights() -> dict[str, dict[str, float]]:
                 pass
             return {}
     _LEARNED_WEIGHTS = loaded
+    _LEARNED_WEIGHTS_MTIME = mtime
     return _LEARNED_WEIGHTS
 
 
@@ -2780,8 +2962,12 @@ def save_learned_weights(weights: dict) -> None:
             exc,
         )
         return
-    global _LEARNED_WEIGHTS
+    global _LEARNED_WEIGHTS, _LEARNED_WEIGHTS_MTIME
     _LEARNED_WEIGHTS = weights
+    try:
+        _LEARNED_WEIGHTS_MTIME = os.path.getmtime(path)
+    except OSError:
+        _LEARNED_WEIGHTS_MTIME = None
 
 
 def save_forecast_snapshot(ticker: str, forecast_data: dict) -> None:
@@ -2851,14 +3037,18 @@ def _feels_like(
     return temp_f
 
 
-# (city, days_back) -> weights, session cache (permanent per-process by
-# design -- never expires, matching the plain dict's original semantics
-# exactly; migrated to ForecastCache 2026-07-19, backlog.txt "ForecastCache
-# EXISTS, BUT ~14 HAND-ROLLED TTL DICTS..."). Never negative-cached (every
-# early-return path returns None WITHOUT writing to cache), so plain .get()
-# is unambiguous.
+# (city, days_back) -> weights. Migrated to ForecastCache 2026-07-19 (backlog.txt
+# "ForecastCache EXISTS, BUT ~14 HAND-ROLLED TTL DICTS...") as a permanent
+# (ttl_secs=inf) memoization, matching the plain dict it replaced. Given a real
+# TTL 2026-07-26 (backlog.txt "ONE-SHOT PROCESS LIFECYCLE..."): per-model MAE
+# genuinely drifts as new trades settle, so "permanent for the life of the
+# process" meant an always-on watch process would trade on day-1 accuracy
+# forever. Reuses _MODEL_CACHE_TTL (4h) -- the same cadence already used for
+# every other model-accuracy-flavored cache in this file. Never negative-cached
+# (every early-return path returns None WITHOUT writing to cache), so plain
+# .get() is unambiguous.
 _MAE_WEIGHTS_CACHE: ForecastCache[dict[str, float]] = ForecastCache(
-    ttl_secs=float("inf")
+    ttl_secs=_MODEL_CACHE_TTL
 )
 
 
@@ -3621,6 +3811,7 @@ def get_weather_markets(
     #66: Results cached for 60 seconds to avoid hammering the API.
     Pass force=True to bypass cache.
     """
+    _maybe_refresh_calibration_weights()
     global _MARKETS_CACHE
     now = time.monotonic()
     if not force and _MARKETS_CACHE is not None:
@@ -5228,7 +5419,8 @@ _REGIME_BLEND_WEIGHTS: dict[str, tuple[float, float, float]] = {
 
 # Mutable state dict so tests can reset between runs by setting ["active"] = None.
 # None = unchecked this process, True/False = already determined.
-_regime_blend_state: dict = {"active": None}
+_regime_blend_state: dict = {"active": None, "checked_at": None}
+_REGIME_BLEND_RECHECK_SECS = 6 * 60 * 60  # re-check a still-False result every 6h
 
 
 def _regime_blend_settled_count() -> int:
@@ -5277,15 +5469,32 @@ def _notify_feature_activation(key: str, message: str, extra: dict) -> None:
 def _regime_blend_active() -> bool:
     """Return True when enough settled trades warrant regime-specific blend weights.
 
-    Checks once per process, then caches result in _regime_blend_state["active"].
+    Checks at most once per _REGIME_BLEND_RECHECK_SECS, caching the result in
+    _regime_blend_state["active"]. Once True, stays True permanently (sample
+    counts only grow) -- but a still-False result is rechecked periodically
+    rather than latched for the life of the process, so an always-on watch
+    process notices the graduation moment within one recheck window instead of
+    never (backlog.txt "ONE-SHOT PROCESS LIFECYCLE IS BAKED INTO MODULE STATE").
     Writes a one-time user notification the first time the threshold is crossed.
     """
-    if _regime_blend_state["active"] is not None:
-        return _regime_blend_state["active"]
+    if _regime_blend_state["active"] is True:
+        return True
+    _checked_at = _regime_blend_state["checked_at"]
+    now = time.monotonic()
+    # active is None means "unchecked" (either never checked, or a test/caller
+    # explicitly reset it) -- that always forces a fresh check regardless of
+    # checked_at, matching the pre-existing reset convention every caller uses.
+    if (
+        _regime_blend_state["active"] is not None
+        and _checked_at is not None
+        and now - _checked_at < _REGIME_BLEND_RECHECK_SECS
+    ):
+        return bool(_regime_blend_state["active"])
 
     n = _regime_blend_settled_count()
     active = n >= 30
     _regime_blend_state["active"] = active
+    _regime_blend_state["checked_at"] = now
 
     if active:
         _notify_feature_activation(
@@ -5299,7 +5508,7 @@ def _regime_blend_active() -> bool:
 # ── PDO / PNA blend state ────────────────────────────────────────────────────
 # Mutable state dict so tests can reset between runs by setting ["active"] = None.
 # None = unchecked this process, True/False = already determined.
-_pdopna_blend_state: dict = {"active": None}
+_pdopna_blend_state: dict = {"active": None, "checked_at": None}
 
 # Minimum settled multi-day trades per west-coast city before PDO/PNA correction activates.
 _PDOPNA_WEST_COAST_THRESHOLD = 20
@@ -5317,11 +5526,27 @@ def _pdopna_blend_active() -> bool:
 
     Requires BOTH: 20+ settled multi-day trades for each west-coast city (LA,
     SanFrancisco, Seattle) AND the pdo_pna.json index file is present. Checks
-    once per process, then caches result in _pdopna_blend_state["active"].
+    at most once per _REGIME_BLEND_RECHECK_SECS, caching the result in
+    _pdopna_blend_state["active"]. Once True, stays True permanently (sample
+    counts only grow) -- but a still-False result is rechecked periodically
+    rather than latched for the life of the process, so an always-on watch
+    process notices the graduation moment within one recheck window instead of
+    never (backlog.txt "ONE-SHOT PROCESS LIFECYCLE IS BAKED INTO MODULE STATE").
     Writes a one-time user notification the first time the threshold is crossed.
     """
-    if _pdopna_blend_state["active"] is not None:
-        return _pdopna_blend_state["active"]
+    if _pdopna_blend_state["active"] is True:
+        return True
+    _checked_at = _pdopna_blend_state["checked_at"]
+    now = time.monotonic()
+    # active is None means "unchecked" (either never checked, or a test/caller
+    # explicitly reset it) -- that always forces a fresh check regardless of
+    # checked_at, matching the pre-existing reset convention every caller uses.
+    if (
+        _pdopna_blend_state["active"] is not None
+        and _checked_at is not None
+        and now - _checked_at < _REGIME_BLEND_RECHECK_SECS
+    ):
+        return bool(_pdopna_blend_state["active"])
 
     counts = _pdopna_settled_counts()
     west_coast = ["LA", "SanFrancisco", "Seattle"]
@@ -5331,6 +5556,7 @@ def _pdopna_blend_active() -> bool:
     indices_available = _ci._PDO_PNA_PATH.exists()
     active = enough_data and indices_available
     _pdopna_blend_state["active"] = active
+    _pdopna_blend_state["checked_at"] = now
 
     if active:
         _notify_feature_activation(
