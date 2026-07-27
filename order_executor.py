@@ -2766,6 +2766,7 @@ def _auto_place_trades(
                 "(set GFS_LOCKOUT_MINS=0 to disable)",
                 a.get("ticker", ticker),
             )
+            _skip_reasons.append(f"{ticker}: gfs_update_window")
             continue
 
         # Hourly shadow-only rollout (backlog.txt "HOURLY-DIRECTIONAL
