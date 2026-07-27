@@ -175,6 +175,12 @@ def test_atomic_write_raises_when_all_retries_fail(tmp_path, monkeypatch):
 
     import safe_io
 
+    # Isolate the default emergency-copy candidate (project_root()/"data"/
+    # ".emergency") to tmp_path -- without this, since no fallback_dir is
+    # passed here, the real fallback code path writes into THIS repo's own
+    # data/.emergency/ directory rather than a throwaway test path.
+    monkeypatch.setattr(safe_io, "project_root", lambda: tmp_path)
+
     readonly_dir = tmp_path / "readonly"
     readonly_dir.mkdir()
 
@@ -199,12 +205,20 @@ def test_atomic_write_emergency_copy_written_on_failure(tmp_path, monkeypatch):
     emergency_dir = tmp_path / "emergency"
     emergency_dir.mkdir()
 
+    target = tmp_path / "data" / "paper_trades.json"
+    _real_replace = os.replace
+
     def fail_replace(src, dst):
-        raise OSError("simulated disk full")
+        # Only the primary target's replace fails -- the emergency copy
+        # (also os.replace-based now, temp+fsync+replace) must go through
+        # for real so this test can assert its content, same as before
+        # atomic_write_json's own emergency copy became atomic.
+        if Path(dst) == target:
+            raise OSError("simulated disk full")
+        _real_replace(src, dst)
 
     monkeypatch.setattr(os, "replace", fail_replace)
 
-    target = tmp_path / "data" / "paper_trades.json"
     from safe_io import AtomicWriteError
 
     with pytest.raises(AtomicWriteError):
@@ -214,3 +228,156 @@ def test_atomic_write_emergency_copy_written_on_failure(tmp_path, monkeypatch):
 
     # Emergency copy must exist for manual recovery
     assert (emergency_dir / "paper_trades.json").exists()
+
+
+def test_atomic_write_default_fallback_does_not_clobber_original(tmp_path, monkeypatch):
+    """Regression test for the 2026-07-27 live bug: every real caller omits
+    fallback_dir, so the default emergency candidate used to be
+    project_root()/"data" -- identical to where every real target file
+    already lives (DATA_DIR). That silently turned the "emergency copy for
+    manual recovery" into a non-atomic same-path overwrite, defeating
+    atomic_write_json's entire crash-safety guarantee. Reproduces the exact
+    real-world shape (target lives directly in <project_root>/data/) with no
+    fallback_dir passed, and asserts the original file is left untouched
+    while a real, non-colliding recovery copy lands in data/.emergency/."""
+    import os
+
+    import safe_io
+
+    monkeypatch.setattr(safe_io, "project_root", lambda: tmp_path)
+
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    target = data_dir / "forecast_sigma.json"
+    target.write_text('{"stale": "old data — must survive a failed write"}')
+
+    _real_replace = os.replace
+
+    def fail_replace(src, dst):
+        # Only the primary target's replace fails -- the emergency copy's
+        # own os.replace (temp+fsync+replace, since the M2 fix) must go
+        # through for real so this test can assert its content.
+        if Path(dst) == target:
+            raise OSError("simulated disk full")
+        _real_replace(src, dst)
+
+    monkeypatch.setattr(os, "replace", fail_replace)
+
+    from safe_io import AtomicWriteError
+
+    with pytest.raises(AtomicWriteError):
+        safe_io.atomic_write_json({"fresh": "new data"}, target, retries=1)
+
+    # The original file must be untouched -- this is the actual crash-safety
+    # guarantee atomic_write_json exists to provide, and is exactly what the
+    # old default silently broke by overwriting it non-atomically instead.
+    assert json.loads(target.read_text()) == {
+        "stale": "old data — must survive a failed write"
+    }
+
+    # The real fix: a genuine, non-colliding recovery copy exists instead.
+    emergency_copy = data_dir / ".emergency" / "forecast_sigma.json"
+    assert emergency_copy.exists()
+    assert json.loads(emergency_copy.read_text()) == {"fresh": "new data"}
+
+
+def test_atomic_write_skips_fallback_dir_that_collides_with_original(
+    tmp_path, monkeypatch
+):
+    """Belt-and-suspenders guard: even an explicit fallback_dir that happens
+    to resolve to the original file's own directory must not be used as the
+    emergency-copy location -- it must be skipped, falling through to the
+    next candidate (the default data/.emergency/ subdir here), never
+    silently overwrite the original."""
+    import os
+
+    import safe_io
+
+    # Isolate the default emergency-copy candidate to tmp_path -- see the
+    # identical comment on test_atomic_write_raises_when_all_retries_fail.
+    monkeypatch.setattr(safe_io, "project_root", lambda: tmp_path)
+
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    target = data_dir / "paper_trades.json"
+    target.write_text('{"stale": "must survive"}')
+
+    _real_replace = os.replace
+
+    def fail_replace(src, dst):
+        # Only the primary target's replace fails -- the eventual emergency
+        # copy's own os.replace (temp+fsync+replace, since the M2 fix) must
+        # go through for real so this test can assert its content.
+        if Path(dst) == target:
+            raise OSError("simulated disk full")
+        _real_replace(src, dst)
+
+    monkeypatch.setattr(os, "replace", fail_replace)
+
+    from safe_io import AtomicWriteError
+
+    with pytest.raises(AtomicWriteError):
+        safe_io.atomic_write_json(
+            {"fresh": "new"}, target, retries=1, fallback_dir=data_dir
+        )
+
+    # Original untouched -- proves the colliding candidate was never written to.
+    assert json.loads(target.read_text()) == {"stale": "must survive"}
+
+    # Positive half: the write didn't just silently vanish -- it fell
+    # through to the next non-colliding candidate (default .emergency subdir).
+    fallen_through_copy = data_dir / ".emergency" / "paper_trades.json"
+    assert fallen_through_copy.exists()
+    assert json.loads(fallen_through_copy.read_text()) == {"fresh": "new"}
+
+
+def test_atomic_write_error_message_accurate_when_no_emergency_copy_possible(
+    tmp_path, monkeypatch
+):
+    """When every candidate (primary write AND every emergency candidate)
+    fails, the raised message must say so plainly, not claim 'Emergency
+    copy written to None for manual recovery' -- a lie that would mislead
+    an operator into thinking recovery data exists when it doesn't. Since
+    the emergency copy is now itself atomic (temp + fsync + os.replace,
+    same as the primary write), patching os.replace to always fail forces
+    every single candidate -- primary and all emergency ones -- to fail
+    the same way, deterministically reproducing total failure."""
+    import os
+    import tempfile
+
+    import safe_io
+
+    monkeypatch.setattr(safe_io, "project_root", lambda: tmp_path)
+
+    target = tmp_path / "data" / "paper_trades.json"
+
+    def fail_replace(src, dst):
+        raise OSError("simulated total disk failure")
+
+    monkeypatch.setattr(os, "replace", fail_replace)
+
+    from safe_io import AtomicWriteError
+
+    with pytest.raises(AtomicWriteError) as exc_info:
+        safe_io.atomic_write_json({"key": "value"}, target, retries=1)
+
+    message = str(exc_info.value)
+    assert "NO emergency copy could be written" in message
+    assert "written to None" not in message
+
+    # No emergency copy actually landed anywhere -- confirms the message
+    # is telling the truth, not just phrased differently.
+    assert not (tmp_path / "data" / ".emergency" / "paper_trades.json").exists()
+
+    # Regression: every emergency candidate's temp file (written
+    # successfully by plain `open`, then failing at os.replace) must be
+    # cleaned up on failure, same as the primary write's own tmp cleanup --
+    # not left behind to accumulate on disk across repeated failures (ironic
+    # given the failure mode under test is itself disk-space-shaped). Caught
+    # live while writing this test: an early version of the emergency-copy
+    # fix left exactly this kind of stray .emergency.tmp file in this
+    # repo's own data/.emergency/ after a single failed test run.
+    leftover_tmps = list((tmp_path / "data").rglob("*.tmp")) + list(
+        Path(tempfile.gettempdir()).glob(f".paper_trades.json_{os.getpid()}*.tmp")
+    )
+    assert leftover_tmps == [], f"stray temp file(s) left behind: {leftover_tmps}"

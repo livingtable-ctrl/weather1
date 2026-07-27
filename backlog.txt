@@ -1,6 +1,196 @@
 BACKLOG — future improvements to implement when ready
 ======================================================
 
+[RESOLVED 2026-07-27 -- found live during a cron output review, root-caused,
+  fixed same session]
+  SAFE_IO -- EMERGENCY-COPY FALLBACK SILENTLY CLOBBERED THE ORIGINAL FILE
+Priority: was High once found -- a crash-safety utility used by 20+ callers
+  across the codebase (including paper.py's live trade-state file) had its
+  entire safety guarantee silently defeated by default, for every real
+  caller, in exactly the failure scenario (contested/locked file) where it
+  matters most.
+
+Problem:
+  A live cron run on 2026-07-27 hit a Windows file-lock collision writing
+  `data/forecast_sigma.json` (`climatology.py`'s `load_all_sigmas()`) --
+  `safe_io.atomic_write_json()`'s 3 retry attempts all failed with
+  WinError 32/2/5, then it fell through to its "emergency copy for manual
+  recovery" path and logged success. Investigated because the run also
+  showed persistent rain-market anomalies (see the RAIN MARKETS entry
+  above) and this ERROR-level log line stood out as worth checking, not
+  assumed safe just because cron exited 0.
+  Traced `safe_io.py`'s fallback logic (added by commit `335ded8`, "Batch S:
+  R28 + P2-H", intended to make the emergency copy "operator-visible" by
+  landing it in the monitored `data/` dir instead of system temp): when a
+  caller omits `fallback_dir`, the first candidate is `project_root() /
+  "data"` -- but every real target file already lives in that exact
+  directory (`DATA_DIR`, defined identically in `climatology.py`,
+  `acis_precip.py`, `backtest.py`, etc.), so `emergency_path = fb_dir /
+  path.name` resolves to the SAME path as the file that just failed 3
+  atomic-write attempts. The "emergency copy" was actually a plain
+  non-atomic `open(path, "w")` overwrite of the live file -- silently
+  defeating `atomic_write_json`'s entire crash-safety purpose (temp-write +
+  fsync + rename) in precisely the scenario it exists to protect against.
+  Grepped every call site (20+: `paper.py`'s live trade-state `DATA_PATH`,
+  `circuit_breaker.py`'s kill-switch state, `weather_markets.py`'s forecast
+  caches, `climatology.py`, `acis_precip.py`, `alerts.py`, `ab_test.py`,
+  `param_sweep.py`, `kalshi_ws.py`, `monte_carlo.py`,
+  `settlement_monitor.py`, `main.py`) -- NONE pass `fallback_dir`, so this
+  was a universal, not file-specific, gap. Tonight's actual outcome was
+  benign (the lock was transient; the plain overwrite happened to succeed
+  with correct data, verified by re-reading `forecast_sigma.json` after the
+  run) -- but a crash or another process interrupting that non-atomic write
+  could have left any of these files (including live trade state)
+  truncated/corrupted with only a buried ERROR log to show for it. The only
+  existing test for this path
+  (`test_atomic_write_emergency_copy_written_on_failure`) explicitly passes
+  a distinct `fallback_dir`, so the real-world default-omitted-fallback_dir
+  behavior had never been exercised.
+
+What was fixed:
+  Default emergency candidate changed from `project_root()/"data"` to a
+  dedicated `project_root()/"data"/".emergency"` subdir -- preserves P2-H's
+  original "operator-visible, monitored location" intent while guaranteeing
+  no collision with any real target file (none live in `.emergency/`), with
+  zero caller changes needed across all 20+ call sites.
+  `cleanup_data_dir()` (main.py) only globs `data/*.json` non-recursively
+  and already skips dot-prefixed entries at the top level, so
+  `data/.emergency/` is invisible to its 2-day-retention sweep -- recovery
+  copies won't get silently deleted (independently re-verified by the
+  opus review below, not just asserted).
+  Added a belt-and-suspenders guard in the fallback loop itself: any
+  candidate (default or explicitly-passed `fallback_dir`) that resolves to
+  the same path as the original target is skipped with a warning rather
+  than written to, so an explicit-but-colliding `fallback_dir` can never
+  reintroduce the same class of bug.
+  Considered and rejected two alternatives (via `AskUserQuestion`): renaming
+  the file in place (`forecast_sigma.json.emergency`) fixes the same bug but
+  buys nothing extra over the subdir approach and forces an unrelated
+  test-assertion change; reverting to temp-only fallback regresses P2-H's
+  operator-visible intent and, without the belt-and-suspenders guard,
+  doesn't close the underlying class of bug (an explicit colliding
+  `fallback_dir` would still trigger it).
+
+  Independent review (opus, effort=high) before push found the core fix
+  correct but surfaced real gaps in the first pass, all addressed:
+  - HIGH: the two new tests didn't isolate `project_root()` to a tmp dir in
+    every case, so a real test run wrote actual recovery-copy junk into
+    THIS repo's own `data/.emergency/` (reviewer reproduced it: a genuine
+    `paper_trades.json` emergency copy could be silently overwritten by a
+    routine `pytest` run). Fixed by patching `project_root` in every
+    affected test (`test_safe_io.py` and, once the fix made it possible to
+    even notice, a pre-existing, previously-unrelated test in
+    `test_infrastructure.py` -- `test_atomic_write_raises_on_double_failure`
+    -- that had the identical gap, exposed only because this fix introduced
+    a new subdirectory for it to silently create in the real repo).
+  - MEDIUM: the `AtomicWriteError` message claimed "Emergency copy written
+    to None" when no copy could be written at all (disk-full-everywhere
+    case) -- fixed with an explicit truthful branch plus a dedicated ERROR
+    log line, and a new test forcing total failure (`os.replace` mocked to
+    fail unconditionally) to pin the accurate message.
+  - MEDIUM: the emergency copy itself was a plain non-atomic `open(path,
+    "w")` with no fsync -- weaker durability than the primary write it
+    exists to back up, and two processes failing on the same target
+    simultaneously could interleave-corrupt it. Fixed by giving the
+    emergency copy the identical temp+fsync+`os.replace` discipline as the
+    primary write, with its own pid-suffixed temp name.
+  - MEDIUM: root-caused the likely actual trigger of tonight's incident --
+    the primary write's temp filename (`.{name}_{attempt}.tmp`) has no
+    per-process component, so two processes racing to write the same target
+    (exactly what Windows lock contention implies) could share one temp
+    file and interleave-corrupt it before an atomic rename installs the
+    corruption "successfully." Fixed by adding `os.getpid()` to the temp
+    name; verified `paper.py`'s own stray-temp-file cleanup glob
+    (`.paper_trades.json_*.tmp`) still matches with a pid inserted.
+  - Self-caught during the fix for the above: giving the emergency copy its
+    own temp+replace step introduced a new leak -- on emergency-write
+    failure the temp file was never cleaned up (reproduced live: a stray
+    `.paper_trades.json_<pid>.emergency.tmp` was left in this repo's own
+    `data/.emergency/` after a single test run). Fixed with the same
+    `os.unlink` cleanup-on-except the primary write already had; added a
+    dedicated regression assertion (glob-checks both the tmp-isolated dir
+    and real system temp for leftover `*.tmp` files) and mutation-tested it
+    by temporarily removing the cleanup and confirming the new assertion
+    catches it.
+  - LOW: `circuit_breaker._save_state`'s failure log bumped from WARNING to
+    ERROR -- under the old bug a same-path clobber meant CB/kill-switch
+    state usually landed on disk anyway despite the "failure"; after this
+    fix a failed save now genuinely loses that cycle's state.
+  - LOW: fixed the second new test's docstring (wrongly claimed the
+    colliding candidate falls through to "system temp" -- it actually falls
+    through to the next candidate in order, the default `.emergency` subdir)
+    and added the assertion it was missing for where the copy actually landed.
+  - LOW: documented the fallback_dir/`.emergency` default location in
+    `atomic_write_json`'s own docstring (previously only in an inline
+    comment).
+  - LOW (accepted, not fixed): emergency copies are keyed by `path.name`
+    (basename) only, so a same-named target in two different directories
+    would share one recovery slot. Verified live against every real
+    `atomic_write_json` call site 2026-07-27 -- no actual collision exists
+    today (confirmed `ab_test.py`'s dynamic per-test-name files live under
+    a distinct `data/ab_tests/` subdir with no top-level basename overlap).
+    Left as a documented, reasoned limitation (comment added at the call
+    site) rather than adding relative-path-encoding complexity for a
+    theoretical case -- the emergency copy is a best-effort recovery aid,
+    not the source of truth.
+  - INFO items (redundant dead assignment, docstring-adjacent nits,
+    `.resolve()` hoisting): folded into the same diff since each was a
+    one-line change already touching that exact code.
+  - Deferred, NOT fixed now (genuinely separate scope -- a new monitoring/
+    alerting mechanism, not a fix to this change): nothing currently reads,
+    alerts on, or surfaces a non-empty `data/.emergency/` beyond one ERROR
+    log line in a rotating file. See the new OPEN entry below.
+  - Deferred, NOT fixed now (historical point-in-time snapshots, never
+    revised since their one authoring commit `b897d39` -- correcting them
+    would break that convention, not follow it): `docs/grade_audit/
+    outputs/safe_io.py.md` and `docs/audit_findings.md` both describe/score
+    the old, buggy cascade. Left as-is; this backlog entry is the live
+    record now.
+
+  3 new regression tests + 2 pre-existing tests fixed for test-isolation
+  (`tests/test_safe_io.py`: 20 tests total in the file, up from 17 before
+  this session; `tests/test_infrastructure.py`: 1 test fixed, 33 total
+  unchanged in count). Every new/changed assertion mutation-tested --
+  reverted the relevant code (via manual diff-swap after `git checkout`
+  was found to blow away the whole file rather than one hunk, corrected by
+  keeping a working backup and using targeted `git show HEAD:<file>` swaps
+  instead) and confirmed each test fails with the exact predicted
+  AssertionError against pre-fix code, then restored and re-confirmed
+  green. Full scoped regression (`tests/test_safe_io.py` +
+  `tests/test_infrastructure.py`, 53 tests) passes; ruff + ruff format +
+  mypy clean on every touched file (`safe_io.py`, `circuit_breaker.py`,
+  `tests/test_safe_io.py`, `tests/test_infrastructure.py`). Verified twice,
+  after the fix and after restoring from the `git checkout` mishap, that no
+  test run leaves stray files behind in either this repo's real
+  `data/.emergency/` or the real system temp directory.
+
+[OPEN 2026-07-27 -- surfaced by the independent review of the entry above,
+  deliberately deferred as separate scope]
+  SAFE_IO -- NOTHING MONITORS data/.emergency/ FOR REAL RECOVERY COPIES
+Priority: Low -- a genuine emergency copy landing there today is only
+  visible via one buried ERROR log line; the fix above stopped the
+  clobbering, but a human still won't notice a real one exists without
+  reading logs.
+
+Problem:
+  Once `atomic_write_json()`'s emergency-copy fallback actually works (see
+  the resolved entry above), a real recovery copy can sit in
+  `data/.emergency/` indefinitely with nothing surfacing it -- no startup
+  check, no cron-summary warning, no alert. An operator would only find out
+  by grepping logs.
+
+What the fix looks like (not yet designed):
+  A check (startup and/or in cron's own summary output) that warns loudly
+  if `project_root()/"data"/".emergency"` is non-empty, listing filenames
+  and mtimes so an operator knows real data needs manual recovery. Do the
+  test-isolation fix from the entry above first if this is ever picked up
+  independently -- otherwise a routine test run could trip a false alarm.
+
+When to revisit:
+  Whenever `data/.emergency/` next fills for real, or as general hardening
+  before live trading -- not urgent, since the underlying clobber bug that
+  motivated all of this is now fixed.
+
 [OPEN 2026-07-27 -- confirmed live via 3 consecutive cron runs, root-caused,
   not yet fixed]
   RAIN MARKETS -- MONTHLY MODEL HAS NO DAY-SPECIFIC FORECAST SIGNAL

@@ -55,7 +55,15 @@ def atomic_write_json(
     """
     Write data to path atomically (write temp → fsync → rename).
     Retries up to `retries` times with 1s backoff on failure.
-    Raises AtomicWriteError if all attempts fail.
+
+    On total failure (all `retries` attempts fail), also attempts a best-
+    effort emergency copy for manual operator recovery before raising
+    AtomicWriteError -- NOT a transparent fallback, the caller still gets
+    an error. `fallback_dir`, if given, is tried first; otherwise (the
+    common case -- no real caller in this codebase passes it) the default
+    is a dedicated `<project_root>/data/.emergency/` subdirectory, then
+    system temp as a last resort. The emergency copy is itself written
+    atomically (temp + fsync + rename), same as the primary write.
     """
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -64,7 +72,14 @@ def atomic_write_json(
 
     for attempt in range(retries):
         try:
-            tmp_path_str = str(path.parent / f".{path.name}_{attempt}.tmp")
+            # pid included so two processes racing to write the same path
+            # (the exact scenario that causes retries to be needed in the
+            # first place) never share one temp file -- each process gets
+            # its own, and only the eventual os.replace can race, which is
+            # safe (whole-file atomic rename, last writer wins cleanly).
+            tmp_path_str = str(
+                path.parent / f".{path.name}_{os.getpid()}_{attempt}.tmp"
+            )
             with open(tmp_path_str, "w", encoding="utf-8") as f:
                 f.write(payload)
                 f.flush()
@@ -101,30 +116,93 @@ def atomic_write_json(
     emergency_candidates = []
     if fallback_dir:
         emergency_candidates.append(Path(fallback_dir))
-    # P2-H: prefer the project data dir so the emergency copy is in a monitored,
-    # operator-visible location.  System temp is kept as a last-resort fallback.
-    emergency_candidates.append(project_root() / "data")
+    # P2-H: prefer a project data subdir so the emergency copy is in a monitored,
+    # operator-visible location. Deliberately a dedicated ".emergency" subdir, NOT
+    # project_root()/"data" itself -- every real caller's own `path` already lives
+    # in data/ (DATA_DIR), so that candidate used to resolve to the exact same file
+    # that just failed 3 atomic-write attempts, silently degrading to a non-atomic
+    # same-path overwrite for every one of this function's 20+ callers (none pass
+    # fallback_dir). System temp is kept as a last-resort fallback.
+    # NOTE (accepted limitation): candidates are keyed by path.name (basename)
+    # only, not the full relative path -- data/foo.json and data/ab_tests/
+    # foo.json would share one emergency slot. No real caller today has an
+    # actual basename collision (verified live against every atomic_write_json
+    # call site 2026-07-27), and the emergency copy is a best-effort recovery
+    # aid, not the source of truth, so this is deliberately left as-is rather
+    # than adding relative-path encoding complexity for a theoretical case.
+    emergency_candidates.append(project_root() / "data" / ".emergency")
     emergency_candidates.append(Path(tempfile.gettempdir()))
+    resolved_target = path.resolve()
 
     for fb_dir in emergency_candidates:
-        emergency_path = fb_dir / path.name
+        candidate_path = fb_dir / path.name
+        candidate_tmp: str | None = None
         try:
-            emergency_path.parent.mkdir(parents=True, exist_ok=True)
-            with open(emergency_path, "w", encoding="utf-8") as f:
+            if candidate_path.resolve() == resolved_target:
+                # Belt-and-suspenders: never overwrite the exact file that
+                # just failed to write, even if an explicit fallback_dir
+                # collides with it -- that would silently defeat this
+                # function's entire crash-safety guarantee instead of
+                # surfacing the failure.
+                _log.warning(
+                    "Skipping emergency-copy candidate %s — resolves to the "
+                    "same path as the original write target",
+                    candidate_path,
+                )
+                continue
+            candidate_path.parent.mkdir(parents=True, exist_ok=True)
+            # Same temp+fsync+replace discipline as the primary write above --
+            # the emergency copy exists specifically to survive the failure
+            # that just occurred, so it needs the same durability, not weaker.
+            candidate_tmp = str(
+                candidate_path.parent
+                / f".{candidate_path.name}_{os.getpid()}.emergency.tmp"
+            )
+            with open(candidate_tmp, "w", encoding="utf-8") as f:
                 f.write(payload)
+                f.flush()
+                try:
+                    os.fsync(f.fileno())
+                except OSError as _fsync_err:
+                    _log.warning(
+                        "fsync failed for emergency copy %s: %s",
+                        candidate_tmp,
+                        _fsync_err,
+                    )
+            os.replace(candidate_tmp, candidate_path)
+            emergency_path = candidate_path
             _log.error(
                 "Emergency copy written to %s for manual recovery (original write failed)",
                 emergency_path,
             )
             break
         except Exception as fb_exc:
-            _log.error("Emergency copy also failed for %s: %s", emergency_path, fb_exc)
-            emergency_path = None
+            if candidate_tmp:
+                try:
+                    os.unlink(candidate_tmp)
+                except OSError:
+                    pass
+            _log.error("Emergency copy also failed for %s: %s", candidate_path, fb_exc)
+
+    if emergency_path is not None:
+        emergency_note = (
+            f"Emergency copy written to {emergency_path} for manual recovery."
+        )
+    else:
+        emergency_note = (
+            "NO emergency copy could be written anywhere -- this write's data is lost."
+        )
+        _log.error(
+            "atomic_write_json: %s could not be written and no emergency copy "
+            "could be written to any candidate location either: %s",
+            path,
+            [str(c) for c in emergency_candidates],
+        )
 
     raise AtomicWriteError(
         f"Failed to write {path} after {retries} attempts. "
         f"Disk full, permissions error, or path unavailable. "
-        f"Emergency copy written to {emergency_path} for manual recovery. "
+        f"{emergency_note} "
         f"Original error: {last_exc}"
     )
 

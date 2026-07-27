@@ -136,7 +136,12 @@ class CircuitBreaker:
 
                 _atomic_write_json(state, _CB_STATE_PATH)
         except Exception as exc:
-            _log.warning("CB state save failed: %s", exc)
+            # ERROR not WARNING: a failed save now genuinely loses this
+            # cycle's circuit-breaker state (safe_io's emergency-copy fix,
+            # 2026-07-27, stopped the previous same-path-overwrite behavior
+            # that had accidentally been landing the data anyway) -- a
+            # restarted process reloads stale open/closed state.
+            _log.error("CB state save failed: %s", exc)
 
     def suppress_probe(self) -> None:
         """Prevent automatic probing for the rest of this process lifetime.

@@ -369,6 +369,12 @@ def test_atomic_write_raises_on_double_failure(tmp_path, monkeypatch):
     import safe_io
     from safe_io import AtomicWriteError
 
+    # Isolate the default emergency-copy candidate (project_root()/"data"/
+    # ".emergency") to tmp_path -- without this, mkdir() for that candidate
+    # (not itself mocked by the builtins.open patch below) creates a real,
+    # if empty, data/.emergency/ directory in this actual repo.
+    monkeypatch.setattr(safe_io, "project_root", lambda: tmp_path)
+
     call_count = {"n": 0}
 
     def _always_fail(*a, **kw):
