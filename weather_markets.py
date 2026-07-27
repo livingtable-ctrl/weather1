@@ -1958,6 +1958,12 @@ _ECMWF_CACHE: ForecastCache[float | None] = ForecastCache(ttl_secs=_MODEL_CACHE_
 _PRECIP_ENSEMBLE_CACHE: ForecastCache[list[float]] = ForecastCache(
     ttl_secs=_MODEL_CACHE_TTL
 )
+# Keyed by (lat, lon, start_date_iso, end_date_iso) — shared across all
+# _fetch_ensemble_precip_multiday callers. Never stores None, same convention
+# as _PRECIP_ENSEMBLE_CACHE above.
+_PRECIP_ENSEMBLE_MULTIDAY_CACHE: ForecastCache[list[float]] = ForecastCache(
+    ttl_secs=_MODEL_CACHE_TTL
+)
 
 
 def fetch_temperature_nbm(
@@ -5776,6 +5782,30 @@ def _count_signal_column(column: str, *, multiday: bool = False) -> Callable[[],
     return _count
 
 
+def _count_signal_json_key(
+    json_key: str, *, require_settled_temp: bool = True
+) -> Callable[[], int]:
+    """Same late-bound-closure shape as _count_signal_column, for a
+    registry entry whose settled-sample count lives in the generic
+    signal_values JSON column (json_key=) rather than a dedicated
+    predictions column (column=).
+
+    require_settled_temp=False for a signal whose market family never
+    populates settled_temp_f (e.g. KXRAIN*M monthly-rain rows, which write
+    settled_value instead) -- leaving the default True there would make the
+    count permanently 0 regardless of real settled data, not just undercount
+    (opus-review-caught, 2026-07-28)."""
+
+    def _count() -> int:
+        from tracker import count_settled_signal_rows
+
+        return count_settled_signal_rows(
+            json_key=json_key, require_settled_temp=require_settled_temp
+        )
+
+    return _count
+
+
 def _count_model_obs(model: str) -> Callable[[], int]:
     """Same late-bound-closure shape as _count_signal_column, for the two
     registry entries whose sample floor lives in ensemble_member_scores
@@ -5928,6 +5958,22 @@ SIGNAL_REGISTRY: tuple[_SignalRegistryEntry, ...] = (
             "samples each) — too sparse to trust yet."
         ),
         backlog_ref="CROSS-CITY RECENT-ERROR POOLING",
+    ),
+    _SignalRegistryEntry(
+        key="rain_forecast_blend",
+        name="Rain monthly-model short-range forecast blend",
+        sample_floor=20,  # matches _RAIN_GATE_MIN_SAMPLES's own floor for this market family
+        count_fn=_count_signal_json_key(
+            "rain_forecast_blend_prob", require_settled_temp=False
+        ),
+        correlation_note=(
+            "Once enough settled monthly-rain predictions carry this signal, "
+            "compare rain_forecast_blend_prob's calibration/Brier score "
+            "against the existing bootstrap-only forecast_prob on the same "
+            "settled tickets -- only wire into blended_prob if it's a real "
+            "improvement, not just different."
+        ),
+        backlog_ref="RAIN MARKETS -- MONTHLY MODEL HAS NO DAY-SPECIFIC FORECAST SIGNAL",
     ),
 )
 
@@ -6802,6 +6848,142 @@ def _fetch_ensemble_precip(
     return results
 
 
+def _fetch_ensemble_precip_multiday(
+    lat: float, lon: float, tz: str, start_date: date, end_date: date
+) -> list[float] | None:
+    """
+    Fetch ensemble precipitation member TOTALS (inches) summed across every
+    date in [start_date, end_date] (inclusive) that Open-Meteo's 16-day
+    ensemble forecast actually covers. Same models/weighting/circuit-breaker
+    as _fetch_ensemble_precip (backlog.txt "RAIN MARKETS -- MONTHLY MODEL HAS
+    NO DAY-SPECIFIC FORECAST SIGNAL"), but keeps every day's values instead
+    of indexing out one date -- a natural extension of that function's own
+    16-day fetch, not new API surface.
+
+    Member ordinal is stable across days within one model's response
+    (confirmed live 2026-07-28: precipitation_sum_memberNN is a single array
+    aligned to the shared `time` array -- i.e. one continuous simulated
+    trajectory's day-by-day values, not independently-shuffled per-day), so
+    summing by member index across days is a real per-trajectory total, not
+    an independent-day approximation.
+
+    Returns one float per (model, member) pair -- e.g. icon_seamless's ~30
+    members + gfs_seamless's ~30 members + ecmwf_ifs025 weighted 2x/3x,
+    mirroring _fetch_ensemble_precip's exact model list/weighting. Returns
+    None if no model has a member covering the ENTIRE requested range (fully
+    outside forecast horizon, every model's own horizon shorter than the
+    request, or total fetch failure) -- caller must treat this as "no
+    forecast signal available," never coerce to 0.
+
+    Full-coverage-only, deliberately: Open-Meteo pads a model's response
+    with a full-length `time` array even past that model's OWN real forecast
+    horizon, filling the tail with null values rather than truncating the
+    array (confirmed live 2026-07-28 -- icon_seamless's real horizon for a
+    16-day Denver request was only 7 days, ecmwf_ifs025's was 14, both
+    padded to 16 with nulls). A member with only partial non-null coverage
+    of the requested range would silently sum a SHORTER window than every
+    other member -- pooling that truncated total with full-window totals as
+    if they were the same quantity would bias the signal (opus-review-caught
+    2026-07-28, verified with a live API call: this is not a hypothetical
+    edge case, it is the normal shape of a real response for the exact
+    ~2-week windows this function is actually called with). Only members
+    with a full, non-null value on every requested day are counted; a model
+    whose own horizon doesn't reach the far end of the range contributes
+    zero members, exactly as if it had no data for the range at all.
+
+    Never raises -- every per-model call has the same catch-and-degrade
+    shape as _fetch_ensemble_precip's own _fetch_model closure, so one dead
+    model just means fewer members, not a blown-up call.
+    """
+    _cache_key = (lat, lon, start_date.isoformat(), end_date.isoformat())
+    _cached = _PRECIP_ENSEMBLE_MULTIDAY_CACHE.get(_cache_key)
+    if _cached is not None:
+        return _cached
+
+    n_days = (end_date - start_date).days + 1
+    results: list[float] = []
+    prefix = "precipitation_sum_member"
+    date_in_range = False
+
+    def _fetch_model_totals(model: str) -> list[float]:
+        nonlocal date_in_range
+        if _ensemble_cb.is_open():
+            _log.debug(
+                "[CircuitBreaker] open_meteo circuit open — skipping multiday ensemble fetch"
+            )
+            return []
+        try:
+            params = {
+                "latitude": lat,
+                "longitude": lon,
+                "models": model,
+                "daily": "precipitation_sum",
+                "precipitation_unit": "inch",
+                "timezone": tz,
+                "forecast_days": 16,
+            }
+            resp = _om_request("GET", ENSEMBLE_BASE, params=params, timeout=12)
+            resp.raise_for_status()
+            daily = resp.json().get("daily", {})
+            times = daily.get("time", [])
+            in_range_idx = [
+                i
+                for i, t in enumerate(times)
+                if start_date <= date.fromisoformat(t) <= end_date
+            ]
+            if not in_range_idx:
+                _ensemble_cb.record_success()
+                return []
+            member_keys = [k for k in daily if k.startswith(prefix)]
+            all_vals_in_range = [
+                daily[k][i]
+                for k in member_keys
+                for i in in_range_idx
+                if i < len(daily[k])
+            ]
+            if is_all_null(all_vals_in_range):
+                raise ValueError(
+                    f"model {model} returned all-null precip members for "
+                    "requested range (dead model?)"
+                )
+            _ensemble_cb.record_success()
+            totals = []
+            for k in member_keys:
+                vals = daily[k]
+                member_vals = [vals[i] for i in in_range_idx if i < len(vals)]
+                non_null = [v for v in member_vals if v is not None]
+                # Full coverage only -- see docstring. A model whose own
+                # horizon is shorter than the request contributes nothing,
+                # not a truncated (and therefore biased-low) total.
+                if len(non_null) == n_days and len(in_range_idx) == n_days:
+                    totals.append(sum(non_null))
+            if totals:
+                date_in_range = True
+            return totals
+        except Exception as _exc:
+            _ensemble_cb.record_failure()
+            _log.info(
+                "open_meteo_ensemble_multiday: failure #%d (model=%s) — %s: %s",
+                _ensemble_cb.failure_count,
+                model,
+                type(_exc).__name__,
+                _exc,
+            )
+            return []
+
+    for model in ENSEMBLE_MODELS:
+        results.extend(_fetch_model_totals(model))
+
+    ecmwf_totals = _fetch_model_totals("ecmwf_ifs025")
+    ecmwf_mult = 3 if end_date.month in (10, 11, 12, 1, 2, 3) else 2
+    results.extend(ecmwf_totals * ecmwf_mult)
+
+    if not results and not date_in_range:
+        return None
+    _PRECIP_ENSEMBLE_MULTIDAY_CACHE.set(_cache_key, results)
+    return results
+
+
 def _analyze_precip_trade(
     enriched: dict, forecast: dict, condition: dict, target_date: date, coords: tuple
 ) -> dict | None:
@@ -7345,6 +7527,60 @@ def _analyze_monthly_rain_trade(
     )
 
     threshold = condition["threshold"]
+
+    # New: day-specific short-range forecast signal (backlog.txt "RAIN MARKETS
+    # -- MONTHLY MODEL HAS NO DAY-SPECIFIC FORECAST SIGNAL"). Shadow/log-only,
+    # matching every other new signal's SIGNAL_REGISTRY rollout in this
+    # codebase -- computed and logged here, but forecast_prob/blended_prob
+    # below is untouched; a future pass wires this in only once enough settled
+    # predictions validate it. Scoped to remaining windows that fit entirely
+    # inside Open-Meteo's 16-day forecast horizon -- when the remaining window
+    # exceeds that (early-month tickets), the signal is simply not computed
+    # this cycle, no fabrication, no historical-tail blending yet (deferred to
+    # a future pass). Defensive try/except: a bug here must only ever cost
+    # this new signal, never the existing bootstrap-only analysis below.
+    # Opus review (2026-07-28) flagged that constructing remaining_start_date/
+    # remaining_end_date outside the try below would propagate an uncaught
+    # ValueError if the remaining_start_day<=days_in_month guard were ever
+    # weakened by a future edit (remaining_start_day==days_in_month+1 is a
+    # real, reachable value in the "already past month-end" branch above) --
+    # not a live bug today (the guard correctly prevents it), but moved
+    # inside the try anyway as belt-and-suspenders, matching this block's
+    # own stated contract: a bug here must only ever cost this new signal,
+    # never the existing bootstrap-only analysis below.
+    forecast_blend_signal: dict[str, float] | None = None
+    try:
+        remaining_end_date = date(year, month, days_in_month)
+        remaining_start_date = (
+            date(year, month, remaining_start_day)
+            if remaining_start_day <= days_in_month
+            else None
+        )
+        if (
+            remaining_start_date is not None
+            and (remaining_end_date - today_local).days <= 15
+        ):
+            member_totals = _fetch_ensemble_precip_multiday(
+                lat, lon, tz, remaining_start_date, remaining_end_date
+            )
+            if member_totals is not None and len(member_totals) >= 15:
+                # >=15 matches bootstrap_ci_month_total's own "trust this as
+                # a distribution" bar.
+                forecast_blend_prob = sum(
+                    1 for m in member_totals if month_to_date_actual + m > threshold
+                ) / len(member_totals)
+                forecast_blend_signal = {
+                    "rain_forecast_blend_prob": max(
+                        0.01, min(0.99, forecast_blend_prob)
+                    ),
+                }
+    except Exception as _fb_exc:
+        _log.warning(
+            "_analyze_monthly_rain_trade[%s]: forecast-blend signal skipped: %s",
+            ticker,
+            _fb_exc,
+        )
+
     totals = [month_to_date_actual + s for s in remaining_sums_tilted]
     ens_prob = sum(1 for t in totals if t > threshold) / len(totals)
     blended_prob = max(0.01, min(0.99, ens_prob))
@@ -7454,6 +7690,11 @@ def _analyze_monthly_rain_trade(
         "month_to_date_actual": round(month_to_date_actual, 3),
         "n_historical_years": len(remaining_sums),
         "seasonal_tilt_applied": tilt_applied,
+        **(
+            {"signals": forecast_blend_signal}
+            if forecast_blend_signal is not None
+            else {}
+        ),
     }
 
 

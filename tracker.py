@@ -1957,7 +1957,11 @@ def count_settled_below_predictions() -> int:
 
 
 def count_settled_signal_rows(
-    column: str | None = None, *, json_key: str | None = None, multiday: bool = False
+    column: str | None = None,
+    *,
+    json_key: str | None = None,
+    multiday: bool = False,
+    require_settled_temp: bool = True,
 ) -> int:
     """Count settled predictions with a non-NULL value for a logged signal.
 
@@ -1991,6 +1995,19 @@ def count_settled_signal_rows(
     liquidity gate with no days_out restriction) — using the multiday view
     there would silently undercount real same-day samples, not just guard
     against noise.
+
+    require_settled_temp=False drops the settled_temp_f requirement entirely
+    -- pass this for a signal whose market family never populates that
+    column in the first place (e.g. KXRAIN*M monthly-rain rows, which write
+    settled_value not settled_temp_f -- see audit_settlement()'s own rain
+    branch). Leaving the default True for such a signal doesn't just
+    undercount, it makes the count permanently 0 regardless of how much real
+    settled data accumulates, since settled_temp_f can never be non-NULL for
+    that row -- a bug initially caught by opus review 2026-07-28 (found the
+    exact same class of gap count_settled_rain_predictions() above already
+    exists specifically to avoid, by having no settled_temp_f filter at
+    all). Matches count_settled_rain_predictions()'s own join exactly when
+    False.
     """
     if (column is None) == (json_key is None):
         raise ValueError(
@@ -2001,12 +2018,14 @@ def count_settled_signal_rows(
         where = f"json_extract(p.signal_values, '$.{json_key}') IS NOT NULL"
     else:
         where = f"p.{column} IS NOT NULL"
+    if require_settled_temp:
+        where += " AND o.settled_temp_f IS NOT NULL"
     table = "multiday_predictions" if multiday else "predictions"
     with _conn() as con:
         row = con.execute(
             f"SELECT COUNT(*) FROM {table} p "
             "JOIN outcomes_valid o ON p.ticker = o.ticker "
-            f"WHERE {where} AND o.settled_temp_f IS NOT NULL"
+            f"WHERE {where}"
         ).fetchone()
     return row[0] if row else 0
 

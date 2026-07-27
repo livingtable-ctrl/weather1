@@ -191,8 +191,11 @@ When to revisit:
   before live trading -- not urgent, since the underlying clobber bug that
   motivated all of this is now fixed.
 
-[OPEN 2026-07-27 -- confirmed live via 3 consecutive cron runs, root-caused,
-  not yet fixed]
+[PARTIALLY RESOLVED 2026-07-28 -- near-term (<=16-day) ensemble forecast
+  signal shipped, shadow/log-only; see resolution note at the end of this
+  entry. Still open: the >16-day historical-tail-blend case, and the actual
+  graduation decision (does this signal correlate with real settlements
+  well enough to change forecast_prob)]
   RAIN MARKETS -- MONTHLY MODEL HAS NO DAY-SPECIFIC FORECAST SIGNAL
 Priority: Medium -- shadow-only today (RAIN_TRADING_ENABLED gate +
   TRADING_PAUSED both mean nothing sizes off this yet), but should be
@@ -257,6 +260,131 @@ When to revisit:
   trades. No live cost today (shadow-only + TRADING_PAUSED), but this is
   exactly the class of gap Step 2's own handoff predicted (item 1's
   "mean-only" caveat) and now has 3 days of live confirmation behind it.
+
+RESOLVED (partially) 2026-07-28: shipped the near-term case -- when a
+  ticket's entire remaining accrual window fits inside Open-Meteo's 16-day
+  forecast horizon (exactly the situation in every 2026-07-27 divergent
+  ticket), a real ensemble forecast is now fetched and logged as a
+  candidate signal. Deliberately shadow/log-only, matching every other new
+  signal's `SIGNAL_REGISTRY` rollout in this codebase (`run_trend`,
+  `market_implied_distribution`, etc.): `_analyze_monthly_rain_trade()`'s
+  actual returned `forecast_prob`/pricing/CI/sizing is completely
+  unchanged -- this only adds a `signals: {"rain_forecast_blend_prob": ...}`
+  key to the result dict for future validation, a new `rain_forecast_blend`
+  entry in `SIGNAL_REGISTRY` (10th entry, floor=20 settled predictions,
+  tracked via `py main.py signals`), and nothing else.
+  New `weather_markets._fetch_ensemble_precip_multiday()`: extends
+  `_fetch_ensemble_precip`'s existing single-day ensemble fetch (same
+  models/weighting/circuit breaker/host) to keep the full 16-day response
+  instead of indexing out one date, summing each ensemble member's values
+  across the requested date range. Member-index stability across days was
+  confirmed live (2026-07-28, direct Open-Meteo API call) before relying on
+  it: `precipitation_sum_memberNN` is one continuous simulated trajectory's
+  day-by-day values within a single response, not independently-shuffled
+  per-day, so summing by member index is a real per-trajectory total.
+  Scope deliberately limited to the forecast-covered case only -- when the
+  remaining window exceeds 16 days (early-month tickets), the signal is
+  simply not computed this cycle. No historical-tail blending, no reuse of
+  the SEAS5 tilt machinery for a partial-coverage case. That's the next
+  increment, not this one, matching this project's established pattern of
+  shipping in size-appropriate steps.
+  A plan-review pass (10 rounds, user-requested) before any code was
+  written caught 4 real issues: the originally-planned insertion point
+  preceded where `threshold` is defined (would have been a `NameError`);
+  the planned `count_fn` used a raw lambda instead of this codebase's own
+  established closure-factory convention (fixed by adding
+  `_count_signal_json_key`, mirroring `_count_signal_column`); the plan
+  assumed a `result_dict` variable to mutate that doesn't exist (the
+  function returns a dict literal directly, fixed via conditional
+  dict-unpacking); and the new fetch call needed an explicit defensive
+  try/except (a bug in new code must only ever cost the new signal, never
+  the already-working bootstrap-only analysis it sits next to).
+  Mutation-testing during first-pass implementation caught a real vacuous
+  test (the "remaining window exceeds 16 days" test used a raising mock,
+  silently swallowed by the new try/except regardless of whether the real
+  scope-boundary check was correct -- fixed by switching to a call-counter)
+  and 2 pre-existing test files with a hardcoded registry-size assertion
+  needing an update to 10, not just new tests for the new signal
+  (`test_forecasting.py`'s `test_registry_has_9_entries...`, renamed not
+  just bumped, since its own name encodes the count and this project
+  already hit the identical stale-count-name bug once before, SIGNAL
+  GRADUATION session 2026-07-25; and
+  `test_real_registry_entries_all_resolve_against_a_real_empty_db`).
+
+  Independent `Agent(opus, effort=high)` review of the first-pass
+  implementation, before push, found it was NOT safe to ship -- 3 real
+  HIGH-severity issues, all fixed:
+  (H1) `count_settled_signal_rows(json_key=...)`'s query unconditionally
+  required `o.settled_temp_f IS NOT NULL`, but KXRAIN*M rows never populate
+  that column (they write `settled_value` instead, confirmed against
+  `count_settled_rain_predictions()`'s own join, which has no such filter
+  for exactly this reason) -- meaning the new registry entry's count would
+  have stayed permanently 0 regardless of how much real settled data
+  accumulated, silently defeating the entire point of the shadow rollout.
+  Fixed with a new `require_settled_temp: bool = True` parameter on
+  `count_settled_signal_rows()` (tracker.py), `False` for this entry only,
+  verified live end-to-end (a real settled prediction + signal now counts
+  1, not 0, both via the tracker function directly and via the actual
+  `SIGNAL_REGISTRY` entry's `count_fn()`).
+  (H2) Open-Meteo pads a model's response with a FULL-length `time` array
+  past that model's own real forecast horizon, filling the tail with
+  nulls rather than truncating the array -- confirmed live (2026-07-28,
+  direct API call): for a 16-day Denver request, `icon_seamless`'s real
+  horizon was only 7 days and `ecmwf_ifs025`'s only 14. The first-pass
+  `is_all_null` guard only caught a fully-null model, not a
+  partially-covering one, so short-horizon members' truncated (and
+  therefore systematically low) totals were being pooled with full-window
+  totals as if equivalent -- for the exact ~2-week windows this feature
+  actually runs against, not a rare edge case. Fixed by requiring a member
+  to have a non-null value on every single requested day to be counted at
+  all; a model whose horizon falls short contributes zero members instead
+  of a biased partial one.
+  (H3) The flagship end-to-end test's mocked members (1.0-6.0in) never
+  exceeded its own 7.0in threshold even before the (also-omitted)
+  month-to-date term, so its one probability assertion always landed on
+  the 0.01 clamp floor regardless of whether the real formula was even
+  used -- mutation-verified vacuous against both a wrong mtd term and the
+  entire computation replaced with a hardcoded 0.0. Fixed with members
+  straddling the threshold and a real non-zero month-to-date mock, plus an
+  explicit self-check that the fixture lands strictly inside the clamp
+  range.
+  4 more MEDIUM/LOW findings, all addressed: the 16-day boundary itself
+  had no dedicated test (mutation-verified 3 different wrong boundary
+  values all passed unnoticed) -- added two boundary-exact tests; no test
+  pinned the actual date range passed to the fetch (an off-by-one or
+  swapped coords would've been invisible) -- added call-argument
+  assertions; the reachable-but-untested "ticket checked after month-end"
+  branch had its `date()` construction outside the try/except (not a live
+  bug today -- the existing guard prevents it -- but fragile against a
+  future edit) -- moved inside the try as belt-and-suspenders, added a
+  regression test (using a direct `_analyze_monthly_rain_trade()` call
+  with an explicit `close_dt`, not `analyze_trade()`'s wall-clock-derived
+  close_time, to avoid the same real-vs-frozen-clock race this project's
+  own `test_bias_correction_keyed_on_close_dt_month_not_accrual_month`
+  already sidesteps); and a circuit-breaker test asserted only the final
+  `None` return, not that a failure was actually recorded (a later
+  same-cycle success on the unconditional ECMWF call was silently
+  resetting the counter before the assertion) -- fixed to make every model
+  fail and assert the failure count actually moved. Every fix above was
+  itself mutation-tested (reverted, confirmed the corresponding test
+  fails, restored) and re-verified live against the real API and a real
+  isolated DB, not just against mocks.
+  17 new/updated tests total: 14 new in `test_rain_markets.py`, 1 new in
+  `test_tracker.py` pinning the `require_settled_temp` fix directly, and 2
+  pre-existing `test_forecasting.py` tests updated for the registry-size
+  change. Every new test mutation-tested
+  against a reverted version of the real fix (kept a backup outside the
+  repo and swapped via direct file copy, not `git checkout`, after an
+  earlier mishap this same session where `git checkout -- <file>` was used
+  mid mutation-test and wiped an entire file's real uncommitted work, not
+  just the intended mutation -- see [[feedback_mutation_test_safe_revert]]).
+  Full scoped regression (483 tests: `test_rain_markets.py`,
+  `test_forecasting.py`, `test_tracker.py`, `test_infrastructure.py`) plus
+  a broader sweep (`test_weather_markets.py`, `test_price_and_size.py`,
+  `test_city_registry_manifest.py`, 253 more) all pass; ruff + ruff format
+  + mypy clean on every touched file (`weather_markets.py`, `tracker.py`,
+  `tests/test_rain_markets.py`, `tests/test_forecasting.py`,
+  `tests/test_tracker.py`).
 
 [RESOLVED 2026-07-26 -- explicit guard shipped; the real count/category
   probability model is still unbuilt, see "When to revisit" below]

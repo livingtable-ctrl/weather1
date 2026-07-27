@@ -5421,6 +5421,32 @@ class TestSignalGraduationCounters(unittest.TestCase):
         self._log_settled("C", signals=None)  # no signals dict at all
         self.assertEqual(tracker.count_settled_signal_rows(json_key="foo"), 1)
 
+    def test_count_settled_signal_rows_require_settled_temp_false_counts_rows_without_temp(
+        self,
+    ):
+        """Opus-review-caught bug (2026-07-28): the default
+        require_settled_temp=True makes the count permanently 0 for a
+        signal whose market family never populates settled_temp_f at all
+        (e.g. KXRAIN*M monthly-rain rows, which write settled_value
+        instead -- see count_settled_rain_predictions()'s own join, which
+        has no settled_temp_f filter for exactly this reason). Proves
+        require_settled_temp=False actually counts such a row, and that
+        the default still excludes it (the parameter genuinely matters,
+        not just present-but-inert)."""
+        self._log_settled(
+            "A", signals={"rain_forecast_blend_prob": 0.42}, settled_temp_f=None
+        )
+        self.assertEqual(
+            tracker.count_settled_signal_rows(json_key="rain_forecast_blend_prob"),
+            0,
+        )
+        self.assertEqual(
+            tracker.count_settled_signal_rows(
+                json_key="rain_forecast_blend_prob", require_settled_temp=False
+            ),
+            1,
+        )
+
     def test_count_settled_signal_rows_requires_exactly_one_of_column_json_key(self):
         with self.assertRaises(ValueError):
             tracker.count_settled_signal_rows()

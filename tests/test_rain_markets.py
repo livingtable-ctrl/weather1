@@ -10,7 +10,9 @@ Tests for backlog.txt "RAIN / SNOW / HURRICANE MARKETS":
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
+
+import pytest
 
 
 def _rain_market(
@@ -674,6 +676,567 @@ class TestAnalyzeMonthlyRainTradeEndToEnd:
         )
 
         assert wm.analyze_trade(m) is None
+
+
+class TestRainForecastBlendSignal:
+    """backlog.txt "RAIN MARKETS -- MONTHLY MODEL HAS NO DAY-SPECIFIC
+    FORECAST SIGNAL": the new shadow/log-only ensemble-forecast blend.
+    Never changes forecast_prob/method/ci_low/ci_high/pricing -- only adds
+    (or omits) a "signals" key on the result dict."""
+
+    def _history_all_years_value(self, value, years=20, month=7, days_in_month=31):
+        return {
+            2000 + y: {month * 100 + d: value for d in range(1, days_in_month + 1)}
+            for y in range(years)
+        }
+
+    def _pin_today(self, monkeypatch, day):
+        """Freeze weather_markets.datetime.now() to 2026-07-<day> 12:00,
+        honoring the requested tz (same discipline as
+        TestAnalyzeMonthlyRainTradeEndToEnd's own _FakeDT -- an opus review
+        already caught a version of this that silently returned UTC
+        regardless of tz)."""
+
+        class _FakeDT(datetime):
+            @classmethod
+            def now(cls, tz=None):
+                return (
+                    datetime(2026, 7, day, 12, 0, tzinfo=tz)
+                    if tz
+                    else datetime(2026, 7, day, 12, 0, tzinfo=UTC)
+                )
+
+        monkeypatch.setattr("weather_markets.datetime", _FakeDT)
+
+    def _mock_acis(self, monkeypatch, years=20):
+        monkeypatch.setattr("acis_precip._station_sid_for_city", lambda city: "DEN")
+        monkeypatch.setattr(
+            "acis_precip.fetch_month_to_date_actual",
+            lambda sid, year, month, through_day: (0.0, 0),
+        )
+        monkeypatch.setattr(
+            "acis_precip.fetch_historical_daily",
+            lambda sid: self._history_all_years_value(1.0, years=years),
+        )
+        monkeypatch.setattr(
+            "acis_precip.fetch_seasonal_precip_mean_mm",
+            lambda lat, lon, tz, year, month: None,
+        )
+
+    def test_full_coverage_logs_signal_without_changing_forecast_prob(
+        self, monkeypatch
+    ):
+        """Remaining window (Jul 20-31 = 12 days) fits entirely inside the
+        16-day forecast horizon -- signal must be computed and logged, and
+        forecast_prob/method/ci_low/ci_high must be byte-identical to a run
+        with no ensemble mock at all (proves zero behavior change to the
+        existing bootstrap-only calculation)."""
+        import weather_markets as wm
+
+        m = _rain_market(
+            ticker="KXRAINDENM-26JUL-7", floor_strike=7, close_hours_from_now=5 * 24
+        )
+        m["_city"] = "Denver"
+        self._pin_today(monkeypatch, 20)
+        self._mock_acis(monkeypatch)
+        # Non-zero month-to-date so the mtd + member sum actually matters
+        # (opus-review-caught: the original version left mtd at _mock_acis's
+        # default 0.0, so the test's own hardcoded "0.0 +" expected-value
+        # formula couldn't have caught a wrong mtd term either).
+        monkeypatch.setattr(
+            "acis_precip.fetch_month_to_date_actual",
+            lambda sid, year, month, through_day: (2.0, 0),
+        )
+
+        # 30 members straddling the 7.0in threshold (mtd=2.0 + member must
+        # exceed 7.0, i.e. member > 5.0) -- members 4.0..18.5in, so roughly
+        # 90% cross and 10% don't. Opus-review-caught: the original members
+        # (1.0-6.0in) never exceeded 7.0 even before adding mtd, so the
+        # fraction was always 0 -> collapsed to the 0.01 clamp floor
+        # regardless of whether the real formula was even used (verified by
+        # mutation: replacing the whole computation with a hardcoded 0.0
+        # passed this assertion unchanged).
+        members = [4.0 + i * 0.5 for i in range(30)]  # 4.0..18.5in totals
+
+        calls = []
+
+        def _capture(*a, **kw):
+            calls.append(a)
+            return members
+
+        monkeypatch.setattr(wm, "_fetch_ensemble_precip_multiday", _capture)
+        result_with_blend = wm.analyze_trade(m)
+        # Opus-review-caught gap: no prior test pinned the actual date range
+        # passed to the fetch -- an off-by-one on remaining_start_day, or
+        # swapped lat/lon/tz, would have been invisible.
+        assert len(calls) == 1
+        called_lat, called_lon, called_tz, called_start, called_end = calls[0]
+        assert (called_lat, called_lon, called_tz) == wm.CITY_COORDS["Denver"]
+        assert called_start == date(2026, 7, 20)  # today itself, per _pin_today
+        assert called_end == date(2026, 7, 31)  # accrual month-end
+        assert result_with_blend is not None
+        assert "signals" in result_with_blend
+        expected_prob = sum(1 for v in members if 2.0 + v > 7.0) / len(members)
+        expected_prob = max(0.01, min(0.99, expected_prob))
+        assert 0.01 < expected_prob < 0.99, (
+            "test fixture itself must land strictly inside the clamp range "
+            "or this assertion can't distinguish a real computation from "
+            "the clamp floor/ceiling"
+        )
+        assert result_with_blend["signals"][
+            "rain_forecast_blend_prob"
+        ] == pytest.approx(expected_prob)
+
+        # Same scenario with the ensemble fetch failing (returns None) --
+        # forecast_prob/method/ci must match exactly, proving the new
+        # signal is purely additive and never perturbs the existing calc.
+        monkeypatch.setattr(
+            wm, "_fetch_ensemble_precip_multiday", lambda *a, **kw: None
+        )
+        result_no_blend = wm.analyze_trade(m)
+        assert result_no_blend is not None
+        assert "signals" not in result_no_blend
+        for key in ("forecast_prob", "method", "ci_low", "ci_high", "ci_width"):
+            assert result_with_blend[key] == result_no_blend[key], key
+
+    def test_remaining_window_exceeds_16_days_skips_signal(self, monkeypatch):
+        """Remaining window (Jul 1-31 = 31 days) exceeds the 16-day forecast
+        horizon -- the fetch must never even be attempted this cycle (no
+        partial-coverage complexity in this pass), and no signal is logged.
+
+        Uses a call-counter, not a raising mock: the new block wraps the
+        fetch in a defensive try/except (see test_fetch_exception_fails_
+        open_not_raised), which would silently swallow a raise and make a
+        raising-mock version of this test pass for the wrong reason even if
+        the scope-boundary check were deleted entirely -- mutation-tested
+        and confirmed vacuous in exactly that way before switching to this
+        counter-based version."""
+        import weather_markets as wm
+
+        m = _rain_market(
+            ticker="KXRAINDENM-26JUL-7", floor_strike=7, close_hours_from_now=5 * 24
+        )
+        m["_city"] = "Denver"
+        self._pin_today(monkeypatch, 1)
+        self._mock_acis(monkeypatch)
+
+        call_count = {"n": 0}
+
+        def _count_call(*a, **kw):
+            call_count["n"] += 1
+            return [3.0] * 20  # would produce a real signal if reached
+
+        monkeypatch.setattr(wm, "_fetch_ensemble_precip_multiday", _count_call)
+
+        result = wm.analyze_trade(m)
+        assert result is not None
+        assert call_count["n"] == 0, (
+            "_fetch_ensemble_precip_multiday must not be called when the "
+            "remaining window exceeds the 16-day forecast horizon"
+        )
+        assert "signals" not in result
+
+    def test_boundary_just_over_16_days_skips_fetch(self, monkeypatch):
+        """Opus-review-caught gap: only two widely-separated points (11 and
+        30 days via (remaining_end_date - today_local).days) were tested,
+        so the exact `<= 15` boundary itself had no real coverage
+        (mutation-verified: `<= 14`, `<= 16`, and `<= 25` all previously
+        passed the full suite unnoticed). today=Jul 15 -> remaining_end_date
+        (Jul 31) minus today = 16 days -- one past the boundary, must NOT
+        fetch."""
+        import weather_markets as wm
+
+        m = _rain_market(
+            ticker="KXRAINDENM-26JUL-7", floor_strike=7, close_hours_from_now=5 * 24
+        )
+        m["_city"] = "Denver"
+        self._pin_today(monkeypatch, 15)  # (Jul 31 - Jul 15).days == 16
+        self._mock_acis(monkeypatch)
+
+        call_count = {"n": 0}
+
+        def _count_call(*a, **kw):
+            call_count["n"] += 1
+            return None
+
+        monkeypatch.setattr(wm, "_fetch_ensemble_precip_multiday", _count_call)
+
+        result = wm.analyze_trade(m)
+        assert result is not None
+        assert call_count["n"] == 0, "16 days past today must NOT trigger a fetch"
+        assert "signals" not in result
+
+    def test_boundary_exactly_16_day_horizon_does_fetch(self, monkeypatch):
+        """Inverse of the above: today=Jul 16 -> (Jul 31 - Jul 16).days == 15,
+        exactly at the `<= 15` boundary -- must fetch."""
+        import weather_markets as wm
+
+        m = _rain_market(
+            ticker="KXRAINDENM-26JUL-7", floor_strike=7, close_hours_from_now=5 * 24
+        )
+        m["_city"] = "Denver"
+        self._pin_today(monkeypatch, 16)  # (Jul 31 - Jul 16).days == 15
+        self._mock_acis(monkeypatch)
+
+        call_count = {"n": 0}
+
+        def _count_call(*a, **kw):
+            call_count["n"] += 1
+            return None
+
+        monkeypatch.setattr(wm, "_fetch_ensemble_precip_multiday", _count_call)
+
+        result = wm.analyze_trade(m)
+        assert result is not None
+        assert call_count["n"] == 1, "15 days past today (the boundary) must fetch"
+
+    def test_ticket_checked_after_month_end_does_not_crash(self, monkeypatch):
+        """Opus-review-caught reachability: a July-accrual ticket can be
+        analyzed after the accrual month has ended but before the market
+        closes/finalizes (_analyze_monthly_rain_trade's own "already past
+        month-end" branch, remaining_start_day = days_in_month + 1). The new
+        block's date() construction must not raise in this real, reachable
+        state -- proves the belt-and-suspenders try/except placement (moved
+        inside per this same review) actually protects it, and that the
+        signal is correctly just absent rather than crashing the ticket.
+
+        Calls _analyze_monthly_rain_trade() directly with an explicit
+        close_dt, not through analyze_trade() (whose close_time is derived
+        from real wall-clock "now" + close_hours_from_now, independent of
+        this test's frozen "now" -- the two could races against each other
+        near a UTC day boundary and spuriously hit the past-close gate,
+        exactly the fragility TestAnalyzeMonthlyRainTradeEndToEnd's own
+        test_bias_correction_keyed_on_close_dt_month_not_accrual_month
+        already avoids for the identical reason)."""
+        import weather_markets as wm
+
+        class _FakeDT(datetime):
+            @classmethod
+            def now(cls, tz=None):
+                return (
+                    datetime(2026, 8, 2, 12, 0, tzinfo=tz)
+                    if tz
+                    else datetime(2026, 8, 2, 12, 0, tzinfo=UTC)
+                )
+
+        monkeypatch.setattr("weather_markets.datetime", _FakeDT)
+        self._mock_acis(monkeypatch)
+
+        call_count = {"n": 0}
+
+        def _count_call(*a, **kw):
+            call_count["n"] += 1
+            return None
+
+        monkeypatch.setattr(wm, "_fetch_ensemble_precip_multiday", _count_call)
+
+        enriched = {
+            "ticker": "KXRAINDENM-26JUL-7",
+            "title": "Rain in Denver in Jul 2026?",
+            "_city": "Denver",
+        }
+        condition = {"type": "precip_month_total", "threshold": 7.0}
+        coords = wm.CITY_COORDS["Denver"]
+        close_dt = datetime(2026, 8, 10, tzinfo=UTC)
+
+        result = wm._analyze_monthly_rain_trade(
+            enriched, condition, "Denver", coords, close_dt, days_out=8
+        )  # must not raise
+        assert result is not None
+        assert call_count["n"] == 0  # remaining_start_date is None in this branch
+        assert "signals" not in result
+
+    def test_ensemble_fetch_none_fails_open(self, monkeypatch):
+        """Fetch failure / fully-outside-horizon (returns None) must not
+        affect the trade decision at all -- no signal logged, everything
+        else unchanged."""
+        import weather_markets as wm
+
+        m = _rain_market(
+            ticker="KXRAINDENM-26JUL-7", floor_strike=7, close_hours_from_now=5 * 24
+        )
+        m["_city"] = "Denver"
+        self._pin_today(monkeypatch, 20)
+        self._mock_acis(monkeypatch)
+        monkeypatch.setattr(
+            wm, "_fetch_ensemble_precip_multiday", lambda *a, **kw: None
+        )
+
+        result = wm.analyze_trade(m)
+        assert result is not None
+        assert "signals" not in result
+
+    def test_thin_member_count_fails_open(self, monkeypatch):
+        """Fewer than 15 members (the bootstrap_ci_month_total-matching
+        trust floor) must fail open exactly like a None fetch result."""
+        import weather_markets as wm
+
+        m = _rain_market(
+            ticker="KXRAINDENM-26JUL-7", floor_strike=7, close_hours_from_now=5 * 24
+        )
+        m["_city"] = "Denver"
+        self._pin_today(monkeypatch, 20)
+        self._mock_acis(monkeypatch)
+        monkeypatch.setattr(
+            wm, "_fetch_ensemble_precip_multiday", lambda *a, **kw: [3.0] * 5
+        )
+
+        result = wm.analyze_trade(m)
+        assert result is not None
+        assert "signals" not in result
+
+    def test_fetch_exception_fails_open_not_raised(self, monkeypatch):
+        """A raw exception inside the ensemble fetch must be caught by the
+        new block's own defensive try/except -- never propagate up and take
+        down the whole (already-working) bootstrap-only analysis."""
+        import weather_markets as wm
+
+        m = _rain_market(
+            ticker="KXRAINDENM-26JUL-7", floor_strike=7, close_hours_from_now=5 * 24
+        )
+        m["_city"] = "Denver"
+        self._pin_today(monkeypatch, 20)
+        self._mock_acis(monkeypatch)
+
+        def _boom(*a, **kw):
+            raise RuntimeError("simulated unexpected failure")
+
+        monkeypatch.setattr(wm, "_fetch_ensemble_precip_multiday", _boom)
+
+        result = wm.analyze_trade(m)  # must not raise
+        assert result is not None
+        assert "signals" not in result
+        assert result["forecast_prob"] is not None  # existing calc unaffected
+
+
+class TestFetchEnsemblePrecipMultiday:
+    """Unit tests for _fetch_ensemble_precip_multiday itself, mocking
+    _om_request directly (mirrors test_weather_markets.py's existing
+    _fake_om_request pattern for sibling ensemble-fetch functions)."""
+
+    def _fake_resp(self, daily):
+        from unittest.mock import MagicMock
+
+        resp = MagicMock()
+        resp.raise_for_status.return_value = None
+        resp.json.return_value = {"daily": daily}
+        return resp
+
+    def test_sums_per_member_across_requested_range(self, monkeypatch):
+        from datetime import date
+
+        import weather_markets as wm
+
+        wm._PRECIP_ENSEMBLE_MULTIDAY_CACHE.clear()
+        wm._ensemble_cb.record_success()
+
+        def _fake_om_request(method, url, **kwargs):
+            model = kwargs.get("params", {}).get("models")
+            if model == "icon_seamless":
+                daily = {
+                    "time": ["2026-07-20", "2026-07-21", "2026-07-22"],
+                    "precipitation_sum_member01": [1.0, 2.0, 3.0],
+                    "precipitation_sum_member02": [0.5, 0.5, 0.5],
+                }
+            else:
+                daily = {
+                    "time": [],
+                }
+            return self._fake_resp(daily)
+
+        monkeypatch.setattr(wm, "_om_request", _fake_om_request)
+        monkeypatch.setattr(wm, "ENSEMBLE_MODELS", ["icon_seamless"])
+
+        totals = wm._fetch_ensemble_precip_multiday(
+            39.86,
+            -104.67,
+            "America/Denver",
+            date(2026, 7, 20),
+            date(2026, 7, 22),
+        )
+        assert totals is not None
+        assert sorted(totals) == pytest.approx(sorted([6.0, 1.5]))  # 1+2+3, 0.5*3
+        wm._PRECIP_ENSEMBLE_MULTIDAY_CACHE.clear()
+
+    def test_partial_coverage_member_excluded_not_truncated(self, monkeypatch):
+        """Opus-review-caught bug (2026-07-28, verified via a live Open-Meteo
+        API call): a model's response uses a FULL-length `time` array padded
+        with null values past that model's own real forecast horizon -- it
+        does NOT truncate the array. The original version of this function
+        summed whatever non-null values were present per member regardless
+        of count, so a member covering only 2 of 3 requested days (its
+        model's horizon fell short) got pooled as if its 2-day total were
+        equivalent to a full 3-day total from another member -- silently
+        biasing the whole signal low. This reproduces the real null-padded
+        shape directly (not the genuinely-short array this test used to
+        fake, which the real API doesn't produce) and proves the
+        short-horizon member is excluded entirely, not truncated-summed."""
+        import weather_markets as wm
+
+        wm._PRECIP_ENSEMBLE_MULTIDAY_CACHE.clear()
+        wm._ensemble_cb.record_success()
+
+        def _fake_om_request(method, url, **kwargs):
+            model = kwargs.get("params", {}).get("models")
+            if model == "icon_seamless":
+                daily = {
+                    # Full-length time array (real API shape) -- member01's
+                    # own horizon only reaches day 2 of 3, day 3 is null-
+                    # padded, not absent from the array.
+                    "time": ["2026-07-20", "2026-07-21", "2026-07-22"],
+                    "precipitation_sum_member01": [1.0, 2.0, None],
+                    "precipitation_sum_member02": [0.5, 0.5, 0.5],  # full coverage
+                }
+            else:
+                daily = {"time": []}
+            return self._fake_resp(daily)
+
+        monkeypatch.setattr(wm, "_om_request", _fake_om_request)
+        monkeypatch.setattr(wm, "ENSEMBLE_MODELS", ["icon_seamless"])
+
+        totals = wm._fetch_ensemble_precip_multiday(
+            39.86,
+            -104.67,
+            "America/Denver",
+            date(2026, 7, 20),
+            date(2026, 7, 22),
+        )
+        assert totals is not None
+        # member01 (partial coverage) excluded entirely; member02 (full
+        # coverage) is the only one counted, at its real 3-day total.
+        assert totals == pytest.approx([1.5])
+        wm._PRECIP_ENSEMBLE_MULTIDAY_CACHE.clear()
+
+    def test_genuinely_short_time_array_treated_same_as_no_coverage(self, monkeypatch):
+        """Belt-and-suspenders: even if a response's `time` array were
+        genuinely shorter than the requested range (not the real null-padded
+        shape, but defend against it anyway), every member must still be
+        excluded rather than summed over whatever's present."""
+        import weather_markets as wm
+
+        wm._PRECIP_ENSEMBLE_MULTIDAY_CACHE.clear()
+        wm._ensemble_cb.record_success()
+
+        def _fake_om_request(method, url, **kwargs):
+            model = kwargs.get("params", {}).get("models")
+            if model == "icon_seamless":
+                daily = {
+                    "time": ["2026-07-20", "2026-07-21"],  # only 2 of 3 requested days
+                    "precipitation_sum_member01": [1.0, 2.0],
+                }
+            else:
+                daily = {"time": []}
+            return self._fake_resp(daily)
+
+        monkeypatch.setattr(wm, "_om_request", _fake_om_request)
+        monkeypatch.setattr(wm, "ENSEMBLE_MODELS", ["icon_seamless"])
+
+        totals = wm._fetch_ensemble_precip_multiday(
+            39.86,
+            -104.67,
+            "America/Denver",
+            date(2026, 7, 20),
+            date(2026, 7, 22),
+        )
+        assert totals is None  # icon was the only model, contributed nothing
+        wm._PRECIP_ENSEMBLE_MULTIDAY_CACHE.clear()
+
+    def test_all_null_model_excluded_via_circuit_breaker_failure(self, monkeypatch):
+        """Opus-review-caught gap: the original version only made
+        icon_seamless all-null while ecmwf_ifs025 (unconditionally called
+        regardless of the ENSEMBLE_MODELS mock) returned an empty range and
+        called record_success() -- which resets _ensemble_cb's failure
+        counter, so the test could never actually observe that icon's
+        failure had been recorded, only that the final totals were None
+        (which an unrelated bug could also produce). Making EVERY model
+        respond all-null means the failure count survives to the final
+        assertion instead of being silently reset."""
+        from datetime import date
+
+        import weather_markets as wm
+
+        wm._PRECIP_ENSEMBLE_MULTIDAY_CACHE.clear()
+        wm._ensemble_cb.record_success()
+        _before = wm._ensemble_cb.failure_count
+
+        def _fake_om_request(method, url, **kwargs):
+            daily = {
+                "time": ["2026-07-20", "2026-07-21"],
+                "precipitation_sum_member01": [None, None],
+            }
+            return self._fake_resp(daily)
+
+        monkeypatch.setattr(wm, "_om_request", _fake_om_request)
+        monkeypatch.setattr(wm, "ENSEMBLE_MODELS", ["icon_seamless"])
+
+        totals = wm._fetch_ensemble_precip_multiday(
+            39.86,
+            -104.67,
+            "America/Denver",
+            date(2026, 7, 20),
+            date(2026, 7, 21),
+        )
+        assert totals is None  # every model was all-null -> nothing usable
+        assert wm._ensemble_cb.failure_count > _before, (
+            "all-null response must actually record a circuit-breaker "
+            "failure, not just happen to return None for an unrelated reason"
+        )
+        wm._PRECIP_ENSEMBLE_MULTIDAY_CACHE.clear()
+        wm._ensemble_cb.record_success()  # leave the shared breaker clean
+
+    def test_circuit_open_short_circuits_without_network_call(self, monkeypatch):
+        from datetime import date
+
+        import weather_markets as wm
+
+        wm._PRECIP_ENSEMBLE_MULTIDAY_CACHE.clear()
+        called = []
+
+        def _fake_om_request(method, url, **kwargs):
+            called.append(1)
+            raise AssertionError("must not be called while circuit is open")
+
+        monkeypatch.setattr(wm, "_om_request", _fake_om_request)
+        monkeypatch.setattr(wm._ensemble_cb, "is_open", lambda: True)
+
+        totals = wm._fetch_ensemble_precip_multiday(
+            39.86,
+            -104.67,
+            "America/Denver",
+            date(2026, 7, 20),
+            date(2026, 7, 21),
+        )
+        assert totals is None
+        assert called == []
+
+    def test_no_model_covers_range_returns_none(self, monkeypatch):
+        from datetime import date
+
+        import weather_markets as wm
+
+        wm._PRECIP_ENSEMBLE_MULTIDAY_CACHE.clear()
+        wm._ensemble_cb.record_success()
+
+        def _fake_om_request(method, url, **kwargs):
+            # Every model returns dates entirely outside the requested range.
+            daily = {
+                "time": ["2027-01-01"],
+                "precipitation_sum_member01": [1.0],
+            }
+            return self._fake_resp(daily)
+
+        monkeypatch.setattr(wm, "_om_request", _fake_om_request)
+        monkeypatch.setattr(wm, "ENSEMBLE_MODELS", ["icon_seamless"])
+
+        totals = wm._fetch_ensemble_precip_multiday(
+            39.86,
+            -104.67,
+            "America/Denver",
+            date(2026, 7, 20),
+            date(2026, 7, 21),
+        )
+        assert totals is None
+        wm._PRECIP_ENSEMBLE_MULTIDAY_CACHE.clear()
 
 
 class TestComputeMarketImpliedExcludesMonthlyRain:

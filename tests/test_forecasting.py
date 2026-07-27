@@ -1656,17 +1656,22 @@ class TestSignalGraduationRegistry:
         with pytest.raises(ValueError, match="KNOWN_FORECAST_MODEL_NAMES"):
             wm._count_model_obs("gem_glbal")  # typo, not gem_global
 
-    def test_registry_has_9_entries_matching_the_8_shipped_signal_topics(self):
+    def test_registry_has_10_entries_matching_the_9_shipped_signal_topics(self):
         import weather_markets as wm
 
-        # Locks in the retrofit scope agreed on when this was built: all 8
+        # Locks in the retrofit scope agreed on when this was built: all
         # already-shipped log-only signal *topics* from backlog.txt, not a
-        # partial/empty registry. 9 registry rows because GEM and UKMO
-        # graduate independently (their own correlation_note says so) even
-        # though both come from the single "GRADUATE GEM/UKMO" backlog entry.
-        assert len(wm.SIGNAL_REGISTRY) == 9
+        # partial/empty registry. Originally 9 rows / 8 topics (GEM and UKMO
+        # graduate independently -- their own correlation_note says so --
+        # even though both come from the single "GRADUATE GEM/UKMO" backlog
+        # entry); a 10th row / 9th topic ("rain_forecast_blend") was added
+        # 2026-07-28 for backlog.txt "RAIN MARKETS -- MONTHLY MODEL HAS NO
+        # DAY-SPECIFIC FORECAST SIGNAL". Renamed (not just bumped) per this
+        # project's own established convention of keeping a count-encoding
+        # test name truthful when the count changes.
+        assert len(wm.SIGNAL_REGISTRY) == 10
         backlog_refs = {e.backlog_ref for e in wm.SIGNAL_REGISTRY}
-        assert len(backlog_refs) == 8
+        assert len(backlog_refs) == 9
 
     def test_report_includes_every_registered_signal(self, monkeypatch, tmp_path):
         import weather_markets as wm
@@ -1804,11 +1809,11 @@ class TestSignalGraduationRegistry:
     def test_real_registry_entries_all_resolve_against_a_real_empty_db(
         self, monkeypatch, tmp_path
     ):
-        """End-to-end smoke test of the actual 9-entry registry (not a mocked
-        stand-in) against a real, empty, isolated DB -- proves every real
-        count_fn closure calls a real tracker function with valid arguments
-        and doesn't crash, and that an empty DB reads as 0/not-cleared for
-        every count-checkable entry."""
+        """End-to-end smoke test of the actual 10-entry registry (not a
+        mocked stand-in) against a real, empty, isolated DB -- proves every
+        real count_fn closure calls a real tracker function with valid
+        arguments and doesn't crash, and that an empty DB reads as
+        0/not-cleared for every count-checkable entry."""
         import tracker
         import weather_markets as wm
 
@@ -1819,7 +1824,7 @@ class TestSignalGraduationRegistry:
         )
 
         report = wm.get_signal_graduation_report()
-        assert len(report) == 9
+        assert len(report) == 10
         for row in report:
             if row["sample_floor"] is not None:
                 assert row["count"] == 0, row["key"]
