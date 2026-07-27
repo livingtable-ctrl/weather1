@@ -1,6 +1,73 @@
 BACKLOG — future improvements to implement when ready
 ======================================================
 
+[OPEN 2026-07-27 -- confirmed live via 3 consecutive cron runs, root-caused,
+  not yet fixed]
+  RAIN MARKETS -- MONTHLY MODEL HAS NO DAY-SPECIFIC FORECAST SIGNAL
+Priority: Medium -- shadow-only today (RAIN_TRADING_ENABLED gate +
+  TRADING_PAUSED both mean nothing sizes off this yet), but should be
+  looked at before the rain model is ever trusted for real sizing.
+
+Problem:
+  Cron's `check_market_anomalies()` flagged the same 2-3 rain tickers as
+  "price drifted against model" on 3 consecutive runs on 2026-07-27:
+  KXRAINSTPM-26JUL-8 (our 39-43% vs market 68-70%), KXRAINNYCM-26JUL-6
+  (our 7-10% vs market 30-44%), KXRAINNYCM-26JUL-7 (our 1-7% vs market
+  14-21%), plus one-off KXRAINCHIM-26JUL-4. Investigated live rather than
+  assuming a bug: reproduced `_analyze_monthly_rain_trade()`'s bootstrap by
+  hand against real ACIS data (month-to-date actual + 30yr remaining-days
+  history for NYC/StPetersburg/Chicago) and got raw pre-bias probabilities
+  matching cron's "our" values almost exactly (NYC >6in: 6.7% vs cron's 7%;
+  NYC >7in: 0.0% [never happened in 30 years] vs cron's 1%; StPetersburg
+  >8in: 42.9% vs cron's 39%; Chicago >4in: 7.1% vs cron's 7%) -- the model
+  is not malfunctioning, it's doing exactly what Step 2 (`1839d76`) built
+  it to do.
+  Root cause: the model's only "what's actually going to happen the rest of
+  this month" signal beyond the 30yr climatological bootstrap is Open-Meteo
+  Seasonal's ECMWF SEAS5 tilt, and that's a *monthly mean* only (already
+  flagged as a limitation in this file's own RAIN/SNOW/HURRICANE MARKETS
+  entry, Step 2 handoff item 1: "mean-only, no per-member spread ... can
+  adjust central tendency but can't itself supply distribution shape") --
+  it has no day-level resolution, so it structurally cannot see "a system
+  is forecast to bring heavy rain on day 29" the way a trader checking an
+  actual short-range forecast (or the market itself) can.
+  Pulled Open-Meteo's real 7-day `precipitation_sum` forecast live for the
+  divergent cities to check which side of each divergence looks right:
+    - NYC: forecast for the remaining accrual days (Jul 27-31) sums to only
+      ~0.87in -- nowhere near the 2.31in/3.31in still needed for rungs 6/7.
+      The real short-range forecast supports the model's LOW probability,
+      not the market's 30%/14% pricing -- on these two rungs the market
+      looks like the mispriced side (or reflects something about these
+      illiquid deep-OTM brackets this bot doesn't have visibility into),
+      not the model.
+    - St. Petersburg: forecast shows a building wet pattern right at
+      month's end (0/0/0.9/2.7/6.5mm Jul 27-31, continuing into 13.2mm Aug
+      1 -- just past this ticker's settlement), consistent with the
+      market's higher 68-70% price. This looks like real information the
+      climatology-only model can't see, not market noise.
+
+What the fix looks like (not yet designed in detail):
+  Blend a real short-range forecast signal for the remaining days of the
+  current accrual month into `_analyze_monthly_rain_trade()`, on top of
+  (not replacing) the 30yr empirical bootstrap -- Open-Meteo's regular
+  forecast API (already used elsewhere in this bot, ~16-day horizon) covers
+  "the rest of the month" for any ticker whose remaining days fit inside
+  that window, which is most of a typical month once a chunk of it has
+  already accrued. Needs its own design pass, not a mechanical wire-up:
+  how to combine a per-day deterministic/ensemble forecast total with the
+  bootstrap's right-skewed remaining-days resample (add the forecasted
+  near days as a fixed increment before resampling history only for the
+  tail beyond the forecast horizon?), and whether the existing SEAS5
+  monthly-mean tilt becomes redundant for the near-term portion once a
+  real day-level forecast is wired in (it would still be the only signal
+  for the tail beyond 16 days out, e.g. brackets checked early in a month).
+
+When to revisit:
+  Before `RAIN_TRADING_ENABLED`'s shadow gate is ever allowed to size real
+  trades. No live cost today (shadow-only + TRADING_PAUSED), but this is
+  exactly the class of gap Step 2's own handoff predicted (item 1's
+  "mean-only" caveat) and now has 3 days of live confirmation behind it.
+
 [RESOLVED 2026-07-26 -- explicit guard shipped; the real count/category
   probability model is still unbuilt, see "When to revisit" below]
   HURRICANE MARKETS -- EXPLICIT GUARD ADDED AFTER A CONFIRMED LIVE GAP
