@@ -24,9 +24,17 @@ def _rain_market(
     yes_ask=0.35,
     volume_fp=1000,
     open_interest_fp=1000,
+    now=None,
 ):
+    """`now`, if given, anchors close_time instead of real wall-clock time --
+    required whenever the caller also freezes weather_markets.datetime (via
+    _pin_today or an inline _FakeDT), so close_time stays fixed relative to
+    that frozen "today" rather than drifting apart from it as real time
+    passes (the exact fragility test_ticket_checked_after_month_end_does_not_
+    crash's docstring already calls out for callers that bypass this
+    helper entirely)."""
     close_time = (
-        (datetime.now(UTC) + timedelta(hours=close_hours_from_now))
+        ((now or datetime.now(UTC)) + timedelta(hours=close_hours_from_now))
         .isoformat()
         .replace("+00:00", "Z")
     )
@@ -432,10 +440,12 @@ class TestAnalyzeMonthlyRainTradeEndToEnd:
     def test_full_pipeline_produces_real_result(self, monkeypatch):
         import weather_markets as wm
 
+        frozen_now = datetime(2026, 7, 2, 12, 0, tzinfo=UTC)
         m = _rain_market(
             ticker="KXRAINDENM-26JUL-7",
             floor_strike=7,
             close_hours_from_now=5 * 24,
+            now=frozen_now,
         )
         m["_city"] = "Denver"
 
@@ -695,7 +705,13 @@ class TestRainForecastBlendSignal:
         honoring the requested tz (same discipline as
         TestAnalyzeMonthlyRainTradeEndToEnd's own _FakeDT -- an opus review
         already caught a version of this that silently returned UTC
-        regardless of tz)."""
+        regardless of tz).
+
+        Returns the frozen instant so callers can pass it to _rain_market()
+        as `now=`, keeping the market's close_time anchored to this same
+        frozen "today" instead of real wall-clock time (which drifts apart
+        from it as real time passes and eventually trips the days_out gate)."""
+        frozen_now = datetime(2026, 7, day, 12, 0, tzinfo=UTC)
 
         class _FakeDT(datetime):
             @classmethod
@@ -707,6 +723,7 @@ class TestRainForecastBlendSignal:
                 )
 
         monkeypatch.setattr("weather_markets.datetime", _FakeDT)
+        return frozen_now
 
     def _mock_acis(self, monkeypatch, years=20):
         monkeypatch.setattr("acis_precip._station_sid_for_city", lambda city: "DEN")
@@ -733,11 +750,14 @@ class TestRainForecastBlendSignal:
         existing bootstrap-only calculation)."""
         import weather_markets as wm
 
+        frozen_now = self._pin_today(monkeypatch, 20)
         m = _rain_market(
-            ticker="KXRAINDENM-26JUL-7", floor_strike=7, close_hours_from_now=5 * 24
+            ticker="KXRAINDENM-26JUL-7",
+            floor_strike=7,
+            close_hours_from_now=5 * 24,
+            now=frozen_now,
         )
         m["_city"] = "Denver"
-        self._pin_today(monkeypatch, 20)
         self._mock_acis(monkeypatch)
         # Non-zero month-to-date so the mtd + member sum actually matters
         # (opus-review-caught: the original version left mtd at _mock_acis's
@@ -813,11 +833,14 @@ class TestRainForecastBlendSignal:
         counter-based version."""
         import weather_markets as wm
 
+        frozen_now = self._pin_today(monkeypatch, 1)
         m = _rain_market(
-            ticker="KXRAINDENM-26JUL-7", floor_strike=7, close_hours_from_now=5 * 24
+            ticker="KXRAINDENM-26JUL-7",
+            floor_strike=7,
+            close_hours_from_now=5 * 24,
+            now=frozen_now,
         )
         m["_city"] = "Denver"
-        self._pin_today(monkeypatch, 1)
         self._mock_acis(monkeypatch)
 
         call_count = {"n": 0}
@@ -846,11 +869,14 @@ class TestRainForecastBlendSignal:
         fetch."""
         import weather_markets as wm
 
+        frozen_now = self._pin_today(monkeypatch, 15)  # (Jul 31 - Jul 15).days == 16
         m = _rain_market(
-            ticker="KXRAINDENM-26JUL-7", floor_strike=7, close_hours_from_now=5 * 24
+            ticker="KXRAINDENM-26JUL-7",
+            floor_strike=7,
+            close_hours_from_now=5 * 24,
+            now=frozen_now,
         )
         m["_city"] = "Denver"
-        self._pin_today(monkeypatch, 15)  # (Jul 31 - Jul 15).days == 16
         self._mock_acis(monkeypatch)
 
         call_count = {"n": 0}
@@ -871,11 +897,14 @@ class TestRainForecastBlendSignal:
         exactly at the `<= 15` boundary -- must fetch."""
         import weather_markets as wm
 
+        frozen_now = self._pin_today(monkeypatch, 16)  # (Jul 31 - Jul 16).days == 15
         m = _rain_market(
-            ticker="KXRAINDENM-26JUL-7", floor_strike=7, close_hours_from_now=5 * 24
+            ticker="KXRAINDENM-26JUL-7",
+            floor_strike=7,
+            close_hours_from_now=5 * 24,
+            now=frozen_now,
         )
         m["_city"] = "Denver"
-        self._pin_today(monkeypatch, 16)  # (Jul 31 - Jul 16).days == 15
         self._mock_acis(monkeypatch)
 
         call_count = {"n": 0}
@@ -952,11 +981,14 @@ class TestRainForecastBlendSignal:
         else unchanged."""
         import weather_markets as wm
 
+        frozen_now = self._pin_today(monkeypatch, 20)
         m = _rain_market(
-            ticker="KXRAINDENM-26JUL-7", floor_strike=7, close_hours_from_now=5 * 24
+            ticker="KXRAINDENM-26JUL-7",
+            floor_strike=7,
+            close_hours_from_now=5 * 24,
+            now=frozen_now,
         )
         m["_city"] = "Denver"
-        self._pin_today(monkeypatch, 20)
         self._mock_acis(monkeypatch)
         monkeypatch.setattr(
             wm, "_fetch_ensemble_precip_multiday", lambda *a, **kw: None
@@ -971,11 +1003,14 @@ class TestRainForecastBlendSignal:
         trust floor) must fail open exactly like a None fetch result."""
         import weather_markets as wm
 
+        frozen_now = self._pin_today(monkeypatch, 20)
         m = _rain_market(
-            ticker="KXRAINDENM-26JUL-7", floor_strike=7, close_hours_from_now=5 * 24
+            ticker="KXRAINDENM-26JUL-7",
+            floor_strike=7,
+            close_hours_from_now=5 * 24,
+            now=frozen_now,
         )
         m["_city"] = "Denver"
-        self._pin_today(monkeypatch, 20)
         self._mock_acis(monkeypatch)
         monkeypatch.setattr(
             wm, "_fetch_ensemble_precip_multiday", lambda *a, **kw: [3.0] * 5
@@ -991,11 +1026,14 @@ class TestRainForecastBlendSignal:
         down the whole (already-working) bootstrap-only analysis."""
         import weather_markets as wm
 
+        frozen_now = self._pin_today(monkeypatch, 20)
         m = _rain_market(
-            ticker="KXRAINDENM-26JUL-7", floor_strike=7, close_hours_from_now=5 * 24
+            ticker="KXRAINDENM-26JUL-7",
+            floor_strike=7,
+            close_hours_from_now=5 * 24,
+            now=frozen_now,
         )
         m["_city"] = "Denver"
-        self._pin_today(monkeypatch, 20)
         self._mock_acis(monkeypatch)
 
         def _boom(*a, **kw):
