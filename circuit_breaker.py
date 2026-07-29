@@ -72,11 +72,18 @@ class CircuitBreaker:
         if not self._persist:
             return
         try:
-            state = (
-                json.loads(_CB_STATE_PATH.read_text())
-                if _CB_STATE_PATH.exists()
-                else {}
-            )
+            # Must share _CB_STATE_FILE_LOCK with _save_state(): an unlocked
+            # read here can land mid-os.replace() of a concurrent locked
+            # write (e.g. a background fetch pool's record_success/failure
+            # firing while this instance is lazily constructed on first use),
+            # which raises a transient PermissionError on Windows and would
+            # otherwise silently reset this breaker's persisted state.
+            with _CB_STATE_FILE_LOCK:
+                state = (
+                    json.loads(_CB_STATE_PATH.read_text())
+                    if _CB_STATE_PATH.exists()
+                    else {}
+                )
             cb = state.get(self.name, {})
             self._failure_count = cb.get("failure_count", 0)
             self._trip_count = cb.get("trip_count", 0)

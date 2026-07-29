@@ -6,6 +6,7 @@ import importlib
 import json
 import shutil
 import tempfile
+import threading
 import time
 from datetime import date, timedelta
 from pathlib import Path
@@ -324,6 +325,56 @@ class TestCircuitBreakerPersistence:
             assert "source-b" in state
             assert state["source-a"]["failure_count"] == 2
             assert state["source-b"]["failure_count"] == 1
+        finally:
+            cb_mod._CB_STATE_PATH = orig
+
+    def test_load_state_blocks_on_save_lock(self):
+        """_load_state() must serialize on _CB_STATE_FILE_LOCK like _save_state().
+
+        Regression test: on Windows, an unlocked read racing a locked write's
+        os.replace() can raise a transient PermissionError, which _load_state()
+        swallows and silently resets the breaker to a fresh (closed) state.
+        This proves the read actually waits for an in-flight write to finish
+        rather than reading concurrently.
+        """
+        import circuit_breaker as cb_mod
+
+        orig = cb_mod._CB_STATE_PATH
+        cb_mod._CB_STATE_PATH = self._state_path
+
+        try:
+            cb1 = cb_mod.CircuitBreaker(
+                "race", failure_threshold=5, recovery_timeout=300
+            )
+            cb1.record_failure()
+
+            results = []
+            started = threading.Event()
+
+            def _construct():
+                started.set()
+                cb2 = cb_mod.CircuitBreaker(
+                    "race", failure_threshold=5, recovery_timeout=300
+                )
+                results.append(cb2.failure_count)
+
+            cb_mod._CB_STATE_FILE_LOCK.acquire()
+            try:
+                t = threading.Thread(target=_construct)
+                t.start()
+                assert started.wait(timeout=2), "construction thread never started"
+                time.sleep(0.2)
+                assert results == [], (
+                    "_load_state() proceeded without waiting for "
+                    "_CB_STATE_FILE_LOCK — read/write race is unguarded"
+                )
+            finally:
+                cb_mod._CB_STATE_FILE_LOCK.release()
+
+            t.join(timeout=2)
+            assert results == [1], (
+                f"expected failure_count=1 after reload, got {results}"
+            )
         finally:
             cb_mod._CB_STATE_PATH = orig
 
