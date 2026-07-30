@@ -2552,6 +2552,48 @@ RESOLVED 2026-07-21 (Rain Step 2 -- the real monthly-accumulation
   monthly settlement cadence (~10 cities x 1 settlement/city/month), much
   slower than hourly's.
 
+[OPEN -- split out 2026-07-30 from a mention buried inside the Rain Step 2
+  RESOLVED note above (item 4 of that entry's own 9-item handoff list) so
+  it doesn't get lost as a footnote inside someone else's "RESOLVED"
+  block] RAIN MARKETS -- LADDER/SIBLING GROUPING FOR MARKET-IMPLIED
+  DISTRIBUTION IS A BLANKET EXCLUSION, NOT REAL (city, month) GROUPING
+Priority: Low (log-only today, never gates a trading decision for any
+  market type -- confirmed at Step 2 ship time, re-confirm before picking
+  up in case that's changed).
+
+Problem:
+  weather_markets.compute_market_implied_distributions() and
+  consistency._group_markets() both give KXRAIN*M tickers a blanket
+  exclusion instead of real (city, month) sibling-ladder grouping -- unlike
+  temperature markets, which group correctly by (city, date). This means
+  the market-implied-distribution feature (backlog.txt "MARKET-IMPLIED
+  TEMPERATURE DISTRIBUTION FROM THE FULL LADDER") and consistency.py's
+  cross-market arbitrage check both silently skip every rain market,
+  rather than actually reasoning about rain's own ladder.
+
+What it would look like:
+  fit_market_implied_distribution()'s weighted-least-squares machinery was
+  confirmed (2026-07-21, at Rain Step 2 ship time) to be structurally
+  reusable -- it works off generic (lo, hi, mid_price, weight) tuples, not
+  anything temperature-specific -- but needs new sigma sanity bounds for an
+  inches scale (current bounds 0.1-50.0 are tuned for °F, not precip
+  inches). NYC's rain ladder has only 4 brackets vs. Denver's 7 (a real
+  Kalshi listing choice, confirmed via settled history, cross-checked
+  against this file's own Rain Step 2 resolution note) -- any
+  implementation must handle variable ladder sizes, not assume every city
+  has the same bracket count.
+
+Why not now:
+  User-approved scope cut at Rain Step 2 ship time (2026-07-21): confirmed
+  log-only with zero live trading impact today, so it was deliberately
+  deferred rather than expanding that already-large change further.
+
+When to revisit:
+  Whenever market-implied-distribution or consistency-check coverage for
+  rain specifically becomes valuable enough to justify the sigma-bounds
+  redesign -- not gated on any data floor or external trigger, purely a
+  "is this worth doing yet" call.
+
 RESOLVED 2026-07-26 (St. Petersburg onboarding -- the 11th rain city; snow
   and hurricane remain the only fully open items in this entry): picked up
   as the "smallest/most contained" of 3 ready candidates surfaced at session
