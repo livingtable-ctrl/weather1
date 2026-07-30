@@ -128,6 +128,17 @@ def test_series_ticker_fully_covered():
     assert not missing, f"City/cities missing a working series ticker: {missing}"
 
 
+def test_wfo_office_fully_covered():
+    """Registry #9 (backlog.txt "NWS AFD PARSING" / "PER-CITY KNOWLEDGE
+    SCATTERED") -- also not in _KNOWN_GAPS, since it was built and
+    live-verified for all 21 cities in the same pass that added this check
+    (nws_afd.CITY_WFO_OFFICE). A future city addition that forgets to add a
+    WFO entry should fail here, not silently degrade."""
+    report = city_registry_report()
+    missing = [c for c, checks in report.items() if not checks["wfo_office"]]
+    assert not missing, f"City/cities missing a WFO office mapping: {missing}"
+
+
 def test_temperature_market_cities_excludes_rain_only_cities():
     """Regression guard for a real bug found by opus review on the
     2026-07-26 St. Petersburg onboarding: backtest.py's own per-city

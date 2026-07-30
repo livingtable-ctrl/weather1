@@ -20,6 +20,7 @@ All commands: `py main.py <command> [args]`
 | `market <TICKER>` | Show details for a single market |
 | `market <TICKER> --verbose` | Show full market data including order book |
 | `forecast <city>` | Show ensemble forecast for a city (e.g. `forecast NYC`) |
+| `afd <city>` | Show the current NWS Area Forecast Discussion for a city's WFO (fetch/display only, no scoring yet) |
 | `browse` | Browse all open markets by city with live prices |
 | `analyze` | Scan markets and score edges — shows top 50 regardless of threshold |
 | `analyze --edge 12` | Same but override minimum edge threshold (number = percent) |

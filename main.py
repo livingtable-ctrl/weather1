@@ -3287,6 +3287,37 @@ def cmd_forecast(city: str):
         pass
 
 
+def cmd_afd(city: str) -> None:
+    """Print the current NWS Area Forecast Discussion for a city (backlog.txt
+    "NWS AFD (AREA FORECAST DISCUSSION) PARSING" -- infra-only pass: fetch
+    and display only, no confidence/lean scoring yet).
+    """
+    from nws_afd import CITY_WFO_OFFICE, fetch_afd_discussion
+
+    if city not in CITY_WFO_OFFICE:
+        print(
+            red(
+                f"Unknown city '{city}'.  Available: "
+                f"{', '.join(CITY_WFO_OFFICE.keys())}"
+            )
+        )
+        return
+
+    office = CITY_WFO_OFFICE[city]
+    discussion = fetch_afd_discussion(city)
+    if discussion is None:
+        print(
+            yellow(
+                f"\n  No narrative discussion available right now for AFD{office} "
+                "(fetch failed, or today's bulletin doesn't include one of the "
+                "known narrative sections -- see nws_afd.py's module docstring)."
+            )
+        )
+        return
+    print(bold(f"\nAFD{office} — Area Forecast Discussion for {city}:\n"))
+    print(discussion)
+
+
 # ── Consistency ───────────────────────────────────────────────────────────────
 
 
@@ -8089,6 +8120,13 @@ def main():
             )
         else:
             cmd_forecast(args[1])
+    elif cmd == "afd":
+        from nws_afd import CITY_WFO_OFFICE
+
+        if len(args) < 2:
+            print(f"Usage: py main.py afd <city>  ({'/'.join(CITY_WFO_OFFICE.keys())})")
+        else:
+            cmd_afd(args[1])
     elif cmd == "balance":
         cmd_balance(client)
     elif cmd == "positions":

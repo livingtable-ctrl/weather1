@@ -5914,8 +5914,16 @@ Why not now:
 When to revisit:
   - Once loop/watch runs continuously again post-Belgium.
 
-[NWS AFD (AREA FORECAST DISCUSSION) PARSING]
-Priority: Low (stretch/novel — highest differentiation, least proven)
+[PARTIALLY RESOLVED 2026-07-30 -- infra-only pass shipped as a standalone
+  shadow-mode experiment (this entry's own "When to revisit" option): fetch
+  + city->WFO table + .DISCUSSION extraction. LLM confidence/lean scoring
+  deliberately NOT built -- still open, gated on an LLM key/SDK this
+  project doesn't have configured, see resolution note below] NWS AFD (AREA
+  FORECAST DISCUSSION) PARSING
+Priority: was Low (stretch/novel — highest differentiation, least proven)
+  -- fetch/plumbing piece is done; the actual differentiating signal
+  (confidence/lean scoring) is still exactly as unproven as before, just
+  no longer blocked on infrastructure.
 
 Problem:
   Each WFO publishes an AFD where human forecasters state confidence and
@@ -5939,6 +5947,337 @@ Why not now:
 When to revisit:
   - Alongside the CLI-report fetch (shared infrastructure), or as a fun
     standalone experiment scored in shadow mode first.
+
+RESOLVED 2026-07-30 (fetch/plumbing piece only -- confidence/lean scoring
+  still open, see below): built nws_afd.py. Re-verified this entry's own
+  claims before starting: confirmed live (queried api.weather.gov/points
+  for every weather_markets.CITY_COORDS city) that the `gridId` field
+  returned is identical to `cwa` for all 21 cities, then cross-checked each
+  resulting AFD<office> PIL actually resolves to a real bulletin on IEM's
+  afos mirror (200 + a real <pre class="afos-pre"> block) for all 20
+  distinct offices -- this is CITY_WFO_OFFICE, registry #9 (see
+  weather_markets.city_registry_report()'s "PER-CITY KNOWLEDGE SCATTERED"
+  docstring, and tests/test_city_registry_manifest.py's new
+  test_wfo_office_fully_covered). Static table, not derived live at
+  call-time, matching _CITY_METAR_STATION's convention -- a city's WFO is
+  effectively constant, and deriving it live on every fetch would add a
+  second network dependency for a value nws.py's own _get_gridpoint
+  already resolves and caches elsewhere.
+  fetch_afd_discussion(city) mirrors mos.py's _fetch_nbp_percentiles
+  fetch/cache pattern (same IEM AFOS text-mirror endpoint, same
+  <pre class="afos-pre"> extraction, same retry-on-5xx session config,
+  1h TTL matching _NBP_CACHE_TTL, cached per-WFO-office so cities sharing
+  an office -- Austin/SanAntonio, both EWX -- share one fetch) -- the one
+  real difference is AFD's PIL is WFO-office-keyed (AFD<office>) rather
+  than NBP's station-keyed one, so it needed its own table rather than
+  reusing metar.MARKET_STATION_MAP.
+
+  Independent opus review (effort:high, before push, per standing
+  workflow) found 3 real issues the first pass missed and 6 lower-severity
+  ones -- every one addressed, not just the HIGH/MEDIUM ones:
+    - HIGH (real bug): the first pass only matched bare ".DISCUSSION...".
+      BOU's (Denver's) live bulletin heads the section
+      ".DISCUSSION /Through Wednesday/..." -- a bracketed time-range
+      qualifier on the header line -- which the original regex silently
+      missed, so `py main.py afd Denver` reported nothing while a full
+      discussion sat in the bulletin. Denver is the snow-market city
+      shipped 2026-07-26, so this wasn't a cosmetic miss. Fixed:
+      _AFD_SECTION_RES's pattern now tolerates `[^\n]*?` between the
+      header name and "...", live-verified this doesn't reintroduce the
+      false-match risk the non-greedy "&&" boundary already guards
+      against.
+    - HIGH (real gap, not just a bug): live-checking all 20 offices (the
+      first pass only smoke-tested 2 -- NYC/LasVegas -- which happened to
+      both use the bare ".DISCUSSION..." form; the review correctly called
+      this selection bias, not validation) found 11 of 20 offices were
+      broken by the original bare-header regex -- 10 that structurally
+      don't use ".DISCUSSION" at all (using SYNOPSIS/NEAR TERM/SHORT TERM/
+      LONG TERM instead), plus BOU/Denver, which DOES use ".DISCUSSION"
+      but with a bracketed qualifier the bare regex also missed (that
+      one's the H1 fix, not this one -- see below; correcting an
+      imprecise "11 don't use DISCUSSION at all" framing an opus
+      follow-up review caught, since BOU does use it). Of the 10 true
+      non-DISCUSSION offices: LOX (LA)/SEW (Seattle) use SYNOPSIS+SHORT+
+      LONG TERM, OUN (Oklahoma City) uses NEAR+SHORT+LONG TERM, the
+      remaining 7 use SHORT+LONG TERM only. Fixed by extending extraction
+      to concatenate whichever of SYNOPSIS/NEAR TERM/SHORT TERM/LONG TERM/
+      DISCUSSION the current
+      bulletin actually contains (canonical order), rather than assuming
+      exactly one always exists -- deliberately still excludes .KEY
+      MESSAGES (a terse bullet summary, not the same kind of prose
+      reasoning), so a bulletin with none of the 5 known section names
+      still correctly returns None rather than silently substituting a
+      different kind of content.
+      SELF-CAUGHT FOLLOW-ON BUG while re-verifying this fix (not opus):
+      the qualifier-tolerance fix for the HIGH regex bug above needed to
+      apply to ALL 5 section names, not just DISCUSSION -- several
+      non-DISCUSSION offices ALSO put a bracketed qualifier on their
+      headers (e.g. PSR's ".SHORT TERM /TODAY THROUGH FRIDAY/..."). An
+      early verification pass used a qualifier-INtolerant regex to
+      cross-check per-office coverage and concluded PSR had zero narrative
+      sections that day -- which briefly made it into this note as a
+      "PSR correctly returns None" example. Re-ran the check with the
+      same qualifier-tolerant pattern _AFD_SECTION_RES actually uses (not
+      a separate ad hoc one) before finalizing: all 20 offices produced at
+      least one real narrative section that day once applied uniformly.
+      Corrected the module docstring and this note accordingly, and did
+      not ship a test asserting real-office behavior that turned out to
+      be an artifact of the wrong verification tool rather than a real
+      case -- caught before it became a false "regression guard."
+      Documented the corrected per-office breakdown in nws_afd.py's module
+      docstring (previously framed as a vague "format drift" edge case)
+      and in fetch_afd_discussion's own docstring.
+    - HIGH (validation gap): the "live-smoke-tested against NYC and
+      LasVegas" claim in the first pass of this note was true but
+      misleading given both are in the working-by-luck 9-of-20 group.
+      Re-verified this pass across all 20 offices directly (not just 2)
+      before considering it done.
+    - MEDIUM: the "no narrative section found" and "no afos-pre block"
+      paths logged at DEBUG, which main.py disables by default (only
+      enabled with --debug) -- silently unreachable in normal use, and
+      this project's own established convention (mos.py's
+      _parse_nbp_bulletin, near_settlement_log) treats "ran successfully
+      but silently produced nothing" as a WARNING-worthy gap, not a
+      DEBUG-worthy one. This is materially why the 11-of-20 miss shipped
+      unnoticed in the first pass. Fixed: both paths now log at WARNING.
+    - MEDIUM: an empty (but present) narrative section -- e.g.
+      ".DISCUSSION..." immediately followed by "&&" -- returned "" rather
+      than None, so cmd_afd's `if discussion is None` guard didn't catch
+      it and the CLI printed a header with nothing under it. Fixed: only
+      non-empty section bodies are appended to `parts`, and the function
+      returns None (not "") when nothing survives.
+    - LOW: backlog claim "zero changes to the trading/scan path" was
+      false -- weather_markets.city_registry_report()'s new wfo_office
+      check imports nws_afd at module level, and that function is called
+      every cron cycle via log_city_registry_report(). Corrected: no
+      network fetch happens on the trading/scan path (the wfo_office
+      check is a pure dict-membership test); fetch_afd_discussion() itself
+      is only ever invoked from the new `afd` CLI command.
+    - LOW: "shadow-mode experiment"/"fetch/store-only" wording overstated
+      what shipped -- nothing is actually persisted across process runs
+      (the cache is in-process, the only caller is a one-shot CLI). No
+      shadow-mode scoring or graduation counter exists for this signal, so
+      that terminology (which has a specific meaning in this project, see
+      SIGNAL GRADUATION) doesn't apply yet. Corrected below. Deliberately
+      NOT adding real persistence in this pass either -- IEM's p.php
+      mirror supports archive retrieval, so historical AFD text is
+      recoverable later if/when an LLM scorer is actually built, and
+      adding storage now with no consumer would repeat the exact
+      no-consumer-yet mistake DATA-DRIVEN SIGMA's own entry warns about.
+    - LOW: no retry/backoff on transient IEM 5xx responses, unlike
+      mos.py's session. Fixed: mounted the same HTTPAdapter(Retry(total=1,
+      backoff_factor=0.5, status_forcelist=[500,502,503,504])) mos.py uses.
+    - LOW: a new hand-rolled TTL dict, working against backlog.txt's own
+      "ForecastCache EXISTS, BUT ~14 HAND-ROLLED TTL DICTS" entry. Fixed:
+      switched to ForecastCache directly rather than adding a 15th --
+      caught a real latent bug while doing this swap (see below).
+      REAL BUG CAUGHT DURING THE SWAP (self-caught, not opus): ForecastCache
+      .get() returns None both on a genuine cache miss AND on a fresh
+      negative-cache hit (a stored None value, e.g. from a prior failed
+      fetch) -- there's no way to tell them apart from get() alone, so
+      naively porting the raw-dict code's "if cached is not None: return
+      cached" logic to .get() would have silently defeated negative
+      caching (every call after a failure would re-fetch, forever, instead
+      of respecting the TTL). Used get_with_ts()'s `hit` flag instead,
+      which does distinguish them.
+  Not fixed, by explicit judgment call (both are genuinely low-severity
+  and the reviewer flagged them as such, not as musts):
+    - Cache dedup/TTL are currently unreached in production (single-city,
+      one-shot CLI caller) -- left as forward-looking infra with a comment
+      explaining why, since this is exactly the kind of consolidated
+      caching primitive that pays off once this is wired into a
+      longer-running process later; ripping it out now would just mean
+      re-adding it then.
+    - Case-sensitive city argument (`afd nyc` -> "Unknown city") -- kept
+      as-is, consistent with cmd_forecast's identical existing behavior;
+      not a new inconsistency this entry introduced.
+    - `afd` sits behind main.py's validate_env() gate (checked: line 7962,
+      before the whole `elif cmd ==` dispatch chain) despite needing no
+      Kalshi credentials -- confirmed `forecast` has the exact same
+      property already (line 8116, `afd` added at 8123 right after it),
+      so this is existing dispatch-structure behavior this entry inherits
+      rather than introduces. Restructuring the early-return logic would
+      touch every other command, not just this one -- out of scope here.
+    - test_nws_afd.py's service-notice-page fixture is a 40-char synthetic
+      string, not a real captured IEM response (the real one is ~31KB).
+      Reviewer confirmed live it's behaviorally equivalent (0
+      "afos-pre" blocks either way) -- kept synthetic since a 31KB fixture
+      would dominate the test file for zero behavioral difference; noted
+      here rather than left as a silent gap.
+  Self-review pass (before the 2nd opus review below; re-read the first
+  review's full finding list against the actual diff, per user's explicit
+  "did you address everything" prompt) added 2 more tests the first
+  review flagged as untested but not yet covered: a .DISCUSSION section
+  with no closing "&&" before EOF (verified this falls through to None
+  rather than hanging, since the regex requires "&&" to match at all),
+  and a "&&" appearing between two nested .KEY MESSAGE sub-headers
+  (documented, not "fixed" -- truncates to the first sub-message,
+  inherent to using "&&" as the sole section boundary at the time,
+  matching mos.py's own convention; not observed in any real bulletin
+  checked, but now a proven, asserted behavior instead of an assumed
+  one). Also made explicit, documented decisions on 2 more LOW items the
+  first review called informational/low-priority: `afd`'s validate_env()
+  gate placement (confirmed pre-existing, shared with `forecast`, not
+  something this entry introduced) and the synthetic (not real-captured)
+  service-notice-page test fixture (confirmed behaviorally equivalent,
+  kept synthetic to avoid a 31KB fixture for zero behavioral difference).
+
+  2nd opus review (effort:high, same day) verified all 7 claimed fixes
+  from the first review (H1/H2/H3/M1/M2/L3/L4) plus the self-caught
+  get_with_ts() bug by hand-tracing forecast_cache.py and live-refetching
+  all 20 offices independently -- confirmed all correct, no regressions.
+  But found one real, currently-reproducing MEDIUM bug the self-review
+  pass missed, plus several more LOW items:
+    - MEDIUM (real, live-reproducing bug): the per-section extraction
+      (5 independent regex searches, each capturing "up to the first &&")
+      assumed every narrative section has its own "&&" terminator. LOX
+      does not -- SHORT TERM and LONG TERM share ONE terminator
+      (".SHORT TERM...body...\n.LONG TERM...body...\n&&", confirmed live
+      as LOX's house style across 5 consecutive daily issuances, not a
+      one-off). SHORT TERM's capture therefore swallowed LONG TERM's
+      header AND body whole, and LONG TERM's own regex then re-matched
+      and duplicated that same content -- verified end-to-end via
+      fetch_afd_discussion("LA") on the real live bulletin, ~40% of a
+      2709-char result was duplicate text. The review also caught WHY
+      the test suite didn't catch it: the LOX test fixture (added in the
+      first fix pass) had an extra "&&" INSERTED between SHORT TERM and
+      LONG TERM that isn't in the real bulletin -- exactly the
+      "fixture trimmed so the test passes for the wrong reason" failure
+      mode, on the terminator axis rather than the qualifier axis the
+      first review's own version of this concern was about.
+      Fixed by redesigning section-body extraction: a section's body now
+      ends at whichever comes first -- the next "&&", OR the START of
+      the next _AFD_NARRATIVE_SECTIONS header (any OTHER tracked name),
+      not "&&" alone. Deliberately does NOT treat non-tracked sub-headers
+      (".KEY MESSAGE N...") as a boundary, so real .DISCUSSION blocks
+      with nested KEY MESSAGE sub-headers are still captured whole (see
+      test_extracts_bare_discussion_section) -- this required splitting
+      the old single "match header+body via one regex" design into a
+      separate header-only regex (_AFD_SECTION_HEADER_RES) plus an
+      explicit boundary-search helper (_section_body()). Removed the
+      artificial "&&" from the LOX test fixture to make it byte-faithful
+      to the real bulletin, and strengthened
+      test_synopsis_short_long_term_fallback with explicit no-duplication
+      assertions (result.count(...) == 1 for both SHORT TERM's and LONG
+      TERM's text, plus "LONG TERM" not appearing inside the result).
+      Mutation-tested by reverting the fix (dropping the other-header
+      boundary, leaving only "&&") and confirming the strengthened test
+      fails with the exact duplication the bug produces (2 == 1 assertion
+      failure on "Warming trend continues"), then reverting. Re-verified
+      against the live LOX bulletin with a small ad hoc duplicate-chunk
+      scan (no repeated 200-char substring in a 2228-char real result).
+    - LOW: `ruff format` (not just `ruff check`, which was already clean)
+      flagged nws_afd.py -- pyproject.toml ignores E501 for `ruff check`
+      but the pre-commit `ruff-format` hook (pinned 0.9.9, confirmed same
+      version available locally) still reformats long lines. Fixed:
+      ran `ruff format` on the file; re-verified all 5 changed files
+      clean under both `ruff check` and `ruff format --check`.
+    - LOW: off-by-one in the module docstring's per-office breakdown --
+      "the remaining 8" enumerated only 7 office codes (arithmetic:
+      8+TBW=9, +BOU=10, +LOX/SEW=12, +OUN=13, +7=20). Fixed: corrected to
+      "the remaining 7." A related imprecision in this backlog note's own
+      resolution text ("11 of 20 offices don't use .DISCUSSION at all")
+      conflated two different counts: 11 is the number of offices the
+      ORIGINAL bare-header regex bug affected (10 truly non-DISCUSSION
+      offices + BOU, which DOES use DISCUSSION but needed the qualifier
+      fix), not the number that structurally lack a DISCUSSION section
+      (which is 10). Corrected above.
+    - LOW: test_nws_afd.py's module docstring and the LOX fixture's
+      comment both claimed "a qualifier on EVERY header" for the LOX
+      bulletin -- false for SYNOPSIS specifically (its qualifier sits
+      AFTER the "...", not between the name and "...", so the bare regex
+      already matched it fine; SHORT TERM/LONG TERM are what actually
+      need the qualifier tolerance). Fixed: corrected both comments to
+      name which headers actually need the tolerance.
+    - LOW/informational: a known, pre-existing cosmetic effect where a
+      header's trailing issuance-timestamp qualifier (e.g. LOX's
+      "...29/736 PM.") becomes the first line of the extracted body,
+      since the non-greedy match stops at the FIRST "..." on the header
+      line. Reviewer suggested a comment over a code change (harmless for
+      the CLI, would only matter to a future LLM scorer) -- added a
+      documenting comment on _section_header_re rather than changing the
+      regex.
+    - LOW: the new `@pytest.mark.integration` live check called
+      `pytest.skip()` inside its per-city loop -- a single transient
+      api.weather.gov failure on any one city aborted the WHOLE test as
+      SKIPPED, discarding every city already verified that run (the exact
+      decay mode the test exists to prevent). Fixed: collect unreachable
+      cities separately, only skip if ALL 21 were unreachable; if some
+      (but not all) failed, fail loudly with the unreachable list rather
+      than silently dropping them from coverage. Also removed a dead
+      `return` after the old `pytest.skip()` call (skip() raises).
+  Re-ran the full scoped regression suite, ruff check, ruff format
+  --check, and mypy after all of the above -- 328 passed, 4 skipped
+  (unchanged), all clean.
+
+  New tests/test_nws_afd.py (18 tests, up from the first pass's 10),
+  built from 3 separate real captured bulletins (AFDOKX/NYC for the bare-
+  ".DISCUSSION" case, AFDBOU/Denver for the bracketed-qualifier case,
+  AFDLOX/LA for the SYNOPSIS+SHORT+LONG-TERM-with-qualifiers case) plus one
+  synthetic bulletin for the no-narrative-section case (synthetic because
+  the live check found zero real examples among the 20 offices this
+  project uses, see above). The OKX fixture keeps the neighboring
+  .AVIATION/.MARINE sections specifically so the "&&"-boundary test can't
+  pass under a greedy regex by coincidence -- mutation-tested by swapping
+  to greedy and confirming both test_extracts_bare_discussion_section and
+  test_synopsis_short_long_term_fallback fail, then reverting. Also
+  mutation-tested the two real bugs this pass fixed directly: reverting
+  the qualifier-tolerance regex fix (H1) makes
+  test_extracts_qualifier_discussion_section and
+  test_synopsis_short_long_term_fallback fail as expected; reverting the
+  get_with_ts()-based negative-cache fix back to plain get() makes
+  test_negative_result_is_cached_not_refetched_every_call fail as
+  expected (2 fetches instead of 1) -- both reverted after confirming.
+  Added: the BOU-style bracketed-qualifier header test (regression guard
+  for the HIGH bug above), the LOX-style multi-section fallback test
+  (SYNOPSIS+SHORT TERM+LONG TERM, canonical order asserted via string
+  index comparison), the synthetic no-narrative-section test, an
+  empty-but-present section returning None (regression guard for the
+  MEDIUM bug above), a CITY_WFO_OFFICE-has-no-extra-keys check alongside
+  the existing has-no-missing-keys one, and the negative-cache regression
+  test above. Also added a `@pytest.mark.integration` live check (matching
+  this project's existing live-test convention, see
+  test_integration_live.py) that re-queries api.weather.gov for every
+  CITY_COORDS city and asserts the result matches CITY_WFO_OFFICE exactly
+  -- without this the "live-verified 2026-07-30" claim would decay
+  silently the moment any WFO boundary ever changes; ran it live as part
+  of this pass and it passed (21/21 match). Plus the original per-office
+  cache dedup, TTL-hit, PIL-construction, unknown-city, service-notice-
+  page, and fetch-exception tests, all updated for the ForecastCache swap.
+  Live-smoke-tested via `py main.py afd <city>` against the 4 cities the
+  first pass's bugs affected most directly -- Denver (H1's qualifier-
+  regex bug), LA (multi-section SYNOPSIS/SHORT/LONG fallback),
+  OklahomaCity (NEAR+SHORT+LONG TERM, 3-section concatenation), and
+  Phoenix (qualifier-on-non-DISCUSSION-header, the case that caused the
+  earlier false "PSR has nothing" conclusion) -- all 4 now return real
+  discussion text end-to-end against the live IEM mirror, not just
+  mocked-response tests.
+  Added city_registry_report()'s wfo_office check (True for all 21 cities
+  today, by construction) and
+  tests/test_city_registry_manifest.py::test_wfo_office_fully_covered so a
+  future city addition that forgets a WFO entry surfaces as a gap instead
+  of silently degrading. Scoped regression (test_nws_afd.py,
+  test_city_registry_manifest.py, test_city_registry_report_logging.py,
+  test_mos_nbp.py, test_weather_markets.py, test_menu_ux.py,
+  test_main_cron_smoke.py, test_p1_remaining.py) -- 328 passed, 4 skipped
+  (pre-existing skips, unrelated to this change). ruff clean; mypy clean
+  (nws_afd.py, weather_markets.py, main.py).
+
+  Confidence/directional-lean extraction -- the part that would actually
+  make this signal tradeable -- is still fully open and unstarted: this
+  project has no LLM SDK or API key configured anywhere (checked
+  requirements.txt and .env directly, confirmed zero existing
+  anthropic/openai integration before starting), so that piece needs the
+  user to provision a key before it can be built and tested end-to-end.
+  Scoping this out was an explicit user decision (asked via
+  AskUserQuestion: real LLM extraction now vs. fetch/store-only vs.
+  regex/keyword scoring) -- fetch-and-display was chosen specifically to
+  make real progress without the new dependency/cost, not a default or a
+  guess. Nothing is persisted across runs today (see LOW finding above) --
+  a future pass adding real storage plus LLM scoring should re-check
+  IEM's archive-retrieval support for backfilling historical AFD text
+  first, per DATA-DRIVEN SIGMA's own "build a consumer before a table"
+  lesson.
 
 [CITY-LOCAL AFTERNOON SAME-DAY SWEEP]
 Priority: Low (mostly covered by loop/watch when they run)

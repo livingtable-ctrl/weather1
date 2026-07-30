@@ -4324,9 +4324,7 @@ def city_registry_report() -> dict[str, dict[str, bool]]:
     {city: {registry_name: has_real_entry}} for every city in CITY_COORDS.
 
     Registries checked (of the ~8 the backlog entry names -- CITY_COORDS
-    itself is the enumeration base, not a thing to check against itself;
-    the planned city->WFO/pil table doesn't exist yet, so it's not
-    included here):
+    itself is the enumeration base, not a thing to check against itself):
       - series_ticker: at least one ticker in KNOWN_WEATHER_SERIES, of ANY
         prefix (KXHIGH/KXLOW, KXRAIN*M, or KXTEMPxxxH -- whichever this
         city actually trades), parses back to this city via
@@ -4370,7 +4368,14 @@ def city_registry_report() -> dict[str, dict[str, bool]]:
         exception ("Pacific Maritime pattern is distinct" -- see paper.py)
         -- a manifest consumer should treat that one as accepted, not a
         bug; see tests/test_city_registry_manifest.py's allowlist.
+      - wfo_office: city in nws_afd.CITY_WFO_OFFICE (registry #9, backlog.txt
+        "NWS AFD (AREA FORECAST DISCUSSION) PARSING" / "PER-CITY KNOWLEDGE
+        SCATTERED"). Live-verified 2026-07-30 for every CITY_COORDS city, so
+        this is expected to read True everywhere today; kept as a checked
+        registry (not just a static table) so a future city addition that
+        forgets to add a WFO entry surfaces here rather than silently.
     """
+    from nws_afd import CITY_WFO_OFFICE as _wfo_office
     from paper import _CORRELATED_CITY_GROUPS
 
     report: dict[str, dict[str, bool]] = {}
@@ -4387,6 +4392,7 @@ def city_registry_report() -> dict[str, dict[str, bool]]:
             "correlation_group": any(
                 city in group for group in _CORRELATED_CITY_GROUPS
             ),
+            "wfo_office": city in _wfo_office,
         }
     return report
 

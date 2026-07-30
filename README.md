@@ -98,6 +98,7 @@ Opens a numbered menu with every feature. Good starting point.
 | `python main.py positions` | Show open positions |
 | `python main.py market <ticker>` | Deep detail on a single market |
 | `python main.py forecast <city>` | Show raw NWS/ensemble forecast for a city |
+| `python main.py afd <city>` | Show the current NWS Area Forecast Discussion for a city's WFO (fetch/display only, no scoring yet) |
 | `python main.py montecarlo` | Monte Carlo portfolio risk simulation (alias: `n`) |
 | `python main.py backtest` | Run a backtest against historical settled markets |
 | `python main.py walk-forward` | Walk-forward backtest with out-of-sample validation (alias: `wf`) |
