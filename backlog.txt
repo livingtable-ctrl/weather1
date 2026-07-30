@@ -10641,3 +10641,60 @@ What it would look like (built and shipped 2026-07-19):
   mutation-tested during development, not committed as regression
   coverage.
 
+[OPEN -- found via adjacency 2026-07-30 during Snow Step 2's opus review
+  round 2, deliberately not fixed in that pass] COUNT_SETTLED_PREDICTIONS()
+  HAS NO CONDITION_TYPE FILTER -- MONTHLY RAIN/SNOW SHADOW PREDICTIONS
+  COUNT TOWARD THE TEMPERATURE LIVE-TRADING GRADUATION GATE
+Priority: Medium (a real live-trading-readiness gate is measuring the
+  wrong population, but re-check actual current counts before assuming
+  this has changed the gate's outcome for real -- not verified either way
+  yet).
+
+Problem:
+  tracker.count_settled_predictions() (tracker.py:1842) counts every
+  multiday_predictions row joined against outcomes_valid, with NO
+  condition_type exclusion -- unlike every other calibration-facing query
+  in this codebase, which now excludes 'precip_month_total' and
+  'snow_month_total' (Rain Step 2 / Snow Step 2's own 7-site landmine
+  audit: _CONDITION_CONFIDENCE, calibration.py, ml_bias.py x3, tracker.py
+  x2, main.py's Platt query). This function feeds FOUR real call sites,
+  all reading the same unfiltered number:
+    - cron.py:324 -- the ENABLE_MICRO_LIVE graduation gate itself (raises
+      RuntimeError if count < utils.MIN_BRIER_SAMPLES)
+    - cron.py:2041 -- the F3 auto-calibration delta-trigger (recalibrates
+      once count has grown by >=25 since the last run)
+    - cron.py:2290 -- a console reminder printed when count is in [45, 50)
+    - web_app.py:1704 -- the dashboard's own mirror of the F3 gate check
+  A gate meant to measure multi-day *temperature* ensemble forecasting
+  maturity can currently be partly cleared by inches-scale monthly rain/
+  snow rows, which is a real, load-bearing hole in the shape rain's own
+  Step 2 already fixed everywhere else.
+
+What it would look like:
+  Either add the same `AND (p.condition_type IS NULL OR p.condition_type
+  NOT IN ('between', 'precip_month_total', 'snow_month_total'))` clause
+  this function's sibling queries already carry, or -- if ENABLE_MICRO_LIVE
+  and the F3 trigger should have genuinely different semantics from each
+  other -- split into a dedicated, explicitly-named
+  count_settled_temperature_predictions() so the live-trading gate can't
+  silently drift from whatever the calibration trigger ends up counting.
+
+Why not now:
+  Found via adjacency while reviewing Snow Step 2's own condition_type
+  exclusion audit -- a different, higher-stakes subsystem (the live-
+  trading graduation gate itself, not the monthly-rain/snow probability
+  models that session was actually shipping). Touching a gate that decides
+  whether ENABLE_MICRO_LIVE is allowed to flip on is not something to
+  change as a drive-by fix inside an unrelated change's review-followup
+  pass. Real-world impact today is unverified -- how many of the currently
+  counted rows are actually monthly rain/snow (vs. temperature) hasn't
+  been checked live.
+
+When to revisit:
+  Before ENABLE_MICRO_LIVE is ever flipped on for real, or as part of
+  picking up DEMO_BASE SMOKE TEST / the headless run_trade_cycle() engine
+  extraction (both hard-gated on the Belgium-travel restriction lifting
+  2026-07-31) -- worth checking as part of that same pass, since it
+  directly affects the same live-trading-readiness gate those items exist
+  to validate.
+
