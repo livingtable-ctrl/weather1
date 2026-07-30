@@ -170,6 +170,20 @@ class TestCalibrateSeasonalWeights:
         assert "winter" in result
         assert result["winter"].get("_uncalibrated") is True
 
+    def test_monthly_snow_rows_not_counted(self):
+        """backlog.txt Snow Step 2: the identical defense-in-depth check,
+        mirrored for 'snow_month_total' -- mirrors
+        test_monthly_rain_rows_not_counted's exact row-count reasoning."""
+        from calibration import calibrate_seasonal_weights
+
+        rows = _make_winter_rows(60)
+        for r in rows[:30]:
+            r["condition_type"] = "snow_month_total"
+        _seed_db(self._db, rows)
+        result = calibrate_seasonal_weights(self._db)
+        assert "winter" in result
+        assert result["winter"].get("_uncalibrated") is True
+
 
 class TestCalibrateCityWeights:
     def setup_method(self):
@@ -415,6 +429,54 @@ class TestCalibrateCLI:
             assert "RainOnlyCity" not in trained, (
                 "a city with only rain rows must never get a Platt model -- "
                 "the 60 rain rows leaked past the condition_type exclusion"
+            )
+
+    def test_calibrate_platt_excludes_snow_only_city(self, monkeypatch):
+        """backlog.txt "RAIN / SNOW / HURRICANE MARKETS" Snow Step 2: the
+        identical landmine rain's Step 2 closed for 'precip_month_total'
+        also had to be closed for 'snow_month_total' -- mirrors
+        test_calibrate_platt_excludes_rain_only_city exactly."""
+        import main
+        import ml_bias
+        import tracker
+
+        rows = _make_winter_rows(60)
+        import random as _random
+
+        _rng = _random.Random(43)
+        snow_rows = []
+        for i in range(60):
+            p = _rng.uniform(0.3, 0.8)
+            settled = 1 if _rng.random() < p else 0
+            snow_rows.append(
+                {
+                    "ticker": f"SNOWCITY-{i}",
+                    "city": "SnowOnlyCity",
+                    "market_date": f"2026-01-{(i % 28) + 1:02d}",
+                    "our_prob": p,
+                    "ensemble_prob": 0.72,
+                    "nws_prob": 0.65,
+                    "clim_prob": 0.60,
+                    "settled_yes": settled,
+                    "condition_type": "snow_month_total",
+                }
+            )
+        _seed_db(self._db, rows + snow_rows)
+
+        monkeypatch.setattr(tracker, "DB_PATH", self._db)
+        monkeypatch.setattr(main, "_CALIBRATE_DATA_DIR", self._data_dir)
+        monkeypatch.setattr(
+            ml_bias, "_TEMP_PATH", self._data_dir / "temperature_scale.json"
+        )
+
+        main.cmd_calibrate()
+
+        platt_path = self._data_dir / "platt_models.json"
+        if platt_path.exists():
+            trained = json.loads(platt_path.read_text())
+            assert "SnowOnlyCity" not in trained, (
+                "a city with only snow rows must never get a Platt model -- "
+                "the 60 snow rows leaked past the condition_type exclusion"
             )
 
 

@@ -361,6 +361,48 @@ class TestFetchSeasonalPrecipMeanMm:
             )
         assert val is None
 
+    def test_unexpected_unit_refuses_value(self, caplog):
+        """Opus-review-caught gap (Snow Step 2 round-2 review): the "mm"
+        claim was, like snow's original "cm" claim, inferred rather than
+        validated against what the API actually reports. Must fail closed
+        and log loudly if Open-Meteo ever reports a different unit."""
+        import logging
+
+        fake_resp = MagicMock()
+        fake_resp.json.return_value = {
+            "monthly_units": {"time": "iso8601", "precipitation_mean": "cm"},
+            "monthly": {
+                "time": ["2026-07-31"],
+                "precipitation_mean": [42.6],
+            },
+        }
+        fake_resp.raise_for_status.return_value = None
+        with patch.object(acis_precip._session, "get", return_value=fake_resp):
+            with caplog.at_level(logging.WARNING):
+                val = acis_precip.fetch_seasonal_precip_mean_mm(
+                    39.7, -104.9, "America/Denver", 2026, 7
+                )
+        assert val is None
+        assert any("refusing to use this value" in r.message for r in caplog.records)
+
+    def test_correct_mm_unit_returns_value(self):
+        """Control for the guard above: an explicit, correct 'mm' unit
+        must not be refused."""
+        fake_resp = MagicMock()
+        fake_resp.json.return_value = {
+            "monthly_units": {"time": "iso8601", "precipitation_mean": "mm"},
+            "monthly": {
+                "time": ["2026-07-31"],
+                "precipitation_mean": [42.6],
+            },
+        }
+        fake_resp.raise_for_status.return_value = None
+        with patch.object(acis_precip._session, "get", return_value=fake_resp):
+            val = acis_precip.fetch_seasonal_precip_mean_mm(
+                39.7, -104.9, "America/Denver", 2026, 7
+            )
+        assert val == 42.6
+
     def test_successful_result_is_cached_second_call_skips_http(self):
         """backlog.txt 'OPEN-METEO SEASONAL API...' research finding: this
         function had zero caching before, unlike every other forecast fetch
@@ -535,3 +577,46 @@ class TestFetchSeasonalPrecipMeanMm:
                 39.7, -104.9, "America/Denver", 2026, 7
             )
         assert val == 42.6
+
+
+class TestFetchHistoricalDailyEmptyResponse:
+    """Opus-review-caught gap (round 2): ACIS can return HTTP 200 with an
+    empty "data" array (confirmed live: an unresolvable sid returns
+    {"data": [], "error": "no data available"}) -- this parses to
+    result={}, which is not None, so it silently bypasses the existing
+    fail-open _load_stale_cache_or_none path and gets written to disk as
+    the 30-day cache AND the process-lifetime mem-cache from one
+    transient response."""
+
+    def test_empty_data_falls_back_to_stale_cache_not_written_as_empty(
+        self, tmp_path, monkeypatch
+    ):
+        monkeypatch.setattr(acis_precip, "DATA_DIR", tmp_path)
+        monkeypatch.setattr(acis_precip, "_MEM_CACHE", {})
+        sid = "TESTEMPTY"
+        cache_path = tmp_path / f"acis_pcpn_{sid}.json"
+        # Seed a real, non-empty stale cache -- this must survive an empty
+        # live response, not get overwritten with {}.
+        cache_path.write_text('{"2020": {"101": 1.5}}')
+        import os
+        import time as _time
+
+        old_time = _time.time() - acis_precip.CACHE_MAX_AGE - 1
+        os.utime(cache_path, (old_time, old_time))
+
+        fake_resp = MagicMock()
+        fake_resp.json.return_value = {"data": [], "error": "no data available"}
+        fake_resp.raise_for_status.return_value = None
+        with patch.object(acis_precip._session, "post", return_value=fake_resp):
+            result = acis_precip.fetch_historical_daily(sid, years=5, force=True)
+
+        assert result == {2020: {101: 1.5}}, (
+            "an empty live ACIS response must fall back to the stale cache, "
+            "not overwrite it with an empty dict"
+        )
+        # The disk cache itself must be untouched (still the real data, not {}).
+        import json as _json
+
+        on_disk = _json.loads(cache_path.read_text())
+        assert on_disk == {"2020": {"101": 1.5}}
+        assert acis_precip._MEM_CACHE.get(sid) != {}

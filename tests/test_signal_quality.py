@@ -116,6 +116,27 @@ class TestAnalyzeTradeConditionType:
             < base * _CONDITION_CONFIDENCE["above"]
         )
 
+    def test_monthly_rain_and_snow_condition_confidence(self):
+        """Opus-review-caught gap: _CONDITION_CONFIDENCE["snow_month_total"]
+        had zero test coverage and is load-bearing -- _price_and_size() and
+        edge_confidence() both read it via a `.get(x, 1.0)` fallback, so a
+        deleted/renamed key silently yields full (1.0) confidence instead
+        of failing loudly: a real Kelly-sizing bug (stake ~1.5x too large)
+        for a model with zero real settled-prediction history to validate
+        against, exactly what this discount is meant to prevent. Also pins
+        the intended ordering: snow (weakest evidence -- no settled history
+        exists anywhere yet) < rain (some evidence) < a single-day
+        ensemble+climatology blend."""
+        from weather_markets import _CONDITION_CONFIDENCE
+
+        assert _CONDITION_CONFIDENCE["precip_month_total"] == pytest.approx(0.70)
+        assert _CONDITION_CONFIDENCE["snow_month_total"] == pytest.approx(0.65)
+        assert (
+            _CONDITION_CONFIDENCE["snow_month_total"]
+            < _CONDITION_CONFIDENCE["precip_month_total"]
+            < _CONDITION_CONFIDENCE["precip_above"]
+        )
+
 
 # ── Phase 2: Signal quality tightening ───────────────────────────────────────
 

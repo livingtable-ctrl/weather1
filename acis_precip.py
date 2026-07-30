@@ -156,6 +156,15 @@ def fetch_month_to_date_actual(
             n_missing += 1
         else:
             total += val
+    # Opus-review-caught gap: ACIS can return HTTP 200 with an empty (or
+    # short) "data" array (confirmed live: an unresolvable sid returns
+    # {"data": [], "error": "no data available"}) -- raise_for_status()
+    # doesn't catch this, and a loop over zero rows silently reports
+    # n_missing=0, not through_day. Count any days ACIS didn't return a
+    # row for at all as missing too, so the caller's own missing-data
+    # guard can actually see a fully/partially empty response instead of
+    # treating it as a legitimate 0.0 total.
+    n_missing += max(0, through_day - len(data))
     return (total, n_missing)
 
 
@@ -234,6 +243,21 @@ def fetch_historical_daily(
         except (ValueError, AttributeError):
             continue
         result.setdefault(y, {})[m * 100 + d] = _parse_pcpn_value(raw_val)
+
+    # Opus-review-caught gap (round 2): ACIS returning HTTP 200 with an
+    # empty "data" array (a transient/unresolvable-sid response, confirmed
+    # live) parses to result={} here -- not None, so the fail-open
+    # `_load_stale_cache_or_none` path above is bypassed entirely, and an
+    # empty dict gets written to disk as the 30-day cache AND the
+    # process-lifetime mem-cache, poisoning both from one transient
+    # response. Treat an empty result the same as a fetch failure.
+    if not result:
+        _log.warning(
+            "fetch_historical_daily: ACIS returned no usable rows for sid=%s "
+            "-- falling back to stale cache instead of caching an empty result",
+            sid,
+        )
+        return _load_stale_cache_or_none(cache, sid)
 
     try:
         serializable = {
@@ -322,11 +346,30 @@ def fetch_seasonal_precip_mean_mm(
     try:
         resp = _session.get(OPEN_METEO_SEASONAL_URL, params=params, timeout=10)
         resp.raise_for_status()
-        monthly = resp.json().get("monthly", {})
+        body = resp.json()
+        monthly = body.get("monthly", {})
         _om_seasonal_cb.record_success()
     except Exception as exc:
         _om_seasonal_cb.record_failure()
         _log.info("fetch_seasonal_precip_mean_mm: fetch failed: %s", exc)
+        _seasonal_cache.set(cache_key, None)
+        return None
+
+    # Opus-review-caught gap (Snow Step 2 round-2 review): the "mm" claim
+    # was, like snow's original "cm" claim, inferred rather than validated
+    # against what the API actually reports. monthly_units is returned
+    # alongside "monthly" on every real response (confirmed live: this
+    # endpoint reports {"precipitation_mean": "mm"} today) -- check it
+    # directly, mirroring acis_snow.py's identical fix, so a future
+    # Open-Meteo unit change fails loudly instead of silently mis-tilting
+    # the bootstrap by 10x.
+    _unit = body.get("monthly_units", {}).get("precipitation_mean")
+    if _unit is not None and _unit != "mm":
+        _log.warning(
+            "fetch_seasonal_precip_mean_mm: expected unit 'mm', API reported %r "
+            "-- refusing to use this value (would mis-tilt the bootstrap)",
+            _unit,
+        )
         _seasonal_cache.set(cache_key, None)
         return None
 

@@ -3320,6 +3320,7 @@ def check_position_limits(
         _KXRAIN_MONTHLY_CITY,
         _KXSNOW_MONTHLY_CITY,
         _rain_gates_active,
+        _snow_gates_active,
         is_hurricane_ticker,
     )
 
@@ -3337,6 +3338,28 @@ def check_position_limits(
             "limit": max_cost_per_market,
         }
 
+    # backlog.txt "RAIN / SNOW / HURRICANE MARKETS" -- Snow Step 2
+    # (2026-07-30): now the same shadow-only gate as rain's block above,
+    # replacing Step 1's unconditional "no model exists" block. Same
+    # reachable-without-analyze_trade() reasoning as the rain/hurricane
+    # blocks below. Positioned right after rain's block (not after the
+    # hurricane guard) to mirror rain's own position exactly -- purely
+    # cosmetic (KXDENSNOWM never matches is_hurricane_ticker's prefixes
+    # either way), opus-review-flagged for consistency.
+    if (
+        ticker.upper().startswith(tuple(_KXSNOW_MONTHLY_CITY))
+        and not _snow_gates_active()
+    ):
+        return {
+            "ok": False,
+            "reason": (
+                "monthly snow markets: shadow-only until SNOW_TRADING_ENABLED=1 "
+                "and >=20 settled snow predictions exist"
+            ),
+            "existing_cost": 0.0,
+            "limit": max_cost_per_market,
+        }
+
     # backlog.txt "HURRICANE MARKETS": no supported model exists for
     # hurricane/tropical-storm tickers (see is_hurricane_ticker()'s own
     # comment for why this covers several unrelated real prefixes, not just
@@ -3346,19 +3369,6 @@ def check_position_limits(
         return {
             "ok": False,
             "reason": "hurricane markets are not supported yet",
-            "existing_cost": 0.0,
-            "limit": max_cost_per_market,
-        }
-
-    # backlog.txt "RAIN / SNOW / HURRICANE MARKETS" -- SNOW Step 1: no
-    # probability model exists yet (unlike rain, which reached Step 2), so
-    # this is unconditional -- no _gates_active()-style check, since there's
-    # no shadow signal to gate on. Same reachable-without-analyze_trade()
-    # reasoning as the rain/hurricane blocks above.
-    if ticker.upper().startswith(tuple(_KXSNOW_MONTHLY_CITY)):
-        return {
-            "ok": False,
-            "reason": "monthly snow markets: discovery-only, no probability model yet",
             "existing_cost": 0.0,
             "limit": max_cost_per_market,
         }

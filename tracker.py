@@ -1923,6 +1923,63 @@ def count_settled_rain_predictions() -> int:
     return row[0] if row else 0
 
 
+def count_settled_snow_predictions() -> int:
+    """Count DISTINCT settled monthly-snow accrual events (ticker prefix,
+    year, month), NOT raw prediction rows -- opus-review-caught (2026-07-30):
+    Denver's own KXDENSNOWM ladder alone has 7 sibling brackets that all
+    settle from the SAME real snowfall observation for a given month, so a
+    raw-row floor could clear the 20-sample threshold with as few as ~3
+    real months of data, not 20 independent real-world observations. Unlike
+    count_settled_rain_predictions() (which counts raw rows and is already
+    live/shipped -- rain has 11 cities' worth of decorrelation across those
+    rows, and changing its counting semantics now would shift an already-
+    accumulating live gate's count out from under it), this function is
+    new code with zero live predictions logged yet, so it's safe to design
+    the floor correctly from the start rather than inherit the same gap.
+    Ticker prefix set imported from weather_markets (same single-source-of-
+    truth dict Snow Step 1 established) rather than hardcoded, so this
+    can't independently drift."""
+    init_db()
+    try:
+        from weather_markets import _KXSNOW_MONTHLY_CITY, _parse_monthly_ticker_month
+
+        prefixes = list(_KXSNOW_MONTHLY_CITY)
+    except Exception:
+        return 0
+    if not prefixes:
+        return 0
+    where_sql = " OR ".join(["p.ticker LIKE ?"] * len(prefixes))
+    params = tuple(f"{p}%" for p in prefixes)
+    with _conn() as con:
+        rows = con.execute(
+            "SELECT DISTINCT p.ticker FROM predictions p "
+            "JOIN outcomes_valid o ON p.ticker = o.ticker "
+            f"WHERE ({where_sql})",
+            params,
+        ).fetchall()
+    events: set[tuple[str, int, int]] = set()
+    for row in rows:
+        ticker = row["ticker"]
+        parsed = _parse_monthly_ticker_month(ticker)
+        if parsed is None:
+            # Opus-review-caught gap (round 2): silently dropping an
+            # unparseable ticker (vs. the old row-counting version, which
+            # at least counted it) means a real Kalshi ticker-format
+            # change would freeze this gate at 0 forever with zero signal
+            # that anything is wrong. Log loudly instead.
+            _log.warning(
+                "count_settled_snow_predictions: could not parse accrual "
+                "month from settled ticker %r -- excluded from the count",
+                ticker,
+            )
+            continue
+        prefix = next((p for p in prefixes if ticker.upper().startswith(p)), None)
+        if prefix is None:
+            continue
+        events.add((prefix, parsed[0], parsed[1]))
+    return len(events)
+
+
 def count_emos_ready_predictions() -> int:
     """Count multi-day predictions that are actually trainable EMOS rows —
     ens_mean AND settled_temp_f both populated, matching get_emos_training_data's
@@ -2652,9 +2709,10 @@ def get_multiday_calibration_cli() -> dict:
     scoped to match what the CLI (validate/backtest) has always shown: excludes
     condition_type='between', matching train_all_temperature_scaling()'s own
     exclusion (ml_bias.py) and both CLI blocks' pre-existing behavior. Also
-    excludes 'precip_month_total' (backlog.txt "RAIN / SNOW / HURRICANE
-    MARKETS" Step 2) for the same reason -- an inches-scale probability
-    doesn't belong in a °F-tuned multiday calibration curve.
+    excludes 'precip_month_total' and 'snow_month_total' (backlog.txt
+    "RAIN / SNOW / HURRICANE MARKETS" Step 2 / Snow Step 2) for the same
+    reason -- an inches-scale probability doesn't belong in a °F-tuned
+    multiday calibration curve.
 
     Returns {n, gate, gate_met, brier, t_multiday, calibration_buckets} — same shape
     as get_sameday_calibration() minus the sameday-only by_time_of_day breakdown.
@@ -2673,7 +2731,8 @@ def get_multiday_calibration_cli() -> dict:
             WHERE p.our_prob IS NOT NULL
               AND o.settled_yes IS NOT NULL
               AND (p.condition_type IS NULL
-                   OR p.condition_type NOT IN ('between', 'precip_month_total'))
+                   OR p.condition_type NOT IN
+                      ('between', 'precip_month_total', 'snow_month_total'))
             """
         ).fetchall()
 
@@ -2686,8 +2745,9 @@ def get_multiday_calibration_cli() -> dict:
 
 def get_sameday_calibration_cli() -> dict:
     """Same population as get_sameday_calibration() but excludes
-    condition_type='between', matching the CLI's (validate/backtest) existing scope.
-    The dashboard-facing get_sameday_calibration() deliberately keeps 'between' rows —
+    condition_type='between', 'precip_month_total', and 'snow_month_total',
+    matching the CLI's (validate/backtest) existing scope. The dashboard-
+    facing get_sameday_calibration() deliberately keeps 'between' rows —
     the two differ by 69 rows on this repo's live data (2026-07-08) and are NOT
     interchangeable.
 
@@ -2706,7 +2766,8 @@ def get_sameday_calibration_cli() -> dict:
               AND o.settled_yes IS NOT NULL
               AND p.days_out = 0
               AND (p.condition_type IS NULL
-                   OR p.condition_type NOT IN ('between', 'precip_month_total'))
+                   OR p.condition_type NOT IN
+                      ('between', 'precip_month_total', 'snow_month_total'))
             """
         ).fetchall()
 
@@ -3066,7 +3127,7 @@ def audit_settlement(ticker: str, settled_yes: bool) -> bool:
     prior value (if any) was left completely untouched, not confirmed correct.
     """
     try:
-        from weather_markets import _KXRAIN_MONTHLY_CITY
+        from weather_markets import _KXRAIN_MONTHLY_CITY, _KXSNOW_MONTHLY_CITY
         from weather_markets import CITY_COORDS as _coords
         from weather_markets import _metar_station_for_city as _station_for_city
         from weather_markets import _parse_market_condition as _parse_cond
@@ -3114,10 +3175,63 @@ def audit_settlement(ticker: str, settled_yes: bool) -> bool:
                 )
                 return False
             with _conn() as con:
-                con.execute(
+                cur = con.execute(
                     "UPDATE outcomes SET settled_value = ? WHERE ticker = ?",
                     (settled_value, ticker),
                 )
+            if cur.rowcount < 1:
+                _log.warning(
+                    "audit_settlement[%s]: no matching outcomes row -- "
+                    "settled_value not actually written",
+                    ticker,
+                )
+                return False
+            return True
+
+        # ── Monthly snow settlement (backlog.txt "RAIN / SNOW / HURRICANE
+        # MARKETS" Snow Step 2) ─────────────────────────────────────────────────
+        # Same shape and reasoning as the monthly rain branch just above --
+        # checked before the city/target_date early-return for the same
+        # reason (parse_city_date() always returns target_date=None for
+        # these tickers too).
+        if ticker.upper().startswith(tuple(_KXSNOW_MONTHLY_CITY)):
+            try:
+                client = _get_settlement_kalshi_client()
+                market = client.get_market(ticker)
+            except Exception as exc:
+                _log.warning(
+                    "audit_settlement[%s]: snow market fetch failed: %s", ticker, exc
+                )
+                return False
+            if market.get("status") != "finalized":
+                return False
+            exp_val = market.get("expiration_value")
+            if exp_val is None:
+                _log.warning(
+                    "audit_settlement[%s]: finalized but no expiration_value", ticker
+                )
+                return False
+            try:
+                settled_value = float(exp_val)
+            except (TypeError, ValueError):
+                _log.warning(
+                    "audit_settlement[%s]: non-numeric expiration_value=%r",
+                    ticker,
+                    exp_val,
+                )
+                return False
+            with _conn() as con:
+                cur = con.execute(
+                    "UPDATE outcomes SET settled_value = ? WHERE ticker = ?",
+                    (settled_value, ticker),
+                )
+            if cur.rowcount < 1:
+                _log.warning(
+                    "audit_settlement[%s]: no matching outcomes row -- "
+                    "settled_value not actually written",
+                    ticker,
+                )
+                return False
             return True
 
         city, target_date = _parse_city_date({"ticker": ticker, "title": ""})
@@ -3637,8 +3751,10 @@ def backfill_emos_data(force: bool = False) -> tuple[int, int]:
     # from Kalshi on every non-force backfill run forever, growing with
     # rain-history size. Idempotent (not a correctness bug), just wasted
     # API calls and an inflated settled_temp_filled count that never
-    # actually filled anything.
-    from weather_markets import _KXRAIN_MONTHLY_CITY
+    # actually filled anything. Snow Step 2 (review-caught the identical
+    # gap): KXDENSNOWM* rows have the exact same shape (settled_value, not
+    # settled_temp_f) -- excluded the same way.
+    from weather_markets import _KXRAIN_MONTHLY_CITY, _KXSNOW_MONTHLY_CITY
 
     with _conn() as con:
         if force:
@@ -3646,12 +3762,16 @@ def backfill_emos_data(force: bool = False) -> tuple[int, int]:
                 "SELECT o.ticker, o.settled_yes FROM outcomes o"
             ).fetchall()
         else:
-            _rain_prefixes = tuple(_KXRAIN_MONTHLY_CITY)
-            _exclude_sql = " AND ".join(["o.ticker NOT LIKE ?"] * len(_rain_prefixes))
+            _monthly_prefixes = tuple(_KXRAIN_MONTHLY_CITY) + tuple(
+                _KXSNOW_MONTHLY_CITY
+            )
+            _exclude_sql = " AND ".join(
+                ["o.ticker NOT LIKE ?"] * len(_monthly_prefixes)
+            )
             temp_rows = con.execute(
                 "SELECT o.ticker, o.settled_yes FROM outcomes o "
                 f"WHERE o.settled_temp_f IS NULL AND ({_exclude_sql})",
-                tuple(f"{p}%" for p in _rain_prefixes),
+                tuple(f"{p}%" for p in _monthly_prefixes),
             ).fetchall()
 
     label = (

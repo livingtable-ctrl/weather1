@@ -109,9 +109,12 @@ from tracker import (
 # reload utils because they test utils' own env-parsing directly).
 from utils import MIN_ARB_EDGE, MIN_EDGE, STRONG_EDGE, is_trading_paused
 from weather_markets import (
+    _KXRAIN_MONTHLY_CITY,
     _KXSNOW_MONTHLY_CITY,
     CITY_COORDS,
     _feels_like,
+    _rain_gates_active,
+    _snow_gates_active,
     analyze_trade,
     batch_prewarm_forecasts,
     check_ensemble_circuit_health,  # noqa: F401 — used via main.* in cron.py
@@ -2070,6 +2073,47 @@ def _quick_paper_buy(client: KalshiClient) -> None:
             if raw:
                 ticker = raw.upper()
                 break
+        # backlog.txt "RAIN / SNOW / HURRICANE MARKETS": this path is
+        # reachable without going through analyze_trade() or cmd_order first
+        # (review-caught, Snow Step 2 -- the maker-order branch below can
+        # place a REAL live order, and check_position_limits()'s own
+        # exception path deliberately fails open, so this was the one
+        # unguarded path to a live order for these ticker families). Same
+        # explicit refuse-outright guards as cmd_order's own, not just
+        # reliance on check_position_limits(). Round-2 review caught that
+        # this reasoning is ticker-family-agnostic, and applies MOST
+        # sharply to rain -- unlike hurricane/snow, rain's shadow gate is
+        # live and accumulating real settled predictions today, so this is
+        # not a theoretical gap for it.
+        if is_hurricane_ticker(ticker):
+            print(
+                red(
+                    f"  {ticker}: hurricane markets are not supported yet — refusing to place this order."
+                )
+            )
+            return
+        if (
+            ticker.upper().startswith(tuple(_KXRAIN_MONTHLY_CITY))
+            and not _rain_gates_active()
+        ):
+            print(
+                red(
+                    f"  {ticker}: monthly rain markets are shadow-only until RAIN_TRADING_ENABLED=1 "
+                    "and >=20 settled rain predictions exist — refusing to place this order."
+                )
+            )
+            return
+        if (
+            ticker.upper().startswith(tuple(_KXSNOW_MONTHLY_CITY))
+            and not _snow_gates_active()
+        ):
+            print(
+                red(
+                    f"  {ticker}: monthly snow markets are shadow-only until SNOW_TRADING_ENABLED=1 "
+                    "and >=20 settled snow predictions exist — refusing to place this order."
+                )
+            )
+            return
         while True:
             side = (
                 input(dim(f"  Side for {ticker} (yes/no, q to cancel): "))
@@ -3679,14 +3723,23 @@ def cmd_order(client: KalshiClient, action: str, args: list):
         )
         return
 
-    # backlog.txt "RAIN / SNOW / HURRICANE MARKETS" -- SNOW Step 1: same
-    # reasoning as the hurricane guard just above -- no probability model
-    # exists yet, refuse outright rather than relying solely on
-    # check_position_limits() further down.
-    if ticker.upper().startswith(tuple(_KXSNOW_MONTHLY_CITY)):
+    # backlog.txt "RAIN / SNOW / HURRICANE MARKETS" -- Snow Step 2
+    # (2026-07-30): kept as its own explicit refuse-outright guard rather
+    # than dropping it to match rain's leaner shape (relying solely on
+    # check_position_limits()) -- an opus review originally added this
+    # direct check because relying on check_position_limits() alone fails
+    # open on an unhandled exception at that call site; that reasoning
+    # applies regardless of whether a model exists. Now conditional on
+    # _snow_gates_active() (shadow-only), not unconditional, matching the
+    # model's real state.
+    if (
+        ticker.upper().startswith(tuple(_KXSNOW_MONTHLY_CITY))
+        and not _snow_gates_active()
+    ):
         print(
             red(
-                f"  {ticker}: monthly snow markets are discovery-only (no probability model yet) — refusing to place this order."
+                f"  {ticker}: monthly snow markets are shadow-only until SNOW_TRADING_ENABLED=1 "
+                "and >=20 settled snow predictions exist — refusing to place this order."
             )
         )
         return
@@ -5439,7 +5492,8 @@ def cmd_calibrate() -> None:
                     "FROM multiday_predictions p JOIN outcomes_valid o ON p.ticker = o.ticker "
                     "WHERE o.settled_yes IS NOT NULL AND p.our_prob IS NOT NULL"
                     "  AND (p.condition_type IS NULL"
-                    "       OR p.condition_type NOT IN ('between', 'precip_month_total'))"
+                    "       OR p.condition_type NOT IN"
+                    "          ('between', 'precip_month_total', 'snow_month_total'))"
                 ).fetchall()
             ]
         platt = _train_platt(_platt_rows, min_samples=50)
@@ -6760,6 +6814,43 @@ def cmd_paper(args: list, client: KalshiClient | None = None):
         side = args[2].lower()
         if side not in ("yes", "no"):
             print(red("side must be 'yes' or 'no'"))
+            return
+        # backlog.txt "RAIN / SNOW / HURRICANE MARKETS": same reachable-
+        # without-analyze_trade()/cmd_order gap _quick_paper_buy had
+        # (review-caught, Snow Step 2) -- check_position_limits()'s own
+        # exception path deliberately fails open, so this direct guard is
+        # not redundant even though this path only ever places a paper
+        # order, not a live one. Round-2 review caught this applies to
+        # rain too -- unlike hurricane/snow, rain's shadow gate is live
+        # and accumulating real settled predictions today.
+        if is_hurricane_ticker(ticker):
+            print(
+                red(
+                    f"  {ticker}: hurricane markets are not supported yet — refusing to place this order."
+                )
+            )
+            return
+        if (
+            ticker.upper().startswith(tuple(_KXRAIN_MONTHLY_CITY))
+            and not _rain_gates_active()
+        ):
+            print(
+                red(
+                    f"  {ticker}: monthly rain markets are shadow-only until RAIN_TRADING_ENABLED=1 "
+                    "and >=20 settled rain predictions exist — refusing to place this order."
+                )
+            )
+            return
+        if (
+            ticker.upper().startswith(tuple(_KXSNOW_MONTHLY_CITY))
+            and not _snow_gates_active()
+        ):
+            print(
+                red(
+                    f"  {ticker}: monthly snow markets are shadow-only until SNOW_TRADING_ENABLED=1 "
+                    "and >=20 settled snow predictions exist — refusing to place this order."
+                )
+            )
             return
         try:
             price = float(args[3])

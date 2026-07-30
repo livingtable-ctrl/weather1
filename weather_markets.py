@@ -52,6 +52,7 @@ from utils import (
     MAX_DAYS_OUT,
     NO_BID_KEYS,
     RAIN_MAX_DAYS_OUT,
+    SNOW_MAX_DAYS_OUT,
     YES_ASK_KEYS,
     YES_BID_KEYS,
     coalesce_market_price,
@@ -1025,6 +1026,38 @@ def _rain_gates_active() -> bool:
         from tracker import count_settled_rain_predictions
 
         return count_settled_rain_predictions() >= _RAIN_GATE_MIN_SAMPLES
+    except Exception:
+        return False
+
+
+# backlog.txt "RAIN / SNOW / HURRICANE MARKETS" Snow Step 2, shadow-only
+# rollout. Denver's only-ever snow market (Dec 2025) had zero volume/open-
+# interest on all 7 brackets and never settled -- expect this floor to take
+# much longer than rain's ~2-month estimate, since there is currently no
+# live snow market anywhere and only one city has ever had one at all
+# (confirmed live 2026-07-30).
+_SNOW_GATE_MIN_SAMPLES: int = 20
+
+
+def _snow_gates_active() -> bool:
+    """Return True only when SNOW_TRADING_ENABLED=1 AND >= 20 settled
+    monthly-snow predictions -- mirrors _rain_gates_active()'s exact shape.
+    Until both hold, snow opportunities are still fully analyzed and logged
+    (is_shadow=True) so real calibration data accumulates risk-free; no real
+    order (paper or live) is ever placed for a snow ticker before this is
+    True."""
+    import os
+
+    if os.getenv("SNOW_TRADING_ENABLED", "").strip().lower() not in (
+        "1",
+        "true",
+        "yes",
+    ):
+        return False
+    try:
+        from tracker import count_settled_snow_predictions
+
+        return count_settled_snow_predictions() >= _SNOW_GATE_MIN_SAMPLES
     except Exception:
         return False
 
@@ -3749,18 +3782,20 @@ KNOWN_WEATHER_SERIES = [
     "KXRAINDENM",
     "KXRAINAUSM",
     "KXRAINSTPM",  # St. Petersburg — onboarded as a new city; 10 brackets (1-10in)
-    # backlog.txt "RAIN / SNOW / HURRICANE MARKETS" -- SNOW Step 1
-    # (discovery/schema/safety only, no probability model, mirrors rain's
-    # original Step 1): live-verified 2026-07-26 that of 33 real Kalshi
-    # series containing "SNOW", only KXDENSNOWM (Denver) has ever had a real
-    # market among this bot's tracked cities (7 markets, Dec 2025, now all
-    # closed -- pure seasonality, re-check before next winter). Every other
-    # tracked city's snow series is a registered-but-never-launched shell (0
-    # markets, ever) -- see KNOWN_UNTRACKED_SNOW_SERIES below for the full
-    # list and why each is excluded. analyze_trade() returns None for
-    # KXDENSNOWM* today (no model exists); also excluded from
-    # compute_market_implied_distributions() and consistency._group_markets(),
-    # same reason as monthly rain (no day component to group by).
+    # backlog.txt "RAIN / SNOW / HURRICANE MARKETS" -- Snow Step 1
+    # (discovery/schema/safety, 2026-07-26) + Snow Step 2 (real monthly-
+    # accumulation probability model, 2026-07-30): live-verified 2026-07-26
+    # that of 33 real Kalshi series containing "SNOW", only KXDENSNOWM
+    # (Denver) has ever had a real market among this bot's tracked cities (7
+    # markets, Dec 2025, now all closed -- pure seasonality, re-check before
+    # next winter). Every other tracked city's snow series is a registered-
+    # but-never-launched shell (0 markets, ever) -- see
+    # KNOWN_UNTRACKED_SNOW_SERIES below for the full list and why each is
+    # excluded. analyze_trade() dispatches KXDENSNOWM* to
+    # _analyze_monthly_snow_trade() (shadow-only until _snow_gates_active());
+    # still excluded from compute_market_implied_distributions() and
+    # consistency._group_markets(), same reason as monthly rain (no day
+    # component to group by).
     "KXDENSNOWM",
     # KXTEMPxxxH — hourly-directional temperature markets (backlog.txt
     # "HOURLY-DIRECTIONAL TEMPERATURE MARKETS"). Only the 5 cities confirmed
@@ -4239,6 +4274,12 @@ def is_hurricane_ticker(ticker: str) -> bool:
 # exposure-cap guards can positively identify this ticker family by dict
 # membership, the same way rain does, rather than relying on that
 # coincidence.
+# Real observed ticker shape (opus-review-caught: this was inferred from
+# rain's identical "-YYMON-N" pattern, not previously recorded anywhere in
+# the repo) -- live-fetched 2026-07-30 across all 7 Dec-2025 brackets, e.g.
+# KXDENSNOWM-25DEC-5.0, KXDENSNOWM-25DEC-0.1, KXDENSNOWM-25DEC-35.0.
+# _parse_monthly_ticker_month()'s `-(\d{2})([A-Z]{3})-` regex matches this
+# shape directly, same as rain's KXRAIN*M-26JUL-7.
 _KXSNOW_MONTHLY_CITY = {
     "KXDENSNOWM": "Denver",
 }
@@ -4807,8 +4848,8 @@ def _parse_market_condition(market: dict) -> dict | None:
                                                        (KXRAIN*M ladder markets)
       {"type": "snow_month_total", "threshold": 5.0}  — monthly snow total > 5 in
                                                        (KXDENSNOWM ladder market;
-                                                       Step 1 discovery only, no
-                                                       model dispatches on this type)
+                                                       dispatches to
+                                                       _analyze_monthly_snow_trade)
     Returns None if unparseable.
     """
     ticker = market.get("ticker", "")
@@ -4865,10 +4906,8 @@ def _parse_market_condition(market: dict) -> dict | None:
     # yes_sub_title="Above N inches", identical to rain's ladder shape).
     # Distinct type name ("snow_month_total", not "precip_month_total") so
     # this can never accidentally dispatch into _analyze_monthly_rain_trade()
-    # -- moot today since analyze_trade()'s own unconditional guard for this
-    # ticker family returns None before any condition-based dispatch (Step 1:
-    # no probability model exists yet), but kept explicit rather than relying
-    # on that guard alone.
+    # -- Step 2 (2026-07-30) wires this into a real dispatch in
+    # analyze_trade(), so this distinction is now load-bearing, not moot.
     if ticker_up.startswith(tuple(_KXSNOW_MONTHLY_CITY)):
         floor_strike = market.get("floor_strike")
         strike_type = market.get("strike_type")
@@ -6184,6 +6223,14 @@ _CONDITION_CONFIDENCE: dict[str, float] = {
     # single-day ensemble+climatology blend. A judgment call, not derived
     # from data yet -- revisit once real shadow Brier scores exist.
     "precip_month_total": 0.70,
+    # Snow Step 2: same bootstrap-of-historical-analogs shape as rain, but
+    # lower still -- zero real settled snow predictions exist anywhere to
+    # validate against (confirmed live 2026-07-30: Denver's only-ever snow
+    # market had zero volume and never settled), and snow accumulation has
+    # its own phase-transition/measurement variance rain doesn't. A judgment
+    # call, not derived from data -- revisit once real shadow Brier scores
+    # exist, same as rain's own note above.
+    "snow_month_total": 0.65,
 }
 
 
@@ -7383,12 +7430,16 @@ def _analyze_snow_trade(
 _RAIN_TICKER_MONTH_RE = re.compile(r"-(\d{2})([A-Z]{3})-")
 
 
-def _parse_monthly_rain_ticker_month(ticker: str) -> tuple[int, int] | None:
-    """Parse the accrual (year, month) out of a KXRAIN*M ticker, e.g.
-    'KXRAINDENM-26JUL-7' -> (2026, 7). Deliberately a separate regex from
-    parse_city_date()'s daily_match/hourly_match -- this never touches that
-    function, preserving its documented target_date=None behavior for these
-    tickers (backlog.txt "RAIN / SNOW / HURRICANE MARKETS" Step 2)."""
+def _parse_monthly_ticker_month(ticker: str) -> tuple[int, int] | None:
+    """Parse the accrual (year, month) out of a KXRAIN*M or KXDENSNOWM-style
+    monthly-ladder ticker, e.g. 'KXRAINDENM-26JUL-7' -> (2026, 7),
+    'KXDENSNOWM-25DEC-5.0' -> (2025, 12) -- same ticker shape (a
+    "-YYMON-" segment), substance-agnostic, so reused directly for snow
+    rather than duplicated (Snow Step 2, 2026-07-30). Deliberately a
+    separate regex from parse_city_date()'s daily_match/hourly_match --
+    this never touches that function, preserving its documented
+    target_date=None behavior for these tickers (backlog.txt "RAIN / SNOW /
+    HURRICANE MARKETS" Step 2)."""
     m = _RAIN_TICKER_MONTH_RE.search(ticker.upper())
     if not m:
         return None
@@ -7427,7 +7478,7 @@ def _analyze_monthly_rain_trade(
     import acis_precip
 
     ticker = enriched.get("ticker", "?")
-    parsed_month = _parse_monthly_rain_ticker_month(ticker)
+    parsed_month = _parse_monthly_ticker_month(ticker)
     if parsed_month is None:
         _log.warning(
             "_analyze_monthly_rain_trade[%s]: could not parse accrual month from ticker",
@@ -7484,6 +7535,29 @@ def _analyze_monthly_rain_trade(
                 days_in_month,
             )
             return None
+        # Opus-review-caught gap: _n_missing was captured and discarded --
+        # a fetch that comes back present-but-partly-"M" (missing)
+        # sentinel days silently understated month_to_date_actual with no
+        # guard at all. Round-2 review caught that a FRACTIONAL threshold
+        # (the historical path's 0.20 max_missing_frac) is the wrong
+        # statistic here: that threshold dilutes one bad analog year's
+        # error across 30 years of samples, but a month-to-date total is
+        # added 1:1 into every bootstrap sample with no dilution at all --
+        # real Denver Dec 2025 data has its entire month's rain concentrated
+        # in 2 of 31 days (6.5%, comfortably under a 20% threshold), so a
+        # fractional check would NOT have caught the exact scenario this
+        # guard exists for. Zero-tolerance instead: any missing day fails
+        # closed. The fetch is cheap and re-runs every scan cycle, so this
+        # costs nothing but a skipped cycle, not a permanently lost trade.
+        if _n_missing > 0:
+            _log.warning(
+                "_analyze_monthly_rain_trade[%s]: month-to-date ACIS data "
+                "has %d missing day(s) (of %d) -- refusing to trade",
+                ticker,
+                _n_missing,
+                days_in_month,
+            )
+            return None
         month_to_date_actual = _mtd_raw
         remaining_start_day = days_in_month + 1
     else:
@@ -7496,6 +7570,19 @@ def _analyze_monthly_rain_trade(
                 "_analyze_monthly_rain_trade[%s]: month-to-date ACIS fetch "
                 "failed (through_day=%d) -- refusing to coerce to 0.0",
                 ticker,
+                through_day,
+            )
+            return None
+        # Same zero-tolerance missing-data guard as the branch above --
+        # through_day < 1 is skipped (fetch_month_to_date_actual's own
+        # contract guarantees _n_missing=0 in that case; nothing has
+        # accrued yet, not missing).
+        if through_day >= 1 and _n_missing > 0:
+            _log.warning(
+                "_analyze_monthly_rain_trade[%s]: month-to-date ACIS data "
+                "has %d missing day(s) (of %d) -- refusing to trade",
+                ticker,
+                _n_missing,
                 through_day,
             )
             return None
@@ -7701,6 +7788,286 @@ def _analyze_monthly_rain_trade(
             if forecast_blend_signal is not None
             else {}
         ),
+    }
+
+
+def _analyze_monthly_snow_trade(
+    enriched: dict,
+    condition: dict,
+    city: str,
+    coords: tuple,
+    close_dt: datetime,
+    days_out: int,
+) -> dict | None:
+    """
+    Probability analysis for KXDENSNOWM-style monthly snow-total ladder
+    markets (backlog.txt "RAIN / SNOW / HURRICANE MARKETS" Snow Step 2).
+    Mirrors _analyze_monthly_rain_trade()'s exact shape -- same empirical
+    bootstrap-of-historical-analogs approach, same ACIS StnData + Open-Meteo
+    Seasonal combination -- but via acis_snow.py (elem="snow", Open-Meteo
+    "snowfall_mean" in cm rather than "precipitation_mean" in mm) rather
+    than acis_precip.py. The bootstrap/tilt math itself
+    (historical_remaining_and_full_month_sums/bootstrap_ci_month_total/
+    apply_seasonal_tilt) is imported by acis_snow.py directly from
+    acis_precip.py, not duplicated -- it's substance-agnostic.
+
+    Deliberately does NOT include rain's later day-specific forecast-blend
+    shadow signal (backlog.txt "RAIN MARKETS -- MONTHLY MODEL HAS NO
+    DAY-SPECIFIC FORECAST SIGNAL", shipped 2026-07-28, after rain's own
+    Step 2 commit 1839d76) -- out of scope for Step 2 parity, a natural
+    follow-up once real snow shadow data exists.
+
+    close_dt/days_out are pre-resolved by the caller (analyze_trade's snow
+    gate), matching _analyze_monthly_rain_trade's "caller resolves once,
+    passes down" shape.
+    """
+    import calendar
+
+    import acis_snow
+
+    ticker = enriched.get("ticker", "?")
+    parsed_month = _parse_monthly_ticker_month(ticker)
+    if parsed_month is None:
+        _log.warning(
+            "_analyze_monthly_snow_trade[%s]: could not parse accrual month from ticker",
+            ticker,
+        )
+        return None
+    year, month = parsed_month
+    days_in_month = calendar.monthrange(year, month)[1]
+
+    sid = acis_snow._station_sid_for_city(city)
+    if sid is None:
+        _log.warning(
+            "_analyze_monthly_snow_trade[%s]: no ACIS station for city=%s",
+            ticker,
+            city,
+        )
+        return None
+
+    lat, lon, tz = coords
+    from zoneinfo import ZoneInfo as _ZoneInfo
+
+    today_local = datetime.now(_ZoneInfo(tz)).date()
+
+    # Same three-case shape as rain's own month-position handling -- see
+    # that function's comment for the full reasoning (the "before month
+    # starts"/"after month ends but not finalized" cases are defensive
+    # only, guarded upstream by days_out/past-close gates already).
+    month_to_date_actual: float
+    if today_local < date(year, month, 1):
+        month_to_date_actual = 0.0
+        remaining_start_day = 1
+    elif today_local > date(year, month, days_in_month):
+        _mtd_raw, _n_missing = acis_snow.fetch_month_to_date_actual_snow(
+            sid, year, month, days_in_month
+        )
+        if _mtd_raw is None:
+            _log.warning(
+                "_analyze_monthly_snow_trade[%s]: month-to-date ACIS fetch "
+                "failed (through_day=%d) -- refusing to coerce to 0.0",
+                ticker,
+                days_in_month,
+            )
+            return None
+        # Opus-review-caught HIGH finding: _n_missing was captured and
+        # discarded -- a fetch that comes back present-but-partly-"M"
+        # (missing) sentinel days silently understated month_to_date_actual
+        # with no guard at all. Round-2 review caught that a FRACTIONAL
+        # threshold (the historical path's 0.20 max_missing_frac) is the
+        # wrong statistic here -- that threshold dilutes one bad analog
+        # year's error across 30 years of samples, but a month-to-date
+        # total is added 1:1 into every bootstrap sample with no dilution
+        # at all. Reproduced live against real cached Denver history:
+        # the entire month's snow was concentrated in 2 of 31 days (6.5%,
+        # comfortably under a 20% threshold) -- a fractional check would
+        # NOT have caught the exact scenario this guard exists for.
+        # Zero-tolerance instead: any missing day fails closed. The fetch
+        # is cheap and re-runs every scan cycle, so this costs nothing but
+        # a skipped cycle, not a permanently lost trade.
+        if _n_missing > 0:
+            _log.warning(
+                "_analyze_monthly_snow_trade[%s]: month-to-date ACIS data "
+                "has %d missing day(s) (of %d) -- refusing to trade",
+                ticker,
+                _n_missing,
+                days_in_month,
+            )
+            return None
+        month_to_date_actual = _mtd_raw
+        remaining_start_day = days_in_month + 1
+    else:
+        through_day = today_local.day - 1 if today_local.month == month else 0
+        _mtd_raw, _n_missing = acis_snow.fetch_month_to_date_actual_snow(
+            sid, year, month, through_day
+        )
+        if _mtd_raw is None and through_day >= 1:
+            _log.warning(
+                "_analyze_monthly_snow_trade[%s]: month-to-date ACIS fetch "
+                "failed (through_day=%d) -- refusing to coerce to 0.0",
+                ticker,
+                through_day,
+            )
+            return None
+        # Same zero-tolerance missing-data guard as the branch above --
+        # through_day < 1 is skipped (fetch_month_to_date_actual_snow's
+        # own contract guarantees _n_missing=0 in that case; nothing has
+        # accrued yet, not missing).
+        if through_day >= 1 and _n_missing > 0:
+            _log.warning(
+                "_analyze_monthly_snow_trade[%s]: month-to-date ACIS data "
+                "has %d missing day(s) (of %d) -- refusing to trade",
+                ticker,
+                _n_missing,
+                through_day,
+            )
+            return None
+        month_to_date_actual = _mtd_raw or 0.0
+        remaining_start_day = through_day + 1
+
+    history = acis_snow.fetch_historical_daily_snow(sid)
+    if history is None:
+        _log.warning(
+            "_analyze_monthly_snow_trade[%s]: no ACIS historical data for sid=%s",
+            ticker,
+            sid,
+        )
+        return None
+
+    remaining_sums, full_month_sums = (
+        acis_snow.historical_remaining_and_full_month_sums(
+            history, month, remaining_start_day, days_in_month
+        )
+    )
+    if len(remaining_sums) < 15:
+        _log.warning(
+            "_analyze_monthly_snow_trade[%s]: only %d usable historical years "
+            "(need >= 15)",
+            ticker,
+            len(remaining_sums),
+        )
+        return None
+
+    seasonal_mean_cm = acis_snow.fetch_seasonal_snow_mean_cm(lat, lon, tz, year, month)
+    # apply_seasonal_tilt (reused from acis_precip.py) expects its
+    # seasonal_mean_mm argument in millimeters and converts the inches-based
+    # historical baseline to mm internally -- Open-Meteo's snowfall_mean is
+    # in cm, not mm (see acis_snow.py's own module-level comment), so this
+    # is the one conversion this call site owns rather than the shared
+    # function.
+    seasonal_mean_mm = seasonal_mean_cm * 10.0 if seasonal_mean_cm is not None else None
+    remaining_sums_tilted, tilt_applied = acis_snow.apply_seasonal_tilt(
+        remaining_sums, full_month_sums, seasonal_mean_mm
+    )
+
+    threshold = condition["threshold"]
+
+    totals = [month_to_date_actual + s for s in remaining_sums_tilted]
+    ens_prob = sum(1 for t in totals if t > threshold) / len(totals)
+    blended_prob = max(0.01, min(0.99, ens_prob))
+
+    # Bias correction keyed on close_dt.month, NOT the accrual month -- same
+    # reasoning as rain's own comment: must match whatever month value ends
+    # up stored in predictions.market_date (close_dt.date(), per the same
+    # resolved exposure-cap decision reused here), since get_quintile_bias
+    # filters historical rows by strftime('%m', market_date).
+    bias = 0.0
+    try:
+        from tracker import get_quintile_bias
+
+        bias = get_quintile_bias(
+            city, close_dt.month, blended_prob, condition_type=condition["type"]
+        )
+        blended_prob = max(0.01, min(0.99, blended_prob - bias))
+    except Exception as _exc:
+        _log.debug(
+            "_analyze_monthly_snow_trade[%s]: bias correction skipped: %s",
+            ticker,
+            _exc,
+        )
+
+    prices = parse_market_price(enriched)
+    market_prob = prices["implied_prob"]
+    rec_side = "yes" if blended_prob > market_prob else "no"
+
+    ci_low, ci_high = acis_snow.bootstrap_ci_month_total(
+        remaining_sums_tilted, month_to_date_actual, threshold
+    )
+
+    # Same consensus-bonus caution as rain's own Step 2 (backlog.txt handoff
+    # item 6): ACIS-empirical and Open-Meteo-tilted are NOT independent
+    # sources here either -- the tilt nudges the same physical baseline the
+    # empirical estimate already reflects, not a second independent
+    # estimate. Hardcoded False, not computed.
+    consensus = False
+
+    _priced = _price_and_size(
+        blended_prob,
+        prices,
+        condition,
+        rec_side,
+        ci=(ci_low, ci_high),
+        consensus=consensus,
+    )
+    net_edge = _priced["net_edge"]
+    edge = _priced["edge"]
+    entry_side_edge = _priced["entry_side_edge"]
+    fee_kel = _priced["fee_kel"]
+    ci_adj_kelly = _priced["ci_adjusted_kelly"]
+
+    _edge_conf = edge_confidence(days_out, condition_type=condition["type"])
+    adjusted_edge = net_edge * _edge_conf
+
+    return {
+        "forecast_prob": blended_prob,
+        "market_prob": market_prob,
+        "edge": edge,
+        "signal": _edge_label(edge),
+        "net_edge": net_edge,
+        "adjusted_edge": round(adjusted_edge, 6),
+        "edge_confidence_factor": _edge_conf,
+        "net_signal": _edge_label(adjusted_edge),
+        "recommended_side": rec_side,
+        "condition": condition,
+        "ensemble_prob": ens_prob,
+        "nws_prob": None,
+        "clim_prob": None,
+        "clim_adj_prob": None,
+        "obs_prob": None,
+        "live_obs": None,
+        "index_adj": 0.0,
+        "bias_correction": bias,
+        # Distinct label from rain's "acis_empirical" -- tracker.py's
+        # per-source reliability aggregation reads blend_sources keys across
+        # all predictions regardless of ticker family; a shared literal
+        # would conflate rain and snow accuracy under one indistinguishable
+        # source.
+        "blend_sources": {"acis_snow_empirical": 1.0},
+        "method": "monthly_snow_bootstrap_tilted"
+        if tilt_applied
+        else "monthly_snow_bootstrap",
+        "ensemble_stats": None,
+        "n_members": len(remaining_sums),
+        "ci_low": ci_low,
+        "ci_high": ci_high,
+        "ci_width": round(ci_high - ci_low, 4),
+        "kelly": fee_kel,
+        "fee_adjusted_kelly": fee_kel,
+        "ci_adjusted_kelly": ci_adj_kelly,
+        "consensus": consensus,
+        "model_consensus": True,
+        "near_threshold": False,
+        "days_out": days_out,
+        "city": city,
+        # Same resolved exposure-cap decision as rain (backlog.txt Step 2):
+        # the market's real close_time date.
+        "target_date": close_dt.date().isoformat(),
+        "entry_side_edge": round(entry_side_edge, 4),
+        # Snow-specific diagnostics, not read by any shared consumer.
+        "accrual_month": f"{year:04d}-{month:02d}",
+        "month_to_date_actual": round(month_to_date_actual, 3),
+        "n_historical_years": len(remaining_sums),
+        "seasonal_tilt_applied": tilt_applied,
     }
 
 
@@ -8076,29 +8443,26 @@ def analyze_trade(
         if _hourly_var_role is None:
             _count_gate("hourly_not_target_hour")
             return None
-    # backlog.txt "RAIN / SNOW / HURRICANE MARKETS" -- SNOW Step 1: discovery/
-    # schema/safety only, no probability model (unlike rain, which progressed
-    # to Step 2). True unconditional guard, mirroring rain's own original
-    # Step 1 shape before Step 2 replaced it.
-    if any(_tkr_up.startswith(_p) for _p in _KXSNOW_MONTHLY_CITY):
-        _count_gate("monthly_snow_not_yet_supported")
-        return None
     # backlog.txt "RAIN / SNOW / HURRICANE MARKETS" Step 2: monthly rain-total
-    # ladder markets have no day-of-month component in their ticker, so
-    # parse_city_date() deliberately keeps returning target_date=None for
-    # them (see that function's own docstring) -- forecast/target_date stay
-    # unset. That's why no_forecast/no_date/past_date/days_out below each
-    # need a rain-specific branch rather than being skipped in place: this
-    # ticker family reaches _analyze_monthly_rain_trade() further below
-    # (Step 1's own unconditional-return guard is gone), gated instead on
-    # close_time (which Kalshi provides directly on every market) rather
-    # than target_date.
+    # and snow-total ladder markets have no day-of-month component in their
+    # ticker, so parse_city_date() deliberately keeps returning
+    # target_date=None for them (see that function's own docstring) --
+    # forecast/target_date stay unset. That's why no_forecast/no_date/
+    # past_date/days_out below each need a rain/snow-specific branch rather
+    # than being skipped in place: this ticker family reaches
+    # _analyze_monthly_rain_trade()/_analyze_monthly_snow_trade() further
+    # below, gated instead on close_time (which Kalshi provides directly on
+    # every market) rather than target_date.
     _is_monthly_rain = any(_tkr_up.startswith(_p) for _p in _KXRAIN_MONTHLY_CITY)
+    # Snow Step 2 (2026-07-30): replaces Step 1's unconditional
+    # monthly_snow_not_yet_supported guard -- same treatment as rain now.
+    _is_monthly_snow = any(_tkr_up.startswith(_p) for _p in _KXSNOW_MONTHLY_CITY)
     # Initialize early so blend weight calls can read regime even before detection runs.
     # Overwritten by the actual regime detection block further below.
     _regime_info: dict = {}
     _rain_close_dt: datetime | None = None
-    if not _is_monthly_rain and not forecast:
+    _snow_close_dt: datetime | None = None
+    if not _is_monthly_rain and not _is_monthly_snow and not forecast:
         _log.warning(
             "analyze_trade[%s]: gate=no_forecast city=%s date=%s",
             _tkr,
@@ -8107,7 +8471,7 @@ def analyze_trade(
         )
         _count_gate("no_forecast")
         return None  # no forecast data available for this market
-    if not _is_monthly_rain and not target_date:
+    if not _is_monthly_rain and not _is_monthly_snow and not target_date:
         _log.warning("analyze_trade[%s]: gate=no_date city=%s", _tkr, city)
         _count_gate("no_date")
         return None  # could not parse target date from ticker
@@ -8130,11 +8494,23 @@ def analyze_trade(
             )
             _count_gate("monthly_rain_past_close")
             return None
+    elif _is_monthly_snow:
+        # Same close_time-derived gating as rain -- see comment above.
+        _snow_close_dt = _safe_parse_close_time(enriched.get("close_time", ""))
+        if _snow_close_dt is None or _snow_close_dt < datetime.now(UTC):
+            _log.debug(
+                "analyze_trade[%s]: gate=monthly_snow_past_close close_time=%s",
+                _tkr,
+                enriched.get("close_time"),
+            )
+            _count_gate("monthly_snow_past_close")
+            return None
     else:
         # Narrowing for mypy: the no_date gate above only returns None when
-        # `not _is_monthly_rain and not target_date` -- since we're in the
-        # `else` of `if _is_monthly_rain`, that gate already guarantees
-        # target_date is truthy here.
+        # `not _is_monthly_rain and not _is_monthly_snow and not
+        # target_date` -- since we're in the `else` of both `if
+        # _is_monthly_rain` and `elif _is_monthly_snow`, that gate already
+        # guarantees target_date is truthy here.
         assert target_date is not None
         if target_date < datetime.now(UTC).date():
             _log.debug(
@@ -8191,6 +8567,20 @@ def analyze_trade(
                 _tkr,
                 _days_out_check,
                 RAIN_MAX_DAYS_OUT,
+            )
+            _count_gate("days_out")
+            return None
+    elif _is_monthly_snow:
+        # _snow_close_dt was already resolved (non-None) by the past-close
+        # check above -- reuse it rather than re-parsing close_time again.
+        assert _snow_close_dt is not None
+        _days_out_check = _days_out_from_close_time(_snow_close_dt)
+        if _days_out_check > SNOW_MAX_DAYS_OUT:
+            _log.debug(
+                "analyze_trade[%s]: gate=days_out days=%d max=%d (snow)",
+                _tkr,
+                _days_out_check,
+                SNOW_MAX_DAYS_OUT,
             )
             _count_gate("days_out")
             return None
@@ -8316,12 +8706,13 @@ def analyze_trade(
     # is False for them, condition["var"] keeps its existing per-site
     # substring-derived value further below).
     if _is_hourly:
-        # Narrowing for mypy: _is_hourly and _is_monthly_rain are mutually
-        # exclusive (disjoint ticker-prefix sets) -- an hourly ticker always
-        # has _is_monthly_rain=False, so the no_forecast/no_date gates above
-        # already guarantee both are real for it. Safe unconditionally: this
-        # block never executes for a rain ticker (whose forecast/target_date
-        # genuinely are None), since _is_hourly is False for those.
+        # Narrowing for mypy: _is_hourly, _is_monthly_rain, and _is_monthly_
+        # snow are mutually exclusive (disjoint ticker-prefix sets) -- an
+        # hourly ticker always has both monthly flags False, so the
+        # no_forecast/no_date gates above already guarantee both are real
+        # for it. Safe unconditionally: this block never executes for a
+        # rain/snow ticker (whose forecast/target_date genuinely are None),
+        # since _is_hourly is False for those.
         assert forecast is not None
         assert target_date is not None
         condition["var"] = _hourly_var_role
@@ -8380,11 +8771,25 @@ def analyze_trade(
             result["edge_calc_version"] = EDGE_CALC_VERSION
         return result
 
+    # ── Monthly snow-total fast-path (backlog.txt "RAIN / SNOW / HURRICANE
+    # MARKETS" Snow Step 2) ───────────────────────────────────────────────────
+    # Same ordering reasoning as the rain fast-path just above.
+    if condition["type"] == "snow_month_total":
+        assert _snow_close_dt is not None  # guaranteed by the past-close gate above
+        result = _analyze_monthly_snow_trade(
+            enriched, condition, city, coords, _snow_close_dt, _days_out_check
+        )
+        if result is not None:
+            result["time_risk"] = time_risk_label
+            result["edge_calc_version"] = EDGE_CALC_VERSION
+        return result
+
     # Narrowing for mypy: every branch that could leave target_date/forecast
-    # falsy (_is_monthly_rain=True) has already returned above (hourly/
-    # precip/snow/rain fast-paths); everything from here to the end of this
-    # function is the daily-only pipeline, where the no_date/no_forecast
-    # gates already guarantee both are truthy. Never reassigned below.
+    # falsy (_is_monthly_rain=True or _is_monthly_snow=True) has already
+    # returned above (hourly/precip/snow-ice/rain/snow-ladder fast-paths);
+    # everything from here to the end of this function is the daily-only
+    # pipeline, where the no_date/no_forecast gates already guarantee both
+    # are truthy. Never reassigned below.
     assert target_date is not None
     assert forecast is not None
 

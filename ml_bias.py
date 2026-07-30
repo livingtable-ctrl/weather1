@@ -173,7 +173,8 @@ def train_bias_model(min_samples: int = 200) -> dict:
                 JOIN outcomes_valid o ON p.ticker = o.ticker
                 WHERE p.city IS NOT NULL AND p.our_prob IS NOT NULL
                   AND (p.condition_type IS NULL
-                       OR p.condition_type NOT IN ('between', 'precip_month_total'))
+                       OR p.condition_type NOT IN
+                          ('between', 'precip_month_total', 'snow_month_total'))
                 ORDER BY p.predicted_at ASC
                 """
             ).fetchall()
@@ -599,7 +600,8 @@ def train_all_temperature_scaling(
                 WHERE p.our_prob IS NOT NULL AND o.settled_yes IS NOT NULL
                   AND (p.days_out IS NULL OR p.days_out >= 1)
                   AND (p.condition_type IS NULL
-                       OR p.condition_type NOT IN ('between', 'precip_month_total'))
+                       OR p.condition_type NOT IN
+                          ('between', 'precip_month_total', 'snow_month_total'))
                 """
                 # backlog.txt "RAIN / SNOW / HURRICANE MARKETS" Step 2: monthly
                 # rain trades log with a real (large, ~0-31) days_out once
@@ -620,7 +622,8 @@ def train_all_temperature_scaling(
                 WHERE p.our_prob IS NOT NULL AND o.settled_yes IS NOT NULL
                   AND p.days_out = 0
                   AND (p.condition_type IS NULL
-                       OR p.condition_type NOT IN ('between', 'precip_month_total'))
+                       OR p.condition_type NOT IN
+                          ('between', 'precip_month_total', 'snow_month_total'))
                 """
                 + _hourly_exclude_sql,
                 _hourly_exclude_params,

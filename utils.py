@@ -268,6 +268,12 @@ MAX_DAYS_OUT = int(os.getenv("MAX_DAYS_OUT", "5"))  # scan markets up to N days 
 # actual approach is designed to degrade gracefully over that whole window,
 # not require a short horizon -- user-confirmed whole-month trading window.
 RAIN_MAX_DAYS_OUT = int(os.getenv("RAIN_MAX_DAYS_OUT", "31"))
+# Same reasoning as RAIN_MAX_DAYS_OUT above -- monthly snow-total ladders are
+# the same whole-month-accrual shape, but kept as its own env var (not a
+# shared MONTHLY_MAX_DAYS_OUT) so snow's horizon can be tuned independently
+# once real shadow data exists, matching this codebase's existing precedent
+# of per-market-type constants rather than a generalized one.
+SNOW_MAX_DAYS_OUT = int(os.getenv("SNOW_MAX_DAYS_OUT", "31"))
 MAX_POSITION_AGE_DAYS = int(os.getenv("MAX_POSITION_AGE_DAYS", "7"))
 
 # #120: Betting strategy — kelly | fixed_pct | fixed_dollars

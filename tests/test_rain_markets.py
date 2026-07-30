@@ -11,6 +11,7 @@ Tests for backlog.txt "RAIN / SNOW / HURRICANE MARKETS":
 from __future__ import annotations
 
 from datetime import UTC, date, datetime, timedelta
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -309,6 +310,23 @@ class TestAuditSettlementMonthlyRain:
             "tracker._get_settlement_kalshi_client", lambda: _FakeClient()
         )
         assert tracker.audit_settlement("KXRAINDENM-26JUL-3", settled_yes=True) is False
+
+    def test_no_matching_outcomes_row_returns_false(self, monkeypatch):
+        """Review-caught gap: the UPDATE could match zero rows (no prior
+        outcomes row for this ticker) and the function still claimed
+        success. Must check rowcount, not just that the statement ran."""
+        import tracker
+
+        class _FakeClient:
+            def get_market(self, ticker):
+                return {"status": "finalized", "expiration_value": "5.0"}
+
+        monkeypatch.setattr(
+            "tracker._get_settlement_kalshi_client", lambda: _FakeClient()
+        )
+        # Deliberately no INSERT into outcomes for this ticker.
+        result = tracker.audit_settlement("KXRAINDENM-26JUL-NOROW", settled_yes=True)
+        assert result is False
 
     def test_rain_branch_reached_before_parse_city_date_early_return(self, monkeypatch):
         """The real regression this fix targets: parse_city_date() returns
@@ -633,6 +651,104 @@ class TestAnalyzeMonthlyRainTradeEndToEnd:
         )
 
         assert wm.analyze_trade(m) is None
+
+    def test_month_to_date_any_missing_day_fails_closed(self, monkeypatch):
+        """Opus-review-caught HIGH finding (Snow Step 2 review, identical
+        gap in this already-shipped rain code): fetch_month_to_date_actual
+        returns (sum, n_missing) -- a fetch that comes back present but
+        with any "M" (missing) sentinel days must not silently understate
+        month_to_date_actual with zero guard. Round-2 review caught that a
+        fractional threshold is the wrong statistic for a value added 1:1
+        into every bootstrap sample (unlike the historical path's 30-year
+        dilution) -- real data can concentrate an entire month's total in
+        a small number of days, so the real guard is zero-tolerance: even
+        ONE missing day-to-date must refuse to trade."""
+        import weather_markets as wm
+
+        frozen_now = datetime(2026, 7, 30, 12, 0, tzinfo=UTC)
+
+        class _FakeDT(datetime):
+            @classmethod
+            def now(cls, tz=None):
+                return (
+                    datetime(2026, 7, 30, 12, 0, tzinfo=tz)
+                    if tz
+                    else datetime(2026, 7, 30, 12, 0, tzinfo=UTC)
+                )
+
+        monkeypatch.setattr("weather_markets.datetime", _FakeDT)
+
+        m = _rain_market(
+            ticker="KXRAINDENM-26JUL-7",
+            floor_strike=7,
+            close_hours_from_now=1 * 24,
+            now=frozen_now,
+        )
+        m["_city"] = "Denver"
+
+        monkeypatch.setattr("acis_precip._station_sid_for_city", lambda city: "DEN")
+        # through_day=29 (Jul 30 - 1), only 1 of 29 days missing -- must
+        # still refuse under zero-tolerance, even though a real (non-None)
+        # sum came back and the fraction (~3.4%) is small.
+        monkeypatch.setattr(
+            "acis_precip.fetch_month_to_date_actual",
+            lambda sid, year, month, through_day: (0.5, 1),
+        )
+        monkeypatch.setattr(
+            "acis_precip.fetch_historical_daily",
+            lambda sid: self._history_all_years_value(1.0, years=20),
+        )
+        monkeypatch.setattr(
+            "acis_precip.fetch_seasonal_precip_mean_mm",
+            lambda lat, lon, tz, year, month: None,
+        )
+
+        assert wm.analyze_trade(m) is None
+
+    def test_month_to_date_zero_missing_still_trades(self, monkeypatch):
+        """Control for the guard above: zero missing days must NOT be
+        refused -- confirms the guard doesn't over-trigger on ordinary,
+        fully-complete data."""
+        import weather_markets as wm
+
+        frozen_now = datetime(2026, 7, 10, 12, 0, tzinfo=UTC)
+
+        class _FakeDT(datetime):
+            @classmethod
+            def now(cls, tz=None):
+                return (
+                    datetime(2026, 7, 10, 12, 0, tzinfo=tz)
+                    if tz
+                    else datetime(2026, 7, 10, 12, 0, tzinfo=UTC)
+                )
+
+        monkeypatch.setattr("weather_markets.datetime", _FakeDT)
+
+        m = _rain_market(
+            ticker="KXRAINDENM-26JUL-7",
+            floor_strike=7,
+            close_hours_from_now=5 * 24,
+            now=frozen_now,
+        )
+        m["_city"] = "Denver"
+
+        monkeypatch.setattr("acis_precip._station_sid_for_city", lambda city: "DEN")
+        # through_day=9 (Jul 10 - 1), 0 days missing -- fully complete
+        # data, must not be refused under zero-tolerance.
+        monkeypatch.setattr(
+            "acis_precip.fetch_month_to_date_actual",
+            lambda sid, year, month, through_day: (2.0, 0),
+        )
+        monkeypatch.setattr(
+            "acis_precip.fetch_historical_daily",
+            lambda sid: self._history_all_years_value(1.0, years=20),
+        )
+        monkeypatch.setattr(
+            "acis_precip.fetch_seasonal_precip_mean_mm",
+            lambda lat, lon, tz, year, month: None,
+        )
+
+        assert wm.analyze_trade(m) is not None
 
     def test_no_historical_data_returns_none(self, monkeypatch):
         import weather_markets as wm
@@ -974,6 +1090,57 @@ class TestRainForecastBlendSignal:
         assert result is not None
         assert call_count["n"] == 0  # remaining_start_date is None in this branch
         assert "signals" not in result
+
+    def test_after_month_end_any_missing_day_fails_closed(self, monkeypatch):
+        """Opus-review-caught test gap (round 2): the "already past
+        month-end" branch (remaining_start_day = days_in_month + 1) had
+        ZERO test coverage of its own missing-data guard -- mutation-
+        confirmed that widening its threshold left the entire suite green.
+        Mirrors test_ticket_checked_after_month_end_does_not_crash's direct
+        _analyze_monthly_rain_trade() call (avoiding the wall-clock race
+        with analyze_trade()'s independently-derived close_time) plus
+        snow's identical after-month-end test."""
+        import weather_markets as wm
+
+        class _FakeDT(datetime):
+            @classmethod
+            def now(cls, tz=None):
+                return (
+                    datetime(2026, 8, 2, 12, 0, tzinfo=tz)
+                    if tz
+                    else datetime(2026, 8, 2, 12, 0, tzinfo=UTC)
+                )
+
+        monkeypatch.setattr("weather_markets.datetime", _FakeDT)
+        monkeypatch.setattr("acis_precip._station_sid_for_city", lambda city: "DEN")
+        # through_day=31 (full July), 1 of 31 days missing -- must refuse
+        # even though a real (non-None) sum came back.
+        monkeypatch.setattr(
+            "acis_precip.fetch_month_to_date_actual",
+            lambda sid, year, month, through_day: (0.5, 1),
+        )
+        monkeypatch.setattr(
+            "acis_precip.fetch_historical_daily",
+            lambda sid: self._history_all_years_value(1.0, years=20),
+        )
+        monkeypatch.setattr(
+            "acis_precip.fetch_seasonal_precip_mean_mm",
+            lambda lat, lon, tz, year, month: None,
+        )
+
+        enriched = {
+            "ticker": "KXRAINDENM-26JUL-7",
+            "title": "Rain in Denver in Jul 2026?",
+            "_city": "Denver",
+        }
+        condition = {"type": "precip_month_total", "threshold": 7.0}
+        coords = wm.CITY_COORDS["Denver"]
+        close_dt = datetime(2026, 8, 10, tzinfo=UTC)
+
+        result = wm._analyze_monthly_rain_trade(
+            enriched, condition, "Denver", coords, close_dt, days_out=8
+        )
+        assert result is None
 
     def test_ensemble_fetch_none_fails_open(self, monkeypatch):
         """Fetch failure / fully-outside-horizon (returns None) must not
@@ -1457,3 +1624,74 @@ class TestCheckPositionLimitsBlocksMonthlyRain:
                         "KXHIGHNY-26JUL20-T70", qty=1, price=0.50
                     )
         assert result["ok"] is True
+
+
+class TestQuickPaperBuyAndCmdPaperRainGuards:
+    """Opus-review-caught gap (Snow Step 2 round-2 review): the new
+    hurricane/snow guards added to _quick_paper_buy()/cmd_paper() apply
+    with EQUAL force to rain -- unlike hurricane/snow, rain's shadow gate
+    (_rain_gates_active()) is live and accumulating real settled
+    predictions today, so this is not a theoretical gap for it. Mirrors
+    test_snow_markets.py's TestQuickPaperBuyAndCmdPaperSnowGuards exactly."""
+
+    def test_quick_paper_buy_refuses_rain_when_gate_inactive(self, monkeypatch, capsys):
+        import main
+
+        monkeypatch.setattr("main.is_trading_paused", lambda: False)
+        monkeypatch.delenv("RAIN_TRADING_ENABLED", raising=False)
+        mock_client = MagicMock()
+        _inputs = iter(["KXRAINDENM-26JUL-7"])
+        monkeypatch.setattr("builtins.input", lambda *_a: next(_inputs))
+
+        main._quick_paper_buy(mock_client)
+
+        out = capsys.readouterr().out
+        assert "refusing to place this order" in out
+        assert "rain" in out.lower()
+        assert "RAIN_TRADING_ENABLED" in out
+        mock_client.get_market.assert_not_called()
+
+    def test_quick_paper_buy_does_not_refuse_rain_when_gate_active(self, monkeypatch):
+        import main
+
+        monkeypatch.setattr("main.is_trading_paused", lambda: False)
+        monkeypatch.setattr("main._rain_gates_active", lambda: True)
+        mock_client = MagicMock()
+        mock_client.get_market.side_effect = RuntimeError("no real market in test")
+        _inputs = iter(["KXRAINDENM-26JUL-7", "q"])
+        monkeypatch.setattr("builtins.input", lambda *_a: next(_inputs))
+
+        printed = []
+        monkeypatch.setattr("builtins.print", lambda *a, **k: printed.append(str(a)))
+        try:
+            main._quick_paper_buy(mock_client)
+        except Exception:
+            pass
+        assert not any("shadow-only" in p for p in printed)
+
+    def test_cmd_paper_refuses_rain_when_gate_inactive(self, monkeypatch, capsys):
+        import main
+
+        monkeypatch.setattr("main.is_trading_paused", lambda: False)
+        monkeypatch.delenv("RAIN_TRADING_ENABLED", raising=False)
+
+        main.cmd_paper(["buy", "KXRAINDENM-26JUL-7", "yes", "0.10", "1"])
+
+        out = capsys.readouterr().out
+        assert "refusing to place this order" in out
+        assert "rain" in out.lower()
+        assert "RAIN_TRADING_ENABLED" in out
+
+    def test_cmd_paper_does_not_refuse_rain_when_gate_active(self, monkeypatch):
+        import main
+
+        monkeypatch.setattr("main.is_trading_paused", lambda: False)
+        monkeypatch.setattr("main._rain_gates_active", lambda: True)
+
+        printed = []
+        monkeypatch.setattr("builtins.print", lambda *a, **k: printed.append(str(a)))
+        try:
+            main.cmd_paper(["buy", "KXRAINDENM-26JUL-7", "yes", "0.10", "1"])
+        except Exception:
+            pass
+        assert not any("shadow-only" in p for p in printed)

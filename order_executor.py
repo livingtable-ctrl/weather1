@@ -36,9 +36,11 @@ from utils import (
 )
 from weather_markets import (
     _KXRAIN_MONTHLY_CITY,
+    _KXSNOW_MONTHLY_CITY,
     _KXTEMP_HOURLY_CITY,
     _hourly_gates_active,
     _rain_gates_active,
+    _snow_gates_active,
     analyze_trade,
     enrich_with_forecast,
     get_weather_markets,
@@ -2803,18 +2805,21 @@ def _auto_place_trades(
             )
             continue
 
-        # backlog.txt "RAIN / SNOW / HURRICANE MARKETS" -- SNOW Step 1: no
-        # code guard added here on purpose, same reasoning as rain's own
-        # original Step 1 (see commit b2171ba's comment, since replaced by
-        # the shadow-branch above once rain reached Step 2). This loop only
-        # ever iterates opportunities that already survived analyze_trade()
-        # upstream, whose unconditional monthly-snow guard returns None for
-        # KXDENSNOWM* immediately -- they never reach this loop at all. The
-        # real, reachable guards for this ticker family are cmd_order's own
-        # direct check and paper.check_position_limits() (the shared
-        # enforcement point for the several manual paths NOT gated by
-        # analyze_trade() -- main.py's cmd_order/cmd_paper, web_app's
-        # /api/paper-order).
+        # Monthly-snow shadow-only rollout (backlog.txt "RAIN / SNOW /
+        # HURRICANE MARKETS" Snow Step 2, 2026-07-30). Replaces Step 1's "no
+        # code guard needed here" comment (analyze_trade()'s guard used to
+        # make this loop unreachable for the ticker family; Step 2 gives it
+        # a real model, so this loop is reachable now) -- same per-ticker
+        # shape as rain's branch just above.
+        if (
+            any(ticker.upper().startswith(p) for p in _KXSNOW_MONTHLY_CITY)
+            and not _snow_gates_active()
+        ):
+            _n_shadow = _log_shadow_predictions([item], live=live)
+            _skip_reasons.append(
+                f"{ticker}: snow_shadow_only(logged={bool(_n_shadow)})"
+            )
+            continue
 
         if live and live_config:
             _live_balance = _resolve_live_balance(client)

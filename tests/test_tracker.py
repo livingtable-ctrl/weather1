@@ -1534,6 +1534,38 @@ def test_backfill_emos_data_excludes_rain_from_non_force_part1(tmp_db, monkeypat
     assert "KXRAINDENM-26JUL-7" not in called_tickers
 
 
+def test_backfill_emos_data_excludes_snow_from_non_force_part1(tmp_db, monkeypatch):
+    """backlog.txt Snow Step 2 (review-caught, the identical gap rain's own
+    Step 2 already fixed here): KXDENSNOWM* outcomes have the exact same
+    shape (settled_value, never settled_temp_f) -- mirrors
+    test_backfill_emos_data_excludes_rain_from_non_force_part1 exactly."""
+    from tracker import _conn, backfill_emos_data, init_db
+
+    init_db()
+    with _conn() as con:
+        con.execute(
+            "INSERT OR IGNORE INTO outcomes (ticker, settled_yes, settled_at) "
+            "VALUES (?, ?, datetime('now'))",
+            ("KXDENSNOWM-26DEC-5", 1),
+        )
+        con.execute(
+            "INSERT OR IGNORE INTO outcomes (ticker, settled_yes, settled_at) "
+            "VALUES (?, ?, datetime('now'))",
+            ("KXHIGHNY-26JUL21-T70", 1),
+        )
+
+    called_tickers = []
+    monkeypatch.setattr(
+        "tracker.audit_settlement",
+        lambda ticker, settled_yes: called_tickers.append(ticker) or False,
+    )
+
+    backfill_emos_data(force=False)
+
+    assert "KXHIGHNY-26JUL21-T70" in called_tickers
+    assert "KXDENSNOWM-26DEC-5" not in called_tickers
+
+
 def test_log_analysis_attempt_stores_all_markets(tmp_db):
     from tracker import _conn, log_analysis_attempt
 
@@ -3658,6 +3690,48 @@ class TestDisputedOutcomeTracking(unittest.TestCase):
             "a rain row must not change the sameday calibration row count",
         )
 
+    def test_get_multiday_calibration_cli_excludes_snow(self):
+        """backlog.txt Snow Step 2: the identical landmine rain's own Step
+        2 closed here, mirrored for 'snow_month_total'."""
+        self._seed_baseline()
+        before = tracker.get_multiday_calibration_cli()
+        self._log_settled(
+            "KXDENSNOWM-26DEC-7",
+            0.99,
+            0,
+            self._FUTURE,
+            condition_type="snow_month_total",
+            edge=0.99,
+        )
+        after = tracker.get_multiday_calibration_cli()
+        self.assertEqual(
+            before["n"],
+            after["n"],
+            "a snow row must not change the multiday calibration row count",
+        )
+
+    def test_get_sameday_calibration_cli_excludes_snow(self):
+        self._seed_baseline(market_date=self._PAST)
+        before = tracker.get_sameday_calibration_cli()
+        self._log_settled(
+            "KXDENSNOWM-26DEC-6",
+            0.99,
+            0,
+            self._PAST,
+            condition_type="snow_month_total",
+            edge=0.99,
+        )
+        with tracker._conn() as con:
+            con.execute(
+                "UPDATE predictions SET days_out = 0 WHERE ticker = 'KXDENSNOWM-26DEC-6'"
+            )
+        after = tracker.get_sameday_calibration_cli()
+        self.assertEqual(
+            before["n"],
+            after["n"],
+            "a snow row must not change the sameday calibration row count",
+        )
+
     def test_get_market_calibration_excludes_disputed(self):
         self._seed_baseline()
         before = tracker.get_market_calibration()
@@ -3840,6 +3914,81 @@ class TestDisputedOutcomeTracking(unittest.TestCase):
         tracker.mark_outcome_disputed("KXRAINDENM-26JUL-6")
         after = tracker.count_settled_rain_predictions()
         self.assertEqual(before, after)
+
+    def test_count_settled_snow_predictions_counts_only_snow_tickers(self):
+        """backlog.txt "RAIN / SNOW / HURRICANE MARKETS" Snow Step 2: must
+        count KXDENSNOWM-style rows, not ordinary daily ones."""
+        before = tracker.count_settled_snow_predictions()
+        self._log_settled(
+            "KXDENSNOWM-26DEC-5",
+            0.6,
+            True,
+            self._FUTURE,
+            city="Denver",
+            condition_type="snow_month_total",
+        )
+        self._log_settled("KXHIGHNY-26JUL20-T75", 0.6, True, self._FUTURE, city="NYC")
+        after = tracker.count_settled_snow_predictions()
+        self.assertEqual(
+            after, before + 1, "must count only the snow ticker, not KXHIGHNY too"
+        )
+
+    def test_count_settled_snow_predictions_excludes_disputed(self):
+        before = tracker.count_settled_snow_predictions()
+        self._log_settled(
+            "KXDENSNOWM-26DEC-10",
+            1.0,
+            0,
+            self._FUTURE,
+            city="Denver",
+            condition_type="snow_month_total",
+            edge=0.99,
+        )
+        tracker.mark_outcome_disputed("KXDENSNOWM-26DEC-10")
+        after = tracker.count_settled_snow_predictions()
+        self.assertEqual(before, after)
+
+    def test_count_settled_snow_predictions_counts_events_not_ladder_rows(self):
+        """Opus-review-caught gap: Denver's KXDENSNOWM ladder has 7 sibling
+        brackets that all settle from ONE real snowfall observation per
+        month -- counting raw rows would let a single real month clear 7
+        of the 20-sample floor, when it should only count as 1 real
+        observation. Settling all 7 brackets for the same accrual month
+        must increment the count by exactly 1, not 7."""
+        before = tracker.count_settled_snow_predictions()
+        for bracket in ("0.1", "5", "10", "15", "20", "25", "35"):
+            self._log_settled(
+                f"KXDENSNOWM-26DEC-{bracket}",
+                0.6,
+                True,
+                self._FUTURE,
+                city="Denver",
+                condition_type="snow_month_total",
+            )
+        after = tracker.count_settled_snow_predictions()
+        self.assertEqual(
+            after,
+            before + 1,
+            "7 sibling brackets for the same (city, month) event must "
+            "count as 1 real observation, not 7",
+        )
+
+    def test_count_settled_snow_predictions_warns_on_unparseable_ticker(self):
+        """Opus-review-caught gap: an unparseable settled snow ticker is
+        silently dropped from the event count -- must at least log a
+        warning, so a real Kalshi ticker-format change doesn't freeze the
+        gate at 0 forever with zero signal."""
+        self._log_settled(
+            "KXDENSNOWM-badformat",
+            0.6,
+            True,
+            self._FUTURE,
+            city="Denver",
+            condition_type="snow_month_total",
+        )
+        with self.assertLogs("tracker", level="WARNING") as cm:
+            tracker.count_settled_snow_predictions()
+        assert any("could not parse accrual month" in msg for msg in cm.output)
 
     def test_count_settled_west_coast_multiday_excludes_disputed(self):
         # This gate filters on o.settled_temp_f IS NOT NULL, which

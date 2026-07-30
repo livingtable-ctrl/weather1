@@ -172,12 +172,13 @@ def isolate_tracker_db(tmp_path, monkeypatch):
 
 @pytest.fixture(autouse=True)
 def reset_open_meteo_circuit_breaker():
-    """Reset all weather_markets AND acis_precip circuit breakers before
-    every test.
+    """Reset all weather_markets, acis_precip, AND acis_snow circuit
+    breakers before every test.
 
     There are six weather_markets CBs (_forecast_cb, _ensemble_cb,
-    _ecmwf_om_cb, _nbm_om_cb, _weatherapi_cb, _pirate_cb) plus acis_precip's
-    two (_acis_cb, _om_seasonal_cb) -- all module-level singletons
+    _ecmwf_om_cb, _nbm_om_cb, _weatherapi_cb, _pirate_cb), acis_precip's
+    two (_acis_cb, _om_seasonal_cb), and acis_snow's two
+    (_acis_snow_cb, _om_seasonal_snow_cb) -- all module-level singletons
     constructed once at import time, which load their persisted state from
     the real data/.cb_state.json on disk at that point (isolate_circuit_
     breaker_state above only redirects _CB_STATE_PATH for future saves, not
@@ -189,9 +190,12 @@ def reset_open_meteo_circuit_breaker():
     METEO SEASONAL API..."): the real open_meteo_seasonal breaker has a
     genuine nonzero trip_count on disk (from the actual production incident
     that entry is about), so any acis_precip test exercising the real fetch
-    function was already exposed to this gap before this fix.
+    function was already exposed to this gap before this fix. acis_snow's
+    two were the identical miss for Snow Step 2 (opus-review-caught) --
+    same gap, one module family later.
     """
     import acis_precip
+    import acis_snow
     import weather_markets
 
     for cb in (
@@ -203,6 +207,8 @@ def reset_open_meteo_circuit_breaker():
         weather_markets._pirate_cb,
         acis_precip._acis_cb,
         acis_precip._om_seasonal_cb,
+        acis_snow._acis_snow_cb,
+        acis_snow._om_seasonal_snow_cb,
     ):
         cb.record_success()  # clears _failure_count and _opened_at
     yield

@@ -428,6 +428,117 @@ class TestTrainAllTemperatureScalingRainExclusion:
         )
         assert "precip_month_total" not in saved
 
+    def test_snow_rows_excluded_from_global_pool(self, tmp_path, monkeypatch):
+        """backlog.txt Snow Step 2: the identical leak-prevention check,
+        mirrored for 'snow_month_total' -- the same landmine rain's own
+        Step 2 closed for this exact query."""
+        from datetime import date
+
+        import ml_bias
+        import tracker
+
+        monkeypatch.setattr(tracker, "DB_PATH", tmp_path / "predictions.db")
+        monkeypatch.setattr(tracker, "_db_initialized", False)
+        monkeypatch.setattr(ml_bias, "_TEMP_PATH", tmp_path / "temperature_scale.json")
+        tracker.init_db()
+
+        probs = [0.9] * 10 + [0.1] * 10
+        labels = [1] * 7 + [0] * 3 + [0] * 7 + [1] * 3
+        for i in range(20):
+            self._seed(
+                tracker,
+                f"KXHIGHNY-26AUG{i:02d}-T75",
+                "NYC",
+                date.today() + __import__("datetime").timedelta(days=11),
+                probs[i],
+                labels[i],
+                "above",
+            )
+        for i in range(20):
+            self._seed(
+                tracker,
+                f"KXDENSNOWM-26DEC-{i % 7 + 1}",
+                "Denver",
+                date.today() + __import__("datetime").timedelta(days=11),
+                probs[i],
+                labels[i],
+                "snow_month_total",
+            )
+
+        ml_bias.train_all_temperature_scaling(
+            min_samples_global=1, min_samples_condition=1
+        )
+
+        with open(tmp_path / "temperature_scale.json") as f:
+            import json
+
+            saved = json.load(f)
+
+        assert saved["global"]["n"] == 20, (
+            f"global pool must contain only the 20 daily rows, not the snow "
+            f"ones too, got n={saved['global']['n']}"
+        )
+        assert "snow_month_total" not in saved
+
+    def test_snow_rows_excluded_from_sameday_pool(self, tmp_path, monkeypatch):
+        """Opus-review-caught gap: the global pool's exclusion above (line
+        ~604 in ml_bias.py) is a separate SQL query from the 'sameday'
+        pool's own exclusion (~line 626, days_out=0) -- mutating just the
+        sameday site's exclusion passed the entire scoped suite with zero
+        failures, since every other test seeds days_out>=1 rows only. A
+        monthly-snow ticker settled on its own close date genuinely can
+        carry days_out=0 (test_get_sameday_calibration_cli_excludes_snow in
+        test_tracker.py already proves this is reachable, not
+        hypothetical) -- if it leaked in here, it would shift T_sameday,
+        which apply_temperature_scaling(days_out=0) then applies to every
+        METAR-locked same-day temperature trade."""
+        import ml_bias
+        import tracker
+        from utils import utc_today
+
+        monkeypatch.setattr(tracker, "DB_PATH", tmp_path / "predictions.db")
+        monkeypatch.setattr(tracker, "_db_initialized", False)
+        monkeypatch.setattr(ml_bias, "_TEMP_PATH", tmp_path / "temperature_scale.json")
+        tracker.init_db()
+
+        probs = [0.9] * 10 + [0.1] * 10
+        labels = [1] * 7 + [0] * 3 + [0] * 7 + [1] * 3
+        today = utc_today()
+        for i in range(20):
+            self._seed(
+                tracker,
+                f"KXHIGHNY-26AUG{i:02d}-T75",
+                "NYC",
+                today,
+                probs[i],
+                labels[i],
+                "above",
+            )
+        for i in range(20):
+            self._seed(
+                tracker,
+                f"KXDENSNOWM-26DEC-{i % 7 + 1}-{i}",
+                "Denver",
+                today,
+                probs[i],
+                labels[i],
+                "snow_month_total",
+            )
+
+        ml_bias.train_all_temperature_scaling(
+            min_samples_global=1, min_samples_condition=1
+        )
+
+        with open(tmp_path / "temperature_scale.json") as f:
+            import json
+
+            saved = json.load(f)
+
+        assert saved["sameday"]["n"] == 20, (
+            f"sameday pool must contain only the 20 daily rows, not the "
+            f"snow ones too, got n={saved['sameday']['n']}"
+        )
+
 
 class TestTrainBiasModelRainExclusion:
     """backlog.txt "RAIN / SNOW / HURRICANE MARKETS" Step 2 (review-caught
@@ -521,6 +632,65 @@ class TestTrainBiasModelRainExclusion:
             f"expected fit() on exactly the 6 daily training rows "
             f"(8 daily * 0.8 split), got {fit_calls[0]} -- rain rows leaked in "
             f"if this is higher"
+        )
+
+    def test_only_daily_rows_reach_the_fit_call_snow(self, tmp_path, monkeypatch):
+        """backlog.txt Snow Step 2: mirrors the rain test above exactly for
+        'snow_month_total' -- the identical landmine, closed the same way."""
+        from datetime import timedelta
+        from unittest.mock import MagicMock, patch
+
+        import ml_bias
+        import tracker
+        from utils import utc_today
+
+        monkeypatch.setattr(tracker, "DB_PATH", tmp_path / "predictions.db")
+        monkeypatch.setattr(tracker, "_db_initialized", False)
+        tracker.init_db()
+
+        for i in range(8):
+            self._seed(
+                tracker,
+                f"KXHIGHNY-26AUG{i:02d}-T75",
+                "SnowMixedCity",
+                utc_today() + timedelta(days=i % 20 + 1),
+                0.5 + (i % 2) * 0.3,
+                i % 2,
+                "above",
+            )
+        for i in range(10):
+            self._seed(
+                tracker,
+                f"KXDENSNOWM-26DEC-{i % 7 + 1}-{i}",
+                "SnowMixedCity",
+                utc_today() + timedelta(days=i % 20 + 1),
+                0.5 + (i % 2) * 0.3,
+                i % 2,
+                "snow_month_total",
+            )
+
+        fit_calls = []
+
+        def _fake_regressor(*a, **k):
+            m = MagicMock()
+
+            def _fit(X, y):
+                fit_calls.append(len(X))
+
+            m.fit.side_effect = _fit
+            m.predict.return_value = [0.0] * 100
+            return m
+
+        with patch(
+            "sklearn.ensemble.GradientBoostingRegressor", side_effect=_fake_regressor
+        ):
+            ml_bias.train_bias_model(min_samples=5)
+
+        assert fit_calls, "SnowMixedCity should have reached the fit() call at all"
+        assert fit_calls[0] == 6, (
+            f"expected fit() on exactly the 6 daily training rows "
+            f"(8 daily * 0.8 split), got {fit_calls[0]} -- snow rows leaked "
+            f"in if this is higher"
         )
 
 

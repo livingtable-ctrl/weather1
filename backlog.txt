@@ -2122,10 +2122,10 @@ When to revisit: N/A -- both Step 1 and Step 2 resolved. See the Step 2
   RESOLVED note above's "When to revisit" for the remaining intentionally-
   deferred gaps (item 7) and the shadow-gate sample-floor condition.
 
-[PARTIALLY RESOLVED 2026-07-26 — Rain Step 1+2+St. Petersburg onboarding shipped; SNOW Step 1 (Denver only) shipped same day, see resolution note near the end of this entry; hurricane split out to its own entry, see "HURRICANE MARKETS — EXPLICIT GUARD ADDED AFTER A CONFIRMED LIVE GAP" near the top of this file] RAIN / SNOW / HURRICANE MARKETS — UNTOUCHED CATEGORY SURFACE
-Priority: was Low -- rain is now Medium-High (real, currently-liquid product
-  the bot was silently blind to); snow/hurricane/rain's own probability
-  model (Step 2) remain Low, unchanged.
+[PARTIALLY RESOLVED 2026-07-30 — Rain Step 1+2+St. Petersburg onboarding and SNOW Step 1+2 all shipped; hurricane split out to its own entry, see "HURRICANE MARKETS — EXPLICIT GUARD ADDED AFTER A CONFIRMED LIVE GAP" near the top of this file. Only hurricane's own probability model remains fully open.] RAIN / SNOW / HURRICANE MARKETS — UNTOUCHED CATEGORY SURFACE
+Priority: was Low -- rain and snow are now Medium (both have real,
+  shadow-gated probability models); hurricane's own model remains Low,
+  unchanged.
 
 Problem:
   "Climate and Weather" has 287 series total; this bot only ever looks at
@@ -2758,6 +2758,140 @@ RESOLVED 2026-07-26 (SNOW Step 1 -- discovery/schema/safety only, no
   Step 2 had to wire it in everywhere. If snow ever gets a real
   probability model, audit every one of those sites the same way rain's
   Step 2 did, don't assume the new type is automatically covered.
+
+RESOLVED 2026-07-30 (SNOW Step 2 -- the real monthly-accumulation
+  probability model, own settlement, shadow-only rollout, mirroring Rain
+  Step 2's shape exactly; hurricane's own model remains the only fully
+  open item in this whole entry): re-verified every Step 1 claim live
+  before writing code. Two findings were more consequential than the Step
+  1 snapshot implied: Denver's only-ever snow market (Dec 2025, 7
+  brackets) had ZERO trading volume/open-interest on every single bracket
+  and never reached Kalshi's "finalized" settlement status -- not just
+  seasonal dormancy, but a market that has literally never traded once, a
+  materially harder starting point than rain had when its own Step 2
+  shipped. Still zero open snow markets anywhere across all 33 real
+  "SNOW" series as of ship time. Confirmed live that the finalized/
+  expiration_value settlement mechanism does work on this platform (14
+  real finalized Denver rain brackets), but it cannot be independently
+  confirmed against a single real snow data point, since none exists.
+  Three real design decisions surfaced via `AskUserQuestion` before
+  writing code: (1) full build now vs. landmine-only-this-session --
+  user chose full build, matching Rain Step 2's own precedent of shipping
+  shadow-gated infra well ahead of settled data existing; (2) module
+  architecture for acis_snow.py -- reuse acis_precip.py's bootstrap/tilt
+  math via import (confirmed substance-agnostic: no precip-specific logic
+  in `historical_remaining_and_full_month_sums`/`bootstrap_ci_month_total`/
+  `apply_seasonal_tilt`) rather than duplicating it, while keeping the
+  ACIS/Open-Meteo fetch layer in a separate module so a snow-specific bug
+  can never touch rain's live shadow-trading path; (3) main.py's cmd_order
+  guard shape -- keep the extra defense-in-depth refuse-outright check
+  (added for snow in Step 1 after an opus review found relying on
+  check_position_limits() alone fails open on an unhandled exception),
+  now conditional on `_snow_gates_active()` instead of unconditional.
+  Shipped: new `acis_snow.py` module (NOAA ACIS StnData `elem="snow"`
+  month-to-date + ~30yr historical daily snowfall, handling the same "T"
+  trace sentinel; Open-Meteo Seasonal `monthly=snowfall_mean` -- in
+  CENTIMETERS, not millimeters like rain's `precipitation_mean`, confirmed
+  live and validated at runtime against the API's own `monthly_units`
+  field rather than assumed -- as an optional directional tilt, requiring
+  a x10 cm-to-mm conversion at the call site since the reused
+  `apply_seasonal_tilt()` expects mm) feeding a bootstrap resample of
+  "remaining-days-of-month total" against the market's `floor_strike`
+  threshold, wired into new `_analyze_monthly_snow_trade()`; the Step 1
+  unconditional `monthly_snow_not_yet_supported` guard in `analyze_trade()`
+  replaced with real close_time/days_out gating (`SNOW_MAX_DAYS_OUT`, its
+  own env var rather than reusing `RAIN_MAX_DAYS_OUT`) and a
+  `snow_month_total` dispatch, mirroring rain's `_is_monthly_rain`/
+  `_is_monthly_snow` gate structure exactly; `tracker.audit_settlement()`
+  new snow branch (checked before the generic city/date early-return, same
+  reasoning as rain's); shadow-only rollout (`SNOW_TRADING_ENABLED` +
+  `_snow_gates_active()`) mirroring `_rain_gates_active()`'s shape, but
+  with a real fix opus review round 1 caught: `count_settled_snow_
+  predictions()` counts DISTINCT (ticker-prefix, year, month) accrual
+  events, not raw prediction rows -- Denver's 7-bracket ladder means a
+  raw-row floor could have cleared the 20-sample threshold with as few as
+  ~3 real months of data. Given the zero-live-market starting point,
+  expect this floor to take years to clear, not rain's ~2-month estimate
+  (`count_settled_rain_predictions()` deliberately left as row-counting
+  and unchanged -- it's already live and accumulating real settled
+  predictions today; changing its semantics now would shift an
+  already-in-progress gate out from under it, a separate decision if ever
+  revisited). Consensus-bonus caution followed exactly as it was for rain:
+  ACIS-empirical and Open-Meteo-tilted are not independent, `consensus`
+  hardcoded False. `_CONDITION_CONFIDENCE["snow_month_total"] = 0.65`
+  (below rain's 0.70 -- zero real settled snow history exists anywhere to
+  validate against, a stronger discount than rain's own judgment call).
+  Deliberately did NOT port rain's later day-specific forecast-blend
+  shadow signal (a separate backlog item shipped 2026-07-28, after rain's
+  own Step 2 ship) -- out of scope for Step 2 parity, natural follow-up
+  once real snow shadow data exists. All 7 exclusion-list landmine sites
+  from the Step 1 handoff note above closed and mutation-tested:
+  `_CONDITION_CONFIDENCE`, `calibration.py`, `ml_bias.py` (3 sites,
+  including the "sameday" pool site opus review round 2 found had zero
+  test coverage despite being fixed correctly), `tracker.py` (2 sites),
+  `main.py`'s Platt-scaling query -- one opus-caught vacuous test
+  (`calibration.py`'s own `calibrate_seasonal_weights` exclusion had NO
+  dedicated test at all; the existing "Platt" test only exercised a
+  different query) fixed by adding a real, mutation-confirmed test.
+  `backfill_emos_data()`'s rain-only exclusion (a pre-existing gap found
+  via adjacency, not part of the original 7-site list) extended to cover
+  snow too, since KXDENSNOWM* rows have the identical settled_value-not-
+  settled_temp_f shape that would otherwise re-fetch from Kalshi forever.
+  Given the size, followed the full 16-step implementation workflow
+  including two full sequential `Agent(opus, effort=high)` review rounds
+  (round 1: three parallel reviewers scoped by subsystem -- model/gating,
+  settlement/shadow-gate, exclusion-list audit; round 2: one reviewer
+  verifying every round-1 fix plus its own fresh sweep), with every
+  finding from both rounds addressed and personally mutation-tested
+  (temporarily reverting each fix, confirming the relevant test fails,
+  restoring the exact original bytes -- never via `git checkout`, to
+  avoid disturbing other uncommitted work).
+  Round 1 found one real HIGH-severity gap: the month-to-date ACIS fetch
+  captured `n_missing` (count of "M"/missing sentinel days in the
+  response) and silently discarded it -- a fetch that came back present
+  but partially missing could understate the accrued total with zero
+  guard, for both rain (already live) and snow. Fixed in both
+  `_analyze_monthly_rain_trade()` and `_analyze_monthly_snow_trade()`.
+  Round 2 caught that round 1's own fix used the WRONG statistic: a
+  fractional missing-day threshold (20%, borrowed from the historical
+  path's `max_missing_frac`, where one bad year's error is diluted across
+  30 analog years) does not transfer to a month-to-date value that gets
+  added 1:1 into every single bootstrap sample with no dilution at all.
+  Reproduced live against real cached Denver history: the entire month's
+  snow was concentrated in 2 of 31 days (6.5% missing -- comfortably
+  under a 20% threshold), which is the exact scenario the guard was
+  written for and would NOT have caught. Fixed by switching to
+  zero-tolerance (`_n_missing > 0`) in all four sites (rain + snow,
+  mid-month + after-month-end branches) -- the fetch is cheap and re-runs
+  every scan cycle, so failing closed costs nothing but a skipped cycle.
+  Round 2 also caught: an empty ACIS response (`HTTP 200` with `data: []`,
+  confirmed live for an unresolvable station id) was silently reported as
+  `n_missing=0` by both `fetch_month_to_date_actual`/`_snow` (bypassing
+  the new guard entirely) and separately poisoned `fetch_historical_daily`/
+  `_snow`'s 30-day disk cache with an empty result instead of falling back
+  to a stale cache -- both fixed in both rain's and snow's fetch modules.
+  Round 2 also found `_quick_paper_buy()` and `cmd_paper()` (two manual
+  order-placement paths in main.py) had NO hurricane/snow/rain guard at
+  all, unlike `cmd_order()` -- and `_quick_paper_buy()` specifically can
+  place a REAL LIVE maker order, with its own `check_position_limits()`
+  call deliberately fail-open on exception (pre-existing, unrelated
+  behavior). Fixed by adding the same guards to both functions -- and,
+  since round 2 correctly pointed out the fail-open reasoning applies with
+  equal or greater force to rain (whose shadow gate is live and
+  accumulating today, unlike hurricane/snow), extended to rain too rather
+  than leaving that asymmetry undefended. Rain's own equivalent seasonal-
+  unit assumption (Open-Meteo's `precipitation_mean` in mm) got the same
+  runtime validation snow's cm claim did, for consistency and because it's
+  the live path. Every fix above has a real, mutation-tested regression
+  test; full scoped sweep (1000+ tests across test_snow_markets.py,
+  test_rain_markets.py, test_acis_precip.py, test_calibration.py,
+  test_ml_bias.py, test_tracker.py, test_shadow_predictions.py,
+  test_signal_quality.py, test_hurricane_gating.py, test_trading_gates.py)
+  passes; ruff/ruff-format/mypy clean.
+  `SNOW_TRADING_ENABLED` stays unset until real shadow data accumulates --
+  given zero live snow markets exist anywhere today and Denver's ladder is
+  the only city that has EVER listed one, expect the 20-distinct-event
+  floor to take years, not months, to clear.
 
 [RESOLVED 2026-07-23 -- both real ECMWF products now instrumented] TRACK ECMWF FORECAST ACCURACY
 Priority: Low (ECMWF already gets a reasonable static/seasonal weight; this is
