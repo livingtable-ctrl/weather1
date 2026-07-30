@@ -2738,48 +2738,6 @@ RESOLVED 2026-07-21 (Rain Step 2 -- the real monthly-accumulation
   monthly settlement cadence (~10 cities x 1 settlement/city/month), much
   slower than hourly's.
 
-[OPEN -- split out 2026-07-30 from a mention buried inside the Rain Step 2
-  RESOLVED note above (item 4 of that entry's own 9-item handoff list) so
-  it doesn't get lost as a footnote inside someone else's "RESOLVED"
-  block] RAIN MARKETS -- LADDER/SIBLING GROUPING FOR MARKET-IMPLIED
-  DISTRIBUTION IS A BLANKET EXCLUSION, NOT REAL (city, month) GROUPING
-Priority: Low (log-only today, never gates a trading decision for any
-  market type -- confirmed at Step 2 ship time, re-confirm before picking
-  up in case that's changed).
-
-Problem:
-  weather_markets.compute_market_implied_distributions() and
-  consistency._group_markets() both give KXRAIN*M tickers a blanket
-  exclusion instead of real (city, month) sibling-ladder grouping -- unlike
-  temperature markets, which group correctly by (city, date). This means
-  the market-implied-distribution feature (backlog.txt "MARKET-IMPLIED
-  TEMPERATURE DISTRIBUTION FROM THE FULL LADDER") and consistency.py's
-  cross-market arbitrage check both silently skip every rain market,
-  rather than actually reasoning about rain's own ladder.
-
-What it would look like:
-  fit_market_implied_distribution()'s weighted-least-squares machinery was
-  confirmed (2026-07-21, at Rain Step 2 ship time) to be structurally
-  reusable -- it works off generic (lo, hi, mid_price, weight) tuples, not
-  anything temperature-specific -- but needs new sigma sanity bounds for an
-  inches scale (current bounds 0.1-50.0 are tuned for °F, not precip
-  inches). NYC's rain ladder has only 4 brackets vs. Denver's 7 (a real
-  Kalshi listing choice, confirmed via settled history, cross-checked
-  against this file's own Rain Step 2 resolution note) -- any
-  implementation must handle variable ladder sizes, not assume every city
-  has the same bracket count.
-
-Why not now:
-  User-approved scope cut at Rain Step 2 ship time (2026-07-21): confirmed
-  log-only with zero live trading impact today, so it was deliberately
-  deferred rather than expanding that already-large change further.
-
-When to revisit:
-  Whenever market-implied-distribution or consistency-check coverage for
-  rain specifically becomes valuable enough to justify the sigma-bounds
-  redesign -- not gated on any data floor or external trigger, purely a
-  "is this worth doing yet" call.
-
 RESOLVED 2026-07-26 (St. Petersburg onboarding -- the 11th rain city; snow
   and hurricane remain the only fully open items in this entry): picked up
   as the "smallest/most contained" of 3 ready candidates surfaced at session
@@ -3078,6 +3036,55 @@ RESOLVED 2026-07-30 (SNOW Step 2 -- the real monthly-accumulation
   given zero live snow markets exist anywhere today and Denver's ladder is
   the only city that has EVER listed one, expect the 20-distinct-event
   floor to take years, not months, to clear.
+
+[OPEN -- split out 2026-07-30 from a mention buried inside the Rain Step 2
+  RESOLVED note above (item 4 of that entry's own 9-item handoff list) so
+  it doesn't get lost as a footnote inside someone else's "RESOLVED" block;
+  REPOSITIONED 2026-07-31 -- this entry was originally inserted in the
+  MIDDLE of the RAIN/SNOW/HURRICANE entry's own resolution-note sequence
+  (between its Rain-Step-2 note and its later St.-Petersburg/Snow notes),
+  splitting that entry's history into two non-contiguous pieces and
+  confusing a same-day staleness audit into misattributing those later
+  notes to this entry. Moved here, immediately after the full RAIN/SNOW/
+  HURRICANE entry now ends, with no content changed -- only its position]
+  RAIN MARKETS -- LADDER/SIBLING GROUPING FOR MARKET-IMPLIED
+  DISTRIBUTION IS A BLANKET EXCLUSION, NOT REAL (city, month) GROUPING
+Priority: Low (log-only today, never gates a trading decision for any
+  market type -- confirmed at Step 2 ship time, re-confirm before picking
+  up in case that's changed).
+
+Problem:
+  weather_markets.compute_market_implied_distributions() and
+  consistency._group_markets() both give KXRAIN*M tickers a blanket
+  exclusion instead of real (city, month) sibling-ladder grouping -- unlike
+  temperature markets, which group correctly by (city, date). This means
+  the market-implied-distribution feature (backlog.txt "MARKET-IMPLIED
+  TEMPERATURE DISTRIBUTION FROM THE FULL LADDER") and consistency.py's
+  cross-market arbitrage check both silently skip every rain market,
+  rather than actually reasoning about rain's own ladder.
+
+What it would look like:
+  fit_market_implied_distribution()'s weighted-least-squares machinery was
+  confirmed (2026-07-21, at Rain Step 2 ship time) to be structurally
+  reusable -- it works off generic (lo, hi, mid_price, weight) tuples, not
+  anything temperature-specific -- but needs new sigma sanity bounds for an
+  inches scale (current bounds 0.1-50.0 are tuned for °F, not precip
+  inches). NYC's rain ladder has only 4 brackets vs. Denver's 7 (a real
+  Kalshi listing choice, confirmed via settled history, cross-checked
+  against this file's own Rain Step 2 resolution note) -- any
+  implementation must handle variable ladder sizes, not assume every city
+  has the same bracket count.
+
+Why not now:
+  User-approved scope cut at Rain Step 2 ship time (2026-07-21): confirmed
+  log-only with zero live trading impact today, so it was deliberately
+  deferred rather than expanding that already-large change further.
+
+When to revisit:
+  Whenever market-implied-distribution or consistency-check coverage for
+  rain specifically becomes valuable enough to justify the sigma-bounds
+  redesign -- not gated on any data floor or external trigger, purely a
+  "is this worth doing yet" call.
 
 [RESOLVED 2026-07-23 -- both real ECMWF products now instrumented] TRACK ECMWF FORECAST ACCURACY
 Priority: Low (ECMWF already gets a reasonable static/seasonal weight; this is
@@ -9925,10 +9932,18 @@ Why not now (resolved):
 When to revisit:
   - N/A, closed.
 
-[PARTIALLY RESOLVED 2026-07-25 -- _station_cache done via a new subclass; climatology.py's 2 caches deliberately left untouched] ForecastCache EXISTS, BUT ~14 HAND-ROLLED TTL DICTS DO THE SAME JOB
+[PARTIALLY RESOLVED 2026-07-25 -- STALE TITLE CORRECTED 2026-07-30, see note
+  near the end: 15 of ~17 identified caches were migrated across 2 passes
+  (2026-07-19) + _station_cache via a subclass (2026-07-25); only
+  climatology.py's 2 caches remain, and they're a deliberate, undecided
+  architectural call, not "not gotten to yet" -- this entry is effectively
+  done except for that one open decision] ForecastCache EXISTS, BUT 2
+  HAND-ROLLED CACHES (climatology.py) REMAIN AN UNDECIDED ARCHITECTURAL CALL
+  -- ORIGINALLY "~14 HAND-ROLLED TTL DICTS," NOW STALE
 Priority: was Low-Medium -- consistency/tooling debt, not a live bug; each
   hand-rolled cache re-implements expiry slightly differently and each
-  needs its own test-isolation hook.
+  needs its own test-isolation hook. Now Low: only 2 caches remain
+  undecided, not ~14.
 
 PARTIALLY RESOLVED 2026-07-19: before touching anything, did a full survey
   (via a dedicated Explore pass) of every remaining cache this entry lists,
@@ -10312,6 +10327,22 @@ RESOLVED 2026-07-25 (_station_cache only -- climatology.py's 2 caches
   caught and correctly held off on a genuinely-concurrent other session's
   in-flight edit earlier the same session, re-checked clean before
   resuming).
+
+STALE-TITLE CORRECTION 2026-07-30: user pushed back on a "what's next in the
+  backlog" recommendation that had listed this entry as "ready to pick up" --
+  re-reading the FULL history above (not just the latest dated note) found
+  the entry's own title ("~14 hand-rolled TTL dicts") badly overstated what
+  remains. Across the two 2026-07-19 passes plus the 2026-07-25
+  `_station_cache` subclass, 15 of the ~17 originally-identified caches are
+  actually migrated; the ONLY genuinely open item is the climatology.py
+  2-cache architectural decision this entry's own "Why not now"/"When to
+  revisit" sections already argue against rushing ("not a live bug, and
+  forcing a decision here risks getting it wrong for the sake of closing out
+  a backlog item"). Corrected the bracket header/title above to reflect this
+  (2 caches, not ~14) rather than editing any of the historical resolution
+  notes. This entry is effectively done except for that one undecided call
+  -- don't recommend it as "ready to pick up" again without re-deriving
+  this same picture from source, the same mistake this correction fixes.
 
 [RESOLVED 2026-07-18] execution_log.py's SWALLOWED-ALTER MIGRATIONS vs tracker.py's VERSIONED IDIOM
 Priority: was Low-Medium -- worked fine so far, but the live-execution feature
@@ -10706,7 +10737,10 @@ When to revisit:
   - N/A for the two fixed bugs. See the follow-up cousin-risk note below for
     something worth a future look, not an active bug.
 
-[PARTIALLY RESOLVED 2026-07-19] main.py's FROZEN `from utils import ...` COULD REPEAT THE SAME IDENTITY-DIVERGENCE BUG -- utils IS RELOADED BY ~6 TESTS
+[PARTIALLY RESOLVED 2026-07-19 -- STALE COUNT CORRECTED 2026-07-31, see note
+  at end: 3 of the original 7 reload(utils) sites were converted the same
+  day, leaving 4, not ~6] main.py's FROZEN `from utils import ...` COULD
+  REPEAT THE SAME IDENTITY-DIVERGENCE BUG -- utils IS RELOADED BY 4 TESTS
 Priority: Low -- latent structural risk, not a current bug; nothing today
   asserts an identity check that would catch it firing.
 
@@ -10802,6 +10836,20 @@ When to revisit:
     immediately surface whether the remaining 4 sites actually cause
     trouble in practice), or test_p9_p10.py/test_risk_control.py/
     test_starting_balance.py is next open for other reasons.
+
+RE-VERIFIED 2026-07-31 (staleness re-check on this entry's own title/header,
+  not a new finding about the underlying risk): the title's "~6 TESTS"
+  figure was out of date. The 2026-07-19 resolution above already converted
+  3 of the original 7 reload(utils) call sites (test_kalshi_ws.py's
+  test_stale_entry_returns_none; test_sameday_reserve.py's
+  _patch_env/_patch_dynamic_env helpers) to monkeypatch.setattr, leaving
+  only 4 reload(utils) sites today (test_p9_p10.py x2, test_risk_control.py,
+  test_starting_balance.py) -- matching what this entry's own "Why not
+  now"/"When to revisit" sections already correctly say, just never
+  reflected in the title itself. The underlying structural risk (main.py's
+  frozen `from utils import ...` diverging if one of those 4 reloads ever
+  runs before an identity-check test) is unchanged and still real; only the
+  title's count was stale.
 
 ======================================================
 [RESOLVED 2026-07-19] AUTO UN-RETIREMENT -- RETIRED FORECASTING METHODS COULD NEVER GENERATE FRESH RECOVERY EVIDENCE
