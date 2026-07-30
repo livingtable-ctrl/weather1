@@ -5,6 +5,8 @@ silently lost in the 24559a7 mystery-revert, see backlog.txt).
 from __future__ import annotations
 
 import json
+import threading
+import time
 from unittest.mock import patch
 
 import climatology
@@ -135,7 +137,6 @@ class TestLoadAllSigmasBehavior:
 
     def test_recomputes_stale_cache(self, tmp_path, monkeypatch):
         import os
-        import time
 
         cache_path = tmp_path / "sigma.json"
         cache_path.write_text(json.dumps({"NYC": {"max": {"1": 9.9}, "min": {}}}))
@@ -189,3 +190,64 @@ class TestLoadAllSigmasBehavior:
             result = climatology.load_all_sigmas(city_coords, force=True)
         assert result["LasVegas"]["max"]["1"] == 2.9
         assert result["NewOrleans"]["max"]["1"] == 2.9
+
+    def test_concurrent_cold_cache_calls_compute_only_once(self, tmp_path, monkeypatch):
+        """backlog.txt "FORECAST_SIGMA.JSON ATOMIC WRITE CONTENTION": cron.py's
+        ThreadPoolExecutor scan can call load_all_sigmas() from multiple worker
+        threads at once against a cold cache. Without _sigma_lock, every thread
+        would see the empty mem-cache/missing file and independently recompute
+        + race to atomic_write_json() the same forecast_sigma.json (observed
+        live: WinError 32/5/2 on the rename step, recurring 2026-07-19/25/27/30).
+        Slows compute_sigma_from_climate down to widen the race window, lines
+        up N threads on a barrier so they all pass the empty-cache check at
+        the same instant, and asserts only ONE thread's worth of compute calls
+        happened -- proving the lock serializes them rather than letting every
+        thread redundantly (and racily) recompute+write."""
+        monkeypatch.setattr(climatology, "_SIGMA_CACHE_PATH", tmp_path / "sigma.json")
+        city_coords = {"NYC": (40.7, -74.0, "America/New_York")}
+        n_threads = 8
+        barrier = threading.Barrier(n_threads)
+        call_count_lock = threading.Lock()
+        calls = {"n": 0}
+
+        def slow_compute(city, coords, var="max"):
+            with call_count_lock:
+                calls["n"] += 1
+            time.sleep(0.05)
+            return {1: 3.0}
+
+        results = []
+        errors = []
+
+        def worker():
+            try:
+                barrier.wait(timeout=5)
+                results.append(climatology.load_all_sigmas(city_coords))
+            except Exception as e:  # pragma: no cover - surfaced via errors list
+                errors.append(e)
+
+        with patch.object(
+            climatology, "compute_sigma_from_climate", side_effect=slow_compute
+        ):
+            threads = [threading.Thread(target=worker) for _ in range(n_threads)]
+            for t in threads:
+                t.start()
+            for t in threads:
+                t.join(timeout=5)
+
+        assert not errors, f"worker thread(s) raised: {errors}"
+        assert len(results) == n_threads
+        # 1 city * 2 vars (max/min) = 2 calls total if the lock serialized the
+        # whole race onto a single winner; without the lock this would be up
+        # to n_threads*2.
+        assert calls["n"] == 2, (
+            f"expected exactly 2 compute_sigma_from_climate calls (one city's "
+            f"max+min, computed once), got {calls['n']} -- the lock isn't "
+            f"serializing concurrent cold-cache callers"
+        )
+        # Every thread must still get the real, fully-computed result, not a
+        # partial/empty dict from a racer that returned before the winner finished.
+        for r in results:
+            assert r["NYC"]["max"]["1"] == 3.0
+        on_disk = json.loads((tmp_path / "sigma.json").read_text())
+        assert on_disk["NYC"]["max"]["1"] == 3.0

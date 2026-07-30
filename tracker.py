@@ -1765,7 +1765,16 @@ def brier_score_rolling_with_n(weeks: int = 3) -> tuple[float | None, int]:
 
 
 def count_settled_predictions_rolling(weeks: int = 3) -> int:
-    """Count multi-day predictions whose outcome settled within the last `weeks` weeks."""
+    """Count multi-day predictions whose outcome settled within the last
+    `weeks` weeks. Feeds weather_markets._regime_blend_settled_count() ->
+    is_regime_blend_active() (a live regime-blend-weight activation gate) --
+    same temperature-only maturity semantics as count_settled_predictions(),
+    so it carries the same exclusion (backlog.txt "COUNT_SETTLED_
+    PREDICTIONS() HAS NO CONDITION_TYPE FILTER", found via adjacency during
+    that entry's own independent review: a live-trading-readiness gate
+    should not count monthly rain/snow or two-sided 'between' rows any more
+    here than it does in count_settled_predictions()).
+    """
     init_db()
     days = weeks * 7
     with _conn() as con:
@@ -1773,7 +1782,10 @@ def count_settled_predictions_rolling(weeks: int = 3) -> int:
             f"SELECT COUNT(*) FROM multiday_predictions p "
             f"JOIN outcomes_valid o ON p.ticker = o.ticker "
             f"WHERE p.our_prob IS NOT NULL "
-            f"  AND o.settled_at >= datetime('now', '-{days} days')"
+            f"  AND o.settled_at >= datetime('now', '-{days} days') "
+            f"  AND (p.condition_type IS NULL "
+            f"       OR p.condition_type NOT IN "
+            f"          ('between', 'precip_month_total', 'snow_month_total'))"
         ).fetchone()
     return row[0] if row else 0
 
@@ -1789,6 +1801,15 @@ def get_rolling_win_rate(window: int = 20) -> tuple[float | None, int]:
     caller's own minimum-sample threshold was set below `window`, the win
     rate check silently never activated in that gap since win_rate was always
     None there regardless of the caller's smaller threshold.
+
+    Excludes condition_type='between'/'precip_month_total'/'snow_month_total'
+    (same rationale as count_settled_predictions() -- found via adjacency
+    during that entry's review): this feeds paper.is_accuracy_halted(), the
+    live circuit breaker that halts new trades on a bad win rate. A monthly
+    rain/snow row entering the rolling window carries an entirely different
+    win-rate distribution than a directional temperature call and could
+    either mask real temperature-model degradation or falsely trip the halt
+    on unrelated rain/snow volatility.
     """
     init_db()
     with _conn() as con:
@@ -1798,6 +1819,9 @@ def get_rolling_win_rate(window: int = 20) -> tuple[float | None, int]:
             FROM multiday_predictions p
             JOIN outcomes_valid o ON p.ticker = o.ticker
             WHERE p.our_prob IS NOT NULL
+              AND (p.condition_type IS NULL
+                   OR p.condition_type NOT IN
+                      ('between', 'precip_month_total', 'snow_month_total'))
             ORDER BY o.settled_at DESC
             LIMIT ?
             """,
@@ -1840,18 +1864,64 @@ def get_rolling_win_rate_ci(window: int = 20, confidence: float = 0.90) -> dict 
 
 
 def count_settled_predictions() -> int:
-    """Return the number of multi-day predictions with a known outcome.
+    """Return the number of settled multi-day predictions counted toward the
+    live-trading maturity gates. Feeds the ENABLE_MICRO_LIVE graduation gate
+    and the F3 auto-calibration trigger (cron.py) plus its console reminder
+    and the dashboard mirror (web_app.py) -- all four are calibration-gate
+    consumers that should count the same population F3's own calibration
+    math (calibration.py) and the CLI calibration curves
+    (get_multiday_calibration_cli below) already train on.
 
     Uses multiday_predictions view (days_out >= 1 or NULL) so same-day METAR
     trades don't inflate calibration gates or the graduation threshold — those
     are assessed on multi-day ensemble performance, not same-day observations.
+    Also excludes condition_type='between' and 'precip_month_total'/
+    'snow_month_total' (backlog.txt "COUNT_SETTLED_PREDICTIONS() HAS NO
+    CONDITION_TYPE FILTER"), matching every sibling calibration query's
+    exclusion (calibration.py's grid search, get_multiday_calibration_cli/
+    get_sameday_calibration_cli below). On this repo's live data (2026-07-30)
+    100% of the resulting count drop (102 -> 61) was 'between' rows -- zero
+    monthly rain/snow rows have settled yet, so that part of the exclusion is
+    prospective (protects against contamination the moment they do settle),
+    while 'between' was the one actually inflating the gate's evidence base
+    today. NOT fully "temperature-only" despite the maturity-gate framing
+    above: daily precipitation condition types (weather_markets.py's
+    precip_any/precip_above/precip_snow) are NOT excluded here -- this
+    matches every one of the sibling queries' own gap (none of them exclude
+    those either), so it isn't a regression introduced by this filter, but
+    it also isn't closed. Zero such rows are settled today; extending the
+    exclusion everywhere this pattern appears is a separate, larger change
+    than this fix's scope.
     """
     init_db()
     with _conn() as con:
         row = con.execute(
-            "SELECT COUNT(*) FROM multiday_predictions p JOIN outcomes_valid o ON p.ticker = o.ticker"
+            """
+            SELECT COUNT(*) FROM multiday_predictions p
+            JOIN outcomes_valid o ON p.ticker = o.ticker
+            WHERE (p.condition_type IS NULL
+                   OR p.condition_type NOT IN
+                      ('between', 'precip_month_total', 'snow_month_total'))
+            """
         ).fetchone()
     return row[0] if row else 0
+
+
+def clamp_last_calibration_count(last_cal_count: int, current_settled: int) -> int:
+    """Clamp a `.last_calibration_count` sentinel value against today's live
+    count_settled_predictions() before computing "settled since last
+    calibration". Shared by cron.py's real F3 auto-calibration trigger and
+    web_app.py's dashboard mirror (backlog.txt "COUNT_SETTLED_PREDICTIONS()
+    HAS NO CONDITION_TYPE FILTER" resolution, 2026-07-30) -- without this,
+    a sentinel written under count_settled_predictions()'s counting basis
+    BEFORE that fix (2026-07-30) can exceed today's narrower count with zero
+    new trades settled, silently requiring far more than the usual +25
+    settlements to re-trigger (stranding the gate on a basis change, not on
+    real data). Self-heals in both directions for any future basis change:
+    narrower -> resets to "as of today"; wider -> sentinel stays unchanged
+    since real accumulation still governs when it's already ahead.
+    """
+    return min(last_cal_count, current_settled)
 
 
 def count_settled_sameday_predictions() -> int:

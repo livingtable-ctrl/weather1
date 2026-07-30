@@ -8,6 +8,7 @@ import json
 import logging
 import os
 import tempfile
+import threading
 import time
 from pathlib import Path
 
@@ -72,13 +73,21 @@ def atomic_write_json(
 
     for attempt in range(retries):
         try:
-            # pid included so two processes racing to write the same path
-            # (the exact scenario that causes retries to be needed in the
-            # first place) never share one temp file -- each process gets
-            # its own, and only the eventual os.replace can race, which is
-            # safe (whole-file atomic rename, last writer wins cleanly).
+            # pid+thread-id included so two processes OR two threads within
+            # the same process racing to write the same path (both are real,
+            # observed scenarios -- see backlog.txt "FORECAST_SIGMA.JSON
+            # ATOMIC WRITE CONTENTION": a cron.py ThreadPoolExecutor worker
+            # pool hit this exact collision on a PID-only temp name, since
+            # two threads share one PID and therefore raced on the SAME temp
+            # file, which is not the "only os.replace can race, which is
+            # safe" case this comment used to describe -- that safety
+            # argument only holds when each racer has its own temp file)
+            # never share one temp file -- each gets its own, and only the
+            # eventual os.replace can race, which is safe (whole-file atomic
+            # rename, last writer wins cleanly).
             tmp_path_str = str(
-                path.parent / f".{path.name}_{os.getpid()}_{attempt}.tmp"
+                path.parent
+                / f".{path.name}_{os.getpid()}_{threading.get_ident()}_{attempt}.tmp"
             )
             with open(tmp_path_str, "w", encoding="utf-8") as f:
                 f.write(payload)
@@ -156,7 +165,7 @@ def atomic_write_json(
             # that just occurred, so it needs the same durability, not weaker.
             candidate_tmp = str(
                 candidate_path.parent
-                / f".{candidate_path.name}_{os.getpid()}.emergency.tmp"
+                / f".{candidate_path.name}_{os.getpid()}_{threading.get_ident()}.emergency.tmp"
             )
             with open(candidate_tmp, "w", encoding="utf-8") as f:
                 f.write(payload)

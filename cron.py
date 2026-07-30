@@ -2045,6 +2045,9 @@ def _cmd_cron_body(
                     _last_cal_count = int(_cal_sentinel.read_text().strip())
                 except Exception:
                     pass
+            _last_cal_count = _tracker_cal.clamp_last_calibration_count(
+                _last_cal_count, _current_settled
+            )
             if _current_settled >= 50 and _current_settled - _last_cal_count >= 25:
                 _log.info(
                     "cmd_cron: F3 auto-calibration triggered "

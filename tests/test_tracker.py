@@ -4060,6 +4060,217 @@ class TestDisputedOutcomeTracking(unittest.TestCase):
         self.assertNotIn(999.0, [row["ens_mean"] for row in after])
 
 
+class TestLiveTradingGateConditionTypeFilter(unittest.TestCase):
+    """backlog.txt "COUNT_SETTLED_PREDICTIONS() HAS NO CONDITION_TYPE
+    FILTER": every function feeding a live-trading-readiness/calibration
+    maturity gate must exclude condition_type='between'/'precip_month_total'/
+    'snow_month_total', matching every sibling calibration query's own
+    exclusion. Kept separate from TestDisputedOutcomeTracking (which is
+    specifically about the `disputed` flag, not condition_type)."""
+
+    _FUTURE = date(2099, 1, 1)  # clamps to a large positive days_out (multiday)
+
+    def setUp(self):
+        self._tmpdir = tempfile.mkdtemp()
+        self._orig = tracker.DB_PATH
+        tracker.DB_PATH = Path(self._tmpdir) / "test_predictions.db"
+        tracker._db_initialized = False
+
+    def tearDown(self):
+        tracker.DB_PATH = self._orig
+        tracker._db_initialized = False
+        shutil.rmtree(self._tmpdir, ignore_errors=True)
+
+    def _log_settled(
+        self,
+        ticker,
+        our_prob,
+        settled_yes,
+        market_date,
+        city="NYC",
+        market_prob=0.50,
+        edge=0.20,
+        condition_type="above",
+    ):
+        analysis = {
+            "condition": {"type": condition_type, "threshold": 70.0},
+            "forecast_prob": our_prob,
+            "market_prob": market_prob,
+            "edge": edge,
+            "method": "ensemble",
+            "n_members": 82,
+        }
+        tracker.log_prediction(
+            ticker,
+            city,
+            market_date,
+            analysis,
+            blend_sources={"icon_seamless": 0.6, "gfs_seamless": 0.4},
+        )
+        tracker.log_outcome(ticker, settled_yes)
+
+    def _seed_baseline(self, n=25, market_date=None):
+        market_date = market_date or self._FUTURE
+        for i in range(n):
+            self._log_settled(
+                f"BASE-{i}", round(0.30 + (i % 5) * 0.15, 2), i % 2, market_date
+            )
+
+    # ── count_settled_predictions ───────────────────────────────────────────
+
+    def test_count_settled_predictions_excludes_between(self):
+        self._seed_baseline()
+        before = tracker.count_settled_predictions()
+        self._log_settled(
+            "COUNTFILT-BETWEEN-1", 0.6, 1, self._FUTURE, condition_type="between"
+        )
+        after = tracker.count_settled_predictions()
+        self.assertEqual(
+            before, after, "a 'between' row must not change the settled count"
+        )
+
+    def test_count_settled_predictions_excludes_rain(self):
+        self._seed_baseline()
+        before = tracker.count_settled_predictions()
+        self._log_settled(
+            "KXRAINDENM-26AUG-8",
+            0.99,
+            0,
+            self._FUTURE,
+            condition_type="precip_month_total",
+            edge=0.99,
+        )
+        after = tracker.count_settled_predictions()
+        self.assertEqual(before, after, "a rain row must not change the settled count")
+
+    def test_count_settled_predictions_excludes_snow(self):
+        self._seed_baseline()
+        before = tracker.count_settled_predictions()
+        self._log_settled(
+            "KXDENSNOWM-26DEC-8",
+            0.99,
+            0,
+            self._FUTURE,
+            condition_type="snow_month_total",
+            edge=0.99,
+        )
+        after = tracker.count_settled_predictions()
+        self.assertEqual(before, after, "a snow row must not change the settled count")
+
+    # ── count_settled_predictions_rolling ───────────────────────────────────
+    # (feeds weather_markets._regime_blend_settled_count -- the regime-blend
+    # activation gate; found via adjacency while fixing count_settled_
+    # predictions() above, same condition_type contamination.)
+
+    def test_count_settled_predictions_rolling_excludes_between(self):
+        self._seed_baseline()
+        before = tracker.count_settled_predictions_rolling()
+        self._log_settled(
+            "ROLLFILT-BETWEEN-1", 0.6, 1, self._FUTURE, condition_type="between"
+        )
+        after = tracker.count_settled_predictions_rolling()
+        self.assertEqual(
+            before, after, "a 'between' row must not change the rolling count"
+        )
+
+    def test_count_settled_predictions_rolling_excludes_rain_and_snow(self):
+        self._seed_baseline()
+        before = tracker.count_settled_predictions_rolling()
+        self._log_settled(
+            "KXRAINDENM-26AUG-9",
+            0.99,
+            0,
+            self._FUTURE,
+            condition_type="precip_month_total",
+            edge=0.99,
+        )
+        self._log_settled(
+            "KXDENSNOWM-26DEC-9",
+            0.99,
+            0,
+            self._FUTURE,
+            condition_type="snow_month_total",
+            edge=0.99,
+        )
+        after = tracker.count_settled_predictions_rolling()
+        self.assertEqual(
+            before, after, "rain/snow rows must not change the rolling count"
+        )
+
+    # ── get_rolling_win_rate ────────────────────────────────────────────────
+    # (feeds paper.is_accuracy_halted -- the live circuit breaker that halts
+    # new trades on a bad win rate; same contamination risk as above.)
+
+    def test_get_rolling_win_rate_excludes_between(self):
+        self._seed_baseline()
+        before, before_n = tracker.get_rolling_win_rate(window=100)
+        # An extreme, wrong-side 'between' row: our_prob=0.99 but settled NO --
+        # would swing the win rate hard if counted.
+        self._log_settled(
+            "WINRATE-BETWEEN-1", 0.99, 0, self._FUTURE, condition_type="between"
+        )
+        after, after_n = tracker.get_rolling_win_rate(window=100)
+        self.assertEqual(
+            before_n, after_n, "a 'between' row must not change the rolling n"
+        )
+        self.assertEqual(
+            before, after, "a 'between' row must not change the rolling win rate"
+        )
+
+    def test_get_rolling_win_rate_excludes_rain_and_snow(self):
+        self._seed_baseline()
+        before, before_n = tracker.get_rolling_win_rate(window=100)
+        self._log_settled(
+            "KXRAINDENM-26AUG-10",
+            0.99,
+            0,
+            self._FUTURE,
+            condition_type="precip_month_total",
+            edge=0.99,
+        )
+        self._log_settled(
+            "KXDENSNOWM-26DEC-10",
+            0.99,
+            0,
+            self._FUTURE,
+            condition_type="snow_month_total",
+            edge=0.99,
+        )
+        after, after_n = tracker.get_rolling_win_rate(window=100)
+        self.assertEqual(before_n, after_n)
+        self.assertEqual(before, after)
+
+
+class TestClampLastCalibrationCount(unittest.TestCase):
+    """backlog.txt "COUNT_SETTLED_PREDICTIONS() HAS NO CONDITION_TYPE
+    FILTER" resolution: count_settled_predictions()'s counting basis changed
+    (condition_type exclusion added), which can make a `.last_calibration_
+    count` sentinel written under the OLD, wider basis exceed today's
+    narrower count with zero new trades settled -- clamp_last_calibration_
+    count() (shared by cron.py's real F3 trigger and web_app.py's dashboard
+    mirror) prevents that from stranding the gate."""
+
+    def test_clamps_down_when_sentinel_exceeds_current(self):
+        # The exact regression this fix addresses: sentinel=120 (old basis),
+        # current=61 (new, narrower basis) -- must clamp to 61, not silently
+        # require 120+25=145 more real settlements than the +25 the F3
+        # trigger is supposed to require.
+        self.assertEqual(tracker.clamp_last_calibration_count(120, 61), 61)
+
+    def test_leaves_sentinel_unchanged_when_current_is_higher(self):
+        # Normal case: real trades have settled since the last calibration --
+        # must not reset progress toward the next +25 trigger.
+        self.assertEqual(tracker.clamp_last_calibration_count(50, 75), 50)
+
+    def test_equal_values_unchanged(self):
+        self.assertEqual(tracker.clamp_last_calibration_count(50, 50), 50)
+
+    def test_zero_sentinel_unaffected(self):
+        # No prior calibration run recorded -- must not clamp to something
+        # smaller than 0.
+        self.assertEqual(tracker.clamp_last_calibration_count(0, 61), 0)
+
+
 class TestStopLossAccuracy(unittest.TestCase):
     """Restored backlog piece (mystery-revert 24559a7, piece 3): stop-loss exit
     audit. Rebuilt against the current architecture -- the original targeted

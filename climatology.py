@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import logging
 import statistics
+import threading
 import time
 from datetime import date
 from pathlib import Path
@@ -253,6 +254,7 @@ _SIGMA_FLOOR = 1.5  # never allow sigma < 1.5°F regardless of climate data
 _SIGMA_CACHE_PATH = DATA_DIR / "forecast_sigma.json"
 _SIGMA_CACHE_AGE = 30 * 24 * 3600  # refresh monthly
 _sigma_mem_cache: dict = {}
+_sigma_lock = threading.Lock()
 
 
 def compute_sigma_from_climate(
@@ -292,38 +294,60 @@ def load_all_sigmas(city_coords: dict, force: bool = False) -> dict:
     Return per-city, per-month forecast sigmas computed from 30yr climate archive.
     Structure: {city: {"max": {month_str: sigma}, "min": {month_str: sigma}}}
     Cached to data/forecast_sigma.json, refreshed monthly.
+
+    Thread-safe WITHIN one process (backlog.txt "FORECAST_SIGMA.JSON ATOMIC
+    WRITE CONTENTION"): cron.py's ThreadPoolExecutor scan can call this via
+    weather_markets._load_dynamic_sigma() from multiple worker threads at
+    once. Without a lock, concurrent threads hitting a cold _sigma_mem_cache
+    each independently recompute the full per-city table and race to
+    atomic_write_json() the same forecast_sigma.json, colliding on the
+    rename step (observed WinError 32/5/2, self-recovering via
+    atomic_write_json's emergency-copy fallback but recurring). Matches
+    climate_indices.py's _indices_lock convention for the same
+    check-then-fetch-then-cache shape. This _sigma_lock gives NO protection
+    across processes -- web_app.py's Flask dashboard (a separate process,
+    threaded=True) reaches this same function via the same call chain, so a
+    cron.py write racing a web_app.py read of forecast_sigma.json is a
+    real, still-open (lower-severity, retry-recoverable) residual case this
+    lock cannot cover; safe_io.atomic_write_json's own pid+thread-keyed temp
+    names and retry/backoff are what absorb that one.
     """
     global _sigma_mem_cache
-    if _sigma_mem_cache and not force:
-        return _sigma_mem_cache
-
-    if not force and _SIGMA_CACHE_PATH.exists():
-        age = time.time() - _SIGMA_CACHE_PATH.stat().st_mtime
-        if age < _SIGMA_CACHE_AGE:
-            with open(_SIGMA_CACHE_PATH) as f:
-                _sigma_mem_cache = json.load(f)
+    with _sigma_lock:
+        if _sigma_mem_cache and not force:
             return _sigma_mem_cache
 
-    result: dict = {}
-    for city, coords in city_coords.items():
-        result[city] = {
-            "max": {
-                str(k): v
-                for k, v in compute_sigma_from_climate(city, coords, var="max").items()
-            },
-            "min": {
-                str(k): v
-                for k, v in compute_sigma_from_climate(city, coords, var="min").items()
-            },
-        }
+        if not force and _SIGMA_CACHE_PATH.exists():
+            age = time.time() - _SIGMA_CACHE_PATH.stat().st_mtime
+            if age < _SIGMA_CACHE_AGE:
+                with open(_SIGMA_CACHE_PATH) as f:
+                    _sigma_mem_cache = json.load(f)
+                return _sigma_mem_cache
 
-    try:
-        safe_io.atomic_write_json(result, _SIGMA_CACHE_PATH)
-    except Exception as e:
-        _log.warning("Could not write forecast_sigma.json: %s", e)
+        result: dict = {}
+        for city, coords in city_coords.items():
+            result[city] = {
+                "max": {
+                    str(k): v
+                    for k, v in compute_sigma_from_climate(
+                        city, coords, var="max"
+                    ).items()
+                },
+                "min": {
+                    str(k): v
+                    for k, v in compute_sigma_from_climate(
+                        city, coords, var="min"
+                    ).items()
+                },
+            }
 
-    _sigma_mem_cache = result
-    return result
+        try:
+            safe_io.atomic_write_json(result, _SIGMA_CACHE_PATH)
+        except Exception as e:
+            _log.warning("Could not write forecast_sigma.json: %s", e)
+
+        _sigma_mem_cache = result
+        return result
 
 
 def preload_all(city_coords: dict) -> None:

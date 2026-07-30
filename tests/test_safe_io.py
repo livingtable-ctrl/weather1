@@ -331,6 +331,70 @@ def test_atomic_write_skips_fallback_dir_that_collides_with_original(
     assert json.loads(fallen_through_copy.read_text()) == {"fresh": "new"}
 
 
+def test_atomic_write_concurrent_threads_same_target_no_collision(
+    tmp_path, monkeypatch
+):
+    """backlog.txt "FORECAST_SIGMA.JSON ATOMIC WRITE CONTENTION": multiple
+    threads within the SAME process (same PID) racing to atomic_write_json()
+    the same path used to share one PID-only temp filename (f".{name}_
+    {pid}_{attempt}.tmp") -- two threads at the same attempt number opened/
+    wrote/renamed the identical temp file, observed live as WinError 32/5/2
+    on the os.replace rename step (bot.log, 2026-07-19/25/27/30, same PID,
+    same tmp path each time). Widens the race window by delaying os.fsync
+    so N threads' open->write->fsync windows overlap, then asserts every
+    thread's atomic_write_json call succeeds with no exception and the
+    final file is valid, uncorrupted JSON from exactly one whole writer --
+    proving concurrent threads no longer share a temp file now that
+    threading.get_ident() is part of the name."""
+    import os
+    import threading
+    import time as _time
+
+    import safe_io
+
+    target = tmp_path / "shared.json"
+    n_threads = 8
+    barrier = threading.Barrier(n_threads)
+    real_fsync = os.fsync
+
+    def slow_fsync(fd):
+        real_fsync(fd)
+        _time.sleep(0.02)
+
+    monkeypatch.setattr(os, "fsync", slow_fsync)
+
+    errors = []
+
+    def worker(i):
+        try:
+            barrier.wait(timeout=5)
+            # Default retries (3) matches real call sites -- the retry+1s
+            # backoff is the existing mechanism that absorbs a same-
+            # destination os.replace collision (a residual, harder-to-hit
+            # race distinct from the shared-temp-file bug this test targets;
+            # Windows os.replace isn't safe against two concurrent replaces
+            # of the same destination with zero retries).
+            safe_io.atomic_write_json({"writer": i}, target)
+        except Exception as e:
+            errors.append(e)
+
+    threads = [threading.Thread(target=worker, args=(i,)) for i in range(n_threads)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=10)
+
+    assert not errors, f"concurrent atomic_write_json calls raised: {errors}"
+    final = json.loads(target.read_text())
+    assert final.get("writer") in range(n_threads), (
+        f"final file must be one whole writer's payload, got: {final}"
+    )
+    # No leftover temp files from any racer -- every thread's tmp path was
+    # unique and successfully renamed away (or cleaned up on its own path).
+    leftover = list(tmp_path.glob(".shared.json_*"))
+    assert not leftover, f"leftover temp files from a collision: {leftover}"
+
+
 def test_atomic_write_error_message_accurate_when_no_emergency_copy_possible(
     tmp_path, monkeypatch
 ):

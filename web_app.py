@@ -1701,6 +1701,15 @@ setInterval(() => {{
         try:
             from tracker import count_settled_predictions
 
+            # NOTE: count_settled_predictions() excludes condition_type='between'
+            # (backlog.txt "COUNT_SETTLED_PREDICTIONS() HAS NO CONDITION_TYPE
+            # FILTER") -- a deliberate exception to this file's OWN documented
+            # convention elsewhere (get_sameday_calibration_cli's docstring:
+            # "dashboard-facing get_sameday_calibration() deliberately keeps
+            # 'between' rows"). It's correct here specifically because this
+            # endpoint's whole job is mirroring the F3 gate's real count exactly,
+            # not showing the dashboard's usual wider population -- don't "fix"
+            # this back to match that other convention.
             current_n = count_settled_predictions()
 
             # F3 blend-weight gate — mirrors cron.py's real check exactly:
@@ -1712,6 +1721,12 @@ setInterval(() => {{
                     last_calibration_n = int(_cal_sentinel.read_text().strip())
                 except Exception:
                     last_calibration_n = None
+            if last_calibration_n is not None:
+                from tracker import clamp_last_calibration_count
+
+                last_calibration_n = clamp_last_calibration_count(
+                    last_calibration_n, current_n
+                )
             next_eligible_n = (
                 max(50, last_calibration_n + 25)
                 if last_calibration_n is not None

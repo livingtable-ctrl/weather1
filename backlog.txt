@@ -1,6 +1,70 @@
 BACKLOG — future improvements to implement when ready
 ======================================================
 
+[OPEN -- found via adjacency 2026-07-30 during the COUNT_SETTLED_
+  PREDICTIONS() condition_type-filter fix, deliberately not fixed in that
+  pass] COUNT_SETTLED_PREDICTIONS() COUNTS RAW ROWS, NOT DISTINCT
+  TEMPERATURE-OBSERVATION EVENTS
+Priority: Low -- a real design question, not a live-money-critical gap
+  (doesn't change today's live gate outcomes; ENABLE_MICRO_LIVE/F3 clear
+  either way at current counts), but the codebase already has an explicit,
+  opus-reviewed precedent for the opposite choice on a sibling function.
+
+Problem:
+  tracker.count_settled_predictions() (tracker.py:1866) joins
+  multiday_predictions to outcomes_valid on ticker and counts every
+  matching ROW, not distinct settlement events. A city/date pair with
+  multiple ladder-bracket tickers that all settle from the same real
+  observation (e.g. multiple above/below/between brackets on the same
+  city+date) each contribute their own +1, so the live-trading maturity
+  gate's count can overstate how many independent real-world observations
+  actually back it. This is the exact same shape count_settled_snow_
+  predictions() (tracker.py:1926) was deliberately hardened against
+  (opus-review-caught 2026-07-30, same day): "Denver's own KXDENSNOWM
+  ladder alone has 7 sibling brackets that all settle from the SAME real
+  snowfall observation for a given month, so a raw-row floor could clear
+  the 20-sample threshold with as few as ~3 real months of data, not 20
+  independent real-world observations." That function now counts DISTINCT
+  (ticker prefix, year, month) accrual events instead of raw rows.
+  count_settled_predictions() was NOT given the same treatment -- it
+  still counts raw rows, same as count_settled_rain_predictions()
+  (tracker.py:1898), whose own docstring explicitly accepts this as a
+  known, deliberate tradeoff: "rain has 11 cities' worth of decorrelation
+  across those rows, and changing its counting semantics now would shift
+  an already-accumulating live gate's count out from under it."
+  count_settled_predictions() is in the same position as rain's counter
+  (already live/shipped, changing its semantics now would shift an
+  already-accumulating gate), which is likely why it was left alone --
+  but that reasoning was never stated for this function, only inferred.
+
+What it would look like:
+  Either (a) leave as-is and explicitly document the same "already live,
+  changing semantics would shift an accumulating gate" reasoning rain's
+  counter states, so a future reader doesn't mistake the omission for an
+  oversight, or (b) redesign to count distinct temperature-observation
+  events (city + date, or ticker-prefix + date depending on how directly
+  correlated same-day above/below/between brackets on one city really
+  are) the way snow's counter now does -- a bigger, live-gate-semantics-
+  changing decision that needs the user's input on whether the maturity
+  gate should measure "settled rows" or "independent observations."
+
+Why not now:
+  Found via adjacency while fixing the condition_type filter gap (a
+  different, narrower bug) -- this is a separate, larger design decision
+  about what the gate should actually measure, not a bug with an obvious
+  single fix. Changing the counting semantics now would also change
+  ENABLE_MICRO_LIVE/F3's live count again (a second change to the same
+  gate in the same day), which deserves its own explicit user decision
+  and its own dedicated verification pass, not a drive-by bundled into
+  the condition_type fix.
+
+When to revisit:
+  Whenever the maturity gates (ENABLE_MICRO_LIVE, F3 auto-calibration) are
+  next touched, or if the live-observation count ever needs closer
+  scrutiny (e.g. before actually flipping ENABLE_MICRO_LIVE for real) --
+  worth deciding then whether raw-row counting has been overstating
+  readiness by enough to matter in practice on real data.
+
 [RESOLVED 2026-07-27 -- found live during a cron output review, root-caused,
   fixed same session]
   SAFE_IO -- EMERGENCY-COPY FALLBACK SILENTLY CLOBBERED THE ORIGINAL FILE
@@ -741,12 +805,14 @@ When to revisit: N/A, closed. See HISTORICAL MARKET-PRICE CAPTURE / the
   candlestick-capture "when to revisit" notes below for the still-deferred
   analysis passes this unblocks.
 
-[FORECAST_SIGMA.JSON ATOMIC WRITE CONTENTION -- INTERMITTENT, SELF-RECOVERING, WATCHING]
-Priority: Low -- no data loss observed (safe_io's emergency-copy fallback
-  succeeded every time), flagged to watch for recurrence rather than
-  chase from a single data point. Worth a real look if it keeps
-  happening, especially once live trading is active and other files in
-  the same data/ tree matter more than the climatology sigma cache.
+[RESOLVED 2026-07-30] FORECAST_SIGMA.JSON ATOMIC WRITE CONTENTION -- INTERMITTENT, SELF-RECOVERING, WATCHING
+Priority: was Low (no data loss observed, flagged to watch for recurrence).
+  Re-verified 2026-07-30 during a backlog-wide audit: this was NOT a single
+  occurrence -- it recurred on 2026-07-19 (before this entry was even
+  written), -07-25 (the occurrence documented below), -07-27, and again
+  2026-07-30 (today), all self-recovering via the same emergency-copy
+  fallback. A real, code-level root cause was found and fixed -- see
+  RESOLVED note below.
 
 Problem:
   2026-07-25 15:04:35-15:07:05 UTC cron run: safe_io.atomic_write_json
@@ -787,6 +853,126 @@ When to revisit:
   same WARNING pattern (`atomic_write_json attempt.*failed`). If it
   recurs, start the OneDrive-correlation check above; if it stays a
   one-off, close this entry.
+
+RESOLVED 2026-07-30: found via a backlog-wide audit that this recurred 4x
+  (07-19, -25, -27, -30), not once -- the OneDrive-sync theory above was
+  never confirmed and turned out to be the wrong culprit. Real cause: a
+  thread race, not an external process. climatology.py's `load_all_sigmas()`
+  (called via weather_markets._load_dynamic_sigma()) checked its module-
+  global `_sigma_mem_cache`/on-disk cache with no lock -- cron.py's
+  `ThreadPoolExecutor(max_workers=8)` scan lets multiple worker threads call
+  it concurrently, and on a cold cache (process start, or the monthly
+  refresh boundary), every thread that saw the cache empty independently
+  recomputed the full per-city sigma table and raced to
+  `safe_io.atomic_write_json()` the same forecast_sigma.json at nearly the
+  same instant -- colliding on the rename step (WinError 32/5/2 matches
+  exactly). Confirmed by checking whether cron.py runs a second concurrent
+  process (it doesn't -- ruled out in the original Problem section) versus
+  concurrent threads within the SAME process (not previously considered);
+  the 07-30 occurrence's tmp filename already included a PID suffix
+  (`.forecast_sigma.json_<pid>_0.tmp`) yet the contention still recurred,
+  which rules out cross-process collision and points at same-process
+  threads racing instead.
+  Fix: added `_sigma_lock = threading.Lock()` (climatology.py) wrapping
+  `load_all_sigmas()`'s entire check-compute-write body, matching
+  climate_indices.py's `_indices_lock` convention for the identical
+  check-then-fetch-then-cache shape. Concurrent callers now serialize on the
+  lock; the first one computes+writes, the rest see the now-populated
+  `_sigma_mem_cache` on their turn and return immediately without
+  recomputing or re-writing.
+  New test (tests/test_climatology.py::TestLoadAllSigmasBehavior::
+  test_concurrent_cold_cache_calls_compute_only_once): 8 threads hit a cold
+  cache simultaneously (lined up on a `threading.Barrier`) against a
+  `compute_sigma_from_climate` slowed with `time.sleep(0.05)` to widen the
+  race window; asserts exactly 2 compute calls happen (one city's max+min,
+  computed once) instead of up to 16, that every thread gets the real
+  computed result (not a partial one from a losing racer), and that the
+  on-disk file is valid/correct. Mutation-tested by replacing `with
+  _sigma_lock:` with `if True:` (no-op) -- the test failed by literally
+  reproducing the live symptom (WinError 32/5/2 on the rename step, the
+  emergency-copy fallback also failing under the heavier concurrent load the
+  test applies), then the lock was restored and all 14 tests in the file
+  pass again. Full climatology-adjacent regression sweep (test_climatology.py,
+  test_gaussian_prob.py, test_city_registry_manifest.py) — 58 passed; ruff +
+  ruff format + mypy clean on climatology.py.
+  Did not touch weather_markets.py's own `_dynamic_sigma` global/
+  `_load_dynamic_sigma()` -- its own check-then-set has the same unlocked
+  shape, but it never itself calls atomic_write_json (that only happens
+  inside climatology.load_all_sigmas(), now locked), and once the
+  climatology-level lock serializes callers there, redundant callers into
+  `_load_dynamic_sigma()` just make a few extra cheap, lock-protected calls
+  into an already-memoized function -- no data-corruption risk, so left
+  as-is rather than adding a second lock with no corresponding bug.
+
+  Independent opus review (effort=high) of this fix found the ACTUAL general
+  root cause was one level deeper than the `_sigma_lock` fix above addresses:
+  `safe_io.atomic_write_json()`'s temp-file name was keyed by PID+attempt
+  ONLY (`.{name}_{pid}_{attempt}.tmp`), not by thread -- so two THREADS in
+  the same process (not two processes, which the function's own comment
+  claimed was the only real scenario) shared one temp file and could
+  legitimately race on it. This is a defect in a shared utility with 20+
+  callers, not specific to the sigma cache: `climatology.fetch_historical()`
+  (climatology.py:97, writes `climate_{city}.json`) is reached from the same
+  cron.py thread pool via a completely different, UNLOCKED call path
+  (`climatological_prob` -> `_climatological_prob_inner`) and was not
+  protected by the new `_sigma_lock` at all -- confirmed live: `cron.py`
+  never calls `preload_all()` (only `main.py`'s `cmd_scan`/`cmd_top`/
+  `cmd_setup` do), so on the cron path every per-city climate cache is
+  ALSO populated lazily from inside the thread pool, the same shape that
+  caused the sigma race. The review further found the `_sigma_lock` fix
+  slightly WIDENS this specific overlap (holding the lock across a serial
+  ~21-city fetch loop lengthens the window an unlocked worker doing
+  `climatological_prob` for the same city can collide with it).
+  Real fix (safe_io.py): added `threading.get_ident()` to BOTH temp-file
+  name constructions (the primary write at safe_io.py:~88 and the emergency-
+  copy fallback at safe_io.py:~165) so concurrent threads within one process
+  never share a temp file, matching the same protection two concurrent
+  PROCESSES already had. Comment updated (the old one asserted "two
+  processes... is the exact scenario," which was an incomplete premise --
+  same-process threads are an equally real scenario this fix now also
+  covers).
+  New test (tests/test_safe_io.py::
+  test_atomic_write_concurrent_threads_same_target_no_collision): 8 threads
+  lined up on a `threading.Barrier` all call `atomic_write_json()` against
+  the SAME target path, with `os.fsync` slowed 20ms to widen the race
+  window; asserts every thread's call succeeds (default retries=3 -- the
+  existing retry+backoff is what absorbs a residual, harder-to-hit
+  same-DESTINATION `os.replace()` collision distinct from the shared-temp-
+  file bug, confirmed by first trying `retries=1` and observing it correctly
+  fail with the exact live WinError 5 symptom on a second, different race:
+  two threads' `os.replace()` calls to the identical destination, now with
+  distinct temp sources, still contending on Windows without the retry
+  loop's backoff -- using the real default retries reflects actual call-site
+  behavior rather than testing a synthetic zero-retry configuration no real
+  caller uses), that the final file is valid, uncorrupted JSON from exactly
+  one whole writer, and that no leftover temp files remain. Mutation-tested
+  by reverting the primary temp-path change -- the test failed by literally
+  reproducing the live WinError 32/5 symptom, then the fix was restored and
+  all 21 tests in the file pass again.
+  Regression sweep: test_safe_io.py, test_backtest.py,
+  test_cleanup_data_dir.py, test_climatology.py, test_cron_group_c.py,
+  test_infrastructure.py, test_phase2_batch_m.py (every test file touching
+  safe_io/atomic_write_json or climatology) -- 134 passed; ruff + ruff
+  format + mypy clean on safe_io.py and climatology.py.
+  The `_sigma_lock` fix above is kept (not reverted) -- it still eliminates
+  redundant recompute+write entirely for the sigma cache specifically
+  (rather than merely making concurrent writes non-colliding), which is
+  strictly better for that one call site even with the deeper fix in place.
+  Residual, deliberately NOT fixed in this pass (separate, lower-severity,
+  cross-process case -- see climatology.py's `load_all_sigmas()` docstring,
+  updated to state this explicitly): web_app.py's Flask process (threaded,
+  separate PID from cron.py) can still read `forecast_sigma.json` mid-rename
+  by a concurrent cron.py write; `_sigma_lock` is process-local and cannot
+  cover this, though it's the same class of collision `safe_io`'s retry/
+  backoff already absorbs for other cross-process cases.
+  Also NOT fixed in this pass (found via the same review, filed as its own
+  consideration rather than expanded into this fix): `climatology.
+  fetch_historical()`'s per-city `climate_{city}.json` writes, reached via
+  the unlocked `climatological_prob` path from the same thread pool, have
+  no equivalent to `_sigma_lock` -- the safe_io.py fix above protects them
+  from the temp-file-collision failure mode, but not from the (much rarer)
+  same-destination-replace race the retry loop absorbs. Worth a dedicated
+  lock if this ever shows up in bot.log the way the sigma cache did.
 
 [RESOLVED 2026-07-25] TEST SUITE: date.today() VS PRODUCTION-TIMEZONE MISMATCH -- FULL AUDIT
 Priority: was Low-Medium -- not a live-trading bug (test-only), but was a real
@@ -7710,14 +7896,18 @@ RESOLVED 2026-07-20: Re-verified both constants' absence in main.py/
   document what was caught" step even when the resolution is "confirmed
   intended, no fix needed."
 
-[PARTIALLY RESOLVED 2026-07-20] NO MARKET-TYPE SEAM -- TEMPERATURE IS THE ARCHITECTURE, NOT A MARKET TYPE
+[PARTIALLY RESOLVED 2026-07-20 -- REVISIT TRIGGER FIRED 2026-07-30, see
+  RE-VERIFIED note below] NO MARKET-TYPE SEAM -- TEMPERATURE IS THE
+  ARCHITECTURE, NOT A MARKET TYPE
 Priority: was Medium-High -- now Low-Medium. hourly-directional (KXTEMPxxxH)
   was the nearest stated expansion and did hit every one of these walls;
   shipping it (2026-07-20, commit 06269b4) closed the concrete complaints
   below via pragmatic single-source-of-truth fixes, not a formal interface.
-  What's left (no MarketType protocol, check_series_drift() still KXHIGH/
-  KXLOW-only) only pays off if rain/snow gets picked up next -- see the
-  RESOLVED note below.
+  What's left (no MarketType protocol) only pays off if rain/snow gets
+  picked up next -- see the RESOLVED note below. NOTE: this entry's own
+  "check_series_drift() still KXHIGH/KXLOW-only" claim is now STALE -- see
+  RE-VERIFIED 2026-07-30 note below; it was fixed as a side effect of Rain
+  Step 1/Snow Step 1 shipping, not by this entry's own work.
 
 Problem:
   Market-type knowledge is not behind an interface; it's a set of
@@ -7828,6 +8018,32 @@ When to revisit:
     fourth+ market type). Also revisit check_series_drift() then -- it
     still needs the same KXTEMPxxxH-style parallel-mechanism treatment (or
     a real generalization) for whatever new series rain/snow adds.
+
+RE-VERIFIED 2026-07-30 (found during a backlog-wide audit re-verifying every
+  open entry's own claims against live state -- this entry's stale claim was
+  an incidental finding, not something the audit was specifically looking
+  for): the trigger above has now fired -- Rain Step 1+2 and Snow Step 1+2
+  both shipped 2026-07-30 (backlog.txt "RAIN / SNOW / HURRICANE MARKETS"),
+  so this entry's own protocol-vs-pattern decision point has arrived. Worth a
+  short design conversation on whether the concrete pattern should be
+  repeated a third time or whether it's now worth the formal MarketType
+  protocol, per this entry's own "When to revisit" text -- not yet decided
+  either way.
+  Separately, this entry's own text claiming check_series_drift() is "still
+  KXHIGH/KXLOW-only" is INCORRECT as of today -- read directly
+  (weather_markets.py:3998-4030): it now covers KXHIGH*, KXLOW*, KXRAIN*, and
+  any live series containing "SNOW", confirmed via the function's own
+  docstring and its `live_tickers.startswith(("KXHIGH","KXLOW","KXRAIN")) or
+  "SNOW" in t` filter. This was fixed as a side effect of Rain/Snow Step 1's
+  own work (adding KXRAIN*/SNOW coverage to the same drift-check function for
+  its own purposes), never as part of this entry, and this entry's resolution
+  notes were never updated to reflect it -- corrected here rather than
+  editing the historical RESOLVED note above.
+  Re-checked the other still-open half of the Problem section (degraded
+  analysis dicts): the two hardcoded `"time_risk": "HIGH"` sites
+  (weather_markets.py:7230, 7415, line numbers drifted from the 4792/4999
+  originally cited) are still present and unfixed -- that part of the
+  original Problem text remains accurate.
 
 [PARTIALLY RESOLVED 2026-07-19] PAPER AND LIVE POSITIONS ARE TWO LEDGERS WITH ADAPTER GLUE -- EVERY RISK FEATURE SHIPS TWICE
 Priority: Medium -- cost compounds per feature once live trading is real;
@@ -10641,14 +10857,16 @@ What it would look like (built and shipped 2026-07-19):
   mutation-tested during development, not committed as regression
   coverage.
 
-[OPEN -- found via adjacency 2026-07-30 during Snow Step 2's opus review
-  round 2, deliberately not fixed in that pass] COUNT_SETTLED_PREDICTIONS()
+[RESOLVED 2026-07-30] COUNT_SETTLED_PREDICTIONS()
   HAS NO CONDITION_TYPE FILTER -- MONTHLY RAIN/SNOW SHADOW PREDICTIONS
   COUNT TOWARD THE TEMPERATURE LIVE-TRADING GRADUATION GATE
-Priority: Medium (a real live-trading-readiness gate is measuring the
-  wrong population, but re-check actual current counts before assuming
-  this has changed the gate's outcome for real -- not verified either way
-  yet).
+Priority: was Medium (a real live-trading-readiness gate was measuring the
+  wrong population). Re-verified live 2026-07-30 before fixing: of the 102
+  currently-settled multi-day predictions, 0 were precip_month_total/
+  snow_month_total (not contaminated yet -- but 17 unsettled monthly rain
+  predictions were sitting one day from month-end settlement, so this was
+  about to go from theoretical to real), and 41 (40%) were
+  condition_type='between'.
 
 Problem:
   tracker.count_settled_predictions() (tracker.py:1842) counts every
@@ -10697,4 +10915,110 @@ When to revisit:
   2026-07-31) -- worth checking as part of that same pass, since it
   directly affects the same live-trading-readiness gate those items exist
   to validate.
+
+RESOLVED 2026-07-30: picked up as part of a backlog-wide audit (user asked
+  to fix issues the audit surfaced). Design decision (user confirmed via
+  AskUserQuestion): match the sibling exclusion pattern exactly rather than
+  the narrower "just exclude monthly rain/snow" option -- all four call
+  sites (cron.py's ENABLE_MICRO_LIVE gate + F3 trigger + its console
+  reminder, web_app.py's dashboard mirror) are calibration-gate consumers
+  that should count the same population calibration.py's own grid search
+  and tracker.get_multiday_calibration_cli() already train/score on, and no
+  other caller of count_settled_predictions() exists anywhere in the repo
+  (grepped) that would want a different population -- so a split into two
+  functions (the entry's other proposed option) had no concrete
+  differentiator to justify it.
+  Fix: tracker.py:1842 count_settled_predictions() now adds `WHERE
+  (p.condition_type IS NULL OR p.condition_type NOT IN ('between',
+  'precip_month_total', 'snow_month_total'))`, identical clause to
+  calibration.py's `_load_rows()`, tracker.get_multiday_calibration_cli(),
+  and get_sameday_calibration_cli(). Live effect today: 102 -> 61 (the 41
+  'between' rows drop out; still zero monthly rain/snow rows settled yet).
+  Both the 30-sample (MIN_BRIER_SAMPLES) and 50-sample (F3) thresholds still
+  clear at 61, so this does not change ENABLE_MICRO_LIVE's or F3's
+  eligibility today -- purely a population-correctness fix, not a gate
+  status change.
+  New tests (tests/test_tracker.py, new class
+  TestLiveTradingGateConditionTypeFilter -- kept separate from
+  TestDisputedOutcomeTracking, whose own docstring is specifically about the
+  `disputed` flag, not condition_type; an opus review flagged the tests
+  being bundled into the wrong class):
+  test_count_settled_predictions_excludes_between/_rain/_snow, each logging
+  one row of the relevant condition_type via a `_log_settled` helper and
+  asserting the count is unchanged, mirroring
+  test_get_multiday_calibration_cli_excludes_rain/snow's exact shape.
+  Mutation-tested by reverting the WHERE clause -- all 3 new tests failed
+  with the predicted symptom (count incremented by 1), confirming they
+  genuinely exercise the fix; restored and re-passed.
+  Regression sweep: tests/test_tracker.py, test_p9_p10.py, test_paper.py,
+  test_alerts_side.py, test_graduation_gate.py -- 574 passed (the last four
+  cover the ENABLE_MICRO_LIVE gate, F3 trigger, and calibration-reminder call
+  sites directly). ruff + ruff format + mypy clean on tracker.py and
+  tests/test_tracker.py.
+
+  Independent opus review (effort=high) of this fix found 3 further real
+  issues, all addressed in this same pass:
+  1. HIGH -- a real regression this fix itself introduced. `data/
+     .last_calibration_count` (the F3 auto-calibration sentinel) was written
+     under the OLD (wider) counting basis -- live-checked at 120, against a
+     new count of 61. `61 - 120 = -59 < 25` means F3 now needs the count to
+     reach 145 (84 more real settlements) instead of the 145 it needed
+     before this fix too (102 -> 145 was already 43 more) -- the sentinel
+     was ALREADY stranded pre-fix, but this fix silently made the remaining
+     distance to unstrand it larger by shrinking the population each new
+     trade adds to. web_app.py's dashboard mirror has the identical bug.
+     Fix: new tracker.clamp_last_calibration_count(last_cal_count,
+     current_settled) -> min(last_cal_count, current_settled), called from
+     both cron.py's F3 trigger (cron.py:~2041) and web_app.py's mirror
+     (web_app.py:~1704) right after reading the sentinel -- self-heals a
+     basis change in either direction (narrower basis resets the sentinel to
+     "as of today"; wider basis leaves it unchanged since real accumulation
+     already governs). Extracted as a shared helper rather than duplicated
+     in both call sites, matching this file's own repeated "don't hand-copy
+     the same predicate" lesson. New tests (TestClampLastCalibrationCount,
+     4 cases including the exact 120/61 regression scenario).
+  2. MEDIUM -- found via adjacency: count_settled_predictions_rolling()
+     (feeds weather_markets._regime_blend_settled_count() ->
+     is_regime_blend_active(), a live regime-blend-weight activation gate)
+     and get_rolling_win_rate() (feeds paper.is_accuracy_halted(), the live
+     circuit breaker that halts new trades) had the exact same
+     condition_type contamination as count_settled_predictions() -- the
+     same "trace all call sites for a safety gate" pattern that has
+     recurred in this file before (TRADING_PAUSED, PAPER_MIN_EDGE, kill
+     switch, F9 cancel-path). Both now carry the identical exclusion
+     clause. New tests (TestLiveTradingGateConditionTypeFilter): 4 more
+     cases covering both functions x between/rain+snow. Mutation-tested by
+     reverting both new WHERE clauses -- all 4 new tests failed with the
+     predicted symptom, confirming they genuinely exercise the fix; restored
+     and re-passed.
+  3. LOW-MEDIUM (docstring accuracy, no code change) -- the original
+     docstring's "temperature predictions" framing overclaimed: daily
+     precipitation condition types (precip_any/precip_above/precip_snow)
+     are NOT excluded by this function (matching the same pre-existing gap
+     in every sibling calibration query -- not a regression, but not closed
+     either; zero such rows are settled today). Also, the docstring's
+     headline rationale ("an inches-scale monthly rain/snow row was
+     previously able to clear...") was entirely prospective -- re-derived
+     against live data: 100% of the actual 102->61 count drop was
+     'between' rows, zero monthly rain/snow rows have ever settled.
+     Docstrings corrected on all three functions to state what actually
+     changed rather than only the prospective risk. Also added a one-line
+     comment at web_app.py:~1704 noting this is a deliberate, correct
+     exception to that same file's OWN documented convention elsewhere
+     (get_sameday_calibration_cli: "dashboard-facing... deliberately keeps
+     'between' rows") -- this endpoint's job is mirroring F3's real count
+     exactly, not the dashboard's usual wider population.
+  Not fixed in this pass, filed as its own backlog entry instead (a design
+  question needing the user's input, not a quick fix -- see "COUNT_SETTLED_
+  PREDICTIONS() COUNTS RAW ROWS, NOT DISTINCT TEMPERATURE-OBSERVATION
+  EVENTS" near the top of this file): count_settled_predictions() counts
+  raw rows rather than distinct settlement events, the same shape
+  count_settled_snow_predictions() was hardened against the same day.
+  Full regression sweep after all 3 additional fixes: test_tracker.py,
+  test_p9_p10.py, test_paper.py, test_alerts_side.py, test_graduation_gate.py,
+  test_climatology.py, test_safe_io.py (617 passed), plus
+  test_forecasting.py, test_p1_remaining.py, test_risk_control.py (the real
+  regime-blend/rolling-win-rate/accuracy-halt callers, 149 passed). ruff +
+  ruff format + mypy clean on every changed file (climatology.py, cron.py,
+  safe_io.py, tracker.py, web_app.py, and their test files).
 
