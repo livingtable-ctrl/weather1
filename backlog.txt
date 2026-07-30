@@ -5841,6 +5841,43 @@ ENABLEMENT TRIGGER (the actual ask: when to wire gated_edge into
      enough live/paper fills exist under this scale specifically -- not
      blocking since it already fails safe, but worth revisiting.
 
+CORRELATION CHECK RUN 2026-07-30 (per this entry's own ENABLEMENT TRIGGER --
+  a one-off analysis against live data, not a wiring decision; the same
+  same-day backlog audit that surfaced this as floor-cleared also surfaced
+  MARKET-IMPLIED TEMPERATURE DISTRIBUTION's check, which was run first
+  since its needed columns are logged directly -- this one's isn't):
+  n=24 settled predictions with non-NULL gated_edge/liquidity_edge_scale.
+  adjusted_edge isn't itself logged, but is exactly recoverable as
+  gated_edge * liquidity_edge_scale (the literal relationship
+  _liquidity_edge_scale's own docstring defines: "Callers divide
+  adjusted_edge by this to get gated_edge") -- reused the real
+  weather_markets._edge_label() thresholds (0.05/0.15/0.25) to classify both
+  values' tiers per row and compare.
+  Result: ZERO rows have a tier difference between adjusted_edge and
+  gated_edge -- the ENABLEMENT TRIGGER's literal question ("among trades
+  gated_edge would have downgraded a tier... did those trades actually
+  underperform") has no data to answer at all, not just a thin/borderline
+  answer. Root cause, checked directly: 22 of these 24 rows have
+  liquidity_edge_scale == 1.0 EXACTLY (no liquidity penalty whatsoever --
+  deep, liquid books every time); the only 2 rows with any penalty (1.156x,
+  1.303x, both far short of the 1.5x max) still landed at gated_edge
+  0.42-0.49, nowhere near the 0.25 STRONG-BUY tier boundary a downgrade
+  would need to cross.
+  Conclusion: this signal's own sample-floor count (any non-NULL gated_edge
+  row) was measuring the wrong population for its actual ENABLEMENT
+  TRIGGER test, which needs a tier-DOWNGRADED subset specifically -- that
+  subset is currently empty, not just small. Unlike MARKET-IMPLIED
+  TEMPERATURE DISTRIBUTION's borderline-but-answerable result on the same
+  day, this one isn't close to answerable yet, and may take meaningfully
+  longer than a simple "+N more settled trades" wait implies: it needs the
+  bot to actually trade enough THIN-book markets for a downgrade to occur at
+  all, which this data suggests is rare given how consistently liquid the
+  markets traded so far have been. Re-check by re-running this same
+  reconstruction (gated_edge * liquidity_edge_scale, tier-compare via
+  _edge_label) once liquidity_edge_scale < 1.3 shows up more than twice in
+  the settled population -- that's the leading indicator this test is about
+  to become answerable, not the raw settled-count floor.
+
 Problem (as originally scoped, first fragment now stale -- see resolution
 above):
   Two already-tracked fragments make one coherent feature:
@@ -7268,6 +7305,44 @@ When to revisit: N/A, resolved. See the ENABLEMENT TRIGGER note (unchanged
   from original scoping) for when a future session should check whether
   enough settled-data correlation exists to consider wiring this into the
   blend -- not before then.
+
+CORRELATION CHECK RUN 2026-07-30 (per this entry's own ENABLEMENT TRIGGER --
+  a one-off analysis against live data, not a wiring decision; picked up as
+  the higher-value of the 2 signals a same-day backlog audit found had just
+  cleared their 20-sample floor, over LIQUIDITY-AWARE SIZING's gated_edge
+  check, because this one's needed columns -- implied_mean, forecast_temp_f,
+  settled_temp_f -- are all logged directly, while gated_edge's check needs
+  an unlogged `adjusted_edge` re-derived from other fields):
+  n=22 settled predictions with non-NULL implied_mean/forecast_temp_f.
+  Tested market_delta = implied_mean - forecast_temp_f against forecast_error
+  = settled_temp_f - forecast_temp_f (does the market's tilt away from our
+  forecast predict which direction the actual outcome misses our forecast
+  by, the same directional-persistence hypothesis this entry's own text and
+  run_trend's ENABLEMENT TRIGGER use). Result: Pearson r=0.405, sign
+  agreement 14/22 (64%, vs 50% chance), two-sided p=0.061 (90% CI for r:
+  [0.05, 0.67]) -- borderline, not conventionally significant at n=22, but
+  directionally consistent with the market carrying real information rather
+  than pure noise.
+  One real wrinkle surfaced and checked before trusting the headline number:
+  implied_sigma ranges from 1.06 to 47.30 across these 22 rows -- some fits
+  are tight (a plausible real forecast sigma), others are numerically
+  degenerate (a 47°F sigma is meaningless for a daily temp forecast, almost
+  certainly an under-constrained thin-ladder fit). Re-ran the correlation
+  filtered to sigma<=5 and sigma<=10 to confirm the degenerate-sigma rows
+  weren't driving the result -- r stayed 0.37-0.41 across all three cuts, so
+  the finding isn't an artifact of the noisiest fits.
+  Real caveat for any FUTURE wiring decision (not relevant to whether the
+  signal is real, only to how it could ever be used): market_delta's
+  magnitude is ~3x forecast_error's (mean |market_delta|~=7.7°F vs mean
+  |forecast_error|~=2.7-3.4°F depending on the sigma cut) -- even rows where
+  the market points the right direction overshoot badly, so this could never
+  be wired in as a raw additive correction; it would need heavy shrinkage.
+  Conclusion: NOT wired into the blend (correctly stays log-only) --
+  directionally promising but n=22/p=0.061 isn't conclusive. Re-run this
+  same check once more settled rows accumulate; unlike run_trend/richer-ML
+  (which are still far from their own floors), this signal is right at the
+  edge of a real answer, so it's worth checking again soon rather than
+  waiting for another full backlog audit to resurface it.
 
 [RESOLVED 2026-07-19] PUBLIC TRADES REST BACKFILL -- GET /markets/trades AT SETTLEMENT
 Priority: was Medium -- closes the exact gap the PUBLIC TRADE-FLOW SIGNAL
