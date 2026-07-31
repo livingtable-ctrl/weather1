@@ -216,6 +216,88 @@ def atomic_write_json(
     )
 
 
+def check_emergency_copies(base_dir: Path | None = None) -> list[dict]:
+    """Return info about any real recovery copies sitting in the emergency-
+    copy fallback location(s) (backlog.txt "SAFE_IO -- NOTHING MONITORS
+    data/.emergency/ FOR REAL RECOVERY COPIES"). A file existing here means
+    some real caller's atomic_write_json() exhausted all `retries` attempts
+    and fell back here -- the caller still raised AtomicWriteError, so
+    nothing else ever reads this copy; only a human manually recovering it
+    closes the loop. Previously the only signal was one buried ERROR log
+    line at write time.
+
+    Returns one dict per file, oldest first:
+    {"filename": str, "path": str, "mtime": ISO 8601 UTC string, "size_bytes": int}.
+    Returns an empty list (not an exception) when nothing is found -- the
+    normal, healthy case; a caller should treat a non-empty result as
+    something to surface loudly, not as an error condition itself.
+
+    When `base_dir` is omitted (the real/default call shape), also checks
+    system temp (`tempfile.gettempdir()`) for the same basenames already
+    present in `project_root()/"data"` -- atomic_write_json()'s own
+    candidate order falls through to system temp when `data/.emergency/`
+    itself can't be written to (e.g. the volume backing `data/` is full),
+    which is exactly the scenario this monitor exists to catch, so checking
+    only `.emergency/` would miss it. Bounded to known basenames rather
+    than scanning all of system temp, which would report unrelated files
+    from completely different processes as false positives. Passing an
+    explicit `base_dir` (as tests do, for isolation) skips the temp check
+    entirely and only inspects `base_dir` itself.
+
+    A file can transiently appear here mid-write (the emergency copy is
+    itself written via temp-file + os.replace) or, in the rare case of a
+    crash between those two steps, a stray `*.emergency.tmp` file can be
+    left permanently -- both are surfaced rather than filtered out, since
+    partial recovery data still needs an operator's attention, not silence.
+    """
+    from datetime import UTC, datetime
+
+    def _dicts_for(paths: list[Path]) -> list[dict]:
+        found: list[dict] = []
+        for entry in paths:
+            if not entry.is_file():
+                continue
+            try:
+                stat = entry.stat()
+                mtime = datetime.fromtimestamp(stat.st_mtime, tz=UTC).isoformat()
+            except (OSError, ValueError, OverflowError):
+                continue
+            found.append(
+                {
+                    "filename": entry.name,
+                    "path": str(entry),
+                    "mtime": mtime,
+                    "size_bytes": stat.st_size,
+                }
+            )
+        return found
+
+    if base_dir is not None:
+        target_dir = Path(base_dir)
+        results = _dicts_for(list(target_dir.iterdir())) if target_dir.is_dir() else []
+    else:
+        primary_dir = project_root() / "data" / ".emergency"
+        results = (
+            _dicts_for(list(primary_dir.iterdir())) if primary_dir.is_dir() else []
+        )
+
+        data_dir = project_root() / "data"
+        try:
+            known_names = (
+                {p.name for p in data_dir.glob("*.json")}
+                if data_dir.is_dir()
+                else set()
+            )
+        except OSError:
+            known_names = set()
+        if known_names:
+            temp_dir = Path(tempfile.gettempdir())
+            results.extend(_dicts_for([temp_dir / n for n in known_names]))
+
+    results.sort(key=lambda r: str(r["mtime"]))
+    return results
+
+
 def atomic_write_json_with_history(
     data: dict,
     path: Path,

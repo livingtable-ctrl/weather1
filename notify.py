@@ -262,20 +262,31 @@ def alert_strong_signal(
         )
 
 
-def send_system_alert(title: str, message: str) -> None:
+def send_system_alert(
+    title: str, message: str, cooldown_key: str = "__system__"
+) -> None:
     """
     Send a system-level alert (not trade-specific) through all configured backends.
     Used for operational events like the dead-man's-switch 48h cron gap.
 
-    Uses a 6-hour cooldown under the "__system__" key so back-to-back cron runs
-    don't spam — separate from the per-ticker trade cooldown.
+    Uses a 6-hour cooldown keyed by `cooldown_key` (default "__system__", used
+    by callers that predate this parameter) so back-to-back cron runs don't
+    spam — separate from the per-ticker trade cooldown. A caller for a
+    distinct kind of system alert should pass its own `cooldown_key` (opus-
+    review-caught: two unrelated alert types sharing the default key would
+    otherwise silently suppress each other for 6h, not just repeats of the
+    same alert) so unrelated alert types don't interfere with each other.
+    Note: this cooldown is in-process memory only -- under Windows Task
+    Scheduler, each cron invocation is a fresh process, so it does NOT
+    actually prevent repeat-cycle spam there, only within a single
+    long-lived process (main.py's `loop`/`watch --auto` modes).
     Never raises.
     """
     _SYSTEM_COOLDOWN_SECS = 21_600  # 6 hours between system alerts
     now = time.time()
-    if now - _last_notified.get("__system__", 0.0) < _SYSTEM_COOLDOWN_SECS:
+    if now - _last_notified.get(cooldown_key, 0.0) < _SYSTEM_COOLDOWN_SECS:
         return
-    _last_notified["__system__"] = now
+    _last_notified[cooldown_key] = now
 
     successes: list[bool] = []
 

@@ -2301,6 +2301,60 @@ def _cmd_cron_body(
     except Exception as _e:
         _log.debug("cmd_cron: calibration reminder failed: %s", _e)
 
+    # Emergency-copy monitor -- backlog.txt "SAFE_IO -- NOTHING MONITORS
+    # data/.emergency/ FOR REAL RECOVERY COPIES": atomic_write_json()'s
+    # emergency-copy fallback (see the resolved SAFE_IO entry above; also
+    # checks system temp, not just data/.emergency/) used to be visible only
+    # via one buried ERROR log line at write time -- a log line alone
+    # doesn't fix "an operator would only find out by grepping logs" during
+    # a silent unattended cron run, so this also fires send_system_alert()
+    # (same mechanism as the dead-man's-switch check above) with its own
+    # distinct cooldown key so it can't silently suppress (or be suppressed
+    # by) the unrelated dead-man's-switch alert sharing the same 6h window.
+    # Opus-review-caught: under Windows Task Scheduler, each cron invocation
+    # is a fresh process, so notify's in-process cooldown state resets every
+    # time and does NOT actually prevent repeat-cycle spam there -- only in
+    # main.py's long-lived `loop`/`watch --auto` modes. That's a pre-existing
+    # limitation of send_system_alert() shared by every one of its callers
+    # (not introduced here); filed separately rather than fixed inline. A
+    # real copy here means some write already failed and raised
+    # AtomicWriteError -- this doesn't retry or clear it, only surfaces it
+    # every cycle until an operator manually recovers the file and deletes
+    # it.
+    try:
+        import os as _os_emrg
+
+        if not _os_emrg.environ.get("PYTEST_CURRENT_TEST"):
+            import safe_io as _safe_io_emrg
+
+            _emergency_copies = _safe_io_emrg.check_emergency_copies()
+            if _emergency_copies:
+                _details = [
+                    f"{c['filename']} (mtime={c['mtime']}, {c['size_bytes']}B, {c['path']})"
+                    for c in _emergency_copies
+                ]
+                _log.error(
+                    "%d real emergency-copy recovery file(s) need manual attention: %s",
+                    len(_emergency_copies),
+                    _details,
+                )
+                from notify import send_system_alert as _emrg_alert
+
+                _emrg_alert(
+                    "Kalshi bot — emergency recovery copy needs attention",
+                    f"{len(_emergency_copies)} file(s) need manual recovery: "
+                    + "; ".join(_details),
+                    cooldown_key="emergency_copy",
+                )
+                print(
+                    red(
+                        f"  [EmergencyCopy] {len(_emergency_copies)} file(s) need "
+                        "manual recovery -- see log for names/mtimes/paths."
+                    )
+                )
+    except Exception as _e:
+        _log.debug("cmd_cron: emergency-copy check failed: %s", _e)
+
     # Phase 9 — alert if any circuit transitioned closed→open during this scan
     try:
         import os as _os_cb

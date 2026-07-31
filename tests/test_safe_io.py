@@ -445,3 +445,203 @@ def test_atomic_write_error_message_accurate_when_no_emergency_copy_possible(
         Path(tempfile.gettempdir()).glob(f".paper_trades.json_{os.getpid()}*.tmp")
     )
     assert leftover_tmps == [], f"stray temp file(s) left behind: {leftover_tmps}"
+
+
+def test_check_emergency_copies_empty_when_dir_missing(tmp_path):
+    """backlog.txt "SAFE_IO -- NOTHING MONITORS data/.emergency/ FOR REAL
+    RECOVERY COPIES": the normal, healthy case (no emergency copy has ever
+    fired) must return an empty list, not raise, when the directory doesn't
+    exist at all."""
+    import safe_io
+
+    missing = tmp_path / "does_not_exist"
+    assert safe_io.check_emergency_copies(base_dir=missing) == []
+
+
+def test_check_emergency_copies_empty_when_dir_empty(tmp_path):
+    import safe_io
+
+    empty_dir = tmp_path / "emergency"
+    empty_dir.mkdir()
+    assert safe_io.check_emergency_copies(base_dir=empty_dir) == []
+
+
+def test_check_emergency_copies_reports_real_files(tmp_path):
+    """A real emergency copy must be reported with its filename, full path,
+    and an mtime -- these are exactly what an operator needs to find and
+    recover the file manually."""
+    import safe_io
+
+    emergency_dir = tmp_path / "emergency"
+    emergency_dir.mkdir()
+    f = emergency_dir / "forecast_sigma.json"
+    f.write_text('{"recovered": true}', encoding="utf-8")
+
+    results = safe_io.check_emergency_copies(base_dir=emergency_dir)
+
+    assert len(results) == 1
+    assert results[0]["filename"] == "forecast_sigma.json"
+    assert results[0]["path"] == str(f)
+    assert results[0]["size_bytes"] == len('{"recovered": true}')
+    # mtime must be a real, parseable ISO 8601 timestamp, not a placeholder.
+    from datetime import datetime
+
+    datetime.fromisoformat(results[0]["mtime"])
+
+
+def test_check_emergency_copies_multiple_files_sorted_oldest_first(tmp_path):
+    import os
+    import time
+
+    import safe_io
+
+    emergency_dir = tmp_path / "emergency"
+    emergency_dir.mkdir()
+    older = emergency_dir / "older.json"
+    newer = emergency_dir / "newer.json"
+    older.write_text("{}", encoding="utf-8")
+    # Force a real mtime gap -- same-second writes on some filesystems would
+    # otherwise make the ordering assertion flaky rather than meaningful.
+    older_time = time.time() - 3600
+    os.utime(older, (older_time, older_time))
+    newer.write_text("{}", encoding="utf-8")
+
+    results = safe_io.check_emergency_copies(base_dir=emergency_dir)
+
+    assert [r["filename"] for r in results] == ["older.json", "newer.json"]
+
+
+def test_check_emergency_copies_ignores_subdirectories(tmp_path):
+    """Only files matter for operator recovery -- a stray subdirectory
+    (e.g. from a manual `mkdir` mistake) must not be reported as a file
+    needing recovery."""
+    import safe_io
+
+    emergency_dir = tmp_path / "emergency"
+    emergency_dir.mkdir()
+    (emergency_dir / "subdir").mkdir()
+    (emergency_dir / "real.json").write_text("{}", encoding="utf-8")
+
+    results = safe_io.check_emergency_copies(base_dir=emergency_dir)
+
+    assert [r["filename"] for r in results] == ["real.json"]
+
+
+def test_check_emergency_copies_default_base_dir_uses_project_root(
+    tmp_path, monkeypatch
+):
+    """Without an explicit base_dir, the function must look under this
+    repo's OWN project_root()/data/.emergency -- not some other location --
+    matching atomic_write_json()'s own default emergency-copy destination."""
+    import safe_io
+
+    monkeypatch.setattr(safe_io, "project_root", lambda: tmp_path)
+    default_dir = tmp_path / "data" / ".emergency"
+    default_dir.mkdir(parents=True)
+    (default_dir / "real.json").write_text("{}", encoding="utf-8")
+
+    results = safe_io.check_emergency_copies()
+
+    assert [r["filename"] for r in results] == ["real.json"]
+
+
+def test_check_emergency_copies_also_checks_system_temp_fallback(tmp_path, monkeypatch):
+    """Opus-review-caught: atomic_write_json()'s own candidate order falls
+    through to system temp when data/.emergency/ itself can't be written to
+    (e.g. the volume backing data/ is full) -- exactly the scenario this
+    monitor exists to catch, so a copy that landed in temp (not
+    data/.emergency/) must still be reported, not silently missed."""
+    import safe_io
+
+    monkeypatch.setattr(safe_io, "project_root", lambda: tmp_path)
+    fake_temp = tmp_path / "faketemp"
+    fake_temp.mkdir()
+    monkeypatch.setattr(safe_io.tempfile, "gettempdir", lambda: str(fake_temp))
+
+    # A real target basename must already exist in data/ for the temp check
+    # to look for it there (bounded scan -- see the function's docstring).
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    (data_dir / "forecast_sigma.json").write_text("{}", encoding="utf-8")
+
+    # The actual emergency copy landed in temp, not data/.emergency/.
+    (fake_temp / "forecast_sigma.json").write_text(
+        '{"recovered": true}', encoding="utf-8"
+    )
+
+    results = safe_io.check_emergency_copies()
+
+    assert [r["filename"] for r in results] == ["forecast_sigma.json"]
+    assert str(fake_temp) in results[0]["path"]
+
+
+def test_check_emergency_copies_temp_scan_ignores_unrelated_files(
+    tmp_path, monkeypatch
+):
+    """The temp scan is bounded to known data/ basenames specifically so it
+    doesn't report unrelated files from completely different processes that
+    happen to share the same system temp directory."""
+    import safe_io
+
+    monkeypatch.setattr(safe_io, "project_root", lambda: tmp_path)
+    fake_temp = tmp_path / "faketemp"
+    fake_temp.mkdir()
+    monkeypatch.setattr(safe_io.tempfile, "gettempdir", lambda: str(fake_temp))
+
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    (data_dir / "forecast_sigma.json").write_text("{}", encoding="utf-8")
+
+    # Some unrelated process's file living in the same system temp dir.
+    (fake_temp / "totally_unrelated_app_cache.json").write_text("{}", encoding="utf-8")
+
+    results = safe_io.check_emergency_copies()
+
+    assert results == []
+
+
+def test_check_emergency_copies_explicit_base_dir_skips_temp_scan(
+    tmp_path, monkeypatch
+):
+    """Passing an explicit base_dir (as most tests in this file do, for
+    isolation) must skip the temp-directory fallback scan entirely --
+    otherwise every test using base_dir would depend on this machine's real
+    system temp contents, which is what makes those tests deterministic."""
+    import safe_io
+
+    # project_root is intentionally left un-mocked and pointed at a dir with
+    # no data/ subdir, so if the temp scan ran anyway it would either crash
+    # or, worse, silently scan the REAL system temp directory.
+    monkeypatch.setattr(safe_io, "project_root", lambda: tmp_path / "unused_root")
+
+    explicit_dir = tmp_path / "explicit"
+    explicit_dir.mkdir()
+    (explicit_dir / "real.json").write_text("{}", encoding="utf-8")
+
+    results = safe_io.check_emergency_copies(base_dir=explicit_dir)
+
+    assert [r["filename"] for r in results] == ["real.json"]
+
+
+def test_check_emergency_copies_skips_file_with_unparseable_mtime(tmp_path):
+    """Opus-review-caught: datetime.fromtimestamp() can raise OSError on a
+    corrupt or out-of-range mtime (verified live: a large-negative mtime
+    raises OSError on this platform -- reproduced here with a real file via
+    os.utime, not a mock). That must not crash the whole scan or silently
+    propagate out of the function -- a corrupt entry is skipped, but every
+    OTHER real file must still be reported, not lost alongside it."""
+    import os
+
+    import safe_io
+
+    emergency_dir = tmp_path / "emergency"
+    emergency_dir.mkdir()
+    good = emergency_dir / "good.json"
+    good.write_text("{}", encoding="utf-8")
+    bad = emergency_dir / "bad.json"
+    bad.write_text("{}", encoding="utf-8")
+    os.utime(bad, (-34560000, -34560000))
+
+    results = safe_io.check_emergency_copies(base_dir=emergency_dir)
+
+    assert [r["filename"] for r in results] == ["good.json"]

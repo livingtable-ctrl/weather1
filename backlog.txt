@@ -268,10 +268,9 @@ What was fixed:
   test run leaves stray files behind in either this repo's real
   `data/.emergency/` or the real system temp directory.
 
-[OPEN 2026-07-27 -- surfaced by the independent review of the entry above,
-  deliberately deferred as separate scope]
+[RESOLVED 2026-07-31 -- shipped via the standing 17-step workflow]
   SAFE_IO -- NOTHING MONITORS data/.emergency/ FOR REAL RECOVERY COPIES
-Priority: Low -- a genuine emergency copy landing there today is only
+Priority: was Low -- a genuine emergency copy landing there today is only
   visible via one buried ERROR log line; the fix above stopped the
   clobbering, but a human still won't notice a real one exists without
   reading logs.
@@ -283,17 +282,120 @@ Problem:
   check, no cron-summary warning, no alert. An operator would only find out
   by grepping logs.
 
-What the fix looks like (not yet designed):
-  A check (startup and/or in cron's own summary output) that warns loudly
-  if `project_root()/"data"/".emergency"` is non-empty, listing filenames
-  and mtimes so an operator knows real data needs manual recovery. Do the
-  test-isolation fix from the entry above first if this is ever picked up
-  independently -- otherwise a routine test run could trip a false alarm.
+What was fixed:
+  Re-verified first: `data/.emergency/` doesn't exist in this repo today
+  (the underlying clobber bug is fixed and has never fired for real since),
+  so this ships with zero live behavior surfaced yet -- it's instrumentation
+  for the day it does fire, not a response to an active incident.
+  Added `safe_io.check_emergency_copies(base_dir=None)`, which lists every
+  file under `project_root()/"data"/".emergency"` (filename, full path, ISO
+  8601 mtime, size in bytes; oldest first), returning an empty list when
+  nothing is found (the healthy default, not an error). Wired into
+  `cron.py`'s per-cycle checks (same place as the calibration readiness
+  reminder and the dead-man's-switch check, guarded by the same
+  `PYTEST_CURRENT_TEST` check so a routine test run can't trip a false
+  alarm -- the test-isolation fix the entry asked for was already done as
+  part of the resolved entry above, verified no stray files land in the
+  real `data/.emergency/` during test runs). A non-empty result now: logs
+  an ERROR with filename/mtime/size/path for every file, prints an inline
+  `[EmergencyCopy]` warning during interactive runs, AND fires
+  `notify.send_system_alert()` -- the same multi-channel (desktop/pushover/
+  ntfy/discord/email) mechanism already used for the dead-man's-switch
+  48h-cron-gap alert. Upgraded from an initial log-line-plus-console-print
+  design after noticing `send_system_alert()` already existed and was the
+  correct fit -- a log line alone doesn't solve "an operator would only
+  find out by grepping logs" (the exact problem this entry describes)
+  during a silent unattended cron run; only a real push notification does.
+  Independent `Agent(opus, effort=high)` review found 6 real issues, all
+  fixed: (1) MEDIUM, the monitor only checked `data/.emergency/`, blind to
+  the system-temp last-resort location `atomic_write_json()` also falls
+  back to -- exactly the scenario ("disk full, permissions error, or path
+  unavailable") where `data/.emergency/` itself might also be unwritable;
+  fixed by also checking system temp for basenames that already exist in
+  `project_root()/"data"` (bounded to known names, not a wholesale temp
+  scan, so unrelated files from other processes aren't reported as false
+  positives). (2) MEDIUM, `mtime`/`path`/`size_bytes` were computed but
+  never surfaced in the log, while the console text claimed "see log for
+  names/mtimes" -- fixed, the ERROR log now includes all four fields per
+  file. (3) MEDIUM-LOW, `send_system_alert()`'s 6h cooldown used one shared
+  `"__system__"` key for every caller, so this new alert and the existing
+  dead-man's-switch alert would silently suppress each other for 6h; fixed
+  by adding an optional `cooldown_key` parameter (default `"__system__"`,
+  so the 2 pre-existing callers are unaffected) and passing a distinct key
+  here. Also documented (not fixed -- a bigger, separate change affecting
+  all 3 callers) that the cooldown is in-process memory only and does NOT
+  survive a fresh-process cron invocation under Windows Task Scheduler,
+  only within `main.py`'s long-lived `loop`/`watch --auto` modes; filed as
+  its own new backlog entry below rather than bundled in here. (4) LOW, a
+  file with a corrupt/out-of-range mtime made `datetime.fromtimestamp()`
+  raise `OSError` OUTSIDE the function's own `try/except` (verified live: a
+  large-negative mtime raises `OSError [Errno 22]` on this platform), which
+  would silently blank out the ENTIRE result (caught by cron's outer
+  `except Exception`, logged at DEBUG) at exactly the moment a real file
+  needs recovery; fixed by moving `fromtimestamp` inside the per-entry
+  `try` and widening it to `(OSError, ValueError, OverflowError)`, so one
+  corrupt entry is skipped without losing every other real file in the same
+  scan. (5) LOW, reordered the cron block so `send_system_alert()` fires
+  before the console `print()` -- if the print ever raised, the loudest
+  channel would otherwise be the one skipped. (6) LOW, this resolution note
+  itself originally miscounted the new tests as 11 (actually 6 at review
+  time) and misnamed the pre-existing suite it was added alongside as
+  `count_settled_predictions()` tests (that suite doesn't exist in this
+  file at all -- the actual pre-existing tests are the `atomic_write_json`
+  emergency-copy ones); corrected here.
+  10 tests total in `tests/test_safe_io.py` for `check_emergency_copies()`
+  (missing dir, empty dir, real files with correct fields, multi-file
+  oldest-first ordering via a real `os.utime`-forced mtime gap,
+  subdirectories ignored, default `project_root()`-based path, system-temp
+  fallback found, system-temp scan ignores unrelated files, explicit
+  `base_dir` skips the temp scan, corrupt-mtime file skipped without
+  losing other real files), all mutation-tested (reverted each assertion
+  against a broken implementation, confirmed it fails with the exact
+  predicted symptom -- including reproducing the opus-review-caught
+  uncaught-`OSError` bug live before fixing it -- then restored).
+  ruff/ruff-format/mypy clean on all 4 touched files (`safe_io.py`,
+  `cron.py`, `notify.py`, `tests/test_safe_io.py`). No dedicated cron.py-
+  level test added for the wiring itself -- matches this file's own
+  existing precedent (the calibration reminder and dead-man's-switch blocks
+  it sits beside are also untested at that level, each wrapped in the same
+  broad try/except-log.debug best-effort pattern).
+
+[OPEN 2026-07-31 -- surfaced by the independent review of the entry above,
+  deliberately deferred as separate scope]
+  NOTIFY.SEND_SYSTEM_ALERT()'S COOLDOWN IS IN-PROCESS MEMORY ONLY, DOESN'T
+  SURVIVE A FRESH CRON PROCESS
+Priority: Low -- affects operational alert spam, not trading correctness;
+  none of `send_system_alert()`'s 3 current callers (prod reminder,
+  dead-man's-switch, the emergency-copy monitor above) have actually spammed
+  a real operator yet.
+
+Problem:
+  `notify._last_notified` (the dict `send_system_alert()`'s 6h cooldown
+  reads/writes) is a plain in-process module-level dict, never persisted to
+  disk. Under Windows Task Scheduler (see `cmd_schedule_cycles()`,
+  `main.py`), each `py main.py cron` invocation is a fresh process -- the
+  cooldown dict starts empty every single time and never actually suppresses
+  a repeat alert there, only within a long-lived process (`main.py`'s `loop`
+  / `watch --auto` modes). `AUDIT_PLAN.md`'s P1-7 already fixed this exact
+  class of bug for `circuit_breaker.py`'s state, but `notify.py`'s cooldown
+  was never covered by that fix. This matters more for a condition that
+  persists until fixed (an unrecovered emergency copy sits in `data/
+  .emergency/` until a human deletes it -- every scheduled cron cycle in
+  between would alert again) than for one that self-clears (the dead-man's-
+  switch's own trigger condition resets the moment cron next completes
+  successfully).
+
+What it would look like:
+  Persist `_last_notified` to disk (e.g. via `safe_io.atomic_write_json`,
+  matching the pattern P1-7 already established for circuit breaker state)
+  so the cooldown survives across scheduled-task process boundaries, not
+  just within one long-lived process.
 
 When to revisit:
-  Whenever `data/.emergency/` next fills for real, or as general hardening
-  before live trading -- not urgent, since the underlying clobber bug that
-  motivated all of this is now fixed.
+  Whenever a real emergency copy or another `send_system_alert()`-gated
+  condition actually fires repeatedly under Task-Scheduler mode and spams an
+  operator in practice -- not urgent today since none of the 3 current
+  callers have fired for real yet.
 
 [PARTIALLY RESOLVED 2026-07-28 -- near-term (<=16-day) ensemble forecast
   signal shipped, shadow/log-only; see resolution note at the end of this
