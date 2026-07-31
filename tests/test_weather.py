@@ -10,6 +10,7 @@ from utils import normal_cdf as _normal_cdf
 from utils import prob_threshold as _prob_threshold_of
 from weather_markets import (
     _bootstrap_ci_precip,
+    _daily_var_from_series,
     _forecast_model_weights,
     _forecast_probability,
     _parse_market_condition,
@@ -321,6 +322,29 @@ class TestTimeRisk(unittest.TestCase):
         label, mult = _time_risk(ct, "America/New_York")
         self.assertIn(label, ("MEDIUM", "LOW"))
         self.assertLess(mult, 1.0)
+
+
+class TestDailyVarFromSeries(unittest.TestCase):
+    """backlog.txt "NO MARKET-TYPE SEAM" -- single source of truth for the
+    KXHIGH/KXLOW var convention, consolidating analyze_trade()'s two
+    previously hand-copied literals."""
+
+    def test_low_series_returns_min(self):
+        self.assertEqual(_daily_var_from_series("KXLOWTNYC-26AUG01-B71.5"), "min")
+
+    def test_high_series_returns_max(self):
+        self.assertEqual(_daily_var_from_series("KXHIGHTNYC-26AUG01-B84.5"), "max")
+
+    def test_no_low_substring_defaults_to_max(self):
+        """Matches the original literal's exact fallback behavior — anything
+        without "LOW" (including an unrecognized series) resolves to "max"."""
+        self.assertEqual(_daily_var_from_series("KXSOMETHINGELSE"), "max")
+
+    def test_low_must_be_exact_substring_match(self):
+        """ "LOWER" contains "LOW" -- confirms the substring check (not an
+        exact-match/prefix check) is preserved by the extraction, matching
+        the original literal's behavior exactly rather than tightening it."""
+        self.assertEqual(_daily_var_from_series("KXLOWERCASE"), "min")
 
 
 class TestForecastModelWeights(unittest.TestCase):

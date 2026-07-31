@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import sys
 from unittest.mock import MagicMock, patch
 
@@ -122,6 +123,43 @@ class TestClimPriorUseClimatologicalProb:
         src = inspect.getsource(weather_markets._analyze_snow_trade)
         assert "0.20" in src
         assert "0.05" in src
+
+
+# ── backlog.txt "NO MARKET-TYPE SEAM": dead hardcoded time_risk removed ───────
+
+
+class TestPrecipSnowOmitTimeRisk:
+    """_analyze_precip_trade/_analyze_snow_trade must NOT set their own
+    "time_risk" -- analyze_trade() unconditionally overwrites it with the
+    real _time_risk()-computed value right after each call, matching
+    _analyze_hourly_trade/_analyze_monthly_rain_trade/_analyze_monthly_
+    snow_trade's identical omission. The two functions used to hardcode
+    "HIGH" here, which was always dead (immediately overwritten by every
+    real caller) -- confirmed via a full-repo grep that analyze_trade() is
+    their only non-test caller.
+
+    Matches on the actual dict-key-assignment shape (either quote style)
+    rather than a literal quoted substring, so this doesn't spuriously pass
+    on a single-quoted reintroduction or spuriously fail if the nearby
+    explanatory comment's wording changes (opus review finding, 2026-07-31)."""
+
+    _TIME_RISK_KEY_RE = re.compile(r"""['"]time_risk['"]\s*:""")
+
+    def test_analyze_precip_trade_does_not_set_time_risk(self):
+        import inspect
+
+        import weather_markets
+
+        src = inspect.getsource(weather_markets._analyze_precip_trade)
+        assert not self._TIME_RISK_KEY_RE.search(src)
+
+    def test_analyze_snow_trade_does_not_set_time_risk(self):
+        import inspect
+
+        import weather_markets
+
+        src = inspect.getsource(weather_markets._analyze_snow_trade)
+        assert not self._TIME_RISK_KEY_RE.search(src)
 
 
 # ── P2-36: ensemble_stats degenerate detection ────────────────────────────────

@@ -7388,7 +7388,13 @@ def _analyze_precip_trade(
         "kelly": fee_kel,
         "fee_adjusted_kelly": fee_kel,
         "ci_adjusted_kelly": ci_adj_kelly,
-        "time_risk": "HIGH",
+        # time_risk deliberately omitted -- analyze_trade() unconditionally
+        # overwrites it with the real _time_risk()-computed value right after
+        # this function returns (matches _analyze_hourly_trade/_analyze_
+        # monthly_rain_trade/_analyze_monthly_snow_trade's identical omission;
+        # this function and _analyze_snow_trade were the only two outliers
+        # that redundantly hardcoded a placeholder here, see backlog.txt
+        # "NO MARKET-TYPE SEAM").
         "consensus": precip_consensus,
         "model_consensus": True,
         "near_threshold": False,
@@ -7573,7 +7579,8 @@ def _analyze_snow_trade(
         "kelly": fee_kel,
         "fee_adjusted_kelly": fee_kel,
         "ci_adjusted_kelly": ci_adj_kelly,
-        "time_risk": "HIGH",
+        # time_risk deliberately omitted -- see _analyze_precip_trade's
+        # identical comment above; analyze_trade() always overwrites it.
         "consensus": snow_consensus,
         "model_consensus": True,
         "near_threshold": False,
@@ -8537,6 +8544,28 @@ def _metar_lock_in(
         return False, 0.0, {}
 
 
+def _daily_var_from_series(series: str) -> str:
+    """Single source of truth for analyze_trade()'s own two var-derivation
+    call sites (the ensemble and METAR-locked branches) -- NOT a codebase-
+    wide single source of truth. backlog.txt "NO MARKET-TYPE SEAM" flagged
+    the underlying `"min" if "LOW" in series else "max"` convention as the
+    same duplication shape that has repeatedly drifted and caused live bugs
+    elsewhere in this codebase (TRADING_PAUSED, the disputed-row filter,
+    PAPER_MIN_EDGE). An independent second-opinion review (2026-07-31) found
+    the identical literal/logic still separately hand-copied in backtest.py,
+    tracker.py, paper.py, order_executor.py, consistency.py, and main.py --
+    deliberately NOT consolidated here (out of scope for this pass, a much
+    larger cross-file change); see backlog.txt "VAR-CONVENTION LITERAL
+    HAND-COPIED ACROSS 7+ FILES BEYOND analyze_trade()" for that follow-up.
+
+    Uppercases defensively -- every current caller already passes an
+    upper-cased `series`, but a helper billed as a shared source of truth
+    should not silently return the wrong side for a lowercase input.
+    """
+    series = series.upper()
+    return "min" if "LOW" in series else "max"
+
+
 def analyze_trade(
     enriched: dict, *, bypass_retirement_check: bool = False
 ) -> dict | None:
@@ -9011,7 +9040,7 @@ def analyze_trade(
 
     if not metar_locked:
         series = (enriched.get("series_ticker") or enriched.get("ticker", "")).upper()
-        var = "min" if "LOW" in series else "max"
+        var = _daily_var_from_series(series)
         condition["var"] = var
 
         forecast_temp = forecast["low_f"] if var == "min" else forecast["high_f"]
@@ -9844,7 +9873,7 @@ def analyze_trade(
     else:
         # METAR locked: pre-assign all pipeline outputs so Kelly section can run
         series = (enriched.get("series_ticker") or enriched.get("ticker", "")).upper()
-        var = "min" if "LOW" in series else "max"
+        var = _daily_var_from_series(series)
         condition["var"] = var
         days_out = max(0, (target_date - datetime.now(UTC).date()).days)
         _fallback_temp = forecast["low_f"] if var == "min" else forecast["high_f"]

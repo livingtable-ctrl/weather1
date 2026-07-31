@@ -1,6 +1,64 @@
 BACKLOG — future improvements to implement when ready
 ======================================================
 
+[VAR-CONVENTION LITERAL HAND-COPIED ACROSS 7+ FILES BEYOND analyze_trade()]
+Priority: Low -- no current behavior bug (all copies are logically
+  equivalent today), but a real instance of this codebase's recurring
+  hand-copied-convention-drift failure shape (TRADING_PAUSED, the
+  disputed-row filter, PAPER_MIN_EDGE, the kill switch).
+
+Problem:
+  Found by an independent opus review (2026-07-31) while closing backlog.txt
+  "NO MARKET-TYPE SEAM": that pass consolidated analyze_trade()'s own two
+  `var = "min" if "LOW" in series else "max"` literals into a new
+  `_daily_var_from_series()` helper, but the review found the identical
+  literal/logic still separately hand-copied well beyond those two sites --
+  backtest.py:453 (exact-shape copy: `var = "min" if "LOW" in ticker.upper()
+  else "max"` followed by `condition["var"] = var` on the next line,
+  feeding the same downstream contract, in a module that already imports
+  from weather_markets), weather_markets.py's own `_metar_lock_in()`
+  (`_is_low_mkt = "LOW" in ticker.upper()`, same file, different function
+  from the two just consolidated), tracker.py:3952 (whose comment literally
+  reads "Matches analyze_trade's own logic: var = ..." -- a self-documented
+  hand-copy), tracker.py:3443, paper.py:1165, order_executor.py:2391,
+  consistency.py:79, and main.py:6709. `_daily_var_from_series()`'s
+  docstring was corrected the same session to stop overclaiming "single
+  source of truth" codebase-wide -- it only covers analyze_trade()'s own
+  two call sites.
+  No behavior is currently wrong: all copies are logically equivalent
+  today (one style quirk noted -- tracker.py tests "HIGH" first where the
+  new helper tests "LOW" first, which only diverges on a ticker containing
+  both substrings, which doesn't exist in this codebase's real ticker
+  vocabulary). The risk is a future maintainer editing
+  `_daily_var_from_series()` believing it changes the convention
+  everywhere, when backtest.py and the other 6 sites would silently keep
+  behaving on the old, separate copy.
+
+What it would look like:
+  Move the convention into a genuinely shared module (weather_markets.py
+  already is one, but tracker.py/paper.py/order_executor.py/consistency.py/
+  backtest.py/main.py would all need to import from it, or from a smaller
+  shared location if a weather_markets.py import isn't appropriate for one
+  of them -- check for an import cycle before picking). Replace all 9 real
+  copies (2 already done in analyze_trade(), 7 remaining) with calls to
+  the one shared function.
+
+Why not now:
+  - Genuinely out of scope for the pass that found it -- that pass was
+    explicitly scoped (via AskUserQuestion) to "the two remaining literals"
+    inside analyze_trade(), and this is a much larger, cross-file change
+    touching paper/live settlement code (paper.py, order_executor.py,
+    consistency.py) in multiple modules, not a rider on an unrelated fix.
+  - No live bug exists today to force it -- all 9 copies currently agree.
+
+When to revisit:
+  - Whenever any of the 7 remaining sites is next touched for its own
+    reason (backtest.py, tracker.py x2, paper.py, order_executor.py,
+    consistency.py, main.py) -- migrate that site to the shared helper as
+    a low-risk rider, rather than waiting for a dedicated cross-file pass.
+    Treat "a 10th copy gets added somewhere" as a forcing signal to stop
+    deferring and do the real consolidation.
+
 [EMOS CALIBRATION STAYS DISABLED UNTIL THE ens_var-POPULATED TRAINING SET CLEARS 40 ROWS]
 Priority: Medium -- directly explains a real, already-observed Brier
   degradation (two consecutive weeks over the P10.3 alert threshold,
@@ -8399,9 +8457,9 @@ RESOLVED 2026-07-20: Re-verified both constants' absence in main.py/
   document what was caught" step even when the resolution is "confirmed
   intended, no fix needed."
 
-[PARTIALLY RESOLVED 2026-07-20 -- REVISIT TRIGGER FIRED 2026-07-30, see
-  RE-VERIFIED note below] NO MARKET-TYPE SEAM -- TEMPERATURE IS THE
-  ARCHITECTURE, NOT A MARKET TYPE
+[RESOLVED 2026-07-31 -- protocol-vs-pattern decision made (build vs. don't),
+  see the 2026-07-31 RESOLVED note below for the final call and what shipped]
+  NO MARKET-TYPE SEAM -- TEMPERATURE IS THE ARCHITECTURE, NOT A MARKET TYPE
 Priority: was Medium-High -- now Low-Medium. hourly-directional (KXTEMPxxxH)
   was the nearest stated expansion and did hit every one of these walls;
   shipping it (2026-07-20, commit 06269b4) closed the concrete complaints
@@ -8547,6 +8605,124 @@ RE-VERIFIED 2026-07-30 (found during a backlog-wide audit re-verifying every
   (weather_markets.py:7230, 7415, line numbers drifted from the 4792/4999
   originally cited) are still present and unfixed -- that part of the
   original Problem text remains accurate.
+
+RESOLVED 2026-07-31 -- the protocol-vs-pattern decision this entry's own
+  2026-07-30 note said had "arrived": decided against building the formal
+  MarketType protocol, closed the two remaining real gaps cheaply instead.
+  Re-verified live (workflow step 1) before deciding anything: the
+  "concrete pattern" this entry contemplated repeating a third time has, in
+  the time since this entry was written, actually been repeated FOUR more
+  times, cleanly -- analyze_trade() now dispatches to five distinct
+  market-type branches (_analyze_hourly_trade, _analyze_precip_trade,
+  _analyze_snow_trade, _analyze_monthly_rain_trade,
+  _analyze_monthly_snow_trade) from one central point, with hurricane
+  tickers explicitly excluded (is_hurricane_ticker()) since no probability
+  model exists for them yet. CORRECTED (opus review, 2026-07-31): only the
+  hourly branch dispatches on a ticker-prefix-set flag (_is_hourly); the
+  other four dispatch on condition["type"] (precip_above/precip_any,
+  precip_snow, precip_month_total, snow_month_total) -- _is_monthly_rain/
+  _is_monthly_snow only gate the earlier forecast/target_date/close-time
+  substitutions, not the dispatch itself. Doesn't change the underlying
+  finding (5 branches, each its own dedicated function, added without
+  needing a formal protocol) -- corrected here rather than restating the
+  original overclaim.
+  Every one of those four additions used the same lightweight pattern
+  hourly proved out, with zero reported friction -- real, repeated evidence
+  the formal protocol isn't earning its keep, not just a guess. Building it
+  now would mean retrofitting 5 live, already-safety-audited dispatch
+  branches in analyze_trade() (the trading engine's largest, most
+  safety-critical function) for a payoff with no current concrete
+  beneficiary (hurricane has no model to plug in). User's framing before
+  deciding: prioritize long-term codebase health, not just avoiding a
+  risky refactor today -- weighed against this project's own repeated
+  history of hand-copied-convention bugs (TRADING_PAUSED re-derived
+  independently 5x, the disputed-row filter hand-copied ~40x,
+  PAPER_MIN_EDGE, the kill switch), which argued against simply closing
+  this entry with no action.
+  Landed on the proportionate middle ground: fix the actual remaining
+  duplication (small, real, cheap) rather than either building the full
+  interface or doing nothing.
+  (1) var-convention duplication: the two remaining `var = "min" if "LOW"
+  in series else "max"` literals (both inside analyze_trade() itself, one
+  per metar_locked branch) consolidated into a new
+  `_daily_var_from_series(series: str) -> str` helper -- single source of
+  truth, matching this project's own established fix shape for this exact
+  failure class (`utils.is_trading_paused()`, the `outcomes_valid` view,
+  `paper._passes_exit_gates()`).
+  (2) degraded analysis dicts: found the 2026-07-30 note's "still present
+  and unfixed" characterization of the two hardcoded `"time_risk": "HIGH"`
+  sites was itself stale -- re-verified and confirmed analyze_trade()
+  unconditionally overwrites `result["time_risk"]` with the real
+  `_time_risk()`-computed value immediately after every one of its 5
+  dispatch calls (grepped: analyze_trade() is the only non-test caller of
+  both _analyze_precip_trade and _analyze_snow_trade), so the hardcoded
+  "HIGH" literals were dead code, never reaching a live caller -- not a
+  live behavioral gap as previously described. The other 3 fast-path
+  functions (_analyze_hourly_trade/_analyze_monthly_rain_trade/_analyze_
+  monthly_snow_trade) already omit "time_risk" entirely for exactly this
+  reason. Removed both dead literals from _analyze_precip_trade/_analyze_
+  snow_trade's return dicts to match the other three functions' established
+  convention, with a comment explaining why it's safe to omit.
+  New tests: tests/test_weather.py TestDailyVarFromSeries (4 tests --
+  LOW-series/HIGH-series/no-match-defaults-to-max/substring-not-exact-match
+  cases) and tests/test_phase2_batch_k.py TestPrecipSnowOmitTimeRisk (2
+  source-inspection tests, matching this file's own established convention
+  for asserting structural properties of these two specific functions).
+  Both mutation-tested directly: temporarily broke _daily_var_from_series
+  (hardcoded return "max") and confirmed 2 of 4 new tests failed for the
+  right reason; temporarily re-added the hardcoded time_risk literal to
+  _analyze_precip_trade and confirmed its new test failed for the right
+  reason; both reverted and re-verified green.
+  237 tests pass across the scoped regression sweep (test_weather.py,
+  test_phase2_batch_k.py, test_integration.py, test_price_and_size.py,
+  test_trading.py, test_cron_integration.py, test_menu_ux.py,
+  test_debug_fixes.py, test_p1_remaining.py); ruff + ruff format + mypy
+  clean on weather_markets.py and both changed test files.
+  Not touched: the formal MarketType protocol itself (deliberately not
+  built, per the decision above), check_series_drift()'s hourly/hurricane
+  exclusion (unrelated to this pass' scope, already correctly documented
+  as deliberate in the function's own docstring).
+
+  Independent Agent(opus, effort=high) review before push: verified the
+  load-bearing dead-code claim itself from source (5 independent checks --
+  only-caller grep, unconditional-overwrite trace, no-escape-path read of
+  both full functions end-to-end, no-exception-path check, no-dynamic-
+  dispatch check) rather than trusting it, and independently reproduced the
+  mutation tests (broke both fixes, confirmed the right 3 tests failed,
+  restored, diffed byte-identical to a backup). No CRITICAL/HIGH findings.
+  4 real findings, all addressed: (1) MEDIUM -- `_daily_var_from_series()`'s
+  "single source of truth" docstring overclaimed; the same literal/logic is
+  still separately hand-copied in 7 more files (backtest.py, weather_
+  markets.py's own _metar_lock_in, tracker.py x2, paper.py,
+  order_executor.py, consistency.py, main.py) -- docstring narrowed to
+  scope the claim to analyze_trade()'s own two sites, and the broader
+  duplication filed as its own new backlog entry ("VAR-CONVENTION LITERAL
+  HAND-COPIED ACROSS 7+ FILES BEYOND analyze_trade()", top of this file) per
+  the standing "massively out of scope, not a rider" carve-out -- extending
+  the consolidation to paper/live settlement code in 6 more modules is a
+  genuinely different, larger change than this pass' AskUserQuestion-
+  confirmed scope. (2) LOW -- this note's own claim that all 5 dispatch
+  branches are "each gated by its own ticker-prefix-set check" was wrong;
+  only hourly dispatches that way, the other 4 dispatch on
+  condition["type"] -- corrected above rather than restating the overclaim.
+  (3) LOW -- `_daily_var_from_series()` didn't defensively `.upper()` its
+  input (harmless today since both callers already upper-case, but a
+  footgun for a "shared source of truth" helper) -- added. (4) LOW -- the
+  new source-inspection tests matched a literal quoted substring
+  ('"time_risk"' not in src), which would miss a single-quoted
+  reintroduction and could spuriously break if the nearby explanatory
+  comment's wording changed -- replaced with a regex matching the actual
+  dict-key-assignment shape (either quote style), re-verified it still
+  catches both quote-style reintroductions and does not false-positive on
+  the plain-text comment. All 4 fixes re-verified: ruff/ruff format/mypy
+  clean, the 2 directly affected test files' full suites re-run green
+  (109 tests).
+
+When to revisit (superseding the entry's original text above):
+  - Only if hurricane's own probability model actually gets built (backlog.txt
+    "RAIN / SNOW / HURRICANE MARKETS" Step 3) and needs a 6th dispatch
+    branch -- re-run this same cost/benefit check then, don't assume the
+    answer is now permanently "no."
 
 [PARTIALLY RESOLVED 2026-07-19] PAPER AND LIVE POSITIONS ARE TWO LEDGERS WITH ADAPTER GLUE -- EVERY RISK FEATURE SHIPS TWICE
 Priority: Medium -- cost compounds per feature once live trading is real;
