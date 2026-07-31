@@ -1,6 +1,77 @@
 BACKLOG — future improvements to implement when ready
 ======================================================
 
+[EMOS CALIBRATION STAYS DISABLED UNTIL THE ens_var-POPULATED TRAINING SET CLEARS 40 ROWS]
+Priority: Medium -- directly explains a real, already-observed Brier
+  degradation (two consecutive weeks over the P10.3 alert threshold,
+  0.2329 and 0.2804, found 2026-07-31), but no code is broken and no
+  action is needed beyond waiting and re-checking.
+
+Problem:
+  EMOS (ml_bias.py's fit_emos/emos_exceedance_prob/emos_interval_prob) was
+  deployed 2026-06-27 (`ae1d5ba`) as the intended replacement for
+  temperature-scaling calibration on multi-day (`above`/`below`/`global`)
+  predictions, and that same commit reset temperature_scale.json's T to
+  1.0 (identity/no-op, see ml_bias.py:485) across the board as a "handoff"
+  to EMOS. EMOS itself was caught and deliberately reverted the same
+  session (data/emos_params.json.premature_do_not_use_20260704) because
+  `py main.py emos-train` flips a live probability method the instant
+  data/emos_params.json exists, with no separate confirmation step -- a
+  process/safety concern, not a fit-quality judgment (re-verified
+  2026-07-31 after initially guessing "deemed unfit" without checking; the
+  actual recorded reason is the missing confirmation gate). With EMOS
+  never actually live and T-scaling parked at the 1.0 no-op, multi-day
+  predictions ran with ZERO calibration correction of any kind for the
+  full ~33 days until temperature_scale.json was finally retrained
+  2026-07-30 (delayed that long because the F3 auto-calibration sentinel
+  was undercounting settlements due to the condition_type-contamination
+  bug fixed the same day, `ee7288b`). get_brier_over_time() shows the
+  damage precisely: W24=0.1997, W25=0.1937 (pre-gap) -> W26=0.2678,
+  W27=0.2687, W29=0.2329, W30=0.2804 (inside the gap; W30's predictions
+  all predate the 07-30 retrain).
+
+  Separately, re-verified whether EMOS itself is ready to activate now
+  that the process-gate concern could be addressed with a real
+  confirmation step: count_emos_ready_predictions() = 103 (ens_mean +
+  settled_temp_f), well past the 40-row reminder gate in cron.py -- but
+  only rows placed since Jun 21 2026 (forward-fill) carry a real ens_var;
+  backfilled Previous-Runs-API rows don't. get_emos_training_data()'s own
+  population (days_out IS NULL OR >=1, matching EMOS's actual multi-day
+  scope) currently has only 31 rows with real ens_var populated -- short
+  of the 40-row floor cron.py's own comment cites (Gneiting 2005: 10
+  forecast cases per parameter x 4 EMOS parameters a/b/c/d). Confirmed the
+  forward-fill pipeline itself is healthy (every recent method='ensemble'
+  multi-day/same-day prediction has ens_var populated correctly -- this is
+  a volume gap, not a broken pipeline). Recent accrual rate: ~5-8
+  ens_var-populated multi-day rows/week (W24-W29), so ~40 should clear in
+  roughly 2 more weeks at the current pace.
+
+What it would look like:
+  Once count_emos_ready_predictions()-equivalent-for-ens_var-only clears
+  40 (no dedicated live counter exists for this exact subset today --
+  `get_emos_training_data()` returns the rows, count with
+  `sum(1 for r in rows if r["ens_var"] is not None)`), deliberately run
+  `py main.py emos-train` as an explicit, separate decision (not a side
+  effect of anything else), and reset temperature_scale.json's affected
+  keys at the same time per the original 2026-06-27 revert note's own
+  caveat ("needs a coupled temperature_scale.json reset when it does").
+  Verify the resulting calibration curve (`py main.py validate`) actually
+  improves on the current T-scaling-only baseline before trusting it live
+  -- EMOS replacing a currently-working T-scaling fit is a real regression
+  risk if the EMOS fit turns out worse, not just a formality.
+
+Why not now:
+  User decision 2026-07-31: explicitly wait for more ens_var-populated
+  settled data (31/40) rather than activate on today's thinner sample.
+  T-scaling is live and freshly retrained (2026-07-30) in the meantime, so
+  multi-day predictions are not running uncalibrated right now -- this is
+  a "wait for a better version," not "the current gap is unaddressed."
+
+When to revisit:
+  Check the ens_var-populated multi-day row count (see query above) in
+  ~2 weeks (~mid-August 2026); activate deliberately once it clears 40,
+  following the "what it would look like" steps above.
+
 [RESOLVED 2026-07-31 -- re-examined via the standing 17-step workflow;
   decided against changing counting semantics]
   COUNT_SETTLED_PREDICTIONS() COUNTS RAW ROWS, NOT DISTINCT
