@@ -3179,21 +3179,13 @@ RESOLVED 2026-07-30 (SNOW Step 2 -- the real monthly-accumulation
   the only city that has EVER listed one, expect the 20-distinct-event
   floor to take years, not months, to clear.
 
-[OPEN -- split out 2026-07-30 from a mention buried inside the Rain Step 2
-  RESOLVED note above (item 4 of that entry's own 9-item handoff list) so
-  it doesn't get lost as a footnote inside someone else's "RESOLVED" block;
-  REPOSITIONED 2026-07-31 -- this entry was originally inserted in the
-  MIDDLE of the RAIN/SNOW/HURRICANE entry's own resolution-note sequence
-  (between its Rain-Step-2 note and its later St.-Petersburg/Snow notes),
-  splitting that entry's history into two non-contiguous pieces and
-  confusing a same-day staleness audit into misattributing those later
-  notes to this entry. Moved here, immediately after the full RAIN/SNOW/
-  HURRICANE entry now ends, with no content changed -- only its position]
+[RESOLVED 2026-07-31 -- distribution-fit half shipped via the standing
+  17-step workflow; consistency.py's arbitrage-check half deliberately
+  scoped out, see the new entry below]
   RAIN MARKETS -- LADDER/SIBLING GROUPING FOR MARKET-IMPLIED
   DISTRIBUTION IS A BLANKET EXCLUSION, NOT REAL (city, month) GROUPING
-Priority: Low (log-only today, never gates a trading decision for any
-  market type -- confirmed at Step 2 ship time, re-confirm before picking
-  up in case that's changed).
+Priority: was Low (log-only today, never gates a trading decision for any
+  market type -- confirmed at Step 2 ship time, re-confirmed today).
 
 Problem:
   weather_markets.compute_market_implied_distributions() and
@@ -3217,16 +3209,217 @@ What it would look like:
   implementation must handle variable ladder sizes, not assume every city
   has the same bracket count.
 
+What was fixed:
+  Re-verified before touching anything: re-confirmed log-only status (the
+  signal only feeds the signal-graduation registry, never blended_prob/
+  sigma/kelly); re-confirmed compute_market_implied_distributions()'s and
+  consistency._group_markets()'s blanket exclusions were both still exactly
+  as described; and found the real ladder-size spread is wider than this
+  entry knew -- NYC 4 brackets, St. Petersburg (onboarded after this entry
+  was written) 10, not just "4 vs. 7."
+  A real design question surfaced before writing anything: the full scope
+  named in this entry (both compute_market_implied_distributions() AND
+  consistency._group_markets()) turned out to be two structurally different
+  pieces of very different stakes -- the distribution-fit signal is
+  genuinely log-only end to end, while consistency.find_violations()
+  (fed by _group_markets()) drives AUTOMATIC CORRECTIVE TRADING. Asked the
+  user via AskUserQuestion; after two "review these and ask again"
+  deflections, switched to a direct prose recommendation (distribution-fit
+  only, deferring the arbitrage-check extension as its own separate,
+  higher-stakes pass) rather than re-asking a third time -- user confirmed.
+  Also found, before writing any code, that BOTH of compute_market_implied_
+  distributions()'s callers (cron.py's cmd_cron, main.py's cmd_analyze)
+  look up the per-event result via (city, date_iso) and skip the lookup
+  entirely whenever _ev_date is None -- which it always is for KXRAIN*M
+  tickers by design (parse_city_date() never resolves a date for them).
+  So grouping rain correctly inside compute_market_implied_distributions()
+  alone would NOT have been enough; both call sites needed a parallel
+  rain-specific lookup path too (matching [[feedback_trace_all_call_sites]]
+  -- a 6th recurrence of "trace every caller of a shared function").
+  Implementation: `fit_market_implied_distribution()` now accepts
+  `precip_month_total` siblings (always single-sided "total > threshold" --
+  Kalshi's own strike_type="greater" on every tracked rain bracket, mapped
+  the same way as an "above" temperature bracket) and a new `sigma_bounds`
+  parameter (default (0.1, 50.0), unchanged for existing temperature
+  callers) so a caller can pass rain-appropriate bounds instead of the
+  °F-tuned default; also scaled the optimizer's initial-sigma-guess floor
+  proportionally to sigma_bounds rather than hardcoding 3.0, so a much
+  smaller scale doesn't start from a wildly oversized guess. Added a new
+  `_RAIN_IMPLIED_SIGMA_BOUNDS = (0.05, 15.0)` constant -- a first-pass
+  sanity range (not scientifically derived), documented as such and tied
+  to the real observed ladder span (widest tracked bracket ceiling is
+  St. Petersburg's 10in). `compute_market_implied_distributions()` now
+  routes KXRAIN*M tickers through a new shared helper,
+  `market_implied_rain_event_key()`, which builds a (city, "RAIN", year,
+  month) key from the ticker via the existing `_parse_monthly_ticker_month`
+  -- a 4-tuple, structurally distinct from temperature's (city, date_iso)
+  2-tuple, so the two shapes can never collide in the single dict this
+  function returns. Both call sites (cron.py, main.py) updated with a
+  parallel `elif` branch: when `_ev_date` is None and the ticker matches
+  `_KXRAIN_MONTHLY_CITY`, look up via `market_implied_rain_event_key()`
+  instead of the (city, date_iso) key. `consistency._group_markets()`/
+  `find_violations()` deliberately left untouched -- see the new entry
+  below.
+  7 new/rewritten tests (corrected from an earlier arithmetic error in this
+  note that said "14"): 4 direct `fit_market_implied_distribution()` unit
+  tests for precip_month_total (recovers a known Normal fit from a rain
+  ladder, default sigma_bounds preserved for existing temperature callers,
+  sigma_bounds actually threaded through -- not silently ignored, below-
+  floor rain brackets still return None), plus rewrote the 3 tests in
+  `test_rain_markets.py`'s `TestComputeMarketImpliedExcludesMonthlyRain`
+  (renamed `TestComputeMarketImpliedGroupsMonthlyRain`) that asserted the
+  old blanket-exclusion behavior this fix removed -- one now proves a
+  rain-only ladder produces a REAL distribution (the actual regression this
+  entry fixes), one proves rain siblings still don't leak into a mixed
+  temperature event's own fit, one proves the rain-key routing is
+  structural (a rain ticker is never grouped under a (city, date_iso) key
+  even if parse_city_date() were patched to return a real date for it, not
+  just coincidentally agreeing with its current None-return behavior).
+  Every new/changed assertion mutation-tested (reverted against a broken
+  implementation -- disabled rain grouping, hardcoded sigma bounds back to
+  0.1-50.0, removed precip_month_total from the allowed condition types --
+  confirmed each fails with the predicted symptom, then restored). Full
+  scoped regression sweep (test_rain_markets.py, test_market_implied_
+  distribution.py, test_hourly_markets.py, test_snow_markets.py,
+  test_prediction_kwargs.py, test_p1_remaining.py, cron/p1 test files, plus
+  the full cron integration/smoke suite) all pass with zero regressions.
+  ruff/ruff-format/mypy clean on all touched files (weather_markets.py,
+  cron.py, main.py, tests/test_rain_markets.py, tests/test_market_implied_
+  distribution.py).
+
+  Opus review (round 2, effort=high) found 6 more issues after the above
+  shipped, fixed in-line: (1) MEDIUM -- a rain fit could extrapolate a
+  physically impossible NEGATIVE implied_mean on a dry-month ladder with a
+  deceptively tiny fit_residual (reproduced live: -1.8in, residual=2.3e-05);
+  fixed by adding a new `mean_bounds` parameter to `fit_market_implied_
+  distribution()` (unbounded by default, unchanged for temperature) and a
+  new `_RAIN_IMPLIED_MEAN_BOUNDS = (0.0, inf)` constant passed for rain.
+  (2) MEDIUM -- rain's implied_mean/implied_sigma now populate the SAME
+  predictions columns the `market_implied` SIGNAL_REGISTRY entry counts,
+  but that entry's count_fn (require_settled_temp=True, the default) can
+  never see rain rows (they write settled_value, not settled_temp_f) --
+  rain's own graduation/sample-floor tracking for this signal doesn't
+  exist yet and isn't a 1-line fix (count_settled_signal_rows has no way
+  to count "rain rows only" the way it can for a dedicated JSON-key signal
+  like rain_forecast_blend) -- filed as its own new backlog entry rather
+  than built inline; see below. (3) LOW-MEDIUM -- the two call-site
+  branches (cron.py, main.py) had zero test coverage and were hand-copied
+  between files; refactored into one shared, directly-testable function,
+  `weather_markets.resolve_market_implied_for_analysis()`, called
+  identically by both files -- eliminates the duplication risk AND makes
+  the lookup logic unit-testable without the heavy scan-loop machinery,
+  but **NEW TESTS FOR resolve_market_implied_for_analysis() STILL NEED TO
+  BE WRITTEN AND RUN** -- skipped this session (user was heading to a
+  flight) after only re-running the EXISTING regression suite (245 tests,
+  all still passing) to confirm the refactor itself didn't break anything.
+  Do this before considering the refactor fully verified: at minimum, a
+  temperature-city+date match, a rain-ticker match, a rain ticker whose
+  key builder returns None, and a no-match case. (4) LOW -- the sigma0
+  initial-guess-floor change (proportional to sigma_bounds) was reverted
+  back to the original hardcoded `max(3.0, std)` -- reviewer confirmed
+  empirically it was a no-op for both real callers and introduced an
+  unproven log(0) edge case with no offsetting benefit. (5) LOW (doc) --
+  this note's own test count ("14") was wrong (actually 7 at review time,
+  now includes whatever new tests the still-open item above adds);
+  corrected. (6) LOW (nit) -- `compute_market_implied_distributions()`'s
+  return type annotation restored to the more precise `dict[tuple[str,
+  str] | tuple[str, str, int, int], dict | None]` instead of a bare
+  `dict[tuple, ...]`.
+  STILL OPEN as of this session's end: new tests for
+  `resolve_market_implied_for_analysis()` (item 3 above) have not been
+  written; re-run ruff/mypy/the scoped regression suite after adding them
+  before treating this entry as fully closed out.
+
+[OPEN 2026-07-31 -- scoped out of the entry above, deliberately deferred
+  as separate, higher-stakes scope]
+  RAIN MARKETS -- CONSISTENCY.PY'S ARBITRAGE CHECK STILL BLANKET-EXCLUDES
+  KXRAIN*M, UNLIKE THE MARKET-IMPLIED-DISTRIBUTION SIGNAL ABOVE
+Priority: Low, but higher-stakes than the entry above once picked up --
+  consistency.find_violations() (fed by _group_markets()) drives AUTOMATIC
+  CORRECTIVE TRADING, unlike the log-only market-implied-distribution
+  signal.
+
+Problem:
+  consistency._group_markets() still gives KXRAIN*M tickers a blanket
+  exclusion, grouping temperature markets by a day-level (series_ticker,
+  date_str) key derived via regex from the ticker -- rain has no day
+  component, so this key shape doesn't apply to rain at all; a real fix
+  needs a structurally different, month-level grouping key (the same
+  shape the market-implied-distribution fix above just built,
+  weather_markets.market_implied_rain_event_key(), could potentially be
+  reused or mirrored here). Rain brackets are always single-sided "total >
+  threshold" (Kalshi's own strike_type="greater" on every tracked bracket),
+  the same monotonic shape as a temperature "above" ladder, so the
+  monotonicity check itself (P(total > X) must decrease as X increases)
+  should be meaningful for rain once grouped correctly -- not yet verified
+  against real rain ladder data, though.
+
 Why not now:
-  User-approved scope cut at Rain Step 2 ship time (2026-07-21): confirmed
-  log-only with zero live trading impact today, so it was deliberately
-  deferred rather than expanding that already-large change further.
+  Surfaced 2026-07-31 while resolving the sibling market-implied-
+  distribution entry above: that fix is genuinely log-only end to end, so
+  it was safe to ship in a "Low priority" pass; extending find_violations()
+  to a brand-new market type is a live-trading-adjacent change (it places
+  automatic corrective trades on detected violations) and deserves its own
+  dedicated review/verification pass against irregular real ladder shapes
+  (St. Petersburg's 10 brackets vs. NYC's 4), not a bundle-in.
 
 When to revisit:
-  Whenever market-implied-distribution or consistency-check coverage for
-  rain specifically becomes valuable enough to justify the sigma-bounds
-  redesign -- not gated on any data floor or external trigger, purely a
-  "is this worth doing yet" call.
+  Whenever rain-specific arbitrage detection becomes valuable enough to
+  justify its own dedicated pass -- not gated on any data floor or external
+  trigger, purely a "is this worth doing yet" call, same as the entry above
+  was until today.
+
+[OPEN 2026-07-31 -- surfaced by the opus review of the market-implied-
+  distribution entry above, deliberately deferred as separate scope]
+  RAIN'S MARKET-IMPLIED DISTRIBUTION (implied_mean/implied_sigma) HAS NO
+  GRADUATION/SAMPLE-FLOOR TRACKING OF ITS OWN
+Priority: Low -- log-only signal, doesn't block or corrupt anything live;
+  just means nobody will ever see that rain data is accumulating.
+
+Problem:
+  weather_markets.SIGNAL_REGISTRY's "market_implied" entry (key=
+  "market_implied") counts settled rows via `_count_signal_column(
+  "implied_mean")`, which defaults `require_settled_temp=True` --
+  correctly counting only temperature rows (which populate settled_temp_f)
+  and correctly NOT counting rain rows (which populate settled_value
+  instead), so the existing entry is still accurate for temperature and
+  was deliberately left unchanged. But now that rain siblings also
+  populate the SAME implied_mean/implied_sigma columns (via the entry
+  above), rain's own accumulation of this signal has no registry entry, no
+  sample-floor count, and no correlation-note plan at all -- it will just
+  silently pile up in the predictions table with nobody ever prompted to
+  check whether it's graduation-worthy.
+  Not a 1-line fix: unlike rain_forecast_blend (which lives in the generic
+  signal_values JSON column and already has a require_settled_temp=False
+  count_fn), rain's implied_mean/implied_sigma share a NAMED, dedicated
+  column with temperature -- count_settled_signal_rows() has no way today
+  to count "only the rows where this column was populated by rain, not
+  temperature" (the two are only distinguishable by settled_value being
+  non-NULL / settled_temp_f being NULL, or by ticker prefix -- neither is
+  a parameter this function currently accepts).
+
+What it would look like:
+  Either add a new count_settled_signal_rows() mode/parameter that filters
+  to "settled_temp_f IS NULL AND settled_value IS NOT NULL" (rain-shaped
+  rows only) for a column-based signal, and register a NEW SIGNAL_REGISTRY
+  entry (e.g. key="market_implied_rain") with its own sample_floor and a
+  rain-appropriate correlation_note (comparing implied_mean against
+  whatever rain forecast value stands in for forecast_temp_f -- not
+  necessarily the same comparison the temperature entry's note describes),
+  or decide the volume is too low to bother with a dedicated entry yet and
+  explicitly document that decision instead.
+
+Why not now:
+  Surfaced via opus review while shipping the sibling market-implied-
+  distribution entry above -- a genuine new-feature-shaped gap (rain's own
+  graduation tracking), not a quick fix bundled into that entry's already-
+  closed scope.
+
+When to revisit:
+  Whenever rain's market-implied-distribution data volume seems worth
+  checking for real, or whenever consistency.py's own rain arbitrage-check
+  entry (immediately above) is picked up -- both would benefit from
+  knowing how much rain distribution-fit data actually exists.
 
 [RESOLVED 2026-07-23 -- both real ECMWF products now instrumented] TRACK ECMWF FORECAST ACCURACY
 Priority: Low (ECMWF already gets a reasonable static/seasonal weight; this is

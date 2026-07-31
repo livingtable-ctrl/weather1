@@ -1444,16 +1444,17 @@ class TestFetchEnsemblePrecipMultiday:
         wm._PRECIP_ENSEMBLE_MULTIDAY_CACHE.clear()
 
 
-class TestComputeMarketImpliedExcludesMonthlyRain:
-    """compute_market_implied_distributions() groups by (city, target_date)
-    independently of and before analyze_trade() -- the analyze_trade guard
-    above does not protect it. Monthly-rain brackets have no day component,
-    so parse_city_date() already returns None for them and the loop's own
-    "city is None or target_date is None" skip would drop them regardless --
-    this exclusion is a forward-guard (protects against Kalshi ever adding a
-    day component, or _KXRAIN_MONTHLY_CITY diverging from what
-    parse_city_date() actually parses), verified here by confirming a
-    mixed list produces an identical fit to a daily-only list."""
+class TestComputeMarketImpliedGroupsMonthlyRain:
+    """backlog.txt "RAIN MARKETS -- LADDER/SIBLING GROUPING FOR MARKET-
+    IMPLIED DISTRIBUTION IS A BLANKET EXCLUSION, NOT REAL (city, month)
+    GROUPING" (resolved 2026-07-31): compute_market_implied_distributions()
+    used to blanket-exclude every KXRAIN*M ticker; it now groups them by
+    (city, "RAIN", year, month) via market_implied_rain_event_key() and
+    fits them with fit_market_implied_distribution()'s rain-appropriate
+    sigma_bounds, structurally distinct from temperature's (city, date_iso)
+    key so the two can never collide in the same returned dict. Renamed
+    from TestComputeMarketImpliedExcludesMonthlyRain, whose 3 tests all
+    asserted the exclusion this fix removed."""
 
     def _daily_market(self, floor_strike, ticker_suffix, bid, ask):
         # bid/ask must decrease as floor_strike increases (a real "P(above
@@ -1470,17 +1471,26 @@ class TestComputeMarketImpliedExcludesMonthlyRain:
         }
 
     def _rain_market(self, floor_strike, bid, ask):
+        # strike_type="greater" matches every real KXRAIN*M bracket
+        # (_parse_market_condition refuses to guess any other direction) --
+        # bid/ask must decrease as floor_strike increases, same reasoning as
+        # _daily_market above, for the fit to have a real CDF-shaped input
+        # to converge on rather than a degenerate one.
         return {
             "ticker": f"KXRAINSEAM-26JUL-{int(floor_strike)}",
             "title": "Rain in Seattle in Jul 2026?",
             "close_time": "2026-08-01T03:59:59Z",
+            "strike_type": "greater",
             "yes_bid": bid,
             "yes_ask": ask,
             "floor_strike": floor_strike,
             "volume_fp": 500,
         }
 
-    def test_mixed_list_fit_matches_daily_only_fit(self):
+    def test_mixed_list_daily_fit_unaffected_by_rain_siblings(self):
+        """Rain siblings must not leak into the temperature event's own fit
+        -- they're grouped under a completely separate (city, "RAIN", year,
+        month) key, never pooled with (city, date_iso) temperature events."""
         import weather_markets as wm
 
         daily_only = [
@@ -1490,6 +1500,7 @@ class TestComputeMarketImpliedExcludesMonthlyRain:
         ]
         rain_extra = [
             self._rain_market(1, 80, 85),
+            self._rain_market(4, 45, 50),
             self._rain_market(7, 10, 15),
         ]
 
@@ -1500,35 +1511,51 @@ class TestComputeMarketImpliedExcludesMonthlyRain:
             "test fixture itself is degenerate (fit didn't converge) -- "
             "this assertion isn't testing anything real"
         )
-        assert fit_daily_only == fit_mixed, (
-            "monthly-rain brackets changed the daily market-implied fit -- "
-            "they were not excluded before event-grouping"
+        assert (
+            fit_mixed[("NYC", "2026-07-20")] == fit_daily_only[("NYC", "2026-07-20")]
+        ), (
+            "monthly-rain siblings changed the daily market-implied fit -- "
+            "they leaked into the temperature event's group"
         )
 
-    def test_rain_only_list_produces_no_distributions(self):
-        """Vacuous today on its own -- parse_city_date() already returns
-        target_date=None for rain tickers, so the loop's own "city is None
-        or target_date is None" skip drops them regardless of the explicit
-        prefix exclusion (confirmed by mutation-testing: deleting the
-        exclusion leaves this assertion green). Real regression coverage
-        for the exclusion itself is the next test."""
+    def test_rain_only_list_produces_a_real_distribution(self):
+        """The actual regression this backlog entry fixes: a rain-only
+        ladder must now be grouped by (city, "RAIN", year, month) and fit a
+        real distribution -- previously this returned {} unconditionally."""
         import weather_markets as wm
 
-        rain_only = [self._rain_market(1, 80, 85), self._rain_market(7, 10, 15)]
+        rain_only = [
+            self._rain_market(1, 80, 85),
+            self._rain_market(4, 45, 50),
+            self._rain_market(7, 10, 15),
+        ]
         result = wm.compute_market_implied_distributions(rain_only)
-        assert result == {}
 
-    def test_exclusion_holds_even_if_a_date_were_parseable(self, monkeypatch):
-        """The real regression guard for the explicit prefix exclusion
-        (weather_markets.py ~4746) -- the exclusion is a documented
-        forward-guard against Kalshi ever adding a day component to these
-        tickers, or _KXRAIN_MONTHLY_CITY diverging from what
-        parse_city_date() actually parses. Simulates exactly that scenario
-        by patching parse_city_date() to return a real (city, date) for a
-        rain ticker (as if the ticker format had changed to include a day),
-        and confirms the explicit prefix check still excludes it -- proving
-        the guard does real work, not just coincidentally agreeing with
-        parse_city_date()'s current None-return behavior."""
+        assert list(result.keys()) == [("Seattle", "RAIN", 2026, 7)]
+        assert result[("Seattle", "RAIN", 2026, 7)] is not None, (
+            "test fixture itself is degenerate (fit didn't converge) -- "
+            "this assertion isn't testing anything real"
+        )
+        fitted_sigma = result[("Seattle", "RAIN", 2026, 7)]["implied_sigma"]
+        assert (
+            wm._RAIN_IMPLIED_SIGMA_BOUNDS[0]
+            <= fitted_sigma
+            <= wm._RAIN_IMPLIED_SIGMA_BOUNDS[1]
+        ), (
+            "fitted sigma outside the rain-specific sigma_bounds -- "
+            "the °F-tuned default bounds were used instead"
+        )
+
+    def test_rain_key_used_even_if_parse_city_date_were_patched(self, monkeypatch):
+        """Regression guard for the routing order: rain tickers must be
+        routed to market_implied_rain_event_key() BEFORE parse_city_date()
+        is ever consulted, not merely because parse_city_date() happens to
+        return None for them today. Patches parse_city_date() to return a
+        real (city, date) for a rain ticker (as if Kalshi ever added a day
+        component to the ticker format) and confirms the rain ticker is
+        still grouped under its (city, "RAIN", year, month) key, never a
+        (city, date_iso) one -- proving the routing is structural, not
+        coincidental."""
         import weather_markets as wm
 
         real_parse_city_date = wm.parse_city_date
@@ -1548,8 +1575,12 @@ class TestComputeMarketImpliedExcludesMonthlyRain:
         result = wm.compute_market_implied_distributions(daily_only + [rain_market])
 
         assert ("Seattle", "2026-07-20") not in result, (
-            "rain market reached event-grouping despite a now-parseable date -- "
-            "the explicit prefix exclusion did not fire"
+            "rain market was grouped under a (city, date_iso) key despite "
+            "the routing order -- parse_city_date() was consulted for a "
+            "rain ticker instead of the rain-specific key builder"
+        )
+        assert ("Seattle", "RAIN", 2026, 7) in result, (
+            "rain market did not reach its own (city, RAIN, year, month) group at all"
         )
 
 

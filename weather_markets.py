@@ -4239,6 +4239,28 @@ _KXRAIN_MONTHLY_CITY = {
     "KXRAINSTPM": "StPetersburg",  # doesn't match any substring fallback either
 }
 
+# Sanity bounds for fit_market_implied_distribution()'s fitted sigma when
+# fitting KXRAIN*M monthly-rain siblings (inches, not °F -- the function's
+# own default bounds of (0.1, 50.0) were tuned for temperature and never
+# validated at rain's much smaller scale). First-pass sanity range, not a
+# scientifically derived one: real tracked-city rain ladders span roughly
+# 1-10 inches across their brackets (StPetersburg's is the widest at
+# 1-10in), so 15.0 gives headroom above the widest real ladder without
+# being so loose it would pass through a genuinely degenerate fit. Revisit
+# if real settled data ever shows this rejecting good fits or accepting bad
+# ones (backlog.txt "RAIN MARKETS -- LADDER/SIBLING GROUPING FOR
+# MARKET-IMPLIED DISTRIBUTION IS A BLANKET EXCLUSION").
+_RAIN_IMPLIED_SIGMA_BOUNDS = (0.05, 15.0)
+
+# Monthly rainfall is non-negative -- opus-review-caught: without this, a
+# Normal fitted to a dry-month ladder (every rung priced far above the true
+# total) can extrapolate a mean BELOW zero with a deceptively tiny
+# fit_residual (reproduced live: implied_mean=-1.8in, residual=2.3e-05 on a
+# realistic dry-month book). Paired with _RAIN_IMPLIED_SIGMA_BOUNDS as the
+# other half of fit_market_implied_distribution()'s rain-specific sanity
+# gate.
+_RAIN_IMPLIED_MEAN_BOUNDS = (0.0, float("inf"))
+
 # backlog.txt "HURRICANE MARKETS": no single prefix covers Kalshi's real
 # hurricane/tropical-storm namespace -- live-verified 2026-07-26 (291-series
 # category scan): `KXHUR*` (33 series) and the *unprefixed* legacy `HUR*`
@@ -5346,32 +5368,72 @@ def _liquidity_edge_scale(volume, open_interest) -> float:
     return 1.5 - (liq - 50) / (500 - 50) * 0.5
 
 
-def fit_market_implied_distribution(siblings: list[dict]) -> dict | None:
+def fit_market_implied_distribution(
+    siblings: list[dict],
+    sigma_bounds: tuple[float, float] = (0.1, 50.0),
+    mean_bounds: tuple[float, float] = (float("-inf"), float("inf")),
+) -> dict | None:
     """
-    Fit a Normal(mean, sigma) to one city/date event's full sibling bracket
-    ladder (backlog.txt "MARKET-IMPLIED TEMPERATURE DISTRIBUTION FROM THE
-    FULL LADDER") by weighted least squares: each liquid bracket's mid-price
-    is treated as the market's implied probability mass for its threshold
-    (above/below/threshold or between/interval) -- the same above/below/
-    between mass definition _forecast_probability uses on the model side,
-    reimplemented here as a vectorized numpy expression rather than calling
-    _forecast_probability per point per optimizer iteration: profiling
-    showed scipy.stats.norm.cdf's per-call overhead (~0.1ms) dominates when
-    called individually inside a Nelder-Mead loop (~200ms for a 6-bracket
-    event, mostly overhead not computation) -- one vectorized call per
-    optimizer iteration instead of one call per (point, iteration) pair
-    drops that to single-digit ms. Weighted by real traded volume, matching
-    is_liquid()'s own definition of liquidity rather than introducing a
-    second one (open_interest is deliberately not used here).
+    Fit a Normal(mean, sigma) to one event's full sibling bracket ladder
+    (backlog.txt "MARKET-IMPLIED TEMPERATURE DISTRIBUTION FROM THE FULL
+    LADDER") by weighted least squares: each liquid bracket's mid-price is
+    treated as the market's implied probability mass for its threshold
+    (above/below/threshold, between/interval, or precip_month_total/single-
+    sided) -- the same mass definition _forecast_probability uses on the
+    model side for temperature, reimplemented here as a vectorized numpy
+    expression rather than calling _forecast_probability per point per
+    optimizer iteration: profiling showed scipy.stats.norm.cdf's per-call
+    overhead (~0.1ms) dominates when called individually inside a
+    Nelder-Mead loop (~200ms for a 6-bracket event, mostly overhead not
+    computation) -- one vectorized call per optimizer iteration instead of
+    one call per (point, iteration) pair drops that to single-digit ms.
+    Weighted by real traded volume, matching is_liquid()'s own definition of
+    liquidity rather than introducing a second one (open_interest is
+    deliberately not used here).
 
-    Temperature brackets only (above/below/between) -- precip/snow markets
-    are excluded, matching this signal's own scope.
+    Temperature brackets (above/below/between) and monthly-rain brackets
+    (precip_month_total, backlog.txt "RAIN MARKETS -- LADDER/SIBLING
+    GROUPING FOR MARKET-IMPLIED DISTRIBUTION IS A BLANKET EXCLUSION") --
+    snow markets remain excluded (the rain entry's own scope only covers
+    rain; snow's separate exclusion is untouched). precip_month_total is
+    always a single-sided "total > threshold" rule (Kalshi's own
+    strike_type="greater", live-verified against every tracked rain series
+    -- see _parse_market_condition), the same shape as an "above" bracket,
+    so it's mapped identically. Unlike temperature's above/below,
+    prob_threshold() falls back to the RAW threshold for precip conditions
+    (no +-0.5 continuous-boundary offset -- that offset exists only because
+    Kalshi's temperature contracts settle on an integer degree; rain's
+    monthly total is a continuous decimal-inches measurement compared
+    directly against threshold in _analyze_monthly_rain_trade, with no such
+    offset), so this needs no special-casing beyond accepting the type.
+
+    sigma_bounds: sanity range for the fitted sigma, in the same units as
+    the input thresholds (°F for temperature, inches for rain) -- a fit
+    outside this range is treated as degenerate and returns None rather
+    than logging garbage. Callers must pass rain-appropriate bounds when
+    fitting rain siblings; the default (0.1, 50.0) is temperature-only and
+    was never validated against rain's much smaller (inches, not degrees)
+    scale.
+
+    mean_bounds: sanity range for the fitted mean, same units as
+    sigma_bounds. Unbounded by default (a temperature mean can legitimately
+    be very cold or very hot). Opus-review-caught: monthly rainfall is
+    non-negative, but a Normal fitted to a dry-month ladder (every rung's
+    market price far below the true total) can extrapolate a mean BELOW
+    zero with a deceptively tiny fit_residual -- reproduced live with a
+    realistic dry-month book (implied_mean=-1.8in, residual=2.3e-05).
+    Callers fitting rain siblings should pass mean_bounds=(0.0, float("inf"))
+    to reject this. Not a claim that a Normal is a great fit for right-
+    skewed non-negative monthly precip in general -- it's the same
+    approximation this signal already uses for temperature, just with an
+    explicit floor so an impossible value doesn't get logged as if it were
+    a good fit.
 
     Returns {"implied_mean": float, "implied_sigma": float,
     "fit_residual": float}, or None if fewer than 3 liquid, volume-weighted,
-    temperature-typed siblings exist (thin-book gate — see backlog.txt's own
+    same-scope siblings exist (thin-book gate — see backlog.txt's own
     "is_liquid gives the gate" framing) or the fit doesn't converge to a
-    sane sigma.
+    sigma within sigma_bounds.
 
     Log-only. NEVER wired into blended_prob/sigma/kelly anywhere in this
     file -- see the backlog entry's ENABLEMENT TRIGGER for the settled-data
@@ -5382,7 +5444,12 @@ def fit_market_implied_distribution(siblings: list[dict]) -> dict | None:
         if not is_liquid(m):
             continue
         cond = _parse_market_condition(m)
-        if cond is None or cond["type"] not in ("above", "below", "between"):
+        if cond is None or cond["type"] not in (
+            "above",
+            "below",
+            "between",
+            "precip_month_total",
+        ):
             continue
         prices = parse_market_price(m)
         if not prices["has_quote"]:
@@ -5401,11 +5468,11 @@ def fit_market_implied_distribution(siblings: list[dict]) -> dict | None:
         weight = float(m.get("volume_fp") or m.get("volume", 0) or 0)
         if weight <= 0:
             continue
-        # (lo, hi) boundary in raw temperature units -- +-inf for the open
-        # side of above/below, mirroring _forecast_probability's formula:
-        # above -> 1 - CDF(prob_threshold); below -> CDF(prob_threshold);
-        # between -> CDF(upper) - CDF(lower).
-        if cond["type"] == "above":
+        # (lo, hi) boundary in raw threshold units -- +-inf for the open
+        # side of above/below/precip, mirroring _forecast_probability's
+        # formula: above/precip -> 1 - CDF(prob_threshold); below ->
+        # CDF(prob_threshold); between -> CDF(upper) - CDF(lower).
+        if cond["type"] in ("above", "precip_month_total"):
             lo, hi = _prob_threshold(cond), float("inf")
         elif cond["type"] == "below":
             lo, hi = float("-inf"), _prob_threshold(cond)
@@ -5446,8 +5513,10 @@ def fit_market_implied_distribution(siblings: list[dict]) -> dict | None:
 
     if not (_np.isfinite(fitted_mean) and _np.isfinite(fitted_sigma)):
         return None
-    if not (0.1 <= fitted_sigma <= 50.0):
+    if not (sigma_bounds[0] <= fitted_sigma <= sigma_bounds[1]):
         return None  # degenerate fit -- don't log garbage
+    if not (mean_bounds[0] <= fitted_mean <= mean_bounds[1]):
+        return None  # e.g. a rain fit extrapolated to a negative mean
 
     return {
         "implied_mean": round(float(fitted_mean), 4),
@@ -5456,55 +5525,147 @@ def fit_market_implied_distribution(siblings: list[dict]) -> dict | None:
     }
 
 
+def market_implied_rain_event_key(ticker: str) -> tuple[str, str, int, int] | None:
+    """Shared (city, "RAIN", year, month) event key for a KXRAIN*M ticker --
+    single source of truth for compute_market_implied_distributions()'s rain
+    grouping AND its call sites' (cron.py, main.py) lookups, so the key shape
+    can't drift between producer and consumers (backlog.txt "RAIN MARKETS --
+    LADDER/SIBLING GROUPING FOR MARKET-IMPLIED DISTRIBUTION IS A BLANKET
+    EXCLUSION"). Returns None if `ticker` isn't a recognized KXRAIN*M ticker
+    or its accrual month can't be parsed. The "RAIN" tag keeps this a
+    4-tuple, structurally distinct from temperature's (city, date_iso)
+    2-tuple event key, so the two shapes can never collide in
+    compute_market_implied_distributions()'s single returned mapping.
+    """
+    ticker_up = ticker.upper()
+    city = next(
+        (
+            c
+            for prefix, c in _KXRAIN_MONTHLY_CITY.items()
+            if ticker_up.startswith(prefix)
+        ),
+        None,
+    )
+    if city is None:
+        return None
+    parsed = _parse_monthly_ticker_month(ticker)
+    if parsed is None:
+        return None
+    year, month = parsed
+    return (city, "RAIN", year, month)
+
+
 def compute_market_implied_distributions(
     markets: list[dict],
-) -> dict[tuple[str, str], dict | None]:
+) -> dict[tuple[str, str] | tuple[str, str, int, int], dict | None]:
     """
     Group `markets` (a full flat scan result, already fetched — no new
-    network calls) by (city, target_date) and fit a market-implied Normal
-    distribution per event via fit_market_implied_distribution.
+    network calls) into events and fit a market-implied Normal distribution
+    per event via fit_market_implied_distribution. Temperature events are
+    keyed by (city, date_iso); KXRAIN*M monthly-rain events are keyed by
+    (city, "RAIN", year, month) via market_implied_rain_event_key() (see
+    that function for why the key shapes are kept structurally distinct).
 
     Computed once per scan; callers attach the per-event result onto each
     market's own analysis dict during the per-market analysis loop rather
-    than recomputing per-market. Returns {(city, date_iso): result_or_None}.
+    than recomputing per-market. Returns {event_key: result_or_None}.
 
-    Excludes KXTEMPxxxH hourly-directional brackets: this groups purely by
-    (city, target_date), so an hourly bracket for the same city/day as a
-    daily HIGH/LOW market would otherwise be silently pooled into that
-    market's event group and corrupt its distribution fit with a different
-    question's strike ladder entirely (backlog.txt "HOURLY-DIRECTIONAL
-    TEMPERATURE MARKETS" Step 1 -- no probability model exists yet for these,
-    same reasoning as analyze_trade()'s own hourly guard).
+    Excludes KXTEMPxxxH hourly-directional brackets: temperature groups
+    purely by (city, target_date), so an hourly bracket for the same
+    city/day as a daily HIGH/LOW market would otherwise be silently pooled
+    into that market's event group and corrupt its distribution fit with a
+    different question's strike ladder entirely (backlog.txt "HOURLY-
+    DIRECTIONAL TEMPERATURE MARKETS" Step 1 -- no probability model exists
+    yet for these, same reasoning as analyze_trade()'s own hourly guard).
 
-    Also excludes KXRAIN*M monthly rain-total ladders and KXDENSNOWM monthly
-    snow-total ladders (backlog.txt "RAIN / SNOW / HURRICANE MARKETS" Step
-    1). Currently redundant with the (city, target_date) grouping itself --
+    Still excludes KXDENSNOWM monthly snow-total ladders (backlog.txt "RAIN
+    / SNOW / HURRICANE MARKETS" Step 1) -- the rain grouping fix below is
+    scoped to rain only; snow's own market-implied-distribution grouping is
+    a separate, not-yet-picked-up piece of that same backlog family.
+    Redundant with the (city, target_date) grouping itself for snow --
     these tickers have no day component, so parse_city_date() already
     returns target_date=None for them and the loop below skips them
     regardless -- but kept explicit for the same single-source-of-truth/
     forward-guard reasons as the hourly exclusion (protects against Kalshi
     ever changing the ticker format to include a day, and against
-    _KXRAIN_MONTHLY_CITY/_KXSNOW_MONTHLY_CITY diverging from what
-    parse_city_date() actually parses).
+    _KXSNOW_MONTHLY_CITY diverging from what parse_city_date() actually
+    parses).
     """
-    by_event: dict[tuple[str, str], list[dict]] = {}
+    temp_by_event: dict[tuple[str, str], list[dict]] = {}
+    rain_by_event: dict[tuple[str, str, int, int], list[dict]] = {}
     for m in markets:
-        _m_tkr_up = m.get("ticker", "").upper()
+        ticker = m.get("ticker", "")
+        _m_tkr_up = ticker.upper()
         if _m_tkr_up.startswith(tuple(_KXTEMP_HOURLY_CITY)):
             continue
-        if _m_tkr_up.startswith(tuple(_KXRAIN_MONTHLY_CITY)):
-            continue
         if _m_tkr_up.startswith(tuple(_KXSNOW_MONTHLY_CITY)):
+            continue
+        if _m_tkr_up.startswith(tuple(_KXRAIN_MONTHLY_CITY)):
+            rain_key = market_implied_rain_event_key(ticker)
+            if rain_key is None:
+                continue
+            rain_by_event.setdefault(rain_key, []).append(m)
             continue
         city, target_date = parse_city_date(m)
         if city is None or target_date is None:
             continue
-        by_event.setdefault((city, target_date.isoformat()), []).append(m)
+        temp_by_event.setdefault((city, target_date.isoformat()), []).append(m)
 
-    return {
+    results: dict[tuple[str, str] | tuple[str, str, int, int], dict | None] = {
         key: fit_market_implied_distribution(siblings)
-        for key, siblings in by_event.items()
+        for key, siblings in temp_by_event.items()
     }
+    results.update(
+        {
+            key: fit_market_implied_distribution(
+                siblings,
+                sigma_bounds=_RAIN_IMPLIED_SIGMA_BOUNDS,
+                mean_bounds=_RAIN_IMPLIED_MEAN_BOUNDS,
+            )
+            for key, siblings in rain_by_event.items()
+        }
+    )
+    return results
+
+
+def resolve_market_implied_for_analysis(
+    market_implied_by_event: dict,
+    ev_city: str | None,
+    ev_date: object,
+    ticker: str,
+) -> dict | None:
+    """Single shared lookup for one market's market-implied-distribution
+    result out of compute_market_implied_distributions()'s per-scan dict --
+    used by both cron.py's cmd_cron and main.py's cmd_analyze scan loops
+    (backlog.txt "RAIN MARKETS -- LADDER/SIBLING GROUPING FOR MARKET-IMPLIED
+    DISTRIBUTION IS A BLANKET EXCLUSION"), replacing what used to be two
+    independently hand-copied lookup blocks -- a real (opus-review-flagged)
+    risk: this glue was previously untestable in isolation, so a divergence
+    between the two copies (or a `market_implied_rain_event_key()` call
+    that silently returned None) would have shipped invisibly, the same
+    "field-name audit, not the test suite, caught it" failure mode this
+    signal's own fit function has already hit once before.
+
+    ev_city/ev_date: the market's own enriched `_city`/`_date` (a real date
+    object, an ISO string, or None -- both shapes are accepted, mirroring
+    enrich_with_forecast()'s own guarantee plus a test-fixture tolerance).
+    ticker: the market's own ticker, used only for the rain-key fallback
+    when ev_date is None (always true for KXRAIN*M tickers by design --
+    parse_city_date() never resolves a date for them).
+
+    Returns None (not a KeyError or exception) whenever no event key
+    applies or the event key has no computed result -- exactly matching
+    dict.get()'s existing behavior, so callers can keep assigning the
+    return value straight onto `analysis["market_implied"]` unconditionally.
+    """
+    if ev_city and ev_date:
+        ev_date_iso = ev_date.isoformat() if hasattr(ev_date, "isoformat") else ev_date
+        return market_implied_by_event.get((ev_city, ev_date_iso))
+    if ticker.upper().startswith(tuple(_KXRAIN_MONTHLY_CITY)):
+        rain_key = market_implied_rain_event_key(ticker)
+        if rain_key is not None:
+            return market_implied_by_event.get(rain_key)
+    return None
 
 
 def compute_hourly_temperature_proxy(

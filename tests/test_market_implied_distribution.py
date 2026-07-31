@@ -202,6 +202,84 @@ class TestFitMarketImpliedDistribution:
             assert 0.1 <= result["implied_sigma"] <= 50.0
 
 
+def _rain_market(ticker, mass, threshold, volume=1000):
+    """A single KXRAIN*M monthly-rain bracket -- strike_type="greater"
+    matches every real bracket (_parse_market_condition refuses to guess any
+    other direction), floor_strike carries the real threshold field Kalshi's
+    own API uses (not ticker/title text)."""
+    return {
+        "ticker": ticker,
+        "title": "Rain in Denver in Jul 2026?",
+        "floor_strike": threshold,
+        "strike_type": "greater",
+        "yes_bid": round(max(0.0, mass - 0.01), 4),
+        "yes_ask": round(min(1.0, mass + 0.01), 4),
+        "volume_fp": volume,
+    }
+
+
+def _rain_ladder(true_mean, true_sigma, thresholds, ticker_prefix="KXRAINDENM-26JUL"):
+    """Build a rain sibling ladder whose mid-prices are the *exact* implied
+    probability masses of a known Normal(true_mean, true_sigma) -- precip_
+    month_total is always single-sided ("total > threshold"), the same mass
+    formula as an "above" bracket, with NO +-0.5 continuous-boundary offset
+    (that offset is a temperature-only settlement-rule artifact -- see
+    fit_market_implied_distribution's own docstring)."""
+    return [
+        _rain_market(f"{ticker_prefix}-{i}", 1 - norm.cdf(t, true_mean, true_sigma), t)
+        for i, t in enumerate(thresholds)
+    ]
+
+
+class TestFitMarketImpliedDistributionPrecipMonthTotal:
+    """backlog.txt "RAIN MARKETS -- LADDER/SIBLING GROUPING FOR MARKET-
+    IMPLIED DISTRIBUTION IS A BLANKET EXCLUSION, NOT REAL (city, month)
+    GROUPING" (resolved 2026-07-31): fit_market_implied_distribution() now
+    accepts precip_month_total siblings (always single-sided "greater"
+    brackets, mapped the same way as "above"), with a caller-supplied
+    sigma_bounds for rain's inches scale instead of the °F-tuned default."""
+
+    def test_recovers_known_normal_distribution_rain_ladder(self):
+        siblings = _rain_ladder(4.0, 1.5, [1, 2, 3, 4, 5, 6, 7])
+        result = wm.fit_market_implied_distribution(
+            siblings, sigma_bounds=wm._RAIN_IMPLIED_SIGMA_BOUNDS
+        )
+        assert result is not None
+        assert result["implied_mean"] == pytest.approx(4.0, abs=0.1)
+        assert result["implied_sigma"] == pytest.approx(1.5, abs=0.1)
+
+    def test_default_sigma_bounds_used_when_not_passed(self):
+        """Backward compatibility: existing temperature callers that don't
+        pass sigma_bounds must keep getting the (0.1, 50.0) default."""
+        siblings = _normal_ladder(70.0, 5.0, _MIXED_LADDER)
+        result = wm.fit_market_implied_distribution(siblings)
+        assert result is not None
+        assert result["implied_sigma"] == pytest.approx(5.0, abs=0.05)
+
+    def test_sigma_bounds_parameter_actually_threaded_through(self):
+        """A fit whose sigma (~1.5) comfortably clears the default (0.1,
+        50.0) bounds must be REJECTED once a narrower explicit sigma_bounds
+        excludes it -- proves the parameter is read, not silently ignored
+        (mutation check: if fit_market_implied_distribution() hardcoded
+        (0.1, 50.0) instead of using sigma_bounds, this would fail)."""
+        siblings = _rain_ladder(4.0, 1.5, [1, 2, 3, 4, 5, 6, 7])
+        result_default = wm.fit_market_implied_distribution(siblings)
+        result_narrow = wm.fit_market_implied_distribution(
+            siblings, sigma_bounds=(0.1, 1.0)
+        )
+        assert result_default is not None
+        assert result_narrow is None
+
+    def test_below_three_liquid_precip_brackets_returns_none(self):
+        siblings = _rain_ladder(4.0, 1.5, [1, 2])
+        assert (
+            wm.fit_market_implied_distribution(
+                siblings, sigma_bounds=wm._RAIN_IMPLIED_SIGMA_BOUNDS
+            )
+            is None
+        )
+
+
 class TestComputeMarketImpliedDistributions:
     def test_groups_by_city_and_date_independently(self):
         nyc = _normal_ladder(70.0, 5.0, _MIXED_LADDER, series="KXHIGHNY")

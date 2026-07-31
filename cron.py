@@ -1460,6 +1460,7 @@ def _cmd_cron_body(
         from weather_markets import (
             compute_market_implied_distributions as _compute_market_implied,
         )
+        from weather_markets import resolve_market_implied_for_analysis
 
         _market_implied_by_event = _compute_market_implied(_deduped_markets)
 
@@ -1510,21 +1511,12 @@ def _cmd_cron_body(
                     if not analysis:
                         _dbg["no_analysis"] += 1
                         continue
-                    _ev_city = enriched.get("_city")
-                    _ev_date = enriched.get("_date")
-                    if _ev_city and _ev_date:
-                        # enrich_with_forecast() always sets a real date
-                        # object here, but a few tests hand-build an
-                        # "enriched"-shaped dict with a plain ISO string
-                        # instead -- tolerate both rather than assuming.
-                        _ev_date_iso = (
-                            _ev_date.isoformat()
-                            if hasattr(_ev_date, "isoformat")
-                            else _ev_date
-                        )
-                        analysis["market_implied"] = _market_implied_by_event.get(
-                            (_ev_city, _ev_date_iso)
-                        )
+                    analysis["market_implied"] = resolve_market_implied_for_analysis(
+                        _market_implied_by_event,
+                        enriched.get("_city"),
+                        enriched.get("_date"),
+                        m.get("ticker", ""),
+                    )
                     net_edge = analysis.get(
                         "net_edge", analysis.get("edge", 0.0)
                     )  # H-2: avoid KeyError
