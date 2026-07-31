@@ -1,11 +1,11 @@
 BACKLOG — future improvements to implement when ready
 ======================================================
 
-[OPEN -- found via adjacency 2026-07-30 during the COUNT_SETTLED_
-  PREDICTIONS() condition_type-filter fix, deliberately not fixed in that
-  pass] COUNT_SETTLED_PREDICTIONS() COUNTS RAW ROWS, NOT DISTINCT
+[RESOLVED 2026-07-31 -- re-examined via the standing 17-step workflow;
+  decided against changing counting semantics]
+  COUNT_SETTLED_PREDICTIONS() COUNTS RAW ROWS, NOT DISTINCT
   TEMPERATURE-OBSERVATION EVENTS
-Priority: Low -- a real design question, not a live-money-critical gap
+Priority: was Low -- a real design question, not a live-money-critical gap
   (doesn't change today's live gate outcomes; ENABLE_MICRO_LIVE/F3 clear
   either way at current counts), but the codebase already has an explicit,
   opus-reviewed precedent for the opposite choice on a sibling function.
@@ -58,12 +58,52 @@ Why not now:
   and its own dedicated verification pass, not a drive-by bundled into
   the condition_type fix.
 
+What was decided:
+  Re-verified live data (2026-07-31, data/predictions.db): 61 raw rows vs.
+  60 distinct (city, market_date) pairs -- only ONE apparent duplicate
+  (Dallas, 2026-05-19). Investigating that single case changed the
+  conclusion entirely: it is NOT a duplicate ladder bracket at all -- it's
+  `KXHIGHTDAL-26MAY19-T83` and `KXLOWTDAL-26MAY19-T69`, the day's HIGH and
+  LOW temperature markets, which are two genuinely independent real
+  observations that happen to share a city+date. A naive `(city,
+  market_date)` distinct-event key -- the direct analog of what count_
+  settled_snow_predictions() does with (ticker prefix, year, month) --
+  would have silently merged those two into one event, which is a new
+  correctness bug, not a fix: the `var` column that should distinguish
+  high/low is mostly NULL on live data (53/61 rows), so the only reliable
+  signal is the KXHIGH/KXLOW ticker prefix, which would need its own parser
+  (mirroring snow's `_parse_monthly_ticker_month`) to do this safely.
+  Correctly grouping by (city, market_date, high-or-low-from-ticker-prefix)
+  gives 61 distinct events against 61 raw rows -- there are ZERO actual
+  duplicate-ladder-bracket rows in live data today. The snow precedent
+  doesn't carry over as cleanly as it first looked: snow's 7 KXDENSNOWM
+  sibling brackets are near-redundant restatements of one monthly accrual
+  number, while temperature's above/below brackets on a given city+date+
+  high-or-low are today, in practice, one row each -- no observed
+  duplication to fix.
+  Also surfaced during review: count_settled_predictions()'s own docstring
+  already commits it to counting "the same population F3's own calibration
+  math (calibration.py) ... already train on" -- calibration.py's grid
+  search and get_multiday_calibration_cli both train on raw rows with no
+  dedup. Switching this counter to distinct-event counting would break that
+  stated alignment, trading one mismatch (vs. snow's precedent) for another
+  (vs. this function's own calibration-population contract).
+  Decision (via AskUserQuestion, user confirmed after the KXHIGH/KXLOW
+  finding changed the calculus): leave as raw-row counting. Documented the
+  full reasoning above in count_settled_predictions()'s docstring
+  (tracker.py:1866) so a future reader doesn't mistake the omission for an
+  oversight, matching rain's counter's existing precedent of stating its
+  tradeoff explicitly. Added a regression test (tests/test_tracker.py,
+  `test_count_settled_predictions_counts_raw_rows_not_distinct_events`,
+  mutation-tested against a distinct-event implementation to confirm it
+  actually catches that regression) locking in the decision so a future
+  change can't silently flip this semantics without the test failing.
+
 When to revisit:
-  Whenever the maturity gates (ENABLE_MICRO_LIVE, F3 auto-calibration) are
-  next touched, or if the live-observation count ever needs closer
-  scrutiny (e.g. before actually flipping ENABLE_MICRO_LIVE for real) --
-  worth deciding then whether raw-row counting has been overstating
-  readiness by enough to matter in practice on real data.
+  If live data ever shows the same city+date+high-or-low combination
+  settling more than once (i.e. real ladder-bracket duplication, not a
+  high/low pair) -- that would be the actual trigger condition this entry
+  was watching for, and did not find as of 2026-07-31.
 
 [RESOLVED 2026-07-27 -- found live during a cron output review, root-caused,
   fixed same session]

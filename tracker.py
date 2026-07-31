@@ -1892,6 +1892,36 @@ def count_settled_predictions() -> int:
     it also isn't closed. Zero such rows are settled today; extending the
     exclusion everywhere this pattern appears is a separate, larger change
     than this fix's scope.
+
+    Counts raw ROWS, not distinct temperature-observation events (backlog.txt
+    "COUNT_SETTLED_PREDICTIONS() COUNTS RAW ROWS, NOT DISTINCT TEMPERATURE-
+    OBSERVATION EVENTS", re-examined 2026-07-31 -- deliberate, not an
+    oversight). count_settled_snow_predictions() below counts distinct
+    (ticker prefix, year, month) accrual events instead for the identical-
+    looking reason (its 7 sibling KXDENSNOWM brackets all settle from one
+    real monthly snowfall total), but that precedent does not carry over
+    cleanly here:
+    (1) This function's own population must match calibration.py's grid
+        search / get_multiday_calibration_cli's training population (see
+        above) -- both train on raw rows. Switching this counter to distinct
+        events would decouple the maturity gate from the population it is
+        supposed to gate access to, trading one mismatch for another.
+    (2) A city+date pair here can legitimately hold TWO independent real
+        observations, not one -- KXHIGH* (the day's high) and KXLOW* (the
+        day's low) -- distinguishable only by ticker prefix, since the `var`
+        column that should carry this is mostly NULL on live data. A naive
+        (city, market_date) distinct-event key (the direct analog of snow's
+        approach) would silently merge those two into one event, which is a
+        new correctness bug, not a fix.
+    (3) Checked live data (2026-07-31): grouping correctly by (city,
+        market_date, high-or-low-from-ticker-prefix) yields 61 distinct
+        events against 61 raw rows -- there are zero actual duplicate-
+        ladder-bracket rows today, so hardening this now would change
+        nothing while adding a second ticker-prefix parser to maintain.
+    Revisit if/when live data ever shows the same city+date+high-or-low
+    combination settling more than once (i.e. real ladder-bracket
+    duplication, not a high/low pair) -- that would be the actual trigger
+    condition this entry was watching for, and did not find.
     """
     init_db()
     with _conn() as con:

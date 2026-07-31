@@ -4157,6 +4157,32 @@ class TestLiveTradingGateConditionTypeFilter(unittest.TestCase):
         after = tracker.count_settled_predictions()
         self.assertEqual(before, after, "a snow row must not change the settled count")
 
+    def test_count_settled_predictions_counts_raw_rows_not_distinct_events(self):
+        """backlog.txt "COUNT_SETTLED_PREDICTIONS() COUNTS RAW ROWS, NOT
+        DISTINCT TEMPERATURE-OBSERVATION EVENTS": re-examined 2026-07-31 and
+        deliberately left as raw-row counting (see the function's docstring
+        for why the snow precedent doesn't carry over). Two settled rows on
+        the SAME city+market_date+ticker-prefix (two ladder brackets settling
+        from one real observation, mirroring KXHIGHTDAL's own live shape)
+        must each contribute their own +1 -- if this ever starts asserting
+        +1 instead of +2, the counting semantics were changed without the
+        docstring being updated to match.
+        """
+        self._seed_baseline()
+        before = tracker.count_settled_predictions()
+        self._log_settled(
+            "KXHIGHTDAL-26AUG01-T80", 0.65, 1, self._FUTURE, city="Dallas"
+        )
+        self._log_settled(
+            "KXHIGHTDAL-26AUG01-T85", 0.40, 0, self._FUTURE, city="Dallas"
+        )
+        after = tracker.count_settled_predictions()
+        self.assertEqual(
+            after - before,
+            2,
+            "two ladder-bracket rows on the same city+date must both count",
+        )
+
     # ── count_settled_predictions_rolling ───────────────────────────────────
     # (feeds weather_markets._regime_blend_settled_count -- the regime-blend
     # activation gate; found via adjacency while fixing count_settled_
