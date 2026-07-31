@@ -3250,13 +3250,18 @@ RESOLVED 2026-07-30 (SNOW Step 2 -- the real monthly-accumulation
   the only city that has EVER listed one, expect the 20-distinct-event
   floor to take years, not months, to clear.
 
-[RESOLVED 2026-07-31 -- distribution-fit half shipped via the standing
-  17-step workflow; consistency.py's arbitrage-check half deliberately
-  scoped out, see the new entry below]
+[PARTIALLY RESOLVED 2026-07-31 -- distribution-fit half shipped via the
+  standing 17-step workflow; consistency.py's arbitrage-check half
+  deliberately scoped out, see the new entry below. STILL OPEN: new tests
+  for resolve_market_implied_for_analysis() (see "What was fixed" below,
+  opus review finding 3) have not been written -- do this before treating
+  this entry as fully closed]
   RAIN MARKETS -- LADDER/SIBLING GROUPING FOR MARKET-IMPLIED
   DISTRIBUTION IS A BLANKET EXCLUSION, NOT REAL (city, month) GROUPING
-Priority: was Low (log-only today, never gates a trading decision for any
-  market type -- confirmed at Step 2 ship time, re-confirmed today).
+Priority: Low (log-only today, never gates a trading decision for any
+  market type -- confirmed at Step 2 ship time, re-confirmed today). The
+  remaining test-writing item is small -- this is not a re-opened design
+  question, just an unfinished verification step.
 
 Problem:
   weather_markets.compute_market_implied_distributions() and
