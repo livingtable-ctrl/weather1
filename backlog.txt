@@ -3250,18 +3250,16 @@ RESOLVED 2026-07-30 (SNOW Step 2 -- the real monthly-accumulation
   the only city that has EVER listed one, expect the 20-distinct-event
   floor to take years, not months, to clear.
 
-[PARTIALLY RESOLVED 2026-07-31 -- distribution-fit half shipped via the
-  standing 17-step workflow; consistency.py's arbitrage-check half
-  deliberately scoped out, see the new entry below. STILL OPEN: new tests
-  for resolve_market_implied_for_analysis() (see "What was fixed" below,
-  opus review finding 3) have not been written -- do this before treating
-  this entry as fully closed]
+[RESOLVED 2026-07-31 -- distribution-fit half shipped via the standing
+  17-step workflow; consistency.py's arbitrage-check half deliberately
+  scoped out, see the new entry below. The resolve_market_implied_for_
+  analysis() tests deferred at first ship (opus review finding 3) were
+  written same day, in a follow-up pass -- see the added note at the end
+  of "What was fixed" below]
   RAIN MARKETS -- LADDER/SIBLING GROUPING FOR MARKET-IMPLIED
   DISTRIBUTION IS A BLANKET EXCLUSION, NOT REAL (city, month) GROUPING
-Priority: Low (log-only today, never gates a trading decision for any
-  market type -- confirmed at Step 2 ship time, re-confirmed today). The
-  remaining test-writing item is small -- this is not a re-opened design
-  question, just an unfinished verification step.
+Priority: was Low (log-only today, never gates a trading decision for any
+  market type -- confirmed at Step 2 ship time, re-confirmed today).
 
 Problem:
   weather_markets.compute_market_implied_distributions() and
@@ -3401,10 +3399,22 @@ What was fixed:
   return type annotation restored to the more precise `dict[tuple[str,
   str] | tuple[str, str, int, int], dict | None]` instead of a bare
   `dict[tuple, ...]`.
-  STILL OPEN as of this session's end: new tests for
-  `resolve_market_implied_for_analysis()` (item 3 above) have not been
-  written; re-run ruff/mypy/the scoped regression suite after adding them
-  before treating this entry as fully closed out.
+  Follow-up (same day): added 8 tests for `resolve_market_implied_for_
+  analysis()` in `tests/test_market_implied_distribution.py` (temperature
+  city+date match, plain-ISO-string date tolerance, a matched-but-no-
+  computed-result case, a rain ticker with no date using the rain-key
+  fallback, a rain ticker whose key builder returns None, no city/date/
+  non-rain-ticker, a priority-ordering guard confirming a real (city, date)
+  pair resolves via the temperature key even if the ticker also matches a
+  rain prefix, and an empty-dict case). Both branches mutation-tested
+  (disabled each in turn, confirmed the predicted tests fail, restored).
+  No production code changed in this follow-up -- pure test addition, so
+  no opus review this round (same reasoning as the doc/test-only
+  count_settled_predictions() entry earlier this session). ruff/ruff-
+  format/mypy clean; full regression sweep (test_market_implied_
+  distribution.py, test_rain_markets.py, test_hourly_markets.py,
+  test_snow_markets.py -- 199 tests) passes. This entry is now fully
+  closed.
 
 [OPEN 2026-07-31 -- scoped out of the entry above, deliberately deferred
   as separate, higher-stakes scope]

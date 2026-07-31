@@ -11,6 +11,7 @@ threshold), weighted by volume. Never wired into blended_prob/sigma/kelly.
 """
 
 import sys
+from datetime import date
 from pathlib import Path
 
 import pytest
@@ -334,3 +335,89 @@ class TestComputeMarketImpliedDistributions:
         siblings = _normal_ladder(70.0, 5.0, _MIXED_LADDER)
         result = wm.compute_market_implied_distributions(siblings)
         assert result[("NYC", "2026-07-20")] is not None
+
+
+class TestResolveMarketImpliedForAnalysis:
+    """backlog.txt "RAIN MARKETS -- LADDER/SIBLING GROUPING FOR MARKET-
+    IMPLIED DISTRIBUTION IS A BLANKET EXCLUSION" (opus review finding 3):
+    resolve_market_implied_for_analysis() replaces two independently
+    hand-copied lookup blocks in cron.py/main.py -- previously untestable
+    in isolation, meaning a divergence between the two copies (or a
+    market_implied_rain_event_key() call silently returning None) could
+    have shipped invisibly. These tests exercise the shared function
+    directly, without either scan loop's heavy machinery."""
+
+    def test_temperature_city_and_date_match(self):
+        by_event = {("NYC", "2026-07-20"): {"implied_mean": 70.0}}
+        result = wm.resolve_market_implied_for_analysis(
+            by_event, "NYC", date(2026, 7, 20), "KXHIGHNY-26JUL20-T70"
+        )
+        assert result == {"implied_mean": 70.0}
+
+    def test_temperature_date_accepts_plain_iso_string(self):
+        # enrich_with_forecast() always sets a real date object, but a few
+        # callers/tests hand-build an "enriched"-shaped dict with a plain
+        # ISO string instead -- both must resolve to the same lookup key.
+        by_event = {("NYC", "2026-07-20"): {"implied_mean": 70.0}}
+        result = wm.resolve_market_implied_for_analysis(
+            by_event, "NYC", "2026-07-20", "KXHIGHNY-26JUL20-T70"
+        )
+        assert result == {"implied_mean": 70.0}
+
+    def test_temperature_match_with_no_computed_result_returns_none(self):
+        # The event was grouped but fit_market_implied_distribution()
+        # returned None for it (thin book, degenerate fit, etc.) -- must
+        # return None cleanly, not KeyError.
+        by_event = {("NYC", "2026-07-20"): None}
+        result = wm.resolve_market_implied_for_analysis(
+            by_event, "NYC", date(2026, 7, 20), "KXHIGHNY-26JUL20-T70"
+        )
+        assert result is None
+
+    def test_rain_ticker_with_no_date_uses_rain_key(self):
+        # KXRAIN*M tickers always have ev_date=None by design
+        # (parse_city_date() never resolves one) -- must fall through to
+        # market_implied_rain_event_key() instead of returning None outright.
+        by_event = {("Seattle", "RAIN", 2026, 7): {"implied_mean": 4.0}}
+        result = wm.resolve_market_implied_for_analysis(
+            by_event, "Seattle", None, "KXRAINSEAM-26JUL-7"
+        )
+        assert result == {"implied_mean": 4.0}
+
+    def test_rain_ticker_whose_key_builder_returns_none(self):
+        # market_implied_rain_event_key() returns None when the accrual
+        # month can't be parsed from the ticker -- must not crash or raise,
+        # just return None like any other non-match.
+        by_event = {("Seattle", "RAIN", 2026, 7): {"implied_mean": 4.0}}
+        result = wm.resolve_market_implied_for_analysis(
+            by_event, "Seattle", None, "KXRAINSEAM-NOTAMONTH"
+        )
+        assert result is None
+
+    def test_no_city_no_date_non_rain_ticker_returns_none(self):
+        by_event = {("NYC", "2026-07-20"): {"implied_mean": 70.0}}
+        result = wm.resolve_market_implied_for_analysis(
+            by_event, None, None, "KXHIGHNY-26JUL20-T70"
+        )
+        assert result is None
+
+    def test_city_and_date_both_present_takes_priority_over_rain_fallback(self):
+        # Regression guard for branch ORDER: even if a ticker happened to
+        # also match a rain prefix, a real (ev_city, ev_date) pair must
+        # resolve via the temperature key first -- the rain branch is only
+        # ever reached when ev_date is falsy, never as a second, competing
+        # lookup for a market that already resolved a real date.
+        by_event = {
+            ("Seattle", "2026-07-20"): {"implied_mean": 70.0},
+            ("Seattle", "RAIN", 2026, 7): {"implied_mean": 4.0},
+        }
+        result = wm.resolve_market_implied_for_analysis(
+            by_event, "Seattle", date(2026, 7, 20), "KXRAINSEAM-26JUL-7"
+        )
+        assert result == {"implied_mean": 70.0}
+
+    def test_empty_market_implied_by_event_returns_none(self):
+        result = wm.resolve_market_implied_for_analysis(
+            {}, "NYC", date(2026, 7, 20), "KXHIGHNY-26JUL20-T70"
+        )
+        assert result is None
