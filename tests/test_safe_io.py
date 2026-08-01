@@ -623,14 +623,55 @@ def test_check_emergency_copies_explicit_base_dir_skips_temp_scan(
     assert [r["filename"] for r in results] == ["real.json"]
 
 
-def test_check_emergency_copies_skips_file_with_unparseable_mtime(tmp_path):
-    """Opus-review-caught: datetime.fromtimestamp() can raise OSError on a
-    corrupt or out-of-range mtime (verified live: a large-negative mtime
-    raises OSError on this platform -- reproduced here with a real file via
-    os.utime, not a mock). That must not crash the whole scan or silently
+def test_check_emergency_copies_skips_file_with_unparseable_mtime(
+    tmp_path, monkeypatch
+):
+    """Opus-review-caught: datetime.fromtimestamp() can raise on a corrupt or
+    out-of-range mtime. That must not crash the whole scan or silently
     propagate out of the function -- a corrupt entry is skipped, but every
-    OTHER real file must still be reported, not lost alongside it."""
-    import os
+    OTHER real file must still be reported, not lost alongside it.
+
+    2026-08-01 CI fix (2 rounds): this used to reproduce the failure via a
+    real out-of-range mtime set with os.utime() -- reliable on Windows
+    (-34560000 raises there, since the CRT rejects any negative
+    timestamp), but not on Linux (glibc tolerates that value fine), so
+    Linux CI saw "bad.json" parse successfully and fail this assertion. No
+    single real mtime value was found that's both settable via os.utime()
+    AND unparseable via datetime.fromtimestamp() on every platform: a
+    pre-year-1-CE value (which WOULD fail everywhere, via datetime's own
+    MINYEAR=1 bound rather than an OS-specific negative-timestamp quirk)
+    can't even be SET on Windows (`OSError: [WinError 87]` -- Windows'
+    FILETIME epoch floor of 1601-01-01 sits after year 1 CE), and no Linux
+    environment was available here to verify a far-future alternative for
+    real rather than by inference.
+
+    Round 1 mocked Path.stat() to raise OSError directly for "bad.json" --
+    deterministic, but an opus review caught (mutation-proven: moving
+    fromtimestamp() outside the try block, the actual historical
+    regression this test exists to catch, still passed) that this no
+    longer exercised datetime.fromtimestamp() at all, the real failure
+    point named in this docstring. Fixed by having Path.stat() return a
+    real stat_result-shaped object with a poisoned st_mtime (NaN) instead
+    of raising -- entry.stat() now succeeds normally, and the REAL
+    datetime.fromtimestamp(nan, tz=UTC) call inside check_emergency_copies
+    is what raises (ValueError: "Invalid value NaN (not a number)"),
+    proven platform-independent since it's CPython's own datetime
+    conversion rejecting NaN before any libc call, not an OS-specific
+    timestamp-range quirk.
+
+    Path.is_file() is separately forced to always return True. The same
+    review also caught that this docstring originally justified that
+    patch as merely precautionary ("verified live that it does NOT route
+    through Path.stat()") based on the local dev interpreter (Python
+    3.14) -- but CI runs Python 3.12 (.github/workflows/ci.yml), where
+    pathlib's is_file() DOES call self.stat() internally and treats a
+    bare OSError (errno=None) as un-ignorable, i.e. it would RE-RAISE
+    out of is_file() itself on 3.12 without this patch, error rather than
+    fail the assertion, for the exact same reason this whole fix exists:
+    a "verified live" claim scoped to one interpreter/platform doesn't
+    hold on the one CI actually runs. So this patch is load-bearing on
+    CI, not belt-and-braces -- keep it."""
+    from types import SimpleNamespace
 
     import safe_io
 
@@ -640,7 +681,19 @@ def test_check_emergency_copies_skips_file_with_unparseable_mtime(tmp_path):
     good.write_text("{}", encoding="utf-8")
     bad = emergency_dir / "bad.json"
     bad.write_text("{}", encoding="utf-8")
-    os.utime(bad, (-34560000, -34560000))
+
+    monkeypatch.setattr(Path, "is_file", lambda self, *a, **kw: True)
+    original_stat = Path.stat
+
+    def fake_stat_for_bad_file(self, *args, **kwargs):
+        if self.name == "bad.json":
+            # _dicts_for only ever reads .st_mtime and .st_size off the
+            # returned object -- a real os.stat_result isn't needed, just
+            # something duck-typed the same way, with a poisoned mtime.
+            return SimpleNamespace(st_mtime=float("nan"), st_size=2)
+        return original_stat(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "stat", fake_stat_for_bad_file)
 
     results = safe_io.check_emergency_copies(base_dir=emergency_dir)
 
