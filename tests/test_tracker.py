@@ -5870,6 +5870,73 @@ class TestSignalGraduationCounters(unittest.TestCase):
             tracker.count_settled_signal_rows("run_trend_delta", multiday=False), 1
         )
 
+    # ── count_settled_market_implied_rain_events ──────────────────────────────
+
+    def test_count_settled_market_implied_rain_events_counts_only_rain_tickers(self):
+        """backlog.txt "RAIN'S MARKET-IMPLIED DISTRIBUTION ... HAS NO
+        GRADUATION/SAMPLE-FLOOR TRACKING OF ITS OWN": must count only
+        KXRAIN*M rows with implied_mean populated, not a temperature ticker
+        that also happens to populate the same shared column."""
+        self._log_settled("KXRAINDENM-26JUL-9", implied_mean=1.2, settled_temp_f=None)
+        self._log_settled(
+            "KXHIGHNY-26JUL20-T75", implied_mean=75.0
+        )  # temperature ticker, same column populated
+        self.assertEqual(tracker.count_settled_market_implied_rain_events(), 1)
+
+    def test_count_settled_market_implied_rain_events_requires_implied_mean(self):
+        # A settled rain ticker with no market-implied distribution fitted
+        # (implied_mean NULL -- e.g. too few live siblings to fit) must not
+        # count.
+        self._log_settled("KXRAINDENM-26JUL-10", implied_mean=None, settled_temp_f=None)
+        self.assertEqual(tracker.count_settled_market_implied_rain_events(), 0)
+
+    def test_count_settled_market_implied_rain_events_excludes_disputed(self):
+        self._log_settled("KXRAINDENM-26JUL-11", implied_mean=1.5, settled_temp_f=None)
+        tracker.mark_outcome_disputed("KXRAINDENM-26JUL-11")
+        self.assertEqual(tracker.count_settled_market_implied_rain_events(), 0)
+
+    def test_count_settled_market_implied_rain_events_zero_when_nothing_logged(self):
+        self.assertEqual(tracker.count_settled_market_implied_rain_events(), 0)
+
+    def test_count_settled_market_implied_rain_events_counts_events_not_ladder_rows(
+        self,
+    ):
+        """Opus-review-caught (2026-08-01): resolve_market_implied_for_analysis()
+        hands the SAME fitted implied_mean to every sibling bracket in one
+        city-month's ladder, and each bracket re-logs across the whole
+        accrual month -- counting raw rows would let ONE real month clear
+        several of the 20-sample floor. Settling 5 sibling brackets for the
+        same (city, month) event must increment the count by exactly 1, not
+        5 -- same shape as count_settled_snow_predictions()'s own ladder
+        test."""
+        before = tracker.count_settled_market_implied_rain_events()
+        for bracket in ("1", "2", "3", "4", "5"):
+            self._log_settled(
+                f"KXRAINDENM-26JUL-{bracket}",
+                implied_mean=2.5,
+                settled_temp_f=None,
+            )
+        after = tracker.count_settled_market_implied_rain_events()
+        self.assertEqual(
+            after,
+            before + 1,
+            "5 sibling brackets for the same (city, month) event must "
+            "count as 1 real observation, not 5",
+        )
+
+    def test_count_settled_market_implied_rain_events_warns_on_unparseable_ticker(
+        self,
+    ):
+        """Opus-review-caught gap (matches count_settled_snow_predictions()'s
+        own precedent): an unparseable settled rain ticker is silently
+        dropped from the event count -- must at least log a warning, so a
+        real Kalshi ticker-format change doesn't freeze the gate at 0
+        forever with zero signal."""
+        self._log_settled("KXRAINDENM-badformat", implied_mean=2.0, settled_temp_f=None)
+        with self.assertLogs("tracker", level="WARNING") as cm:
+            tracker.count_settled_market_implied_rain_events()
+        assert any("could not parse accrual month" in msg for msg in cm.output)
+
     # ── count_model_observations ────────────────────────────────────────────
 
     def test_count_model_observations_counts_settled_rows_for_model_only(self):

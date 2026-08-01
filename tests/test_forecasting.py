@@ -1114,8 +1114,8 @@ class TestEnrichWithForecastCacheTimestamp:
         }
 
         mock_cache = MagicMock()
-        mock_cache.get_with_ts.side_effect = (
-            lambda key: (fake_forecast, True, store_wall)
+        mock_cache.get_with_ts.side_effect = lambda key: (
+            (fake_forecast, True, store_wall)
             if key == cache_key
             else (None, False, 0.0)
         )
@@ -1656,7 +1656,7 @@ class TestSignalGraduationRegistry:
         with pytest.raises(ValueError, match="KNOWN_FORECAST_MODEL_NAMES"):
             wm._count_model_obs("gem_glbal")  # typo, not gem_global
 
-    def test_registry_has_10_entries_matching_the_9_shipped_signal_topics(self):
+    def test_registry_has_11_entries_matching_the_10_shipped_signal_topics(self):
         import weather_markets as wm
 
         # Locks in the retrofit scope agreed on when this was built: all
@@ -1666,12 +1666,17 @@ class TestSignalGraduationRegistry:
         # even though both come from the single "GRADUATE GEM/UKMO" backlog
         # entry); a 10th row / 9th topic ("rain_forecast_blend") was added
         # 2026-07-28 for backlog.txt "RAIN MARKETS -- MONTHLY MODEL HAS NO
-        # DAY-SPECIFIC FORECAST SIGNAL". Renamed (not just bumped) per this
+        # DAY-SPECIFIC FORECAST SIGNAL"; an 11th row / 10th topic
+        # ("market_implied_rain") was added 2026-08-01 for backlog.txt
+        # "RAIN'S MARKET-IMPLIED DISTRIBUTION ... HAS NO GRADUATION/SAMPLE-
+        # FLOOR TRACKING OF ITS OWN" -- its own distinct backlog_ref, unlike
+        # GEM/UKMO's shared one, since it's a standalone entry not a second
+        # row off an existing one. Renamed (not just bumped) per this
         # project's own established convention of keeping a count-encoding
         # test name truthful when the count changes.
-        assert len(wm.SIGNAL_REGISTRY) == 10
+        assert len(wm.SIGNAL_REGISTRY) == 11
         backlog_refs = {e.backlog_ref for e in wm.SIGNAL_REGISTRY}
-        assert len(backlog_refs) == 9
+        assert len(backlog_refs) == 10
 
     def test_report_includes_every_registered_signal(self, monkeypatch, tmp_path):
         import weather_markets as wm
@@ -1809,7 +1814,7 @@ class TestSignalGraduationRegistry:
     def test_real_registry_entries_all_resolve_against_a_real_empty_db(
         self, monkeypatch, tmp_path
     ):
-        """End-to-end smoke test of the actual 10-entry registry (not a
+        """End-to-end smoke test of the actual 11-entry registry (not a
         mocked stand-in) against a real, empty, isolated DB -- proves every
         real count_fn closure calls a real tracker function with valid
         arguments and doesn't crash, and that an empty DB reads as
@@ -1824,7 +1829,7 @@ class TestSignalGraduationRegistry:
         )
 
         report = wm.get_signal_graduation_report()
-        assert len(report) == 10
+        assert len(report) == 11
         for row in report:
             if row["sample_floor"] is not None:
                 assert row["count"] == 0, row["key"]

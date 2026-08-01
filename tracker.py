@@ -2023,6 +2023,79 @@ def count_settled_rain_predictions() -> int:
     return row[0] if row else 0
 
 
+def count_settled_market_implied_rain_events() -> int:
+    """Count DISTINCT settled monthly-rain accrual events (ticker prefix,
+    year, month) with a market-implied distribution fitted (implied_mean
+    populated), NOT raw prediction rows -- sample-floor counter for
+    backlog.txt "RAIN'S MARKET-IMPLIED DISTRIBUTION ... HAS NO GRADUATION/
+    SAMPLE-FLOOR TRACKING OF ITS OWN", feeding
+    weather_markets.SIGNAL_REGISTRY's "market_implied_rain" entry.
+
+    implied_mean/implied_sigma are a single shared column pair populated for
+    BOTH the existing "market_implied" (temperature) registry entry and rain
+    events (via compute_market_implied_distributions()'s
+    market_implied_rain_event_key() branch) -- the temperature entry's own
+    count_settled_signal_rows("implied_mean") already excludes rain rows
+    correctly (its require_settled_temp=True default; rain outcomes never
+    populate settled_temp_f), but nothing counted the rain-only subset.
+
+    Opus-review-caught (2026-08-01, before this ever shipped live): a raw-row
+    count would inflate the floor the same way count_settled_snow_predictions()
+    was rewritten to fix on 2026-07-30 -- resolve_market_implied_for_analysis()
+    hands the SAME fitted result to every sibling bracket in one city-month's
+    ladder, and each bracket re-logs on every scan-day for the whole accrual
+    month (predictions' unique index is (ticker, predicted_date), not one row
+    per event), so sample_floor=20 raw rows could clear on as few as ~7 real
+    independent city-months rather than 20. Verified zero live implied_mean
+    rain rows exist yet (new code, no shipped gate to avoid disrupting --
+    matches count_settled_snow_predictions()'s own "safe to design the floor
+    correctly from the start" reasoning, not count_settled_rain_predictions()'s
+    "already live, don't shift it" one). Ticker-prefix filtering (mirrors
+    count_settled_rain_predictions()'s/count_settled_snow_predictions()'s
+    exact shape, same _KXRAIN_MONTHLY_CITY single-source-of-truth dict)
+    rather than a settled_value/settled_temp_f column check -- avoids relying
+    on those two columns staying mutually exclusive forever, and matches
+    every other rain-specific counter's existing precedent."""
+    init_db()
+    try:
+        from weather_markets import _KXRAIN_MONTHLY_CITY, _parse_monthly_ticker_month
+
+        prefixes = list(_KXRAIN_MONTHLY_CITY)
+    except Exception:
+        return 0
+    if not prefixes:
+        return 0
+    where_sql = " OR ".join(["p.ticker LIKE ?"] * len(prefixes))
+    params = tuple(f"{p}%" for p in prefixes)
+    with _conn() as con:
+        rows = con.execute(
+            "SELECT DISTINCT p.ticker FROM predictions p "
+            "JOIN outcomes_valid o ON p.ticker = o.ticker "
+            f"WHERE p.implied_mean IS NOT NULL AND ({where_sql})",
+            params,
+        ).fetchall()
+    events: set[tuple[str, int, int]] = set()
+    for row in rows:
+        ticker = row["ticker"]
+        parsed = _parse_monthly_ticker_month(ticker)
+        if parsed is None:
+            # Same silent-freeze guard count_settled_snow_predictions() added
+            # (opus-review-caught round 2 there): an unparseable ticker must
+            # warn, not vanish silently from the count.
+            _log.warning(
+                "count_settled_market_implied_rain_events: could not parse "
+                "accrual month from settled ticker %r -- excluded from the "
+                "count",
+                ticker,
+            )
+            continue
+        prefix = next((p for p in prefixes if ticker.upper().startswith(p)), None)
+        if prefix is None:
+            continue
+        events.add((prefix, parsed[0], parsed[1]))
+    return len(events)
+
+
 def count_settled_snow_predictions() -> int:
     """Count DISTINCT settled monthly-snow accrual events (ticker prefix,
     year, month), NOT raw prediction rows -- opus-review-caught (2026-07-30):

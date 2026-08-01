@@ -747,8 +747,9 @@ RESOLVED (partially) 2026-07-28: shipped the near-term case -- when a
   actual returned `forecast_prob`/pricing/CI/sizing is completely
   unchanged -- this only adds a `signals: {"rain_forecast_blend_prob": ...}`
   key to the result dict for future validation, a new `rain_forecast_blend`
-  entry in `SIGNAL_REGISTRY` (10th entry, floor=20 settled predictions,
-  tracked via `py main.py signals`), and nothing else.
+  entry in `SIGNAL_REGISTRY` (10th entry as of 2026-07-28, since shifted to
+  11th by a 2026-08-01 insertion earlier in the registry; floor=20 settled
+  predictions, tracked via `py main.py signals`), and nothing else.
   New `weather_markets._fetch_ensemble_precip_multiday()`: extends
   `_fetch_ensemble_precip`'s existing single-day ensemble fetch (same
   models/weighting/circuit breaker/host) to keep the full 16-day response
@@ -3654,10 +3655,9 @@ When to revisit:
   trigger, purely a "is this worth doing yet" call, same as the entry above
   was until today.
 
-[OPEN 2026-07-31 -- surfaced by the opus review of the market-implied-
-  distribution entry above, deliberately deferred as separate scope]
-  RAIN'S MARKET-IMPLIED DISTRIBUTION (implied_mean/implied_sigma) HAS NO
-  GRADUATION/SAMPLE-FLOOR TRACKING OF ITS OWN
+[RESOLVED 2026-08-01] RAIN'S MARKET-IMPLIED DISTRIBUTION
+  (implied_mean/implied_sigma) HAS NO GRADUATION/SAMPLE-FLOOR TRACKING OF
+  ITS OWN
 Priority: Low -- log-only signal, doesn't block or corrupt anything live;
   just means nobody will ever see that rain data is accumulating.
 
@@ -3705,6 +3705,54 @@ When to revisit:
   checking for real, or whenever consistency.py's own rain arbitrage-check
   entry (immediately above) is picked up -- both would benefit from
   knowing how much rain distribution-fit data actually exists.
+
+RESOLVED 2026-08-01: added a new dedicated SIGNAL_REGISTRY entry
+  (key="market_implied_rain", sample_floor=20) rather than extending the
+  existing "market_implied" (temperature) entry's count_fn in place --
+  design decision (user confirmed via AskUserQuestion): distinguish rain
+  rows from temperature rows sharing the same implied_mean/implied_sigma
+  columns via ticker-prefix matching (new tracker.py
+  count_settled_market_implied_rain_events(), mirroring
+  count_settled_rain_predictions()'s existing shape and its
+  _KXRAIN_MONTHLY_CITY single-source-of-truth dict), not a
+  settled_value/settled_temp_f column check -- avoids depending on those
+  two columns staying mutually exclusive forever (verified today they
+  currently are, via audit_settlement()'s separate rain/temperature UPDATE
+  branches, but that's an implicit invariant rather than something this
+  counter should assume), and matches every other rain-specific counter's
+  existing precedent in this codebase.
+  Independent opus review (before push) caught one real MEDIUM issue in the
+  first pass: the initial implementation counted raw prediction rows, but
+  resolve_market_implied_for_analysis() hands the SAME fitted implied_mean
+  to every sibling bracket in one city-month's rain ladder, and each
+  bracket re-logs across the whole accrual month -- a raw-row floor could
+  clear sample_floor=20 on as few as ~7 real independent city-months, the
+  exact failure mode count_settled_snow_predictions() was already rewritten
+  to fix on 2026-07-30. Since this was new code with zero live
+  implied_mean rain rows logged yet (verified live), it was safe to design
+  the floor correctly from the start rather than ship the same gap and fix
+  it later -- rewrote as count_settled_market_implied_rain_events()
+  (renamed to reflect distinct-event, not row, counting), mirroring
+  count_settled_snow_predictions()'s exact DISTINCT-ticker-then-parse-month
+  approach including its unparseable-ticker warning guard. Two new tests
+  added to cover this (ladder-dedup, unparseable-ticker warning), both
+  mutation-tested. The review's other findings were all doc-only nitpicks
+  in this same note (now corrected) plus pre-existing issues in unrelated
+  files, not this change.
+  Also fixed two other tests that hardcoded the registry's prior size
+  (test_forecasting.py's TestSignalGraduationRegistry: the
+  10-entries/9-topics count test, renamed per this project's own
+  established convention for count-encoding test names, and the real-DB
+  smoke test's `len(report) == 10` assertion) -- both would have failed
+  loudly (not silently) against the new 11-entry registry had they not been
+  updated alongside the registry change.
+  6 tests total added to TestSignalGraduationCounters in test_tracker.py
+  (counts-only-rain-tickers, requires-implied-mean, excludes-disputed,
+  zero-when-nothing-logged, counts-events-not-ladder-rows,
+  warns-on-unparseable-ticker), every new assertion mutation-tested.
+  422 tests pass across both changed test files (test_tracker.py +
+  test_forecasting.py); ruff check, ruff format, and mypy all clean on
+  tracker.py/weather_markets.py/both test files.
 
 [RESOLVED 2026-07-23 -- both real ECMWF products now instrumented] TRACK ECMWF FORECAST ACCURACY
 Priority: Low (ECMWF already gets a reasonable static/seasonal weight; this is

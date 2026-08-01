@@ -6038,6 +6038,16 @@ def _count_model_obs(model: str) -> Callable[[], int]:
     return _count
 
 
+def _count_market_implied_rain() -> int:
+    """count_fn for the market_implied_rain registry entry — no parameters
+    to bind, so this is the closure itself rather than a factory (matching
+    _count_signal_column's/_count_model_obs's function-local-import
+    convention, minus the unneeded indirection)."""
+    from tracker import count_settled_market_implied_rain_events
+
+    return count_settled_market_implied_rain_events()
+
+
 SIGNAL_REGISTRY: tuple[_SignalRegistryEntry, ...] = (
     _SignalRegistryEntry(
         key="run_trend",
@@ -6063,6 +6073,22 @@ SIGNAL_REGISTRY: tuple[_SignalRegistryEntry, ...] = (
             "settlement error before ever wiring this into the blend."
         ),
         backlog_ref="MARKET-IMPLIED TEMPERATURE DISTRIBUTION FROM THE FULL LADDER",
+    ),
+    _SignalRegistryEntry(
+        key="market_implied_rain",
+        name="Market-implied monthly-rain-total distribution (mean/sigma)",
+        sample_floor=20,
+        count_fn=_count_market_implied_rain,
+        correlation_note=(
+            "Same ENABLEMENT TRIGGER precedent as market_implied (temperature) "
+            "— check whether implied_mean correlates with real settled monthly "
+            "rain totals (outcomes.settled_value) before ever wiring this into "
+            "a rain blend."
+        ),
+        backlog_ref=(
+            "RAIN'S MARKET-IMPLIED DISTRIBUTION (implied_mean/implied_sigma) "
+            "HAS NO GRADUATION/SAMPLE-FLOOR TRACKING OF ITS OWN"
+        ),
     ),
     _SignalRegistryEntry(
         key="gated_edge",
