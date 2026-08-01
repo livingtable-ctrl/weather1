@@ -6038,14 +6038,23 @@ def _count_model_obs(model: str) -> Callable[[], int]:
     return _count
 
 
-def _count_market_implied_rain() -> int:
-    """count_fn for the market_implied_rain registry entry — no parameters
-    to bind, so this is the closure itself rather than a factory (matching
-    _count_signal_column's/_count_model_obs's function-local-import
-    convention, minus the unneeded indirection)."""
-    from tracker import count_settled_market_implied_rain_events
+def _count_market_implied_rain() -> Callable[[], int]:
+    """Same late-bound-closure factory shape as _count_signal_column/
+    _count_model_obs (called once, with parens, at registry-build time),
+    even though there's no parameter to bind -- a bare function reference
+    with no call-site parens (the initial, simpler version of this) is
+    invisible to tests/test_dead_code_scan.py's regex-based call-site scan,
+    which flagged it FULLY DEAD (2026-08-02) despite the real runtime call
+    via entry.count_fn() in get_signal_graduation_report(). Matching the
+    factory convention exactly fixes that, rather than adding a
+    _DEAD_CODE_ALLOWLIST entry for something that's genuinely used."""
 
-    return count_settled_market_implied_rain_events()
+    def _count() -> int:
+        from tracker import count_settled_market_implied_rain_events
+
+        return count_settled_market_implied_rain_events()
+
+    return _count
 
 
 SIGNAL_REGISTRY: tuple[_SignalRegistryEntry, ...] = (
@@ -6078,7 +6087,7 @@ SIGNAL_REGISTRY: tuple[_SignalRegistryEntry, ...] = (
         key="market_implied_rain",
         name="Market-implied monthly-rain-total distribution (mean/sigma)",
         sample_floor=20,
-        count_fn=_count_market_implied_rain,
+        count_fn=_count_market_implied_rain(),
         correlation_note=(
             "Same ENABLEMENT TRIGGER precedent as market_implied (temperature) "
             "— check whether implied_mean correlates with real settled monthly "
