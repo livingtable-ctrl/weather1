@@ -9,7 +9,7 @@ All commands: `py main.py <command> [args]`
 | Command | Description |
 |---|---|
 | `cron` | Run one scan cycle — fetch markets, score edges, place paper trades, settle outcomes |
-| `cron --edge 0.12` | Same but override minimum edge threshold |
+| `cron --edge 12` | Same but override minimum edge threshold (number = percent) |
 | `brief` | Single-screen daily summary (balance, positions, Brier, graduation gates) |
 | `brief --email` | Same + send email notification |
 | `today` | Plain-English "what should I do today?" recommendation |
@@ -58,6 +58,7 @@ All commands: `py main.py <command> [args]`
 | `validate` | Alias for `walkforward` |
 | `walk-forward` | Full walk-forward backtest with rolling windows |
 | `calibrate` | Refit Platt scaling and temperature scaling from settled predictions |
+| `emos-train` | Fit EMOS parameters (a/b from all 79 rows, c/d from 15 with ens_var) — run once after backfill-emos |
 | `train-bias` | Retrain GBM bias model + Platt per city + temperature scaling |
 | `drift` | Check for model drift (compares recent vs historical Brier) |
 | `features` | Show feature importance for current model |
@@ -90,8 +91,8 @@ All commands: `py main.py <command> [args]`
 |---|---|
 | `kill` | Activate kill switch — halts all new trades immediately |
 | `resume` | Deactivate kill switch — resumes trading |
-| `override set [minutes]` | Temporarily pause trading for N minutes (default 60) |
-| `override clear` | Cancel the active pause override early |
+| `override pause [minutes]` | Temporarily pause trading for N minutes (default 60) |
+| `override unpause` | Cancel the active pause override early |
 | `override status` | Show current override status and time remaining |
 | `unlock` | Remove stale cron lock file (if cron crashed mid-run) |
 | `readiness` | Full system readiness check (API, DB, kill switch, graduation gates) |
@@ -109,6 +110,8 @@ All commands: `py main.py <command> [args]`
 |---|---|
 | `admin reset-loss` | Waive today's daily loss limit (expires midnight UTC) — use after a bug caused phantom losses |
 | `admin reset-loss "reason"` | Same with a reason string logged |
+| `admin reset-peak` | Reset peak balance high-water mark to current balance |
+| `admin sameday-stats` | Show same-day position/spend stats (run at 150 settled same-day trades before activating reserve slots) |
 | `retire-strategies` | Retire underperforming strategies (dry run — shows what would be retired) |
 | `retire-strategies --run` | Actually retire them |
 | `unretire-strategy <method>` | Re-enable a retired strategy with a 72h pin |
@@ -144,8 +147,8 @@ py main.py paper reset
 
 **`override` subcommands:**
 ```
-py main.py override set [minutes]   # default 60 min
-py main.py override clear
+py main.py override pause [minutes]   # default 60 min
+py main.py override unpause
 py main.py override status
 ```
 
