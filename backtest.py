@@ -30,6 +30,7 @@ from weather_markets import (
     KNOWN_WEATHER_SERIES,
     TEMPERATURE_MARKET_CITIES,
     _parse_city_from_ticker,
+    _var_from_ticker_prefix,
 )
 
 _log = logging.getLogger(__name__)
@@ -450,7 +451,7 @@ def run_backtest(
                 continue
         else:
             # ── Temperature markets ───────────────────────────────────────────
-            var = "min" if "LOW" in ticker.upper() else "max"
+            var = _var_from_ticker_prefix(ticker.upper()) or "max"
             condition["var"] = var
 
             if use_previous_runs:

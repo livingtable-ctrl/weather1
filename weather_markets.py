@@ -8500,7 +8500,7 @@ def _metar_lock_in(
             # Current temp at 8 PM is not the day's low — the minimum typically
             # occurred at 6 AM. Key off ticker (KXLOW... vs KXHIGH...) because
             # _cond_type describes the bet direction, not whether it's a min/max market.
-            _is_low_mkt = "LOW" in ticker.upper()
+            _is_low_mkt = _var_from_ticker_prefix(ticker.upper()) == "min"
             if _is_low_mkt:
                 _daily_ext = _metar_obs.get("min_temp_f")
             else:
@@ -8579,26 +8579,85 @@ def _metar_lock_in(
         return False, 0.0, {}
 
 
+def _var_from_ticker_prefix(ticker_upper: str) -> str | None:
+    """Codebase-wide single source of truth for the "does this ticker's
+    market measure the daily HIGH or LOW" substring check (backlog.txt
+    "VAR-CONVENTION LITERAL HAND-COPIED ACROSS 7+ FILES BEYOND
+    analyze_trade()"). Returns None -- not a guessed default -- when
+    `ticker_upper` contains neither "HIGH" nor "LOW", since callers differ
+    genuinely on what to do then: some fall back to a market's cond_type
+    (above/below), one returns/skips entirely for a ticker whose cond_type
+    is neither, others default to "max" for a between-market. Consolidating
+    only this narrow substring check (not each site's own distinct fallback
+    tail) is a deliberate scope choice, made after re-reading all 7 sites
+    the backlog entry named: 4 (backtest.py, this module's own
+    _metar_lock_in, paper.py, order_executor.py) turned out to be
+    functionally identical to the old `"min" if "LOW" in series else "max"`
+    one-liner and now call this directly; 2 more (tracker.py's
+    audit_settlement() and backfill_emos_data()) have real, non-identical
+    fallback logic for the neither-HIGH-nor-LOW case that would have
+    silently changed behavior if forced into a single shared function --
+    those call this helper for just the substring check, keeping their own
+    fallback. (Opus-review-corrected, 2026-08-02: the neither-match case
+    for tracker.py's two sites is NOT reachable via hourly KXTEMPxxxH or
+    monthly rain/snow tickers as an earlier version of this docstring
+    claimed -- both are handled by earlier returns in each of those two
+    functions before this check is ever reached; that reachability claim
+    actually describes paper.py's own site, which IS one of the 4 direct
+    callers, not a tracker.py fallback site. audit_settlement()'s
+    `return False` arm is reachable for a non-monthly precip ticker or any
+    ticker whose condition type resolves to neither "above" nor "below"
+    -- e.g. "between" -- while also containing neither "HIGH" nor "LOW"
+    in its own ticker text.) The remaining 2 (consistency.py, main.py)
+    were re-verified to NOT actually be this convention at all -- they
+    check the same "HIGH"/"LOW" substrings but to classify a market's
+    condition direction or a display/grouping ticker-type, not which
+    daily temperature variable to fetch; the backlog entry's framing
+    overclaimed uniformity there.
+
+    Checks "HIGH" before "LOW" for parity with the 4 direct-caller sites'
+    own prior ordering (backtest.py/paper.py/order_executor.py already
+    checked HIGH first; this module's own _metar_lock_in only ever
+    checked LOW, but never both) -- the two conditions can't both match
+    for this codebase's real ticker vocabulary (KXHIGH*/KXLOW* prefixes
+    are mutually exclusive), so the order has no behavioral effect for
+    any of them either way. _daily_var_from_series() below is a partial
+    exception -- see its own docstring.
+    """
+    if "HIGH" in ticker_upper:
+        return "max"
+    if "LOW" in ticker_upper:
+        return "min"
+    return None
+
+
 def _daily_var_from_series(series: str) -> str:
     """Single source of truth for analyze_trade()'s own two var-derivation
-    call sites (the ensemble and METAR-locked branches) -- NOT a codebase-
-    wide single source of truth. backlog.txt "NO MARKET-TYPE SEAM" flagged
-    the underlying `"min" if "LOW" in series else "max"` convention as the
-    same duplication shape that has repeatedly drifted and caused live bugs
-    elsewhere in this codebase (TRADING_PAUSED, the disputed-row filter,
-    PAPER_MIN_EDGE). An independent second-opinion review (2026-07-31) found
-    the identical literal/logic still separately hand-copied in backtest.py,
-    tracker.py, paper.py, order_executor.py, consistency.py, and main.py --
-    deliberately NOT consolidated here (out of scope for this pass, a much
-    larger cross-file change); see backlog.txt "VAR-CONVENTION LITERAL
-    HAND-COPIED ACROSS 7+ FILES BEYOND analyze_trade()" for that follow-up.
+    call sites (the ensemble and METAR-locked branches). Delegates the
+    actual substring check to _var_from_ticker_prefix() (see its own
+    docstring for the full cross-file consolidation this is part of),
+    defaulting to "max" for a series matching neither HIGH nor LOW --
+    analyze_trade()'s own two callers only ever pass a real KXHIGH*/KXLOW*
+    ticker, so this default is never actually exercised there, but is kept
+    for parity with every other genuinely-identical call site's own
+    "else max" fallback.
+
+    Note this function's OWN prior body (before this consolidation) was
+    `"min" if "LOW" in series else "max"` -- LOW-only, no HIGH check at
+    all -- unlike _var_from_ticker_prefix()'s HIGH-first check. For a
+    theoretical series containing both substrings, the old body would
+    have returned "min" and this one returns "max"; unreachable in
+    practice (this codebase's real KXHIGH*/KXLOW* tickers are mutually
+    exclusive, confirmed via KNOWN_WEATHER_SERIES), but this function
+    specifically -- unlike the 4 sites _var_from_ticker_prefix()'s own
+    docstring describes as unaffected by check order -- did change shape
+    here, not just get a name change.
 
     Uppercases defensively -- every current caller already passes an
     upper-cased `series`, but a helper billed as a shared source of truth
     should not silently return the wrong side for a lowercase input.
     """
-    series = series.upper()
-    return "min" if "LOW" in series else "max"
+    return _var_from_ticker_prefix(series.upper()) or "max"
 
 
 def analyze_trade(

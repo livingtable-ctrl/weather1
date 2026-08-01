@@ -3332,6 +3332,150 @@ class TestDisputedOutcomeTracking(unittest.TestCase):
             "when no stored var exists",
         )
 
+    def test_audit_settlement_falls_back_to_cond_type_when_ticker_has_neither(self):
+        """2026-08-02 var-consolidation regression test: a ticker containing
+        NEITHER "HIGH" nor "LOW" (real for e.g. a malformed/unusual ticker)
+        must fall back to cond_type ("above" -> max), not silently derive
+        the wrong var -- this is the one behavior _var_from_ticker_prefix()
+        deliberately does NOT own, since it returns None rather than
+        guessing for this exact case."""
+        from unittest.mock import patch
+
+        import weather_markets
+
+        ticker = "KXWEATHERNYC-26APR09-T70"
+        self._log_settled(ticker, 0.70, True, date(2026, 4, 9), condition_type="above")
+        with sqlite3.connect(str(tracker.DB_PATH)) as con:
+            con.execute("UPDATE predictions SET var = NULL WHERE ticker = ?", (ticker,))
+            con.commit()
+
+        captured_var = {}
+
+        def _fake_fetch(station, target_date, var, city_tz):
+            captured_var["var"] = var
+            return 75.0
+
+        with (
+            patch.object(
+                weather_markets, "_metar_station_for_city", return_value="KNYC"
+            ),
+            patch.object(tracker, "_fetch_asos_daily_temp", side_effect=_fake_fetch),
+        ):
+            result = tracker.audit_settlement(ticker, settled_yes=True)
+
+        self.assertTrue(result)
+        self.assertEqual(
+            captured_var.get("var"),
+            "max",
+            "cond_type='above' must derive var='max' when the ticker itself "
+            "gives no HIGH/LOW signal",
+        )
+
+    def test_audit_settlement_skips_when_ticker_and_cond_type_both_unresolved(self):
+        """2026-08-02 var-consolidation regression test: a ticker with
+        neither HIGH nor LOW, and a cond_type that's neither above nor
+        below (e.g. "between"), must skip settlement (return False) rather
+        than guess a var -- the one case _var_from_ticker_prefix()'s None
+        return value is specifically designed to let callers detect and
+        handle their own way."""
+        ticker = "KXWEATHERNYC-26APR09-B65.5"
+        self._log_settled(
+            ticker, 0.70, True, date(2026, 4, 9), condition_type="between"
+        )
+        with sqlite3.connect(str(tracker.DB_PATH)) as con:
+            con.execute("UPDATE predictions SET var = NULL WHERE ticker = ?", (ticker,))
+            con.commit()
+
+        result = tracker.audit_settlement(ticker, settled_yes=True)
+
+        self.assertFalse(
+            result,
+            "must skip (return False) rather than guess a var for a ticker "
+            "with no HIGH/LOW signal and a non-above/below cond_type",
+        )
+
+    def test_audit_settlement_falls_back_to_cond_type_below(self):
+        """2026-08-02 var-consolidation regression test (opus-review-caught
+        gap: the mirror of test_..._falls_back_to_cond_type_when_ticker_has
+        _neither's "above" case survived every mutation tried against the
+        "below" arm specifically). A ticker with neither HIGH nor LOW and
+        cond_type="below" must derive var="min", not "max"."""
+        from unittest.mock import patch
+
+        import weather_markets
+
+        ticker = "KXWEATHERNYC-26APR09-T70"
+        self._log_settled(ticker, 0.30, False, date(2026, 4, 9), condition_type="below")
+        with sqlite3.connect(str(tracker.DB_PATH)) as con:
+            con.execute("UPDATE predictions SET var = NULL WHERE ticker = ?", (ticker,))
+            con.commit()
+
+        captured_var = {}
+
+        def _fake_fetch(station, target_date, var, city_tz):
+            captured_var["var"] = var
+            return 60.0
+
+        with (
+            patch.object(
+                weather_markets, "_metar_station_for_city", return_value="KNYC"
+            ),
+            patch.object(tracker, "_fetch_asos_daily_temp", side_effect=_fake_fetch),
+        ):
+            result = tracker.audit_settlement(ticker, settled_yes=False)
+
+        self.assertTrue(result)
+        self.assertEqual(
+            captured_var.get("var"),
+            "min",
+            "cond_type='below' must derive var='min' when the ticker itself "
+            "gives no HIGH/LOW signal",
+        )
+
+    def test_audit_settlement_ticker_prefix_wins_over_cond_type(self):
+        """2026-08-02 var-consolidation regression test (opus-review-caught
+        gap: replacing _var_from_ticker_prefix(ticker_upper) with None --
+        letting cond_type decide unconditionally -- survived every existing
+        mutation). A KXLOW* ticker on a "above" condition (a real market
+        shape: the bet direction and the market's min/max type are
+        independent, e.g. betting the daily LOW will be above some
+        threshold) must still derive var="min" from the ticker itself,
+        matching tracker.py's own in-code invariant: "Condition type only
+        says which side of the threshold the bet is on — it must not
+        override this.\" """
+        from unittest.mock import patch
+
+        import weather_markets
+
+        ticker = "KXLOWTNYC-26APR09-T40"
+        self._log_settled(ticker, 0.70, True, date(2026, 4, 9), condition_type="above")
+        with sqlite3.connect(str(tracker.DB_PATH)) as con:
+            con.execute("UPDATE predictions SET var = NULL WHERE ticker = ?", (ticker,))
+            con.commit()
+
+        captured_var = {}
+
+        def _fake_fetch(station, target_date, var, city_tz):
+            captured_var["var"] = var
+            return 45.0
+
+        with (
+            patch.object(
+                weather_markets, "_metar_station_for_city", return_value="KNYC"
+            ),
+            patch.object(tracker, "_fetch_asos_daily_temp", side_effect=_fake_fetch),
+        ):
+            result = tracker.audit_settlement(ticker, settled_yes=True)
+
+        self.assertTrue(result)
+        self.assertEqual(
+            captured_var.get("var"),
+            "min",
+            "a KXLOWT* ticker must derive var='min' from its own prefix "
+            "even when cond_type='above' -- the ticker prefix must win, "
+            "not the condition direction",
+        )
+
     def test_audit_settlement_hourly_writes_settled_value_not_temp_f(self):
         """backlog.txt "HOURLY-DIRECTIONAL TEMPERATURE MARKETS" Step 2 handoff
         item 3: a KXTEMPxxxH ticker must settle into settled_value/

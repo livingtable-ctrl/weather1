@@ -1159,13 +1159,10 @@ def _score_ensemble_members(trade: dict, outcome_yes: bool) -> None:
     # "LOWT" substring) and silently defaulted to "max" for them.
     var = trade.get("var")
     if var is None:
+        from weather_markets import _var_from_ticker_prefix
+
         _ticker_upper = trade.get("ticker", "").upper()
-        if "HIGH" in _ticker_upper:
-            var = "max"
-        elif "LOWT" in _ticker_upper or "LOW" in _ticker_upper:
-            var = "min"
-        else:
-            var = "max"
+        var = _var_from_ticker_prefix(_ticker_upper) or "max"
     # Look up the official settled daily HIGH from the outcomes table (written by
     # audit_settlement). Joins outcomes_valid, not the raw table: audit_settlement
     # sets settled_temp_f and disputed in the same pass on a Kalshi-vs-archive

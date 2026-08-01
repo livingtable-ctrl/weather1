@@ -41,6 +41,7 @@ from weather_markets import (
     _hourly_gates_active,
     _rain_gates_active,
     _snow_gates_active,
+    _var_from_ticker_prefix,
     analyze_trade,
     enrich_with_forecast,
     get_weather_markets,
@@ -2385,11 +2386,7 @@ def _auto_place_trades(
         if not city_ or not date_str:
             return None
         ticker_upper = (m_.get("ticker", "") or a_.get("ticker", "")).upper()
-        var_ = (
-            "max"
-            if "HIGH" in ticker_upper
-            else ("min" if ("LOWT" in ticker_upper or "LOW" in ticker_upper) else "max")
-        )
+        var_ = _var_from_ticker_prefix(ticker_upper) or "max"
         return (city_, date_str, var_)
 
     # JOINT FULL-LADDER BRACKET SELECTION (backlog.txt, smallest useful

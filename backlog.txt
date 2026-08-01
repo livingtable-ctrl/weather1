@@ -1,7 +1,7 @@
 BACKLOG — future improvements to implement when ready
 ======================================================
 
-[VAR-CONVENTION LITERAL HAND-COPIED ACROSS 7+ FILES BEYOND analyze_trade()]
+[RESOLVED 2026-08-02] VAR-CONVENTION LITERAL HAND-COPIED ACROSS 7+ FILES BEYOND analyze_trade()
 Priority: Low -- no current behavior bug (all copies are logically
   equivalent today), but a real instance of this codebase's recurring
   hand-copied-convention-drift failure shape (TRADING_PAUSED, the
@@ -58,6 +58,71 @@ When to revisit:
     a low-risk rider, rather than waiting for a dedicated cross-file pass.
     Treat "a 10th copy gets added somewhere" as a forcing signal to stop
     deferring and do the real consolidation.
+
+RESOLVED 2026-08-02: re-read all 7 cited sites' actual code (not just this
+  entry's own framing) before touching anything, and found the "9 real
+  copies, all consolidatable" premise had overclaimed uniformity in two
+  different ways:
+  - consistency.py:79 and main.py:6709 check the same "HIGH"/"LOW"
+    ticker substrings, but for a genuinely different purpose -- determining
+    a market's condition DIRECTION ("above"/"below", or a broader
+    display/grouping ticker-type), not which daily temperature VARIABLE
+    (min/max) to fetch. These were never actually this convention;
+    left untouched.
+  - tracker.py's 2 sites have real, non-identical fallback logic for a
+    ticker matching neither HIGH nor LOW. One site (audit_settlement)
+    falls back further to cond_type (above/below) and finally
+    `return False` (skip settlement) when cond_type is neither -- reachable
+    for a non-monthly precip ticker or any ticker whose condition resolves
+    to something other than above/below (e.g. "between") while its own
+    ticker text also contains neither HIGH nor LOW; the other
+    (backfill_emos_data) defaults straight to "max" for between-markets.
+    Forcing both into a single shared function that always returns
+    "max"/"min" would have silently changed behavior for the
+    precip/unknown-skip site -- a real bug, not a refactor. (Opus-review-
+    corrected, 2026-08-02: an earlier draft of this note claimed the
+    neither-match case was reachable via hourly KXTEMPxxxH tickers --
+    wrong; both tracker.py sites return early for hourly/monthly-rain/snow
+    tickers before ever reaching this code. That reachability claim
+    actually describes paper.py's own site, one of the 4 direct callers,
+    not a tracker.py fallback site -- see _var_from_ticker_prefix()'s own
+    corrected docstring in weather_markets.py for the precise trace.)
+  Design decision (user confirmed via AskUserQuestion after a first-pass
+  menu got "review these and ask again"): extract only the genuinely
+  identical substring-check portion into a new `_var_from_ticker_prefix()`
+  in weather_markets.py, returning None (not a guessed default) when the
+  ticker matches neither -- callers needing a fallback OR it with "max"
+  (the 4 genuine matches: backtest.py, weather_markets.py's own
+  `_metar_lock_in`, paper.py, order_executor.py -- all now call this
+  directly, zero behavior change), while tracker.py's 2 sites call it for
+  just the substring check and keep their own distinct fallback tail
+  exactly as before. `_daily_var_from_series()` (analyze_trade()'s own
+  helper from the prior session) now delegates to this too, so there is
+  now genuinely one shared implementation of the actual duplicated logic,
+  not seven.
+  9 new tests (TestVarFromTickerPrefix x5 in test_weather.py; 4 new
+  regression tests in test_tracker.py covering the cond_type "above"
+  fallback, the return-False/skip path, the cond_type "below" fallback,
+  and ticker-prefix-wins-over-cond_type -- none had real coverage before
+  this), every new assertion mutation-tested (reverted, confirmed the
+  predicted symptom, restored). An independent opus review (before push)
+  caught 2 real gaps in the first mutation-testing pass -- the "below"
+  arm and the prefix-wins-over-cond_type precedence both survived every
+  mutation originally tried -- closed with the last 2 of the 4 tracker.py
+  tests, both confirmed via the same mutate-revert cycle. The review also
+  caught the hourly-ticker reachability misattribution corrected above,
+  and one more docstring gap: _daily_var_from_series()'s own prior body
+  was LOW-only (no HIGH check), unlike the new HIGH-first
+  _var_from_ticker_prefix() it now delegates to -- unreachable in
+  practice (this codebase's real tickers are mutually exclusive on
+  HIGH/LOW) but a real difference in shape, now documented on that
+  function specifically rather than covered by the general "order
+  doesn't matter" claim that's true of the other 4 sites but wasn't of
+  this one. 924 tests pass across every touched file's test suite
+  (test_backtest.py, test_paper.py, test_trading.py, test_tracker.py,
+  test_weather_markets.py, test_weather.py, test_live_execution.py);
+  dead-code and config-divergence guards also re-run clean. ruff check,
+  ruff format, and mypy all clean on all 7 changed source files.
 
 [EMOS CALIBRATION STAYS DISABLED UNTIL THE ens_var-POPULATED TRAINING SET CLEARS 40 ROWS]
 Priority: Medium -- directly explains a real, already-observed Brier

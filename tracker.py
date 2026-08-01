@@ -3300,7 +3300,11 @@ def audit_settlement(ticker: str, settled_yes: bool) -> bool:
     prior value (if any) was left completely untouched, not confirmed correct.
     """
     try:
-        from weather_markets import _KXRAIN_MONTHLY_CITY, _KXSNOW_MONTHLY_CITY
+        from weather_markets import (
+            _KXRAIN_MONTHLY_CITY,
+            _KXSNOW_MONTHLY_CITY,
+            _var_from_ticker_prefix,
+        )
         from weather_markets import CITY_COORDS as _coords
         from weather_markets import _metar_station_for_city as _station_for_city
         from weather_markets import _parse_market_condition as _parse_cond
@@ -3511,16 +3515,14 @@ def audit_settlement(ticker: str, settled_yes: bool) -> bool:
             # HIGH temp markets (KXHIGH...) need the daily max; LOW temp markets need min.
             # between markets use the same logic — the range is on a specific var.
             ticker_upper = ticker.upper()
-            if "HIGH" in ticker_upper:
-                var = "max"
-            elif "LOWT" in ticker_upper or "LOW" in ticker_upper:
-                var = "min"
-            elif cond_type == "above":
-                var = "max"
-            elif cond_type == "below":
-                var = "min"
-            else:
-                return False  # precipitation or unknown — skip
+            var = _var_from_ticker_prefix(ticker_upper)
+            if var is None:
+                if cond_type == "above":
+                    var = "max"
+                elif cond_type == "below":
+                    var = "min"
+                else:
+                    return False  # precipitation or unknown — skip
 
         # Prefer ASOS station data (same source as Kalshi settlement).
         # Fall back to Open-Meteo gridded archive only when no station is mapped.
@@ -3927,7 +3929,11 @@ def backfill_emos_data(force: bool = False) -> tuple[int, int]:
     # actually filled anything. Snow Step 2 (review-caught the identical
     # gap): KXDENSNOWM* rows have the exact same shape (settled_value, not
     # settled_temp_f) -- excluded the same way.
-    from weather_markets import _KXRAIN_MONTHLY_CITY, _KXSNOW_MONTHLY_CITY
+    from weather_markets import (
+        _KXRAIN_MONTHLY_CITY,
+        _KXSNOW_MONTHLY_CITY,
+        _var_from_ticker_prefix,
+    )
 
     with _conn() as con:
         if force:
@@ -4022,14 +4028,10 @@ def backfill_emos_data(force: bool = False) -> tuple[int, int]:
             # condition (above/below/between).  KXHIGH markets measure the daily
             # high; KXLOWT markets measure the daily low.  Condition type only says
             # which side of the threshold the bet is on — it must not override this.
-            # Matches analyze_trade's own logic: var = "min" if "LOW" in series else "max".
             ticker_upper = ticker.upper()
-            if "HIGH" in ticker_upper:
-                var = "max"
-            elif "LOWT" in ticker_upper or "LOW" in ticker_upper:
-                var = "min"
-            else:
-                var = "max"  # between markets default to high temperature
+            var = (
+                _var_from_ticker_prefix(ticker_upper) or "max"
+            )  # between markets default to high temperature
 
         try:
             target_date = date.fromisoformat(market_date_str)

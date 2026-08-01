@@ -15,6 +15,7 @@ from weather_markets import (
     _forecast_probability,
     _parse_market_condition,
     _time_risk,
+    _var_from_ticker_prefix,
     ensemble_cdf_prob,
     ensemble_stats,
     kelly_fraction,
@@ -345,6 +346,43 @@ class TestDailyVarFromSeries(unittest.TestCase):
         exact-match/prefix check) is preserved by the extraction, matching
         the original literal's behavior exactly rather than tightening it."""
         self.assertEqual(_daily_var_from_series("KXLOWERCASE"), "min")
+
+
+class TestVarFromTickerPrefix(unittest.TestCase):
+    """backlog.txt "VAR-CONVENTION LITERAL HAND-COPIED ACROSS 7+ FILES
+    BEYOND analyze_trade()" -- codebase-wide single source of truth for
+    just the HIGH/LOW ticker substring check, underlying
+    _daily_var_from_series() and every other genuinely-identical call
+    site (backtest.py, weather_markets._metar_lock_in, paper.py,
+    order_executor.py). Unlike _daily_var_from_series(), returns None
+    (not a guessed "max") when the ticker matches neither -- tracker.py's
+    two call sites need that to run their own distinct fallback."""
+
+    def test_high_ticker_returns_max(self):
+        self.assertEqual(_var_from_ticker_prefix("KXHIGHTNYC-26AUG01-B84.5"), "max")
+
+    def test_low_ticker_returns_min(self):
+        self.assertEqual(_var_from_ticker_prefix("KXLOWTNYC-26AUG01-B71.5"), "min")
+
+    def test_neither_high_nor_low_returns_none(self):
+        """Real, reachable case (not theoretical) -- e.g. an hourly
+        KXTEMPxxxH ticker or a monthly rain KXRAIN*M ticker contains
+        neither substring. Callers must supply their own fallback rather
+        than this function guessing one."""
+        self.assertIsNone(_var_from_ticker_prefix("KXTEMPNYCH-26JUL2015-T75"))
+        self.assertIsNone(_var_from_ticker_prefix("KXRAINDENM-26JUL-7"))
+
+    def test_low_must_be_exact_substring_match(self):
+        """ "LOWER" contains "LOW" -- same substring-check behavior as
+        _daily_var_from_series(), not an exact-match/prefix check."""
+        self.assertEqual(_var_from_ticker_prefix("KXLOWERCASE"), "min")
+
+    def test_high_checked_before_low(self):
+        """This codebase's real ticker vocabulary never contains both
+        substrings (KXHIGH*/KXLOW* prefixes are mutually exclusive), but
+        pin the documented HIGH-first check order directly in case that
+        ever changes."""
+        self.assertEqual(_var_from_ticker_prefix("HIGHANDLOW"), "max")
 
 
 class TestForecastModelWeights(unittest.TestCase):
