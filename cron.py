@@ -436,6 +436,16 @@ def _check_prod_reminder() -> None:
             _alert(
                 "Kalshi bot — 1-month prod reminder",
                 "Deferred items need review: emos-train, below_gate, sameday-reserve, learned_weights, G2/G4. Check bot.log for details.",
+                # Distinct key (opus review, 2026-07-31): this caller used to
+                # share the default "__system__" key with the dead-man's-
+                # switch alert below with no real consequence, since the old
+                # in-process-only cooldown reset every fresh cron process
+                # anyway. Now that the cooldown persists to disk, sharing a
+                # key would let this alert silently suppress the unrelated
+                # dead-man's-switch alert for 6h across separate cron runs
+                # (or vice versa) -- exactly the hazard send_system_alert()'s
+                # own docstring already warns callers to avoid.
+                cooldown_key="prod_reminder",
             )
         except Exception as _ntfy_exc:
             _log.debug("prod reminder ntfy failed: %s", _ntfy_exc)
@@ -582,6 +592,10 @@ def _cmd_cron_body(
                 _sys_alert(
                     "Kalshi cron gap detected",
                     f"Last run was {_gap_hours:.0f}h ago — check the bot.",
+                    # Distinct key -- see the prod-reminder call site's
+                    # identical comment above for why this matters now that
+                    # the cooldown is disk-persisted (opus review, 2026-07-31).
+                    cooldown_key="cron_gap",
                 )
     except Exception as _gap_exc:
         _log.debug("cmd_cron: dead-man's-switch check failed: %s", _gap_exc)
@@ -2303,13 +2317,17 @@ def _cmd_cron_body(
     # (same mechanism as the dead-man's-switch check above) with its own
     # distinct cooldown key so it can't silently suppress (or be suppressed
     # by) the unrelated dead-man's-switch alert sharing the same 6h window.
-    # Opus-review-caught: under Windows Task Scheduler, each cron invocation
-    # is a fresh process, so notify's in-process cooldown state resets every
-    # time and does NOT actually prevent repeat-cycle spam there -- only in
-    # main.py's long-lived `loop`/`watch --auto` modes. That's a pre-existing
-    # limitation of send_system_alert() shared by every one of its callers
-    # (not introduced here); filed separately rather than fixed inline. A
-    # real copy here means some write already failed and raised
+    # Opus-review-caught: every cron invocation -- manual or scheduled -- is
+    # a fresh process, so notify's OLD in-process-only cooldown state used to
+    # reset every time and did NOT actually prevent repeat-cycle spam across
+    # separate invocations, only within main.py's long-lived `loop`/`watch
+    # --auto` modes. That was a pre-existing limitation of send_system_alert()
+    # shared by every one of its callers (not introduced here); fixed
+    # 2026-07-31 via a disk-persisted cooldown (backlog.txt "NOTIFY.
+    # SEND_SYSTEM_ALERT()'S COOLDOWN IS IN-PROCESS MEMORY ONLY"), so this now
+    # actually suppresses repeats across manual re-runs and any future
+    # scheduled task alike. A real copy here means some write already failed
+    # and raised
     # AtomicWriteError -- this doesn't retry or clear it, only surfaces it
     # every cycle until an operator manually recovers the file and deletes
     # it.

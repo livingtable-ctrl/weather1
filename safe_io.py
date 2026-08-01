@@ -136,9 +136,11 @@ def atomic_write_json(
     # only, not the full relative path -- data/foo.json and data/ab_tests/
     # foo.json would share one emergency slot. No real caller today has an
     # actual basename collision (verified live against every atomic_write_json
-    # call site 2026-07-27), and the emergency copy is a best-effort recovery
-    # aid, not the source of truth, so this is deliberately left as-is rather
-    # than adding relative-path encoding complexity for a theoretical case.
+    # call site 2026-07-27; re-verified 2026-07-31 after notify.py's new
+    # .notify_cooldowns.json call site -- still unique), and the emergency
+    # copy is a best-effort recovery aid, not the source of truth, so this is
+    # deliberately left as-is rather than adding relative-path encoding
+    # complexity for a theoretical case.
     emergency_candidates.append(project_root() / "data" / ".emergency")
     emergency_candidates.append(Path(tempfile.gettempdir()))
     resolved_target = path.resolve()

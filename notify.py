@@ -12,8 +12,12 @@ from __future__ import annotations
 import json
 import logging
 import os
+import threading
 import time
 from pathlib import Path
+
+from paths import NOTIFY_COOLDOWN_STATE_PATH
+from safe_io import atomic_write_json
 
 try:
     import requests as _requests
@@ -50,8 +54,102 @@ except Exception as exc:
     _log.warning("notify: failed to load notify_templates.json: %s", exc)
 
 # #95: per-ticker throttle — suppress repeat notifications within this window.
+# In-process only by design: alert_strong_signal() only ever runs inside
+# `watch`/`watch --auto`'s long-lived loop, never a fresh one-shot cron
+# process. Its real duplicate-alert guard is `previous_tickers` (main.py's
+# `_load_watch_state()`/`_save_watch_state()`, data/.watch_state.json --
+# CORRECTED 2026-07-31, opus review: this IS disk-persisted, unlike what an
+# earlier draft of this comment claimed). Deliberately still not extending
+# disk persistence to this dict in the same pass as the fix below: that was
+# an explicit, separately-confirmed scope decision (send_system_alert()
+# only), not something this correction reopens -- see backlog.txt "NOTIFY.
+# SEND_SYSTEM_ALERT()'S COOLDOWN IS IN-PROCESS MEMORY ONLY" for the full
+# scoping discussion. See send_system_alert()'s _system_cooldown_elapsed()
+# below for the disk-persisted sibling used by system alerts.
 _NOTIFY_COOLDOWN_SECS = int(os.getenv("NOTIFY_COOLDOWN_SECS", "300"))  # 5 min default
 _last_notified: dict[str, float] = {}  # ticker -> last fire timestamp
+
+# backlog.txt "NOTIFY.SEND_SYSTEM_ALERT()'S COOLDOWN IS IN-PROCESS MEMORY
+# ONLY": send_system_alert()'s own cooldown, unlike the per-ticker one above,
+# is persisted to disk so it survives across separate process invocations
+# (manual or scheduled cron runs), not just within one long-lived process.
+# This lock is THREAD-level protection only (matches circuit_breaker.py's
+# own scope for its equivalent lock -- concurrent threads in one process,
+# plus avoiding a transient Windows PermissionError mid-os.replace) -- two
+# separate `py main.py cron` PROCESSES each hold their own independent
+# Lock object, so this does NOT serialize across processes (corrected
+# 2026-07-31, opus review: an earlier draft of this comment overclaimed
+# cross-process protection). Real cross-process races are not expected in
+# this codebase's actual operating model (manual, sequential invocation
+# today; a future scheduler would still run one cron cycle at a time), so a
+# true cross-process file lock (e.g. msvcrt.locking or an O_EXCL lockfile)
+# is deliberately not built here -- would be new, untested infrastructure
+# for a risk this project doesn't currently have.
+_NOTIFY_COOLDOWN_FILE_LOCK = threading.Lock()
+
+
+def _system_cooldown_elapsed(
+    cooldown_key: str, now: float, cooldown_secs: float
+) -> bool:
+    """Check send_system_alert()'s persisted cooldown for `cooldown_key` and,
+    if elapsed, atomically record `now` as the new last-fired timestamp --
+    read, decision, and write all happen under one lock acquisition (matching
+    circuit_breaker.py's established _save_state() pattern) rather than two
+    separate acquisitions, so a second THREAD in the same process can't read
+    a stale value between this function's own read and write (see the lock's
+    own comment above for why this does NOT cover concurrent processes).
+
+    Fails OPEN (returns True, allowing the alert to fire; and deliberately
+    does NOT attempt to write, to avoid clobbering every OTHER caller's
+    already-persisted cooldown with a blind blank-state overwrite) on any
+    read/parse error -- a missing, corrupt, or unexpected-shape (valid JSON
+    that isn't a dict, e.g. `null`) cooldown file must never silently
+    suppress a real system alert. This is a deliberate, freestanding choice
+    for an alerting path specifically (better to double-alert than to ever
+    silently miss a real one) -- NOT modeled on paper.is_accuracy_halted(),
+    which actually fails CLOSED for its own, different reason (corrected
+    2026-07-31, opus review: an earlier draft of this docstring cited that
+    function as a fail-open precedent, backwards from its real behavior). A
+    write failure (state was read successfully, just couldn't be saved) is
+    logged but still lets the alert fire this time; if writes keep failing,
+    the cooldown silently stops persisting and this degrades back to the
+    original in-process-only behavior -- a known, accepted residual risk
+    (not fixed here: `atomic_write_json`'s own emergency-copy fallback and
+    the existing `.emergency/` monitor, cooldown_key="emergency_copy", would
+    independently surface a *sustained* write failure of this kind via a
+    separate alert, so this isn't a fully silent failure mode in practice).
+    """
+    with _NOTIFY_COOLDOWN_FILE_LOCK:
+        try:
+            state = (
+                json.loads(NOTIFY_COOLDOWN_STATE_PATH.read_text())
+                if NOTIFY_COOLDOWN_STATE_PATH.exists()
+                else {}
+            )
+            if not isinstance(state, dict):
+                raise ValueError(
+                    f"cooldown state must be a dict, got {type(state).__name__}"
+                )
+        except Exception as exc:
+            _log.warning(
+                "notify: failed to load persisted cooldown state (failing open, "
+                "not writing to avoid clobbering other keys): %s",
+                exc,
+            )
+            return True
+        last = state.get(cooldown_key, 0.0)
+        if now - last < cooldown_secs:
+            return False
+        state[cooldown_key] = now
+        try:
+            # No explicit parent .mkdir() here -- atomic_write_json() already
+            # does path.parent.mkdir(parents=True, exist_ok=True) as its own
+            # first step (safe_io.py), so a second call here was redundant
+            # (opus review, 2026-07-31).
+            atomic_write_json(state, NOTIFY_COOLDOWN_STATE_PATH)
+        except Exception as exc:
+            _log.warning("notify: failed to persist cooldown state: %s", exc)
+        return True
 
 
 def _send_pushover(title: str, message: str) -> bool:
@@ -276,17 +374,20 @@ def send_system_alert(
     review-caught: two unrelated alert types sharing the default key would
     otherwise silently suppress each other for 6h, not just repeats of the
     same alert) so unrelated alert types don't interfere with each other.
-    Note: this cooldown is in-process memory only -- under Windows Task
-    Scheduler, each cron invocation is a fresh process, so it does NOT
-    actually prevent repeat-cycle spam there, only within a single
-    long-lived process (main.py's `loop`/`watch --auto` modes).
+    Unlike the per-ticker trade-signal cooldown, this one is persisted to
+    disk (paths.NOTIFY_COOLDOWN_STATE_PATH via _system_cooldown_elapsed())
+    so it survives across separate process invocations -- manual `py main.py
+    cron` runs today, or a future scheduled task post-VM-migration -- not
+    just within one long-lived process (main.py's `loop`/`watch --auto`
+    modes). Fixed 2026-07-31; previously in-process-memory only, which meant
+    every fresh invocation reset the cooldown and never actually suppressed
+    a repeat alert across separate runs.
     Never raises.
     """
     _SYSTEM_COOLDOWN_SECS = 21_600  # 6 hours between system alerts
     now = time.time()
-    if now - _last_notified.get(cooldown_key, 0.0) < _SYSTEM_COOLDOWN_SECS:
+    if not _system_cooldown_elapsed(cooldown_key, now, _SYSTEM_COOLDOWN_SECS):
         return
-    _last_notified[cooldown_key] = now
 
     successes: list[bool] = []
 
