@@ -79,11 +79,26 @@ class TradeCycleResult:
 
     halted_reason: str | None
     consistency_skip: bool
-    markets: list[dict]
-    scanned: int  # post-dedup/stale market count
+    markets: list[dict]  # raw, pre-dedup/stale-filter fetch result
+    deduped_markets: list[dict]  # post-dedup/stale-filter -- what all_results
+    # /liquid_opps/no_quote_opps/strong_opps/med_opps were actually built
+    # from; a caller reconstructing the display table (position-protection
+    # unification's sibling, backlog.txt's [CMD_WATCH RUNS THREE INDEPENDENT
+    # get_weather_markets() SCANS...] entry) needs THIS list, not `markets`,
+    # for parity with main.py's own _analyze_once (which dedupes before
+    # everything downstream reads its `markets` variable).
+    scanned: int  # post-dedup/stale market count == len(deduped_markets)
     dedup_removed: int
     stale_skipped: int
+    effective_min_edge: float  # the real threshold _passes_threshold/_passes_edge
+    # were computed against (max(min_edge, get_paper_min_edge())) -- a caller
+    # sourcing its own display from this result's liquid_opps/no_quote_opps
+    # needs this, not its own separately-passed `min_edge`, to print an
+    # accurate "dimmed below >X%" threshold that matches what's actually dimmed.
     all_results: list[tuple[dict, dict]]  # every (enriched, analysis) analyzed
+    ticker_city: dict[str, str]  # ticker -> city for every successfully-enriched
+    # market, tagged before the not-analysis skip -- see its own comment at
+    # the init site for why this must NOT be derived from all_results (narrower).
     no_quote_opps: list[tuple[dict, dict]]  # illiquid, all threshold outcomes
     liquid_opps: list[tuple[dict, dict]]  # liquid, all threshold outcomes
     strong_opps: list[tuple[dict, dict]]  # tier=strong, eligible for placement
@@ -316,6 +331,15 @@ def run_trade_cycle(
     eff_strong_edge = (
         effective_strong_edge if effective_strong_edge is not None else STRONG_EDGE
     )
+    # Computed once here (single snapshot for the whole cycle -- also read
+    # directly by the scan loop below, not recomputed there) so
+    # TradeCycleResult can expose it to callers -- see the dataclass field's
+    # own docstring.
+    effective_min_edge = (
+        get_paper_min_edge()
+        if min_edge is None
+        else max(min_edge, get_paper_min_edge())
+    )
 
     all_results: list[tuple[dict, dict]] = []
     no_quote_opps: list[tuple[dict, dict]] = []
@@ -323,6 +347,15 @@ def run_trade_cycle(
     strong_opps: list[tuple[dict, dict]] = []
     med_opps: list[tuple[dict, dict]] = []
     signals_cache_entries: list[dict] = []
+    # ticker->city map for every successfully-enriched market, tagged BEFORE
+    # the `if not analysis: continue` skip below (opus review, 2026-08-03) --
+    # matches main.py's _analyze_once own _arb_ticker_city tagging point
+    # exactly. Building this narrower (e.g. only from `all_results`, which is
+    # populated AFTER that skip) would silently drop every market
+    # analyze_trade() returned falsy for from a caller's arb-exposure
+    # city-cost lookup -- real for ~32 of analyze_trade's own falsy-return
+    # paths (no forecast data, spread too wide, stale target date, etc.).
+    ticker_city: dict[str, str] = {}
     dbg: dict[str, int] = {
         "no_analysis": 0,
         "analysis_errors": 0,  # a future raised, distinct from analyze_trade returning falsy
@@ -376,6 +409,7 @@ def run_trade_cycle(
                         )
                         dbg["analysis_errors"] += 1
                         continue
+                    ticker_city[m.get("ticker", "")] = enriched.get("_city", "")
                     if not analysis:
                         dbg["no_analysis"] += 1
                         continue
@@ -438,13 +472,16 @@ def run_trade_cycle(
                     # Below-threshold candidates are still recorded
                     # (signals_cache / display) so the dashboard/table can
                     # show them; only candidates that pass are eligible for
-                    # auto-trading.
+                    # auto-trading. Uses the single `effective_min_edge`
+                    # snapshotted once above (opus review, 2026-08-03): this
+                    # used to recompute the identical formula on every
+                    # iteration, which silently shadowed the hoisted variable
+                    # of the same name -- functionally harmless (byte-
+                    # identical formula) but meant a mid-scan
+                    # get_paper_min_edge() config write could apply to only
+                    # some markets in the same cycle. One snapshot for the
+                    # whole cycle is the more consistent behavior anyway.
                     passes_threshold = True
-                    effective_min_edge = (
-                        get_paper_min_edge()
-                        if min_edge is None
-                        else max(min_edge, get_paper_min_edge())
-                    )
                     if abs(adjusted_edge) < effective_min_edge:
                         dbg["net_edge"] += 1
                         passes_threshold = False
@@ -705,10 +742,13 @@ def run_trade_cycle(
         halted_reason=halted_reason,
         consistency_skip=consistency_skip,
         markets=markets,
+        deduped_markets=deduped_markets,
         scanned=len(deduped_markets),
         dedup_removed=dedup_removed,
         stale_skipped=stale_skipped,
+        effective_min_edge=effective_min_edge,
         all_results=all_results,
+        ticker_city=ticker_city,
         no_quote_opps=no_quote_opps,
         liquid_opps=liquid_opps,
         strong_opps=strong_opps,

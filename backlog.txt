@@ -8972,8 +8972,9 @@ RESOLVED 2026-08-03:
   ENABLE_MICRO_LIVE was not touched (still false); no real order was placed
   as part of this work -- paper/mocked throughout.
 
-[CMD_WATCH RUNS THREE INDEPENDENT get_weather_markets() SCANS PER
-AUTO-TRADE CYCLE -- DISPLAY SCAN NEVER UNIFIED WITH THE ENGINE'S OWN SCAN]
+[RESOLVED 2026-08-03] CMD_WATCH RUNS THREE INDEPENDENT get_weather_markets()
+SCANS PER AUTO-TRADE CYCLE -- DISPLAY SCAN NEVER UNIFIED WITH THE ENGINE'S
+OWN SCAN
 Priority: Low/Medium -- filed during the 2026-08-02 headless-engine
   extraction (see the RESOLVED entry above) as a deliberately deferred
   MEDIUM review finding, not folded in.
@@ -9046,6 +9047,102 @@ ADDENDUM 2026-08-03 (title's count now stale, problem unchanged):
   protection change. Title left as-is (not renumbered) per
   feedback_backlog_title_staleness's guidance to verify against full entry
   text rather than trust the title in isolation.
+
+RESOLVED 2026-08-03:
+  Implemented exactly the "what it would look like to fully close this"
+  plan above, with 2 refinements the plan itself didn't anticipate (both
+  found during implementation, not by opus review):
+  1. Extracted _analyze_once()'s rendering body (main.py, 417 lines --
+     table/arb/correlation-warning/summary, INCLUDING the arbitrage-surface
+     block, which actually PLACES real paper orders via place_paper_order()
+     when a consistency violation clears its gates, not just a display
+     warning -- the original plan's "rendering" framing undersold this)
+     into a standalone _render_analysis_results(). _analyze_once() itself
+     now just calls it with its own freshly-scanned data -- byte-for-byte
+     unchanged behavior for cmd_analyze (confirmed both by direct diff and
+     by re-running _analyze_once's full pre-existing test suite, 36/36
+     pass, zero changes needed) and for plain/non-auto watch.
+  2. cmd_watch's auto-trading loop now branches on cycle_result: when
+     available, it calls _render_analysis_results() directly with
+     trade_cycle.run_trade_cycle()'s own already-scanned/already-analyzed
+     data (cycle_result.deduped_markets/liquid_opps/no_quote_opps) instead
+     of calling _analyze_once() again. When cycle_result is None (kill
+     switch active, or the cron lock unavailable), it falls back to
+     _analyze_once() exactly as before, unaffected. This reduces
+     auto-trading's per-cycle scan count from up to four (per the ADDENDUM
+     above) down to two: run_trade_cycle()'s own scan, and
+     _check_early_exits()'s own separate scan (position-protection's,
+     deliberately left unthreaded -- still the ADDENDUM's stated remaining
+     gap, now the ONLY remaining one).
+
+  Refinement 1 (found during research, not in the original plan): the
+  original plan said watch would need to "compute _passes_edge (...) kept
+  deliberately separate from the engine's real _passes_threshold" -- this
+  turned out to already be moot. trade_cycle.py already aliases
+  analysis["_passes_edge"] = passes_threshold specifically so callers
+  reading the pre-extraction field name see the real threshold outcome,
+  not a stale default. So cmd_watch's cycle_result path reuses this real
+  value directly rather than recomputing a separate cosmetic formula --
+  display dimming on the auto-trade path is now MORE accurate than before
+  (matches what actually got traded), not just equivalent. Two new
+  TradeCycleResult fields (deduped_markets, effective_min_edge) were added
+  so the renderer's market-count and threshold-percentage text stay
+  accurate when sourced this way, instead of the pre-dedup/raw values.
+
+  Refinement 2 (found during research): the plan said to build _is_hedge
+  and a ticker->city map on cycle_result.all_results "matching what
+  _analyze_once currently tags inline" -- but all_results is populated
+  AFTER analyze_trade()'s not-analysis check, while _analyze_once's own
+  _arb_ticker_city is tagged BEFORE it (immediately after enrich+analyze
+  succeed). Deriving the map from all_results as literally described would
+  have been silently narrower. Added a new ticker_city field to
+  TradeCycleResult instead, tagged at the correct (earlier) point inside
+  run_trade_cycle()'s own loop, and cmd_watch sources it directly rather
+  than rebuilding it.
+
+  Independent opus review (effort=high) caught refinement 2's gap in the
+  FIRST draft (which did derive it from all_results, exactly as the
+  original plan described) -- HIGH+MEDIUM real findings, both fixed:
+  (1) HIGH: _analyze_once's own per-market loop fires alert_strong_signal()
+  for new STRONG liquid opportunities -- that loop is NOT part of the
+  extracted render body, so the cycle_result path silently never fired this
+  alert at all on the auto-trade path (proven empirically by the reviewer:
+  0 alerts on auto watch vs 1 on plain watch for an identical opportunity),
+  and the miss was sticky (the ticker still got recorded as "seen" via
+  _save_watch_state, so even a later fallback cycle wouldn't re-fire it).
+  Fixed by adding an equivalent alert-firing loop directly in cmd_watch's
+  cycle_result branch. (2) MEDIUM: the first draft's all_results-derived
+  ticker->city map (refinement 2's original, plan-following version) meant
+  the arb block's per-city exposure cap ($25/city) was silently bypassed
+  and placed arb trades lost city attribution whenever BOTH legs of a
+  violation had no real analysis result -- fixed via the new
+  TradeCycleResult.ticker_city field described above. Also fixed, LOW
+  severity: the "dimmed below >X% edge threshold" caption text was
+  literally true for _analyze_once's own formula but not for the
+  cycle_result path's real (multi-gate) _passes_edge semantics -- reworded
+  to not overclaim a single criterion; and effective_min_edge's hoisted
+  computation was silently shadowed by an identical per-iteration
+  recomputation inside the scan loop (same formula, so numerically
+  harmless today, but confusing and could diverge under a mid-scan
+  get_paper_min_edge() config write) -- removed the redundant
+  recomputation, loop now reads the single hoisted value directly.
+
+  Tests: 8 tests in new TestCmdWatchDisplayScanUnification class
+  (tests/test_trade_cycle_engine.py) -- exactly-2-scans proof, real-data-
+  renders proof, _is_hedge tagging proof, deduped-vs-raw market-count proof,
+  effective-vs-raw min_edge proof, the new alert-firing proof, the new
+  ticker_city-completeness proof (end-to-end through real arb placement,
+  verifying city attribution survives when neither violation leg has a
+  real analysis result), and the cycle_result=None-fallback-unaffected
+  proof. Every new/changed assertion mutation-tested, including both
+  opus-review-driven fixes (mutating the alert loop back out and the
+  ticker_city field back to the narrower all_results-derived version --
+  both caught). 478 tests pass across the full affected regression scope
+  (test_trading.py, test_trade_cycle_engine.py, test_menu_ux.py,
+  test_cron_integration.py, test_p1_remaining.py, test_weather_markets.py,
+  test_cron_group_c.py, test_live_execution.py); ruff/ruff-format/mypy
+  clean on all 3 changed files (main.py, trade_cycle.py, and the test
+  file).
 
 [RESOLVED 2026-07-20] WATCH/_analyze_once IS MISSING cron.py's MIN_MARKET_PROB_TO_BET_WITH /
 MAX_MARKET_DIVERGENCE_RATIO DIRECTIONAL-CONSENSUS GATES

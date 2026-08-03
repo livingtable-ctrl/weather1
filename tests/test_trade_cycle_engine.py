@@ -537,6 +537,330 @@ class TestCmdWatchIntegration:
         )
 
 
+class TestCmdWatchDisplayScanUnification:
+    """cmd_watch's auto-trading display must source from run_trade_cycle()'s
+    own already-scanned/already-analyzed cycle_result instead of running a
+    second independent get_weather_markets()+enrich+analyze pass -- position-
+    protection unification's sibling follow-up (backlog.txt's [CMD_WATCH
+    RUNS THREE INDEPENDENT get_weather_markets() SCANS...] entry)."""
+
+    def _drive_one_cycle(self, main, monkeypatch):
+        monkeypatch.setattr(main, "_load_watch_state", lambda: set())
+        monkeypatch.setattr(main, "_save_watch_state", lambda s: None)
+        monkeypatch.setattr(main, "flush_forecast_disk_cache", lambda: None)
+        monkeypatch.setattr(main, "flush_ensemble_disk_cache", lambda: None)
+
+        def _raise_keyboard_interrupt(*a, **kw):
+            raise KeyboardInterrupt()
+
+        monkeypatch.setattr(main, "time", MagicMock(sleep=_raise_keyboard_interrupt))
+
+    def test_auto_watch_with_cycle_result_does_not_rescan_for_display(
+        self, engine_env, monkeypatch
+    ):
+        """When run_trade_cycle() returns a real (non-None) cycle_result,
+        cmd_watch must call get_weather_markets() exactly once per cycle
+        (inside run_trade_cycle itself) -- not a second time for the
+        display, which is the whole point of this entry."""
+        tmp_path, client, main, paper, cron, trade_cycle, ctx = engine_env
+        market, enriched, analysis = _strong_market_analysis()
+
+        scan_calls: list = []
+        monkeypatch.setattr(
+            main, "get_weather_markets", lambda c: scan_calls.append(1) or [market]
+        )
+        monkeypatch.setattr(main, "enrich_with_forecast", lambda m: enriched)
+        monkeypatch.setattr(main, "analyze_trade", lambda e: analysis)
+        monkeypatch.setattr(paper, "get_open_trades", lambda: [])
+        self._drive_one_cycle(main, monkeypatch)
+
+        main.cmd_watch(client, auto_trade=True, min_edge=0.05)
+
+        assert len(scan_calls) == 1, (
+            f"expected exactly 1 get_weather_markets() call (run_trade_cycle's "
+            f"own scan reused for display), got {len(scan_calls)} -- a second "
+            f"call means the display is still running its own independent scan"
+        )
+
+    def test_auto_watch_cycle_result_display_renders_real_data(
+        self, engine_env, monkeypatch, capsys
+    ):
+        """Not just that the scan is skipped -- the table actually renders
+        the real opportunity from cycle_result, proving data really flows
+        through (not silently dropped/empty)."""
+        tmp_path, client, main, paper, cron, trade_cycle, ctx = engine_env
+        market, enriched, analysis = _strong_market_analysis()
+
+        monkeypatch.setattr(main, "get_weather_markets", lambda c: [market])
+        monkeypatch.setattr(main, "enrich_with_forecast", lambda m: enriched)
+        monkeypatch.setattr(main, "analyze_trade", lambda e: analysis)
+        monkeypatch.setattr(paper, "get_open_trades", lambda: [])
+        self._drive_one_cycle(main, monkeypatch)
+
+        main.cmd_watch(client, auto_trade=True, min_edge=0.05)
+
+        out = capsys.readouterr().out
+        assert market["ticker"] in out, (
+            f"expected {market['ticker']} in the rendered table, "
+            "proving the display actually rendered cycle_result's data"
+        )
+
+    def test_auto_watch_cycle_result_tags_is_hedge(
+        self, engine_env, monkeypatch, capsys
+    ):
+        """_is_hedge isn't computed by run_trade_cycle() itself (it has no
+        use for it) -- cmd_watch must tag it onto cycle_result's analysis
+        dicts itself before rendering, the same way _analyze_once's own loop
+        does, or a real hedge would silently stop showing the [HEDGE] tag
+        once watch stopped sourcing its display from a fresh scan."""
+        tmp_path, client, main, paper, cron, trade_cycle, ctx = engine_env
+        market, enriched, analysis = _strong_market_analysis()
+        # detect_hedge_opportunity reads city/_city + target_date +
+        # recommended_side off the ANALYSIS dict (not enriched) -- match
+        # _strong_market_analysis()'s own city/date exactly.
+        analysis = dict(analysis, _city="NYC")
+        existing_open_no_position = {
+            "ticker": "KXHIGH-NYC-26APR17-B65",
+            "city": "NYC",
+            "target_date": "2026-04-17",
+            "side": "no",  # opposite of analysis's recommended_side="yes"
+            "settled": False,
+        }
+
+        monkeypatch.setattr(main, "get_weather_markets", lambda c: [market])
+        monkeypatch.setattr(main, "enrich_with_forecast", lambda m: enriched)
+        monkeypatch.setattr(main, "analyze_trade", lambda e: analysis)
+        monkeypatch.setattr(
+            paper, "get_open_trades", lambda: [existing_open_no_position]
+        )
+        self._drive_one_cycle(main, monkeypatch)
+
+        main.cmd_watch(client, auto_trade=True, min_edge=0.05)
+
+        out = capsys.readouterr().out
+        assert "HEDGE" in out, (
+            f"expected a [HEDGE] tag for {market['ticker']} (opposes an "
+            "existing open NO position on the same city+date) -- got:\n" + out
+        )
+
+    def test_auto_watch_cycle_result_summary_uses_deduped_count_not_raw(
+        self, engine_env, monkeypatch, capsys
+    ):
+        """cycle_result.markets is the RAW pre-dedup fetch result;
+        cycle_result.deduped_markets is what liquid_opps/no_quote_opps were
+        actually built from (matching _analyze_once's own `markets` var,
+        which is reassigned to the deduped list before the summary line
+        reads it). The rendered "N markets scanned" summary must reflect the
+        deduped count, or an operator sees a scan count that doesn't match
+        how many opportunities could possibly have been found."""
+        tmp_path, client, main, paper, cron, trade_cycle, ctx = engine_env
+        market, enriched, analysis = _strong_market_analysis()
+        duplicate_ticker_market = dict(market)  # same ticker, raw duplicate
+
+        monkeypatch.setattr(
+            main,
+            "get_weather_markets",
+            lambda c: [market, duplicate_ticker_market],
+        )
+        monkeypatch.setattr(main, "enrich_with_forecast", lambda m: enriched)
+        monkeypatch.setattr(main, "analyze_trade", lambda e: analysis)
+        monkeypatch.setattr(paper, "get_open_trades", lambda: [])
+        self._drive_one_cycle(main, monkeypatch)
+
+        main.cmd_watch(client, auto_trade=True, min_edge=0.05)
+
+        out = capsys.readouterr().out
+        assert "1 markets scanned" in out, (
+            "expected the deduped count (1), not the raw fetch count (2) -- "
+            "the duplicate ticker must not double-count in the summary "
+            "line:\n" + out
+        )
+
+    def test_auto_watch_cycle_result_uses_effective_min_edge_not_raw(
+        self, engine_env, monkeypatch, capsys
+    ):
+        """run_trade_cycle()'s real applied threshold is
+        max(min_edge, get_paper_min_edge()), which can differ from the raw
+        --edge value cmd_watch was passed. The rendered "dimmed below >X%"
+        text must reflect that real effective threshold (matching what's
+        actually dimmed via the pre-tagged _passes_edge field), not the raw
+        CLI value -- otherwise the printed threshold lies about what's
+        dimmed."""
+        tmp_path, client, main, paper, cron, trade_cycle, ctx = engine_env
+        from utils import get_paper_min_edge
+
+        market, enriched, analysis = _strong_market_analysis()
+        floor = get_paper_min_edge()
+        raw_min_edge = floor / 2  # deliberately below the real floor
+
+        monkeypatch.setattr(main, "get_weather_markets", lambda c: [market])
+        monkeypatch.setattr(main, "enrich_with_forecast", lambda m: enriched)
+        monkeypatch.setattr(main, "analyze_trade", lambda e: analysis)
+        monkeypatch.setattr(paper, "get_open_trades", lambda: [])
+        self._drive_one_cycle(main, monkeypatch)
+
+        main.cmd_watch(client, auto_trade=True, min_edge=raw_min_edge)
+
+        out = capsys.readouterr().out
+        assert f">{floor:.0%} edge threshold" in out, (
+            f"expected the real effective threshold ({floor:.0%}), not the "
+            f"raw --edge value ({raw_min_edge:.0%}) in the printed text:\n" + out
+        )
+
+    def test_auto_watch_cycle_result_fires_strong_signal_alert(
+        self, engine_env, monkeypatch
+    ):
+        """_analyze_once's own scan loop fires alert_strong_signal() for a
+        new STRONG liquid opportunity -- that loop is NOT part of the
+        extracted render body, so the cycle_result path must fire this
+        itself or the alert silently never reaches the operator on the
+        auto-trade path (opus review, 2026-08-03 -- HIGH severity: also
+        sticky, since _save_watch_state still records the ticker as seen,
+        so even a later cycle_result=None fallback cycle won't re-fire it)."""
+        tmp_path, client, main, paper, cron, trade_cycle, ctx = engine_env
+        market, enriched, analysis = _strong_market_analysis()
+
+        alerts: list = []
+        monkeypatch.setattr(
+            main,
+            "alert_strong_signal",
+            lambda **kw: alerts.append(kw),
+        )
+        monkeypatch.setattr(main, "get_weather_markets", lambda c: [market])
+        monkeypatch.setattr(main, "enrich_with_forecast", lambda m: enriched)
+        monkeypatch.setattr(main, "analyze_trade", lambda e: analysis)
+        monkeypatch.setattr(paper, "get_open_trades", lambda: [])
+        self._drive_one_cycle(main, monkeypatch)
+
+        main.cmd_watch(client, auto_trade=True, min_edge=0.05)
+
+        assert len(alerts) == 1, (
+            f"expected alert_strong_signal() to fire once for a new STRONG "
+            f"liquid opportunity, got {len(alerts)} calls"
+        )
+        assert alerts[0]["ticker"] == market["ticker"]
+
+    def test_auto_watch_cycle_result_ticker_city_includes_no_analysis_markets(
+        self, engine_env, monkeypatch
+    ):
+        """cycle_result.ticker_city must include a market's city even when
+        analyze_trade() returned falsy for it -- matching _analyze_once's
+        own _arb_ticker_city, tagged before that check. Verified end-to-end
+        via the arb-placement block: a violation whose BOTH legs have no
+        analysis result (deriving ticker_city from cycle_result.all_results
+        instead, which only spans markets with a truthy analysis, would
+        leave the city lookup for EITHER leg empty -- but the block's
+        fallback `_arb_ticker_city.get(buy) or _arb_ticker_city.get(sell)`
+        means a bug only surfaces when NEITHER leg has a real analysis
+        result, since the fallback silently papers over a single missing
+        leg) must still place with the real city, not city=None (opus
+        review, 2026-08-03 -- MEDIUM severity: city=None silently bypassed
+        the per-city arb exposure cap and dropped city attribution on
+        placed trades)."""
+        from consistency import Violation
+        from trading_gates import LiveTradingGate
+
+        tmp_path, client, main, paper, cron, trade_cycle, ctx = engine_env
+        buy_market = {
+            "ticker": "KXHIGH-NYC-26APR17-NOANALYSIS-A",
+            "yes_bid": 40,
+            "yes_ask": 44,
+            "volume": 1000,
+            "open_interest": 500,
+        }
+        sell_market = {
+            "ticker": "KXHIGH-NYC-26APR17-NOANALYSIS-B",
+            "yes_bid": 60,
+            "yes_ask": 64,
+            "volume": 1000,
+            "open_interest": 500,
+        }
+        buy_enriched = dict(buy_market, _city="NYC")
+        sell_enriched = dict(sell_market, _city="NYC")
+
+        def _fake_enrich(m):
+            return (
+                buy_enriched if m["ticker"] == buy_market["ticker"] else sell_enriched
+            )
+
+        placed: list = []
+        monkeypatch.setattr(
+            paper, "place_paper_order", lambda *a, **kw: placed.append(kw) or {"id": 1}
+        )
+        monkeypatch.setattr(
+            LiveTradingGate, "check", lambda self, client=None: (True, "")
+        )
+        _fake_violations = [
+            Violation(
+                buy_ticker=buy_market["ticker"],
+                sell_ticker=sell_market["ticker"],
+                buy_prob=0.40,
+                sell_prob=0.80,
+                guaranteed_edge=0.40,
+                description="test violation",
+            )
+        ]
+        # main.py does `from consistency import find_violations` at module
+        # top (its own bound name) -- patching consistency.find_violations
+        # itself would not reach main._render_analysis_results's arb block,
+        # which calls the module-top name, not a fresh lookup.
+        monkeypatch.setattr(main, "find_violations", lambda m: _fake_violations)
+        # run_trade_cycle() does its own lazy `from consistency import
+        # find_violations` (a real safety check, unrelated to the arb block
+        # above) -- must also see the fake violation or it treats this as a
+        # zero-violation cycle for its own consistency_skip bookkeeping.
+        monkeypatch.setattr("consistency.find_violations", lambda m: _fake_violations)
+        monkeypatch.setattr(
+            main, "get_weather_markets", lambda c: [buy_market, sell_market]
+        )
+        monkeypatch.setattr(main, "enrich_with_forecast", _fake_enrich)
+        # Both legs' analysis returns falsy -- neither reaches
+        # cycle_result.all_results, so both must still get a real city from
+        # cycle_result.ticker_city (tagged before the not-analysis check).
+        monkeypatch.setattr(main, "analyze_trade", lambda e: None)
+        monkeypatch.setattr(paper, "get_open_trades", lambda: [])
+        self._drive_one_cycle(main, monkeypatch)
+
+        main.cmd_watch(client, auto_trade=True, min_edge=0.05)
+
+        assert len(placed) == 2, f"expected both arb legs placed, got {placed}"
+        cities = {p.get("city") for p in placed}
+        assert cities == {"NYC"}, (
+            f"expected both arb legs placed with city='NYC' (neither leg "
+            f"has a real analysis result), got city values {cities} -- "
+            f"a None means the per-city exposure cap and city attribution "
+            f"silently broke for that leg"
+        )
+
+    def test_auto_watch_falls_back_to_analyze_once_when_cycle_result_none(
+        self, engine_env, monkeypatch
+    ):
+        """When run_trade_cycle() returns None (e.g. kill switch active),
+        cmd_watch must fall back to _analyze_once() exactly as before this
+        entry's fix -- unaffected by the cycle_result-sourced path above."""
+        tmp_path, client, main, paper, cron, trade_cycle, ctx = engine_env
+        (tmp_path / ".kill_switch").touch()
+
+        scan_calls: list = []
+        monkeypatch.setattr(
+            main, "get_weather_markets", lambda c: scan_calls.append(1) or []
+        )
+        monkeypatch.setattr(paper, "get_open_trades", lambda: [])
+        self._drive_one_cycle(main, monkeypatch)
+
+        main.cmd_watch(client, auto_trade=True, min_edge=0.05)
+
+        # 2 calls: cmd_watch's own price-drift fallback scan (cycle_result is
+        # None) + _analyze_once()'s own independent scan -- both pre-existing,
+        # unaffected by this entry's fix, which only changes the
+        # cycle_result-is-not-None branch.
+        assert len(scan_calls) == 2, (
+            f"expected 2 get_weather_markets() calls in the cycle_result=None "
+            f"fallback path (price-drift + _analyze_once, both pre-existing "
+            f"and unaffected by this fix), got {len(scan_calls)}"
+        )
+
+
 class TestLiveConfigThreading:
     """The literal path the backlog entry exists to harden -- live=True with
     a populated live_config -- had zero coverage at the new engine seam.

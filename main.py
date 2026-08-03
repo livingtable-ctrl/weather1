@@ -1551,6 +1551,72 @@ def _analyze_once(
             _divergence_skipped,
         )
 
+    return _render_analysis_results(
+        client,
+        markets,
+        liquid_opps,
+        no_quote_opps,
+        previous_tickers,
+        min_edge,
+        show_summary,
+        _open_trades,
+        _arb_ticker_city,
+        _liquid_opps_out,
+    )
+
+
+def _render_analysis_results(
+    client: KalshiClient,
+    markets: list,
+    liquid_opps: list,
+    no_quote_opps: list,
+    previous_tickers: set | None,
+    min_edge: float,
+    show_summary: bool,
+    _open_trades: list,
+    _arb_ticker_city: dict,
+    _liquid_opps_out: list | None = None,
+) -> set:
+    """Render the interactive analyze/watch table (liquid + no-quote market
+    tables, arbitrage surface -- including live corrective-trade PLACEMENT,
+    not just display, see the "Arbitrage surface" block below --, portfolio-
+    correlation warning, optional summary line) and return the set of all
+    opportunity tickers found.
+
+    Extracted from _analyze_once()'s own body (position-protection
+    unification's sibling follow-up; see backlog.txt's [CMD_WATCH RUNS THREE
+    INDEPENDENT get_weather_markets() SCANS...] entry) so cmd_watch's
+    auto-trading loop can call this directly with trade_cycle.run_trade_
+    cycle()'s own already-scanned/already-analyzed data instead of running a
+    second independent get_weather_markets()+enrich+analyze pass just to
+    render the display. Called BY _analyze_once() itself below (unchanged
+    behavior for cmd_analyze and plain/non-auto watch, which still source
+    this from a fresh scan) and ALSO directly by cmd_watch when auto_trade
+    cycle_result is available.
+
+    ``markets``: the DEDUPED/stale-filtered list (matches _analyze_once's own
+    ``markets`` var by this point, NOT trade_cycle.TradeCycleResult.markets,
+    which is pre-dedup -- use ``.deduped_markets`` when sourcing from a
+    cycle_result). ``liquid_opps``/``no_quote_opps``: (enriched, analysis)
+    pairs already gate-tagged with ``_passes_edge`` -- from run_trade_cycle(),
+    this is aliased to the real ``_passes_threshold`` outcome (see trade_
+    cycle.py's own comment on that alias), not a separately-computed cosmetic
+    threshold, so display dimming here always matches what actually traded.
+    ``min_edge``: only used for the printed "dimmed below >X%" threshold text
+    (dimming itself is driven by the pre-tagged ``_passes_edge`` field, not
+    recomputed here) -- pass ``TradeCycleResult.effective_min_edge`` when
+    sourcing from one, not the raw CLI ``--edge`` value, so the printed
+    threshold matches what was actually applied. ``_open_trades``: the caller
+    must fetch this itself when not calling from _analyze_once (see
+    cmd_watch's cycle_result branch). ``_arb_ticker_city``: pass
+    ``TradeCycleResult.ticker_city`` directly when sourcing from one -- do
+    NOT derive it from ``.all_results`` (narrower: only markets where
+    analyze_trade() returned truthy, unlike this tag point, which is before
+    that check -- an opus review caught this exact gap on 2026-08-03, which
+    silently bypassed the arb per-city exposure cap and dropped city
+    attribution on placed arb trades whenever analyze_trade() returned falsy).
+    """
+
     def _rating(net_edge: float, risk: str) -> str:
         """★★★ = strong edge + low risk, ★★ = good edge, ★ = fair edge."""
         ae = abs(net_edge)
@@ -1700,7 +1766,12 @@ def _analyze_once(
             )
         )
         print(tabulate(rows, headers=hdrs, tablefmt="rounded_outline"))
-        print(dim(f"  Dimmed tickers are below the >{min_edge:.0%} edge threshold."))
+        print(
+            dim(
+                f"  Dimmed tickers didn't clear the >{min_edge:.0%} edge threshold"
+                " (or another gate the engine applied this cycle)."
+            )
+        )
         # Top pick plain-English explanation (best above-threshold pick only)
         passing = [(m, a) for m, a in liquid_opps if a.get("_passes_edge", True)]
         if passing:
@@ -1730,7 +1801,8 @@ def _analyze_once(
             dim(
                 "  These markets have no buyers/sellers yet."
                 " You can still place a limit order to set your own price."
-                f" Dimmed tickers are below the >{min_edge:.0%} edge threshold."
+                f" Dimmed tickers didn't clear the >{min_edge:.0%} edge threshold"
+                " (or another gate the engine applied this cycle)."
             )
         )
         if urls:
@@ -1956,7 +2028,8 @@ def _analyze_once(
             print(
                 dim(
                     f"\n  {n_scanned} markets scanned"
-                    f" · no opportunities above {min_edge:.0%} threshold"
+                    f" · no opportunities cleared the {min_edge:.0%} threshold"
+                    " (or another gate)"
                 )
             )
 
@@ -3130,21 +3203,22 @@ def cmd_watch(
             # stale pre-decision snapshot (the more safety-relevant staleness
             # direction: an operator seeing "no signals" moments after a
             # trade actually fired is more confusing than the reverse).
-            # NOTE: this still leaves cmd_watch running up to four
-            # independent get_weather_markets() scans per cycle (this one
-            # reused below for price-drift, run_trade_cycle()'s own,
-            # _analyze_once()'s own for display, and -- since the
-            # position-protection unification follow-up -- one more inside
-            # _check_early_exits() below) -- fully unifying the display scan
-            # with the engine's scan would mean extracting _analyze_once()'s
-            # ~400-line table/arb/correlation-warning rendering into a
-            # shared helper, a mechanically large change this session
-            # deliberately did not attempt this late against a function
-            # `cmd_analyze` also depends on; filed as its own follow-up
-            # backlog entry (see backlog.txt's [CMD_WATCH RUNS THREE
-            # INDEPENDENT get_weather_markets() SCANS...] entry, whose title
-            # is now stale on the count but not the underlying problem)
-            # rather than folded in here.
+            # Display now sources from run_trade_cycle()'s own already-
+            # scanned/already-analyzed data when auto-trading and a
+            # cycle_result is available -- position-protection unification's
+            # sibling follow-up, backlog.txt's [CMD_WATCH RUNS THREE
+            # INDEPENDENT get_weather_markets() SCANS...] entry, now
+            # RESOLVED. This leaves cmd_watch running at most TWO independent
+            # get_weather_markets() scans per auto-trading cycle:
+            # run_trade_cycle()'s own scan (also reused below for price-drift
+            # detection via cycle_result.markets) and one more inside
+            # _check_early_exits() below (position-protection's own scan,
+            # deliberately left unthreaded -- see that entry's ADDENDUM) --
+            # down from up to four. Plain/non-auto watch and the
+            # cycle_result=None fallback (kill switch active, or the cron
+            # lock unavailable) are unaffected -- both still call
+            # _analyze_once() directly, which still runs its own full scan
+            # exactly as before.
             cycle_result = None
             live_cfg = _load_live_config() if live else None
             if auto_trade:
@@ -3206,13 +3280,80 @@ def cmd_watch(
             except Exception:
                 pass
             liquid_opps: list = []
-            previous = _analyze_once(
-                client,
-                previous,
-                _liquid_opps_out=liquid_opps,
-                min_edge=min_edge,
-                show_summary=True,
-            )
+            if cycle_result is not None:
+                # Source the display from run_trade_cycle()'s own already-
+                # scanned/already-analyzed data instead of a second
+                # independent scan -- position-protection unification's
+                # sibling follow-up (see the comment above). _is_hedge isn't
+                # computed by run_trade_cycle() itself (it has no use for
+                # it), so build it here the same way _analyze_once's own
+                # loop does. ticker->city IS exposed directly as
+                # cycle_result.ticker_city (opus review, 2026-08-03: an
+                # earlier draft rebuilt this from cycle_result.all_results,
+                # which is populated only for markets where analyze_trade()
+                # returned truthy -- narrower than _analyze_once's own
+                # _arb_ticker_city, which tags every successfully-enriched
+                # market regardless. cycle_result.ticker_city is tagged at
+                # the equivalent point in run_trade_cycle()'s own loop).
+                try:
+                    from paper import get_open_trades as _cw_got
+
+                    _cw_open_trades = _cw_got()
+                except Exception:
+                    _cw_open_trades = []
+                for _cw_enriched, _cw_analysis in cycle_result.all_results:
+                    _cw_analysis["_is_hedge"] = detect_hedge_opportunity(
+                        _cw_analysis, _cw_open_trades
+                    )
+                # Fire the new-STRONG-liquid-opportunity alert -- previously
+                # only reachable via _analyze_once's own per-market loop
+                # (main.py, the loop above this function), which the
+                # cycle_result path bypasses entirely. Matches that loop's
+                # exact condition (liquid is implicit: cycle_result.liquid_opps
+                # is already the liquid split), using `previous` from BEFORE
+                # this cycle's render call reassigns it below, same timing
+                # _analyze_once uses internally (opus review, 2026-08-03: a
+                # HIGH-severity finding -- this alert silently never fired on
+                # the auto-trade watch path without this loop, and worse,
+                # was sticky, since _save_watch_state below still recorded
+                # those tickers as seen).
+                for _cw_alert_enriched, _cw_alert_analysis in cycle_result.liquid_opps:
+                    _cw_alert_ticker = _cw_alert_enriched.get("ticker", "")
+                    if (
+                        "STRONG" in _cw_alert_analysis.get("net_signal", "")
+                        and _cw_alert_ticker not in previous
+                    ):
+                        alert_strong_signal(
+                            ticker=_cw_alert_ticker,
+                            city=_cw_alert_enriched.get("_city", ""),
+                            side=_cw_alert_analysis["recommended_side"],
+                            net_edge=_cw_alert_analysis.get(
+                                "net_edge", _cw_alert_analysis["edge"]
+                            ),
+                            kelly=_cw_alert_analysis.get(
+                                "fee_adjusted_kelly", _cw_alert_analysis.get("kelly", 0)
+                            ),
+                        )
+                previous = _render_analysis_results(
+                    client,
+                    cycle_result.deduped_markets,
+                    cycle_result.liquid_opps,
+                    cycle_result.no_quote_opps,
+                    previous,
+                    cycle_result.effective_min_edge,
+                    True,
+                    _cw_open_trades,
+                    cycle_result.ticker_city,
+                    liquid_opps,
+                )
+            else:
+                previous = _analyze_once(
+                    client,
+                    previous,
+                    _liquid_opps_out=liquid_opps,
+                    min_edge=min_edge,
+                    show_summary=True,
+                )
             _save_watch_state(previous)
             if live:
                 _poll_pending_orders(client, config=live_cfg)
