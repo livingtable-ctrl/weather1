@@ -179,12 +179,16 @@ class TestMinProbEdgeGate:
         )
 
     def test_cron_imports_min_prob_edge(self):
-        """cron.py must import MIN_PROB_EDGE from utils."""
-        import cron
+        """The prob-edge gate (MIN_PROB_EDGE) must be wired into the module
+        that actually applies it. This moved from cron.py into
+        trade_cycle.run_trade_cycle() during the headless-engine extraction
+        (backlog.txt "THE ONLY LIVE-ORDER PATH..."), applied identically to
+        both cron and watch -- cron.py itself no longer imports it directly,
+        so the import-presence check re-points at trade_cycle."""
+        import trade_cycle
 
-        # Check the module's globals contain MIN_PROB_EDGE (imported)
-        assert hasattr(cron, "MIN_PROB_EDGE") or "MIN_PROB_EDGE" in dir(cron), (
-            "cron must import MIN_PROB_EDGE"
+        assert hasattr(trade_cycle, "MIN_PROB_EDGE"), (
+            "trade_cycle must import MIN_PROB_EDGE"
         )
 
 

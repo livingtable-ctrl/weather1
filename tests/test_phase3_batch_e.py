@@ -106,47 +106,55 @@ class TestABTestSampleSize:
 
 
 class TestCronConsistencyCheck:
-    """P3-14: _cmd_cron_body must call find_violations after market scan and log/halt on excess."""
+    """P3-14: the consistency check must run after market scan and log/halt
+    on excess violations. Moved from cron.py's _cmd_cron_body into
+    trade_cycle.run_trade_cycle() during the headless-engine extraction
+    (backlog.txt "THE ONLY LIVE-ORDER PATH..."), applied identically to both
+    cron and watch -- re-pointed here at the function that now owns it.
+    cron.py itself still carries a plain (no-underscore-prefix mismatch
+    aside) `_consistency_skip = result.consistency_skip` reassignment for
+    its own console reconstruction, but the actual check/halt logic lives
+    in trade_cycle.py now."""
 
-    def test_find_violations_called_in_cron_source(self):
-        import cron
+    def test_find_violations_called_in_source(self):
+        import trade_cycle
 
-        src = inspect.getsource(cron._cmd_cron_body)
+        src = inspect.getsource(trade_cycle.run_trade_cycle)
         assert "find_violations" in src, (
-            "find_violations not called in _cmd_cron_body (P3-14)"
+            "find_violations not called in run_trade_cycle (P3-14)"
         )
 
     def test_consistency_violations_logged_at_warning(self):
-        import cron
+        import trade_cycle
 
-        src = inspect.getsource(cron._cmd_cron_body)
-        assert "_violations" in src, "violation result not captured in _cmd_cron_body"
+        src = inspect.getsource(trade_cycle.run_trade_cycle)
+        assert "violations" in src, "violation result not captured in run_trade_cycle"
         assert "WARNING" in src.upper() or "_log.warning" in src, (
             "violations must be logged at WARNING level"
         )
 
     def test_excess_violations_set_skip_flag(self):
-        """More than 5 violations must set _consistency_skip=True."""
-        import cron
+        """More than 5 violations must set consistency_skip=True."""
+        import trade_cycle
 
-        src = inspect.getsource(cron._cmd_cron_body)
-        assert "_consistency_skip" in src, (
-            "_consistency_skip flag missing from _cmd_cron_body"
+        src = inspect.getsource(trade_cycle.run_trade_cycle)
+        assert "consistency_skip" in src, (
+            "consistency_skip flag missing from run_trade_cycle"
         )
 
     def test_skip_flag_blocks_auto_trading(self):
-        """_consistency_skip must guard the _auto_place_trades calls."""
-        import cron
+        """consistency_skip must guard the auto_place_trades calls."""
+        import trade_cycle
 
-        src = inspect.getsource(cron._cmd_cron_body)
-        # Both _consistency_skip and _auto_place_trades must appear
-        assert "_consistency_skip" in src
+        src = inspect.getsource(trade_cycle.run_trade_cycle)
+        # Both consistency_skip and auto_place_trades must appear
+        assert "consistency_skip" in src
         assert "auto_place_trades" in src
         # The skip flag must appear before the trading block
-        skip_pos = src.index("_consistency_skip")
+        skip_pos = src.index("consistency_skip")
         trade_pos = src.index("auto_place_trades")
         assert skip_pos < trade_pos, (
-            "_consistency_skip must appear before _auto_place_trades in source"
+            "consistency_skip must appear before auto_place_trades in source"
         )
 
     def test_find_violations_with_clean_markets_returns_empty(self):

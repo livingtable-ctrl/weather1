@@ -71,18 +71,27 @@ class TestEdgeFlagWired:
     def test_min_edge_param_raises_the_net_edge_gate(self, monkeypatch):
         """F4: cron.py's min_edge parameter (the --edge N CLI override) was
         accepted but never read — a candidate that clears get_paper_min_edge()
-        but not the user's stricter --edge value must now be gated out."""
-        import cron
+        but not the user's stricter --edge value must now be gated out.
 
-        monkeypatch.setattr(cron, "get_paper_min_edge", lambda: 0.02)
+        This formula moved from cron.py into trade_cycle.run_trade_cycle()
+        during the headless-engine extraction (backlog.txt "THE ONLY
+        LIVE-ORDER PATH..."), applied identically to both cron and watch --
+        re-pointed here to patch trade_cycle.get_paper_min_edge (the module
+        that actually reads it now). See
+        tests/test_trade_cycle_engine.py::TestRealThresholdDrivesTrading for
+        an end-to-end test of the same gate via a real run_trade_cycle()
+        call rather than this formula-level check."""
+        import trade_cycle
+
+        monkeypatch.setattr(trade_cycle, "get_paper_min_edge", lambda: 0.02)
 
         adjusted_edge = 0.10
         min_edge = 0.30
-        gate_value = max(min_edge, cron.get_paper_min_edge())
+        gate_value = max(min_edge, trade_cycle.get_paper_min_edge())
         assert abs(adjusted_edge) < gate_value, (
             "sanity: this candidate must be gated out under the --edge override"
         )
-        assert not (abs(adjusted_edge) < cron.get_paper_min_edge()), (
+        assert not (abs(adjusted_edge) < trade_cycle.get_paper_min_edge()), (
             "sanity: this same candidate would have PASSED under the old "
             "get_paper_min_edge()-only gate — proving --edge actually changes "
             "the outcome, not just a no-op override"
@@ -114,20 +123,23 @@ class TestEdgeFlagWired:
         be get_paper_min_edge() alone -- NOT max(MIN_EDGE, get_paper_min_edge()).
         Reproduces the exact scenario test_edge_threshold.py documents: a
         5.5% edge clears the tuned 5% paper floor but would have been wrongly
-        blocked by the old always-on 15%-ish display floor."""
-        import cron
+        blocked by the old always-on 15%-ish display floor.
+
+        Re-pointed at trade_cycle (see test_min_edge_param_raises_the_net_
+        edge_gate above for why)."""
+        import trade_cycle
         from utils import MIN_EDGE
 
-        monkeypatch.setattr(cron, "get_paper_min_edge", lambda: 0.05)
+        monkeypatch.setattr(trade_cycle, "get_paper_min_edge", lambda: 0.05)
 
         min_edge = None
         adjusted_edge = 0.055
         effective = (
-            cron.get_paper_min_edge()
+            trade_cycle.get_paper_min_edge()
             if min_edge is None
-            else max(min_edge, cron.get_paper_min_edge())
+            else max(min_edge, trade_cycle.get_paper_min_edge())
         )
-        assert effective == cron.get_paper_min_edge()
+        assert effective == trade_cycle.get_paper_min_edge()
         assert abs(adjusted_edge) >= effective, (
             "5.5% edge must clear the gate when no --edge override is given"
         )

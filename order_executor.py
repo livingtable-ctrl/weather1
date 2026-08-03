@@ -928,9 +928,11 @@ def _reprice_or_cancel_pending_orders(
         a new resting GTC limit order at the fresh midpoint (still $0 fee).
       - Otherwise -> leave resting unchanged.
 
-    liquid_opps: this cycle's (market, analysis) pairs from _analyze_once,
-    reused here instead of a separate re-scan -- the same fresh data already
-    computed once per cycle for opportunity discovery.
+    liquid_opps: this cycle's (market, analysis) pairs -- from
+    trade_cycle.run_trade_cycle()'s own scan when auto-trading (filtered to
+    threshold-passing candidates by the caller), or from _analyze_once's
+    display-only scan otherwise -- reused here instead of a separate
+    re-scan.
     """
     if not liquid_opps:
         return

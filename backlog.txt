@@ -5287,6 +5287,15 @@ When to revisit:
     is a detection/alerting mechanism only -- it does NOT fix the underlying
     laptop-lid/wifi/scheduler reliability problem this entry exists to
     solve; don't mistake it for "already fixed another way."
+  - UPDATE 2026-08-02: the prerequisite (THE ONLY LIVE-ORDER PATH IS THE
+    INTERACTIVE WATCH CLI -- NO HEADLESS TRADE-CYCLE ENGINE, above) is now
+    RESOLVED -- trade_cycle.run_trade_cycle() exists and both cron.py and
+    watch --auto call it. This entry's own infra work (Dockerfile/compose/
+    systemd or Task-Scheduler config, actual VM provisioning) is still
+    entirely unstarted -- resolving the prerequisite does not itself move
+    this entry forward, it only removes the blocker. cron.py still has no
+    `while True` (one-shot, unchanged by the engine extraction, which
+    touched orchestration logic, not process lifecycle).
 
 [RESOLVED 2026-07-13] RESTING EXIT ORDERS + OCO ORDER GROUPS
 Priority: was High (live risk-management hole, not just an optimization)
@@ -8396,7 +8405,7 @@ feature/signal half from the same session). Same three-Fable-pass sourcing
 and verification discipline as above.
 ======================================================
 
-[THE ONLY LIVE-ORDER PATH IS THE INTERACTIVE WATCH CLI -- NO HEADLESS TRADE-CYCLE ENGINE]
+[RESOLVED 2026-08-02] THE ONLY LIVE-ORDER PATH IS THE INTERACTIVE WATCH CLI -- NO HEADLESS TRADE-CYCLE ENGINE
 Priority: High -- a stated prerequisite for the already-decided VM move +
   deferred always-on watcher; this is the refactor that determines whether
   that work is a port or a rewrite.
@@ -8578,6 +8587,354 @@ RESOLVED 2026-07-20 (second smallest-safe-step piece -- the full headless
   not just one.
   Still open, unstarted: the full headless run_trade_cycle() engine
   extraction, gated as above.
+
+RESOLVED 2026-08-02 (the full headless engine extraction -- "live trading
+  imminent" trigger fired 2026-07-31, Belgium pause lifted): extracted a new
+  module trade_cycle.py owning run_trade_cycle(), the canonical
+  recover-pending -> settle -> scan -> analyze -> decide/place -> settle
+  sequence, with ONE gate set (kill-switch, manual override, accuracy halt,
+  graduation gate, consistency-violation halt) and ONE real trading
+  threshold + strong/med tier classification + dynamic-Kelly-cap/$20-flat-
+  cap sizing applied identically to both cron.py's _cmd_cron_body and
+  main.py's cmd_watch --auto. Both are now thin callers of the shared
+  engine for the directional-signal pipeline; cron.py's ~30 stages of
+  periodic housekeeping (weekly retrains, cache flush, cloud backup, drift
+  detection, DB retention sweep, etc.) stay in cron.py's wrapper, called
+  before/after the engine, not interleaved inside it. Position protection
+  (poll-fills/reprice/live-exits/paper-stop-loss) stayed deliberately out of
+  scope -- cron and watch run genuinely different exit strategies today
+  (time-based vs. model-flip-based), a separate design problem from
+  pipeline-hardening parity; filed as its own follow-up entry below. Watch's
+  arbitrage-corrective-trade block and interactive display/table rendering
+  (_analyze_once, still the only scan cmd_analyze uses) were left untouched.
+
+  Re-verification before implementation found the backlog text's own
+  "What it would look like" undersold the real scope in one important way:
+  watch's _passes_edge tag was NOT the cosmetic, unrelated-to-trading
+  display-only value its framing implied -- it was watch's actual real
+  trading gate pre-refactor (_liquid_opps_out was filtered to _passes_edge-
+  True pairs, and that exact list fed _auto_place_trades(..., live=live,
+  ...)). This was corrected mid-implementation (caught by the opus review,
+  see below) after an early design draft wrongly assumed it was safe to
+  drop watch's --edge CLI override entirely.
+
+  Design decisions surfaced via AskUserQuestion (3 rounds, not guessed):
+  (1) scope -- unify the real gate set and decide/place logic between
+  pipelines rather than a pure code-relocation that would have preserved
+  the two-tier hardening problem the entry describes; (2) confirmed the
+  revised plan (gates + recover-pending + settle + scan + analyze +
+  decide/place, tiering/caps unified, housekeeping and position protection
+  out of scope); (3) confirmed using cron's real two-gate trading threshold
+  (net-edge floor + prob-edge floor) for BOTH pipelines' actual trading
+  decisions, keeping watch's old MIN_EDGE-based tag as display-only cosmetic
+  dimming, unrelated to what gets traded.
+
+  Given the size, mechanical relocation of ~900 lines of safety-critical
+  code was done via two general-purpose Agent calls (cron.py, main.py
+  wiring) working from a complete, precise specification this session wrote
+  after full manual research of both pipelines -- not delegated design or
+  judgment, only bounded mechanical execution, independently reviewed line
+  by line against the spec afterward (per feedback_scale_review_to_change_
+  size in project memory). That self-review already caught and fixed one
+  bug before any external review: the STRONG/MED "placing paper trades"
+  console banner printing unconditionally instead of only when placement
+  was actually attempted.
+
+  Independent review used 4 PARALLEL opus agents scoped by subsystem
+  (feedback_scale_review_to_change_size) given the size: trade_cycle.py's
+  own engine correctness, cron.py's rewiring, main.py's cmd_watch rewiring,
+  and test-coverage adequacy. Findings (all fixed, none skipped):
+
+  CRITICAL:
+  - trade_cycle.py tagged analysis dicts with a new _passes_threshold key,
+    but main.py's existing consumers (incl. the live reprice path) still
+    read the old _passes_edge with a fail-open `default=True` -- the key
+    being absent meant every candidate silently looked like it passed.
+    Fixed by also setting _passes_edge to the real outcome, AND by
+    explicitly filtering cmd_watch's liquid_opps to _passes_threshold=True
+    before passing to _reprice_or_cancel_pending_orders (belt-and-
+    suspenders, not reliant on the field-name convention alone).
+  - cron.py's orphaned-live-position safety net (_check_live_position_
+    exits/_check_live_model_exits) ran BEFORE _recover_pending_orders once
+    the latter moved inside the engine (called much later) -- a live
+    position recovered from a crash got zero exit protection for a full
+    cycle instead of immediate coverage. Fixed by restoring an early
+    _recover_pending_orders() call in cron.py before the exit checks
+    (matching the existing "restore early + redundant engine call becomes
+    a harmless no-op" pattern already used for the 3 gates).
+  - 7 pre-existing tests were actually broken by this refactor (the initial
+    "broader sweep" only covered this entry's own established file list and
+    missed these): test_execution_stability.py::test_lock_released_in_
+    finally (a genuine regression -- see try/except scope below, not just a
+    stale assertion), test_cron_group_c.py's 2 --edge-gate tests and
+    test_trade_improvements.py's MIN_PROB_EDGE-import test (asserted on
+    cron.py attributes that moved to trade_cycle.py), and test_phase3_
+    batch_e.py's 3 source-inspection tests (asserted on literal text in
+    cron._cmd_cron_body's source that moved to trade_cycle.run_trade_
+    cycle's source). All 7 re-pointed at the module that now owns the
+    logic, not silently skipped or deleted.
+  - live=True/live_config threading -- the literal path this entry exists
+    to harden -- had zero test coverage at the new engine seam. Added.
+
+  HIGH:
+  - The try/except scope around the scan shrank during extraction: the
+    original wrapped fetch-through-analyze in one catch-all so a transient
+    failure degraded to an empty scan (settlement/sync_outcomes/shadow-
+    logging/housekeeping still ran); the extracted version only wrapped the
+    ThreadPoolExecutor section, so a market-fetch exception now propagated
+    out of run_trade_cycle() entirely -- this IS what broke test_lock_
+    released_in_finally above, and would have killed a watch --auto --live
+    session outright on a transient Kalshi API failure. Fixed by widening
+    the try/except back to the original scope.
+  - The WebSocket used to subscribe+start right after the market fetch,
+    before prewarm/analysis/placement; since the engine now owns the fetch,
+    it could only start AFTER the whole cycle (including placement)
+    completed, leaving order_executor's flash-crash check running the
+    entire cycle's placement against a cache that was never populated.
+    Fixed by adding an on_markets_fetched callback parameter, invoked right
+    after the fetch, that cron.py uses to subscribe+start its WS at the
+    original point in the cycle (watch has no WS to manage -- confirmed via
+    grep, so no equivalent wiring needed there).
+  - Analysis-attempt logging (the analysis_attempts audit table used for
+    selection-bias measurement) silently dropped every market rejected by
+    the MIN_MARKET_PROB_TO_BET_WITH/MAX_MARKET_DIVERGENCE_RATIO gates --
+    measured against live signals_cache.json data during review: 9 of 25
+    analyzed markets (36%) were being lost. Fixed by moving the all_results
+    collection point to right after gated_edge is computed, before those
+    two gates (matching cron.py's pre-extraction _analysis_batch collection
+    point exactly); liquid_opps/no_quote_opps population stayed where it
+    was (those two gates correctly still exclude candidates from display).
+  - watch's own --edge CLI override (min_edge parameter) was being dropped
+    entirely (passed as None) instead of threaded into run_trade_cycle() --
+    given the _passes_edge correction above, this would have silently
+    removed a real, working live-trading floor a user could already invoke
+    (watch --auto --live --edge 40 required >=40% edge pre-refactor; the
+    fix would have ignored the flag and placed at the 15% tier floor
+    instead). Fixed by passing watch's own min_edge through, applied as a
+    floor exactly like cron's --edge (max(min_edge, get_paper_min_edge()),
+    never a ceiling).
+
+  MEDIUM:
+  - cmd_watch's new settle/recover-pending calls (via the engine) never
+    coordinated with cron's file lock, a new cross-process race on paper.
+    json/tracker.db that didn't exist pre-refactor (watch never touched
+    settlement before). Fixed: cmd_watch now acquires/releases cron's own
+    lock around its run_trade_cycle() call, skipping that cycle's auto-
+    trade attempt gracefully (with an operator-visible message) if cron is
+    running concurrently, rather than racing.
+  - watch runs up to three independent get_weather_markets() scans per
+    cycle (price-drift, the engine's own, and _analyze_once's own for
+    display) -- real cost/staleness concern, but a full fix means
+    extracting _analyze_once's ~400-line table/arb/correlation-warning
+    rendering into a shared helper so the auto_trade=True path can render
+    from the engine's own single scan instead. Deliberately NOT attempted
+    this late in an already large, safety-critical session against a
+    function cmd_analyze also depends on -- reordering so the trading
+    decision runs BEFORE the display scan was implemented instead (the more
+    safety-relevant staleness direction: an operator seeing "no signals"
+    moments after a trade actually fired is more confusing than the
+    reverse), and price-drift detection now reuses the engine's own markets
+    list when available instead of a 3rd fetch. Full scan unification filed
+    as its own follow-up entry below.
+
+  LOW (all fixed): analysis_errors dbg counter dropped (folded into
+  no_analysis, losing the "hard crash vs. analyze_trade returned falsy"
+  distinction) -- restored as a separate counter; _run_batch_prewarm's
+  early return skipped the always-should-run circuit-breaker probe
+  suppression when a cycle had zero parseable city/date pairs -- fixed by
+  restructuring so suppression runs unconditionally (this restructuring
+  itself introduced two further NameErrors -- `dim` and `ThreadPoolExecutor`
+  used in the split-out function without being re-imported there, caught by
+  the new tests, not by ruff, which can't reliably catch "name only defined
+  in a sibling function" -- both fixed); halted_reason overwrite instead of
+  OR-accumulation in the manual-override branch (inconsistent with the
+  other two gates, not currently exploitable but a trap for a future
+  caller) -- fixed; get_gate_counts() call left unguarded -- wrapped in
+  try/except; console "[cron] scanning N market(s)..." print reworded to
+  past tense ("scanned") since the engine now owns the fetch and this can
+  only print after the fact, not as a live progress indicator; restored
+  early gate-check block (added for the anomaly-detection-ordering fix)
+  logged nothing when black-swan hard-aborts before the engine is ever
+  reached, silencing a simultaneously-active override/accuracy-halt/
+  graduation-gate condition for that cycle -- fixed by restoring logging
+  there too, accepting minor duplicate logging with the engine's own copy
+  on the normal path as the traded-off cost; stale "side-effect-free reads"
+  comment (check_manual_override actually unlinks files and always logs
+  while active) -- corrected; one dead variable assignment removed;
+  defensive (result.strong_cap or 0.0) added against a currently-
+  unreachable but real TypeError risk if a future change decouples the
+  banner guard from the engine's own placement branch; cron.log's JSONL
+  entries now carry each market's own per-completion timestamp instead of
+  one timestamp for the whole batch (restored via a new per-entry "ts"
+  field on signals_cache_entries); a stale order_executor.py docstring and
+  two harmless-but-confusing noqa directives in main.py's import block
+  cleaned up; the trade_cycle import moved inside cmd_watch's `if
+  auto_trade:` branch so a plain read-only watch session never imports the
+  trade-decision engine module at all. One LOW finding deliberately NOT
+  changed, with reasoning documented in trade_cycle.py: hoisting the
+  pre-placement kill-switch re-check above the halted/paused/consistency-
+  skip triage (so it always runs) would have introduced a NEW regression --
+  skipping settlement/sync_outcomes on any cycle where a halt and the kill
+  switch are both active, breaking the established "halts never stop
+  settlement" invariant this exact function's docstring exists to protect.
+
+  New test coverage: tests/test_trade_cycle_engine.py, 29 tests covering
+  the unified gate set (all 5 gates, both require_liquid_for_placement
+  settings), the real-threshold fix, strong/med tier + cap unification
+  (both tiers, not just strong), live=True/live_config threading (the core
+  path this entry is about), effective_strong_edge drift-tightening
+  threading, mid-scan/pre-placement/transient kill-switch behavior, the
+  graduation gate now applying to watch end-to-end, WebSocket-start
+  ordering, the analysis-attempt data-loss fix, the banner-suppression
+  fix (all 3 gating conditions plus a positive control), and cmd_watch's
+  auto_trade dispatch (incl. prewarm=False, min_edge threading, and that
+  plain watch never touches the engine at all). All new tests were
+  individually mutation-tested (revert the fix, confirm the test fails for
+  the right reason, restore) during initial development; the review-driven
+  fixes above were verified the same way for the ones judged highest-risk
+  (external_halted_reason, require_liquid_for_placement, the cron.
+  KILL_SWITCH_PATH attribute-access fix, the ThreadPoolExecutor
+  restoration).
+
+  A second, systemic bug class surfaced during test-writing, not opus
+  review: trade_cycle.py did `from paths import KILL_SWITCH_PATH` (copying
+  the reference at import time); tests patch `cron.KILL_SWITCH_PATH`
+  specifically (cron.py's own module docstring names this as the one
+  canonical, test-patchable location). A copied import never sees that
+  patch. Fixed by having trade_cycle.py `import cron` and read
+  `cron.KILL_SWITCH_PATH` via live attribute access at all 3 call sites
+  instead -- confirmed no circular-import risk (cron.py only imports
+  trade_cycle.py lazily, inside _cmd_cron_body's function body, never at
+  its own module top level). Checked the same class of risk for every
+  other constant trade_cycle.py imports directly from utils/cron
+  (get_paper_min_edge, is_trading_paused, etc.) against the full test
+  suite's monkeypatch targets -- no other live regression found, since
+  no other constant has cron.py's docstring's single-canonical-location
+  contract; is_trading_paused specifically is a pure os.getenv() read with
+  no caching, so both modules' independently-imported copies already see
+  the same live value with no patching gap possible.
+
+  Follow-ups filed as new backlog entries below (not silently folded in,
+  per feedback_backlog_title_staleness's "don't silently fold unrelated
+  findings" precedent already established in this entry's own history):
+  position-protection unification (poll-fills/reprice/live-exits/paper-
+  stop-loss -- cron and watch's genuinely different exit strategies), and
+  full display-scan unification for cmd_watch (extracting _analyze_once's
+  rendering into a shared helper so auto_trade=True renders from the
+  engine's single scan instead of three independent ones).
+
+  Regression: 324 tests pass (29 new in test_trade_cycle_engine.py + 295
+  across the full broader sweep: test_p1_remaining.py, test_cron_
+  integration.py, test_trading.py, test_menu_ux.py, test_debug_fixes.py,
+  test_live_execution.py, test_confidence_tiers.py, test_sameday_
+  reserve.py, test_execution_stability.py, test_cron_group_c.py,
+  test_trade_improvements.py, test_phase3_batch_e.py); ruff + ruff format +
+  mypy clean on every changed file (cron.py, main.py, trade_cycle.py,
+  order_executor.py, and the 4 touched/new test files).
+
+  ENABLE_MICRO_LIVE was not touched (still false); no real order was placed
+  as part of this work; this remains scaffolding/extraction only. The
+  DEMO_BASE smoke test and any live-order-placing verification remain
+  separate, later, explicitly out-of-scope steps.
+
+[POSITION PROTECTION IS STILL TWO SEPARATE MECHANISMS AFTER THE HEADLESS
+ENGINE EXTRACTION -- CRON'S TIME-BASED EXITS VS. WATCH'S MODEL-FLIP EXITS]
+Priority: Medium -- filed during the 2026-08-02 headless-engine extraction
+  (see the RESOLVED entry immediately above) as a deliberately out-of-scope
+  finding, not folded in.
+
+Problem:
+  trade_cycle.run_trade_cycle() now unifies the gate set and the
+  directional-signal decide/place logic between cron.py and watch --auto,
+  but position protection (what closes an already-open position) is still
+  two independent, never-reconciled mechanisms: cron.py's paper stop-loss/
+  breakeven checks are time-elapsed-based (paper.check_stop_losses/
+  check_breakeven_stops), while watch's are model-flip/edge-based
+  (paper.check_model_exits) plus a separate expiring-trade countdown
+  (check_expiring_trades) -- not the same exit philosophy, just two
+  different ones that happen to both exist. cron.py also runs a live-
+  position orphan safety net (_check_live_position_exits/_check_live_
+  model_exits) for positions left open by a crashed watch --live session;
+  watch runs the same two functions itself, plus its own poll-fills/
+  reprice-or-cancel logic for its own resting live orders -- genuinely
+  different responsibilities (watch manages orders it just placed this
+  cycle; cron's copy is purely a crash-recovery safety net), not simple
+  duplication.
+
+Why not folded into the headless-engine extraction:
+  Unlike the gate/threshold/tiering work, this isn't a case of "the same
+  logic exists twice, unify it" -- cron's time-based exit and watch's
+  model-flip exit are genuinely different STRATEGIES, and deciding which
+  (or whether both, selectively) should apply to which pipeline is a real
+  design question requiring its own AskUserQuestion round, not something to
+  guess while already mid-flight on a large, safety-critical change.
+
+When to revisit:
+  Same trigger as the parent entry ("live trading imminent," already
+  fired 2026-07-31) -- this is a natural next step now that the
+  directional-signal pipeline is unified, but should be its own scoped
+  piece of work with its own design-decision round on which exit
+  philosophy (or explicit dual-strategy-by-design) is correct, not an
+  extension of the already-large diff above.
+
+[CMD_WATCH RUNS THREE INDEPENDENT get_weather_markets() SCANS PER
+AUTO-TRADE CYCLE -- DISPLAY SCAN NEVER UNIFIED WITH THE ENGINE'S OWN SCAN]
+Priority: Low/Medium -- filed during the 2026-08-02 headless-engine
+  extraction (see the RESOLVED entry above) as a deliberately deferred
+  MEDIUM review finding, not folded in.
+
+Problem:
+  watch --auto now calls get_weather_markets() up to three times per
+  cycle: once for price-drift detection (main.py, reused from
+  trade_cycle.run_trade_cycle()'s own scan when auto-trading, but still a
+  fresh fetch on the auto_trade=False / no-cycle-result path), once inside
+  run_trade_cycle() itself (the authoritative trading-decision scan), and
+  once inside _analyze_once() (the display-only scan feeding the
+  interactive table). The full enrich+analyze pass also runs twice per
+  cycle (once in each scan), doubling upstream Kalshi/Open-Meteo load and
+  analysis-DB writes every 5 minutes. More importantly, the table an
+  operator watches during an auto-trading session is NOT the same scan
+  that made the trading decision -- a signal can appear on screen without
+  having been traded (or vice versa), with no indication why.
+
+What was done instead (2026-08-02, see the RESOLVED entry above):
+  Reordered so run_trade_cycle() runs BEFORE _analyze_once() each cycle
+  when auto-trading, so the operator's display reflects state right after
+  the trading decision, not a stale pre-decision snapshot -- the more
+  safety-relevant staleness direction. Price-drift detection reuses the
+  engine's own markets list when a cycle_result exists instead of a 3rd
+  fetch. The actual trading decision (via run_trade_cycle()) was already
+  unaffected by any of this, since it always used its own authoritative
+  scan regardless of what _analyze_once separately fetched.
+
+What it would look like to fully close this:
+  Extract _analyze_once()'s ~400-line table/arb/correlation-warning/
+  summary rendering (main.py, the portion after the per-market analyze
+  loop) into a standalone helper function taking (client, markets,
+  liquid_opps, no_quote_opps, previous_tickers, min_edge, show_summary,
+  open_trades) -- called BY _analyze_once() itself (so cmd_analyze's
+  behavior stays 100% unchanged, zero risk) and ALSO called directly by
+  cmd_watch when auto_trade=True, sourcing its inputs from
+  trade_cycle.run_trade_cycle()'s own cycle_result instead of a second
+  scan. Watch would then need to compute _passes_edge (display-only
+  cosmetic dimming, kept deliberately separate from the engine's real
+  _passes_threshold per the parent entry's threshold-fix decision) and
+  _is_hedge tags on cycle_result.all_results itself, matching what
+  _analyze_once currently tags inline.
+
+Why not done as part of the parent extraction:
+  Mechanically large (a ~400-line extraction touching main.py's most-used
+  display code) attempted late in an already large, safety-critical
+  session -- judged higher regression risk than proportionate to a
+  MEDIUM-severity UX/performance finding. _analyze_once is also cmd_
+  analyze's only scan path, so any mistake here has a wider blast radius
+  than the trading-decision code already carefully reviewed.
+
+When to revisit:
+  Whenever watch --auto usage in practice makes the display/decision
+  staleness or the doubled API load a real operational annoyance -- no
+  specific trigger beyond that; lower urgency than the position-protection
+  entry above since the actual trading decision is already unaffected.
 
 [RESOLVED 2026-07-20] WATCH/_analyze_once IS MISSING cron.py's MIN_MARKET_PROB_TO_BET_WITH /
 MAX_MARKET_DIVERGENCE_RATIO DIRECTIONAL-CONSENSUS GATES

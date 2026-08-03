@@ -190,12 +190,13 @@ _WATCH_STATE_PATH = Path(__file__).parent / "data" / ".watch_state.json"
 
 import cron as _cron_module  # noqa: E402 — used to set USER_OVERRIDE_ACTIVE flag
 import paper as _paper_module  # noqa: E402 — used to set KILL_SWITCH_OVERRIDE_ACTIVE flag
-from cron import (  # noqa: E402  (after module-level constants)
+from cron import (  # noqa: E402 (after module-level constants)
     KILL_SWITCH_PATH,  # noqa: F401 — re-exported; tests patch main.KILL_SWITCH_PATH
     LOCK_PATH,  # noqa: F401 — re-exported; tests patch main.LOCK_PATH
     RUNNING_FLAG_PATH,  # noqa: F401 — re-exported; tests patch main.RUNNING_FLAG_PATH
     _acquire_cron_lock,  # noqa: F401 — re-exported for tests that patch main.*
-    _check_graduation_gate,  # noqa: F401
+    _check_accuracy_halt,
+    _check_graduation_gate,  # used in _build_cron_context() below
     _check_manual_override,  # noqa: F401
     _check_spend_cap_vs_balance,  # noqa: F401
     _check_startup_orders,  # noqa: F401
@@ -236,6 +237,8 @@ def _build_cron_context() -> _CronContext:
         acquire_cron_lock=_acquire_cron_lock,
         clear_cron_running_flag=_clear_cron_running_flag,
         release_cron_lock=_release_cron_lock,
+        check_accuracy_halt=_check_accuracy_halt,
+        check_graduation_gate=_check_graduation_gate,
     )
 
 
@@ -3104,6 +3107,7 @@ def cmd_watch(
         )
     previous: set = _load_watch_state()
     _price_history: dict[str, float] = {}
+
     try:
         while True:
             # cron.py's own cmd_cron already resets gate counts every cycle --
@@ -3120,9 +3124,66 @@ def cmd_watch(
             print(bold(f"Kalshi Weather Markets — {now}"))
             print(dim("─" * 52))
             print(dim("* = new since last scan   Ctrl+C to exit\n"))
+            # Trading decision runs FIRST when auto-trading, before the
+            # display scan below -- so the table the operator sees reflects
+            # the state right after this cycle's trading decision, not a
+            # stale pre-decision snapshot (the more safety-relevant staleness
+            # direction: an operator seeing "no signals" moments after a
+            # trade actually fired is more confusing than the reverse).
+            # NOTE: this still leaves cmd_watch running up to three
+            # independent get_weather_markets() scans per cycle (this one
+            # reused below for price-drift, run_trade_cycle()'s own, and
+            # _analyze_once()'s own for display) -- fully unifying the
+            # display scan with the engine's scan would mean extracting
+            # _analyze_once()'s ~400-line table/arb/correlation-warning
+            # rendering into a shared helper, a mechanically large change
+            # this session deliberately did not attempt this late against
+            # a function `cmd_analyze` also depends on; filed as its own
+            # follow-up backlog entry rather than folded in here.
+            cycle_result = None
+            live_cfg = _load_live_config() if live else None
+            if auto_trade:
+                # Imported here, not at module/function top, so a plain
+                # read-only watch session (auto_trade=False) never imports
+                # the trade-decision engine at all.
+                from trade_cycle import run_trade_cycle
+
+                ctx = _build_cron_context()
+                _lock_acquired = ctx.acquire_cron_lock()
+                if not _lock_acquired:
+                    print(
+                        yellow(
+                            "  [Auto] Could not acquire the cron lock (cron is running "
+                            "concurrently) — auto-trade skipped this cycle."
+                        )
+                    )
+                else:
+                    try:
+                        cycle_result = run_trade_cycle(
+                            ctx,
+                            client,
+                            min_edge=min_edge,
+                            live=live,
+                            live_config=live_cfg,
+                            prewarm=False,
+                            require_liquid_for_placement=True,
+                        )
+                        if cycle_result is None:
+                            print(
+                                yellow(
+                                    "  [Auto] Kill switch active — auto-trade skipped this cycle."
+                                )
+                            )
+                    finally:
+                        ctx.release_cron_lock()
+
             # Price drift detection — check all liquid markets
             try:
-                _drift_markets = get_weather_markets(client)
+                _drift_markets = (
+                    cycle_result.markets
+                    if cycle_result is not None
+                    else get_weather_markets(client)
+                )
                 for _dm in _drift_markets:
                     _dt = _dm.get("ticker", "")
                     _dp = parse_market_price(_dm).get("yes_ask", 0.0) or 0.0
@@ -3148,15 +3209,33 @@ def cmd_watch(
                 show_summary=True,
             )
             _save_watch_state(previous)
-            live_cfg = _load_live_config() if live else None
-            if auto_trade and liquid_opps:
-                _auto_place_trades(
-                    liquid_opps, client=client, live=live, live_config=live_cfg
-                )
             if live:
                 _poll_pending_orders(client, config=live_cfg)
                 _reprice_or_cancel_pending_orders(
-                    client, config=live_cfg, liquid_opps=liquid_opps
+                    client,
+                    config=live_cfg,
+                    liquid_opps=(
+                        # Filter to threshold-passing candidates only --
+                        # cycle_result.liquid_opps is every liquid candidate
+                        # regardless of outcome (all_results split by
+                        # is_liquid() alone), unlike the pre-extraction
+                        # liquid_opps list above which was already filtered
+                        # to _passes_edge-True pairs. _reprice_or_cancel_
+                        # pending_orders uses ticker presence in this list to
+                        # decide whether a resting live order gets left
+                        # alone or is eligible for cancel+taker-replace --
+                        # passing the unfiltered set would newly expose a
+                        # resting order on a below-threshold ticker to that
+                        # replacement path, which pre-extraction watch never
+                        # did.
+                        [
+                            p
+                            for p in cycle_result.liquid_opps
+                            if p[1].get("_passes_threshold")
+                        ]
+                        if cycle_result is not None
+                        else liquid_opps
+                    ),
                 )
                 # Live position protection — must run after the two calls
                 # above so a just-filled order is already visible.

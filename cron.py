@@ -30,16 +30,9 @@ from paths import (
     RUNNING_FLAG_PATH,
 )
 from utils import (
-    CITY_MIN_PROB_EDGE,
     DRIFT_TIGHTEN_EDGE,
-    MAX_MARKET_DIVERGENCE_RATIO,
-    MED_EDGE,
-    MIN_MARKET_PROB_TO_BET_WITH,
-    MIN_PROB_EDGE,
     STRONG_EDGE,
-    get_paper_min_edge,
     is_trading_paused,
-    min_prob_edge_for_days_out,
 )
 
 if TYPE_CHECKING:
@@ -109,6 +102,14 @@ class CronContext:
 
     # Outcome tracking (from tracker)
     sync_outcomes: Callable
+
+    # Trade-cycle gates (from cron.py / paper.py, re-exported via main) --
+    # added for trade_cycle.run_trade_cycle()'s shared gate set (backlog.txt
+    # "THE ONLY LIVE-ORDER PATH..."). Routed through ctx rather than imported
+    # directly by trade_cycle.py so trade_cycle.py has no import-time
+    # dependency on cron.py/paper.py internals, matching the existing seam.
+    check_accuracy_halt: Callable[[], tuple[bool, str | None]]
+    check_graduation_gate: Callable[[], None]
 
 
 # ---------------------------------------------------------------------------
@@ -328,6 +329,18 @@ def _check_graduation_gate() -> None:
             f"MIN_BRIER_SAMPLES={_utils.MIN_BRIER_SAMPLES}. "
             f"Set ENABLE_MICRO_LIVE=false or accumulate more paper trades."
         )
+
+
+def _check_accuracy_halt() -> tuple[bool, str | None]:
+    """Combine paper.is_accuracy_halted()/get_accuracy_halt_reason() into the
+    single (halted, reason) shape trade_cycle.run_trade_cycle() consumes via
+    CronContext.check_accuracy_halt.
+    """
+    from paper import get_accuracy_halt_reason, is_accuracy_halted
+
+    if is_accuracy_halted():
+        return True, get_accuracy_halt_reason() or "accuracy circuit breaker active"
+    return False, None
 
 
 def _check_spend_cap_vs_balance() -> None:
@@ -551,26 +564,44 @@ def _cmd_cron_body(
         )
         return None
 
-    # P8.4 — manual override check (time-limited pause)
+    # Manual override / accuracy halt / graduation gate: run_trade_cycle()
+    # checks all three itself (via the same ctx methods) and is the actual
+    # placement-blocking authority now -- but the anomaly-detection block
+    # below still needs to know *before it runs* whether an earlier soft
+    # halt already stopped this cycle, so its interactive override prompt
+    # isn't reached when answering it wouldn't do anything (see the
+    # "anomaly halt also triggered" branch a bit further down, and
+    # test_anomaly_override_prompt_skipped_when_already_halted). Also, if
+    # the black-swan check below hard-aborts (return None) before
+    # run_trade_cycle() is ever reached, THIS is the only place an active
+    # override/accuracy-halt/graduation-gate condition gets logged for that
+    # cycle at all -- without it, an operator investigating a black-swan
+    # abort would see no trace of a simultaneously-active soft halt.
+    # Logging here is intentionally duplicated with run_trade_cycle()'s own
+    # logging on the normal (non-black-swan-abort) path: check_manual_
+    # override() is idempotent but not side-effect-free (it can unlink an
+    # expired override file and always logs while one is active), and
+    # check_accuracy_halt()/check_graduation_gate() each cost an extra
+    # tracker.db round-trip when computed twice -- accepted as a minor,
+    # bounded cost in exchange for the black-swan-abort visibility above.
     if ctx.check_manual_override():
+        _cron_halted_reason = "manual override active"
         _log.warning(
             "cmd_cron: manual override active — skipping trade placement this run"
         )
-        _cron_halted_reason = "manual override active"
-
-    from paper import get_accuracy_halt_reason as _get_accuracy_halt_reason
-    from paper import is_accuracy_halted as _is_accuracy_halted
-
-    if _is_accuracy_halted():
-        _reason = _get_accuracy_halt_reason()
+    _acc_halted, _acc_reason = ctx.check_accuracy_halt()
+    if _acc_halted:
+        _cron_halted_reason = _cron_halted_reason or _acc_reason
         _log.warning(
-            "ACCURACY HALT ACTIVE: %s — skipping trade placement this cycle "
-            "(settlement/stop-losses still run so the halt can clear)",
-            _reason or "accuracy circuit breaker active",
+            "cmd_cron: ACCURACY HALT ACTIVE: %s — skipping trade placement this "
+            "cycle (settlement/stop-losses still run so the halt can clear)",
+            _acc_reason,
         )
-        _cron_halted_reason = _cron_halted_reason or (
-            _reason or "accuracy circuit breaker active"
-        )
+    try:
+        ctx.check_graduation_gate()
+    except RuntimeError as _gate_err:
+        _cron_halted_reason = _cron_halted_reason or str(_gate_err)
+        _log.error("cmd_cron: %s — skipping trade placement this cycle", _gate_err)
 
     # Dead-man's-switch: if more than 48h have elapsed since the last cron run completed,
     # log a warning and fire a system notification so the user knows the bot went quiet.
@@ -600,13 +631,6 @@ def _cmd_cron_body(
     except Exception as _gap_exc:
         _log.debug("cmd_cron: dead-man's-switch check failed: %s", _gap_exc)
 
-    # Graduation gate — prevent accidental live trading before sufficient predictions exist
-    try:
-        _check_graduation_gate()
-    except RuntimeError as _gate_err:
-        _log.error("%s — skipping trade placement this cycle", _gate_err)
-        _cron_halted_reason = _cron_halted_reason or str(_gate_err)
-
     # Spend cap validation — warn if MAX_DAILY_SPEND exceeds current balance.
     # This is a cosmetic config-mistake warning, not a safety gate — a
     # paper.get_balance() failure here must not crash the whole cycle before
@@ -628,22 +652,30 @@ def _cmd_cron_body(
         flush=True,
     )
 
-    # Settle any resolved trades before scanning so same-day slot counts reflect
-    # current open risk, not yesterday's expired-but-not-yet-settled positions.
-    # Running settlement first means _same_day_open in order_executor is clean at
-    # trade time \u2014 expired Jun(N-1) same-day trades won't block Jun(N) slots.
+    # Settle any resolved trades before scanning so same-day slot counts
+    # reflect current open risk, not yesterday's expired-but-not-yet-settled
+    # positions -- restored here at its original early position (also run
+    # inside run_trade_cycle(), which becomes a harmless no-op the second
+    # time). Several checks between here and the engine call (near-
+    # settlement logging, anomaly detection, black-swan check, directional-
+    # accuracy snapshot, Brier-drift detection, auto-retirement) read
+    # paper.json and must see this cycle's just-resolved trades, not only
+    # last cycle's post-place settle -- restoring the early call, not just
+    # relying on the engine's later one, is what makes that true again.
     try:
         from paper import auto_settle_paper_trades as _pre_settle
 
-        _pre_settled = _pre_settle(client)
-        if _pre_settled:
-            _pre_net = sum(t.get("pnl") or 0.0 for t in _pre_settled)
-            _pre_str = (
-                f"+${_pre_net:.2f}" if _pre_net >= 0 else f"-${abs(_pre_net):.2f}"
+        _early_pre_settled = _pre_settle(client)
+        if _early_pre_settled:
+            _early_pre_net = sum(t.get("pnl") or 0.0 for t in _early_pre_settled)
+            _early_pre_str = (
+                f"+${_early_pre_net:.2f}"
+                if _early_pre_net >= 0
+                else f"-${abs(_early_pre_net):.2f}"
             )
             print(
                 green(
-                    f"  [PreSettle] {len(_pre_settled)} trade(s) settled before scan \u2014 net P&L: {_pre_str}"
+                    f"  [PreSettle] {len(_early_pre_settled)} trade(s) settled before scan — net P&L: {_early_pre_str}"
                 )
             )
     except Exception as _pre_settle_exc:
@@ -786,7 +818,16 @@ def _cmd_cron_body(
     except Exception as _vwf_exc:
         _log.warning("cmd_cron: validate_weight_files failed: %s", _vwf_exc)
 
-    # Reconcile any 'pending' live orders left by a previous crash
+    # Reconcile any 'pending' live orders left by a previous crash. Restored
+    # here (also run inside run_trade_cycle(), which becomes a harmless
+    # no-op the second time -- there's nothing left pending to recover) so
+    # it runs BEFORE the live-position-exit checks immediately below, not
+    # after them: a live position recovered from status='pending' to
+    # status='filled' by this call must be visible to those exit checks in
+    # THIS cycle, not just the next one. _check_live_position_exits's own
+    # docstring in order_executor.py states this same ordering constraint
+    # for _poll_pending_orders/_check_live_position_exits in watch's cycle;
+    # the same dependency exists here between recovery and the exit checks.
     if client is not None:
         try:
             from order_executor import _recover_pending_orders
@@ -1129,660 +1170,126 @@ def _cmd_cron_body(
     except Exception as _e:
         _log.warning("cmd_cron: could not capture state snapshot: %s", _e)
 
-    med_opps: list = []  # edge 15–24%, LOW or MEDIUM risk
-    strong_opps: list = []  # edge 25%+, any time risk
-    signals_cache: list = []
-    scanned = 0
-    _consistency_skip = False  # P3-14: init before try so it is always bound
-    _dbg: dict = {
-        "no_analysis": 0,
-        "same_day": 0,  # informational only — same-day markets are no longer filtered
-        "mkt_prob": 0,
-        "divergence": 0,
-        "net_edge": 0,
-        "prob_edge": 0,
-        "passed": 0,
-    }
-    # Hoist gate-count helpers so they are always bound even if the try block
-    # exits early (exception path) and the finally block references them.
+    # get_gate_counts is still read after the scan (scan-summary block below);
+    # reset_gate_counts is no longer called here -- run_trade_cycle() resets
+    # the counters itself before its own analyze loop runs.
+    from trade_cycle import run_trade_cycle
     from weather_markets import get_gate_counts as _get_gate_counts
-    from weather_markets import reset_gate_counts as _reset_gate_counts
 
-    try:
-        from concurrent.futures import ThreadPoolExecutor
-        from concurrent.futures import as_completed as _as_completed
-
-        markets = ctx.get_weather_markets(client)
-        scanned = len(markets)
-        print(dim(f"  [cron] scanning {scanned} market(s)\u2026"), flush=True)
-
-        # P3-14: consistency check \u2014 log violations; halt auto-trading if too many
+    # Subscribe+start the WebSocket at the same point in the cycle it ran at
+    # pre-extraction -- right after the market fetch, before prewarm/the
+    # analysis pool/placement -- via run_trade_cycle()'s on_markets_fetched
+    # hook. Without this, WS subscribe/start couldn't happen until AFTER the
+    # engine (which now owns the fetch) had already scanned, analyzed, AND
+    # placed, leaving order_executor's flash-crash check (which prefers the
+    # WS mid-price cache over a REST snapshot) running the entire cycle's
+    # placement against a cache that was never populated.
+    def _subscribe_and_start_ws(markets: list) -> None:
+        if _ws is None:
+            return
         try:
-            from consistency import find_violations as _find_violations
+            ws_tickers = [t for m in markets if (t := m.get("ticker"))]
+            if ws_tickers:
+                _ws.subscribe(ws_tickers)
+            _ws.start()
+            global _active_ws
+            _active_ws = _ws
+            _log.info("WebSocket thread started with %d ticker(s)", len(ws_tickers))
+        except Exception as _ws_exc:
+            _log.debug("WebSocket start failed: %s", _ws_exc)
 
-            _violations = _find_violations(markets)
-            if _violations:
-                _log.warning(
-                    "cmd_cron: %d consistency violation(s) detected: %s",
-                    len(_violations),
-                    [v.description for v in _violations[:5]],
-                )
-                if len(_violations) > 5:
-                    _consistency_skip = True
-                    _log.error(
-                        "cmd_cron: %d violations exceed threshold (5) \u2014 skipping auto-trading this cycle",
-                        len(_violations),
-                    )
-        except Exception as _ce:
-            # M-3: treat a broken consistency module as a safety failure — halt trading
-            _log.warning(
-                "cmd_cron: consistency check raised an exception — "
-                "skipping auto-trading this cycle: %s",
-                _ce,
+    result = run_trade_cycle(
+        ctx,
+        client,
+        min_edge=min_edge,
+        live=False,
+        live_config=None,
+        prewarm=True,
+        effective_strong_edge=_effective_strong_edge,
+        require_liquid_for_placement=False,
+        # Fold in the anomaly-halt / black-swan-check-error reason (if either
+        # fired above) so it still blocks placement inside the engine, not
+        # just in this function's own (now-removed) copy of the gate.
+        external_halted_reason=_cron_halted_reason,
+        on_markets_fetched=_subscribe_and_start_ws,
+    )
+    if result is None:
+        # Kill switch tripped inside run_trade_cycle() (e.g. activated
+        # mid-scan or immediately before placement) — matches this
+        # function's existing "kill switch -> hard abort" contract.
+        return None
+
+    # run_trade_cycle() now owns the fetch, so this can no longer print
+    # before scanning starts -- reported here instead, right after the
+    # engine returns (already past tense: the scan is done by now, not
+    # merely starting). len(result.markets) is the pre-dedup raw fetch
+    # count, matching the original's `scanned = len(markets)` before dedup.
+    print(dim(f"  [cron] scanned {len(result.markets)} market(s)…"), flush=True)
+
+    scanned = result.scanned
+    _dbg = result.dbg
+    signals_cache = result.signals_cache_entries
+    strong_opps = result.strong_opps
+    med_opps = result.med_opps
+    _consistency_skip = result.consistency_skip
+
+    # Per-signal cron.log JSONL write -- web_app.py's /api/signals endpoint
+    # reads data/cron.log as JSONL for the live dashboard, so this is NOT
+    # dead output. Reconstructed from signals_cache_entries (the same shape
+    # the deleted per-market loop wrote) rather than raw market dicts, since
+    # run_trade_cycle() doesn't expose per-market write hooks. Each entry's
+    # own "ts" (the engine's per-market analysis-completion timestamp) is
+    # used instead of a single timestamp computed once for this whole loop,
+    # matching the pre-extraction per-market write's per-completion time.
+    for _sig in signals_cache:
+        if not _sig.get("passes_threshold"):
+            continue
+        _entry = {
+            "ts": _sig.get("ts") or datetime.now(UTC).isoformat(),
+            "ticker": _sig.get("ticker", ""),
+            "signal": _sig.get("signal", ""),
+            "net_edge": round(_sig.get("net_edge", 0.0), 4),
+            "city": _sig.get("city", ""),
+        }
+        with open(log_path, "a", encoding="utf-8") as f:
+            f.write(json.dumps(_entry) + "\n")
+
+    if result.pre_settled:
+        _pre_net = sum(t.get("pnl") or 0.0 for t in result.pre_settled)
+        _pre_str = f"+${_pre_net:.2f}" if _pre_net >= 0 else f"-${abs(_pre_net):.2f}"
+        print(
+            green(
+                f"  [PreSettle] {len(result.pre_settled)} trade(s) settled before scan — net P&L: {_pre_str}"
             )
-            _consistency_skip = True
-
-        if _ws is not None:
-            try:
-                _ws_tickers = [m.get("ticker") for m in markets if m.get("ticker")]
-                if _ws_tickers:
-                    _ws.subscribe(_ws_tickers)
-                _ws.start()
-                # Register so cmd_cron()'s outer finally block stops it when
-                # this cycle ends, regardless of how _cmd_cron_body() exits
-                # (return, exception, KeyboardInterrupt) -- otherwise this
-                # thread/connection leaks on every cycle in main.py's `loop`/
-                # `watch --auto`, which call cmd_cron() repeatedly in-process.
-                global _active_ws
-                _active_ws = _ws
-                _log.info(
-                    "WebSocket thread started with %d ticker(s)", len(_ws_tickers)
-                )
-            except Exception as _ws_exc:
-                _log.debug("WebSocket start failed: %s", _ws_exc)
-                _ws = None
-
-        # Pre-warm forecast/model caches for all unique city/date pairs so the
-        # parallel scan hits cache instead of making redundant network requests.
-        # Use parse_city_date (no network calls) to avoid tripping the forecast
-        # circuit breaker before batch_prewarm_forecasts gets a chance to run.
-        from weather_markets import parse_city_date as _parse_city_date
-
-        _city_dates: set[tuple[str, str]] = set()
-        for _m in markets:
-            _city, _td = _parse_city_date(_m)
-            if _city and _td:
-                _city_dates.add((_city, str(_td)))
-        if _city_dates:
-            _n_pairs = len(_city_dates)
-            print(
-                dim(
-                    f"  [cron] pre-warming forecasts for {_n_pairs} city/date pair(s)..."
-                ),
-                flush=True,
-            )
-
-            # Step 1a: batch Open-Meteo forecast (3 HTTP calls cover all cities)
-            from weather_markets import (
-                batch_prewarm_ensemble,
-                batch_prewarm_forecasts,
-                flush_ensemble_disk_cache,
-            )
-
-            # Local to this log-count path only (never passed into a fetch call).
-            # Not imported from weather_markets.ENSEMBLE_MODELS because that list
-            # doesn't match (it's ["icon_seamless", "gfs_seamless"], missing
-            # ecmwf_ifs025) and ENSEMBLE_MODELS_EXTENDED adds nbm/ecmwf_aifs025
-            # instead — no single existing constant has this exact 3-model set.
-            _om_models = ["gfs_seamless", "ecmwf_ifs025", "icon_seamless"]
-            _n_models = len(_om_models)
-
-            def _om_progress(current: int, total: int, model: str, ok: bool) -> None:
-                _tick = "OK" if ok else "FAIL"
-                print(
-                    dim(f"  [OM batch] [{current}/{total}] {model:<20} {_tick}"),
-                    flush=True,
-                )
-
-            _batch_written = batch_prewarm_forecasts(
-                _city_dates, progress_cb=_om_progress
-            )
-            print(
-                dim(
-                    f"  [OM batch] {_batch_written} cache entries written"
-                    f" across {_n_models} models"
-                ),
-                flush=True,
-            )
-
-            # Step 1b: batch ensemble prewarm (10 calls: 5 models × 2 vars —
-            # icon_seamless/gfs_seamless/ecmwf_aifs025_ensemble feed the live
-            # blend; gem_global/ukmo_global_ensemble_20km are tracking-only,
-            # backlog.txt "GENERALIZED PER-MODEL ACCURACY TRACKING" Pass 2).
-            # Replaces ~150 individual calls during analysis (was ~270 s at 1.5 s/call).
-            # Display-only list, matching weather_markets.batch_prewarm_ensemble's
-            # actual fetch_models — not imported directly since that name is
-            # module-local to that function.
-            _ens_models = [
-                "icon_seamless",
-                "gfs_seamless",
-                "ecmwf_aifs025_ensemble",
-                "gem_global",
-                "ukmo_global_ensemble_20km",
-            ]
-            _ens_vars = 2
-
-            def _ens_progress(current: int, total: int, label: str, ok: bool) -> None:
-                _tick = "OK" if ok else "FAIL"
-                print(
-                    dim(f"  [ENS batch] [{current}/{total}] {label:<26} {_tick}"),
-                    flush=True,
-                )
-
-            _ens_written = batch_prewarm_ensemble(
-                _city_dates, progress_cb=_ens_progress
-            )
-            print(
-                dim(
-                    f"  [ENS batch] {_ens_written} cache entries written"
-                    f" across {len(_ens_models)} models × {_ens_vars} vars"
-                ),
-                flush=True,
-            )
-            # Flush to disk immediately so a canceled run still warms the next run.
-            flush_ensemble_disk_cache()
-
-            # Step 2: per-city sources that don't support batching.
-            # Covers NBM, ECMWF, WeatherAPI, NWS daily forecast, METAR, and MOS
-            # so that analyze_trade finds all caches warm and makes zero live
-            # network calls per market during the analysis pool phase.
-            def _warm_one(city_date: tuple[str, str]) -> None:
-                _c, _d = city_date
-                _dt = __import__("datetime").date.fromisoformat(_d)
-                # ── Open-Meteo point models ──────────────────────────────────
-                # Warm both max/min var caches — each is keyed separately by
-                # var (fix H-13b) so a HIGH-market prewarm no longer poisons
-                # the cache a LOW-market analysis reads minutes later.
-                for _var in ("max", "min"):
-                    try:
-                        ctx.fetch_temperature_nbm(_c, _dt, var=_var)
-                    except Exception:
-                        pass
-                    try:
-                        ctx.fetch_temperature_ecmwf(_c, _dt, var=_var)
-                    except Exception:
-                        pass
-                try:
-                    ctx.fetch_temperature_weatherapi(_c, _dt)
-                except Exception:
-                    pass
-                # ── NWS daily forecast (cached per city, covers all dates) ──
-                try:
-                    from nws import get_nws_daily_forecast as _nws_daily
-                    from weather_markets import CITY_COORDS as _city_coords
-
-                    _coords = _city_coords.get(_c)
-                    if _coords:
-                        _nws_daily(_c, _coords)
-                except Exception:
-                    pass
-                # ── METAR current observation (cached per station, 5-min TTL) ─
-                try:
-                    from metar import fetch_metar as _fetch_metar
-                    from weather_markets import (
-                        _metar_station_for_city as _metar_sta,
-                    )
-
-                    _msta = _metar_sta(_c)
-                    if _msta:
-                        _fetch_metar(_msta)
-                except Exception:
-                    pass
-                # ── MOS forecast (cached per station/date/model, 1-hour TTL) ──
-                try:
-                    import mos as _mos_mod
-
-                    _mos_sta = _mos_mod.get_mos_station(_c)
-                    if _mos_sta:
-                        _mos_mod.fetch_mos_best(_mos_sta, target_date=_dt)
-                except Exception:
-                    pass
-                # ── NWS hourly obs (600s TTL; used for same-day obs override and
-                #    persistence baseline — not batched, must prewarm per city) ──
-                try:
-                    from nws import get_live_observation as _nws_obs
-                    from weather_markets import CITY_COORDS as _city_coords2
-
-                    _coords2 = _city_coords2.get(_c)
-                    if _coords2:
-                        _nws_obs(_c, _coords2)
-                except Exception:
-                    pass
-                try:
-                    from nws import get_live_precip_obs as _nws_precip_obs
-                    from weather_markets import CITY_COORDS as _city_coords3
-
-                    _coords3 = _city_coords3.get(_c)
-                    if _coords3:
-                        _nws_precip_obs(_c, _coords3)
-                except Exception:
-                    pass
-
-            import threading as _threading
-
-            _warm_done = 0
-            _warm_lock = _threading.Lock()
-
-            def _warm_one_tracked(city_date: tuple[str, str]) -> None:
-                nonlocal _warm_done
-                _warm_one(city_date)
-                with _warm_lock:
-                    _warm_done += 1
-                    _cur = _warm_done
-                    # print inside the lock so a slow thread can't print a stale
-                    # counter after a faster thread already printed a higher one
-                    print(
-                        f"  [NBM/WA]  warming city sources... ({_cur}/{_n_pairs})",
-                        end="\r",
-                        flush=True,
-                    )
-
-            _warm_pool = ThreadPoolExecutor(max_workers=min(_n_pairs, 8))
-            try:
-                _warm_futures = [
-                    _warm_pool.submit(_warm_one_tracked, _cd) for _cd in _city_dates
-                ]
-                try:
-                    for _wf in _as_completed(_warm_futures, timeout=200):
-                        try:
-                            _wf.result()
-                        except Exception as _prewarm_exc:
-                            # M-4: log at DEBUG so transient per-city failures are traceable
-                            _log.debug(
-                                "cmd_cron: prewarm failed for a city: %s", _prewarm_exc
-                            )
-                except TimeoutError:
-                    _log.warning(
-                        "cmd_cron: city source warm-up timed out after 200s — "
-                        "%d/%d pairs completed; analysis will skip MOS for uncached markets",
-                        _warm_done,
-                        _n_pairs,
-                    )
-            finally:
-                _warm_pool.shutdown(wait=False)
-            print(flush=True)  # newline after in-place counter
-
-        # Suppress probing on any circuit that opened during prewarm.
-        # Analysis should use fallback sources immediately, not stall every
-        # recovery_timeout seconds waiting on a probe that may also fail.
-        from weather_markets import _ecmwf_om_cb, _ensemble_cb, _forecast_cb, _nbm_om_cb
-
-        for _cb in (_nbm_om_cb, _ensemble_cb, _forecast_cb, _ecmwf_om_cb):
-            if _cb.seconds_open() > 0:
-                _cb.suppress_probe()
-                _log.warning(
-                    "cron: circuit '%s' open after prewarm — probing suppressed for this run",
-                    _cb.name,
-                )
-
-        def _enrich_and_analyze(m: dict) -> tuple[dict, dict, dict | None]:
-            enriched = ctx.enrich_with_forecast(m)
-            return m, enriched, ctx.analyze_trade(enriched)
-
-        from weather_markets import is_stale as _is_stale_market
-
-        _analysis_batch: list[dict] = []  # #perf: collect for single bulk insert
-        # Dedup by ticker before analysis — same market can appear twice when the
-        # Kalshi API returns it under both the old series format (KXHIGH-NYC-…)
-        # and the new format (KXHIGHNY-…) in the same batch.
-        _seen_analysis_tickers: set[str] = set()
-        _deduped_markets: list[dict] = []
-        _stale_skipped = 0
-        for _dm in markets:
-            _dm_ticker = _dm.get("ticker", "")
-            if _dm_ticker in _seen_analysis_tickers:
-                continue
-            _seen_analysis_tickers.add(_dm_ticker)
-            # Zero volume/open-interest AND closing within 60 minutes → edge
-            # calculations on this market are meaningless (see is_stale's
-            # docstring) — skip before spending an enrich+analyze cycle on it.
-            if _is_stale_market(_dm):
-                _stale_skipped += 1
-                continue
-            _deduped_markets.append(_dm)
-        if len(_deduped_markets) < len(markets) - _stale_skipped:
-            _log.debug(
-                "cmd_cron: deduped %d duplicate ticker(s) before analysis",
-                len(markets) - _stale_skipped - len(_deduped_markets),
-            )
-        if _stale_skipped:
-            _log.debug(
-                "cmd_cron: skipped %d stale market(s) (no volume, closing within 60min)",
-                _stale_skipped,
-            )
-        scanned = len(_deduped_markets)  # L-2: report post-dedup count in summary
-
-        # Market-implied temperature distribution (backlog.txt "MARKET-IMPLIED
-        # TEMPERATURE DISTRIBUTION FROM THE FULL LADDER"): computed once per
-        # scan from the already-fetched sibling ladder (pure CPU, no network
-        # calls), then attached onto each market's own analysis dict below --
-        # not threaded through _auto_place_trades/_log_shadow_predictions'
-        # signatures, since _prediction_kwargs_from_analysis already reads it
-        # off `analysis["market_implied"]`. Built before the ThreadPoolExecutor
-        # starts so every worker reads the same, already-computed, read-only
-        # dict rather than each market re-grouping/re-fitting its own event.
-        from weather_markets import (
-            compute_market_implied_distributions as _compute_market_implied,
-        )
-        from weather_markets import resolve_market_implied_for_analysis
-
-        _market_implied_by_event = _compute_market_implied(_deduped_markets)
-
-        _reset_gate_counts()
-
-        # Per-market analysis timeout: 6 min total for all markets.
-        # All network sources (NWS, METAR, MOS, NBM) are prewarmed before this
-        # pool starts, so each market should hit only in-memory caches.
-        # Workers reduced to 8 (was 12): fewer concurrent SSL connections lowers
-        # the chance of Windows SSL hangs; cache-warm analysis is CPU-bound so
-        # 8 workers saturate the pipeline without racing on network resources.
-        # Manual pool (no `with`) so shutdown(wait=False) can be used in finally
-        # — `with ThreadPoolExecutor` calls shutdown(wait=True) on __exit__,
-        # which blocks forever on a hung Windows SSL socket.
-        # Watchdog hard-kills at 720s as backstop.
-        _ANALYSIS_TIMEOUT_S = 360
-        _pool = ThreadPoolExecutor(max_workers=8)
-        try:
-            _futures = {
-                _pool.submit(_enrich_and_analyze, m): m for m in _deduped_markets
-            }
-            _timed_out = False
-            try:
-                for fut in _as_completed(_futures, timeout=_ANALYSIS_TIMEOUT_S):
-                    if KILL_SWITCH_PATH.exists():
-                        _log.warning(
-                            "cmd_cron: kill switch activated mid-scan — stopping analysis"
-                        )
-                        break
-                    try:
-                        m, enriched, analysis = fut.result()
-                    except Exception as exc:
-                        # CR-2: log at WARNING so a completely broken model is visible
-                        # (previously silent — all markets could fail with zero log output)
-                        # Use _futures[fut] to recover the market dict — `m` is unbound
-                        # on the first failing future because dict-comprehension loop vars
-                        # don't leak into the enclosing scope in Python 3.
-                        _failed_mkt = _futures.get(fut, {})
-                        _log.warning(
-                            "cmd_cron: analysis failed for %s: %s — skipping ticker",
-                            _failed_mkt.get("ticker", "?")
-                            if isinstance(_failed_mkt, dict)
-                            else "?",
-                            exc,
-                        )
-                        _dbg["analysis_errors"] = _dbg.get("analysis_errors", 0) + 1
-                        continue
-                    if not analysis:
-                        _dbg["no_analysis"] += 1
-                        continue
-                    analysis["market_implied"] = resolve_market_implied_for_analysis(
-                        _market_implied_by_event,
-                        enriched.get("_city"),
-                        enriched.get("_date"),
-                        m.get("ticker", ""),
-                    )
-                    net_edge = analysis.get(
-                        "net_edge", analysis.get("edge", 0.0)
-                    )  # H-2: avoid KeyError
-                    adjusted_edge = analysis.get("adjusted_edge", net_edge)
-                    # Log-only edge-threshold divisor (backlog.txt "LIQUIDITY-
-                    # AWARE SIZING + DYNAMIC EDGE THRESHOLD"): raises the
-                    # effective edge bar in thin books. Computed and logged
-                    # here, at the scan-loop level (never inside analyze_trade
-                    # itself), and deliberately NOT used for the STRONG/MED
-                    # classification below -- adjusted_edge (not gated_edge)
-                    # still drives that. See the backlog entry's ENABLEMENT
-                    # TRIGGER for what's required before that would change.
-                    from weather_markets import _liquidity_edge_scale as _liq_scale
-
-                    # Accept both legacy (volume/open_interest) and current API
-                    # names (volume_fp/open_interest_fp) -- matches analyze_
-                    # trade()'s own liquidity gate and paper.liquidity_kelly_
-                    # scale exactly; a plain-names-only read would silently
-                    # log the worst-case 1.5x scale for markets that only
-                    # carry the _fp fields.
-                    _liq_edge_scale = _liq_scale(
-                        m.get("volume_fp") or m.get("volume") or 0,
-                        m.get("open_interest_fp") or m.get("open_interest") or 0,
-                    )
-                    analysis["liquidity_edge_scale"] = _liq_edge_scale
-                    analysis["gated_edge"] = adjusted_edge / _liq_edge_scale
-                    # Collect analysis attempt for bulk DB insert after loop.
-                    try:
-                        import datetime as _dt
-
-                        _td = analysis.get("target_date") or enriched.get(
-                            "_target_date"
-                        )
-                        if isinstance(_td, str):
-                            try:
-                                _td = _dt.date.fromisoformat(_td)
-                            except ValueError:
-                                _td = None
-                        _analysis_batch.append(
-                            {
-                                "ticker": m.get("ticker", ""),
-                                "city": enriched.get("_city"),
-                                "condition": str(analysis.get("condition", "")),
-                                "target_date": _td,
-                                "forecast_prob": analysis.get("forecast_prob", 0.0),
-                                "market_prob": analysis.get("market_prob", 0.0),
-                                "days_out": int(analysis.get("days_out", 0)),
-                                "was_traded": False,
-                            }
-                        )
-                    except Exception:
-                        pass
-                    # Same-day markets (days_out == 0) are re-enabled. analyze_trade
-                    # uses METAR-locked probabilities for same-day above/below markets,
-                    # which gives tight CI width → larger ci_adjusted_kelly → the only
-                    # realistic path to qty >= 1 while in TIER_3 drawdown. Between
-                    # markets at days_out == 0 skip the obs override in analyze_trade
-                    # (line 4917) so they fall back to ensemble and are covered by the
-                    # between_floor gate. The same divergence, gap, liquidity, and
-                    # min_prob_edge gates still apply to all same-day candidates.
-                    if int(analysis.get("days_out", 1)) == 0:
-                        _dbg["same_day"] += 1
-                        # fall through — do not skip
-                    # Market divergence cap: skip when we disagree with the market by
-                    # more than 2.5× — the market is right nearly every time in that case.
-                    _side = analysis.get("recommended_side", "yes")
-                    _our_p = analysis.get("forecast_prob", 0.5)
-                    _mkt_p = analysis.get("market_prob", 0.5)
-                    if _side == "yes":
-                        _mkt_dir = _mkt_p
-                        _our_dir = _our_p
-                    else:
-                        _mkt_dir = 1.0 - _mkt_p
-                        _our_dir = 1.0 - _our_p
-                    if _mkt_dir < MIN_MARKET_PROB_TO_BET_WITH:
-                        _dbg["mkt_prob"] += 1
-                        continue
-                    if (
-                        _mkt_dir > 0
-                        and _our_dir / _mkt_dir > MAX_MARKET_DIVERGENCE_RATIO
-                    ):
-                        _dbg["divergence"] += 1
-                        continue
-                    # Track whether this candidate clears both edge gates.
-                    # Below-threshold candidates are still written to signals_cache
-                    # so the dashboard can show them; only candidates that pass are
-                    # eligible for auto-trading (strong_opps / med_opps / log entry).
-                    _passes_threshold = True
-                    # F4: min_edge (the --edge N CLI override, "tighten a
-                    # bad-model day") was accepted as a parameter but never
-                    # read anywhere — a user passing --edge silently got the
-                    # default thresholds with no indication their flag did
-                    # nothing. Applied as a floor so it can only tighten
-                    # (raise) the gate, never loosen it below the auto-tuned
-                    # get_paper_min_edge() value.
-                    # Deep-review followup: min_edge used to default to the
-                    # module-level MIN_EDGE constant (a display-oriented
-                    # threshold from .env, unrelated to trading) even when
-                    # --edge was never passed, so this floor was ALWAYS
-                    # active and could silently override the walk-forward-
-                    # tuned PAPER_MIN_EDGE on every cron cycle, not just when
-                    # a user explicitly asked to tighten the gate for the
-                    # day. None means "no explicit --edge override".
-                    _effective_min_edge = (
-                        get_paper_min_edge()
-                        if min_edge is None
-                        else max(min_edge, get_paper_min_edge())
-                    )
-                    if abs(adjusted_edge) < _effective_min_edge:
-                        _dbg["net_edge"] += 1
-                        _passes_threshold = False
-
-                    # Probability-edge gate: require minimum conviction based on
-                    # market horizon (further out = more time for repricing + more
-                    # ensemble uncertainty) and per-city Brier overrides.
-                    _prob_edge = abs(
-                        analysis.get("forecast_prob", 0.5)
-                        - analysis.get("market_prob", 0.5)
-                    )
-                    _city_key = enriched.get("_city", "")
-                    _days_out_val = int(analysis.get("days_out", 1))
-                    _city_min = CITY_MIN_PROB_EDGE.get(_city_key, MIN_PROB_EDGE)
-                    _days_min = min_prob_edge_for_days_out(_days_out_val)
-                    _min_edge = max(_city_min, _days_min)
-                    if _passes_threshold and _prob_edge < _min_edge:
-                        _dbg["prob_edge"] += 1
-                        _passes_threshold = False
-
-                    if _passes_threshold:
-                        _dbg["passed"] += 1
-                    signal = analysis.get(
-                        "net_signal", analysis.get("signal", "")
-                    ).strip()
-                    time_risk = analysis.get("time_risk", "\u2014")
-                    stars = (
-                        "\u2605\u2605\u2605"
-                        if _passes_threshold
-                        and "STRONG" in signal
-                        and time_risk == "LOW"
-                        else "\u2605\u2605"
-                        if _passes_threshold and "STRONG" in signal
-                        else "\u2605"
-                        if _passes_threshold
-                        else ""
-                    )
-                    # Only write a log entry for candidates that cleared the gates.
-                    if _passes_threshold:
-                        entry = {
-                            "ts": datetime.now(UTC).isoformat(),
-                            "ticker": m.get("ticker", ""),
-                            "signal": signal,
-                            "net_edge": round(net_edge, 4),
-                            "city": enriched.get("_city", ""),
-                        }
-                        with open(log_path, "a", encoding="utf-8") as f:
-                            f.write(json.dumps(entry) + "\n")
-                    _tdate = enriched.get("_date")
-                    from weather_markets import parse_market_price as _pmp
-
-                    _prices = _pmp(m)
-                    signals_cache.append(
-                        {
-                            "ticker": m.get("ticker", ""),
-                            "city": enriched.get("_city", "\u2014"),
-                            "target_date": (
-                                _tdate
-                                if isinstance(_tdate, str)
-                                else (_tdate.isoformat() if _tdate else None)
-                            ),
-                            "side": analysis.get("recommended_side", "\u2014").upper(),
-                            "signal": signal,
-                            "stars": stars,
-                            "edge_pct": round(net_edge * 100, 1),
-                            "net_edge": round(net_edge, 6),
-                            "yes_bid": _prices["yes_bid"],
-                            "yes_ask": _prices["yes_ask"],
-                            "forecast_prob": round(
-                                analysis.get("forecast_prob", 0) * 100, 1
-                            ),
-                            "market_prob": round(
-                                analysis.get("market_prob", 0) * 100, 1
-                            ),
-                            "time_risk": time_risk,
-                            "model_consensus": analysis.get("model_consensus", True),
-                            "kelly_dollars": 0.0,  # balance unknown at cron time; filled by web
-                            "already_held": False,
-                            "near_threshold": analysis.get("near_threshold", False),
-                            "is_hedge": analysis.get("_is_hedge", False),
-                            "passes_threshold": _passes_threshold,
-                            "days_out": int(analysis.get("days_out", 1)),
-                            "model_disagreement_f": analysis.get(
-                                "model_disagreement_f"
-                            ),
-                            "model_disagreement_flag": analysis.get(
-                                "model_disagreement_flag", False
-                            ),
-                            # Per-source probabilities for dashboard attribution display
-                            "ensemble_prob": round(
-                                analysis.get("ensemble_prob", 0) * 100, 1
-                            )
-                            if analysis.get("ensemble_prob") is not None
-                            else None,
-                            "nws_prob": round(analysis.get("nws_prob", 0) * 100, 1)
-                            if analysis.get("nws_prob") is not None
-                            else None,
-                            "clim_prob": round(analysis.get("clim_prob", 0) * 100, 1)
-                            if analysis.get("clim_prob") is not None
-                            else None,
-                            "forecast_temp_f": analysis.get("forecast_temp"),
-                        }
-                    )
-                    # Only consider for auto-trading if edge gates passed.
-                    if _passes_threshold:
-                        if abs(adjusted_edge) >= _effective_strong_edge:
-                            strong_opps.append((enriched, analysis))
-                        elif abs(adjusted_edge) >= MED_EDGE:
-                            med_opps.append((enriched, analysis))
-            except TimeoutError:
-                _log.error(
-                    "cmd_cron: analysis scan timed out after %ds — %d markets processed",
-                    _ANALYSIS_TIMEOUT_S,
-                    _dbg["passed"]
-                    + _dbg["no_analysis"]
-                    + _dbg["mkt_prob"]
-                    + _dbg["divergence"]
-                    + _dbg["net_edge"]
-                    + _dbg["prob_edge"],
-                    # same_day excluded: it is informational and would double-count
-                    # markets that also appear in passed/net_edge/prob_edge
-                )
-        finally:
-            _pool.shutdown(wait=False)  # never block on a stuck SSL thread
-    except TimeoutError:
-        _log.error(
-            "cmd_cron: analysis scan timed out after %ds — %d markets processed so far",
-            _ANALYSIS_TIMEOUT_S,
-            _dbg["passed"]
-            + _dbg["no_analysis"]
-            + _dbg["mkt_prob"]
-            + _dbg["divergence"]
-            + _dbg["net_edge"]
-            + _dbg["prob_edge"],
-            # same_day excluded: informational only, would double-count
-        )
-    except Exception as _e:
-        import logging as _logging
-
-        _logging.getLogger(__name__).error(
-            "cmd_cron: scan loop crashed: %s", _e, exc_info=True
         )
 
     # #perf: flush analysis attempts in one batch transaction (vs one INSERT per market)
+    _analysis_batch: list[dict] = []
+    for _enriched, _analysis in result.all_results:
+        try:
+            import datetime as _dt
+
+            _td = _analysis.get("target_date") or _enriched.get("_target_date")
+            if isinstance(_td, str):
+                try:
+                    _td = _dt.date.fromisoformat(_td)
+                except ValueError:
+                    _td = None
+            _analysis_batch.append(
+                {
+                    "ticker": _enriched.get("ticker", ""),
+                    "city": _enriched.get("_city"),
+                    "condition": str(_analysis.get("condition", "")),
+                    "target_date": _td,
+                    "forecast_prob": _analysis.get("forecast_prob", 0.0),
+                    "market_prob": _analysis.get("market_prob", 0.0),
+                    "days_out": int(_analysis.get("days_out", 0)),
+                    "was_traded": False,
+                }
+            )
+        except Exception:
+            pass
+
     try:
         from tracker import batch_log_analysis_attempts as _batch_log
 
@@ -1802,10 +1309,7 @@ def _cmd_cron_body(
         )
         # Capture gate-level rejection counts so the dashboard can show a
         # filter-breakdown chart without needing any in-memory state from cron.
-        try:
-            _filter_gate_counts = _get_gate_counts()
-        except Exception:
-            _filter_gate_counts = {}
+        _filter_gate_counts = result.gate_counts
         cache_payload = {
             "signals": signals_cache[:200],
             "summary": {
@@ -1927,112 +1431,70 @@ def _cmd_cron_body(
             )
         )
 
-    _trading_paused = is_trading_paused()
-
-    placed_count = 0
-    if _trading_paused or _cron_halted_reason:
-        if _cron_halted_reason:
-            _log.warning(
-                "cmd_cron: trade placement skipped this cycle — %s "
-                "(settlement/stop-losses above still ran)",
-                _cron_halted_reason,
+    placed_count = result.placed_strong + result.placed_med
+    # These banners announce an ATTEMPT to place, matching the original code's
+    # placement (inside the "not halted, not paused, not consistency-skipped"
+    # branch) -- strong_opps/med_opps are populated during analysis regardless
+    # of halt state, so gate on the same tri-state the original branched on
+    # or this would misleadingly announce placement that was actually skipped.
+    _placement_was_attempted = (
+        not result.halted_reason
+        and not is_trading_paused()
+        and not result.consistency_skip
+    )
+    if _placement_was_attempted and result.strong_opps:
+        # Defensive fallback: strong_cap is only ever None when placement
+        # was skipped or strong_opps was empty, both of which
+        # _placement_was_attempted plus the `and result.strong_opps` guard
+        # above already rule out -- but format defensively rather than let
+        # a future change to that guard turn a skipped-placement edge case
+        # into an unhandled TypeError here.
+        print(
+            bold(
+                f"\n  !! {len(result.strong_opps)} STRONG SIGNAL(S) — placing paper trades (cap=${(result.strong_cap or 0.0):.0f}) !!"
             )
-        else:
-            _log.warning(
-                "cmd_cron: TRADING_PAUSED is set — scan/data collection ran, trade placement skipped"
-            )
-        _n_shadow = ctx.log_shadow_predictions(strong_opps + med_opps)
-        if _n_shadow:
-            print(
-                dim(
-                    f"  [cron] Logged {_n_shadow} shadow prediction(s) while paused/halted "
-                    "(scoring stays current; no trades placed)."
-                )
-            )
-    elif _consistency_skip:
-        _log.warning(
-            "cmd_cron: auto-trading skipped this cycle due to consistency violations"
         )
-    else:
-
-        def _kelly_sort_key(opp: tuple) -> float:
-            a = opp[1]
-            return abs(
-                a.get(
-                    "ci_adjusted_kelly", a.get("kelly_fraction", a.get("net_edge", 0))
-                )
-                or 0
+    if _placement_was_attempted and result.med_opps:
+        print(
+            bold(
+                f"\n  !! {len(result.med_opps)} MED SIGNAL(S) — placing paper trades (cap=$20) !!"
             )
-
-        strong_opps.sort(key=_kelly_sort_key, reverse=True)
-        med_opps.sort(key=_kelly_sort_key, reverse=True)
-
-        # Final kill switch check — a mid-scan activation breaks the analysis loop
-        # but without this check placement would still proceed for already-found signals.
-        if KILL_SWITCH_PATH.exists():
-            _log.warning(
-                "cmd_cron: kill switch activated before placement — skipping %d signal(s)",
-                len(strong_opps) + len(med_opps),
+        )
+    # shadow_logged_count is only ever nonzero when run_trade_cycle() took the
+    # halted/paused branch (see its own trading_paused-or-halted_reason gate) --
+    # equivalent to the original's `if _trading_paused or _cron_halted_reason:`
+    # condition without needing that boolean here too.
+    if result.shadow_logged_count > 0:
+        print(
+            dim(
+                f"  [cron] Logged {result.shadow_logged_count} shadow prediction(s) while paused/halted "
+                "(scoring stays current; no trades placed)."
             )
-            return None
-
-        if strong_opps:
-            from paper import _dynamic_kelly_cap
-
-            strong_cap = _dynamic_kelly_cap()
-            print(
-                bold(
-                    f"\n  !! {len(strong_opps)} STRONG SIGNAL(S) \u2014 placing paper trades (cap=${strong_cap:.0f}) !!"
-                )
-            )
-            placed_count += (
-                ctx.auto_place_trades(strong_opps, client=client, cap=strong_cap) or 0
-            )
-        if med_opps:
-            print(
-                bold(
-                    f"\n  !! {len(med_opps)} MED SIGNAL(S) \u2014 placing paper trades (cap=$20) !!"
-                )
-            )
-            placed_count += (
-                ctx.auto_place_trades(med_opps, client=client, cap=20.0) or 0
-            )
+        )
 
     # Auto-settle any pending trades whose markets have resolved
-    settled_count = 0
-    try:
-        settled_count = ctx.sync_outcomes(client)
-        if settled_count > 0:
-            print(green(f"  [Settle] Recorded {settled_count} new outcome(s)."))
-    except Exception as _sync_exc:
-        _log.warning("cmd_cron: sync_outcomes failed: %s", _sync_exc)
+    settled_count = result.synced_count
+    if settled_count > 0:
+        print(green(f"  [Settle] Recorded {settled_count} new outcome(s)."))
 
     # Settle resolved paper trades (marks paper.json won/lost to match tracker outcomes)
-    paper_settled_count = 0
-    try:
-        from paper import auto_settle_paper_trades
-
-        _settled_trades = auto_settle_paper_trades(client)
-        paper_settled_count = len(_settled_trades)
-        if paper_settled_count > 0:
-            _net_pnl = sum(t.get("pnl") or 0.0 for t in _settled_trades)
-            for _st in _settled_trades:
-                _ticker = _st.get("ticker", "?")
-                _side = (_st.get("side") or "?").upper()
-                _pnl = _st.get("pnl") or 0.0
-                _result = green("WON ") if _pnl > 0 else red("LOST")
-                _pnl_str = f"+${_pnl:.2f}" if _pnl >= 0 else f"-${abs(_pnl):.2f}"
-                print(f"  [PaperSettle] {_ticker}  {_side}-side  {_result}  {_pnl_str}")
-            _net_str = (
-                f"+${_net_pnl:.2f}" if _net_pnl >= 0 else f"-${abs(_net_pnl):.2f}"
+    _settled_trades = result.paper_settled
+    paper_settled_count = len(_settled_trades)
+    if paper_settled_count > 0:
+        _net_pnl = sum(t.get("pnl") or 0.0 for t in _settled_trades)
+        for _st in _settled_trades:
+            _ticker = _st.get("ticker", "?")
+            _side = (_st.get("side") or "?").upper()
+            _pnl = _st.get("pnl") or 0.0
+            _result = green("WON ") if _pnl > 0 else red("LOST")
+            _pnl_str = f"+${_pnl:.2f}" if _pnl >= 0 else f"-${abs(_pnl):.2f}"
+            print(f"  [PaperSettle] {_ticker}  {_side}-side  {_result}  {_pnl_str}")
+        _net_str = f"+${_net_pnl:.2f}" if _net_pnl >= 0 else f"-${abs(_net_pnl):.2f}"
+        print(
+            green(
+                f"  [PaperSettle] {paper_settled_count} trade(s) settled — net P&L: {_net_str}"
             )
-            print(
-                green(
-                    f"  [PaperSettle] {paper_settled_count} trade(s) settled — net P&L: {_net_str}"
-                )
-            )
-    except Exception as _e:
-        _log.warning("cmd_cron: auto_settle_paper_trades failed: %s", _e)
+        )
 
     # F3: Auto-trigger calibration every 25 new settled trades, but only after
     # reaching 50 total. With fewer samples the grid search overfits to noise —
