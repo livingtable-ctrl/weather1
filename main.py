@@ -2699,7 +2699,76 @@ def cmd_today(client: KalshiClient) -> None:
         return
 
     if raw == "P":
-        if _qty1 < 1 or _bet_dollars1 <= 0:
+        # Opus-review-caught (2026-08-03): this is the one interactive
+        # placement path in main.py with NO gate check at all -- not
+        # TRADING_PAUSED, not paper.check_position_limits() (city/date,
+        # directional, correlated-group exposure caps), and not any of the
+        # per-ticker-family shadow gates (_rain_gates_active/
+        # _snow_gates_active/_hurricane_count_gates_active). cmd_order,
+        # cmd_paper, and _quick_paper_buy all check both; this path fell
+        # through the same "reachable without analyze_trade()" gap this
+        # project has repeatedly found and fixed for those three (see
+        # backlog.txt "HURRICANE MARKETS" and its own [[feedback_trace_all_
+        # call_sites]]-shaped history) -- except here analyze_trade() DOES
+        # run (best_a came from it above), so a shadow-only rain/snow/
+        # hurricane-count ticker could still slip through: those markets'
+        # own gates are enforced by check_position_limits()/the manual
+        # order paths, not by analyze_trade() itself.
+        #
+        # Round-2 review caught that check_position_limits() alone is not
+        # enough: cmd_order/cmd_paper/_quick_paper_buy all pair it with
+        # direct refuse-outright guards for exactly this reason -- their own
+        # comments say so explicitly ("check_position_limits()'s own
+        # exception path deliberately fails open, so this direct guard is
+        # not redundant"). Without these, a check_position_limits()
+        # exception (its own shadow-gate checks run FIRST inside that
+        # function, before the exposure-cap checks) fails open here too,
+        # placing a real order on a shadow-only market. Added the same four
+        # checks, in the same order _quick_paper_buy/cmd_paper use.
+        if is_trading_paused():
+            print(
+                red(
+                    "  TRADING_PAUSED is set in .env — order placement is disabled.\n"
+                    "  Remove TRADING_PAUSED to resume trading."
+                )
+            )
+        elif (
+            is_hurricane_count_ticker(_ticker1) and not _hurricane_count_gates_active()
+        ):
+            print(
+                red(
+                    f"  {_ticker1}: hurricane season-count markets are shadow-only until "
+                    "HURRICANE_TRADING_ENABLED=1 and >=20 settled hurricane-count "
+                    "predictions exist — refusing to place this order."
+                )
+            )
+        elif is_hurricane_ticker(_ticker1) and not is_hurricane_count_ticker(_ticker1):
+            print(
+                red(
+                    f"  {_ticker1}: hurricane markets are not supported yet — refusing to place this order."
+                )
+            )
+        elif (
+            _ticker1.upper().startswith(tuple(_KXRAIN_MONTHLY_CITY))
+            and not _rain_gates_active()
+        ):
+            print(
+                red(
+                    f"  {_ticker1}: monthly rain markets are shadow-only until RAIN_TRADING_ENABLED=1 "
+                    "and >=20 settled rain predictions exist — refusing to place this order."
+                )
+            )
+        elif (
+            _ticker1.upper().startswith(tuple(_KXSNOW_MONTHLY_CITY))
+            and not _snow_gates_active()
+        ):
+            print(
+                red(
+                    f"  {_ticker1}: monthly snow markets are shadow-only until SNOW_TRADING_ENABLED=1 "
+                    "and >=20 settled snow predictions exist — refusing to place this order."
+                )
+            )
+        elif _qty1 < 1 or _bet_dollars1 <= 0:
             print(yellow("  Kelly sizing produced 0 contracts — trade not placed."))
         elif _daily_paper_spend() + _bet_dollars1 > MAX_DAILY_SPEND:
             print(
@@ -2709,63 +2778,96 @@ def cmd_today(client: KalshiClient) -> None:
             )
         else:
             try:
-                trade = _ppo_today(
+                from paper import check_position_limits as _cpl_today
+
+                _limit_check_today = _cpl_today(
                     _ticker1,
-                    _side1,
                     _qty1,
                     _entry_price1,
-                    entry_prob=best_a["forecast_prob"],
-                    net_edge=best_a.get("net_edge"),
                     city=best_m.get("_city"),
-                    target_date=best_a.get("target_date"),
-                    method=best_a.get("method"),
+                    target_date_str=best_a.get("target_date"),
+                    side=_side1,
                 )
-                cost = round(_entry_price1 * _qty1, 2)
+            except Exception as _limit_exc_today:
+                _limit_check_today = {"ok": True}
+                _log.warning(
+                    "cmd_today: check_position_limits failed for %s, skipping "
+                    "limit check: %s",
+                    _ticker1,
+                    _limit_exc_today,
+                )
+            if not _limit_check_today.get("ok", True):
+                # Round-2 review caught: no `return` here, unlike a hard
+                # refusal -- every sibling branch above (and the placement-
+                # exception branch below) falls through to the runner-ups
+                # display rather than cutting it off, and there's no reason
+                # this one should be the sole exception.
                 print(
-                    green(
-                        f"\n  ✓ Placed: BUY {_side1.upper()} x{_qty1} @ {_entry_price1:.0%} — cost ${cost:.2f}"
+                    red(
+                        f"  Position limit check failed: {_limit_check_today.get('reason', 'limit exceeded')}"
                     )
                 )
-                print(
-                    dim(
-                        f"  Trade ID: {trade.get('id', '?')}  |  Balance: ${get_balance():.2f}"
-                    )
-                )
+            else:
                 try:
-                    from feature_importance import record_feature_contribution
-
-                    # best_a["target_date"] is an ISO string (weather_markets.py's
-                    # analyze_trade return dict stores target_date.isoformat()) --
-                    # the previous `str - date.today()` here always raised
-                    # TypeError, silently swallowed by the except below, so this
-                    # call has likely never actually recorded a contribution.
-                    _days_out_fi = _feature_importance_days_out(
-                        best_a.get("target_date")
-                    )
-                    record_feature_contribution(
+                    trade = _ppo_today(
                         _ticker1,
-                        {
-                            "ensemble_spread": best_a.get("ensemble_spread", 0) or 0,
-                            "model_agreement": 1.0
-                            if best_a.get("model_consensus")
-                            else 0.0,
-                            "days_out": _days_out_fi,
-                            "edge": best_a.get("edge", 0) or 0,
-                            "kelly_fraction": best_a.get("ci_adjusted_kelly", 0) or 0,
-                            "data_quality": best_a.get("data_quality", 0) or 0,
-                            "near_threshold": 1.0
-                            if best_a.get("near_threshold")
-                            else 0.0,
-                            "regime": 1.0
-                            if best_a.get("regime")
-                            in ("heat_dome", "cold_snap", "blocking_high")
-                            else 0.0,
-                        },
+                        _side1,
+                        _qty1,
+                        _entry_price1,
+                        entry_prob=best_a["forecast_prob"],
+                        net_edge=best_a.get("net_edge"),
+                        city=best_m.get("_city"),
+                        target_date=best_a.get("target_date"),
+                        method=best_a.get("method"),
                     )
-                except Exception:
-                    pass
-            except Exception as e:
-                print(red(f"  Failed to place trade: {e}"))
+                    cost = round(_entry_price1 * _qty1, 2)
+                    print(
+                        green(
+                            f"\n  ✓ Placed: BUY {_side1.upper()} x{_qty1} @ {_entry_price1:.0%} — cost ${cost:.2f}"
+                        )
+                    )
+                    print(
+                        dim(
+                            f"  Trade ID: {trade.get('id', '?')}  |  Balance: ${get_balance():.2f}"
+                        )
+                    )
+                    try:
+                        from feature_importance import record_feature_contribution
+
+                        # best_a["target_date"] is an ISO string (weather_markets.py's
+                        # analyze_trade return dict stores target_date.isoformat()) --
+                        # the previous `str - date.today()` here always raised
+                        # TypeError, silently swallowed by the except below, so this
+                        # call has likely never actually recorded a contribution.
+                        _days_out_fi = _feature_importance_days_out(
+                            best_a.get("target_date")
+                        )
+                        record_feature_contribution(
+                            _ticker1,
+                            {
+                                "ensemble_spread": best_a.get("ensemble_spread", 0)
+                                or 0,
+                                "model_agreement": 1.0
+                                if best_a.get("model_consensus")
+                                else 0.0,
+                                "days_out": _days_out_fi,
+                                "edge": best_a.get("edge", 0) or 0,
+                                "kelly_fraction": best_a.get("ci_adjusted_kelly", 0)
+                                or 0,
+                                "data_quality": best_a.get("data_quality", 0) or 0,
+                                "near_threshold": 1.0
+                                if best_a.get("near_threshold")
+                                else 0.0,
+                                "regime": 1.0
+                                if best_a.get("regime")
+                                in ("heat_dome", "cold_snap", "blocking_high")
+                                else 0.0,
+                            },
+                        )
+                    except Exception:
+                        pass
+                except Exception as e:
+                    print(red(f"  Failed to place trade: {e}"))
 
     # ── Runner-ups #2 and #3 — compact one-liner each ────────────────────────
     if len(top_picks) > 1:

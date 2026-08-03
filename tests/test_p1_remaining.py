@@ -964,6 +964,334 @@ class TestCmdTodayDirectionalConsensusGates:
         assert ticker in out
 
 
+class TestCmdTodayPlacementGates:
+    """Opus-review-caught (2026-08-03): cmd_today's "[P] Place" path was the
+    one interactive placement path in main.py with NO gate check at all --
+    not TRADING_PAUSED, not paper.check_position_limits() (which is what
+    actually enforces _rain_gates_active()/_snow_gates_active()/
+    _hurricane_count_gates_active() for a shadow-only ticker family, since
+    analyze_trade() itself doesn't gate on those). cmd_order/cmd_paper/
+    _quick_paper_buy all check both; mirrors those exactly."""
+
+    def _analysis(self, ticker, target_date="2026-04-17", side="yes"):
+        # city is deliberately NOT a param here (opus-review-caught: an
+        # earlier draft had a dead city= param on this helper -- city flows
+        # to check_position_limits via best_m["_city"] (see _market() below),
+        # never from the analysis dict).
+        return {
+            "ticker": ticker,
+            "days_out": 2,
+            "edge": 0.30,
+            "net_edge": 0.30,
+            "recommended_side": side,
+            "market_prob": 0.35,
+            "forecast_prob": 0.65,
+            "time_risk": "LOW",
+            "ci_adjusted_kelly": 0.10,
+            "consensus": "",
+            "regime_description": "",
+            "n_members": 3,
+            "target_date": target_date,
+        }
+
+    def _market(self, ticker, city="NYC"):
+        return {
+            "ticker": ticker,
+            "_city": city,
+            "yes_bid": 40,
+            "yes_ask": 44,
+            "volume": 500,
+            "open_interest": 100,
+        }
+
+    def _run(self, monkeypatch, market, analysis, capsys, place_side_effect=None):
+        import main
+
+        monkeypatch.setattr("main.get_weather_markets", lambda c: [market])
+        monkeypatch.setattr("main.parse_city_date", lambda m: ("NYC", "2026-04-17"))
+        monkeypatch.setattr("main.batch_prewarm_forecasts", lambda city_dates: None)
+        monkeypatch.setattr("climatology.preload_all", lambda coords: None)
+        monkeypatch.setattr(
+            "main.enrich_with_forecast",
+            lambda m: dict(m),
+        )
+        monkeypatch.setattr("main.analyze_trade", lambda enriched: dict(analysis))
+        monkeypatch.setattr("main.is_liquid", lambda m: True)
+        monkeypatch.setattr("paper.get_balance", lambda: 1000.0)
+        monkeypatch.setattr("paper.kelly_bet_dollars", lambda *a, **k: 50.0)
+        monkeypatch.setattr("paper.kelly_quantity", lambda *a, **k: 10)
+        monkeypatch.setattr("main._daily_paper_spend", lambda: 0.0)
+        monkeypatch.setattr("builtins.input", lambda *a, **k: "P")
+
+        place_calls = []
+
+        def _fake_place(*a, **k):
+            place_calls.append((a, k))
+            if place_side_effect is not None:
+                raise place_side_effect
+            return {"id": 1, "status": "open", "cost": 5.0}
+
+        monkeypatch.setattr("paper.place_paper_order", _fake_place)
+
+        main.cmd_today(MagicMock())
+        return capsys.readouterr().out, place_calls
+
+    def test_refuses_when_trading_paused(self, monkeypatch, capsys):
+        monkeypatch.setattr("main.is_trading_paused", lambda: True)
+        ticker = "KXHIGH-NYC-26APR17-PAUSED"
+        out, place_calls = self._run(
+            monkeypatch, self._market(ticker), self._analysis(ticker), capsys
+        )
+        assert place_calls == []
+        assert "TRADING_PAUSED" in out
+
+    def test_places_normally_when_not_paused_and_limits_ok(self, monkeypatch, capsys):
+        """Behavior lock, not a regression guard for this fix specifically --
+        passes identically with the fix fully reverted (confirmed by
+        mutation). Kept as a baseline sanity check that the happy path still
+        works after adding 6 new gate branches to this function."""
+        monkeypatch.setattr("main.is_trading_paused", lambda: False)
+        monkeypatch.setattr("paper.check_position_limits", lambda *a, **k: {"ok": True})
+        ticker = "KXHIGH-NYC-26APR17-OK"
+        out, place_calls = self._run(
+            monkeypatch, self._market(ticker), self._analysis(ticker), capsys
+        )
+        assert len(place_calls) == 1
+        assert "Placed" in out
+
+    def test_refuses_when_check_position_limits_says_no(self, monkeypatch, capsys):
+        """This is the real regression guard for the finding: a shadow-only
+        (e.g. hurricane-count) ticker's own gate lives INSIDE
+        check_position_limits(), not analyze_trade() -- must be consulted
+        before placing."""
+        monkeypatch.setattr("main.is_trading_paused", lambda: False)
+        monkeypatch.setattr(
+            "paper.check_position_limits",
+            lambda *a, **k: {
+                "ok": False,
+                "reason": "hurricane season-count markets: shadow-only",
+            },
+        )
+        ticker = "KXHURCTOT-26DEC01-T9"
+        out, place_calls = self._run(
+            monkeypatch, self._market(ticker), self._analysis(ticker), capsys
+        )
+        assert place_calls == []
+        assert "shadow-only" in out
+
+    def test_fails_open_when_check_position_limits_raises(self, monkeypatch, capsys):
+        """Behavior lock, not a regression guard for this fix specifically --
+        passes identically with the fix fully reverted (confirmed by
+        mutation), since a plain daily ticker was never blocked either way.
+        Documents the intended fail-open behavior; the direct guards added
+        below (test_refuses_hurricane_count_ticker_even_when_check_position_
+        limits_raises etc.) are what actually keep this safe for a
+        shadow-only ticker family -- see this file's own docstring. Matches
+        cmd_order's own established convention: an exception INSIDE
+        check_position_limits() (e.g. a corrupt paper_trades.json) must not
+        hard-block a manual placement path -- skip the limit check and log
+        a warning instead."""
+        monkeypatch.setattr("main.is_trading_paused", lambda: False)
+
+        def _boom(*a, **k):
+            raise RuntimeError("corrupt state")
+
+        monkeypatch.setattr("paper.check_position_limits", _boom)
+        ticker = "KXHIGH-NYC-26APR17-RAISES"
+        out, place_calls = self._run(
+            monkeypatch, self._market(ticker), self._analysis(ticker), capsys
+        )
+        assert len(place_calls) == 1
+        assert "Placed" in out
+
+    def test_check_position_limits_called_with_real_city_and_date(
+        self, monkeypatch, capsys
+    ):
+        """The city/target_date_str passed to check_position_limits must be
+        the REAL values from the market/analysis, not None -- otherwise the
+        city/date exposure caps are silently skipped even when real values
+        are available (same bug class this project has hit before)."""
+        monkeypatch.setattr("main.is_trading_paused", lambda: False)
+        captured = {}
+
+        def _capture(ticker, qty, price, **kwargs):
+            captured.update(kwargs)
+            return {"ok": True}
+
+        monkeypatch.setattr("paper.check_position_limits", _capture)
+        ticker = "KXHIGH-NYC-26APR17-CAPTURE"
+        self._run(
+            monkeypatch,
+            self._market(ticker, city="Denver"),
+            self._analysis(ticker, target_date="2026-05-01"),
+            capsys,
+        )
+        assert captured.get("city") == "Denver"
+        assert captured.get("target_date_str") == "2026-05-01"
+        assert captured.get("side") == "yes"
+
+    def test_trading_paused_takes_precedence_over_limit_check(
+        self, monkeypatch, capsys
+    ):
+        """TRADING_PAUSED must block even when check_position_limits() would
+        have said ok=True -- confirms it's checked first, not just present
+        somewhere."""
+        monkeypatch.setattr("main.is_trading_paused", lambda: True)
+        monkeypatch.setattr("paper.check_position_limits", lambda *a, **k: {"ok": True})
+        ticker = "KXHIGH-NYC-26APR17-PRECEDENCE"
+        out, place_calls = self._run(
+            monkeypatch, self._market(ticker), self._analysis(ticker), capsys
+        )
+        assert place_calls == []
+
+    # ── Direct shadow-family guards (round-2 opus review, 2026-08-03) ───────
+    # check_position_limits() enforces these gates too, but ONLY on its
+    # non-exception path -- these direct checks are what keeps a
+    # check_position_limits() exception from failing open onto a shadow-
+    # only market, mirroring cmd_order/cmd_paper/_quick_paper_buy exactly.
+    #
+    # Round-2-of-round-2 catch: check_position_limits() (the real function,
+    # unmocked) ALSO refuses each of these tickers on its own non-exception
+    # path -- so "place_calls == []" alone doesn't distinguish "the direct
+    # guard fired" from "the fallback caught it anyway", and passes
+    # identically with the direct guards deleted (confirmed by mutation).
+    # Each test below therefore spies on check_position_limits and asserts
+    # it was NEVER CALLED -- that's the only way to prove the elif branch,
+    # not the else-block fallback, is what actually fired.
+
+    def _run_with_cpl_spy(self, monkeypatch, market, analysis, capsys):
+        cpl_calls = []
+        monkeypatch.setattr(
+            "paper.check_position_limits",
+            lambda *a, **k: (cpl_calls.append((a, k)), {"ok": True})[1],
+        )
+        out, place_calls = self._run(monkeypatch, market, analysis, capsys)
+        return out, place_calls, cpl_calls
+
+    def test_refuses_hurricane_count_ticker_when_gate_inactive(
+        self, monkeypatch, capsys
+    ):
+        monkeypatch.setattr("main.is_trading_paused", lambda: False)
+        monkeypatch.delenv("HURRICANE_TRADING_ENABLED", raising=False)
+        ticker = "KXHURCTOT-26DEC01-T9"
+        out, place_calls, cpl_calls = self._run_with_cpl_spy(
+            monkeypatch, self._market(ticker), self._analysis(ticker), capsys
+        )
+        assert place_calls == []
+        assert cpl_calls == [], (
+            "the direct guard must fire before check_position_limits is ever called"
+        )
+        assert "hurricane season-count" in out.lower()
+
+    def test_refuses_hurricane_count_ticker_even_when_check_position_limits_raises(
+        self, monkeypatch, capsys
+    ):
+        """The real point of the round-2 fix: check_position_limits() itself
+        raising must NOT let a shadow-only hurricane-count ticker fail open
+        -- the direct guard must fire first and never even reach the
+        try/except around check_position_limits()."""
+        monkeypatch.setattr("main.is_trading_paused", lambda: False)
+        monkeypatch.delenv("HURRICANE_TRADING_ENABLED", raising=False)
+
+        def _boom(*a, **k):
+            raise RuntimeError("corrupt state")
+
+        monkeypatch.setattr("paper.check_position_limits", _boom)
+        ticker = "KXHURCTOT-26DEC01-T9"
+        out, place_calls = self._run(
+            monkeypatch, self._market(ticker), self._analysis(ticker), capsys
+        )
+        assert place_calls == []
+
+    def test_other_hurricane_shapes_always_refused_regardless_of_gate(
+        self, monkeypatch, capsys
+    ):
+        """KXHURCAT (per-storm category) has no model at all -- must refuse
+        unconditionally, even with HURRICANE_TRADING_ENABLED=1."""
+        monkeypatch.setattr("main.is_trading_paused", lambda: False)
+        monkeypatch.setenv("HURRICANE_TRADING_ENABLED", "1")
+        ticker = "KXHURCAT-26FAUSTO-T5"
+        out, place_calls, cpl_calls = self._run_with_cpl_spy(
+            monkeypatch, self._market(ticker), self._analysis(ticker), capsys
+        )
+        assert place_calls == []
+        assert cpl_calls == []
+        assert "not supported yet" in out.lower()
+
+    def test_refuses_rain_ticker_when_gate_inactive(self, monkeypatch, capsys):
+        monkeypatch.setattr("main.is_trading_paused", lambda: False)
+        monkeypatch.delenv("RAIN_TRADING_ENABLED", raising=False)
+        ticker = "KXRAINDENM-26JUL-7"
+        out, place_calls, cpl_calls = self._run_with_cpl_spy(
+            monkeypatch,
+            self._market(ticker, city="Denver"),
+            self._analysis(ticker),
+            capsys,
+        )
+        assert place_calls == []
+        assert cpl_calls == []
+        assert "monthly rain" in out.lower()
+
+    def test_refuses_snow_ticker_when_gate_inactive(self, monkeypatch, capsys):
+        monkeypatch.setattr("main.is_trading_paused", lambda: False)
+        monkeypatch.delenv("SNOW_TRADING_ENABLED", raising=False)
+        ticker = "KXDENSNOWM-26DEC-5.0"
+        out, place_calls, cpl_calls = self._run_with_cpl_spy(
+            monkeypatch,
+            self._market(ticker, city="Denver"),
+            self._analysis(ticker),
+            capsys,
+        )
+        assert place_calls == []
+        assert cpl_calls == []
+        assert "monthly snow" in out.lower()
+
+    def test_position_limit_failure_does_not_suppress_runner_ups(
+        self, monkeypatch, capsys
+    ):
+        """Round-2 review caught: the limit-check-failed branch used to
+        `return` early, cutting off the runner-up display that every other
+        refusal branch (and the placement-exception branch) leaves intact."""
+        import main
+
+        monkeypatch.setattr("main.is_trading_paused", lambda: False)
+        monkeypatch.setattr(
+            "paper.check_position_limits",
+            lambda *a, **k: {"ok": False, "reason": "exposure cap"},
+        )
+        best = self._market("KXHIGH-NYC-26APR17-MAIN")
+        runner_up = self._market("KXHIGH-CHI-26APR17-RUNNERUP")
+        best_a = self._analysis("KXHIGH-NYC-26APR17-MAIN")
+        runner_a = self._analysis("KXHIGH-CHI-26APR17-RUNNERUP")
+        runner_a["edge"] = 0.20
+        runner_a["net_edge"] = 0.20
+
+        markets = [best, runner_up]
+        analyses = {best["ticker"]: best_a, runner_up["ticker"]: runner_a}
+
+        monkeypatch.setattr("main.get_weather_markets", lambda c: markets)
+        monkeypatch.setattr("main.parse_city_date", lambda m: ("NYC", "2026-04-17"))
+        monkeypatch.setattr("main.batch_prewarm_forecasts", lambda city_dates: None)
+        monkeypatch.setattr("climatology.preload_all", lambda coords: None)
+        monkeypatch.setattr("main.enrich_with_forecast", lambda m: dict(m))
+        monkeypatch.setattr(
+            "main.analyze_trade", lambda enriched: dict(analyses[enriched["ticker"]])
+        )
+        monkeypatch.setattr("main.is_liquid", lambda m: True)
+        monkeypatch.setattr("paper.get_balance", lambda: 1000.0)
+        monkeypatch.setattr("paper.kelly_bet_dollars", lambda *a, **k: 50.0)
+        monkeypatch.setattr("paper.kelly_quantity", lambda *a, **k: 10)
+        monkeypatch.setattr("main._daily_paper_spend", lambda: 0.0)
+        monkeypatch.setattr("builtins.input", lambda *a, **k: "P")
+        monkeypatch.setattr("paper.place_paper_order", lambda *a, **k: {"id": 1})
+
+        main.cmd_today(MagicMock())
+        out = capsys.readouterr().out
+        assert "Position limit check failed" in out
+        assert "Also consider" in out
+        assert "KXHIGH-CHI-26APR17-RUNNERUP" in out
+
+
 class TestCmdSignals:
     """backlog.txt "SIGNAL GRADUATION IS A CONVENTION" part (b): the
     `py main.py signals` CLI command displaying get_signal_graduation_report()."""

@@ -1,6 +1,108 @@
 BACKLOG — future improvements to implement when ready
 ======================================================
 
+[RESOLVED 2026-08-03] CMD_TODAY'S "[P] PLACE" PATH HAD NO GATE CHECK AT ALL
+Priority: was High -- a real, reachable-today gap in the one remaining
+  manual order-placement path this project's repeated "trace all call
+  sites" pattern (see [[feedback_trace_all_call_sites]]) hadn't yet covered.
+
+Problem:
+  Found during the hurricane season-count model's opus review (backlog.txt
+  "HURRICANE MARKETS -- SEASON-TOTAL COUNT MODEL SHIPPED SHADOW-ONLY"):
+  main.py's `cmd_today()` ("what should I do today?" interactive
+  recommender) has a "[P] Place" prompt that calls `paper.place_paper_order()`
+  directly with NO gate check of any kind -- not `is_trading_paused()`, and
+  not `paper.check_position_limits()`. This matters specifically because
+  `check_position_limits()` is where city/date exposure caps, directional
+  caps, correlated-group caps, AND every current shadow-only gate
+  (`_rain_gates_active()`/`_snow_gates_active()`/
+  `_hurricane_count_gates_active()`) actually live -- `analyze_trade()`
+  itself computes a full real analysis regardless of any of those gates, by
+  design (so calibration data keeps accumulating). Every OTHER manual
+  placement path in main.py (`cmd_order`, `cmd_paper`, `_quick_paper_buy`)
+  already checks both; this one fell through the same "reachable without
+  analyze_trade()'s own gates" shape this project has hit and fixed
+  repeatedly for those three paths (see the "HURRICANE MARKETS" entries'
+  own history) -- except here it's not "reachable without analyze_trade()"
+  (analyze_trade() DOES run), it's "analyze_trade() ran but nothing
+  downstream re-checked the gates it doesn't itself enforce."
+  Confirmed pre-existing for rain and snow (both already shadow-gated
+  before this session); the hurricane season-count model made it a THIRD
+  affected market family, which is what surfaced it.
+
+What shipped:
+  Added both checks to the "[P]" branch, mirroring `cmd_order`'s exact
+  calling convention: `is_trading_paused()` checked first (blocks outright
+  with the same message text every other manual path uses), then
+  `paper.check_position_limits()` called with the real `ticker`/`qty`/
+  `price`/`city` (from the already-enriched `best_m["_city"]`)/
+  `target_date_str` (from `best_a["target_date"]`, already an ISO string --
+  analyze_trade()'s own return-dict convention)/`side` -- failing OPEN on
+  an exception (logs a warning, skips the limit check) rather than hard-
+  blocking, matching `cmd_order`'s own established precedent for this exact
+  call (itself opus-reviewed before). Position-limit check runs after the
+  existing Kelly-sizing (`qty < 1`) and daily-spend-cap checks, immediately
+  before the real placement call.
+
+  Independent opus review (single agent -- scoped to match this fix's size,
+  not the 3-parallel-agent setup the hurricane model itself used) found 3
+  issues before commit, all fixed:
+  - MEDIUM: `check_position_limits()` alone isn't enough, because its own
+    fail-open exception path runs BEFORE its shadow-gate checks would have
+    fired -- `cmd_order`/`cmd_paper`/`_quick_paper_buy` all pair it with
+    direct refuse-outright guards (`is_hurricane_count_ticker`/
+    `is_hurricane_ticker`/`_KXRAIN_MONTHLY_CITY`/`_KXSNOW_MONTHLY_CITY`) for
+    exactly this reason -- their own comments say so explicitly. Without
+    them, a `check_position_limits()` exception (a corrupt
+    `paper_trades.json`, say) would fail open onto a shadow-only market
+    same as before this fix, just narrowed to the exception path. Fixed by
+    adding the same four direct guards, in the same order, before the
+    `check_position_limits()` try block.
+  - LOW: the limit-check-failure branch used a bare `return`, cutting off
+    the runner-up display every OTHER refusal branch (and the placement-
+    exception branch) leaves intact. Fixed by restructuring into an
+    `if/else` so only the actual placement attempt is skipped, not the
+    rest of the function.
+  - LOW: the test helper's `_analysis(city=...)` parameter was dead code
+    (city flows to `check_position_limits()` via `best_m["_city"]`, never
+    from the analysis dict) -- removed.
+
+  15 new tests in `tests/test_p1_remaining.py` (`TestCmdTodayPlacementGates`):
+  TRADING_PAUSED refuses and takes precedence even when the limit check
+  would pass; a rejected `check_position_limits()` result refuses; an
+  exception inside `check_position_limits()` fails open for an ordinary
+  ticker (matching `cmd_order`'s convention) but NOT for a hurricane-count
+  ticker (the direct guard fires first); the real city/target_date/side are
+  passed through correctly; each of the 4 direct guards (hurricane-count,
+  other-hurricane-shapes, rain, snow) refuses BEFORE `check_position_limits`
+  is ever called -- verified by spying on it and asserting zero calls, not
+  just checking the end result, after an earlier round of these same tests
+  turned out to pass identically with the direct guards removed (confirmed
+  by mutation) since the real `check_position_limits()` already refuses
+  those tickers on its own non-exception path; and a rejected limit check
+  still shows the runner-ups. 6 mutations run in total across both review
+  rounds (removing the TRADING_PAUSED check, short-circuiting the limit-
+  check result to always-ok, removing all 4 direct guards together, and
+  restoring the early `return`) -- every mutation caught by the
+  corresponding test(s), all reverted cleanly. Full `tests/
+  test_p1_remaining.py` (48 tests) plus `tests/test_hurricane_markets.py`/
+  `test_hurricane_gating.py`/`test_snow_markets.py`/`test_rain_markets.py`/
+  `test_shadow_predictions.py`/`test_feature_importance_days_out.py`/
+  `test_infrastructure.py`/`test_weather_markets.py`/`test_dead_code_scan.py`
+  (516 more) all pass. ruff + ruff format + mypy clean.
+
+What this does NOT do:
+  Does not touch `cmd_order`/`cmd_paper`/`_quick_paper_buy` (already
+  correct) or `web_app.py`'s `/api/paper-order` (already funnels through
+  `check_position_limits()`). Scoped to exactly the one gap found.
+
+When to revisit:
+  Re-run the same "does every manual placement path check both gates"
+  audit whenever a new manual placement path is added -- this is the kind
+  of gap that specifically doesn't show up in automated-path testing
+  (`order_executor._auto_place_trades()` tests) since it's a distinct,
+  interactive-only code path.
+
 [RESOLVED 2026-08-02] VAR-CONVENTION LITERAL HAND-COPIED ACROSS 7+ FILES BEYOND analyze_trade()
 Priority: Low -- no current behavior bug (all copies are logically
   equivalent today), but a real instance of this codebase's recurring
