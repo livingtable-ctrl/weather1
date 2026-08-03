@@ -599,8 +599,16 @@ def test_check_model_exits_includes_market_in_rec(tmp_path, monkeypatch):
     assert recs[0]["market"] is fake_market
 
 
-def test_cmd_watch_auto_executes_model_exits(tmp_path, monkeypatch):
-    """cmd_watch must call close_paper_early for each exit recommendation, not just print (L3-B)."""
+def test_cmd_watch_auto_executes_early_exits(tmp_path, monkeypatch):
+    """cmd_watch must call close_paper_early via _check_early_exits, not just
+    print (L3-B). Migrated 2026-08-03 from paper.check_model_exits to
+    order_executor._check_early_exits: watch's automated loop now uses the
+    same model-flip implementation cron.py does (25pp shift + settlement
+    gate), instead of its own separate 10pp/no-settlement-gate variant --
+    position-protection unification (see backlog.txt's [POSITION PROTECTION
+    IS STILL TWO SEPARATE MECHANISMS...] entry). check_model_exits itself is
+    untouched and still covered by test_check_model_exits_includes_market_in_rec
+    above; it's just no longer what cmd_watch's automated loop calls."""
     import importlib
 
     import main
@@ -610,44 +618,46 @@ def test_cmd_watch_auto_executes_model_exits(tmp_path, monkeypatch):
     importlib.reload(paper)
     monkeypatch.setattr(paper, "DATA_PATH", tmp_path / "paper_trades.json")
 
-    paper.place_paper_order("EXIT-TICKER", "yes", 5, 0.65, entry_prob=0.65)
-    open_id = paper.get_open_trades()[0]["id"]
+    # Entered 24h ago (past the 12h minimum hold); entry_prob=0.65 so a
+    # forecast_prob of 0.30 is a 0.35 shift against the held YES side --
+    # past MODEL_EXIT_SHIFT_PP's 0.25 threshold.
+    paper.place_paper_order(
+        "EXIT-TICKER",
+        "yes",
+        5,
+        0.65,
+        entry_prob=0.65,
+        close_time="2099-01-01T00:00:00Z",
+    )
+
+    from datetime import datetime as _dt
+    from datetime import timedelta as _td
+
+    _old_time = (_dt.now(UTC) - _td(hours=24)).isoformat()
+    _pdata = paper._load()
+    for _t in _pdata.get("trades", []):
+        _t["entered_at"] = _old_time
+    paper._save(_pdata)
 
     fake_market = {"ticker": "EXIT-TICKER", "yes_bid": 28, "yes_ask": 34}
-    fake_rec = {
-        "trade": paper.get_open_trades()[0],
-        "reason": "model_flipped",
-        "current_edge": -0.12,
-        "held_side": "yes",
-        "market": fake_market,
-    }
+    fake_analysis = {"forecast_prob": 0.30, "net_edge": -0.05}
 
-    closed: list = []
-
-    def fake_close(tid, exit_price):
-        closed.append((tid, exit_price))
-        return {"id": tid, "outcome": "early_exit", "pnl": -0.50}
-
-    monkeypatch.setattr(paper, "close_paper_early", fake_close)
     monkeypatch.setattr(main, "RUNNING_FLAG_PATH", tmp_path / ".cron_running")
     monkeypatch.setattr(main, "KILL_SWITCH_PATH", tmp_path / ".kill_switch")
 
-    # Patch check_model_exits to return our rec immediately, then [] to stop the loop
-    call_count = {"n": 0}
-
-    def fake_check_exits(client=None):
-        call_count["n"] += 1
-        return [fake_rec] if call_count["n"] == 1 else []
-
     from unittest.mock import MagicMock
 
-    monkeypatch.setattr("paper.check_model_exits", fake_check_exits)
+    monkeypatch.setattr(
+        "order_executor.get_weather_markets", lambda client: [fake_market]
+    )
+    monkeypatch.setattr("order_executor.enrich_with_forecast", lambda m: m)
+    monkeypatch.setattr("order_executor.analyze_trade", lambda e: fake_analysis)
+    monkeypatch.setattr("paper.check_paper_position_exits", lambda client: [])
     monkeypatch.setattr("paper.check_expiring_trades", lambda warn_hours=24: [])
     monkeypatch.setattr(main, "get_weather_markets", lambda client: [])
     monkeypatch.setattr(main, "check_ensemble_circuit_health", lambda: None)
     monkeypatch.setattr(main, "_check_startup_orders", lambda: None)
     monkeypatch.setattr(main, "sync_outcomes", lambda client: 0)
-    monkeypatch.setattr(main, "_check_early_exits", lambda client=None: 0)
 
     # Drive one iteration of the watch loop by raising KeyboardInterrupt after first pass
     sleep_calls = {"n": 0}
@@ -665,10 +675,67 @@ def test_cmd_watch_auto_executes_model_exits(tmp_path, monkeypatch):
     except (KeyboardInterrupt, SystemExit):
         pass
 
-    assert len(closed) >= 1, (
-        "cmd_watch must call close_paper_early for model exit recommendations (L3-B)"
+    assert paper.get_open_trades() == [], (
+        "cmd_watch must call _check_early_exits, which closes the position "
+        "directly (L3-B / position-protection unification)"
     )
-    assert closed[0][0] == open_id
+
+
+def test_cmd_watch_auto_executes_paper_stop_loss(tmp_path, monkeypatch):
+    """cmd_watch's automated loop must also run paper stop-loss/breakeven
+    protection, not just the model-flip check -- previously watch had ZERO
+    price-based paper protection (only cron did); position-protection
+    unification follow-up (see backlog.txt's [POSITION PROTECTION IS STILL
+    TWO SEPARATE MECHANISMS...] entry)."""
+    import importlib
+
+    import main
+    import paper
+
+    monkeypatch.setattr(paper, "DATA_PATH", tmp_path / "paper_trades.json")
+    importlib.reload(paper)
+    monkeypatch.setattr(paper, "DATA_PATH", tmp_path / "paper_trades.json")
+
+    paper.place_paper_order(
+        "SL-WATCH-TICKER", "yes", 10, 0.60, close_time="2099-01-01T00:00:00Z"
+    )
+
+    # current yes = 0.29 → loss = (0.29-0.60)*10 = -3.10; threshold = -cost/2 = -3.00 → fires
+    fake_market = {"ticker": "SL-WATCH-TICKER", "yes_bid": 0.29, "yes_ask": 0.31}
+
+    monkeypatch.setattr(main, "RUNNING_FLAG_PATH", tmp_path / ".cron_running")
+    monkeypatch.setattr(main, "KILL_SWITCH_PATH", tmp_path / ".kill_switch")
+    monkeypatch.setattr(main, "_check_early_exits", lambda client=None: 0)
+    monkeypatch.setattr("paper.check_expiring_trades", lambda warn_hours=24: [])
+    monkeypatch.setattr(main, "get_weather_markets", lambda client: [])
+    monkeypatch.setattr(main, "check_ensemble_circuit_health", lambda: None)
+    monkeypatch.setattr(main, "_check_startup_orders", lambda: None)
+    monkeypatch.setattr(main, "sync_outcomes", lambda client: 0)
+    monkeypatch.setattr("paper.is_paused_drawdown", lambda: False)
+
+    sleep_calls = {"n": 0}
+
+    def fake_sleep(s):
+        sleep_calls["n"] += 1
+        if sleep_calls["n"] >= 1:
+            raise KeyboardInterrupt
+
+    monkeypatch.setattr("time.sleep", fake_sleep)
+
+    from unittest.mock import MagicMock
+
+    fake_client = MagicMock()
+    fake_client.get_market.side_effect = lambda t: fake_market
+
+    try:
+        main.cmd_watch(fake_client)
+    except (KeyboardInterrupt, SystemExit):
+        pass
+
+    assert paper.get_open_trades() == [], (
+        "cmd_watch must now also run paper.check_paper_position_exits "
+        "(stop-loss/breakeven) -- previously absent from watch entirely"
+    )
 
 
 # ── L3-C regression: paper orders must be logged so was_traded_today() survives restarts ──

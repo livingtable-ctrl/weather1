@@ -1557,101 +1557,37 @@ def _cmd_cron_body(
     except Exception as _e:
         _log.debug("cmd_cron: F3 auto-calibration check failed: %s", _e)
 
-    # Phase 7 — price-based stop-loss check before model-based early exits
+    # Phase 7 — price-based stop-loss check before model-based early exits.
+    # check_paper_position_exits() also runs from watch's automated loop --
+    # position-protection unification follow-up (see backlog.txt's
+    # [POSITION PROTECTION IS STILL TWO SEPARATE MECHANISMS...] entry) so a
+    # paper position gets the same price-based protection regardless of
+    # which pipeline happens to observe it.
     try:
         import paper as _paper_sl
 
-        _open_for_sl = _paper_sl.get_open_trades()
-        if _open_for_sl and client is not None:
-            # #3: carry both bid and ask (not just ask) so YES positions can be
-            # marked/closed at bid (what a holder can actually realize) instead
-            # of ask (what a buyer pays to open more) — using ask for YES
-            # understated unrealized loss (stops fired late) and overstated
-            # exit proceeds when a stop did fire.
-            _sl_prices: dict[str, dict[str, float]] = {}
-            from weather_markets import parse_market_price as _parse_sl_price
-
-            for _t in _open_for_sl:
-                try:
-                    _mkt = client.get_market(_t["ticker"])
-                    # Use parse_market_price so both cents and decimal API formats
-                    # are handled correctly.  A raw "/ 100" would mis-price
-                    # markets already returned in decimal (0-1) format, making
-                    # every position look like a 99% instant loss and firing the
-                    # stop on the same cron run the trade was placed.
-                    _quote = _parse_sl_price(_mkt)
-                    # Deep-review followup: parse_market_price() coalesces a
-                    # missing side to 0.0, never None, so an `is not None`
-                    # check here never rejects anything -- a one-sided book
-                    # (only one of bid/ask populated) has_quote's real gate
-                    # is whether there's ANY usable price at all;
-                    # paper._liquidation_price() independently guards each
-                    # individual side (bid<=0 / ask<=0) against being
-                    # treated as a real quote.
-                    if _quote.get("has_quote"):
-                        _sl_prices[_t["ticker"]] = {
-                            "bid": _quote.get("yes_bid", 0.0),
-                            "ask": _quote.get("yes_ask", 0.0),
-                        }
-                    else:
-                        _log.debug(
-                            "[StopLoss] no bid/ask for %s — will fall back to entry_price",
-                            _t["ticker"],
-                        )
-                except Exception:
-                    pass
-            # Update peak profit highs before any stop checks
-            _paper_sl.update_peak_profits(_open_for_sl, _sl_prices)
-
-            _sl_tickers = _paper_sl.check_stop_losses(_open_for_sl, _sl_prices)
-            for _sl_ticker in _sl_tickers:
-                _sl_trade = next(
-                    (t for t in _open_for_sl if t["ticker"] == _sl_ticker), None
+        for _closed in _paper_sl.check_paper_position_exits(client):
+            if _closed["reason"] == "stop_loss":
+                _log.info(
+                    "[StopLoss] Closed %s — price breached stop threshold",
+                    _closed["ticker"],
                 )
-                if _sl_trade:
-                    _sl_exit_price = _paper_sl._liquidation_price(
-                        _sl_prices, _sl_ticker, _sl_trade.get("side", "yes")
+                print(
+                    red(
+                        f"  [StopLoss] Closed {_closed['ticker']} — price breached stop threshold"
                     )
-                    if _sl_exit_price is None:
-                        _sl_exit_price = _sl_trade["entry_price"]
-                    _paper_sl.close_paper_early(
-                        _sl_trade["id"], _sl_exit_price, reason="stop_loss"
-                    )
-                    _log.info(
-                        "[StopLoss] Closed %s \u2014 price breached stop threshold",
-                        _sl_ticker,
-                    )
-                    print(
-                        red(
-                            f"  [StopLoss] Closed {_sl_ticker} \u2014 price breached stop threshold"
-                        )
-                    )
-
-            # Break-even stop: if position was ever up >=30% of cost and has
-            # since fallen back to entry, exit at scratch (no loss possible)
-            _open_for_sl = _paper_sl.get_open_trades()  # reload after any stop exits
-            _be_tickers = _paper_sl.check_breakeven_stops(_open_for_sl, _sl_prices)
-            for _be_ticker in _be_tickers:
-                _be_trade = next(
-                    (t for t in _open_for_sl if t["ticker"] == _be_ticker), None
                 )
-                if _be_trade:
-                    _be_exit_price = _paper_sl._liquidation_price(
-                        _sl_prices, _be_ticker, _be_trade.get("side", "yes")
+            else:
+                _log.info(
+                    "[BreakEven] Closed %s — fell back to entry after peaking %.0f%% profit",
+                    _closed["ticker"],
+                    (_closed["trade"].get("peak_profit_pct") or 0) * 100,
+                )
+                print(
+                    yellow(
+                        f"  [BreakEven] Closed {_closed['ticker']} — scratch exit (peaked then fell to entry)"
                     )
-                    if _be_exit_price is None:
-                        _be_exit_price = _be_trade["entry_price"]
-                    _paper_sl.close_paper_early(_be_trade["id"], _be_exit_price)
-                    _log.info(
-                        "[BreakEven] Closed %s \u2014 fell back to entry after peaking %.0f%% profit",
-                        _be_ticker,
-                        (_be_trade.get("peak_profit_pct") or 0) * 100,
-                    )
-                    print(
-                        yellow(
-                            f"  [BreakEven] Closed {_be_ticker} \u2014 scratch exit (peaked then fell to entry)"
-                        )
-                    )
+                )
     except Exception as _e:
         # M-1: stop-loss failures must be ERROR-level — DEBUG is invisible in production
         _log.error(

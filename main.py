@@ -3130,16 +3130,21 @@ def cmd_watch(
             # stale pre-decision snapshot (the more safety-relevant staleness
             # direction: an operator seeing "no signals" moments after a
             # trade actually fired is more confusing than the reverse).
-            # NOTE: this still leaves cmd_watch running up to three
+            # NOTE: this still leaves cmd_watch running up to four
             # independent get_weather_markets() scans per cycle (this one
-            # reused below for price-drift, run_trade_cycle()'s own, and
-            # _analyze_once()'s own for display) -- fully unifying the
-            # display scan with the engine's scan would mean extracting
-            # _analyze_once()'s ~400-line table/arb/correlation-warning
-            # rendering into a shared helper, a mechanically large change
-            # this session deliberately did not attempt this late against
-            # a function `cmd_analyze` also depends on; filed as its own
-            # follow-up backlog entry rather than folded in here.
+            # reused below for price-drift, run_trade_cycle()'s own,
+            # _analyze_once()'s own for display, and -- since the
+            # position-protection unification follow-up -- one more inside
+            # _check_early_exits() below) -- fully unifying the display scan
+            # with the engine's scan would mean extracting _analyze_once()'s
+            # ~400-line table/arb/correlation-warning rendering into a
+            # shared helper, a mechanically large change this session
+            # deliberately did not attempt this late against a function
+            # `cmd_analyze` also depends on; filed as its own follow-up
+            # backlog entry (see backlog.txt's [CMD_WATCH RUNS THREE
+            # INDEPENDENT get_weather_markets() SCANS...] entry, whose title
+            # is now stale on the count but not the underlying problem)
+            # rather than folded in here.
             cycle_result = None
             live_cfg = _load_live_config() if live else None
             if auto_trade:
@@ -3262,49 +3267,65 @@ def cmd_watch(
                 # for the rest of the watch loop with zero trace in bot.log.
                 _log.warning("cmd_watch: price-alert check failed: %s", _alert_exc)
 
-            # Check open paper positions for exit signals
+            # Price-based stop-loss/breakeven check — unified with cron.py's
+            # own paper protection, same thresholds/gates (position-
+            # protection unification follow-up; see backlog.txt's [POSITION
+            # PROTECTION IS STILL TWO SEPARATE MECHANISMS...] entry).
+            # Previously cron-only; plain/auto watch had none. Note this
+            # runs even with data/.kill_switch active -- unlike cron.py,
+            # which returns before reaching its own copy of this call while
+            # the kill switch is set, watch's loop has no kill-switch check
+            # at all (pre-existing: the old check_model_exits call this
+            # replaced didn't check it either).
             try:
-                from paper import check_expiring_trades, check_model_exits
+                import paper as _paper_watch
 
-                exit_recs = check_model_exits(client)
-                for rec in exit_recs:
-                    import paper as _paper_exit
-
-                    t = rec["trade"]
-                    reason = (
-                        "MODEL FLIPPED"
-                        if rec["reason"] == "model_flipped"
-                        else "EDGE GONE"
-                    )
-                    print(
-                        yellow(
-                            f"  [Exit signal] #{t['id']} {t['ticker']} "
-                            f"{t['side'].upper()} — {reason} "
-                            f"(edge now {rec['current_edge']:+.1%})"
+                for _closed in _paper_watch.check_paper_position_exits(client):
+                    if _closed["reason"] == "stop_loss":
+                        _log.info(
+                            "[StopLoss] Closed %s — price breached stop threshold",
+                            _closed["ticker"],
                         )
-                    )
-                    try:
-                        exit_price = _midpoint_price(rec["market"], rec["held_side"])
-                        result = _paper_exit.close_paper_early(t["id"], exit_price)
                         print(
                             red(
-                                f"  [Closed] #{t['id']} {t['ticker']} "
-                                f"@ {exit_price:.0%}  pnl=${result['pnl']:.2f}"
+                                f"  [StopLoss] Closed {_closed['ticker']} — price breached stop threshold"
                             )
                         )
+                    else:
                         _log.info(
-                            "[ModelExit] #%s %s %s closed: reason=%s edge=%+.3f pnl=$%.2f",
-                            t["id"],
-                            t["ticker"],
-                            rec["held_side"],
-                            rec["reason"],
-                            rec["current_edge"],
-                            result["pnl"],
+                            "[BreakEven] Closed %s — fell back to entry after peaking %.0f%% profit",
+                            _closed["ticker"],
+                            (_closed["trade"].get("peak_profit_pct") or 0) * 100,
                         )
-                    except Exception as _exc:
-                        _log.warning(
-                            "[ModelExit] Failed to close #%s: %s", t["id"], _exc
+                        print(
+                            yellow(
+                                f"  [BreakEven] Closed {_closed['ticker']} — scratch exit (peaked then fell to entry)"
+                            )
                         )
+            except Exception as _sl_exc:
+                _log.error(
+                    "cmd_watch: paper stop-loss/breakeven check failed: %s", _sl_exc
+                )
+
+            # Check open paper positions for model-flip exit + expiring
+            # warnings. Model-flip now uses the same order_executor.
+            # _check_early_exits() implementation cron.py uses (25pp shift +
+            # settlement-convergence gate) instead of the separate
+            # paper.check_model_exits() implementation (10pp, no settlement
+            # gate) that this automated loop previously called — that
+            # function still exists and is used by cmd_brief and the manual
+            # Paper > Exit-signals menu, just no longer here (position-
+            # protection unification follow-up, same entry as above).
+            try:
+                from paper import check_expiring_trades
+
+                _early_exits = _check_early_exits(client)
+                if _early_exits > 0:
+                    print(
+                        green(
+                            f"  [EarlyExit] Closed {_early_exits} position(s) on model update."
+                        )
+                    )
                 for exp in check_expiring_trades():
                     t = exp["trade"]
                     hrs = exp["hours_left"]

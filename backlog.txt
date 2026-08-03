@@ -8837,8 +8837,9 @@ RESOLVED 2026-08-02 (the full headless engine extraction -- "live trading
   DEMO_BASE smoke test and any live-order-placing verification remain
   separate, later, explicitly out-of-scope steps.
 
-[POSITION PROTECTION IS STILL TWO SEPARATE MECHANISMS AFTER THE HEADLESS
-ENGINE EXTRACTION -- CRON'S TIME-BASED EXITS VS. WATCH'S MODEL-FLIP EXITS]
+[RESOLVED 2026-08-03] POSITION PROTECTION IS STILL TWO SEPARATE MECHANISMS
+AFTER THE HEADLESS ENGINE EXTRACTION -- CRON'S TIME-BASED EXITS VS. WATCH'S
+MODEL-FLIP EXITS
 Priority: Medium -- filed during the 2026-08-02 headless-engine extraction
   (see the RESOLVED entry immediately above) as a deliberately out-of-scope
   finding, not folded in.
@@ -8876,6 +8877,100 @@ When to revisit:
   piece of work with its own design-decision round on which exit
   philosophy (or explicit dual-strategy-by-design) is correct, not an
   extension of the already-large diff above.
+
+RESOLVED 2026-08-03:
+  Re-verification correction to the problem statement above: cron's paper
+  protection was never purely "time-elapsed-based" -- it already ran THREE
+  mechanisms (paper.check_stop_losses/check_breakeven_stops, both
+  price-based, plus order_executor._check_early_exits, a SECOND,
+  independently-written model-flip check at 25pp shift + a pre-settlement
+  gate). Watch ran exactly ONE mechanism (paper.check_model_exits, a THIRD
+  model-flip implementation at 10pp net_edge + no settlement gate) and had
+  ZERO price-based protection. check_expiring_trades (both pipelines) was
+  never an exit mechanism at all -- it only prints a countdown warning,
+  never closes anything. Live positions were already fully unified via
+  order_executor._check_live_position_exits/_check_live_model_exits, called
+  identically by both pipelines -- that precedent is what this resolution
+  extends to paper.
+
+  Design decisions (AskUserQuestion, both explicitly user-selected):
+  1. Watch's paper positions get the same price-based stop-loss/breakeven
+     protection cron's already had.
+  2. The canonical model-exit implementation is cron's version
+     (order_executor._check_early_exits, 25pp shift + settlement gate) --
+     not watch's separate check_model_exits (10pp, no settlement gate).
+     check_model_exits itself is UNCHANGED and still used by cmd_brief's
+     informational display and the manual "Exit Signals" submenu (explicit
+     y/N per position) -- only watch's automated per-cycle call site
+     switched to _check_early_exits.
+
+  Implementation: new paper.check_paper_position_exits(client) (paper.py)
+  extracted from cron.py's ~100-line inline stop-loss/breakeven block,
+  returning closed positions as structured dicts so callers can log/print
+  without re-deriving exit details. cron.py's _cmd_cron_body now calls this
+  shared function (identical console/log output preserved). main.py's
+  cmd_watch automated per-cycle block (unconditional on auto_trade -- it
+  already ran every watch cycle before this change, not just --auto) now
+  ALSO calls this same function, and its model-flip check now calls
+  main._check_early_exits(client) instead of check_model_exits(client).
+
+  Independent opus review (effort=high) found 2 MEDIUM real issues, both
+  fixed: (1) check_paper_position_exits swallowed every per-ticker price-
+  fetch failure with zero logging (worse than the original cron-only
+  inline block, since the blast radius is now both pipelines) -- fixed by
+  restoring the per-ticker debug log plus a new WARNING-level summary when
+  fewer positions got a usable quote than are open; (2) close_paper_early()
+  inside the new function wasn't fault-isolated per trade, so one race
+  (position settled between get_open_trades() and the close attempt --
+  newly reachable since watch releases the cron lock before this block
+  runs, unlike cron which holds it throughout) would raise and abort every
+  remaining stop-loss/breakeven check that cycle -- fixed by wrapping each
+  close_paper_early() call in try/except + warning-log + continue, matching
+  how _check_early_exits/_exit_live_position already isolate per-trade
+  failures. Also fixed on review: this entry and BACKLOG_OPEN.md itself
+  weren't updated (caught by the review, now fixed here), trade_cycle.py's
+  module docstring still claimed position protection used "genuinely
+  different exit strategies" (now stale for the price-based side -- fixed),
+  and two comments overclaimed "identical protection regardless of which
+  pipeline observes it" without noting that cron skips this entire call
+  while data/.kill_switch is set but watch's loop has no kill-switch check
+  at all (pre-existing asymmetry -- the old check_model_exits call this
+  replaced didn't check it either -- comments corrected to say so rather
+  than overclaim parity).
+
+  Noted, not changed (deliberate, per the design decision above): watch's
+  model-exit coverage is now strictly NARROWER than before in one respect
+  -- the old check_model_exits also fired on edge_gone (net_edge < -10%
+  with no shift requirement), which _check_early_exits does not replicate.
+  A position whose net_edge fell to -12% via an 8pp forecast shift (under
+  _check_early_exits's 25pp bar) now goes uncaught by any paper mechanism
+  until price itself moves enough to trip stop-loss (-50% of cost) or
+  breakeven (requires a prior peak past BREAKEVEN_TRIGGER_PCT, .env-set to
+  0.75 here, not the 0.30 code default). This is the accepted cost of the
+  user's explicit choice to canonicalize on cron's stricter implementation
+  rather than watch's looser one, not an oversight.
+
+  cmd_watch's per-cycle path now runs a 4th independent get_weather_
+  markets() scan (inside _check_early_exits) -- addended to the sibling
+  [CMD_WATCH RUNS THREE INDEPENDENT get_weather_markets() SCANS...] entry
+  below rather than treated as new scope here.
+
+  Tests: new TestCheckPaperPositionExits class (tests/test_paper.py, 6
+  tests: client=None, no open trades, stop-loss closes, breakeven closes,
+  stop-loss-close excludes same-cycle breakeven re-check, per-ticker
+  price-fetch-error isolation). test_trading.py's
+  test_cmd_watch_auto_executes_model_exits rewritten as
+  test_cmd_watch_auto_executes_early_exits (the call path it tested no
+  longer exists) plus new test_cmd_watch_auto_executes_paper_stop_loss.
+  New test_cron_closes_position_via_check_paper_position_exits in
+  test_cron_integration.py. All new/changed tests mutation-tested (reason-
+  tag mislabeling, removing the reload-before-breakeven ordering fix, and
+  removing each of the 3 call sites -- all caught). 395 tests pass across
+  the full affected regression scope; ruff + ruff format + mypy clean on
+  all 6 changed files (cron.py, main.py, paper.py, and the 3 test files).
+
+  ENABLE_MICRO_LIVE was not touched (still false); no real order was placed
+  as part of this work -- paper/mocked throughout.
 
 [CMD_WATCH RUNS THREE INDEPENDENT get_weather_markets() SCANS PER
 AUTO-TRADE CYCLE -- DISPLAY SCAN NEVER UNIFIED WITH THE ENGINE'S OWN SCAN]
@@ -8935,6 +9030,22 @@ When to revisit:
   staleness or the doubled API load a real operational annoyance -- no
   specific trigger beyond that; lower urgency than the position-protection
   entry above since the actual trading decision is already unaffected.
+
+ADDENDUM 2026-08-03 (title's count now stale, problem unchanged):
+  The position-protection unification entry above (now RESOLVED) added a
+  4th get_weather_markets() call to cmd_watch's per-cycle path: watch's
+  automated loop now also calls order_executor._check_early_exits(), which
+  does its own internal get_weather_markets() fetch (order_executor.py) to
+  build its markets_by_ticker lookup for the model-flip check. This entry's
+  title/problem statement ("three independent scans") is now undercounting
+  by one; the underlying problem (multiple independent scans per cycle,
+  none reusing cycle_result) is unchanged and this new scan should be
+  covered by the same eventual fix, not treated as a 4th separate one to
+  solve. Not fixed here -- fixing it would mean threading cycle_result's
+  markets into _check_early_exits too, out of scope for a paper-position-
+  protection change. Title left as-is (not renumbered) per
+  feedback_backlog_title_staleness's guidance to verify against full entry
+  text rather than trust the title in isolation.
 
 [RESOLVED 2026-07-20] WATCH/_analyze_once IS MISSING cron.py's MIN_MARKET_PROB_TO_BET_WITH /
 MAX_MARKET_DIVERGENCE_RATIO DIRECTIONAL-CONSENSUS GATES

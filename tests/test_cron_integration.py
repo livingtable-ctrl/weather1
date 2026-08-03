@@ -170,6 +170,39 @@ def test_cron_skips_stale_markets_before_analysis(cron_env):
 
 
 @pytest.mark.integration
+def test_cron_closes_position_via_check_paper_position_exits(cron_env):
+    """cmd_cron must call paper.check_paper_position_exits() and actually
+    close a stop-loss-breaching paper position -- confirms the position-
+    protection unification refactor (this logic extracted out of cron.py's
+    own inline block into a shared paper.py function also now called by
+    watch's automated loop) didn't break cron's own call site (see
+    backlog.txt's [POSITION PROTECTION IS STILL TWO SEPARATE MECHANISMS...]
+    entry)."""
+    tmp_path, client, main, paper = cron_env
+
+    paper.place_paper_order(
+        "CRON-SL-TICKER", "yes", 10, 0.60, close_time="2099-01-01T00:00:00Z"
+    )
+    # current yes = 0.29 → loss = (0.29-0.60)*10 = -3.10; threshold = -cost/2 = -3.00 → fires
+    fake_market = {"ticker": "CRON-SL-TICKER", "yes_bid": 0.29, "yes_ask": 0.31}
+    client.get_market.return_value = fake_market
+
+    with (
+        patch("tracker.detect_brier_drift", return_value={"drifting": False}),
+        patch("paper.is_paused_drawdown", return_value=False),
+    ):
+        try:
+            main.cmd_cron(client)
+        except SystemExit:
+            pass
+
+    assert paper.get_open_trades() == [], (
+        "cmd_cron must close a stop-loss-breaching paper position via "
+        "paper.check_paper_position_exits()"
+    )
+
+
+@pytest.mark.integration
 def test_cron_drawdown_guard_blocks_auto_trades(cron_env):
     """When drawdown guard is active, _auto_place_trades returns 0 and places nothing."""
     tmp_path, client, main, paper = cron_env

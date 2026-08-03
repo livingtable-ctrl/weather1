@@ -1520,6 +1520,144 @@ def check_breakeven_stops(
     return exits
 
 
+def check_paper_position_exits(client) -> list[dict]:
+    """Price-based stop-loss and breakeven-stop check for every open paper
+    position -- the paper equivalent of order_executor._check_live_position_exits,
+    with the same thresholds/gates now run identically by both cron.py and
+    watch's automated loop (previously cron-only; watch had zero price-based
+    paper protection, only the separate model-flip check below). This does
+    NOT make the two callers' *invocation* conditions identical: cron skips
+    its entire body (including this call) while data/.kill_switch exists,
+    but plain/auto watch's loop has no kill-switch check at all, so watch
+    still runs this while cron would not.
+
+    Returns closed positions as [{"ticker", "reason" ("stop_loss"|"breakeven"),
+    "trade", "exit_price", "pnl"}, ...] so callers can log/print without
+    needing to re-derive exit details.
+    """
+    if client is None:
+        return []
+    open_trades = get_open_trades()
+    if not open_trades:
+        return []
+
+    from weather_markets import parse_market_price
+
+    # #3: carry both bid and ask (not just ask) so YES positions can be
+    # marked/closed at bid (what a holder can actually realize) instead of
+    # ask (what a buyer pays to open more) — using ask for YES understated
+    # unrealized loss (stops fired late) and overstated exit proceeds when a
+    # stop did fire.
+    current_prices: dict[str, dict[str, float]] = {}
+    for t in open_trades:
+        try:
+            market = client.get_market(t["ticker"])
+            quote = parse_market_price(market)
+            if quote.get("has_quote"):
+                current_prices[t["ticker"]] = {
+                    "bid": quote.get("yes_bid", 0.0),
+                    "ask": quote.get("yes_ask", 0.0),
+                }
+            else:
+                _log.debug(
+                    "[StopLoss] no bid/ask for %s — will fall back to entry_price",
+                    t["ticker"],
+                )
+        except Exception as exc:
+            _log.debug(
+                "[StopLoss] price fetch failed for %s — will fall back to "
+                "entry_price: %s",
+                t["ticker"],
+                exc,
+            )
+
+    # M-1: a fetch-failure rate high enough to leave positions effectively
+    # unprotected must be visible at WARNING, not just per-ticker DEBUG —
+    # otherwise a sustained API outage silently disables price-based
+    # protection for every open position with zero trace in bot.log.
+    if len(current_prices) < len(open_trades):
+        _log.warning(
+            "[StopLoss] got a usable quote for %d/%d open position(s) this "
+            "cycle — the rest fall back to entry_price and are effectively "
+            "unprotected until their next successful fetch",
+            len(current_prices),
+            len(open_trades),
+        )
+
+    update_peak_profits(open_trades, current_prices)
+
+    closed: list[dict] = []
+
+    sl_tickers = check_stop_losses(open_trades, current_prices)
+    for ticker in sl_tickers:
+        trade = next((t for t in open_trades if t["ticker"] == ticker), None)
+        if trade is None:
+            continue
+        exit_price = _liquidation_price(
+            current_prices, ticker, trade.get("side", "yes")
+        )
+        if exit_price is None:
+            exit_price = trade["entry_price"]
+        try:
+            result = close_paper_early(trade["id"], exit_price, reason="stop_loss")
+        except ValueError as exc:
+            # Position was closed/settled by someone else (e.g. a concurrent
+            # cron run, or auto-settlement) between get_open_trades() above
+            # and this close attempt -- skip it, don't let one race abort
+            # every remaining stop-loss/breakeven check this cycle.
+            _log.warning(
+                "[StopLoss] could not close %s (#%s): %s",
+                ticker,
+                trade["id"],
+                exc,
+            )
+            continue
+        closed.append(
+            {
+                "ticker": ticker,
+                "reason": "stop_loss",
+                "trade": trade,
+                "exit_price": exit_price,
+                "pnl": result["pnl"],
+            }
+        )
+
+    # Reload after any stop-loss exits — a position closed above must not
+    # also be considered for a breakeven exit on the same cycle.
+    open_trades = get_open_trades()
+    be_tickers = check_breakeven_stops(open_trades, current_prices)
+    for ticker in be_tickers:
+        trade = next((t for t in open_trades if t["ticker"] == ticker), None)
+        if trade is None:
+            continue
+        exit_price = _liquidation_price(
+            current_prices, ticker, trade.get("side", "yes")
+        )
+        if exit_price is None:
+            exit_price = trade["entry_price"]
+        try:
+            result = close_paper_early(trade["id"], exit_price)
+        except ValueError as exc:
+            _log.warning(
+                "[BreakEven] could not close %s (#%s): %s",
+                ticker,
+                trade["id"],
+                exc,
+            )
+            continue
+        closed.append(
+            {
+                "ticker": ticker,
+                "reason": "breakeven",
+                "trade": trade,
+                "exit_price": exit_price,
+                "pnl": result["pnl"],
+            }
+        )
+
+    return closed
+
+
 def _exposure_denom() -> float:
     """P0-4: exposure denominator scales with balance so caps stay proportional.
 

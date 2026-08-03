@@ -8,10 +8,17 @@ determines whether/what gets traded, applied identically to both callers so
 neither pipeline can end up more permissive than the other.
 
 Out of scope, deliberately, per the entry's resolution: position protection
-(poll-fills/reprice/live-exits/paper-stop-loss -- cron and watch run
-genuinely different exit strategies today, a separate design problem from
-pipeline-hardening parity, filed as its own follow-up backlog entry),
-cron-only periodic housekeeping beyond the scan-relevant ``prewarm`` flag
+was a separate design problem from pipeline-hardening parity and was filed
+as its own follow-up backlog entry, resolved 2026-08-03 (see backlog.txt's
+[POSITION PROTECTION IS STILL TWO SEPARATE MECHANISMS...] entry) -- cron and
+watch now run the SAME paper-position checks (paper.check_paper_position_exits
+for stop-loss/breakeven, order_executor._check_early_exits for model-flip),
+called from cron.py's wrapper and main.py's cmd_watch loop respectively
+rather than from this engine. Live-order poll-fills/reprice remains
+watch-only -- that's a genuinely different responsibility (watch manages
+orders it just placed this cycle) than the now-unified paper checks, not
+duplicated strategy. cron-only periodic housekeeping beyond the
+scan-relevant ``prewarm`` flag
 (weekly retrains, cloud backup, drift detection, etc.), and all interactive
 display/UI. Those stay in cron.py's wrapper and main.py's cmd_watch loop.
 

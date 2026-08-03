@@ -1904,6 +1904,204 @@ class TestCheckStopLosses:
         assert paper.get_balance() == pytest.approx(996.90, abs=0.01)
 
 
+class TestCheckPaperPositionExits:
+    """paper.check_paper_position_exits() -- the shared price-based stop-loss/
+    breakeven check now run identically by both cron.py and watch's automated
+    loop (position-protection unification; see backlog.txt's [POSITION
+    PROTECTION IS STILL TWO SEPARATE MECHANISMS...] entry). Previously this
+    logic only existed inline inside cron.py; watch had none at all."""
+
+    def test_client_none_returns_empty_list(self):
+        import paper
+
+        assert paper.check_paper_position_exits(None) == []
+
+    def test_no_open_trades_returns_empty_list(self):
+        import paper
+
+        fake_client = type("C", (), {"get_market": lambda self, t: {}})()
+        assert paper.check_paper_position_exits(fake_client) == []
+
+    def test_stop_loss_closes_position(self):
+        import paper
+
+        paper.place_paper_order(
+            "SL-TICKER", "yes", 10, 0.60, close_time="2099-01-01T00:00:00Z"
+        )
+        # current yes = 0.29 → loss = (0.29-0.60)*10 = -3.10; threshold = -cost/2 = -3.00 → fires
+        fake_market = {"ticker": "SL-TICKER", "yes_bid": 0.29, "yes_ask": 0.31}
+        fake_client = type("C", (), {"get_market": lambda self, t: fake_market})()
+
+        closed = paper.check_paper_position_exits(fake_client)
+
+        assert len(closed) == 1
+        assert closed[0]["ticker"] == "SL-TICKER"
+        assert closed[0]["reason"] == "stop_loss"
+        assert closed[0]["exit_price"] == pytest.approx(0.29)
+        assert paper.get_open_trades() == []
+
+    def test_breakeven_closes_position_that_peaked_then_fell(self):
+        import paper
+        from utils import BREAKEVEN_TRIGGER_PCT
+
+        trade = paper.place_paper_order(
+            "BE-TICKER", "yes", 10, 0.60, close_time="2099-01-01T00:00:00Z"
+        )
+        # Seed peak_profit_pct as if an earlier cycle already recorded a
+        # peak past BREAKEVEN_TRIGGER_PCT (read live, not hardcoded — .env
+        # overrides the 0.30 code default to 0.75) -- update_peak_profits
+        # only ever raises the stored peak, never lowers it, so seeding it
+        # directly is equivalent to a real prior high-water cycle.
+        data = paper._load()
+        for t in data["trades"]:
+            if t["id"] == trade["id"]:
+                t["peak_profit_pct"] = BREAKEVEN_TRIGGER_PCT + 0.05
+        paper._save(data)
+
+        # Price has fallen back to exactly entry -- unrealized pnl == 0 fires breakeven.
+        fake_market = {"ticker": "BE-TICKER", "yes_bid": 0.60, "yes_ask": 0.62}
+        fake_client = type("C", (), {"get_market": lambda self, t: fake_market})()
+
+        closed = paper.check_paper_position_exits(fake_client)
+
+        assert len(closed) == 1
+        assert closed[0]["ticker"] == "BE-TICKER"
+        assert closed[0]["reason"] == "breakeven"
+        assert paper.get_open_trades() == []
+
+    def test_stop_loss_close_excludes_position_from_same_cycle_breakeven_check(self):
+        """A position closed by stop-loss must not also be evaluated for
+        breakeven in the same call -- covers the reload-between-checks
+        ordering carried over from cron.py's original inline block."""
+        import paper
+
+        trade = paper.place_paper_order(
+            "BOTH-TICKER", "yes", 10, 0.60, close_time="2099-01-01T00:00:00Z"
+        )
+        # Seed a high peak so this trade would ALSO breach breakeven if it
+        # were (incorrectly) re-evaluated after already closing via stop-loss.
+        data = paper._load()
+        for t in data["trades"]:
+            if t["id"] == trade["id"]:
+                t["peak_profit_pct"] = 0.90
+        paper._save(data)
+
+        # Outright loss well past the stop-loss threshold (not merely
+        # "fallen back to entry", which is breakeven's own condition).
+        fake_market = {"ticker": "BOTH-TICKER", "yes_bid": 0.10, "yes_ask": 0.12}
+        fake_client = type("C", (), {"get_market": lambda self, t: fake_market})()
+
+        closed = paper.check_paper_position_exits(fake_client)
+
+        assert len(closed) == 1, "must close exactly once, not once per check"
+        assert closed[0]["reason"] == "stop_loss"
+
+    def test_price_fetch_error_for_one_ticker_does_not_block_others(self):
+        """A client.get_market() failure for one ticker must not prevent
+        other open positions from being checked -- mirrors the per-ticker
+        try/except in cron.py's original inline block."""
+        import paper
+
+        paper.place_paper_order(
+            "BROKEN-TICKER", "yes", 10, 0.60, close_time="2099-01-01T00:00:00Z"
+        )
+        paper.place_paper_order(
+            "SL-TICKER-2", "yes", 10, 0.60, close_time="2099-01-01T00:00:00Z"
+        )
+
+        def fake_get_market(self, ticker):
+            if ticker == "BROKEN-TICKER":
+                raise RuntimeError("API down")
+            return {"ticker": ticker, "yes_bid": 0.29, "yes_ask": 0.31}
+
+        fake_client = type("C", (), {"get_market": fake_get_market})()
+
+        closed = paper.check_paper_position_exits(fake_client)
+
+        assert len(closed) == 1
+        assert closed[0]["ticker"] == "SL-TICKER-2"
+        open_tickers = {t["ticker"] for t in paper.get_open_trades()}
+        assert "BROKEN-TICKER" in open_tickers, (
+            "a price-fetch failure must skip that ticker's check, not crash "
+            "or wrongly close it"
+        )
+
+    def test_partial_quote_coverage_logs_warning(self, caplog):
+        """M-1 (opus review): a fetch-failure rate high enough to leave
+        positions effectively unprotected must be visible at WARNING, not
+        just per-ticker DEBUG -- a sustained API outage must not silently
+        disable price-based protection with zero trace in bot.log."""
+        import logging
+
+        import paper
+
+        paper.place_paper_order(
+            "BROKEN-TICKER", "yes", 10, 0.60, close_time="2099-01-01T00:00:00Z"
+        )
+        paper.place_paper_order(
+            "OK-TICKER", "yes", 10, 0.60, close_time="2099-01-01T00:00:00Z"
+        )
+
+        def fake_get_market(self, ticker):
+            if ticker == "BROKEN-TICKER":
+                raise RuntimeError("API down")
+            return {"ticker": ticker, "yes_bid": 0.60, "yes_ask": 0.62}
+
+        fake_client = type("C", (), {"get_market": fake_get_market})()
+
+        with caplog.at_level(logging.WARNING, logger="paper"):
+            paper.check_paper_position_exits(fake_client)
+
+        assert any(
+            "1/2" in r.message and "StopLoss" in r.message for r in caplog.records
+        ), (
+            f"expected a WARNING logging partial quote coverage (1/2), got: "
+            f"{[r.message for r in caplog.records]}"
+        )
+
+    def test_close_race_on_one_ticker_does_not_abort_remaining_checks(self):
+        """M-1 (opus review): if close_paper_early() raises for one ticker
+        (e.g. a concurrent cron run or auto-settlement closed it between
+        get_open_trades() and this attempt), the exception must not abort
+        every remaining stop-loss/breakeven check that cycle -- each close
+        must be fault-isolated, matching how _check_early_exits and
+        _exit_live_position already isolate per-trade failures."""
+        from unittest.mock import patch
+
+        import paper
+
+        paper.place_paper_order(
+            "RACE-TICKER", "yes", 10, 0.60, close_time="2099-01-01T00:00:00Z"
+        )
+        paper.place_paper_order(
+            "SL-TICKER-3", "yes", 10, 0.60, close_time="2099-01-01T00:00:00Z"
+        )
+
+        fake_market = {"ticker": "T", "yes_bid": 0.29, "yes_ask": 0.31}
+        fake_client = type("C", (), {"get_market": lambda self, t: fake_market})()
+
+        real_close = paper.close_paper_early
+
+        def flaky_close(trade_id, exit_price, reason=None):
+            trade = next(
+                (t for t in paper.get_open_trades() if t["id"] == trade_id), None
+            )
+            if trade and trade["ticker"] == "RACE-TICKER":
+                raise ValueError(f"Trade {trade_id} not found or already settled.")
+            return real_close(trade_id, exit_price, reason)
+
+        with patch.object(paper, "close_paper_early", side_effect=flaky_close):
+            closed = paper.check_paper_position_exits(fake_client)
+
+        assert len(closed) == 1
+        assert closed[0]["ticker"] == "SL-TICKER-3"
+        open_tickers = {t["ticker"] for t in paper.get_open_trades()}
+        assert "RACE-TICKER" in open_tickers, (
+            "the racing ticker stays open (its close attempt failed) but "
+            "must not prevent the other breaching ticker from closing"
+        )
+
+
 def test_portfolio_expected_value_positive_for_winning_trades(monkeypatch):
     """get_portfolio_expected_value sums cost * net_edge across open positions."""
     import paper
