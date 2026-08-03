@@ -928,8 +928,11 @@ RESOLVED (partially) 2026-07-28: shipped the near-term case -- when a
   `tests/test_rain_markets.py`, `tests/test_forecasting.py`,
   `tests/test_tracker.py`).
 
-[RESOLVED 2026-07-26 -- explicit guard shipped; the real count/category
-  probability model is still unbuilt, see "When to revisit" below]
+[RESOLVED 2026-07-26 -- explicit guard shipped. UPDATE 2026-08-03: the
+  season-total count/category shape now has a real shadow-only model too
+  (season-count model, see the dated resolution block after "When to
+  revisit" below) -- per-storm-category (KXHURCAT) and per-city landfall
+  markets (still 0 open markets) remain completely unbuilt]
   HURRICANE MARKETS -- EXPLICIT GUARD ADDED AFTER A CONFIRMED LIVE GAP
 Priority: was believed Low/inert (see the parent RAIN / SNOW / HURRICANE
   MARKETS entry) -- reclassified High for the guard fix itself once live
@@ -1032,6 +1035,14 @@ What the fix does NOT do:
   there without a matching parser branch would just reproduce this same
   bug class for a series check_series_drift would then be actively
   prompting someone to add).
+  UPDATE 2026-08-03: the season-total count-market half of "count/category"
+  now has a real model (see the dated resolution block below) --
+  `KNOWN_WEATHER_SERIES`/`check_series_drift()` now DO watch those 5 exact
+  series (and only those 5, by exact series-ticker membership, not
+  substring). KXHURCAT (the per-STORM category shape, e.g. "will Fausto
+  become a Category 5 hurricane?") and the per-city landfall series (still
+  0 open markets) remain completely unbuilt and still fully blocked by
+  is_hurricane_ticker()'s original guard.
 
 Why not now (for the real model):
   - Count/category markets aren't city-keyed at all -- they need their own
@@ -1041,16 +1052,292 @@ Why not now (for the real model):
   - Effort scales as its own product line, same reasoning the parent
     RAIN / SNOW / HURRICANE MARKETS entry already gives for snow/hurricane
     generally.
+  - UPDATE 2026-08-03: this reasoning held for KXHURCAT (per-storm, needs a
+    live per-storm NHC forecast/advisory pipeline -- a genuinely different,
+    more novel real-time data problem than the season-total shape) and for
+    per-city landfall (still 0 open markets, confirmed live again
+    2026-08-03 -- unchanged since 2026-07-26) -- both remain deliberately
+    unbuilt. It did NOT hold for the season-total count shape once actually
+    scoped: NOAA HURDAT2 (public, historical) plus Kalshi's own settled
+    markets (for the live tilt) turned out to be a tractable, non-"own
+    product line" lift once broken out from the other two shapes -- see the
+    dated resolution block below.
 
 When to revisit:
   - Once real per-city landfall markets actually open (re-check once
-    hurricane season is underway, Aug-Oct 2026) AND there's real appetite
-    to design the count/category model separately.
+    hurricane season is underway, Aug-Oct 2026 -- still 0 open as of
+    2026-08-03) AND there's real appetite to design that model separately.
+  - KXHURCAT (per-storm category): needs a live per-storm NHC forecast/
+    advisory data pipeline and a storm-name registry -- a different, more
+    novel problem than the season-total shape below. Not started.
   - Independent of that: if `KXRAIN*M`'s close_time-derived dating pattern
     is ever extended to other market families, re-verify this guard still
     covers `KXHURCAT`-style tickers -- the fragile `no_date` accident this
     entry documents would stop being a backstop at that point, though the
     explicit `KXHUR` guard added here does not depend on it.
+
+[RESOLVED 2026-08-03] HURRICANE MARKETS -- SEASON-TOTAL COUNT MODEL SHIPPED SHADOW-ONLY
+Priority: was Low (see the parent RAIN / SNOW / HURRICANE MARKETS entry and
+  this entry's own "Why not now" above) -- the season-total count shape is
+  now Medium, matching rain/snow's own real-shadow-model priority; KXHURCAT
+  and per-city landfall remain Low/unbuilt.
+
+Problem:
+  Re-verified live 2026-08-03 (this session's own first step, per the
+  standing "re-verify before building" workflow): the per-city landfall
+  gate this entry's "When to revisit" named had NOT fired -- all ~54
+  per-city/regional landfall series (KXHURMIA, KXHURNYC, KXHURPATH*, etc.)
+  still show 0 open markets, unchanged since 2026-07-26. But the OTHER
+  count/category shape -- season-total hurricane/tropical-storm counts --
+  was very much open and tradeable, independent of that gate: 142 open
+  markets across 5 series (`KXHURCTOT`/`KXHURCTOTMAJ`/`KXTROPSTORM` for the
+  Atlantic, `KXHURRICANE`/`KXNAMEDSTORM` for Eastern+Central Pacific), e.g.
+  "Will there be more than 9 Atlantic hurricanes in 2026?". User confirmed
+  via AskUserQuestion this should be built first (recommended: climatology-
+  only model, no live per-storm tracking needed, largest open-market
+  surface), with NOAA HURDAT2 historical data as the primary source, and
+  check_series_drift() extended for just these 5 series once they had a
+  real parser.
+
+  HURDAT2 only carries FINALIZED seasons (current year's data isn't added
+  until ~April the following year), so it supplies the historical base
+  distribution only -- the "current season count-to-date" tilt needed a
+  different source. Found one requiring no new external dependency: Kalshi's
+  own settled `KXHURRICANENAMES` markets (one per pre-assigned storm name
+  per basin per season, "will storm X become a hurricane?") directly encode
+  NHC's real season-to-date hurricane classifications. Confirmed live this
+  session that 2026's Atlantic count is 0 so far and Eastern Pacific is 2
+  (Fausto, Genevieve) via this exact derivation.
+
+What shipped:
+  New module `hurricane_climatology.py`: fetches/caches NOAA's Atlantic
+  HURDAT2 file and combined Eastern+Central-Pacific HURDAT2 file (storms
+  distinguished by their own AL/EP/CP storm-ID prefix -- confirmed live the
+  Pacific file already covers both basins), parses each storm's max
+  sustained wind and the day-of-year it first crossed each of Kalshi's own
+  literal settlement thresholds (34kt tropical-storm / 64kt hurricane /
+  96kt major-hurricane -- matches rules_primary text exactly, not NHC's own
+  separately-evolving classification-code convention). Builds a 30-most-
+  recent-complete-season empirical bootstrap distribution per (basin,
+  count_type) -- 30 years chosen deliberately (not just copying this
+  codebase's existing "30" convention): avoids diluting a current-era
+  estimate with the markedly quieter pre-1995 AMO phase. Parser cross-
+  checked live against real published 2023/2024 Atlantic season totals
+  (18/11/5 and 20/7/3 named-storm/hurricane/major-hurricane counts) --
+  exact match both years.
+
+  The live tilt: for each historical window year, computes that year's OWN
+  count-as-of the SAME calendar day-of-year as today, then adds (today's
+  real current_count minus that year's historical to-date count) to that
+  year's real season-end count -- bootstraps the REMAINING count from
+  history and adds it to this season's actual progress, mirroring
+  acis_precip.historical_remaining_and_full_month_sums's "month-to-date-
+  actual + historical-remaining" shape exactly, just discrete counts
+  instead of a continuous inches total. Scoped to count_type="hurricane"
+  ONLY -- major_hurricane/tropical_storm ship climatology-only (no tilt) in
+  this pass; deriving a clean per-basin current count for those two would
+  need a per-year storm-name-to-basin mapping table (KXHURCAT's per-storm
+  tickers aren't basin-tagged) that doesn't exist yet, an honest, explicit
+  scope decision, not a silent gap.
+
+  `weather_markets.py`: `is_hurricane_count_ticker()` narrowly carves out
+  the 5 series (by exact series-ticker, NOT substring/startswith --
+  "KXHURCTOT" is a strict prefix of "KXHURCTOTMAJ", so anything else would
+  misclassify one as the other) from `is_hurricane_ticker()`'s much broader
+  marker set, which still blocks everything else. `_parse_hurricane_count_
+  condition()` reads floor_strike/strike_type directly off Kalshi's own
+  market fields (same established convention as every other ladder-market
+  branch here), deriving basin/count_type/season_year from the ticker
+  string itself (`_hurricane_count_key_from_ticker`, shared with tracker.py's
+  counter below). `_analyze_hurricane_count_trade()` computes the real
+  probability/edge/Kelly size via `_price_and_size()` (same shared tail
+  every other market type uses) and is dispatched from `analyze_trade()`
+  exactly like rain/snow's monthly-ladder fast-paths -- required threading
+  a `_is_hurricane_count` bypass through the no_forecast/no_city/no_coords
+  gates (this market family has no city at all, unlike rain/snow) and a new
+  `HURRICANE_MAX_DAYS_OUT` (260 days -- these markets open ~7-8 months
+  before close, confirmed live) replacing `MAX_DAYS_OUT` for this ticker
+  family in the days-out gate.
+
+  Shadow-only rollout, same shape as rain/snow: `_hurricane_count_gates_
+  active()` (HURRICANE_TRADING_ENABLED env var + >=20 settled distinct
+  (basin, count_type, season_year) events, mirroring `_rain_gates_active()`/
+  `_snow_gates_active()` exactly) gates real order placement in
+  `order_executor._auto_place_trades()`'s per-ticker shadow-routing branch,
+  `paper.check_position_limits()`, and all 3 of main.py's manual order paths
+  (cmd_order, _quick_paper_buy, cmd_paper buy) -- `analyze_trade()` itself is
+  NOT gated (it always computes the real analysis, same as rain/snow, so
+  calibration data accumulates regardless of the gate). Explicitly documented
+  as a MUCH slower-clearing floor than rain/snow's ~2-month estimate: a
+  season-count market settles AT MOST once per year per (basin, count_type)
+  -- 9 combinations total across 3 basins -- so this floor could take
+  several YEARS to clear, not weeks or months; a real, structural cadence
+  difference, not an oversight.
+
+  Current-count-to-date cache: `analyze_trade()`'s call chain has no live
+  Kalshi client of its own (unlike every other market type, which only need
+  forecast data already attached to `enriched`) -- mirrors
+  `refresh_hourly_target_hours()`'s exact division of labor: a new
+  `refresh_hurricane_count_to_date()`, called from `cmd_cron` right beside
+  `refresh_hourly_target_hours`, fetches settled `KXHURRICANENAMES` markets
+  once/basin/day and caches the count to `HURRICANE_COUNT_TO_DATE_PATH`
+  (added to `paths.py`, not module-local -- matches `HOURLY_TARGET_HOURS_
+  PATH`'s own shared-state precedent); `_analyze_hurricane_count_trade()`
+  reads it client-free via `_get_cached_hurricane_count_to_date()`, which
+  refuses a cache entry from the wrong season_year (never lets a stale
+  prior-season count silently tilt the current season).
+
+  `tracker.count_settled_hurricane_predictions()`: counts DISTINCT (basin,
+  count_type, season_year) events, NOT raw prediction rows -- the same
+  raw-row-vs-distinct-event inflation risk `count_settled_snow_predictions()`
+  was already fixed for (a single season/count-type settles up to ~9 sibling
+  strikes from the SAME real outcome).
+
+  `check_series_drift()`/`KNOWN_WEATHER_SERIES` now watch exactly these 5
+  series (exact-match, not substring -- deliberately narrower than
+  `is_hurricane_ticker()`'s marker set, so this can never start watching a
+  hurricane series with no matching parser branch, the exact bug class the
+  parent entry above warns about).
+
+  87 new tests: `tests/test_hurricane_climatology.py` (26 -- HURDAT2 parsing
+  against a hand-verifiable synthetic fixture, season counting, the tilt
+  bootstrap, exceedance probability, bootstrap CI), `tests/test_hurricane_
+  markets.py` (60 -- ticker/condition parsing incl. the KXHURCTOT/
+  KXHURCTOTMAJ prefix-collision guard, the shadow gate, the count-to-date
+  cache, the full `_analyze_hurricane_count_trade` dispatch with mocked
+  climatology data, and the `check_position_limits`/`cmd_order` conditional-
+  guard tests mirroring snow's own), plus 3 new shadow-routing tests in
+  `tests/test_shadow_predictions.py`, 5 new distinct-event-counting tests in
+  `tests/test_tracker.py`, and 1 new exclusion test in `tests/test_
+  consistency.py`. 3 pre-existing `tests/test_hurricane_gating.py` tests
+  updated (KXHURCTOT/KXTROPSTORM/KXNAMEDSTORM no longer hit
+  `hurricane_not_supported` -- they now reach `condition_parse`/`no_date`
+  instead, a real, correct behavior change, not a broken test); every other
+  test in that file (KXHURCAT, per-city landfall, legacy unprefixed HUR*,
+  the broadened-marker-set regression controls) unchanged and still passing.
+  8 real mutations run against the highest-risk logic (basin/count_type
+  classification, exceedance-probability direction, the blanket-guard
+  carve-out condition, the distinct-event dedup, the tilt arithmetic,
+  paper.py's conditional gate, the fail-closed dispatcher fix, and the
+  consistency.py exclusion) -- all caught by the new tests, all reverted
+  cleanly. Full scoped regression (test_hurricane_climatology.py +
+  test_hurricane_markets.py + test_hurricane_gating.py +
+  test_shadow_predictions.py + test_tracker.py + test_series_drift.py +
+  test_consistency.py, 482 tests) plus a broader sweep (test_rain_
+  markets.py, test_snow_markets.py, test_forecasting.py,
+  test_infrastructure.py, test_weather_markets.py, test_price_and_size.py,
+  test_city_registry_manifest.py, test_dead_code_scan.py) all pass -- one
+  pre-existing, unrelated failure (`test_forecasting.py::TestLearnedWeights::
+  test_load_learned_weights_handles_non_numeric_value`) confirmed present
+  identically before this session's changes (via git stash), not caused by
+  this work. ruff + ruff format + mypy clean on every touched file.
+
+  Independent opus review (3 parallel agents, scoped by subsystem --
+  climatology/math, ticker-parsing/dispatch, safety-guard wiring -- effort=
+  high): 15 findings total, every one fixed before commit (none skipped as
+  out-of-scope, except one explicitly pre-existing gap noted below). Most
+  consequential:
+  - HIGH (math): `season_end_total_distribution` derived its year window
+    from `{s["year"] for s in storms}` rather than an explicit calendar
+    range -- silently DROPPING any season with zero storms of the
+    requested basin's prefix instead of counting it as a real 0. Invisible
+    for Atlantic/Eastern-Pacific (every year has >=1 storm) but measured
+    live to overstate Central Pacific's `P(>0 hurricanes)` by 23 points
+    (0.600 vs the correct 0.367 over the same 30-year span) -- CPAC has 35
+    real gap years out of 77 (1949-2025). Fixed by iterating an explicit
+    calendar range and calling `season_end_counts()` for every year in it
+    (which already correctly returns 0 for an absent year).
+  - HIGH (dispatch): a hurricane-count-series ticker whose OWN fields
+    failed to parse (missing `floor_strike`, unexpected `strike_type`) fell
+    through `_parse_market_condition()` into the generic temperature-
+    threshold parser below -- which matches this family's real "-T9"/
+    "-T30" ticker suffix as a °F threshold, reproducing the exact KXHURCAT
+    bug class the whole `is_hurricane_ticker()` guard exists to prevent
+    (terminates in an `AssertionError` today via this file's own
+    `assert city is not None` narrowing, or silently mis-scores under
+    `python -O`, where asserts are stripped). Fixed: any ticker whose
+    series is one of the 5 hurricane-count series now fails closed
+    (returns `None` outright) at that dispatcher, regardless of why its
+    own parse failed, rather than falling through.
+  - HIGH (safety): adding the 5 series to `KNOWN_WEATHER_SERIES` (so
+    `get_weather_markets()` now returns them) exposed them to
+    `consistency.find_violations()`, whose output feeds `main.py`'s arb
+    auto-placer (`paper.place_paper_order`) DIRECTLY -- with no shadow-gate
+    check of its own, and (unlike rain/snow) not merely "safe by
+    coincidence": KXHURCTOT-style tickers' real day-level date and "-T9"
+    threshold suffix both match `consistency.py`'s grouping regexes; only
+    today's real title text (lacking the literal "above"/">" the
+    threshold-direction fallback requires) kept it inert -- the exact
+    "safe by coincidence" shape this project already burned itself on once
+    for this same ticker family. Fixed by adding the same exclusion
+    rain/snow/hourly already have in `consistency._group_markets()`.
+  - MEDIUM-HIGH (math): an empty (non-exception) `KXHURRICANENAMES` fetch
+    response -- series renamed, event-ticker format changed, transient
+    API-side filter change -- previously wrote `count=0` for every basin,
+    indistinguishable from a real "zero hurricanes so far" season. Fixed:
+    only write a basin whose event_ticker matched at least one settled
+    market at all; otherwise leave it unwritten so the existing missing-
+    entry fallback (climatology-only) applies.
+  - HIGH (math): the count-to-date cache's `date` field was written but
+    never checked for staleness on read -- a stalled refresh job (repeated
+    fetch failures, or cron simply not running) would silently serve an
+    arbitrarily-old count-to-date forever, desynced from `as_of_month_day`
+    (always derived from TODAY). Verified this can flip a real probability
+    from 0.99 to 0.01 with no warning. Fixed: reject any cache entry older
+    than 2 days, falling back to climatology-only.
+  - LOW-MEDIUM (dispatch): `KXHURRICANE`'s major-vs-total count-type
+    derivation (`endswith("MAJ")` else "hurricane") failed OPEN -- any
+    other suffix would silently price a major-hurricane market against
+    total-hurricane climatology, a materially fatter distribution, with no
+    warning. Fixed with an explicit `"MAJ"`/`"TOT"` allow-list, fail closed
+    otherwise (also tightened for `KXNAMEDSTORM`, previously unconditional).
+  - Also fixed: `season_year` cross-checked against the market's own
+    close_time (>1yr mismatch now fails closed -- protects
+    `tracker.count_settled_hurricane_predictions()`'s dedup key from a
+    malformed ticker); leap-year misalignment in day-of-year threshold-
+    crossing comparisons (switched `threshold_day`/`as_of_*` from ordinal
+    day-of-year ints to `(month, day)` tuples, which compare correctly
+    regardless of either year's leap status); an absurd wind reading
+    (e.g. 9999, not the `-999` missing sentinel) no longer fabricates a
+    storm; a truncated/stale HURDAT2 download now logs a loud warning if
+    its newest storm year falls more than 2 years behind today;
+    `_get_cached_hurricane_count_to_date` no longer raises on a corrupt
+    non-dict cache entry or a non-int `count`; `count_settled_hurricane_
+    predictions()`'s parse-failure warning no longer fires for the
+    unrelated `KXHURRICANENAMES` series (a `LIKE 'KXHURRICANE%'` prefix
+    collision that would have desensitized the real "gate frozen at 0"
+    alarm had that series ever been logged as a prediction).
+  - NOT fixed (explicitly out of scope, flagged as a separate follow-up
+    task): `cmd_today()`'s "[P] Place" interactive path bypasses
+    `TRADING_PAUSED` and every shadow-only gate entirely (rain/snow/
+    hurricane-count alike) -- confirmed PRE-EXISTING (rain and snow already
+    had this exact gap before this session), not introduced or worsened by
+    this work. Fixing it means touching the shared placement path for all
+    three market families at once, out of scope for a hurricane-specific
+    session.
+
+What this does NOT do:
+  Real sizing -- shadow/log-only until HURRICANE_TRADING_ENABLED=1 AND the
+  20-distinct-event floor clears (expected to take years, not months, see
+  above). major_hurricane/tropical_storm count types have no live tilt yet
+  (climatology-only) -- only "hurricane" (category 1+) has a clean, exact,
+  basin-tagged Kalshi-settled-market source today. KXHURCAT (per-storm
+  category) and per-city landfall markets remain completely untouched --
+  still gated by is_hurricane_ticker()'s original blanket guard, still 0
+  open markets for landfall as of this session's live re-check.
+
+When to revisit:
+  - Once HURRICANE_TRADING_ENABLED is set and real settled data accumulates
+    (expect a multi-year timescale, not the ~2-month rain/snow estimate) --
+    check get_signal_graduation_report()-style correlation before ever
+    relying on real sizing.
+  - major_hurricane/tropical_storm live tilt: needs a per-year storm-name-
+    to-basin mapping (WMO's pre-assigned name lists are public and fixed
+    years in advance) to derive a current-count-to-date from KXHURCAT's
+    per-storm settled results the same way KXHURRICANENAMES already does
+    for "hurricane". Not started.
+  - KXHURCAT/per-city landfall: see the updated "When to revisit" in the
+    entry above -- unchanged by this session's work.
 
 [RESOLVED 2026-07-25] NEAR-SETTLEMENT LOG (near_settlement_log) SILENTLY BROKEN SINCE IT SHIPPED -- WRONG FIELD NAMES ON THE TRADE-RECORD DICT
 Priority: was Medium -- a shipped calibration-data feature had been a

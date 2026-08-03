@@ -122,6 +122,7 @@ from weather_markets import (
     _KXSNOW_MONTHLY_CITY,
     CITY_COORDS,
     _feels_like,
+    _hurricane_count_gates_active,
     _rain_gates_active,
     _snow_gates_active,
     analyze_trade,
@@ -136,6 +137,7 @@ from weather_markets import (
     flush_forecast_disk_cache,
     get_weather_forecast,
     get_weather_markets,
+    is_hurricane_count_ticker,
     is_hurricane_ticker,
     is_liquid,
     parse_city_date,
@@ -2167,7 +2169,16 @@ def _quick_paper_buy(client: KalshiClient) -> None:
         # sharply to rain -- unlike hurricane/snow, rain's shadow gate is
         # live and accumulating real settled predictions today, so this is
         # not a theoretical gap for it.
-        if is_hurricane_ticker(ticker):
+        if is_hurricane_count_ticker(ticker) and not _hurricane_count_gates_active():
+            print(
+                red(
+                    f"  {ticker}: hurricane season-count markets are shadow-only until "
+                    "HURRICANE_TRADING_ENABLED=1 and >=20 settled hurricane-count "
+                    "predictions exist — refusing to place this order."
+                )
+            )
+            return
+        if is_hurricane_ticker(ticker) and not is_hurricane_count_ticker(ticker):
             print(
                 red(
                     f"  {ticker}: hurricane markets are not supported yet — refusing to place this order."
@@ -3962,7 +3973,20 @@ def cmd_order(client: KalshiClient, action: str, args: list):
     # funnel through paper.check_position_limits(), which carries the same
     # guard, but this direct check keeps cmd_order fail-closed even if that
     # call raises rather than returning ok=False).
-    if is_hurricane_ticker(ticker):
+    # backlog.txt "HURRICANE MARKETS" -- season-count model (2026-08-03): 5
+    # series now have a real model and shadow-only gate, same explicit
+    # refuse-outright-until-gated treatment as snow's own block below (for
+    # the same fail-closed-even-if-check_position_limits-raises reason).
+    if is_hurricane_count_ticker(ticker) and not _hurricane_count_gates_active():
+        print(
+            red(
+                f"  {ticker}: hurricane season-count markets are shadow-only until "
+                "HURRICANE_TRADING_ENABLED=1 and >=20 settled hurricane-count "
+                "predictions exist — refusing to place this order."
+            )
+        )
+        return
+    if is_hurricane_ticker(ticker) and not is_hurricane_count_ticker(ticker):
         print(
             red(
                 f"  {ticker}: hurricane markets are not supported yet — refusing to place this order."
@@ -7066,7 +7090,16 @@ def cmd_paper(args: list, client: KalshiClient | None = None):
         # order, not a live one. Round-2 review caught this applies to
         # rain too -- unlike hurricane/snow, rain's shadow gate is live
         # and accumulating real settled predictions today.
-        if is_hurricane_ticker(ticker):
+        if is_hurricane_count_ticker(ticker) and not _hurricane_count_gates_active():
+            print(
+                red(
+                    f"  {ticker}: hurricane season-count markets are shadow-only until "
+                    "HURRICANE_TRADING_ENABLED=1 and >=20 settled hurricane-count "
+                    "predictions exist — refusing to place this order."
+                )
+            )
+            return
+        if is_hurricane_ticker(ticker) and not is_hurricane_count_ticker(ticker):
             print(
                 red(
                     f"  {ticker}: hurricane markets are not supported yet — refusing to place this order."

@@ -457,3 +457,88 @@ def test_mixed_batch_snow_shadow_daily_places_normally(monkeypatch):
     assert len(snow_rows) == 1 and snow_rows[0]["is_shadow"] == 1
     daily_rows = _fetch("KXHIGHNY-26JUL22-T80")
     assert len(daily_rows) == 1 and daily_rows[0]["is_shadow"] == 0
+
+
+# ── backlog.txt "HURRICANE MARKETS" -- season-count model (2026-08-03):
+# the 5 season-total hurricane/tropical-storm-count series stay shadow-only
+# independent of TRADING_PAUSED, per-ticker rather than per-batch, until
+# _hurricane_count_gates_active() fires. Mirrors the rain/snow tests above
+# exactly. City is a synthetic "HUR_<basin>" key (no real city for this
+# market family), matching _analyze_hurricane_count_trade's own exposure-cap
+# grouping design. ───────────────────────────────────────────────────────────
+
+
+def test_hurricane_count_ticker_shadow_only_when_gate_inactive(monkeypatch):
+    """A hurricane season-count (KXHURCTOT) opp must be shadow-logged, not
+    placed, when _hurricane_count_gates_active() is False -- independent of
+    TRADING_PAUSED (which is explicitly cleared here)."""
+    _place_everything_setup(monkeypatch)
+    monkeypatch.setattr("order_executor._hurricane_count_gates_active", lambda: False)
+    placed_calls = []
+    monkeypatch.setattr(
+        "order_executor.place_paper_order",
+        lambda *a, **k: placed_calls.append((a, k))
+        or {"id": 1, "status": "open", "cost": 1.0},
+    )
+    opp = _make_flat_opp("KXHURCTOT-26DEC01-T7", city="HUR_ATL")
+
+    result = order_executor._auto_place_trades([opp], client=None)
+
+    assert result == 0
+    assert placed_calls == [], (
+        "must never place a real order for a gated hurricane-count ticker"
+    )
+    rows = _fetch("KXHURCTOT-26DEC01-T7")
+    assert len(rows) == 1
+    assert rows[0]["is_shadow"] == 1
+
+
+def test_hurricane_count_ticker_places_normally_when_gate_active(monkeypatch):
+    """Once _hurricane_count_gates_active() is True, a hurricane-count opp
+    places exactly like any other ticker -- no special-casing beyond the
+    gate check."""
+    _place_everything_setup(monkeypatch)
+    monkeypatch.setattr("order_executor._hurricane_count_gates_active", lambda: True)
+    monkeypatch.setattr(
+        "order_executor.place_paper_order",
+        lambda ticker, side, qty, price, **kwargs: {
+            "id": 1,
+            "status": "open",
+            "cost": price * qty,
+        },
+    )
+    opp = _make_flat_opp("KXHURCTOT-26DEC01-T9", city="HUR_ATL")
+
+    order_executor._auto_place_trades([opp], client=None)
+
+    rows = _fetch("KXHURCTOT-26DEC01-T9")
+    assert len(rows) == 1
+    assert rows[0]["is_shadow"] == 0
+
+
+def test_mixed_batch_hurricane_count_shadow_daily_places_normally(monkeypatch):
+    """The core routing guarantee: in one batch, a hurricane-count opp (gate
+    inactive) is shadow-logged while a daily opp in the SAME batch places
+    normally."""
+    _place_everything_setup(monkeypatch)
+    monkeypatch.setattr("order_executor._hurricane_count_gates_active", lambda: False)
+    placed_calls = []
+    monkeypatch.setattr(
+        "order_executor.place_paper_order",
+        lambda ticker, side, qty, price, **kwargs: (
+            placed_calls.append(ticker),
+            {"id": 1, "status": "open", "cost": price * qty},
+        )[1],
+    )
+    hurricane_opp = _make_flat_opp("KXTROPSTORM-26DEC01-T14", city="HUR_ATL")
+    daily_opp = _make_flat_opp("KXHIGHNY-26JUL23-T80")
+
+    order_executor._auto_place_trades([hurricane_opp, daily_opp], client=None)
+
+    assert placed_calls == ["KXHIGHNY-26JUL23-T80"], (
+        "only the daily ticker should have gone through place_paper_order"
+    )
+    hurricane_rows = _fetch("KXTROPSTORM-26DEC01-T14")
+    assert len(hurricane_rows) == 1 and hurricane_rows[0]["is_shadow"] == 1
+    daily_rows = _fetch("KXHIGHNY-26JUL23-T80")
+    assert len(daily_rows) == 1 and daily_rows[0]["is_shadow"] == 0

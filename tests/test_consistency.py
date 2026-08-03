@@ -191,6 +191,39 @@ class TestConsistency(unittest.TestCase):
         with self.assertNoLogs(level=logging.WARNING):
             find_violations(markets)
 
+    def test_hurricane_count_markets_excluded(self):
+        """backlog.txt "HURRICANE MARKETS" -- season-count model (2026-08-03,
+        opus-review-caught, HIGH): KXHURCTOT/KXHURCTOTMAJ/KXTROPSTORM
+        tickers must never reach _group_markets. UNLIKE rain/snow's
+        exclusion above, this one is NOT redundant with the date_match/
+        _parse_threshold regexes -- these tickers embed a real day-level
+        date ("KXHURCTOT-26DEC01-T9") AND a real "-T9" threshold suffix,
+        both of which match. Title text containing "above" (simulating a
+        possible future Kalshi phrasing, or a fallback match this session's
+        live check didn't anticipate) is used here specifically so this
+        test would catch a REAL violation if the exclusion were removed --
+        not just a log warning, unlike the rain/snow tests above.
+        find_violations() feeds directly into automatic corrective trading
+        (paper.place_paper_order via main.py's arb auto-placer), which has
+        no shadow-gate check of its own for this ticker family."""
+        markets = [
+            _market(
+                "KXHURCTOT-26DEC01-T7",
+                yes_bid=0.10,
+                yes_ask=0.15,
+                series="KXHURCTOT",
+                title="more than 7 hurricanes -- above threshold",
+            ),
+            _market(
+                "KXHURCTOT-26DEC01-T9",
+                yes_bid=0.80,
+                yes_ask=0.85,  # inverted: T9 priced HIGHER than T7 -- a real violation shape
+                series="KXHURCTOT",
+                title="more than 9 hurricanes -- above threshold",
+            ),
+        ]
+        self.assertEqual(find_violations(markets), [])
+
 
 class TestParseThresholdRealApiShape(unittest.TestCase):
     """_parse_threshold() with market.get("series_ticker") absent -- the

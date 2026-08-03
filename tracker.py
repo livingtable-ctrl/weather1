@@ -2153,6 +2153,75 @@ def count_settled_snow_predictions() -> int:
     return len(events)
 
 
+def count_settled_hurricane_predictions() -> int:
+    """Count DISTINCT settled hurricane-season-count events -- (basin,
+    count_type, season_year), NOT raw prediction rows -- backlog.txt
+    "HURRICANE MARKETS" season-count model's shadow-only rollout gate.
+    Same raw-row-vs-distinct-event inflation risk count_settled_snow_
+    predictions()/count_settled_market_implied_rain_events() were already
+    fixed for: a single basin/count_type/season (e.g. Atlantic major-
+    hurricane-count 2026) settles up to ~9 sibling strikes (KXHURCTOTMAJ's
+    T3..T9 ladder) all from the SAME real season-end count, so a raw-row
+    floor could clear 20 on as few as ~3 real seasons, not 20 independent
+    real-world outcomes. New code, zero live predictions logged yet, so
+    it's safe to design the floor correctly from the start (same reasoning
+    count_settled_snow_predictions' own docstring gives).
+
+    Ticker-only classification via weather_markets._hurricane_count_key_
+    from_ticker (derives basin/count_type/season_year from the settled
+    ticker string alone, same single-source-of-truth function
+    _parse_hurricane_count_condition uses) rather than a hardcoded prefix
+    list, so this can't independently drift from the real parser."""
+    init_db()
+    try:
+        from weather_markets import (
+            _HURRICANE_COUNT_SERIES,
+            _hurricane_count_key_from_ticker,
+        )
+
+        prefixes = list(_HURRICANE_COUNT_SERIES)
+    except Exception:
+        return 0
+    if not prefixes:
+        return 0
+    where_sql = " OR ".join(["p.ticker LIKE ?"] * len(prefixes))
+    params = tuple(f"{p}%" for p in prefixes)
+    with _conn() as con:
+        rows = con.execute(
+            "SELECT DISTINCT p.ticker FROM predictions p "
+            "JOIN outcomes_valid o ON p.ticker = o.ticker "
+            f"WHERE ({where_sql})",
+            params,
+        ).fetchall()
+    events: set[tuple[str, str, int]] = set()
+    for row in rows:
+        ticker = row["ticker"]
+        key = _hurricane_count_key_from_ticker(ticker)
+        if key is None:
+            # Opus-review-caught (2026-08-03): the SQL LIKE prefix for
+            # "KXHURRICANE" also matches "KXHURRICANENAMES" (a different,
+            # unsupported series -- storm-name-order markets, not one of
+            # the 5 count series). That ticker is never actually logged as
+            # a prediction today, but IF it (or any other lookalike) ever
+            # were, warning here on every single call would desensitize the
+            # exact alarm this warning exists to raise (a real ticker-
+            # format change silently freezing the gate at 0) -- only warn
+            # when the series prefix is genuinely one of the 5 supported
+            # series and STILL failed to parse, matching
+            # _parse_hurricane_count_condition's own real-failure-vs-wrong-
+            # family distinction.
+            if ticker.upper().split("-")[0] in _HURRICANE_COUNT_SERIES:
+                _log.warning(
+                    "count_settled_hurricane_predictions: could not parse "
+                    "basin/count_type/season_year from settled ticker %r -- "
+                    "excluded from the count",
+                    ticker,
+                )
+            continue
+        events.add(key)
+    return len(events)
+
+
 def count_emos_ready_predictions() -> int:
     """Count multi-day predictions that are actually trainable EMOS rows —
     ens_mean AND settled_temp_f both populated, matching get_emos_training_data's

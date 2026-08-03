@@ -18,6 +18,7 @@ from weather_markets import (
     _KXRAIN_MONTHLY_CITY,
     _KXSNOW_MONTHLY_CITY,
     _KXTEMP_HOURLY_CITY,
+    is_hurricane_count_ticker,
     parse_market_price,
 )
 
@@ -115,6 +116,26 @@ def _group_markets(markets: list[dict]) -> dict:
     scan. Kept explicit for that reason, plus the same single-source-of-
     truth reasoning as the hourly exclusion, since this feeds
     find_violations() too.
+
+    Also excludes the 5 hurricane-season-count series (backlog.txt
+    "HURRICANE MARKETS" -- season-count model, 2026-08-03), added here
+    because -- unlike rain/snow -- this exclusion is NOT redundant:
+    KXHURCTOT/KXHURCTOTMAJ/KXTROPSTORM tickers embed a real day-level date
+    ("KXHURCTOT-26DEC01-T9") that the date_match regex below DOES match, and
+    their "-T<N>" suffix DOES match _parse_threshold's own regex too --
+    they were only failing to reach find_violations() by an accident of
+    title text (real titles like "more than 9 Atlantic hurricanes" don't
+    contain the literal "above"/">" _parse_threshold's title fallback
+    requires) -- the exact "safe by coincidence" shape this project has
+    already been burned by once for this same ticker family (see
+    is_hurricane_ticker()'s own history). find_violations() feeds
+    automatic corrective trading (_arb_ppo -> paper.place_paper_order)
+    directly, with NO shadow-gate check of its own -- opus-review-caught
+    (2026-08-03): without this exclusion, adding these 5 series to
+    KNOWN_WEATHER_SERIES (so get_weather_markets() now returns them) would
+    let the arb auto-placer place REAL (non-shadow) paper orders on a
+    ticker family this bot has explicitly decided is unvalidated,
+    completely bypassing _hurricane_count_gates_active().
     """
     groups: dict = {}
 
@@ -125,6 +146,8 @@ def _group_markets(markets: list[dict]) -> dict:
         if ticker.upper().startswith(tuple(_KXRAIN_MONTHLY_CITY)):
             continue
         if ticker.upper().startswith(tuple(_KXSNOW_MONTHLY_CITY)):
+            continue
+        if is_hurricane_count_ticker(ticker):
             continue
 
         # Extract series and date from ticker

@@ -2163,6 +2163,22 @@ def _cmd_cron_body(
     except Exception as _hourly_target_exc:
         _log.warning("refresh_hourly_target_hours call failed: %s", _hourly_target_exc)
 
+    # Hurricane season-count current-to-date cache refresh — once per basin
+    # per day, same placement/isolation rationale as check_series_drift/
+    # refresh_hourly_target_hours above (backlog.txt "HURRICANE MARKETS" --
+    # season-count model). Feeds weather_markets._get_cached_hurricane_count_
+    # to_date, which tilts the real probability model in analyze_trade().
+    try:
+        from weather_markets import (
+            refresh_hurricane_count_to_date as _refresh_hurricane_count_to_date,
+        )
+
+        _refresh_hurricane_count_to_date(client)
+    except Exception as _hurricane_count_exc:
+        _log.warning(
+            "refresh_hurricane_count_to_date call failed: %s", _hurricane_count_exc
+        )
+
     # Per-city registry completeness manifest — once per day, observational
     # only, same placement/isolation rationale as check_series_drift above
     # (backlog.txt "PER-CITY KNOWLEDGE SCATTERED ACROSS ~8 REGISTRIES").

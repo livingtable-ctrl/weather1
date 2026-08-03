@@ -3454,8 +3454,10 @@ def check_position_limits(
     from weather_markets import (
         _KXRAIN_MONTHLY_CITY,
         _KXSNOW_MONTHLY_CITY,
+        _hurricane_count_gates_active,
         _rain_gates_active,
         _snow_gates_active,
+        is_hurricane_count_ticker,
         is_hurricane_ticker,
     )
 
@@ -3495,12 +3497,26 @@ def check_position_limits(
             "limit": max_cost_per_market,
         }
 
-    # backlog.txt "HURRICANE MARKETS": no supported model exists for
-    # hurricane/tropical-storm tickers (see is_hurricane_ticker()'s own
-    # comment for why this covers several unrelated real prefixes, not just
-    # "KXHUR"). Block unconditionally here too, not just in
-    # analyze_trade()'s own guard and cmd_order's own direct check.
-    if is_hurricane_ticker(ticker):
+    # backlog.txt "HURRICANE MARKETS" -- season-count model (2026-08-03): 5
+    # series (KXHURCTOT/KXHURCTOTMAJ/KXTROPSTORM/KXHURRICANE/KXNAMEDSTORM)
+    # now have a real model and shadow-only gate, same treatment as rain/
+    # snow's blocks above. Every OTHER hurricane ticker shape (per-city
+    # landfall, KXHURCAT per-storm category, legacy unprefixed HUR*) still
+    # has no supported model and stays unconditionally blocked (see
+    # is_hurricane_ticker()'s own comment for why that check covers several
+    # unrelated real prefixes, not just "KXHUR").
+    if is_hurricane_count_ticker(ticker) and not _hurricane_count_gates_active():
+        return {
+            "ok": False,
+            "reason": (
+                "hurricane season-count markets: shadow-only until "
+                "HURRICANE_TRADING_ENABLED=1 and >=20 settled hurricane-count "
+                "predictions exist"
+            ),
+            "existing_cost": 0.0,
+            "limit": max_cost_per_market,
+        }
+    if is_hurricane_ticker(ticker) and not is_hurricane_count_ticker(ticker):
         return {
             "ok": False,
             "reason": "hurricane markets are not supported yet",

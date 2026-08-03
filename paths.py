@@ -52,6 +52,7 @@ SERIES_DRIFT_PATH = _DATA / "series_drift_check.json"
 CITY_REGISTRY_REPORT_PATH = _DATA / "city_registry_report.json"
 RETIREMENT_PROBATION_PATH = _DATA / "retirement_probation_check.json"
 HOURLY_TARGET_HOURS_PATH = _DATA / "hourly_target_hours.json"
+HURRICANE_COUNT_TO_DATE_PATH = _DATA / "hurricane_count_to_date.json"
 NOTIFY_COOLDOWN_STATE_PATH = _DATA / ".notify_cooldowns.json"
 
 # cron.py periodic-task gate sentinels — each gates a weekly/periodic

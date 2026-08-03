@@ -4134,6 +4134,121 @@ class TestDisputedOutcomeTracking(unittest.TestCase):
             tracker.count_settled_snow_predictions()
         assert any("could not parse accrual month" in msg for msg in cm.output)
 
+    def test_count_settled_hurricane_predictions_counts_only_hurricane_tickers(self):
+        """backlog.txt "HURRICANE MARKETS" -- season-count model: must count
+        KXHURCTOT-style rows, not ordinary daily ones."""
+        before = tracker.count_settled_hurricane_predictions()
+        self._log_settled(
+            "KXHURCTOT-26DEC01-T9",
+            0.6,
+            True,
+            self._FUTURE,
+            city="HUR_ATL",
+            condition_type="hurricane_count",
+        )
+        self._log_settled("KXHIGHNY-26JUL20-T75", 0.6, True, self._FUTURE, city="NYC")
+        after = tracker.count_settled_hurricane_predictions()
+        self.assertEqual(
+            after,
+            before + 1,
+            "must count only the hurricane-count ticker, not KXHIGHNY too",
+        )
+
+    def test_count_settled_hurricane_predictions_excludes_disputed(self):
+        before = tracker.count_settled_hurricane_predictions()
+        self._log_settled(
+            "KXHURCTOT-26DEC01-T8",
+            1.0,
+            0,
+            self._FUTURE,
+            city="HUR_ATL",
+            condition_type="hurricane_count",
+            edge=0.99,
+        )
+        tracker.mark_outcome_disputed("KXHURCTOT-26DEC01-T8")
+        after = tracker.count_settled_hurricane_predictions()
+        self.assertEqual(before, after)
+
+    def test_count_settled_hurricane_predictions_counts_events_not_ladder_rows(self):
+        """Same raw-row-vs-distinct-event risk count_settled_snow_
+        predictions() was fixed for: KXHURCTOTMAJ's ladder has up to ~9
+        sibling strikes that all settle from ONE real season-end count --
+        settling all of them for the same (basin, count_type, season_year)
+        must increment the count by exactly 1, not 9."""
+        before = tracker.count_settled_hurricane_predictions()
+        for strike in ("T3", "T4", "T5", "T6", "T7", "T8", "T9"):
+            self._log_settled(
+                f"KXHURCTOTMAJ-26DEC01-{strike}",
+                0.6,
+                True,
+                self._FUTURE,
+                city="HUR_ATL",
+                condition_type="hurricane_count",
+            )
+        after = tracker.count_settled_hurricane_predictions()
+        self.assertEqual(
+            after,
+            before + 1,
+            "7 sibling strikes for the same (basin, count_type, season_year) "
+            "event must count as 1 real observation, not 7",
+        )
+
+    def test_count_settled_hurricane_predictions_distinguishes_basins_and_count_types(
+        self,
+    ):
+        """Different basins AND different count types within the SAME
+        basin/season must each count as their OWN distinct event -- not
+        collapsed together just because they share a season_year."""
+        before = tracker.count_settled_hurricane_predictions()
+        self._log_settled(
+            "KXHURCTOT-26DEC01-T9",
+            0.6,
+            True,
+            self._FUTURE,
+            city="HUR_ATL",
+            condition_type="hurricane_count",
+        )
+        self._log_settled(
+            "KXHURCTOTMAJ-26DEC01-T7",
+            0.6,
+            True,
+            self._FUTURE,
+            city="HUR_ATL",
+            condition_type="hurricane_count",
+        )
+        self._log_settled(
+            "KXHURRICANE-26DEC01EPACMAJ-8",
+            0.6,
+            True,
+            self._FUTURE,
+            city="HUR_EPAC",
+            condition_type="hurricane_count",
+        )
+        after = tracker.count_settled_hurricane_predictions()
+        self.assertEqual(
+            after,
+            before + 3,
+            "3 distinct (basin, count_type) combos must count as 3 events",
+        )
+
+    def test_count_settled_hurricane_predictions_warns_on_unparseable_ticker(self):
+        """An unparseable settled hurricane-count ticker must at least log a
+        warning, not silently vanish from the count (same convention as
+        count_settled_snow_predictions())."""
+        self._log_settled(
+            "KXHURCTOT-badformat",
+            0.6,
+            True,
+            self._FUTURE,
+            city="HUR_ATL",
+            condition_type="hurricane_count",
+        )
+        with self.assertLogs("tracker", level="WARNING") as cm:
+            tracker.count_settled_hurricane_predictions()
+        assert any(
+            "could not parse basin/count_type/season_year" in msg for msg in cm.output
+        )
+
     def test_count_settled_west_coast_multiday_excludes_disputed(self):
         # This gate filters on o.settled_temp_f IS NOT NULL, which
         # _log_settled never populates -- without setting it explicitly,

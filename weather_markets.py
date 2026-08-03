@@ -40,6 +40,7 @@ from paths import (
     CITY_REGISTRY_REPORT_PATH,
     DATA_DIR,
     HOURLY_TARGET_HOURS_PATH,
+    HURRICANE_COUNT_TO_DATE_PATH,
     LEARNED_WEIGHTS_PATH,
     RETIREMENT_PROBATION_PATH,
     SERIES_DRIFT_PATH,
@@ -47,6 +48,7 @@ from paths import (
 from schema_validator import is_all_null, validate_forecast
 from utils import (
     BETWEEN_FLOOR_MODEL_MAX,
+    HURRICANE_MAX_DAYS_OUT,
     KALSHI_FEE_RATE,
     KALSHI_MAKER_FEE_RATE,
     KELLY_CAP,
@@ -1060,6 +1062,46 @@ def _snow_gates_active() -> bool:
         from tracker import count_settled_snow_predictions
 
         return count_settled_snow_predictions() >= _SNOW_GATE_MIN_SAMPLES
+    except Exception:
+        return False
+
+
+# backlog.txt "HURRICANE MARKETS" -- season-count model, shadow-only
+# rollout. Unlike rain (~10 settlements/month) or even snow, a season-total
+# count market settles (at most) ONCE PER YEAR per (basin, count_type) --
+# 9 basin/count-type combinations exist today (3 basins x 3 count types),
+# so even if every single one settles every single year this floor could
+# still take several YEARS to clear, not weeks or months. That is a real,
+# structurally different cadence from every other market family in this
+# codebase, not an oversight -- see this entry's own backlog.txt resolution
+# note for the honest timeline.
+_HURRICANE_COUNT_GATE_MIN_SAMPLES: int = 20
+
+
+def _hurricane_count_gates_active() -> bool:
+    """Return True only when HURRICANE_TRADING_ENABLED=1 AND >= 20 settled
+    hurricane-season-count predictions (distinct (basin, count_type,
+    season_year) events, not raw per-strike rows -- see
+    tracker.count_settled_hurricane_predictions's own docstring for why raw
+    rows would badly inflate this). Mirrors _rain_gates_active()'s/
+    _snow_gates_active()'s exact shape. Until both hold, hurricane-count
+    opportunities are still fully analyzed and logged (is_shadow=True) so
+    real calibration data accumulates risk-free; no real order (paper or
+    live) is ever placed for one of these tickers before this is True."""
+    import os
+
+    if os.getenv("HURRICANE_TRADING_ENABLED", "").strip().lower() not in (
+        "1",
+        "true",
+        "yes",
+    ):
+        return False
+    try:
+        from tracker import count_settled_hurricane_predictions
+
+        return (
+            count_settled_hurricane_predictions() >= _HURRICANE_COUNT_GATE_MIN_SAMPLES
+        )
     except Exception:
         return False
 
@@ -3815,6 +3857,23 @@ KNOWN_WEATHER_SERIES = [
     "KXTEMPCHIH",
     "KXTEMPLAXH",
     "KXTEMPDCH",
+    # backlog.txt "HURRICANE MARKETS" -- season-count model (2026-08-03): the
+    # 5 season-total hurricane/tropical-storm-count series now have a real
+    # model (_analyze_hurricane_count_trade, dispatched from analyze_trade()
+    # on condition["type"] == "hurricane_count"), shadow-only until
+    # _hurricane_count_gates_active(). Every OTHER real hurricane series
+    # (per-city landfall, KXHURCAT per-storm category, legacy unprefixed
+    # HUR*, KXFIRSTHURRICANE/KXHURRICANENAMES storm-name-order markets)
+    # deliberately stays untracked here -- see is_hurricane_ticker()'s own
+    # comment and this entry's backlog.txt resolution note for why. Matched
+    # by exact series ticker in check_series_drift() below, NOT the
+    # startswith/substring chain the rest of this list uses -- "KXHURCTOT" is
+    # a strict prefix of "KXHURCTOTMAJ".
+    "KXHURCTOT",
+    "KXHURCTOTMAJ",
+    "KXTROPSTORM",
+    "KXHURRICANE",
+    "KXNAMEDSTORM",
 ]
 
 # Legacy/placeholder KXHIGH/KXLOW series Kalshi's /series endpoint still lists
@@ -4029,7 +4088,7 @@ def check_series_drift(client: KalshiClient) -> None:
             t
             for t in live_tickers
             if t.startswith(("KXHIGH", "KXLOW", "KXRAIN")) or "SNOW" in t
-        }
+        } | (live_tickers & _HURRICANE_COUNT_SERIES)
 
         # KXHIGH/KXLOW/KXRAIN entries are checked against live_weather via
         # startswith; SNOW series don't share one clean prefix (KXDENSNOWM,
@@ -4047,10 +4106,19 @@ def check_series_drift(client: KalshiClient) -> None:
         # KXRAIN wiring gap went unnoticed for so long. See
         # KNOWN_UNTRACKED_RAIN_SERIES / KNOWN_UNTRACKED_SNOW_SERIES for the
         # real-but-deliberately-excluded series this now needs to not
-        # re-flag as noise.
+        # re-flag as noise. The 5 hurricane-count series (backlog.txt
+        # "HURRICANE MARKETS" -- season-count model, 2026-08-03) are matched
+        # by EXACT membership in _HURRICANE_COUNT_SERIES, not startswith/
+        # substring -- deliberately narrower than is_hurricane_ticker()'s
+        # much broader marker set, so this never starts watching (and thus
+        # never implicitly encourages someone to "fix" a drift warning for)
+        # a hurricane series with no matching parser branch, exactly the bug
+        # class this entry's own parent warns against.
         for ticker in KNOWN_WEATHER_SERIES:
             if not (
-                ticker.startswith(("KXHIGH", "KXLOW", "KXRAIN")) or "SNOW" in ticker
+                ticker.startswith(("KXHIGH", "KXLOW", "KXRAIN"))
+                or "SNOW" in ticker
+                or ticker in _HURRICANE_COUNT_SERIES
             ):
                 continue
             if ticker in live_weather:
@@ -4074,8 +4142,8 @@ def check_series_drift(client: KalshiClient) -> None:
         )
         if unknown:
             _log.warning(
-                "check_series_drift: live KXHIGH/KXLOW/KXRAIN/*SNOW* series not in "
-                "KNOWN_WEATHER_SERIES: %s",
+                "check_series_drift: live KXHIGH/KXLOW/KXRAIN/*SNOW*/hurricane-count "
+                "series not in KNOWN_WEATHER_SERIES: %s",
                 sorted(unknown),
             )
 
@@ -4288,6 +4356,179 @@ def is_hurricane_ticker(ticker: str) -> bool:
     check_position_limits can't drift out of sync with each other again."""
     ticker_up = ticker.upper()
     return any(marker in ticker_up for marker in _HURRICANE_TICKER_MARKERS)
+
+
+# backlog.txt "HURRICANE MARKETS" -- season-count model (2026-08-03). Maps
+# each of Kalshi's 5 season-total hurricane/tropical-storm-count SERIES to
+# (basin, count_type) for the 3 series that carry only one basin each.
+# Matched against a ticker's series ticker (the portion before its first
+# "-", exactly Kalshi's own series-level ticker) -- NEVER a substring/
+# startswith test: "KXHURCTOT" is a strict prefix of "KXHURCTOTMAJ", so a
+# startswith check would misclassify every KXHURCTOTMAJ ticker as KXHURCTOT.
+_HURRICANE_COUNT_SERIES_BASIN_COUNT_TYPE: dict[str, tuple[str, str]] = {
+    "KXHURCTOT": ("ATL", "hurricane"),
+    "KXHURCTOTMAJ": ("ATL", "major_hurricane"),
+    "KXTROPSTORM": ("ATL", "tropical_storm"),
+}
+# KXHURRICANE / KXNAMEDSTORM cover BOTH Eastern and Central Pacific, keyed by
+# an EPAC/CPAC infix in the EVENT ticker instead (e.g.
+# "KXHURRICANE-26DEC01EPACMAJ", "KXNAMEDSTORM-26DEC01CPACTOT") -- confirmed
+# live 2026-08-03 via client.get_markets(series_ticker=...).
+_HURRICANE_COUNT_SERIES: frozenset[str] = frozenset(
+    _HURRICANE_COUNT_SERIES_BASIN_COUNT_TYPE
+) | {"KXHURRICANE", "KXNAMEDSTORM"}
+
+
+def is_hurricane_count_ticker(ticker: str) -> bool:
+    """True only for the 5 season-total hurricane/tropical-storm-count
+    series with a real probability model (_analyze_hurricane_count_trade) --
+    a narrow carve-out of is_hurricane_ticker()'s much broader marker set,
+    which still covers everything else (per-city landfall, per-storm
+    category thresholds like KXHURCAT, legacy unprefixed HUR*) with no
+    model. Series-ticker-exact, not substring -- see
+    _HURRICANE_COUNT_SERIES_BASIN_COUNT_TYPE's own comment for why."""
+    series = ticker.upper().split("-")[0]
+    return series in _HURRICANE_COUNT_SERIES
+
+
+def _hurricane_count_key_from_ticker(ticker: str) -> tuple[str, str, int] | None:
+    """Returns (basin, count_type, season_year) for one of the 5 season-
+    total count series, derived ENTIRELY from the ticker string itself (a
+    settled market's own `ticker` field embeds the same event-ticker
+    structure as its `event_ticker` field -- "KXHURRICANE-26DEC01EPACMAJ-8"
+    is event_ticker "KXHURRICANE-26DEC01EPACMAJ" + "-8"). Returns None if
+    unparseable. Standalone (no market dict needed) so
+    tracker.count_settled_hurricane_predictions can dedupe settled rows into
+    distinct (basin, count_type, season_year) events without importing
+    _parse_hurricane_count_condition's full market-dict-shaped contract."""
+    ticker_up = ticker.upper()
+    parts = ticker_up.split("-")
+    series = parts[0] if parts else ""
+    if series not in _HURRICANE_COUNT_SERIES:
+        return None
+    if len(parts) < 2 or len(parts[1]) < 2:
+        return None
+    try:
+        season_year = 2000 + int(parts[1][0:2])
+    except ValueError:
+        return None
+
+    if series in _HURRICANE_COUNT_SERIES_BASIN_COUNT_TYPE:
+        basin, count_type = _HURRICANE_COUNT_SERIES_BASIN_COUNT_TYPE[series]
+        return (basin, count_type, season_year)
+
+    event_mid = parts[1]  # e.g. "26DEC01EPACMAJ"
+    if "CPAC" in event_mid:
+        basin = "CPAC"
+    elif "EPAC" in event_mid:
+        basin = "EPAC"
+    else:
+        return None
+    if series == "KXHURRICANE":
+        # Opus-review-caught (2026-08-03): the original `else "hurricane"`
+        # fallback failed OPEN -- any event-ticker suffix other than the
+        # real "MAJ" (e.g. a future Kalshi naming change, or the defensive
+        # "EPACMAJOR" almost-match) would silently price a major-hurricane
+        # market against total-hurricane climatology, a materially
+        # different (much fatter) distribution, with no warning. Confirmed
+        # live 2026-08-03: every real market uses exactly "TOT" or "MAJ" --
+        # require an exact match, fail closed (return None) otherwise.
+        if event_mid.endswith("MAJ"):
+            count_type = "major_hurricane"
+        elif event_mid.endswith("TOT"):
+            count_type = "hurricane"
+        else:
+            return None
+    else:  # KXNAMEDSTORM
+        if not event_mid.endswith("TOT"):
+            return None
+        count_type = "tropical_storm"
+    return (basin, count_type, season_year)
+
+
+def _parse_hurricane_count_condition(market: dict) -> dict | None:
+    """Returns {"type": "hurricane_count", "basin": "ATL"/"EPAC"/"CPAC",
+    "count_type": "tropical_storm"/"hurricane"/"major_hurricane",
+    "threshold": float, "strike_type": str, "season_year": int} for one of
+    the 5 season-total count series, or None if unparseable. Reads
+    floor_strike/strike_type directly from Kalshi's own market fields (same
+    established convention as the KXRAIN*M/KXDENSNOWM branches above), never
+    guesses a threshold/direction from ticker or title text."""
+    ticker = market.get("ticker", "")
+    key = _hurricane_count_key_from_ticker(ticker)
+    if key is None:
+        # Distinguish "not this ticker family at all" (return None, silent,
+        # every other branch in _parse_market_condition does the same) from
+        # a genuine parse failure on a ticker series membership already
+        # confirmed -- only warn in the latter case.
+        if ticker.upper().split("-")[0] in _HURRICANE_COUNT_SERIES:
+            _log.warning(
+                "_parse_hurricane_count_condition[%s]: could not derive "
+                "basin/count_type/season_year from ticker",
+                ticker,
+            )
+        return None
+    basin, count_type, season_year = key
+
+    # Opus-review-caught (2026-08-03): season_year is derived purely from a
+    # 2-digit substring of the ticker (parts[1][0:2]) with no cross-check --
+    # a malformed/adversarial ticker (e.g. a stray 4-digit year prefix)
+    # could silently produce a wrong season_year, which would mis-key
+    # tracker.count_settled_hurricane_predictions()'s dedup (skewing the
+    # graduation-floor sample count) even though it fails safe for the
+    # current-count tilt (a wrong season_year just means the tilt cache
+    # lookup misses, falling back to climatology-only). Cross-check against
+    # the market's own close_time when available -- these markets never
+    # span a year boundary (confirmed live: open ~April/May, close ~Dec 1-2
+    # the same calendar year), so a >1-year mismatch means the ticker parse
+    # itself is untrustworthy.
+    _close_dt_check = _safe_parse_close_time(market.get("close_time", ""))
+    if _close_dt_check is not None and abs(_close_dt_check.year - season_year) > 1:
+        _log.warning(
+            "_parse_hurricane_count_condition[%s]: season_year=%d doesn't "
+            "match close_time year=%d -- refusing to trust this parse",
+            ticker,
+            season_year,
+            _close_dt_check.year,
+        )
+        return None
+
+    floor_strike = market.get("floor_strike")
+    strike_type = market.get("strike_type")
+    if floor_strike is None:
+        _log.warning(
+            "_parse_hurricane_count_condition[%s]: missing floor_strike", ticker
+        )
+        return None
+    if strike_type not in ("greater", "greater_or_equal"):
+        # Confirmed live 2026-08-03: "greater" on every one of these 5
+        # series' open+settled markets, no exceptions. Fail closed rather
+        # than guess a direction for anything else, matching every other
+        # branch in this function.
+        _log.warning(
+            "_parse_hurricane_count_condition[%s]: unexpected strike_type=%r",
+            ticker,
+            strike_type,
+        )
+        return None
+    try:
+        threshold = float(floor_strike)
+    except (TypeError, ValueError):
+        _log.warning(
+            "_parse_hurricane_count_condition[%s]: non-numeric floor_strike=%r",
+            ticker,
+            floor_strike,
+        )
+        return None
+
+    return {
+        "type": "hurricane_count",
+        "basin": basin,
+        "count_type": count_type,
+        "threshold": threshold,
+        "strike_type": strike_type,
+        "season_year": season_year,
+    }
 
 
 # backlog.txt "RAIN / SNOW / HURRICANE MARKETS" -- SNOW Step 1. Deliberately
@@ -4959,6 +5200,30 @@ def _parse_market_condition(market: dict) -> dict | None:
             )
             return None
         return {"type": "snow_month_total", "threshold": threshold}
+
+    # ── Season-total hurricane/tropical-storm-count markets (backlog.txt
+    # "HURRICANE MARKETS" -- season-count model, 2026-08-03) ─────────────────
+    # Must run before is_hurricane_ticker()'s blanket guard is ever consulted
+    # by the caller (analyze_trade() checks is_hurricane_count_ticker() first
+    # and skips that guard for this family) -- delegates to
+    # _parse_hurricane_count_condition, which returns None for every other
+    # hurricane ticker shape (still unsupported) AND for one of these 5
+    # series whose own fields fail to parse (missing floor_strike, unexpected
+    # strike_type). Opus-review-caught (2026-08-03): those two cases must be
+    # told apart -- falling through to the generic temperature-threshold
+    # parser below for the SECOND case would reproduce the exact KXHURCAT
+    # bug class this whole guard exists to prevent (a hurricane-count
+    # ticker's "-T9" suffix parses as a real °F threshold, and since
+    # is_hurricane_count_ticker() already routed it past analyze_trade()'s
+    # blanket guard, city/coords/forecast are never populated for it --
+    # reaching the daily pipeline crashes on this file's own later
+    # `assert city is not None` narrowing, or worse, silently mis-scores
+    # under `python -O`, where asserts are stripped). Any ticker whose series
+    # is one of the 5 hurricane-count series must therefore fail CLOSED here
+    # (return None outright) rather than fall through, regardless of why its
+    # own parse failed.
+    if ticker_up.split("-")[0] in _HURRICANE_COUNT_SERIES:
+        return _parse_hurricane_count_condition(market)
 
     # ── Precipitation markets ─────────────────────────────────────────────────
     # Whitelist known precipitation series to avoid false positives from
@@ -6429,6 +6694,16 @@ _CONDITION_CONFIDENCE: dict[str, float] = {
     # call, not derived from data -- revisit once real shadow Brier scores
     # exist, same as rain's own note above.
     "snow_month_total": 0.65,
+    # backlog.txt "HURRICANE MARKETS" -- season-count model: lower than every
+    # other condition type. The evidence base is 30 historical seasons (not
+    # 30 analog years of daily/monthly data -- a season IS the sample unit
+    # here, so effectively far fewer independent observations feed the tail
+    # probabilities this model actually prices), months-long holding periods
+    # add real path risk no other market family in this bot carries, and
+    # zero real settled hurricane-count predictions exist anywhere to
+    # validate against yet. A judgment call, not derived from data -- revisit
+    # once real shadow Brier scores exist, same as rain/snow's own notes.
+    "hurricane_count": 0.55,
 }
 
 
@@ -8276,6 +8551,319 @@ def _analyze_monthly_snow_trade(
     }
 
 
+# Kalshi's basin-vocabulary -> event-ticker infix used by KXHURRICANENAMES
+# (e.g. "KXHURRICANENAMES-26DEC01EPAC") -- confirmed live 2026-08-03.
+_HURRICANE_NAMES_BASIN_INFIX = {"ATL": "ATL", "EPAC": "EPAC", "CPAC": "CPAC"}
+
+
+def refresh_hurricane_count_to_date(client: KalshiClient) -> None:
+    """Once per basin per day: recompute the REAL current-season hurricane-
+    count-to-date (category 1+) from Kalshi's own settled KXHURRICANENAMES
+    markets and cache it to HURRICANE_COUNT_TO_DATE_PATH. Mirrors
+    refresh_hourly_target_hours()'s exact once-per-day JSON-state-file
+    gating pattern -- analyze_trade()'s own call chain has no live Kalshi
+    client of its own (unlike every other analysis function in this file,
+    which only ever need forecast data already attached to `enriched`), so
+    this is fetched by a periodic cron task instead and read back
+    client-free by _analyze_hurricane_count_trade(), same division of labor
+    as the hourly-target-hour cache.
+
+    Each KXHURRICANENAMES market is "will storm X become a hurricane in
+    <basin> this year?", one per pre-assigned storm name, settling Yes/No
+    against NHC's real classification -- counts settled "yes" results under
+    event KXHURRICANENAMES-{season_year}DEC01{basin}. season_year is derived
+    from today's UTC date, matching every open count-family market's own
+    current season (these markets don't span a year boundary -- confirmed
+    live: open ~April/May, close ~Dec 1-2 the same calendar year).
+
+    Deliberately scoped to count_type="hurricane" ONLY (confirmed live
+    2026-08-03): this is the one count type with a clean, exact, basin-
+    tagged per-storm-name signal already surfaced by Kalshi's own settled
+    markets. major_hurricane/tropical_storm have no equivalent clean
+    derivation yet -- see backlog.txt's resolution note for why.
+
+    Never raises, never blocks trading -- _get_cached_hurricane_count_to_date
+    below treats a missing/stale cache entry the same way
+    get_hourly_target_hour_role() does (falls back to no tilt, the
+    fail-safe direction: climatology-only)."""
+    try:
+        today = datetime.now(UTC).date().isoformat()
+        season_year = datetime.now(UTC).date().year
+        existing: dict = {}
+        if HURRICANE_COUNT_TO_DATE_PATH.exists():
+            existing = json.loads(HURRICANE_COUNT_TO_DATE_PATH.read_text())
+
+        try:
+            settled = client.get_markets(
+                series_ticker="KXHURRICANENAMES", status="settled"
+            )
+        except Exception as _fetch_exc:
+            _log.debug(
+                "refresh_hurricane_count_to_date: fetch failed (non-fatal): %s",
+                _fetch_exc,
+            )
+            return
+
+        for basin, infix in _HURRICANE_NAMES_BASIN_INFIX.items():
+            if existing.get(basin, {}).get("date") == today:
+                continue  # already refreshed today
+            event_ticker = f"KXHURRICANENAMES-{season_year % 100:02d}DEC01{infix}"
+            matched = [mk for mk in settled if mk.get("event_ticker") == event_ticker]
+            # Opus-review-caught (2026-08-03): an empty `settled` response
+            # (series renamed, event-ticker format changed, or a transient
+            # API-side filter change -- NOT an exception, so the fetch
+            # try/except above doesn't catch it) previously wrote count=0
+            # for every basin, indistinguishable from a real "zero
+            # hurricanes so far" season -- silently tilting the model
+            # toward NO with no signal anything was wrong. Only write a
+            # basin whose event_ticker actually matched at least one
+            # settled market (yes OR no); otherwise leave it unwritten so
+            # _get_cached_hurricane_count_to_date's existing "missing ->
+            # None -> climatology-only" fallback applies instead of a
+            # fabricated zero.
+            if not matched:
+                _log.warning(
+                    "refresh_hurricane_count_to_date: zero settled markets "
+                    "matched event_ticker=%r for basin=%s -- leaving this "
+                    "basin's cache entry unwritten rather than caching a "
+                    "possibly-fabricated 0",
+                    event_ticker,
+                    basin,
+                )
+                continue
+            count = sum(1 for mk in matched if mk.get("result") == "yes")
+            existing[basin] = {
+                "date": today,
+                "season_year": season_year,
+                "count": count,
+            }
+
+        _safe_io.atomic_write_json(existing, HURRICANE_COUNT_TO_DATE_PATH)
+    except Exception as _exc:
+        _log.debug("refresh_hurricane_count_to_date failed (non-fatal): %s", _exc)
+
+
+# Opus-review-caught (2026-08-03): refresh_hurricane_count_to_date writes a
+# `date` field purely for its own once-a-day gate -- the reader below never
+# checked it, so a stalled cron (repeated fetch failures, or the process
+# simply not running for a while) would keep serving an arbitrarily-old
+# count-to-date forever, silently desynchronized from `as_of_month_day`
+# (which _analyze_hurricane_count_trade always derives from TODAY). A tilt
+# combining today's remaining-days baseline with a months-old actual can
+# invert the probability outright (verified: a stale Aug count paired with a
+# real November as_of_month_day flipped P(>7 hurricanes) from 0.99 to 0.01).
+_HURRICANE_COUNT_CACHE_MAX_AGE_DAYS = 2
+
+
+def _get_cached_hurricane_count_to_date(basin: str, season_year: int) -> int | None:
+    """Pure JSON read, no I/O side effect -- refresh_hurricane_count_to_date()
+    above is the only writer. Returns None (falls back to climatology-only,
+    the fail-safe direction) if the cache is missing, doesn't have this
+    basin yet, was written for a different season_year (a stale prior-season
+    entry must never silently tilt the current season's distribution),
+    is corrupt/non-dict, or its `date` is more than
+    _HURRICANE_COUNT_CACHE_MAX_AGE_DAYS old (a stalled refresh job must not
+    silently desynchronize from as_of_month_day -- see the comment above)."""
+    try:
+        if not HURRICANE_COUNT_TO_DATE_PATH.exists():
+            return None
+        cached = json.loads(HURRICANE_COUNT_TO_DATE_PATH.read_text()).get(basin)
+    except Exception as _exc:
+        _log.debug("_get_cached_hurricane_count_to_date: cache read failed: %s", _exc)
+        return None
+    if not isinstance(cached, dict) or cached.get("season_year") != season_year:
+        return None
+    cached_date_str = cached.get("date")
+    if not isinstance(cached_date_str, str):
+        return None
+    try:
+        cached_date = date.fromisoformat(cached_date_str)
+    except ValueError:
+        return None
+    if (
+        datetime.now(UTC).date() - cached_date
+    ).days > _HURRICANE_COUNT_CACHE_MAX_AGE_DAYS:
+        _log.warning(
+            "_get_cached_hurricane_count_to_date: cache for basin=%s is stale "
+            "(date=%s) -- falling back to climatology-only",
+            basin,
+            cached_date_str,
+        )
+        return None
+    count = cached.get("count")
+    if not isinstance(count, int):
+        return None
+    return count
+
+
+def _analyze_hurricane_count_trade(
+    enriched: dict,
+    condition: dict,
+    close_dt: datetime,
+    days_out: int,
+) -> dict | None:
+    """
+    Probability analysis for the 5 season-total hurricane/tropical-storm-
+    count series (backlog.txt "HURRICANE MARKETS" -- season-count model,
+    2026-08-03): KXHURCTOT/KXHURCTOTMAJ/KXTROPSTORM (Atlantic),
+    KXHURRICANE/KXNAMEDSTORM (Eastern + Central Pacific).
+
+    A genuinely different data model from every other market family in this
+    bot: no city, no forecast, no target_date -- just a basin and a count
+    type. The evidence base is NOAA HURDAT2 historical best-track data (a
+    real season-end count per basin per year since 1851/1949), bootstrapped
+    the same "historical remaining + real actual-to-date" way rain/snow's
+    monthly-total models are, via hurricane_climatology.py's
+    season_end_total_distribution -- current_count comes from
+    _get_cached_hurricane_count_to_date, a disk cache refreshed once/day by
+    refresh_hurricane_count_to_date() (this function has no live Kalshi
+    client of its own, same reason get_hourly_target_hour_role() reads a
+    cache rather than fetching live), and is only available for
+    count_type="hurricane" today; major_hurricane/tropical_storm ship
+    climatology-only (no tilt) until a clean per-basin current-count source
+    exists for them too.
+
+    close_dt/days_out are pre-resolved by the caller (analyze_trade's
+    hurricane-count gate), matching every other monthly/hourly analysis
+    function's "caller resolves once, passes down" shape.
+    """
+    import hurricane_climatology as hc
+
+    ticker = enriched.get("ticker", "?")
+    basin = condition["basin"]
+    count_type = condition["count_type"]
+    threshold = condition["threshold"]
+    strike_type = condition["strike_type"]
+    season_year = condition["season_year"]
+
+    storms = hc.load_basin_storms(basin)
+    # Opus-review-caught (2026-08-03): season_end_total_distribution now
+    # iterates an explicit CALENDAR year range (the fix for the CPAC
+    # zero-storm-season bias, see its own docstring) rather than years
+    # derived from `storms` -- which means it always returns exactly
+    # `window_years` entries regardless of whether `storms` has any real
+    # data in it. An empty (but non-None) `storms` list -- e.g. a basin
+    # filter matching nothing across the entire historical record, which
+    # never happens for real data -- would therefore silently produce a
+    # fabricated "every season had 0" distribution instead of being caught
+    # by the `len(totals) < 15` guard further below, which this change makes
+    # otherwise-unreachable. Check separately, here.
+    if not storms:
+        _log.warning(
+            "_analyze_hurricane_count_trade[%s]: HURDAT2 data unavailable for basin=%s",
+            ticker,
+            basin,
+        )
+        return None
+
+    current_count: int | None = None
+    if count_type == "hurricane":
+        current_count = _get_cached_hurricane_count_to_date(basin, season_year)
+
+    _today = datetime.now(UTC).date()
+    as_of_month_day = (_today.month, _today.day) if current_count is not None else None
+    # season_end_total_distribution now always returns exactly
+    # hc.HISTORY_WINDOW_YEARS (30) entries -- it iterates an explicit
+    # calendar range rather than years derived from `storms` (the CPAC
+    # zero-season-bias fix, see that function's own docstring), so a
+    # "len(totals) < 15" check here would be checking a compile-time
+    # constant, not real data availability. The `if not storms` guard above
+    # is what actually catches "no real data" now.
+    totals = hc.season_end_total_distribution(
+        storms,
+        count_type,
+        as_of_month_day=as_of_month_day,
+        current_count=current_count,
+    )
+
+    blended_prob = hc.exceedance_probability(totals, threshold, strike_type)
+    ci_low, ci_high = hc.bootstrap_ci(totals, threshold, strike_type)
+
+    prices = parse_market_price(enriched)
+    market_prob = prices["implied_prob"]
+    rec_side = "yes" if blended_prob > market_prob else "no"
+
+    # Same non-independence caution as rain/snow's own consensus flags
+    # (backlog.txt Step 2 handoff item 6): the climatology base and the
+    # current-count tilt are not two independent sources -- the tilt is a
+    # real-progress nudge on the SAME historical baseline the unconditional
+    # estimate already reflects. Hardcoded False, not computed.
+    consensus = False
+
+    _priced = _price_and_size(
+        blended_prob,
+        prices,
+        condition,
+        rec_side,
+        ci=(ci_low, ci_high),
+        consensus=consensus,
+    )
+    net_edge = _priced["net_edge"]
+    edge = _priced["edge"]
+    entry_side_edge = _priced["entry_side_edge"]
+    fee_kel = _priced["fee_kel"]
+    ci_adj_kelly = _priced["ci_adjusted_kelly"]
+
+    _edge_conf = edge_confidence(days_out, condition_type=condition["type"])
+    adjusted_edge = net_edge * _edge_conf
+
+    return {
+        "forecast_prob": blended_prob,
+        "market_prob": market_prob,
+        "edge": edge,
+        "signal": _edge_label(edge),
+        "net_edge": net_edge,
+        "adjusted_edge": round(adjusted_edge, 6),
+        "edge_confidence_factor": _edge_conf,
+        "net_signal": _edge_label(adjusted_edge),
+        "recommended_side": rec_side,
+        "condition": condition,
+        "ensemble_prob": blended_prob,
+        "nws_prob": None,
+        "clim_prob": None,
+        "clim_adj_prob": None,
+        "obs_prob": None,
+        "live_obs": None,
+        "index_adj": 0.0,
+        "bias_correction": 0.0,
+        "blend_sources": {"hurdat2_climatology": 1.0},
+        "method": "hurricane_count_bootstrap_tilted"
+        if current_count is not None
+        else "hurricane_count_bootstrap",
+        "ensemble_stats": None,
+        "n_members": len(totals),
+        "ci_low": ci_low,
+        "ci_high": ci_high,
+        "ci_width": round(ci_high - ci_low, 4),
+        "kelly": fee_kel,
+        "fee_adjusted_kelly": fee_kel,
+        "ci_adjusted_kelly": ci_adj_kelly,
+        "consensus": consensus,
+        "model_consensus": True,
+        "near_threshold": False,
+        "days_out": days_out,
+        # Synthetic exposure-cap grouping key (backlog.txt Step 2 handoff
+        # item 3's exact "decide deliberately, don't silently bypass the
+        # caps" warning for rain, now applying here too -- there is no real
+        # city at all for this market family). "HUR_<basin>" groups every
+        # count-type/strike sharing one basin+season under one exposure-cap
+        # key, since they're all driven by the same underlying season's
+        # storm activity; different basins get different keys since their
+        # activity is much less correlated. Not added to
+        # _CORRELATED_CITY_GROUPS -- cross-basin correlation is real but
+        # weaker (ENSO-mediated), and left as a known simplification.
+        "city": f"HUR_{basin}",
+        "target_date": close_dt.date().isoformat(),
+        "entry_side_edge": round(entry_side_edge, 4),
+        # Hurricane-specific diagnostics, not read by any shared consumer.
+        "basin": basin,
+        "count_type": count_type,
+        "season_year": season_year,
+        "current_count_to_date": current_count,
+        "n_historical_seasons": len(totals),
+    }
+
+
 def _analyze_hourly_trade(
     enriched: dict,
     condition: dict,
@@ -8719,7 +9307,15 @@ def analyze_trade(
     # matches "Austin" (from "FAUSTO") and its "-T5" suffix parses as a real
     # threshold condition, and unlike monthly rain there's no date-embedded
     # fallback to catch it if this guard weren't here.
-    if is_hurricane_ticker(_tkr_up):
+    # Season-total hurricane/tropical-storm-count markets (backlog.txt
+    # "HURRICANE MARKETS" -- season-count model, 2026-08-03) are a narrow,
+    # explicit carve-out of the blanket guard below -- checked BEFORE it so
+    # these 5 series reach the real model further down instead of being
+    # gated out here. Every other hurricane ticker shape (per-city landfall,
+    # KXHURCAT per-storm category, legacy unprefixed HUR*) still has no
+    # model and falls through to the unconditional guard.
+    _is_hurricane_count = is_hurricane_count_ticker(_tkr_up)
+    if is_hurricane_ticker(_tkr_up) and not _is_hurricane_count:
         _count_gate("hurricane_not_supported")
         return None
     _is_hourly = any(_tkr_up.startswith(_p) for _p in _KXTEMP_HOURLY_CITY)
@@ -8748,7 +9344,12 @@ def analyze_trade(
     _regime_info: dict = {}
     _rain_close_dt: datetime | None = None
     _snow_close_dt: datetime | None = None
-    if not _is_monthly_rain and not _is_monthly_snow and not forecast:
+    if (
+        not _is_monthly_rain
+        and not _is_monthly_snow
+        and not _is_hurricane_count
+        and not forecast
+    ):
         _log.warning(
             "analyze_trade[%s]: gate=no_forecast city=%s date=%s",
             _tkr,
@@ -8761,7 +9362,7 @@ def analyze_trade(
         _log.warning("analyze_trade[%s]: gate=no_date city=%s", _tkr, city)
         _count_gate("no_date")
         return None  # could not parse target date from ticker
-    if not city:
+    if not city and not _is_hurricane_count:
         _log.warning("analyze_trade[%s]: gate=no_city date=%s", _tkr, target_date)
         _count_gate("no_city")
         return None  # unrecognized city in ticker
@@ -8836,13 +9437,30 @@ def analyze_trade(
         return None
 
     coords = CITY_COORDS.get(city)
-    if not coords:
+    if not coords and not _is_hurricane_count:
         _log.warning("analyze_trade[%s]: gate=no_coords city=%s", _tkr, city)
         _count_gate("no_coords")
         return None
 
     # ── Days-out gate: only trade markets expiring within MAX_DAYS_OUT days ──
-    if _is_monthly_rain:
+    if _is_hurricane_count:
+        # target_date parses fine for this ticker family (its "26DEC01"-style
+        # date suffix IS a real embedded date, unlike rain/snow's monthly
+        # ladders) -- reuse the daily "else" branch's target_date-based
+        # computation, just against HURRICANE_MAX_DAYS_OUT instead of
+        # MAX_DAYS_OUT (these markets open ~7-8 months before close).
+        assert target_date is not None
+        _days_out_check = max(0, (target_date - datetime.now(UTC).date()).days)
+        if _days_out_check > HURRICANE_MAX_DAYS_OUT:
+            _log.debug(
+                "analyze_trade[%s]: gate=days_out days=%d max=%d (hurricane_count)",
+                _tkr,
+                _days_out_check,
+                HURRICANE_MAX_DAYS_OUT,
+            )
+            _count_gate("days_out")
+            return None
+    elif _is_monthly_rain:
         # _rain_close_dt was already resolved (non-None) by the past-close
         # check above -- reuse it rather than re-parsing close_time again.
         assert _rain_close_dt is not None
@@ -8976,7 +9594,11 @@ def analyze_trade(
         return None
 
     # ── Time-of-day risk assessment ──────────────────────────────────────────
-    _tz = coords[2] if len(coords) > 2 else "UTC"
+    # coords is None for hurricane-count tickers (no_coords gate above is
+    # bypassed for _is_hurricane_count -- see that gate's own comment) --
+    # "UTC" is a reasonable default for a market with no single local
+    # timezone (basin-wide, not city-keyed) and no same-day settlement risk.
+    _tz = coords[2] if coords and len(coords) > 2 else "UTC"
     time_risk_label, sigma_mult = _time_risk(enriched.get("close_time", ""), _tz)
 
     # ── Hourly-directional fast-path (backlog.txt "HOURLY-DIRECTIONAL
@@ -8998,9 +9620,13 @@ def analyze_trade(
         # no_forecast/no_date gates above already guarantee both are real
         # for it. Safe unconditionally: this block never executes for a
         # rain/snow ticker (whose forecast/target_date genuinely are None),
-        # since _is_hourly is False for those.
+        # since _is_hourly is False for those. city/coords are asserted too --
+        # the no_coords gate above only bypasses for _is_hurricane_count,
+        # which is mutually exclusive with _is_hourly the same way.
         assert forecast is not None
         assert target_date is not None
+        assert city is not None
+        assert coords is not None
         condition["var"] = _hourly_var_role
         assert (
             hour is not None
@@ -9019,9 +9645,11 @@ def analyze_trade(
         # Same mutual-exclusion reasoning as the hourly block above: this
         # condition type is never produced for a KXRAIN*M ticker (see the
         # precip_month_total branch in _parse_market_condition()), so
-        # forecast/target_date are guaranteed real here too.
+        # forecast/target_date are guaranteed real here too -- coords too,
+        # same reasoning as the hourly block's own assert above.
         assert forecast is not None
         assert target_date is not None
+        assert coords is not None
         result = _analyze_precip_trade(
             enriched, forecast, condition, target_date, coords
         )
@@ -9034,6 +9662,7 @@ def analyze_trade(
     if condition["type"] == "precip_snow":
         assert forecast is not None
         assert target_date is not None
+        assert coords is not None
         result = _analyze_snow_trade(enriched, forecast, condition, target_date, coords)
         if result is not None:
             result["time_risk"] = time_risk_label
@@ -9049,6 +9678,8 @@ def analyze_trade(
     # accumulation total (same ordering hazard hourly Step 2 already found).
     if condition["type"] == "precip_month_total":
         assert _rain_close_dt is not None  # guaranteed by the past-close gate above
+        assert city is not None
+        assert coords is not None
         result = _analyze_monthly_rain_trade(
             enriched, condition, city, coords, _rain_close_dt, _days_out_check
         )
@@ -9062,6 +9693,8 @@ def analyze_trade(
     # Same ordering reasoning as the rain fast-path just above.
     if condition["type"] == "snow_month_total":
         assert _snow_close_dt is not None  # guaranteed by the past-close gate above
+        assert city is not None
+        assert coords is not None
         result = _analyze_monthly_snow_trade(
             enriched, condition, city, coords, _snow_close_dt, _days_out_check
         )
@@ -9070,14 +9703,40 @@ def analyze_trade(
             result["edge_calc_version"] = EDGE_CALC_VERSION
         return result
 
-    # Narrowing for mypy: every branch that could leave target_date/forecast
-    # falsy (_is_monthly_rain=True or _is_monthly_snow=True) has already
-    # returned above (hourly/precip/snow-ice/rain/snow-ladder fast-paths);
-    # everything from here to the end of this function is the daily-only
-    # pipeline, where the no_date/no_forecast gates already guarantee both
-    # are truthy. Never reassigned below.
+    # ── Season-total hurricane/tropical-storm-count fast-path (backlog.txt
+    # "HURRICANE MARKETS" -- season-count model, 2026-08-03) ─────────────────
+    # Must sit here too, before the "everything below assumes forecast is
+    # non-None" narrowing comment/asserts just below -- this ticker family
+    # has no city, so forecast is always None (enrich_with_forecast() has no
+    # coords to fetch a forecast for).
+    if condition["type"] == "hurricane_count":
+        _hur_close_dt = _safe_parse_close_time(enriched.get("close_time", ""))
+        if _hur_close_dt is None:
+            _log.warning("analyze_trade[%s]: gate=hurricane_count_no_close_time", _tkr)
+            _count_gate("hurricane_count_no_close_time")
+            return None
+        result = _analyze_hurricane_count_trade(
+            enriched, condition, _hur_close_dt, _days_out_check
+        )
+        if result is not None:
+            result["time_risk"] = time_risk_label
+            result["edge_calc_version"] = EDGE_CALC_VERSION
+        return result
+
+    # Narrowing for mypy: every branch that could leave forecast falsy
+    # (_is_monthly_rain=True, _is_monthly_snow=True, or _is_hurricane_count=True,
+    # the last of which also has no real city/coords) has already returned
+    # above (hourly/precip/snow-ice/rain/snow-ladder/hurricane-count
+    # fast-paths); everything from here to the end of this function is the
+    # daily-only pipeline, where the no_date/no_forecast gates already
+    # guarantee both target_date and forecast are truthy. Never reassigned
+    # below. city/coords are asserted too -- the no_coords gate above only
+    # bypasses for _is_hurricane_count, which has already returned by this
+    # point (its own fast-path), so both are real here.
     assert target_date is not None
     assert forecast is not None
+    assert city is not None
+    assert coords is not None
 
     # ── METAR same-day lock-in check ─────────────────────────────────────────
     # After 2 PM local time, if METAR confirms the outcome, skip slow ensemble.

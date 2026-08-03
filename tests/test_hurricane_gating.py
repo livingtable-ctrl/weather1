@@ -76,12 +76,25 @@ class TestAnalyzeTradeHurricaneGating:
         assert wm.analyze_trade(m) is None
         assert wm.get_gate_counts().get("hurricane_not_supported") == 1
 
-    def test_hurricane_count_ticker_gates_out_explicitly(self):
+    def test_hurricane_count_ticker_no_longer_blanket_gated(self):
+        """backlog.txt "HURRICANE MARKETS" -- season-count model (2026-08-03):
+        KXHURCTOT now has a real model (_analyze_hurricane_count_trade) and
+        is explicitly carved out of the blanket guard below -- this ticker
+        must NOT hit hurricane_not_supported anymore. fetch_forecast=False
+        keeps this test network-free (no real forecast/HURDAT2 fetch); a
+        bare enriched dict has no floor_strike, so it reaches
+        condition_parse instead -- see tests/test_hurricane_markets.py for
+        full model coverage with mocked climatology data."""
         import weather_markets as wm
 
+        enriched = wm.enrich_with_forecast(
+            {"ticker": "KXHURCTOT-26DEC01-T9"}, fetch_forecast=False
+        )
         wm.reset_gate_counts()
-        assert wm.analyze_trade({"ticker": "KXHURCTOT-26DEC01-T9"}) is None
-        assert wm.get_gate_counts().get("hurricane_not_supported") == 1
+        assert wm.analyze_trade(enriched) is None
+        counts = wm.get_gate_counts()
+        assert counts.get("hurricane_not_supported") is None
+        assert counts.get("condition_parse") == 1
 
     def test_daily_high_ticker_unaffected(self):
         """Regression control: an ordinary daily HIGH ticker must still
@@ -115,14 +128,22 @@ class TestAnalyzeTradeHurricaneGating:
         wm.analyze_trade({"ticker": "KXSNOWSTORM-26DEC01"})
         assert wm.get_gate_counts().get("hurricane_not_supported") is None
 
-    def test_kxtropstorm_gates_out(self):
+    def test_kxtropstorm_no_longer_blanket_gated(self):
         """Live-confirmed real ticker with 8 open markets as of 2026-07-26
-        -- the original "KXHUR"-only guard missed this entirely."""
+        -- the original "KXHUR"-only guard missed this entirely. Now one of
+        the 5 season-count series with a real model (2026-08-03) -- same
+        updated expectation as test_hurricane_count_ticker_no_longer_blanket_
+        gated above."""
         import weather_markets as wm
 
+        enriched = wm.enrich_with_forecast(
+            {"ticker": "KXTROPSTORM-26DEC01-T30"}, fetch_forecast=False
+        )
         wm.reset_gate_counts()
-        assert wm.analyze_trade({"ticker": "KXTROPSTORM-26DEC01-T30"}) is None
-        assert wm.get_gate_counts().get("hurricane_not_supported") == 1
+        assert wm.analyze_trade(enriched) is None
+        counts = wm.get_gate_counts()
+        assert counts.get("hurricane_not_supported") is None
+        assert counts.get("condition_parse") == 1
 
     def test_kxfirsthurricane_gates_out(self):
         """Live-confirmed real ticker with 53 open markets as of 2026-07-26
@@ -133,12 +154,24 @@ class TestAnalyzeTradeHurricaneGating:
         assert wm.analyze_trade({"ticker": "KXFIRSTHURRICANE-26"}) is None
         assert wm.get_gate_counts().get("hurricane_not_supported") == 1
 
-    def test_kxnamedstorm_gates_out(self):
+    def test_kxnamedstorm_no_longer_blanket_gated(self):
+        """Now one of the 5 season-count series with a real model
+        (2026-08-03) -- same updated expectation as the two tests above.
+        Note this ticker ("KXNAMEDSTORM-26") has no embedded date, unlike
+        the other 4 series' real tickers -- parse_city_date() can't resolve
+        a target_date from it, so this hits no_date instead of
+        condition_parse (still proves hurricane_not_supported no longer
+        fires, which is this test's point)."""
         import weather_markets as wm
 
+        enriched = wm.enrich_with_forecast(
+            {"ticker": "KXNAMEDSTORM-26"}, fetch_forecast=False
+        )
         wm.reset_gate_counts()
-        assert wm.analyze_trade({"ticker": "KXNAMEDSTORM-26"}) is None
-        assert wm.get_gate_counts().get("hurricane_not_supported") == 1
+        assert wm.analyze_trade(enriched) is None
+        counts = wm.get_gate_counts()
+        assert counts.get("hurricane_not_supported") is None
+        assert counts.get("no_date") == 1
 
     def test_legacy_unprefixed_hur_ticker_gates_out(self):
         """The exact reproduction case the second opus review found live:

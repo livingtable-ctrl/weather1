@@ -274,6 +274,12 @@ RAIN_MAX_DAYS_OUT = int(os.getenv("RAIN_MAX_DAYS_OUT", "31"))
 # once real shadow data exists, matching this codebase's existing precedent
 # of per-market-type constants rather than a generalized one.
 SNOW_MAX_DAYS_OUT = int(os.getenv("SNOW_MAX_DAYS_OUT", "31"))
+# backlog.txt "HURRICANE MARKETS" -- season-count model: these markets open
+# ~April/May and close ~Dec 1-2, so days_out at the earliest tradeable point
+# is close to a full season (confirmed live 2026-08-03: KXHURCTOT's
+# open_time was 2026-04-01, close_time 2026-12-02 -- a ~245-day window).
+# 260 gives headroom above that without being unbounded.
+HURRICANE_MAX_DAYS_OUT = int(os.getenv("HURRICANE_MAX_DAYS_OUT", "260"))
 MAX_POSITION_AGE_DAYS = int(os.getenv("MAX_POSITION_AGE_DAYS", "7"))
 
 # #120: Betting strategy — kelly | fixed_pct | fixed_dollars

@@ -39,12 +39,14 @@ from weather_markets import (
     _KXSNOW_MONTHLY_CITY,
     _KXTEMP_HOURLY_CITY,
     _hourly_gates_active,
+    _hurricane_count_gates_active,
     _rain_gates_active,
     _snow_gates_active,
     _var_from_ticker_prefix,
     analyze_trade,
     enrich_with_forecast,
     get_weather_markets,
+    is_hurricane_count_ticker,
     parse_market_price,
 )
 
@@ -2817,6 +2819,16 @@ def _auto_place_trades(
             _n_shadow = _log_shadow_predictions([item], live=live)
             _skip_reasons.append(
                 f"{ticker}: snow_shadow_only(logged={bool(_n_shadow)})"
+            )
+            continue
+
+        # Hurricane-season-count shadow-only rollout (backlog.txt "HURRICANE
+        # MARKETS" -- season-count model, 2026-08-03). Same per-ticker (not
+        # per-batch) shape as rain's/snow's branches just above.
+        if is_hurricane_count_ticker(ticker) and not _hurricane_count_gates_active():
+            _n_shadow = _log_shadow_predictions([item], live=live)
+            _skip_reasons.append(
+                f"{ticker}: hurricane_count_shadow_only(logged={bool(_n_shadow)})"
             )
             continue
 
