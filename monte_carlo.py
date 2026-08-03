@@ -12,6 +12,7 @@ from datetime import UTC
 from pathlib import Path
 
 import safe_io
+from paths import CORRELATIONS_PATH
 from utils import utc_today as _utc_today
 
 _log = logging.getLogger(__name__)
@@ -103,7 +104,7 @@ _dynamic_corr_cache: dict[frozenset, float] | None = None
 _dynamic_corr_loaded: bool = False
 
 # #49: Path for backtest-derived correlation file (distinct from learned_correlations.json)
-_CORR_PATH: Path = Path(__file__).parent / "data" / "correlations.json"
+_CORR_PATH: Path = CORRELATIONS_PATH
 
 
 def load_correlations_from_backtest() -> dict:
@@ -156,9 +157,10 @@ def _load_dynamic_correlations() -> dict[frozenset, float] | None:
     Returns None if the file is absent, empty, or malformed.
     """
     import json
-    from pathlib import Path
 
-    path = Path(__file__).parent / "data" / "learned_correlations.json"
+    from paths import LEARNED_CORRELATIONS_PATH
+
+    path = LEARNED_CORRELATIONS_PATH
     if not path.exists():
         return None
     try:

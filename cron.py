@@ -23,11 +23,23 @@ import execution_log
 from colors import bold, cyan, dim, green, red, yellow
 from kalshi_client import KalshiClient
 from paths import (
+    CRON_HEARTBEAT_PATH,
+    CRON_LAST_RUN_PATH,
+    DATA_DIR,
+    EMOS_PARAMS_PATH,
+    GRADUATED_FLAG_PATH,
     KILL_SWITCH_PATH,
+    LAST_CALIBRATION_COUNT_PATH,
+    LAST_ML_RETRAIN_PATH,
+    LAST_MONDAY_SWEEP_PATH,
+    LAST_PARAM_SWEEP_PATH,
+    LAST_WALK_FORWARD_PATH,
+    LAST_WEIGHTS_REFRESH_PATH,
     LOCK_PATH,
     MANUAL_OVERRIDE_PATH,
     PROD_REMINDER_PATH,
     RUNNING_FLAG_PATH,
+    SIGNALS_CACHE_PATH,
 )
 from utils import (
     DRIFT_TIGHTEN_EDGE,
@@ -608,7 +620,7 @@ def _cmd_cron_body(
     # .cron_last_run is written in the cmd_cron finally block on every completion, so a
     # gap > 48h means the process was stopped or crashing for at least two days.
     try:
-        _last_run_path = Path(__file__).parent / "data" / ".cron_last_run"
+        _last_run_path = CRON_LAST_RUN_PATH
         if _last_run_path.exists():
             import time as _gap_time
 
@@ -728,7 +740,7 @@ def _cmd_cron_body(
     # EMOS readiness reminder: print until emos_params.json exists (training done).
     # Reminds operator to run backfill-emos and, once ~40 rows accumulated, emos-train.
     # 40 = Gneiting 2005 minimum: 10 forecast cases per parameter × 4 EMOS parameters.
-    _EMOS_PARAMS_PATH = Path(__file__).parent / "data" / "emos_params.json"
+    _EMOS_PARAMS_PATH = EMOS_PARAMS_PATH
     if not _EMOS_PARAMS_PATH.exists():
         try:
             from tracker import count_emos_ready_predictions
@@ -765,7 +777,7 @@ def _cmd_cron_body(
     # the marker will be ≥14 days old and the sweep fires normally.
     from utils import utc_today as _utc_today
 
-    _MONDAY_SWEEP_PATH = Path(__file__).parent / "data" / ".last_monday_sweep"
+    _MONDAY_SWEEP_PATH = LAST_MONDAY_SWEEP_PATH
     if _utc_today().weekday() == 0:  # Monday UTC
         _sweep_age = (
             (datetime.now(UTC).timestamp() - _MONDAY_SWEEP_PATH.stat().st_mtime) / 86400
@@ -1299,7 +1311,7 @@ def _cmd_cron_body(
 
     # Write rich signals cache for the web dashboard
     try:
-        cache_path = Path(__file__).parent / "data" / "signals_cache.json"
+        cache_path = SIGNALS_CACHE_PATH
         above_threshold = [s for s in signals_cache if s.get("passes_threshold", True)]
         strong = [s for s in above_threshold if "STRONG" in s["signal"]]
         low_risk = [s for s in strong if s["time_risk"] == "LOW"]
@@ -1503,7 +1515,7 @@ def _cmd_cron_body(
         import os as _os_cal
 
         if not _os_cal.environ.get("PYTEST_CURRENT_TEST"):
-            _cal_sentinel = Path(__file__).parent / "data" / ".last_calibration_count"
+            _cal_sentinel = LAST_CALIBRATION_COUNT_PATH
             import tracker as _tracker_cal
 
             _current_settled = _tracker_cal.count_settled_predictions()
@@ -1524,7 +1536,7 @@ def _cmd_cron_body(
                 )
                 from calibration import calibrate_and_save as _cal_and_save
 
-                _data_dir = Path(__file__).parent / "data"
+                _data_dir = DATA_DIR
                 try:
                     import weather_markets as _wm_cal
 
@@ -1811,7 +1823,7 @@ def _cmd_cron_body(
         msg = ", ".join(parts) if parts else "No signals today"
 
         # Graduation alert — fires once when all criteria are first met
-        _grad_flag = Path(__file__).parent / "data" / "graduated.flag"
+        _grad_flag = GRADUATED_FLAG_PATH
         try:
             from paper import graduation_check as _grad_check
 
@@ -1841,7 +1853,7 @@ def _cmd_cron_body(
 
     # D5: Weekly — retrain ML bias model as new settled trades accumulate.
     # Uses a marker file instead of exact-hour matching so scheduled runs never miss.
-    _LAST_ML_RETRAIN_PATH = Path(__file__).parent / "data" / ".last_ml_retrain"
+    _LAST_ML_RETRAIN_PATH = LAST_ML_RETRAIN_PATH
     _should_retrain = False  # declared before try so finally can read it
     try:
         import os as _os_tb
@@ -1936,7 +1948,7 @@ def _cmd_cron_body(
     # to fire on every cron cycle.  The gate file always advances after the attempt.
     # Note: the prewarm for this run already completed, so freshened weights take
     # effect on the *next* cron run — unavoidable without restructuring the flow.
-    _WEIGHTS_GATE_PATH = Path(__file__).parent / "data" / ".last_weights_refresh"
+    _WEIGHTS_GATE_PATH = LAST_WEIGHTS_REFRESH_PATH
     _should_refresh_weights = False  # declared before try so finally can read it
     try:
         import os as _os_lw
@@ -1992,7 +2004,7 @@ def _cmd_cron_body(
     # run after 7 days regardless of when the bot is running — the exact-hour check
     # fired multiple times per hour if cron ran every 15 min, and never fired if the
     # bot wasn't running at Sunday 03:00 UTC.
-    _LAST_SWEEP_PATH = Path(__file__).parent / "data" / ".last_param_sweep"
+    _LAST_SWEEP_PATH = LAST_PARAM_SWEEP_PATH
     try:
         import os as _os_sweep
 
@@ -2043,7 +2055,7 @@ def _cmd_cron_body(
     # walk-forward`/`wfbt` — found 2026-07-05 sitting 11 days stale with no
     # automated refresh, unlike the param sweep above it in this same function.
     # Same marker-file gate pattern as the sweep, same 7-day cadence.
-    _LAST_WF_PATH = Path(__file__).parent / "data" / ".last_walk_forward"
+    _LAST_WF_PATH = LAST_WALK_FORWARD_PATH
     try:
         import os as _os_wf
 
@@ -2276,7 +2288,7 @@ def cmd_cron(
                 _active_ws = None
             ctx.clear_cron_running_flag()
             try:
-                _last_run_path = Path(__file__).parent / "data" / ".cron_last_run"
+                _last_run_path = CRON_LAST_RUN_PATH
                 # L-1: write UTC timestamp — naive local time is inconsistent with all
                 # other system timestamps and produces wrong elapsed-time calculations.
                 _now_iso = (
@@ -2288,7 +2300,7 @@ def cmd_cron(
             except Exception:
                 pass
             try:
-                _hb_path = Path(__file__).parent / "data" / "cron_heartbeat.json"
+                _hb_path = CRON_HEARTBEAT_PATH
                 try:
                     _cycle = (
                         json.loads(_hb_path.read_text()).get("cycle_count", 0) + 1

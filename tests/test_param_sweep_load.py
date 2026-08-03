@@ -24,10 +24,14 @@ class TestLoadSweptMinEdge(unittest.TestCase):
         self._tmp.cleanup()
 
     def _load(self, min_trades: int = 10):
-        import config
+        import param_sweep
         from param_sweep import load_swept_min_edge
 
-        with patch.object(config, "_DATA_DIR", Path(self.tmp)):
+        with patch.object(
+            param_sweep,
+            "PARAM_SWEEP_RESULTS_PATH",
+            Path(self.tmp) / "param_sweep_results.json",
+        ):
             return load_swept_min_edge(min_trades=min_trades)
 
     def test_returns_none_when_file_missing(self):

@@ -152,9 +152,15 @@ class TestPaperMinEdgeWarning:
         wf.write_text(json.dumps({"optimal_min_edge": 0.08}))
 
         import config
+        import param_sweep
 
         with (
             patch.object(config, "_DATA_DIR", tmp_path),
+            patch.object(
+                param_sweep,
+                "PARAM_SWEEP_RESULTS_PATH",
+                tmp_path / "param_sweep_results.json",
+            ),
             caplog.at_level(logging.WARNING, logger="config"),
         ):
             val = config._paper_min_edge_default()
@@ -168,10 +174,16 @@ class TestPaperMinEdgeWarning:
         """No file warning when PAPER_MIN_EDGE is set via env var."""
 
         import config
+        import param_sweep
 
         with (
             patch.dict("os.environ", {"PAPER_MIN_EDGE": "0.06"}),
             patch.object(config, "_DATA_DIR", tmp_path),
+            patch.object(
+                param_sweep,
+                "PARAM_SWEEP_RESULTS_PATH",
+                tmp_path / "param_sweep_results.json",
+            ),
             caplog.at_level(logging.WARNING, logger="config"),
         ):
             val = config._paper_min_edge_default()
@@ -182,10 +194,16 @@ class TestPaperMinEdgeWarning:
     def test_no_warning_when_no_file_exists(self, tmp_path, caplog):
         """No warning when neither file nor env var — returns hardcoded 0.05."""
         import config
+        import param_sweep
 
         with (
             patch.dict("os.environ", {}, clear=True),
             patch.object(config, "_DATA_DIR", tmp_path),
+            patch.object(
+                param_sweep,
+                "PARAM_SWEEP_RESULTS_PATH",
+                tmp_path / "param_sweep_results.json",
+            ),
             caplog.at_level(logging.WARNING, logger="config"),
         ):
             # Remove PAPER_MIN_EDGE from env if set
@@ -203,9 +221,15 @@ class TestPaperMinEdgeWarning:
         wf.write_text(json.dumps({"optimal_min_edge": 0.03}))
 
         import config
+        import param_sweep
 
         with (
             patch.object(config, "_DATA_DIR", tmp_path),
+            patch.object(
+                param_sweep,
+                "PARAM_SWEEP_RESULTS_PATH",
+                tmp_path / "param_sweep_results.json",
+            ),
             caplog.at_level(logging.WARNING, logger="config"),
         ):
             val = config._paper_min_edge_default()
@@ -219,12 +243,20 @@ class TestPaperMinEdgeWarning:
         import os
 
         import config
+        import param_sweep
 
         wf = tmp_path / "walk_forward_params.json"
         wf.write_text(json.dumps({"optimal_min_edge": 0.06}))
         same_mtime = wf.stat().st_mtime
 
-        with patch.object(config, "_DATA_DIR", tmp_path):
+        with (
+            patch.object(config, "_DATA_DIR", tmp_path),
+            patch.object(
+                param_sweep,
+                "PARAM_SWEEP_RESULTS_PATH",
+                tmp_path / "param_sweep_results.json",
+            ),
+        ):
             val1 = config._paper_min_edge_default()
             assert val1 == pytest.approx(0.06)
 
@@ -246,9 +278,17 @@ class TestPaperMinEdgeWarning:
         per-market hot path and must not crash the whole watch/watch --auto
         process."""
         import config
+        import param_sweep
 
         # tmp_path is empty — walk_forward_params.json was never created here.
-        with patch.object(config, "_DATA_DIR", tmp_path):
+        with (
+            patch.object(config, "_DATA_DIR", tmp_path),
+            patch.object(
+                param_sweep,
+                "PARAM_SWEEP_RESULTS_PATH",
+                tmp_path / "param_sweep_results.json",
+            ),
+        ):
             # Must not raise, even though the file has never existed.
             val = config._paper_min_edge_default()
         assert val == pytest.approx(0.05)

@@ -2509,19 +2509,17 @@ class TestLearnedWeightsTTL:
         eight_days_ago = time.time() - 8 * 86400
 
         orig = wm._LEARNED_WEIGHTS
+        orig_path = wm.LEARNED_WEIGHTS_PATH
+        orig_warned = wm._LEARNED_WEIGHTS_TTL_WARNED
         wm._LEARNED_WEIGHTS = {}
+        wm.LEARNED_WEIGHTS_PATH = weights_file
         try:
-            with (
-                patch("weather_markets.os.path.getmtime", return_value=eight_days_ago),
-                patch("weather_markets.Path") as mock_path_cls,
-            ):
-                # Path(__file__).parent / "data" / "learned_weights.json"
-                mock_path_inst = mock_path_cls.return_value.parent.__truediv__.return_value.__truediv__.return_value
-                mock_path_inst.exists.return_value = True
-                mock_path_inst.read_text.return_value = json.dumps(fake_weights)
+            with patch("weather_markets.os.path.getmtime", return_value=eight_days_ago):
                 result = wm.load_learned_weights()
         finally:
             wm._LEARNED_WEIGHTS = orig
+            wm.LEARNED_WEIGHTS_PATH = orig_path
+            wm._LEARNED_WEIGHTS_TTL_WARNED = orig_warned
 
         assert result == {}, f"Expected {{}} for stale file, got {result!r}"
 
@@ -2539,19 +2537,15 @@ class TestLearnedWeightsTTL:
         one_day_ago = time.time() - 1 * 86400
 
         orig = wm._LEARNED_WEIGHTS
+        orig_path = wm.LEARNED_WEIGHTS_PATH
         wm._LEARNED_WEIGHTS = {}
+        wm.LEARNED_WEIGHTS_PATH = weights_file
         try:
-            with (
-                patch("weather_markets.os.path.getmtime", return_value=one_day_ago),
-                patch("weather_markets.Path") as mock_path_cls,
-            ):
-                # Path(__file__).parent / "data" / "learned_weights.json"
-                mock_path_inst = mock_path_cls.return_value.parent.__truediv__.return_value.__truediv__.return_value
-                mock_path_inst.exists.return_value = True
-                mock_path_inst.read_text.return_value = json.dumps(fake_weights)
+            with patch("weather_markets.os.path.getmtime", return_value=one_day_ago):
                 result = wm.load_learned_weights()
         finally:
             wm._LEARNED_WEIGHTS = orig
+            wm.LEARNED_WEIGHTS_PATH = orig_path
 
         assert result == fake_weights, (
             f"Expected weights dict for fresh file, got {result!r}"
@@ -2628,16 +2622,10 @@ class TestLearnedWeightsValidation:
         orig_lw = wm._LEARNED_WEIGHTS
         wm._LEARNED_WEIGHTS = {}
 
-        original_truediv = type(tmp_path).__truediv__
-
-        def redirect_path(self, other):
-            result = original_truediv(self, other)
-            if str(other) == "learned_weights.json":
-                return tmp_path / "learned_weights.json"
-            return result
-
         try:
-            monkeypatch.setattr(wm, "Path", lambda *args, **kwargs: tmp_path)
+            monkeypatch.setattr(
+                wm, "LEARNED_WEIGHTS_PATH", tmp_path / "learned_weights.json"
+            )
             # Just verify validation passes by checking _LEARNED_WEIGHTS is updated
             import unittest.mock as _mock
 
@@ -2653,7 +2641,7 @@ class TestLearnedWeightsValidation:
         finally:
             wm._LEARNED_WEIGHTS = orig_lw
 
-    def test_load_rejects_float_city_values(self, monkeypatch):
+    def test_load_rejects_float_city_values(self, tmp_path):
         """load_learned_weights must return {} and delete corrupt file with float city values."""
         import json
         import time
@@ -2662,27 +2650,26 @@ class TestLearnedWeightsValidation:
         import weather_markets as wm
 
         corrupt = {"NYC": 0.72}
+        weights_file = tmp_path / "learned_weights.json"
+        weights_file.write_text(json.dumps(corrupt))
         orig_lw = wm._LEARNED_WEIGHTS
+        orig_path = wm.LEARNED_WEIGHTS_PATH
         wm._LEARNED_WEIGHTS = {}
+        wm.LEARNED_WEIGHTS_PATH = weights_file
         try:
-            with (
-                patch(
-                    "weather_markets.os.path.getmtime", return_value=time.time() - 3600
-                ),
-                patch("weather_markets.Path") as mock_path_cls,
+            with patch(
+                "weather_markets.os.path.getmtime", return_value=time.time() - 3600
             ):
-                mock_inst = mock_path_cls.return_value.parent.__truediv__.return_value.__truediv__.return_value
-                mock_inst.exists.return_value = True
-                mock_inst.read_text.return_value = json.dumps(corrupt)
                 result = wm.load_learned_weights()
         finally:
             wm._LEARNED_WEIGHTS = orig_lw
+            wm.LEARNED_WEIGHTS_PATH = orig_path
 
         assert result == {}, (
             f"load_learned_weights must return {{}} for corrupt float values, got {result!r}"
         )
 
-    def test_load_rejects_non_positive_weights(self, monkeypatch):
+    def test_load_rejects_non_positive_weights(self, tmp_path):
         """load_learned_weights must return {} when any weight is <= 0."""
         import json
         import time
@@ -2691,21 +2678,20 @@ class TestLearnedWeightsValidation:
         import weather_markets as wm
 
         bad = {"NYC": {"gfs_seamless": 0.0, "ecmwf_ifs025": 1.5}}
+        weights_file = tmp_path / "learned_weights.json"
+        weights_file.write_text(json.dumps(bad))
         orig_lw = wm._LEARNED_WEIGHTS
+        orig_path = wm.LEARNED_WEIGHTS_PATH
         wm._LEARNED_WEIGHTS = {}
+        wm.LEARNED_WEIGHTS_PATH = weights_file
         try:
-            with (
-                patch(
-                    "weather_markets.os.path.getmtime", return_value=time.time() - 3600
-                ),
-                patch("weather_markets.Path") as mock_path_cls,
+            with patch(
+                "weather_markets.os.path.getmtime", return_value=time.time() - 3600
             ):
-                mock_inst = mock_path_cls.return_value.parent.__truediv__.return_value.__truediv__.return_value
-                mock_inst.exists.return_value = True
-                mock_inst.read_text.return_value = json.dumps(bad)
                 result = wm.load_learned_weights()
         finally:
             wm._LEARNED_WEIGHTS = orig_lw
+            wm.LEARNED_WEIGHTS_PATH = orig_path
 
         assert result == {}, (
             f"load_learned_weights must return {{}} for non-positive weights, got {result!r}"

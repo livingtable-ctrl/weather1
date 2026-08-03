@@ -38,7 +38,9 @@ from kalshi_client import KalshiClient, _request_with_retry
 from nws import fetch_nbm_forecast, get_live_observation, nws_prob, obs_prob
 from paths import (
     CITY_REGISTRY_REPORT_PATH,
+    DATA_DIR,
     HOURLY_TARGET_HOURS_PATH,
+    LEARNED_WEIGHTS_PATH,
     RETIREMENT_PROBATION_PATH,
     SERIES_DRIFT_PATH,
 )
@@ -835,7 +837,7 @@ _MARKETS_CACHE_TTL = 60  # 60 seconds
 
 
 def _cal_weights_mtime(name: str) -> float | None:
-    p = Path(__file__).parent / "data" / name
+    p = DATA_DIR / name
     try:
         return p.stat().st_mtime if p.exists() else None
     except OSError:
@@ -2874,7 +2876,7 @@ def load_learned_weights() -> dict[str, dict[str, float]]:
     if _LEARNED_WEIGHTS and _LEARNED_WEIGHTS_MTIME is None:
         return _LEARNED_WEIGHTS
 
-    path = Path(__file__).parent / "data" / "learned_weights.json"
+    path = LEARNED_WEIGHTS_PATH
     if not path.exists():
         return {}
     mtime = os.path.getmtime(path)
@@ -2978,7 +2980,7 @@ def save_learned_weights(weights: dict) -> None:
             )
             return
 
-    path = Path(__file__).parent / "data" / "learned_weights.json"
+    path = LEARNED_WEIGHTS_PATH
     path.parent.mkdir(exist_ok=True)
     fd, tmp = _tmp.mkstemp(dir=path.parent, prefix=".lw_", suffix=".json")
     try:

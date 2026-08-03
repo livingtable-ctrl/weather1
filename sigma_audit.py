@@ -21,7 +21,8 @@ from __future__ import annotations
 
 import math
 import sqlite3
-from pathlib import Path
+
+from paths import DB_PATH as _DB
 
 try:
     from scipy.optimize import brentq
@@ -44,14 +45,6 @@ except ImportError:
             else:
                 a = mid
         return (a + b) / 2
-
-
-_DB = Path(__file__).parent / "data" / "predictions.db"
-# Also try parent project directory (when running from a git worktree)
-if not _DB.exists():
-    _DB = Path(__file__).parent.parent.parent / "data" / "predictions.db"
-if not _DB.exists():
-    _DB = Path("C:/Users/thesa/claude kalshi/data/predictions.db")
 
 
 def _forecast_prob(

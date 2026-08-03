@@ -9,7 +9,8 @@ from __future__ import annotations
 
 import json
 import logging
-from pathlib import Path
+
+from paths import PARAM_SWEEP_RESULTS_PATH
 
 _log = logging.getLogger(__name__)
 
@@ -105,9 +106,7 @@ def load_swept_min_edge(min_trades: int = 10) -> float | None:
     Returns None when the file is absent or no threshold meets the sample floor.
     """
     try:
-        import config as _config
-
-        out_path = _config._DATA_DIR / "param_sweep_results.json"
+        out_path = PARAM_SWEEP_RESULTS_PATH
         if not out_path.exists():
             return None
         data = json.loads(out_path.read_text())
@@ -215,7 +214,7 @@ def run_sweep(trades: list[dict] | None = None) -> dict:
 
     # Save results only when every param cleared the holdout bar
     if should_save:
-        out_path = Path(__file__).parent / "data" / "param_sweep_results.json"
+        out_path = PARAM_SWEEP_RESULTS_PATH
         import safe_io
 
         try:

@@ -22,6 +22,20 @@ from flask import Response
 from flask import request as _flask_request
 from markupsafe import escape as _html_escape
 
+from paths import (
+    CRON_HEARTBEAT_PATH,
+    CRON_LAST_RUN_PATH,
+    DATA_DIR,
+    KILL_SWITCH_PATH,
+    LAST_CALIBRATION_COUNT_PATH,
+    LAST_ML_RETRAIN_PATH,
+    LOCK_PATH,
+    PAPER_TRADES_PATH,
+    RUNNING_FLAG_PATH,
+    SIGNALS_CACHE_PATH,
+    TEMPERATURE_SCALE_PATH,
+)
+
 _log = logging.getLogger(__name__)
 
 
@@ -60,7 +74,7 @@ def _require_auth(f):
 _app = None  # module-level Flask app
 _client = None  # module-level Kalshi client reference
 
-_KS_PATH: Path = Path(__file__).parent / "data" / ".kill_switch"
+_KS_PATH: Path = KILL_SWITCH_PATH
 
 _RANGE_DAYS = {"1mo": 30, "3mo": 90, "1yr": 365}
 _DEFAULT_HISTORY_POINTS = 50
@@ -272,7 +286,7 @@ def _build_app(client):
     def health():
         """Health check endpoint. Includes last cron run timing so external monitors
         (e.g. UptimeRobot) can detect a stale bot without watching terminal output."""
-        _last_run_path = Path(__file__).parent / "data" / ".cron_last_run"
+        _last_run_path = CRON_LAST_RUN_PATH
         _stale_threshold = float(os.environ.get("CRON_STALE_HOURS", "6.0"))
         _last_cron: str | None = None
         _hours_since: float | None = None
@@ -290,7 +304,7 @@ def _build_app(client):
                 pass
         _cron_age_minutes: float | None = None
         _cycle_count: int | None = None
-        _hb_path = Path(__file__).parent / "data" / "cron_heartbeat.json"
+        _hb_path = CRON_HEARTBEAT_PATH
         if _hb_path.exists():
             try:
                 _hb = json.loads(_hb_path.read_text())
@@ -1061,7 +1075,7 @@ setInterval(() => {{
         Frontend polls this every 5 s to detect new cron completions and
         trigger an immediate fetchAll() instead of waiting for the 60 s timer.
         """
-        cache_path = Path(__file__).parent / "data" / "signals_cache.json"
+        cache_path = SIGNALS_CACHE_PATH
         if not cache_path.exists():
             return jsonify({"version": None})
         return jsonify({"version": int(os.path.getmtime(cache_path))})
@@ -1071,7 +1085,7 @@ setInterval(() => {{
         """Serve the signals cache written by the last cron run."""
         from paper import get_open_trades
 
-        cache_path = Path(__file__).parent / "data" / "signals_cache.json"
+        cache_path = SIGNALS_CACHE_PATH
         if not cache_path.exists():
             return jsonify(
                 {
@@ -1714,7 +1728,7 @@ setInterval(() => {{
 
             # F3 blend-weight gate — mirrors cron.py's real check exactly:
             # current_n >= 50 and current_n - last_cal_count >= 25.
-            _cal_sentinel = Path(__file__).parent / "data" / ".last_calibration_count"
+            _cal_sentinel = LAST_CALIBRATION_COUNT_PATH
             last_calibration_n: int | None = None
             if _cal_sentinel.exists():
                 try:
@@ -1736,7 +1750,7 @@ setInterval(() => {{
 
             # Weekly temperature-scaling retrain — its own >=6-day marker-file
             # timer, independent of settled-trade count.
-            _ml_retrain_path = Path(__file__).parent / "data" / ".last_ml_retrain"
+            _ml_retrain_path = LAST_ML_RETRAIN_PATH
             temp_scale_age_days: float | None = None
             temp_scale_eligible = True
             if _ml_retrain_path.exists():
@@ -1747,7 +1761,7 @@ setInterval(() => {{
                 )
                 temp_scale_eligible = temp_scale_age_days >= 6
 
-            ts_path = Path(__file__).parent / "data" / "temperature_scale.json"
+            ts_path = TEMPERATURE_SCALE_PATH
             T_global: float | None = None
             T_between: float | None = None
             T_above: float | None = None
@@ -1795,7 +1809,7 @@ setInterval(() => {{
         Reads the filter_stats block written to signals_cache.json by cron.
         Returns an empty object if no scan has run yet.
         """
-        cache_path = Path(__file__).parent / "data" / "signals_cache.json"
+        cache_path = SIGNALS_CACHE_PATH
         if not cache_path.exists():
             return jsonify({"filters": {}, "gate_counts": {}, "total_scanned": 0})
         try:
@@ -2145,7 +2159,7 @@ setInterval(() => {{
 
         # signals_cache.json age
         try:
-            signals_path = Path(__file__).parent / "data" / "signals_cache.json"
+            signals_path = SIGNALS_CACHE_PATH
             if signals_path.exists():
                 age_secs = _time.time() - os.path.getmtime(signals_path)
                 checks["signals_cache_age_secs"] = round(age_secs)
@@ -2157,11 +2171,11 @@ setInterval(() => {{
 
         # Last cron run
         try:
-            lock_path = Path(__file__).parent / "data" / ".cron.lock"
+            lock_path = LOCK_PATH
             if lock_path.exists():
                 age_secs = _time.time() - os.path.getmtime(lock_path)
                 checks["cron_lock_age_secs"] = round(age_secs)
-            running_path = Path(__file__).parent / "data" / ".cron_running"
+            running_path = RUNNING_FLAG_PATH
             checks["cron_currently_running"] = running_path.exists()
         except Exception as exc:
             checks["cron_lock_error"] = str(exc)
@@ -2318,8 +2332,7 @@ setInterval(() => {{
         """Last backup time inferred from data/backups/ directory."""
         from datetime import UTC, datetime
 
-        data_dir = Path(__file__).parent / "data"
-        backup_dir = data_dir / "backups"
+        backup_dir = DATA_DIR / "backups"
         result: dict = {
             "last_backup_at": None,
             "backup_size_mb": None,
@@ -2338,7 +2351,7 @@ setInterval(() => {{
                 ).isoformat()
                 result["backup_size_mb"] = round(latest.stat().st_size / 1_048_576, 3)
         # Also expose paper_trades.json mtime as a data-freshness proxy
-        pt = data_dir / "paper_trades.json"
+        pt = PAPER_TRADES_PATH
         if pt.exists():
             from datetime import UTC, datetime
 

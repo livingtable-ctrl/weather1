@@ -8,6 +8,8 @@ import shutil
 from datetime import UTC, datetime
 from pathlib import Path
 
+from paths import DATA_DIR
+
 _log = logging.getLogger(__name__)
 
 # Files in data/ worth backing up (skip .shm/.wal SQLite temp files and logs)
@@ -137,7 +139,7 @@ def backup_data(data_dir: Path | None = None) -> bool:
         return None  # type: ignore[return-value]
 
     if data_dir is None:
-        data_dir = Path(__file__).parent / "data"
+        data_dir = DATA_DIR
 
     today_str = datetime.now(UTC).strftime("%Y-%m-%d")
     dest = sync_root / "KalshiBot" / "data" / today_str
@@ -211,7 +213,7 @@ def restore_data(data_dir: Path | None = None, confirm: bool = False) -> bool:
         src = backup_root
 
     if data_dir is None:
-        data_dir = Path(__file__).parent / "data"
+        data_dir = DATA_DIR
 
     # Snapshot current data/ before overwriting
     snapshot_dir = (

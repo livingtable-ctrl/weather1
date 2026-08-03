@@ -12,8 +12,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from forecast_cache import ForecastCache
+from paths import DATA_DIR as _DATA_DIR
 
-_DATA_DIR = Path(__file__).parent / "data"
 _log = logging.getLogger(__name__)
 
 
@@ -171,8 +171,14 @@ def _paper_min_edge_default() -> float:
     if env_val is not None:
         return float(env_val)
 
+    import param_sweep as _param_sweep
+
     wf_path = _DATA_DIR / "walk_forward_params.json"
-    sweep_path = _DATA_DIR / "param_sweep_results.json"
+    # Reference param_sweep's own copy of the constant (not paths.py's directly) so
+    # this fingerprint always matches whatever file load_swept_min_edge() below
+    # actually reads -- and so tests that redirect param_sweep.PARAM_SWEEP_RESULTS_PATH
+    # control both the cache key and the real read from a single patch point.
+    sweep_path = _param_sweep.PARAM_SWEEP_RESULTS_PATH
     cache_key = (_file_fingerprint(wf_path), _file_fingerprint(sweep_path))
     cached = _paper_min_edge_cache.get(cache_key)
     if cached is not None:

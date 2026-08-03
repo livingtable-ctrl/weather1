@@ -14,6 +14,10 @@ import sqlite3
 from datetime import date as _date_type
 from pathlib import Path
 
+from paths import CITY_WEIGHTS_PATH as _CITY_WEIGHTS_PATH
+from paths import CONDITION_WEIGHTS_PATH, DATA_DIR
+from paths import SEASONAL_WEIGHTS_PATH as _SEASONAL_WEIGHTS_PATH
+
 _log = logging.getLogger(__name__)
 
 _SEASONAL_MIN = (
@@ -262,7 +266,7 @@ def load_seasonal_weights(
     path: str | Path | None = None,
 ) -> dict[str, dict[str, float]]:
     """Load seasonal weights from JSON. Returns {} if file missing."""
-    p = Path(path) if path else Path(__file__).parent / "data" / "seasonal_weights.json"
+    p = Path(path) if path else _SEASONAL_WEIGHTS_PATH
     if not p.exists():
         return {}
     try:
@@ -274,7 +278,7 @@ def load_seasonal_weights(
 
 def load_city_weights(path: str | Path | None = None) -> dict[str, dict[str, float]]:
     """Load per-city weights from JSON. Returns {} if file missing."""
-    p = Path(path) if path else Path(__file__).parent / "data" / "city_weights.json"
+    p = Path(path) if path else _CITY_WEIGHTS_PATH
     if not p.exists():
         return {}
     try:
@@ -367,11 +371,7 @@ def load_condition_weights(
     path: str | Path | None = None,
 ) -> dict[str, dict[str, float]]:
     """Load per-condition-type weights from JSON. Returns {} if file missing."""
-    p = (
-        Path(path)
-        if path
-        else Path(__file__).parent / "data" / "condition_weights.json"
-    )
+    p = Path(path) if path else CONDITION_WEIGHTS_PATH
     if not p.exists():
         return {}
     try:
@@ -400,7 +400,7 @@ def calibrate_and_save(
     from tracker import DB_PATH as _DB_PATH
 
     _db = Path(db_path) if db_path else _DB_PATH
-    _dir = Path(data_dir) if data_dir else Path(__file__).parent / "data"
+    _dir = Path(data_dir) if data_dir else DATA_DIR
     _dir.mkdir(exist_ok=True)
 
     seasonal = calibrate_seasonal_weights(_db)

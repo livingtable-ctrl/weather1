@@ -81,6 +81,15 @@ from output_formatters import (
     cmd_pnl_attribution,
     cmd_positions,
 )
+from paths import (
+    BLACK_SWAN_PATH,
+    CRON_HEARTBEAT_PATH,
+    CRON_LAST_RUN_PATH,
+    DATA_DIR,
+    LAST_BACKTEST_PATH,
+    LAST_CALIBRATION_COUNT_PATH,
+    LIVE_CONFIG_PATH,
+)
 from tracker import (
     brier_score,
     brier_score_rolling_with_n,
@@ -281,7 +290,7 @@ def cmd_cron(client: "KalshiClient", min_edge: float | None = None) -> None:
                 _restore_exc,
             )
     if _kill_path.exists() and not _called_from_loop:
-        _bs_path = Path(__file__).parent / "data" / ".black_swan_active"
+        _bs_path = BLACK_SWAN_PATH
         _reason_str = ""
         if _bs_path.exists():
             try:
@@ -614,7 +623,7 @@ def cleanup_data_dir() -> None:
     """
     import time as _time
 
-    data_dir = Path(__file__).parent / "data"
+    data_dir = DATA_DIR
     if not data_dir.exists():
         return
     cutoff = _time.time() - 2 * 24 * 3600  # 2 days ago
@@ -673,7 +682,7 @@ def auto_backtest(client: KalshiClient) -> None:
             from backtest import run_backtest
 
             summary = run_backtest(client, days_back=7, verbose=False)
-            result_path = Path(__file__).parent / "data" / ".last_backtest.json"
+            result_path = LAST_BACKTEST_PATH
             try:
                 result_path.parent.mkdir(exist_ok=True)
                 result_path.write_text(json.dumps(summary, default=str))
@@ -729,14 +738,16 @@ def auto_backup() -> None:
     """
     import shutil
 
+    from paths import PAPER_TRADES_PATH
+    from tracker import DB_PATH
     from utils import utc_today as _utc_today
 
-    backup_dir = Path(__file__).parent / "data" / "backups"
+    backup_dir = DATA_DIR / "backups"
     backup_dir.mkdir(exist_ok=True)
     today = _utc_today().isoformat()
     files = [
-        Path(__file__).parent / "data" / "predictions.db",
-        Path(__file__).parent / "data" / "paper_trades.json",
+        DB_PATH,
+        PAPER_TRADES_PATH,
     ]
     for src in files:
         if not src.exists():
@@ -922,7 +933,7 @@ def cmd_loop(client: KalshiClient, args: list[str] | None = None) -> None:
             pass
     interval_s = interval_h * 3600
 
-    _KILL_PATH = Path(__file__).parent / "data" / ".kill_switch"
+    _KILL_PATH = KILL_SWITCH_PATH
 
     def _now() -> datetime:
         return datetime.now()
@@ -2043,7 +2054,7 @@ def _render_analysis_results(
     return found
 
 
-_LIVE_CONFIG_PATH = Path(__file__).parent / "data" / "live_config.json"
+_LIVE_CONFIG_PATH = LIVE_CONFIG_PATH
 _LIVE_CONFIG_DEFAULT: dict = {
     "max_trade_dollars": 50,
     "daily_loss_limit": 200,
@@ -5648,11 +5659,7 @@ def cmd_calibrate() -> None:
     from calibration import calibrate_and_save
     from tracker import DB_PATH
 
-    data_dir = (
-        _CALIBRATE_DATA_DIR
-        if _CALIBRATE_DATA_DIR is not None
-        else Path(__file__).parent / "data"
-    )
+    data_dir = _CALIBRATE_DATA_DIR if _CALIBRATE_DATA_DIR is not None else DATA_DIR
     data_dir.mkdir(exist_ok=True)
 
     print("Running blend-weight calibration from settled predictions…")
@@ -5824,7 +5831,7 @@ def cmd_calibrate() -> None:
     try:
         from tracker import count_settled_predictions as _count_settled
 
-        _sentinel = Path(__file__).parent / "data" / ".last_calibration_count"
+        _sentinel = LAST_CALIBRATION_COUNT_PATH
         _sentinel.write_text(str(_count_settled()))
     except Exception as _sen_exc:
         _log.warning(
@@ -6203,7 +6210,7 @@ def cmd_menu(client: KalshiClient):
 
             from utils import utc_today as _utc_today_menu
 
-            _last_run_path = Path(__file__).parent / "data" / ".cron_last_run"
+            _last_run_path = CRON_LAST_RUN_PATH
             if not _last_run_path.exists():
                 print(
                     yellow(
@@ -8217,7 +8224,7 @@ def _check_cron_staleness() -> None:
     try:
         import json as _j
 
-        _hb = Path(__file__).parent / "data" / "cron_heartbeat.json"
+        _hb = CRON_HEARTBEAT_PATH
         if not _hb.exists():
             return
         _last = datetime.fromisoformat(_j.loads(_hb.read_text())["last_run"])

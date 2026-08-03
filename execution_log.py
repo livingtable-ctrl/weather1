@@ -15,11 +15,12 @@ import threading as _el_threading
 from datetime import UTC, datetime
 from pathlib import Path
 
+from paths import EXECUTION_LOG_DB_PATH
 from utils import sql_normalize_iso_column
 
 _log = logging.getLogger(__name__)
 
-DB_PATH = Path(__file__).parent / "data" / "execution_log.db"
+DB_PATH = EXECUTION_LOG_DB_PATH
 DB_PATH.parent.mkdir(exist_ok=True)
 
 
