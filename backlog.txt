@@ -7428,7 +7428,10 @@ When to revisit: N/A -- closed. Re-open as a new entry if a concrete
   one-off-book-peek use case (outside the active subscription list) ever
   actually appears.
 
-[PUBLIC TRADE-FLOW SIGNAL]
+[RE-VERIFIED 2026-08-03, STILL OPEN -- own WS-continuity trigger re-checked
+  live and confirmed NOT fired; this session's scope was redirected to the
+  REST-based sibling entry instead, see the note below] PUBLIC TRADE-FLOW
+  SIGNAL
 Priority: Low-Medium (cheap to capture, speculative value)
 
 Problem:
@@ -7450,6 +7453,50 @@ Why not now:
 
 When to revisit:
   - Once loop/watch runs continuously again post-Belgium.
+
+UPDATE 2026-08-03 (no live-signal code shipped against this entry -- scope
+  redirected, see below): picked up together with SIGNAL GRADUATION IS A
+  CONVENTION, NOT A MECHANISM (below), per that entry's own "when to
+  revisit" pointer naming this as the next log-only signal. Two things
+  invalidated the assumed plan before any code was written, both verified
+  live rather than assumed from prior session notes:
+  (1) Re-read the SIGNAL GRADUATION entry's full text, not just its
+  original "What it would look like" -- found parts (a) and (b) already
+  shipped 2026-07-24/2026-07-25 (see that entry's own resolution notes):
+  weather_markets.SIGNAL_REGISTRY (11 entries as of this note -- AST-counted
+  live, not copied from the 2026-07-25 resolution note's own "9" since 2
+  more (market-implied rain, rain monthly-model blend) were added since),
+  get_signal_graduation_report(), and `py main.py signals` all exist today,
+  already proven against real signals. There is nothing left for a new
+  signal to "validate" -- only part (c) (blend-weights dict) remains open,
+  deliberately out of scope until a signal actually graduates to a real
+  blend weight.
+  (2) Re-verified this entry's own trigger live instead of trusting the
+  "post-Belgium" framing: traced cron.py's _cmd_cron_body() (cron.py:1135-
+  1227, called from cmd_cron() at cron.py:2261) and found it starts a fresh
+  KalshiWebSocket per cron cycle, subscribes,
+  scans, then unconditionally calls _active_ws.stop() in a finally block
+  (cron.py:2297-2304) at the end of *every* cycle -- including under
+  `main.py loop`, which just sleeps ~4h between calling cmd_cron again. WS
+  coverage between scans is still zero, identical to the gap this entry
+  described when written. Cron is genuinely running again post-Belgium
+  (TRADING_PAUSED unset, data/cron.log active same-day as this note) -- but
+  "running" here means periodic 4h-spaced cycles that tear down their own
+  WS connection, not a standing connection. This entry's trigger has NOT
+  fired.
+  Surfaced both findings to the user via AskUserQuestion before writing any
+  code. User chose to redirect this session to the sibling PUBLIC TRADES
+  REST BACKFILL entry's own deferred analysis pass instead -- fully
+  unblocked today, real data already accumulated, answers the same
+  underlying "is signed trade flow predictive" question this entry wants
+  without needing the WS mechanism whose own gate hasn't cleared. See that
+  entry's 2026-08-03 resolution note below for what shipped and the actual
+  finding.
+  This entry itself remains fully open and unbuilt -- "When to revisit"
+  above is unchanged: still gated on genuinely continuous (not
+  periodic-cron-with-teardown) WS coverage, which an always-on host (see
+  the VM-move-sequencing notes elsewhere in this file) would actually
+  provide.
 
 [PARTIALLY RESOLVED 2026-07-30 -- infra-only pass shipped as a standalone
   shadow-mode experiment (this entry's own "When to revisit" option): fetch
@@ -8482,7 +8529,11 @@ CORRELATION CHECK RUN 2026-07-30 (per this entry's own ENABLEMENT TRIGGER --
   edge of a real answer, so it's worth checking again soon rather than
   waiting for another full backlog audit to resurface it.
 
-[RESOLVED 2026-07-19] PUBLIC TRADES REST BACKFILL -- GET /markets/trades AT SETTLEMENT
+[PARTIALLY RESOLVED -- capture side (2026-07-19) and one of the two
+  deferred analysis passes (2026-08-03, "did informed flow precede
+  settlement-direction moves") are done; "adverse selection around our own
+  fills" is still open, structurally unanswerable right now, see below]
+  PUBLIC TRADES REST BACKFILL -- GET /markets/trades AT SETTLEMENT
 Priority: was Medium -- closes the exact gap the PUBLIC TRADE-FLOW SIGNAL
   entry admits ("coverage between manual cron runs is zero") without
   needing the always-on host.
@@ -8594,6 +8645,146 @@ When to revisit:
     TRADE-FLOW SIGNAL entry above and the candlestick capture entry's own
     check-back trigger, once both trade_history and price_history have a
     real multi-week window of data.
+
+RESOLVED 2026-08-03 (one of the two deferred analysis passes -- "did
+  informed flow precede settlement-direction moves"; the other, adverse
+  selection around our own fill times, is still open, see below): picked
+  up as part of the same session that redirected PUBLIC TRADE-FLOW SIGNAL
+  here (see that entry's 2026-08-03 note above) -- both its own
+  WS-continuity trigger and SIGNAL GRADUATION's registry-building scope had
+  already been overtaken by events, so the user chose this fully-unblocked
+  analysis pass instead, via explicit AskUserQuestion rather than either
+  path being assumed.
+  Checked live before designing anything: execution_log.orders (198 rows)
+  has ZERO rows with filled_at or market_mid_at_fill populated -- no live
+  order has ever actually filled (matches ENABLE_MICRO_LIVE being off) --
+  so the "adverse selection around our own fills" half is structurally
+  unanswerable right now, not just thin. Dropped from this pass per
+  explicit AskUserQuestion confirmation rather than built against a 0-row
+  table.
+  Confirmed trade_history and price_history now have real accumulated data
+  (70,362 trade rows / 43 tickers; 13,820 candle rows / 274 tickers; full
+  43/43 ticker overlap between the two tables) -- comfortably past a cold
+  start.
+  Shipped tracker.get_trade_flow_settlement_correlation(
+  min_trades_per_market=10, min_candles_per_market=4, min_markets=15,
+  min_early_trades=3) -- for each ticker with both trade_history and
+  price_history rows, splits the trade series at its own time midpoint
+  (half the trades before, half after, using each trade's parsed
+  created_time epoch) and computes early signed flow ((yes-taker volume -
+  no-taker volume) / total volume in the early half, in [-1, 1], requiring
+  at least min_early_trades contributing trades so a single trade at a
+  timestamp tie can't swing it to +-1.0) against late price drift (the last
+  candle with a real, non-NULL price_close minus the earliest candle at/
+  after that same midpoint that also has a real close -- both walks skip
+  past NULL closes rather than trusting the first/last candle blindly, and
+  candles are filtered to the earliest candle's own period_interval first
+  so two OHLC resolutions can never silently interleave), then
+  Pearson-correlates across markets using the same manual formula as
+  get_recent_city_correlations (matching that function's convention, not
+  because scipy is otherwise unavailable in this project -- it is, see
+  weather_markets.py's scipy.stats/scipy.optimize imports). Markets below
+  the trade/candle/early-trade floors are counted under
+  markets_skipped_thin; markets that clear those floors but have no usable
+  price at either end of the drift window are counted separately under
+  markets_skipped_no_price, so a "thin" report never conflates two
+  unrelated failure reasons.
+  Real finding, run live against the actual DB: n=42 markets cleared the
+  floor (43 considered, 1 skipped thin, 0 skipped for missing price),
+  r=-0.035 -- indistinguishable from zero at this sample size. Early signed
+  taker flow does NOT show a detectable relationship with each market's
+  subsequent price drift in the current dataset. This is informational, not
+  dispositive (n=42, single fixed early/late split point per market, no
+  significance test attached) -- but it does NOT support building the live
+  WS mechanism PUBLIC TRADE-FLOW SIGNAL describes on urgency grounds.
+  get_trade_flow_settlement_correlation is a real, callable, tested query,
+  not a one-off script -- re-run it as trade_history keeps accumulating
+  rather than re-deriving the analysis from scratch next time.
+  14 new tests (tests/test_tracker.py TestTradeFlowSettlementCorrelation):
+  no-data, perfect 3-market correlation (3 collinear points -> r==1.0
+  exactly, verifying the Pearson formula), a zero-variance guardrail
+  (identical flows across markets -> r stays None, not a divide-by-zero),
+  below-min-markets (n reported, r=None), thin-market skips (too few
+  trades / too few candles / zero early volume / below the early-trade-
+  count floor), the trade_history-without-price_history join-exclusion
+  case, a mixed-period_interval-candles filter case, and 3 tests directly
+  targeting the NULL-price-handling fix below.
+  Independent Agent(opus, effort=high) review (before push, per standing
+  workflow) reproduced the live result independently (byte-identical
+  reimplementation) and found 1 HIGH, 4 MEDIUM, and several LOW/informational
+  issues in the first draft -- all fixed, not just the HIGH one:
+  (1) HIGH -- the new function had no dead-code-scanner allowlist entry
+  (tests/test_dead_code_scan.py), which would have failed CI on push exactly
+  like the count_fn miss noted in an earlier session's `9eec753` fix --
+  added, matching get_price_history/get_trade_history's existing entries.
+  (2) HIGH-severity-in-practice correctness bug -- the first draft used
+  candles[-1]["price_close"] directly for the "last" price. 24% of all
+  price_history rows have a NULL price_close (a period with no trades), and
+  13 of the 43 real join tickers -- among the highest-volume markets in the
+  set -- had a NULL close on their literal final candle, so they were
+  silently mis-counted as "thin" and dropped (n was 29, not 42, before this
+  fix; r was -0.042, not -0.035). Fixed by walking backward from the end
+  until a real close is found, recovering all 13 markets.
+  (3) MEDIUM -- the matching fix on the other end: the first draft took the
+  first candle at/after the trade-series midpoint regardless of whether
+  that specific candle had a real price, silently substituting an unrelated
+  index-based fallback price when it didn't. Fixed to walk forward past any
+  NULL-close candles at that boundary too.
+  (4) MEDIUM -- the first draft's fallback (when no candle at/after the
+  midpoint existed at all) computed drift entirely from candles before the
+  midpoint, which could invert the lead-lag relationship the function
+  exists to test (measuring a window that precedes the "early flow" window
+  rather than following it). Removed the fallback entirely -- such a market
+  is now skipped and counted under the new markets_skipped_no_price
+  counter instead of silently contributing a wrong-direction data point.
+  (5) MEDIUM -- docstring and a single skip counter undercounted/mislabeled
+  the actual skip reasons once (2)-(4) existed -- split into
+  markets_skipped_thin and markets_skipped_no_price and rewrote the
+  docstring to describe all three real skip paths.
+  (6) LOW -- the created_time parse only caught ValueError; broadened to
+  also catch AttributeError/TypeError so a future non-string created_time
+  (e.g. if Kalshi ever changed format) fails soft instead of crashing the
+  whole report.
+  (7) LOW -- added an explicit min_early_trades=3 floor (a market could
+  previously reach the volume-only floor via a single early trade at a
+  timestamp tie); LOW -- added a period_interval filter so two OHLC
+  resolutions for one ticker could never silently interleave (not observed
+  live as of this writing, but not structurally prevented either); LOW --
+  gave the function an explicit `-> dict[str, int | float | None]` return
+  type instead of a bare `dict`; LOW -- reworded a docstring line that
+  implied scipy was unavailable in this project (it isn't -- the manual
+  Pearson formula matches get_recent_city_correlations' own convention,
+  nothing else) and another that overstated "settlement" when the measured
+  endpoint is the last logged candle, not necessarily literal settlement.
+  Two of the new tests initially had real gaps caught only by re-verifying
+  the review's own mutation-testing claims by hand, not just trusting the
+  review's summary: the first version of a NULL-close-boundary mutation
+  test silently passed because its candle timestamps were small toy
+  integers nowhere near the trade series' real 2026 epoch values, so the
+  time-aligned code path never actually executed; and the first version of
+  the period_interval-filter test used only 2 markets, which is
+  mathematically always exactly r=+-1 regardless of the underlying values
+  (any 2 distinct points are collinear), so it could not have caught the
+  filter being removed entirely -- both rebuilt (real epoch-aligned
+  timestamps; a 3-market design where a wrong value measurably moves r off
+  1.0) and re-confirmed against the actual mutation.
+  350 tests pass across tests/test_tracker.py (was 344); ruff + ruff format
+  + mypy clean on tracker.py, tests/test_tracker.py, and
+  tests/test_dead_code_scan.py (one pre-existing, unrelated ruff-format nit
+  elsewhere in test_tracker.py left untouched -- confirmed via diff scope,
+  not introduced by this change).
+  Zero live-trading-behavior change: read-only query function, no existing
+  code calls it (by design -- see the dead-code-scanner allowlist entry),
+  TRADING_PAUSED/ENABLE_MICRO_LIVE untouched, no order was placed or
+  closed.
+  Still open: the "adverse selection around our own fills" half (execution_
+  log.orders has zero fills to analyze -- revisit once ENABLE_MICRO_LIVE is
+  ever flipped and real live fills start accumulating).
+
+When to revisit (adverse-selection half only -- flow-vs-settlement analysis
+  above is closed):
+  - Once execution_log.orders has real filled_at/market_mid_at_fill rows to
+    join against -- currently 0 of 198.
 
 [RESOLVED 2026-07-24] NBM PROBABILISTIC QUANTILES -- ORPHANED CONVERTER, MISSING FETCHER
 Priority: was Low-Medium -- the consumer half already existed in-tree; only

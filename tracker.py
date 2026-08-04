@@ -1265,6 +1265,161 @@ def get_trade_history(ticker: str) -> list[sqlite3.Row]:
         ).fetchall()
 
 
+def get_trade_flow_settlement_correlation(
+    min_trades_per_market: int = 10,
+    min_candles_per_market: int = 4,
+    min_markets: int = 15,
+    min_early_trades: int = 3,
+) -> dict[str, int | float | None]:
+    """Correlation-check for the PUBLIC TRADE-FLOW SIGNAL backlog entry's
+    "did informed flow precede settlement-direction moves" caution-flag
+    hypothesis -- log-only research, not wired into trading. Reports a raw
+    Pearson r with no significance test attached (n is typically small,
+    e.g. n=29 as of 2026-08-03) -- read it as directional, not conclusive.
+
+    For each ticker with both trade_history and price_history rows, splits
+    the trade series at its own time midpoint (half the trades happened
+    before this point) and computes:
+      - early signed flow: (yes-taker volume - no-taker volume) / total
+        volume in the early half, in [-1, 1] -- requires at least
+        min_early_trades contributing trades, not just nonzero volume, so a
+        single trade at a timestamp tie can't swing it to +-1.0
+      - late price drift: the last logged candle with a real price_close
+        (24% of price_history rows have a NULL close -- no trades printed
+        in that period -- so this walks backward past any NULL tail rather
+        than trusting candles[-1] blindly) minus the earliest candle at/
+        after the trade-series midpoint that also has a real close (walks
+        forward past any NULL-close candles at that boundary rather than
+        taking the first candle regardless of whether it has a price) --
+        both ends aligned to one actual clock via epoch-timestamp
+        comparison, not independently split per series. If either search
+        can't find a real price, the market is skipped rather than falling
+        back to an index-based split, which could measure a window
+        entirely before the early-flow window and invert the very lead-lag
+        relationship this function exists to test.
+    then Pearson-correlates early flow against late drift across markets
+    (same manual formula as get_recent_city_correlations -- not because
+    scipy is unavailable elsewhere in this project, but to match that
+    function's own established convention). Candles are filtered to the
+    earliest candle's own period_interval first (no ticker has logged more
+    than one resolution as of 2026-08-03, but mixing OHLC resolutions in
+    one ordered series would silently corrupt the walk if that ever
+    changes).
+
+    Returns {"n": int, "r": float | None, "markets_considered": int,
+    "markets_skipped_thin": int, "markets_skipped_no_price": int} -- r is
+    None below min_markets or when either series has zero variance.
+    "markets_skipped_thin" covers below-floor trade/candle counts and
+    below-floor early-half volume; "markets_skipped_no_price" covers a
+    ticker that cleared those floors but has no usable (non-NULL) price at
+    one or both ends of the drift window.
+    """
+    init_db()
+    with _conn() as con:
+        tickers = [
+            row[0]
+            for row in con.execute(
+                "SELECT DISTINCT t.ticker FROM trade_history t "
+                "JOIN price_history p ON p.ticker = t.ticker"
+            ).fetchall()
+        ]
+
+    flows: list[float] = []
+    drifts: list[float] = []
+    skipped_thin = 0
+    skipped_no_price = 0
+    for ticker in tickers:
+        trades = get_trade_history(ticker)
+        candles = get_price_history(ticker)
+        if len(trades) < min_trades_per_market or len(candles) < min_candles_per_market:
+            skipped_thin += 1
+            continue
+
+        # Keep only the earliest candle's own resolution -- not a majority
+        # vote, just enough to guarantee one ticker's series is never a
+        # silent interleave of two OHLC granularities.
+        first_interval = candles[0]["period_interval"]
+        candles = [c for c in candles if c["period_interval"] == first_interval]
+        if len(candles) < min_candles_per_market:
+            skipped_thin += 1
+            continue
+
+        trade_epochs: dict[int, float] = {}
+        for i, t in enumerate(trades):
+            ct = t["created_time"]
+            if not ct:
+                continue
+            try:
+                trade_epochs[i] = datetime.fromisoformat(
+                    ct.replace("Z", "+00:00")
+                ).timestamp()
+            except (ValueError, AttributeError, TypeError):
+                continue
+        if len(trade_epochs) < min_trades_per_market:
+            skipped_thin += 1
+            continue
+        mid_epoch = sorted(trade_epochs.values())[len(trade_epochs) // 2]
+
+        early_yes = 0.0
+        early_no = 0.0
+        early_trade_count = 0
+        for i, t in enumerate(trades):
+            epoch = trade_epochs.get(i)
+            count = t["count"]
+            if epoch is None or count is None or epoch >= mid_epoch:
+                continue
+            side = t["taker_outcome_side"]
+            if side == "yes":
+                early_yes += count
+                early_trade_count += 1
+            elif side == "no":
+                early_no += count
+                early_trade_count += 1
+        early_total = early_yes + early_no
+        if early_total <= 0 or early_trade_count < min_early_trades:
+            skipped_thin += 1
+            continue
+        early_flow = (early_yes - early_no) / early_total
+
+        mid_candle_price = None
+        for c in candles:
+            if c["end_period_ts"] >= mid_epoch and c["price_close"] is not None:
+                mid_candle_price = c["price_close"]
+                break
+        last_price = None
+        for c in reversed(candles):
+            if c["price_close"] is not None:
+                last_price = c["price_close"]
+                break
+        if mid_candle_price is None or last_price is None:
+            skipped_no_price += 1
+            continue
+        late_drift = last_price - mid_candle_price
+
+        flows.append(early_flow)
+        drifts.append(late_drift)
+
+    n = len(flows)
+    result: dict[str, int | float | None] = {
+        "n": n,
+        "r": None,
+        "markets_considered": len(tickers),
+        "markets_skipped_thin": skipped_thin,
+        "markets_skipped_no_price": skipped_no_price,
+    }
+    if n < min_markets:
+        return result
+
+    mx = sum(flows) / n
+    my = sum(drifts) / n
+    num = sum((a - mx) * (b - my) for a, b in zip(flows, drifts))
+    d1 = math.sqrt(sum((a - mx) ** 2 for a in flows))
+    d2 = math.sqrt(sum((b - my) ** 2 for b in drifts))
+    if d1 > 0 and d2 > 0:
+        result["r"] = round(num / (d1 * d2), 3)
+    return result
+
+
 # ── Bias correction ───────────────────────────────────────────────────────────
 
 # L4-C: shrinkage prior — controls how quickly bias corrections ramp up with
