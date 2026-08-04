@@ -1,6 +1,98 @@
 BACKLOG — future improvements to implement when ready
 ======================================================
 
+[GFS_LOCKOUT_MINS=90 DOESN'T MATCH REAL GFS PROPAGATION DELAY -- BLOCKS ~25% OF EVERY DAY FOR WEAK PROTECTION]
+Priority: Medium -- real, measurable opportunity cost with no confirmed
+  safety benefit; not a live-money issue today (cron places paper trades
+  only, live=False) but worth fixing before it matters more.
+
+Problem:
+  Found 2026-08-03 while analyzing a live cron run: order_executor.py's
+  `_in_gfs_update_window()` (order_executor.py:69) blocks all multi-day
+  (`days_out >= 1`) trade placement for 90 minutes after each of GFS's 4
+  daily init times (00/06/12/18 UTC), per the `GFS_LOCKOUT_MINS` env var
+  (default 90). The docstring's rationale: "Open-Meteo may be serving the
+  previous model run [for] ~90 min" after each init.
+
+  That 90-minute figure does not match GFS's real production/propagation
+  timeline. Verified two ways, both re-checked against raw source data (not
+  a summarizing tool) to be sure:
+  1. NCEP's own production status page (nco.ncep.noaa.gov/pmb/nwprod/
+     prodstat/), parsed directly: even the FASTEST downstream GFS product
+     ("12hr PRODUCTS") doesn't complete until T+3h41m-3h55m after cycle
+     start (e.g. 12z 2026-08-03: complete 15:40:45, cycle start 12:00). The
+     full run (F000-F384) completes at T+5h10m-5h14m, consistent across
+     all 4 cycles checked that day.
+  2. Open-Meteo's own docs (open-meteo.com/en/docs/single-runs-api), exact
+     quote pulled from raw HTML: "typically 4-6 hours for global models
+     (e.g. ECMWF IFS, GFS) ... a run initialised at 00 UTC is generally
+     accessible from approximately 04-06 UTC onwards."
+  A live spot-check (curl against Open-Meteo's Single Runs API) found
+  2026-08-03's 12z run still not indexed at T+7h17m, while the 06z run
+  (T+13h17m) was -- consistent with "hours, not 90 minutes" as the right
+  order of magnitude, though this specific API is a separate archival
+  pipeline from the live "latest" endpoint the bot actually queries, so
+  it's corroborating rather than definitive on its own.
+
+  Net effect: the gate releases multi-day trading ~3.5-4.5 hours before the
+  new GFS run has actually likely propagated, while still costing real
+  opportunity -- 90 min x 4 cycles/day = 6h/day (25% of every day) with
+  ALL multi-day trades blocked regardless of which specific ticker/field is
+  actually stale. Concretely: today's cron run (2026-08-03 18:57-18:59 UTC,
+  inside the 18:00-19:30 UTC lockout from the 12z run) blocked 8 of the 10
+  edge signals found that scan purely on this gate (the other 2 were
+  rejected separately for kelly-too-small).
+
+  No incident or bad trade motivated this gate -- checked the introducing
+  commit (`4ddf974`, 2026-06-28, "feat(risk): block multi-day trade
+  placement during 90-min GFS model update window", empty body) and did a
+  broader backlog sweep (stale forecast / race condition / dates around
+  2026-06-25-29) -- nothing found. Appears to have been preemptive/
+  speculative defensive coding, not a response to demonstrated harm, given
+  this project's otherwise thorough incident documentation elsewhere.
+
+Recommendation (not yet actioned -- filed for later decision):
+  Drop the clock-based gate rather than widen it. Widening to match the
+  real ~5-6h delay would block multi-day trading for ~20-24h/day (4 cycles
+  x 5-6h), which guts the strategy far more than the staleness risk it
+  would prevent. There is no live signal in Open-Meteo's response that
+  indicates which run is currently being served (checked: the JSON has no
+  run-timestamp/generation metadata field), so a clock-based window can't
+  be made accurate without becoming this costly.
+
+  A more principled replacement already exists in embryonic form:
+  `run_trend_delta`/`run_trend_jumpy` (tracker.py:222-223, "FORECAST
+  RUN-TO-RUN TREND SIGNAL") already tracks actual forecast-run stability
+  per-ticker via the Previous Runs API, log-only today while its
+  correlation with forecast error is being validated (weather_markets.py:
+  6332-6336). If that correlation holds up, gating on measured run
+  instability (a real signal) is the defensible successor to guessing from
+  wall-clock time -- not a fixed window.
+
+What it would look like:
+  1. Trace all call sites of `_in_gfs_update_window()` (currently just
+     order_executor.py's `_auto_place_trades()`, per a grep on 2026-08-03,
+     but re-verify at implementation time) -- matches this project's
+     established "trace all call sites for a safety gate" pattern (see
+     backlog's repeated TRADING_PAUSED/PAPER_MIN_EDGE/kill-switch history).
+  2. Remove the gate and its `GFS_LOCKOUT_MINS` env var (or leave the var
+     as an inert no-op with a deprecation note, if anything external still
+     references it -- check .env.example and COMMANDS.md too).
+  3. Update/remove `tests/test_execution_stability.py::
+     test_gfs_window_disabled_with_zero_lockout` and any sibling GFS-window
+     tests accordingly.
+  4. Full regression sweep on order_executor.py and its test file.
+
+Why not now:
+  Filed for later decision rather than implemented immediately -- user
+  asked to record the finding, not act on it this session.
+
+When to revisit:
+  Whenever picking up general backlog items, or specifically alongside any
+  future work that validates/graduates `run_trend_delta`'s correlation
+  with forecast error (weather_markets.py's own open research question) --
+  natural pairing since that's the suggested replacement signal.
+
 [RESOLVED 2026-08-03] CMD_TODAY'S "[P] PLACE" PATH HAD NO GATE CHECK AT ALL
 Priority: was High -- a real, reachable-today gap in the one remaining
   manual order-placement path this project's repeated "trace all call
