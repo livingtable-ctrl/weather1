@@ -1,6 +1,78 @@
 BACKLOG — future improvements to implement when ready
 ======================================================
 
+[~13 NON-SAFETY-CRITICAL FILES STILL BYPASS paths.py -- WORKTREE CRON RUNS SILENTLY HIT A STALE LOCAL data/ CACHE]
+Priority: Medium -- no live-money or trade-correctness impact (DB, paper
+  trades, and backups all correctly route through paths.py already), but a
+  real, reproduced-today source of spurious API rate-limiting and
+  worktree-vs-main-clone cache divergence whenever cron/watch/analysis is
+  run from a git worktree (this project's standard dev workflow).
+
+Problem:
+  `f94a44b` ("fix(paths): route safety-critical state through paths.py, not
+  worktree-local paths", 2026-08-03) fixed the *safety-critical* subset of
+  this bug class -- kill switch, black swan, live_config.json, learned/city/
+  seasonal/condition weights, execution_log.db, and cron.py's periodic-task
+  gate sentinels -- by migrating cron.py, main.py, web_app.py,
+  weather_markets.py, calibration.py, monte_carlo.py, execution_log.py,
+  cloud_backup.py, config.py, param_sweep.py, and sigma_audit.py to import
+  paths from paths.py's single source of truth instead of constructing
+  `Path(__file__).parent / "data"` locally (which resolves to *that
+  worktree's own* throwaway data/ dir, per paths.py's own docstring warning
+  against exactly this pattern).
+
+  That fix was explicitly scoped to safety-critical state, not every file.
+  Re-grepped 2026-08-04 for the same anti-pattern
+  (`Path\(__file__\)\.parent\s*/\s*["']data["']`) and found it's still
+  present in: climatology.py, hurricane_climatology.py, backtest.py,
+  alerts.py, feature_importance.py, circuit_breaker.py, acis_snow.py,
+  acis_precip.py, ab_test.py, ml_bias.py, notify.py, pdf_report.py, and
+  kalshi_ws.py, plus a handful of non-safety-critical spots still remaining
+  in main.py/weather_markets.py/web_app.py (export dirs, debug endpoints,
+  forecast snapshot/ensemble cache dirs).
+
+  Live-reproduced same day running `py main.py cron` from a worktree
+  (`cron-output-analysis-06b2db`) for output analysis: the worktree's own
+  local `data/` had only 8 of 20 cities' `climate_*.json` cache files
+  (stale/incomplete, likely dating from whenever this worktree was
+  created), vs. the main clone's complete, fresh (2026-08-01) set of 20.
+  `climatology.py`'s `fetch_historical()` read `cache.exists()` against the
+  worktree-local path, found it missing for the other 13 cities, and made
+  live calls to `archive-api.open-meteo.com` -- which came back 429 (Too
+  Many Requests) for all 13, so those cities silently got `None` for their
+  climatology baseline that cycle (`fetch_historical: API failed for X and
+  no cache exists -- returning None`). No trades were misfired (nothing in
+  this list feeds live-order gates), but it's wasted/rate-limited API calls
+  every worktree cron run, a degraded model input for whichever cities miss
+  the cache, and a forked climatology/ML-artifact/forecast-cache state
+  between the worktree and the main clone that never reconciles.
+
+Recommendation (not yet actioned -- filed for later decision):
+  Extend the same migration `f94a44b` did to the remaining ~13 files: add
+  the missing constants to paths.py (climate cache per-city path or dir,
+  hurricane climatology cache, backtest cache, alerts.json, feature
+  importance log, circuit breaker state + flash-crash cooldown/history,
+  ACIS snow/precip caches, ab_test dir, ml_bias model + hmac paths, notify
+  templates, pdf_report output dir, kalshi_ws orderbook cache), then rewire
+  each file's local `DATA_DIR`/path constant to import from there instead.
+  Follow the same pattern `f94a44b` used (2 independent opus reviews caught
+  3 real regressions in the safety-critical pass -- e.g. a load function
+  that stat'd the old path while its sibling had already migrated -- so
+  expect a similar review pass to be needed here) and re-verify all call
+  sites within each touched file, not just the DATA_DIR declaration itself.
+
+Why not now:
+  Filed for later decision rather than implemented immediately -- found
+  while analyzing a routine cron output-review run; user asked to file it
+  to backlog, not fix it this session.
+
+When to revisit:
+  Alongside any future paths.py/data-dir consolidation work, or if another
+  worktree cron/analysis run shows the same rate-limit/stale-cache symptom
+  again. See [[feedback_worktree_data_dir_gotcha]] (memory) for the fuller
+  incident writeup of this bug class's first (2026-08-01) discovery and the
+  correction noting this exact gap.
+
 [GFS_LOCKOUT_MINS=90 DOESN'T MATCH REAL GFS PROPAGATION DELAY -- BLOCKS ~25% OF EVERY DAY FOR WEAK PROTECTION]
 Priority: Medium -- real, measurable opportunity cost with no confirmed
   safety benefit; not a live-money issue today (cron places paper trades
