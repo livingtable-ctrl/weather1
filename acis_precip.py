@@ -24,6 +24,7 @@ import requests
 import safe_io
 from circuit_breaker import CircuitBreaker
 from forecast_cache import ForecastCache
+from paths import DATA_DIR
 
 _log = logging.getLogger(__name__)
 
@@ -49,9 +50,6 @@ _SEASONAL_CACHE_TTL = 4 * 3600
 _seasonal_cache: ForecastCache[float | None] = ForecastCache(
     ttl_secs=_SEASONAL_CACHE_TTL
 )
-
-DATA_DIR = Path(__file__).parent / "data"
-DATA_DIR.mkdir(exist_ok=True)
 
 _session = requests.Session()
 

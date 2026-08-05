@@ -13,18 +13,17 @@ import logging
 import math
 import os
 import pickle
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     import numpy as np
 
 from paths import EMOS_PARAMS_PATH as _EMOS_PARAMS_PATH
+from paths import ML_BIAS_HMAC_PATH as _HMAC_PATH
+from paths import ML_BIAS_MODEL_PATH as _MODEL_PATH
 from paths import TEMPERATURE_SCALE_PATH as _TEMP_PATH
 
 _log = logging.getLogger(__name__)
-_MODEL_PATH = Path(__file__).parent / "data" / "bias_models.pkl"
-_HMAC_PATH = Path(__file__).parent / "data" / ".bias_models.hmac"
 _EMOS_CACHE: tuple | None = None  # cached (a, b, c, d)
 _MODELS_CACHE: dict | None = None
 _LOAD_ATTEMPTED: bool = False  # True only after a successful or definitive load

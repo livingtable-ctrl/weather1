@@ -25,7 +25,10 @@ from markupsafe import escape as _html_escape
 from paths import (
     CRON_HEARTBEAT_PATH,
     CRON_LAST_RUN_PATH,
+    CRON_LOG_PATH,
+    CRON_WEB_LOG_PATH,
     DATA_DIR,
+    FORECAST_CACHE_PATH,
     KILL_SWITCH_PATH,
     LAST_CALIBRATION_COUNT_PATH,
     LAST_ML_RETRAIN_PATH,
@@ -924,7 +927,7 @@ setInterval(() => {{
         )
 
     _cron_proc: subprocess.Popen | None = None
-    _CRON_WEB_LOG = Path(__file__).parent / "data" / "cron_web.log"
+    _CRON_WEB_LOG = CRON_WEB_LOG_PATH
 
     _CRON_RATE_LIMIT_S = 60.0  # minimum seconds between spawns
     _run_cron_lock = threading.Lock()
@@ -1973,7 +1976,7 @@ setInterval(() => {{
 
     @app.route("/api/signals")
     def api_signals():
-        cron_log = Path(__file__).parent / "data" / "cron.log"
+        cron_log = CRON_LOG_PATH
         entries = []
         if cron_log.exists():
             try:
@@ -2481,7 +2484,7 @@ setInterval(() => {{
         import time as _time
         from datetime import UTC, datetime
 
-        cache_file = Path(__file__).parent / "data" / "forecast_cache.json"
+        cache_file = FORECAST_CACHE_PATH
         if not cache_file.exists():
             return jsonify(
                 {"entries": 0, "age_seconds": None, "stale": True, "last_updated": None}
@@ -2505,7 +2508,7 @@ setInterval(() => {{
     @app.route("/api/forecast-cache/invalidate", methods=["POST"])
     def api_forecast_cache_invalidate():
         """Delete the on-disk forecast cache so the next cron run rebuilds it."""
-        cache_file = Path(__file__).parent / "data" / "forecast_cache.json"
+        cache_file = FORECAST_CACHE_PATH
         if cache_file.exists():
             cache_file.unlink()
             return jsonify({"cleared": True})

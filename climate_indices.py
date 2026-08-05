@@ -24,11 +24,11 @@ from __future__ import annotations
 import json
 import threading
 from datetime import UTC, date, datetime
-from pathlib import Path
 
 import requests
 
 from forecast_cache import ForecastCache
+from paths import PDO_PNA_PATH as _PDO_PNA_PATH
 
 CPC_BASE = "https://www.cpc.ncep.noaa.gov"
 
@@ -459,7 +459,6 @@ def temperature_adjustment(city: str, target_date: date) -> float:
 
 _PDO_URL = "https://www.ncdc.noaa.gov/teleconnections/pdo/data.csv"
 _PNA_URL = "https://www.ncdc.noaa.gov/teleconnections/pna/data.csv"
-_PDO_PNA_PATH = Path(__file__).parent / "data" / "pdo_pna.json"
 _PDO_PNA_TTL_DAYS = 7
 
 

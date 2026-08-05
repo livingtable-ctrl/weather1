@@ -19,14 +19,13 @@ import logging
 import threading
 import time
 from datetime import UTC, datetime
-from pathlib import Path
 
 from circuit_breaker import flash_crash_cb
+from paths import ORDERBOOK_CACHE_PATH as _CACHE_PATH
 
 _log = logging.getLogger(__name__)
 
 _WS_URL = "wss://api.elections.kalshi.com/trade-api/ws/v2"
-_CACHE_PATH = Path(__file__).parent / "data" / "orderbook_cache.json"
 # Fix 6: mkdir moved out of import time — now called inside update_orderbook_cache
 
 # In-memory order book state (ticker → snapshot)

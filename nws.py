@@ -14,12 +14,12 @@ import time
 from concurrent.futures import ThreadPoolExecutor as _TPE
 from concurrent.futures import TimeoutError as _FutureTimeout
 from datetime import date, datetime
-from pathlib import Path
 
 import requests
 
 from circuit_breaker import CircuitBreaker
 from forecast_cache import ForecastCache, PersistentForecastCache
+from paths import NWS_STATION_CACHE_PATH as _STATION_CACHE_PATH
 from schema_validator import validate_nws_response
 from utils import normal_cdf
 from utils import prob_threshold as _prob_threshold
@@ -83,9 +83,6 @@ _obs_fetch_pool = _TPE(max_workers=4, thread_name_prefix="nws-obs")
 
 # Persistent station-ID cache: station→coord mappings never change, so we can
 # avoid the NWS /observationStations round-trip on subsequent process starts.
-_STATION_CACHE_PATH = (
-    Path(__file__).resolve().parent / "data" / ".nws_station_cache.json"
-)
 
 
 def _station_key_to_str(key: tuple[float, float]) -> str:

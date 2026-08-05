@@ -14,13 +14,11 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import safe_io
+from paths import ALERTS_PATH as _DATA_PATH
 from paths import BLACK_SWAN_PATH as _BLACK_SWAN_PATH
 from paths import KILL_SWITCH_PATH as _KILL_SWITCH_PATH
 
 _log = logging.getLogger(__name__)
-
-_DATA_PATH = Path(__file__).parent / "data" / "alerts.json"
-_DATA_PATH.parent.mkdir(exist_ok=True)
 
 
 def _load() -> dict:

@@ -12,9 +12,9 @@ from unittest.mock import patch
 
 import pytest
 
-sys.path.insert(0, str(Path(__file__).parent.parent))
+from paths import DATA_DIR as _DATA_DIR
 
-_DATA_DIR = Path(__file__).parent.parent / "data"
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 
 # ── P2-7: Weight files exist and pass validation ───────────────────────────────

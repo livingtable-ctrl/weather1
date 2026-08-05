@@ -20,12 +20,12 @@ import json
 import logging
 import random
 import time
-from pathlib import Path
 from typing import Any
+
+from paths import AB_TEST_DIR as _AB_TEST_DIR
 
 _log = logging.getLogger(__name__)
 
-_AB_TEST_DIR = Path(__file__).parent / "data" / "ab_tests"
 _AB_TEST_DIR.mkdir(parents=True, exist_ok=True)
 
 _DEFAULT_MAX_TRADES = 200  # P3-2: raised to 200 for adequate statistical power

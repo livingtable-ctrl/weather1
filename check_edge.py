@@ -1,7 +1,8 @@
 import sqlite3
-from pathlib import Path
 
-con = sqlite3.connect(str(Path("data/predictions.db")))
+from paths import DB_PATH
+
+con = sqlite3.connect(str(DB_PATH))
 con.row_factory = sqlite3.Row
 
 rows = con.execute("""

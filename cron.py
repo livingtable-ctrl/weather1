@@ -25,6 +25,7 @@ from kalshi_client import KalshiClient
 from paths import (
     CRON_HEARTBEAT_PATH,
     CRON_LAST_RUN_PATH,
+    CRON_LOG_PATH,
     DATA_DIR,
     EMOS_PARAMS_PATH,
     GRADUATED_FLAG_PATH,
@@ -1160,7 +1161,7 @@ def _cmd_cron_body(
     except Exception as _ws_health_err:
         _log.debug("WebSocket health check unavailable: %s", _ws_health_err)
 
-    log_path = Path(__file__).parent / "data" / "cron.log"
+    log_path = CRON_LOG_PATH
     log_path.parent.mkdir(exist_ok=True)
     if log_path.exists() and log_path.stat().st_size > 5 * 1024 * 1024:
         try:

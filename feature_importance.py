@@ -10,10 +10,10 @@ from __future__ import annotations
 import json
 import logging
 import time
-from pathlib import Path
+
+from paths import FEATURE_IMPORTANCE_LOG_PATH as _FEATURE_LOG_PATH
 
 _log = logging.getLogger(__name__)
-_FEATURE_LOG_PATH = Path(__file__).parent / "data" / "feature_importance.jsonl"
 _MAX_LOG_LINES = 50_000
 
 

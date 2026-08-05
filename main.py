@@ -83,12 +83,17 @@ from output_formatters import (
 )
 from paths import (
     BLACK_SWAN_PATH,
+    CRASH_LOG_PATH,
     CRON_HEARTBEAT_PATH,
     CRON_LAST_RUN_PATH,
     DATA_DIR,
+    EXPORTS_DIR,
     LAST_BACKTEST_PATH,
     LAST_CALIBRATION_COUNT_PATH,
     LIVE_CONFIG_PATH,
+    ONBOARDED_MARKER_PATH,
+    WALK_FORWARD_RESULTS_PATH,
+    WATCH_STATE_PATH,
 )
 from tracker import (
     brier_score,
@@ -149,8 +154,7 @@ _bot_config = _load_config()
 
 # Crash log: write uncaught exceptions (including from threads) to data/crash.log
 # so the error survives even when the terminal window closes before the user can read it.
-_CRASH_LOG = Path(__file__).parent / "data" / "crash.log"
-_CRASH_LOG.parent.mkdir(exist_ok=True)
+_CRASH_LOG = CRASH_LOG_PATH
 
 
 def _write_crash_log(header: str, text: str) -> None:
@@ -197,7 +201,7 @@ except Exception:
 
 # Variants sampled round-robin; loser auto-disabled after 50 trades.
 REFRESH_SECS = 300  # watch mode interval
-_WATCH_STATE_PATH = Path(__file__).parent / "data" / ".watch_state.json"
+_WATCH_STATE_PATH = WATCH_STATE_PATH
 
 import cron as _cron_module  # noqa: E402 — used to set USER_OVERRIDE_ACTIVE flag
 import paper as _paper_module  # noqa: E402 — used to set KILL_SWITCH_OVERRIDE_ACTIVE flag
@@ -3989,7 +3993,7 @@ def cmd_export() -> None:
     """Export prediction history and paper trades to CSV in data/exports/."""
     from paper import export_tax_csv, export_trades_csv
 
-    out_dir = Path(__file__).parent / "data" / "exports"
+    out_dir = EXPORTS_DIR
     out_dir.mkdir(parents=True, exist_ok=True)
 
     pred_path = str(out_dir / "predictions.csv")
@@ -4368,7 +4372,7 @@ def cmd_sync(client: KalshiClient):
 
 # ── Onboarding wizard ─────────────────────────────────────────────────────────
 
-_ONBOARDED_MARKER = Path(__file__).parent / "data" / ".onboarded"
+_ONBOARDED_MARKER = ONBOARDED_MARKER_PATH
 
 
 def _needs_onboarding() -> bool:
@@ -5731,7 +5735,6 @@ def cmd_walkforward(client: KalshiClient) -> None:
 def cmd_walk_forward() -> None:
     """Run walk-forward backtest on historical paper trades."""
     import json
-    from pathlib import Path
 
     from backtest import run_paper_walk_forward
 
@@ -5752,7 +5755,7 @@ def cmd_walk_forward() -> None:
             f"{fold['test_period']:<25} {fold['n_train']:>8} {fold['n_test']:>8} {brier_str:>8}"
         )
 
-    out_path = Path(__file__).parent / "data" / "walk_forward_results.json"
+    out_path = WALK_FORWARD_RESULTS_PATH
     out_path.write_text(json.dumps(result, indent=2))
     print(f"\nSaved to {out_path}")
 
@@ -7988,8 +7991,7 @@ def cmd_weekly_summary() -> None:
     summary_text = "\n".join(lines)
 
     # Save to file
-    out_dir = Path(__file__).parent / "data"
-    out_dir.mkdir(exist_ok=True)
+    out_dir = DATA_DIR
     fname = f"weekly_summary_{now.strftime('%Y-%m-%d')}.txt"
     out_path = out_dir / fname
     try:

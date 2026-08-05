@@ -28,10 +28,9 @@ from pathlib import Path
 
 import requests
 
-_log = logging.getLogger(__name__)
+from paths import DATA_DIR
 
-DATA_DIR = Path(__file__).parent / "data"
-DATA_DIR.mkdir(exist_ok=True)
+_log = logging.getLogger(__name__)
 
 _session = requests.Session()
 

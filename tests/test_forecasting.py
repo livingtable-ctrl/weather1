@@ -682,16 +682,7 @@ class TestLearnedWeights:
 
         monkeypatch.setattr(wm, "_LEARNED_WEIGHTS", {})
         weights_path = tmp_path / "learned_weights.json"
-
-        # Patch Path so save/load use our tmp file
-        original_path_truediv = wm.Path.__truediv__
-
-        def fake_truediv(self, key):
-            if "learned_weights" in str(key):
-                return weights_path
-            return original_path_truediv(self, key)
-
-        monkeypatch.setattr(wm.Path, "__truediv__", fake_truediv)
+        monkeypatch.setattr(wm, "LEARNED_WEIGHTS_PATH", weights_path)
 
         weights = {"NYC": {"gfs_seamless": 1.2, "icon_seamless": 0.8}}
         wm.save_learned_weights(weights)
@@ -714,15 +705,7 @@ class TestLearnedWeights:
         weights_path.write_text(
             json.dumps({"NYC": {"gfs_seamless": "high", "icon_seamless": 0.8}})
         )
-
-        original_path_truediv = wm.Path.__truediv__
-
-        def fake_truediv(self, key):
-            if "learned_weights" in str(key):
-                return weights_path
-            return original_path_truediv(self, key)
-
-        monkeypatch.setattr(wm.Path, "__truediv__", fake_truediv)
+        monkeypatch.setattr(wm, "LEARNED_WEIGHTS_PATH", weights_path)
 
         result = wm.load_learned_weights()  # must not raise
         assert result == {}
@@ -737,15 +720,7 @@ class TestLearnedWeights:
 
         monkeypatch.setattr(wm, "_LEARNED_WEIGHTS", {})
         weights_path = tmp_path / "learned_weights.json"
-
-        original_path_truediv = wm.Path.__truediv__
-
-        def fake_truediv(self, key):
-            if "learned_weights" in str(key):
-                return weights_path
-            return original_path_truediv(self, key)
-
-        monkeypatch.setattr(wm.Path, "__truediv__", fake_truediv)
+        monkeypatch.setattr(wm, "LEARNED_WEIGHTS_PATH", weights_path)
 
         wm.save_learned_weights({"NYC": {"gfs_seamless": "high"}})  # must not raise
         assert not weights_path.exists()  # rejected before writing

@@ -172,30 +172,41 @@ def isolate_tracker_db(tmp_path, monkeypatch):
 
 @pytest.fixture(autouse=True)
 def reset_open_meteo_circuit_breaker():
-    """Reset all weather_markets, acis_precip, AND acis_snow circuit
-    breakers before every test.
+    """Reset all weather_markets, acis_precip, acis_snow, climatology,
+    kalshi_client, AND nws circuit breakers before every test.
 
     There are six weather_markets CBs (_forecast_cb, _ensemble_cb,
     _ecmwf_om_cb, _nbm_om_cb, _weatherapi_cb, _pirate_cb), acis_precip's
-    two (_acis_cb, _om_seasonal_cb), and acis_snow's two
-    (_acis_snow_cb, _om_seasonal_snow_cb) -- all module-level singletons
-    constructed once at import time, which load their persisted state from
-    the real data/.cb_state.json on disk at that point (isolate_circuit_
-    breaker_state above only redirects _CB_STATE_PATH for future saves, not
-    the state a singleton already loaded before this fixture ever runs).
-    Any test that trips one leaves it open (or with a nonzero failure
-    count) for subsequent tests, causing false failures. acis_precip's two
-    were missed when this fixture was first written for weather_markets
-    only -- found while adding seasonal-API caching (backlog.txt "OPEN-
-    METEO SEASONAL API..."): the real open_meteo_seasonal breaker has a
-    genuine nonzero trip_count on disk (from the actual production incident
-    that entry is about), so any acis_precip test exercising the real fetch
-    function was already exposed to this gap before this fix. acis_snow's
-    two were the identical miss for Snow Step 2 (opus-review-caught) --
-    same gap, one module family later.
+    two (_acis_cb, _om_seasonal_cb), acis_snow's two
+    (_acis_snow_cb, _om_seasonal_snow_cb), climatology's one (_clim_cb),
+    kalshi_client's two (_kalshi_cb_read, _kalshi_cb_write), and nws's one
+    (_nws_cb) -- all module-level singletons constructed once at import
+    time, which load their persisted state from the real data/.cb_state.json
+    on disk at that point (isolate_circuit_breaker_state above only
+    redirects _CB_STATE_PATH for future saves, not the state a singleton
+    already loaded before this fixture ever runs). Any test that trips one
+    leaves it open (or with a nonzero failure count) for subsequent tests,
+    causing false failures. acis_precip's two were missed when this fixture
+    was first written for weather_markets only -- found while adding
+    seasonal-API caching (backlog.txt "OPEN-METEO SEASONAL API..."): the
+    real open_meteo_seasonal breaker has a genuine nonzero trip_count on
+    disk (from the actual production incident that entry is about), so any
+    acis_precip test exercising the real fetch function was already exposed
+    to this gap before this fix. acis_snow's two were the identical miss
+    for Snow Step 2 (opus-review-caught) -- same gap, one module family
+    later. climatology/kalshi_client/nws's four were the same gap again,
+    caught by the backlog.txt "~13 NON-SAFETY-CRITICAL FILES..." paths.py
+    migration's opus review: that migration made every worktree test run
+    load the SAME real main-clone .cb_state.json these singletons already
+    saw from the main clone (previously a worktree-local, usually-absent
+    file), so a real nonzero trip_count/current_timeout on disk for any of
+    these four would now carry into worktree test runs too.
     """
     import acis_precip
     import acis_snow
+    import climatology
+    import kalshi_client
+    import nws
     import weather_markets
 
     for cb in (
@@ -209,6 +220,10 @@ def reset_open_meteo_circuit_breaker():
         acis_precip._om_seasonal_cb,
         acis_snow._acis_snow_cb,
         acis_snow._om_seasonal_snow_cb,
+        climatology._clim_cb,
+        kalshi_client._kalshi_cb_read,
+        kalshi_client._kalshi_cb_write,
+        nws._nws_cb,
     ):
         cb.record_success()  # clears _failure_count and _opened_at
     yield
@@ -419,3 +434,84 @@ def mock_balance_1000(tmp_path, monkeypatch):
 
     importlib.reload(paper)
     yield paper
+
+
+@pytest.fixture(autouse=True)
+def isolate_forecast_ensemble_disk_cache(tmp_path, monkeypatch):
+    """Redirect weather_markets' forecast/ensemble disk-cache paths to a
+    per-test temp dir.
+
+    Both are module-level constants (_FORECAST_DISK_CACHE_PATH/
+    _ENSEMBLE_DISK_CACHE_PATH) written by flush_forecast_disk_cache()/
+    flush_ensemble_disk_cache() -- called explicitly by cron.py's
+    _cmd_cron_body() AND registered as atexit hooks so a normal process
+    exit persists pending entries regardless of which command ran. Without
+    this fixture, any test that populates the in-memory cache (directly or
+    via a mocked get_weather_forecast/analyze_trade call) and then either
+    exercises cmd_cron end-to-end or simply lets the pytest process exit
+    normally silently writes fabricated forecast data into the REAL
+    production data/forecast_cache.json -- confirmed live during the
+    backlog.txt "~13 NON-SAFETY-CRITICAL FILES..." paths.py migration that
+    unified this path with web_app.py's reader (previously weather_markets.py
+    built its own cwd-relative "data/forecast_cache.json" Path directly,
+    which happened to miss the real file for worktree/non-repo-root test
+    runs): 9 fake NYC/Chicago/Dallas entries landed in the real file before
+    this fixture existed, cleaned up manually the same session this fixture
+    was added. See pytest_sessionfinish below for why redirecting the path
+    alone isn't sufficient -- the atexit flush fires AFTER this fixture's
+    own teardown has already reverted the redirect.
+    """
+    import weather_markets as wm
+
+    monkeypatch.setattr(
+        wm, "_FORECAST_DISK_CACHE_PATH", tmp_path / "forecast_cache.json"
+    )
+    monkeypatch.setattr(
+        wm, "_ENSEMBLE_DISK_CACHE_PATH", tmp_path / "ensemble_cache.json"
+    )
+
+
+@pytest.fixture(autouse=True)
+def isolate_crash_log(tmp_path, monkeypatch):
+    """Redirect main._CRASH_LOG to a per-test temp file.
+
+    main.py installs sys.excepthook/threading.excepthook at import time
+    (module-level, unconditional), both of which call _write_crash_log().
+    pytest intercepts exceptions raised inside test bodies before they ever
+    reach sys.excepthook, but NOT exceptions at pytest's own top level or
+    interpreter-shutdown time, nor exceptions in a test-spawned background
+    thread -- confirmed live: a pytest-internal OSError during interpreter
+    shutdown wrote a real entry into the production data/crash.log during
+    the backlog.txt "~13 NON-SAFETY-CRITICAL FILES..." paths.py migration's
+    own test runs, cleaned up manually the same session this fixture was
+    added. crash.log's only purpose is real crash forensics -- this
+    prevents test-run noise from landing in it going forward.
+    """
+    import main
+
+    monkeypatch.setattr(main, "_CRASH_LOG", tmp_path / "crash.log")
+
+
+def pytest_sessionfinish(session, exitstatus):
+    """Clear weather_markets' forecast/ensemble disk-cache pending-write
+    buffers before the interpreter's atexit hooks fire.
+
+    isolate_forecast_ensemble_disk_cache above redirects the disk-cache
+    path for the duration of each test, but monkeypatch reverts that
+    redirect at fixture teardown -- which happens before
+    atexit.register(flush_forecast_disk_cache)/flush_ensemble_disk_cache
+    fire at true interpreter shutdown (pytest_sessionfinish runs, then
+    pytest's own process teardown, then only THEN does the interpreter
+    begin shutdown and run atexit hooks). If any pending entry is still
+    unflushed at that point -- e.g. a test populated the in-memory cache
+    but the specific test never triggered an explicit flush -- the atexit
+    hook would flush it to the REAL, un-redirected path. Clearing the
+    pending dicts here (a plain function call, not a fixture, so nothing
+    reverts it) guarantees flush_forecast_disk_cache()/
+    flush_ensemble_disk_cache() are a no-op by the time atexit runs,
+    regardless of monkeypatch's teardown timing.
+    """
+    import weather_markets as wm
+
+    wm._forecast_disk_pending.clear()
+    wm._ensemble_disk_pending.clear()

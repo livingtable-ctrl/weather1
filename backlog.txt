@@ -1,7 +1,7 @@
 BACKLOG — future improvements to implement when ready
 ======================================================
 
-[~13 NON-SAFETY-CRITICAL FILES STILL BYPASS paths.py -- WORKTREE CRON RUNS SILENTLY HIT A STALE LOCAL data/ CACHE]
+[RESOLVED 2026-08-05] ~13 NON-SAFETY-CRITICAL FILES STILL BYPASS paths.py -- WORKTREE CRON RUNS SILENTLY HIT A STALE LOCAL data/ CACHE
 Priority: Medium -- no live-money or trade-correctness impact (DB, paper
   trades, and backups all correctly route through paths.py already), but a
   real, reproduced-today source of spurious API rate-limiting and
@@ -72,6 +72,162 @@ When to revisit:
   again. See [[feedback_worktree_data_dir_gotcha]] (memory) for the fuller
   incident writeup of this bug class's first (2026-08-01) discovery and the
   correction noting this exact gap.
+
+RESOLVED 2026-08-05: re-verification at implementation time found the real
+  scope was larger than this entry's own Recommendation -- surfaced via
+  AskUserQuestion and the user chose "do the full current scope now" over
+  the entry's literal 13 files. Final count: 19 files migrated in the main
+  pass (the entry's 13, plus climate_indices.py's PDO/PNA cache, cron.py's
+  cron.log, utils.py's config-hash cache, and the main.py/weather_markets.py/
+  web_app.py spots the entry vaguely acknowledged as "a handful" without
+  naming -- including main.py's `_WATCH_STATE_PATH`, watch mode's
+  seen-tickers dedup state, more than cosmetic since a worktree-run watch
+  session could silently re-fire alerts already seen by the main clone) --
+  plus nws.py's station-ID cache, found only after the new regression guard
+  (below) was itself debugged, since it used an extra `.resolve()` call the
+  original bypass-detection grep didn't match. Also found and fixed
+  weather_markets.py's `_ENSEMBLE_DISK_CACHE_PATH`/`_FORECAST_DISK_CACHE_PATH`,
+  which used a cwd-relative `Path("data/...")` construction -- worse than
+  the `Path(__file__).parent/"data"` pattern, since it depends on the
+  process's working directory at import time, not just which worktree the
+  file lives in.
+
+  What shipped:
+  paths.py gained 27 new constants (26 for the files above + nws.py's).
+  Each target file's local `DATA_DIR`/named-path construction was replaced
+  with an import from paths.py, following `f94a44b`'s exact established
+  pattern -- generic-directory files (climatology.py, hurricane_climatology.py,
+  backtest.py, acis_snow.py, acis_precip.py, pdf_report.py) now import the
+  existing `DATA_DIR` constant directly rather than getting a redundant
+  per-file alias; single-purpose files got a named constant matching their
+  existing local variable name (preserving every test's `monkeypatch.setattr`
+  target unchanged). `check_edge.py` (a standalone manual debug script, not
+  part of the main app) was fixed too -- one-line change, already had a
+  ready-made `DB_PATH` constant to use, no reason to leave the identical bug
+  class in a file this project's own convention would otherwise flag.
+  `weather_markets.py`'s `FORECAST_CACHE_PATH` unification also fixed a
+  latent (never live in the deployed configuration, since production's cwd
+  and `__file__` already agreed) divergence between weather_markets.py's
+  writer and web_app.py's `/api/forecast-cache` reader.
+
+  Test results: 235+573+235+144+662 tests pass across every scoped run
+  (final comprehensive pass: 662 passed, 151.69s), ruff+ruff-format+mypy
+  clean on all 26 touched files.
+
+  New regression guard: tests/test_paths_bypass_guard.py, a repo-wide
+  (recursive, including tests/) regex scan asserting the anti-pattern never
+  reappears outside paths.py. Its own construction surfaced 2 more real
+  bugs beyond the main migration's scope: (1) a bug in the guard's own
+  directory-exclusion logic -- checking hidden-directory-name exclusion
+  against the FULL ABSOLUTE path rather than the path relative to the repo
+  root silently excluded every single file from the scan, since this
+  worktree's own checkout path contains `.claude` as a path segment
+  (`...\.claude\worktrees\...`) -- caught by mutation-testing the guard
+  against a real reverted migration and finding it still passed when it
+  shouldn't have; (2) once fixed, the guard immediately found
+  tests/test_phase2_batch_c.py's own `_DATA_DIR = Path(__file__).parent.parent
+  / "data"` -- a live instance of the exact bug class this backlog entry is
+  about, hiding in a TEST file's fixture setup (reading the worktree's stale
+  weight files instead of the main clone's real ones), fixed the same way
+  as every production file.
+
+  Opus review (2 parallel agents, effort=high, scoped by subsystem --
+  "hot path" cron/watch/web files vs. "data/ML/offline" files, matching
+  f94a44b's own 2-review precedent) found 13 issues total, all addressed:
+  - HIGH: weather_markets.py's forecast/ensemble disk-cache paths had NO
+    test isolation, and both have an `atexit`-registered flush -- proven
+    LIVE: 9 fake NYC/Chicago/Dallas forecast entries (obvious fixture
+    payloads, e.g. flat 65.0/50.0 highs/lows) had already landed in the
+    REAL production `data/forecast_cache.json` during this session's own
+    test runs, before this fix existed. Fixed with a new `tests/conftest.py`
+    autouse fixture redirecting both paths per-test, PLUS a
+    `pytest_sessionfinish` hook clearing the pending-write dicts directly
+    (not just the path) -- necessary because `monkeypatch` reverts the path
+    redirect at fixture teardown, which happens BEFORE the interpreter's
+    atexit hooks fire at true process shutdown, so redirecting the path
+    alone doesn't stop a leftover pending entry from flushing to the real
+    file at that point. Verified the fix works by hashing the real
+    production file before and after re-running the exact test files that
+    had polluted it, and confirming identical hashes both times (once right
+    after the fix, once again after the full 662-test comprehensive run).
+    The 9 fabricated entries already on disk were identified precisely
+    (matched against the reviewer's own list, cross-checked timestamps and
+    obviously-synthetic payload values) and removed from the real file.
+  - MEDIUM: the same class of issue for `main.py`'s crash log -- `main.py`
+    installs `sys.excepthook`/`threading.excepthook` at import time
+    (unconditional, module-level), and a pytest-internal `OSError` during
+    interpreter shutdown had already written a real entry into the
+    production `data/crash.log` during this session's test runs. Fixed with
+    another autouse fixture redirecting `main._CRASH_LOG`; the one spurious
+    entry already on disk was identified (exact timestamp match) and
+    removed, preserving all 5 genuine prior incidents in the file.
+  - LOW: `tests/conftest.py`'s existing circuit-breaker-reset fixture
+    covered 10 of the repo's 14 module-level `CircuitBreaker` singletons,
+    missing `climatology._clim_cb`, `kalshi_client._kalshi_cb_read`/
+    `_kalshi_cb_write`, and `nws._nws_cb` -- pre-existing gap for main-clone
+    test runs, newly relevant here since this migration makes worktree test
+    runs load the same real `.cb_state.json` main-clone runs already saw.
+    Fixed by adding all 4 to the fixture's reset list.
+  - 2x LOW (ruff-format): utils.py and an early draft of the new guard test
+    had blank-line formatting the pre-commit hook would have caught anyway;
+    fixed directly.
+  - MEDIUM: the guard's original regex missed several real variant forms
+    (`.resolve().parent`, `.parents[0]`, `Path("data")` with no trailing
+    slash, `Path(f"data/...")`/`Path(r"data/...")`, fully-qualified
+    `pathlib.Path(...)`) -- tightened per the reviewer's suggested pattern,
+    verified against 15 positive and 3 negative test cases before adopting.
+    This tightened regex is what caught nws.py's real gap (see above).
+  - MEDIUM: the guard originally excluded tests/ entirely on the theory
+    that tests only use tmp_path-based construction -- see
+    tests/test_phase2_batch_c.py finding above; guard now scans
+    recursively including tests/, with a documented, deliberate
+    known-limitation note (can't catch an indirect two-step construction
+    split across statements, matching test_dead_code_scan.py's own
+    disclosed regex-vs-call-graph limitation).
+  - LOW: the guard's docstring overstated its own scan scope (claimed to
+    exclude tests/, but was actually just a non-recursive glob that never
+    reached it) -- now accurate since the scan is genuinely recursive.
+  - LOW: the `_ALLOWLIST` skipped an entire file by name, meaning one
+    legitimate exception would have blinded the guard to any OTHER,
+    unrelated bypass added later to the same file. Fixed by keying on
+    (relative path -> (expected occurrence count, reason)) instead of a
+    bare skip, so a new unallowlisted occurrence in an already-allowlisted
+    file still fails loudly. (List is currently empty either way -- zero
+    real exceptions were needed.)
+  - 2x LOW, investigated and deliberately left unchanged (reasoning
+    required per this project's review-response standard, not a silent
+    drop): `main.py:5873`'s `_platt_path = data_dir / "platt_models.json"`
+    looked like a missed call site, but `data_dir` already resolves through
+    `DATA_DIR` when not overridden, and the `_CALIBRATE_DATA_DIR` override
+    it respects is a deliberate, already-tested isolation mechanism
+    (`tests/test_calibration.py`, 4 tests) -- switching to the new
+    `PLATT_MODELS_PATH` constant directly would have DECOUPLED this site
+    from that override and broken those 4 tests' isolation, introducing a
+    real regression to fix a cosmetic inconsistency. Left as-is.
+    `backtest.py`/`config.py`'s two independent `walk_forward_params.json`
+    constructions were flagged as a DRY opportunity (both already resolve
+    identically today, confirmed no live divergence) -- `backtest.py`'s
+    side could safely take a new shared constant, but `config.py`'s side is
+    reached through its own `_DATA_DIR` test-override mechanism
+    (`tests/test_phase2_batch_a.py`'s `TestPaperMinEdgeWarning`, 5 tests);
+    unifying properly would mean re-plumbing that isolation, disproportionate
+    to a purely cosmetic dedup with no correctness benefit. Left as-is.
+  - LOW, investigated and deliberately left unchanged: `alerts.py`'s
+    `from paths import ALERTS_PATH as _DATA_PATH` doesn't mirror the `X as
+    _X` naming convention every other aliased import in this diff uses --
+    but renaming would touch ~6 call sites plus `tests/test_alerts.py`'s
+    own `monkeypatch.setattr(alerts, "_DATA_PATH", ...)` target for zero
+    functional gain (the reviewer's own assessment: "defensible"). Left
+    as-is.
+  - Also addressed without a formal finding: `paths.py`'s own
+    `_DATA.mkdir(exist_ok=True)` now passes `parents=True` too (cheap
+    insurance, not a fix for a known failure -- this migration makes
+    `paths` import much earlier/more widely, so a mkdir failure here is
+    closer to a total-import-crash path than it used to be), and a
+    paths.py comment that overstated the FORECAST_CACHE_PATH bug's
+    real-world impact was qualified to note it was never actually live in
+    the deployed configuration (cwd and `__file__` already agreed there),
+    only in worktree/manual-cwd runs.
 
 [RESOLVED 2026-08-04] GFS_LOCKOUT_MINS=90 DOESN'T MATCH REAL GFS PROPAGATION DELAY -- BLOCKS ~25% OF EVERY DAY FOR WEAK PROTECTION
 Priority: Medium -- real, measurable opportunity cost with no confirmed

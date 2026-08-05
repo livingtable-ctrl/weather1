@@ -12,8 +12,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from pathlib import Path
 
-DATA_DIR = Path(__file__).parent / "data"
-DATA_DIR.mkdir(exist_ok=True)
+from paths import DATA_DIR
 
 try:
     from fpdf import FPDF  # type: ignore[import-untyped]

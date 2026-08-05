@@ -14,9 +14,9 @@ import logging
 import os
 import threading
 import time
-from pathlib import Path
 
 from paths import NOTIFY_COOLDOWN_STATE_PATH
+from paths import NOTIFY_TEMPLATES_PATH as _TEMPLATES_PATH
 from safe_io import atomic_write_json
 
 try:
@@ -46,7 +46,6 @@ _CHANNELS = set(
 # Keys: "strong_signal_title", "strong_signal_body" (Python format strings).
 # Fall back to built-in strings if file is absent or malformed.
 _TEMPLATES: dict = {}
-_TEMPLATES_PATH = Path(__file__).parent / "data" / "notify_templates.json"
 try:
     if _TEMPLATES_PATH.exists():
         _TEMPLATES = json.loads(_TEMPLATES_PATH.read_text())

@@ -10,6 +10,7 @@ import os
 from datetime import UTC, date, datetime
 
 from config import _paper_min_edge_default as _cfg_paper_min_edge_default
+from paths import CONFIG_HASH_PATH as _CONFIG_HASH_PATH
 
 
 def utc_today() -> date:
@@ -454,10 +455,6 @@ logger = _setup_logging()
 
 
 # ── P10.3: Config integrity ───────────────────────────────────────────────────
-
-_CONFIG_HASH_PATH = (
-    __import__("pathlib").Path(__file__).parent / "data" / ".config_hash"
-)
 
 
 def get_config_fingerprint() -> dict:

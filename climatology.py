@@ -18,16 +18,14 @@ import requests
 
 import safe_io
 from circuit_breaker import CircuitBreaker as _CircuitBreaker
+from paths import DATA_DIR
 from utils import prob_threshold as _prob_threshold
 
 _log = logging.getLogger(__name__)
 _clim_cb = _CircuitBreaker("climatology", failure_threshold=5, recovery_timeout=300)
 
-DATA_DIR = Path(__file__).parent / "data"
-
 # #125: shared session for connection pooling
 _session = requests.Session()
-DATA_DIR.mkdir(exist_ok=True)
 
 ARCHIVE_BASE = "https://archive-api.open-meteo.com/v1/archive"
 HISTORY_YEARS = 30

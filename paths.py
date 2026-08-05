@@ -10,7 +10,12 @@ from safe_io import project_root as _project_root
 
 _ROOT = _project_root()
 _DATA = _ROOT / "data"
-_DATA.mkdir(exist_ok=True)  # data/ is gitignored — create it on first run (fresh clone)
+# data/ is gitignored -- create it on first run (fresh clone). parents=True
+# is cheap insurance, not a fix for a known failure: importing this module
+# now happens very early/widely (utils.py, circuit_breaker.py, kalshi_ws.py,
+# nws.py all import from here at module scope), so a mkdir failure here is
+# closer to a total-import-crash path than it used to be.
+_DATA.mkdir(parents=True, exist_ok=True)
 
 # The data/ directory itself, for modules that need to construct their own
 # filenames within it (cloud_backup.py's default sync source, calibration.py's
@@ -74,3 +79,52 @@ GRADUATED_FLAG_PATH = _DATA / "graduated.flag"
 SIGNALS_CACHE_PATH = _DATA / "signals_cache.json"
 PARAM_SWEEP_RESULTS_PATH = _DATA / "param_sweep_results.json"
 LAST_BACKTEST_PATH = _DATA / ".last_backtest.json"
+
+# Non-safety-critical caches / model artifacts / logs (backlog.txt "~13
+# NON-SAFETY-CRITICAL FILES STILL BYPASS paths.py" migration, 2026-08-05).
+# None of these feed live-order gates, but each is still real state that
+# should resolve to the main clone's data/ regardless of which worktree the
+# process happens to run from -- see the safety-critical constants above for
+# the original incident this same bug class caused.
+AB_TEST_DIR = _DATA / "ab_tests"
+ALERTS_PATH = _DATA / "alerts.json"
+FEATURE_IMPORTANCE_LOG_PATH = _DATA / "feature_importance.jsonl"
+CB_STATE_PATH = _DATA / ".cb_state.json"
+FLASH_CRASH_COOLDOWN_PATH = _DATA / ".flash_crash_cooldowns.json"
+FLASH_CRASH_HISTORY_PATH = _DATA / ".flash_crash_history.json"
+PDO_PNA_PATH = _DATA / "pdo_pna.json"
+ORDERBOOK_CACHE_PATH = _DATA / "orderbook_cache.json"
+ML_BIAS_MODEL_PATH = _DATA / "bias_models.pkl"
+ML_BIAS_HMAC_PATH = _DATA / ".bias_models.hmac"
+NOTIFY_TEMPLATES_PATH = _DATA / "notify_templates.json"
+CONFIG_HASH_PATH = _DATA / ".config_hash"
+CRASH_LOG_PATH = _DATA / "crash.log"
+WATCH_STATE_PATH = _DATA / ".watch_state.json"
+EXPORTS_DIR = _DATA / "exports"
+ONBOARDED_MARKER_PATH = _DATA / ".onboarded"
+WALK_FORWARD_RESULTS_PATH = _DATA / "walk_forward_results.json"
+CITIES_JSON_PATH = _DATA / "cities.json"
+FEATURE_ACTIVATIONS_PATH = _DATA / "feature_activations.json"
+PLATT_MODELS_PATH = _DATA / "platt_models.json"
+FORECAST_SNAPSHOTS_DIR = _DATA / "forecast_snapshots"
+ENSEMBLE_CACHE_DIR = _DATA / "ensemble_cache"
+ENSEMBLE_DISK_CACHE_PATH = _DATA / "ensemble_cache.json"
+# Shared by weather_markets.py (writer) and web_app.py (2 read-only API
+# endpoints) -- previously each constructed its own path independently
+# (weather_markets.py's own was even cwd-relative, not __file__-relative).
+# In the real deployed configuration both cwd and __file__ already resolved
+# to the same place (run_and_sleep.bat cd's to the project root, and
+# web_app.py spawns cron with cwd=Path(__file__).parent), so this was never
+# a production bug -- but it silently broke for a worktree run or any
+# manual invocation from a different cwd, which is exactly this migration's
+# scope.
+FORECAST_CACHE_PATH = _DATA / "forecast_cache.json"
+# Shared by cron.py (writer) and web_app.py (2 read-only viewers).
+CRON_LOG_PATH = _DATA / "cron.log"
+CRON_WEB_LOG_PATH = _DATA / "cron_web.log"
+# nws.py's persistent station-ID cache -- missed in the first pass of this
+# migration since it used `Path(__file__).resolve().parent / "data"` (an
+# extra `.resolve()` call the original bypass-detection grep didn't match),
+# caught by tests/test_paths_bypass_guard.py's own tightened regex after a
+# bug in that guard's directory-exclusion logic was fixed.
+NWS_STATION_CACHE_PATH = _DATA / ".nws_station_cache.json"

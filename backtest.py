@@ -23,6 +23,7 @@ from pathlib import Path
 
 import requests
 
+from paths import DATA_DIR
 from utils import KALSHI_FEE_RATE, KALSHI_MAKER_FEE_RATE
 from utils import prob_threshold as _prob_threshold
 from weather_markets import (
@@ -37,8 +38,6 @@ _log = logging.getLogger(__name__)
 
 ARCHIVE_ENS_BASE = "https://archive-api.open-meteo.com/v1/archive"
 _PREV_RUN_MODELS = ["icon_seamless", "gfs_seamless", "ecmwf_aifs025_single"]
-DATA_DIR = Path(__file__).parent / "data"
-DATA_DIR.mkdir(exist_ok=True)
 ARCHIVE_CACHE_DIR = DATA_DIR / "archive_cache"
 ARCHIVE_CACHE_DIR.mkdir(exist_ok=True)
 

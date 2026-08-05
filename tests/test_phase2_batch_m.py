@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import time
-from pathlib import Path
 from unittest.mock import patch
 
 # ── P2-35: ML retrain gate uses marker file ───────────────────────────────────
@@ -60,8 +59,12 @@ class TestMlRetrainMarkerFile:
         assert "_now_dow == 6" not in src, (
             "day-of-week check must be replaced with marker-file approach"
         )
-        assert "last_ml_retrain" in src, (
-            "_cmd_cron_body must reference .last_ml_retrain marker"
+        # f94a44b routed this through paths.py's LAST_ML_RETRAIN_PATH constant
+        # (whose value is data/.last_ml_retrain) instead of a raw string
+        # literal, so the marker filename itself no longer appears in this
+        # function's source text -- assert on the constant reference instead.
+        assert "LAST_ML_RETRAIN_PATH" in src, (
+            "_cmd_cron_body must reference the LAST_ML_RETRAIN_PATH marker"
         )
 
 
@@ -134,11 +137,11 @@ class TestParamSweepTemporalSplit:
             saved.append(data)
 
         monkeypatch.setattr(safe_io, "atomic_write_json", fake_write)
-        # Redirect out_path
-        monkeypatch.setattr(
-            "param_sweep.Path",
-            lambda *a: out_path if "param_sweep_results" in str(a) else Path(*a),
-        )
+        # Redirect the results path -- param_sweep.py now imports the fixed
+        # PARAM_SWEEP_RESULTS_PATH constant from paths.py (f94a44b) rather
+        # than constructing a Path at call time, so there's no more
+        # module-level `Path` name to intercept via a lambda.
+        monkeypatch.setattr("param_sweep.PARAM_SWEEP_RESULTS_PATH", out_path)
 
         # Just check that the function runs without error and returns results dict
         result = run_sweep(trades)

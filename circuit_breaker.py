@@ -13,14 +13,14 @@ import json
 import logging
 import threading
 import time
-from pathlib import Path
 from typing import Any
 
+from paths import CB_STATE_PATH as _CB_STATE_PATH
+from paths import FLASH_CRASH_COOLDOWN_PATH as _FLASH_CRASH_COOLDOWN_PATH
+from paths import FLASH_CRASH_HISTORY_PATH as _FLASH_CRASH_HISTORY_PATH
 from safe_io import atomic_write_json
 
 _log = logging.getLogger(__name__)
-
-_CB_STATE_PATH = Path(__file__).parent / "data" / ".cb_state.json"
 
 # Serialises all cross-instance writes to the shared .cb_state.json file.
 # Each CircuitBreaker has its own self._lock for internal state, but without
@@ -289,12 +289,6 @@ class CircuitBreaker:
 
 
 # ── Flash Crash Circuit Breaker ───────────────────────────────────────────────
-
-
-_FLASH_CRASH_COOLDOWN_PATH = (
-    Path(__file__).parent / "data" / ".flash_crash_cooldowns.json"
-)
-_FLASH_CRASH_HISTORY_PATH = Path(__file__).parent / "data" / ".flash_crash_history.json"
 
 
 class FlashCrashCB:

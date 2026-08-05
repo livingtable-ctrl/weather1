@@ -18,7 +18,6 @@ from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
-from pathlib import Path
 
 import requests
 from requests.adapters import HTTPAdapter
@@ -37,11 +36,18 @@ from forecast_cache import ForecastCache
 from kalshi_client import KalshiClient, _request_with_retry
 from nws import fetch_nbm_forecast, get_live_observation, nws_prob, obs_prob
 from paths import (
+    CITIES_JSON_PATH,
     CITY_REGISTRY_REPORT_PATH,
     DATA_DIR,
+    ENSEMBLE_CACHE_DIR,
+    ENSEMBLE_DISK_CACHE_PATH,
+    FEATURE_ACTIVATIONS_PATH,
+    FORECAST_CACHE_PATH,
+    FORECAST_SNAPSHOTS_DIR,
     HOURLY_TARGET_HOURS_PATH,
     HURRICANE_COUNT_TO_DATE_PATH,
     LEARNED_WEIGHTS_PATH,
+    PLATT_MODELS_PATH,
     RETIREMENT_PROBATION_PATH,
     SERIES_DRIFT_PATH,
 )
@@ -219,7 +225,7 @@ def _load_city_coords() -> dict:
     """
     import json
 
-    cities_path = Path(__file__).parent / "data" / "cities.json"
+    cities_path = CITIES_JSON_PATH
     if cities_path.exists():
         try:
             raw = json.loads(cities_path.read_text())
@@ -490,11 +496,11 @@ _om_session: requests.Session = requests.Session()
 # the longer window prevents rate-limit hammering on consecutive manual cron runs.
 _ensemble_cache: ForecastCache[list[float]] = ForecastCache(ttl_secs=8 * 3600)
 _ENSEMBLE_CACHE_TTL = 8 * 60 * 60  # seconds — mirrors in-memory TTL
-_ENSEMBLE_DISK_CACHE_PATH = Path("data/ensemble_cache.json")
+_ENSEMBLE_DISK_CACHE_PATH = ENSEMBLE_DISK_CACHE_PATH
 _ENSEMBLE_DISK_LOCK = threading.Lock()
 
 # Path for one-time auto-activation notifications surfaced on the dashboard.
-_FEATURE_ACTIVATIONS_PATH = Path(__file__).parent / "data" / "feature_activations.json"
+_FEATURE_ACTIVATIONS_PATH = FEATURE_ACTIVATIONS_PATH
 
 # Two separate rate limiters: forecast endpoint is more permissive than ensemble.
 # ensemble-api.open-meteo.com is the stricter one (0.1s caused 429s+60s retries);
@@ -601,7 +607,7 @@ _FORECAST_CACHE_TTL = 8 * 60 * 60
 
 # Disk-backed forecast cache — survives process restarts so `analyze` is fast
 # on the 2nd+ run within the same 90-minute window.
-_FORECAST_DISK_CACHE_PATH = Path("data/forecast_cache.json")
+_FORECAST_DISK_CACHE_PATH = FORECAST_CACHE_PATH
 _FORECAST_DISK_LOCK = threading.Lock()
 
 
@@ -1115,7 +1121,7 @@ def _load_platt_models() -> dict[str, tuple[float, float]]:
     writing this file would otherwise never be picked up without a restart.
     """
     global _PLATT_MODELS, _PLATT_MODELS_MTIME
-    path = Path(__file__).parent / "data" / "platt_models.json"
+    path = PLATT_MODELS_PATH
     try:
         mtime = path.stat().st_mtime if path.exists() else None
     except OSError:
@@ -3062,7 +3068,7 @@ def save_forecast_snapshot(ticker: str, forecast_data: dict) -> None:
     try:
         import json as _json
 
-        snap_dir = Path(__file__).parent / "data" / "forecast_snapshots"
+        snap_dir = FORECAST_SNAPSHOTS_DIR
         snap_dir.mkdir(parents=True, exist_ok=True)
         safe_ticker = ticker.replace("/", "-").replace(":", "-")
         _today_str = datetime.now(UTC).date().isoformat()
@@ -3588,7 +3594,7 @@ def get_ensemble_members(
     """
     import json as _json_em
 
-    cache_dir = Path(__file__).parent / "data" / "ensemble_cache"
+    cache_dir = ENSEMBLE_CACHE_DIR
     cache_dir.mkdir(parents=True, exist_ok=True)
     cache_file = cache_dir / f"{lat:.3f}_{lon:.3f}_{target_date_str}_{var}.json"
     if cache_file.exists():
@@ -10760,7 +10766,7 @@ def analyze_trade(
                     "platt_models.json",
                     "temperature_scale.json",
                 )
-                if (Path(__file__).parent / "data" / f).exists()
+                if (DATA_DIR / f).exists()
             ],
         )
         _city_correction_applied = (
