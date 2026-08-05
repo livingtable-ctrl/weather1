@@ -9,7 +9,7 @@ import shutil
 import sqlite3
 import tempfile
 import unittest
-from datetime import UTC, date, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -3095,6 +3095,407 @@ class TestTradeHistory(unittest.TestCase):
         )
         rows = tracker.get_trade_history("TK7")
         self.assertIsNone(rows[0]["yes_price"])
+
+
+class TestTradeFlowSettlementCorrelation(unittest.TestCase):
+    """get_trade_flow_settlement_correlation -- the PUBLIC TRADE-FLOW SIGNAL
+    "did informed flow precede settlement-direction moves" research pass."""
+
+    def setUp(self):
+        self._tmpdir = tempfile.mkdtemp()
+        self._orig = tracker.DB_PATH
+        tracker.DB_PATH = Path(self._tmpdir) / "test_predictions.db"
+        tracker._db_initialized = False
+
+    def tearDown(self):
+        tracker.DB_PATH = self._orig
+        tracker._db_initialized = False
+        shutil.rmtree(self._tmpdir, ignore_errors=True)
+
+    def _trade(self, trade_id, side, ts, count="1.00"):
+        return {
+            "trade_id": trade_id,
+            "count_fp": count,
+            "yes_price_dollars": "0.50",
+            "no_price_dollars": "0.50",
+            "taker_outcome_side": side,
+            "taker_book_side": "bid",
+            "is_block_trade": False,
+            "created_time": ts,
+        }
+
+    def _candle(self, end_period_ts, price_close):
+        return {
+            "end_period_ts": end_period_ts,
+            "price": {"close_dollars": str(price_close)}
+            if price_close is not None
+            else None,
+            "volume_fp": "1.00",
+        }
+
+    # Real Unix-epoch-scale timestamps (not small toy integers) -- candle
+    # end_period_ts must be directly comparable to trade created_time's
+    # parsed epoch, so a test actually exercises the "find the candle at/
+    # after mid_epoch" branch instead of always falling through to the
+    # index-based fallback (which small integers like 1000/2000/3000 would,
+    # since they're always far below any real 2026 epoch value).
+    _EARLY_TS = "2026-01-01T00:00:00Z"
+    _LATE_TS = "2026-01-01T00:16:40Z"  # exactly 1000s after _EARLY_TS
+    _EARLY_EPOCH = datetime.fromisoformat(_EARLY_TS.replace("Z", "+00:00")).timestamp()
+    _MID_EPOCH = datetime.fromisoformat(_LATE_TS.replace("Z", "+00:00")).timestamp()
+
+    def _seed_market(self, ticker, early_sides, mid_price, last_price):
+        """2 early trades (t=_EARLY_EPOCH, sides from early_sides) + 2 late
+        trades (t=_MID_EPOCH, side irrelevant) -> mid_epoch lands exactly on
+        _MID_EPOCH, so only the early pair contributes to early flow. 3
+        candles at [_EARLY_EPOCH-3600, _MID_EPOCH, _MID_EPOCH+3600] ->
+        late_drift = last_price - mid_price via the real time-aligned match,
+        not the index-based fallback."""
+        trades = [
+            self._trade(f"{ticker}-e1", early_sides[0], self._EARLY_TS),
+            self._trade(f"{ticker}-e2", early_sides[1], self._EARLY_TS),
+            self._trade(f"{ticker}-l1", "yes", self._LATE_TS),
+            self._trade(f"{ticker}-l2", "yes", self._LATE_TS),
+        ]
+        tracker.log_trades(ticker, trades)
+        candles = [
+            self._candle(int(self._EARLY_EPOCH) - 3600, 0.50),
+            self._candle(int(self._MID_EPOCH), mid_price),
+            self._candle(int(self._MID_EPOCH) + 3600, last_price),
+        ]
+        tracker.log_price_candles(ticker, "KXTEST", 60, candles)
+
+    def test_no_data_returns_zero(self):
+        result = tracker.get_trade_flow_settlement_correlation()
+        self.assertEqual(
+            result,
+            {
+                "n": 0,
+                "r": None,
+                "markets_considered": 0,
+                "markets_skipped_thin": 0,
+                "markets_skipped_no_price": 0,
+            },
+        )
+
+    def test_perfect_correlation_across_three_markets(self):
+        # (early_flow, late_drift): (1.0, +0.30), (0.0, 0.0), (-1.0, -0.30) --
+        # three collinear points through the origin always give r == 1.0.
+        self._seed_market("TKA", ["yes", "yes"], mid_price=0.50, last_price=0.80)
+        self._seed_market("TKB", ["yes", "no"], mid_price=0.50, last_price=0.50)
+        self._seed_market("TKC", ["no", "no"], mid_price=0.50, last_price=0.20)
+
+        result = tracker.get_trade_flow_settlement_correlation(
+            min_trades_per_market=4,
+            min_candles_per_market=3,
+            min_markets=3,
+            min_early_trades=2,
+        )
+        self.assertEqual(result["n"], 3)
+        self.assertEqual(result["markets_considered"], 3)
+        self.assertEqual(result["markets_skipped_thin"], 0)
+        self.assertEqual(result["markets_skipped_no_price"], 0)
+        self.assertAlmostEqual(result["r"], 1.0, places=6)
+
+    def test_below_min_markets_reports_n_but_r_is_none(self):
+        self._seed_market("TKA", ["yes", "yes"], mid_price=0.50, last_price=0.80)
+
+        result = tracker.get_trade_flow_settlement_correlation(
+            min_trades_per_market=4,
+            min_candles_per_market=3,
+            min_markets=3,
+            min_early_trades=2,
+        )
+        self.assertEqual(result["n"], 1)
+        self.assertIsNone(result["r"])
+
+    def test_zero_variance_guardrail_returns_r_none(self):
+        """3 markets share the exact same early_flow (1.0) -- stddev of the
+        flow series is 0, so r must stay None even though n clears the
+        min_markets floor, rather than dividing by zero or fabricating a
+        value."""
+        self._seed_market("TKA", ["yes", "yes"], mid_price=0.50, last_price=0.60)
+        self._seed_market("TKB", ["yes", "yes"], mid_price=0.50, last_price=0.70)
+        self._seed_market("TKC", ["yes", "yes"], mid_price=0.50, last_price=0.90)
+
+        result = tracker.get_trade_flow_settlement_correlation(
+            min_trades_per_market=4,
+            min_candles_per_market=3,
+            min_markets=3,
+            min_early_trades=2,
+        )
+        self.assertEqual(result["n"], 3)
+        self.assertIsNone(result["r"])
+
+    def test_thin_market_too_few_trades_is_skipped_and_counted(self):
+        tracker.log_trades(
+            "TKTHIN", [self._trade("tr-1", "yes", "2026-01-01T00:00:00Z")]
+        )
+        tracker.log_price_candles(
+            "TKTHIN",
+            "KXTEST",
+            60,
+            [self._candle(1000, 0.5), self._candle(2000, 0.5), self._candle(3000, 0.5)],
+        )
+        result = tracker.get_trade_flow_settlement_correlation(
+            min_trades_per_market=4, min_candles_per_market=3, min_markets=1
+        )
+        self.assertEqual(result["n"], 0)
+        self.assertEqual(result["markets_considered"], 1)
+        self.assertEqual(result["markets_skipped_thin"], 1)
+        self.assertEqual(result["markets_skipped_no_price"], 0)
+
+    def test_thin_market_too_few_candles_is_skipped_and_counted(self):
+        tracker.log_trades(
+            "TKTHIN2",
+            [
+                self._trade("tr-1", "yes", "2026-01-01T00:00:00Z"),
+                self._trade("tr-2", "no", "2026-01-01T00:16:40Z"),
+            ],
+        )
+        tracker.log_price_candles("TKTHIN2", "KXTEST", 60, [self._candle(1000, 0.5)])
+        result = tracker.get_trade_flow_settlement_correlation(
+            min_trades_per_market=2, min_candles_per_market=3, min_markets=1
+        )
+        self.assertEqual(result["n"], 0)
+        self.assertEqual(result["markets_skipped_thin"], 1)
+
+    def test_zero_early_volume_is_skipped(self):
+        """All 4 trades share one identical timestamp -> mid_epoch equals
+        that timestamp -> the early-half filter (epoch < mid_epoch)
+        excludes every trade, leaving zero early volume."""
+        same_ts = "2026-01-01T00:00:00Z"
+        tracker.log_trades(
+            "TKFLAT",
+            [self._trade(f"tr-{i}", "yes", same_ts) for i in range(4)],
+        )
+        tracker.log_price_candles(
+            "TKFLAT",
+            "KXTEST",
+            60,
+            [self._candle(1000, 0.5), self._candle(2000, 0.5), self._candle(3000, 0.6)],
+        )
+        result = tracker.get_trade_flow_settlement_correlation(
+            min_trades_per_market=4, min_candles_per_market=3, min_markets=1
+        )
+        self.assertEqual(result["n"], 0)
+        self.assertEqual(result["markets_skipped_thin"], 1)
+
+    def test_early_trade_count_floor_is_enforced(self):
+        """1 early trade (count=100, so early_total > 0 on its own) plus 3
+        late trades -> early_trade_count=1 is below the default
+        min_early_trades=3 floor, even though early_total is comfortably
+        positive -- a single trade at the boundary must not be able to
+        swing early_flow to +-1.0 unchecked."""
+        tracker.log_trades(
+            "TKONEEARLY",
+            [
+                self._trade("tr-e1", "yes", self._EARLY_TS, count="100.00"),
+                self._trade("tr-l1", "yes", self._LATE_TS),
+                self._trade("tr-l2", "yes", self._LATE_TS),
+                self._trade("tr-l3", "yes", self._LATE_TS),
+            ],
+        )
+        tracker.log_price_candles(
+            "TKONEEARLY",
+            "KXTEST",
+            60,
+            [
+                self._candle(int(self._EARLY_EPOCH) - 3600, 0.50),
+                self._candle(int(self._MID_EPOCH), 0.50),
+                self._candle(int(self._MID_EPOCH) + 3600, 0.80),
+            ],
+        )
+        result = tracker.get_trade_flow_settlement_correlation(
+            min_trades_per_market=4, min_candles_per_market=3, min_markets=1
+        )
+        self.assertEqual(result["n"], 0)
+        self.assertEqual(result["markets_skipped_thin"], 1)
+
+    def test_last_candle_null_close_walks_back_to_prior_real_close(self):
+        """A trailing candle with no trades in its period reports
+        price_close=None (real: 24% of price_history rows). candles[-1]
+        must not be trusted blindly -- the walk backs up to the last real
+        close instead of dropping an otherwise-usable market."""
+        tracker.log_trades(
+            "TKTRAILNULL",
+            [
+                self._trade("e1", "yes", self._EARLY_TS),
+                self._trade("e2", "yes", self._EARLY_TS),
+                self._trade("l1", "yes", self._LATE_TS),
+                self._trade("l2", "yes", self._LATE_TS),
+            ],
+        )
+        tracker.log_price_candles(
+            "TKTRAILNULL",
+            "KXTEST",
+            60,
+            [
+                self._candle(int(self._EARLY_EPOCH) - 3600, 0.50),
+                self._candle(int(self._MID_EPOCH), 0.50),
+                self._candle(int(self._MID_EPOCH) + 3600, 0.80),  # last real close
+                self._candle(int(self._MID_EPOCH) + 7200, None),  # trailing NULL
+            ],
+        )
+        result = tracker.get_trade_flow_settlement_correlation(
+            min_trades_per_market=4,
+            min_candles_per_market=4,
+            min_markets=1,
+            min_early_trades=2,
+        )
+        self.assertEqual(result["n"], 1)
+        self.assertEqual(result["markets_skipped_no_price"], 0)
+
+    def test_mid_candle_null_close_walks_forward_to_next_real_close(self):
+        """The candle landing exactly at the trade-series midpoint has no
+        real close -- the search must advance to the next candle with a
+        real price rather than stopping on the first time-eligible one
+        regardless of whether it actually has a price."""
+        tracker.log_trades(
+            "TKMIDNULL",
+            [
+                self._trade("e1", "yes", self._EARLY_TS),
+                self._trade("e2", "yes", self._EARLY_TS),
+                self._trade("l1", "yes", self._LATE_TS),
+                self._trade("l2", "yes", self._LATE_TS),
+            ],
+        )
+        tracker.log_price_candles(
+            "TKMIDNULL",
+            "KXTEST",
+            60,
+            [
+                self._candle(int(self._EARLY_EPOCH) - 3600, 0.50),
+                self._candle(int(self._MID_EPOCH), None),  # at midpoint, no trades
+                self._candle(int(self._MID_EPOCH) + 1800, 0.60),  # next real close
+                self._candle(int(self._MID_EPOCH) + 3600, 0.80),
+            ],
+        )
+        result = tracker.get_trade_flow_settlement_correlation(
+            min_trades_per_market=4,
+            min_candles_per_market=4,
+            min_markets=1,
+            min_early_trades=2,
+        )
+        self.assertEqual(result["n"], 1)
+        self.assertEqual(result["markets_skipped_no_price"], 0)
+
+    def test_no_real_price_at_or_after_midpoint_is_skipped_not_inverted(self):
+        """Every candle at/after the trade-series midpoint has a NULL
+        close; only candles strictly before the midpoint have real prices.
+        Must be skipped (counted under markets_skipped_no_price) rather
+        than falling back to an earlier-than-midpoint price, which would
+        measure a window that precedes the early-flow window entirely and
+        invert the lead-lag relationship this function exists to test."""
+        tracker.log_trades(
+            "TKNOAFTERPRICE",
+            [
+                self._trade("e1", "yes", self._EARLY_TS),
+                self._trade("e2", "yes", self._EARLY_TS),
+                self._trade("l1", "yes", self._LATE_TS),
+                self._trade("l2", "yes", self._LATE_TS),
+            ],
+        )
+        tracker.log_price_candles(
+            "TKNOAFTERPRICE",
+            "KXTEST",
+            60,
+            [
+                self._candle(int(self._EARLY_EPOCH) - 7200, 0.40),
+                self._candle(int(self._EARLY_EPOCH) - 3600, 0.45),
+                self._candle(int(self._MID_EPOCH), None),
+                self._candle(int(self._MID_EPOCH) + 3600, None),
+            ],
+        )
+        result = tracker.get_trade_flow_settlement_correlation(
+            min_trades_per_market=4,
+            min_candles_per_market=4,
+            min_markets=1,
+            min_early_trades=2,
+        )
+        self.assertEqual(result["n"], 0)
+        self.assertEqual(result["markets_skipped_no_price"], 1)
+        self.assertEqual(result["markets_skipped_thin"], 0)
+
+    def test_missing_price_close_is_skipped(self):
+        tracker.log_trades(
+            "TKNOPRICE",
+            [
+                self._trade("tr-e1", "yes", "2026-01-01T00:00:00Z"),
+                self._trade("tr-e2", "yes", "2026-01-01T00:00:00Z"),
+                self._trade("tr-l1", "yes", "2026-01-01T00:16:40Z"),
+                self._trade("tr-l2", "yes", "2026-01-01T00:16:40Z"),
+            ],
+        )
+        tracker.log_price_candles(
+            "TKNOPRICE",
+            "KXTEST",
+            60,
+            [
+                self._candle(1000, None),
+                self._candle(2000, None),
+                self._candle(3000, None),
+            ],
+        )
+        result = tracker.get_trade_flow_settlement_correlation(
+            min_trades_per_market=4,
+            min_candles_per_market=3,
+            min_markets=1,
+            min_early_trades=2,
+        )
+        self.assertEqual(result["n"], 0)
+        self.assertEqual(result["markets_skipped_no_price"], 1)
+        self.assertEqual(result["markets_skipped_thin"], 0)
+
+    def test_mixed_period_interval_candles_are_filtered(self):
+        """A ticker with an extra candle logged at a different
+        period_interval (never observed live as of 2026-08-03, but not
+        structurally prevented by price_history) must not have that candle
+        silently included in the walk -- only the earliest candle's own
+        resolution is kept.
+
+        Deliberately uses 3 markets, not 2: with only 2 markets, Pearson r
+        is mathematically always exactly +-1 regardless of the actual y
+        values (any 2 distinct points are collinear), so a test built on 2
+        markets can't distinguish a leaked value from a correctly-filtered
+        one as long as the leak doesn't flip the sign -- this was tried
+        first and silently failed to catch the filter being removed
+        entirely. With 3 points, a wrong drift breaks collinearity and
+        moves r measurably off 1.0."""
+        self._seed_market("TKA", ["yes", "yes"], mid_price=0.50, last_price=0.80)
+        self._seed_market("TKB", ["yes", "no"], mid_price=0.50, last_price=0.50)
+        self._seed_market("TKC", ["no", "no"], mid_price=0.50, last_price=0.20)
+        # An off-resolution candle on TKA only, timestamped after its real
+        # "last" candle, priced at TKA's own mid_price (0.50) -- if it leaks
+        # into the walk, TKA's late_drift becomes 0.50-0.50=0.0 instead of
+        # 0.30, breaking the 3-point collinearity that otherwise gives
+        # exactly r=1.0.
+        tracker.log_price_candles(
+            "TKA",
+            "KXTEST",
+            1,  # different period_interval than _seed_market's 60
+            [self._candle(int(self._MID_EPOCH) + 7200, 0.50)],
+        )
+        result = tracker.get_trade_flow_settlement_correlation(
+            min_trades_per_market=4,
+            min_candles_per_market=3,
+            min_markets=3,
+            min_early_trades=2,
+        )
+        self.assertEqual(result["n"], 3)
+        # Correctly filtered: (1.0, 0.30), (0.0, 0.0), (-1.0, -0.30) -> r=1.0
+        # exactly. If the intruder leaked in: (1.0, 0.0), (0.0, 0.0),
+        # (-1.0, -0.30) -> r~=0.87 (computed by hand, not just "not 1.0").
+        self.assertAlmostEqual(result["r"], 1.0, places=6)
+
+    def test_trades_without_matching_price_history_are_excluded_by_join(self):
+        """A ticker with trade_history but no price_history at all must not
+        appear in markets_considered -- the two tables are joined on ticker."""
+        tracker.log_trades(
+            "TKORPHAN", [self._trade("tr-1", "yes", "2026-01-01T00:00:00Z")]
+        )
+        result = tracker.get_trade_flow_settlement_correlation()
+        self.assertEqual(result["markets_considered"], 0)
 
 
 class TestDisputedOutcomeTracking(unittest.TestCase):

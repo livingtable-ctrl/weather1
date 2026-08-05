@@ -259,6 +259,16 @@ _DEAD_CODE_ALLOWLIST: dict[tuple[str, str], str] = {
         "enablement trigger -- both tables start empty and only accumulate "
         "from markets settling after this ships"
     ),
+    ("tracker.py", "get_trade_flow_settlement_correlation"): (
+        "TESTED, NO PROD CALL SITE -- the 'did informed flow precede "
+        "settlement-direction moves' analysis pass deferred by the PUBLIC "
+        "TRADES REST BACKFILL entry (backlog.txt, resolved 2026-08-03). "
+        "Read-only research/reporting query, same shape as "
+        "get_regional_recent_bias below -- callable by hand or a future "
+        "CLI/report command, not wired into trading. Run once against real "
+        "data at ship time (n=29, r=-0.042); intended to be re-run as "
+        "trade_history keeps accumulating, not re-derived from scratch"
+    ),
     ("tracker.py", "get_regional_recent_bias"): (
         "TESTED, NO PROD CALL SITE -- correlation-weighted mean forecast "
         "error of correlated cities' recent settlements (backlog.txt "
