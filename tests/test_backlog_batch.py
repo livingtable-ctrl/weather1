@@ -209,7 +209,6 @@ class TestMaxPositionsPerDate:
             ),
             patch("paper.place_paper_order", return_value=mock_trade),
             patch.dict(os.environ, {"MAX_POSITIONS_PER_DATE": "4"}),
-            patch("order_executor._in_gfs_update_window", return_value=False),
         ):
             result = order_executor._auto_place_trades([opp], live=False)
 
@@ -268,7 +267,6 @@ class TestMaxPositionsPerDate:
             ),
             patch("paper.place_paper_order", return_value=mock_trade),
             patch.dict(os.environ, {"MAX_POSITIONS_PER_DATE": "4"}),
-            patch("order_executor._in_gfs_update_window", return_value=False),
         ):
             result = order_executor._auto_place_trades([opp], live=False)
 
@@ -578,9 +576,7 @@ class TestEdgeRealizationRate:
             )
             for i in range(10)
         ]
-        undated_wins = [
-            self._make_multiday_trade("yes", "yes", None) for _ in range(8)
-        ]
+        undated_wins = [self._make_multiday_trade("yes", "yes", None) for _ in range(8)]
         trades = recent_losses + undated_wins
         with patch("paper.get_all_trades", return_value=trades):
             result = get_edge_realization_rate(window=20, min_samples=10)

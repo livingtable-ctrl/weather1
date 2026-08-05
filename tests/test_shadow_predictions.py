@@ -165,13 +165,6 @@ def test_real_placement_logs_is_shadow_false(monkeypatch):
     """Sanity check for the is_shadow column itself: a real, successfully
     placed trade must be flagged is_shadow=0, not just absent/NULL."""
     monkeypatch.delenv("TRADING_PAUSED", raising=False)
-    # _make_flat_opp's opp has no days_out key (defaults to 1, multi-day),
-    # which the real, wall-clock-dependent _in_gfs_update_window() gates --
-    # not mocking this makes the test spuriously fail whenever it runs
-    # during that recurring UTC window.
-    monkeypatch.setattr(
-        "order_executor._in_gfs_update_window", lambda now_utc=None: False
-    )
     monkeypatch.setattr("paper.is_paused_drawdown", lambda: False)
     monkeypatch.setattr("paper.is_daily_loss_halted", lambda c: False)
     monkeypatch.setattr("paper.is_streak_paused", lambda: False)
@@ -211,9 +204,6 @@ def _place_everything_setup(monkeypatch):
     a real placement can reach the finish line for any opp that clears the
     hourly gate check."""
     monkeypatch.delenv("TRADING_PAUSED", raising=False)
-    monkeypatch.setattr(
-        "order_executor._in_gfs_update_window", lambda now_utc=None: False
-    )
     monkeypatch.setattr("paper.is_paused_drawdown", lambda: False)
     monkeypatch.setattr("paper.is_daily_loss_halted", lambda c: False)
     monkeypatch.setattr("paper.is_streak_paused", lambda: False)

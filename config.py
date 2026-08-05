@@ -286,9 +286,6 @@ class BotConfig:
     method_kelly_gate: float = field(default_factory=_live_method_kelly_gate)
     max_city_date_exposure: float = field(default_factory=_live_max_city_date_exposure)
     breakeven_trigger_pct: float = field(default_factory=_live_breakeven_trigger_pct)
-    gfs_lockout_mins: int = field(
-        default_factory=lambda: _env_int("GFS_LOCKOUT_MINS", "90")
-    )
     min_arb_edge: float = field(default_factory=_live_min_arb_edge)
     below_gate_enabled: bool = field(
         default_factory=lambda: os.getenv("BELOW_GATE_ENABLED", "").strip().lower()

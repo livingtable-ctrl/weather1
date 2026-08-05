@@ -108,7 +108,6 @@ _DEAD_FIELD_ALLOWLIST = {
     "method_kelly_gate": "enforced via utils.METHOD_KELLY_GATE (paper.py imports it directly) -- see config._live_method_kelly_gate's docstring. Wired up 2026-07-12: previously paper.py hardcoded its own _METHOD_MIN_SAMPLES = 50, ignoring this field/env var entirely",
     "max_city_date_exposure": "enforced via utils.MAX_CITY_DATE_EXPOSURE (paper.py imports it directly) -- see config._live_max_city_date_exposure's docstring. Wired up 2026-07-12: previously paper.py hardcoded its own MAX_CITY_DATE_EXPOSURE = 0.25 at a different scale than this field's old default (50.0), ignoring the env var entirely",
     "min_arb_edge": "enforced via utils.MIN_ARB_EDGE (main.py imports it directly) -- see config._live_min_arb_edge's docstring. Wired up 2026-07-12: previously main.py hardcoded `if v.guaranteed_edge < 0.05:`, ignoring this field/env var (old default 0.03) entirely",
-    "gfs_lockout_mins": "enforced via order_executor.py's own os.getenv('GFS_LOCKOUT_MINS')",
     "below_gate_enabled": "enforced via weather_markets.py's own os.getenv('BELOW_GATE_ENABLED')",
     "same_day_reserve_slots": "enforced via utils.SAME_DAY_RESERVE_SLOTS",
     "same_day_reserve_after_hour_utc": "enforced via utils.SAME_DAY_RESERVE_AFTER_HOUR_UTC",

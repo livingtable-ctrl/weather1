@@ -45,13 +45,6 @@ def _stub_prereqs(monkeypatch):
     monkeypatch.setattr(
         "order_executor.execution_log.was_ordered_this_cycle", lambda t, s, c: False
     )
-    # Multi-day opp (default days_out=1) is gated by the real, wall-clock-
-    # dependent _in_gfs_update_window() -- not mocking this makes the test
-    # spuriously fail whenever it runs during that recurring UTC window
-    # (see test_trading.py / test_execution_proof.py / test_shadow_predictions.py).
-    monkeypatch.setattr(
-        "order_executor._in_gfs_update_window", lambda now_utc=None: False
-    )
 
 
 class TestPaperPreLog:

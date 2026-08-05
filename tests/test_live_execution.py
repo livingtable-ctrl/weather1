@@ -330,11 +330,11 @@ class TestOpenTradesListLivePath:
                 "yes_ask": 57,
                 "_city": city,
                 "_date": None,
-                # Same-day (METAR lock-in) trades skip _in_gfs_update_window() --
-                # without this, the test's outcome depends on the real wall-clock
-                # UTC minute vs. order_executor's GFS update hours, making it
-                # spuriously fail whenever it happens to run inside that window.
-                "days_out": 0,
+                # Multi-day opp: this is the live path re-opened by dropping
+                # the GFS lockout gate (backlog.txt "GFS_LOCKOUT_MINS=90
+                # DOESN'T MATCH REAL GFS PROPAGATION DELAY" -- the gate used
+                # to block days_out>=1 trades for ~25% of every day).
+                "days_out": 1,
             }
 
         opp1 = _opp("KXHIGH-A", "Houston")

@@ -73,7 +73,7 @@ When to revisit:
   incident writeup of this bug class's first (2026-08-01) discovery and the
   correction noting this exact gap.
 
-[GFS_LOCKOUT_MINS=90 DOESN'T MATCH REAL GFS PROPAGATION DELAY -- BLOCKS ~25% OF EVERY DAY FOR WEAK PROTECTION]
+[RESOLVED 2026-08-04] GFS_LOCKOUT_MINS=90 DOESN'T MATCH REAL GFS PROPAGATION DELAY -- BLOCKS ~25% OF EVERY DAY FOR WEAK PROTECTION
 Priority: Medium -- real, measurable opportunity cost with no confirmed
   safety benefit; not a live-money issue today (cron places paper trades
   only, live=False) but worth fixing before it matters more.
@@ -164,6 +164,117 @@ When to revisit:
   future work that validates/graduates `run_trend_delta`'s correlation
   with forecast error (weather_markets.py's own open research question) --
   natural pairing since that's the suggested replacement signal.
+
+RESOLVED 2026-08-04: dropped the gate entirely, per this entry's own
+  Recommendation above (widening was rejected as strictly worse -- matching
+  the real ~5-6h propagation delay would block multi-day trading ~20-24h/
+  day, gutting the strategy far more than the staleness risk it prevents).
+  The `run_trend_delta`/`run_trend_jumpy` replacement signal named in the
+  Recommendation was explicitly NOT built here -- that's a separate future
+  item, still open, paired with graduating that signal's own correlation
+  validation (see "When to revisit" above, unchanged).
+
+  What shipped:
+  - order_executor.py: removed `_GFS_UPDATE_HOURS_UTC`, the
+    `_GFS_UPDATE_LOCKOUT_MINS` env-derived constant, the
+    `_in_gfs_update_window()` function, and its one real call site inside
+    `_auto_place_trades()` (a `days_out >= 1` `continue`-skip block).
+    Confirmed via git diff of the removed block that it was a self-
+    contained `if: continue` with no `else` and no state mutation, sitting
+    between two independent guards (the drawdown-halt `break` above it and
+    the hourly-shadow-only branch below it) -- removal doesn't change any
+    other control flow.
+  - config.py: deleted the `gfs_lockout_mins` BotConfig field, which was
+    already dead (order_executor.py always read its own
+    `os.getenv('GFS_LOCKOUT_MINS')` directly, never this field) --
+    confirmed via AskUserQuestion before implementing rather than assumed;
+    user chose delete-entirely over leaving it as an inert historical
+    field. Its now-stale entry in
+    `tests/test_config_divergence_guard.py`'s `_DEAD_FIELD_ALLOWLIST` was
+    removed in the same pass (that test's own set-difference check would
+    have failed loudly on the stale entry otherwise -- verified this
+    mechanism actually works, it isn't fooled by a deleted field left in
+    the allowlist).
+  - Confirmed at implementation time (re-checked, not assumed from the
+    entry's own note) that live `.env` in both this worktree and the main
+    clone never set `GFS_LOCKOUT_MINS` -- it always ran on the hardcoded
+    default of 90. `.env.example` and `COMMANDS.md` were already clean.
+    No external env-var cleanup was needed.
+  - Deleted `tests/test_execution_stability.py`'s entire "Task B7 --
+    Overnight GFS Gap Protection" section (the `TestGfsUpdateWindow` class,
+    4 tests) -- it was the last content in the file, trimmed cleanly to
+    the preceding test with no dangling header or empty class.
+  - Removed now-pointless monkeypatches/mocks of `_in_gfs_update_window`
+    (they existed solely to suppress the gate so unrelated tests wouldn't
+    flake against the real wall-clock GFS window) and stale comments
+    referencing it from 8 other test files: test_trading.py,
+    test_backlog_batch.py, test_bug_b_unparseable_date_logging.py,
+    test_drawdown_tiers.py, test_execution_proof.py,
+    test_p0_10_paper_prelog.py, test_shadow_predictions.py (2 sites),
+    test_live_execution.py (comment only -- no actual patch there).
+
+  Test results:
+  All 235 tests across the 10 scoped files (test_execution_stability.py,
+  test_trading.py, test_shadow_predictions.py, test_backlog_batch.py,
+  test_drawdown_tiers.py, test_execution_proof.py,
+  test_p0_10_paper_prelog.py, test_bug_b_unparseable_date_logging.py,
+  test_live_execution.py, test_config_divergence_guard.py) pass. ruff +
+  mypy clean on every changed file (order_executor.py, config.py, and all
+  9 touched test files).
+
+  Opus review (single agent, effort=high, scoped to match this removal's
+  size) found 6 issues, all addressed:
+  - MEDIUM: this entry itself wasn't yet marked [RESOLVED] and
+    BACKLOG_OPEN.md hadn't been regenerated -- this resolution note and the
+    `python backlog_index.py` refresh (step 17) are that fix.
+  - LOW: docs/grade_audit/outputs/order_executor.py.md (a dated 2026-06-29
+    audit snapshot) still describes `_in_gfs_update_window()` as live code
+    graded 9/10 "keep as-is". Left alone, explicitly out of scope --
+    matches this task's own stated instruction that dated point-in-time
+    audit/planning docs (this file plus the three
+    docs/superpowers/plans/2026-06-27-category-{b,e,g}-*.md files) are
+    historical records, not living documentation required to track the
+    code.
+  - LOW/informational: the removed gate sat before the hourly/rain/snow/
+    hurricane-count shadow-only branches in `_auto_place_trades()`, so
+    during a lockout window those sample-gated rollouts' shadow logging
+    was ALSO being skipped, not just real trade placement. Removing the
+    gate recovers that lost shadow-logging coverage rather than losing
+    any -- verified benign via direct query of data/predictions.db: the
+    `idx_pred_ticker_pdate` unique index (ticker, predicted_date) with an
+    `ON CONFLICT ... DO UPDATE` upsert caps at most one row per
+    ticker/UTC-day regardless of how many cycles ran that day, so the
+    raw-row settled-count functions can't be inflated by the extra
+    cycles, and the DISTINCT-event settled-count functions are immune by
+    construction. No fix needed -- a real but strictly beneficial
+    behavior change, documented here per this project's "informational
+    findings still get addressed" standard.
+  - LOW: `tests/test_live_execution.py`'s
+    `test_live_placement_appends_to_open_trades_list` had its explanatory
+    comment deleted along with the gate, leaving a `"days_out": 0` value
+    unexplained. Fixed by flipping it to `"days_out": 1` with a new
+    comment noting it now exercises the multi-day live path this removal
+    re-opens (the same-day path it used to cover isn't the interesting one
+    post-removal) -- confirmed safe via reading `_auto_place_trades()`'s
+    per-date cap logic: this test's opp has no `target_date`, so the
+    multi-day cap branch's `target_date_str and ...` check short-circuits
+    to a no-op either way. Re-ran tests/test_live_execution.py (99 tests)
+    plus ruff/mypy after the change -- all clean.
+  - INFORMATIONAL, no action: no test asserts the gate stays removed
+    (unlike e.g. test_p9_p10.py's `assert not hasattr(order_executor,
+    "_coalesce_cents_or_dollars")` guard against a specific prior
+    regression). Reviewer and this session agreed that guard pattern is
+    for consolidations at risk of a local copy creeping back, not
+    applicable here -- nothing in the codebase would reintroduce this
+    gate.
+  - INFORMATIONAL, no action, pre-existing and unrelated to this change:
+    confirmed `test_dead_field_allowlist_has_no_stale_entries`'s
+    set-difference mechanism genuinely can't be fooled by a stale
+    allowlist entry (verified by running it), but flagged that the
+    sibling `_has_real_call_site()` check's naive regex only scans
+    top-level `*.py` files (skips config.py itself and all of tests/) --
+    a latent gap in an existing test helper, not introduced by or in
+    scope for this change.
 
 [RESOLVED 2026-08-03] CMD_TODAY'S "[P] PLACE" PATH HAD NO GATE CHECK AT ALL
 Priority: was High -- a real, reachable-today gap in the one remaining

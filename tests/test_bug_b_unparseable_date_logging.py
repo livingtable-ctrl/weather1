@@ -52,9 +52,6 @@ class TestOppEventKeyLogsOnUnparseableDate:
         monkeypatch.setattr("order_executor._daily_paper_spend", lambda: 0.0)
         monkeypatch.setattr("order_executor._current_forecast_cycle", lambda: "12z")
         monkeypatch.setattr(
-            "order_executor._in_gfs_update_window", lambda now_utc=None: False
-        )
-        monkeypatch.setattr(
             "order_executor.execution_log.was_ordered_this_cycle",
             lambda t, s, c: False,
         )

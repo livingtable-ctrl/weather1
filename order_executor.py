@@ -59,33 +59,6 @@ _MIN_EDGE_AB_TEST = _ABTest(
 )
 
 # ---------------------------------------------------------------------------
-# GFS model update window
-# ---------------------------------------------------------------------------
-
-_GFS_UPDATE_HOURS_UTC = [0, 6, 12, 18]  # GFS model initialization hours
-_GFS_UPDATE_LOCKOUT_MINS = int(os.getenv("GFS_LOCKOUT_MINS", "90"))
-
-
-def _in_gfs_update_window(now_utc=None) -> bool:
-    """Return True if we are within LOCKOUT_MINS of a GFS model initialization.
-
-    During this window, Open-Meteo may be serving the previous model run.
-    New multi-day trades should wait for the new run to propagate (~90 min).
-    Same-day trades using METAR lock-in are unaffected and skip this check.
-    """
-    if _GFS_UPDATE_LOCKOUT_MINS <= 0:
-        return False
-    if now_utc is None:
-        now_utc = datetime.now(UTC)
-    minute_of_day = now_utc.hour * 60 + now_utc.minute
-    for update_hour in _GFS_UPDATE_HOURS_UTC:
-        update_minute = update_hour * 60
-        if 0 <= (minute_of_day - update_minute) < _GFS_UPDATE_LOCKOUT_MINS:
-            return True
-    return False
-
-
-# ---------------------------------------------------------------------------
 # Forecast cycle
 # ---------------------------------------------------------------------------
 
@@ -2761,16 +2734,6 @@ def _auto_place_trades(
                 placed,
             )
             break
-
-        # Skip multi-day trades during GFS model update window
-        if int(a.get("days_out", 1)) >= 1 and _in_gfs_update_window():
-            _log.info(
-                "auto_place_trades: skipping %s — GFS update window active "
-                "(set GFS_LOCKOUT_MINS=0 to disable)",
-                a.get("ticker", ticker),
-            )
-            _skip_reasons.append(f"{ticker}: gfs_update_window")
-            continue
 
         # Hourly shadow-only rollout (backlog.txt "HOURLY-DIRECTIONAL
         # TEMPERATURE MARKETS" Step 2 handoff item 5). Unlike TRADING_PAUSED
