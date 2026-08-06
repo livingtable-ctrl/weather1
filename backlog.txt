@@ -13572,3 +13572,90 @@ RESOLVED 2026-07-30: picked up as part of a backlog-wide audit (user asked
   ruff format + mypy clean on every changed file (climatology.py, cron.py,
   safe_io.py, tracker.py, web_app.py, and their test files).
 
+[RESOLVED 2026-08-05] STRONG/MED SIGNAL BANNER OVERCLAIMS "PLACING PAPER TRADES" WHEN 0 ACTUALLY GET PLACED
+
+  Observed 2026-08-05 during a `cron` output-analysis session (two live runs
+  from worktree trade-flow-graduation-registry-5e826d). Second run
+  (20:16:39-20:19:20 UTC) auto-retired the `ensemble` forecasting method
+  mid-cycle (Brier 0.2659 > 0.25 threshold, pin expired and NOT
+  auto-renewed since directional_accuracy=0.55 < 0.70 renewal bar --
+  tracker's strategy_retirement + main.py's pin-renewal check, both working
+  as designed, not a bug). trade_cycle.py's "[cron] Scanned 639 market(s)
+  -- 11 with edge (strong=2, med=9)" count fed cron.py's console banners
+  "!! 2 STRONG SIGNAL(S) -- placing paper trades (cap=$200) !!" and
+  "!! 9 MED SIGNAL(S) -- placing paper trades (cap=$20) !!" (cron.py
+  ~1458-1475), but paper balance ($1001.44) and open-trade count (7, via
+  `paper results`) were IDENTICAL before and after the cycle -- zero trades
+  were actually placed. The two candidates visibly caught right after the
+  banners (KXLOWTCHI-26AUG06-T69, KXLOWTDC-26AUG06-T76 -- both already-open
+  positions from the prior cycle, being re-scored for early-exit) were
+  skipped with "method 'ensemble' is retired (Brier 0.2659)"; presumably
+  the same fate hit the other 9 candidates silently, with no equivalent
+  "[Auto] Skipped N signal(s): <ticker>: <reason>" listing the way the
+  earlier hurricane/rain shadow-only batch gets in the same cron output.
+
+  Root cause: cron.py gates the banners on `_placement_was_attempted and
+  result.strong_opps` (non-halted/paused/consistency-skipped AND candidate
+  list non-empty) -- it does not check `result.placed_strong` /
+  `result.placed_med`, the actual counts trade_cycle.run_trade_cycle()
+  already returns (cron.py:1447 assigns `placed_count = result.placed_
+  strong + result.placed_med` but only uses it later in the Windows toast
+  notification, cron.py:1814-1821, which correctly prints "{signals}
+  signal(s), {placed_count} placed" when they diverge). The console banner
+  has no equivalent fallback and always describes the pre-placement
+  candidate count as if it were the outcome.
+
+  Likely trigger: ctx.auto_place_trades() (order_executor._auto_place_
+  trades) re-validates each opportunity via analyze_trade() immediately
+  before placing (a deliberate stale-price/stale-state guard per existing
+  project pattern) -- any candidate whose method got retired between
+  analysis and placement (or that fails any other last-moment check)
+  silently contributes 0 to placed_strong/placed_med with no per-candidate
+  skip reason surfaced at the "[cron]" banner's verbosity level.
+
+  What it would look like: gate the STRONG/MED banners (and/or add a
+  follow-up line) on result.placed_strong/placed_med rather than only
+  candidate-list emptiness, so operators reading cron output can tell
+  "announced N, placed M" the same way the toast notification already can
+  -- and ideally surface the per-candidate skip reason (mirroring the
+  "[Auto] Skipped" format) when M < N so it's clear WHY, not just that
+  fewer were placed than announced.
+
+  Separately worth noting, not filed as its own entry (same root symptom):
+  ensemble's retirement means check_early_exits() (cron.py ~1665-1668)
+  silently can no longer re-score any open position that was opened under
+  the ensemble method for early-exit-on-model-flip -- price-based
+  stop-loss/breakeven protection (paper.check_paper_position_exits,
+  cron.py ~1579-1609) is unaffected since it doesn't call analyze_trade, so
+  this is a monitoring gap on those positions, not an unprotected-position
+  gap. (Separately, ensemble was manually un-retired and pinned for 168h
+  the same session via `py main.py unretire ensemble --pin 168`, so this
+  particular monitoring gap is not currently live.)
+
+  RESOLVED same session: added cron._placement_outcome_phrase(placed,
+  found), a pure module-level helper, and wired both banners to it instead
+  of a hardcoded "placing paper trades". Deliberately does NOT name a
+  specific cause the way this entry's own "What it would look like"
+  originally sketched ("pre-placement re-check failed") -- an opus review
+  caught that framing as wrong for most real shortfall causes (whole-batch
+  skips like a position cap or drawdown pause never even reach a
+  per-candidate re-check), so the wording instead points at the existing
+  "[Auto] Skipped N signal(s): <ticker>: <reason>" / "[Auto] Position cap
+  reached" lines already printed nearby, which already satisfy this
+  entry's "ideally surface the per-candidate skip reason" ask -- no new
+  plumbing needed there, they already exist for the hurricane/rain
+  shadow-only batch and just weren't being pointed to. Also fixed: the
+  cap=$ suffix now only prints when something was actually placed against
+  it (previously read as a second, contradictory parenthetical when 0 got
+  placed); the all-placed case dropped its redundant restated count
+  ("placing paper trades", not "placing N paper trade(s)" next to a banner
+  that already says N). 4 new tests: a direct unit-test class for
+  _placement_outcome_phrase (all-placed/none-found/partial/zero, pure
+  function, no cmd_cron cycle needed) plus 2 full-cycle banner tests, one
+  of which an opus review caught making an unbound assertion (a swapped
+  placed_strong/placed_med wiring mutation still passed) -- fixed via a new
+  _banner_line() test helper that binds each assertion to the specific
+  STRONG or MED console line instead of the whole captured stdout. All 6
+  banner-related tests plus the full 39-test test_trade_cycle_engine.py
+  suite pass; ruff + ruff format + mypy clean on cron.py and the test file.
+

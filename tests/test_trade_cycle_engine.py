@@ -1240,6 +1240,157 @@ class TestPlacementAttemptedBannerAllConditions:
         )
 
 
+def _banner_line(out: str, marker: str) -> str:
+    """Return the single console line containing `marker` (e.g. "STRONG
+    SIGNAL" or "MED SIGNAL"), so an assertion binds to that specific tier's
+    banner instead of a bare substring check against the whole captured
+    stdout -- a bare `"0 of 1 placed" in out` check can't tell whether the
+    STRONG or the MED banner produced the match, so a mutation that swaps
+    which tier's placed-count feeds which banner would slip through it
+    undetected."""
+    lines = [ln for ln in out.splitlines() if marker in ln]
+    assert len(lines) == 1, (
+        f"expected exactly one line containing {marker!r}, got {lines!r}\nfull output:\n{out}"
+    )
+    return lines[0]
+
+
+class TestPlacementOutcomePhrase:
+    """Direct unit tests of cron._placement_outcome_phrase() -- a pure
+    function, so these run in milliseconds instead of driving a full
+    cmd_cron cycle (~85s each, with real outbound HTTPS calls). Needed
+    because neither fixture market list below produces more than one
+    candidate per tier, so the partial-placement branch (0 < placed <
+    found) has no coverage through the full-cycle banner tests -- these
+    close that gap directly and pin the exact wording."""
+
+    def test_all_placed_omits_counts(self, engine_env):
+        _, _, _, _, cron, _, _ = engine_env
+        assert cron._placement_outcome_phrase(3, 3) == "placing paper trades"
+
+    def test_none_found_degenerate_case(self, engine_env):
+        # Unreachable in practice (both call sites guard on `result.
+        # strong_opps`/`result.med_opps` being non-empty first) but must not
+        # raise if it ever is.
+        _, _, _, _, cron, _, _ = engine_env
+        assert cron._placement_outcome_phrase(0, 0) == "placing paper trades"
+
+    def test_partial_placement_names_both_counts(self, engine_env):
+        _, _, _, _, cron, _, _ = engine_env
+        assert (
+            cron._placement_outcome_phrase(1, 3)
+            == "placed 1 of 3 (see [Auto] lines above for why the rest were skipped)"
+        )
+
+    def test_zero_placed_names_found_count(self, engine_env):
+        _, _, _, _, cron, _, _ = engine_env
+        assert (
+            cron._placement_outcome_phrase(0, 3)
+            == "0 of 3 placed (see [Auto] lines above for why)"
+        )
+
+
+class TestBannerReflectsActualPlacementCount:
+    """backlog.txt "STRONG/MED SIGNAL BANNER OVERCLAIMS 'PLACING PAPER
+    TRADES' WHEN 0 ACTUALLY GET PLACED" -- ctx.auto_place_trades() can find
+    N candidates during analysis but place fewer of them (a whole-batch
+    skip like a position cap, or a per-candidate rejection like a strategy
+    retirement mid-cycle -- as happened live on 2026-08-05 when the
+    `ensemble` method retired mid-cycle -- can each invalidate candidates
+    between analysis and placement). The banner must describe what
+    actually got placed, not just the pre-placement candidate count, and
+    must NOT claim a specific cause it doesn't actually know."""
+
+    def test_banner_shows_zero_placed_when_all_candidates_fail_at_placement(
+        self, engine_env, capsys
+    ):
+        tmp_path, client, main, paper, cron, trade_cycle, ctx = engine_env
+        market, enriched, analysis = _strong_market_analysis()
+
+        with (
+            patch.object(main, "get_weather_markets", return_value=[market]),
+            patch.object(main, "enrich_with_forecast", return_value=enriched),
+            patch.object(main, "analyze_trade", return_value=analysis),
+            patch.object(main, "_auto_place_trades", return_value=0),
+            patch("tracker.detect_brier_drift", return_value={"drifting": False}),
+        ):
+            ctx2 = main._build_cron_context()
+            try:
+                cron.cmd_cron(ctx2, client)
+            except SystemExit:
+                pass
+
+        out = capsys.readouterr().out
+        strong_line = _banner_line(out, "STRONG SIGNAL")
+        assert "0 of 1 placed" in strong_line, (
+            "banner must say 0 were placed, not claim 'placing paper trades' "
+            "when every candidate failed at placement:\n" + strong_line
+        )
+        assert "placing paper trades" not in strong_line
+        assert "cap=$" not in strong_line, (
+            "a per-trade cap is meaningless to advertise when nothing got "
+            "placed against it:\n" + strong_line
+        )
+
+    def test_banner_shows_partial_placement_count_per_tier(self, engine_env, capsys):
+        tmp_path, client, main, paper, cron, trade_cycle, ctx = engine_env
+        strong_market, strong_enriched, strong_analysis = _strong_market_analysis()
+        med_market, med_enriched, med_analysis = _med_market_analysis()
+        markets = [strong_market, med_market]
+        enriched_by_ticker = {
+            strong_market["ticker"]: strong_enriched,
+            med_market["ticker"]: med_enriched,
+        }
+        analysis_by_ticker = {
+            strong_market["ticker"]: strong_analysis,
+            med_market["ticker"]: med_analysis,
+        }
+
+        with (
+            patch.object(main, "get_weather_markets", return_value=markets),
+            patch.object(
+                main,
+                "enrich_with_forecast",
+                side_effect=lambda m: enriched_by_ticker[m["ticker"]],
+            ),
+            patch.object(
+                main,
+                "analyze_trade",
+                side_effect=lambda e: analysis_by_ticker[e["ticker"]],
+            ),
+            # Strong tier's lone candidate fails at placement (call 1 -> 0);
+            # med tier's lone candidate succeeds (call 2 -> 1). Both counts
+            # are checked against the SPECIFIC line each one should have
+            # produced (via _banner_line), not a bare substring check
+            # against the whole output -- proving the two tiers' placed
+            # counts actually feed their own banner and can't be swapped
+            # without a test failure.
+            patch.object(main, "_auto_place_trades", side_effect=[0, 1]),
+            patch("tracker.detect_brier_drift", return_value={"drifting": False}),
+            patch("paper.is_paused_drawdown", return_value=False),
+        ):
+            ctx2 = main._build_cron_context()
+            try:
+                cron.cmd_cron(ctx2, client)
+            except SystemExit:
+                pass
+
+        out = capsys.readouterr().out
+        strong_line = _banner_line(out, "STRONG SIGNAL")
+        med_line = _banner_line(out, "MED SIGNAL")
+
+        assert "0 of 1 placed" in strong_line, (
+            "strong tier's failed candidate must be reported as unplaced:\n"
+            + strong_line
+        )
+        assert "placing paper trades" not in strong_line
+
+        assert "placing paper trades" in med_line, (
+            "med tier's successful candidate must still read as placed:\n" + med_line
+        )
+        assert "0 of" not in med_line
+
+
 class TestAnalysisAttemptDataLoss:
     """Every market that reaches a real analysis -- including ones later
     rejected by the mkt_prob/divergence gates -- must land in all_results,

@@ -551,6 +551,30 @@ def report_anomalies(anomalies: list[dict]) -> None:
     _log.warning("Anomalies flagged: %s", [a.get("ticker") for a in anomalies])
 
 
+def _placement_outcome_phrase(placed: int, found: int) -> str:
+    """Describe a tier's actual placement outcome for the STRONG/MED console
+    banners. `found` (len(strong_opps)/len(med_opps)) is the candidate count
+    from analysis; `placed` (result.placed_strong/placed_med) is what
+    ctx.auto_place_trades() actually placed. The two can diverge for many
+    reasons -- a whole-batch skip (drawdown pause, daily-loss halt, position
+    cap, spend cap) that never even reaches a per-candidate check, or a
+    per-candidate rejection (already-open, stale price, a strategy
+    retirement mid-cycle, Kelly too small, ...) -- so this deliberately does
+    NOT name a specific cause (an earlier draft claimed "pre-placement
+    re-check failed" for every shortfall, which is wrong for most of the
+    whole-batch-skip reasons above and would send an operator chasing the
+    wrong subsystem). The real reason is already printed nearby by
+    order_executor's own "[Auto] Position cap reached" / "[Auto] Skipped
+    N signal(s): <ticker>: <reason>" lines -- point there instead of
+    guessing (backlog.txt "STRONG/MED SIGNAL BANNER OVERCLAIMS...").
+    """
+    if placed >= found:
+        return "placing paper trades"
+    if placed > 0:
+        return f"placed {placed} of {found} (see [Auto] lines above for why the rest were skipped)"
+    return f"0 of {found} placed (see [Auto] lines above for why)"
+
+
 def _cmd_cron_body(
     ctx: CronContext, client: KalshiClient, min_edge: float | None = None
 ) -> bool | None:
@@ -1462,15 +1486,29 @@ def _cmd_cron_body(
         # above already rule out -- but format defensively rather than let
         # a future change to that guard turn a skipped-placement edge case
         # into an unhandled TypeError here.
+        # The cap is only meaningful for trades that actually got sized
+        # against it -- appending "(cap=$X)" when nothing was placed reads
+        # like a second, contradictory parenthetical bolted onto a skip
+        # explanation that already ends in its own "(...)" .
+        _strong_cap_suffix = (
+            f" (cap=${(result.strong_cap or 0.0):.0f})"
+            if result.placed_strong > 0
+            else ""
+        )
         print(
             bold(
-                f"\n  !! {len(result.strong_opps)} STRONG SIGNAL(S) — placing paper trades (cap=${(result.strong_cap or 0.0):.0f}) !!"
+                f"\n  !! {len(result.strong_opps)} STRONG SIGNAL(S) — "
+                f"{_placement_outcome_phrase(result.placed_strong, len(result.strong_opps))}"
+                f"{_strong_cap_suffix} !!"
             )
         )
     if _placement_was_attempted and result.med_opps:
+        _med_cap_suffix = " (cap=$20)" if result.placed_med > 0 else ""
         print(
             bold(
-                f"\n  !! {len(result.med_opps)} MED SIGNAL(S) — placing paper trades (cap=$20) !!"
+                f"\n  !! {len(result.med_opps)} MED SIGNAL(S) — "
+                f"{_placement_outcome_phrase(result.placed_med, len(result.med_opps))}"
+                f"{_med_cap_suffix} !!"
             )
         )
     # shadow_logged_count is only ever nonzero when run_trade_cycle() took the
