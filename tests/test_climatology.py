@@ -493,3 +493,324 @@ class TestLoadAllSigmasBehavior:
             assert r["NYC"]["max"]["1"] == 3.0
         on_disk = json.loads((tmp_path / "sigma.json").read_text())
         assert on_disk["NYC"]["max"]["1"] == 3.0
+
+
+class TestLoadAllSigmasMerge:
+    """backlog.txt "PRELOAD_ALL CAN PERMANENTLY TRUNCATE forecast_sigma.json
+    TO ONE CITY ON A PARTIAL CALL": load_all_sigmas() used to unconditionally
+    overwrite data/forecast_sigma.json with a table built from EXACTLY the
+    city_coords dict it was given, dropping every other city's existing
+    entry. It now merges: only the cities actually passed in this call are
+    recomputed, everything else already on disk survives untouched.
+    """
+
+    def test_partial_call_preserves_other_cities_in_memory_result(
+        self, tmp_path, monkeypatch
+    ):
+        cache_path = tmp_path / "sigma.json"
+        cache_path.write_text(
+            json.dumps({"LasVegas": {"max": {"1": 5.5}, "min": {"1": 4.4}}})
+        )
+        monkeypatch.setattr(climatology, "_SIGMA_CACHE_PATH", cache_path)
+        with patch.object(
+            climatology, "compute_sigma_from_climate", return_value={1: 3.0}
+        ):
+            result = climatology.load_all_sigmas(
+                {"NYC": (40.7, -74.0, "America/New_York")}, force=True
+            )
+        assert result["LasVegas"]["max"]["1"] == 5.5
+        assert result["NYC"]["max"]["1"] == 3.0
+
+    def test_partial_call_preserves_other_cities_on_disk(self, tmp_path, monkeypatch):
+        cache_path = tmp_path / "sigma.json"
+        cache_path.write_text(
+            json.dumps({"LasVegas": {"max": {"1": 5.5}, "min": {"1": 4.4}}})
+        )
+        monkeypatch.setattr(climatology, "_SIGMA_CACHE_PATH", cache_path)
+        with patch.object(
+            climatology, "compute_sigma_from_climate", return_value={1: 3.0}
+        ):
+            climatology.load_all_sigmas(
+                {"NYC": (40.7, -74.0, "America/New_York")}, force=True
+            )
+        on_disk = json.loads(cache_path.read_text())
+        assert on_disk["LasVegas"]["max"]["1"] == 5.5
+        assert on_disk["NYC"]["max"]["1"] == 3.0
+
+    def test_recomputing_a_city_overwrites_only_that_citys_entry(
+        self, tmp_path, monkeypatch
+    ):
+        """A city passed again in a later call gets its own entry refreshed
+        (not stuck at a stale value), while untouched cities are unaffected."""
+        cache_path = tmp_path / "sigma.json"
+        cache_path.write_text(
+            json.dumps(
+                {
+                    "NYC": {"max": {"1": 1.1}, "min": {}},
+                    "LasVegas": {"max": {"1": 5.5}, "min": {}},
+                }
+            )
+        )
+        monkeypatch.setattr(climatology, "_SIGMA_CACHE_PATH", cache_path)
+        with patch.object(
+            climatology, "compute_sigma_from_climate", return_value={1: 9.9}
+        ):
+            result = climatology.load_all_sigmas(
+                {"NYC": (40.7, -74.0, "America/New_York")}, force=True
+            )
+        assert result["NYC"]["max"]["1"] == 9.9
+        assert result["LasVegas"]["max"]["1"] == 5.5
+
+    def test_corrupt_existing_file_falls_back_to_fresh_table_without_crashing(
+        self, tmp_path, monkeypatch
+    ):
+        cache_path = tmp_path / "sigma.json"
+        cache_path.write_text("{not valid json")
+        monkeypatch.setattr(climatology, "_SIGMA_CACHE_PATH", cache_path)
+        with patch.object(
+            climatology, "compute_sigma_from_climate", return_value={1: 3.0}
+        ):
+            result = climatology.load_all_sigmas(
+                {"NYC": (40.7, -74.0, "America/New_York")}, force=True
+            )
+        assert result["NYC"]["max"]["1"] == 3.0
+
+    def test_sequential_partial_calls_accumulate_full_table(
+        self, tmp_path, monkeypatch
+    ):
+        """Simulates main.py's setup wizard calling load_all_sigmas() (via
+        preload_all(), see TestPreloadAllSigmaGate below for the full
+        end-to-end version) once per city -- each call should add to the
+        table, not reset it."""
+        monkeypatch.setattr(climatology, "_SIGMA_CACHE_PATH", tmp_path / "sigma.json")
+        cities = {
+            "NYC": (40.7, -74.0, "America/New_York"),
+            "LasVegas": (36.17, -115.14, "America/Los_Angeles"),
+            "NewOrleans": (29.95, -90.07, "America/Chicago"),
+        }
+        with patch.object(
+            climatology, "compute_sigma_from_climate", return_value={1: 3.0}
+        ):
+            for city, coords in cities.items():
+                result = climatology.load_all_sigmas({city: coords}, force=True)
+        assert set(result.keys()) == set(cities.keys())
+
+
+class TestPreloadAllSigmaGate:
+    """backlog.txt "PRELOAD_ALL CAN PERMANENTLY TRUNCATE forecast_sigma.json
+    TO ONE CITY ON A PARTIAL CALL": preload_all()'s own gate used to trigger
+    a sigma refresh only when the cache file was missing or stale -- blind to
+    whether the cities it was actually asked to preload were in that file at
+    all. A per-city caller (main.py's setup wizard) would write city 1's
+    entry, see the file as "fresh" on every later call, and never trigger a
+    refresh for the remaining cities until the file went stale a month later
+    -- even though the merge fix above means load_all_sigmas() *would* have
+    handled it correctly if it had ever been called. The gate now also fires
+    when any requested city is missing from the cached table.
+    """
+
+    def _mock_climate_history(self, tmp_path, monkeypatch):
+        # preload_all()'s per-city climate-history loop is independent of the
+        # sigma-cache logic under test; stub it out so it neither hits the
+        # network nor requires real climate_{city}.json fixtures.
+        monkeypatch.setattr(
+            climatology, "_cache_path", lambda city: tmp_path / f"climate_{city}.json"
+        )
+        return patch.object(climatology, "fetch_historical", return_value=None)
+
+    def test_sequential_per_city_preload_all_calls_build_full_table(
+        self, tmp_path, monkeypatch
+    ):
+        """The exact backlog scenario: main.py's wizard calls
+        preload_all({city: CITY_COORDS[city]}) once per city in a loop. All
+        cities must end up in forecast_sigma.json, not just the first one."""
+        sigma_path = tmp_path / "sigma.json"
+        monkeypatch.setattr(climatology, "_SIGMA_CACHE_PATH", sigma_path)
+        cities = {
+            "NYC": (40.7, -74.0, "America/New_York"),
+            "LasVegas": (36.17, -115.14, "America/Los_Angeles"),
+            "NewOrleans": (29.95, -90.07, "America/Chicago"),
+        }
+        with (
+            self._mock_climate_history(tmp_path, monkeypatch),
+            patch.object(
+                climatology, "compute_sigma_from_climate", return_value={1: 3.0}
+            ),
+        ):
+            for city, coords in cities.items():
+                climatology.preload_all({city: coords})
+        on_disk = json.loads(sigma_path.read_text())
+        assert set(on_disk.keys()) == set(cities.keys())
+
+    def test_second_call_for_same_cities_does_not_recompute(
+        self, tmp_path, monkeypatch
+    ):
+        """Once a city is already in the fresh cache, a later preload_all()
+        call for that same city should NOT trigger another recompute."""
+        sigma_path = tmp_path / "sigma.json"
+        monkeypatch.setattr(climatology, "_SIGMA_CACHE_PATH", sigma_path)
+        city_coords = {"NYC": (40.7, -74.0, "America/New_York")}
+        with (
+            self._mock_climate_history(tmp_path, monkeypatch),
+            patch.object(
+                climatology, "compute_sigma_from_climate", return_value={1: 3.0}
+            ) as mock_compute,
+        ):
+            climatology.preload_all(city_coords)
+            calls_after_first = mock_compute.call_count
+            climatology.preload_all(city_coords)
+        assert mock_compute.call_count == calls_after_first
+
+    def test_missing_cities_helper_treats_absent_file_as_all_missing(
+        self, tmp_path, monkeypatch
+    ):
+        monkeypatch.setattr(climatology, "_SIGMA_CACHE_PATH", tmp_path / "sigma.json")
+        missing = climatology._sigma_cache_missing_cities({"NYC": (0, 0, "UTC")})
+        assert missing == {"NYC"}
+
+    def test_missing_cities_helper_treats_corrupt_file_as_all_missing(
+        self, tmp_path, monkeypatch
+    ):
+        cache_path = tmp_path / "sigma.json"
+        cache_path.write_text("{not valid json")
+        monkeypatch.setattr(climatology, "_SIGMA_CACHE_PATH", cache_path)
+        missing = climatology._sigma_cache_missing_cities({"NYC": (0, 0, "UTC")})
+        assert missing == {"NYC"}
+
+    def test_missing_cities_helper_returns_empty_when_all_present(
+        self, tmp_path, monkeypatch
+    ):
+        cache_path = tmp_path / "sigma.json"
+        cache_path.write_text(json.dumps({"NYC": {"max": {"1": 3.0}, "min": {}}}))
+        monkeypatch.setattr(climatology, "_SIGMA_CACHE_PATH", cache_path)
+        missing = climatology._sigma_cache_missing_cities({"NYC": (0, 0, "UTC")})
+        assert missing == set()
+
+    def test_missing_cities_helper_treats_empty_entry_as_missing(
+        self, tmp_path, monkeypatch
+    ):
+        """opus-review-caught 2026-08-07: a city KEY present in the file with
+        no real computed data (both max and min empty -- e.g. a prior compute
+        failed because the climate archive wasn't downloaded yet) must still
+        count as missing, or it gets stuck that way for _SIGMA_CACHE_AGE."""
+        cache_path = tmp_path / "sigma.json"
+        cache_path.write_text(json.dumps({"NYC": {"max": {}, "min": {}}}))
+        monkeypatch.setattr(climatology, "_SIGMA_CACHE_PATH", cache_path)
+        missing = climatology._sigma_cache_missing_cities({"NYC": (0, 0, "UTC")})
+        assert missing == {"NYC"}
+
+    def test_missing_cities_helper_treats_non_dict_json_as_all_missing(
+        self, tmp_path, monkeypatch
+    ):
+        """opus-review-caught 2026-08-07: valid JSON that isn't an object
+        (null, a list, ...) must degrade gracefully, not raise out of the
+        helper -- `set(existing)` on a non-dict either raises or silently
+        does the wrong thing (e.g. iterating list elements as city names)."""
+        cache_path = tmp_path / "sigma.json"
+        monkeypatch.setattr(climatology, "_SIGMA_CACHE_PATH", cache_path)
+        for bad_content in ("null", "[]", '"a string"', "42"):
+            cache_path.write_text(bad_content)
+            missing = climatology._sigma_cache_missing_cities({"NYC": (0, 0, "UTC")})
+            assert missing == {"NYC"}, f"failed for content={bad_content!r}"
+
+
+class TestSigmaCacheRobustness:
+    """opus-review-caught 2026-08-07 (post-merge-fix review): the merge fix's
+    own machinery had three further gaps -- load_all_sigmas()'s force=False
+    fast path didn't check for missing/empty cities at all (so the ACTUAL
+    live cron path, which calls load_all_sigmas() directly via
+    weather_markets._load_dynamic_sigma() and never goes through
+    preload_all()'s gate, was still exposed to the original bug); non-dict
+    JSON content crashed instead of degrading; and a transient compute
+    failure could silently overwrite a city's previously-good entry with an
+    empty one.
+    """
+
+    def test_fresh_path_still_recomputes_a_missing_city(self, tmp_path, monkeypatch):
+        """The actual live-path regression: weather_markets._load_dynamic_sigma
+        calls load_all_sigmas(CITY_COORDS, force=False) directly -- never
+        through preload_all(). A fresh (recently-written) file missing a
+        newly-added city must NOT be silently accepted as-is -- the call must
+        fall through to a real recompute rather than returning the file as-is
+        with LasVegas absent."""
+        cache_path = tmp_path / "sigma.json"
+        cache_path.write_text(json.dumps({"NYC": {"max": {"1": 1.1}, "min": {}}}))
+        monkeypatch.setattr(climatology, "_SIGMA_CACHE_PATH", cache_path)
+        city_coords = {
+            "NYC": (40.7, -74.0, "America/New_York"),
+            "LasVegas": (36.17, -115.14, "America/Los_Angeles"),
+        }
+        with patch.object(
+            climatology, "compute_sigma_from_climate", return_value={1: 2.9}
+        ) as mock_compute:
+            result = climatology.load_all_sigmas(city_coords, force=False)
+        mock_compute.assert_called()
+        assert result["LasVegas"]["max"]["1"] == 2.9  # newly computed
+        assert "LasVegas" in result and "NYC" in result
+
+    def test_fresh_path_recomputes_a_present_but_empty_city(
+        self, tmp_path, monkeypatch
+    ):
+        cache_path = tmp_path / "sigma.json"
+        cache_path.write_text(json.dumps({"NYC": {"max": {}, "min": {}}}))
+        monkeypatch.setattr(climatology, "_SIGMA_CACHE_PATH", cache_path)
+        city_coords = {"NYC": (40.7, -74.0, "America/New_York")}
+        with patch.object(
+            climatology, "compute_sigma_from_climate", return_value={1: 3.0}
+        ) as mock_compute:
+            result = climatology.load_all_sigmas(city_coords, force=False)
+        mock_compute.assert_called()
+        assert result["NYC"]["max"]["1"] == 3.0
+
+    def test_non_dict_json_does_not_crash_load_all_sigmas(self, tmp_path, monkeypatch):
+        cache_path = tmp_path / "sigma.json"
+        cache_path.write_text("null")
+        monkeypatch.setattr(climatology, "_SIGMA_CACHE_PATH", cache_path)
+        city_coords = {"NYC": (40.7, -74.0, "America/New_York")}
+        with patch.object(
+            climatology, "compute_sigma_from_climate", return_value={1: 3.0}
+        ):
+            result = climatology.load_all_sigmas(city_coords, force=True)
+        assert result["NYC"]["max"]["1"] == 3.0
+
+    def test_transient_empty_compute_does_not_clobber_existing_good_entry(
+        self, tmp_path, monkeypatch
+    ):
+        """A city that already has real data must survive a later call where
+        compute_sigma_from_climate() comes back empty for that city (e.g. a
+        network blip) -- the empty result must not overwrite the good one."""
+        cache_path = tmp_path / "sigma.json"
+        cache_path.write_text(
+            json.dumps({"NYC": {"max": {"1": 3.3}, "min": {"1": 2.2}}})
+        )
+        monkeypatch.setattr(climatology, "_SIGMA_CACHE_PATH", cache_path)
+        city_coords = {"NYC": (40.7, -74.0, "America/New_York")}
+        with patch.object(climatology, "compute_sigma_from_climate", return_value={}):
+            result = climatology.load_all_sigmas(city_coords, force=True)
+        assert result["NYC"]["max"]["1"] == 3.3
+        assert result["NYC"]["min"]["1"] == 2.2
+
+    def test_second_preload_all_call_retries_after_a_failed_compute(
+        self, tmp_path, monkeypatch
+    ):
+        """opus-review-caught: a city that failed to compute (empty result,
+        e.g. fetch_historical() had no data on a fresh install) must not get
+        stuck -- the next preload_all() call for that city should retry, not
+        treat the empty entry as already-satisfied."""
+        sigma_path = tmp_path / "sigma.json"
+        monkeypatch.setattr(climatology, "_SIGMA_CACHE_PATH", sigma_path)
+        monkeypatch.setattr(
+            climatology, "_cache_path", lambda city: tmp_path / f"climate_{city}.json"
+        )
+        city_coords = {"NYC": (40.7, -74.0, "America/New_York")}
+        with (
+            patch.object(climatology, "fetch_historical", return_value=None),
+            patch.object(
+                climatology, "compute_sigma_from_climate", return_value={}
+            ) as mock_compute,
+        ):
+            climatology.preload_all(city_coords)
+            calls_after_first = mock_compute.call_count
+            assert calls_after_first > 0
+            climatology.preload_all(city_coords)
+        assert mock_compute.call_count > calls_after_first

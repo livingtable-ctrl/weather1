@@ -14427,7 +14427,7 @@ Priority: Medium -- no live-money impact and not a correctness bug in
   23/23 test_climatology.py tests pass; ruff + ruff format + mypy clean.
 
 ======================================================
-[PRELOAD_ALL CAN PERMANENTLY TRUNCATE forecast_sigma.json TO ONE CITY ON A PARTIAL CALL]
+[RESOLVED 2026-08-07] PRELOAD_ALL CAN PERMANENTLY TRUNCATE forecast_sigma.json TO ONE CITY ON A PARTIAL CALL
 Priority: Medium -- not a live-money bug (this only affects the sigma-based
   dynamic forecast adjustment, which degrades to the static _HISTORICAL_SIGMA
   table on failure, not a crash or a wrong trade) but a real, currently-
@@ -14476,6 +14476,56 @@ Priority: Medium -- not a live-money bug (this only affects the sigma-based
   the complete registry (e.g. compare len() against the real city count)
   rather than just file-existence/staleness. Needs a decision on which
   tradeoff is acceptable before implementing.
+
+  RESOLVED 2026-08-07. Re-verified against live code first (confirmed 21
+  cities via CITY_COORDS, confirmed the exact mechanism, confirmed the
+  wizard call site at main.py:4652). User chose (b) via AskUserQuestion,
+  explicitly ruling out (c) because weather_markets.py already imports
+  climatology.py at module level, so climatology importing CITY_COORDS back
+  would be a real circular import (the only alternatives -- a lazy import or
+  a hardcoded city-count constant -- were rejected as fragile/stale-prone).
+
+  (b) alone turned out to be INSUFFICIENT: live-simulating the wizard's
+  per-city loop with only the merge fix applied showed forecast_sigma.json
+  still stuck at NYC-only, because preload_all()'s own gate
+  (file-exists-and-fresh) blocks the call to load_all_sigmas() entirely
+  after city 1 writes the file -- the merge logic never even runs for
+  cities 2..21. Caught this via a live probe script before proposing a
+  fix, corrected the design with the user (still self-contained in
+  climatology.py, no main.py changes): added
+  _sigma_cache_missing_cities() and gated preload_all()'s sigma-refresh
+  block on it too, so a per-city call keeps triggering load_all_sigmas()
+  until every requested city is actually present. Re-verified live with
+  the same probe -- file now accumulates NYC -> NYC+LasVegas ->
+  NYC+LasVegas+NewOrleans across sequential per-city calls.
+
+  Independent opus review (effort=high) of that combined fix then found 4
+  more real gaps, all fixed: (1) load_all_sigmas()'s own force=False fast
+  path -- the ACTUAL live cron/trading path via
+  weather_markets._load_dynamic_sigma(), which never goes through
+  preload_all() at all -- had the identical missing-city blind spot, so
+  the original bug class still reached production; (2) non-dict JSON
+  content (null, [], ...) in forecast_sigma.json crashed instead of
+  degrading gracefully; (3) a transient compute failure (empty result)
+  could silently overwrite a city's real existing entry with an empty one,
+  and an empty entry was never retried since key-presence alone counted as
+  "satisfied"; (4) a pre-existing module comment flatly contradicted the
+  new merge behavior. 2 LOW findings (per-city staleness not tracked --
+  whole-file mtime granularity means a partial write for city X makes city
+  Y's actually-stale entry look fresh; orphan entries for cities removed
+  from the registry are never pruned) were deliberately left as documented
+  residuals rather than fixed -- both need a cache-schema change
+  (per-city timestamps) for marginal benefit given today's only partial
+  caller (the wizard) runs once per install.
+
+  tests/test_climatology.py: 3 new test classes (TestLoadAllSigmasMerge,
+  TestPreloadAllSigmaGate, TestSigmaCacheRobustness), 19 new tests total
+  covering the merge, the gate, the live-path fast-path fix, non-dict-JSON
+  handling, and the empty-entry-doesn't-clobber/doesn't-stick-forever
+  behavior. Every fix individually mutation-tested (reverted, confirmed the
+  corresponding test fails, restored) before committing. 40/40 tests pass,
+  92 tests in 3 dependent files (test_city_registry_manifest.py,
+  test_gaussian_prob.py, test_p1_remaining.py) still pass, lint/mypy clean.
 
 ======================================================
 [RESOLVED 2026-08-07] 12 test_weather_markets.py TESTS FAILED INTERMITTENTLY DEPENDING ON LOCAL TIME-OF-DAY

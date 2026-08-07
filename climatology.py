@@ -280,13 +280,16 @@ _SIGMA_CACHE_AGE = 30 * 24 * 3600  # refresh monthly
 # from a single call passing the COMPLETE city registry, so a constant key matches
 # that intent (contrast climate_indices.py's get_indices(), previously bugged by
 # sharing one "latest" key across genuinely different (year, month) results).
-# NOT a guarantee, though: preload_all() (opus-review-caught, 2026-08-07, pre-
-# existing -- identical exposure existed with the old plain dict) can be called
-# with a PARTIAL city_coords (main.py's first-run wizard loops one city at a
-# time), and load_all_sigmas() happily recomputes+overwrites the whole cache under
-# this same constant key for whatever subset it's given -- see backlog.txt
+# preload_all() (main.py's first-run wizard loops one city at a time) can call
+# load_all_sigmas() with a PARTIAL city_coords -- it merges into whatever the
+# file already contains rather than overwriting under this constant key (see
+# load_all_sigmas()'s own docstring for the full mechanism; backlog.txt
 # "PRELOAD_ALL CAN PERMANENTLY TRUNCATE forecast_sigma.json TO ONE CITY ON A
-# PARTIAL CALL" for the fix this needs at the preload_all/wizard layer, not here.
+# PARTIAL CALL"). The one thing this constant key still assumes: whichever
+# call last wrote _sigma_mem_cache reflects the union of every city anyone has
+# ever asked for, not necessarily the CURRENT full registry -- a city removed
+# from the registry keeps its stale entry around (harmless, nothing reads an
+# unknown key) rather than being pruned on the next full rebuild.
 # _sigma_lock (below) still wraps the whole check-then-fetch-then-write sequence
 # in load_all_sigmas(): ForecastCache's own internal lock only makes a single
 # .get()/.set() call atomic, which is NOT sufficient to prevent two threads both
@@ -295,6 +298,54 @@ _SIGMA_CACHE_AGE = 30 * 24 * 3600  # refresh monthly
 _SIGMA_KEY = "all"
 _sigma_mem_cache: ForecastCache[dict] = ForecastCache(ttl_secs=float("inf"))
 _sigma_lock = threading.Lock()
+
+
+def _sigma_entry_has_data(entry: object) -> bool:
+    """True if a per-city sigma cache entry has at least one real computed
+    month value. A dict-shaped but fully empty entry ({"max": {}, "min": {}})
+    happens when compute_sigma_from_climate() came back empty for both vars
+    (e.g. fetch_historical() had no data yet, network down, or fresh install
+    before the climate archive downloaded) -- treated as "no data" rather
+    than "present," so callers keep retrying it instead of treating a failed
+    compute as permanently satisfied.
+    """
+    return isinstance(entry, dict) and bool(entry.get("max") or entry.get("min"))
+
+
+def _load_sigma_cache_file() -> dict:
+    """Read _SIGMA_CACHE_PATH and return its dict content, or {} on any
+    read/parse failure or non-dict content (corrupt file, truncated write,
+    or an unexpected JSON shape) -- never raises.
+    """
+    if not _SIGMA_CACHE_PATH.exists():
+        return {}
+    try:
+        with open(_SIGMA_CACHE_PATH) as f:
+            loaded = json.load(f)
+    except Exception as e:
+        _log.warning("Could not read existing forecast_sigma.json: %s", e)
+        return {}
+    if not isinstance(loaded, dict):
+        _log.warning(
+            "forecast_sigma.json did not contain a JSON object (got %s) -- ignoring it",
+            type(loaded).__name__,
+        )
+        return {}
+    return loaded
+
+
+def _sigma_cache_missing_cities(city_coords: dict) -> set[str]:
+    """Cities in city_coords not yet present -- or present with no real
+    computed data, see _sigma_entry_has_data() -- in the on-disk sigma cache.
+
+    A missing/corrupt/non-dict file is treated as "everything missing" (via
+    _load_sigma_cache_file() returning {}) so the caller falls through to a
+    real recompute rather than silently skipping it.
+    """
+    existing = _load_sigma_cache_file()
+    return {
+        city for city in city_coords if not _sigma_entry_has_data(existing.get(city))
+    }
 
 
 def compute_sigma_from_climate(
@@ -335,6 +386,37 @@ def load_all_sigmas(city_coords: dict, force: bool = False) -> dict:
     Structure: {city: {"max": {month_str: sigma}, "min": {month_str: sigma}}}
     Cached to data/forecast_sigma.json, refreshed monthly.
 
+    Merges into the existing cache file rather than overwriting it wholesale
+    (backlog.txt "PRELOAD_ALL CAN PERMANENTLY TRUNCATE forecast_sigma.json TO
+    ONE CITY ON A PARTIAL CALL"): a caller that passes a city_coords subset
+    (e.g. main.py's setup wizard, which calls preload_all() once per city so
+    it can report per-city progress) only recomputes entries for the cities
+    it actually passed -- every other city's existing entry in the file is
+    preserved rather than being dropped from the table. A city whose compute
+    comes back empty for both max and min (no data yet -- see
+    _sigma_entry_has_data()) does NOT overwrite a real existing entry for
+    that city, so a transient failure can't clobber previously-good data.
+
+    The force=False "fresh cache" fast path also checks whether every
+    requested city actually has real data in the cached file (opus-review-
+    caught 2026-08-07): without this, a caller that hits load_all_sigmas()
+    directly with force=False -- weather_markets._load_dynamic_sigma(), the
+    actual live cron/trading path, which never goes through preload_all()'s
+    own gate at all -- would silently accept a file that's "fresh" (recently
+    written) but missing a city that was just added to the registry, or one
+    whose entry is still empty from an earlier failed compute, and serve
+    stale/default sigma for that city for up to _SIGMA_CACHE_AGE.
+
+    Residual gap (opus-review-caught 2026-08-07, LOW severity, not fixed):
+    staleness is tracked at the whole-FILE level (_SIGMA_CACHE_PATH's mtime),
+    not per-city. A partial write for city X bumps the file's mtime, which
+    makes city Y's entry look "fresh" to the age check above even if Y's own
+    data hasn't actually been recomputed in >_SIGMA_CACHE_AGE. Fixing this
+    properly would mean per-city computed-at timestamps in the cache
+    structure -- deferred as a real scope increase on top of this fix, not a
+    one-line change, and today's only partial caller (the setup wizard) runs
+    once per install, so the exposure window is small in practice.
+
     Thread-safe WITHIN one process (backlog.txt "FORECAST_SIGMA.JSON ATOMIC
     WRITE CONTENTION"): cron.py's ThreadPoolExecutor scan can call this via
     weather_markets._load_dynamic_sigma() from multiple worker threads at
@@ -350,17 +432,26 @@ def load_all_sigmas(city_coords: dict, force: bool = False) -> dict:
     cron.py write racing a web_app.py read of forecast_sigma.json is a
     real, still-open (lower-severity, retry-recoverable) residual case this
     lock cannot cover; safe_io.atomic_write_json's own pid+thread-keyed temp
-    names and retry/backoff are what absorb that one.
+    names and retry/backoff are what absorb that one. The merge behavior
+    above (opus-review-caught 2026-08-07) changes the SHAPE of the
+    cross-process risk from "last writer wins with a benign full table" to
+    "last writer wins with a read-modify-write" -- two processes racing a
+    partial write (e.g. the setup wizard and a concurrent cron run) can each
+    read the same stale base and each write back their own partial view,
+    with the second write silently dropping whatever the first added. Still
+    unprotected across processes for the same reason as above; bounded in
+    practice by every current partial caller (the wizard) being a one-time,
+    single-process, foreground-only code path.
 
     Note (opus-review-caught, 2026-08-07): ForecastCache.get() returns None on
     both "no entry" and "entry present but falsy" -- an empty {} result (e.g.
     city_coords={}) is memoized as a cache hit forever (ttl_secs=inf), where
     the old plain-dict check (`if _sigma_mem_cache and not force`) would have
-    re-read disk on every subsequent call instead. Narrow (city_coords is
-    always the full, non-empty city registry in every real caller) and
-    harmless in that case -- not fixed, since doing so would mean changing
-    ForecastCache's own get()/miss semantics for every other consumer, not
-    just this one.
+    re-read disk on every subsequent call instead. Narrow (no real caller
+    passes an empty city_coords -- callers pass either the full registry or a
+    non-empty subset, see the merge note above) and harmless in that case --
+    not fixed, since doing so would mean changing ForecastCache's own
+    get()/miss semantics for every other consumer, not just this one.
     """
     with _sigma_lock:
         cached = _sigma_mem_cache.get(_SIGMA_KEY)
@@ -369,28 +460,29 @@ def load_all_sigmas(city_coords: dict, force: bool = False) -> dict:
 
         if not force and _SIGMA_CACHE_PATH.exists():
             age = time.time() - _SIGMA_CACHE_PATH.stat().st_mtime
-            if age < _SIGMA_CACHE_AGE:
-                with open(_SIGMA_CACHE_PATH) as f:
-                    loaded = json.load(f)
+            if age < _SIGMA_CACHE_AGE and not _sigma_cache_missing_cities(city_coords):
+                loaded = _load_sigma_cache_file()
                 _sigma_mem_cache.set(_SIGMA_KEY, loaded)
                 return loaded
 
-        result: dict = {}
+        result: dict = _load_sigma_cache_file()
+
         for city, coords in city_coords.items():
-            result[city] = {
-                "max": {
-                    str(k): v
-                    for k, v in compute_sigma_from_climate(
-                        city, coords, var="max"
-                    ).items()
-                },
-                "min": {
-                    str(k): v
-                    for k, v in compute_sigma_from_climate(
-                        city, coords, var="min"
-                    ).items()
-                },
+            max_sigma = {
+                str(k): v
+                for k, v in compute_sigma_from_climate(city, coords, var="max").items()
             }
+            min_sigma = {
+                str(k): v
+                for k, v in compute_sigma_from_climate(city, coords, var="min").items()
+            }
+            if not (max_sigma or min_sigma) and _sigma_entry_has_data(result.get(city)):
+                # Compute came back empty (e.g. no climate archive yet, or a
+                # transient fetch failure) but the merge base already has
+                # real data for this city -- keep it rather than clobbering
+                # good data with an empty entry.
+                continue
+            result[city] = {"max": max_sigma, "min": min_sigma}
 
         try:
             safe_io.atomic_write_json(result, _SIGMA_CACHE_PATH)
@@ -412,9 +504,27 @@ def preload_all(city_coords: dict) -> None:
             print(f"  Refreshing climate history for {city} (>1yr old)...", flush=True)
             fetch_historical(city, coords, force=True)
 
-    # Recompute sigma cache if stale or missing (runs after climate data is fresh)
-    if not _SIGMA_CACHE_PATH.exists() or (
+    # Recompute sigma cache if missing, stale, or if any city in THIS call
+    # isn't in it yet (backlog.txt "PRELOAD_ALL CAN PERMANENTLY TRUNCATE
+    # forecast_sigma.json TO ONE CITY ON A PARTIAL CALL"): a per-city caller
+    # like main.py's setup wizard writes the file on city 1, which then
+    # looks "fresh" to a plain existence/staleness gate -- silently blocking
+    # any refresh for cities 2..N until the file goes stale a month later.
+    # Checking for missing cities (not a hardcoded total city count, which
+    # would go stale as cities are added/removed, and can't safely import
+    # weather_markets.CITY_COORDS here -- weather_markets already imports
+    # this module) closes that gap without needing to know the "real"
+    # registry size. Paired with load_all_sigmas()'s merge-not-overwrite fix
+    # above so each partial call adds to the table instead of erasing it.
+    # NOTE: this gate only protects preload_all()'s own (always force=True)
+    # call -- load_all_sigmas() has its own, independent missing-cities check
+    # on its force=False fast path for callers that reach it directly without
+    # going through preload_all() at all (weather_markets._load_dynamic_sigma,
+    # the live cron/trading path -- see that function's docstring).
+    cache_exists = _SIGMA_CACHE_PATH.exists()
+    stale = cache_exists and (
         time.time() - _SIGMA_CACHE_PATH.stat().st_mtime > _SIGMA_CACHE_AGE
-    ):
+    )
+    if not cache_exists or stale or _sigma_cache_missing_cities(city_coords):
         print("  Computing per-city forecast sigma from climate archive...", flush=True)
         load_all_sigmas(city_coords, force=True)
