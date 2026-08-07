@@ -58,6 +58,19 @@ def cron_env(tmp_path, monkeypatch):
 
     import cron
     import main
+    import trade_cycle
+
+    # cmd_cron() -> run_trade_cycle(..., prewarm=True) calls this before the
+    # analyze loop for any market whose ticker parses to a real city/date --
+    # straight to weather_markets' real Open-Meteo/NBM/ECMWF/WeatherAPI/NWS/
+    # METAR/MOS fetchers, independent of the get_weather_markets/
+    # enrich_with_forecast/analyze_trade mocks below. Tests that hand cmd_cron
+    # a non-empty market list (needed to exercise placement, e.g.
+    # _fake_strong_signal's "KXHIGH-NYC-..." ticker) hung making real,
+    # unmocked network calls (one of them a bare 65s time.sleep rate-limit
+    # pause). No test here asserts on prewarm's own behavior, so a no-op is
+    # safe -- mirrors test_trade_cycle_engine.py's engine_env fixture.
+    monkeypatch.setattr(trade_cycle, "_run_batch_prewarm", lambda *a, **kw: None)
 
     monkeypatch.setattr(cron, "RUNNING_FLAG_PATH", tmp_path / ".cron_running")
     monkeypatch.setattr(cron, "KILL_SWITCH_PATH", tmp_path / ".kill_switch")
