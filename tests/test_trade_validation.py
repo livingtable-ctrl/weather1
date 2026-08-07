@@ -125,6 +125,17 @@ def test_validate_low_spread_tier_rejects_edge_below_threshold():
     assert "spread" in reason.lower()  # reason should mention spread info
 
 
+def test_validate_none_edge_value_does_not_crash():
+    """opp["edge"] present but None (as opposed to simply absent) must not raise
+    TypeError from `raw_edge <= 0` — treat it the same as a missing key."""
+    from main import _validate_trade_opportunity
+
+    opp = _opp()
+    opp["edge"] = None
+    ok, reason = _validate_trade_opportunity(opp)
+    assert ok, f"Expected valid opp but got: {reason}"
+
+
 class TestFlashCrashPriceFeed:
     """F3: the flash-crash circuit breaker read opp.get("yes_bid")/opp.get("yes_ask")
     directly, but opp (analyze_trade's result) never carries those keys — it had
