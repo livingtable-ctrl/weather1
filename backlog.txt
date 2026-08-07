@@ -10683,7 +10683,10 @@ When to revisit:
 
 [PARTIALLY RESOLVED 2026-07-25 -- parts (a) and (b) shipped; part (c), the
   blend-weights-dict refactor, still open, deliberately scoped out as its
-  own separately-reviewed pass given its live-blend blast radius]
+  own separately-reviewed pass given its live-blend blast radius --
+  STALE TITLE CORRECTED 2026-08-06, see note near the end: part (b) shipped
+  a real mechanism (SIGNAL_REGISTRY + a standing graduation-report command),
+  so "IS A CONVENTION, NOT A MECHANISM" no longer describes what's left]
   SIGNAL GRADUATION IS A CONVENTION, NOT A MECHANISM -- SIGNAL #3 REBUILDS RUN-TREND'S PLUMBING
 Priority: Medium -- the log-only->trigger->blend pattern is now this
   project's explicit strategy for all new alpha; its marginal cost is
@@ -11013,6 +11016,19 @@ RESOLVED 2026-07-25 (part (b) -- the signal registry + standing
   established "don't build the abstraction before a second real case
   demands it" discipline (see NO MARKET-TYPE SEAM's identical reasoning for
   the MarketType protocol).
+
+STALE TITLE CORRECTED 2026-08-06: this entry's title ("SIGNAL GRADUATION IS
+  A CONVENTION, NOT A MECHANISM") was accurate when written (2026-07-16/17),
+  but part (b) above shipped a real mechanism 2026-07-25 -- a SIGNAL_REGISTRY
+  plus a standing `py main.py signals` graduation-report command that
+  replaces the old "prose trigger someone has to remember to run by hand"
+  problem this title was originally naming. Only part (c) (the
+  _blend_weights() positional-tuple-to-named-dict refactor) remains open,
+  a narrower claim than the title implies. Caught during a 2026-08-06
+  full backlog.txt read-through (same pattern as the STALE TITLE/COUNT
+  corrections on the ForecastCache and main.py-frozen-import entries
+  above) -- title/header corrected per this project's standing convention;
+  historical resolution text above left unchanged.
 
 [RESOLVED 2026-07-23 -- as a side effect of GENERALIZED PER-MODEL ACCURACY TRACKING Pass 1, see that entry] THE ANALYSIS-DICT -> TRADE-RECORD BOUNDARY EXPLODES DICTS INTO NAMED SCALARS
 Priority: was Medium -- sharpened the GENERALIZED PER-MODEL ACCURACY
