@@ -26,6 +26,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from utils import STRONG_EDGE
+
 
 @pytest.fixture()
 def engine_env(tmp_path, monkeypatch):
@@ -1081,6 +1083,252 @@ class TestEffectiveStrongEdgeThreading:
             "MED_EDGE must demote to med tier, not just fall off the strong "
             "one -- proving effective_strong_edge is actually consumed, not "
             "just computed and logged by the caller"
+        )
+
+
+class TestPlacementEdgeGateTierClassification:
+    """backlog.txt 'STRONG/MED TIER CLASSIFICATION AND FINAL PLACEMENT
+    VALIDATION USE DIFFERENT, DISAGREEING EDGE MEASURES' -- a candidate must
+    clear order_executor._validate_trade_opportunity's raw-edge (sign vs
+    recommended_side, magnitude vs MIN_EDGE) gate to earn STRONG/MED, not
+    just the adjusted_edge/eff_strong_edge/MED_EDGE bar. Reproduces the live
+    KXHIGHTSEA-26AUG07-T85 case: adjusted_edge/net_edge qualified for STRONG
+    (+0.335) while raw edge (-0.1456) could never have cleared MIN_EDGE at
+    any price -- announced STRONG, structurally unplaceable."""
+
+    def test_raw_edge_below_min_edge_untiers_an_otherwise_strong_candidate(
+        self, engine_env
+    ):
+        tmp_path, client, main, paper, cron, trade_cycle, ctx = engine_env
+        market, enriched, analysis = _strong_market_analysis()
+        # adjusted_edge/net_edge clear STRONG_EDGE; raw edge is real but too
+        # small (below the 0.07 default MIN_EDGE) to ever clear validate()'s
+        # independent magnitude gate -- same shape as the live example.
+        analysis = dict(analysis, edge=0.05, recommended_side="yes")
+
+        with (
+            patch.object(main, "get_weather_markets", return_value=[market]),
+            patch.object(main, "enrich_with_forecast", return_value=enriched),
+            patch.object(main, "analyze_trade", return_value=analysis),
+        ):
+            ctx2 = main._build_cron_context()
+            result = trade_cycle.run_trade_cycle(ctx2, client)
+
+        assert len(result.strong_opps) == 0
+        assert len(result.med_opps) == 0
+        [(_, out_analysis)] = result.all_results
+        assert out_analysis["tier"] is None
+        assert out_analysis["_clears_placement_gate"] is False
+        # Still passes the net_edge/prob_edge threshold and still shows up
+        # in the signals feed -- only the STRONG/MED tier label is withheld,
+        # matching validate()'s own behavior of never seeing this key at all.
+        assert out_analysis["_passes_threshold"] is True
+
+    def test_raw_edge_wrong_sign_untiers_an_otherwise_strong_candidate(
+        self, engine_env
+    ):
+        tmp_path, client, main, paper, cron, trade_cycle, ctx = engine_env
+        market, enriched, analysis = _strong_market_analysis()
+        # recommended_side is "yes" but raw edge is negative -- the sign
+        # mismatch validate() rejects on, independent of magnitude.
+        analysis = dict(analysis, edge=-0.20, recommended_side="yes")
+
+        with (
+            patch.object(main, "get_weather_markets", return_value=[market]),
+            patch.object(main, "enrich_with_forecast", return_value=enriched),
+            patch.object(main, "analyze_trade", return_value=analysis),
+        ):
+            ctx2 = main._build_cron_context()
+            result = trade_cycle.run_trade_cycle(ctx2, client)
+
+        assert len(result.strong_opps) == 0
+        assert len(result.med_opps) == 0
+        [(_, out_analysis)] = result.all_results
+        assert out_analysis["tier"] is None
+        assert out_analysis["_clears_placement_gate"] is False
+
+    def test_raw_edge_at_min_edge_boundary_still_clears_gate(self, engine_env):
+        tmp_path, client, main, paper, cron, trade_cycle, ctx = engine_env
+        from utils import MIN_EDGE
+
+        market, enriched, analysis = _strong_market_analysis()
+        # Exactly MIN_EDGE, same sign as recommended_side -- validate() only
+        # rejects strictly-below, so this must still classify as STRONG.
+        analysis = dict(analysis, edge=MIN_EDGE, recommended_side="yes")
+
+        with (
+            patch.object(main, "get_weather_markets", return_value=[market]),
+            patch.object(main, "enrich_with_forecast", return_value=enriched),
+            patch.object(main, "analyze_trade", return_value=analysis),
+        ):
+            ctx2 = main._build_cron_context()
+            result = trade_cycle.run_trade_cycle(ctx2, client)
+
+        assert len(result.strong_opps) == 1
+        [(_, out_analysis)] = result.all_results
+        assert out_analysis["tier"] == trade_cycle.TIER_STRONG
+        assert out_analysis["_clears_placement_gate"] is True
+
+    def test_missing_raw_edge_key_defaults_to_clearing_gate(self, engine_env):
+        """Matches validate()'s own `if "edge" in opp:` guard -- a caller
+        that never populates raw `edge` must not be silently untiered."""
+        tmp_path, client, main, paper, cron, trade_cycle, ctx = engine_env
+        market, enriched, analysis = _strong_market_analysis()
+        analysis = dict(analysis)
+        del analysis["edge"]
+
+        with (
+            patch.object(main, "get_weather_markets", return_value=[market]),
+            patch.object(main, "enrich_with_forecast", return_value=enriched),
+            patch.object(main, "analyze_trade", return_value=analysis),
+        ):
+            ctx2 = main._build_cron_context()
+            result = trade_cycle.run_trade_cycle(ctx2, client)
+
+        assert len(result.strong_opps) == 1
+        [(_, out_analysis)] = result.all_results
+        assert out_analysis["tier"] == trade_cycle.TIER_STRONG
+        assert out_analysis["_clears_placement_gate"] is True
+
+    def test_negative_net_edge_untiers_a_wide_spread_candidate(self, engine_env):
+        """Opus review (2026-08-07) HIGH finding: the first version of this
+        fix mirrored only the raw-edge block and missed validate()'s very
+        first check (net_edge <= 0, order_executor.py's line right above the
+        raw-edge block). A wide bid/ask spread can produce a negative
+        net_edge (EV/entry-ask) while raw edge and adjusted_edge both still
+        clear their own bars -- adjusted_edge = net_edge * edge_confidence
+        preserves sign, and the tier check above compares abs(adjusted_edge),
+        so a negative net_edge alone doesn't stop a STRONG/MED label without
+        this check."""
+        tmp_path, client, main, paper, cron, trade_cycle, ctx = engine_env
+        market, enriched, analysis = _strong_market_analysis()
+        analysis = dict(
+            analysis,
+            edge=0.15,  # raw edge: real, clears MIN_EDGE, correct sign
+            net_edge=-0.10,  # EV/entry-ask is negative -- a losing bet
+            adjusted_edge=STRONG_EDGE + 0.05,  # still clears the tier bar
+            recommended_side="yes",
+        )
+
+        with (
+            patch.object(main, "get_weather_markets", return_value=[market]),
+            patch.object(main, "enrich_with_forecast", return_value=enriched),
+            patch.object(main, "analyze_trade", return_value=analysis),
+        ):
+            ctx2 = main._build_cron_context()
+            result = trade_cycle.run_trade_cycle(ctx2, client)
+
+        assert len(result.strong_opps) == 0
+        assert len(result.med_opps) == 0
+        [(_, out_analysis)] = result.all_results
+        assert out_analysis["tier"] is None
+        assert out_analysis["_clears_placement_gate"] is False
+
+    def test_reproduces_live_kxhightsea_incident_no_side_magnitude_failure(
+        self, engine_env
+    ):
+        """The actual backlog.txt reproduction case: recommended_side="no",
+        net_edge/adjusted_edge qualify for STRONG, but raw edge -- though
+        correctly signed for a NO recommendation (negative) -- is too small
+        in magnitude to clear MIN_EDGE. Opus review flagged that the
+        original 4 tests all used side="yes" and never actually exercised
+        this exact shape, which is the one the live incident was."""
+        tmp_path, client, main, paper, cron, trade_cycle, ctx = engine_env
+        market, enriched, analysis = _strong_market_analysis()
+        analysis = dict(
+            analysis,
+            recommended_side="no",
+            # side="no" flips the mkt_prob/divergence direction check --
+            # forecast_prob=0.75/market_prob=0.40 from the base fixture still
+            # clears both (mkt_dir=0.60, our_dir=0.25, ratio=0.417 < 2.0).
+            edge=-0.05,  # correct sign for "no" (negative), too small in
+            # magnitude -- below the 0.07 default MIN_EDGE, same shape as the
+            # live KXHIGHTSEA-26AUG07-T85 case (net_edge +0.335, raw edge
+            # -0.1456 < MIN_EDGE=0.15 in that env).
+        )
+
+        with (
+            patch.object(main, "get_weather_markets", return_value=[market]),
+            patch.object(main, "enrich_with_forecast", return_value=enriched),
+            patch.object(main, "analyze_trade", return_value=analysis),
+        ):
+            ctx2 = main._build_cron_context()
+            result = trade_cycle.run_trade_cycle(ctx2, client)
+
+        assert len(result.strong_opps) == 0
+        assert len(result.med_opps) == 0
+        [(_, out_analysis)] = result.all_results
+        assert out_analysis["tier"] is None
+        assert out_analysis["_clears_placement_gate"] is False
+
+
+class TestPlacementGateMirrorsValidateOpportunity:
+    """Opus review (2026-08-07): four one-directional assertions on
+    trade_cycle's own gate can't catch drift between it and the function it
+    mirrors. This binds the two together directly -- for a range of
+    candidates, if trade_cycle tiers a candidate, order_executor's real
+    _validate_trade_opportunity must not reject it for any of the specific
+    reasons this fix addresses (net_edge<=0, raw-edge sign/magnitude). Does
+    NOT assert the converse (validate() ok implies tiered) since validate()
+    has its own gates (Kelly floor, confidence-tiered min_edge) this fix
+    deliberately doesn't mirror -- see the follow-up backlog entry."""
+
+    @pytest.fixture(autouse=True)
+    def _healthy_system(self):
+        import system_health
+
+        with patch.object(
+            system_health,
+            "check_system_health",
+            return_value=system_health.HealthStatus(True, ""),
+        ):
+            yield
+
+    @pytest.mark.parametrize(
+        "edge,net_edge,adjusted_edge,side",
+        [
+            (0.35, 0.35, STRONG_EDGE + 0.05, "yes"),  # clean STRONG, both clear
+            (0.20, 0.20, 0.20, "yes"),  # clean MED, both clear
+            (-0.20, 0.30, STRONG_EDGE + 0.05, "no"),  # correct sign, real value
+        ],
+    )
+    def test_tiered_candidate_clears_validates_own_edge_gates(
+        self, engine_env, edge, net_edge, adjusted_edge, side
+    ):
+        tmp_path, client, main, paper, cron, trade_cycle, ctx = engine_env
+        from main import _validate_trade_opportunity
+
+        market, enriched, analysis = _strong_market_analysis()
+        analysis = dict(
+            analysis,
+            edge=edge,
+            net_edge=net_edge,
+            adjusted_edge=adjusted_edge,
+            recommended_side=side,
+            ci_adjusted_kelly=0.10,  # clears validate()'s own Kelly floor
+        )
+
+        with (
+            patch.object(main, "get_weather_markets", return_value=[market]),
+            patch.object(main, "enrich_with_forecast", return_value=enriched),
+            patch.object(main, "analyze_trade", return_value=analysis),
+        ):
+            ctx2 = main._build_cron_context()
+            result = trade_cycle.run_trade_cycle(ctx2, client)
+
+        [(_, out_analysis)] = result.all_results
+        assert out_analysis["tier"] is not None, (
+            f"expected this candidate to tier (edge={edge}, net_edge={net_edge}, "
+            f"adjusted_edge={adjusted_edge}, side={side})"
+        )
+
+        ok, reason = _validate_trade_opportunity(
+            {**out_analysis, "ticker": market["ticker"]}, live=False, market=market
+        )
+        assert ok, (
+            f"trade_cycle tiered this candidate as {out_analysis['tier']} but "
+            f"validate() rejects it: {reason} -- the placement-edge gate this "
+            f"fix added has drifted from what it's supposed to mirror"
         )
 
 

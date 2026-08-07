@@ -150,12 +150,14 @@ def run_trade_cycle(
 
     ``require_liquid_for_placement``: cron's paper trades don't need real
     market liquidity to fill, so cron passes ``False`` (default) and
-    strong_opps/med_opps include every threshold-passing candidate
-    regardless of liquidity -- matching cron's pre-extraction behavior
-    exactly. Watch's orders can be live, so it passes ``True`` to
-    additionally require ``weather_markets.is_liquid()`` before a candidate
-    is eligible for strong_opps/med_opps -- matching watch's pre-extraction
-    liquid_opps-only auto-trade behavior.
+    strong_opps/med_opps include every threshold-passing candidate that also
+    clears validate()'s deterministic edge gates (net_edge sign, raw-edge
+    sign/magnitude -- see the ``_clears_placement_gate`` computation below),
+    regardless of liquidity -- matching cron's
+    pre-extraction behavior exactly. Watch's orders can be live, so it passes
+    ``True`` to additionally require ``weather_markets.is_liquid()`` before a
+    candidate is eligible for strong_opps/med_opps -- matching watch's
+    pre-extraction liquid_opps-only auto-trade behavior.
 
     ``external_halted_reason``: a soft-halt reason the caller already
     determined by its own means before calling this function (cron.py's
@@ -390,6 +392,12 @@ def run_trade_cycle(
         "net_edge": 0,
         "prob_edge": 0,
         "passed": 0,
+        # Passed the net_edge/prob_edge threshold above but denied a tier
+        # because it fails one of validate()'s deterministic edge pre-checks
+        # (net_edge sign or raw-edge sign/magnitude) -- would have been
+        # announced STRONG/MED before this gate existed but could
+        # never actually have placed. See "placement_gate" comment below.
+        "placement_gate": 0,
     }
 
     def _enrich_and_analyze(m: dict) -> tuple[dict, dict, dict | None]:
@@ -537,8 +545,113 @@ def run_trade_cycle(
                     # threshold outcome, not silently treat every candidate
                     # as passing because the key was simply absent.
                     analysis["_passes_edge"] = passes_threshold
+
+                    # Mirror order_executor._validate_trade_opportunity's
+                    # deterministic edge pre-checks here (backlog.txt "STRONG/MED
+                    # TIER CLASSIFICATION AND FINAL PLACEMENT VALIDATION USE
+                    # DIFFERENT, DISAGREEING EDGE MEASURES") so a candidate can
+                    # only earn STRONG/MED if it can structurally clear
+                    # placement's own edge gates, not just the
+                    # adjusted_edge/eff_strong_edge/MED_EDGE bar above. Two of
+                    # validate()'s edge checks are mirrored exactly:
+                    #   1. net_edge (EV/entry-ask) must be positive -- opus review
+                    #      (2026-08-07) caught this as the FIRST check validate()
+                    #      makes, immediately above the raw-edge block below; an
+                    #      earlier version of this fix mirrored only the raw-edge
+                    #      block and missed it, leaving a real gap (a wide-spread
+                    #      market can have net_edge<=0 while abs(adjusted_edge)
+                    #      still clears MED_EDGE/eff_strong_edge, since adjusted_edge
+                    #      = net_edge * edge_confidence_factor preserves sign and
+                    #      the tier check above uses abs()).
+                    #   2. raw `edge` -- the side-agnostic (blended_prob -
+                    #      market_prob) figure, priced off the market MID rather
+                    #      than the entry ASK net_edge/adjusted_edge use -- must
+                    #      agree in sign with `side` and clear MIN_EDGE in
+                    #      magnitude, independently of adjusted_edge ever
+                    #      qualifying. Skipped (defaults to passing) when "edge"
+                    #      is absent, matching validate()'s own `if "edge" in
+                    #      opp:` guard.
+                    # Deliberately NOT mirrored, both real per-candidate gaps
+                    # documented in a backlog.txt follow-up entry filed
+                    # 2026-08-07 rather than fixed here:
+                    #   - validate()'s ci_adjusted_kelly/fee_adjusted_kelly floor
+                    #     (>= 0.002) -- also opus-review-caught, equally
+                    #     deterministic, and cheap to mirror in principle. NOT
+                    #     added here because every existing STRONG/MED-tier test
+                    #     fixture across this suite (this file's
+                    #     _strong_market_analysis/_med_market_analysis,
+                    #     test_cron_integration.py's fake_analysis, and likely
+                    #     others not yet audited) hand-builds its analysis dict
+                    #     without ever setting ci_adjusted_kelly/fee_adjusted_kelly
+                    #     -- real analyze_trade() output always populates it, but
+                    #     these mocks stand in for analyze_trade entirely, so the
+                    #     gate would default every one of them to kelly=0.0 and
+                    #     silently zero out their tier, a much larger blast
+                    #     radius than this fix's own scope and one this suite's
+                    #     pre-existing test hangs (see backlog.txt) make
+                    #     impractical to fully audit for right now.
+                    #   - validate()'s confidence-tiered/A-B-test min_edge check
+                    #     (get_min_edge_for_confidence + _MIN_EDGE_AB_TEST.
+                    #     pick_variant()). Not because pick_variant() is stateful
+                    #     (it isn't -- ab_test.py's pick_variant() reads state but
+                    #     only mutates it in record_outcome(), called on trade
+                    #     settlement, not here), but because it's *provably
+                    #     subsumed* today: edge_confidence() in weather_markets.py
+                    #     always returns a factor in (0, 1], so adjusted_edge =
+                    #     net_edge * edge_confidence never exceeds net_edge in
+                    #     magnitude. A candidate can only reach this point with
+                    #     abs(adjusted_edge) >= MED_EDGE (0.15 default), so
+                    #     abs(net_edge) >= 0.15 too -- at or above every
+                    #     confidence-tiered/AB-test threshold that exists today
+                    #     (max is the LOW-confidence live tier at 0.15; see
+                    #     utils.py's _EDGE_TIERS and _MIN_EDGE_AB_TEST's variants,
+                    #     all <= 0.15). This is a real dependency on MED_EDGE
+                    #     staying >= those thresholds, not a coincidence-proof
+                    #     general guarantee -- if MED_EDGE is ever lowered below
+                    #     the highest confidence-tier/AB-test threshold via env
+                    #     override, this gap reopens silently.
+                    # Local import (not module-level) matching order_executor's
+                    # own `from utils import MIN_EDGE as _MIN_EDGE` inside
+                    # _validate_trade_opportunity -- a module-level value-import
+                    # would freeze this at whatever MIN_EDGE was when trade_cycle
+                    # was first imported, going stale exactly like main.py's
+                    # Settings-screen `global MIN_EDGE` rebind exists to work
+                    # around (main.py's MIN_EDGE is in the live-editable
+                    # setting_keys list; trade_cycle is imported lazily but then
+                    # cached in sys.modules for the rest of the process).
+                    from utils import MIN_EDGE as _MIN_EDGE
+
+                    # Note on how much this magnitude check actually bites:
+                    # prob_edge = |edge| / time_decay, and the pre-existing
+                    # prob-edge gate above already requires prob_edge >= 0.12
+                    # for days_out <= 1 (min_prob_edge_for_days_out). At
+                    # MIN_EDGE's own 0.07 default, this magnitude check is
+                    # subsumed by that gate whenever time_decay == 1 (a fresh
+                    # market) -- it only does independent work when MIN_EDGE
+                    # is raised above that (this deployment currently runs
+                    # MIN_EDGE=0.15) or when time_decay < 1 shrinks prob_edge's
+                    # effective floor below MIN_EDGE. Don't read "this rarely
+                    # fires in tests with the 0.07 default" as "this check is
+                    # unnecessary" -- it's load-bearing for the real deployed
+                    # config, and the live incident this fix addresses depended
+                    # on exactly that.
+                    raw_edge = analysis.get("edge")
+                    clears_placement_gate = True
+                    if net_edge <= 0:
+                        clears_placement_gate = False
+                    if raw_edge is not None:
+                        if side == "yes" and raw_edge <= 0:
+                            clears_placement_gate = False
+                        elif side == "no" and raw_edge >= 0:
+                            clears_placement_gate = False
+                        elif abs(raw_edge) < _MIN_EDGE:
+                            clears_placement_gate = False
+                    analysis["_clears_placement_gate"] = clears_placement_gate
+                    if passes_threshold and not clears_placement_gate:
+                        dbg["placement_gate"] += 1
+
                     analysis["tier"] = None
-                    if passes_threshold:
+                    if passes_threshold and clears_placement_gate:
                         if abs(adjusted_edge) >= eff_strong_edge:
                             analysis["tier"] = TIER_STRONG
                         elif abs(adjusted_edge) >= MED_EDGE:
