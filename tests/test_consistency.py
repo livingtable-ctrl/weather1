@@ -18,6 +18,30 @@ def _market(ticker, yes_bid=0, yes_ask=0, no_bid=0, series=None, title=""):
     }
 
 
+def _rain_market(
+    ticker, floor_strike, yes_bid=0, yes_ask=0, no_bid=0, strike_type="greater"
+):
+    """KXRAIN*M monthly rain-total ladder market. floor_strike/strike_type
+    shape confirmed live 2026-08-06 against KXRAINNYCM/KXRAINCHIM/KXRAINSTPM
+    -- Kalshi's own market fields, not derived from ticker/title text the
+    way _market()'s temperature fixtures are. Price fields use the
+    yes_bid_dollars/yes_ask_dollars string shape (opus-review-caught: the
+    real current live API shape, matching tests/test_rain_markets.py's own
+    _rain_market fixture -- coalesce_market_price/parse_market_price accept
+    both that and the legacy yes_bid/yes_ask float shape _market() above
+    uses, but this file's earlier draft used the legacy shape for a fixture
+    whose docstring claimed to be live-verified, which it wasn't)."""
+    return {
+        "ticker": ticker,
+        "title": f"Rain in {ticker.split('-')[0]} 2026?",
+        "floor_strike": floor_strike,
+        "strike_type": strike_type,
+        "yes_bid_dollars": str(yes_bid),
+        "yes_ask_dollars": str(yes_ask),
+        "no_bid_dollars": str(no_bid),
+    }
+
+
 class TestConsistency(unittest.TestCase):
     def test_no_violation_when_monotone(self):
         """
@@ -141,55 +165,152 @@ class TestConsistency(unittest.TestCase):
         ]
         self.assertEqual(find_violations(markets), [])
 
-    def test_monthly_rain_markets_excluded(self):
-        """backlog.txt "RAIN / SNOW / HURRICANE MARKETS" Step 1: KXRAIN*M
-        monthly rain-total ladder brackets must never reach _group_markets.
-        Without the exclusion, this doesn't produce a false violation
-        (date_match already fails to match these tickers, so they'd be
-        dropped via the "not series or not date_str" skip regardless -- this
-        assertion alone would NOT catch a removed exclusion, confirmed by
-        mutation-testing it), but it WOULD log a spurious L-8 warning every
-        scan (series resolves truthy from the ticker prefix while
-        date_match stays None) -- see the companion log-noise assertion
-        below, which IS the real regression guard."""
+    def test_monthly_rain_markets_grouped_by_city_and_month_no_violation_when_monotone(
+        self,
+    ):
+        """backlog.txt "RAIN MARKETS -- CONSISTENCY.PY'S ARBITRAGE CHECK
+        STILL BLANKET-EXCLUDES KXRAIN*M" (resolved 2026-08-06): KXRAIN*M
+        monthly rain-total ladder brackets now reach _group_markets via a
+        dedicated (city, "RAIN", year, month) key. floor_strike=1 priced
+        high (0.80-0.85) and floor_strike=7 priced low (0.10-0.15) is
+        monotone DECREASING as threshold increases -- the correct shape for
+        precip_month_total's single-sided "total > threshold" rule -- so
+        this must NOT produce a violation, same real values this test
+        exercised before the blanket exclusion was removed."""
         markets = [
-            _market(
-                "KXRAINSEAM-26JUL-1",
-                yes_bid=0.80,
-                yes_ask=0.85,
-                series="KXRAINSEAM",
-                title="Rain in Seattle in Jul 2026?",
+            _rain_market(
+                "KXRAINSEAM-26JUL-1", floor_strike=1, yes_bid=0.80, yes_ask=0.85
             ),
-            _market(
-                "KXRAINSEAM-26JUL-7",
-                yes_bid=0.10,
-                yes_ask=0.15,
-                series="KXRAINSEAM",
-                title="Rain in Seattle in Jul 2026?",
+            _rain_market(
+                "KXRAINSEAM-26JUL-7", floor_strike=7, yes_bid=0.10, yes_ask=0.15
             ),
         ]
         self.assertEqual(find_violations(markets), [])
 
     def test_monthly_rain_markets_do_not_log_date_extraction_warning(self):
-        """The actual regression guard for the exclusion above: mutation-
-        tested by temporarily removing consistency.py's KXRAIN*M exclusion
-        and confirming this assertion fails (the L-8 warning fires) before
-        restoring it. find_violations() returning [] alone (previous test)
-        does NOT catch a removed exclusion -- only this log-absence check
-        does."""
+        """Rain markets take a dedicated early branch in _group_markets
+        (see the KXRAIN*M ticker-prefix check) and never reach the generic
+        date_match/L-8-warning path at all now, so a well-formed rain
+        market must never trigger that warning."""
         import logging
 
         markets = [
-            _market(
-                "KXRAINSEAM-26JUL-1",
-                yes_bid=0.80,
-                yes_ask=0.85,
-                series="KXRAINSEAM",
-                title="Rain in Seattle in Jul 2026?",
+            _rain_market(
+                "KXRAINSEAM-26JUL-1", floor_strike=1, yes_bid=0.80, yes_ask=0.85
             ),
         ]
         with self.assertNoLogs(level=logging.WARNING):
             find_violations(markets)
+
+    def test_monthly_rain_violation_detected_and_flagged_shadow(self):
+        """Inverted rain ladder (floor_strike=7 priced HIGHER than
+        floor_strike=1) is a real monotonicity violation, the same shape as
+        test_violation_detected -- but every rain-sourced Violation must
+        come back with is_shadow=True (first pass, not yet graduated to
+        live placement -- see consistency.find_violations's docstring)."""
+        markets = [
+            _rain_market(
+                "KXRAINSEAM-26JUL-1", floor_strike=1, yes_bid=0.40, yes_ask=0.45
+            ),
+            _rain_market(
+                "KXRAINSEAM-26JUL-7", floor_strike=7, yes_bid=0.55, yes_ask=0.60
+            ),
+        ]
+        violations = find_violations(markets)
+        self.assertGreater(len(violations), 0)
+        for v in violations:
+            self.assertTrue(v.is_shadow, f"rain violation must be shadow-flagged: {v}")
+        # Unit must read "in" (inches), never "°" -- rain is not temperature.
+        # Pins the actual rendering (opus-review-caught: a bare assertIn("in", ...)
+        # would also pass on a mis-rounded ">7in)" vs ">7.0in)" -- this ties
+        # the assertion to the real :g-formatted threshold too).
+        self.assertIn(">7in)", violations[0].description)
+        self.assertNotIn("°", violations[0].description)
+
+    def test_monthly_rain_different_cities_not_compared(self):
+        """Two different rain cities in the same month must never be
+        pooled into one group -- mirrors test_different_series_not_compared
+        for temperature."""
+        markets = [
+            _rain_market(
+                "KXRAINSEAM-26JUL-1", floor_strike=1, yes_bid=0.40, yes_ask=0.45
+            ),
+            # Higher threshold, different city -- would be a violation if
+            # wrongly grouped with Seattle's above.
+            _rain_market(
+                "KXRAINCHIM-26JUL-7", floor_strike=7, yes_bid=0.55, yes_ask=0.60
+            ),
+        ]
+        self.assertEqual(find_violations(markets), [])
+
+    def test_monthly_rain_different_months_not_compared(self):
+        """Same city, different accrual months must never be pooled --
+        rain-specific case with no temperature analog (temperature's key is
+        already per-day)."""
+        markets = [
+            _rain_market(
+                "KXRAINSEAM-26JUL-1", floor_strike=1, yes_bid=0.40, yes_ask=0.45
+            ),
+            _rain_market(
+                "KXRAINSEAM-26AUG-7", floor_strike=7, yes_bid=0.55, yes_ask=0.60
+            ),
+        ]
+        self.assertEqual(find_violations(markets), [])
+
+    def test_monthly_rain_irregular_ladder_size_matches_real_st_petersburg_shape(
+        self,
+    ):
+        """St. Petersburg's real July 2026 ladder (live-checked 2026-08-06)
+        has exactly 10 brackets, floor_strike 1-10, all strike_type=greater
+        -- a materially bigger/irregular shape than NYC's typical 4-7. A
+        monotone-decreasing 10-bracket ladder must produce zero violations
+        regardless of size."""
+        markets = [
+            _rain_market(
+                f"KXRAINSTPM-26JUL-{n}",
+                floor_strike=n,
+                yes_bid=max(0.90 - n * 0.08, 0.02),
+                yes_ask=max(0.95 - n * 0.08, 0.05),
+            )
+            for n in range(1, 11)
+        ]
+        self.assertEqual(find_violations(markets), [])
+
+    def test_monthly_rain_missing_floor_strike_excluded(self):
+        """A rain market missing floor_strike (malformed/unexpected API
+        shape) must be silently skipped, fail-closed -- never guessed,
+        mirroring weather_markets._parse_market_condition's identical
+        guard for the same ticker family."""
+        m = _rain_market(
+            "KXRAINSEAM-26JUL-1", floor_strike=1, yes_bid=0.80, yes_ask=0.85
+        )
+        m["floor_strike"] = None
+        markets = [
+            m,
+            _rain_market(
+                "KXRAINSEAM-26JUL-7", floor_strike=7, yes_bid=0.10, yes_ask=0.15
+            ),
+        ]
+        self.assertEqual(find_violations(markets), [])
+
+    def test_monthly_rain_unexpected_strike_type_excluded(self):
+        """A rain market with strike_type != "greater" (never observed
+        live, but a real Kalshi listing change could introduce one) must be
+        skipped, not guessed at -- same fail-closed reasoning as
+        weather_markets._parse_market_condition's identical branch."""
+        markets = [
+            _rain_market(
+                "KXRAINSEAM-26JUL-1",
+                floor_strike=1,
+                yes_bid=0.80,
+                yes_ask=0.85,
+                strike_type="less",
+            ),
+            _rain_market(
+                "KXRAINSEAM-26JUL-7", floor_strike=7, yes_bid=0.10, yes_ask=0.15
+            ),
+        ]
+        self.assertEqual(find_violations(markets), [])
 
     def test_hurricane_count_markets_excluded(self):
         """backlog.txt "HURRICANE MARKETS" -- season-count model (2026-08-03,

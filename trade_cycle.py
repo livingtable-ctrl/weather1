@@ -257,17 +257,42 @@ def run_trade_cycle(
 
             violations = find_violations(markets)
             if violations:
+                # backlog.txt "RAIN MARKETS -- CONSISTENCY.PY'S ARBITRAGE
+                # CHECK STILL BLANKET-EXCLUDES KXRAIN*M": rain's ladder
+                # monotonicity has never been checked against live prices
+                # before, so a burst of never-before-seen shadow violations
+                # on rollout must not itself halt real (temperature) auto-
+                # trading -- this circuit breaker exists to catch corrupted
+                # market DATA, and mixing in an intentionally-unvalidated
+                # new signal would defeat that purpose. getattr (not
+                # v.is_shadow) so a test/caller stub without the attribute
+                # still counts as a real violation, matching this file's
+                # existing defensive-attribute-access convention.
+                real_viol = [
+                    v for v in violations if not getattr(v, "is_shadow", False)
+                ]
+                shadow_viol = [v for v in violations if getattr(v, "is_shadow", False)]
+                # opus-review-caught: sampling the first 5 of an edge-sorted
+                # list could be entirely shadow rain noise (rain's thin
+                # monthly ladders can carry inflated edges), hiding the real
+                # violations from the log at exactly the moment the count
+                # line says something is wrong. Log each population's own
+                # top samples separately instead of one mixed slice.
                 _log.warning(
-                    "run_trade_cycle: %d consistency violation(s) detected: %s",
+                    "run_trade_cycle: %d consistency violation(s) detected "
+                    "(%d real, %d shadow) — real: %s | shadow: %s",
                     len(violations),
-                    [v.description for v in violations[:5]],
+                    len(real_viol),
+                    len(shadow_viol),
+                    [v.description for v in real_viol[:5]],
+                    [v.description for v in shadow_viol[:5]],
                 )
-                if len(violations) > 5:
+                if len(real_viol) > 5:
                     consistency_skip = True
                     _log.error(
-                        "run_trade_cycle: %d violations exceed threshold (5) — "
+                        "run_trade_cycle: %d non-shadow violations exceed threshold (5) — "
                         "skipping auto-trading this cycle",
-                        len(violations),
+                        len(real_viol),
                     )
         except Exception as exc:
             _log.warning(

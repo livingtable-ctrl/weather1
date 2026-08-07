@@ -832,6 +832,78 @@ class TestCmdWatchDisplayScanUnification:
             f"silently broke for that leg"
         )
 
+    def test_auto_watch_shadow_violation_never_placed(self, engine_env, monkeypatch):
+        """backlog.txt "RAIN MARKETS -- CONSISTENCY.PY'S ARBITRAGE CHECK
+        STILL BLANKET-EXCLUDES KXRAIN*M": opus-review-caught -- the single
+        most safety-critical line of that change (the shadow `continue` in
+        _render_analysis_results's arb block, right before either leg's
+        place_paper_order call) had zero coverage. Same harness as
+        test_auto_watch_cycle_result_ticker_city_includes_no_analysis_markets
+        immediately above, but is_shadow=True -- must place NOTHING. Without
+        the `continue`, this would place both legs exactly like that
+        sibling test does."""
+        from consistency import Violation
+        from trading_gates import LiveTradingGate
+
+        tmp_path, client, main, paper, cron, trade_cycle, ctx = engine_env
+        buy_market = {
+            "ticker": "KXRAINSEAM-26JUL-1",
+            "yes_bid": 40,
+            "yes_ask": 44,
+            "volume": 1000,
+            "open_interest": 500,
+        }
+        sell_market = {
+            "ticker": "KXRAINSEAM-26JUL-7",
+            "yes_bid": 60,
+            "yes_ask": 64,
+            "volume": 1000,
+            "open_interest": 500,
+        }
+        buy_enriched = dict(buy_market, _city="Seattle")
+        sell_enriched = dict(sell_market, _city="Seattle")
+
+        def _fake_enrich(m):
+            return (
+                buy_enriched if m["ticker"] == buy_market["ticker"] else sell_enriched
+            )
+
+        placed: list = []
+        monkeypatch.setattr(
+            paper, "place_paper_order", lambda *a, **kw: placed.append(kw) or {"id": 1}
+        )
+        monkeypatch.setattr(
+            LiveTradingGate, "check", lambda self, client=None: (True, "")
+        )
+        _fake_shadow_violations = [
+            Violation(
+                buy_ticker=buy_market["ticker"],
+                sell_ticker=sell_market["ticker"],
+                buy_prob=0.40,
+                sell_prob=0.80,
+                guaranteed_edge=0.40,
+                description="test shadow rain violation",
+                is_shadow=True,
+            )
+        ]
+        monkeypatch.setattr(main, "find_violations", lambda m: _fake_shadow_violations)
+        monkeypatch.setattr(
+            "consistency.find_violations", lambda m: _fake_shadow_violations
+        )
+        monkeypatch.setattr(
+            main, "get_weather_markets", lambda c: [buy_market, sell_market]
+        )
+        monkeypatch.setattr(main, "enrich_with_forecast", _fake_enrich)
+        monkeypatch.setattr(main, "analyze_trade", lambda e: None)
+        monkeypatch.setattr(paper, "get_open_trades", lambda: [])
+        self._drive_one_cycle(main, monkeypatch)
+
+        main.cmd_watch(client, auto_trade=True, min_edge=0.05)
+
+        assert placed == [], (
+            f"shadow (rain) violations must never be auto-placed -- got {placed}"
+        )
+
     def test_auto_watch_falls_back_to_analyze_once_when_cycle_result_none(
         self, engine_env, monkeypatch
     ):
@@ -1237,6 +1309,163 @@ class TestPlacementAttemptedBannerAllConditions:
         assert "STRONG SIGNAL" not in out, (
             "banner must not claim placement was attempted while "
             "consistency-skipped:\n" + out
+        )
+
+    def test_banner_not_suppressed_when_violations_are_all_shadow(
+        self, engine_env, capsys, monkeypatch
+    ):
+        """backlog.txt "RAIN MARKETS -- CONSISTENCY.PY'S ARBITRAGE CHECK
+        STILL BLANKET-EXCLUDES KXRAIN*M": rain's shadow-only violations
+        must never trip the >5-violation consistency circuit breaker --
+        that breaker exists to catch corrupted market DATA, and mixing in
+        an intentionally-unvalidated new signal would defeat its purpose by
+        halting real (temperature) auto-trading on rain-only noise. This is
+        the positive-control sibling of test_banner_suppressed_when_
+        consistency_skipped above: same shape (6 violations), but every one
+        is_shadow=True, so placement must proceed normally instead of being
+        suppressed."""
+        tmp_path, client, main, paper, cron, trade_cycle, ctx = engine_env
+        market, enriched, analysis = _strong_market_analysis()
+
+        def _many_shadow_violations(markets):
+            class V:
+                description = "fake shadow violation"
+                is_shadow = True
+
+            return [V() for _ in range(6)]
+
+        monkeypatch.setattr("consistency.find_violations", _many_shadow_violations)
+
+        with (
+            patch.object(main, "get_weather_markets", return_value=[market]),
+            patch.object(main, "enrich_with_forecast", return_value=enriched),
+            patch.object(main, "analyze_trade", return_value=analysis),
+            patch("tracker.detect_brier_drift", return_value={"drifting": False}),
+            patch("paper.is_paused_drawdown", return_value=False),
+        ):
+            ctx2 = main._build_cron_context()
+            try:
+                cron.cmd_cron(ctx2, client)
+            except SystemExit:
+                pass
+
+        out = capsys.readouterr().out
+        assert "STRONG SIGNAL" in out, (
+            "shadow-only violations must NOT suppress placement -- only "
+            "non-shadow violations count toward the >5 circuit breaker:\n" + out
+        )
+
+    @staticmethod
+    def _mixed_violations(n_real, n_shadow):
+        def _fake(markets):
+            class Real:
+                description = "fake real violation"
+                is_shadow = False
+
+            class Shadow:
+                description = "fake shadow violation"
+                is_shadow = True
+
+            return [Real() for _ in range(n_real)] + [Shadow() for _ in range(n_shadow)]
+
+        return _fake
+
+    def test_banner_not_suppressed_with_few_real_violations_and_many_shadow(
+        self, engine_env, capsys, monkeypatch
+    ):
+        """opus-review-caught: only the all-shadow (0 real) and all-real (6
+        real) shapes were tested -- a MIXED cycle (3 real, well under the
+        threshold, plus a large shadow burst) must also not trip the
+        breaker, proving the exclusion is a real filter and not just an
+        artifact of the shadow list happening to be empty in the other
+        direction."""
+        tmp_path, client, main, paper, cron, trade_cycle, ctx = engine_env
+        market, enriched, analysis = _strong_market_analysis()
+
+        monkeypatch.setattr(
+            "consistency.find_violations", self._mixed_violations(3, 10)
+        )
+
+        with (
+            patch.object(main, "get_weather_markets", return_value=[market]),
+            patch.object(main, "enrich_with_forecast", return_value=enriched),
+            patch.object(main, "analyze_trade", return_value=analysis),
+            patch("tracker.detect_brier_drift", return_value={"drifting": False}),
+            patch("paper.is_paused_drawdown", return_value=False),
+        ):
+            ctx2 = main._build_cron_context()
+            try:
+                cron.cmd_cron(ctx2, client)
+            except SystemExit:
+                pass
+
+        out = capsys.readouterr().out
+        assert "STRONG SIGNAL" in out, (
+            "3 real violations (below the >5 threshold) plus 10 shadow "
+            "violations must NOT suppress placement:\n" + out
+        )
+
+    def test_banner_suppressed_with_many_real_violations_despite_shadow_present(
+        self, engine_env, capsys, monkeypatch
+    ):
+        """Mirror of the above: enough REAL violations to trip the breaker
+        must still trip it even with a large shadow population also
+        present -- the shadow exclusion must not accidentally mask real
+        violations by diluting the count."""
+        tmp_path, client, main, paper, cron, trade_cycle, ctx = engine_env
+        market, enriched, analysis = _strong_market_analysis()
+
+        monkeypatch.setattr(
+            "consistency.find_violations", self._mixed_violations(6, 10)
+        )
+
+        with (
+            patch.object(main, "get_weather_markets", return_value=[market]),
+            patch.object(main, "enrich_with_forecast", return_value=enriched),
+            patch.object(main, "analyze_trade", return_value=analysis),
+            patch("tracker.detect_brier_drift", return_value={"drifting": False}),
+        ):
+            ctx2 = main._build_cron_context()
+            try:
+                cron.cmd_cron(ctx2, client)
+            except SystemExit:
+                pass
+
+        out = capsys.readouterr().out
+        assert "STRONG SIGNAL" not in out, (
+            "6 real violations must still trip the breaker even alongside "
+            "10 shadow violations:\n" + out
+        )
+
+    def test_banner_not_suppressed_at_exactly_five_real_violations(
+        self, engine_env, capsys, monkeypatch
+    ):
+        """Boundary case for the pre-existing (not newly introduced) `> 5`
+        threshold: exactly 5 real violations must NOT trip the breaker --
+        only strictly more than 5 does. Opus-review-caught: a mutation to
+        `>= 5` would pass every other test in this class but should fail
+        this one."""
+        tmp_path, client, main, paper, cron, trade_cycle, ctx = engine_env
+        market, enriched, analysis = _strong_market_analysis()
+
+        monkeypatch.setattr("consistency.find_violations", self._mixed_violations(5, 0))
+
+        with (
+            patch.object(main, "get_weather_markets", return_value=[market]),
+            patch.object(main, "enrich_with_forecast", return_value=enriched),
+            patch.object(main, "analyze_trade", return_value=analysis),
+            patch("tracker.detect_brier_drift", return_value={"drifting": False}),
+            patch("paper.is_paused_drawdown", return_value=False),
+        ):
+            ctx2 = main._build_cron_context()
+            try:
+                cron.cmd_cron(ctx2, client)
+            except SystemExit:
+                pass
+
+        out = capsys.readouterr().out
+        assert "STRONG SIGNAL" in out, (
+            "exactly 5 real violations must NOT trip the >5 breaker:\n" + out
         )
 
 

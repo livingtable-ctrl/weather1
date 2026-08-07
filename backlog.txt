@@ -4501,8 +4501,8 @@ What was fixed:
   test_snow_markets.py -- 199 tests) passes. This entry is now fully
   closed.
 
-[OPEN 2026-07-31 -- scoped out of the entry above, deliberately deferred
-  as separate, higher-stakes scope]
+[RESOLVED 2026-08-06 -- shipped as a shadow-only first pass, not graduated
+  to live auto-placement; see resolution note below]
   RAIN MARKETS -- CONSISTENCY.PY'S ARBITRAGE CHECK STILL BLANKET-EXCLUDES
   KXRAIN*M, UNLIKE THE MARKET-IMPLIED-DISTRIBUTION SIGNAL ABOVE
 Priority: Low, but higher-stakes than the entry above once picked up --
@@ -4539,6 +4539,176 @@ When to revisit:
   justify its own dedicated pass -- not gated on any data floor or external
   trigger, purely a "is this worth doing yet" call, same as the entry above
   was until today.
+
+RESOLVED 2026-08-06: this entry's own "not yet verified against real rain
+  ladder data" caveat was closed first, live, before writing any code:
+  pulled real open/closed Kalshi markets for KXRAINNYCM/KXRAINCHIM/
+  KXRAINSTPM -- every rain bracket checked across every city/month is
+  strike_type="greater" (confirmed, not assumed), and St. Petersburg's real
+  July 2026 ladder had exactly 10 brackets (floor_strike 1-10), matching
+  this entry's own "St. Petersburg's 10 vs. NYC's 4" framing precisely.
+
+  Design decision (AskUserQuestion, since this is genuinely live-adjacent --
+  find_violations() feeds main.py's arb-placement block, reached whenever
+  `watch`/`today` run interactively, not via unattended cron): shipped as a
+  SHADOW-ONLY first pass rather than immediate live placement, since rain's
+  ladder monotonicity has never been checked against real prices before.
+  Mirrors this project's established shadow-then-graduate pattern (rain
+  forecast-blend, hurricane count guard) -- graduating rain arb detection to
+  real auto-placement is a deliberate, separate follow-up decision, not part
+  of this pass (see the new backlog entry below).
+
+  Shipped: consistency._group_markets() now groups KXRAIN*M tickers via
+  weather_markets.market_implied_rain_event_key() -- the same (city, "RAIN",
+  year, month) 4-tuple key already proven live by the sibling
+  market-implied-distribution signal above, reused rather than reinvented.
+  Condition parsed from Kalshi's real floor_strike/strike_type fields
+  (mirrors weather_markets._parse_market_condition's identical KXRAIN*M
+  branch), not guessed from ticker/title text -- consistency.py's own
+  _parse_threshold() can't match a rain ticker's "-<N>" suffix at all (no
+  T/B letter), so this needed its own dedicated branch, not an extension of
+  that regex. precip_month_total's single-sided "total > threshold" rule
+  reuses the existing "above" monotonicity loop unchanged (mathematically
+  identical shape: {total > 7} subset-of {total > 1}).
+
+  Violation gained a new is_shadow: bool field, set explicitly at grouping
+  time (True for rain, False for temperature) -- NOT re-derived later from
+  the group key's shape, so a future new market family sharing rain's
+  4-tuple key pattern (snow's own arbitrage check is the flagged next
+  candidate, see _group_markets()'s docstring) can't silently inherit
+  is_shadow=False by omission (opus-review-caught -- the exact "shared
+  resource, one caller forgets to opt in" bug class this project has hit
+  before for hurricane/rain shadow gates). Wired through every real
+  find_violations() consumer (traced all 3: main.py's arb-placement loop in
+  _render_analysis_results, main.py's cmd_consistency manual CLI report,
+  trade_cycle.py's >5-violation circuit breaker) -- the arb-placement loop
+  skips place_paper_order entirely for shadow violations (logs instead);
+  the circuit breaker (which halts ALL auto-trading, not just arb, on the
+  theory that >5 violations indicates corrupted market data) now excludes
+  shadow violations from that count specifically so a burst of
+  never-before-seen rain noise on rollout can't accidentally halt real
+  temperature trading, while still logging both populations for visibility;
+  cmd_consistency's manual report marks shadow rows so an operator deciding
+  whether to graduate them isn't misled.
+
+  Also fixed in passing: Violation.description hardcoded a "°" (degree)
+  symbol, which would have mislabeled rain's inches-based thresholds as
+  Fahrenheit -- now unit-aware (decoupled from is_shadow, set explicitly
+  per entry, so a future graduation flipping is_shadow to False can't
+  silently revert rain's unit back to "°" -- opus-review-caught, this was
+  the exact bug the "unit = 'in' if is_shadow else '°'" first draft would
+  have reintroduced).
+
+  Independent Agent(opus, effort=high) review found 1 HIGH + 6 MEDIUM + 8
+  LOW issues, all addressed:
+  - HIGH: the rain branch's parse_market_price(m) call was unguarded.
+    coalesce_market_price (utils.py) documents itself as raising ValueError
+    on a non-numeric price string and expects every caller to wrap it
+    per-market -- reproduced live: a single malformed rain price raised out
+    of find_violations() entirely, which (via each caller's own broad
+    except Exception) could halt ALL auto-trading for the cycle through
+    trade_cycle.py's consistency_skip path, or silently disable the whole
+    arb block through main.py's bare except -- exactly what the shadow
+    design exists to prevent. This was NEW exposure (rain tickers
+    previously `continue`d before ever reaching parse_market_price); fixed
+    with a try/except at the rain branch, and the identical pre-existing
+    unguarded call on the temperature branch (same file, same function, same
+    fix) was closed in the same pass since it's the same exposure.
+  - MEDIUM: is_shadow/unit set at grouping time, not re-derived from key
+    shape (see above). Zero-quote-leg phantom-edge bug: a market with a real
+    bid but no real ask (or vice versa) still has has_quote=True
+    (parse_market_price falls back to mid=yes_bid on a one-sided book), so
+    `edge = bid_hi - ask_lo` computed a fabricated "guaranteed" profit
+    against a leg with no real counterparty to trade into -- reproduced live
+    against a realistic thin rain ladder (a fake +20c edge). Fixed with an
+    explicit ask_lo>0/bid_hi>0 guard before emitting any violation, both
+    market families (rain's typically-thin monthly ladders make this bite
+    far more often than temperature's daily ones, and this shadow pass
+    exists specifically to give a clean signal for the graduation
+    decision). Two of the new fail-closed guard tests (missing floor_strike,
+    unexpected strike_type) were vacuous -- they used monotone prices, so
+    they'd have passed even with the guards deleted; rewritten with
+    inversion-shaped prices that would produce a real violation if the guard
+    were wrongly bypassed. Added the one test that actually proves the most
+    safety-critical line in this change -- that main.py's arb loop skips
+    place_paper_order for a shadow violation (previously zero coverage;
+    deleting that one `continue` would have passed the whole suite).
+  - LOW: ".0f" threshold formatting could collapse fractional-inch brackets
+    to the same integer label (snow's sibling ladder already uses
+    fractional strikes, so not hypothetical) -- switched to ":g". Added
+    warning logs to the 3 previously-silent rain fail-closed branches
+    (missing rain_key, missing floor_strike/wrong strike_type, non-numeric
+    floor_strike), mirroring weather_markets._parse_market_condition's own
+    logging for the identical checks. trade_cycle.py's violation-count log
+    line now reports real and shadow violations' top samples separately
+    instead of one edge-sorted mixed slice, which could be entirely shadow
+    noise and hide the real violations from the log at exactly the moment
+    something is actually wrong. Test fixture accuracy: the new
+    tests/test_consistency.py _rain_market() helper first used the legacy
+    yes_bid/yes_ask float shape while its own docstring claimed to be
+    live-verified -- switched to yes_bid_dollars/yes_ask_dollars strings,
+    matching the real current API shape and tests/test_rain_markets.py's
+    own established fixture precedent. Tightened one weak assertIn("in",
+    ...) assertion to pin the actual rendered substring. Added 2 new
+    circuit-breaker tests (3-real+10-shadow must not trip; 6-real+10-shadow
+    must still trip) closing the untested mixed-population case, plus a
+    boundary test locking in the pre-existing ">5" (not ">=5") threshold
+    semantics.
+
+  Test count: 8 new + 2 updated in tests/test_consistency.py (rain
+  grouping/violation-detection/shadow-tagging/fail-closed guards/irregular
+  ladder sizes), 4 new in tests/test_trade_cycle_engine.py (shadow never
+  auto-placed via the real main.py arb path, shadow-excluded-from-halt
+  positive control, mixed-population x2, exact-boundary). Shadow-tagging
+  mutation-tested by hand (temporarily forced is_shadow=False, confirmed the
+  new test fails with the exact predicted assertion, restored). Full
+  tests/test_consistency.py + tests/test_trade_cycle_engine.py sweep (65
+  tests) passes; ruff/ruff format/mypy clean on all 5 changed files
+  (consistency.py, main.py, trade_cycle.py, and the 2 test files).
+
+[OPEN 2026-08-06 -- new, split out of the entry above per its own "not part
+  of this pass" framing]
+  RAIN ARBITRAGE-CHECK SHADOW SIGNAL HAS NO GRADUATION DECISION YET
+Priority: Low -- shadow-only, doesn't block or corrupt anything live; just
+  means real rain arbitrage (if it exists) never gets auto-corrected.
+
+Problem:
+  The entry above shipped rain arbitrage DETECTION (grouping + monotonicity
+  check + logging), but every rain-sourced Violation is permanently
+  is_shadow=True with no mechanism to ever flip that -- unlike this
+  project's other shadow-then-graduate signals (SIGNAL_REGISTRY's sample-
+  floor + correlation-check pattern), there is no sample floor, no
+  correlation check, and no standing report command tracking how often real
+  rain arbitrage actually appears or what it would have been worth.
+
+What it would look like:
+  Either wire rain arb violations into the existing SIGNAL_REGISTRY
+  graduation-report pattern (a count of shadow violations observed, maybe a
+  simple "what would have been captured" retrospective once enough have
+  accumulated), or -- since this is a deterministic monotonicity check, not
+  a probabilistic forecast signal -- a simpler manual review path (an
+  operator periodically runs `py main.py consistency` and eyeballs the
+  shadow rows the Type column now marks) followed by a one-line code change
+  flipping is_shadow's default once satisfied. The right shape is itself an
+  open question -- SIGNAL_REGISTRY's sample-floor/correlation machinery was
+  built for probabilistic signals with a settlement outcome to correlate
+  against; a monotonicity violation doesn't have an obvious equivalent
+  (there's no "was this violation right or wrong" outcome the way a
+  temperature forecast has one), so this may need its own simpler mechanism
+  rather than reusing that pattern wholesale.
+
+Why not now:
+  Deliberately scoped out of the detection-only pass above (AskUserQuestion
+  decision) -- shipping detection and observing real shadow output for a
+  while is a prerequisite for designing a sensible graduation mechanism, not
+  something to guess at upfront.
+
+When to revisit:
+  Whenever rain's shadow arb output has accumulated enough real observations
+  (via `py main.py consistency`'s Type column, or a future dedicated report)
+  to judge whether real violations occur often enough / at enough edge to be
+  worth auto-correcting -- not gated on a specific count, purely an
+  operator judgment call once real data exists.
 
 [RESOLVED 2026-08-01] RAIN'S MARKET-IMPLIED DISTRIBUTION
   (implied_mean/implied_sigma) HAS NO GRADUATION/SAMPLE-FLOOR TRACKING OF

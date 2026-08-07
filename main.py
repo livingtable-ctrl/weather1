@@ -1887,6 +1887,21 @@ def _render_analysis_results(
                 if hasattr(v, "description") and v.description:
                     print(dim(f"  {v.description}"))
 
+                # backlog.txt "RAIN MARKETS -- CONSISTENCY.PY'S ARBITRAGE
+                # CHECK STILL BLANKET-EXCLUDES KXRAIN*M": rain-sourced
+                # violations are a first pass -- detect and log, but never
+                # auto-place, until a separate later decision graduates
+                # them (mirrors this project's shadow-then-graduate
+                # pattern for every other new-market-type signal).
+                if getattr(v, "is_shadow", False):
+                    print(
+                        dim(
+                            "  [Shadow] rain arbitrage — logged only, not placed"
+                            " (see backlog.txt)"
+                        )
+                    )
+                    continue
+
                 # A4: auto-place when gate open, edge, volume, and city-exposure all pass
                 if not _arb_allowed:
                     continue
@@ -3747,18 +3762,33 @@ def cmd_consistency(client: KalshiClient):
                 red(v.sell_ticker),
                 f"{v.sell_prob * 100:.1f}%",
                 bold(f"{v.guaranteed_edge * 100:.1f}%"),
+                # backlog.txt "RAIN MARKETS -- CONSISTENCY.PY'S ARBITRAGE
+                # CHECK STILL BLANKET-EXCLUDES KXRAIN*M": this manual report
+                # is the observation surface for rain's shadow-only first
+                # pass -- mark shadow rows so an operator deciding whether
+                # to graduate them isn't misled by rows that look
+                # auto-tradeable but aren't.
+                dim("shadow") if getattr(v, "is_shadow", False) else "",
             ]
         )
     print(
         tabulate(
             rows,
-            headers=["BUY this", "Price", "SELL this", "Price", "Free edge"],
+            headers=[
+                "BUY this",
+                "Price",
+                "SELL this",
+                "Price",
+                "Free edge",
+                "Type",
+            ],
             tablefmt="rounded_outline",
         )
     )
     print(
         dim(
             "\nBuy the cheaper contract and sell the pricier one — profit is guaranteed."
+            " 'shadow' rows are logged only, never auto-placed."
         )
     )
 
