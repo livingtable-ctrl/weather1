@@ -43,12 +43,14 @@ from weather_markets import (
     _hurricane_next_event_gates_active,
     _rain_gates_active,
     _snow_gates_active,
+    _storm_order_gates_active,
     _var_from_ticker_prefix,
     analyze_trade,
     enrich_with_forecast,
     get_weather_markets,
     is_hurricane_count_ticker,
     is_hurricane_next_event_ticker,
+    is_storm_order_ticker,
     parse_market_price,
 )
 
@@ -2428,6 +2430,7 @@ def _auto_place_trades(
     _snow_gate_active = _snow_gates_active()
     _hurricane_count_gate_active = _hurricane_count_gates_active()
     _hurricane_next_event_gate_active = _hurricane_next_event_gates_active()
+    _storm_order_gate_active = _storm_order_gates_active()
 
     for item in opps:
         # Per-signal kill switch check — a mid-batch activation (user writes the file
@@ -2507,6 +2510,13 @@ def _auto_place_trades(
             _n_shadow = _log_shadow_predictions([item], live=live)
             _skip_reasons.append(
                 f"{ticker}: hurricane_next_event_shadow_only(logged={bool(_n_shadow)})"
+            )
+            continue
+
+        if is_storm_order_ticker(ticker) and not _storm_order_gate_active:
+            _n_shadow = _log_shadow_predictions([item], live=live)
+            _skip_reasons.append(
+                f"{ticker}: storm_order_shadow_only(logged={bool(_n_shadow)})"
             )
             continue
 

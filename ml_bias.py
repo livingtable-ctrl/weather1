@@ -173,7 +173,7 @@ def train_bias_model(min_samples: int = 200) -> dict:
                 WHERE p.city IS NOT NULL AND p.our_prob IS NOT NULL
                   AND (p.condition_type IS NULL
                        OR p.condition_type NOT IN
-                          ('between', 'precip_month_total', 'snow_month_total', 'hurricane_count', 'hurricane_next_event'))
+                          ('between', 'precip_month_total', 'snow_month_total', 'hurricane_count', 'hurricane_next_event', 'storm_order'))
                 ORDER BY p.predicted_at ASC
                 """
             ).fetchall()
@@ -600,7 +600,7 @@ def train_all_temperature_scaling(
                   AND (p.days_out IS NULL OR p.days_out >= 1)
                   AND (p.condition_type IS NULL
                        OR p.condition_type NOT IN
-                          ('between', 'precip_month_total', 'snow_month_total', 'hurricane_count', 'hurricane_next_event'))
+                          ('between', 'precip_month_total', 'snow_month_total', 'hurricane_count', 'hurricane_next_event', 'storm_order'))
                 """
                 # backlog.txt "RAIN / SNOW / HURRICANE MARKETS" Step 2: monthly
                 # rain trades log with a real (large, ~0-31) days_out once
@@ -622,7 +622,7 @@ def train_all_temperature_scaling(
                   AND p.days_out = 0
                   AND (p.condition_type IS NULL
                        OR p.condition_type NOT IN
-                          ('between', 'precip_month_total', 'snow_month_total', 'hurricane_count', 'hurricane_next_event'))
+                          ('between', 'precip_month_total', 'snow_month_total', 'hurricane_count', 'hurricane_next_event', 'storm_order'))
                 """
                 + _hourly_exclude_sql,
                 _hourly_exclude_params,

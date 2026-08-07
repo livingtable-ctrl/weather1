@@ -133,6 +133,7 @@ from weather_markets import (
     _hurricane_next_event_gates_active,
     _rain_gates_active,
     _snow_gates_active,
+    _storm_order_gates_active,
     analyze_trade,
     batch_prewarm_forecasts,
     check_ensemble_circuit_health,  # noqa: F401 — used via main.* in cron.py
@@ -149,6 +150,7 @@ from weather_markets import (
     is_hurricane_next_event_ticker,
     is_hurricane_ticker,
     is_liquid,
+    is_storm_order_ticker,
     parse_city_date,
     parse_market_price,
     reset_gate_counts,
@@ -2213,10 +2215,20 @@ def _quick_paper_buy(client: KalshiClient) -> None:
                 )
             )
             return
+        if is_storm_order_ticker(ticker) and not _storm_order_gates_active():
+            print(
+                red(
+                    f"  {ticker}: hurricane storm-order markets are shadow-only until "
+                    "STORM_ORDER_TRADING_ENABLED=1 and >=20 settled predictions "
+                    "exist — refusing to place this order."
+                )
+            )
+            return
         if (
             is_hurricane_ticker(ticker)
             and not is_hurricane_count_ticker(ticker)
             and not is_hurricane_next_event_ticker(ticker)
+            and not is_storm_order_ticker(ticker)
         ):
             print(
                 red(
@@ -2774,8 +2786,11 @@ def cmd_today(client: KalshiClient) -> None:
         # not redundant"). Without these, a check_position_limits()
         # exception (its own shadow-gate checks run FIRST inside that
         # function, before the exposure-cap checks) fails open here too,
-        # placing a real order on a shadow-only market. Added the same four
-        # checks, in the same order _quick_paper_buy/cmd_paper use.
+        # placing a real order on a shadow-only market. Added the same
+        # checks, in the same order _quick_paper_buy/cmd_paper use (now six:
+        # trading-paused, hurricane-count, hurricane-next-event, storm-order,
+        # blanket-other-hurricane, rain -- grown one at a time as each new
+        # shape shipped its own shadow gate).
         if is_trading_paused():
             print(
                 red(
@@ -2804,10 +2819,19 @@ def cmd_today(client: KalshiClient) -> None:
                     ">=20 settled predictions exist — refusing to place this order."
                 )
             )
+        elif is_storm_order_ticker(_ticker1) and not _storm_order_gates_active():
+            print(
+                red(
+                    f"  {_ticker1}: hurricane storm-order markets are shadow-only "
+                    "until STORM_ORDER_TRADING_ENABLED=1 and >=20 settled "
+                    "predictions exist — refusing to place this order."
+                )
+            )
         elif (
             is_hurricane_ticker(_ticker1)
             and not is_hurricane_count_ticker(_ticker1)
             and not is_hurricane_next_event_ticker(_ticker1)
+            and not is_storm_order_ticker(_ticker1)
         ):
             print(
                 red(
@@ -4192,10 +4216,20 @@ def cmd_order(client: KalshiClient, action: str, args: list):
             )
         )
         return
+    if is_storm_order_ticker(ticker) and not _storm_order_gates_active():
+        print(
+            red(
+                f"  {ticker}: hurricane storm-order markets are shadow-only until "
+                "STORM_ORDER_TRADING_ENABLED=1 and >=20 settled predictions "
+                "exist — refusing to place this order."
+            )
+        )
+        return
     if (
         is_hurricane_ticker(ticker)
         and not is_hurricane_count_ticker(ticker)
         and not is_hurricane_next_event_ticker(ticker)
+        and not is_storm_order_ticker(ticker)
     ):
         print(
             red(
@@ -5987,7 +6021,8 @@ def cmd_calibrate() -> None:
                     "WHERE o.settled_yes IS NOT NULL AND p.our_prob IS NOT NULL"
                     "  AND (p.condition_type IS NULL"
                     "       OR p.condition_type NOT IN"
-                    "          ('between', 'precip_month_total', 'snow_month_total'))"
+                    "          ('between', 'precip_month_total', 'snow_month_total', "
+                    "           'hurricane_count', 'hurricane_next_event', 'storm_order'))"
                 ).fetchall()
             ]
         platt = _train_platt(_platt_rows, min_samples=50)
@@ -7338,10 +7373,20 @@ def cmd_paper(args: list, client: KalshiClient | None = None):
                 )
             )
             return
+        if is_storm_order_ticker(ticker) and not _storm_order_gates_active():
+            print(
+                red(
+                    f"  {ticker}: hurricane storm-order markets are shadow-only until "
+                    "STORM_ORDER_TRADING_ENABLED=1 and >=20 settled predictions "
+                    "exist — refusing to place this order."
+                )
+            )
+            return
         if (
             is_hurricane_ticker(ticker)
             and not is_hurricane_count_ticker(ticker)
             and not is_hurricane_next_event_ticker(ticker)
+            and not is_storm_order_ticker(ticker)
         ):
             print(
                 red(

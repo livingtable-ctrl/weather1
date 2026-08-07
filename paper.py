@@ -3460,9 +3460,11 @@ def check_position_limits(
         _hurricane_next_event_gates_active,
         _rain_gates_active,
         _snow_gates_active,
+        _storm_order_gates_active,
         is_hurricane_count_ticker,
         is_hurricane_next_event_ticker,
         is_hurricane_ticker,
+        is_storm_order_ticker,
     )
 
     # Opus-review-caught (2026-08-07): this shared enforcement point checked
@@ -3561,10 +3563,25 @@ def check_position_limits(
             "existing_cost": 0.0,
             "limit": max_cost_per_market,
         }
+    # backlog.txt "HURRICANE MARKETS" -- storm-order model (2026-08-07): the
+    # 1 series (KXFIRSTHURRICANE) now has a real model and its own
+    # shadow-only gate, same treatment as the 2 blocks just above.
+    if is_storm_order_ticker(ticker) and not _storm_order_gates_active():
+        return {
+            "ok": False,
+            "reason": (
+                "hurricane storm-order markets: shadow-only until "
+                "STORM_ORDER_TRADING_ENABLED=1 and >=20 settled predictions "
+                "exist"
+            ),
+            "existing_cost": 0.0,
+            "limit": max_cost_per_market,
+        }
     if (
         is_hurricane_ticker(ticker)
         and not is_hurricane_count_ticker(ticker)
         and not is_hurricane_next_event_ticker(ticker)
+        and not is_storm_order_ticker(ticker)
     ):
         return {
             "ok": False,

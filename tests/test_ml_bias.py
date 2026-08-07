@@ -483,15 +483,17 @@ class TestTrainAllTemperatureScalingRainExclusion:
     def test_hurricane_rows_excluded_from_global_pool(self, tmp_path, monkeypatch):
         """Opus-review-caught (2026-08-07): this exclusion list was never
         extended for 'hurricane_count' (shipped 2026-08-03) or
-        'hurricane_next_event' (this session) -- both always carry a real,
+        'hurricane_next_event' (same session) -- both always carry a real,
         large days_out (>=1, these markets open months ahead), so unlike
         rain/snow's own "confirmed reachable" caveat below, this leak was
         NOT merely theoretical: without the fix, a settled hurricane row
         would unconditionally land in the °F-tuned global temperature-
-        scaling pool. Only the global-pool query is exercised here -- the
-        sameday pool (days_out=0) is structurally unreachable for this
-        family (HURRICANE_MAX_DAYS_OUT alone rules out days_out=0), unlike
-        snow's own sameday leak below, which was confirmed reachable."""
+        scaling pool. 'storm_order' (this session) is added up front for the
+        same reason rather than discovered as a gap later. Only the
+        global-pool query is exercised here -- the sameday pool
+        (days_out=0) is structurally unreachable for this family
+        (HURRICANE_MAX_DAYS_OUT alone rules out days_out=0), unlike snow's
+        own sameday leak below, which was confirmed reachable."""
         from datetime import date
 
         import ml_bias
@@ -534,6 +536,16 @@ class TestTrainAllTemperatureScalingRainExclusion:
                 labels[i],
                 "hurricane_next_event",
             )
+        for i in range(10):
+            self._seed(
+                tracker,
+                f"KXFIRSTHURRICANE-26DEC01ATL-N{i:02d}",
+                "HUR_ATL",
+                date.today() + __import__("datetime").timedelta(days=116),
+                probs[i],
+                labels[i],
+                "storm_order",
+            )
 
         ml_bias.train_all_temperature_scaling(
             min_samples_global=1, min_samples_condition=1
@@ -550,6 +562,7 @@ class TestTrainAllTemperatureScalingRainExclusion:
         )
         assert "hurricane_count" not in saved
         assert "hurricane_next_event" not in saved
+        assert "storm_order" not in saved
 
     def test_snow_rows_excluded_from_sameday_pool(self, tmp_path, monkeypatch):
         """Opus-review-caught gap: the global pool's exclusion above (line

@@ -681,3 +681,81 @@ def test_hurricane_count_gate_state_does_not_affect_next_event_routing(monkeypat
     assert placed_calls == []
     rows = _fetch("KXNEXTHURDATE-26DEC01-26OCT01")
     assert len(rows) == 1 and rows[0]["is_shadow"] == 1
+
+
+# ── backlog.txt "HURRICANE MARKETS" -- storm-order model (2026-08-07):
+# KXFIRSTHURRICANE stays shadow-only, independent of both sibling models'
+# own gates, until _storm_order_gates_active() fires. Mirrors the
+# hurricane-next-event tests above exactly. ─────────────────────────────────
+
+
+def test_storm_order_ticker_shadow_only_when_gate_inactive(monkeypatch):
+    """A storm-order (KXFIRSTHURRICANE) opp must be shadow-logged, not
+    placed, when _storm_order_gates_active() is False."""
+    _place_everything_setup(monkeypatch)
+    monkeypatch.setattr("order_executor._storm_order_gates_active", lambda: False)
+    placed_calls = []
+    monkeypatch.setattr(
+        "order_executor.place_paper_order",
+        lambda *a, **k: placed_calls.append((a, k))
+        or {"id": 1, "status": "open", "cost": 1.0},
+    )
+    opp = _make_flat_opp("KXFIRSTHURRICANE-26DEC01ATL-ART", city="HUR_ATL")
+
+    result = order_executor._auto_place_trades([opp], client=None)
+
+    assert result == 0
+    assert placed_calls == [], (
+        "must never place a real order for a gated storm-order ticker"
+    )
+    rows = _fetch("KXFIRSTHURRICANE-26DEC01ATL-ART")
+    assert len(rows) == 1
+    assert rows[0]["is_shadow"] == 1
+
+
+def test_storm_order_ticker_places_normally_when_gate_active(monkeypatch):
+    """Once _storm_order_gates_active() is True, a storm-order opp places
+    exactly like any other ticker -- no special-casing beyond the gate
+    check."""
+    _place_everything_setup(monkeypatch)
+    monkeypatch.setattr("order_executor._storm_order_gates_active", lambda: True)
+    monkeypatch.setattr(
+        "order_executor.place_paper_order",
+        lambda ticker, side, qty, price, **kwargs: {
+            "id": 1,
+            "status": "open",
+            "cost": price * qty,
+        },
+    )
+    opp = _make_flat_opp("KXFIRSTHURRICANE-26DEC01ATL-WIL", city="HUR_ATL")
+
+    order_executor._auto_place_trades([opp], client=None)
+
+    rows = _fetch("KXFIRSTHURRICANE-26DEC01ATL-WIL")
+    assert len(rows) == 1
+    assert rows[0]["is_shadow"] == 0
+
+
+def test_sibling_hurricane_gate_state_does_not_affect_storm_order_routing(monkeypatch):
+    """All 3 hurricane sub-models' gates are independent -- a sibling
+    model's gate being active must NOT let a storm-order opp place, and
+    vice versa."""
+    _place_everything_setup(monkeypatch)
+    monkeypatch.setattr("order_executor._hurricane_count_gates_active", lambda: True)
+    monkeypatch.setattr(
+        "order_executor._hurricane_next_event_gates_active", lambda: True
+    )
+    monkeypatch.setattr("order_executor._storm_order_gates_active", lambda: False)
+    placed_calls = []
+    monkeypatch.setattr(
+        "order_executor.place_paper_order",
+        lambda *a, **k: placed_calls.append((a, k))
+        or {"id": 1, "status": "open", "cost": 1.0},
+    )
+    opp = _make_flat_opp("KXFIRSTHURRICANE-26DEC01ATL-JOS", city="HUR_ATL")
+
+    order_executor._auto_place_trades([opp], client=None)
+
+    assert placed_calls == []
+    rows = _fetch("KXFIRSTHURRICANE-26DEC01ATL-JOS")
+    assert len(rows) == 1 and rows[0]["is_shadow"] == 1
