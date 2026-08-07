@@ -2209,6 +2209,72 @@ When to revisit:
     their yes/no result), then key occurred_this_season off "any qualifying
     storm since this event's own open_time" instead of season-wide count.
 
+[OPEN 2026-08-07 -- found while thinking through implementation-workflow risks raised by this project's now-routine parallel-worktree-session pattern, not during the hurricane work itself] hurricane_climatology.fetch_hurdat2_raw's CACHE WRITE ISN'T ATOMIC -- THE ONLY RAW-TEXT CACHE IN THIS CODEBASE THAT SKIPS safe_io
+Priority: Low -- currently low-probability (needs two processes racing to
+  refresh the SAME stale HURDAT2 cache file within the same narrow window),
+  but a real corruption path this project has already been burned by once
+  for the identical bug CLASS on JSON caches (see "SAFE_IO -- EMERGENCY-COPY
+  FALLBACK SILENTLY CLOBBERED THE ORIGINAL FILE" elsewhere in this file,
+  RESOLVED 2026-07-27), and today's routine
+  multi-parallel-worktree-session pattern (all worktrees share ONE physical
+  data/ directory via paths.py -- see [[feedback_worktree_data_dir_gotcha]])
+  makes concurrent collisions on this exact file meaningfully more likely
+  than when it shipped as a single-session feature.
+
+Problem:
+  hurricane_climatology.py:144 (fetch_hurdat2_raw, shipped 2026-08-03 as
+  part of the season-count hurricane model -- not introduced by the
+  2026-08-07 time-to-next-event session, just never caught before) writes
+  its disk cache with a plain `cache.write_text(text)`. Every OTHER
+  cache-shaped write in this same area of the codebase goes through
+  safe_io.atomic_write_json() instead -- confirmed live via
+  `grep -n "cache.write_text\|atomic_write" hurricane_climatology.py
+  acis_precip.py climatology.py`: acis_precip.py and climatology.py both
+  consistently use safe_io.atomic_write_json for their own caches (climate
+  archive data, forecast_sigma.json); hurricane_climatology.py's HURDAT2
+  cache is the lone plain-write holdout. A concurrent write from a second
+  process refreshing the same stale cache (two parallel worktree sessions
+  both triggering hc.load_basin_storms() around the same time, or a live
+  cron cycle overlapping with a manual research script) risks a reader
+  seeing a partially-written file mid-write, or one write's content
+  silently interleaving with another's -- the same corruption shape
+  atomic_write_json's own emergency-copy-fallback bug (fixed 2026-07-27,
+  see that entry) existed specifically to prevent for JSON caches.
+
+  Not a drop-in fix: safe_io.atomic_write_json() is JSON-shaped (its own
+  name says so); hurricane_climatology.py's cache is raw HURDAT2 text, not
+  JSON. There is currently no safe_io helper for atomic raw-text writes --
+  confirmed via `grep -n "^def " safe_io.py`: only atomic_write_json and
+  atomic_write_json_with_history exist.
+
+What it would look like:
+  Add a generic safe_io.atomic_write_text() (or atomic_write_bytes(),
+  whichever safe_io's existing tempfile+rename internals generalize to more
+  cleanly) mirroring atomic_write_json's own write-to-tempfile-then-
+  os.replace() shape, then swap hurricane_climatology.py's
+  `cache.write_text(text)` for it. Small, mechanical once the helper exists
+  -- the real work is designing the helper to share safe_io's existing
+  emergency-copy-fallback/PID-keyed-tempfile conventions rather than being a
+  parallel, independently-maintained implementation.
+
+Why not now:
+  User explicitly asked for this to be filed rather than fixed immediately
+  (2026-08-07) -- currently low-probability (narrow race window: only
+  matters when the 30-day cache is actually stale AND two processes refresh
+  it in the same window) and shadow-only downstream (a corrupted HURDAT2
+  cache would degrade a probability model's accuracy, not place a bad
+  order), so not urgent enough to interrupt other in-flight work for.
+
+When to revisit:
+  - Before HURRICANE_TRADING_ENABLED or HURRICANE_NEXT_EVENT_TRADING_ENABLED
+    is ever flipped on for real (a corrupted cache feeding a real-money
+    Kelly size is a materially different risk than feeding a shadow log).
+  - If parse_hurdat2 ever starts raising on malformed input (it currently
+    doesn't -- see parse_hurdat2's own "stopping parse" comments) a
+    corrupted mid-write cache read could produce a hard crash rather than a
+    silently-degraded probability; worth re-checking this entry's own risk
+    assessment if that changes.
+
 [RESOLVED 2026-07-25] NEAR-SETTLEMENT LOG (near_settlement_log) SILENTLY BROKEN SINCE IT SHIPPED -- WRONG FIELD NAMES ON THE TRADE-RECORD DICT
 Priority: was Medium -- a shipped calibration-data feature had been a
   complete no-op since it shipped (2026-06-14), with a "success" log line
