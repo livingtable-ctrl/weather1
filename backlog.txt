@@ -13845,3 +13845,148 @@ RESOLVED 2026-07-30: picked up as part of a backlog-wide audit (user asked
   banner-related tests plus the full 39-test test_trade_cycle_engine.py
   suite pass; ruff + ruff format + mypy clean on cron.py and the test file.
 
+======================================================
+[RESOLVED 2026-08-07] SIGNAL LABEL DIRECTION IGNORES RECOMMENDED_SIDE
+
+  Found 2026-08-07 while auditing a live cron run's 25 flagged market
+  anomalies. weather_markets._edge_label(edge) inferred its "YES"/"NO "
+  direction word from the SIGN of whichever edge value it was passed. For
+  the "signal" field that's the raw, side-agnostic (blended_prob -
+  market_prob) value, whose sign matches recommended_side by construction
+  -- fine. But every "net_signal" field (the text trade_cycle.py builds
+  into each signal's cache entry, which cron.py then writes to
+  data/cron.log and prints in the [cron]/[Auto] console banners)
+  is _edge_label(adjusted_edge), where adjusted_edge is a time-decayed
+  net_edge -- an EV-per-dollar-of-the-recommended-side figure computed off
+  the entry ASK price. net_edge is virtually always POSITIVE for any
+  genuinely good trade regardless of which side got recommended (a good NO
+  bet has positive expected value exactly like a good YES bet does), so
+  _edge_label's sign-as-direction convention systematically mislabeled
+  good NO recommendations as "YES". Confirmed live: KXHIGHTSEA-26AUG07-T85
+  logged "STRONG BUY YES" (net_edge +0.335) in the same cron cycle that
+  order_executor's own validate() correctly computed recommended_side="no"
+  and rejected it for raw_edge=-0.1456 < MIN_EDGE=0.15. A full data/
+  cron.log audit (excluding the fake-ticker lines from the entry below)
+  found an 11,142:833 YES:NO label ratio across 4 months and hundreds of
+  cities/dates -- an impossible skew for real weather markets, confirming
+  this wasn't a rare corner case but the normal outcome for most real NO
+  signals.
+
+  Actual trade placement is unaffected -- _auto_place_trades/
+  _validate_trade_opportunity always gates on recommended_side and raw
+  edge, never on the text label -- so this was a display/logging-only bug,
+  not a live-money or paper-money sizing bug. But it directly misleads any
+  operator reading cron console output, data/cron.log, or the web
+  dashboard's /api/signals feed about which side the bot actually
+  evaluated.
+
+  Fix: _edge_label(edge, side) now takes the caller's already-decided
+  recommended_side explicitly and uses IT for the direction word; `edge`'s
+  own magnitude (abs()) still drives the STRONG/BUY/WEAK/NEUTRAL tier word,
+  unchanged. All 14 call sites across the 7 duplicated analyze-trade paths
+  (temperature/precip/snow/hurricane-count/hourly) updated to pass
+  rec_side. No test previously asserted on real _edge_label output or a
+  real analyze_trade() call's signal/net_signal text (existing tests all
+  construct mock analysis dicts with hardcoded net_signal strings), so
+  this required new coverage, not just fixing existing assertions: see
+  tests/test_weather_markets.py for hand-computed direction-vs-magnitude
+  cases including the exact edge>0-but-side=="no" scenario that reproduces
+  the original bug.
+
+======================================================
+[RESOLVED 2026-08-07] TEST FIXTURE TICKER LEAKED 467 FAKE SIGNALS INTO PRODUCTION data/cron.log
+
+  Found 2026-08-07 in the same cron-output-analysis session as the entry
+  above, while trying to explain a net_edge/recommended_side discrepancy
+  that turned out to be unrelated (see above) -- two lines above a real
+  cron entry in data/cron.log sat an entry for ticker
+  "KXHIGH-NYC-26APR17-B70" (and 4 sibling tickers: -26APR25-B70,
+  -26APR26-B70, -26APR17-LIVE, -26APR17-MED), a naming convention that
+  never appears anywhere else in this bot's real ticker vocabulary
+  ("KXHIGH-NYC-" with an inner hyphen and 3-letter city code, vs every real
+  ticker's "KXHIGHNY-"/"KXHIGHTSEA-" style with no inner hyphen), with a
+  hardcoded, never-varying net_edge=0.35.
+
+  Root cause: tests/conftest.py has an established pattern (see
+  isolate_forecast_ensemble_disk_cache, isolate_crash_log) of redirecting
+  every production data-file path a test might write through to tmp_path
+  -- except CRON_LOG_PATH was never among them. cron.py's
+  _cmd_cron_body() appends one JSONL line straight to the real
+  data/cron.log (paths.CRON_LOG_PATH) for every passes_threshold signal;
+  7+ test files (test_cron_integration.py, test_cron_group_c.py,
+  test_main_cron_smoke.py, etc.) drive cmd_cron()/_cmd_cron_body() through
+  a hardcoded "KXHIGH-NYC-26APR17-B70"-ticketed fake market to exercise a
+  STRONG-signal scenario -- with no CRON_LOG_PATH isolation, every such
+  test run appended straight into the real production file. Same bug
+  class as the L4 paths.py migration's forecast_cache.json/crash.log
+  incident (both fixed the same way, both discovered live), just a file
+  that fix didn't cover. 467 fabricated lines had accumulated from
+  2026-04-19 through 2026-08-07 (including entries written minutes before
+  this was caught, from a pytest run mid-session) out of ~12,442 total --
+  and this is the exact file web_app.py's /api/signals endpoint reads
+  for the live dashboard, so the dashboard's signal history has been
+  showing fake data mixed with real for 4 months.
+
+  Fix: new tests/conftest.py autouse fixture isolate_cron_log redirects
+  both cron.CRON_LOG_PATH and web_app.CRON_LOG_PATH (two separate
+  module-level bindings of the same paths.py constant) to a per-test
+  tmp_path file -- a synchronous open()/write() inside _cmd_cron_body(),
+  not an atexit-deferred buffer, so no pytest_sessionfinish companion is
+  needed the way isolate_forecast_ensemble_disk_cache required one. The
+  467 already-contaminated lines were removed from the real data/cron.log
+  (backup kept at data/cron.log.pre-cleanup-backup-2026-08-07) after
+  confirming every removed line matched the fake ticker pattern exactly
+  and zero were JSON-parse failures needing manual review.
+
+======================================================
+[STRONG/MED TIER CLASSIFICATION AND FINAL PLACEMENT VALIDATION USE DIFFERENT, DISAGREEING EDGE MEASURES]
+Priority: Medium -- no live-money impact and not a correctness bug in
+  isolation (both thresholds are individually defensible), but distorts
+  every cycle's announced STRONG/MED signal counts against what can
+  actually place, and reconciling it is a real trading-behavior decision
+  that needs before/after count data, not a quick fix.
+
+  Surfaced 2026-08-07 while fixing the signal-label bug above (same root
+  data, different problem -- the label fix does NOT address this).
+  trade_cycle.py classifies a candidate into TIER_STRONG/TIER_MED using
+  abs(adjusted_edge) against eff_strong_edge/MED_EDGE, where adjusted_edge
+  is net_edge (EV-per-dollar-of-the-recommended-side, priced off the entry
+  ASK, fee-adjusted) times a time-decay factor. order_executor.py's
+  _validate_trade_opportunity, the gate every candidate must clear
+  immediately before placement, instead checks raw `edge`
+  (blended_prob - market_prob, priced off the market MID, no fee/ask
+  adjustment) against a completely different threshold (MIN_EDGE) and a
+  sign-consistency check against recommended_side. These are legitimately
+  different quantities -- net_edge answers "is this bet worth taking at
+  the price I'd actually pay," raw edge answers "how much does my
+  probability estimate disagree with the market's" -- and nothing here
+  says one of the two thresholds is simply wrong. But because a candidate
+  only needs to clear the net_edge-based bar to be announced as a STRONG
+  or MED signal, and a different, unrelated raw-edge bar to actually get
+  placed, some fraction of every cycle's announced STRONG/MED count is
+  structurally unable to place regardless of price/timing luck -- not a
+  marginal, "edge decayed between scan and placement" miss, the same
+  category of miscount cron.py's own "[cron] filter breakdown" line
+  already reports for other gates. Live example from the same cron cycle
+  that surfaced the label bug: 3 STRONG signals announced, 1 placed;
+  KXHIGHTSEA-26AUG07-T85 was one of the 2 that couldn't have placed at any
+  price because its raw edge (-0.1456) never cleared MIN_EDGE (0.15),
+  independent of its net_edge (+0.335) qualifying it for STRONG in the
+  first place.
+
+  Not fixed this session -- deliberately deferred per explicit user
+  decision (2026-08-07): reconciling which quantity governs tier
+  classification (or requiring both to agree) is a real trading-behavior
+  change on a live paper account, not a display fix, and needs its own
+  dedicated review rather than being bundled into the label-bug fix above.
+
+  What it would look like: decide whether STRONG/MED classification
+  should require the SAME edge quantity validate() checks (raw edge vs
+  MIN_EDGE) -- which would shrink announced STRONG/MED counts to only
+  what can actually place -- or keep two independent bars but make that
+  explicit in the console banners (e.g. distinguish "N found, M
+  clear-to-place" the way the [Auto] skip lines already do per-candidate,
+  just aggregated). Whichever direction, needs before/after STRONG/MED
+  count data across a representative window to judge the real-world size
+  of the effect before changing live gating thresholds.
+

@@ -492,6 +492,75 @@ def isolate_crash_log(tmp_path, monkeypatch):
     monkeypatch.setattr(main, "_CRASH_LOG", tmp_path / "crash.log")
 
 
+@pytest.fixture(autouse=True)
+def isolate_cron_generated_files(tmp_path, monkeypatch):
+    """Redirect every production path _cmd_cron_body() (or something it
+    calls) can write a real STRONG/MED cron cycle's output to, across every
+    module that imports its own binding of the same paths.py constant.
+
+    cron.py's _cmd_cron_body() appends one JSONL line per passes_threshold
+    signal directly via `open(log_path, "a")` to CRON_LOG_PATH, writes a
+    full-overwrite scan snapshot to SIGNALS_CACHE_PATH, and stamps
+    CRON_LAST_RUN_PATH/CRON_HEARTBEAT_PATH on every cycle; watchdog.py
+    stamps LAST_HEARTBEAT_PATH (imported there under the alias
+    HEARTBEAT_PATH); weather_markets.py merges into
+    HOURLY_TARGET_HOURS_PATH/HURRICANE_COUNT_TO_DATE_PATH. All are
+    synchronous writes, not atexit-deferred buffers, so redirecting the
+    path alone (no pytest_sessionfinish companion needed, unlike
+    isolate_forecast_ensemble_disk_cache above) is sufficient.
+
+    An earlier version of this fixture (isolate_cron_log) redirected only
+    CRON_LOG_PATH -- an opus review of that fix caught that
+    _cmd_cron_body() writes at least 5 OTHER real production files along
+    the same call path, several of which import their OWN separate
+    binding of the same paths.py constant (CRON_LAST_RUN_PATH and
+    CRON_HEARTBEAT_PATH are each imported independently by cron.py,
+    main.py, AND web_app.py -- monkeypatching only one leaves the other
+    two reading/writing the real path). Confirmed live during that
+    review's own test runs: the real data/signals_cache.json was fully
+    overwritten with a single fabricated "KXHIGH-NYC-26APR17-B70" entry
+    (the exact file web_app.py's /api/live_signals dashboard endpoint
+    reads), and data/.cron_last_run, data/cron_heartbeat.json (cycle_count
+    incremented), and data/last_heartbeat.txt were all stamped with a fake
+    cycle's timestamp -- see backlog.txt "TEST FIXTURE TICKER LEAKED 467
+    FAKE SIGNALS INTO PRODUCTION data/cron.log" for the original
+    data/cron.log incident (467 fabricated lines, 2026-04-19 through the
+    day this fixture was first added) and its resolution note for this
+    follow-up widening.
+    """
+    import cron
+    import main
+    import watchdog
+    import weather_markets as wm
+    import web_app
+
+    fake_log = tmp_path / "cron.log"
+    monkeypatch.setattr(cron, "CRON_LOG_PATH", fake_log)
+    monkeypatch.setattr(web_app, "CRON_LOG_PATH", fake_log)
+
+    fake_signals_cache = tmp_path / "signals_cache.json"
+    monkeypatch.setattr(cron, "SIGNALS_CACHE_PATH", fake_signals_cache)
+    monkeypatch.setattr(web_app, "SIGNALS_CACHE_PATH", fake_signals_cache)
+
+    fake_last_run = tmp_path / ".cron_last_run"
+    monkeypatch.setattr(cron, "CRON_LAST_RUN_PATH", fake_last_run)
+    monkeypatch.setattr(main, "CRON_LAST_RUN_PATH", fake_last_run)
+    monkeypatch.setattr(web_app, "CRON_LAST_RUN_PATH", fake_last_run)
+
+    fake_heartbeat = tmp_path / "cron_heartbeat.json"
+    monkeypatch.setattr(cron, "CRON_HEARTBEAT_PATH", fake_heartbeat)
+    monkeypatch.setattr(main, "CRON_HEARTBEAT_PATH", fake_heartbeat)
+    monkeypatch.setattr(web_app, "CRON_HEARTBEAT_PATH", fake_heartbeat)
+
+    monkeypatch.setattr(watchdog, "HEARTBEAT_PATH", tmp_path / "last_heartbeat.txt")
+    monkeypatch.setattr(
+        wm, "HOURLY_TARGET_HOURS_PATH", tmp_path / "hourly_target_hours.json"
+    )
+    monkeypatch.setattr(
+        wm, "HURRICANE_COUNT_TO_DATE_PATH", tmp_path / "hurricane_count_to_date.json"
+    )
+
+
 def pytest_sessionfinish(session, exitstatus):
     """Clear weather_markets' forecast/ensemble disk-cache pending-write
     buffers before the interpreter's atexit hooks fire.

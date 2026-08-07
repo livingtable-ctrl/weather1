@@ -15,6 +15,34 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 
+def _fake_strong_signal():
+    """Shared fake market/enriched/analysis triple for a STRONG-tier YES
+    signal on a fake NYC ticker -- used by both
+    test_cron_places_paper_trade_on_strong_signal and
+    test_cron_strong_signal_does_not_write_to_real_production_cron_log,
+    which need the exact same scan-passes-threshold shape for two
+    different assertions (placement call vs. real-file isolation)."""
+    from utils import STRONG_EDGE
+
+    fake_market = {"ticker": "KXHIGH-NYC-26APR17-B70", "yes_bid": 40, "yes_ask": 44}
+    fake_enriched = dict(
+        fake_market, _city="NYC", _date="2026-04-17", _target_date="2026-04-17"
+    )
+    fake_analysis = {
+        "edge": STRONG_EDGE + 0.05,
+        "net_edge": STRONG_EDGE + 0.05,
+        "signal": "STRONG BUY",
+        "net_signal": "STRONG BUY",
+        "recommended_side": "yes",
+        "time_risk": "LOW",
+        "forecast_prob": 0.75,
+        "market_prob": 0.40,  # ratio=1.875 — passes MAX_MARKET_DIVERGENCE_RATIO (2.0)
+        "days_out": 1,
+        "target_date": "2026-04-17",
+    }
+    return fake_market, fake_enriched, fake_analysis
+
+
 @pytest.fixture()
 def cron_env(tmp_path, monkeypatch):
     """Isolate cmd_cron from real data, networks, and alerts."""
@@ -52,24 +80,7 @@ def cron_env(tmp_path, monkeypatch):
 def test_cron_places_paper_trade_on_strong_signal(cron_env):
     """Full cron run with a mocked strong signal: _auto_place_trades called with strong_opps."""
     tmp_path, client, main, paper = cron_env
-    from utils import STRONG_EDGE
-
-    fake_market = {"ticker": "KXHIGH-NYC-26APR17-B70", "yes_bid": 40, "yes_ask": 44}
-    fake_enriched = dict(
-        fake_market, _city="NYC", _date="2026-04-17", _target_date="2026-04-17"
-    )
-    fake_analysis = {
-        "edge": STRONG_EDGE + 0.05,
-        "net_edge": STRONG_EDGE + 0.05,
-        "signal": "STRONG BUY",
-        "net_signal": "STRONG BUY",
-        "recommended_side": "yes",
-        "time_risk": "LOW",
-        "forecast_prob": 0.75,
-        "market_prob": 0.40,  # ratio=1.875 — passes MAX_MARKET_DIVERGENCE_RATIO (2.0)
-        "days_out": 1,
-        "target_date": "2026-04-17",
-    }
+    fake_market, fake_enriched, fake_analysis = _fake_strong_signal()
 
     placed_calls: list = []
 
@@ -93,6 +104,88 @@ def test_cron_places_paper_trade_on_strong_signal(cron_env):
     assert len(placed_calls) > 0, (
         "Expected at least one strong opportunity passed to _auto_place_trades"
     )
+
+
+@pytest.mark.integration
+def test_cron_strong_signal_does_not_write_to_real_production_cron_log(cron_env):
+    """A full cmd_cron() run producing a real STRONG signal must write its
+    JSONL entry to the isolated tmp_path file (conftest.py's autouse
+    isolate_cron_generated_files fixture), never to the real data/cron.log
+    -- backlog.txt "TEST FIXTURE TICKER LEAKED 467 FAKE SIGNALS INTO
+    PRODUCTION data/cron.log". 467 real fabricated lines had accumulated
+    in the production file before this fixture existed, confirmed via this
+    exact fake_market/fake_analysis shape (the same one
+    test_cron_places_paper_trade_on_strong_signal above uses) -- this test
+    would have caught that regression by asserting on the real file's
+    content, not just that the redirected write happened.
+
+    Asserts on a COUNT of fake-ticker-pattern lines in the real file, not
+    byte-equality of its full content: the real file is also appended to
+    by this bot's own live/scheduled cron process independently of this
+    test suite, so a byte-equality assertion is flaky against a
+    concurrent real cron tick landing mid-test (a real line appended
+    between the before/after snapshots would fail this test for a reason
+    that has nothing to do with the isolation fixture).
+    """
+    tmp_path, client, main, paper = cron_env
+    import json
+    import re
+
+    import cron
+    from paths import CRON_LOG_PATH as REAL_CRON_LOG_PATH
+
+    _fake_ticker_pattern = re.compile(r"^KXHIGH-[A-Z]+-")
+
+    def _fake_line_count() -> int:
+        if not REAL_CRON_LOG_PATH.exists():
+            return 0
+        count = 0
+        for line in REAL_CRON_LOG_PATH.read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            try:
+                ticker = json.loads(line).get("ticker", "")
+            except (json.JSONDecodeError, AttributeError):
+                continue
+            if _fake_ticker_pattern.match(ticker):
+                count += 1
+        return count
+
+    fake_lines_before = _fake_line_count()
+    fake_market, fake_enriched, fake_analysis = _fake_strong_signal()
+
+    with (
+        patch.object(main, "get_weather_markets", return_value=[fake_market]),
+        patch.object(main, "enrich_with_forecast", return_value=fake_enriched),
+        patch.object(main, "analyze_trade", return_value=fake_analysis),
+        patch.object(main, "_auto_place_trades", return_value=1),
+        patch("tracker.detect_brier_drift", return_value={"drifting": False}),
+        patch("paper.is_paused_drawdown", return_value=False),
+    ):
+        try:
+            main.cmd_cron(client)
+        except SystemExit:
+            pass
+
+    # The real production file must have zero NEW fake-ticker-pattern lines.
+    assert _fake_line_count() == fake_lines_before, (
+        "cmd_cron() wrote to the REAL production data/cron.log instead of "
+        "the isolated test path -- isolate_cron_generated_files fixture regressed"
+    )
+
+    # The redirected path (proves the write mechanism actually engaged, not
+    # just that nothing fired at all).
+    assert cron.CRON_LOG_PATH != REAL_CRON_LOG_PATH
+    assert cron.CRON_LOG_PATH.exists(), (
+        "Expected a STRONG signal to write a JSONL line to the isolated "
+        "(redirected) cron log path"
+    )
+    written = [
+        json.loads(line)
+        for line in cron.CRON_LOG_PATH.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    assert any(e.get("ticker") == "KXHIGH-NYC-26APR17-B70" for e in written)
 
 
 @pytest.mark.integration

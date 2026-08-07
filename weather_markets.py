@@ -6020,12 +6020,31 @@ def determine_hourly_target_hours(
     }
 
 
-def _edge_label(edge: float) -> str:
-    """Convert a probability edge to a human-readable signal."""
+def _edge_label(edge: float, side: str) -> str:
+    """Convert an edge magnitude to a human-readable signal.
+
+    `side` (the caller's already-decided recommended_side, "yes"/"no") sets
+    the direction word -- NOT edge's own sign. `edge` here is sometimes the
+    raw, side-agnostic (blended_prob - market_prob) value, whose sign does
+    match rec_side by construction, but it is also called with net_edge/
+    adjusted_edge (an EV-per-dollar-of-the-recommended-side figure computed
+    off the entry ask price), which is virtually always POSITIVE for any
+    genuinely good trade regardless of which side was recommended -- a good
+    NO bet has positive expected value same as a good YES bet. Inferring
+    direction from that value's sign (the old behavior) mislabeled the
+    large majority of real NO recommendations as "YES": a historical
+    data/cron.log audit found an 11,142:833 YES:NO label ratio, an
+    impossible skew for real weather markets across hundreds of cities/
+    dates (backlog.txt "SIGNAL LABEL DIRECTION IGNORES RECOMMENDED_SIDE").
+    """
     abs_edge = abs(edge)
     if abs_edge < 0.05:
         return "NEUTRAL"
-    direction = "YES" if edge > 0 else "NO "
+    # case-insensitive: every real caller passes a lowercase "yes"/"no"
+    # literal, but trade_cycle.py stores the same concept uppercased
+    # ("YES"/"NO" as a signals_cache_entries field) -- an uppercase value
+    # reaching here should still label correctly, not silently fall to "NO ".
+    direction = "YES" if side.lower() == "yes" else "NO "
     if abs_edge >= 0.25:
         return f"STRONG BUY {direction}"
     elif abs_edge >= 0.15:
@@ -7680,11 +7699,11 @@ def _analyze_precip_trade(
         "forecast_prob": blended_prob,
         "market_prob": market_prob,
         "edge": edge,
-        "signal": _edge_label(edge),
+        "signal": _edge_label(edge, rec_side),
         "net_edge": net_edge,
         "adjusted_edge": round(adjusted_edge, 6),
         "edge_confidence_factor": _edge_conf,
-        "net_signal": _edge_label(adjusted_edge),
+        "net_signal": _edge_label(adjusted_edge, rec_side),
         "recommended_side": rec_side,
         "condition": condition,
         "forecast_temp": forecast_precip,  # precipitation in inches (reuses key for table display)
@@ -7871,11 +7890,11 @@ def _analyze_snow_trade(
         "forecast_prob": blended_prob,
         "market_prob": market_prob,
         "edge": edge,
-        "signal": _edge_label(edge),
+        "signal": _edge_label(edge, rec_side),
         "net_edge": net_edge,
         "adjusted_edge": round(adjusted_edge, 6),
         "edge_confidence_factor": _edge_conf,
-        "net_signal": _edge_label(adjusted_edge),
+        "net_signal": _edge_label(adjusted_edge, rec_side),
         "recommended_side": rec_side,
         "condition": condition,
         "forecast_temp": forecast.get("high_f") or forecast.get("temp_high") or 0.0,
@@ -8225,11 +8244,11 @@ def _analyze_monthly_rain_trade(
         "forecast_prob": blended_prob,
         "market_prob": market_prob,
         "edge": edge,
-        "signal": _edge_label(edge),
+        "signal": _edge_label(edge, rec_side),
         "net_edge": net_edge,
         "adjusted_edge": round(adjusted_edge, 6),
         "edge_confidence_factor": _edge_conf,
-        "net_signal": _edge_label(adjusted_edge),
+        "net_signal": _edge_label(adjusted_edge, rec_side),
         "recommended_side": rec_side,
         "condition": condition,
         "ensemble_prob": ens_prob,
@@ -8508,11 +8527,11 @@ def _analyze_monthly_snow_trade(
         "forecast_prob": blended_prob,
         "market_prob": market_prob,
         "edge": edge,
-        "signal": _edge_label(edge),
+        "signal": _edge_label(edge, rec_side),
         "net_edge": net_edge,
         "adjusted_edge": round(adjusted_edge, 6),
         "edge_confidence_factor": _edge_conf,
-        "net_signal": _edge_label(adjusted_edge),
+        "net_signal": _edge_label(adjusted_edge, rec_side),
         "recommended_side": rec_side,
         "condition": condition,
         "ensemble_prob": ens_prob,
@@ -8817,11 +8836,11 @@ def _analyze_hurricane_count_trade(
         "forecast_prob": blended_prob,
         "market_prob": market_prob,
         "edge": edge,
-        "signal": _edge_label(edge),
+        "signal": _edge_label(edge, rec_side),
         "net_edge": net_edge,
         "adjusted_edge": round(adjusted_edge, 6),
         "edge_confidence_factor": _edge_conf,
-        "net_signal": _edge_label(adjusted_edge),
+        "net_signal": _edge_label(adjusted_edge, rec_side),
         "recommended_side": rec_side,
         "condition": condition,
         "ensemble_prob": blended_prob,
@@ -8998,11 +9017,11 @@ def _analyze_hourly_trade(
         "forecast_prob": blended_prob,
         "market_prob": market_prob,
         "edge": edge,
-        "signal": _edge_label(edge),
+        "signal": _edge_label(edge, rec_side),
         "net_edge": net_edge,
         "adjusted_edge": round(adjusted_edge, 6),
         "edge_confidence_factor": _edge_conf,
-        "net_signal": _edge_label(adjusted_edge),
+        "net_signal": _edge_label(adjusted_edge, rec_side),
         "recommended_side": rec_side,
         "condition": condition,
         "forecast_temp": forecast_temp,
@@ -10999,12 +11018,12 @@ def analyze_trade(
     )
     entry_price = _priced["entry_price"]
     edge = _priced["edge"]
-    signal = _edge_label(edge)
+    signal = _edge_label(edge, rec_side)
     entry_side_edge = _priced["entry_side_edge"]
     net_edge = _priced["net_edge"]
     _edge_conf = edge_confidence(days_out, condition_type=condition["type"])
     adjusted_edge = net_edge * _edge_conf
-    net_signal = _edge_label(adjusted_edge)
+    net_signal = _edge_label(adjusted_edge, rec_side)
     kelly = _priced["fee_kel"]
     fee_adjusted_kelly = _priced["fee_kel"]
     ci_adjusted_kelly = _priced["ci_adjusted_kelly"]

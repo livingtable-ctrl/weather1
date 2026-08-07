@@ -1039,6 +1039,86 @@ class TestEdgeConfidence:
             )
 
 
+# ── TestEdgeLabel ─────────────────────────────────────────────────────────────
+
+
+class TestEdgeLabel:
+    """_edge_label(edge, side) must take its YES/NO direction word from
+    `side`, never from edge's own sign -- backlog.txt "SIGNAL LABEL
+    DIRECTION IGNORES RECOMMENDED_SIDE". Reverting to `direction = "YES"
+    if edge > 0 else "NO "` fails 6 of the 10 tests below (every *_no
+    case plus test_magnitude_uses_absolute_value_regardless_of_sign);
+    test_positive_edge_with_no_side_labels_no and
+    test_negative_edge_with_yes_side_labels_yes are the two written
+    specifically to target that mutation (a positive/negative edge value
+    paired with the opposite side), not the only ones sensitive to it.
+    """
+
+    def test_neutral_below_threshold_both_sides(self):
+        from weather_markets import _edge_label
+
+        assert _edge_label(0.049, "yes") == "NEUTRAL"
+        assert _edge_label(-0.049, "no") == "NEUTRAL"
+        assert _edge_label(0.0, "yes") == "NEUTRAL"
+
+    def test_weak_yes(self):
+        from weather_markets import _edge_label
+
+        assert _edge_label(0.05, "yes") == "WEAK YES     "
+        assert _edge_label(0.149, "yes") == "WEAK YES     "
+
+    def test_weak_no(self):
+        from weather_markets import _edge_label
+
+        assert _edge_label(0.05, "no") == "WEAK NO      "
+        assert _edge_label(0.149, "no") == "WEAK NO      "
+
+    def test_buy_yes_boundary(self):
+        from weather_markets import _edge_label
+
+        assert _edge_label(0.15, "yes") == "BUY YES      "
+        assert _edge_label(0.249, "yes") == "BUY YES      "
+
+    def test_buy_no_boundary(self):
+        from weather_markets import _edge_label
+
+        assert _edge_label(0.15, "no") == "BUY NO       "
+
+    def test_strong_buy_yes_boundary(self):
+        from weather_markets import _edge_label
+
+        assert _edge_label(0.25, "yes") == "STRONG BUY YES"
+        assert _edge_label(0.9, "yes") == "STRONG BUY YES"
+
+    def test_strong_buy_no_boundary(self):
+        from weather_markets import _edge_label
+
+        assert _edge_label(0.25, "no") == "STRONG BUY NO "
+
+    def test_positive_edge_with_no_side_labels_no(self):
+        """The exact bug scenario: net_edge/adjusted_edge is virtually
+        always positive for a good trade regardless of recommended side --
+        a positive value passed alongside side="no" must still say NO.
+        Reproduces the live KXHIGHTSEA-26AUG07-T85 case (net_edge=+0.335,
+        recommended_side="no")."""
+        from weather_markets import _edge_label
+
+        assert _edge_label(0.335, "no") == "STRONG BUY NO "
+
+    def test_negative_edge_with_yes_side_labels_yes(self):
+        """Symmetric case: a negative magnitude alongside side="yes" must
+        still say YES -- direction is side's job, magnitude is edge's."""
+        from weather_markets import _edge_label
+
+        assert _edge_label(-0.335, "yes") == "STRONG BUY YES"
+
+    def test_magnitude_uses_absolute_value_regardless_of_sign(self):
+        from weather_markets import _edge_label
+
+        assert _edge_label(0.3, "yes") == _edge_label(-0.3, "yes")
+        assert _edge_label(0.3, "no") == _edge_label(-0.3, "no")
+
+
 # ── TestAdjustedEdgeInAnalyzeTrade ────────────────────────────────────────────
 
 
