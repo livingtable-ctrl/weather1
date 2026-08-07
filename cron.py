@@ -1449,7 +1449,8 @@ def _cmd_cron_body(
             f"  [cron] filter breakdown \u2014 no_analysis:{_dbg['no_analysis']} "
             f"same_day_seen:{_dbg['same_day']} mkt_prob:{_dbg['mkt_prob']} "
             f"divergence:{_dbg['divergence']} net_edge:{_dbg['net_edge']} "
-            f"prob_edge:{_dbg['prob_edge']} passed:{_dbg['passed']}"
+            f"prob_edge:{_dbg['prob_edge']} placement_gate:{_dbg['placement_gate']} "
+            f"passed:{_dbg['passed']}"
         ),
         flush=True,
     )

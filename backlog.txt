@@ -14349,7 +14349,7 @@ RESOLVED 2026-07-30: picked up as part of a backlog-wide audit (user asked
   and zero were JSON-parse failures needing manual review.
 
 ======================================================
-[STRONG/MED TIER CLASSIFICATION AND FINAL PLACEMENT VALIDATION USE DIFFERENT, DISAGREEING EDGE MEASURES]
+[RESOLVED 2026-08-07] STRONG/MED TIER CLASSIFICATION AND FINAL PLACEMENT VALIDATION USE DIFFERENT, DISAGREEING EDGE MEASURES
 Priority: Medium -- no live-money impact and not a correctness bug in
   isolation (both thresholds are individually defensible), but distorts
   every cycle's announced STRONG/MED signal counts against what can
@@ -14399,6 +14399,117 @@ Priority: Medium -- no live-money impact and not a correctness bug in
   just aggregated). Whichever direction, needs before/after STRONG/MED
   count data across a representative window to judge the real-world size
   of the effect before changing live gating thresholds.
+
+  Resolved 2026-08-07: re-read the entry's own ambiguous "before/after"
+  phrasing first -- could have meant before/after this fix or before/after
+  the label-bug fix above. Confirmed it can only mean the former: the
+  label fix was display-only (net_signal text) and never touched tier
+  classification or net_edge/edge, so any before/after comparison
+  straddling it would be identical on both sides -- not the meaningful
+  size-of-effect data the entry was actually asking for. Checked whether
+  that data was even retroactively obtainable from data/cron.log: it
+  isn't -- cron.py's JSONL write only ever persisted {ts, ticker, signal,
+  net_edge, city} per line, never market_prob/forecast_prob/side/raw
+  edge, so no historical reconstruction of "how many STRONG/MED signals
+  would have failed the raw-edge gate" is possible from existing logs.
+
+  Chose option (a) (require the same edge quantity validate() checks) over
+  option (b) (dual-bar transparency only) after determining option (a) is
+  NOT actually the trading-behavior risk the entry assumed it was: every
+  candidate this gate removes from STRONG/MED was ALREADY unconditionally
+  rejected by validate() before this fix -- the gate change only stops
+  mislabeling dead-on-arrival candidates as actionable, it never changes
+  which trades place. That makes the "gather before/after data first"
+  caution inapplicable here (there's no risk/reward tradeoff to size),
+  though the caution remains sound in general for genuine threshold
+  changes -- see the follow-up entry below for one that still needs it.
+
+  Fix: trade_cycle.py's per-candidate tier-assignment block (search
+  "_clears_placement_gate") now requires TWO of order_executor.py's
+  _validate_trade_opportunity gates to also pass before a candidate earns
+  TIER_STRONG/TIER_MED: (1) net_edge must be positive, (2) raw `edge`
+  (blended_prob - market_prob, side-agnostic, priced off the market MID)
+  must agree in sign with recommended_side and clear MIN_EDGE in
+  magnitude. Both are skipped/defaulted-to-passing under the same guards
+  validate() itself uses (missing "edge" key = passes). New
+  dbg["placement_gate"] counter and matching cron.py "[cron] filter
+  breakdown" field report how many otherwise-qualifying candidates this
+  gate now excludes, going forward (the exact "N found, M clear-to-place"
+  visibility option (b) would have added, now folded into option (a)'s
+  own diagnostics instead of a separate dual-bar banner).
+
+  Deliberately NOT mirrored despite being equally real and opus-review-
+  caught -- see the new follow-up entry below for both:
+  (1) validate()'s ci_adjusted_kelly/fee_adjusted_kelly >= 0.002 floor --
+      omitted because every existing STRONG/MED-tier test fixture across
+      this suite hand-builds its analysis dict without ever setting
+      kelly (defaults to 0.0, which would fail the floor), a materially
+      larger and harder-to-fully-audit blast radius than this fix's own
+      scope given this suite's separate pre-existing test-hang issues.
+  (2) validate()'s confidence-tiered/A-B-test min_edge check -- omitted
+      because it's provably subsumed today (edge_confidence() always
+      discounts, never amplifies, so a tiered candidate's net_edge is
+      always >= its adjusted_edge >= MED_EDGE, which is >= every
+      confidence-tier/AB-test threshold that exists at current env
+      values) but that subsumption is a real dependency on MED_EDGE
+      staying >= those thresholds, not a general guarantee.
+
+  Also still real after this fix, not addressed: trade_cycle.py's
+  dashboard "stars" rating and main.py's watch-mode alert_strong_signal
+  both key off `"STRONG" in signal` text (from _edge_label, driven by
+  adjusted_edge magnitude alone), never off the `tier` field this fix
+  gates -- so a candidate this fix untiers can still show 2-3 stars on
+  the dashboard or fire watch's desktop STRONG alert. Pre-existing
+  decoupling, not introduced by this fix, but means this fix only
+  partially closes the "announced as actionable but can't place" gap;
+  the stars/alert paths would need their own pass to read `tier` instead
+  of re-deriving from signal text.
+
+  4 new tests reproducing the exact live shape (net_edge<=0 while
+  adjusted_edge still qualifies; the actual KXHIGHTSEA incident's
+  side="no" magnitude failure; the sign-mismatch and boundary cases) plus
+  a 5th cross-check test class (TestPlacementGateMirrorsValidateOpportunity)
+  that feeds the same analysis dict through both run_trade_cycle() and the
+  real _validate_trade_opportunity() and asserts a tiered candidate always
+  clears validate()'s own edge gates -- added specifically because 4
+  one-directional assertions on trade_cycle's own gate can't catch future
+  drift between it and the function it mirrors, a gap opus review flagged
+  directly. Each new deterministic check individually mutation-tested
+  (temporarily disabled, confirmed the corresponding test fails with the
+  exact live-incident console output reproduced, restored).
+
+  Independent opus review (effort=high), all findings fixed or explicitly
+  deferred with reasoning recorded above:
+  - HIGH: first draft mirrored only the raw-edge block and missed
+    validate()'s net_edge<=0 check immediately above it -- a real,
+    reproducible gap (a wide bid/ask spread can produce negative net_edge
+    while adjusted_edge, which preserves sign but is compared via abs(),
+    still qualifies for a tier). Fixed.
+  - MEDIUM (x3): Kelly floor unmirrored (deferred, see above); MIN_EDGE
+    imported at module level instead of function-local like
+    order_executor's own pattern, going stale after a live Settings-
+    screen edit (fixed -- moved to local import); the original comment's
+    reasoning for skipping the confidence-tier/AB-test gate incorrectly
+    called pick_variant() "stateful" (it isn't -- ab_test.py only mutates
+    state in record_outcome(), called on settlement) -- corrected to the
+    real, numeric domination argument instead.
+  - LOW (x4, all addressed): missing side="no" test coverage reproducing
+    the actual incident shape (added); no cross-check test binding the
+    mirror to its source (added, see above); stale require_liquid_for_
+    placement docstring still describing pre-fix tier semantics (fixed);
+    no dbg counter for the new gate the way every other gate in that loop
+    has one (added, plus cron.py banner). A 6th finding
+    (order_executor._validate_trade_opportunity crashes with TypeError if
+    opp["edge"] is present but explicitly None, rather than absent) is a
+    separate, pre-existing, currently-unreachable bug in a different
+    function -- filed as its own standalone follow-up rather than fixed
+    here.
+  - Also reviewer-caught in passing (not a defect, a process note): while
+    investigating why the full test file wouldn't run to completion for
+    its own verification, the review agent found and fixed 2 pre-existing
+    test hangs (unmocked trade_cycle._run_batch_prewarm making real
+    network calls from engine_env/cron_env fixtures) -- see commits
+    0c31fdd and 4fbcdfd, same session.
 
 ======================================================
 [RESOLVED 2026-08-07] ForecastCache EXISTS, BUT 2 HAND-ROLLED CACHES (climatology.py) REMAIN AN UNDECIDED ARCHITECTURAL CALL -- ORIGINALLY "~14 HAND-ROLLED TTL DICTS," NOW STALE
@@ -15059,3 +15170,75 @@ When to revisit:
     NHC's list rotates to a season_year not yet in the dict (2027 first,
     since 2026 reuses 2020's list) -- same "confirmed live, needs periodic
     manual refresh" convention as HURDAT2_URLS.
+
+======================================================
+[STRONG/MED TIER: REMAINING VALIDATE() GATES NOT MIRRORED (KELLY FLOOR, CONFIDENCE-TIER/AB-TEST MIN_EDGE)]
+Priority: Low -- both gaps are real but narrow. The confidence-tier/AB-test
+  gap is provably unreachable at current env values (see below); the Kelly
+  floor gap is reachable in principle but needs a real audit, not a
+  before/after data question.
+
+  Filed 2026-08-07 as the explicit follow-up from "STRONG/MED TIER
+  CLASSIFICATION AND FINAL PLACEMENT VALIDATION USE DIFFERENT, DISAGREEING
+  EDGE MEASURES" (resolved same session, see above) -- that fix mirrored 2
+  of order_executor.py's _validate_trade_opportunity gates into
+  trade_cycle.py's tier classification (net_edge sign, raw-edge sign/
+  magnitude) but deliberately left 2 more unmirrored:
+
+  1. Kelly floor (ci_adjusted_kelly, falling back to fee_adjusted_kelly,
+     must be >= 0.002). Deterministic and cheap to mirror in principle --
+     already computed into every real analyze_trade() output, so the code
+     change itself would be a 3-line addition identical in shape to the
+     net_edge<=0 check this session already added. NOT added because doing
+     so safely requires first auditing and updating every existing
+     STRONG/MED-tier-qualifying test fixture across the whole suite that
+     currently hand-builds its analysis dict without setting kelly (which
+     defaults to 0.0 and would fail the floor) -- confirmed present in at
+     least tests/test_trade_cycle_engine.py's _strong_market_analysis/
+     _med_market_analysis and tests/test_cron_integration.py's
+     fake_analysis, likely more not yet found. This suite also has (had,
+     as of this session -- see the 2 hang-fix commits above) pre-existing
+     test hangs that made a full-suite audit impractical to complete
+     confidently in one pass; worth re-attempting now that both hangs are
+     fixed. What it would look like: grep every test file that calls
+     run_trade_cycle()/cmd_cron()/cmd_watch() with a mocked analyze_trade
+     result for STRONG/MED-tier-qualifying analysis dicts, add a realistic
+     ci_adjusted_kelly to each that's missing one, THEN add the mirror
+     check to trade_cycle.py, confirming nothing regresses.
+
+  2. Confidence-tiered/A-B-test min_edge (utils.get_min_edge_for_confidence
+     + order_executor._MIN_EDGE_AB_TEST.pick_variant()). Provably subsumed
+     at CURRENT env values: edge_confidence() in weather_markets.py always
+     returns a factor in (0, 1] (horizon discount x per-condition
+     discount, both <= 1.0), so adjusted_edge = net_edge * edge_confidence
+     never exceeds net_edge in magnitude -- a candidate tiered via
+     abs(adjusted_edge) >= MED_EDGE therefore always has abs(net_edge) >=
+     MED_EDGE too. MED_EDGE defaults to 0.15, which is >= every
+     confidence-tier threshold in utils._EDGE_TIERS (max 0.15, the LOW-
+     confidence live tier) and every _MIN_EDGE_AB_TEST variant (max 0.09).
+     This is a real numeric dependency, not a structural guarantee -- if
+     MED_EDGE is ever lowered via env override below the highest
+     confidence-tier/AB-test threshold, this gap reopens silently with no
+     test currently guarding it. What it would look like: either (a) add
+     a regression test asserting MED_EDGE >= max(_EDGE_TIERS values,
+     _MIN_EDGE_AB_TEST variant values) so a future env/constant change
+     that breaks the domination fails loudly instead of silently, which
+     is cheap and doesn't require touching trade_cycle.py's runtime logic
+     at all, or (b) actually thread `live` through run_trade_cycle's
+     candidate loop and call get_min_edge_for_confidence for real (leaving
+     the AB-test variant unmirrored regardless, since pick_variant()'s
+     random tie-breaking makes a second call at classification time
+     genuinely nondeterministic relative to the real call at placement
+     time -- not stateful/consuming as an earlier draft of the resolved
+     entry above incorrectly reasoned, but still not safely reproducible
+     twice for the same candidate).
+
+  Also open, surfaced by the same review but out of scope for either
+  entry: trade_cycle.py's dashboard "stars" rating and main.py's watch-
+  mode alert_strong_signal both key off `"STRONG" in signal` text
+  (_edge_label output, driven by adjusted_edge magnitude alone) rather
+  than the `tier` field -- so a candidate the resolved entry above now
+  untiers can still show 2-3 stars or fire watch's desktop STRONG alert.
+  Would need its own pass to make both read `tier` instead of re-deriving
+  from signal text.
+
