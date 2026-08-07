@@ -258,9 +258,78 @@ def isolate_dynamic_sigma(tmp_path, monkeypatch):
     monkeypatch.setattr(
         climatology, "_SIGMA_CACHE_PATH", tmp_path / "forecast_sigma.json"
     )
-    monkeypatch.setattr(climatology, "_sigma_mem_cache", {})
+    monkeypatch.setattr(
+        climatology,
+        "_sigma_mem_cache",
+        climatology.ForecastCache(ttl_secs=float("inf")),
+    )
     monkeypatch.setattr(weather_markets, "_dynamic_sigma", {})
     monkeypatch.setattr(weather_markets, "_load_dynamic_sigma", lambda: {})
+
+
+@pytest.fixture(autouse=True)
+def isolate_climatology_mem_cache(monkeypatch):
+    """Reset climatology._MEM_CACHE (30yr climate archive data, keyed by city)
+    to a fresh, empty instance for every test.
+
+    ttl_secs=inf means an entry, once set, is never naturally evicted within
+    a process -- fine in production (that's the intended "load once per
+    process" behavior), but without this fixture the FIRST test to exercise
+    the real fetch_historical() (every test today mocks it away via
+    patch.object, so this has been latent rather than actually observed)
+    would permanently memoize its result for every later test in the same
+    pytest process, including a real network fetch's actual response data
+    for whichever city happened to go first.
+    """
+    import climatology
+
+    monkeypatch.setattr(
+        climatology, "_MEM_CACHE", climatology.ForecastCache(ttl_secs=float("inf"))
+    )
+
+
+@pytest.fixture(autouse=True)
+def isolate_climatology_data_dir(tmp_path, monkeypatch):
+    """Redirect climatology.DATA_DIR (used by _cache_path() to build each
+    city's climate_{city}.json path) to a per-test temp dir, and default
+    climatology._session.get to raising (network unavailable) rather than
+    reaching the real Open-Meteo archive API.
+
+    Opus-review-caught (2026-08-07): isolate_climatology_mem_cache above
+    isolates the cache, but before this fixture nothing isolated the DISK
+    path fetch_historical() reads/writes -- harmless while no test called the
+    real function, but that premise is now gone (see test_climatology.py's
+    TestFetchHistoricalCaching, which patches DATA_DIR itself per-test
+    already). Redirecting DATA_DIR alone made things WORSE for any test that
+    reaches fetch_historical() transitively (e.g. via analyze_trade() ->
+    climatological_prob(), which many test_weather_markets.py tests never
+    mock -- only a handful explicitly override climatological_prob) without
+    also blocking the network: those tests previously succeeded silently by
+    reading the real, already-populated data/climate_*.json archives; with
+    DATA_DIR redirected to an always-cold tmp_path, they started firing REAL
+    requests to archive-api.open-meteo.com on every run -- confirmed live via
+    a broader regression sweep during this same review that hit a real 429
+    Too Many Requests. Defaulting _session.get to raise restores a
+    network-free, deterministic test suite (fetch_historical's own except
+    handler already logs-and-returns-None on any exception, so this just
+    exercises that existing, already-tested fail-safe path instead of a real
+    network round-trip) -- same "default unavailable, opt in explicitly"
+    philosophy as isolate_dynamic_sigma above. Tests that want to exercise
+    the real network-fetch code path monkeypatch/patch.object
+    climatology._session.get themselves (see TestFetchHistoricalCaching).
+    """
+    import climatology
+
+    monkeypatch.setattr(climatology, "DATA_DIR", tmp_path)
+
+    def _blocked_get(*args, **kwargs):
+        raise RuntimeError(
+            "climatology._session.get() is blocked by default in tests -- "
+            "mock it explicitly (patch.object(climatology._session, 'get', ...)) "
+            "if this test needs to exercise the real fetch_historical() network path"
+        )
+
+    monkeypatch.setattr(climatology._session, "get", _blocked_get)
 
 
 @pytest.fixture(autouse=True)

@@ -28,6 +28,247 @@ def _synthetic_climate_data(n_years=30, high_base=70.0, high_spread=1.0, low_bas
     return {"dates": dates, "highs": highs, "lows": lows}
 
 
+class _FakeResponse:
+    """Minimal requests.Response stand-in for mocking climatology._session.get."""
+
+    def __init__(self, daily: dict):
+        self._daily = daily
+
+    def raise_for_status(self):
+        pass
+
+    def json(self):
+        return {"daily": self._daily}
+
+
+def _fake_daily(n_days=3):
+    return {
+        "time": [f"2024-01-{d:02d}" for d in range(1, n_days + 1)],
+        "temperature_2m_max": [70.0 + d for d in range(n_days)],
+        "temperature_2m_min": [50.0 + d for d in range(n_days)],
+    }
+
+
+class TestFetchHistoricalCaching:
+    """fetch_historical()'s _MEM_CACHE memoization -- previously zero direct
+    coverage (every other test in this file mocks fetch_historical away via
+    patch.object rather than exercising its real body). Written as part of
+    the ForecastCache(ttl_secs=inf) migration (backlog.txt "ForecastCache
+    EXISTS, BUT 2 HAND-ROLLED CACHES...") so the migration has real
+    regression coverage, not just a behavior-preservation claim.
+
+    climatology.DATA_DIR is redirected to tmp_path so these never touch the
+    real data/climate_*.json archives -- isolate_climatology_mem_cache
+    (conftest.py) resets _MEM_CACHE itself between tests automatically.
+
+    Uses patch.object(climatology._session, "get", ...) as a context manager
+    (matching test_acis_precip.py's/test_metar.py's established convention
+    for mocking a shared module-level requests.Session, opus-review-caught
+    2026-08-07) rather than monkeypatch.setattr -- the latter's teardown
+    re-sets the instance attribute to the captured original rather than
+    delattr-ing it, permanently leaving an instance-level override in
+    _session.__dict__ instead of restoring clean class-level method lookup.
+    unittest.mock's own call_count also replaces the hand-rolled `calls`
+    dict counter this class used before.
+    """
+
+    def _mock_network(self, n_days=3):
+        def fake_get(url, params=None, timeout=None):
+            return _FakeResponse(_fake_daily(n_days))
+
+        return patch.object(climatology._session, "get", side_effect=fake_get)
+
+    def _mock_network_failure(self):
+        def failing_get(*a, **kw):
+            raise climatology.requests.ConnectionError("simulated network failure")
+
+        return patch.object(climatology._session, "get", side_effect=failing_get)
+
+    def test_network_fetch_populates_mem_cache_and_writes_disk(
+        self, tmp_path, monkeypatch
+    ):
+        with self._mock_network() as mock_get:
+            result = climatology.fetch_historical(
+                "NYC", (40.7, -74.0, "America/New_York")
+            )
+
+        assert mock_get.call_count == 1
+        assert result["highs"] == [70.0, 71.0, 72.0]
+        assert climatology._MEM_CACHE.get("NYC") == result, (
+            "a successful network fetch must populate _MEM_CACHE"
+        )
+        disk_path = tmp_path / "climate_NYC.json"
+        assert disk_path.exists()
+        assert json.loads(disk_path.read_text())["highs"] == [70.0, 71.0, 72.0]
+
+    def test_second_call_same_city_serves_from_mem_cache_not_network(
+        self, tmp_path, monkeypatch
+    ):
+        """Deletes the disk cache file between calls so the second call can
+        ONLY succeed via _MEM_CACHE -- without this, a mutation that breaks
+        memoization but leaves the disk-cache fallback intact would still
+        avoid a second network call (the first call's own write already
+        populated a fresh disk file) and this test would pass for the wrong
+        reason. Confirmed live: an earlier version of this test without the
+        delete step survived exactly that mutation."""
+        coords = (40.7, -74.0, "America/New_York")
+
+        with self._mock_network() as mock_get:
+            first = climatology.fetch_historical("NYC", coords)
+            (tmp_path / "climate_NYC.json").unlink()
+            second = climatology.fetch_historical("NYC", coords)
+
+        assert mock_get.call_count == 1, (
+            "second call for the same city must be served from _MEM_CACHE, "
+            "not trigger a second network fetch"
+        )
+        assert second == first
+
+    def test_force_true_bypasses_mem_cache(self, tmp_path, monkeypatch):
+        coords = (40.7, -74.0, "America/New_York")
+
+        with self._mock_network() as mock_get:
+            climatology.fetch_historical("NYC", coords)
+            climatology.fetch_historical("NYC", coords, force=True)
+
+        assert mock_get.call_count == 2, (
+            "force=True must bypass both mem and disk cache"
+        )
+
+    def test_fresh_disk_cache_serves_without_network_call(self, tmp_path, monkeypatch):
+        disk_path = tmp_path / "climate_NYC.json"
+        disk_data = {"dates": ["2020-01-01"], "highs": [99.0], "lows": [1.0]}
+        disk_path.write_text(json.dumps(disk_data))
+
+        with self._mock_network() as mock_get:
+            result = climatology.fetch_historical(
+                "NYC", (40.7, -74.0, "America/New_York")
+            )
+
+        assert mock_get.call_count == 0, (
+            "a fresh disk cache must not trigger a network call"
+        )
+        assert result["highs"] == [99.0]
+
+    def test_fresh_disk_cache_read_also_populates_mem_cache(
+        self, tmp_path, monkeypatch
+    ):
+        """Targets _MEM_CACHE.set() on the fresh-disk-read branch specifically
+        (climatology.py's first .set() call inside fetch_historical) --
+        deletes the disk file after the first call so a second call can only
+        succeed via the in-memory cache that read populated, proving that
+        branch caches its result and not just the network-fetch branch
+        (opus-review-caught 2026-08-07: this exact site was uncovered and a
+        mutation deleting its .set() call survived the rest of this suite)."""
+        disk_path = tmp_path / "climate_NYC.json"
+        disk_data = {"dates": ["2020-01-01"], "highs": [99.0], "lows": [1.0]}
+        disk_path.write_text(json.dumps(disk_data))
+        coords = (40.7, -74.0, "America/New_York")
+
+        first = climatology.fetch_historical("NYC", coords)
+        disk_path.unlink()
+        with self._mock_network() as mock_get:
+            second = climatology.fetch_historical("NYC", coords)
+
+        assert mock_get.call_count == 0, (
+            "reading a fresh disk cache must populate _MEM_CACHE too, so a "
+            "later call (even after the disk file is gone) is served from "
+            "memory rather than falling through to the network"
+        )
+        assert second == first == disk_data
+
+    def test_stale_disk_cache_triggers_network_refetch(self, tmp_path, monkeypatch):
+        import os
+
+        disk_path = tmp_path / "climate_NYC.json"
+        disk_path.write_text(
+            json.dumps({"dates": ["2020-01-01"], "highs": [99.0], "lows": [1.0]})
+        )
+        stale_time = time.time() - climatology.CACHE_MAX_AGE - 3600
+        os.utime(disk_path, (stale_time, stale_time))
+
+        with self._mock_network() as mock_get:
+            result = climatology.fetch_historical(
+                "NYC", (40.7, -74.0, "America/New_York")
+            )
+
+        assert mock_get.call_count == 1, (
+            "a stale disk cache must trigger a real refetch"
+        )
+        assert result["highs"] == [70.0, 71.0, 72.0], (
+            "must return the fresh network data, not the stale disk content"
+        )
+
+    def test_network_failure_falls_back_to_existing_disk_cache(
+        self, tmp_path, monkeypatch
+    ):
+        import os
+
+        disk_path = tmp_path / "climate_NYC.json"
+        disk_data = {"dates": ["2020-01-01"], "highs": [55.0], "lows": [1.0]}
+        disk_path.write_text(json.dumps(disk_data))
+        stale_time = time.time() - climatology.CACHE_MAX_AGE - 3600
+        os.utime(disk_path, (stale_time, stale_time))  # force the network attempt
+
+        with self._mock_network_failure() as mock_get:
+            result = climatology.fetch_historical(
+                "NYC", (40.7, -74.0, "America/New_York")
+            )
+
+        assert mock_get.call_count == 1, (
+            "must actually attempt (and fail) a network call, not silently "
+            "serve the disk content as if it were fresh -- opus-review-caught "
+            "2026-08-07: without this assertion the fresh-disk-cache path and "
+            "the network-failure-fallback path are indistinguishable, since "
+            "both return the same underlying disk content"
+        )
+        assert result["highs"] == [55.0], (
+            "a network failure must fall back to the existing (even if stale) "
+            "disk cache rather than returning None"
+        )
+
+    def test_network_failure_fallback_also_populates_mem_cache(
+        self, tmp_path, monkeypatch
+    ):
+        """Targets _MEM_CACHE.set() on the network-failure-fallback branch
+        specifically (opus-review-caught 2026-08-07: uncovered, a mutation
+        deleting that .set() call survived the rest of this suite)."""
+        import os
+
+        disk_path = tmp_path / "climate_NYC.json"
+        disk_data = {"dates": ["2020-01-01"], "highs": [55.0], "lows": [1.0]}
+        disk_path.write_text(json.dumps(disk_data))
+        stale_time = time.time() - climatology.CACHE_MAX_AGE - 3600
+        os.utime(disk_path, (stale_time, stale_time))
+        coords = (40.7, -74.0, "America/New_York")
+
+        with self._mock_network_failure() as mock_get:
+            first = climatology.fetch_historical("NYC", coords)
+        assert mock_get.call_count == 1
+        assert first["highs"] == [55.0]
+
+        disk_path.unlink()  # remove the disk fallback entirely
+        with self._mock_network_failure() as mock_get2:
+            second = climatology.fetch_historical("NYC", coords)
+
+        assert mock_get2.call_count == 0, (
+            "the network-failure disk-fallback branch must also populate "
+            "_MEM_CACHE, so a later call is served from memory without "
+            "attempting the network again or needing the (now-deleted) disk file"
+        )
+        assert second == first
+
+    def test_network_failure_with_no_disk_cache_returns_none(
+        self, tmp_path, monkeypatch
+    ):
+        with self._mock_network_failure():
+            result = climatology.fetch_historical(
+                "NYC", (40.7, -74.0, "America/New_York")
+            )
+
+        assert result is None
+
+
 class TestComputeSigmaFromClimate:
     def test_returns_per_month_dict(self):
         data = _synthetic_climate_data()
@@ -96,11 +337,12 @@ class TestComputeSigmaFromClimate:
 
 
 class TestLoadAllSigmasBehavior:
-    def setup_method(self, method):
-        climatology._sigma_mem_cache = {}
-
-    def teardown_method(self, method):
-        climatology._sigma_mem_cache = {}
+    # No setup_method/teardown_method needed (opus-review-caught 2026-08-07,
+    # confirmed via a direct probe -- deleting both still leaves every test in
+    # this class passing): conftest.py's autouse isolate_dynamic_sigma fixture
+    # already installs a fresh climatology._sigma_mem_cache before every test
+    # runs (autouse fixtures apply before setup_method), and monkeypatch
+    # restores the true module-level original at teardown regardless.
 
     def test_builds_per_city_max_and_min_structure(self, tmp_path, monkeypatch):
         monkeypatch.setattr(climatology, "_SIGMA_CACHE_PATH", tmp_path / "sigma.json")

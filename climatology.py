@@ -18,6 +18,7 @@ import requests
 
 import safe_io
 from circuit_breaker import CircuitBreaker as _CircuitBreaker
+from forecast_cache import ForecastCache
 from paths import DATA_DIR
 from utils import prob_threshold as _prob_threshold
 
@@ -49,7 +50,27 @@ def _cache_is_stale(cache: Path) -> bool:
 
 # In-memory cache so repeated calls within one process (e.g. 5 markets for NYC
 # all calling climatological_prob) only hit disk once per city per run.
-_MEM_CACHE: dict[str, dict] = {}
+# ForecastCache with an infinite TTL, not a plain dict (backlog.txt "ForecastCache
+# EXISTS, BUT 2 HAND-ROLLED CACHES..."): once a city's data is cached in memory it
+# is trusted for the rest of the process regardless of the disk file's own age --
+# that staleness check only ever runs on a cache MISS, below -- so ttl_secs=inf
+# preserves this exact "load once per process" behavior while gaining
+# ForecastCache's per-call atomicity (a single .get()/.set() can't race another
+# thread's .get()/.set() on a DIFFERENT key). This does NOT close a same-city
+# race: trade_cycle.py submits per-MARKET (8 workers), so multiple markets for
+# the same city routinely call fetch_historical() concurrently, and two threads
+# can both miss a cold _MEM_CACHE entry and both independently hit the Open-Meteo
+# archive API + atomic_write_json the same climate_{city}.json (the same race
+# class _sigma_lock exists to serialize for forecast_sigma.json, just without an
+# equivalent lock here). Pre-existing and unchanged by this migration -- a plain
+# dict had the identical exposure -- and low-frequency in practice (this only
+# fires on a cold/expired disk cache, ~once per city per year; preload_all()
+# warms the disk cache single-threaded before cron's scan loop normally runs).
+# No whole-dict disk persistence is needed here (unlike nws.py's
+# PersistentForecastCache-based _station_cache): each city already round-trips
+# to its own climate_{city}.json file via the plain json.load/
+# safe_io.atomic_write_json calls below, independent of this in-memory layer.
+_MEM_CACHE: ForecastCache[dict] = ForecastCache(ttl_secs=float("inf"))
 
 
 def fetch_historical(city: str, coords: tuple, force: bool = False) -> dict | None:
@@ -58,14 +79,16 @@ def fetch_historical(city: str, coords: tuple, force: bool = False) -> dict | No
     Auto-refreshes if the cache is older than 1 year.
     Returns dict with keys: dates, highs, lows.
     """
-    if not force and city in _MEM_CACHE:
-        return _MEM_CACHE[city]
+    if not force:
+        cached = _MEM_CACHE.get(city)
+        if cached is not None:
+            return cached
 
     cache = _cache_path(city)
     if cache.exists() and not force and not _cache_is_stale(cache):
         with open(cache) as f:
             data = json.load(f)
-        _MEM_CACHE[city] = data
+        _MEM_CACHE.set(city, data)
         return data
 
     from utils import utc_today as _utc_today
@@ -93,7 +116,7 @@ def fetch_historical(city: str, coords: tuple, force: bool = False) -> dict | No
             "lows": daily.get("temperature_2m_min", []),
         }
         safe_io.atomic_write_json(data, cache)
-        _MEM_CACHE[city] = data
+        _MEM_CACHE.set(city, data)
         return data
     except Exception as exc:
         _log.warning("fetch_historical: API failed for %s: %s", city, exc)
@@ -109,7 +132,7 @@ def fetch_historical(city: str, coords: tuple, force: bool = False) -> dict | No
                 )
             with open(cache) as f:
                 data = json.load(f)
-            _MEM_CACHE[city] = data
+            _MEM_CACHE.set(city, data)
             return data
         _log.warning(
             "fetch_historical: API failed for %s and no cache exists — returning None",
@@ -251,7 +274,26 @@ _SIGMA_FLOOR = 1.5  # never allow sigma < 1.5°F regardless of climate data
 
 _SIGMA_CACHE_PATH = DATA_DIR / "forecast_sigma.json"
 _SIGMA_CACHE_AGE = 30 * 24 * 3600  # refresh monthly
-_sigma_mem_cache: dict = {}
+# ForecastCache with an infinite TTL and a single constant key, not a plain dict
+# (backlog.txt "ForecastCache EXISTS, BUT 2 HAND-ROLLED CACHES..."): this cache is
+# meant to hold exactly one value -- the full all-cities/all-months table -- built
+# from a single call passing the COMPLETE city registry, so a constant key matches
+# that intent (contrast climate_indices.py's get_indices(), previously bugged by
+# sharing one "latest" key across genuinely different (year, month) results).
+# NOT a guarantee, though: preload_all() (opus-review-caught, 2026-08-07, pre-
+# existing -- identical exposure existed with the old plain dict) can be called
+# with a PARTIAL city_coords (main.py's first-run wizard loops one city at a
+# time), and load_all_sigmas() happily recomputes+overwrites the whole cache under
+# this same constant key for whatever subset it's given -- see backlog.txt
+# "PRELOAD_ALL CAN PERMANENTLY TRUNCATE forecast_sigma.json TO ONE CITY ON A
+# PARTIAL CALL" for the fix this needs at the preload_all/wizard layer, not here.
+# _sigma_lock (below) still wraps the whole check-then-fetch-then-write sequence
+# in load_all_sigmas(): ForecastCache's own internal lock only makes a single
+# .get()/.set() call atomic, which is NOT sufficient to prevent two threads both
+# seeing a cold cache and both recomputing + writing forecast_sigma.json (the
+# exact race this lock exists to serialize).
+_SIGMA_KEY = "all"
+_sigma_mem_cache: ForecastCache[dict] = ForecastCache(ttl_secs=float("inf"))
 _sigma_lock = threading.Lock()
 
 
@@ -309,18 +351,29 @@ def load_all_sigmas(city_coords: dict, force: bool = False) -> dict:
     real, still-open (lower-severity, retry-recoverable) residual case this
     lock cannot cover; safe_io.atomic_write_json's own pid+thread-keyed temp
     names and retry/backoff are what absorb that one.
+
+    Note (opus-review-caught, 2026-08-07): ForecastCache.get() returns None on
+    both "no entry" and "entry present but falsy" -- an empty {} result (e.g.
+    city_coords={}) is memoized as a cache hit forever (ttl_secs=inf), where
+    the old plain-dict check (`if _sigma_mem_cache and not force`) would have
+    re-read disk on every subsequent call instead. Narrow (city_coords is
+    always the full, non-empty city registry in every real caller) and
+    harmless in that case -- not fixed, since doing so would mean changing
+    ForecastCache's own get()/miss semantics for every other consumer, not
+    just this one.
     """
-    global _sigma_mem_cache
     with _sigma_lock:
-        if _sigma_mem_cache and not force:
-            return _sigma_mem_cache
+        cached = _sigma_mem_cache.get(_SIGMA_KEY)
+        if cached is not None and not force:
+            return cached
 
         if not force and _SIGMA_CACHE_PATH.exists():
             age = time.time() - _SIGMA_CACHE_PATH.stat().st_mtime
             if age < _SIGMA_CACHE_AGE:
                 with open(_SIGMA_CACHE_PATH) as f:
-                    _sigma_mem_cache = json.load(f)
-                return _sigma_mem_cache
+                    loaded = json.load(f)
+                _sigma_mem_cache.set(_SIGMA_KEY, loaded)
+                return loaded
 
         result: dict = {}
         for city, coords in city_coords.items():
@@ -344,7 +397,7 @@ def load_all_sigmas(city_coords: dict, force: bool = False) -> dict:
         except Exception as e:
             _log.warning("Could not write forecast_sigma.json: %s", e)
 
-        _sigma_mem_cache = result
+        _sigma_mem_cache.set(_SIGMA_KEY, result)
         return result
 
 

@@ -12545,14 +12545,10 @@ Why not now (resolved):
 When to revisit:
   - N/A, closed.
 
-[PARTIALLY RESOLVED 2026-07-25 -- STALE TITLE CORRECTED 2026-07-30, see note
-  near the end: 15 of ~17 identified caches were migrated across 2 passes
-  (2026-07-19) + _station_cache via a subclass (2026-07-25); only
-  climatology.py's 2 caches remain, and they're a deliberate, undecided
-  architectural call, not "not gotten to yet" -- this entry is effectively
-  done except for that one open decision] ForecastCache EXISTS, BUT 2
-  HAND-ROLLED CACHES (climatology.py) REMAIN AN UNDECIDED ARCHITECTURAL CALL
-  -- ORIGINALLY "~14 HAND-ROLLED TTL DICTS," NOW STALE
+[RESOLVED 2026-08-07, see final note at the end -- previously PARTIALLY
+  RESOLVED 2026-07-25, STALE TITLE CORRECTED 2026-07-30] ForecastCache
+  EXISTS, BUT 2 HAND-ROLLED CACHES (climatology.py) REMAIN AN UNDECIDED
+  ARCHITECTURAL CALL -- ORIGINALLY "~14 HAND-ROLLED TTL DICTS," NOW STALE
 Priority: was Low-Medium -- consistency/tooling debt, not a live bug; each
   hand-rolled cache re-implements expiry slightly differently and each
   needs its own test-isolation hook. Now Low: only 2 caches remain
@@ -13989,4 +13985,158 @@ Priority: Medium -- no live-money impact and not a correctness bug in
   just aggregated). Whichever direction, needs before/after STRONG/MED
   count data across a representative window to judge the real-world size
   of the effect before changing live gating thresholds.
+
+======================================================
+[RESOLVED 2026-08-07] ForecastCache EXISTS, BUT 2 HAND-ROLLED CACHES (climatology.py) REMAIN AN UNDECIDED ARCHITECTURAL CALL -- ORIGINALLY "~14 HAND-ROLLED TTL DICTS," NOW STALE
+
+  Closes out the long-running ForecastCache migration entry (originally filed
+  as "~14 hand-rolled TTL dicts," see backlog.txt history above for the full
+  multi-session record) by resolving its one remaining open item:
+  climatology.py's _MEM_CACHE (city-keyed, 30yr climate archive data) and
+  _sigma_mem_cache (single-value, all-cities forecast-sigma table).
+
+  User asked which way to resolve it, explicitly asking for a long-term-
+  health recommendation rather than the cheapest option. Recommended
+  mirroring nws.py's _station_cache subclass approach (2026-07-25) on the
+  strength of that migration's own track record -- a real thread-safety bug
+  found for free by the review process, zero behavior change since it didn't
+  force a real semantic reshape. User agreed, noting this wasn't urgent
+  enough to justify on its own merits alone.
+
+  Re-derived from source before implementing (both caches' actual shape had
+  drifted from the initial "just subclass it" framing): _MEM_CACHE turned out
+  NOT to need PersistentForecastCache's whole-dict dump/load at all -- unlike
+  _station_cache, each city already round-trips to its own
+  climate_{city}.json file via climatology.py's own existing json.load/
+  safe_io.atomic_write_json calls, untouched by this migration. Both caches
+  instead needed only the plain, already-existing ForecastCache class with
+  ttl_secs=float("inf"): _MEM_CACHE keyed by city (unchanged), _sigma_mem_cache
+  keyed by a new constant _SIGMA_KEY="all" (it holds exactly one value -- the
+  full all-cities table -- for every real caller). _sigma_lock is unchanged,
+  still wrapping the whole check-then-fetch-then-write sequence in
+  load_all_sigmas() -- ForecastCache's own internal lock only makes a single
+  .get()/.set() atomic, nowhere near sufficient to prevent the multi-thread
+  cold-cache race this lock exists to serialize (backlog.txt "FORECAST_
+  SIGMA.JSON ATOMIC WRITE CONTENTION").
+
+  tests/conftest.py: isolate_dynamic_sigma's existing _sigma_mem_cache reset
+  updated to install a fresh ForecastCache instance instead of {} (a plain
+  dict has no .get()/.set()); two new autouse fixtures added --
+  isolate_climatology_mem_cache (resets _MEM_CACHE) and
+  isolate_climatology_data_dir (redirects climatology.DATA_DIR AND defaults
+  climatology._session.get to raising) -- since no existing test before this
+  session ever exercised the real fetch_historical() (every one mocked it
+  away via patch.object), so this was genuinely zero-risk before and needed
+  isolating for the first time now. 9 new tests in test_climatology.py's
+  TestFetchHistoricalCaching class cover memoization, force=True bypass,
+  fresh/stale disk-cache branches, and the network-failure disk fallback --
+  each of the 4 _MEM_CACHE.set() call sites individually mutation-tested
+  (temporarily deleted, confirmed the corresponding test fails, restored).
+
+  Independent opus review (effort=high), all findings fixed:
+  - HIGH: the new comment justifying _sigma_mem_cache's constant key claimed
+    this class of cache "can't" have climate_indices.py's old get_indices()
+    single-key bug; re-checking found a REAL, pre-existing (not introduced by
+    this migration -- identical exposure existed with the old plain dict)
+    bug at the preload_all() layer that violates exactly that claim -- see
+    the new entry below. Comment corrected to state the real caveat instead
+    of the false guarantee; the bug itself filed separately since fixing it
+    is a design decision at a different layer (main.py's first-run wizard),
+    not a mechanical fix here.
+  - MEDIUM (x3): a new test (test_network_failure_falls_back_to_existing_
+    disk_cache) asserted only the returned value, which is identical whether
+    served by a fresh-cache hit or a real network-failure fallback -- added a
+    call-count assertion so the test actually proves the network was
+    attempted; two of the four real _MEM_CACHE.set() call sites (the
+    fresh-disk-read branch and the network-failure-fallback branch) were
+    completely uncovered -- 2 new tests added, both confirmed via mutation;
+    climatology.DATA_DIR had no isolation backstop beyond the new tests' own
+    per-test patches -- added the isolate_climatology_data_dir autouse
+    fixture, matching the established convention
+    (isolate_forecast_ensemble_disk_cache/isolate_crash_log) of redirecting
+    production paths globally, not per-test. This fixture's FIRST version
+    (DATA_DIR redirect only, no network block) then caused a real regression
+    of its own, self-caught during the very next full-suite regression sweep:
+    many test_weather_markets.py tests call analyze_trade() without mocking
+    climatological_prob, and previously succeeded silently by reading the
+    real, already-populated data/climate_*.json archives -- redirecting
+    DATA_DIR to an always-cold tmp_path made those same tests fire REAL
+    requests to archive-api.open-meteo.com instead, one of which hit a real
+    429 Too Many Requests during this session's own regression sweep. Fixed
+    by also defaulting climatology._session.get to raise (same "default
+    unavailable, opt in explicitly" philosophy already used by
+    isolate_dynamic_sigma) -- fetch_historical's own except handler already
+    logs-and-returns-None on any exception, so this just exercises that
+    existing, already-tested fail-safe path instead of a real network round
+    trip. Re-ran the full regression sweep after this fix: identical 12
+    pre-existing (unrelated, date-dependent) failures, 377 passed, no more
+    real network calls, and the suite ran faster (82s vs 94s).
+  - LOW (all fixed): a misleading comment overstated what thread-safety this
+    migration closed for _MEM_CACHE (a real same-city concurrent-fetch race
+    is pre-existing and NOT closed by this change -- corrected to say so
+    explicitly); documented the {}-is-a-valid-cache-hit-vs-miss ambiguity
+    ForecastCache.get() has for any falsy cached value (narrow, harmless for
+    every real caller, not changed -- would mean altering ForecastCache's own
+    semantics for every other consumer); deleted TestLoadAllSigmasBehavior's
+    now-fully-redundant setup_method/teardown_method (confirmed via direct
+    test run that conftest's autouse fixture alone is sufficient); renamed/
+    fixed a test that didn't actually assert on _MEM_CACHE despite its name;
+    switched the _session.get mocking from monkeypatch.setattr to
+    patch.object(...) as a context manager, matching test_acis_precip.py's/
+    test_metar.py's established convention (monkeypatch's teardown left a
+    permanent instance-level override in _session.__dict__ instead of
+    restoring clean class-level lookup).
+
+  23/23 test_climatology.py tests pass; ruff + ruff format + mypy clean.
+
+======================================================
+[PRELOAD_ALL CAN PERMANENTLY TRUNCATE forecast_sigma.json TO ONE CITY ON A PARTIAL CALL]
+Priority: Medium -- not a live-money bug (this only affects the sigma-based
+  dynamic forecast adjustment, which degrades to the static _HISTORICAL_SIGMA
+  table on failure, not a crash or a wrong trade) but a real, currently-
+  reachable correctness gap that silently degrades exactly the cities this
+  feature was built to help (LasVegas/NewOrleans/StPetersburg, absent from
+  the static table).
+
+  Found 2026-08-07 (opus-review-caught) while migrating climatology.py's
+  _sigma_mem_cache onto ForecastCache with a constant cache key -- the
+  migration itself doesn't cause this, an identical exposure existed with
+  the old plain dict, since the bug lives at the disk-file layer, not the
+  in-memory caching layer.
+
+  climatology.load_all_sigmas(city_coords, force=...) computes and
+  unconditionally overwrites data/forecast_sigma.json with a table built
+  from EXACTLY the city_coords dict it's given -- there is no merge with
+  whatever the file already contained. preload_all(city_coords) (also
+  climatology.py) calls load_all_sigmas(city_coords, force=True) with
+  whatever subset it itself received, gated only on "does forecast_sigma.json
+  exist yet / is it stale" -- NOT on whether city_coords is the complete
+  registry. main.py's first-run setup wizard (~line 4603) calls
+  preload_all({city: CITY_COORDS[city]}) in a per-city loop (so progress can
+  be reported one city at a time). On a fresh install: iteration 1 (say NYC)
+  finds no forecast_sigma.json, computes+writes a table containing ONLY NYC,
+  and memoizes it. Iterations 2..21 now see a file that exists and is fresh
+  (_SIGMA_CACHE_AGE = 30 days), so the guard is false and load_all_sigmas is
+  never called again for the wizard's remaining 20 cities. The real,
+  multi-city table is never built until something else forces a recompute
+  (force=True, or the file going stale a month later) -- for that whole
+  window, weather_markets.get_historical_sigma() silently falls through to
+  the static table for every city but NYC, and LasVegas/NewOrleans/
+  StPetersburg (absent from the static table entirely) fall through further
+  to _DEFAULT_SIGMA.
+
+  Not fixed this session -- deliberately out of scope for the cache migration
+  that surfaced it (a different subsystem: main.py's setup wizard's call
+  pattern, not climatology.py's caching internals) and needs a real design
+  decision, not a mechanical fix.
+
+  What it would look like: pick one of -- (a) change the wizard to call
+  preload_all() once with the FULL city registry at the end instead of
+  per-city (loses the existing per-city progress messages unless those move
+  elsewhere); (b) make load_all_sigmas() merge into the existing file's
+  per-city entries instead of unconditionally overwriting the whole table;
+  (c) gate preload_all()'s sigma-refresh block on city_coords actually being
+  the complete registry (e.g. compare len() against the real city count)
+  rather than just file-existence/staleness. Needs a decision on which
+  tradeoff is acceptable before implementing.
 
