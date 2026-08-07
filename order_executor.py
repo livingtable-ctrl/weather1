@@ -2411,6 +2411,24 @@ def _auto_place_trades(
 
     from paths import KILL_SWITCH_PATH as _KILL_SWITCH_PATH
 
+    # Shadow-only gate booleans are evaluated ONCE per batch here, not
+    # per-ticker inside the loop below. Each gate is a pure function of env
+    # config + a settled-sample DB count; nothing in this loop can change
+    # either mid-batch, so the per-ticker calls this replaces were already
+    # returning the same value every time for the same family within one
+    # scan -- but recomputing per-ticker still meant the value COULD legally
+    # diverge across two calls to this function in the same cron cycle (the
+    # strong-tier and med-tier calls in trade_cycle.py) or under concurrent
+    # settlement writes, which contradicts each gate's own docstring
+    # guarantee ("no real order is ever placed... before this is True").
+    # Hoisting makes that guarantee airtight for a single call and cuts 5
+    # redundant lookups down to 5 total instead of 5-per-ticker.
+    _hourly_gate_active = _hourly_gates_active()
+    _rain_gate_active = _rain_gates_active()
+    _snow_gate_active = _snow_gates_active()
+    _hurricane_count_gate_active = _hurricane_count_gates_active()
+    _hurricane_next_event_gate_active = _hurricane_next_event_gates_active()
+
     for item in opps:
         # Per-signal kill switch check — a mid-batch activation (user writes the file
         # while orders 1-N are executing) stops remaining signals immediately.
@@ -2427,6 +2445,70 @@ def _auto_place_trades(
             m, a = item, item
 
         ticker = m.get("ticker", "") or a.get("ticker", "")
+
+        # Shadow-only families are routed here, BEFORE any of the
+        # placement-only checks below (validate/dedup/caps/Kelly/price/VaR).
+        # _log_shadow_predictions re-applies its own validate/already-open/
+        # was_ordered_recently/was_traded_today gates internally (see its
+        # docstring), so correctness isn't lost by skipping this loop's
+        # copies of those checks -- but running this loop's placement-only
+        # checks (date caps, VaR, cycle dedup) first would wrongly suppress
+        # shadow logging for a family that's simply over this cycle's
+        # capacity, silently biasing the settled-sample floor these gates
+        # wait on toward only tickers that would've traded anyway, and would
+        # waste a live market refetch + a 5000-sim portfolio_var call on a
+        # ticker that was never going to place. backlog.txt "HOURLY-
+        # DIRECTIONAL TEMPERATURE MARKETS" Step 2 / "RAIN / SNOW / HURRICANE
+        # MARKETS" Step 2 / Snow Step 2 / hurricane season-count (2026-08-03)
+        # / hurricane time-to-next-event (2026-08-07). Per-ticker-family, not
+        # per-batch: other opportunities in the same batch continue through
+        # the normal placement path below.
+        if (
+            any(ticker.upper().startswith(p) for p in _KXTEMP_HOURLY_CITY)
+            and not _hourly_gate_active
+        ):
+            _n_shadow = _log_shadow_predictions([item], live=live)
+            _skip_reasons.append(
+                f"{ticker}: hourly_shadow_only(logged={bool(_n_shadow)})"
+            )
+            continue
+
+        if (
+            any(ticker.upper().startswith(p) for p in _KXRAIN_MONTHLY_CITY)
+            and not _rain_gate_active
+        ):
+            _n_shadow = _log_shadow_predictions([item], live=live)
+            _skip_reasons.append(
+                f"{ticker}: rain_shadow_only(logged={bool(_n_shadow)})"
+            )
+            continue
+
+        if (
+            any(ticker.upper().startswith(p) for p in _KXSNOW_MONTHLY_CITY)
+            and not _snow_gate_active
+        ):
+            _n_shadow = _log_shadow_predictions([item], live=live)
+            _skip_reasons.append(
+                f"{ticker}: snow_shadow_only(logged={bool(_n_shadow)})"
+            )
+            continue
+
+        if is_hurricane_count_ticker(ticker) and not _hurricane_count_gate_active:
+            _n_shadow = _log_shadow_predictions([item], live=live)
+            _skip_reasons.append(
+                f"{ticker}: hurricane_count_shadow_only(logged={bool(_n_shadow)})"
+            )
+            continue
+
+        if (
+            is_hurricane_next_event_ticker(ticker)
+            and not _hurricane_next_event_gate_active
+        ):
+            _n_shadow = _log_shadow_predictions([item], live=live)
+            _skip_reasons.append(
+                f"{ticker}: hurricane_next_event_shadow_only(logged={bool(_n_shadow)})"
+            )
+            continue
 
         # Merge ticker from market dict so tuple-format callers aren't penalised.
         _ok, _reject_reason = _validate_trade_opportunity(
@@ -2736,79 +2818,6 @@ def _auto_place_trades(
                 placed,
             )
             break
-
-        # Hourly shadow-only rollout (backlog.txt "HOURLY-DIRECTIONAL
-        # TEMPERATURE MARKETS" Step 2 handoff item 5). Unlike TRADING_PAUSED
-        # (a whole-cycle, whole-batch decision made once at the top of this
-        # function), hourly markets must stay shadow-only independent of
-        # that flag -- including after Belgium return lifts the pause,
-        # until their own settled-sample floor is met -- while every other
-        # opportunity in the same batch (daily markets, or hourly ones once
-        # their own gate fires) places normally. Per-ticker, not per-batch:
-        # reuses _log_shadow_predictions on a single-item list so the exact
-        # same validation/dedup/is_shadow=True logging path applies.
-        if (
-            any(ticker.upper().startswith(p) for p in _KXTEMP_HOURLY_CITY)
-            and not _hourly_gates_active()
-        ):
-            _n_shadow = _log_shadow_predictions([item], live=live)
-            _skip_reasons.append(
-                f"{ticker}: hourly_shadow_only(logged={bool(_n_shadow)})"
-            )
-            continue
-
-        # Monthly-rain shadow-only rollout (backlog.txt "RAIN / SNOW /
-        # HURRICANE MARKETS" Step 2 handoff item 7). Same per-ticker (not
-        # per-batch) shape as hourly's branch just above -- other
-        # opportunities in the same scan continue placing normally.
-        if (
-            any(ticker.upper().startswith(p) for p in _KXRAIN_MONTHLY_CITY)
-            and not _rain_gates_active()
-        ):
-            _n_shadow = _log_shadow_predictions([item], live=live)
-            _skip_reasons.append(
-                f"{ticker}: rain_shadow_only(logged={bool(_n_shadow)})"
-            )
-            continue
-
-        # Monthly-snow shadow-only rollout (backlog.txt "RAIN / SNOW /
-        # HURRICANE MARKETS" Snow Step 2, 2026-07-30). Replaces Step 1's "no
-        # code guard needed here" comment (analyze_trade()'s guard used to
-        # make this loop unreachable for the ticker family; Step 2 gives it
-        # a real model, so this loop is reachable now) -- same per-ticker
-        # shape as rain's branch just above.
-        if (
-            any(ticker.upper().startswith(p) for p in _KXSNOW_MONTHLY_CITY)
-            and not _snow_gates_active()
-        ):
-            _n_shadow = _log_shadow_predictions([item], live=live)
-            _skip_reasons.append(
-                f"{ticker}: snow_shadow_only(logged={bool(_n_shadow)})"
-            )
-            continue
-
-        # Hurricane-season-count shadow-only rollout (backlog.txt "HURRICANE
-        # MARKETS" -- season-count model, 2026-08-03). Same per-ticker (not
-        # per-batch) shape as rain's/snow's branches just above.
-        if is_hurricane_count_ticker(ticker) and not _hurricane_count_gates_active():
-            _n_shadow = _log_shadow_predictions([item], live=live)
-            _skip_reasons.append(
-                f"{ticker}: hurricane_count_shadow_only(logged={bool(_n_shadow)})"
-            )
-            continue
-
-        # Hurricane-time-to-next-event shadow-only rollout (backlog.txt
-        # "HURRICANE MARKETS" -- time-to-next-event model, 2026-08-07). Same
-        # per-ticker shape as the hurricane-count branch just above.
-        if (
-            is_hurricane_next_event_ticker(ticker)
-            and not _hurricane_next_event_gates_active()
-        ):
-            _n_shadow = _log_shadow_predictions([item], live=live)
-            _skip_reasons.append(
-                f"{ticker}: hurricane_next_event_shadow_only(logged={bool(_n_shadow)})"
-            )
-            continue
 
         if live and live_config:
             _live_balance = _resolve_live_balance(client)

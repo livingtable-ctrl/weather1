@@ -2209,6 +2209,72 @@ When to revisit:
     their yes/no result), then key occurred_this_season off "any qualifying
     storm since this event's own open_time" instead of season-wide count.
 
+[OPEN 2026-08-07 -- found while thinking through implementation-workflow risks raised by this project's now-routine parallel-worktree-session pattern, not during the hurricane work itself] hurricane_climatology.fetch_hurdat2_raw's CACHE WRITE ISN'T ATOMIC -- THE ONLY RAW-TEXT CACHE IN THIS CODEBASE THAT SKIPS safe_io
+Priority: Low -- currently low-probability (needs two processes racing to
+  refresh the SAME stale HURDAT2 cache file within the same narrow window),
+  but a real corruption path this project has already been burned by once
+  for the identical bug CLASS on JSON caches (see "SAFE_IO -- EMERGENCY-COPY
+  FALLBACK SILENTLY CLOBBERED THE ORIGINAL FILE" elsewhere in this file,
+  RESOLVED 2026-07-27), and today's routine
+  multi-parallel-worktree-session pattern (all worktrees share ONE physical
+  data/ directory via paths.py -- see [[feedback_worktree_data_dir_gotcha]])
+  makes concurrent collisions on this exact file meaningfully more likely
+  than when it shipped as a single-session feature.
+
+Problem:
+  hurricane_climatology.py:144 (fetch_hurdat2_raw, shipped 2026-08-03 as
+  part of the season-count hurricane model -- not introduced by the
+  2026-08-07 time-to-next-event session, just never caught before) writes
+  its disk cache with a plain `cache.write_text(text)`. Every OTHER
+  cache-shaped write in this same area of the codebase goes through
+  safe_io.atomic_write_json() instead -- confirmed live via
+  `grep -n "cache.write_text\|atomic_write" hurricane_climatology.py
+  acis_precip.py climatology.py`: acis_precip.py and climatology.py both
+  consistently use safe_io.atomic_write_json for their own caches (climate
+  archive data, forecast_sigma.json); hurricane_climatology.py's HURDAT2
+  cache is the lone plain-write holdout. A concurrent write from a second
+  process refreshing the same stale cache (two parallel worktree sessions
+  both triggering hc.load_basin_storms() around the same time, or a live
+  cron cycle overlapping with a manual research script) risks a reader
+  seeing a partially-written file mid-write, or one write's content
+  silently interleaving with another's -- the same corruption shape
+  atomic_write_json's own emergency-copy-fallback bug (fixed 2026-07-27,
+  see that entry) existed specifically to prevent for JSON caches.
+
+  Not a drop-in fix: safe_io.atomic_write_json() is JSON-shaped (its own
+  name says so); hurricane_climatology.py's cache is raw HURDAT2 text, not
+  JSON. There is currently no safe_io helper for atomic raw-text writes --
+  confirmed via `grep -n "^def " safe_io.py`: only atomic_write_json and
+  atomic_write_json_with_history exist.
+
+What it would look like:
+  Add a generic safe_io.atomic_write_text() (or atomic_write_bytes(),
+  whichever safe_io's existing tempfile+rename internals generalize to more
+  cleanly) mirroring atomic_write_json's own write-to-tempfile-then-
+  os.replace() shape, then swap hurricane_climatology.py's
+  `cache.write_text(text)` for it. Small, mechanical once the helper exists
+  -- the real work is designing the helper to share safe_io's existing
+  emergency-copy-fallback/PID-keyed-tempfile conventions rather than being a
+  parallel, independently-maintained implementation.
+
+Why not now:
+  User explicitly asked for this to be filed rather than fixed immediately
+  (2026-08-07) -- currently low-probability (narrow race window: only
+  matters when the 30-day cache is actually stale AND two processes refresh
+  it in the same window) and shadow-only downstream (a corrupted HURDAT2
+  cache would degrade a probability model's accuracy, not place a bad
+  order), so not urgent enough to interrupt other in-flight work for.
+
+When to revisit:
+  - Before HURRICANE_TRADING_ENABLED or HURRICANE_NEXT_EVENT_TRADING_ENABLED
+    is ever flipped on for real (a corrupted cache feeding a real-money
+    Kelly size is a materially different risk than feeding a shadow log).
+  - If parse_hurdat2 ever starts raising on malformed input (it currently
+    doesn't -- see parse_hurdat2's own "stopping parse" comments) a
+    corrupted mid-write cache read could produce a hard crash rather than a
+    silently-degraded probability; worth re-checking this entry's own risk
+    assessment if that changes.
+
 [RESOLVED 2026-07-25] NEAR-SETTLEMENT LOG (near_settlement_log) SILENTLY BROKEN SINCE IT SHIPPED -- WRONG FIELD NAMES ON THE TRADE-RECORD DICT
 Priority: was Medium -- a shipped calibration-data feature had been a
   complete no-op since it shipped (2026-06-14), with a "success" log line
@@ -8436,12 +8502,13 @@ UPDATE 2026-08-03 (no live-signal code shipped against this entry -- scope
   the VM-move-sequencing notes elsewhere in this file) would actually
   provide.
 
-[PARTIALLY RESOLVED 2026-07-30 -- infra-only pass shipped as a standalone
+[RESOLVED 2026-07-30 (fetch/plumbing piece), CLOSED 2026-08-07 (LLM
+  confidence/lean scoring half, declined by user -- not worth pursuing) --
+  nothing left open in this entry. Infra-only pass shipped as a standalone
   shadow-mode experiment (this entry's own "When to revisit" option): fetch
-  + city->WFO table + .DISCUSSION extraction. LLM confidence/lean scoring
-  deliberately NOT built -- still open, gated on an LLM key/SDK this
-  project doesn't have configured, see resolution note below] NWS AFD (AREA
-  FORECAST DISCUSSION) PARSING
+  + city->WFO table + .DISCUSSION extraction, real and usable via
+  `py main.py afd <city>`. See the dated closure note at the end of this
+  entry.] NWS AFD (AREA FORECAST DISCUSSION) PARSING
 Priority: was Low (stretch/novel — highest differentiation, least proven)
   -- fetch/plumbing piece is done; the actual differentiating signal
   (confidence/lean scoring) is still exactly as unproven as before, just
@@ -8800,6 +8867,16 @@ RESOLVED 2026-07-30 (fetch/plumbing piece only -- confidence/lean scoring
   IEM's archive-retrieval support for backfilling historical AFD text
   first, per DATA-DRIVEN SIGMA's own "build a consumer before a table"
   lesson.
+
+CLOSED 2026-08-07 (LLM confidence/lean scoring half only -- the fetch/
+  plumbing piece above stays as-is, still real and usable via `py main.py
+  afd <city>`): user reviewed the current backlog and called this
+  unnecessary. Not pursuing LLM-based confidence/lean extraction for this
+  signal -- no key/SDK provisioning, no further work planned here. The
+  fetch/.DISCUSSION-extraction infrastructure remains available if a future
+  session finds another use for it (e.g. plain-text display, a non-LLM
+  regex/keyword scoring pass, as the entry's own AskUserQuestion round
+  already considered and declined in favor of fetch-only).
 
 [CITY-LOCAL AFTERNOON SAME-DAY SWEEP]
 Priority: Low (mostly covered by loop/watch when they run)
@@ -14427,7 +14504,7 @@ Priority: Medium -- no live-money impact and not a correctness bug in
   23/23 test_climatology.py tests pass; ruff + ruff format + mypy clean.
 
 ======================================================
-[PRELOAD_ALL CAN PERMANENTLY TRUNCATE forecast_sigma.json TO ONE CITY ON A PARTIAL CALL]
+[RESOLVED 2026-08-07] PRELOAD_ALL CAN PERMANENTLY TRUNCATE forecast_sigma.json TO ONE CITY ON A PARTIAL CALL
 Priority: Medium -- not a live-money bug (this only affects the sigma-based
   dynamic forecast adjustment, which degrades to the static _HISTORICAL_SIGMA
   table on failure, not a crash or a wrong trade) but a real, currently-
@@ -14476,6 +14553,56 @@ Priority: Medium -- not a live-money bug (this only affects the sigma-based
   the complete registry (e.g. compare len() against the real city count)
   rather than just file-existence/staleness. Needs a decision on which
   tradeoff is acceptable before implementing.
+
+  RESOLVED 2026-08-07. Re-verified against live code first (confirmed 21
+  cities via CITY_COORDS, confirmed the exact mechanism, confirmed the
+  wizard call site at main.py:4652). User chose (b) via AskUserQuestion,
+  explicitly ruling out (c) because weather_markets.py already imports
+  climatology.py at module level, so climatology importing CITY_COORDS back
+  would be a real circular import (the only alternatives -- a lazy import or
+  a hardcoded city-count constant -- were rejected as fragile/stale-prone).
+
+  (b) alone turned out to be INSUFFICIENT: live-simulating the wizard's
+  per-city loop with only the merge fix applied showed forecast_sigma.json
+  still stuck at NYC-only, because preload_all()'s own gate
+  (file-exists-and-fresh) blocks the call to load_all_sigmas() entirely
+  after city 1 writes the file -- the merge logic never even runs for
+  cities 2..21. Caught this via a live probe script before proposing a
+  fix, corrected the design with the user (still self-contained in
+  climatology.py, no main.py changes): added
+  _sigma_cache_missing_cities() and gated preload_all()'s sigma-refresh
+  block on it too, so a per-city call keeps triggering load_all_sigmas()
+  until every requested city is actually present. Re-verified live with
+  the same probe -- file now accumulates NYC -> NYC+LasVegas ->
+  NYC+LasVegas+NewOrleans across sequential per-city calls.
+
+  Independent opus review (effort=high) of that combined fix then found 4
+  more real gaps, all fixed: (1) load_all_sigmas()'s own force=False fast
+  path -- the ACTUAL live cron/trading path via
+  weather_markets._load_dynamic_sigma(), which never goes through
+  preload_all() at all -- had the identical missing-city blind spot, so
+  the original bug class still reached production; (2) non-dict JSON
+  content (null, [], ...) in forecast_sigma.json crashed instead of
+  degrading gracefully; (3) a transient compute failure (empty result)
+  could silently overwrite a city's real existing entry with an empty one,
+  and an empty entry was never retried since key-presence alone counted as
+  "satisfied"; (4) a pre-existing module comment flatly contradicted the
+  new merge behavior. 2 LOW findings (per-city staleness not tracked --
+  whole-file mtime granularity means a partial write for city X makes city
+  Y's actually-stale entry look fresh; orphan entries for cities removed
+  from the registry are never pruned) were deliberately left as documented
+  residuals rather than fixed -- both need a cache-schema change
+  (per-city timestamps) for marginal benefit given today's only partial
+  caller (the wizard) runs once per install.
+
+  tests/test_climatology.py: 3 new test classes (TestLoadAllSigmasMerge,
+  TestPreloadAllSigmaGate, TestSigmaCacheRobustness), 19 new tests total
+  covering the merge, the gate, the live-path fast-path fix, non-dict-JSON
+  handling, and the empty-entry-doesn't-clobber/doesn't-stick-forever
+  behavior. Every fix individually mutation-tested (reverted, confirmed the
+  corresponding test fails, restored) before committing. 40/40 tests pass,
+  92 tests in 3 dependent files (test_city_registry_manifest.py,
+  test_gaussian_prob.py, test_p1_remaining.py) still pass, lint/mypy clean.
 
 ======================================================
 [RESOLVED 2026-08-07] 12 test_weather_markets.py TESTS FAILED INTERMITTENTLY DEPENDING ON LOCAL TIME-OF-DAY

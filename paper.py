@@ -3454,6 +3454,8 @@ def check_position_limits(
     from weather_markets import (
         _KXRAIN_MONTHLY_CITY,
         _KXSNOW_MONTHLY_CITY,
+        _KXTEMP_HOURLY_CITY,
+        _hourly_gates_active,
         _hurricane_count_gates_active,
         _hurricane_next_event_gates_active,
         _rain_gates_active,
@@ -3462,6 +3464,29 @@ def check_position_limits(
         is_hurricane_next_event_ticker,
         is_hurricane_ticker,
     )
+
+    # Opus-review-caught (2026-08-07): this shared enforcement point checked
+    # rain/snow/hurricane-count/hurricane-next-event but never hourly, so
+    # every manual placement path that routes through here (cmd_order,
+    # cmd_paper, web_app's /api/paper-order) could place a real paper order
+    # on an hourly-directional temperature ticker regardless of
+    # _hourly_gates_active() -- the automatic path
+    # (order_executor._auto_place_trades) already enforced this; this was
+    # the one gap. Same shape as the rain/snow/hurricane blocks below.
+    if (
+        ticker.upper().startswith(tuple(_KXTEMP_HOURLY_CITY))
+        and not _hourly_gates_active()
+    ):
+        return {
+            "ok": False,
+            "reason": (
+                "hourly-directional temperature markets: shadow-only until "
+                "HOURLY_TRADING_ENABLED=1 and >=20 settled hourly predictions "
+                "exist"
+            ),
+            "existing_cost": 0.0,
+            "limit": max_cost_per_market,
+        }
 
     if (
         ticker.upper().startswith(tuple(_KXRAIN_MONTHLY_CITY))

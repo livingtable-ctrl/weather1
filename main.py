@@ -125,8 +125,10 @@ from utils import MIN_ARB_EDGE, MIN_EDGE, STRONG_EDGE, is_trading_paused
 from weather_markets import (
     _KXRAIN_MONTHLY_CITY,
     _KXSNOW_MONTHLY_CITY,
+    _KXTEMP_HOURLY_CITY,
     CITY_COORDS,
     _feels_like,
+    _hourly_gates_active,
     _hurricane_count_gates_active,
     _hurricane_next_event_gates_active,
     _rain_gates_active,
@@ -2244,6 +2246,18 @@ def _quick_paper_buy(client: KalshiClient) -> None:
                 )
             )
             return
+        if (
+            ticker.upper().startswith(tuple(_KXTEMP_HOURLY_CITY))
+            and not _hourly_gates_active()
+        ):
+            print(
+                red(
+                    f"  {ticker}: hourly-directional temperature markets are shadow-only "
+                    "until HOURLY_TRADING_ENABLED=1 and >=20 settled hourly predictions "
+                    "exist — refusing to place this order."
+                )
+            )
+            return
         while True:
             side = (
                 input(dim(f"  Side for {ticker} (yes/no, q to cancel): "))
@@ -2818,6 +2832,17 @@ def cmd_today(client: KalshiClient) -> None:
                 red(
                     f"  {_ticker1}: monthly snow markets are shadow-only until SNOW_TRADING_ENABLED=1 "
                     "and >=20 settled snow predictions exist — refusing to place this order."
+                )
+            )
+        elif (
+            _ticker1.upper().startswith(tuple(_KXTEMP_HOURLY_CITY))
+            and not _hourly_gates_active()
+        ):
+            print(
+                red(
+                    f"  {_ticker1}: hourly-directional temperature markets are shadow-only "
+                    "until HOURLY_TRADING_ENABLED=1 and >=20 settled hourly predictions "
+                    "exist — refusing to place this order."
                 )
             )
         elif _qty1 < 1 or _bet_dollars1 <= 0:
@@ -4196,6 +4221,24 @@ def cmd_order(client: KalshiClient, action: str, args: list):
             red(
                 f"  {ticker}: monthly snow markets are shadow-only until SNOW_TRADING_ENABLED=1 "
                 "and >=20 settled snow predictions exist — refusing to place this order."
+            )
+        )
+        return
+
+    # Hourly-directional temperature markets carried no explicit guard on
+    # this path (or in paper.check_position_limits(), or on any other manual
+    # placement path) -- unlike rain/snow/hurricane, a KXTEMP*H order could
+    # place for real regardless of _hourly_gates_active(). Same fail-closed
+    # shape as the hurricane/snow guards just above.
+    if (
+        ticker.upper().startswith(tuple(_KXTEMP_HOURLY_CITY))
+        and not _hourly_gates_active()
+    ):
+        print(
+            red(
+                f"  {ticker}: hourly-directional temperature markets are shadow-only "
+                "until HOURLY_TRADING_ENABLED=1 and >=20 settled hourly predictions "
+                "exist — refusing to place this order."
             )
         )
         return
@@ -7325,6 +7368,18 @@ def cmd_paper(args: list, client: KalshiClient | None = None):
                 red(
                     f"  {ticker}: monthly snow markets are shadow-only until SNOW_TRADING_ENABLED=1 "
                     "and >=20 settled snow predictions exist — refusing to place this order."
+                )
+            )
+            return
+        if (
+            ticker.upper().startswith(tuple(_KXTEMP_HOURLY_CITY))
+            and not _hourly_gates_active()
+        ):
+            print(
+                red(
+                    f"  {ticker}: hourly-directional temperature markets are shadow-only "
+                    "until HOURLY_TRADING_ENABLED=1 and >=20 settled hourly predictions "
+                    "exist — refusing to place this order."
                 )
             )
             return
