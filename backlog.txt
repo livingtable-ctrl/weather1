@@ -14638,10 +14638,12 @@ Priority: Low -- not currently causing any failure (231/231 pass; the
   possibly the newer NWS AFD-parsing infra too. A meaningfully larger
   task than either of the two already-fixed gaps, not a quick follow-on.
 
-[test_cron_integration.py's cmd_cron TESTS ALSO MAKE REAL NETWORK CALLS VIA UNMOCKED trade_cycle._run_batch_prewarm]
-Priority: Low -- gated behind the `integration` pytest marker (only runs
-  with `-m integration`, not in a default `pytest` invocation), and
-  currently passing, just slow and non-hermetic.
+[RESOLVED 2026-08-07] test_cron_integration.py's cmd_cron TESTS ALSO MAKE REAL NETWORK CALLS VIA UNMOCKED trade_cycle._run_batch_prewarm
+Priority: Low at discovery time -- passing (if slow) in the environment
+  first observed, and this repo's `integration` pytest marker is
+  registered but never gates default runs (no `addopts` deselection, and
+  CI's own workflow invokes bare `pytest`), so these tests already ran on
+  every default/CI invocation, not just an opt-in `-m integration` pass.
 
   Found 2026-08-07 fixing tests/test_trade_cycle_engine.py::
   TestCronBannerNotMisleadingWhenHalted::test_banner_suppressed_when_
@@ -14670,12 +14672,11 @@ Priority: Low -- gated behind the `integration` pytest marker (only runs
   finishing before the 720s cron watchdog would kill it. This directly
   contradicts that file's own module docstring ("All external calls...
   are mocked... CI-safe with mocks"). Not fixed this session -- out of
-  scope for the test_trade_cycle_engine.py hang, and this file is marked
-  `integration` (not run by default), so it's a hermeticity/slowness gap
-  rather than an active failure. Same bug class as the analyze_trade/
-  nws_prob entry above; 3rd known instance of "mocking main.py's
-  scan/analyze functions doesn't isolate run_trade_cycle()'s own internal
-  prewarm/fetch calls."
+  scope for the test_trade_cycle_engine.py hang. Same bug class as the
+  analyze_trade/nws_prob entry above; 4th known instance of "mocking
+  main.py's scan/analyze functions doesn't isolate run_trade_cycle()'s
+  own internal prewarm/fetch calls" (nws_prob entry above is the 3rd,
+  still open).
 
   What it would look like: apply the same fix -- stub trade_cycle.
   _run_batch_prewarm (or the equivalent) to a no-op in test_cron_

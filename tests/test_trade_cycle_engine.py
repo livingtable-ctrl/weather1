@@ -41,6 +41,16 @@ def engine_env(tmp_path, monkeypatch):
     import main
     import trade_cycle
 
+    # run_trade_cycle() calls this (prewarm=True is cron's default) BEFORE
+    # the analyze loop, straight to weather_markets' real Open-Meteo/NBM/
+    # ECMWF/WeatherAPI/NWS/METAR/MOS fetchers -- independent of the
+    # get_weather_markets/enrich_with_forecast/analyze_trade mocks above and
+    # below, so any test that hands cron.cmd_cron a non-empty market list
+    # (needed to exercise placement) hung making real, unmocked network
+    # calls (one of them a bare 65s time.sleep rate-limit pause on top).
+    # No test here asserts on prewarm's own behavior, so a no-op is safe.
+    monkeypatch.setattr(trade_cycle, "_run_batch_prewarm", lambda *a, **kw: None)
+
     monkeypatch.setattr(cron, "RUNNING_FLAG_PATH", tmp_path / ".cron_running")
     monkeypatch.setattr(cron, "KILL_SWITCH_PATH", tmp_path / ".kill_switch")
     monkeypatch.setattr(cron, "LOCK_PATH", tmp_path / ".cron_lock")
