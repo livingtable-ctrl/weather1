@@ -145,14 +145,66 @@ class TestAnalyzeTradeHurricaneGating:
         assert counts.get("hurricane_not_supported") is None
         assert counts.get("condition_parse") == 1
 
-    def test_kxfirsthurricane_gates_out(self):
+    def test_kxfirsthurricane_no_longer_blanket_gated(self):
         """Live-confirmed real ticker with 53 open markets as of 2026-07-26
-        -- also missed by the original "KXHUR"-only guard."""
+        -- also missed by the original "KXHUR"-only guard. backlog.txt
+        "HURRICANE MARKETS" -- storm-order model (2026-08-07): KXFIRSTHURRICANE
+        now has a real model (_analyze_storm_order_trade) and is explicitly
+        carved out of the blanket guard -- must NOT hit hurricane_not_supported
+        anymore. This bare ticker ("KXFIRSTHURRICANE-26") has no embedded
+        DEC01-style date segment, so parse_city_date() can't resolve a
+        target_date from it -- hits no_date instead of condition_parse,
+        same shape as the KXNAMEDSTORM test above (still proves
+        hurricane_not_supported no longer fires, which is this test's
+        point)."""
         import weather_markets as wm
 
         wm.reset_gate_counts()
         assert wm.analyze_trade({"ticker": "KXFIRSTHURRICANE-26"}) is None
-        assert wm.get_gate_counts().get("hurricane_not_supported") == 1
+        counts = wm.get_gate_counts()
+        assert counts.get("hurricane_not_supported") is None
+        assert counts.get("no_date") == 1
+
+    def test_kxfirsthurricane_dispatches_to_the_real_model_end_to_end(
+        self, monkeypatch
+    ):
+        """Same "reach the real dispatch through the public entry point, not
+        just the analysis function directly" concern
+        test_kxnexthurdate_dispatches_to_the_real_model_end_to_end's own
+        docstring documents."""
+        import weather_markets as wm
+
+        monkeypatch.setattr(
+            "hurricane_climatology.load_basin_storms",
+            lambda basin: [{"year": 2020, "basin": "AL"}],
+        )
+        import hurricane_climatology as hc
+
+        monkeypatch.setattr(
+            hc, "first_hurricane_position_outcomes", lambda *a, **k: [True] * 30
+        )
+
+        enriched = wm.enrich_with_forecast(
+            {
+                "ticker": "KXFIRSTHURRICANE-26DEC01ATL-ART",
+                "close_time": "2026-12-01T15:00:00Z",
+                "custom_strike": {"storm": "Arthur"},
+                "yes_bid_dollars": 0.40,
+                "yes_ask_dollars": 0.45,
+                "volume": 100,
+                "open_interest": 100,
+            },
+            fetch_forecast=False,
+        )
+        wm.reset_gate_counts()
+        result = wm.analyze_trade(enriched)
+        assert result is not None
+        assert result["method"] in (
+            "storm_order_climatology",
+            "storm_order_climatology_tilted",
+        )
+        assert result["city"] == "HUR_ATL"
+        assert wm.get_gate_counts().get("hurricane_not_supported") is None
 
     def test_kxnamedstorm_no_longer_blanket_gated(self):
         """Now one of the 5 season-count series with a real model

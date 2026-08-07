@@ -26,6 +26,7 @@ from weather_markets import (
     _KXTEMP_HOURLY_CITY,
     is_hurricane_count_ticker,
     is_hurricane_next_event_ticker,
+    is_storm_order_ticker,
     market_implied_rain_event_key,
     parse_market_price,
 )
@@ -204,6 +205,11 @@ def _group_markets(markets: list[dict]) -> dict:
         # with no shadow-gate check of its own, completely bypassing
         # _hurricane_next_event_gates_active().
         if is_hurricane_next_event_ticker(ticker):
+            continue
+        # Same reasoning as the 2 hurricane exclusions just above, for the 1
+        # storm-order series (backlog.txt "HURRICANE MARKETS" -- storm-order
+        # model, 2026-08-07).
+        if is_storm_order_ticker(ticker):
             continue
 
         if ticker.upper().startswith(tuple(_KXRAIN_MONTHLY_CITY)):

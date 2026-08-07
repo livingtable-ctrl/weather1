@@ -573,6 +573,190 @@ def next_event_probability(outcomes: list[bool]) -> float:
     return max(0.01, min(0.99, sum(outcomes) / len(outcomes)))
 
 
+# ── Storm-order model (backlog.txt "HURRICANE MARKETS", 2026-08-07) ──
+# For KXFIRSTHURRICANE: "will <name> be the first hurricane in the Atlantic
+# this season?" -- a third, genuinely different question shape from both
+# models above: which NAME (of the season's fixed, alphabetically-ordered
+# pre-assigned list) ends up being first to cross the hurricane threshold,
+# not a season total or a single calendar date. Reuses the same underlying
+# storms/threshold_day data as both other models.
+
+
+## Opus-review-caught (2026-08-07, CRITICAL): HURDAT2's storm-ID embedded
+# sequence number (e.g. "AL062026" -> "06") is NOT the same as a storm's
+# rank among that season's NAMED storms, contrary to this module's own
+# original claim -- verified live against the real cached Atlantic file:
+# 27 of 30 window years (1996-2025) contain at least one UNNAMED system
+# (unnamed tropical depressions/subtropical storms, spelled-out-number
+# placeholder names like "ELEVEN"/"TWENTY-ONE") consuming a sequence number
+# with no name of its own, 3 years have literal ID gaps (2017/2022/2024),
+# and named storms are not always even in ID order (2021: KATE=AL10 before
+# JULIAN=AL11; 2022: IAN=AL09 before HERMINE=AL10). Kalshi's own
+# KXFIRSTHURRICANE/_ATLANTIC_STORM_NAMES_BY_SEASON position, and this
+# module's own storms_named_so_far conditioning, are both NAME-index units
+# (rank among the season's pre-assigned name list) -- comparing an ID
+# sequence number against a name index silently mismatched on both
+# arguments, measured to mis-rank 11 of 30 window years and shift ~10
+# percentage points of probability mass between positions on real data.
+_UNNAMED_STORM_NAMES = frozenset(
+    {
+        "UNNAMED",
+        "ONE",
+        "TWO",
+        "THREE",
+        "FOUR",
+        "FIVE",
+        "SIX",
+        "SEVEN",
+        "EIGHT",
+        "NINE",
+        "TEN",
+        "ELEVEN",
+        "TWELVE",
+        "THIRTEEN",
+        "FOURTEEN",
+        "FIFTEEN",
+        "SIXTEEN",
+        "SEVENTEEN",
+        "EIGHTEEN",
+        "NINETEEN",
+        "TWENTY",
+        "TWENTY-ONE",
+        "TWENTY-TWO",
+        "TWENTY-THREE",
+        "TWENTY-FOUR",
+        "TWENTY-FIVE",
+        "TWENTY-SIX",
+        "TWENTY-SEVEN",
+        "TWENTY-EIGHT",
+        "TWENTY-NINE",
+        "THIRTY",
+    }
+)
+
+
+def _named_storms_in_naming_order(storms: list[dict], year: int) -> list[dict]:
+    """Returns `year`'s storms that received a real NHC name (excludes
+    UNNAMED/spelled-out-number placeholder systems -- see
+    _UNNAMED_STORM_NAMES's own comment), ordered ALPHABETICALLY by name.
+
+    Opus-review-caught (2026-08-07, MEDIUM), 2nd round: an earlier version
+    of this function sorted by HURDAT2 storm-ID sequence number instead,
+    on the claimed (and false) premise that ID order always matches real
+    NHC name-assignment order once UNNAMED systems are excluded. Verified
+    against the real cached Atlantic file: named storms are NOT always
+    even in ID order -- HURDAT2 IDs are assigned by post-season reanalyzed
+    genesis order, while NHC names are assigned in real time, and the two
+    genuinely diverge in at least 6 of the last 30 years (2007, 2012, 2019,
+    2021 KATE/JULIAN, 2022 IAN/HERMINE, 2023 GERT/EMILY/FRANKLIN).
+    Alphabetical name order is the actual invariant -- NHC's whole naming
+    convention IS strict alphabetical assignment within a season -- and
+    sorting by name string reproduces the real list exactly in every one
+    of those divergent years (spot-checked live). Not a proxy or a
+    heuristic: this is definitionally what "naming order" means.
+
+    Known, accepted limitation: this does NOT handle the rare Greek-
+    letter/WMO-supplementary-name overflow for a >21-storm season (2020
+    used Alpha/Beta/Gamma/... after exhausting the regular 21-name list;
+    "ALPHA" sorts alphabetically before "ARTHUR", which is wrong for real
+    assignment order) -- immaterial for this model's real use (KXFIRSTHURRICANE
+    only ever asks about the first 21 names; the first hurricane of a
+    season falling on an overflow name at all is a vanishingly rare edge
+    case, and _parse_storm_order_condition already fails closed for any
+    name outside the known 21)."""
+    season = [
+        s for s in storms if s["year"] == year and s["name"] not in _UNNAMED_STORM_NAMES
+    ]
+    return sorted(season, key=lambda s: s["name"])
+
+
+def first_hurricane_position(
+    storms: list[dict], year: int, kt: int = NEXT_EVENT_THRESHOLDS_KT["hurricane"]
+) -> int | None:
+    """Returns the 1-indexed NAME-index position (rank among `year`'s real
+    NAMED storms only, in naming order -- see _named_storms_in_naming_
+    order's own docstring for why this is NOT simply the HURDAT2 storm-ID
+    sequence number) of WHICHEVER storm that year first reached kt
+    strength, by date -- NOT necessarily the storm that formed earliest as
+    a tropical storm. A later-named storm can intensify to hurricane
+    strength before an earlier-named storm does (naming order tracks
+    tropical-storm formation date, not hurricane-attainment date); this
+    function answers "which name will the market actually resolve Yes for"
+    (the hurricane-attainment race), not "which name formed first" (the
+    naming race).
+
+    Ties (two+ storms reaching kt on the same calendar day -- threshold_day
+    is day-resolution only, see parse_hurdat2's own docstring) are broken by
+    lowest name-index position: a defensible deterministic proxy for
+    Kalshi's real "Source Agency's official advisory ordering" tiebreak
+    (unavailable at this data's day-level resolution) -- a rare edge case,
+    not the common path.
+
+    `storms` already filtered to one basin (via load_basin_storms). Returns
+    None if no NAMED storm that year ever reached kt.
+
+    Same guard as first_occurrence_day's own docstring explains: kt must be
+    one of the thresholds parse_hurdat2 actually tracks in threshold_day --
+    `dict.get` on an untracked kt silently returns None for every storm
+    (indistinguishable from "no storm reached it"), producing a confidently
+    wrong None instead of a loud failure."""
+    if kt not in _KNOWN_THRESHOLD_KT:
+        raise ValueError(
+            f"first_hurricane_position: kt={kt} is not tracked by "
+            f"parse_hurdat2's threshold_day (known: {sorted(_KNOWN_THRESHOLD_KT)})"
+        )
+    named_in_order = _named_storms_in_naming_order(storms, year)
+    candidates: list[tuple[tuple[int, int], int]] = []
+    for position, s in enumerate(named_in_order, start=1):
+        day = s["threshold_day"].get(kt)
+        if day is None:
+            continue
+        candidates.append((day, position))
+    if not candidates:
+        return None
+    _, position = min(candidates)
+    return position
+
+
+def first_hurricane_position_outcomes(
+    storms: list[dict],
+    target_position: int,
+    storms_named_so_far: int,
+    *,
+    kt: int = NEXT_EVENT_THRESHOLDS_KT["hurricane"],
+    window_years: int = HISTORY_WINDOW_YEARS,
+    end_year: int | None = None,
+) -> list[bool]:
+    """Empirical outcomes ("was `target_position` the position of the first
+    storm to reach kt strength") for the most recent `window_years` COMPLETE
+    historical calendar seasons -- same explicit calendar-range iteration
+    season_end_total_distribution/next_event_outcomes both use, for the same
+    reason (a year with zero qualifying storms must still contribute a real
+    False, not be silently dropped).
+
+    Conditioned on `storms_named_so_far` (M): only years where the
+    historical first-hurricane-position is None (no hurricane at all that
+    year) or > M are "eligible" -- years where, like the current season
+    after M names have already been used with none of them reaching
+    hurricane strength, the first hurricane could still plausibly be
+    pending. Mirrors next_event_outcomes' as_of_month_day eligibility filter
+    exactly, with position standing in for calendar date as the "how far
+    into the season" scalar. Pass storms_named_so_far=0 for the fully
+    unconditional distribution (every window year is eligible, since
+    position > 0 is true for every real position and None always passes)."""
+    if end_year is None:
+        end_year = datetime.now(UTC).date().year - 1
+    window = range(end_year - window_years + 1, end_year + 1)
+    outcomes: list[bool] = []
+    for y in window:
+        position = first_hurricane_position(storms, y, kt)
+        eligible = position is None or position > storms_named_so_far
+        if not eligible:
+            continue
+        outcomes.append(position == target_position)
+    return outcomes
+
+
 def bootstrap_ci_next_event(outcomes: list[bool], n: int = 500) -> tuple[float, float]:
     """Mirrors bootstrap_ci's exact resampling shape: n resamples-with-
     replacement of `outcomes`, each resample's True-fraction, sorted, 5th/95th

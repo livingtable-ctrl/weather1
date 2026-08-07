@@ -13,6 +13,8 @@ live check is not repeated here.
 
 from __future__ import annotations
 
+import pytest
+
 import hurricane_climatology as hc
 
 # Synthetic 5-season Atlantic (AL) fixture, hand-constructed so every count
@@ -515,3 +517,226 @@ class TestBootstrapCiNextEvent:
         [0.01, 0.99] clamp was added to this function."""
         assert hc.bootstrap_ci_next_event([True] * 30) == (0.99, 0.99)
         assert hc.bootstrap_ci_next_event([False] * 30) == (0.01, 0.01)
+
+
+# Dedicated 6-season Atlantic fixture for the storm-order model (backlog.txt
+# "HURRICANE MARKETS" -- storm-order model, 2026-08-07), hand-constructed so
+# both the position-derivation and eligibility-conditioning logic in
+# first_hurricane_position/first_hurricane_position_outcomes are
+# independently verifiable. Every storm carries a real, DISTINCT name --
+# opus-review-caught (2026-08-07, CRITICAL): a first draft of this fixture
+# reused the sibling season-count/next-event fixtures' "UNNAMED" placeholder
+# convention for every storm, which -- once first_hurricane_position started
+# filtering out UNNAMED/placeholder-named systems (see
+# _named_storms_in_naming_order's own comment for why) -- silently emptied
+# every single season in this fixture, since _named_storms_in_naming_order
+# excludes them all. Position is now the storm's rank among that season's
+# NAMED storms (in ID order), NOT the raw HURDAT2 storm-ID sequence number
+# -- 2003 below deliberately includes 2 leading TS-only storms (Fay/
+# Gonzalo) so Hanna/Isaias's name-index positions (3/4) differ from what
+# their bare storm IDs would suggest if the season started at AL03.
+#   2000: Arthur reaches HU (64kt) on Aug 1 -- only storm. position=1.
+#   2001: Bertha is TS-only (40kt, never HU); Cristobal reaches HU on Sep 1
+#         -- position=2, proving position is NOT "first storm of the
+#         season" but "first storm to actually reach kt". Dolly also
+#         reaches major-hurricane strength (100kt) on Oct 1, purely for the
+#         custom-kt=96 test below (kt=64's answer for 2001 is unaffected --
+#         Dolly forms after Cristobal already reached 64kt).
+#   2002: Edouard is TS-only (40kt) -- no storm reaches HU all season.
+#         position=None.
+#   2003: Fay and Gonzalo are TS-only (never HU); Hanna and Isaias both
+#         reach HU on the SAME calendar day (Aug 1) -- a genuine tie at
+#         day-resolution. Hanna's lower name-index position (3, vs
+#         Isaias's 4) must win the tiebreak.
+#   2004: Josephine reaches HU on Sep 10 (formed first); Kyle reaches HU on
+#         Aug 1 (formed second, but intensified faster) -- position=2,
+#         proving this is the hurricane-ATTAINMENT race (by date), not the
+#         naming/formation race, even though Kyle's name-index is higher.
+#   2005: Leah is TS-only (40kt); an UNNAMED subtropical storm (30kt, never
+#         HU) consumes the AL02 sequence slot with no name of its own;
+#         Marco reaches HU on Sep 1; a 4th system named "FOUR" (a spelled-
+#         out-number placeholder, TD-only) forms after Marco already
+#         reached HU. Marco's real storm-ID sequence number is 3, but its
+#         real NAME-index position is 2 (Leah=1, Marco=2 -- neither
+#         placeholder-named system gets a name-index slot) -- this is the
+#         exact bug class opus review caught live in the real Atlantic
+#         record (e.g. real 2000/2017/2021/2022/2023 seasons).
+_STORM_ORDER_FIXTURE = """\
+AL012000,             ARTHUR,      1,
+20000801, 0000,  , HU, 20.0N,  60.0W,  64, -999
+AL012001,             BERTHA,      1,
+20010801, 0000,  , TS, 20.0N,  60.0W,  40, -999
+AL022001,          CRISTOBAL,      1,
+20010901, 0000,  , HU, 20.0N,  61.0W,  64, -999
+AL032001,              DOLLY,      1,
+20011001, 0000,  , HU, 20.0N,  62.0W, 100, -999
+AL012002,            EDOUARD,      1,
+20020801, 0000,  , TS, 20.0N,  60.0W,  40, -999
+AL012003,                FAY,      1,
+20030701, 0000,  , TS, 20.0N,  60.0W,  30, -999
+AL022003,            GONZALO,      1,
+20030715, 0000,  , TS, 20.0N,  60.0W,  30, -999
+AL032003,              HANNA,      1,
+20030801, 0000,  , HU, 20.0N,  60.0W,  64, -999
+AL042003,             ISAIAS,      1,
+20030801, 0000,  , HU, 20.0N,  61.0W,  70, -999
+AL012004,         JOSEPHINE,      1,
+20040910, 0000,  , HU, 20.0N,  60.0W,  64, -999
+AL022004,               KYLE,      1,
+20040801, 0000,  , HU, 20.0N,  61.0W,  64, -999
+AL012005,               LEAH,      1,
+20050801, 0000,  , TS, 20.0N,  60.0W,  40, -999
+AL022005,            UNNAMED,      1,
+20050805, 0000,  , SS, 20.0N,  60.5W,  30, -999
+AL032005,              MARCO,      1,
+20050901, 0000,  , HU, 20.0N,  61.0W,  64, -999
+AL042005,               FOUR,      1,
+20050910, 0000,  , TD, 20.0N,  62.0W,  25, -999
+"""
+
+
+def _storm_order_fixture_storms():
+    return hc.parse_hurdat2(_STORM_ORDER_FIXTURE)
+
+
+class TestFirstHurricanePosition:
+    def test_single_storm_season(self):
+        storms = _storm_order_fixture_storms()
+        assert hc.first_hurricane_position(storms, 2000) == 1
+
+    def test_position_is_first_storm_to_reach_kt_not_first_storm_of_season(self):
+        """2001's AL01 never reaches hurricane strength -- AL02 (the 2nd
+        named storm) is the real answer, position=2, not 1."""
+        storms = _storm_order_fixture_storms()
+        assert hc.first_hurricane_position(storms, 2001) == 2
+
+    def test_no_qualifying_storm_returns_none(self):
+        storms = _storm_order_fixture_storms()
+        assert hc.first_hurricane_position(storms, 2002) is None
+
+    def test_same_day_tie_breaks_to_lowest_sequence_number(self):
+        storms = _storm_order_fixture_storms()
+        assert hc.first_hurricane_position(storms, 2003) == 3
+
+    def test_hurricane_attainment_race_not_naming_race(self):
+        """2004: AL01 formed first (named first) but reaches HU on Sep 10;
+        AL02 formed second but reaches HU earlier, on Aug 1. The market
+        resolves for whichever NAME actually crossed the threshold first --
+        position=2, not 1."""
+        storms = _storm_order_fixture_storms()
+        assert hc.first_hurricane_position(storms, 2004) == 2
+
+    def test_custom_kt_threshold_major_hurricane(self):
+        """kt=96 (major hurricane) only AL03 reaches in 2001 -- position=3,
+        different from kt=64's answer of 2 for the same year."""
+        storms = _storm_order_fixture_storms()
+        assert hc.first_hurricane_position(storms, 2001, kt=96) == 3
+
+    def test_untracked_kt_raises_valueerror(self):
+        """Same guard first_occurrence_day's own docstring explains: an
+        untracked kt must fail loudly, not silently return None for every
+        storm (indistinguishable from "no storm reached it")."""
+        storms = _storm_order_fixture_storms()
+        with pytest.raises(ValueError, match="not tracked"):
+            hc.first_hurricane_position(storms, 2001, kt=70)
+
+    def test_unnamed_storm_does_not_consume_a_name_index_slot(self):
+        """Opus-review-caught (2026-08-07, CRITICAL): 2005's UNNAMED system
+        (AL02) has a real HURDAT2 storm-ID sequence number between Leah
+        (AL01) and Marco (AL03), but never received a name -- it must NOT
+        count toward Marco's position. Marco's real name-index is 2 (Leah=1,
+        Marco=2), not its raw storm-ID sequence number 3. This reproduces
+        the exact bug class found live in the real Atlantic record (e.g.
+        2000, 2021, 2022, 2023 all have unnamed systems consuming ID slots)."""
+        storms = _storm_order_fixture_storms()
+        assert hc.first_hurricane_position(storms, 2005) == 2
+
+    def test_named_storms_in_naming_order_excludes_unnamed_systems(self):
+        """Covers both placeholder shapes _UNNAMED_STORM_NAMES filters --
+        the literal "UNNAMED" AND spelled-out-number placeholders like
+        "FOUR" (opus-review-caught, 2026-08-07, LOW: the fixture originally
+        only exercised the "UNNAMED" spelling, leaving the spelled-out-
+        number branch -- genuinely load-bearing on real Atlantic data, e.g.
+        2017's "FOUR" -- completely untested)."""
+        storms = _storm_order_fixture_storms()
+        named = hc._named_storms_in_naming_order(storms, 2005)
+        assert [s["name"] for s in named] == ["LEAH", "MARCO"]
+
+
+class TestFirstHurricanePositionOutcomes:
+    def test_unconditional_mode_hand_computed(self):
+        """storms_named_so_far=0 -- every window year eligible. Hand-
+        verified per-year positions: 2000=1, 2001=2, 2002=None, 2003=3,
+        2004=2. Outcomes for target_position=2: only 2001 and 2004 match."""
+        storms = _storm_order_fixture_storms()
+        outcomes = hc.first_hurricane_position_outcomes(
+            storms, 2, 0, window_years=5, end_year=2004
+        )
+        assert outcomes == [False, True, False, False, True]
+
+    def test_conditional_mode_excludes_years_already_resolved(self):
+        """storms_named_so_far=2 -- eligible years are those whose real
+        position is None or > 2: 2000 (pos=1) and 2001 (pos=2) are already
+        resolved by position 2, so both are ineligible; 2004 (pos=2) is
+        ALSO ineligible for the same reason. Only 2002 (None) and 2003
+        (pos=3) remain eligible. Target position=3: 2002=False (None),
+        2003=True."""
+        storms = _storm_order_fixture_storms()
+        outcomes = hc.first_hurricane_position_outcomes(
+            storms, 3, 2, window_years=5, end_year=2004
+        )
+        assert outcomes == [False, True]
+
+    def test_zero_storm_season_contributes_a_real_false_not_dropped(self):
+        """2002 (no storm ever reaches HU) must still contribute a real
+        False for any real target_position, not be silently dropped --
+        same explicit-calendar-range discipline every other bootstrap
+        distribution in this module already follows."""
+        storms = _storm_order_fixture_storms()
+        outcomes = hc.first_hurricane_position_outcomes(
+            storms, 1, 0, window_years=5, end_year=2004
+        )
+        assert len(outcomes) == 5
+        assert outcomes[2] is False  # 2002, index 2 of ascending 2000..2004
+
+    def test_pass_zero_is_the_documented_unconditional_identity(self):
+        """storms_named_so_far=0 must be equivalent to no conditioning at
+        all -- every position is eligible since position > 0 always holds
+        for a real (1-indexed) position and None always passes."""
+        storms = _storm_order_fixture_storms()
+        cond = hc.first_hurricane_position_outcomes(
+            storms, 2, 0, window_years=5, end_year=2004
+        )
+        assert len(cond) == 5  # all 5 window years eligible
+
+    def test_probability_reuses_next_event_probability_directly(self):
+        """first_hurricane_position_outcomes returns a plain list[bool] --
+        next_event_probability (already tested above) must work on it with
+        no storm-order-specific math needed."""
+        storms = _storm_order_fixture_storms()
+        outcomes = hc.first_hurricane_position_outcomes(
+            storms, 2, 0, window_years=5, end_year=2004
+        )
+        assert hc.next_event_probability(outcomes) == 0.4  # 2/5 True
+
+    def test_ci_reuses_bootstrap_ci_next_event_directly(self):
+        """Opus-review-caught (2026-08-07, LOW): the fixture only produces 5
+        outcomes, below bootstrap_ci_next_event's own <15 floor -- a version
+        of this test that called bootstrap_ci_next_event on those 5 directly
+        would just hit the hardcoded (0.0, 1.0) degenerate-CI early return
+        and never actually exercise the resampling path, making a
+        `lo <= prob <= hi` assertion vacuously true for ANY prob. Tiling the
+        5-year outcome list x3 (=15) clears that floor and exercises the
+        real resampling math -- this is a synthetic extension purely to
+        test the reuse plumbing, not a claim about real 15-year Atlantic
+        climatology."""
+        storms = _storm_order_fixture_storms()
+        outcomes = hc.first_hurricane_position_outcomes(
+            storms, 2, 0, window_years=5, end_year=2004
+        )
+        tiled = outcomes * 3
+        assert len(tiled) == 15
+        prob = hc.next_event_probability(tiled)
+        lo, hi = hc.bootstrap_ci_next_event(tiled)
+        assert (lo, hi) != (0.0, 1.0)  # confirms the real resampling path ran
+        assert lo <= prob <= hi

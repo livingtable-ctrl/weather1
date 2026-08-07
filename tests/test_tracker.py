@@ -4277,6 +4277,52 @@ class TestDisputedOutcomeTracking(unittest.TestCase):
             "a snow row must not change the sameday calibration row count",
         )
 
+    def test_get_multiday_calibration_cli_excludes_storm_order(self):
+        """Opus-review-caught (2026-08-07, LOW): the rain/snow exclusion
+        tests above have no hurricane-family equivalent anywhere in this
+        file even though all 3 hurricane condition_types were added to this
+        function's own SQL exclusion tuple -- closed for storm_order (the
+        new model this session ships) while touching this exact site."""
+        self._seed_baseline()
+        before = tracker.get_multiday_calibration_cli()
+        self._log_settled(
+            "KXFIRSTHURRICANE-26DEC01ATL-ART",
+            0.99,
+            0,
+            self._FUTURE,
+            condition_type="storm_order",
+            edge=0.99,
+        )
+        after = tracker.get_multiday_calibration_cli()
+        self.assertEqual(
+            before["n"],
+            after["n"],
+            "a storm_order row must not change the multiday calibration row count",
+        )
+
+    def test_get_sameday_calibration_cli_excludes_storm_order(self):
+        self._seed_baseline(market_date=self._PAST)
+        before = tracker.get_sameday_calibration_cli()
+        self._log_settled(
+            "KXFIRSTHURRICANE-26DEC01ATL-BER",
+            0.99,
+            0,
+            self._PAST,
+            condition_type="storm_order",
+            edge=0.99,
+        )
+        with tracker._conn() as con:
+            con.execute(
+                "UPDATE predictions SET days_out = 0 "
+                "WHERE ticker = 'KXFIRSTHURRICANE-26DEC01ATL-BER'"
+            )
+        after = tracker.get_sameday_calibration_cli()
+        self.assertEqual(
+            before["n"],
+            after["n"],
+            "a storm_order row must not change the sameday calibration row count",
+        )
+
     def test_get_market_calibration_excludes_disputed(self):
         self._seed_baseline()
         before = tracker.get_market_calibration()
@@ -4816,6 +4862,101 @@ class TestDisputedOutcomeTracking(unittest.TestCase):
             before, after, "a lookalike series ticker must not inflate the count"
         )
 
+    def test_count_settled_storm_order_predictions_counts_only_storm_order_tickers(
+        self,
+    ):
+        """backlog.txt "HURRICANE MARKETS" -- storm-order model
+        (2026-08-07): must count KXFIRSTHURRICANE-style rows, not ordinary
+        daily ones or the (separately-gated) hurricane-count/next-event
+        rows."""
+        before = tracker.count_settled_storm_order_predictions()
+        self._log_settled(
+            "KXFIRSTHURRICANE-26DEC01ATL-ART",
+            0.6,
+            True,
+            self._FUTURE,
+            city="HUR_ATL",
+            condition_type="storm_order",
+        )
+        self._log_settled(
+            "KXNEXTHURDATE-26DEC01-26SEP15",
+            0.6,
+            True,
+            self._FUTURE,
+            city="HUR_ATL",
+            condition_type="hurricane_next_event",
+        )
+        self._log_settled("KXHIGHNY-26JUL20-T75", 0.6, True, self._FUTURE, city="NYC")
+        after = tracker.count_settled_storm_order_predictions()
+        self.assertEqual(
+            after,
+            before + 1,
+            "must count only the storm-order ticker, not the next-event or "
+            "daily tickers too",
+        )
+
+    def test_count_settled_storm_order_predictions_excludes_disputed(self):
+        before = tracker.count_settled_storm_order_predictions()
+        self._log_settled(
+            "KXFIRSTHURRICANE-26DEC01ATL-WIL",
+            1.0,
+            0,
+            self._FUTURE,
+            city="HUR_ATL",
+            condition_type="storm_order",
+            edge=0.99,
+        )
+        tracker.mark_outcome_disputed("KXFIRSTHURRICANE-26DEC01ATL-WIL")
+        after = tracker.count_settled_storm_order_predictions()
+        self.assertEqual(before, after)
+
+    def test_count_settled_storm_order_predictions_distinct_ticker_not_raw_rows(self):
+        """Same defense-in-depth-against-raw-row-duplication reasoning as
+        the sibling next-event counter's own equivalent test."""
+        before = tracker.count_settled_storm_order_predictions()
+        self._log_settled(
+            "KXFIRSTHURRICANE-26DEC01ATL-JOS",
+            0.6,
+            True,
+            self._FUTURE,
+            city="HUR_ATL",
+            condition_type="storm_order",
+        )
+        with tracker._conn() as con:
+            con.execute(
+                "INSERT INTO predictions (ticker, city, market_date, "
+                "condition_type, our_prob, market_prob, edge, method, "
+                "n_members, predicted_at) "
+                "SELECT ticker, city, market_date, condition_type, our_prob, "
+                "market_prob, edge, method, n_members, predicted_at "
+                "FROM predictions WHERE ticker = ?",
+                ("KXFIRSTHURRICANE-26DEC01ATL-JOS",),
+            )
+        after = tracker.count_settled_storm_order_predictions()
+        self.assertEqual(
+            after,
+            before + 1,
+            "2 raw prediction rows for the SAME settled ticker must still "
+            "count as 1 distinct event",
+        )
+
+    def test_count_settled_storm_order_predictions_ignores_lookalike_series(self):
+        """Same coarse-SQL-LIKE-prefix-vs-series-EXACT-match risk shape the
+        sibling next-event counter's own equivalent test documents."""
+        before = tracker.count_settled_storm_order_predictions()
+        self._log_settled(
+            "KXFIRSTHURRICANE2-26DEC01ATL-ART",
+            0.6,
+            True,
+            self._FUTURE,
+            city="HUR_ATL",
+            condition_type="storm_order",
+        )
+        after = tracker.count_settled_storm_order_predictions()
+        self.assertEqual(
+            before, after, "a lookalike series ticker must not inflate the count"
+        )
+
     def test_count_settled_west_coast_multiday_excludes_disputed(self):
         # This gate filters on o.settled_temp_f IS NOT NULL, which
         # _log_settled never populates -- without setting it explicitly,
@@ -5022,6 +5163,28 @@ class TestLiveTradingGateConditionTypeFilter(unittest.TestCase):
             "a hurricane_next_event row must not change the settled count",
         )
 
+    def test_count_settled_predictions_excludes_storm_order(self):
+        """backlog.txt "HURRICANE MARKETS" -- storm-order model
+        (2026-08-07): same "this exclusion list was never extended for the
+        new model" gap the hurricane_next_event test above documents --
+        checked up front instead of discovered later this time."""
+        self._seed_baseline()
+        before = tracker.count_settled_predictions()
+        self._log_settled(
+            "KXFIRSTHURRICANE-26DEC01ATL-ART",
+            0.99,
+            0,
+            self._FUTURE,
+            condition_type="storm_order",
+            edge=0.99,
+        )
+        after = tracker.count_settled_predictions()
+        self.assertEqual(
+            before,
+            after,
+            "a storm_order row must not change the settled count",
+        )
+
     def test_count_settled_predictions_counts_raw_rows_not_distinct_events(self):
         """backlog.txt "COUNT_SETTLED_PREDICTIONS() COUNTS RAW ROWS, NOT
         DISTINCT TEMPERATURE-OBSERVATION EVENTS": re-examined 2026-07-31 and
@@ -5107,6 +5270,14 @@ class TestLiveTradingGateConditionTypeFilter(unittest.TestCase):
             condition_type="hurricane_next_event",
             edge=0.99,
         )
+        self._log_settled(
+            "KXFIRSTHURRICANE-26DEC01ATL-DOL",
+            0.99,
+            0,
+            self._FUTURE,
+            condition_type="storm_order",
+            edge=0.99,
+        )
         after = tracker.count_settled_predictions_rolling()
         self.assertEqual(
             before, after, "hurricane rows must not change the rolling count"
@@ -5158,10 +5329,10 @@ class TestLiveTradingGateConditionTypeFilter(unittest.TestCase):
     def test_get_rolling_win_rate_excludes_hurricane_rows(self):
         """Opus-review-caught (2026-08-07): this feeds
         paper.is_accuracy_halted(), the live circuit breaker -- a settled
-        hurricane_count/hurricane_next_event row (a materially different
-        win-rate distribution than a directional temperature call) must not
-        be able to mask real temperature-model degradation or falsely trip
-        the halt."""
+        hurricane_count/hurricane_next_event/storm_order row (a materially
+        different win-rate distribution than a directional temperature call)
+        must not be able to mask real temperature-model degradation or
+        falsely trip the halt."""
         self._seed_baseline()
         before, before_n = tracker.get_rolling_win_rate(window=100)
         self._log_settled(
@@ -5178,6 +5349,14 @@ class TestLiveTradingGateConditionTypeFilter(unittest.TestCase):
             0,
             self._FUTURE,
             condition_type="hurricane_next_event",
+            edge=0.99,
+        )
+        self._log_settled(
+            "KXFIRSTHURRICANE-26DEC01ATL-EDO",
+            0.99,
+            0,
+            self._FUTURE,
+            condition_type="storm_order",
             edge=0.99,
         )
         after, after_n = tracker.get_rolling_win_rate(window=100)

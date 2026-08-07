@@ -14638,3 +14638,236 @@ Priority: Low -- not currently causing any failure (231/231 pass; the
   possibly the newer NWS AFD-parsing infra too. A meaningfully larger
   task than either of the two already-fixed gaps, not a quick follow-on.
 
+
+[RESOLVED 2026-08-07] HURRICANE MARKETS -- STORM-ORDER MODEL SHIPPED SHADOW-ONLY (KXFIRSTHURRICANE)
+Priority: was Low (see the parent RAIN / SNOW / HURRICANE MARKETS entry and
+  the time-to-next-event entry's own "KXHURCAT and KXFIRSTHURRICANE remain
+  fully open" note) -- kept Low: shadow-only, zero live-money risk, and this
+  shape settles once per NAME per season (up to 21 times), a slower
+  graduation cadence than the next-event model's own multiple-siblings-per-
+  season pace.
+
+Problem:
+  Re-verified live 2026-08-07 (this session's own first step): the parent
+  entry's own tally of 3 remaining hurricane shapes (KXHURCAT, KXFIRSTHURRICANE,
+  time-to-next-event) is down to 2 after this session -- time-to-next-event
+  shipped 2026-08-07 (separate entry above). Live re-check found KXHURCAT
+  (3 open markets, all on whichever storm is currently live -- Fausto today)
+  and KXFIRSTHURRICANE (21 open markets, one per the 2026 Atlantic pre-
+  assigned name list, 0 settled -- season hasn't started) both still fully
+  open. User chose KXFIRSTHURRICANE via AskUserQuestion: KXHURCAT needs a
+  genuinely new live per-storm NHC forecast/advisory pipeline plus a storm-
+  name registry to know which storm each open market is about; KXFIRSTHURRICANE
+  is modelable entirely from data already in this repo (HURDAT2 storm order +
+  the existing KXHURRICANENAMES settled-market signal the count model already
+  reads) -- no new live-data infrastructure needed, directly tractable this
+  session.
+
+  Market shape (confirmed live against every open market in the series, and
+  against the real Kalshi contract-terms PDF, assets.kalshi.com/contract_terms/
+  STORMORDER.pdf, fetched and read live this session): "Will <name> be the
+  first named hurricane in the Atlantic in 2026?" -- one market per name in
+  the season's pre-assigned Atlantic list (Arthur, Bertha, Cristobal, ...,
+  Wilfred -- 21 names, the 2020 list reused per NHC's 6-year rotation with
+  Laura retired -> replaced by Leah, confirmed against NHC's own
+  aboutnames.shtml page). Resolves Yes for whichever name is the FIRST
+  (chronologically, by NHC hurricane-classification date -- not by naming/
+  formation date) to reach hurricane strength (>=64kt/74mph); if no storm
+  reaches that threshold all season, every market resolves No. All 21 markets
+  in an event close together, early, the moment the season's real first
+  hurricane occurs (can_close_early=true) -- an individual name's own market
+  stays open even after THAT name's own storm has already come and gone
+  without reaching hurricane strength, as long as the season's overall first
+  hurricane hasn't happened yet.
+
+What shipped:
+  hurricane_climatology.py: first_hurricane_position(storms, year, kt=64) --
+  the 1-indexed NAME-index position (rank among that year's real NAMED
+  storms, alphabetically) of whichever storm first reached kt strength, by
+  date (the hurricane-ATTAINMENT race, not the naming/formation race -- a
+  later-named storm can intensify faster and cross the threshold before an
+  earlier-named storm does). first_hurricane_position_outcomes(storms,
+  target_position, storms_named_so_far, ...) -- empirical list[bool] across
+  the 30-year window, conditioned on storms_named_so_far (M): a year is
+  "eligible" iff its own first-hurricane-position is None or > M, mirroring
+  next_event_outcomes' as_of_month_day eligibility filter exactly (position
+  substituted for calendar date as the "how far into the season" scalar).
+  Reuses next_event_probability()/bootstrap_ci_next_event() directly for
+  probability/CI math -- both already generic over any list[bool], zero new
+  duplicate math.
+
+  weather_markets.py: _ATLANTIC_STORM_NAMES_BY_SEASON (hardcoded, season_year-
+  keyed, verified live against both Kalshi's own 21 market names and NHC's
+  page -- fails closed for any season_year not yet in the dict, same manual-
+  refresh-needed convention as hurricane_climatology.HURDAT2_URLS);
+  is_storm_order_ticker()/_parse_storm_order_condition() (storm_name read
+  from Kalshi's own custom_strike.storm field, position derived by indexing
+  the name list, season_year cross-checked exact against close_time's year --
+  NOT the +-1 tolerance the sibling count-model parser uses, since here
+  season_year determines the model's entire input, not just a cache-lookup
+  key); _storm_order_gates_active() (own env var STORM_ORDER_TRADING_ENABLED,
+  own 20-sample floor via tracker.count_settled_storm_order_predictions());
+  _analyze_storm_order_trade() -- reuses the EXISTING refresh_hurricane_
+  count_to_date() cron cache (extended to also write storms_named, the total
+  settled KXHURRICANENAMES markets so far this season regardless of result --
+  zero new cache/cron plumbing); analyze_trade() dispatch fast-path, gated
+  identically to hurricane-count throughout (ticker's embedded date IS its
+  real close date, unlike hurricane-next-event, so it reuses the generic
+  target_date-based no_date/past_date/days-out gates rather than needing its
+  own close_time-derived variable); same "HUR_<basin>" exposure-cap key as
+  both sibling models (correlated Atlantic activity caps together across all
+  3, not a third silent key); KNOWN_WEATHER_SERIES/check_series_drift()
+  extended with the same exact-series-membership matching both siblings use.
+
+  tracker.py: count_settled_storm_order_predictions() (distinct-ticker
+  counter, mirrors count_settled_hurricane_next_event_predictions' exact
+  shape -- no sibling-ladder-bracket risk, ticker itself is the distinct-
+  event key). consistency.py: same _group_markets() exclusion as both
+  siblings. main.py (_quick_paper_buy, cmd_today's "[P] Place" path,
+  cmd_order, cmd_paper's buy subcommand), paper.check_position_limits(),
+  order_executor._auto_place_trades()'s shadow-routing branch: same refusal-
+  block + blanket-guard-bypass-extension pattern as both siblings' own sites.
+  tracker.py/ml_bias.py/calibration.py: 'storm_order' added to every
+  condition_type exclusion list that already excluded 'hurricane_next_event'
+  (9 sites total: tracker's count_settled_predictions/_rolling,
+  get_rolling_win_rate, get_multiday/sameday_calibration_cli; ml_bias's 3
+  temperature-scaling pools; calibration's 1 seasonal-weights pool) plus
+  main.py's per-city Platt-training query (a pre-existing gap neither sibling
+  had closed there either -- closed for all 3 hurricane types while touching
+  this exact site, even though the practical impact was already bounded:
+  every hurricane model uses city="HUR_ATL", which can only ever mint a
+  spurious unused Platt entry, never contaminate a real city's model, and
+  storm-order's own fast-path returns before the Platt-application block is
+  ever reached).
+
+  Independent opus review: given the size (17 files, ~2000 lines), scoped to
+  3 parallel Agent(opus, effort=high) passes by subsystem (climatology math;
+  ticker-parsing/dispatch; safety-guard wiring across main.py/paper.py/
+  order_executor.py/consistency.py/tracker.py/ml_bias.py/calibration.py),
+  mirroring both sibling models' own precedent -- then a 2nd round on the
+  climatology-math file alone once the 1st round's CRITICAL finding forced a
+  real redesign, since the other 2 reviewers were reading the file mid-fix.
+
+  1 CRITICAL finding, round 1: first_hurricane_position()'s original
+  implementation used HURDAT2's raw storm-ID embedded sequence number (e.g.
+  "AL062026" -> 6) as the position, on the false premise that it equals a
+  storm's rank among that season's real NAMED storms. Verified against the
+  real cached Atlantic file: 27 of 30 window years contain at least one
+  UNNAMED system (unnamed tropical depressions/subtropical storms, spelled-
+  out-number placeholder names like "ELEVEN"/"TWENTY-ONE") consuming a
+  sequence number with no name of its own, and 3 years have literal ID gaps
+  -- both of which shift every later name's raw ID away from its real name-
+  index. Measured to mis-rank 11 of 30 window years and shift ~10 percentage
+  points of probability mass between positions -- a 2x mispricing on a
+  market whose fair values live in the 3-33% band, larger than any edge
+  threshold this bot trades on. Fixed round 1: filter out UNNAMED/placeholder
+  systems, then sort the remainder by ID sequence number.
+
+  That round-1 fix was itself caught incomplete by the SAME reviewer's 2nd
+  pass (requested once the other 2 reviewers' own findings implied the fix
+  needed re-checking): named storms are not always even in real ID order --
+  HURDAT2 IDs are assigned by post-season REANALYZED genesis order, NHC
+  names are assigned in REAL TIME, and the two genuinely diverge in at least
+  6 of the last 30 years (2007, 2012, 2019, 2021 KATE/JULIAN, 2022
+  IAN/HERMINE, 2023 GERT/EMILY/FRANKLIN). Independently re-verified live
+  against the cached file. Fixed round 2: sort named storms ALPHABETICALLY
+  by name instead of by ID sequence number -- not a proxy or heuristic,
+  alphabetical assignment IS what "NHC naming order" definitionally means,
+  and it reproduces the real list exactly in every one of the 6 divergent
+  years (re-verified live). Known, accepted limitation: does not handle the
+  rare Greek-letter/WMO-supplementary-name overflow for a >21-storm season
+  (2020 only, in the 30-year window) -- immaterial for this model's real use
+  (KXFIRSTHURRICANE only ever asks about the 21 regular names; a season's
+  first hurricane landing on an overflow name at all is a vanishingly rare
+  edge case, and _parse_storm_order_condition already fails closed for any
+  name outside the known 21 either way).
+
+  1 HIGH finding: the sample-floor fallback (< 15 eligible years -> revert
+  to unconditional, same shape the next-event model's own review already
+  established) had no matching short-circuit for a position that is
+  DEFINITIVELY eliminated (its own name's KXHURRICANENAMES market has
+  already settled "no", meaning NHC has fully stopped reporting on that
+  storm -- confirmed via the real HURCAT contract-terms PDF's own expiration
+  clause that a "no" settlement requires the storm to be completely
+  resolved, never merely "currently active"). Measured against real
+  Atlantic data: the eligible-year count after conditioning drops below the
+  15-sample floor for essentially every M>=2 (a typical season reaches 2
+  named storms by ~late June), so without a short-circuit the fallback would
+  silently reset an already-eliminated position back to its FULL
+  unconditional climatological probability -- e.g. position 2 getting 33%
+  instead of ~0% against a market correctly pricing it near-zero, a
+  confident wrong answer, not just a less-sharp one. Fixed: added an
+  explicit `position <= storms_named_so_far` short-circuit to 0.01/degenerate
+  CI, checked BEFORE the sample-floor fallback, mirroring
+  _analyze_hurricane_next_event_trade's own occurred_this_season=True
+  shortcut.
+
+  2 MEDIUM findings fixed: (1) the season_year/close_time cross-check used
+  the sibling count-model parser's +-1 tolerance, copied without noticing
+  that here season_year DETERMINES `position` (indexes
+  _ATLANTIC_STORM_NAMES_BY_SEASON) rather than merely keying a cache lookup
+  the way it does for the count model -- tightened to an exact match, since
+  this function's own docstring already asserts these markets never span a
+  year boundary. (2) the new storms_named cache field's writer (extending
+  refresh_hurricane_count_to_date) and reader (_get_cached_storms_named_
+  to_date) had zero real round-trip test coverage -- every _analyze_storm_
+  order_trade test monkeypatched the reader directly, so a field-name typo
+  or a dropped write would have degraded silently to storms_named_so_far=0
+  forever with only a debug-level log line. Added real (non-monkeypatched)
+  writer->JSON-file->reader tests.
+
+  Several LOW findings also fixed: _CONDITION_CONFIDENCE, is_storm_order_
+  ticker exact-membership, and the storms_named_so_far diagnostic being
+  silently overwritten by the sample-floor fallback (split into a separate
+  storms_named_so_far_raw field so shadow logs can tell "no live signal
+  existed" apart from "a live signal existed and was discarded") -- plus
+  test-quality fixes: a vacuous CI-reuse test that never actually exercised
+  bootstrap_ci_next_event's resampling path (the 5-outcome fixture always
+  hit its <15-sample degenerate-CI early return), an untested placeholder-
+  name-filtering branch (fixture only covered the literal "UNNAMED" spelling,
+  not spelled-out-number placeholders like "FOUR" -- genuinely load-bearing
+  on real data, e.g. 2017), and a fixture-construction bug self-caught before
+  even reaching review: the first fixture draft reused the sibling models'
+  "UNNAMED" placeholder-name convention for every storm, which -- once the
+  CRITICAL fix started filtering UNNAMED systems -- silently emptied every
+  single fixture season.
+
+Independent opus review also confirmed CLEAN (no gaps found) across: every
+  one of the 4 main.py call sites got both required changes (own refuse
+  block + blanket-exclusion extension) with the correct variable name in
+  each; order_executor's shadow-routing branch (mutation-tested: disabling
+  the guard produces a real placed order in the test); consistency.py's
+  exclusion (also mutation-tested, including a 2nd test using an adversarial
+  ticker shape since the real KXFIRSTHURRICANE ticker shape can't reach
+  _parse_threshold's regex regardless of the guard -- same "not actually
+  mutation-proof" gap the next-event entry's own review already fixed once,
+  closed here from the start); all 5 tracker.py raw-SQL exclusion tuples;
+  all 3 ml_bias.py and 1 calibration.py tuples; the season-count/next-event/
+  storm-order gates' mutual independence.
+
+What this does NOT do:
+  KXHURCAT (per-storm category) remains completely untouched -- still
+  blocked by is_hurricane_ticker()'s blanket guard, no model; needs a new
+  live per-storm NHC forecast/advisory pipeline, a genuinely bigger and more
+  novel build than this session's, per the user's own AskUserQuestion
+  decision. Per-city landfall markets remain 0 open (unchanged). Real sizing
+  stays shadow/log-only until STORM_ORDER_TRADING_ENABLED=1 AND >=20 distinct
+  settled predictions exist for this shape specifically. Does not handle the
+  Greek-letter/WMO-supplementary-name overflow case for a >21-storm season
+  (see the CRITICAL finding's own "known, accepted limitation" note above).
+
+When to revisit:
+  - Once STORM_ORDER_TRADING_ENABLED is set and >=20 distinct settled
+    predictions accumulate -- check get_signal_graduation_report()-style
+    correlation before ever relying on real sizing. This shape settles once
+    per name per season (up to 21 opportunities/season across 21 names,
+    though only ONE ever resolves Yes and the rest resolve No together the
+    same day) -- expect a slower graduation cadence than the next-event
+    model's own multiple-siblings-per-season pace, similar order of
+    magnitude to the count model's.
+  - KXHURCAT: see the parent entries' own "When to revisit" -- unchanged by
+    this session's work, still needs its own live NHC advisory pipeline.
+  - _ATLANTIC_STORM_NAMES_BY_SEASON needs a manual entry added the next time
+    NHC's list rotates to a season_year not yet in the dict (2027 first,
+    since 2026 reuses 2020's list) -- same "confirmed live, needs periodic
+    manual refresh" convention as HURDAT2_URLS.

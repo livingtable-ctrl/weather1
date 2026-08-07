@@ -229,6 +229,24 @@ def test_hurricane_next_event_series_present_does_not_warn(tmp_path, monkeypatch
     assert "KXNEXTCAT5HURDATE" not in missing
 
 
+def test_storm_order_series_present_does_not_warn(tmp_path, monkeypatch):
+    """backlog.txt "HURRICANE MARKETS" -- storm-order model (2026-08-07):
+    the 1 new series, once present in KNOWN_WEATHER_SERIES, must not
+    spuriously warn as "missing" when the live series list also has it --
+    same exact-membership matching as the 2 sibling hurricane models."""
+    import weather_markets as wm
+
+    drift_path = tmp_path / "series_drift_check.json"
+    monkeypatch.setattr(wm, "SERIES_DRIFT_PATH", drift_path)
+
+    client = _mock_client(wm.KNOWN_WEATHER_SERIES)
+    wm.check_series_drift(client)
+
+    state = json.loads(drift_path.read_text())
+    missing = state.get("missing_days", {})
+    assert "KXFIRSTHURRICANE" not in missing
+
+
 def test_unrecognized_hurricane_series_deliberately_not_flagged(
     tmp_path, monkeypatch, caplog
 ):

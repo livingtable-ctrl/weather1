@@ -150,7 +150,7 @@ def _load_rows(db_path: Path) -> list[sqlite3.Row]:
               AND o.settled_yes IS NOT NULL
               AND (p.condition_type IS NULL
                    OR p.condition_type NOT IN
-                      ('between', 'precip_month_total', 'snow_month_total', 'hurricane_count', 'hurricane_next_event'))
+                      ('between', 'precip_month_total', 'snow_month_total', 'hurricane_count', 'hurricane_next_event', 'storm_order'))
             """
         ).fetchall()
 

@@ -602,6 +602,130 @@ class TestHurricaneCountToDateCache:
         assert not cache_path.exists() or json.loads(cache_path.read_text()) == {}
 
 
+# ── storms-named-to-date cache (backlog.txt "HURRICANE MARKETS" -- storm-
+#    order model, 2026-08-07): refresh_hurricane_count_to_date extended to
+#    also write `storms_named`, read back via
+#    _get_cached_storms_named_to_date. Opus-review-caught (2026-08-07, LOW):
+#    every _analyze_storm_order_trade test monkeypatches
+#    _get_cached_storms_named_to_date directly -- nothing exercised the real
+#    writer -> real JSON file -> real reader round-trip, so a field-name
+#    typo or a dropped write would degrade silently to storms_named_so_far=0
+#    forever. Closed here with real (not monkeypatched) reads/writes,
+#    mirroring TestHurricaneCountToDateCache's own shape for the sibling
+#    `count` field. ─────────────────────────────────────────────────────────
+
+
+class TestStormsNamedToDateCache:
+    def test_refresh_writes_storms_named_per_basin(self, tmp_path, monkeypatch):
+        import weather_markets as wm
+
+        cache_path = tmp_path / "hurricane_count_to_date.json"
+        monkeypatch.setattr(wm, "HURRICANE_COUNT_TO_DATE_PATH", cache_path)
+
+        class _FakeClient:
+            def get_markets(self, series_ticker, status):
+                assert series_ticker == "KXHURRICANENAMES"
+                assert status == "settled"
+                return [
+                    self._m("KXHURRICANENAMES-26DEC01ATL", "no"),
+                    self._m("KXHURRICANENAMES-26DEC01ATL", "no"),
+                    self._m("KXHURRICANENAMES-26DEC01ATL", "yes"),
+                    self._m("KXHURRICANENAMES-26DEC01EPAC", "no"),
+                ]
+
+            def _m(self, event_ticker, result):
+                return {"event_ticker": event_ticker, "result": result}
+
+        wm.refresh_hurricane_count_to_date(_FakeClient())
+        cached = json.loads(cache_path.read_text())
+        assert cached["ATL"]["storms_named"] == 3
+        assert cached["ATL"]["count"] == 1  # sibling field, same source data
+        assert cached["EPAC"]["storms_named"] == 1
+        assert "CPAC" not in cached  # zero matched markets -- left unwritten
+
+    def test_get_cached_storms_named_returns_none_when_missing(
+        self, tmp_path, monkeypatch
+    ):
+        import weather_markets as wm
+
+        monkeypatch.setattr(wm, "HURRICANE_COUNT_TO_DATE_PATH", tmp_path / "nope.json")
+        assert wm._get_cached_storms_named_to_date("ATL", 2026) is None
+
+    def test_get_cached_storms_named_round_trips_through_real_refresh(
+        self, tmp_path, monkeypatch
+    ):
+        """The real end-to-end path: refresh_hurricane_count_to_date's
+        actual write, read back by _get_cached_storms_named_to_date's own
+        actual read -- no monkeypatching of either function itself."""
+        import weather_markets as wm
+
+        cache_path = tmp_path / "hurricane_count_to_date.json"
+        monkeypatch.setattr(wm, "HURRICANE_COUNT_TO_DATE_PATH", cache_path)
+
+        class _FakeClient:
+            def get_markets(self, series_ticker, status):
+                return [
+                    {"event_ticker": "KXHURRICANENAMES-26DEC01ATL", "result": "no"},
+                    {"event_ticker": "KXHURRICANENAMES-26DEC01ATL", "result": "no"},
+                ]
+
+        wm.refresh_hurricane_count_to_date(_FakeClient())
+        season_year = wm.datetime.now(wm.UTC).date().year
+        assert wm._get_cached_storms_named_to_date("ATL", season_year) == 2
+
+    def test_get_cached_storms_named_returns_none_for_non_int(
+        self, tmp_path, monkeypatch
+    ):
+        import weather_markets as wm
+
+        today = wm.datetime.now(wm.UTC).date().isoformat()
+        cache_path = tmp_path / "cache.json"
+        cache_path.write_text(
+            json.dumps(
+                {
+                    "ATL": {
+                        "date": today,
+                        "season_year": 2026,
+                        "count": 0,
+                        "storms_named": "not-a-number",
+                    }
+                }
+            )
+        )
+        monkeypatch.setattr(wm, "HURRICANE_COUNT_TO_DATE_PATH", cache_path)
+        assert wm._get_cached_storms_named_to_date("ATL", 2026) is None
+
+    def test_get_cached_storms_named_shares_staleness_guard_with_count(
+        self, tmp_path, monkeypatch
+    ):
+        """Both readers delegate to the same _get_cached_hurricane_names_
+        entry helper -- a stale cache must fail closed for storms_named the
+        same way TestHurricaneCountToDateCache already proves for count."""
+        from datetime import timedelta
+
+        import weather_markets as wm
+
+        stale_date = (
+            wm.datetime.now(wm.UTC).date()
+            - timedelta(days=wm._HURRICANE_COUNT_CACHE_MAX_AGE_DAYS + 1)
+        ).isoformat()
+        cache_path = tmp_path / "cache.json"
+        cache_path.write_text(
+            json.dumps(
+                {
+                    "ATL": {
+                        "date": stale_date,
+                        "season_year": 2026,
+                        "count": 0,
+                        "storms_named": 5,
+                    }
+                }
+            )
+        )
+        monkeypatch.setattr(wm, "HURRICANE_COUNT_TO_DATE_PATH", cache_path)
+        assert wm._get_cached_storms_named_to_date("ATL", 2026) is None
+
+
 # ── _analyze_hurricane_count_trade (full dispatch, mocked climatology) ──────
 
 
@@ -1677,6 +1801,883 @@ class TestQuickPaperBuyAndCmdPaperHurricaneNextEventGuards:
         monkeypatch.setattr("builtins.print", lambda *a, **k: printed.append(str(a)))
         try:
             main.cmd_paper(["buy", "KXNEXTHURDATE-26DEC01-26SEP15", "yes", "0.10", "1"])
+        except Exception:
+            pass
+        assert not any("shadow-only" in p for p in printed)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Storm-order model (backlog.txt "HURRICANE MARKETS" -- storm-order model,
+# 2026-08-07): KXFIRSTHURRICANE. See tests/test_hurricane_climatology.py for
+# the underlying first_hurricane_position/first_hurricane_position_outcomes
+# math.
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+class TestIsStormOrderTicker:
+    def test_matches_the_real_series(self):
+        import weather_markets as wm
+
+        assert wm.is_storm_order_ticker("KXFIRSTHURRICANE-26DEC01ATL-WIL") is True
+
+    @pytest.mark.parametrize(
+        "ticker",
+        [
+            "KXFIRSTHURRICANE",  # bare series alone, no event suffix, still exact match
+            "KXHURCTOT-26DEC01-T9",  # a hurricane-count series
+            "KXHURCAT-26FAUSTO-T5",  # per-storm category -- still unsupported
+            "KXNEXTHURDATE-26DEC01-26SEP15",  # sibling time-to-next-event series
+            "KXHIGHNY-26JUL20-T70",  # unrelated market entirely
+        ],
+    )
+    def test_membership_is_series_exact(self, ticker):
+        import weather_markets as wm
+
+        expected = ticker == "KXFIRSTHURRICANE"
+        assert wm.is_storm_order_ticker(ticker) is expected
+
+    def test_still_caught_by_blanket_is_hurricane_ticker(self):
+        """Confirms the blanket guard's bypass extension in analyze_trade()
+        is actually necessary, not dead code."""
+        import weather_markets as wm
+
+        assert wm.is_hurricane_ticker("KXFIRSTHURRICANE-26DEC01ATL-WIL") is True
+
+
+class TestParseStormOrderCondition:
+    def _market(self, **overrides):
+        base = {
+            "ticker": "KXFIRSTHURRICANE-26DEC01ATL-ART",
+            "close_time": "2026-12-01T15:00:00Z",
+            "custom_strike": {"storm": "Arthur"},
+        }
+        base.update(overrides)
+        return base
+
+    def test_parses_correctly(self):
+        import weather_markets as wm
+
+        cond = wm._parse_storm_order_condition(self._market())
+        assert cond == {
+            "type": "storm_order",
+            "basin": "ATL",
+            "storm_name": "Arthur",
+            "position": 1,
+            "season_year": 2026,
+        }
+
+    def test_position_matches_the_last_name_in_the_list(self):
+        import weather_markets as wm
+
+        cond = wm._parse_storm_order_condition(
+            self._market(
+                ticker="KXFIRSTHURRICANE-26DEC01ATL-WIL",
+                custom_strike={"storm": "Wilfred"},
+            )
+        )
+        assert cond["position"] == 21
+
+    def test_missing_custom_strike_fails_closed(self, caplog):
+        import weather_markets as wm
+
+        cond = wm._parse_storm_order_condition(self._market(custom_strike=None))
+        assert cond is None
+        assert "missing/unparseable custom_strike.storm" in caplog.text
+
+    def test_empty_storm_name_fails_closed(self):
+        import weather_markets as wm
+
+        cond = wm._parse_storm_order_condition(
+            self._market(custom_strike={"storm": ""})
+        )
+        assert cond is None
+
+    def test_unknown_storm_name_fails_closed(self, caplog):
+        import weather_markets as wm
+
+        cond = wm._parse_storm_order_condition(
+            self._market(custom_strike={"storm": "NotARealName"})
+        )
+        assert cond is None
+        assert "not found in" in caplog.text
+
+    def test_unknown_season_year_fails_closed(self, caplog):
+        """A season_year not yet in _ATLANTIC_STORM_NAMES_BY_SEASON must
+        never silently guess a position from an unrelated year's list."""
+        import weather_markets as wm
+
+        cond = wm._parse_storm_order_condition(
+            self._market(
+                ticker="KXFIRSTHURRICANE-99DEC01ATL-ART",
+                close_time="2099-12-01T15:00:00Z",
+            )
+        )
+        assert cond is None
+        assert "no known Atlantic name list" in caplog.text
+
+    def test_season_year_mismatch_with_close_time_fails_closed(self, caplog):
+        """Same cross-check discipline _parse_hurricane_count_condition
+        established: a ticker-derived season_year that doesn't match
+        close_time's real year by more than 1 is untrustworthy."""
+        import weather_markets as wm
+
+        cond = wm._parse_storm_order_condition(
+            self._market(close_time="2030-12-01T15:00:00Z")
+        )
+        assert cond is None
+        assert "doesn't match close_time year" in caplog.text
+
+    def test_non_storm_order_ticker_returns_none_silently(self, caplog):
+        import weather_markets as wm
+
+        cond = wm._parse_storm_order_condition({"ticker": "KXHIGHNY-26JUL20-T70"})
+        assert cond is None
+        assert caplog.text == ""
+
+    def test_dispatches_via_parse_market_condition(self):
+        """End-to-end through the real dispatcher, confirms the branch is
+        actually wired in."""
+        import weather_markets as wm
+
+        cond = wm._parse_market_condition(self._market())
+        assert cond is not None
+        assert cond["type"] == "storm_order"
+
+    def test_degraded_market_fails_closed_at_dispatcher_not_fallthrough(self):
+        """Same KXHURCAT-bug-class concern the sibling branches' own tests
+        document: a storm-order-series ticker with an unparseable
+        custom_strike must return None from _parse_market_condition itself,
+        never fall through to the generic threshold parser below."""
+        import weather_markets as wm
+
+        degraded = self._market(custom_strike=None)
+        cond = wm._parse_market_condition(degraded)
+        assert cond is None
+
+
+class TestStormOrderGatesActive:
+    """Mirrors TestHurricaneNextEventGatesActive's exact test shape -- own
+    env var, own counter, kept fully separate from both sibling models'
+    gates."""
+
+    def test_false_when_env_var_unset(self, monkeypatch):
+        import weather_markets as wm
+
+        monkeypatch.delenv("STORM_ORDER_TRADING_ENABLED", raising=False)
+        monkeypatch.setattr(
+            "tracker.count_settled_storm_order_predictions", lambda: 999
+        )
+        assert wm._storm_order_gates_active() is False
+
+    def test_false_when_env_var_set_but_below_sample_floor(self, monkeypatch):
+        import weather_markets as wm
+
+        monkeypatch.setenv("STORM_ORDER_TRADING_ENABLED", "1")
+        monkeypatch.setattr("tracker.count_settled_storm_order_predictions", lambda: 19)
+        assert wm._storm_order_gates_active() is False
+
+    def test_true_when_env_var_set_and_sample_floor_met(self, monkeypatch):
+        import weather_markets as wm
+
+        monkeypatch.setenv("STORM_ORDER_TRADING_ENABLED", "1")
+        monkeypatch.setattr("tracker.count_settled_storm_order_predictions", lambda: 20)
+        assert wm._storm_order_gates_active() is True
+
+    def test_never_raises_on_count_failure(self, monkeypatch):
+        import weather_markets as wm
+
+        monkeypatch.setenv("STORM_ORDER_TRADING_ENABLED", "1")
+
+        def _boom():
+            raise RuntimeError("db down")
+
+        monkeypatch.setattr("tracker.count_settled_storm_order_predictions", _boom)
+        assert wm._storm_order_gates_active() is False
+
+    def test_independent_of_sibling_hurricane_gates(self, monkeypatch):
+        """This gate must not share state with either sibling model's --
+        flipping the count or next-event model's gate/env var must not
+        activate this one, and vice versa."""
+        import weather_markets as wm
+
+        monkeypatch.setenv("HURRICANE_TRADING_ENABLED", "1")
+        monkeypatch.setattr("tracker.count_settled_hurricane_predictions", lambda: 999)
+        monkeypatch.setenv("HURRICANE_NEXT_EVENT_TRADING_ENABLED", "1")
+        monkeypatch.setattr(
+            "tracker.count_settled_hurricane_next_event_predictions", lambda: 999
+        )
+        monkeypatch.delenv("STORM_ORDER_TRADING_ENABLED", raising=False)
+        assert wm._hurricane_count_gates_active() is True
+        assert wm._hurricane_next_event_gates_active() is True
+        assert wm._storm_order_gates_active() is False
+
+
+# ── _analyze_storm_order_trade (full dispatch, mocked climatology) ─────────
+
+
+class TestAnalyzeStormOrderTrade:
+    def _enriched(self, **overrides):
+        base = {
+            "ticker": "KXFIRSTHURRICANE-26DEC01ATL-ART",
+            "close_time": "2026-12-01T15:00:00Z",
+            "yes_bid_dollars": 0.10,
+            "yes_ask_dollars": 0.15,
+        }
+        base.update(overrides)
+        return base
+
+    def _condition(self, **overrides):
+        base = {
+            "type": "storm_order",
+            "basin": "ATL",
+            "storm_name": "Arthur",
+            "position": 1,
+            "season_year": 2026,
+        }
+        base.update(overrides)
+        return base
+
+    def test_returns_none_when_hurdat2_unavailable(self, monkeypatch):
+        import weather_markets as wm
+
+        monkeypatch.setattr(
+            "hurricane_climatology.load_basin_storms", lambda basin: None
+        )
+        from datetime import UTC
+        from datetime import datetime as _dt
+
+        result = wm._analyze_storm_order_trade(
+            self._enriched(), self._condition(), _dt(2026, 12, 1, tzinfo=UTC), 116
+        )
+        assert result is None
+
+    def test_returns_none_when_storms_list_is_empty(self, monkeypatch):
+        import weather_markets as wm
+
+        monkeypatch.setattr("hurricane_climatology.load_basin_storms", lambda basin: [])
+        from datetime import UTC
+        from datetime import datetime as _dt
+
+        result = wm._analyze_storm_order_trade(
+            self._enriched(), self._condition(), _dt(2026, 12, 1, tzinfo=UTC), 116
+        )
+        assert result is None
+
+    def test_unknown_cache_state_uses_unconditional_mode_not_assumed_zero(
+        self, monkeypatch
+    ):
+        """A missing/stale storms-named-to-date cache (None, genuinely
+        UNKNOWN) must run the unconditional distribution, not silently
+        assume 0 names used so far -- unlike next_event, this market family
+        stays open for the whole season even after an individual name's own
+        storm has already come and gone, so silently under-counting M would
+        keep assigning real probability mass to already-ruled-out
+        positions, not just produce a less-sharp signal."""
+        import hurricane_climatology as hc
+        import weather_markets as wm
+
+        monkeypatch.setattr(
+            "hurricane_climatology.load_basin_storms",
+            lambda basin: [{"year": 2020, "basin": "AL"}],
+        )
+        monkeypatch.setattr(
+            wm, "_get_cached_storms_named_to_date", lambda basin, year: None
+        )
+
+        captured = {}
+
+        def _fake_outcomes(storms, target_position, storms_named_so_far, **kw):
+            captured["storms_named_so_far"] = storms_named_so_far
+            return [True] * 30
+
+        monkeypatch.setattr(hc, "first_hurricane_position_outcomes", _fake_outcomes)
+        from datetime import UTC
+        from datetime import datetime as _dt
+
+        result = wm._analyze_storm_order_trade(
+            self._enriched(), self._condition(), _dt(2026, 12, 1, tzinfo=UTC), 116
+        )
+        assert captured["storms_named_so_far"] == 0  # the unconditional identity
+        assert result["method"] == "storm_order_climatology"
+        assert result["storms_named_so_far"] == 0
+
+    def test_known_zero_uses_unconditional_mode(self, monkeypatch):
+        import hurricane_climatology as hc
+        import weather_markets as wm
+
+        monkeypatch.setattr(
+            "hurricane_climatology.load_basin_storms",
+            lambda basin: [{"year": 2020, "basin": "AL"}],
+        )
+        monkeypatch.setattr(
+            wm, "_get_cached_storms_named_to_date", lambda basin, year: 0
+        )
+
+        captured = {}
+
+        def _fake_outcomes(storms, target_position, storms_named_so_far, **kw):
+            captured["storms_named_so_far"] = storms_named_so_far
+            return [True] * 30
+
+        monkeypatch.setattr(hc, "first_hurricane_position_outcomes", _fake_outcomes)
+        from datetime import UTC
+        from datetime import datetime as _dt
+
+        result = wm._analyze_storm_order_trade(
+            self._enriched(), self._condition(), _dt(2026, 12, 1, tzinfo=UTC), 116
+        )
+        assert captured["storms_named_so_far"] == 0
+        assert result["method"] == "storm_order_climatology"
+
+    def test_known_nonzero_uses_conditional_mode(self, monkeypatch):
+        import hurricane_climatology as hc
+        import weather_markets as wm
+
+        monkeypatch.setattr(
+            "hurricane_climatology.load_basin_storms",
+            lambda basin: [{"year": 2020, "basin": "AL"}],
+        )
+        monkeypatch.setattr(
+            wm, "_get_cached_storms_named_to_date", lambda basin, year: 3
+        )
+
+        captured = {}
+
+        def _fake_outcomes(storms, target_position, storms_named_so_far, **kw):
+            captured["storms_named_so_far"] = storms_named_so_far
+            return [True] * 9 + [False] * 6  # 15 outcomes (meets the floor), 60% True
+
+        monkeypatch.setattr(hc, "first_hurricane_position_outcomes", _fake_outcomes)
+        from datetime import UTC
+        from datetime import datetime as _dt
+
+        result = wm._analyze_storm_order_trade(
+            self._enriched(),
+            self._condition(position=5),
+            _dt(2026, 12, 1, tzinfo=UTC),
+            116,
+        )
+        assert captured["storms_named_so_far"] == 3
+        assert result["forecast_prob"] == 0.6
+        assert result["method"] == "storm_order_climatology_tilted"
+        assert result["storms_named_so_far"] == 3
+        assert result["n_members"] == 15
+
+    def test_position_already_eliminated_short_circuits_to_near_certain_no(
+        self, monkeypatch
+    ):
+        """Opus-review-caught (2026-08-07, HIGH), 2nd round: when position
+        <= storms_named_so_far, this name's own KXHURRICANENAMES market has
+        ALREADY settled "no" (see refresh_hurricane_count_to_date's own
+        docstring: settlement requires NHC to have fully stopped reporting
+        on that storm) -- the market is CONCLUSIVELY resolved, mirroring
+        _analyze_hurricane_next_event_trade's own occurred_this_season=True
+        short-circuit. Must skip the bootstrap entirely (not run it and
+        then discard the result via the sample-floor fallback, which --
+        measured against real Atlantic data -- fires for essentially every
+        M>=2 and would otherwise silently reset an eliminated position back
+        to its full unconditional probability)."""
+        import hurricane_climatology as hc
+        import weather_markets as wm
+
+        monkeypatch.setattr(
+            "hurricane_climatology.load_basin_storms",
+            lambda basin: [{"year": 2020, "basin": "AL"}],
+        )
+        monkeypatch.setattr(
+            wm, "_get_cached_storms_named_to_date", lambda basin, year: 5
+        )
+
+        def _boom(*a, **k):
+            raise AssertionError(
+                "bootstrap must not run for an already-eliminated position"
+            )
+
+        monkeypatch.setattr(hc, "first_hurricane_position_outcomes", _boom)
+        from datetime import UTC
+        from datetime import datetime as _dt
+
+        # position=3 <= storms_named_so_far=5 -- this name's slot has
+        # already come and gone without becoming a hurricane.
+        result = wm._analyze_storm_order_trade(
+            self._enriched(),
+            self._condition(position=3),
+            _dt(2026, 12, 1, tzinfo=UTC),
+            116,
+        )
+        assert result is not None
+        assert result["forecast_prob"] == 0.01
+        assert result["ci_low"] == result["ci_high"] == 0.01
+        assert result["method"] == "storm_order_confirmed_not_first"
+        assert result["n_members"] == 0
+        assert result["storms_named_so_far_raw"] == 5
+
+    def test_position_equal_to_storms_named_so_far_is_also_eliminated(
+        self, monkeypatch
+    ):
+        """Boundary check: position == storms_named_so_far (not just <)
+        must also short-circuit -- that name's own market has settled too."""
+        import hurricane_climatology as hc
+        import weather_markets as wm
+
+        monkeypatch.setattr(
+            "hurricane_climatology.load_basin_storms",
+            lambda basin: [{"year": 2020, "basin": "AL"}],
+        )
+        monkeypatch.setattr(
+            wm, "_get_cached_storms_named_to_date", lambda basin, year: 3
+        )
+        monkeypatch.setattr(
+            hc,
+            "first_hurricane_position_outcomes",
+            lambda *a, **k: (_ for _ in ()).throw(
+                AssertionError("must not run for position == M")
+            ),
+        )
+        from datetime import UTC
+        from datetime import datetime as _dt
+
+        result = wm._analyze_storm_order_trade(
+            self._enriched(),
+            self._condition(position=3),
+            _dt(2026, 12, 1, tzinfo=UTC),
+            116,
+        )
+        assert result["method"] == "storm_order_confirmed_not_first"
+
+    def test_position_still_live_does_not_short_circuit(self, monkeypatch):
+        """The converse boundary: position > storms_named_so_far must reach
+        the normal bootstrap path, not the short-circuit."""
+        import hurricane_climatology as hc
+        import weather_markets as wm
+
+        monkeypatch.setattr(
+            "hurricane_climatology.load_basin_storms",
+            lambda basin: [{"year": 2020, "basin": "AL"}],
+        )
+        monkeypatch.setattr(
+            wm, "_get_cached_storms_named_to_date", lambda basin, year: 3
+        )
+        monkeypatch.setattr(
+            hc, "first_hurricane_position_outcomes", lambda *a, **k: [True] * 20
+        )
+        from datetime import UTC
+        from datetime import datetime as _dt
+
+        result = wm._analyze_storm_order_trade(
+            self._enriched(),
+            self._condition(position=4),
+            _dt(2026, 12, 1, tzinfo=UTC),
+            116,
+        )
+        assert result["method"] != "storm_order_confirmed_not_first"
+
+    def test_unknown_storms_named_never_short_circuits(self, monkeypatch):
+        """A missing/stale storms-named-to-date cache (None) must never
+        trigger the short-circuit, even for position=1 -- "unknown" is not
+        "eliminated"."""
+        import hurricane_climatology as hc
+        import weather_markets as wm
+
+        monkeypatch.setattr(
+            "hurricane_climatology.load_basin_storms",
+            lambda basin: [{"year": 2020, "basin": "AL"}],
+        )
+        monkeypatch.setattr(
+            wm, "_get_cached_storms_named_to_date", lambda basin, year: None
+        )
+        monkeypatch.setattr(
+            hc, "first_hurricane_position_outcomes", lambda *a, **k: [True] * 20
+        )
+        from datetime import UTC
+        from datetime import datetime as _dt
+
+        result = wm._analyze_storm_order_trade(
+            self._enriched(),
+            self._condition(position=1),
+            _dt(2026, 12, 1, tzinfo=UTC),
+            116,
+        )
+        assert result["method"] != "storm_order_confirmed_not_first"
+        assert result["storms_named_so_far_raw"] is None
+
+    def test_conditional_mode_falls_back_to_unconditional_below_sample_floor(
+        self, monkeypatch
+    ):
+        """Same opus-review-caught pattern next_event's own test documents:
+        a known, non-zero storms_named_so_far alone is not sufficient to
+        trust conditional mode -- if the eligible set actually returned is
+        too small (<15, matching bootstrap_ci_next_event's own floor), the
+        analyzer must fall back to the unconditional baseline."""
+        import hurricane_climatology as hc
+        import weather_markets as wm
+
+        monkeypatch.setattr(
+            "hurricane_climatology.load_basin_storms",
+            lambda basin: [{"year": 2020, "basin": "AL"}],
+        )
+        monkeypatch.setattr(
+            wm, "_get_cached_storms_named_to_date", lambda basin, year: 3
+        )
+
+        calls = []
+
+        def _fake_outcomes(storms, target_position, storms_named_so_far, **kw):
+            calls.append(storms_named_so_far)
+            if storms_named_so_far != 0:
+                return [True, True, False]  # only 3 eligible years -- below floor
+            return [True] * 30
+
+        monkeypatch.setattr(hc, "first_hurricane_position_outcomes", _fake_outcomes)
+        from datetime import UTC
+        from datetime import datetime as _dt
+
+        # position=5 (> storms_named_so_far=3) so the new "definitively
+        # eliminated" short-circuit (opus-review-caught, 2026-08-07, HIGH,
+        # 2nd round) does NOT intercept this case -- this test is
+        # specifically about a still-LIVE position's sample-floor fallback.
+        result = wm._analyze_storm_order_trade(
+            self._enriched(),
+            self._condition(position=5),
+            _dt(2026, 12, 1, tzinfo=UTC),
+            116,
+        )
+        assert calls == [3, 0]  # conditional attempt, then unconditional fallback
+        assert result["n_members"] == 30
+        assert result["method"] == "storm_order_climatology"  # not "_tilted"
+        assert result["storms_named_so_far"] == 0
+
+    def test_conditional_mode_kept_when_sample_floor_met(self, monkeypatch):
+        import hurricane_climatology as hc
+        import weather_markets as wm
+
+        monkeypatch.setattr(
+            "hurricane_climatology.load_basin_storms",
+            lambda basin: [{"year": 2020, "basin": "AL"}],
+        )
+        monkeypatch.setattr(
+            wm, "_get_cached_storms_named_to_date", lambda basin, year: 3
+        )
+
+        calls = []
+
+        def _fake_outcomes(storms, target_position, storms_named_so_far, **kw):
+            calls.append(storms_named_so_far)
+            return [True] * 12 + [False] * 3  # exactly 15 -- meets the floor
+
+        monkeypatch.setattr(hc, "first_hurricane_position_outcomes", _fake_outcomes)
+        from datetime import UTC
+        from datetime import datetime as _dt
+
+        # position=5 (> storms_named_so_far=3), same short-circuit-avoidance
+        # reasoning as the test above.
+        result = wm._analyze_storm_order_trade(
+            self._enriched(),
+            self._condition(position=5),
+            _dt(2026, 12, 1, tzinfo=UTC),
+            116,
+        )
+        assert calls == [3]  # no fallback call
+        assert result["n_members"] == 15
+        assert result["method"] == "storm_order_climatology_tilted"
+
+    def test_recommended_side_follows_edge_direction(self, monkeypatch):
+        import hurricane_climatology as hc
+        import weather_markets as wm
+
+        monkeypatch.setattr(
+            "hurricane_climatology.load_basin_storms",
+            lambda basin: [{"year": 2020, "basin": "AL"}],
+        )
+        monkeypatch.setattr(
+            wm, "_get_cached_storms_named_to_date", lambda basin, year: None
+        )
+        monkeypatch.setattr(
+            hc, "first_hurricane_position_outcomes", lambda *a, **k: [True] * 20
+        )
+        from datetime import UTC
+        from datetime import datetime as _dt
+
+        result = wm._analyze_storm_order_trade(
+            self._enriched(), self._condition(), _dt(2026, 12, 1, tzinfo=UTC), 116
+        )
+        assert result["forecast_prob"] == 0.99
+        assert result["recommended_side"] == "yes"  # cheap market, high prob
+
+    def test_exposure_cap_key_matches_sibling_models(self, monkeypatch):
+        """Deliberately the SAME "HUR_<basin>" key as both sibling hurricane
+        models, not a separate one -- correlated Atlantic storm activity
+        must cap together across all 3 hurricane sub-models."""
+        import hurricane_climatology as hc
+        import weather_markets as wm
+
+        monkeypatch.setattr(
+            "hurricane_climatology.load_basin_storms",
+            lambda basin: [{"year": 2020, "basin": "AL"}],
+        )
+        monkeypatch.setattr(
+            wm, "_get_cached_storms_named_to_date", lambda basin, year: None
+        )
+        monkeypatch.setattr(
+            hc, "first_hurricane_position_outcomes", lambda *a, **k: [True] * 20
+        )
+        from datetime import UTC
+        from datetime import datetime as _dt
+
+        result = wm._analyze_storm_order_trade(
+            self._enriched(), self._condition(), _dt(2026, 12, 1, tzinfo=UTC), 116
+        )
+        assert result["city"] == "HUR_ATL"
+
+    def test_unanimous_outcomes_produce_a_real_nonzero_kelly(self, monkeypatch):
+        """Same clamp-verification-at-the-analyzer-level next_event's own
+        test documents: a unanimous [True]*N outcome set must not collapse
+        ci_adjusted_kelly to exactly 0.0."""
+        import hurricane_climatology as hc
+        import weather_markets as wm
+
+        monkeypatch.setattr(
+            "hurricane_climatology.load_basin_storms",
+            lambda basin: [{"year": 2020, "basin": "AL"}],
+        )
+        monkeypatch.setattr(
+            wm, "_get_cached_storms_named_to_date", lambda basin, year: None
+        )
+        monkeypatch.setattr(
+            hc, "first_hurricane_position_outcomes", lambda *a, **k: [True] * 30
+        )
+        from datetime import UTC
+        from datetime import datetime as _dt
+
+        result = wm._analyze_storm_order_trade(
+            self._enriched(yes_bid_dollars=0.30, yes_ask_dollars=0.35),
+            self._condition(),
+            _dt(2026, 12, 1, tzinfo=UTC),
+            116,
+        )
+        assert result["ci_low"] == result["ci_high"] == 0.99
+        assert result["ci_adjusted_kelly"] > 0.0
+
+    def test_condition_fields_passed_through_to_diagnostics(self, monkeypatch):
+        import hurricane_climatology as hc
+        import weather_markets as wm
+
+        monkeypatch.setattr(
+            "hurricane_climatology.load_basin_storms",
+            lambda basin: [{"year": 2020, "basin": "AL"}],
+        )
+        monkeypatch.setattr(
+            wm, "_get_cached_storms_named_to_date", lambda basin, year: None
+        )
+        monkeypatch.setattr(
+            hc, "first_hurricane_position_outcomes", lambda *a, **k: [False] * 20
+        )
+        from datetime import UTC
+        from datetime import datetime as _dt
+
+        result = wm._analyze_storm_order_trade(
+            self._enriched(),
+            self._condition(storm_name="Josephine", position=10),
+            _dt(2026, 12, 1, tzinfo=UTC),
+            116,
+        )
+        assert result["storm_name"] == "Josephine"
+        assert result["position"] == 10
+        assert result["basin"] == "ATL"
+
+
+class TestStormOrderConditionConfidence:
+    def test_has_its_own_entry_not_the_max_default(self):
+        """Same opus-review-caught concern the sibling next_event entry's
+        own test documents: this key must not be missing from
+        _CONDITION_CONFIDENCE, which would silently give the least-
+        validated model in the codebase the MAXIMUM confidence multiplier."""
+        import weather_markets as wm
+
+        assert "storm_order" in wm._CONDITION_CONFIDENCE
+        assert (
+            wm._CONDITION_CONFIDENCE["storm_order"]
+            < wm._CONDITION_CONFIDENCE["hurricane_count"]
+        )
+
+
+# ── check_position_limits() / cmd_order() guard conditional (mirrors
+#    TestCheckPositionLimitsHurricaneNextEventConditional/
+#    TestCmdOrderHurricaneNextEventGuard exactly) ────────────────────────────
+
+
+class TestCheckPositionLimitsStormOrderConditional:
+    def test_still_blocks_when_gate_inactive(self, monkeypatch):
+        import paper
+
+        monkeypatch.delenv("STORM_ORDER_TRADING_ENABLED", raising=False)
+        result = paper.check_position_limits(
+            "KXFIRSTHURRICANE-26DEC01ATL-ART", qty=1, price=0.10
+        )
+        assert result["ok"] is False
+        assert "hurricane" in result["reason"].lower()
+
+    def test_does_not_block_when_gate_active(self, monkeypatch, tmp_path):
+        from unittest.mock import patch
+
+        import paper
+
+        with patch("paper.DATA_PATH", tmp_path / "p.json"):
+            paper._save(
+                {
+                    "_version": paper._SCHEMA_VERSION,
+                    "balance": paper.STARTING_BALANCE,
+                    "peak_balance": paper.STARTING_BALANCE,
+                    "trades": [],
+                }
+            )
+            with patch("paper.get_open_trades", return_value=[]):
+                with patch("paper.get_total_exposure", return_value=0.0):
+                    monkeypatch.setattr(
+                        "weather_markets._storm_order_gates_active",
+                        lambda: True,
+                    )
+                    result = paper.check_position_limits(
+                        "KXFIRSTHURRICANE-26DEC01ATL-ART", qty=1, price=0.10
+                    )
+        assert result["ok"] is True
+
+    def test_other_hurricane_shapes_still_unconditionally_blocked(self, monkeypatch):
+        import paper
+
+        monkeypatch.setattr("weather_markets._storm_order_gates_active", lambda: True)
+        result = paper.check_position_limits("KXHURCAT-26FAUSTO-T5", qty=1, price=0.10)
+        assert result["ok"] is False
+        assert "hurricane" in result["reason"].lower()
+
+    def test_sibling_gate_state_does_not_affect_this_one(self, monkeypatch):
+        """None of the 3 hurricane sub-models' gates must cross-activate
+        each other."""
+        import paper
+
+        monkeypatch.setattr(
+            "weather_markets._hurricane_count_gates_active", lambda: True
+        )
+        monkeypatch.setattr(
+            "weather_markets._hurricane_next_event_gates_active", lambda: True
+        )
+        monkeypatch.setattr("weather_markets._storm_order_gates_active", lambda: False)
+        result = paper.check_position_limits(
+            "KXFIRSTHURRICANE-26DEC01ATL-ART", qty=1, price=0.10
+        )
+        assert result["ok"] is False
+
+
+class TestCmdOrderStormOrderGuard:
+    def test_refuses_when_gate_inactive(self, monkeypatch, capsys):
+        import main
+
+        monkeypatch.setattr("main.is_trading_paused", lambda: False)
+        monkeypatch.delenv("STORM_ORDER_TRADING_ENABLED", raising=False)
+        main.cmd_order(
+            None, "buy", ["KXFIRSTHURRICANE-26DEC01ATL-ART", "yes", "1", "0.10"]
+        )
+        out = capsys.readouterr().out
+        assert "refusing to place this order" in out
+        assert "storm-order" in out.lower()
+        assert "STORM_ORDER_TRADING_ENABLED" in out
+
+    def test_does_not_refuse_when_gate_active(self, monkeypatch):
+        import main
+
+        monkeypatch.setattr("main.is_trading_paused", lambda: False)
+        monkeypatch.setattr("main._storm_order_gates_active", lambda: True)
+        printed = []
+        monkeypatch.setattr("builtins.print", lambda *a, **k: printed.append(str(a)))
+        try:
+            main.cmd_order(
+                None, "buy", ["KXFIRSTHURRICANE-26DEC01ATL-ART", "yes", "1", "0.10"]
+            )
+        except Exception:
+            pass  # downstream failure (no live market) is expected/irrelevant here
+        assert not any(
+            "hurricane storm-order markets are shadow-only" in p for p in printed
+        )
+
+    def test_other_hurricane_shapes_still_unconditionally_refused(
+        self, monkeypatch, capsys
+    ):
+        import main
+
+        monkeypatch.setattr("main.is_trading_paused", lambda: False)
+        monkeypatch.setattr("main._storm_order_gates_active", lambda: True)
+        main.cmd_order(None, "buy", ["KXHURCAT-26FAUSTO-T5", "yes", "1", "0.10"])
+        out = capsys.readouterr().out
+        assert "hurricane markets are not supported yet" in out
+
+
+class TestQuickPaperBuyAndCmdPaperStormOrderGuards:
+    """Mirrors TestQuickPaperBuyAndCmdPaperHurricaneNextEventGuards exactly."""
+
+    def test_quick_paper_buy_refuses_when_gate_inactive(self, monkeypatch, capsys):
+        from unittest.mock import MagicMock
+
+        import main
+
+        monkeypatch.setattr("main.is_trading_paused", lambda: False)
+        monkeypatch.delenv("STORM_ORDER_TRADING_ENABLED", raising=False)
+        mock_client = MagicMock()
+        _inputs = iter(["KXFIRSTHURRICANE-26DEC01ATL-ART"])
+        monkeypatch.setattr("builtins.input", lambda *_a: next(_inputs))
+
+        main._quick_paper_buy(mock_client)
+
+        out = capsys.readouterr().out
+        assert "refusing to place this order" in out
+        assert "storm-order" in out.lower()
+        assert "STORM_ORDER_TRADING_ENABLED" in out
+        mock_client.get_market.assert_not_called()
+
+    def test_quick_paper_buy_does_not_refuse_when_gate_active(self, monkeypatch):
+        from unittest.mock import MagicMock
+
+        import main
+
+        monkeypatch.setattr("main.is_trading_paused", lambda: False)
+        monkeypatch.setattr("main._storm_order_gates_active", lambda: True)
+        mock_client = MagicMock()
+        mock_client.get_market.side_effect = RuntimeError("no real market in test")
+        _inputs = iter(["KXFIRSTHURRICANE-26DEC01ATL-ART", "q"])
+        monkeypatch.setattr("builtins.input", lambda *_a: next(_inputs))
+
+        printed = []
+        monkeypatch.setattr("builtins.print", lambda *a, **k: printed.append(str(a)))
+        try:
+            main._quick_paper_buy(mock_client)
+        except Exception:
+            pass
+        assert not any("shadow-only" in p for p in printed)
+
+    def test_cmd_paper_refuses_when_gate_inactive(self, monkeypatch, capsys):
+        import main
+
+        monkeypatch.setattr("main.is_trading_paused", lambda: False)
+        monkeypatch.delenv("STORM_ORDER_TRADING_ENABLED", raising=False)
+
+        main.cmd_paper(["buy", "KXFIRSTHURRICANE-26DEC01ATL-ART", "yes", "0.10", "1"])
+
+        out = capsys.readouterr().out
+        assert "refusing to place this order" in out
+        assert "storm-order" in out.lower()
+        assert "STORM_ORDER_TRADING_ENABLED" in out
+
+    def test_cmd_paper_does_not_refuse_when_gate_active(self, monkeypatch):
+        import main
+
+        monkeypatch.setattr("main.is_trading_paused", lambda: False)
+        monkeypatch.setattr("main._storm_order_gates_active", lambda: True)
+
+        printed = []
+        monkeypatch.setattr("builtins.print", lambda *a, **k: printed.append(str(a)))
+        try:
+            main.cmd_paper(
+                ["buy", "KXFIRSTHURRICANE-26DEC01ATL-ART", "yes", "0.10", "1"]
+            )
         except Exception:
             pass
         assert not any("shadow-only" in p for p in printed)

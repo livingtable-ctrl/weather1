@@ -401,6 +401,60 @@ class TestConsistency(unittest.TestCase):
         ]
         assert find_violations(markets) == []
 
+    def test_storm_order_markets_excluded(self):
+        """backlog.txt "HURRICANE MARKETS" -- storm-order model
+        (2026-08-07): KXFIRSTHURRICANE tickers must never reach
+        _group_markets either -- same reasoning as the hurricane-count/
+        hurricane-next-event exclusions above (KNOWN_WEATHER_SERIES now
+        returns it, with no shadow-gate check of find_violations()'s own)."""
+        markets = [
+            _market(
+                "KXFIRSTHURRICANE-26DEC01ATL-ART",
+                yes_bid=0.10,
+                yes_ask=0.15,
+                series="KXFIRSTHURRICANE",
+                title="Arthur first hurricane -- above threshold",
+            ),
+            _market(
+                "KXFIRSTHURRICANE-26DEC01ATL-WIL",
+                yes_bid=0.80,
+                yes_ask=0.85,  # priced HIGHER for a later-alphabet name -- a real violation shape
+                series="KXFIRSTHURRICANE",
+                title="Wilfred first hurricane -- above threshold",
+            ),
+        ]
+        self.assertEqual(find_violations(markets), [])
+
+    def test_storm_order_exclusion_is_mutation_proof(self):
+        """Same not-actually-mutation-proof concern the sibling
+        hurricane_next_event test above documents and fixes: real
+        KXFIRSTHURRICANE tickers end in a 3-letter name abbreviation
+        ("-ART"/"-WIL"), which _parse_threshold's own `-T<n>`/`-B<n>` regex
+        can't match, so those markets get dropped by the "if not parsed:
+        continue" check regardless of whether the exclusion guard is
+        present. This test uses adversarial (not real-shape) tickers ending
+        in "-T5"/"-T6" specifically because that IS a shape _parse_threshold
+        matches, confirmed to produce a real violation with the guard
+        removed -- the single genuine barrier between these tickers and the
+        arb auto-placer's real paper.place_paper_order."""
+        markets = [
+            _market(
+                "KXFIRSTHURRICANE-26DEC01ATL-T5",
+                yes_bid=0.10,
+                yes_ask=0.15,
+                series="KXFIRSTHURRICANE",
+                title="storm-order threshold -- above 5",
+            ),
+            _market(
+                "KXFIRSTHURRICANE-26DEC01ATL-T6",
+                yes_bid=0.80,
+                yes_ask=0.85,
+                series="KXFIRSTHURRICANE",
+                title="storm-order threshold -- above 6",
+            ),
+        ]
+        assert find_violations(markets) == []
+
 
 class TestParseThresholdRealApiShape(unittest.TestCase):
     """_parse_threshold() with market.get("series_ticker") absent -- the
