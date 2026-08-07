@@ -1873,7 +1873,7 @@ def _validate_trade_opportunity(
     edge = opp.get("net_edge", 0.0)
     if edge <= 0:
         return False, f"edge={edge:.4f} <= 0"
-    if "edge" in opp:
+    if opp.get("edge") is not None:
         raw_edge = opp["edge"]
         side = opp.get("recommended_side", "yes")
         if side == "yes" and raw_edge <= 0:

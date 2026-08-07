@@ -15242,3 +15242,37 @@ Priority: Low -- both gaps are real but narrow. The confidence-tier/AB-test
   Would need its own pass to make both read `tier` instead of re-deriving
   from signal text.
 
+======================================================
+[_validate_trade_opportunity() HAS 2 MORE LATENT None-VALUE CRASH SITES (net_edge, kelly) -- SAME BUG CLASS AS THE edge FIX]
+Priority: Low -- latent, not currently reachable. No real production code
+  path sets `opp["net_edge"]` or `opp["ci_adjusted_kelly"]`/
+  `opp["fee_adjusted_kelly"]` to `None` today; `web_app.py:2874` does show
+  a None-valued `net_edge` is a real shape elsewhere in the codebase
+  though, so this isn't purely hypothetical.
+
+Problem:
+  Fixed `order_executor.py`'s `_validate_trade_opportunity()` 2026-08-07
+  (`opp["edge"]` present-but-None crashed `raw_edge <= 0` with
+  `TypeError: '<=' not supported between instances of 'NoneType' and
+  'int'` -- changed `if "edge" in opp:` to `if opp.get("edge") is not
+  None:`, regression test added to tests/test_trade_validation.py::
+  test_validate_none_edge_value_does_not_crash). An opus review of that
+  fix (scoped narrowly to the `edge` field per an explicit prior finding)
+  flagged 2 more instances of the identical bug class in the same
+  function, not fixed as out of scope for that change:
+
+  - order_executor.py ~line 1871-1872: `edge = opp.get("net_edge", 0.0)`
+    then `if edge <= 0:` -- a present-but-None `net_edge` crashes
+    identically (`.get(key, default)` only substitutes the default when
+    the key is *absent*, not when it's present with value `None`).
+  - order_executor.py ~line 1917-1918: `kelly = opp.get(
+    "ci_adjusted_kelly", opp.get("fee_adjusted_kelly", 0.0))` then
+    `if kelly < 0.002:` -- same crash if either key is present with
+    `None`.
+
+  What it would look like: apply the same `is not None` guard pattern to
+  both sites, add regression tests mirroring
+  test_validate_none_edge_value_does_not_crash for each (opp with
+  net_edge=None / ci_adjusted_kelly=None+fee_adjusted_kelly=None), ruff+
+  mypy clean, scoped test run of tests/test_trade_validation.py.
+
