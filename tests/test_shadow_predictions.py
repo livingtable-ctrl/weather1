@@ -534,6 +534,72 @@ def test_mixed_batch_hurricane_count_shadow_daily_places_normally(monkeypatch):
     assert len(daily_rows) == 1 and daily_rows[0]["is_shadow"] == 0
 
 
+def test_hurricane_count_gate_evaluated_once_per_batch(monkeypatch):
+    """Regression test: each shadow-only gate must be evaluated ONCE per
+    _auto_place_trades() call, not once per ticker in the batch. Each real
+    gate sits behind a live settled-sample DB count, so per-ticker
+    recomputation risked two tickers of the SAME family observing different
+    gate values within a single call if the underlying count changed
+    mid-batch (e.g. a concurrent settle write). Asserts on CALL COUNT, not
+    just on outcome, so it fails against a per-ticker call pattern even when
+    the mocked gate always returns the same value."""
+    _place_everything_setup(monkeypatch)
+    call_count = {"n": 0}
+
+    def _counting_gate():
+        call_count["n"] += 1
+        return False
+
+    monkeypatch.setattr("order_executor._hurricane_count_gates_active", _counting_gate)
+    opp1 = _make_flat_opp("KXTROPSTORM-26DEC01-T15", city="HUR_ATL")
+    opp2 = _make_flat_opp("KXTROPSTORM-26DEC01-T16", city="HUR_ATL")
+    opp3 = _make_flat_opp("KXHURCTOT-26DEC01-T3", city="HUR_ATL")
+
+    order_executor._auto_place_trades([opp1, opp2, opp3], client=None)
+
+    assert call_count["n"] == 1, (
+        f"expected the hurricane-count gate to be evaluated exactly once "
+        f"per batch, got {call_count['n']} call(s)"
+    )
+
+
+def test_hurricane_count_gate_stable_within_batch_despite_stateful_mock(monkeypatch):
+    """If the gate's underlying value changed mid-batch (settled count
+    crossing the sample floor between two tickers of the same family), the
+    once-per-batch hoist guarantees every ticker in the batch still observes
+    the value taken at the START of the batch. Reproduces the exact
+    stateful-flip shape a naive per-ticker call is NOT immune to: with the
+    stub below, a per-ticker call pattern would shadow-gate the first
+    ticker but place the second for real."""
+    _place_everything_setup(monkeypatch)
+    responses = iter([False, True, True])
+    monkeypatch.setattr(
+        "order_executor._hurricane_count_gates_active", lambda: next(responses)
+    )
+    placed_calls = []
+    monkeypatch.setattr(
+        "order_executor.place_paper_order",
+        lambda ticker, side, qty, price, **kwargs: (
+            placed_calls.append(ticker),
+            {"id": 1, "status": "open", "cost": price * qty},
+        )[1],
+    )
+    opp1 = _make_flat_opp("KXTROPSTORM-26DEC01-T17", city="HUR_ATL")
+    opp2 = _make_flat_opp("KXTROPSTORM-26DEC01-T18", city="HUR_ATL")
+
+    order_executor._auto_place_trades([opp1, opp2], client=None)
+
+    assert placed_calls == [], (
+        "both hurricane-count tickers must be shadow-gated together -- the "
+        "gate value must not flip mid-batch even though the underlying "
+        "stub would return a different value on a later call"
+    )
+    rows1 = _fetch("KXTROPSTORM-26DEC01-T17")
+    rows2 = _fetch("KXTROPSTORM-26DEC01-T18")
+    assert rows1[0]["is_shadow"] == 1
+    assert rows2[0]["is_shadow"] == 1
+
+
 # ── backlog.txt "HURRICANE MARKETS" -- time-to-next-event model
 # (2026-08-07): KXNEXTHURDATE/KXNEXTCAT5HURDATE stay shadow-only,
 # independent of the count model's own gate, until

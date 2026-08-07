@@ -654,3 +654,154 @@ class TestHourlyTemperatureProxy:
         ]
         proxy_by_hour = wm.compute_hourly_temperature_proxy(markets, "America/New_York")
         assert proxy_by_hour == {}
+
+
+class TestCheckPositionLimitsHourlyGuard:
+    """Regression coverage for a gap found 2026-08-07: unlike rain/snow/
+    hurricane-count/hurricane-next-event, paper.check_position_limits() had
+    no guard for hourly-directional temperature tickers at all -- a manual
+    paper buy on a KXTEMP*H ticker could place regardless of
+    _hourly_gates_active(). Mirrors test_snow_markets.py's
+    TestCheckPositionLimitsSnowConditional exactly."""
+
+    def test_still_blocks_when_gate_inactive(self, monkeypatch):
+        import paper
+
+        monkeypatch.delenv("HOURLY_TRADING_ENABLED", raising=False)
+        result = paper.check_position_limits(
+            "KXTEMPNYCH-26AUG08-T75.0", qty=1, price=0.10
+        )
+        assert result["ok"] is False
+        assert "hourly" in result["reason"].lower()
+
+    def test_does_not_block_when_gate_active(self, monkeypatch, tmp_path):
+        """Mutation-test proof: flipping _hourly_gates_active() to True
+        makes the block disappear -- confirms the conditional is real."""
+        from unittest.mock import patch
+
+        import paper
+
+        with patch("paper.DATA_PATH", tmp_path / "p.json"):
+            paper._save(
+                {
+                    "_version": paper._SCHEMA_VERSION,
+                    "balance": paper.STARTING_BALANCE,
+                    "peak_balance": paper.STARTING_BALANCE,
+                    "trades": [],
+                }
+            )
+            with patch("paper.get_open_trades", return_value=[]):
+                with patch("paper.get_total_exposure", return_value=0.0):
+                    monkeypatch.setattr(
+                        "weather_markets._hourly_gates_active", lambda: True
+                    )
+                    result = paper.check_position_limits(
+                        "KXTEMPNYCH-26AUG08-T75.0", qty=1, price=0.10
+                    )
+        assert result["ok"] is True
+
+    def test_daily_ticker_unaffected(self, tmp_path):
+        from unittest.mock import patch
+
+        import paper
+
+        with patch("paper.DATA_PATH", tmp_path / "p.json"):
+            paper._save(
+                {
+                    "_version": paper._SCHEMA_VERSION,
+                    "balance": paper.STARTING_BALANCE,
+                    "peak_balance": paper.STARTING_BALANCE,
+                    "trades": [],
+                }
+            )
+            with patch("paper.get_open_trades", return_value=[]):
+                with patch("paper.get_total_exposure", return_value=0.0):
+                    result = paper.check_position_limits(
+                        "KXHIGHNY-26JUL20-T70", qty=1, price=0.50
+                    )
+        assert result["ok"] is True
+
+
+class TestManualPlacementPathsHourlyGuard:
+    """Same gap as above, at the explicit refuse-outright guards in
+    main.py's cmd_order/_quick_paper_buy/cmd_paper -- these previously had
+    guards for rain/snow/hurricane but not hourly. Mirrors
+    test_snow_markets.py's TestCmdOrderSnowGuard and
+    TestQuickPaperBuyAndCmdPaperSnowGuards."""
+
+    def test_cmd_order_refuses_when_gate_inactive(self, monkeypatch, capsys):
+        import main
+
+        monkeypatch.setattr("main.is_trading_paused", lambda: False)
+        monkeypatch.delenv("HOURLY_TRADING_ENABLED", raising=False)
+        main.cmd_order(None, "buy", ["KXTEMPNYCH-26AUG08-T75.0", "yes", "1", "0.10"])
+        out = capsys.readouterr().out
+        assert "refusing to place this order" in out
+        assert "hourly" in out.lower()
+        assert "HOURLY_TRADING_ENABLED" in out
+
+    def test_cmd_order_does_not_refuse_when_gate_active(self, monkeypatch):
+        """Mutation-test proof the conditional is real -- once active, this
+        guard no longer fires (may still stop later for unrelated reasons,
+        e.g. no real market to fetch in this unit-test context)."""
+        import main
+
+        monkeypatch.setattr("main.is_trading_paused", lambda: False)
+        monkeypatch.setattr("main._hourly_gates_active", lambda: True)
+        printed = []
+        monkeypatch.setattr("builtins.print", lambda *a, **k: printed.append(str(a)))
+        try:
+            main.cmd_order(
+                None, "buy", ["KXTEMPNYCH-26AUG08-T75.0", "yes", "1", "0.10"]
+            )
+        except Exception:
+            pass  # downstream failure (no live market) is expected/irrelevant here
+        assert not any("shadow-only" in p for p in printed)
+
+    def test_quick_paper_buy_refuses_when_gate_inactive(self, monkeypatch, capsys):
+        from unittest.mock import MagicMock
+
+        import main
+
+        monkeypatch.setattr("main.is_trading_paused", lambda: False)
+        monkeypatch.delenv("HOURLY_TRADING_ENABLED", raising=False)
+        mock_client = MagicMock()
+        _inputs = iter(["KXTEMPNYCH-26AUG08-T75.0"])
+        monkeypatch.setattr("builtins.input", lambda *_a: next(_inputs))
+
+        main._quick_paper_buy(mock_client)
+
+        out = capsys.readouterr().out
+        assert "refusing to place this order" in out
+        assert "hourly" in out.lower()
+        assert "HOURLY_TRADING_ENABLED" in out
+        mock_client.get_market.assert_not_called()  # returned before any further work
+
+    def test_cmd_paper_refuses_when_gate_inactive(self, monkeypatch, capsys):
+        import main
+
+        monkeypatch.setattr("main.is_trading_paused", lambda: False)
+        monkeypatch.delenv("HOURLY_TRADING_ENABLED", raising=False)
+
+        main.cmd_paper(["buy", "KXTEMPNYCH-26AUG08-T75.0", "yes", "0.10", "1"])
+
+        out = capsys.readouterr().out
+        assert "refusing to place this order" in out
+        assert "hourly" in out.lower()
+        assert "HOURLY_TRADING_ENABLED" in out
+
+    def test_cmd_paper_does_not_refuse_when_gate_active(self, monkeypatch):
+        """Mutation-test proof: proceeds past THIS guard once the gate is
+        active."""
+        import main
+
+        monkeypatch.setattr("main.is_trading_paused", lambda: False)
+        monkeypatch.setattr("main._hourly_gates_active", lambda: True)
+
+        printed = []
+        monkeypatch.setattr("builtins.print", lambda *a, **k: printed.append(str(a)))
+        try:
+            main.cmd_paper(["buy", "KXTEMPNYCH-26AUG08-T75.0", "yes", "0.10", "1"])
+        except Exception:
+            pass
+        assert not any("shadow-only" in p for p in printed)
