@@ -8436,12 +8436,13 @@ UPDATE 2026-08-03 (no live-signal code shipped against this entry -- scope
   the VM-move-sequencing notes elsewhere in this file) would actually
   provide.
 
-[PARTIALLY RESOLVED 2026-07-30 -- infra-only pass shipped as a standalone
+[RESOLVED 2026-07-30 (fetch/plumbing piece), CLOSED 2026-08-07 (LLM
+  confidence/lean scoring half, declined by user -- not worth pursuing) --
+  nothing left open in this entry. Infra-only pass shipped as a standalone
   shadow-mode experiment (this entry's own "When to revisit" option): fetch
-  + city->WFO table + .DISCUSSION extraction. LLM confidence/lean scoring
-  deliberately NOT built -- still open, gated on an LLM key/SDK this
-  project doesn't have configured, see resolution note below] NWS AFD (AREA
-  FORECAST DISCUSSION) PARSING
+  + city->WFO table + .DISCUSSION extraction, real and usable via
+  `py main.py afd <city>`. See the dated closure note at the end of this
+  entry.] NWS AFD (AREA FORECAST DISCUSSION) PARSING
 Priority: was Low (stretch/novel — highest differentiation, least proven)
   -- fetch/plumbing piece is done; the actual differentiating signal
   (confidence/lean scoring) is still exactly as unproven as before, just
@@ -8800,6 +8801,16 @@ RESOLVED 2026-07-30 (fetch/plumbing piece only -- confidence/lean scoring
   IEM's archive-retrieval support for backfilling historical AFD text
   first, per DATA-DRIVEN SIGMA's own "build a consumer before a table"
   lesson.
+
+CLOSED 2026-08-07 (LLM confidence/lean scoring half only -- the fetch/
+  plumbing piece above stays as-is, still real and usable via `py main.py
+  afd <city>`): user reviewed the current backlog and called this
+  unnecessary. Not pursuing LLM-based confidence/lean extraction for this
+  signal -- no key/SDK provisioning, no further work planned here. The
+  fetch/.DISCUSSION-extraction infrastructure remains available if a future
+  session finds another use for it (e.g. plain-text display, a non-LLM
+  regex/keyword scoring pass, as the entry's own AskUserQuestion round
+  already considered and declined in favor of fetch-only).
 
 [CITY-LOCAL AFTERNOON SAME-DAY SWEEP]
 Priority: Low (mostly covered by loop/watch when they run)
