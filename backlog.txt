@@ -14688,3 +14688,64 @@ Priority: Low -- not currently causing any failure (231/231 pass; the
   possibly the newer NWS AFD-parsing infra too. A meaningfully larger
   task than either of the two already-fixed gaps, not a quick follow-on.
 
+[test_cron_integration.py's cmd_cron TESTS ALSO MAKE REAL NETWORK CALLS VIA UNMOCKED trade_cycle._run_batch_prewarm]
+Priority: Low -- gated behind the `integration` pytest marker (only runs
+  with `-m integration`, not in a default `pytest` invocation), and
+  currently passing, just slow and non-hermetic.
+
+  Found 2026-08-07 fixing tests/test_trade_cycle_engine.py::
+  TestCronBannerNotMisleadingWhenHalted::test_banner_suppressed_when_
+  manual_override_halts_cycle, which hung indefinitely (5+ min, near-zero
+  CPU -- blocked on I/O). Root cause: it's the first test in that file
+  calling cron.cmd_cron() with a non-empty (real, parseable-ticker)
+  market list. cron.cmd_cron() -> _cmd_cron_body() -> trade_cycle.
+  run_trade_cycle(prewarm=True, cron's default) -> trade_cycle.
+  _run_batch_prewarm() -> weather_markets.batch_prewarm_forecasts() /
+  batch_prewarm_ensemble() (real Open-Meteo HTTP calls, one path with a
+  bare 65s time.sleep rate-limit pause) plus a ThreadPoolExecutor fanning
+  out to NBM/ECMWF/WeatherAPI/NWS-daily/METAR/MOS fetchers per city/date
+  pair -- entirely independent of the get_weather_markets/enrich_with_
+  forecast/analyze_trade mocks both test files already had, since prewarm
+  runs before run_trade_cycle's analyze loop ever touches those. Fixed
+  there by stubbing trade_cycle._run_batch_prewarm to a no-op in that
+  file's engine_env fixture (no test asserts on prewarm's own behavior).
+
+  Same root cause reaches test_cron_integration.py: its cron_env fixture
+  has the identical isolation gap, and several of its tests (e.g.
+  test_cron_places_paper_trade_on_strong_signal) call main.cmd_cron()
+  with the same non-empty, parseable-ticker market shape. Verified live
+  (2026-08-07): that one test still passes but takes 87s (vs. sub-second
+  for everything else in the suite) -- confirming it's making the same
+  real, unmocked network round-trip through _run_batch_prewarm, just
+  finishing before the 720s cron watchdog would kill it. This directly
+  contradicts that file's own module docstring ("All external calls...
+  are mocked... CI-safe with mocks"). Not fixed this session -- out of
+  scope for the test_trade_cycle_engine.py hang, and this file is marked
+  `integration` (not run by default), so it's a hermeticity/slowness gap
+  rather than an active failure. Same bug class as the analyze_trade/
+  nws_prob entry above; 3rd known instance of "mocking main.py's
+  scan/analyze functions doesn't isolate run_trade_cycle()'s own internal
+  prewarm/fetch calls."
+
+  What it would look like: apply the same fix -- stub trade_cycle.
+  _run_batch_prewarm (or the equivalent) to a no-op in test_cron_
+  integration.py's cron_env fixture -- then re-verify the full file with
+  `-m integration` completes fast with zero real network calls.
+
+RESOLVED 2026-08-07: Applied the prescribed fix -- stubbed trade_cycle.
+  _run_batch_prewarm to a no-op in test_cron_integration.py's cron_env
+  fixture (tests/test_cron_integration.py), mirroring engine_env's
+  existing patch. In this session's environment the unmocked network path
+  didn't settle in ~87s as the discovery note above found -- it hung
+  indefinitely (45s+ hard timeout, no PASSED/FAILED) on both
+  test_cron_places_paper_trade_on_strong_signal and the sibling
+  TestCronBannerNotMisleadingWhenHalted test in test_trade_cycle_engine.py,
+  confirming this is a real hang risk, not just slowness, under different
+  network conditions. Verified: both previously-hanging tests now pass in
+  under 2s; full test_cron_integration.py (23 tests, `-m integration`)
+  passes in 8.70s; full test_trade_cycle_engine.py (52 tests) passes in
+  19.04s, no other hangs. ruff + mypy clean on the changed file. 4th known
+  instance of the "mocking main.py's scan/analyze functions doesn't
+  isolate run_trade_cycle()'s own internal prewarm/fetch calls" bug class
+  (test_weather_markets.py/nws_prob entry above is the 3rd, still open).
+
