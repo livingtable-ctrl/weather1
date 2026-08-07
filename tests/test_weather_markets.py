@@ -1127,7 +1127,7 @@ class TestAdjustedEdgeInAnalyzeTrade:
 
     def test_analyze_trade_returns_adjusted_edge_key(self, monkeypatch):
         """Result dict must contain adjusted_edge and edge_confidence_factor."""
-        from datetime import UTC, datetime, timedelta
+        from datetime import datetime, timedelta
 
         import weather_markets as wm
 
@@ -1239,6 +1239,7 @@ def test_analyze_trade_result_has_model_consensus_field(monkeypatch):
     monkeypatch.setattr(wm, "fetch_temperature_nbm", lambda *a, **kw: 74.0)
     monkeypatch.setattr(wm, "fetch_temperature_ecmwf", lambda *a, **kw: 74.0)
     monkeypatch.setattr(wm, "_metar_lock_in", lambda *a, **kw: (False, 0.0, {}))
+    monkeypatch.setattr("nws.get_live_observation", lambda *a, **kw: None)
     monkeypatch.setattr(wm, "_SEASONAL_WEIGHTS", {})
     monkeypatch.setattr(wm, "_CONDITION_WEIGHTS", {})
     monkeypatch.setattr(wm, "_CITY_WEIGHTS", {})
@@ -1254,9 +1255,19 @@ def test_analyze_trade_result_has_model_consensus_field(monkeypatch):
         },
     )
 
-    from datetime import date, timedelta
+    from datetime import datetime, timedelta
 
-    tomorrow = date.today() + timedelta(days=1)
+    # UTC, not date.today(): analyze_trade computes days_out via
+    # datetime.now(UTC).date() (weather_markets.py), so a local-timezone
+    # "tomorrow" collides with UTC "today" whenever the local wall-clock date
+    # lags behind UTC's (e.g. US evenings) -- days_out then evaluates to 0
+    # instead of 1, silently routing into the same-day get_live_observation()
+    # branch this test doesn't mock. Confirmed live: this test failed exactly
+    # this way for several hours in this environment (same "system-local-
+    # behind-UTC" bug class test_metar_locked_trade_has_ecmwf_forecast_mean_
+    # keys/test_metar_locked_trade_has_nbm_quantile_prob_key already
+    # document elsewhere in this file).
+    tomorrow = datetime.now(UTC).date() + timedelta(days=1)
     enriched = {
         "_forecast": {"high_f": 75.0, "low_f": 55.0, "precip_in": 0.0, "wind_mph": 5.0},
         "_date": tomorrow,
@@ -1301,6 +1312,7 @@ def test_analyze_trade_result_surfaces_precip_sum_in(monkeypatch):
     monkeypatch.setattr(wm, "fetch_temperature_nbm", lambda *a, **kw: 74.0)
     monkeypatch.setattr(wm, "fetch_temperature_ecmwf", lambda *a, **kw: 74.0)
     monkeypatch.setattr(wm, "_metar_lock_in", lambda *a, **kw: (False, 0.0, {}))
+    monkeypatch.setattr("nws.get_live_observation", lambda *a, **kw: None)
     monkeypatch.setattr(wm, "_SEASONAL_WEIGHTS", {})
     monkeypatch.setattr(wm, "_CONDITION_WEIGHTS", {})
     monkeypatch.setattr(wm, "_CITY_WEIGHTS", {})
@@ -1315,9 +1327,19 @@ def test_analyze_trade_result_surfaces_precip_sum_in(monkeypatch):
         },
     )
 
-    from datetime import date, timedelta
+    from datetime import datetime, timedelta
 
-    tomorrow = date.today() + timedelta(days=1)
+    # UTC, not date.today(): analyze_trade computes days_out via
+    # datetime.now(UTC).date() (weather_markets.py), so a local-timezone
+    # "tomorrow" collides with UTC "today" whenever the local wall-clock date
+    # lags behind UTC's (e.g. US evenings) -- days_out then evaluates to 0
+    # instead of 1, silently routing into the same-day get_live_observation()
+    # branch this test doesn't mock. Confirmed live: this test failed exactly
+    # this way for several hours in this environment (same "system-local-
+    # behind-UTC" bug class test_metar_locked_trade_has_ecmwf_forecast_mean_
+    # keys/test_metar_locked_trade_has_nbm_quantile_prob_key already
+    # document elsewhere in this file).
+    tomorrow = datetime.now(UTC).date() + timedelta(days=1)
     enriched = {
         "_forecast": {
             "high_f": 75.0,
@@ -1368,6 +1390,7 @@ def test_analyze_trade_result_precip_sum_in_none_when_key_missing(monkeypatch):
     monkeypatch.setattr(wm, "fetch_temperature_nbm", lambda *a, **kw: 74.0)
     monkeypatch.setattr(wm, "fetch_temperature_ecmwf", lambda *a, **kw: 74.0)
     monkeypatch.setattr(wm, "_metar_lock_in", lambda *a, **kw: (False, 0.0, {}))
+    monkeypatch.setattr("nws.get_live_observation", lambda *a, **kw: None)
     monkeypatch.setattr(wm, "_SEASONAL_WEIGHTS", {})
     monkeypatch.setattr(wm, "_CONDITION_WEIGHTS", {})
     monkeypatch.setattr(wm, "_CITY_WEIGHTS", {})
@@ -1377,9 +1400,19 @@ def test_analyze_trade_result_precip_sum_in_none_when_key_missing(monkeypatch):
         lambda *a, **kw: {"high_f": 75.0, "low_f": 55.0, "wind_mph": 5.0},
     )
 
-    from datetime import date, timedelta
+    from datetime import datetime, timedelta
 
-    tomorrow = date.today() + timedelta(days=1)
+    # UTC, not date.today(): analyze_trade computes days_out via
+    # datetime.now(UTC).date() (weather_markets.py), so a local-timezone
+    # "tomorrow" collides with UTC "today" whenever the local wall-clock date
+    # lags behind UTC's (e.g. US evenings) -- days_out then evaluates to 0
+    # instead of 1, silently routing into the same-day get_live_observation()
+    # branch this test doesn't mock. Confirmed live: this test failed exactly
+    # this way for several hours in this environment (same "system-local-
+    # behind-UTC" bug class test_metar_locked_trade_has_ecmwf_forecast_mean_
+    # keys/test_metar_locked_trade_has_nbm_quantile_prob_key already
+    # document elsewhere in this file).
+    tomorrow = datetime.now(UTC).date() + timedelta(days=1)
     enriched = {
         "_forecast": {"high_f": 75.0, "low_f": 55.0, "wind_mph": 5.0},
         "_date": tomorrow,
@@ -1415,6 +1448,7 @@ def _analyze_trade_base_mocks(monkeypatch, wm):
     monkeypatch.setattr(wm, "fetch_temperature_nbm", lambda *a, **kw: 74.0)
     monkeypatch.setattr(wm, "fetch_temperature_ecmwf", lambda *a, **kw: 74.0)
     monkeypatch.setattr(wm, "_metar_lock_in", lambda *a, **kw: (False, 0.0, {}))
+    monkeypatch.setattr("nws.get_live_observation", lambda *a, **kw: None)
     monkeypatch.setattr(wm, "_SEASONAL_WEIGHTS", {})
     monkeypatch.setattr(wm, "_CONDITION_WEIGHTS", {})
     monkeypatch.setattr(wm, "_CITY_WEIGHTS", {})
@@ -1431,9 +1465,24 @@ def _analyze_trade_base_mocks(monkeypatch, wm):
 
 
 def _analyze_trade_enriched_fixture():
-    from datetime import date, timedelta
+    """Shared enriched-market fixture for the nbm_quantile_prob tests below
+    (paired with _analyze_trade_base_mocks, which mocks get_live_observation
+    for its callers)."""
+    from datetime import datetime, timedelta
 
-    tomorrow = date.today() + timedelta(days=1)
+    # UTC, not date.today(): analyze_trade computes days_out via
+    # datetime.now(UTC).date() (weather_markets.py), so a local-timezone
+    # "tomorrow" collides with UTC "today" whenever the local wall-clock date
+    # lags behind UTC's (e.g. US evenings) -- days_out then evaluates to 0
+    # instead of 1, silently routing into the same-day get_live_observation()
+    # branch. Confirmed live: the 3 tests using this fixture (via
+    # _analyze_trade_base_mocks, which didn't mock get_live_observation at
+    # the time) failed exactly this way for several hours in this
+    # environment (same "system-local-behind-UTC" bug class
+    # test_metar_locked_trade_has_ecmwf_forecast_mean_keys/
+    # test_metar_locked_trade_has_nbm_quantile_prob_key already document
+    # elsewhere in this file).
+    tomorrow = datetime.now(UTC).date() + timedelta(days=1)
     return {
         "_forecast": {"high_f": 75.0, "low_f": 55.0, "precip_in": 0.0, "wind_mph": 5.0},
         "_date": tomorrow,
@@ -1561,6 +1610,7 @@ def test_model_consensus_false_when_models_disagree(monkeypatch):
     # target_date was set to tomorrow but the clock has already rolled), it
     # fires and skips the consensus block.
     monkeypatch.setattr(wm, "_metar_lock_in", lambda *a, **kw: (False, 0.0, {}))
+    monkeypatch.setattr("nws.get_live_observation", lambda *a, **kw: None)
     # Patch live API calls so the test is deterministic — without these,
     # fetch_temperature_nbm/ecmwf make real network requests and the resulting
     # model probability shifts unpredictably, occasionally triggering the
@@ -1572,9 +1622,15 @@ def test_model_consensus_false_when_models_disagree(monkeypatch):
     monkeypatch.setattr(wm, "get_live_observation", lambda *a, **kw: None)
     monkeypatch.setattr(wm, "temperature_adjustment", lambda *a, **kw: 0.0)
 
-    from datetime import date, timedelta
+    from datetime import datetime, timedelta
 
-    tomorrow = date.today() + timedelta(days=1)
+    # UTC, not date.today(): this test already mocks get_live_observation
+    # above so it isn't actually exposed to the local-vs-UTC days_out race
+    # the sibling analyze_trade tests in this file were -- kept UTC-
+    # consistent here anyway, matching weather_markets.py's own
+    # datetime.now(UTC).date() days_out computation, for defense in depth
+    # rather than relying on that one mock alone.
+    tomorrow = datetime.now(UTC).date() + timedelta(days=1)
     enriched = {
         "_forecast": {"high_f": 75.0, "low_f": 55.0, "precip_in": 0.0, "wind_mph": 5.0},
         "_date": tomorrow,
@@ -1622,6 +1678,7 @@ def test_analyze_trade_captures_ecmwf_forecast_means(monkeypatch):
     monkeypatch.setattr(wm, "fetch_temperature_nbm", lambda *a, **kw: 74.0)
     monkeypatch.setattr(wm, "fetch_temperature_ecmwf", lambda *a, **kw: 79.5)
     monkeypatch.setattr(wm, "_metar_lock_in", lambda *a, **kw: (False, 0.0, {}))
+    monkeypatch.setattr("nws.get_live_observation", lambda *a, **kw: None)
     monkeypatch.setattr(wm, "_SEASONAL_WEIGHTS", {})
     monkeypatch.setattr(wm, "_CONDITION_WEIGHTS", {})
     monkeypatch.setattr(wm, "_CITY_WEIGHTS", {})
@@ -1636,9 +1693,19 @@ def test_analyze_trade_captures_ecmwf_forecast_means(monkeypatch):
         },
     )
 
-    from datetime import date, timedelta
+    from datetime import datetime, timedelta
 
-    tomorrow = date.today() + timedelta(days=1)
+    # UTC, not date.today(): analyze_trade computes days_out via
+    # datetime.now(UTC).date() (weather_markets.py), so a local-timezone
+    # "tomorrow" collides with UTC "today" whenever the local wall-clock date
+    # lags behind UTC's (e.g. US evenings) -- days_out then evaluates to 0
+    # instead of 1, silently routing into the same-day get_live_observation()
+    # branch this test doesn't mock. Confirmed live: this test failed exactly
+    # this way for several hours in this environment (same "system-local-
+    # behind-UTC" bug class test_metar_locked_trade_has_ecmwf_forecast_mean_
+    # keys/test_metar_locked_trade_has_nbm_quantile_prob_key already
+    # document elsewhere in this file).
+    tomorrow = datetime.now(UTC).date() + timedelta(days=1)
     enriched = {
         "_forecast": {"high_f": 75.0, "low_f": 55.0, "precip_in": 0.0, "wind_mph": 5.0},
         "_date": tomorrow,
@@ -1703,6 +1770,7 @@ def test_analyze_trade_captures_gem_ukmo_forecast_means(monkeypatch):
     monkeypatch.setattr(wm, "fetch_temperature_nbm", lambda *a, **kw: 74.0)
     monkeypatch.setattr(wm, "fetch_temperature_ecmwf", lambda *a, **kw: 79.5)
     monkeypatch.setattr(wm, "_metar_lock_in", lambda *a, **kw: (False, 0.0, {}))
+    monkeypatch.setattr("nws.get_live_observation", lambda *a, **kw: None)
     monkeypatch.setattr(wm, "_SEASONAL_WEIGHTS", {})
     monkeypatch.setattr(wm, "_CONDITION_WEIGHTS", {})
     monkeypatch.setattr(wm, "_CITY_WEIGHTS", {})
@@ -1717,9 +1785,19 @@ def test_analyze_trade_captures_gem_ukmo_forecast_means(monkeypatch):
         },
     )
 
-    from datetime import date, timedelta
+    from datetime import datetime, timedelta
 
-    tomorrow = date.today() + timedelta(days=1)
+    # UTC, not date.today(): analyze_trade computes days_out via
+    # datetime.now(UTC).date() (weather_markets.py), so a local-timezone
+    # "tomorrow" collides with UTC "today" whenever the local wall-clock date
+    # lags behind UTC's (e.g. US evenings) -- days_out then evaluates to 0
+    # instead of 1, silently routing into the same-day get_live_observation()
+    # branch this test doesn't mock. Confirmed live: this test failed exactly
+    # this way for several hours in this environment (same "system-local-
+    # behind-UTC" bug class test_metar_locked_trade_has_ecmwf_forecast_mean_
+    # keys/test_metar_locked_trade_has_nbm_quantile_prob_key already
+    # document elsewhere in this file).
+    tomorrow = datetime.now(UTC).date() + timedelta(days=1)
     enriched = {
         "_forecast": {"high_f": 75.0, "low_f": 55.0, "precip_in": 0.0, "wind_mph": 5.0},
         "_date": tomorrow,
@@ -1777,6 +1855,7 @@ def test_analyze_trade_survives_gem_ukmo_fetch_exception(monkeypatch):
     monkeypatch.setattr(wm, "fetch_temperature_nbm", lambda *a, **kw: 74.0)
     monkeypatch.setattr(wm, "fetch_temperature_ecmwf", lambda *a, **kw: 79.5)
     monkeypatch.setattr(wm, "_metar_lock_in", lambda *a, **kw: (False, 0.0, {}))
+    monkeypatch.setattr("nws.get_live_observation", lambda *a, **kw: None)
     monkeypatch.setattr(wm, "_SEASONAL_WEIGHTS", {})
     monkeypatch.setattr(wm, "_CONDITION_WEIGHTS", {})
     monkeypatch.setattr(wm, "_CITY_WEIGHTS", {})
@@ -1791,9 +1870,19 @@ def test_analyze_trade_survives_gem_ukmo_fetch_exception(monkeypatch):
         },
     )
 
-    from datetime import date, timedelta
+    from datetime import datetime, timedelta
 
-    tomorrow = date.today() + timedelta(days=1)
+    # UTC, not date.today(): analyze_trade computes days_out via
+    # datetime.now(UTC).date() (weather_markets.py), so a local-timezone
+    # "tomorrow" collides with UTC "today" whenever the local wall-clock date
+    # lags behind UTC's (e.g. US evenings) -- days_out then evaluates to 0
+    # instead of 1, silently routing into the same-day get_live_observation()
+    # branch this test doesn't mock. Confirmed live: this test failed exactly
+    # this way for several hours in this environment (same "system-local-
+    # behind-UTC" bug class test_metar_locked_trade_has_ecmwf_forecast_mean_
+    # keys/test_metar_locked_trade_has_nbm_quantile_prob_key already
+    # document elsewhere in this file).
+    tomorrow = datetime.now(UTC).date() + timedelta(days=1)
     enriched = {
         "_forecast": {"high_f": 75.0, "low_f": 55.0, "precip_in": 0.0, "wind_mph": 5.0},
         "_date": tomorrow,
@@ -1824,9 +1913,20 @@ def test_analyze_trade_survives_gem_ukmo_fetch_exception(monkeypatch):
 def _ecmwf_gap_test_enriched():
     """Shared enriched-market fixture for the ecmwf_consensus_gap_prob tests
     below -- same shape as test_analyze_trade_captures_gem_ukmo_forecast_means's."""
-    from datetime import date, timedelta
+    from datetime import datetime, timedelta
 
-    tomorrow = date.today() + timedelta(days=1)
+    # UTC, not date.today(): analyze_trade computes days_out via
+    # datetime.now(UTC).date() (weather_markets.py), so a local-timezone
+    # "tomorrow" collides with UTC "today" whenever the local wall-clock date
+    # lags behind UTC's (e.g. US evenings) -- days_out then evaluates to 0
+    # instead of 1, silently routing into the same-day get_live_observation()
+    # branch. Confirmed live: the tests using this fixture (via
+    # _stub_ecmwf_gap_common, which didn't mock get_live_observation at the
+    # time) failed exactly this way for several hours in this environment
+    # (same "system-local-behind-UTC" bug class test_metar_locked_trade_has_
+    # ecmwf_forecast_mean_keys/test_metar_locked_trade_has_nbm_quantile_
+    # prob_key already document elsewhere in this file).
+    tomorrow = datetime.now(UTC).date() + timedelta(days=1)
     return {
         "_forecast": {"high_f": 75.0, "low_f": 55.0, "precip_in": 0.0, "wind_mph": 5.0},
         "_date": tomorrow,
@@ -1854,6 +1954,7 @@ def _stub_ecmwf_gap_common(monkeypatch, wm):
     monkeypatch.setattr(wm, "fetch_temperature_nbm", lambda *a, **kw: 74.0)
     monkeypatch.setattr(wm, "fetch_temperature_ecmwf", lambda *a, **kw: 79.5)
     monkeypatch.setattr(wm, "_metar_lock_in", lambda *a, **kw: (False, 0.0, {}))
+    monkeypatch.setattr("nws.get_live_observation", lambda *a, **kw: None)
     monkeypatch.setattr(wm, "_SEASONAL_WEIGHTS", {})
     monkeypatch.setattr(wm, "_CONDITION_WEIGHTS", {})
     monkeypatch.setattr(wm, "_CITY_WEIGHTS", {})
@@ -2877,7 +2978,7 @@ def test_analyze_trade_returns_none_for_past_date_market(monkeypatch):
     has passed. Without this filter, cron generates spurious signals (and very
     high fake edges) for already-resolved markets.
     """
-    from datetime import UTC, datetime, timedelta
+    from datetime import datetime, timedelta
 
     from weather_markets import analyze_trade
 

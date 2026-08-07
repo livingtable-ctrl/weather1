@@ -14140,3 +14140,164 @@ Priority: Medium -- not a live-money bug (this only affects the sigma-based
   rather than just file-existence/staleness. Needs a decision on which
   tradeoff is acceptable before implementing.
 
+======================================================
+[RESOLVED 2026-08-07] 12 test_weather_markets.py TESTS FAILED INTERMITTENTLY DEPENDING ON LOCAL TIME-OF-DAY
+
+  User asked to fix 12 failing tests in test_weather_markets.py (all
+  "analyze_trade returned None"). Re-verified against live state rather
+  than trusting the failure alone: ran the 12 tests once while local
+  system time was Aug 6 evening (US Eastern) and UTC was already Aug 7 --
+  all 12 failed. The system clock then rolled past local midnight; re-ran
+  the identical 12 tests immediately after with zero code changes -- all
+  12 passed. This proved the tests were never actually broken by any of
+  this session's earlier edits (climatology.py, conftest.py); they're
+  flaky against real-world local time-of-day, and were failing at the
+  exact moment the user happened to ask about them.
+
+  Root cause: these 12 tests build their enriched-market fixture's
+  "_date" field via `tomorrow = date.today() + timedelta(days=1)` --
+  LOCAL timezone. weather_markets.py's analyze_trade() computes
+  `days_out = max(0, (target_date - datetime.now(UTC).date()).days)` --
+  UTC. Whenever the local wall-clock date lags UTC's (true for any
+  US timezone from roughly 8pm-midnight local, when UTC has already
+  rolled to the next calendar day), local "tomorrow" collides with UTC
+  "today", so days_out evaluates to 0 instead of the intended 1 --
+  silently routing into analyze_trade's same-day-only branch (`if
+  days_out == 0 and condition.get("type") != "between": live_obs =
+  get_live_observation(...)`), which none of the 12 tests mocked. That
+  branch's obs_override then takes 55-95% of the blend weight (scaled by
+  local hour), so it dominates blended_prob with today's REAL live NYC
+  temperature reading -- in August, a near-certainty that high > 72°F
+  (observed: model=0.96), which diverges from the tests' fixed
+  market-price assumption (0.67) by more than analyze_trade's own
+  model_mkt_gap rejection threshold (0.25), returning None. Not a novel
+  bug class: two existing tests in this same file
+  (test_metar_locked_trade_has_ecmwf_forecast_mean_keys,
+  test_metar_locked_trade_has_nbm_quantile_prob_key) already carry
+  comments describing this exact "system-local-behind-UTC" failure mode
+  and already use datetime.now(UTC).date() as their fix; a third
+  (test_model_consensus_false_when_models_disagree) independently
+  discovered the same bug and fixed it a different way (mocking
+  get_live_observation directly) -- this anti-pattern has now recurred
+  and been independently rediscovered 3 times in one file.
+
+  Fixed at all 9 code sites containing the exact `tomorrow = date.today()
+  + timedelta(days=1)` snippet (matches the file's own established fix:
+  use datetime.now(UTC).date(), not the alternate mock-get_live_
+  observation pattern) -- both sides of the days_out comparison now read
+  the same UTC clock, so the skew is impossible by construction rather
+  than merely narrowed. One further occurrence
+  (TestMosBlendNoCrossVariableFallback._enriched_low_market) was
+  deliberately left unfixed after verifying its own tests already mock
+  get_live_observation directly, so it isn't exposed regardless.
+
+  Independent opus review (effort=high), findings addressed:
+  - MEDIUM: analyze_trade's same-day branch isn't the only unmocked live-
+    observation path -- weather_markets._compute_persistence_prob does
+    its own function-local `from nws import get_live_observation as
+    _get_live_obs`, called whenever days_out <= 1 (so a CORRECTLY-computed
+    days_out=1, after this fix, still reaches it). This bypasses
+    `monkeypatch.setattr(wm, "get_live_observation", ...)` entirely, since
+    the function-local import re-resolves nws.get_live_observation at
+    call time, independent of whatever name weather_markets.py's own
+    module-level import was bound to. Confirmed live via a real spy: 13
+    tests were making real network calls to mesonet.agron.iastate.edu/
+    api.weather.gov through this exact path, one of which returned live
+    NYC weather (84°F, light rain) feeding a real 15% blend weight into
+    persistence_p. Not currently causing failures (stress-tested with
+    40°F and 110°F forced values, 231/231 still passed either way) but a
+    real hermeticity gap. Fixed by adding
+    monkeypatch.setattr("nws.get_live_observation", lambda *a, **kw:
+    None) alongside the existing wm.get_live_observation mock at all 9
+    sites, matching the pattern TestMosBlendNoCrossVariableFallback
+    already used for both.
+  - LOW: one of the 9 copy-pasted explanatory comments (on
+    test_model_consensus_false_when_models_disagree) falsely claimed
+    "this test doesn't mock [get_live_observation]" and "failed exactly
+    this way" -- that test already mocked it and was never one of the 12
+    failures. Rewritten to state the true (defense-in-depth, not a live
+    exposure) reasoning for that specific site.
+  - LOW: 2 of the 9 sites are shared DATA-only helper functions
+    (_analyze_trade_enriched_fixture, _ecmwf_gap_test_enriched) used by 3
+    tests each, not tests themselves -- "this test failed" had no
+    referent there. Reworded to name the actual failing callers and the
+    shared setup helper (_analyze_trade_base_mocks/_stub_ecmwf_gap_common)
+    where the corresponding get_live_observation mocks now live.
+  - LOW: redundant `from datetime import UTC, datetime, timedelta` at all
+    9 sites -- UTC is already imported at module level (line 11).
+    Simplified to `from datetime import datetime, timedelta`.
+  - LOW (verified, not changed): confirmed the other ~19 date.today()
+    occurrences elsewhere in this file use timedelta(days=3)/days=5, not
+    days=1 -- real UTC-offset skew is always under 24h, so those can
+    shift days_out by at most 1 in either direction and can never
+    collapse to exactly 0 the way a days=1 "tomorrow" can. Spot-checked:
+    of the 14 remaining date.today() sites, only 2 (this entry's fixed
+    ones aside) even reach analyze_trade at all; the rest build cache
+    keys or call already-mocked functions directly. Also verified
+    test_analyze_trade_accepts_today_and_future (uses date.today() +
+    timedelta(days=0 or 1) but only asserts analyze_trade doesn't raise,
+    explicitly tolerating a None result either way) is genuinely
+    unaffected regardless of the same local/UTC skew.
+  - LOW, not fixed (informational): reviewer noted the comment block is
+    duplicated verbatim across 8 of the 9 sites (~90 lines for what could
+    be one canonical explanation + short pointers) -- left as-is, purely
+    stylistic, not a correctness issue.
+  - LOW, not fixed (informational, deliberately deferred): no test in
+    this file guards against date.today() + timedelta(days=1) reappearing
+    in test_weather_markets.py itself (weather_markets.py's own
+    TestUtcTodayDate::test_no_date_today_calls_remain only source-scans
+    production code, not test code) -- this exact anti-pattern was
+    independently rediscovered 3 times in this one file before this
+    session. A narrowly-scoped guard flagging that specific literal
+    string in test_weather_markets.py (allowlisting the one confirmed-
+    safe TestMosBlendNoCrossVariableFallback occurrence) would stop a
+    4th recurrence, but isn't added now -- designing it correctly without
+    false-flagging the confirmed-safe days=3/days=5 sites is a real,
+    separate task, not a one-line fix.
+
+  Full regression: test_weather_markets.py 231 passed / 4 skipped / 0
+  failed (was 219/4/12 before); broader sweep (test_infrastructure.py,
+  test_phase2_batch_m.py, test_hurricane_climatology.py,
+  test_p1_remaining.py, test_climatology.py) 389 passed / 4 skipped / 0
+  failed. ruff + ruff format clean.
+
+======================================================
+[SEVERAL test_weather_markets.py analyze_trade TESTS STILL MAKE REAL NETWORK CALLS VIA UNMOCKED nws_prob]
+Priority: Low -- not currently causing any failure (231/231 pass; the
+  entry above's fix already closed the two live-observation paths that
+  WERE causing failures), but a real, currently-reachable hermeticity gap
+  in a widely-used test file.
+
+  Found 2026-08-07 while fixing the 12 failing analyze_trade tests above
+  and verifying the fix's completeness with a network-call spy. After
+  adding both get_live_observation mocks (weather_markets' own binding
+  and nws's, see the entry above), test_analyze_trade_captures_ecmwf_
+  forecast_means was still making 6 real HTTPS calls per run --
+  mesonet.agron.iastate.edu (NWS AFOS text product fetch) and
+  api.weather.gov (/points/{lat,lon} and /gridpoints/.../forecast, a real
+  NWS gridpoint forecast lookup). weather_markets.nws_prob is not mocked
+  by this test (or, spot-checked, several of its 12 siblings), so it
+  appears to be computing a real, live, non-deterministic NWS-forecast-
+  based blend-source probability every run.
+
+  Not chased further this session -- deliberately out of scope for "fix
+  the 12 failures" (already fully and provably resolved without touching
+  this) and open-ended in a way the other 2 gaps weren't: closing this
+  one might reveal a 3rd, a 4th, etc., rather than being a single
+  identifiable function call. Confirmed via the same 231/231-pass
+  regression run that this isn't currently causing flakiness (nws_prob's
+  blend weight is evidently much smaller than get_live_observation's
+  55-95%, so it hasn't yet pushed any test's model_mkt_gap over threshold)
+  -- but the informational value here is "these tests are not as hermetic
+  as they look," and any of nws_prob, the AFD-parsing text fetch, or some
+  other still-unmocked function could become the 4th version of this
+  exact bug class under different real-world conditions.
+
+  What it would look like: a real audit of every analyze_trade-calling
+  test in this file (or at minimum the 12+ fixed by the entry above)
+  against a network-call spy (patch every _session/requests entry point
+  with a counter, assert zero calls), fixing whatever real function each
+  flagged test is still missing a mock for -- likely nws_prob at minimum,
+  possibly the newer NWS AFD-parsing infra too. A meaningfully larger
+  task than either of the two already-fixed gaps, not a quick follow-on.
+
