@@ -207,6 +207,55 @@ def test_unknown_rain_ticker_warns_immediately(tmp_path, monkeypatch, caplog):
     )
 
 
+def test_hurricane_next_event_series_present_does_not_warn(tmp_path, monkeypatch):
+    """backlog.txt "HURRICANE MARKETS" -- time-to-next-event model
+    (2026-08-07): the 2 new series, once present in KNOWN_WEATHER_SERIES,
+    must not spuriously warn as "missing" when the live series list also
+    has them -- exact-membership matching (not substring), mirroring the
+    hurricane-count series' own extension."""
+    import weather_markets as wm
+
+    drift_path = tmp_path / "series_drift_check.json"
+    monkeypatch.setattr(wm, "SERIES_DRIFT_PATH", drift_path)
+
+    client = _mock_client(wm.KNOWN_WEATHER_SERIES)
+    wm.check_series_drift(client)
+
+    # KXNEXTHURDATE/KXNEXTCAT5HURDATE are in KNOWN_WEATHER_SERIES and in the
+    # live list -- must not appear in the missing_days state at all.
+    state = json.loads(drift_path.read_text())
+    missing = state.get("missing_days", {})
+    assert "KXNEXTHURDATE" not in missing
+    assert "KXNEXTCAT5HURDATE" not in missing
+
+
+def test_unrecognized_hurricane_series_deliberately_not_flagged(
+    tmp_path, monkeypatch, caplog
+):
+    """Exact-membership matching (not substring) is deliberate, mirroring
+    the hurricane-count series' own scoping: a genuinely novel hurricane-
+    family series (e.g. a hypothetical Pacific sibling to KXNEXTHURDATE)
+    must NOT be flagged by this drift check at all -- it's meant to be
+    narrower than is_hurricane_ticker()'s broad marker set, so this can
+    never start watching (and implicitly invite someone to "fix" a warning
+    for) a hurricane series with no matching parser branch. Not startswith
+    KXHIGH/KXLOW/KXRAIN, no "SNOW" substring, and not an exact member of
+    either hurricane frozenset -- never enters live_weather at all."""
+    import logging
+
+    import weather_markets as wm
+
+    drift_path = tmp_path / "series_drift_check.json"
+    monkeypatch.setattr(wm, "SERIES_DRIFT_PATH", drift_path)
+
+    live_with_extra = [*wm.KNOWN_WEATHER_SERIES, "KXNEXTHURDATEPAC"]
+    with caplog.at_level(logging.WARNING):
+        client = _mock_client(live_with_extra)
+        wm.check_series_drift(client)
+
+    assert not any("KXNEXTHURDATEPAC" in r.message for r in caplog.records)
+
+
 def test_known_untracked_rain_series_suppressed(tmp_path, monkeypatch, caplog):
     """The real subtlety found on plan review: client.get_series_list()
     returns ALL real KXRAIN* series, including a handful this bot

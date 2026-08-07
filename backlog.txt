@@ -1872,6 +1872,343 @@ When to revisit:
   - KXHURCAT/per-city landfall: see the updated "When to revisit" in the
     entry above -- unchanged by this session's work.
 
+[RESOLVED 2026-08-07] HURRICANE MARKETS -- TIME-TO-NEXT-EVENT MODEL SHIPPED SHADOW-ONLY (KXNEXTHURDATE/KXNEXTCAT5HURDATE)
+Priority: was Low (see the parent RAIN / SNOW / HURRICANE MARKETS entry) --
+  now Medium, matching the season-count model's own priority above.
+
+Problem:
+  Re-verified live 2026-08-07 (this session's own first step, per the
+  standing "re-verify before building" workflow): the parent entry's own
+  summary bracket claimed "hurricane's own probability model remains fully
+  open," which was stale -- it predated the season-count model above
+  (shipped 2026-08-03) and was never updated afterward. Live re-check found
+  three genuinely still-open hurricane shapes: per-storm category
+  (KXHURCAT, 3 open markets on the live storm Fausto, needs a live NHC
+  advisory/forecast-cone pipeline), first-hurricane-by-name
+  (KXFIRSTHURRICANE, 21 open markets, needs an order-of-formation model
+  against the season's pre-assigned name list), and time-to-next-event
+  (KXNEXTHURDATE/KXNEXTCAT5HURDATE, 8+4=12 open markets, opened 2026-08-06 --
+  brand new, pure climatology). Chose time-to-next-event: it reuses
+  hurricane_climatology.py's existing HURDAT2 machinery from the count model
+  above with no new live-data pipeline, unlike the other two. KXHURCAT and
+  KXFIRSTHURRICANE remain fully open, their own future entries, not touched
+  this session.
+
+  Market shape (confirmed live against every open market in both series):
+  "Will [an Atlantic hurricane / an Atlantic Category-5 hurricane] form
+  before <date>?" -- floor_strike/strike_type are null; the entire condition
+  is the market's own close_time (e.g. close_time "2026-09-15T03:59Z" <->
+  yes_sub_title "Before Sep 15, 2026"). Both series are Atlantic-only in
+  every real market (rules_primary says "in the Atlantic"; no EPAC/CPAC
+  sibling series exist).
+
+What shipped:
+  hurricane_climatology.py: NEXT_EVENT_THRESHOLDS_KT = {"hurricane": 64,
+  "cat5_hurricane": 137} (137kt matches KXHURCAT's own live-confirmed
+  Category-5 threshold); parse_hurdat2's threshold_day now built from the
+  union of COUNT_THRESHOLDS_KT.values() | NEXT_EVENT_THRESHOLDS_KT.values()
+  -- one parse serves both models, no new fetch. New first_occurrence_day()
+  (earliest day a season's storms first reached a given kt), and
+  next_event_outcomes()/next_event_probability()/bootstrap_ci_next_event()
+  (day-of-first-occurrence analog of season_end_total_distribution()/
+  exceedance_probability()/bootstrap_ci()).
+
+  A real design correction caught during implementation (self-review before
+  this ever reached the user, then re-verified against live behavior): the
+  first draft always conditioned the historical distribution on "today's
+  date," regardless of whether the model actually KNEW the event hadn't
+  happened yet this season. For cat5_hurricane (no live signal at all) and
+  for hurricane type when the count-to-date cache is stale/missing, that
+  would have silently ASSUMED "hasn't happened yet" -- reproducing the exact
+  stale-cache "flips a probability with no warning" failure mode
+  _get_cached_hurricane_count_to_date's own staleness guard already exists
+  to prevent for the count model above. Fixed: next_event_outcomes() only
+  conditions on as_of_month_day when the caller passes it explicitly (only
+  when live data CONFIRMS "not yet happened"); otherwise it runs fully
+  unconditional (every window year contributes, no eligibility filtering) --
+  mirrors season_end_total_distribution's own
+  "as_of_month_day is None or current_count is None -> unconditional"
+  fallback exactly.
+
+  Also caught live during implementation: parse_city_date()'s generic
+  ticker-date regex, run against "KXNEXTHURDATE-26DEC01-26SEP15", matches
+  the FIRST date-like segment ("26DEC01" -- a season-reference suffix shared
+  identically by every "before <date>" sibling) rather than the real
+  threshold date in the second segment, producing a non-None but WRONG
+  target_date (Dec 1, not the market's real Sep 15 close). Confirmed live
+  before writing any gate logic. analyze_trade()'s no_date/no_city/
+  no_coords/no_forecast gates are all bypassed for this ticker family (same
+  as monthly rain/snow, NOT the same as hurricane-count -- hurricane-count's
+  own ticker date suffix IS its real close date, so it safely reuses the
+  generic target_date-based past-date check; this family cannot), and it
+  gets its own close_time-derived past-close check
+  (_hur_next_event_close_dt) instead, exactly like rain/snow's own
+  _rain_close_dt/_snow_close_dt.
+
+  weather_markets.py: is_hurricane_next_event_ticker()/
+  _parse_hurricane_next_event_condition() (condition carries only
+  event_type, never a duplicated kt -- _analyze_hurricane_next_event_trade
+  derives kt from hurricane_climatology.NEXT_EVENT_THRESHOLDS_KT, matching
+  the count model's own single-source-of-truth discipline for count_type/kt);
+  _hurricane_next_event_gates_active() (own env var
+  HURRICANE_NEXT_EVENT_TRADING_ENABLED, own 20-sample floor via
+  tracker.count_settled_hurricane_next_event_predictions() -- kept fully
+  separate from the count model's gate, matching this codebase's
+  established one-flag-per-shape precedent: sharing would either block this
+  faster-clearing shape on the count model's years-to-clear floor, or
+  conflate two models' calibration samples); analyze_trade() dispatch fast-
+  path -> _analyze_hurricane_next_event_trade(), which reuses the count
+  model's EXISTING _get_cached_hurricane_count_to_date("ATL",
+  season_year=today's year) cache for event_type="hurricane"'s live tilt
+  (zero new cache/cron plumbing) -- cat5_hurricane ships climatology-only
+  (unconditional mode always, no live "already occurred" signal in this
+  pass, same explicit scope cut the count model already made for
+  major_hurricane/tropical_storm); both count as the same "HUR_<basin>"
+  exposure-cap key as the count model (correlated Atlantic activity caps
+  together, not a second silent key); KNOWN_WEATHER_SERIES/
+  check_series_drift() extended with the same exact-series-membership
+  (not substring) matching the count model's own 5 series already use.
+
+  tracker.py: count_settled_hurricane_next_event_predictions() -- unlike
+  the count model, this market family has no sibling-ladder-brackets-per-
+  event risk (each ticker is its own atomic question, not one of several
+  brackets sharing a settlement), so it counts DISTINCT tickers directly, no
+  key-extraction helper needed. consistency.py: same _group_markets()
+  exclusion as hurricane-count, for the same "KNOWN_WEATHER_SERIES now
+  returns these with no shadow-gate check of find_violations()'s own"
+  reason. main.py (_quick_paper_buy, cmd_today's "[P] Place" path,
+  cmd_order, cmd_paper's buy subcommand), paper.check_position_limits(),
+  order_executor._auto_place_trades()'s shadow-routing branch: same refusal-
+  block + blanket-guard-bypass-extension pattern as hurricane-count's own 6
+  sites.
+
+What this does NOT do:
+  No live "already occurred" tilt for cat5_hurricane (climatology-only,
+  explicit scope cut -- a real signal would need to derive Cat5-occurred-
+  to-date from settled KXHURCAT-*-T5 markets, mirroring
+  refresh_hurricane_count_to_date's shape; real, separable follow-up work).
+  KXHURCAT (per-storm category) and KXFIRSTHURRICANE (first-by-name) remain
+  completely untouched -- still blocked by is_hurricane_ticker()'s blanket
+  guard, no model. Per-city landfall markets remain 0 open (unchanged since
+  2026-07-26, re-confirmed live this session again). Real sizing stays
+  shadow/log-only until HURRICANE_NEXT_EVENT_TRADING_ENABLED=1 AND >=20
+  distinct settled predictions exist for this shape specifically.
+
+Independent opus review: given the size, scoped to 3 parallel Agent(opus,
+  effort=high) passes by subsystem (climatology math; ticker-parsing/
+  dispatch; safety-guard wiring across main.py/paper.py/order_executor.py/
+  consistency.py/tracker.py), mirroring the count model's own precedent.
+  2 HIGH findings, independently surfaced by two different reviewers:
+  (1) bootstrap_ci_next_event didn't clamp its output to [0.01, 0.99] the
+  way next_event_probability already does -- a unanimous outcome set (the
+  common case for kt=64; every recent Atlantic season has a hurricane by
+  mid-September) produced an exact (1.0, 1.0)/(0.0, 0.0) CI, which
+  _price_and_size's ci_high<=ci_low fallback turns into kelly_fraction(1.0,
+  price)==0.0 -- silently zeroing size for the model's own highest-
+  confidence signals AND (since shadow logging shares the same size-then-
+  log validator) permanently freezing count_settled_hurricane_next_event_
+  predictions() at 0, so the 20-sample graduation gate could never open.
+  Fixed by clamping. (2) No minimum-sample floor on conditional mode --
+  measured against real Atlantic data, the eligible-year subset already
+  drops below 15 by ~Aug 1 and hits 0 by mid-September, so the model could
+  compute (and shadow-log, poisoning Brier scoring) a full-strength signal
+  off 2-3 data points, or fabricate a bare 0.5 from zero. Fixed:
+  _analyze_hurricane_next_event_trade now falls back to the unconditional
+  baseline (same one used when occurred_this_season is unknown) whenever
+  the eligible set is below 15, the same threshold bootstrap_ci_next_event's
+  own floor already uses.
+  3 more MEDIUM findings fixed: _CONDITION_CONFIDENCE was missing a
+  "hurricane_next_event" entry entirely, so the `.get(condition_type, 1.0)`
+  fallback silently gave the least-validated model in the codebase the
+  MAXIMUM confidence multiplier -- added an explicit 0.50 (below
+  hurricane_count's own 0.55, same "a season IS the sample unit" reasoning
+  plus this model's extra within-season granularity). target_month_day used
+  close_dt's raw UTC date, but Kalshi's "Before <date>" wording is an ET
+  calendar date (close_time "...T03:59Z" is 23:59 ET the PRIOR day) --
+  measured as a systematic ~1/window_years bias per boundary year, material
+  for the smaller cat5 sample; fixed via ZoneInfo("America/New_York")
+  conversion before reading .month/.day, mirroring _metar_lock_in's own
+  city-local-date pattern. The condition_type exclusion lists gating live-
+  trading maturity signals (tracker.count_settled_predictions/_rolling,
+  get_rolling_win_rate) and ML training pools (calibration.py, ml_bias.py)
+  were never extended for EITHER hurricane sub-model -- closed for both
+  hurricane_count (pre-existing gap, closed while touching the same lists)
+  and hurricane_next_event across all 9 sites, with regression tests
+  (confirmed load-bearing for ml_bias.py's train_all_temperature_scaling in
+  particular -- hurricane rows always carry days_out>=1 and a real
+  city="HUR_<basin>", so neither of that function's existing NULL-checks
+  would have caught them).
+  Also fixed: parse_city_date() returned a non-None but WRONG target_date
+  (the ticker's shared season-reference suffix, not the real close date) for
+  this ticker family -- several downstream consumers (tracker.log_prediction's
+  market_date/days_out, order_executor.py, main.py, trade_cycle.py,
+  web_app.py) use a "prefer _date, fall back to analysis['target_date'] only
+  if _date is None" pattern that only rain/snow's (always-None) and
+  hurricane-count's (always-correct) _date values were safe against --
+  fixed by making parse_city_date() return None for this series explicitly,
+  same as rain/snow. consistency.py's own exclusion test wasn't actually
+  mutation-proof (real next-event tickers can't be parsed by _parse_
+  threshold's -T/-B suffix regex regardless of the guard, so disabling the
+  guard didn't change the test's outcome) -- added a second test using an
+  adversarial -T5/-T6-suffixed ticker shape, confirmed via manual mutation
+  to actually fail when the guard is removed. The tracker.py counter's SQL
+  LIKE prefix (a coarse pre-filter) was broader than is_hurricane_next_
+  event_ticker()'s series-exact match -- currently unreachable (a lookalike
+  series would contain "HUR" and never pass analyze_trade()'s blanket guard
+  to get logged at all) but tightened to exact-match in Python anyway,
+  mirroring the sibling counter's own ticker-derived-key validation for the
+  identical risk shape. first_occurrence_day() now raises on an unrecognized
+  kt instead of silently returning a confidently-wrong all-False result
+  (also currently unreachable by construction, same defense-in-depth
+  reasoning). Added test coverage for 2 of the 4 main.py sites that lacked
+  it (_quick_paper_buy, cmd_paper) -- cmd_today's own "[P] Place" path has
+  an identical guard but no existing test anywhere in this codebase reaches
+  that function for ANY market family (rain/snow/hurricane-count included);
+  building a novel harness for it was judged out of scope for this pass.
+  Also strengthened 3 weak tests in test_hurricane_climatology.py (one
+  didn't actually test the CI clamp boundary that finding (1) needed, one
+  only asserted a list length instead of the specific value, one couldn't
+  distinguish "takes the season minimum" from "takes whichever storm is
+  parsed first") and fixed a fixture storm-ID typo.
+  NOT fixed, documented as explicit known limitations rather than silently
+  dropped: (a) a genuine design gap, CONFIRMED (not speculative) via the
+  official Kalshi contract terms PDF (assets.kalshi.com/contract_terms/
+  STORMDATE.pdf, fetched and read live this session): the real Payout
+  Criterion is "any Atlantic tropical storm... reaching <storm category>
+  intensity... at any point after Issuance and before <date>" -- anchored to
+  this specific CONTRACT'S Issuance (its own open_time), not season start --
+  and "After the initial Contract, Contract iterations will be listed on an
+  as-needed basis," confirming Kalshi DOES roll this ticker over to a fresh
+  "next hurricane" question (a new Issuance point) after each qualifying
+  storm. This model's occurred_this_season boolean is keyed off season-wide
+  count-to-date, not "since this specific event's Issuance" -- so once a
+  rollover happens, the occurred_this_season=True -> 0.99 shortcut would
+  misprice a genuinely-still-open post-rollover question as already
+  resolved. The two readings coincide TODAY only because the Atlantic count
+  is genuinely 0 so far AND this event's own open_time (2026-08-06,
+  confirmed live) predates any hurricane this season -- confirmed live via
+  client.get_events(series_ticker="KXNEXTHURDATE") that only ONE event
+  currently exists (a "KXNEXTHURDATE-0"/"In 2025" event also exists but has
+  zero markets ever created under it -- this product never actually
+  launched before 2026, so no historical rollover behavior was observable
+  to verify against). User's explicit decision after reviewing this
+  research: defer as its own follow-up backlog entry rather than fix now
+  (see the new entry filed alongside this one) or partially fix -- not
+  fixed to any degree in this pass.
+  (b) `order_executor._ticker_edge_share`'s event-key (`(city, date, var)`)
+  conflates hurricane-count and hurricane-next-event opportunities sharing a
+  close date under the same "HUR_ATL"/"max" key, so a shadow-gated opp from
+  one sub-model can dilute a live-gated opp's Kelly sizing from the other --
+  zero impact today (both sub-models are shadow-gated), only matters once
+  one of the two graduates first; redesigning the shared edge-share
+  mechanism used by every market type in this bot is out of scope for a
+  hurricane-specific change. (c) bootstrap_ci_next_event(outcomes, n=0)
+  raises IndexError -- identical latent issue already exists unfixed in the
+  sibling bootstrap_ci this codebase has run in production; not exercised at
+  the real default n=500 either way, left matching the existing pattern
+  rather than hardening only the new sibling function.
+
+When to revisit:
+  - Once HURRICANE_NEXT_EVENT_TRADING_ENABLED is set and >=20 distinct
+    settled predictions accumulate -- check get_signal_graduation_report()-
+    style correlation before ever relying on real sizing. This shape
+    settles far more often than the count model's own (multiple "before
+    <date>" siblings per series per season), so expect this floor to clear
+    much faster than the count model's multi-year estimate.
+  - cat5_hurricane live tilt: needs a Cat5-occurred-to-date signal derived
+    from settled KXHURCAT-*-T5 markets. Not started.
+  - KXHURCAT/KXFIRSTHURRICANE/per-city landfall: see the parent entries'
+    own "When to revisit" -- unchanged by this session's work.
+  - "Since season start" vs. "since this contract's Issuance" semantics:
+    split out to its own entry, "HURRICANE NEXT-EVENT MODEL'S
+    OCCURRED_THIS_SEASON SIGNAL IS SEASON-SCOPED, NOT ISSUANCE-SCOPED (KALSHI
+    CONFIRMS ROLLOVER)" -- see that entry for the full research trail and
+    when-to-revisit trigger.
+
+[OPEN 2026-08-07 -- new, split out of "HURRICANE MARKETS -- TIME-TO-NEXT-EVENT MODEL SHIPPED SHADOW-ONLY" above per its own "user's explicit decision: defer as its own follow-up entry" note] HURRICANE NEXT-EVENT MODEL'S OCCURRED_THIS_SEASON SIGNAL IS SEASON-SCOPED, NOT ISSUANCE-SCOPED (KALSHI CONFIRMS ROLLOVER)
+Priority: Low -- shadow-only, zero live-money risk regardless (see below);
+  only affects the accuracy of a shadow-logged signal, not any real order.
+
+Problem:
+  Confirmed via the official Kalshi contract terms PDF (assets.kalshi.com/
+  contract_terms/STORMDATE.pdf, fetched and read live this session -- not
+  speculation): KXNEXTHURDATE/KXNEXTCAT5HURDATE's real Payout Criterion is
+  "any Atlantic tropical storm has been classified... reaching <storm
+  category> intensity... at any point after Issuance and before <date>" --
+  anchored to THIS SPECIFIC CONTRACT's Issuance (its own open_time), not
+  season start. And: "After the initial Contract, Contract iterations will
+  be listed on an as-needed basis at the discretion of the Exchange" --
+  Kalshi confirms it rolls this ticker over to a fresh "next hurricane"
+  question (a new Issuance point) after each qualifying storm settles the
+  current one early (the PDF's own Expiration Date rule: "If an event
+  described in the Payout Criterion occurs, expiration will be moved to an
+  earlier date").
+
+  The shipped model (weather_markets._analyze_hurricane_next_event_trade)
+  has no concept of "since this event's Issuance" -- occurred_this_season
+  (event_type="hurricane") is keyed off `_get_cached_hurricane_count_to_date`,
+  a SEASON-WIDE cumulative count, and the unconditional-mode fallback's
+  first_occurrence_day() climatology measures "day of the season's FIRST
+  qualifying storm" from historical Januarys/Mays, not "days elapsed since
+  a specific mid-season Issuance date." Both are season-start-anchored
+  proxies for what should be an Issuance-anchored question.
+
+  Confirmed live this session: the currently open event's own open_time is
+  2026-08-06 (mid-season, not season start -- itself circumstantial
+  evidence this event may already be layered on prior seasons' pattern of
+  waiting until real hurricane-season activity picks up before listing, not
+  necessarily evidence of a rollover). client.get_events(series_ticker=
+  "KXNEXTHURDATE") shows exactly ONE real event today ("KXNEXTHURDATE-
+  26DEC01"); a second event ("KXNEXTHURDATE-0", sub_title "In 2025") exists
+  but has ZERO markets ever created under it in any status (open/settled/
+  closed) -- this product never actually launched with real markets before
+  2026, so there is no historical rollover instance to directly observe and
+  verify the exact mechanics against (e.g. whether ALL 8 "before <date>"
+  siblings in an event settle simultaneously on rollover, or something more
+  granular).
+
+  Practical impact today: "since season start" and "since this event's
+  Issuance" currently coincide -- the Atlantic hurricane count-to-date is
+  genuinely 0 so far this season (confirmed live via the existing
+  hurricane_count_to_date.json cache), and this event's own open_time
+  predates that. The gap is real but latent -- it activates the first time
+  a hurricane forms this season AND Kalshi lists a rollover event, at which
+  point occurred_this_season=True would misprice a genuinely-still-open
+  post-rollover question as already resolved (prob=0.99), and the
+  unconditional-mode fallback's season-wide climatology would still be
+  answering "day of season's first hurricane" instead of "days since this
+  new Issuance."
+
+Why not now:
+  - Correctly fixing occurred_this_season requires a genuinely new live
+    signal: WHEN each settled KXHURRICANENAMES storm actually crossed
+    hurricane strength (a date), not just a cumulative season count, so it
+    can be compared against a specific event's open_time. Real new data/
+    cache design work, closer in size to the original count-to-date cache
+    itself than to a quick fix.
+  - User's explicit decision (asked via AskUserQuestion after this research
+    was presented): defer as its own follow-up entry rather than build the
+    full signal now or ship a partial mechanical fix (e.g. swapping the
+    conditional-mode "as_of" reference from today's date to the market's
+    own open_time -- a cheaper, strictly-more-correct change that was also
+    on the table and also NOT taken this pass).
+  - Entirely shadow-only in the meantime (HURRICANE_NEXT_EVENT_TRADING_
+    ENABLED defaults off) -- the mispricing this entry describes can only
+    ever affect a logged shadow prediction's accuracy, never a real order.
+
+When to revisit:
+  - The moment either (a) hurricane_count_to_date.json's ATL count first
+    goes from 0 to 1 this season, or (b) client.get_events(series_ticker=
+    "KXNEXTHURDATE") first returns more than the one current event --
+    whichever comes first. At that point, check live whether the existing
+    open "before <date>" markets settled/closed (confirming the rollover
+    actually happened) before assuming the gap has activated.
+  - If ever prioritized: build the per-storm-became-hurricane-date signal
+    (mirrors refresh_hurricane_count_to_date's shape, sourced from settled
+    KXHURRICANENAMES markets' own settlement timestamps rather than just
+    their yes/no result), then key occurred_this_season off "any qualifying
+    storm since this event's own open_time" instead of season-wide count.
+
 [RESOLVED 2026-07-25] NEAR-SETTLEMENT LOG (near_settlement_log) SILENTLY BROKEN SINCE IT SHIPPED -- WRONG FIELD NAMES ON THE TRADE-RECORD DICT
 Priority: was Medium -- a shipped calibration-data feature had been a
   complete no-op since it shipped (2026-06-14), with a "success" log line
@@ -3606,7 +3943,7 @@ When to revisit: N/A -- both Step 1 and Step 2 resolved. See the Step 2
   RESOLVED note above's "When to revisit" for the remaining intentionally-
   deferred gaps (item 7) and the shadow-gate sample-floor condition.
 
-[PARTIALLY RESOLVED 2026-07-30 — Rain Step 1+2+St. Petersburg onboarding and SNOW Step 1+2 all shipped; hurricane split out to its own entry, see "HURRICANE MARKETS — EXPLICIT GUARD ADDED AFTER A CONFIRMED LIVE GAP" near the top of this file. Only hurricane's own probability model remains fully open.] RAIN / SNOW / HURRICANE MARKETS — UNTOUCHED CATEGORY SURFACE
+[PARTIALLY RESOLVED 2026-07-30 — Rain Step 1+2+St. Petersburg onboarding and SNOW Step 1+2 all shipped; hurricane split out to its own entry, see "HURRICANE MARKETS — EXPLICIT GUARD ADDED AFTER A CONFIRMED LIVE GAP" near the top of this file. UPDATE 2026-08-07: that bracket's own "only hurricane's own probability model remains fully open" was stale — it predated 2 real hurricane sub-models that shipped shadow-only since (season-count 2026-08-03, time-to-next-event 2026-08-07, see that entry's own dated resolution blocks). Per-storm category (KXHURCAT), first-hurricane-by-name (KXFIRSTHURRICANE), and per-city landfall remain genuinely open — confirmed live 2026-08-07.] RAIN / SNOW / HURRICANE MARKETS — UNTOUCHED CATEGORY SURFACE
 Priority: was Low -- rain and snow are now Medium (both have real,
   shadow-gated probability models); hurricane's own model remains Low,
   unchanged.

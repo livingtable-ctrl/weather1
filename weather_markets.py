@@ -1112,6 +1112,45 @@ def _hurricane_count_gates_active() -> bool:
         return False
 
 
+# backlog.txt "HURRICANE MARKETS" -- time-to-next-event model, shadow-only
+# rollout (2026-08-07). Unlike the season-count model above, this shape
+# settles far more often (multiple "before <date>" siblings per series, per
+# season) -- kept as its OWN env var/gate/counter rather than sharing
+# HURRICANE_TRADING_ENABLED, matching this codebase's established one-flag-
+# per-shape precedent (rain/snow/hourly/hurricane-count each have their own).
+# Sharing would either block this faster-clearing shape on the count model's
+# years-to-clear floor, or conflate two models' calibration samples.
+_HURRICANE_NEXT_EVENT_GATE_MIN_SAMPLES: int = 20
+
+
+def _hurricane_next_event_gates_active() -> bool:
+    """Return True only when HURRICANE_NEXT_EVENT_TRADING_ENABLED=1 AND >= 20
+    settled time-to-next-event predictions (distinct tickers, combined across
+    both KXNEXTHURDATE and KXNEXTCAT5HURDATE -- see
+    tracker.count_settled_hurricane_next_event_predictions's own docstring).
+    Mirrors _hurricane_count_gates_active()'s exact shape. Until both hold,
+    these opportunities are still fully analyzed and logged (is_shadow=True)
+    so real calibration data accumulates risk-free; no real order (paper or
+    live) is ever placed for one of these tickers before this is True."""
+    import os
+
+    if os.getenv("HURRICANE_NEXT_EVENT_TRADING_ENABLED", "").strip().lower() not in (
+        "1",
+        "true",
+        "yes",
+    ):
+        return False
+    try:
+        from tracker import count_settled_hurricane_next_event_predictions
+
+        return (
+            count_settled_hurricane_next_event_predictions()
+            >= _HURRICANE_NEXT_EVENT_GATE_MIN_SAMPLES
+        )
+    except Exception:
+        return False
+
+
 def _load_platt_models() -> dict[str, tuple[float, float]]:
     """Load platt_models.json, reloading whenever the file's mtime changes.
 
@@ -3880,6 +3919,14 @@ KNOWN_WEATHER_SERIES = [
     "KXTROPSTORM",
     "KXHURRICANE",
     "KXNAMEDSTORM",
+    # backlog.txt "HURRICANE MARKETS" -- time-to-next-event model
+    # (2026-08-07): the 2 time-to-next-event series now have a real model
+    # (_analyze_hurricane_next_event_trade, dispatched on condition["type"]
+    # == "hurricane_next_event"), shadow-only until
+    # _hurricane_next_event_gates_active(). Same exact-series-ticker matching
+    # in check_series_drift() below as the hurricane-count series above.
+    "KXNEXTHURDATE",
+    "KXNEXTCAT5HURDATE",
 ]
 
 # Legacy/placeholder KXHIGH/KXLOW series Kalshi's /series endpoint still lists
@@ -4094,7 +4141,7 @@ def check_series_drift(client: KalshiClient) -> None:
             t
             for t in live_tickers
             if t.startswith(("KXHIGH", "KXLOW", "KXRAIN")) or "SNOW" in t
-        } | (live_tickers & _HURRICANE_COUNT_SERIES)
+        } | (live_tickers & (_HURRICANE_COUNT_SERIES | _HURRICANE_NEXT_EVENT_SERIES))
 
         # KXHIGH/KXLOW/KXRAIN entries are checked against live_weather via
         # startswith; SNOW series don't share one clean prefix (KXDENSNOWM,
@@ -4113,18 +4160,21 @@ def check_series_drift(client: KalshiClient) -> None:
         # KNOWN_UNTRACKED_RAIN_SERIES / KNOWN_UNTRACKED_SNOW_SERIES for the
         # real-but-deliberately-excluded series this now needs to not
         # re-flag as noise. The 5 hurricane-count series (backlog.txt
-        # "HURRICANE MARKETS" -- season-count model, 2026-08-03) are matched
-        # by EXACT membership in _HURRICANE_COUNT_SERIES, not startswith/
-        # substring -- deliberately narrower than is_hurricane_ticker()'s
-        # much broader marker set, so this never starts watching (and thus
-        # never implicitly encourages someone to "fix" a drift warning for)
-        # a hurricane series with no matching parser branch, exactly the bug
-        # class this entry's own parent warns against.
+        # "HURRICANE MARKETS" -- season-count model, 2026-08-03) and the 2
+        # time-to-next-event series (same entry, 2026-08-07) are matched by
+        # EXACT membership in _HURRICANE_COUNT_SERIES/_HURRICANE_NEXT_EVENT_
+        # SERIES, not startswith/substring -- deliberately narrower than
+        # is_hurricane_ticker()'s much broader marker set, so this never
+        # starts watching (and thus never implicitly encourages someone to
+        # "fix" a drift warning for) a hurricane series with no matching
+        # parser branch, exactly the bug class this entry's own parent warns
+        # against.
         for ticker in KNOWN_WEATHER_SERIES:
             if not (
                 ticker.startswith(("KXHIGH", "KXLOW", "KXRAIN"))
                 or "SNOW" in ticker
                 or ticker in _HURRICANE_COUNT_SERIES
+                or ticker in _HURRICANE_NEXT_EVENT_SERIES
             ):
                 continue
             if ticker in live_weather:
@@ -4148,8 +4198,8 @@ def check_series_drift(client: KalshiClient) -> None:
         )
         if unknown:
             _log.warning(
-                "check_series_drift: live KXHIGH/KXLOW/KXRAIN/*SNOW*/hurricane-count "
-                "series not in KNOWN_WEATHER_SERIES: %s",
+                "check_series_drift: live KXHIGH/KXLOW/KXRAIN/*SNOW*/hurricane-count/"
+                "hurricane-next-event series not in KNOWN_WEATHER_SERIES: %s",
                 sorted(unknown),
             )
 
@@ -4397,6 +4447,33 @@ def is_hurricane_count_ticker(ticker: str) -> bool:
     return series in _HURRICANE_COUNT_SERIES
 
 
+# backlog.txt "HURRICANE MARKETS" -- time-to-next-event model (2026-08-07).
+# Maps each of Kalshi's 2 "will the next [Category-5] hurricane form before
+# <date>?" series to its event_type STRING only -- deliberately does NOT also
+# carry the kt threshold here (see hurricane_climatology.NEXT_EVENT_THRESHOLDS_KT,
+# the single source of truth for that, same discipline
+# _HURRICANE_COUNT_SERIES_BASIN_COUNT_TYPE's own count_type strings follow).
+# Both series are Atlantic-only in every real market sampled 2026-08-07 (no
+# EPAC/CPAC infix, unlike KXHURRICANE/KXNAMEDSTORM above) -- basin is hardcoded
+# "ATL" in _parse_hurricane_next_event_condition below; re-check this if a
+# Pacific sibling series ever appears.
+_HURRICANE_NEXT_EVENT_TYPE: dict[str, str] = {
+    "KXNEXTHURDATE": "hurricane",
+    "KXNEXTCAT5HURDATE": "cat5_hurricane",
+}
+_HURRICANE_NEXT_EVENT_SERIES: frozenset[str] = frozenset(_HURRICANE_NEXT_EVENT_TYPE)
+
+
+def is_hurricane_next_event_ticker(ticker: str) -> bool:
+    """True only for the 2 time-to-next-event series with a real probability
+    model (_analyze_hurricane_next_event_trade) -- a narrow carve-out of
+    is_hurricane_ticker()'s much broader marker set, mirroring
+    is_hurricane_count_ticker()'s exact shape. Series-ticker-exact, not
+    substring."""
+    series = ticker.upper().split("-")[0]
+    return series in _HURRICANE_NEXT_EVENT_SERIES
+
+
 def _hurricane_count_key_from_ticker(ticker: str) -> tuple[str, str, int] | None:
     """Returns (basin, count_type, season_year) for one of the 5 season-
     total count series, derived ENTIRELY from the ticker string itself (a
@@ -4534,6 +4611,45 @@ def _parse_hurricane_count_condition(market: dict) -> dict | None:
         "threshold": threshold,
         "strike_type": strike_type,
         "season_year": season_year,
+    }
+
+
+def _parse_hurricane_next_event_condition(market: dict) -> dict | None:
+    """Returns {"type": "hurricane_next_event", "basin": "ATL", "event_type":
+    "hurricane"/"cat5_hurricane"} for one of the 2 time-to-next-event series,
+    or None if unparseable. Unlike every other branch in this file,
+    floor_strike/strike_type are null for this market family (confirmed live
+    2026-08-07) -- the entire condition IS the market's own close_time (e.g.
+    close_time "2026-09-15T03:59Z" <-> yes_sub_title "Before Sep 15, 2026"),
+    same close_time-derived dating convention rain/snow/hurricane-count
+    already use. No `kt` field here -- _analyze_hurricane_next_event_trade
+    derives it from event_type via hurricane_climatology.NEXT_EVENT_
+    THRESHOLDS_KT, avoiding a second place that could drift out of sync.
+
+    Fails closed (returns None, warns) if close_time is missing/unparseable
+    for a ticker already confirmed to be in this series -- same "a known
+    series must never silently fall through to the generic threshold parser"
+    discipline _parse_hurricane_count_condition established: this family has
+    no city/coords/forecast either, so reaching the daily pipeline would trip
+    a later `assert city is not None` narrowing."""
+    ticker = market.get("ticker", "")
+    series = ticker.upper().split("-")[0]
+    event_type = _HURRICANE_NEXT_EVENT_TYPE.get(series)
+    if event_type is None:
+        return None
+
+    close_dt = _safe_parse_close_time(market.get("close_time", ""))
+    if close_dt is None:
+        _log.warning(
+            "_parse_hurricane_next_event_condition[%s]: missing/unparseable close_time",
+            ticker,
+        )
+        return None
+
+    return {
+        "type": "hurricane_next_event",
+        "basin": "ATL",
+        "event_type": event_type,
     }
 
 
@@ -4889,6 +5005,27 @@ def parse_city_date(market: dict) -> tuple[str | None, date | None]:
     title = market.get("title") or ""
     ticker_up = ticker.upper()
 
+    # Opus-review-caught (2026-08-07): the regex below greedily matches
+    # KXNEXTHURDATE/KXNEXTCAT5HURDATE's FIRST date-like ticker segment
+    # ("KXNEXTHURDATE-26DEC01-26SEP15" -> "26DEC01"), a season-reference
+    # suffix shared identically by every "before <date>" sibling market --
+    # NOT the market's real threshold date (the second segment). Unlike
+    # rain/snow (whose tickers have no day-level date at all, so the regex
+    # naturally finds nothing and target_date stays None with no special-
+    # casing needed) or hurricane-count (whose ticker's embedded date IS its
+    # real close date), this family's ticker produces a non-None but WRONG
+    # date if not excluded here -- and every downstream consumer that reads
+    # this function's/enrich_with_forecast's `_date` uses a "prefer _date,
+    # fall back to analysis['target_date'] only if _date is None" pattern,
+    # so a wrong-but-non-None value silently wins over the real date the
+    # analyzer itself computes from close_time. _analyze_hurricane_next_
+    # event_trade() never reads this function's output for its own date
+    # math (it derives close_dt straight from the market's close_time), but
+    # tracker.log_prediction's market_date/days_out and several other
+    # consumers (order_executor, main.py, trade_cycle.py, web_app.py) do.
+    if ticker_up.split("-")[0] in _HURRICANE_NEXT_EVENT_SERIES:
+        return None, None
+
     city = _parse_city_from_ticker(ticker, title)
 
     target_date = None
@@ -5230,6 +5367,15 @@ def _parse_market_condition(market: dict) -> dict | None:
     # own parse failed.
     if ticker_up.split("-")[0] in _HURRICANE_COUNT_SERIES:
         return _parse_hurricane_count_condition(market)
+
+    # ── Time-to-next-event hurricane markets (backlog.txt "HURRICANE MARKETS"
+    # -- time-to-next-event model, 2026-08-07) ────────────────────────────────
+    # Same fail-closed discipline as the hurricane-count branch just above --
+    # this ticker family also has no city/coords/forecast, so a fall-through
+    # to the generic parser below risks the same KXHURCAT-style
+    # misclassification the count-model branch's own comment documents.
+    if ticker_up.split("-")[0] in _HURRICANE_NEXT_EVENT_SERIES:
+        return _parse_hurricane_next_event_condition(market)
 
     # ── Precipitation markets ─────────────────────────────────────────────────
     # Whitelist known precipitation series to avoid false positives from
@@ -6729,6 +6875,21 @@ _CONDITION_CONFIDENCE: dict[str, float] = {
     # validate against yet. A judgment call, not derived from data -- revisit
     # once real shadow Brier scores exist, same as rain/snow's own notes.
     "hurricane_count": 0.55,
+    # backlog.txt "HURRICANE MARKETS" -- time-to-next-event model
+    # (2026-08-07). Opus-review-caught: this key was originally missing
+    # entirely, so edge_confidence()/_price_and_size()'s `.get(condition_type,
+    # 1.0)` fallback silently gave this the codebase's MAXIMUM confidence
+    # multiplier -- the least-validated model in the codebase (zero settled
+    # predictions, and conditional mode's own eligible-year subsetting can
+    # run on as few as 15 analog years, fewer independent observations than
+    # even hurricane_count's 30-per-query) was being priced with as much
+    # confidence as same-day temperature markets. Set lower than
+    # hurricane_count for the same "a season IS the sample unit" reasoning
+    # that entry's own comment gives, plus this model's extra day-of-first-
+    # occurrence-within-season granularity on top of the season-total
+    # question. A judgment call, not derived from data -- revisit once real
+    # shadow Brier scores exist, same as every other entry here.
+    "hurricane_next_event": 0.50,
 }
 
 
@@ -8889,6 +9050,220 @@ def _analyze_hurricane_count_trade(
     }
 
 
+def _analyze_hurricane_next_event_trade(
+    enriched: dict,
+    condition: dict,
+    close_dt: datetime,
+    days_out: int,
+) -> dict | None:
+    """
+    Probability analysis for the 2 time-to-next-event hurricane series
+    (backlog.txt "HURRICANE MARKETS" -- time-to-next-event model, 2026-08-07):
+    KXNEXTHURDATE ("will the next Atlantic hurricane form before <date>?"),
+    KXNEXTCAT5HURDATE ("will the next Atlantic Category-5 hurricane form
+    before <date>?"). Like hurricane-count, no city/forecast -- just a basin
+    (always "ATL" today) and an event_type. Mirrors
+    _analyze_hurricane_count_trade's overall shape, but the underlying
+    question is "day of FIRST occurrence" rather than "season-end total",
+    via hurricane_climatology.next_event_outcomes/next_event_probability/
+    bootstrap_ci_next_event.
+
+    close_dt/days_out are pre-resolved by the caller (analyze_trade's
+    hurricane-next-event gate), matching every other monthly/hourly/
+    hurricane-count analysis function's "caller resolves once, passes down"
+    shape.
+    """
+    import hurricane_climatology as hc
+
+    ticker = enriched.get("ticker", "?")
+    basin = condition["basin"]
+    event_type = condition["event_type"]
+    kt = hc.NEXT_EVENT_THRESHOLDS_KT[event_type]
+
+    storms = hc.load_basin_storms(basin)
+    if not storms:
+        _log.warning(
+            "_analyze_hurricane_next_event_trade[%s]: HURDAT2 data unavailable "
+            "for basin=%s",
+            ticker,
+            basin,
+        )
+        return None
+
+    # occurred_this_season: bool | None -- None means "unknown" (no live
+    # signal, or a stale/missing cache), NOT "assumed False". Conflating the
+    # two would silently condition the historical distribution on "hasn't
+    # happened yet" without actually knowing that, reproducing the exact
+    # stale-cache "flips a probability with no warning" failure mode
+    # _get_cached_hurricane_count_to_date's own staleness guard already
+    # exists to prevent for the count model.
+    occurred_this_season: bool | None = None
+    if event_type == "hurricane":
+        # Reuses the EXISTING, already-shipped count-to-date cache from the
+        # season-count model -- zero new cache/cron plumbing for this branch.
+        # season_year is TODAY's year (not anything parsed from the ticker/
+        # close_date): these markets never cross a season/year boundary, and
+        # the cache itself is keyed by "current season" via today's year the
+        # same way (see refresh_hurricane_count_to_date's own docstring).
+        _season_year = datetime.now(UTC).date().year
+        _current_count = _get_cached_hurricane_count_to_date(basin, _season_year)
+        if _current_count is not None:
+            occurred_this_season = _current_count >= 1
+    # event_type == "cat5_hurricane": no live "already occurred" signal in
+    # this pass -- occurred_this_season stays None unconditionally, so the
+    # model ships climatology-only (unconditional mode) for Cat5. Same
+    # explicit, documented scope cut the count model already made for
+    # major_hurricane/tropical_storm (no clean live per-basin signal exists
+    # yet) -- not a silent gap.
+
+    if occurred_this_season is True:
+        # Already happened this season -- skip the bootstrap. Still runs
+        # through the normal _price_and_size pricing/Kelly path below like
+        # every other branch; only the probability's SOURCE differs. 0.99 is
+        # the same [0.01, 0.99] clamp ceiling next_event_probability/
+        # exceedance_probability already use everywhere else in this
+        # codebase, not a new convention.
+        blended_prob = 0.99
+        ci_low, ci_high = 0.98, 0.99
+        outcomes: list[bool] = []
+        method = "hurricane_next_event_confirmed"
+    else:
+        # Conditional mode ONLY when live data confirms "not yet happened";
+        # unconditional mode (next_event_outcomes' own default) whenever that
+        # confirmation is unavailable -- see occurred_this_season's own
+        # comment above for why this distinction matters.
+        _today = datetime.now(UTC).date()
+        as_of_month_day = (
+            (_today.month, _today.day) if occurred_this_season is False else None
+        )
+        # Opus-review-caught (2026-08-07): close_dt is UTC, but Kalshi's own
+        # "Before <date>" wording is an ET calendar date (confirmed live:
+        # close_time "2026-09-15T03:59Z" is 23:59 ET on Sep 14, for a market
+        # titled "Before Sep 15, 2026"). Using close_dt's raw UTC .day would
+        # count a storm crossing threshold anywhere in the Sep-15-UTC day as
+        # a YES, ~20 of those 24 hours past the market's real ET cutoff --
+        # measured as a systematic bias of ~1/window_years per boundary year
+        # (material for the cat5 series' own smaller sample). Converting to
+        # America/New_York before reading .month/.day fixes this the same
+        # way _metar_lock_in's own "_local_today" already does for temperature
+        # markets, DST included.
+        try:
+            from zoneinfo import ZoneInfo as _ZI
+
+            _close_dt_et = close_dt.astimezone(_ZI("America/New_York"))
+        except Exception:
+            _log.warning(
+                "_analyze_hurricane_next_event_trade[%s]: ZoneInfo(America/New_York) "
+                "unavailable -- falling back to UTC close_dt",
+                ticker,
+            )
+            _close_dt_et = close_dt
+        target_month_day = (_close_dt_et.month, _close_dt_et.day)
+        outcomes = hc.next_event_outcomes(
+            storms,
+            kt,
+            target_month_day,
+            as_of_month_day=as_of_month_day,
+        )
+        # Opus-review-caught (2026-08-07, HIGH): unlike the count model's
+        # season_end_total_distribution (structurally always 30 entries),
+        # conditional mode's eligible-year subsetting can shrink to a
+        # handful of years or zero -- measured against real Atlantic data,
+        # the eligible set already drops below 15 by roughly Aug 1 and hits
+        # zero by mid-September. Below that, next_event_probability would
+        # either compute a full-strength signal off 2-3 data points, or
+        # (empty) fabricate a bare 0.5 -- both get shadow-logged as real
+        # forecasts, poisoning Brier scoring for this method, even though
+        # order placement itself is already blocked by bootstrap_ci_next_
+        # event's own <15 wide-CI floor. Fall back to the SAME unconditional
+        # baseline the caller uses when occurred_this_season is unknown,
+        # rather than trading (or shadow-logging) a signal with no real
+        # evidence behind it. Uses the same 15-year threshold as bootstrap_
+        # ci_next_event's own floor, not a new arbitrary constant.
+        if as_of_month_day is not None and len(outcomes) < 15:
+            outcomes = hc.next_event_outcomes(storms, kt, target_month_day)
+            as_of_month_day = None
+        blended_prob = hc.next_event_probability(outcomes)
+        ci_low, ci_high = hc.bootstrap_ci_next_event(outcomes)
+        method = (
+            "hurricane_next_event_climatology_tilted"
+            if as_of_month_day is not None
+            else "hurricane_next_event_climatology"
+        )
+
+    prices = parse_market_price(enriched)
+    market_prob = prices["implied_prob"]
+    rec_side = "yes" if blended_prob > market_prob else "no"
+
+    # Same non-independence caution as hurricane-count/rain/snow's own
+    # consensus flags: there is only ever one climatology source here.
+    consensus = False
+
+    _priced = _price_and_size(
+        blended_prob,
+        prices,
+        condition,
+        rec_side,
+        ci=(ci_low, ci_high),
+        consensus=consensus,
+    )
+    net_edge = _priced["net_edge"]
+    edge = _priced["edge"]
+    entry_side_edge = _priced["entry_side_edge"]
+    fee_kel = _priced["fee_kel"]
+    ci_adj_kelly = _priced["ci_adjusted_kelly"]
+
+    _edge_conf = edge_confidence(days_out, condition_type=condition["type"])
+    adjusted_edge = net_edge * _edge_conf
+
+    return {
+        "forecast_prob": blended_prob,
+        "market_prob": market_prob,
+        "edge": edge,
+        "signal": _edge_label(edge, rec_side),
+        "net_edge": net_edge,
+        "adjusted_edge": round(adjusted_edge, 6),
+        "edge_confidence_factor": _edge_conf,
+        "net_signal": _edge_label(adjusted_edge, rec_side),
+        "recommended_side": rec_side,
+        "condition": condition,
+        "ensemble_prob": blended_prob,
+        "nws_prob": None,
+        "clim_prob": None,
+        "clim_adj_prob": None,
+        "obs_prob": None,
+        "live_obs": None,
+        "index_adj": 0.0,
+        "bias_correction": 0.0,
+        "blend_sources": {"hurdat2_climatology": 1.0},
+        "method": method,
+        "ensemble_stats": None,
+        "n_members": len(outcomes),
+        "ci_low": ci_low,
+        "ci_high": ci_high,
+        "ci_width": round(ci_high - ci_low, 4),
+        "kelly": fee_kel,
+        "fee_adjusted_kelly": fee_kel,
+        "ci_adjusted_kelly": ci_adj_kelly,
+        "consensus": consensus,
+        "model_consensus": True,
+        "near_threshold": False,
+        "days_out": days_out,
+        # Synthetic exposure-cap grouping key -- SAME key as the season-count
+        # model ("HUR_<basin>"), not a separate one, so correlated Atlantic
+        # storm activity caps together across both hurricane sub-models
+        # rather than silently bypassing via a second key.
+        "city": f"HUR_{basin}",
+        "target_date": close_dt.date().isoformat(),
+        "entry_side_edge": round(entry_side_edge, 4),
+        # Hurricane-next-event-specific diagnostics, not read by any shared consumer.
+        "basin": basin,
+        "event_type": event_type,
+        "occurred_this_season": occurred_this_season,
+        "n_historical_years": len(outcomes),
+    }
+
+
 def _analyze_hourly_trade(
     enriched: dict,
     condition: dict,
@@ -9340,7 +9715,15 @@ def analyze_trade(
     # KXHURCAT per-storm category, legacy unprefixed HUR*) still has no
     # model and falls through to the unconditional guard.
     _is_hurricane_count = is_hurricane_count_ticker(_tkr_up)
-    if is_hurricane_ticker(_tkr_up) and not _is_hurricane_count:
+    # Time-to-next-event markets (backlog.txt "HURRICANE MARKETS" --
+    # time-to-next-event model, 2026-08-07) are the same kind of narrow,
+    # explicit carve-out of the blanket guard below as hurricane-count just
+    # above -- checked here so these 2 series reach the real model further
+    # down instead of being gated out.
+    _is_hurricane_next_event = is_hurricane_next_event_ticker(_tkr_up)
+    if is_hurricane_ticker(_tkr_up) and not (
+        _is_hurricane_count or _is_hurricane_next_event
+    ):
         _count_gate("hurricane_not_supported")
         return None
     _is_hourly = any(_tkr_up.startswith(_p) for _p in _KXTEMP_HOURLY_CITY)
@@ -9369,10 +9752,12 @@ def analyze_trade(
     _regime_info: dict = {}
     _rain_close_dt: datetime | None = None
     _snow_close_dt: datetime | None = None
+    _hur_next_event_close_dt: datetime | None = None
     if (
         not _is_monthly_rain
         and not _is_monthly_snow
         and not _is_hurricane_count
+        and not _is_hurricane_next_event
         and not forecast
     ):
         _log.warning(
@@ -9383,11 +9768,25 @@ def analyze_trade(
         )
         _count_gate("no_forecast")
         return None  # no forecast data available for this market
-    if not _is_monthly_rain and not _is_monthly_snow and not target_date:
+    # Unlike hurricane-count (whose ticker's date suffix IS the market's real
+    # close date, so it safely reuses the generic target_date/past_date branch
+    # below), a next-event ticker's FIRST date-like segment
+    # ("KXNEXTHURDATE-26DEC01-26SEP15") is a shared season-reference suffix
+    # identical across every sibling "before <date>" market -- parse_city_date's
+    # regex would match THAT segment, not the real threshold date in the
+    # SECOND segment, so target_date must never be trusted for this family.
+    # Bypassed here (like monthly rain/snow) and given its own close_time-
+    # derived past-close check below instead of reusing the generic branch.
+    if (
+        not _is_monthly_rain
+        and not _is_monthly_snow
+        and not _is_hurricane_next_event
+        and not target_date
+    ):
         _log.warning("analyze_trade[%s]: gate=no_date city=%s", _tkr, city)
         _count_gate("no_date")
         return None  # could not parse target date from ticker
-    if not city and not _is_hurricane_count:
+    if not city and not _is_hurricane_count and not _is_hurricane_next_event:
         _log.warning("analyze_trade[%s]: gate=no_city date=%s", _tkr, target_date)
         _count_gate("no_city")
         return None  # unrecognized city in ticker
@@ -9417,12 +9816,30 @@ def analyze_trade(
             )
             _count_gate("monthly_snow_past_close")
             return None
+    elif _is_hurricane_next_event:
+        # Same close_time-derived gating as rain/snow -- see the no_date gate's
+        # own comment above for why target_date must never be trusted here.
+        _hur_next_event_close_dt = _safe_parse_close_time(
+            enriched.get("close_time", "")
+        )
+        if _hur_next_event_close_dt is None or _hur_next_event_close_dt < datetime.now(
+            UTC
+        ):
+            _log.debug(
+                "analyze_trade[%s]: gate=hurricane_next_event_past_close close_time=%s",
+                _tkr,
+                enriched.get("close_time"),
+            )
+            _count_gate("hurricane_next_event_past_close")
+            return None
     else:
         # Narrowing for mypy: the no_date gate above only returns None when
         # `not _is_monthly_rain and not _is_monthly_snow and not
-        # target_date` -- since we're in the `else` of both `if
-        # _is_monthly_rain` and `elif _is_monthly_snow`, that gate already
-        # guarantees target_date is truthy here.
+        # _is_hurricane_next_event and not target_date` -- since we're in the
+        # `else` of `if _is_monthly_rain`/`elif _is_monthly_snow`/`elif
+        # _is_hurricane_next_event`, that gate already guarantees target_date
+        # is truthy here (hurricane-count included -- its ticker's date
+        # suffix IS its real close date, so it safely reuses this branch).
         assert target_date is not None
         if target_date < datetime.now(UTC).date():
             _log.debug(
@@ -9462,7 +9879,7 @@ def analyze_trade(
         return None
 
     coords = CITY_COORDS.get(city)
-    if not coords and not _is_hurricane_count:
+    if not coords and not _is_hurricane_count and not _is_hurricane_next_event:
         _log.warning("analyze_trade[%s]: gate=no_coords city=%s", _tkr, city)
         _count_gate("no_coords")
         return None
@@ -9510,6 +9927,22 @@ def analyze_trade(
                 _tkr,
                 _days_out_check,
                 SNOW_MAX_DAYS_OUT,
+            )
+            _count_gate("days_out")
+            return None
+    elif _is_hurricane_next_event:
+        # _hur_next_event_close_dt was already resolved (non-None) by the
+        # past-close check above -- reuse it, same as rain/snow. Reuses
+        # HURRICANE_MAX_DAYS_OUT (not a new constant): these markets close
+        # within the same ~7-month Atlantic season window as the count model.
+        assert _hur_next_event_close_dt is not None
+        _days_out_check = _days_out_from_close_time(_hur_next_event_close_dt)
+        if _days_out_check > HURRICANE_MAX_DAYS_OUT:
+            _log.debug(
+                "analyze_trade[%s]: gate=days_out days=%d max=%d (hurricane_next_event)",
+                _tkr,
+                _days_out_check,
+                HURRICANE_MAX_DAYS_OUT,
             )
             _count_gate("days_out")
             return None
@@ -9748,16 +10181,33 @@ def analyze_trade(
             result["edge_calc_version"] = EDGE_CALC_VERSION
         return result
 
+    # ── Time-to-next-event hurricane fast-path (backlog.txt "HURRICANE
+    # MARKETS" -- time-to-next-event model, 2026-08-07) ───────────────────────
+    # Same "no city, forecast always None" reasoning as hurricane-count above.
+    if condition["type"] == "hurricane_next_event":
+        # _hur_next_event_close_dt was already resolved+validated by the
+        # past-close gate above (guaranteed non-None -- that gate returns
+        # None outright otherwise) -- reuse it rather than re-parsing.
+        assert _hur_next_event_close_dt is not None
+        result = _analyze_hurricane_next_event_trade(
+            enriched, condition, _hur_next_event_close_dt, _days_out_check
+        )
+        if result is not None:
+            result["time_risk"] = time_risk_label
+            result["edge_calc_version"] = EDGE_CALC_VERSION
+        return result
+
     # Narrowing for mypy: every branch that could leave forecast falsy
-    # (_is_monthly_rain=True, _is_monthly_snow=True, or _is_hurricane_count=True,
-    # the last of which also has no real city/coords) has already returned
-    # above (hourly/precip/snow-ice/rain/snow-ladder/hurricane-count
-    # fast-paths); everything from here to the end of this function is the
-    # daily-only pipeline, where the no_date/no_forecast gates already
-    # guarantee both target_date and forecast are truthy. Never reassigned
-    # below. city/coords are asserted too -- the no_coords gate above only
-    # bypasses for _is_hurricane_count, which has already returned by this
-    # point (its own fast-path), so both are real here.
+    # (_is_monthly_rain=True, _is_monthly_snow=True, _is_hurricane_count=True,
+    # or _is_hurricane_next_event=True -- the last two also have no real
+    # city/coords) has already returned above (hourly/precip/snow-ice/rain/
+    # snow-ladder/hurricane-count/hurricane-next-event fast-paths); everything
+    # from here to the end of this function is the daily-only pipeline, where
+    # the no_date/no_forecast gates already guarantee both target_date and
+    # forecast are truthy. Never reassigned below. city/coords are asserted
+    # too -- the no_coords gate above only bypasses for _is_hurricane_count/
+    # _is_hurricane_next_event, both of which have already returned by this
+    # point (their own fast-paths), so both are real here.
     assert target_date is not None
     assert forecast is not None
     assert city is not None

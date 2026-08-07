@@ -40,6 +40,7 @@ from weather_markets import (
     _KXTEMP_HOURLY_CITY,
     _hourly_gates_active,
     _hurricane_count_gates_active,
+    _hurricane_next_event_gates_active,
     _rain_gates_active,
     _snow_gates_active,
     _var_from_ticker_prefix,
@@ -47,6 +48,7 @@ from weather_markets import (
     enrich_with_forecast,
     get_weather_markets,
     is_hurricane_count_ticker,
+    is_hurricane_next_event_ticker,
     parse_market_price,
 )
 
@@ -2792,6 +2794,19 @@ def _auto_place_trades(
             _n_shadow = _log_shadow_predictions([item], live=live)
             _skip_reasons.append(
                 f"{ticker}: hurricane_count_shadow_only(logged={bool(_n_shadow)})"
+            )
+            continue
+
+        # Hurricane-time-to-next-event shadow-only rollout (backlog.txt
+        # "HURRICANE MARKETS" -- time-to-next-event model, 2026-08-07). Same
+        # per-ticker shape as the hurricane-count branch just above.
+        if (
+            is_hurricane_next_event_ticker(ticker)
+            and not _hurricane_next_event_gates_active()
+        ):
+            _n_shadow = _log_shadow_predictions([item], live=live)
+            _skip_reasons.append(
+                f"{ticker}: hurricane_next_event_shadow_only(logged={bool(_n_shadow)})"
             )
             continue
 

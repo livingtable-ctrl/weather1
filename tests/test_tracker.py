@@ -4650,6 +4650,172 @@ class TestDisputedOutcomeTracking(unittest.TestCase):
             "could not parse basin/count_type/season_year" in msg for msg in cm.output
         )
 
+    def test_count_settled_hurricane_next_event_predictions_counts_only_next_event_tickers(
+        self,
+    ):
+        """backlog.txt "HURRICANE MARKETS" -- time-to-next-event model
+        (2026-08-07): must count KXNEXTHURDATE-style rows, not ordinary
+        daily ones or the (separately-gated) hurricane-count rows."""
+        before = tracker.count_settled_hurricane_next_event_predictions()
+        self._log_settled(
+            "KXNEXTHURDATE-26DEC01-26SEP15",
+            0.6,
+            True,
+            self._FUTURE,
+            city="HUR_ATL",
+            condition_type="hurricane_next_event",
+        )
+        self._log_settled(
+            "KXHURCTOT-26DEC01-T9",
+            0.6,
+            True,
+            self._FUTURE,
+            city="HUR_ATL",
+            condition_type="hurricane_count",
+        )
+        self._log_settled("KXHIGHNY-26JUL20-T75", 0.6, True, self._FUTURE, city="NYC")
+        after = tracker.count_settled_hurricane_next_event_predictions()
+        self.assertEqual(
+            after,
+            before + 1,
+            "must count only the next-event ticker, not the count-model or "
+            "daily tickers too",
+        )
+
+    def test_count_settled_hurricane_next_event_predictions_excludes_disputed(self):
+        before = tracker.count_settled_hurricane_next_event_predictions()
+        self._log_settled(
+            "KXNEXTHURDATE-26DEC01-26OCT01",
+            1.0,
+            0,
+            self._FUTURE,
+            city="HUR_ATL",
+            condition_type="hurricane_next_event",
+            edge=0.99,
+        )
+        tracker.mark_outcome_disputed("KXNEXTHURDATE-26DEC01-26OCT01")
+        after = tracker.count_settled_hurricane_next_event_predictions()
+        self.assertEqual(before, after)
+
+    def test_count_settled_hurricane_next_event_predictions_distinct_ticker_not_raw_rows(
+        self,
+    ):
+        """Confirmed live (not assumed) during implementation:
+        log_prediction()'s own UPSERT already collapses repeated per-cron-
+        cycle logging of the SAME open ticker into one row under normal
+        operation -- calling it twice for the same ticker before settling
+        does NOT create 2 raw rows. COUNT(DISTINCT ticker) is still kept as
+        cheap defense-in-depth against any OTHER source of raw-row
+        duplication (a future log_prediction change, a manual backfill) --
+        this test proves that defense actually works by inserting a genuine
+        duplicate row directly via SQL, bypassing log_prediction's own
+        upsert to isolate the query's own DISTINCT behavior."""
+        before = tracker.count_settled_hurricane_next_event_predictions()
+        self._log_settled(
+            "KXNEXTHURDATE-26DEC01-26NOV01",
+            0.6,
+            True,
+            self._FUTURE,
+            city="HUR_ATL",
+            condition_type="hurricane_next_event",
+        )
+        with tracker._conn() as con:
+            con.execute(
+                "INSERT INTO predictions (ticker, city, market_date, "
+                "condition_type, our_prob, market_prob, edge, method, "
+                "n_members, predicted_at) "
+                "SELECT ticker, city, market_date, condition_type, our_prob, "
+                "market_prob, edge, method, n_members, predicted_at "
+                "FROM predictions WHERE ticker = ?",
+                ("KXNEXTHURDATE-26DEC01-26NOV01",),
+            )
+        after = tracker.count_settled_hurricane_next_event_predictions()
+        self.assertEqual(
+            after,
+            before + 1,
+            "2 raw prediction rows for the SAME settled ticker must still "
+            "count as 1 distinct event",
+        )
+
+    def test_log_prediction_upsert_already_prevents_raw_duplication(self):
+        """Documents the real, confirmed-live behavior the test above's
+        docstring relies on: calling log_prediction() twice for the same
+        still-open ticker produces exactly 1 predictions row, not 2 --
+        log_prediction's own UPSERT (see its docstring's "MIN(existing,
+        new)" note), not this counter's DISTINCT, is the primary defense
+        under normal cron operation."""
+        analysis = {
+            "condition": {"type": "hurricane_next_event", "threshold": 70.0},
+            "forecast_prob": 0.6,
+            "market_prob": 0.5,
+            "edge": 0.15,
+            "method": "ensemble",
+            "n_members": 82,
+        }
+        tracker.log_prediction(
+            "KXNEXTHURDATE-26DEC01-26AUG15", "HUR_ATL", self._FUTURE, analysis
+        )
+        tracker.log_prediction(
+            "KXNEXTHURDATE-26DEC01-26AUG15", "HUR_ATL", self._FUTURE, analysis
+        )
+        with tracker._conn() as con:
+            n = con.execute(
+                "SELECT COUNT(*) AS n FROM predictions WHERE ticker = ?",
+                ("KXNEXTHURDATE-26DEC01-26AUG15",),
+            ).fetchone()["n"]
+        self.assertEqual(n, 1)
+
+    def test_count_settled_hurricane_next_event_predictions_distinguishes_both_series(
+        self,
+    ):
+        """KXNEXTHURDATE and KXNEXTCAT5HURDATE settlements must each count
+        as their own distinct event -- one combined counter/floor across
+        both series (matching the count model's own combined-floor
+        precedent), not a per-series count, but every real settled ticker
+        must still be counted, not collapsed into fewer than it really is."""
+        before = tracker.count_settled_hurricane_next_event_predictions()
+        self._log_settled(
+            "KXNEXTHURDATE-26DEC01-26SEP15",
+            0.6,
+            True,
+            self._FUTURE,
+            city="HUR_ATL",
+            condition_type="hurricane_next_event",
+        )
+        self._log_settled(
+            "KXNEXTCAT5HURDATE-26DEC01-26SEP01",
+            0.6,
+            True,
+            self._FUTURE,
+            city="HUR_ATL",
+            condition_type="hurricane_next_event",
+        )
+        after = tracker.count_settled_hurricane_next_event_predictions()
+        self.assertEqual(after, before + 2)
+
+    def test_count_settled_hurricane_next_event_predictions_ignores_lookalike_series(
+        self,
+    ):
+        """Opus-review-caught: the SQL LIKE prefix used as a coarse pre-
+        filter is broader than is_hurricane_next_event_ticker()'s series-
+        EXACT match -- a lookalike series ("KXNEXTHURDATE2", not a real
+        Kalshi series) must not inflate the count, mirroring
+        count_settled_hurricane_predictions()'s own ticker-derived-key
+        validation for the identical risk shape."""
+        before = tracker.count_settled_hurricane_next_event_predictions()
+        self._log_settled(
+            "KXNEXTHURDATE2-26DEC01-26SEP15",
+            0.6,
+            True,
+            self._FUTURE,
+            city="HUR_ATL",
+            condition_type="hurricane_next_event",
+        )
+        after = tracker.count_settled_hurricane_next_event_predictions()
+        self.assertEqual(
+            before, after, "a lookalike series ticker must not inflate the count"
+        )
+
     def test_count_settled_west_coast_multiday_excludes_disputed(self):
         # This gate filters on o.settled_temp_f IS NOT NULL, which
         # _log_settled never populates -- without setting it explicitly,
@@ -4817,6 +4983,45 @@ class TestLiveTradingGateConditionTypeFilter(unittest.TestCase):
         after = tracker.count_settled_predictions()
         self.assertEqual(before, after, "a snow row must not change the settled count")
 
+    def test_count_settled_predictions_excludes_hurricane_count(self):
+        """Opus-review-caught (2026-08-07): this exclusion list was never
+        extended when the season-count hurricane model shipped (2026-08-03)
+        -- a settled hurricane_count row would silently advance this live-
+        trading-readiness gate with evidence from an explicitly unvalidated
+        model."""
+        self._seed_baseline()
+        before = tracker.count_settled_predictions()
+        self._log_settled(
+            "KXHURCTOT-26DEC01-T9",
+            0.99,
+            0,
+            self._FUTURE,
+            condition_type="hurricane_count",
+            edge=0.99,
+        )
+        after = tracker.count_settled_predictions()
+        self.assertEqual(
+            before, after, "a hurricane_count row must not change the settled count"
+        )
+
+    def test_count_settled_predictions_excludes_hurricane_next_event(self):
+        self._seed_baseline()
+        before = tracker.count_settled_predictions()
+        self._log_settled(
+            "KXNEXTHURDATE-26DEC01-26SEP15",
+            0.99,
+            0,
+            self._FUTURE,
+            condition_type="hurricane_next_event",
+            edge=0.99,
+        )
+        after = tracker.count_settled_predictions()
+        self.assertEqual(
+            before,
+            after,
+            "a hurricane_next_event row must not change the settled count",
+        )
+
     def test_count_settled_predictions_counts_raw_rows_not_distinct_events(self):
         """backlog.txt "COUNT_SETTLED_PREDICTIONS() COUNTS RAW ROWS, NOT
         DISTINCT TEMPERATURE-OBSERVATION EVENTS": re-examined 2026-07-31 and
@@ -4883,6 +5088,30 @@ class TestLiveTradingGateConditionTypeFilter(unittest.TestCase):
             before, after, "rain/snow rows must not change the rolling count"
         )
 
+    def test_count_settled_predictions_rolling_excludes_hurricane_rows(self):
+        self._seed_baseline()
+        before = tracker.count_settled_predictions_rolling()
+        self._log_settled(
+            "KXHURCTOT-26DEC01-T7",
+            0.99,
+            0,
+            self._FUTURE,
+            condition_type="hurricane_count",
+            edge=0.99,
+        )
+        self._log_settled(
+            "KXNEXTHURDATE-26DEC01-26OCT01",
+            0.99,
+            0,
+            self._FUTURE,
+            condition_type="hurricane_next_event",
+            edge=0.99,
+        )
+        after = tracker.count_settled_predictions_rolling()
+        self.assertEqual(
+            before, after, "hurricane rows must not change the rolling count"
+        )
+
     # ── get_rolling_win_rate ────────────────────────────────────────────────
     # (feeds paper.is_accuracy_halted -- the live circuit breaker that halts
     # new trades on a bad win rate; same contamination risk as above.)
@@ -4920,6 +5149,35 @@ class TestLiveTradingGateConditionTypeFilter(unittest.TestCase):
             0,
             self._FUTURE,
             condition_type="snow_month_total",
+            edge=0.99,
+        )
+        after, after_n = tracker.get_rolling_win_rate(window=100)
+        self.assertEqual(before_n, after_n)
+        self.assertEqual(before, after)
+
+    def test_get_rolling_win_rate_excludes_hurricane_rows(self):
+        """Opus-review-caught (2026-08-07): this feeds
+        paper.is_accuracy_halted(), the live circuit breaker -- a settled
+        hurricane_count/hurricane_next_event row (a materially different
+        win-rate distribution than a directional temperature call) must not
+        be able to mask real temperature-model degradation or falsely trip
+        the halt."""
+        self._seed_baseline()
+        before, before_n = tracker.get_rolling_win_rate(window=100)
+        self._log_settled(
+            "KXHURCTOT-26DEC01-T11",
+            0.99,
+            0,
+            self._FUTURE,
+            condition_type="hurricane_count",
+            edge=0.99,
+        )
+        self._log_settled(
+            "KXNEXTCAT5HURDATE-26DEC01-26SEP01",
+            0.99,
+            0,
+            self._FUTURE,
+            condition_type="hurricane_next_event",
             edge=0.99,
         )
         after, after_n = tracker.get_rolling_win_rate(window=100)

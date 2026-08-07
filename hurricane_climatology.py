@@ -71,6 +71,18 @@ COUNT_THRESHOLDS_KT = {
     "major_hurricane": 96,
 }
 
+# backlog.txt "HURRICANE MARKETS" -- time-to-next-event model (2026-08-07), for
+# KXNEXTHURDATE ("will the next hurricane form before <date>?") and
+# KXNEXTCAT5HURDATE ("will the next Category 5 hurricane form before <date>?").
+# "hurricane" reuses the same 64kt threshold as COUNT_THRESHOLDS_KT (kept as a
+# separate dict, not merged, since these two dicts serve different questions --
+# season-end count vs. day of first occurrence). 137kt matches KXHURCAT's own
+# live-confirmed Category-5 threshold (157 mph).
+NEXT_EVENT_THRESHOLDS_KT = {
+    "hurricane": 64,
+    "cat5_hurricane": 137,
+}
+
 HISTORY_WINDOW_YEARS = 30  # most recent 30 COMPLETE seasons -- matches this
 # codebase's existing 30-year convention (acis_precip.HISTORY_YEARS) and,
 # independently, is a real judgment call worth documenting: Atlantic/Pacific
@@ -158,6 +170,12 @@ def parse_hurdat2(raw_text: str) -> list[dict]:
     (dict kt -> (month, day) tuple of the storm's EARLIEST reading >= kt, or
     None if it never reached kt)}.
 
+    threshold_day is built for the union of COUNT_THRESHOLDS_KT.values() (34/
+    64/96, season-end count model) and NEXT_EVENT_THRESHOLDS_KT.values() (64/
+    137, time-to-next-event model) -- kt=64 is shared by both, kt=137 (Category
+    5) only matters to the next-event model. One parse serves both models; no
+    separate fetch or pass over the raw text.
+
     threshold_day uses a (month, day) tuple, NOT an ordinal day-of-year --
     opus-review-caught (2026-08-03): tm_yday shifts by 1 for every date after
     Feb 29 in a leap year relative to a non-leap year, so comparing raw
@@ -206,7 +224,7 @@ def parse_hurdat2(raw_text: str) -> list[dict]:
 
         max_wind: int | None = None
         threshold_day: dict[int, tuple[int, int] | None] = dict.fromkeys(
-            COUNT_THRESHOLDS_KT.values()
+            set(COUNT_THRESHOLDS_KT.values()) | set(NEXT_EVENT_THRESHOLDS_KT.values())
         )
         for j in range(1, n_rows + 1):
             if i + j >= len(lines):
@@ -455,3 +473,131 @@ def bootstrap_ci(
     k = len(totals)
     boot = sorted(prob_from(random.choices(totals, k=k)) for _ in range(n))
     return (boot[min(int(n * 0.05), n - 1)], boot[min(int(n * 0.95), n - 1)])
+
+
+# ── Time-to-next-event model (backlog.txt "HURRICANE MARKETS", 2026-08-07) ──
+# For KXNEXTHURDATE/KXNEXTCAT5HURDATE: "will the next [Category-5] hurricane
+# form before <date>?" -- a genuinely different question shape than the
+# season-end count model above (day of FIRST occurrence, not a season total),
+# reusing the same underlying storms/threshold_day data.
+
+
+_KNOWN_THRESHOLD_KT = set(COUNT_THRESHOLDS_KT.values()) | set(
+    NEXT_EVENT_THRESHOLDS_KT.values()
+)
+
+
+def first_occurrence_day(
+    storms: list[dict], year: int, kt: int
+) -> tuple[int, int] | None:
+    """Earliest (month, day) at which ANY of `year`'s storms first reached kt
+    strength, or None if no storm did that year. `storms` already filtered to
+    one basin (via load_basin_storms). Opus-review-caught (2026-08-07): kt
+    must be one of the thresholds parse_hurdat2 actually tracks -- `dict.get`
+    on an unrecognized kt silently returns None for every storm (indistinguishable
+    from "no storm reached it"), producing a confidently wrong all-False
+    result instead of a loud failure. Currently unreachable in production
+    (the only caller derives kt from NEXT_EVENT_THRESHOLDS_KT), but fails
+    loudly here rather than relying on that invariant holding forever."""
+    if kt not in _KNOWN_THRESHOLD_KT:
+        raise ValueError(
+            f"first_occurrence_day: kt={kt} is not tracked by parse_hurdat2's "
+            f"threshold_day (known: {sorted(_KNOWN_THRESHOLD_KT)})"
+        )
+    season = [s for s in storms if s["year"] == year]
+    days = [
+        s["threshold_day"][kt] for s in season if s["threshold_day"].get(kt) is not None
+    ]
+    return min(days) if days else None
+
+
+def next_event_outcomes(
+    storms: list[dict],
+    kt: int,
+    target_month_day: tuple[int, int],
+    *,
+    as_of_month_day: tuple[int, int] | None = None,
+    window_years: int = HISTORY_WINDOW_YEARS,
+    end_year: int | None = None,
+) -> list[bool]:
+    """Empirical outcomes ("did the event occur before target_month_day?") for
+    the most recent `window_years` COMPLETE historical calendar seasons --
+    same explicit calendar-range iteration season_end_total_distribution uses
+    (not merely the years that happen to appear in `storms`), for the same
+    reason: a year with zero qualifying storms must still contribute a real
+    False, not be silently dropped.
+
+    Two modes, mirroring season_end_total_distribution's own
+    "as_of_month_day is None or current_count is None -> unconditional"
+    fallback exactly -- conditioning on "today's date" is only valid when the
+    caller actually KNOWS live that the event hasn't happened yet this season;
+    assuming that whenever a live signal is merely unavailable would reproduce
+    the exact stale-cache "flips a probability with no warning" failure mode
+    _get_cached_hurricane_count_to_date's own staleness guard already exists to
+    prevent for the count model.
+
+    Unconditional mode (as_of_month_day=None, the default): every window year
+    contributes one outcome, True iff the event's first occurrence that year
+    was on or before target_month_day.
+
+    Conditional mode (as_of_month_day provided -- only when live data confirms
+    the event has NOT happened yet this season): first restrict to "eligible"
+    years -- years where the event historically hadn't yet occurred by the same
+    calendar point (None, i.e. never that year, or occurred strictly after
+    as_of_month_day) -- then outcome is True iff that year's first occurrence
+    was on or before target_month_day. This is the empirical probability of the
+    event occurring before the target date, GIVEN it's confirmed still pending
+    today; years where it had already resolved by an equivalent historical
+    point aren't representative of today's real state and are excluded.
+    """
+    if end_year is None:
+        end_year = datetime.now(UTC).date().year - 1
+    window = range(end_year - window_years + 1, end_year + 1)
+    outcomes: list[bool] = []
+    for y in window:
+        day = first_occurrence_day(storms, y, kt)
+        if as_of_month_day is not None:
+            eligible = day is None or day > as_of_month_day
+            if not eligible:
+                continue
+        outcomes.append(day is not None and day <= target_month_day)
+    return outcomes
+
+
+def next_event_probability(outcomes: list[bool]) -> float:
+    """Clamped to [0.01, 0.99], matching every other probability this codebase
+    produces. Returns 0.5 (maximally uninformative) if `outcomes` is empty
+    rather than dividing by zero -- mirrors exceedance_probability."""
+    if not outcomes:
+        return 0.5
+    return max(0.01, min(0.99, sum(outcomes) / len(outcomes)))
+
+
+def bootstrap_ci_next_event(outcomes: list[bool], n: int = 500) -> tuple[float, float]:
+    """Mirrors bootstrap_ci's exact resampling shape: n resamples-with-
+    replacement of `outcomes`, each resample's True-fraction, sorted, 5th/95th
+    percentile returned, clamped to [0.01, 0.99] -- same clamp
+    next_event_probability itself already applies, and for the same reason:
+    without it, a unanimous outcome set (very common here -- e.g. every
+    recent Atlantic season had a hurricane by mid-September) produces a
+    degenerate exact (1.0, 1.0)/(0.0, 0.0) CI. Opus-review-caught
+    (2026-08-07): that degenerate CI, not the point estimate, is what
+    downstream Kelly sizing keys off when ci_high<=ci_low -- unclamped, it
+    silently forced `kelly_fraction(1.0, price) == 0.0` for the model's
+    highest-confidence signals, blocking every real order AND (since shadow
+    logging goes through the same size-then-log validator) permanently
+    freezing tracker.count_settled_hurricane_next_event_predictions() at 0,
+    so the 20-sample graduation gate could never open. Returns (0.0, 1.0)
+    if fewer than 15 outcomes are available (too few to trust a CI) -- same
+    threshold as bootstrap_ci. In unconditional mode `outcomes` always has
+    exactly `window_years` (30) entries, so this floor is only reachable in
+    conditional mode; opus-review-caught (2026-08-07) that this is NOT a
+    late-season-only concern the way the docstring originally claimed --
+    measured against real Atlantic data, the eligible set already drops
+    below 15 by roughly Aug 1 (the start of peak season), not late in it."""
+    if len(outcomes) < 15:
+        return (0.0, 1.0)
+    k = len(outcomes)
+    boot = sorted(sum(random.choices(outcomes, k=k)) / k for _ in range(n))
+    lo, hi = boot[min(int(n * 0.05), n - 1)], boot[min(int(n * 0.95), n - 1)]
+    return (max(0.01, min(0.99, lo)), max(0.01, min(0.99, hi)))

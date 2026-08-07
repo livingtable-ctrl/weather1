@@ -184,6 +184,117 @@ class TestAnalyzeTradeHurricaneGating:
         assert wm.analyze_trade({"ticker": "HURCAT-26FAUSTO-T5"}) is None
         assert wm.get_gate_counts().get("hurricane_not_supported") == 1
 
+    def test_kxnexthurdate_no_longer_blanket_gated(self):
+        """backlog.txt "HURRICANE MARKETS" -- time-to-next-event model
+        (2026-08-07): KXNEXTHURDATE now has a real model
+        (_analyze_hurricane_next_event_trade) and is explicitly carved out
+        of the blanket guard -- must NOT hit hurricane_not_supported
+        anymore. This bare fixture has no bid/ask/volume, so it's actually
+        caught by the liquidity gate first (opus-review-caught: an earlier
+        version of this docstring overclaimed "reaches the fast-path
+        directly ... returns a real result", which was never true for this
+        fixture) -- the point of this test is only that it does NOT hit the
+        blanket guard, not that it reaches the model. See
+        test_kxnexthurdate_dispatches_to_the_real_model_end_to_end below for
+        a fixture that actually reaches _analyze_hurricane_next_event_trade,
+        and tests/test_hurricane_markets.py for full model coverage with
+        mocked HURDAT2 data."""
+        import weather_markets as wm
+
+        enriched = wm.enrich_with_forecast(
+            {
+                "ticker": "KXNEXTHURDATE-26DEC01-26SEP15",
+                "close_time": "2026-09-15T03:59:00Z",
+            },
+            fetch_forecast=False,
+        )
+        wm.reset_gate_counts()
+        wm.analyze_trade(enriched)
+        counts = wm.get_gate_counts()
+        assert counts.get("hurricane_not_supported") is None
+
+    def test_kxnextcat5hurdate_no_longer_blanket_gated(self):
+        import weather_markets as wm
+
+        enriched = wm.enrich_with_forecast(
+            {
+                "ticker": "KXNEXTCAT5HURDATE-26DEC01-26SEP01",
+                "close_time": "2026-09-01T03:59:00Z",
+            },
+            fetch_forecast=False,
+        )
+        wm.reset_gate_counts()
+        wm.analyze_trade(enriched)
+        counts = wm.get_gate_counts()
+        assert counts.get("hurricane_not_supported") is None
+
+    def test_kxnexthurdate_dispatches_to_the_real_model_end_to_end(self, monkeypatch):
+        """Opus-review-caught: every other test in this file (and the two
+        "no_longer_blanket_gated" tests just above) exercises only the gate
+        layer via analyze_trade() -- none actually reach
+        _analyze_hurricane_next_event_trade through the public entry point
+        (test_hurricane_markets.py's own dispatch tests all call the
+        analysis function directly with a hand-built condition dict). This
+        fixture has real liquidity fields (volume/open_interest above
+        MIN_LIQUIDITY/MIN_SIGNAL_VOLUME) so it clears every gate ahead of
+        the fast-path and reaches the real dispatch -- confirming the
+        condition["type"] == "hurricane_next_event" branch, the
+        _hur_next_event_close_dt assert, and the days-out branch all wire up
+        correctly through analyze_trade() itself, not just when called
+        directly."""
+        import weather_markets as wm
+
+        monkeypatch.setattr(
+            "hurricane_climatology.load_basin_storms",
+            lambda basin: [{"year": 2020, "basin": "AL"}],
+        )
+        import hurricane_climatology as hc
+
+        monkeypatch.setattr(hc, "next_event_outcomes", lambda *a, **k: [True] * 30)
+
+        enriched = wm.enrich_with_forecast(
+            {
+                "ticker": "KXNEXTHURDATE-26DEC01-26SEP15",
+                "close_time": "2026-09-15T03:59:00Z",
+                "yes_bid_dollars": 0.40,
+                "yes_ask_dollars": 0.45,
+                "volume": 100,
+                "open_interest": 100,
+            },
+            fetch_forecast=False,
+        )
+        wm.reset_gate_counts()
+        result = wm.analyze_trade(enriched)
+        assert result is not None
+        assert result["method"] in (
+            "hurricane_next_event_climatology",
+            "hurricane_next_event_climatology_tilted",
+        )
+        assert result["city"] == "HUR_ATL"
+        assert wm.get_gate_counts().get("hurricane_not_supported") is None
+
+    def test_kxnexthurdate_past_close_time_gates_out_via_own_check(self):
+        """A next-event ticker whose close_time has already passed must be
+        caught by its OWN close_time-derived past-close gate, not fall
+        through to the generic target_date-based past_date gate (whose
+        target_date would be wrong for this family -- see
+        _parse_hurricane_next_event_condition's own docstring)."""
+        import weather_markets as wm
+
+        enriched = wm.enrich_with_forecast(
+            {
+                "ticker": "KXNEXTHURDATE-26DEC01-26JAN01",
+                "close_time": "2020-01-01T03:59:00Z",  # long past
+            },
+            fetch_forecast=False,
+        )
+        wm.reset_gate_counts()
+        assert wm.analyze_trade(enriched) is None
+        counts = wm.get_gate_counts()
+        assert counts.get("hurricane_next_event_past_close") == 1
+        assert counts.get("past_date") is None
+        assert counts.get("hurricane_not_supported") is None
+
 
 class TestCheckPositionLimitsBlocksHurricane:
     """paper.check_position_limits() is one of several call paths reachable

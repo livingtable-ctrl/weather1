@@ -25,6 +25,7 @@ from weather_markets import (
     _KXSNOW_MONTHLY_CITY,
     _KXTEMP_HOURLY_CITY,
     is_hurricane_count_ticker,
+    is_hurricane_next_event_ticker,
     market_implied_rain_event_key,
     parse_market_price,
 )
@@ -195,6 +196,14 @@ def _group_markets(markets: list[dict]) -> dict:
         if ticker.upper().startswith(tuple(_KXSNOW_MONTHLY_CITY)):
             continue
         if is_hurricane_count_ticker(ticker):
+            continue
+        # Same reasoning as the hurricane-count exclusion just above, for the
+        # 2 time-to-next-event series (backlog.txt "HURRICANE MARKETS" --
+        # time-to-next-event model, 2026-08-07): KNOWN_WEATHER_SERIES now
+        # returns them too, so find_violations() would otherwise see them
+        # with no shadow-gate check of its own, completely bypassing
+        # _hurricane_next_event_gates_active().
+        if is_hurricane_next_event_ticker(ticker):
             continue
 
         if ticker.upper().startswith(tuple(_KXRAIN_MONTHLY_CITY)):

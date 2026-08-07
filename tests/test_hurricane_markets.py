@@ -856,3 +856,827 @@ class TestCmdOrderHurricaneCountGuard:
         main.cmd_order(None, "buy", ["KXHURCAT-26FAUSTO-T5", "yes", "1", "0.10"])
         out = capsys.readouterr().out
         assert "hurricane markets are not supported yet" in out
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Time-to-next-event model (backlog.txt "HURRICANE MARKETS" -- time-to-
+# next-event model, 2026-08-07): KXNEXTHURDATE/KXNEXTCAT5HURDATE. See
+# tests/test_hurricane_climatology.py for the underlying
+# first_occurrence_day/next_event_outcomes math.
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_next_event_type_values_are_a_subset_of_climatology_thresholds():
+    """Opus-review-caught: `_analyze_hurricane_next_event_trade` does a bare
+    `hc.NEXT_EVENT_THRESHOLDS_KT[event_type]` subscript with no guard --
+    every event_type value weather_markets._HURRICANE_NEXT_EVENT_TYPE can
+    produce must have a matching key in hurricane_climatology.
+    NEXT_EVENT_THRESHOLDS_KT, or a future 3rd series added to one dict but
+    not the other raises KeyError inside analyze_trade(), which the scan
+    loop's broad except-continue silently swallows."""
+    import hurricane_climatology as hc
+    import weather_markets as wm
+
+    assert set(wm._HURRICANE_NEXT_EVENT_TYPE.values()) <= set(
+        hc.NEXT_EVENT_THRESHOLDS_KT
+    )
+
+
+class TestIsHurricaneNextEventTicker:
+    @pytest.mark.parametrize(
+        "ticker",
+        [
+            "KXNEXTHURDATE-26DEC01-26SEP15",
+            "KXNEXTCAT5HURDATE-26DEC01-26SEP01",
+        ],
+    )
+    def test_matches_both_real_series(self, ticker):
+        import weather_markets as wm
+
+        assert wm.is_hurricane_next_event_ticker(ticker) is True
+
+    @pytest.mark.parametrize(
+        "ticker",
+        [
+            "KXNEXTHURDATE",  # bare series alone, no event suffix, still exact match
+            "KXHURCTOT-26DEC01-T9",  # a different hurricane-count series
+            "KXHURCAT-26FAUSTO-T5",  # per-storm category -- still unsupported
+            "KXHIGHNY-26JUL20-T70",  # unrelated market entirely
+        ],
+    )
+    def test_membership_is_series_exact(self, ticker):
+        import weather_markets as wm
+
+        expected = ticker == "KXNEXTHURDATE"
+        assert wm.is_hurricane_next_event_ticker(ticker) is expected
+
+    def test_still_caught_by_blanket_is_hurricane_ticker(self):
+        """Both series contain "HUR" as a substring -- confirms the blanket
+        guard's bypass extension in analyze_trade() is actually necessary,
+        not dead code."""
+        import weather_markets as wm
+
+        assert wm.is_hurricane_ticker("KXNEXTHURDATE-26DEC01-26SEP15") is True
+        assert wm.is_hurricane_ticker("KXNEXTCAT5HURDATE-26DEC01-26SEP01") is True
+
+
+class TestParseHurricaneNextEventCondition:
+    def _market(self, **overrides):
+        base = {
+            "ticker": "KXNEXTHURDATE-26DEC01-26SEP15",
+            "close_time": "2026-09-15T03:59:00Z",
+        }
+        base.update(overrides)
+        return base
+
+    def test_hurricane_series_parses_correctly(self):
+        import weather_markets as wm
+
+        cond = wm._parse_hurricane_next_event_condition(self._market())
+        assert cond == {
+            "type": "hurricane_next_event",
+            "basin": "ATL",
+            "event_type": "hurricane",
+        }
+
+    def test_cat5_series_parses_correctly(self):
+        import weather_markets as wm
+
+        cond = wm._parse_hurricane_next_event_condition(
+            self._market(
+                ticker="KXNEXTCAT5HURDATE-26DEC01-26SEP01",
+                close_time="2026-09-01T03:59:00Z",
+            )
+        )
+        assert cond == {
+            "type": "hurricane_next_event",
+            "basin": "ATL",
+            "event_type": "cat5_hurricane",
+        }
+
+    def test_no_kt_field_in_condition(self):
+        """kt is deliberately derived downstream from event_type via
+        hurricane_climatology.NEXT_EVENT_THRESHOLDS_KT, not carried in the
+        condition dict -- avoids a second place that could drift out of
+        sync with the single source of truth."""
+        import weather_markets as wm
+
+        cond = wm._parse_hurricane_next_event_condition(self._market())
+        assert "kt" not in cond
+
+    def test_missing_close_time_fails_closed(self, caplog):
+        import weather_markets as wm
+
+        cond = wm._parse_hurricane_next_event_condition(self._market(close_time=""))
+        assert cond is None
+        assert "missing/unparseable close_time" in caplog.text
+
+    def test_unparseable_close_time_fails_closed(self):
+        import weather_markets as wm
+
+        cond = wm._parse_hurricane_next_event_condition(
+            self._market(close_time="not-a-real-timestamp")
+        )
+        assert cond is None
+
+    def test_non_next_event_ticker_returns_none_silently(self, caplog):
+        import weather_markets as wm
+
+        cond = wm._parse_hurricane_next_event_condition(
+            {"ticker": "KXHIGHNY-26JUL20-T70"}
+        )
+        assert cond is None
+        assert caplog.text == ""
+
+    def test_dispatches_via_parse_market_condition(self):
+        """End-to-end through the real dispatcher, confirms the branch is
+        actually wired in."""
+        import weather_markets as wm
+
+        cond = wm._parse_market_condition(self._market())
+        assert cond is not None
+        assert cond["type"] == "hurricane_next_event"
+
+    def test_degraded_market_fails_closed_at_dispatcher_not_fallthrough(self):
+        """Same KXHURCAT-bug-class concern the hurricane-count branch's own
+        test documents: a next-event-series ticker whose own close_time is
+        unparseable must return None from _parse_market_condition itself,
+        never fall through to the generic threshold parser below (this
+        family has no floor_strike/strike_type at all, but a future Kalshi
+        field change could still introduce one -- fail closed regardless)."""
+        import weather_markets as wm
+
+        degraded = self._market(close_time="garbage")
+        cond = wm._parse_market_condition(degraded)
+        assert cond is None
+
+
+# ── _hurricane_next_event_gates_active ──────────────────────────────────────
+
+
+class TestHurricaneNextEventGatesActive:
+    """Mirrors TestHurricaneCountGatesActive's exact test shape -- own env
+    var, own counter, kept fully separate from the count model's gate."""
+
+    def test_false_when_env_var_unset(self, monkeypatch):
+        import weather_markets as wm
+
+        monkeypatch.delenv("HURRICANE_NEXT_EVENT_TRADING_ENABLED", raising=False)
+        monkeypatch.setattr(
+            "tracker.count_settled_hurricane_next_event_predictions", lambda: 999
+        )
+        assert wm._hurricane_next_event_gates_active() is False
+
+    def test_false_when_env_var_set_but_below_sample_floor(self, monkeypatch):
+        import weather_markets as wm
+
+        monkeypatch.setenv("HURRICANE_NEXT_EVENT_TRADING_ENABLED", "1")
+        monkeypatch.setattr(
+            "tracker.count_settled_hurricane_next_event_predictions", lambda: 19
+        )
+        assert wm._hurricane_next_event_gates_active() is False
+
+    def test_true_when_env_var_set_and_sample_floor_met(self, monkeypatch):
+        import weather_markets as wm
+
+        monkeypatch.setenv("HURRICANE_NEXT_EVENT_TRADING_ENABLED", "1")
+        monkeypatch.setattr(
+            "tracker.count_settled_hurricane_next_event_predictions", lambda: 20
+        )
+        assert wm._hurricane_next_event_gates_active() is True
+
+    def test_never_raises_on_count_failure(self, monkeypatch):
+        import weather_markets as wm
+
+        monkeypatch.setenv("HURRICANE_NEXT_EVENT_TRADING_ENABLED", "1")
+
+        def _boom():
+            raise RuntimeError("db down")
+
+        monkeypatch.setattr(
+            "tracker.count_settled_hurricane_next_event_predictions", _boom
+        )
+        assert wm._hurricane_next_event_gates_active() is False
+
+    def test_independent_of_hurricane_count_gate(self, monkeypatch):
+        """The two gates must not share state -- flipping the count model's
+        gate/env var must not activate this one, and vice versa."""
+        import weather_markets as wm
+
+        monkeypatch.setenv("HURRICANE_TRADING_ENABLED", "1")
+        monkeypatch.setattr("tracker.count_settled_hurricane_predictions", lambda: 999)
+        monkeypatch.delenv("HURRICANE_NEXT_EVENT_TRADING_ENABLED", raising=False)
+        assert wm._hurricane_count_gates_active() is True
+        assert wm._hurricane_next_event_gates_active() is False
+
+
+# ── _analyze_hurricane_next_event_trade (full dispatch, mocked climatology) ─
+
+
+class TestAnalyzeHurricaneNextEventTrade:
+    def _enriched(self, **overrides):
+        base = {
+            "ticker": "KXNEXTHURDATE-26DEC01-26SEP15",
+            "close_time": "2026-09-15T03:59:00Z",
+            "yes_bid_dollars": 0.40,
+            "yes_ask_dollars": 0.45,
+        }
+        base.update(overrides)
+        return base
+
+    def _condition(self, **overrides):
+        base = {
+            "type": "hurricane_next_event",
+            "basin": "ATL",
+            "event_type": "hurricane",
+        }
+        base.update(overrides)
+        return base
+
+    def test_returns_none_when_hurdat2_unavailable(self, monkeypatch):
+        import weather_markets as wm
+
+        monkeypatch.setattr(
+            "hurricane_climatology.load_basin_storms", lambda basin: None
+        )
+        from datetime import UTC
+        from datetime import datetime as _dt
+
+        result = wm._analyze_hurricane_next_event_trade(
+            self._enriched(), self._condition(), _dt(2026, 9, 15, tzinfo=UTC), 39
+        )
+        assert result is None
+
+    def test_returns_none_when_storms_list_is_empty(self, monkeypatch):
+        import weather_markets as wm
+
+        monkeypatch.setattr("hurricane_climatology.load_basin_storms", lambda basin: [])
+        from datetime import UTC
+        from datetime import datetime as _dt
+
+        result = wm._analyze_hurricane_next_event_trade(
+            self._enriched(), self._condition(), _dt(2026, 9, 15, tzinfo=UTC), 39
+        )
+        assert result is None
+
+    def test_already_occurred_short_circuits_to_near_certain(self, monkeypatch):
+        """occurred_this_season=True (live cache says >=1 hurricane already
+        this season) must skip the bootstrap entirely and return the same
+        [0.01,0.99]-clamp-ceiling convention every other probability in this
+        codebase uses."""
+        import weather_markets as wm
+
+        monkeypatch.setattr(
+            "hurricane_climatology.load_basin_storms",
+            lambda basin: [{"year": 2020, "basin": "AL"}],
+        )
+        monkeypatch.setattr(
+            wm, "_get_cached_hurricane_count_to_date", lambda basin, year: 2
+        )
+
+        def _boom(*a, **k):
+            raise AssertionError("bootstrap must not run when already confirmed")
+
+        import hurricane_climatology as hc
+
+        monkeypatch.setattr(hc, "next_event_outcomes", _boom)
+        from datetime import UTC
+        from datetime import datetime as _dt
+
+        result = wm._analyze_hurricane_next_event_trade(
+            self._enriched(), self._condition(), _dt(2026, 9, 15, tzinfo=UTC), 39
+        )
+        assert result is not None
+        assert result["forecast_prob"] == 0.99
+        assert result["method"] == "hurricane_next_event_confirmed"
+        assert result["occurred_this_season"] is True
+        assert result["n_members"] == 0
+
+    def test_not_yet_occurred_uses_conditional_mode(self, monkeypatch):
+        """occurred_this_season=False (live cache confirms 0 so far) must
+        pass a real as_of_month_day through to next_event_outcomes --
+        conditional mode, not unconditional."""
+        import hurricane_climatology as hc
+        import weather_markets as wm
+
+        monkeypatch.setattr(
+            "hurricane_climatology.load_basin_storms",
+            lambda basin: [{"year": 2020, "basin": "AL"}],
+        )
+        monkeypatch.setattr(
+            wm, "_get_cached_hurricane_count_to_date", lambda basin, year: 0
+        )
+
+        captured = {}
+
+        def _fake_outcomes(storms, kt, target_month_day, *, as_of_month_day=None, **kw):
+            captured["as_of_month_day"] = as_of_month_day
+            captured["kt"] = kt
+            captured["target_month_day"] = target_month_day
+            return [True] * 9 + [False] * 6  # 15 outcomes (meets the floor), 60% True
+
+        monkeypatch.setattr(hc, "next_event_outcomes", _fake_outcomes)
+        from datetime import UTC
+        from datetime import datetime as _dt
+
+        result = wm._analyze_hurricane_next_event_trade(
+            self._enriched(), self._condition(), _dt(2026, 9, 15, tzinfo=UTC), 39
+        )
+        assert result is not None
+        assert captured["as_of_month_day"] is not None  # conditional mode
+        assert captured["kt"] == 64  # "hurricane" event_type
+        # Midnight UTC Sep 15 is 8pm EDT Sep 14 -- target_month_day is ET-derived.
+        assert captured["target_month_day"] == (9, 14)
+        assert result["forecast_prob"] == 0.6
+        assert result["method"] == "hurricane_next_event_climatology_tilted"
+        assert result["occurred_this_season"] is False
+        assert result["n_members"] == 15
+
+    def test_unknown_cache_state_uses_unconditional_mode_not_assumed_false(
+        self, monkeypatch
+    ):
+        """A missing/stale cache (occurred_this_season=None, genuinely
+        UNKNOWN) must run unconditional mode, not silently assume "hasn't
+        happened yet" -- the exact stale-cache "flips a probability with no
+        warning" failure mode this codebase already fixed once for the
+        count model's own current-count cache."""
+        import hurricane_climatology as hc
+        import weather_markets as wm
+
+        monkeypatch.setattr(
+            "hurricane_climatology.load_basin_storms",
+            lambda basin: [{"year": 2020, "basin": "AL"}],
+        )
+        monkeypatch.setattr(
+            wm, "_get_cached_hurricane_count_to_date", lambda basin, year: None
+        )
+
+        captured = {}
+
+        def _fake_outcomes(storms, kt, target_month_day, *, as_of_month_day=None, **kw):
+            captured["as_of_month_day"] = as_of_month_day
+            return [True] * 30
+
+        monkeypatch.setattr(hc, "next_event_outcomes", _fake_outcomes)
+        from datetime import UTC
+        from datetime import datetime as _dt
+
+        result = wm._analyze_hurricane_next_event_trade(
+            self._enriched(), self._condition(), _dt(2026, 9, 15, tzinfo=UTC), 39
+        )
+        assert captured["as_of_month_day"] is None  # unconditional mode
+        assert result["method"] == "hurricane_next_event_climatology"
+        assert result["occurred_this_season"] is None
+
+    def test_cat5_never_calls_the_count_to_date_cache(self, monkeypatch):
+        """cat5_hurricane has no live "already occurred" signal in this
+        pass -- must never call _get_cached_hurricane_count_to_date at all,
+        confirmed scoped exactly like major_hurricane/tropical_storm are for
+        the count model."""
+        import hurricane_climatology as hc
+        import weather_markets as wm
+
+        monkeypatch.setattr(
+            "hurricane_climatology.load_basin_storms",
+            lambda basin: [{"year": 2020, "basin": "AL"}],
+        )
+        calls = []
+
+        def _fail_if_called(basin, year):
+            calls.append((basin, year))
+            return 5
+
+        monkeypatch.setattr(wm, "_get_cached_hurricane_count_to_date", _fail_if_called)
+        monkeypatch.setattr(hc, "next_event_outcomes", lambda *a, **k: [False] * 20)
+        from datetime import UTC
+        from datetime import datetime as _dt
+
+        wm._analyze_hurricane_next_event_trade(
+            self._enriched(),
+            self._condition(event_type="cat5_hurricane"),
+            _dt(2026, 9, 1, tzinfo=UTC),
+            25,
+        )
+        assert calls == []
+
+    def test_cat5_kt_derived_correctly(self, monkeypatch):
+        import hurricane_climatology as hc
+        import weather_markets as wm
+
+        monkeypatch.setattr(
+            "hurricane_climatology.load_basin_storms",
+            lambda basin: [{"year": 2020, "basin": "AL"}],
+        )
+        captured = {}
+
+        def _fake_outcomes(storms, kt, target_month_day, **kw):
+            captured["kt"] = kt
+            return [False] * 20
+
+        monkeypatch.setattr(hc, "next_event_outcomes", _fake_outcomes)
+        from datetime import UTC
+        from datetime import datetime as _dt
+
+        wm._analyze_hurricane_next_event_trade(
+            self._enriched(),
+            self._condition(event_type="cat5_hurricane"),
+            _dt(2026, 9, 1, tzinfo=UTC),
+            25,
+        )
+        assert captured["kt"] == 137
+
+    def test_recommended_side_follows_edge_direction(self, monkeypatch):
+        import hurricane_climatology as hc
+        import weather_markets as wm
+
+        monkeypatch.setattr(
+            "hurricane_climatology.load_basin_storms",
+            lambda basin: [{"year": 2020, "basin": "AL"}],
+        )
+        monkeypatch.setattr(
+            wm, "_get_cached_hurricane_count_to_date", lambda basin, year: None
+        )
+        monkeypatch.setattr(hc, "next_event_outcomes", lambda *a, **k: [True] * 20)
+        from datetime import UTC
+        from datetime import datetime as _dt
+
+        result = wm._analyze_hurricane_next_event_trade(
+            self._enriched(), self._condition(), _dt(2026, 9, 15, tzinfo=UTC), 39
+        )
+        assert result["forecast_prob"] == 0.99
+        assert result["recommended_side"] == "yes"  # cheap market, high prob
+
+    def test_exposure_cap_key_matches_count_model(self, monkeypatch):
+        """Deliberately the SAME "HUR_<basin>" key as the season-count
+        model, not a separate one -- correlated Atlantic storm activity must
+        cap together across both hurricane sub-models."""
+        import hurricane_climatology as hc
+        import weather_markets as wm
+
+        monkeypatch.setattr(
+            "hurricane_climatology.load_basin_storms",
+            lambda basin: [{"year": 2020, "basin": "AL"}],
+        )
+        monkeypatch.setattr(
+            wm, "_get_cached_hurricane_count_to_date", lambda basin, year: None
+        )
+        monkeypatch.setattr(hc, "next_event_outcomes", lambda *a, **k: [True] * 20)
+        from datetime import UTC
+        from datetime import datetime as _dt
+
+        result = wm._analyze_hurricane_next_event_trade(
+            self._enriched(), self._condition(), _dt(2026, 9, 15, tzinfo=UTC), 39
+        )
+        assert result["city"] == "HUR_ATL"
+
+    def test_unanimous_outcomes_produce_a_real_nonzero_kelly(self, monkeypatch):
+        """Opus-review-caught (2026-08-07, HIGH), verified end-to-end at the
+        analyzer level (not just hurricane_climatology's own unit test): a
+        unanimous [True]*N outcome set must NOT collapse ci_adjusted_kelly
+        to exactly 0.0 -- before the [0.01,0.99] clamp was added to
+        bootstrap_ci_next_event, this was the common case (e.g. every recent
+        Atlantic season has a hurricane by mid-September) and silently
+        blocked every real order for the model's own highest-confidence
+        signals, plus permanently froze the settled-prediction counter at 0
+        since shadow logging shares the same size-then-log validator."""
+        import hurricane_climatology as hc
+        import weather_markets as wm
+
+        monkeypatch.setattr(
+            "hurricane_climatology.load_basin_storms",
+            lambda basin: [{"year": 2020, "basin": "AL"}],
+        )
+        monkeypatch.setattr(
+            wm, "_get_cached_hurricane_count_to_date", lambda basin, year: None
+        )
+        monkeypatch.setattr(hc, "next_event_outcomes", lambda *a, **k: [True] * 30)
+        from datetime import UTC
+        from datetime import datetime as _dt
+
+        result = wm._analyze_hurricane_next_event_trade(
+            self._enriched(
+                yes_bid_dollars=0.30, yes_ask_dollars=0.35
+            ),  # cheap enough for a real edge
+            self._condition(),
+            _dt(2026, 9, 15, tzinfo=UTC),
+            39,
+        )
+        assert result["ci_low"] == result["ci_high"] == 0.99
+        assert result["ci_adjusted_kelly"] > 0.0
+
+    def test_conditional_mode_falls_back_to_unconditional_below_sample_floor(
+        self, monkeypatch
+    ):
+        """Opus-review-caught (2026-08-07, HIGH): occurred_this_season=False
+        (live-confirmed "not yet happened") alone is not sufficient to trust
+        conditional mode -- if the eligible set next_event_outcomes actually
+        returns is too small (<15, matching bootstrap_ci_next_event's own
+        floor), the analyzer must fall back to the unconditional baseline
+        rather than compute (or shadow-log) a full-strength signal off a
+        handful of data points."""
+        import hurricane_climatology as hc
+        import weather_markets as wm
+
+        monkeypatch.setattr(
+            "hurricane_climatology.load_basin_storms",
+            lambda basin: [{"year": 2020, "basin": "AL"}],
+        )
+        monkeypatch.setattr(
+            wm, "_get_cached_hurricane_count_to_date", lambda basin, year: 0
+        )
+
+        calls = []
+
+        def _fake_outcomes(storms, kt, target_month_day, *, as_of_month_day=None, **kw):
+            calls.append(as_of_month_day)
+            if as_of_month_day is not None:
+                return [True, True, False]  # only 3 eligible years -- below floor
+            return [True] * 30
+
+        monkeypatch.setattr(hc, "next_event_outcomes", _fake_outcomes)
+        from datetime import UTC
+        from datetime import datetime as _dt
+
+        result = wm._analyze_hurricane_next_event_trade(
+            self._enriched(), self._condition(), _dt(2026, 9, 15, tzinfo=UTC), 39
+        )
+        assert len(calls) == 2  # conditional attempt, then unconditional fallback
+        assert calls[0] is not None  # first call was conditional
+        assert calls[1] is None  # fallback call was unconditional
+        assert result["n_members"] == 30
+        assert result["method"] == "hurricane_next_event_climatology"  # not "_tilted"
+
+    def test_conditional_mode_kept_when_sample_floor_met(self, monkeypatch):
+        """The fallback in the test above must not fire when the eligible
+        set is actually large enough to trust."""
+        import hurricane_climatology as hc
+        import weather_markets as wm
+
+        monkeypatch.setattr(
+            "hurricane_climatology.load_basin_storms",
+            lambda basin: [{"year": 2020, "basin": "AL"}],
+        )
+        monkeypatch.setattr(
+            wm, "_get_cached_hurricane_count_to_date", lambda basin, year: 0
+        )
+
+        calls = []
+
+        def _fake_outcomes(storms, kt, target_month_day, *, as_of_month_day=None, **kw):
+            calls.append(as_of_month_day)
+            return [True] * 12 + [False] * 3  # exactly 15 -- meets the floor
+
+        monkeypatch.setattr(hc, "next_event_outcomes", _fake_outcomes)
+        from datetime import UTC
+        from datetime import datetime as _dt
+
+        result = wm._analyze_hurricane_next_event_trade(
+            self._enriched(), self._condition(), _dt(2026, 9, 15, tzinfo=UTC), 39
+        )
+        assert len(calls) == 1  # no fallback call
+        assert result["n_members"] == 15
+        assert result["method"] == "hurricane_next_event_climatology_tilted"
+
+    def test_target_month_day_uses_eastern_time_not_utc(self, monkeypatch):
+        """Opus-review-caught (2026-08-07): close_dt is UTC, but Kalshi's
+        "Before <date>" wording is an ET calendar date -- close_time
+        "2026-09-15T03:59Z" (23:59 ET on Sep 14) must resolve to target
+        (9, 14), not the naive UTC (9, 15), or the model counts a storm
+        crossing threshold anywhere in the Sep-15-UTC day as a YES when
+        ~20 of those 24 hours are actually past the real ET cutoff."""
+        import hurricane_climatology as hc
+        import weather_markets as wm
+
+        monkeypatch.setattr(
+            "hurricane_climatology.load_basin_storms",
+            lambda basin: [{"year": 2020, "basin": "AL"}],
+        )
+        monkeypatch.setattr(
+            wm, "_get_cached_hurricane_count_to_date", lambda basin, year: None
+        )
+        captured = {}
+
+        def _fake_outcomes(storms, kt, target_month_day, **kw):
+            captured["target_month_day"] = target_month_day
+            return [True] * 30
+
+        monkeypatch.setattr(hc, "next_event_outcomes", _fake_outcomes)
+        from datetime import UTC
+        from datetime import datetime as _dt
+
+        wm._analyze_hurricane_next_event_trade(
+            self._enriched(close_time="2026-09-15T03:59:00Z"),
+            self._condition(),
+            _dt(2026, 9, 15, 3, 59, tzinfo=UTC),
+            39,
+        )
+        assert captured["target_month_day"] == (9, 14)
+
+
+class TestHurricaneNextEventConditionConfidence:
+    def test_has_its_own_entry_not_the_max_default(self):
+        """Opus-review-caught: this key was originally missing from
+        _CONDITION_CONFIDENCE entirely, so edge_confidence()/_price_and_size's
+        `.get(condition_type, 1.0)` fallback silently gave the least-
+        validated model in the codebase the MAXIMUM confidence multiplier --
+        on par with same-day temperature markets and above the sibling count
+        model's own deliberately-low 0.55."""
+        import weather_markets as wm
+
+        assert "hurricane_next_event" in wm._CONDITION_CONFIDENCE
+        assert (
+            wm._CONDITION_CONFIDENCE["hurricane_next_event"]
+            < wm._CONDITION_CONFIDENCE["hurricane_count"]
+        )
+
+
+# ── check_position_limits() / cmd_order() guard conditional (mirrors
+#    TestCheckPositionLimitsHurricaneCountConditional/
+#    TestCmdOrderHurricaneCountGuard exactly) ────────────────────────────────
+
+
+class TestCheckPositionLimitsHurricaneNextEventConditional:
+    def test_still_blocks_when_gate_inactive(self, monkeypatch):
+        import paper
+
+        monkeypatch.delenv("HURRICANE_NEXT_EVENT_TRADING_ENABLED", raising=False)
+        result = paper.check_position_limits(
+            "KXNEXTHURDATE-26DEC01-26SEP15", qty=1, price=0.10
+        )
+        assert result["ok"] is False
+        assert "hurricane" in result["reason"].lower()
+
+    def test_does_not_block_when_gate_active(self, monkeypatch, tmp_path):
+        from unittest.mock import patch
+
+        import paper
+
+        with patch("paper.DATA_PATH", tmp_path / "p.json"):
+            paper._save(
+                {
+                    "_version": paper._SCHEMA_VERSION,
+                    "balance": paper.STARTING_BALANCE,
+                    "peak_balance": paper.STARTING_BALANCE,
+                    "trades": [],
+                }
+            )
+            with patch("paper.get_open_trades", return_value=[]):
+                with patch("paper.get_total_exposure", return_value=0.0):
+                    monkeypatch.setattr(
+                        "weather_markets._hurricane_next_event_gates_active",
+                        lambda: True,
+                    )
+                    result = paper.check_position_limits(
+                        "KXNEXTHURDATE-26DEC01-26SEP15", qty=1, price=0.10
+                    )
+        assert result["ok"] is True
+
+    def test_other_hurricane_shapes_still_unconditionally_blocked(self, monkeypatch):
+        import paper
+
+        monkeypatch.setattr(
+            "weather_markets._hurricane_next_event_gates_active", lambda: True
+        )
+        result = paper.check_position_limits("KXHURCAT-26FAUSTO-T5", qty=1, price=0.10)
+        assert result["ok"] is False
+        assert "hurricane" in result["reason"].lower()
+
+    def test_count_model_gate_state_does_not_affect_this_one(self, monkeypatch):
+        """The two hurricane sub-models' gates must not cross-activate each
+        other."""
+        import paper
+
+        monkeypatch.setattr(
+            "weather_markets._hurricane_count_gates_active", lambda: True
+        )
+        monkeypatch.setattr(
+            "weather_markets._hurricane_next_event_gates_active", lambda: False
+        )
+        result = paper.check_position_limits(
+            "KXNEXTHURDATE-26DEC01-26SEP15", qty=1, price=0.10
+        )
+        assert result["ok"] is False
+
+
+class TestCmdOrderHurricaneNextEventGuard:
+    def test_refuses_when_gate_inactive(self, monkeypatch, capsys):
+        import main
+
+        monkeypatch.setattr("main.is_trading_paused", lambda: False)
+        monkeypatch.delenv("HURRICANE_NEXT_EVENT_TRADING_ENABLED", raising=False)
+        main.cmd_order(
+            None, "buy", ["KXNEXTHURDATE-26DEC01-26SEP15", "yes", "1", "0.10"]
+        )
+        out = capsys.readouterr().out
+        assert "refusing to place this order" in out
+        assert "time-to-next-event" in out.lower()
+        assert "HURRICANE_NEXT_EVENT_TRADING_ENABLED" in out
+
+    def test_does_not_refuse_when_gate_active(self, monkeypatch):
+        import main
+
+        monkeypatch.setattr("main.is_trading_paused", lambda: False)
+        monkeypatch.setattr("main._hurricane_next_event_gates_active", lambda: True)
+        printed = []
+        monkeypatch.setattr("builtins.print", lambda *a, **k: printed.append(str(a)))
+        try:
+            main.cmd_order(
+                None, "buy", ["KXNEXTHURDATE-26DEC01-26SEP15", "yes", "1", "0.10"]
+            )
+        except Exception:
+            pass  # downstream failure (no live market) is expected/irrelevant here
+        assert not any(
+            "hurricane time-to-next-event markets are shadow-only" in p for p in printed
+        )
+
+    def test_other_hurricane_shapes_still_unconditionally_refused(
+        self, monkeypatch, capsys
+    ):
+        import main
+
+        monkeypatch.setattr("main.is_trading_paused", lambda: False)
+        monkeypatch.setattr("main._hurricane_next_event_gates_active", lambda: True)
+        main.cmd_order(None, "buy", ["KXHURCAT-26FAUSTO-T5", "yes", "1", "0.10"])
+        out = capsys.readouterr().out
+        assert "hurricane markets are not supported yet" in out
+
+
+class TestQuickPaperBuyAndCmdPaperHurricaneNextEventGuards:
+    """Opus-review-caught gap: only cmd_order and check_position_limits had
+    direct test coverage for the next-event family's guards -- _quick_
+    paper_buy and cmd_paper's own direct refuse-outright checks (added
+    alongside cmd_order's, for the same "check_position_limits()'s own
+    exception path deliberately fails open" reason rain/snow/hurricane-
+    count's own guards already document) were untested. Mirrors
+    test_rain_markets.py's TestQuickPaperBuyAndCmdPaperRainGuards exactly.
+    cmd_today's own "[P] Place" path has the identical guard too but no
+    existing test anywhere in this codebase reaches that function for ANY
+    market family (rain/snow/hurricane-count included) -- building a novel
+    test harness for it is out of scope here; this closes the two sites
+    that already have an established pattern to mirror."""
+
+    def test_quick_paper_buy_refuses_when_gate_inactive(self, monkeypatch, capsys):
+        from unittest.mock import MagicMock
+
+        import main
+
+        monkeypatch.setattr("main.is_trading_paused", lambda: False)
+        monkeypatch.delenv("HURRICANE_NEXT_EVENT_TRADING_ENABLED", raising=False)
+        mock_client = MagicMock()
+        _inputs = iter(["KXNEXTHURDATE-26DEC01-26SEP15"])
+        monkeypatch.setattr("builtins.input", lambda *_a: next(_inputs))
+
+        main._quick_paper_buy(mock_client)
+
+        out = capsys.readouterr().out
+        assert "refusing to place this order" in out
+        assert "time-to-next-event" in out.lower()
+        assert "HURRICANE_NEXT_EVENT_TRADING_ENABLED" in out
+        mock_client.get_market.assert_not_called()
+
+    def test_quick_paper_buy_does_not_refuse_when_gate_active(self, monkeypatch):
+        from unittest.mock import MagicMock
+
+        import main
+
+        monkeypatch.setattr("main.is_trading_paused", lambda: False)
+        monkeypatch.setattr("main._hurricane_next_event_gates_active", lambda: True)
+        mock_client = MagicMock()
+        mock_client.get_market.side_effect = RuntimeError("no real market in test")
+        _inputs = iter(["KXNEXTHURDATE-26DEC01-26SEP15", "q"])
+        monkeypatch.setattr("builtins.input", lambda *_a: next(_inputs))
+
+        printed = []
+        monkeypatch.setattr("builtins.print", lambda *a, **k: printed.append(str(a)))
+        try:
+            main._quick_paper_buy(mock_client)
+        except Exception:
+            pass
+        assert not any("shadow-only" in p for p in printed)
+
+    def test_cmd_paper_refuses_when_gate_inactive(self, monkeypatch, capsys):
+        import main
+
+        monkeypatch.setattr("main.is_trading_paused", lambda: False)
+        monkeypatch.delenv("HURRICANE_NEXT_EVENT_TRADING_ENABLED", raising=False)
+
+        main.cmd_paper(["buy", "KXNEXTHURDATE-26DEC01-26SEP15", "yes", "0.10", "1"])
+
+        out = capsys.readouterr().out
+        assert "refusing to place this order" in out
+        assert "time-to-next-event" in out.lower()
+        assert "HURRICANE_NEXT_EVENT_TRADING_ENABLED" in out
+
+    def test_cmd_paper_does_not_refuse_when_gate_active(self, monkeypatch):
+        import main
+
+        monkeypatch.setattr("main.is_trading_paused", lambda: False)
+        monkeypatch.setattr("main._hurricane_next_event_gates_active", lambda: True)
+
+        printed = []
+        monkeypatch.setattr("builtins.print", lambda *a, **k: printed.append(str(a)))
+        try:
+            main.cmd_paper(["buy", "KXNEXTHURDATE-26DEC01-26SEP15", "yes", "0.10", "1"])
+        except Exception:
+            pass
+        assert not any("shadow-only" in p for p in printed)

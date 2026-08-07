@@ -345,6 +345,62 @@ class TestConsistency(unittest.TestCase):
         ]
         self.assertEqual(find_violations(markets), [])
 
+    def test_hurricane_next_event_markets_excluded(self):
+        """backlog.txt "HURRICANE MARKETS" -- time-to-next-event model
+        (2026-08-07): KXNEXTHURDATE/KXNEXTCAT5HURDATE tickers must never
+        reach _group_markets either -- same reasoning as the hurricane-count
+        exclusion above (KNOWN_WEATHER_SERIES now returns them, with no
+        shadow-gate check of find_violations()'s own)."""
+        markets = [
+            _market(
+                "KXNEXTHURDATE-26DEC01-26SEP15",
+                yes_bid=0.10,
+                yes_ask=0.15,
+                series="KXNEXTHURDATE",
+                title="hurricane before Sep 15 -- above threshold",
+            ),
+            _market(
+                "KXNEXTHURDATE-26DEC01-26OCT01",
+                yes_bid=0.80,
+                yes_ask=0.85,  # priced HIGHER for a LATER date -- a real violation shape
+                series="KXNEXTHURDATE",
+                title="hurricane before Oct 1 -- above threshold",
+            ),
+        ]
+        self.assertEqual(find_violations(markets), [])
+
+    def test_hurricane_next_event_exclusion_is_mutation_proof(self):
+        """Opus-review-caught (2026-08-07, MEDIUM): the test above is NOT
+        actually mutation-proof -- real KXNEXTHURDATE tickers end in a date
+        suffix ("-26SEP15"), which _parse_threshold's own `-T<n>`/`-B<n>`
+        regex can't match, so those markets get dropped by the "if not
+        parsed: continue" check regardless of whether the exclusion guard is
+        present. Disabling the guard and re-running the exact test above
+        still returns [] -- proving it, not just claiming it, would have
+        caught this before it shipped. This test uses adversarial (not
+        real-shape) tickers ending in "-T5"/"-T6" specifically because that
+        IS a shape _parse_threshold matches, confirmed to produce a real
+        violation with the guard removed -- the single genuine barrier
+        between these tickers and the arb auto-placer's real
+        paper.place_paper_order."""
+        markets = [
+            _market(
+                "KXNEXTHURDATE-26SEP15-T5",
+                yes_bid=0.10,
+                yes_ask=0.15,
+                series="KXNEXTHURDATE",
+                title="hurricane threshold -- above 5",
+            ),
+            _market(
+                "KXNEXTHURDATE-26SEP15-T6",
+                yes_bid=0.80,
+                yes_ask=0.85,
+                series="KXNEXTHURDATE",
+                title="hurricane threshold -- above 6",
+            ),
+        ]
+        assert find_violations(markets) == []
+
 
 class TestParseThresholdRealApiShape(unittest.TestCase):
     """_parse_threshold() with market.get("series_ticker") absent -- the

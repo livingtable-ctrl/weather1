@@ -480,6 +480,77 @@ class TestTrainAllTemperatureScalingRainExclusion:
         )
         assert "snow_month_total" not in saved
 
+    def test_hurricane_rows_excluded_from_global_pool(self, tmp_path, monkeypatch):
+        """Opus-review-caught (2026-08-07): this exclusion list was never
+        extended for 'hurricane_count' (shipped 2026-08-03) or
+        'hurricane_next_event' (this session) -- both always carry a real,
+        large days_out (>=1, these markets open months ahead), so unlike
+        rain/snow's own "confirmed reachable" caveat below, this leak was
+        NOT merely theoretical: without the fix, a settled hurricane row
+        would unconditionally land in the °F-tuned global temperature-
+        scaling pool. Only the global-pool query is exercised here -- the
+        sameday pool (days_out=0) is structurally unreachable for this
+        family (HURRICANE_MAX_DAYS_OUT alone rules out days_out=0), unlike
+        snow's own sameday leak below, which was confirmed reachable."""
+        from datetime import date
+
+        import ml_bias
+        import tracker
+
+        monkeypatch.setattr(tracker, "DB_PATH", tmp_path / "predictions.db")
+        monkeypatch.setattr(tracker, "_db_initialized", False)
+        monkeypatch.setattr(ml_bias, "_TEMP_PATH", tmp_path / "temperature_scale.json")
+        tracker.init_db()
+
+        probs = [0.9] * 10 + [0.1] * 10
+        labels = [1] * 7 + [0] * 3 + [0] * 7 + [1] * 3
+        for i in range(20):
+            self._seed(
+                tracker,
+                f"KXHIGHNY-26AUG{i:02d}-T75",
+                "NYC",
+                date.today() + __import__("datetime").timedelta(days=11),
+                probs[i],
+                labels[i],
+                "above",
+            )
+        for i in range(10):
+            self._seed(
+                tracker,
+                f"KXHURCTOT-26DEC01-T{i}",
+                "HUR_ATL",
+                date.today() + __import__("datetime").timedelta(days=100),
+                probs[i],
+                labels[i],
+                "hurricane_count",
+            )
+        for i in range(10):
+            self._seed(
+                tracker,
+                f"KXNEXTHURDATE-26DEC01-26SEP{i:02d}",
+                "HUR_ATL",
+                date.today() + __import__("datetime").timedelta(days=39),
+                probs[i],
+                labels[i],
+                "hurricane_next_event",
+            )
+
+        ml_bias.train_all_temperature_scaling(
+            min_samples_global=1, min_samples_condition=1
+        )
+
+        with open(tmp_path / "temperature_scale.json") as f:
+            import json
+
+            saved = json.load(f)
+
+        assert saved["global"]["n"] == 20, (
+            f"global pool must contain only the 20 daily rows, not the "
+            f"hurricane ones too, got n={saved['global']['n']}"
+        )
+        assert "hurricane_count" not in saved
+        assert "hurricane_next_event" not in saved
+
     def test_snow_rows_excluded_from_sameday_pool(self, tmp_path, monkeypatch):
         """Opus-review-caught gap: the global pool's exclusion above (line
         ~604 in ml_bias.py) is a separate SQL query from the 'sameday'

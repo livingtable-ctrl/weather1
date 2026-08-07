@@ -3455,9 +3455,11 @@ def check_position_limits(
         _KXRAIN_MONTHLY_CITY,
         _KXSNOW_MONTHLY_CITY,
         _hurricane_count_gates_active,
+        _hurricane_next_event_gates_active,
         _rain_gates_active,
         _snow_gates_active,
         is_hurricane_count_ticker,
+        is_hurricane_next_event_ticker,
         is_hurricane_ticker,
     )
 
@@ -3516,7 +3518,29 @@ def check_position_limits(
             "existing_cost": 0.0,
             "limit": max_cost_per_market,
         }
-    if is_hurricane_ticker(ticker) and not is_hurricane_count_ticker(ticker):
+    # backlog.txt "HURRICANE MARKETS" -- time-to-next-event model
+    # (2026-08-07): 2 series (KXNEXTHURDATE/KXNEXTCAT5HURDATE) now have a
+    # real model and their own shadow-only gate, same treatment as the
+    # season-count block just above.
+    if (
+        is_hurricane_next_event_ticker(ticker)
+        and not _hurricane_next_event_gates_active()
+    ):
+        return {
+            "ok": False,
+            "reason": (
+                "hurricane time-to-next-event markets: shadow-only until "
+                "HURRICANE_NEXT_EVENT_TRADING_ENABLED=1 and >=20 settled "
+                "predictions exist"
+            ),
+            "existing_cost": 0.0,
+            "limit": max_cost_per_market,
+        }
+    if (
+        is_hurricane_ticker(ticker)
+        and not is_hurricane_count_ticker(ticker)
+        and not is_hurricane_next_event_ticker(ticker)
+    ):
         return {
             "ok": False,
             "reason": "hurricane markets are not supported yet",

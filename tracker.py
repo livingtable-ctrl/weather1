@@ -1940,7 +1940,7 @@ def count_settled_predictions_rolling(weeks: int = 3) -> int:
             f"  AND o.settled_at >= datetime('now', '-{days} days') "
             f"  AND (p.condition_type IS NULL "
             f"       OR p.condition_type NOT IN "
-            f"          ('between', 'precip_month_total', 'snow_month_total'))"
+            f"          ('between', 'precip_month_total', 'snow_month_total', 'hurricane_count', 'hurricane_next_event'))"
         ).fetchone()
     return row[0] if row else 0
 
@@ -1957,14 +1957,17 @@ def get_rolling_win_rate(window: int = 20) -> tuple[float | None, int]:
     rate check silently never activated in that gap since win_rate was always
     None there regardless of the caller's smaller threshold.
 
-    Excludes condition_type='between'/'precip_month_total'/'snow_month_total'
-    (same rationale as count_settled_predictions() -- found via adjacency
-    during that entry's review): this feeds paper.is_accuracy_halted(), the
-    live circuit breaker that halts new trades on a bad win rate. A monthly
-    rain/snow row entering the rolling window carries an entirely different
-    win-rate distribution than a directional temperature call and could
-    either mask real temperature-model degradation or falsely trip the halt
-    on unrelated rain/snow volatility.
+    Excludes condition_type='between'/'precip_month_total'/'snow_month_total'/
+    'hurricane_count'/'hurricane_next_event' (same rationale as
+    count_settled_predictions() -- found via adjacency during that entry's
+    review; the 2 hurricane types added 2026-08-07, opus-review-caught, when
+    the time-to-next-event model's own review found this list had never been
+    extended for hurricane_count either): this feeds
+    paper.is_accuracy_halted(), the live circuit breaker that halts new
+    trades on a bad win rate. A monthly rain/snow/hurricane row entering the
+    rolling window carries an entirely different win-rate distribution than
+    a directional temperature call and could either mask real temperature-
+    model degradation or falsely trip the halt on unrelated volatility.
     """
     init_db()
     with _conn() as con:
@@ -1976,7 +1979,7 @@ def get_rolling_win_rate(window: int = 20) -> tuple[float | None, int]:
             WHERE p.our_prob IS NOT NULL
               AND (p.condition_type IS NULL
                    OR p.condition_type NOT IN
-                      ('between', 'precip_month_total', 'snow_month_total'))
+                      ('between', 'precip_month_total', 'snow_month_total', 'hurricane_count', 'hurricane_next_event'))
             ORDER BY o.settled_at DESC
             LIMIT ?
             """,
@@ -2086,7 +2089,7 @@ def count_settled_predictions() -> int:
             JOIN outcomes_valid o ON p.ticker = o.ticker
             WHERE (p.condition_type IS NULL
                    OR p.condition_type NOT IN
-                      ('between', 'precip_month_total', 'snow_month_total'))
+                      ('between', 'precip_month_total', 'snow_month_total', 'hurricane_count', 'hurricane_next_event'))
             """
         ).fetchone()
     return row[0] if row else 0
@@ -2375,6 +2378,60 @@ def count_settled_hurricane_predictions() -> int:
             continue
         events.add(key)
     return len(events)
+
+
+def count_settled_hurricane_next_event_predictions() -> int:
+    """Count DISTINCT settled time-to-next-event tickers -- backlog.txt
+    "HURRICANE MARKETS" time-to-next-event model's shadow-only rollout gate
+    (2026-08-07). One combined counter/floor across both KXNEXTHURDATE and
+    KXNEXTCAT5HURDATE, matching count_settled_hurricane_predictions' own
+    precedent of one combined floor across all of ITS series/count-types
+    rather than a floor per subtype.
+
+    Unlike the season-count model, this market family has NO sibling-ladder-
+    bracket-per-event risk -- each ticker is its own atomic "before <date>?"
+    question, not one of several brackets sharing a settlement, so the
+    ticker itself already IS the distinct-event key (no basin/event_type/
+    date extraction needed, unlike count_settled_hurricane_predictions'
+    _hurricane_count_key_from_ticker). Confirmed live (not assumed):
+    log_prediction()'s own UPSERT already collapses repeated per-cron-cycle
+    logging of the same open ticker into one row under normal operation, so
+    that specific risk doesn't reach this query in practice -- COUNT(DISTINCT
+    ticker) is kept anyway as cheap, always-correct defense-in-depth against
+    any raw-row duplication (a future log_prediction change, a manual
+    backfill, disputed-then-relogged rows), matching this codebase's general
+    "prefer DISTINCT over trusting an upstream invariant" habit.
+
+    Opus-review-caught: the SQL LIKE prefix (used only as a coarse pre-
+    filter, for the same reason count_settled_hurricane_predictions()'s own
+    LIKE prefix is coarse) is broader than is_hurricane_next_event_ticker()'s
+    series-EXACT match -- a hypothetical "KXNEXTHURDATE2" series would
+    inflate this count without ever being real-gated by
+    _hurricane_next_event_gates_active(). Currently unreachable (any such
+    ticker contains "HUR", so analyze_trade()'s blanket guard returns None
+    and no prediction row is ever written for it) but the sibling counter
+    already defends against exactly this shape via ticker-derived key
+    validation, so filtering to exact series membership in Python here too,
+    not trusting the coarse SQL filter alone."""
+    init_db()
+    try:
+        from weather_markets import _HURRICANE_NEXT_EVENT_SERIES
+
+        prefixes = list(_HURRICANE_NEXT_EVENT_SERIES)
+    except Exception:
+        return 0
+    if not prefixes:
+        return 0
+    where_sql = " OR ".join(["p.ticker LIKE ?"] * len(prefixes))
+    params = tuple(f"{p}%" for p in prefixes)
+    with _conn() as con:
+        rows = con.execute(
+            "SELECT DISTINCT p.ticker FROM predictions p "
+            "JOIN outcomes_valid o ON p.ticker = o.ticker "
+            f"WHERE ({where_sql})",
+            params,
+        ).fetchall()
+    return sum(1 for row in rows if row["ticker"].upper().split("-")[0] in prefixes)
 
 
 def count_emos_ready_predictions() -> int:
@@ -3106,10 +3163,11 @@ def get_multiday_calibration_cli() -> dict:
     scoped to match what the CLI (validate/backtest) has always shown: excludes
     condition_type='between', matching train_all_temperature_scaling()'s own
     exclusion (ml_bias.py) and both CLI blocks' pre-existing behavior. Also
-    excludes 'precip_month_total' and 'snow_month_total' (backlog.txt
-    "RAIN / SNOW / HURRICANE MARKETS" Step 2 / Snow Step 2) for the same
-    reason -- an inches-scale probability doesn't belong in a °F-tuned
-    multiday calibration curve.
+    excludes 'precip_month_total', 'snow_month_total', 'hurricane_count', and
+    'hurricane_next_event' (backlog.txt "RAIN / SNOW / HURRICANE MARKETS"
+    Step 2 / Snow Step 2 / HURRICANE MARKETS' two hurricane sub-models) for
+    the same reason -- an inches-scale or basin/season-shaped probability
+    doesn't belong in a °F-tuned multiday calibration curve.
 
     Returns {n, gate, gate_met, brier, t_multiday, calibration_buckets} — same shape
     as get_sameday_calibration() minus the sameday-only by_time_of_day breakdown.
@@ -3129,7 +3187,7 @@ def get_multiday_calibration_cli() -> dict:
               AND o.settled_yes IS NOT NULL
               AND (p.condition_type IS NULL
                    OR p.condition_type NOT IN
-                      ('between', 'precip_month_total', 'snow_month_total'))
+                      ('between', 'precip_month_total', 'snow_month_total', 'hurricane_count', 'hurricane_next_event'))
             """
         ).fetchall()
 
@@ -3142,8 +3200,9 @@ def get_multiday_calibration_cli() -> dict:
 
 def get_sameday_calibration_cli() -> dict:
     """Same population as get_sameday_calibration() but excludes
-    condition_type='between', 'precip_month_total', and 'snow_month_total',
-    matching the CLI's (validate/backtest) existing scope. The dashboard-
+    condition_type='between', 'precip_month_total', 'snow_month_total',
+    'hurricane_count', and 'hurricane_next_event', matching the CLI's
+    (validate/backtest) existing scope. The dashboard-
     facing get_sameday_calibration() deliberately keeps 'between' rows —
     the two differ by 69 rows on this repo's live data (2026-07-08) and are NOT
     interchangeable.
@@ -3164,7 +3223,7 @@ def get_sameday_calibration_cli() -> dict:
               AND p.days_out = 0
               AND (p.condition_type IS NULL
                    OR p.condition_type NOT IN
-                      ('between', 'precip_month_total', 'snow_month_total'))
+                      ('between', 'precip_month_total', 'snow_month_total', 'hurricane_count', 'hurricane_next_event'))
             """
         ).fetchall()
 
