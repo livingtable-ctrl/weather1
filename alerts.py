@@ -9,7 +9,6 @@ import json
 import logging
 import os
 import re
-import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -34,18 +33,7 @@ def _load() -> dict:
 
 
 def _save(data: dict) -> None:
-    dir_ = _DATA_PATH.parent
-    fd, tmp = tempfile.mkstemp(dir=dir_, prefix=".alerts_", suffix=".json")
-    try:
-        with os.fdopen(fd, "w") as f:
-            json.dump(data, f, indent=2)
-        os.replace(tmp, _DATA_PATH)
-    except Exception:
-        try:
-            os.unlink(tmp)
-        except OSError:
-            pass
-        raise
+    safe_io.atomic_write_json(data, _DATA_PATH)
 
 
 def add_alert(

@@ -297,6 +297,61 @@ class TestStrategyRetirement:
         assert result["windowed_method"] == pytest.approx(0.01, abs=1e-6)
 
 
+class TestPersistenceRoutesThroughSafeIO:
+    """Regression coverage for the OTHER bare os.replace() CALL SITES backlog
+    entry (2026-08-08): _save_strategy_pins/_save_retired_strategies now
+    delegate to safe_io.atomic_write_json instead of a hand-rolled
+    tempfile+os.replace, so they inherit safe_io's Windows PermissionError
+    retry (safe_io._replace_with_retry).
+
+    Mutation-tested: reverting either function to a bare os.replace() makes
+    these fail — monkeypatching safe_io.atomic_write_json to raise would then
+    have no effect on the call site's behavior, since it would no longer
+    call it."""
+
+    def test_save_strategy_pins_propagates_atomic_write_failure(
+        self, tmp_tracker, monkeypatch
+    ):
+        import safe_io
+
+        calls = []
+
+        def _boom(*args, **kwargs):
+            calls.append((args, kwargs))
+            raise safe_io.AtomicWriteError("simulated write failure")
+
+        monkeypatch.setattr(safe_io, "atomic_write_json", _boom)
+        pins = {"some_method": "2099-01-01T00:00:00+00:00"}
+        with pytest.raises(safe_io.AtomicWriteError):
+            tmp_tracker._save_strategy_pins(pins)
+
+        assert calls == [((pins, tmp_tracker._PINS_PATH), {})], (
+            "must call atomic_write_json with (pins, _PINS_PATH), not a "
+            "different argument order or a different target path"
+        )
+
+    def test_save_retired_strategies_propagates_atomic_write_failure(
+        self, tmp_tracker, monkeypatch
+    ):
+        import safe_io
+
+        calls = []
+
+        def _boom(*args, **kwargs):
+            calls.append((args, kwargs))
+            raise safe_io.AtomicWriteError("simulated write failure")
+
+        monkeypatch.setattr(safe_io, "atomic_write_json", _boom)
+        retired = {"some_method": {"retired_at": "2099-01-01T00:00:00+00:00"}}
+        with pytest.raises(safe_io.AtomicWriteError):
+            tmp_tracker._save_retired_strategies(retired)
+
+        assert calls == [((retired, tmp_tracker._RETIRED_PATH), {})], (
+            "must call atomic_write_json with (retired, _RETIRED_PATH), not "
+            "a different argument order or a different target path"
+        )
+
+
 # ── P10.1: Drift detection ─────────────────────────────────────────────────────
 
 

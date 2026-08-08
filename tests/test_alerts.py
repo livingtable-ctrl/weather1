@@ -172,6 +172,42 @@ class TestMarkTriggered:
         assert data["alerts"][0]["triggered"] is False
 
 
+class TestSaveRoutesThroughSafeIO:
+    """Regression coverage for the OTHER bare os.replace() CALL SITES backlog
+    entry (2026-08-08): alerts._save now delegates to safe_io.atomic_write_json
+    instead of a hand-rolled tempfile+os.replace, so it inherits safe_io's
+    Windows PermissionError retry (safe_io._replace_with_retry).
+
+    Mutation-tested: reverting _save to a bare os.replace() makes this fail —
+    monkeypatching safe_io.atomic_write_json to raise would then have no
+    effect on _save's behavior, since it would no longer call it."""
+
+    def test_save_propagates_atomic_write_failure(self, monkeypatch):
+        import alerts
+        import safe_io
+
+        calls = []
+
+        def _boom(*args, **kwargs):
+            calls.append((args, kwargs))
+            raise safe_io.AtomicWriteError("simulated write failure")
+
+        monkeypatch.setattr(safe_io, "atomic_write_json", _boom)
+        with pytest.raises(safe_io.AtomicWriteError):
+            alerts.add_alert("TICK-A", 0.40)
+
+        assert len(calls) == 1, "must call atomic_write_json exactly once"
+        (payload, target), kwargs = calls[0]
+        assert target == alerts._DATA_PATH, (
+            "must write to alerts._DATA_PATH, not a different target path"
+        )
+        assert isinstance(payload, dict) and "alerts" in payload, (
+            "must pass the alerts-shaped dict as the payload, not a "
+            "different argument order"
+        )
+        assert kwargs == {}
+
+
 class _FakeClient:
     def __init__(self, market: dict):
         self._market = market

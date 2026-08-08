@@ -2470,7 +2470,7 @@ RESOLVED 2026-08-08: Re-verified every claim in this entry live before
   ruff + ruff format + mypy clean on all 4 changed files.
 
 ======================================================
-[OPEN 2026-08-08 -- found via 2nd opus review round of the resolved hurricane_climatology.fetch_hurdat2_raw's CACHE WRITE ISN'T ATOMIC entry above] OTHER bare os.replace() CALL SITES OUTSIDE safe_io.py ALSO EXPOSED TO THE SAME WINDOWS SHARING-VIOLATION FAILURE MODE
+[RESOLVED 2026-08-08] OTHER bare os.replace() CALL SITES OUTSIDE safe_io.py ALSO EXPOSED TO THE SAME WINDOWS SHARING-VIOLATION FAILURE MODE
 Priority: Low -- same real Windows PermissionError/WinError 5 failure mode
   safe_io.py's own os.replace() calls were just fixed for (see
   hurricane_climatology.py's CACHE WRITE ISN'T ATOMIC entry above), but
@@ -2502,6 +2502,120 @@ Priority: Low -- same real Windows PermissionError/WinError 5 failure mode
   behavior/callers live before choosing -- don't assume all 4 have the
   same shape or the same risk profile as the HURDAT2 cache this pattern
   was first fixed for.
+
+RESOLVED 2026-08-08: Re-verified every claim in this entry live before
+  touching code, from a fresh worktree branched off origin/master (7c40c35)
+  -- all 4 line numbers held exactly (tracker.py:5622/5751,
+  weather_markets.py:3109, alerts.py:42), and circuit_breaker.py:76's
+  `_load_state()` comment confirmed as the documented reader-side
+  precedent this entry cites (its writes already go through
+  atomic_write_json via `_save_state()` -- circuit_breaker.py itself is not
+  one of the 4 exposed sites).
+
+  Payload/caller research live (not assumed): all 4 payloads are small JSON
+  dicts (pins, retired-strategy metadata, per-city model weights, alerts),
+  none multi-MB like HURDAT2. 2 of the 4 files (weather_markets.py,
+  alerts.py) already import/use safe_io.atomic_write_json elsewhere in the
+  same file for adjacent writes -- already the established local
+  convention, just not applied at these particular sites. Every site's
+  caller already has an outer fail-open try/except (cron.py's per-cycle
+  wrappers, main.py:3630's watch-loop alert-check catch) except
+  weather_markets.py's save_learned_weights, which already had its OWN
+  inline fail-open (log + return, skip the in-memory cache update) --
+  swapping in a raising helper needed no NEW exception handling anywhere.
+
+  Per the entry's own instruction, surfaced the (a)-vs-(b) choice via
+  AskUserQuestion rather than picking silently. User chose (a) --
+  atomic_write_json everywhere -- given the established-convention
+  evidence above, plus uniform emergency_copy=True for all 4 (over
+  opting retired_strategies.json out as DB-recomputable), reasoning that
+  it still gates live trading behavior in real time and should be treated
+  as authoritative state, not disposable cache, same as the other 3.
+
+  Implementation: all 4 sites' hand-rolled tempfile.mkstemp/
+  NamedTemporaryFile + json.dump + os.replace boilerplate replaced with a
+  single safe_io.atomic_write_json(payload, path) call each --
+  removes ~10-15 duplicated lines per site and gains fsync + the 3x/1s-
+  backoff retry + _replace_with_retry's PermissionError retry +
+  emergency-copy for free. weather_markets.py's save_learned_weights kept
+  its inline fail-open try/except, now catching around atomic_write_json
+  instead of the old hand-rolled write. tracker.py's 2 sites and alerts.py's
+  _save had no fail-open of their own (propagate to caller) -- their old
+  local try/except (cleanup-tmp-then-re-raise) was removed as redundant,
+  since atomic_write_json already does its own tmp cleanup on failure and
+  raises AtomicWriteError, matching the sibling HURDAT2 fix's "bare-call,
+  no local try/except where an outer fail-open net already exists"
+  convention. alerts.py's now-unused `tempfile` import was removed.
+
+  4 new mutation-tested regression tests added (tests/test_p9_p10.py::
+  TestPersistenceRoutesThroughSafeIO x2, tests/test_alerts.py::
+  TestSaveRoutesThroughSafeIO, tests/test_weather_markets.py::
+  TestLearnedWeightsValidation::test_save_fails_open_when_atomic_write_raises)
+  -- each monkeypatches safe_io.atomic_write_json to raise and asserts the
+  exact (payload, path) call args plus the site's own propagate-vs-fail-
+  open contract. Each was manually mutation-tested during this session:
+  reverted the corresponding function to a bare os.replace(), confirmed
+  the new test fails, restored.
+
+  Independent opus review (effort: high) of the full diff found 8 issues,
+  all addressed:
+  - (most severe, real behavior change) weather_markets.py's
+    save_learned_weights had been narrowed from `except Exception` to
+    `except AtomicWriteError` -- but atomic_write_json's own json.dumps()
+    call happens BEFORE its retry loop, so a serialization error (e.g. a
+    non-str dict key slipping past validation) would propagate instead of
+    failing open, diverging from the exact sibling precedent
+    (hurricane_climatology.py:157 uses a bare `except Exception`). Widened
+    back to `except Exception`.
+  - No repo-wide guard existed against a 5th hand-rolled os.replace() site
+    reappearing -- this entry's own 4 sites were only found via an ad-hoc
+    grep. Added tests/test_bare_os_replace_guard.py, mirroring
+    test_paths_bypass_guard.py's regex-plus-exact-count-allowlist
+    convention (safe_io.py itself excluded as the one legitimate call
+    site; comment/docstring mentions of "os.replace(" in circuit_breaker.py
+    and the new/existing test files allowlisted by exact count).
+    Mutation-tested the same way as the 4 site-level tests.
+  - 2 pre-existing tests in TestLearnedWeightsValidation were stale/risky:
+    test_save_allows_valid_weights mocked os.fdopen (safe_io never calls
+    it) and leaked a real .tmp file under pytest's basetemp when run
+    standalone; test_save_rejects_near_zero_weights never monkeypatched
+    LEARNED_WEIGHTS_PATH, so a future validation regression would have
+    written into the real data/ directory. Both fixed -- rewritten to use
+    tmp_path/monkeypatch throughout and assert on-disk content directly
+    instead of mocking internals that no longer apply.
+  - safe_io.py's own "accepted limitation" comment documenting the
+    data/.emergency/ basename-uniqueness invariant (keyed on
+    live-verification dates) hadn't been updated for the 3 new basenames
+    this entry added (alerts.json was already in the namespace via
+    alerts.save_alerts, so alerts.py's own migration added none). Verified
+    no collision, updated the comment's date/note.
+  - The 4 new mutation tests originally only asserted exception
+    propagation, not call arguments -- an argument-order swap or wrong
+    target path would still have passed. Tightened to capture and assert
+    the exact (payload, path) tuple each site passes.
+  - 3 lower-severity/no-fix findings, evaluated and left as-is:
+    atomic_write_json has no emergency_copy opt-out parameter (only
+    atomic_write_text does) -- moot here since the user's own choice was
+    uniform emergency_copy=True, matching atomic_write_json's existing
+    unconditional behavior exactly; POSIX temp-file mode bits (0600 via
+    mkstemp) becoming umask-derived (typically 0644 via safe_io's plain
+    open()) once this project migrates to its planned Linux VM -- already
+    the accepted, documented behavior for atomic_write_json's other 20+
+    existing callers, no secrets in any of these 4 files, not treated as a
+    new regression specific to this change; a function-local
+    `import safe_io as _safe_io` inside tracker.py's 2 edited functions
+    despite a module-level `from safe_io import project_root` already
+    existing -- matches an identical pre-existing pattern already in
+    weather_markets.py (lines 685/811), not a new inconsistency.
+
+  Final: ruff + ruff format + mypy clean on all 4 changed production files
+  (tracker.py, weather_markets.py, alerts.py, safe_io.py) plus all touched
+  test files. Scoped sweep (test_alerts.py, test_alerts_side.py,
+  test_p9_p10.py, test_weather_markets.py, test_safe_io.py,
+  test_bare_os_replace_guard.py, test_cron_group_c.py,
+  test_p0_11_retired_strategy.py, test_forecasting.py,
+  test_retirement_probation.py, test_phase2_batch_l.py): 568 passed, 4
+  skipped, no regressions.
 
 ======================================================
 [OPEN 2026-08-08 -- found via opus review of the resolved hurricane_climatology.fetch_hurdat2_raw's CACHE WRITE ISN'T ATOMIC entry above] climate_indices.py's PDO/PNA CACHE AND backtest.py's OWN CACHE ALSO SKIP safe_io

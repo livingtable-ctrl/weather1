@@ -3079,10 +3079,6 @@ def save_learned_weights(weights: dict) -> None:
     Persist per-city model weights to data/learned_weights.json atomically.
     Called after a backtest to update city-specific model preferences.
     """
-    import json as _json
-    import os as _os
-    import tempfile as _tmp
-
     # P1-9: validate before writing — reject win-rate floats masquerading as weights
     for city, city_data in weights.items():
         if not isinstance(city_data, dict):
@@ -3101,17 +3097,9 @@ def save_learned_weights(weights: dict) -> None:
             return
 
     path = LEARNED_WEIGHTS_PATH
-    path.parent.mkdir(exist_ok=True)
-    fd, tmp = _tmp.mkstemp(dir=path.parent, prefix=".lw_", suffix=".json")
     try:
-        with _os.fdopen(fd, "w") as f:
-            _json.dump(weights, f, indent=2)
-        _os.replace(tmp, path)
+        _safe_io.atomic_write_json(weights, path)
     except Exception as exc:
-        try:
-            _os.unlink(tmp)
-        except OSError:
-            pass
         # Log (every other persistence failure in this file does) and skip the
         # in-memory cache update — otherwise this process trades on the new
         # weights while learned_weights.json still holds the old ones, so the

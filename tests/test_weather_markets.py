@@ -2883,36 +2883,28 @@ class TestLearnedWeightsValidation:
         finally:
             wm._LEARNED_WEIGHTS = orig_lw
 
-    def test_save_rejects_near_zero_weights(self):
+    def test_save_rejects_near_zero_weights(self, tmp_path, monkeypatch):
         """save_learned_weights must not write when any model weight is near zero."""
         import weather_markets as wm
 
+        target = tmp_path / "learned_weights.json"
+        monkeypatch.setattr(wm, "LEARNED_WEIGHTS_PATH", target)
         orig_lw = wm._LEARNED_WEIGHTS
         wm._LEARNED_WEIGHTS = {}
-        wrote = [False]
-        import os as _os_mod
-
-        orig_replace = _os_mod.replace
-
-        def fake_replace(src, dst):
-            wrote[0] = True
-            return orig_replace(src, dst)
 
         try:
-            import unittest.mock as _mock
-
-            with _mock.patch("os.replace", side_effect=fake_replace):
-                bad = {"NYC": {"gfs_seamless": 0.0, "ecmwf_ifs025": 1.5}}
-                wm.save_learned_weights(bad)
+            bad = {"NYC": {"gfs_seamless": 0.0, "ecmwf_ifs025": 1.5}}
+            wm.save_learned_weights(bad)
         finally:
             wm._LEARNED_WEIGHTS = orig_lw
 
-        assert not wrote[0], (
-            "save_learned_weights must not call os.replace for near-zero weights"
+        assert not target.exists(), (
+            "save_learned_weights must not write for near-zero weights"
         )
 
     def test_save_allows_valid_weights(self, tmp_path, monkeypatch):
         """save_learned_weights must write valid {city: {model: weight}} dicts."""
+        import json
 
         import weather_markets as wm
 
@@ -2924,25 +2916,64 @@ class TestLearnedWeightsValidation:
             }
         }
 
+        target = tmp_path / "learned_weights.json"
         orig_lw = wm._LEARNED_WEIGHTS
         wm._LEARNED_WEIGHTS = {}
 
         try:
-            monkeypatch.setattr(
-                wm, "LEARNED_WEIGHTS_PATH", tmp_path / "learned_weights.json"
+            monkeypatch.setattr(wm, "LEARNED_WEIGHTS_PATH", target)
+            wm.save_learned_weights(valid)
+            assert wm._LEARNED_WEIGHTS == valid, (
+                "save_learned_weights must update _LEARNED_WEIGHTS for valid input"
             )
-            # Just verify validation passes by checking _LEARNED_WEIGHTS is updated
-            import unittest.mock as _mock
+            assert json.loads(target.read_text(encoding="utf-8")) == valid, (
+                "save_learned_weights must durably persist valid weights to disk"
+            )
+        finally:
+            wm._LEARNED_WEIGHTS = orig_lw
 
-            with _mock.patch("os.replace"), _mock.patch("os.fdopen") as mock_fdopen:
-                import io
+    def test_save_fails_open_when_atomic_write_raises(self, tmp_path, monkeypatch):
+        """Regression coverage for the OTHER bare os.replace() CALL SITES backlog
+        entry (2026-08-08): save_learned_weights now delegates to
+        safe_io.atomic_write_json instead of a hand-rolled tempfile+os.replace,
+        so it inherits safe_io's Windows PermissionError retry. On total write
+        failure it must fail OPEN (log + return, leave the in-memory cache
+        untouched) rather than raise or silently accept the new weights —
+        this file's existing convention (per save_learned_weights' own
+        docstring) is that a write failure must not make this process trade
+        on weights that were never durably persisted.
 
-                mock_fdopen.return_value.__enter__ = lambda s: io.StringIO()
-                mock_fdopen.return_value.__exit__ = lambda s, *a: None
-                wm.save_learned_weights(valid)
-                assert wm._LEARNED_WEIGHTS == valid, (
-                    "save_learned_weights must update _LEARNED_WEIGHTS for valid input"
-                )
+        Mutation-tested: reverting save_learned_weights to a bare os.replace()
+        makes this fail — monkeypatching safe_io.atomic_write_json to raise
+        would then have no effect on save_learned_weights' behavior, since it
+        would no longer call it, and _LEARNED_WEIGHTS would be wrongly
+        updated despite the simulated write failure.
+        """
+        import safe_io
+        import weather_markets as wm
+
+        valid = {"NYC": {"gfs_seamless": 1.2, "ecmwf_ifs025": 0.9}}
+        orig_lw = wm._LEARNED_WEIGHTS
+        wm._LEARNED_WEIGHTS = {"NYC": {"gfs_seamless": 5.0}}  # sentinel prior state
+        target = tmp_path / "learned_weights.json"
+        calls = []
+
+        def _boom(*args, **kwargs):
+            calls.append((args, kwargs))
+            raise safe_io.AtomicWriteError("simulated write failure")
+
+        try:
+            monkeypatch.setattr(wm, "LEARNED_WEIGHTS_PATH", target)
+            monkeypatch.setattr(safe_io, "atomic_write_json", _boom)
+            wm.save_learned_weights(valid)  # must not raise
+            assert calls == [((valid, target), {})], (
+                "must call atomic_write_json with (weights, LEARNED_WEIGHTS_PATH), "
+                "not a different argument order or a different target path"
+            )
+            assert wm._LEARNED_WEIGHTS == {"NYC": {"gfs_seamless": 5.0}}, (
+                "save_learned_weights must leave _LEARNED_WEIGHTS untouched "
+                "when the underlying write fails"
+            )
         finally:
             wm._LEARNED_WEIGHTS = orig_lw
 

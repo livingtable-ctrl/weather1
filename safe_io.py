@@ -261,10 +261,14 @@ def _atomic_write_payload(
         # foo.json would share one emergency slot. No real caller today has an
         # actual basename collision (verified live against every atomic_write_json
         # call site 2026-07-27; re-verified 2026-07-31 after notify.py's new
-        # .notify_cooldowns.json call site -- still unique), and the emergency
-        # copy is a best-effort recovery aid, not the source of truth, so this is
-        # deliberately left as-is rather than adding relative-path encoding
-        # complexity for a theoretical case.
+        # .notify_cooldowns.json call site; re-verified again 2026-08-08 after
+        # tracker.py's strategy_pins.json/retired_strategies.json and
+        # weather_markets.py's learned_weights.json were migrated to
+        # atomic_write_json -- still unique; alerts.py's own migration added no
+        # new basename, since alerts.json was already a call site via
+        # save_alerts()), and the emergency copy is a best-effort recovery aid,
+        # not the source of truth, so this is deliberately left as-is rather
+        # than adding relative-path encoding complexity for a theoretical case.
         emergency_candidates.append(project_root() / "data" / ".emergency")
         emergency_candidates.append(Path(tempfile.gettempdir()))
         resolved_target = path.resolve()

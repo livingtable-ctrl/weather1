@@ -5604,22 +5604,9 @@ def _get_strategy_pins() -> dict[str, str]:
 
 
 def _save_strategy_pins(pins: dict[str, str]) -> None:
-    import json as _json
-    import os as _os
-    import tempfile as _tempfile
+    import safe_io as _safe_io
 
-    _PINS_PATH.parent.mkdir(exist_ok=True)
-    with _tempfile.NamedTemporaryFile(
-        "w",
-        dir=_PINS_PATH.parent,
-        prefix=".pins_",
-        suffix=".json",
-        delete=False,
-        encoding="utf-8",
-    ) as tmp:
-        _json.dump(pins, tmp, indent=2)
-        tmp_name = tmp.name
-    _os.replace(tmp_name, _PINS_PATH)
+    _safe_io.atomic_write_json(pins, _PINS_PATH)
 
 
 def is_strategy_pinned(method: str) -> bool:
@@ -5737,24 +5724,9 @@ def get_retired_strategies() -> dict[str, dict]:
 
 
 def _save_retired_strategies(retired: dict) -> None:
-    import json as _json
-    import os as _os
-    import tempfile as _tempfile
+    import safe_io as _safe_io
 
-    _RETIRED_PATH.parent.mkdir(exist_ok=True)
-    fd, tmp = _tempfile.mkstemp(
-        dir=_RETIRED_PATH.parent, prefix=".retired_", suffix=".json"
-    )
-    try:
-        with _os.fdopen(fd, "w") as f:
-            _json.dump(retired, f, indent=2)
-        _os.replace(tmp, _RETIRED_PATH)
-    except Exception:
-        try:
-            _os.unlink(tmp)
-        except OSError:
-            pass
-        raise
+    _safe_io.atomic_write_json(retired, _RETIRED_PATH)
 
 
 def auto_retire_strategies(
